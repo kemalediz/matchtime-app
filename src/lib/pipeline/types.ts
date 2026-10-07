@@ -499,11 +499,61 @@ export interface TeamFacts {
   pairings: string[][];
 }
 
+/**
+ * WHAT A RESULT MESSAGE SAYS (rewritten 2026-10-07).
+ *
+ * Until then this was two numbers "in the order the teams are named"
+ * and nothing about WHICH team, and the engine put the first on Red.
+ * Sutton FC, 6 October 2026: "9-6 to yellows" was recorded Red 9,
+ * Yellow 6. Every "N-M to Yellows" the club had ever typed was exposed
+ * to the same thing.
+ *
+ * The facts now carry whatever the message says about whose number is
+ * whose, VERBATIM, and code maps that onto Red and Yellow from the
+ * club's own team names (`score-teams.ts`). The model never decides
+ * which side is Red: it does not know what the club calls its teams,
+ * and a club can rename them.
+ *
+ * A team reference is the word as written ("yellows", "Sarılar",
+ * "Lions"), or one of the two fixed tokens "us" (the sender's own side:
+ * "we won", "kazandık") and "them". Empty when the message does not say.
+ */
 export interface ScoreFacts {
   kind: "score";
-  /** In the order the two teams appear in the match context. */
-  first: number;
-  second: number;
+  /**
+   * The two numbers, in the order they are written, or NULL WHEN THE
+   * MESSAGE HAS NO SCORELINE ("yellows won", "wrong way round", a bare
+   * "Yellow"). Null is not zero: until the review of PR #214 a message
+   * with no numbers could reach the engine as 0-0 and be recorded.
+   * Nothing may write a score from a null.
+   */
+  first: number | null;
+  second: number | null;
+  /** A team name written directly beside the FIRST number, with no word
+   *  about the outcome ("Yellow 9 - 6 Red", "Reds 3-5"). POSITION only:
+   *  whether a lone name is enough is `score-teams.ts`'s decision. */
+  firstTeam?: string;
+  /** Likewise beside the SECOND number. */
+  secondTeam?: string;
+  /** The team a WORD in the message says won: "9-6 to yellows",
+   *  "sarılar 9-6 kazandı", "we won 5-3". */
+  winner?: string;
+  /** The team a word says LOST ("reds lost 6-9", "kaybettik"). */
+  loser?: string;
+  /** The message says a result already given or recorded was WRONG and
+   *  gives the right one ("no, it was...", "yanlış, ..."). NECESSARY to
+   *  change a recorded result and NOT SUFFICIENT: the message must also
+   *  tag the bot (`handleScore`). A flag from a model, on an untagged
+   *  message, changes nothing: "no, reds won 3-1" about another club's
+   *  match was flagged and overwrote a result (second review, H2). */
+  correction?: boolean;
+  /** The message says the result has the teams the wrong way round
+   *  ("wrong way round", "tam tersi"). A correction that needs no
+   *  numbers: the recorded result is swapped. */
+  swapped?: boolean;
+  /** The message is explicitly about a DIFFERENT game ("last week we
+   *  lost 9-2"). Never recorded and never answered. */
+  otherGame?: boolean;
 }
 
 export interface AdminFacts {
@@ -644,8 +694,10 @@ export interface SquadState {
    * `redScore: null, yellowScore: null` in SQL and then takes the most
    * recent ENDED row, so it walks BACK past a scored match to an older
    * unscored one. This does not: it takes the most recent ended match
-   * whatever its score, and `handleScore` refuses to overwrite a result
-   * that is already recorded. Owning less on purpose — a score landing
+   * whatever its score, and `handleScore` changes a result that is
+   * already recorded only for a message that TAGS the bot AND is a
+   * correction, from an identified admin or player of that match,
+   * within the correction window (2026-10-07). Owning less on purpose — a score landing
    * on a match two weeks older than the one the group is talking about
    * is a worse outcome than nobody recording it.
    *
@@ -677,6 +729,45 @@ export interface SquadState {
     redScore: number | null;
     yellowScore: number | null;
     participantUserIds: string[];
+    /**
+     * THREE FACTS ABOUT THE PLAYED MATCH ITSELF (2026-10-07), all
+     * optional so an older fixture still type-checks, each with a
+     * fallback that owns LESS rather than more:
+     *
+     * `kickoffAt` (ISO): when it kicked off. A recorded result can be
+     * corrected in the group for `SCORE_CORRECTION_WINDOW_MS` after
+     * that. Absent means the window is treated as closed.
+     */
+    kickoffAt?: string;
+    /** THIS match's two display names, [red, yellow]. `state.teamLabels`
+     *  belongs to the UPCOMING match, which may carry different per-match
+     *  names. Absent falls back to `state.teamLabels`. */
+    teamLabels?: [string, string];
+    /** Who was on which side, so "we won 5-3" can be read from the
+     *  sender's team. Absent or empty means "we" cannot be resolved and
+     *  the bot asks. */
+    teams?: Array<{ userId: string; team: "RED" | "YELLOW" }>;
+    /**
+     * A SCORELINE THE BOT HAS ASKED ABOUT and not yet had an answer to
+     * ("10 - 7: which team won?"), so a following "Yellow" can complete
+     * it. ONLY EVER SET FOR A MATCH WITH NO RECORDED RESULT: the loader
+     * drops it otherwise and the engine ignores it otherwise. One per
+     * match: a different pair replaces it, and any recorded result
+     * clears it. `askerUserId` is who posted the scoreline, when known.
+     * Who may answer, and for how long, is `score-ask.ts`.
+     */
+    pendingScore?: { first: number; second: number; askedAt: string; askerUserId: string | null };
+    /**
+     * Another match of the club, with a recorded result, kicked off
+     * inside the correction window. When the LATEST match has no result
+     * yet, a message that says "no, it was..." may be about that earlier
+     * one, so it is answered and not recorded against the latest.
+     */
+    earlierRecentResult?: boolean;
+    /** A bare "wrong way round" (no winner named) has already swapped
+     *  this match's result once. A second one is not honoured: it would
+     *  only flip it back (`score-ask.ts`, `SCORE_SWAP_KIND`). */
+    swapUsed?: boolean;
   } | null;
   /** MatchTime's own most recent post in the group, verbatim. A known
    *  object, not a guess: it is how a bare "Confirmed" resolves. */
@@ -1010,6 +1101,27 @@ export type ProposedWrite =
       matchId: string;
       red: number;
       yellow: number;
+      /** Set on a CORRECTION: the result this one replaces. The apply
+       *  layer refuses if the match no longer reads it. */
+      previous?: { red: number; yellow: number };
+      /** The correction was a bare "wrong way round". The apply layer
+       *  records that the match's one swap has been used. */
+      bareSwap?: true;
+      sourceMessageId: string;
+      reason: string;
+    }
+  /**
+   * The bot asked which team a scoreline belongs to. Not a score: it
+   * records the QUESTION, so the answer can be read against it
+   * (`score-ask.ts`). Applied by the score route's apply layer only.
+   */
+  | {
+      kind: "score_ask";
+      matchId: string;
+      first: number;
+      second: number;
+      /** Who posted the scoreline, or null when WhatsApp did not say. */
+      askerUserId: string | null;
       sourceMessageId: string;
       reason: string;
     }
@@ -1222,6 +1334,34 @@ export type SpeechIntent =
    */
   | { kind: "teams_not_generated"; messageId: string }
   | { kind: "score_ack"; messageId: string; red: number; yellow: number }
+  /** A recorded result was changed: says the old one and the new one. */
+  | {
+      kind: "score_corrected";
+      messageId: string;
+      oldRed: number;
+      oldYellow: number;
+      red: number;
+      yellow: number;
+    }
+  /** Two different numbers and no way to tell whose is whose. Asks,
+   *  rather than guessing (the 2026-10-06 incident was a guess). */
+  | { kind: "score_ask_team"; messageId: string; first: number; second: number }
+  /** A different result for a match that already has one, from somebody
+   *  who may not change it or after the window. Says what is recorded
+   *  and where an admin changes it. */
+  | { kind: "score_already_recorded"; messageId: string; red: number; yellow: number }
+  /** A message addressed to the bot that differs from the recorded
+   *  result and is NOT a correction (or a correction the bot could not
+   *  read). Says what is recorded and how to correct it; changes
+   *  nothing. */
+  | { kind: "score_recorded_hint"; messageId: string; red: number; yellow: number }
+  /** "No, it was..." when the latest match has no result yet and an
+   *  earlier one inside the window does: the bot cannot tell which match
+   *  it corrects, and says so. */
+  | { kind: "score_which_match"; messageId: string }
+  /** The bot was told who won and not the score ("@Match Time yellows
+   *  won"), with nothing recorded and no question open: it asks. */
+  | { kind: "score_ask_score"; messageId: string }
   | { kind: "payment_ack"; messageId: string; payerName: string; count: number }
   /** `whenLabel` is the RESOLVED time ("Mon 8 Sep at 18:00"). The
    *  composer must never echo the raw phrase back at a player as if it

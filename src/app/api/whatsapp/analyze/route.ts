@@ -166,7 +166,19 @@ import {
   buildTeamOpsApplyDeps,
   buildClaimGuestNameAsk,
 } from "@/lib/owner-deps";
-import { loadOpenQuestion, loadOpenStatsClarifications } from "@/lib/pipeline/load-awaiting-answer";
+import {
+  loadOpenQuestion,
+  loadOpenScoreAsk,
+  loadOpenStatsClarifications,
+  loadScoreCorrectionTarget,
+} from "@/lib/pipeline/load-awaiting-answer";
+import {
+  isScoreAnswer,
+  isScoreCorrectionText,
+  mayBeScoreCorrection,
+  scoreAnswerSide,
+  scorePairAnswerSide,
+} from "@/lib/pipeline/score-ask";
 import { ENGINE_HANDLED_BY } from "@/lib/attendance-engine";
 import { describeEngineBatch, runAttendanceEngineBatch } from "@/lib/attendance-engine-batch";
 import { resolveBenchConfirmation } from "@/lib/bench-confirmation";
@@ -2055,6 +2067,63 @@ async function handleAnalyzeRequest(request: Request) {
           return [];
         })
       : [];
+  // THE ANSWERS TO MATCHTIME'S OPEN "WHICH TEAM WON?" (2026-10-07).
+  // Decided HERE, deterministically, before any model is asked and
+  // whether or not one answers: a bare team name that tags the bot, or
+  // comes from whoever posted the scoreline or an identified admin
+  // within thirty minutes (`isScoreAnswer`, `score-ask.ts`). One indexed
+  // read, null on almost every batch; a failed read only means a
+  // one-word answer is not picked up, and the full result still is.
+  const openScoreAsk =
+    fresh.length > 0
+      ? await loadOpenScoreAsk(org.id).catch((err) => {
+          console.error("[analyze] open score question read failed:", err);
+          return null;
+        })
+      : null;
+  const scoreAnswerIds = new Set<string>();
+  if (openScoreAsk) {
+    for (const m of fresh) {
+      const senderUserId = senderById.get(m.waMessageId)?.userId ?? null;
+      if (
+        // A bare team name, or the asked-about pair restated with one
+        // team ("Yellow 7-10"): the two shapes the engine accepts.
+        (scoreAnswerSide(pipelineBody(m), openScoreAsk.labels) !== null ||
+          scorePairAnswerSide(pipelineBody(m), openScoreAsk, openScoreAsk.labels) !== null) &&
+        isScoreAnswer({
+          body: pipelineBody(m),
+          tagged: messageTagsBot(m),
+          senderUserId,
+          senderIsAdmin: !!senderUserId && openScoreAsk.adminUserIds.includes(senderUserId),
+          ask: openScoreAsk,
+          now: new Date(),
+        })
+      ) {
+        scoreAnswerIds.add(m.waMessageId);
+      }
+    }
+  }
+  // A TAGGED CORRECTION OF A RECORDED RESULT, RECOGNISED BY ITS WORDS
+  // (2026-10-07, `isScoreCorrectionText` in `score-ask.ts`). The one
+  // approved live run had the router send "@Match Time other way round"
+  // to `unsure` and a Turkish correction to `other_att`, so neither
+  // reached the score route. Decided here, before any model runs. The
+  // match is loaded only if a tagged message already looks like one, so
+  // an ordinary batch costs nothing. Who may correct, and what the
+  // correction says, stay in the engine.
+  const scoreCorrectionIds = new Set<string>();
+  const correctionCandidates = fresh.filter((m) => messageTagsBot(m) && mayBeScoreCorrection(pipelineBody(m)));
+  if (correctionCandidates.length > 0) {
+    const target = await loadScoreCorrectionTarget(org.id).catch((err) => {
+      console.error("[analyze] score correction target read failed:", err);
+      return null;
+    });
+    if (target) {
+      for (const m of correctionCandidates) {
+        if (isScoreCorrectionText(pipelineBody(m), target.labels)) scoreCorrectionIds.add(m.waMessageId);
+      }
+    }
+  }
   const gate =
     fresh.length > 0 && routerIsNeeded()
       ? await gateBatch(
@@ -2081,6 +2150,11 @@ async function handleAnalyzeRequest(request: Request) {
           {
             awaiting: await loadOpenQuestion(org.id),
             clarifications: statsClarifications,
+            // "Which team won?" (2026-10-07): the messages in this batch
+            // that answer it, decided here from who sent each one.
+            scoreAnswerIds,
+            // A tagged correction of a recorded result, by its words.
+            scoreCorrectionIds,
             // At the daily AI cap: floor only, no router call.
             capped: aiCapped,
           },

@@ -15,6 +15,9 @@
  * READ-ONLY BY CONSTRUCTION: every statement in this file is a
  * `findMany`. The gate never writes.
  */
+import { SCORE_ASK_KIND, SCORE_ASK_TTL_MS, parseScoreAskKey } from "./score-ask";
+import { resolveTeamLabels } from "../team-labels";
+import { SCORE_CORRECTION_WINDOW_MS } from "./score-window";
 import { db } from "../db";
 import {
   GROUP_QUESTION_TTL_MS,
@@ -125,4 +128,127 @@ export async function loadOpenStatsClarifications(
     select: { id: true, orgId: true, intent: true, authorUserId: true, authorName: true, body: true, createdAt: true },
   });
   return openStatsClarifications(rows, orgId, now);
+}
+
+/**
+ * The "which team won?" question MatchTime has open for this club, if
+ * any (2026-10-07, `score-ask.ts`): the scoreline, when it was asked,
+ * who posted it, the team names of the match it is about, and the
+ * club's admins (who may answer for the sender). One indexed read, null
+ * on almost every batch; the admins are read only when a question
+ * exists. The analyze route uses it to decide which messages are
+ * answers; the engine reads the same row through `load-state.ts`.
+ *
+ * A QUESTION IS ONLY EVER VALID FOR A MATCH WITH NO RESULT. A row for a
+ * match that has one is not returned, whoever left it there.
+ */
+export async function loadOpenScoreAsk(
+  orgId: string,
+  now: Date = new Date(),
+): Promise<{
+  matchId: string;
+  first: number;
+  second: number;
+  askedAt: Date;
+  askerUserId: string | null;
+  labels: [string, string];
+  adminUserIds: string[];
+} | null> {
+  const row = await db.sentNotification.findFirst({
+    where: {
+      kind: SCORE_ASK_KIND,
+      createdAt: { gte: new Date(now.getTime() - SCORE_ASK_TTL_MS) },
+      match: { activity: { orgId }, redScore: null, yellowScore: null },
+    },
+    orderBy: { createdAt: "desc" },
+    select: {
+      key: true,
+      createdAt: true,
+      targetUser: true,
+      match: {
+        select: {
+          teamLabels: true,
+          activity: {
+            select: {
+              sport: { select: { teamLabels: true } },
+              org: { select: { teamLabels: true, language: true } },
+            },
+          },
+        },
+      },
+    },
+  });
+  const parsed = row ? parseScoreAskKey(row.key) : null;
+  if (!row || !parsed || !row.match) return null;
+  const admins = await db.membership.findMany({
+    where: { orgId, role: { in: ["OWNER", "ADMIN"] }, leftAt: null },
+    select: { userId: true },
+  });
+  return {
+    ...parsed,
+    askedAt: row.createdAt,
+    askerUserId: row.targetUser ?? null,
+    labels: resolveTeamLabels(
+      { teamLabels: row.match.teamLabels },
+      { teamLabels: row.match.activity.org.teamLabels },
+      row.match.activity.sport,
+      row.match.activity.org.language,
+    ),
+    adminUserIds: admins.map((a) => a.userId),
+  };
+}
+
+/**
+ * The match a tagged score correction would correct, if there is one:
+ * the club's latest PLAYED match, when it has a recorded result and
+ * kicked off inside the correction window. Its team names are what
+ * `isScoreCorrectionText` reads a correction against.
+ *
+ * The selection is `load-state.ts`'s for `completedMatch` (the ten most
+ * recent matches that have kicked off, the first whose duration has
+ * passed), so the router override and the engine are talking about the
+ * same match. Called only when a tagged message in the batch already
+ * looks like a correction (`mayBeScoreCorrection`), so almost never.
+ */
+export async function loadScoreCorrectionTarget(
+  orgId: string,
+  now: Date = new Date(),
+): Promise<{ matchId: string; labels: [string, string] } | null> {
+  const candidates = await db.match.findMany({
+    where: {
+      activity: { orgId },
+      status: { in: ["TEAMS_GENERATED", "TEAMS_PUBLISHED", "COMPLETED"] },
+      date: { lte: now },
+    },
+    select: {
+      id: true,
+      date: true,
+      redScore: true,
+      yellowScore: true,
+      teamLabels: true,
+      activity: {
+        select: {
+          matchDurationMins: true,
+          sport: { select: { teamLabels: true } },
+          org: { select: { teamLabels: true, language: true } },
+        },
+      },
+    },
+    orderBy: { date: "desc" },
+    take: 10,
+  });
+  const latest = candidates.find(
+    (m) => m.date.getTime() + m.activity.matchDurationMins * 60 * 1000 <= now.getTime(),
+  );
+  if (!latest || latest.redScore === null || latest.yellowScore === null) return null;
+  if (now.getTime() - latest.date.getTime() > SCORE_CORRECTION_WINDOW_MS) return null;
+  return {
+    matchId: latest.id,
+    labels: resolveTeamLabels(
+      { teamLabels: latest.teamLabels },
+      { teamLabels: latest.activity.org.teamLabels },
+      latest.activity.sport,
+      latest.activity.org.language,
+    ),
+  };
 }

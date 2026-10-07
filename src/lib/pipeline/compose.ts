@@ -631,10 +631,69 @@ export function compose(result: EngineResult): ComposedOutput {
         utterances.push({ messageId: sp.messageId, text: s.ask_who_mentioned });
         break;
 
-      case "score_ack":
+      // THE FOUR SCORE REPLIES. All of them name the teams as the PLAYED
+      // match called them (`completedMatch.teamLabels`); `state.teamLabels`
+      // belongs to the upcoming match, which can carry its own names.
+      case "score_ack": {
+        const [redLabel, yellowLabel] = state.completedMatch?.teamLabels ?? state.teamLabels;
         utterances.push({
           messageId: sp.messageId,
-          text: s.score_ack({ redLabel: state.teamLabels[0], red: sp.red, yellow: sp.yellow, yellowLabel: state.teamLabels[1] }),
+          text: s.score_ack({ redLabel, red: sp.red, yellow: sp.yellow, yellowLabel }),
+        });
+        break;
+      }
+
+      case "score_corrected": {
+        const [redLabel, yellowLabel] = state.completedMatch?.teamLabels ?? state.teamLabels;
+        utterances.push({
+          messageId: sp.messageId,
+          text: s.score_corrected({
+            redLabel,
+            yellowLabel,
+            oldRed: sp.oldRed,
+            oldYellow: sp.oldYellow,
+            red: sp.red,
+            yellow: sp.yellow,
+          }),
+        });
+        break;
+      }
+
+      case "score_ask_team": {
+        const [redLabel, yellowLabel] = state.completedMatch?.teamLabels ?? state.teamLabels;
+        utterances.push({
+          messageId: sp.messageId,
+          text: s.score_ask_team({ first: sp.first, second: sp.second, redLabel, yellowLabel }),
+        });
+        break;
+      }
+
+      case "score_already_recorded": {
+        const [redLabel, yellowLabel] = state.completedMatch?.teamLabels ?? state.teamLabels;
+        utterances.push({
+          messageId: sp.messageId,
+          text: s.score_already_recorded({ redLabel, red: sp.red, yellow: sp.yellow, yellowLabel }),
+        });
+        break;
+      }
+
+      case "score_recorded_hint": {
+        const [redLabel, yellowLabel] = state.completedMatch?.teamLabels ?? state.teamLabels;
+        utterances.push({
+          messageId: sp.messageId,
+          text: s.score_recorded_hint({ redLabel, red: sp.red, yellow: sp.yellow, yellowLabel }),
+        });
+        break;
+      }
+
+      case "score_ask_score":
+        utterances.push({ messageId: sp.messageId, text: s.score_ask_score });
+        break;
+
+      case "score_which_match":
+        utterances.push({
+          messageId: sp.messageId,
+          text: s.score_which_match({ kickoffLabel: state.completedMatch?.kickoffLabel ?? s.no_match_label }),
         });
         break;
 

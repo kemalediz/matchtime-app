@@ -654,10 +654,68 @@ export interface RouteBatchOptions {
    */
   clarifications?: StatsClarification[];
   /**
+   * MESSAGES THAT ANSWER MATCHTIME'S OPEN "WHICH TEAM WON?" (2026-10-07,
+   * `score-ask.ts`). Decided by the CALLER, deterministically, from who
+   * sent each message, whether it tags the bot and how long ago the
+   * question was asked (`isScoreAnswer`); the router is only told the
+   * ids. Each goes to `score` whatever the model called it, AND when the
+   * model was not asked or did not answer: a failed router call must not
+   * lose the answer to a question the bot itself asked. Empty almost
+   * always.
+   */
+  scoreAnswerIds?: ReadonlySet<string>;
+  /**
+   * MESSAGES THAT ARE A TAGGED CORRECTION OF A RECORDED RESULT, by a
+   * fixed vocabulary (`isScoreCorrectionText`, `score-ask.ts`), decided
+   * by the caller before the router runs. The one approved live run had
+   * the model send "@Match Time other way round" to `unsure` and
+   * "@Match Time yanlış, kırmızı 6 sarı 9" to `other_att`; both go to
+   * `score` here, on every path, like `scoreAnswerIds`.
+   */
+  scoreCorrectionIds?: ReadonlySet<string>;
+  /**
    * The club is at its daily AI cap: route with the floor alone and make
    * no model call. See `ai-budget.ts`.
    */
   capped?: boolean;
+}
+
+/**
+ * The answers to MatchTime's open "which team won?" go to `score`.
+ * Applied to EVERY way a batch can be routed (model, floor, fallback,
+ * capped), because which messages qualify was decided before the router
+ * ran and does not depend on it. See `RouteBatchOptions.scoreAnswerIds`.
+ */
+function withScoreAnswers(
+  routes: RoutedMessage[],
+  opts: RouteBatchOptions,
+  degradations: Degradation[],
+): RoutedMessage[] {
+  const answers = opts.scoreAnswerIds;
+  const corrections = opts.scoreCorrectionIds;
+  if (!answers?.size && !corrections?.size) return routes;
+  return routes.map((r) => {
+    const isAnswer = !!answers?.has(r.messageId);
+    const isCorrection = !!corrections?.has(r.messageId);
+    if (r.route === "score" || !(isAnswer || isCorrection)) return r;
+    degradations.push(
+      degradation(
+        "router",
+        r.messageId,
+        isAnswer
+          ? `MatchTime asked which team won a scoreline and this answers it; ${r.route} → score so the ` +
+              `answer reaches the question it answers`
+          : `a tagged score correction of a recorded result, by its words; ${r.route} → score so it ` +
+              `reaches the score route and not the attendance extractor`,
+      ),
+    );
+    return {
+      ...r,
+      route: "score" as const,
+      source: "awaiting" as const,
+      overrodeRoute: r.overrodeRoute ?? r.route,
+    };
+  });
 }
 
 /** The routes a batch gets when the model may not be asked: the floor's
@@ -677,6 +735,19 @@ export async function routeBatch(
   model: PipelineModel,
   messages: RouterMessage[],
   opts: RouteBatchOptions = {},
+): Promise<RouterResult> {
+  // Whatever happened inside (the model answered, the floor did, the
+  // call failed, the club is at its cap), the answers to MatchTime's
+  // own open question go to `score`. One place, after every return.
+  const res = await routeBatchInner(model, messages, opts);
+  const degradations = [...res.degradations];
+  return { ...res, routes: withScoreAnswers(res.routes, opts, degradations), degradations };
+}
+
+async function routeBatchInner(
+  model: PipelineModel,
+  messages: RouterMessage[],
+  opts: RouteBatchOptions,
 ): Promise<RouterResult> {
   if (messages.length === 0) return { routes: [], degradations: [] };
 

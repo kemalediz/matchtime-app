@@ -146,6 +146,8 @@ import {
   type ScoreApplyDeps,
 } from "./score-engine";
 import { extractorCacheKey, fanOutWarmFirst } from "./pipeline/fan-out";
+import { isScoreAnswer, isScoreAskOpen, scoreAnswerRef } from "./pipeline/score-ask";
+import { resolveTeamRef } from "./pipeline/score-teams";
 
 export { SCORE_APPLY_DEGRADED_PREFIX, SCORE_HANDLED_BY };
 
@@ -287,8 +289,51 @@ export async function runScoreBatch(args: {
 
   let cost = { usd: 0, calls: 0, ms: 0 };
   const factsById = new Map<string, Facts>();
+
+  // ── THE ANSWER TO "WHICH TEAM WON?" NEEDS NO MODEL ─────────────────
+  //
+  // While the bot has that question open for the played match
+  // (`pipeline/score-ask.ts`), a message that is nothing but one of the
+  // match's team names IS the answer. Its facts are written here, from
+  // the text, and the extractor is not called: paying a model to read
+  // one word would also be trusting it with the one decision this route
+  // keeps in code, whose team is whose.
+  //
+  // NARROW, and the same rule everywhere (`isScoreAnswer`): the match
+  // has NO result, the question is open, and the message tags the bot or
+  // comes from whoever posted the scoreline or an identified admin
+  // within thirty minutes. The engine applies the rule again before
+  // anything is written; this only decides who reads the message.
+  const playedMatch = state.completedMatch;
+  const unscored = !!playedMatch && playedMatch.redScore === null && playedMatch.yellowScore === null;
+  const openAsk =
+    unscored && playedMatch?.pendingScore && isScoreAskOpen(playedMatch.pendingScore.askedAt, now)
+      ? playedMatch.pendingScore
+      : null;
+  const askLabels = playedMatch?.teamLabels ?? state.teamLabels;
+  const toExtract: ScoreBatchMessage[] = [];
+  for (const m of candidates) {
+    const ref =
+      openAsk &&
+      isScoreAnswer({
+        body: m.body,
+        tagged: m.tagged,
+        senderUserId: m.senderUserId,
+        senderIsAdmin: !!m.senderUserId && !!state.roster.find((r) => r.userId === m.senderUserId)?.isAdmin,
+        ask: openAsk,
+        now,
+      })
+        ? scoreAnswerRef(m.body)
+        : null;
+    if (ref && resolveTeamRef(ref, askLabels, null)) {
+      factsById.set(m.waMessageId, { kind: "score", first: null, second: null, winner: ref });
+    } else {
+      toExtract.push(m);
+    }
+  }
+
   await fanOutWarmFirst(
-    candidates,
+    toExtract,
     (m) => extractorCacheKey(m.route as Route),
     async (m) => {
       const res = await extractForRouteTraced("score", model, m.route as Route, {
@@ -426,9 +471,14 @@ export async function runScoreBatch(args: {
   // seatbelts were found dead on 2026-08-31, all with comments claiming
   // they worked; this one refuses the whole batch and says so.
   const scoreWrites: EngineScoreWrite[] = [];
+  /** "Which team won?" questions to remember. Not scores: they record
+   *  that the bot ASKED, so the answer can be read against it. */
+  const askWrites: Array<Extract<EngineResult["writes"][number], { kind: "score_ask" }>> = [];
   const foreign: string[] = [];
   for (const w of result.writes) {
-    if (w.kind !== "score") {
+    if (w.kind === "score_ask" && ownedIds.has(w.sourceMessageId)) {
+      askWrites.push(w);
+    } else if (w.kind !== "score") {
       foreign.push(w.kind);
     } else if (!ownedIds.has(w.sourceMessageId)) {
       // Belt and braces: the engine cannot produce a write from a
@@ -461,6 +511,43 @@ export async function runScoreBatch(args: {
       degradations.push(
         `${SCORE_APPLY_DEGRADED_PREFIX} ${a.write.sourceMessageId}: the score landed but the ` +
           `Elo update failed (${a.eloError}); ratings did not move`,
+      );
+    }
+  }
+
+  // A bare "wrong way round" that landed: its one use is recorded, so a
+  // second one cannot flip the result back. If the record fails the
+  // swap still stands and is still announced; the cost is that one more
+  // bare swap would be honoured, and that is said on the operator note.
+  for (const a of applied) {
+    if (!a.ok || !a.write.bareSwap || !deps.recordScoreSwap) continue;
+    try {
+      await deps.recordScoreSwap(a.write.matchId);
+    } catch (err) {
+      degradations.push(
+        `${SCORE_APPLY_DEGRADED_PREFIX} ${a.write.sourceMessageId}: the result was swapped, and that this ` +
+          `match's one bare swap is used could not be recorded (${err instanceof Error ? err.message : String(err)})`,
+      );
+    }
+  }
+
+  // The questions. A failure here must not swallow the question itself:
+  // the group still hears it, the answer just cannot be completed by one
+  // word, and that is said on the operator note.
+  for (const a of askWrites) {
+    if (!deps.recordScoreAsk) continue;
+    try {
+      await deps.recordScoreAsk({
+        matchId: a.matchId,
+        first: a.first,
+        second: a.second,
+        askerUserId: a.askerUserId,
+      });
+    } catch (err) {
+      degradations.push(
+        `${SCORE_APPLY_DEGRADED_PREFIX} ${a.sourceMessageId}: the question about ${a.first}-${a.second} ` +
+          `could not be remembered (${err instanceof Error ? err.message : String(err)}); a one-word ` +
+          `answer will not complete it, the full result will`,
       );
     }
   }

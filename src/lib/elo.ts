@@ -115,3 +115,61 @@ function kFactor(red: number, yellow: number): number {
   const diff = Math.abs(red - yellow);
   return 32 * (1 + diff / 5);
 }
+
+/**
+ * WORK BACKWARDS: which per-team deltas did a result apply, given the
+ * ratings as they stand AFTER it? (2026-10-06)
+ *
+ * Needed because the deltas a score applied were not stored anywhere
+ * before `Match.eloApplied` existed, so undoing a result on an older
+ * match means recovering them. `computeEloDeltas` gives every player on
+ * a team the same delta, so there are two unknown integers. A candidate
+ * pair is a solution only if subtracting it from the written players and
+ * running the forward function reproduces exactly that pair, which makes
+ * the forward function the single referee of the arithmetic.
+ *
+ * Returns EVERY solution, and that is usually one and sometimes TWO
+ * neighbouring pairs: the forward pass rounds, and one point of delta
+ * moves the unrounded answer by well under a point, so two adjacent
+ * integers can both survive. The true pair is always among them. Two
+ * candidates therefore mean "known to within one rating point", and the
+ * caller says so rather than picking silently. Zero means the ratings
+ * have moved for some other reason since, and the caller must refuse.
+ *
+ * `unwrittenUserIds`: players who entered the maths but whose rating was
+ * never persisted (no membership at the club, see `membership-elo.ts`).
+ * Their rating is the same before and after.
+ *
+ * It is only exact when nothing else has changed these ratings since the
+ * result was applied. That is the caller's fact to establish.
+ */
+export function invertEloDeltas(
+  playersAfter: PlayerEloInput[],
+  redScore: number,
+  yellowScore: number,
+  unwrittenUserIds: ReadonlySet<string> = new Set(),
+): Array<{ red: number; yellow: number }> {
+  const hasRed = playersAfter.some((p) => p.team === "RED");
+  const hasYellow = playersAfter.some((p) => p.team === "YELLOW");
+  if (!hasRed || !hasYellow) return [];
+
+  // No delta can exceed K in size: |actual - expected| is at most 1.
+  const bound = Math.ceil(kFactor(redScore, yellowScore)) + 1;
+  const solutions: Array<{ red: number; yellow: number }> = [];
+  for (let red = -bound; red <= bound; red++) {
+    // Yellow's delta is the rounding of the NEGATIVE of the number Red's
+    // is the rounding of, so it is within one of `-red`. Searching only
+    // there is exhaustive and keeps this linear in the bound.
+    for (let yellow = -red - 1; yellow <= -red + 1; yellow++) {
+      const before = playersAfter.map((p) =>
+        unwrittenUserIds.has(p.userId)
+          ? p
+          : { ...p, matchRating: p.matchRating - (p.team === "RED" ? red : yellow) },
+      );
+      const forward = computeEloDeltas(before, redScore, yellowScore);
+      const reproduces = forward.every((d, i) => d.delta === (before[i].team === "RED" ? red : yellow));
+      if (reproduces) solutions.push({ red, yellow });
+    }
+  }
+  return solutions;
+}

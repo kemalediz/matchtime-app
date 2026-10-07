@@ -78,6 +78,16 @@ import { findStatedReplacement, type StatedReplacement } from "./replacement";
 import { namesTheBench } from "./bench-words";
 import { isRawDigitName, resolvePerson } from "./identity";
 import { planResultsQuestion } from "./results-answer";
+import {
+  isScoreAnswer,
+  isScoreAskOpen,
+  messageStatesScore,
+  samePair,
+  scoreAnswerSide,
+  scorePairAnswerSide,
+} from "./score-ask";
+import { SCORE_CORRECTION_WINDOW_MS } from "./score-window";
+import { resolveScoreResult, resolveWinnerSide } from "./score-teams";
 import { planStatsQuestion } from "./stats-answer";
 import { periodKey } from "./stats-period";
 import type {
@@ -178,6 +188,8 @@ export function isFloorExempt(
 /** Scores are clamped, never trusted (§9 "value clamps" — survives). */
 const MAX_SCORE = 99;
 
+export { SCORE_CORRECTION_WINDOW_MS };
+
 /**
  * The shipped reminder window, reproduced from `route.ts:3938-3947`.
  *
@@ -267,6 +279,11 @@ export function decide(input: EngineInput): EngineResult {
   const degradations: Degradation[] = [];
   /** One "who is that?" per batch at most (see `ask_who_mentioned`). */
   let askedWhoMentioned = false;
+  /** Matches whose recorded result a message in THIS batch has already
+   *  corrected. A second correction of the same match in one batch is
+   *  not applied (third review of PR #214, item 3): two people saying
+   *  "wrong way round" at once must not flip it there and back. */
+  const scoreCorrectedInBatch = new Set<string>();
   /** Did anything change the squad? Drives the single status post. */
   let squadChanged = false;
   /**
@@ -2243,41 +2260,395 @@ export function decide(input: EngineInput): EngineResult {
       //
       // The blast radius is bounded on all sides: the message must be in
       // the org's own monitored group, the target must be a match that
-      // has already been played, and `handleScore` refuses to overwrite
-      // a result that is already recorded — so the worst case is one
+      // has already been played, and an unresolved sender can never
+      // change a result that is already recorded (the correction branch
+      // below requires an identified admin or player) — so the worst case is one
       // wrong number on one match, correctable in the dashboard, against
       // the certainty of losing every score reported from an @lid.
       const senderUnresolved = !msg.senderUserId;
+      /** May this sender report a FIRST result? §9, untouched: an admin,
+       *  somebody who played, or a sender WhatsApp did not identify. */
+      const mayReport = senderUnresolved || senderIsAdmin || played;
+      /** May they CHANGE a recorded one? Identified, and admin or player.
+       *  The unresolved-sender leniency exists because losing a result
+       *  is the worse failure; that does not reach a result that exists. */
+      const mayCorrect = !senderUnresolved && (senderIsAdmin || played);
       if (senderUnresolved) {
         out.reasons.push(
           "score from an unresolved sender: accepted, because losing the score entirely " +
             "is a worse failure mode (route.ts:3457-3462)",
         );
-      } else if (!senderIsAdmin && !played) {
+      } else if (!mayReport) {
         // §9 authorisation — survives untouched. Nothing about the
         // model's competence changes who may report a result.
         out.reasons.push("score reported by someone who neither played nor is an admin");
+      }
+
+      // ── ABOUT ANOTHER GAME: NEVER RECORDED, NEVER ANSWERED ─────────
+      //
+      // "@Match Time last week we lost 9-2". It is a scoreline, it may
+      // be tagged, and it is not this match's.
+      if (facts.otherGame === true) {
+        out.reasons.push("the message is about another game; nothing recorded");
         return;
       }
-      if (completed.redScore !== null || completed.yellowScore !== null) {
-        // The shipped path only ever looks for an UNSCORED completed
-        // match (`route.ts` filters on redScore/yellowScore null). Without
-        // that, any later message the router calls `score` rewrites a
-        // settled result — and in step 6 it would re-run the Elo deltas.
+
+      // ── THE NUMBERS, OR THEIR ABSENCE ──────────────────────────────
+      //
+      // `first` / `second` are NULL when the message has no scoreline
+      // ("yellows won", "wrong way round"). Null is not zero, and no
+      // branch below writes a score from one.
+      //
+      // AND THE MODEL'S WORD FOR IT IS NOT ENOUGH. `hasScore: true`
+      // with two zeros is what a model that ignores the instruction
+      // sends for "good game lads", and it was recorded 0-0. Asking only
+      // that the text contain two numbers was not enough either: "same
+      // time next week 21:30" has two, and the zeros went through
+      // (third review, item 1). The extractor's two numbers have to BE
+      // numbers the sender wrote, each its own (`messageStatesScore`),
+      // or the message has no score whatever the facts say.
+      const factsHaveNumbers = facts.first !== null && facts.second !== null;
+      const hasNumbers =
+        factsHaveNumbers && messageStatesScore(msg.body, facts.first as number, facts.second as number);
+      if (factsHaveNumbers && !hasNumbers) {
         out.reasons.push(
-          `the last completed match already recorded ` +
-            `${completed.redScore}-${completed.yellowScore}; not overwriting it`,
+          `the extractor reported ${facts.first}-${facts.second} and the message does not contain those two ` +
+            `numbers; treated as having no score`,
         );
+      }
+      let first: number | null = null;
+      let second: number | null = null;
+      if (hasNumbers) {
+        first = clampScore(facts.first as number);
+        second = clampScore(facts.second as number);
+        if (first === null || second === null) {
+          degrade(`score out of range: ${facts.first}-${facts.second}`);
+          return;
+        }
+      }
+
+      const labels = completed.teamLabels ?? state.teamLabels;
+      const senderTeam =
+        (msg.senderUserId && completed.teams?.find((t) => t.userId === msg.senderUserId)?.team) || null;
+
+      // ── WHOSE NUMBER IS WHOSE (2026-10-07) ─────────────────────────
+      //
+      // Until now: `red = first, yellow = second`, unconditionally. The
+      // extractor carried no team, so "9-6 to yellows" was recorded
+      // Red 9, Yellow 6 (Sutton FC, 2026-10-06) and announced as such.
+      // The facts now say what the message says about teams, verbatim,
+      // and `score-teams.ts` maps that onto this match's two sides. When
+      // nothing says, the bot ASKS: see that file for why Red-first was
+      // never a convention.
+      const resolution =
+        first !== null && second !== null
+          ? resolveScoreResult({
+              // Without a scoreline in the text a position means nothing.
+              facts: { ...facts, first, second },
+              labels,
+              senderTeam,
+            })
+          : null;
+
+      const recorded =
+        completed.redScore !== null && completed.yellowScore !== null
+          ? { red: completed.redScore, yellow: completed.yellowScore }
+          : null;
+
+      // ══ A RESULT IS ALREADY RECORDED ═══════════════════════════════
+      //
+      // ONE WAY TO CHANGE IT FROM THE GROUP, AND IT HAS FOUR PARTS:
+      //
+      //   1. the message TAGS the bot,
+      //   2. AND it is a correction (the extractor says an earlier
+      //      result was wrong, or that the sides are the wrong way
+      //      round),
+      //   3. from an IDENTIFIED admin or player of this match,
+      //   4. within `SCORE_CORRECTION_WINDOW_MS` of kickoff.
+      //
+      // Each part was added because its absence overwrote a result.
+      // Without (2), "@Match Time last week we lost 9-2" did. Without
+      // (1), "no, reds won 3-1" about Liverpool, which a model flagged a
+      // correction, did (second review, H2). A flag from a model is not
+      // a reason to change a record; the sender addressing the bot is.
+      //
+      // NOTHING ELSE CAN: no open question applies to a match with a
+      // result (`pendingScore` is not read on this branch at all), and
+      // no question is ever ASKED about one, so the two-step "no it was
+      // 3-1" / "Red" cannot happen either.
+      //
+      // AND NOTHING UNTAGGED IS ANSWERED (M3). Before this PR every
+      // later score message met silence; a reply is for somebody who
+      // addressed the bot.
+      if (recorded) {
+        const isCorrection = facts.correction === true || facts.swapped === true;
+        const sameAsRecorded = (r: { red: number; yellow: number }) =>
+          r.red === recorded.red && r.yellow === recorded.yellow;
+        const already = `the last completed match already recorded ${recorded.red}-${recorded.yellow}`;
+        const hint = () =>
+          speech.push({ kind: "score_recorded_hint", messageId: msg.id, red: recorded.red, yellow: recorded.yellow });
+
+        if (!msg.tagged) {
+          out.reasons.push(`${already}; the message does not tag the bot, so it changes nothing`);
+          return;
+        }
+        if (!isCorrection) {
+          if (resolution?.kind === "resolved" && sameAsRecorded(resolution)) {
+            out.reasons.push(`${already}; this is the same result, nothing to change`);
+            return;
+          }
+          out.reasons.push(`${already}; this message does not say that is wrong, so it changes nothing`);
+          hint();
+          return;
+        }
+
+        const kickoff = completed.kickoffAt ? Date.parse(completed.kickoffAt) : NaN;
+        const inWindow =
+          Number.isFinite(kickoff) && input.now.getTime() - kickoff <= SCORE_CORRECTION_WINDOW_MS;
+        if (!mayCorrect || !inWindow) {
+          out.reasons.push(
+            `${already}; not changed: ` +
+              (!mayCorrect
+                ? "the sender is not an identified admin or player of that match"
+                : "the correction window has closed"),
+          );
+          speech.push({
+            kind: "score_already_recorded",
+            messageId: msg.id,
+            red: recorded.red,
+            yellow: recorded.yellow,
+          });
+          return;
+        }
+
+        // What does the correction say the result IS?
+        let next: { red: number; yellow: number } | null = null;
+        let bareSwap = false;
+        if (resolution) {
+          if (resolution.kind === "ask") {
+            // "No it was 9-7", and nothing says whose 9. NO QUESTION: a
+            // question about a recorded match is how a bare "Red" came
+            // to overwrite one. The sender is told how to say it.
+            out.reasons.push(
+              `${already}; the correction does not say whose number is whose (${resolution.why}); not changed`,
+            );
+            hint();
+            return;
+          }
+          next = resolution;
+        } else {
+          // NO NUMBERS: "wrong way round, yellows won". The RECORDED
+          // numbers stay; what changes is whose they are. A named winner
+          // takes the bigger one; "the other way round" with nobody
+          // named swaps them. A recorded draw has nothing to swap.
+          const side = resolveWinnerSide({ facts, labels, senderTeam });
+          const hi = Math.max(recorded.red, recorded.yellow);
+          const lo = Math.min(recorded.red, recorded.yellow);
+          if (hi === lo) {
+            out.reasons.push("numberless correction of a recorded draw: nothing to swap");
+            hint();
+            return;
+          }
+          if (side) next = side === "RED" ? { red: hi, yellow: lo } : { red: lo, yellow: hi };
+          else if (facts.swapped === true && !(facts.winner ?? "").trim() && !(facts.loser ?? "").trim()) {
+            // A BARE swap names no winner, so a second one only flips
+            // the result back. Honoured once per match; after that the
+            // sender is told to say the score and who won.
+            if (completed.swapUsed) {
+              out.reasons.push(`${already}; a bare "wrong way round" has already been used for this match`);
+              hint();
+              return;
+            }
+            next = { red: recorded.yellow, yellow: recorded.red };
+            bareSwap = true;
+          } else {
+            out.reasons.push("numberless correction that names no team this match has");
+            hint();
+            return;
+          }
+        }
+
+        if (sameAsRecorded(next)) {
+          out.reasons.push(`${already}; this is the same result, nothing to change`);
+          return;
+        }
+        // ONE CORRECTION PER MATCH PER BATCH: the first that changes
+        // anything. A second, different one in the same few minutes is
+        // two people disagreeing, and the bot does not pick between
+        // them by arrival order twice over.
+        if (scoreCorrectedInBatch.has(completed.id)) {
+          out.reasons.push(`${already}, corrected a moment ago in this batch; a second correction is not applied`);
+          hint();
+          return;
+        }
+        scoreCorrectedInBatch.add(completed.id);
+        completed.redScore = next.red;
+        completed.yellowScore = next.yellow;
+        if (bareSwap) completed.swapUsed = true;
+        emit({
+          kind: "score",
+          matchId: completed.id,
+          red: next.red,
+          yellow: next.yellow,
+          previous: recorded,
+          ...(bareSwap ? { bareSwap: true as const } : {}),
+          sourceMessageId: msg.id,
+          reason: `recorded result ${recorded.red}-${recorded.yellow} corrected by a participant or admin`,
+        });
+        speech.push({
+          kind: "score_corrected",
+          messageId: msg.id,
+          oldRed: recorded.red,
+          oldYellow: recorded.yellow,
+          red: next.red,
+          yellow: next.yellow,
+        });
+        out.react = "👍";
         return;
       }
-      const red = clampScore(facts.first);
-      const yellow = clampScore(facts.second);
-      if (red === null || yellow === null) {
-        degrade(`score out of range: ${facts.first}-${facts.second}`);
+
+      // ══ THE FIRST RESULT FOR THE MATCH ═════════════════════════════
+      if (!mayReport) return;
+
+      // "No, it was..." when THIS match has no result yet and an earlier
+      // one inside the window does. The engine only holds the latest
+      // match, so it cannot tell which one is meant, and recording a
+      // correction of Monday against Tuesday is the one outcome that is
+      // certainly wrong. Said only to somebody who tagged the bot.
+      if ((facts.correction === true || facts.swapped === true) && completed.earlierRecentResult) {
+        out.reasons.push(
+          "a correction, but the latest match has no result and an earlier one inside the window does; " +
+            "cannot tell which match it corrects, nothing recorded",
+        );
+        if (msg.tagged) speech.push({ kind: "score_which_match", messageId: msg.id });
         return;
       }
+
+      // The scoreline the bot has asked about, if that question is still
+      // open. Read ONLY here, on a match with no result (`score-ask.ts`).
+      const pending =
+        completed.pendingScore && isScoreAskOpen(completed.pendingScore.askedAt, input.now)
+          ? completed.pendingScore
+          : null;
+
+      /** May this sender answer the open question at all (`score-ask.ts`:
+       *  a tag, or the asker or an identified admin within thirty
+       *  minutes)? WHAT counts as an answer is decided from the text,
+       *  separately, below. */
+      const answerQualifies =
+        !!pending &&
+        isScoreAnswer({
+          body: msg.body,
+          tagged: msg.tagged,
+          senderUserId: msg.senderUserId ?? null,
+          senderIsAdmin,
+          ask: pending,
+          now: input.now,
+        });
+      /** Take back every question this batch has asked about this match
+       *  and not yet had answered: its write and its words. */
+      const withdrawQuestions = () => {
+        for (let i = writes.length - 1; i >= 0; i--) {
+          const wr = writes[i];
+          if (wr.kind !== "score_ask" || wr.matchId !== completed.id) continue;
+          writes.splice(i, 1);
+          for (let j = speech.length - 1; j >= 0; j--) {
+            const sp = speech[j];
+            if (sp.kind === "score_ask_team" && sp.messageId === wr.sourceMessageId) speech.splice(j, 1);
+          }
+        }
+      };
+
+      let result: { red: number; yellow: number } | null = null;
+      if (resolution) {
+        if (resolution.kind === "ask") {
+          // Ask which team won, ONCE: the same pair while the question
+          // is open is not asked again; a different pair replaces it.
+          // The write records the question so its answer can be read.
+          const a = first as number;
+          const b2 = second as number;
+          if (pending && samePair(pending, { first: a, second: b2 })) {
+            // The pair that is being asked about, restated with ONE team
+            // and nothing else ("Yellow 7-10", "10-7 yellow"), from
+            // somebody who could have answered with the bare name: that
+            // is the answer, not a second bare scoreline.
+            const restated = answerQualifies ? scorePairAnswerSide(msg.body, pending, labels) : null;
+            if (restated) {
+              const hi = Math.max(pending.first, pending.second);
+              const lo = Math.min(pending.first, pending.second);
+              result = restated === "RED" ? { red: hi, yellow: lo } : { red: lo, yellow: hi };
+            } else {
+              out.reasons.push(`${a}-${b2}: already asked which team won; not asking again`);
+              return;
+            }
+          } else {
+          // ONE QUESTION PER MATCH PER BATCH: the last scoreline wins.
+          // "10-6", "10-7", "10-7" from three people in one window (the
+          // 2 June log) is one question, not three.
+          withdrawQuestions();
+          out.reasons.push(`cannot tell whose number is whose (${resolution.why}); asked which team won ${a}-${b2}`);
+          emit({
+            kind: "score_ask",
+            matchId: completed.id,
+            first: a,
+            second: b2,
+            askerUserId: msg.senderUserId ?? null,
+            sourceMessageId: msg.id,
+            reason: `asked which team won ${a}-${b2}`,
+          });
+          completed.pendingScore = {
+            first: a,
+            second: b2,
+            askedAt: input.now.toISOString(),
+            askerUserId: msg.senderUserId ?? null,
+          };
+          speech.push({ kind: "score_ask_team", messageId: msg.id, first: a, second: b2 });
+          return;
+          }
+        } else {
+          result = resolution;
+        }
+      } else {
+        // NO NUMBERS. The only thing it can be is the answer to the
+        // open question, under the narrow rule in `score-ask.ts`: it
+        // tags the bot, or it is from whoever posted the scoreline (or
+        // an identified admin) within thirty minutes. The winner takes
+        // the bigger number.
+        //
+        // AND THE BODY ITSELF MUST BE A BARE TEAM ANSWER, read here in
+        // code (`scoreAnswerSide`), which is also where the side comes
+        // from. The model's `winner` is not consulted: the asker's
+        // "yellow bibs stink mate ... reds deserved it anyway" came back
+        // with winner "reds" and recorded a result (third review,
+        // item 2). Who sent a message was never evidence of what it
+        // says.
+        const side = answerQualifies ? scoreAnswerSide(msg.body, labels) : null;
+        if (pending && side) {
+          const hi = Math.max(pending.first, pending.second);
+          const lo = Math.min(pending.first, pending.second);
+          result = side === "RED" ? { red: hi, yellow: lo } : { red: lo, yellow: hi };
+        } else {
+          out.reasons.push("the message has no scoreline and answers no open question; nothing recorded");
+          // Told who won and not the score, by somebody addressing the
+          // bot: ask for the score, where there used to be silence.
+          const namesAnOutcome = !!(facts.winner ?? "").trim() || !!(facts.loser ?? "").trim();
+          if (msg.tagged && namesAnOutcome && !/[?¿]/.test(msg.body)) {
+            speech.push({ kind: "score_ask_score", messageId: msg.id });
+          }
+          return;
+        }
+      }
+
+      const { red, yellow } = result;
       completed.redScore = red;
       completed.yellowScore = yellow;
+      completed.pendingScore = undefined;
+      // A RESULT IN THE SAME BATCH AS A QUESTION ABOUT IT (second
+      // review, H1): "10-7", then "10-7 to reds" before the bot has
+      // said anything. The question is withdrawn: not stored, not
+      // asked. Otherwise the group gets "which team won?" and "Got it"
+      // together, and a question outlives its own answer.
+      withdrawQuestions();
       emit({
         kind: "score",
         matchId: completed.id,

@@ -1,11 +1,13 @@
 /**
  * Group-simulator scenario matrix — SCORE CAPTURE + MoM votes.
  *
- * Score: the score extractor returns `{first, second}` IN THE ORDER THE
- * TWO TEAMS APPEAR in the match context (index 0 → RED, 1 → YELLOW —
- * here custom "Bibs"/"Skins"); the score engine writes the score,
- * completes the match and applies Elo — but only for an admin or a
- * confirmed participant. The dedicated /api/whatsapp/score route
+ * Score: the score extractor returns the two numbers AND what the
+ * message says about whose they are, verbatim (2026-10-07; until then
+ * it returned two numbers and the engine put the first on RED, which is
+ * how "9-6 to yellows" was recorded Red 9). The engine maps the team
+ * words onto the match's own names, here custom "Bibs"/"Skins", writes
+ * the score, completes the match and applies Elo, but only for an admin
+ * or a confirmed participant. The dedicated /api/whatsapp/score route
  * enforces the same rule.
  *
  * ── PORTED 2026-09-06, §10 STEP 8 ───────────────────────────────────
@@ -25,12 +27,23 @@ import type { TestDb } from "../helpers/test-db";
 import { E2E } from "../helpers/env";
 import { createGroup, SimGroup } from "./group";
 
-/** The score extractor's raw body. `first`/`second` are positional
- *  against the match's own team order, which is why the labels can be
- *  anything and the mapping still holds. */
-const score = (first: number, second: number) => ({
+/** The score extractor's raw body: the numbers as written, and the
+ *  team each is written with. Code resolves "bibs" / "skins" against the
+ *  match's own team names, so the labels can be anything. */
+const score = (first: number, second: number, firstTeam = "bibs", secondTeam = "skins") => ({
   route: "score",
-  facts: { first, second },
+  facts: {
+    hasScore: true,
+    first,
+    second,
+    firstTeam,
+    secondTeam,
+    winner: "",
+    loser: "",
+    correction: false,
+    swapped: false,
+    otherGame: false,
+  },
 });
 
 test.describe.configure({ mode: "serial" });

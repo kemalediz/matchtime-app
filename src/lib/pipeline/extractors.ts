@@ -330,7 +330,64 @@ The message may be in ENGLISH or TURKISH. Report the same facts either way:
   "Ali ile Can'ı değiştir"           -> swap (swaps empty when no side is named)
 When the sender refers to themselves in Turkish ("beni", "bana", "ben"), write "me".`,
 
-  score: `You read ONE message reporting a football result and return the two numbers, in the order the teams are named in the message. first = the first team mentioned, second = the other. Nothing else.`,
+  score: `You read ONE message from a football group's WhatsApp chat about the result of the group's own match, and you report what it SAYS. You report facts about the text. You never decide which team is which, who won, or what gets recorded: code does that, from the club's records.
+
+WHAT YOU ARE SHOWN
+RECENT CHAT and MATCHTIME'S LAST POST are context only: use them to understand THE MESSAGE, never take a number or a team from them. THE MESSAGE is the one you report on, with the name of the person who typed it: the sender.
+
+WHAT YOU RETURN
+hasScore
+true when THE MESSAGE itself states the two numbers of a result. false when it has no scoreline ("yellows won", "wrong way round", a bare "Yellow"): first and second are then 0 and mean nothing.
+
+first, second
+The two numbers of the FINAL result, in the order they are written. In a story with several scorelines ("it was 6-6 then it turned to 9-6") the final one is the result.
+
+A TEAM REFERENCE is the team's name exactly as the message writes it ("yellows", "Reds", "Sarılar", "the Lions"). For the sender's own side ("we", "us", "biz", a verb like "kazandık") write "us"; for the side they played against write "them". Leave a team field "" when the message does not say. Never guess one, and never work out the other team's name yourself.
+
+firstTeam, secondTeam
+A team whose name is written directly beside a number, with no word about the outcome: firstTeam beside the first number, secondTeam beside the second. Report where it is written and do not decide who won.
+
+winner
+Only when a word says so: the score is "to" or "for" a team, or a team "won", "wins", "beat", "kazandı", "yendi". "" otherwise, and "" for a draw.
+
+loser
+Only when a word says so: "lost", "got beaten", "kaybetti", "yenildi". "" otherwise.
+
+correction
+true only when the message says a result ALREADY given or recorded for this match was wrong ("no, it was...", "that is wrong", "yanlış", "hayır ... olacak"). A first report is false, however it is worded.
+
+swapped
+true when the message says the result has the two teams the wrong way round ("wrong way round", "other way round", "tam tersi"). correction is then true as well.
+
+otherGame
+true when the message is plainly about a different game from the one just played ("last week we lost 9-2", "geçen ay 5-0 yenmiştik"). Then correction is false.
+
+EXAMPLES, English and Turkish
+A word names the winner:
+  "5-3 to Yellows" / "sarılar 5-3 kazandı" -> hasScore true, first 5, second 3, winner "Yellows" / "sarılar"
+  "4-6 to Yellows" -> first 4, second 6, winner "Yellows"
+  "6-5 Yellow wins" -> first 6, second 5, winner "Yellow"
+  "it was 6-6 then suddenly it turned to 9-6 to yellows" -> first 9, second 6, winner "yellows"
+A team beside a number and no such word:
+  "Yellow 9 - 6 Red" -> first 9, second 6, firstTeam "Yellow", secondTeam "Red"
+  "kırmızı 6 sarı 9" -> first 6, second 9, firstTeam "kırmızı", secondTeam "sarı"
+  "Reds 3-5" -> first 3, second 5, firstTeam "Reds", winner ""
+  "9-6 yellow" -> first 9, second 6, secondTeam "yellow", winner ""
+The sender's own side:
+  "we won 5-3" / "5-3 kazandık" -> first 5, second 3, winner "us"
+  "lost 3-5" / "3-5 kaybettik" -> first 3, second 5, loser "us"
+  "reds beat us 7-2" -> first 7, second 2, winner "reds", loser "us"
+No team:
+  "10-7" / "final score was 8-8" / "7-7 berabere" -> hasScore true, the two numbers, every team field ""
+No scoreline:
+  "yellows won" / "sarılar kazandı" -> hasScore false, winner "yellows" / "sarılar"
+  "Yellow", the whole message, after MatchTime asked which team won -> hasScore false, winner "Yellow"
+A correction:
+  "no Yellow 9 - 6 Red" / "yanlış, kırmızı 6 sarı 9" -> correction true, numbers and teams as above
+  "no it was 9-7" -> first 9, second 7, correction true, every team field ""
+  "wrong way round, yellows won" / "tam tersi, sarılar kazandı" -> hasScore false, correction true, swapped true, winner "yellows" / "sarılar"
+Another game:
+  "last week we lost 9-2" -> first 9, second 2, loser "us", otherGame true, correction false`,
 
   admin: `You read ONE instruction to the bot and report what it says.
 
@@ -480,10 +537,41 @@ const TEAMS_SCHEMA = {
   additionalProperties: false,
 } as const;
 
+// Team-aware since 2026-10-07 (see `ScoreFacts`). The four team fields
+// are VERBATIM text, or "us" / "them", or "": "" is the schema's
+// stand-in for "not said", as elsewhere in this file, because the API
+// rejects a nullable type at request time. `hasScore` is how the model
+// says "this message has no numbers" (a nullable number is rejected the
+// same way): the parser turns `false` into nulls, so a numberless
+// message can never arrive as 0-0. No field admits a decision: which
+// side is Red, and whether a lone team name is enough, are code's
+// (`score-teams.ts`).
 const SCORE_SCHEMA = {
   type: "object",
-  properties: { first: { type: "number" }, second: { type: "number" } },
-  required: ["first", "second"],
+  properties: {
+    hasScore: { type: "boolean" },
+    first: { type: "number" },
+    second: { type: "number" },
+    firstTeam: { type: "string" },
+    secondTeam: { type: "string" },
+    winner: { type: "string" },
+    loser: { type: "string" },
+    correction: { type: "boolean" },
+    swapped: { type: "boolean" },
+    otherGame: { type: "boolean" },
+  },
+  required: [
+    "hasScore",
+    "first",
+    "second",
+    "firstTeam",
+    "secondTeam",
+    "winner",
+    "loser",
+    "correction",
+    "swapped",
+    "otherGame",
+  ],
   additionalProperties: false,
 } as const;
 
@@ -749,13 +837,41 @@ export function parseFacts(
     }
 
     case "score": {
-      const first = raw.first;
-      const second = raw.second;
-      if (typeof first !== "number" || typeof second !== "number") {
+      // NO NUMBERS IS NOT 0-0 (review of PR #214, item 3). The model
+      // says so with `hasScore: false`, and the facts carry nulls. An
+      // older stub with no `hasScore` at all is read by what it sent:
+      // two numbers are a score, anything else is none.
+      const numeric = typeof raw.first === "number" && typeof raw.second === "number";
+      const hasScore = raw.hasScore === false ? false : numeric;
+      if (raw.hasScore !== false && !numeric) {
         bad(`score extractor returned non-numeric values`);
         return { facts: { kind: "none" }, degradations };
       }
-      const facts: ScoreFacts = { kind: "score", first, second };
+      // The team fields are optional on the FACTS: "" (not said) is
+      // dropped, so "the message named no team" is one shape whether
+      // the model sent "" or an older stub sent nothing. Clipped, since
+      // they are free text on their way to a trace row.
+      const team = (v: unknown): string | undefined => {
+        const t = str(v).trim().slice(0, 60);
+        return t ? t : undefined;
+      };
+      const facts: ScoreFacts = {
+        kind: "score",
+        first: hasScore ? (raw.first as number) : null,
+        second: hasScore ? (raw.second as number) : null,
+      };
+      const firstTeam = team(raw.firstTeam);
+      const secondTeam = team(raw.secondTeam);
+      const winner = team(raw.winner);
+      const loser = team(raw.loser);
+      // A position needs a number to be beside.
+      if (hasScore && firstTeam) facts.firstTeam = firstTeam;
+      if (hasScore && secondTeam) facts.secondTeam = secondTeam;
+      if (winner) facts.winner = winner;
+      if (loser) facts.loser = loser;
+      if (raw.correction === true) facts.correction = true;
+      if (raw.swapped === true) facts.swapped = true;
+      if (raw.otherGame === true) facts.otherGame = true;
       return { facts, degradations };
     }
 

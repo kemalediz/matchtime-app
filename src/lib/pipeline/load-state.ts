@@ -19,6 +19,8 @@ import { getOrgFeatures } from "../org-features";
 import { loadReclaimUserIds } from "../squad-reclaim";
 import { selectRegistrationMatch } from "../registration-match-select";
 import { resolveTeamLabels } from "../team-labels";
+import { SCORE_ASK_KIND, parseScoreAskKey, scoreSwapKey } from "./score-ask";
+import { SCORE_CORRECTION_WINDOW_MS } from "./score-window";
 import { totalPlayersFor } from "../format-switch";
 import { guestNameAskKey, GUEST_NAME_ASK_KIND } from "../guest-name-ask";
 import { decidePaymentSnapshot, type PaymentSnapshot } from "./payment-answer";
@@ -150,8 +152,12 @@ export async function loadSquadState(
       isHistorical: true,
       redScore: true,
       yellowScore: true,
-      activity: { select: { matchDurationMins: true } },
+      // For the score route (2026-10-07): the played match's OWN team
+      // names and who was on which side. See `SquadState.completedMatch`.
+      teamLabels: true,
+      activity: { select: { matchDurationMins: true, sport: { select: { teamLabels: true } } } },
       attendances: { where: { status: "CONFIRMED" }, select: { userId: true } },
+      teamAssignments: { select: { userId: true, team: true }, orderBy: { id: "asc" } },
     },
     orderBy: { date: "desc" },
     take: 10,
@@ -188,6 +194,38 @@ export async function loadSquadState(
         .map((s) => roster.find((r) => guestNameAskKey(match.id, r.userId) === s.key)?.userId)
         .filter((id): id is string => !!id)
     : [];
+
+  // The scoreline MatchTime has asked about for the played match, if any
+  // (`score-ask.ts`). One row per match at most; the newest wins. ONLY
+  // for a match with no result: a question about a match that has one
+  // is not a question any more, whoever left the row there.
+  const scoreAskRow =
+    completed && completed.redScore === null && completed.yellowScore === null
+      ? await db.sentNotification.findFirst({
+          where: { kind: SCORE_ASK_KIND, matchId: completed.id },
+          orderBy: { createdAt: "desc" },
+          select: { key: true, createdAt: true, targetUser: true },
+        })
+      : null;
+  const scoreAsk = scoreAskRow ? parseScoreAskKey(scoreAskRow.key) : null;
+  // Has this match's one bare "wrong way round" been used? Only asked
+  // for a match that has a result: there is nothing to swap otherwise.
+  const swapUsed =
+    !!completed &&
+    completed.redScore !== null &&
+    completed.yellowScore !== null &&
+    (await db.sentNotification.count({ where: { key: scoreSwapKey(completed.id) } })) > 0;
+  // Another match of the club with a result, kicked off inside the
+  // correction window. See `SquadState.completedMatch.earlierRecentResult`.
+  const earlierRecentResult =
+    !!completed &&
+    completedCandidates.some(
+      (m) =>
+        m.id !== completed.id &&
+        m.redScore !== null &&
+        m.yellowScore !== null &&
+        now.getTime() - m.date.getTime() <= SCORE_CORRECTION_WINDOW_MS,
+    );
 
   const lastBotJob = await db.botJob.findFirst({
     where: { orgId, kind: "group" },
@@ -233,6 +271,29 @@ export async function loadSquadState(
           redScore: completed.redScore,
           yellowScore: completed.yellowScore,
           participantUserIds: completed.attendances.map((a) => a.userId),
+          kickoffAt: completed.date.toISOString(),
+          teamLabels: resolveTeamLabels(
+            { teamLabels: completed.teamLabels },
+            org ? { teamLabels: org.teamLabels } : null,
+            completed.activity.sport,
+            lang,
+          ),
+          teams: completed.teamAssignments.map((t) => ({
+            userId: t.userId,
+            team: t.team as "RED" | "YELLOW",
+          })),
+          ...(scoreAsk && scoreAskRow
+            ? {
+                pendingScore: {
+                  first: scoreAsk.first,
+                  second: scoreAsk.second,
+                  askedAt: scoreAskRow.createdAt.toISOString(),
+                  askerUserId: scoreAskRow.targetUser ?? null,
+                },
+              }
+            : {}),
+          earlierRecentResult,
+          ...(swapUsed ? { swapUsed: true } : {}),
         }
       : null,
     lastBotPost: lastBotJob?.text ?? null,

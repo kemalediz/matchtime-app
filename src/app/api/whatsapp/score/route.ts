@@ -15,8 +15,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { normalisePhone } from "@/lib/phone";
-import { computeEloDeltas } from "@/lib/elo";
-import { applyMembershipEloDeltas, loadMembershipEloInputs } from "@/lib/membership-elo";
+import { reconcileMatchElo, setMatchScore } from "@/lib/match-elo";
 
 export async function POST(request: Request) {
   const apiKey = request.headers.get("x-api-key");
@@ -99,23 +98,14 @@ export async function POST(request: Request) {
     );
   }
 
-  // Persist score + flip to COMPLETED.
-  await db.match.update({
-    where: { id: target.id },
-    data: { redScore, yellowScore, status: "COMPLETED" },
-  });
+  // Persist score + flip to COMPLETED, then the Elo it implies, through
+  // the one writer every score path shares (lib/match-elo.ts), so the
+  // points this result adds are stored with the match and a later
+  // correction can take them back exactly.
+  await setMatchScore({ matchId: target.id, red: redScore, yellow: yellowScore });
 
-  // Apply Elo deltas onto THIS club's memberships. `org` is already
-  // resolved from the request, and the match was selected by
-  // `activity: { orgId: org.id }` above, so the two cannot disagree.
-  // See lib/membership-elo.ts.
   try {
-    const { inputs } = await loadMembershipEloInputs({
-      orgId: org.id,
-      assignments: target.teamAssignments,
-    });
-    const deltas = computeEloDeltas(inputs, redScore, yellowScore);
-    await applyMembershipEloDeltas({ orgId: org.id, deltas });
+    await reconcileMatchElo({ matchId: target.id });
   } catch (err) {
     console.error("Elo update failed after WhatsApp score submission:", err);
   }

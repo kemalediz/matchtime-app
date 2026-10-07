@@ -43,6 +43,7 @@ import { routeBatch } from "@/lib/pipeline/router";
 import { runScoreBatch, type ScoreBatchMessage } from "@/lib/score-engine-batch";
 import { runAdminOpsBatch, type AdminOpsBatchMessage } from "@/lib/admin-ops-engine-batch";
 import type { ScoreApplyDeps } from "@/lib/score-engine";
+import { computeEloDeltas } from "@/lib/elo";
 import type { AdminOpsApplyDeps } from "@/lib/admin-ops-engine";
 import type { Route } from "@/lib/pipeline/types";
 import type { SimGroup } from "../sim/group";
@@ -319,12 +320,25 @@ function sqlScoreDeps(grp: SimGroup): ScoreApplyDeps {
         [matchId, red, yellow],
       );
     },
-    // The Elo is per club (`src/lib/membership-elo.ts`), so both halves
-    // go through `Membership` joined on the match's own org. A player
-    // with no membership there reads at the 1000 default and is not
-    // written, which is what the production path does too.
-    loadEloInputs: async (matchId) =>
-      grp.db.all<{ userId: string; team: "RED" | "YELLOW"; matchRating: number }>(
+    // The Elo is per club (`src/lib/membership-elo.ts`), read and written
+    // through `Membership` joined on the match's own org. A player with
+    // no membership there reads at the 1000 default and is not written,
+    // which is what the production path does too.
+    //
+    // THIS HARNESS ONLY EVER SCORES A MATCH ONCE, so its `reconcileElo`
+    // is the first-result half of `lib/match-elo.ts` in plain SQL: it
+    // adds the result's points and does not store or take back anything.
+    // A corpus case that CORRECTS a score needs the real
+    // `reconcileMatchElo`, not this.
+    reconcileElo: async (matchId) => {
+      const score = await grp.db.all<{ redScore: number | null; yellowScore: number | null }>(
+        `SELECT "redScore", "yellowScore" FROM "Match" WHERE id = $1`,
+        [matchId],
+      );
+      const red = score[0]?.redScore;
+      const yellow = score[0]?.yellowScore;
+      if (red == null || yellow == null) return { moved: 0 };
+      const inputs = await grp.db.all<{ userId: string; team: "RED" | "YELLOW"; matchRating: number }>(
         `SELECT t."userId", t.team, COALESCE(ms."matchRating", 1000) AS "matchRating"
            FROM "TeamAssignment" t
            JOIN "Match" mt ON mt.id = t."matchId"
@@ -333,8 +347,8 @@ function sqlScoreDeps(grp: SimGroup): ScoreApplyDeps {
              ON ms."userId" = t."userId" AND ms."orgId" = ac."orgId"
           WHERE t."matchId" = $1`,
         [matchId],
-      ),
-    applyEloDeltas: async (matchId, deltas) => {
+      );
+      const deltas = computeEloDeltas(inputs, red, yellow);
       for (const d of deltas) {
         await grp.db.run(
           `UPDATE "Membership" SET "matchRating" = $3
@@ -345,6 +359,7 @@ function sqlScoreDeps(grp: SimGroup): ScoreApplyDeps {
           [matchId, d.userId, d.after],
         );
       }
+      return { moved: deltas.length };
     },
   };
 }

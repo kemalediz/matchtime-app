@@ -43,16 +43,12 @@
  * moving a guard must not lose it — here it moves and gets stricter.
  */
 import { db as defaultDb } from "./db";
-import type { EloDelta, PlayerEloInput } from "./elo";
 import type { ScoreApplyDeps } from "./score-engine";
+import { reconcileMatchElo, setMatchScore } from "./match-elo";
+import { SCORE_ASK_KIND, SCORE_SWAP_KIND, scoreAskKey, scoreSwapKey } from "./pipeline/score-ask";
 import type { AdminOpsApplyDeps, PaidState } from "./admin-ops-engine";
 import type { TeamOpsApplyDeps } from "./team-ops-engine";
 import type { TeamClearDeps } from "./team-clear";
-import {
-  applyMembershipEloDeltas,
-  loadMembershipEloInputs,
-  orgIdForMatch,
-} from "./membership-elo";
 import { recordAttendanceEvent } from "./attendance-events";
 import { generateTeamsForMatch } from "./team-generation";
 import { guestNameAskKey, GUEST_NAME_ASK_KIND } from "./guest-name-ask";
@@ -74,45 +70,58 @@ type Db = typeof defaultDb;
 export function buildScoreApplyDeps(args: { db?: Db } = {}): ScoreApplyDeps {
   const db = args.db ?? defaultDb;
   return {
-    async recordScore({ matchId, red, yellow }) {
-      // One update, exactly as `route.ts:3511`: the two scores and the
-      // status move together, because a match with a score that is not
-      // COMPLETED is a state the rest of the system does not model.
-      await db.match.update({
-        where: { id: matchId },
-        data: { redScore: red, yellowScore: yellow, status: "COMPLETED" },
+    async recordScore({ matchId, red, yellow, previous }) {
+      // One update: the two scores and the status move together, because
+      // a match with a score that is not COMPLETED is a state the rest of
+      // the system does not model. `setMatchScore` is the one writer the
+      // dashboard uses too (`lib/match-elo.ts`); on a correction it
+      // refuses if the match no longer reads `previous`.
+      await setMatchScore({
+        db,
+        matchId,
+        red,
+        yellow,
+        ...(previous ? { expectPrevious: previous } : {}),
+      });
+      // (`setMatchScore` also closes any "which team won?" the bot had
+      // open for this match, in the same transaction, for every writer.)
+    },
+
+    async recordScoreSwap(matchId) {
+      // One row per match, for good. `upsert` so a second call (a retry,
+      // or two batches racing) is not a unique-key failure.
+      await db.sentNotification.upsert({
+        where: { key: scoreSwapKey(matchId) },
+        create: { key: scoreSwapKey(matchId), kind: SCORE_SWAP_KIND, matchId },
+        update: {},
       });
     },
 
-    async loadEloInputs(matchId): Promise<PlayerEloInput[]> {
-      // The player's CURRENT rating AT THIS CLUB, read at apply time
-      // rather than carried from the state load. `route.ts:3520-3524`
-      // read it off the same include for the same reason. A rating that
-      // moved between the two would make the delta compound.
-      //
-      // Since 2026-09-19 the rating is `Membership.matchRating`, so the
-      // club has to be resolved first. A match with no org left (it was
-      // deleted under us) has no club Elo to move, and the derived half
-      // of a score write must never unmake the score.
-      const orgId = await orgIdForMatch(db, matchId);
-      if (!orgId) return [];
-      const rows = await db.teamAssignment.findMany({
-        where: { matchId },
-        select: { userId: true, team: true },
+    async recordScoreAsk({ matchId, first, second, askerUserId }) {
+      // One open question per match. The key carries the numbers and
+      // `targetUser` who posted the scoreline (`score-ask.ts`), so
+      // replacing the pair is delete-then-create.
+      await db.sentNotification.deleteMany({ where: { kind: SCORE_ASK_KIND, matchId } });
+      await db.sentNotification.create({
+        data: {
+          key: scoreAskKey(matchId, first, second),
+          kind: SCORE_ASK_KIND,
+          matchId,
+          targetUser: askerUserId,
+        },
       });
-      const { inputs } = await loadMembershipEloInputs({ db, orgId, assignments: rows });
-      return inputs;
     },
 
-    async applyEloDeltas(matchId: string, deltas: EloDelta[]) {
-      // `computeEloDeltas` returns [] for a match whose teams were never
-      // generated, and an empty `$transaction([])` is a pointless round
-      // trip. `route.ts` did not guard this because it was inside a
-      // try/catch nobody read; the guard now lives in
-      // `applyMembershipEloDeltas` so all four call sites share it.
-      const orgId = await orgIdForMatch(db, matchId);
-      if (!orgId) return;
-      await applyMembershipEloDeltas({ db, orgId, deltas });
+    async reconcileElo(matchId) {
+      // The ratings are read at apply time, at THIS match's club, inside
+      // `reconcileMatchElo`'s own transaction. A match that has gone
+      // reports `no_score` and moves nobody: the derived half of a score
+      // write must never unmake the score.
+      const res = await reconcileMatchElo({ db, matchId });
+      return {
+        moved: res.moved,
+        ...(res.status === "legacy_left" ? { left: res.detail ?? "Elo not recalculated" } : {}),
+      };
     },
   };
 }

@@ -26,8 +26,7 @@
  */
 import { db } from "./db";
 import { sendRatingEmails } from "./email";
-import { computeEloDeltas } from "./elo";
-import { applyMembershipEloDeltas, loadMembershipEloInputs } from "./membership-elo";
+import { reconcileMatchElo } from "./match-elo";
 import { formatLondon } from "./london-time";
 import { servingClubWhere } from "./club-approval";
 
@@ -69,17 +68,19 @@ export async function completeFinishedMatches(now: Date = new Date()): Promise<{
     // outcome signal, so ratings stay neutral by design.
     if (match.redScore !== null && match.yellowScore !== null) {
       try {
-        // The Elo is the CLUB's, so it is read from and written to the
-        // membership for this match's org. `match.activity` is already
-        // in hand, so the org needs no extra lookup. See lib/membership-elo.ts.
-        const orgId = match.activity.orgId;
-        const teams = await db.teamAssignment.findMany({
-          where: { matchId: match.id },
-          select: { userId: true, team: true },
-        });
-        const { inputs } = await loadMembershipEloInputs({ orgId, assignments: teams });
-        const deltas = computeEloDeltas(inputs, match.redScore, match.yellowScore);
-        await applyMembershipEloDeltas({ orgId, deltas });
+        // Through the one writer (lib/match-elo.ts, 2026-10-07), which
+        // decides from the match's stored record:
+        //   - a score this codebase wrote and has not applied yet (a
+        //     pending record): the points are added now, once, and stored;
+        //   - already applied: nothing;
+        //   - NO record at all (the column is empty): the match was
+        //     scored by something that keeps no record (the code before
+        //     2026-10-07, or a script), which added the points itself.
+        //     NOTHING is added here, so it cannot be counted twice. If
+        //     such a writer did not in fact apply the Elo, saving the
+        //     score again on the dashboard does not apply it either:
+        //     that match's ratings are a manual job.
+        await reconcileMatchElo({ matchId: match.id });
       } catch (err) {
         console.error("[match-completion] Elo update failed:", err);
       }
