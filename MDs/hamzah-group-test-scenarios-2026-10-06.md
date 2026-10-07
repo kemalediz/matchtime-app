@@ -44,11 +44,41 @@ The only DMs this script asks phone A to send are the connect message, APPROVE, 
 
 ## 2. Setup, from zero
 
-### Step 1. Take MatchTime out of both groups
+### Step 1. Stage the group's chat (MatchTime stays IN MT Test)
 
-Remove MatchTime from MT Test. If MatchTime is in your admin group, remove it from there too.
+Do NOT remove MatchTime yet. The "learned setup" step (scenario 3) does not read WhatsApp's chat history. It reads what MatchTime has seen arrive in the group since the bot on the Pi last started, held in memory (the newest 120 messages). So old test messages from before the last Pi restart are not read, and MatchTime must be in the group while you post the staged conversation.
 
-Why: a group is attached when MatchTime is ADDED to it. Being a member already does not count. And an add is matched to whichever connect code is open, so the admin group must not be added while the code is open.
+1. Optional clean slate: ask the engineering session to restart the Pi. That empties what it holds.
+2. From three phones, post at least 20 messages in MT Test that read like the Friday group. Each habit needs two separate messages as evidence. Use these, in any order:
+
+| Phone | Message |
+|---|---|
+| A | Same squad as last week lads, you're all in unless you tell me |
+| B | 👍 |
+| C | Sound, see you Friday |
+| A | If you can't make it clear your name by Monday 9pm |
+| B | Can't make this Friday, take me off |
+| A | No worries, I'll sort a replacement |
+| C | My mate Dan wants a game if there's space |
+| A | Admins will pick from the waiting list, message me if you want in |
+| B | Put me down for next week though |
+| A | List goes out Tuesday 8pm |
+| C | Paid |
+| B | Sent mine |
+| A | Thanks, got both |
+| A | Reminder: names off by Monday 9pm please, after that you're paying |
+| C | Transferred for last week too |
+| A | Same squad again this week, nobody needs to say in |
+| B | Who's on the waiting list? |
+| A | Three waiting, we'll choose Tuesday night |
+| C | What time Friday? |
+| A | 8:30 at the usual place |
+| B | Final list out Tuesday 8pm as always? |
+| A | Yes, Tuesday 8pm |
+| C | Paid for Friday |
+| B | 👍 see you there |
+
+The admin group plays no part until scenario 5. If MatchTime is already in your admin group, leave it there. Just never ADD MatchTime to the admin group while a connect code is open (Step 3), or the admin group is attached as the club's main group.
 
 ### Step 2. Create the club
 
@@ -71,7 +101,7 @@ Choosing the day: the first match is created by the overnight run (01:00 UK time
 
 1. Press "Add MatchTime to WhatsApp". WhatsApp opens with a message ready: "Connect MT Test FC, code XXXX". Send it. The code lasts 60 minutes.
 2. MatchTime replies by DM: "Hi <your first name>, got it: MT Test FC is connected to this chat." followed by how to add it to the group.
-3. Now add MatchTime to MT Test. You have 24 hours.
+3. Now remove MatchTime from MT Test and add it straight back, from your own phone. This is the only time you remove it. A group is attached when MatchTime is ADDED to it; being a member already does not count. What it holds from Step 1 is kept. You have 24 hours.
 4. You get two DMs, about a minute apart:
    - "Thanks, I'm in "MT Test". I'll stay quiet there until your club is approved, usually within a day. I'll message you here when it's live."
    - "New club waiting: *MT Test FC* (ref XXXX)" with the organiser, who added it, the group and its member count, ending "Reply APPROVE XXXX or REJECT XXXX, or use matchtime.ai/admin/clubs".
@@ -135,7 +165,8 @@ For the real Friday group the deadlines would be Monday 21:00 and Tuesday 20:00.
   Proves: MatchTime reads the group's chat once after approval and only changes what it has clear evidence for.
   Steps: do not touch Settings for 30 minutes after approval. Then open Settings.
   Expected, one of three:
-  - Most likely for a test group: nothing. No DM and no panel. MatchTime only reads a chat of at least 20 messages from at least 3 people.
+  - If you skipped the staging in Step 1: most likely nothing. No DM and no panel. MatchTime only reads a chat of at least 20 messages from at least 3 people.
+  - After the staged conversation, the hoped for result is the third outcome below: rolling squad, the drop-out deadline (Monday 21:00), the list time (Tuesday 20:00) and payment tracking switched on, and "The organisers pick" suggested only. It is one real AI call, so fewer is possible and worth knowing.
   - A DM starting "I read the recent messages in "MT Test" to see how it runs. I didn't change any settings, but a few things are worth a look."
   - A DM starting "I read the recent messages in "MT Test" to see how it runs, and set MatchTime up the same way.", with one line per setting it switched, a quote from the chat and an "Undo or change:" link.
   It can switch on rolling squad, the two deadlines and payment tracking, each only with two quoted messages. It never switches on "The organisers pick": it only suggests it. It never changes the weekly game or the language.
