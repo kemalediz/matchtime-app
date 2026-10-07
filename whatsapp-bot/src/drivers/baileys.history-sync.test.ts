@@ -51,6 +51,12 @@ async function opened() {
       timers.push({ fn, ms });
       return { cancel: () => {} };
     },
+    // The bundle in these tests points nowhere; the capture of shared
+    // history has its own tests (baileys.join-history.test.ts). No test
+    // may reach WhatsApp's media host.
+    fetchMedia: async () => {
+      throw new Error("no network in tests");
+    },
     log: (l) => logs.push(l),
     error: (l) => logs.push(l),
   });
