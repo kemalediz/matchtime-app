@@ -8,6 +8,14 @@
  * club approved in the last three days and not read yet gets its one model
  * call, its settings and its organiser DM.
  *
+ * CAPTURED CHAT EXPIRY (2026-10-08) rides on the same schedule: after the
+ * sweep, on every authorised call and whatever the flag says, chat that
+ * nobody has read is deleted once it is 7 days old
+ * (`expireCapturedHistory`, src/lib/captured-history-expiry.ts). It runs
+ * after the sweep so anything this run reads is read first, and neither
+ * half stops the other: a failed sweep still expires, and a failed expiry
+ * still returns the sweep's report (with `expired: null`).
+ *
  * TEST SEAMS, honoured only when the server was booted with MT_TEST_MODE
  * exactly "1" (never in production): `x-test-now` pins the clock,
  * `x-mt-test-setup-learning` turns the flag on or off for this request,
@@ -17,6 +25,7 @@
 import { NextResponse } from "next/server";
 import { runSetupLearningSweep } from "@/lib/setup-learning/run";
 import { setupLearningEnabledForRequest } from "@/lib/setup-learning/flag";
+import { expireCapturedHistory, type ExpiredCapturedHistory } from "@/lib/captured-history-expiry";
 import type { PipelineModel } from "@/lib/pipeline/llm";
 
 const STUB_HEADER = "x-mt-test-setup-learning-stub";
@@ -46,6 +55,18 @@ export async function GET(request: Request) {
     const stub = request.headers.get(STUB_HEADER);
     if (stub) model = stubModel(stub);
   }
-  const report = await runSetupLearningSweep(now, { enabled: setupLearningEnabledForRequest(request), model });
-  return NextResponse.json(report);
+  let report: Awaited<ReturnType<typeof runSetupLearningSweep>> | null = null;
+  try {
+    report = await runSetupLearningSweep(now, { enabled: setupLearningEnabledForRequest(request), model });
+  } catch (err) {
+    console.error("[learn-setup] sweep failed:", err);
+  }
+  let expired: ExpiredCapturedHistory | null = null;
+  try {
+    expired = await expireCapturedHistory(now);
+  } catch (err) {
+    console.error("[learn-setup] captured chat expiry failed:", err);
+  }
+  if (!report) return NextResponse.json({ error: "sweep failed", expired }, { status: 500 });
+  return NextResponse.json({ ...report, expired });
 }

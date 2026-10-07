@@ -45,6 +45,7 @@ import {
 } from "./group-add-rules";
 import { PlatformDmRefused, queuePlatformDm, queuePlatformLeaveGroup } from "./platform-jobs";
 import { detectAdminGroupCandidate, recordAdminGroupCandidate } from "./admin-group-link";
+import { CAPTURED_HISTORY_RETENTION_MS } from "./captured-history-retention";
 
 export interface GroupAddInput {
   groupId: string;
@@ -119,12 +120,19 @@ export async function handleSelfJoinGroupAdd(input: GroupAddInput): Promise<Grou
   if (adminGroupOwner) return { kind: "admin-group", orgId: adminGroupOwner.id };
 
   // 2. A re-add of a group already linked and waiting.
-  const existing = await db.clubConnect.findFirst({ where: LINKED_AND_WAITING(groupId), select: { id: true } });
+  const existing = await db.clubConnect.findFirst({
+    where: LINKED_AND_WAITING(groupId),
+    select: { id: true, linkedAt: true },
+  });
   if (existing) {
     // F3: a re-add may carry the chat the first add could not fetch. It
-    // never replaces chat already stored.
+    // never replaces chat already stored. And it stores nothing on a link
+    // already past the retention limit (captured-history-expiry.ts): the
+    // next cron run would only delete it again.
     const late = coerceHistoryMessages(input.enrichmentHistory);
-    if (late.length > 0) {
+    const pastRetention =
+      existing.linkedAt != null && now.getTime() - existing.linkedAt.getTime() >= CAPTURED_HISTORY_RETENTION_MS;
+    if (late.length > 0 && !pastRetention) {
       await db.$executeRaw`UPDATE "ClubConnect" SET "capturedHistory" = ${JSON.stringify(late)}::jsonb
         WHERE "id" = ${existing.id} AND "capturedHistory" IS NULL`;
     }
