@@ -528,6 +528,17 @@ const JOIN_NOTICE_FRESH_SEC = 10 * 60;
 
 const JOIN_HISTORY_PREFIX = "[baileys][join-history]";
 
+/** A Unix time in seconds as ISO 8601, or null when it is not a date a server can store. */
+function isoFromSeconds(sec: number): string | null {
+  // 2000-01-01 to 2100-01-01: anything else is not when a chat message was sent.
+  if (!Number.isFinite(sec) || sec < 946_684_800 || sec > 4_102_444_800) return null;
+  try {
+    return new Date(sec * 1000).toISOString();
+  } catch {
+    return null;
+  }
+}
+
 /** A bundle's rows, with who sent the bundle (the sharer's own messages name nobody). */
 interface CapturedJoinHistory {
   rows: BundleRow[];
@@ -576,6 +587,22 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
   // exists ONLY for a group we were just added to; a bundle anywhere else
   // is never downloaded (baileys/join-history.ts).
   const joinHistory = createJoinHistory<CapturedJoinHistory>({ now });
+  /**
+   * ONE bundle is read at a time, across every group. Reading is bounded
+   * (baileys/group-history-bundle.ts), and this keeps several joins at
+   * once from multiplying that bound.
+   */
+  let readingBundleFor: string | null = null;
+  /** Set by `index.ts`: a group the bot already serves never has a bundle read. */
+  let servesGroup: (groupId: string) => boolean = () => false;
+  function isServed(chat: string): boolean {
+    try {
+      return servesGroup(chat) === true;
+    } catch {
+      // Cannot tell: do not read. The capture is a nicety; a club's group is not.
+      return true;
+    }
+  }
   function openJoinHistory(chat: string | null | undefined, how: string): void {
     try {
       if (!joinHistory.opened(chat)) return;
@@ -828,6 +855,8 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
     if (mapped.kind === "join") {
       handJoin(mapped.event, ids.some((id) => self.has(id)));
     } else {
+      // We were removed: this join is over. A re-add opens a fresh entry.
+      if (ids.some((id) => self.has(id))) joinHistory.closed(update.id);
       stats.leaves++;
       hand(leaveHandlers, mapped.event, "onGroupLeave");
     }
@@ -1077,19 +1106,38 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
         }
         return;
       }
+      // A group the bot already serves (a club removed and re-added us):
+      // its history is not ours to fetch, and nothing would read it.
+      if (isServed(chat)) {
+        if (carrier.bundle) {
+          log(
+            `${JOIN_HISTORY_PREFIX} ${chat}: bundle ${id} ignored: this group is already one of our ` +
+              "clubs, so it is not downloaded",
+          );
+        }
+        return;
+      }
       joinHistory.announce(chat);
       if (!carrier.bundle) return;
       if (m.key?.fromMe) {
         log(`${JOIN_HISTORY_PREFIX} ${chat}: bundle ${id} ignored: it is one of our own messages`);
         return;
       }
-      if (!joinHistory.begin(chat)) {
+      if (readingBundleFor !== null) {
         log(
-          `${JOIN_HISTORY_PREFIX} ${chat}: bundle ${id} ignored: this join's shared history was ` +
-            "already read, is being read, or failed twice",
+          `${JOIN_HISTORY_PREFIX} ${chat}: bundle ${id} refused: another bundle is being read ` +
+            "(one at a time); it is not downloaded",
         );
         return;
       }
+      if (!joinHistory.begin(chat)) {
+        log(
+          `${JOIN_HISTORY_PREFIX} ${chat}: bundle ${id} ignored: this join's shared history was ` +
+            "already read, is being read, or could not be read (one bundle per join)",
+        );
+        return;
+      }
+      readingBundleFor = chat;
       const sharer = m.key?.participant ?? (m as { participant?: string | null }).participant ?? null;
       const sharerAlt = (m.key as InboundKeyLike | undefined)?.participantAlt ?? null;
       const bundle = carrier.bundle;
@@ -1099,10 +1147,23 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
           fetchBundle: deps.fetchMedia,
           limit: MAX_BUNDLE_MESSAGES,
         });
+        readingBundleFor = null;
         for (const l of formatBundleReport(result.report)) log(`${JOIN_HISTORY_PREFIX} ${chat}: bundle ${id}: ${l}`);
-        if (result.ok) joinHistory.resolve(chat, { rows: result.rows, sharer, sharerAlt });
-        else joinHistory.fail(chat);
+        if (!result.ok) {
+          joinHistory.fail(chat);
+          return;
+        }
+        const late = joinHistory.gaveUp(chat);
+        joinHistory.resolve(chat, { rows: result.rows, sharer, sharerAlt });
+        if (late) {
+          log(
+            `${JOIN_HISTORY_PREFIX} ${chat}: bundle ${id}: read AFTER the bot-added flow had stopped waiting ` +
+              "and posted without it. It is kept until this join's window closes and handed over only " +
+              "if the flow asks again; it is NOT sent to the server by itself",
+          );
+        }
       })().catch((err) => {
+        readingBundleFor = null;
         error(`${JOIN_HISTORY_PREFIX} ${chat}: bundle ${id}: reading it failed unexpectedly: ${errorText(err)}`);
         try {
           joinHistory.fail(chat);
@@ -1129,8 +1190,22 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
     for (const id of selfLegacy()) self.add(id);
     let own = 0;
     let noAuthor = 0;
-    const resolved: Array<{ row: BundleRow; who: string; phone: string | null; name: string | null }> = [];
+    let unusable = 0;
+    const resolved: Array<{
+      row: BundleRow;
+      who: string;
+      phone: string | null;
+      name: string | null;
+      timestamp: string;
+    }> = [];
     for (const row of captured.rows) {
+      // The stamp is the sender's claim. One that is not a date drops its
+      // own row, never the capture (`toISOString` throws past year 275760).
+      const timestamp = isoFromSeconds(row.timestampSec > 0 ? row.timestampSec : now() / 1000);
+      if (!timestamp) {
+        unusable++;
+        continue;
+      }
       const fromSharer = !row.senderJid && row.fromBundleSender;
       const sender = row.senderJid ?? (fromSharer ? captured.sharer : null);
       if (!sender) {
@@ -1156,7 +1231,7 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
       const known = { ...contacts.namesFor(phoneJid), ...contacts.namesFor(legacy) };
       const name =
         row.pushName?.trim() || known.pushname?.trim() || known.name?.trim() || known.verifiedName?.trim() || null;
-      resolved.push({ row, who: phone ?? legacy ?? sender, phone, name });
+      resolved.push({ row, who: phone ?? legacy ?? sender, phone, name, timestamp });
     }
 
     // One name per person: a name seen on any of their messages serves all
@@ -1174,14 +1249,14 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
       author: nameOf.get(r.who) as string,
       authorPhone: r.phone,
       text: r.row.text,
-      timestamp: new Date((r.row.timestampSec > 0 ? r.row.timestampSec : now() / 1000) * 1000).toISOString(),
+      timestamp: r.timestamp,
     }));
     return {
       messages,
       counts:
         `${messages.length} message(s) from ${nameOf.size} author(s): ${named} with a known name, ` +
         `${standIns} given a stand-in name; ${messages.filter((x) => x.authorPhone).length} message(s) with a ` +
-        `phone number; left out: ${own} of our own, ${noAuthor} with no author`,
+        `phone number; left out: ${own} of our own, ${noAuthor} with no author, ${unusable} with an unusable date`,
     };
   }
 
@@ -1667,9 +1742,12 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
      */
     async joinHistory(groupId, selfIds) {
       try {
-        const outcome = await joinHistory.wait(groupId, { sleep: wait });
-        const captured = joinHistory.take(groupId);
-        if (outcome !== "captured" || !captured) {
+        const outcome = await joinHistory.wait(groupId, { schedule });
+        // Looked at, not taken: nothing is forgotten until the hand-over
+        // below has succeeded, and giving up empty-handed must not close
+        // the door on a bundle that lands later in the window.
+        const captured = outcome === "captured" ? joinHistory.peek(groupId) : null;
+        if (!captured) {
           log(
             `${JOIN_HISTORY_PREFIX} ${groupId}: nothing to hand to the bot-added flow (${outcome}): ` +
               (outcome === "none"
@@ -1681,12 +1759,17 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
           return { outcome: outcome === "captured" ? "failed" : outcome, messages: [] };
         }
         const { messages, counts } = await resolveJoinHistory(captured, Array.isArray(selfIds) ? selfIds : []);
+        joinHistory.take(groupId);
         log(`${JOIN_HISTORY_PREFIX} ${groupId}: handed to the bot-added flow: ${counts}`);
         return { outcome: "captured", messages };
       } catch (err) {
         error(`${JOIN_HISTORY_PREFIX} ${groupId}: could not hand over the shared history: ${errorText(err)}`);
         return { outcome: "failed", messages: [] };
       }
+    },
+
+    ignoreJoinHistoryWhen(isServedGroup) {
+      servesGroup = isServedGroup;
     },
 
     async listDmChats() {

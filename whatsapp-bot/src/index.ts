@@ -848,6 +848,9 @@ async function main() {
   // holds. Best-effort: any failure returns [] and the intro still goes
   // out. See history-capture.ts.
   const collectHistoryForServer = createHistoryCollector({ driver });
+  // A club's own group never has shared history read, even on a re-add:
+  // the same check the bot-added flow answers "already monitored" with.
+  driver.ignoreJoinHistoryWhen?.(isMonitoredGroup);
 
   driver.onGroupJoin(async (notification: GroupMembershipEvent) => {
     try {

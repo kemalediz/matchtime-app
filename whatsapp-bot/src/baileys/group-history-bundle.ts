@@ -63,14 +63,33 @@ export const GROUP_HISTORY_KEY_CANDIDATES: ReadonlyArray<{ info: string }> = [
   { info: "WhatsApp App State Keys" },
 ];
 
-/** WhatsApp shares at most about 100 text messages: this is generous. */
-export const MAX_BUNDLE_ENC_BYTES = 8 * 1024 * 1024;
-export const MAX_BUNDLE_PLAIN_BYTES = 24 * 1024 * 1024;
-/** A pointer that states more than this is not something to download onto a Pi. */
+// ── The caps ─────────────────────────────────────────────────────────
+// Anyone who can add the bot to a group can send it a bundle, and this
+// runs in the process that serves the live club. So the caps bound WORK,
+// not just bytes: a 49 KB download can inflate to millions of entries.
+// WhatsApp shares about 100 text messages; everything here is sized for
+// 600 of them and nothing trusts a number the sender wrote.
+
+/** The same cap the bot-added flow has always applied to captured history. Also the most entries ever decoded. */
+export const MAX_BUNDLE_MESSAGES = 600;
+export const MAX_BUNDLE_ENC_BYTES = 1024 * 1024;
+/** After inflating. Enforced by zlib while it inflates. */
+export const MAX_BUNDLE_PLAIN_BYTES = 2 * 1024 * 1024;
+/** More top-level entries than this and the payload is refused before anything is decoded. */
+export const MAX_BUNDLE_ENTRIES = 5000;
+/** A text message is small. A larger entry is counted and skipped undecoded. */
+export const MAX_BUNDLE_ENTRY_BYTES = 64 * 1024;
+/** Only for the `HistorySync` candidate, which nests its entries. */
+export const MAX_BUNDLE_CONVERSATIONS = 16;
+/** The decoder is chosen on this many entries, not on the whole payload. */
+export const DECODER_SAMPLE = 8;
+/** Entries decoded between yields to the event loop. */
+export const DECODE_CHUNK = 20;
+/** Milliseconds of decoding work before it stops and keeps what it has. */
+export const BUNDLE_DECODE_BUDGET_MS = 2000;
+/** A pointer that states more than this is refused unread (the stated number is NOT what bounds the work). */
 export const MAX_STATED_MESSAGES = 5000;
 export const BUNDLE_DOWNLOAD_TIMEOUT_MS = 15_000;
-/** The same cap the bot-added flow has always applied to captured history. */
-export const MAX_BUNDLE_MESSAGES = 600;
 
 /** `DEF_MEDIA_HOST` and `DEFAULT_ORIGIN` in Baileys (`lib/Utils/messages-media.js`, `lib/Defaults`). */
 const MEDIA_HOST = "mmg.whatsapp.net";
@@ -170,18 +189,21 @@ function errorKind(err: unknown): string {
 
 // ── The protobuf top level, by hand ──────────────────────────────────
 
-interface TopField {
-  no: number;
-  wire: number;
-  /** Present for a length-delimited field. */
-  bytes?: Buffer;
-}
-
 const WIRE_NAMES: Record<number, string> = { 0: "varint", 1: "fixed64", 2: "len", 5: "fixed32" };
 
-/** The top-level fields of a protobuf message, or where it stopped being one. */
-function walkTopLevel(buf: Buffer): { fields: TopField[]; stoppedAt: number | null } {
-  const fields: TopField[] = [];
+/**
+ * Visit the top-level fields of a protobuf message WITHOUT building
+ * anything: the visitor gets offsets and decides what to keep. Stops when
+ * the visitor returns false, so a payload of millions of entries costs as
+ * much as the caller is willing to look at and no more.
+ *
+ * Returns where it stopped being a protobuf message (null if it never did)
+ * and whether the visitor cut it short.
+ */
+function visitTopLevel(
+  buf: Buffer,
+  visit: (no: number, wire: number, start: number, end: number) => boolean,
+): { stoppedAt: number | null; cut: boolean } {
   let pos = 0;
   const readVarint = (): number | null => {
     let result = 0;
@@ -196,49 +218,55 @@ function walkTopLevel(buf: Buffer): { fields: TopField[]; stoppedAt: number | nu
     return null;
   };
   while (pos < buf.length) {
-    const start = pos;
+    const at = pos;
     const tag = readVarint();
-    if (tag === null) return { fields, stoppedAt: start };
+    if (tag === null) return { stoppedAt: at, cut: false };
     const no = Math.floor(tag / 8);
     const wire = tag % 8;
-    if (no < 1) return { fields, stoppedAt: start };
+    if (no < 1) return { stoppedAt: at, cut: false };
+    let start = pos;
+    let end = pos;
     if (wire === 0) {
-      if (readVarint() === null) return { fields, stoppedAt: start };
-      fields.push({ no, wire });
+      if (readVarint() === null) return { stoppedAt: at, cut: false };
     } else if (wire === 1 || wire === 5) {
       const size = wire === 1 ? 8 : 4;
-      if (pos + size > buf.length) return { fields, stoppedAt: start };
+      if (pos + size > buf.length) return { stoppedAt: at, cut: false };
       pos += size;
-      fields.push({ no, wire });
     } else if (wire === 2) {
       const length = readVarint();
-      if (length === null || pos + length > buf.length) return { fields, stoppedAt: start };
-      fields.push({ no, wire, bytes: buf.subarray(pos, pos + length) });
-      pos += length;
+      if (length === null || pos + length > buf.length) return { stoppedAt: at, cut: false };
+      start = pos;
+      end = pos + length;
+      pos = end;
     } else {
-      return { fields, stoppedAt: start };
+      return { stoppedAt: at, cut: false };
     }
+    if (!visit(no, wire, start, end)) return { stoppedAt: null, cut: true };
   }
-  return { fields, stoppedAt: null };
+  return { stoppedAt: null, cut: false };
 }
+
+/** How many top-level fields a shape description will count before it stops. */
+const MAX_SHAPE_FIELDS = 20_000;
 
 /**
  * Field numbers and wire types of the top level, with counts. NO values:
  * this is what gets logged when a real bundle cannot be decoded, so the
  * format can be worked out from the log without anybody's messages in it.
+ * Bounded: it stops counting after `MAX_SHAPE_FIELDS` fields.
  */
 export function describeProtoShape(buf: Buffer): string {
   if (buf.length === 0) return "empty";
-  const { fields, stoppedAt } = walkTopLevel(buf);
   const counts = new Map<string, number>();
-  for (const f of fields) {
-    const k = `${f.no}:${WIRE_NAMES[f.wire] ?? `wire${f.wire}`}`;
-    counts.set(k, (counts.get(k) ?? 0) + 1);
-  }
-  const listed = [...counts.entries()]
-    .slice(0, 24)
-    .map(([k, n]) => `${k} x${n}`)
-    .join(", ");
+  let seen = 0;
+  const { stoppedAt, cut } = visitTopLevel(buf, (no, wire) => {
+    const k = `${no}:${WIRE_NAMES[wire] ?? `wire${wire}`}`;
+    if (counts.size < 24 || counts.has(k)) counts.set(k, (counts.get(k) ?? 0) + 1);
+    return ++seen < MAX_SHAPE_FIELDS;
+  });
+  const listed =
+    [...counts.entries()].map(([k, n]) => `${k} x${n}`).join(", ") +
+    (cut ? ` (stopped counting after ${MAX_SHAPE_FIELDS} fields)` : "");
   if (stoppedAt === null) return listed;
   return `not a protobuf message (stops at byte ${stoppedAt} of ${buf.length}${listed ? `; before that: ${listed}` : ""})`;
 }
@@ -249,6 +277,8 @@ const inflateAsync = promisify(inflate);
 const gunzipAsync = promisify(gunzip);
 const inflateRawAsync = promisify(inflateRaw);
 
+// `maxOutputLength` is enforced by zlib WHILE it inflates: it stops and
+// throws ERR_BUFFER_TOO_LARGE at the cap, it does not inflate and then look.
 const UNPACKERS: ReadonlyArray<{ name: string; inflated: boolean; run(buf: Buffer, max: number): Promise<Buffer> }> = [
   { name: "zlib inflate", inflated: true, run: (b, max) => inflateAsync(b, { maxOutputLength: max }) },
   { name: "not compressed", inflated: false, run: async (b) => b },
@@ -256,54 +286,68 @@ const UNPACKERS: ReadonlyArray<{ name: string; inflated: boolean; run(buf: Buffe
   { name: "raw deflate", inflated: true, run: (b, max) => inflateRawAsync(b, { maxOutputLength: max }) },
 ];
 
-function decodeEach(entries: Buffer[], decode: (b: Buffer) => proto.IWebMessageInfo | null | undefined) {
-  const out: proto.IWebMessageInfo[] = [];
-  for (const bytes of entries) {
-    try {
-      const m = decode(bytes);
-      if (m) out.push(m);
-    } catch {
-      /* not this shape */
+/**
+ * The entries of a payload: views into it, never copies, and never more
+ * than `ceiling` of them. `over` means there were more, and the caller
+ * refuses the payload without decoding anything.
+ */
+interface EntryScan {
+  entries: Buffer[];
+  over: boolean;
+}
+
+function scanFields(buf: Buffer, numbers: number[], ceiling: number, into: Buffer[] = []): EntryScan {
+  let over = false;
+  const { stoppedAt } = visitTopLevel(buf, (no, wire, start, end) => {
+    if (wire !== 2 || !numbers.includes(no)) return true;
+    if (into.length >= ceiling) {
+      over = true;
+      return false;
     }
-  }
-  return out;
+    into.push(buf.subarray(start, end));
+    return true;
+  });
+  // A payload that is not a protobuf message has no entries of this shape.
+  if (stoppedAt !== null && !over) return { entries: [], over: false };
+  return { entries: into, over };
 }
 
-function lenFields(buf: Buffer, numbers: number[]): Buffer[] | null {
-  const { fields, stoppedAt } = walkTopLevel(buf);
-  if (stoppedAt !== null) return null;
-  return fields.filter((f) => f.wire === 2 && numbers.includes(f.no) && f.bytes).map((f) => f.bytes as Buffer);
-}
-
-/** Protobuf shapes the payload might be, most likely first. */
-const DECODERS: ReadonlyArray<{ name: string; run(buf: Buffer): { entries: number; messages: proto.IWebMessageInfo[] } }> = [
+/**
+ * Protobuf shapes the payload might be, most likely first. Each says where
+ * its entries are and how ONE entry decodes; nothing here decodes a whole
+ * payload.
+ */
+const DECODERS: ReadonlyArray<{
+  name: string;
+  scan(buf: Buffer, ceiling: number): EntryScan;
+  decode(entry: Buffer): proto.IWebMessageInfo | null | undefined;
+}> = [
   {
     // messages = 1 and outOfWindowPinnedMessages = 4. An entry of
     // `GroupHistoryWithMessageBytes` (key = 1, messageBytes = 2) has the
     // same wire layout as a WebMessageInfo and decodes here too.
     name: "GroupHistory",
-    run(buf) {
-      const entries = lenFields(buf, [1, 4]) ?? [];
-      return { entries: entries.length, messages: decodeEach(entries, (b) => proto.WebMessageInfo.decode(b)) };
-    },
+    scan: (buf, ceiling) => scanFields(buf, [1, 4], ceiling),
+    decode: (b) => proto.WebMessageInfo.decode(b),
   },
   {
+    // HistorySync { conversations = 2 { messages = 2 (HistorySyncMsg) } }
     name: "HistorySync",
-    run(buf) {
-      const sync = proto.HistorySync.decode(buf);
-      const all = (sync.conversations ?? []).flatMap((c) => c.messages ?? []);
-      return {
-        entries: all.length,
-        messages: all.map((m) => m.message).filter((m): m is proto.IWebMessageInfo => !!m),
-      };
+    scan(buf, ceiling) {
+      const conversations = scanFields(buf, [2], MAX_BUNDLE_CONVERSATIONS);
+      if (conversations.over) return { entries: [], over: true };
+      const all: Buffer[] = [];
+      for (const c of conversations.entries) {
+        if (scanFields(c, [2], ceiling, all).over) return { entries: [], over: true };
+      }
+      return { entries: all, over: false };
     },
+    decode: (b) => proto.HistorySyncMsg.decode(b).message,
   },
   {
     name: "HistorySyncMsg list",
-    run(buf) {
-      const entries = lenFields(buf, [1]) ?? [];
-      return { entries: entries.length, messages: decodeEach(entries, (b) => proto.HistorySyncMsg.decode(b).message) };
-    },
+    scan: (buf, ceiling) => scanFields(buf, [1], ceiling),
+    decode: (b) => proto.HistorySyncMsg.decode(b).message,
   },
 ];
 
@@ -311,12 +355,24 @@ const PLAUSIBLE_ID = /^[0-9A-Za-z._:-]{8,64}$/;
 const PLAUSIBLE_JID = /^[0-9A-Za-z._:-]{1,64}@[a-z.]{2,32}$/;
 
 /** A decoded entry is a message only if its key looks like one. This is what rejects a wrong protobuf. */
-function plausible(m: proto.IWebMessageInfo): boolean {
+function plausible(m: proto.IWebMessageInfo | null | undefined): m is proto.IWebMessageInfo {
   const key = m?.key;
   if (!key || typeof key.id !== "string" || !PLAUSIBLE_ID.test(key.id)) return false;
   if (key.remoteJid && !PLAUSIBLE_JID.test(key.remoteJid)) return false;
   if (key.participant && !PLAUSIBLE_JID.test(key.participant)) return false;
   return true;
+}
+
+function decodeOne(
+  decode: (entry: Buffer) => proto.IWebMessageInfo | null | undefined,
+  entry: Buffer,
+): proto.IWebMessageInfo | null {
+  try {
+    const m = decode(entry);
+    return plausible(m) ? m : null;
+  } catch {
+    return null;
+  }
 }
 
 /** One message out of a bundle: text and who wrote it, not yet resolved to a person. */
@@ -342,89 +398,168 @@ export type UnpackResult =
       inflated: boolean;
       unpackedBytes: number;
       decoder: string;
+      /** Entries in the payload (at most the ceiling, or it is refused). */
       entries: number;
+      /** Entries actually decoded: at most the message limit. */
+      read: number;
+      /** Entries skipped undecoded because they were over the per-entry size. */
+      tooLarge: number;
       valid: number;
       otherChat: number;
       withText: number;
       authors: number;
+      /** True when the time budget ran out and the rest was left undecoded. */
+      partial: boolean;
       rows: BundleRow[];
     }
   | { ok: false; reason: string; shapes: string[] };
 
-function toRows(messages: proto.IWebMessageInfo[], group: string, limit: number) {
-  let otherChat = 0;
-  const seen = new Set<string>();
-  const rows: BundleRow[] = [];
-  for (const m of messages) {
-    const key = m.key ?? {};
-    if (key.remoteJid && key.remoteJid !== group) {
-      otherChat++;
-      continue;
-    }
-    const id = key.id as string;
-    if (seen.has(id)) continue;
-    // The live path's own mapper: unwraps, takes text or a caption, and
-    // returns null for system notices, reactions, polls and the rest.
-    const mapped = mapInboundMessage({ ...m, key: { ...key, remoteJid: group } } as WAMessage);
-    if (!mapped || !mapped.body) continue;
-    seen.add(id);
-    const senderJid = key.participant || m.participant || null;
-    rows.push({
-      id,
-      senderJid,
-      fromBundleSender: !senderJid && key.fromMe === true,
-      pushName: mapped.pushName,
-      text: mapped.body,
-      timestampSec: toNumber(m.messageTimestamp),
-    });
-  }
-  // Oldest first; a stable sort keeps the bundle's order for equal stamps.
-  rows.sort((a, b) => a.timestampSec - b.timestampSec);
-  const withText = rows.length;
-  const kept = rows.slice(Math.max(0, rows.length - limit));
-  const authors = new Set(kept.map((r) => r.senderJid ?? (r.fromBundleSender ? "(sharer)" : "(unknown)"))).size;
-  return { otherChat, withText, authors, rows: kept };
+export interface UnpackOptions {
+  /** Messages kept, and the most entries ever decoded. */
+  limit?: number;
+  maxPlainBytes?: number;
+  maxEntries?: number;
+  maxEntryBytes?: number;
+  /** Milliseconds of decoding before it stops and keeps what it has. */
+  budgetMs?: number;
+  /** Injected for tests. */
+  nowMs?(): number;
+  yieldToLoop?(): Promise<void>;
+}
+
+/** The live path's mapper turns one decoded message into a row, or nothing. */
+function toRow(m: proto.IWebMessageInfo, group: string): BundleRow | "other-chat" | null {
+  const key = m.key ?? {};
+  if (key.remoteJid && key.remoteJid !== group) return "other-chat";
+  // Unwraps, takes text or a caption, and returns null for system
+  // notices, reactions, polls and the rest.
+  const mapped = mapInboundMessage({ ...m, key: { ...key, remoteJid: group } } as WAMessage);
+  if (!mapped || !mapped.body) return null;
+  const senderJid = key.participant || m.participant || null;
+  return {
+    id: key.id as string,
+    senderJid,
+    fromBundleSender: !senderJid && key.fromMe === true,
+    pushName: mapped.pushName,
+    text: mapped.body,
+    timestampSec: toNumber(m.messageTimestamp),
+  };
 }
 
 /**
- * The decrypted payload as rows. Tries every unpacker with every decoder
- * and stops at the first pair that finds a message. Never throws.
+ * The decrypted payload as rows. Never throws, and bounded at every step:
+ *
+ *  - inflating stops at `maxPlainBytes`;
+ *  - the top level is walked without building anything, and a payload with
+ *    more than `maxEntries` entries is refused before any entry is decoded;
+ *  - the decoder is chosen on the first `DECODER_SAMPLE` entries, not by
+ *    running every candidate over everything;
+ *  - at most `limit` entries are ever decoded: the LAST ones by position,
+ *    newest first (a sharing client writes oldest first), so running out of
+ *    time keeps the most recent messages;
+ *  - an entry over `maxEntryBytes` is counted and skipped undecoded;
+ *  - decoding is done a few entries at a time with a yield to the event
+ *    loop between, and stops after `budgetMs` of work.
  */
-export async function unpackBundle(
-  plain: Buffer,
-  group: string,
-  opts: { limit?: number; maxPlainBytes?: number } = {},
-): Promise<UnpackResult> {
-  const limit = Math.max(1, opts.limit ?? MAX_BUNDLE_MESSAGES);
+export async function unpackBundle(plain: Buffer, group: string, opts: UnpackOptions = {}): Promise<UnpackResult> {
+  const limit = Math.max(1, Math.min(opts.limit ?? MAX_BUNDLE_MESSAGES, MAX_BUNDLE_MESSAGES));
   const maxPlain = opts.maxPlainBytes ?? MAX_BUNDLE_PLAIN_BYTES;
+  const maxEntries = opts.maxEntries ?? MAX_BUNDLE_ENTRIES;
+  const maxEntryBytes = opts.maxEntryBytes ?? MAX_BUNDLE_ENTRY_BYTES;
+  const budgetMs = opts.budgetMs ?? BUNDLE_DECODE_BUDGET_MS;
+  const nowMs = opts.nowMs ?? (() => performance.now());
+  const yieldToLoop = opts.yieldToLoop ?? (() => new Promise<void>((r) => setImmediate(r)));
   const shapes: string[] = [];
   try {
     for (const unpacker of UNPACKERS) {
       let data: Buffer;
       try {
         data = await unpacker.run(plain, maxPlain);
-      } catch {
+      } catch (err) {
+        if ((err as { code?: unknown })?.code === "ERR_BUFFER_TOO_LARGE") {
+          return {
+            ok: false,
+            reason: `the payload inflates (${unpacker.name}) past the ${maxPlain} bytes this will read; nothing was decoded`,
+            shapes,
+          };
+        }
         continue;
       }
-      if (data.length > maxPlain) continue;
+      if (data.length > maxPlain) {
+        return {
+          ok: false,
+          reason: `the payload is ${data.length} bytes, past the ${maxPlain} this will read; nothing was decoded`,
+          shapes,
+        };
+      }
       for (const decoder of DECODERS) {
-        let decoded: { entries: number; messages: proto.IWebMessageInfo[] };
-        try {
-          decoded = decoder.run(data);
-        } catch {
-          continue;
+        const scan = decoder.scan(data, maxEntries);
+        if (scan.over) {
+          return {
+            ok: false,
+            reason: `the payload has more than ${maxEntries} entries (read as ${decoder.name}); nothing was decoded`,
+            shapes,
+          };
         }
-        const valid = decoded.messages.filter(plausible);
-        if (valid.length === 0) continue;
+        const sample = scan.entries.filter((e) => e.length <= maxEntryBytes).slice(0, DECODER_SAMPLE);
+        if (!sample.some((e) => decodeOne(decoder.decode, e))) continue;
+
+        // This is the shape. Decode the last `limit` entries, newest first.
+        const chosen = scan.entries.slice(Math.max(0, scan.entries.length - limit));
+        const seen = new Set<string>();
+        const rows: BundleRow[] = [];
+        let read = 0;
+        let tooLarge = 0;
+        let valid = 0;
+        let otherChat = 0;
+        let partial = false;
+        let spent = 0;
+        for (let i = chosen.length - 1; i >= 0; ) {
+          const started = nowMs();
+          for (let n = 0; n < DECODE_CHUNK && i >= 0; n++, i--) {
+            const entry = chosen[i];
+            if (entry.length > maxEntryBytes) {
+              tooLarge++;
+              continue;
+            }
+            read++;
+            const m = decodeOne(decoder.decode, entry);
+            if (!m) continue;
+            valid++;
+            const row = toRow(m, group);
+            if (row === "other-chat") otherChat++;
+            else if (row && !seen.has(row.id)) {
+              seen.add(row.id);
+              rows.push(row);
+            }
+          }
+          spent += nowMs() - started;
+          if (i < 0) break;
+          if (spent >= budgetMs) {
+            partial = true;
+            break;
+          }
+          await yieldToLoop();
+        }
+        // Oldest first. Decoded newest first, so put the bundle's own
+        // order back before the (stable) sort by timestamp.
+        rows.reverse();
+        rows.sort((a, b) => a.timestampSec - b.timestampSec);
         return {
           ok: true,
           unpack: unpacker.name,
           inflated: unpacker.inflated,
           unpackedBytes: data.length,
           decoder: decoder.name,
-          entries: decoded.entries,
-          valid: valid.length,
-          ...toRows(valid, group, limit),
+          entries: scan.entries.length,
+          read,
+          tooLarge,
+          valid,
+          otherChat,
+          withText: rows.length,
+          authors: new Set(rows.map((r) => r.senderJid ?? (r.fromBundleSender ? "(sharer)" : "(unknown)"))).size,
+          partial,
+          rows,
         };
       }
       shapes.push(`${unpacker.name} (${data.length} bytes): ${describeProtoShape(data)}`);
@@ -456,6 +591,8 @@ export interface BundleReadDeps {
   maxEncBytes?: number;
   maxPlainBytes?: number;
   limit?: number;
+  /** Passed to `unpackBundle`: its bounds, and its clock and yield for tests. */
+  unpack?: UnpackOptions;
 }
 
 type Stage = "pointer" | "download" | "decrypt" | "decode" | "done";
@@ -477,11 +614,14 @@ export interface BundleReport {
   unpackedBytes?: number;
   decoder?: string;
   entries?: number;
+  read?: number;
+  tooLarge?: number;
   valid?: number;
   otherChat?: number;
   withText?: number;
   authors?: number;
   kept?: number;
+  partial?: boolean;
   shapes?: string[];
 }
 
@@ -594,8 +734,9 @@ export async function readGroupHistoryBundle(
 
     report.stage = "decode";
     const unpacked = await unpackBundle(decrypted.plain, group, {
-      limit: deps.limit,
-      maxPlainBytes: deps.maxPlainBytes,
+      ...deps.unpack,
+      limit: deps.limit ?? deps.unpack?.limit,
+      maxPlainBytes: deps.maxPlainBytes ?? deps.unpack?.maxPlainBytes,
     });
     if (!unpacked.ok) {
       report.shapes = unpacked.shapes;
@@ -607,6 +748,9 @@ export async function readGroupHistoryBundle(
     report.unpackedBytes = unpacked.unpackedBytes;
     report.decoder = unpacked.decoder;
     report.entries = unpacked.entries;
+    report.read = unpacked.read;
+    report.tooLarge = unpacked.tooLarge;
+    report.partial = unpacked.partial;
     report.valid = unpacked.valid;
     report.otherChat = unpacked.otherChat;
     report.withText = unpacked.withText;
@@ -641,9 +785,10 @@ export function formatBundleReport(report: BundleReport): string[] {
         `unpacked as ${report.unpack} (inflate needed: ${report.inflated ? "yes" : "no"}) to ${report.unpackedBytes} bytes`,
       );
       parts.push(
-        `decoded as ${report.decoder}: entries=${report.entries} valid=${report.valid} otherChat=${report.otherChat} ` +
-          `withText=${report.withText} authors=${report.authors} kept=${report.kept} ` +
-          `(stated messageCount=${report.statedMessages ?? "?"})`,
+        `decoded as ${report.decoder}: entries=${report.entries} read=${report.read} tooLarge=${report.tooLarge} ` +
+          `valid=${report.valid} otherChat=${report.otherChat} withText=${report.withText} ` +
+          `authors=${report.authors} kept=${report.kept} (stated messageCount=${report.statedMessages ?? "?"})` +
+          (report.partial ? "; STOPPED EARLY: the decode time budget ran out, the oldest entries were left unread" : ""),
       );
       return [parts.join("; ")];
     }

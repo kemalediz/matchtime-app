@@ -226,7 +226,9 @@ describe("unpackBundle", () => {
       msg(`3EB0AAAAAAAAAAAA${String(1000 + i)}`, `message ${i}`, { participant: BOB, ts: T0 + i }),
     );
     const r = await unpackBundle(pack(encodeGroupHistory(many), "zlib"), GROUP, { limit: 5 });
-    expect(r.ok && r.withText).toBe(30);
+    // Only the last five entries are ever decoded.
+    expect(r.ok && r.entries).toBe(30);
+    expect(r.ok && r.read).toBe(5);
     expect(r.ok && r.rows.map((x) => x.text)).toEqual([25, 26, 27, 28, 29].map((i) => `message ${i}`));
   });
 
@@ -285,7 +287,7 @@ describe("readGroupHistoryBundle", () => {
       `downloaded ${enc.length} bytes (http 200); decrypted with "Group History" (candidate 1 of 4, ` +
         `download hash ok, content hash ok) to ${payload.length} bytes; unpacked as zlib inflate ` +
         `(inflate needed: yes) to ${encodeGroupHistory(THREE).length} bytes; decoded as GroupHistory: ` +
-        "entries=3 valid=3 otherChat=0 withText=3 authors=3 kept=3 (stated messageCount=3)",
+        "entries=3 read=3 tooLarge=0 valid=3 otherChat=0 withText=3 authors=3 kept=3 (stated messageCount=3)",
     ]);
     expect(lines.join("\n")).not.toContain(SECRET);
     expect(lines.join("\n")).not.toContain("synthetic.enc");

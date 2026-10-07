@@ -15,12 +15,28 @@
  * (somebody else was added with the switch on) finds no entry and is not
  * downloaded.
  *
+ * One entry is ONE join. Being removed drops it (`closed`), and a join
+ * notice over an entry that was already read opens a fresh one, so a
+ * remove and re-add inside the window gets its own history instead of
+ * finding the door shut.
+ *
  * ── How long a reader waits ─────────────────────────────────────────
  * The bundle arrives about a second after the join and then has to be
- * downloaded on a Pi. `wait()` gives a group with NO sign of shared
- * history `JOIN_HISTORY_QUIET_WAIT_MS` (what the old three-attempt loop
- * spent sleeping), and a group where a history notice or bundle WAS seen
- * `JOIN_HISTORY_MAX_WAIT_MS`. So the switch being off costs nothing extra.
+ * downloaded on a Pi.
+ *
+ *   no sign of shared history   until `JOIN_HISTORY_QUIET_AFTER_JOIN_MS`
+ *                               after the JOIN (not after the reader
+ *                               asked). The reader asks a few seconds in,
+ *                               once the roster has been read, so this is
+ *                               about the 8 s the old three-attempt loop
+ *                               slept, and it gives a slow bundle longer
+ *                               without the flow taking longer.
+ *   a notice or bundle was seen `JOIN_HISTORY_MAX_WAIT_MS` from when the
+ *                               reader asked.
+ *
+ * A reader that gives up empty-handed does NOT close the door: a bundle
+ * that lands later in the window is still read and kept for whoever asks
+ * next (`gaveUp` lets the driver say so in the log).
  *
  * Memory only, bounded, pure: no Baileys import, no I/O, no logging.
  */
@@ -28,12 +44,12 @@ import { isGroupJid } from "./jid.js";
 
 export const JOIN_HISTORY_WINDOW_MS = 5 * 60 * 1000;
 export const MAX_JOIN_HISTORY_GROUPS = 20;
-/** No notice and no bundle by now: the switch was off. */
-export const JOIN_HISTORY_QUIET_WAIT_MS = 8000;
-/** A notice or bundle was seen: give the download this long in total. */
+/** No notice and no bundle this long after the join: the switch was off. */
+export const JOIN_HISTORY_QUIET_AFTER_JOIN_MS = 10_000;
+/** A notice or bundle was seen: give the download this long from when the reader asked. */
 export const JOIN_HISTORY_MAX_WAIT_MS = 25_000;
-/** A first read that fails may be followed by one more bundle, not a stream of them. */
-export const MAX_BUNDLE_ATTEMPTS = 2;
+/** One bundle is read per join. A failed read is not retried with another. */
+export const MAX_BUNDLE_ATTEMPTS = 1;
 
 export type JoinHistoryOutcome =
   /** A bundle was read; `take()` has it. */
@@ -46,8 +62,14 @@ export type JoinHistoryOutcome =
   | "timeout";
 
 export interface JoinHistory<T> {
-  /** We were added to this group now. False if it is already open, not a group, or the store is full. */
+  /**
+   * We were added to this group now. False if this join is already open,
+   * it is not a group, or the store is full. An entry that was already
+   * READ is replaced: that is a new join.
+   */
   opened(chat: string | null | undefined): boolean;
+  /** We were removed from this group: its entry is dropped. */
+  closed(chat: string | null | undefined): void;
   /** Whether this group is inside its join window. THE gate. */
   joined(chat: string | null | undefined): boolean;
   /** A history notice or bundle was seen for this group. Ignored unless joined. */
@@ -56,12 +78,23 @@ export interface JoinHistory<T> {
   begin(chat: string): boolean;
   resolve(chat: string, value: T): void;
   fail(chat: string): void;
+  /** Resolves as soon as the outcome is known. Its timer is cancelled and its waiter dropped when it does. */
   wait(
     chat: string,
-    opts: { sleep(ms: number): Promise<void>; quietMs?: number; maxMs?: number },
+    opts: {
+      schedule(fn: () => void, ms: number): { cancel(): void };
+      quietAfterJoinMs?: number;
+      maxMs?: number;
+    },
   ): Promise<JoinHistoryOutcome>;
-  /** What was captured, once. It is forgotten as it is handed over. */
+  /** What was captured, without forgetting it. */
+  peek(chat: string): T | null;
+  /** What was captured, once: forgotten as it is handed over. Taking nothing changes nothing. */
   take(chat: string): T | null;
+  /** A reader already asked for this join and left with nothing. */
+  gaveUp(chat: string): boolean;
+  /** Readers currently waiting on this group. */
+  waiting(chat: string): number;
   /** Drop every entry whose window has passed. */
   sweep(): void;
   size(): number;
@@ -76,7 +109,10 @@ interface Entry<T> {
   value: T | null;
   /** Read by the bot-added flow: nothing more is accepted for this join. */
   taken: boolean;
-  waiters: Array<() => void>;
+  gaveUp: boolean;
+  /** Set when the entry is dropped (removed, expired, replaced). */
+  gone: boolean;
+  waiters: Set<() => void>;
 }
 
 export function createJoinHistory<T>(
@@ -87,12 +123,20 @@ export function createJoinHistory<T>(
   const maxGroups = opts.maxGroups ?? MAX_JOIN_HISTORY_GROUPS;
   const entries = new Map<string, Entry<T>>();
 
+  function wake(e: Entry<T>): void {
+    for (const w of [...e.waiters]) w();
+  }
+
+  function drop(chat: string, e: Entry<T>): void {
+    if (entries.get(chat) === e) entries.delete(chat);
+    e.value = null;
+    e.gone = true;
+    wake(e);
+  }
+
   function sweep(): void {
     for (const [chat, e] of [...entries]) {
-      if (now() - e.openedAt < windowMs) continue;
-      entries.delete(chat);
-      e.value = null;
-      wake(e);
+      if (now() - e.openedAt >= windowMs) drop(chat, e);
     }
   }
 
@@ -101,20 +145,14 @@ export function createJoinHistory<T>(
     const e = entries.get(chat);
     if (!e) return null;
     if (now() - e.openedAt >= windowMs) {
-      entries.delete(chat);
-      e.value = null;
-      wake(e);
+      drop(chat, e);
       return null;
     }
     return e;
   }
 
-  function wake(e: Entry<T>): void {
-    const waiting = e.waiters.splice(0);
-    for (const w of waiting) w();
-  }
-
   function settled(e: Entry<T>): JoinHistoryOutcome | null {
+    if (e.gone) return "none";
     if (e.value !== null) return "captured";
     if (e.failed && !e.reading) return "failed";
     return null;
@@ -124,7 +162,12 @@ export function createJoinHistory<T>(
     opened(chat) {
       if (!chat || !isGroupJid(chat)) return false;
       sweep();
-      if (entries.has(chat)) return false;
+      const existing = entries.get(chat);
+      if (existing) {
+        // The same join seen again (it is announced more than one way).
+        if (!existing.taken) return false;
+        drop(chat, existing);
+      }
       if (entries.size >= maxGroups) return false;
       entries.set(chat, {
         openedAt: now(),
@@ -134,9 +177,16 @@ export function createJoinHistory<T>(
         failed: false,
         value: null,
         taken: false,
-        waiters: [],
+        gaveUp: false,
+        gone: false,
+        waiters: new Set(),
       });
       return true;
+    },
+
+    closed(chat) {
+      const e = chat ? entries.get(chat) : undefined;
+      if (chat && e) drop(chat, e);
     },
 
     joined: (chat) => live(chat) !== null,
@@ -175,43 +225,58 @@ export function createJoinHistory<T>(
       wake(e);
     },
 
-    async wait(chat, { sleep, quietMs = JOIN_HISTORY_QUIET_WAIT_MS, maxMs = JOIN_HISTORY_MAX_WAIT_MS }) {
-      const startedAt = now();
-      // Counted as well as measured, so a sleep that returns without the
-      // clock moving (a test stub) still ends the wait.
-      let slept = 0;
-      for (;;) {
-        const e = live(chat);
-        if (!e) return "none";
-        const done = settled(e);
-        if (done) return done;
-        const elapsed = Math.max(now() - startedAt, slept);
-        const limit = e.announced ? maxMs : quietMs;
-        if (elapsed >= limit) return e.announced ? "timeout" : "none";
-        const remaining = limit - elapsed;
-        let woken = false;
-        await Promise.race([
-          new Promise<void>((r) =>
-            e.waiters.push(() => {
-              woken = true;
-              r();
-            }),
-          ),
-          sleep(remaining),
-        ]);
-        if (!woken) slept += remaining;
-      }
+    wait(chat, { schedule, quietAfterJoinMs = JOIN_HISTORY_QUIET_AFTER_JOIN_MS, maxMs = JOIN_HISTORY_MAX_WAIT_MS }) {
+      const first = live(chat);
+      if (!first) return Promise.resolve<JoinHistoryOutcome>("none");
+      const e = first;
+      const askedAt = now();
+      return new Promise<JoinHistoryOutcome>((resolve) => {
+        let timer: { cancel(): void } | null = null;
+        let over = false;
+        const finish = (outcome: JoinHistoryOutcome) => {
+          if (over) return;
+          over = true;
+          timer?.cancel();
+          timer = null;
+          e.waiters.delete(check);
+          if (outcome !== "captured" && !e.gone) e.gaveUp = true;
+          resolve(outcome);
+        };
+        /** `due`: the timer for the current deadline has fired. */
+        function check(due = false): void {
+          if (over) return;
+          const done = settled(e);
+          if (done) return finish(done);
+          const deadline = e.announced ? askedAt + maxMs : e.openedAt + quietAfterJoinMs;
+          const remaining = deadline - now();
+          // `due` also ends it when a stubbed clock did not move.
+          if (remaining <= 0 || (due && armedFor === deadline)) return finish(e.announced ? "timeout" : "none");
+          if (armedFor === deadline) return;
+          timer?.cancel();
+          armedFor = deadline;
+          timer = schedule(() => check(true), remaining);
+        }
+        let armedFor: number | null = null;
+        e.waiters.add(check);
+        check();
+      });
+    },
+
+    peek(chat) {
+      return live(chat)?.value ?? null;
     },
 
     take(chat) {
       const e = live(chat);
-      if (!e) return null;
+      if (!e || e.value === null) return null;
       const value = e.value;
       e.value = null;
       e.taken = true;
       return value;
     },
 
+    gaveUp: (chat) => live(chat)?.gaveUp === true,
+    waiting: (chat) => entries.get(chat)?.waiters.size ?? 0,
     sweep,
     size: () => entries.size,
   };

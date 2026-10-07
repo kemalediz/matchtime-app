@@ -8,7 +8,7 @@
  *     (the adder's "send recent messages" switch). Only the Baileys driver
  *     can read it (`driver.joinHistory`). The driver does the waiting: up
  *     to about 25 seconds when a shared-history notice or bundle was seen,
- *     about 8 seconds when there was no sign of one.
+ *     until 10 seconds after the join when there was no sign of one.
  *  2. What the socket delivered live, from the driver's buffer
  *     (`fetchRecentGroupMessages`). This is what the capture has always
  *     read (2026-09-17), and in practice it holds nothing for a group the

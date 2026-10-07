@@ -386,14 +386,23 @@ export interface WaDriver {
    * this group (the adder's "send recent messages" switch), if any.
    *
    * WAITS for them: up to about 25 seconds when a shared-history notice or
-   * bundle was seen for the group, about 8 seconds when there was no sign
-   * of one. Then hands over what was captured and forgets it. Only ever
+   * bundle was seen for the group, until 10 seconds after the join when
+   * there was no sign of one. Then hands over what was captured and forgets it. Only ever
    * holds anything for a group the bot was just added to.
    *
    * Optional: only the Baileys driver can see the bundle. NEVER throws; an
    * empty `messages` means "use `fetchRecentGroupMessages` as before".
    */
   joinHistory?(groupId: string, selfIds: string[]): Promise<JoinHistoryCapture>;
+
+  /**
+   * Tells the driver which groups the bot already serves (a club's group).
+   * A shared-history bundle in one of those is never downloaded, even
+   * straight after a removal and re-add: it is a live club's chat, and
+   * the bot-added flow stops at "already monitored" without reading it.
+   * Until this is called the driver assumes it serves none.
+   */
+  ignoreJoinHistoryWhen?(isServedGroup: (groupId: string) => boolean): void;
 
   /**
    * Every one-to-one chat, for `BOT_RECOVER_DM_REPLIES=1` only.
