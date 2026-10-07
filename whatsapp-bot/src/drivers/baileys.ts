@@ -188,6 +188,14 @@ import {
 import { createRetryCounterCache } from "../baileys/retry-cache.js";
 import { createReplayBuffer, type ReplayBuffer } from "../baileys/replay.js";
 import { mapInboundMessage, skipReason, toNumber } from "../baileys/inbound.js";
+import {
+  JOIN_WATCH_MS,
+  createJoinWatch,
+  formatHistoryMarkerLine,
+  formatHistorySetLines,
+  formatHistoryStatusLine,
+  formatUnreadContentLine,
+} from "../baileys/history-sync.js";
 import { buildInboundView, rawOf, type BaileysInboundView } from "../baileys/inbound-view.js";
 import { mapReaction, type ReactionEvent } from "../baileys/reaction.js";
 import { createContactDirectory, type ContactDirectory } from "../baileys/contacts.js";
@@ -486,6 +494,9 @@ function emptyStats(): BaileysInboundStats {
   };
 }
 
+/** `WebMessageInfo.StubType.GROUP_CREATE`: what being put in a group looks like to us. */
+const GROUP_CREATE_STUB = 20;
+
 export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
   const store = deps.store ?? createSentMessageStore<proto.IMessage>();
   const contacts = deps.contacts ?? createContactDirectory();
@@ -510,6 +521,19 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
       (t as { unref?: () => void }).unref?.();
       return { cancel: () => clearTimeout(t) };
     });
+  // Diagnostic only (baileys/history-sync.ts): a tally of what reaches a
+  // group in the minutes after we are added to it. Counts and reasons.
+  const joinWatch = createJoinWatch({ now });
+  function watchJoin(chat: string | null | undefined, joinedAtSec?: number): void {
+    if (!joinWatch.opened(chat, joinedAtSec)) return;
+    log(
+      `[baileys][history-sync] after-join ${chat}: tallying everything that arrives in this group ` +
+        `for the next ${Math.round(JOIN_WATCH_MS / 1000)}s`,
+    );
+    schedule(() => {
+      for (const l of joinWatch.flush()) log(l);
+    }, JOIN_WATCH_MS + 1000);
+  }
   const undecryptable = createUndecryptableTracker({
     now,
     schedule,
@@ -768,6 +792,7 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
     const lid = authorLid(meta.author);
     if (lid) event.authorLid = lid;
     log(`[baileys][groups] added to a new group ${meta.id} ${JSON.stringify(meta.subject ?? "")} by ${author ?? "?"}`);
+    watchJoin(meta.id);
     handJoin(event, true);
   }
 
@@ -839,10 +864,24 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
       `[baileys][msg] upsert=${upsertType}${requestId ? ` requestId=${requestId}` : ""} ` +
       `chat=${key.remoteJid ?? "?"} id=${key.id ?? "?"} age=${ageOf(m)}s`;
 
+    // Diagnostic only (baileys/history-sync.ts): names an upsert that is a
+    // way history travels. It changes nothing about what happens to it.
+    const historyLine = formatHistoryMarkerLine(m, upsertType);
+    if (historyLine) log(historyLine);
+    // The join notice itself (Baileys' stub for "you were put in this
+    // group") opens the tally, so nothing that follows it is missed while
+    // the group events are still being worked through on their own chain.
+    if (!m?.message && (m as { messageStubType?: unknown })?.messageStubType === GROUP_CREATE_STUB) {
+      watchJoin(key.remoteJid, toNumber(m?.messageTimestamp));
+    }
+    const tally = (outcome: string) =>
+      joinWatch.note(key.remoteJid, { upsertType, sentAtSec: toNumber(m?.messageTimestamp), outcome });
+
     const drop = inboundDropReason(key, { keepOwn: true });
     if (drop) {
       stats.skipped++;
       log(`${line} skipped: ${drop}`);
+      tally(`skipped: ${drop}`);
       return;
     }
     // A message Baileys could not decrypt. NOT a system notice and NOT
@@ -851,6 +890,11 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
     // (baileys/undecryptable.ts). Held until then, or reported lost.
     if (isCiphertextStub(m)) {
       const entry = undecryptable.noteStub(m, upsertType);
+      tally(
+        !entry
+          ? "skipped: an undecryptable copy of a message already handed up"
+          : `could not be decrypted${entry.repeat ? " again" : ""} ("${entry.reason}")`,
+      );
       if (!entry) {
         log(`${line} skipped: an undecryptable copy of a message already handed up`);
       } else if (entry.repeat) {
@@ -889,18 +933,25 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
     // onPollVote, and never reaches the analyzer.
     if (pollUpdateOf(m)) {
       log(`${line} poll vote`);
+      tally("a poll vote");
       await receivePollVote(m);
       return;
     }
     const mapped = mapInboundMessage(m);
     if (!mapped) {
       stats.skipped++;
-      log(`${line} skipped: ${skipReason(m)}`);
+      const reason = skipReason(m);
+      log(`${line} skipped: ${reason}`);
+      // Diagnostic only: WHAT was on a message we could not put a type to,
+      // by field name. This is where a shared-history bundle shows up.
+      if (reason === "no content type") log(formatUnreadContentLine(m, upsertType));
+      tally(`skipped: ${reason}`);
       return;
     }
     if (!firstSighting(`${mapped.chatJid}|${mapped.id}`)) {
       stats.duplicates++;
       log(`${line} duplicate delivery, not handed up again`);
+      tally("a duplicate delivery");
       return;
     }
     undecryptable.delivered(mapped.id);
@@ -935,6 +986,7 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
         `name=${mapped.pushName ?? "?"} type=${mapped.type} bodyLen=${mapped.body.length} ` +
         `media=${mapped.hasMedia} mentions=${mapped.mentionedJids.length}`,
     );
+    tally(`handed up (${mapped.type})`);
     hand(messageHandlers, view as InboundMessage, "onMessage");
   }
 
@@ -998,6 +1050,14 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
         })
         .catch((err) => error(`[baileys][reaction] batch failed: ${errorText(err)}`));
     });
+
+    // Diagnostic only: what WhatsApp hands us as history, in counts. The
+    // messages are NOT remembered, replayed or handed up; Baileys builds
+    // this event whether or not anyone listens (baileys/history-sync.ts).
+    conn.on("messaging-history.set", (set) => {
+      for (const l of formatHistorySetLines(set)) log(l);
+    });
+    conn.on("messaging-history.status", (status) => log(formatHistoryStatusLine(status)));
 
     conn.on("contacts.upsert", (list) => {
       for (const c of Array.isArray(list) ? list : []) contacts.learnContact(c);
