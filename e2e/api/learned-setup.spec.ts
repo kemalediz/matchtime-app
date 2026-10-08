@@ -127,7 +127,13 @@ test("refuses without the cron secret", async ({ request }) => {
 });
 
 test("flag off: nothing is read, changed or sent", async ({ request }) => {
-  expect(await sweep(request, "0")).toEqual({ enabled: false, considered: 0, outcomes: [] });
+  expect(await sweep(request, "0")).toEqual({
+    enabled: false,
+    considered: 0,
+    outcomes: [],
+    // The captured-chat expiry rides on this cron; nothing here is 7 days old.
+    expired: { connectRequests: 0, onboardingSessions: 0 },
+  });
   expect((await org(A.org))!.rollingSquadEnabled).toBe(false);
   expect(await learning(A.org)).toBeNull();
   expect((await history(A.org))!.h).not.toBeNull();

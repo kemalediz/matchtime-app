@@ -585,6 +585,9 @@ model OnboardingSession {
   /// runOnboardingEnrichment. Persisted at bot-added; read as the fallback
   /// at completion when the completing /analyze request omits its own
   /// enrichmentHistory. null = none captured → no enrichment (unchanged).
+  /// Set back to null once the session is completed or abandoned, or 7
+  /// days after `createdAt`, by src/lib/captured-history-expiry.ts
+  /// (2026-10-08).
   capturedHistory     Json?
 
   createdAt DateTime @default(now())
@@ -2082,7 +2085,9 @@ model ClubConnect {
   /// F3 (2026-10-05): the chat history WhatsApp shared when MatchTime was
   /// added (HistoryMessage[], oldest first), kept ONLY until the learned
   /// setup has read it once after approval, then set back to NULL. Also
-  /// cleared when the club is rejected. NULL = none captured.
+  /// cleared when the club is rejected or MatchTime is removed, and by the
+  /// 7-day expiry measured from `linkedAt` (2026-10-08, see
+  /// src/lib/captured-history-expiry.ts). NULL = none captured.
   capturedHistory Json?
 
   createdAt DateTime @default(now())
