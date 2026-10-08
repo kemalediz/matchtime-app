@@ -1,5 +1,5 @@
 import { namesForJoiners } from "./join-names.js";
-import type { GroupMembershipEvent, InboundMessage, InboundPollVote } from "./driver.js";
+import type { GroupMembershipEvent, InboundPollVote } from "./driver.js";
 import { baileysLiveBanner, createDriver } from "./driver-select.js";
 import {
   setMonitoredGroups,
@@ -20,13 +20,13 @@ import {
 } from "./handlers.js";
 import { reactionChatId, routeAdminGroupInbound } from "./admin-group.js";
 import { degradedMessage } from "./degraded.js";
-import { asString, readInboundHeadline, readMessageBody, readNotifyName, safePath, safeRead } from "./wa-read.js";
+import { asString, readInboundHeadline, safePath, safeRead } from "./wa-read.js";
+import { createHistoryCollector } from "./history-capture.js";
 import {
   handleGroupJoinForSelfAdd,
   handleGroupLeaveForSelfRemoval,
   handleMonitoredGroupSelfRemoval,
   sweepForMissedSelfAdds,
-  type HistoryMessageForServer,
 } from "./bot-added.js";
 import {
   describeOrgSnapshotDiff,
@@ -843,71 +843,14 @@ async function main() {
       .filter((p) => p.length > 0);
   }
 
-  // Self-setup history capture (2026-09-17): the group's recent messages,
-  // shaped for the server, WITHOUT getChatById (the bare Chat handle from
-  // PR #84). WhatsApp may not have synced history to a freshly-joined
-  // member yet, so this retries a couple of times. Best-effort: any
-  // failure returns [] and the intro still goes out.
-  async function collectHistoryForServer(
-    groupId: string,
-    selfIds: string[],
-  ): Promise<HistoryMessageForServer[]> {
-    const LIMIT = 600;
-    const ATTEMPTS = 3;
-    const RETRY_MS = 4000;
-    const MIN_USEFUL = 5; // fewer → assume history hasn't synced yet
-    const self = new Set(selfIds);
-
-    let raw: InboundMessage[] = [];
-    for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
-      try {
-        raw = await driver.fetchRecentGroupMessages(groupId, LIMIT);
-      } catch (err) {
-        raw = [];
-        console.warn(
-          `[bot-added] history fetch attempt ${attempt} failed: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
-      console.log(`[bot-added] history fetch attempt ${attempt}: got ${raw.length} msgs`);
-      if (raw.length >= MIN_USEFUL) break;
-      if (attempt < ATTEMPTS) await new Promise((r) => setTimeout(r, RETRY_MS));
-    }
-    if (raw.length === 0) return [];
-
-    // Oldest → newest; never rely on the page's order.
-    const dated = raw.map((m) => ({ m, t: Number(safeRead(m, "timestamp") ?? 0) || 0 }));
-    dated.sort((a, b) => a.t - b.t);
-
-    const out: HistoryMessageForServer[] = [];
-    for (const { m, t } of dated) {
-      try {
-        if (safeRead(m, "fromMe") === true) continue;
-        const author = asString(safeRead(m, "author")) ?? asString(safeRead(m, "from")) ?? "";
-        if (self.has(author)) continue;
-        const text = readMessageBody(m);
-        if (!text.trim()) continue;
-        // The pushname is on the serialised message (no page call), which
-        // is what survives a broken build. Nameless rows are dropped by the
-        // server anyway.
-        const name = readNotifyName(m);
-        if (!name) continue;
-        let authorPhone: string | null = null;
-        if (author.endsWith("@c.us")) authorPhone = author.replace("@c.us", "").replace(/\D/g, "") || null;
-        out.push({
-          author: name,
-          authorPhone,
-          text,
-          timestamp: new Date((t || Date.now() / 1000) * 1000).toISOString(),
-        });
-      } catch {
-        /* skip this message; never abort the whole capture */
-      }
-    }
-    console.log(
-      `[bot-added] history fetched ${raw.length} msgs (mapped ${out.length} after filtering) for ${groupId}`,
-    );
-    return out;
-  }
+  // Self-setup history capture: the messages WhatsApp shared with us at
+  // the join when the adder's switch was on, else what the live buffer
+  // holds. Best-effort: any failure returns [] and the intro still goes
+  // out. See history-capture.ts.
+  const collectHistoryForServer = createHistoryCollector({ driver });
+  // A club's own group never has shared history read, even on a re-add:
+  // the same check the bot-added flow answers "already monitored" with.
+  driver.ignoreJoinHistoryWhen?.(isMonitoredGroup);
 
   driver.onGroupJoin(async (notification: GroupMembershipEvent) => {
     try {

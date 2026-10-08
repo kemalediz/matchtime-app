@@ -382,6 +382,29 @@ export interface WaDriver {
   fetchRecentGroupMessages(groupId: string, limit: number): Promise<InboundMessage[]>;
 
   /**
+   * The recent messages WhatsApp shared with the bot when it was added to
+   * this group (the adder's "send recent messages" switch), if any.
+   *
+   * WAITS for them: up to about 25 seconds when a shared-history notice or
+   * bundle was seen for the group, until 10 seconds after the join when
+   * there was no sign of one. Then hands over what was captured and forgets it. Only ever
+   * holds anything for a group the bot was just added to.
+   *
+   * Optional: only the Baileys driver can see the bundle. NEVER throws; an
+   * empty `messages` means "use `fetchRecentGroupMessages` as before".
+   */
+  joinHistory?(groupId: string, selfIds: string[]): Promise<JoinHistoryCapture>;
+
+  /**
+   * Tells the driver which groups the bot already serves (a club's group).
+   * A shared-history bundle in one of those is never downloaded, even
+   * straight after a removal and re-add: it is a live club's chat, and
+   * the bot-added flow stops at "already monitored" without reading it.
+   * Until this is called the driver assumes it serves none.
+   */
+  ignoreJoinHistoryWhen?(isServedGroup: (groupId: string) => boolean): void;
+
+  /**
    * Every one-to-one chat, for `BOT_RECOVER_DM_REPLIES=1` only.
    *
    * Plan §1.6 lists this as one of three things Baileys cannot do, and as
@@ -389,4 +412,24 @@ export interface WaDriver {
    * calls it, not because a second driver will implement it.
    */
   listDmChats(): Promise<DmChatRef[]>;
+}
+
+/** One shared-history message, in the shape the server's `enrichmentHistory` takes. */
+export interface JoinHistoryMessage {
+  author: string;
+  authorPhone: string | null;
+  text: string;
+  /** ISO 8601. */
+  timestamp: string;
+}
+
+export interface JoinHistoryCapture {
+  /**
+   * captured: a bundle was read. failed: one arrived and could not be
+   * read. none: no sign of shared history. timeout: one was announced and
+   * was not ready in time.
+   */
+  outcome: "captured" | "failed" | "none" | "timeout";
+  /** Oldest first. Empty unless `captured` (and possibly empty even then). */
+  messages: JoinHistoryMessage[];
 }

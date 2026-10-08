@@ -362,6 +362,27 @@ export function historyMarkerOf(msg: WAMessage | null | undefined): string | nul
 }
 
 /**
+ * The shared-history parts of an upserted message, if it carries any: the
+ * bundle (the pointer to the messages) and/or the notice. Null otherwise.
+ * This is what `drivers/baileys.ts` reads to capture the history shared at
+ * a join (`group-history-bundle.ts`). Never throws.
+ */
+export function groupHistoryCarrierOf(
+  msg: WAMessage | null | undefined,
+): { bundle: proto.Message.IMessageHistoryBundle | null; notice: boolean } | null {
+  try {
+    const raw = msg?.message as Record<string, unknown> | null | undefined;
+    if (!raw) return null;
+    const content = unwrapAll(raw).content as proto.IMessage;
+    const bundle = content.messageHistoryBundle ?? null;
+    const notice = !!content.messageHistoryNotice;
+    return bundle || notice ? { bundle, notice } : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * The full line for a history carrier seen in `messages.upsert`, or null.
  * The chat is printed only when it is a group: a history sync notification
  * travels in the chat with our own number.
