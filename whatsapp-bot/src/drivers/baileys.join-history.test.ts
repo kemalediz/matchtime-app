@@ -58,6 +58,8 @@ async function opened(fetchMedia: BundleFetch) {
   const sleeps: number[] = [];
   /** Reader waits that ran to their end, in ms. */
   const waited: number[] = [];
+  /** Timers over 25 s (sweeps, the read deadline): fired by hand. */
+  const long: Array<{ ms: number; fn: () => void }> = [];
   const driver = makeBaileysDriver({
     connection: connection as never,
     now: () => clock,
@@ -70,6 +72,7 @@ async function opened(fetchMedia: BundleFetch) {
     // the long ones (window sweeps, tallies) never fire here.
     schedule: (fn, ms) => {
       let cancelled = false;
+      if (ms > 25_000) long.push({ ms, fn });
       if (ms <= 25_000) {
         setImmediate(() => {
           if (cancelled) return;
@@ -110,6 +113,7 @@ async function opened(fetchMedia: BundleFetch) {
     handed,
     sleeps,
     waited,
+    long,
     collect,
     advance: (ms: number) => {
       clock += ms;
@@ -134,7 +138,7 @@ function wa(
   } as WAMessage;
 }
 
-const joinNotice = (chat = GROUP, ts = JOINED) => wa(chat, null, "JOIN", ts, { messageStubType: 20 });
+const joinNotice = (chat = GROUP, ts = JOINED, id = "JOIN") => wa(chat, null, id, ts, { messageStubType: 20 });
 const notice = (chat = GROUP) =>
   wa(chat, { messageHistoryNotice: { messageHistoryMetadata: { messageCount: 5 } } }, "AC1D00000000000000N1", JOINED + 1);
 const carrier = (bundle: proto.Message.IMessageHistoryBundle, chat = GROUP, id = "AC0F00000000000000B1") =>
@@ -196,10 +200,10 @@ describe("the add of 2026-10-08, replayed: join notice, bundle, notice", () => {
       `[baileys][join-history] ${GROUP}: bundle AC0F00000000000000B1: downloaded ${enc.length} bytes (http 200); ` +
         `decrypted with "Group History" (candidate 1 of 4, download hash ok, content hash ok) to ` +
         `${pack(encodeGroupHistory(SHARED), "zlib").length} bytes; unpacked as zlib inflate (inflate needed: yes) to ` +
-        `${plainBytes} bytes; decoded as GroupHistory: entries=6 read=6 tooLarge=0 valid=6 otherChat=0 withText=6 authors=5 kept=6 ` +
+        `${plainBytes} bytes; decoded as GroupHistory: entries=6 read=6 tooLarge=0 valid=6 otherChat=0 withText=6 textCut=0 authors=5 kept=6 ` +
         "(stated messageCount=6)",
       `[baileys][join-history] ${GROUP}: handed to the bot-added flow: 5 message(s) from 4 author(s): 1 with a known name, ` +
-        "3 given a stand-in name; 4 message(s) with a phone number; left out: 1 of our own, 0 with no author, 0 with an unusable date",
+        "3 given a stand-in name; 4 message(s) with a phone number; 0 cut to 1000 characters; left out: 1 of our own, 0 with no author, 0 with an unusable date",
     ]);
 
     // PR #216's diagnostic lines are still printed.
@@ -443,28 +447,6 @@ describe("a hostile bundle (H1), through the driver", () => {
     ]);
   });
 
-  it("reads one bundle at a time across groups: a second, in another group we just joined, is refused", async () => {
-    const { bundle } = synthetic();
-    const { fetchBundle, calls } = (() => {
-      const calls: string[] = [];
-      const fetchBundle: BundleFetch = (url) => {
-        calls.push(url);
-        return new Promise(() => {});
-      };
-      return { fetchBundle, calls };
-    })();
-    const t = await opened(fetchBundle);
-    t.sock.emit("messages.upsert", { messages: [joinNotice(GROUP), joinNotice(ESTABLISHED)], type: "notify" });
-    t.sock.emit("messages.upsert", {
-      messages: [carrier(bundle, GROUP), carrier(bundle, ESTABLISHED, "AC0F00000000000000B9")],
-      type: "notify",
-    });
-    await flush();
-    expect(calls).toHaveLength(1);
-    expect(t.join().at(-1)).toBe(
-      `[baileys][join-history] ${ESTABLISHED}: bundle AC0F00000000000000B9 refused: another bundle is being read (one at a time); it is not downloaded`,
-    );
-  });
 
   it("gives a failed read no second bundle", async () => {
     const { bundle } = synthetic();
@@ -609,5 +591,246 @@ describe("one bad row does not cost the capture (L2)", () => {
     });
     expect(await t.driver.joinHistory!(GROUP, selfIdsThatThrow)).toEqual({ outcome: "failed", messages: [] });
     expect(await t.collect(GROUP, SELF_IDS)).toHaveLength(5);
+  });
+});
+
+/** A fetch whose answers the test releases one at a time. */
+function gatedFetch() {
+  const pending: Array<{ url: string; answer(body: Buffer | null, status?: number): void; fail(err: Error): void }> = [];
+  const fetchBundle: BundleFetch = (url) =>
+    new Promise((resolve, reject) => {
+      pending.push({
+        url,
+        answer: (body, status = 200) => resolve(new Response(body ? new Uint8Array(body) : null, { status })),
+        fail: reject,
+      });
+    });
+  return { fetchBundle, pending };
+}
+
+const OTHER = ESTABLISHED; // a second group we are added to in these tests
+function otherGroupBundle(text: string) {
+  const m = old("0900", text, { participant: BOB_PN, ts: JOINED - 5 });
+  m.key.remoteJid = OTHER;
+  return encryptBundle(pack(encodeGroupHistory([m]), "zlib"), { messageCount: 1, directPath: "/v/other.enc" });
+}
+
+describe("one bundle at a time, and the next one waits its turn (review 2, item 3)", () => {
+  it("two groups add us at once: the second bundle is queued, read when the first finishes, and both get history", async () => {
+    const first = synthetic();
+    const second = otherGroupBundle("hello from the other group");
+    const g = gatedFetch();
+    const t = await opened(g.fetchBundle);
+    t.sock.emit("messages.upsert", { messages: [joinNotice(GROUP), joinNotice(OTHER, JOINED, "JOIN2")], type: "notify" });
+    t.sock.emit("messages.upsert", {
+      messages: [carrier(first.bundle, GROUP), carrier(second.bundle, OTHER, "AC0F00000000000000B9")],
+      type: "notify",
+    });
+    await flush();
+    expect(g.pending).toHaveLength(1); // one download at a time
+    expect(t.join().at(-1)).toBe(
+      `[baileys][join-history] ${OTHER}: bundle AC0F00000000000000B9 queued: another bundle is being read (one at a time); it is read next`,
+    );
+
+    g.pending[0].answer(first.enc);
+    await flush();
+    expect(g.pending).toHaveLength(2);
+    expect(g.pending[1].url).toContain("/v/other.enc");
+    g.pending[1].answer(second.enc);
+    await flush();
+
+    expect(await t.collect(GROUP, SELF_IDS)).toHaveLength(5);
+    expect((await t.collect(OTHER, SELF_IDS)).map((m) => m.text)).toEqual(["hello from the other group"]);
+    expect(t.waited).toEqual([]);
+  });
+
+  it("holds at most one queued bundle per group, and drops it when we are removed", async () => {
+    const first = synthetic();
+    const second = otherGroupBundle("x");
+    const g = gatedFetch();
+    const t = await opened(g.fetchBundle);
+    t.sock.emit("messages.upsert", { messages: [joinNotice(GROUP), joinNotice(OTHER, JOINED, "JOIN2")], type: "notify" });
+    t.sock.emit("messages.upsert", {
+      messages: [
+        carrier(first.bundle, GROUP),
+        carrier(second.bundle, OTHER, "AC0F00000000000000B8"),
+        carrier(second.bundle, OTHER, "AC0F00000000000000B9"),
+      ],
+      type: "notify",
+    });
+    await flush();
+    expect(t.join().filter((l) => l.includes("queued"))).toHaveLength(2);
+    t.sock.emit("group-participants.update", {
+      id: OTHER,
+      author: ADDER_LID,
+      participants: [{ id: FAKE_ME_LID }],
+      action: "remove",
+    });
+    await flush();
+    g.pending[0].answer(first.enc);
+    await flush();
+    expect(g.pending).toHaveLength(1); // the queued one was dropped, not downloaded
+  });
+
+  it("a group re-adds us while its first bundle is still downloading: the new stay's bundle is read next, the old result is discarded", async () => {
+    const first = synthetic();
+    const second = synthetic([old("0101", "after the re-add", { participant: BOB_PN, ts: JOINED + 50 })]);
+    const g = gatedFetch();
+    const t = await opened(g.fetchBundle);
+    t.sock.emit("messages.upsert", { messages: [joinNotice(), carrier(first.bundle)], type: "notify" });
+    await flush();
+    expect(g.pending).toHaveLength(1);
+
+    t.advance(40_000);
+    t.sock.emit("messages.upsert", {
+      messages: [joinNotice(GROUP, JOINED + 40, "JOIN-AGAIN"), carrier(second.bundle, GROUP, "AC0F00000000000000C1")],
+      type: "notify",
+    });
+    await flush();
+    expect(t.join().at(-1)).toContain("bundle AC0F00000000000000C1 queued");
+
+    g.pending[0].answer(first.enc); // the first stay's download finally lands
+    await flush();
+    expect(t.join().some((l) => l.includes("bundle AC0F00000000000000B1: discarded: it belongs to an earlier stay"))).toBe(true);
+    expect(g.pending).toHaveLength(2);
+    g.pending[1].answer(second.enc);
+    await flush();
+    expect((await t.collect(GROUP, SELF_IDS)).map((m) => m.text)).toEqual(["after the re-add"]);
+  });
+});
+
+describe("the read cannot hold the lock for ever (review 2, items 1 and 2)", () => {
+  it("a read that never settles is abandoned at the deadline: the entry fails, the lock is freed, the next bundle is read", async () => {
+    const first = synthetic();
+    const second = otherGroupBundle("still served");
+    const g = gatedFetch();
+    const t = await opened(g.fetchBundle);
+    t.sock.emit("messages.upsert", { messages: [joinNotice(GROUP), joinNotice(OTHER, JOINED, "JOIN2")], type: "notify" });
+    t.sock.emit("messages.upsert", {
+      messages: [carrier(first.bundle, GROUP), carrier(second.bundle, OTHER, "AC0F00000000000000B9")],
+      type: "notify",
+    });
+    await flush();
+    const deadline = t.long.filter((x) => x.ms === 30_000);
+    expect(deadline).toHaveLength(1);
+    deadline[0].fn();
+    await flush();
+    expect(
+      t.join().some((l) =>
+        l.endsWith("bundle AC0F00000000000000B1: FAILED: the read did not finish within 30s and was abandoned"),
+      ),
+    ).toBe(true);
+    expect(await t.driver.joinHistory!(GROUP, SELF_IDS)).toEqual({ outcome: "failed", messages: [] });
+    expect(t.waited).toEqual([]);
+
+    // The lock is free: the queued bundle is now being read.
+    expect(g.pending).toHaveLength(2);
+    g.pending[1].answer(second.enc);
+    await flush();
+    expect((await t.collect(OTHER, SELF_IDS)).map((m) => m.text)).toEqual(["still served"]);
+
+    // And the abandoned read finishing afterwards changes nothing.
+    g.pending[0].answer(first.enc);
+    await flush();
+    expect(await t.collect(GROUP, SELF_IDS)).toEqual([]);
+    expect(t.join().some((l) => l.includes("bundle AC0F00000000000000B1: downloaded"))).toBe(false);
+  });
+
+  it("a throw while starting a read leaves neither the lock nor the entry held", async () => {
+    const { enc, bundle } = synthetic();
+    const second = otherGroupBundle("after the throw");
+    let serve = enc;
+    let boom = true;
+    const logs: string[] = [];
+    const t = await opened(async () => new Response(new Uint8Array(serve), { status: 200 }));
+    // The log sink throws once, on the line written as a read starts.
+    const push = t.logs.push.bind(t.logs);
+    t.logs.push = (...lines: string[]) => {
+      if (boom && lines[0]?.includes(": downloading")) {
+        boom = false;
+        throw new Error("log sink is full");
+      }
+      logs.push(...lines);
+      return push(...lines);
+    };
+    t.sock.emit("messages.upsert", { messages: [joinNotice(), carrier(bundle)], type: "notify" });
+    await flush();
+    // The first group's reader is not left waiting 25 s on a read that never started.
+    expect(await t.driver.joinHistory!(GROUP, SELF_IDS)).toEqual({ outcome: "failed", messages: [] });
+    expect(t.waited).toEqual([]);
+
+    serve = second.enc;
+    t.sock.emit("messages.upsert", {
+      messages: [joinNotice(OTHER, JOINED, "JOIN2"), carrier(second.bundle, OTHER, "AC0F00000000000000B9")],
+      type: "notify",
+    });
+    await flush();
+    expect((await t.collect(OTHER, SELF_IDS)).map((m) => m.text)).toEqual(["after the throw"]);
+  });
+});
+
+describe("a new join notice after a removal we never saw (review 2, item 4)", () => {
+  it("first stay had no history: the second stay's bundle is read", async () => {
+    const { enc, bundle } = synthetic();
+    const t = await opened(servingFetch(enc).fetchBundle);
+    t.sock.emit("messages.upsert", { messages: [joinNotice()], type: "notify" });
+    await flush();
+    expect(await t.collect(GROUP, SELF_IDS)).toEqual([]);
+    t.advance(60_000);
+    t.sock.emit("messages.upsert", {
+      messages: [joinNotice(GROUP, JOINED + 70, "JOIN-AGAIN"), carrier(bundle)],
+      type: "notify",
+    });
+    await flush();
+    expect(await t.collect(GROUP, SELF_IDS)).toHaveLength(5);
+  });
+
+  it("first stay's bundle failed: the second stay's bundle is read", async () => {
+    const { enc, bundle } = synthetic();
+    let status = 500;
+    const t = await opened(async () => new Response(status === 200 ? new Uint8Array(enc) : null, { status }));
+    t.sock.emit("messages.upsert", { messages: [joinNotice(), carrier(bundle)], type: "notify" });
+    await flush();
+    status = 200;
+    t.advance(60_000);
+    t.sock.emit("messages.upsert", {
+      messages: [joinNotice(GROUP, JOINED + 60, "JOIN-AGAIN"), carrier(bundle, GROUP, "AC0F00000000000000C1")],
+      type: "notify",
+    });
+    await flush();
+    expect(await t.collect(GROUP, SELF_IDS)).toHaveLength(5);
+    expect(t.waited).toEqual([]);
+  });
+
+  it("first stay's capture was never collected: the second stay gets its own, not the old one", async () => {
+    const first = synthetic();
+    const second = synthetic([old("0101", "second stay", { participant: BOB_PN, ts: JOINED + 50 })]);
+    let serve = first.enc;
+    const t = await opened(async () => new Response(new Uint8Array(serve), { status: 200 }));
+    t.sock.emit("messages.upsert", { messages: [joinNotice(), carrier(first.bundle)], type: "notify" });
+    await flush();
+    serve = second.enc;
+    t.advance(60_000);
+    t.sock.emit("messages.upsert", {
+      messages: [joinNotice(GROUP, JOINED + 60, "JOIN-AGAIN"), carrier(second.bundle, GROUP, "AC0F00000000000000C1")],
+      type: "notify",
+    });
+    await flush();
+    expect((await t.collect(GROUP, SELF_IDS)).map((m) => m.text)).toEqual(["second stay"]);
+  });
+});
+
+describe("one message's text is capped before it leaves the Pi (review 2, residual)", () => {
+  it("hands over at most 1,000 characters a message and says how many were cut", async () => {
+    const { enc, bundle } = synthetic([
+      old("0301", "x".repeat(60_000), { participant: BOB_PN, ts: JOINED - 30 }),
+      old("0302", "short", { participant: BOB_PN, ts: JOINED - 20 }),
+    ]);
+    const t = await opened(servingFetch(enc).fetchBundle);
+    t.sock.emit("messages.upsert", { messages: [joinNotice(), carrier(bundle)], type: "notify" });
+    await flush();
+    const out = await t.collect(GROUP, SELF_IDS);
+    expect(out.map((m) => m.text.length)).toEqual([1000, 5]);
+    expect(t.join().at(-1)).toContain("1 cut to 1000 characters");
   });
 });

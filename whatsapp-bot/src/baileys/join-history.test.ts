@@ -296,3 +296,82 @@ describe("a bundle that lands after the reader gave up (M2)", () => {
     expect(h.store.take(GROUP)).toEqual(["late"]);
   });
 });
+
+describe("a new stay after a removal we never saw (review 2, item 4)", () => {
+  /** A second join notice (its own id) for a group whose entry is still open. */
+  function rejoin(h: ReturnType<typeof harness>) {
+    return h.store.opened(GROUP, "notice:SECOND");
+  }
+
+  it("the first stay had no history: the new stay's bundle is read", async () => {
+    const h = harness();
+    expect(h.store.opened(GROUP, "notice:FIRST")).toBe(true);
+    await h.advance(60_000);
+    expect(rejoin(h)).toBe(true);
+    expect(h.store.begin(GROUP)).toBe(true);
+    h.store.resolve(GROUP, ["second"]);
+    expect(h.store.take(GROUP)).toEqual(["second"]);
+  });
+
+  it("the first stay's bundle failed: the new stay gets its own attempt", async () => {
+    const h = harness();
+    h.store.opened(GROUP, "notice:FIRST");
+    h.store.begin(GROUP);
+    h.store.fail(GROUP);
+    expect(h.store.begin(GROUP)).toBe(false);
+    await h.advance(60_000);
+    expect(rejoin(h)).toBe(true);
+    expect(h.store.begin(GROUP)).toBe(true);
+    h.store.resolve(GROUP, ["second"]);
+    expect(await h.store.wait(GROUP, { schedule: h.schedule })).toBe("captured");
+  });
+
+  it("the first stay's capture was never collected: it is discarded, not handed to the new stay", async () => {
+    const h = harness();
+    h.store.opened(GROUP, "notice:FIRST");
+    h.store.begin(GROUP);
+    h.store.resolve(GROUP, ["first stay"]);
+    await h.advance(60_000);
+    expect(rejoin(h)).toBe(true);
+    expect(h.store.peek(GROUP)).toBeNull();
+    expect(h.store.begin(GROUP)).toBe(true);
+    h.store.resolve(GROUP, ["second stay"]);
+    expect(h.store.take(GROUP)).toEqual(["second stay"]);
+  });
+
+  it("a read still running for the earlier stay cannot write into the new one", () => {
+    const h = harness();
+    h.store.opened(GROUP, "notice:FIRST");
+    h.store.begin(GROUP);
+    const firstStay = h.store.stay(GROUP);
+    rejoin(h);
+    expect(h.store.stay(GROUP)).not.toBe(firstStay);
+    h.store.resolve(GROUP, ["first stay, late"], firstStay);
+    expect(h.store.peek(GROUP)).toBeNull();
+    h.store.fail(GROUP, firstStay);
+    expect(h.store.canBegin(GROUP)).toBe(true);
+  });
+
+  it("the SAME join announced more than one way is still one entry", async () => {
+    const h = harness();
+    expect(h.store.opened(GROUP)).toBe(true); // the participants update
+    await h.advance(1000);
+    expect(h.store.opened(GROUP, "notice:FIRST")).toBe(false); // then its notice
+    h.store.begin(GROUP);
+    h.store.resolve(GROUP, ["kept"]);
+    await h.advance(1000);
+    expect(h.store.opened(GROUP, "notice:FIRST")).toBe(false); // the notice delivered twice
+    expect(h.store.opened(GROUP)).toBe(false); // a late keyless signal
+    expect(h.store.peek(GROUP)).toEqual(["kept"]);
+  });
+
+  it("a keyless join signal two minutes on is a new stay too", async () => {
+    const h = harness();
+    h.store.opened(GROUP);
+    h.store.begin(GROUP);
+    h.store.fail(GROUP);
+    await h.advance(2 * 60 * 1000);
+    expect(h.store.opened(GROUP)).toBe(true);
+    expect(h.store.begin(GROUP)).toBe(true);
+  });
+});

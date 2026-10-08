@@ -207,6 +207,7 @@ import {
 } from "../baileys/history-sync.js";
 import {
   MAX_BUNDLE_MESSAGES,
+  MAX_BUNDLE_TEXT_CHARS,
   formatBundleReport,
   readGroupHistoryBundle,
   type BundleFetch,
@@ -539,6 +540,22 @@ function isoFromSeconds(sec: number): string | null {
   }
 }
 
+/**
+ * A read that has not finished by now is abandoned: the lock is freed and
+ * the entry marked failed whatever the read does afterwards. Twice the
+ * download timeout, which only asks the fetch to stop.
+ */
+const BUNDLE_READ_DEADLINE_MS = 30_000;
+
+/** One bundle waiting to be read, or being read. */
+interface BundleJob {
+  chat: string;
+  id: string;
+  bundle: proto.Message.IMessageHistoryBundle;
+  sharer: string | null;
+  sharerAlt: string | null;
+}
+
 /** A bundle's rows, with who sent the bundle (the sharer's own messages name nobody). */
 interface CapturedJoinHistory {
   rows: BundleRow[];
@@ -592,7 +609,13 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
    * (baileys/group-history-bundle.ts), and this keeps several joins at
    * once from multiplying that bound.
    */
-  let readingBundleFor: string | null = null;
+  let readingBundle: BundleJob | null = null;
+  /**
+   * Bundles that arrived while another was being read: at most ONE per
+   * group (so at most as many as the store holds groups), read in arrival
+   * order as the lock frees, dropped if their join is over by then.
+   */
+  const queuedBundles = new Map<string, BundleJob>();
   /** Set by `index.ts`: a group the bot already serves never has a bundle read. */
   let servesGroup: (groupId: string) => boolean = () => false;
   function isServed(chat: string): boolean {
@@ -603,9 +626,11 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
       return true;
     }
   }
-  function openJoinHistory(chat: string | null | undefined, how: string): void {
+  function openJoinHistory(chat: string | null | undefined, how: string, joinKey: string | null = null): void {
     try {
-      if (!joinHistory.opened(chat)) return;
+      if (!joinHistory.opened(chat, joinKey)) return;
+      // A bundle queued for an earlier stay in this group is not this stay's.
+      if (chat) queuedBundles.delete(chat);
       log(
         `${JOIN_HISTORY_PREFIX} ${chat}: we were just added (${how}); a shared history bundle for this ` +
           `group will be read for the next ${Math.round(JOIN_HISTORY_WINDOW_MS / 1000)}s`,
@@ -856,7 +881,10 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
       handJoin(mapped.event, ids.some((id) => self.has(id)));
     } else {
       // We were removed: this join is over. A re-add opens a fresh entry.
-      if (ids.some((id) => self.has(id))) joinHistory.closed(update.id);
+      if (ids.some((id) => self.has(id))) {
+        joinHistory.closed(update.id);
+        queuedBundles.delete(update.id);
+      }
       stats.leaves++;
       hand(leaveHandlers, mapped.event, "onGroupLeave");
     }
@@ -960,7 +988,7 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
       watchJoin(key.remoteJid, toNumber(m?.messageTimestamp));
       const sentAt = toNumber(m?.messageTimestamp);
       if (sentAt > 0 && Math.abs(now() / 1000 - sentAt) <= JOIN_NOTICE_FRESH_SEC) {
-        openJoinHistory(key.remoteJid, "the join notice");
+        openJoinHistory(key.remoteJid, "the join notice", key.id ? `notice:${key.id}` : null);
       }
     }
     // Shared history (a notice, or the bundle itself). Started here and
@@ -1123,56 +1151,147 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
         log(`${JOIN_HISTORY_PREFIX} ${chat}: bundle ${id} ignored: it is one of our own messages`);
         return;
       }
-      if (readingBundleFor !== null) {
-        log(
-          `${JOIN_HISTORY_PREFIX} ${chat}: bundle ${id} refused: another bundle is being read ` +
-            "(one at a time); it is not downloaded",
-        );
-        return;
-      }
-      if (!joinHistory.begin(chat)) {
+      if (!joinHistory.canBegin(chat)) {
         log(
           `${JOIN_HISTORY_PREFIX} ${chat}: bundle ${id} ignored: this join's shared history was ` +
             "already read, is being read, or could not be read (one bundle per join)",
         );
         return;
       }
-      readingBundleFor = chat;
-      const sharer = m.key?.participant ?? (m as { participant?: string | null }).participant ?? null;
-      const sharerAlt = (m.key as InboundKeyLike | undefined)?.participantAlt ?? null;
-      const bundle = carrier.bundle;
-      log(`${JOIN_HISTORY_PREFIX} ${chat}: bundle ${id}: downloading`);
-      void (async () => {
-        const result = await readGroupHistoryBundle(bundle, chat, {
-          fetchBundle: deps.fetchMedia,
-          limit: MAX_BUNDLE_MESSAGES,
-        });
-        readingBundleFor = null;
-        for (const l of formatBundleReport(result.report)) log(`${JOIN_HISTORY_PREFIX} ${chat}: bundle ${id}: ${l}`);
-        if (!result.ok) {
-          joinHistory.fail(chat);
-          return;
-        }
-        const late = joinHistory.gaveUp(chat);
-        joinHistory.resolve(chat, { rows: result.rows, sharer, sharerAlt });
-        if (late) {
-          log(
-            `${JOIN_HISTORY_PREFIX} ${chat}: bundle ${id}: read AFTER the bot-added flow had stopped waiting ` +
-              "and posted without it. It is kept until this join's window closes and handed over only " +
-              "if the flow asks again; it is NOT sent to the server by itself",
-          );
-        }
-      })().catch((err) => {
-        readingBundleFor = null;
-        error(`${JOIN_HISTORY_PREFIX} ${chat}: bundle ${id}: reading it failed unexpectedly: ${errorText(err)}`);
-        try {
-          joinHistory.fail(chat);
-        } catch {
-          /* nothing left to do */
-        }
-      });
+      const job: BundleJob = {
+        chat,
+        id,
+        bundle: carrier.bundle,
+        sharer: m.key?.participant ?? (m as { participant?: string | null }).participant ?? null,
+        sharerAlt: (m.key as InboundKeyLike | undefined)?.participantAlt ?? null,
+      };
+      if (readingBundle !== null) {
+        // Not refused: the group would lose its history and its reader
+        // would wait the full 25 s for nothing. One waits per group.
+        queuedBundles.set(chat, job);
+        log(
+          `${JOIN_HISTORY_PREFIX} ${chat}: bundle ${id} queued: another bundle is being read ` +
+            "(one at a time); it is read next",
+        );
+        return;
+      }
+      readBundle(job);
     } catch (err) {
       error(`${JOIN_HISTORY_PREFIX} could not look at a shared-history message: ${errorText(err)}`);
+    }
+  }
+
+  /** Start the next queued bundle whose join is still open, if the lock is free. */
+  function readNextQueuedBundle(): void {
+    while (readingBundle === null && queuedBundles.size > 0) {
+      const [chat, job] = queuedBundles.entries().next().value as [string, BundleJob];
+      queuedBundles.delete(chat);
+      if (!joinHistory.canBegin(chat)) {
+        log(
+          `${JOIN_HISTORY_PREFIX} ${chat}: bundle ${job.id} dropped from the queue: its join is over ` +
+            "or its history was already read",
+        );
+        continue;
+      }
+      readBundle(job);
+    }
+  }
+
+  /**
+   * Read one bundle. Synchronous and total: it starts the read and
+   * returns. The lock and the entry's "being read" mark are released on
+   * EVERY path: a result, a failure, a throw while starting, and a read
+   * that never settles (`BUNDLE_READ_DEADLINE_MS`). Whichever comes first
+   * wins; anything after it is discarded.
+   */
+  function readBundle(job: BundleJob): void {
+    const { chat, id } = job;
+    let stay: number | null = null;
+    let begun = false;
+    let over = false;
+    let deadline: { cancel(): void } | null = null;
+    const finish = (apply: () => void): void => {
+      if (over) return;
+      over = true;
+      try {
+        deadline?.cancel();
+        apply();
+      } catch (err) {
+        try {
+          error(`${JOIN_HISTORY_PREFIX} ${chat}: bundle ${id}: could not record the outcome: ${errorText(err)}`);
+        } catch {
+          /* the log itself is failing */
+        }
+      } finally {
+        if (begun) {
+          try {
+            // A no-op when the outcome was recorded; frees the entry when it was not.
+            joinHistory.fail(chat, stay);
+          } catch {
+            /* nothing left to do */
+          }
+        }
+        if (readingBundle === job) readingBundle = null;
+        try {
+          readNextQueuedBundle();
+        } catch {
+          /* the next arrival will try again */
+        }
+      }
+    };
+    try {
+      readingBundle = job;
+      stay = joinHistory.stay(chat);
+      begun = joinHistory.begin(chat);
+      if (!begun) {
+        finish(() => log(`${JOIN_HISTORY_PREFIX} ${chat}: bundle ${id} ignored: its join is over`));
+        return;
+      }
+      log(`${JOIN_HISTORY_PREFIX} ${chat}: bundle ${id}: downloading`);
+      deadline = schedule(() => {
+        finish(() => {
+          joinHistory.fail(chat, stay);
+          log(
+            `${JOIN_HISTORY_PREFIX} ${chat}: bundle ${id}: FAILED: the read did not finish within ` +
+              `${Math.round(BUNDLE_READ_DEADLINE_MS / 1000)}s and was abandoned`,
+          );
+        });
+      }, BUNDLE_READ_DEADLINE_MS);
+      readGroupHistoryBundle(job.bundle, chat, { fetchBundle: deps.fetchMedia, limit: MAX_BUNDLE_MESSAGES }).then(
+        (result) =>
+          finish(() => {
+            if (joinHistory.stay(chat) !== stay) {
+              log(
+                `${JOIN_HISTORY_PREFIX} ${chat}: bundle ${id}: discarded: it belongs to an earlier stay ` +
+                  "in this group (we were removed or added again while it was being read)",
+              );
+              return;
+            }
+            for (const l of formatBundleReport(result.report)) log(`${JOIN_HISTORY_PREFIX} ${chat}: bundle ${id}: ${l}`);
+            if (!result.ok) {
+              joinHistory.fail(chat, stay);
+              return;
+            }
+            const late = joinHistory.gaveUp(chat);
+            joinHistory.resolve(chat, { rows: result.rows, sharer: job.sharer, sharerAlt: job.sharerAlt }, stay);
+            if (late) {
+              log(
+                `${JOIN_HISTORY_PREFIX} ${chat}: bundle ${id}: read AFTER the bot-added flow had stopped waiting ` +
+                  "and posted without it. It is kept until this join's window closes and handed over only " +
+                  "if the flow asks again; it is NOT sent to the server by itself",
+              );
+            }
+          }),
+        (err) =>
+          finish(() => {
+            joinHistory.fail(chat, stay);
+            error(`${JOIN_HISTORY_PREFIX} ${chat}: bundle ${id}: reading it failed unexpectedly: ${errorText(err)}`);
+          }),
+      );
+    } catch (err) {
+      finish(() => {
+        error(`${JOIN_HISTORY_PREFIX} ${chat}: bundle ${id}: could not start reading it: ${errorText(err)}`);
+      });
     }
   }
 
@@ -1248,7 +1367,8 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
     const messages = resolved.map((r) => ({
       author: nameOf.get(r.who) as string,
       authorPhone: r.phone,
-      text: r.row.text,
+      // Capped when the bundle was read; held to it again here, where it leaves the Pi.
+      text: r.row.text.slice(0, MAX_BUNDLE_TEXT_CHARS),
       timestamp: r.timestamp,
     }));
     return {
@@ -1256,7 +1376,8 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
       counts:
         `${messages.length} message(s) from ${nameOf.size} author(s): ${named} with a known name, ` +
         `${standIns} given a stand-in name; ${messages.filter((x) => x.authorPhone).length} message(s) with a ` +
-        `phone number; left out: ${own} of our own, ${noAuthor} with no author, ${unusable} with an unusable date`,
+        `phone number; ${resolved.filter((r) => r.row.truncated).length} cut to ${MAX_BUNDLE_TEXT_CHARS} characters; ` +
+        `left out: ${own} of our own, ${noAuthor} with no author, ${unusable} with an unusable date`,
     };
   }
 

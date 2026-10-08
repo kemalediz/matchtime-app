@@ -50,6 +50,15 @@ export const JOIN_HISTORY_QUIET_AFTER_JOIN_MS = 10_000;
 export const JOIN_HISTORY_MAX_WAIT_MS = 25_000;
 /** One bundle is read per join. A failed read is not retried with another. */
 export const MAX_BUNDLE_ATTEMPTS = 1;
+/**
+ * A join is announced more than one way (its notice, a participants
+ * update, a new-group event). A join signal with no notice id is the SAME
+ * join for this long; after that it is a new stay. Mirrors the driver's
+ * own de-duplication of self-adds.
+ */
+export const SAME_JOIN_MS = 2 * 60 * 1000;
+/** A notice id arriving for an entry that has none yet is that entry's own notice for this long. */
+export const NOTICE_ADOPT_MS = 30_000;
 
 export type JoinHistoryOutcome =
   /** A bundle was read; `take()` has it. */
@@ -63,21 +72,35 @@ export type JoinHistoryOutcome =
 
 export interface JoinHistory<T> {
   /**
-   * We were added to this group now. False if this join is already open,
-   * it is not a group, or the store is full. An entry that was already
-   * READ is replaced: that is a new join.
+   * We were added to this group now. False if this very join is already
+   * open, it is not a group, or the store is full.
+   *
+   * `joinKey` identifies the join notice when there is one. A notice with
+   * a DIFFERENT id from the one that opened the entry is a new stay (we
+   * were removed and added again, and may never have seen the removal):
+   * the old entry is discarded with whatever it held, read or not, and a
+   * fresh one opened. So is any join over an entry already read, and a
+   * keyless join signal more than `SAME_JOIN_MS` after the entry opened.
    */
-  opened(chat: string | null | undefined): boolean;
+  opened(chat: string | null | undefined, joinKey?: string | null): boolean;
   /** We were removed from this group: its entry is dropped. */
   closed(chat: string | null | undefined): void;
   /** Whether this group is inside its join window. THE gate. */
   joined(chat: string | null | undefined): boolean;
   /** A history notice or bundle was seen for this group. Ignored unless joined. */
   announce(chat: string): void;
+  /** Whether `begin` would say yes, without beginning. */
+  canBegin(chat: string): boolean;
   /** A bundle is about to be read. False means: do not read it. */
   begin(chat: string): boolean;
-  resolve(chat: string, value: T): void;
-  fail(chat: string): void;
+  /**
+   * Which stay this group's entry is, or null. A read remembers it and
+   * passes it back, so a read that outlives its stay (a re-add, a
+   * deadline) cannot write into the next one.
+   */
+  stay(chat: string): number | null;
+  resolve(chat: string, value: T, stay?: number | null): void;
+  fail(chat: string, stay?: number | null): void;
   /** Resolves as soon as the outcome is known. Its timer is cancelled and its waiter dropped when it does. */
   wait(
     chat: string,
@@ -101,6 +124,8 @@ export interface JoinHistory<T> {
 }
 
 interface Entry<T> {
+  stay: number;
+  joinKey: string | null;
   openedAt: number;
   announced: boolean;
   reading: boolean;
@@ -122,6 +147,15 @@ export function createJoinHistory<T>(
   const windowMs = opts.windowMs ?? JOIN_HISTORY_WINDOW_MS;
   const maxGroups = opts.maxGroups ?? MAX_JOIN_HISTORY_GROUPS;
   const entries = new Map<string, Entry<T>>();
+  let stays = 0;
+
+  function isNewStay(e: Entry<T>, joinKey: string | null): boolean {
+    if (e.taken) return true;
+    const age = now() - e.openedAt;
+    if (!joinKey) return age >= SAME_JOIN_MS;
+    if (e.joinKey) return e.joinKey !== joinKey;
+    return age >= NOTICE_ADOPT_MS;
+  }
 
   function wake(e: Entry<T>): void {
     for (const w of [...e.waiters]) w();
@@ -159,17 +193,23 @@ export function createJoinHistory<T>(
   }
 
   return {
-    opened(chat) {
+    opened(chat, joinKey = null) {
       if (!chat || !isGroupJid(chat)) return false;
       sweep();
       const existing = entries.get(chat);
       if (existing) {
-        // The same join seen again (it is announced more than one way).
-        if (!existing.taken) return false;
+        if (!isNewStay(existing, joinKey)) {
+          // The same join seen again (it is announced more than one way).
+          if (joinKey && !existing.joinKey) existing.joinKey = joinKey;
+          return false;
+        }
+        // A new stay: whatever the earlier one held or was doing is gone.
         drop(chat, existing);
       }
       if (entries.size >= maxGroups) return false;
       entries.set(chat, {
+        stay: ++stays,
+        joinKey,
         openedAt: now(),
         announced: false,
         reading: false,
@@ -198,6 +238,13 @@ export function createJoinHistory<T>(
       wake(e);
     },
 
+    canBegin(chat) {
+      const e = live(chat);
+      return !!e && !e.taken && !e.reading && e.value === null && e.attempts < MAX_BUNDLE_ATTEMPTS;
+    },
+
+    stay: (chat) => live(chat)?.stay ?? null,
+
     begin(chat) {
       const e = live(chat);
       if (!e || e.taken || e.reading || e.value !== null || e.attempts >= MAX_BUNDLE_ATTEMPTS) return false;
@@ -209,17 +256,19 @@ export function createJoinHistory<T>(
       return true;
     },
 
-    resolve(chat, value) {
+    resolve(chat, value, stay) {
       const e = live(chat);
       if (!e || !e.reading) return;
+      if (stay !== undefined && stay !== e.stay) return;
       e.reading = false;
       if (!e.taken) e.value = value;
       wake(e);
     },
 
-    fail(chat) {
+    fail(chat, stay) {
       const e = live(chat);
       if (!e || !e.reading) return;
+      if (stay !== undefined && stay !== e.stay) return;
       e.reading = false;
       e.failed = true;
       wake(e);

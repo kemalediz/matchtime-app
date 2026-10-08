@@ -9,6 +9,7 @@ import {
   GROUP_HISTORY_KEY_CANDIDATES,
   MAX_BUNDLE_ENC_BYTES,
   MAX_STATED_MESSAGES,
+  MAX_BUNDLE_TEXT_CHARS,
   decryptBundle,
   deriveMediaKeys,
   describeProtoShape,
@@ -158,6 +159,7 @@ describe("unpackBundle", () => {
       fromBundleSender: false,
       pushName: "Alice",
       text: SECRET,
+      truncated: false,
       timestampSec: T0 + 20,
     });
     // The sharer's own message: no participant, flagged for the caller.
@@ -279,6 +281,7 @@ describe("readGroupHistoryBundle", () => {
       {
         url: "https://mmg.whatsapp.net/v/t62.0000-0/synthetic.enc?ccb=1",
         headers: { Origin: "https://web.whatsapp.com" },
+        redirect: "error",
       },
     ]);
 
@@ -287,7 +290,7 @@ describe("readGroupHistoryBundle", () => {
       `downloaded ${enc.length} bytes (http 200); decrypted with "Group History" (candidate 1 of 4, ` +
         `download hash ok, content hash ok) to ${payload.length} bytes; unpacked as zlib inflate ` +
         `(inflate needed: yes) to ${encodeGroupHistory(THREE).length} bytes; decoded as GroupHistory: ` +
-        "entries=3 read=3 tooLarge=0 valid=3 otherChat=0 withText=3 authors=3 kept=3 (stated messageCount=3)",
+        "entries=3 read=3 tooLarge=0 valid=3 otherChat=0 withText=3 textCut=0 authors=3 kept=3 (stated messageCount=3)",
     ]);
     expect(lines.join("\n")).not.toContain(SECRET);
     expect(lines.join("\n")).not.toContain("synthetic.enc");
@@ -364,5 +367,60 @@ describe("readGroupHistoryBundle", () => {
       `  plaintext shape, not compressed (${odd.length} bytes): ${describeProtoShape(odd)}`,
     ]);
     expect(lines.join("\n")).not.toContain(SECRET);
+  });
+});
+
+describe("a redirect is never followed (review 2, item 5)", () => {
+  it("asks the real fetch not to follow one, and a 302 fails the download cleanly", async () => {
+    const { createServer } = await import("node:http");
+    let elsewhereHits = 0;
+    const server = createServer((req, res) => {
+      if (req.url === "/elsewhere") {
+        elsewhereHits++;
+        res.end("not the bundle");
+        return;
+      }
+      res.writeHead(302, { Location: "/elsewhere" });
+      res.end();
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    try {
+      const port = (server.address() as { port: number }).port;
+      const { bundle } = encryptBundle(Buffer.from("x"));
+      // The media host is pinned, so the real fetch is pointed at a local
+      // server here, with exactly the options the reader passes.
+      const r = await readGroupHistoryBundle(bundle, GROUP, {
+        fetchBundle: (_url, init) => fetch(`http://127.0.0.1:${port}/bundle`, init as RequestInit) as never,
+      });
+      expect(r.ok).toBe(false);
+      expect(!r.ok && r.report.stage).toBe("download");
+      expect(!r.ok && r.reason).toBe("the download failed (TypeError)");
+      expect(elsewhereHits).toBe(0);
+    } finally {
+      server.close();
+    }
+  });
+});
+
+describe("one message's text is capped (review 2, residual)", () => {
+  it("cuts a long text to 1,000 characters, counts it, and never splits a surrogate pair", async () => {
+    const long = "a".repeat(999) + "\u{1F600}" + "b".repeat(5000);
+    const r = await unpackBundle(
+      pack(
+        encodeGroupHistory([
+          msg("3EB0AAAAAAAAAAAA0001", long, { participant: ALICE }),
+          msg("3EB0AAAAAAAAAAAA0002", "short", { participant: BOB, ts: T0 + 1 }),
+        ]),
+        "zlib",
+      ),
+      GROUP,
+    );
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(MAX_BUNDLE_TEXT_CHARS).toBe(1000);
+    expect(r.rows[0].text).toBe("a".repeat(999));
+    expect(r.rows[0].truncated).toBe(true);
+    expect(r.rows[1]).toMatchObject({ text: "short", truncated: false });
+    expect(r.textCut).toBe(1);
   });
 });

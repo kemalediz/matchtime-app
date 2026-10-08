@@ -87,6 +87,13 @@ export const DECODER_SAMPLE = 8;
 export const DECODE_CHUNK = 20;
 /** Milliseconds of decoding work before it stops and keeps what it has. */
 export const BUNDLE_DECODE_BUDGET_MS = 2000;
+/**
+ * One message's text, in characters. The server's reader cuts a message to
+ * 400 for the model (`MAX_MESSAGE_CHARS`, src/lib/setup-learning/rules.ts),
+ * so nothing is lost that would have been read, and a bundle of 64 KB
+ * messages cannot push megabytes of text to the server.
+ */
+export const MAX_BUNDLE_TEXT_CHARS = 1000;
 /** A pointer that states more than this is refused unread (the stated number is NOT what bounds the work). */
 export const MAX_STATED_MESSAGES = 5000;
 export const BUNDLE_DOWNLOAD_TIMEOUT_MS = 15_000;
@@ -386,7 +393,10 @@ export interface BundleRow {
    */
   fromBundleSender: boolean;
   pushName: string | null;
+  /** At most `MAX_BUNDLE_TEXT_CHARS` characters. */
   text: string;
+  /** The text was longer and was cut. */
+  truncated: boolean;
   /** Unix seconds; 0 when the message carried none. */
   timestampSec: number;
 }
@@ -407,6 +417,8 @@ export type UnpackResult =
       valid: number;
       otherChat: number;
       withText: number;
+      /** Messages whose text was cut to `MAX_BUNDLE_TEXT_CHARS`. */
+      textCut: number;
       authors: number;
       /** True when the time budget ran out and the rest was left undecoded. */
       partial: boolean;
@@ -427,6 +439,15 @@ export interface UnpackOptions {
   yieldToLoop?(): Promise<void>;
 }
 
+/** At most `max` UTF-16 units, never ending on half of a surrogate pair. */
+function capText(text: string, max = MAX_BUNDLE_TEXT_CHARS): { text: string; truncated: boolean } {
+  if (text.length <= max) return { text, truncated: false };
+  let end = max;
+  const last = text.charCodeAt(end - 1);
+  if (last >= 0xd800 && last <= 0xdbff) end--;
+  return { text: text.slice(0, end).trimEnd(), truncated: true };
+}
+
 /** The live path's mapper turns one decoded message into a row, or nothing. */
 function toRow(m: proto.IWebMessageInfo, group: string): BundleRow | "other-chat" | null {
   const key = m.key ?? {};
@@ -436,12 +457,14 @@ function toRow(m: proto.IWebMessageInfo, group: string): BundleRow | "other-chat
   const mapped = mapInboundMessage({ ...m, key: { ...key, remoteJid: group } } as WAMessage);
   if (!mapped || !mapped.body) return null;
   const senderJid = key.participant || m.participant || null;
+  const cut = capText(mapped.body);
   return {
     id: key.id as string,
     senderJid,
     fromBundleSender: !senderJid && key.fromMe === true,
-    pushName: mapped.pushName,
-    text: mapped.body,
+    pushName: mapped.pushName ? capText(mapped.pushName, 100).text : null,
+    text: cut.text,
+    truncated: cut.truncated,
     timestampSec: toNumber(m.messageTimestamp),
   };
 }
@@ -557,6 +580,7 @@ export async function unpackBundle(plain: Buffer, group: string, opts: UnpackOpt
           valid,
           otherChat,
           withText: rows.length,
+          textCut: rows.filter((r) => r.truncated).length,
           authors: new Set(rows.map((r) => r.senderJid ?? (r.fromBundleSender ? "(sharer)" : "(unknown)"))).size,
           partial,
           rows,
@@ -582,7 +606,7 @@ export interface BundleFetchResponse {
 
 export type BundleFetch = (
   url: string,
-  init: { headers: Record<string, string>; signal: AbortSignal },
+  init: { headers: Record<string, string>; signal: AbortSignal; redirect: "error" },
 ) => Promise<BundleFetchResponse>;
 
 export interface BundleReadDeps {
@@ -619,6 +643,7 @@ export interface BundleReport {
   valid?: number;
   otherChat?: number;
   withText?: number;
+  textCut?: number;
   authors?: number;
   kept?: number;
   partial?: boolean;
@@ -641,7 +666,8 @@ async function readCapped(res: BundleFetchResponse, max: number): Promise<Buffer
       if (!value) continue;
       total += value.length;
       if (total > max) {
-        await reader.cancel().catch(() => {});
+        // Not awaited: a cancel that never settles must not hold the read.
+        void reader.cancel().catch(() => {});
         return "too-large";
       }
       chunks.push(Buffer.from(value));
@@ -702,6 +728,9 @@ export async function readGroupHistoryBundle(
       const res = await fetchBundle(`https://${MEDIA_HOST}${path}`, {
         headers: { Origin: ORIGIN },
         signal: controller.signal,
+        // The host is pinned and a redirect is never expected: following
+        // one would let the answer come from somewhere else.
+        redirect: "error",
       });
       report.httpStatus = res.status;
       if (!res.ok) return fail(`the media server answered http ${res.status}`);
@@ -754,6 +783,7 @@ export async function readGroupHistoryBundle(
     report.valid = unpacked.valid;
     report.otherChat = unpacked.otherChat;
     report.withText = unpacked.withText;
+    report.textCut = unpacked.textCut;
     report.authors = unpacked.authors;
     report.kept = unpacked.rows.length;
     return { ok: true, rows: unpacked.rows, report };
@@ -786,7 +816,7 @@ export function formatBundleReport(report: BundleReport): string[] {
       );
       parts.push(
         `decoded as ${report.decoder}: entries=${report.entries} read=${report.read} tooLarge=${report.tooLarge} ` +
-          `valid=${report.valid} otherChat=${report.otherChat} withText=${report.withText} ` +
+          `valid=${report.valid} otherChat=${report.otherChat} withText=${report.withText} textCut=${report.textCut} ` +
           `authors=${report.authors} kept=${report.kept} (stated messageCount=${report.statedMessages ?? "?"})` +
           (report.partial ? "; STOPPED EARLY: the decode time budget ran out, the oldest entries were left unread" : ""),
       );

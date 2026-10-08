@@ -87,9 +87,9 @@ export function encryptBundle(
 
 /** A fetch that serves one body, and remembers what it was asked for. */
 export function servingFetch(body: Buffer | null, opts: { status?: number; contentLength?: string } = {}) {
-  const calls: Array<{ url: string; headers: Record<string, string> }> = [];
-  const fetchBundle = async (url: string, init: { headers: Record<string, string> }) => {
-    calls.push({ url, headers: init.headers });
+  const calls: Array<{ url: string; headers: Record<string, string>; redirect?: string }> = [];
+  const fetchBundle = async (url: string, init: { headers: Record<string, string>; redirect?: string }) => {
+    calls.push({ url, headers: init.headers, redirect: init.redirect });
     const headers: Record<string, string> = {};
     if (opts.contentLength) headers["content-length"] = opts.contentLength;
     return new Response(body ? new Uint8Array(body) : null, { status: opts.status ?? 200, headers });
