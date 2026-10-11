@@ -1,5 +1,24 @@
 import { describe, it, expect } from "vitest";
-import { isPublicPath } from "../public-paths";
+import { isPublicPath, retiredAuthRedirect } from "../public-paths";
+
+/**
+ * 2026-10-11: WhatsApp is the only way in. The email sign-up pages are
+ * gone from the product; an old link to one goes somewhere useful
+ * instead of a 404, whether or not the visitor is signed in.
+ */
+describe("retiredAuthRedirect", () => {
+  it("sends the email sign-up page to /signup", () => {
+    expect(retiredAuthRedirect("/signup-email")).toBe("/signup");
+  });
+
+  it("sends the email verification page to /login", () => {
+    expect(retiredAuthRedirect("/verify-email")).toBe("/login");
+  });
+
+  it.each(["/", "/login", "/signup", "/admin", "/signup-emails", "/verify-email/x"])("leaves %s alone", (p) => {
+    expect(retiredAuthRedirect(p)).toBeNull();
+  });
+});
 
 /**
  * The marketing site links to the help guides, and the ad Kemal posts in
