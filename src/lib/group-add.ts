@@ -168,6 +168,20 @@ export async function handleSelfJoinGroupAdd(input: GroupAddInput): Promise<Grou
     // A group the reconnect sweep found may be one MatchTime was in long
     // before self-join. It is never recorded, so it is never auto-left.
     if (ev.discovered) return { kind: "discovered-no-match" };
+    // Relink after a re-add (2026-10-11): the organiser took MatchTime out
+    // of the group while the club waited and put it straight back, with no
+    // new code. BEFORE the admin-group rule: the organiser already proved
+    // this group is the club's, so their re-add inside the window is a
+    // relink even when they also run an approved club, or a member of the
+    // group is an admin of one with a link code open. When the rule's
+    // conditions do not hold (or stop holding while linking), the add
+    // carries on below exactly as before.
+    const ctx = { groupId, subject, snapshot, ev, history: input.enrichmentHistory, now };
+    const relink = await findRelinkAfterReAdd(groupId, ev, now);
+    if (relink) {
+      const out = await linkGroupToRequest(ctx, relink);
+      if (out !== RELINK_ABANDONED) return out;
+    }
     // Slice 2a (plan 2.4): after every connect-request match has failed,
     // an add by an owner or admin of an approved club is their admins' HQ
     // group, waiting for "@Match Time admin group CODE". Still silent, and
@@ -191,17 +205,12 @@ export async function handleSelfJoinGroupAdd(input: GroupAddInput): Promise<Grou
       });
       return { kind: "admin-group-candidate", id: row.id };
     }
-    // Relink after a re-add (2026-10-11): the organiser took MatchTime out
-    // of the group while the club waited and put it straight back, with no
-    // new code. Only reached when the add would otherwise be unsolicited.
-    const relink = await findRelinkAfterReAdd(groupId, ev, now);
-    if (!relink) return recordUnsolicited(groupId, subject, snapshot.length, ev.addedByPhone, ev.addedByLid, now);
-    return linkGroupToRequest({ groupId, subject, snapshot, ev, history: input.enrichmentHistory, now }, relink);
+    return recordUnsolicited(groupId, subject, snapshot.length, ev.addedByPhone, ev.addedByLid, now);
   }
 
   const row = candidates.find((c) => c.id === decision.connectId);
   if (!row) return { kind: "race-lost" };
-  return linkGroupToRequest(
+  const out = await linkGroupToRequest(
     { groupId, subject, snapshot, ev, history: input.enrichmentHistory, now },
     {
       row,
@@ -211,10 +220,24 @@ export async function handleSelfJoinGroupAdd(input: GroupAddInput): Promise<Grou
       organiserPresent: decision.organiserPresent,
       ownerDmRefId: row.id,
       organiserAckRefId: `${row.id}:in-group`,
-      relinked: false,
+      relink: null,
     },
   );
+  // Only a relink can be abandoned; a first link never is.
+  return out === RELINK_ABANDONED ? { kind: "race-lost" } : out;
 }
+
+/** `linkGroupToRequest` gave a relink up under its locks: the club got a
+ *  newer connect request in the meantime. Nothing was written. */
+const RELINK_ABANDONED = "relink-abandoned" as const;
+
+/** "Does this club have another connect request issued at or after this
+ *  one?" Asked once to decide a relink and again under its locks. */
+const newerRequestWhere = (r: { id: string; orgId: string; issuedAt: Date }) => ({
+  orgId: r.orgId,
+  id: { not: r.id },
+  issuedAt: { gte: r.issuedAt },
+});
 
 /** The columns of a connect request the matcher and the link read. */
 const LINK_ROW_SELECT = {
@@ -252,7 +275,9 @@ interface LinkTarget {
   /** Once-ever keys for the owner's DM and the organiser's ack. */
   ownerDmRefId: string;
   organiserAckRefId: string;
-  relinked: boolean;
+  /** Null for a first link. For a relink after a re-add: what must still
+   *  be true of the club once the link holds its locks. */
+  relink: { newerRequestWhere: ReturnType<typeof newerRequestWhere> } | null;
 }
 
 interface AddContext {
@@ -269,7 +294,8 @@ interface AddContext {
  * Relink after a re-add: is there a link MatchTime was removed from, in
  * this very group, that this add should link again? The rule (every
  * condition, and the window) is `decideRelinkAfterReAdd` in
- * group-add-rules.ts. Null means no: the add is unsolicited as before.
+ * group-add-rules.ts. Null means no: the add carries on as before (the
+ * admin-group rule, then unsolicited).
  */
 async function findRelinkAfterReAdd(groupId: string, ev: AddEvidence, now: Date): Promise<LinkTarget | null> {
   const removed = await db.clubConnect.findMany({
@@ -287,9 +313,9 @@ async function findRelinkAfterReAdd(groupId: string, ev: AddEvidence, now: Date)
       dmLid: r.dmLid,
       orgApprovalStatus: r.org.approvalStatus,
       // Any other request of this club issued since: the organiser went
-      // back for a new code, so the code flow owns the club now.
-      newerRequestExists:
-        (await db.clubConnect.count({ where: { orgId: r.orgId, id: { not: r.id }, issuedAt: { gte: r.issuedAt } } })) > 0,
+      // back for a new code, so the code flow owns the club now. Asked
+      // again under the link's locks (see linkGroupToRequest).
+      newerRequestExists: (await db.clubConnect.count({ where: newerRequestWhere(r) })) > 0,
     })),
   );
   const decision = decideRelinkAfterReAdd(ev, groupId, candidates, now);
@@ -309,7 +335,7 @@ async function findRelinkAfterReAdd(groupId: string, ev: AddEvidence, now: Date)
     organiserPresent: true,
     ownerDmRefId: refs.ownerDm,
     organiserAckRefId: refs.organiserAck,
-    relinked: true,
+    relink: { newerRequestWhere: newerRequestWhere(row) },
   };
 }
 
@@ -317,21 +343,50 @@ async function findRelinkAfterReAdd(groupId: string, ev: AddEvidence, now: Date)
  * Link this add to a request and set its club pending, together or not at
  * all, then build what the owner and the organiser are told. THE one link:
  * a first link and a relink after a re-add both come through here, and
- * differ only in the compare-and-set and the dedupe keys they bring.
+ * differ only in the compare-and-set and the dedupe keys they bring, and
+ * in three things a relink does under the same transaction: it re-checks
+ * that no newer request appeared, it never keeps the member list from
+ * before the removal, and it closes any unsolicited row for the group.
+ *
+ * LOCKS. Every link takes `group-add:<groupId>`. A relink then takes
+ * `club-connect:<orgId>`, the lock `issueConnectCode` (club-connect.ts)
+ * issues codes under, and only then asks again whether the club has a
+ * newer request. Without it a "get code" tap could read the club as draft,
+ * and commit its new code after the relink had counted none: the club
+ * would be pending with a newer `issued` request, and the card (which
+ * reads the latest request) would show a pending club with no group. With
+ * it, one of the two goes first: the code first, and the relink sees it
+ * and gives up; the relink first, and the code issuer, once it has the
+ * lock, reads the club as pending and refuses ("not-draft").
+ *
+ * It cannot deadlock. The order is always group, then club, and this is
+ * the only place that takes both: `issueConnectCode` takes the club lock
+ * alone (and nothing before it, no row lock included), the approval
+ * (`decideClub`) takes the group lock alone, and the connect DM takes the
+ * unrelated site-wide `club-connect:links`. Nothing takes the club lock
+ * and then waits for a group lock, so no cycle can form.
  */
-async function linkGroupToRequest(ctx: AddContext, target: LinkTarget): Promise<GroupAddOutcome> {
+async function linkGroupToRequest(
+  ctx: AddContext,
+  target: LinkTarget,
+): Promise<GroupAddOutcome | typeof RELINK_ABANDONED> {
   const { groupId, subject, snapshot, ev, now } = ctx;
   const { row } = target;
+  const relinked = target.relink !== null;
   const history = coerceHistoryMessages(ctx.history);
   const detected = detectGroupLang({ subject, history: history.map((m) => m.text) });
 
   // 4. Link, and set the club pending, together or not at all.
-  let result: "linked" | "race-lost" | { already: string };
+  let result: "linked" | "race-lost" | typeof RELINK_ABANDONED | { already: string };
   try {
     result = await db.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`group-add:${groupId}`}))`;
       const again = await tx.clubConnect.findFirst({ where: LINKED_AND_WAITING(groupId), select: { id: true } });
       if (again) return { already: again.id };
+      if (target.relink) {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`club-connect:${row.orgId}`}))`;
+        if ((await tx.clubConnect.count({ where: target.relink.newerRequestWhere })) > 0) return RELINK_ABANDONED;
+      }
       const { count } = await tx.clubConnect.updateMany({
         where: target.expect,
         data: {
@@ -360,18 +415,34 @@ async function linkGroupToRequest(ctx: AddContext, target: LinkTarget): Promise<
       // Throwing rolls the link back: a request must never say
       // group_linked while its club is not pending.
       if (!(await markClubPendingOnLink(row.orgId, tx))) throw new LinkAborted();
-      // A relinked group may still have an open unsolicited row (an add
-      // that reached us before this rule existed, or one by somebody
-      // else). It is a waiting club's group now: close the row, or the
-      // 48-hour auto-leave would take MatchTime out of it.
-      if (target.relinked) {
-        await tx.unsolicitedGroup.updateMany({ where: { groupId, leftAt: null }, data: { leftAt: now } });
+      if (relinked) {
+        // The row still holds the member list from BEFORE the removal. A
+        // re-add that brought none must not leave it there beside a
+        // member count of 0: approval imports that list. (A first link
+        // has no earlier list: only a link ever writes one.)
+        if (snapshot.length === 0) {
+          await tx.$executeRaw`UPDATE "ClubConnect" SET "participants" = NULL WHERE "id" = ${row.id}`;
+        }
+        // The group may still have an open unsolicited row: an add that
+        // reached us before this rule existed, one by somebody else, or
+        // an admin-group candidate. It is a waiting club's group now:
+        // close the row, or the 48-hour auto-leave would take MatchTime
+        // out of it. (`awaitingAdminLink` is cleared with it, as
+        // linkAdminGroup does when it closes one.)
+        await tx.unsolicitedGroup.updateMany({
+          where: { groupId, leftAt: null },
+          data: { leftAt: now, awaitingAdminLink: false },
+        });
       }
       return "linked" as const;
     });
   } catch (err) {
     if (err instanceof LinkAborted) result = "race-lost";
     else throw err;
+  }
+  if (result === RELINK_ABANDONED) {
+    console.log(`[group-add] ${groupId}: not relinked after re-add (newer-request, seen while linking ${row.id})`);
+    return RELINK_ABANDONED;
   }
   if (result === "race-lost") {
     console.warn(`[group-add] ${groupId}: request ${row.id} or its club moved while linking; nothing written`);
@@ -413,7 +484,7 @@ async function linkGroupToRequest(ctx: AddContext, target: LinkTarget): Promise<
   }
 
   console.log(
-    `[group-add] ${groupId} ("${subject ?? "?"}") ${target.relinked ? "relinked after re-add" : "linked"} to ${row.id} ` +
+    `[group-add] ${groupId} ("${subject ?? "?"}") ${relinked ? "relinked after re-add" : "linked"} to ${row.id} ` +
       `(club ${row.orgId}, now pending): adder=${target.adderMatch}, ${snapshot.length} member(s), ` +
       `${history.length} chat message(s), looks ${detected.lang}` +
       `${detected.confident ? "" : " (unsure)"}, organiser ack ${organiserAckQueued ? "queued" : "not sent"}`,
@@ -425,7 +496,7 @@ async function linkGroupToRequest(ctx: AddContext, target: LinkTarget): Promise<
     adderMatch: target.adderMatch,
     ownerDm,
     organiserAckQueued,
-    ...(target.relinked ? { relinked: true as const } : {}),
+    ...(relinked ? { relinked: true as const } : {}),
   };
 }
 

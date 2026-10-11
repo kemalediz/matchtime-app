@@ -15,6 +15,7 @@
  * end: nothing here calls a model.
  */
 import { test, expect, resetDb } from "../fixtures";
+import { ORG_ID } from "../helpers/constants";
 import { E2E } from "../helpers/env";
 import { testDb, type TestDb } from "../helpers/test-db";
 import type { APIRequestContext } from "@playwright/test";
@@ -232,6 +233,10 @@ test("the organiser adds it back with NO new code: linked again, the new chat st
   expect(ack[1]).toMatchObject({ purpose: "connect-reply", text: ACK_TEXT("Riverside Tuesday 5s (new)") });
   const owner = await ownerDms(db);
   expect(owner.map((j) => j.refId)).toEqual([REQ, `${REQ}:relink:${removedAt}`]);
+  // The first owner DM had not gone out yet (nothing in this spec plays the
+  // Pi and sends it). It is NOT cancelled or replaced: the owner gets both,
+  // each a true "club waiting" at the time it was queued. Accepted.
+  expect(await db.count(`SELECT COUNT(*) FROM "PlatformJob" WHERE phone = $1 AND purpose = 'owner-approval' AND status = 'queued'`, [E2E.APPROVER_PHONE])).toBe(2);
   expect(owner[1].purpose).toBe("owner-approval");
   expect(owner[1].text).toBe(
     [
@@ -295,6 +300,51 @@ test("a second remove and re-add works too, this time matched by the connect DM'
   expect(owner[2].text).toContain("Added by: the organiser (matched by WhatsApp id)");
 });
 
+test("the organiser also runs an approved club, and the add arrives twice AT ONCE: one relink, not an admin-group candidate; no member list came, so the old one is cleared", async ({
+  request,
+  db,
+}) => {
+  // Ali is an admin of the seeded approved club as well. Before, that made
+  // his re-add an "admin group waiting for its code" and the club stayed draft.
+  await db.run(`INSERT INTO "Membership" (id,"userId","orgId",role) VALUES ($1,$2,$3,'ADMIN')`, [`${ALI}-approved-mem`, ALI, ORG_ID]);
+  expect(await botRemoved(request, GROUP)).toMatchObject({ returnedToDraft: 1 });
+  // An admin-group candidate row left open for this group by an earlier add.
+  await db.run(
+    `INSERT INTO "UnsolicitedGroup" (id,"groupId","addedAt","awaitingAdminLink") VALUES ('e2e-sjr-candidate',$1,(now() at time zone 'utc'),true)`,
+    [GROUP],
+  );
+  expect((await connect(db))?.participants).toHaveLength(2);
+  const removedAt = await removedStamp(db);
+
+  // The same add, delivered twice at the same moment, with no member list.
+  const add = () => botAdded(request, { groupId: GROUP, groupSubject: "Riverside Tuesday 5s (new)", addedByPhone: ALI_PHONE });
+  const both = await Promise.all([add(), add()]);
+  expect(both.map((j) => j.selfJoin).sort()).toEqual(["already-linked", "linked"]);
+  for (const j of both) expect(j).toMatchObject({ ignored: "self-join-pending", silent: true });
+
+  expect(await clubStatus(db)).toBe("pending");
+  expect(await liveLinks(db)).toBe(1);
+  const row = await connect(db);
+  expect(row).toMatchObject({ adderMatch: "phone", memberCount: 0, botRemovedAt: null });
+  // Nobody who was in the group before the removal is carried over unseen.
+  expect(row?.participants).toBeNull();
+
+  // The candidate row is closed, so no code posted later finds a waiting candidate and nothing auto-leaves.
+  expect(await db.one(`SELECT "leftAt" IS NOT NULL AS closed, "awaitingAdminLink" FROM "UnsolicitedGroup" WHERE id = 'e2e-sjr-candidate'`)).toEqual({
+    closed: true,
+    awaitingAdminLink: false,
+  });
+  expect(await openUnsolicited(db)).toBe(0);
+
+  // One ack and one owner DM for the two deliveries together.
+  expect((await acks(db)).filter((j) => j.refId === `${REQ}:in-group:relink:${removedAt}`)).toHaveLength(1);
+  expect((await ownerDms(db)).filter((j) => j.refId === `${REQ}:relink:${removedAt}`)).toHaveLength(1);
+  expect(await acks(db)).toHaveLength(4);
+  expect(await ownerDms(db)).toHaveLength(4);
+
+  await db.run(`DELETE FROM "Membership" WHERE id = $1`, [`${ALI}-approved-mem`]);
+});
+
 test("more than 24 hours after the removal: the organiser's re-add is unsolicited again", async ({ request, db }) => {
   await botRemoved(request, GROUP);
   await db.run(`UPDATE "ClubConnect" SET "botRemovedAt" = (now() at time zone 'utc') - interval '25 hours' WHERE id = $1`, [REQ]);
@@ -302,8 +352,8 @@ test("more than 24 hours after the removal: the organiser's re-add is unsolicite
   expect(json).toMatchObject({ selfJoin: "unsolicited", silent: true });
   expect(await clubStatus(db)).toBe("draft");
   expect(await liveLinks(db)).toBe(0);
-  expect(await acks(db)).toHaveLength(3);
-  expect(await ownerDms(db)).toHaveLength(3);
+  expect(await acks(db)).toHaveLength(4);
+  expect(await ownerDms(db)).toHaveLength(4);
 });
 
 test("the organiser's re-add to a DIFFERENT group is not a relink", async ({ request, db }) => {

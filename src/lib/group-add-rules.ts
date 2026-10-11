@@ -171,8 +171,13 @@ export function decideGroupAddLink(ev: AddEvidence, candidates: LinkCandidate[],
 // long expired; so no open request matches and the add used to be
 // unsolicited: silent, nothing stored, left after 48 hours, nobody told.
 //
-// THE RULE. An add that matched no open request (and that the admin-group
-// rule did not claim) links the SAME connect request again when ALL hold:
+// THE RULE. An add that matched no open request links the SAME connect
+// request again when ALL of the following hold. It is asked BEFORE the
+// admin-group rule: the organiser already proved this group is the club's,
+// so it stays the club's even when the organiser also runs an approved
+// club, or a member of the group is an admin of one with a link code open.
+// When it does not hold, the admin-group rule and then "unsolicited" apply
+// exactly as before.
 //
 //   1. the request names THIS group, is `group_linked` and has
 //      `botRemovedAt` set: it is the link MatchTime was removed from. Of
