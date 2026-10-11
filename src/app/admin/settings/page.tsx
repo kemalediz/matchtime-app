@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Copy, Link as LinkIcon, Users, Settings, MessageCircle, SlidersHorizontal, Landmark, CheckCircle2, Shirt, Languages, Repeat } from "lucide-react";
-import { setOrgFeature, setOrgLanguage, setOrgTeamLabels, setWeeklyRoutine } from "@/app/actions/org";
+import { renameDraftClub, setOrgFeature, setOrgLanguage, setOrgTeamLabels, setWeeklyRoutine } from "@/app/actions/org";
 import { InfoButton } from "@/components/stats/info-button";
 import { WeeklyDeadlineRows, type DayTimeValue } from "@/components/settings/weekly-deadline-rows";
 import { t } from "@/lib/i18n/t";
@@ -24,6 +24,9 @@ interface OrgData {
   id: string;
   name: string;
   slug: string;
+  /** Admins only: true while the club is a draft, when the name can
+   *  still be changed. */
+  nameEditable?: boolean;
   inviteCode: string;
   whatsappGroupId: string | null;
   whatsappBotEnabled: boolean;
@@ -65,6 +68,7 @@ export default function SettingsPage() {
       .then((r) => (r.ok ? r.json() : null))
       .then(async (data) => {
         setOrg(data);
+        setClubName(data?.name ?? "");
         setTeamRed(data?.teamLabels?.[0] ?? "");
         setTeamYellow(data?.teamLabels?.[1] ?? "");
         // Returning from Stripe onboarding (?stripe=done|refresh) → auto
@@ -94,6 +98,38 @@ export default function SettingsPage() {
     const link = `${window.location.origin}/join/${org.inviteCode}`;
     await navigator.clipboard.writeText(link);
     toast.success("Invite link copied!");
+  }
+
+  // Organisation name. Editable only while the club is a draft; the
+  // action checks that again. The ref stops a second submit while the
+  // first is still running (the busy pattern of /create-org).
+  const [clubName, setClubName] = useState("");
+  const [savingClubName, setSavingClubName] = useState(false);
+  const [clubNameState, setClubNameState] = useState<{ kind: "saved" } | { kind: "error"; message: string } | null>(null);
+  const submittingClubName = useRef(false);
+  async function saveClubName(e: React.FormEvent) {
+    e.preventDefault();
+    if (!org || submittingClubName.current) return;
+    submittingClubName.current = true;
+    setSavingClubName(true);
+    setClubNameState(null);
+    try {
+      const res = await renameDraftClub(org.id, clubName);
+      if (res.ok) {
+        setOrg((prev) => (prev ? { ...prev, name: res.name } : prev));
+        setClubName(res.name);
+        setClubNameState({ kind: "saved" });
+      } else {
+        // The club left draft since the page loaded: show it as locked.
+        if (res.reason === "not-draft") setOrg((prev) => (prev ? { ...prev, nameEditable: false } : prev));
+        setClubNameState({ kind: "error", message: res.error });
+      }
+    } catch {
+      setClubNameState({ kind: "error", message: "Couldn't save the name. Please try again." });
+    } finally {
+      submittingClubName.current = false;
+      setSavingClubName(false);
+    }
   }
 
   // Team names — controlled inputs holding the org OVERRIDE (empty =
@@ -268,19 +304,68 @@ export default function SettingsPage() {
           <SectionInfo k="st_general" lang={org.language} />
         </div>
         <div className="p-6 space-y-4">
+          {org.nameEditable ? (
+            <form onSubmit={saveClubName} className="space-y-2">
+              <label htmlFor="org-name" className="block text-sm font-medium text-slate-700">
+                Organisation name
+              </label>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  id="org-name"
+                  value={clubName}
+                  onChange={(e) => {
+                    setClubName(e.target.value);
+                    setClubNameState(null);
+                  }}
+                  required
+                  minLength={2}
+                  maxLength={60}
+                  className="w-full h-11 px-3 rounded-lg border border-slate-200 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <button
+                  type="submit"
+                  disabled={savingClubName || clubName.trim().length < 2 || clubName.trim() === org.name}
+                  className="shrink-0 inline-flex items-center justify-center px-4 h-11 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {savingClubName ? "Saving..." : "Save name"}
+                </button>
+              </div>
+              {clubNameState?.kind === "saved" && (
+                <p role="status" data-testid="club-name-saved" className="text-sm text-green-700">
+                  Name saved
+                </p>
+              )}
+              {clubNameState?.kind === "error" && (
+                <p role="alert" data-testid="club-name-error" className="text-sm text-red-700">
+                  {clubNameState.message}
+                </p>
+              )}
+              <p className="text-sm text-slate-500">
+                You can change the name until you add MatchTime to your WhatsApp group.
+              </p>
+            </form>
+          ) : (
+            <div>
+              <label htmlFor="org-name" className="block text-sm font-medium text-slate-700 mb-1.5">
+                Organisation name
+              </label>
+              <input
+                id="org-name"
+                value={org.name}
+                disabled
+                className="w-full h-11 px-3 rounded-lg border border-slate-200 bg-slate-50 text-slate-700"
+              />
+              {org.nameEditable === false && (
+                <p data-testid="club-name-locked" className="mt-1.5 text-sm text-slate-500">
+                  The name can no longer be changed here. MatchTime approves a club by its name.
+                </p>
+              )}
+            </div>
+          )}
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">
-              Organisation name
-            </label>
+            <label htmlFor="org-slug" className="block text-sm font-medium text-slate-700 mb-1.5">URL slug</label>
             <input
-              value={org.name}
-              disabled
-              className="w-full h-11 px-3 rounded-lg border border-slate-200 bg-slate-50 text-slate-700"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">URL slug</label>
-            <input
+              id="org-slug"
               value={org.slug}
               disabled
               className="w-full h-11 px-3 rounded-lg border border-slate-200 bg-slate-50 text-slate-700"
