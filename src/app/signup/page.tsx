@@ -175,7 +175,7 @@ export default function SignupPage() {
                   Verifying…
                 </>
               ) : (
-                "Verify &amp; continue"
+                "Verify & continue"
               )}
             </button>
             <button

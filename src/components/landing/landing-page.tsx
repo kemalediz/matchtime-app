@@ -502,8 +502,8 @@ export function LandingPage() {
               bullets={[
                 "Chat as normal: &lsquo;IN&rsquo;, &lsquo;count me in&rsquo;, &lsquo;sorry not tonight&rsquo;",
                 "Balanced teams, no favouritism",
-                "Your own stats page: rating over time, MoMs, wins, chemistry &amp; badges",
-                "A live leaderboard, Team of the Season &amp; a season card to share",
+                "Your own stats page: rating over time, MoMs, wins, chemistry & badges",
+                "A live leaderboard, Team of the Season & a season card to share",
                 "Ask @Match Time about your matches, right in the group",
               ]}
             />
