@@ -18,7 +18,11 @@
  *     was linked, which is when the chat was stored. (A re-add may store
  *     chat later on a link that had none; that chat is still measured from
  *     the link, so it can only live shorter, never longer. Past the limit a
- *     re-add stores nothing: see group-add.ts.)
+ *     re-add stores nothing: see group-add.ts.) A RELINK after a removal
+ *     and a re-add (2026-10-11) is a new link: the removal deleted the
+ *     earlier chat, the relink stores the chat the re-add brought and sets
+ *     `linkedAt` again, so that chat too gets the full retention from the
+ *     moment it was stored, and no chat ever outlives it.
  *   - on an onboarding session, measured from `createdAt`, and at once when
  *     the session is "completed" or "abandoned": the only reader is the
  *     completion turn itself, which reads it from memory.

@@ -96,7 +96,11 @@ beforeEach(() => {
   dbMock.organisation.findUnique.mockResolvedValue({ name: "Riverside FC", language: "en" });
   dbMock.organisation.updateMany.mockResolvedValue({ count: 1 });
   dbMock.clubConnect.findFirst.mockResolvedValue(null);
-  dbMock.clubConnect.findMany.mockResolvedValue([connectRow()]);
+  // Every read gets the open request, except the relink rule's (removed
+  // links of this group, 2026-10-11): there are none unless a test says so.
+  dbMock.clubConnect.findMany.mockImplementation(async (a: { where?: Record<string, unknown> }) =>
+    a?.where?.status === "group_linked" && a.where.botRemovedAt != null ? [] : [connectRow()],
+  );
   dbMock.clubConnect.updateMany.mockResolvedValue({ count: 1 });
   dbMock.unsolicitedGroup.findFirst.mockResolvedValue(null);
   dbMock.unsolicitedGroup.create.mockResolvedValue({ id: "ug-1" });
@@ -535,5 +539,195 @@ describe("slice 2a: the admins' HQ group (plan 2.4)", () => {
     expect(out).toEqual({ kind: "admin-group", orgId: "org-fnf" });
     const { isSilentOutcome } = await import("../group-add");
     expect(isSilentOutcome(out)).toBe(false);
+  });
+});
+
+describe("relink after a re-add (2026-10-11): removed while pending, added straight back without a new code", () => {
+  const REMOVED_AT = mins(-5);
+  const CHAT = [{ author: "Ben", text: "in for Tuesday", timestamp: "2026-10-10T18:00:00.000Z" }];
+  const removedRow = (over: Record<string, unknown> = {}) =>
+    connectRow({
+      status: "group_linked",
+      groupId: GROUP,
+      botRemovedAt: REMOVED_AT,
+      org: { approvalStatus: "draft" },
+      ...over,
+    });
+  const isRemovedLinksQuery = (a: { where?: Record<string, unknown> }) =>
+    a?.where?.status === "group_linked" && a.where.botRemovedAt != null;
+  const removedLinksCalls = () =>
+    dbMock.clubConnect.findMany.mock.calls.filter((c: Array<{ where?: Record<string, unknown> }>) => isRemovedLinksQuery(c[0]));
+  /** No open request (and no LID on file); the removed links that name this group. */
+  const removedLinks = (rows: unknown[], open: unknown[] = []) => {
+    dbMock.clubConnect.findMany.mockReset();
+    dbMock.clubConnect.findMany.mockImplementation(async (a: { where?: Record<string, unknown> }) =>
+      isRemovedLinksQuery(a) ? rows : a?.where?.org ? open : [],
+    );
+  };
+
+  beforeEach(() => {
+    removedLinks([removedRow()]);
+    dbMock.clubConnect.count.mockResolvedValue(0);
+  });
+
+  it("the organiser re-adds: the same request is linked again through the normal link, with the new chat", async () => {
+    const out = await add({ enrichmentHistory: CHAT });
+    expect(out).toMatchObject({
+      kind: "linked",
+      relinked: true,
+      connectId: "cc-ali",
+      orgId: "org-riverside",
+      adderMatch: "phone",
+      organiserAckQueued: true,
+    });
+
+    // Which rows were read: removed links of THIS group only.
+    expect(removedLinksCalls()).toHaveLength(1);
+    expect(removedLinksCalls()[0][0].where).toEqual({
+      groupId: GROUP,
+      status: "group_linked",
+      botRemovedAt: { not: null },
+    });
+
+    // Compare-and-set on the very removal that was read.
+    const upd = dbMock.clubConnect.updateMany.mock.calls[0][0];
+    expect(upd.where).toEqual({ id: "cc-ali", status: "group_linked", groupId: GROUP, botRemovedAt: REMOVED_AT });
+    expect(upd.data).toMatchObject({
+      status: "group_linked",
+      groupId: GROUP,
+      groupSubject: "Riverside Tuesday 5s",
+      memberCount: 2,
+      addedByPhone: ALI,
+      adderMatch: "phone",
+      detectedLang: "en",
+      linkedAt: NOW,
+      botRemovedAt: null,
+    });
+    expect(upd.data.capturedHistory).toHaveLength(1);
+    expect(upd.data.capturedHistory[0]).toMatchObject({ author: "Ben", text: "in for Tuesday" });
+    expect(upd.data.participants).toHaveLength(2);
+
+    // The club: draft -> pending, the one writer, compare-and-set.
+    expect(dbMock.organisation.updateMany).toHaveBeenCalledWith({
+      where: { id: "org-riverside", approvalStatus: "draft" },
+      data: { approvalStatus: "pending" },
+    });
+
+    // An unsolicited row left open for this group must not get it left in 48 hours.
+    expect(dbMock.unsolicitedGroup.updateMany).toHaveBeenCalledWith({
+      where: { groupId: GROUP, leftAt: null },
+      data: { leftAt: NOW },
+    });
+    expect(dbMock.unsolicitedGroup.create).not.toHaveBeenCalled();
+
+    // One ack and one owner DM, keyed on this removal, not on the first link.
+    if (out.kind !== "linked") throw new Error("unreachable");
+    const stamp = REMOVED_AT.toISOString();
+    expect(dbMock.platformJob.create).toHaveBeenCalledTimes(1);
+    expect(dbMock.platformJob.create.mock.calls[0][0].data).toMatchObject({
+      phone: ALI,
+      purpose: "connect-reply",
+      refId: `cc-ali:in-group:relink:${stamp}`,
+    });
+    expect(out.ownerDm.refId).toBe(`cc-ali:relink:${stamp}`);
+    expect(out.ownerDm.text).toContain("New club waiting: *Riverside FC* (ref 7KQ2)");
+    expect(out.ownerDm.text).toContain("Added by: the organiser (matched by phone)");
+    expect(anthropicCalls.n).toBe(0);
+  });
+
+  it("matched by the connect DM's LID", async () => {
+    const out = await add({ addedByPhone: null, addedByLid: `${ALI_LID}@lid` });
+    expect(out).toMatchObject({ kind: "linked", relinked: true, adderMatch: "lid", organiserAckQueued: true });
+  });
+
+  it("a stranger re-adds, the organiser still in the group: unsolicited exactly as before, nothing linked, nobody DMed", async () => {
+    const out = await add({ addedByPhone: STRANGER });
+    expect(out).toEqual({ kind: "unsolicited", recorded: true, id: "ug-1" });
+    expect(dbMock.clubConnect.updateMany).not.toHaveBeenCalled();
+    expect(dbMock.organisation.updateMany).not.toHaveBeenCalled();
+    expect(dbMock.unsolicitedGroup.updateMany).not.toHaveBeenCalled();
+    expect(dbMock.platformJob.create).not.toHaveBeenCalled();
+  });
+
+  it("removed more than 24 hours ago: unsolicited", async () => {
+    removedLinks([removedRow({ botRemovedAt: mins(-24 * 60 - 1) })]);
+    expect(await add()).toMatchObject({ kind: "unsolicited" });
+    expect(dbMock.clubConnect.updateMany).not.toHaveBeenCalled();
+  });
+
+  it.each(["pending", "approved", "rejected", "suspended"])("the club is %s: unsolicited", async (approvalStatus) => {
+    removedLinks([removedRow({ org: { approvalStatus } })]);
+    expect(await add()).toMatchObject({ kind: "unsolicited" });
+    expect(dbMock.clubConnect.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("the club has a newer connect request: the code flow owns it, so unsolicited", async () => {
+    dbMock.clubConnect.count.mockResolvedValue(1);
+    expect(await add()).toMatchObject({ kind: "unsolicited" });
+    expect(dbMock.clubConnect.count.mock.calls[0][0].where).toEqual({
+      orgId: "org-riverside",
+      id: { not: "cc-ali" },
+      issuedAt: { gte: connectRow().issuedAt },
+    });
+    expect(dbMock.clubConnect.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("an open request that matches the add wins: linked by the normal rule, the removed link is never read", async () => {
+    removedLinks([removedRow()], [connectRow({ id: "cc-new" })]);
+    const out = await add();
+    expect(out).toMatchObject({ kind: "linked", connectId: "cc-new" });
+    expect(out).not.toHaveProperty("relinked");
+    expect(removedLinksCalls()).toHaveLength(0);
+    expect(dbMock.clubConnect.updateMany.mock.calls[0][0].where).toEqual({ id: "cc-new", status: "dm_verified" });
+    expect(dbMock.unsolicitedGroup.updateMany).not.toHaveBeenCalled();
+    if (out.kind !== "linked") throw new Error("unreachable");
+    expect(out.ownerDm.refId).toBe("cc-new");
+  });
+
+  it("the admin-group rule still comes first: an owner or admin of an approved club gets the admin-group wait", async () => {
+    dbMock.user.findMany.mockResolvedValue([{ id: "u-ali" }]);
+    dbMock.membership.findMany.mockResolvedValue([{ userId: "u-ali", orgId: "org-x", org: { id: "org-x", name: "X", language: "en" } }]);
+    const out = await add();
+    expect(out).toEqual({ kind: "admin-group-candidate", id: "ug-1" });
+    expect(removedLinksCalls()).toHaveLength(0);
+    expect(dbMock.clubConnect.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("the same add delivered twice: the second finds the link waiting and DMs nobody", async () => {
+    await add();
+    expect(dbMock.platformJob.create).toHaveBeenCalledTimes(1);
+    dbMock.clubConnect.findFirst.mockResolvedValue({ id: "cc-ali", linkedAt: NOW });
+    expect(await add()).toEqual({ kind: "already-linked", connectId: "cc-ali" });
+    expect(dbMock.platformJob.create).toHaveBeenCalledTimes(1);
+    expect(dbMock.clubConnect.updateMany).toHaveBeenCalledTimes(1);
+  });
+
+  it("two deliveries racing: the one that loses the compare-and-set writes nothing more", async () => {
+    dbMock.clubConnect.updateMany.mockResolvedValue({ count: 0 });
+    expect(await add()).toEqual({ kind: "race-lost" });
+    expect(dbMock.organisation.updateMany).not.toHaveBeenCalled();
+    expect(dbMock.platformJob.create).not.toHaveBeenCalled();
+  });
+
+  it("the club stopped being a draft while relinking: rolled back", async () => {
+    dbMock.organisation.updateMany.mockResolvedValue({ count: 0 });
+    expect(await add()).toEqual({ kind: "race-lost" });
+    expect(dbMock.platformJob.create).not.toHaveBeenCalled();
+  });
+
+  it("an ack already queued for this removal is not queued again", async () => {
+    dbMock.platformJob.findFirst.mockResolvedValue({ id: "pj-0" });
+    const out = await add();
+    expect(out).toMatchObject({ kind: "linked", relinked: true, organiserAckQueued: false });
+    expect(dbMock.platformJob.findFirst.mock.calls[0][0].where).toEqual({
+      purpose: "connect-reply",
+      refId: `cc-ali:in-group:relink:${REMOVED_AT.toISOString()}`,
+    });
+  });
+
+  it("found by the reconnect sweep: never relinked, never recorded", async () => {
+    expect(await add({ discovered: true, addedByPhone: undefined })).toEqual({ kind: "discovered-no-match" });
+    expect(removedLinksCalls()).toHaveLength(0);
+    expect(dbMock.clubConnect.updateMany).not.toHaveBeenCalled();
   });
 });

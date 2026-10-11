@@ -7,6 +7,12 @@
  * POST /api/whatsapp/bot-removed, GET /api/whatsapp/platform-jobs (the
  * 48-hour auto-leave) and GET /api/whatsapp/orgs (the reconnect sweep).
  *
+ * RELINK AFTER A RE-ADD (2026-10-11). MatchTime removed from a waiting
+ * club's group and added straight back by the organiser, with no new code,
+ * links the SAME request again instead of being unsolicited. The rule and
+ * its 24-hour window are in group-add-rules.ts (`decideRelinkAfterReAdd`);
+ * the link itself is `linkGroupToRequest`, the one a first link uses.
+ *
  * THE GROUP STAYS SILENT. Nothing here posts in a group, reacts, DMs a
  * member or calls a model. What it may send:
  *   - the organiser's ack, one DM on the platform channel, only when the
@@ -40,7 +46,10 @@ import {
   UNSOLICITED_AUTO_LEAVE_MS,
   addEvidenceFrom,
   decideGroupAddLink,
+  decideRelinkAfterReAdd,
   ownerApprovalDmText,
+  relinkRefIds,
+  type AddEvidence,
   type AdderMatch,
 } from "./group-add-rules";
 import { PlatformDmRefused, queuePlatformDm, queuePlatformLeaveGroup } from "./platform-jobs";
@@ -73,6 +82,9 @@ export type GroupAddOutcome =
       /** For the route to queue through `queueOwnerDm` (purpose owner-approval). */
       ownerDm: { text: string; refId: string };
       organiserAckQueued: boolean;
+      /** Present (true) when this linked a request again after a removal
+       *  and a re-add with no new code: see "Relink after a re-add". */
+      relinked?: true;
     }
   /** Nobody asked MatchTime in (plan 5.6). */
   | { kind: "unsolicited"; recorded: boolean; id: string }
@@ -143,20 +155,7 @@ export async function handleSelfJoinGroupAdd(input: GroupAddInput): Promise<Grou
   const ev = addEvidenceFrom(input);
   const candidates = await db.clubConnect.findMany({
     where: { status: { in: ["issued", "dm_verified"] }, org: DRAFT_CLUB_WHERE },
-    select: {
-      id: true,
-      orgId: true,
-      userId: true,
-      code: true,
-      status: true,
-      phone: true,
-      dmAt: true,
-      dmPhone: true,
-      dmLid: true,
-      issuedAt: true,
-      expiresAt: true,
-      addWindowEndsAt: true,
-    },
+    select: LINK_ROW_SELECT,
   });
   const decision = decideGroupAddLink(ev, candidates, now);
   const snapshot = parseParticipantSnapshot(input.participants);
@@ -192,12 +191,138 @@ export async function handleSelfJoinGroupAdd(input: GroupAddInput): Promise<Grou
       });
       return { kind: "admin-group-candidate", id: row.id };
     }
-    return recordUnsolicited(groupId, subject, snapshot.length, ev.addedByPhone, ev.addedByLid, now);
+    // Relink after a re-add (2026-10-11): the organiser took MatchTime out
+    // of the group while the club waited and put it straight back, with no
+    // new code. Only reached when the add would otherwise be unsolicited.
+    const relink = await findRelinkAfterReAdd(groupId, ev, now);
+    if (!relink) return recordUnsolicited(groupId, subject, snapshot.length, ev.addedByPhone, ev.addedByLid, now);
+    return linkGroupToRequest({ groupId, subject, snapshot, ev, history: input.enrichmentHistory, now }, relink);
   }
 
   const row = candidates.find((c) => c.id === decision.connectId);
   if (!row) return { kind: "race-lost" };
-  const history = coerceHistoryMessages(input.enrichmentHistory);
+  return linkGroupToRequest(
+    { groupId, subject, snapshot, ev, history: input.enrichmentHistory, now },
+    {
+      row,
+      // Compare-and-set on the status the request had when it was matched.
+      expect: { id: row.id, status: row.status },
+      adderMatch: decision.adderMatch,
+      organiserPresent: decision.organiserPresent,
+      ownerDmRefId: row.id,
+      organiserAckRefId: `${row.id}:in-group`,
+      relinked: false,
+    },
+  );
+}
+
+/** The columns of a connect request the matcher and the link read. */
+const LINK_ROW_SELECT = {
+  id: true,
+  orgId: true,
+  userId: true,
+  code: true,
+  status: true,
+  phone: true,
+  dmAt: true,
+  dmPhone: true,
+  dmLid: true,
+  issuedAt: true,
+  expiresAt: true,
+  addWindowEndsAt: true,
+} as const;
+
+interface LinkRow {
+  id: string;
+  orgId: string;
+  userId: string;
+  code: string;
+  phone: string;
+  dmAt: Date | null;
+  dmPhone: string | null;
+}
+
+/** The request an add is to be linked to, and how. */
+interface LinkTarget {
+  row: LinkRow;
+  /** The compare-and-set: the request is written only while it still looks like this. */
+  expect: Record<string, unknown>;
+  adderMatch: AdderMatch;
+  organiserPresent: boolean;
+  /** Once-ever keys for the owner's DM and the organiser's ack. */
+  ownerDmRefId: string;
+  organiserAckRefId: string;
+  relinked: boolean;
+}
+
+interface AddContext {
+  groupId: string;
+  subject: string | null;
+  snapshot: ReturnType<typeof parseParticipantSnapshot>;
+  ev: AddEvidence;
+  /** The Pi's `enrichmentHistory`, unread. */
+  history: unknown;
+  now: Date;
+}
+
+/**
+ * Relink after a re-add: is there a link MatchTime was removed from, in
+ * this very group, that this add should link again? The rule (every
+ * condition, and the window) is `decideRelinkAfterReAdd` in
+ * group-add-rules.ts. Null means no: the add is unsolicited as before.
+ */
+async function findRelinkAfterReAdd(groupId: string, ev: AddEvidence, now: Date): Promise<LinkTarget | null> {
+  const removed = await db.clubConnect.findMany({
+    where: { groupId, status: "group_linked", botRemovedAt: { not: null } },
+    select: { ...LINK_ROW_SELECT, groupId: true, botRemovedAt: true, org: { select: { approvalStatus: true } } },
+  });
+  if (!removed || removed.length === 0) return null;
+  const candidates = await Promise.all(
+    removed.map(async (r) => ({
+      id: r.id,
+      groupId: r.groupId,
+      status: r.status,
+      botRemovedAt: r.botRemovedAt,
+      phone: r.phone,
+      dmLid: r.dmLid,
+      orgApprovalStatus: r.org.approvalStatus,
+      // Any other request of this club issued since: the organiser went
+      // back for a new code, so the code flow owns the club now.
+      newerRequestExists:
+        (await db.clubConnect.count({ where: { orgId: r.orgId, id: { not: r.id }, issuedAt: { gte: r.issuedAt } } })) > 0,
+    })),
+  );
+  const decision = decideRelinkAfterReAdd(ev, groupId, candidates, now);
+  if (!decision.relink) {
+    console.log(`[group-add] ${groupId}: not relinked after re-add (${decision.reason})`);
+    return null;
+  }
+  const row = removed.find((r) => r.id === decision.connectId);
+  if (!row) return null;
+  const refs = relinkRefIds(row.id, decision.removedAt);
+  return {
+    row,
+    // Compare-and-set on the very removal that was read: a second delivery
+    // of the same add, or another removal in between, finds it gone.
+    expect: { id: row.id, status: "group_linked", groupId, botRemovedAt: decision.removedAt },
+    adderMatch: decision.adderMatch,
+    organiserPresent: true,
+    ownerDmRefId: refs.ownerDm,
+    organiserAckRefId: refs.organiserAck,
+    relinked: true,
+  };
+}
+
+/**
+ * Link this add to a request and set its club pending, together or not at
+ * all, then build what the owner and the organiser are told. THE one link:
+ * a first link and a relink after a re-add both come through here, and
+ * differ only in the compare-and-set and the dedupe keys they bring.
+ */
+async function linkGroupToRequest(ctx: AddContext, target: LinkTarget): Promise<GroupAddOutcome> {
+  const { groupId, subject, snapshot, ev, now } = ctx;
+  const { row } = target;
+  const history = coerceHistoryMessages(ctx.history);
   const detected = detectGroupLang({ subject, history: history.map((m) => m.text) });
 
   // 4. Link, and set the club pending, together or not at all.
@@ -208,7 +333,7 @@ export async function handleSelfJoinGroupAdd(input: GroupAddInput): Promise<Grou
       const again = await tx.clubConnect.findFirst({ where: LINKED_AND_WAITING(groupId), select: { id: true } });
       if (again) return { already: again.id };
       const { count } = await tx.clubConnect.updateMany({
-        where: { id: row.id, status: row.status },
+        where: target.expect,
         data: {
           status: "group_linked",
           groupId,
@@ -216,12 +341,17 @@ export async function handleSelfJoinGroupAdd(input: GroupAddInput): Promise<Grou
           memberCount: snapshot.length,
           addedByPhone: ev.addedByPhone,
           addedByLid: ev.addedByLid,
-          adderMatch: decision.adderMatch,
+          adderMatch: target.adderMatch,
           participants: snapshot.length > 0 ? (snapshot.map((p) => ({ ...p })) as unknown as object) : undefined,
           detectedLang: detected.lang,
           // F3: the chat, kept until the learned setup has read it once
           // after approval (or the club is rejected). See setup-learning/.
+          // A relink stores what THIS add brought: the removal deleted
+          // the earlier chat, so there is nothing older to keep.
           capturedHistory: history.length > 0 ? (history as unknown as object) : undefined,
+          // Also where the chat's retention is measured from (captured-
+          // history-expiry.ts). A relink sets it again: its chat was
+          // stored now, and the club has been waiting since now.
           linkedAt: now,
           botRemovedAt: null,
         },
@@ -230,6 +360,13 @@ export async function handleSelfJoinGroupAdd(input: GroupAddInput): Promise<Grou
       // Throwing rolls the link back: a request must never say
       // group_linked while its club is not pending.
       if (!(await markClubPendingOnLink(row.orgId, tx))) throw new LinkAborted();
+      // A relinked group may still have an open unsolicited row (an add
+      // that reached us before this rule existed, or one by somebody
+      // else). It is a waiting club's group now: close the row, or the
+      // 48-hour auto-leave would take MatchTime out of it.
+      if (target.relinked) {
+        await tx.unsolicitedGroup.updateMany({ where: { groupId, leftAt: null }, data: { leftAt: now } });
+      }
       return "linked" as const;
     });
   } catch (err) {
@@ -249,14 +386,14 @@ export async function handleSelfJoinGroupAdd(input: GroupAddInput): Promise<Grou
     loadAlsoIn(snapshot),
   ]);
   const ownerDm = {
-    refId: row.id,
+    refId: target.ownerDmRefId,
     text: ownerApprovalDmText({
       club: org?.name ?? "(unnamed club)",
       code: row.code,
       organiserName: organiser?.name ?? null,
       organiserPhone: row.phone,
-      adderMatch: decision.adderMatch,
-      organiserPresent: decision.organiserPresent,
+      adderMatch: target.adderMatch,
+      organiserPresent: target.organiserPresent,
       numberUnconfirmed: row.dmAt !== null && row.dmPhone === null,
       groupSubject: subject,
       memberCount: snapshot.length,
@@ -267,22 +404,28 @@ export async function handleSelfJoinGroupAdd(input: GroupAddInput): Promise<Grou
   };
 
   let organiserAckQueued = false;
-  if (decision.adderMatch === "phone" || decision.adderMatch === "lid") {
-    organiserAckQueued = await queueOrganiserAck(row.id, row.phone, t(org?.language).sj_dm_in_group({ group: subject }));
+  if (target.adderMatch === "phone" || target.adderMatch === "lid") {
+    organiserAckQueued = await queueOrganiserAck(
+      target.organiserAckRefId,
+      row.phone,
+      t(org?.language).sj_dm_in_group({ group: subject }),
+    );
   }
 
   console.log(
-    `[group-add] ${groupId} ("${subject ?? "?"}") linked to ${row.id} (club ${row.orgId}, now pending): ` +
-      `adder=${decision.adderMatch}, ${snapshot.length} member(s), looks ${detected.lang}` +
+    `[group-add] ${groupId} ("${subject ?? "?"}") ${target.relinked ? "relinked after re-add" : "linked"} to ${row.id} ` +
+      `(club ${row.orgId}, now pending): adder=${target.adderMatch}, ${snapshot.length} member(s), ` +
+      `${history.length} chat message(s), looks ${detected.lang}` +
       `${detected.confident ? "" : " (unsure)"}, organiser ack ${organiserAckQueued ? "queued" : "not sent"}`,
   );
   return {
     kind: "linked",
     connectId: row.id,
     orgId: row.orgId,
-    adderMatch: decision.adderMatch,
+    adderMatch: target.adderMatch,
     ownerDm,
     organiserAckQueued,
+    ...(target.relinked ? { relinked: true as const } : {}),
   };
 }
 
@@ -329,9 +472,9 @@ async function loadAlsoIn(
     .sort((a, b) => b.count - a.count || a.orgName.localeCompare(b.orgName));
 }
 
-/** The organiser's "I'm in" DM, once per request. True when queued. */
-async function queueOrganiserAck(connectId: string, phone: string, text: string): Promise<boolean> {
-  const refId = `${connectId}:in-group`;
+/** The organiser's "I'm in" DM, once per refId: one for the link, and one
+ *  for each relink after a re-add. True when queued. */
+async function queueOrganiserAck(refId: string, phone: string, text: string): Promise<boolean> {
   const already = await db.platformJob.findFirst({ where: { purpose: "connect-reply", refId }, select: { id: true } });
   if (already) return false;
   try {

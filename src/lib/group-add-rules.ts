@@ -108,6 +108,25 @@ function newestFirst(a: LinkCandidate, b: LinkCandidate): number {
   return b.issuedAt.getTime() - a.issuedAt.getTime();
 }
 
+/**
+ * THE PROOF THAT THE ADDER IS THE ORGANISER, one rule for every path that
+ * needs it (the matched add below, and the relink after a re-add):
+ *
+ *   by phone   the adder's phone is the organiser's verified sign-up phone;
+ *   by LID     the adder's LID is the one the organiser's connect DM came
+ *              from. `dmLid` is written by a verified connect DM and by
+ *              nothing else, so a request that has one was DM-verified.
+ *
+ * Being IN the group is not this proof, and neither is a missing adder.
+ */
+export function adderIsOrganiserByPhone(ev: AddEvidence, c: { phone: string }): boolean {
+  return !ev.discovered && ev.addedByPhone !== null && c.phone === ev.addedByPhone;
+}
+
+export function adderIsOrganiserByLid(ev: AddEvidence, c: { dmLid: string | null }): boolean {
+  return !ev.discovered && ev.addedByLid !== null && c.dmLid !== null && c.dmLid === ev.addedByLid;
+}
+
 function organiserIn(c: LinkCandidate, ev: AddEvidence): boolean {
   return ev.participants.some((p) => (p.phone !== null && p.phone === c.phone) || (p.lid !== null && p.lid === c.dmLid));
 }
@@ -125,16 +144,10 @@ export function decideGroupAddLink(ev: AddEvidence, candidates: LinkCandidate[],
     })
     .sort(newestFirst);
 
-  if (!ev.discovered) {
-    if (ev.addedByPhone) {
-      const byPhone = open.find((c) => c.phone === ev.addedByPhone);
-      if (byPhone) return { link: true, connectId: byPhone.id, adderMatch: "phone", organiserPresent: true };
-    }
-    if (ev.addedByLid) {
-      const byLid = open.find((c) => c.status === "dm_verified" && c.dmLid === ev.addedByLid);
-      if (byLid) return { link: true, connectId: byLid.id, adderMatch: "lid", organiserPresent: true };
-    }
-  }
+  const byPhone = open.find((c) => adderIsOrganiserByPhone(ev, c));
+  if (byPhone) return { link: true, connectId: byPhone.id, adderMatch: "phone", organiserPresent: true };
+  const byLid = open.find((c) => c.status === "dm_verified" && adderIsOrganiserByLid(ev, c));
+  if (byLid) return { link: true, connectId: byLid.id, adderMatch: "lid", organiserPresent: true };
 
   const verified = open.filter((c) => c.status === "dm_verified");
   const present = verified.filter((c) => organiserIn(c, ev));
@@ -147,6 +160,105 @@ export function decideGroupAddLink(ev: AddEvidence, candidates: LinkCandidate[],
     adderMatch: adderKnown ? "other-organiser-present" : "unknown",
     organiserPresent: true,
   };
+}
+
+// ── Relink after a re-add (owner's decision, 2026-10-11) ────────────────
+//
+// The organiser removes MatchTime from the group while the club waits for
+// approval (to switch on WhatsApp's "Message history", say) and adds it
+// straight back, without going to the website for a new code. The removal
+// returned the club to draft and deleted the captured chat; the code is
+// long expired; so no open request matches and the add used to be
+// unsolicited: silent, nothing stored, left after 48 hours, nobody told.
+//
+// THE RULE. An add that matched no open request (and that the admin-group
+// rule did not claim) links the SAME connect request again when ALL hold:
+//
+//   1. the request names THIS group, is `group_linked` and has
+//      `botRemovedAt` set: it is the link MatchTime was removed from. Of
+//      several such rows only the one removed most recently is looked at;
+//   2. the removal was less than RELINK_AFTER_REMOVAL_MS ago;
+//   3. its club is still a draft (never pending, approved, rejected or
+//      suspended; a deleted club has no row);
+//   4. the club has no NEWER connect request, of any status. Once the
+//      organiser has asked for a new code, the code flow owns the club and
+//      its card; this rule never revives an older request beside it;
+//   5. the ADDER is that request's organiser, by phone or by connect-DM
+//      LID (`adderIsOrganiserByPhone` / `adderIsOrganiserByLid`, the very
+//      proof a matched add uses). An add by anyone else, an add with no
+//      adder, and a group found by the reconnect sweep never relink,
+//      whoever is in the group.
+//
+// Anything else stays unsolicited exactly as before.
+
+/**
+ * How long after MatchTime was removed a re-add by the organiser still
+ * links the same request. 24 hours: the length of the add window a verified
+ * connect DM opens (ADD_WINDOW_MS in connect-dm-rules.ts). The removal is
+ * treated as putting the organiser back at that step, "verified, now add
+ * MatchTime to your group", for the time that step always allows. Long
+ * enough for "I took it out last night and put it back this morning";
+ * short enough that a group dropped days ago cannot be pinned on a club
+ * again without a fresh code. Measured from `botRemovedAt`, never from the
+ * first link, so each removal opens one window and no more.
+ */
+export const RELINK_AFTER_REMOVAL_MS = 24 * 60 * 60 * 1000;
+
+/** The columns of a connect request (and its club) the relink rule reads. */
+export interface RelinkCandidate {
+  id: string;
+  groupId: string | null;
+  status: string;
+  botRemovedAt: Date | null;
+  /** The organiser's verified sign-up phone, digits. */
+  phone: string;
+  /** The LID the connect DM came from, bare digits. */
+  dmLid: string | null;
+  orgApprovalStatus: string;
+  /** The club has another connect request issued at or after this one. */
+  newerRequestExists: boolean;
+}
+
+export type RelinkDecision =
+  | { relink: true; connectId: string; adderMatch: "phone" | "lid"; removedAt: Date }
+  | {
+      relink: false;
+      reason: "no-removed-link" | "outside-window" | "club-not-draft" | "newer-request" | "adder-not-organiser";
+    };
+
+export function decideRelinkAfterReAdd(
+  ev: AddEvidence,
+  groupId: string,
+  candidates: RelinkCandidate[],
+  now: Date,
+): RelinkDecision {
+  const removed = candidates
+    .filter(
+      (c): c is RelinkCandidate & { botRemovedAt: Date } =>
+        c.groupId === groupId && c.status === "group_linked" && c.botRemovedAt !== null,
+    )
+    .sort((a, b) => b.botRemovedAt.getTime() - a.botRemovedAt.getTime());
+  const c = removed[0];
+  if (!c) return { relink: false, reason: "no-removed-link" };
+  if (now.getTime() - c.botRemovedAt.getTime() >= RELINK_AFTER_REMOVAL_MS) return { relink: false, reason: "outside-window" };
+  if (c.orgApprovalStatus !== "draft") return { relink: false, reason: "club-not-draft" };
+  if (c.newerRequestExists) return { relink: false, reason: "newer-request" };
+  const adderMatch = adderIsOrganiserByPhone(ev, c) ? "phone" : adderIsOrganiserByLid(ev, c) ? "lid" : null;
+  if (!adderMatch) return { relink: false, reason: "adder-not-organiser" };
+  return { relink: true, connectId: c.id, adderMatch, removedAt: c.botRemovedAt };
+}
+
+/**
+ * The dedupe keys of ONE relink. The organiser's ack and the owner's DM
+ * are each sent once per refId, ever, and the first link used the bare
+ * request id. A relink is a new "club waiting", so it gets its own keys,
+ * built from the removal it undoes: a second removal and re-add has a
+ * different `botRemovedAt` and sends again, while the same add delivered
+ * twice (the Pi retries) builds the same keys and sends once.
+ */
+export function relinkRefIds(connectId: string, removedAt: Date): { ownerDm: string; organiserAck: string } {
+  const stamp = removedAt.toISOString();
+  return { ownerDm: `${connectId}:relink:${stamp}`, organiserAck: `${connectId}:in-group:relink:${stamp}` };
 }
 
 // ── The owner's approval DM (plan 6.1) ──────────────────────────────────
