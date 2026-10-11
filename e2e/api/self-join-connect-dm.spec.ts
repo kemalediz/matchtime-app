@@ -141,7 +141,8 @@ test("from the sign-up phone, edited text, lowercase: verified, LID kept, one En
   expect(sent[0]).toMatchObject({ purpose: "connect-reply", refId: "e2e-sj5-en:connected", status: "queued" });
   expect(sent[0].text).toBe(
     "Hi Ali, got it: Riverside FC is connected to this chat.\n" +
-      "Next, add me to your football group. Save this number as a contact called MatchTime first, then open the group, tap Add participant and pick MatchTime.\n" +
+      "Next, add me to your football group. Save this number as a contact called MatchTime first, then open the group, tap Add participant and pick MatchTime.\n\n" +
+      "*Important: before you confirm, switch on \"Message history\" on that screen.* It sends me your group's recent messages, so I can set MatchTime up the way you already run things.\n\n" +
       "I'll stay quiet in the group until your club is approved, usually within a day. I'll message you here when it's live.",
   );
 

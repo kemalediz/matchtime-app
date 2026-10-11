@@ -1649,6 +1649,8 @@ export const tr: Strings = {
     `Kodunuz ${p.seen} numarasından geldi. Lütfen kayıt olduğunuz numaradan, yani ${p.expected} numarasından gönderin.`,
   sj_card_dm_verified:
     "2. adım: MatchTime'ı futbol grubunuza ekleyin. Aşağıdaki numarayı MatchTime adıyla rehberinize kaydedin, sonra grubu açıp Katılımcı ekle'ye dokunun ve MatchTime'ı seçin.",
+  sj_card_history_tip:
+    "Önemli: onaylamadan önce o ekrandaki \"Mesaj geçmişi\" seçeneğini açın. Böylece grubunuzun son mesajları MatchTime'a gelir ve kendini sizin düzeninize göre kurabilir.",
   sj_card_number_label: "MatchTime'ın WhatsApp numarası",
   sj_card_pending:
     "3. adım: kulübünüzü kontrol ediyoruz, genellikle bir gün içinde. Kulübünüz onaylanana kadar MatchTime grupta sessiz kalır, yayına geçince size WhatsApp'tan yazar.",
@@ -1678,7 +1680,8 @@ export const tr: Strings = {
 
   sj_dm_connected: (p) =>
     `Merhaba${p.name ? ` ${p.name}` : ""}, tamamdır: ${p.club} bu sohbete bağlandı.\n` +
-    "Sıradaki adım: beni futbol grubunuza ekleyin. Önce bu numarayı MatchTime adıyla rehberinize kaydedin, sonra grubu açıp Katılımcı ekle'ye dokunun ve MatchTime'ı seçin.\n" +
+    "Sıradaki adım: beni futbol grubunuza ekleyin. Önce bu numarayı MatchTime adıyla rehberinize kaydedin, sonra grubu açıp Katılımcı ekle'ye dokunun ve MatchTime'ı seçin.\n\n" +
+    "*Önemli: onaylamadan önce o ekrandaki \"Mesaj geçmişi\" seçeneğini açın.* Böylece grubunuzun son mesajları bana gelir ve MatchTime'ı sizin düzeninize göre kurabilirim.\n\n" +
     "Kulübünüz onaylanana kadar grupta sessiz kalacağım, genellikle bir gün içinde. Yayına geçince size buradan yazacağım.",
   sj_dm_already_connected: "Zaten bağlısınız. Şimdi beni grubunuza eklemeniz yeterli.",
   sj_dm_code_expired:

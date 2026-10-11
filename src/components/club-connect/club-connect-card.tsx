@@ -118,6 +118,9 @@ export async function ClubConnectCard({ orgId, userId }: { orgId: string; userId
       {card.kind === "dm_verified" && (
         <>
           <p className="text-sm text-slate-700">{s.sj_card_dm_verified}</p>
+          <p className="text-sm font-semibold text-slate-900" data-testid="club-connect-history-tip">
+            {s.sj_card_history_tip}
+          </p>
           {number && (
             <p className="text-sm text-slate-800">
               {s.sj_card_number_label}:{" "}
