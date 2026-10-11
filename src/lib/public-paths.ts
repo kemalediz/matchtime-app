@@ -1,4 +1,16 @@
 /**
+ * The email sign-up pages, retired 2026-10-11 when WhatsApp became the
+ * only way in. The pages are deleted; an old link to one is redirected
+ * (by src/middleware.ts, before the session check, so it works signed in
+ * or out) to the page that does the same job now. Exact paths only.
+ */
+export function retiredAuthRedirect(pathname: string): string | null {
+  if (pathname === "/signup-email") return "/signup";
+  if (pathname === "/verify-email") return "/login";
+  return null;
+}
+
+/**
  * Routes a signed-out visitor may open without being sent to /login.
  * Used by src/middleware.ts; kept here as a pure function so it can be
  * unit tested without a request object.
@@ -11,7 +23,6 @@ export function isPublicPath(pathname: string): boolean {
     pathname === "/" ||
     pathname === "/login" ||
     pathname === "/signup" ||
-    pathname === "/verify-email" ||
     pathname === "/sitemap.xml" ||
     pathname === "/robots.txt" ||
     // Help guides are linked from the landing page and must be readable
