@@ -4,8 +4,9 @@
  * Public signup page — phone-number-first. We DM a 6-digit code via
  * WhatsApp, user enters it on the next screen, then lands in /onboarding.
  *
- * Existing email/Google sign-in flows at /login are untouched; this is
- * an additional entry point for new admins.
+ * Somebody who already has an account signs in at /login, with the same
+ * kind of WhatsApp code and no name. A number that already has an
+ * account is still signed in here too, as before.
  */
 
 import { useRef, useState } from "react";

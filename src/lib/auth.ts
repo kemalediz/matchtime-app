@@ -3,8 +3,8 @@ import Google from "next-auth/providers/google";
 import Credentials from "next-auth/providers/credentials";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { db } from "./db";
-import bcrypt from "bcryptjs";
 import { verifyMagicLinkToken } from "./magic-link";
+import { gateSignIn } from "./google-signin-gate";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(db),
@@ -14,38 +14,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
     }),
-    Credentials({
-      name: "credentials",
-      credentials: {
-        email: { label: "Email", type: "email" },
-        password: { label: "Password", type: "password" },
-      },
-      async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) return null;
-
-        const user = await db.user.findUnique({
-          where: { email: credentials.email as string },
-        });
-
-        if (!user || !user.password) return null;
-        if (!user.emailVerified) return null;
-
-        const valid = await bcrypt.compare(
-          credentials.password as string,
-          user.password
-        );
-        if (!valid) return null;
-
-        return {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          image: user.image,
-        };
-      },
-    }),
-    // Magic-link provider — players sign in by opening a signed URL we
-    // DM'd them on WhatsApp. No password needed. Used for the rating flow.
+    // No email + password provider (removed 2026-10-11): WhatsApp is the
+    // only sign-in the product shows, and no user has a password. Google
+    // above is the platform owner's fallback at /login?via=google and is
+    // held to already-linked accounts by `gateSignIn` below.
+    // Magic-link provider: players sign in by opening a signed URL we
+    // DM'd them on WhatsApp, and /login and /signup exchange a correct
+    // WhatsApp code for a short-lived one.
     Credentials({
       id: "magic-link",
       name: "Magic Link",
@@ -83,6 +58,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
   ],
   callbacks: {
+    // Runs BEFORE Auth.js would create or link a user: an unknown Google
+    // account is refused here and nothing is written.
+    signIn: gateSignIn,
     jwt({ token, user }) {
       if (user) {
         token.id = user.id;

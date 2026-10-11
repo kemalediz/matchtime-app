@@ -2,7 +2,8 @@
 
 import { db } from "@/lib/db";
 import { normalisePhone } from "@/lib/phone";
-import { signMagicLinkToken, MAGIC_LINK_TTL } from "@/lib/magic-link";
+import { signMagicLinkToken } from "@/lib/magic-link";
+import { safeCallbackPath } from "@/lib/safe-callback";
 import { randomInt } from "node:crypto";
 import { headers } from "next/headers";
 import { queuePlatformDm } from "@/lib/platform-jobs";
@@ -38,6 +39,12 @@ import {
  *   - Code expires in 10 minutes
  *   - ≤ 5 verify attempts per code
  *
+ * SIGN IN (2026-10-11): /login uses the same codes through
+ * startPhoneSignIn / verifyPhoneSignIn below. There is ONE code system:
+ * `issueCode` and `spendCode` are the only places a code is made or
+ * checked, so sign-in shares the table, the expiry, the attempt limit
+ * and all three caps with sign-up. Sign-in never creates a User.
+ *
  * The code DM is a PlatformJob (purpose "otp"), polled by the Pi whatever
  * any club's bot switch says (self-join slice 3). It used to be a BotJob
  * under "the first bot-enabled org", borrowed as a sender, so muting the
@@ -66,16 +73,17 @@ function generateCode(): string {
   return randomInt(100_000, 1_000_000).toString();
 }
 
-export async function startPhoneSignup(args: {
-  phone: string;
-  name: string;
-}): Promise<{ ok: true } | { ok: false; error: string }> {
-  const phone = normalisePhone(args.phone);
-  if (!phone) return { ok: false, error: "Phone number looks invalid. Use full international format (e.g. +44…)" };
-  const digits = phone.replace(/^\+/, "");
-  const name = args.name.trim();
-  if (name.length < 2) return { ok: false, error: "Tell us your name" };
+type Refusal = { ok: false; error: string };
 
+/**
+ * Issue a code for `digits` and DM it. Every cap lives here, so every
+ * caller is held to the same ones. Looks at PhoneOtp only, never at User:
+ * what it answers cannot depend on whether the number has an account.
+ */
+async function issueCode(
+  digits: string,
+  text: (code: string) => string,
+): Promise<{ ok: true } | Refusal> {
   const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
   const recent = await db.phoneOtp.count({
     where: { phone: digits, createdAt: { gte: hourAgo } },
@@ -114,33 +122,17 @@ export async function startPhoneSignup(args: {
     },
   });
 
-  await queuePlatformDm({
-    phone: digits,
-    purpose: "otp",
-    text:
-      `👋 Welcome to MatchTime${name ? `, ${name}` : ""}!\n\n` +
-      `Your verification code: *${code}*\n\n` +
-      `It expires in 10 minutes. If you didn't ask for this, just ignore the message.`,
-  });
+  await queuePlatformDm({ phone: digits, purpose: "otp", text: text(code) });
 
   return { ok: true };
 }
 
-export async function verifyPhoneSignup(args: {
-  phone: string;
-  code: string;
-  name: string;
-}): Promise<
-  | { ok: true; magicLinkToken: string; isExistingPlayer: boolean }
-  | { ok: false; error: string }
-> {
-  const phone = normalisePhone(args.phone);
-  if (!phone) return { ok: false, error: "Phone number looks invalid" };
-  const digits = phone.replace(/^\+/, "");
-  const code = args.code.trim();
-  if (!/^\d{6}$/.test(code)) return { ok: false, error: "Code must be 6 digits" };
-  const name = args.name.trim();
-
+/**
+ * Check `code` against the newest live code for `digits` and, when it is
+ * right, spend it. Looks at PhoneOtp only: a wrong, expired or used code
+ * gets the same answer whoever the number belongs to.
+ */
+async function spendCode(digits: string, code: string): Promise<{ ok: true } | Refusal> {
   const otp = await db.phoneOtp.findFirst({
     where: { phone: digits, usedAt: null, expiresAt: { gt: new Date() } },
     orderBy: { createdAt: "desc" },
@@ -159,8 +151,47 @@ export async function verifyPhoneSignup(args: {
     return { ok: false, error: "Wrong code" };
   }
 
-  // Mark consumed + find-or-create user.
   await db.phoneOtp.update({ where: { id: otp.id }, data: { usedAt: new Date() } });
+  return { ok: true };
+}
+
+export async function startPhoneSignup(args: {
+  phone: string;
+  name: string;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const phone = normalisePhone(args.phone);
+  if (!phone) return { ok: false, error: "Phone number looks invalid. Use full international format (e.g. +44…)" };
+  const digits = phone.replace(/^\+/, "");
+  const name = args.name.trim();
+  if (name.length < 2) return { ok: false, error: "Tell us your name" };
+
+  return issueCode(
+    digits,
+    (code) =>
+      `👋 Welcome to MatchTime${name ? `, ${name}` : ""}!\n\n` +
+      `Your verification code: *${code}*\n\n` +
+      `It expires in 10 minutes. If you didn't ask for this, just ignore the message.`,
+  );
+}
+
+export async function verifyPhoneSignup(args: {
+  phone: string;
+  code: string;
+  name: string;
+}): Promise<
+  | { ok: true; magicLinkToken: string; isExistingPlayer: boolean }
+  | { ok: false; error: string }
+> {
+  const phone = normalisePhone(args.phone);
+  if (!phone) return { ok: false, error: "Phone number looks invalid" };
+  const digits = phone.replace(/^\+/, "");
+  const code = args.code.trim();
+  if (!/^\d{6}$/.test(code)) return { ok: false, error: "Code must be 6 digits" };
+  const name = args.name.trim();
+
+  // Mark consumed + find-or-create user.
+  const spent = await spendCode(digits, code);
+  if (!spent.ok) return spent;
 
   let user = await db.user.findUnique({ where: { phoneNumber: phone } });
   let createdNew = false;
@@ -220,4 +251,92 @@ export async function verifyPhoneSignup(args: {
   });
 
   return { ok: true, magicLinkToken: token, isExistingPlayer: !createdNew && memberships > 0 };
+}
+
+/**
+ * SIGN IN WITH WHATSAPP, step 1 (/login): send a code to the number.
+ *
+ * Takes a phone and nothing else: no name, and no look at User. A code is
+ * sent to ANY valid number, under the same caps as sign-up, so the answer
+ * here says nothing about whether the number has an account. Only whoever
+ * holds the phone finds that out, in step 2.
+ */
+export async function startPhoneSignIn(args: {
+  phone: string;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const phone = normalisePhone(args.phone);
+  if (!phone) return { ok: false, error: "Phone number looks invalid. Use full international format (e.g. +44…)" };
+  const digits = phone.replace(/^\+/, "");
+
+  return issueCode(
+    digits,
+    (code) =>
+      `🔐 Your MatchTime sign-in code: *${code}*\n\n` +
+      `It expires in 10 minutes. If you didn't ask for this, just ignore the message.`,
+  );
+}
+
+/**
+ * SIGN IN WITH WHATSAPP, step 2: check the code and hand back a short
+ * sign-in token for the account that number belongs to.
+ *
+ * NEVER creates a User. A correct code for a number with no account is
+ * refused with `noAccount` (the page then points at /signup); that answer
+ * is reachable only by proving the phone, so it leaks nothing to anyone
+ * else. The code is spent either way.
+ *
+ * `callbackUrl` is followed only when it is a path on this site
+ * (`safeCallbackPath`); anything else falls back to where sign-up lands
+ * the same kind of user.
+ */
+export async function verifyPhoneSignIn(args: {
+  phone: string;
+  code: string;
+  callbackUrl?: string | null;
+}): Promise<
+  | { ok: true; magicLinkToken: string; nextPath: string }
+  | { ok: false; error: string; noAccount?: true }
+> {
+  const phone = normalisePhone(args.phone);
+  if (!phone) return { ok: false, error: "Phone number looks invalid" };
+  const digits = phone.replace(/^\+/, "");
+  const code = (args.code ?? "").trim();
+  if (!/^\d{6}$/.test(code)) return { ok: false, error: "Code must be 6 digits" };
+
+  const spent = await spendCode(digits, code);
+  if (!spent.ok) return spent;
+
+  let user = await db.user.findUnique({ where: { phoneNumber: phone } });
+  if (!user) {
+    return { ok: false, noAccount: true, error: "There is no MatchTime account for this number." };
+  }
+  // A player the bot added from a club's group has a User row but may
+  // never have opened the site. The phone is verified now, which is the
+  // whole of /welcome, so do not send them through it (as sign-up does).
+  if (!user.onboarded) {
+    user = await db.user.update({ where: { id: user.id }, data: { onboarded: true } });
+  }
+
+  const asked = safeCallbackPath(args.callbackUrl);
+  let nextPath: string;
+  if (asked && asked !== "/") {
+    nextPath = asked;
+  } else {
+    const memberships = await db.membership.count({
+      where: { userId: user.id, leftAt: null },
+    });
+    nextPath = memberships > 0 ? "/" : "/onboarding";
+  }
+
+  // The same session path as sign-up: a 5 minute "sign-in" token, which
+  // the magic-link credentials provider (src/lib/auth.ts) turns into a
+  // session. No new token purpose.
+  const token = signMagicLinkToken({
+    userId: user.id,
+    purpose: "sign-in",
+    nextPath,
+    ttlSeconds: 300,
+  });
+
+  return { ok: true, magicLinkToken: token, nextPath };
 }
