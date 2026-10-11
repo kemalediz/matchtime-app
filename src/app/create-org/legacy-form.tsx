@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -16,18 +16,22 @@ export function LegacyCreateOrgForm() {
   const [slug, setSlug] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const submitting = useRef(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (submitting.current) return;
+    submitting.current = true;
     setError("");
     setLoading(true);
     try {
       await createOrganisation({ name, slug });
       toast.success("Organisation created!");
+      // Stays busy: the next page is still loading.
       router.push("/admin/activities");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
-    } finally {
+      submitting.current = false;
       setLoading(false);
     }
   }

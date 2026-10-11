@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useRef, useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -15,19 +15,30 @@ function LoginForm() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const submitting = useRef(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (submitting.current) return;
+    submitting.current = true;
     setError("");
     setLoading(true);
+    // Stays busy on success: the next page is still loading.
+    let leaving = false;
     try {
       const result = await signIn("credentials", { email, password, redirect: false });
       if (result?.error) setError("Invalid email or password.");
-      else router.push(callbackUrl);
+      else {
+        leaving = true;
+        router.push(callbackUrl);
+      }
     } catch {
       setError("Something went wrong. Please try again.");
     } finally {
-      setLoading(false);
+      if (!leaving) {
+        submitting.current = false;
+        setLoading(false);
+      }
     }
   }
 

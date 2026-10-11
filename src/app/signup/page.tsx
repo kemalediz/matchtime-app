@@ -8,7 +8,7 @@
  * an additional entry point for new admins.
  */
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -23,8 +23,11 @@ export default function SignupPage() {
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
+  const submitting = useRef(false);
 
   async function handleStart() {
+    if (submitting.current) return;
+    submitting.current = true;
     setBusy(true);
     try {
       const res = await startPhoneSignup({ phone, name });
@@ -37,12 +40,17 @@ export default function SignupPage() {
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed");
     } finally {
+      submitting.current = false;
       setBusy(false);
     }
   }
 
   async function handleVerify() {
+    if (submitting.current) return;
+    submitting.current = true;
     setBusy(true);
+    // Stays busy on success: the next page is still loading.
+    let leaving = false;
     try {
       const res = await verifyPhoneSignup({ phone, code, name });
       if (!res.ok) {
@@ -58,6 +66,7 @@ export default function SignupPage() {
         token: res.magicLinkToken,
         redirect: false,
       });
+      leaving = true;
       if (res.isExistingPlayer) {
         toast.success("Welcome back!");
         router.push("/");
@@ -67,7 +76,10 @@ export default function SignupPage() {
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed");
     } finally {
-      setBusy(false);
+      if (!leaving) {
+        submitting.current = false;
+        setBusy(false);
+      }
     }
   }
 

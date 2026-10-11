@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -15,18 +15,22 @@ export default function SignupPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const submitting = useRef(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (submitting.current) return;
+    submitting.current = true;
     setError("");
     setLoading(true);
     try {
       await signUpWithEmail({ name, email, password });
       toast.success("Account created! Check your email for a verification code.");
+      // Stays busy: the next page is still loading.
       router.push(`/verify-email?email=${encodeURIComponent(email)}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
-    } finally {
+      submitting.current = false;
       setLoading(false);
     }
   }
