@@ -13,7 +13,9 @@
  *   - two purposes only, checked at runtime, not just by the type;
  *   - a refId is required, and there is ONE DM per (purpose, refId,
  *     approver phone), ever, so a retry or a re-add cannot DM twice about
- *     the same club;
+ *     the same club (a club that went back to draft and was linked again
+ *     is waiting again, and brings a new refId: group-add-rules.ts,
+ *     `relinkRefIds`);
  *   - only to the numbers in SELF_JOIN_APPROVER_PHONES (none set, none
  *     sent, and the result says so);
  *   - an approval request that would land between 22:00 and 08:00 London

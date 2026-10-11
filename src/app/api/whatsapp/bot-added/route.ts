@@ -16,6 +16,10 @@
  *     linked, the club goes PENDING, the organiser gets a one-line ack
  *     if they were the adder, and the owner gets ONE approval DM
  *     (queueOwnerDm, purpose owner-approval);
+ *   - a re-add by the organiser, within 24 hours of MatchTime being
+ *     removed from that same group while the club waited, with no new
+ *     code (2026-10-11): the same request is linked again, exactly as
+ *     above (same answer to the Pi, one ack, one owner DM for the relink);
  *   - anything else: recorded as unsolicited (silent, left after 48h).
  * It never returns an intro. `silent: true` tells the Pi to treat the
  * group as silent at once, before its next /orgs refresh. The Pi's
@@ -128,12 +132,16 @@ async function selfJoinAdd(request: Request): Promise<NextResponse> {
     discovered: body.discovered,
   });
   if (outcome.kind === "linked") {
-    // The ONE DM to the owner about this request. queueOwnerDm is also
-    // once per (purpose, refId, phone), so a retry cannot DM twice.
+    // The ONE DM to the owner about this link. queueOwnerDm is also once
+    // per (purpose, refId, phone), so a retry cannot DM twice. A relink
+    // after a re-add brings its own refId (one per removal), so the owner
+    // hears once that the club is waiting again.
     const dm = await queueOwnerDm(outcome.ownerDm.text, "owner-approval", outcome.ownerDm.refId);
     if (dm.queued > 0 || dm.skipped > 0) await markOwnerDmQueued(outcome.connectId);
   }
-  console.log(`[bot-added] ${groupId}: self-join ${outcome.kind}`);
+  console.log(
+    `[bot-added] ${groupId}: self-join ${outcome.kind}${outcome.kind === "linked" && outcome.relinked ? " (relinked after re-add)" : ""}`,
+  );
   return NextResponse.json({
     ok: true,
     ignored: SELF_JOIN_IGNORED[outcome.kind],
