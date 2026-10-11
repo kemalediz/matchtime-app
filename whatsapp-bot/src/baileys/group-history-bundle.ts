@@ -50,7 +50,7 @@
 import { createDecipheriv, createHash, createHmac, hkdfSync, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 import { gunzip, inflate, inflateRaw } from "node:zlib";
-import { proto, type WAMessage } from "baileys";
+import { normalizeMessageContent, proto, type WAMessage } from "baileys";
 import { mapInboundMessage, toNumber } from "./inbound.js";
 
 /** HKDF info strings, most likely first. A wrong one fails the MAC check. */
@@ -417,6 +417,12 @@ export type UnpackResult =
       valid: number;
       otherChat: number;
       withText: number;
+      /** Rows whose text is an edit's (the message had been edited before it was shared). */
+      edited: number;
+      /** Entries that decoded, belong to this chat, and yielded no text. */
+      noText: number;
+      /** What those were, by field name: most frequent first, at most `MAX_NO_TEXT_SHAPES` and an "other". */
+      noTextShapes: NoTextShape[];
       /** Messages whose text was cut to `MAX_BUNDLE_TEXT_CHARS`. */
       textCut: number;
       authors: number;
@@ -448,24 +454,255 @@ function capText(text: string, max = MAX_BUNDLE_TEXT_CHARS): { text: string; tru
   return { text: text.slice(0, end).trimEnd(), truncated: true };
 }
 
-/** The live path's mapper turns one decoded message into a row, or nothing. */
-function toRow(m: proto.IWebMessageInfo, group: string): BundleRow | "other-chat" | null {
-  const key = m.key ?? {};
-  if (key.remoteJid && key.remoteJid !== group) return "other-chat";
-  // Unwraps, takes text or a caption, and returns null for system
-  // notices, reactions, polls and the rest.
-  const mapped = mapInboundMessage({ ...m, key: { ...key, remoteJid: group } } as WAMessage);
-  if (!mapped || !mapped.body) return null;
-  const senderJid = key.participant || m.participant || null;
-  const cut = capText(mapped.body);
+// ── Edited messages ──────────────────────────────────────────────────
+// Measured in production on 2026-10-11: a bundle of 26 entries held three
+// messages that had been edited in WhatsApp, and none of the three came
+// out as a row, in either wording. WHAT SHAPE an edit has inside a bundle
+// entry is NOT known: the log carries no content and nobody has seen one.
+// So this reads every shape the Baileys proto allows for (WAProto.proto):
+//
+//   Message.editedMessage = 58            a FutureProofMessage around the
+//                                         current content. Baileys'
+//                                         `normalizeMessageContent` already
+//                                         peels this one.
+//   Message.protocolMessage = 12          with ProtocolMessage.editedMessage
+//                                         = 14 (a whole Message: the new
+//                                         content), type MESSAGE_EDIT = 14,
+//                                         and `key` naming the message that
+//                                         was edited. On its own, or inside
+//                                         the wrapper above. The live mapper
+//                                         drops every protocol message, which
+//                                         is right for a live edit and is
+//                                         what would lose these here.
+//
+// This is done HERE and not in `mapInboundMessage`: what the live bot does
+// with an edit that arrives on the socket must not change.
+
+/** The wrappers a message can sit in: Baileys' own list (`normalizeMessageContent`) and the device-sent one. */
+const WRAPPER_FIELDS = [
+  "ephemeralMessage",
+  "viewOnceMessage",
+  "documentWithCaptionMessage",
+  "viewOnceMessageV2",
+  "viewOnceMessageV2Extension",
+  "editedMessage",
+  "associatedChildMessage",
+  "groupStatusMessage",
+  "groupStatusMessageV2",
+  "deviceSentMessage",
+] as const;
+/** How many edit protocol messages are followed inwards before giving up. */
+const MAX_EDIT_DEPTH = 3;
+
+type Bag = Record<string, unknown>;
+
+function asBag(v: unknown): Bag | null {
+  return v && typeof v === "object" && !Array.isArray(v) && !(v instanceof Uint8Array) ? (v as Bag) : null;
+}
+
+/** The message inside the first wrapper this one has, with the wrapper's name. */
+function innerOf(message: Bag): { name: string; message: Bag } | null {
+  for (const name of WRAPPER_FIELDS) {
+    const inner = asBag(asBag(message[name])?.message);
+    if (inner) return { name, message: inner };
+  }
+  return null;
+}
+
+function insideEditWrapper(message: Bag | null): boolean {
+  let at = message;
+  for (let i = 0; i < 5 && at; i++) {
+    const inner = innerOf(at);
+    if (!inner) return false;
+    if (inner.name === "editedMessage") return true;
+    at = inner.message;
+  }
+  return false;
+}
+
+/**
+ * What a bundle entry says NOW: its content with any edit followed to the
+ * new content, the id of the message that edit names, and how recent the
+ * edit is (milliseconds, for choosing between two edits of one message).
+ */
+function currentContent(m: proto.IWebMessageInfo): {
+  message: proto.IMessage | null | undefined;
+  edited: boolean;
+  target: string | null;
+  rank: number;
+} {
+  let message = m.message;
+  let edited = false;
+  let target: string | null = null;
+  let rank = 0;
+  for (let depth = 0; depth < MAX_EDIT_DEPTH; depth++) {
+    if (insideEditWrapper(asBag(message))) edited = true;
+    const protocol = normalizeMessageContent(message ?? undefined)?.protocolMessage;
+    const next = protocol?.editedMessage;
+    if (!protocol || !next) break;
+    edited = true;
+    const named = protocol.key?.id;
+    if (!target && typeof named === "string" && PLAUSIBLE_ID.test(named)) target = named;
+    if (!rank) rank = toNumber(protocol.timestampMs);
+    message = next;
+  }
+  if (edited && !rank) rank = toNumber(m.messageTimestamp) * 1000;
+  return { message, edited, target, rank };
+}
+
+// ── What an entry with no text was ───────────────────────────────────
+// So that the next real bundle says what it held if the reading above is
+// wrong. FIELD NAMES, COUNTS AND ENUM NUMBERS ONLY: never a value. The
+// names come from the protobuf schema (a decoded message has no other
+// keys), and are checked against a pattern anyway before they are kept.
+
+/** Distinct shapes listed for one bundle; the rest are counted as "other". */
+export const MAX_NO_TEXT_SHAPES = 8;
+/** One shape description, in characters. */
+export const MAX_NO_TEXT_SHAPE_CHARS = 80;
+/** The whole `noText=…` part of the log line, in characters. */
+export const MAX_NO_TEXT_SUMMARY_CHARS = 400;
+const SHAPE_DEPTH = 4;
+const SHAPE_NAMES_PER_LEVEL = 4;
+const FIELD_NAME = /^[A-Za-z][A-Za-z0-9]{0,47}$/;
+/** On almost every message, and says nothing about what the message is. */
+const NOT_CONTENT = new Set(["messageContextInfo", "senderKeyDistributionMessage"]);
+/** WebMessageInfo fields every entry has, left out when one with no message is described. */
+const ENTRY_ENVELOPE = new Set([
+  "key",
+  "message",
+  "messageTimestamp",
+  "messageC2STimestamp",
+  "status",
+  "participant",
+  "pushName",
+  "messageStubType",
+  "messageStubParameters",
+]);
+
+/** The names of the fields that are set (an empty repeated field is not). */
+function setFields(bag: Bag, skip: ReadonlySet<string>): string[] {
+  const names: string[] = [];
+  for (const name of Object.keys(bag)) {
+    const v = bag[name];
+    if (v === null || v === undefined || (Array.isArray(v) && v.length === 0)) continue;
+    if (skip.has(name) || !FIELD_NAME.test(name)) continue;
+    names.push(name);
+  }
+  return names.sort();
+}
+
+function listNames(names: string[], label: (name: string) => string = (n) => n): string {
+  const shown = names.slice(0, SHAPE_NAMES_PER_LEVEL).map(label).join("+");
+  return names.length > SHAPE_NAMES_PER_LEVEL ? `${shown}+${names.length - SHAPE_NAMES_PER_LEVEL}more` : shown;
+}
+
+/** An enum's number, or `?`. */
+function enumNumber(v: unknown): string {
+  if (v === null || v === undefined) return "?";
+  const n = toNumber(v);
+  return Number.isInteger(n) && n >= 0 && n < 100_000 ? String(n) : "?";
+}
+
+function describeContent(message: Bag, depth: number): string {
+  const names = setFields(message, NOT_CONTENT);
+  if (!names.length) return "empty";
+  const here = listNames(names, (name) => {
+    if (name === "protocolMessage") return `${name}:${enumNumber(asBag(message[name])?.type)}`;
+    if (name === "secretEncryptedMessage") return `${name}:${enumNumber(asBag(message[name])?.secretEncType)}`;
+    return name;
+  });
+  if (depth >= SHAPE_DEPTH) return here;
+  // One level down: into a wrapper, or into what an edit carries.
+  const inner = innerOf(message)?.message ?? asBag(asBag(message.protocolMessage)?.editedMessage);
+  return inner ? `${here}>${describeContent(inner, depth + 1)}` : here;
+}
+
+/** The shape of an entry that yielded no text. Never a value, never throws. */
+function describeNoText(m: proto.IWebMessageInfo): string {
+  try {
+    const message = asBag(m.message);
+    let shape: string;
+    if (message && setFields(message, NOT_CONTENT).length) {
+      shape = describeContent(message, 1);
+    } else if (m.messageStubType !== null && m.messageStubType !== undefined && toNumber(m.messageStubType) > 0) {
+      shape = `stub:${enumNumber(m.messageStubType)}`;
+    } else {
+      const others = setFields(m as Bag, ENTRY_ENVELOPE);
+      shape = others.length ? `noMessage[${listNames(others)}]` : "noMessage";
+    }
+    return shape.replace(/[^A-Za-z0-9:+>\[\]?]/g, "").slice(0, MAX_NO_TEXT_SHAPE_CHARS) || "unreadable";
+  } catch {
+    return "unreadable";
+  }
+}
+
+export interface NoTextShape {
+  shape: string;
+  count: number;
+}
+
+type RowOutcome =
+  | { kind: "row"; row: BundleRow; edited: boolean; rank: number }
+  | { kind: "other-chat" }
+  | { kind: "no-text"; shape: string };
+
+/**
+ * One decoded entry as a row. The LIVE path's mapper does the reading
+ * (unwraps, takes text or a caption, and returns null for system notices,
+ * reactions, polls and the rest); the only thing added here is that an
+ * edit is followed to its new content first. Never throws.
+ */
+function toRow(m: proto.IWebMessageInfo, group: string): RowOutcome {
+  try {
+    const key = m.key ?? {};
+    if (key.remoteJid && key.remoteJid !== group) return { kind: "other-chat" };
+    const current = currentContent(m);
+    const mapped = mapInboundMessage({
+      ...m,
+      key: { ...key, remoteJid: group },
+      message: current.message,
+    } as WAMessage);
+    if (!mapped || !mapped.body) return { kind: "no-text", shape: describeNoText(m) };
+    const senderJid = key.participant || m.participant || null;
+    const cut = capText(mapped.body);
+    return {
+      kind: "row",
+      edited: current.edited,
+      rank: current.rank,
+      row: {
+        // An edit sent as its own entry names the message it edits.
+        id: current.target ?? (key.id as string),
+        senderJid,
+        fromBundleSender: !senderJid && key.fromMe === true,
+        pushName: mapped.pushName ? capText(mapped.pushName, 100).text : null,
+        text: cut.text,
+        truncated: cut.truncated,
+        timestampSec: toNumber(m.messageTimestamp),
+      },
+    };
+  } catch {
+    return { kind: "no-text", shape: "unreadable" };
+  }
+}
+
+/** One message as the bundle holds it: as first sent, as edited, or both. */
+interface Held {
+  original: BundleRow | null;
+  edit: BundleRow | null;
+  rank: number;
+}
+
+/** The edit's words, in the original's place and under its author when the bundle has the original too. */
+function settle(h: Held): BundleRow {
+  if (!h.edit) return h.original as BundleRow;
+  if (!h.original) return h.edit;
   return {
-    id: key.id as string,
-    senderJid,
-    fromBundleSender: !senderJid && key.fromMe === true,
-    pushName: mapped.pushName ? capText(mapped.pushName, 100).text : null,
-    text: cut.text,
-    truncated: cut.truncated,
-    timestampSec: toNumber(m.messageTimestamp),
+    ...h.original,
+    pushName: h.original.pushName ?? h.edit.pushName,
+    text: h.edit.text,
+    truncated: h.edit.truncated,
+    timestampSec: h.original.timestampSec || h.edit.timestampSec,
   };
 }
 
@@ -529,8 +766,11 @@ export async function unpackBundle(plain: Buffer, group: string, opts: UnpackOpt
 
         // This is the shape. Decode the last `limit` entries, newest first.
         const chosen = scan.entries.slice(Math.max(0, scan.entries.length - limit));
-        const seen = new Set<string>();
-        const rows: BundleRow[] = [];
+        // At most one per decoded entry, so never more than `limit`.
+        const held = new Map<string, Held>();
+        const tally = new Map<string, number>();
+        let noText = 0;
+        let noTextOther = 0;
         let read = 0;
         let tooLarge = 0;
         let valid = 0;
@@ -549,11 +789,29 @@ export async function unpackBundle(plain: Buffer, group: string, opts: UnpackOpt
             const m = decodeOne(decoder.decode, entry);
             if (!m) continue;
             valid++;
-            const row = toRow(m, group);
-            if (row === "other-chat") otherChat++;
-            else if (row && !seen.has(row.id)) {
-              seen.add(row.id);
-              rows.push(row);
+            const got = toRow(m, group);
+            if (got.kind === "other-chat") otherChat++;
+            else if (got.kind === "no-text") {
+              noText++;
+              if (tally.has(got.shape) || tally.size < MAX_NO_TEXT_SHAPES) {
+                tally.set(got.shape, (tally.get(got.shape) ?? 0) + 1);
+              } else noTextOther++;
+            } else {
+              // Decoded newest first, so the first one seen of a kind is
+              // kept: a repeated message as before, and of two edits the
+              // later one (by its own time, then by position).
+              const h = held.get(got.row.id);
+              if (!h) {
+                held.set(
+                  got.row.id,
+                  got.edited ? { original: null, edit: got.row, rank: got.rank } : { original: got.row, edit: null, rank: 0 },
+                );
+              } else if (!got.edited) {
+                if (!h.original) h.original = got.row;
+              } else if (!h.edit || got.rank > h.rank) {
+                h.edit = got.row;
+                h.rank = got.rank;
+              }
             }
           }
           spent += nowMs() - started;
@@ -566,8 +824,18 @@ export async function unpackBundle(plain: Buffer, group: string, opts: UnpackOpt
         }
         // Oldest first. Decoded newest first, so put the bundle's own
         // order back before the (stable) sort by timestamp.
+        const rows: BundleRow[] = [];
+        let edited = 0;
+        for (const h of held.values()) {
+          if (h.edit) edited++;
+          rows.push(settle(h));
+        }
         rows.reverse();
         rows.sort((a, b) => a.timestampSec - b.timestampSec);
+        const noTextShapes: NoTextShape[] = [...tally.entries()]
+          .map(([shape, count]) => ({ shape, count }))
+          .sort((a, b) => b.count - a.count);
+        if (noTextOther) noTextShapes.push({ shape: "other", count: noTextOther });
         return {
           ok: true,
           unpack: unpacker.name,
@@ -580,6 +848,9 @@ export async function unpackBundle(plain: Buffer, group: string, opts: UnpackOpt
           valid,
           otherChat,
           withText: rows.length,
+          edited,
+          noText,
+          noTextShapes,
           textCut: rows.filter((r) => r.truncated).length,
           authors: new Set(rows.map((r) => r.senderJid ?? (r.fromBundleSender ? "(sharer)" : "(unknown)"))).size,
           partial,
@@ -643,6 +914,9 @@ export interface BundleReport {
   valid?: number;
   otherChat?: number;
   withText?: number;
+  edited?: number;
+  noText?: number;
+  noTextShapes?: NoTextShape[];
   textCut?: number;
   authors?: number;
   kept?: number;
@@ -783,6 +1057,9 @@ export async function readGroupHistoryBundle(
     report.valid = unpacked.valid;
     report.otherChat = unpacked.otherChat;
     report.withText = unpacked.withText;
+    report.edited = unpacked.edited;
+    report.noText = unpacked.noText;
+    report.noTextShapes = unpacked.noTextShapes;
     report.textCut = unpacked.textCut;
     report.authors = unpacked.authors;
     report.kept = unpacked.rows.length;
@@ -790,6 +1067,29 @@ export async function readGroupHistoryBundle(
   } catch (err) {
     return fail(`unexpected failure (${errorKind(err)})`);
   }
+}
+
+/**
+ * `noText=4 (2 x editedMessage>protocolMessage:14>stickerMessage, 1 x stub:20, 1 x imageMessage)`:
+ * how many entries yielded no text and what they were, by field name. At
+ * most `MAX_NO_TEXT_SUMMARY_CHARS` long; shapes that do not fit become `...`.
+ */
+function noTextSummary(noText: number, shapes: NoTextShape[] | null | undefined): string {
+  const head = `noText=${noText}`;
+  if (!Array.isArray(shapes) || !shapes.length) return head;
+  const SAFE = /^[A-Za-z0-9:+>\[\]?]{1,80}$/;
+  let listed = "";
+  for (const s of shapes) {
+    const shape = typeof s?.shape === "string" && SAFE.test(s.shape) ? s.shape : "unreadable";
+    const item = `${listed ? ", " : ""}${toNumber(s?.count)} x ${shape}`;
+    // Room is kept for the `, ...)` that says the list was cut.
+    if (head.length + 2 + listed.length + item.length + 6 > MAX_NO_TEXT_SUMMARY_CHARS) {
+      listed += listed ? ", ..." : "...";
+      break;
+    }
+    listed += item;
+  }
+  return `${head} (${listed})`;
 }
 
 /**
@@ -818,6 +1118,9 @@ export function formatBundleReport(report: BundleReport): string[] {
         `decoded as ${report.decoder}: entries=${report.entries} read=${report.read} tooLarge=${report.tooLarge} ` +
           `valid=${report.valid} otherChat=${report.otherChat} withText=${report.withText} textCut=${report.textCut} ` +
           `authors=${report.authors} kept=${report.kept} (stated messageCount=${report.statedMessages ?? "?"})` +
+          // Both are left off when zero.
+          (report.edited ? `; edited=${report.edited}` : "") +
+          (report.noText ? `; ${noTextSummary(report.noText, report.noTextShapes)}` : "") +
           (report.partial ? "; STOPPED EARLY: the decode time budget ran out, the oldest entries were left unread" : ""),
       );
       return [parts.join("; ")];
