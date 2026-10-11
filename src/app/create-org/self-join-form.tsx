@@ -6,7 +6,7 @@
  * language picker as the organiser changes it without shipping the
  * string tables to the browser.
  */
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createSelfJoinClubAction } from "@/app/actions/org";
@@ -62,12 +62,18 @@ export function SelfJoinForm(props: {
   const [refusal, setRefusal] = useState<Refusal>(props.refusal);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const submitting = useRef(false);
   const c = props.copy[lang];
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (submitting.current) return;
+    submitting.current = true;
     setError("");
     setLoading(true);
+    // Stays busy on success: /admin is still loading, and the form goes
+    // away with this page. Only a refusal or an error hands it back.
+    let leaving = false;
     try {
       const res = await createSelfJoinClubAction({
         name,
@@ -75,6 +81,7 @@ export function SelfJoinForm(props: {
         game: { dayOfWeek: day, time, venue, playersPerSide: perSide },
       });
       if (res.ok) {
+        leaving = true;
         router.push("/admin");
         router.refresh();
         return;
@@ -87,7 +94,10 @@ export function SelfJoinForm(props: {
     } catch {
       setError(c.generic);
     } finally {
-      setLoading(false);
+      if (!leaving) {
+        submitting.current = false;
+        setLoading(false);
+      }
     }
   }
 

@@ -6,7 +6,7 @@
  * page refreshes behind it, so on return the card shows the code and an
  * "Open WhatsApp again" link.
  */
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { startClubConnect } from "@/app/actions/club-connect";
 
@@ -14,19 +14,48 @@ export function ConnectButton({ orgId, label, fallbackError }: { orgId: string; 
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const submitting = useRef(false);
+  const leaving = useRef(false);
+
+  // WhatsApp can open without this page going away (the app takes the
+  // link), and Back can restore the page as it was left. Coming back to
+  // it hands the button back.
+  useEffect(() => {
+    function onReturn() {
+      if (!leaving.current || document.visibilityState !== "visible") return;
+      leaving.current = false;
+      submitting.current = false;
+      setLoading(false);
+    }
+    window.addEventListener("pageshow", onReturn);
+    document.addEventListener("visibilitychange", onReturn);
+    return () => {
+      window.removeEventListener("pageshow", onReturn);
+      document.removeEventListener("visibilitychange", onReturn);
+    };
+  }, []);
 
   async function onClick() {
+    if (submitting.current) return;
+    submitting.current = true;
     setError("");
     setLoading(true);
+    // Stays busy on success: WhatsApp is opening, and the refresh swaps
+    // this button for the code and the "Open WhatsApp again" link.
     try {
       const res = await startClubConnect(orgId);
       router.refresh();
-      if (res.ok) window.location.assign(res.href);
-      else setError(res.error);
+      if (res.ok) {
+        leaving.current = true;
+        window.location.assign(res.href);
+      } else setError(res.error);
     } catch {
       setError(fallbackError);
     } finally {
-      setLoading(false);
+      if (!leaving.current) {
+        submitting.current = false;
+        setLoading(false);
+      }
     }
   }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -16,18 +16,22 @@ function VerifyEmailForm() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
+  const submitting = useRef(false);
 
   async function handleVerify(e: React.FormEvent) {
     e.preventDefault();
+    if (submitting.current) return;
+    submitting.current = true;
     setError("");
     setLoading(true);
     try {
       await verifyEmail(email, code);
       toast.success("Email verified! You can now sign in.");
+      // Stays busy: the next page is still loading.
       router.push("/login");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Verification failed.");
-    } finally {
+      submitting.current = false;
       setLoading(false);
     }
   }

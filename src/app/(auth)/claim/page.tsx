@@ -22,7 +22,7 @@
  * just stamps the phone) — never a wasted step.
  */
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { startClaimAccount, verifyClaimAccount } from "@/app/actions/claim";
@@ -38,8 +38,11 @@ export default function ClaimPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
+  const submitting = useRef(false);
 
   async function sendCode() {
+    if (submitting.current) return;
+    submitting.current = true;
     setBusy(true);
     setError("");
     setInfo("");
@@ -52,14 +55,19 @@ export default function ClaimPage() {
         setStep("code");
       }
     } finally {
+      submitting.current = false;
       setBusy(false);
     }
   }
 
   async function verify() {
+    if (submitting.current) return;
+    submitting.current = true;
     setBusy(true);
     setError("");
     setInfo("");
+    // Stays busy on success: the next page is still loading.
+    let leaving = false;
     try {
       const r = await verifyClaimAccount({ phone, code });
       if (!r.ok) {
@@ -71,13 +79,18 @@ export default function ClaimPage() {
         // against the merged user. callbackUrl=/ lands them on the
         // dashboard with all their stats once they re-auth.
         await signOut({ callbackUrl: "/login?claimed=1" });
+        leaving = true;
       } else {
         // No existing player to merge — phone is now stamped on
         // this user. Continue as a new admin.
+        leaving = true;
         router.push("/welcome");
       }
     } finally {
-      setBusy(false);
+      if (!leaving) {
+        submitting.current = false;
+        setBusy(false);
+      }
     }
   }
 
