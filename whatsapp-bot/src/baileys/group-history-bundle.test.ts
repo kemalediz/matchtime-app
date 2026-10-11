@@ -10,6 +10,8 @@ import {
   MAX_BUNDLE_ENC_BYTES,
   MAX_STATED_MESSAGES,
   MAX_BUNDLE_TEXT_CHARS,
+  MAX_NO_TEXT_SHAPES,
+  MAX_NO_TEXT_SUMMARY_CHARS,
   decryptBundle,
   deriveMediaKeys,
   describeProtoShape,
@@ -422,5 +424,258 @@ describe("one message's text is capped (review 2, residual)", () => {
     expect(r.rows[0].truncated).toBe(true);
     expect(r.rows[1]).toMatchObject({ text: "short", truncated: false });
     expect(r.textCut).toBe(1);
+  });
+});
+
+// ── Edited messages (production, 2026-10-11) ─────────────────────────
+// The first real bundle held three messages that had been edited in
+// WhatsApp, and none of them came out as a row. Nobody has seen the shape
+// an edit has inside a bundle entry (the log carries no content), so every
+// plausible one from the Baileys proto is read here, and an entry that
+// still yields no text is tallied by FIELD NAME for the next real run.
+describe("an edited message in a bundle", () => {
+  const ID = "3EB0AAAAAAAAAAAA0001";
+  const EDIT_ID = "3EB0EEEEEEEEEEEE0001";
+  const OLD = "training is at 7pm";
+  const NEW = "training is at 8pm, not 7";
+  const EDIT = proto.Message.ProtocolMessage.Type.MESSAGE_EDIT;
+
+  function entry(
+    id: string,
+    message: proto.IMessage,
+    extra: { participant?: string; ts?: number; pushName?: string } = {},
+  ): proto.IWebMessageInfo {
+    return {
+      key: { id, fromMe: false, remoteJid: GROUP, participant: extra.participant ?? ALICE },
+      message,
+      messageTimestamp: extra.ts ?? T0,
+      pushName: extra.pushName,
+    };
+  }
+  const protocolEdit = (edited: proto.IMessage, targetId = ID, timestampMs?: number): proto.IMessage => ({
+    protocolMessage: { key: { id: targetId, remoteJid: GROUP, fromMe: false }, type: EDIT, editedMessage: edited, timestampMs },
+  });
+  const read = async (entries: proto.IWebMessageInfo[]) => {
+    const r = await unpackBundle(pack(encodeGroupHistory(entries), "zlib"), GROUP);
+    if (!r.ok) throw new Error(r.reason);
+    return r;
+  };
+  const BOBS = {
+    id: "3EB0AAAAAAAAAAAA0002",
+    senderJid: BOB,
+    fromBundleSender: false,
+    pushName: null,
+    text: "I am in",
+    truncated: false,
+    timestampSec: T0 + 10,
+  };
+  const EDITED = {
+    id: ID,
+    senderJid: ALICE,
+    fromBundleSender: false,
+    pushName: "Alice",
+    text: NEW,
+    truncated: false,
+    timestampSec: T0 + 5,
+  };
+
+  it.each<[string, proto.IMessage]>([
+    ["the editedMessage wrapper around the new text", { editedMessage: { message: { conversation: NEW } } }],
+    [
+      "the editedMessage wrapper around an edit protocol message",
+      { editedMessage: { message: protocolEdit({ conversation: NEW }) } },
+    ],
+    ["a top-level edit protocol message", protocolEdit({ conversation: NEW })],
+    ["an edit protocol message carrying extended text", protocolEdit({ extendedTextMessage: { text: NEW } })],
+    [
+      "an edit inside a disappearing-messages wrapper",
+      { ephemeralMessage: { message: { editedMessage: { message: protocolEdit({ conversation: NEW }) } } } },
+    ],
+    [
+      "an edit whose new content is itself wrapped",
+      protocolEdit({ ephemeralMessage: { message: { extendedTextMessage: { text: NEW } } } }),
+    ],
+    ["an edited caption", protocolEdit({ imageMessage: { caption: NEW, mimetype: "image/jpeg" } })],
+  ])("reads %s, once", async (_name, message) => {
+    const r = await read([
+      entry(ID, message, { ts: T0 + 5, pushName: "Alice" }),
+      msg("3EB0AAAAAAAAAAAA0002", "I am in", { participant: BOB, ts: T0 + 10 }),
+    ]);
+    expect(r.rows).toEqual([EDITED, BOBS]);
+    expect(r.withText).toBe(2);
+    expect(r.edited).toBe(1);
+    expect(r.noText).toBe(0);
+  });
+
+  it("says how many edits it read on the log line, and none of their words", async () => {
+    const { enc, bundle } = encryptBundle(
+      pack(encodeGroupHistory([entry(ID, protocolEdit({ conversation: NEW }))]), "zlib"),
+      { messageCount: 1 },
+    );
+    const full = await readGroupHistoryBundle(bundle, GROUP, { fetchBundle: servingFetch(enc).fetchBundle });
+    const lines = formatBundleReport(full.report);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatch(/withText=1 textCut=0 authors=1 kept=1 \(stated messageCount=1\); edited=1$/);
+    expect(lines[0]).not.toContain(NEW);
+  });
+
+  it.each([
+    ["the original first", false],
+    ["the edit first", true],
+  ] as const)(
+    "lets a separate edit entry win over the original, and keeps the message once (%s)",
+    async (_name, editFirst) => {
+      const original = entry(ID, { conversation: OLD }, { ts: T0 + 5, pushName: "Alice" });
+      // Its own id and a later time: it NAMES the message it edits.
+      const edit = entry(EDIT_ID, protocolEdit({ conversation: NEW }, ID), { ts: T0 + 500 });
+      const other = msg("3EB0AAAAAAAAAAAA0002", "I am in", { participant: BOB, ts: T0 + 10 });
+      const r = await read(editFirst ? [edit, original, other] : [original, other, edit]);
+      // The message's own place and name, the edit's words.
+      expect(r.rows).toEqual([EDITED, BOBS]);
+      expect(r.rows.map((x) => x.text).join("|")).not.toContain(OLD);
+      expect(r.edited).toBe(1);
+    },
+  );
+
+  it("keeps the latest of several edits to one message", async () => {
+    const r = await read([
+      entry(ID, { conversation: OLD }, { ts: T0 }),
+      entry("3EB0EEEEEEEEEEEE0002", protocolEdit({ conversation: NEW }, ID, (T0 + 90) * 1000), { ts: T0 + 90 }),
+      entry(EDIT_ID, protocolEdit({ conversation: "an earlier edit" }, ID, (T0 + 30) * 1000), { ts: T0 + 30 }),
+    ]);
+    expect(r.rows.map((x) => [x.id, x.text])).toEqual([[ID, NEW]]);
+  });
+
+  it("leaves an unedited message exactly as it was", async () => {
+    const r = await read(THREE);
+    expect(r.rows.map((x) => x.text)).toEqual(["I am in", SECRET, "me too"]);
+    expect(r.edited).toBe(0);
+    expect(r.noText).toBe(0);
+    expect(r.noTextShapes).toEqual([]);
+  });
+
+  it("caps an edited text like any other", async () => {
+    const r = await read([entry(ID, protocolEdit({ conversation: "x".repeat(5000) }))]);
+    expect(r.rows[0].text.length).toBe(MAX_BUNDLE_TEXT_CHARS);
+    expect(r.rows[0].truncated).toBe(true);
+  });
+});
+
+describe("entries that yield no text are tallied by field name, never by content", () => {
+  const LEAK = "zebra-crossing-447700900999";
+  const stub = (id: string, n: number): proto.IWebMessageInfo => ({
+    key: { id, fromMe: false, remoteJid: GROUP, participant: ALICE },
+    messageStubType: n,
+    messageStubParameters: [LEAK],
+    messageTimestamp: T0,
+    pushName: LEAK,
+  });
+  const holding = (id: string, message: proto.IMessage): proto.IWebMessageInfo => ({
+    key: { id, fromMe: false, remoteJid: GROUP, participant: ALICE },
+    message,
+    messageTimestamp: T0,
+    pushName: LEAK,
+  });
+  const ENTRIES: proto.IWebMessageInfo[] = [
+    msg("3EB0AAAAAAAAAAAA0001", "I am in", { participant: BOB }),
+    stub("3EB0BBBBBBBBBBBB0001", 20),
+    stub("3EB0BBBBBBBBBBBB0002", 20),
+    holding("3EB0BBBBBBBBBBBB0003", {
+      imageMessage: { mimetype: "image/jpeg", url: `https://example.test/${LEAK}`, mediaKey: Buffer.from(LEAK) },
+    }),
+    holding("3EB0BBBBBBBBBBBB0004", { reactionMessage: { text: LEAK, key: { id: "3EB0AAAAAAAAAAAA0001" } } }),
+    holding("3EB0BBBBBBBBBBBB0005", {
+      protocolMessage: { type: 0, key: { id: "3EB0AAAAAAAAAAAA0001", participant: LEAK } },
+    }),
+    holding("3EB0BBBBBBBBBBBB0006", {
+      editedMessage: {
+        message: {
+          protocolMessage: {
+            type: 14,
+            editedMessage: { pollCreationMessage: { name: LEAK, options: [{ optionName: LEAK }] } },
+          },
+        },
+      },
+    }),
+    holding("3EB0BBBBBBBBBBBB0007", {
+      ephemeralMessage: { message: { contactMessage: { displayName: LEAK, vcard: LEAK } } },
+      messageContextInfo: { messageSecret: Buffer.from(LEAK) },
+    }),
+    holding("3EB0BBBBBBBBBBBB0008", { secretEncryptedMessage: { secretEncType: 2, encPayload: Buffer.from(LEAK) } }),
+    // Decodes, has a key, and no message at all.
+    {
+      key: { id: "3EB0BBBBBBBBBBBB0009", fromMe: false, remoteJid: GROUP, participant: ALICE },
+      reactions: [{ text: LEAK }],
+    },
+  ];
+
+  it("names the shapes, with counts and enum numbers only", async () => {
+    const r = await unpackBundle(pack(encodeGroupHistory(ENTRIES), "zlib"), GROUP);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.valid).toBe(10);
+    expect(r.withText).toBe(1);
+    expect(r.noText).toBe(9);
+    expect(r.noTextShapes[0]).toEqual({ shape: "stub:20", count: 2 });
+    expect(r.noTextShapes.map((s) => s.shape).sort()).toEqual(
+      [
+        "stub:20",
+        "imageMessage",
+        "reactionMessage",
+        "protocolMessage:0",
+        "editedMessage>protocolMessage:14>pollCreationMessage",
+        "ephemeralMessage>contactMessage",
+        "secretEncryptedMessage:2",
+        "noMessage[reactions]",
+      ].sort(),
+    );
+    expect(JSON.stringify(r.noTextShapes)).not.toContain("zebra");
+  });
+
+  it("puts the tally on the log line and nothing of the content", async () => {
+    const { enc, bundle } = encryptBundle(pack(encodeGroupHistory(ENTRIES), "zlib"), { messageCount: 10 });
+    const full = await readGroupHistoryBundle(bundle, GROUP, { fetchBundle: servingFetch(enc).fetchBundle });
+    const lines = formatBundleReport(full.report);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("kept=1 (stated messageCount=10); noText=9 (2 x stub:20, 1 x ");
+    expect(lines[0]).toContain("1 x editedMessage>protocolMessage:14>pollCreationMessage");
+    const everything = lines.join("\n") + JSON.stringify(full.report);
+    for (const secret of [LEAK, "zebra", "447700900999", "example.test", Buffer.from(LEAK).toString("base64")]) {
+      expect(everything).not.toContain(secret);
+    }
+  });
+
+  it("lists at most 8 distinct shapes and keeps the summary short", async () => {
+    // 12 distinct shapes (12 stub types), one of them seen twice.
+    const many = [
+      ...Array.from({ length: 12 }, (_, i) => stub(`3EB0CCCCCCCCCCCC00${10 + i}`, 20 + i)),
+      stub("3EB0CCCCCCCCCCCC0099", 31),
+    ];
+    const r = await unpackBundle(pack(encodeGroupHistory(many), "zlib"), GROUP);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(MAX_NO_TEXT_SHAPES).toBe(8);
+    expect(r.noText).toBe(13);
+    expect(r.noTextShapes).toHaveLength(MAX_NO_TEXT_SHAPES + 1);
+    // Read newest first: the 8 newest shapes are listed (one of them twice), the 4 oldest are "other".
+    expect(r.noTextShapes[0]).toEqual({ shape: "stub:31", count: 2 });
+    expect(r.noTextShapes.at(-1)).toEqual({ shape: "other", count: 4 });
+    expect(r.noTextShapes.reduce((n, s) => n + s.count, 0)).toBe(13);
+
+    const long = formatBundleReport({
+      stage: "done",
+      statedMessages: 1,
+      noText: 800,
+      noTextShapes: Array.from({ length: 9 }, (_, i) => ({ shape: `${"w".repeat(79)}${i}`, count: 100 - i })),
+    });
+    const summary = long[0].slice(long[0].indexOf("noText="));
+    expect(summary.length).toBeLessThanOrEqual(MAX_NO_TEXT_SUMMARY_CHARS);
+    expect(summary).toMatch(/^noText=800 \(100 x w+0, .*\.\.\.\)$/);
+  });
+
+  it("never throws on a tally it cannot write", () => {
+    expect(() =>
+      formatBundleReport({ stage: "done", statedMessages: 1, noText: 1, noTextShapes: null as never }),
+    ).not.toThrow();
   });
 });
