@@ -1994,6 +1994,10 @@ export const en = {
     `We got your code from ${p.seen}. Please send it from ${p.expected}, the number you signed up with.`,
   sj_card_dm_verified:
     "Step 2: add MatchTime to your football group. Save the number below as a contact called MatchTime, then open the group, tap Add participant and pick MatchTime.",
+  /** Its own bold paragraph on the card: without the switch MatchTime gets
+   *  none of the group's past chat and the learned setup has nothing to read. */
+  sj_card_history_tip:
+    "Important: before you confirm, switch on \"Message history\" on that screen. It sends MatchTime your group's recent messages, so it can set itself up the way you already run things.",
   sj_card_number_label: "MatchTime's WhatsApp number",
   sj_card_pending:
     "Step 3: we're checking your club, usually within a day. MatchTime stays quiet in the group until your club is approved, and messages you on WhatsApp when it's live.",
@@ -2031,7 +2035,8 @@ export const en = {
   /** After the organiser's connect DM, from the number they signed up with. */
   sj_dm_connected: (p: { name: string | null; club: string }): string =>
     `Hi${p.name ? ` ${p.name}` : ""}, got it: ${p.club} is connected to this chat.\n` +
-    "Next, add me to your football group. Save this number as a contact called MatchTime first, then open the group, tap Add participant and pick MatchTime.\n" +
+    "Next, add me to your football group. Save this number as a contact called MatchTime first, then open the group, tap Add participant and pick MatchTime.\n\n" +
+    "*Important: before you confirm, switch on \"Message history\" on that screen.* It sends me your group's recent messages, so I can set MatchTime up the way you already run things.\n\n" +
     "I'll stay quiet in the group until your club is approved, usually within a day. I'll message you here when it's live.",
   sj_dm_already_connected: "You're already connected. Now just add me to your group.",
   sj_dm_code_expired: "That code has expired. Open your club on matchtime.ai and tap Add MatchTime to WhatsApp again.",
