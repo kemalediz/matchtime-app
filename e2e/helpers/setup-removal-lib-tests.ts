@@ -241,9 +241,21 @@ async function main() {
       assert.equal((await sendSetupDm(c.orgId, new Date(AT_0020.getTime() + 60_000), { learningEnabled: false })).kind, "sent");
       const handed = await claimDuePlatformJobs({ now: AT_0905, limit: 50 });
       const mine = handed.filter((j) => j.kind === "dm" && j.phone === c.phone);
-      assert.equal(mine.length, 1, "exactly one DM reaches the organiser in the morning");
-      assert.equal((mine[0] as { purpose?: string }).purpose, "setup-ask");
+      // Go-live slice S7: a setup DM is followed by its admin group command,
+      // so the fresh pair is what arrives: ONE setup DM and ONE command,
+      // and nothing of the cancelled pair.
+      assert.deepEqual(
+        mine.map((j) => (j as { purpose?: string }).purpose),
+        ["setup-ask", "setup-admin-code"],
+        "exactly one setup DM, then its admin group command, reach the organiser in the morning",
+      );
       assert.notEqual(mine[0].id, queued[0].id, "the fresh one, not the cancelled one");
+      const commands = await db.platformJob.findMany({
+        where: { purpose: "setup-admin-code", refId: `${c.orgId}:setup-admin-code` },
+        orderBy: { createdAt: "asc" },
+        select: { id: true, status: true, failReason: true },
+      });
+      assert.deepEqual(commands.map((j) => [j.status, j.failReason]), [["failed", "cancelled: removed"], ["claimed", null]], "the first command was cancelled with its setup DM");
       ok("added back in the night: 'I was removed' is taken back, and at 09:00 the organiser gets ONE setup DM (the fresh one), not two and not none");
     }
 

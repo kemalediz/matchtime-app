@@ -175,7 +175,7 @@ test("an OUT opens one pick round, posted in the admin group; no bench offer", a
     [
       "*Carl Cole* dropped out of *Friday 9-a-side* (Fri 15 Jan at 20:30). 1 place open, squad 3/4.",
       "",
-      "Waiting list:",
+      "Bench:",
       "1. Kemal Kaya (GK, new)",
       "2. Wasim Wali (no position, new)",
       "3. Ali Aziz (no position, new)",
@@ -183,7 +183,7 @@ test("an OUT opens one pick round, posted in the admin group; no bench offer", a
       "5. Cem Can (no position, new)",
       "",
       "Reply here with a number, a name or an @tag, e.g. *2*, or *2 3* for two. *NONE* leaves it open.",
-      "If nobody picks by Thursday 12:00, I'll offer the place to the whole waiting list.",
+      "If nobody picks by Thursday 12:00, I'll offer the place to the whole bench.",
     ].join("\n"),
   );
   const r = await rounds(db);
@@ -222,7 +222,7 @@ test("'2' picks the second on the list: A1 here, A2 in the group, A3 to the play
   // "first to reply IN takes the slot".
   const complete = j.filter((x) => x.kind === "group" && x.text.includes("Squad complete"));
   expect(complete).toHaveLength(1);
-  expect(complete[0].text).toContain("🪑 *Waiting list is open.* Say *IN* to go on the waiting list, and the organisers will pick who plays.");
+  expect(complete[0].text).toContain("🪑 *Bench is open.* Say *IN* to go on the bench, and the organisers will pick who plays.");
   expect(j.some((x) => /takes the slot|first to reply/.test(x.text))).toBe(false);
 });
 
@@ -273,7 +273,7 @@ test("a name ('Wasim', '@Kemal') resolves; an already-in player is E2; an unknow
 test("a club member not on the waiting list: E1, then YES brings them in", async ({ request, db }) => {
   await out(request, P.cem);
   expect(await pickMessage(request)).toHaveLength(1);
-  expect((await reply(request, P.hamzah, "Zed")).replyText).toBe("*Zed Zulu* isn't on the waiting list. Bring them in anyway? Reply *YES*.");
+  expect((await reply(request, P.hamzah, "Zed")).replyText).toBe("*Zed Zulu* isn't on the bench. Bring them in anyway? Reply *YES*.");
   expect(await statusOf(db, P.zed.id)).toBeUndefined();
   const yes = await reply(request, P.raihan, "YES");
   expect(yes.replyText).toMatch(/^✅ Done: \*Zed Zulu\* is in, replacing \*Cem Can\* \(picked by Raihan Rahman\)\.$/);
@@ -295,7 +295,7 @@ test("nobody picks in time (D5): the place is offered to the whole waiting list"
   const r = await rounds(db);
   expect(r[r.length - 1]).toMatchObject({ outcome: "fallback-bench-offer" });
   expect(later.map((i) => i.text)).toContain(
-    "Nobody picked for *Friday 9-a-side*, so I've offered the place to the waiting list: the first to say IN gets it.",
+    "Nobody picked for *Friday 9-a-side*, so I've offered the place to the bench: the first to say IN gets it.",
   );
   // And no new round opens while the offer runs.
   expect((await pickMessage(request, "2027-01-14T14:00:00.000Z")).filter((i) => (i.text ?? "").includes("dropped out"))).toEqual([]);
@@ -402,18 +402,18 @@ test("slice 3: no pick round before the drop-out deadline; the summary IS the fi
     [
       "Drop-out deadline passed for *Friday 1-a-side* (Fri 15 Jan at 20:30). 1 place open, squad 1/2.",
       "",
-      "Waiting list:",
+      "Bench:",
       "1. Ben Best (no position, new)",
       "",
       "Reply here with a number, a name or an @tag, e.g. *2*, or *2 3* for two. *NONE* leaves it open.",
-      "If nobody picks by Tuesday 21:05, I'll offer the place to the whole waiting list.",
+      "If nobody picks by Tuesday 21:05, I'll offer the place to the whole bench.",
     ].join("\n"),
   );
   const r = await db.one<{ reason: string }>(`SELECT reason FROM "OrganiserPickRound" WHERE "matchId" = $1`, [M]);
   expect(r?.reason).toBe("deadline-summary");
   // NONE: the round closes and the place stays open; nothing re-asks.
   expect((await post(request, "/api/whatsapp/admin-group", { groupId: H, messageId: "e2e-op-dl-none", text: "NONE", senderPhone: "447700941001", timestamp: new Date().toISOString() })).replyText).toBe(
-    "OK, I'll leave the place open. You can still pick from the waiting list on the match page.",
+    "OK, I'll leave the place open. You can still pick from the bench on the match page.",
   );
   expect((await poll(request, G, "2027-01-11T21:30:00.000Z")).filter((i) => i.kind === "admin-group-message")).toEqual([]);
 });
@@ -483,7 +483,7 @@ test("nobody picks with SEVERAL places open: one offer per waiting player, annou
   expect(stamps).toHaveLength(1);
   // The admins are told how many were offered and how many are still open.
   expect(sent.filter((i) => i.kind === "admin-group-message").map((i) => i.text)).toEqual([
-    "Nobody picked for *Friday 5-a-side*, so I've offered 2 places to the waiting list, one for each person waiting: " +
+    "Nobody picked for *Friday 5-a-side*, so I've offered 2 places to the bench, one for each person waiting: " +
       "whoever says IN gets one. 2 more places are still open.",
   ]);
 

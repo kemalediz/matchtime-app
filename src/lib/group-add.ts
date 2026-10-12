@@ -53,7 +53,7 @@ import {
   type AdderMatch,
 } from "./group-add-rules";
 import { PlatformDmRefused, queuePlatformDm, queuePlatformLeaveGroup } from "./platform-jobs";
-import { detectAdminGroupCandidate, recordAdminGroupCandidate } from "./admin-group-link";
+import { adderHasOpenAdminGroupCode, detectAdminGroupCandidate, recordAdminGroupCandidate } from "./admin-group-link";
 import { CAPTURED_HISTORY_RETENTION_MS } from "./captured-history-retention";
 import { isSetupHoldEnabled } from "./club-setup-rules";
 import { capturedAtLink, clearCapturedChat, fillCapturedChatOnReAdd } from "./captured-chat";
@@ -624,17 +624,29 @@ export async function handleBotRemoved(
  * hours. At most one leave per stay: a leave already sent marks the row
  * left; one queued, claimed or failed is not repeated (a failed leave is
  * for the owner page's Leave button, not a retry loop).
+ *
+ * ONE EXCEPTION (2026-10-12): a candidate ADMIN group (`awaitingAdminLink`)
+ * is not left while a club its adder runs still has an open admin group
+ * code (`adderHasOpenAdminGroupCode`). The setup DM's code lasts 7 days;
+ * MatchTime must still be in the group when the organiser forwards the
+ * command on day three. It is left 48 hours after the add or when the
+ * last such code expires, whichever is later. Every other row, and a
+ * candidate with no such code, is left at 48 hours exactly as before.
  */
 export async function queueUnsolicitedAutoLeaves(now: Date = new Date()): Promise<{ queued: number; markedLeft: number }> {
   const due = await db.unsolicitedGroup.findMany({
     where: { leftAt: null, addedAt: { lte: new Date(now.getTime() - UNSOLICITED_AUTO_LEAVE_MS) } },
     orderBy: { addedAt: "asc" },
     take: 20,
-    select: { id: true, groupId: true, addedAt: true },
+    select: { id: true, groupId: true, addedAt: true, awaitingAdminLink: true, addedByPhone: true, addedByLid: true },
   });
   let queued = 0;
   let markedLeft = 0;
   for (const row of due) {
+    // The one exception: a candidate admin group whose code is still open.
+    if (row.awaitingAdminLink && (await adderHasOpenAdminGroupCode({ addedByPhone: row.addedByPhone, addedByLid: row.addedByLid, now }))) {
+      continue;
+    }
     const job = await db.platformJob.findFirst({
       where: { kind: "leave-group", groupId: row.groupId, createdAt: { gte: row.addedAt } },
       orderBy: { createdAt: "desc" },

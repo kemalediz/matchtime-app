@@ -606,6 +606,14 @@ describe("a section that is not the playing list is never read as playing names"
     expect(reconcilePastedRoster(r, SQUAD).additions).toEqual([]);
   });
 
+  it("the same post in today's wording (*Bench (n):*, since 2026-10-12) reads the same way", () => {
+    const body = `*Confirmed (6/6):*\n${squadLines}\n\n*Bench (2):*\n1. Paulo\n2. Kai`;
+    const r = parsePastedRoster(body)!;
+    expect(r.names).toEqual(SQUAD);
+    expect(r.notPlaying.map((e) => e.name)).toEqual(["Paulo", "Kai"]);
+    expect(reconcilePastedRoster(r, SQUAD).additions).toEqual([]);
+  });
+
   it("any header under which the numbering STARTS AGAIN ends the playing list", () => {
     const r = parsePastedRoster(`${squadLines}\n\nMaybes\n1. Paulo\n2. Kai`)!;
     expect(r.names).toEqual(SQUAD);

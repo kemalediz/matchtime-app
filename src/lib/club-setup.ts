@@ -234,6 +234,57 @@ export async function unaskCancelledSetupDm(orgId: string, client: OrgStampClien
 
 // ════ END the setup DM's stamp ════
 
+// ════ BEGIN the setup follow-ups' reads (go-live slices S6 and S7, 2026-10-12) ════
+// The 24-hour reminder (club-setup-reminder.ts) and the 72-hour note to
+// the owner (club-setup-stuck.ts) read the setup columns through these, so
+// the columns stay named in this one file. Nothing here writes.
+
+/**
+ * "Setting up, MatchTime still in its group, and its setup DM was due at
+ * or before `cutoff`". The reminder passes now minus 24 hours. A club
+ * whose setup DM was never stamped is never matched.
+ */
+export function settingUpAskedBy(cutoff: Date) {
+  return { ...SETTING_UP_CLUB_WHERE, setupRemovedAt: null, setupAskedAt: { lte: cutoff } } as const;
+}
+
+/** Oldest setup DM first. */
+export const SETUP_ASKED_ORDER = { setupAskedAt: "asc" } as const;
+
+/** The column `setupAskedAtOf` reads. Spread into a `select`. */
+export const SETUP_ASKED_SELECT = { setupAskedAt: true } as const;
+
+/**
+ * When this club's CURRENT setup DM was due, or null when it has not been
+ * asked. A club that is removed from, added back and sent a new setup DM
+ * has a new due time; the reminder is keyed on it, so its clock restarts.
+ */
+export function setupAskedAtOf(org: { setupAskedAt?: Date | null | undefined }): Date | null {
+  return org.setupAskedAt ?? null;
+}
+
+/**
+ * "Setting up, and approved at or before `cutoff`", in its group or not
+ * (the caller reads `wasRemovedDuringSetup`). The owner's note passes now
+ * minus 72 hours.
+ */
+export function settingUpApprovedBy(cutoff: Date) {
+  return { ...SETTING_UP_CLUB_WHERE, approvedAt: { lte: cutoff } } as const;
+}
+
+/** The column `wasRemovedDuringSetup` reads. Spread into a `select`. */
+export const SETUP_REMOVED_SELECT = { setupRemovedAt: true } as const;
+
+/**
+ * Was MatchTime removed from this club's group while it was setting up
+ * (and not added back since)? THE ONE READER of the removal stamp outside
+ * the go-live guard; the removal handling writes it.
+ */
+export function wasRemovedDuringSetup(org: { setupRemovedAt?: Date | null | undefined }): boolean {
+  return org.setupRemovedAt !== null && org.setupRemovedAt !== undefined;
+}
+
+// ════ END the setup follow-ups' reads ════
 // ════ BEGIN removed from the group while setting up (2026-10-12) ════
 //
 // `Organisation.setupRemovedAt`: MatchTime was taken out of the group of a

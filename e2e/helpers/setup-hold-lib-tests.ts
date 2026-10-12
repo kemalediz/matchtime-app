@@ -140,7 +140,13 @@ async function main() {
       const job = await setupJob(c.orgId);
       assert.ok(handed.some((j) => j.id === job!.id), "the Pi was handed the DM at 09:05");
       assert.equal(job?.status, "claimed");
-      assert.deepEqual(await cancelSetupDm(c.orgId, "suspended", AT_0905), { cancelled: 0, alreadyClaimed: 1 });
+      // Two jobs since slice S7: the setup DM and the admin group command
+      // behind it. The Pi claimed both in that poll, and both are marked.
+      assert.deepEqual(await cancelSetupDm(c.orgId, "suspended", AT_0905), {
+        cancelled: 0,
+        alreadyClaimed: 1,
+        followUps: { cancelled: 0, alreadyClaimed: 1 },
+      });
       const marked = await setupJob(c.orgId);
       assert.equal(marked?.status, "claimed", "a claimed job keeps its status: it may be on its way");
       assert.equal(marked?.failReason, "cancelled: suspended", "and is marked as cancelled");
@@ -205,15 +211,30 @@ async function main() {
       await decideClub(c.orgId, "approve", "lib-owner", { now: AT_2330, hold: true });
       await runSetupAfterApproval(c.orgId, { now: AT_2330, learningEnabled: false });
       const [cancel, handed] = await Promise.all([cancelSetupDm(c.orgId, "removed", AT_0905), claimDuePlatformJobs({ now: AT_0905, limit: 50 })]);
-      const job = await setupJob(c.orgId);
-      const sent = handed.some((j) => j.id === job!.id);
-      if (sent) {
-        assert.equal(job?.status, "claimed");
-        assert.equal(cancel.cancelled, 0, "the claim won: nothing was cancelled");
-      } else {
-        assert.equal(job?.status, "failed");
-        assert.equal(cancel.cancelled, 1, "the cancel won: the Pi was not handed it");
+      // Two jobs since slice S7 (the setup DM and its admin group
+      // command), each raced on its own: for EACH, exactly one of the
+      // cancel and the claim won.
+      const both = await db.platformJob.findMany({
+        where: { refId: { in: [setupAskRefId(c.orgId), `${c.orgId}:setup-admin-code`] } },
+        select: { id: true, status: true, failReason: true },
+      });
+      assert.equal(both.length, 2);
+      let cancelled = 0;
+      for (const job of both) {
+        const sent = handed.some((j) => j.id === job.id);
+        if (sent) {
+          assert.equal(job.status, "claimed", "the claim won this job: it keeps its status");
+        } else {
+          assert.equal(job.status, "failed", "the cancel won this job: the Pi was not handed it");
+          cancelled++;
+        }
       }
+      assert.equal(cancel.cancelled + cancel.followUps.cancelled, cancelled, "the cancel reports exactly the jobs it took back");
+      assert.equal(
+        cancel.cancelled + cancel.alreadyClaimed + cancel.followUps.cancelled + cancel.followUps.alreadyClaimed,
+        2,
+        "and accounts for both",
+      );
     }
     ok("the cancel racing the Pi's claim (4 rounds): never both, never neither");
 
