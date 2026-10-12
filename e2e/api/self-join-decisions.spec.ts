@@ -23,6 +23,7 @@ import { E2E, REPO_ROOT } from "../helpers/env";
 import { testDb, type TestDb } from "../helpers/test-db";
 import type { APIRequestContext } from "@playwright/test";
 import { t } from "@/lib/i18n/t";
+import { freePeriodEnd } from "@/lib/club-billing-rules";
 
 /** The group hello, from the copy table (its wording is pinned in self-join-copy.test.ts). */
 const hello = (lang: "en" | "tr") => t(lang).sj_group_hello;
@@ -213,25 +214,26 @@ test("the whole flow: connect DM, add, pending, APPROVE by DM, hello first, orga
   // on real Postgres with its CHECK constraints) and the DM follows the
   // free-month sentence with the club fee tip. With the flag off the DM
   // ends on that sentence (unit-pinned in club-decisions.test.ts).
-  expect(live).toMatch(/Your first month is free\.\n\n💷 \*Club fee tip:\* after that MatchTime only charges for the games you play, up to £9\.99 a month for the group/);
+  expect(live).toMatch(/Your first two months are free\.\n\n💷 \*Club fee tip:\* after that MatchTime only charges for the games you play, up to £9\.99 a month for the group/);
   expect(live).not.toMatch(/[—–]/);
   expect(await db.one(`SELECT "billingStatus","billingPlan" FROM "Organisation" WHERE id = $1`, [EN_ORG])).toEqual({
     billingStatus: "trial",
     billingPlan: "standard",
   });
-  const trial = await db.one<{ start: string; ends: string; approved: string }>(
-    `SELECT cb."trialStartedAt"::text AS start, cb."trialEndsAt"::text AS ends, o."approvedAt"::text AS approved
+  const trial = await db.one<{ start: Date; ends: Date; approved: Date }>(
+    // AT TIME ZONE 'UTC': the columns hold UTC with no zone, and `pg` would
+    // otherwise read them as this machine's local time.
+    `SELECT cb."trialStartedAt" AT TIME ZONE 'UTC' AS start, cb."trialEndsAt" AT TIME ZONE 'UTC' AS ends,
+            o."approvedAt" AT TIME ZONE 'UTC' AS approved
        FROM "ClubBilling" cb JOIN "Organisation" o ON o.id = cb."orgId" WHERE cb."orgId" = $1`,
     [EN_ORG],
   );
-  // The free month starts at the approval and runs 30 days.
-  expect(trial?.start).toBe(trial?.approved);
-  expect(
-    await db.count(
-      `SELECT COUNT(*) FROM "ClubBilling" WHERE "orgId" = $1 AND "trialEndsAt" = "trialStartedAt" + interval '30 days'`,
-      [EN_ORG],
-    ),
-  ).toBe(1);
+  // The free period starts at the approval and runs two London calendar months.
+  expect(trial!.start).toEqual(trial!.approved);
+  expect(trial!.ends).toEqual(freePeriodEnd(trial!.approved));
+  const freeDays = (trial!.ends.getTime() - trial!.start.getTime()) / (24 * 60 * 60 * 1000);
+  expect(freeDays).toBeGreaterThan(58.9);
+  expect(freeDays).toBeLessThan(62.1);
   // Three distinct links, none of them a bare admin path.
   const urls = live.match(/^http\S+$/gm) ?? [];
   expect(new Set(urls).size).toBe(3);

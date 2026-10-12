@@ -90,8 +90,8 @@ export interface BillingStateInput {
    *  to be added back to the group, not for a card). */
   pausedReason?: string | null;
   /** Slice P4: the moment the page is drawn (pure: never read from the
-   *  clock here). Inside the free month a saved card reads "Nothing is
-   *  taken until ...". Without it the free month is never assumed. */
+   *  clock here). Inside the free period a saved card reads "Nothing is
+   *  taken until ...". Without it the free period is never assumed. */
   now?: Date | null;
   /** Slice P4: what is unpaid (failed or still being taken months): their
    *  total, how many, and the latest one's dates. */
@@ -137,7 +137,7 @@ export function billingStateLines(lang: LangIn, v: BillingStateInput): string[] 
   const s = t(lang);
   const date = (d: Date | null) => (d ? dayLabel(lang, d) : "");
   const price = priceOf(v);
-  // The first charge after the free month: the morning after month 1 ends
+  // The first charge after the free period: the morning after month 1 ends
   // (plan 2A.1). Later on, the end of the current month (`currentPeriodEnd`
   // mirrors it, P2).
   const firstCharge = v.trialEndsAt ? monthBounds(v.trialEndsAt, 1).endsAt : null;
@@ -296,7 +296,7 @@ function cardOnFile(v: BillingStateInput): boolean {
  *   change-card   the contact's own card is on file: put another one on
  *   use-mine      somebody else's card is on file (a collector change)
  *   stop-paying   a card is on file and billing runs: it ends with the
- *                 current month (inside the free month the card goes)
+ *                 current month (inside the free period the card goes)
  *   keep-paying   Stop paying was pressed (undo), or the club is paused
  *                 after it and its card is still on file (start again)
  *   remove-mine   an old card holder
@@ -511,7 +511,7 @@ export function billingPageView(
   };
 }
 
-/** What the Stop paying confirmation says: inside the free month the card
+/** What the Stop paying confirmation says: inside the free period the card
  *  goes at once (`stopPaying`); otherwise billing ends with the current
  *  month, on the day it is charged. */
 function stopConfirmView(lang: LangIn, v: BillingStateInput): NonNullable<BillingPageView["stopConfirm"]> {
@@ -617,7 +617,7 @@ export function resumedText(lang: LangIn, p: { club: string }): string {
   return t(lang).billing_dm_resumed(p);
 }
 
-/** Billed again after Free with the free month used up: a fresh grace
+/** Billed again after Free with the free period used up: a fresh grace
  *  week, and a card asked for. */
 export function planBilledText(
   lang: LangIn,
@@ -716,7 +716,7 @@ export function trialReminderText(
   return withExtras(lang, body, { tip: p.tip, via: p.via });
 }
 
-/** Day 30: the free month has ended, a week's grace (7.3). */
+/** Day 30: the free period has ended, a week's grace (7.3). */
 export function trialEndedText(
   lang: LangIn,
   p: { name: string | null; club: string; graceEndsAt: Date; pricePence: number; link: string; via: ContactVia },

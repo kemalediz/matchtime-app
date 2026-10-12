@@ -928,7 +928,7 @@ describe("Stop paying and Keep paying (4.2)", () => {
     expect(h.state.org!.billingStatus).toBe("subscribed");
   });
 
-  it("inside the free month: the card is removed at once and the club is back in its free month, same end date", async () => {
+  it("inside the free month: the card is removed at once and the club is back in its free period, same end date", async () => {
     setWorld({ billingStatus: "subscribed" }, withCard());
     expect(await stopPaying({ orgId: ORG, userId: "user_colin", role: "contact", now: DAYTIME })).toEqual({ ok: true, freeMonth: true });
     expect(fake.state().detached).toEqual(["pm_colin"]);

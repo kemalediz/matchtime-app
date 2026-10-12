@@ -93,7 +93,7 @@ export function monthBounds(anchor: Date, index: number): { startsAt: Date; ends
 }
 
 /** The index of the month containing `at` (0 while still before the
- *  anchor, i.e. in the free month). */
+ *  anchor, i.e. in the free period). */
 export function monthIndexAt(anchor: Date, at: Date): number {
   if (at.getTime() < anchor.getTime()) return 0;
   const a = londonYmd(anchor);
