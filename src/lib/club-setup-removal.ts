@@ -27,7 +27,11 @@
  *      /admin/health). Never a DM to him;
  *   5. ONE DM to the organiser, on the platform channel, in the club's
  *      language, in the daytime (`messageHoursSendAfter`): MatchTime was
- *      removed before the club went live; add it back, then GO.
+ *      removed before the club went live; add it back, then GO; and who
+ *      has to add it (an add by somebody MatchTime does not know as a
+ *      member of the club clears nothing). Queued only if the club is
+ *      STILL removed at that instant, read under the club's row lock: see
+ *      THE RE-ADD RACE in `handleSetupRemoval`.
  * Nothing is said in the group or to any player. Steps 2 to 5 each fail
  * on their own: the stamp, which is what protects the club, is never
  * undone by a DM that could not be queued.
@@ -81,12 +85,19 @@ import { db } from "./db";
 import { resolveSenderUserIds } from "./admin-group-link";
 import { appUrl } from "./admin-link";
 import { clearCapturedChatForClub } from "./captured-chat";
-import { clearSetupRemoved, findSettingUpClubByGroup, markSetupRemoved, unaskCancelledSetupDm } from "./club-setup";
+import {
+  clearSetupRemoved,
+  findSettingUpClubByGroup,
+  isSetupRemovedNow,
+  lockClubSetup,
+  markSetupRemoved,
+  unaskCancelledSetupDm,
+} from "./club-setup";
 import { cancelSetupDm } from "./club-setup-dm-cancel";
 import { t } from "./i18n/t";
 import { messageHoursSendAfter } from "./message-hours";
 import { SETUP_ALERT_KIND, recordOpsEvent } from "./ops-alerts";
-import { PlatformDmRefused, cancelQueuedPlatformDms, queuePlatformDm } from "./platform-jobs";
+import { PlatformDmRefused, cancelQueuedPlatformDms, queuePlatformDm, type PlatformDmClient } from "./platform-jobs";
 
 /** The platform purpose of the organiser's removal DM. */
 export const SETUP_REMOVED_DM_PURPOSE = "setup-removed" as const;
@@ -95,7 +106,9 @@ export const setupRemovedRefId = (orgId: string): string => `${orgId}:setup-remo
 
 /** What became of the setup DM at the removal (see the header). */
 export type SetupDmAtRemoval = "none-waiting" | "cancelled-will-resend" | "left-with-the-pi" | "unknown";
-export type OrganiserRemovalDm = "queued" | "no-organiser" | "refused" | "failed";
+/** "re-added": MatchTime was back in the group before the DM was queued,
+ *  so it was not (it would have said "add me back" to a group it is in). */
+export type OrganiserRemovalDm = "queued" | "re-added" | "no-organiser" | "refused" | "failed";
 
 export type SetupRemovalResult =
   /** No club that is setting up owns the group. Nothing done. */
@@ -144,18 +157,31 @@ export async function handleSetupRemoval(groupId: string, opts: { now?: Date } =
     });
     if (!connect) organiserDm = "no-organiser";
     else {
-      await queuePlatformDm({
-        phone: connect.phone,
-        text: t(club.language).sj_setup_removed({
-          club: club.name,
-          group: connect.groupSubject?.trim() || club.name,
-          url: appUrl("/admin/settings"),
-        }),
-        purpose: SETUP_REMOVED_DM_PURPOSE,
-        refId: setupRemovedRefId(orgId),
-        sendAfter: messageHoursSendAfter(now),
+      // THE RE-ADD RACE. This DM is queued several statements after the
+      // stamp. A re-add landing in between clears the stamp and cancels a
+      // waiting removal DM, and would find none to cancel yet: the
+      // organiser would then be told "add me back" with MatchTime already
+      // back. So the stamp is read again UNDER THE CLUB'S ROW LOCK, and
+      // the DM is inserted in that same transaction. The re-add's clear is
+      // a write to that row: it has either committed (no DM), or it waits
+      // for this commit and its cancel, which runs after it, finds the DM.
+      organiserDm = await db.$transaction(async (tx): Promise<OrganiserRemovalDm> => {
+        await lockClubSetup(tx, orgId);
+        if (!(await isSetupRemovedNow(orgId, tx))) return "re-added";
+        await queuePlatformDm({
+          phone: connect.phone,
+          text: t(club.language).sj_setup_removed({
+            club: club.name,
+            group: connect.groupSubject?.trim() || club.name,
+            url: appUrl("/admin/settings"),
+          }),
+          purpose: SETUP_REMOVED_DM_PURPOSE,
+          refId: setupRemovedRefId(orgId),
+          sendAfter: messageHoursSendAfter(now),
+          client: tx as unknown as PlatformDmClient,
+        });
+        return "queued";
       });
-      organiserDm = "queued";
     }
   } catch (err) {
     organiserDm = err instanceof PlatformDmRefused ? "refused" : "failed";
@@ -218,7 +244,10 @@ export async function handleSetupReAdd(input: {
   }
 
   if (!(await clearSetupRemoved(orgId, input.groupId))) return { kind: "not-removed" };
-  // "I was removed, add me back" must not arrive after the re-add.
+  // "I was removed, add me back" must not arrive after the re-add. AFTER
+  // the stamp is cleared, never before: the removal queues that DM under
+  // the club's row lock only while the stamp is set, so once the clear
+  // above has returned, any such DM is committed and this finds it.
   try {
     await cancelQueuedPlatformDms({ purposes: [SETUP_REMOVED_DM_PURPOSE], refIds: [setupRemovedRefId(orgId)], reason: "re-added", now });
   } catch (err) {

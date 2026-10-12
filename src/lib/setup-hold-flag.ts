@@ -6,10 +6,14 @@
  * approval leaves the club "setting up" (approved, silent) until its
  * organiser says GO. Off, an approval is byte for byte today's.
  *
- * Nothing in slice S1 reads the flag: the silence rails are keyed on the
- * club's stored stage, so a club already setting up stays silent whatever
- * the flag says. Slices S3 to S5 read it at the approval, in the DM route
- * and on the settings page.
+ * The flag decides ONE thing: whether an approval holds the club. It is
+ * read where that is decided or announced: the owner's approval
+ * (actions/club-decisions.ts, and the approver's DM in the dm-reply
+ * route), and the wording of the connect card and the connect DMs before
+ * the approval. Nothing else reads it: the silence rails, GO, the setup DM
+ * and the Go live banner are keyed on the club's stored stage, so a club
+ * already setting up stays silent, and can still go live, whatever the
+ * flag says now.
  *
  * TEST SEAM, the same double gate as self-join-flag.ts. The e2e suite has
  * to show the held approval with the flag ON and today's approval with it

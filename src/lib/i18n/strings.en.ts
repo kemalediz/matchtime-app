@@ -2156,10 +2156,30 @@ export const en = {
   /** The label of the button on the settings page, so every message that
    *  names it and the page itself use one wording. */
   sj_go_button: `Go live`,
-  /** GO worked: the hello is queued for the group. */
-  sj_go_done: (p: { group: string }): string => `Done: I've introduced myself in "${p.group}".`,
-  /** GO while the group's chat is still being read (owner decision 4). */
-  sj_go_still_reading: `I'm still reading your group's messages. Give me a few minutes and I'll message you.`,
+  /** GO worked: the hello is queued for the group. It is NOT there yet:
+   *  the Pi posts it once its next refresh has learnt that the group is
+   *  served, up to five minutes later, so this does not say "I have". */
+  sj_go_done: (p: { group: string }): string =>
+    `Done: I'm introducing myself in "${p.group}" now. It can take a few minutes to appear.`,
+  /** GO while the group's chat is still being read (owner decision 4).
+   *  True for whoever says GO: the reading can take up to two hours, and
+   *  the setup message goes only to the organiser who connected the club,
+   *  in the daytime. So no "in a few minutes", and no "I'll message you". */
+  sj_go_still_reading: (p: { club: string }): string =>
+    `I'm still reading your group's messages, which can take a while. When I've finished I'll send the setup message to the organiser who connected ${p.club}. Try *GO* again after that.`,
+  /** GO failed on MatchTime's side (the server threw). Nothing changed;
+   *  the Pi does not send the message again, so the organiser is asked to. */
+  sj_go_failed: `Something went wrong on my side. Please reply *GO* again.`,
+  /** Opens the help sent to an owner or admin of a club that is still
+   *  setting up: the help below describes a group MatchTime is not
+   *  listening to yet. */
+  sj_go_help_not_started:
+    "MatchTime hasn't started in your group yet. Nothing below works there until you reply *GO* here or press *Go live* on your settings page.",
+  /** To the organiser, once, when the MatchTime team took the club live
+   *  for them (the owner's "Go live now"). The free period note and the
+   *  settings link follow it (src/lib/club-setup-owner-live.ts). */
+  sj_go_owner_started: (p: { group: string }): string =>
+    `The MatchTime team has started MatchTime in "${p.group}" for you, so you don't need to reply GO. It introduces itself in the group, which can take a few minutes to appear.`,
   /** GO after MatchTime was removed from the group. */
   sj_go_removed: (p: { group: string }): string => `I'm not in "${p.group}" any more. Add me back, then reply GO.`,
   /** GO for a club somebody else has just taken live. */
@@ -2188,7 +2208,8 @@ export const en = {
    *  platform channel, in the daytime. The Turkish command is BAŞLA. */
   sj_setup_removed: (p: { club: string; group: string; url: string }): string =>
     `I was removed from "${p.group}" before ${p.club} went live, so nothing has started there. ` +
-    `Add me back to the group, then reply *GO* here or press *Go live* on your settings page:\n${p.url}`,
+    `Add me back to the group, then reply *GO* here or press *Go live* on your settings page:\n${p.url}\n` +
+    `It has to be added by you or another organiser of ${p.club}.`,
   // ════ END removed from the group while setting up ════
   // ════ BEGIN the go-live pages (go-live slice S5, 2026-10-12) ════
   // The Go live banner on /admin/settings, that page's WhatsApp bot
@@ -2323,10 +2344,11 @@ export const en = {
     `I read the recent messages ${p.group ? `in "${p.group}"` : "in your group"} and found nothing that needs a setting changed, so ${p.standard ? "MatchTime is on its standard setup" : "I changed nothing"}.`,
   /** The chat could not be read: too little of it, or the reading failed. */
   sj_dm_ready_unread: (p: { standard: boolean }): string =>
-    `I couldn't read your group's recent messages, so ${p.standard ? "MatchTime is on its standard setup" : "I changed nothing"}.`,
+    `I couldn't read your group's recent messages, so ${p.standard ? "MatchTime is on its standard setup" : "I changed nothing"}. ` +
+    "That's fine: check the settings below and reply *GO* when you're happy.",
   /** What "standard setup" means. Only when the club is on it. */
   sj_dm_ready_standard:
-    "Standard setup: players say In or Out each week, and a free place goes to the first person on the bench.",
+    "Standard setup: players say In or Out each week, and a free place is offered to everyone on the bench: the first to say In takes it.",
   sj_dm_ready_settings: (p: { url: string }): string => `⚙️ *Check or change how your group runs:*\n${p.url}`,
   /** The same two lines as in `sj_dm_approved` (a test keeps them the same). */
   sj_dm_ready_schedule: (p: { url: string }): string =>

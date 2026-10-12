@@ -6,8 +6,9 @@
  * often holds bank details. `ingestGroupDescription` is the one door from
  * "what the Pi sent" to "what the server keeps": it runs on the request
  * body before anything is written, and what it returns is all that may
- * reach the database, a log or an error message. Nothing reads the stored
- * text yet; a later slice gives it to the setup reading.
+ * reach the database, a log or an error message. The stored text is
+ * read once, by the setup reading, beside the chat
+ * (`descriptionForReading`, setup-learning/run.ts).
  *
  * Pure: no imports, no I/O. Never throws. Linear in the length of the
  * text. Idempotent: masking what was masked changes nothing. That holds

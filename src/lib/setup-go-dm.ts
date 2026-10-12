@@ -33,10 +33,23 @@
  * "setup-reply" jobs already queued or sent to it. Over the cap: silence.
  * The one reply never held back is "Done", when a club has just gone live.
  *
- * REPLAYS. The Pi may deliver the same WhatsApp message twice. Each
- * handler claims a key for the message before it acts, so the second
- * delivery does nothing and sends nothing. If the work then fails, the
- * claim is released, so the Pi's retry is a real retry.
+ * REPLAYS. The Pi may deliver the same WhatsApp message twice (its
+ * reconnect recovery replays recent DMs). Each handler claims a key for
+ * the message before it acts, so a second delivery does nothing and sends
+ * nothing.
+ *
+ * NO RETRY. The Pi does NOT send a DM again when this server answers with
+ * an error: `postDmReply` (whatsapp-bot/src/api.ts) logs the failure and
+ * moves on. So a GO that fails here is lost unless the organiser says it
+ * again, and they must be told to:
+ *   - the claim is released, so the same message WOULD be handled if it
+ *     ever came again (a replay), and the organiser's next GO is a new
+ *     message in any case;
+ *   - `handleGoDm` then queues one short "something went wrong, reply GO
+ *     again" (`sj_go_failed`), capped like every other reply here. It is
+ *     best effort: when the failure is the database itself, that reply
+ *     cannot be queued either, and the organiser hears nothing. The
+ *     reminder a day later and the Go live button remain.
  */
 import { db } from "./db";
 import { resolveSenderUserIds } from "./admin-group-link";
@@ -51,6 +64,7 @@ import {
   liveByUser,
   type GoLiveResult,
 } from "./club-setup";
+import { isBillingEnabled, isBillingPaused } from "./club-billing-rules";
 import { t } from "./i18n/t";
 import { normalisePhone } from "./phone";
 import { PlatformDmRefused, queuePlatformDm } from "./platform-jobs";
@@ -75,9 +89,10 @@ const dmClaimKey = (waMessageId: string) => `setup-dm-msg:${waMessageId}`;
 /**
  * First writer wins. False: this WhatsApp message was already handled.
  * ONLY a unique violation means that. Any other database error is thrown,
- * so the route fails and the Pi sends the message again, instead of a
- * dropped connection being read as "seen before" and the DM being
- * swallowed (PR #234 review, fix 5).
+ * so the route answers with an error and the failure is logged, instead
+ * of a dropped connection being read as "seen before" and the DM being
+ * swallowed without a trace (PR #234 review, fix 5). The Pi does not send
+ * the message again: see NO RETRY in the header.
  */
 async function claim(key: string): Promise<boolean> {
   try {
@@ -118,8 +133,9 @@ type ReplyResult = "queued" | "capped" | "no-number" | "refused" | "failed";
 /**
  * Queue one reply. `capped: true` holds it back once the number has had
  * its share. `strict: true` lets a database failure throw (the caller
- * releases its claim and the Pi retries); otherwise nothing is thrown,
- * because a reply that cannot be sent must not undo a club that went live.
+ * releases its claim and the route answers with an error); otherwise
+ * nothing is thrown, because a reply that cannot be sent must not undo a
+ * club that went live.
  */
 async function reply(args: {
   phone: string | null;
@@ -142,11 +158,12 @@ async function reply(args: {
     return "queued";
   } catch (err) {
     if (err instanceof PlatformDmRefused) {
-      console.error(`[setup-go] reply not queued (${args.refId}): ${err.reason}`);
+      // The code only: the refusal's own message can hold the raw number.
+      console.error(`[setup-go] reply not queued (${args.refId}): ${err.code}`);
       return "refused";
     }
     if (args.strict) throw err;
-    console.error(`[setup-go] reply not queued (${args.refId}):`, err);
+    console.error(`[setup-go] reply not queued (${args.refId}): ${(err as Error)?.name ?? "error"}`);
     return "failed";
   }
 }
@@ -163,7 +180,7 @@ export function goReplyText(result: GoLiveResult): string | null {
       // held; a held club's organiser hears the price here, on day 0).
       return s.sj_go_done({ group: result.group }) + (result.freePeriodNote ? `\n\n${result.freePeriodNote}` : "");
     case "still-reading":
-      return s.sj_go_still_reading;
+      return s.sj_go_still_reading({ club: result.club });
     case "removed-from-group":
       return s.sj_go_removed({ group: result.group });
     case "already-live":
@@ -181,10 +198,12 @@ export type GoDmOutcome =
  * "GO" by DM. Returns null, having changed and sent nothing, unless the
  * WHOLE message is the command AND the sender is a current owner or admin
  * of a club that is setting up, or of one that has been through the hold
- * and is live (they are told "already live", however long ago that was).
- * A club that was never held does not count: GO from its admin is an
- * ordinary DM and falls through. The text is checked first, so no other
- * DM costs a query here.
+ * and is live (they are told "already live", however long ago that was;
+ * or, when that club is paused for the club fee, the paused wording: "is
+ * already live" would be false comfort for a club MatchTime is not
+ * serving). A club that was never held does not count: GO from its admin
+ * is an ordinary DM and falls through. The text is checked first, so no
+ * other DM costs a query here.
  */
 export async function handleGoDm(input: {
   text: string;
@@ -214,7 +233,7 @@ export async function handleGoDm(input: {
       userId: true,
       orgId: true,
       user: { select: { phoneNumber: true } },
-      org: { select: { id: true, name: true, language: true, liveAt: true, ...SETUP_STAGE_SELECT } },
+      org: { select: { id: true, name: true, language: true, liveAt: true, billingStatus: true, ...SETUP_STAGE_SELECT } },
     },
     orderBy: { createdAt: "asc" },
   });
@@ -241,7 +260,13 @@ export async function handleGoDm(input: {
       // Every club this person runs that was held is live already: the
       // one that went live most recently answers.
       const latest = [...clubs].sort((a, b) => (b.org.liveAt?.getTime() ?? 0) - (a.org.liveAt?.getTime() ?? 0))[0];
-      await say(latest.orgId, t(latest.org.language).sj_go_already_live({ club: latest.org.name }), true);
+      const s = t(latest.org.language);
+      if (isBillingPaused(latest.org, { BILLING_ENABLED: (input.billingEnabled ?? isBillingEnabled()) ? "1" : "0" })) {
+        // It went live once and is paused now: say so, and where to look.
+        await say(latest.orgId, s.sj_go_paused({ club: latest.org.name, url: appUrl(GO_LIVE_SETTINGS_PATH) }), true);
+        return { handled: "setup-go", outcome: "billing-paused", orgId: latest.orgId };
+      }
+      await say(latest.orgId, s.sj_go_already_live({ club: latest.org.name }), true);
       return { handled: "setup-go", outcome: "already-live", orgId: latest.orgId };
     }
 
@@ -257,8 +282,12 @@ export async function handleGoDm(input: {
     return { handled: "setup-go", outcome: result.outcome, orgId: sender.orgId };
   } catch (err) {
     // Nothing was committed (the go-live is one transaction, and a failed
-    // reply after it does not throw): let the Pi's retry try again.
+    // reply after it does not throw). The Pi will NOT send this GO again
+    // (NO RETRY, in the header), so: release the claim, tell the organiser
+    // to say it again (best effort, capped, never throws), and let the
+    // route answer with the error so it is logged.
     await release(key);
+    await say(sender.orgId, t(sender.org.language).sj_go_failed, true);
     throw err;
   }
 }
@@ -328,7 +357,8 @@ export async function handleSettingUpDm(input: {
         if (help) return help;
       } catch (err) {
         if (!(err instanceof PlatformDmRefused)) throw err;
-        console.error(`[setup-go] help for ${input.userId} not queued: ${err.reason}`);
+        // The code only: the refusal's own message can hold the raw number.
+        console.error(`[setup-go] help for ${input.userId} not queued: ${err.code}`);
         return silent;
       }
     }
@@ -347,8 +377,9 @@ export async function handleSettingUpDm(input: {
     if (sent === "capped") return { ignored: "setup-reply-capped" };
     return { handled: "setup-not-recognised", orgIds };
   } catch (err) {
-    // The reply was not queued: release the claim so the Pi's retry of
-    // this message is answered, not read as a duplicate.
+    // The reply was not queued: release the claim, so that if this message
+    // ever comes again (a replay) it is answered, not read as a duplicate.
+    // The Pi does not retry on its own: see NO RETRY in the header.
     await release(key);
     throw err;
   }

@@ -108,7 +108,7 @@ const botJobs = (db: TestDb, orgId: string) =>
  * sentence and the club fee tip (owner decision, 2026-10-12).
  */
 const doneWithFreePeriod = (group: string) =>
-  new RegExp(`^Done: I've introduced myself in "${group}"\\.\\n\\nYour first two months are free\\.\\n\\n💷 \\*Club fee tip:\\* after that MatchTime only charges for the games you play, up to £9\\.99 a month`);
+  new RegExp(`^Done: I'm introducing myself in "${group}" now\\. It can take a few minutes to appear\\.\\n\\nYour first two months are free\\.\\n\\n💷 \\*Club fee tip:\\* after that MatchTime only charges for the games you play, up to £9\\.99 a month`);
 const billing = (db: TestDb, orgId: string) =>
   db.one<{ status: string; rows: number }>(
     `SELECT o."billingStatus" AS status, (SELECT COUNT(*)::int FROM "ClubBilling" cb WHERE cb."orgId" = o.id) AS rows FROM "Organisation" o WHERE o.id = $1`,
@@ -263,7 +263,12 @@ test.describe("GO", () => {
     expect(sent).toHaveLength(before + 1);
     expect(sent.at(-1)).toMatchObject({ purpose: "setup-reply", status: "queued", sendAfter: null });
     expect(sent.at(-1)!.text).not.toMatch(/didn't recognise/);
-    expect(sent.at(-1)!.text.length).toBeGreaterThan(80);
+    // The help talks about tagging MatchTime and saying In or Out in a
+    // group it is not listening to yet, so it opens by saying so.
+    const notStarted =
+      "MatchTime hasn't started in your group yet. Nothing below works there until you reply *GO* here or press *Go live* on your settings page.\n\n";
+    expect(sent.at(-1)!.text.startsWith(notStarted)).toBe(true);
+    expect(sent.at(-1)!.text.length).toBeGreaterThan(notStarted.length + 80);
     // Not on the club's channel, where it would sit undelivered.
     expect(await botJobs(db, HARBOUR.id)).toEqual([]);
     // And the platform endpoint hands it to the Pi whatever the clubs' switches say.
@@ -367,6 +372,28 @@ test.describe("GO", () => {
     expect(await botJobs(db, HARBOUR.id)).toHaveLength(1);
   });
 
+  test("a club that went through the hold and is now PAUSED for the club fee: GO gets the paused wording, never 'already live'", async ({ request, db }) => {
+    await db.run(
+      `INSERT INTO "ClubBilling" ("orgId","trialStartedAt","trialEndsAt","pausedAt","pausedReason","updatedAt")
+       VALUES ($1, $2::timestamp, $3::timestamp, $4::timestamp, 'no-card', now())
+       ON CONFLICT ("orgId") DO UPDATE SET "pausedAt" = EXCLUDED."pausedAt", "pausedReason" = 'no-card'`,
+      [HARBOUR.id, utc(-70 * 24 * 3_600_000), utc(-9 * 24 * 3_600_000), utc(-3_600_000)],
+    );
+    const was = await db.one<{ billingStatus: string }>(`SELECT "billingStatus" FROM "Organisation" WHERE id = $1`, [HARBOUR.id]);
+    await db.run(`UPDATE "Organisation" SET "billingStatus" = 'paused' WHERE id = $1`, [HARBOUR.id]);
+    try {
+      const res = await dm(request, BO.phone, "GO", { headers: { "x-mt-test-billing": "1" } });
+      expect(res).toMatchObject({ handled: "setup-go", outcome: "billing-paused", orgId: HARBOUR.id });
+      expect((await lastReply(db, BO.phone))!.text).toMatch(
+        /^Harbour FC is paused, so I can't go live yet\. Your settings page shows what's needed:\nhttps?:\/\/\S+\/admin\/settings$/,
+      );
+      // Nothing was written for the club.
+      expect(await botJobs(db, HARBOUR.id)).toHaveLength(1);
+    } finally {
+      await db.run(`UPDATE "Organisation" SET "billingStatus" = $2 WHERE id = $1`, [HARBOUR.id, was!.billingStatus]);
+    }
+  });
+
   test("once live, the organiser's DMs are no longer stopped by the setting-up rail", async ({ request }) => {
     const res = await dm(request, HANA, "help");
     expect(res).toMatchObject({ handled: "dm-help", orgId: HARBOUR.id, audience: "admin" });
@@ -381,7 +408,7 @@ test.describe("GO in Turkish", () => {
     expect(res).toMatchObject({ handled: "setup-go", outcome: "went-live", orgId: KIYI.id });
     expect(await club(db, KIYI.id)).toMatchObject({ setupStage: "live", whatsappBotEnabled: true });
     expect(await lastReply(db, KIYI.ownerPhone)).toMatchObject({
-      text: expect.stringMatching(/^Tamam: "Kıyı Salı Maçı" grubunda kendimi tanıttım\.\n\nİlk iki ayınız ücretsiz\.\n\n💷 \*Kulüp ücreti ipucu:\* /),
+      text: expect.stringMatching(/^Tamam: şimdi "Kıyı Salı Maçı" grubunda kendimi tanıtıyorum\. Mesajın görünmesi birkaç dakika sürebilir\.\n\nİlk iki ayınız ücretsiz\.\n\n💷 \*Kulüp ücreti ipucu:\* /),
     });
     const jobs = await botJobs(db, KIYI.id);
     expect(jobs).toHaveLength(1);
@@ -412,7 +439,7 @@ test.describe("GO that is refused", () => {
     expect(await club(db, READING.id)).toMatchObject({ setupStage: "setting-up", whatsappBotEnabled: false, liveAt: null });
     expect(await botJobs(db, READING.id)).toEqual([]);
     expect(await lastReply(db, READING.ownerPhone)).toMatchObject({
-      text: "I'm still reading your group's messages. Give me a few minutes and I'll message you.",
+      text: "I'm still reading your group's messages, which can take a while. When I've finished I'll send the setup message to the organiser who connected Reading Rovers. Try *GO* again after that.",
       purpose: "setup-reply",
     });
     expect(await db.one(`SELECT status FROM "ClubSetupLearning" WHERE "orgId" = $1`, [READING.id])).toEqual({ status: "running" });
@@ -510,7 +537,7 @@ test.describe("GO that is refused", () => {
     expect(dms).toHaveLength(1);
     expect(dms[0].refId).toBe(`${LEFTOUT.id}:setup-removed`);
     expect(dms[0].text).toMatch(
-      /^I was removed from "Leftout 5s" before Leftout FC went live, so nothing has started there\. Add me back to the group, then reply \*GO\* here or press \*Go live\* on your settings page:\nhttp\S+\/admin\/settings$/,
+      /^I was removed from "Leftout 5s" before Leftout FC went live, so nothing has started there\. Add me back to the group, then reply \*GO\* here or press \*Go live\* on your settings page:\nhttp\S+\/admin\/settings\nIt has to be added by you or another organiser of Leftout FC\.$/,
     );
     // The platform owner sees it on /admin/health, once.
     const alerts = () => db.count(`SELECT COUNT(*) FROM "OpsAlert" WHERE "orgId" = $1 AND kind = 'club-setup' AND "dedupeKey" LIKE 'setup-removed:%'`, [LEFTOUT.id]);
@@ -702,5 +729,55 @@ test.describe("two GOs at once", () => {
       throw new Error(`go-live lib tests failed:\n${err.stdout ?? ""}\n${err.stderr ?? ""}`);
     });
     expect(stdout, stderr).toContain("OK");
+  });
+});
+
+// Setup-hold switch-on fixes (2026-10-13), item 11. A platform job leaves
+// "claimed" only when the Pi reports on it; there is no claim timeout. A
+// setup DM lost between the claim and the report left the organiser
+// untold, the reminder waiting for it for ever, and nothing on any page.
+test.describe("a setup message the Pi took and never reported on", () => {
+  const STALE = { id: "e2e-go-stal", name: "Stale Town", group: "120363900000000240@g.us", subject: "Stale 5s", ownerId: "e2e-go-stu", ownerPhone: "+447700901140" };
+  const alerts = (db: TestDb) =>
+    db.all<{ detail: string; dedupeKey: string }>(
+      `SELECT detail, "dedupeKey" FROM "OpsAlert" WHERE "orgId" = $1 AND kind = 'club-setup' AND "dedupeKey" LIKE 'setup-dm-claim-stale:%'`,
+      [STALE.id],
+    );
+  const sweep = async (request: APIRequestContext) => {
+    const res = await request.get("/api/cron/learn-setup", { headers: { authorization: `Bearer ${E2E.CRON_SECRET}` } });
+    expect(res.status(), await res.text()).toBe(200);
+    return res.json();
+  };
+
+  test("claimed 20 minutes ago with no outcome: the owner gets ONE event, and the message is NOT sent again", async ({ request, db }) => {
+    await user(db, STALE.ownerId, "Stu Stale", STALE.ownerPhone);
+    await heldClub(db, STALE);
+    // As it is once the setup DM has been queued: the club is stamped as
+    // asked, so no sweep sends another.
+    await db.run(`UPDATE "Organisation" SET "setupAskedAt" = $2::timestamp WHERE id = $1`, [STALE.id, utc(-20 * 60_000)]);
+    await db.run(
+      `INSERT INTO "PlatformJob" (id, kind, phone, text, purpose, "refId", status, "claimedAt", "createdAt", "updatedAt")
+       VALUES ('e2e-go-stale-job', 'dm', $1, 'Good news: Stale Town is approved.', 'setup-ask', $2, 'claimed', $3::timestamp, $3::timestamp, now()),
+              ('e2e-go-fresh-job', 'dm', $1, 'a reminder', 'setup-reminder', $4, 'claimed', $5::timestamp, $5::timestamp, now())`,
+      [bare(STALE.ownerPhone), `${STALE.id}:setup-ask`, utc(-20 * 60_000), `${STALE.id}:setup-reminder`, utc(-5 * 60_000)],
+    );
+    const report = await sweep(request);
+    expect(report.staleSetupClaims).toEqual({ considered: 1, recorded: 1 });
+    const seen = await alerts(db);
+    expect(seen).toHaveLength(1);
+    expect(seen[0].dedupeKey).toBe("setup-dm-claim-stale:e2e-go-stale-job");
+    expect(seen[0].detail).toContain("setup-dm-claim-stale");
+    expect(seen[0].detail).toContain("NOT sent again");
+    // No name, number or text of the message in what is recorded.
+    expect(seen[0].detail).not.toMatch(/Stale Town|7700901140|Good news/);
+
+    // The next run, 15 minutes later in real life: nothing more.
+    await sweep(request);
+    expect(await alerts(db)).toHaveLength(1);
+    // Never re-queued, never copied: the one job is exactly as the Pi left it.
+    expect(
+      await db.all(`SELECT id, status FROM "PlatformJob" WHERE "refId" = $1 ORDER BY id`, [`${STALE.id}:setup-ask`]),
+    ).toEqual([{ id: "e2e-go-stale-job", status: "claimed" }]);
+    await db.run(`DELETE FROM "PlatformJob" WHERE id IN ('e2e-go-stale-job','e2e-go-fresh-job')`);
   });
 });

@@ -34,7 +34,10 @@
  *     setup DM was due, inside 09:00 to 23:00 London;
  *   - `runSetupStuckSweep` (src/lib/club-setup-stuck.ts): ONE note to the
  *     MatchTime owner and one ops event for a club still setting up 72
- *     hours after its approval.
+ *     hours after its approval;
+ *   - `flagStaleSetupDmClaims` (src/lib/club-setup-stale-claims.ts): ONE
+ *     ops event for a setup message the Pi took more than 15 minutes ago
+ *     and never reported on. Nothing is sent again.
  *
  * TEST SEAMS, honoured only when the server was booted with MT_TEST_MODE
  * exactly "1" (never in production): `x-test-now` pins the clock,
@@ -49,6 +52,7 @@ import { expireCapturedHistory, type ExpiredCapturedHistory } from "@/lib/captur
 import { runSetupDmSweep } from "@/lib/club-setup-dm";
 import { runSetupReminderSweep } from "@/lib/club-setup-reminder";
 import { runSetupStuckSweep } from "@/lib/club-setup-stuck";
+import { flagStaleSetupDmClaims } from "@/lib/club-setup-stale-claims";
 import { setupLearningTestSeam } from "@/lib/setup-learning/test-seam";
 
 export async function GET(request: Request) {
@@ -88,6 +92,12 @@ export async function GET(request: Request) {
   } catch (err) {
     console.error("[learn-setup] stuck setup sweep failed:", err);
   }
+  let staleSetupClaims: Awaited<ReturnType<typeof flagStaleSetupDmClaims>> | null = null;
+  try {
+    staleSetupClaims = await flagStaleSetupDmClaims(now);
+  } catch (err) {
+    console.error("[learn-setup] stale setup claim check failed:", (err as Error)?.name ?? "error");
+  }
   let expired: ExpiredCapturedHistory | null = null;
   try {
     expired = await expireCapturedHistory(now);
@@ -95,14 +105,15 @@ export async function GET(request: Request) {
     console.error("[learn-setup] captured chat expiry failed:", err);
   }
   if (!report) return NextResponse.json({ error: "sweep failed", expired }, { status: 500 });
-  // `setupDms`, `setupReminders` and `setupStuck` are reported only when a
-  // club was due, so with no club setting up the response is exactly what
-  // it was.
+  // `setupDms`, `setupReminders`, `setupStuck` and `staleSetupClaims` are
+  // reported only when there was something to look at, so with no club
+  // setting up the response is exactly what it was.
   return NextResponse.json({
     ...report,
     expired,
     ...(setupDms && setupDms.considered > 0 ? { setupDms } : {}),
     ...(setupReminders && setupReminders.considered > 0 ? { setupReminders } : {}),
     ...(setupStuck && setupStuck.considered > 0 ? { setupStuck } : {}),
+    ...(staleSetupClaims && staleSetupClaims.considered > 0 ? { staleSetupClaims } : {}),
   });
 }
