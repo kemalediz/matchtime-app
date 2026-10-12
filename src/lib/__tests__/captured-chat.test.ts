@@ -11,9 +11,17 @@
  *   - the helper's own statements, against a mocked client;
  *   - a SOURCE GUARD over src/ and scripts/: outside the helper, the two
  *     names may only be READ (a property read, a Prisma `select`, a type).
- *     Any other mention fails, whatever its shape: a `data:` key, an SQL
- *     SET on one line or several, a ternary, `{ set: null }`, a value in a
- *     variable.
+ *     Any other mention fails: a `data:` key, an SQL SET on one line or
+ *     several, a ternary, `{ set: null }`, a value in a variable.
+ *
+ * WHAT THE GUARD IS, HONESTLY. It reads the source as text, line by line,
+ * with a home-made comment stripper. It catches the accident it was
+ * written for: somebody adding a write, or a delete of one column, in the
+ * ordinary way. It does NOT catch a write built to avoid it: a key made
+ * from pieces or a unicode escape, a row spread into `data`, an assignment
+ * split over two lines, `delete row.x`, `Object.assign`, SQL assembled
+ * from strings, or code hidden behind a `//` inside a string. Review, not
+ * this test, is what stands against those.
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";

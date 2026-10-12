@@ -248,13 +248,15 @@ describe("a time, a price or a date beside a number", () => {
     // Nothing to remove: everything stays.
     ["Mon 20:30 2026", "Mon 20:30 2026"],
     ["Pitch 3 20:30", "Pitch 3 20:30"],
-    // Two or more loose digits right beside a time, a date or a price,
-    // with only a space between: the shape may be the start of a number.
-    ["Sort 12:34 56", `Sort ${X}`],
-    ["Sort 12/10 56", `Sort ${X}`],
-    ["£12.34 56", X],
+    // ONE group of one or two loose digits beside a time, a date or a
+    // price is a count ("20:30 14 players"): see the round-two tests.
+    ["12/10 20:30 14", "12/10 20:30 14"],
+    // More than that, with only a space between, and the shape may be the
+    // start of a number.
+    ["Sort 12:34 567", `Sort ${X}`],
+    ["Sort 12/10 56 78", `Sort ${X}`],
+    ["£12.34 56 78", X],
     ["Mon 12 10 56", `Mon ${X}`],
-    ["12/10 20:30 14", X],
   ];
   it.each(cases)("%j", (input, expected) => {
     expect(mask(input)).toBe(expected);
@@ -275,11 +277,9 @@ describe("a time, a price or a date beside a number", () => {
 describe("where privacy and usefulness conflict, privacy wins", () => {
   const cases: Array<[why: string, input: string, expected: string]> = [
     ["a date with a two-digit year and no day word is what a sort code looks like", "Next game 12/10/26", `Next game ${X}`],
-    ["two dotted times with only a space between them could be a number", "20.30 21.30", X],
     ["three dotted times in a row", "07.30 09.00 12.30", X],
     ["two years side by side", "2025 2026", X],
-    ["a count right after a time with only a space between", "Mondays 20:30 14 players", `Mondays ${X} players`],
-    ["a two-digit pitch number right before a time", "Pitch 12 20:30", `Pitch ${X}`],
+    ["two counts right after a time", "Mondays 20:30 14 12", `Mondays ${X}`],
     ["a time range written as four digits each", "Mondays 2000-2100", `Mondays ${X}`],
     ["a list of small numbers adds up", "Teams of 5, 6, 7, 8, 9, 10", `Teams of ${X}`],
     ["a list of small numbers down the page", "7\n9\n11\n14\n21\n30", X],
@@ -489,11 +489,19 @@ function generator(seed: number) {
 
 const SEPARATORS = [" ", " ", "\n", "-", "/", ".", ",", ":", "_", "*", "|", "~", "'", "\u00b7", "\u2022", " - ", ", ", ". ", "\u200b", "(", ")", "+", "\u{1f600}"];
 const WORDS = ["a", "pm", " TL", "Mon ", "x", " Sort ", "Tue ", " am", "IBAN GB", "TR", " to "];
+/** Pieces of links, email addresses and the placeholders themselves. */
+const LINK_PIECES = ["www.", "x.co/", "maps.app.goo.gl/", "https://", "@", "a@b.co", "monzo.me/k", "[", "]", NUMBER_REMOVED, LINK_REMOVED, EMAIL_REMOVED, "&#49;", "&nbsp;"];
+/** Single characters that are several characters once normalised. */
+const EXPANDING = ["\u00bd", "\u2152", "\u33a8", "\u2488", "\u3251", "\u2474", "\u00b2", "\ufdfa", "\u33c2", "\u2460"];
 const SIGNS = ["£", "€", "₺", "$"];
 
-function generated(g: ReturnType<typeof generator>, pieces: number): string {
+function generated(g: ReturnType<typeof generator>, pieces: number, extra: readonly string[] = []): string {
   let s = "";
   for (let i = 0; i < pieces; i++) {
+    if (extra.length > 0 && g.next(5) === 0) {
+      s += g.pick(extra);
+      continue;
+    }
     const roll = g.next(10);
     if (roll < 5) {
       const len = 1 + g.next(4);
@@ -505,9 +513,19 @@ function generated(g: ReturnType<typeof generator>, pieces: number): string {
   return s;
 }
 
-/** The digits of each letter-free stretch of `text`. */
+/**
+ * The digits of each letter-free stretch of `text`, counted the way a
+ * reader would: entities decoded, every character normalised. A
+ * placeholder does not end a stretch (it is not a word).
+ */
 function digitsPerStretch(text: string): number[] {
-  return text.split(/\p{L}+/u).map((stretch) => (stretch.match(/\p{Nd}/gu) ?? []).length);
+  const read = text
+    .replaceAll(NUMBER_REMOVED, "|")
+    .replaceAll(LINK_REMOVED, "|")
+    .replaceAll(EMAIL_REMOVED, "|")
+    .replace(/&#49;/g, "1")
+    .normalize("NFKC");
+  return read.split(/\p{L}+/u).map((stretch) => (stretch.match(/[\p{Nd}\p{No}]/gu) ?? []).length);
 }
 
 /** `out.text` with every honoured shape and map link blanked out, digit by
@@ -515,7 +533,7 @@ function digitsPerStretch(text: string): number[] {
 function looseOnly(out: ReturnType<typeof maskGroupDescription>): string {
   const chars = out.text.split("");
   for (const [s, e] of [...out.kept.shapes, ...out.kept.mapLinks]) {
-    for (let i = s; i < e; i++) if (/\d/.test(chars[i])) chars[i] = "#";
+    for (let i = s; i < e; i++) chars[i] = "#";
   }
   return chars.join("");
 }
@@ -531,6 +549,26 @@ describe("properties", () => {
       expect(again.removed + again.links + again.emails, JSON.stringify(input)).toBe(0);
       expect(Math.max(...digitsPerStretch(looseOnly(out))), `${JSON.stringify(input)} -> ${JSON.stringify(out.text)}`).toBeLessThan(6);
     }
+  });
+
+  it("300,000 strings with link pieces, placeholders and characters that expand: ONE pass leaves fewer than 6 loose digits in any letter-free stretch, and a second pass changes nothing", { timeout: 120_000 }, () => {
+    const g = generator(5);
+    let notIdempotent = 0;
+    let leaked = 0;
+    const examples: string[] = [];
+    for (let n = 0; n < 300_000; n++) {
+      const input = generated(g, 1 + g.next(12), n % 2 === 0 ? [...LINK_PIECES, ...EXPANDING] : EXPANDING);
+      const out = maskGroupDescription(input);
+      if (Math.max(...digitsPerStretch(looseOnly(out))) >= 6) {
+        leaked++;
+        if (leaked <= 12) examples.push(`LEAK ${JSON.stringify(input)} -> ${JSON.stringify(out.text)}`);
+      }
+      if (maskGroupDescription(out.text).text !== out.text) {
+        notIdempotent++;
+        if (examples.length < 10) examples.push(`TWICE ${JSON.stringify(input)} -> ${JSON.stringify(out.text)} -> ${JSON.stringify(maskGroupDescription(out.text).text)}`);
+      }
+    }
+    expect({ leaked, notIdempotent, examples }).toEqual({ leaked: 0, notIdempotent: 0, examples: [] });
   });
 
   it("3,000 strings that cannot hold a time, a price, a date or a year: fewer than 6 digits in any letter-free stretch, whatever is kept", () => {

@@ -10,7 +10,13 @@
  * text yet; a later slice gives it to the setup reading.
  *
  * Pure: no imports, no I/O. Never throws. Linear in the length of the
- * text. Idempotent: what it kept, ingested again, is kept as it is.
+ * text. Idempotent: masking what was masked changes nothing. That holds
+ * because the three placeholders are single tokens to every rule (nothing
+ * reads into one, takes its letters for words, or alters it), because a
+ * removal never changes what the text around it is read as, and because
+ * a cut at the length limit drops whatever it split. It is tested on
+ * several hundred thousand generated strings, not proved. The server
+ * still masks twice (the route, then group-add.ts).
  *
  * THE DESIGN IS DEFAULT DENY. Digits are removed unless they are part of a
  * shape this file recognises as a time, a price, a date or a year, or
@@ -27,13 +33,23 @@
  *    so the text that is kept is the organiser's own, untouched outside
  *    the removed spans.
  *
- * 2. LINKS AND EMAIL ADDRESSES GO FIRST, WHOLE. A link to a map service
- *    (the list is `isMapLink` below) is kept as it is and its digits are
- *    never looked at. Every other link becomes "[link removed]": payment
- *    links, wa.me links that carry a phone number, anything else. An
- *    email address becomes "[email removed]". A link is a scheme
- *    ("https://"), "www.", or a host followed by a path ("monzo.me/x"); a
- *    host with no path is only a word.
+ * 2. LINKS AND EMAIL ADDRESSES GO FIRST, WHOLE.
+ *      - A link starts at a scheme ("https://"), at "www.", or at a host
+ *        followed by a path ("monzo.me/x"), the earliest of them, and
+ *        dots in front are not part of it ("here...monzo.me/x"). A host
+ *        with no path is only a word.
+ *      - It ends at the first character that cannot be in a link: a
+ *        space, a line break, a quote, a square or angle bracket, an
+ *        emoji or other symbol. Sentence punctuation at its end and a
+ *        closing bracket with no opening one are not part of it. What is
+ *        glued after it is read again: a second link, a phone number.
+ *      - A link to a map service is kept and its digits are never looked
+ *        at (`mapLinkLength` below has the list and the conditions: plain
+ *        ASCII as written, Google's own domains, nothing else carried in
+ *        it). Every other link becomes "[link removed]": payment links,
+ *        wa.me links that carry a phone number, anything else.
+ *      - An email address becomes "[email removed]", letters of any
+ *        alphabet included.
  *
  * 3. IBANS GO NEXT, WHOLE: a country code that has IBANs, two check
  *    digits, then letters and digits up to exactly that country's length,
@@ -45,7 +61,10 @@
  * 4. A CLUSTER is a maximal stretch of text with no letter in it. Spaces,
  *    NEW LINES, every punctuation mark, symbols and emoji do not end a
  *    cluster; only a letter does. So "1234\n5678", "12/34/56" and
- *    "12,34,56" are each one cluster. A cluster with 3 digits or fewer is
+ *    "12,34,56" are each one cluster. A link, an email address or a
+ *    placeholder does not end one either: digits on both sides of it are
+ *    counted together ("1234 [link removed] 5678"), though it sets a
+ *    shape apart as a comma does. A cluster with 3 digits or fewer is
  *    left alone.
  *
  * 5. INSIDE A CLUSTER, THESE SHAPES ARE HONOURED, each checked strictly:
@@ -78,14 +97,30 @@
  *      - a dotted or dashed pair of digits ("12.34", "12-10"), which
  *        looks as much like a piece of a number as like a time or a date,
  *        stops being honoured beside any loose digit, and beside another
- *        such pair ("12.34 56", "07.30 09.00 12.34");
+ *        such pair ("12.34 567", "07.30 09.00 12.34");
  *      - any other time, date or price stops being honoured beside two
- *        loose digits or more ("12:34 56", "12/10 56"), though not beside
- *        one ("Pitch 3 20:30");
+ *        loose digits or more ("20:45 17 30", "12/10 567"), though not
+ *        beside one ("Pitch 3 20:30");
  *      - two years side by side are not years. A year or a season beside
  *        a small count stays ("max 14 2026", "14 2026/27").
  *    What stops being honoured counts as loose digits, and so can stop
  *    the shape next to it in turn.
+ *
+ *    TWO THINGS ARE LET THROUGH, because short descriptions are written
+ *    this way and they are what the description is captured for:
+ *      (a) ONE loose group of one or two digits in a cluster is a count
+ *          beside the kick-off, and makes no shape give way:
+ *          "Mondays 20:30 14 players", "Pitch 12 20:30",
+ *          "Every Tuesday 19.30 12 players", "12/10 14 players". Two such
+ *          groups, or a group of three digits, are not a count. A dashed
+ *          pair and a date split by spaces still give way to it: that is
+ *          how a sort code is written ("20-10 25", "Mon 12 10 56").
+ *      (b) Exactly two dotted pairs with nothing loose in the cluster are
+ *          a date and a time, or two times: "12.10 21.00",
+ *          "20.30 21.30".
+ *    The price of (a), known and accepted: a sort code written as a time
+ *    and a pair ("12:34 56", "12.34 56") stays. Nobody writes one so, and
+ *    the account number beside it is removed all the same.
  *
  * 7. THE DECISION, per cluster, on the digits that no honoured shape
  *    accounts for (the leftover):
@@ -100,6 +135,10 @@
  *    ("KO 20:30 - 07700 900123"). Runs of removed digits that touch
  *    become ONE "[number removed]", so no half of a number is ever left.
  *
+ * 8. WHAT IS LEFT OF A CARD. On a line a number was removed from, "exp",
+ *    "cvv", "cvc" or "son kullanma" followed by a date or a group of 3 or
+ *    4 digits is removed too.
+ *
  * WHAT IS NOT HONOURED, on purpose. A small count has no shape of its own
  * ("9 a side", "max 14"): it survives because it is few digits, and it is
  * removed with the rest when it shares a cluster with a number. A date
@@ -107,7 +146,10 @@
  * that is exactly what a sort code looks like.
  *
  * WHAT IS NOT REMOVED: names, post codes, numbers written out in words,
- * and digits that the organiser split with letters ("12a34b56").
+ * and anything deliberately disguised: digits split by words or letters
+ * ("12a34b56"), letters used as digits ("O77OO"), a number hidden as a
+ * list of times or prices. A sort code that reads as a date beside a day
+ * word ("09-01-28 Mon") stays; the account number beside it does not.
  */
 
 /** What every removed number is replaced with. */
@@ -132,8 +174,14 @@ export const GROUP_DESCRIPTION_MAX_CHARS = 4096;
 const SEP = 0;
 const DIG = 1;
 const LET = 2;
-/** A link, an email address or an IBAN already dealt with. Ends a cluster. */
+/**
+ * A link, an email address, an IBAN or a placeholder: dealt with, and one
+ * token to every rule after it. Nothing reads into it, nothing takes its
+ * letters for words, and it is never altered, split or absorbed.
+ */
 const BLOCK = 3;
+/** What a BLOCK looks like from inside a cluster: one opaque mark. */
+const GAP = "\ue000";
 
 /** A separator with no meaning of its own (an emoji, an entity). */
 const OPAQUE = "\ufffc";
@@ -163,6 +211,7 @@ const RE_LETTER = /[\p{L}\p{Nl}]/u;
 const RE_LINE = /[\p{Zl}\p{Zp}]/u;
 const RE_SPACE = /\p{Zs}/u;
 const RE_DASH = /\p{Pd}/u;
+const RE_PRIVATE = /\p{Co}/u;
 /** Letters by category that show nothing: the Hangul fillers. */
 const FILLERS = new Set([0x115f, 0x1160, 0x3164, 0xffa0]);
 const TURKISH: Record<string, string> = {
@@ -218,7 +267,9 @@ function pieceOfNormalised(cp: number, a: string[], k: number[]): void {
     a.push("-");
     k.push(SEP);
   } else {
-    a.push(cp <= 0xffff ? ch : OPAQUE);
+    // A symbol. One this file gives a meaning of its own (private use,
+    // where GAP lives) is only ever an opaque separator.
+    a.push(cp <= 0xffff && !RE_PRIVATE.test(ch) ? ch : OPAQUE);
     k.push(SEP);
   }
 }
@@ -238,6 +289,17 @@ function pieceOf(cp: number): Piece {
     normal = OPAQUE;
   }
   for (const c of normal) pieceOfNormalised(c.codePointAt(0)!, a, k);
+  // ONE character that is digits and letters at once ("m/s2" in a single
+  // sign) is digits and separators: a letter that vanishes with its digit
+  // when the digit is removed must not have ended a cluster.
+  if (k.includes(DIG) && k.includes(LET)) {
+    for (let x = 0; x < k.length; x++) {
+      if (k[x] === LET) {
+        k[x] = SEP;
+        a[x] = OPAQUE;
+      }
+    }
+  }
   const piece = { a: a.join(""), k };
   if (pieceCache.size > 4096) pieceCache.clear();
   pieceCache.set(cp, piece);
@@ -316,6 +378,20 @@ function normalisedCopy(text: string): Copy {
   return { a: a.join(""), kind, from, to };
 }
 
+/**
+ * Mark [s, e) of the copy as a BLOCK, widened to whole characters of the
+ * text: when one original character is several in the copy and any of
+ * them is in a link, an email address or an IBAN, all of them are (the
+ * whole character is what gets replaced). Returns the widened ends.
+ */
+function block(copy: Copy, s: number, e: number): [number, number] {
+  const { kind, from } = copy;
+  while (s > 0 && from[s - 1] === from[s]) s--;
+  while (e < kind.length && from[e] === from[e - 1]) e++;
+  for (let x = s; x < e; x++) kind[x] = BLOCK;
+  return [s, e];
+}
+
 // ── 2. Links and email addresses ────────────────────────────────────────
 
 /** A span of the copy to replace (`text`) or to keep untouched (null). */
@@ -328,116 +404,235 @@ interface Span {
 }
 
 const HOST = /^[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,24}$/;
-const MAP_HOSTS = new Set([
-  "maps.app.goo.gl",
-  "maps.apple.com",
-  "maps.apple",
-  "what3words.com",
-  "w3w.co",
-  "waze.com",
-  "ul.waze.com",
-  "openstreetmap.org",
-  "osm.org",
+/** Google's own country domains: "maps.google.<one of these>" and "google.<one of these>/maps". */
+const GOOGLE_DOMAINS = new Set([
+  "com", "co.uk", "com.tr", "de", "fr", "es", "it", "nl", "ie", "pt", "be", "ch", "at", "se", "no", "dk", "pl", "gr",
+  "ca", "com.au",
 ]);
-const GOOGLE_MAPS_HOST = /^maps\.google\.[a-z]{2,3}(?:\.[a-z]{2})?$/;
-const GOOGLE_HOST = /^google\.[a-z]{2,3}(?:\.[a-z]{2})?$/;
+/** Map services whose links are long and may hold coordinates. */
+const LONG_MAP_HOSTS = new Set(["maps.apple.com", "maps.apple", "waze.com", "ul.waze.com", "openstreetmap.org", "osm.org"]);
+/** Map services whose links are a short code or three words. */
+const SHORT_MAP_HOSTS = new Set(["maps.app.goo.gl", "goo.gl", "what3words.com", "w3w.co"]);
+const SHORT_PATH = /^\/[a-z0-9._/-]*/;
+const PLAIN_ASCII = /^[\x21-\x7e]+$/;
+/** Digits in a row that a map link may hold: coordinates run to 8 decimals. */
+const LONG_LINK_DIGITS = /\d{9}/;
+/** And a short link's code: letters and digits mixed, never 7 digits in a row. */
+const SHORT_LINK_DIGITS = /\d{7}/;
+const OTHER_LINK_INSIDE = /:\/\/|(?:^|[^a-z0-9])www\.|[a-z0-9-]\.[a-z]{2,24}\/|@(?![\d-])/;
 
 /**
- * Is this link (lower case, no spaces) a link to a map? THE allow-list:
+ * How much of `url`, from its start, is a link to a map: its whole length,
+ * less for a short link with something glued after its code, 0 when it is
+ * not a map link at all. `url` is the ORGANISER'S OWN characters, not the
+ * normalised copy: a map host is plain ASCII exactly as written, so a
+ * look-alike (an accented "o" in "google", a zero-width space in the host) is
+ * never one. THE allow-list:
  *
- *   maps.google.<any country>      any path
- *   google.<any country>/maps...   only under /maps
- *   maps.app.goo.gl                any path
- *   goo.gl/maps/...                only under /maps/
- *   maps.apple.com, maps.apple     any path
- *   what3words.com, w3w.co         any path
- *   waze.com, ul.waze.com          any path
- *   openstreetmap.org, osm.org     any path
+ *   maps.google.<Google domain>      any path          (long)
+ *   google.<Google domain>/maps...   only under /maps  (long)
+ *   maps.apple.com, maps.apple       any path          (long)
+ *   waze.com, ul.waze.com            any path          (long)
+ *   openstreetmap.org, osm.org       any path          (long)
+ *   maps.app.goo.gl                  a short code      (short)
+ *   goo.gl/maps/...                  a short code      (short)
+ *   what3words.com, w3w.co           three words       (short)
  *
  * each with or without "www." and with http, https or no scheme. A host
- * with a user part ("maps.google.com@evil.example") or a port is never a
- * map link.
+ * with a user part or a port is never a map link.
+ *
+ * A LONG link may hold commas and an "@" before coordinates. It is not a
+ * map link when it carries something else: another link or scheme, "www.",
+ * an "@" before anything but a coordinate, or 9 digits in a row.
+ *
+ * A SHORT link is its host and a path of letters, digits, dots, hyphens,
+ * underscores and slashes: it ENDS at anything else (a comma, a bracket, a
+ * question mark), and what follows is judged as ordinary text. It is not a
+ * map link with 7 digits in a row in it.
  */
-export function isMapLink(url: string): boolean {
+function mapLinkLength(url: string): number {
+  if (!PLAIN_ASCII.test(url)) return 0;
   let rest = url.toLowerCase();
-  const scheme = /^([a-z][a-z0-9+.-]*):\/\//.exec(rest);
+  let offset = 0;
+  const scheme = /^https?:\/\//.exec(rest);
   if (scheme) {
-    if (scheme[1] !== "http" && scheme[1] !== "https") return false;
-    rest = rest.slice(scheme[0].length);
+    offset = scheme[0].length;
+    rest = rest.slice(offset);
+  } else if (/^[a-z][a-z0-9+.-]*:\/\//.test(rest)) {
+    return 0;
   }
   const cut = rest.search(/[/?#]/);
-  let host = cut === -1 ? rest : rest.slice(0, cut);
+  const hostPart = cut === -1 ? rest : rest.slice(0, cut);
   const path = cut === -1 ? "" : rest.slice(cut);
-  if (host.includes("@") || host.includes(":")) return false;
-  if (host.startsWith("www.")) host = host.slice(4);
-  if (!HOST.test(host)) return false;
-  if (MAP_HOSTS.has(host) || GOOGLE_MAPS_HOST.test(host)) return true;
-  if (GOOGLE_HOST.test(host)) return path === "/maps" || path.startsWith("/maps/") || path.startsWith("/maps?");
-  if (host === "goo.gl") return path.startsWith("/maps/");
-  return false;
+  if (hostPart.includes("@") || hostPart.includes(":")) return 0;
+  const host = hostPart.startsWith("www.") ? hostPart.slice(4) : hostPart;
+  if (!HOST.test(host)) return 0;
+
+  if (SHORT_MAP_HOSTS.has(host)) {
+    let kept = SHORT_PATH.exec(path)?.[0] ?? "";
+    while (kept.endsWith(".")) kept = kept.slice(0, -1);
+    if (host === "goo.gl" && !kept.startsWith("/maps/")) return 0;
+    if (SHORT_LINK_DIGITS.test(kept) || OTHER_LINK_INSIDE.test(kept)) return 0;
+    return offset + hostPart.length + kept.length;
+  }
+
+  let known = LONG_MAP_HOSTS.has(host);
+  if (!known && host.startsWith("maps.google.")) known = GOOGLE_DOMAINS.has(host.slice(12));
+  if (!known && host.startsWith("google.") && GOOGLE_DOMAINS.has(host.slice(7))) {
+    known = path === "/maps" || path.startsWith("/maps/") || path.startsWith("/maps?");
+  }
+  if (!known) return 0;
+  if (LONG_LINK_DIGITS.test(path) || OTHER_LINK_INSIDE.test(path)) return 0;
+  return url.length;
 }
 
-const isHostChar = (c: number) => (c >= 97 && c <= 122) || (c >= 48 && c <= 57) || c === 45 || c === 46;
-const isSchemeChar = (c: number) => isHostChar(c) || c === 43;
-const isLocalChar = (c: number) => isHostChar(c) || c === 95 || c === 37 || c === 43;
-const TRAILING_PUNCTUATION = ".,;:!?)]}'\"";
-
-/** Where a link starts inside a token (no white space in it), or -1. */
-function linkStart(tok: string): number {
-  const scheme = tok.indexOf("://");
-  if (scheme > 0) {
-    let s = scheme;
-    while (s > 0 && isSchemeChar(tok.charCodeAt(s - 1))) s--;
-    if (s < scheme) return s;
-  }
-  const www = tok.indexOf("www.");
-  if (www !== -1 && (www === 0 || !isHostChar(tok.charCodeAt(www - 1)))) return www;
-  // A bare host with a path: "monzo.me/name", "wa.me/447700900123".
-  let slash = tok.indexOf("/");
-  while (slash !== -1) {
-    let s = slash;
-    while (s > 0 && isHostChar(tok.charCodeAt(s - 1))) s--;
-    if (s < slash && slash + 1 < tok.length && HOST.test(tok.slice(s, slash))) return s;
-    slash = tok.indexOf("/", slash + 1);
-  }
-  return -1;
+/** Is the whole of `url`, as the organiser wrote it, a link to a map? */
+export function isMapLink(url: string): boolean {
+  return url.length > 0 && mapLinkLength(url) === url.length;
 }
 
-function findLinksAndEmails(copy: Copy, spans: Span[]): void {
+/** Punctuation a link may hold. Not quotes, not square or angle brackets. */
+const URL_PUNCTUATION = "-._~:/?#@!$&()*+,;=%";
+const SENTENCE_PUNCTUATION = ".,;:!?";
+const MAX_SCHEME = 15;
+
+/**
+ * Find every link, left to right, the EARLIEST start first. A link starts
+ * at a scheme ("https://"), at "www.", or at a host with a path
+ * ("monzo.me/x"), and dots in front of it are not part of it
+ * ("here...monzo.me/x"). It runs on over letters, digits and link
+ * punctuation and ENDS at the first character that cannot be in a link: a
+ * space, a line break, a quote, a square or angle bracket, an emoji or any
+ * other symbol, a placeholder. Sentence punctuation at its end, and a
+ * closing bracket with no opening one, are not part of it. Whatever comes
+ * after is scanned again, so a second link, or a number, glued to the
+ * first is still found.
+ */
+function findLinks(copy: Copy, text: string, spans: Span[]): void {
   const { a, kind } = copy;
   const n = a.length;
-  let ts = 0;
-  while (ts < n) {
-    while (ts < n && (a[ts] === " " || a[ts] === "\n")) ts++;
-    let te = ts;
-    while (te < n && a[te] !== " " && a[te] !== "\n") te++;
-    if (te === ts) break;
-    const tok = a.slice(ts, te);
-    const start = linkStart(tok);
-    if (start !== -1) {
-      let end = tok.length;
-      while (end > start + 1 && TRAILING_PUNCTUATION.includes(tok[end - 1])) end--;
-      const map = isMapLink(tok.slice(start, end));
-      spans.push({ s: ts + start, e: ts + end, text: map ? null : LINK_REMOVED, what: map ? "map" : "link" });
-      for (let i = ts + start; i < ts + end; i++) kind[i] = BLOCK;
-    } else {
-      let at = tok.indexOf("@");
-      while (at !== -1) {
-        let s = at;
-        while (s > 0 && isLocalChar(tok.charCodeAt(s - 1))) s--;
-        let e = at + 1;
-        while (e < tok.length && isHostChar(tok.charCodeAt(e))) e++;
-        while (e > at + 1 && (tok[e - 1] === "." || tok[e - 1] === "-")) e--;
-        if (s < at && HOST.test(tok.slice(at + 1, e))) {
-          spans.push({ s: ts + s, e: ts + e, text: EMAIL_REMOVED, what: "email" });
-          for (let i = ts + s; i < ts + e; i++) kind[i] = BLOCK;
-          at = tok.indexOf("@", e);
-        } else {
-          at = tok.indexOf("@", at + 1);
+  const alnum = (i: number) => kind[i] === LET || kind[i] === DIG;
+  const hostChar = (i: number) => alnum(i) || (kind[i] === SEP && (a[i] === "." || a[i] === "-"));
+  const urlChar = (i: number) => alnum(i) || (kind[i] === SEP && URL_PUNCTUATION.includes(a[i]));
+
+  let i = 0;
+  while (i < n) {
+    if (!hostChar(i)) {
+      i++;
+      continue;
+    }
+    let r = i;
+    while (r < n && hostChar(r)) r++;
+    // The run [i, r) of host characters. Where could a link start in it?
+    let start = -1;
+    // The last label of the run: the piece after its last dot.
+    let lastLabel = r;
+    while (lastLabel > i && a[lastLabel - 1] !== ".") lastLabel--;
+    if (a.startsWith("://", r) && kind[r] === SEP) {
+      // A scheme: the plain letters that end the run. Digits before them
+      // are not part of it ("12345https://" is a number and a link), so a
+      // number removed from in front of a link never changes the link.
+      let s = r;
+      while (s > lastLabel && kind[s - 1] === LET && a.charCodeAt(s - 1) < 128) s--;
+      if (s < r && r - s <= MAX_SCHEME) start = s;
+    }
+    {
+      // "www." with no letter before it, and more after it.
+      for (let w = i; w + 4 < r; w++) {
+        if ((w === i || kind[w - 1] !== LET) && a.startsWith("www.", w) && kind[w + 3] === SEP) {
+          if (start === -1 || w < start) start = w;
+          break;
+        }
+      }
+      // A host with a path: the labels that end the run, back to the first
+      // empty one (two dots in a row), with letters for the last.
+      if (r + 1 < n && a[r] === "/" && kind[r] === SEP && urlChar(r + 1)) {
+        const tld = r - lastLabel;
+        let lettersOnly = tld >= 2 && tld <= 24;
+        for (let x = lastLabel; lettersOnly && x < r; x++) if (kind[x] !== LET) lettersOnly = false;
+        if (lettersOnly) {
+          let s = lastLabel;
+          let labels = 1;
+          // A dot at s - 1 with a label, not another dot, before it.
+          while (s - 1 > i && a[s - 1] === "." && a[s - 2] !== ".") {
+            let b = s - 1;
+            while (b > i && a[b - 1] !== ".") b--;
+            s = b;
+            labels++;
+          }
+          if (labels >= 2 && (start === -1 || s < start)) start = s;
         }
       }
     }
-    ts = te;
+    if (start === -1) {
+      i = r;
+      continue;
+    }
+
+    let e = start;
+    let open = 0;
+    let close = 0;
+    while (e < n && urlChar(e)) {
+      if (a[e] === "(") open++;
+      else if (a[e] === ")") close++;
+      e++;
+    }
+    while (e > start + 1) {
+      const c = a[e - 1];
+      if (kind[e - 1] !== SEP) break;
+      if (SENTENCE_PUNCTUATION.includes(c)) e--;
+      else if (c === ")" && close > open) {
+        close--;
+        e--;
+      } else break;
+    }
+
+    // A map link is judged on the organiser's own characters.
+    const original = text.slice(copy.from[start], copy.to[e - 1]);
+    const kept = original.length === e - start ? mapLinkLength(original) : 0;
+    if (kept > 0) e = start + kept;
+    const [s, end] = block(copy, start, e);
+    spans.push({ s, e: end, text: kept > 0 ? null : LINK_REMOVED, what: kept > 0 ? "map" : "link" });
+    i = end;
+  }
+}
+
+/**
+ * Find every email address: something, "@", and a host that ends in a dot
+ * and two letters or more. Letters of any alphabet count (an accented name,
+ * an accented host), and the address ends with its last such ending, so
+ * what is glued after it is left to be judged ("...@gmail.com-Kemal",
+ * "...@gmail.com07700900123").
+ */
+function findEmails(copy: Copy, spans: Span[]): void {
+  const { a, kind } = copy;
+  const n = a.length;
+  const alnum = (i: number) => kind[i] === LET || kind[i] === DIG;
+  const local = (i: number) => alnum(i) || (kind[i] === SEP && "._%+-".includes(a[i]));
+  const domain = (i: number) => alnum(i) || (kind[i] === SEP && (a[i] === "." || a[i] === "-"));
+  let at = a.indexOf("@");
+  while (at !== -1) {
+    let next = at + 1;
+    if (kind[at] === SEP) {
+      let s = at;
+      while (s > 0 && local(s - 1)) s--;
+      while (s < at && !alnum(s)) s++;
+      let e = at + 1;
+      while (e < n && domain(e)) e++;
+      let end = -1;
+      for (let d = e - 1; d > at + 1 && end === -1; d--) {
+        if (a[d] !== ".") continue;
+        let l = d + 1;
+        while (l < e && kind[l] === LET) l++;
+        if (l - d - 1 >= 2) end = l;
+      }
+      if (s < at && end !== -1) {
+        const [bs, be] = block(copy, s, end);
+        spans.push({ s: bs, e: be, text: EMAIL_REMOVED, what: "email" });
+        next = be;
+      }
+    }
+    at = a.indexOf("@", next);
   }
 }
 
@@ -507,9 +702,9 @@ function findIbans(copy: Copy, spans: Span[]): void {
     // The country's exact length: a shorter or longer piece is left to the
     // cluster rule, which removes its digits all the same.
     if (taken === length && digits >= 10 && checkDigits === "dd") {
-      spans.push({ s: i, e: end, text: NUMBER_REMOVED, what: "number" });
-      for (let x = i; x < end; x++) kind[x] = BLOCK;
-      i = end;
+      const [bs, be] = block(copy, i, end);
+      spans.push({ s: bs, e: be, text: NUMBER_REMOVED, what: "number" });
+      i = be;
     } else {
       i++;
     }
@@ -533,20 +728,37 @@ const RANGE_DASH = /^ ?- ?$/;
 const PRICE_RANGE_DASH = /^ ?- ?[£€$₺]? ?$/;
 const NEAR_WORD = /^[ ,.]{0,2}$/;
 /** A break that sets a shape apart from what is beside it. */
-const HARD_BREAK = /\n|[,;.)] | - | \(/;
+const HARD_BREAK = /\n|[,;.)] | - | \(|\ue000/;
 const MAX_WORD = 12;
 
-const hasSpace = (s: string) => s.includes(" ") || s.includes("\n");
+const hasSpace = (s: string) => s.includes(" ") || s.includes("\n") || s.includes(GAP);
 const isYear = (s: string) => s.length === 4 && s >= "2020" && s <= "2039";
 /** The same years written with two digits. */
 const isShortYear = (s: string) => s.length === 2 && s >= "20" && s <= "39";
 
 type ShapeClass = "strong" | "weak" | "year";
+/**
+ * How a shape is written, where a rule needs to know: a dotted pair, a
+ * dashed pair, a dotted range, and a date whose parts are split by spaces
+ * (honoured for the day word beside it).
+ */
+type WeakForm = "dot" | "dash" | "range" | "spaced";
+interface Shape {
+  j: number;
+  cls: ShapeClass;
+  form?: WeakForm;
+  /** For a dotted pair: does it read as a time, and as a date? */
+  time?: boolean;
+  date?: boolean;
+}
 interface Unit {
   /** First and last digit group it covers. */
   i: number;
   j: number;
   cls: ShapeClass | "loose";
+  form?: WeakForm;
+  time?: boolean;
+  date?: boolean;
   digits: number;
   masked: boolean;
 }
@@ -631,8 +843,8 @@ function dayMonth(d: string, m: string): boolean {
 }
 
 /** Every shape that could start at group i, longest and strictest first. */
-function shapesAt(c: Cluster, i: number): Array<{ j: number; cls: ShapeClass }> {
-  const out: Array<{ j: number; cls: ShapeClass }> = [];
+function shapesAt(c: Cluster, i: number): Shape[] {
+  const out: Shape[] = [];
   const n = c.tok.length;
   const t0 = c.tok[i];
   const s0 = i < n - 1 ? c.sep[i] : null;
@@ -650,9 +862,9 @@ function shapesAt(c: Cluster, i: number): Array<{ j: number; cls: ShapeClass }> 
   // Day month (year) split by spaces: only with a day or month word beside it.
   if (t1 && s0 === " " && dayMonth(t0, t1)) {
     if (t2 && s1 === " " && (isYear(t2) || isShortYear(t2)) && dayWordBeside(c, i, i + 2)) {
-      out.push({ j: i + 2, cls: "strong" });
+      out.push({ j: i + 2, cls: "strong", form: "spaced" });
     }
-    if (dayWordBeside(c, i, i + 1)) out.push({ j: i + 1, cls: "strong" });
+    if (dayWordBeside(c, i, i + 1)) out.push({ j: i + 1, cls: "strong", form: "spaced" });
   }
   // A season.
   if (t1 && (s0 === "-" || s0 === "/") && isYear(t0)) {
@@ -685,18 +897,20 @@ function shapesAt(c: Cluster, i: number): Array<{ j: number; cls: ShapeClass }> 
         if (a.form === "bare" || b.form === "bare") {
           if (amPm) out.push({ j: b.j, cls: "strong" });
         } else {
-          out.push({ j: b.j, cls: amPm || a.form === "colon" || b.form === "colon" ? "strong" : "weak" });
+          if (amPm || a.form === "colon" || b.form === "colon") out.push({ j: b.j, cls: "strong" });
+          else out.push({ j: b.j, cls: "weak", form: "range" });
         }
       }
     }
     const amPm = amPmAfter(c, a.j);
     if (a.form === "colon" || amPm) out.push({ j: a.j, cls: "strong" });
-    else if (a.form === "dot") out.push({ j: a.j, cls: "weak" });
+    else if (a.form === "dot") out.push({ j: a.j, cls: "weak", form: "dot", time: true, date: !!t1 && dayMonth(t0, t1) });
   }
   // Day and month.
   if (t1 && dayMonth(t0, t1)) {
     if (s0 === "/") out.push({ j: i + 1, cls: "strong" });
-    else if (s0 === "-" || s0 === ".") out.push({ j: i + 1, cls: "weak" });
+    else if (s0 === "-") out.push({ j: i + 1, cls: "weak", form: "dash" });
+    else if (s0 === ".") out.push({ j: i + 1, cls: "weak", form: "dot", time: false, date: true });
   }
   if (isYear(t0)) out.push({ j: i, cls: "year" });
   return out;
@@ -714,27 +928,47 @@ function decideCluster(c: Cluster, spans: Span[]): void {
     const j = shape ? shape.j : i;
     let digits = 0;
     for (let k = i; k <= j; k++) digits += c.tok[k].length;
-    units.push({ i, j, cls: shape ? shape.cls : "loose", digits, masked: false });
+    units.push({ i, j, cls: shape ? shape.cls : "loose", form: shape?.form, time: shape?.time, date: shape?.date, digits, masked: false });
     i = j + 1;
   }
 
-  // 6. Weak shapes do not shield a number.
+  // 6. A shape does not shield a number, with two things let through.
   const beside = (k: number) => !HARD_BREAK.test(c.sep[units[k].j]); // unit k and unit k + 1
+  const loose = units.filter((u) => u.cls === "loose");
+  const weak = units.filter((u) => u.cls === "weak");
+  // (a) ONE loose group of one or two digits is a count beside the
+  //     kick-off ("20:30 14 players", "Pitch 12 20:30"), not a number.
+  const count = loose.length === 1 && loose[0].digits <= 2 ? loose[0] : null;
+  // (b) Exactly two dotted pairs and nothing loose: a date and a time
+  //     ("12.10 21.00"), or two times ("20.30 21.30").
+  const dateAndTime =
+    loose.length === 0 &&
+    weak.length === 2 &&
+    weak[0].form === "dot" &&
+    weak[1].form === "dot" &&
+    !!weak[1].time &&
+    (!!weak[0].date || !!weak[0].time);
+
   const demote = new Array<boolean>(units.length).fill(false);
   for (let k = 0; k + 1 < units.length; k++) {
     const x = units[k].cls;
     const y = units[k + 1].cls;
-    if (beside(k) && ((x === "weak" && y === "weak") || (x === "year" && y === "year"))) {
+    if (beside(k) && ((x === "weak" && y === "weak" && !dateAndTime) || (x === "year" && y === "year"))) {
       demote[k] = true;
       demote[k + 1] = true;
     }
   }
   for (let k = 0; k < units.length; k++) if (demote[k]) units[k].cls = "loose";
   // Beside loose digits: a weak shape always gives way; a time, a date or
-  // a price gives way to two loose digits or more ("12:34 56"), not to one
-  // ("Pitch 3 20:30"). A year does not give way ("max 14 2026").
-  const givesWay = (u: Unit, loose: Unit) =>
-    loose.cls === "loose" && (u.cls === "weak" || (u.cls === "strong" && loose.digits >= 2));
+  // a price gives way to two loose digits or more ("20:45 17 30"), not to
+  // one ("Pitch 3 20:30"). A year does not give way ("max 14 2026"). The
+  // count of (a) makes nothing give way, except a dashed pair and a date
+  // split by spaces: that is how a sort code is written ("20-10 25",
+  // "Mon 12 10 56").
+  const givesWay = (u: Unit, other: Unit) =>
+    other.cls === "loose" &&
+    !(other === count && u.form !== "dash" && u.form !== "spaced") &&
+    (u.cls === "weak" || (u.cls === "strong" && other.digits >= 2));
   for (let k = 1; k < units.length; k++) {
     if (beside(k - 1) && givesWay(units[k], units[k - 1])) units[k].cls = "loose";
   }
@@ -769,9 +1003,10 @@ function decideCluster(c: Cluster, spans: Span[]): void {
       if (u.cls !== "loose") spans.push({ s: c.ts[u.i], e: c.te[u.j], text: null, what: "shape" });
       continue;
     }
-    // Removed units that follow one another become one placeholder.
+    // Removed units that follow one another become one placeholder, but
+    // never across a link or another placeholder: that stays as it is.
     let last = k;
-    while (last + 1 < units.length && units[last + 1].masked) last++;
+    while (last + 1 < units.length && units[last + 1].masked && !c.sep[units[last].j].includes(GAP)) last++;
     spans.push({ s: c.ts[u.i], e: c.te[units[last].j], text: NUMBER_REMOVED, what: "number" });
     k = last;
   }
@@ -784,22 +1019,34 @@ function findClusters(copy: Copy, spans: Span[]): void {
   const n = a.length;
   let rs = 0;
   while (rs < n) {
-    if (kind[rs] !== SEP && kind[rs] !== DIG) {
+    if (kind[rs] === LET) {
       rs++;
       continue;
     }
+    // A region with no letter in it. A BLOCK does not end it: digits on
+    // both sides of a link or a placeholder are counted together.
     let re = rs;
     const ts: number[] = [];
     const te: number[] = [];
+    const sep: string[] = [];
+    let pre = "";
+    let between: string[] = [];
     let digits = 0;
-    while (re < n && (kind[re] === SEP || kind[re] === DIG)) {
+    while (re < n && kind[re] !== LET) {
       if (kind[re] === DIG) {
         const start = re;
         while (re < n && kind[re] === DIG) re++;
+        if (ts.length === 0) pre = between.join("");
+        else sep.push(between.join(""));
+        between = [];
         ts.push(start);
         te.push(re);
         digits += re - start;
+      } else if (kind[re] === BLOCK) {
+        while (re < n && kind[re] === BLOCK) re++;
+        between.push(GAP);
       } else {
+        between.push(a[re]);
         re++;
       }
     }
@@ -818,9 +1065,9 @@ function findClusters(copy: Copy, spans: Span[]): void {
         tok: ts.map((s, k) => a.slice(s, te[k])),
         ts,
         te,
-        sep: ts.slice(1).map((s, k) => a.slice(te[k], s)),
-        pre: a.slice(rs, ts[0]),
-        post: a.slice(te[te.length - 1], re),
+        sep,
+        pre,
+        post: between.join(""),
         leftWord: word(rs - 1, -1),
         rightWord: word(re, 1),
       };
@@ -830,7 +1077,13 @@ function findClusters(copy: Copy, spans: Span[]): void {
       for (let k = before; k < spans.length; k++) {
         const sp = spans[k];
         if (sp.text === null) continue;
-        while (sp.s > rs && LEADS.includes(a[sp.s - 1])) sp.s--;
+        let bracket = false;
+        while (sp.s > rs && kind[sp.s - 1] === SEP && LEADS.includes(a[sp.s - 1])) {
+          sp.s--;
+          if (a[sp.s] === "(") bracket = true;
+        }
+        // And the bracket that closes the one just taken.
+        if (bracket && sp.e < re && kind[sp.e] === SEP && a[sp.e] === ")") sp.e++;
       }
     }
     rs = re;
@@ -838,9 +1091,52 @@ function findClusters(copy: Copy, spans: Span[]): void {
 }
 
 /**
- * A placeholder already in the text is inert: its letters are not words,
- * and nothing reads across it. This is what makes masking the masked text
- * change nothing.
+ * What is left of a card. When a number was removed from a line and the
+ * same line says "exp", "cvv", "cvc" or "son kullanma" followed by a date
+ * or a group of 3 or 4 digits, that goes too.
+ */
+const CARD_EXTRA =
+  /(?<![a-z])(?:exp(?:iry|ires|iration)?|cvv2?|cvc2?|cv2|son kullanma(?: tarihi)?|skt)[ .:\-]{0,3}(\d{1,2}[/.\-]\d{2,4}|\d{3,4})(?!\d)/g;
+
+function findCardExtras(copy: Copy, spans: Span[]): Span[] {
+  const { a, kind } = copy;
+  const lines = new Set<number>();
+  for (const sp of spans) {
+    if (sp.what !== "number") continue;
+    const start = a.lastIndexOf("\n", sp.s) + 1;
+    lines.add(start);
+  }
+  if (lines.size === 0) return spans;
+  const extras: Span[] = [];
+  for (const start of lines) {
+    let end = a.indexOf("\n", start);
+    if (end === -1) end = a.length;
+    const line = a.slice(start, end);
+    CARD_EXTRA.lastIndex = 0;
+    for (let m = CARD_EXTRA.exec(line); m; m = CARD_EXTRA.exec(line)) {
+      const e = start + m.index + m[0].length;
+      const s = e - m[1].length;
+      let free = true;
+      for (let x = s; x < e; x++) if (kind[x] === BLOCK || kind[x] === LET) free = false;
+      if (free) extras.push({ s, e, text: NUMBER_REMOVED, what: "number" });
+    }
+  }
+  if (extras.length === 0) return spans;
+  // An extra replaces a shape it covers, and is dropped where a removal
+  // already covers it.
+  const taken = new Uint8Array(a.length);
+  for (const sp of spans) if (sp.text !== null) taken.fill(1, sp.s, sp.e);
+  const added = extras.filter((x) => !taken.subarray(x.s, x.e).includes(1));
+  const gone = new Uint8Array(a.length);
+  for (const x of added) gone.fill(1, x.s, x.e);
+  return [...spans.filter((sp) => sp.text !== null || !gone.subarray(sp.s, sp.e).includes(1)), ...added];
+}
+
+/**
+ * A placeholder already in the text is a BLOCK before anything else looks:
+ * its letters are not words, no link, email or IBAN reads into it, and it
+ * is never altered. This is what makes masking the masked text change
+ * nothing.
  */
 function blockPlaceholders(copy: Copy): void {
   const { a, kind } = copy;
@@ -879,12 +1175,26 @@ export interface MaskedGroupDescription {
  */
 export function maskGroupDescription(text: string): MaskedGroupDescription {
   const copy = normalisedCopy(text);
-  const spans: Span[] = [];
+  let spans: Span[] = [];
   blockPlaceholders(copy);
-  findLinksAndEmails(copy, spans);
+  findLinks(copy, text, spans);
+  findEmails(copy, spans);
   findIbans(copy, spans);
   findClusters(copy, spans);
-  spans.sort((x, y) => x.s - y.s);
+  spans = findCardExtras(copy, spans);
+  spans.sort((x, y) => x.s - y.s || x.e - y.e);
+
+  // Where each span lies in the text. Two spans can share ONE original
+  // character (a single character such as a "1/2" sign is several in the
+  // copy): a removal always wins it, so nothing kept can hide a digit that
+  // was to be removed, and no removal is ever dropped.
+  const from = spans.map((sp) => copy.from[sp.s]);
+  const to = spans.map((sp) => copy.to[sp.e - 1]);
+  for (let k = 1; k < spans.length; k++) {
+    if (from[k] >= to[k - 1]) continue;
+    if (spans[k].text !== null && spans[k - 1].text === null) to[k - 1] = from[k];
+    else from[k] = to[k - 1];
+  }
 
   const out: string[] = [];
   const kept: MaskedGroupDescription["kept"] = { shapes: [], mapLinks: [] };
@@ -893,13 +1203,14 @@ export function maskGroupDescription(text: string): MaskedGroupDescription {
   let emails = 0;
   let at = 0; // in `text`
   let length = 0; // of `out`
-  for (const sp of spans) {
-    const from = copy.from[sp.s];
-    const to = copy.to[sp.e - 1];
-    if (from < at) continue; // never overlaps; a guard, not a rule
-    out.push(text.slice(at, from));
-    length += from - at;
-    const piece = sp.text ?? text.slice(from, to);
+  for (let k = 0; k < spans.length; k++) {
+    const sp = spans[k];
+    const start = Math.max(from[k], at);
+    const end = to[k];
+    if (end <= start) continue; // nothing of it is left to write
+    out.push(text.slice(at, start));
+    length += start - at;
+    const piece = sp.text ?? text.slice(start, end);
     if (sp.what === "shape") kept.shapes.push([length, length + piece.length]);
     else if (sp.what === "map") kept.mapLinks.push([length, length + piece.length]);
     else if (sp.what === "number") removed++;
@@ -907,7 +1218,7 @@ export function maskGroupDescription(text: string): MaskedGroupDescription {
     else emails++;
     out.push(piece);
     length += piece.length;
-    at = to;
+    at = end;
   }
   out.push(text.slice(at));
   return { text: out.join(""), removed, links, emails, kept };
@@ -952,7 +1263,8 @@ function cutToLimit(s: string): string {
   const open = cut.lastIndexOf("[");
   if (open !== -1) {
     const rest = cut.slice(open);
-    if (PLACEHOLDERS.some((p) => rest.length < p.length && p.startsWith(rest))) cut = cut.slice(0, open);
+    // The cut fell inside a placeholder: everything before it is whole.
+    if (PLACEHOLDERS.some((p) => rest.length < p.length && p.startsWith(rest))) return cut.slice(0, open).trimEnd();
   }
   cut = cut.trimEnd();
   if (PLACEHOLDERS.some((p) => cut.endsWith(p))) return cut;
@@ -966,7 +1278,11 @@ function cutToLimit(s: string): string {
     while (end > 0 && (cut[end - 1] === " " || cut[end - 1] === "\n")) end--;
     if (PLACEHOLDERS.some((p) => cut.slice(0, end).endsWith(p))) return cut.slice(0, end);
   } else {
-    while (end > 0 && letterBefore(cut, end) > 0) end -= letterBefore(cut, end);
+    // No white space near: drop the half word, unless it is no word at
+    // all (hundreds of letters), which nothing reads as one.
+    let word = end;
+    while (word > 0 && end - word <= CUT_LOOK_BACK && letterBefore(cut, word) > 0) word -= letterBefore(cut, word);
+    if (end - word <= CUT_LOOK_BACK) end = word;
   }
   // What is left may end in a cluster that lost what came after it (the
   // rest of a date, its "pm", its currency): drop it, back to a letter.
