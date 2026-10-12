@@ -39,6 +39,8 @@ export function WeeklyDeadlineRows(props: {
   language: string | null | undefined;
   dropOutDeadline: DayTimeValue | null;
   listPublish: DayTimeValue | null;
+  /** Called after a save has been stored (the Go live banner's preview). */
+  onSaved?: () => void;
 }) {
   const s = t(props.language);
   return (
@@ -52,6 +54,7 @@ export function WeeklyDeadlineRows(props: {
         blurb={s.wd_dropout_blurb}
         info={s.wd_dropout_info}
         initial={props.dropOutDeadline}
+        onSaved={props.onSaved}
       />
       <DeadlineRow
         rowKey="listPublish"
@@ -62,6 +65,7 @@ export function WeeklyDeadlineRows(props: {
         blurb={s.wd_publish_blurb}
         info={s.wd_publish_info}
         initial={props.listPublish}
+        onSaved={props.onSaved}
       />
     </>
   );
@@ -76,6 +80,7 @@ function DeadlineRow(props: {
   blurb: string;
   info: string;
   initial: DayTimeValue | null;
+  onSaved?: () => void;
 }) {
   const s = t(props.language);
   const [day, setDay] = useState<string>(props.initial ? String(props.initial.day) : "");
@@ -97,6 +102,7 @@ function DeadlineRow(props: {
       setDay(saved ? String(saved.day) : "");
       setTime(saved?.time ?? "");
       toast.success(s.wd_saved);
+      props.onSaved?.();
     } catch {
       toast.error(s.wr_save_failed);
     } finally {

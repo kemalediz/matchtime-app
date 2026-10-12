@@ -48,6 +48,8 @@ vi.mock("@/lib/player-stats", () => ({
   loadPlayerSeasonStats: vi.fn().mockResolvedValue(null),
 }));
 vi.mock("@/lib/team-labels", () => ({ resolveTeamLabels: () => ["Red", "Yellow"] }));
+const loadClubSetupView = vi.fn();
+vi.mock("@/lib/club-setup", () => ({ loadClubSetupView: (...a: unknown[]) => loadClubSetupView(...a) }));
 vi.mock("@/lib/db", () => ({
   db: {
     activity: { findFirst: vi.fn().mockResolvedValue(null) },
@@ -361,6 +363,17 @@ describe("GET /api/org/settings", () => {
   beforeEach(() => {
     organisationFindUnique.mockResolvedValue(org);
     membershipFindMany.mockResolvedValue([{ user: { id: "u-walt", name: "Walt" } }]);
+    loadClubSetupView.mockReset();
+    loadClubSetupView.mockResolvedValue({
+      settingUp: true,
+      since: new Date(),
+      setupMessageSentAt: null,
+      removedFromGroup: false,
+      liveAt: null,
+      liveBy: null,
+      group: "Sutton Tuesday 7s",
+      wentLiveBy: null,
+    });
   });
 
   it("gives a plain member the club name and features only", async () => {
@@ -375,11 +388,15 @@ describe("GET /api/org/settings", () => {
       "stripeChargesEnabled",
       "paymentHolderId",
       "members",
+      // Go-live slice S5: whether the club is setting up is for its
+      // owner and admins, and is not even read for anybody else.
+      "setup",
     ]) {
       expect(res.body, f).not.toHaveProperty(f);
     }
     expect(JSON.stringify(res.body)).not.toContain("SECRET-INVITE");
     expect(membershipFindMany).not.toHaveBeenCalled();
+    expect(loadClubSetupView).not.toHaveBeenCalled();
   });
 
   it("gives an OWNER the invite code, group id, Stripe status and collector list", async () => {
@@ -391,6 +408,18 @@ describe("GET /api/org/settings", () => {
       stripeConnected: true,
       paymentHolderId: "u-admin",
       members: [{ id: "u-walt", name: "Walt" }],
+    });
+  });
+
+  it("S5: gives an OWNER the club's setup, and only the four fields the Go live banner needs", async () => {
+    getUserOrg.mockResolvedValue({ orgId: CLUB, role: "OWNER" });
+    const res = await call();
+    expect(loadClubSetupView).toHaveBeenCalledWith(CLUB);
+    expect((res.body as { setup: unknown }).setup).toEqual({
+      settingUp: true,
+      removedFromGroup: false,
+      group: "Sutton Tuesday 7s",
+      wentLiveBy: null,
     });
   });
 });

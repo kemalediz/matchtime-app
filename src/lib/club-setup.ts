@@ -44,6 +44,10 @@ import {
   isClubSettingUp,
   settingUpOnly,
   readingBlocksGoLive,
+  SETUP_STATUS_SELECT,
+  setupStatusOf,
+  type SetupStatus,
+  type SetupStatusRow,
 } from "./club-setup-rules";
 import { buildGroupHello } from "./group-hello";
 import { loadHelloInput, type HelloReadClient } from "./group-hello-load";
@@ -77,6 +81,13 @@ export {
   liveByOwner,
   liveByUser,
   readingBlocksGoLive,
+  // The go-live pages (slice S5).
+  SETUP_STATUS_SELECT,
+  parseLiveBy,
+  setupStatusOf,
+  type LiveBy,
+  type SetupStatus,
+  type SetupStatusRow,
 } from "./club-setup-rules";
 
 /**
@@ -228,6 +239,15 @@ export interface GoLiveOptions {
   organiserUserId?: string | null;
   /** BILLING_ENABLED as the caller reads it. Default: the environment. */
   billingEnabled?: boolean;
+  /**
+   * Go live even while the setup reading is unfinished (slice S5, owner
+   * decision 7). ONLY the MatchTime owner's "Go live now" on /admin/clubs
+   * sets it (`ownerGoLiveNowAction`): the organiser's button and the GO DM
+   * keep the "still reading" block (owner decision 4). The reading is
+   * closed in the same transaction as always, so it can never apply
+   * afterwards. Every other refusal still stands.
+   */
+  skipReadingCheck?: boolean;
 }
 
 /** Why a club that is not a plain "setting up, in its group" cannot go live. */
@@ -406,7 +426,8 @@ async function settlePaymentsAnnouncement(
  * stage no longer matches, and returns "already-live" with the winner's
  * `liveAt` and `liveBy`. It queues nothing.
  *
- * Refusals change nothing: "still-reading" (owner decision 4),
+ * Refusals change nothing: "still-reading" (owner decision 4; never
+ * returned with `skipReadingCheck`, the MatchTime owner's door),
  * "removed-from-group", "billing-paused", "not-setting-up".
  */
 export async function goLiveClub(
@@ -426,6 +447,7 @@ export async function goLiveClub(
 
       const learning = await tx.clubSetupLearning.findUnique({ where: { orgId }, select: { status: true } });
       if (
+        !opts.skipReadingCheck &&
         readingBlocksGoLive({
           learningEnabled,
           learningStatus: learning?.status ?? null,
@@ -523,3 +545,57 @@ export async function helloPreviewForClub(
 ): Promise<string> {
   return buildGroupHello(await loadHelloInput(orgId, { organiserUserId: opts.organiserUserId ?? null }));
 }
+
+// ════ BEGIN the go-live pages (slice S5, 2026-10-12) ════
+// Read-only loaders for /admin/settings, the club's admin home and
+// /admin/clubs. The pure status is `setupStatusOf` (club-setup-rules.ts).
+
+/** One club's status for its own organisers, with names ready to show. */
+export interface ClubSetupView extends SetupStatus {
+  /** The WhatsApp group's own name when MatchTime knows it. */
+  group: string | null;
+  /**
+   * Who took the club live, once it is: one of its own owners or admins by
+   * NAME (never a phone number or an email), or MatchTime. Null while it
+   * is setting up, and for a club that never passed through the hold.
+   */
+  wentLiveBy: { matchTime: boolean; name: string | null } | null;
+}
+
+export async function loadClubSetupView(
+  orgId: string,
+  opts: { billingEnabled?: boolean } = {},
+): Promise<ClubSetupView | null> {
+  const row = (await db.organisation.findUnique({ where: { id: orgId }, select: SETUP_STATUS_SELECT })) as SetupStatusRow | null;
+  if (!row) return null;
+  const status = setupStatusOf(row, { billingOn: opts.billingEnabled ?? isBillingEnabled() });
+  const link = await db.clubConnect.findFirst({
+    where: { orgId, linkedAt: { not: null } },
+    orderBy: { linkedAt: "desc" },
+    select: { groupSubject: true },
+  });
+  let wentLiveBy: ClubSetupView["wentLiveBy"] = null;
+  if (status.liveBy?.kind === "matchtime") wentLiveBy = { matchTime: true, name: null };
+  else if (status.liveBy?.kind === "user") {
+    const user = await db.user.findUnique({ where: { id: status.liveBy.userId }, select: { name: true } });
+    wentLiveBy = { matchTime: false, name: user?.name?.trim() || null };
+  }
+  return { ...status, group: link?.groupSubject?.trim() || null, wentLiveBy };
+}
+
+/** The status of several clubs in one query, for the owner's clubs page. */
+export async function loadSetupStatuses(
+  orgIds: string[],
+  opts: { billingEnabled?: boolean } = {},
+): Promise<Map<string, SetupStatus>> {
+  const out = new Map<string, SetupStatus>();
+  if (orgIds.length === 0) return out;
+  const billingOn = opts.billingEnabled ?? isBillingEnabled();
+  const rows = (await db.organisation.findMany({
+    where: { id: { in: orgIds } },
+    select: SETUP_STATUS_SELECT,
+  })) as Array<SetupStatusRow & { id: string }>;
+  for (const row of rows) out.set(row.id, setupStatusOf(row, { billingOn }));
+  return out;
+}
+// ════ END the go-live pages ════

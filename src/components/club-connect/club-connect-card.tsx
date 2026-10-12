@@ -7,6 +7,13 @@
  *     FC included, gets `hidden` from `deriveConnectCard` and nothing
  *     renders).
  *
+ * ONE EXCEPTION (go-live slice S5): a club that is approved but still
+ * SETTING UP shows its card to its OWNER and its ADMINs (either may go
+ * live), whatever the flag says. The state decides, not the flag: a club
+ * waiting for GO is still waiting if self-join is switched off. The card
+ * says the club is approved and silent, and links to the Go live banner
+ * on the settings page. It never says "You're live".
+ *
  * THE NUMBER. This is the only page that renders the MatchTime number,
  * and only in two states, both after the club exists and only to its
  * signed-in owner: inside the wa.me link while a code is live, and as
@@ -19,23 +26,33 @@ import { t } from "@/lib/i18n/t";
 import { selfJoinEnabledForRequest } from "@/lib/self-join-flag";
 import { loadLatestConnect, matchtimeWaNumber } from "@/lib/club-connect";
 import { connectPrefill, deriveConnectCard, formatPhoneForDisplay, waMeLink } from "@/lib/club-connect-rules";
+import { SETUP_STAGE_SELECT, isClubSettingUp } from "@/lib/club-setup-rules";
+import Link from "next/link";
 import { ConnectButton } from "./connect-button";
 import { CardRefresher } from "./card-refresher";
 import { SectionInfo } from "@/components/info/section-info";
 
 export async function ClubConnectCard({ orgId, userId }: { orgId: string; userId: string }) {
-  if (!(await selfJoinEnabledForRequest())) return null;
+  const flagOn = await selfJoinEnabledForRequest();
 
   const [membership, org] = await Promise.all([
     db.membership.findUnique({ where: { userId_orgId: { userId, orgId } }, select: { role: true, leftAt: true } }),
     db.organisation.findUnique({
       where: { id: orgId },
-      select: { name: true, language: true, approvalStatus: true, approvedAt: true },
+      select: { name: true, language: true, approvedAt: true, ...SETUP_STAGE_SELECT },
     }),
   ]);
-  if (!org || !membership || membership.leftAt !== null || membership.role !== "OWNER") return null;
+  if (!org || !membership || membership.leftAt !== null) return null;
+  const settingUp = isClubSettingUp(org);
+  if (settingUp ? membership.role !== "OWNER" && membership.role !== "ADMIN" : !flagOn || membership.role !== "OWNER") {
+    return null;
+  }
 
-  const card = deriveConnectCard({ org, latest: await loadLatestConnect(orgId), now: new Date() });
+  const card = deriveConnectCard({
+    org: { ...org, settingUp },
+    latest: await loadLatestConnect(orgId),
+    now: new Date(),
+  });
   if (card.kind === "hidden") return null;
 
   const s = t(org.language);
@@ -47,7 +64,9 @@ export async function ClubConnectCard({ orgId, userId }: { orgId: string; userId
       ? "border-green-200 bg-green-50"
       : card.kind === "rejected"
         ? "border-slate-200 bg-slate-50"
-        : "border-blue-200 bg-blue-50";
+        : card.kind === "setting_up"
+          ? "border-emerald-300 bg-emerald-50"
+          : "border-blue-200 bg-blue-50";
 
   const button = (label: string) =>
     number ? (
@@ -64,8 +83,8 @@ export async function ClubConnectCard({ orgId, userId }: { orgId: string; userId
       className={`rounded-xl border p-5 shadow-sm space-y-3 ${tone}`}
     >
       <div className="flex items-center gap-1">
-        <h2 className="font-semibold text-slate-800">{s.sj_card_title}</h2>
-        <SectionInfo k="dash_connect" lang={org.language} />
+        <h2 className="font-semibold text-slate-800">{card.kind === "setting_up" ? s.sj_live_title : s.sj_card_title}</h2>
+        {card.kind !== "setting_up" && <SectionInfo k="dash_connect" lang={org.language} />}
       </div>
 
       {card.kind === "draft" && (
@@ -140,6 +159,19 @@ export async function ClubConnectCard({ orgId, userId }: { orgId: string; userId
 
       {card.kind === "approved" && (
         <p className="text-sm text-green-900">{s.sj_card_approved({ group: card.group ?? org.name })}</p>
+      )}
+
+      {card.kind === "setting_up" && (
+        <>
+          <p className="text-sm text-slate-800">{s.sj_card_setting_up({ group: card.group })}</p>
+          <Link
+            href="/admin/settings#go-live"
+            data-testid="club-connect-go-live"
+            className="inline-flex min-h-11 items-center justify-center rounded-lg bg-green-600 px-4 text-sm font-medium text-white hover:bg-green-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-700"
+          >
+            {s.sj_card_setting_up_link}
+          </Link>
+        </>
       )}
 
       {card.kind === "rejected" && <p className="text-sm text-slate-700">{s.sj_card_rejected}</p>}

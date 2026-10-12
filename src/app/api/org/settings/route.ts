@@ -9,6 +9,7 @@ import { weeklyDeadlinesView } from "@/lib/weekly-deadlines-settings";
 import { loadBillingCard } from "@/lib/club-billing";
 import { billingUiEnabledForRequest } from "@/lib/billing-flag";
 import { normaliseCreditRule, normaliseSquadMode } from "@/lib/squad-month-rules";
+import { loadClubSetupView } from "@/lib/club-setup";
 import { NextResponse } from "next/server";
 
 export async function GET() {
@@ -91,8 +92,21 @@ export async function GET() {
   // Sutton FC and every club before billing see nothing new.
   const billing = await loadBillingCard(org.id, { flagOn: await billingUiEnabledForRequest() });
 
+  // Approved but setting up (go-live slice S5): what the Go live banner
+  // needs, for OWNER and ADMIN only. `settingUp` is false for every club
+  // that is live, so their page shows nothing new.
+  const setupView = await loadClubSetupView(org.id);
+
   return NextResponse.json({
     ...publicView,
+    setup: setupView
+      ? {
+          settingUp: setupView.settingUp,
+          removedFromGroup: setupView.removedFromGroup,
+          group: setupView.group,
+          wentLiveBy: setupView.wentLiveBy,
+        }
+      : null,
     // The name can be changed only while the club is a draft.
     nameEditable: org.approvalStatus === "draft",
     inviteCode: org.inviteCode,

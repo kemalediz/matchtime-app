@@ -23,6 +23,8 @@ export function PickModeRows(props: {
   language: string | null | undefined;
   benchPickMode: BenchPickMode;
   benchPickFallback: BenchPickFallback;
+  /** Called after a save has been stored (the Go live banner's preview). */
+  onSaved?: () => void;
 }) {
   const s = t(props.language);
   const [mode, setMode] = useState<BenchPickMode>(props.benchPickMode);
@@ -40,6 +42,7 @@ export function PickModeRows(props: {
       setMode(res.benchPickMode);
       setFallback(res.benchPickFallback);
       toast.success(s.wr_pick_saved);
+      props.onSaved?.();
     } catch {
       setMode(before.mode);
       setFallback(before.fallback);
