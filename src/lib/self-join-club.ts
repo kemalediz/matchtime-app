@@ -25,6 +25,7 @@ import { db } from "./db";
 import { draftClubFields, SELF_JOIN_CLUB_WHERE } from "./club-approval";
 import { isLang } from "./i18n/lang";
 import { t } from "./i18n/t";
+import { clubNameSchema } from "./validations";
 import {
   MAX_NEW_CLUBS_PER_DAY,
   londonMidnight,
@@ -99,11 +100,12 @@ export async function createSelfJoinClub(
   input: SelfJoinClubInput,
   now: Date,
 ): Promise<SelfJoinClubResult> {
-  const name = (input.name ?? "").trim();
+  const parsedName = clubNameSchema.safeParse(input.name);
   const game = validateWeeklyGame(input.game);
-  if (name.length < 2 || name.length > 60 || !isLang(input.language) || !game.ok) {
+  if (!parsedName.success || !isLang(input.language) || !game.ok) {
     return { ok: false, reason: "invalid" };
   }
+  const name = parsedName.data;
   const language = input.language;
 
   const refusal = await selfJoinEligibility(userId, now);

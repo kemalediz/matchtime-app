@@ -65,6 +65,15 @@ export const signInSchema = z.object({
   password: z.string().min(1),
 });
 
+/**
+ * A club's name as the club setup form takes it: trimmed, 2 to 60
+ * characters. One rule for creating a draft club (`createSelfJoinClub`)
+ * and for renaming one (`renameDraftClub`).
+ */
+export const CLUB_NAME_MIN = 2;
+export const CLUB_NAME_MAX = 60;
+export const clubNameSchema = z.string().trim().min(CLUB_NAME_MIN).max(CLUB_NAME_MAX);
+
 export const createOrgSchema = z.object({
   name: z.string().min(2, "Organisation name must be at least 2 characters"),
   slug: z.string().min(2).max(50).regex(/^[a-z0-9-]+$/, "URL slug must be lowercase letters, numbers and hyphens only"),

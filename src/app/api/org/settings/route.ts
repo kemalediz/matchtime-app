@@ -93,6 +93,8 @@ export async function GET() {
 
   return NextResponse.json({
     ...publicView,
+    // The name can be changed only while the club is a draft.
+    nameEditable: org.approvalStatus === "draft",
     inviteCode: org.inviteCode,
     whatsappGroupId: org.whatsappGroupId,
     whatsappBotEnabled: org.whatsappBotEnabled,
