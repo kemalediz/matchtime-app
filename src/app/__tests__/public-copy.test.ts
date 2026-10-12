@@ -176,7 +176,7 @@ describe("public website copy", () => {
     });
 
     // The organiser guide's "Club fee" section (Kemal, P4 brief): the first
-    // two months free from approval; then only the games played, up to £9.99 a
+    // two months free from the day MatchTime goes live in the group; then only the games played, up to £9.99 a
     // month per group including VAT; the money collector or the owner adds
     // a card; reminders; a week's grace; then quiet until a card is added,
     // data kept; stop any time; the tip of 25p a player per game at most.
@@ -186,10 +186,13 @@ describe("public website copy", () => {
       const end = admin.indexOf("<h2", start);
       const section = flat(admin.slice(start, end === -1 ? undefined : end));
       for (const re of [
-        new RegExp(`${FIRST_FREE}, counted from the day we approve your club\\.`),
+        // From go-live, not approval (owner decision 2, 2026-10-12): true for a
+        // club that is held while it sets up, and for one that is not (for
+        // it the approval is the moment MatchTime goes live in its group).
+        new RegExp(`${FIRST_FREE}, counted from the day MatchTime goes live in your group\\.`),
         /Nine days before your free period ends/,
         /If the free period ends without a card, MatchTime keeps running for a week/,
-        /approve/i,
+        /goes live in your group/i,
         /only (pay|charged) for the (games|weeks) (you play|played)/i,
         /up to £9\.99 a month/i,
         /per WhatsApp group/i,

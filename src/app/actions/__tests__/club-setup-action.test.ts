@@ -48,7 +48,10 @@ const WENT_LIVE = {
   hello: "Hi all",
   purgedJobs: 3,
   quietedMatches: 1,
+  freePeriodStarted: false,
+  freePeriodNote: null as string | null,
 };
+const NOTE = "Your first two months are free.\n\n💷 *Club fee tip:* after that MatchTime only charges for the games you play.";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -77,12 +80,20 @@ describe("goLiveClubAction", () => {
     expect(goLiveClub).not.toHaveBeenCalled();
   });
 
+  it("its free period started with the go-live: the free period sentence and the club fee tip REACH THE BROWSER, and still no id does", async () => {
+    goLiveClub.mockResolvedValue({ ...WENT_LIVE, freePeriodStarted: true, freePeriodNote: NOTE });
+    const r = await goLiveClubAction("o1");
+    expect(r).toEqual({ outcome: "went-live", club: "Harbour FC", group: "Harbour Tuesday 6s", hello: "Hi all", freePeriodNote: NOTE });
+    expect(JSON.stringify(r)).not.toMatch(/u-hana|o1|liveBy|orgId/);
+  });
+
   it("the club's own owner or admin: goes live, recorded by user id; the browser gets what it shows and nothing else", async () => {
     expect(await goLiveClubAction("o1")).toEqual({
       outcome: "went-live",
       club: "Harbour FC",
       group: "Harbour Tuesday 6s",
       hello: "Hi all",
+      freePeriodNote: null,
     });
     expect(membershipFindFirst.mock.calls[0][0].where).toEqual({
       userId: "u-hana",
@@ -231,7 +242,13 @@ describe("ownerGoLiveNowAction: the MatchTime owner's Go live now (S5, owner dec
     learningFlag.mockResolvedValue(true);
     expect(await ownerGoLiveNowAction("o1")).toEqual({
       ok: true,
-      message: 'Harbour FC is live. The hello is on its way to "Harbour Tuesday 6s".',
+      message: 'Harbour FC is live. The hello is on its way to "Harbour Tuesday 6s". No free period started.',
+    });
+    // And when its free period did start with it, the owner is told so.
+    goLiveClub.mockResolvedValue({ ...WENT_LIVE, freePeriodStarted: true, freePeriodNote: NOTE });
+    expect(await ownerGoLiveNowAction("o1")).toEqual({
+      ok: true,
+      message: 'Harbour FC is live. The hello is on its way to "Harbour Tuesday 6s". Its free period started now.',
     });
     expect(goLiveClub).toHaveBeenCalledWith("o1", "owner:u-kemal", expect.any(Date), {
       learningEnabled: true,

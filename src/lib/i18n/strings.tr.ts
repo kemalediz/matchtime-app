@@ -1775,6 +1775,11 @@ export const tr: Strings = {
     `${p.club} şu anda duraklatılmış, bu yüzden henüz yayına alamıyorum. Ne gerektiği ayarlar sayfanızda yazıyor:\n${p.url}`,
   // ════ END going live: replies to GO ════
 
+  // ════ BEGIN removed from the group while setting up (2026-10-12) ════
+  sj_setup_removed: (p) =>
+    `${p.club} yayına geçmeden "${p.group}" grubundan çıkarıldım, bu yüzden orada hiçbir şey başlamadı. ` +
+    `Beni gruba yeniden ekleyin, sonra buraya *BAŞLA* yazın ya da ayarlar sayfanızdaki *Yayına al* düğmesine basın:\n${p.url}`,
+  // ════ END removed from the group while setting up ════
   // ════ BEGIN the go-live pages (go-live slice S5, 2026-10-12) ════
   // See the English table: the Go live banner on /admin/settings, the
   // WhatsApp bot section while a club is setting up, and the card on the
@@ -2191,6 +2196,8 @@ export const tr: Strings = {
   billing_btn_stop_confirm_yes: "Evet, ödemeyi durdur",
   billing_btn_stop_confirm_no: "Geri dön",
   billing_exempt: (p) => `${p.club} için kulüp ücreti yok. MatchTime bu kulüp için ücretsiz.`,
+  billing_exempt_setting_up: (p) =>
+    `${p.club} kulübünün kurulumu sürüyor, bu yüzden ücretsiz dönemi henüz başlamadı. ${firstMonthsFree("tr")} ve süre, MatchTime grubunuzda yayına geçtiği gün başlar. O güne kadar hiçbir ücret alınmaz.`,
   billing_open: "Ödeme sayfasını aç",
   billing_choose_collector: "Para toplayan kişiyi seçin",
   billing_banner_grace: (p) =>

@@ -124,6 +124,68 @@ describe("loadClubMonthInput", () => {
     expect(countClubMonth(input!).played).toBe(2);
   });
 
+  describe("games from before a held club went live (owner decision 2, 2026-10-12)", () => {
+    const LIVE = new Date("2026-11-08T12:00:00Z");
+    const withOrg = (org: Record<string, unknown>) => {
+      const c = fakeClient();
+      c.organisation.findUnique.mockResolvedValue(org);
+      c.billingEvent.findMany.mockResolvedValue([]);
+      return c;
+    };
+
+    it("reads the club's go-live stamp and stage beside its attendance setting", async () => {
+      const c = fakeClient();
+      await loadClubMonthInput(c as unknown as MonthLoaderClient, "org", NOV);
+      expect(c.organisation.findUnique.mock.calls[0][0]).toEqual({
+        where: { id: "org" },
+        select: { featureAttendance: true, liveAt: true, approvalStatus: true, setupStage: true },
+      });
+    });
+
+    for (const featureAttendance of [true, false]) {
+      const kind = featureAttendance ? "tracks attendance" : "does NOT track attendance";
+
+      it(`held then live, ${kind}: the match completed before go-live is not played, the one after is`, async () => {
+        const c = withOrg({ featureAttendance, approvalStatus: "approved", setupStage: "live", liveAt: LIVE });
+        const input = await loadClubMonthInput(c as unknown as MonthLoaderClient, "org", NOV);
+        expect(input?.pauseSpans).toEqual([{ from: new Date(0), to: new Date(LIVE.getTime() + 1) }]);
+        const count = countClubMonth(input!);
+        // m1 (3 Nov, 9 IN) kicked off before go-live; m2 (10 Nov, scored) after.
+        expect(count.played).toBe(1);
+        expect(count.games.filter((g) => g.played).flatMap((g) => g.matchIds)).toEqual(["m2"]);
+      });
+
+      it(`still setting up, ${kind}: nothing is played, whatever was completed`, async () => {
+        const c = withOrg({ featureAttendance, approvalStatus: "approved", setupStage: "setting-up", liveAt: null });
+        const input = await loadClubMonthInput(c as unknown as MonthLoaderClient, "org", NOV);
+        expect(input?.pauseSpans).toEqual([{ from: new Date(0), to: null }]);
+        expect(countClubMonth(input!).played).toBe(0);
+      });
+    }
+
+    it("a club that was never held (no stamp, stage live, or neither column read) gets no such span", async () => {
+      for (const org of [
+        { featureAttendance: true, approvalStatus: "approved", setupStage: "live", liveAt: null },
+        { featureAttendance: true },
+      ]) {
+        const input = await loadClubMonthInput(withOrg(org) as unknown as MonthLoaderClient, "org", NOV);
+        expect(input?.pauseSpans).toEqual([]);
+        expect(countClubMonth(input!).played).toBe(2);
+      }
+    });
+
+    it("the span sits beside the club's other not-charged spans, never instead of them", async () => {
+      const c = withOrg({ featureAttendance: true, approvalStatus: "approved", setupStage: "live", liveAt: LIVE });
+      c.billingEvent.findMany.mockResolvedValue([{ type: "mt.paused", receivedAt: new Date("2026-11-09T00:00:00Z") }]);
+      const input = await loadClubMonthInput(c as unknown as MonthLoaderClient, "org", NOV);
+      expect(input?.pauseSpans).toEqual([
+        { from: new Date(0), to: new Date(LIVE.getTime() + 1) },
+        { from: new Date("2026-11-09T00:00:00Z"), to: null },
+      ]);
+      expect(countClubMonth(input!).played).toBe(0);
+    });
+  });
+
   it("only ever calls find methods", async () => {
     const c = fakeClient();
     await loadClubMonthInput(c as unknown as MonthLoaderClient, "org", NOV);

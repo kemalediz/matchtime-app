@@ -316,6 +316,10 @@ export interface SetupStatus {
   setupMessageSentAt: Date | null;
   /** MatchTime is no longer in the club's group, so it cannot go live. */
   removedFromGroup: boolean;
+  /** When the removal was recorded (the removal stamp). Null when none is,
+   *  which includes a club that cannot go live for the other two reasons
+   *  `removedFromGroup` covers (no group, paused for a removal). */
+  removedAt: Date | null;
   /** Set once the club has been through the hold and gone live. */
   liveAt: Date | null;
   liveBy: LiveBy | null;
@@ -335,6 +339,7 @@ export function setupStatusOf(row: SetupStatusRow, opts: { billingOn: boolean })
     since: settingUp ? row.approvedAt : null,
     setupMessageSentAt: settingUp ? row.setupAskedAt : null,
     removedFromGroup: settingUp && (!!row.setupRemovedAt || !row.whatsappGroupId || pausedForRemoval),
+    removedAt: settingUp ? (row.setupRemovedAt ?? null) : null,
     liveAt: settingUp ? null : (row.liveAt ?? null),
     liveBy: settingUp ? null : parseLiveBy(row.liveBy),
   };

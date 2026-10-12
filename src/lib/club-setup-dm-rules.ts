@@ -183,6 +183,14 @@ export interface SetupAskDmInput {
    * When given it goes in as its own block right before the GO line.
    */
   adminGroupBlock?: string | null;
+  /**
+   * Will going live START A FREE PERIOD for this club (`freePeriodCanStart`
+   * in club-billing-rules.ts: billing on, plan not Free, none had yet)?
+   * Only then is the free period line said. Required, so every caller
+   * decides: a Free club, or a deployment with billing off, is never told
+   * about a free period that will not start.
+   */
+  freePeriod: boolean;
 }
 
 export function composeSetupAskDm(p: SetupAskDmInput): string {
@@ -229,6 +237,6 @@ export function composeSetupAskDm(p: SetupAskDmInput): string {
 
   // The button is named as the settings page and the GO replies name it.
   blocks.push(s.sj_dm_ready_go({ url: p.settingsUrl, button: s.sj_go_button }));
-  blocks.push(s.sj_dm_ready_free);
+  if (p.freePeriod) blocks.push(s.sj_dm_ready_free);
   return blocks.join("\n\n");
 }

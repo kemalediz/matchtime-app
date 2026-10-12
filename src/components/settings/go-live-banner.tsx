@@ -55,7 +55,14 @@ export interface GoLiveSetup {
 export const PREVIEW_MIN_GAP_MS = 5_000;
 
 type Preview = { state: "loading" } | { state: "ready"; text: string } | { state: "failed" };
-type Final = { kind: "live" | "already" | "closed"; title: string; text: string | null; hello: string | null };
+type Final = {
+  kind: "live" | "already" | "closed";
+  title: string;
+  text: string | null;
+  hello: string | null;
+  /** The free period sentence and the club fee tip, when one started. */
+  note?: string | null;
+};
 
 export function GoLiveBanner(props: {
   orgId: string;
@@ -155,10 +162,16 @@ export function GoLiveBanner(props: {
       switch (r.outcome) {
         case "went-live":
           closed = true;
-          // AFTER GOING LIVE (PR #237, billing): when `goLiveClubAction`
-          // returns the free-period sentence and the club fee tip, carry
-          // them on `Final` and render them in the marked spot below.
-          setFinal({ kind: "live", title: s.sj_live_done_title, text: s.sj_live_done({ group: r.group }), hello: r.hello });
+          // AFTER GOING LIVE (PR #237, billing): the free period sentence
+          // and the club fee tip, when the club's free period started with
+          // this go-live. Rendered in the marked spot below.
+          setFinal({
+            kind: "live",
+            title: s.sj_live_done_title,
+            text: s.sj_live_done({ group: r.group }),
+            hello: r.hello,
+            note: r.freePeriodNote,
+          });
           props.onLive();
           void refreshPage();
           break;
@@ -231,9 +244,13 @@ export function GoLiveBanner(props: {
           <h2 id="go-live-heading" className="text-lg font-semibold text-emerald-950">
             {s.sj_live_title}
           </h2>
-          <p data-testid="go-live-lead" className="mt-1 text-sm text-slate-800 [overflow-wrap:anywhere]">
-            {s.sj_live_lead({ group })}
-          </p>
+          {/* Not while MatchTime is out of the group: "MatchTime is in
+              <group>" would contradict the notice below. */}
+          {!props.setup.removedFromGroup && (
+            <p data-testid="go-live-lead" className="mt-1 text-sm text-slate-800 [overflow-wrap:anywhere]">
+              {s.sj_live_lead({ group })}
+            </p>
+          )}
         </div>
       )}
 
@@ -274,9 +291,15 @@ export function GoLiveBanner(props: {
                   {final.text}
                 </p>
               )}
-              {/* AFTER GOING LIVE (PR #237, billing): the free-period
-                  sentence and the club fee tip go here, when the action
-                  returns them. */}
+              {/* AFTER GOING LIVE (PR #237, billing): the free period
+                  sentence and the club fee tip, as the WhatsApp reply has
+                  them (bold and all). Inside the live region, so it is
+                  announced with the result. */}
+              {final.note && (
+                <div className="mt-2">
+                  <WhatsAppMessage text={final.note} testId="go-live-free-period" />
+                </div>
+              )}
             </div>
           </div>
         ) : (

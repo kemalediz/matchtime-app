@@ -53,6 +53,7 @@ describe("setupStatusOf", () => {
       since: APPROVED,
       setupMessageSentAt: null,
       removedFromGroup: false,
+      removedAt: null,
       liveAt: null,
       liveBy: null,
     });
@@ -64,6 +65,11 @@ describe("setupStatusOf", () => {
 
   it("removed from the group: the stamp, no group at all, or paused for a removal (the same three as go-live's refusal)", () => {
     expect(setupStatusOf({ ...held, setupRemovedAt: ASKED }, { billingOn: false }).removedFromGroup).toBe(true);
+    // WHEN it was removed is carried for the owner's page, from the stamp only.
+    expect(setupStatusOf({ ...held, setupRemovedAt: ASKED }, { billingOn: false }).removedAt).toEqual(ASKED);
+    expect(setupStatusOf({ ...held, whatsappGroupId: null }, { billingOn: false }).removedAt).toBeNull();
+    // A club that has gone live shows no removal, whatever a stale stamp says.
+    expect(setupStatusOf({ ...held, setupStage: "live", setupRemovedAt: ASKED }, { billingOn: false })).toMatchObject({ removedFromGroup: false, removedAt: null });
     expect(setupStatusOf({ ...held, whatsappGroupId: null }, { billingOn: false }).removedFromGroup).toBe(true);
     const paused = { ...held, billingStatus: "paused", clubBilling: { pausedReason: "removed" } };
     expect(setupStatusOf(paused, { billingOn: true }).removedFromGroup).toBe(true);
@@ -81,6 +87,7 @@ describe("setupStatusOf", () => {
       since: null,
       setupMessageSentAt: null,
       removedFromGroup: false,
+      removedAt: null,
       liveAt: null,
       liveBy: null,
     });

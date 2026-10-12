@@ -506,6 +506,7 @@ const SAMPLES: SampleArgs = {
   sj_go_not_recognised: { club: "Riverside FC", url: "https://matchtime.ai/r/settings1" },
   sj_go_not_recognised_many: { url: "https://matchtime.ai/admin/settings" },
   sj_go_paused: { club: "Riverside FC", url: "https://matchtime.ai/admin/settings" },
+  sj_setup_removed: { club: "Riverside FC", group: "Riverside Tuesday 5s", url: "https://matchtime.ai/admin/settings" },
   // ── the go-live pages (slice S5) ──
   sj_live_title: null,
   sj_live_lead: { group: "Riverside Tuesday 5s" },
@@ -745,6 +746,7 @@ const SAMPLES: SampleArgs = {
   billing_btn_stop_confirm_yes: null,
   billing_btn_stop_confirm_no: null,
   billing_exempt: { club: "Sutton FC" },
+  billing_exempt_setting_up: { club: "Harbour FC" },
   billing_open: null,
   billing_choose_collector: null,
   billing_banner_grace: { date: "Sat 7 Nov" },

@@ -2171,6 +2171,14 @@ export const en = {
     `${p.club} is paused, so I can't go live yet. Your settings page shows what's needed:\n${p.url}`,
   // ════ END going live: replies to GO ════
 
+  // ════ BEGIN removed from the group while setting up (2026-10-12) ════
+  /** To the organiser, once per removal, when MatchTime is taken out of the
+   *  group of a club that is approved but has not gone live. On the
+   *  platform channel, in the daytime. The Turkish command is BAŞLA. */
+  sj_setup_removed: (p: { club: string; group: string; url: string }): string =>
+    `I was removed from "${p.group}" before ${p.club} went live, so nothing has started there. ` +
+    `Add me back to the group, then reply *GO* here or press *Go live* on your settings page:\n${p.url}`,
+  // ════ END removed from the group while setting up ════
   // ════ BEGIN the go-live pages (go-live slice S5, 2026-10-12) ════
   // The Go live banner on /admin/settings, that page's WhatsApp bot
   // section while a club is setting up, and the card on the club's admin
@@ -2842,6 +2850,11 @@ export const en = {
   billing_btn_stop_confirm_yes: "Yes, stop paying",
   billing_btn_stop_confirm_no: "Go back",
   billing_exempt: (p: { club: string }): string => `${p.club} has no club fee. MatchTime is free for this club.`,
+  /** The billing page of a club that is approved but still setting up: its
+   *  free period starts when it goes live (owner decision 2, 2026-10-12).
+   *  No date: there is none yet. */
+  billing_exempt_setting_up: (p: { club: string }): string =>
+    `${p.club} is still setting up, so its free period has not started yet. ${firstMonthsFree("en")}, counted from the day MatchTime goes live in your group. Nothing is charged before then.`,
   billing_open: "Open billing",
   billing_choose_collector: "Choose a money collector",
   billing_banner_grace: (p: { date: string }): string =>

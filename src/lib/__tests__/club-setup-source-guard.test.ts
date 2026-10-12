@@ -44,6 +44,15 @@ const STAGE_WRITER_FILES = ["src/lib/club-setup-rules.ts", "src/lib/club-setup.t
 /** The setup-reading AI budget purpose. */
 const READING_FILES = ["src/lib/ai-budget.ts", "src/lib/setup-learning/run.ts"];
 
+/**
+ * `setupRemovedAt` (MatchTime removed from the group while setting up).
+ * While it is set the club cannot go live and no free period starts, so
+ * its two writers live in club-setup.ts, the status the pages show and
+ * the reading sweep's fragment in club-setup-rules.ts, and nowhere else
+ * may name the column: not to write it, not to read round it.
+ */
+const REMOVED_FILES = ["src/lib/club-setup.ts", "src/lib/club-setup-rules.ts"];
+const REMOVED_WORD = /setupRemovedAt/;
 const STAGE_WORD = /setupStage/;
 const STAGE_WRITER_WORD = /settingUpClubFields/;
 const READING_WORD = /setupReading|SetupReading|AllowancePurpose/;
@@ -78,6 +87,12 @@ function offenders(word: RegExp, allowed: string[]): string[] {
 describe("the setup stage has one home", () => {
   it("the column's name appears in no file of src/ or scripts/ outside the two club-setup modules", () => {
     expect(offenders(STAGE_WORD, STAGE_FILES)).toEqual([]);
+  });
+
+  it("the removal stamp is named in no file but the two club-setup modules (comments included)", () => {
+    expect(offenders(REMOVED_WORD, REMOVED_FILES)).toEqual([]);
+    expect(REMOVED_WORD.test(`data: { setupRemovedAt: null },`)).toBe(true);
+    expect(readFileSync(path.join(SRC, "lib", "club-setup.ts"), "utf8")).toMatch(/data: \{ setupRemovedAt: now \}/);
   });
 
   it("the helper that writes the stage is named in no other file (only decideClub's held approval spreads it)", () => {
