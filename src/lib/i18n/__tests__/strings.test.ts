@@ -887,8 +887,9 @@ const SAMPLES: SampleArgs = {
   settings_learned_changed_since: null,
   settings_learned_undo_failed: null,
   settings_learned_from: null,
-  settings_learned_check_head: null,
-  settings_learned_open_setting: null,
+  settings_learned_check_count: { count: 3 },
+  settings_learned_check_sub: null,
+  settings_learned_action: { key: "weeklyGameTime" },
   settings_learned_noted_head: null,
   // Monthly squad (2026-10-05, slice 2)
   msq_section_title: null,

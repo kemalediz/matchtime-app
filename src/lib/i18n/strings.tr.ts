@@ -2452,8 +2452,21 @@ export const tr: Strings = {
   settings_learned_changed_since: "Sonradan değiştirildi",
   settings_learned_undo_failed: "Geri alınamadı",
   settings_learned_from: "Şu tür mesajlardan",
-  settings_learned_check_head: "Kontrol etmeye değer (hiçbir şey değişmedi)",
-  settings_learned_open_setting: "Ayara git",
+  settings_learned_check_count: (p) => `Kontrol edilecek ${p.count} şey`,
+  settings_learned_check_sub:
+    "MatchTime bunlar için hiçbir şeyi değiştirmedi. Bir göz atın, sohbet haklıysa kendiniz değiştirin.",
+  settings_learned_action: (p) =>
+    p.key === "organiserPicks"
+      ? `"Organizatörler seçer" ayarını aç`
+      : p.key === "weeklyGameDay"
+        ? `Maç gününü değiştir`
+        : p.key === "weeklyGameTime"
+          ? `Maç saatini değiştir`
+          : p.key === "venue"
+            ? `Sahayı değiştir`
+            : p.key === "format"
+              ? `Takım başına kişi sayısını değiştir`
+              : `Dili değiştir`,
   settings_learned_noted_head: "Fark edildi, karar sizde",
   // ── Aylık kadro (2026-10-05, dilim 2) ────────────────────────────
   // /admin/settings "Aylık kadro" bölümü (msq_) ve /admin/months (mth_).
