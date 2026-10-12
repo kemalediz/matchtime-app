@@ -199,6 +199,84 @@ test("cap 6: with five groups connected today, the next organiser's code stays i
   expect(sent.at(-1)?.text).toBe("Her gün birkaç yeni grup alıyoruz. Lütfen yarın tekrar deneyin.");
 });
 
+// ── A connect message with a code that names no request (2026-10-12) ────
+// Ayşe still has an open request ('e2e-sj5-tr2', code HN4P, Turkish club).
+const WRONG_TR =
+  "Mesajınızdaki kod Kartallar için verilen kodla eşleşmiyor. matchtime.ai'de kulüp sayfanıza dönün, MatchTime'ı WhatsApp'a ekle düğmesine tekrar dokunun ve açılan mesajı hiç değiştirmeden gönderin.";
+const wrongCodeReplies = async (db: TestDb, phone: string) =>
+  (await replies(db, phone)).filter((r) => r.refId.includes(":wrong-code:"));
+
+test("wrong code, flag OFF: nothing, exactly as before", async ({ request, db }) => {
+  const json = await dm(request, { phone: AYSE_PHONE, body: "Kartallar kulübünü bağla, kod ZZZ9" }, KEY);
+  expect(json.handled).toBeUndefined();
+  expect(await wrongCodeReplies(db, AYSE_PHONE)).toEqual([]);
+});
+
+test("wrong code from a stranger: nothing queued for anyone, and the DM falls through", async ({ request, db }) => {
+  const before = await db.one<{ n: string }>(`SELECT count(*)::text AS n FROM "PlatformJob"`);
+  const json = await dm(request, { phone: STRANGER_PHONE, body: "Connect Riverside FC, code ZZZ9" });
+  expect(json.handled).toBeUndefined();
+  expect(json.ignored).toBe("unknown-sender");
+  // An organiser whose request is no longer open (Ali's is verified) is a stranger to this branch too.
+  const ali = await dm(request, { phone: ALI_PHONE, body: "Connect Riverside FC, code ZZZ9" });
+  expect(ali.handled).not.toBe("connect-dm");
+  expect(await db.one<{ n: string }>(`SELECT count(*)::text AS n FROM "PlatformJob"`)).toEqual(before);
+});
+
+test("wrong code with the sender's number hidden (LID only): nothing, as before", async ({ request, db }) => {
+  const json = await dm(request, { senderLid: `${LID}@lid`, body: "Kartallar kulübünü bağla, kod ZZZ9" });
+  expect(json.handled).not.toBe("connect-dm");
+  expect(await wrongCodeReplies(db, AYSE_PHONE)).toEqual([]);
+});
+
+test("ordinary chat with a code-shaped word from an organiser with an open request: not a connect message", async ({
+  request,
+  db,
+}) => {
+  const json = await dm(request, { phone: AYSE_PHONE, body: "what's the code then" });
+  expect(json.handled).not.toBe("connect-dm");
+  expect(await wrongCodeReplies(db, AYSE_PHONE)).toEqual([]);
+});
+
+test("wrong code from the organiser with an open request: told once, in the club's language; again only after ten minutes", async ({
+  request,
+  db,
+}) => {
+  const first = await dm(request, { phone: AYSE_PHONE, body: "Kartallar kulübünü bağla, kod ZZZ9" });
+  expect(first).toMatchObject({ handled: "connect-dm", result: "wrong-code", replied: true });
+  let sent = await wrongCodeReplies(db, AYSE_PHONE);
+  expect(sent).toHaveLength(1);
+  expect(sent[0]).toMatchObject({ purpose: "connect-reply", status: "queued", text: WRONG_TR });
+  expect(sent[0].refId).toMatch(/^e2e-sj5-tr2:wrong-code:\d+$/);
+  // The right code is never sent back, and the request is untouched.
+  expect(sent[0].text).not.toContain("HN4P");
+  expect((await connect(db, "e2e-sj5-tr2"))?.status).toBe("issued");
+
+  // Another wrong code straight away: handled, and silent.
+  const second = await dm(request, { phone: AYSE_PHONE, body: "Kartallar kulübünü bağla, kod ZZZ8" });
+  expect(second).toMatchObject({ handled: "connect-dm", result: "wrong-code-throttled", replied: false });
+  expect(await wrongCodeReplies(db, AYSE_PHONE)).toHaveLength(1);
+
+  // Eleven minutes on, one more.
+  await db.run(
+    `UPDATE "PlatformJob" SET "createdAt" = (now() at time zone 'utc') - interval '11 minutes' WHERE "refId" LIKE 'e2e-sj5-tr2:wrong-code:%'`,
+  );
+  const third = await dm(request, { phone: AYSE_PHONE, body: "Kartallar kulübünü bağla, kod ZZZ8" });
+  expect(third).toMatchObject({ result: "wrong-code", replied: true });
+  sent = await wrongCodeReplies(db, AYSE_PHONE);
+  expect(sent).toHaveLength(2);
+});
+
+test("wrong code after the organiser's request has run out: nothing, as before", async ({ request, db }) => {
+  await db.run(
+    `UPDATE "PlatformJob" SET "createdAt" = (now() at time zone 'utc') - interval '11 minutes' WHERE "refId" LIKE 'e2e-sj5-tr2:wrong-code:%'`,
+  );
+  await db.run(`UPDATE "ClubConnect" SET "expiresAt" = (now() at time zone 'utc') - interval '1 minute' WHERE id = 'e2e-sj5-tr2'`);
+  const json = await dm(request, { phone: AYSE_PHONE, body: "Kartallar kulübünü bağla, kod ZZZ9" });
+  expect(json.handled).not.toBe("connect-dm");
+  expect(await wrongCodeReplies(db, AYSE_PHONE)).toHaveLength(2);
+});
+
 test("flag ON leaves every other DM alone: a member's opt-out still works, an unknown code falls through", async ({
   request,
   db,

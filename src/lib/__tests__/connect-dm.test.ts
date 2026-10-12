@@ -11,6 +11,7 @@ const dbMock = vi.hoisted(() => {
     clubConnect: {
       findUnique: vi.fn(),
       findMany: vi.fn(),
+      findFirst: vi.fn(),
       updateMany: vi.fn(),
       count: vi.fn(),
     },
@@ -75,6 +76,7 @@ beforeEach(() => {
   dbMock.$transaction.mockImplementation((fn: (tx: typeof dbMock) => unknown) => fn(dbMock));
   dbMock.clubConnect.findUnique.mockResolvedValue(null);
   dbMock.clubConnect.findMany.mockResolvedValue([connectRow()]);
+  dbMock.clubConnect.findFirst.mockResolvedValue(null);
   dbMock.clubConnect.updateMany.mockResolvedValue({ count: 1 });
   dbMock.clubConnect.count.mockResolvedValue(0);
   dbMock.platformJob.findFirst.mockResolvedValue(null);
@@ -96,6 +98,131 @@ describe("falls through (returns null) without touching the database", () => {
     expect(await dm({ text: "what's the code then" })).toBeNull();
     expect(dbMock.platformJob.create).not.toHaveBeenCalled();
     expect(dbMock.clubConnect.updateMany).not.toHaveBeenCalled();
+    // Not shaped like the connect message: nobody is even looked up.
+    expect(dbMock.clubConnect.findFirst).not.toHaveBeenCalled();
+  });
+});
+
+describe("a connect message whose code names no request (the wrong-code reply)", () => {
+  const WRONG = "Connect Riverside FC, code 7KQ3";
+  const openRequest = (over: Record<string, unknown> = {}) => ({
+    id: "cc-1",
+    phone: ORGANISER,
+    status: "issued",
+    expiresAt: new Date(NOW.getTime() + 55 * MIN),
+    addWindowEndsAt: null,
+    org: { name: "Riverside FC", language: "en" },
+    ...over,
+  });
+  beforeEach(() => {
+    dbMock.clubConnect.findMany.mockResolvedValue([]);
+    dbMock.clubConnect.findFirst.mockResolvedValue(openRequest());
+  });
+
+  it("the organiser with an open request is told once, on their sign-up phone, and the DM stops here", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const out = await dm({ text: WRONG });
+    expect(out).toEqual({ handled: "connect-dm", result: "wrong-code", replied: true });
+
+    // Only an open request on a draft club, for one of the sender's phones.
+    expect(dbMock.clubConnect.findFirst.mock.calls[0][0].where).toEqual({
+      phone: { in: [ORGANISER] },
+      status: "issued",
+      expiresAt: { gt: NOW },
+      org: { approvalStatus: "draft" },
+    });
+    expect(queued()).toEqual([
+      expect.objectContaining({
+        kind: "dm",
+        phone: ORGANISER,
+        purpose: "connect-reply",
+        refId: `cc-1:wrong-code:${NOW.getTime()}`,
+        status: "queued",
+      }),
+    ]);
+    expect(queued()[0].text).toBe(
+      "The code in your message doesn't match the one for Riverside FC. Go back to your club page on matchtime.ai, press Add MatchTime to WhatsApp again, and send the message exactly as it opens.",
+    );
+    // Nothing is written to the request, and no code is ever sent back.
+    expect(dbMock.clubConnect.updateMany).not.toHaveBeenCalled();
+    expect(queued()[0].text).not.toContain("7KQ");
+
+    // The log line: ids and the result, never text, names or numbers.
+    const lines = log.mock.calls.map((c) => String(c[0])).filter((l) => l.startsWith("[connect-dm]"));
+    expect(lines).toEqual(["[connect-dm] cc-1 result=wrong-code replied=true"]);
+    log.mockRestore();
+  });
+
+  it("in Turkish for a Turkish club", async () => {
+    dbMock.clubConnect.findFirst.mockResolvedValue(openRequest({ org: { name: "Kartallar", language: "tr" } }));
+    await dm({ text: "Kartallar kulübünü bağla, kod 7KQ3" });
+    expect(queued()[0].text).toBe(
+      "Mesajınızdaki kod Kartallar için verilen kodla eşleşmiyor. matchtime.ai'de kulüp sayfanıza dönün, MatchTime'ı WhatsApp'a ekle düğmesine tekrar dokunun ve açılan mesajı hiç değiştirmeden gönderin.",
+    );
+    expect(queued()[0].text).not.toMatch(/[–—]/);
+  });
+
+  it("matches the envelope's alt phone, and replies to the request's phone", async () => {
+    const out = await dm({ text: WRONG, phone: "", senderAltPhone: "+44 7700 900123" });
+    expect(out).toMatchObject({ result: "wrong-code", replied: true });
+    expect(queued()[0].phone).toBe(ORGANISER);
+  });
+
+  it("a second wrong code inside ten minutes: handled, nothing queued", async () => {
+    dbMock.platformJob.findFirst.mockResolvedValue({ id: "pj-earlier" });
+    const out = await dm({ text: "Connect Riverside FC, code 8KQ3", waMessageId: "wa-2" });
+    expect(out).toEqual({ handled: "connect-dm", result: "wrong-code-throttled", replied: false });
+    expect(dbMock.platformJob.create).not.toHaveBeenCalled();
+    expect(dbMock.platformJob.findFirst).toHaveBeenCalledWith({
+      where: {
+        purpose: "connect-reply",
+        refId: { startsWith: "cc-1:wrong-code:" },
+        createdAt: { gt: new Date(NOW.getTime() - 10 * MIN) },
+      },
+      select: { id: true },
+    });
+  });
+
+  it("a stranger (no open request for the number): null, nothing queued, the DM falls through", async () => {
+    dbMock.clubConnect.findFirst.mockResolvedValue(null);
+    expect(await dm({ text: WRONG, phone: "447700900999" })).toBeNull();
+    expect(dbMock.platformJob.create).not.toHaveBeenCalled();
+    expect(dbMock.platformJob.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("the sender's phone is hidden (LID only): null, and nobody is looked up", async () => {
+    expect(await dm({ text: WRONG, phone: "", senderLid: "123456789012345@lid" })).toBeNull();
+    expect(await dm({ text: WRONG, phone: null, senderAltPhone: "not a phone" })).toBeNull();
+    expect(dbMock.clubConnect.findFirst).not.toHaveBeenCalled();
+    expect(dbMock.platformJob.create).not.toHaveBeenCalled();
+  });
+
+  it("a request that has run out, whatever the query returned: null", async () => {
+    dbMock.clubConnect.findFirst.mockResolvedValue(openRequest({ expiresAt: new Date(NOW.getTime() - MIN) }));
+    expect(await dm({ text: WRONG })).toBeNull();
+    expect(dbMock.platformJob.create).not.toHaveBeenCalled();
+  });
+
+  it("ordinary chat with a code-shaped word, from an organiser with an open request: null", async () => {
+    for (const text of ["what's the code then", "what is the code that opens the pitch gate", "gate code ZZZZ"]) {
+      expect(await dm({ text }), text).toBeNull();
+    }
+    expect(dbMock.clubConnect.findFirst).not.toHaveBeenCalled();
+    expect(dbMock.platformJob.create).not.toHaveBeenCalled();
+  });
+
+  it("a refused platform DM (rule 12) is logged, never thrown", async () => {
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    dbMock.user.findFirst.mockResolvedValue(null);
+    expect(await dm({ text: WRONG })).toMatchObject({ handled: "connect-dm", result: "wrong-code", replied: false });
+    err.mockRestore();
+  });
+
+  it("the correct code never reaches this branch", async () => {
+    dbMock.clubConnect.findMany.mockResolvedValue([connectRow()]);
+    expect(await dm()).toMatchObject({ result: "verified", replied: true });
+    expect(dbMock.clubConnect.findFirst).not.toHaveBeenCalled();
+    expect(queued().map((q) => q.refId)).toEqual(["cc-1:connected"]);
   });
 });
 
