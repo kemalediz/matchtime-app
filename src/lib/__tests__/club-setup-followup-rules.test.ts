@@ -19,7 +19,6 @@ import {
   composeSetupReminderDm,
   ownerStuckText,
   reminderDecisionFromSetupDm,
-  reminderDueAt,
   setupAdminCodeRefId,
   setupAdminGroupBlock,
   setupReminderKey,
@@ -145,7 +144,6 @@ describe("the 24-hour reminder", () => {
 
   it("goes 24 hours after the setup DM was DUE", () => {
     expect(REMINDER_AFTER_MS).toBe(24 * 60 * 60 * 1000);
-    expect(reminderDueAt(new Date("2026-10-13T08:00:00Z")).toISOString()).toBe("2026-10-14T08:00:00.000Z");
   });
 
   it("is decided by the setup DM's own job: sent, still to come, or never", () => {

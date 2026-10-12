@@ -22,6 +22,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { isSuperadmin, requireOrgAdmin } from "@/lib/org";
 import { goLiveClub, helloPreviewForClub, liveByOwner, liveByUser, parseLiveBy, type GoLiveResult } from "@/lib/club-setup";
+import { tellOrganiserOwnerWentLive, type OwnerLiveDmOutcome } from "@/lib/club-setup-owner-live";
 import { setupLearningUiEnabledForRequest } from "@/lib/setup-learning-ui-flag";
 
 async function requireClubAdmin(orgId: string): Promise<string> {
@@ -123,14 +124,24 @@ export interface OwnerGoLiveResult {
   message: string;
 }
 
-function describeOwnerGoLive(r: GoLiveResult): OwnerGoLiveResult {
+/** What the owner is told about the organiser's DM. Owner-only English. */
+const ORGANISER_TOLD: Record<OwnerLiveDmOutcome, string> = {
+  queued: "The organiser is being told by WhatsApp.",
+  already: "The organiser has already been told.",
+  "no-organiser": "There is no organiser on record, so nobody was told.",
+  refused: "The organiser could NOT be told: their number was refused.",
+  failed: "The organiser could NOT be told: the message was not queued.",
+};
+
+function describeOwnerGoLive(r: GoLiveResult, told: OwnerLiveDmOutcome | null): OwnerGoLiveResult {
   switch (r.outcome) {
     case "went-live":
       return {
         ok: true,
         message:
           `${r.club} is live. The hello is on its way to "${r.group}". ` +
-          (r.freePeriodStarted ? "Its free period started now." : "No free period started."),
+          (r.freePeriodStarted ? "Its free period started now." : "No free period started.") +
+          (told ? ` ${ORGANISER_TOLD[told]}` : ""),
       };
     case "already-live":
       return { ok: false, message: `${r.club} is already live.` };
@@ -155,6 +166,13 @@ function describeOwnerGoLive(r: GoLiveResult): OwnerGoLiveResult {
  * The ONE caller of `skipReadingCheck`: it works while the chat reading is
  * unfinished. Recorded as `liveByOwner`. Every other refusal (removed from
  * the group, paused, already live) stands.
+ *
+ * THE ORGANISER IS TOLD. They did not say GO, so nothing else tells them:
+ * after a go-live that this call made, one DM goes to the organiser who
+ * connected the club (`tellOrganiserOwnerWentLive`,
+ * src/lib/club-setup-owner-live.ts), in the daytime, with the free period
+ * note the writer returned. It never throws and never undoes the go-live;
+ * what became of it is in the message the owner sees.
  */
 export async function ownerGoLiveNowAction(orgId: string): Promise<OwnerGoLiveResult> {
   const session = await auth();
@@ -164,8 +182,9 @@ export async function ownerGoLiveNowAction(orgId: string): Promise<OwnerGoLiveRe
     learningEnabled: await setupLearningUiEnabledForRequest(),
     skipReadingCheck: true,
   });
+  const told = result.outcome === "went-live" ? await tellOrganiserOwnerWentLive(result) : null;
   revalidatePath("/admin/clubs");
   revalidatePath("/admin/settings");
-  return describeOwnerGoLive(result);
+  return describeOwnerGoLive(result, told);
 }
 // ════ END the MatchTime owner's "Go live now" ════

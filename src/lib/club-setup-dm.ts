@@ -52,7 +52,8 @@
  *
  * THE 2-HOUR CAP (`STILL_READING_WINDOW_MS`, club-setup-rules.ts: the
  * same constant that makes GO answer "still reading", so that answer's
- * "I'll message you" is kept). A reading can fail to reach a
+ * "when I've finished I'll send the setup message" is kept: within two
+ * hours of the approval, in the daytime). A reading can fail to reach a
  * final status for ever: a run cut off on its last attempt leaves the row
  * "running" with nothing allowed to retake it, and a "deferred" row whose
  * club has left the reading sweep's 3-day window is never selected again.

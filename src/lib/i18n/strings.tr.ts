@@ -1762,8 +1762,14 @@ export const tr: Strings = {
   // See the English table. The Turkish command is BAŞLA (BASLA and GO are
   // read as well: `isGoCommand`, club-setup-rules.ts).
   sj_go_button: `Yayına al`,
-  sj_go_done: (p) => `Tamam: "${p.group}" grubunda kendimi tanıttım.`,
-  sj_go_still_reading: `Grubunuzdaki mesajları hâlâ okuyorum. Bana birkaç dakika verin, size yazacağım.`,
+  sj_go_done: (p) => `Tamam: şimdi "${p.group}" grubunda kendimi tanıtıyorum. Mesajın görünmesi birkaç dakika sürebilir.`,
+  sj_go_still_reading: (p) =>
+    `Grubunuzdaki mesajları hâlâ okuyorum, bu biraz sürebilir. Bitirdiğimde kurulum mesajını ${p.club} kulübünü bağlayan organizatöre göndereceğim. Ondan sonra yeniden *BAŞLA* yazın.`,
+  sj_go_failed: `Benim tarafımda bir sorun oldu. Lütfen yeniden *BAŞLA* yazın.`,
+  sj_go_help_not_started:
+    "MatchTime grubunuzda henüz başlamadı. Buraya *BAŞLA* yazana ya da ayarlar sayfanızdaki *Yayına al* düğmesine basana kadar aşağıdakilerin hiçbiri grupta çalışmaz.",
+  sj_go_owner_started: (p) =>
+    `MatchTime ekibi MatchTime'ı "${p.group}" grubunda sizin için başlattı, BAŞLA yazmanıza gerek kalmadı. MatchTime grupta kendini tanıtıyor, mesajın görünmesi birkaç dakika sürebilir.`,
   sj_go_removed: (p) => `Artık "${p.group}" grubunda değilim. Beni tekrar ekleyin, sonra BAŞLA yazın.`,
   sj_go_already_live: (p) => `${p.club} zaten yayında.`,
   sj_go_many: `Kurulumu süren birden fazla kulübünüz var. Her kulübün ayarlarındaki Yayına al düğmesini kullanın.`,
@@ -1778,7 +1784,8 @@ export const tr: Strings = {
   // ════ BEGIN removed from the group while setting up (2026-10-12) ════
   sj_setup_removed: (p) =>
     `${p.club} yayına geçmeden "${p.group}" grubundan çıkarıldım, bu yüzden orada hiçbir şey başlamadı. ` +
-    `Beni gruba yeniden ekleyin, sonra buraya *BAŞLA* yazın ya da ayarlar sayfanızdaki *Yayına al* düğmesine basın:\n${p.url}`,
+    `Beni gruba yeniden ekleyin, sonra buraya *BAŞLA* yazın ya da ayarlar sayfanızdaki *Yayına al* düğmesine basın:\n${p.url}\n` +
+    `Beni sizin ya da ${p.club} kulübünün başka bir organizatörünün eklemesi gerekiyor.`,
   // ════ END removed from the group while setting up ════
   // ════ BEGIN the go-live pages (go-live slice S5, 2026-10-12) ════
   // See the English table: the Go live banner on /admin/settings, the
@@ -1842,9 +1849,10 @@ export const tr: Strings = {
   sj_dm_ready_nothing: (p) =>
     `${p.group ? `"${p.group}" grubundaki` : "Grubunuzdaki"} son mesajları okudum ve değiştirilmesi gereken bir ayar bulamadım, bu yüzden ${p.standard ? "MatchTime standart düzeninde" : "hiçbir şeyi değiştirmedim"}.`,
   sj_dm_ready_unread: (p) =>
-    `Grubunuzun son mesajlarını okuyamadım, bu yüzden ${p.standard ? "MatchTime standart düzeninde" : "hiçbir şeyi değiştirmedim"}.`,
+    `Grubunuzun son mesajlarını okuyamadım, bu yüzden ${p.standard ? "MatchTime standart düzeninde" : "hiçbir şeyi değiştirmedim"}. ` +
+    "Sorun değil: aşağıdaki ayarları kontrol edin ve hazır olduğunuzda *BAŞLA* yazın.",
   sj_dm_ready_standard:
-    "Standart düzen: oyuncular her hafta VARIM ya da YOKUM der, boşalan yer yedek listesindeki ilk kişiye verilir.",
+    "Standart düzen: oyuncular her hafta VARIM ya da YOKUM der, boşalan yer yedek listesindeki herkese teklif edilir: ilk VARIM diyen yeri alır.",
   sj_dm_ready_settings: (p) => `⚙️ *Grubunuzun nasıl işlediğini kontrol edin ya da değiştirin:*\n${p.url}`,
   sj_dm_ready_schedule: (p) => `📅 *Haftalık maçınız:* günü, saati ve sahayı kontrol edin ya da değiştirin:\n${p.url}`,
   sj_dm_ready_ratings: (p) =>

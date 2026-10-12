@@ -208,7 +208,9 @@ describe("composeSetupAskDm: the blocks, in order", () => {
       `I read the recent messages in "Riverside Tuesday 5s" and found nothing that needs a setting changed, so MatchTime is on its standard setup.`,
     );
     expect(blocks[2]).toBe(
-      "Standard setup: players say In or Out each week, and a free place goes to the first person on the bench.",
+      // Item 9: the default offers a free place to the WHOLE bench
+      // ("First to claim it plays"), it is not handed to whoever is first.
+      "Standard setup: players say In or Out each week, and a free place is offered to everyone on the bench: the first to say In takes it.",
     );
     expect(blocks[3]).toBe("⚙️ *Check or change how your group runs:*\nhttps://mt.link/settings");
     expect(blocks).toHaveLength(8);
@@ -216,7 +218,12 @@ describe("composeSetupAskDm: the blocks, in order", () => {
 
   it("could not read: says so, then the standard setup", () => {
     const blocks = composeSetupAskDm(input({ kind: "unread" })).split("\n\n");
-    expect(blocks[1]).toBe("I couldn't read your group's recent messages, so MatchTime is on its standard setup.");
+    // Item 8: nothing the organiser does can get the chat read (a removal
+    // clears it and the reading is final), so the sentence must not sound
+    // like a problem to fix.
+    expect(blocks[1]).toBe(
+      "I couldn't read your group's recent messages, so MatchTime is on its standard setup. That's fine: check the settings below and reply *GO* when you're happy.",
+    );
     expect(blocks[2]).toMatch(/^Standard setup: /);
     expect(blocks).toHaveLength(8);
   });
@@ -234,7 +241,7 @@ describe("composeSetupAskDm: the blocks, in order", () => {
     expect(nothing).toContain("found nothing that needs a setting changed, so I changed nothing.");
     expect(nothing).not.toMatch(/standard setup/i);
     const unread = composeSetupAskDm(input({ kind: "unread" }, { standard: false }));
-    expect(unread).toContain("I couldn't read your group's recent messages, so I changed nothing.");
+    expect(unread).toContain("I couldn't read your group's recent messages, so I changed nothing. That's fine: check the settings below and reply *GO* when you're happy.");
     expect(unread).not.toMatch(/standard setup/i);
   });
 
@@ -295,10 +302,10 @@ describe("composeSetupAskDm: the blocks, in order", () => {
       `"Riverside Tuesday 5s" grubundaki son mesajları okudum ve değiştirilmesi gereken bir ayar bulamadım, bu yüzden MatchTime standart düzeninde.`,
     );
     expect(nothing[2]).toBe(
-      "Standart düzen: oyuncular her hafta VARIM ya da YOKUM der, boşalan yer yedek listesindeki ilk kişiye verilir.",
+      "Standart düzen: oyuncular her hafta VARIM ya da YOKUM der, boşalan yer yedek listesindeki herkese teklif edilir: ilk VARIM diyen yeri alır.",
     );
     const unread = composeSetupAskDm(input({ kind: "unread" }, { lang: "tr" })).split("\n\n");
-    expect(unread[1]).toBe("Grubunuzun son mesajlarını okuyamadım, bu yüzden MatchTime standart düzeninde.");
+    expect(unread[1]).toBe("Grubunuzun son mesajlarını okuyamadım, bu yüzden MatchTime standart düzeninde. Sorun değil: aşağıdaki ayarları kontrol edin ve hazır olduğunuzda *BAŞLA* yazın.");
   });
 
   it("no em or en dashes anywhere, in either language", () => {
