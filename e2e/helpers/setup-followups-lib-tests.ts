@@ -187,7 +187,11 @@ async function main() {
       await claimDuePlatformJobs({ now: AT_0905, limit: 50 });
       const claimed = (await reminders(e.orgId))[0];
       assert.equal(claimed.status, "claimed");
-      assert.deepEqual(await cancelSetupDm(e.orgId, "went-live", AT_0905), { cancelled: 0, alreadyClaimed: 1 });
+      assert.deepEqual(await cancelSetupDm(e.orgId, "went-live", AT_0905), {
+        cancelled: 0,
+        alreadyClaimed: 0,
+        followUps: { cancelled: 0, alreadyClaimed: 1 },
+      });
       const marked = (await reminders(e.orgId))[0];
       assert.equal(marked.status, "claimed", "a claimed reminder keeps its status: it may be on its way");
       assert.equal(marked.failReason, "cancelled: went-live", "and is marked");
@@ -487,55 +491,8 @@ async function main() {
       ok("with the hold off: no reminder, no owner's note, no admin group command, and the Settings button's code still lasts 48 hours");
     }
 
-    // ── 15. REMOVAL, as the removal handling will do it (set by hand here:
-    //        nothing on this branch writes the stamp) ──────────────────────
-    {
-      const NIGHT = new Date("2026-07-14T22:30:00Z"); // 23:30 London
-      // (a) Removed overnight with the setup DM and its command still queued: both taken back.
-      const a = await heldAndAsked(NIGHT, { sent: false });
-      await db.organisation.update({ where: { id: a.orgId }, data: { setupRemovedAt: new Date(NIGHT.getTime() + HOUR) } });
-      assert.deepEqual(await cancelSetupDm(a.orgId, "removed", new Date(NIGHT.getTime() + HOUR)), { cancelled: 2, alreadyClaimed: 0 });
-      for (const purpose of ["setup-ask", "setup-admin-code"]) {
-        const j = (await jobsOf(a.orgId, purpose))[0];
-        assert.equal(j.status, "failed");
-        assert.equal(j.failReason, "cancelled: removed");
-      }
-      // (b) Removed overnight with a REMINDER queued for 09:00: taken back too.
-      const ASKED = new Date("2026-07-14T21:50:00Z");
-      const AT_2305 = new Date("2026-07-15T22:05:00Z");
-      const b = await heldAndAsked(ASKED);
-      await sendSetupReminder(b.orgId, AT_2305);
-      assert.equal((await reminders(b.orgId))[0].status, "queued");
-      await db.organisation.update({ where: { id: b.orgId }, data: { setupRemovedAt: AT_2305 } });
-      assert.deepEqual(await cancelSetupDm(b.orgId, "removed", AT_2305), { cancelled: 1, alreadyClaimed: 0 });
-      assert.equal((await reminders(b.orgId))[0].failReason, "cancelled: removed");
-      // Removed: no reminder, and for the owner an ops event only.
-      assert.deepEqual(await sendSetupReminder(a.orgId, new Date(NIGHT.getTime() + 40 * HOUR)), { kind: "not-due" });
-      assert.deepEqual(await noteStuckClub(a.orgId, new Date(NIGHT.getTime() + 73 * HOUR)), { kind: "removed" });
-      assert.equal((await jobsOf(a.orgId, "owner-setup-stuck")).length, 0);
-      ok("removal: cancelSetupDm(\"removed\") takes back the queued setup DM, its admin group command and a queued reminder; a removed club gets no reminder and no owner DM");
-
-      // (c) Added back: the cancelled setup DM is un-asked and a NEW one is
-      //     sent. The reminder runs from the NEW one's due time.
-      const READD = new Date(NIGHT.getTime() + 30 * HOUR); // 05:30 London two days on
-      await db.organisation.update({ where: { id: a.orgId }, data: { setupRemovedAt: null, setupAskedAt: null } });
-      const again = await sendSetupDm(a.orgId, READD, { learningEnabled: false });
-      assert.equal(again.kind, "sent");
-      const newAsked = (await db.organisation.findUnique({ where: { id: a.orgId }, select: { setupAskedAt: true } }))!.setupAskedAt!;
-      assert.deepEqual(newAsked, messageHoursSendAfter(READD), "the new setup DM is due at the next 09:00 London");
-      const asks = await jobsOf(a.orgId, "setup-ask");
-      assert.deepEqual(asks.map((j) => j.status), ["failed", "queued"], "the cancelled one, and the new one");
-      // 24 hours after the FIRST (cancelled) one's due time: nothing, and nothing is settled.
-      const oldDue = messageHoursSendAfter(NIGHT)!;
-      assert.deepEqual(await sendSetupReminder(a.orgId, new Date(oldDue.getTime() + 24 * HOUR)), { kind: "not-due" });
-      // The new one goes; 23 hours on: not yet; 24 hours on: the reminder.
-      await db.platformJob.update({ where: { id: asks[1].id }, data: { status: "sent", sentAt: newAsked } });
-      assert.deepEqual(await sendSetupReminder(a.orgId, new Date(newAsked.getTime() + 23 * HOUR)), { kind: "not-due" });
-      assert.deepEqual(await sendSetupReminder(a.orgId, new Date(newAsked.getTime() + 24 * HOUR)), { kind: "sent", sendAfter: null });
-      assert.equal((await reminders(a.orgId)).length, 1);
-      assert.deepEqual(await sendSetupReminder(a.orgId, new Date(newAsked.getTime() + 48 * HOUR)), { kind: "already" });
-      ok("after a re-add the reminder clock runs from the NEW setup DM, not the cancelled one, and still goes once");
-    }
+    // (Removal and re-add go through the real bot-removed and bot-added
+    //  routes: e2e/api/setup-followups.spec.ts, section D.)
 
     // ── 16. THE 48-HOUR AUTO-LEAVE AND THE CODE'S 7 DAYS AGREE ────────────
     {

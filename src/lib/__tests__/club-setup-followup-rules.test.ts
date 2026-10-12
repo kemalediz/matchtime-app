@@ -93,6 +93,7 @@ describe("the admin group step of the setup DM", () => {
         scheduleUrl: "https://mt.example/sched",
         ratingsUrl: "https://mt.example/ratings",
         settingsUrl: "https://mt.example/settings",
+        freePeriod: true,
       };
       const without = composeSetupAskDm(base).split("\n\n");
       const withBlock = composeSetupAskDm({ ...base, adminGroupBlock: setupAdminGroupBlock(lang) }).split("\n\n");

@@ -39,7 +39,7 @@ const dbMock = vi.hoisted(() => ({
   $queryRaw: vi.fn(async (q: TemplateStringsArray, ...values: unknown[]) => {
     state.sql.push(q.join("?"));
     const [now, reason, , purposes, refIds] = values as [Date, string, Date, string[], string[]];
-    const out: Array<{ status: string }> = [];
+    const out: Array<{ status: string; purpose: string }> = [];
     for (const j of state.jobs) {
       if (j.kind !== "dm" || !purposes.includes(j.purpose) || !refIds.includes(j.refId)) continue;
       if (j.status !== "queued" && j.status !== "claimed") continue;
@@ -48,7 +48,7 @@ const dbMock = vi.hoisted(() => ({
         j.failedAt = now;
       }
       j.failReason = reason;
-      out.push({ status: j.status });
+      out.push({ status: j.status, purpose: j.purpose });
     }
     return out;
   }),
@@ -78,7 +78,7 @@ beforeEach(() => {
 describe("cancelSetupDm", () => {
   it("a queued setup DM is marked failed, with why, and will never be handed to the Pi", async () => {
     state.jobs = [job()];
-    expect(await cancelSetupDm("org-riverside", "suspended", NOW)).toEqual({ cancelled: 1, alreadyClaimed: 0 });
+    expect(await cancelSetupDm("org-riverside", "suspended", NOW)).toEqual({ cancelled: 1, alreadyClaimed: 0, followUps: { cancelled: 0, alreadyClaimed: 0 } });
     expect(state.jobs[0]).toMatchObject({ status: "failed", failedAt: NOW, failReason: "cancelled: suspended" });
   });
 
@@ -105,7 +105,12 @@ describe("cancelSetupDm", () => {
       job({ id: "pj-code", purpose: "setup-admin-code", refId: "org-riverside:setup-admin-code" }),
       job({ id: "pj-rem", purpose: "setup-reminder", refId: "org-riverside:setup-reminder" }),
     ];
-    expect(await cancelSetupDm("org-riverside", "went-live", NOW)).toEqual({ cancelled: 3, alreadyClaimed: 0 });
+    // The counts speak of the SETUP DM; the other two are in `followUps`.
+    expect(await cancelSetupDm("org-riverside", "went-live", NOW)).toEqual({
+      cancelled: 1,
+      alreadyClaimed: 0,
+      followUps: { cancelled: 2, alreadyClaimed: 0 },
+    });
     expect(dbMock.$queryRaw).toHaveBeenCalledTimes(1);
     for (const j of state.jobs) expect(j).toMatchObject({ status: "failed", failReason: "cancelled: went-live" });
   });
@@ -116,13 +121,23 @@ describe("cancelSetupDm", () => {
       job({ id: "pj-code", purpose: "setup-admin-code", refId: "org-riverside:setup-admin-code", status: "sent" }),
       job({ id: "pj-rem", purpose: "setup-reminder", refId: "org-riverside:setup-reminder" }),
     ];
-    expect(await cancelSetupDm("org-riverside", "went-live", NOW)).toEqual({ cancelled: 1, alreadyClaimed: 0 });
+    // The setup DM itself was NOT taken back (it went yesterday): a caller
+    // that un-asks a club on `cancelled` must not do so here.
+    expect(await cancelSetupDm("org-riverside", "went-live", NOW)).toEqual({
+      cancelled: 0,
+      alreadyClaimed: 0,
+      followUps: { cancelled: 1, alreadyClaimed: 0 },
+    });
     expect(state.jobs.map((j) => j.status)).toEqual(["sent", "sent", "failed"]);
   });
 
   it("a reminder the Pi has ALREADY CLAIMED keeps its status and is marked, like the setup DM", async () => {
     state.jobs = [job({ id: "pj-rem", purpose: "setup-reminder", refId: "org-riverside:setup-reminder", status: "claimed" })];
-    expect(await cancelSetupDm("org-riverside", "suspended", NOW)).toEqual({ cancelled: 0, alreadyClaimed: 1 });
+    expect(await cancelSetupDm("org-riverside", "suspended", NOW)).toEqual({
+      cancelled: 0,
+      alreadyClaimed: 0,
+      followUps: { cancelled: 0, alreadyClaimed: 1 },
+    });
     expect(state.jobs[0]).toMatchObject({ status: "claimed", failReason: "cancelled: suspended" });
     // Released for pacing after the cancel: failed, never queued again.
     expect(await recordPlatformJobOutcome("pj-rem", { outcome: "release" }, NOW)).toEqual({ updated: true });
@@ -135,23 +150,23 @@ describe("cancelSetupDm", () => {
       job({ id: "b", purpose: "setup-admin-code", refId: "org-other:setup-admin-code" }),
       job({ id: "c", purpose: "setup-reply", refId: "org-riverside:setup-reminder" }),
     ];
-    expect(await cancelSetupDm("org-riverside", "suspended", NOW)).toEqual({ cancelled: 0, alreadyClaimed: 0 });
+    expect(await cancelSetupDm("org-riverside", "suspended", NOW)).toEqual({ cancelled: 0, alreadyClaimed: 0, followUps: { cancelled: 0, alreadyClaimed: 0 } });
     expect(state.jobs.map((j) => j.status)).toEqual(["queued", "queued", "queued"]);
   });
 
   it("a job the Pi has ALREADY CLAIMED keeps its status (it may be on its way), is marked, and the caller is told", async () => {
     state.jobs = [job({ status: "claimed" })];
-    expect(await cancelSetupDm("org-riverside", "went-live", NOW)).toEqual({ cancelled: 0, alreadyClaimed: 1 });
+    expect(await cancelSetupDm("org-riverside", "went-live", NOW)).toEqual({ cancelled: 0, alreadyClaimed: 1, followUps: { cancelled: 0, alreadyClaimed: 0 } });
     expect(state.jobs[0]).toMatchObject({ status: "claimed", failReason: "cancelled: went-live" });
     expect(state.jobs[0].failedAt).toBeUndefined();
   });
 
   it("a job already sent, or no job at all: nothing to do", async () => {
     state.jobs = [job({ status: "sent" })];
-    expect(await cancelSetupDm("org-riverside", "went-live", NOW)).toEqual({ cancelled: 0, alreadyClaimed: 0 });
+    expect(await cancelSetupDm("org-riverside", "went-live", NOW)).toEqual({ cancelled: 0, alreadyClaimed: 0, followUps: { cancelled: 0, alreadyClaimed: 0 } });
     expect(state.jobs[0]).toEqual(job({ status: "sent" }));
     state.jobs = [];
-    expect(await cancelSetupDm("org-riverside", "went-live", NOW)).toEqual({ cancelled: 0, alreadyClaimed: 0 });
+    expect(await cancelSetupDm("org-riverside", "went-live", NOW)).toEqual({ cancelled: 0, alreadyClaimed: 0, followUps: { cancelled: 0, alreadyClaimed: 0 } });
   });
 
   it("only this club's setup DM: another club's, and this club's other DMs, are untouched", async () => {
@@ -161,7 +176,7 @@ describe("cancelSetupDm", () => {
       job({ id: "pj-3", purpose: "organiser-decision", refId: "org-riverside:setup-ask" }),
       job({ id: "pj-4", kind: "leave-group" }),
     ];
-    expect(await cancelSetupDm("org-riverside", "suspended", NOW)).toEqual({ cancelled: 1, alreadyClaimed: 0 });
+    expect(await cancelSetupDm("org-riverside", "suspended", NOW)).toEqual({ cancelled: 1, alreadyClaimed: 0, followUps: { cancelled: 0, alreadyClaimed: 0 } });
     expect(state.jobs.map((j) => j.status)).toEqual(["failed", "queued", "queued", "queued"]);
   });
 });
@@ -198,7 +213,7 @@ describe("THE PACING GAP: a cancelled job the Pi then RELEASES is not put back i
   it("released first, cancelled after: the cancel finds it queued and fails it", async () => {
     state.jobs = [job({ status: "claimed" })];
     await recordPlatformJobOutcome("pj-1", { outcome: "release" }, NOW);
-    expect(await cancelSetupDm("org-riverside", "suspended", NOW)).toEqual({ cancelled: 1, alreadyClaimed: 0 });
+    expect(await cancelSetupDm("org-riverside", "suspended", NOW)).toEqual({ cancelled: 1, alreadyClaimed: 0, followUps: { cancelled: 0, alreadyClaimed: 0 } });
     expect(state.jobs[0].status).toBe("failed");
   });
 

@@ -487,7 +487,9 @@ export function dataFor(key: LearnedKey, value: SettingValue): SetupData & Recor
   }
 }
 
-function sameVenue(a: string, b: string): boolean {
+/** Is this the same pitch? Also how the settings page tells whether a
+ *  venue suggestion still stands (suggestion-state.ts). */
+export function sameVenue(a: string, b: string): boolean {
   const x = normaliseForMatch(a).replace(/[^\p{L}\p{N} ]/gu, "");
   const y = normaliseForMatch(b).replace(/[^\p{L}\p{N} ]/gu, "");
   return !!x && !!y && (x.includes(y) || y.includes(x));

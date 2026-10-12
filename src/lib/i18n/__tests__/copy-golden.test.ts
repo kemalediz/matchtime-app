@@ -509,6 +509,7 @@ import { buildPickMessage, buildPickListChanged } from "../../organiser-pick-rul
 import { clubFeeTip, type TipActivity } from "../../club-billing-rules";
 import {
   approvedTipText,
+  goLiveFreePeriodNote,
   bannerText,
   billedAgainCardText,
   billingNoticeText,
@@ -1416,6 +1417,7 @@ function cases(lang: Lang): Case[] {
       `[${sj.billing_btn_add_card}] [${sj.billing_btn_change_card}] [${sj.billing_btn_use_mine}] [${sj.billing_btn_update_card}] [${sj.billing_btn_remove_mine}] [${sj.billing_btn_stop_paying}] [${sj.billing_btn_keep_paying}]`,
       `[${sj.billing_open}] [${sj.billing_choose_collector}]`,
       sj.billing_exempt({ club: "Sutton FC" }),
+      sj.billing_exempt_setting_up({ club: "Harbour FC" }),
     ].join("\n"),
   );
   add(
@@ -2039,6 +2041,7 @@ function cases(lang: Lang): Case[] {
       settingsUrl: "https://matchtime.ai/r/settings",
       learnedUrl: "https://matchtime.ai/r/learned",
       organiserPicksUrl: "https://matchtime.ai/r/pick",
+      freePeriod: true,
       ...rest,
     });
   add(
@@ -2072,6 +2075,28 @@ function cases(lang: Lang): Case[] {
   add("SUP7 the held variants / connect reply", t(lang).sj_dm_connected_held({ name: "Aliyah", club: "Thursday Ladies" }));
   add("SUP8 the held variants / in-group ack", t(lang).sj_dm_in_group_held({ group: "Thursday Ladies 5s" }));
   add("SUP9 the held variants / pending card", t(lang).sj_card_pending_held);
+  // Removal slice and the free period at go-live (2026-10-12). NEW copy;
+  // no existing case changed.
+  add(
+    "SUP10 composeSetupAskDm / going live will start no free period (billing off, or the Free plan): no free period line",
+    setupAsk({ kind: "nothing" }, { freePeriod: false }),
+  );
+  add(
+    "SUP11 removed from the group while setting up / the organiser's one DM",
+    t(lang).sj_setup_removed({ club: "Thursday Ladies", group: "Thursday Ladies 5s", url: "https://matchtime.ai/admin/settings" }),
+  );
+  add(
+    "SUP12 GO / went live and the free period started: Done, the free period, the club fee tip",
+    `${t(lang).sj_go_done({ group: "Thursday Ladies 5s" })}\n\n${goLiveFreePeriodNote(
+      lang,
+      clubFeeTip({
+        status: "trial",
+        plan: "standard",
+        pricePence: null,
+        activities: [{ dayOfWeek: 2, time: "20:00", playersPerTeam: 5, feePerPlayer: null, feeSplitTotal: false, latestMatchFee: null }],
+      }),
+    )}`,
+  );
 
   // ── SFU / SFO: what follows the setup DM (go-live slices S6 and S7,
   //   2026-10-12). NEW copy, a deliberate addition. No existing case
@@ -2366,7 +2391,7 @@ const MIGRATED_ROWS = [
   // learned setup (2026-10-05)
   "LRN1 ", "LRN2 ", "LRN3 ",
   // the setup DM of a held club (go-live slice S3, 2026-10-12)
-  "SUP1 ", "SUP2 ", "SUP3 ", "SUP4 ", "SUP5 ", "SUP6 ", "SUP7 ", "SUP8 ", "SUP9 ",
+  "SUP1 ", "SUP2 ", "SUP3 ", "SUP4 ", "SUP5 ", "SUP6 ", "SUP7 ", "SUP8 ", "SUP9 ", "SUP10 ", "SUP11 ", "SUP12 ",
   // what follows the setup DM (go-live slices S6 and S7, 2026-10-12).
   // SFO1, the owner's note, is English only and is not listed.
   "SFU1 ", "SFU2 ", "SFU3 ", "SFU4 ", "SFU5 ",

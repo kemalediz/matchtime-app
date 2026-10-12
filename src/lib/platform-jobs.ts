@@ -81,6 +81,10 @@ import { APPROVED_CLUB_WHERE } from "./club-approval-state";
 /** "setup-reminder" (go-live slice S6, 2026-10-12): the ONE reminder, 24
  *  hours after the setup DM was due, to an organiser who has not gone live
  *  (src/lib/club-setup-reminder.ts). */
+/** "setup-removed" (go-live removal slice, 2026-10-12): the organiser's one
+ *  DM per removal when MatchTime is taken out of the group of a club that
+ *  is still setting up. Queued only by src/lib/club-setup-removal.ts, and
+ *  taken back by it if MatchTime is added back before it has gone. */
 export const PLATFORM_DM_PURPOSES = [
   "otp",
   "connect-reply",
@@ -91,6 +95,7 @@ export const PLATFORM_DM_PURPOSES = [
   "setup-admin-code",
   "setup-reminder",
   "setup-reply",
+  "setup-removed",
 ] as const;
 export type PlatformDmPurpose = (typeof PLATFORM_DM_PURPOSES)[number];
 
@@ -263,7 +268,7 @@ export async function queuePlatformDm(args: {
 /** DM purposes `cancelQueuedPlatformDms` will touch. A sign-up code, a
  *  decision, a billing notice and anything for the owner are never
  *  cancelled from here. */
-export const CANCELLABLE_DM_PURPOSES = ["setup-ask", "setup-admin-code", "setup-reminder"] as const;
+export const CANCELLABLE_DM_PURPOSES = ["setup-ask", "setup-admin-code", "setup-reminder", "setup-removed"] as const;
 export type CancellableDmPurpose = (typeof CANCELLABLE_DM_PURPOSES)[number];
 
 /** How a cancelled job's `failReason` starts. On a CLAIMED job it is the
@@ -299,7 +304,12 @@ export async function cancelQueuedPlatformDms(args: {
   refIds: readonly string[];
   reason: string;
   now?: Date;
-}): Promise<{ cancelled: number; alreadyClaimed: number }> {
+}): Promise<{
+  cancelled: number;
+  alreadyClaimed: number;
+  /** The same two counts for each purpose that had a job to act on. */
+  byPurpose: Partial<Record<CancellableDmPurpose, { cancelled: number; alreadyClaimed: number }>>;
+}> {
   const purposes = [...args.purposes] as string[];
   const refIds = [...args.refIds];
   for (const purpose of purposes) {
@@ -314,7 +324,7 @@ export async function cancelQueuedPlatformDms(args: {
   const reason = `${CANCELLED_REASON_PREFIX}${args.reason}`.slice(0, FAIL_REASON_MAX);
   // RETURNING reads the row AFTER the update: "failed" was queued,
   // "claimed" was claimed and is now marked.
-  const rows = await db.$queryRaw<Array<{ status: string }>>`
+  const rows = await db.$queryRaw<Array<{ status: string; purpose: string }>>`
     UPDATE "PlatformJob" SET
       "status" = CASE WHEN "status" = 'queued' THEN 'failed' ELSE "status" END,
       "failedAt" = CASE WHEN "status" = 'queued' THEN ${now} ELSE "failedAt" END,
@@ -322,10 +332,17 @@ export async function cancelQueuedPlatformDms(args: {
       "updatedAt" = ${now}
     WHERE "kind" = 'dm' AND "purpose" = ANY(${purposes}) AND "refId" = ANY(${refIds})
       AND "status" IN ('queued', 'claimed')
-    RETURNING "status"`;
+    RETURNING "status", "purpose"`;
+  const byPurpose: Partial<Record<CancellableDmPurpose, { cancelled: number; alreadyClaimed: number }>> = {};
+  for (const r of rows) {
+    const counts = (byPurpose[r.purpose as CancellableDmPurpose] ??= { cancelled: 0, alreadyClaimed: 0 });
+    if (r.status === "failed") counts.cancelled++;
+    else if (r.status === "claimed") counts.alreadyClaimed++;
+  }
   return {
     cancelled: rows.filter((r) => r.status === "failed").length,
     alreadyClaimed: rows.filter((r) => r.status === "claimed").length,
+    byPurpose,
   };
 }
 

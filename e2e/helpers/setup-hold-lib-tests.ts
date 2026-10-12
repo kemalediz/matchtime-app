@@ -142,7 +142,11 @@ async function main() {
       assert.equal(job?.status, "claimed");
       // Two jobs since slice S7: the setup DM and the admin group command
       // behind it. The Pi claimed both in that poll, and both are marked.
-      assert.deepEqual(await cancelSetupDm(c.orgId, "suspended", AT_0905), { cancelled: 0, alreadyClaimed: 2 });
+      assert.deepEqual(await cancelSetupDm(c.orgId, "suspended", AT_0905), {
+        cancelled: 0,
+        alreadyClaimed: 1,
+        followUps: { cancelled: 0, alreadyClaimed: 1 },
+      });
       const marked = await setupJob(c.orgId);
       assert.equal(marked?.status, "claimed", "a claimed job keeps its status: it may be on its way");
       assert.equal(marked?.failReason, "cancelled: suspended", "and is marked as cancelled");
@@ -225,8 +229,12 @@ async function main() {
           cancelled++;
         }
       }
-      assert.equal(cancel.cancelled, cancelled, "the cancel reports exactly the jobs it took back");
-      assert.equal(cancel.cancelled + cancel.alreadyClaimed, 2, "and accounts for both");
+      assert.equal(cancel.cancelled + cancel.followUps.cancelled, cancelled, "the cancel reports exactly the jobs it took back");
+      assert.equal(
+        cancel.cancelled + cancel.alreadyClaimed + cancel.followUps.cancelled + cancel.followUps.alreadyClaimed,
+        2,
+        "and accounts for both",
+      );
     }
     ok("the cancel racing the Pi's claim (4 rounds): never both, never neither");
 

@@ -78,7 +78,7 @@ test("the organiser guide explains the club fee: games played, up to £9.99, the
   await expect(guide.getByText(/only pay for the weeks you play: up to £9\.99 a month per WhatsApp group, VAT included/)).toBeVisible();
   await expect(guide.getByText(/adds a card/).first()).toBeVisible();
   await expect(guide.getByText(/at most about 25p a player per game/)).toBeVisible();
-  await expect(guide.getByText(/Your first two months are free, counted from the day we approve your club\./)).toBeVisible();
+  await expect(guide.getByText(/Your first two months are free, counted from the day MatchTime goes live in your group\./)).toBeVisible();
   await expect(guide.getByText(/Nine days before your free period ends/)).toBeVisible();
   const text = withoutFreePeriod(await guide.innerText());
   expect(text).not.toMatch(/\bfree\b/i);

@@ -603,6 +603,140 @@ test("C: Turkish club: the Turkish block and the Turkish form of the command, wh
   await expectPlayersGroupSilent(request, db, c);
 });
 
+// ══ D. REMOVED FROM THE GROUP, AND ADDED BACK (the real routes) ═════════
+
+/** MatchTime itself was removed from the group, as the Pi reports it. */
+async function botRemoved(request: APIRequestContext, c: Club) {
+  const res = await request.post("/api/whatsapp/bot-removed", { headers: KEY, data: { groupId: c.group } });
+  expect(res.status(), await res.text()).toBe(200);
+  const body = await res.json();
+  expect(body).toMatchObject({ ok: true, setup: "removed", orgId: c.org });
+  return body;
+}
+/** The organiser adds MatchTime back to the same group. */
+async function botAddedBack(request: APIRequestContext, c: Club, now: Date) {
+  const res = await request.post("/api/whatsapp/bot-added", {
+    headers: { ...KEY, "x-mt-test-self-join": "1", "x-mt-test-setup-learning": "0", "x-test-now": now.toISOString() },
+    data: { groupId: c.group, groupSubject: c.subject, addedByPhone: c.phone, participants: [{ phone: c.phone }] },
+  });
+  expect(res.status(), await res.text()).toBe(200);
+  return res.json();
+}
+const removedAt = (db: TestDb, c: Club) =>
+  db.one<{ at: Date | null }>(`SELECT "setupRemovedAt" AS at FROM "Organisation" WHERE id = $1`, [c.org]).then((r) => r?.at ?? null);
+
+test("D: a REMOVED club gets no reminder and no owner DM: for the owner an ops event only", async ({ request, db }) => {
+  const c = club("Left Out FC");
+  await seedHeld(c, { approvedAt: ago(DAY, 80), askedAt: ago(DAY, 79), dm: "sent" });
+  await botRemoved(request, c);
+  expect(await removedAt(db, c)).not.toBeNull();
+
+  await cron(request, DAY);
+  await cron(request, new Date(DAY.getTime() + 30 * 24 * HOUR));
+  // Due for both by the clock, and sent neither.
+  expect(await reminders(db, c)).toEqual([]);
+  expect(await ownerNotes(db, c)).toEqual([]);
+  const stuck = (await alerts(db, c.org)).filter((a) => (a.dedupeKey ?? "").startsWith("setup-stuck"));
+  expect(stuck).toHaveLength(1);
+  expect(stuck[0]).toMatchObject({ dedupeKey: "setup-stuck-72h-removed", title: "Still setting up after 3 days" });
+  expect(stuck[0].detail).toContain("was removed from its group");
+  await expectPlayersGroupSilent(request, db, c);
+});
+
+test("D: removal takes back the queued setup DM AND its admin group command; after the re-add a fresh pair goes, and the reminder runs from the NEW setup DM", async ({ request, db }) => {
+  const c = club("Back Again FC");
+  await seedPending(c);
+  // Approved at night: the setup DM and the command wait for 09:00.
+  await approve(request, c, "1", NIGHT);
+  const firstAsk = await waitForJob(db, c, "setup-ask");
+  expect(firstAsk.sendAfter).toEqual(messageHoursSendAfter(NIGHT));
+  const firstCode = (await orgRow(db, c.org))!.code;
+  expect((await jobs(db, c.phone, "setup-admin-code")).map((j) => j.text)).toEqual([`Match Time admin group ${firstCode}`]);
+
+  await botRemoved(request, c);
+  for (const purpose of ["setup-ask", "setup-admin-code"]) {
+    const all = await jobs(db, c.phone, purpose);
+    expect(all.map((j) => [j.status, j.failReason]), purpose).toEqual([["failed", "cancelled: removed"]]);
+  }
+  // The setup DM never went, so the club is "never asked" again.
+  expect((await orgRow(db, c.org))!.asked).toBeNull();
+  // While removed: nothing is due, however long it takes.
+  await cron(request, new Date(DAY.getTime() + 3 * 24 * HOUR));
+  expect(await jobs(db, c.phone, "setup-ask")).toHaveLength(1);
+  expect(await reminders(db, c)).toEqual([]);
+
+  // Added back four days later, in the daytime.
+  const BACK = new Date(DAY.getTime() + 4 * 24 * HOUR);
+  await botAddedBack(request, c, BACK);
+  expect(await removedAt(db, c)).toBeNull();
+  await expect
+    .poll(async () => (await jobs(db, c.phone, "setup-ask")).filter((j) => j.status === "queued").length, { timeout: 30_000, intervals: [200, 500, 1000] })
+    .toBe(1);
+  await cron(request, BACK);
+  // One fresh setup DM, and with it one fresh command carrying a NEW code.
+  expect((await jobs(db, c.phone, "setup-ask")).map((j) => j.status)).toEqual(["failed", "queued"]);
+  const codes = await jobs(db, c.phone, "setup-admin-code");
+  expect(codes.map((j) => j.status)).toEqual(["failed", "queued"]);
+  const org = (await orgRow(db, c.org))!;
+  expect(org.code).not.toBe(firstCode);
+  expect(codes[1].text).toBe(`Match Time admin group ${org.code}`);
+  const newAsked = org.asked!;
+  expect(newAsked.getTime()).toBeGreaterThanOrEqual(BACK.getTime());
+  // The new code's 7 days run from the NEW setup DM.
+  expect(org.codeExpires).toEqual(new Date(newAsked.getTime() + 7 * 24 * HOUR));
+
+  // The reminder: not 24 hours after the cancelled one (long past), but 24 hours after the new one.
+  await db.run(`UPDATE "PlatformJob" SET status = 'sent' WHERE phone = $1 AND purpose IN ('setup-ask','setup-admin-code') AND status = 'queued'`, [c.phone]);
+  await cron(request, new Date(newAsked.getTime() + 23 * HOUR));
+  expect(await reminders(db, c)).toEqual([]);
+  await cron(request, new Date(newAsked.getTime() + 24 * HOUR));
+  await cron(request, new Date(newAsked.getTime() + 30 * 24 * HOUR));
+  expect(await reminders(db, c)).toHaveLength(1);
+  await expectPlayersGroupSilent(request, db, c);
+});
+
+test("D: removal takes back a QUEUED reminder, and does NOT make a club whose setup DM had gone 'never asked' (no second setup DM after the re-add)", async ({ request, db }) => {
+  const c = club("Night Leavers FC");
+  const asked = ago(NIGHT, 24, 10 * 60_000);
+  await seedHeld(c, { approvedAt: ago(NIGHT, 25), askedAt: asked, dm: "sent" });
+  await cron(request, NIGHT);
+  const queued = await reminders(db, c);
+  expect(queued).toHaveLength(1);
+  expect(queued[0]).toMatchObject({ status: "queued", sendAfter: messageHoursSendAfter(NIGHT) });
+
+  await botRemoved(request, c);
+  expect((await reminders(db, c)).map((j) => [j.status, j.failReason])).toEqual([["failed", "cancelled: removed"]]);
+  // The setup DM itself went yesterday: its stamp is KEPT.
+  expect((await orgRow(db, c.org))!.asked).toEqual(asked);
+
+  const BACK = new Date(DAY.getTime() + 2 * 24 * HOUR);
+  await botAddedBack(request, c, BACK);
+  expect(await removedAt(db, c)).toBeNull();
+  await cron(request, BACK);
+  await cron(request, new Date(BACK.getTime() + 30 * 24 * HOUR));
+  // Still the one setup DM they were sent, no command out of nowhere, and no second reminder.
+  expect((await jobs(db, c.phone, "setup-ask")).map((j) => j.status)).toEqual(["sent"]);
+  expect(await jobs(db, c.phone, "setup-admin-code")).toEqual([]);
+  expect((await reminders(db, c)).map((j) => j.status)).toEqual(["failed"]);
+  expect((await orgRow(db, c.org))!.asked).toEqual(asked);
+});
+
+test("D: a club removed AFTER its reminder was sent is not reminded a second time after the re-add", async ({ request, db }) => {
+  const c = club("Reminded Once FC");
+  await seedHeld(c, { approvedAt: ago(DAY, 27), askedAt: ago(DAY, 26), dm: "sent" });
+  await cron(request, DAY);
+  expect(await reminders(db, c)).toHaveLength(1);
+  await db.run(`UPDATE "PlatformJob" SET status = 'sent' WHERE phone = $1 AND purpose = 'setup-reminder'`, [c.phone]);
+
+  await botRemoved(request, c);
+  const BACK = new Date(DAY.getTime() + 24 * HOUR);
+  await botAddedBack(request, c, BACK);
+  expect(await removedAt(db, c)).toBeNull();
+  for (const hours of [0, 24, 48, 30 * 24]) await cron(request, new Date(BACK.getTime() + hours * HOUR));
+  expect((await reminders(db, c)).map((j) => j.status)).toEqual(["sent"]);
+  expect((await jobs(db, c.phone, "setup-ask")).map((j) => j.status)).toEqual(["sent"]);
+});
+
 // ══ FLAG OFF ════════════════════════════════════════════════════════════
 
 test("FLAG OFF: an approval that does not hold the club never produces a reminder, an owner's note or an admin group command", async ({ request, db }) => {
@@ -651,5 +785,5 @@ test("the follow-ups against Postgres: once under concurrent runs, the cancel, t
     throw new Error(`setup-followups-lib-tests failed:\n${err.stdout ?? ""}\n${err.stderr ?? ""}`);
   });
   console.log(stdout);
-  expect(stdout, stderr).toContain("OK: 22 setup follow-up checks");
+  expect(stdout, stderr).toContain("OK: 20 setup follow-up checks");
 });

@@ -5,7 +5,7 @@
  * racing for one DM, the 2-hour cap, the cancel) are in
  * e2e/api/setup-hold-approval.spec.ts.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const sdkCalls = vi.hoisted(() => ({ n: 0 }));
 vi.mock("@anthropic-ai/sdk", () => ({
@@ -148,6 +148,9 @@ const heldOrg = (over: Row = {}): Row => ({
   featureBench: true,
   featureSquadFromList: false,
   setupLearning: null,
+  billingStatus: "exempt",
+  billingPlan: "standard",
+  clubBilling: null,
   ...over,
 });
 
@@ -178,6 +181,43 @@ const learning = (status: string, over: Row = {}): Row => ({ status, reason: nul
 const asks = () => state.jobs.filter((j) => j.purpose === SETUP_ASK_DM_PURPOSE);
 /** The admin group command(s). */
 const codes = () => state.jobs.filter((j) => j.purpose === "setup-admin-code");
+
+describe("sendSetupDm: the free period is promised only when going live will start one", () => {
+  const FREE = "Your first two months are free. The free period starts when I go live in the group.";
+  const BILLING = process.env.BILLING_ENABLED;
+  afterEach(() => {
+    if (BILLING === undefined) delete process.env.BILLING_ENABLED;
+    else process.env.BILLING_ENABLED = BILLING;
+  });
+  const sentText = async () => {
+    expect((await sendSetupDm("org-riverside", DAY, { learningEnabled: false })).kind).toBe("sent");
+    return String(state.jobs[0].text);
+  };
+
+  it("billing on, Standard plan, no free period yet: the last line promises it", async () => {
+    process.env.BILLING_ENABLED = "1";
+    expect((await sentText()).endsWith(FREE)).toBe(true);
+  });
+
+  it("billing switched OFF: no free period is mentioned, and the DM ends on the GO line", async () => {
+    delete process.env.BILLING_ENABLED;
+    const text = await sentText();
+    expect(text).not.toMatch(/free period|months are free/i);
+    expect(text.split("\n\n").at(-1)).toMatch(/^When you're happy, reply \*GO\* here/);
+  });
+
+  it("the Free plan: no free period is mentioned (there is nothing to pay after it)", async () => {
+    process.env.BILLING_ENABLED = "1";
+    state.org = heldOrg({ billingPlan: "free" });
+    expect(await sentText()).not.toMatch(/free period|months are free/i);
+  });
+
+  it("a club that somehow already has a billing row: not promised a second one", async () => {
+    process.env.BILLING_ENABLED = "1";
+    state.org = heldOrg({ clubBilling: { orgId: "org-riverside" } });
+    expect(await sentText()).not.toMatch(/free period|months are free/i);
+  });
+});
 
 describe("sendSetupDm: when it goes", () => {
   it("the reading is switched off: the DM goes at once, with no reading sentence", async () => {

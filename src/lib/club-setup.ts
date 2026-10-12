@@ -37,6 +37,8 @@ import type { MatchStatus } from "@/generated/prisma/enums";
 import { db } from "./db";
 import { clearCapturedChatForClub } from "./captured-chat";
 import { isClubApproved, servingClubWhere } from "./club-approval-state";
+import { loadClubFeeTip, logBillingMove, startFreePeriodAtGoLiveTx } from "./club-billing";
+import { goLiveFreePeriodNote } from "./club-billing-view";
 import { BILLING_NOT_PAUSED_WHERE, isBillingEnabled } from "./club-billing-rules";
 import {
   SETTING_UP_CLUB_WHERE,
@@ -45,7 +47,14 @@ import {
   isClubSettingUp,
   settingUpOnly,
   readingBlocksGoLive,
+  SETUP_STATUS_SELECT,
+  setupMessageState,
+  setupStatusOf,
+  type SetupMessageState,
+  type SetupStatus,
+  type SetupStatusRow,
 } from "./club-setup-rules";
+import { SETUP_ASK_DM_PURPOSE, setupAskRefId } from "./club-setup-dm-rules";
 import { buildGroupHello } from "./group-hello";
 import { loadHelloInput, type HelloReadClient } from "./group-hello-load";
 import { normaliseLang } from "./i18n/lang";
@@ -80,6 +89,15 @@ export {
   liveByOwner,
   liveByUser,
   readingBlocksGoLive,
+  // The go-live pages (slice S5).
+  SETUP_STATUS_SELECT,
+  parseLiveBy,
+  setupMessageState,
+  setupStatusOf,
+  type LiveBy,
+  type SetupMessageState,
+  type SetupStatus,
+  type SetupStatusRow,
 } from "./club-setup-rules";
 
 /**
@@ -172,7 +190,8 @@ type OrgStampClient = {
 };
 
 /**
- * THE ONE WRITER OF `setupAskedAt`: the moment the organiser's setup DM is
+ * THE WRITER OF `setupAskedAt` (`unaskCancelledSetupDm` below is the one
+ * way it is ever taken back): the moment the organiser's setup DM is
  * due (now, or the next 09:00 London for a night run). It is the clock the
  * 24-hour reminder runs on (slice S6).
  *
@@ -187,6 +206,28 @@ export async function markSetupAsked(orgId: string, dueAt: Date, client: OrgStam
   const { count } = await client.organisation.updateMany({
     where: { id: orgId, ...SETUP_DM_DUE_WHERE },
     data: { setupAskedAt: dueAt },
+  });
+  return count === 1;
+}
+
+/**
+ * THE ONE OTHER WRITER OF `setupAskedAt`: the setup DM was queued, had not
+ * gone, and has just been CANCELLED because MatchTime was removed from the
+ * group (club-setup-removal.ts). The club was told nothing, so it is "never
+ * asked" again: once MatchTime is back in the group (`clearSetupRemoved`)
+ * `SETUP_DM_DUE_WHERE` matches it and the 15-minute sweep sends the DM
+ * afresh, saying what is true then.
+ *
+ * Only for a club that is setting up AND removed, so it can never make a
+ * club due while MatchTime is in its group (which could send a second DM).
+ * The caller calls it only when the cancel took back a job that had not
+ * been claimed: a DM that was sent, or may be on its way, keeps its stamp
+ * and is never sent twice.
+ */
+export async function unaskCancelledSetupDm(orgId: string, client: OrgStampClient = db): Promise<boolean> {
+  const { count } = await client.organisation.updateMany({
+    where: { id: orgId, ...SETTING_UP_CLUB_WHERE, setupRemovedAt: { not: null }, setupAskedAt: { not: null } },
+    data: { setupAskedAt: null },
   });
   return count === 1;
 }
@@ -244,6 +285,57 @@ export function wasRemovedDuringSetup(org: { setupRemovedAt?: Date | null | unde
 }
 
 // ════ END the setup follow-ups' reads ════
+// ════ BEGIN removed from the group while setting up (2026-10-12) ════
+//
+// `Organisation.setupRemovedAt`: MatchTime was taken out of the group of a
+// club that is approved and still setting up. While it is set the club
+// cannot go live (`goLiveRefusal`, and the go-live compare-and-set), so no
+// hello is queued for a group MatchTime is not in and NO FREE PERIOD
+// STARTS for it; and its setup DM is not due (`SETUP_DM_DUE_WHERE`). The
+// club stays approved and setting up. THE TWO WRITERS ARE HERE; the
+// handling round them (the organiser's DM, the owner's event) is
+// club-setup-removal.ts.
+
+/** A setting-up club by its group, with whether MatchTime was removed. */
+export async function findSettingUpClubByGroup(
+  groupId: string,
+): Promise<{ id: string; name: string; language: string; removedAt: Date | null } | null> {
+  const org = await db.organisation.findFirst({
+    where: { whatsappGroupId: groupId, ...SETTING_UP_CLUB_WHERE },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, name: true, language: true, setupRemovedAt: true },
+  });
+  return org ? { id: org.id, name: org.name, language: org.language, removedAt: org.setupRemovedAt } : null;
+}
+
+/**
+ * STAMP the removal. A compare-and-set on "setting up, not already
+ * removed", so of two reports of the same removal exactly one gets `true`
+ * and only that one tells anybody. A club that is live, or not approved,
+ * is never touched.
+ */
+export async function markSetupRemoved(orgId: string, now: Date = new Date(), client: OrgStampClient = db): Promise<boolean> {
+  const { count } = await client.organisation.updateMany({
+    where: { id: orgId, ...SETTING_UP_CLUB_WHERE, setupRemovedAt: null },
+    data: { setupRemovedAt: now },
+  });
+  return count === 1;
+}
+
+/**
+ * CLEAR the removal: MatchTime is back in THE SAME group (`groupId` is
+ * part of the compare-and-set, so an add to any other group can never
+ * clear it). Who added it back is the caller's check.
+ */
+export async function clearSetupRemoved(orgId: string, groupId: string, client: OrgStampClient = db): Promise<boolean> {
+  const { count } = await client.organisation.updateMany({
+    where: { id: orgId, whatsappGroupId: groupId, ...SETTING_UP_CLUB_WHERE, setupRemovedAt: { not: null } },
+    data: { setupRemovedAt: null },
+  });
+  return count === 1;
+}
+
+// ════ END removed from the group while setting up ════
 
 // ── Going live (slice S4) ───────────────────────────────────────────────
 
@@ -300,6 +392,17 @@ export type GoLiveResult =
       hello: string;
       purgedJobs: number;
       quietedMatches: number;
+      /** The club's free period started with this go-live (billing on, plan
+       *  not Free, none had before). */
+      freePeriodStarted: boolean;
+      /**
+       * What the organiser is told about it, in the club's language: the
+       * free period sentence and the club fee tip paragraph
+       * (`goLiveFreePeriodNote`). The WhatsApp reply appends it to "Done";
+       * the Go live button's result carries it for the page to show. Null
+       * when no free period started.
+       */
+      freePeriodNote: string | null;
     })
   /** Somebody already took it live (the loser of a race lands here too). */
   | (GoLiveClubInfo & { outcome: "already-live"; liveAt: Date | null; liveBy: string | null })
@@ -321,6 +424,15 @@ export interface GoLiveOptions {
   organiserUserId?: string | null;
   /** BILLING_ENABLED as the caller reads it. Default: the environment. */
   billingEnabled?: boolean;
+  /**
+   * Go live even while the setup reading is unfinished (slice S5, owner
+   * decision 7). ONLY the MatchTime owner's "Go live now" on /admin/clubs
+   * sets it (`ownerGoLiveNowAction`): the organiser's button and the GO DM
+   * keep the "still reading" block (owner decision 4). The reading is
+   * closed in the same transaction as always, so it can never apply
+   * afterwards. Every other refusal still stands.
+   */
+  skipReadingCheck?: boolean;
 }
 
 /** Why a club that is not a plain "setting up, in its group" cannot go live. */
@@ -330,18 +442,11 @@ function goLiveRefusal(org: GoLiveOrgRow, info: GoLiveClubInfo, billingOn: boole
       ? { ...info, outcome: "already-live", liveAt: org.liveAt, liveBy: org.liveBy }
       : { outcome: "not-setting-up", orgId: org.id };
   }
-  // TODO(setup-removal slice): NOTHING WRITES `setupRemovedAt` YET, so
-  // this half of the guard never fires today (pinned by the "DEPENDENCY"
-  // test in e2e/api/setup-go-live.spec.ts). That slice must:
-  //   - STAMP it when MatchTime is removed from the group of a club that
-  //     is setting up: POST /api/whatsapp/bot-removed
-  //     (src/app/api/whatsapp/bot-removed/route.ts), a new setting-up
-  //     branch beside `handleBillingRemoval` and `handleBotRemoved`;
-  //   - CLEAR it when MatchTime is added back to that same group: the
-  //     "live-org" branch of the group add (src/lib/group-add.ts).
-  // Until then the only removal this function can see is the billing one
-  // just below (a club in its free period that is removed is paused with
-  // reason "removed").
+  // Removed from its group while setting up (`markSetupRemoved`, stamped
+  // by POST /api/whatsapp/bot-removed; cleared by `clearSetupRemoved` when
+  // a member of the club adds MatchTime back to the same group): no hello
+  // for a group MatchTime is not in, and no free period for it. Every
+  // door ends here: GO by DM, the Go live button, the owner's Go live now.
   if (org.setupRemovedAt || !org.whatsappGroupId) return { ...info, outcome: "removed-from-group" };
   // Paused for the club fee (PR #234 review, fix 2). due-posts refuses a
   // paused club, and the resume marks every due unsent job as sent, so a
@@ -499,11 +604,14 @@ async function settlePaymentsAnnouncement(
  * stage no longer matches, and returns "already-live" with the winner's
  * `liveAt` and `liveBy`. It queues nothing.
  *
- * Refusals change nothing: "still-reading" (owner decision 4),
+ * Refusals change nothing: "still-reading" (owner decision 4; never
+ * returned with `skipReadingCheck`, the MatchTime owner's door),
  * "removed-from-group", "billing-paused", "not-setting-up".
  *
  * AFTER the transaction has committed, and only when this call took the
- * club live: the organiser's setup DM is cancelled if it is still waiting
+ * club live: when its free period started with it, `freePeriodNote` is
+ * built (the free period sentence and the club fee tip) for the reply and
+ * the page; and the organiser's setup DM is cancelled if it is still waiting
  * (`cancelSetupDm`: a DM queued at night is held for 09:00 London, and
  * "reply GO" would be false by then). Here, in the one function every
  * door goes through, so no door can forget it. A failure is logged and
@@ -526,6 +634,21 @@ export async function goLiveClub(
     } catch (err) {
       console.error(`[club-setup] ${orgId}: live, but its waiting setup DM was NOT cancelled: ${(err as Error)?.name ?? "error"}`);
     }
+    if (result.freePeriodStarted) {
+      // Committed: only now is the billing move a fact worth a log line.
+      logBillingMove(orgId, "went-live", { from: "exempt", to: "trial" });
+      // What the organiser is told about the free period that has just
+      // started: the sentence and the club fee tip, from the same numbers
+      // the approval's "you're live" DM uses. A failure to read the
+      // numbers costs the tip paragraph, never the go-live.
+      let tip: Awaited<ReturnType<typeof loadClubFeeTip>> = null;
+      try {
+        tip = await loadClubFeeTip(orgId);
+      } catch (err) {
+        console.error(`[club-setup] ${orgId}: live and in its free period, but the club fee tip could not be read: ${(err as Error)?.name ?? "error"}`);
+      }
+      return { ...result, freePeriodNote: goLiveFreePeriodNote(result.language, tip) };
+    }
   }
   return result;
 }
@@ -543,6 +666,7 @@ async function goLiveClubTx(orgId: string, by: string, now: Date, opts: GoLiveOp
 
       const learning = await tx.clubSetupLearning.findUnique({ where: { orgId }, select: { status: true } });
       if (
+        !opts.skipReadingCheck &&
         readingBlocksGoLive({
           learningEnabled,
           learningStatus: learning?.status ?? null,
@@ -567,11 +691,16 @@ async function goLiveClubTx(orgId: string, by: string, now: Date, opts: GoLiveOp
         return (after && goLiveRefusal(after.org, after.info, billingOn)) ?? { outcome: "not-setting-up", orgId };
       }
 
-      // FREE PERIOD HOOK (the later money slice, S4b). The club's free
-      // period is to start HERE, at go-live, not at approval: that slice
-      // moves the `setBillingState(orgId, { type: "approved" })` call
-      // (club-approval.ts) to this point, on `tx`, with `now` as the
-      // start. Nothing is done for billing in this slice.
+      // FREE PERIOD HOOK (the money slice, S4b; owner decision 2). The
+      // club's two free months start HERE, at go-live, not at approval: it
+      // was silent in its group until this write. On `tx`, so the go-live
+      // and the start commit together or not at all (a failure here rolls
+      // the go-live back and the organiser's GO can simply be said again),
+      // and the window runs from `now`, which is the `liveAt` just
+      // stamped. Once per club: a club whose free period an approval had
+      // already started is left exactly as it is. With billing off nothing
+      // starts, as at an approval.
+      const freePeriod = billingOn ? await startFreePeriodAtGoLiveTx(tx, orgId, now) : { started: false };
 
       // THE PURGE RUNS UNDER THE CLUB'S ROW LOCK (PR #234 review, fix 8).
       // The compare-and-set above is the transaction's first WRITE, so
@@ -617,6 +746,9 @@ async function goLiveClubTx(orgId: string, by: string, now: Date, opts: GoLiveOp
       return {
         ...read.info,
         outcome: "went-live",
+        freePeriodStarted: freePeriod.started,
+        // Filled in by `goLiveClub`, after the commit.
+        freePeriodNote: null,
         liveAt: now,
         liveBy: by,
         hello,
@@ -640,3 +772,84 @@ export async function helloPreviewForClub(
 ): Promise<string> {
   return buildGroupHello(await loadHelloInput(orgId, { organiserUserId: opts.organiserUserId ?? null }));
 }
+
+// ════ BEGIN the go-live pages (slice S5, 2026-10-12) ════
+// Read-only loaders for /admin/settings, the club's admin home and
+// /admin/clubs. The pure status is `setupStatusOf` (club-setup-rules.ts).
+
+/**
+ * One club's setup for its own owner and admins: what the Go live banner
+ * needs and nothing else. NO PERSON IS IN IT (review of PR #236, fix 5):
+ * no user id, name, phone or email. Who took a club live is worded by
+ * `goLiveClubAction`, for the one person who pressed the button.
+ */
+export interface ClubSetupView {
+  settingUp: boolean;
+  removedFromGroup: boolean;
+  /** The WhatsApp group's own name when MatchTime knows it. Null unless setting up. */
+  group: string | null;
+}
+
+/**
+ * One query for a club that is not setting up (every club today); the
+ * group's name is looked up only for one that is (fix 7).
+ */
+export async function loadClubSetupView(
+  orgId: string,
+  opts: { billingEnabled?: boolean } = {},
+): Promise<ClubSetupView | null> {
+  const row = (await db.organisation.findUnique({ where: { id: orgId }, select: SETUP_STATUS_SELECT })) as SetupStatusRow | null;
+  if (!row) return null;
+  const status = setupStatusOf(row, { billingOn: opts.billingEnabled ?? isBillingEnabled() });
+  if (!status.settingUp) return { settingUp: false, removedFromGroup: false, group: null };
+  const link = await db.clubConnect.findFirst({
+    where: { orgId, linkedAt: { not: null } },
+    orderBy: { linkedAt: "desc" },
+    select: { groupSubject: true },
+  });
+  return { settingUp: true, removedFromGroup: status.removedFromGroup, group: link?.groupSubject?.trim() || null };
+}
+
+/** A club's status for the owner's clubs page, with its setup DM's real state. */
+export type OwnerSetupStatus = SetupStatus & { setupMessage: SetupMessageState };
+
+/**
+ * The status of several clubs for the owner's clubs page: one query for
+ * the clubs, and one for the setup DMs of those that are setting up (the
+ * job's own status says whether it was sent; the club's stamp is only when
+ * it is due).
+ */
+export async function loadSetupStatuses(
+  orgIds: string[],
+  opts: { billingEnabled?: boolean; now?: Date } = {},
+): Promise<Map<string, OwnerSetupStatus>> {
+  const out = new Map<string, OwnerSetupStatus>();
+  if (orgIds.length === 0) return out;
+  const billingOn = opts.billingEnabled ?? isBillingEnabled();
+  const now = opts.now ?? new Date();
+  const rows = (await db.organisation.findMany({
+    where: { id: { in: orgIds } },
+    select: SETUP_STATUS_SELECT,
+  })) as Array<SetupStatusRow & { id: string }>;
+  const statuses = rows.map((row) => ({ id: row.id, status: setupStatusOf(row, { billingOn }) }));
+  const held = statuses.filter((r) => r.status.settingUp).map((r) => r.id);
+  const jobs = held.length
+    ? await db.platformJob.findMany({
+        where: { purpose: SETUP_ASK_DM_PURPOSE, refId: { in: held.map(setupAskRefId) } },
+        orderBy: { createdAt: "asc" },
+        select: { refId: true, status: true, sentAt: true },
+      })
+    : [];
+  // The latest job per club wins (rows are oldest first).
+  const jobOf = new Map(jobs.map((j) => [j.refId, j]));
+  for (const { id, status } of statuses) {
+    out.set(id, {
+      ...status,
+      setupMessage: status.settingUp
+        ? setupMessageState(status.setupMessageSentAt, jobOf.get(setupAskRefId(id)) ?? null, now)
+        : { kind: "none", at: null },
+    });
+  }
+  return out;
+}
+// ════ END the go-live pages ════

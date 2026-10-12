@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 import { clubFeeTip, type ClubFeeTip, type TipActivity } from "@/lib/club-billing-rules";
 import {
   approvedTipText,
+  goLiveFreePeriodNote,
   bannerText,
   billingCardView,
   billingPageView,
@@ -520,6 +521,40 @@ describe("billingPageView: /billing/[orgId] per role (8.1)", () => {
   it("the owner of an exempt club: one exempt line, nothing about billing", () => {
     const v = billingPageView("en", club({ status: "exempt", billing: null, club: "Sutton FC" }), "exempt-owner", "kemal", null);
     expect(v).toMatchObject({ exempt: "Sutton FC has no club fee. MatchTime is free for this club.", lines: [], buttons: [], tip: null, who: null });
+  });
+
+  it("goLiveFreePeriodNote: what follows 'Done' at go-live is the SAME free sentence and tip paragraph as the 'you're live' DM of an approval", () => {
+    for (const lang of ["en", "tr"] as const) {
+      const s = t(lang);
+      const base = { club: "X", group: "G", scheduleUrl: "a", ratingsUrl: "b", settingsUrl: "c" };
+      const withTip = s.sj_dm_approved({ ...base, tip: approvedTipText(lang, tip) });
+      const noTip = s.sj_dm_approved({ ...base, tip: null });
+      expect(withTip.endsWith(goLiveFreePeriodNote(lang, tip))).toBe(true);
+      expect(noTip.endsWith(goLiveFreePeriodNote(lang, null))).toBe(true);
+      expect(goLiveFreePeriodNote(lang, tip)).not.toMatch(/[\u2013\u2014]/);
+    }
+    expect(goLiveFreePeriodNote("en", null)).toBe("Your first two months are free.");
+    expect(goLiveFreePeriodNote("tr", null)).toBe("İlk iki ayınız ücretsiz.");
+    expect(goLiveFreePeriodNote("en", tip)).toBe(`Your first two months are free.\n\n${approvedTipText("en", tip)}`);
+  });
+
+  it("the owner of a club that is still SETTING UP: the free period has not started, and when it will (not 'no club fee')", () => {
+    const held = club({ status: "exempt", billing: null, club: "Harbour FC", settingUp: true });
+    const v = billingPageView("en", held, "exempt-owner", "hana", null);
+    expect(v).toMatchObject({ lines: [], buttons: [], tip: null, who: null });
+    expect(v.exempt).toBe(
+      "Harbour FC is still setting up, so its free period has not started yet. Your first two months are free, counted from the day MatchTime goes live in your group. Nothing is charged before then.",
+    );
+    expect(billingPageView("tr", held, "exempt-owner", "hana", null).exempt).toBe(
+      "Harbour FC kulübünün kurulumu sürüyor, bu yüzden ücretsiz dönemi henüz başlamadı. İlk iki ayınız ücretsiz ve süre, MatchTime grubunuzda yayına geçtiği gün başlar. O güne kadar hiçbir ücret alınmaz.",
+    );
+    // No date is promised: there is none until the club goes live.
+    expect(v.exempt).not.toMatch(/\d{4}|until/);
+  });
+
+  it("a setting-up club on the Free plan really has no club fee: the plain exempt line", () => {
+    const free = club({ status: "exempt", plan: "free", billing: null, club: "Harbour FC", settingUp: true });
+    expect(billingPageView("en", free, "exempt-owner", "hana", null).exempt).toBe("Harbour FC has no club fee. MatchTime is free for this club.");
   });
 
   it("Turkish", () => {
