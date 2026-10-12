@@ -70,14 +70,32 @@ export default function SettingsPage() {
   // the page loaded, and kept after it goes live so its success note
   // stays. `previewKey` is bumped after every save that can change the
   // hello, so the banner fetches its preview again.
-  const [goLiveShown, setGoLiveShown] = useState(false);
+  // `goLiveSetup` is the setup as the page loaded it: the banner keeps it
+  // if a later refresh comes back without one.
+  const [goLiveSetup, setGoLiveSetup] = useState<GoLiveSetup | null>(null);
   const [previewKey, setPreviewKey] = useState(0);
   const settingSaved = () => setPreviewKey((k) => k + 1);
-  async function reloadSetup(): Promise<GoLiveSetup | null> {
+  /** Read the settings again. False when that failed (it may also reject). */
+  async function reloadSettings(): Promise<boolean> {
     const res = await fetch("/api/org/settings");
-    const data: OrgData | null = res.ok ? await res.json() : null;
-    if (data) setOrg(data);
-    return data?.setup ?? null;
+    if (!res.ok) return false;
+    const data: OrgData | null = await res.json();
+    if (!data) return false;
+    setOrg(data);
+    return true;
+  }
+  /** The club went live: make the page agree with the banner, with or
+   *  without the refresh that follows. */
+  function markLive() {
+    setOrg((prev) =>
+      prev
+        ? {
+            ...prev,
+            whatsappBotEnabled: true,
+            setup: prev.setup ? { ...prev.setup, settingUp: false, removedFromGroup: false } : prev.setup,
+          }
+        : prev,
+    );
   }
 
   useEffect(() => {
@@ -85,7 +103,7 @@ export default function SettingsPage() {
       .then((r) => (r.ok ? r.json() : null))
       .then(async (data) => {
         setOrg(data);
-        setGoLiveShown(!!data?.setup?.settingUp);
+        setGoLiveSetup(data?.setup?.settingUp ? data.setup : null);
         setClubName(data?.name ?? "");
         setTeamRed(data?.teamLabels?.[0] ?? "");
         setTeamYellow(data?.teamLabels?.[1] ?? "");
@@ -318,14 +336,15 @@ export default function SettingsPage() {
       {/* Go live (slice S5): only for a club that is approved and still
           setting up, and only to its owner and admins (the API sends
           `setup` to nobody else). Above everything else on the page. */}
-      {goLiveShown && org.setup && (
+      {goLiveSetup && (
         <GoLiveBanner
           orgId={org.id}
           club={org.name}
           language={org.language}
-          setup={org.setup}
+          setup={org.setup ?? goLiveSetup}
           refreshKey={previewKey}
-          onChanged={reloadSetup}
+          onChanged={reloadSettings}
+          onLive={markLive}
         />
       )}
 

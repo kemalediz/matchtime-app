@@ -46,10 +46,13 @@ import {
   settingUpOnly,
   readingBlocksGoLive,
   SETUP_STATUS_SELECT,
+  setupMessageState,
   setupStatusOf,
+  type SetupMessageState,
   type SetupStatus,
   type SetupStatusRow,
 } from "./club-setup-rules";
+import { SETUP_ASK_DM_PURPOSE, setupAskRefId } from "./club-setup-dm-rules";
 import { buildGroupHello } from "./group-hello";
 import { loadHelloInput, type HelloReadClient } from "./group-hello-load";
 import { normaliseLang } from "./i18n/lang";
@@ -87,8 +90,10 @@ export {
   // The go-live pages (slice S5).
   SETUP_STATUS_SELECT,
   parseLiveBy,
+  setupMessageState,
   setupStatusOf,
   type LiveBy,
+  type SetupMessageState,
   type SetupStatus,
   type SetupStatusRow,
 } from "./club-setup-rules";
@@ -615,18 +620,23 @@ export async function helloPreviewForClub(
 // Read-only loaders for /admin/settings, the club's admin home and
 // /admin/clubs. The pure status is `setupStatusOf` (club-setup-rules.ts).
 
-/** One club's status for its own organisers, with names ready to show. */
-export interface ClubSetupView extends SetupStatus {
-  /** The WhatsApp group's own name when MatchTime knows it. */
+/**
+ * One club's setup for its own owner and admins: what the Go live banner
+ * needs and nothing else. NO PERSON IS IN IT (review of PR #236, fix 5):
+ * no user id, name, phone or email. Who took a club live is worded by
+ * `goLiveClubAction`, for the one person who pressed the button.
+ */
+export interface ClubSetupView {
+  settingUp: boolean;
+  removedFromGroup: boolean;
+  /** The WhatsApp group's own name when MatchTime knows it. Null unless setting up. */
   group: string | null;
-  /**
-   * Who took the club live, once it is: one of its own owners or admins by
-   * NAME (never a phone number or an email), or MatchTime. Null while it
-   * is setting up, and for a club that never passed through the hold.
-   */
-  wentLiveBy: { matchTime: boolean; name: string | null } | null;
 }
 
+/**
+ * One query for a club that is not setting up (every club today); the
+ * group's name is looked up only for one that is (fix 7).
+ */
 export async function loadClubSetupView(
   orgId: string,
   opts: { billingEnabled?: boolean } = {},
@@ -634,33 +644,55 @@ export async function loadClubSetupView(
   const row = (await db.organisation.findUnique({ where: { id: orgId }, select: SETUP_STATUS_SELECT })) as SetupStatusRow | null;
   if (!row) return null;
   const status = setupStatusOf(row, { billingOn: opts.billingEnabled ?? isBillingEnabled() });
+  if (!status.settingUp) return { settingUp: false, removedFromGroup: false, group: null };
   const link = await db.clubConnect.findFirst({
     where: { orgId, linkedAt: { not: null } },
     orderBy: { linkedAt: "desc" },
     select: { groupSubject: true },
   });
-  let wentLiveBy: ClubSetupView["wentLiveBy"] = null;
-  if (status.liveBy?.kind === "matchtime") wentLiveBy = { matchTime: true, name: null };
-  else if (status.liveBy?.kind === "user") {
-    const user = await db.user.findUnique({ where: { id: status.liveBy.userId }, select: { name: true } });
-    wentLiveBy = { matchTime: false, name: user?.name?.trim() || null };
-  }
-  return { ...status, group: link?.groupSubject?.trim() || null, wentLiveBy };
+  return { settingUp: true, removedFromGroup: status.removedFromGroup, group: link?.groupSubject?.trim() || null };
 }
 
-/** The status of several clubs in one query, for the owner's clubs page. */
+/** A club's status for the owner's clubs page, with its setup DM's real state. */
+export type OwnerSetupStatus = SetupStatus & { setupMessage: SetupMessageState };
+
+/**
+ * The status of several clubs for the owner's clubs page: one query for
+ * the clubs, and one for the setup DMs of those that are setting up (the
+ * job's own status says whether it was sent; the club's stamp is only when
+ * it is due).
+ */
 export async function loadSetupStatuses(
   orgIds: string[],
-  opts: { billingEnabled?: boolean } = {},
-): Promise<Map<string, SetupStatus>> {
-  const out = new Map<string, SetupStatus>();
+  opts: { billingEnabled?: boolean; now?: Date } = {},
+): Promise<Map<string, OwnerSetupStatus>> {
+  const out = new Map<string, OwnerSetupStatus>();
   if (orgIds.length === 0) return out;
   const billingOn = opts.billingEnabled ?? isBillingEnabled();
+  const now = opts.now ?? new Date();
   const rows = (await db.organisation.findMany({
     where: { id: { in: orgIds } },
     select: SETUP_STATUS_SELECT,
   })) as Array<SetupStatusRow & { id: string }>;
-  for (const row of rows) out.set(row.id, setupStatusOf(row, { billingOn }));
+  const statuses = rows.map((row) => ({ id: row.id, status: setupStatusOf(row, { billingOn }) }));
+  const held = statuses.filter((r) => r.status.settingUp).map((r) => r.id);
+  const jobs = held.length
+    ? await db.platformJob.findMany({
+        where: { purpose: SETUP_ASK_DM_PURPOSE, refId: { in: held.map(setupAskRefId) } },
+        orderBy: { createdAt: "asc" },
+        select: { refId: true, status: true, sentAt: true },
+      })
+    : [];
+  // The latest job per club wins (rows are oldest first).
+  const jobOf = new Map(jobs.map((j) => [j.refId, j]));
+  for (const { id, status } of statuses) {
+    out.set(id, {
+      ...status,
+      setupMessage: status.settingUp
+        ? setupMessageState(status.setupMessageSentAt, jobOf.get(setupAskRefId(id)) ?? null, now)
+        : { kind: "none", at: null },
+    });
+  }
   return out;
 }
 // ════ END the go-live pages ════

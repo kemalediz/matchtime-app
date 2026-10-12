@@ -24,6 +24,7 @@
 import { db } from "@/lib/db";
 import { t } from "@/lib/i18n/t";
 import { selfJoinEnabledForRequest } from "@/lib/self-join-flag";
+import { setupHoldEnabledForRequest } from "@/lib/setup-hold-flag";
 import { loadLatestConnect, matchtimeWaNumber } from "@/lib/club-connect";
 import { connectPrefill, deriveConnectCard, formatPhoneForDisplay, waMeLink } from "@/lib/club-connect-rules";
 import { SETUP_STAGE_SELECT, isClubSettingUp } from "@/lib/club-setup-rules";
@@ -56,6 +57,11 @@ export async function ClubConnectCard({ orgId, userId }: { orgId: string; userId
   if (card.kind === "hidden") return null;
 
   const s = t(org.language);
+  // With the approval hold on (SETUP_HOLD_ENABLED), approval no longer
+  // makes the club live: MatchTime stays quiet until the organiser tells
+  // it to start, and messages them as soon as the club is approved. The
+  // pending card says that; with the hold off it says what it always did.
+  const pendingText = card.kind === "pending" && (await setupHoldEnabledForRequest()) ? s.sj_card_pending_held : s.sj_card_pending;
   const number = matchtimeWaNumber();
   const owner = await db.user.findUnique({ where: { id: userId }, select: { phoneNumber: true } });
 
@@ -153,7 +159,7 @@ export async function ClubConnectCard({ orgId, userId }: { orgId: string; userId
 
       {card.kind === "pending" && (
         <p className="text-sm text-slate-700">
-          {card.addedByOther && card.group ? s.sj_card_pending_other({ group: card.group }) : s.sj_card_pending}
+          {card.addedByOther && card.group ? s.sj_card_pending_other({ group: card.group }) : pendingText}
         </p>
       )}
 

@@ -95,18 +95,27 @@ export async function GET() {
   // Approved but setting up (go-live slice S5): what the Go live banner
   // needs, for OWNER and ADMIN only. `settingUp` is false for every club
   // that is live, so their page shows nothing new.
-  const setupView = await loadClubSetupView(org.id);
+  // NEVER FATAL (review of PR #236, fix 7): this block is optional, so a
+  // failure here must not blank the settings page of a live club. The page
+  // is sent without `setup`; the log names the club and nothing else.
+  let setupView: Awaited<ReturnType<typeof loadClubSetupView>> = null;
+  try {
+    setupView = await loadClubSetupView(org.id);
+  } catch (err) {
+    console.error(`[org-settings] setup view failed for ${org.id}: ${err instanceof Error ? err.name : "error"}`);
+  }
 
   return NextResponse.json({
     ...publicView,
-    setup: setupView
+    ...(setupView
       ? {
-          settingUp: setupView.settingUp,
-          removedFromGroup: setupView.removedFromGroup,
-          group: setupView.group,
-          wentLiveBy: setupView.wentLiveBy,
+          setup: {
+            settingUp: setupView.settingUp,
+            removedFromGroup: setupView.removedFromGroup,
+            group: setupView.group,
+          },
         }
-      : null,
+      : {}),
     // The name can be changed only while the club is a draft.
     nameEditable: org.approvalStatus === "draft",
     inviteCode: org.inviteCode,

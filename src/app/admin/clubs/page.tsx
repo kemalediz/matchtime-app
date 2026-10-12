@@ -23,7 +23,7 @@ import { selfJoinEnabledForRequest } from "@/lib/self-join-flag";
 import { ownerLearningSummary } from "@/lib/setup-learning/owner-summary";
 import { notFound, redirect } from "next/navigation";
 import { DecideButtons, GoLiveNowButton, LeaveButton, TurnOffButton } from "./club-buttons";
-import { loadSetupStatuses } from "@/lib/club-setup";
+import { loadSetupStatuses, type SetupMessageState } from "@/lib/club-setup";
 import { PlanControl, StartFreeMonthButton } from "./billing-controls";
 import { loadClubBillingSnapshot } from "@/lib/club-billing";
 import { billingTotals, isBillingEnabled, planPricePence } from "@/lib/club-billing-rules";
@@ -53,6 +53,30 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 function when(d: Date | null | undefined): string {
   return d ? formatLondon(d, "EEE d MMM, HH:mm") : "";
+}
+
+/**
+ * What is known about a setting-up club's setup DM (review of PR #236,
+ * fix 6). "Sent" only when the queued job says so: the club's own stamp is
+ * when the DM is DUE, which can be 09:00 tomorrow.
+ */
+function setupMessageLine(m: SetupMessageState): string {
+  switch (m.kind) {
+    case "none":
+      return "Setup message not queued yet.";
+    case "queued":
+      return `Setup message queued for ${when(m.at)}.`;
+    case "waiting":
+      return `Setup message queued, due since ${when(m.at)}.`;
+    case "sent":
+      return m.at ? `Setup message sent ${when(m.at)}.` : "Setup message sent.";
+    case "unconfirmed":
+      return "Setup message handed to WhatsApp, delivery not confirmed.";
+    case "failed":
+      return "Setup message failed or was cancelled.";
+    case "no-job":
+      return `Setup message was due ${when(m.at)}, but none is queued.`;
+  }
 }
 
 function usd(n: number): string {
@@ -460,9 +484,7 @@ export default async function ClubsPage() {
                     Setting up since {when(st.since)}.
                   </p>
                   <p data-testid="setting-up-message" className="text-sm text-slate-600">
-                    {st.setupMessageSentAt
-                      ? `Setup message sent ${when(st.setupMessageSentAt)}.`
-                      : "Setup message not sent yet."}
+                    {setupMessageLine(st.setupMessage)}
                   </p>
                   <p
                     data-testid="setting-up-group"
@@ -470,7 +492,7 @@ export default async function ClubsPage() {
                   >
                     {st.removedFromGroup
                       ? "MatchTime has been removed from the group since. It cannot go live until it is added back."
-                      : "MatchTime is still in the group."}
+                      : "No removal recorded."}
                   </p>
                   <p className="text-sm text-slate-600">
                     AI today: {usd(c.ai.spentUsd)}. Learned setup: {l.line}

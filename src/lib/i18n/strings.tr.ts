@@ -1801,7 +1801,11 @@ export const tr: Strings = {
       : p.by
         ? `${p.by}, ${p.club} kulübünü zaten yayına aldı.`
         : `${p.club} zaten yayında.`,
+  sj_live_closed_title: `Yayına alma kullanılamıyor`,
   sj_live_not_setting_up: `Bu kulüp artık yayına alınmayı beklemiyor. Son durumu görmek için sayfayı yenileyin.`,
+  sj_live_is_live: (p) => `${p.club} yayında.`,
+  sj_live_stale: `Sayfanın geri kalanı yenilenemedi, bazı bölümleri güncel olmayabilir.`,
+  sj_live_reload: `Sayfayı yenileyin`,
   sj_live_failed: `Yayına alınamadı. Lütfen tekrar deneyin.`,
   sj_live_wa_badge: `Yayına almanızı bekliyor`,
   sj_live_wa_body: `MatchTime onaylandı ve grubunuzda. Bu sayfanın en üstündeki Yayına al düğmesine basana kadar sessiz kalır.`,

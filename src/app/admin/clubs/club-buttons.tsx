@@ -181,8 +181,9 @@ export function GoLiveNowButton({ orgId, club, disabled }: { orgId: string; club
       else toast.error(r.message);
       setOpen(false);
       router.refresh();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Something went wrong");
+    } catch {
+      // A fixed sentence: a thrown error's own text is not for the page.
+      toast.error(`Couldn't take ${club} live. Reload the page and try again.`);
     } finally {
       sent.current = false;
       setPending(false);

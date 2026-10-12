@@ -8,14 +8,24 @@ const dbMock = vi.hoisted(() => ({
   organisation: { findUnique: vi.fn(), findMany: vi.fn() },
   clubConnect: { findFirst: vi.fn() },
   user: { findUnique: vi.fn() },
+  platformJob: { findMany: vi.fn() },
 }));
 vi.mock("@/lib/db", () => ({ db: dbMock }));
 
-import { loadClubSetupView, loadSetupStatuses, parseLiveBy, setupStatusOf, SETUP_STATUS_SELECT } from "../club-setup";
+import {
+  loadClubSetupView,
+  loadSetupStatuses,
+  parseLiveBy,
+  setupMessageState,
+  setupStatusOf,
+  SETUP_STATUS_SELECT,
+} from "../club-setup";
 
 const APPROVED = new Date("2026-10-12T09:00:00Z");
 const ASKED = new Date("2026-10-12T09:05:00Z");
 const LIVE = new Date("2026-10-12T11:00:00Z");
+const NOW = new Date("2026-10-12T12:00:00Z");
+const TOMORROW = new Date("2026-10-13T08:00:00Z");
 
 const held = {
   id: "o1",
@@ -31,7 +41,10 @@ const held = {
   clubBilling: null,
 };
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  dbMock.platformJob.findMany.mockResolvedValue([]);
+});
 
 describe("setupStatusOf", () => {
   it("a club that is setting up: since the approval, setup message not sent, still in its group", () => {
@@ -45,7 +58,7 @@ describe("setupStatusOf", () => {
     });
   });
 
-  it("the setup message has been sent", () => {
+  it("the setup message's stamp is carried", () => {
     expect(setupStatusOf({ ...held, setupAskedAt: ASKED }, { billingOn: true }).setupMessageSentAt).toEqual(ASKED);
   });
 
@@ -96,6 +109,30 @@ describe("parseLiveBy", () => {
   });
 });
 
+describe("setupMessageState: what the owner's page may say about the setup message (review fix 6)", () => {
+  it("never claimed: nothing is queued", () => {
+    expect(setupMessageState(null, null, NOW)).toEqual({ kind: "none", at: null });
+  });
+
+  it("the stamp is the DM's DUE time: queued for tomorrow is 'queued', never 'sent'", () => {
+    expect(setupMessageState(TOMORROW, { status: "queued", sentAt: null }, NOW)).toEqual({ kind: "queued", at: TOMORROW });
+    // Due in the past and still in the queue: it is waiting, not sent.
+    expect(setupMessageState(ASKED, { status: "queued", sentAt: null }, NOW)).toEqual({ kind: "waiting", at: ASKED });
+    expect(setupMessageState(ASKED, { status: "claimed", sentAt: null }, NOW)).toEqual({ kind: "waiting", at: ASKED });
+  });
+
+  it("'sent' only when the job says so, with the time it really went", () => {
+    expect(setupMessageState(ASKED, { status: "sent", sentAt: LIVE }, NOW)).toEqual({ kind: "sent", at: LIVE });
+    expect(setupMessageState(ASKED, { status: "sent", sentAt: null }, NOW)).toEqual({ kind: "sent", at: null });
+  });
+
+  it("failed or cancelled, handed over but unconfirmed, and claimed with no job at all", () => {
+    expect(setupMessageState(ASKED, { status: "failed", sentAt: null }, NOW)).toEqual({ kind: "failed", at: null });
+    expect(setupMessageState(ASKED, { status: "unconfirmed", sentAt: null }, NOW)).toEqual({ kind: "unconfirmed", at: null });
+    expect(setupMessageState(ASKED, null, NOW)).toEqual({ kind: "no-job", at: ASKED });
+  });
+});
+
 describe("loadClubSetupView", () => {
   it("no such club: null", async () => {
     dbMock.organisation.findUnique.mockResolvedValue(null);
@@ -107,34 +144,28 @@ describe("loadClubSetupView", () => {
     dbMock.clubConnect.findFirst.mockResolvedValue({ groupSubject: " Harbour Tuesday 6s " });
     expect(await loadClubSetupView("o1", { billingEnabled: true })).toEqual({
       settingUp: true,
-      since: APPROVED,
-      setupMessageSentAt: null,
       removedFromGroup: false,
-      liveAt: null,
-      liveBy: null,
       group: "Harbour Tuesday 6s",
-      wentLiveBy: null,
     });
     expect(dbMock.organisation.findUnique).toHaveBeenCalledWith({ where: { id: "o1" }, select: SETUP_STATUS_SELECT });
-    expect(dbMock.user.findUnique).not.toHaveBeenCalled();
   });
 
-  it("went live by one of its own admins: their NAME, and nothing else about them", async () => {
+  it("review fix 7: a club that is NOT setting up costs one query, and nobody is looked up", async () => {
     dbMock.organisation.findUnique.mockResolvedValue({ ...held, setupStage: "live", liveAt: LIVE, liveBy: "u-hana" });
-    dbMock.clubConnect.findFirst.mockResolvedValue(null);
-    dbMock.user.findUnique.mockResolvedValue({ name: "Hana Harbour" });
-    const view = await loadClubSetupView("o1", { billingEnabled: true });
-    expect(view).toMatchObject({ settingUp: false, group: null, wentLiveBy: { matchTime: false, name: "Hana Harbour" } });
-    // A name only: never a phone number or an email.
-    expect(dbMock.user.findUnique).toHaveBeenCalledWith({ where: { id: "u-hana" }, select: { name: true } });
+    expect(await loadClubSetupView("o1", { billingEnabled: true })).toEqual({
+      settingUp: false,
+      removedFromGroup: false,
+      group: null,
+    });
+    expect(dbMock.clubConnect.findFirst).not.toHaveBeenCalled();
+    expect(dbMock.user.findUnique).not.toHaveBeenCalled();
   });
 
-  it("went live by the MatchTime owner: said as MatchTime, the owner is not looked up or named", async () => {
+  it("review fix 5: the view carries no user id, whoever took the club live", async () => {
     dbMock.organisation.findUnique.mockResolvedValue({ ...held, setupStage: "live", liveAt: LIVE, liveBy: "owner:u-kemal" });
-    dbMock.clubConnect.findFirst.mockResolvedValue(null);
     const view = await loadClubSetupView("o1", { billingEnabled: true });
-    expect(view?.wentLiveBy).toEqual({ matchTime: true, name: null });
-    expect(dbMock.user.findUnique).not.toHaveBeenCalled();
+    expect(JSON.stringify(view)).not.toContain("u-kemal");
+    expect(Object.keys(view!).sort()).toEqual(["group", "removedFromGroup", "settingUp"]);
   });
 });
 
@@ -142,14 +173,32 @@ describe("loadSetupStatuses", () => {
   it("no ids: no query", async () => {
     expect((await loadSetupStatuses([])).size).toBe(0);
     expect(dbMock.organisation.findMany).not.toHaveBeenCalled();
+    expect(dbMock.platformJob.findMany).not.toHaveBeenCalled();
   });
 
-  it("one query for every club asked about, keyed by club", async () => {
-    dbMock.organisation.findMany.mockResolvedValue([held, { ...held, id: "o2", setupStage: "live" }]);
-    const map = await loadSetupStatuses(["o1", "o2"], { billingEnabled: true });
+  it("one query for the clubs and one for their setup messages, keyed by club", async () => {
+    dbMock.organisation.findMany.mockResolvedValue([
+      { ...held, setupAskedAt: TOMORROW },
+      { ...held, id: "o2", setupStage: "live" },
+      { ...held, id: "o3" },
+    ]);
+    dbMock.platformJob.findMany.mockResolvedValue([{ refId: "o1:setup-ask", status: "queued", sentAt: null }]);
+    const map = await loadSetupStatuses(["o1", "o2", "o3"], { billingEnabled: true, now: NOW });
     expect(dbMock.organisation.findMany).toHaveBeenCalledTimes(1);
-    expect(dbMock.organisation.findMany.mock.calls[0][0].where).toEqual({ id: { in: ["o1", "o2"] } });
-    expect(map.get("o1")?.settingUp).toBe(true);
-    expect(map.get("o2")?.settingUp).toBe(false);
+    expect(dbMock.organisation.findMany.mock.calls[0][0].where).toEqual({ id: { in: ["o1", "o2", "o3"] } });
+    expect(dbMock.platformJob.findMany).toHaveBeenCalledTimes(1);
+    expect(dbMock.platformJob.findMany.mock.calls[0][0].where).toEqual({
+      purpose: "setup-ask",
+      refId: { in: ["o1:setup-ask", "o3:setup-ask"] },
+    });
+    expect(map.get("o1")).toMatchObject({ settingUp: true, setupMessage: { kind: "queued", at: TOMORROW } });
+    expect(map.get("o2")).toMatchObject({ settingUp: false, setupMessage: { kind: "none", at: null } });
+    expect(map.get("o3")).toMatchObject({ settingUp: true, setupMessage: { kind: "none", at: null } });
+  });
+
+  it("no club setting up: the setup messages are not queried", async () => {
+    dbMock.organisation.findMany.mockResolvedValue([{ ...held, setupStage: "live" }]);
+    await loadSetupStatuses(["o1"], { billingEnabled: true, now: NOW });
+    expect(dbMock.platformJob.findMany).not.toHaveBeenCalled();
   });
 });

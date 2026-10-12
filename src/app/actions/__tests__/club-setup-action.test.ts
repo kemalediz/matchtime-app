@@ -1,7 +1,9 @@
 /**
- * `goLiveClubAction` and `helloPreviewAction` (go-live slice S4): the gate
- * and who is recorded as having taken the club live. The writer itself is
- * mocked; it is proved against Postgres in e2e/helpers/go-live-lib-tests.ts.
+ * `goLiveClubAction`, `helloPreviewAction` and `ownerGoLiveNowAction`
+ * (go-live slices S4 and S5): the gate, who is recorded as having taken
+ * the club live, and what reaches the browser. The writer itself is
+ * mocked; it is proved against Postgres in e2e/helpers/go-live-lib-tests.ts,
+ * and the gates against real sessions in e2e/web/setup-go-live-authz.spec.ts.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -16,7 +18,10 @@ const learningFlag = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/setup-learning-ui-flag", () => ({ setupLearningUiEnabledForRequest: learningFlag }));
 
 const membershipFindFirst = vi.hoisted(() => vi.fn());
-vi.mock("@/lib/db", () => ({ db: { membership: { findFirst: membershipFindFirst } } }));
+const userFindUnique = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/db", () => ({
+  db: { membership: { findFirst: membershipFindFirst }, user: { findUnique: userFindUnique } },
+}));
 
 const goLiveClub = vi.hoisted(() => vi.fn());
 const helloPreviewForClub = vi.hoisted(() => vi.fn());
@@ -25,6 +30,8 @@ vi.mock("@/lib/club-setup", () => ({
   helloPreviewForClub,
   liveByUser: (id: string) => id,
   liveByOwner: (id: string) => `owner:${id}`,
+  parseLiveBy: (v: string | null) =>
+    !v ? null : v.startsWith("owner:") ? { kind: "matchtime" } : { kind: "user", userId: v },
 }));
 
 const revalidatePath = vi.hoisted(() => vi.fn());
@@ -32,7 +39,16 @@ vi.mock("next/cache", () => ({ revalidatePath }));
 
 import { goLiveClubAction, helloPreviewAction, ownerGoLiveNowAction } from "../club-setup";
 
-const WENT_LIVE = { outcome: "went-live", orgId: "o1", club: "Harbour FC" };
+const INFO = { orgId: "o1", club: "Harbour FC", group: "Harbour Tuesday 6s", language: "en" };
+const WENT_LIVE = {
+  ...INFO,
+  outcome: "went-live",
+  liveAt: new Date(),
+  liveBy: "u-hana",
+  hello: "Hi all",
+  purgedJobs: 3,
+  quietedMatches: 1,
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -41,6 +57,7 @@ beforeEach(() => {
   isSuperadmin.mockResolvedValue(false);
   learningFlag.mockResolvedValue(false);
   membershipFindFirst.mockResolvedValue({ id: "m1" });
+  userFindUnique.mockResolvedValue({ name: "Bo Bosun" });
   goLiveClub.mockResolvedValue(WENT_LIVE);
   helloPreviewForClub.mockResolvedValue("Hi all");
 });
@@ -60,8 +77,13 @@ describe("goLiveClubAction", () => {
     expect(goLiveClub).not.toHaveBeenCalled();
   });
 
-  it("the club's own owner or admin: goes live, recorded by user id, and the outcome is returned as it is", async () => {
-    expect(await goLiveClubAction("o1")).toBe(WENT_LIVE);
+  it("the club's own owner or admin: goes live, recorded by user id; the browser gets what it shows and nothing else", async () => {
+    expect(await goLiveClubAction("o1")).toEqual({
+      outcome: "went-live",
+      club: "Harbour FC",
+      group: "Harbour Tuesday 6s",
+      hello: "Hi all",
+    });
     expect(membershipFindFirst.mock.calls[0][0].where).toEqual({
       userId: "u-hana",
       orgId: "o1",
@@ -100,9 +122,73 @@ describe("goLiveClubAction", () => {
     expect(goLiveClub).toHaveBeenCalledWith("o1", "owner:u-kemal", expect.any(Date), { learningEnabled: false });
   });
 
-  it("a refusal comes back unchanged, for the page to word", async () => {
-    goLiveClub.mockResolvedValue({ outcome: "still-reading", orgId: "o1" });
-    expect(await goLiveClubAction("o1")).toEqual({ outcome: "still-reading", orgId: "o1" });
+  it("the refusals: only the outcome and the names the page words them with", async () => {
+    const said = async (result: unknown) => {
+      goLiveClub.mockResolvedValue(result);
+      return goLiveClubAction("o1");
+    };
+    expect(await said({ ...INFO, outcome: "still-reading" })).toEqual({ outcome: "still-reading" });
+    expect(await said({ ...INFO, outcome: "removed-from-group" })).toEqual({
+      outcome: "removed-from-group",
+      club: "Harbour FC",
+      group: "Harbour Tuesday 6s",
+    });
+    expect(await said({ ...INFO, outcome: "billing-paused" })).toEqual({ outcome: "billing-paused", club: "Harbour FC" });
+    expect(await said({ outcome: "not-setting-up", orgId: "o1" })).toEqual({ outcome: "not-setting-up" });
+  });
+
+  describe("review fix 5: already live never hands a user id to the browser", () => {
+    const already = (liveBy: string | null) => ({ ...INFO, outcome: "already-live", liveAt: new Date(), liveBy });
+
+    it("another owner or admin of the club: their NAME, looked up by name only", async () => {
+      goLiveClub.mockResolvedValue(already("u-bo"));
+      const r = await goLiveClubAction("o1");
+      expect(r).toEqual({ outcome: "already-live", club: "Harbour FC", by: "member", byName: "Bo Bosun" });
+      expect(userFindUnique).toHaveBeenCalledWith({ where: { id: "u-bo" }, select: { name: true } });
+      expect(JSON.stringify(r)).not.toContain("u-bo");
+    });
+
+    it("the MatchTime owner: said as MatchTime, and the owner's id is nowhere in the answer", async () => {
+      goLiveClub.mockResolvedValue(already("owner:u-kemal"));
+      const r = await goLiveClubAction("o1");
+      expect(r).toEqual({ outcome: "already-live", club: "Harbour FC", by: "matchtime", byName: null });
+      expect(JSON.stringify(r)).not.toContain("u-kemal");
+      expect(JSON.stringify(r)).not.toContain("owner:");
+      expect(userFindUnique).not.toHaveBeenCalled();
+    });
+
+    it("review fix 4: the caller themselves (a lost answer, then a retry): 'you', so the page says it worked", async () => {
+      goLiveClub.mockResolvedValue(already("u-hana"));
+      const r = await goLiveClubAction("o1");
+      expect(r).toEqual({ outcome: "already-live", club: "Harbour FC", by: "you", byName: null });
+      expect(userFindUnique).not.toHaveBeenCalled();
+      expect(JSON.stringify(r)).not.toContain("u-hana");
+    });
+
+    it("nobody recorded, or a person with no name: unknown, and still no id", async () => {
+      goLiveClub.mockResolvedValue(already(null));
+      expect(await goLiveClubAction("o1")).toEqual({ outcome: "already-live", club: "Harbour FC", by: "unknown", byName: null });
+      goLiveClub.mockResolvedValue(already("u-bo"));
+      userFindUnique.mockResolvedValue({ name: "  " });
+      expect(await goLiveClubAction("o1")).toEqual({ outcome: "already-live", club: "Harbour FC", by: "unknown", byName: null });
+    });
+  });
+
+  it("review fix 5: no outcome carries the club's id, a user id, or the writer's bookkeeping", async () => {
+    for (const result of [
+      WENT_LIVE,
+      { ...INFO, outcome: "already-live", liveAt: new Date(), liveBy: "owner:u-kemal" },
+      { ...INFO, outcome: "still-reading" },
+      { ...INFO, outcome: "removed-from-group" },
+      { ...INFO, outcome: "billing-paused" },
+      { outcome: "not-setting-up", orgId: "o1" },
+    ]) {
+      goLiveClub.mockResolvedValue(result);
+      const r = (await goLiveClubAction("o1")) as Record<string, unknown>;
+      for (const key of ["orgId", "liveBy", "liveAt", "purgedJobs", "quietedMatches", "language"]) {
+        expect(r, `${result.outcome}.${key}`).not.toHaveProperty(key);
+      }
+    }
   });
 });
 
@@ -120,12 +206,9 @@ describe("helloPreviewAction", () => {
 });
 
 describe("ownerGoLiveNowAction: the MatchTime owner's Go live now (S5, owner decision 7)", () => {
-  const INFO = { orgId: "o1", club: "Harbour FC", group: "Harbour Tuesday 6s", language: "en" };
-
   beforeEach(() => {
     auth.mockResolvedValue({ user: { id: "u-kemal" } });
     isSuperadmin.mockResolvedValue(true);
-    goLiveClub.mockResolvedValue({ ...INFO, outcome: "went-live" });
   });
 
   it("nobody signed in: refused, nothing written", async () => {
@@ -157,7 +240,7 @@ describe("ownerGoLiveNowAction: the MatchTime owner's Go live now (S5, owner dec
     expect(revalidatePath).toHaveBeenCalledWith("/admin/clubs");
   });
 
-  it("every refusal is worded, and none of them names a phone number", async () => {
+  it("every refusal is worded, and none of them names a phone number or an id", async () => {
     const said = async (result: unknown) => {
       goLiveClub.mockResolvedValue(result);
       return ownerGoLiveNowAction("o1");

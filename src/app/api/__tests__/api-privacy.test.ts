@@ -364,16 +364,7 @@ describe("GET /api/org/settings", () => {
     organisationFindUnique.mockResolvedValue(org);
     membershipFindMany.mockResolvedValue([{ user: { id: "u-walt", name: "Walt" } }]);
     loadClubSetupView.mockReset();
-    loadClubSetupView.mockResolvedValue({
-      settingUp: true,
-      since: new Date(),
-      setupMessageSentAt: null,
-      removedFromGroup: false,
-      liveAt: null,
-      liveBy: null,
-      group: "Sutton Tuesday 7s",
-      wentLiveBy: null,
-    });
+    loadClubSetupView.mockResolvedValue({ settingUp: true, removedFromGroup: false, group: "Sutton Tuesday 7s" });
   });
 
   it("gives a plain member the club name and features only", async () => {
@@ -411,15 +402,37 @@ describe("GET /api/org/settings", () => {
     });
   });
 
-  it("S5: gives an OWNER the club's setup, and only the four fields the Go live banner needs", async () => {
+  it("S5: gives an OWNER the club's setup, and only the three fields the Go live banner needs (no person, no id)", async () => {
     getUserOrg.mockResolvedValue({ orgId: CLUB, role: "OWNER" });
+    // Whatever the loader may come to return, the route picks its own fields.
+    loadClubSetupView.mockResolvedValue({
+      settingUp: true,
+      removedFromGroup: false,
+      group: "Sutton Tuesday 7s",
+      liveBy: { kind: "user", userId: "u-secret" },
+    });
     const res = await call();
     expect(loadClubSetupView).toHaveBeenCalledWith(CLUB);
     expect((res.body as { setup: unknown }).setup).toEqual({
       settingUp: true,
       removedFromGroup: false,
       group: "Sutton Tuesday 7s",
-      wentLiveBy: null,
     });
+    expect(JSON.stringify(res.body)).not.toContain("u-secret");
+  });
+
+  it("S5 review fix 7: the setup block failing never fails the page: 200, everything else, no `setup`, ids only in the log", async () => {
+    getUserOrg.mockResolvedValue({ orgId: CLUB, role: "OWNER" });
+    loadClubSetupView.mockRejectedValue(new Error("connection reset: +447700900001 secret"));
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = await call();
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ inviteCode: "SECRET-INVITE", whatsappBotEnabled: true, name: "Sutton FC" });
+    expect(res.body).not.toHaveProperty("setup");
+    expect(logged).toHaveBeenCalledTimes(1);
+    const line = logged.mock.calls[0].map(String).join(" ");
+    expect(line).toContain(CLUB);
+    expect(line).not.toContain("+447700900001");
+    logged.mockRestore();
   });
 });

@@ -2208,7 +2208,15 @@ export const en = {
       : p.by
         ? `${p.by} has already taken ${p.club} live.`
         : `${p.club} is already live.`,
+  /** The club is not waiting to go live at all (turned off, say). Its own
+   *  heading, never "already live". */
+  sj_live_closed_title: `Go live is not available`,
   sj_live_not_setting_up: `This club is not waiting to go live any more. Reload the page to see where it stands.`,
+  /** The organiser's own earlier press worked and its answer was lost. */
+  sj_live_is_live: (p: { club: string }): string => `${p.club} is live.`,
+  /** The rest of the page could not be refreshed after an outcome. */
+  sj_live_stale: `The rest of this page could not be refreshed, so parts of it may be out of date.`,
+  sj_live_reload: `Reload the page`,
   sj_live_failed: `Couldn't go live. Please try again.`,
   /** The WhatsApp bot section, in place of "Disabled". */
   sj_live_wa_badge: `Waiting for you to go live`,

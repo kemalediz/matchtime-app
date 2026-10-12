@@ -21,7 +21,7 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { isSuperadmin, requireOrgAdmin } from "@/lib/org";
-import { goLiveClub, helloPreviewForClub, liveByOwner, liveByUser, type GoLiveResult } from "@/lib/club-setup";
+import { goLiveClub, helloPreviewForClub, liveByOwner, liveByUser, parseLiveBy, type GoLiveResult } from "@/lib/club-setup";
 import { setupLearningUiEnabledForRequest } from "@/lib/setup-learning-ui-flag";
 
 async function requireClubAdmin(orgId: string): Promise<string> {
@@ -32,11 +32,59 @@ async function requireClubAdmin(orgId: string): Promise<string> {
 }
 
 /**
- * Take a club that is setting up live. Returns the same outcomes as the
- * WhatsApp GO: "went-live", "already-live" (with who and when),
- * "still-reading", "removed-from-group", "not-setting-up".
+ * WHAT THE GO LIVE BUTTON GETS BACK (review of PR #236, fix 5): the
+ * outcome and the words the banner shows, and nothing else. `GoLiveResult`
+ * itself never leaves the server: its `liveBy` is a user id, and for the
+ * MatchTime owner it is `owner:<that user's id>`.
+ *
+ * `already-live` says who by a display NAME for another owner or admin of
+ * the club ("member"), "matchtime" for the MatchTime owner, and "you" when
+ * it was the caller (a lost answer followed by a retry: fix 4).
  */
-export async function goLiveClubAction(orgId: string): Promise<GoLiveResult> {
+export type GoLiveActionResult =
+  // PR #237 (billing) adds ONE field here: the free-period sentence and
+  // club fee tip to show after going live. The banner has a marked spot
+  // for it (go-live-banner.tsx, "AFTER GOING LIVE").
+  | { outcome: "went-live"; club: string; group: string; hello: string }
+  | { outcome: "already-live"; club: string; by: "you" | "member" | "matchtime" | "unknown"; byName: string | null }
+  | { outcome: "still-reading" }
+  | { outcome: "removed-from-group"; club: string; group: string }
+  | { outcome: "billing-paused"; club: string }
+  | { outcome: "not-setting-up" };
+
+async function forBrowser(r: GoLiveResult, callerId: string): Promise<GoLiveActionResult> {
+  switch (r.outcome) {
+    case "went-live":
+      return { outcome: "went-live", club: r.club, group: r.group, hello: r.hello };
+    case "already-live": {
+      const who = parseLiveBy(r.liveBy);
+      if (who?.kind === "matchtime") return { outcome: "already-live", club: r.club, by: "matchtime", byName: null };
+      if (who?.kind === "user" && who.userId === callerId) return { outcome: "already-live", club: r.club, by: "you", byName: null };
+      if (who?.kind === "user") {
+        // The name only: never a phone number, an email or the id.
+        const user = await db.user.findUnique({ where: { id: who.userId }, select: { name: true } });
+        const name = user?.name?.trim() || null;
+        if (name) return { outcome: "already-live", club: r.club, by: "member", byName: name };
+      }
+      return { outcome: "already-live", club: r.club, by: "unknown", byName: null };
+    }
+    case "removed-from-group":
+      return { outcome: "removed-from-group", club: r.club, group: r.group };
+    case "billing-paused":
+      return { outcome: "billing-paused", club: r.club };
+    case "still-reading":
+      return { outcome: "still-reading" };
+    case "not-setting-up":
+      return { outcome: "not-setting-up" };
+  }
+}
+
+/**
+ * Take a club that is setting up live. The same outcomes as the WhatsApp
+ * GO: "went-live", "already-live", "still-reading", "removed-from-group",
+ * "billing-paused", "not-setting-up", shaped for the browser.
+ */
+export async function goLiveClubAction(orgId: string): Promise<GoLiveActionResult> {
   const userId = await requireClubAdmin(orgId);
   // The club's own owner or admin is recorded by user id. Anybody else who
   // passed the gate is the MatchTime owner acting for the club.
@@ -52,7 +100,7 @@ export async function goLiveClubAction(orgId: string): Promise<GoLiveResult> {
   });
   revalidatePath("/admin/settings");
   revalidatePath("/admin/clubs");
-  return result;
+  return forBrowser(result, userId);
 }
 
 /**

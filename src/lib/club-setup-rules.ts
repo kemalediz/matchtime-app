@@ -339,4 +339,38 @@ export function setupStatusOf(row: SetupStatusRow, opts: { billingOn: boolean })
     liveBy: settingUp ? null : parseLiveBy(row.liveBy),
   };
 }
+
+/**
+ * What is KNOWN about the organiser's setup DM, for the owner's page
+ * (review of PR #236, fix 6). The club's stamp is the moment the DM is
+ * DUE, which can be 09:00 tomorrow, so the stamp alone never says "sent":
+ * that comes from the queued job's own status.
+ *
+ *   "none"         never claimed: nothing is queued;
+ *   "queued"       in the queue, due at `at`, which is still to come;
+ *   "waiting"      in the queue and due since `at`: not gone yet;
+ *   "sent"         the job says sent, at `at` when it recorded a time;
+ *   "unconfirmed"  handed to WhatsApp, delivery not confirmed;
+ *   "failed"       failed, or cancelled before it went;
+ *   "no-job"       claimed for `at`, but no job is queued (the recipient
+ *                  rule refused it).
+ */
+export type SetupMessageState =
+  | { kind: "none"; at: null }
+  | { kind: "queued" | "waiting" | "no-job"; at: Date }
+  | { kind: "sent"; at: Date | null }
+  | { kind: "unconfirmed" | "failed"; at: null };
+
+export function setupMessageState(
+  askedAt: Date | null | undefined,
+  job: { status: string; sentAt: Date | null } | null | undefined,
+  now: Date,
+): SetupMessageState {
+  if (!askedAt) return { kind: "none", at: null };
+  if (!job) return { kind: "no-job", at: askedAt };
+  if (job.status === "sent") return { kind: "sent", at: job.sentAt ?? null };
+  if (job.status === "unconfirmed") return { kind: "unconfirmed", at: null };
+  if (job.status === "failed") return { kind: "failed", at: null };
+  return askedAt.getTime() > now.getTime() ? { kind: "queued", at: askedAt } : { kind: "waiting", at: askedAt };
+}
 // ════ END the go-live pages ════
