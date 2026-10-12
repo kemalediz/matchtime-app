@@ -329,10 +329,28 @@ describe("recordPlatformJobOutcome: a failed send is never recorded as sent", ()
 
   it("release: back to queued, claim cleared, so the next poll re-emits it", async () => {
     await recordPlatformJobOutcome("a", { outcome: "release" }, NOW);
+    // ONE statement, as always. Since the go-live merge (PR #235) its WHERE
+    // also skips a job that was CANCELLED while the Pi held it (marked by
+    // `cancelQueuedPlatformDms`), which is failed instead of re-queued:
+    // see club-setup-dm-cancel.test.ts. No job has that mark unless a
+    // setup DM was cancelled, so for every other job nothing changes.
+    expect(dbMock.platformJob.updateMany).toHaveBeenCalledTimes(1);
     expect(dbMock.platformJob.updateMany).toHaveBeenCalledWith({
-      where: { id: "a", status: "claimed" },
+      where: {
+        id: "a",
+        status: "claimed",
+        OR: [{ failReason: null }, { NOT: { failReason: { startsWith: "cancelled: " } } }],
+      },
       data: { status: "queued", claimedAt: null },
     });
+  });
+
+  it("sent, failed and unconfirmed reports are compare-and-sets on 'claimed' alone, exactly as before", async () => {
+    for (const outcome of [{ outcome: "sent" as const }, { outcome: "failed" as const, reason: "x" }, { outcome: "unconfirmed" as const, reason: "y" }]) {
+      dbMock.platformJob.updateMany.mockClear();
+      await recordPlatformJobOutcome("a", outcome, NOW);
+      expect(dbMock.platformJob.updateMany.mock.calls[0][0].where).toEqual({ id: "a", status: "claimed" });
+    }
   });
 
   it("unconfirmed: an older Pi's id-less ack is recorded as unconfirmed, not sent", async () => {

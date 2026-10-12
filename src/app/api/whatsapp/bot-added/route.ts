@@ -21,6 +21,10 @@
  *     code (2026-10-11): the same request is linked again, exactly as
  *     above (same answer to the Pi, one ack, one owner DM for the relink);
  *   - anything else: recorded as unsolicited (silent, left after 48h).
+ * The add may carry the group's description (`groupDescription`,
+ * 2026-10-12). Numbers are masked out of it before it is stored on the
+ * linked request, beside the chat (src/lib/group-description.ts); it is
+ * never logged and never sent on. With self-join off it is ignored.
  * It never returns an intro. `silent: true` tells the Pi to treat the
  * group as silent at once, before its next /orgs refresh. The Pi's
  * reconnect sweep posts `discovered: true` for groups it found itself
@@ -88,6 +92,8 @@ import { queueOwnerDm } from "@/lib/owner-dm";
 import { detectAdminGroupCandidate, recordAdminGroupCandidate } from "@/lib/admin-group-link";
 import { billingEnabledForApiRequest } from "@/lib/billing-flag";
 import { handleBillingReAdd } from "@/lib/club-billing-removal";
+import { ingestGroupDescription } from "@/lib/group-description";
+import { capturedSessionChat } from "@/lib/captured-chat";
 
 /** Slice B5: MatchTime added back to a club paused because it was removed.
  *  Reads a CLONE of the body, so the route below still reads it. Never throws. */
@@ -122,6 +128,11 @@ async function selfJoinAdd(request: Request): Promise<NextResponse> {
   if (!body || !groupId) {
     return NextResponse.json({ error: "groupId required" }, { status: 400 });
   }
+  // THE GROUP DESCRIPTION (2026-10-12). Organisers keep bank details in
+  // it, so it is masked HERE, before anything else sees it, and only the
+  // masked text goes any further. `body.groupDescription` is not read
+  // again, and nothing of it is logged but a length and a count.
+  const description = ingestGroupDescription(body.discovered === true ? undefined : body.groupDescription);
   const outcome = await handleSelfJoinGroupAdd({
     groupId,
     groupSubject: body.groupSubject,
@@ -129,6 +140,7 @@ async function selfJoinAdd(request: Request): Promise<NextResponse> {
     addedByLid: body.addedByLid,
     participants: body.participants,
     enrichmentHistory: body.enrichmentHistory,
+    groupDescription: description.text,
     discovered: body.discovered,
   });
   if (outcome.kind === "linked") {
@@ -140,7 +152,8 @@ async function selfJoinAdd(request: Request): Promise<NextResponse> {
     if (dm.queued > 0 || dm.skipped > 0) await markOwnerDmQueued(outcome.connectId);
   }
   console.log(
-    `[bot-added] ${groupId}: self-join ${outcome.kind}${outcome.kind === "linked" && outcome.relinked ? " (relinked after re-add)" : ""}`,
+    `[bot-added] ${groupId}: self-join ${outcome.kind}${outcome.kind === "linked" && outcome.relinked ? " (relinked after re-add)" : ""}, ` +
+      `desc=${description.note}`,
   );
   return NextResponse.json({
     ok: true,
@@ -297,7 +310,7 @@ export async function POST(request: Request) {
     if (capturedJson && active.capturedHistory == null) {
       await db.onboardingSession.update({
         where: { id: active.id },
-        data: { capturedHistory: capturedJson },
+        data: capturedSessionChat(capturedJson),
       });
     }
     return NextResponse.json({
@@ -347,7 +360,7 @@ export async function POST(request: Request) {
         snapshot.length > 0
           ? (snapshot.map((p) => ({ ...p })) as Array<Record<string, string | null>>)
           : undefined,
-      capturedHistory: capturedJson,
+      ...capturedSessionChat(capturedJson),
       language: detected.lang,
     },
     select: { id: true },

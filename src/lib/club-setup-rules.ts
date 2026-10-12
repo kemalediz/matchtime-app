@@ -164,10 +164,19 @@ export function settingUpOnly(servedClubs: SetupStageColumns[]): boolean {
 // ── Going live (slice S4) ───────────────────────────────────────────────
 
 /**
- * GO is refused with "still reading" while the setup reading has not
- * finished, for this long after the approval (owner decision 4). After
- * that the organiser is never kept waiting on a reading: going live closes
- * it (`closeUnfinishedSetupLearning` in club-setup.ts).
+ * HOW LONG A HELD CLUB WAITS FOR ITS SETUP READING, from its approval: two
+ * hours. THE ONE CONSTANT for both halves of that rule, so they can never
+ * disagree:
+ *   - GO is refused with "still reading" while the reading has not
+ *     finished, for this long (owner decision 4, `readingBlocksGoLive`
+ *     below). After that the organiser is never kept waiting on a
+ *     reading: going live closes it (`closeUnfinishedSetupLearning`);
+ *   - the organiser's setup DM waits for the reading for this long, then
+ *     the reading is closed for good and the DM goes anyway (the cap,
+ *     `sendSetupDm` in club-setup-dm.ts).
+ * So whenever GO is answered "still reading ... I'll message you", the
+ * setup DM is still to come, and comes by the end of this window (plus
+ * one run of the 15-minute cron).
  */
 export const STILL_READING_WINDOW_MS = 2 * 60 * 60 * 1000;
 
@@ -215,9 +224,14 @@ export function liveByOwner(ownerUserId: string): string {
   return `owner:${ownerUserId}`;
 }
 
-const FINAL_LEARNING_STATUSES: ReadonlySet<string> = new Set(["applied", "nothing", "skipped", "failed"]);
+/** The reading statuses after which nothing more will come of the chat.
+ *  THE ONE LIST: `isSetupLearningFinal` below, and the setup DM sweep's
+ *  query (club-setup-dm.ts). */
+export const SETUP_LEARNING_FINAL_STATUSES = ["applied", "nothing", "skipped", "failed"] as const;
+const FINAL_LEARNING_STATUSES: ReadonlySet<string> = new Set(SETUP_LEARNING_FINAL_STATUSES);
 
-/** Has the setup reading finished? "running" and "deferred" have not. */
+/** Has the setup reading finished? "running" and "deferred" have not. THE
+ *  ONE PREDICATE: go-live's "still reading" and the setup DM both use it. */
 export function isSetupLearningFinal(status: string | null | undefined): boolean {
   return typeof status === "string" && FINAL_LEARNING_STATUSES.has(status);
 }

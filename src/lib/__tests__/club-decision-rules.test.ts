@@ -124,6 +124,20 @@ describe("ownerAckText (English only: owner-facing, plan 6.2)", () => {
   const riverside: WaitingClub = { orgId: "o1", code: "7KQ2", club: "Riverside FC" };
   const hackney: WaitingClub = { orgId: "o2", code: "9XT4", club: "Hackney Weds" };
 
+  it("go-live S3: a held approval says only what is true whatever happens next (PR #235 review fix 2c)", () => {
+    const text = ownerAckText({ kind: "approved", club: "Riverside FC", held: true });
+    expect(text).toBe(
+      "Approved Riverside FC. It stays silent in its group: its organiser is sent the setup message and goes live by replying GO. Any problem shows on the health page.",
+    );
+    expect(text).not.toMatch(/hello goes out/);
+    // Nothing is known yet about whether the organiser can be reached: no "is being asked", no "has been asked".
+    expect(text).not.toMatch(/being asked|been asked/);
+    expect(text).toMatch(/health page/);
+    expect(ownerAckText({ kind: "approved", club: "Riverside FC", held: false })).toBe(
+      "Approved Riverside FC. The hello goes out in the group within a few minutes.",
+    );
+  });
+
   it("says what happened, in the plan's words", () => {
     expect(ownerAckText({ kind: "approved", club: "Riverside FC" })).toBe(
       "Approved Riverside FC. The hello goes out in the group within a few minutes.",

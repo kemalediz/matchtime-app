@@ -129,6 +129,15 @@ export interface GroupSnapshot {
   source: "page" | "getChatById" | "groupMetadata" | "none";
   /** Human-readable reasons for anything that degraded, for the log. */
   notes: string[];
+  /**
+   * The group's description (2026-10-12): the text when WhatsApp returned
+   * one ("" for an empty one), null or absent when it returned none or the
+   * path cannot read it (the whatsapp-web.js driver never sets it). Sent
+   * to the server with the add, which masks numbers out of it before it
+   * stores anything. NEVER log it, only its length: it often holds bank
+   * details.
+   */
+  description?: string | null;
 }
 
 export interface WaDriver {

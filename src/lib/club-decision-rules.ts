@@ -101,7 +101,9 @@ export function resolveApproverTarget(
 // ── The one-line ack to the owner (English only, plan 6.2) ─────────────
 
 export type OwnerAck =
-  | { kind: "approved"; club: string }
+  /** `held` (go-live slice S3): the approval left the club setting up,
+   *  silent until its organiser says GO. */
+  | { kind: "approved"; club: string; held?: boolean }
   | { kind: "rejected"; club: string }
   | { kind: "ambiguous"; waiting: WaitingClub[] }
   | { kind: "unknown-ref"; ref: string; waiting: WaitingClub[] }
@@ -120,10 +122,26 @@ export function formatDecidedAt(d: Date): string {
 const listWaiting = (w: WaitingClub[]) => w.map((c) => `${c.code} ${c.club}`).join(", ");
 const countWord = (n: number) => (n === 2 ? "Two" : String(n));
 
+/**
+ * What the platform owner is told after an approval, by WhatsApp and on
+ * /admin/clubs alike. `held` (go-live slice S3, SETUP_HOLD_ENABLED on):
+ * no hello goes out. It is said at the moment of approval, BEFORE the
+ * chat is read or the organiser's setup DM is queued, so it states only
+ * what is true whatever happens next: the club is approved and silent,
+ * the organiser is sent the setup message (it may still be refused) and
+ * goes live by replying GO, and a problem is shown on /admin/health
+ * (`SETUP_ALERT_KIND`). Not held: today's sentence.
+ */
+export function approvedOwnerText(club: string, held: boolean): string {
+  return held
+    ? `Approved ${club}. It stays silent in its group: its organiser is sent the setup message and goes live by replying GO. Any problem shows on the health page.`
+    : `Approved ${club}. The hello goes out in the group within a few minutes.`;
+}
+
 export function ownerAckText(a: OwnerAck): string {
   switch (a.kind) {
     case "approved":
-      return `Approved ${a.club}. The hello goes out in the group within a few minutes.`;
+      return approvedOwnerText(a.club, a.held === true);
     case "rejected":
       return `Rejected ${a.club}. Leaving the group now.`;
     case "ambiguous":
