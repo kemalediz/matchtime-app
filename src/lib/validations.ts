@@ -14,6 +14,7 @@ export const activitySchema = z.object({
   sportId: z.string().min(1, "Pick a sport"),
   dayOfWeek: z.number().min(0).max(6),
   time: z.string().regex(/^\d{2}:\d{2}$/, "Time must be HH:mm format"),
+  // VENUE_MIN_LENGTH (activity-update.ts): one minimum everywhere.
   venue: z.string().min(2),
   deadlineHours: z.number().min(1).max(48).default(5),
   matchDurationMins: z.number().min(20).max(180).default(60),

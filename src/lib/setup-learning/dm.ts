@@ -122,6 +122,15 @@ export interface SetupDmInput {
    *  `suggestions`; without it the fee line links to `scheduleUrl`, the
    *  weekly game page, which is where the fee is. */
   feeUrl?: string | null;
+  /**
+   * Say, under "Rolling squad is on", that for the first game everyone
+   * says In once. Set ONLY by the setup DM of a club held until GO
+   * (club-setup-dm-rules.ts), and only while the club has no squad to
+   * carry yet (`loadHasSquadToCarry`, the group hello's own rule). Absent
+   * or false: these blocks are exactly what they always were, which is
+   * what the findings DM of a club that is not held sends.
+   */
+  rollingFirstGameNote?: boolean;
 }
 
 /**
@@ -138,6 +147,9 @@ export function setupFindingsBlocks(p: SetupDmInput): string[] {
 
   for (const a of p.applied) {
     const lines = [`✅ ${appliedLine(p.lang, a.key, a.to)}`];
+    // Only the setup DM of a held club asks for this, and only while there
+    // is no squad to carry yet. The findings DM never sets it.
+    if (p.rollingFirstGameNote && a.key === "rollingSquad" && a.to === true) lines.push(s.sj_dm_ready_rolling_first);
     lines.push(...evidenceLines(p.lang, a));
     lines.push(s.sj_dm_setup_undo({ url: a.undoUrl }));
     blocks.push(lines.join("\n"));

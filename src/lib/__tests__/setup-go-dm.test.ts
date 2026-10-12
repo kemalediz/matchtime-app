@@ -373,14 +373,35 @@ describe("handleGoDm", () => {
 
   // Item 6. "Harbour FC is already live." to the admin of a club MatchTime
   // is not serving is false comfort: it has the paused wording.
-  it("a club that went through the hold and is now PAUSED for the club fee: the paused wording, not 'already live'", async () => {
+  // Second walk, item 1. Three cases, three true answers. A club that is
+  // LIVE and paused used to get the pre-live refusal, "is paused, so I
+  // can't go live yet": it went live long ago.
+  it("a club that went through the hold, is LIVE, and is now PAUSED: 'already live, but paused at the moment', never 'can't go live yet'", async () => {
     const paused = wentLive("o9", "Paused Park", 60 * 24 * 90);
     dbMock.membership.findMany.mockResolvedValue([{ ...paused, org: { ...paused.org, billingStatus: "paused" } }]);
     expect(
       await handleGoDm({ text: "GO", phone: "447700900971", waMessageId: "wa-1", now: NOW, billingEnabled: true }),
-    ).toEqual({ handled: "setup-go", outcome: "billing-paused", orgId: "o9" });
+    ).toEqual({ handled: "setup-go", outcome: "already-live-paused", orgId: "o9" });
     expect(goLiveClub).not.toHaveBeenCalled();
-    expect(queuePlatformDm.mock.calls[0][0].text).toBe(en.sj_go_paused({ club: "Paused Park", url: SETTINGS }));
+    const text = queuePlatformDm.mock.calls[0][0].text as string;
+    expect(text).toBe(`Paused Park is already live, but it is paused at the moment. Your settings page shows what's needed:\n${SETTINGS}`);
+    expect(text).not.toContain("can't go live yet");
+  });
+
+  it("the same in Turkish", async () => {
+    const paused = wentLive("o9", "Kıyı SK", 60 * 24 * 90);
+    dbMock.membership.findMany.mockResolvedValue([{ ...paused, org: { ...paused.org, language: "tr", billingStatus: "paused" } }]);
+    await handleGoDm({ text: "BAŞLA", phone: "447700900971", waMessageId: "wa-1", now: NOW, billingEnabled: true });
+    expect(queuePlatformDm.mock.calls[0][0].text).toBe(
+      `Kıyı SK zaten yayında, ancak şu anda duraklatılmış. Ne gerektiği ayarlar sayfanızda yazıyor:\n${SETTINGS}`,
+    );
+  });
+
+  it("the three cases side by side: setting up and paused, live, live and paused", () => {
+    expect(en.sj_go_paused({ club: "C", url: "u" })).toBe("C is paused, so I can't go live yet. Your settings page shows what's needed:\nu");
+    expect(en.sj_go_already_live({ club: "C" })).toBe("C is already live.");
+    expect(en.sj_go_live_paused({ club: "C", url: "u" })).toBe("C is already live, but it is paused at the moment. Your settings page shows what's needed:\nu");
+    for (const table of [en, tr]) expect(table.sj_go_live_paused({ club: "C", url: "u" })).not.toMatch(/[\u2013\u2014]/);
   });
 
   it("with billing off nobody counts as paused: the same club is 'already live', as before", async () => {

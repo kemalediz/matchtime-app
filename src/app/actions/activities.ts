@@ -69,7 +69,7 @@ export async function updateActivity(
 
   // Only named, checked fields are written, whatever the request carried
   // (src/lib/activity-update.ts). A field left out is left alone.
-  const update = activityUpdateData(formData, { feeSplitTotal: activity.feeSplitTotal });
+  const update = activityUpdateData(formData, { feeSplitTotal: activity.feeSplitTotal, venue: activity.venue });
   if (!update.ok) throw new Error(update.error);
   const data = update.data;
 

@@ -20,7 +20,7 @@ import {
   type StandardSetupColumns,
 } from "../club-setup-dm-rules";
 import { SETUP_LEARNING_FINAL_STATUSES, isSetupLearningFinal } from "../club-setup-rules";
-import { composeSetupDm } from "../setup-learning/dm";
+import { composeSetupDm, setupFindingsBlocks } from "../setup-learning/dm";
 import { LEARNED_KEYS, dataFor, type AppliedItem, type LearnedKey, type NotedPattern, type SettingValue, type Suggestion } from "../setup-learning/rules";
 
 /** A club on every default: what `isStandardSetup` calls standard. */
@@ -200,6 +200,59 @@ describe("composeSetupAskDm: the blocks, in order", () => {
     expect(blocks).toHaveLength(10);
     // Settings were switched, so "standard setup" would be false: never said.
     expect(text).not.toContain("Standard setup");
+  });
+
+  // Second walk, item 7. "Whoever played last time is in next time" is no
+  // help for a first game nobody has played; only the hello preview said so.
+  it("rolling squad switched on and NO squad to carry yet: one more line under that item, and nowhere else", () => {
+    const blocks = composeSetupAskDm(input(findings(), { noSquadToCarry: true })).split("\n\n");
+    expect(blocks[2]).toBe(
+      "✅ *Rolling squad is on:* whoever played last time is in next time, unless they say OUT.\n" +
+        "For the first game everyone says In once; after that the squad carries over.\n" +
+        'From messages like: "Same lot as last week"\n' +
+        "Undo or change: https://mt.link/u1",
+    );
+    // Every other block is exactly what it is without the line.
+    const without = composeSetupAskDm(input(findings())).split("\n\n");
+    expect(blocks.filter((_, i) => i !== 2)).toEqual(without.filter((_, i) => i !== 2));
+    expect(blocks.join("\n").match(/For the first game/g)).toHaveLength(1);
+  });
+
+  it("the same in Turkish", () => {
+    const text = composeSetupAskDm(input(findings(), { lang: "tr", noSquadToCarry: true }));
+    expect(text).toContain("\nİlk maç için herkes bir kez VARIM yazar; sonrasında kadro kendiliğinden devam eder.\n");
+    expect(text).not.toMatch(/[\u2013\u2014]/);
+  });
+
+  it("there IS a squad to carry, or nobody said: no such line", () => {
+    expect(composeSetupAskDm(input(findings(), { noSquadToCarry: false }))).not.toContain("For the first game");
+    expect(composeSetupAskDm(input(findings()))).not.toContain("For the first game");
+  });
+
+  it("rolling squad was NOT what the reading switched: no such line, whatever the squad", () => {
+    const other = findings(applied.filter((x) => x.key !== "rollingSquad"));
+    expect(composeSetupAskDm(input(other, { noSquadToCarry: true }))).not.toContain("For the first game");
+    for (const kind of ["nothing", "unread", "none"] as const) {
+      expect(composeSetupAskDm(input({ kind }, { noSquadToCarry: true }))).not.toContain("For the first game");
+    }
+  });
+
+  it("THE FINDINGS DM OF A CLUB THAT IS NOT HELD is exactly what it was: it never carries the line", () => {
+    const p = {
+      lang: "en",
+      group: "Riverside Tuesday 5s",
+      applied: applied.map((x, i) => ({ ...x, undoUrl: `https://mt.link/u${i + 1}` })),
+      suggestions,
+      noted,
+      scheduleUrl: "https://mt.link/sched",
+      settingsUrl: "https://mt.link/settings",
+      organiserPicksUrl: "https://mt.link/picks",
+    };
+    const dm = composeSetupDm(p);
+    expect(dm).toContain("*Rolling squad is on:*");
+    expect(dm).not.toContain("For the first game");
+    // And the shared blocks are byte for byte the same with the option absent or false.
+    expect(setupFindingsBlocks({ ...p, rollingFirstGameNote: false })).toEqual(setupFindingsBlocks(p));
   });
 
   it("nothing found: says so, then what the standard setup is", () => {

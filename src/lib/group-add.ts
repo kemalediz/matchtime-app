@@ -709,7 +709,9 @@ export async function loadSelfJoinSweep(now: Date = new Date()): Promise<{ known
  * The organiser's ack after a matched group add. With SETUP_HOLD_ENABLED
  * on (go-live slice S3) an approved club stays silent until its organiser
  * says GO, so "I'll message you here when it's live" would be false: the
- * held variant says "as soon as it's approved". Off, today's text exactly.
+ * held variant says "after it's approved" (no promise of how soon: the
+ * setup message waits for the chat reading and for the daytime). Off,
+ * today's text exactly.
  */
 export function inGroupAckText(
   lang: string | null | undefined,

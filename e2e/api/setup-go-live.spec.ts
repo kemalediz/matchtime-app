@@ -383,9 +383,10 @@ test.describe("GO", () => {
     await db.run(`UPDATE "Organisation" SET "billingStatus" = 'paused' WHERE id = $1`, [HARBOUR.id]);
     try {
       const res = await dm(request, BO.phone, "GO", { headers: { "x-mt-test-billing": "1" } });
-      expect(res).toMatchObject({ handled: "setup-go", outcome: "billing-paused", orgId: HARBOUR.id });
+      // It IS live: "can't go live yet" is the answer for a club still setting up.
+      expect(res).toMatchObject({ handled: "setup-go", outcome: "already-live-paused", orgId: HARBOUR.id });
       expect((await lastReply(db, BO.phone))!.text).toMatch(
-        /^Harbour FC is paused, so I can't go live yet\. Your settings page shows what's needed:\nhttps?:\/\/\S+\/admin\/settings$/,
+        /^Harbour FC is already live, but it is paused at the moment\. Your settings page shows what's needed:\nhttps?:\/\/\S+\/admin\/settings$/,
       );
       // Nothing was written for the club.
       expect(await botJobs(db, HARBOUR.id)).toHaveLength(1);
@@ -537,7 +538,7 @@ test.describe("GO that is refused", () => {
     expect(dms).toHaveLength(1);
     expect(dms[0].refId).toBe(`${LEFTOUT.id}:setup-removed`);
     expect(dms[0].text).toMatch(
-      /^I was removed from "Leftout 5s" before Leftout FC went live, so nothing has started there\. Add me back to the group, then reply \*GO\* here or press \*Go live\* on your settings page:\nhttp\S+\/admin\/settings\nIt has to be added by you or another organiser of Leftout FC\.$/,
+      /^I was removed from "Leftout 5s" before Leftout FC went live, so nothing has started there\. Add me back to the group, then reply \*GO\* here or press \*Go live\* on your settings page:\nhttp\S+\/admin\/settings\nAnyone in Leftout FC can add me back\.$/,
     );
     // The platform owner sees it on /admin/health, once.
     const alerts = () => db.count(`SELECT COUNT(*) FROM "OpsAlert" WHERE "orgId" = $1 AND kind = 'club-setup' AND "dedupeKey" LIKE 'setup-removed:%'`, [LEFTOUT.id]);

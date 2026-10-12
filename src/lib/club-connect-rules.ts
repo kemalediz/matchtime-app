@@ -13,6 +13,7 @@ import { t } from "./i18n/t";
 import { normaliseLang, type Lang } from "./i18n/lang";
 import { findPreset, type SportPreset } from "./sport-presets";
 import { londonDateTimeToUtc, formatLondon } from "./london-time";
+import { VENUE_MIN_LENGTH } from "./activity-update";
 
 // ── The numbers (section 7) ─────────────────────────────────────────────
 
@@ -76,7 +77,10 @@ export function validateWeeklyGame(
   const venue = typeof raw.venue === "string" ? raw.venue.trim() : "";
   if (!Number.isInteger(dayOfWeek) || (dayOfWeek as number) < 0 || (dayOfWeek as number) > 6) return { ok: false };
   if (typeof time !== "string" || !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) return { ok: false };
-  if (venue.length < 1 || venue.length > 120) return { ok: false };
+  // The same minimum as every other way a weekly game is made or edited
+  // (VENUE_MIN_LENGTH, activity-update.ts): one character was accepted
+  // here once, and such a game could then never be saved again.
+  if (venue.length < VENUE_MIN_LENGTH || venue.length > 120) return { ok: false };
   if (!(PLAYERS_PER_SIDE_OPTIONS as readonly number[]).includes(playersPerSide as number)) return { ok: false };
   return { ok: true, game: { dayOfWeek: dayOfWeek as number, time, venue, playersPerSide: playersPerSide as number } };
 }

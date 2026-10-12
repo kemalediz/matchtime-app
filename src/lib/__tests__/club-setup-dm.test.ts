@@ -7,6 +7,12 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// The hello's own rule for "is there a squad to carry?" (group-hello-load.ts).
+// The setup DM asks it only when the reading switched rolling squad on.
+// Default: there is one, so every test below reads exactly as it did.
+const carry = vi.hoisted(() => ({ loadHasSquadToCarry: vi.fn(async (..._a: unknown[]): Promise<boolean> => true) }));
+vi.mock("../group-hello-load", () => ({ loadHasSquadToCarry: (...a: unknown[]) => carry.loadHasSquadToCarry(...a) }));
+
 const sdkCalls = vi.hoisted(() => ({ n: 0 }));
 vi.mock("@anthropic-ai/sdk", () => ({
   default: class {
@@ -423,6 +429,47 @@ describe("review fix 1: the 2-hour cap (a held club is never stranded waiting fo
     expect(await sendSetupDm("org-riverside", DAY, { learningEnabled: true })).toEqual({ kind: "reading" });
     expect(state.raw).toEqual([]);
     expect(state.jobs).toEqual([]);
+  });
+
+  // Second walk, item 7.
+  it("rolling squad switched on by the reading and NO squad to carry: the DM says the first game needs everyone to say In", async () => {
+    const applied = [{ key: "rollingSquad", from: false, to: true, evidence: ["Same lot as last week"] }];
+    state.org = heldOrg({ rollingSquadEnabled: true, setupLearning: learning("applied", { applied }) });
+    carry.loadHasSquadToCarry.mockResolvedValueOnce(false);
+    await sendSetupDm("org-riverside", DAY, { learningEnabled: true });
+    expect(carry.loadHasSquadToCarry).toHaveBeenCalledTimes(1);
+    // The hello loader's own function, for this club, at this moment: nothing re-derived.
+    expect(carry.loadHasSquadToCarry.mock.calls[0][0]).toBe("org-riverside");
+    expect(carry.loadHasSquadToCarry.mock.calls[0][2]).toEqual(DAY);
+    expect(String(state.jobs[0].text)).toContain(
+      "*Rolling squad is on:* whoever played last time is in next time, unless they say OUT.\nFor the first game everyone says In once; after that the squad carries over.\n",
+    );
+  });
+
+  it("there IS a squad to carry: no such line", async () => {
+    const applied = [{ key: "rollingSquad", from: false, to: true, evidence: ["Same lot as last week"] }];
+    state.org = heldOrg({ rollingSquadEnabled: true, setupLearning: learning("applied", { applied }) });
+    await sendSetupDm("org-riverside", DAY, { learningEnabled: true });
+    expect(String(state.jobs[0].text)).toContain("Rolling squad is on");
+    expect(String(state.jobs[0].text)).not.toContain("For the first game");
+  });
+
+  it("the reading did not switch rolling squad on: the squad is not even asked about", async () => {
+    carry.loadHasSquadToCarry.mockClear();
+    state.org = heldOrg({ setupLearning: learning("nothing") });
+    await sendSetupDm("org-riverside", DAY, { learningEnabled: true });
+    expect(carry.loadHasSquadToCarry).not.toHaveBeenCalled();
+    expect(String(state.jobs[0].text)).not.toContain("For the first game");
+  });
+
+  it("the squad cannot be read: the DM still goes, without the line", async () => {
+    const applied = [{ key: "rollingSquad", from: false, to: true, evidence: ["Same lot as last week"] }];
+    state.org = heldOrg({ rollingSquadEnabled: true, setupLearning: learning("applied", { applied }) });
+    carry.loadHasSquadToCarry.mockRejectedValueOnce(new Error("database hiccup"));
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(await sendSetupDm("org-riverside", DAY, { learningEnabled: true })).toMatchObject({ kind: "sent" });
+    expect(String(state.jobs[0].text)).not.toContain("For the first game");
+    err.mockRestore();
   });
 
   it("a reading that FINISHED at 1 hour 59 is used normally, cap or no cap", async () => {

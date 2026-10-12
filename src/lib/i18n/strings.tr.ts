@@ -1657,7 +1657,7 @@ export const tr: Strings = {
     "3. adım: kulübünüzü kontrol ediyoruz, genellikle bir gün içinde. Kulübünüz onaylanana kadar MatchTime grupta sessiz kalır, yayına geçince size WhatsApp'tan yazar.",
   sj_card_pending_other: (p) =>
     `MatchTime "${p.group}" grubuna başka biri tarafından eklendi. MatchTime orada bir şey yapmadan önce kontrol edeceğiz.`,
-  sj_card_approved: (p) => `Yayındasınız. MatchTime "${p.group}" grubunda herkese merhaba dedi.`,
+  sj_card_approved: (p) => `Yayındasınız. MatchTime "${p.group}" grubunda.`,
   sj_card_rejected: "Bu grubu şu an alamıyoruz.",
   sj_card_expired: "Bu kodun süresi doldu. Yeni bir kod için düğmeye tekrar dokunun.",
   sj_card_code_cap: "Bugünkü kodlarınızı kullandınız. Lütfen yarın tekrar deneyin.",
@@ -1785,19 +1785,22 @@ export const tr: Strings = {
     `Bu mesajı anlayamadım. Kurulumu süren birden fazla kulübünüz var, her kulübün ayarlarındaki *Yayına al* düğmesine basın:\n${p.url}`,
   sj_go_paused: (p) =>
     `${p.club} şu anda duraklatılmış, bu yüzden henüz yayına alamıyorum. Ne gerektiği ayarlar sayfanızda yazıyor:\n${p.url}`,
+  sj_go_live_paused: (p) =>
+    `${p.club} zaten yayında, ancak şu anda duraklatılmış. Ne gerektiği ayarlar sayfanızda yazıyor:\n${p.url}`,
   // ════ END going live: replies to GO ════
 
   // ════ BEGIN removed from the group while setting up (2026-10-12) ════
   sj_setup_removed: (p) =>
     `${p.club} yayına geçmeden "${p.group}" grubundan çıkarıldım, bu yüzden orada hiçbir şey başlamadı. ` +
     `Beni gruba yeniden ekleyin, sonra buraya *BAŞLA* yazın ya da ayarlar sayfanızdaki *Yayına al* düğmesine basın:\n${p.url}\n` +
-    `Beni sizin ya da ${p.club} kulübünün başka bir organizatörünün eklemesi gerekiyor.`,
+    `${p.club} kulübündeki herkes beni yeniden ekleyebilir.`,
   // ════ END removed from the group while setting up ════
   // ════ BEGIN the go-live pages (go-live slice S5, 2026-10-12) ════
   // See the English table: the Go live banner on /admin/settings, the
   // WhatsApp bot section while a club is setting up, and the card on the
   // club's admin home.
   sj_live_title: `Onaylandı. MatchTime sizi bekliyor.`,
+  sj_live_title_removed: `MatchTime grubunuzdan çıkarıldı`,
   sj_live_lead: (p) =>
     `MatchTime ${p.group ? `"${p.group}" grubunda` : "WhatsApp grubunuzda"} ve siz başlatana kadar sessiz kalacak. Önce aşağıdaki ayarları kontrol edin, sonra Yayına al düğmesine basın.`,
   sj_live_busy: `Yayına alınıyor...`,
@@ -1871,6 +1874,7 @@ export const tr: Strings = {
   sj_dm_ready_unread: (p) =>
     `Grubunuzun son mesajlarını okuyamadım, bu yüzden ${p.standard ? "MatchTime standart düzeninde" : "hiçbir şeyi değiştirmedim"}. ` +
     "Sorun değil: aşağıdaki ayarları kontrol edin ve hazır olduğunuzda *BAŞLA* yazın.",
+  sj_dm_ready_rolling_first: "İlk maç için herkes bir kez VARIM yazar; sonrasında kadro kendiliğinden devam eder.",
   sj_dm_ready_standard:
     "Standart düzen: oyuncular her hafta VARIM ya da YOKUM der, boşalan yer yedek listesindeki herkese teklif edilir: ilk VARIM diyen yeri alır.",
   sj_dm_ready_settings: (p) => `⚙️ *Grubunuzun nasıl işlediğini kontrol edin ya da değiştirin:*\n${p.url}`,
@@ -1884,11 +1888,11 @@ export const tr: Strings = {
     `Merhaba${p.name ? ` ${p.name}` : ""}, tamamdır: ${p.club} bu sohbete bağlandı.\n` +
     "Sıradaki adım: beni futbol grubunuza ekleyin. Önce bu numarayı MatchTime adıyla rehberinize kaydedin, sonra grubu açıp Katılımcı ekle'ye dokunun ve MatchTime'ı seçin.\n\n" +
     "*Önemli: onaylamadan önce o ekrandaki \"Mesaj geçmişi\" seçeneğini açın.* Böylece grubunuzun son mesajları bana gelir ve MatchTime'ı sizin düzeninize göre kurabilirim.\n\n" +
-    "Kulübünüz onaylanana (genellikle bir gün içinde) ve siz başlamamı söyleyene kadar grupta sessiz kalacağım. Onaylanır onaylanmaz size buradan yazacağım.",
+    "Kulübünüz onaylanana (genellikle bir gün içinde) ve siz başlamamı söyleyene kadar grupta sessiz kalacağım. Onaylandıktan sonra size buradan yazacağım.",
   sj_dm_in_group_held: (p) =>
-    `Teşekkürler, ${p.group ? `"${p.group}" grubuna` : "grubunuza"} katıldım. Kulübünüz onaylanana (genellikle bir gün içinde) ve siz başlamamı söyleyene kadar orada sessiz kalacağım. Onaylanır onaylanmaz size buradan yazacağım.`,
+    `Teşekkürler, ${p.group ? `"${p.group}" grubuna` : "grubunuza"} katıldım. Kulübünüz onaylanana (genellikle bir gün içinde) ve siz başlamamı söyleyene kadar orada sessiz kalacağım. Onaylandıktan sonra size buradan yazacağım.`,
   sj_card_pending_held:
-    "3. adım: kulübünüzü kontrol ediyoruz, genellikle bir gün içinde. Kulübünüz onaylanana ve siz başlamasını söyleyene kadar MatchTime grupta sessiz kalır, onaylanır onaylanmaz size WhatsApp'tan yazar.",
+    "3. adım: kulübünüzü kontrol ediyoruz, genellikle bir gün içinde. Kulübünüz onaylanana ve siz başlamasını söyleyene kadar MatchTime grupta sessiz kalır, onaylandıktan sonra size WhatsApp'tan yazar.",
   // ════ END approval holds the club ════
 
   // ════ BEGIN the setup follow-ups: reminder and admin group step (go-live slices S6 and S7, 2026-10-12) ════

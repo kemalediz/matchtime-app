@@ -190,6 +190,15 @@ export interface SetupAskDmInput {
    */
   adminGroupBlock?: string | null;
   /**
+   * The club has NO substantial squad to carry onto its next game
+   * (`loadHasSquadToCarry` in group-hello-load.ts said false: the same
+   * rule the group hello uses, never re-derived). Then "Rolling squad is
+   * on: whoever played last time is in next time" gets one more line: for
+   * the first game everyone says In once. Only matters when the reading
+   * switched rolling squad on; absent or false, no such line.
+   */
+  noSquadToCarry?: boolean;
+  /**
    * Will going live START A FREE PERIOD for this club (`freePeriodCanStart`
    * in club-billing-rules.ts: billing on, plan not Free, none had yet)?
    * Only then is the free period line said. Required, so every caller
@@ -218,6 +227,7 @@ export function composeSetupAskDm(p: SetupAskDmInput): string {
         settingsUrl: detailUrl,
         organiserPicksUrl: p.organiserPicksUrl ?? detailUrl,
         feeUrl: p.feeUrl,
+        rollingFirstGameNote: p.noSquadToCarry === true,
       }),
     );
   } else if (r.kind === "nothing") {

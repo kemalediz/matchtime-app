@@ -34,10 +34,14 @@ describe("the connect reply", () => {
     const en = connectReplyText("connected", "en", P);
     expect(en).toBe(t("en").sj_dm_connected_held({ name: "Ali", club: "Riverside FC" }));
     expect(en).toContain(
-      "I'll stay quiet in the group until your club is approved, usually within a day, and you've told me to start. I'll message you here as soon as it's approved.",
+      "I'll stay quiet in the group until your club is approved, usually within a day, and you've told me to start. I'll message you here after it's approved.",
     );
     expect(en).not.toContain("when it's live");
-    expect(connectReplyText("connected", "tr", P)).toContain("Onaylanır onaylanmaz size buradan yazacağım.");
+    // No promise of how soon: the setup message waits for the chat reading
+    // and for 09:00 to 23:00.
+    expect(en).not.toContain("as soon as");
+    expect(connectReplyText("connected", "tr", P)).toContain("Onaylandıktan sonra size buradan yazacağım.");
+    expect(connectReplyText("connected", "tr", P)).not.toContain("onaylanmaz");
   });
 
   it("the other replies do not change with the flag", () => {
@@ -58,10 +62,18 @@ describe("the in-group ack", () => {
   it("flag on: the held variant", () => {
     process.env.SETUP_HOLD_ENABLED = "on";
     expect(inGroupAckText("en", "Riverside Tuesday 5s")).toBe(
-      `Thanks, I'm in "Riverside Tuesday 5s". I'll stay quiet there until your club is approved, usually within a day, and you've told me to start. I'll message you here as soon as it's approved.`,
+      `Thanks, I'm in "Riverside Tuesday 5s". I'll stay quiet there until your club is approved, usually within a day, and you've told me to start. I'll message you here after it's approved.`,
     );
+    expect(inGroupAckText("tr", "Kıyı Salı Maçı")).toContain("Onaylandıktan sonra size buradan yazacağım.");
+    // The connect card's held line, too: no promise of how soon.
+    expect(t("en").sj_card_pending_held).toContain("messages you on WhatsApp after it's approved.");
+    expect(t("tr").sj_card_pending_held).toContain("onaylandıktan sonra size WhatsApp'tan yazar.");
+    for (const lang of ["en", "tr"]) {
+      const held = [t(lang).sj_dm_connected_held({ name: null, club: "C" }), t(lang).sj_dm_in_group_held({ group: null }), t(lang).sj_card_pending_held].join(" ");
+      expect(held).not.toMatch(/as soon as|onaylanmaz/);
+    }
     expect(inGroupAckText("tr", "Cuma Halı Saha")).toBe(
-      `Teşekkürler, "Cuma Halı Saha" grubuna katıldım. Kulübünüz onaylanana (genellikle bir gün içinde) ve siz başlamamı söyleyene kadar orada sessiz kalacağım. Onaylanır onaylanmaz size buradan yazacağım.`,
+      `Teşekkürler, "Cuma Halı Saha" grubuna katıldım. Kulübünüz onaylanana (genellikle bir gün içinde) ve siz başlamamı söyleyene kadar orada sessiz kalacağım. Onaylandıktan sonra size buradan yazacağım.`,
     );
   });
 });

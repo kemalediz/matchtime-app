@@ -58,7 +58,8 @@ describe("the words on the weekly game page, in English and Turkish", () => {
 describe("the server action never writes what it was not asked to", () => {
   const action = readFileSync(path.join(__dirname, "..", "..", "app", "actions", "activities.ts"), "utf8");
   it("everything it writes comes out of activityUpdateData, and the request is never handed to Prisma", () => {
-    expect(action).toContain("activityUpdateData(formData, { feeSplitTotal: activity.feeSplitTotal })");
+    // `venue`: so a venue sent back unchanged is not re-checked (a stored one-character venue).
+    expect(action).toContain("activityUpdateData(formData, { feeSplitTotal: activity.feeSplitTotal, venue: activity.venue })");
     expect(action).toContain("if (!update.ok) throw new Error(update.error);");
     expect(action).not.toMatch(/data:\s*formData/);
   });
