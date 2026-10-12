@@ -67,11 +67,11 @@
  * reports. It is closed for good because the reading itself refuses to
  * write a row it no longer holds (setup-learning/run.ts: its settings
  * write and its record are one transaction that first locks the row on
- * status "running"). LOCK ORDER, everywhere: THE CLUB'S ROW, THEN THE
- * READING ROW. `goLiveClub` writes the club and then closes the reading;
- * the reading locks the club and then takes its row; so the close here
- * locks the club first too. Three transactions that all take the two rows
- * in one order cannot deadlock.
+ * status "running"). THE LOCK ORDER is written once, at the top of
+ * club-setup.ts: the club's row (FOR NO KEY UPDATE), then the reading
+ * row, then the connect rows. The close here follows it (`lockClubSetup`
+ * first), and so does the stamp (its compare-and-set on the club is its
+ * transaction's first write; it then only inserts the DM).
  *
  * Also used when the DM goes with the reading switched OFF (reason
  * "reading-off"): without it, switching the reading on a day later would
@@ -114,6 +114,7 @@ import {
   SETUP_LEARNING_FINAL_STATUSES,
   STILL_READING_WINDOW_MS,
   isSetupLearningFinal,
+  lockClubSetup,
   markSetupAsked,
 } from "./club-setup";
 import { freePeriodCanStart } from "./club-billing-rules";
@@ -184,9 +185,11 @@ type RawClient = {
  * is already final is left exactly as it was (false). One statement with
  * no error to catch, in its own transaction with the chat's deletion.
  *
- * It takes THE CLUB'S ROW FIRST (the lock order, see the header), so it
- * waits for a reading that is writing its result at this instant and then
- * finds the row final, instead of meeting it half way.
+ * It takes THE CLUB'S ROW FIRST (`lockClubSetup`: the lock order at the
+ * top of club-setup.ts), so it waits for a reading that is writing its
+ * result at this instant and then finds the row final, instead of meeting
+ * it half way. Never FOR UPDATE: that waits for the reading's claim, which
+ * is waiting for this row (a deadlock, found on main).
  */
 export async function closeReadingForGood(
   orgId: string,
@@ -195,7 +198,7 @@ export async function closeReadingForGood(
 ): Promise<boolean> {
   return db.$transaction(async (client) => {
     const tx = client as unknown as RawClient;
-    await tx.$executeRaw`SELECT 1 FROM "Organisation" WHERE "id" = ${orgId} FOR UPDATE`;
+    await lockClubSetup(tx, orgId);
     const rows = await tx.$queryRaw<Array<{ inserted: boolean }>>`
       INSERT INTO "ClubSetupLearning" ("id", "orgId", "status", "reason", "updatedAt")
       VALUES (${`csl-${randomUUID()}`}, ${orgId}, 'skipped', ${reason}, ${now})
@@ -212,9 +215,22 @@ export async function closeReadingForGood(
   });
 }
 
-/** The club, only while its setup DM is due, with all the DM is composed from. */
+/**
+ * The club, only while its setup DM is due, with all the DM is composed
+ * from. Read in ONE SNAPSHOT (repeatable read): the club's settings and
+ * its reading row are two SELECTs, and a reading that commits between them
+ * would otherwise give settings from before it and a row from after it,
+ * which reads as "the organiser changed this back" and made the DM say
+ * "found nothing" about a setting just switched on (found by the cap's
+ * race, e2e/helpers/setup-hold-lib-tests.ts check 9). Read only: it takes
+ * no lock and cannot fail to serialise.
+ */
 function loadDue(orgId: string) {
-  return db.organisation.findFirst({
+  return db.$transaction((tx) => loadDueIn(tx, orgId), { isolationLevel: "RepeatableRead" });
+}
+
+function loadDueIn(tx: Pick<typeof db, "organisation">, orgId: string) {
+  return tx.organisation.findFirst({
     where: { id: orgId, ...SETUP_DM_DUE_WHERE },
     select: {
       id: true,

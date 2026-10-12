@@ -134,7 +134,9 @@ describe("went-live: a held club's free period starts at go-live", () => {
   it("decided under the club's row lock, like every billing event", async () => {
     await setBillingState("org", { type: "went-live" }, LIVE);
     const sqls = dbMock.$queryRaw.mock.calls.map((c) => (c[0] as TemplateStringsArray).join("?"));
-    expect(sqls.some((s) => s.includes('FROM "Organisation"') && /FOR UPDATE/.test(s))).toBe(true);
+    // The club: FOR NO KEY UPDATE (never FOR UPDATE: see club-setup.ts, the lock order).
+    expect(sqls.some((s) => s.includes('FROM "Organisation"') && /FOR NO KEY UPDATE/.test(s))).toBe(true);
+    expect(sqls.some((s) => s.includes('FROM "Organisation"') && /FOR UPDATE/.test(s))).toBe(false);
     expect(sqls.some((s) => s.includes('FROM "ClubBilling"') && /FOR UPDATE/.test(s))).toBe(true);
   });
 

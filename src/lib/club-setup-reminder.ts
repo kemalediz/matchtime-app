@@ -51,7 +51,7 @@
  */
 import { db } from "./db";
 import { appUrl, buildAdminLink } from "./admin-link";
-import { SETUP_ASKED_ORDER, SETUP_ASKED_SELECT, setupAskedAtOf, settingUpAskedBy } from "./club-setup";
+import { SETUP_ASKED_ORDER, SETUP_ASKED_SELECT, lockClubSetup, setupAskedAtOf, settingUpAskedBy } from "./club-setup";
 import { SETUP_ASK_DM_PURPOSE, setupAskRefId } from "./club-setup-dm-rules";
 import {
   REMINDER_AFTER_MS,
@@ -142,7 +142,9 @@ export async function sendSetupReminder(orgId: string, now: Date = new Date()): 
 
   const outcome = await db.$transaction(async (tx): Promise<SetupReminderOutcome> => {
     // 1. The club's row, locked, then read again: see the header.
-    await (tx as unknown as RawClient).$executeRaw`SELECT 1 FROM "Organisation" WHERE "id" = ${orgId} FOR UPDATE`;
+    //    `lockClubSetup`: FOR NO KEY UPDATE, never FOR UPDATE (the lock
+    //    order at the top of club-setup.ts).
+    await lockClubSetup(tx as unknown as RawClient, orgId);
     const still = await tx.organisation.findFirst({ where: due, select: { id: true, ...SETUP_ASKED_SELECT } });
     // Still due, and still for the SAME setup DM (not a new one sent after
     // a removal and a re-add in between).

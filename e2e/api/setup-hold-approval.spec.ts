@@ -842,14 +842,14 @@ test("a held club with no organiser on record: stamped, ONE ops event, and it st
 // LAST in this file: it claims every platform job that is due.
 
 test("decideClub and the reading against Postgres: suspend cancels the waiting DM, a closed reading applies nothing (tsx)", async () => {
-  test.setTimeout(180_000);
+  test.setTimeout(420_000);
   const { stdout, stderr } = await execFileAsync("npx", ["tsx", "e2e/helpers/setup-hold-lib-tests.ts"], {
     cwd: REPO_ROOT,
     env: process.env,
-    timeout: 170_000,
+    timeout: 400_000,
   }).catch((err: Error & { stdout?: string; stderr?: string }) => {
     throw new Error(`setup-hold-lib-tests failed:\n${err.stdout ?? ""}\n${err.stderr ?? ""}`);
   });
   console.log(stdout);
-  expect(stdout, stderr).toContain("OK: 11 setup-hold checks");
+  expect(stdout, stderr).toContain("OK: 20 setup-hold checks");
 });

@@ -214,7 +214,7 @@ describe("sendSetupReminder: once, and only when it is still true", () => {
   it("the claim and the job are one transaction, taken under the club's row lock", async () => {
     await sendSetupReminder("org-riverside", AT_24H);
     expect(dbMock.$transaction).toHaveBeenCalledTimes(1);
-    expect(state.raw.filter((q) => /FROM "Organisation" WHERE "id" = \? FOR UPDATE/.test(q))).toHaveLength(1);
+    expect(state.raw.filter((q) => /FROM "Organisation" WHERE "id" = \? FOR NO KEY UPDATE/.test(q))).toHaveLength(1);
   });
 
   it("a club that went live, was suspended, or was never asked is not due", async () => {
