@@ -265,3 +265,112 @@ export function readingBlocksGoLive(args: {
  * matches, so GO from its admin is not ours and falls through untouched.
  */
 export const WENT_LIVE_CLUB_WHERE = { ...APPROVED_CLUB_WHERE, ...LIVE_STAGE_WHERE, liveAt: { not: null } } as const;
+
+// ════ BEGIN the go-live pages (slice S5, 2026-10-12) ════
+// What /admin/settings, the club's admin home and /admin/clubs show about
+// a club that is setting up. Read-only: nothing here writes anything.
+
+/** `liveBy` when it was the MatchTime owner (the inverse of `liveByOwner`). */
+const LIVE_BY_OWNER_PREFIX = "owner:";
+
+/** Who took a club live, from its `liveBy`. Null when nobody is recorded. */
+export type LiveBy = { kind: "matchtime" } | { kind: "user"; userId: string };
+
+export function parseLiveBy(liveBy: string | null | undefined): LiveBy | null {
+  if (!liveBy) return null;
+  return liveBy.startsWith(LIVE_BY_OWNER_PREFIX) ? { kind: "matchtime" } : { kind: "user", userId: liveBy };
+}
+
+/** Every column `setupStatusOf` reads, and the club's id. Spread into a `select`. */
+export const SETUP_STATUS_SELECT = {
+  ...SETUP_STAGE_SELECT,
+  id: true,
+  approvedAt: true,
+  whatsappGroupId: true,
+  liveAt: true,
+  liveBy: true,
+  setupAskedAt: true,
+  setupRemovedAt: true,
+  billingStatus: true,
+  clubBilling: { select: { pausedReason: true } },
+} as const;
+
+/** A row read with `SETUP_STATUS_SELECT`. */
+export interface SetupStatusRow extends SetupStageColumns {
+  approvedAt: Date | null;
+  whatsappGroupId: string | null;
+  liveAt: Date | null;
+  liveBy: string | null;
+  setupAskedAt: Date | null;
+  setupRemovedAt: Date | null;
+  billingStatus: string;
+  clubBilling: { pausedReason: string | null } | null;
+}
+
+export interface SetupStatus {
+  /** Approved, and waiting for its organiser's GO. */
+  settingUp: boolean;
+  /** When it was approved, which is when setting up began. Null unless setting up. */
+  since: Date | null;
+  /** When the setup message was sent to the organiser. Null: not sent. */
+  setupMessageSentAt: Date | null;
+  /** MatchTime is no longer in the club's group, so it cannot go live. */
+  removedFromGroup: boolean;
+  /** Set once the club has been through the hold and gone live. */
+  liveAt: Date | null;
+  liveBy: LiveBy | null;
+}
+
+/**
+ * The status the pages show. `removedFromGroup` is the same three-way test
+ * as `goLiveClub`'s refusal: the removal stamp, no group, or (with billing
+ * on) paused because MatchTime was removed. A club that is not setting up
+ * has nothing to show but when it went live and by whom.
+ */
+export function setupStatusOf(row: SetupStatusRow, opts: { billingOn: boolean }): SetupStatus {
+  const settingUp = isClubSettingUp(row);
+  const pausedForRemoval = opts.billingOn && row.billingStatus === "paused" && row.clubBilling?.pausedReason === "removed";
+  return {
+    settingUp,
+    since: settingUp ? row.approvedAt : null,
+    setupMessageSentAt: settingUp ? row.setupAskedAt : null,
+    removedFromGroup: settingUp && (!!row.setupRemovedAt || !row.whatsappGroupId || pausedForRemoval),
+    liveAt: settingUp ? null : (row.liveAt ?? null),
+    liveBy: settingUp ? null : parseLiveBy(row.liveBy),
+  };
+}
+
+/**
+ * What is KNOWN about the organiser's setup DM, for the owner's page
+ * (review of PR #236, fix 6). The club's stamp is the moment the DM is
+ * DUE, which can be 09:00 tomorrow, so the stamp alone never says "sent":
+ * that comes from the queued job's own status.
+ *
+ *   "none"         never claimed: nothing is queued;
+ *   "queued"       in the queue, due at `at`, which is still to come;
+ *   "waiting"      in the queue and due since `at`: not gone yet;
+ *   "sent"         the job says sent, at `at` when it recorded a time;
+ *   "unconfirmed"  handed to WhatsApp, delivery not confirmed;
+ *   "failed"       failed, or cancelled before it went;
+ *   "no-job"       claimed for `at`, but no job is queued (the recipient
+ *                  rule refused it).
+ */
+export type SetupMessageState =
+  | { kind: "none"; at: null }
+  | { kind: "queued" | "waiting" | "no-job"; at: Date }
+  | { kind: "sent"; at: Date | null }
+  | { kind: "unconfirmed" | "failed"; at: null };
+
+export function setupMessageState(
+  askedAt: Date | null | undefined,
+  job: { status: string; sentAt: Date | null } | null | undefined,
+  now: Date,
+): SetupMessageState {
+  if (!askedAt) return { kind: "none", at: null };
+  if (!job) return { kind: "no-job", at: askedAt };
+  if (job.status === "sent") return { kind: "sent", at: job.sentAt ?? null };
+  if (job.status === "unconfirmed") return { kind: "unconfirmed", at: null };
+  if (job.status === "failed") return { kind: "failed", at: null };
+  return askedAt.getTime() > now.getTime() ? { kind: "queued", at: askedAt } : { kind: "waiting", at: askedAt };
+}
+// ════ END the go-live pages ════
