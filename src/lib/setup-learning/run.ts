@@ -162,6 +162,8 @@ const ORG_SELECT = {
   listPublishTime: true,
   paymentTrackingEnabled: true,
   settingsSetByOrganiser: true,
+  // READ ONLY, for one question: is this a monthly club (no fee suggestion)?
+  squadMode: true,
 } as const;
 
 type OrgRow = OrgSettingsState &
@@ -171,6 +173,7 @@ type OrgRow = OrgSettingsState &
     approvedAt: Date | null;
     whatsappBotEnabled: boolean;
     liveAt: Date | null;
+    squadMode?: string | null;
   };
 
 async function loadOrg(orgId: string): Promise<OrgRow | null> {
@@ -239,6 +242,7 @@ function orgSettings(o: OrgRow): OrgSettingsState {
     paymentTrackingEnabled: o.paymentTrackingEnabled,
     language: o.language,
     settingsSetByOrganiser: o.settingsSetByOrganiser ?? [],
+    monthlySquad: o.squadMode === "monthly",
   };
 }
 

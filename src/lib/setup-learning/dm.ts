@@ -45,13 +45,32 @@ export function splitEvidence(item: Evidenced): { chat: string[]; description: s
   return { chat, description };
 }
 
+/** WhatsApp acts on these inside a message; each look-alike it does not. */
+const WHATSAPP_LITERAL: Record<string, string> = { "*": "∗", _: "ˍ", "~": "∼", "`": "'" };
+
+/**
+ * A quote as the DM shows it between its own quote marks (review fix 8).
+ * Somebody's words may hold the characters WhatsApp formats with (an
+ * asterisk, an underscore, a tilde, a backtick): left alone, one of them
+ * pairs up with MatchTime's own bold on the next line and the message
+ * comes out half bold, or the quote loses its markers. Each is swapped
+ * for a look-alike WhatsApp does not act on. A double quote inside
+ * becomes a single one, so the line's own marks stay a pair (the quote
+ * check strips a mark from the end of an excerpt, which could leave one
+ * hanging). FOR THE DM ONLY: the stored quote is untouched, and the
+ * settings page, which is plain text, shows it as it was written.
+ */
+export function quoteForDm(quote: string): string {
+  return quote.replace(/[*_~`]/g, (c) => WHATSAPP_LITERAL[c]).replace(/["“”]/g, "'");
+}
+
 /** The DM's "why" lines for one item: one chat quote, then one description quote. */
 export function evidenceLines(lang: string, item: Evidenced): string[] {
   const s = t(lang);
   const { chat, description } = splitEvidence(item);
   return [
-    ...(chat[0] ? [s.sj_dm_setup_from({ quote: chat[0] })] : []),
-    ...(description[0] ? [s.sj_dm_setup_from_description({ quote: description[0] })] : []),
+    ...(chat[0] ? [s.sj_dm_setup_from({ quote: quoteForDm(chat[0]) })] : []),
+    ...(description[0] ? [s.sj_dm_setup_from_description({ quote: quoteForDm(description[0]) })] : []),
   ];
 }
 

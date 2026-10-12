@@ -251,7 +251,17 @@ describe("the organiser's DM", () => {
     const sources = readdirSync(dir).filter((f) => f.endsWith(".ts"));
     expect(sources.length).toBeGreaterThan(4);
     for (const f of sources) {
-      expect(readFileSync(path.join(dir, f), "utf8"), f).not.toMatch(/squadMode/);
+      let source = readFileSync(path.join(dir, f), "utf8");
+      if (f === "run.ts") {
+        // Review fix 5 (PR #238): the reading READS the mode, once, to
+        // leave the fee suggestion out for a monthly club. Exactly these
+        // two mentions, a select and a comparison; anything else fails.
+        for (const read of ["  squadMode: true,\n", "    squadMode?: string | null;\n", '    monthlySquad: o.squadMode === "monthly",\n']) {
+          expect(source.split(read), read).toHaveLength(2);
+          source = source.replace(read, "");
+        }
+      }
+      expect(source, f).not.toMatch(/squadMode/);
     }
   });
 

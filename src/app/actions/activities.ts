@@ -6,7 +6,7 @@ import { activitySchema } from "@/lib/validations";
 import { requireOrgAdmin } from "@/lib/org";
 import { revalidatePath } from "next/cache";
 import { londonWallClockToUtc, nextLondonKickoff } from "@/lib/london-time";
-import { parseActivityFee } from "@/lib/activity-fee";
+import { activityUpdateData } from "@/lib/activity-update";
 
 export async function createActivity(formData: {
   orgId: string;
@@ -51,7 +51,7 @@ export async function updateActivity(
     matchDurationMins?: number;
     isActive?: boolean;
     /** The fee per player in pounds as typed ("6", "6.50"), "" or null for
-     *  none. Left out: the fee is not touched. */
+     *  none. Left out, or undefined: the fee is not touched. */
     feePerPlayer?: string | number | null;
   }
 ) {
@@ -63,20 +63,17 @@ export async function updateActivity(
 
   await requireOrgAdmin(session.user.id, activity.orgId);
 
-  if (formData.sportId) {
+  // Only named, checked fields are written, whatever the request carried
+  // (src/lib/activity-update.ts). A field left out is left alone.
+  const update = activityUpdateData(formData, { feeSplitTotal: activity.feeSplitTotal });
+  if (!update.ok) throw new Error(update.error);
+  const data = update.data;
+
+  if (data.sportId) {
     const sport = await db.sport.findFirst({
-      where: { id: formData.sportId, orgId: activity.orgId },
+      where: { id: data.sportId, orgId: activity.orgId },
     });
     if (!sport) throw new Error("Sport not found in this organisation");
-  }
-
-  // The fee is never written as it arrived: it goes through the one parser.
-  const { feePerPlayer, ...rest } = formData;
-  const data: typeof rest & { feePerPlayer?: number | null } = { ...rest };
-  if ("feePerPlayer" in formData) {
-    const parsed = parseActivityFee(feePerPlayer);
-    if (!parsed.ok) throw new Error("Enter a fee like 6 or 6.50, at most £100.");
-    data.feePerPlayer = parsed.fee;
   }
 
   await db.activity.update({ where: { id: activityId }, data });

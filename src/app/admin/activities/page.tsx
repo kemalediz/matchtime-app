@@ -39,6 +39,8 @@ interface Activity {
   ratingWindowHours: number;
   /** Pounds a player for one game; null: none entered. */
   feePerPlayer: number | null;
+  /** The pitch cost is split between who played: no fixed fee. */
+  feeSplitTotal: boolean;
   createdAt: string;
 }
 
@@ -66,6 +68,11 @@ export default function ActivitiesPage() {
   const [eTime, setETime] = useState("21:30");
   const [eVenue, setEVenue] = useState("");
   const [eFee, setEFee] = useState("");
+  // The fee as the form opened with it. It is SENT only when it differs,
+  // so a stored fee the form cannot show exactly is never rewritten, and
+  // never blocks the save, by an edit of something else.
+  const [eFeeWas, setEFeeWas] = useState("");
+  const [eSplit, setESplit] = useState(false);
   const [eSaving, setESaving] = useState(false);
   // The setup reading's fee suggestion links here with `?edit=fee`
   // (setup-learning/suggestion-action.ts): the weekly game's edit form
@@ -144,13 +151,16 @@ export default function ActivitiesPage() {
     setETime(a.time);
     setEVenue(a.venue);
     setEFee(activityFeeText(a.feePerPlayer));
+    setEFeeWas(activityFeeText(a.feePerPlayer));
+    setESplit(a.feeSplitTotal);
     setFocusFee(false);
   }
 
   async function handleEdit(e: React.FormEvent) {
     e.preventDefault();
     if (!editId) return;
-    if (!parseActivityFee(eFee).ok) return toast.error(s.act_fee_invalid);
+    const feeChanged = !eSplit && eFee.trim() !== eFeeWas;
+    if (feeChanged && !parseActivityFee(eFee).ok) return toast.error(s.act_fee_invalid);
     setESaving(true);
     try {
       await updateActivity(editId, {
@@ -158,7 +168,7 @@ export default function ActivitiesPage() {
         dayOfWeek: parseInt(eDay),
         time: eTime,
         venue: eVenue,
-        feePerPlayer: eFee,
+        ...(feeChanged ? { feePerPlayer: eFee } : {}),
       });
       toast.success("Activity updated");
       setEditId(null);
@@ -222,7 +232,7 @@ export default function ActivitiesPage() {
                 </div>
                 <p className="text-sm text-slate-500 mt-1">
                   {DAYS_OF_WEEK[a.dayOfWeek]}s at {a.time} · {a.venue}
-                  {activityFeeText(a.feePerPlayer) && (
+                  {!a.feeSplitTotal && activityFeeText(a.feePerPlayer) && (
                     <span data-testid="activity-fee-row"> · {s.act_fee_row({ fee: activityFeeText(a.feePerPlayer) })}</span>
                   )}
                 </p>
@@ -425,15 +435,16 @@ export default function ActivitiesPage() {
                   id="activity-fee"
                   data-testid="activity-fee"
                   inputMode="decimal"
-                  autoFocus={focusFee}
-                  value={eFee}
+                  autoFocus={focusFee && !eSplit}
+                  disabled={eSplit}
+                  value={eSplit ? "" : eFee}
                   onChange={(e) => setEFee(e.target.value)}
                   placeholder="6.50"
                   aria-describedby="activity-fee-hint"
-                  className="w-full h-11 px-3 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full h-11 px-3 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-400"
                 />
-                <p id="activity-fee-hint" className="mt-1 text-xs text-slate-400">
-                  {s.act_fee_hint}
+                <p id="activity-fee-hint" data-testid="activity-fee-hint" className="mt-1 text-xs text-slate-400">
+                  {eSplit ? s.act_fee_split : s.act_fee_hint}
                 </p>
               </div>
               <p className="text-xs text-slate-400">

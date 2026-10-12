@@ -329,3 +329,35 @@ test("description evidence has its own label, and the fee suggestion's button op
     .toEqual([{ fee: 6.5 }]);
   await expect(page.getByTestId("activity-fee-row")).toContainText("£6.50 a player");
 });
+
+// Review fix 7 (PR #238): the fee field must not get in the way of an
+// edit of something else, and a game that splits the pitch has no fee.
+test("a stored fee the form cannot show exactly survives an edit of the venue; a split-pitch game has the field switched off", async ({ page, db }) => {
+  // More decimals than the form shows, and (second) above its limit.
+  for (const stored of [6.505, 250]) {
+    await db.run(`UPDATE "Activity" SET "feePerPlayer" = $2, "feeSplitTotal" = false WHERE "orgId" = $1`, [ORG_ID, stored]);
+    await signInAs(page, U.admin, "/admin/activities?edit=fee");
+    const field = page.getByTestId("activity-fee");
+    await expect(field).toBeVisible({ timeout: 30_000 });
+    const venue = page.locator("form").filter({ has: field }).locator("input").nth(2);
+    await venue.fill(`Goals ${stored}`);
+    await page.getByRole("button", { name: "Save changes" }).click();
+    await expect
+      .poll(async () => db.all(`SELECT venue, "feePerPlayer" AS fee FROM "Activity" WHERE "orgId" = $1 AND venue = $2`, [ORG_ID, `Goals ${stored}`]))
+      .toEqual([{ venue: `Goals ${stored}`, fee: stored }]);
+  }
+
+  await db.run(`UPDATE "Activity" SET "feePerPlayer" = NULL, "feeSplitTotal" = true WHERE "orgId" = $1`, [ORG_ID]);
+  await signInAs(page, U.admin, "/admin/activities?edit=fee");
+  const field = page.getByTestId("activity-fee");
+  await expect(field).toBeVisible({ timeout: 30_000 });
+  await expect(field).toBeDisabled();
+  await expect(page.getByTestId("activity-fee-hint")).toHaveText(
+    "This game splits the pitch cost between who played, so there is no fixed fee per player.",
+  );
+  // The rest of the form still saves.
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect(field).toHaveCount(0);
+  expect(await db.all(`SELECT 1 FROM "Activity" WHERE "orgId" = $1 AND "feePerPlayer" IS NOT NULL`, [ORG_ID])).toEqual([]);
+  await db.run(`UPDATE "Activity" SET "feeSplitTotal" = false WHERE "orgId" = $1`, [ORG_ID]);
+});

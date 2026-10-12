@@ -3364,6 +3364,9 @@ export const en = {
   act_fee_label: "Fee per player (£), optional",
   act_fee_hint: "What each player pays for one game. Leave it empty if it changes from week to week.",
   act_fee_invalid: "Enter a fee like 6 or 6.50, at most £100.",
+  /** Under the fee field, which is switched off, for a game whose pitch
+   *  cost is split between who played. */
+  act_fee_split: "This game splits the pitch cost between who played, so there is no fixed fee per player.",
   /** On the list, after the day, time and venue. `fee` is "6" or "6.50". */
   act_fee_row: (p: { fee: string }): string => `£${p.fee} a player`,
   // ── Monthly squad (2026-10-05, slice 2) ──────────────────────────

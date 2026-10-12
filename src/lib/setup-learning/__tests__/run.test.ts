@@ -323,6 +323,15 @@ describe("learnClubSetup: the group description", () => {
     expect(state.learning!.suggestions).toEqual([]);
   });
 
+  it("a club whose stored squad mode is monthly is never asked about a fee (review fix 5)", async () => {
+    setup("description-supports", { squadMode: "monthly" });
+    await learnClubSetup(ORG, { now: DAYTIME, model: stub(STUB_ANSWERS["description-supports"]) });
+    expect(state.learning!.suggestions).toEqual([]);
+    // The deadline is still switched: only the fee is held back.
+    expect(state.org).toMatchObject({ dropOutDeadlineDay: 2, dropOutDeadlineTime: "18:00", squadMode: "monthly" });
+    expect(state.orgUpdates.every((u) => !("squadMode" in u.data))).toBe(true);
+  });
+
   it("the description twice is one source: nothing is switched", async () => {
     setup("description-stale");
     const wrong = {

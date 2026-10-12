@@ -48,6 +48,8 @@ describe("the words on the weekly game page, in English and Turkish", () => {
     expect(t("tr").act_fee_hint).toBe("Her oyuncunun bir maç için ödediği tutar. Haftadan haftaya değişiyorsa boş bırakın.");
     expect(t("en").act_fee_invalid).toBe("Enter a fee like 6 or 6.50, at most £100.");
     expect(t("tr").act_fee_invalid).toBe("6 veya 6.50 gibi bir ücret girin, en fazla £100.");
+    expect(t("en").act_fee_split).toBe("This game splits the pitch cost between who played, so there is no fixed fee per player.");
+    expect(t("tr").act_fee_split).toBe("Bu maçta saha ücreti oynayanlar arasında bölüşülüyor, bu yüzden kişi başı sabit bir ücret yok.");
     expect(t("en").act_fee_row({ fee: "6.50" })).toBe("£6.50 a player");
     expect(t("tr").act_fee_row({ fee: "6.50" })).toBe("kişi başı £6.50");
   });
@@ -55,8 +57,9 @@ describe("the words on the weekly game page, in English and Turkish", () => {
 
 describe("the server action never writes what it was not asked to", () => {
   const action = readFileSync(path.join(__dirname, "..", "..", "app", "actions", "activities.ts"), "utf8");
-  it("the fee goes through parseActivityFee, and a bad one is refused", () => {
-    expect(action).toContain("parseActivityFee(feePerPlayer)");
-    expect(action).toMatch(/if \(!parsed\.ok\) throw new Error/);
+  it("everything it writes comes out of activityUpdateData, and the request is never handed to Prisma", () => {
+    expect(action).toContain("activityUpdateData(formData, { feeSplitTotal: activity.feeSplitTotal })");
+    expect(action).toContain("if (!update.ok) throw new Error(update.error);");
+    expect(action).not.toMatch(/data:\s*formData/);
   });
 });

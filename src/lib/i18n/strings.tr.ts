@@ -2580,6 +2580,7 @@ export const tr: Strings = {
   act_fee_label: "Kişi başı ücret (£), isteğe bağlı",
   act_fee_hint: "Her oyuncunun bir maç için ödediği tutar. Haftadan haftaya değişiyorsa boş bırakın.",
   act_fee_invalid: "6 veya 6.50 gibi bir ücret girin, en fazla £100.",
+  act_fee_split: "Bu maçta saha ücreti oynayanlar arasında bölüşülüyor, bu yüzden kişi başı sabit bir ücret yok.",
   act_fee_row: (p) => `kişi başı £${p.fee}`,
   // ── Aylık kadro (2026-10-05, dilim 2) ────────────────────────────
   // /admin/settings "Aylık kadro" bölümü (msq_) ve /admin/months (mth_).

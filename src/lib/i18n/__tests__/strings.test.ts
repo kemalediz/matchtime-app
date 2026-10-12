@@ -935,6 +935,7 @@ const SAMPLES: SampleArgs = {
   act_fee_label: null,
   act_fee_hint: null,
   act_fee_invalid: null,
+  act_fee_split: null,
   act_fee_row: { fee: "6.75" },
   settings_learned_check_count: { count: 3 },
   settings_learned_check_sub: null,

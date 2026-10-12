@@ -65,17 +65,26 @@
  *      `fromDescription` beside `evidence`, only when there are any, so a
  *      row written before this slice reads exactly as it did.
  *      "[number removed]", "[link removed]" and "[email removed]" are
- *      what the masking left behind: a quote carrying one is dropped.
+ *      what the masking left behind: a DESCRIPTION quote that overlaps or
+ *      touches one is dropped, decided by where the quote sits and not by
+ *      how it is spelt. A description quote must also be more than a
+ *      scrap (two words or eight characters). A chat quote is held to
+ *      neither: chat is never masked. EVERY quote, from either source,
+ *      must be whole words: "paid" is not in "Unpaid".
  *      Nothing is read from the description alone: when the chat fails
  *      `historyGate`, the description is not read either.
  *   8. THE MATCH FEE IS ONLY EVER SUGGESTED (same slice). When the text
  *      states what each player pays for a game, in pounds, and the club's
  *      weekly game has no fee or a different one, the organiser is asked,
  *      with a link. THE EVIDENCE NEEDED: a verified quote that itself
- *      contains the amount, from the description (one is enough: it is
- *      the group's standing notice, and a suggestion changes nothing), or
- *      from TWO different messages (one message may be a single week's
- *      price). Never for a group that runs a monthly list or splits the
+ *      states the amount AS A PRICE (a currency sign or word beside it,
+ *      and not the price of the whole pitch: `statesPrice`), from the
+ *      description (one is enough: it is the group's standing notice, and
+ *      a suggestion changes nothing), or from TWO different messages (one
+ *      message may be a single week's price). The description's quote is
+ *      not counted when any message states a different price: it is out
+ *      of date. Never for a group that runs a monthly list (by the
+ *      model's answer OR by the club's stored squad mode) or splits the
  *      pitch cost: neither has one fixed fee a game.
  */
 import type { HistoryMessage } from "../onboarding-enrichment-reconcile";
@@ -259,16 +268,84 @@ export const MIN_QUOTES_TO_APPLY = 2;
 /** At most this many quotes are kept for one answer. */
 const MAX_QUOTES = 2;
 
+/** A letter or a digit, in any alphabet (Turkish ı, ş, ğ, ç, ö, ü included). */
+const WORD_CHAR = /[\p{L}\p{N}]/u;
+const isWordChar = (c: string | undefined): boolean => c !== undefined && WORD_CHAR.test(c);
+
+/**
+ * Where `needle` sits in `hay` AS WHOLE WORDS: every start index at which
+ * it is found without cutting a word at either end. "paid" is not in
+ * "Unpaid", "sit ou" is not in "sit out". A needle that begins or ends on
+ * punctuation has nothing to cut at that end. (Review fix 2: until then a
+ * quote was any substring.)
+ */
+function wholeWordStarts(hay: string, needle: string): number[] {
+  const out: number[] = [];
+  if (!needle) return out;
+  for (let i = hay.indexOf(needle); i >= 0; i = hay.indexOf(needle, i + 1)) {
+    const end = i + needle.length;
+    const cutsStart = isWordChar(needle[0]) && isWordChar(hay[i - 1]);
+    const cutsEnd = isWordChar(needle[needle.length - 1]) && isWordChar(hay[end]);
+    if (!cutsStart && !cutsEnd) out.push(i);
+  }
+  return out;
+}
+
 /** What the masking of the description leaves behind (group-description.ts),
- *  whole or in part. A quote carrying one is not the group's words. */
-const PLACEHOLDER_RE = /\[\s*(?:number|link|email)\b|\bremoved\s*\]/i;
+ *  as it reads once normalised. */
+const MASKED_SPAN = /\[(?:number|link|email) removed\]/g;
+/** A description quote needs this many characters, or two words. */
+const MIN_DESCRIPTION_QUOTE_CHARS = 8;
+
+/**
+ * The description, ready to be searched. `text` is it normalised (one
+ * line, as a quote is normalised); `lines` is the same string with each
+ * line break kept as "\n" at the same index, so a position in one is the
+ * same position in the other; `masked` is where the masking's
+ * placeholders sit.
+ */
+interface SearchableDescription {
+  text: string;
+  lines: string;
+  masked: Array<[number, number]>;
+}
+function searchable(sent: string): SearchableDescription {
+  const parts = sent.split(/\n+/).map(normaliseForMatch).filter(Boolean);
+  const text = parts.join(" ");
+  return { text, lines: parts.join("\n"), masked: [...text.matchAll(MASKED_SPAN)].map((m) => [m.index, m.index + m[0].length]) };
+}
+
+/**
+ * Is `needle` in the description as the group's own words? (Review fixes
+ * 1 and 2.) It must be whole words, more than a scrap (two words, or
+ * MIN_DESCRIPTION_QUOTE_CHARS characters), and sit somewhere that neither
+ * OVERLAPS a masked span nor TOUCHES one. Decided by position, so a
+ * fragment of a placeholder is refused however it is spelt ("number
+ * removed", "removed]", a dangling "["), and so are the words right beside
+ * one ("Send it to Dave", "by Friday"), which would imply what stood
+ * there. Touching: nothing between the two but spaces and commas. A full
+ * stop, a colon, a line break or another word ends it, so the next
+ * sentence and the next line may be quoted.
+ */
+function inDescription(d: SearchableDescription, needle: string): boolean {
+  if (needle.length < MIN_DESCRIPTION_QUOTE_CHARS && !/\S\s\S/.test(needle)) return false;
+  const separates = /[\p{L}\p{N}.!?;:\n]/u;
+  return wholeWordStarts(d.text, needle).some((start) => {
+    const end = start + needle.length;
+    return d.masked.every(([from, to]) => {
+      if (start < to && from < end) return false;
+      const gap = end <= from ? d.lines.slice(end, from) : d.lines.slice(to, start);
+      return separates.test(gap);
+    });
+  });
+}
 
 /**
  * The quotes that really are in the chat or the group description, at
  * most two, in the model's order, EACH STANDING FOR A DIFFERENT SOURCE,
  * and tagged with the source it stands for. A quote is kept when,
- * normalised, it is a substring of a normalised message (or of the
- * description) that no quote kept before it stands for. So:
+ * normalised, it is found AS WHOLE WORDS in a normalised message (or in
+ * the description) that no quote kept before it stands for. So:
  *   - two quotes cut from one message count once;
  *   - the same sentence posted again another week may be quoted twice: it
  *     is a second message;
@@ -280,16 +357,24 @@ const PLACEHOLDER_RE = /\[\s*(?:number|link|email)\b|\bremoved\s*\]/i;
  * The length of the result is therefore the number of separate sources
  * behind an answer, which is what `planSetup` counts. Dropped whatever
  * they match: quotes with six or more digits in a row (account numbers or
- * phone numbers: they never go in a DM), and quotes carrying one of the
- * masking's placeholders, whole or in part.
+ * phone numbers: they never go in a DM).
+ *
+ * THE DESCRIPTION IS HELD TO MORE THAN A MESSAGE (`inDescription`): it was
+ * masked before it was stored, so a quote must keep clear of what the
+ * masking left, and it is one text a short word can be fished out of, so
+ * a quote must be more than a scrap. NONE OF THAT APPLIES TO A MESSAGE
+ * (review fix 4): chat is never masked, and a line like "[link to pitch]
+ * here" is somebody's own words. With no description, the only thing
+ * that differs from before slice D3 is the whole-word rule.
  */
 export function verifyEvidenceTagged(raw: unknown, history: HistoryMessage[], description?: string | null): VerifiedQuote[] {
   if (!Array.isArray(raw)) return [];
   const haystack = history.map((m) => normaliseForMatch(m.text));
-  // The description is the last "message": found after every real one, so
-  // a quote prefers a message. Its index says which source a quote is.
+  // The description is the last source: found after every message, so a
+  // quote prefers a message. Its index says which source a quote is.
   const sent = descriptionForReading(description);
-  const descriptionAt = sent ? haystack.push(normaliseForMatch(sent)) - 1 : -1;
+  const desc = sent ? searchable(sent) : null;
+  const descriptionAt = desc ? haystack.length : -1;
   const kept: Array<{ quote: string; in: number[]; at: number }> = [];
   const taken = () => new Set(kept.map((k) => k.at));
   for (const q of raw) {
@@ -297,9 +382,9 @@ export function verifyEvidenceTagged(raw: unknown, history: HistoryMessage[], de
     const quote = q.replace(/\s+/g, " ").trim().replace(/^["'“”]+|["'“”]+$/g, "").trim();
     if (quote.length < 3 || quote.length > MAX_QUOTE_CHARS) continue;
     if (/\d{6,}/.test(quote.replace(/[\s-]/g, ""))) continue;
-    if (PLACEHOLDER_RE.test(quote)) continue;
     const n = normaliseForMatch(quote);
-    const found = haystack.flatMap((h, i) => (h.includes(n) ? [i] : []));
+    const found = haystack.flatMap((h, i) => (wholeWordStarts(h, n).length > 0 ? [i] : []));
+    if (desc && inDescription(desc, n)) found.push(descriptionAt);
     if (found.length === 0) continue;
     let at = found.find((i) => !taken().has(i));
     if (at === undefined) {
@@ -390,34 +475,68 @@ function dayTime(raw: unknown, src: Sources): DayTimeAnswer {
 export const MIN_MATCH_FEE = 0.5;
 export const MAX_MATCH_FEE = 50;
 
-/** Does the quote itself state `amount`? ("£6", "6.50", "7,50"; not the 6 of "6pm" or "18:00".) */
-function statesAmount(quote: string, amount: number): boolean {
-  for (const m of quote.matchAll(/\d+(?:[.,]\d{1,2})?(?!\d)/g)) {
-    const rest = quote.slice(m.index + m[0].length);
-    const before = quote.slice(0, m.index);
-    if (/^\s?(?:am|pm)\b|^:\d/i.test(rest) || /\d[:.,]$/.test(before)) continue;
-    if (Math.abs(Number(m[0].replace(",", ".")) - amount) < 0.005) return true;
+const AMOUNT = String.raw`\d+(?:[.,]\d{1,2})?(?!\d)`;
+/** "£6", "£ 6.50" | "6 quid", "6.50 pounds", "6 GBP" | "GBP 6" | "50p". */
+const PRICE_RES = [
+  new RegExp(String.raw`£\s?(${AMOUNT})`, "giu"),
+  new RegExp(String.raw`(?<![\d.,£])(${AMOUNT})\s?(?:quid|pounds?|gbp)(?![\p{L}\p{N}])`, "giu"),
+  new RegExp(String.raw`(?<![\p{L}\p{N}])gbp\s?(${AMOUNT})`, "giu"),
+];
+const PENCE_RE = /(?<![\d.,£])(\d{1,2})p(?![\p{L}\p{N}])/giu;
+/** The whole pitch is being priced ... */
+const WHOLE_PITCH_RE = /(?<!\p{L})(?:pitch|saha|total|toplam)/iu;
+/** ... unless the same words say it is a price for each player. */
+const PER_PLAYER_RE = /(?<!\p{L})(?:each|a player|per player|a head|per head|per person|a man|kişi başı|adam başı)/iu;
+
+/**
+ * Every price per player a text states, in pounds (review fix 3). A price
+ * is an amount WITH a currency sign or word right beside it: a bare
+ * number is a time, a date, a size or a count ("at 6", "6/10", "7 a
+ * side", "first 6"). A text that prices the whole pitch ("Pitch is £45",
+ * "saha toplam £45") states no price per player, unless it also says
+ * "each", "a head", "kişi başı" and the like. Kept narrow on purpose: this
+ * decides only whether a fee may be SUGGESTED.
+ */
+export function pricesIn(text: string): number[] {
+  if (WHOLE_PITCH_RE.test(text) && !PER_PLAYER_RE.test(text)) return [];
+  const found: Array<[number, number]> = [];
+  for (const re of PRICE_RES) {
+    for (const m of text.matchAll(re)) found.push([m.index, Number(m[1].replace(",", "."))]);
   }
-  return false;
+  for (const m of text.matchAll(PENCE_RE)) found.push([m.index, Number(m[1]) / 100]);
+  return found.sort((a, b) => a[0] - b[0]).map(([, amount]) => amount);
+}
+
+/** Does the excerpt itself state `amount` as a price per player? */
+export function statesPrice(quote: string, amount: number): boolean {
+  return pricesIn(quote).some((p) => Math.abs(p - amount) < 0.005);
 }
 
 /**
  * The match fee: an amount in pounds, kept only with a verified quote
- * that itself contains the amount (so a fee the model worked out, or made
- * up, is no fee). Any other currency is no fee: the club's fee is held in
- * pounds. Absent from the answer (a stub, a reading before this slice):
- * no fee.
+ * that itself states the amount as a price (`statesPrice`), so a fee the
+ * model worked out, made up or read off a number that is no price is no
+ * fee. Any other currency is no fee: the club's fee is held in pounds.
+ * Absent from the answer (a stub, a reading before this slice): no fee.
+ *
+ * AN OUT-OF-DATE DESCRIPTION (review fix 5): when ANY chat message states
+ * a different price per player, the description's quote is not counted,
+ * whatever the model answered. The prompt says the same, but a ruling the
+ * server can check is not left to the prompt. What is left (two messages
+ * stating the amount, or nothing) is judged as usual.
  */
 function matchFee(raw: unknown, src: Sources): Detection["matchFee"] {
   const o = obj(raw);
   const none: Detection["matchFee"] = { amount: null, confidence: "low", evidence: [] };
   const n = typeof o.amount === "number" && Number.isFinite(o.amount) ? Math.round(o.amount * 100) / 100 : null;
   if (n === null || o.currency !== "pounds" || n < MIN_MATCH_FEE || n > MAX_MATCH_FEE) return none;
-  const stated = verifyEvidenceTagged(
-    Array.isArray(o.evidence) ? o.evidence.filter((q) => typeof q === "string" && statesAmount(q, n)) : [],
+  let stated = verifyEvidenceTagged(
+    Array.isArray(o.evidence) ? o.evidence.filter((q) => typeof q === "string" && statesPrice(q, n)) : [],
     src.history,
     src.description,
   );
+  const chatSaysOtherwise = src.history.some((m) => pricesIn(m.text).some((p) => Math.abs(p - n) >= 0.005));
+  if (chatSaysOtherwise) stated = stated.filter((v) => v.source !== "description");
   if (stated.length === 0) return none;
   return { amount: n, confidence: conf(o.confidence), ...evidenced(stated) };
 }
@@ -501,6 +620,9 @@ export interface OrgSettingsState {
   paymentTrackingEnabled: boolean;
   language: string;
   settingsSetByOrganiser: string[];
+  /** The club's stored squad mode is the monthly one (run.ts reads it;
+   *  nothing here ever writes it). Absent: weekly. */
+  monthlySquad?: boolean;
 }
 
 export type DayTimeValue = { day: number; time: string };
@@ -789,7 +911,7 @@ export function planSetup(args: {
   // The match fee: asked, never set (rule 8). A quote from the description
   // is enough; from the chat alone it takes two messages.
   const f = d.matchFee;
-  if (g && f.amount !== null && f.confidence !== "low" && !monthly && !g.feeSplitTotal) {
+  if (g && f.amount !== null && f.confidence !== "low" && !monthly && !org.monthlySquad && !g.feeSplitTotal) {
     const backed = (f.fromDescription?.length ?? 0) > 0 || f.evidence.length >= MIN_QUOTES_TO_APPLY;
     const now = g.feePerPlayer != null && g.feePerPlayer > 0 ? g.feePerPlayer : null;
     if (backed && (now === null || Math.abs(now - f.amount) >= 0.005)) {

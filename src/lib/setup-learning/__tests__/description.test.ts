@@ -130,8 +130,12 @@ describe("placeholders and bank details are never evidence", () => {
       expect(verifyEvidenceTagged([q], CHAT, links), q).toEqual([]);
     }
   });
-  it("the words beside a placeholder may be quoted, the placeholder never comes with them", () => {
-    expect(verifyEvidence(["Pay Kemal"], [], DESC)).toEqual(["Pay Kemal"]);
+  // Review fix 1 (PR #238): this first allowed "Pay Kemal". The words
+  // right beside a masked span imply what stood there, so they are
+  // refused; the line after it is not (review-fixes.test.ts).
+  it("the words that touch a placeholder are not evidence either; the next line is", () => {
+    expect(verifyEvidence(["Pay Kemal"], [], DESC)).toEqual([]);
+    expect(verifyEvidence(["Drop out by Monday 9pm or you still pay."], [], DESC)).toEqual(["Drop out by Monday 9pm or you still pay."]);
   });
   it("a quote with bank-like digits is still dropped, whichever source it is in", () => {
     const leaky = "Pay Kemal 12-34-56 12345678";
