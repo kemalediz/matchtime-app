@@ -25,6 +25,17 @@
  * is one query that finds nothing. It is the retry for the run that
  * follows an approval (`after()`, club-setup-schedule.ts).
  *
+ * THE SETUP FOLLOW-UPS (go-live slice S6, 2026-10-12) ride on it as well,
+ * after the setup DM sweep, each on its own and each keyed on the club's
+ * stored state like the setup DM (with no club setting up, one query each
+ * that finds nothing):
+ *   - `runSetupReminderSweep` (src/lib/club-setup-reminder.ts): ONE
+ *     reminder to an organiser who has not gone live, 24 hours after the
+ *     setup DM was due, inside 09:00 to 23:00 London;
+ *   - `runSetupStuckSweep` (src/lib/club-setup-stuck.ts): ONE note to the
+ *     MatchTime owner and one ops event for a club still setting up 72
+ *     hours after its approval.
+ *
  * TEST SEAMS, honoured only when the server was booted with MT_TEST_MODE
  * exactly "1" (never in production): `x-test-now` pins the clock,
  * `x-mt-test-setup-learning` turns the flag on or off for this request,
@@ -36,6 +47,8 @@ import { runSetupLearningSweep } from "@/lib/setup-learning/run";
 import { setupLearningEnabledForRequest } from "@/lib/setup-learning/flag";
 import { expireCapturedHistory, type ExpiredCapturedHistory } from "@/lib/captured-history-expiry";
 import { runSetupDmSweep } from "@/lib/club-setup-dm";
+import { runSetupReminderSweep } from "@/lib/club-setup-reminder";
+import { runSetupStuckSweep } from "@/lib/club-setup-stuck";
 import { setupLearningTestSeam } from "@/lib/setup-learning/test-seam";
 
 export async function GET(request: Request) {
@@ -61,6 +74,20 @@ export async function GET(request: Request) {
   } catch (err) {
     console.error("[learn-setup] setup DM sweep failed:", err);
   }
+  // The follow-ups of a club that is still setting up. Each independent of
+  // everything above and of the other.
+  let setupReminders: Awaited<ReturnType<typeof runSetupReminderSweep>> | null = null;
+  try {
+    setupReminders = await runSetupReminderSweep(now);
+  } catch (err) {
+    console.error("[learn-setup] setup reminder sweep failed:", err);
+  }
+  let setupStuck: Awaited<ReturnType<typeof runSetupStuckSweep>> | null = null;
+  try {
+    setupStuck = await runSetupStuckSweep(now);
+  } catch (err) {
+    console.error("[learn-setup] stuck setup sweep failed:", err);
+  }
   let expired: ExpiredCapturedHistory | null = null;
   try {
     expired = await expireCapturedHistory(now);
@@ -68,7 +95,14 @@ export async function GET(request: Request) {
     console.error("[learn-setup] captured chat expiry failed:", err);
   }
   if (!report) return NextResponse.json({ error: "sweep failed", expired }, { status: 500 });
-  // `setupDms` is reported only when a club was due, so with no club
-  // setting up the response is exactly what it was.
-  return NextResponse.json({ ...report, expired, ...(setupDms && setupDms.considered > 0 ? { setupDms } : {}) });
+  // `setupDms`, `setupReminders` and `setupStuck` are reported only when a
+  // club was due, so with no club setting up the response is exactly what
+  // it was.
+  return NextResponse.json({
+    ...report,
+    expired,
+    ...(setupDms && setupDms.considered > 0 ? { setupDms } : {}),
+    ...(setupReminders && setupReminders.considered > 0 ? { setupReminders } : {}),
+    ...(setupStuck && setupStuck.considered > 0 ? { setupStuck } : {}),
+  });
 }

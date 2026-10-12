@@ -20,7 +20,8 @@ import { mkdirSync } from "node:fs";
 import path from "node:path";
 import type { BrowserContext, Page } from "@playwright/test";
 import { test, expect, resetDb, signInAs, U } from "../fixtures";
-import { E2E_BASE_URL } from "../helpers/env";
+import { countRequestsOf } from "../helpers/action-requests";
+import { E2E, E2E_BASE_URL } from "../helpers/env";
 import { testDb, type TestDb } from "../helpers/test-db";
 
 test.describe.configure({ mode: "serial" });
@@ -149,14 +150,13 @@ const setupJob = (db: TestDb, c: Club, status: string, sentAt: string | null) =>
     [`${c.id}-setup-job`, bare(c.ownerPhone), "setup-ask", `${c.id}:setup-ask`, status, sentAt],
   );
 
-/** Counts the server-action requests a page starts from now on. */
-function countActionRequests(page: Page): { count: () => number } {
-  let n = 0;
-  page.on("request", (req) => {
-    if (req.method() === "POST" && req.headers()["next-action"]) n++;
-  });
-  return { count: () => n };
-}
+/**
+ * Counts the PREVIEW requests a page starts, and no other feature's on
+ * the same page (helpers/action-requests.ts). The preview's answer is the
+ * hello itself; a go-live answers with the hello too, beside an outcome.
+ */
+const countPreviewRequests = (page: Page) =>
+  countRequestsOf(page, (body) => body.includes("has set me up") && !body.includes('"outcome"'));
 
 /** What coming back to the tab does: BOTH events fire. */
 const comeBack = (page: Page) =>
@@ -341,7 +341,38 @@ test.describe("the organiser of a club that is setting up", () => {
     // The page shows the live state without a reload.
     await expect(page.getByTestId("wa-bot-state")).toHaveText("Enabled");
     await expect(page.getByTestId("wa-setting-up")).toHaveCount(0);
+    // AFTER GOING LIVE (PR #237): the club is billed (the e2e server runs
+    // with BILLING_ENABLED=1), so its free period started with this
+    // go-live, and the page says what the WhatsApp "Done" reply says: the
+    // free period sentence and the club fee tip. Under the result, INSIDE
+    // the one live region, with WhatsApp bold as bold.
+    const note = page.getByTestId("go-live-free-period");
+    await expect(note).toBeVisible();
+    await expect(status.getByTestId("go-live-free-period")).toHaveCount(1);
+    await expect(note).toContainText("Your first two months are free.");
+    await expect(note).toContainText("after that MatchTime only charges for the games you play, up to £9.99 a month for the group");
+    await expect(note.locator("strong", { hasText: "Club fee tip:" })).toBeVisible();
+    await expect(note).not.toContainText("*Club fee tip");
+    const doneText = (await page.getByTestId("go-live-done-text").boundingBox())!;
+    const noteBox = (await note.boundingBox())!;
+    expect(noteBox.y).toBeGreaterThanOrEqual(doneText.y + doneText.height);
+    // It is the same text the organiser would have had by WhatsApp.
+    const billing = await db.one<{ status: string; same: boolean }>(
+      `SELECT o."billingStatus" AS status, cb."trialStartedAt" = o."liveAt" AS same
+         FROM "Organisation" o JOIN "ClubBilling" cb ON cb."orgId" = o.id WHERE o.id = $1`,
+      [HARBOUR.id],
+    );
+    expect(billing).toEqual({ status: "trial", same: true });
     await shot(page, "went-live-desktop");
+    await done.screenshot({ path: path.join(SHOTS, "went-live-note-desktop.png") });
+    // A phone: the note wraps inside the banner, nothing scrolls sideways.
+    await page.setViewportSize({ width: 360, height: 740 });
+    await expect(note).toBeVisible();
+    await expectNoHorizontalOverflow(page, "go-live-done");
+    await done.scrollIntoViewIfNeeded();
+    await shot(page, "went-live-360");
+    await done.screenshot({ path: path.join(SHOTS, "went-live-note-360.png") });
+    await page.setViewportSize({ width: 1280, height: 720 });
     await page.waitForLoadState("networkidle");
     expect(sent.count()).toBe(1);
 
@@ -395,10 +426,24 @@ test.describe("the organiser of a club that is setting up", () => {
   });
 
   test("removed from the group: said before anything is pressed, and again on a press; nothing goes out", async ({ page, db }) => {
+    // From the REAL removal: start with no stamp, then have the Pi report it.
+    await db.run(`UPDATE "Organisation" SET "setupRemovedAt" = NULL WHERE id = $1`, [GONE.id]);
     await signInAs(page, GONE.ownerId, "/admin/settings");
+    await expect(page.getByTestId("go-live-lead")).toContainText('MatchTime is in "Gone Thursday 7s"', { timeout: 30_000 });
+    await expect(page.getByTestId("go-live-notice")).toHaveCount(0);
+    const removed = await page.request.post("/api/whatsapp/bot-removed", {
+      headers: { "x-api-key": E2E.WHATSAPP_API_KEY },
+      data: { groupId: GONE.group },
+    });
+    expect(await removed.json()).toMatchObject({ ok: true, billing: "setting-up", setup: "removed", orgId: GONE.id });
+    await page.reload();
     const notice = page.getByTestId("go-live-notice");
     const text = 'MatchTime is not in "Gone Thursday 7s" any more. Add it back to the group, then press Go live.';
     await expect(notice).toHaveText(text, { timeout: 30_000 });
+    // The lead ("MatchTime is in <group> ...") would contradict the notice: it is gone.
+    await expect(page.getByTestId("go-live-lead")).toHaveCount(0);
+    await expect(page.getByTestId("go-live-banner")).not.toContainText('MatchTime is in "Gone Thursday 7s"');
+    await shot(page, "removed-desktop");
     await page.getByTestId("go-live-button").click();
     await expect(page.getByTestId("go-live-button")).toBeEnabled();
     await expect(notice).toHaveText(text);
@@ -529,22 +574,35 @@ test.describe("review of PR #236: the banner's other outcomes and rules", () => 
     await expect(page.getByTestId("wa-bot-state")).toHaveText("Enabled");
   });
 
-  test("fix 8: a 60-character group name with no space wraps inside the banner and its notice at 360px", async ({ page }) => {
+  test("fix 8: a 60-character group name with no space wraps inside the banner and its notice at 360px", async ({ page, db }) => {
     await page.setViewportSize({ width: 360, height: 740 });
     await signInAs(page, LONG.ownerId, "/admin/settings");
     await expect(page.getByTestId("go-live-preview")).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByTestId("go-live-lead")).toContainText(LONG_NAME);
+    // Removed from its group: the notice names the group, and the lead
+    // (which would say MatchTime is in it) is not shown.
     await expect(page.getByTestId("go-live-notice")).toContainText(LONG_NAME);
+    await expect(page.getByTestId("go-live-lead")).toHaveCount(0);
     await expectNoHorizontalOverflow(page, "go-live-banner");
     await shot(page, "long-group-name-360");
+    // Back in its group: the lead names the group, and wraps too.
+    await db.run(`UPDATE "Organisation" SET "setupRemovedAt" = NULL WHERE id = $1`, [LONG.id]);
+    await page.reload();
+    await expect(page.getByTestId("go-live-lead")).toContainText(LONG_NAME, { timeout: 30_000 });
+    await expect(page.getByTestId("go-live-notice")).toHaveCount(0);
+    await expectNoHorizontalOverflow(page, "go-live-banner");
+    await db.run(`UPDATE "Organisation" SET "setupRemovedAt" = now() - interval '1 hour' WHERE id = $1`, [LONG.id]);
   });
 
   test("fix 3: coming back to the tab refetches the preview once per five seconds at most, never beside a go-live, never after the outcome", async ({ page }) => {
     await page.clock.install();
+    // The banner's own requests only: the page has other server actions.
+    const sent = countPreviewRequests(page);
+    const goLives = countGoLiveRequests(page);
     await signInAs(page, FOCUS.ownerId, "/admin/settings");
     await expect(page.getByTestId("go-live-preview")).toBeVisible({ timeout: 30_000 });
+    await expect.poll(() => sent.known()).toBe(true);
     await page.waitForLoadState("networkidle");
-    const sent = countActionRequests(page);
+    sent.reset();
 
     // Straight after a fetch: coming back five times asks for nothing.
     for (let i = 0; i < 5; i++) await comeBack(page);
@@ -567,10 +625,8 @@ test.describe("review of PR #236: the banner's other outcomes and rules", () => 
 
     // While the go-live request is in flight (held here for a moment),
     // coming back sends nothing to queue beside it.
-    let held = 0;
     await page.route("**/admin/settings", async (route) => {
       if (route.request().method() === "POST" && route.request().headers()["next-action"]) {
-        held++;
         await new Promise((r) => setTimeout(r, 1_500));
       }
       await route.continue();
@@ -580,8 +636,8 @@ test.describe("review of PR #236: the banner's other outcomes and rules", () => 
     await page.clock.fastForward(6_000);
     for (let i = 0; i < 3; i++) await comeBack(page);
     await expect(page.getByTestId("go-live-done")).toBeVisible({ timeout: 30_000 });
-    expect(held).toBe(1);
-    expect(sent.count()).toBe(3);
+    await expect.poll(() => goLives.count()).toBe(1);
+    expect(sent.count()).toBe(2);
 
     // The outcome is final: the listeners are gone.
     await page.unroute("**/admin/settings");
@@ -608,9 +664,8 @@ test.describe("the MatchTime owner, /admin/clubs", () => {
     const reading = section.getByTestId("setting-up-club").filter({ hasText: "Reading Rovers" });
     await expect(reading.getByTestId("setting-up-since")).toHaveText(/^Setting up since \w{3} \d{1,2} \w{3}, \d{2}:\d{2}\.$/);
     await expect(reading.getByTestId("setting-up-message")).toHaveText("Setup message not queued yet.");
-    // Only what is known: nothing on this page claims MatchTime is in the group.
-    await expect(reading.getByTestId("setting-up-group")).toHaveText("No removal recorded.");
-    await expect(section).not.toContainText("still in the group");
+    // The removal stamp is written now (the removal slice), so its absence means something.
+    await expect(reading.getByTestId("setting-up-group")).toHaveText("MatchTime is still in the group.");
     await expect(reading).not.toContainText("Muted");
     await expect(reading.getByRole("button", { name: "Go live now" })).toBeEnabled();
 
@@ -623,9 +678,12 @@ test.describe("the MatchTime owner, /admin/clubs", () => {
 
     const gone = section.getByTestId("setting-up-club").filter({ hasText: "Gone Athletic" });
     await expect(gone.getByTestId("setting-up-group")).toHaveText(
-      "MatchTime has been removed from the group since. It cannot go live until it is added back.",
+      /^MatchTime was removed from the group on \w{3} \d{1,2} \w{3}, \d{2}:\d{2}\. It cannot go live until a member of the club adds it back\.$/,
     );
-    await expect(gone.getByRole("button", { name: "Go live now" })).toBeDisabled();
+    // Disabled from the stamp the removal wrote, with the reason.
+    const goNow = gone.getByRole("button", { name: "Go live now" });
+    await expect(goNow).toBeDisabled();
+    await expect(goNow).toHaveAttribute("title", "MatchTime is not in this club's group");
 
     // The live list holds the clubs that ARE live (Harbour and Race went
     // live above), and none that is setting up.

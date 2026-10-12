@@ -125,7 +125,7 @@ describe("queuePlatformDm: who MatchTime may message", () => {
   });
 
   it("refuses the owner purposes: those go through queueOwnerDm and nowhere else", async () => {
-    for (const purpose of ["owner-approval", "owner-ack"]) {
+    for (const purpose of ["owner-approval", "owner-ack", "owner-setup-stuck"]) {
       await expect(
         queuePlatformDm({ phone: "447700900123", text: "x", purpose: purpose as never }),
       ).rejects.toThrow(/queueOwnerDm/);
@@ -138,6 +138,39 @@ describe("queuePlatformDm: who MatchTime may message", () => {
     await expect(queuePlatformDm({ phone: "12", text: "x", purpose: "otp" })).rejects.toThrow(/phone/i);
     await expect(queuePlatformDm({ phone: "447700900123", text: "  ", purpose: "otp" })).rejects.toThrow(/text/i);
     expect(dbMock.platformJob.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("queuePlatformDm: go-live slices S6 and S7", () => {
+  it("the reminder and the admin group command are platform purposes, to a known number only", async () => {
+    for (const purpose of ["setup-reminder", "setup-admin-code"] as const) {
+      dbMock.user.findFirst.mockResolvedValue(null);
+      await expect(queuePlatformDm({ phone: "447700900123", text: "x", purpose })).rejects.toMatchObject({ code: "number-not-known" });
+      dbMock.user.findFirst.mockResolvedValue({ id: "u1" });
+      await queuePlatformDm({ phone: "447700900123", text: "x", purpose, refId: "org-a:x" });
+      expect(dbMock.platformJob.create.mock.calls.at(-1)![0].data).toMatchObject({ purpose, refId: "org-a:x", status: "queued" });
+    }
+  });
+
+  it("createdAt is written only when given (two DMs queued in one transaction, in a fixed order)", async () => {
+    dbMock.user.findFirst.mockResolvedValue({ id: "u1" });
+    await queuePlatformDm({ phone: "447700900123", text: "x", purpose: "setup-ask" });
+    expect("createdAt" in dbMock.platformJob.create.mock.calls[0][0].data).toBe(false);
+    const at = new Date("2026-10-12T11:00:00.001Z");
+    await queuePlatformDm({ phone: "447700900123", text: "y", purpose: "setup-admin-code", createdAt: at });
+    expect(dbMock.platformJob.create.mock.calls[1][0].data.createdAt).toEqual(at);
+  });
+
+  it("dispatch hands the setup DM out before its admin group command, one millisecond apart", () => {
+    const base = new Date(NOW.getTime() - 60_000);
+    const plan = planPlatformDispatch(
+      [
+        job({ id: "code", purpose: "setup-admin-code", createdAt: new Date(base.getTime() + 1) }),
+        job({ id: "ask", purpose: "setup-ask", createdAt: base }),
+      ],
+      { now: NOW, approvedGroupIds: new Set(), limit: 5 },
+    );
+    expect(plan.dispatch.map((d) => d.id)).toEqual(["ask", "code"]);
   });
 });
 

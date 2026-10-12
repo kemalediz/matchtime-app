@@ -17,7 +17,8 @@ import { t } from "./i18n/t";
 import { dayLabel, dayMonthShortLabel } from "./i18n/dates";
 import { monthBounds, monthFee } from "./club-billing-cycle-rules";
 import { BILLING_DM_FROM_HOUR } from "./club-billing-schedule-rules";
-import type { Lang } from "./i18n/lang";
+import { normaliseLang, type Lang } from "./i18n/lang";
+import { firstMonthsFree } from "./i18n/free-period";
 import type { MonthsSummary } from "./club-billing-month-summary";
 import {
   GRACE_DAYS,
@@ -67,6 +68,21 @@ export function approvedTipText(lang: LangIn, tip: ClubFeeTip): string {
     feePlus: moneyLabel(tip.feePlusPence),
     split: tip.split,
   });
+}
+
+/**
+ * What follows "Done: I've introduced myself in ..." when a club that was
+ * approved and held goes live AND its free period starts with it (owner
+ * decision, 2026-10-12): the free period sentence, then the club fee tip
+ * paragraph. Exactly the two pieces that end the "you're live" DM of an
+ * approval (`sj_dm_approved`): the same sentence, and `approvedTipText` on
+ * the same `loadClubFeeTip` numbers, so the organiser of a held club hears
+ * the price on day 0 too, not with the card reminder weeks later.
+ * `tip` null (no numbers to show): the sentence alone, as that DM has it.
+ */
+export function goLiveFreePeriodNote(lang: LangIn, tip: ClubFeeTip | null): string {
+  const free = `${firstMonthsFree(normaliseLang(lang))}.`;
+  return tip ? `${free}\n\n${approvedTipText(lang, tip)}` : free;
 }
 
 /** What the page, the card and the banner know about a billed club. */
@@ -360,6 +376,9 @@ export interface BillingViewClub {
     pausedReason?: string | null;
   } | null;
   cardHolderName: string | null;
+  /** The club is approved but still setting up (club-setup.ts): it is not
+   *  billed and its free period has not started. Absent: not setting up. */
+  settingUp?: boolean;
 }
 
 export interface BillingPageView {
@@ -482,7 +501,10 @@ export function billingPageView(
   if (role === "exempt-owner") {
     return {
       ...base,
-      exempt: s.billing_exempt({ club: c.club }),
+      // A club still setting up is "exempt" only until it goes live: its
+      // free period starts then. "No club fee" would be wrong, unless it
+      // is on the Free plan, which never starts one.
+      exempt: c.settingUp && c.plan !== "free" ? s.billing_exempt_setting_up({ club: c.club }) : s.billing_exempt({ club: c.club }),
       lines: [],
       who: null,
       holderNote: null,

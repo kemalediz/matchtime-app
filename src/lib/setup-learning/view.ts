@@ -23,13 +23,15 @@ import {
   type OrgSettingsState,
   type Suggestion,
 } from "./rules";
+import { resolveSuggestions, weeklyGameOf, type SuggestionView } from "./suggestion-state";
 
 export type AppliedState = "active" | "undone" | "changed";
 
 export interface LearnedSetupView {
   createdAt: string;
   applied: Array<AppliedItem & { state: AppliedState }>;
-  suggestions: Suggestion[];
+  /** Each one held against what the club has now (suggestion-state.ts). */
+  suggestions: SuggestionView[];
   noted: NotedPattern[];
 }
 
@@ -67,10 +69,34 @@ export async function loadLearnedSetupView(orgId: string): Promise<LearnedSetupV
   if (applied.length + suggestions.length + noted.length === 0) return null;
   const org = (await db.organisation.findUnique({ where: { id: orgId }, select: SETTINGS_SELECT })) as OrgSettingsState | null;
   if (!org) return null;
+  // The stored suggestions are a snapshot of the day the chat was read:
+  // each is held against the club's weekly game, language and pick mode
+  // as they are now. The weekly game is chosen as the reading chose it.
+  const activities =
+    suggestions.length > 0
+      ? await db.activity.findMany({
+          where: { orgId, isActive: true },
+          orderBy: { createdAt: "asc" },
+          select: {
+            dayOfWeek: true,
+            time: true,
+            venue: true,
+            // For the match fee suggestion: without these the fee always
+            // looks unset and a split-pitch game is never seen.
+            feePerPlayer: true,
+            feeSplitTotal: true,
+            sport: { select: { playersPerTeam: true } },
+          },
+        })
+      : [];
   return {
     createdAt: row.createdAt.toISOString(),
     applied: applied.map((a) => ({ ...a, state: appliedState(a, org) })),
-    suggestions,
+    suggestions: resolveSuggestions(suggestions, {
+      weeklyGame: weeklyGameOf(activities),
+      language: org.language,
+      benchPickMode: org.benchPickMode,
+    }),
     noted,
   };
 }

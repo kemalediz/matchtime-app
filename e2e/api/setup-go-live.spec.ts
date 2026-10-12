@@ -101,6 +101,19 @@ const botJobs = (db: TestDb, orgId: string) =>
     `SELECT id, kind, text, "sentAt" FROM "BotJob" WHERE "orgId" = $1 ORDER BY "createdAt" ASC`,
     [orgId],
   );
+/**
+ * "Done", as the organiser of a BILLED club gets it (the e2e server runs
+ * with BILLING_ENABLED=1 and these clubs are on Standard): going live
+ * starts the free period, so the same message goes on with the free period
+ * sentence and the club fee tip (owner decision, 2026-10-12).
+ */
+const doneWithFreePeriod = (group: string) =>
+  new RegExp(`^Done: I've introduced myself in "${group}"\\.\\n\\nYour first two months are free\\.\\n\\n💷 \\*Club fee tip:\\* after that MatchTime only charges for the games you play, up to £9\\.99 a month`);
+const billing = (db: TestDb, orgId: string) =>
+  db.one<{ status: string; rows: number }>(
+    `SELECT o."billingStatus" AS status, (SELECT COUNT(*)::int FROM "ClubBilling" cb WHERE cb."orgId" = o.id) AS rows FROM "Organisation" o WHERE o.id = $1`,
+    [orgId],
+  );
 const goClaims = (db: TestDb) => db.count(`SELECT COUNT(*) FROM "SentNotification" WHERE key LIKE 'setup-go-msg:%' OR key LIKE 'setup-dm-msg:%'`);
 
 // ── The cast ────────────────────────────────────────────────────────────
@@ -285,7 +298,7 @@ test.describe("GO", () => {
     expect(jobs.some((j) => j.text.startsWith("STALE"))).toBe(false);
 
     expect((await lastReply(db, HANA))).toMatchObject({
-      text: `Done: I've introduced myself in "Harbour Tuesday 6s".`,
+      text: expect.stringMatching(doneWithFreePeriod("Harbour Tuesday 6s")),
       purpose: "setup-reply",
       status: "queued",
       sendAfter: null,
@@ -367,7 +380,9 @@ test.describe("GO in Turkish", () => {
     const res = await dm(request, KIYI.ownerPhone, "başla!");
     expect(res).toMatchObject({ handled: "setup-go", outcome: "went-live", orgId: KIYI.id });
     expect(await club(db, KIYI.id)).toMatchObject({ setupStage: "live", whatsappBotEnabled: true });
-    expect(await lastReply(db, KIYI.ownerPhone)).toMatchObject({ text: `Tamam: "Kıyı Salı Maçı" grubunda kendimi tanıttım.` });
+    expect(await lastReply(db, KIYI.ownerPhone)).toMatchObject({
+      text: expect.stringMatching(/^Tamam: "Kıyı Salı Maçı" grubunda kendimi tanıttım\.\n\nİlk iki ayınız ücretsiz\.\n\n💷 \*Kulüp ücreti ipucu:\* /),
+    });
     const jobs = await botJobs(db, KIYI.id);
     expect(jobs).toHaveLength(1);
     expect(jobs[0].text).toMatch(/VARIM/);
@@ -462,20 +477,135 @@ test.describe("GO that is refused", () => {
     );
   });
 
-  test("DEPENDENCY (setup-removal slice, not built yet): removal during setting up is NOT recorded today, so GO still goes live", async ({ request, db }) => {
-    // This test documents a gap, it does not bless it. `goLiveClub` refuses
-    // a club whose `setupRemovedAt` is set, but nothing writes that stamp
-    // yet: the bot-removed route and the group add are being changed by
-    // other slices. When the removal slice lands, this test must be turned
-    // round: after bot-removed the stamp is set and GO answers
-    // "removed-from-group" (the reply is already covered above, with the
-    // stamp written by hand).
+  test("REMOVED WHILE SETTING UP: the removal is stamped and the organiser told once; GO is refused and NO FREE PERIOD starts; a member adds MatchTime back; GO then goes live and the free period starts at that go-live", async ({ request, db }) => {
     await user(db, LEFTOUT.ownerId, "Lou Leftout", LEFTOUT.ownerPhone);
     await heldClub(db, LEFTOUT);
-    const removed = await request.post("/api/whatsapp/bot-removed", { headers: HEADERS, data: { groupId: LEFTOUT.group } });
-    expect(removed.status(), await removed.text()).toBe(200);
-    expect(await db.one(`SELECT "setupRemovedAt" FROM "Organisation" WHERE id = $1`, [LEFTOUT.id])).toEqual({ setupRemovedAt: null });
-    expect(await dm(request, LEFTOUT.ownerPhone, "GO")).toMatchObject({ handled: "setup-go", outcome: "went-live" });
+    const removedAt = () => db.one<{ at: Date | null }>(`SELECT "setupRemovedAt" AS at FROM "Organisation" WHERE id = $1`, [LEFTOUT.id]);
+    const removalDms = () =>
+      db.all<{ text: string; status: string; refId: string }>(
+        `SELECT text, status, "refId" FROM "PlatformJob" WHERE purpose = 'setup-removed' AND phone = $1 ORDER BY "createdAt"`,
+        [bare(LEFTOUT.ownerPhone)],
+      );
+    const remove = async () => {
+      const res = await request.post("/api/whatsapp/bot-removed", { headers: HEADERS, data: { groupId: LEFTOUT.group } });
+      expect(res.status(), await res.text()).toBe(200);
+      return res.json();
+    };
+    const add = async (data: Record<string, unknown>) => {
+      const res = await request.post("/api/whatsapp/bot-added", { headers: HEADERS, data });
+      expect(res.status(), await res.text()).toBe(200);
+      return res.json();
+    };
+
+    // ── Removed ────────────────────────────────────────────────────────
+    expect(await remove()).toMatchObject({ ok: true, billing: "setting-up", setup: "removed", orgId: LEFTOUT.id });
+    expect((await removedAt())!.at).not.toBeNull();
+    // Still approved and setting up; nothing for the group, nothing billed.
+    expect(await club(db, LEFTOUT.id)).toMatchObject({ setupStage: "setting-up", whatsappBotEnabled: false, liveAt: null });
+    expect(await db.one(`SELECT "approvalStatus" AS s FROM "Organisation" WHERE id = $1`, [LEFTOUT.id])).toEqual({ s: "approved" });
+    expect(await botJobs(db, LEFTOUT.id)).toEqual([]);
+    expect(await billing(db, LEFTOUT.id)).toEqual({ status: "exempt", rows: 0 });
+    // The organiser is told, once, on the platform channel.
+    let dms = await removalDms();
+    expect(dms).toHaveLength(1);
+    expect(dms[0].refId).toBe(`${LEFTOUT.id}:setup-removed`);
+    expect(dms[0].text).toMatch(
+      /^I was removed from "Leftout 5s" before Leftout FC went live, so nothing has started there\. Add me back to the group, then reply \*GO\* here or press \*Go live\* on your settings page:\nhttp\S+\/admin\/settings$/,
+    );
+    // The platform owner sees it on /admin/health, once.
+    const alerts = () => db.count(`SELECT COUNT(*) FROM "OpsAlert" WHERE "orgId" = $1 AND kind = 'club-setup' AND "dedupeKey" LIKE 'setup-removed:%'`, [LEFTOUT.id]);
+    expect(await alerts()).toBe(1);
+    // The Pi reports the same removal again: nothing more.
+    expect(await remove()).toMatchObject({ billing: "setting-up", setup: "already-removed" });
+    expect(await removalDms()).toHaveLength(1);
+    expect(await alerts()).toBe(1);
+
+    // ── GO while removed: refused, and no free period starts ───────────
+    expect(await dm(request, LEFTOUT.ownerPhone, "GO")).toMatchObject({ handled: "setup-go", outcome: "removed-from-group", orgId: LEFTOUT.id });
+    expect((await lastReply(db, LEFTOUT.ownerPhone))!.text).toBe(`I'm not in "Leftout 5s" any more. Add me back, then reply GO.`);
+    expect(await club(db, LEFTOUT.id)).toMatchObject({ setupStage: "setting-up", whatsappBotEnabled: false, liveAt: null });
+    expect(await botJobs(db, LEFTOUT.id)).toEqual([]);
+    expect(await billing(db, LEFTOUT.id)).toEqual({ status: "exempt", rows: 0 });
+
+    // ── Added back, but not so as to count ─────────────────────────────
+    // By somebody who is not a member of the club: still removed.
+    await add({ groupId: LEFTOUT.group, groupSubject: LEFTOUT.subject, addedByPhone: bare(STRANGER) });
+    expect((await removedAt())!.at).not.toBeNull();
+    // By the organiser, to a DIFFERENT group: still removed.
+    await add({ groupId: "120363900000000299@g.us", groupSubject: "Some other group", addedByPhone: bare(LEFTOUT.ownerPhone) });
+    expect((await removedAt())!.at).not.toBeNull();
+    // The reconnect sweep finding MatchTime in some OTHER group: still removed.
+    await add({ groupId: "120363900000000298@g.us", groupSubject: "Another group", discovered: true });
+    expect((await removedAt())!.at).not.toBeNull();
+    expect((await dm(request, LEFTOUT.ownerPhone, "GO")).outcome).toBe("removed-from-group");
+
+    // ── Added back by the organiser, to the same group ─────────────────
+    const setupDms = () =>
+      db.count(`SELECT COUNT(*) FROM "PlatformJob" WHERE purpose = 'setup-ask' AND "refId" = $1`, [`${LEFTOUT.id}:setup-ask`]);
+    expect(await setupDms()).toBe(0);
+    const back = await add({ groupId: LEFTOUT.group, groupSubject: LEFTOUT.subject, addedByPhone: bare(LEFTOUT.ownerPhone) });
+    expect(back.introText ?? null).toBeNull();
+    expect(await removedAt()).toEqual({ at: null });
+    // Nothing is said in the group.
+    expect(await botJobs(db, LEFTOUT.id)).toEqual([]);
+    // The setup DM that never went is sent AT ONCE, by the route itself
+    // (after the response), with no cron run: exactly one.
+    await expect.poll(setupDms, { timeout: 20_000 }).toBe(1);
+    expect(await db.one(`SELECT "setupAskedAt" IS NOT NULL AS asked FROM "Organisation" WHERE id = $1`, [LEFTOUT.id])).toEqual({ asked: true });
+    // A second add of the same group sends no second one.
+    await add({ groupId: LEFTOUT.group, groupSubject: LEFTOUT.subject, addedByPhone: bare(LEFTOUT.ownerPhone) });
+    await new Promise((r) => setTimeout(r, 1500));
+    expect(await setupDms()).toBe(1);
+    expect(await club(db, LEFTOUT.id)).toMatchObject({ setupStage: "setting-up", whatsappBotEnabled: false, liveAt: null });
+    expect(await billing(db, LEFTOUT.id)).toEqual({ status: "exempt", rows: 0 });
+
+    // ── GO now goes live, and the free period starts at THAT go-live ───
+    expect(await dm(request, LEFTOUT.ownerPhone, "GO")).toMatchObject({ handled: "setup-go", outcome: "went-live", orgId: LEFTOUT.id });
+    expect((await lastReply(db, LEFTOUT.ownerPhone))!.text).toMatch(doneWithFreePeriod("Leftout 5s"));
+    expect(await billing(db, LEFTOUT.id)).toEqual({ status: "trial", rows: 1 });
+    const period = await db.one<{ same: boolean }>(
+      `SELECT cb."trialStartedAt" = o."liveAt" AS same FROM "ClubBilling" cb JOIN "Organisation" o ON o.id = cb."orgId" WHERE o.id = $1`,
+      [LEFTOUT.id],
+    );
+    expect(period).toEqual({ same: true });
+    dms = await removalDms();
+    expect(dms).toHaveLength(1);
+  });
+
+  test("the reconnect sweep finds MatchTime back in a removed club's OWN group: the removal is cleared with no adder named", async ({ request, db }) => {
+    const SWEPT = { id: "e2e-go-swpt", name: "Swept FC", group: "120363900000000230@g.us", subject: "Swept 5s", ownerId: "e2e-go-sue", ownerPhone: "+447700901177" };
+    await user(db, SWEPT.ownerId, "Sue Swept", SWEPT.ownerPhone);
+    await heldClub(db, SWEPT);
+    const removedAt = () => db.one<{ at: Date | null }>(`SELECT "setupRemovedAt" AS at FROM "Organisation" WHERE id = $1`, [SWEPT.id]);
+    const post = async (url: string, data: Record<string, unknown>) => {
+      const res = await request.post(url, { headers: HEADERS, data });
+      expect(res.status(), await res.text()).toBe(200);
+      return res.json();
+    };
+    // Not removed: a sweep report changes nothing.
+    await post("/api/whatsapp/bot-added", { groupId: SWEPT.group, groupSubject: SWEPT.subject, discovered: true });
+    expect(await removedAt()).toEqual({ at: null });
+
+    expect(await post("/api/whatsapp/bot-removed", { groupId: SWEPT.group })).toMatchObject({ setup: "removed" });
+    expect((await dm(request, SWEPT.ownerPhone, "GO")).outcome).toBe("removed-from-group");
+    // The Pi, after a reconnect, reports the group it is in. No adder.
+    const found = await post("/api/whatsapp/bot-added", { groupId: SWEPT.group, groupSubject: SWEPT.subject, discovered: true });
+    expect(found.introText ?? null).toBeNull();
+    expect(await removedAt()).toEqual({ at: null });
+    expect(await botJobs(db, SWEPT.id)).toEqual([]);
+    expect(await dm(request, SWEPT.ownerPhone, "GO")).toMatchObject({ handled: "setup-go", outcome: "went-live", orgId: SWEPT.id });
+  });
+
+  test("removed-while-setting-up against a real Postgres: the setup DM in each state, the owner's Go live now, re-adds (tsx)", async () => {
+    test.setTimeout(180_000);
+    const { stdout, stderr } = await execFileAsync("npx", ["tsx", "e2e/helpers/setup-removal-lib-tests.ts"], {
+      cwd: REPO_ROOT,
+      env: process.env,
+      timeout: 170_000,
+    }).catch((err: Error & { stdout?: string; stderr?: string }) => {
+      throw new Error(`setup removal lib tests failed:\n${err.stdout ?? ""}\n${err.stderr ?? ""}`);
+    });
+    expect(stdout, stderr).toMatch(/OK: \d+ setup-removal checks against Postgres/);
   });
 });
 
@@ -503,7 +633,7 @@ test.describe("the reply cap (review fix 1a)", () => {
     for (const text of texts) expect(text).toMatch(/\nhttps?:\/\/[^\s/]+\/admin\/settings$/);
     // The cap never stops the club going live, or the one reply that matters.
     expect(await dm(request, CHATTY.ownerPhone, "GO!! 👍")).toMatchObject({ handled: "setup-go", outcome: "went-live" });
-    expect((await lastReply(db, CHATTY.ownerPhone))!.text).toBe(`Done: I've introduced myself in "Chatty 5s".`);
+    expect((await lastReply(db, CHATTY.ownerPhone))!.text).toMatch(doneWithFreePeriod("Chatty 5s"));
     expect(await replies(db, CHATTY.ownerPhone)).toHaveLength(6);
   });
 
@@ -558,7 +688,7 @@ test.describe("two GOs at once", () => {
     const winner = a.outcome === "went-live" ? RACE.ownerPhone : RACE_ADMIN.phone;
     const loser = a.outcome === "went-live" ? RACE_ADMIN.phone : RACE.ownerPhone;
     expect((await club(db, RACE.id))!.liveBy).toBe(winner === RACE.ownerPhone ? RACE.ownerId : RACE_ADMIN.id);
-    expect((await lastReply(db, winner))!.text).toBe(`Done: I've introduced myself in "Race Sunday 5s".`);
+    expect((await lastReply(db, winner))!.text).toMatch(doneWithFreePeriod("Race Sunday 5s"));
     expect((await lastReply(db, loser))!.text).toBe("Race United is already live.");
   });
 

@@ -157,7 +157,11 @@ export function goReplyText(result: GoLiveResult): string | null {
   const s = t(result.language);
   switch (result.outcome) {
     case "went-live":
-      return s.sj_go_done({ group: result.group });
+      // With the free period that started at this go-live, the free period
+      // sentence and the club fee tip follow in the SAME message (the
+      // approval's "you're live" DM carries them for a club that is not
+      // held; a held club's organiser hears the price here, on day 0).
+      return s.sj_go_done({ group: result.group }) + (result.freePeriodNote ? `\n\n${result.freePeriodNote}` : "");
     case "still-reading":
       return s.sj_go_still_reading;
     case "removed-from-group":

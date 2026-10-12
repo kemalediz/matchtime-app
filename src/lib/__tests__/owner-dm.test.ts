@@ -4,8 +4,10 @@
  * Kemal's rule (2026-09-28): DMs to him only for things he must act on.
  * Routine alerts go to the owner dashboard (`src/lib/ops-alerts.ts`). So
  * this helper is deliberately narrow:
- *   - two purposes only, "owner-approval" and "owner-ack", checked at
- *     runtime as well as by the type;
+ *   - three purposes only, "owner-approval", "owner-ack" and
+ *     "owner-setup-stuck" (go-live slice S6: the one note about a club
+ *     still setting up three days after its approval, which he acts on
+ *     with "Go live now"), checked at runtime as well as by the type;
  *   - a refId is required (an approval is always about a thing);
  *   - one DM per (purpose, refId, phone), ever: a retry or a re-add can
  *     never DM him twice about the same club;
@@ -131,6 +133,29 @@ describe("queueOwnerDm", () => {
     );
     await queueOwnerDm("Approved Riverside FC.", "owner-ack", "cc1", late);
     expect(dbMock.platformJob.create.mock.calls[1][0].data.sendAfter).toBeNull();
+  });
+
+  it("go-live S6: the note about a club still setting up is an owner purpose, held through quiet hours like an approval", async () => {
+    const out = await queueOwnerDm("Riverside FC has been approved for 3 days", "owner-setup-stuck", "org-riverside:setup-stuck", NOON);
+    expect(out).toEqual({ queued: 1, skipped: 0 });
+    expect(dbMock.platformJob.create.mock.calls[0][0].data).toMatchObject({
+      purpose: "owner-setup-stuck",
+      refId: "org-riverside:setup-stuck",
+      sendAfter: null,
+    });
+    await queueOwnerDm("x", "owner-setup-stuck", "org-other:setup-stuck", new Date("2026-09-29T22:30:00Z"));
+    expect(dbMock.platformJob.create.mock.calls[1][0].data.sendAfter.toISOString()).toBe("2026-09-30T07:00:00.000Z");
+  });
+
+  it("go-live S6: one note per club, ever, by (purpose, refId, phone)", async () => {
+    dbMock.platformJob.findFirst.mockResolvedValue({ id: "already" });
+    expect(await queueOwnerDm("x", "owner-setup-stuck", "org-riverside:setup-stuck", NOON)).toEqual({ queued: 0, skipped: 1 });
+    expect(dbMock.platformJob.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { kind: "dm", purpose: "owner-setup-stuck", refId: "org-riverside:setup-stuck", phone: "447700900001" },
+      }),
+    );
+    expect(dbMock.platformJob.create).not.toHaveBeenCalled();
   });
 
   it("refuses anything that is not an approval or an ack: routine alerts go to ops-alerts", async () => {

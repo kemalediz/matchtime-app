@@ -2171,6 +2171,14 @@ export const en = {
     `${p.club} is paused, so I can't go live yet. Your settings page shows what's needed:\n${p.url}`,
   // ════ END going live: replies to GO ════
 
+  // ════ BEGIN removed from the group while setting up (2026-10-12) ════
+  /** To the organiser, once per removal, when MatchTime is taken out of the
+   *  group of a club that is approved but has not gone live. On the
+   *  platform channel, in the daytime. The Turkish command is BAŞLA. */
+  sj_setup_removed: (p: { club: string; group: string; url: string }): string =>
+    `I was removed from "${p.group}" before ${p.club} went live, so nothing has started there. ` +
+    `Add me back to the group, then reply *GO* here or press *Go live* on your settings page:\n${p.url}`,
+  // ════ END removed from the group while setting up ════
   // ════ BEGIN the go-live pages (go-live slice S5, 2026-10-12) ════
   // The Go live banner on /admin/settings, that page's WhatsApp bot
   // section while a club is setting up, and the card on the club's admin
@@ -2309,6 +2317,30 @@ export const en = {
   sj_card_pending_held:
     "Step 3: we're checking your club, usually within a day. MatchTime stays quiet in the group until your club is approved and you tell it to start, and messages you on WhatsApp as soon as it's approved.",
   // ════ END approval holds the club ════
+
+  // ════ BEGIN the setup follow-ups: reminder and admin group step (go-live slices S6 and S7, 2026-10-12) ════
+  // For a club that is approved and still setting up. All deterministic,
+  // all on the platform channel. No dashes.
+  /** The optional admin group step of the setup DM: its own block, right
+   *  before the GO line. "My next message" is `sj_dm_ready_admin_command`,
+   *  sent as a separate DM straight after, so it can be forwarded whole. */
+  sj_dm_ready_admin_group:
+    "👥 *Admin group (optional):* if your organisers have their own WhatsApp group, add me to it and send my next message there. Admin messages will then go to that group instead of to you.",
+  /** The second DM, on its own: exactly the link command, and nothing
+   *  else. No tag: the words "Match Time" address it
+   *  (`parseAdminGroupLinkMessage`, admin-channel-rules.ts). */
+  sj_dm_ready_admin_command: (p: { code: string }): string => `Match Time admin group ${p.code}`,
+  /** The ONE reminder, 24 hours after the setup DM was due. `url` is the
+   *  organiser's signed-in link to /admin/settings. Never repeated, and
+   *  there is no automatic go-live. */
+  sj_dm_reminder: (p: { club: string; group: string | null; url: string }): string =>
+    `Just checking: ${p.club} is approved, but I'm still quiet in ${p.group ? `"${p.group}"` : "your group"}. Reply *GO* when you're ready and I'll introduce myself, or check the settings first: ${p.url}\nI won't remind you again.`,
+  /** By DM, to an organiser who sent the admin group command in their own
+   *  players' group while the club is still setting up. Nothing is posted
+   *  in that group. */
+  sj_admin_group_players_group:
+    "That is your players' group, so it can't be the admin group. Add me to a separate group for the admins and send the message there.",
+  // ════ END the setup follow-ups ════
 
   // ── Admin DM: somebody was added to the club's WhatsApp group (2026-09-29) ──
   /** A number MatchTime has never seen, name unknown. `url` is the admin's
@@ -2494,6 +2526,11 @@ export const en = {
   settings_admin_channel_step_send: "In that group, send:",
   settings_admin_channel_command: (p: { code: string }): string => `@Match Time admin group ${p.code}`,
   settings_admin_channel_validity: "The code works once and lasts 48 hours.",
+  /** Under a code that is on screen: its REAL expiry (2026-10-12). The
+   *  code MatchTime sent in the setup DM lasts 7 days, and the Settings
+   *  page shows that same code instead of replacing it. `when` is
+   *  `longDayTimeLabel`: "Monday 19 October at 12:00". */
+  settings_admin_channel_valid_until: (p: { when: string }): string => `The code works once and is valid until ${p.when}.`,
   settings_admin_channel_linked: (p: { group: string }): string => `Linked: ${p.group}`,
   settings_admin_channel_unlink: "Unlink",
   settings_admin_channel_pending_note:
@@ -2842,6 +2879,11 @@ export const en = {
   billing_btn_stop_confirm_yes: "Yes, stop paying",
   billing_btn_stop_confirm_no: "Go back",
   billing_exempt: (p: { club: string }): string => `${p.club} has no club fee. MatchTime is free for this club.`,
+  /** The billing page of a club that is approved but still setting up: its
+   *  free period starts when it goes live (owner decision 2, 2026-10-12).
+   *  No date: there is none yet. */
+  billing_exempt_setting_up: (p: { club: string }): string =>
+    `${p.club} is still setting up, so its free period has not started yet. ${firstMonthsFree("en")}, counted from the day MatchTime goes live in your group. Nothing is charged before then.`,
   billing_open: "Open billing",
   billing_choose_collector: "Choose a money collector",
   billing_banner_grace: (p: { date: string }): string =>
@@ -3322,20 +3364,30 @@ export const en = {
             ? `*Final list:* posted in the group on ${p.day} at ${p.time}.`
             : `*Payment tracking is on:* MatchTime keeps track of who has paid and sends a friendly reminder to anyone who hasn't.`,
   sj_dm_setup_from: (p: { quote: string }): string => `From messages like: "${p.quote}"`,
+  /** The same line for a quote found in the GROUP DESCRIPTION (slice D3,
+   *  2026-10-12): the notice an admin wrote, not a message somebody sent. */
+  sj_dm_setup_from_description: (p: { quote: string }): string => `From your group description: "${p.quote}"`,
   sj_dm_setup_undo: (p: { url: string }): string => `Undo or change: ${p.url}`,
   sj_dm_setup_check_head: "Worth a check (I changed nothing here):",
   /** A difference between the chat and what the organiser entered.
    *  `current` and `detected` arrive already worded (a day name, a
    *  time, a venue, a number a side, a language name). "organiserPicks"
    *  is the one habit MatchTime never switches on from the chat: it asks.
-   *  The quoted name is wr_pick_organiser, the option on /admin/settings. */
+   *  The quoted name is wr_pick_organiser, the option on /admin/settings.
+   *  "matchFee" (slice D3): what each player pays for a game, in pounds
+   *  ("6", "6.50"); `current` is "" when the weekly game has no fee. Never
+   *  set by MatchTime: the organiser is asked. */
   setup_suggestion_line: (p: {
-    key: "weeklyGameDay" | "weeklyGameTime" | "venue" | "format" | "language" | "organiserPicks";
+    key: "weeklyGameDay" | "weeklyGameTime" | "venue" | "format" | "language" | "matchFee" | "organiserPicks";
     current: string;
     detected: string;
   }): string =>
     p.key === "organiserPicks"
       ? `It looks like the organisers choose who fills an open place. If that's right, switch on "The organisers pick".`
+      : p.key === "matchFee"
+      ? p.current
+        ? `The match fee looks like £${p.detected} a player; your weekly game says £${p.current}.`
+        : `The match fee looks like £${p.detected} a player; your weekly game has no fee set.`
       : p.key === "weeklyGameDay"
       ? `The chat talks about games on ${p.detected}; your weekly game is on ${p.current}.`
       : p.key === "weeklyGameTime"
@@ -3348,6 +3400,8 @@ export const en = {
   sj_dm_setup_check_link: (p: { url: string }): string => `Change it here: ${p.url}`,
   /** Under the "organisers pick" suggestion: the link to the setting. */
   sj_dm_setup_pick_link: (p: { url: string }): string => `Switch it on here: ${p.url}`,
+  /** Under the match fee suggestion: the link to where the fee is entered. */
+  sj_dm_setup_fee_link: (p: { url: string }): string => `Set it here: ${p.url}`,
   /** The monthly list pattern, in words: what was seen of it. */
   setup_monthly_pattern: (p: { prepay: boolean; payg: boolean; credits: boolean }): string => {
     const parts = [
@@ -3377,6 +3431,8 @@ export const en = {
   settings_learned_changed_since: "Changed since",
   settings_learned_undo_failed: "Couldn't undo that",
   settings_learned_from: "From messages like",
+  /** The same caption for quotes found in the group description. */
+  settings_learned_from_description: "From your group description",
   /** The heading of the attention block over the suggestions on
    *  /admin/settings: how many there are. */
   settings_learned_check_count: (p: { count: number }): string =>
@@ -3388,10 +3444,12 @@ export const en = {
    *  goes where the organiser's DM sends them for that kind. The quoted
    *  name is wr_pick_organiser, the option on /admin/settings. */
   settings_learned_action: (p: {
-    key: "weeklyGameDay" | "weeklyGameTime" | "venue" | "format" | "language" | "organiserPicks";
+    key: "weeklyGameDay" | "weeklyGameTime" | "venue" | "format" | "language" | "matchFee" | "organiserPicks";
   }): string =>
     p.key === "organiserPicks"
       ? `Switch on "The organisers pick"`
+      : p.key === "matchFee"
+        ? `Set the match fee`
       : p.key === "weeklyGameDay"
         ? `Change game day`
         : p.key === "weeklyGameTime"
@@ -3401,10 +3459,49 @@ export const en = {
             : p.key === "format"
               ? `Change players a side`
               : `Change the language`,
+  /** The quiet line for a suggestion that no longer stands, because the
+   *  club's value changed since the chat was read: what the club has
+   *  now. `value` arrives worded (a day name, a time, a venue, a number
+   *  a side, a language name; the pick mode as stored), or null when
+   *  there is nothing to show. The quoted name is wr_pick_organiser. */
+  settings_learned_resolved_line: (p: {
+    key: "weeklyGameDay" | "weeklyGameTime" | "venue" | "format" | "language" | "matchFee" | "organiserPicks";
+    value: string | null;
+  }): string =>
+    p.value === null || (p.key === "organiserPicks" && p.value !== "organiser")
+      ? `This has changed since the chat was read.`
+      : p.key === "matchFee"
+        ? p.value === ""
+          ? `Your weekly game has no fee set now.`
+          : `The match fee is now £${p.value} a player.`
+      : p.key === "organiserPicks"
+        ? `"The organisers pick" is on.`
+        : p.key === "weeklyGameDay"
+          ? `Game day is now ${p.value}.`
+          : p.key === "weeklyGameTime"
+            ? `Kickoff time is now ${p.value}.`
+            : p.key === "venue"
+              ? `The pitch is now ${p.value}.`
+              : p.key === "format"
+                ? `Your weekly game is now ${p.value} a side.`
+                : `MatchTime now speaks ${p.value} in this group.`,
+  /** The name of the list of those lines, for a screen reader. */
+  settings_learned_resolved_label: "Already sorted",
   /** Over the patterns the chat showed that MatchTime switched nothing
    *  for. Today that is only the monthly list, which HAS a setting
    *  (Settings, Monthly squad), so this must not say there is none. */
   settings_learned_noted_head: "Noticed, left for you to decide",
+  // ── The weekly game's fee per player on /admin/activities (slice D3,
+  //    2026-10-12): where the setup reading's fee suggestion sends the
+  //    organiser. See src/lib/activity-fee.ts. ──
+  act_fee_label: "Fee per player (£), optional",
+  act_fee_hint: "What each player pays for one game. Leave it empty if it changes from week to week.",
+  act_fee_invalid: "Enter a fee like 6 or 6.50, at most £100.",
+  /** Under the fee field, which is switched off, for a game whose pitch
+   *  cost is split between who played. */
+  act_fee_split: "This game splits the pitch cost between who played, so there is no fixed fee per player.",
+  /** On the list, after the day, time and venue. `fee` is "6" or "6.50". */
+  act_fee_row: (p: { fee: string }): string => `£${p.fee} a player`,
   // ── Monthly squad (2026-10-05, slice 2) ──────────────────────────
   // MDs/monthly-squad-plan-2026-10-05.md, sections 9.1, 9.2 and 4.5.
   // The "Monthly squad" section of /admin/settings (msq_) and the

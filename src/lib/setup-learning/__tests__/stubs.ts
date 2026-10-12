@@ -23,6 +23,8 @@ export interface Fixture {
   weeklyGame: { dayOfWeek: number; time: string; venue: string; playersPerSide: number };
   expect: FixtureExpect;
   history: HistoryMessage[];
+  /** The group description as stored (already masked). Two fixtures have one. */
+  description?: string;
 }
 
 export const FIXTURE_NAMES = [
@@ -32,6 +34,8 @@ export const FIXTURE_NAMES = [
   "first-come",
   "turkish",
   "monthly-list",
+  "description-supports",
+  "description-stale",
   "empty",
   "too-short",
 ] as const;
@@ -55,6 +59,7 @@ export function blankAnswer(): Record<string, unknown> {
     payments: unclear("no_sign"),
     monthly_list: { ...unclear("no_sign"), prepay_for_month: false, pay_as_you_go_fill_ins: false, credit_for_missed_games: false },
     weekly_game: { day: "none", time: "none", venue: "", players_per_side: 0, ...none },
+    match_fee: { amount: 0, currency: "none", ...none },
   };
 }
 
@@ -63,6 +68,7 @@ export function blankAnswer(): Record<string, unknown> {
 const DROP_OUT = "Drop out by Monday 9pm at the latest";
 const LIST_UP = "Final list goes up Tuesday at 8pm";
 const KADRO = "Kadro geçen haftakiyle aynı, olmayan yazsın";
+const FEE_ASK = "£6 each please to the usual account";
 
 export const STUB_ANSWERS: Record<string, Record<string, unknown>> = {
   rolling: {
@@ -104,6 +110,8 @@ export const STUB_ANSWERS: Record<string, Record<string, unknown>> = {
       confidence: "high",
       evidence: ["Kickoff Thursday 8pm at Hackney Marshes"],
     },
+    // The organiser asks for the same fee every week: two messages.
+    match_fee: { amount: 6, currency: "pounds", confidence: "high", evidence: [FEE_ASK, FEE_ASK] },
   },
   "first-come": {
     ...blankAnswer(),
@@ -114,6 +122,34 @@ export const STUB_ANSWERS: Record<string, Record<string, unknown>> = {
     ...blankAnswer(),
     squad: { answer: "rolling", confidence: "high", evidence: [KADRO, KADRO] },
     payments: { answer: "players_confirm_paying", confidence: "high", evidence: ["Ödedim", "Gönderdim abi"] },
+    // Lira: the club's fee is held in pounds, so this is no fee.
+    match_fee: { amount: 150, currency: "other", confidence: "high", evidence: ["Kişi başı 150 TL", "Kişi başı 150 TL"] },
+  },
+  // The description states the deadline and the fee; ONE message repeats
+  // the deadline. The second deadline quote ends in the description's full
+  // stop, so it is in the description only.
+  "description-supports": {
+    ...blankAnswer(),
+    squad: { answer: "sign_up_each_week", confidence: "high", evidence: ["in please"] },
+    drop_out_deadline: {
+      day: "tuesday",
+      time: "18:00",
+      confidence: "high",
+      evidence: ["drop out by Tuesday 6pm or you still pay, that hasn't changed", "Drop out by Tuesday 6pm or you still pay."],
+    },
+    match_fee: { amount: 6, currency: "pounds", confidence: "medium", evidence: ["£6 a player, pay before kick off."] },
+  },
+  // The description is out of date; every answer comes from the chat.
+  "description-stale": {
+    ...blankAnswer(),
+    squad: { answer: "sign_up_each_week", confidence: "high", evidence: ["names in every week please", "Names for Thursday please"] },
+    drop_out_deadline: {
+      day: "thursday",
+      time: "10:00",
+      confidence: "high",
+      evidence: ["tell me by Thursday 10am at the latest", "Drop outs by Thursday 10am please"],
+    },
+    match_fee: { amount: 7, currency: "pounds", confidence: "high", evidence: ["it's £7 each from now on", "Reminder it's £7 each now"] },
   },
   "monthly-list": {
     ...blankAnswer(),

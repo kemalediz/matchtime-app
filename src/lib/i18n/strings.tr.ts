@@ -1775,6 +1775,11 @@ export const tr: Strings = {
     `${p.club} şu anda duraklatılmış, bu yüzden henüz yayına alamıyorum. Ne gerektiği ayarlar sayfanızda yazıyor:\n${p.url}`,
   // ════ END going live: replies to GO ════
 
+  // ════ BEGIN removed from the group while setting up (2026-10-12) ════
+  sj_setup_removed: (p) =>
+    `${p.club} yayına geçmeden "${p.group}" grubundan çıkarıldım, bu yüzden orada hiçbir şey başlamadı. ` +
+    `Beni gruba yeniden ekleyin, sonra buraya *BAŞLA* yazın ya da ayarlar sayfanızdaki *Yayına al* düğmesine basın:\n${p.url}`,
+  // ════ END removed from the group while setting up ════
   // ════ BEGIN the go-live pages (go-live slice S5, 2026-10-12) ════
   // See the English table: the Go live banner on /admin/settings, the
   // WhatsApp bot section while a club is setting up, and the card on the
@@ -1857,6 +1862,18 @@ export const tr: Strings = {
   sj_card_pending_held:
     "3. adım: kulübünüzü kontrol ediyoruz, genellikle bir gün içinde. Kulübünüz onaylanana ve siz başlamasını söyleyene kadar MatchTime grupta sessiz kalır, onaylanır onaylanmaz size WhatsApp'tan yazar.",
   // ════ END approval holds the club ════
+
+  // ════ BEGIN the setup follow-ups: reminder and admin group step (go-live slices S6 and S7, 2026-10-12) ════
+  // See the English table. The Turkish command word is BAŞLA, and the
+  // link command is the Turkish form the parser reads ("yönetici grubu").
+  sj_dm_ready_admin_group:
+    "👥 *Yönetici grubu (isteğe bağlı):* organizatörlerinizin kendi WhatsApp grubu varsa beni o gruba ekleyin ve bir sonraki mesajımı orada gönderin. Yönetici mesajları o zaman size değil, o gruba gider.",
+  sj_dm_ready_admin_command: (p) => `Match Time yönetici grubu ${p.code}`,
+  sj_dm_reminder: (p) =>
+    `Küçük bir hatırlatma: ${p.club} onaylandı, ama ${p.group ? `"${p.group}" grubunda` : "grubunuzda"} hâlâ sessizim. Hazır olduğunuzda *BAŞLA* yazın, kendimi tanıtayım; ya da önce ayarlara göz atın: ${p.url}\nBir daha hatırlatmayacağım.`,
+  sj_admin_group_players_group:
+    "Orası oyuncularınızın grubu, bu yüzden yönetici grubu olamaz. Beni yöneticiler için ayrı bir gruba ekleyin ve mesajı orada gönderin.",
+  // ════ END the setup follow-ups ════
 
   dm_admin_join_new: (p) =>
     `🆕 *${p.club}* WhatsApp grubuna yeni bir oyuncu katıldı.\n\nTelefon: ${p.phone}\n` +
@@ -1971,6 +1988,7 @@ export const tr: Strings = {
   settings_admin_channel_step_send: "O grupta şunu gönderin:",
   settings_admin_channel_command: (p: { code: string }): string => `@Match Time yönetici grubu ${p.code}`,
   settings_admin_channel_validity: "Kod bir kez çalışır ve 48 saat geçerlidir.",
+  settings_admin_channel_valid_until: (p: { when: string }): string => `Kod bir kez çalışır ve şu zamana kadar geçerlidir: ${p.when}.`,
   settings_admin_channel_linked: (p: { group: string }): string => `Bağlı: ${p.group}`,
   settings_admin_channel_unlink: "Bağlantıyı kaldır",
   settings_admin_channel_pending_note:
@@ -2191,6 +2209,8 @@ export const tr: Strings = {
   billing_btn_stop_confirm_yes: "Evet, ödemeyi durdur",
   billing_btn_stop_confirm_no: "Geri dön",
   billing_exempt: (p) => `${p.club} için kulüp ücreti yok. MatchTime bu kulüp için ücretsiz.`,
+  billing_exempt_setting_up: (p) =>
+    `${p.club} kulübünün kurulumu sürüyor, bu yüzden ücretsiz dönemi henüz başlamadı. ${firstMonthsFree("tr")} ve süre, MatchTime grubunuzda yayına geçtiği gün başlar. O güne kadar hiçbir ücret alınmaz.`,
   billing_open: "Ödeme sayfasını aç",
   billing_choose_collector: "Para toplayan kişiyi seçin",
   billing_banner_grace: (p) =>
@@ -2557,11 +2577,16 @@ export const tr: Strings = {
             ? `*Son liste:* ${p.day} ${p.time} saatinde gruba gönderilir.`
             : `*Ödeme takibi açık:* MatchTime kimin ödediğini takip eder ve ödemeyenlere nazikçe hatırlatır.`,
   sj_dm_setup_from: (p) => `Şu tür mesajlardan: "${p.quote}"`,
+  sj_dm_setup_from_description: (p) => `Grup açıklamanızdan: "${p.quote}"`,
   sj_dm_setup_undo: (p) => `Geri almak ya da değiştirmek için: ${p.url}`,
   sj_dm_setup_check_head: "Kontrol etmeye değer (burada hiçbir şeyi değiştirmedim):",
   setup_suggestion_line: (p) =>
     p.key === "organiserPicks"
       ? `Görünüşe göre boşalan yeri kimin dolduracağını organizatörler seçiyor. Öyleyse "Organizatörler seçer" ayarını açın.`
+      : p.key === "matchFee"
+      ? p.current
+        ? `Maç ücreti kişi başı £${p.detected} gibi görünüyor; haftalık maçınızda £${p.current} yazıyor.`
+        : `Maç ücreti kişi başı £${p.detected} gibi görünüyor; haftalık maçınızda ücret girilmemiş.`
       : p.key === "weeklyGameDay"
       ? `Sohbette maçlar ${p.detected} günü geçiyor; haftalık maçınız ise ${p.current} günü.`
       : p.key === "weeklyGameTime"
@@ -2573,6 +2598,7 @@ export const tr: Strings = {
             : `Sohbet çoğunlukla ${p.detected}; MatchTime bu grupta ${p.current} konuşuyor.`,
   sj_dm_setup_check_link: (p) => `Buradan değiştirebilirsiniz: ${p.url}`,
   sj_dm_setup_pick_link: (p) => `Buradan açabilirsiniz: ${p.url}`,
+  sj_dm_setup_fee_link: (p) => `Buradan girebilirsiniz: ${p.url}`,
   setup_monthly_pattern: (p) => {
     const parts = [
       p.prepay ? "düzenli oyuncular aya yazılıp ayın ücretini peşin ödüyor" : "düzenli oyuncular aya yazılıyor",
@@ -2596,12 +2622,15 @@ export const tr: Strings = {
   settings_learned_changed_since: "Sonradan değiştirildi",
   settings_learned_undo_failed: "Geri alınamadı",
   settings_learned_from: "Şu tür mesajlardan",
+  settings_learned_from_description: "Grup açıklamanızdan",
   settings_learned_check_count: (p) => `Kontrol edilecek ${p.count} şey`,
   settings_learned_check_sub:
     "MatchTime bunlar için hiçbir şeyi değiştirmedi. Bir göz atın, sohbet haklıysa kendiniz değiştirin.",
   settings_learned_action: (p) =>
     p.key === "organiserPicks"
       ? `"Organizatörler seçer" ayarını aç`
+      : p.key === "matchFee"
+        ? `Maç ücretini gir`
       : p.key === "weeklyGameDay"
         ? `Maç gününü değiştir`
         : p.key === "weeklyGameTime"
@@ -2611,7 +2640,31 @@ export const tr: Strings = {
             : p.key === "format"
               ? `Takım başına kişi sayısını değiştir`
               : `Dili değiştir`,
+  settings_learned_resolved_line: (p) =>
+    p.value === null || (p.key === "organiserPicks" && p.value !== "organiser")
+      ? `Bu, sohbet okunduktan sonra değişti.`
+      : p.key === "matchFee"
+        ? p.value === ""
+          ? `Haftalık maçınızda artık ücret girilmemiş.`
+          : `Maç ücreti artık kişi başı £${p.value}.`
+      : p.key === "organiserPicks"
+        ? `"Organizatörler seçer" ayarı açık.`
+        : p.key === "weeklyGameDay"
+          ? `Maç günü artık ${p.value}.`
+          : p.key === "weeklyGameTime"
+            ? `Maç saati artık ${p.value}.`
+            : p.key === "venue"
+              ? `Saha artık ${p.value}.`
+              : p.key === "format"
+                ? `Haftalık maçınız artık takım başına ${p.value} kişi.`
+                : `MatchTime bu grupta artık ${p.value} konuşuyor.`,
+  settings_learned_resolved_label: "Halledilenler",
   settings_learned_noted_head: "Fark edildi, karar sizde",
+  act_fee_label: "Kişi başı ücret (£), isteğe bağlı",
+  act_fee_hint: "Her oyuncunun bir maç için ödediği tutar. Haftadan haftaya değişiyorsa boş bırakın.",
+  act_fee_invalid: "6 veya 6.50 gibi bir ücret girin, en fazla £100.",
+  act_fee_split: "Bu maçta saha ücreti oynayanlar arasında bölüşülüyor, bu yüzden kişi başı sabit bir ücret yok.",
+  act_fee_row: (p) => `kişi başı £${p.fee}`,
   // ── Aylık kadro (2026-10-05, dilim 2) ────────────────────────────
   // /admin/settings "Aylık kadro" bölümü (msq_) ve /admin/months (mth_).
   msq_section_title: "Aylık kadro",

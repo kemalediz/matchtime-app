@@ -114,6 +114,7 @@ const START_REFUSED: Record<string, string> = {
   "not-exempt": "This club is already being billed.",
   "had-free-month": "This club has had its free period already.",
   "plan-free": "This club is on the Free plan. Choose Standard or Custom first.",
+  "setting-up": "This club is still setting up. Its free period starts by itself when it goes live.",
   raced: "Something changed at the same moment. Refresh and try again.",
 };
 

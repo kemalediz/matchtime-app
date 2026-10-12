@@ -14,7 +14,8 @@
  *          HOURS after the approval (the cap, below).
  *   WHAT   `composeSetupAskDm`: approved and quiet until you say so, what
  *          the reading found, the settings link, the weekly game and the
- *          starting ratings, the GO line, the free period. It REPLACES
+ *          starting ratings, the GO line, and (only when going live will
+ *          start one) the free period. It REPLACES
  *          today's "you're live" DM and the separate findings DM
  *          ("setup-learned"), which a held club is never sent. It is
  *          composed from the club AS IT IS at that moment: a setting the
@@ -86,11 +87,27 @@
  * LOGS carry the club's id and reason codes only: never its name, a phone
  * number, the message text or a link.
  *
- * NOT HERE (later slices): the reminder at 24 hours, the admin group
- * block, GO.
+ * THE ADMIN GROUP STEP (go-live slice S7, owner decisions 6 and 10). A
+ * club with no admin group linked gets one more block in the DM ("add me
+ * to your organisers' group and send my next message there") and a SECOND
+ * platform DM straight after it: exactly "Match Time admin group <CODE>",
+ * so it can be forwarded whole. Both jobs are created in the claim's own
+ * transaction, with the same due time, and the second is ordered after
+ * the first (`createdAt`, one millisecond apart: dispatch is oldest
+ * first). So it is sent at most once per club for the same reason the
+ * setup DM is, and never without it. The code is minted INSIDE that
+ * transaction, after the claim is won (a run that loses the race must not
+ * replace the code the winner sends), and lasts 7 days from the DM's due
+ * time. A club that already has an admin group gets neither the block nor
+ * the second message. `cancelSetupDm` takes both back together.
+ *
+ * NOT HERE: the reminder at 24 hours (club-setup-reminder.ts), GO
+ * (setup-go-dm.ts).
  */
 import { randomUUID } from "node:crypto";
 import { db } from "./db";
+import { ADMIN_GROUP_DM_CODE_TTL_MS } from "./admin-channel-rules";
+import { createAdminGroupLinkCode, type AdminGroupCodeClient } from "./admin-group-link";
 import { appUrl, buildAdminLink } from "./admin-link";
 import {
   SETUP_DM_DUE_WHERE,
@@ -100,13 +117,21 @@ import {
   lockClubSetup,
   markSetupAsked,
 } from "./club-setup";
+import { freePeriodCanStart } from "./club-billing-rules";
 import { messageHoursSendAfter } from "./message-hours";
 import { SETUP_ALERT_KIND, recordOpsEvent } from "./ops-alerts";
 import { PlatformDmRefused, queuePlatformDm, type PlatformDmClient } from "./platform-jobs";
 import type { PipelineModel } from "./pipeline/llm";
 import { clearCapturedChatForClub } from "./captured-chat";
+import {
+  SETUP_ADMIN_CODE_DM_PURPOSE,
+  composeSetupAdminCommandDm,
+  setupAdminCodeRefId,
+  setupAdminGroupBlock,
+} from "./club-setup-followup-rules";
 import { isSetupLearningEnabled } from "./setup-learning/flag";
 import { learnClubSetup, type LearnOutcome } from "./setup-learning/run";
+import { FEE_PATH } from "./setup-learning/suggestion-action";
 import {
   READING_OFF_REASON,
   READING_TIMED_OUT_REASON,
@@ -223,6 +248,11 @@ function loadDueIn(tx: Pick<typeof db, "organisation">, orgId: string) {
       featureAttendance: true,
       featureBench: true,
       featureSquadFromList: true,
+      adminGroupId: true,
+      // Whether going live will start a free period (`freePeriodCanStart`).
+      billingStatus: true,
+      billingPlan: true,
+      clubBilling: { select: { orgId: true } },
       setupLearning: { select: { status: true, reason: true, applied: true, suggestions: true, noted: true } },
     },
   });
@@ -294,6 +324,7 @@ export async function sendSetupDm(orgId: string, now: Date = new Date(), opts: S
   let reading: ChatReading;
   let learnedUrl: string | null = null;
   let organiserPicksUrl: string | null = null;
+  let feeUrl: string | null = null;
   if (stored.kind === "findings") {
     const applied = [];
     for (const a of stored.applied) {
@@ -304,9 +335,14 @@ export async function sendSetupDm(orgId: string, now: Date = new Date(), opts: S
     if (stored.suggestions.some((sg) => sg.key === "organiserPicks")) {
       organiserPicksUrl = await link("/admin/settings?learned=organiserPicks#learned-setup");
     }
+    // The match fee suggestion: straight to the fee field, as the findings DM links it (setup-learning/run.ts).
+    if (stored.suggestions.some((sg) => sg.key === "matchFee")) feeUrl = await link(FEE_PATH);
   } else {
     reading = stored;
   }
+
+  // The optional admin group step: only for a club with none linked.
+  const adminStep = !org.adminGroupId;
 
   const text = composeSetupAskDm({
     lang: org.language,
@@ -319,8 +355,18 @@ export async function sendSetupDm(orgId: string, now: Date = new Date(), opts: S
     settingsUrl: await link("/admin/settings"),
     learnedUrl,
     organiserPicksUrl,
-    // adminGroupBlock: go-live slice S7 passes the admin group step here.
+    feeUrl,
+    // The free period line, only when going live will start one: the test
+    // `goLiveClub`'s billing step applies (billing on, plan not Free, no
+    // free period had). Read from the environment, as the sweep reads the
+    // reading's switch.
+    freePeriod: freePeriodCanStart({ ...org, hasBilling: !!org.clubBilling }),
+    adminGroupBlock: adminStep ? setupAdminGroupBlock(org.language) : null,
   });
+  const language = org.language;
+  // The setup DM first, its admin group command second: dispatch is oldest
+  // first, and two rows of one transaction would share its timestamp.
+  const queuedAt = new Date();
 
   const outcome = await db.$transaction(async (tx): Promise<SetupDmOutcome> => {
     // The claim. Only the run that wins it goes on.
@@ -333,7 +379,24 @@ export async function sendSetupDm(orgId: string, now: Date = new Date(), opts: S
         refId: setupAskRefId(orgId),
         sendAfter,
         client: tx as unknown as PlatformDmClient,
+        ...(adminStep ? { createdAt: queuedAt } : {}),
       });
+      if (adminStep) {
+        // "My next message": the link command, on its own, right behind.
+        const { code } = await createAdminGroupLinkCode(orgId, dueAt, {
+          ttlMs: ADMIN_GROUP_DM_CODE_TTL_MS,
+          client: tx as unknown as AdminGroupCodeClient,
+        });
+        await queuePlatformDm({
+          phone: connect.phone,
+          text: composeSetupAdminCommandDm({ lang: language, code }),
+          purpose: SETUP_ADMIN_CODE_DM_PURPOSE,
+          refId: setupAdminCodeRefId(orgId),
+          sendAfter,
+          client: tx as unknown as PlatformDmClient,
+          createdAt: new Date(queuedAt.getTime() + 1),
+        });
+      }
     } catch (err) {
       // The recipient rule said no (the organiser's number is no longer a
       // MatchTime user's, or is not a number). The stamp STAYS, so no sweep
@@ -349,6 +412,7 @@ export async function sendSetupDm(orgId: string, now: Date = new Date(), opts: S
   if (outcome.kind === "sent") {
     console.log(
       `[club-setup-dm] ${orgId}: setup DM queued (reading: ${reading.kind}` +
+        `${adminStep ? ", with the admin group command" : ""}` +
         `${sendAfter ? `, held until ${sendAfter.toISOString()}` : ""})`,
     );
   }

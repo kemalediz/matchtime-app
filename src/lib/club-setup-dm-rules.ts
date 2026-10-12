@@ -178,11 +178,23 @@ export interface SetupAskDmInput {
   learnedUrl?: string | null;
   /** /admin/settings at the "organisers pick" suggestion, when it is one. */
   organiserPicksUrl?: string | null;
+  /** /admin/activities at the fee field, when the match fee is a suggestion. */
+  feeUrl?: string | null;
   /**
-   * THE ADMIN GROUP BLOCK (go-live slice S7 fills it; nothing does yet).
-   * When given it goes in as its own block right before the GO line.
+   * THE ADMIN GROUP BLOCK (go-live slice S7): `setupAdminGroupBlock`
+   * (club-setup-followup-rules.ts), passed by `sendSetupDm` for a club
+   * with no admin group linked. When given it goes in as its own block
+   * right before the GO line.
    */
   adminGroupBlock?: string | null;
+  /**
+   * Will going live START A FREE PERIOD for this club (`freePeriodCanStart`
+   * in club-billing-rules.ts: billing on, plan not Free, none had yet)?
+   * Only then is the free period line said. Required, so every caller
+   * decides: a Free club, or a deployment with billing off, is never told
+   * about a free period that will not start.
+   */
+  freePeriod: boolean;
 }
 
 export function composeSetupAskDm(p: SetupAskDmInput): string {
@@ -203,6 +215,7 @@ export function composeSetupAskDm(p: SetupAskDmInput): string {
         scheduleUrl: p.scheduleUrl,
         settingsUrl: detailUrl,
         organiserPicksUrl: p.organiserPicksUrl ?? detailUrl,
+        feeUrl: p.feeUrl,
       }),
     );
   } else if (r.kind === "nothing") {
@@ -222,13 +235,14 @@ export function composeSetupAskDm(p: SetupAskDmInput): string {
 
   // ════ ADMIN GROUP BLOCK: INSERTION POINT (go-live slice S7) ════
   // The optional "add me to your organisers' group" step goes here, as one
-  // block, between the ratings line and the GO line. Pass it in as
-  // `adminGroupBlock`; this slice passes nothing.
+  // block, between the ratings line and the GO line, passed in as
+  // `adminGroupBlock` (slice S7: club-setup-dm.ts, for a club with no
+  // admin group linked).
   if (p.adminGroupBlock) blocks.push(p.adminGroupBlock);
   // ════ END ADMIN GROUP BLOCK ════
 
   // The button is named as the settings page and the GO replies name it.
   blocks.push(s.sj_dm_ready_go({ url: p.settingsUrl, button: s.sj_go_button }));
-  blocks.push(s.sj_dm_ready_free);
+  if (p.freePeriod) blocks.push(s.sj_dm_ready_free);
   return blocks.join("\n\n");
 }

@@ -11,12 +11,18 @@
  * code and the three steps, and the section polls until the group is
  * linked, then shows "Linked: <group>" with Unlink. Until then the saved
  * choice stays what it was. Copy in the club's language (src/lib/i18n).
+ *
+ * 2026-10-12: a code that is already open for the club (the one MatchTime
+ * sent in the setup DM, valid 7 days) is SHOWN here with its real expiry,
+ * not replaced. Only "New code", the button's label while a code is on
+ * screen, asks for a fresh one.
  */
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { InfoButton } from "@/components/stats/info-button";
 import { t } from "@/lib/i18n/t";
 import type { Lang } from "@/lib/i18n/lang";
+import { longDayTimeLabel } from "@/lib/i18n/dates";
 import type { AdminChannelStatus } from "@/lib/admin-channel";
 import {
   createAdminGroupLinkCodeAction,
@@ -84,10 +90,12 @@ export function AdminChannelSettings({ orgId, lang }: { orgId: string; lang: Lan
     }
   }
 
-  async function linkGroup() {
+  // `fresh`: the organiser pressed "New code" under a code that is on
+  // screen. Otherwise an open code is kept and shown, never replaced.
+  async function linkGroup(fresh: boolean) {
     setBusy(true);
     try {
-      await createAdminGroupLinkCodeAction(orgId);
+      await createAdminGroupLinkCodeAction(orgId, { fresh });
       await refresh();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed");
@@ -187,7 +195,7 @@ export function AdminChannelSettings({ orgId, lang }: { orgId: string; lang: Lan
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={linkGroup}
+                onClick={() => linkGroup(!!status.code)}
                 disabled={busy}
                 className="inline-flex items-center gap-2 px-4 h-11 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium disabled:opacity-50"
               >
@@ -209,8 +217,10 @@ export function AdminChannelSettings({ orgId, lang }: { orgId: string; lang: Lan
                 </li>
               </ol>
             )}
-            <p className="text-xs text-slate-500">
-              {status.code ? `${s.settings_admin_channel_validity} ` : ""}
+            <p className="text-xs text-slate-500" data-testid="admin-group-code-note">
+              {status.code
+                ? `${s.settings_admin_channel_valid_until({ when: longDayTimeLabel(lang, new Date(status.code.expiresAt)) })} `
+                : ""}
               {s.settings_admin_channel_pending_note}
             </p>
           </div>

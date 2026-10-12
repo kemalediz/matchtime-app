@@ -287,6 +287,20 @@
  *     card and pay" (it now retries the unpaid invoice). No other case
  *     changed.
  *
+ *   - Deliberate additions (2026-10-12, go-live slices S6 and S7): rows
+ *     SFU1 to SFU5 and SFO1, what follows the setup DM of a club held
+ *     until its organiser says GO (the setup DM with its optional admin
+ *     group step, the admin group command sent as a second message, the
+ *     one reminder after 24 hours, the DM to an organiser who sent the
+ *     command in the players' group, and the owner's note at 72 hours,
+ *     which is English in both documents because owner copy is English).
+ *     All NEW copy, sent only for a club that is setting up; the only
+ *     non-additive line in either `.snap` diff is the case count. No
+ *     existing case changed: SUP1 to SUP6 still render the setup DM
+ *     without the admin group block. Also added the same day: R187b, the
+ *     Settings line under a code that is on screen, which now gives the
+ *     code's real expiry (the setup DM's code lasts 7 days).
+ *
  *   - A deliberate CHANGE across the whole English document (2026-10-06,
  *     Kemal: "remove long dashes"). Every em and en dash used as
  *     punctuation in the English table was rewritten as a comma, a
@@ -303,6 +317,12 @@
  */
 import { composeSetupDm } from "../../setup-learning/dm";
 import { composeSetupAskDm } from "../../club-setup-dm-rules";
+import {
+  composeSetupAdminCommandDm,
+  composeSetupReminderDm,
+  ownerStuckText,
+  setupAdminGroupBlock,
+} from "../../club-setup-followup-rules";
 import { describe, it, expect } from "vitest";
 import type { EngineResult, SpeechIntent, SquadState, StatsPeriod, StatsSnapshot } from "../../pipeline/types";
 import { periodKey } from "../../pipeline/stats-period";
@@ -341,7 +361,7 @@ import {
 } from "../../scheduler-copy";
 import { buildBenchClaimAnnouncement, buildSquadCompleteBenchInvite } from "../../bench-offer-copy";
 import { t } from "../t";
-import { dayTimeLabel } from "../dates";
+import { dayTimeLabel, longDayTimeLabel } from "../dates";
 
 /** The organiser's three signed-in links in the "you're live" DM (2026-10-01). */
 const SJ_APPROVED_LINKS = {
@@ -489,6 +509,7 @@ import { buildPickMessage, buildPickListChanged } from "../../organiser-pick-rul
 import { clubFeeTip, type TipActivity } from "../../club-billing-rules";
 import {
   approvedTipText,
+  goLiveFreePeriodNote,
   bannerText,
   billedAgainCardText,
   billingNoticeText,
@@ -1336,6 +1357,13 @@ function cases(lang: Lang): Case[] {
       sj.settings_admin_channel_pending_note,
     ].join("\n"),
   );
+  // Deliberate addition (2026-10-12): the validity line under a code that
+  // is on screen, with that code's real expiry (the code MatchTime sent in
+  // the setup DM lasts 7 days, not 48 hours).
+  add(
+    "R187b settings / a code on screen is valid until its real expiry",
+    sj.settings_admin_channel_valid_until({ when: longDayTimeLabel(lang, new Date("2026-10-19T11:00:00Z")) }),
+  );
   add(
     "R187 settings / linked",
     `${sj.settings_admin_channel_linked({ group: "FNF HQ" })} [${sj.settings_admin_channel_unlink}]\n${sj.settings_admin_channel_saved}\n${sj.settings_admin_channel_unlinked}`,
@@ -1389,6 +1417,7 @@ function cases(lang: Lang): Case[] {
       `[${sj.billing_btn_add_card}] [${sj.billing_btn_change_card}] [${sj.billing_btn_use_mine}] [${sj.billing_btn_update_card}] [${sj.billing_btn_remove_mine}] [${sj.billing_btn_stop_paying}] [${sj.billing_btn_keep_paying}]`,
       `[${sj.billing_open}] [${sj.billing_choose_collector}]`,
       sj.billing_exempt({ club: "Sutton FC" }),
+      sj.billing_exempt_setting_up({ club: "Harbour FC" }),
     ].join("\n"),
   );
   add(
@@ -2012,6 +2041,7 @@ function cases(lang: Lang): Case[] {
       settingsUrl: "https://matchtime.ai/r/settings",
       learnedUrl: "https://matchtime.ai/r/learned",
       organiserPicksUrl: "https://matchtime.ai/r/pick",
+      freePeriod: true,
       ...rest,
     });
   add(
@@ -2045,6 +2075,50 @@ function cases(lang: Lang): Case[] {
   add("SUP7 the held variants / connect reply", t(lang).sj_dm_connected_held({ name: "Aliyah", club: "Thursday Ladies" }));
   add("SUP8 the held variants / in-group ack", t(lang).sj_dm_in_group_held({ group: "Thursday Ladies 5s" }));
   add("SUP9 the held variants / pending card", t(lang).sj_card_pending_held);
+  // Removal slice and the free period at go-live (2026-10-12). NEW copy;
+  // no existing case changed.
+  add(
+    "SUP10 composeSetupAskDm / going live will start no free period (billing off, or the Free plan): no free period line",
+    setupAsk({ kind: "nothing" }, { freePeriod: false }),
+  );
+  add(
+    "SUP11 removed from the group while setting up / the organiser's one DM",
+    t(lang).sj_setup_removed({ club: "Thursday Ladies", group: "Thursday Ladies 5s", url: "https://matchtime.ai/admin/settings" }),
+  );
+  add(
+    "SUP12 GO / went live and the free period started: Done, the free period, the club fee tip",
+    `${t(lang).sj_go_done({ group: "Thursday Ladies 5s" })}\n\n${goLiveFreePeriodNote(
+      lang,
+      clubFeeTip({
+        status: "trial",
+        plan: "standard",
+        pricePence: null,
+        activities: [{ dayOfWeek: 2, time: "20:00", playersPerTeam: 5, feePerPlayer: null, feeSplitTotal: false, latestMatchFee: null }],
+      }),
+    )}`,
+  );
+
+  // ── SFU / SFO: what follows the setup DM (go-live slices S6 and S7,
+  //   2026-10-12). NEW copy, a deliberate addition. No existing case
+  //   changed.
+  add(
+    "SFU1 composeSetupAskDm / with the optional admin group step (a club with no admin group)",
+    setupAsk({ kind: "nothing" }, { adminGroupBlock: setupAdminGroupBlock(lang) }),
+  );
+  add("SFU2 composeSetupAdminCommandDm / the second message, exactly the link command", composeSetupAdminCommandDm({ lang, code: "K7P3QX" }));
+  add(
+    "SFU3 composeSetupReminderDm / the one reminder, 24 hours after the setup DM was due",
+    composeSetupReminderDm({ lang, club: "Thursday Ladies", group: "Thursday Ladies 5s", settingsUrl: "https://matchtime.ai/r/settings" }),
+  );
+  add(
+    "SFU4 composeSetupReminderDm / a group with no name",
+    composeSetupReminderDm({ lang, club: "Thursday Ladies", group: null, settingsUrl: "https://matchtime.ai/r/settings" }),
+  );
+  add("SFU5 the admin group command sent in the players' group / DM to the organiser", t(lang).sj_admin_group_players_group);
+  add(
+    "SFO1 ownerStuckText / to the owner, 72 hours after approval (English only: owner copy)",
+    ownerStuckText({ club: "Thursday Ladies", clubsUrl: "https://matchtime.ai/admin/clubs" }),
+  );
 
   // ── MWK: monthly squad, slice 5 (2026-10-06), the weekly flow ─────
   //   NEW copy, a deliberate addition: MDs/monthly-squad-plan-2026-10-05.md
@@ -2317,7 +2391,10 @@ const MIGRATED_ROWS = [
   // learned setup (2026-10-05)
   "LRN1 ", "LRN2 ", "LRN3 ",
   // the setup DM of a held club (go-live slice S3, 2026-10-12)
-  "SUP1 ", "SUP2 ", "SUP3 ", "SUP4 ", "SUP5 ", "SUP6 ", "SUP7 ", "SUP8 ", "SUP9 ",
+  "SUP1 ", "SUP2 ", "SUP3 ", "SUP4 ", "SUP5 ", "SUP6 ", "SUP7 ", "SUP8 ", "SUP9 ", "SUP10 ", "SUP11 ", "SUP12 ",
+  // what follows the setup DM (go-live slices S6 and S7, 2026-10-12).
+  // SFO1, the owner's note, is English only and is not listed.
+  "SFU1 ", "SFU2 ", "SFU3 ", "SFU4 ", "SFU5 ",
   // Monthly squad, slice 3: the month's sign-up.
   "MSU1 ", "MSU2 ", "MSU3 ", "MSU4 ", "MSU5 ", "MSU6 ", "MSU7 ",
   // Monthly squad, slice 4: price, payments and reminders.

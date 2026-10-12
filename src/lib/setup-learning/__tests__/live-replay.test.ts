@@ -14,6 +14,14 @@
  * (__fixtures__/live-check-run-2.json) fed through today's rules are
  * exactly what a third run would produce for the same answers. They are
  * graded here by the same grader the live check uses.
+ *
+ * THAT WAS TRUE UNTIL THE PROMPT WAS REWRITTEN (go-live slice D3,
+ * 2026-10-12: the group description and the match fee). These answers
+ * came from the prompt before it, so this file now pins only what it can:
+ * the RULES still read that run's answers as they did. It says nothing
+ * about what today's prompt answers. The answers carry no match fee (the
+ * question did not exist), so what a fixture now expects of the fee is
+ * left out of the grading here (`withoutFee`).
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -22,7 +30,7 @@ import { detectGroupLang } from "../../i18n/detect";
 import { extractJson } from "../../pipeline/llm";
 import { composeSetupDm } from "../dm";
 import { parseDetection, planIsWorthTelling, planSetup, type OrgSettingsState, type SetupPlan } from "../rules";
-import { gradeFixture } from "./grade";
+import { gradeFixture, type FixtureExpect } from "./grade";
 import { FIXTURE_NAMES, loadFixture } from "./stubs";
 
 interface SavedRun {
@@ -76,6 +84,11 @@ function dmOf(lang: string, group: string, plan: SetupPlan): string {
 
 const SIX = ["rolling", "organiser-picks", "deadlines", "first-come", "turkish", "monthly-list"] as const;
 
+/** A fixture's expectations as they stood before the fee question existed. */
+function withoutFee(e: FixtureExpect): FixtureExpect {
+  return { ...e, matchFee: undefined, suggestions: e.suggestions.filter((k) => k !== "matchFee") };
+}
+
 describe("the second live check (2026-10-06), replayed through today's rules", () => {
   it("the saved run is the six fixtures that make a call, one answer each", () => {
     expect(RUN.model).toBe("claude-haiku-4-5");
@@ -99,7 +112,7 @@ describe("the second live check (2026-10-06), replayed through today's rules", (
         },
         name,
       ).toEqual(saved.checked);
-      expect(gradeFixture(fx.expect, detection, plan), name).toEqual([]);
+      expect(gradeFixture(withoutFee(fx.expect), detection, plan), name).toEqual([]);
     });
   }
 

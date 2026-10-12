@@ -379,22 +379,52 @@ test.describe("the group routes are blind to it", () => {
     expect(await heldJobs(db)).toBe(0);
   });
 
-  test("MatchTime's removal from its group changes nothing yet (slice S6 adds the handling)", async ({ request, db }) => {
+  test("MatchTime's removal from its group: the club stays approved, setting up and silent, and the removal is recorded", async ({ request, db }) => {
+    const removedAt = () => db.one<{ at: Date | null }>(`SELECT "setupRemovedAt" AS at FROM "Organisation" WHERE id = $1`, [HELD_ORG]);
     const res = await post(request, "/api/whatsapp/bot-removed", { groupId: HELD_GROUP });
-    expect(res.ok).toBe(true);
+    expect(res).toMatchObject({ ok: true, billing: "setting-up", setup: "removed", orgId: HELD_ORG });
+    // Not back to draft, not live, and nothing for the group.
     expect(await heldClub(db)).toMatchObject({ approvalStatus: "approved", setupStage: "setting-up", whatsappBotEnabled: false });
     expect(await heldJobs(db)).toBe(0);
+    expect((await removedAt())!.at).not.toBeNull();
+    // (The whole removal path, GO refused and the re-add rules are in
+    // setup-go-live.spec.ts and e2e/helpers/setup-removal-lib-tests.ts.)
+
+    // The removal deleted the chat captured at the add (the group took
+    // MatchTime out).
+    expect(await db.one(`SELECT "capturedHistory" AS h FROM "ClubConnect" WHERE id = $1`, [`${HELD_ORG}-cc`])).toEqual({ h: null });
+
+    // THE FIXTURE IS PUT BACK BY HAND for the tests further down, which
+    // need this club in its group with its chat unread: the stamp is
+    // cleared and the chat restored in SQL. (The real re-add also runs the
+    // club's setup DM at once, which would close its reading here; that
+    // path is covered in setup-go-live.spec.ts.)
+    await db.run(`UPDATE "Organisation" SET "setupRemovedAt" = NULL WHERE id = $1`, [HELD_ORG]);
+    await db.run(`UPDATE "ClubConnect" SET "capturedHistory" = $2::jsonb WHERE id = $1`, [`${HELD_ORG}-cc`, JSON.stringify(rolling.history)]);
+    await db.run(`DELETE FROM "PlatformJob" WHERE purpose = 'setup-removed'`);
   });
 });
 
 test.describe("the admin group command", () => {
-  test("typed in the setting-up club's PLAYERS' group it gets no reply at all", async ({ request }) => {
+  test("typed in the setting-up club's PLAYERS' group it gets no reply at all THERE; the organiser is told by DM (slice S7)", async ({ request, db }) => {
     const out = await post(request, "/api/whatsapp/admin-group-link", {
       groupId: HELD_GROUP,
       text: "@Match Time admin group ABCDEF",
       senderPhone: ORGANISER_PHONE.replace(/^\+/, ""),
+      messageId: "e2e-silence-admin-link-1",
     });
-    expect(out).toMatchObject({ outcome: "ignored", replyText: null, reason: "club-setting-up" });
+    // No reply text: the Pi posts nothing in the players' group.
+    expect(out).toEqual({ ok: true, outcome: "ignored", replyText: null, reason: "club-setting-up" });
+    expect(await heldJobs(db)).toBe(0);
+    // Go-live slice S7: one platform DM to the organiser instead.
+    expect(await organiserReplies(db)).toBe(1);
+    const told = await db.one<{ text: string }>(
+      `SELECT text FROM "PlatformJob" WHERE phone = $1 AND purpose = 'setup-reply' ORDER BY "createdAt" DESC LIMIT 1`,
+      [ORGANISER_PHONE.replace(/^\+/, "")],
+    );
+    expect(told?.text).toBe(
+      "That is your players' group, so it can't be the admin group. Add me to a separate group for the admins and send the message there.",
+    );
   });
 
   test("the live club's own group still gets today's refusal", async ({ request }) => {
@@ -418,7 +448,8 @@ test.describe("direct messages", () => {
     expect(res).toMatchObject({ handled: "setup-not-recognised", orgIds: [HELD_ORG] });
     expect(await heldJobs(db)).toBe(0);
     expect(await aiSpend(db)).toEqual([]);
-    expect(await organiserReplies(db)).toBe(1);
+    // One more than the DM about the admin group command above.
+    expect(await organiserReplies(db)).toBe(2);
   });
 
   test("an admin command from its organiser stops at the same rail", async ({ request, db }) => {
@@ -426,7 +457,7 @@ test.describe("direct messages", () => {
     expect(res.handled).toBe("setup-not-recognised");
     expect(await heldJobs(db)).toBe(0);
     expect(await aiSpend(db)).toEqual([]);
-    expect(await organiserReplies(db)).toBe(2);
+    expect(await organiserReplies(db)).toBe(3);
     expect(await heldClub(db)).toMatchObject({ setupStage: "setting-up", whatsappBotEnabled: false });
   });
 

@@ -175,12 +175,25 @@ async function loadClubMonths(o: { id: string; billingStatus: string; billingPla
  * file, who pays, its AI spend over 30 days, and the owner's controls.
  * Nothing here messages anyone.
  */
+/** The billing line of a club that is approved and still setting up. */
+function setupBillingNote(billingOn: boolean): string {
+  return billingOn
+    ? "The free period starts when the club goes live"
+    : "Billing is switched off, so no free period starts when the club goes live (Start free period does it later)";
+}
+
 function BillingRow({ c, billingOn, lang }: { c: LiveClub; billingOn: boolean; lang: string | null }) {
   const b = c.billing;
   const status = b?.status ?? c.billingStatus;
   const cb = b?.billing ?? null;
-  const date =
-    status === "trial" && cb
+  // Approved but still setting up: not billed, and its free period has not
+  // started. It starts by itself when the club goes live, but only when
+  // billing is on then (`freePeriodCanStart`: never on Free, and nothing
+  // starts with BILLING_ENABLED off). The line says which.
+  const awaitingGoLive = !!b?.settingUp && status === "exempt" && !cb && c.billingPlan !== "free";
+  const date = awaitingGoLive
+    ? setupBillingNote(billingOn)
+    : status === "trial" && cb
       ? `Free period ends ${when(cb.trialEndsAt)}`
       : (status === "grace" || status === "past_due") && cb?.graceEndsAt
         ? `Stops ${when(cb.graceEndsAt)} without payment`
@@ -194,7 +207,7 @@ function BillingRow({ c, billingOn, lang }: { c: LiveClub; billingOn: boolean; l
     : b.contact.via === "collector"
       ? `${b.contact.name ?? "(no name)"} (money collector)`
       : `${b.contact.name ?? "(no name)"} (owner, no money collector set)`;
-  const canStart = status === "exempt" && !cb && c.billingPlan !== "free";
+  const canStart = status === "exempt" && !cb && c.billingPlan !== "free" && !b?.settingUp;
   return (
     <div data-testid="club-billing" className="mt-3 rounded-lg border border-slate-100 bg-slate-50 p-3 text-sm text-slate-700">
       <dl className="grid gap-x-4 gap-y-1 sm:grid-cols-[8rem_1fr]">
@@ -203,7 +216,8 @@ function BillingRow({ c, billingOn, lang }: { c: LiveClub; billingOn: boolean; l
           <SectionInfo k="clubs_fee" lang={lang} />
         </dt>
         <dd data-testid="club-billing-summary">
-          {planLabel(c.billingPlan, c.billingPricePence)}. {STATUS_LABEL[status] ?? status}.{date ? ` ${date}.` : ""}
+          {planLabel(c.billingPlan, c.billingPricePence)}. {awaitingGoLive ? "Not billed yet (setting up)" : (STATUS_LABEL[status] ?? status)}.
+          {date ? ` ${date}.` : ""}
           {status !== "exempt" && ` Card on file: ${cb?.cardHolderUserId || cb?.cardLast4 ? "yes" : "no"}.`}
           {c.clubBilling?.vatCountryCheck && <strong className="text-amber-700"> Check VAT country.</strong>}
         </dd>
@@ -271,6 +285,8 @@ export default async function ClubsPage() {
           id: true,
           name: true,
           approvedAt: true,
+          // A held club is "new" from the day it went live (`newClubDmCap`).
+          liveAt: true,
           whatsappGroupId: true,
           whatsappBotEnabled: true,
           billingStatus: true,
@@ -491,8 +507,10 @@ export default async function ClubsPage() {
                     className={`text-sm ${st.removedFromGroup ? "font-semibold text-red-700" : "text-slate-600"}`}
                   >
                     {st.removedFromGroup
-                      ? "MatchTime has been removed from the group since. It cannot go live until it is added back."
-                      : "No removal recorded."}
+                      ? st.removedAt
+                        ? `MatchTime was removed from the group on ${when(st.removedAt)}. It cannot go live until a member of the club adds it back.`
+                        : "MatchTime is not in the group. It cannot go live until it is added back."
+                      : "MatchTime is still in the group."}
                   </p>
                   <p className="text-sm text-slate-600">
                     AI today: {usd(c.ai.spentUsd)}. Learned setup: {l.line}
@@ -514,7 +532,7 @@ export default async function ClubsPage() {
         info="clubs_live"
         lang={lang}
         title="Live clubs that joined themselves"
-        lead={`New clubs get ${NEW_CLUB_DM_WINDOW_DAYS} days of tighter limits from the day you approve them.`}
+        lead={`New clubs get ${NEW_CLUB_DM_WINDOW_DAYS} days of tighter limits from the day they go live.`}
       >
         {liveNow.length === 0 ? (
           <Empty>No self-join club is live yet.</Empty>

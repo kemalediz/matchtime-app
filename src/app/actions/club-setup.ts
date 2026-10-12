@@ -42,10 +42,12 @@ async function requireClubAdmin(orgId: string): Promise<string> {
  * it was the caller (a lost answer followed by a retry: fix 4).
  */
 export type GoLiveActionResult =
-  // PR #237 (billing) adds ONE field here: the free-period sentence and
-  // club fee tip to show after going live. The banner has a marked spot
-  // for it (go-live-banner.tsx, "AFTER GOING LIVE").
-  | { outcome: "went-live"; club: string; group: string; hello: string }
+  // AFTER GOING LIVE (PR #237, billing): `freePeriodNote` is the free
+  // period sentence and the club fee tip, in the club's language, when the
+  // club's free period started with this go-live; null when none did
+  // (billing off, the Free plan, one already had). The same words the
+  // WhatsApp "Done" reply carries. The banner shows it under the result.
+  | { outcome: "went-live"; club: string; group: string; hello: string; freePeriodNote: string | null }
   | { outcome: "already-live"; club: string; by: "you" | "member" | "matchtime" | "unknown"; byName: string | null }
   | { outcome: "still-reading" }
   | { outcome: "removed-from-group"; club: string; group: string }
@@ -55,7 +57,7 @@ export type GoLiveActionResult =
 async function forBrowser(r: GoLiveResult, callerId: string): Promise<GoLiveActionResult> {
   switch (r.outcome) {
     case "went-live":
-      return { outcome: "went-live", club: r.club, group: r.group, hello: r.hello };
+      return { outcome: "went-live", club: r.club, group: r.group, hello: r.hello, freePeriodNote: r.freePeriodNote ?? null };
     case "already-live": {
       const who = parseLiveBy(r.liveBy);
       if (who?.kind === "matchtime") return { outcome: "already-live", club: r.club, by: "matchtime", byName: null };
@@ -124,7 +126,12 @@ export interface OwnerGoLiveResult {
 function describeOwnerGoLive(r: GoLiveResult): OwnerGoLiveResult {
   switch (r.outcome) {
     case "went-live":
-      return { ok: true, message: `${r.club} is live. The hello is on its way to "${r.group}".` };
+      return {
+        ok: true,
+        message:
+          `${r.club} is live. The hello is on its way to "${r.group}". ` +
+          (r.freePeriodStarted ? "Its free period started now." : "No free period started."),
+      };
     case "already-live":
       return { ok: false, message: `${r.club} is already live.` };
     case "removed-from-group":
