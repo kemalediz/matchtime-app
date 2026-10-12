@@ -3,7 +3,8 @@
 import { normaliseBenchPickFallback, normaliseBenchPickMode } from "@/lib/squad-capacity";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { createOrgSchema } from "@/lib/validations";
+import { clubNameSchema, createOrgSchema, CLUB_NAME_MAX, CLUB_NAME_MIN } from "@/lib/validations";
+import { DRAFT_CLUB_WHERE } from "@/lib/club-approval";
 import { setCurrentOrgId } from "@/lib/org";
 import { isLang, LANGS, normaliseLang } from "@/lib/i18n/lang";
 import { t } from "@/lib/i18n/t";
@@ -353,6 +354,50 @@ export async function setOrgFeature(
   }
   revalidatePath("/admin/settings");
   return { feature, enabled };
+}
+
+/**
+ * Rename a club from /admin/settings, while it is still a DRAFT. OWNER
+ * or ADMIN only. Once the club is pending or approved the name is fixed:
+ * the MatchTime owner approves a club by its name.
+ *
+ * Writes `name` and nothing else. The slug stays as it was, because
+ * invite links and URLs depend on it. The draft check is part of the
+ * write itself, so a club that leaves draft between the page loading and
+ * the save is refused, not renamed.
+ *
+ * A refusal the organiser can act on is returned, not thrown: Next
+ * replaces a thrown server-action message with a generic one in
+ * production.
+ */
+export async function renameDraftClub(
+  orgId: string,
+  name: string,
+): Promise<{ ok: true; name: string } | { ok: false; reason: "invalid" | "not-draft"; error: string }> {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Not authenticated");
+  const { requireOrgAdmin } = await import("@/lib/org");
+  await requireOrgAdmin(session.user.id, orgId);
+
+  const parsed = clubNameSchema.safeParse(name);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      reason: "invalid",
+      error: `The name must be ${CLUB_NAME_MIN} to ${CLUB_NAME_MAX} characters long`,
+    };
+  }
+
+  const { count } = await db.organisation.updateMany({
+    where: { id: orgId, ...DRAFT_CLUB_WHERE },
+    data: { name: parsed.data },
+  });
+  if (count !== 1) {
+    return { ok: false, reason: "not-draft", error: "The name can no longer be changed here" };
+  }
+  revalidatePath("/admin/settings");
+  revalidatePath("/admin");
+  return { ok: true, name: parsed.data };
 }
 
 /**
