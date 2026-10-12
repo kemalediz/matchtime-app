@@ -98,7 +98,7 @@ describe("buildWeekListPost", () => {
     );
     expect(
       buildWeekListPost({ list: two, matchDate: MATCH, paygPricePence: 800, organiserPicks: true, lang: "en" }).split("\n").pop(),
-    ).toBe("2 places open. Say *IN* to go on the waiting list, and the organisers will pick who plays.");
+    ).toBe("2 places open. Say *IN* to go on the bench, and the organisers will pick who plays.");
   });
 
   it.each(["en", "tr"] as const)("the list reader reads our own post back (%s): a member can copy it and paste it", (lang) => {
@@ -208,6 +208,15 @@ describe("pasteResidual: what a member typed around the list", () => {
     }
   });
 
+  it("a post copied BEFORE the wording changed to 'bench' (2026-10-12) still leaves nothing", () => {
+    // Posts in the old wording are still in the groups' histories, and a
+    // member can copy one and paste it back for as long as that match is on.
+    const today = buildWeekListPost({ list: LIST, matchDate: MATCH, paygPricePence: 800, organiserPicks: true, lang: "en" });
+    const old = today.replace("to go on the bench", "to go on the waiting list");
+    expect(old).toContain("1 place open. Say *IN* to go on the waiting list, and the organisers will pick who plays.");
+    expect(pasteResidual(old, ctx)).toBe("");
+  });
+
   it("'Can't make it' typed ABOVE the list is the sender speaking, not a header", () => {
     expect(pasteResidual("Can't make it\nList for October:\n1. Alex\n2.\n3. Chris\n\nCan't play\n1. Dave", ctx)).toBe("Can't make it");
   });
@@ -222,7 +231,7 @@ describe("review fixes: the two new messages", () => {
   it("a non-regular moved to the waiting list when the regulars are put on the match", () => {
     expect(buildSeedBumpedDm({ name: "Zed Wait", activityName: "Monday 7-a-side", matchDate: MATCH, lang: "en" })).toBe(
       "👋 Zed, the regulars who have paid for the month have their places for *Monday 7-a-side* on Mon 12 Oct, 20:00, " +
-        "so you are on the waiting list for now. I'll message you if a place opens.",
+        "so you are on the bench for now. I'll message you if a place opens.",
     );
     expect(buildSeedBumpedDm({ name: null, activityName: "Pazartesi 7'ye 7", matchDate: MATCH, lang: "tr" })).toBe(
       "👋 *Pazartesi 7'ye 7* (12 Ekim Pazartesi 20:00) maçında yerler önce ayı ödeyen daimi oyuncuların, " +

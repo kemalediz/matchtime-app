@@ -1477,7 +1477,7 @@ export const tr: Strings = {
   onb_legacy_feature_blurb: (p) =>
     ({
       attendance: "VARIM ve YOKUM mesajlarını okur, kadro listesini tutar, eksik kalınca hatırlatır.",
-      bench: "Kadro dolunca gelenleri sıraya alır; biri çıkınca açılan yeri yedeklere sorar.",
+      bench: "Kadro dolunca gelenleri yedeğe yazar; biri çıkınca açılan yeri yedeklere sorar.",
       teamBalancing: "İstenince dengeli iki takım kurar.",
       momVoting: "Maçtan sonra maçın adamı oylamasını açar, kazananı duyurur.",
       playerRating: "Her oyuncuya maçtan sonra kısa bir puanlama linki gönderir.",

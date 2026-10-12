@@ -40,7 +40,7 @@ export const FEATURE_META: Array<{
   blurb: string;
 }> = [
   { key: "attendance", label: "Attendance tracking", blurb: "Reads IN/OUT messages, keeps the squad list, chases when short." },
-  { key: "bench", label: "Bench management", blurb: "Standby list; when someone drops, asks the next bencher to step up." },
+  { key: "bench", label: "Bench management", blurb: "Runs the bench; when someone drops, asks the next bencher to step up." },
   { key: "teamBalancing", label: "Team generation", blurb: "Builds two balanced teams on request." },
   { key: "momVoting", label: "Man of the Match", blurb: "Posts the MoM vote after the match and announces the winner." },
   { key: "playerRating", label: "Player ratings", blurb: "DMs each player a quick post-match rating link." },
