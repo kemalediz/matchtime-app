@@ -66,12 +66,11 @@
  *     transaction, then finds the row final and leaves it alone; a closer
  *     that got there first makes the compare-and-set fail, and nothing is
  *     applied.
- * LOCK ORDER, here and in every closer: THE CLUB'S ROW, THEN THE READING
- * ROW. `goLiveClub` (club-setup.ts) writes the club and then closes the
- * reading in one transaction; `closeReadingForGood` locks the club first
- * for the same reason. Every transaction that holds both rows takes them
- * in that order, so none can deadlock with another. (The first version of
- * this fix took the reading row first, which could deadlock with go-live.)
+ * THE LOCK ORDER is written once, at the top of club-setup.ts: the
+ * club's row (FOR NO KEY UPDATE, `lockClubSetup`), then the reading row.
+ * `goLiveClub`, the setup DM's cap and the owner's suspension follow the
+ * same order, so none can deadlock with this. The claim and every write
+ * outside `applyAndRecord` are single statements outside any transaction.
  * A run that finds its row closed returns "skipped", reason "closed". For
  * a club nobody closes (every club that is not held) the row is "running"
  * throughout and the reading behaves exactly as before.
@@ -86,6 +85,7 @@ import {
   SETUP_STAGE_SELECT,
   hasGoneLive,
   isClubSettingUp,
+  lockClubSetup,
   type SetupStageColumns,
 } from "../club-setup";
 import { withSetupReadingAiBudget } from "../ai-budget";
@@ -297,8 +297,10 @@ async function applyAndRecord(
 ): Promise<"closed" | "moved" | "done"> {
   return db.$transaction(async (client) => {
     const tx = client as unknown as RowClient;
-    // The club's row first: go-live and the cap's close take it first too.
-    await tx.$executeRaw`SELECT 1 FROM "Organisation" WHERE "id" = ${orgId} FOR UPDATE`;
+    // Step 1 of the lock order (club-setup.ts): the club's row, FOR NO
+    // KEY UPDATE. Go-live, the cap's close and a suspension take it first
+    // too; nobody inserting a row for this club is made to wait.
+    await lockClubSetup(tx, orgId);
     // Then the reading row, only while it is still this run's. A no-op
     // write, so the row is locked until this transaction ends.
     if (!(await finish(orgId, { status: "running" }, tx))) return "closed";

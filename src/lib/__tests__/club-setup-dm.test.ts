@@ -306,10 +306,17 @@ describe("review fix 1: the 2-hour cap (a held club is never stranded waiting fo
     expect(STILL_READING_WINDOW_MS).toBe(2 * 60 * 60 * 1000);
   });
 
-  it("the close takes the club's row BEFORE the reading row (the lock order go-live uses)", async () => {
+  it("the club is read in ONE snapshot (repeatable read), so a reading that commits mid-read cannot be half seen", async () => {
+    state.org = heldOrg({ setupLearning: learning("nothing") });
+    await sendSetupDm("org-riverside", DAY, { learningEnabled: true });
+    const read = dbMock.$transaction.mock.calls.find((c) => (c[1] as { isolationLevel?: string } | undefined)?.isolationLevel);
+    expect(read?.[1]).toEqual({ isolationLevel: "RepeatableRead" });
+  });
+
+  it("the close takes the club's row BEFORE the reading row, FOR NO KEY UPDATE (never FOR UPDATE: that deadlocked with the claim)", async () => {
     state.org = heldOrg({ approvedAt: TWO_HOURS_AGO, setupLearning: learning("running", { attempts: 3 }) });
     await sendSetupDm("org-riverside", DAY, { learningEnabled: true });
-    const lock = state.raw.findIndex((q) => /FROM "Organisation" WHERE "id" = \? FOR UPDATE/.test(q));
+    const lock = state.raw.findIndex((q) => /FROM "Organisation" WHERE "id" = \? FOR NO KEY UPDATE/.test(q));
     const close = state.raw.findIndex((q) => /INSERT INTO "ClubSetupLearning"/.test(q));
     expect(lock).toBeGreaterThanOrEqual(0);
     expect(lock).toBeLessThan(close);

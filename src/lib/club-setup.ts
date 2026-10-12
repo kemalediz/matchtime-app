@@ -31,6 +31,72 @@
  *     setting-up club is never the one chosen;
  *   - `linkAdminGroup` (admin-group-link.ts): no reply in its players'
  *     group.
+ *
+ * ── THE LOCK ORDER FOR A CLUB'S SETUP STATE (the one place it is written) ──
+ *
+ * Several transactions change a club's setup state at once: the setup
+ * reading applying what it read (`applyAndRecord`, setup-learning/run.ts),
+ * going live (`goLiveClub`, below), the setup DM's two-hour cap and its
+ * stamp (`closeReadingForGood`, `sendSetupDm`, club-setup-dm.ts), and the
+ * owner's suspension (`decideClub`, club-approval.ts). The rule:
+ *
+ *   1. THE CLUB FIRST. Before any other row, the transaction locks the
+ *      club's `Organisation` row FOR NO KEY UPDATE and holds it to its
+ *      commit. An ordinary `UPDATE "Organisation"` takes exactly that
+ *      lock, so a transaction whose first write is its compare-and-set on
+ *      the club has it already (go-live, the stamp, the suspension, the
+ *      approval). One whose first write is something else calls
+ *      `lockClubSetup` below first (the reading's apply, the cap's close).
+ *   2. THEN ITS OTHER ROWS, in this order where it takes more than one:
+ *      the reading (`ClubSetupLearning`: an UPDATE, or the INSERT ... ON
+ *      CONFLICT of the two closers), then the connect rows (`ClubConnect`:
+ *      clearing the stored chat). Rows it only inserts (BotJob,
+ *      PlatformJob, SentNotification) and the rows of the club's own games
+ *      and queued posts that go-live tidies may come anywhere after the
+ *      club.
+ *
+ * Step 1 is what makes it safe: these transactions hold the club's row
+ * from their first lock to their commit, so for one club they run ONE AT
+ * A TIME, and no order of what follows can make a cycle among them. Step 2
+ * is kept anyway, so that a later transaction that has good reason not to
+ * take the club still cannot meet one of these the wrong way round.
+ * NEVER the reverse: no transaction may hold a club's reading row or its
+ * connect row and then ask for the club. (The reading once took its row
+ * first; go-live took the club first; they deadlocked.)
+ *
+ * FOR NO KEY UPDATE, NEVER FOR UPDATE, on the club. A row that references
+ * a club (a new `ClubSetupLearning`, a BotJob, a membership, a game)
+ * makes Postgres take FOR KEY SHARE on the club's row to check the foreign
+ * key. FOR KEY SHARE conflicts with FOR UPDATE and with nothing weaker.
+ * So a plain `SELECT ... FOR UPDATE` on the club turns every insert of a
+ * child row into a wait for the club, and that is a cycle the moment the
+ * inserter is itself being waited for. It happened: the reading's claim
+ * INSERTs its row outside any transaction (it holds the new row and waits
+ * for the club's key share), while the cap's close held the club FOR
+ * UPDATE and waited for that new row (its INSERT ... ON CONFLICT met the
+ * uncommitted row). Postgres killed one of them, 2 runs in 20 of
+ * e2e/api/setup-hold-approval.spec.ts. FOR NO KEY UPDATE is the weakest
+ * lock that still does step 1's job: it conflicts with itself and with
+ * every UPDATE of the club, and with no insert of a child row. Nothing
+ * here changes a key column, so nothing here needs more.
+ *
+ * WHAT IS NOT IN A TRANSACTION holds one row for one statement, and so
+ * can be waited for but can never be half of a cycle with these: the
+ * reading's claim (its INSERT, or its retake UPDATE), every write of the
+ * reading row outside `applyAndRecord`, the undo on the settings page,
+ * the "no organiser" stamp, and the captured-chat expiry.
+ *
+ * A CLUB THAT IS NOT APPROVED is another world: the group add and the
+ * bot's removal while pending take the connect row and then the club.
+ * They never meet the transactions above, every one of which needs the
+ * club approved; `decideClub` is the only step between the two, and it
+ * takes the club first (approve, reject and suspend alike).
+ *
+ * Proved by races against a real Postgres, 200 rounds each, in
+ * e2e/helpers/setup-hold-lib-tests.ts (checks 7 to 11): the reading
+ * against the close, against go-live, against the whole cap, against a
+ * suspension, and a never-held club's reading against a second reading
+ * and other writes for the club.
  */
 import { randomUUID } from "node:crypto";
 import type { MatchStatus } from "@/generated/prisma/enums";
@@ -121,6 +187,20 @@ export async function settingUpClubsReason(userId: string): Promise<"club-settin
     select: { org: { select: SETUP_STAGE_SELECT } },
   });
   return settingUpOnly((current ?? []).map((m) => m.org)) ? "club-setting-up" : null;
+}
+
+/**
+ * STEP 1 OF THE LOCK ORDER (see the header), for a transaction whose first
+ * write is not the club's row: lock the club FOR NO KEY UPDATE until the
+ * transaction ends. It waits for, and then holds off, every other writer
+ * of this club's setup state, and it does not block (or wait for) anybody
+ * inserting a row that references the club.
+ */
+export async function lockClubSetup(
+  tx: { $executeRaw(query: TemplateStringsArray, ...values: unknown[]): Promise<number> },
+  orgId: string,
+): Promise<void> {
+  await tx.$executeRaw`SELECT 1 FROM "Organisation" WHERE "id" = ${orgId} FOR NO KEY UPDATE`;
 }
 
 /** What `closeUnfinishedSetupLearning` needs: `db`, or a transaction client. */
@@ -483,9 +563,9 @@ async function settlePaymentsAnnouncement(
  * door goes through, so no door can forget it. A failure is logged and
  * never undoes the go-live.
  *
- * LOCK ORDER: the club's row (the compare-and-set), then the reading row
- * (`closeUnfinishedSetupLearning`). The reading and the setup DM's cap
- * take the two rows in the same order (setup-learning/run.ts).
+ * LOCK ORDER (the header of this file): the club's row (its
+ * compare-and-set is the transaction's first write), then the reading row
+ * and the connect rows (`closeUnfinishedSetupLearning`), then inserts.
  */
 export async function goLiveClub(
   orgId: string,
