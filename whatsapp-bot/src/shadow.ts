@@ -289,6 +289,27 @@ export function shadowGuard<T extends WaDriver>(driver: T, opts: ShadowGuardOpti
  *
  * Returns false, and does nothing at all, when shadow mode is off.
  */
+/**
+ * A request body for the log, with any group description replaced by its
+ * length (2026-10-12). The description often holds bank details, and no
+ * log line may carry any of its text: see `describeDescription` in
+ * bot-added.ts.
+ */
+function withoutGroupDescription(body: string): string {
+  if (!body.includes("groupDescription")) return body;
+  try {
+    const parsed = JSON.parse(body) as Record<string, unknown> | null;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      const d = parsed.groupDescription;
+      parsed.groupDescription = typeof d === "string" ? `<${d.length} chars>` : "<not shown>";
+      return JSON.stringify(parsed);
+    }
+  } catch {
+    /* not JSON: not shown at all */
+  }
+  return "<not shown>";
+}
+
 export function refuseServerWriteInShadow(url: string, body?: unknown): boolean {
   if (!shadowMode().enabled) return false;
   stats.serverWritesRefused++;
@@ -300,7 +321,7 @@ export function refuseServerWriteInShadow(url: string, body?: unknown): boolean 
   }
   console.warn(
     `[shadow] REFUSED server write ${route}: nothing was sent to MatchTime. ` +
-      `Payload would have been: ${shadowPreview(typeof body === "string" ? body : String(body ?? ""))}`,
+      `Payload would have been: ${shadowPreview(withoutGroupDescription(typeof body === "string" ? body : String(body ?? "")))}`,
   );
   return true;
 }

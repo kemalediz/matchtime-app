@@ -293,4 +293,23 @@ describe("snapshotFromMetadata: the self-setup POST's roster", () => {
     ]);
     expect(snap.notes.join(" ")).toMatch(/1 participant.*only a LID/);
   });
+
+  const noNames = { phoneForLid: async () => null, pushnameFor: () => undefined };
+
+  it("carries the group description WhatsApp returned, as it is", async () => {
+    const desc = "Mondays 20:30, 9 a side, £7.\nSort 12-34-56";
+    const snap = await snapshotFromMetadata(meta([BOT, LID_WITH_PHONE], { desc }), [], noNames);
+    expect(snap.description).toBe(desc);
+  });
+
+  it("no description, or one that is not text: null, never a guess", async () => {
+    expect((await snapshotFromMetadata(meta([BOT]), [], noNames)).description).toBeNull();
+    expect((await snapshotFromMetadata(meta([BOT], { desc: null }), [], noNames)).description).toBeNull();
+    const odd = meta([BOT], { desc: { body: "x" } as unknown as string });
+    expect((await snapshotFromMetadata(odd, [], noNames)).description).toBeNull();
+  });
+
+  it("an empty description stays an empty string: WhatsApp answered, with nothing", async () => {
+    expect((await snapshotFromMetadata(meta([BOT], { desc: "" }), [], noNames)).description).toBe("");
+  });
 });

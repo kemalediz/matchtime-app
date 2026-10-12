@@ -89,6 +89,13 @@ export interface GroupMetaLike {
   participants: Array<ParticipantLike | string>;
   author?: string | null;
   authorPn?: string | null;
+  /**
+   * The group description, as rc14's `extractGroupMetadata` reads it from
+   * the group node's `description` child (`lib/Socket/groups.js`). Absent
+   * when the group has none. Carried to the self-setup snapshot and from
+   * there to the server; NEVER logged (it often holds bank details).
+   */
+  desc?: string | null;
 }
 
 /** One pair for `storeLIDPNMappings`: full wire JIDs, no device. */
@@ -457,5 +464,14 @@ export async function snapshotFromMetadata(
   }
   const notes: string[] = [];
   if (lidOnly > 0) notes.push(`${lidOnly} participant(s) had only a LID and no phone WhatsApp would give`);
-  return { subject: meta.subject ?? null, participants, source: "groupMetadata", notes };
+  return {
+    subject: meta.subject ?? null,
+    participants,
+    source: "groupMetadata",
+    notes,
+    // As WhatsApp gave it: "" when it answered with an empty one, null
+    // when there was none (or it was not text). Never trimmed, cut or
+    // masked here: the server does all of that, in one place.
+    description: typeof meta.desc === "string" ? meta.desc : null,
+  };
 }

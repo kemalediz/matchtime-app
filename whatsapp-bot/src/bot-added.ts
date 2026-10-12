@@ -108,6 +108,8 @@ export interface BotAddedDeps {
     enrichmentHistory?: HistoryMessageForServer[];
     /** Self-join slice 6: found by the reconnect sweep, not by an add event. */
     discovered?: boolean;
+    /** The group's description, when it has one worth sending. */
+    groupDescription?: string;
   }) => Promise<BotAddedResponse | null>;
   log?: (line: string) => void;
   error?: (line: string, err?: unknown) => void;
@@ -122,6 +124,34 @@ export interface BotAddedResponse {
   language?: string;
   silent?: boolean;
   selfJoin?: string;
+}
+
+// ── The group description (2026-10-12) ────────────────────────────────
+
+/**
+ * Longer than this and the description is not sent. The server's own limit
+ * (`GROUP_DESCRIPTION_MAX_CHARS` in src/lib/group-description.ts), which
+ * is twice WhatsApp's. It is never cut here: half a number could slip past
+ * the server's masking.
+ */
+export const BOT_DESCRIPTION_MAX_CHARS = 4096;
+
+/**
+ * What to send of a snapshot's description, and what to LOG about it. The
+ * note is a length and nothing else: the description often holds bank
+ * details, and no log line may ever carry any of its text.
+ *
+ *   desc=142 chars                         sent
+ *   desc=none                              WhatsApp returned none
+ *   desc=3 chars (blank, not sent)         only white space
+ *   desc=9000 chars (over 4096, not sent)  not a real description
+ */
+export function describeDescription(description: unknown): { send?: string; note: string } {
+  if (typeof description !== "string") return { note: "none" };
+  const n = description.length;
+  if (description.trim().length === 0) return { note: `${n} chars (blank, not sent)` };
+  if (n > BOT_DESCRIPTION_MAX_CHARS) return { note: `${n} chars (over ${BOT_DESCRIPTION_MAX_CHARS}, not sent)` };
+  return { send: description, note: `${n} chars` };
 }
 
 export type BotAddedOutcome =
@@ -183,9 +213,11 @@ export async function handleGroupJoinForSelfAdd(
   } catch (err) {
     snapshot.notes.push(`snapshot threw: ${err instanceof Error ? err.message : String(err)}`);
   }
+  // The description: its LENGTH is logged, never its text.
+  const desc = describeDescription(snapshot.description);
   log(
     `[bot-added] ${gid} snapshot via ${snapshot.source}: subject=${snapshot.subject ? JSON.stringify(snapshot.subject) : "none"}, ` +
-      `participants=${snapshot.participants.length}` +
+      `participants=${snapshot.participants.length}, desc=${desc.note}` +
       (snapshot.notes.length ? ` (${snapshot.notes.join("; ")})` : ""),
   );
 
@@ -221,6 +253,7 @@ export async function handleGroupJoinForSelfAdd(
         pushname: p.pushname ?? null,
       })),
       enrichmentHistory: history.length > 0 ? history : undefined,
+      ...(desc.send !== undefined ? { groupDescription: desc.send } : {}),
     });
   } catch (err) {
     error(`[bot-added] ${gid} server call failed:`, err);
@@ -475,6 +508,7 @@ export async function sweepForMissedSelfAdds(deps: SweepDeps): Promise<{ checked
       error(`[self-join-sweep] ${g.id} snapshot failed:`, err);
       continue;
     }
+    const desc = describeDescription(snapshot.description);
     let res: BotAddedResponse | null = null;
     try {
       res = await deps.postBotAdded({
@@ -486,6 +520,7 @@ export async function sweepForMissedSelfAdds(deps: SweepDeps): Promise<{ checked
           pushname: p.pushname ?? null,
         })),
         discovered: true,
+        ...(desc.send !== undefined ? { groupDescription: desc.send } : {}),
       });
     } catch (err) {
       error(`[self-join-sweep] ${g.id} server call failed:`, err);
@@ -498,7 +533,7 @@ export async function sweepForMissedSelfAdds(deps: SweepDeps): Promise<{ checked
     // A group that matched nothing is looked at again next time: the
     // organiser it belongs to may not have sent their DM yet.
     if (res.ignored !== "discovered-no-match") deps.alreadySwept.add(g.id);
-    log(`[self-join-sweep] ${g.id} ("${snapshot.subject ?? g.name}"): ${res.selfJoin ?? res.ignored ?? "?"}`);
+    log(`[self-join-sweep] ${g.id} ("${snapshot.subject ?? g.name}"): ${res.selfJoin ?? res.ignored ?? "?"}, desc=${desc.note}`);
   }
   log(`[self-join-sweep] ${unknown.length} unknown group(s), ${checked} checked, ${linked} linked`);
   return { checked, linked };

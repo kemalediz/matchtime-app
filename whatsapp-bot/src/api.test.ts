@@ -201,6 +201,14 @@ describe("self-join slice 6: bot-added and bot-removed", () => {
     expect(JSON.parse(init.body)).toMatchObject({ addedByLid: "158055467598961", discovered: true });
   });
 
+  it("bot-added carries the group description when there is one, and no key at all when there is not", async () => {
+    fetchMock.mockResolvedValue(res(200, { ok: true, silent: true, introText: null }));
+    await postBotAdded({ groupId: "g@g.us", groupDescription: "Mondays 20:30, 9 a side" });
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ groupDescription: "Mondays 20:30, 9 a side" });
+    await postBotAdded({ groupId: "g@g.us" });
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).not.toHaveProperty("groupDescription");
+  });
+
   it("bot-removed POSTs the group and hands back the answer", async () => {
     fetchMock.mockResolvedValue(res(200, { ok: true }));
     expect(await postBotRemoved({ groupId: "g@g.us" })).toEqual({ ok: true });

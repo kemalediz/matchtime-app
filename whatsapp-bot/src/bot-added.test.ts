@@ -4,6 +4,8 @@
  */
 import { describe, it, expect, vi } from "vitest";
 import {
+  BOT_DESCRIPTION_MAX_CHARS,
+  describeDescription,
   handleGroupJoinForSelfAdd,
   handleGroupLeaveForSelfRemoval,
   handleMonitoredGroupSelfRemoval,
@@ -423,6 +425,91 @@ describe("handleMonitoredGroupSelfRemoval (club fee billing, slice B5)", () => {
   });
 });
 
+describe("the group description (2026-10-12)", () => {
+  const DESC = "Mondays 20:30, 9 a side, £7. Sort 12-34-56 Acc 12345678, Dave 07700 900123, pay at https://example.test/dave";
+  const selfAdd = { chatId: GID, recipientIds: [LID], author: "447700900001@c.us" };
+
+  function logged(over: Partial<BotAddedDeps> = {}) {
+    const lines: string[] = [];
+    const t = deps({
+      log: (l) => void lines.push(l),
+      error: (l, e) => void lines.push(`${l} ${String(e)}`),
+      ...over,
+    });
+    return { ...t, lines };
+  }
+
+  it("is sent with the add, and the log says only how long it is", async () => {
+    const { d, postBotAdded, lines } = logged({ readGroupSnapshot: async () => snapshot({ description: DESC }) });
+    await handleGroupJoinForSelfAdd(d, selfAdd);
+    expect(postBotAdded).toHaveBeenCalledWith(expect.objectContaining({ groupId: GID, groupDescription: DESC }));
+    const line = lines.find((l) => l.includes("snapshot via"));
+    expect(line).toMatch(new RegExp(`^\\[bot-added\\] ${GID} snapshot via page: subject=.*, participants=1, desc=${DESC.length} chars$`));
+    const all = lines.join("\n");
+    for (const secret of ["12-34-56", "12345678", "07700", "900123", "Dave", "example.test", "9 a side", "Mondays"]) {
+      expect(all).not.toContain(secret);
+    }
+  });
+
+  it("none on the snapshot (no description, or the old driver): no key is sent, and the log says desc=none", async () => {
+    for (const description of [undefined, null]) {
+      const { d, postBotAdded, lines } = logged({ readGroupSnapshot: async () => snapshot({ description }) });
+      await handleGroupJoinForSelfAdd(d, selfAdd);
+      expect(postBotAdded.mock.calls[0][0]).not.toHaveProperty("groupDescription");
+      expect(lines.find((l) => l.includes("snapshot via"))).toMatch(/, desc=none$/);
+    }
+  });
+
+  it("an empty or blank description: not sent, logged with its length", async () => {
+    const { d, postBotAdded, lines } = logged({ readGroupSnapshot: async () => snapshot({ description: "  \n" }) });
+    await handleGroupJoinForSelfAdd(d, selfAdd);
+    expect(postBotAdded.mock.calls[0][0]).not.toHaveProperty("groupDescription");
+    expect(lines.find((l) => l.includes("snapshot via"))).toMatch(/, desc=3 chars \(blank, not sent\)$/);
+  });
+
+  it("far longer than WhatsApp allows: not sent, and only its length is logged", async () => {
+    const huge = `Acc 12345678 ${"x".repeat(BOT_DESCRIPTION_MAX_CHARS)}`;
+    const { d, postBotAdded, lines } = logged({ readGroupSnapshot: async () => snapshot({ description: huge }) });
+    await handleGroupJoinForSelfAdd(d, selfAdd);
+    expect(postBotAdded.mock.calls[0][0]).not.toHaveProperty("groupDescription");
+    expect(lines.find((l) => l.includes("snapshot via"))).toMatch(
+      new RegExp(`, desc=${huge.length} chars \\(over ${BOT_DESCRIPTION_MAX_CHARS}, not sent\\)$`),
+    );
+    expect(lines.join("\n")).not.toContain("12345678");
+  });
+
+  it("the snapshot failed: the add still goes, with no description", async () => {
+    const { d, postBotAdded, lines } = logged({
+      readGroupSnapshot: async () => {
+        throw new Error("page gone");
+      },
+    });
+    await handleGroupJoinForSelfAdd(d, selfAdd);
+    expect(postBotAdded.mock.calls[0][0]).not.toHaveProperty("groupDescription");
+    expect(lines.find((l) => l.includes("snapshot via"))).toMatch(/desc=none \(snapshot threw: page gone\)$/);
+  });
+
+  it("the server call failing logs nothing of the description", async () => {
+    const { d, lines } = logged({
+      readGroupSnapshot: async () => snapshot({ description: DESC }),
+      postBotAdded: vi.fn(async () => {
+        throw new Error("503");
+      }),
+    });
+    await handleGroupJoinForSelfAdd(d, selfAdd);
+    expect(lines.join("\n")).not.toContain("12-34-56");
+  });
+
+  it("describeDescription: what is sent and what is logged", () => {
+    expect(describeDescription("abc")).toEqual({ send: "abc", note: "3 chars" });
+    expect(describeDescription("")).toEqual({ note: "0 chars (blank, not sent)" });
+    expect(describeDescription(undefined)).toEqual({ note: "none" });
+    expect(describeDescription(42 as unknown as string)).toEqual({ note: "none" });
+    const atLimit = "x".repeat(BOT_DESCRIPTION_MAX_CHARS);
+    expect(describeDescription(atLimit)).toEqual({ send: atLimit, note: `${BOT_DESCRIPTION_MAX_CHARS} chars` });
+  });
+});
+
 describe("sweepForMissedSelfAdds: the reconnect sweep (plan 8)", () => {
   const G = (n: number) => `12036340000000000${n}@g.us`;
 
@@ -463,6 +550,18 @@ describe("sweepForMissedSelfAdds: the reconnect sweep (plan 8)", () => {
     });
     expect(silent.has(G(4))).toBe(true);
     expect(d.alreadySwept.has(G(4))).toBe(true);
+  });
+
+  it("sends the group description of a discovered group too, and logs only its length", async () => {
+    const lines: string[] = [];
+    const { d, postBotAdded } = sweepDeps({
+      readGroupSnapshot: vi.fn(async () => snapshot({ subject: "Riverside Tuesday 5s", description: "Sort 12-34-56, Mondays" })),
+      log: (l) => void lines.push(l),
+    });
+    await sweepForMissedSelfAdds(d);
+    expect(postBotAdded).toHaveBeenCalledWith(expect.objectContaining({ discovered: true, groupDescription: "Sort 12-34-56, Mondays" }));
+    expect(lines.find((l) => l.includes(G(4)))).toBe(`[self-join-sweep] ${G(4)} ("Riverside Tuesday 5s"): linked, desc=22 chars`);
+    expect(lines.join("\n")).not.toContain("12-34-56");
   });
 
   it("a group that matched nothing is looked at again on the next reconnect", async () => {

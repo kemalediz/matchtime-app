@@ -11,6 +11,12 @@
  *   OnboardingSession.capturedHistory  the legacy in-group setup (self-join
  *     off). Nothing ever deleted it.
  *
+ * THE GROUP DESCRIPTION (2026-10-12) is kept beside the chat on a connect
+ * request (ClubConnect.capturedDescription, numbers masked out) and
+ * follows every rule below with it: it is deleted in the same statement,
+ * and a request that holds only a description expires like one that holds
+ * chat. The statements are in captured-chat.ts.
+ *
  * THE RULE. Captured chat is deleted once it is
  * CAPTURED_HISTORY_RETENTION_DAYS old:
  *
@@ -51,6 +57,7 @@
 import { db } from "@/lib/db";
 import { SWEEP_WINDOW_DAYS } from "./setup-learning/run";
 import { CAPTURED_HISTORY_RETENTION_DAYS, CAPTURED_HISTORY_RETENTION_MS } from "./captured-history-retention";
+import { clearExpiredCapturedChat, clearExpiredSessionChat } from "./captured-chat";
 
 export { CAPTURED_HISTORY_RETENTION_DAYS };
 /** Rows cleared per table per run. */
@@ -84,25 +91,14 @@ export async function expireCapturedHistory(now: Date = new Date()): Promise<Exp
   const expireBefore = utcTimestamp(cut.expireBefore);
   const sweepReadsSince = utcTimestamp(cut.sweepReadsSince);
 
-  const connectRequests = await db.$executeRaw`UPDATE "ClubConnect" SET "capturedHistory" = NULL
-    WHERE "id" IN (
-      SELECT c."id" FROM "ClubConnect" c
-      JOIN "Organisation" o ON o."id" = c."orgId"
-      WHERE c."capturedHistory" IS NOT NULL
-        AND COALESCE(c."linkedAt", c."createdAt") < ${expireBefore}::timestamp
-        AND (o."approvedAt" IS NULL OR o."approvedAt" < ${sweepReadsSince}::timestamp)
-      ORDER BY c."id"
-      LIMIT ${CAPTURED_HISTORY_MAX_PER_RUN}
-    )`;
-
-  const onboardingSessions = await db.$executeRaw`UPDATE "OnboardingSession" SET "capturedHistory" = NULL
-    WHERE "id" IN (
-      SELECT s."id" FROM "OnboardingSession" s
-      WHERE s."capturedHistory" IS NOT NULL
-        AND (s."stage" IN ('completed', 'abandoned') OR s."createdAt" < ${expireBefore}::timestamp)
-      ORDER BY s."id"
-      LIMIT ${CAPTURED_HISTORY_MAX_PER_RUN}
-    )`;
+  // The statements themselves are in captured-chat.ts, the one file that
+  // may delete captured chat: the description goes in the same statement.
+  const connectRequests = await clearExpiredCapturedChat(db, {
+    expireBefore,
+    sweepReadsSince,
+    limit: CAPTURED_HISTORY_MAX_PER_RUN,
+  });
+  const onboardingSessions = await clearExpiredSessionChat(db, { expireBefore, limit: CAPTURED_HISTORY_MAX_PER_RUN });
 
   if (connectRequests > 0 || onboardingSessions > 0) {
     console.log(
