@@ -20,8 +20,12 @@ import { test, expect, resetDb } from "../fixtures";
 import { E2E, REPO_ROOT } from "../helpers/env";
 import { testDb, type TestDb } from "../helpers/test-db";
 import type { APIRequestContext } from "@playwright/test";
+import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
 
 test.describe.configure({ mode: "serial" });
 
@@ -41,18 +45,23 @@ const MEMBERS = [
 ];
 
 const X = "[number removed]";
+const MAP = "https://maps.app.goo.gl/abc123456";
 const DESC_RAW = [
-  "Riverside Tuesday 5s. Tuesdays 20:30 to 21:30, 5 a side, £7 each.",
-  "Pay Ali: sort 12-34-56 acc 12345678, or IBAN GB29 NWBK 6016 1331 9268 19.",
-  "Problems: call 07700 900123.",
+  "Riverside Tuesday 5s. Tuesdays 20:30 to 21:30, 5 a side, £7 each. Next: Tue 13 10 2026.",
+  "Pay Ali: sort 12-34-56 acc 1234\n5678, or IBAN GB29 NWBK 6016 1331 9268\n19.",
+  "Or monzo.me/aliriverside, or mail ali.pay@example.com.",
+  "Problems: call 07700/900123 or wa.me/447700900123.",
+  `Pitch: ${MAP}`,
 ].join("\n");
 const DESC_MASKED = [
-  "Riverside Tuesday 5s. Tuesdays 20:30 to 21:30, 5 a side, £7 each.",
+  "Riverside Tuesday 5s. Tuesdays 20:30 to 21:30, 5 a side, £7 each. Next: Tue 13 10 2026.",
   `Pay Ali: sort ${X} acc ${X}, or IBAN ${X}.`,
-  `Problems: call ${X}.`,
+  "Or [link removed], or mail [email removed].",
+  `Problems: call ${X} or [link removed].`,
+  `Pitch: ${MAP}`,
 ].join("\n");
 /** What must never be found anywhere in the database. */
-const SECRETS = ["12-34-56", "12345678", "NWBK", "1331 9268", "07700 900123", "900123"];
+const SECRETS = ["12-34-56", "5678", "NWBK", "1331", "07700", "900123", "monzo", "aliriverside", "ali.pay", "wa.me"];
 
 const chat = (...texts: string[]) =>
   texts.map((text, i) => ({ author: "Ben", text, timestamp: new Date(Date.now() - (texts.length - i) * 60_000).toISOString() }));
@@ -240,6 +249,19 @@ test("rejected: the description is deleted with the chat", async ({ request, db 
   expect(res.status(), await res.text()).toBe(200);
   expect(await res.json()).toMatchObject({ result: "rejected" });
   expect(await stored(db)).toMatchObject({ status: "closed", d: null, h: null });
+});
+
+test("the shared module against Postgres: a late write never lands on a cleared request (tsx)", async () => {
+  test.setTimeout(120_000);
+  const { stdout, stderr } = await execFileAsync("npx", ["tsx", "e2e/helpers/captured-chat-lib-tests.ts"], {
+    cwd: REPO_ROOT,
+    env: process.env,
+    timeout: 110_000,
+  }).catch((err: Error & { stdout?: string; stderr?: string }) => {
+    throw new Error(`captured-chat-lib-tests failed:\n${err.stdout ?? ""}\n${err.stderr ?? ""}`);
+  });
+  console.log(stdout);
+  expect(stdout, stderr).toContain("OK: 7 captured-chat checks");
 });
 
 // ── The learned setup and the expiry, on seeded requests ────────────────

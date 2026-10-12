@@ -93,6 +93,7 @@ import { detectAdminGroupCandidate, recordAdminGroupCandidate } from "@/lib/admi
 import { billingEnabledForApiRequest } from "@/lib/billing-flag";
 import { handleBillingReAdd } from "@/lib/club-billing-removal";
 import { ingestGroupDescription } from "@/lib/group-description";
+import { capturedSessionChat } from "@/lib/captured-chat";
 
 /** Slice B5: MatchTime added back to a club paused because it was removed.
  *  Reads a CLONE of the body, so the route below still reads it. Never throws. */
@@ -131,7 +132,7 @@ async function selfJoinAdd(request: Request): Promise<NextResponse> {
   // it, so it is masked HERE, before anything else sees it, and only the
   // masked text goes any further. `body.groupDescription` is not read
   // again, and nothing of it is logged but a length and a count.
-  const description = ingestGroupDescription(body.groupDescription);
+  const description = ingestGroupDescription(body.discovered === true ? undefined : body.groupDescription);
   const outcome = await handleSelfJoinGroupAdd({
     groupId,
     groupSubject: body.groupSubject,
@@ -309,7 +310,7 @@ export async function POST(request: Request) {
     if (capturedJson && active.capturedHistory == null) {
       await db.onboardingSession.update({
         where: { id: active.id },
-        data: { capturedHistory: capturedJson },
+        data: capturedSessionChat(capturedJson),
       });
     }
     return NextResponse.json({
@@ -359,7 +360,7 @@ export async function POST(request: Request) {
         snapshot.length > 0
           ? (snapshot.map((p) => ({ ...p })) as Array<Record<string, string | null>>)
           : undefined,
-      capturedHistory: capturedJson,
+      ...capturedSessionChat(capturedJson),
       language: detected.lang,
     },
     select: { id: true },

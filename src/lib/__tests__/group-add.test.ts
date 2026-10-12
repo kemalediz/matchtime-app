@@ -313,6 +313,9 @@ describe("F3: the chat is kept for the learned setup", () => {
     const sql = (dbMock.$executeRaw.mock.calls[0][0] as TemplateStringsArray).join("?");
     expect(sql).toContain(`SET "capturedHistory" =`);
     expect(sql).toContain(`AND "capturedHistory" IS NULL`);
+    // Never onto a request a removal, a rejection or an approval cleared
+    // after it was read: the statement checks it is still linked.
+    expect(sql.replace(/\s+/g, " ")).toContain(`AND "status" = 'group_linked' AND "botRemovedAt" IS NULL`);
   });
   it("removed from the group while pending: the chat is deleted with the link", async () => {
     dbMock.clubConnect.findMany.mockResolvedValue([{ id: "cc-ali", orgId: "org-riverside" }]);
@@ -371,7 +374,10 @@ describe("the group description is kept beside the chat, masked (2026-10-12)", (
     expect(out).toEqual({ kind: "already-linked", connectId: "cc-ali" });
     const q = sqlCalls().find((c) => c.sql.includes(`"capturedDescription" =`));
     expect(q).toBeDefined();
-    expect(q!.sql.replace(/\s+/g, " ")).toContain(`UPDATE "ClubConnect" SET "capturedDescription" = ? WHERE "id" = ? AND "capturedDescription" IS NULL`);
+    expect(q!.sql.replace(/\s+/g, " ")).toBe(
+      `UPDATE "ClubConnect" SET "capturedDescription" = ? WHERE "id" = ? AND "capturedDescription" IS NULL ` +
+        `AND "status" = 'group_linked' AND "botRemovedAt" IS NULL`,
+    );
     expect(q!.values).toEqual([MASKED, "cc-ali"]);
     expect(everythingWritten()).not.toContain("12345678");
   });
@@ -386,6 +392,18 @@ describe("the group description is kept beside the chat, masked (2026-10-12)", (
     dbMock.clubConnect.findFirst.mockResolvedValue({ id: "cc-ali", linkedAt: mins(-8 * 24 * 60) });
     await add({ groupDescription: RAW, enrichmentHistory: [{ author: "Ali", text: "in", timestamp: "2026-09-28T10:00:00Z" }] });
     expect(dbMock.$executeRaw).not.toHaveBeenCalled();
+  });
+
+  it("a group the reconnect sweep found brings no description, whatever the post carries", async () => {
+    const out = await add({ discovered: true, addedByPhone: undefined, groupDescription: RAW });
+    expect(out.kind).toBe("linked");
+    expect(dbMock.clubConnect.updateMany.mock.calls[0][0].data).not.toHaveProperty("capturedDescription");
+    expect(everythingWritten()).not.toContain("Mondays");
+
+    vi.clearAllMocks();
+    dbMock.clubConnect.findFirst.mockResolvedValue({ id: "cc-ali", linkedAt: mins(-60) });
+    await add({ discovered: true, groupDescription: RAW });
+    expect(sqlCalls().some((c) => c.sql.includes("capturedDescription"))).toBe(false);
   });
 
   it("an unsolicited add stores none of it", async () => {

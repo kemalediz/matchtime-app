@@ -508,7 +508,10 @@ export async function sweepForMissedSelfAdds(deps: SweepDeps): Promise<{ checked
       error(`[self-join-sweep] ${g.id} snapshot failed:`, err);
       continue;
     }
-    const desc = describeDescription(snapshot.description);
+    // NO GROUP DESCRIPTION FROM HERE. The sweep reads every group this
+    // number is in that the server does not know, most of which have
+    // nothing to do with MatchTime. Only a real add event sends one
+    // (`handleGroupJoinForSelfAdd`). `snapshot.description` is not read.
     let res: BotAddedResponse | null = null;
     try {
       res = await deps.postBotAdded({
@@ -520,7 +523,6 @@ export async function sweepForMissedSelfAdds(deps: SweepDeps): Promise<{ checked
           pushname: p.pushname ?? null,
         })),
         discovered: true,
-        ...(desc.send !== undefined ? { groupDescription: desc.send } : {}),
       });
     } catch (err) {
       error(`[self-join-sweep] ${g.id} server call failed:`, err);
@@ -533,7 +535,7 @@ export async function sweepForMissedSelfAdds(deps: SweepDeps): Promise<{ checked
     // A group that matched nothing is looked at again next time: the
     // organiser it belongs to may not have sent their DM yet.
     if (res.ignored !== "discovered-no-match") deps.alreadySwept.add(g.id);
-    log(`[self-join-sweep] ${g.id} ("${snapshot.subject ?? g.name}"): ${res.selfJoin ?? res.ignored ?? "?"}, desc=${desc.note}`);
+    log(`[self-join-sweep] ${g.id} ("${snapshot.subject ?? g.name}"): ${res.selfJoin ?? res.ignored ?? "?"}`);
   }
   log(`[self-join-sweep] ${unknown.length} unknown group(s), ${checked} checked, ${linked} linked`);
   return { checked, linked };

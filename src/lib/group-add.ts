@@ -55,7 +55,7 @@ import {
 import { PlatformDmRefused, queuePlatformDm, queuePlatformLeaveGroup } from "./platform-jobs";
 import { detectAdminGroupCandidate, recordAdminGroupCandidate } from "./admin-group-link";
 import { CAPTURED_HISTORY_RETENTION_MS } from "./captured-history-retention";
-import { clearCapturedChat } from "./captured-chat";
+import { capturedAtLink, clearCapturedChat, fillCapturedChatOnReAdd } from "./captured-chat";
 import { ingestGroupDescription } from "./group-description";
 
 export interface GroupAddInput {
@@ -126,8 +126,10 @@ export async function handleSelfJoinGroupAdd(input: GroupAddInput): Promise<Grou
   const groupId = input.groupId;
   const subject = typeof input.groupSubject === "string" && input.groupSubject.trim() ? input.groupSubject.trim() : null;
   // Masked here, before any read or write. `input.groupDescription` is
-  // not used again below.
-  const description = ingestGroupDescription(input.groupDescription).text;
+  // not used again below. A group the reconnect sweep found brings none:
+  // the sweep reads groups that have nothing to do with MatchTime, and
+  // only a real add may bring a description.
+  const description = input.discovered === true ? null : ingestGroupDescription(input.groupDescription).text;
 
   // 1. A club already owns this group. An APPROVED one first, whatever its
   //    mute switch or dormancy: that is Sutton FC's case, and it is today's
@@ -156,17 +158,11 @@ export async function handleSelfJoinGroupAdd(input: GroupAddInput): Promise<Grou
     const late = coerceHistoryMessages(input.enrichmentHistory);
     const pastRetention =
       existing.linkedAt != null && now.getTime() - existing.linkedAt.getTime() >= CAPTURED_HISTORY_RETENTION_MS;
-    if (late.length > 0 && !pastRetention) {
-      await db.$executeRaw`UPDATE "ClubConnect" SET "capturedHistory" = ${JSON.stringify(late)}::jsonb
-        WHERE "id" = ${existing.id} AND "capturedHistory" IS NULL`;
-    }
-    // The group description, by the same rule: a re-add may supply it
-    // when none is stored, never replaces one, and stores nothing on a
-    // link past the retention limit.
-    if (description && !pastRetention) {
-      await db.$executeRaw`UPDATE "ClubConnect" SET "capturedDescription" = ${description}
-        WHERE "id" = ${existing.id} AND "capturedDescription" IS NULL`;
-    }
+    // The group description follows the same rule. And neither is written
+    // to a request that a removal, a rejection or an approval cleared
+    // since it was read above: the statement itself checks the request is
+    // still linked (captured-chat.ts).
+    if (!pastRetention) await fillCapturedChatOnReAdd(db, existing.id, { history: late, description });
     return { kind: "already-linked", connectId: existing.id };
   }
 
@@ -424,11 +420,10 @@ async function linkGroupToRequest(
           // after approval (or the club is rejected). See setup-learning/.
           // A relink stores what THIS add brought: the removal deleted
           // the earlier chat, so there is nothing older to keep.
-          capturedHistory: history.length > 0 ? (history as unknown as object) : undefined,
-          // The group description, masked, kept and deleted with the
-          // chat (captured-chat.ts). A first link has none stored, and a
-          // removal deleted any earlier one, so this never replaces one.
-          capturedDescription: description ?? undefined,
+          // With it, the group description, masked, kept and deleted
+          // with the chat. A first link has none stored, and a removal
+          // deleted any earlier one, so this never replaces one.
+          ...capturedAtLink({ history, description }),
           // Also where the chat's retention is measured from (captured-
           // history-expiry.ts). A relink sets it again: its chat was
           // stored now, and the club has been waiting since now.

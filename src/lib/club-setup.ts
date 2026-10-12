@@ -34,6 +34,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { db } from "./db";
+import { clearCapturedChatForClub } from "./captured-chat";
 import { servingClubWhere } from "./club-approval-state";
 import { SETUP_STAGE_SELECT, settingUpOnly } from "./club-setup-rules";
 
@@ -122,6 +123,7 @@ export async function closeUnfinishedSetupLearning(
     WHERE "ClubSetupLearning"."status" IN ('running', 'deferred')
     RETURNING (xmax = 0) AS "inserted"`;
   if (rows.length === 0) return "already-final";
-  await tx.$executeRaw`UPDATE "ClubConnect" SET "capturedHistory" = NULL WHERE "orgId" = ${orgId}`;
+  // The group description goes with the chat (captured-chat.ts).
+  await clearCapturedChatForClub(tx, orgId);
   return rows[0].inserted ? "created-closed" : "closed";
 }

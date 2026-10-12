@@ -552,16 +552,24 @@ describe("sweepForMissedSelfAdds: the reconnect sweep (plan 8)", () => {
     expect(d.alreadySwept.has(G(4))).toBe(true);
   });
 
-  it("sends the group description of a discovered group too, and logs only its length", async () => {
+  it("NEVER sends a group description: the sweep reads every unknown group this number is in, and only a real add may send one", async () => {
     const lines: string[] = [];
     const { d, postBotAdded } = sweepDeps({
+      listGroups: async () => [4, 6, 7].map((n) => ({ id: G(n), name: `Group ${n}` })),
       readGroupSnapshot: vi.fn(async () => snapshot({ subject: "Riverside Tuesday 5s", description: "Sort 12-34-56, Mondays" })),
       log: (l) => void lines.push(l),
+      error: (l, e) => void lines.push(`${l} ${String(e)}`),
     });
     await sweepForMissedSelfAdds(d);
-    expect(postBotAdded).toHaveBeenCalledWith(expect.objectContaining({ discovered: true, groupDescription: "Sort 12-34-56, Mondays" }));
-    expect(lines.find((l) => l.includes(G(4)))).toBe(`[self-join-sweep] ${G(4)} ("Riverside Tuesday 5s"): linked, desc=22 chars`);
+    expect(postBotAdded).toHaveBeenCalledTimes(3);
+    for (const [params] of postBotAdded.mock.calls as unknown as Array<[Record<string, unknown>]>) {
+      expect(params.discovered).toBe(true);
+      expect(params).not.toHaveProperty("groupDescription");
+      expect(JSON.stringify(params)).not.toContain("12-34-56");
+    }
+    expect(lines.find((l) => l.includes(G(4)))).toBe(`[self-join-sweep] ${G(4)} ("Riverside Tuesday 5s"): linked`);
     expect(lines.join("\n")).not.toContain("12-34-56");
+    expect(lines.join("\n")).not.toContain("desc=");
   });
 
   it("a group that matched nothing is looked at again on the next reconnect", async () => {

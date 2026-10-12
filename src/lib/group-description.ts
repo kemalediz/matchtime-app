@@ -9,138 +9,916 @@
  * reach the database, a log or an error message. Nothing reads the stored
  * text yet; a later slice gives it to the setup reading.
  *
- * Pure: no imports, no I/O. Never throws. Idempotent: what it kept,
- * ingested again, is kept as it is (group-add.ts runs it a second time on
- * whatever it is handed, so no caller can store unmasked text).
+ * Pure: no imports, no I/O. Never throws. Linear in the length of the
+ * text. Idempotent: what it kept, ingested again, is kept as it is.
  *
- * WHAT IS REMOVED. Each of these becomes "[number removed]":
+ * THE DESIGN IS DEFAULT DENY. Digits are removed unless they are part of a
+ * shape this file recognises as a time, a price, a date or a year, or
+ * there are too few of them to be a bank or phone number. Privacy beats
+ * usefulness wherever the two conflict.
  *
- *   1. An IBAN: two letters, two digits, then 11 to 30 letters or digits,
- *      in one piece or in groups of four split by a space or a hyphen, all
- *      upper case or all lower case, with at least 8 digits in it.
- *   2. Any run of 6 or more digits on one line, where two digits may have
- *      between them either any number of spaces, tabs, hyphens and dashes
- *      of any kind, round brackets and invisible characters, or one dot.
- *      So "12-34-56", "12 - 34 - 56", "12.34.56", "1234 5678",
- *      "+44 7700 900123", "(020) 7946 0958" and "0555.123.45.67" all go:
- *      sort codes, account numbers, card numbers and phone numbers. A
- *      leading "+" or "(" goes with the number.
+ * 1. THE TEXT IS READ THROUGH A NORMALISED COPY. For deciding only, every
+ *    character is NFKC-normalised, every Unicode digit becomes 0 to 9,
+ *    every kind of space becomes a space, every kind of line break a new
+ *    line, every kind of dash a hyphen, letters are lower-cased, and
+ *    invisible and combining characters are dropped. An HTML entity
+ *    ("&#49;", "&nbsp;") counts as the digit it stands for, or else as a
+ *    separator. Each character of the copy remembers where it came from,
+ *    so the text that is kept is the organiser's own, untouched outside
+ *    the removed spans.
  *
- * "A digit" is any Unicode decimal digit or other numeric character
- * (Arabic-Indic, Devanagari, dingbat digits and so on), and the text is
- * NFKC-normalised first, so full-width, mathematical, superscript, circled
- * and keycap digits are plain digits by the time the rules run. Invisible
- * characters (zero-width, bidi marks, soft hyphen, variation selectors,
- * combining marks, the Hangul fillers, the braille blank) never break a
- * run.
+ * 2. LINKS AND EMAIL ADDRESSES GO FIRST, WHOLE. A link to a map service
+ *    (the list is `isMapLink` below) is kept as it is and its digits are
+ *    never looked at. Every other link becomes "[link removed]": payment
+ *    links, wa.me links that carry a phone number, anything else. An
+ *    email address becomes "[email removed]". A link is a scheme
+ *    ("https://"), "www.", or a host followed by a path ("monzo.me/x"); a
+ *    host with no path is only a word.
  *
- * WHAT SURVIVES, and why.
+ * 3. IBANS GO NEXT, WHOLE: a country code that has IBANs, two check
+ *    digits, then letters and digits up to exactly that country's length,
+ *    with separators or line breaks between them, at least 10 digits in
+ *    all, and any group of letters alone being four letters (a bank
+ *    code). It becomes "[number removed]". A piece that is not exactly an
+ *    IBAN is left to the cluster rule, which removes its digits anyway.
  *
- *   - A colon, a slash, a comma, a new line, and a dot that is not
- *     directly between two digits all END a run: "12/10", "12/10/2026",
- *     "Max 14. 2026 season", "9 a side", "Monday 9pm", "14 players".
- *   - A CLOCK TIME OR A PRICE IS NEVER PART OF A NUMBER. One or two
- *     digits, then a dot, a colon or a comma, then exactly two digits
- *     ("8:30", "20.30", "7.50", "7,50"), and a currency sign followed by
- *     up to four digits and optional pence ("£7", "£12.50", "€1500"), are
- *     set aside before rule 2 runs. So "21.00-22.00" is two times, not
- *     eight digits, and in "07700 900123 20:30" only the phone goes.
- *     This applies only when the time or price stands on its own: it is
- *     not set aside when a digit, or a dot, colon or comma, touches it on
- *     either side (invisible characters ignored). "12.34.56",
- *     "£1234567" and "12345678:30" are therefore numbers, and go.
+ * 4. A CLUSTER is a maximal stretch of text with no letter in it. Spaces,
+ *    NEW LINES, every punctuation mark, symbols and emoji do not end a
+ *    cluster; only a letter does. So "1234\n5678", "12/34/56" and
+ *    "12,34,56" are each one cluster. A cluster with 3 digits or fewer is
+ *    left alone.
  *
- * WHAT IS LOST ON PURPOSE (over-masking is the safe direction): a year
- * range ("2025-2026"), a date with its year written with dots or hyphens
- * ("12.10.2026"), a price in thousands with a dot ("125.000 TL"), and any
- * numbers on one line with only spaces or hyphens between them that add
- * up to 6 digits ("14 10 2026").
+ * 5. INSIDE A CLUSTER, THESE SHAPES ARE HONOURED, each checked strictly:
+ *      - a clock time: hour 0 to 23, ":" or ".", minutes 00 to 59
+ *        ("8:30", "20.30"); a bare hour or a time followed by am or pm
+ *        ("8pm", "9.30pm"); a range of two times ("21.00-22.00",
+ *        "8-9pm");
+ *      - a price: a number with a currency attached, the sign before or
+ *        after it (pound, euro, dollar, lira) or the word after it (TL,
+ *        GBP, EUR and so on), thousands and decimals in the UK or the
+ *        Turkish style ("7.50" with a pound sign, "7,50 TL",
+ *        "125.000 TL"), up to 5 digits without a thousands mark and one
+ *        thousands mark at most; a range whose second price is the
+ *        larger ("100-150 TL"), both round when either has four digits
+ *        ("1000-1500 TL" is a range, "1234-5678 TL" is not);
+ *      - a date: day 1 to 31 and month 1 to 12 joined by "/", "." or "-"
+ *        ("12/10"), with a four-digit year 2020 to 2039 ("12.10.2026",
+ *        "2026-10-12"); a two-digit year, or day month year split by
+ *        spaces, only with a weekday or month word right beside it
+ *        ("Tue 13 10 2026");
+ *      - a year 2020 to 2039 standing alone, and a season ("2025-2026",
+ *        "2026/27").
+ *    A shape is honoured only when it is CLEANLY DELIMITED: the digits
+ *    before and after it in the cluster must be at least one space or
+ *    line break away. "1:12-34-56", "12.34-56" and "12:34:56" hold no
+ *    time: the time is glued to more digits.
  *
- * WHAT CAN SURVIVE (known, accepted): when the LAST group of a number is
- * written like a time or a price after a space ("0555 123 45.67"), those
- * last four digits stay; the rest of the number goes if it has 6 digits.
+ * 6. A SHAPE DOES NOT SHIELD A NUMBER. With nothing but spaces between
+ *    them:
+ *      - a dotted or dashed pair of digits ("12.34", "12-10"), which
+ *        looks as much like a piece of a number as like a time or a date,
+ *        stops being honoured beside any loose digit, and beside another
+ *        such pair ("12.34 56", "07.30 09.00 12.34");
+ *      - any other time, date or price stops being honoured beside two
+ *        loose digits or more ("12:34 56", "12/10 56"), though not beside
+ *        one ("Pitch 3 20:30");
+ *      - two years side by side are not years. A year or a season beside
+ *        a small count stays ("max 14 2026", "14 2026/27").
+ *    What stops being honoured counts as loose digits, and so can stop
+ *    the shape next to it in turn.
  *
- * WHAT IS NOT REMOVED: names, email addresses, links (a payment link such
- * as a "pay me" page included), post codes, and numbers written out in
- * words. Those are not what this guards.
+ * 7. THE DECISION, per cluster, on the digits that no honoured shape
+ *    accounts for (the leftover):
+ *      - 6 or more: every leftover digit in the cluster is removed;
+ *      - 4 or more, in a cluster that also holds an honoured shape: the
+ *        same;
+ *      - fewer: everything stays.
+ *    When digits are removed, an honoured shape with only spaces between
+ *    it and a removed digit goes with them ("1:12 34 56", a price before
+ *    a phone number). A shape set apart by a line break, a comma, a
+ *    semicolon, a full stop or a spaced dash stays
+ *    ("KO 20:30 - 07700 900123"). Runs of removed digits that touch
+ *    become ONE "[number removed]", so no half of a number is ever left.
+ *
+ * WHAT IS NOT HONOURED, on purpose. A small count has no shape of its own
+ * ("9 a side", "max 14"): it survives because it is few digits, and it is
+ * removed with the rest when it shares a cluster with a number. A date
+ * with a two-digit year and nothing beside it ("12/10/26") is removed:
+ * that is exactly what a sort code looks like.
+ *
+ * WHAT IS NOT REMOVED: names, post codes, numbers written out in words,
+ * and digits that the organiser split with letters ("12a34b56").
  */
 
 /** What every removed number is replaced with. */
 export const NUMBER_REMOVED = "[number removed]";
+/** What every link that is not a map link is replaced with. */
+export const LINK_REMOVED = "[link removed]";
+/** What every email address is replaced with. */
+export const EMAIL_REMOVED = "[email removed]";
+const PLACEHOLDERS = [NUMBER_REMOVED, LINK_REMOVED, EMAIL_REMOVED];
 
 /**
  * The longest description accepted, and the longest stored, in UTF-16
  * units. WhatsApp's own limit is about 2,048 characters; twice that leaves
- * room for the limit to grow and for masking to lengthen the text (a
- * 6-digit number becomes a 16-character placeholder). Anything longer did
- * not come from WhatsApp and is dropped whole, never cut: a cut could
- * leave half a number that is too short to be recognised.
+ * room for the limit to grow and for masking to lengthen the text.
+ * Anything longer did not come from WhatsApp and is dropped whole, never
+ * cut before it is masked.
  */
 export const GROUP_DESCRIPTION_MAX_CHARS = 4096;
 
-const DIGIT = "[\\p{Nd}\\p{No}]";
-/** Characters with no width or no glyph of their own. Never a break. */
-const INVISIBLE = "[\\p{Cf}\\p{Mn}\\p{Me}\\u115F\\u1160\\u3164\\uFFA0\\u2800]";
-/** What may sit between two digits of one number. No new line, no dot. */
-const SEPARATOR = `(?:[\\p{Zs}\\t\\p{Pd}\\u2212()]|${INVISIBLE})`;
-/** Between two digits: separators in any number, or exactly one dot. */
-const BETWEEN = `(?:${SEPARATOR}*|${INVISIBLE}*\\.${INVISIBLE}*)`;
+// ── 1. The normalised copy ──────────────────────────────────────────────
 
-const DIGIT_RE = new RegExp(DIGIT, "gu");
-const DIGIT_RUN = new RegExp(`[+(]{0,2}${DIGIT}(?:${BETWEEN}${DIGIT}){5,}${INVISIBLE}*`, "gu");
+const SEP = 0;
+const DIG = 1;
+const LET = 2;
+/** A link, an email address or an IBAN already dealt with. Ends a cluster. */
+const BLOCK = 3;
+
+/** A separator with no meaning of its own (an emoji, an entity). */
+const OPAQUE = "\ufffc";
+
+interface Piece {
+  /** The characters of the copy this code point becomes ("" when dropped). */
+  a: string;
+  /** Their kinds, one per character. */
+  k: number[];
+}
+
+const ASCII: Piece[] = [];
+for (let c = 0; c < 128; c++) {
+  const ch = String.fromCharCode(c);
+  if (c >= 48 && c <= 57) ASCII.push({ a: ch, k: [DIG] });
+  else if ((c >= 65 && c <= 90) || (c >= 97 && c <= 122)) ASCII.push({ a: ch.toLowerCase(), k: [LET] });
+  else if (c === 9 || c === 32) ASCII.push({ a: " ", k: [SEP] });
+  else if (c >= 10 && c <= 13) ASCII.push({ a: "\n", k: [SEP] });
+  else if (c < 32 || c === 127) ASCII.push({ a: "", k: [] });
+  else ASCII.push({ a: ch, k: [SEP] });
+}
+
+const RE_ND = /\p{Nd}/u;
+const RE_NO = /\p{No}/u;
+const RE_INVISIBLE = /[\p{Cf}\p{Mn}\p{Me}\p{Mc}\p{Cc}]/u;
+const RE_LETTER = /[\p{L}\p{Nl}]/u;
+const RE_LINE = /[\p{Zl}\p{Zp}]/u;
+const RE_SPACE = /\p{Zs}/u;
+const RE_DASH = /\p{Pd}/u;
+/** Letters by category that show nothing: the Hangul fillers. */
+const FILLERS = new Set([0x115f, 0x1160, 0x3164, 0xffa0]);
+const TURKISH: Record<string, string> = {
+  "\u0131": "i",
+  "\u0130": "i",
+  "\u015f": "s",
+  "\u015e": "s",
+  "\u00e7": "c",
+  "\u00c7": "c",
+  "\u011f": "g",
+  "\u011e": "g",
+  "\u00f6": "o",
+  "\u00d6": "o",
+  "\u00fc": "u",
+  "\u00dc": "u",
+};
+
+/** The value of a decimal digit of any script: digits sit in runs of ten. */
+function digitOf(cp: number): string {
+  let v = 0;
+  while (v < 9 && cp - v - 1 > 0 && RE_ND.test(String.fromCodePoint(cp - v - 1))) v++;
+  return String(v);
+}
+
+function pieceOfNormalised(cp: number, a: string[], k: number[]): void {
+  if (cp < 128) {
+    a.push(ASCII[cp].a);
+    k.push(...ASCII[cp].k);
+    return;
+  }
+  const ch = String.fromCodePoint(cp);
+  if (FILLERS.has(cp)) return;
+  if (RE_ND.test(ch)) {
+    a.push(digitOf(cp));
+    k.push(DIG);
+  } else if (RE_NO.test(ch)) {
+    // A numeric character with no plain digit behind it (a dingbat digit).
+    a.push("9");
+    k.push(DIG);
+  } else if (RE_INVISIBLE.test(ch)) {
+    return;
+  } else if (RE_LETTER.test(ch)) {
+    const folded = TURKISH[ch] ?? ch.toLowerCase();
+    a.push(folded.length === 1 ? (TURKISH[folded] ?? folded) : "x");
+    k.push(LET);
+  } else if (RE_LINE.test(ch) || cp === 0x85) {
+    a.push("\n");
+    k.push(SEP);
+  } else if (RE_SPACE.test(ch)) {
+    a.push(" ");
+    k.push(SEP);
+  } else if (RE_DASH.test(ch) || cp === 0x2212) {
+    a.push("-");
+    k.push(SEP);
+  } else {
+    a.push(cp <= 0xffff ? ch : OPAQUE);
+    k.push(SEP);
+  }
+}
+
+const pieceCache = new Map<number, Piece>();
+
+function pieceOf(cp: number): Piece {
+  if (cp < 128) return ASCII[cp];
+  const hit = pieceCache.get(cp);
+  if (hit) return hit;
+  const a: string[] = [];
+  const k: number[] = [];
+  let normal: string;
+  try {
+    normal = String.fromCodePoint(cp).normalize("NFKC");
+  } catch {
+    normal = OPAQUE;
+  }
+  for (const c of normal) pieceOfNormalised(c.codePointAt(0)!, a, k);
+  const piece = { a: a.join(""), k };
+  if (pieceCache.size > 4096) pieceCache.clear();
+  pieceCache.set(cp, piece);
+  return piece;
+}
+
+const ENTITY = /&(?:#(\d{1,7})|#[xX]([0-9a-fA-F]{1,6})|[A-Za-z][A-Za-z0-9]{1,31});/y;
+
+interface Copy {
+  /** The normalised copy. One UTF-16 unit per character. */
+  a: string;
+  kind: number[];
+  /** Where each character of the copy starts and ends in the text. */
+  from: number[];
+  to: number[];
+}
+
+function normalisedCopy(text: string): Copy {
+  const a: string[] = [];
+  const kind: number[] = [];
+  const from: number[] = [];
+  const to: number[] = [];
+  let i = 0;
+  while (i < text.length) {
+    const unit = text.charCodeAt(i);
+    if (unit === 38) {
+      ENTITY.lastIndex = i;
+      const m = ENTITY.exec(text);
+      if (m) {
+        // The digit it stands for, or else a separator. Never a letter:
+        // an entity must not be a way to end a cluster.
+        let ch = OPAQUE;
+        let kd = SEP;
+        const cp = m[1] ? Number(m[1]) : m[2] ? parseInt(m[2], 16) : -1;
+        if (cp > 0 && cp <= 0x10ffff && !(cp >= 0xd800 && cp <= 0xdfff)) {
+          const p = pieceOf(cp);
+          if (p.a.length === 1 && p.k[0] === DIG) {
+            ch = p.a;
+            kd = DIG;
+          }
+        }
+        a.push(ch);
+        kind.push(kd);
+        from.push(i);
+        to.push(i + m[0].length);
+        i += m[0].length;
+        continue;
+      }
+    }
+    let cp = unit;
+    let len = 1;
+    if (unit >= 0xd800 && unit <= 0xdbff && i + 1 < text.length) {
+      const low = text.charCodeAt(i + 1);
+      if (low >= 0xdc00 && low <= 0xdfff) {
+        cp = (unit - 0xd800) * 0x400 + (low - 0xdc00) + 0x10000;
+        len = 2;
+      }
+    }
+    if (cp >= 0xd800 && cp <= 0xdfff) {
+      // A lone surrogate: not text. A separator.
+      a.push(OPAQUE);
+      kind.push(SEP);
+      from.push(i);
+      to.push(i + 1);
+    } else {
+      const p = pieceOf(cp);
+      for (let j = 0; j < p.a.length; j++) {
+        a.push(p.a[j]);
+        kind.push(p.k[j]);
+        from.push(i);
+        to.push(i + len);
+      }
+    }
+    i += len;
+  }
+  return { a: a.join(""), kind, from, to };
+}
+
+// ── 2. Links and email addresses ────────────────────────────────────────
+
+/** A span of the copy to replace (`text`) or to keep untouched (null). */
+interface Span {
+  s: number;
+  e: number;
+  text: string | null;
+  /** "shape" and "map" are kept as they are; reported for the tests. */
+  what: "number" | "link" | "email" | "map" | "shape";
+}
+
+const HOST = /^[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,24}$/;
+const MAP_HOSTS = new Set([
+  "maps.app.goo.gl",
+  "maps.apple.com",
+  "maps.apple",
+  "what3words.com",
+  "w3w.co",
+  "waze.com",
+  "ul.waze.com",
+  "openstreetmap.org",
+  "osm.org",
+]);
+const GOOGLE_MAPS_HOST = /^maps\.google\.[a-z]{2,3}(?:\.[a-z]{2})?$/;
+const GOOGLE_HOST = /^google\.[a-z]{2,3}(?:\.[a-z]{2})?$/;
+
 /**
- * A clock time or a price standing on its own. ONE capture group around
- * the whole, so `split` hands the matches back at the odd indexes.
+ * Is this link (lower case, no spaces) a link to a map? THE allow-list:
+ *
+ *   maps.google.<any country>      any path
+ *   google.<any country>/maps...   only under /maps
+ *   maps.app.goo.gl                any path
+ *   goo.gl/maps/...                only under /maps/
+ *   maps.apple.com, maps.apple     any path
+ *   what3words.com, w3w.co         any path
+ *   waze.com, ul.waze.com          any path
+ *   openstreetmap.org, osm.org     any path
+ *
+ * each with or without "www." and with http, https or no scheme. A host
+ * with a user part ("maps.google.com@evil.example") or a port is never a
+ * map link.
  */
-const TIME_OR_PRICE = new RegExp(
-  `((?<![\\p{Nd}\\p{No}.,:]${INVISIBLE}*)` +
-    `(?:[£$€₺]\\p{Nd}{1,4}(?:[.,]\\p{Nd}{2})?|\\p{Nd}{1,2}[.:,]\\p{Nd}{2})` +
-    `(?!${INVISIBLE}*(?:${DIGIT}|[.,:]${INVISIBLE}*${DIGIT})))`,
-  "u",
-);
-const iban = (letters: string) =>
-  new RegExp(
-    `(?<![A-Za-z0-9])${letters}{2}\\d{2}(?:[ \\-]?(?:${letters}|\\d){4}){2,7}(?:[ \\-]?(?:${letters}|\\d){1,4})?(?![A-Za-z0-9])`,
-    "g",
-  );
-const IBAN_UPPER = iban("[A-Z]");
-const IBAN_LOWER = iban("[a-z]");
+export function isMapLink(url: string): boolean {
+  let rest = url.toLowerCase();
+  const scheme = /^([a-z][a-z0-9+.-]*):\/\//.exec(rest);
+  if (scheme) {
+    if (scheme[1] !== "http" && scheme[1] !== "https") return false;
+    rest = rest.slice(scheme[0].length);
+  }
+  const cut = rest.search(/[/?#]/);
+  let host = cut === -1 ? rest : rest.slice(0, cut);
+  const path = cut === -1 ? "" : rest.slice(cut);
+  if (host.includes("@") || host.includes(":")) return false;
+  if (host.startsWith("www.")) host = host.slice(4);
+  if (!HOST.test(host)) return false;
+  if (MAP_HOSTS.has(host) || GOOGLE_MAPS_HOST.test(host)) return true;
+  if (GOOGLE_HOST.test(host)) return path === "/maps" || path.startsWith("/maps/") || path.startsWith("/maps?");
+  if (host === "goo.gl") return path.startsWith("/maps/");
+  return false;
+}
 
-function digitCount(s: string): number {
-  return s.match(DIGIT_RE)?.length ?? 0;
+const isHostChar = (c: number) => (c >= 97 && c <= 122) || (c >= 48 && c <= 57) || c === 45 || c === 46;
+const isSchemeChar = (c: number) => isHostChar(c) || c === 43;
+const isLocalChar = (c: number) => isHostChar(c) || c === 95 || c === 37 || c === 43;
+const TRAILING_PUNCTUATION = ".,;:!?)]}'\"";
+
+/** Where a link starts inside a token (no white space in it), or -1. */
+function linkStart(tok: string): number {
+  const scheme = tok.indexOf("://");
+  if (scheme > 0) {
+    let s = scheme;
+    while (s > 0 && isSchemeChar(tok.charCodeAt(s - 1))) s--;
+    if (s < scheme) return s;
+  }
+  const www = tok.indexOf("www.");
+  if (www !== -1 && (www === 0 || !isHostChar(tok.charCodeAt(www - 1)))) return www;
+  // A bare host with a path: "monzo.me/name", "wa.me/447700900123".
+  let slash = tok.indexOf("/");
+  while (slash !== -1) {
+    let s = slash;
+    while (s > 0 && isHostChar(tok.charCodeAt(s - 1))) s--;
+    if (s < slash && slash + 1 < tok.length && HOST.test(tok.slice(s, slash))) return s;
+    slash = tok.indexOf("/", slash + 1);
+  }
+  return -1;
+}
+
+function findLinksAndEmails(copy: Copy, spans: Span[]): void {
+  const { a, kind } = copy;
+  const n = a.length;
+  let ts = 0;
+  while (ts < n) {
+    while (ts < n && (a[ts] === " " || a[ts] === "\n")) ts++;
+    let te = ts;
+    while (te < n && a[te] !== " " && a[te] !== "\n") te++;
+    if (te === ts) break;
+    const tok = a.slice(ts, te);
+    const start = linkStart(tok);
+    if (start !== -1) {
+      let end = tok.length;
+      while (end > start + 1 && TRAILING_PUNCTUATION.includes(tok[end - 1])) end--;
+      const map = isMapLink(tok.slice(start, end));
+      spans.push({ s: ts + start, e: ts + end, text: map ? null : LINK_REMOVED, what: map ? "map" : "link" });
+      for (let i = ts + start; i < ts + end; i++) kind[i] = BLOCK;
+    } else {
+      let at = tok.indexOf("@");
+      while (at !== -1) {
+        let s = at;
+        while (s > 0 && isLocalChar(tok.charCodeAt(s - 1))) s--;
+        let e = at + 1;
+        while (e < tok.length && isHostChar(tok.charCodeAt(e))) e++;
+        while (e > at + 1 && (tok[e - 1] === "." || tok[e - 1] === "-")) e--;
+        if (s < at && HOST.test(tok.slice(at + 1, e))) {
+          spans.push({ s: ts + s, e: ts + e, text: EMAIL_REMOVED, what: "email" });
+          for (let i = ts + s; i < ts + e; i++) kind[i] = BLOCK;
+          at = tok.indexOf("@", e);
+        } else {
+          at = tok.indexOf("@", at + 1);
+        }
+      }
+    }
+    ts = te;
+  }
+}
+
+// ── 3. IBANs ────────────────────────────────────────────────────────────
+
+/** IBAN length by country code (the SWIFT registry). */
+const IBAN_LENGTH: Record<string, number> = {
+  ad: 24, ae: 23, al: 28, at: 20, az: 28, ba: 20, be: 16, bg: 22, bh: 22, br: 29, by: 28, ch: 21, cr: 22, cy: 28,
+  cz: 24, de: 22, dk: 18, do: 28, ee: 20, eg: 29, es: 24, fi: 18, fo: 18, fr: 27, gb: 22, ge: 22, gi: 23, gl: 18,
+  gr: 27, gt: 28, hr: 21, hu: 28, ie: 22, il: 23, iq: 23, is: 26, it: 27, jo: 30, kw: 30, kz: 20, lb: 28, lc: 32,
+  li: 21, lt: 20, lu: 20, lv: 21, mc: 27, md: 24, me: 22, mk: 19, mr: 27, mt: 31, mu: 30, nl: 18, no: 15, pk: 24,
+  pl: 28, ps: 29, pt: 25, qa: 29, ro: 24, rs: 22, sa: 24, sc: 31, se: 24, si: 19, sk: 24, sm: 27, so: 23, st: 25,
+  sv: 28, tl: 23, tn: 24, tr: 26, ua: 29, va: 22, vg: 24, xk: 20,
+};
+/** Separators allowed between two characters of one IBAN. */
+const IBAN_MAX_GAP = 4;
+
+const isAsciiAlnum = (c: number) => (c >= 97 && c <= 122) || (c >= 48 && c <= 57);
+
+function findIbans(copy: Copy, spans: Span[]): void {
+  const { a, kind } = copy;
+  const n = a.length;
+  let i = 0;
+  while (i + 3 < n) {
+    if (
+      kind[i] !== LET ||
+      kind[i + 1] !== LET ||
+      kind[i + 2] === LET ||
+      (i > 0 && (kind[i - 1] === LET || kind[i - 1] === DIG))
+    ) {
+      i++;
+      continue;
+    }
+    const length = IBAN_LENGTH[a.slice(i, i + 2)];
+    if (!length) {
+      i++;
+      continue;
+    }
+    // Take whole runs of letters and digits, never part of one, until the
+    // country's length is reached.
+    let p = i + 2;
+    let taken = 2;
+    let digits = 0;
+    let end = i + 2;
+    let checkDigits = "";
+    while (taken < length) {
+      let q = p;
+      while (q < n && kind[q] === SEP && q - p < IBAN_MAX_GAP) q++;
+      if (q >= n || (kind[q] !== DIG && kind[q] !== LET)) break;
+      let r = q;
+      while (r < n && r - q <= length && (kind[r] === DIG || kind[r] === LET) && isAsciiAlnum(a.charCodeAt(r))) r++;
+      if (r === q || taken + (r - q) > length) break;
+      if (r < n && (kind[r] === DIG || kind[r] === LET)) break;
+      let runDigits = 0;
+      for (let x = q; x < r; x++) {
+        if (kind[x] === DIG) runDigits++;
+        if (checkDigits.length < 2) checkDigits += kind[x] === DIG ? "d" : "l";
+      }
+      // A group of letters alone is a bank code, which is four letters. A
+      // word of any other length is not part of an IBAN.
+      if (runDigits === 0 && r - q !== 4) break;
+      digits += runDigits;
+      taken += r - q;
+      p = r;
+      end = r;
+    }
+    // The country's exact length: a shorter or longer piece is left to the
+    // cluster rule, which removes its digits all the same.
+    if (taken === length && digits >= 10 && checkDigits === "dd") {
+      spans.push({ s: i, e: end, text: NUMBER_REMOVED, what: "number" });
+      for (let x = i; x < end; x++) kind[x] = BLOCK;
+      i = end;
+    } else {
+      i++;
+    }
+  }
+}
+
+// ── 4 to 7. Clusters ────────────────────────────────────────────────────
+
+const DAY_WORDS = new Set([
+  "mon", "monday", "mondays", "tue", "tues", "tuesday", "tuesdays", "wed", "weds", "wednesday", "wednesdays", "thu",
+  "thur", "thurs", "thursday", "thursdays", "fri", "friday", "fridays", "sat", "saturday", "saturdays", "sun", "sunday",
+  "sundays", "pazartesi", "pzt", "sali", "sal", "carsamba", "car", "persembe", "per", "cuma", "cum", "cumartesi", "cmt",
+  "pazar", "paz", "jan", "january", "feb", "february", "mar", "march", "apr", "april", "may", "jun", "june", "jul",
+  "july", "aug", "august", "sep", "sept", "september", "oct", "october", "nov", "november", "dec", "december", "ocak",
+  "subat", "mart", "nisan", "mayis", "haziran", "temmuz", "agustos", "eylul", "ekim", "kasim", "aralik",
+]);
+const CURRENCY_WORDS = new Set(["tl", "try", "gbp", "eur", "usd", "lira", "euro", "euros", "pound", "pounds", "quid"]);
+const CURRENCY_BEFORE = /[£€$₺] ?$/;
+const CURRENCY_AFTER = /^ ?[£€$₺]/;
+const RANGE_DASH = /^ ?- ?$/;
+const PRICE_RANGE_DASH = /^ ?- ?[£€$₺]? ?$/;
+const NEAR_WORD = /^[ ,.]{0,2}$/;
+/** A break that sets a shape apart from what is beside it. */
+const HARD_BREAK = /\n|[,;.)] | - | \(/;
+const MAX_WORD = 12;
+
+const hasSpace = (s: string) => s.includes(" ") || s.includes("\n");
+const isYear = (s: string) => s.length === 4 && s >= "2020" && s <= "2039";
+/** The same years written with two digits. */
+const isShortYear = (s: string) => s.length === 2 && s >= "20" && s <= "39";
+
+type ShapeClass = "strong" | "weak" | "year";
+interface Unit {
+  /** First and last digit group it covers. */
+  i: number;
+  j: number;
+  cls: ShapeClass | "loose";
+  digits: number;
+  masked: boolean;
+}
+
+/** One cluster, parsed. Everything a shape may look at. */
+interface Cluster {
+  /** The digit groups, and where each sits in the copy. */
+  tok: string[];
+  ts: number[];
+  te: number[];
+  /** `sep[k]` is what stands between group k and group k + 1. */
+  sep: string[];
+  pre: string;
+  post: string;
+  leftWord: string;
+  rightWord: string;
+}
+
+function priceNumber(c: Cluster, i: number, maxPlain: number): number {
+  const t = c.tok[i];
+  if (t.length > 1 && t[0] === "0") return -1;
+  const n = c.tok.length;
+  const mark = (k: number) => k < n - 1 && (c.sep[k] === "." || c.sep[k] === ",");
+  // One thousands mark at most: "125.000", "1.250,00". Millions are not a
+  // match fee, and "12.345.678" is an account number.
+  if (t.length <= 3 && mark(i) && c.tok[i + 1].length === 3) {
+    const k = i + 1;
+    return mark(k) && c.tok[k + 1].length <= 2 ? k + 1 : k;
+  }
+  if (t.length > maxPlain) return -1;
+  return mark(i) && c.tok[i + 1].length <= 2 ? i + 1 : i;
+}
+
+/** The whole units of the price in groups i to j, pence left out. */
+function priceUnits(c: Cluster, i: number, j: number): string {
+  const last = j > i && c.tok[j].length <= 2 ? j - 1 : j;
+  return c.tok.slice(i, last + 1).join("");
 }
 
 /**
- * Replace every bank-detail-shaped and phone-shaped number in `text` with
- * "[number removed]". The rules are at the top of this file. Returns the
- * masked text (NFKC-normalised) and how many numbers went.
+ * Do two prices make a range? The second must be the larger, and when
+ * either has four digits or more both must be round (a multiple of 50):
+ * "1000-1500 TL" is a range, "1234-5678 TL" is an account number.
  */
-export function maskGroupDescription(text: string): { text: string; removed: number } {
-  let removed = 0;
-  const gone = () => {
-    removed++;
-    return NUMBER_REMOVED;
-  };
-  let out = text.normalize("NFKC");
+function isPriceRange(low: string, high: string): boolean {
+  if (Number(high) <= Number(low)) return false;
+  if (low.length < 4 && high.length < 4) return true;
+  return Number(low) % 50 === 0 && Number(high) % 50 === 0;
+}
 
-  // Rule 1. An IBAN-shaped piece with too few digits is left for rule 2.
-  for (const re of [IBAN_UPPER, IBAN_LOWER]) {
-    out = out.replace(re, (m) => (digitCount(m) < 8 ? m : gone()));
+function currencyBefore(c: Cluster, i: number): boolean {
+  if (CURRENCY_BEFORE.test(i === 0 ? c.pre : c.sep[i - 1])) return true;
+  return i === 0 && (c.pre === "" || c.pre === " ") && CURRENCY_WORDS.has(c.leftWord);
+}
+
+function currencyAfter(c: Cluster, j: number): boolean {
+  const last = j === c.tok.length - 1;
+  if (CURRENCY_AFTER.test(last ? c.post : c.sep[j])) return true;
+  return last && (c.post === "" || c.post === " ") && CURRENCY_WORDS.has(c.rightWord);
+}
+
+/** A time starting at group i: its last group and how it is written. */
+function timeAt(c: Cluster, i: number): { j: number; form: "colon" | "dot" | "bare" } | null {
+  const h = c.tok[i];
+  if (h.length > 2 || Number(h) > 23) return null;
+  if (i + 1 < c.tok.length && (c.sep[i] === ":" || c.sep[i] === ".")) {
+    const m = c.tok[i + 1];
+    if (m.length === 2 && Number(m) <= 59) return { j: i + 1, form: c.sep[i] === ":" ? "colon" : "dot" };
+  }
+  return { j: i, form: "bare" };
+}
+
+const amPmAfter = (c: Cluster, j: number) =>
+  j === c.tok.length - 1 && (c.post === "" || c.post === " ") && (c.rightWord === "am" || c.rightWord === "pm");
+
+const dayWordBeside = (c: Cluster, i: number, j: number) =>
+  (i === 0 && NEAR_WORD.test(c.pre) && DAY_WORDS.has(c.leftWord)) ||
+  (j === c.tok.length - 1 && NEAR_WORD.test(c.post) && DAY_WORDS.has(c.rightWord));
+
+function dayMonth(d: string, m: string): boolean {
+  return d.length <= 2 && m.length <= 2 && Number(d) >= 1 && Number(d) <= 31 && Number(m) >= 1 && Number(m) <= 12;
+}
+
+/** Every shape that could start at group i, longest and strictest first. */
+function shapesAt(c: Cluster, i: number): Array<{ j: number; cls: ShapeClass }> {
+  const out: Array<{ j: number; cls: ShapeClass }> = [];
+  const n = c.tok.length;
+  const t0 = c.tok[i];
+  const s0 = i < n - 1 ? c.sep[i] : null;
+  const t1 = i + 1 < n ? c.tok[i + 1] : null;
+  const s1 = i + 1 < n - 1 ? c.sep[i + 1] : null;
+  const t2 = i + 2 < n ? c.tok[i + 2] : null;
+
+  // A date with its year.
+  if (t1 && t2 && s0 === s1 && (s0 === "/" || s0 === "." || s0 === "-")) {
+    if (dayMonth(t0, t1) && (isYear(t2) || (isShortYear(t2) && dayWordBeside(c, i, i + 2)))) {
+      out.push({ j: i + 2, cls: "strong" });
+    }
+    if (s0 === "-" && isYear(t0) && dayMonth(t2, t1)) out.push({ j: i + 2, cls: "strong" });
+  }
+  // Day month (year) split by spaces: only with a day or month word beside it.
+  if (t1 && s0 === " " && dayMonth(t0, t1)) {
+    if (t2 && s1 === " " && (isYear(t2) || isShortYear(t2)) && dayWordBeside(c, i, i + 2)) {
+      out.push({ j: i + 2, cls: "strong" });
+    }
+    if (dayWordBeside(c, i, i + 1)) out.push({ j: i + 1, cls: "strong" });
+  }
+  // A season.
+  if (t1 && (s0 === "-" || s0 === "/") && isYear(t0)) {
+    const next = Number(t0) + 1;
+    if ((t1.length === 4 && Number(t1) === next) || (t1.length === 2 && Number(t1) === next % 100)) {
+      out.push({ j: i + 1, cls: "year" });
+    }
+  }
+  // A price range, then a price.
+  const p1 = priceNumber(c, i, 4);
+  if (p1 !== -1 && p1 + 1 < n && PRICE_RANGE_DASH.test(c.sep[p1])) {
+    const p2 = priceNumber(c, p1 + 1, 4);
+    if (
+      p2 !== -1 &&
+      isPriceRange(priceUnits(c, i, p1), priceUnits(c, p1 + 1, p2)) &&
+      (currencyBefore(c, i) || currencyAfter(c, p2) || CURRENCY_BEFORE.test(c.sep[p1]))
+    ) {
+      out.push({ j: p2, cls: "strong" });
+    }
+  }
+  const p = priceNumber(c, i, 5);
+  if (p !== -1 && (currencyBefore(c, i) || currencyAfter(c, p))) out.push({ j: p, cls: "strong" });
+  // A range of times, then a time.
+  const a = timeAt(c, i);
+  if (a) {
+    if (a.j + 1 < n && RANGE_DASH.test(c.sep[a.j])) {
+      const b = timeAt(c, a.j + 1);
+      if (b) {
+        const amPm = amPmAfter(c, b.j);
+        if (a.form === "bare" || b.form === "bare") {
+          if (amPm) out.push({ j: b.j, cls: "strong" });
+        } else {
+          out.push({ j: b.j, cls: amPm || a.form === "colon" || b.form === "colon" ? "strong" : "weak" });
+        }
+      }
+    }
+    const amPm = amPmAfter(c, a.j);
+    if (a.form === "colon" || amPm) out.push({ j: a.j, cls: "strong" });
+    else if (a.form === "dot") out.push({ j: a.j, cls: "weak" });
+  }
+  // Day and month.
+  if (t1 && dayMonth(t0, t1)) {
+    if (s0 === "/") out.push({ j: i + 1, cls: "strong" });
+    else if (s0 === "-" || s0 === ".") out.push({ j: i + 1, cls: "weak" });
+  }
+  if (isYear(t0)) out.push({ j: i, cls: "year" });
+  return out;
+}
+
+function decideCluster(c: Cluster, spans: Span[]): void {
+  const n = c.tok.length;
+  const clean = (i: number, j: number) => (i === 0 || hasSpace(c.sep[i - 1])) && (j === n - 1 || hasSpace(c.sep[j]));
+
+  // 5. Honoured shapes, left to right.
+  const units: Unit[] = [];
+  let i = 0;
+  while (i < n) {
+    const shape = shapesAt(c, i).find((s) => clean(i, s.j));
+    const j = shape ? shape.j : i;
+    let digits = 0;
+    for (let k = i; k <= j; k++) digits += c.tok[k].length;
+    units.push({ i, j, cls: shape ? shape.cls : "loose", digits, masked: false });
+    i = j + 1;
   }
 
-  // Rule 2, on everything that is not a clock time or a price.
-  out = out
-    .split(TIME_OR_PRICE)
-    .map((piece, i) => (i % 2 === 1 ? piece : piece.replace(DIGIT_RUN, gone)))
-    .join("");
+  // 6. Weak shapes do not shield a number.
+  const beside = (k: number) => !HARD_BREAK.test(c.sep[units[k].j]); // unit k and unit k + 1
+  const demote = new Array<boolean>(units.length).fill(false);
+  for (let k = 0; k + 1 < units.length; k++) {
+    const x = units[k].cls;
+    const y = units[k + 1].cls;
+    if (beside(k) && ((x === "weak" && y === "weak") || (x === "year" && y === "year"))) {
+      demote[k] = true;
+      demote[k + 1] = true;
+    }
+  }
+  for (let k = 0; k < units.length; k++) if (demote[k]) units[k].cls = "loose";
+  // Beside loose digits: a weak shape always gives way; a time, a date or
+  // a price gives way to two loose digits or more ("12:34 56"), not to one
+  // ("Pitch 3 20:30"). A year does not give way ("max 14 2026").
+  const givesWay = (u: Unit, loose: Unit) =>
+    loose.cls === "loose" && (u.cls === "weak" || (u.cls === "strong" && loose.digits >= 2));
+  for (let k = 1; k < units.length; k++) {
+    if (beside(k - 1) && givesWay(units[k], units[k - 1])) units[k].cls = "loose";
+  }
+  for (let k = units.length - 2; k >= 0; k--) {
+    if (beside(k) && givesWay(units[k], units[k + 1])) units[k].cls = "loose";
+  }
 
-  return { text: out, removed };
+  // 7. The decision.
+  let leftover = 0;
+  let shapes = 0;
+  for (const u of units) {
+    if (u.cls === "loose") leftover += u.digits;
+    else shapes++;
+  }
+  const remove = leftover >= 6 || (shapes > 0 && leftover >= 4);
+  if (remove) {
+    for (const u of units) if (u.cls === "loose") u.masked = true;
+    // A shape with only spaces between it and a removed digit goes too.
+    const absorbed: number[] = [];
+    for (let k = 0; k < units.length; k++) {
+      if (units[k].cls === "loose") continue;
+      const left = k > 0 && units[k - 1].cls === "loose" && beside(k - 1);
+      const right = k + 1 < units.length && units[k + 1].cls === "loose" && beside(k);
+      if (left || right) absorbed.push(k);
+    }
+    for (const k of absorbed) units[k].masked = true;
+  }
+
+  for (let k = 0; k < units.length; k++) {
+    const u = units[k];
+    if (!u.masked) {
+      if (u.cls !== "loose") spans.push({ s: c.ts[u.i], e: c.te[u.j], text: null, what: "shape" });
+      continue;
+    }
+    // Removed units that follow one another become one placeholder.
+    let last = k;
+    while (last + 1 < units.length && units[last + 1].masked) last++;
+    spans.push({ s: c.ts[u.i], e: c.te[units[last].j], text: NUMBER_REMOVED, what: "number" });
+    k = last;
+  }
 }
+
+const LEADS = "+(£€$₺";
+
+function findClusters(copy: Copy, spans: Span[]): void {
+  const { a, kind } = copy;
+  const n = a.length;
+  let rs = 0;
+  while (rs < n) {
+    if (kind[rs] !== SEP && kind[rs] !== DIG) {
+      rs++;
+      continue;
+    }
+    let re = rs;
+    const ts: number[] = [];
+    const te: number[] = [];
+    let digits = 0;
+    while (re < n && (kind[re] === SEP || kind[re] === DIG)) {
+      if (kind[re] === DIG) {
+        const start = re;
+        while (re < n && kind[re] === DIG) re++;
+        ts.push(start);
+        te.push(re);
+        digits += re - start;
+      } else {
+        re++;
+      }
+    }
+    if (digits > 3) {
+      const word = (from: number, step: 1 | -1) => {
+        let p = from;
+        let len = 0;
+        while (p >= 0 && p < n && kind[p] === LET && len <= MAX_WORD) {
+          p += step;
+          len++;
+        }
+        if (len === 0 || len > MAX_WORD) return "";
+        return step === 1 ? a.slice(from, p) : a.slice(p + 1, from + 1);
+      };
+      const cluster: Cluster = {
+        tok: ts.map((s, k) => a.slice(s, te[k])),
+        ts,
+        te,
+        sep: ts.slice(1).map((s, k) => a.slice(te[k], s)),
+        pre: a.slice(rs, ts[0]),
+        post: a.slice(te[te.length - 1], re),
+        leftWord: word(rs - 1, -1),
+        rightWord: word(re, 1),
+      };
+      const before = spans.length;
+      decideCluster(cluster, spans);
+      // A "+", a "(" or a currency sign in front of a removed number goes with it.
+      for (let k = before; k < spans.length; k++) {
+        const sp = spans[k];
+        if (sp.text === null) continue;
+        while (sp.s > rs && LEADS.includes(a[sp.s - 1])) sp.s--;
+      }
+    }
+    rs = re;
+  }
+}
+
+/**
+ * A placeholder already in the text is inert: its letters are not words,
+ * and nothing reads across it. This is what makes masking the masked text
+ * change nothing.
+ */
+function blockPlaceholders(copy: Copy): void {
+  const { a, kind } = copy;
+  let at = a.indexOf("[");
+  while (at !== -1) {
+    const hit = PLACEHOLDERS.find((p) => a.startsWith(p, at));
+    if (hit) {
+      for (let i = at; i < at + hit.length; i++) kind[i] = BLOCK;
+      at = a.indexOf("[", at + hit.length);
+    } else {
+      at = a.indexOf("[", at + 1);
+    }
+  }
+}
+
+// ── The mask ────────────────────────────────────────────────────────────
+
+export interface MaskedGroupDescription {
+  /** The text with every removed span replaced by its placeholder. */
+  text: string;
+  /** How many numbers (IBANs included), links and email addresses went. */
+  removed: number;
+  links: number;
+  emails: number;
+  /**
+   * For the tests: where, in `text`, the things deliberately kept are.
+   * `shapes` are honoured times, prices, dates and years; `mapLinks` are
+   * links on the map allow-list. Half-open [start, end) pairs.
+   */
+  kept: { shapes: Array<[number, number]>; mapLinks: Array<[number, number]> };
+}
+
+/**
+ * Remove bank details, phone numbers, links and email addresses from
+ * `text`. The rules are at the top of this file.
+ */
+export function maskGroupDescription(text: string): MaskedGroupDescription {
+  const copy = normalisedCopy(text);
+  const spans: Span[] = [];
+  blockPlaceholders(copy);
+  findLinksAndEmails(copy, spans);
+  findIbans(copy, spans);
+  findClusters(copy, spans);
+  spans.sort((x, y) => x.s - y.s);
+
+  const out: string[] = [];
+  const kept: MaskedGroupDescription["kept"] = { shapes: [], mapLinks: [] };
+  let removed = 0;
+  let links = 0;
+  let emails = 0;
+  let at = 0; // in `text`
+  let length = 0; // of `out`
+  for (const sp of spans) {
+    const from = copy.from[sp.s];
+    const to = copy.to[sp.e - 1];
+    if (from < at) continue; // never overlaps; a guard, not a rule
+    out.push(text.slice(at, from));
+    length += from - at;
+    const piece = sp.text ?? text.slice(from, to);
+    if (sp.what === "shape") kept.shapes.push([length, length + piece.length]);
+    else if (sp.what === "map") kept.mapLinks.push([length, length + piece.length]);
+    else if (sp.what === "number") removed++;
+    else if (sp.what === "link") links++;
+    else emails++;
+    out.push(piece);
+    length += piece.length;
+    at = to;
+  }
+  out.push(text.slice(at));
+  return { text: out.join(""), removed, links, emails, kept };
+}
+
+// ── The door ────────────────────────────────────────────────────────────
 
 export interface IngestedGroupDescription {
   /** The masked text, or null when there is nothing to keep. */
   text: string | null;
-  /** For a log line: a length and a count, never any of the text. */
+  /** For a log line: a length and counts, never any of the text. */
   note: string;
   /** How many numbers were replaced. */
   removed: number;
@@ -152,16 +930,48 @@ const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[
  *  which Postgres refuses in text). */
 const CONTROL = /[^\P{Cc}\n\t]/gu;
 
-/** Cut to the limit without leaving half a placeholder or half a character. */
+/** How many UTF-16 units the letter ending at `end` takes, or 0 when the
+ *  character there is not a letter. */
+function letterBefore(s: string, end: number): number {
+  const unit = s.charCodeAt(end - 1);
+  if (unit >= 0xdc00 && unit <= 0xdfff && end >= 2) return RE_LETTER.test(s.slice(end - 2, end)) ? 2 : 0;
+  return RE_LETTER.test(s[end - 1]) ? 1 : 0;
+}
+
+/**
+ * Cut masked text to the limit so that masking it again changes nothing:
+ * no half placeholder, no half character, and no half word or half
+ * cluster at the end (a time cut off from its "pm", or a date cut in two,
+ * would read as loose digits the second time).
+ */
+const CUT_LOOK_BACK = 256;
+
 function cutToLimit(s: string): string {
   if (s.length <= GROUP_DESCRIPTION_MAX_CHARS) return s;
-  let cut = s.slice(0, GROUP_DESCRIPTION_MAX_CHARS);
+  let cut = s.slice(0, GROUP_DESCRIPTION_MAX_CHARS).replace(/[\uD800-\uDBFF]$/, "");
   const open = cut.lastIndexOf("[");
   if (open !== -1) {
     const rest = cut.slice(open);
-    if (rest.length < NUMBER_REMOVED.length && NUMBER_REMOVED.startsWith(rest)) cut = cut.slice(0, open);
+    if (PLACEHOLDERS.some((p) => rest.length < p.length && p.startsWith(rest))) cut = cut.slice(0, open);
   }
-  return cut.replace(/[\uD800-\uDBFF]$/, "").trimEnd();
+  cut = cut.trimEnd();
+  if (PLACEHOLDERS.some((p) => cut.endsWith(p))) return cut;
+  // The last token may be half a token (half a link, half a word): drop
+  // it, back to the last white space when there is one nearby.
+  let end = cut.length;
+  let space = end - 1;
+  while (space >= 0 && end - space <= CUT_LOOK_BACK && cut[space] !== " " && cut[space] !== "\n") space--;
+  if (space >= 0 && end - space <= CUT_LOOK_BACK) {
+    end = space;
+    while (end > 0 && (cut[end - 1] === " " || cut[end - 1] === "\n")) end--;
+    if (PLACEHOLDERS.some((p) => cut.slice(0, end).endsWith(p))) return cut.slice(0, end);
+  } else {
+    while (end > 0 && letterBefore(cut, end) > 0) end -= letterBefore(cut, end);
+  }
+  // What is left may end in a cluster that lost what came after it (the
+  // rest of a date, its "pm", its currency): drop it, back to a letter.
+  while (end > 0 && cut[end - 1] !== "]" && letterBefore(cut, end) === 0) end--;
+  return cut.slice(0, end).trimEnd();
 }
 
 /**
@@ -176,5 +986,12 @@ export function ingestGroupDescription(raw: unknown): IngestedGroupDescription {
   const masked = maskGroupDescription(clean);
   const text = cutToLimit(masked.text.trim());
   if (text.length === 0) return NOTHING;
-  return { text, note: `${text.length} chars, ${masked.removed} number(s) removed`, removed: masked.removed };
+  return {
+    text,
+    note:
+      `${text.length} chars, ${masked.removed} number(s) removed` +
+      (masked.links > 0 ? `, ${masked.links} link(s) removed` : "") +
+      (masked.emails > 0 ? `, ${masked.emails} email(s) removed` : ""),
+    removed: masked.removed,
+  };
 }
