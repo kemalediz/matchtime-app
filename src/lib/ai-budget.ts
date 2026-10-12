@@ -17,9 +17,11 @@
  *     group) may spend NOTHING, and no override lifts that;
  *   - the platform owner's per-club override, `Organisation.aiDailyCapUsd`,
  *     when set;
- *   - $2.00 a day for the club's FREE MONTH, the first 30 days from the
- *     window start, which is `approvedAt ?? aiWindowStartAt ?? createdAt`
- *     (see `aiWindowStart`) (Kemal, 2026-10-01; was $0.25 for 28 days);
+ *   - $2.00 a day for the club's FREE PERIOD: two London calendar months
+ *     (`FREE_PERIOD_MONTHS`, the same length as the billing trial, through
+ *     the same `freePeriodEnd`; 30 days until 2026-10-12) from the window
+ *     start, which is `approvedAt ?? aiWindowStartAt ?? createdAt` (see
+ *     `aiWindowStart`) (Kemal, 2026-10-01; was $0.25 for 28 days);
  *   - $1.50 a day after that, the default for a paying club (Kemal,
  *     2026-10-01; was $1.00). Sutton FC is long past its free month and
  *     has its own override of the same $1.50.
@@ -94,7 +96,7 @@ import { db } from "./db";
 import { formatLondon } from "./london-time";
 import { AI_CAP_ALERT_KIND, recordOpsEvent } from "./ops-alerts";
 import { isClubApproved, isSelfJoinEnabled, isSilentGroup } from "./club-approval";
-import { isBillingPaused } from "./club-billing-rules";
+import { freePeriodEnd, isBillingPaused } from "./club-billing-rules";
 import { notifyAdminsOfAiCap } from "./ai-cap-notice";
 import {
   AiBudgetExceededError,
@@ -111,8 +113,6 @@ export { AI_CAP_ALERT_KIND } from "./ops-alerts";
 export const DAILY_CAP_USD = 1.5;
 /** The free month's allowance (Kemal, 2026-10-01). */
 export const NEW_CLUB_CAP_USD = 2.0;
-/** The free month: 30 days, the same length as the billing trial. */
-export const NEW_CLUB_WINDOW_DAYS = 30;
 /**
  * Spend with no approved club behind it yet (onboarding keys). Kept at the
  * old new-club figure on purpose: the free month starts at approval, and
@@ -210,9 +210,9 @@ export function aiAllowanceUsd(org: AllowanceOrg | null, now: Date): number {
   if (org.aiDailyCapUsd !== null && org.aiDailyCapUsd !== undefined) {
     return Number.isFinite(org.aiDailyCapUsd) ? Math.max(0, org.aiDailyCapUsd) : 0;
   }
-  const start = aiWindowStart(org);
-  const ageMs = now.getTime() - start.getTime();
-  return ageMs < NEW_CLUB_WINDOW_DAYS * 24 * 60 * 60 * 1000 ? NEW_CLUB_CAP_USD : DAILY_CAP_USD;
+  // The free period's allowance until the free period ends: the same
+  // length as the billing trial, from the same function (`freePeriodEnd`).
+  return now.getTime() < freePeriodEnd(aiWindowStart(org)).getTime() ? NEW_CLUB_CAP_USD : DAILY_CAP_USD;
 }
 
 /** The London calendar day `now` falls on, as YYYY-MM-DD. */

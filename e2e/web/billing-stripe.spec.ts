@@ -266,7 +266,7 @@ test("2. Stop paying inside the free month: the card is removed, back in the fre
   await page.getByTestId("billing-btn-stop-paying").click();
   await page.getByTestId("billing-btn-stop-paying-confirm").click();
   await expect(page.getByTestId("billing-notice")).toHaveText(
-    "Done. Your card has been removed and nothing has been charged. The free month carries on until it ends.",
+    "Done. Your card has been removed and nothing has been charged. The free period carries on until it ends.",
     { timeout: 30_000 },
   );
   expect(stripeState().detached).toContain("pm_e2e_colin");

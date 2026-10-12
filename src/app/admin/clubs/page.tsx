@@ -97,7 +97,7 @@ const AI_SPEND_DAYS = 30;
 
 const STATUS_LABEL: Record<string, string> = {
   exempt: "Exempt (never billed)",
-  trial: "Free month",
+  trial: "Free period",
   grace: "Grace week",
   subscribed: "Paying",
   past_due: "Past due",
@@ -156,7 +156,7 @@ function BillingRow({ c, billingOn, lang }: { c: LiveClub; billingOn: boolean; l
   const cb = b?.billing ?? null;
   const date =
     status === "trial" && cb
-      ? `Free month ends ${when(cb.trialEndsAt)}`
+      ? `Free period ends ${when(cb.trialEndsAt)}`
       : (status === "grace" || status === "past_due") && cb?.graceEndsAt
         ? `Stops ${when(cb.graceEndsAt)} without payment`
         : status === "subscribed" && cb?.currentPeriodEnd
@@ -485,7 +485,7 @@ export default async function ClubsPage() {
           <p data-testid="billing-totals" className="mt-3 text-sm text-slate-600">
             Club fees: {totals.withCard} with a card. Charged last month: {moneyLabel(totals.lastMonthChargedPence)}. This month so
             far: {moneyLabel(totals.thisMonthPence)}. Failed or unpaid: {totals.unpaidClubs}
-            {totals.unpaidClubs > 0 ? ` (${moneyLabel(totals.unpaidPence)})` : ""}. {totals.trial} in their free month, {totals.grace} in
+            {totals.unpaidClubs > 0 ? ` (${moneyLabel(totals.unpaidPence)})` : ""}. {totals.trial} in their free period, {totals.grace} in
             grace, {totals.pastDue} past due, {totals.paused} paused. Check VAT country: {totals.vatCheck}.
             {!billingOn && " Billing is switched off (BILLING_ENABLED): nobody is billed or paused."}
           </p>

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { firstMonthsFree } from "@/lib/i18n/free-period";
 import { UserCog, Users, ArrowRight } from "lucide-react";
 
 export const metadata = { title: "Help & guides" };
@@ -12,7 +13,7 @@ export default function HelpLandingPage() {
         tracks who&apos;s in, runs the bench, chases when you&apos;re short,
         balances the teams when you ask and collects ratings after the game.
         It costs up to £9.99 a month for the whole group, not per player, and
-        you only pay for the weeks you play. Your first month is free. Add it
+        you only pay for the weeks you play. {firstMonthsFree("en")}. Add it
         to your group, and if you don&apos;t like it, remove it.
       </p>
       <p>Two guides, depending on your role in the group:</p>

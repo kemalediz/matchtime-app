@@ -356,7 +356,7 @@ describe("runBillingCron: the day 21, 28, 30 and 37 steps", () => {
     const dm = dmsOf("trial-21")[0];
     expect(dm.userId).toBe("u_cole");
     expect(dm.cycleKey).toBe(TRIAL_ENDS.toISOString());
-    expect(dm.text).toContain("Hi Cole, Riverside FC's free month on MatchTime ends on Sat 31 Oct.");
+    expect(dm.text).toContain("Hi Cole, Riverside FC's free period on MatchTime ends on Sat 31 Oct.");
     expect(dm.text).toContain("As the person who collects the match fees");
     expect(dm.text).toContain(`https://mt.test/r/u_cole/billing/org_1#ttl=${9 * 24 * 60 * 60}`);
     expect(dm.text).toContain("*25p a player per game*");
@@ -409,7 +409,7 @@ describe("runBillingCron: the day 21, 28, 30 and 37 steps", () => {
     const d28 = dmsOf("trial-28");
     expect(d28).toHaveLength(1);
     expect(d28[0].text).toBe(
-      "Hi Cole, a quick reminder: Riverside FC's free month ends on Sat 31 Oct. Add a card to keep MatchTime running in the Riverside FC WhatsApp group: " +
+      "Hi Cole, a quick reminder: Riverside FC's free period ends on Sat 31 Oct. Add a card to keep MatchTime running in the Riverside FC WhatsApp group: " +
         `https://mt.test/r/u_cole/billing/org_1#ttl=${9 * 24 * 60 * 60}\n` +
         "You only pay for the games you play, up to £9.99 a month, and nothing is taken when you add the card.",
     );
@@ -444,7 +444,7 @@ describe("runBillingCron: the day 21, 28, 30 and 37 steps", () => {
     await runBillingCron(new Date(TRIAL_ENDS.getTime() + HOUR)); // 10:00
     const dm = dmsOf("trial-ended");
     expect(dm).toHaveLength(1);
-    expect(dm[0].text).toContain("Hi Owen, Riverside FC's free month has ended. MatchTime will keep running in the Riverside FC WhatsApp group for one more week, until Sat 7 Nov.");
+    expect(dm[0].text).toContain("Hi Owen, Riverside FC's free period has ended. MatchTime will keep running in the Riverside FC WhatsApp group for one more week, until Sat 7 Nov.");
     expect(dm[0].text).toContain("make them the money collector");
   });
 
@@ -501,7 +501,7 @@ describe("runBillingCron: the day 21, 28, 30 and 37 steps", () => {
     club({ language: "tr", paymentHolderId: "u_cole" });
     await runBillingCron(DAY21);
     const dm = dmsOf("trial-21")[0];
-    expect(dm.text).toContain("Merhaba Cole, Riverside FC için MatchTime'daki ücretsiz ay 31 Ekim Cumartesi tarihinde bitiyor.");
+    expect(dm.text).toContain("Merhaba Cole, Riverside FC için MatchTime'daki ücretsiz dönem 31 Ekim Cumartesi tarihinde bitiyor.");
     expect(dm.text).toContain("Kulüp ücreti ipucu");
     expect(dm.text).not.toMatch(/[–—]/);
   });

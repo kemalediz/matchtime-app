@@ -128,10 +128,10 @@ describe("past months (8.1)", () => {
 describe("state lines: no flat fee left (8.1)", () => {
   it("trial: only the games played, up to the price", () => {
     expect(billingStateLines("en", state({ status: "trial", cardHolderUserId: null, cardLast4: null, trialEndsAt: new Date("2026-10-31T09:00:00Z") }))).toEqual([
-      "Free month until Sat 31 Oct. After that you only pay for the games you play, up to £9.99 a month for the whole group.",
+      "Free until Sat 31 Oct. After that you only pay for the games you play, up to £9.99 a month for the whole group.",
     ]);
     expect(billingStateLines("tr", state({ status: "trial", cardHolderUserId: null, cardLast4: null, trialEndsAt: new Date("2026-10-31T09:00:00Z") }))).toEqual([
-      "Ücretsiz ay 31 Ekim Cumartesi tarihine kadar. Sonrasında yalnızca oynadığınız maçlar için ödersiniz, tüm grup için ayda en fazla £9.99.",
+      "31 Ekim Cumartesi tarihine kadar ücretsiz. Sonrasında yalnızca oynadığınız maçlar için ödersiniz, tüm grup için ayda en fazla £9.99.",
     ]);
   });
 

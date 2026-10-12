@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { formatLondon } from "../london-time";
-import { TRIAL_DAYS, trialWindow } from "../club-billing-rules";
+import { freePeriodEnd, trialWindow } from "../club-billing-rules";
 import {
   PAUSED_DM_MAX_AGE_MS,
   billingDmSendAfter,
@@ -50,17 +50,20 @@ describe("quiet hours: billing DMs only 10:00 to 20:00 London", () => {
 
 describe("day boundaries: the reminders fall at 10:00 London on the right calendar day", () => {
   const cases: Array<[string, string]> = [
-    ["approved 10:00 London in October (the free month crosses the clock change)", "2026-10-01T09:00:00Z"],
+    ["approved 10:00 London in October (the free period crosses the clock change)", "2026-10-01T09:00:00Z"],
     ["approved 23:30 London (late evening, BST)", "2026-09-10T22:30:00Z"],
     ["approved 00:15 London (just after midnight, BST)", "2026-09-09T23:15:00Z"],
-    ["approved 23:30 London in March (GMT to BST inside the month)", "2026-03-20T23:30:00Z"],
+    ["approved 23:30 London in March (GMT to BST inside the free period)", "2026-03-20T23:30:00Z"],
     ["approved 00:30 London in winter", "2026-12-01T00:30:00Z"],
   ];
   for (const [label, iso] of cases) {
     it(label, () => {
       const approved = new Date(iso);
       const { trialEndsAt } = trialWindow(approved);
-      expect(trialEndsAt.getTime() - approved.getTime()).toBe(TRIAL_DAYS * DAY);
+      // Two London calendar months on, at the same London time of day.
+      expect(trialEndsAt).toEqual(freePeriodEnd(approved));
+      expect(formatLondon(trialEndsAt, "dd HH:mm:ss")).toBe(formatLondon(approved, "dd HH:mm:ss"));
+      expect(Math.round((trialEndsAt.getTime() - approved.getTime()) / DAY)).toBeGreaterThanOrEqual(59);
       const endDate = formatLondon(trialEndsAt, "yyyy-MM-dd");
       const d21 = reminderAt(trialEndsAt, 9);
       const d28 = reminderAt(trialEndsAt, 2);
@@ -75,16 +78,17 @@ describe("day boundaries: the reminders fall at 10:00 London on the right calend
     });
   }
 
-  it("the worked example: approved Thu 1 Oct 10:00 London, day 21 Thu 22 Oct 10:00 BST, day 28 Thu 29 Oct 10:00 GMT, ends Sat 31 Oct", () => {
-    const { trialEndsAt } = trialWindow(new Date("2026-10-01T09:00:00Z"));
-    expect(london(trialEndsAt)).toBe("2026-10-31 09:00");
+  it("the worked example: approved Mon 31 Aug 10:00 London, first reminder Thu 22 Oct 10:00 BST, second Thu 29 Oct 10:00 GMT, ends Sat 31 Oct 10:00", () => {
+    const { trialEndsAt } = trialWindow(new Date("2026-08-31T09:00:00Z"));
+    expect(london(trialEndsAt)).toBe("2026-10-31 10:00");
     expect(reminderAt(trialEndsAt, 9).toISOString()).toBe("2026-10-22T09:00:00.000Z");
     expect(reminderAt(trialEndsAt, 2).toISOString()).toBe("2026-10-29T10:00:00.000Z");
   });
 });
 
 describe("billingDmsDue: one DM per state, never two reminders in a row", () => {
-  const approved = new Date("2026-10-01T09:00:00Z");
+  // Approved Mon 31 Aug 2026, 10:00 London: free until Sat 31 Oct, 10:00 London.
+  const approved = new Date("2026-08-31T09:00:00Z");
   const club = trialClub(approved);
   const d21 = new Date("2026-10-22T09:00:00Z");
   const d28 = new Date("2026-10-29T10:00:00Z");
@@ -116,7 +120,7 @@ describe("billingDmsDue: one DM per state, never two reminders in a row", () => 
     ]);
   });
 
-  it("no reminder once the free month has ended (the transition is due instead)", () => {
+  it("no reminder once the free period has ended (the transition is due instead)", () => {
     const after = new Date(club.trialEndsAt.getTime() + HOUR);
     expect(billingDmsDue(club, after, { trial21Delivered: true })).toEqual([]);
     expect(billingTransitionDue(club, after)).toBe("trial-ended");
@@ -128,7 +132,7 @@ describe("billingDmsDue: one DM per state, never two reminders in a row", () => 
     expect(billingDmsDue(grace, new Date("2026-10-31T12:00:00Z"), { trial21Delivered: true })).toEqual([
       { kind: "trial-ended", cycleKey: club.trialEndsAt.toISOString(), withTip: false },
     ]);
-    // The trial ended at 09:00 on Sat 31 Oct: at night the state moves, the DM waits.
+    // The trial ended at 10:00 on Sat 31 Oct: at night the state moves, the DM waits.
     expect(billingDmsDue(grace, new Date("2026-10-31T06:00:00Z"), { trial21Delivered: true })).toEqual([]);
   });
 
@@ -166,7 +170,7 @@ describe("billingDmsDue: one DM per state, never two reminders in a row", () => 
 });
 
 describe("feeTipDue: the admin channel's tip, once per free month, from day 21", () => {
-  const club = trialClub(new Date("2026-10-01T09:00:00Z"));
+  const club = trialClub(new Date("2026-08-31T09:00:00Z"));
   it("from day 21 at 10:00 London until the free month ends, in the daytime", () => {
     expect(feeTipDue(club, new Date("2026-10-22T08:59:00Z"))).toBeNull();
     expect(feeTipDue(club, new Date("2026-10-22T09:00:00Z"))).toEqual({ cycleKey: club.trialEndsAt.toISOString() });

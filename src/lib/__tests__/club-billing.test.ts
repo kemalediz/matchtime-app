@@ -60,7 +60,10 @@ const dbMock = h.m;
 const DAY = 24 * 60 * 60 * 1000;
 const NOW = new Date("2026-11-15T12:00:00Z");
 const APPROVED_AT = new Date("2026-10-01T09:00:00Z");
-const TRIAL_ENDS = new Date(APPROVED_AT.getTime() + 30 * DAY);
+// The STORED free period end of the fixture rows: a date already past at
+// NOW (the writer only ever reads it). What an approval WRITES is checked
+// on its own below: two London calendar months from `approvedAt`.
+const TRIAL_ENDS = new Date("2026-10-31T09:00:00Z");
 
 const ENV = process.env.BILLING_ENABLED;
 afterEach(() => {
@@ -204,7 +207,8 @@ describe("setBillingState: the one writer", () => {
     setRow({ billingStatus: "exempt", billing: null });
     expect(await setBillingState("org", { type: "approved" }, NOW)).toMatchObject({ ok: true, to: "trial" });
     expect(dbMock.clubBilling.create).toHaveBeenCalledWith({
-      data: { orgId: "org", trialStartedAt: APPROVED_AT, trialEndsAt: TRIAL_ENDS },
+      // Thu 1 Oct 10:00 London (BST) to Tue 1 Dec 10:00 London (GMT).
+      data: { orgId: "org", trialStartedAt: APPROVED_AT, trialEndsAt: new Date("2026-12-01T10:00:00Z") },
     });
   });
 

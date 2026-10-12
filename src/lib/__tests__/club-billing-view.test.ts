@@ -122,7 +122,7 @@ describe("sj_dm_approved with the tip (billed clubs only)", () => {
         "Each game played costs at most £2.50, about *25p a player per game* with 10 players, so a £8 game could be charged at *£8.25*.",
     );
     const dm = t("en").sj_dm_approved({ club: "Riverside FC", group: "Riverside Tuesday 5s", ...LINKS, tip });
-    expect(dm.endsWith(`Your first month is free.\n\n${tip}`)).toBe(true);
+    expect(dm.endsWith(`Your first two months are free.\n\n${tip}`)).toBe(true);
     expect(dm).not.toMatch(DASH);
     expect(dm).not.toMatch(COLLECTS);
   });
@@ -134,7 +134,7 @@ describe("sj_dm_approved with the tip (billed clubs only)", () => {
         "Oynanan her maç en fazla £2.50 tutar, 10 oyuncuyla *oyuncu başına maç başına yaklaşık 25p* eder; £8 olan bir maç için *£8.25* alabilirsiniz.",
     );
     const dm = t("tr").sj_dm_approved({ club: "Kartallar", group: null, ...LINKS, tip });
-    expect(dm.endsWith(`İlk ayınız ücretsiz.\n\n${tip}`)).toBe(true);
+    expect(dm.endsWith(`İlk iki ayınız ücretsiz.\n\n${tip}`)).toBe(true);
     expect(dm).not.toMatch(DASH);
   });
 
@@ -148,7 +148,7 @@ describe("sj_dm_approved with the tip (billed clubs only)", () => {
   });
 
   it("no tip (billing off, Free, exempt): exactly today's DM, ending on the free sentence, no amount", () => {
-    for (const [lang, free] of [["en", "Your first month is free."], ["tr", "İlk ayınız ücretsiz."]] as const) {
+    for (const [lang, free] of [["en", "Your first two months are free."], ["tr", "İlk iki ayınız ücretsiz."]] as const) {
       const today = t(lang).sj_dm_approved({ club: "Riverside FC", group: "G", ...LINKS });
       for (const tip of [null, undefined, ""]) {
         expect(t(lang).sj_dm_approved({ club: "Riverside FC", group: "G", ...LINKS, tip })).toBe(today);
@@ -184,14 +184,14 @@ function state(over: Partial<BillingStateInput> = {}): BillingStateInput {
 
 describe("billingStateLines (8.1)", () => {
   it("trial", () => {
-    expect(billingStateLines("en", state())).toEqual(["Free month until Sat 31 Oct. After that you only pay for the games you play, up to £9.99 a month for the whole group."]);
-    expect(billingStateLines("tr", state())).toEqual(["Ücretsiz ay 31 Ekim Cumartesi tarihine kadar. Sonrasında yalnızca oynadığınız maçlar için ödersiniz, tüm grup için ayda en fazla £9.99."]);
+    expect(billingStateLines("en", state())).toEqual(["Free until Sat 31 Oct. After that you only pay for the games you play, up to £9.99 a month for the whole group."]);
+    expect(billingStateLines("tr", state())).toEqual(["31 Ekim Cumartesi tarihine kadar ücretsiz. Sonrasında yalnızca oynadığınız maçlar için ödersiniz, tüm grup için ayda en fazla £9.99."]);
     expect(billingStateLines("en", state({ plan: "custom", pricePence: 500 }))[0]).toContain("up to £5 a month");
   });
 
   it("grace and past due name the stop date; paused says the data is kept", () => {
     expect(billingStateLines("en", state({ status: "grace", graceEndsAt: GRACE_END }))).toEqual([
-      "The free month has ended. MatchTime stops on Sat 7 Nov unless a card is added.",
+      "The free period has ended. MatchTime stops on Sat 7 Nov unless a card is added.",
     ]);
     // A grace with no stored end falls back to the trial end + 7 days.
     expect(billingStateLines("en", state({ status: "grace" }))[0]).toContain("Sat 7 Nov");
@@ -322,7 +322,7 @@ describe("bannerText (8.2): grace, past due and paused only", () => {
 
   it("en and tr, with the date", () => {
     expect(bannerText("en", { status: "grace", trialEndsAt: TRIAL_END, graceEndsAt: GRACE_END })).toBe(
-      "The free month has ended. Add a card before Sat 7 Nov to keep MatchTime running.",
+      "The free period has ended. Add a card before Sat 7 Nov to keep MatchTime running.",
     );
     expect(bannerText("en", { status: "past_due", trialEndsAt: TRIAL_END, graceEndsAt: GRACE_END })).toBe(
       "The last club fee payment didn't go through. MatchTime stops on Sat 7 Nov if it can't be taken.",
@@ -331,7 +331,7 @@ describe("bannerText (8.2): grace, past due and paused only", () => {
       "MatchTime is paused for this club. Add a card to switch it back on.",
     );
     expect(bannerText("tr", { status: "grace", trialEndsAt: TRIAL_END, graceEndsAt: GRACE_END })).toBe(
-      "Ücretsiz ay sona erdi. MatchTime'ın çalışmaya devam etmesi için 7 Kasım Cumartesi tarihinden önce kart ekleyin.",
+      "Ücretsiz dönem sona erdi. MatchTime'ın çalışmaya devam etmesi için 7 Kasım Cumartesi tarihinden önce kart ekleyin.",
     );
   });
 });
@@ -471,7 +471,7 @@ describe("billingPageView: Stop paying asks first (a confirmation step, test mod
     const now = new Date(TRIAL_END.getTime() - 5 * 24 * 60 * 60 * 1000);
     const en = billingPageView("en", paying(), "contact", "colin", null, { now });
     expect(en.stopConfirm?.text).toBe(
-      "Your card will be removed now and nothing is charged. The free month carries on until Sat 31 Oct; after that a card is needed to keep MatchTime running.",
+      "Your card will be removed now and nothing is charged. The free period carries on until Sat 31 Oct; after that a card is needed to keep MatchTime running.",
     );
     const tr = billingPageView("tr", paying(), "contact", "colin", null, { now });
     expect(tr.stopConfirm?.text).toContain("Kartınız şimdi kaldırılır");
@@ -488,7 +488,7 @@ describe("billingPageView: /billing/[orgId] per role (8.1)", () => {
   it("the contact: the state, the tip and Add a card (live since B3, no 'soon' line)", () => {
     const v = billingPageView("en", club(), "contact", "colin", tip);
     expect(v.exempt).toBeNull();
-    expect(v.lines).toEqual(["Free month until Sat 31 Oct. After that you only pay for the games you play, up to £9.99 a month for the whole group."]);
+    expect(v.lines).toEqual(["Free until Sat 31 Oct. After that you only pay for the games you play, up to £9.99 a month for the whole group."]);
     expect(v.buttons).toEqual([{ key: "add-card", label: "Add a card" }]);
     expect(v).not.toHaveProperty("soon");
     expect(v.tip).toContain("*20p a player per game*");
@@ -539,7 +539,7 @@ describe("billingCardView: the /admin/settings card (8.1)", () => {
     const v = billingCardView("en", club(), tipFor())!;
     expect(v).toMatchObject({
       title: "Club fee",
-      lines: ["Free month until Sat 31 Oct. After that you only pay for the games you play, up to £9.99 a month for the whole group."],
+      lines: ["Free until Sat 31 Oct. After that you only pay for the games you play, up to £9.99 a month for the whole group."],
       who: "Colin looks after the card.",
       cardOnFile: "Card on file: no.",
       openLabel: "Open billing",

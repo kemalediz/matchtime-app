@@ -22,6 +22,8 @@
  *
  * NOT the mute switch: billing never reads or writes `whatsappBotEnabled`.
  */
+import { fromZonedTime } from "date-fns-tz";
+import { formatLondon } from "./london-time";
 
 export const BILLING_STATUSES = ["exempt", "trial", "grace", "subscribed", "past_due", "paused"] as const;
 export type BillingStatus = (typeof BILLING_STATUSES)[number];
@@ -32,12 +34,15 @@ export type BillingPlan = (typeof BILLING_PLANS)[number];
 export const PAUSED_REASONS = ["no-card", "payment-failed", "cancelled", "removed"] as const;
 export type PausedReason = (typeof PAUSED_REASONS)[number];
 
-/** The free month, from approval. */
-export const TRIAL_DAYS = 30;
-/** Grace after the free month (no card) or after a failed payment. */
+/**
+ * A new club's free period, in London calendar months, from approval
+ * (Kemal, 2026-10-12: two months; it was 30 days). THE one definition of
+ * the length: `freePeriodEnd` below turns it into the end date, and every
+ * sentence that states it is built from it in i18n/free-period.ts.
+ */
+export const FREE_PERIOD_MONTHS = 2;
+/** Grace after the free period (no card) or after a failed payment. */
 export const GRACE_DAYS = 7;
-/** Card reminders (slice B4), as days after approval. */
-export const REMINDER_DAYS = [21, 28] as const;
 /**
  * On resume, matches completed this recently are quieted too (their
  * post-match flow switched off), so nothing about a match from before the
@@ -51,6 +56,7 @@ export const RESUME_QUIET_LOOKBACK_DAYS = 10;
 export const BILLING_LINK_TTL = 9 * 24 * 60 * 60;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const HOUR_MS = 60 * 60 * 1000;
 
 type Env = Record<string, string | undefined>;
 
@@ -99,8 +105,38 @@ export function billingQuietMatchWhere(
 
 // ── Dates ───────────────────────────────────────────────────────────────
 
+/**
+ * When a free period that starts at `start` ends: the same London date and
+ * time `months` calendar months on. THE one place the length becomes a date
+ * (the billing trial below, and the AI allowance window in ai-budget.ts).
+ *
+ *   - The day is the LONDON date of `start`, clamped to the last day of a
+ *     shorter month: 31 Aug ends 31 Oct, 31 Jul ends 30 Sept, and 29, 30
+ *     and 31 Dec all end 28 Feb (29 Feb in a leap year).
+ *   - The time is the same London wall clock time, so a period that crosses
+ *     a clock change is an hour longer (October) or shorter (March) than a
+ *     whole number of days, and still ends at the time of day it started.
+ *   - A doubt goes the club's way: an end time the March change skips
+ *     (01:00 to 01:59 that Sunday) is read an hour later, and one the
+ *     October change repeats is the second, later one. Never early.
+ */
+export function freePeriodEnd(start: Date, months: number = FREE_PERIOD_MONTHS): Date {
+  if (!Number.isInteger(months) || months < 1) throw new Error(`freePeriodEnd: months must be a whole number of 1 or more, got ${months}`);
+  const [date, time] = formatLondon(start, "yyyy-MM-dd HH:mm:ss.SSS").split(" ");
+  const [y0, m0, d0] = date.split("-").map(Number);
+  const zero = m0 - 1 + months;
+  const y = y0 + Math.floor(zero / 12);
+  const m = (zero % 12) + 1;
+  const d = Math.min(d0, new Date(Date.UTC(y, m, 0)).getUTCDate());
+  const wall = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")} ${time}`;
+  const end = fromZonedTime(wall.replace(" ", "T"), "Europe/London");
+  // A wall clock time the spring clock change skips comes back an hour
+  // early (it reads as the hour before the change): give the hour back.
+  return formatLondon(end, "yyyy-MM-dd HH:mm:ss.SSS") < wall ? new Date(end.getTime() + HOUR_MS) : end;
+}
+
 export function trialWindow(start: Date): { trialStartedAt: Date; trialEndsAt: Date } {
-  return { trialStartedAt: start, trialEndsAt: new Date(start.getTime() + TRIAL_DAYS * DAY_MS) };
+  return { trialStartedAt: start, trialEndsAt: freePeriodEnd(start) };
 }
 
 export function graceEndsFrom(from: Date): Date {

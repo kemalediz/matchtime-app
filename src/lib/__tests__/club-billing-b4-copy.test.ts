@@ -63,7 +63,7 @@ describe("slice B4 copy", () => {
   it("English, exactly as the plan words it (7.3), with the group named as the {club} WhatsApp group", () => {
     const en = all("en");
     expect(en.d21collector).toBe(
-      "Hi Cole, Riverside FC's free month on MatchTime ends on Sat 31 Oct. As the person who collects the match fees, you're the one I'll ask for the card. " +
+      "Hi Cole, Riverside FC's free period on MatchTime ends on Sat 31 Oct. As the person who collects the match fees, you're the one I'll ask for the card. " +
         `To keep MatchTime running in the Riverside FC WhatsApp group, add a card here: ${LINK}\n` +
         "After that you only pay for the games you play, up to £9.99 a month for the whole group, charged after each month ends. " +
         "Nothing is taken when you add the card; the first charge is on Mon 30 Nov.\n\n" +
@@ -91,7 +91,7 @@ describe("slice B4 copy", () => {
 
   it("Turkish: Turkish dates and the plan's wording", () => {
     const tr = all("tr");
-    expect(tr.d21collector).toContain("Merhaba Cole, Riverside FC için MatchTime'daki ücretsiz ay 31 Ekim Cumartesi tarihinde bitiyor. Maç ücretlerini siz topladığınız için kartı sizden istiyorum.");
+    expect(tr.d21collector).toContain("Merhaba Cole, Riverside FC için MatchTime'daki ücretsiz dönem 31 Ekim Cumartesi tarihinde bitiyor. Maç ücretlerini siz topladığınız için kartı sizden istiyorum.");
     expect(tr.d21collector).toContain("Kulüp ücreti ipucu");
     expect(tr.d21owner).toContain("İpucu: maç ücretlerini başka biri topluyorsa, Ayarlar'dan onu para toplayan kişi yapın, kartla o ilgilensin.");
     expect(tr.d30).toContain("7 Kasım Cumartesi tarihine kadar");

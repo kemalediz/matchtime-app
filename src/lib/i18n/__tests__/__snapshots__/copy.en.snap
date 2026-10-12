@@ -2463,7 +2463,7 @@ https://matchtime.ai/l/set
 
 ❓ *Help any time:* message me here, for example *help payments* or *help badges*.
 
-Your first month is free.
+Your first two months are free.
 
 ### R185 organiser DM / approved, no group name
 Good news: Riverside FC is live. I've said hello in your group.
@@ -2481,7 +2481,7 @@ https://matchtime.ai/l/set
 
 ❓ *Help any time:* message me here, for example *help payments* or *help badges*.
 
-Your first month is free.
+Your first two months are free.
 
 ### R185 organiser DM / rejected
 Thanks for trying MatchTime. We can't take "Riverside Tuesday 5s" on right now, so I've left the group. We'll be in touch if that changes.
@@ -2558,7 +2558,7 @@ https://matchtime.ai/l/set
 
 ❓ *Help any time:* message me here, for example *help payments* or *help badges*.
 
-Your first month is free.
+Your first two months are free.
 
 💷 *Club fee tip:* after that MatchTime only charges for the games you play, up to £9.99 a month for the group, paid by card by whoever collects the match fees. Each game played costs at most £2.50, about *25p a player per game* with 10 players, so a £8 game could be charged at *£8.25*.
 
@@ -2566,8 +2566,8 @@ Your first month is free.
 💷 *Club fee tip:* after that MatchTime only charges for the games you play, up to £9.99 a month for the group, paid by card by whoever collects the match fees. Each game played costs at most £2.50, about *25p a player per game* with 10 players, to add to each player's share of the pitch cost.
 
 ### R189 billing page / state lines
-Free month until Sat 31 Oct. After that you only pay for the games you play, up to £9.99 a month for the whole group.
-The free month has ended. MatchTime stops on Sat 7 Nov unless a card is added.
+Free until Sat 31 Oct. After that you only pay for the games you play, up to £9.99 a month for the whole group.
+The free period has ended. MatchTime stops on Sat 7 Nov unless a card is added.
 Only the games played are charged, up to £9.99 a month. Next charge Tue 1 Dec.
 Card Visa ending 4242.
 Billing ends on Tue 1 Dec, after this month is charged for its games.
@@ -2588,7 +2588,7 @@ Your card still pays Riverside FC's MatchTime fee until Colin adds theirs.
 Sutton FC has no club fee. MatchTime is free for this club.
 
 ### R189 billing banner
-The free month has ended. Add a card before Sat 7 Nov to keep MatchTime running.
+The free period has ended. Add a card before Sat 7 Nov to keep MatchTime running.
 The last club fee payment didn't go through. MatchTime stops on Sat 7 Nov if it can't be taken.
 MatchTime is paused for this club. Add a card to switch it back on.
 See billing
@@ -2601,7 +2601,7 @@ Card payments aren't open yet. Please try again later.
 A card is already paying for this club.
 Something went wrong. Please try again.
 Done. Billing ends when this month ends: this month is charged for its games as usual, then nothing more. MatchTime keeps running until then.
-Done. Your card has been removed and nothing has been charged. The free month carries on until it ends.
+Done. Your card has been removed and nothing has been charged. The free period carries on until it ends.
 Done. MatchTime keeps running, and each month is charged only for the games played.
 A payment is overdue. Update the card and pay it first.
 
@@ -2624,7 +2624,7 @@ Hi Colin, Pat now pays the MatchTime fee for Riverside FC. Your card has been re
 MatchTime is back on for Riverside FC. I'll pick things up again in the group within a few minutes. Anyone who said IN while I was paused should say it again.
 
 ### R190 billing DM / billed again after Free
-Hi Colin, Riverside FC is on the MatchTime plan again: only the games played, up to £9.99 a month. The free month has already been used, so MatchTime keeps running in the group until Sat 7 Nov. Add a card before then to keep it going: https://matchtime.ai/r/abc
+Hi Colin, Riverside FC is on the MatchTime plan again: only the games played, up to £9.99 a month. The free period has already been used, so MatchTime keeps running in the group until Sat 7 Nov. Add a card before then to keep it going: https://matchtime.ai/r/abc
 
 ### R191 billing DM / month charged, 4 of 5
 Hi Colin, Riverside FC played 4 of 5 games between 1 Nov and 30 Nov, so £7.99 was charged to your card ending 4242 (VAT included; a full month is £9.99). Stripe has emailed you the receipt. Details: https://matchtime.ai/r/abc
@@ -2710,7 +2710,7 @@ Hi Colin, we couldn't take the £15.48 owed for 2 months of Riverside FC's games
 ### R193 billing page / Stop paying confirmation
 Stop paying for MatchTime?
 Billing ends on Tue 1 Dec, after this month is charged for its games. Then MatchTime pauses in the group until someone starts paying again.
-Your card will be removed now and nothing is charged. The free month carries on until Sat 31 Oct; after that a card is needed to keep MatchTime running.
+Your card will be removed now and nothing is charged. The free period carries on until Sat 31 Oct; after that a card is needed to keep MatchTime running.
 [Yes, stop paying] [Go back]
 
 ### R193 billing DM / billed again with the contact's card, a previous holder's card dropped

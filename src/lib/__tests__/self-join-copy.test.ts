@@ -5,7 +5,7 @@
  *   2. The group hello is the full feature intro, modelled on onbIntro,
  *      minus the consent question and the setup questions.
  *   3. The "you're live" DM is a short organiser checklist with a link per
- *      item, the help-by-DM line and "Your first month is free."
+ *      item, the help-by-DM line and "Your first two months are free."
  * Pure strings, EN and TR. No DB, no model.
  */
 import { describe, expect, it } from "vitest";
@@ -101,8 +101,8 @@ describe("sj_group_hello: the full intro for an approved group", () => {
 
 describe("sj_dm_approved: the organiser's checklist", () => {
   for (const [lang, s, free, helpWords] of [
-    ["en", en, "Your first month is free.", ["*help payments*", "*help badges*"]],
-    ["tr", tr, "İlk ayınız ücretsiz.", ["*yardım ödeme*", "*yardım rozetler*"]],
+    ["en", en, "Your first two months are free.", ["*help payments*", "*help badges*"]],
+    ["tr", tr, "İlk iki ayınız ücretsiz.", ["*yardım ödeme*", "*yardım rozetler*"]],
   ] as const) {
     const dm = s.sj_dm_approved({ club: "Riverside FC", group: "Riverside Tuesday 5s", ...LINKS });
 
@@ -144,8 +144,8 @@ describe("sj_dm_approved for a BILLED club (club fee billing, slice B2, plan 7.2
     activities: [{ dayOfWeek: 2, time: "20:00", playersPerTeam: 5, feePerPlayer: null, feeSplitTotal: false, latestMatchFee: null }],
   })!;
   for (const [lang, s, free] of [
-    ["en", en, "Your first month is free."],
-    ["tr", tr, "İlk ayınız ücretsiz."],
+    ["en", en, "Your first two months are free."],
+    ["tr", tr, "İlk iki ayınız ücretsiz."],
   ] as const) {
     const tipText = approvedTipText(lang, tip);
     const dm = s.sj_dm_approved({ club: "Riverside FC", group: "Riverside Tuesday 5s", ...LINKS, tip: tipText });
