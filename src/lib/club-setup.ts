@@ -35,6 +35,7 @@
 import { randomUUID } from "node:crypto";
 import type { MatchStatus } from "@/generated/prisma/enums";
 import { db } from "./db";
+import { clearCapturedChatForClub } from "./captured-chat";
 import { isClubApproved, servingClubWhere } from "./club-approval-state";
 import { BILLING_NOT_PAUSED_WHERE, isBillingEnabled } from "./club-billing-rules";
 import {
@@ -148,7 +149,8 @@ export async function closeUnfinishedSetupLearning(
     WHERE "ClubSetupLearning"."status" IN ('running', 'deferred')
     RETURNING (xmax = 0) AS "inserted"`;
   if (rows.length === 0) return "already-final";
-  await tx.$executeRaw`UPDATE "ClubConnect" SET "capturedHistory" = NULL WHERE "orgId" = ${orgId}`;
+  // The group description goes with the chat (captured-chat.ts).
+  await clearCapturedChatForClub(tx, orgId);
   return rows[0].inserted ? "created-closed" : "closed";
 }
 

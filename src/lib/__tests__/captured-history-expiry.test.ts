@@ -52,8 +52,10 @@ describe("expireCapturedHistory", () => {
     expect(calls).toHaveLength(2);
     const [connect, session] = calls;
 
-    expect(connect.sql).toContain(`UPDATE "ClubConnect" SET "capturedHistory" = NULL`);
-    expect(connect.sql).toContain(`"capturedHistory" IS NOT NULL`);
+    // The group description goes with the chat, and a request that holds
+    // only a description expires too (2026-10-12).
+    expect(connect.sql).toContain(`UPDATE "ClubConnect" SET "capturedHistory" = NULL, "capturedDescription" = NULL`);
+    expect(connect.sql).toContain(`"capturedHistory" IS NOT NULL OR c."capturedDescription" IS NOT NULL`);
     expect(connect.sql).toContain("LIMIT");
     // Measured from when the group was linked; a club approved inside the
     // sweep's window is left alone.

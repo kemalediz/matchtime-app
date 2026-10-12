@@ -59,7 +59,7 @@ async function main() {
       recurrence: s.recurrence,
       selectedFeatures: s.selectedFeatures,
       participants: Array.isArray(s.participants) ? (s.participants as unknown[]).length : 0,
-      capturedHistory: Array.isArray(s.capturedHistory) ? (s.capturedHistory as unknown[]).length : 0,
+      capturedChatMessages: Array.isArray(s.capturedHistory) ? (s.capturedHistory as unknown[]).length : 0,
       orgId: s.orgId,
       createdAt: s.createdAt,
       updatedAt: s.updatedAt,
