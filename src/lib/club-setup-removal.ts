@@ -32,15 +32,26 @@
  * on their own: the stamp, which is what protects the club, is never
  * undone by a DM that could not be queued.
  *
- * ADDED BACK (`handleSetupReAdd`, from POST /api/whatsapp/bot-added). Only
- * for a real add, to THE SAME group, by a CURRENT MEMBER of the club
- * (phone, or a LID the server stored: `resolveSenderUserIds`): the stamp
- * is cleared (`clearSetupRemoved`), so GO works again, and a removal DM
- * still waiting for the morning is taken back. An add by somebody
- * MatchTime does not know as a member, to another group, or found by the
- * reconnect sweep (which names no adder) clears nothing. Nothing is
- * posted, and no roster is recorded: an approved club's group records
- * none on an add today either.
+ * ADDED BACK (`handleSetupReAdd`, from POST /api/whatsapp/bot-added). To
+ * THE SAME group only (the group is part of the compare-and-set), and:
+ *   - a real add, by a CURRENT MEMBER of the club (phone, or a LID the
+ *     server stored: `resolveSenderUserIds`). An add by somebody MatchTime
+ *     does not know as a member clears nothing;
+ *   - or the Pi's reconnect sweep reporting that MatchTime IS in that
+ *     group (`discovered`). No adder is named and none is needed: the
+ *     group is already this club's, and MatchTime is demonstrably back in
+ *     it. (Today's Pi does not report such a group: see the route.)
+ * Then the stamp is cleared (`clearSetupRemoved`), so GO works again, and
+ * a removal DM still waiting for the morning is taken back. The route then
+ * runs the club's setup DM at once (club-setup-schedule.ts); the 15-minute
+ * sweep is the backstop. Nothing is posted, and no roster is recorded: an
+ * approved club's group records none on an add today either.
+ *
+ * THE CHAT IS NOT STORED AGAIN on a re-add, though WhatsApp may share it
+ * again: captured-chat.ts stores only on a request that is still waiting
+ * for approval, and an approved club's request is closed. A reading that
+ * had not finished at the removal therefore finds nothing to read, and
+ * the setup DM says the chat could not be read.
  *
  * THE SETUP DM, in each state it can be in at the removal:
  *   never sent   (not yet asked): the stamp keeps it from being due; once
@@ -173,6 +184,8 @@ export async function handleSetupReAdd(input: {
   groupId: string;
   addedByPhone?: unknown;
   addedByLid?: unknown;
+  /** The reconnect sweep found MatchTime in this group. No adder is named. */
+  discovered?: boolean;
   now?: Date;
 }): Promise<SetupReAddResult> {
   const now = input.now ?? new Date();
@@ -180,16 +193,18 @@ export async function handleSetupReAdd(input: {
   if (!club || !club.removedAt) return { kind: "not-removed" };
   const orgId = club.id;
 
-  const phone = typeof input.addedByPhone === "string" && input.addedByPhone.trim() ? input.addedByPhone : null;
-  const lid = typeof input.addedByLid === "string" && input.addedByLid.trim() ? input.addedByLid : null;
-  const userIds = phone || lid ? await resolveSenderUserIds({ phones: [phone], lid }) : [];
-  const member =
-    userIds.length > 0
-      ? await db.membership.findFirst({ where: { orgId, userId: { in: userIds }, leftAt: null }, select: { id: true } })
-      : null;
-  if (!member) {
-    console.log(`[club-setup-removal] ${orgId}: added back by somebody who is not a member of the club; still removed`);
-    return { kind: "not-a-member", orgId };
+  if (input.discovered !== true) {
+    const phone = typeof input.addedByPhone === "string" && input.addedByPhone.trim() ? input.addedByPhone : null;
+    const lid = typeof input.addedByLid === "string" && input.addedByLid.trim() ? input.addedByLid : null;
+    const userIds = phone || lid ? await resolveSenderUserIds({ phones: [phone], lid }) : [];
+    const member =
+      userIds.length > 0
+        ? await db.membership.findFirst({ where: { orgId, userId: { in: userIds }, leftAt: null }, select: { id: true } })
+        : null;
+    if (!member) {
+      console.log(`[club-setup-removal] ${orgId}: added back by somebody who is not a member of the club; still removed`);
+      return { kind: "not-a-member", orgId };
+    }
   }
 
   if (!(await clearSetupRemoved(orgId, input.groupId))) return { kind: "not-removed" };
@@ -199,6 +214,6 @@ export async function handleSetupReAdd(input: {
   } catch (err) {
     console.error(`[club-setup-removal] ${orgId}: back in the group, but a waiting removal DM was NOT taken back: ${errName(err)}`);
   }
-  console.log(`[club-setup-removal] ${orgId}: added back by a member; the club can go live again`);
+  console.log(`[club-setup-removal] ${orgId}: back in its group (${input.discovered === true ? "found by the reconnect sweep" : "added by a member"}); the club can go live again`);
   return { kind: "cleared", orgId };
 }

@@ -47,7 +47,14 @@ import {
   isClubSettingUp,
   settingUpOnly,
   readingBlocksGoLive,
+  SETUP_STATUS_SELECT,
+  setupMessageState,
+  setupStatusOf,
+  type SetupMessageState,
+  type SetupStatus,
+  type SetupStatusRow,
 } from "./club-setup-rules";
+import { SETUP_ASK_DM_PURPOSE, setupAskRefId } from "./club-setup-dm-rules";
 import { buildGroupHello } from "./group-hello";
 import { loadHelloInput, type HelloReadClient } from "./group-hello-load";
 import { normaliseLang } from "./i18n/lang";
@@ -82,6 +89,15 @@ export {
   liveByOwner,
   liveByUser,
   readingBlocksGoLive,
+  // The go-live pages (slice S5).
+  SETUP_STATUS_SELECT,
+  parseLiveBy,
+  setupMessageState,
+  setupStatusOf,
+  type LiveBy,
+  type SetupMessageState,
+  type SetupStatus,
+  type SetupStatusRow,
 } from "./club-setup-rules";
 
 /**
@@ -357,6 +373,15 @@ export interface GoLiveOptions {
   organiserUserId?: string | null;
   /** BILLING_ENABLED as the caller reads it. Default: the environment. */
   billingEnabled?: boolean;
+  /**
+   * Go live even while the setup reading is unfinished (slice S5, owner
+   * decision 7). ONLY the MatchTime owner's "Go live now" on /admin/clubs
+   * sets it (`ownerGoLiveNowAction`): the organiser's button and the GO DM
+   * keep the "still reading" block (owner decision 4). The reading is
+   * closed in the same transaction as always, so it can never apply
+   * afterwards. Every other refusal still stands.
+   */
+  skipReadingCheck?: boolean;
 }
 
 /** Why a club that is not a plain "setting up, in its group" cannot go live. */
@@ -528,7 +553,8 @@ async function settlePaymentsAnnouncement(
  * stage no longer matches, and returns "already-live" with the winner's
  * `liveAt` and `liveBy`. It queues nothing.
  *
- * Refusals change nothing: "still-reading" (owner decision 4),
+ * Refusals change nothing: "still-reading" (owner decision 4; never
+ * returned with `skipReadingCheck`, the MatchTime owner's door),
  * "removed-from-group", "billing-paused", "not-setting-up".
  *
  * AFTER the transaction has committed, and only when this call took the
@@ -589,6 +615,7 @@ async function goLiveClubTx(orgId: string, by: string, now: Date, opts: GoLiveOp
 
       const learning = await tx.clubSetupLearning.findUnique({ where: { orgId }, select: { status: true } });
       if (
+        !opts.skipReadingCheck &&
         readingBlocksGoLive({
           learningEnabled,
           learningStatus: learning?.status ?? null,
@@ -694,3 +721,84 @@ export async function helloPreviewForClub(
 ): Promise<string> {
   return buildGroupHello(await loadHelloInput(orgId, { organiserUserId: opts.organiserUserId ?? null }));
 }
+
+// ════ BEGIN the go-live pages (slice S5, 2026-10-12) ════
+// Read-only loaders for /admin/settings, the club's admin home and
+// /admin/clubs. The pure status is `setupStatusOf` (club-setup-rules.ts).
+
+/**
+ * One club's setup for its own owner and admins: what the Go live banner
+ * needs and nothing else. NO PERSON IS IN IT (review of PR #236, fix 5):
+ * no user id, name, phone or email. Who took a club live is worded by
+ * `goLiveClubAction`, for the one person who pressed the button.
+ */
+export interface ClubSetupView {
+  settingUp: boolean;
+  removedFromGroup: boolean;
+  /** The WhatsApp group's own name when MatchTime knows it. Null unless setting up. */
+  group: string | null;
+}
+
+/**
+ * One query for a club that is not setting up (every club today); the
+ * group's name is looked up only for one that is (fix 7).
+ */
+export async function loadClubSetupView(
+  orgId: string,
+  opts: { billingEnabled?: boolean } = {},
+): Promise<ClubSetupView | null> {
+  const row = (await db.organisation.findUnique({ where: { id: orgId }, select: SETUP_STATUS_SELECT })) as SetupStatusRow | null;
+  if (!row) return null;
+  const status = setupStatusOf(row, { billingOn: opts.billingEnabled ?? isBillingEnabled() });
+  if (!status.settingUp) return { settingUp: false, removedFromGroup: false, group: null };
+  const link = await db.clubConnect.findFirst({
+    where: { orgId, linkedAt: { not: null } },
+    orderBy: { linkedAt: "desc" },
+    select: { groupSubject: true },
+  });
+  return { settingUp: true, removedFromGroup: status.removedFromGroup, group: link?.groupSubject?.trim() || null };
+}
+
+/** A club's status for the owner's clubs page, with its setup DM's real state. */
+export type OwnerSetupStatus = SetupStatus & { setupMessage: SetupMessageState };
+
+/**
+ * The status of several clubs for the owner's clubs page: one query for
+ * the clubs, and one for the setup DMs of those that are setting up (the
+ * job's own status says whether it was sent; the club's stamp is only when
+ * it is due).
+ */
+export async function loadSetupStatuses(
+  orgIds: string[],
+  opts: { billingEnabled?: boolean; now?: Date } = {},
+): Promise<Map<string, OwnerSetupStatus>> {
+  const out = new Map<string, OwnerSetupStatus>();
+  if (orgIds.length === 0) return out;
+  const billingOn = opts.billingEnabled ?? isBillingEnabled();
+  const now = opts.now ?? new Date();
+  const rows = (await db.organisation.findMany({
+    where: { id: { in: orgIds } },
+    select: SETUP_STATUS_SELECT,
+  })) as Array<SetupStatusRow & { id: string }>;
+  const statuses = rows.map((row) => ({ id: row.id, status: setupStatusOf(row, { billingOn }) }));
+  const held = statuses.filter((r) => r.status.settingUp).map((r) => r.id);
+  const jobs = held.length
+    ? await db.platformJob.findMany({
+        where: { purpose: SETUP_ASK_DM_PURPOSE, refId: { in: held.map(setupAskRefId) } },
+        orderBy: { createdAt: "asc" },
+        select: { refId: true, status: true, sentAt: true },
+      })
+    : [];
+  // The latest job per club wins (rows are oldest first).
+  const jobOf = new Map(jobs.map((j) => [j.refId, j]));
+  for (const { id, status } of statuses) {
+    out.set(id, {
+      ...status,
+      setupMessage: status.settingUp
+        ? setupMessageState(status.setupMessageSentAt, jobOf.get(setupAskRefId(id)) ?? null, now)
+        : { kind: "none", at: null },
+    });
+  }
+  return out;
+}
+// ════ END the go-live pages ════

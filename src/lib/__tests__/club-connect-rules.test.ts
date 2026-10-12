@@ -244,6 +244,20 @@ describe("deriveConnectCard", () => {
     expect(deriveConnectCard({ org: old, latest, now: NOW })).toEqual({ kind: "hidden" });
   });
 
+  it("approved but setting up: its own card, however long ago the approval was, and never 'you're live'", () => {
+    const latest = row({ status: "closed", groupSubject: "Riverside Tuesday 5s" });
+    const fresh = { approvalStatus: "approved", approvedAt: new Date(NOW.getTime() - 60 * MIN), settingUp: true };
+    expect(deriveConnectCard({ org: fresh, latest, now: NOW })).toEqual({ kind: "setting_up", group: "Riverside Tuesday 5s" });
+    const old = { ...fresh, approvedAt: new Date(NOW.getTime() - (APPROVED_CARD_DAYS + 30) * 24 * 60 * MIN) };
+    expect(deriveConnectCard({ org: old, latest, now: NOW })).toEqual({ kind: "setting_up", group: "Riverside Tuesday 5s" });
+    expect(deriveConnectCard({ org: fresh, latest: null, now: NOW })).toEqual({ kind: "setting_up", group: null });
+    // Not setting up (the caller's predicate said no): nothing changes.
+    expect(deriveConnectCard({ org: { ...fresh, settingUp: false }, latest, now: NOW })).toEqual({
+      kind: "approved",
+      group: "Riverside Tuesday 5s",
+    });
+  });
+
   it("an existing club (approved, never through self-join) never sees the card", () => {
     expect(deriveConnectCard({ org: { approvalStatus: "approved", approvedAt: null }, latest: null, now: NOW })).toEqual({
       kind: "hidden",

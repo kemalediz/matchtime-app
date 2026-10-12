@@ -534,19 +534,28 @@ test.describe("GO that is refused", () => {
     // By the organiser, to a DIFFERENT group: still removed.
     await add({ groupId: "120363900000000299@g.us", groupSubject: "Some other group", addedByPhone: bare(LEFTOUT.ownerPhone) });
     expect((await removedAt())!.at).not.toBeNull();
-    // Found by the reconnect sweep (no adder named): still removed.
-    await add({ groupId: LEFTOUT.group, groupSubject: LEFTOUT.subject, discovered: true });
+    // The reconnect sweep finding MatchTime in some OTHER group: still removed.
+    await add({ groupId: "120363900000000298@g.us", groupSubject: "Another group", discovered: true });
     expect((await removedAt())!.at).not.toBeNull();
     expect((await dm(request, LEFTOUT.ownerPhone, "GO")).outcome).toBe("removed-from-group");
 
     // ── Added back by the organiser, to the same group ─────────────────
-    const jobsBefore = await db.count(`SELECT COUNT(*) FROM "PlatformJob"`);
+    const setupDms = () =>
+      db.count(`SELECT COUNT(*) FROM "PlatformJob" WHERE purpose = 'setup-ask' AND "refId" = $1`, [`${LEFTOUT.id}:setup-ask`]);
+    expect(await setupDms()).toBe(0);
     const back = await add({ groupId: LEFTOUT.group, groupSubject: LEFTOUT.subject, addedByPhone: bare(LEFTOUT.ownerPhone) });
     expect(back.introText ?? null).toBeNull();
     expect(await removedAt()).toEqual({ at: null });
-    // Nothing is said in the group, and nobody is DMed for the re-add.
+    // Nothing is said in the group.
     expect(await botJobs(db, LEFTOUT.id)).toEqual([]);
-    expect(await db.count(`SELECT COUNT(*) FROM "PlatformJob"`)).toBe(jobsBefore);
+    // The setup DM that never went is sent AT ONCE, by the route itself
+    // (after the response), with no cron run: exactly one.
+    await expect.poll(setupDms, { timeout: 20_000 }).toBe(1);
+    expect(await db.one(`SELECT "setupAskedAt" IS NOT NULL AS asked FROM "Organisation" WHERE id = $1`, [LEFTOUT.id])).toEqual({ asked: true });
+    // A second add of the same group sends no second one.
+    await add({ groupId: LEFTOUT.group, groupSubject: LEFTOUT.subject, addedByPhone: bare(LEFTOUT.ownerPhone) });
+    await new Promise((r) => setTimeout(r, 1500));
+    expect(await setupDms()).toBe(1);
     expect(await club(db, LEFTOUT.id)).toMatchObject({ setupStage: "setting-up", whatsappBotEnabled: false, liveAt: null });
     expect(await billing(db, LEFTOUT.id)).toEqual({ status: "exempt", rows: 0 });
 
@@ -561,6 +570,30 @@ test.describe("GO that is refused", () => {
     expect(period).toEqual({ same: true });
     dms = await removalDms();
     expect(dms).toHaveLength(1);
+  });
+
+  test("the reconnect sweep finds MatchTime back in a removed club's OWN group: the removal is cleared with no adder named", async ({ request, db }) => {
+    const SWEPT = { id: "e2e-go-swpt", name: "Swept FC", group: "120363900000000230@g.us", subject: "Swept 5s", ownerId: "e2e-go-sue", ownerPhone: "+447700901177" };
+    await user(db, SWEPT.ownerId, "Sue Swept", SWEPT.ownerPhone);
+    await heldClub(db, SWEPT);
+    const removedAt = () => db.one<{ at: Date | null }>(`SELECT "setupRemovedAt" AS at FROM "Organisation" WHERE id = $1`, [SWEPT.id]);
+    const post = async (url: string, data: Record<string, unknown>) => {
+      const res = await request.post(url, { headers: HEADERS, data });
+      expect(res.status(), await res.text()).toBe(200);
+      return res.json();
+    };
+    // Not removed: a sweep report changes nothing.
+    await post("/api/whatsapp/bot-added", { groupId: SWEPT.group, groupSubject: SWEPT.subject, discovered: true });
+    expect(await removedAt()).toEqual({ at: null });
+
+    expect(await post("/api/whatsapp/bot-removed", { groupId: SWEPT.group })).toMatchObject({ setup: "removed" });
+    expect((await dm(request, SWEPT.ownerPhone, "GO")).outcome).toBe("removed-from-group");
+    // The Pi, after a reconnect, reports the group it is in. No adder.
+    const found = await post("/api/whatsapp/bot-added", { groupId: SWEPT.group, groupSubject: SWEPT.subject, discovered: true });
+    expect(found.introText ?? null).toBeNull();
+    expect(await removedAt()).toEqual({ at: null });
+    expect(await botJobs(db, SWEPT.id)).toEqual([]);
+    expect(await dm(request, SWEPT.ownerPhone, "GO")).toMatchObject({ handled: "setup-go", outcome: "went-live", orgId: SWEPT.id });
   });
 
   test("removed-while-setting-up against a real Postgres: the setup DM in each state, the owner's Go live now, re-adds (tsx)", async () => {

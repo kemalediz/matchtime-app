@@ -227,7 +227,23 @@ test("flag ON: sign up, set up the club and its weekly game, connect, and the ca
   await page.reload();
   await expect(card).toHaveAttribute("data-state", "pending");
   await expect(card).toContainText("3. adım: kulübünüzü kontrol ediyoruz");
+  // The approval hold is off (no flag): today's words, which promise a
+  // message "when it's live".
+  await expect(card).toContainText("Kulübünüz onaylanana kadar MatchTime grupta sessiz kalır");
+  await expect(card).not.toContainText("siz başlamasını söyleyene kadar");
   await shot(page, "06-admin-pending");
+  // With the hold on (go-live slice S5), approval does not make the club
+  // live, so the card says MatchTime waits for the organiser too.
+  await context.addCookies([{ name: "mt-test-setup-hold", value: "1", url: E2E_BASE_URL }]);
+  await page.reload();
+  await expect(card).toHaveAttribute("data-state", "pending");
+  await expect(card).toContainText(
+    "Kulübünüz onaylanana ve siz başlamasını söyleyene kadar MatchTime grupta sessiz kalır, onaylanır onaylanmaz size WhatsApp'tan yazar.",
+  );
+  await shot(page, "06b-admin-pending-held");
+  await context.addCookies([{ name: "mt-test-setup-hold", value: "0", url: E2E_BASE_URL }]);
+  await page.reload();
+  await expect(card).not.toContainText("siz başlamasını söyleyene kadar");
   await db.run(`UPDATE "ClubConnect" SET "adderMatch" = 'unknown' WHERE "orgId" = $1`, [org!.id]);
   await page.reload();
   await expect(card).toContainText(`MatchTime "Riverside Salı 7'ler" grubuna başka biri tarafından eklendi`);

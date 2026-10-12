@@ -143,6 +143,8 @@ export type ConnectCard =
   | { kind: "dm_verified" }
   | { kind: "pending"; group: string | null; addedByOther: boolean }
   | { kind: "approved"; group: string | null }
+  /** Approved, and waiting for an owner or admin to go live (slice S5). */
+  | { kind: "setting_up"; group: string | null }
   | { kind: "rejected" };
 
 /** The organiser matched the adder by phone or WhatsApp id (plan 2.3). */
@@ -153,7 +155,8 @@ const VERIFIED_ADDER = new Set(["phone", "lid"]);
  * through self-join (approved, `approvedAt` NULL: Sutton FC) sees none.
  */
 export function deriveConnectCard(args: {
-  org: { approvalStatus: string; approvedAt: Date | null };
+  /** `settingUp`: the caller's `isClubSettingUp(org)` (club-setup-rules.ts). */
+  org: { approvalStatus: string; approvedAt: Date | null; settingUp?: boolean };
   latest: ConnectRow | null;
   now: Date;
 }): ConnectCard {
@@ -168,6 +171,9 @@ export function deriveConnectCard(args: {
         addedByOther: !VERIFIED_ADDER.has(latest?.adderMatch ?? ""),
       };
     case "approved": {
+      // Approved but silent until GO: never "you're live", and shown for
+      // as long as the club is setting up, not for a week.
+      if (org.settingUp) return { kind: "setting_up", group: latest?.groupSubject ?? null };
       if (!org.approvedAt) return { kind: "hidden" };
       const age = now.getTime() - org.approvedAt.getTime();
       return age <= APPROVED_CARD_DAYS * 24 * 60 * 60 * 1000

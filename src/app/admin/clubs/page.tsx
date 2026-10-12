@@ -22,7 +22,8 @@ import { countOrgDmsSince } from "@/lib/org-dm-count";
 import { selfJoinEnabledForRequest } from "@/lib/self-join-flag";
 import { ownerLearningSummary } from "@/lib/setup-learning/owner-summary";
 import { notFound, redirect } from "next/navigation";
-import { DecideButtons, LeaveButton, TurnOffButton } from "./club-buttons";
+import { DecideButtons, GoLiveNowButton, LeaveButton, TurnOffButton } from "./club-buttons";
+import { loadSetupStatuses, type SetupMessageState } from "@/lib/club-setup";
 import { PlanControl, StartFreeMonthButton } from "./billing-controls";
 import { loadClubBillingSnapshot } from "@/lib/club-billing";
 import { billingTotals, isBillingEnabled, planPricePence } from "@/lib/club-billing-rules";
@@ -52,6 +53,30 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 function when(d: Date | null | undefined): string {
   return d ? formatLondon(d, "EEE d MMM, HH:mm") : "";
+}
+
+/**
+ * What is known about a setting-up club's setup DM (review of PR #236,
+ * fix 6). "Sent" only when the queued job says so: the club's own stamp is
+ * when the DM is DUE, which can be 09:00 tomorrow.
+ */
+function setupMessageLine(m: SetupMessageState): string {
+  switch (m.kind) {
+    case "none":
+      return "Setup message not queued yet.";
+    case "queued":
+      return `Setup message queued for ${when(m.at)}.`;
+    case "waiting":
+      return `Setup message queued, due since ${when(m.at)}.`;
+    case "sent":
+      return m.at ? `Setup message sent ${when(m.at)}.` : "Setup message sent.";
+    case "unconfirmed":
+      return "Setup message handed to WhatsApp, delivery not confirmed.";
+    case "failed":
+      return "Setup message failed or was cancelled.";
+    case "no-job":
+      return `Setup message was due ${when(m.at)}, but none is queued.`;
+  }
 }
 
 function usd(n: number): string {
@@ -346,6 +371,13 @@ export default async function ClubsPage() {
       return { ...o, cap, dmsToday, ai, newClub: cap !== null, billing, months, spend30: spend30Of.get(o.id) ?? 0 };
     }),
   );
+  // Approved but setting up (go-live slice S5, owner decision 7): these
+  // clubs are approved, so the query above returns them, but they are not
+  // live. They get their own section, with "Go live now".
+  const setupOf = await loadSetupStatuses(liveOrgs.map((o) => o.id));
+  const settingUp = live.filter((c) => setupOf.get(c.id)?.settingUp);
+  const liveNow = live.filter((c) => !setupOf.get(c.id)?.settingUp);
+
   const totals = billingTotals(
     live.map((c) => ({
       status: c.billing?.status ?? c.billingStatus,
@@ -446,6 +478,55 @@ export default async function ClubsPage() {
         )}
       </Section>
 
+      {settingUp.length > 0 && (
+        <Section
+          id="setting-up"
+          title="Setting up"
+          lead="Approved, and silent in their groups until an owner or admin of the club goes live. Go live now does it for them, even while the chat is still being read."
+        >
+          <ul className="space-y-3">
+            {settingUp.map((c) => {
+              const st = setupOf.get(c.id)!;
+              const l = ownerLearningSummary(c.setupLearning);
+              return (
+                <li key={c.id} data-testid="setting-up-club" className="rounded-lg border border-emerald-200 bg-white p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-medium text-slate-800">{c.name}</span>
+                    <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-800">
+                      Setting up
+                    </span>
+                  </div>
+                  <p data-testid="setting-up-since" className="mt-1 text-sm text-slate-700">
+                    Setting up since {when(st.since)}.
+                  </p>
+                  <p data-testid="setting-up-message" className="text-sm text-slate-600">
+                    {setupMessageLine(st.setupMessage)}
+                  </p>
+                  <p
+                    data-testid="setting-up-group"
+                    className={`text-sm ${st.removedFromGroup ? "font-semibold text-red-700" : "text-slate-600"}`}
+                  >
+                    {st.removedFromGroup
+                      ? st.removedAt
+                        ? `MatchTime was removed from the group on ${when(st.removedAt)}. It cannot go live until a member of the club adds it back.`
+                        : "MatchTime is not in the group. It cannot go live until it is added back."
+                      : "MatchTime is still in the group."}
+                  </p>
+                  <p className="text-sm text-slate-600">
+                    AI today: {usd(c.ai.spentUsd)}. Learned setup: {l.line}
+                  </p>
+                  <BillingRow c={c} billingOn={billingOn} lang={lang} />
+                  <div className="mt-3 flex flex-wrap items-start gap-2">
+                    <GoLiveNowButton orgId={c.id} club={c.name} disabled={st.removedFromGroup} />
+                    <TurnOffButton orgId={c.id} club={c.name} />
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </Section>
+      )}
+
       <Section
         id="live"
         info="clubs_live"
@@ -453,11 +534,11 @@ export default async function ClubsPage() {
         title="Live clubs that joined themselves"
         lead={`New clubs get ${NEW_CLUB_DM_WINDOW_DAYS} days of tighter limits from the day they go live.`}
       >
-        {live.length === 0 ? (
+        {liveNow.length === 0 ? (
           <Empty>No self-join club is live yet.</Empty>
         ) : (
           <ul className="space-y-3">
-            {live.map((c) => (
+            {liveNow.map((c) => (
               <li key={c.id} data-testid="live-club" className="rounded-lg border border-slate-200 bg-white p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="font-medium text-slate-800">{c.name}</span>

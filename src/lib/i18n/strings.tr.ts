@@ -1780,6 +1780,49 @@ export const tr: Strings = {
     `${p.club} yayına geçmeden "${p.group}" grubundan çıkarıldım, bu yüzden orada hiçbir şey başlamadı. ` +
     `Beni gruba yeniden ekleyin, sonra buraya *BAŞLA* yazın ya da ayarlar sayfanızdaki *Yayına al* düğmesine basın:\n${p.url}`,
   // ════ END removed from the group while setting up ════
+  // ════ BEGIN the go-live pages (go-live slice S5, 2026-10-12) ════
+  // See the English table: the Go live banner on /admin/settings, the
+  // WhatsApp bot section while a club is setting up, and the card on the
+  // club's admin home.
+  sj_live_title: `Onaylandı. MatchTime sizi bekliyor.`,
+  sj_live_lead: (p) =>
+    `MatchTime ${p.group ? `"${p.group}" grubunda` : "WhatsApp grubunuzda"} ve siz başlatana kadar sessiz kalacak. Önce aşağıdaki ayarları kontrol edin, sonra Yayına al düğmesine basın.`,
+  sj_live_busy: `Yayına alınıyor...`,
+  sj_live_preview_title: `MatchTime'ın grubunuza yazacağı mesaj`,
+  sj_live_preview_note: `Bu mesaj ayarlarınıza göre hazırlanır. Aşağıdan bir ayarı değiştirirseniz mesaj da değişir.`,
+  sj_live_preview_loading: `Mesaj yükleniyor...`,
+  sj_live_preview_failed: `Mesaj yüklenemedi. Tekrar denemek için sayfayı yenileyin.`,
+  sj_live_done_title: `Yayındasınız.`,
+  sj_live_done: (p) => `MatchTime "${p.group}" grubunda kendini tanıttı.`,
+  sj_live_done_posted: `Gruba yazdığı mesaj`,
+  sj_live_still_reading: `MatchTime grubunuzdaki mesajları hâlâ okuyor. Birkaç dakika sonra tekrar deneyin.`,
+  sj_live_removed: (p) =>
+    `MatchTime artık "${p.group}" grubunda değil. Gruba tekrar ekleyin, sonra Yayına al düğmesine basın.`,
+  sj_live_paused: (p) =>
+    `${p.club} şu anda duraklatılmış, bu yüzden henüz yayına alınamıyor. Ne gerektiği bu sayfanın aşağısında yazıyor.`,
+  sj_live_already: (p) =>
+    p.matchTime
+      ? `MatchTime ${p.club} kulübünü zaten yayına aldı.`
+      : p.by
+        ? `${p.by}, ${p.club} kulübünü zaten yayına aldı.`
+        : `${p.club} zaten yayında.`,
+  sj_live_closed_title: `Yayına alma kullanılamıyor`,
+  sj_live_not_setting_up: `Bu kulüp artık yayına alınmayı beklemiyor. Son durumu görmek için sayfayı yenileyin.`,
+  sj_live_is_live: (p) => `${p.club} yayında.`,
+  sj_live_stale: `Sayfanın geri kalanı yenilenemedi, bazı bölümleri güncel olmayabilir.`,
+  sj_live_reload: `Sayfayı yenileyin`,
+  sj_live_failed: `Yayına alınamadı. Lütfen tekrar deneyin.`,
+  sj_live_wa_badge: `Yayına almanızı bekliyor`,
+  sj_live_wa_body: `MatchTime onaylandı ve grubunuzda. Bu sayfanın en üstündeki Yayına al düğmesine basana kadar sessiz kalır.`,
+  sj_live_wa_link: `Yayına al bölümüne git`,
+  sj_card_setting_up: (p) =>
+    `MatchTime ${p.group ? `"${p.group}" grubunda` : "WhatsApp grubunuzda"} ve siz yayına alana kadar sessiz kalacak.`,
+  sj_card_setting_up_link: `Ayarlarınızı kontrol edin ve yayına alın`,
+  info_st_whatsapp_setup_title: "WhatsApp botu",
+  info_st_whatsapp_setup_body:
+    "MatchTime onaylandı ve WhatsApp grubunuza bağlı. Kulübün sahibi ya da bir yöneticisi bu sayfanın en üstündeki Yayına al düğmesine basana ya da WhatsApp'tan MatchTime'a BAŞLA yazana kadar grupta sessiz kalır.\n\n" +
+    "Bir sorun yok: sizi bekliyor.",
+  // ════ END the go-live pages ════
 
   sj_dm_approved: (p) =>
     `Güzel haber: ${p.club} artık aktif. ${p.group ? `"${p.group}" grubunda` : "Grubunuzda"} herkese merhaba dedim.\n\n` +

@@ -296,6 +296,23 @@ async function main() {
       ok("a live club, an unknown group, and a setting-up club that was never removed: nothing is written or said");
     }
 
+    // ── F. Found back in its own group by the reconnect sweep ──────────
+    {
+      const c = await heldClub(7, new Date(NOON.getTime() - 60_000));
+      // Not removed: a sweep report is nothing.
+      assert.deepEqual(await handleSetupReAdd({ groupId: c.groupId, discovered: true, now: NOON }), { kind: "not-removed" });
+      await handleSetupRemoval(c.groupId, { now: NOON });
+      // Some other group the sweep found: nothing to do with this club.
+      assert.deepEqual(await handleSetupReAdd({ groupId: "120363940000000097@g.us", discovered: true, now: NOON }), { kind: "not-removed" });
+      assert.ok((await row(c)).setupRemovedAt, "still removed");
+      // Its own group: MatchTime is demonstrably back, no adder needed.
+      assert.deepEqual(await handleSetupReAdd({ groupId: c.groupId, discovered: true, now: NOON }), { kind: "cleared", orgId: c.orgId });
+      assert.equal((await row(c)).setupRemovedAt, null);
+      await stillHeld(c, "F swept");
+      assert.equal((await goLiveClub(c.orgId, liveByUser(c.userId), new Date(NOON.getTime() + 60_000))).outcome, "went-live");
+      ok("the reconnect sweep finding MatchTime in the removed club's own group clears the removal (no adder); any other group does not");
+    }
+
     console.log(`OK: ${n} setup-removal checks against Postgres`);
   } finally {
     await cleanup().catch((err) => console.error("cleanup failed:", err));
