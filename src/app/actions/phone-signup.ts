@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { normalisePhone } from "@/lib/phone";
 import { signMagicLinkToken } from "@/lib/magic-link";
 import { safeCallbackPath } from "@/lib/safe-callback";
+import { expiredLinkDestination, isLinkHandle, resolveExpiredLink } from "@/lib/expired-link";
 import { randomInt } from "node:crypto";
 import { headers } from "next/headers";
 import { queuePlatformDm } from "@/lib/platform-jobs";
@@ -285,14 +286,24 @@ export async function startPhoneSignIn(args: {
  * is reachable only by proving the phone, so it leaks nothing to anyone
  * else. The code is spent either way.
  *
- * `callbackUrl` is followed only when it is a path on this site
- * (`safeCallbackPath`); anything else falls back to where sign-up lands
- * the same kind of user.
+ * `callbackUrl` is followed only when it is a page of this site that a
+ * sign-in may land on (`safeCallbackPath`); anything else falls back to
+ * where sign-up lands the same kind of user.
+ *
+ * `link` is an EXPIRED signed link the visitor came in with (the /r page
+ * sends them here with it: src/lib/expired-link.ts). It is read only after
+ * a correct code, and honoured ONLY when it was minted for the person who
+ * has just signed in: then its page (through `safeCallbackPath`) and its
+ * club are used, the club by riding on the short sign-in token so that
+ * the magic-link provider pins it with its usual membership check.
+ * Somebody else's link, a forged one and one that still works are ignored
+ * entirely, with the default page and no word of why.
  */
 export async function verifyPhoneSignIn(args: {
   phone: string;
   code: string;
   callbackUrl?: string | null;
+  link?: string | null;
 }): Promise<
   | { ok: true; magicLinkToken: string; nextPath: string }
   | { ok: false; error: string; noAccount?: true }
@@ -317,7 +328,11 @@ export async function verifyPhoneSignIn(args: {
     user = await db.user.update({ where: { id: user.id }, data: { onboarded: true } });
   }
 
-  const asked = safeCallbackPath(args.callbackUrl);
+  // Their own expired link, or nothing.
+  const expired = isLinkHandle(args.link) ? await resolveExpiredLink(args.link) : null;
+  const theirs = expired && expired.userId === user.id ? expired : null;
+
+  const asked = theirs ? expiredLinkDestination(theirs) : args.link ? null : safeCallbackPath(args.callbackUrl);
   let nextPath: string;
   if (asked && asked !== "/") {
     nextPath = asked;
@@ -335,6 +350,9 @@ export async function verifyPhoneSignIn(args: {
     userId: user.id,
     purpose: "sign-in",
     nextPath,
+    // The expired link's club: pinned at sign-in by `pinOrgFromMagicLink`,
+    // only if this user may act in it.
+    ...(theirs?.orgId ? { orgId: theirs.orgId } : {}),
     ttlSeconds: 300,
   });
 

@@ -1,8 +1,15 @@
 import { firstMonthsFree } from "@/lib/i18n/free-period";
+import { setupHoldEnabledForRequest } from "@/lib/setup-hold-flag";
+import { CONNECT_HOW_LONG, holdHowItWorksSentence } from "@/lib/setup-hold-public-copy";
 
 export const metadata = { title: "Organiser guide" };
 
-export default function AdminGuidePage() {
+export default async function AdminGuidePage() {
+  // With the approval hold on, approval does not make MatchTime speak: it
+  // waits for the organiser's GO. The guide says so from the moment the
+  // flag is on (src/lib/setup-hold-public-copy.ts); off, it reads as before.
+  const holdOn = await setupHoldEnabledForRequest();
+  const holdSentence = holdHowItWorksSentence(holdOn);
   return (
     <>
       <h2 className="!mt-0">Organiser guide</h2>
@@ -27,9 +34,10 @@ export default function AdminGuidePage() {
 
       <h3>We&apos;ll help you add MatchTime to your WhatsApp group</h3>
       <p>
-        Sign up and we&apos;ll get your group connected, usually the same day.
+        Sign up and we&apos;ll get your group connected, {CONNECT_HOW_LONG}.
         Nothing else changes for your players: they keep saying In and Out as
-        they always have. Once it&apos;s in your group, MatchTime:
+        they always have.{holdSentence ? ` ${holdSentence}` : ""}{" "}
+        {holdOn ? "Once you have said GO" : "Once it's in your group"}, MatchTime:
       </p>
       <ul>
         <li>Reads messages in your group, and only acts on In, Out and messages that tag <strong>@Match Time</strong></li>
@@ -506,7 +514,7 @@ export default function AdminGuidePage() {
       <h3>How do I get MatchTime into my group?</h3>
       <p>
         Sign up and create your club, and we&apos;ll help you add MatchTime to
-        your WhatsApp group, usually the same day. Questions? Email{" "}
+        your WhatsApp group, {CONNECT_HOW_LONG}. Questions? Email{" "}
         <a href="mailto:hello@matchtime.ai">hello@matchtime.ai</a>.
       </p>
 

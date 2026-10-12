@@ -147,6 +147,40 @@ export async function verifyMagicLinkToken(
 }
 
 /**
+ * A token of OURS that has EXPIRED: its payload, for telling its holder
+ * where the link was going (`expired-link.ts`). It signs nobody in and is
+ * no credential: `verifyMagicLinkToken` above still refuses the token.
+ *
+ * Null unless the signature is good, the payload is well formed, and the
+ * expiry has passed. A token that still works is not "expired"; a forged
+ * one says nothing.
+ */
+export function readExpiredMagicLink(token: string): MagicLinkPayload | null {
+  try {
+    const [body, sig] = token.split(".");
+    if (!body || !sig) return null;
+    const expectedSig = b64url(createHmac("sha256", getSecret()).update(body).digest());
+    const a = Buffer.from(sig);
+    const b = Buffer.from(expectedSig);
+    if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
+    const payload = JSON.parse(b64urlDecode(body).toString("utf8")) as MagicLinkPayload;
+    // As strict on shape as `verifyMagicLinkToken`, and stricter where
+    // this reader's own callers use a field (security review of PR #248).
+    if (typeof payload?.userId !== "string" || !payload.userId) return null;
+    if (typeof payload?.exp !== "number" || !isFinite(payload.exp)) return null;
+    if (!KNOWN_PURPOSES.includes(payload.purpose)) return null;
+    if (payload.purpose === "rate-match" && (typeof payload.matchId !== "string" || !payload.matchId)) return null;
+    if (payload.matchId !== undefined && typeof payload.matchId !== "string") return null;
+    if (payload.orgId !== undefined && (typeof payload.orgId !== "string" || !payload.orgId)) return null;
+    if (payload.nextPath !== undefined && typeof payload.nextPath !== "string") return null;
+    if (payload.exp >= Math.floor(Date.now() / 1000)) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Build a full magic-link URL. Uses the canonical production host in prod,
  * or `NEXTAUTH_URL` if set (dev override).
  */

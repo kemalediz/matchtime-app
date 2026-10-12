@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { StatsShowcase, WrappedCard } from "./stats-showcase";
 import { firstMonthsFree, firstMonthsFreeBadge } from "@/lib/i18n/free-period";
+import { CONNECT_HOW_LONG, holdHowItWorksSentence } from "@/lib/setup-hold-public-copy";
 
 /**
  * Public marketing landing page served at `/` for signed-out visitors.
@@ -45,7 +46,13 @@ const DISPLAY_FONT: React.CSSProperties = {
   fontFamily: "var(--font-display), system-ui, sans-serif",
 };
 
-export function LandingPage() {
+/**
+ * `holdOn`: SETUP_HOLD_ENABLED as the page that renders this read it
+ * (`setupHoldEnabledForRequest`). On, step 2 gains the one sentence about
+ * waiting for GO; off, the page reads as it always did.
+ */
+export function LandingPage({ holdOn = false }: { holdOn?: boolean } = {}) {
+  const holdSentence = holdHowItWorksSentence(holdOn);
   return (
     <div className="bg-slate-950 text-slate-100 overflow-x-hidden font-sans">
       {/* ── Top nav ───────────────────────────────────────────────────── */}
@@ -426,7 +433,7 @@ export function LandingPage() {
             <Step
               n={2}
               title="We&apos;ll help you add MatchTime to your WhatsApp group"
-              body="Sign up and we&apos;ll get your group connected, usually the same day."
+              body={`Sign up and we'll get your group connected, ${CONNECT_HOW_LONG}.${holdSentence ? ` ${holdSentence}` : ""}`}
             />
             <Step
               n={3}
