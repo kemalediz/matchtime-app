@@ -21,6 +21,7 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { db } from "./db";
+import { IN_LIVE_STAGE_CLUB_WHERE } from "./club-setup-rules";
 import { loadRecentHistory, formatRecentHistoryBlock, type RecentHistory } from "./match-history";
 import { loadPlayerSeasonStats } from "./player-stats";
 import { buildDmQaApology } from "./dm-copy";
@@ -56,8 +57,10 @@ Output plain text only — no JSON, no preamble.`;
 /** Pick the most relevant org for a multi-org player: the one with the
  *  most recent match (any status) they're a member of. */
 export async function pickRelevantOrgForUser(userId: string): Promise<string | null> {
+  // Never a club that is still setting up (club-setup.ts): it may spend
+  // nothing, so a question routed to it would get no answer at all.
   const memberships = await db.membership.findMany({
-    where: { userId, leftAt: null },
+    where: { userId, leftAt: null, ...IN_LIVE_STAGE_CLUB_WHERE },
     select: { orgId: true },
   });
   if (memberships.length === 0) return null;

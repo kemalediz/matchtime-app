@@ -4,13 +4,16 @@
  */
 import { describe, expect, it } from "vitest";
 import {
-  BOT_ON_OR_SETTING_UP_WHERE,
+  IN_LIVE_STAGE_CLUB_WHERE,
   LIVE_STAGE_WHERE,
+  NEVER_HELD_WHERE,
+  SETUP_READABLE_CLUB_WHERE,
   SETTING_UP_CLUB_WHERE,
-  SETUP_STAGES,
   SETUP_STAGE_SELECT,
+  hasGoneLive,
   isClubSettingUp,
   isSetupHoldEnabled,
+  preferLiveClubs,
   settingUpClubFields,
   settingUpOnly,
 } from "../club-setup-rules";
@@ -19,10 +22,6 @@ const live = { approvalStatus: "approved", setupStage: "live" };
 const held = { approvalStatus: "approved", setupStage: "setting-up" };
 
 describe("setup stages", () => {
-  it("has exactly the two stages the CHECK constraint allows", () => {
-    expect([...SETUP_STAGES]).toEqual(["live", "setting-up"]);
-  });
-
   it("the Prisma fragment for a setting-up club is approved AND setting-up", () => {
     expect(SETTING_UP_CLUB_WHERE).toEqual({ approvalStatus: "approved", setupStage: "setting-up" });
   });
@@ -31,10 +30,18 @@ describe("setup stages", () => {
     expect(LIVE_STAGE_WHERE).toEqual({ setupStage: "live" });
   });
 
-  it("the sweep's fragment: the bot is on, or the club is setting up", () => {
-    expect(BOT_ON_OR_SETTING_UP_WHERE).toEqual({
-      OR: [{ whatsappBotEnabled: true }, { approvalStatus: "approved", setupStage: "setting-up" }],
+  it("the sweep's fragment: the bot is on AND the club was never held, or the club is setting up", () => {
+    expect(SETUP_READABLE_CLUB_WHERE).toEqual({
+      OR: [{ whatsappBotEnabled: true, liveAt: null }, { approvalStatus: "approved", setupStage: "setting-up" }],
     });
+  });
+
+  it("'never held' is a NULL go-live stamp, which every existing club has", () => {
+    expect(NEVER_HELD_WHERE).toEqual({ liveAt: null });
+  });
+
+  it("the membership fragment for the DM path: the member's club is not held", () => {
+    expect(IN_LIVE_STAGE_CLUB_WHERE).toEqual({ org: { setupStage: "live" } });
   });
 
   it("the select other modules use carries both columns the decision needs", () => {
@@ -95,5 +102,37 @@ describe("SETUP_HOLD_ENABLED", () => {
     for (const v of ["1", "true", "on", "yes", " TRUE "]) {
       expect(isSetupHoldEnabled({ SETUP_HOLD_ENABLED: v })).toBe(true);
     }
+  });
+});
+
+describe("hasGoneLive: has this club been through the hold and come out?", () => {
+  it("a club with a go-live stamp has", () => {
+    expect(hasGoneLive({ liveAt: new Date("2026-10-12T10:05:00Z") })).toBe(true);
+  });
+
+  it("every existing club (no stamp) has not, nor has a row read without the column", () => {
+    expect(hasGoneLive({ liveAt: null })).toBe(false);
+    expect(hasGoneLive({})).toBe(false);
+  });
+});
+
+describe("preferLiveClubs: a setting-up club does not exist for club selection, unless it is all there is", () => {
+  const row = (id: string, org: typeof live) => ({ id, org });
+
+  it("with no setting-up club the list is returned as it was (the same rows, the same order)", () => {
+    const rows = [row("a", live), row("b", live)];
+    expect(preferLiveClubs(rows, (r) => r.org)).toEqual(rows);
+  });
+
+  it("a setting-up club is dropped when the person has a live club too", () => {
+    expect(preferLiveClubs([row("held", held), row("sutton", live)], (r) => r.org).map((r) => r.id)).toEqual(["sutton"]);
+  });
+
+  it("someone whose every club is setting up keeps them (the help request is theirs)", () => {
+    expect(preferLiveClubs([row("held", held)], (r) => r.org).map((r) => r.id)).toEqual(["held"]);
+  });
+
+  it("nothing in, nothing out", () => {
+    expect(preferLiveClubs([], (r: { org: typeof live }) => r.org)).toEqual([]);
   });
 });

@@ -12,6 +12,7 @@
  * nothing to register and the DM falls through untouched.
  */
 import { db } from "./db";
+import { IN_LIVE_STAGE_CLUB_WHERE } from "./club-setup-rules";
 import { getOrgFeatures } from "./org-features";
 import { selectRegistrationMatch } from "./registration-match-select";
 import { dayCommaTimeLabel } from "./i18n/dates";
@@ -39,8 +40,10 @@ export interface DmRegistrationTarget {
 export async function findDmRegistrationTarget(
   userId: string,
 ): Promise<DmRegistrationTarget | null> {
+  // Never a club that is still setting up (club-setup.ts): its generated
+  // fixture is not a match anybody can sign up for yet.
   const memberships = await db.membership.findMany({
-    where: { userId, leftAt: null },
+    where: { userId, leftAt: null, ...IN_LIVE_STAGE_CLUB_WHERE },
     select: { orgId: true, org: { select: { name: true } } },
   });
   if (memberships.length === 0) return null;

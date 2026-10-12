@@ -155,6 +155,8 @@ function setup(name: (typeof FIXTURE_NAMES)[number], org: Row = {}) {
     language: fx.language,
     approvedAt: new Date("2026-10-05T09:00:00Z"),
     whatsappBotEnabled: true,
+    // Every club that never passed through setting-up has no go-live stamp.
+    liveAt: null,
     rollingSquadEnabled: false,
     benchPickMode: "first-come",
     dropOutDeadlineDay: null,
@@ -348,11 +350,68 @@ describe("learnClubSetup and a club that is approved but setting up (go-live S1,
     for (const u of state.orgUpdates) expect(u.where).toMatchObject({ setupStage: "setting-up" });
   });
 
-  it("a club that was never held is written exactly as before: no stage in the WHERE", async () => {
+  it("review fix 4: the club was SUSPENDED mid-reading: nothing applied, and the record says so (not 'went-live')", async () => {
+    setup("rolling", HELD);
+    // The read sees it held; the write is refused; the reload finds no approved club.
+    dbMock.organisation.findFirst
+      .mockImplementationOnce(async () => ({ ...state.org! }))
+      .mockImplementationOnce(async () => null);
+    dbMock.organisation.updateMany.mockImplementationOnce(async (args: { where: Row; data: Row }) => {
+      state.orgUpdates.push(args);
+      return { count: 0 };
+    });
+    const out = await learnClubSetup(ORG, { now: DAYTIME, model: stub(STUB_ANSWERS.rolling) });
+    expect(out).toMatchObject({ kind: "done", status: "nothing", applied: 0 });
+    expect(state.org!.rollingSquadEnabled).toBe(false);
+    expect(state.learning).toMatchObject({ applied: [], kept: [{ key: "rollingSquad", reason: "no-longer-approved" }] });
+    expect(state.orgUpdates).toHaveLength(1);
+  });
+
+  it("a club that was never held is written as before: no stage in the WHERE, and only while it has no go-live stamp", async () => {
     setup("rolling", { approvalStatus: "approved", setupStage: "live" });
     await learnClubSetup(ORG, { now: DAYTIME, model: stub(STUB_ANSWERS.rolling) });
     expect(state.orgUpdates).toHaveLength(1);
     expect(state.orgUpdates[0].where).not.toHaveProperty("setupStage");
+    expect(state.orgUpdates[0].where).toMatchObject({ approvalStatus: "approved", liveAt: null });
+    expect(state.org!.rollingSquadEnabled).toBe(true);
+  });
+});
+
+describe("review fix 1: a club that has been through the hold is never read once it is live", () => {
+  const WENT_LIVE = {
+    whatsappBotEnabled: true,
+    approvalStatus: "approved",
+    setupStage: "live",
+    liveAt: new Date("2026-10-05T10:05:00Z"),
+  };
+
+  it("deferred at 10:00, live at 10:05, swept at 10:15: NOT read, nothing switched, the row not even claimed", async () => {
+    setup("rolling", WENT_LIVE);
+    state.learning = { status: "deferred", reason: "model-error", attempts: 1, updatedAt: new Date("2026-10-05T10:00:00Z") };
+    const model = stub(STUB_ANSWERS.rolling);
+    const out = await learnClubSetup(ORG, { now: new Date("2026-10-05T10:15:00Z"), model });
+    expect(out).toEqual({ kind: "not-eligible" });
+    expect(model.calls).toBe(0);
+    expect(budget.keys).toEqual([]);
+    expect(state.orgUpdates).toEqual([]);
+    expect(state.org!.rollingSquadEnabled).toBe(false);
+    expect(state.learning).toMatchObject({ status: "deferred", attempts: 1 });
+    expect(dms).toEqual([]);
+  });
+
+  it("went live before its first sweep: NOT read, no row created", async () => {
+    setup("rolling", WENT_LIVE);
+    const model = stub(STUB_ANSWERS.rolling);
+    expect(await learnClubSetup(ORG, { now: DAYTIME, model })).toEqual({ kind: "not-eligible" });
+    expect(model.calls).toBe(0);
+    expect(dbMock.clubSetupLearning.create).not.toHaveBeenCalled();
+    expect(state.org!.rollingSquadEnabled).toBe(false);
+  });
+
+  it("an existing club (no go-live stamp, bot on) is read and switched exactly as before", async () => {
+    setup("rolling");
+    const out = await learnClubSetup(ORG, { now: DAYTIME, model: stub(STUB_ANSWERS.rolling) });
+    expect(out).toMatchObject({ kind: "done", status: "applied", applied: 1 });
     expect(state.org!.rollingSquadEnabled).toBe(true);
   });
 });
@@ -455,8 +514,10 @@ describe("runSetupLearningSweep", () => {
   it("go-live S1: the selection is 'bot on, OR approved and setting up' (a held club has its bot off)", async () => {
     await runSetupLearningSweep(DAYTIME, { enabled: true, model: stub(STUB_ANSWERS.rolling) });
     const where = (state.findManyArgs[0] as { where: Row }).where;
+    // "Bot on" counts only for a club that was never held (review fix 1): a
+    // club that has gone live is never selected again.
     expect(where.AND).toEqual([
-      { OR: [{ whatsappBotEnabled: true }, { approvalStatus: "approved", setupStage: "setting-up" }] },
+      { OR: [{ whatsappBotEnabled: true, liveAt: null }, { approvalStatus: "approved", setupStage: "setting-up" }] },
     ]);
     // Never "any club whose bot is off": a muted live club is still left out.
     expect(where).not.toHaveProperty("whatsappBotEnabled");

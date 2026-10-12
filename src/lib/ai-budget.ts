@@ -101,7 +101,7 @@ import { formatLondon } from "./london-time";
 import { AI_CAP_ALERT_KIND, recordOpsEvent } from "./ops-alerts";
 import { isClubApproved, isSelfJoinEnabled, isSilentGroup } from "./club-approval";
 import { isBillingPaused } from "./club-billing-rules";
-import { isClubSettingUp } from "./club-setup-rules";
+import { SETUP_STAGE_SELECT, isClubSettingUp, type SetupStageColumns } from "./club-setup-rules";
 import { notifyAdminsOfAiCap } from "./ai-cap-notice";
 import {
   AiBudgetExceededError,
@@ -152,7 +152,14 @@ export const onboardingUserKey = (userId: string): string => `onboarding-user:${
 const isPseudoKey = (key: string): boolean => key.startsWith("onboarding-");
 const ONBOARDING_GROUP_PREFIX = onboardingGroupKey("");
 
-export interface AllowanceOrg {
+/**
+ * `SetupStageColumns` (club-setup-rules.ts) carries the approval state and
+ * the setup stage. "Setting up" is the one state in which a club whose bot
+ * is off may pay for its setup reading. The stage is optional there on
+ * purpose: a caller that does not select it reads as "not setting up",
+ * which is the $0 side.
+ */
+export interface AllowanceOrg extends SetupStageColumns {
   createdAt: Date;
   aiDailyCapUsd: number | null;
   aiWindowStartAt: Date | null;
@@ -166,11 +173,6 @@ export interface AllowanceOrg {
   /** Club fee billing (B1): "paused" spends nothing while BILLING_ENABLED
    *  is on (club-billing-rules.ts). Every pre-billing club is "exempt". */
   billingStatus: string;
-  /** club-setup.ts: "setting-up" is the one state in which a club whose
-   *  bot is off may pay for its setup reading. OPTIONAL on purpose: a
-   *  caller that does not select it reads as "not setting up", which is
-   *  the $0 side. */
-  setupStage?: string | null;
 }
 
 /**
@@ -270,10 +272,9 @@ const ALLOWANCE_SELECT = {
   aiWindowStartAt: true,
   whatsappBotEnabled: true,
   whatsappGroupId: true,
-  approvalStatus: true,
+  ...SETUP_STAGE_SELECT,
   approvedAt: true,
   billingStatus: true,
-  setupStage: true,
 } as const;
 
 /** The cap for a key today. Throws on a database error (callers fail open). */

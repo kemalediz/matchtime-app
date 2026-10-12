@@ -1,83 +1,122 @@
 /**
- * ONE WRITER FOR `setupStage` (go-live plan 2.1, slice S1), modelled on
- * club-approval-source-guard.test.ts.
+ * ONE HOME FOR THE SETUP STAGE (go-live plan 2.1, slice S1; made strict
+ * after the review of PR #232).
  *
  * "Approved but setting up" is read and written only through
- * `src/lib/club-setup.ts` and its pure half, `club-setup-rules.ts`.
- * Anywhere else, the only legal mentions of the field as a key are
- * `setupStage: true` in a Prisma `select` and a type annotation
- * (`setupStage: string`). A `data: { setupStage: "live" }` or an ad-hoc
- * `where: { setupStage: ... }` in some route would be a second idea of
- * what "setting up" means, and the club's silence hangs on there being
- * exactly one.
+ * `src/lib/club-setup.ts` and its pure half, `club-setup-rules.ts`. The
+ * first version of this guard looked for the column used as an object
+ * key, and missed the shorthand `data: { stage }`, a quoted or computed
+ * key, raw SQL, a plain read (`org.<column> === "..."`), a line holding a
+ * select and a write, and the writer helper spread from another file.
  *
- * Raw SQL that names the column in quotes ("setupStage") is not matched
- * by this scan; there is none in src/ today.
+ * So it is now the simple, strict rule: OUTSIDE AN EXPLICIT ALLOW-LIST,
+ * THE WORD DOES NOT APPEAR AT ALL, in code, strings, SQL or comments, in
+ * `src/` and `scripts/`. Every other module goes through the exported
+ * where-fragments (`SETTING_UP_CLUB_WHERE`, `LIVE_STAGE_WHERE`,
+ * `IN_LIVE_STAGE_CLUB_WHERE`, `SETUP_READABLE_CLUB_WHERE`), the select
+ * (`SETUP_STAGE_SELECT`), the type (`SetupStageColumns`) and the
+ * predicates (`isClubSettingUp`, `settingUpOnly`, `preferLiveClubs`).
+ *
+ * The same rule guards the one AI budget exception: the setup-reading
+ * purpose may be named only by ai-budget.ts and the sweep.
+ *
+ * Allowed everywhere: test files (`__tests__`, `*.test.ts`), the
+ * generated Prisma client, and anything outside `src/` and `scripts/`
+ * (the Prisma schema, the migrations, `e2e/`).
  */
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 const SRC = path.resolve(__dirname, "..", "..");
-const ALLOWED = new Set([
-  path.join(SRC, "lib", "club-setup.ts"),
-  path.join(SRC, "lib", "club-setup-rules.ts"),
-]);
+const REPO = path.resolve(SRC, "..");
+const SCRIPTS = path.join(REPO, "scripts");
+const rel = (file: string) => path.relative(REPO, file);
+
+/** The column itself. */
+const STAGE_FILES = ["src/lib/club-setup-rules.ts", "src/lib/club-setup.ts"];
+/**
+ * The helper that returns the fields a held approval writes. Slice S3
+ * adds exactly one file here, `src/lib/club-approval.ts`, when
+ * `decideClub` spreads it; nothing else may.
+ */
+const STAGE_WRITER_FILES = ["src/lib/club-setup-rules.ts", "src/lib/club-setup.ts"];
+/** The setup-reading AI budget purpose. */
+const READING_FILES = ["src/lib/ai-budget.ts", "src/lib/setup-learning/run.ts"];
+
+const STAGE_WORD = /setupStage/;
+const STAGE_WRITER_WORD = /settingUpClubFields/;
+const READING_WORD = /setupReading|SetupReading|AllowancePurpose/;
 
 function walk(dir: string, out: string[] = []): string[] {
+  if (!existsSync(dir)) return out;
   for (const name of readdirSync(dir)) {
     const full = path.join(dir, name);
     if (name === "generated" || name === "node_modules" || name === "__tests__") continue;
     const st = statSync(full);
     if (st.isDirectory()) walk(full, out);
-    else if (/\.(ts|tsx)$/.test(name) && !/\.test\.tsx?$/.test(name)) out.push(full);
+    else if (/\.(ts|tsx|js|mjs|cjs|sql)$/.test(name) && !/\.test\.tsx?$/.test(name)) out.push(full);
   }
   return out;
 }
 
-const USES_KEY = /\bsetupStage\??\s*:/;
-const SELECT_OR_TYPE = /\bsetupStage\??\s*:\s*(true|string)\b/;
+const FILES = [...walk(SRC), ...walk(SCRIPTS)];
 
-describe("setupStage has one writer", () => {
-  it("no source file outside club-setup uses setupStage as a key, except a select or a type", () => {
-    const offenders: string[] = [];
-    for (const file of walk(SRC)) {
-      if (ALLOWED.has(file)) continue;
-      const lines = readFileSync(file, "utf8").split("\n");
-      lines.forEach((line, i) => {
-        if (USES_KEY.test(line) && !SELECT_OR_TYPE.test(line)) {
-          offenders.push(`${path.relative(SRC, file)}:${i + 1}: ${line.trim()}`);
-        }
+function offenders(word: RegExp, allowed: string[]): string[] {
+  const out: string[] = [];
+  for (const file of FILES) {
+    if (allowed.includes(rel(file))) continue;
+    readFileSync(file, "utf8")
+      .split("\n")
+      .forEach((line, i) => {
+        if (word.test(line)) out.push(`${rel(file)}:${i + 1}: ${line.trim()}`);
       });
-    }
-    expect(offenders).toEqual([]);
+  }
+  return out;
+}
+
+describe("the setup stage has one home", () => {
+  it("the column's name appears in no file of src/ or scripts/ outside the two club-setup modules", () => {
+    expect(offenders(STAGE_WORD, STAGE_FILES)).toEqual([]);
   });
 
-  it("the scan can see both club-setup files (so the test is not vacuous)", () => {
-    const files = walk(SRC);
-    for (const allowed of ALLOWED) expect(files).toContain(allowed);
+  it("the helper that writes the stage is named in no other file (slice S3 adds club-approval.ts here)", () => {
+    expect(offenders(STAGE_WRITER_WORD, STAGE_WRITER_FILES)).toEqual([]);
   });
 
-  it("the pattern catches a write and a filter, and lets a select and a type through", () => {
-    const bad = (line: string) => USES_KEY.test(line) && !SELECT_OR_TYPE.test(line);
-    expect(bad(`data: { setupStage: "live" },`)).toBe(true);
-    expect(bad(`where: { id, setupStage: "setting-up" },`)).toBe(true);
-    expect(bad(`where: { setupStage: { not: "live" } },`)).toBe(true);
-    expect(bad(`select: { id: true, setupStage: true },`)).toBe(false);
-    expect(bad(`  setupStage: string;`)).toBe(false);
+  it("the setup-reading AI budget purpose is named only by ai-budget.ts and the sweep", () => {
+    expect(offenders(READING_WORD, READING_FILES)).toEqual([]);
   });
 
-  it("the AI budget exception has ONE caller: only the setup-learning sweep opens the setup-reading scope", () => {
-    const users: string[] = [];
-    for (const file of walk(SRC)) {
-      const text = readFileSync(file, "utf8");
-      if (/\bwithSetupReadingAiBudget\b|\bsetupReading\s*:\s*true\b/.test(text)) users.push(path.relative(SRC, file));
-    }
-    expect(users.sort()).toEqual(["lib/ai-budget.ts", "lib/setup-learning/run.ts"]);
+  it("the scan covers src/ and scripts/, and can see every allow-listed file (so it is not vacuous)", () => {
+    const seen = FILES.map(rel);
+    for (const f of [...STAGE_FILES, ...READING_FILES]) expect(seen).toContain(f);
+    expect(seen.some((f) => f.startsWith("scripts/"))).toBe(true);
+    expect(readFileSync(path.join(SRC, "lib", "club-setup-rules.ts"), "utf8")).toMatch(/setupStage: "setting-up"/);
   });
 
-  it("the stage is actually written down in the pure half", () => {
-    const rules = readFileSync(path.join(SRC, "lib", "club-setup-rules.ts"), "utf8");
-    expect(rules).toMatch(/setupStage: "setting-up"/);
+  it("the words catch every shape the first guard missed", () => {
+    const stage = [
+      `data: { setupStage: "live" },`,
+      `where: { id, setupStage: "setting-up" },`,
+      `data: { setupStage },`,
+      `data: { "setupStage": "live" },`,
+      `data: { ["setupStage"]: stage },`,
+      `await db.$executeRaw\`UPDATE "Organisation" SET "setupStage" = 'live'\`;`,
+      `if (org.setupStage === "setting-up") return;`,
+      `select: { setupStage: true }, data: { setupStage: "live" },`,
+      `select: { id: true, setupStage: true },`,
+      `// flips setupStage by hand`,
+    ];
+    for (const line of stage) expect(STAGE_WORD.test(line), line).toBe(true);
+    expect(STAGE_WRITER_WORD.test(`data: { ...settingUpClubFields() },`)).toBe(true);
+    const reading = [
+      `prismaAiBudgetLedger(undefined, { setupReading: true })`,
+      `const p = { setupReading: on };`,
+      `const p = { ["setupReading"]: true };`,
+      `const p: AllowancePurpose = purposeFromElsewhere;`,
+      `withSetupReadingAiBudget(orgId, fn)`,
+    ];
+    for (const line of reading) expect(READING_WORD.test(line), line).toBe(true);
   });
 });

@@ -18,12 +18,17 @@
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { Client } from "pg";
 import type { APIRequestContext } from "@playwright/test";
 import { test, expect, resetDb } from "../fixtures";
 import { ORG_ID, PHONE } from "../helpers/constants";
 import { assertSafeTestDbUrl, E2E, E2E_DB_URL, REPO_ROOT } from "../helpers/env";
 import { testDb, type TestDb } from "../helpers/test-db";
+import { clearDmIntentStub, setDmIntentStub } from "../helpers/stub";
+
+const execFileAsync = promisify(execFile);
 
 test.describe.configure({ mode: "serial" });
 
@@ -39,6 +44,11 @@ const HELD_PLAYER_PHONE = "+447700900972";
 /** In the held club AND in the seeded live club. */
 const BOTH = "e2e-setup-both";
 const BOTH_PHONE = "+447700900973";
+/** LEFT the seeded live club; today only in the held club. */
+const LEFT = "e2e-setup-left";
+const LEFT_PHONE = "+447700900974";
+const HELD_MATCH_SOON = "e2e-setup-match-soon";
+const HELD_MATCH_LATE = "e2e-setup-match-late";
 
 const MIGRATION = path.join(REPO_ROOT, "prisma", "migrations", "20261012120000_setup_hold", "migration.sql");
 
@@ -131,6 +141,13 @@ test.beforeAll(async () => {
   await member(db, HELD_PLAYER, HELD_ORG, "PLAYER");
   await member(db, BOTH, HELD_ORG, "ADMIN");
   await member(db, BOTH, ORG_ID, "PLAYER");
+  await user(db, LEFT, "Lee Left", LEFT_PHONE);
+  await member(db, LEFT, HELD_ORG, "PLAYER");
+  await db.run(`INSERT INTO "Membership" (id, "userId", "orgId", role, "leftAt") VALUES ($1,$2,$3,'PLAYER', now() - interval '30 days')`, [
+    `${LEFT}-${ORG_ID}`,
+    LEFT,
+    ORG_ID,
+  ]);
   await db.run(
     `INSERT INTO "Sport" ("id","orgId","name","playersPerTeam","positions","teamLabels","createdAt","updatedAt")
      VALUES ($1,$2,'Football 6-a-side',6,ARRAY['GK','DEF','MID','FWD'],ARRAY['Red','Yellow'],now(),now())`,
@@ -141,6 +158,18 @@ test.beforeAll(async () => {
      VALUES ($1,$2,$3,'Weekly game',2,'21:00','Harbour Pitches',true,5,now(),now())`,
     [`${HELD_ORG}-activity`, HELD_ORG, `${HELD_ORG}-sport`],
   );
+  // Fixtures the crons generated for it while it waits: one that is the
+  // EARLIEST upcoming match of anybody's, and one that is the LATEST.
+  for (const [id, when] of [
+    [HELD_MATCH_SOON, "now() + interval '1 hour'"],
+    [HELD_MATCH_LATE, "now() + interval '300 days'"],
+  ]) {
+    await db.run(
+      `INSERT INTO "Match" (id,"activityId",date,"maxPlayers",status,"attendanceDeadline","updatedAt")
+       VALUES ($1,$2,${when},12,'UPCOMING',${when},now())`,
+      [id, `${HELD_ORG}-activity`],
+    );
+  }
   // The closed connect request, with the chat WhatsApp shared at the add.
   await db.run(
     `INSERT INTO "ClubConnect" ("id","orgId","userId","phone","code","status","expiresAt","groupId","groupSubject","linkedAt",
@@ -151,6 +180,7 @@ test.beforeAll(async () => {
 });
 
 test.afterAll(async () => {
+  clearDmIntentStub();
   resetDb();
 });
 
@@ -407,6 +437,13 @@ test.describe("direct messages", () => {
     expect(res.ignored).not.toBe("club-setting-up");
   });
 
+  test("review fix 2: someone who LEFT a live club and is only in the setting-up one IS caught", async ({ request, db }) => {
+    const before = await heldJobs(db);
+    const res = await dm(request, LEFT_PHONE, "hi, when do we play?");
+    expect(res.ignored).toBe("club-setting-up");
+    expect(await heldJobs(db)).toBe(before);
+  });
+
   test("deterministic help is answered first, for the organiser of the setting-up club", async ({ request, db }) => {
     const res = await dm(request, ORGANISER_PHONE, "help");
     expect(res).toMatchObject({ handled: "dm-help", orgId: HELD_ORG, audience: "admin" });
@@ -415,6 +452,76 @@ test.describe("direct messages", () => {
     // delivered until the club goes live. Pinned here so the gap is visible.
     expect(await db.count(`SELECT COUNT(*) FROM "BotJob" WHERE "orgId" = $1 AND kind = 'dm' AND "sentAt" IS NULL`, [HELD_ORG])).toBe(1);
     expect(await db.count(`SELECT COUNT(*) FROM "BotJob" WHERE "orgId" = $1 AND kind <> 'dm'`, [HELD_ORG])).toBe(0);
+  });
+});
+
+test.describe("review fix 2: in a live club AND a setting-up one, the setting-up club does not exist for club selection", () => {
+  const RECRUIT = "can you get a few more players for this week";
+  const heldAttendance = (db: TestDb) =>
+    db.count(`SELECT COUNT(*) FROM "Attendance" WHERE "matchId" IN ($1,$2)`, [HELD_MATCH_SOON, HELD_MATCH_LATE]);
+  const lastDmTo = (db: TestDb, phone: string) =>
+    db.one<{ orgId: string }>(`SELECT "orgId" FROM "BotJob" WHERE kind = 'dm' AND phone = $1 ORDER BY "createdAt" DESC LIMIT 1`, [
+      phone.replace(/^\+/, ""),
+    ]);
+
+  test("with no setting-up club the filter removes nobody: every other club passes it", async ({ db }) => {
+    const all = await db.count(`SELECT COUNT(*) FROM "Membership" WHERE "orgId" <> $1`, [HELD_ORG]);
+    const kept = await db.count(
+      `SELECT COUNT(*) FROM "Membership" m JOIN "Organisation" o ON o.id = m."orgId" WHERE m."orgId" <> $1 AND o."setupStage" = 'live'`,
+      [HELD_ORG],
+    );
+    expect(all).toBeGreaterThan(0);
+    expect(kept).toBe(all);
+  });
+
+  test("an admin command (recruit) is never run for the setting-up club he runs", async ({ request, db }) => {
+    // BOTH is an ADMIN only of the held club, whose fixture is the soonest
+    // upcoming match. Before the fix the blast went to the held club.
+    setDmIntentStub({ bodies: { [RECRUIT]: "recruit_blast" } });
+    const before = await heldJobs(db);
+    const res = await dm(request, BOTH_PHONE, RECRUIT);
+    clearDmIntentStub();
+    expect(res.handled).not.toBe("recruit-dm");
+    expect(await heldJobs(db)).toBe(before);
+    expect(await db.count(`SELECT COUNT(*) FROM "SentNotification" WHERE key LIKE $1`, [`${HELD_MATCH_SOON}:%`])).toBe(0);
+  });
+
+  test("a DM 'in' registers him on the LIVE club's match, never on the setting-up club's fixture", async ({ request, db }) => {
+    const before = await heldJobs(db);
+    await dm(request, BOTH_PHONE, "in");
+    expect(await heldAttendance(db)).toBe(0);
+    expect(await heldJobs(db)).toBe(before);
+    expect(await db.count(`SELECT COUNT(*) FROM "Attendance" WHERE "userId" = $1`, [BOTH])).toBe(1);
+    expect((await lastDmTo(db, BOTH_PHONE))?.orgId).toBe(ORG_ID);
+  });
+
+  test("a question is answered about the LIVE club, though the setting-up club has the latest match", async ({ request, db }) => {
+    const before = await heldJobs(db);
+    const res = await dm(request, BOTH_PHONE, "who is playing this week?");
+    expect(res.handled).toBe("dm-qa");
+    expect(await heldJobs(db)).toBe(before);
+    expect((await lastDmTo(db, BOTH_PHONE))?.orgId).toBe(ORG_ID);
+  });
+
+  test("help is answered for the live club too", async ({ request, db }) => {
+    const before = await heldJobs(db);
+    const res = await dm(request, BOTH_PHONE, "help");
+    expect(res).toMatchObject({ handled: "dm-help", orgId: ORG_ID, audience: "player" });
+    expect(await heldJobs(db)).toBe(before);
+  });
+});
+
+test.describe("review fix 1: closing an unfinished reading at go-live", () => {
+  test("closeUnfinishedSetupLearning against a real Postgres, inside a transaction (tsx)", async () => {
+    test.setTimeout(120_000);
+    const { stdout, stderr } = await execFileAsync("npx", ["tsx", "e2e/helpers/club-setup-lib-tests.ts"], {
+      cwd: REPO_ROOT,
+      env: process.env,
+      timeout: 110_000,
+    }).catch((err: Error & { stdout?: string; stderr?: string }) => {
+      throw new Error(`club-setup lib tests failed:\n${err.stdout ?? ""}\n${err.stderr ?? ""}`);
+    });
+    expect(stdout, stderr).toContain("OK");
   });
 });
 
@@ -463,6 +570,41 @@ test.describe("the one thing it may do: have its chat read", () => {
     const report = await sweep(request);
     expect(report.outcomes.find((o) => o.orgId === HELD_ORG)).toBeUndefined();
     expect((await aiSpend(db))[0].calls).toBe(1);
+  });
+
+  test("review fix 1: once it has gone live it is never read again, even with a reading still owed", async ({ request, db }) => {
+    // A second club: its reading was deferred, then its organiser said GO.
+    const LATE = "e2e-setup-late";
+    await db.run(
+      `INSERT INTO "Organisation" ("id","name","slug","inviteCode","approvalStatus","approvedAt","whatsappGroupId",
+         "whatsappBotEnabled","setupStage","liveAt","liveBy","language","createdAt","updatedAt")
+       VALUES ($1,'Late FC',$1,$2,'approved',now() - interval '2 hours','120363900000000072@g.us',true,'live',
+         now() - interval '10 minutes','whatsapp:447700900975','en',now(),now())`,
+      [LATE, `${LATE}-invite`],
+    );
+    await user(db, `${LATE}-owner`, "Lena Late", "+447700900975");
+    await member(db, `${LATE}-owner`, LATE, "OWNER");
+    await db.run(
+      `INSERT INTO "ClubConnect" ("id","orgId","userId","phone","code","status","expiresAt","groupId","groupSubject","linkedAt",
+         "capturedHistory","updatedAt")
+       VALUES ($1,$2,$3,'447700900975','7LT2','closed',now() + interval '1 hour','120363900000000072@g.us','Late Tuesday 6s',
+         now() - interval '3 hours',$4::jsonb,now())`,
+      [`${LATE}-cc`, LATE, `${LATE}-owner`, JSON.stringify(rolling.history)],
+    );
+    await db.run(
+      `INSERT INTO "ClubSetupLearning" (id,"orgId",status,reason,attempts,"updatedAt") VALUES ($1,$2,'deferred','model-error',1,now() - interval '15 minutes')`,
+      [`${LATE}-learning`, LATE],
+    );
+    const report = await sweep(request);
+    expect(report.outcomes.find((o) => o.orgId === LATE)).toBeUndefined();
+    expect(
+      await db.one(`SELECT "rollingSquadEnabled" FROM "Organisation" WHERE id = $1`, [LATE]),
+    ).toEqual({ rollingSquadEnabled: false });
+    expect(await db.one(`SELECT status, attempts FROM "ClubSetupLearning" WHERE "orgId" = $1`, [LATE])).toEqual({
+      status: "deferred",
+      attempts: 1,
+    });
+    expect(await db.count(`SELECT COUNT(*) FROM "OrgAiUsage" WHERE "orgId" = $1`, [LATE])).toBe(0);
   });
 
   test("its organiser's DMs are still refused after the reading, and still spend nothing", async ({ request, db }) => {

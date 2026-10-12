@@ -134,6 +134,24 @@ describe("computeSilentGroups", () => {
     expect(out).toEqual([]);
   });
 
+  it("DOCUMENTS CURRENT BEHAVIOUR (not a decision): a setting-up club's players' group that is ALSO some club's admin group is NOT silent", () => {
+    // The admin-group rule wins. The Pi is then told this group is an admin
+    // group (loadAdminGroups), so it forwards each message to the
+    // admin-group route and posts that route's replies there. No code path
+    // creates this state today (linkAdminGroup refuses a club's own group,
+    // and the group add refuses a linked admin group); a later slice
+    // decides what should happen if data ever holds it.
+    const out = computeSilentGroups({
+      unapprovedOrgGroups: [],
+      unapprovedConnectGroups: [],
+      unsolicitedGroups: [],
+      approvedOrgGroups: [SUTTON_GROUP],
+      adminGroups: ["g-players-and-hq"],
+      settingUpOrgGroups: ["g-players-and-hq"],
+    });
+    expect(out).toEqual([]);
+  });
+
   it("blank ids are dropped", () => {
     expect(
       computeSilentGroups({

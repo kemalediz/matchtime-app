@@ -397,6 +397,9 @@ export type KeptReason =
   /** The club was setting up when it was read and had gone live by the
    *  write (run.ts): a late reading changes nothing. */
   | "went-live"
+  /** The club stopped being approved (it was suspended) between the read
+   *  and the write (run.ts): nothing is changed. */
+  | "no-longer-approved"
   | `invalid:${WeeklyDeadlineError}`;
 export interface KeptItem {
   key: LearnedKey;

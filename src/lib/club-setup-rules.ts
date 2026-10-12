@@ -15,10 +15,11 @@
  * (Sutton FC, and the self-join clubs already approved) is live with no
  * backfill, and none of the rails below ever matches it.
  *
- * ONE WRITER. Nothing outside this file and `club-setup.ts` may use
- * `setupStage` as an object key, except `setupStage: true` in a select or
- * a type annotation (`__tests__/club-setup-source-guard.test.ts`). Other
- * modules spread the fragments below and call `isClubSettingUp`.
+ * ONE HOME. Outside this file and `club-setup.ts` the column's name does
+ * not appear at all in `src/` or `scripts/`: not as a key, not in a read,
+ * not in SQL, not in a comment (`__tests__/club-setup-source-guard.test.ts`).
+ * Other modules spread the fragments below, select `SETUP_STAGE_SELECT`,
+ * type a row with `SetupStageColumns`, and call the predicates.
  *
  * THE RAILS ARE KEYED ON THE STATE, NOT ON THE FLAG. `SETUP_HOLD_ENABLED`
  * decides only whether an approval PUTS a club into setting-up (slice S3).
@@ -29,8 +30,8 @@
  */
 import { APPROVED_CLUB_WHERE, isClubApproved } from "./club-approval-state";
 
-export const SETUP_STAGES = ["live", "setting-up"] as const;
-export type SetupStage = (typeof SETUP_STAGES)[number];
+// The column holds "live" or "setting-up" and nothing else: a CHECK
+// constraint (prisma/sql/org-setup-check.sql) refuses any other value.
 
 // ── The flag ────────────────────────────────────────────────────────────
 
@@ -58,20 +59,54 @@ export const SETTING_UP_CLUB_WHERE = { ...APPROVED_CLUB_WHERE, setupStage: "sett
 export const LIVE_STAGE_WHERE = { setupStage: "live" } as const;
 
 /**
- * "MatchTime may read this club's chat": the bot is on, or the club is
- * approved and setting up (its bot is off by the CHECK constraint). Never
- * "any club whose bot is off": a muted live club is not matched. For the
- * setup-learning sweep; put it under `AND: [...]` when the query already
- * has an `OR` of its own.
+ * The same, for a MEMBERSHIP query: "the member's club is not held". THE
+ * DM PATH'S ONE RULE (review of PR #232, fix 2): a setting-up club does
+ * not exist for club selection. Every handler in dm-reply that picks a
+ * club from a person's memberships spreads this, so someone who is in a
+ * live club and a setting-up one is handled for the live club only. Every
+ * existing club's stage is live, so with no club setting up the fragment
+ * removes nobody.
  */
-export const BOT_ON_OR_SETTING_UP_WHERE: {
-  OR: Array<{ whatsappBotEnabled: true } | typeof SETTING_UP_CLUB_WHERE>;
+export const IN_LIVE_STAGE_CLUB_WHERE = { org: LIVE_STAGE_WHERE } as const;
+
+/**
+ * "Never held": the club has no go-live stamp. `liveAt` is written only
+ * when a club leaves setting-up, so it is NULL for every club that never
+ * passed through the hold (every club that exists today).
+ */
+export const NEVER_HELD_WHERE = { liveAt: null } as const;
+
+/**
+ * "The setup-learning sweep may read this club's chat": the bot is on AND
+ * the club was never held, OR the club is approved and setting up (its bot
+ * is off by the CHECK constraint).
+ *
+ * The first half is today's rule for every club that exists. A club that
+ * HAS been through the hold is read only while it is still setting up:
+ * once its organiser has said GO, the hello has told the group how the
+ * club runs, and no reading, however late, may change that (review of PR
+ * #232, fix 1). Never "any club whose bot is off": a muted live club is
+ * not matched. Put it under `AND: [...]` when the query has an `OR` of its
+ * own.
+ */
+export const SETUP_READABLE_CLUB_WHERE: {
+  OR: Array<{ whatsappBotEnabled: true; liveAt: null } | typeof SETTING_UP_CLUB_WHERE>;
 } = {
-  OR: [{ whatsappBotEnabled: true }, SETTING_UP_CLUB_WHERE],
+  OR: [{ whatsappBotEnabled: true, ...NEVER_HELD_WHERE }, SETTING_UP_CLUB_WHERE],
 };
 
 /** The two columns `isClubSettingUp` needs. Spread into a `select`. */
 export const SETUP_STAGE_SELECT = { approvalStatus: true, setupStage: true } as const;
+
+/**
+ * A row read with `SETUP_STAGE_SELECT`. The stage is OPTIONAL on purpose:
+ * a row read without it is "not setting up", which is today's behaviour
+ * and, for the AI budget, the $0 side.
+ */
+export interface SetupStageColumns {
+  approvalStatus: string | null | undefined;
+  setupStage?: string | null | undefined;
+}
 
 /**
  * The fields an approval that HOLDS the club writes beside the approved
@@ -92,11 +127,28 @@ export function settingUpClubFields(): { setupStage: "setting-up" } {
  * stage (an older select) is not setting up either, so a caller that
  * forgot the column gets today's behaviour, never a new exception.
  */
-export function isClubSettingUp(org: {
-  approvalStatus: string | null | undefined;
-  setupStage?: string | null | undefined;
-}): boolean {
+export function isClubSettingUp(org: SetupStageColumns): boolean {
   return isClubApproved(org) && org.setupStage === "setting-up";
+}
+
+/**
+ * Has this club been through the hold and come out? True once `liveAt` is
+ * set. False for every club that exists today, and for a row read without
+ * the column.
+ */
+export function hasGoneLive(org: { liveAt?: Date | null | undefined }): boolean {
+  return org.liveAt !== null && org.liveAt !== undefined;
+}
+
+/**
+ * Club selection when the caller could not filter in its query (the DM
+ * help, which must still answer someone whose ONLY club is setting up):
+ * the rows whose club is not setting up, or every row when that would
+ * leave none. With no club setting up it returns the rows as they were.
+ */
+export function preferLiveClubs<T>(rows: T[], clubOf: (row: T) => SetupStageColumns): T[] {
+  const live = rows.filter((r) => !isClubSettingUp(clubOf(r)));
+  return live.length > 0 ? live : rows;
 }
 
 /**
@@ -105,8 +157,6 @@ export function isClubSettingUp(org: {
  * setting up? False for a sender with no served club (that is the approval
  * and billing rails' business) and for anyone with a live club beside it.
  */
-export function settingUpOnly(
-  servedClubs: Array<{ approvalStatus: string | null | undefined; setupStage?: string | null | undefined }>,
-): boolean {
+export function settingUpOnly(servedClubs: SetupStageColumns[]): boolean {
   return servedClubs.length > 0 && servedClubs.every(isClubSettingUp);
 }
