@@ -430,8 +430,9 @@ export default function SettingsPage() {
         </div>
       </section>
 
-      {/* Bot language */}
-      <section className="bg-white rounded-xl border border-slate-200 shadow-sm">
+      {/* Bot language. The id is where the learned-setup panel's
+          "Change the language" button lands (setup-learning/suggestion-action.ts). */}
+      <section id="bot-language" className="bg-white rounded-xl border border-slate-200 shadow-sm scroll-mt-6">
         <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
           <Languages className="w-4 h-4 text-slate-500" />
           <h2 className="font-semibold text-slate-800">Bot language</h2>

@@ -3163,9 +3163,30 @@ export const en = {
   settings_learned_changed_since: "Changed since",
   settings_learned_undo_failed: "Couldn't undo that",
   settings_learned_from: "From messages like",
-  settings_learned_check_head: "Worth a check (nothing changed)",
-  /** Under the "organisers pick" suggestion on /admin/settings: jumps to the setting. */
-  settings_learned_open_setting: "Go to the setting",
+  /** The heading of the attention block over the suggestions on
+   *  /admin/settings: how many there are. */
+  settings_learned_check_count: (p: { count: number }): string =>
+    p.count === 1 ? `1 thing to check` : `${p.count} things to check`,
+  /** Under that heading: these are suggestions, changed nowhere. */
+  settings_learned_check_sub:
+    "MatchTime changed nothing for these. Have a look, and change them yourself if the chat is right.",
+  /** The button on each suggestion, by kind: it says what it does and
+   *  goes where the organiser's DM sends them for that kind. The quoted
+   *  name is wr_pick_organiser, the option on /admin/settings. */
+  settings_learned_action: (p: {
+    key: "weeklyGameDay" | "weeklyGameTime" | "venue" | "format" | "language" | "organiserPicks";
+  }): string =>
+    p.key === "organiserPicks"
+      ? `Switch on "The organisers pick"`
+      : p.key === "weeklyGameDay"
+        ? `Change game day`
+        : p.key === "weeklyGameTime"
+          ? `Change kickoff time`
+          : p.key === "venue"
+            ? `Change the pitch`
+            : p.key === "format"
+              ? `Change players a side`
+              : `Change the language`,
   /** Over the patterns the chat showed that MatchTime switched nothing
    *  for. Today that is only the monthly list, which HAS a setting
    *  (Settings, Monthly squad), so this must not say there is none. */
