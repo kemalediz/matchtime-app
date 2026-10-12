@@ -206,7 +206,7 @@ test("Mon 21:05: the organisers get the summary once; preview never sends it; Su
       "Drop-out deadline passed for *Friday 9-a-side* (Fri 15 Jan at 20:30). Squad 3/18.",
       "Out this week: Dan Dropped.",
       "Said maybe: Raihan Ahmed.",
-      "Waiting list: Ali Demir.",
+      "On the bench: Ali Demir.",
       "15 places open.",
     ].join("\n"),
   );
@@ -240,7 +240,7 @@ test("Tue 20:05: the final list in the group; not before; Sutton gets none", asy
       "2. Raihan Ahmed",
       "3. Wasim Ali",
       "",
-      "*Waiting list (1):*",
+      "*Bench (1):*",
       "1. Ali Demir",
       "",
       "15 places still open.",

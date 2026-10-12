@@ -1886,7 +1886,7 @@ Type *"@Match Time help"* any time to see this again.
 ### R142 buildHelpReply / availability
 ⚽ *Squad & availability: how it works*
 Just say *In* or *Out* in the group to mark yourself for the next game. No need to tag me, I read it automatically.
-I keep a live, numbered squad list. When it's full, extra players go on the *bench/reserve* list in order. Not sure yet? Say *"maybe"* and I'll DM you ~24h before kick-off for a final answer.
+I keep a live, numbered squad list. When it's full, extra players go on the *bench* in order. Not sure yet? Say *"maybe"* and I'll DM you ~24h before kick-off for a final answer.
 If you drop out, I can nudge the bench to step in so we're never short. Say *Out* any time and I'll sort the rest.
 
 ### R142 buildHelpReply / teams
@@ -2775,7 +2775,7 @@ Adam Admin, I've sent you a private link to your admin page, where player names,
 
 Type *"@Match Time help"* any time to see this again.
 
-Tip: to carry the squad over each week, to pick replacements from a waiting list yourself, or to get admin messages in your admins' group, open Settings on the website.
+Tip: to carry the squad over each week, to pick replacements from the bench yourself, or to get admin messages in your admins' group, open Settings on the website.
 
 ### R140 buildGroupAddCompletionPost / one person, two co-admins, no DM, no name
 ✅ *All set!* I'm live for *Tuesday Ballers FC* with: *Attendance tracking, Bench management, Team generation, Man of the Match, Player ratings, Personal reminders*.
@@ -2801,7 +2801,7 @@ Whoever runs this group can claim the admin page any time at matchtime.ai. Every
 
 Type *"@Match Time help"* any time to see this again.
 
-Tip: to carry the squad over each week, to pick replacements from a waiting list yourself, or to get admin messages in your admins' group, open Settings on the website.
+Tip: to carry the squad over each week, to pick replacements from the bench yourself, or to get admin messages in your admins' group, open Settings on the website.
 
 ### R140 buildGroupAddCompletionPost / everything, one-off, empty roster, one co-admin
 ✅ *All set!* I'm live for *Tuesday Ballers FC* with: *Attendance tracking, Bench management, Team generation, Man of the Match, Player ratings, Personal reminders, Stats answers, Payment tracking*.
@@ -2826,7 +2826,7 @@ Admin, I've sent you a private link to your admin page, where player names, rati
 
 Type *"@Match Time help"* any time to see this again.
 
-Tip: to carry the squad over each week, to pick replacements from a waiting list yourself, or to get admin messages in your admins' group, open Settings on the website.
+Tip: to carry the squad over each week, to pick replacements from the bench yourself, or to get admin messages in your admins' group, open Settings on the website.
 
 ### R140 buildGroupAddCompletionPost / no group name
 ✅ *All set!* I'm live for *this group* with: *Attendance tracking, Bench management, Team generation, Man of the Match, Player ratings, Personal reminders*.
@@ -2850,7 +2850,7 @@ Whoever runs this group can claim the admin page any time at matchtime.ai. Every
 
 Type *"@Match Time help"* any time to see this again.
 
-Tip: to carry the squad over each week, to pick replacements from a waiting list yourself, or to get admin messages in your admins' group, open Settings on the website.
+Tip: to carry the squad over each week, to pick replacements from the bench yourself, or to get admin messages in your admins' group, open Settings on the website.
 
 ### R140 buildLegacyCompletionPost / weekly
 ✅ *Hazırız!* Bu grup için şu özelliklerle çalışıyorum: *Yoklama, Yedek listesi, Takım kurma, Maçın adamı, Oyuncu puanları, Hatırlatmalar*.
@@ -3339,7 +3339,7 @@ Süper, *Tuesday Ballers FC* hazır: takım başına *7* oyuncu, *her Salı 21:0
 Son adım: hangi özellikleri istiyorsunuz? Yapabildiklerimin hepsi burada:
 
 1. *Yoklama*: VARIM ve YOKUM mesajlarını okur, kadro listesini tutar, eksik kalınca hatırlatır.
-2. *Yedek listesi*: Kadro dolunca gelenleri sıraya alır; biri çıkınca açılan yeri yedeklere sorar.
+2. *Yedek listesi*: Kadro dolunca gelenleri yedeğe yazar; biri çıkınca açılan yeri yedeklere sorar.
 3. *Takım kurma*: İstenince dengeli iki takım kurar.
 4. *Maçın adamı*: Maçtan sonra maçın adamı oylamasını açar, kazananı duyurur.
 5. *Oyuncu puanları*: Her oyuncuya maçtan sonra kısa bir puanlama linki gönderir.
@@ -3357,7 +3357,7 @@ Son adım: hangi özellikleri istiyorsunuz? Yapabildiklerimin hepsi burada:
 Hangilerini seçtiğinizi anlayamadım, istediğiniz özellikleri yazın:
 
 1. *Yoklama*: VARIM ve YOKUM mesajlarını okur, kadro listesini tutar, eksik kalınca hatırlatır.
-2. *Yedek listesi*: Kadro dolunca gelenleri sıraya alır; biri çıkınca açılan yeri yedeklere sorar.
+2. *Yedek listesi*: Kadro dolunca gelenleri yedeğe yazar; biri çıkınca açılan yeri yedeklere sorar.
 3. *Takım kurma*: İstenince dengeli iki takım kurar.
 4. *Maçın adamı*: Maçtan sonra maçın adamı oylamasını açar, kazananı duyurur.
 5. *Oyuncu puanları*: Her oyuncuya maçtan sonra kısa bir puanlama linki gönderir.
