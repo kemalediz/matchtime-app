@@ -947,7 +947,7 @@ export async function loadPendingBillingNotices(
 
 /**
  * Note a billing DM as PENDING (slice B4): a DM that became due at night
- * is not queued for the morning blindly; the 10:00 run re-checks it is
+ * is not queued for the morning blindly; the 09:00 run re-checks it is
  * still true and sends it (`flushPendingBillingNotices`). Once per club,
  * kind and cycle, like every billing notice.
  */
