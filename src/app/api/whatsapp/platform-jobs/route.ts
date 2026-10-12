@@ -8,7 +8,17 @@
  *         unsolicited group that is due (slice 6).
  *         Claim-on-dispatch, as due-posts: the job is marked claimed as it
  *         leaves, so a second poller (a duplicate Pi process) gets nothing
- *         for it. Response: { jobs: PlatformJobInstruction[] }.
+ *         for it. Response: { jobs: PlatformJobInstruction[],
+ *         clubSetVersion?: string }.
+ *
+ *         `clubSetVersion` (2026-10-13) is the stamp of the clubs the Pi
+ *         should serve, monitor or silence, as they are NOW
+ *         (src/lib/club-set-version.ts). It rides here because this is the
+ *         one request the Pi makes every tick. The Pi compares it with
+ *         the stamp its last /orgs refresh carried and refreshes at once
+ *         when they differ, instead of up to five minutes later. An older
+ *         Pi ignores it. One small query per poll; left out, never fatal,
+ *         if it cannot be read.
  *
  *   POST  The outcome of one job:
  *           { id, outcome: "sent", waMessageId? }
@@ -23,6 +33,7 @@ import { NextResponse } from "next/server";
 import { claimDuePlatformJobs, recordPlatformJobOutcome, type PlatformJobOutcome } from "@/lib/platform-jobs";
 import { queueUnsolicitedAutoLeaves } from "@/lib/group-add";
 import { selfJoinEnabledForApiRequest } from "@/lib/self-join-flag";
+import { loadClubSetVersion } from "@/lib/club-set-version";
 
 function authorised(request: Request): boolean {
   return request.headers.get("x-api-key") === process.env.WHATSAPP_API_KEY;
@@ -45,7 +56,14 @@ export async function GET(request: Request) {
   if (jobs.length > 0) {
     console.log(`[platform-jobs] handed out ${jobs.length}: ${jobs.map((j) => `${j.kind}:${j.id}`).join(", ")}`);
   }
-  return NextResponse.json({ jobs });
+  // Never allowed to cost the poll its jobs: they are already claimed.
+  let clubSetVersion: string | null = null;
+  try {
+    clubSetVersion = await loadClubSetVersion();
+  } catch (err) {
+    console.error("[platform-jobs] club set version could not be read; none sent this time:", (err as Error)?.name ?? "error");
+  }
+  return NextResponse.json({ jobs, ...(clubSetVersion ? { clubSetVersion } : {}) });
 }
 
 export async function POST(request: Request) {

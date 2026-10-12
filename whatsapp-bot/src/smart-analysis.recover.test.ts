@@ -20,6 +20,7 @@ vi.mock("./api.js", () => ({
 
 const {
   recoverGroupMessages,
+  isRecoverySweepRunning,
   resolveRecoveryWindow,
   recordHistory,
   _test_flushNow,
@@ -174,6 +175,64 @@ describe("recoverGroupMessages reads the group without getChatById", () => {
     }
     expect(errs.join("\n")).toContain("message-recovery");
     expect(_test_getInboundStats().buffered).toBe(0);
+  });
+
+  // 2026-10-13. A club that has just gone live: its group was deliberately
+  // not listened to before that instant, and the messages between go-live
+  // and the Pi's refresh were dropped. The catch-up reads the second lot
+  // back and must never feed the first.
+  it("a floor per group: nothing from BEFORE it is replayed or shown to the model as context, everything from it on is", async () => {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const liveAtSec = nowSec - 120;
+    const { client } = clientWithBrokenGetChat([
+      pageMessage("BEFORE-1", "in", liveAtSec - 600),
+      pageMessage("BEFORE-2", "who is playing tuesday", liveAtSec - 1),
+      pageMessage("AT", "In", liveAtSec),
+      pageMessage("AFTER", "in please", liveAtSec + 45),
+    ]);
+    postAnalyzeFull.mockClear();
+    postAnalyzeFull.mockResolvedValue({ results: [], nextKickoffMs: null });
+    await recoverGroupMessages(asClient(client), [GID], undefined, {
+      notBeforeMs: (gid) => (gid === GID ? liveAtSec * 1000 : null),
+    });
+    expect(_test_getInboundStats().buffered).toBe(2);
+    await _test_flushNow(GID);
+    const sent = postAnalyzeFull.mock.calls[0][0] as { messages: Array<{ body: string }>; history: Array<{ body: string }> };
+    expect(sent.messages.map((m) => m.body)).toEqual(["In", "in please"]);
+    // Not as a message, and not as "recent chat" either.
+    expect(sent.history.map((h) => h.body)).toEqual(["In", "in please"]);
+    expect(JSON.stringify(sent)).not.toContain("who is playing tuesday");
+  });
+
+  it("a floor that is not a whole second: a message in the same second but before it is still left out", async () => {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const liveAtMs = (nowSec - 60) * 1000 + 700;
+    const { client } = clientWithBrokenGetChat([
+      pageMessage("SAME-SECOND", "in", nowSec - 60), // stamped :00, go-live was :00.7
+      pageMessage("NEXT-SECOND", "in", nowSec - 59),
+    ]);
+    await recoverGroupMessages(asClient(client), [GID], undefined, { notBeforeMs: () => liveAtMs });
+    expect(_test_getInboundStats().buffered).toBe(1);
+  });
+
+  it("no floor for a group (null, or no option at all) is exactly the catch-up it always was", async () => {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const page = [pageMessage("AAA", "In", nowSec - 30 * 60), pageMessage("BBB", "in for tuesday", nowSec - 10 * 60)];
+    await recoverGroupMessages(asClient(clientWithBrokenGetChat(page).client), [GID], undefined, { notBeforeMs: () => null });
+    expect(_test_getInboundStats().buffered).toBe(2);
+    _test_reset();
+    await recoverGroupMessages(asClient(clientWithBrokenGetChat(page).client), [GID]);
+    expect(_test_getInboundStats().buffered).toBe(2);
+  });
+
+  it("says whether a sweep is running, so a catch-up that must not be skipped can wait for it", async () => {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const { client } = clientWithBrokenGetChat([pageMessage("AAA", "In", nowSec - 60)], { evaluateDelayMs: 20 });
+    expect(isRecoverySweepRunning()).toBe(false);
+    const sweep = recoverGroupMessages(asClient(client), [GID]);
+    expect(isRecoverySweepRunning()).toBe(true);
+    await sweep;
+    expect(isRecoverySweepRunning()).toBe(false);
   });
 
   it("refuses to run two sweeps at once (a repeat `ready` after a re-inject)", async () => {

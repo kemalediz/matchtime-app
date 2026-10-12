@@ -1060,6 +1060,7 @@ export async function recoverGroupMessages(
   driver: WaDriver,
   groupIds: string[],
   window: RecoveryWindow = resolveRecoveryWindow(process.env),
+  opts: RecoveryOptions = {},
 ): Promise<void> {
   // `ready` is not once-only: whatsapp-web.js re-injects on every page
   // navigation and emits it again (two `ready` lines under one PID on
@@ -1083,12 +1084,22 @@ export async function recoverGroupMessages(
         // newest-first hands both of them the evening backwards.
         const msgs = [...fetched].sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0));
         let queued = 0;
+        let beforeFloor = 0;
         let oldestSec = Number.POSITIVE_INFINITY;
+        // A club that has just gone live (2026-10-13): nothing from before
+        // that instant is fed, neither as a message nor as recent chat.
+        // The group was deliberately not listened to until then. Null or
+        // absent for every other group: the catch-up it always was.
+        const floorMs = opts.notBeforeMs?.(gid) ?? null;
         for (const m of msgs) {
           const ts = m.timestamp ?? 0;
           if (ts > 0 && ts < oldestSec) oldestSec = ts;
           if (m.fromMe) continue;
           if (ts < cutoffSec) continue;
+          if (floorMs !== null && ts * 1000 < floorMs) {
+            beforeFloor++;
+            continue;
+          }
           // ── THE REPLAY IS NOT ITS OWN CONTEXT UNLESS WE MAKE IT SO ────
           //
           // The live `message` handler (index.ts) records every inbound
@@ -1122,7 +1133,8 @@ export async function recoverGroupMessages(
         }
         console.log(
           `[recover-group] ${gid}: fetched ${msgs.length}, re-queued ${queued} from the last ` +
-            `${window.lookbackHours}h (limit ${window.fetchLimit}) for catch-up`,
+            `${window.lookbackHours}h (limit ${window.fetchLimit}) for catch-up` +
+            (floorMs !== null ? `; ${beforeFloor} left out as older than the club's go-live` : ""),
         );
         // The page hands back the NEWEST `limit` messages. If that many all
         // fall inside the window, older ones inside it were never seen.
@@ -1148,6 +1160,24 @@ export async function recoverGroupMessages(
 }
 
 let recoverySweepInFlight = false;
+
+/**
+ * Is a catch-up sweep running? A second call while one runs is skipped
+ * (see above), so a caller that must not be skipped waits for this to be
+ * false first (index.ts, the catch-up for a newly live group).
+ */
+export function isRecoverySweepRunning(): boolean {
+  return recoverySweepInFlight;
+}
+
+export interface RecoveryOptions {
+  /**
+   * A per-group floor, in epoch milliseconds: messages stamped before it
+   * are not replayed. For a club that has just gone live this is its
+   * go-live time (org-refresh.ts, `catchUpTargets`). Null: no floor.
+   */
+  notBeforeMs?(groupId: string): number | null | undefined;
+}
 
 /** How far back the catch-up reaches, and how many messages it may ask for. */
 export interface RecoveryWindow {

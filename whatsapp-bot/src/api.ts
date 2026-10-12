@@ -2,6 +2,7 @@ import { config } from "./config.js";
 import type { HeartbeatPayload } from "./heartbeat.js";
 import type { BotRemovedResponse } from "./bot-added.js";
 import { refuseServerWriteInShadow } from "./shadow.js";
+import { notePolledClubSetVersion, parseClubSetVersion } from "./org-refresh.js";
 
 const headers = {
   "Content-Type": "application/json",
@@ -249,6 +250,13 @@ export async function getPlatformJobs(): Promise<PlatformJob[] | null> {
     }
     platformJobs404Logged = false;
     const body = (await res.json()) as { jobs?: unknown };
+    // The server's club set stamp rides on this poll (2026-10-13): the one
+    // request made every tick whatever the clubs' switches say. The
+    // scheduler compares it with the stamp of the snapshot in use
+    // (org-refresh.ts, `refreshIfClubSetChanged`). An older server sends
+    // none, which is recorded as none. A poll that failed never gets here,
+    // so the last stamp stands.
+    notePolledClubSetVersion(parseClubSetVersion(body));
     return Array.isArray(body?.jobs) ? (body.jobs as PlatformJob[]) : [];
   } catch (err) {
     console.error("[platform] could not reach platform-jobs:", err instanceof Error ? err.message : err);

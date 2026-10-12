@@ -27,6 +27,9 @@ vi.mock("@/lib/group-add", () => ({
   queueUnsolicitedAutoLeaves: (...a: unknown[]) => groupAdd.queueUnsolicitedAutoLeaves(...a),
 }));
 
+const versionMock = vi.hoisted(() => ({ loadClubSetVersion: vi.fn() }));
+vi.mock("@/lib/club-set-version", () => ({ loadClubSetVersion: () => versionMock.loadClubSetVersion() }));
+
 import { GET, POST } from "../route";
 
 const ENV = process.env.WHATSAPP_API_KEY;
@@ -51,7 +54,46 @@ beforeEach(() => {
   ]);
   libMock.recordPlatformJobOutcome.mockResolvedValue({ updated: true });
   groupAdd.queueUnsolicitedAutoLeaves.mockResolvedValue({ queued: 0, markedLeft: 0 });
+  versionMock.loadClubSetVersion.mockResolvedValue("0123456789abcdef");
   delete process.env.SELF_JOIN_ENABLED;
+});
+
+// 2026-10-13: the one request the Pi makes every tick also tells it
+// whether the clubs it should serve, monitor or silence have changed.
+describe("GET: the club set version", () => {
+  const get = () => GET(new Request("http://x/api/whatsapp/platform-jobs", { headers: { "x-api-key": KEY } }));
+
+  it("rides on the poll, beside the jobs, which are exactly what they were", async () => {
+    const body = await (await get()).json();
+    expect(body.clubSetVersion).toBe("0123456789abcdef");
+    expect(body.jobs).toEqual([
+      { id: "pj1", kind: "dm", phone: "447700900123", text: "code", purpose: "otp" },
+      { id: "pj2", kind: "leave-group", groupId: "g1" },
+    ]);
+    expect(Object.keys(body).sort()).toEqual(["clubSetVersion", "jobs"]);
+  });
+
+  it("is on a poll with no jobs too: that is the usual poll", async () => {
+    libMock.claimDuePlatformJobs.mockResolvedValue([]);
+    expect(await (await get()).json()).toEqual({ jobs: [], clubSetVersion: "0123456789abcdef" });
+  });
+
+  it("NEVER costs the poll its jobs: they are already claimed, so a version that cannot be read is simply left out", async () => {
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    versionMock.loadClubSetVersion.mockRejectedValue(new Error("database hiccup"));
+    const res = await get();
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.jobs).toHaveLength(2);
+    expect("clubSetVersion" in body).toBe(false);
+    err.mockRestore();
+  });
+
+  it("a wrong key gets neither jobs nor a version", async () => {
+    const res = await GET(new Request("http://x/api/whatsapp/platform-jobs", { headers: { "x-api-key": "nope" } }));
+    expect(res.status).toBe(401);
+    expect(versionMock.loadClubSetVersion).not.toHaveBeenCalled();
+  });
 });
 afterAll(() => {
   process.env.WHATSAPP_API_KEY = ENV;
@@ -74,6 +116,8 @@ describe("GET", () => {
         { id: "pj1", kind: "dm", phone: "447700900123", text: "code", purpose: "otp" },
         { id: "pj2", kind: "leave-group", groupId: "g1" },
       ],
+      // 2026-10-13: one field more, which an older Pi does not read.
+      clubSetVersion: "0123456789abcdef",
     });
     expect(libMock.claimDuePlatformJobs).toHaveBeenCalledTimes(1);
   });

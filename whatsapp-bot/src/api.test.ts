@@ -142,6 +142,36 @@ describe("platform channel (self-join slice 3)", () => {
     expect(String(fetchMock.mock.calls[0][0])).toMatch(/\/api\/whatsapp\/platform-jobs$/);
   });
 
+  // 2026-10-13: the poll's response carries the server's club set stamp,
+  // which org-refresh.ts compares with the one its snapshot was read at.
+  it("hands the club set stamp on the response to the org refresher; an older server's response has none", async () => {
+    const orgRefresh = await import("./org-refresh.js");
+    orgRefresh._test_resetOrgRefresh();
+    const refresh = vi.fn(async () => {
+      orgRefresh.noteSnapshotClubSetVersion("v2");
+    });
+    orgRefresh.setOrgRefresher(refresh);
+    orgRefresh.noteSnapshotClubSetVersion("v1");
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    fetchMock.mockResolvedValue(res(200, { jobs: [] }));
+    expect(await getPlatformJobs()).toEqual([]);
+    expect(await orgRefresh.refreshIfClubSetChanged()).toBe("no-stamp");
+
+    fetchMock.mockResolvedValue(res(200, { jobs: [], clubSetVersion: "v2" }));
+    expect(await getPlatformJobs()).toEqual([]);
+    expect(await orgRefresh.refreshIfClubSetChanged()).toBe("refreshed");
+    expect(refresh).toHaveBeenCalledTimes(1);
+
+    // A poll that fails says nothing about the clubs: the last stamp stands.
+    fetchMock.mockResolvedValueOnce(res(500, { error: "boom" }));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(await getPlatformJobs()).toBeNull();
+    expect(await orgRefresh.refreshIfClubSetChanged()).toBe("unchanged");
+    log.mockRestore();
+    orgRefresh._test_resetOrgRefresh();
+  });
+
   it("an OLDER server's 404 is a quiet no-op, logged once", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     fetchMock.mockResolvedValue(res(404, "not found"));
