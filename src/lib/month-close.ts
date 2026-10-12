@@ -38,6 +38,7 @@ import { db } from "./db";
 import { sendAdminNotice } from "./admin-channel";
 import { appUrl } from "./app-url";
 import { isClubOperational } from "./club-approval-state";
+import { SETUP_STAGE_SELECT, isClubSettingUp } from "./club-setup-rules";
 import { formatLondon, londonDateTimeToUtc } from "./london-time";
 import { hasMatchForSlot, isSameRecurringFixture, type RecurringFixtureKey } from "./match-slot";
 import { buildLeaverNotice, buildMidMonthJoinDm, buildMidMonthJoinNotice, buildMonthSummaryNotice, buildShareChangeNotice } from "./month-close-copy";
@@ -1260,9 +1261,13 @@ export async function sweepMonthClose(orgId: string, now: Date = new Date()): Pr
     if (!(await claimHourly(orgId, now))) return [];
     const org = await db.organisation.findUnique({
       where: { id: orgId },
-      select: { squadMode: true, approvalStatus: true, dormantAt: true, billingStatus: true },
+      select: { squadMode: true, dormantAt: true, billingStatus: true, ...SETUP_STAGE_SELECT },
     });
-    if (!org || normaliseSquadMode(org.squadMode) !== "monthly" || !isClubOperational(org)) return [];
+    // Belt and braces (PR #234 review, fix 4): this sweep is only ever
+    // called from due-posts, which refuses a club whose bot is off, so a
+    // club that is still setting up cannot reach it today. Should a cron
+    // ever call it, such a club is skipped here too.
+    if (!org || normaliseSquadMode(org.squadMode) !== "monthly" || !isClubOperational(org) || isClubSettingUp(org)) return [];
     const months = await loadCloseMonths(orgId);
     if (months.length === 0) {
       // Nothing open, but a summary may still be owed for a month just closed.

@@ -110,6 +110,10 @@ export async function announcePaymentsLiveIfJustLive(
     if (!org || !isPaymentCollectionLive(org)) return { announced: false, reason: "not-live" };
     // No group to speak in, or the bot is switched off for it: say
     // nothing and leave the key unspent, so the club is told when it is.
+    // A club that is approved but still setting up lands here too. Its
+    // turn comes at go-live: `goLiveClub` (club-setup.ts) claims this key
+    // in the go-live transaction, because the group hello states the pay
+    // links, or queues this announcement after the hello when it does not.
     if (!org.whatsappGroupId || !org.whatsappBotEnabled) return { announced: false, reason: "no-group" };
 
     try {

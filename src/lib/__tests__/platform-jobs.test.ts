@@ -241,15 +241,52 @@ describe("claimDuePlatformJobs: claim-on-dispatch", () => {
     });
   });
 
-  it("only reads queued jobs that are due", async () => {
+  it("only reads queued jobs that are due: sign-up codes in one read, everything else in another", async () => {
     dbMock.platformJob.findMany.mockResolvedValue([]);
     await claimDuePlatformJobs({ now: NOW, kinds: ["dm"] });
-    const where = dbMock.platformJob.findMany.mock.calls[0][0].where;
-    expect(where).toEqual({
+    const due = {
       status: "queued",
       kind: { in: ["dm"] },
       OR: [{ sendAfter: null }, { sendAfter: { lte: NOW } }],
-    });
+    };
+    expect(dbMock.platformJob.findMany).toHaveBeenCalledTimes(2);
+    expect(dbMock.platformJob.findMany.mock.calls[0][0].where).toEqual({ ...due, purpose: "otp" });
+    expect(dbMock.platformJob.findMany.mock.calls[1][0].where).toEqual({ ...due, purpose: { not: "otp" } });
+    for (const call of dbMock.platformJob.findMany.mock.calls) {
+      expect(call[0].orderBy).toEqual({ createdAt: "asc" });
+      expect(call[0].take).toBe(50);
+    }
+  });
+
+  // PR #234 review, fix 1c. The read used to take the 50 OLDEST queued
+  // rows and only then rank codes first, so a backlog of more than 50
+  // older DMs hid a new sign-up code until its ten minutes were up.
+  it("a sign-up code is never starved by a backlog: 60 older queued replies and one new code", async () => {
+    const backlog = Array.from({ length: 60 }, (_, i) =>
+      job({ id: `reply-${i}`, purpose: "setup-reply", createdAt: new Date(NOW.getTime() - (3_600_000 - i * 1000)) }),
+    );
+    const code = job({ id: "code", purpose: "otp", text: "Your code: 123456", createdAt: new Date(NOW.getTime() - 5_000) });
+    // A stand-in for the table that honours the filter, the order and the limit.
+    dbMock.platformJob.findMany.mockImplementation(
+      async (args: { where: { purpose?: string | { not: string } }; take: number }) => {
+        const p = args.where.purpose;
+        return [...backlog, code]
+          .filter((r) => (typeof p === "string" ? r.purpose === p : p ? r.purpose !== p.not : true))
+          .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+          .slice(0, args.take);
+      },
+    );
+    const out = await claimDuePlatformJobs({ now: NOW });
+    expect(out).toHaveLength(MAX_JOBS_PER_POLL);
+    expect(out[0]).toMatchObject({ id: "code", purpose: "otp" });
+    // The rest are still the oldest first.
+    expect(out.slice(1).map((j) => j.id)).toEqual(["reply-0", "reply-1", "reply-2", "reply-3"]);
+  });
+
+  it("a row the two reads both returned is handed out once", async () => {
+    dbMock.platformJob.findMany.mockResolvedValue([job({ id: "a" }), job({ id: "b", purpose: "otp" })]);
+    const out = await claimDuePlatformJobs({ now: NOW });
+    expect(out.map((j) => j.id)).toEqual(["b", "a"]);
   });
 
   it("marks refused jobs failed, with the reason, and does not hand them out", async () => {

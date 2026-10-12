@@ -14,7 +14,13 @@
  *      only while SELF_JOIN_ENABLED is on; deterministic, no model; a DM
  *      with no code, or a code that names no connect request, falls
  *      through untouched. See lib/connect-dm.ts)
- *   0c. organiser pick reply            (2026-10-01, slice 2b: an owner or
+ *   0b-go. GO                           (2026-10-12, go-live slice S4: "GO",
+ *      "GO LIVE", "BAŞLA" from a current owner or admin of a club that is
+ *      approved but still setting up; takes the club live; outside the
+ *      self-join flag; deterministic, no model; the whole message must be
+ *      the command, anything else falls through untouched. See
+ *      lib/setup-go-dm.ts, handleGoDm)
+ *   0c. organiser pick reply           (2026-10-01, slice 2b: an owner or
  *      admin, resolved BY PHONE ONLY, answering a pick round they were
  *      asked on: "2", "Wasim", "NONE", "YES"; deterministic, no model; a DM
  *      that is not a pick reply falls through untouched. See
@@ -60,6 +66,9 @@
 import { withOrgAiBudget } from "@/lib/ai-budget";
 import { handleApproverDm, nonServingClubsReason } from "@/lib/club-approval";
 import { IN_LIVE_STAGE_CLUB_WHERE, settingUpClubsReason } from "@/lib/club-setup";
+import { handleGoDm, handleSettingUpDm } from "@/lib/setup-go-dm";
+import { setupLearningEnabledForRequest } from "@/lib/setup-learning/flag";
+import { billingEnabledForApiRequest } from "@/lib/billing-flag";
 import { billingQuietMatchWhere } from "@/lib/club-billing-rules";
 import { handleConnectDm } from "@/lib/connect-dm";
 import { handleOrganiserPickDm } from "@/lib/organiser-pick";
@@ -138,6 +147,30 @@ export async function POST(request: Request) {
     if (decision) return NextResponse.json({ ok: true, ...decision });
     const connect = await handleConnectDm({ text, phone, senderAltPhone, senderLid, waMessageId });
     if (connect) return NextResponse.json({ ok: true, ...connect });
+  }
+
+  // ── GO: the organiser of a club that is setting up takes it live ───────
+  //   (go-live slice S4, 2026-10-12.) OUTSIDE the self-join flag, so a
+  //   club already setting up can still go live with the flag off, and
+  //   ahead of every handler below. Deterministic, no model. The text is
+  //   checked first (the whole message must be GO, GO LIVE, BAŞLA or
+  //   BASLA), so no other DM costs a query here; and it engages only for a
+  //   current owner or admin, known by phone or a server-stored LID, of a
+  //   club that is setting up, or that has been through setting up and is
+  //   live (they are told "already live"). For everybody else, the admins
+  //   of every club that was never held among them, it returns null and
+  //   the DM carries on exactly as before. See lib/setup-go-dm.ts.
+  {
+    const go = await handleGoDm({
+      text,
+      phone,
+      senderAltPhone,
+      senderLid,
+      waMessageId,
+      learningEnabled: setupLearningEnabledForRequest(request),
+      billingEnabled: billingEnabledForApiRequest(request),
+    });
+    if (go) return NextResponse.json({ ok: true, ...go });
   }
 
   // ── Organiser pick (slice 2b): an admin answering a pick round ─────────
@@ -459,35 +492,57 @@ export async function POST(request: Request) {
   //   through untouched. The self-join commands above never reach here
   //   when they are commands, and the bench-offer reply skips a help
   //   request (see `isHelpRequest` above).
-  if (isHelpRequest) {
+  //
+  //   A sender the setting-up rail stops (below) is answered there instead:
+  //   the same help, on the platform channel.
+  const allClubsSettingUp = (await settingUpClubsReason(user.id)) === "club-setting-up";
+  if (isHelpRequest && !allClubsSettingUp) {
     const { handleDmHelp } = await import("@/lib/dm-help");
     const help = await handleDmHelp({ userId: user.id, text, envelopePhone: phone });
     if (help) return NextResponse.json({ ok: true, ...help });
   }
 
-  // ── Approved but setting up (go-live slice S1, 2026-10-12) ─────────────
+  // ── Approved but setting up (go-live slices S1 and S4, 2026-10-12) ─────
   //   A sender whose every served club is approved but still SETTING UP
-  //   (waiting for its organiser's GO) gets nothing from here on: no model
-  //   call, no reply. Such a club is approved, so the rail above lets it
-  //   through; this is the second rail, ahead of every handler below, the
-  //   model paths among them (payment claim, admin commands, Q&A).
+  //   (waiting for its organiser's GO) goes no further: no handler below
+  //   runs, the model paths among them (payment claim, admin commands,
+  //   Q&A). Such a club is approved, so the rail above lets it through;
+  //   this is the second rail.
   //
-  //   It sits AFTER the deterministic help only so the help request is
-  //   recorded. That reply is NOT delivered today: `handleDmHelp` queues
-  //   it on the club's own channel, which is not dispatched while the
-  //   club's bot is off. The go-live slice moves it to the platform
-  //   channel.
+  //   What such a sender gets is decided in `handleSettingUpDm`
+  //   (lib/setup-go-dm.ts), all of it deterministic and all of it on the
+  //   PLATFORM channel, because the club's own channel is not dispatched
+  //   while its bot is off:
+  //     - a current owner or admin asking for help gets the help;
+  //     - a current owner or admin saying anything else is told that the
+  //       message was not recognised, and how to go live (reply GO, or the
+  //       Go live button, with the settings page's address), up to a cap
+  //       per number that only a flood or an auto-reply loop reaches;
+  //     - a plain member, or a sender known only by display name, gets
+  //       nothing at all.
+  //   GO itself never reaches here: it is handled at the top of the route.
   //
   //   The rail reads the sender's CURRENT memberships (a live club the
   //   person has left does not shield them). A sender who also belongs to
   //   a live club is not caught; for them every club pick below spreads
   //   `IN_LIVE_STAGE_CLUB_WHERE`, so a setting-up club does not exist for
-  //   club selection and they are handled for their live club only. No
-  //   existing club is setting up, so for all of them the rail is one
-  //   read that answers null and the picks below are unchanged.
-  if ((await settingUpClubsReason(user.id)) === "club-setting-up") {
-    console.log(`[dm-reply] sender ${user.id} belongs only to clubs that are still setting up; ignoring`);
-    return NextResponse.json({ ok: true, ignored: "club-setting-up" });
+  //   club selection and they are handled for their live club only. With
+  //   no club setting up, the rail is one read that answers null for
+  //   everybody and the picks below are unchanged.
+  if (allClubsSettingUp) {
+    const out = await handleSettingUpDm({
+      userId: user.id,
+      text,
+      phone,
+      senderAltPhone,
+      senderLid,
+      waMessageId,
+      isHelpRequest,
+    });
+    if ("ignored" in out) {
+      console.log(`[dm-reply] sender ${user.id} belongs only to clubs that are still setting up; ignoring`);
+    }
+    return NextResponse.json({ ok: true, ...out });
   }
 
   // ── DM subscription-preference fast-path (2026-06-11; per-category
