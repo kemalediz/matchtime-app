@@ -306,6 +306,46 @@ describe("ownerGoLiveNowAction: the MatchTime owner's Go live now (S5, owner dec
     expect(tellOrganiserOwnerWentLive).not.toHaveBeenCalled();
   });
 
+  // Second walk, item 2. The MatchTime owner can also press the club's OWN
+  // Go live button on its settings page. That go-live was recorded as the
+  // owner's, and the organiser was told nothing: only "Go live now" told them.
+  it("the MatchTime owner pressing the CLUB'S OWN button (not an owner or admin of it): the organiser is told, once, with the writer's own result", async () => {
+    auth.mockResolvedValue({ user: { id: "u-kemal" } });
+    membershipFindFirst.mockResolvedValue(null);
+    const live = { ...WENT_LIVE, freePeriodStarted: true, freePeriodNote: NOTE };
+    goLiveClub.mockResolvedValue(live);
+    const out = await goLiveClubAction("o1");
+    expect(goLiveClub.mock.calls[0][1]).toBe("owner:u-kemal");
+    expect(tellOrganiserOwnerWentLive).toHaveBeenCalledTimes(1);
+    expect(tellOrganiserOwnerWentLive.mock.calls[0][0]).toBe(live);
+    // The button's own answer is what it always was.
+    expect(out).toMatchObject({ outcome: "went-live", club: "Harbour FC" });
+  });
+
+  it("through that door too, nobody is told when the press did not take the club live", async () => {
+    auth.mockResolvedValue({ user: { id: "u-kemal" } });
+    membershipFindFirst.mockResolvedValue(null);
+    for (const refusal of [
+      { outcome: "already-live", orgId: "o1", club: "Harbour FC", group: "G", language: "en", liveAt: new Date(), liveBy: "u" },
+      { outcome: "still-reading", orgId: "o1", club: "Harbour FC", group: "G", language: "en" },
+      { outcome: "removed-from-group", orgId: "o1", club: "Harbour FC", group: "G", language: "en" },
+      { outcome: "billing-paused", orgId: "o1", club: "Harbour FC", group: "G", language: "en" },
+      { outcome: "not-setting-up", orgId: "o1" },
+    ]) {
+      goLiveClub.mockResolvedValue(refusal);
+      await goLiveClubAction("o1");
+    }
+    expect(tellOrganiserOwnerWentLive).not.toHaveBeenCalled();
+  });
+
+  it("a superadmin who IS an owner or admin of the club pressed their own button: recorded as themselves, nobody is DMed", async () => {
+    auth.mockResolvedValue({ user: { id: "u-kemal" } });
+    membershipFindFirst.mockResolvedValue({ id: "m-kemal" });
+    await goLiveClubAction("o1");
+    expect(goLiveClub.mock.calls[0][1]).toBe("u-kemal");
+    expect(tellOrganiserOwnerWentLive).not.toHaveBeenCalled();
+  });
+
   it("every refusal is worded, and none of them names a phone number or an id", async () => {
     const said = async (result: unknown) => {
       goLiveClub.mockResolvedValue(result);

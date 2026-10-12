@@ -526,3 +526,23 @@ test("a member of another club, even its owner, sees nothing of this club's venu
   expect(text).not.toMatch(/North Cheam|SM3 9BY|ChIJ_e2e|Powerleague|51\.37/);
   expect((await (await page.request.get("/api/org/settings")).text())).not.toMatch(/North Cheam|SM3 9BY|ChIJ_e2e|51\.37/);
 });
+
+// Second walk of the setup-hold flow, item 3. Sign-up once accepted a
+// one-character venue and the edit wanted two, so such a game could never
+// be saved again: the form sends the stored venue back with every edit.
+test("a game whose stored venue is ONE character can still be edited: the venue is checked only when it is changed", async ({ page }) => {
+  const before = (await testDb().one<{ venue: string; time: string }>(`SELECT venue, time FROM "Activity" WHERE id = $1`, [ACTIVITY_ID]))!;
+  await testDb().run(`UPDATE "Activity" SET venue = 'X' WHERE id = $1`, [ACTIVITY_ID]);
+  try {
+    await signInAs(page, U.admin, "/admin/activities");
+    await expect(line(page)).toBeVisible({ timeout: 30_000 });
+    const time = before.time === "19:45" ? "19:50" : "19:45";
+    // `edit` waits for the dialog to close, which it only does on a save.
+    await edit(page, { time });
+    await expect
+      .poll(() => testDb().one(`SELECT venue, time FROM "Activity" WHERE id = $1`, [ACTIVITY_ID]), { timeout: 15_000 })
+      .toEqual({ venue: "X", time });
+  } finally {
+    await testDb().run(`UPDATE "Activity" SET venue = $2, time = $3 WHERE id = $1`, [ACTIVITY_ID, before.venue, before.time]);
+  }
+});

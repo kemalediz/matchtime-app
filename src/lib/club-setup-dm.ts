@@ -119,6 +119,7 @@ import {
   markSetupAsked,
 } from "./club-setup";
 import { freePeriodCanStart } from "./club-billing-rules";
+import { loadHasSquadToCarry, type HelloReadClient } from "./group-hello-load";
 import { messageHoursSendAfter } from "./message-hours";
 import { SETUP_ALERT_KIND, recordOpsEvent } from "./ops-alerts";
 import { PlatformDmRefused, queuePlatformDm, type PlatformDmClient } from "./platform-jobs";
@@ -342,6 +343,20 @@ export async function sendSetupDm(orgId: string, now: Date = new Date(), opts: S
     reading = stored;
   }
 
+  // "Rolling squad is on: whoever played last time is in next time" is no
+  // help for a first game nobody has played. When the reading switched
+  // rolling squad on, ask the hello's own rule whether there is a squad
+  // to carry; if not, the DM adds "for the first game everyone says In
+  // once". A failed read costs that one line, never the DM.
+  let noSquadToCarry = false;
+  if (reading.kind === "findings" && reading.applied.some((a) => a.key === "rollingSquad" && a.to === true)) {
+    try {
+      noSquadToCarry = !(await loadHasSquadToCarry(orgId, db as unknown as HelloReadClient, now));
+    } catch {
+      console.error(`[club-setup-dm] ${orgId}: could not tell whether there is a squad to carry; the first-game line is left out`);
+    }
+  }
+
   // The optional admin group step: only for a club with none linked.
   const adminStep = !org.adminGroupId;
 
@@ -363,6 +378,7 @@ export async function sendSetupDm(orgId: string, now: Date = new Date(), opts: S
     // reading's switch.
     freePeriod: freePeriodCanStart({ ...org, hasBilling: !!org.clubBilling }),
     adminGroupBlock: adminStep ? setupAdminGroupBlock(org.language) : null,
+    noSquadToCarry,
   });
   const language = org.language;
   // The setup DM first, its admin group command second: dispatch is oldest

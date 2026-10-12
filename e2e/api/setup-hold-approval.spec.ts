@@ -470,7 +470,10 @@ test("FLAG ON, by WhatsApp: held and silent; the reading runs after the response
   );
   expect(blocks[1]).toBe(`I read the recent messages in "Harbour FC group" to see how it runs, and set MatchTime up the same way.`);
   expect(blocks[2]).toMatch(
-    /^✅ \*Rolling squad is on:\*[^\n]*\nFrom messages like: "Same lot as last week, let me know if you can't do Tuesday"\nUndo or change: http\S+$/,
+    // A club nobody has played for yet: there is no squad to carry, so the
+    // setup DM says what the first game needs (the held DM only: the
+    // flag-off findings DM above is byte for byte what it was).
+    /^✅ \*Rolling squad is on:\*[^\n]*\nFor the first game everyone says In once; after that the squad carries over\.\nFrom messages like: "Same lot as last week, let me know if you can't do Tuesday"\nUndo or change: http\S+$/,
   );
   expect(dm.text).toMatch(/⚙️ \*Check or change how your group runs:\*\nhttp\S+/);
   expect(dm.text).toMatch(/📅 \*Your weekly game:\*[^\n]*\nhttp\S+/);

@@ -101,6 +101,11 @@ export async function goLiveClubAction(orgId: string): Promise<GoLiveActionResul
   const result = await goLiveClub(orgId, own ? liveByUser(userId) : liveByOwner(userId), new Date(), {
     learningEnabled: await setupLearningUiEnabledForRequest(),
   });
+  // WHOEVER IS NOT THE CLUB'S OWN OWNER OR ADMIN TOOK IT LIVE FOR THEM: the
+  // MatchTime owner, here through the club's own button. The organiser did
+  // not press anything, so they are told, exactly as "Go live now" tells
+  // them (`tellOrganiserOwnerWentLive`: one DM per club, never throws).
+  if (!own && result.outcome === "went-live") await tellOrganiserOwnerWentLive(result);
   revalidatePath("/admin/settings");
   revalidatePath("/admin/clubs");
   return forBrowser(result, userId);

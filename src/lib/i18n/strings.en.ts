@@ -2004,7 +2004,9 @@ export const en = {
     "Step 3: we're checking your club, usually within a day. MatchTime stays quiet in the group until your club is approved, and messages you on WhatsApp when it's live.",
   sj_card_pending_other: (p: { group: string }): string =>
     `MatchTime was added to "${p.group}" by someone else. We'll check it before MatchTime does anything there.`,
-  sj_card_approved: (p: { group: string }): string => `You're live. MatchTime said hello in "${p.group}".`,
+  /** True the moment a club goes live and a week later: it does not say
+   *  the hello has appeared (the Pi posts it up to a few minutes after). */
+  sj_card_approved: (p: { group: string }): string => `You're live in "${p.group}".`,
   sj_card_rejected: "We can't take this group on right now.",
   sj_card_expired: "That code expired. Tap the button again for a new one.",
   sj_card_code_cap: "You've used today's codes. Please try again tomorrow.",
@@ -2200,6 +2202,10 @@ export const en = {
    *  the billing card, which says what the club needs. */
   sj_go_paused: (p: { club: string; url: string }): string =>
     `${p.club} is paused, so I can't go live yet. Your settings page shows what's needed:\n${p.url}`,
+  /** GO for a club that went live some time ago and is paused NOW. Not
+   *  `sj_go_paused`: "can't go live yet" is false for a club that is live. */
+  sj_go_live_paused: (p: { club: string; url: string }): string =>
+    `${p.club} is already live, but it is paused at the moment. Your settings page shows what's needed:\n${p.url}`,
   // ════ END going live: replies to GO ════
 
   // ════ BEGIN removed from the group while setting up (2026-10-12) ════
@@ -2209,7 +2215,7 @@ export const en = {
   sj_setup_removed: (p: { club: string; group: string; url: string }): string =>
     `I was removed from "${p.group}" before ${p.club} went live, so nothing has started there. ` +
     `Add me back to the group, then reply *GO* here or press *Go live* on your settings page:\n${p.url}\n` +
-    `It has to be added by you or another organiser of ${p.club}.`,
+    `Anyone in ${p.club} can add me back.`,
   // ════ END removed from the group while setting up ════
   // ════ BEGIN the go-live pages (go-live slice S5, 2026-10-12) ════
   // The Go live banner on /admin/settings, that page's WhatsApp bot
@@ -2218,6 +2224,9 @@ export const en = {
   /** The banner's heading: the club is approved and nothing has been said
    *  in its group yet. */
   sj_live_title: `Approved. MatchTime is waiting for you.`,
+  /** The banner's heading while MatchTime is out of the group: it is not
+   *  "waiting for you" there, it has to be added back first. */
+  sj_live_title_removed: `MatchTime was removed from your group`,
   /** `group` is the WhatsApp group's own name, null when it is not known. */
   sj_live_lead: (p: { group: string | null }): string =>
     `MatchTime is in ${p.group ? `"${p.group}"` : "your WhatsApp group"} and is staying quiet until you start it. Check the settings below first, then press Go live.`,
@@ -2347,6 +2356,11 @@ export const en = {
     `I couldn't read your group's recent messages, so ${p.standard ? "MatchTime is on its standard setup" : "I changed nothing"}. ` +
     "That's fine: check the settings below and reply *GO* when you're happy.",
   /** What "standard setup" means. Only when the club is on it. */
+  /** Under "Rolling squad is on" in the setup DM, only while there is no
+   *  squad to carry yet (the same rule the group hello uses): otherwise
+   *  the organiser reads "whoever played last time is in" with nobody
+   *  having played. */
+  sj_dm_ready_rolling_first: "For the first game everyone says In once; after that the squad carries over.",
   sj_dm_ready_standard:
     "Standard setup: players say In or Out each week, and a free place is offered to everyone on the bench: the first to say In takes it.",
   sj_dm_ready_settings: (p: { url: string }): string => `⚙️ *Check or change how your group runs:*\n${p.url}`,
@@ -2368,13 +2382,13 @@ export const en = {
     `Hi${p.name ? ` ${p.name}` : ""}, got it: ${p.club} is connected to this chat.\n` +
     "Next, add me to your football group. Save this number as a contact called MatchTime first, then open the group, tap Add participant and pick MatchTime.\n\n" +
     "*Important: before you confirm, switch on \"Message history\" on that screen.* It sends me your group's recent messages, so I can set MatchTime up the way you already run things.\n\n" +
-    "I'll stay quiet in the group until your club is approved, usually within a day, and you've told me to start. I'll message you here as soon as it's approved.",
+    "I'll stay quiet in the group until your club is approved, usually within a day, and you've told me to start. I'll message you here after it's approved.",
   /** `sj_dm_in_group` under the hold. */
   sj_dm_in_group_held: (p: { group: string | null }): string =>
-    `Thanks, I'm in ${p.group ? `"${p.group}"` : "your group"}. I'll stay quiet there until your club is approved, usually within a day, and you've told me to start. I'll message you here as soon as it's approved.`,
+    `Thanks, I'm in ${p.group ? `"${p.group}"` : "your group"}. I'll stay quiet there until your club is approved, usually within a day, and you've told me to start. I'll message you here after it's approved.`,
   /** `sj_card_pending` under the hold (for the connect card, slice S5). */
   sj_card_pending_held:
-    "Step 3: we're checking your club, usually within a day. MatchTime stays quiet in the group until your club is approved and you tell it to start, and messages you on WhatsApp as soon as it's approved.",
+    "Step 3: we're checking your club, usually within a day. MatchTime stays quiet in the group until your club is approved and you tell it to start, and messages you on WhatsApp after it's approved.",
   // ════ END approval holds the club ════
 
   // ════ BEGIN the setup follow-ups: reminder and admin group step (go-live slices S6 and S7, 2026-10-12) ════

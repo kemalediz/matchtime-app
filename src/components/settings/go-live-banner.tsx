@@ -82,6 +82,8 @@ export function GoLiveBanner(props: {
   const [preview, setPreview] = useState<Preview>({ state: "loading" });
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  /** A press was refused because MatchTime is no longer in the group. */
+  const [removedNow, setRemovedNow] = useState(false);
   const [final, setFinal] = useState<Final | null>(null);
   const [stale, setStale] = useState(false);
   const submitting = useRef(false);
@@ -203,6 +205,7 @@ export function GoLiveBanner(props: {
           setNotice(s.sj_live_still_reading);
           break;
         case "removed-from-group":
+          setRemovedNow(true);
           setNotice(s.sj_live_removed({ group: r.group }));
           break;
         case "billing-paused":
@@ -219,6 +222,8 @@ export function GoLiveBanner(props: {
   }
 
   // Known before anything is pressed: MatchTime is no longer in the group.
+  // Or learnt from a press that was refused for it.
+  const removed = props.setup.removedFromGroup || removedNow;
   const shown = notice ?? (props.setup.removedFromGroup ? s.sj_live_removed({ group: group ?? props.club }) : null);
   const neutral = final?.kind === "closed";
 
@@ -242,11 +247,14 @@ export function GoLiveBanner(props: {
       {!final && (
         <div className="min-w-0">
           <h2 id="go-live-heading" className="text-lg font-semibold text-emerald-950">
-            {s.sj_live_title}
+            {/* Its own heading while MatchTime is out of the group:
+                "Approved. MatchTime is waiting for you." above "MatchTime
+                is not in X any more" said two things at once. */}
+            {removed ? s.sj_live_title_removed : s.sj_live_title}
           </h2>
           {/* Not while MatchTime is out of the group: "MatchTime is in
               <group>" would contradict the notice below. */}
-          {!props.setup.removedFromGroup && (
+          {!removed && (
             <p data-testid="go-live-lead" className="mt-1 text-sm text-slate-800 [overflow-wrap:anywhere]">
               {s.sj_live_lead({ group })}
             </p>

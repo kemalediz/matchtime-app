@@ -454,6 +454,7 @@ test.describe("the organiser of a club that is setting up", () => {
     await signInAs(page, GONE.ownerId, "/admin/settings");
     await expect(page.getByTestId("go-live-lead")).toContainText('MatchTime is in "Gone Thursday 7s"', { timeout: 30_000 });
     await expect(page.getByTestId("go-live-notice")).toHaveCount(0);
+    await expect(page.locator("#go-live-heading")).toHaveText("Approved. MatchTime is waiting for you.");
     const removed = await page.request.post("/api/whatsapp/bot-removed", {
       headers: { "x-api-key": E2E.WHATSAPP_API_KEY },
       data: { groupId: GONE.group },
@@ -466,6 +467,10 @@ test.describe("the organiser of a club that is setting up", () => {
     // The lead ("MatchTime is in <group> ...") would contradict the notice: it is gone.
     await expect(page.getByTestId("go-live-lead")).toHaveCount(0);
     await expect(page.getByTestId("go-live-banner")).not.toContainText('MatchTime is in "Gone Thursday 7s"');
+    // Its own heading: "Approved. MatchTime is waiting for you." above
+    // "MatchTime is not in X any more" said two things at once.
+    await expect(page.locator("#go-live-heading")).toHaveText("MatchTime was removed from your group");
+    await expect(page.getByTestId("go-live-banner")).not.toContainText("MatchTime is waiting for you");
     await shot(page, "removed-desktop");
 
     // THE WHATSAPP BOT SECTION of the same page agrees with the banner:

@@ -156,7 +156,7 @@ async function main() {
         dm[0].text,
         `I was removed from "Removed group 1" before Removed Club 1 went live, so nothing has started there. ` +
           `Add me back to the group, then reply *GO* here or press *Go live* on your settings page:\nhttps://matchtime.ai/admin/settings\n` +
-          `It has to be added by you or another organiser of Removed Club 1.`,
+          `Anyone in Removed Club 1 can add me back.`,
       );
       assert.equal(await alerts(c), 1);
       ok("the organiser gets ONE DM on the platform channel, and the platform owner one event");

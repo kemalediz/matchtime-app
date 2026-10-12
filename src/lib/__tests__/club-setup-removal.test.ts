@@ -153,7 +153,9 @@ describe("handleSetupRemoval", () => {
         `Add me back to the group, then reply *GO* here or press *Go live* on your settings page:\nhttps://matchtime.test/admin/settings\n` +
         // Item 7: an add by somebody MatchTime does not know as a member of
         // the club clears nothing, so the DM says who has to do it.
-        `It has to be added by you or another organiser of Harbour FC.`,
+        // Second walk, item 6: the code clears the removal for an add by
+        // ANY current member of the club, so the DM says so.
+        `Anyone in Harbour FC can add me back.`,
       purpose: SETUP_REMOVED_DM_PURPOSE,
       refId: setupRemovedRefId("org-harbour"),
       sendAfter: null,
@@ -172,7 +174,7 @@ describe("handleSetupRemoval", () => {
     expect(arg.text).toBe(
       `Kıyı SK yayına geçmeden "Kıyı SK" grubundan çıkarıldım, bu yüzden orada hiçbir şey başlamadı. ` +
         `Beni gruba yeniden ekleyin, sonra buraya *BAŞLA* yazın ya da ayarlar sayfanızdaki *Yayına al* düğmesine basın:\nhttps://matchtime.test/admin/settings\n` +
-        `Beni sizin ya da Kıyı SK kulübünün başka bir organizatörünün eklemesi gerekiyor.`,
+        `Kıyı SK kulübündeki herkes beni yeniden ekleyebilir.`,
     );
     expect(arg.text).not.toMatch(/[\u2013\u2014]/);
   });

@@ -11,6 +11,7 @@ import { analyzeForOnboarding, type OnboardingAnalysis } from "@/lib/onboarding-
 import { selfJoinEnabledForRequest } from "@/lib/self-join-flag";
 import { revalidatePath } from "next/cache";
 import { scheduleVenueResolveForOrg } from "@/lib/venue-location-schedule";
+import { VENUE_MIN_LENGTH, VENUE_TOO_SHORT } from "@/lib/activity-update";
 
 /**
  * Server-side counterpart for the onboarding wizard (/onboarding).
@@ -193,6 +194,11 @@ export async function createOrgFromWizard(data: WizardSubmission): Promise<Wizar
   }
 
   const slug = slugify(data.orgName);
+  // One minimum for a venue everywhere (activity-update.ts). Left empty it
+  // is "TBD", as before; one character is refused, as the edit refuses it.
+  const typedVenue = data.activity.venue.trim();
+  if (typedVenue.length > 0 && typedVenue.length < VENUE_MIN_LENGTH) throw new Error(VENUE_TOO_SHORT);
+
   const conflict = await db.organisation.findUnique({ where: { slug } });
   if (conflict) {
     throw new Error(`"${slug}" is already taken. Pick a different organisation name.`);

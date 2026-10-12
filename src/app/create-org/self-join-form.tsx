@@ -192,6 +192,7 @@ export function SelfJoinForm(props: {
                   id="sj-venue"
                   type="text"
                   required
+                  minLength={2}
                   maxLength={120}
                   value={venue}
                   onChange={(e) => setVenue(e.target.value)}

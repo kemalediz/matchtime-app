@@ -510,6 +510,9 @@ const SAMPLES: SampleArgs = {
   sj_go_not_recognised: { club: "Riverside FC", url: "https://matchtime.ai/r/settings1" },
   sj_go_not_recognised_many: { url: "https://matchtime.ai/admin/settings" },
   sj_go_paused: { club: "Riverside FC", url: "https://matchtime.ai/admin/settings" },
+  sj_go_live_paused: { club: "Riverside FC", url: "https://matchtime.ai/admin/settings" },
+  sj_dm_ready_rolling_first: null,
+  sj_live_title_removed: null,
   sj_setup_removed: { club: "Riverside FC", group: "Riverside Tuesday 5s", url: "https://matchtime.ai/admin/settings" },
   // ── the go-live pages (slice S5) ──
   sj_live_title: null,

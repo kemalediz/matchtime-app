@@ -191,7 +191,7 @@ export function goReplyText(result: GoLiveResult): string | null {
 }
 
 export type GoDmOutcome =
-  | { handled: "setup-go"; outcome: GoLiveResult["outcome"] | "more-than-one"; orgId: string | null }
+  | { handled: "setup-go"; outcome: GoLiveResult["outcome"] | "more-than-one" | "already-live-paused"; orgId: string | null }
   | { handled: "setup-go-duplicate" };
 
 /**
@@ -199,9 +199,8 @@ export type GoDmOutcome =
  * WHOLE message is the command AND the sender is a current owner or admin
  * of a club that is setting up, or of one that has been through the hold
  * and is live (they are told "already live", however long ago that was;
- * or, when that club is paused for the club fee, the paused wording: "is
- * already live" would be false comfort for a club MatchTime is not
- * serving). A club that was never held does not count: GO from its admin
+ * or, when that club is paused for the club fee, "already live, but
+ * paused at the moment", with where to look). A club that was never held does not count: GO from its admin
  * is an ordinary DM and falls through. The text is checked first, so no
  * other DM costs a query here.
  */
@@ -262,9 +261,14 @@ export async function handleGoDm(input: {
       const latest = [...clubs].sort((a, b) => (b.org.liveAt?.getTime() ?? 0) - (a.org.liveAt?.getTime() ?? 0))[0];
       const s = t(latest.org.language);
       if (isBillingPaused(latest.org, { BILLING_ENABLED: (input.billingEnabled ?? isBillingEnabled()) ? "1" : "0" })) {
-        // It went live once and is paused now: say so, and where to look.
-        await say(latest.orgId, s.sj_go_paused({ club: latest.org.name, url: appUrl(GO_LIVE_SETTINGS_PATH) }), true);
-        return { handled: "setup-go", outcome: "billing-paused", orgId: latest.orgId };
+        // It went live once and is paused now. NOT `sj_go_paused` ("so I
+        // can't go live yet"): that is the refusal for a club still
+        // setting up, and this club is live. Three cases, three answers:
+        //   setting up and paused   sj_go_paused        (via goLiveClub)
+        //   live, not paused        sj_go_already_live  (below)
+        //   live and paused         sj_go_live_paused   (here)
+        await say(latest.orgId, s.sj_go_live_paused({ club: latest.org.name, url: appUrl(GO_LIVE_SETTINGS_PATH) }), true);
+        return { handled: "setup-go", outcome: "already-live-paused", orgId: latest.orgId };
       }
       await say(latest.orgId, s.sj_go_already_live({ club: latest.org.name }), true);
       return { handled: "setup-go", outcome: "already-live", orgId: latest.orgId };

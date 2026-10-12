@@ -8,7 +8,11 @@
  * adding a key. Now only named fields pass, each one checked.
  */
 import { describe, expect, it } from "vitest";
-import { activityUpdateData } from "../activity-update";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { VENUE_MIN_LENGTH, VENUE_TOO_SHORT, activityUpdateData } from "../activity-update";
+import { validateWeeklyGame } from "../club-connect-rules";
+import { activitySchema } from "../validations";
 
 const WEEKLY = { feeSplitTotal: false };
 
@@ -89,5 +93,59 @@ describe("activityUpdateData: the fee per player", () => {
     });
     expect(activityUpdateData({ feePerPlayer: "" }, split)).toEqual({ ok: true, data: { feePerPlayer: null } });
     expect(activityUpdateData({ venue: "Goals" }, split)).toEqual({ ok: true, data: { venue: "Goals" } });
+  });
+});
+
+// Second walk, item 3. Sign-up accepted a one-character venue and the edit
+// wanted two, so a game created with "X" could never be saved again:
+// every edit sends the stored venue back, and it was refused for its length.
+describe("the venue is checked only when it is being changed", () => {
+  const STORED = { feeSplitTotal: false, venue: "X" };
+
+  it("an edit of the TIME that sends the stored one-character venue back is not refused", () => {
+    const out = activityUpdateData({ time: "20:00", venue: "X" }, STORED);
+    expect(out.ok).toBe(true);
+    if (out.ok) expect(out.data).toEqual({ time: "20:00", venue: "X" });
+  });
+
+  it("the stored venue with stray spaces round it is still the stored venue", () => {
+    expect(activityUpdateData({ venue: " X " }, STORED).ok).toBe(true);
+  });
+
+  it("CHANGING the venue to another one-character venue is refused, with the usual words", () => {
+    expect(activityUpdateData({ venue: "Y" }, STORED)).toEqual({ ok: false, error: "Venue must be at least 2 characters" });
+    expect(activityUpdateData({ venue: "" }, STORED)).toEqual({ ok: false, error: "Venue must be at least 2 characters" });
+  });
+
+  it("changing it to a real venue is saved", () => {
+    expect(activityUpdateData({ venue: "Goals Wembley" }, STORED)).toEqual({ ok: true, data: { venue: "Goals Wembley" } });
+  });
+
+  it("a venue that is not text is refused even if nothing is stored to compare it with", () => {
+    expect(activityUpdateData({ venue: 7 }, STORED).ok).toBe(false);
+    expect(activityUpdateData({ venue: "X" }, { feeSplitTotal: false }).ok).toBe(false);
+  });
+
+  it("ONE minimum everywhere a game is made or its venue changed: sign-up, the create form, the edit", () => {
+    expect([VENUE_MIN_LENGTH, VENUE_TOO_SHORT]).toEqual([2, "Venue must be at least 2 characters"]);
+    const game = { dayOfWeek: 2, time: "21:30", playersPerSide: 7 };
+    expect(validateWeeklyGame({ ...game, venue: "X" }).ok).toBe(false);
+    expect(validateWeeklyGame({ ...game, venue: " X " }).ok).toBe(false);
+    expect(validateWeeklyGame({ ...game, venue: "XL" }).ok).toBe(true);
+    const form = { name: "Tuesday 7s", sportId: "s1", dayOfWeek: 2, time: "21:30" };
+    expect(activitySchema.safeParse({ ...form, venue: "X" }).success).toBe(false);
+    expect(activitySchema.safeParse({ ...form, venue: "XL" }).success).toBe(true);
+    expect(activityUpdateData({ venue: "X" }, { feeSplitTotal: false, venue: "Goals" }).ok).toBe(false);
+  });
+
+  it("the web setup refuses one character too, and still turns an empty venue into TBD", () => {
+    const action = readFileSync(path.resolve(__dirname, "../../app/actions/onboarding.ts"), "utf8");
+    expect(action).toContain("if (typedVenue.length > 0 && typedVenue.length < VENUE_MIN_LENGTH) throw new Error(VENUE_TOO_SHORT);");
+    expect(action).toContain('venue: data.activity.venue.trim() || "TBD",');
+  });
+
+  it("the sign-up form tells the browser the same minimum", () => {
+    const form = readFileSync(path.resolve(__dirname, "../../app/create-org/self-join-form.tsx"), "utf8");
+    expect(form).toMatch(/id="sj-venue"[\s\S]{0,80}minLength=\{2\}/);
   });
 });

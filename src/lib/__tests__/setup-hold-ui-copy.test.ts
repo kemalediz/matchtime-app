@@ -2,6 +2,8 @@
  * The setup-hold pages' words that the end-to-end probe found untrue or
  * inconsistent (2026-10): each one pinned in English and Turkish.
  */
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { en } from "../i18n/strings.en";
 import { tr } from "../i18n/strings.tr";
@@ -63,6 +65,35 @@ describe("2. words that were not true", () => {
     );
     expect(en.sj_live_done_posted).toBe("The message it is posting");
     expect(tr.sj_live_done_posted).toBe("Gruba yazmakta olduğu mesaj");
+  });
+});
+
+describe("second walk: the card just after go-live, and the banner while removed", () => {
+  // Item 4. The card said "MatchTime said hello in X" the instant a club
+  // went live, while the banner beside it said the hello can take a few
+  // minutes to appear.
+  it("the admin home card is true the moment a club goes live AND a week later: it never says the hello has appeared", () => {
+    expect(en.sj_card_approved({ group: "Harbour Tuesday 6s" })).toBe(`You're live in "Harbour Tuesday 6s".`);
+    expect(tr.sj_card_approved({ group: "Kıyı Salı Maçı" })).toBe(`Yayındasınız. MatchTime "Kıyı Salı Maçı" grubunda.`);
+    for (const text of [en.sj_card_approved({ group: "G" }), tr.sj_card_approved({ group: "G" })]) {
+      expect(text).not.toMatch(/said hello|merhaba dedi|introduced|tanıttı/);
+    }
+  });
+
+  // Item 5. "Approved. MatchTime is waiting for you." stayed above
+  // "MatchTime is not in X any more".
+  it("the banner has its own heading while MatchTime is out of the group", () => {
+    expect(en.sj_live_title_removed).toBe("MatchTime was removed from your group");
+    expect(tr.sj_live_title_removed).toBe("MatchTime grubunuzdan çıkarıldı");
+    expect(en.sj_live_title).toBe("Approved. MatchTime is waiting for you.");
+  });
+
+  it("the banner uses it for a removal known at load AND one learnt from a refused press, and hides 'MatchTime is in X' for both", () => {
+    const banner = readFileSync(path.resolve(__dirname, "../../components/settings/go-live-banner.tsx"), "utf8");
+    expect(banner).toContain("const removed = props.setup.removedFromGroup || removedNow;");
+    expect(banner).toContain("{removed ? s.sj_live_title_removed : s.sj_live_title}");
+    expect(banner).toContain("{!removed && (");
+    expect(banner).toMatch(/case "removed-from-group":\s+setRemovedNow\(true\);/);
   });
 });
 
