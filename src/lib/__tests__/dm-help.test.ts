@@ -170,6 +170,24 @@ describe("handleDmHelp", () => {
     expect(botJobCreate.mock.calls[0][0].data.text.startsWith("🏟️ For *MT Test*:\n\n")).toBe(true);
   });
 
+  it("review fix 2: runs a club that is still SETTING UP and plays in a live one: the answer is for the LIVE club", async () => {
+    const held = { ...mem("org-held", "OWNER", "Harbour FC"), org: { id: "org-held", name: "Harbour FC", language: "en", approvalStatus: "approved", setupStage: "setting-up" } };
+    const liveClub = { ...mem("org-a", "PLAYER", "Sutton FC"), org: { id: "org-a", name: "Sutton FC", language: "en", approvalStatus: "approved", setupStage: "live" } };
+    membershipFindMany.mockResolvedValue([held, liveClub]);
+    const out = await handleDmHelp(args("help"));
+    expect(out).toMatchObject({ orgId: "org-a", audience: "player" });
+    expect(botJobCreate.mock.calls[0][0].data.orgId).toBe("org-a");
+    // The stage is selected with the membership: no extra query.
+    expect(membershipFindMany.mock.calls[0][0].select.org.select).toMatchObject({ approvalStatus: true, setupStage: true });
+  });
+
+  it("review fix 2: someone whose ONLY club is setting up still gets the help for it (slice S4 delivers it)", async () => {
+    membershipFindMany.mockResolvedValue([
+      { ...mem("org-held", "OWNER", "Harbour FC"), org: { id: "org-held", name: "Harbour FC", language: "en", approvalStatus: "approved", setupStage: "setting-up" } },
+    ]);
+    expect(await handleDmHelp(args("help"))).toMatchObject({ orgId: "org-held", audience: "admin" });
+  });
+
   it("several clubs, runs none: the club with the most recent match, named", async () => {
     membershipFindMany.mockResolvedValue([mem("org-a", "PLAYER", "Sutton FC"), mem("org-b", "PLAYER", "MT Test")]);
     matchFindFirst.mockResolvedValue({ activity: { orgId: "org-a" } });

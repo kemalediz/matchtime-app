@@ -141,9 +141,11 @@ describe("loadSilentGroupIds (db)", () => {
     off();
     expect(await loadSilentGroupIds()).toEqual([]);
     expect(dbMock.organisation.findMany).toHaveBeenCalledTimes(3);
+    // The WHERE is unchanged. Go-live slice S1 selects two more columns in
+    // this query (no query added) to tell a setting-up club apart.
     expect(dbMock.organisation.findMany.mock.calls[0][0]).toEqual({
       where: { approvalStatus: "approved", whatsappGroupId: { not: null } },
-      select: { whatsappGroupId: true },
+      select: { whatsappGroupId: true, approvalStatus: true, setupStage: true },
     });
   });
 

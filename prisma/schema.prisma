@@ -382,6 +382,34 @@ model Organisation {
   approvalDecidedAt DateTime?
   approvalDecidedBy String?
 
+  /// ─── Approved but setting up (2026-10-12, go-live plan slice S1) ──
+  /// Values: "live" | "setting-up". The DEFAULT is "live", so every club
+  /// that existed before this column (Sutton FC and the self-join clubs
+  /// already approved) is live and nothing changes for it. A club is
+  /// "setting-up" from its approval until its organiser says GO: approved,
+  /// its group linked, and MatchTime silent in it.
+  ///
+  /// Silence is still enforced by `whatsappBotEnabled`. A Postgres CHECK
+  /// constraint (prisma/sql/org-setup-check.sql) forbids
+  /// `whatsappBotEnabled` true on a setting-up club, so no route that
+  /// already requires the bot to be on can act for one.
+  ///
+  /// Read and written only through `src/lib/club-setup.ts` and its pure
+  /// half `club-setup-rules.ts` (`SETTING_UP_CLUB_WHERE`,
+  /// `isClubSettingUp`); a source guard test keeps every write there.
+  /// NOT the approval state, NOT the mute switch, NOT dormancy.
+  setupStage     String    @default("live")
+  /// When the club went live (the organiser's GO, or the owner's button),
+  /// and who did it: a userId, "whatsapp:<phone>" or "owner:<id>". NULL
+  /// for every club that never passed through setting-up.
+  liveAt         DateTime?
+  liveBy         String?
+  /// When the setup DM was due: the clock the one reminder runs on.
+  setupAskedAt   DateTime?
+  /// MatchTime was removed from the group while the club was setting up.
+  /// Cleared when it is added back; a club cannot go live while it is set.
+  setupRemovedAt DateTime?
+
   /// ─── Admin channel (2026-09-30, slice 2a) ─────────────────────────
   /// Plan: MDs/friday-group-features-plan-2026-09-30.md, section 2.2 to 2.5.
   /// Where admin-only notices go: "one-person" | "admin-group" | "each-admin".

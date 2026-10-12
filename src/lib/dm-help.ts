@@ -31,6 +31,7 @@ import { normalisePhone } from "@/lib/phone";
 import { getOrgFeatures } from "@/lib/org-features";
 import { buildAdminLink } from "@/lib/admin-link";
 import { APPROVED_CLUB_WHERE } from "@/lib/club-approval-state";
+import { SETUP_STAGE_SELECT, preferLiveClubs } from "@/lib/club-setup-rules";
 import { t } from "@/lib/i18n/t";
 import {
   buildHelpReply,
@@ -57,11 +58,17 @@ const runs = (m: HelpMembership) => m.role === "OWNER" || m.role === "ADMIN";
 export async function pickDmHelpClub(
   userId: string,
 ): Promise<{ membership: HelpMembership; clubCount: number } | null> {
-  const memberships = (await db.membership.findMany({
-    where: { userId, leftAt: null, org: APPROVED_CLUB_WHERE },
-    select: { orgId: true, role: true, org: { select: { id: true, name: true, language: true } } },
-    orderBy: { createdAt: "asc" },
-  })) as HelpMembership[];
+  // A club that is still setting up is left out when the person has a live
+  // club too (club-setup.ts). Someone whose ONLY club is setting up keeps
+  // it: the help is theirs to ask for.
+  const memberships = preferLiveClubs(
+    (await db.membership.findMany({
+      where: { userId, leftAt: null, org: APPROVED_CLUB_WHERE },
+      select: { orgId: true, role: true, org: { select: { id: true, name: true, language: true, ...SETUP_STAGE_SELECT } } },
+      orderBy: { createdAt: "asc" },
+    })) as Array<HelpMembership & { org: { approvalStatus: string } }>,
+    (m) => m.org,
+  ) as HelpMembership[];
   if (memberships.length === 0) return null;
   if (memberships.length === 1) return { membership: memberships[0], clubCount: 1 };
   const admin = memberships.filter(runs);

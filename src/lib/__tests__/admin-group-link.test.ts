@@ -190,6 +190,30 @@ describe("linkAdminGroup", () => {
     expect(dbMock.organisation.updateMany).not.toHaveBeenCalled();
   });
 
+  it("go-live S1: while the club is still SETTING UP, the command in its players' group gets no reply at all", async () => {
+    world({
+      communityOwner: { id: "org-fnf", name: "Friday FNF", language: "en", approvalStatus: "approved", setupStage: "setting-up" },
+    });
+    const r = await send("@Match Time admin group K7P3QX", { groupId: FNF_GROUP });
+    expect(r).toEqual({ outcome: "ignored", replyText: null, reason: "club-setting-up" });
+    expect(dbMock.organisation.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("go-live S1: a live club's own group still gets L3 (today's reply)", async () => {
+    world({
+      communityOwner: { id: "org-fnf", name: "Friday FNF", language: "en", approvalStatus: "approved", setupStage: "live" },
+    });
+    const r = await send("@Match Time admin group K7P3QX", { groupId: FNF_GROUP });
+    expect(r.outcome).toBe("main-group");
+    expect(r.replyText).toContain("main group");
+  });
+
+  it("go-live S1: a setting-up club can still link a SEPARATE admin group (owner decision 10)", async () => {
+    world();
+    const r = await send("@Match Time admin group K7P3QX");
+    expect(r.outcome).toBe("linked");
+  });
+
   it("another club's admin group gets no reply", async () => {
     world({ adminGroupOwner: { id: "org-other", name: "Other", language: "en" } });
     const r = await send("@Match Time admin group K7P3QX");

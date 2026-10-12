@@ -32,6 +32,7 @@ import {
   NEW_CLUB_CAP_USD,
   PRE_CLUB_CAP_USD,
   CALL_RESERVE_USD,
+  SETUP_READING_CAP_USD,
 } from "../ai-budget";
 import { AiBudgetExceededError } from "../ai-budget-context";
 import { FREE_PERIOD_MONTHS, freePeriodEnd } from "../club-billing-rules";
@@ -433,3 +434,95 @@ describe("aiAllowanceUsd and club fee billing (B1, plan 4.3 point 5)", () => {
   });
 });
 
+
+describe("aiAllowanceUsd and a club that is approved but setting up (go-live S1, plan 2.2 point 2)", () => {
+  /** Approved through self-join, group linked, bot still off, waiting for GO. */
+  const held = {
+    ...sutton,
+    approvedAt: new Date("2026-09-29T09:00:00Z"),
+    whatsappBotEnabled: false,
+    setupStage: "setting-up",
+  };
+  const ENV = process.env.AI_DAILY_CAP_DISABLED;
+  afterEach(() => {
+    if (ENV === undefined) delete process.env.AI_DAILY_CAP_DISABLED;
+    else process.env.AI_DAILY_CAP_DISABLED = ENV;
+  });
+
+  it("spends $0 on everything, exactly like any club whose bot is off", () => {
+    expect(aiAllowanceUsd(held, NOW)).toBe(0);
+    expect(aiAllowanceUsd({ ...held, aiDailyCapUsd: 5 }, NOW)).toBe(0);
+    process.env.AI_DAILY_CAP_DISABLED = "1";
+    expect(aiAllowanceUsd(held, NOW)).toBe(0);
+  });
+
+  it("the ONE exception: its setup reading gets a small fixed allowance", () => {
+    expect(SETUP_READING_CAP_USD).toBe(0.1);
+    expect(aiAllowanceUsd(held, NOW, { setupReading: true })).toBe(SETUP_READING_CAP_USD);
+  });
+
+  it("the exception needs a linked group", () => {
+    expect(aiAllowanceUsd({ ...held, whatsappGroupId: null }, NOW, { setupReading: true })).toBe(0);
+  });
+
+  it("the exception is only for a club that is SETTING UP: a muted live club still gets $0", () => {
+    expect(aiAllowanceUsd({ ...sutton, whatsappBotEnabled: false }, NOW, { setupReading: true })).toBe(0);
+    expect(aiAllowanceUsd({ ...held, setupStage: "live" }, NOW, { setupReading: true })).toBe(0);
+    // A caller that forgot to select the stage fails closed.
+    expect(aiAllowanceUsd({ ...held, setupStage: undefined }, NOW, { setupReading: true })).toBe(0);
+  });
+
+  it("the approval and billing rules still come first", () => {
+    for (const approvalStatus of ["draft", "pending", "rejected", "suspended"]) {
+      expect(aiAllowanceUsd({ ...held, approvalStatus }, NOW, { setupReading: true })).toBe(0);
+    }
+    const before = process.env.BILLING_ENABLED;
+    process.env.BILLING_ENABLED = "1";
+    try {
+      expect(aiAllowanceUsd({ ...held, billingStatus: "paused" }, NOW, { setupReading: true })).toBe(0);
+    } finally {
+      if (before === undefined) delete process.env.BILLING_ENABLED;
+      else process.env.BILLING_ENABLED = before;
+    }
+  });
+
+  it("the owner's per-club override can only lower it, and the emergency switch does not raise it", () => {
+    expect(aiAllowanceUsd({ ...held, aiDailyCapUsd: 0 }, NOW, { setupReading: true })).toBe(0);
+    expect(aiAllowanceUsd({ ...held, aiDailyCapUsd: 0.03 }, NOW, { setupReading: true })).toBe(0.03);
+    expect(aiAllowanceUsd({ ...held, aiDailyCapUsd: 5 }, NOW, { setupReading: true })).toBe(SETUP_READING_CAP_USD);
+    process.env.AI_DAILY_CAP_DISABLED = "1";
+    expect(aiAllowanceUsd(held, NOW, { setupReading: true })).toBe(SETUP_READING_CAP_USD);
+  });
+
+  it("a LIVE club's reading is priced by the ordinary rules, flag or no flag", () => {
+    expect(aiAllowanceUsd(sutton, NOW, { setupReading: true })).toBe(aiAllowanceUsd(sutton, NOW));
+  });
+
+  describe("the ledger", () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      dbMock.organisation.findUnique.mockResolvedValue(held);
+    });
+
+    it("an ordinary scope refuses a setting-up club without reserving anything", async () => {
+      dbMock.$queryRaw.mockResolvedValue([]);
+      const ledger = prismaAiBudgetLedger(() => NOW);
+      await expect(ledger.reserve("org-held", "dm-qa")).rejects.toBeInstanceOf(AiBudgetExceededError);
+      const sql = dbMock.$queryRaw.mock.calls.map((c) => (c[0] as string[]).join("?"));
+      expect(sql).toHaveLength(1);
+      expect(sql[0]).toContain(`"refusedCalls"`);
+      expect(noticeMock.notifyAdminsOfAiCap).not.toHaveBeenCalled();
+    });
+
+    it("the setup-reading scope reserves against the small cap, and asks for the stage", async () => {
+      dbMock.$queryRaw.mockResolvedValue([{ ok: 1 }]);
+      const ledger = prismaAiBudgetLedger(() => NOW, { setupReading: true });
+      const hold = await ledger.reserve("org-held", "setup-learning");
+      expect(hold.reservedUsd).toBe(CALL_RESERVE_USD);
+      expect(dbMock.organisation.findUnique.mock.calls[0][0].select).toMatchObject({ setupStage: true });
+      // The cap the reservation was checked against is the small one.
+      expect(dbMock.$queryRaw.mock.calls[0]).toContain(SETUP_READING_CAP_USD);
+    });
+  });
+});

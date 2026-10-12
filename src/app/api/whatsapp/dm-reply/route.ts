@@ -59,6 +59,7 @@
  */
 import { withOrgAiBudget } from "@/lib/ai-budget";
 import { handleApproverDm, nonServingClubsReason } from "@/lib/club-approval";
+import { IN_LIVE_STAGE_CLUB_WHERE, settingUpClubsReason } from "@/lib/club-setup";
 import { billingQuietMatchWhere } from "@/lib/club-billing-rules";
 import { handleConnectDm } from "@/lib/connect-dm";
 import { handleOrganiserPickDm } from "@/lib/organiser-pick";
@@ -464,6 +465,31 @@ export async function POST(request: Request) {
     if (help) return NextResponse.json({ ok: true, ...help });
   }
 
+  // ── Approved but setting up (go-live slice S1, 2026-10-12) ─────────────
+  //   A sender whose every served club is approved but still SETTING UP
+  //   (waiting for its organiser's GO) gets nothing from here on: no model
+  //   call, no reply. Such a club is approved, so the rail above lets it
+  //   through; this is the second rail, ahead of every handler below, the
+  //   model paths among them (payment claim, admin commands, Q&A).
+  //
+  //   It sits AFTER the deterministic help only so the help request is
+  //   recorded. That reply is NOT delivered today: `handleDmHelp` queues
+  //   it on the club's own channel, which is not dispatched while the
+  //   club's bot is off. The go-live slice moves it to the platform
+  //   channel.
+  //
+  //   The rail reads the sender's CURRENT memberships (a live club the
+  //   person has left does not shield them). A sender who also belongs to
+  //   a live club is not caught; for them every club pick below spreads
+  //   `IN_LIVE_STAGE_CLUB_WHERE`, so a setting-up club does not exist for
+  //   club selection and they are handled for their live club only. No
+  //   existing club is setting up, so for all of them the rail is one
+  //   read that answers null and the picks below are unchanged.
+  if ((await settingUpClubsReason(user.id)) === "club-setting-up") {
+    console.log(`[dm-reply] sender ${user.id} belongs only to clubs that are still setting up; ignoring`);
+    return NextResponse.json({ ok: true, ignored: "club-setting-up" });
+  }
+
   // ── DM subscription-preference fast-path (2026-06-11; per-category
   //    2026-07-17) ──────────────────────────────────────────────────────
   //   A player can text the bot to opt out of proactive DMs — either a
@@ -484,7 +510,7 @@ export async function POST(request: Request) {
     // DM is addressed by phone). Its language is the language the command
     // is read in (English words are always read) and the ack is written in.
     const subMem = await db.membership.findFirst({
-      where: { userId: user.id, leftAt: null },
+      where: { userId: user.id, leftAt: null, ...IN_LIVE_STAGE_CLUB_WHERE },
       select: { orgId: true, org: { select: { language: true } } },
     });
     const subLang = subMem?.org.language;
@@ -835,6 +861,10 @@ export async function POST(request: Request) {
           where: {
             userId: user.id,
             leftAt: null,
+            // Never a club that is still setting up: the classifier is paid
+            // from the first id here, and recruit and rating progress act on
+            // one of them.
+            ...IN_LIVE_STAGE_CLUB_WHERE,
             ...(su ? {} : { role: { in: ["OWNER", "ADMIN"] } }),
           },
           select: { orgId: true },
