@@ -19,6 +19,7 @@
  * reaches it is pinned model-free by `admin-group-no-model.source.test.ts`.
  */
 import { t } from "./i18n/t";
+import { inMessageHours } from "./message-hours";
 import { normaliseName } from "./name-normalise";
 
 const MINUTE_MS = 60 * 1000;
@@ -42,14 +43,10 @@ const MAX_RANGE = 10;
 
 // ── When a round opens ──────────────────────────────────────────────────
 
-/** Pick messages speak London 08:00 to 21:59, like every admin notice. */
+/** Pick messages speak London 09:00 to 22:59 (the shared message hours),
+ *  like every admin notice. */
 export function isPickHour(now: Date): boolean {
-  const h = Number(
-    new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "numeric", hour12: false })
-      .formatToParts(now)
-      .find((p) => p.type === "hour")?.value ?? "0",
-  );
-  return h >= 8 && h < 22;
+  return inMessageHours(now);
 }
 
 /**
@@ -113,7 +110,7 @@ export function buildPickFallbackOffered(p: {
 /**
  * Should a pick round open for this match now (plan 2.7)? All of:
  * a free place, somebody waiting, the club's drop-out deadline passed (or
- * none set), London 08:00 to 21:59, no fallback offer running, and either
+ * none set), London 09:00 to 22:59, no fallback offer running, and either
  * no open round or an open round that has gone stale (a new drop, or the
  * list or the count changed) whose message went out at least an hour ago.
  *

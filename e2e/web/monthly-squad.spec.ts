@@ -408,7 +408,7 @@ test("an admin starts the month part-way through by ticking players", async ({ p
   // Starting the month queued nothing for WhatsApp.
   expect(await outbound()).toBe(before);
   // Since slice 5, starting a month also puts its regulars on the next
-  // match WHEN THAT IS DUE: from 08:00 London the morning after the
+  // match WHEN THAT IS DUE: from 08:00 London (the seed's hour) the morning after the
   // previous game (the fixture's was yesterday at 20:00). So how many rows
   // are marked "paid for by the month" depends on the hour this runs, and
   // is not asserted (the seed is covered in api/monthly-week.spec.ts).

@@ -180,6 +180,13 @@ describe("handleSetupRemoval", () => {
     expect(setup.unaskCancelledSetupDm).not.toHaveBeenCalled();
   });
 
+  it("slices S6 and S7: the setup DM had GONE and only a queued reminder (or command) was taken back: the club stays 'asked', so no second setup DM", async () => {
+    // What `cancelSetupDm` answers then: nothing about the setup DM itself.
+    cancelSetupDm.mockResolvedValue({ cancelled: 0, alreadyClaimed: 0, followUps: { cancelled: 1, alreadyClaimed: 0 } });
+    expect((await handleSetupRemoval(GROUP, { now: NIGHT })) as { setupDm: string }).toMatchObject({ setupDm: "none-waiting" });
+    expect(setup.unaskCancelledSetupDm).not.toHaveBeenCalled();
+  });
+
   it("the owner's event: one per removal, on the club, with codes and no names", async () => {
     cancelSetupDm.mockResolvedValue({ cancelled: 1, alreadyClaimed: 0 });
     await handleSetupRemoval(GROUP, { now: NOON });
@@ -262,8 +269,8 @@ describe("handleSetupReAdd", () => {
     });
     expect(setup.clearSetupRemoved).toHaveBeenCalledWith("org-harbour", GROUP);
     expect(jobs.cancelQueuedPlatformDms).toHaveBeenCalledWith({
-      purpose: "setup-removed",
-      refId: "org-harbour:setup-removed",
+      purposes: ["setup-removed"],
+      refIds: ["org-harbour:setup-removed"],
       reason: "re-added",
       now: NIGHT,
     });

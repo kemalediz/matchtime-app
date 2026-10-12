@@ -20,6 +20,11 @@
  * where the DM's link for that kind goes (setup-learning/
  * suggestion-action.ts). With no suggestion the panel is as it was.
  *
+ * WHERE A QUOTE CAME FROM (go-live slice D3, 2026-10-12). Quotes found in
+ * the group description are shown on their own line, "From your group
+ * description", under the quotes from messages (`Evidence` below). An
+ * item with no description evidence shows exactly what it showed before.
+ *
  * The block is told apart from a deep-linked card, which is also amber,
  * by its left bar, icon and heading: the deep-linked card is one card
  * with a ring round it, and a suggestion that is deep-linked gets that
@@ -67,13 +72,42 @@ import {
   reloadDecision,
   type ReloadWhy,
 } from "@/lib/setup-learning/panel-reload";
-import { appliedLine, monthlyPattern, suggestionLine } from "@/lib/setup-learning/dm";
+import { appliedLine, monthlyPattern, splitEvidence, suggestionLine } from "@/lib/setup-learning/dm";
 import { checkHeading, suggestionActionHref, suggestionActionLabel } from "@/lib/setup-learning/suggestion-action";
 import { LEARNED_REFRESH_EVENT, resolvedLine } from "@/lib/setup-learning/suggestion-state";
 import type { LearnedSetupView } from "@/lib/setup-learning/view";
+import type { Evidenced } from "@/lib/setup-learning/rules";
 
 const ACTION_CLASS =
   "inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-lg bg-amber-700 px-3 py-1.5 font-medium text-white hover:bg-amber-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700";
+
+const quoted = (quotes: string[]): string => quotes.map((q) => `"${q}"`).join(", ");
+
+/** The quotes behind one item: from messages, then from the group description. */
+function Evidence(props: { item: Evidenced; lang: string; as?: "p" | "span" }) {
+  const s = t(props.lang);
+  const { chat, description } = splitEvidence(props.item);
+  if (chat.length + description.length === 0) return null;
+  const inline = props.as === "span";
+  const Tag = inline ? "span" : "p";
+  const cls = inline ? "text-slate-500" : "mt-1 text-slate-500";
+  return (
+    <>
+      {chat.length > 0 && (
+        <Tag className={cls} data-testid="learned-evidence-chat">
+          {inline ? " " : ""}
+          {s.settings_learned_from}: {quoted(chat)}
+        </Tag>
+      )}
+      {description.length > 0 && (
+        <Tag className={cls} data-testid="learned-evidence-description">
+          {inline ? " " : ""}
+          {s.settings_learned_from_description}: {quoted(description)}
+        </Tag>
+      )}
+    </>
+  );
+}
 
 /** WhatsApp bold (*x*) to plain text for the page. */
 function plain(s: string): string {
@@ -307,11 +341,7 @@ export function LearnedSetupPanel(props: { orgId: string; language: string | nul
                         <span data-testid="learned-suggestion-line" className="text-slate-800">
                           {suggestionLine(lang, sg)}
                         </span>
-                        {sg.evidence.length > 0 && (
-                          <p className="mt-1 text-slate-500">
-                            {s.settings_learned_from}: {sg.evidence.map((q) => `"${q}"`).join(", ")}
-                          </p>
-                        )}
+                        <Evidence item={sg} lang={lang} />
                       </div>
                       {href.startsWith("#") ? (
                         <a href={href} data-testid={`learned-action-${sg.key}`} className={ACTION_CLASS}>
@@ -382,11 +412,7 @@ export function LearnedSetupPanel(props: { orgId: string; language: string | nul
                     </span>
                   )}
                 </div>
-                {a.evidence.length > 0 && (
-                  <p className="mt-1 text-slate-500">
-                    {s.settings_learned_from}: {a.evidence.map((q) => `"${q}"`).join(", ")}
-                  </p>
-                )}
+                <Evidence item={a} lang={lang} />
               </li>
             ))}
           </ul>
@@ -399,12 +425,7 @@ export function LearnedSetupPanel(props: { orgId: string; language: string | nul
               {view.noted.map((n) => (
                 <li key={n.key}>
                   {s.setup_monthly_label}: {monthlyPattern(lang, n)}.
-                  {n.evidence.length > 0 && (
-                    <span className="text-slate-500">
-                      {" "}
-                      {s.settings_learned_from}: {n.evidence.map((q) => `"${q}"`).join(", ")}
-                    </span>
-                  )}
+                  <Evidence item={n} lang={lang} as="span" />
                 </li>
               ))}
             </ul>

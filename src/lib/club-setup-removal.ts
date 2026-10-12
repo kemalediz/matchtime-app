@@ -65,6 +65,16 @@
  *                The organiser has it, and the removal DM tells them what
  *                to do before its GO works.
  *
+ * THE ADMIN GROUP COMMAND AND THE REMINDER (go-live slices S6 and S7) are
+ * taken back by the same `cancelSetupDm` call when they have not gone. Its
+ * `cancelled` and `alreadyClaimed` speak of the SETUP DM only, so the
+ * three states above are decided exactly as before: a reminder cancelled
+ * after the setup DM had gone does not make the club "never asked", and
+ * so can never cause a second setup DM. A fresh setup DM after a re-add
+ * brings its own command and a new code; its reminder runs 24 hours from
+ * its own due time (`setupReminderKey`). A club whose reminder had already
+ * gone keeps its stamp and is not reminded again.
+ *
  * LOGS carry the club's id and codes only: never a name, a number or text.
  */
 import { db } from "./db";
@@ -210,7 +220,7 @@ export async function handleSetupReAdd(input: {
   if (!(await clearSetupRemoved(orgId, input.groupId))) return { kind: "not-removed" };
   // "I was removed, add me back" must not arrive after the re-add.
   try {
-    await cancelQueuedPlatformDms({ purpose: SETUP_REMOVED_DM_PURPOSE, refId: setupRemovedRefId(orgId), reason: "re-added", now });
+    await cancelQueuedPlatformDms({ purposes: [SETUP_REMOVED_DM_PURPOSE], refIds: [setupRemovedRefId(orgId)], reason: "re-added", now });
   } catch (err) {
     console.error(`[club-setup-removal] ${orgId}: back in the group, but a waiting removal DM was NOT taken back: ${errName(err)}`);
   }

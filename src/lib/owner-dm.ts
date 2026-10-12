@@ -10,7 +10,10 @@
  * here.
  *
  * What makes it hard to misuse:
- *   - two purposes only, checked at runtime, not just by the type;
+ *   - three purposes only (the approval request, its ack, and the one
+ *     note about a club still setting up three days after its approval,
+ *     which he acts on with "Go live now"), checked at runtime, not just
+ *     by the type;
  *   - a refId is required, and there is ONE DM per (purpose, refId,
  *     approver phone), ever, so a retry or a re-add cannot DM twice about
  *     the same club (a club that went back to draft and was linked again
@@ -18,9 +21,10 @@
  *     `relinkRefIds`);
  *   - only to the numbers in SELF_JOIN_APPROVER_PHONES (none set, none
  *     sent, and the result says so);
- *   - an approval request that would land between 22:00 and 08:00 London
- *     is held until 08:00 (`sendAfter`); an ack answers something he just
- *     did, so it goes at once;
+ *   - an approval request, or the note about a club still setting up,
+ *     that would land outside 09:00 to 23:00 London is held until the next
+ *     09:00 (`sendAfter`, the shared message hours); an ack answers something he just did, so it goes at
+ *     once;
  *   - `__tests__/platform-jobs-source-guard.test.ts` allowlists the files
  *     that may import this module, and forbids ops-alerts, bot-health and
  *     every cron.
@@ -28,14 +32,14 @@
  * English only: owner-facing copy, not player-facing (plan 6.1).
  */
 import { db } from "./db";
-import { formatLondon, londonDateTimeToUtc } from "./london-time";
+import { messageHoursSendAfter } from "./message-hours";
 import { OWNER_DM_PURPOSES, platformPhoneDigits, type OwnerDmPurpose } from "./platform-jobs";
 
 export type { OwnerDmPurpose } from "./platform-jobs";
 
-/** Owner quiet hours, London wall clock: [22:00, 08:00). */
-const QUIET_FROM_HOUR = 22;
-const QUIET_UNTIL = "08:00";
+/** The purposes held through quiet hours: everything that is not the
+ *  answer to something the owner has just done. */
+const QUIET_HOURS_PURPOSES: ReadonlySet<string> = new Set(["owner-approval", "owner-setup-stuck"]);
 
 /** SELF_JOIN_APPROVER_PHONES: a comma, semicolon or space separated list. */
 export function parseApproverPhones(raw: string | undefined): string[] {
@@ -50,16 +54,13 @@ export function parseApproverPhones(raw: string | undefined): string[] {
   return out;
 }
 
-/** When a DM queued `now` may go out, if `now` is inside quiet hours; else null. */
+/**
+ * When a DM queued `now` may go out, if `now` is inside the owner's quiet
+ * hours (23:00 to 09:00 London, the night of the shared message hours);
+ * else null.
+ */
 export function ownerQuietHoursSendAfter(now: Date): Date | null {
-  const hour = Number(formatLondon(now, "H"));
-  if (hour >= QUIET_FROM_HOUR) {
-    // 22:00 or later: 08:00 tomorrow. Twelve hours on is always tomorrow's date.
-    const tomorrow = formatLondon(new Date(now.getTime() + 12 * 60 * 60 * 1000), "yyyy-MM-dd");
-    return londonDateTimeToUtc(tomorrow, QUIET_UNTIL);
-  }
-  if (hour < 8) return londonDateTimeToUtc(formatLondon(now, "yyyy-MM-dd"), QUIET_UNTIL);
-  return null;
+  return messageHoursSendAfter(now);
 }
 
 export interface OwnerDmResult {
@@ -80,7 +81,7 @@ export async function queueOwnerDm(
 ): Promise<OwnerDmResult> {
   if (!(OWNER_DM_PURPOSES as readonly string[]).includes(purpose as string)) {
     throw new Error(
-      `[owner-dm] "${String(purpose)}" is not an approval or an ack. Kemal is DMed only for things ` +
+      `[owner-dm] "${String(purpose)}" is not an approval, an ack or an action item. Kemal is DMed only for things ` +
         "he must act on; record routine alerts with src/lib/ops-alerts.ts instead.",
     );
   }
@@ -98,7 +99,7 @@ export async function queueOwnerDm(
     return { queued: 0, skipped: 0, reason: "no-approver-phones" };
   }
 
-  const sendAfter = purpose === "owner-approval" ? ownerQuietHoursSendAfter(now) : null;
+  const sendAfter = QUIET_HOURS_PURPOSES.has(purpose) ? ownerQuietHoursSendAfter(now) : null;
   let queued = 0;
   let skipped = 0;
   for (const phone of phones) {

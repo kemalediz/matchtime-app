@@ -201,13 +201,17 @@ describe("parsePiCaps and the waking-hours gate", () => {
     expect(parsePiCaps("")).toEqual({ adminGroup: false });
   });
 
-  it("08:00 to 21:59 London, across the clock change", async () => {
+  it("09:00 to 22:59 London, across the clock change", async () => {
     const { isAdminGroupPostHour } = await import("../admin-channel-rules");
-    expect(isAdminGroupPostHour(new Date("2026-09-30T06:59:00Z"))).toBe(false); // 07:59 BST
-    expect(isAdminGroupPostHour(new Date("2026-09-30T07:00:00Z"))).toBe(true); // 08:00 BST
-    expect(isAdminGroupPostHour(new Date("2026-09-30T20:59:00Z"))).toBe(true); // 21:59 BST
-    expect(isAdminGroupPostHour(new Date("2026-09-30T21:00:00Z"))).toBe(false); // 22:00 BST
-    expect(isAdminGroupPostHour(new Date("2026-11-02T08:00:00Z"))).toBe(true); // 08:00 GMT
-    expect(isAdminGroupPostHour(new Date("2026-11-02T07:59:00Z"))).toBe(false);
+    expect(isAdminGroupPostHour(new Date("2026-09-30T07:00:00Z"))).toBe(false); // 08:00 BST
+    expect(isAdminGroupPostHour(new Date("2026-09-30T07:59:00Z"))).toBe(false); // 08:59 BST
+    expect(isAdminGroupPostHour(new Date("2026-09-30T08:00:00Z"))).toBe(true); // 09:00 BST
+    expect(isAdminGroupPostHour(new Date("2026-09-30T21:00:00Z"))).toBe(true); // 22:00 BST
+    expect(isAdminGroupPostHour(new Date("2026-09-30T21:59:00Z"))).toBe(true); // 22:59 BST
+    expect(isAdminGroupPostHour(new Date("2026-09-30T22:00:00Z"))).toBe(false); // 23:00 BST
+    expect(isAdminGroupPostHour(new Date("2026-11-02T09:00:00Z"))).toBe(true); // 09:00 GMT
+    expect(isAdminGroupPostHour(new Date("2026-11-02T08:59:00Z"))).toBe(false);
+    expect(isAdminGroupPostHour(new Date("2026-11-02T22:59:00Z"))).toBe(true); // 22:59 GMT
+    expect(isAdminGroupPostHour(new Date("2026-11-02T23:00:00Z"))).toBe(false);
   });
 });

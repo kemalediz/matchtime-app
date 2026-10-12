@@ -36,6 +36,7 @@ import { APPROVED_CLUB_WHERE, servingClubWhere } from "./club-approval-state";
 import { SETUP_STAGE_SELECT, isClubSettingUp } from "./club-setup-rules";
 import { isBillingPaused } from "./club-billing-rules";
 import {
+  ADMIN_GROUP_CODE_REUSE_MIN_MS,
   ADMIN_GROUP_CODE_TTL_MS,
   generateAdminGroupLinkCode,
   isAdminGroupCandidate,
@@ -185,18 +186,81 @@ export async function recordAdminGroupCandidate(input: {
   return { id: row.id };
 }
 
+/**
+ * Is a candidate admin group still WAITED FOR (2026-10-12)? True while an
+ * approved, served club that the group's ADDER is an owner or admin of has
+ * an open, unexpired admin group code.
+ *
+ * The 48-hour auto-leave (`queueUnsolicitedAutoLeaves`, group-add.ts) asks
+ * this for a candidate row and for nothing else. Without it the two clocks
+ * disagreed: the code MatchTime sends in the setup DM is valid 7 days, but
+ * an organiser who added MatchTime to their admins' group and forwarded
+ * the command on day three found MatchTime gone. So a candidate is left 48
+ * hours after the add OR when the last such code expires, whichever is
+ * LATER. A code from the Settings button lasts 48 hours and is minted
+ * before the add, so for that path the leave is exactly what it was.
+ *
+ * The adder is who the candidate row recorded (`recordAdminGroupCandidate`:
+ * phone, or a LID the server stored itself), resolved exactly as at the
+ * add. A candidate recorded for an adder MatchTime could not resolve (the
+ * "one of that club's admins is a member" rule) has nobody to ask about,
+ * and is left at 48 hours as before.
+ */
+export async function adderHasOpenAdminGroupCode(input: {
+  addedByPhone?: string | null;
+  addedByLid?: string | null;
+  now: Date;
+}): Promise<boolean> {
+  const adderIds = await resolveSenderUserIds({ phones: [input.addedByPhone ?? null], lid: input.addedByLid ?? null });
+  const clubs = await adminClubsOf(adderIds);
+  if (clubs.length === 0) return false;
+  const open =
+    (await db.organisation.findMany({
+      where: {
+        id: { in: [...new Set(clubs.map((c) => c.orgId))] },
+        ...servingClubWhere(),
+        adminGroupLinkCode: { not: null },
+        adminGroupLinkCodeExpiresAt: { gt: input.now },
+      },
+      select: { id: true },
+      take: 1,
+    })) ?? [];
+  return open.length > 0;
+}
+
 // ── The code (2.3) ───────────────────────────────────────────────────────
 
-/** A new single-use code for this club, replacing any earlier one. */
+/** What `createAdminGroupLinkCode` writes with: `db`, or a transaction client. */
+export type AdminGroupCodeClient = {
+  organisation: { updateMany(args: { where: { id: string }; data: Record<string, unknown> }): Promise<{ count: number }> };
+};
+
+/**
+ * A new single-use code for this club, replacing any earlier one.
+ *
+ * `ttlMs`: how long it lasts. Default 48 hours (the Settings button, which
+ * passes nothing). The setup DM of a club that is setting up passes
+ * `ADMIN_GROUP_DM_CODE_TTL_MS`, 7 days (go-live slice S7).
+ *
+ * `client`: a transaction client, when the code must be minted in the
+ * caller's own transaction (the setup DM mints it only after winning its
+ * once-per-club claim, so a run that loses the race can never replace the
+ * code the winner sends). Inside a transaction a code collision (another
+ * club holds the same six characters, about one in 887 million per club)
+ * cannot be retried: the transaction is rolled back and the caller's own
+ * retry draws again.
+ */
 export async function createAdminGroupLinkCode(
   orgId: string,
   now: Date = new Date(),
+  opts: { ttlMs?: number; client?: AdminGroupCodeClient } = {},
 ): Promise<{ code: string; expiresAt: Date }> {
-  const expiresAt = new Date(now.getTime() + ADMIN_GROUP_CODE_TTL_MS);
-  for (let attempt = 0; attempt < 5; attempt++) {
+  const client = opts.client ?? (db as unknown as AdminGroupCodeClient);
+  const expiresAt = new Date(now.getTime() + (opts.ttlMs ?? ADMIN_GROUP_CODE_TTL_MS));
+  for (let attempt = 0; attempt < (opts.client ? 1 : 5); attempt++) {
     const code = generateAdminGroupLinkCode();
     try {
-      await db.organisation.updateMany({
+      await client.organisation.updateMany({
         where: { id: orgId },
         data: { adminGroupLinkCode: code, adminGroupLinkCodeExpiresAt: expiresAt },
       });
@@ -208,6 +272,38 @@ export async function createAdminGroupLinkCode(
     }
   }
   throw new Error("Could not create an admin group code; please try again.");
+}
+
+/**
+ * THE SETTINGS BUTTON'S CODE (2026-10-12). "Link admin group" used to mint
+ * a new code every time, replacing any earlier one. For a club that is
+ * setting up, the earlier one is the code MatchTime sent in the setup DM:
+ * pressing the button killed the command sitting in the organiser's chat,
+ * which then got "That code isn't valid any more".
+ *
+ * So the button now SHOWS the club's open code when it has more than an
+ * hour left (`ADMIN_GROUP_CODE_REUSE_MIN_MS`), with its real expiry, and
+ * writes nothing. A new code is minted only when there is none, when the
+ * open one is about to expire, or when the organiser asks for one
+ * (`fresh`: the "New code" button, shown while a code is on screen). A
+ * new code lasts 48 hours, as it always has.
+ */
+export async function adminGroupLinkCodeForSettings(
+  orgId: string,
+  opts: { fresh?: boolean; now?: Date } = {},
+): Promise<{ code: string; expiresAt: Date; reused: boolean }> {
+  const now = opts.now ?? new Date();
+  if (!opts.fresh) {
+    const org = await db.organisation.findUnique({
+      where: { id: orgId },
+      select: { adminGroupLinkCode: true, adminGroupLinkCodeExpiresAt: true },
+    });
+    const expiresAt = org?.adminGroupLinkCodeExpiresAt ?? null;
+    if (org?.adminGroupLinkCode && expiresAt && expiresAt.getTime() - now.getTime() > ADMIN_GROUP_CODE_REUSE_MIN_MS) {
+      return { code: org.adminGroupLinkCode, expiresAt, reused: true };
+    }
+  }
+  return { ...(await createAdminGroupLinkCode(orgId, now)), reused: false };
 }
 
 // ── The link command (2.3) ───────────────────────────────────────────────
@@ -228,7 +324,19 @@ export type AdminGroupLinkResult =
   | { outcome: "linked"; replyText: string; adminGroup: { groupId: string; orgId: string } }
   | { outcome: "already-linked"; replyText: null; adminGroup: { groupId: string; orgId: string } }
   | { outcome: "bad-code" | "main-group"; replyText: string }
-  | { outcome: "ignored"; replyText: null; reason: string };
+  | {
+      outcome: "ignored";
+      replyText: null;
+      reason: string;
+      /**
+       * Go-live slice S7. Set only with reason "club-setting-up": the
+       * command came from the PLAYERS' group of a club that is still
+       * setting up, sent by this owner or admin of it. Nothing is posted
+       * there; `handleAdminGroupLinkCommand` (admin-group-link-command.ts)
+       * tells them by DM instead.
+       */
+      settingUpPlayersGroup?: { orgId: string; userId: string; language: string };
+    };
 
 const ignored = (reason: string): AdminGroupLinkResult => ({ outcome: "ignored", replyText: null, reason });
 
@@ -256,7 +364,22 @@ export async function linkAdminGroup(input: AdminGroupLinkInput): Promise<AdminG
     // Go-live slice S1: the Pi posts `replyText` in the group the command
     // came from, and this group is the PLAYERS' group. While the club is
     // still setting up MatchTime says nothing there, so not even L3.
-    if (isClubSettingUp(community)) return ignored("club-setting-up");
+    // Slice S7: the organiser is told by DM instead (the caller does it,
+    // from what is returned here). The command sent in a SEPARATE group
+    // never reaches this branch: it links below like any club's, and its
+    // confirmation is posted in that group, the organisers' own.
+    if (isClubSettingUp(community)) {
+      return {
+        outcome: "ignored",
+        replyText: null,
+        reason: "club-setting-up",
+        settingUpPlayersGroup: {
+          orgId: community.id,
+          userId: adminOf.get(community.id)!.userId,
+          language: community.language,
+        },
+      };
+    }
     return { outcome: "main-group", replyText: t(community.language).admin_group_main_group({ club: community.name }) };
   }
 

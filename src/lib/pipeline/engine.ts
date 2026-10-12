@@ -3152,7 +3152,7 @@ export function decide(input: EngineInput): EngineResult {
   // that vacancy is announced even though a bench exists.
   //
   // KNOWN GAP, stated: the scheduler's broadcast is additionally gated
-  // on London 08:00-21:59 and on per-player `subBenchOfferDm` opt-outs,
+  // on London 09:00 to 22:59 and on per-player `subBenchOfferDm` opt-outs,
   // neither of which is in `SquadState`. A 02:00 drop with a bench is
   // therefore still quiet until morning, exactly as it is today.
   //

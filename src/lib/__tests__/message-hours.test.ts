@@ -162,5 +162,7 @@ describe("the wait is never longer than the night", () => {
       expect(inMessageHours(send!)).toBe(true);
       expect(inMessageHours(new Date(send!.getTime() - 1))).toBe(false);
     }
-  });
+    // 35,000 instants, each a few time zone conversions: seconds when the
+    // whole suite runs beside it, so it gets room.
+  }, 60_000);
 });

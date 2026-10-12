@@ -77,7 +77,16 @@ export async function loadLearnedSetupView(orgId: string): Promise<LearnedSetupV
       ? await db.activity.findMany({
           where: { orgId, isActive: true },
           orderBy: { createdAt: "asc" },
-          select: { dayOfWeek: true, time: true, venue: true, sport: { select: { playersPerTeam: true } } },
+          select: {
+            dayOfWeek: true,
+            time: true,
+            venue: true,
+            // For the match fee suggestion: without these the fee always
+            // looks unset and a split-pitch game is never seen.
+            feePerPlayer: true,
+            feeSplitTotal: true,
+            sport: { select: { playersPerTeam: true } },
+          },
         })
       : [];
   return {

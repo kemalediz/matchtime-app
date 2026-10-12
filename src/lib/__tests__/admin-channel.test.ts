@@ -129,11 +129,11 @@ describe("sendAdminNotice: the other two channels", () => {
     expect(jobs().map((j) => [j.kind, j.phone])).toEqual([["dm", "447700900101"]]);
   });
 
-  it("a new notice (slice 1's R4, a plain string) is held overnight to 08:00 London; an existing one is not", async () => {
+  it("a new notice (slice 1's R4, a plain string) is held overnight to 09:00 London; an existing one is not", async () => {
     dbMock.organisation.findUnique.mockResolvedValue(org({ adminChannelMode: "one-person" }));
     await sendAdminNotice({ orgId: ORG, text: "Late drop-out: *Ali*", now: NIGHT });
     expect(jobs()[0]).toMatchObject({ kind: "dm", phone: "447700900101", text: "Late drop-out: *Ali*" });
-    expect(jobs()[0].sendAfter).toEqual(new Date("2026-10-01T07:00:00Z"));
+    expect(jobs()[0].sendAfter).toEqual(new Date("2026-10-01T08:00:00Z"));
     await sendAdminNotice({ orgId: ORG, text: "Someone left", now: NIGHT, holdOvernight: false });
     expect(jobs()[1].sendAfter).toBeUndefined();
     await sendAdminNotice({ orgId: ORG, text: "Late drop-out: *Ali*", now: NOON });
@@ -194,7 +194,7 @@ describe("adminNoticeInstructions (the scheduler's notices)", () => {
     expect(out.map((i) => [i.kind, i.key])).toEqual([["dm", "m1:switch-nudge:u-owner"]]);
   });
 
-  it("admin-group posts wait for 08:00 to 21:59 London", async () => {
+  it("admin-group posts wait for 09:00 to 22:59 London", async () => {
     expect(await run({ adminChannelMode: "admin-group", adminGroupId: GROUP }, { now: NIGHT })).toEqual([]);
   });
 });

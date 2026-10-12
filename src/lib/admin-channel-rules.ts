@@ -15,6 +15,7 @@
  * command ever leaves a silent group.
  */
 import { randomInt } from "node:crypto";
+import { inMessageHours } from "./message-hours";
 
 export const ADMIN_CHANNEL_MODES = ["one-person", "admin-group", "each-admin"] as const;
 export type AdminChannelMode = (typeof ADMIN_CHANNEL_MODES)[number];
@@ -132,6 +133,15 @@ export const ADMIN_GROUP_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 export const ADMIN_GROUP_CODE_LENGTH = 6;
 /** How long a code shown on the settings page stays valid. */
 export const ADMIN_GROUP_CODE_TTL_MS = 48 * 60 * 60 * 1000;
+/** The Settings button shows an open code instead of replacing it only
+ *  while the code has MORE than this left: a code about to expire is not
+ *  worth handing to somebody who still has to add MatchTime to a group. */
+export const ADMIN_GROUP_CODE_REUSE_MIN_MS = 60 * 60 * 1000;
+/** How long a code minted for the setup DM of a club that is setting up
+ *  stays valid (go-live slice S7, owner decision 6): 7 days. The
+ *  organiser has it in a DM, not on a page they are looking at, and only
+ *  an owner or admin of that club can use it. */
+export const ADMIN_GROUP_DM_CODE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 export function generateAdminGroupLinkCode(rand: (max: number) => number = (max) => randomInt(max)): string {
   let out = "";
@@ -190,18 +200,11 @@ export function parsePiCaps(header: string | null | undefined): PiCaps {
 }
 
 /**
- * Admin-group posts go out 08:00 to 21:59 London, like the bench offers;
- * anything due overnight waits for the morning. Every post is claimed once
- * by its key, so waiting delays it and never doubles it.
+ * Admin-group posts go out 09:00 to 22:59 London (the shared message
+ * hours), like the bench offers; anything due overnight waits for the
+ * morning. Every post is claimed once by its key, so waiting delays it
+ * and never doubles it.
  */
-export const ADMIN_GROUP_POST_FROM_HOUR = 8;
-export const ADMIN_GROUP_POST_TO_HOUR = 22;
-
 export function isAdminGroupPostHour(now: Date): boolean {
-  const h = Number(
-    new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "numeric", hour12: false })
-      .formatToParts(now)
-      .find((p) => p.type === "hour")?.value ?? "0",
-  );
-  return h >= ADMIN_GROUP_POST_FROM_HOUR && h < ADMIN_GROUP_POST_TO_HOUR;
+  return inMessageHours(now);
 }

@@ -67,11 +67,11 @@
  * reports. It is closed for good because the reading itself refuses to
  * write a row it no longer holds (setup-learning/run.ts: its settings
  * write and its record are one transaction that first locks the row on
- * status "running"). LOCK ORDER, everywhere: THE CLUB'S ROW, THEN THE
- * READING ROW. `goLiveClub` writes the club and then closes the reading;
- * the reading locks the club and then takes its row; so the close here
- * locks the club first too. Three transactions that all take the two rows
- * in one order cannot deadlock.
+ * status "running"). THE LOCK ORDER is written once, at the top of
+ * club-setup.ts: the club's row (FOR NO KEY UPDATE), then the reading
+ * row, then the connect rows. The close here follows it (`lockClubSetup`
+ * first), and so does the stamp (its compare-and-set on the club is its
+ * transaction's first write; it then only inserts the DM).
  *
  * Also used when the DM goes with the reading switched OFF (reason
  * "reading-off"): without it, switching the reading on a day later would
@@ -87,17 +87,34 @@
  * LOGS carry the club's id and reason codes only: never its name, a phone
  * number, the message text or a link.
  *
- * NOT HERE (later slices): the reminder at 24 hours, the admin group
- * block, GO.
+ * THE ADMIN GROUP STEP (go-live slice S7, owner decisions 6 and 10). A
+ * club with no admin group linked gets one more block in the DM ("add me
+ * to your organisers' group and send my next message there") and a SECOND
+ * platform DM straight after it: exactly "Match Time admin group <CODE>",
+ * so it can be forwarded whole. Both jobs are created in the claim's own
+ * transaction, with the same due time, and the second is ordered after
+ * the first (`createdAt`, one millisecond apart: dispatch is oldest
+ * first). So it is sent at most once per club for the same reason the
+ * setup DM is, and never without it. The code is minted INSIDE that
+ * transaction, after the claim is won (a run that loses the race must not
+ * replace the code the winner sends), and lasts 7 days from the DM's due
+ * time. A club that already has an admin group gets neither the block nor
+ * the second message. `cancelSetupDm` takes both back together.
+ *
+ * NOT HERE: the reminder at 24 hours (club-setup-reminder.ts), GO
+ * (setup-go-dm.ts).
  */
 import { randomUUID } from "node:crypto";
 import { db } from "./db";
+import { ADMIN_GROUP_DM_CODE_TTL_MS } from "./admin-channel-rules";
+import { createAdminGroupLinkCode, type AdminGroupCodeClient } from "./admin-group-link";
 import { appUrl, buildAdminLink } from "./admin-link";
 import {
   SETUP_DM_DUE_WHERE,
   SETUP_LEARNING_FINAL_STATUSES,
   STILL_READING_WINDOW_MS,
   isSetupLearningFinal,
+  lockClubSetup,
   markSetupAsked,
 } from "./club-setup";
 import { freePeriodCanStart } from "./club-billing-rules";
@@ -106,8 +123,15 @@ import { SETUP_ALERT_KIND, recordOpsEvent } from "./ops-alerts";
 import { PlatformDmRefused, queuePlatformDm, type PlatformDmClient } from "./platform-jobs";
 import type { PipelineModel } from "./pipeline/llm";
 import { clearCapturedChatForClub } from "./captured-chat";
+import {
+  SETUP_ADMIN_CODE_DM_PURPOSE,
+  composeSetupAdminCommandDm,
+  setupAdminCodeRefId,
+  setupAdminGroupBlock,
+} from "./club-setup-followup-rules";
 import { isSetupLearningEnabled } from "./setup-learning/flag";
 import { learnClubSetup, type LearnOutcome } from "./setup-learning/run";
+import { FEE_PATH } from "./setup-learning/suggestion-action";
 import {
   READING_OFF_REASON,
   READING_TIMED_OUT_REASON,
@@ -161,9 +185,11 @@ type RawClient = {
  * is already final is left exactly as it was (false). One statement with
  * no error to catch, in its own transaction with the chat's deletion.
  *
- * It takes THE CLUB'S ROW FIRST (the lock order, see the header), so it
- * waits for a reading that is writing its result at this instant and then
- * finds the row final, instead of meeting it half way.
+ * It takes THE CLUB'S ROW FIRST (`lockClubSetup`: the lock order at the
+ * top of club-setup.ts), so it waits for a reading that is writing its
+ * result at this instant and then finds the row final, instead of meeting
+ * it half way. Never FOR UPDATE: that waits for the reading's claim, which
+ * is waiting for this row (a deadlock, found on main).
  */
 export async function closeReadingForGood(
   orgId: string,
@@ -172,7 +198,7 @@ export async function closeReadingForGood(
 ): Promise<boolean> {
   return db.$transaction(async (client) => {
     const tx = client as unknown as RawClient;
-    await tx.$executeRaw`SELECT 1 FROM "Organisation" WHERE "id" = ${orgId} FOR UPDATE`;
+    await lockClubSetup(tx, orgId);
     const rows = await tx.$queryRaw<Array<{ inserted: boolean }>>`
       INSERT INTO "ClubSetupLearning" ("id", "orgId", "status", "reason", "updatedAt")
       VALUES (${`csl-${randomUUID()}`}, ${orgId}, 'skipped', ${reason}, ${now})
@@ -189,9 +215,22 @@ export async function closeReadingForGood(
   });
 }
 
-/** The club, only while its setup DM is due, with all the DM is composed from. */
+/**
+ * The club, only while its setup DM is due, with all the DM is composed
+ * from. Read in ONE SNAPSHOT (repeatable read): the club's settings and
+ * its reading row are two SELECTs, and a reading that commits between them
+ * would otherwise give settings from before it and a row from after it,
+ * which reads as "the organiser changed this back" and made the DM say
+ * "found nothing" about a setting just switched on (found by the cap's
+ * race, e2e/helpers/setup-hold-lib-tests.ts check 9). Read only: it takes
+ * no lock and cannot fail to serialise.
+ */
 function loadDue(orgId: string) {
-  return db.organisation.findFirst({
+  return db.$transaction((tx) => loadDueIn(tx, orgId), { isolationLevel: "RepeatableRead" });
+}
+
+function loadDueIn(tx: Pick<typeof db, "organisation">, orgId: string) {
+  return tx.organisation.findFirst({
     where: { id: orgId, ...SETUP_DM_DUE_WHERE },
     select: {
       id: true,
@@ -209,6 +248,7 @@ function loadDue(orgId: string) {
       featureAttendance: true,
       featureBench: true,
       featureSquadFromList: true,
+      adminGroupId: true,
       // Whether going live will start a free period (`freePeriodCanStart`).
       billingStatus: true,
       billingPlan: true,
@@ -284,6 +324,7 @@ export async function sendSetupDm(orgId: string, now: Date = new Date(), opts: S
   let reading: ChatReading;
   let learnedUrl: string | null = null;
   let organiserPicksUrl: string | null = null;
+  let feeUrl: string | null = null;
   if (stored.kind === "findings") {
     const applied = [];
     for (const a of stored.applied) {
@@ -294,9 +335,14 @@ export async function sendSetupDm(orgId: string, now: Date = new Date(), opts: S
     if (stored.suggestions.some((sg) => sg.key === "organiserPicks")) {
       organiserPicksUrl = await link("/admin/settings?learned=organiserPicks#learned-setup");
     }
+    // The match fee suggestion: straight to the fee field, as the findings DM links it (setup-learning/run.ts).
+    if (stored.suggestions.some((sg) => sg.key === "matchFee")) feeUrl = await link(FEE_PATH);
   } else {
     reading = stored;
   }
+
+  // The optional admin group step: only for a club with none linked.
+  const adminStep = !org.adminGroupId;
 
   const text = composeSetupAskDm({
     lang: org.language,
@@ -309,13 +355,18 @@ export async function sendSetupDm(orgId: string, now: Date = new Date(), opts: S
     settingsUrl: await link("/admin/settings"),
     learnedUrl,
     organiserPicksUrl,
+    feeUrl,
     // The free period line, only when going live will start one: the test
     // `goLiveClub`'s billing step applies (billing on, plan not Free, no
     // free period had). Read from the environment, as the sweep reads the
     // reading's switch.
     freePeriod: freePeriodCanStart({ ...org, hasBilling: !!org.clubBilling }),
-    // adminGroupBlock: go-live slice S7 passes the admin group step here.
+    adminGroupBlock: adminStep ? setupAdminGroupBlock(org.language) : null,
   });
+  const language = org.language;
+  // The setup DM first, its admin group command second: dispatch is oldest
+  // first, and two rows of one transaction would share its timestamp.
+  const queuedAt = new Date();
 
   const outcome = await db.$transaction(async (tx): Promise<SetupDmOutcome> => {
     // The claim. Only the run that wins it goes on.
@@ -328,7 +379,24 @@ export async function sendSetupDm(orgId: string, now: Date = new Date(), opts: S
         refId: setupAskRefId(orgId),
         sendAfter,
         client: tx as unknown as PlatformDmClient,
+        ...(adminStep ? { createdAt: queuedAt } : {}),
       });
+      if (adminStep) {
+        // "My next message": the link command, on its own, right behind.
+        const { code } = await createAdminGroupLinkCode(orgId, dueAt, {
+          ttlMs: ADMIN_GROUP_DM_CODE_TTL_MS,
+          client: tx as unknown as AdminGroupCodeClient,
+        });
+        await queuePlatformDm({
+          phone: connect.phone,
+          text: composeSetupAdminCommandDm({ lang: language, code }),
+          purpose: SETUP_ADMIN_CODE_DM_PURPOSE,
+          refId: setupAdminCodeRefId(orgId),
+          sendAfter,
+          client: tx as unknown as PlatformDmClient,
+          createdAt: new Date(queuedAt.getTime() + 1),
+        });
+      }
     } catch (err) {
       // The recipient rule said no (the organiser's number is no longer a
       // MatchTime user's, or is not a number). The stamp STAYS, so no sweep
@@ -344,6 +412,7 @@ export async function sendSetupDm(orgId: string, now: Date = new Date(), opts: S
   if (outcome.kind === "sent") {
     console.log(
       `[club-setup-dm] ${orgId}: setup DM queued (reading: ${reading.kind}` +
+        `${adminStep ? ", with the admin group command" : ""}` +
         `${sendAfter ? `, held until ${sendAfter.toISOString()}` : ""})`,
     );
   }

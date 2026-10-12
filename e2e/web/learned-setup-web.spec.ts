@@ -488,9 +488,31 @@ test("a suggestion the organiser has dealt with leaves the block, and a quiet li
 for (const anchoring of [true, false]) {
   test(`saving a setting never moves the page, and the panel scrolls to itself once only (scroll anchoring ${anchoring ? "on" : "off"})`, async ({ page, db }) => {
     await db.run(`UPDATE "Organisation" SET "benchPickMode" = 'first-come', language = 'en' WHERE id = $1`, [ORG_ID]);
-    await db.run(`UPDATE "ClubSetupLearning" SET suggestions = $2::jsonb WHERE "orgId" = $1`, [
+    // Everything that can change the panel's height: a card that goes when
+    // it is resolved (the fee, with its "From your group description"
+    // caption; organisers pick; the language), and a description caption
+    // on a switched setting.
+    await db.run(`UPDATE "Activity" SET "feePerPlayer" = NULL, "feeSplitTotal" = false WHERE "orgId" = $1`, [ORG_ID]);
+    await db.run(`UPDATE "ClubSetupLearning" SET applied = $2::jsonb, suggestions = $3::jsonb WHERE "orgId" = $1`, [
       ORG_ID,
       JSON.stringify([
+        {
+          key: "rollingSquad",
+          from: false,
+          to: true,
+          evidence: ["Same lot as last week", "Same squad every week unless you say out"],
+          fromDescription: ["Same squad every week unless you say out"],
+          undoneAt: null,
+        },
+      ]),
+      JSON.stringify([
+        {
+          key: "matchFee",
+          current: "",
+          detected: "6.50",
+          evidence: ["£6.50 a player, pay before kick off"],
+          fromDescription: ["£6.50 a player, pay before kick off"],
+        },
         { key: "language", current: "en", detected: "tr", evidence: [] },
         {
           key: "organiserPicks",
@@ -529,10 +551,32 @@ for (const anchoring of [true, false]) {
         (sel) => ({ top: Math.round(document.querySelector(sel)!.getBoundingClientRect().top), scrollY: Math.round(window.scrollY) }),
         css,
       );
-    /** Everything a save sets off has happened: the requests, and every timer. */
+    /** The page has done everything it was going to: what is queued has run, and every timer. */
+    const turn = () =>
+      page.evaluate(
+        () =>
+          new Promise<void>((done) => {
+            const channel = new MessageChannel();
+            channel.port1.onmessage = () => done();
+            channel.port2.postMessage(null);
+          }),
+      );
     const settle = async () => {
-      await page.waitForLoadState("networkidle");
+      await turn();
       await page.clock.runFor(2_000);
+      await turn();
+    };
+    /**
+     * The panel's n-th load since the count was reset has been ANSWERED
+     * and taken in. Not merely sent: `waitForLoadState("networkidle")`
+     * returns at once on a page that has been idle before, so a step that
+     * went on while the answer was still on its way met a panel that was
+     * mid-load (about one run in sixty, the answer taking 160ms).
+     */
+    const loaded = async (n: number) => {
+      await expect.poll(() => loads.done()).toBe(n);
+      expect(loads.count()).toBe(n);
+      await settle();
     };
 
     // The DM's link to a suggestion: the page scrolls to it. Once.
@@ -541,6 +585,7 @@ for (const anchoring of [true, false]) {
     await expect(pickCard).toHaveClass(/ring-2/, { timeout: 30_000 });
     await expect(pickCard).toBeInViewport({ ratio: 1 });
     await expect.poll(() => loads.known()).toBe(true);
+    await page.waitForLoadState("networkidle");
     await settle();
     expect(await panelScrolls()).toEqual(["learned-organiserPicks"]);
     expect(await page.evaluate(() => getComputedStyle(document.body).overflowAnchor)).toBe(anchoring ? "auto" : "none");
@@ -563,8 +608,7 @@ for (const anchoring of [true, false]) {
     await goTo(tid("wr-pick"));
     was = await where(tid("wr-pick"));
     await page.getByTestId("wr-pick-mode").selectOption("organiser");
-    await expect.poll(() => loads.count()).toBe(1);
-    await settle();
+    await loaded(1);
     expect(await where(tid("wr-pick"))).toEqual(was);
     await expect(pickCard).toHaveCount(1);
 
@@ -575,16 +619,31 @@ for (const anchoring of [true, false]) {
     was = await where("#bot-language select");
     await page.locator("#bot-language select").selectOption("tr");
     await expect(page.getByText("MatchTime will speak Türkçe in this group")).toBeVisible();
-    await expect.poll(() => loads.count()).toBe(2);
-    await settle();
+    await loaded(2);
     expect(await where("#bot-language select")).toEqual(was);
     await expect(page.getByRole("heading", { name: "Set up from your group chat" })).toHaveCount(1);
+
+    // The match fee, set on the weekly game page while this page was left
+    // open (as if in another tab), and the organiser comes back to it
+    // still scrolled down here: the panel loads, the fee's card and its
+    // description caption would go, and nothing moves.
+    const feeCard = page.getByTestId("learned-suggestion-matchFee");
+    await expect(feeCard.getByTestId("learned-evidence-description")).toHaveCount(1);
+    await expect(page.getByTestId("learned-item-rollingSquad").getByTestId("learned-evidence-description")).toHaveCount(1);
+    was = await where("#bot-language select");
+    await db.run(`UPDATE "Activity" SET "feePerPlayer" = 6.5 WHERE "orgId" = $1`, [ORG_ID]);
+    await page.clock.fastForward(6_000);
+    await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true })));
+    await loaded(3);
+    expect(await where("#bot-language select")).toEqual(was);
+    await expect(feeCard).toHaveCount(1);
 
     // Back up at the panel: now it shows what it loaded. Nothing the panel
     // did scrolled the page, then or since.
     await page.getByTestId("learned-setup").scrollIntoViewIfNeeded();
     await page.clock.runFor(1_000);
     await expect(page.getByTestId("learned-suggestions")).toHaveCount(0);
+    await expect(page.getByTestId("learned-resolved-matchFee")).toHaveText("Maç ücreti artık kişi başı £6.50.");
     await expect(page.getByTestId("learned-resolved-organiserPicks")).toHaveText('"Organizatörler seçer" ayarı açık.');
     await expect(page.getByTestId("learned-resolved-language")).toHaveText("MatchTime bu grupta artık Türkçe konuşuyor.");
     expect(await panelScrolls()).toEqual(["learned-organiserPicks"]);
@@ -595,14 +654,14 @@ for (const anchoring of [true, false]) {
     await db.run(`UPDATE "Organisation" SET "benchPickMode" = 'first-come', language = 'en' WHERE id = $1`, [ORG_ID]);
     await page.goto("/admin/settings#learned-setup");
     await expect(pickCard).toBeVisible({ timeout: 30_000 });
+    await page.waitForLoadState("networkidle");
     await settle();
     loads.reset();
     const scrolledDown = await scrollEnd(page);
     await pickCard.getByRole("link", { name: 'Switch on "The organisers pick"' }).click();
     await page.getByTestId("wr-pick-mode").selectOption("organiser");
-    await expect.poll(() => loads.count()).toBe(1);
     await scrolledDown();
-    await settle();
+    await loaded(1);
     const rested = await where(tid("wr-pick"));
     // Where the link leaves it: the row at the top, under its 24px margin.
     expect(rested.top).toBe(24);
@@ -615,3 +674,132 @@ for (const anchoring of [true, false]) {
     await expect(page.getByTestId("learned-suggestion-organiserPicks")).toHaveCount(0);
   });
 }
+
+// Go-live slice D3 (2026-10-12): a quote found in the GROUP DESCRIPTION is
+// shown under its own label, and the match fee is a thing to check whose
+// button opens the weekly game's fee field.
+test("description evidence has its own label, and the fee suggestion's button opens the fee field, which saves", async ({ page, db }) => {
+  await db.run(`UPDATE "Activity" SET "feePerPlayer" = NULL WHERE "orgId" = $1`, [ORG_ID]);
+  await db.run(
+    `UPDATE "Organisation" SET "rollingSquadEnabled" = false, "paymentTrackingEnabled" = false, language = 'en',
+       "dropOutDeadlineDay" = 1, "dropOutDeadlineTime" = '21:00', "listPublishDay" = NULL, "listPublishTime" = NULL
+     WHERE id = $1`,
+    [ORG_ID],
+  );
+  await db.run(`UPDATE "ClubSetupLearning" SET applied = $2::jsonb, suggestions = $3::jsonb, noted = '[]'::jsonb WHERE "orgId" = $1`, [
+    ORG_ID,
+    JSON.stringify([
+      {
+        key: "dropOutDeadline",
+        from: null,
+        to: { day: 1, time: "21:00" },
+        evidence: ["Drop out by Monday 9pm please", "Drop out by Monday 9pm or you still pay"],
+        fromDescription: ["Drop out by Monday 9pm or you still pay"],
+        undoneAt: null,
+      },
+    ]),
+    JSON.stringify([
+      {
+        key: "matchFee",
+        current: "",
+        detected: "6.50",
+        evidence: ["£6.50 a player, pay before kick off"],
+        fromDescription: ["£6.50 a player, pay before kick off"],
+      },
+    ]),
+  ]);
+
+  await signInAs(page, U.admin, "/admin/settings#learned-setup");
+  const item = page.getByTestId("learned-item-dropOutDeadline");
+  await expect(item).toBeVisible({ timeout: 30_000 });
+  // One line for the message, one for the description, never mixed.
+  await expect(item.getByTestId("learned-evidence-chat")).toHaveText('From messages like: "Drop out by Monday 9pm please"');
+  await expect(item.getByTestId("learned-evidence-description")).toHaveText(
+    'From your group description: "Drop out by Monday 9pm or you still pay"',
+  );
+
+  const check = page.getByRole("region", { name: "1 thing to check" });
+  const fee = page.getByTestId("learned-suggestion-matchFee");
+  await expect(fee).toContainText("The match fee looks like £6.50 a player; your weekly game has no fee set.");
+  await expect(fee.getByTestId("learned-evidence-description")).toHaveText(
+    'From your group description: "£6.50 a player, pay before kick off"',
+  );
+  await expect(fee.getByTestId("learned-evidence-chat")).toHaveCount(0);
+  await expect(check.getByRole("link")).toHaveAccessibleName("Set the match fee");
+  await expect(fee.getByRole("link")).toHaveAttribute("href", "/admin/activities?edit=fee");
+  await expectNoHorizontalOverflow(page);
+
+  // The same in Turkish: both labels, the fee's line and its button.
+  await db.run(`UPDATE "Organisation" SET language = 'tr' WHERE id = $1`, [ORG_ID]);
+  try {
+    await page.reload();
+    await expect(item.getByTestId("learned-evidence-chat")).toHaveText('Şu tür mesajlardan: "Drop out by Monday 9pm please"', {
+      timeout: 30_000,
+    });
+    await expect(item.getByTestId("learned-evidence-description")).toHaveText(
+      'Grup açıklamanızdan: "Drop out by Monday 9pm or you still pay"',
+    );
+    await expect(fee).toContainText("Maç ücreti kişi başı £6.50 gibi görünüyor; haftalık maçınızda ücret girilmemiş.");
+    await expect(fee.getByTestId("learned-evidence-description")).toHaveText(
+      'Grup açıklamanızdan: "£6.50 a player, pay before kick off"',
+    );
+    await expect(fee.getByRole("link", { name: "Maç ücretini gir" })).toHaveAttribute("href", "/admin/activities?edit=fee");
+  } finally {
+    await db.run(`UPDATE "Organisation" SET language = 'en' WHERE id = $1`, [ORG_ID]);
+  }
+  await page.reload();
+
+  // The button opens the weekly game's edit form at the fee field.
+  await fee.getByRole("link", { name: "Set the match fee" }).click();
+  await expect(page).toHaveURL(/\/admin\/activities\?edit=fee$/, { timeout: 30_000 });
+  const field = page.getByTestId("activity-fee");
+  await expect(field).toBeVisible({ timeout: 30_000 });
+  await expect(field).toBeFocused();
+  await expect(field).toHaveValue("");
+  await expect(page.getByText("Fee per player (£), optional")).toBeVisible();
+
+  // Not an amount: refused in words, nothing saved.
+  await field.fill("six quid");
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect(page.getByText("Enter a fee like 6 or 6.50, at most £100.")).toBeVisible();
+  expect(await db.all(`SELECT 1 FROM "Activity" WHERE "orgId" = $1 AND "feePerPlayer" IS NOT NULL`, [ORG_ID])).toEqual([]);
+
+  await field.fill("6.50");
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect
+    .poll(async () => db.all(`SELECT "feePerPlayer" AS fee FROM "Activity" WHERE "orgId" = $1 AND "feePerPlayer" IS NOT NULL`, [ORG_ID]))
+    .toEqual([{ fee: 6.5 }]);
+  await expect(page.getByTestId("activity-fee-row")).toContainText("£6.50 a player");
+});
+
+// Review fix 7 (PR #238): the fee field must not get in the way of an
+// edit of something else, and a game that splits the pitch has no fee.
+test("a stored fee the form cannot show exactly survives an edit of the venue; a split-pitch game has the field switched off", async ({ page, db }) => {
+  // More decimals than the form shows, and (second) above its limit.
+  for (const stored of [6.505, 250]) {
+    await db.run(`UPDATE "Activity" SET "feePerPlayer" = $2, "feeSplitTotal" = false WHERE "orgId" = $1`, [ORG_ID, stored]);
+    await signInAs(page, U.admin, "/admin/activities?edit=fee");
+    const field = page.getByTestId("activity-fee");
+    await expect(field).toBeVisible({ timeout: 30_000 });
+    const venue = page.locator("form").filter({ has: field }).locator("input").nth(2);
+    await venue.fill(`Goals ${stored}`);
+    await page.getByRole("button", { name: "Save changes" }).click();
+    await expect
+      .poll(async () => db.all(`SELECT venue, "feePerPlayer" AS fee FROM "Activity" WHERE "orgId" = $1 AND venue = $2`, [ORG_ID, `Goals ${stored}`]))
+      .toEqual([{ venue: `Goals ${stored}`, fee: stored }]);
+  }
+
+  await db.run(`UPDATE "Activity" SET "feePerPlayer" = NULL, "feeSplitTotal" = true WHERE "orgId" = $1`, [ORG_ID]);
+  await signInAs(page, U.admin, "/admin/activities?edit=fee");
+  const field = page.getByTestId("activity-fee");
+  await expect(field).toBeVisible({ timeout: 30_000 });
+  await expect(field).toBeDisabled();
+  await expect(page.getByTestId("activity-fee-hint")).toHaveText(
+    "This game splits the pitch cost between who played, so there is no fixed fee per player.",
+  );
+  // The rest of the form still saves.
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect(field).toHaveCount(0);
+  expect(await db.all(`SELECT 1 FROM "Activity" WHERE "orgId" = $1 AND "feePerPlayer" IS NOT NULL`, [ORG_ID])).toEqual([]);
+  await db.run(`UPDATE "Activity" SET "feeSplitTotal" = false WHERE "orgId" = $1`, [ORG_ID]);
+});

@@ -11,8 +11,10 @@
  *      or a model error, or stuck "running" for STUCK_AFTER_MS, is
  *      reclaimed up to MAX_ATTEMPTS times.
  *   2. READ the chat the group add stored on the connect request
- *      (ClubConnect.capturedHistory). Empty or too short: skipped, no
- *      model call, no change, no DM.
+ *      (ClubConnect.capturedHistory), and the group description stored
+ *      beside it (capturedDescription, already masked). Chat empty or too
+ *      short: skipped, no model call, no change, no DM, WHATEVER the
+ *      description says: it is never read by itself (rules.ts, rule 7).
  *   3. ONE MODEL CALL (Haiku, structured output) inside the club's daily
  *      AI cap (`withSetupReadingAiBudget`). At the cap: deferred, retried
  *      by a later sweep (tomorrow's allowance).
@@ -21,7 +23,10 @@
  *      organiser must not have saved any of those settings meanwhile.
  *      If the club moved, it is planned again from a fresh read once.
  *   5. RECORD what was detected, applied, suggested, noted and kept, with
- *      the call's tokens and cost, and CLEAR the stored chat.
+ *      the call's tokens and cost, and CLEAR the stored chat and the
+ *      description with it (one statement, captured-chat.ts), on every
+ *      final outcome. The description is never logged: not its text, not
+ *      a quote from it.
  *   6. DM the organiser once (purpose "setup-learned", refId
  *      "<orgId>:setup-learned"), on the platform channel, in the daytime
  *      (09:00 to 23:00 London; a night run waits for 09:00), only when
@@ -66,12 +71,11 @@
  *     transaction, then finds the row final and leaves it alone; a closer
  *     that got there first makes the compare-and-set fail, and nothing is
  *     applied.
- * LOCK ORDER, here and in every closer: THE CLUB'S ROW, THEN THE READING
- * ROW. `goLiveClub` (club-setup.ts) writes the club and then closes the
- * reading in one transaction; `closeReadingForGood` locks the club first
- * for the same reason. Every transaction that holds both rows takes them
- * in that order, so none can deadlock with another. (The first version of
- * this fix took the reading row first, which could deadlock with go-live.)
+ * THE LOCK ORDER is written once, at the top of club-setup.ts: the
+ * club's row (FOR NO KEY UPDATE, `lockClubSetup`), then the reading row.
+ * `goLiveClub`, the setup DM's cap and the owner's suspension follow the
+ * same order, so none can deadlock with this. The claim and every write
+ * outside `applyAndRecord` are single statements outside any transaction.
  * A run that finds its row closed returns "skipped", reason "closed". For
  * a club nobody closes (every club that is not held) the row is "running"
  * throughout and the reading behaves exactly as before.
@@ -86,6 +90,7 @@ import {
   SETUP_STAGE_SELECT,
   hasGoneLive,
   isClubSettingUp,
+  lockClubSetup,
   type SetupStageColumns,
 } from "../club-setup";
 import { withSetupReadingAiBudget } from "../ai-budget";
@@ -104,6 +109,7 @@ import {
 } from "./prompt";
 import {
   buildUserContent,
+  descriptionForReading,
   historyGate,
   parseDetection,
   planIsWorthTelling,
@@ -116,6 +122,7 @@ import {
 import { composeSetupDm } from "./dm";
 import { weeklyGameOf } from "./suggestion-state";
 import { isSetupLearningEnabled } from "./flag";
+import { FEE_PATH } from "./suggestion-action";
 
 export const SWEEP_WINDOW_DAYS = 3;
 export const MAX_PER_SWEEP = 5;
@@ -156,6 +163,8 @@ const ORG_SELECT = {
   listPublishTime: true,
   paymentTrackingEnabled: true,
   settingsSetByOrganiser: true,
+  // READ ONLY, for one question: is this a monthly club (no fee suggestion)?
+  squadMode: true,
 } as const;
 
 type OrgRow = OrgSettingsState &
@@ -165,6 +174,7 @@ type OrgRow = OrgSettingsState &
     approvedAt: Date | null;
     whatsappBotEnabled: boolean;
     liveAt: Date | null;
+    squadMode?: string | null;
   };
 
 async function loadOrg(orgId: string): Promise<OrgRow | null> {
@@ -233,6 +243,7 @@ function orgSettings(o: OrgRow): OrgSettingsState {
     paymentTrackingEnabled: o.paymentTrackingEnabled,
     language: o.language,
     settingsSetByOrganiser: o.settingsSetByOrganiser ?? [],
+    monthlySquad: o.squadMode === "monthly",
   };
 }
 
@@ -298,8 +309,10 @@ async function applyAndRecord(
 ): Promise<"closed" | "moved" | "done"> {
   return db.$transaction(async (client) => {
     const tx = client as unknown as RowClient;
-    // The club's row first: go-live and the cap's close take it first too.
-    await tx.$executeRaw`SELECT 1 FROM "Organisation" WHERE "id" = ${orgId} FOR UPDATE`;
+    // Step 1 of the lock order (club-setup.ts): the club's row, FOR NO
+    // KEY UPDATE. Go-live, the cap's close and a suspension take it first
+    // too; nobody inserting a row for this club is made to wait.
+    await lockClubSetup(tx, orgId);
     // Then the reading row, only while it is still this run's. A no-op
     // write, so the row is locked until this transaction ends.
     if (!(await finish(orgId, { status: "running" }, tx))) return "closed";
@@ -324,7 +337,7 @@ export async function learnClubSetup(orgId: string, opts: LearnOptions = {}): Pr
   const connect = await db.clubConnect.findFirst({
     where: { orgId, status: "closed", linkedAt: { not: null } },
     orderBy: { linkedAt: "desc" },
-    select: { id: true, userId: true, phone: true, groupSubject: true, capturedHistory: true },
+    select: { id: true, userId: true, phone: true, groupSubject: true, capturedHistory: true, capturedDescription: true },
   });
   if (!connect) {
     if (!(await finish(orgId, { status: "skipped", reason: "no-organiser" }))) return closedUnderUs(orgId);
@@ -345,14 +358,24 @@ export async function learnClubSetup(orgId: string, opts: LearnOptions = {}): Pr
   const activities = await db.activity.findMany({
     where: { orgId, isActive: true },
     orderBy: { createdAt: "asc" },
-    select: { dayOfWeek: true, time: true, venue: true, sport: { select: { playersPerTeam: true } } },
+    select: {
+      dayOfWeek: true,
+      time: true,
+      venue: true,
+      feePerPlayer: true,
+      feeSplitTotal: true,
+      sport: { select: { playersPerTeam: true } },
+    },
   });
   // The first active game, oldest first: the settings page holds the
   // suggestions against the same one (suggestion-state.ts).
   const weeklyGame: WeeklyGameState | null = weeklyGameOf(activities);
+  // The description, as it is sent and as quotes are checked against it.
+  // Read only now that the chat has passed the gate.
+  const description = descriptionForReading(connect.capturedDescription);
 
   // ── The one model call ───────────────────────────────────────────────
-  const user = buildUserContent({ groupSubject: connect.groupSubject, weeklyGame, history });
+  const user = buildUserContent({ groupSubject: connect.groupSubject, weeklyGame, history, description });
   const model = opts.model ? budgetedModel(opts.model) : anthropicModel();
   let resp: ModelResponse;
   try {
@@ -375,7 +398,7 @@ export async function learnClubSetup(orgId: string, opts: LearnOptions = {}): Pr
   } catch (err) {
     return await modelTrouble(orgId, connect.id, "model-error", err);
   }
-  const detection = parseDetection(raw, history);
+  const detection = parseDetection(raw, history, description);
   if (!detection) return await modelTrouble(orgId, connect.id, "model-error", new Error("not an object"));
   const usage = {
     model: SETUP_LEARNING_MODEL,
@@ -450,7 +473,8 @@ export async function learnClubSetup(orgId: string, opts: LearnOptions = {}): Pr
   console.log(
     `[setup-learning] ${orgId} ("${org.name}"): ${status}, ${plan.applied.length} applied ` +
       `[${plan.applied.map((a) => a.key).join(", ")}], ${plan.suggestions.length} suggestion(s), ` +
-      `${plan.noted.length} noted, ${plan.kept.length} kept; ${gate.messages} messages; ` +
+      `${plan.noted.length} noted, ${plan.kept.length} kept; ${gate.messages} messages, ` +
+      `${description ? "with" : "no"} group description; ` +
       `$${(resp.costUsd ?? 0).toFixed(4)}; DM ${dmQueued ? "queued" : "not sent"}`,
   );
   return {
@@ -517,6 +541,8 @@ async function queueSetupDm(args: {
     organiserPicksUrl: plan.suggestions.some((sg) => sg.key === "organiserPicks")
       ? await link("/admin/settings?learned=organiserPicks#learned-setup")
       : "",
+    // Minted only when it is used: the match fee suggestion, at the fee field.
+    feeUrl: plan.suggestions.some((sg) => sg.key === "matchFee") ? await link(FEE_PATH) : null,
   });
   try {
     await queuePlatformDm({ phone: connect.phone, text, purpose: SETUP_DM_PURPOSE, refId, sendAfter: messageHoursSendAfter(now) });

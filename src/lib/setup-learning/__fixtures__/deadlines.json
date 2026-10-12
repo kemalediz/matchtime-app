@@ -27,9 +27,11 @@
   ],
   "noted": [],
   "suggestions": [
-   "weeklyGameTime"
+   "weeklyGameTime",
+   "matchFee"
   ],
-  "dm": true
+  "dm": true,
+  "matchFee": 6
  },
  "history": [
   {

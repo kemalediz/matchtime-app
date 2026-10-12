@@ -92,6 +92,52 @@ test("Admin WhatsApp group: code and steps, linked by the command, then Unlink",
   expect(leave?.n).toBe("1");
 });
 
+test("a code MatchTime already sent by DM is SHOWN with its real expiry, not replaced; 'New code' replaces it", async ({ page, db }) => {
+  // The code from a setup DM: open, six days left.
+  await db.run(
+    `UPDATE "Organisation" SET "adminGroupLinkCode" = 'K7P3QX', "adminGroupLinkCodeExpiresAt" = (now() AT TIME ZONE 'UTC') + interval '6 days'
+      WHERE id = $1`,
+    [ORG_ID],
+  );
+  const stored = () =>
+    db.one<{ c: string | null; left: number }>(
+      `SELECT "adminGroupLinkCode" AS c,
+              EXTRACT(EPOCH FROM ("adminGroupLinkCodeExpiresAt" - (now() AT TIME ZONE 'UTC')))::float AS left
+         FROM "Organisation" WHERE id = $1`,
+      [ORG_ID],
+    );
+  try {
+    await signInAs(page, U.admin, "/admin/settings");
+    const section = page.getByTestId("admin-channel-section");
+    await expect(section).toBeVisible({ timeout: 30_000 });
+    await section.getByLabel("Admin WhatsApp group").check();
+
+    // The same code and command, at once, with no button pressed.
+    const steps = section.getByTestId("admin-group-steps");
+    await expect(steps).toContainText("Your code: K7P3QX");
+    await expect(steps).toContainText("@Match Time admin group K7P3QX");
+    // Its real expiry, not "48 hours".
+    const note = section.getByTestId("admin-group-code-note");
+    await expect(note).toContainText(/The code works once and is valid until \w+ \d{1,2} \w+ at \d{2}:\d{2}\./);
+    await expect(note).not.toContainText("48 hours");
+    // While a code is on screen the button is "New code": nothing replaces it by accident.
+    await expect(section.getByRole("button", { name: "Link admin group", exact: true })).toHaveCount(0);
+    expect((await stored())?.c).toBe("K7P3QX");
+    expect((await stored())!.left).toBeGreaterThan(5.9 * 24 * 3600);
+
+    // The organiser asks for a new one: replaced, valid 48 hours.
+    await section.getByRole("button", { name: "New code", exact: true }).click();
+    await expect.poll(async () => (await stored())?.c).not.toBe("K7P3QX");
+    const fresh = (await stored())!;
+    expect(fresh.c).toMatch(/^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/);
+    expect(fresh.left).toBeGreaterThan(47.9 * 3600);
+    expect(fresh.left).toBeLessThanOrEqual(48 * 3600);
+    await expect(steps).toContainText(`Your code: ${fresh.c}`);
+  } finally {
+    await db.run(`UPDATE "Organisation" SET "adminGroupLinkCode" = NULL, "adminGroupLinkCodeExpiresAt" = NULL WHERE id = $1`, [ORG_ID]);
+  }
+});
+
 test("in Turkish for a Turkish club", async ({ page, db }) => {
   await db.run(`UPDATE "Organisation" SET language = 'tr' WHERE id = $1`, [ORG_ID]);
   try {

@@ -54,7 +54,7 @@ loadEnv();
 forgetProductionApiKey();
 
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import EmbeddedPostgres from "embedded-postgres";
 import {
@@ -235,14 +235,24 @@ async function runSuite(): Promise<number> {
       `MT_E2E_APP_PORT=${E2E.APP_PORT}\nMT_E2E_DB_PORT=${E2E.DB_PORT}\n`,
   );
 
+  const pgLogFile = process.env.MT_PG_LOG || null;
+  const pgLog = (m: unknown) => {
+    if (pgLogFile) appendFileSync(pgLogFile, `${String(m)}\n`);
+  };
   const pg = new EmbeddedPostgres({
     databaseDir: E2E.DATA_DIR,
     user: E2E.DB_USER,
     password: E2E.DB_PASSWORD,
     port: E2E.DB_PORT,
     persistent: true,
-    onLog: () => {},
-    onError: () => {},
+    // MT_PG_LOG=<file>, for investigating a lock problem only: the server's
+    // own log is appended to that file, with every lock wait of a second or
+    // more reported (`log_lock_waits`: who holds, who waits, on which row,
+    // in which statement) beside any deadlock. Unset, as in every ordinary
+    // run, the server is started exactly as before and its log is dropped.
+    ...(pgLogFile ? { postgresFlags: ["-c", "log_lock_waits=on"] } : {}),
+    onLog: pgLog,
+    onError: pgLog,
   });
 
   // The ONLY cluster this run will use is one it started, or one the

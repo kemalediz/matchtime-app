@@ -191,8 +191,8 @@ describe("R1: the rolling announcement", () => {
     setWorld(m);
     const text = ((await instructions(SAT_10AM)).find((i) => i.key === `${m.id}:rolling-announce`) as { text: string })
       .text;
-    expect(text).toContain("*Waiting list (1):*\n1. Kemal");
-    expect(text).toContain("The squad is full. Say *IN* to go on the waiting list.");
+    expect(text).toContain("*Bench (1):*\n1. Kemal");
+    expect(text).toContain("The squad is full. Say *IN* to go on the bench.");
   });
 
   it("nobody carried: the cold announcement fires as today, the rolling one does not", async () => {

@@ -6,6 +6,9 @@ import { activitySchema } from "@/lib/validations";
 import { requireOrgAdmin } from "@/lib/org";
 import { revalidatePath } from "next/cache";
 import { londonWallClockToUtc, nextLondonKickoff } from "@/lib/london-time";
+import { activityUpdateData, activityVenueReset } from "@/lib/activity-update";
+import { dropOrphanPin } from "@/lib/venue-location";
+import { scheduleVenueResolve } from "@/lib/venue-location-schedule";
 
 export async function createActivity(formData: {
   orgId: string;
@@ -32,7 +35,9 @@ export async function createActivity(formData: {
   });
   if (!sport) throw new Error("Sport not found in this organisation");
 
-  await db.activity.create({ data: { ...parsed, orgId } });
+  const created = await db.activity.create({ data: { ...parsed, orgId }, select: { id: true } });
+  // Venue location: looked up after the response, never part of the save.
+  await scheduleVenueResolve(created.id);
 
   revalidatePath("/admin/activities");
 }
@@ -49,6 +54,9 @@ export async function updateActivity(
     ratingWindowHours?: number;
     matchDurationMins?: number;
     isActive?: boolean;
+    /** The fee per player in pounds as typed ("6", "6.50"), "" or null for
+     *  none. Left out, or undefined: the fee is not touched. */
+    feePerPlayer?: string | number | null;
   }
 ) {
   const session = await auth();
@@ -59,14 +67,31 @@ export async function updateActivity(
 
   await requireOrgAdmin(session.user.id, activity.orgId);
 
-  if (formData.sportId) {
+  // Only named, checked fields are written, whatever the request carried
+  // (src/lib/activity-update.ts). A field left out is left alone.
+  const update = activityUpdateData(formData, { feeSplitTotal: activity.feeSplitTotal });
+  if (!update.ok) throw new Error(update.error);
+  const data = update.data;
+
+  if (data.sportId) {
     const sport = await db.sport.findFirst({
-      where: { id: formData.sportId, orgId: activity.orgId },
+      where: { id: data.sportId, orgId: activity.orgId },
     });
     if (!sport) throw new Error("Sport not found in this organisation");
   }
 
-  await db.activity.update({ where: { id: activityId }, data: formData });
+  // New venue words: the place linked to the old words is cleared in the
+  // SAME write, so a stale location never stays attached to new text, and
+  // the new words are looked up after the response. A change of case or
+  // punctuation only is not a new venue. The venue-location columns are
+  // written from here only: none is ever accepted from the request.
+  const reset = activityVenueReset(data, { venue: activity.venue });
+
+  await db.activity.update({ where: { id: activityId }, data: reset ? { ...data, ...reset } : data });
+  if (reset) {
+    await dropOrphanPin(activity.venueId);
+    await scheduleVenueResolve(activityId);
+  }
 
   revalidatePath("/admin/activities");
 }

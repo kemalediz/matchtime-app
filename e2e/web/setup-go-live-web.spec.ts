@@ -456,6 +456,11 @@ test.describe("the organiser of a club that is setting up", () => {
     await signInAs(page, RIA.id, "/admin/settings");
     const button = page.getByTestId("go-live-button");
     await expect(button).toBeVisible({ timeout: 30_000 });
+    // The page asks for its settings twice as it mounts in development
+    // (React's double mount). Both answers must be in before the club is
+    // changed under it: a late second answer, read after the change,
+    // takes the banner off the page before the press (seen 3 runs in 30).
+    await page.waitForLoadState("networkidle");
     // Rob, the owner, goes live while Ria's page is open.
     await db.run(
       `UPDATE "Organisation" SET "setupStage" = 'live', "whatsappBotEnabled" = true, "liveAt" = $2::timestamp, "liveBy" = $3 WHERE id = $1`,
@@ -503,6 +508,7 @@ test.describe("review of PR #236: the banner's other outcomes and rules", () => 
     await expect(button).toBeVisible({ timeout: 30_000 });
     await expect(page.getByTestId("go-live-preview")).toBeVisible();
     await page.getByTestId("go-live-status").evaluate((el) => el.setAttribute("data-same-node", "yes"));
+    await page.waitForLoadState("networkidle"); // both mount fetches answered: see "somebody else got there first"
     // The MatchTime owner turns the club off while the page is open.
     await db.run(`UPDATE "Organisation" SET "approvalStatus" = 'suspended' WHERE id = $1`, [NOPE.id]);
     await button.click();
@@ -530,6 +536,7 @@ test.describe("review of PR #236: the banner's other outcomes and rules", () => 
     await signInAs(page, SELF.ownerId, "/admin/settings");
     const button = page.getByTestId("go-live-button");
     await expect(button).toBeVisible({ timeout: 30_000 });
+    await page.waitForLoadState("networkidle"); // both mount fetches answered: see "somebody else got there first"
     await db.run(
       `UPDATE "Organisation" SET "setupStage" = 'live', "whatsappBotEnabled" = true, "liveAt" = $2::timestamp, "liveBy" = $3 WHERE id = $1`,
       [SELF.id, utc(0), SELF.ownerId],

@@ -1152,7 +1152,7 @@ export async function loadMonthSummaryById(orgId: string, monthId: string, now: 
 
 /**
  * Close every month of a club that is due: the morning after its last
- * game, from 08:00 London, in waking hours. Once per month: `closedAt` is
+ * game, from 09:00 London (waking hours). Once per month: `closedAt` is
  * the claim (a compare-and-set on the status), so two polls close a month
  * once and one summary goes out.
  *

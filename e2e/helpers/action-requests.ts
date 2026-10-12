@@ -13,11 +13,15 @@
  * Attach it BEFORE the page loads, wait for `known()` (the action has
  * answered once, so its id is known), then `reset()` and count from there.
  */
-import type { Page } from "@playwright/test";
+import type { Page, Request } from "@playwright/test";
 
 export interface ActionRequestCount {
   /** Requests of this action started since the last `reset()`. */
   count: () => number;
+  /** Of those, the ones that have been ANSWERED in full. A request that
+   *  has only started says nothing about what the page has taken in:
+   *  wait for this before acting on "the load has happened". */
+  done: () => number;
   /** The action has answered at least once: its id is known. */
   known: () => boolean;
   /** Count from now. */
@@ -26,10 +30,14 @@ export interface ActionRequestCount {
 
 export function countRequestsOf(page: Page, answers: (body: string) => boolean): ActionRequestCount {
   const ids = new Set<string>();
-  let sent: string[] = [];
+  let sent: Array<{ id: string; req: Request }> = [];
+  const finished = new Set<Request>();
   page.on("request", (req) => {
     const id = req.method() === "POST" ? req.headers()["next-action"] : undefined;
-    if (id) sent.push(id);
+    if (id) sent.push({ id, req });
+  });
+  page.on("requestfinished", (req) => {
+    if (req.method() === "POST" && req.headers()["next-action"]) finished.add(req);
   });
   page.on("response", async (res) => {
     const req = res.request();
@@ -39,7 +47,8 @@ export function countRequestsOf(page: Page, answers: (body: string) => boolean):
     if (answers(body)) ids.add(id);
   });
   return {
-    count: () => sent.filter((id) => ids.has(id)).length,
+    count: () => sent.filter((s) => ids.has(s.id)).length,
+    done: () => sent.filter((s) => ids.has(s.id) && finished.has(s.req)).length,
     known: () => ids.size > 0,
     reset: () => {
       sent = [];

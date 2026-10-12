@@ -175,6 +175,14 @@ describe("planSetup: each signal and the setting it drives", () => {
     });
     expect(p.suggestions).toEqual([
       { key: "weeklyGameTime", current: "19:00", detected: "20:00", evidence: ["Kickoff Thursday 8pm at Hackney Marshes"] },
+      // Slice D3 (2026-10-12): the organiser asks for the same fee every
+      // week and the weekly game has none, so it is suggested too.
+      {
+        key: "matchFee",
+        current: "",
+        detected: "6",
+        evidence: ["£6 each please to the usual account", "£6 each please to the usual account"],
+      },
     ]);
   });
   it("first come IN: MatchTime already works that way, nothing to change or tell", () => {
@@ -353,7 +361,7 @@ describe("planSetup: what is never changed", () => {
     const p = planFor("rolling", {}, { ...STUB_ANSWERS.rolling, regular_game: false });
     expect(p).toEqual({ applied: [], suggestions: [], noted: [], kept: [], data: {} });
   });
-  it("a deadline the settings page would refuse (after 21:30) is kept with the reason", () => {
+  it("a deadline the settings page would refuse (after 22:30) is kept with the reason", () => {
     const ans = {
       ...STUB_ANSWERS.deadlines,
       drop_out_deadline: { day: "monday", time: "23:00", confidence: "high", evidence: ["Drop out by Monday 9pm at the latest", "Drop out by Monday 9pm at the latest"] },

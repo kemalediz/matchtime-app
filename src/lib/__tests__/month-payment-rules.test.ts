@@ -294,16 +294,22 @@ describe("when each reminder is due", () => {
   });
   it("the first DM from 24 hours before, in waking hours", () => {
     expect(duePaymentReminder({ now: at("2026-10-29T21:00:00.000Z"), payByAt, sent: none })).toBe("r1");
-    // 22:30 London: held until the morning.
-    expect(duePaymentReminder({ now: at("2026-10-29T22:30:00.000Z"), payByAt, sent: none })).toBeNull();
-    expect(duePaymentReminder({ now: at("2026-10-30T08:00:00.000Z"), payByAt, sent: none })).toBe("r1");
+    // 22:30 London is still daytime (it was held under the old 22:00 rule).
+    expect(duePaymentReminder({ now: at("2026-10-29T22:30:00.000Z"), payByAt, sent: none })).toBe("r1");
+    expect(duePaymentReminder({ now: at("2026-10-29T22:59:00.000Z"), payByAt, sent: none })).toBe("r1");
+    // 23:00 London: held until 09:00 in the morning.
+    expect(duePaymentReminder({ now: at("2026-10-29T23:00:00.000Z"), payByAt, sent: none })).toBeNull();
+    expect(duePaymentReminder({ now: at("2026-10-30T08:00:00.000Z"), payByAt, sent: none })).toBeNull();
+    expect(duePaymentReminder({ now: at("2026-10-30T08:59:00.000Z"), payByAt, sent: none })).toBeNull();
+    expect(duePaymentReminder({ now: at("2026-10-30T09:00:00.000Z"), payByAt, sent: none })).toBe("r1");
   });
   it("the second on the deadline morning, never within six hours of the first", () => {
     const sent = { ...none, r1At: at("2026-10-29T21:01:00.000Z") };
     expect(duePaymentReminder({ now: at("2026-10-29T21:30:00.000Z"), payByAt, sent })).toBeNull();
-    expect(duePaymentReminder({ now: at("2026-10-30T08:00:00.000Z"), payByAt, sent })).toBe("r2");
+    expect(duePaymentReminder({ now: at("2026-10-30T08:00:00.000Z"), payByAt, sent })).toBeNull(); // 08:00: not yet daytime
+    expect(duePaymentReminder({ now: at("2026-10-30T09:00:00.000Z"), payByAt, sent })).toBe("r2");
     // The first only went out this morning: no second one on its heels.
-    expect(duePaymentReminder({ now: at("2026-10-30T09:00:00.000Z"), payByAt, sent: { ...none, r1At: at("2026-10-30T08:00:00.000Z") } })).toBeNull();
+    expect(duePaymentReminder({ now: at("2026-10-30T10:00:00.000Z"), payByAt, sent: { ...none, r1At: at("2026-10-30T09:00:00.000Z") } })).toBeNull();
     expect(duePaymentReminder({ now: at("2026-10-30T14:00:00.000Z"), payByAt, sent: { ...none, r1At: at("2026-10-30T08:00:00.000Z") } })).toBe("r2");
   });
   it("nothing more before the deadline once both have gone", () => {
@@ -342,6 +348,8 @@ describe("when each reminder is due", () => {
     expect(d("2026-10-28T10:00:00.000Z")).toBe(true);
     expect(d("2026-10-28T10:00:00.000Z", { sentToday: true })).toBe(false);
     expect(d("2026-10-28T10:00:00.000Z", { waiting: 0 })).toBe(false);
-    expect(d("2026-10-28T22:10:00.000Z")).toBe(false);
+    expect(d("2026-10-28T22:10:00.000Z")).toBe(true); // 22:10 is daytime now
+    expect(d("2026-10-28T22:59:00.000Z")).toBe(true);
+    expect(d("2026-10-28T23:00:00.000Z")).toBe(false);
   });
 });

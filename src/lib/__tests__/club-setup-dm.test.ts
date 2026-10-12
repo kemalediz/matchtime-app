@@ -177,6 +177,10 @@ beforeEach(() => {
 });
 
 const learning = (status: string, over: Row = {}): Row => ({ status, reason: null, applied: [], suggestions: [], noted: [], ...over });
+/** The setup DM's own job(s), apart from the admin group command that follows it (slice S7). */
+const asks = () => state.jobs.filter((j) => j.purpose === SETUP_ASK_DM_PURPOSE);
+/** The admin group command(s). */
+const codes = () => state.jobs.filter((j) => j.purpose === "setup-admin-code");
 
 describe("sendSetupDm: the free period is promised only when going live will start one", () => {
   const FREE = "Your first two months are free. The free period starts when I go live in the group.";
@@ -219,7 +223,7 @@ describe("sendSetupDm: when it goes", () => {
   it("the reading is switched off: the DM goes at once, with no reading sentence", async () => {
     const r = await sendSetupDm("org-riverside", DAY, { learningEnabled: false });
     expect(r).toEqual({ kind: "sent", sendAfter: null });
-    expect(state.jobs).toHaveLength(1);
+    expect(asks()).toHaveLength(1);
     expect(state.jobs[0]).toMatchObject({
       kind: "dm",
       phone: "447700900123",
@@ -263,7 +267,7 @@ describe("sendSetupDm: when it goes", () => {
       state.org = heldOrg({ ...org, setupLearning: row });
       state.jobs = [];
       expect(await sendSetupDm("org-riverside", DAY, { learningEnabled: true })).toMatchObject({ kind: "sent" });
-      expect(state.jobs).toHaveLength(1);
+      expect(asks()).toHaveLength(1);
       expect(String(state.jobs[0].text)).toMatch(expected);
     }
   });
@@ -293,6 +297,35 @@ describe("sendSetupDm: when it goes", () => {
       "/admin/players/ratings",
       "/admin/settings",
     ]);
+  });
+
+  // Review fix 6 (PR #238): the fee line linked to the plain activities
+  // page, where the fee field is closed. It is minted as the findings DM
+  // mints it (setup-learning/run.ts), in English and Turkish.
+  it("a match fee suggestion gets its own link, straight to the fee field", async () => {
+    const fee = { key: "matchFee", current: "", detected: "6", evidence: ["£6 a player"], fromDescription: ["£6 a player"] };
+    state.org = heldOrg({ setupLearning: learning("nothing", { suggestions: [fee] }) });
+    await sendSetupDm("org-riverside", DAY, { learningEnabled: true });
+    expect(adminLinkMock.mock.calls.map((c) => c[0].nextPath)).toContain("/admin/activities?edit=fee");
+    expect(String(state.jobs[0].text)).toContain(
+      `🔎 The match fee looks like £6 a player; your weekly game has no fee set.\n` +
+        `From your group description: "£6 a player"\n` +
+        `Set it here: https://mt.link/admin/activities?edit=fee`,
+    );
+
+    state.jobs.length = 0;
+    state.org = heldOrg({ language: "tr", setupLearning: learning("nothing", { suggestions: [fee] }) });
+    await sendSetupDm("org-riverside", DAY, { learningEnabled: true });
+    expect(String(state.jobs[0].text)).toContain(
+      `Grup açıklamanızdan: "£6 a player"\nBuradan girebilirsiniz: https://mt.link/admin/activities?edit=fee`,
+    );
+  });
+
+  it("with no fee suggestion no fee link is minted", async () => {
+    const pick = { key: "organiserPicks", current: "first-come", detected: "organiser", evidence: ["I'll pick", "I pick the team"] };
+    state.org = heldOrg({ setupLearning: learning("nothing", { suggestions: [pick] }) });
+    await sendSetupDm("org-riverside", DAY, { learningEnabled: true });
+    expect(adminLinkMock.mock.calls.map((c) => c[0].nextPath)).not.toContain("/admin/activities?edit=fee");
   });
 });
 
@@ -346,10 +379,17 @@ describe("review fix 1: the 2-hour cap (a held club is never stranded waiting fo
     expect(STILL_READING_WINDOW_MS).toBe(2 * 60 * 60 * 1000);
   });
 
-  it("the close takes the club's row BEFORE the reading row (the lock order go-live uses)", async () => {
+  it("the club is read in ONE snapshot (repeatable read), so a reading that commits mid-read cannot be half seen", async () => {
+    state.org = heldOrg({ setupLearning: learning("nothing") });
+    await sendSetupDm("org-riverside", DAY, { learningEnabled: true });
+    const read = dbMock.$transaction.mock.calls.find((c) => (c[1] as { isolationLevel?: string } | undefined)?.isolationLevel);
+    expect(read?.[1]).toEqual({ isolationLevel: "RepeatableRead" });
+  });
+
+  it("the close takes the club's row BEFORE the reading row, FOR NO KEY UPDATE (never FOR UPDATE: that deadlocked with the claim)", async () => {
     state.org = heldOrg({ approvedAt: TWO_HOURS_AGO, setupLearning: learning("running", { attempts: 3 }) });
     await sendSetupDm("org-riverside", DAY, { learningEnabled: true });
-    const lock = state.raw.findIndex((q) => /FROM "Organisation" WHERE "id" = \? FOR UPDATE/.test(q));
+    const lock = state.raw.findIndex((q) => /FROM "Organisation" WHERE "id" = \? FOR NO KEY UPDATE/.test(q));
     const close = state.raw.findIndex((q) => /INSERT INTO "ClubSetupLearning"/.test(q));
     expect(lock).toBeGreaterThanOrEqual(0);
     expect(lock).toBeLessThan(close);
@@ -431,7 +471,8 @@ describe("sendSetupDm: message hours and the stamp", () => {
   it("the stamp is a compare-and-set on 'still setting up and never asked', in the job's own transaction", async () => {
     await sendSetupDm("org-riverside", DAY, { learningEnabled: false });
     expect(dbMock.$transaction).toHaveBeenCalled();
-    expect(state.orgUpdates).toHaveLength(1);
+    // The stamp first; the admin group code (slice S7) is written after it, in the same transaction.
+    expect(state.orgUpdates).toHaveLength(2);
     expect(state.orgUpdates[0].where).toEqual({
       id: "org-riverside",
       approvalStatus: "approved",
@@ -447,7 +488,7 @@ describe("sendSetupDm: at most one, ever", () => {
   it("a second call finds the club already asked: nothing is queued", async () => {
     await sendSetupDm("org-riverside", DAY, { learningEnabled: false });
     expect(await sendSetupDm("org-riverside", DAY, { learningEnabled: false })).toEqual({ kind: "not-due" });
-    expect(state.jobs).toHaveLength(1);
+    expect(asks()).toHaveLength(1);
   });
 
   it("two runs that both read 'due': the loser of the compare-and-set queues nothing", async () => {
@@ -456,7 +497,7 @@ describe("sendSetupDm: at most one, ever", () => {
       sendSetupDm("org-riverside", DAY, { learningEnabled: false }),
     ]);
     expect([a.kind, b.kind].sort()).toEqual(["already", "sent"]);
-    expect(state.jobs).toHaveLength(1);
+    expect(asks()).toHaveLength(1);
   });
 
   it("not for a live club, an unapproved one, or one MatchTime was removed from", async () => {
@@ -465,6 +506,105 @@ describe("sendSetupDm: at most one, ever", () => {
       expect(await sendSetupDm("org-riverside", DAY, { learningEnabled: false })).toEqual({ kind: "not-due" });
     }
     expect(state.jobs).toEqual([]);
+  });
+});
+
+describe("slice S7: the optional admin group step, and the command as a second message", () => {
+  const HOUR = 60 * MIN;
+
+  it("the DM carries the admin group block, right before the GO line", async () => {
+    await sendSetupDm("org-riverside", DAY, { learningEnabled: false });
+    const blocks = String(asks()[0].text).split("\n\n");
+    const at = blocks.findIndex((b) => b.startsWith("👥 *Admin group (optional):*"));
+    expect(blocks[at]).toBe(
+      "👥 *Admin group (optional):* if your organisers have their own WhatsApp group, add me to it and send my next message there. Admin messages will then go to that group instead of to you.",
+    );
+    expect(blocks[at - 1]).toMatch(/^⭐ \*Starting ratings:\*/);
+    expect(blocks[at + 1]).toMatch(/^When you're happy, reply \*GO\* here/);
+  });
+
+  it("the second message is exactly the command with the club's new code, to the same number, and nothing else", async () => {
+    await sendSetupDm("org-riverside", DAY, { learningEnabled: false });
+    expect(state.jobs).toHaveLength(2);
+    expect(state.jobs.map((j) => j.purpose)).toEqual(["setup-ask", "setup-admin-code"]);
+    const code = String(state.org!.adminGroupLinkCode);
+    expect(code).toMatch(/^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/);
+    expect(codes()[0]).toMatchObject({
+      kind: "dm",
+      phone: "447700900123",
+      purpose: "setup-admin-code",
+      refId: "org-riverside:setup-admin-code",
+      status: "queued",
+      sendAfter: null,
+      text: `Match Time admin group ${code}`,
+    });
+  });
+
+  it("the code lasts 7 days from the DM's due time", async () => {
+    await sendSetupDm("org-riverside", DAY, { learningEnabled: false });
+    expect(state.org!.adminGroupLinkCodeExpiresAt).toEqual(new Date(DAY.getTime() + 7 * 24 * HOUR));
+    // At night the DM is due at 09:00, and the 7 days run from then.
+    state.org = heldOrg({ approvedAt: new Date(NIGHT.getTime() - MIN) });
+    state.jobs = [];
+    await sendSetupDm("org-riverside", NIGHT, { learningEnabled: false });
+    expect(state.org!.adminGroupLinkCodeExpiresAt).toEqual(new Date(NINE_NEXT.getTime() + 7 * 24 * HOUR));
+  });
+
+  it("same due time as the setup DM, and ordered right after it (one millisecond later)", async () => {
+    state.org = heldOrg({ approvedAt: new Date(NIGHT.getTime() - MIN) });
+    await sendSetupDm("org-riverside", NIGHT, { learningEnabled: false });
+    expect(asks()[0].sendAfter).toEqual(NINE_NEXT);
+    expect(codes()[0].sendAfter).toEqual(NINE_NEXT);
+    const first = asks()[0].createdAt as Date;
+    const second = codes()[0].createdAt as Date;
+    expect(second.getTime() - first.getTime()).toBe(1);
+  });
+
+  it("both jobs and the code are written in the claim's transaction, and the code only AFTER the claim is won", async () => {
+    await sendSetupDm("org-riverside", DAY, { learningEnabled: false });
+    expect(dbMock.$transaction).toHaveBeenCalled();
+    expect(state.orgUpdates.map((u) => Object.keys(u.data))).toEqual([["setupAskedAt"], ["adminGroupLinkCode", "adminGroupLinkCodeExpiresAt"]]);
+  });
+
+  it("two runs racing: the loser mints no code and queues no command, so the code that is sent is the one that is stored", async () => {
+    const [a, b] = await Promise.all([
+      sendSetupDm("org-riverside", DAY, { learningEnabled: false }),
+      sendSetupDm("org-riverside", DAY, { learningEnabled: false }),
+    ]);
+    expect([a.kind, b.kind].sort()).toEqual(["already", "sent"]);
+    expect(codes()).toHaveLength(1);
+    expect(codes()[0].text).toBe(`Match Time admin group ${state.org!.adminGroupLinkCode}`);
+    expect(state.orgUpdates.filter((u) => "adminGroupLinkCode" in u.data)).toHaveLength(1);
+  });
+
+  it("Turkish club: the Turkish block and the Turkish form of the command", async () => {
+    state.org = heldOrg({ language: "tr" });
+    await sendSetupDm("org-riverside", DAY, { learningEnabled: false });
+    expect(String(asks()[0].text)).toContain("👥 *Yönetici grubu (isteğe bağlı):*");
+    expect(codes()[0].text).toBe(`Match Time yönetici grubu ${state.org!.adminGroupLinkCode}`);
+  });
+
+  it("a club that ALREADY has an admin group: no block, no second message, no code minted", async () => {
+    state.org = heldOrg({ adminGroupId: "120363900000000077@g.us" });
+    await sendSetupDm("org-riverside", DAY, { learningEnabled: false });
+    expect(state.jobs).toHaveLength(1);
+    expect(String(state.jobs[0].text)).not.toContain("Admin group (optional)");
+    expect("createdAt" in state.jobs[0]).toBe(false);
+    expect(state.orgUpdates).toHaveLength(1);
+    expect(state.org!.adminGroupLinkCode).toBeUndefined();
+  });
+
+  it("the setup DM is refused: no command either, and no code", async () => {
+    state.knownUser = false;
+    expect(await sendSetupDm("org-riverside", DAY, { learningEnabled: false })).toEqual({ kind: "refused", reason: "number-not-known" });
+    expect(state.jobs).toEqual([]);
+    expect(state.org!.adminGroupLinkCode).toBeUndefined();
+  });
+
+  it("the code is in no log line", async () => {
+    await sendSetupDm("org-riverside", DAY, { learningEnabled: false });
+    expect(logs.join("\n")).not.toContain(String(state.org!.adminGroupLinkCode));
+    expect(logs.join("\n")).not.toContain("Match Time admin group");
   });
 });
 
@@ -578,7 +718,7 @@ describe("runSetupDmSweep (the cron's half, and the retry)", () => {
     });
     const r = await runSetupDmSweep(DAY, { learningEnabled: false });
     expect(r).toEqual({ considered: 2, sent: 1 });
-    expect(state.jobs).toHaveLength(1);
+    expect(asks()).toHaveLength(1);
   });
 
   it("no club is setting up (every club today): one query, nothing else", async () => {
@@ -597,7 +737,7 @@ describe("runSetupAfterApproval (what `after()` runs for the one club just appro
     const r = await runSetupAfterApproval("org-riverside", { now: DAY, learningEnabled: true });
     expect(learnMock).toHaveBeenCalledWith("org-riverside", { now: DAY, model: undefined });
     expect(r.dm).toMatchObject({ kind: "sent" });
-    expect(state.jobs).toHaveLength(1);
+    expect(asks()).toHaveLength(1);
   });
 
   it("reading on and deferred: no DM yet (the cron retries)", async () => {

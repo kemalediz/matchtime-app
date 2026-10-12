@@ -14,6 +14,7 @@
  * included) never reaches any of it.
  */
 import { formatLondon, londonDateTimeToUtc } from "./london-time";
+import { MESSAGE_HOURS_FROM_TIME, inMessageHours } from "./message-hours";
 import { isMonthListHeader, type MonthlyList, type MonthlyListEntry } from "./monthly-list";
 import { candidatesFor, nameKey, type MonthCreditRule } from "./squad-month-rules";
 
@@ -506,8 +507,8 @@ export function paygPoolOfferAllowed(p: { pickMode: string | null | undefined; b
 
 /** "At most once every 30 minutes." */
 export const LIST_REPOST_FLOOR_MS = 30 * 60 * 1000;
-const LIST_FROM_HOUR = 8;
-const LIST_QUIET_FROM_HOUR = 22;
+/** The match morning post: from the start of the message hours (09:00)
+ *  until noon. */
 const MORNING_UNTIL_HOUR = 12;
 
 /**
@@ -515,15 +516,15 @@ const MORNING_UNTIL_HOUR = 12;
  *
  *   "change"   the list differs from the one the group last saw (a post of
  *              ours, or a member's paste that matched our state);
- *   "morning"  match morning, 08:00 to 11:59 London, once, whatever else,
+ *   "morning"  match morning, 09:00 to 11:59 London, once, whatever else,
  *              EXCEPT when the group saw this same list a moment ago
  *              (`sameListShownRecently`): somebody asked "who's in?" at
- *              07:30 and got it, so 08:00 would repeat it. It is held, not
+ *              08:30 and got it, so 09:00 would repeat it. It is held, not
  *              dropped: a later poll that morning posts it once the three
  *              hours are up;
  *   null       nothing to post.
  *
- * Never between 22:00 and 07:59 London, never within 30 minutes of the
+ * Never between 23:00 and 08:59 London, never within 30 minutes of the
  * last list post, never once the teams are out (the team sheet is the
  * announcement then), and only for the fixture's next match.
  */
@@ -547,14 +548,13 @@ export function decideListPost(p: {
 }): "change" | "morning" | null {
   if (!p.live || !p.nextUpcoming || p.teamsOut) return null;
   if (p.now.getTime() >= p.matchDate.getTime()) return null;
-  const hour = Number(formatLondon(p.now, "H"));
-  if (hour < LIST_FROM_HOUR || hour >= LIST_QUIET_FROM_HOUR) return null;
+  if (!inMessageHours(p.now)) return null;
   if (p.lastPostAt && p.now.getTime() - p.lastPostAt.getTime() < LIST_REPOST_FLOOR_MS) return null;
   if (p.hash !== p.lastShownHash) return "change";
 
   const matchDay = formatLondon(p.matchDate, "yyyy-MM-dd");
-  if (formatLondon(p.now, "yyyy-MM-dd") !== matchDay || hour >= MORNING_UNTIL_HOUR) return null;
-  const morningStart = londonDateTimeToUtc(matchDay, "08:00");
+  if (formatLondon(p.now, "yyyy-MM-dd") !== matchDay || Number(formatLondon(p.now, "H")) >= MORNING_UNTIL_HOUR) return null;
+  const morningStart = londonDateTimeToUtc(matchDay, MESSAGE_HOURS_FROM_TIME);
   if (p.lastPostAt && p.lastPostAt.getTime() >= morningStart.getTime()) return null;
   if (p.sameListShownRecently) return null;
   return "morning";

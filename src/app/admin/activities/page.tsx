@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Plus, Zap, X } from "lucide-react";
 import {
@@ -11,6 +11,11 @@ import {
 import { DAYS_OF_WEEK } from "@/lib/constants";
 import { SectionInfo } from "@/components/info/section-info";
 import { useOrgLang } from "@/components/info/org-lang";
+import { VenueConfirmLine } from "@/components/venue/venue-confirm-line";
+import type { VenueLocationView } from "@/lib/venue-location-rules";
+import { t } from "@/lib/i18n/t";
+import { activityFeeText, parseActivityFee } from "@/lib/activity-fee";
+import { FEE_EDIT_PARAM } from "@/lib/setup-learning/suggestion-action";
 
 interface Sport {
   id: string;
@@ -34,10 +39,21 @@ interface Activity {
   deadlineHours: number;
   matchDurationMins: number;
   ratingWindowHours: number;
+  /** Where the venue is, as far as MatchTime knows. OWNER and ADMIN only. */
+  venueLocation?: VenueLocationView;
+  /** Pounds a player for one game; null: none entered. */
+  feePerPlayer: number | null;
+  /** The pitch cost is split between who played: no fixed fee. */
+  feeSplitTotal: boolean;
+  createdAt: string;
 }
+
+/** How many times the page looks again while a venue is being looked up. */
+const PENDING_RELOADS = 12;
 
 export default function ActivitiesPage() {
   const lang = useOrgLang();
+  const s = t(lang);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [sports, setSports] = useState<Sport[]>([]);
   const [loading, setLoading] = useState(true);
@@ -58,7 +74,31 @@ export default function ActivitiesPage() {
   const [eDay, setEDay] = useState("2");
   const [eTime, setETime] = useState("21:30");
   const [eVenue, setEVenue] = useState("");
+  const [eFee, setEFee] = useState("");
+  // The fee as the form opened with it. It is SENT only when it differs,
+  // so a stored fee the form cannot show exactly is never rewritten, and
+  // never blocks the save, by an edit of something else.
+  const [eFeeWas, setEFeeWas] = useState("");
+  const [eSplit, setESplit] = useState(false);
   const [eSaving, setESaving] = useState(false);
+  // The setup reading's fee suggestion links here with `?edit=fee`
+  // (setup-learning/suggestion-action.ts): the weekly game's edit form
+  // opens once, at its fee field.
+  const [focusFee, setFocusFee] = useState(false);
+  const [feeLinkHandled, setFeeLinkHandled] = useState(false);
+
+  useEffect(() => {
+    if (loading || feeLinkHandled || typeof window === "undefined") return;
+    setFeeLinkHandled(true);
+    const [key, value] = FEE_EDIT_PARAM.split("=");
+    if (new URLSearchParams(window.location.search).get(key) !== value) return;
+    // The weekly game the reading compared the fee with: the club's first
+    // active one (setup-learning/run.ts).
+    const first = activities.filter((a) => a.isActive).sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
+    if (!first) return;
+    openEdit(first);
+    setFocusFee(true);
+  }, [loading, activities, feeLinkHandled]);
 
   useEffect(() => {
     fetch("/api/org/settings").then((r) => r.json()).then((d) => setOrgId(d.id));
@@ -68,13 +108,32 @@ export default function ActivitiesPage() {
       const def = s.find((x) => x.name.toLowerCase().includes("football 7")) ?? s[0];
       if (def) setSportId(def.id);
     });
-    loadActivities();
   }, []);
 
-  async function loadActivities() {
+  // A venue is looked up AFTER the save has answered, so the first load
+  // can find it "pending". Look again a few times, two seconds apart.
+  const pendingReloads = useRef(0);
+  const loadActivities = useCallback(async () => {
     const res = await fetch("/api/activities");
-    if (res.ok) setActivities(await res.json());
+    if (res.ok) {
+      const rows: Activity[] = await res.json();
+      setActivities(rows);
+      if (rows.some((a) => a.venueLocation?.state === "pending") && pendingReloads.current < PENDING_RELOADS) {
+        pendingReloads.current += 1;
+        setTimeout(() => void loadActivities(), 2000);
+      }
+    }
     setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    void loadActivities();
+  }, [loadActivities]);
+
+  /** After a save: start the "pending" look-agains afresh. */
+  function reloadAfterSave() {
+    pendingReloads.current = 0;
+    void loadActivities();
   }
 
   async function handleCreate(e: React.FormEvent) {
@@ -96,7 +155,7 @@ export default function ActivitiesPage() {
       setDialogOpen(false);
       setName("");
       setVenue("");
-      loadActivities();
+      reloadAfterSave();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to create");
     }
@@ -117,11 +176,17 @@ export default function ActivitiesPage() {
     setEDay(String(a.dayOfWeek));
     setETime(a.time);
     setEVenue(a.venue);
+    setEFee(activityFeeText(a.feePerPlayer));
+    setEFeeWas(activityFeeText(a.feePerPlayer));
+    setESplit(a.feeSplitTotal);
+    setFocusFee(false);
   }
 
   async function handleEdit(e: React.FormEvent) {
     e.preventDefault();
     if (!editId) return;
+    const feeChanged = !eSplit && eFee.trim() !== eFeeWas;
+    if (feeChanged && !parseActivityFee(eFee).ok) return toast.error(s.act_fee_invalid);
     setESaving(true);
     try {
       await updateActivity(editId, {
@@ -129,10 +194,11 @@ export default function ActivitiesPage() {
         dayOfWeek: parseInt(eDay),
         time: eTime,
         venue: eVenue,
+        ...(feeChanged ? { feePerPlayer: eFee } : {}),
       });
       toast.success("Activity updated");
       setEditId(null);
-      loadActivities();
+      reloadAfterSave();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to update");
     } finally {
@@ -192,7 +258,11 @@ export default function ActivitiesPage() {
                 </div>
                 <p className="text-sm text-slate-500 mt-1">
                   {DAYS_OF_WEEK[a.dayOfWeek]}s at {a.time} · {a.venue}
+                  {!a.feeSplitTotal && activityFeeText(a.feePerPlayer) && (
+                    <span data-testid="activity-fee-row"> · {s.act_fee_row({ fee: activityFeeText(a.feePerPlayer) })}</span>
+                  )}
                 </p>
+                <VenueConfirmLine activityId={a.id} location={a.venueLocation} lang={lang} onChanged={loadActivities} />
                 <p className="flex flex-wrap items-center gap-1 text-xs text-slate-400 mt-0.5">
                   {a.sport.name} · {a.matchDurationMins}min · Sign-ups close {a.deadlineHours}h before
                   <SectionInfo k="act_deadline" lang={lang} />
@@ -384,6 +454,26 @@ export default function ActivitiesPage() {
                   className="w-full h-11 px-3 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </Field>
+              <div>
+                <label htmlFor="activity-fee" className="block text-sm font-medium text-slate-700 mb-1.5">
+                  {s.act_fee_label}
+                </label>
+                <input
+                  id="activity-fee"
+                  data-testid="activity-fee"
+                  inputMode="decimal"
+                  autoFocus={focusFee && !eSplit}
+                  disabled={eSplit}
+                  value={eSplit ? "" : eFee}
+                  onChange={(e) => setEFee(e.target.value)}
+                  placeholder="6.50"
+                  aria-describedby="activity-fee-hint"
+                  className="w-full h-11 px-3 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-400"
+                />
+                <p id="activity-fee-hint" data-testid="activity-fee-hint" className="mt-1 text-xs text-slate-400">
+                  {eSplit ? s.act_fee_split : s.act_fee_hint}
+                </p>
+              </div>
               <p className="text-xs text-slate-400">
                 Changing the day/time affects future matches generated for this
                 activity. Matches already created keep their existing date, so edit

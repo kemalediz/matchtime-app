@@ -39,23 +39,23 @@ describe("buildPickFallbackOffered (P11, 2026-10-06)", () => {
   const base = { lang: "en", activityName: "Friday 9-a-side" };
   it("one place, one offer: the sentence it has always been", () => {
     expect(buildPickFallbackOffered({ ...base, offered: 1, openPlaces: 1 })).toBe(
-      "Nobody picked for *Friday 9-a-side*, so I've offered the place to the waiting list: the first to say IN gets it.",
+      "Nobody picked for *Friday 9-a-side*, so I've offered the place to the bench: the first to say IN gets it.",
     );
   });
   it("every open place offered", () => {
     expect(buildPickFallbackOffered({ ...base, offered: 3, openPlaces: 3 })).toBe(
-      "Nobody picked for *Friday 9-a-side*, so I've offered the 3 open places to the waiting list: whoever says IN gets one.",
+      "Nobody picked for *Friday 9-a-side*, so I've offered the 3 open places to the bench: whoever says IN gets one.",
     );
   });
   it("CAPPED: sixteen places and two waiting says two were offered and fourteen are still open", () => {
     expect(buildPickFallbackOffered({ ...base, offered: 2, openPlaces: 16 })).toBe(
-      "Nobody picked for *Friday 9-a-side*, so I've offered 2 places to the waiting list, one for each person waiting: " +
+      "Nobody picked for *Friday 9-a-side*, so I've offered 2 places to the bench, one for each person waiting: " +
         "whoever says IN gets one. 14 more places are still open.",
     );
   });
   it("capped to one offer, one place left over", () => {
     expect(buildPickFallbackOffered({ ...base, offered: 1, openPlaces: 2 })).toBe(
-      "Nobody picked for *Friday 9-a-side*, so I've offered 1 place to the waiting list, one for each person waiting: " +
+      "Nobody picked for *Friday 9-a-side*, so I've offered 1 place to the bench, one for each person waiting: " +
         "whoever says IN gets one. 1 more place is still open.",
     );
   });
@@ -116,9 +116,12 @@ describe("decidePickRound", () => {
     expect(decidePickRound({ ...base, dropOutDeadline: deadline }).action).toBe("wait");
     expect(decidePickRound({ ...base, dropOutDeadline: new Date("2026-10-05T20:00:00Z") }).action).toBe("open");
   });
-  it("waits overnight (a drop at 23:00 waits for 08:00)", () => {
-    expect(decidePickRound({ ...base, now: new Date("2026-10-07T22:00:00Z") }).action).toBe("wait");
-    expect(decidePickRound({ ...base, now: new Date("2026-10-08T07:00:00Z") }).action).toBe("open");
+  it("waits overnight (a drop at 23:00 waits for 09:00)", () => {
+    expect(decidePickRound({ ...base, now: new Date("2026-10-07T21:59:00Z") }).action).toBe("open"); // 22:59 BST
+    expect(decidePickRound({ ...base, now: new Date("2026-10-07T22:00:00Z") }).action).toBe("wait"); // 23:00 BST
+    expect(decidePickRound({ ...base, now: new Date("2026-10-08T07:00:00Z") }).action).toBe("wait"); // 08:00 BST
+    expect(decidePickRound({ ...base, now: new Date("2026-10-08T07:59:00Z") }).action).toBe("wait"); // 08:59 BST
+    expect(decidePickRound({ ...base, now: new Date("2026-10-08T08:00:00Z") }).action).toBe("open"); // 09:00 BST
   });
   it("waits while the fallback offer is running, and after kickoff", () => {
     expect(decidePickRound({ ...base, openOffers: 1 }).action).toBe("wait");
@@ -270,13 +273,13 @@ describe("the pick message (P1) and the list again (P5)", () => {
       [
         "*Hamzah* dropped out of *Friday 9-a-side* (Fri 9 Oct at 20:30). 1 place open, squad 17/18.",
         "",
-        "Waiting list:",
+        "Bench:",
         "1. Kemal (GK, 7.4)",
         "2. Wasim (MID, 7.9)",
         "3. Ali (no position, new)",
         "",
         "Reply with a number or a name to bring someone in, e.g. *2*, or *2 3* for two. Reply *NONE* to leave it open.",
-        "If nobody picks by Saturday 20:30, I'll offer the place to the whole waiting list.",
+        "If nobody picks by Saturday 20:30, I'll offer the place to the whole bench.",
       ].join("\n"),
     );
   });
@@ -313,9 +316,9 @@ describe("the pick message (P1) and the list again (P5)", () => {
   it("P5 repeats the list with the instructions", () => {
     expect(buildPickListChanged({ lang: "en", rows: rows.slice(0, 1), audience: "group" })).toBe(
       [
-        "The waiting list has changed since my last message. Here it is again:",
+        "The bench has changed since my last message. Here it is again:",
         "",
-        "Waiting list:",
+        "Bench:",
         "1. Kemal (GK, 7.4)",
         "",
         "Reply here with a number, a name or an @tag, e.g. *2*, or *2 3* for two. *NONE* leaves it open.",

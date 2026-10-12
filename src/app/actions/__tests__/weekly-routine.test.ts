@@ -142,14 +142,44 @@ describe("setWeeklyRoutine: weekly deadlines (slice 3)", () => {
     expect(orgUpdate).not.toHaveBeenCalled();
   });
 
-  it("refuses a time on match day after kickoff, and a time outside 08:00 to 21:30", async () => {
+  it("refuses a time on match day after kickoff, and a time outside 09:00 to 22:30", async () => {
     expect(await setWeeklyRoutine("org-fnf", { listPublish: { day: 5, time: "21:00" } })).toMatchObject({
       error: "after-kickoff",
     });
     expect(await setWeeklyRoutine("org-fnf", { dropOutDeadline: { day: 1, time: "23:00" } })).toMatchObject({
       error: "outside-hours",
     });
+    expect(await setWeeklyRoutine("org-fnf", { dropOutDeadline: { day: 1, time: "22:31" } })).toMatchObject({
+      error: "outside-hours",
+    });
+    expect(await setWeeklyRoutine("org-fnf", { dropOutDeadline: { day: 1, time: "08:30" } })).toMatchObject({
+      error: "outside-hours",
+    });
     expect(orgUpdate).not.toHaveBeenCalled();
+  });
+
+  it("accepts 09:00 and 22:30, the two ends of the allowed times", async () => {
+    expect(await setWeeklyRoutine("org-fnf", { dropOutDeadline: { day: 1, time: "09:00" } })).toMatchObject({ ok: true });
+    expect(await setWeeklyRoutine("org-fnf", { listPublish: { day: 2, time: "22:30" } })).toMatchObject({ ok: true });
+  });
+
+  it("a club that saved 08:00 under the old allowed times can still save its OTHER row, and its 08:00 is left alone", async () => {
+    orgFindUnique.mockResolvedValue({ ...UNSET_ROW, dropOutDeadlineDay: 1, dropOutDeadlineTime: "08:00" });
+    const res = await setWeeklyRoutine("org-fnf", { listPublish: { day: 2, time: "20:00" } });
+    expect(res).toMatchObject({ ok: true });
+    expect(orgUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { listPublishDay: 2, listPublishTime: "20:00", settingsSetByOrganiser: { push: ["listPublish"] } },
+      }),
+    );
+  });
+
+  it("that club changing the early row itself must pick an allowed time; saving it unchanged is accepted", async () => {
+    orgFindUnique.mockResolvedValue({ ...UNSET_ROW, dropOutDeadlineDay: 1, dropOutDeadlineTime: "08:00" });
+    expect(await setWeeklyRoutine("org-fnf", { dropOutDeadline: { day: 1, time: "08:30" } })).toMatchObject({ error: "outside-hours" });
+    expect(await setWeeklyRoutine("org-fnf", { dropOutDeadline: { day: 2, time: "08:00" } })).toMatchObject({ error: "outside-hours" });
+    expect(orgUpdate).not.toHaveBeenCalled();
+    expect(await setWeeklyRoutine("org-fnf", { dropOutDeadline: { day: 1, time: "08:00" } })).toMatchObject({ ok: true });
   });
 
   it("null clears a pair and returns the club to today's behaviour", async () => {
