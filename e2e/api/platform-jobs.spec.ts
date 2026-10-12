@@ -184,3 +184,33 @@ test.describe("the due-posts bridge for a Pi built before slice 3", () => {
     expect(await testDb().count(`SELECT COUNT(*) FROM "Organisation" WHERE id = $1`, [ORG_ID])).toBe(1);
   });
 });
+
+// PR #234 review, fix 1c. The claim used to read the 50 OLDEST queued jobs
+// and only then put sign-up codes first, so a backlog of more than 50
+// older DMs kept a new code out of sight until its ten minutes were up.
+test.describe("a sign-up code is never starved by a backlog", () => {
+  test("60 older queued replies and one new code: the code is in the very next poll, first", async ({ request }) => {
+    const db = testDb();
+    // Clear the deck: whatever earlier tests left queued is not this test's.
+    await db.run(`UPDATE "PlatformJob" SET status = 'failed', "failReason" = 'cleared for the backlog test' WHERE status = 'queued'`);
+    for (let i = 0; i < 60; i++) {
+      await db.run(
+        `INSERT INTO "PlatformJob" (id, kind, phone, text, purpose, status, "createdAt", "updatedAt")
+         VALUES ($1, 'dm', '447700900951', $2, 'setup-reply', 'queued', now() - interval '1 hour' + ($3 || ' seconds')::interval, now())`,
+        [`e2e-pj-backlog-${String(i).padStart(2, "0")}`, `backlog ${i}`, String(i)],
+      );
+    }
+    const code = await queueDm("otp", "447700900952");
+
+    const first = await pollPlatform(request);
+    expect(first).toHaveLength(5);
+    expect(first[0].id).toBe(code);
+    // The rest of the batch is still the oldest of the backlog, in order.
+    expect(first.slice(1).map((j) => j.id)).toEqual([0, 1, 2, 3].map((i) => `e2e-pj-backlog-0${i}`));
+
+    // And nothing in the backlog is lost: the next poll carries on from there.
+    const second = await pollPlatform(request);
+    expect(second.map((j) => j.id)).toEqual([4, 5, 6, 7, 8].map((i) => `e2e-pj-backlog-0${i}`));
+    await db.run(`DELETE FROM "PlatformJob" WHERE id LIKE 'e2e-pj-backlog-%'`);
+  });
+});

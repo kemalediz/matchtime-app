@@ -497,6 +497,15 @@ const SAMPLES: SampleArgs = {
   sj_hello_fees: { tracking: true, mode: "card-and-bank" },
   sj_hello_catch_up: null,
   sj_hello_closer: { attendance: true },
+  sj_go_button: null,
+  sj_go_done: { group: "Riverside Tuesday 5s" },
+  sj_go_still_reading: null,
+  sj_go_removed: { group: "Riverside Tuesday 5s" },
+  sj_go_already_live: { club: "Riverside FC" },
+  sj_go_many: null,
+  sj_go_not_recognised: { club: "Riverside FC", url: "https://matchtime.ai/r/settings1" },
+  sj_go_not_recognised_many: { url: "https://matchtime.ai/admin/settings" },
+  sj_go_paused: { club: "Riverside FC", url: "https://matchtime.ai/admin/settings" },
   // ── END settings-aware group hello ──
   sj_dm_approved: {
     club: "Riverside FC",

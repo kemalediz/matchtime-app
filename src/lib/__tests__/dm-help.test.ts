@@ -38,6 +38,9 @@ vi.mock("@/lib/admin-link", async (orig) => ({
   buildAdminLink: (...a: unknown[]) => buildAdminLink(...a),
 }));
 
+const queuePlatformDm = vi.fn();
+vi.mock("@/lib/platform-jobs", () => ({ queuePlatformDm: (...a: unknown[]) => queuePlatformDm(...a) }));
+
 import { readHelpRequest, handleDmHelp } from "@/lib/dm-help";
 import { buildHelpReply } from "@/lib/onboarding-conversation";
 
@@ -126,6 +129,30 @@ describe("handleDmHelp", () => {
         links: { settings: "https://mt.example/r/-admin-settings" },
       }),
     );
+  });
+
+  it("deliver: 'platform' (a club that is setting up): the SAME text goes out on the platform channel, and nothing on the club's", async () => {
+    membershipFindMany.mockResolvedValue([mem("org-mt", "OWNER", "MT Test")]);
+    const out = await handleDmHelp({ ...args("help payments"), deliver: "platform" });
+    expect(out).toMatchObject({ handled: "dm-help", topic: "payments", orgId: "org-mt", audience: "admin" });
+    expect(botJobCreate).not.toHaveBeenCalled();
+    expect(queuePlatformDm).toHaveBeenCalledTimes(1);
+    const job = queuePlatformDm.mock.calls[0][0];
+    expect(job).toMatchObject({ phone: "+447700900001", purpose: "setup-reply", refId: "org-mt:help" });
+    expect(job.sendAfter).toBeUndefined();
+    expect(job.text).toBe(
+      buildHelpReply("payments", FEATS_PAY_OFF, "en", {
+        audience: "admin",
+        links: { settings: "https://mt.example/r/-admin-settings" },
+      }),
+    );
+  });
+
+  it("the default is still the club's own channel, never the platform one", async () => {
+    membershipFindMany.mockResolvedValue([mem("org-mt", "OWNER", "MT Test")]);
+    await handleDmHelp(args("help"));
+    expect(botJobCreate).toHaveBeenCalledTimes(1);
+    expect(queuePlatformDm).not.toHaveBeenCalled();
   });
 
   it("a player asking 'help payments': the player text, no link minted", async () => {
