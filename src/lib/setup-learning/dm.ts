@@ -9,14 +9,51 @@
  *     changed nowhere, with a link to change it; then "organisers pick",
  *     which is never switched from the chat (rules.ts, rule 4): what it
  *     looks like, one chat quote, and a link to the setting
+ *   (the match fee, when the chat or the group description states one the
+ *     weekly game does not have, sits between those two: asked, never
+ *     set, with its quote and a link to where the fee is entered)
  *   the monthly list, when seen: noted, nothing changed for it, and a
  *     pointer to Monthly squad in Settings, which only the organiser
  *     ever switches on
  *   outro: the settings page, where every item and its evidence lives
+ *
+ * WHERE A QUOTE CAME FROM (go-live slice D3, 2026-10-12). A quote found
+ * in the GROUP DESCRIPTION is shown under its own label, "From your group
+ * description", never as a message somebody sent. An item backed by a
+ * message and the description shows one line of each. An item with no
+ * description evidence reads word for word as it did before that slice.
  */
 import { t } from "../i18n/t";
 import { normaliseLang } from "../i18n/lang";
-import type { AppliedItem, DayTimeValue, LearnedKey, NotedPattern, Suggestion } from "./rules";
+import type { AppliedItem, DayTimeValue, Evidenced, LearnedKey, NotedPattern, Suggestion } from "./rules";
+
+/**
+ * An item's quotes by where they were found. `fromDescription` names the
+ * quotes that are the description's; each takes ONE matching quote out of
+ * the chat's (the last, since a quote stands for a message first), so the
+ * same words found in a message and in the description show under both.
+ */
+export function splitEvidence(item: Evidenced): { chat: string[]; description: string[] } {
+  const chat = [...(Array.isArray(item.evidence) ? item.evidence : [])];
+  const description: string[] = [];
+  for (const q of Array.isArray(item.fromDescription) ? item.fromDescription : []) {
+    const i = chat.lastIndexOf(q);
+    if (i < 0) continue;
+    chat.splice(i, 1);
+    description.push(q);
+  }
+  return { chat, description };
+}
+
+/** The DM's "why" lines for one item: one chat quote, then one description quote. */
+export function evidenceLines(lang: string, item: Evidenced): string[] {
+  const s = t(lang);
+  const { chat, description } = splitEvidence(item);
+  return [
+    ...(chat[0] ? [s.sj_dm_setup_from({ quote: chat[0] })] : []),
+    ...(description[0] ? [s.sj_dm_setup_from_description({ quote: description[0] })] : []),
+  ];
+}
 
 /** The line for one switched setting, in `lang`. */
 export function appliedLine(lang: string, key: LearnedKey, to: unknown): string {
@@ -62,6 +99,10 @@ export interface SetupDmInput {
   /** /admin/settings, at the "organisers pick" suggestion, which leads to
    *  the setting. Used only when that suggestion is in `suggestions`. */
   organiserPicksUrl: string;
+  /** Where the match fee is entered. Used only when that suggestion is in
+   *  `suggestions`; without it the fee line links to `scheduleUrl`, the
+   *  weekly game page, which is where the fee is. */
+  feeUrl?: string | null;
 }
 
 /**
@@ -78,7 +119,7 @@ export function setupFindingsBlocks(p: SetupDmInput): string[] {
 
   for (const a of p.applied) {
     const lines = [`✅ ${appliedLine(p.lang, a.key, a.to)}`];
-    if (a.evidence[0]) lines.push(s.sj_dm_setup_from({ quote: a.evidence[0] }));
+    lines.push(...evidenceLines(p.lang, a));
     lines.push(s.sj_dm_setup_undo({ url: a.undoUrl }));
     blocks.push(lines.join("\n"));
   }
@@ -86,16 +127,22 @@ export function setupFindingsBlocks(p: SetupDmInput): string[] {
   if (p.suggestions.length > 0) {
     const lines = [s.sj_dm_setup_check_head];
     // What the organiser entered and the chat disagrees with: one link for all of it.
-    const entered = p.suggestions.filter((sg) => sg.key !== "organiserPicks");
+    const entered = p.suggestions.filter((sg) => sg.key !== "organiserPicks" && sg.key !== "matchFee");
     for (const sg of entered) lines.push(`🔎 ${suggestionLine(p.lang, sg)}`);
     if (entered.length > 0) {
       const gameKeys = entered.some((sg) => sg.key !== "language");
       lines.push(s.sj_dm_setup_check_link({ url: gameKeys ? p.scheduleUrl : p.settingsUrl }));
     }
+    // The match fee: asked, with its quote and its own link to the fee.
+    for (const sg of p.suggestions.filter((x) => x.key === "matchFee")) {
+      lines.push(`🔎 ${suggestionLine(p.lang, sg)}`);
+      lines.push(...evidenceLines(p.lang, sg));
+      lines.push(s.sj_dm_setup_fee_link({ url: p.feeUrl || p.scheduleUrl }));
+    }
     // Organisers pick: asked, with a quote and its own link to the setting.
     for (const sg of p.suggestions.filter((x) => x.key === "organiserPicks")) {
       lines.push(`🔎 ${suggestionLine(p.lang, sg)}`);
-      if (sg.evidence[0]) lines.push(s.sj_dm_setup_from({ quote: sg.evidence[0] }));
+      lines.push(...evidenceLines(p.lang, sg));
       lines.push(s.sj_dm_setup_pick_link({ url: p.organiserPicksUrl }));
     }
     blocks.push(lines.join("\n"));

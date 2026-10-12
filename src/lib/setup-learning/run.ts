@@ -11,8 +11,10 @@
  *      or a model error, or stuck "running" for STUCK_AFTER_MS, is
  *      reclaimed up to MAX_ATTEMPTS times.
  *   2. READ the chat the group add stored on the connect request
- *      (ClubConnect.capturedHistory). Empty or too short: skipped, no
- *      model call, no change, no DM.
+ *      (ClubConnect.capturedHistory), and the group description stored
+ *      beside it (capturedDescription, already masked). Chat empty or too
+ *      short: skipped, no model call, no change, no DM, WHATEVER the
+ *      description says: it is never read by itself (rules.ts, rule 7).
  *   3. ONE MODEL CALL (Haiku, structured output) inside the club's daily
  *      AI cap (`withSetupReadingAiBudget`). At the cap: deferred, retried
  *      by a later sweep (tomorrow's allowance).
@@ -21,7 +23,10 @@
  *      organiser must not have saved any of those settings meanwhile.
  *      If the club moved, it is planned again from a fresh read once.
  *   5. RECORD what was detected, applied, suggested, noted and kept, with
- *      the call's tokens and cost, and CLEAR the stored chat.
+ *      the call's tokens and cost, and CLEAR the stored chat and the
+ *      description with it (one statement, captured-chat.ts), on every
+ *      final outcome. The description is never logged: not its text, not
+ *      a quote from it.
  *   6. DM the organiser once (purpose "setup-learned", refId
  *      "<orgId>:setup-learned"), on the platform channel, in the daytime
  *      (09:00 to 23:00 London; a night run waits for 09:00), only when
@@ -104,6 +109,7 @@ import {
 } from "./prompt";
 import {
   buildUserContent,
+  descriptionForReading,
   historyGate,
   parseDetection,
   planIsWorthTelling,
@@ -115,6 +121,7 @@ import {
 } from "./rules";
 import { composeSetupDm } from "./dm";
 import { isSetupLearningEnabled } from "./flag";
+import { FEE_PATH } from "./suggestion-action";
 
 export const SWEEP_WINDOW_DAYS = 3;
 export const MAX_PER_SWEEP = 5;
@@ -323,7 +330,7 @@ export async function learnClubSetup(orgId: string, opts: LearnOptions = {}): Pr
   const connect = await db.clubConnect.findFirst({
     where: { orgId, status: "closed", linkedAt: { not: null } },
     orderBy: { linkedAt: "desc" },
-    select: { id: true, userId: true, phone: true, groupSubject: true, capturedHistory: true },
+    select: { id: true, userId: true, phone: true, groupSubject: true, capturedHistory: true, capturedDescription: true },
   });
   if (!connect) {
     if (!(await finish(orgId, { status: "skipped", reason: "no-organiser" }))) return closedUnderUs(orgId);
@@ -344,15 +351,32 @@ export async function learnClubSetup(orgId: string, opts: LearnOptions = {}): Pr
   const activities = await db.activity.findMany({
     where: { orgId, isActive: true },
     orderBy: { createdAt: "asc" },
-    select: { dayOfWeek: true, time: true, venue: true, sport: { select: { playersPerTeam: true } } },
+    select: {
+      dayOfWeek: true,
+      time: true,
+      venue: true,
+      feePerPlayer: true,
+      feeSplitTotal: true,
+      sport: { select: { playersPerTeam: true } },
+    },
   });
   const first = activities[0];
   const weeklyGame: WeeklyGameState | null = first
-    ? { dayOfWeek: first.dayOfWeek, time: first.time, venue: first.venue ?? null, playersPerSide: first.sport?.playersPerTeam ?? null }
+    ? {
+        dayOfWeek: first.dayOfWeek,
+        time: first.time,
+        venue: first.venue ?? null,
+        playersPerSide: first.sport?.playersPerTeam ?? null,
+        feePerPlayer: first.feePerPlayer ?? null,
+        feeSplitTotal: first.feeSplitTotal ?? false,
+      }
     : null;
+  // The description, as it is sent and as quotes are checked against it.
+  // Read only now that the chat has passed the gate.
+  const description = descriptionForReading(connect.capturedDescription);
 
   // ── The one model call ───────────────────────────────────────────────
-  const user = buildUserContent({ groupSubject: connect.groupSubject, weeklyGame, history });
+  const user = buildUserContent({ groupSubject: connect.groupSubject, weeklyGame, history, description });
   const model = opts.model ? budgetedModel(opts.model) : anthropicModel();
   let resp: ModelResponse;
   try {
@@ -375,7 +399,7 @@ export async function learnClubSetup(orgId: string, opts: LearnOptions = {}): Pr
   } catch (err) {
     return await modelTrouble(orgId, connect.id, "model-error", err);
   }
-  const detection = parseDetection(raw, history);
+  const detection = parseDetection(raw, history, description);
   if (!detection) return await modelTrouble(orgId, connect.id, "model-error", new Error("not an object"));
   const usage = {
     model: SETUP_LEARNING_MODEL,
@@ -450,7 +474,8 @@ export async function learnClubSetup(orgId: string, opts: LearnOptions = {}): Pr
   console.log(
     `[setup-learning] ${orgId} ("${org.name}"): ${status}, ${plan.applied.length} applied ` +
       `[${plan.applied.map((a) => a.key).join(", ")}], ${plan.suggestions.length} suggestion(s), ` +
-      `${plan.noted.length} noted, ${plan.kept.length} kept; ${gate.messages} messages; ` +
+      `${plan.noted.length} noted, ${plan.kept.length} kept; ${gate.messages} messages, ` +
+      `${description ? "with" : "no"} group description; ` +
       `$${(resp.costUsd ?? 0).toFixed(4)}; DM ${dmQueued ? "queued" : "not sent"}`,
   );
   return {
@@ -517,6 +542,8 @@ async function queueSetupDm(args: {
     organiserPicksUrl: plan.suggestions.some((sg) => sg.key === "organiserPicks")
       ? await link("/admin/settings?learned=organiserPicks#learned-setup")
       : "",
+    // Minted only when it is used: the match fee suggestion, at the fee field.
+    feeUrl: plan.suggestions.some((sg) => sg.key === "matchFee") ? await link(FEE_PATH) : null,
   });
   try {
     await queuePlatformDm({ phone: connect.phone, text, purpose: SETUP_DM_PURPOSE, refId, sendAfter: messageHoursSendAfter(now) });

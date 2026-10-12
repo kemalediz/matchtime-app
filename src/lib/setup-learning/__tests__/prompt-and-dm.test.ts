@@ -9,7 +9,8 @@ import { estimateTokens, MIN_CACHEABLE_TOKENS, shouldCachePrompt } from "../../p
 import { SETUP_LEARNING_MODEL, SETUP_LEARNING_SCHEMA, SETUP_LEARNING_SYSTEM_PROMPT } from "../prompt";
 import { composeSetupDm } from "../dm";
 import { t } from "../../i18n/t";
-import { parseDetection, planSetup, type OrgSettingsState } from "../rules";
+import { buildUserContent, parseDetection, planSetup, type OrgSettingsState } from "../rules";
+import { EMAIL_REMOVED, LINK_REMOVED, NUMBER_REMOVED } from "../../group-description";
 import { blankAnswer, FIXTURE_NAMES, loadFixture, OBSERVED_ANSWERS, STUB_ANSWERS } from "./stubs";
 
 describe("the prompt", () => {
@@ -25,7 +26,7 @@ describe("the prompt", () => {
 
   it("defines every schema field, once each", () => {
     const fields = Object.keys(SETUP_LEARNING_SCHEMA.properties);
-    expect(fields).toHaveLength(8);
+    expect(fields).toHaveLength(9);
     for (const f of fields) {
       expect(SETUP_LEARNING_SYSTEM_PROMPT.match(new RegExp(`\\d\\. ${f}:`, "g")) ?? [], f).toHaveLength(1);
     }
@@ -33,7 +34,41 @@ describe("the prompt", () => {
 
   it("says, for each habit it can switch on, what does NOT count", () => {
     // Questions 2 to 7: squad, open places, the two deadlines, payments, the monthly list.
-    expect(SETUP_LEARNING_SYSTEM_PROMPT.match(/Does not count/g) ?? []).toHaveLength(6);
+    // Question 9, the match fee, is only ever suggested, and says it too.
+    expect(SETUP_LEARNING_SYSTEM_PROMPT.match(/Does not count/g) ?? []).toHaveLength(7);
+  });
+
+  it("states each ruling about the group description once: one source, the messages win, the markers are not the group's words", () => {
+    const once = (re: RegExp) => expect(SETUP_LEARNING_SYSTEM_PROMPT.match(re) ?? [], String(re)).toHaveLength(1);
+    once(/The description is ONE source/);
+    once(/the description is out of date\. Answer from the messages/);
+    once(/These markers are MatchTime's, not the group's words: never quote one/);
+    // Every placeholder the masking can leave is named, exactly as it is written.
+    for (const marker of [NUMBER_REMOVED, LINK_REMOVED, EMAIL_REMOVED]) {
+      expect(SETUP_LEARNING_SYSTEM_PROMPT, marker).toContain(`"${marker}"`);
+    }
+    // The label the user turn gives the description is the word the prompt uses for it.
+    expect(buildUserContent({ groupSubject: null, weeklyGame: null, history: [], description: "x" }).text).toContain("Group description (");
+    expect(SETUP_LEARNING_SYSTEM_PROMPT).toContain("- The group description:");
+  });
+
+  it("counts SOURCES for \"high\", and says the description alone is \"medium\"", () => {
+    expect(SETUP_LEARNING_SYSTEM_PROMPT).toContain("or one message and the description");
+    expect(SETUP_LEARNING_SYSTEM_PROMPT).toMatch(/"medium": only one message shows it, or only the description does/);
+  });
+
+  it("the match fee is only ever asked about, and the schema carries it with no nullable stand-in", () => {
+    expect(SETUP_LEARNING_SYSTEM_PROMPT).toContain("MatchTime never sets a fee");
+    expect(SETUP_LEARNING_SCHEMA.properties.match_fee.properties.currency.enum).toEqual(["pounds", "other", "none"]);
+    expect(SETUP_LEARNING_SCHEMA.required).toContain("match_fee");
+    // Source tagging is the server's: the model is given no field for it.
+    expect(JSON.stringify(SETUP_LEARNING_SCHEMA)).not.toMatch(/source/);
+  });
+
+  it("is the size its header reports", () => {
+    const header = readFileSync(path.join(__dirname, "..", "prompt.ts"), "utf8");
+    expect(header).toContain(`${SETUP_LEARNING_SYSTEM_PROMPT.length.toLocaleString("en-GB")} after`);
+    expect(header).toContain(`${estimateTokens(SETUP_LEARNING_SYSTEM_PROMPT).toLocaleString("en-GB")} tokens`);
   });
 
   it("asks for two excerpts from two different messages before \"high\", and for excerpts, never summaries", () => {
@@ -47,9 +82,17 @@ describe("the prompt", () => {
   });
 
   it("does not quote any fixture's chat in its examples, so the live check tests reading, not recall", () => {
-    const quoted = [...SETUP_LEARNING_SYSTEM_PROMPT.matchAll(/"([^"]{12,})"/g)].map((m) => m[1].toLowerCase());
+    // The masking's markers are named in the prompt and stand in a
+    // fixture's description: they are not examples of anybody's words.
+    const markers = [NUMBER_REMOVED, LINK_REMOVED, EMAIL_REMOVED];
+    const quoted = [...SETUP_LEARNING_SYSTEM_PROMPT.matchAll(/"([^"]{12,})"/g)]
+      .map((m) => m[1])
+      .filter((q) => !markers.includes(q))
+      .map((q) => q.toLowerCase());
+    expect(quoted.length).toBeGreaterThan(20);
     for (const name of FIXTURE_NAMES) {
-      const chat = loadFixture(name).history.map((m) => m.text.toLowerCase());
+      const fx = loadFixture(name);
+      const chat = [...fx.history.map((m) => m.text), fx.description ?? ""].map((x) => x.toLowerCase());
       for (const q of quoted) {
         expect(chat.some((c) => c.includes(q)), `${name} contains the prompt example "${q}"`).toBe(false);
       }
@@ -73,7 +116,7 @@ function dmFor(name: (typeof FIXTURE_NAMES)[number], lang?: string, answer?: Rec
   const fx = loadFixture(name);
   const language = lang ?? fx.language;
   const plan = planSetup({
-    detection: parseDetection(answer ?? STUB_ANSWERS[name], fx.history)!,
+    detection: parseDetection(answer ?? STUB_ANSWERS[name], fx.history, fx.description)!,
     org: { ...DEFAULTS, language },
     weeklyGame: fx.weeklyGame,
     activities: [{ dayOfWeek: fx.weeklyGame.dayOfWeek, time: fx.weeklyGame.time }],
@@ -88,10 +131,14 @@ function dmFor(name: (typeof FIXTURE_NAMES)[number], lang?: string, answer?: Rec
     scheduleUrl: "https://mt.link/activities",
     settingsUrl: "https://mt.link/settings",
     organiserPicksUrl: "https://mt.link/pick",
+    feeUrl: "https://mt.link/fee",
   });
 }
 
 describe("the organiser's DM", () => {
+  // The fee lines are new with slice D3 (2026-10-12): this group's
+  // organiser asks for "£6 each" every week and the weekly game has no
+  // fee. Every other line is word for word what it was.
   it("says what was set, why (one quote) and how to undo each, in English", () => {
     expect(dmFor("deadlines")).toBe(
       `I read the recent messages in "Thursday Ladies 5s" to see how it runs, and set MatchTime up the same way.\n\n` +
@@ -106,7 +153,10 @@ describe("the organiser's DM", () => {
         `Undo or change: https://mt.link/undo-paymentTracking\n\n` +
         `Worth a check (I changed nothing here):\n` +
         `🔎 The chat says kickoff is at 20:00; your weekly game is set for 19:00.\n` +
-        `Change it here: https://mt.link/activities\n\n` +
+        `Change it here: https://mt.link/activities\n` +
+        `🔎 The match fee looks like £6 a player; your weekly game has no fee set.\n` +
+        `From messages like: "£6 each please to the usual account"\n` +
+        `Set it here: https://mt.link/fee\n\n` +
         `Everything is on your settings page, with the chat messages behind each one: https://mt.link/settings`,
     );
   });
@@ -223,7 +273,7 @@ describe("the organiser's DM", () => {
   });
 
   it("no DM in any fixture, in either language, carries an em or en dash", () => {
-    for (const name of ["rolling", "organiser-picks", "deadlines", "turkish", "monthly-list"] as const) {
+    for (const name of ["rolling", "organiser-picks", "deadlines", "turkish", "monthly-list", "description-supports", "description-stale"] as const) {
       for (const lang of ["en", "tr"]) expect(dmFor(name, lang), `${name}/${lang}`).not.toMatch(/[—–]/);
     }
   });

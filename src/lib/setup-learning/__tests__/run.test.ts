@@ -90,6 +90,7 @@ const dbMock = vi.hoisted(() => ({
   $executeRaw: vi.fn(async (strings: TemplateStringsArray) => {
     state.raw.push(strings.join("?"));
     if (strings.join("?").includes(`"capturedHistory" = NULL`) && state.connect) state.connect.capturedHistory = null;
+    if (strings.join("?").includes(`"capturedDescription" = NULL`) && state.connect) state.connect.capturedDescription = null;
     return 1;
   }),
 }));
@@ -180,6 +181,7 @@ function setup(name: (typeof FIXTURE_NAMES)[number], org: Row = {}) {
     phone: ORGANISER_PHONE,
     groupSubject: fx.groupSubject,
     capturedHistory: fx.history.length ? fx.history : null,
+    capturedDescription: fx.description ?? null,
   };
   state.activities = [
     {
@@ -235,10 +237,148 @@ describe("learnClubSetup, fixture by fixture (one stub call each, no real model)
       // The chat is deleted once read, whatever came of it, and the group
       // description in the same statement (captured-chat.ts).
       expect(state.connect!.capturedHistory).toBeNull();
+      expect(state.connect!.capturedDescription).toBeNull();
       expect(state.raw).toContain(`UPDATE "ClubConnect" SET "capturedHistory" = NULL, "capturedDescription" = NULL WHERE "id" = ?`);
       expect(sdkCalls.n).toBe(0);
     });
   }
+});
+
+// Go-live slice D3 (2026-10-12): the description stored beside the chat.
+describe("learnClubSetup: the group description", () => {
+  /** A stub that keeps what it was sent. */
+  function capturing(answer: unknown) {
+    const sent: Array<{ system: string; user: string }> = [];
+    const model: PipelineModel = {
+      name: "stub",
+      async complete(req: { system: string; user: string }) {
+        sent.push({ system: req.system, user: req.user });
+        return {
+          text: JSON.stringify(answer),
+          stopReason: "end_turn",
+          usage: { inputTokens: 9_000, outputTokens: 400, cacheReadTokens: 0, cacheWriteTokens: 0 },
+          costUsd: 0.011,
+          ms: 5,
+        };
+      },
+    } as PipelineModel;
+    return { model, sent };
+  }
+
+  it("is sent to the model as its own labelled block, with the chat, in ONE call", async () => {
+    const fx = setup("description-supports");
+    const { model, sent } = capturing(STUB_ANSWERS["description-supports"]);
+    await learnClubSetup(ORG, { now: DAYTIME, model });
+    expect(sent).toHaveLength(1);
+    expect(sent[0].user).toContain(`Group description (one source, written by a group admin, maybe long ago):\n"""\n${fx.description}\n"""`);
+    expect(sent[0].user).toContain("Messages (30, oldest first, London time):");
+    expect(sent[0].user).toContain("Pay Kemal [number removed]");
+  });
+
+  it("a club with no description is told so, and reads exactly as before", async () => {
+    setup("rolling");
+    const { model, sent } = capturing(STUB_ANSWERS.rolling);
+    await learnClubSetup(ORG, { now: DAYTIME, model });
+    expect(sent[0].user).toContain("Group description: (none)");
+    expect(JSON.stringify(state.learning)).not.toContain("fromDescription");
+  });
+
+  it("records which quote is the description's, switches the setting on two sources, and only suggests the fee", async () => {
+    setup("description-supports");
+    await learnClubSetup(ORG, { now: DAYTIME, model: stub(STUB_ANSWERS["description-supports"]) });
+    expect(state.org).toMatchObject({ dropOutDeadlineDay: 2, dropOutDeadlineTime: "18:00" });
+    expect(state.learning!.applied).toMatchObject([
+      { key: "dropOutDeadline", fromDescription: ["Drop out by Tuesday 6pm or you still pay."] },
+    ]);
+    expect(state.learning!.suggestions).toEqual([
+      {
+        key: "matchFee",
+        current: "",
+        detected: "6",
+        evidence: ["£6 a player, pay before kick off."],
+        fromDescription: ["£6 a player, pay before kick off."],
+      },
+    ]);
+    // No write touches the weekly game: the fee is the organiser's to enter.
+    expect(state.orgUpdates).toHaveLength(1);
+    expect(state.orgUpdates[0].data).toEqual({ dropOutDeadlineDay: 2, dropOutDeadlineTime: "18:00" });
+    // The DM: both labels, the fee with a link minted to the fee field.
+    const text = dms[0].text as string;
+    expect(text).toContain(
+      `From messages like: "drop out by Tuesday 6pm or you still pay, that hasn't changed"\n` +
+        `From your group description: "Drop out by Tuesday 6pm or you still pay."\n`,
+    );
+    expect(text).toContain(
+      `🔎 The match fee looks like £6 a player; your weekly game has no fee set.\n` +
+        `From your group description: "£6 a player, pay before kick off."\n` +
+        `Set it here: https://mt.link/admin/activities?edit=fee`,
+    );
+    expect(text).not.toMatch(/removed\]|Pay Kemal/);
+  });
+
+  it("the weekly game already has that fee: nothing is suggested", async () => {
+    setup("description-supports");
+    state.activities[0].feePerPlayer = 6;
+    await learnClubSetup(ORG, { now: DAYTIME, model: stub(STUB_ANSWERS["description-supports"]) });
+    expect(state.learning!.suggestions).toEqual([]);
+  });
+
+  it("the description twice is one source: nothing is switched", async () => {
+    setup("description-stale");
+    const wrong = {
+      ...STUB_ANSWERS["description-stale"],
+      squad: { answer: "rolling", confidence: "high", evidence: ["Squad is the same every week", "only message if you can't play"] },
+      drop_out_deadline: { day: "wednesday", time: "12:00", confidence: "high", evidence: ["Drop out by Wednesday noon", "Drop out by Wednesday noon."] },
+    };
+    await learnClubSetup(ORG, { now: DAYTIME, model: stub(wrong) });
+    expect(state.orgUpdates).toEqual([]);
+    expect(state.org).toMatchObject({ rollingSquadEnabled: false, dropOutDeadlineDay: null });
+    expect(state.learning!.kept).toEqual([
+      { key: "rollingSquad", reason: "thin-evidence" },
+      { key: "dropOutDeadline", reason: "thin-evidence" },
+    ]);
+  });
+
+  it("NO READING FROM THE DESCRIPTION ALONE: a chat that fails the gate is not read, and both are deleted", async () => {
+    const fx = setup("description-supports");
+    state.connect!.capturedHistory = fx.history.slice(0, 5);
+    const { model, sent } = capturing(STUB_ANSWERS["description-supports"]);
+    expect(await learnClubSetup(ORG, { now: DAYTIME, model })).toEqual({ kind: "skipped", reason: "too-short" });
+    expect(sent).toEqual([]);
+    expect(state.orgUpdates).toEqual([]);
+    expect(dms).toEqual([]);
+    expect(state.connect).toMatchObject({ capturedHistory: null, capturedDescription: null });
+  });
+
+  it("is deleted with the chat when the model fails for the last time", async () => {
+    setup("description-supports");
+    state.learning = { status: "deferred", attempts: MAX_ATTEMPTS - 1, updatedAt: new Date(0) };
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(await learnClubSetup(ORG, { now: DAYTIME, model: stub({}, { fail: true }) })).toMatchObject({ kind: "failed" });
+    } finally {
+      err.mockRestore();
+    }
+    expect(state.connect).toMatchObject({ capturedHistory: null, capturedDescription: null });
+  });
+
+  it("no log line carries the description, a message, a quote, a name or a number from them", async () => {
+    const fx = setup("description-supports");
+    const lines: string[] = [];
+    const keep = (...a: unknown[]) => void lines.push(a.map(String).join(" "));
+    const log = vi.spyOn(console, "log").mockImplementation(keep);
+    const err = vi.spyOn(console, "error").mockImplementation(keep);
+    try {
+      await learnClubSetup(ORG, { now: DAYTIME, model: stub(STUB_ANSWERS["description-supports"]) });
+    } finally {
+      log.mockRestore();
+      err.mockRestore();
+    }
+    const all = lines.join("\n");
+    expect(all).toContain("with group description");
+    for (const line of fx.description!.split("\n")) expect(all).not.toContain(line);
+    for (const leak of ["Kemal", "£6", "Tuesday 6pm", "removed]", "Powerleague", "kick off"]) expect(all, leak).not.toContain(leak);
+  });
 });
 
 describe("learnClubSetup: writes and the DM", () => {

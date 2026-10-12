@@ -49,6 +49,34 @@
  *      on for one. At medium confidence it still holds payment tracking
  *      off, because tracking works game by game and would chase players
  *      who paid for the month.
+ *   7. THE GROUP DESCRIPTION IS ONE SOURCE, NEVER TWO (go-live slice D3,
+ *      2026-10-12). The description WhatsApp shared at the add (already
+ *      masked, group-description.ts) is shown to the model beside the
+ *      chat, and a quote may be found in it. Every quote kept for an
+ *      answer stands for a different source: a different message, or the
+ *      description, which is ONE source however many of its sentences
+ *      are quoted. So rule 3 reads on unchanged: description + one
+ *      message agreeing is two sources and may switch a setting; the
+ *      description twice, or alone, is one and switches nothing. THE
+ *      SERVER decides which source a quote came from, by finding it
+ *      (`verifyEvidenceTagged`); the model is never asked. A quote found
+ *      in a message counts as that message even when the description
+ *      says the same. The quotes that are the description's are listed in
+ *      `fromDescription` beside `evidence`, only when there are any, so a
+ *      row written before this slice reads exactly as it did.
+ *      "[number removed]", "[link removed]" and "[email removed]" are
+ *      what the masking left behind: a quote carrying one is dropped.
+ *      Nothing is read from the description alone: when the chat fails
+ *      `historyGate`, the description is not read either.
+ *   8. THE MATCH FEE IS ONLY EVER SUGGESTED (same slice). When the text
+ *      states what each player pays for a game, in pounds, and the club's
+ *      weekly game has no fee or a different one, the organiser is asked,
+ *      with a link. THE EVIDENCE NEEDED: a verified quote that itself
+ *      contains the amount, from the description (one is enough: it is
+ *      the group's standing notice, and a suggestion changes nothing), or
+ *      from TWO different messages (one message may be a single week's
+ *      price). Never for a group that runs a monthly list or splits the
+ *      pitch cost: neither has one fixed fee a game.
  */
 import type { HistoryMessage } from "../onboarding-enrichment-reconcile";
 import { formatLondon } from "../london-time";
@@ -90,6 +118,25 @@ export interface WeeklyGameState {
   time: string;
   venue: string | null;
   playersPerSide: number | null;
+  /** `Activity.feePerPlayer`, in pounds. Absent or null: no fee is set. */
+  feePerPlayer?: number | null;
+  /** `Activity.feeSplitTotal`: the pitch cost is split, there is no fixed fee. */
+  feeSplitTotal?: boolean;
+}
+
+/** The description is cut to this many characters before it is sent. */
+export const MAX_DESCRIPTION_CHARS = 2_000;
+
+/**
+ * The description as the model is shown it AND as quotes are checked
+ * against it (one function, so the two can never differ): trimmed, cut to
+ * MAX_DESCRIPTION_CHARS, null when there is nothing. It arrives masked
+ * (group-description.ts); nothing here unmasks or logs it.
+ */
+export function descriptionForReading(raw: string | null | undefined): string | null {
+  if (typeof raw !== "string") return null;
+  const text = raw.replace(/"{3,}/g, '"').trim().slice(0, MAX_DESCRIPTION_CHARS).trim();
+  return text ? text : null;
 }
 
 function oneLine(text: string): string {
@@ -98,13 +145,17 @@ function oneLine(text: string): string {
 
 /**
  * The user turn: the group's name, the weekly game the organiser entered,
- * and the newest messages that fit MAX_INPUT_CHARS, oldest first, each
- * as "[Mon 29 Sep 21:57] Author: text" in London time.
+ * the group description as its own labelled block (or "(none)"), and the
+ * newest messages that fit MAX_INPUT_CHARS, oldest first, each as
+ * "[Mon 29 Sep 21:57] Author: text" in London time. The description keeps
+ * its line breaks; what its placeholders mean is said once, in the prompt.
  */
 export function buildUserContent(args: {
   groupSubject: string | null;
   weeklyGame: WeeklyGameState | null;
   history: HistoryMessage[];
+  /** `ClubConnect.capturedDescription`, already masked. */
+  description?: string | null;
 }): { text: string; sent: number } {
   const lines: string[] = [];
   let used = 0;
@@ -126,9 +177,13 @@ export function buildUserContent(args: {
       (g.venue ? ` at ${g.venue}` : "") +
       (g.playersPerSide ? `, ${g.playersPerSide} a side` : "")
     : "none entered";
+  const description = descriptionForReading(args.description);
   const text = [
     `Group name: ${args.groupSubject ? oneLine(args.groupSubject) : "(no name)"}`,
     `Weekly game the organiser entered: ${entry}`,
+    description
+      ? `Group description (one source, written by a group admin, maybe long ago):\n"""\n${description}\n"""`
+      : `Group description: (none)`,
     `Messages (${lines.length}, oldest first, London time):`,
     lines.join("\n"),
   ].join("\n\n");
@@ -137,16 +192,29 @@ export function buildUserContent(args: {
 
 // ── 3. The model's answer, parsed and checked ──────────────────────────
 
-export interface Answer<A extends string> {
+/** Where a verified quote was found. */
+export type EvidenceSource = "chat" | "description";
+export interface VerifiedQuote {
+  quote: string;
+  source: EvidenceSource;
+}
+/**
+ * The verified quotes behind an answer, each standing for a different
+ * source. `fromDescription` lists the ones (at most one) found in the
+ * group description, and is ABSENT when none was.
+ */
+export interface Evidenced {
+  evidence: string[];
+  fromDescription?: string[];
+}
+export interface Answer<A extends string> extends Evidenced {
   answer: A;
   confidence: Confidence;
-  evidence: string[];
 }
-export interface DayTimeAnswer {
+export interface DayTimeAnswer extends Evidenced {
   day: number | null;
   time: string | null;
   confidence: Confidence;
-  evidence: string[];
 }
 export interface Detection {
   regularGame: boolean;
@@ -166,8 +234,10 @@ export interface Detection {
     venue: string | null;
     playersPerSide: number | null;
     confidence: Confidence;
-    evidence: string[];
-  };
+  } & Evidenced;
+  /** What each player pays for a game, in pounds. `amount` is null unless
+   *  a verified quote contains it; every quote kept does. */
+  matchFee: { amount: number | null; confidence: Confidence } & Evidenced;
 }
 
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -189,21 +259,37 @@ export const MIN_QUOTES_TO_APPLY = 2;
 /** At most this many quotes are kept for one answer. */
 const MAX_QUOTES = 2;
 
+/** What the masking of the description leaves behind (group-description.ts),
+ *  whole or in part. A quote carrying one is not the group's words. */
+const PLACEHOLDER_RE = /\[\s*(?:number|link|email)\b|\bremoved\s*\]/i;
+
 /**
- * The quotes that really are in the chat, at most two, in the model's
- * order, EACH STANDING FOR A DIFFERENT MESSAGE. A quote is kept when,
- * normalised, it is a substring of a normalised message that no quote
- * kept before it stands for. So two quotes cut from one message count
- * once, and the same sentence posted again another week may be quoted
- * twice: it is a second message. The length of the result is therefore
- * the number of separate messages behind an answer, which is what
- * `planSetup` counts. Quotes with six or more digits in a row are dropped
- * whatever they match: they are account numbers or phone numbers, and
- * they never go in a DM.
+ * The quotes that really are in the chat or the group description, at
+ * most two, in the model's order, EACH STANDING FOR A DIFFERENT SOURCE,
+ * and tagged with the source it stands for. A quote is kept when,
+ * normalised, it is a substring of a normalised message (or of the
+ * description) that no quote kept before it stands for. So:
+ *   - two quotes cut from one message count once;
+ *   - the same sentence posted again another week may be quoted twice: it
+ *     is a second message;
+ *   - THE DESCRIPTION IS ONE SOURCE: two quotes from it count once;
+ *   - a quote found in a message stands for the message, even when the
+ *     description says the same (a message is how the group runs now);
+ *     it moves to the description only to make room for a later quote
+ *     that is in that message alone.
+ * The length of the result is therefore the number of separate sources
+ * behind an answer, which is what `planSetup` counts. Dropped whatever
+ * they match: quotes with six or more digits in a row (account numbers or
+ * phone numbers: they never go in a DM), and quotes carrying one of the
+ * masking's placeholders, whole or in part.
  */
-export function verifyEvidence(raw: unknown, history: HistoryMessage[]): string[] {
+export function verifyEvidenceTagged(raw: unknown, history: HistoryMessage[], description?: string | null): VerifiedQuote[] {
   if (!Array.isArray(raw)) return [];
   const haystack = history.map((m) => normaliseForMatch(m.text));
+  // The description is the last "message": found after every real one, so
+  // a quote prefers a message. Its index says which source a quote is.
+  const sent = descriptionForReading(description);
+  const descriptionAt = sent ? haystack.push(normaliseForMatch(sent)) - 1 : -1;
   const kept: Array<{ quote: string; in: number[]; at: number }> = [];
   const taken = () => new Set(kept.map((k) => k.at));
   for (const q of raw) {
@@ -211,13 +297,14 @@ export function verifyEvidence(raw: unknown, history: HistoryMessage[]): string[
     const quote = q.replace(/\s+/g, " ").trim().replace(/^["'“”]+|["'“”]+$/g, "").trim();
     if (quote.length < 3 || quote.length > MAX_QUOTE_CHARS) continue;
     if (/\d{6,}/.test(quote.replace(/[\s-]/g, ""))) continue;
+    if (PLACEHOLDER_RE.test(quote)) continue;
     const n = normaliseForMatch(quote);
     const found = haystack.flatMap((h, i) => (h.includes(n) ? [i] : []));
     if (found.length === 0) continue;
     let at = found.find((i) => !taken().has(i));
     if (at === undefined) {
-      // Every message with this quote already stands for an earlier one:
-      // move that earlier quote to another of its messages if it has one.
+      // Every source with this quote already stands for an earlier one:
+      // move that earlier quote to another of its sources if it has one.
       const holder = kept.find((k) => found.includes(k.at) && k.in.some((i) => !taken().has(i)));
       if (!holder) continue;
       at = holder.at;
@@ -226,7 +313,28 @@ export function verifyEvidence(raw: unknown, history: HistoryMessage[]): string[
     kept.push({ quote, in: found, at });
     if (kept.length === MAX_QUOTES) break;
   }
-  return kept.map((k) => k.quote);
+  return kept.map((k) => ({ quote: k.quote, source: k.at === descriptionAt ? "description" : "chat" }));
+}
+
+/** The verified quotes alone, in order (see `verifyEvidenceTagged`). */
+export function verifyEvidence(raw: unknown, history: HistoryMessage[], description?: string | null): string[] {
+  return verifyEvidenceTagged(raw, history, description).map((v) => v.quote);
+}
+
+/** The text a model answer is checked against. */
+interface Sources {
+  history: HistoryMessage[];
+  description: string | null;
+}
+
+/** Verified quotes as an answer carries them; `fromDescription` only when there is one. */
+function evidenced(tagged: VerifiedQuote[]): Evidenced {
+  const fromDescription = tagged.filter((v) => v.source === "description").map((v) => v.quote);
+  return { evidence: tagged.map((v) => v.quote), ...(fromDescription.length > 0 ? { fromDescription } : {}) };
+}
+const NO_EVIDENCE: Evidenced = { evidence: [] };
+function checked(raw: unknown, src: Sources): Evidenced {
+  return evidenced(verifyEvidenceTagged(raw, src.history, src.description));
 }
 
 function pick<A extends string>(v: unknown, allowed: readonly A[], fallback: A): A {
@@ -255,36 +363,73 @@ function answer<A extends string>(
   raw: unknown,
   allowed: readonly A[],
   none: A,
-  history: HistoryMessage[],
+  src: Sources,
 ): Answer<A> {
   const o = obj(raw);
   const a = pick(o.answer, allowed, none);
-  const evidence = a === none ? [] : verifyEvidence(o.evidence, history);
-  const confidence = a !== none && evidence.length === 0 ? "low" : conf(o.confidence);
-  return { answer: a, confidence, evidence };
+  const ev = a === none ? NO_EVIDENCE : checked(o.evidence, src);
+  const confidence = a !== none && ev.evidence.length === 0 ? "low" : conf(o.confidence);
+  return { answer: a, confidence, ...ev };
 }
 
-function dayTime(raw: unknown, history: HistoryMessage[]): DayTimeAnswer {
+function dayTime(raw: unknown, src: Sources): DayTimeAnswer {
   const o = obj(raw);
   const day = dayOf(o.day);
   const time = timeOf(o.time);
   const found = day !== null && time !== null;
-  const evidence = found ? verifyEvidence(o.evidence, history) : [];
+  const ev = found ? checked(o.evidence, src) : NO_EVIDENCE;
   return {
     day: found ? day : null,
     time: found ? time : null,
-    confidence: found && evidence.length > 0 ? conf(o.confidence) : "low",
-    evidence,
+    confidence: found && ev.evidence.length > 0 ? conf(o.confidence) : "low",
+    ...ev,
   };
 }
 
+/** A per-player fee below or above these, in pounds, is not believed. */
+export const MIN_MATCH_FEE = 0.5;
+export const MAX_MATCH_FEE = 50;
+
+/** Does the quote itself state `amount`? ("£6", "6.50", "7,50"; not the 6 of "6pm" or "18:00".) */
+function statesAmount(quote: string, amount: number): boolean {
+  for (const m of quote.matchAll(/\d+(?:[.,]\d{1,2})?(?!\d)/g)) {
+    const rest = quote.slice(m.index + m[0].length);
+    const before = quote.slice(0, m.index);
+    if (/^\s?(?:am|pm)\b|^:\d/i.test(rest) || /\d[:.,]$/.test(before)) continue;
+    if (Math.abs(Number(m[0].replace(",", ".")) - amount) < 0.005) return true;
+  }
+  return false;
+}
+
+/**
+ * The match fee: an amount in pounds, kept only with a verified quote
+ * that itself contains the amount (so a fee the model worked out, or made
+ * up, is no fee). Any other currency is no fee: the club's fee is held in
+ * pounds. Absent from the answer (a stub, a reading before this slice):
+ * no fee.
+ */
+function matchFee(raw: unknown, src: Sources): Detection["matchFee"] {
+  const o = obj(raw);
+  const none: Detection["matchFee"] = { amount: null, confidence: "low", evidence: [] };
+  const n = typeof o.amount === "number" && Number.isFinite(o.amount) ? Math.round(o.amount * 100) / 100 : null;
+  if (n === null || o.currency !== "pounds" || n < MIN_MATCH_FEE || n > MAX_MATCH_FEE) return none;
+  const stated = verifyEvidenceTagged(
+    Array.isArray(o.evidence) ? o.evidence.filter((q) => typeof q === "string" && statesAmount(q, n)) : [],
+    src.history,
+    src.description,
+  );
+  if (stated.length === 0) return none;
+  return { amount: n, confidence: conf(o.confidence), ...evidenced(stated) };
+}
+
 /** Null when the response is not an object at all (the caller records a model error). */
-export function parseDetection(raw: unknown, history: HistoryMessage[]): Detection | null {
+export function parseDetection(raw: unknown, history: HistoryMessage[], description?: string | null): Detection | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const src: Sources = { history, description: descriptionForReading(description) };
   const o = raw as Record<string, unknown>;
   const regularGame = o.regular_game === true;
   const ml = obj(o.monthly_list);
-  const monthly = answer(ml, ["monthly_list", "no_sign"] as const, "no_sign", history);
+  const monthly = answer(ml, ["monthly_list", "no_sign"] as const, "no_sign", src);
   const yes = monthly.answer === "monthly_list";
   const wg = obj(o.weekly_game);
   const wgDay = dayOf(wg.day);
@@ -295,14 +440,14 @@ export function parseDetection(raw: unknown, history: HistoryMessage[]): Detecti
       ? wg.players_per_side
       : null;
   const wgClaims = wgDay !== null || wgTime !== null || venue !== null || pps !== null;
-  const wgEvidence = wgClaims ? verifyEvidence(wg.evidence, history) : [];
+  const wgEvidence = wgClaims ? checked(wg.evidence, src) : NO_EVIDENCE;
   return {
     regularGame,
-    squad: answer(o.squad, ["rolling", "sign_up_each_week", "unclear"] as const, "unclear", history),
-    openPlaces: answer(o.open_places, ["organisers_pick", "first_to_ask", "unclear"] as const, "unclear", history),
-    dropOutDeadline: dayTime(o.drop_out_deadline, history),
-    listPublished: dayTime(o.list_published, history),
-    payments: answer(o.payments, ["players_confirm_paying", "no_sign"] as const, "no_sign", history),
+    squad: answer(o.squad, ["rolling", "sign_up_each_week", "unclear"] as const, "unclear", src),
+    openPlaces: answer(o.open_places, ["organisers_pick", "first_to_ask", "unclear"] as const, "unclear", src),
+    dropOutDeadline: dayTime(o.drop_out_deadline, src),
+    listPublished: dayTime(o.list_published, src),
+    payments: answer(o.payments, ["players_confirm_paying", "no_sign"] as const, "no_sign", src),
     monthlyList: {
       ...monthly,
       prepayForMonth: yes && ml.prepay_for_month === true,
@@ -314,9 +459,10 @@ export function parseDetection(raw: unknown, history: HistoryMessage[]): Detecti
       time: wgTime,
       venue,
       playersPerSide: pps,
-      confidence: wgClaims && wgEvidence.length > 0 ? conf(wg.confidence) : "low",
-      evidence: wgEvidence,
+      confidence: wgClaims && wgEvidence.evidence.length > 0 ? conf(wg.confidence) : "low",
+      ...wgEvidence,
     },
+    matchFee: matchFee(o.match_fee, src),
   };
 }
 
@@ -342,7 +488,7 @@ export const ORGANISER_SET_KEY: Record<LearnedKey, string> = {
 /** Never switched from the chat, whatever the evidence: suggested instead (rule 4). */
 export const SUGGEST_ONLY: ReadonlySet<LearnedKey> = new Set<LearnedKey>(["organiserPicks"]);
 
-export const SUGGESTION_KEYS = ["weeklyGameDay", "weeklyGameTime", "venue", "format", "language", "organiserPicks"] as const;
+export const SUGGESTION_KEYS = ["weeklyGameDay", "weeklyGameTime", "venue", "format", "language", "matchFee", "organiserPicks"] as const;
 export type SuggestionKey = (typeof SUGGESTION_KEYS)[number];
 
 export interface OrgSettingsState {
@@ -360,30 +506,28 @@ export interface OrgSettingsState {
 export type DayTimeValue = { day: number; time: string };
 export type SettingValue = boolean | string | DayTimeValue | null;
 
-export interface AppliedItem {
+export interface AppliedItem extends Evidenced {
   key: LearnedKey;
   from: SettingValue;
   to: SettingValue;
-  evidence: string[];
   /** Set when the organiser undid it from /admin/settings. */
   undoneAt?: string | null;
 }
-export interface Suggestion {
+export interface Suggestion extends Evidenced {
   key: SuggestionKey;
   /** What the club has now (day index as a string, time, venue, size,
-   *  language code, or the pick mode for "organiserPicks"). */
+   *  language code, the pick mode for "organiserPicks", or for "matchFee"
+   *  the weekly game's fee in pounds, "" when it has none). */
   current: string;
-  /** What the chat shows. */
+  /** What the chat or the description shows. */
   detected: string;
-  evidence: string[];
 }
-export interface NotedPattern {
+export interface NotedPattern extends Evidenced {
   key: "monthlyList";
   prepayForMonth: boolean;
   payAsYouGoFillIns: boolean;
   creditForMissedGames: boolean;
   confidence: Confidence;
-  evidence: string[];
   /** Payment tracking was detected but left off because of this. */
   heldPaymentTracking: boolean;
 }
@@ -425,11 +569,20 @@ export interface SetupPlan {
   data: SetupData;
 }
 
-/** Enough to SUGGEST or note: high confidence and a quote from the chat. */
+/** Enough to SUGGEST or note: high confidence and a verified quote. */
 function shown(a: { confidence: Confidence; evidence: string[] }): boolean {
   return a.confidence === "high" && a.evidence.length > 0;
 }
-/** Enough to CHANGE a setting: also two quotes, each from its own message. */
+/** `fromDescription`, carried onto a plan item only when there is one. */
+function source(a: Evidenced): { fromDescription?: string[] } {
+  return a.fromDescription && a.fromDescription.length > 0 ? { fromDescription: a.fromDescription } : {};
+}
+/** A fee in pounds as the plan stores it: "6", "6.50". */
+export function feeText(n: number): string {
+  return Number.isInteger(n) ? String(n) : n.toFixed(2);
+}
+/** Enough to CHANGE a setting: also two quotes, each from its own source
+ *  (two messages, or one message and the description: rule 7). */
 function proven(a: { confidence: Confidence; evidence: string[] }): boolean {
   return shown(a) && a.evidence.length >= MIN_QUOTES_TO_APPLY;
 }
@@ -511,7 +664,11 @@ export function planSetup(args: {
   // Monthly list: noted, never applied. Seen with high confidence it
   // switches nothing on at all; otherwise it holds payment tracking off.
   const monthly = d.monthlyList.answer === "monthly_list" && d.monthlyList.confidence !== "low";
-  const monthlyHoldsAll = monthly && d.monthlyList.confidence === "high";
+  // "Everything off" needs the CHAT to show it: a description that alone
+  // claims a monthly list may be years old, and must not hold the chat's
+  // own habits off.
+  const monthlyInChat = d.monthlyList.evidence.length > (d.monthlyList.fromDescription?.length ?? 0);
+  const monthlyHoldsAll = monthly && d.monthlyList.confidence === "high" && monthlyInChat;
   const paymentsProven = d.payments.answer === "players_confirm_paying" && proven(d.payments);
   if (monthly) {
     plan.noted.push({
@@ -521,16 +678,17 @@ export function planSetup(args: {
       creditForMissedGames: d.monthlyList.creditForMissedGames,
       confidence: d.monthlyList.confidence,
       evidence: d.monthlyList.evidence,
+      ...source(d.monthlyList),
       heldPaymentTracking: paymentsProven,
     });
   }
 
-  const candidates: Array<{ key: LearnedKey; to: SettingValue; evidence: string[] }> = [];
-  const consider = (key: LearnedKey, to: SettingValue, a: { confidence: Confidence; evidence: string[] }) => {
+  const candidates: Array<{ key: LearnedKey; to: SettingValue } & Evidenced> = [];
+  const consider = (key: LearnedKey, to: SettingValue, a: { confidence: Confidence } & Evidenced) => {
     if (!shown(a)) return;
     if (!proven(a)) plan.kept.push({ key, reason: "thin-evidence" });
     else if (monthlyHoldsAll || (monthly && key === "paymentTracking")) plan.kept.push({ key, reason: "monthly-list" });
-    else candidates.push({ key, to, evidence: a.evidence });
+    else candidates.push({ key, to, evidence: a.evidence, ...source(a) });
   };
   if (d.squad.answer === "rolling") consider("rollingSquad", true, d.squad);
   if (d.openPlaces.answer === "organisers_pick") consider("organiserPicks", "organiser", d.openPlaces);
@@ -593,10 +751,10 @@ export function planSetup(args: {
       continue;
     }
     if (SUGGEST_ONLY.has(c.key)) {
-      asked.push({ key: "organiserPicks", current: String(currentValue(c.key, org)), detected: String(c.to), evidence: c.evidence });
+      asked.push({ key: "organiserPicks", current: String(currentValue(c.key, org)), detected: String(c.to), evidence: c.evidence, ...source(c) });
       continue;
     }
-    plan.applied.push({ key: c.key, from: currentValue(c.key, org), to: c.to, evidence: c.evidence, undoneAt: null });
+    plan.applied.push({ key: c.key, from: currentValue(c.key, org), to: c.to, evidence: c.evidence, ...source(c), undoneAt: null });
     Object.assign(plan.data, dataFor(c.key, c.to));
   }
 
@@ -605,13 +763,13 @@ export function planSetup(args: {
   const w = d.weeklyGame;
   if (g && shown(w)) {
     if (w.day !== null && w.day !== g.dayOfWeek) {
-      plan.suggestions.push({ key: "weeklyGameDay", current: String(g.dayOfWeek), detected: String(w.day), evidence: w.evidence });
+      plan.suggestions.push({ key: "weeklyGameDay", current: String(g.dayOfWeek), detected: String(w.day), evidence: w.evidence, ...source(w) });
     }
     if (w.time !== null && w.time !== g.time) {
-      plan.suggestions.push({ key: "weeklyGameTime", current: g.time, detected: w.time, evidence: w.evidence });
+      plan.suggestions.push({ key: "weeklyGameTime", current: g.time, detected: w.time, evidence: w.evidence, ...source(w) });
     }
     if (w.venue && g.venue && !sameVenue(w.venue, g.venue)) {
-      plan.suggestions.push({ key: "venue", current: g.venue, detected: w.venue, evidence: w.evidence });
+      plan.suggestions.push({ key: "venue", current: g.venue, detected: w.venue, evidence: w.evidence, ...source(w) });
     }
     if (w.playersPerSide !== null && g.playersPerSide !== null && w.playersPerSide !== g.playersPerSide) {
       plan.suggestions.push({
@@ -619,12 +777,30 @@ export function planSetup(args: {
         current: String(g.playersPerSide),
         detected: String(w.playersPerSide),
         evidence: w.evidence,
+        ...source(w),
       });
     }
   }
   const cl = args.chatLanguage;
   if (cl && cl.confident && cl.lang !== org.language && !organiserSet.has("language")) {
     plan.suggestions.push({ key: "language", current: org.language, detected: cl.lang, evidence: [] });
+  }
+
+  // The match fee: asked, never set (rule 8). A quote from the description
+  // is enough; from the chat alone it takes two messages.
+  const f = d.matchFee;
+  if (g && f.amount !== null && f.confidence !== "low" && !monthly && !g.feeSplitTotal) {
+    const backed = (f.fromDescription?.length ?? 0) > 0 || f.evidence.length >= MIN_QUOTES_TO_APPLY;
+    const now = g.feePerPlayer != null && g.feePerPlayer > 0 ? g.feePerPlayer : null;
+    if (backed && (now === null || Math.abs(now - f.amount) >= 0.005)) {
+      plan.suggestions.push({
+        key: "matchFee",
+        current: now === null ? "" : feeText(now),
+        detected: feeText(f.amount),
+        evidence: f.evidence,
+        ...source(f),
+      });
+    }
   }
   plan.suggestions.push(...asked);
   return plan;

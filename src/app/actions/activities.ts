@@ -6,6 +6,7 @@ import { activitySchema } from "@/lib/validations";
 import { requireOrgAdmin } from "@/lib/org";
 import { revalidatePath } from "next/cache";
 import { londonWallClockToUtc, nextLondonKickoff } from "@/lib/london-time";
+import { parseActivityFee } from "@/lib/activity-fee";
 
 export async function createActivity(formData: {
   orgId: string;
@@ -49,6 +50,9 @@ export async function updateActivity(
     ratingWindowHours?: number;
     matchDurationMins?: number;
     isActive?: boolean;
+    /** The fee per player in pounds as typed ("6", "6.50"), "" or null for
+     *  none. Left out: the fee is not touched. */
+    feePerPlayer?: string | number | null;
   }
 ) {
   const session = await auth();
@@ -66,7 +70,16 @@ export async function updateActivity(
     if (!sport) throw new Error("Sport not found in this organisation");
   }
 
-  await db.activity.update({ where: { id: activityId }, data: formData });
+  // The fee is never written as it arrived: it goes through the one parser.
+  const { feePerPlayer, ...rest } = formData;
+  const data: typeof rest & { feePerPlayer?: number | null } = { ...rest };
+  if ("feePerPlayer" in formData) {
+    const parsed = parseActivityFee(feePerPlayer);
+    if (!parsed.ok) throw new Error("Enter a fee like 6 or 6.50, at most £100.");
+    data.feePerPlayer = parsed.fee;
+  }
+
+  await db.activity.update({ where: { id: activityId }, data });
 
   revalidatePath("/admin/activities");
 }
