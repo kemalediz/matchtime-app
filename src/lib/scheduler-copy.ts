@@ -450,9 +450,16 @@ export function buildRollingAnnouncePost(
 }
 
 /** Row RSQ2: the line a rolling club's 17:00 post carries while the
- *  drop-out deadline is still ahead (R2). */
-export function buildRollingDeadlineLine(args: { deadline: string } & WithLang): string {
-  return t(args.lang).rolling_deadline_line(args);
+ *  drop-out deadline is still ahead (R2). `carried` false (2026-10-13):
+ *  nobody was carried onto this game, a rolling club's first with
+ *  MatchTime, so "you're in unless you say OUT" would be false for most
+ *  of the group; the line then speaks only to the players on the list.
+ *  Absent reads as carried, which is every call before that date. */
+export function buildRollingDeadlineLine(args: { deadline: string; carried?: boolean } & WithLang): string {
+  const s = t(args.lang);
+  return args.carried === false
+    ? s.rolling_deadline_line_first({ deadline: args.deadline })
+    : s.rolling_deadline_line({ deadline: args.deadline });
 }
 
 /**

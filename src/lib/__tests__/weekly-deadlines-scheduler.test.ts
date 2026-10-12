@@ -342,7 +342,8 @@ describe("the rolling squad reads the club's weekly deadline", () => {
       { ...HAMZAH_CLUB, listPublishDay: null, listPublishTime: null },
       { rollingSeededAt: new Date("2026-10-03T07:00:00.000Z") },
     );
-    setWorld([m], { carried: 4 });
+    // Half of the 18 places were carried over: the standing line (2026-10-13).
+    setWorld([m], { carried: 9 });
     const post = text(await instructions(new Date("2026-10-04T16:05:00.000Z")), `${m.id}:evening-update:2026-10-04`);
     expect(post).toContain(buildRollingDeadlineLine({ deadline: "Monday 21:00", lang: "en" }));
   });
