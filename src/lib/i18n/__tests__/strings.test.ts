@@ -476,6 +476,7 @@ const SAMPLES: SampleArgs = {
   sj_dm_connected: { name: "Aliyah", club: "Riverside FC" },
   sj_dm_already_connected: null,
   sj_dm_code_expired: null,
+  sj_dm_wrong_code: { club: "Riverside FC" },
   sj_dm_in_group: { group: "Riverside Tuesday 5s" },
   sj_group_hello: { organiser: "Aliyah" },
   // ── BEGIN settings-aware group hello (go-live slice S2) ──
@@ -906,8 +907,9 @@ const SAMPLES: SampleArgs = {
   settings_learned_changed_since: null,
   settings_learned_undo_failed: null,
   settings_learned_from: null,
-  settings_learned_check_head: null,
-  settings_learned_open_setting: null,
+  settings_learned_check_count: { count: 3 },
+  settings_learned_check_sub: null,
+  settings_learned_action: { key: "weeklyGameTime" },
   settings_learned_noted_head: null,
   // Monthly squad (2026-10-05, slice 2)
   msq_section_title: null,

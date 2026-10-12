@@ -2040,6 +2040,10 @@ export const en = {
     "I'll stay quiet in the group until your club is approved, usually within a day. I'll message you here when it's live.",
   sj_dm_already_connected: "You're already connected. Now just add me to your group.",
   sj_dm_code_expired: "That code has expired. Open your club on matchtime.ai and tap Add MatchTime to WhatsApp again.",
+  /** A connect message whose code names no request, from an organiser who
+   *  has an open one. Never carries the right code. */
+  sj_dm_wrong_code: (p: { club: string }): string =>
+    `The code in your message doesn't match the one for ${p.club}. Go back to your club page on matchtime.ai, press Add MatchTime to WhatsApp again, and send the message exactly as it opens.`,
 
   // ── Self-join slice 6: the organiser's ack after a matched group add (plan 5.4) ──
   /** Sent only when the adder WAS the organiser (matched by phone or by the
@@ -3228,9 +3232,30 @@ export const en = {
   settings_learned_changed_since: "Changed since",
   settings_learned_undo_failed: "Couldn't undo that",
   settings_learned_from: "From messages like",
-  settings_learned_check_head: "Worth a check (nothing changed)",
-  /** Under the "organisers pick" suggestion on /admin/settings: jumps to the setting. */
-  settings_learned_open_setting: "Go to the setting",
+  /** The heading of the attention block over the suggestions on
+   *  /admin/settings: how many there are. */
+  settings_learned_check_count: (p: { count: number }): string =>
+    p.count === 1 ? `1 thing to check` : `${p.count} things to check`,
+  /** Under that heading: these are suggestions, changed nowhere. */
+  settings_learned_check_sub:
+    "MatchTime changed nothing for these. Have a look, and change them yourself if the chat is right.",
+  /** The button on each suggestion, by kind: it says what it does and
+   *  goes where the organiser's DM sends them for that kind. The quoted
+   *  name is wr_pick_organiser, the option on /admin/settings. */
+  settings_learned_action: (p: {
+    key: "weeklyGameDay" | "weeklyGameTime" | "venue" | "format" | "language" | "organiserPicks";
+  }): string =>
+    p.key === "organiserPicks"
+      ? `Switch on "The organisers pick"`
+      : p.key === "weeklyGameDay"
+        ? `Change game day`
+        : p.key === "weeklyGameTime"
+          ? `Change kickoff time`
+          : p.key === "venue"
+            ? `Change the pitch`
+            : p.key === "format"
+              ? `Change players a side`
+              : `Change the language`,
   /** Over the patterns the chat showed that MatchTime switched nothing
    *  for. Today that is only the monthly list, which HAS a setting
    *  (Settings, Monthly squad), so this must not say there is none. */
