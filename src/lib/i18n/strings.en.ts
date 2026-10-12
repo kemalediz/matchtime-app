@@ -2871,7 +2871,7 @@ export const en = {
     `Nobody is set as the money collector yet. Choose one in Settings: they'll look after the card for the club fee and get this tip too.${p.link ? ` ${p.link}` : ""}`,
   // Club fee billing, slice P3 (games played): the month's receipt, the
   // first month in a row with no games, and Keep paying. To the billing
-  // contact by platform DM, 10:00 to 20:00 London, once each. No dashes,
+  // contact by platform DM, 09:00 to 23:00 London, once each. No dashes,
   // EN and TR. Plan 7.3.
   /** After a month's invoice is PAID: its count and charge. `last4` null
    *  when the card is not known; `ownCard` false when the card on file is
