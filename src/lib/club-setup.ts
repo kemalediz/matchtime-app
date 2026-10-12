@@ -36,6 +36,7 @@ import { randomUUID } from "node:crypto";
 import type { MatchStatus } from "@/generated/prisma/enums";
 import { db } from "./db";
 import { isClubApproved, servingClubWhere } from "./club-approval-state";
+import { BILLING_NOT_PAUSED_WHERE, isBillingEnabled } from "./club-billing-rules";
 import {
   SETTING_UP_CLUB_WHERE,
   SETUP_STAGE_SELECT,
@@ -69,15 +70,13 @@ export {
   settingUpClubFields,
   settingUpOnly,
   type SetupStageColumns,
-  GO_ALREADY_LIVE_WINDOW_MS,
+  WENT_LIVE_CLUB_WHERE,
   STILL_READING_WINDOW_MS,
   isGoCommand,
   isSetupLearningFinal,
   liveByOwner,
   liveByUser,
-  liveByWhatsapp,
   readingBlocksGoLive,
-  wentLiveSinceWhere,
 } from "./club-setup-rules";
 
 /**
@@ -169,6 +168,8 @@ const GO_LIVE_ORG_SELECT = {
   liveAt: true,
   liveBy: true,
   setupRemovedAt: true,
+  billingStatus: true,
+  clubBilling: { select: { pausedReason: true } },
   ...SETUP_STAGE_SELECT,
 } as const;
 
@@ -183,6 +184,8 @@ interface GoLiveOrgRow {
   liveAt: Date | null;
   liveBy: string | null;
   setupRemovedAt: Date | null;
+  billingStatus: string;
+  clubBilling: { pausedReason: string | null } | null;
 }
 
 /** What every outcome that names a club carries, for the reply. */
@@ -211,6 +214,9 @@ export type GoLiveResult =
   | (GoLiveClubInfo & { outcome: "removed-from-group" })
   /** The setup reading has not finished (owner decision 4). */
   | (GoLiveClubInfo & { outcome: "still-reading" })
+  /** The club is paused for the club fee (not because it was removed from
+   *  its group: that is "removed-from-group"). Nothing would be delivered. */
+  | (GoLiveClubInfo & { outcome: "billing-paused" })
   /** Not approved, never held, or no such club. Nothing to do. */
   | { outcome: "not-setting-up"; orgId: string };
 
@@ -220,16 +226,39 @@ export interface GoLiveOptions {
   learningEnabled?: boolean;
   /** Who the hello names. Default: whoever connected the club, else its owner. */
   organiserUserId?: string | null;
+  /** BILLING_ENABLED as the caller reads it. Default: the environment. */
+  billingEnabled?: boolean;
 }
 
 /** Why a club that is not a plain "setting up, in its group" cannot go live. */
-function goLiveRefusal(org: GoLiveOrgRow, info: GoLiveClubInfo): GoLiveResult | null {
+function goLiveRefusal(org: GoLiveOrgRow, info: GoLiveClubInfo, billingOn: boolean): GoLiveResult | null {
   if (!isClubSettingUp(org)) {
     return isClubApproved(org) && hasGoneLive(org)
       ? { ...info, outcome: "already-live", liveAt: org.liveAt, liveBy: org.liveBy }
       : { outcome: "not-setting-up", orgId: org.id };
   }
+  // TODO(setup-removal slice): NOTHING WRITES `setupRemovedAt` YET, so
+  // this half of the guard never fires today (pinned by the "DEPENDENCY"
+  // test in e2e/api/setup-go-live.spec.ts). That slice must:
+  //   - STAMP it when MatchTime is removed from the group of a club that
+  //     is setting up: POST /api/whatsapp/bot-removed
+  //     (src/app/api/whatsapp/bot-removed/route.ts), a new setting-up
+  //     branch beside `handleBillingRemoval` and `handleBotRemoved`;
+  //   - CLEAR it when MatchTime is added back to that same group: the
+  //     "live-org" branch of the group add (src/lib/group-add.ts).
+  // Until then the only removal this function can see is the billing one
+  // just below (a club in its free period that is removed is paused with
+  // reason "removed").
   if (org.setupRemovedAt || !org.whatsappGroupId) return { ...info, outcome: "removed-from-group" };
+  // Paused for the club fee (PR #234 review, fix 2). due-posts refuses a
+  // paused club, and the resume marks every due unsent job as sent, so a
+  // hello queued now would be lost for good, with the intro key already
+  // spent. Going live waits until the club is served again.
+  if (billingOn && org.billingStatus === "paused") {
+    return org.clubBilling?.pausedReason === "removed"
+      ? { ...info, outcome: "removed-from-group" }
+      : { ...info, outcome: "billing-paused" };
+  }
   return null;
 }
 
@@ -359,7 +388,8 @@ async function settlePaymentsAnnouncement(
  * ONE transaction around ONE compare-and-set on
  * { id, approved, setting up, not removed from its group }. With it:
  *   - the stage is live, the bot is on, `liveAt` and `liveBy` are stamped
- *     (`by`: `liveByUser`, `liveByWhatsapp` or `liveByOwner`);
+ *     (`by`: `liveByUser` for the club's own owner or admin, by WhatsApp
+ *     or on the website, or `liveByOwner` for the MatchTime owner);
  *   - every unsent BotJob queued while the club was setting up is DELETED.
  *     Website actions (a player tapping In, a cancelled game, a format
  *     switch) and help replies queue posts and DMs that would otherwise
@@ -377,7 +407,7 @@ async function settlePaymentsAnnouncement(
  * `liveAt` and `liveBy`. It queues nothing.
  *
  * Refusals change nothing: "still-reading" (owner decision 4),
- * "removed-from-group", "not-setting-up".
+ * "removed-from-group", "billing-paused", "not-setting-up".
  */
 export async function goLiveClub(
   orgId: string,
@@ -386,11 +416,12 @@ export async function goLiveClub(
   opts: GoLiveOptions = {},
 ): Promise<GoLiveResult> {
   const learningEnabled = opts.learningEnabled ?? isSetupLearningEnabled();
+  const billingOn = opts.billingEnabled ?? isBillingEnabled();
   return db.$transaction(
     async (tx): Promise<GoLiveResult> => {
       const read = await readGoLiveOrg(tx, orgId);
       if (!read) return { outcome: "not-setting-up", orgId };
-      const refusal = goLiveRefusal(read.org, read.info);
+      const refusal = goLiveRefusal(read.org, read.info, billingOn);
       if (refusal) return refusal;
 
       const learning = await tx.clubSetupLearning.findUnique({ where: { orgId }, select: { status: true } });
@@ -409,14 +440,14 @@ export async function goLiveClub(
       // The compare-and-set. Bot on and stage live in ONE write: the CHECK
       // constraint refuses the bot on a club that is still setting up.
       const { count } = await tx.organisation.updateMany({
-        where: { id: orgId, ...SETTING_UP_CLUB_WHERE, setupRemovedAt: null },
+        where: { id: orgId, ...SETTING_UP_CLUB_WHERE, setupRemovedAt: null, ...(billingOn ? BILLING_NOT_PAUSED_WHERE : {}) },
         data: { setupStage: "live", whatsappBotEnabled: true, liveAt: now, liveBy: by },
       });
       if (count !== 1) {
-        // Lost a race: somebody went live, or the club was removed or
-        // suspended, between the read above and this write.
+        // Lost a race: somebody went live, or the club was removed, paused
+        // or suspended, between the read above and this write.
         const after = await readGoLiveOrg(tx, orgId);
-        return (after && goLiveRefusal(after.org, after.info)) ?? { outcome: "not-setting-up", orgId };
+        return (after && goLiveRefusal(after.org, after.info, billingOn)) ?? { outcome: "not-setting-up", orgId };
       }
 
       // FREE PERIOD HOOK (the later money slice, S4b). The club's free
@@ -425,6 +456,18 @@ export async function goLiveClub(
       // (club-approval.ts) to this point, on `tx`, with `now` as the
       // start. Nothing is done for billing in this slice.
 
+      // THE PURGE RUNS UNDER THE CLUB'S ROW LOCK (PR #234 review, fix 8).
+      // The compare-and-set above is the transaction's first WRITE, so
+      // from there to the commit this transaction holds the club's row
+      // lock: no second go-live, and no other write to the club, can
+      // interleave. What the lock does NOT cover is a BotJob insert, which
+      // never touches the club's row; `SELECT ... FOR UPDATE` on the club
+      // would not either. A job another transaction commits after this
+      // statement and before our commit therefore survives. That is the
+      // right outcome, not a leak: it was queued by an action taken while
+      // the club was going live, and is no different from one taken a
+      // millisecond after the commit. Everything queued BEFORE the GO was
+      // committed before this statement ran, and is deleted here.
       const purged = await tx.botJob.deleteMany({ where: { orgId, sentAt: null } });
       const quietedMatches = await quietMatchesBeforeGoLive(tx, orgId, now);
       await closeUnfinishedSetupLearning(orgId, tx, now);

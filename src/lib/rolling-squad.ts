@@ -23,6 +23,7 @@
  */
 import { db } from "./db";
 import { servingClubWhere } from "./club-approval-state";
+import { LIVE_STAGE_WHERE } from "./club-setup-rules";
 import { formatLondon } from "./london-time";
 import { recordAttendanceEvent } from "./attendance-events";
 import { isSameRecurringFixture, type RecurringFixtureKey } from "./match-slot";
@@ -184,7 +185,12 @@ type FixtureRow = {
  */
 export async function seedDueRollingSquads(now: Date = new Date()): Promise<{ seeded: number }> {
   const orgs = await db.organisation.findMany({
-    where: { ...servingClubWhere(), rollingSquadEnabled: true, dormantAt: null },
+    // Not a club that is approved but still setting up (PR #234 review,
+    // fix 4): nothing is carried over, and no once-key is claimed, for a
+    // group MatchTime has not spoken in yet. The first run after go-live
+    // seeds it. Every club that was never held is in the live stage, so
+    // for them this is the same selection as before.
+    where: { ...servingClubWhere(), ...LIVE_STAGE_WHERE, rollingSquadEnabled: true, dormantAt: null },
     select: { id: true },
   });
 

@@ -164,12 +164,6 @@ export function settingUpOnly(servedClubs: SetupStageColumns[]): boolean {
 // ── Going live (slice S4) ───────────────────────────────────────────────
 
 /**
- * A second owner or admin who says GO within this long of the club going
- * live is told "already live" rather than being passed down the DM path.
- */
-export const GO_ALREADY_LIVE_WINDOW_MS = 10 * 60 * 1000;
-
-/**
  * GO is refused with "still reading" while the setup reading has not
  * finished, for this long after the approval (owner decision 4). After
  * that the organiser is never kept waiting on a reading: going live closes
@@ -181,32 +175,39 @@ const GO_WORDS: ReadonlySet<string> = new Set(["go", "go live", "basla"]);
 
 /**
  * THE TEXT GATE OF THE GO HANDLER. True only when the WHOLE message is the
- * command: GO, GO LIVE, BAŞLA or BASLA, in any letter case, with at most
- * one trailing "." or "!". "go on then", "let's go" and "go?" are not GO.
- * Pure and cheap, so every other DM costs no query.
+ * command: GO, GO LIVE, BAŞLA or BASLA, in any letter case. Pure and
+ * cheap, so every other DM costs no query.
+ *
+ * People answer with what they see and how they talk (PR #234 review, fix
+ * 6): our own messages print *GO* in bold, and a reply is as likely to be
+ * "GO!!" or "Go 👍". So before matching, the text is trimmed, every kind
+ * of space is collapsed, WhatsApp's formatting marks (* _ ~ `) round it
+ * are dropped, and so are trailing full stops, exclamation marks and
+ * emoji. What is LEFT must still be exactly one of the command words:
+ * "go on then", "let's go" and "*go* on then" are not GO. A question mark
+ * is not dropped: "go?" is a question, not a command.
  */
 export function isGoCommand(text: unknown): boolean {
   if (typeof text !== "string") return false;
   const word = text
+    // Every Unicode space, zero-width ones and line breaks included.
+    .replace(/[\s​-‍⁠﻿]+/gu, " ")
     .trim()
-    .replace(/[ \t]*[.!]$/, "")
-    // Turkish letters first: "BAŞLA", and "GO LİVE" typed on a Turkish
+    // Leading formatting marks, then anything trailing that is a mark, a
+    // space, closing punctuation or an emoji (with its modifiers).
+    .replace(/^[*_~` ]+/u, "")
+    .replace(/[*_~` .!…\p{Extended_Pictographic}\p{Emoji_Modifier}️‍]+$/u, "")
+    // Turkish letters: "BAŞLA", and "GO LİVE" typed on a Turkish
     // keyboard, must read the same as their plain forms.
     .replace(/[İIı]/g, "i")
     .replace(/[Şş]/g, "s")
-    .toLowerCase()
-    .replace(/[ \t]+/g, " ");
+    .toLowerCase();
   return GO_WORDS.has(word);
 }
 
 /** `liveBy` for an owner or admin who pressed Go live on the website. */
 export function liveByUser(userId: string): string {
   return userId;
-}
-
-/** `liveBy` for a GO sent by WhatsApp: the sender's number, digits only. */
-export function liveByWhatsapp(phone: string): string {
-  return `whatsapp:${phone.replace(/\D/g, "")}`;
 }
 
 /** `liveBy` for the MatchTime owner's "Go live now" on the clubs page. */
@@ -243,9 +244,10 @@ export function readingBlocksGoLive(args: {
 }
 
 /**
- * "Approved, live, and went live at or after `since`": the clubs a second
- * admin's GO is answered "already live" for.
+ * "Approved, live, and has been through the hold" (`liveAt` is stamped):
+ * the clubs whose owner or admin is answered "already live" when they say
+ * GO, however long ago the club went live. A club that was never held
+ * (every club that existed before the hold) has no stamp and never
+ * matches, so GO from its admin is not ours and falls through untouched.
  */
-export function wentLiveSinceWhere(since: Date) {
-  return { ...APPROVED_CLUB_WHERE, ...LIVE_STAGE_WHERE, liveAt: { gte: since } };
-}
+export const WENT_LIVE_CLUB_WHERE = { ...APPROVED_CLUB_WHERE, ...LIVE_STAGE_WHERE, liveAt: { not: null } } as const;

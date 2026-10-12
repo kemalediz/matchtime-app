@@ -92,6 +92,9 @@ export const OTP_DM_TTL_MS = 10 * 60 * 1000;
 
 const FAIL_REASON_MAX = 500;
 
+/** Rows read per class (codes, everything else) on one poll. */
+const DUE_READ_LIMIT = 50;
+
 // ── The due-posts key (the bridge for a Pi built before slice 3) ────────
 
 const KEY_PREFIX = "platform-";
@@ -324,16 +327,28 @@ export async function claimDuePlatformJobs(
 ): Promise<PlatformJobInstruction[]> {
   const now = opts.now ?? new Date();
   const kinds = opts.kinds ?? ["dm", "leave-group"];
-  const rows = (await db.platformJob.findMany({
-    where: {
-      status: "queued",
-      kind: { in: kinds },
-      OR: [{ sendAfter: null }, { sendAfter: { lte: now } }],
-    },
-    orderBy: { createdAt: "asc" },
-    take: 50,
-    select: { id: true, kind: true, phone: true, groupId: true, text: true, purpose: true, createdAt: true },
-  })) as PlatformJobRow[];
+  // ── Two reads, so a sign-up code can never be starved (PR #234 review,
+  //    fix 1c) ──
+  // One read of "the 50 oldest", ranked afterwards, hid a new code behind
+  // any backlog of more than 50 older DMs until its ten minutes were up.
+  // Codes are therefore read on their own, and everything else beside
+  // them; `planPlatformDispatch` still puts codes first and keeps each
+  // class oldest first, and the batch limit is applied there as before.
+  const due = {
+    status: "queued",
+    kind: { in: kinds },
+    OR: [{ sendAfter: null }, { sendAfter: { lte: now } }],
+  };
+  const read = (purpose: "otp" | { not: "otp" }) =>
+    db.platformJob.findMany({
+      where: { ...due, purpose },
+      orderBy: { createdAt: "asc" },
+      take: DUE_READ_LIMIT,
+      select: { id: true, kind: true, phone: true, groupId: true, text: true, purpose: true, createdAt: true },
+    }) as Promise<PlatformJobRow[]>;
+  const [codes, others] = await Promise.all([read("otp"), read({ not: "otp" })]);
+  const seen = new Set<string>();
+  const rows = [...(codes ?? []), ...(others ?? [])].filter((r) => (seen.has(r.id) ? false : (seen.add(r.id), true)));
   if (rows.length === 0) return [];
 
   const leaveGroups = [...new Set(rows.filter((r) => r.kind === "leave-group" && r.groupId).map((r) => r.groupId as string))];

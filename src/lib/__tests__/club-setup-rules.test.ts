@@ -16,15 +16,13 @@ import {
   preferLiveClubs,
   settingUpClubFields,
   settingUpOnly,
-  GO_ALREADY_LIVE_WINDOW_MS,
+  WENT_LIVE_CLUB_WHERE,
   STILL_READING_WINDOW_MS,
   isGoCommand,
   isSetupLearningFinal,
   liveByOwner,
   liveByUser,
-  liveByWhatsapp,
   readingBlocksGoLive,
-  wentLiveSinceWhere,
 } from "../club-setup-rules";
 
 const live = { approvalStatus: "approved", setupStage: "live" };
@@ -152,13 +150,42 @@ describe("isGoCommand: the text gate of the GO handler (slice S4)", () => {
     (text) => expect(isGoCommand(text)).toBe(true),
   );
 
+  // PR #234 review, fix 6: our own messages print *GO* in bold, and people
+  // answer with what they see, with emphasis, with a thumbs up.
+  it.each([
+    "GO!!",
+    "go..",
+    "*GO*",
+    "*GO*.",
+    "_go_",
+    "~GO~",
+    "`GO`",
+    "*_GO_*",
+    "Go 👍",
+    "GO 👍🏽",
+    "go ✅🙌",
+    "GO LIVE!!!",
+    "*GO LIVE*",
+    "GO LIVE",
+    "GO LIVE",
+    "​GO​",
+    "GO\n",
+    "*BAŞLA* 👍",
+    "başla…",
+  ])("%j is GO too", (text) => expect(isGoCommand(text)).toBe(true));
+
   it.each([
     "go on then",
     "GO now",
     "let's go",
     "go?",
-    "go!!",
-    "go..",
+    "go!?",
+    "👍 go on",
+    "*go* on then",
+    "go 👍 later",
+    "*",
+    "👍",
+    "!!",
     "go, please",
     "golive",
     "g o",
@@ -182,10 +209,6 @@ describe("isGoCommand: the text gate of the GO handler (slice S4)", () => {
 
 describe("who took a club live", () => {
   it("a site admin is the bare user id", () => expect(liveByUser("u-hana")).toBe("u-hana"));
-  it("a WhatsApp GO is whatsapp:<digits>", () => {
-    expect(liveByWhatsapp("+44 7700 900971")).toBe("whatsapp:447700900971");
-    expect(liveByWhatsapp("447700900971")).toBe("whatsapp:447700900971");
-  });
   it("the platform owner is owner:<id>", () => expect(liveByOwner("u-kemal")).toBe("owner:u-kemal"));
 });
 
@@ -199,9 +222,8 @@ describe("readingBlocksGoLive: GO before the reading has finished (owner decisio
     for (const s of ["running", "deferred", "", null, undefined]) expect(isSetupLearningFinal(s)).toBe(false);
   });
 
-  it("the window is two hours from approval; the already-live window is ten minutes", () => {
+  it("the window is two hours from approval", () => {
     expect(STILL_READING_WINDOW_MS).toBe(2 * 60 * 60 * 1000);
-    expect(GO_ALREADY_LIVE_WINDOW_MS).toBe(10 * 60 * 1000);
   });
 
   it.each(["running", "deferred"])("a %s reading blocks inside the window", (status) =>
@@ -232,9 +254,13 @@ describe("readingBlocksGoLive: GO before the reading has finished (owner decisio
   });
 });
 
-describe("wentLiveSinceWhere", () => {
-  it("is approved, live, and stamped at or after the instant", () => {
-    const since = new Date("2026-10-12T11:50:00Z");
-    expect(wentLiveSinceWhere(since)).toEqual({ approvalStatus: "approved", setupStage: "live", liveAt: { gte: since } });
+describe("clubs that have been through the hold", () => {
+  it("WENT_LIVE_CLUB_WHERE is approved, live, and stamped: with no time limit (review fix 6)", () => {
+    expect(WENT_LIVE_CLUB_WHERE).toEqual({ approvalStatus: "approved", setupStage: "live", liveAt: { not: null } });
+  });
+
+  it("it can never match a club that was not held: every club that exists today has no stamp", () => {
+    expect(hasGoneLive({ liveAt: null })).toBe(false);
+    expect(NEVER_HELD_WHERE).toEqual({ liveAt: null });
   });
 });

@@ -1770,8 +1770,9 @@ export const tr: Strings = {
   sj_go_not_recognised: (p) =>
     `Bu mesajı anlayamadım. ${p.club} kulübünü yayına almak için buraya *BAŞLA* yazın ya da ayarlar sayfasındaki *Yayına al* düğmesine basın:\n${p.url}`,
   sj_go_not_recognised_many: (p) =>
-    `Bu mesajı anlayamadım. Kurulumu süren birden fazla kulübünüz var, her kulübün ayarlarındaki *Yayına al* düğmesine basın:\n` +
-    p.clubs.map((c) => `${c.club}: ${c.url}`).join("\n"),
+    `Bu mesajı anlayamadım. Kurulumu süren birden fazla kulübünüz var, her kulübün ayarlarındaki *Yayına al* düğmesine basın:\n${p.url}`,
+  sj_go_paused: (p) =>
+    `${p.club} şu anda duraklatılmış, bu yüzden henüz yayına alamıyorum. Ne gerektiği ayarlar sayfanızda yazıyor:\n${p.url}`,
   // ════ END going live: replies to GO ════
 
   sj_dm_approved: (p) =>

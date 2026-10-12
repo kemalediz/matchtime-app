@@ -118,6 +118,10 @@ const TWIN_A = { id: "e2e-go-twna", name: "Twin A", group: "120363900000000205@g
 const TWIN_B = { ...TWIN_A, id: "e2e-go-twnb", name: "Twin B", group: "120363900000000206@g.us", subject: "Twin B 5s" };
 const RACE = { id: "e2e-go-race", name: "Race United", group: "120363900000000207@g.us", subject: "Race Sunday 5s", ownerId: "e2e-go-rob", ownerPhone: "+447700901108" };
 const RACE_ADMIN = { id: "e2e-go-ria", phone: "+447700901109" };
+const PAUSED = { id: "e2e-go-paus", name: "Pause Park", group: "120363900000000208@g.us", subject: "Pause Park 5s", ownerId: "e2e-go-paz", ownerPhone: "+447700901110" };
+const LEFTOUT = { id: "e2e-go-left", name: "Leftout FC", group: "120363900000000209@g.us", subject: "Leftout 5s", ownerId: "e2e-go-lou", ownerPhone: "+447700901111" };
+const CHATTY = { id: "e2e-go-chat", name: "Chatty FC", group: "120363900000000220@g.us", subject: "Chatty 5s", ownerId: "e2e-go-cat", ownerPhone: "+447700901112" };
+const DAILY = { id: "e2e-go-dail", name: "Daily FC", group: "120363900000000221@g.us", subject: "Daily 5s", ownerId: "e2e-go-dee", ownerPhone: "+447700901113" };
 
 const STALE_GROUP = "STALE: Pat is in for Tuesday (tapped on the website)";
 const STALE_DM = "STALE: the help answer nobody received";
@@ -271,7 +275,7 @@ test.describe("GO", () => {
     expect(res).toMatchObject({ handled: "setup-go", outcome: "went-live", orgId: HARBOUR.id });
 
     const row = await club(db, HARBOUR.id);
-    expect(row).toMatchObject({ setupStage: "live", whatsappBotEnabled: true, liveBy: `whatsapp:${bare(HANA)}` });
+    expect(row).toMatchObject({ setupStage: "live", whatsappBotEnabled: true, liveBy: HARBOUR.ownerId });
     expect(row!.liveAt).not.toBeNull();
 
     const jobs = await botJobs(db, HARBOUR.id);
@@ -331,21 +335,23 @@ test.describe("GO", () => {
     expect(body.silentGroups).not.toContain(HARBOUR.group);
   });
 
-  test("a second admin who says GO within ten minutes is told it is already live, and nothing is repeated", async ({ request, db }) => {
+  test("a second admin who says GO is told it is already live, and nothing is repeated", async ({ request, db }) => {
     const res = await dm(request, BO.phone, "go live");
     expect(res).toMatchObject({ handled: "setup-go", outcome: "already-live", orgId: HARBOUR.id });
     expect(await lastReply(db, BO.phone)).toMatchObject({ text: "Harbour FC is already live.", purpose: "setup-reply", sendAfter: null });
     expect(await botJobs(db, HARBOUR.id)).toHaveLength(1);
-    expect((await club(db, HARBOUR.id))!.liveBy).toBe(`whatsapp:${bare(HANA)}`);
+    expect((await club(db, HARBOUR.id))!.liveBy).toBe(HARBOUR.ownerId);
   });
 
-  test("after ten minutes GO is just another DM again", async ({ request, db }) => {
-    await db.run(`UPDATE "Organisation" SET "liveAt" = $2::timestamp WHERE id = $1`, [HARBOUR.id, utc(-11 * 60_000)]);
-    const before = (await replies(db, HANA)).length;
-    const res = await dm(request, HANA, "GO");
-    expect(res.handled).not.toBe("setup-go");
-    expect(res.ignored).not.toBe("club-setting-up");
-    expect(await replies(db, HANA)).toHaveLength(before);
+  test("review fix 6: however long ago the club went live, GO from its admin is answered 'already live'", async ({ request, db }) => {
+    await db.run(`UPDATE "Organisation" SET "liveAt" = $2::timestamp WHERE id = $1`, [HARBOUR.id, utc(-90 * 24 * 3_600_000)]);
+    const before = (await replies(db, BO.phone)).length;
+    const res = await dm(request, BO.phone, "*GO*");
+    expect(res).toMatchObject({ handled: "setup-go", outcome: "already-live", orgId: HARBOUR.id });
+    const sent = await replies(db, BO.phone);
+    expect(sent).toHaveLength(before + 1);
+    expect(sent.at(-1)!.text).toBe("Harbour FC is already live.");
+    expect(await botJobs(db, HARBOUR.id)).toHaveLength(1);
   });
 
   test("once live, the organiser's DMs are no longer stopped by the setting-up rail", async ({ request }) => {
@@ -433,8 +439,110 @@ test.describe("GO that is refused", () => {
     // Anything else from her lists each club's own settings link.
     expect((await dm(request, TWIN_A.ownerPhone, "ok so how?")).handled).toBe("setup-not-recognised");
     expect((await lastReply(db, TWIN_A.ownerPhone))!.text).toMatch(
-      /^I didn't recognise that message\. You have more than one club being set up, so press \*Go live\* in each club's settings:\nTwin A: https?:\/\/\S+\nTwin B: https?:\/\/\S+$/,
+      /^I didn't recognise that message\. You have more than one club being set up, so press \*Go live\* in each club's settings:\nhttps?:\/\/\S+\/admin\/settings$/,
     );
+  });
+
+  test("review fix 2: a club paused for the club fee cannot go live, so its hello is never queued only to be lost", async ({ request, db }) => {
+    await user(db, PAUSED.ownerId, "Paz Paused", PAUSED.ownerPhone);
+    await heldClub(db, PAUSED);
+    await db.run(
+      `INSERT INTO "ClubBilling" ("orgId","trialStartedAt","trialEndsAt","pausedAt","pausedReason","updatedAt")
+       VALUES ($1, $2::timestamp, $3::timestamp, $4::timestamp, 'no-card', now())`,
+      [PAUSED.id, utc(-70 * 24 * 3_600_000), utc(-9 * 24 * 3_600_000), utc(-3_600_000)],
+    );
+    await db.run(`UPDATE "Organisation" SET "billingStatus" = 'paused' WHERE id = $1`, [PAUSED.id]);
+    const res = await dm(request, PAUSED.ownerPhone, "GO", { headers: { "x-mt-test-billing": "1" } });
+    expect(res).toMatchObject({ handled: "setup-go", outcome: "billing-paused", orgId: PAUSED.id });
+    expect(await club(db, PAUSED.id)).toMatchObject({ setupStage: "setting-up", whatsappBotEnabled: false, liveAt: null });
+    expect(await botJobs(db, PAUSED.id)).toEqual([]);
+    expect(await db.count(`SELECT COUNT(*) FROM "SentNotification" WHERE key = $1`, [`org-${PAUSED.id}:bot-intro`])).toBe(0);
+    expect((await lastReply(db, PAUSED.ownerPhone))!.text).toMatch(
+      /^Pause Park is paused, so I can't go live yet\. Your settings page shows what's needed:\nhttps?:\/\/\S+\/admin\/settings$/,
+    );
+  });
+
+  test("DEPENDENCY (setup-removal slice, not built yet): removal during setting up is NOT recorded today, so GO still goes live", async ({ request, db }) => {
+    // This test documents a gap, it does not bless it. `goLiveClub` refuses
+    // a club whose `setupRemovedAt` is set, but nothing writes that stamp
+    // yet: the bot-removed route and the group add are being changed by
+    // other slices. When the removal slice lands, this test must be turned
+    // round: after bot-removed the stamp is set and GO answers
+    // "removed-from-group" (the reply is already covered above, with the
+    // stamp written by hand).
+    await user(db, LEFTOUT.ownerId, "Lou Leftout", LEFTOUT.ownerPhone);
+    await heldClub(db, LEFTOUT);
+    const removed = await request.post("/api/whatsapp/bot-removed", { headers: HEADERS, data: { groupId: LEFTOUT.group } });
+    expect(removed.status(), await removed.text()).toBe(200);
+    expect(await db.one(`SELECT "setupRemovedAt" FROM "Organisation" WHERE id = $1`, [LEFTOUT.id])).toEqual({ setupRemovedAt: null });
+    expect(await dm(request, LEFTOUT.ownerPhone, "GO")).toMatchObject({ handled: "setup-go", outcome: "went-live" });
+  });
+});
+
+test.describe("the reply cap (review fix 1a)", () => {
+  test("a flood of messages from one organiser queues 5 replies in the hour, then silence; GO still works and still says Done", async ({ request, db }) => {
+    await user(db, CHATTY.ownerId, "Cat Chatty", CHATTY.ownerPhone);
+    await heldClub(db, CHATTY);
+    const out: Array<{ handled?: string; ignored?: string }> = [];
+    for (let i = 0; i < 9; i++) out.push(await dm(request, CHATTY.ownerPhone, i === 3 ? "help" : `are you there ${i}?`));
+    expect(out.slice(0, 5).map((o) => o.handled)).toEqual([
+      "setup-not-recognised",
+      "setup-not-recognised",
+      "setup-not-recognised",
+      "dm-help",
+      "setup-not-recognised",
+    ]);
+    expect(out.slice(5).map((o) => o.ignored)).toEqual(Array(4).fill("setup-reply-capped"));
+    expect(await replies(db, CHATTY.ownerPhone)).toHaveLength(5);
+    // Help is capped too.
+    expect((await dm(request, CHATTY.ownerPhone, "help")).ignored).toBe("setup-reply-capped");
+    expect(await replies(db, CHATTY.ownerPhone)).toHaveLength(5);
+    // No signed-in link was minted for any of it (review fix 1b).
+    const texts = (await replies(db, CHATTY.ownerPhone)).filter((r) => r.text.includes("didn't recognise")).map((r) => r.text);
+    expect(texts).toHaveLength(4);
+    for (const text of texts) expect(text).toMatch(/\nhttps?:\/\/[^\s/]+\/admin\/settings$/);
+    // The cap never stops the club going live, or the one reply that matters.
+    expect(await dm(request, CHATTY.ownerPhone, "GO!! 👍")).toMatchObject({ handled: "setup-go", outcome: "went-live" });
+    expect((await lastReply(db, CHATTY.ownerPhone))!.text).toBe(`Done: I've introduced myself in "Chatty 5s".`);
+    expect(await replies(db, CHATTY.ownerPhone)).toHaveLength(6);
+  });
+
+  test("a reply older than an hour no longer counts towards the hour; 15 in a day is the day's limit", async ({ request, db }) => {
+    await user(db, DAILY.ownerId, "Dee Daily", DAILY.ownerPhone);
+    await heldClub(db, DAILY);
+    // 14 replies sent earlier today, all more than an hour ago.
+    for (let i = 0; i < 14; i++) {
+      await db.run(
+        `INSERT INTO "PlatformJob" (id, kind, phone, text, purpose, status, "createdAt", "updatedAt")
+         VALUES ($1, 'dm', $2, 'earlier', 'setup-reply', 'sent', $3::timestamp, now())`,
+        [`e2e-go-daily-${i}`, bare(DAILY.ownerPhone), utc(-(2 + i * 0.5) * 3_600_000)],
+      );
+    }
+    expect((await dm(request, DAILY.ownerPhone, "hello?")).handled).toBe("setup-not-recognised");
+    expect((await dm(request, DAILY.ownerPhone, "anyone?")).ignored).toBe("setup-reply-capped");
+    expect(await replies(db, DAILY.ownerPhone)).toHaveLength(15);
+  });
+});
+
+test.describe("GO as people really type it (review fix 6)", () => {
+  for (const [i, word] of ["*GO*", "GO!!", "Go 👍", "*GO LIVE*"].entries()) {
+    test(`${JSON.stringify(word)} takes the club live`, async ({ request, db }) => {
+      const c = { ...RACE, id: `e2e-go-say${i}`, name: `Say ${i}`, group: `12036390000000023${i}@g.us`, subject: `Say ${i} 5s`, ownerId: `e2e-go-say${i}-u`, ownerPhone: `+44770090113${i}` };
+      await user(db, c.ownerId, "Sam Sayer", c.ownerPhone);
+      await heldClub(db, c);
+      expect(await dm(request, c.ownerPhone, word)).toMatchObject({ handled: "setup-go", outcome: "went-live", orgId: c.id });
+      expect((await club(db, c.id))!.liveBy).toBe(c.ownerId);
+    });
+  }
+
+  test("but a sentence with go in it is still not GO", async ({ request, db }) => {
+    const c = { ...RACE, id: "e2e-go-sayno", name: "Say No", group: "120363900000000239@g.us", subject: "Say No 5s", ownerId: "e2e-go-sayno-u", ownerPhone: "+447700901139" };
+    await user(db, c.ownerId, "Sal Sayer", c.ownerPhone);
+    await heldClub(db, c);
+    for (const text of ["*go* on then", "let's go 👍", "go?"]) {
+      expect((await dm(request, c.ownerPhone, text)).handled).toBe("setup-not-recognised");
+    }
+    expect(await club(db, c.id)).toMatchObject({ setupStage: "setting-up", whatsappBotEnabled: false });
   });
 });
 
@@ -449,7 +557,7 @@ test.describe("two GOs at once", () => {
     expect((await botJobs(db, RACE.id)).filter((j) => j.kind === "group")).toHaveLength(1);
     const winner = a.outcome === "went-live" ? RACE.ownerPhone : RACE_ADMIN.phone;
     const loser = a.outcome === "went-live" ? RACE_ADMIN.phone : RACE.ownerPhone;
-    expect((await club(db, RACE.id))!.liveBy).toBe(`whatsapp:${bare(winner)}`);
+    expect((await club(db, RACE.id))!.liveBy).toBe(winner === RACE.ownerPhone ? RACE.ownerId : RACE_ADMIN.id);
     expect((await lastReply(db, winner))!.text).toBe(`Done: I've introduced myself in "Race Sunday 5s".`);
     expect((await lastReply(db, loser))!.text).toBe("Race United is already live.");
   });

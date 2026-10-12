@@ -2156,14 +2156,19 @@ export const en = {
   /** GO from somebody who runs more than one club that is setting up. */
   sj_go_many: `You have more than one club being set up. Use the Go live button in each club's settings.`,
   /** Anything else from the organiser of a setting-up club (owner decision
-   *  8): said every time. `url` is their own signed-in link to settings. */
+   *  8). `url` is the plain settings address. */
   sj_go_not_recognised: (p: { club: string; url: string }): string =>
     `I didn't recognise that message. To go live with ${p.club}, reply *GO* here, or press *Go live* on the settings page:\n${p.url}`,
   /** The same, for somebody with more than one club setting up: GO cannot
-   *  pick one, so each club's own settings link is listed. */
-  sj_go_not_recognised_many: (p: { clubs: Array<{ club: string; url: string }> }): string =>
-    `I didn't recognise that message. You have more than one club being set up, so press *Go live* in each club's settings:\n` +
-    p.clubs.map((c) => `${c.club}: ${c.url}`).join("\n"),
+   *  pick one. `url` is the plain settings address (PR #234 review, fix
+   *  1b: no signed-in link is minted per unrecognised message). */
+  sj_go_not_recognised_many: (p: { url: string }): string =>
+    `I didn't recognise that message. You have more than one club being set up, so press *Go live* in each club's settings:\n${p.url}`,
+  /** GO for a club that is paused for the club fee (PR #234 review, fix 2):
+   *  a hello queued now would never be delivered. The settings page has
+   *  the billing card, which says what the club needs. */
+  sj_go_paused: (p: { club: string; url: string }): string =>
+    `${p.club} is paused, so I can't go live yet. Your settings page shows what's needed:\n${p.url}`,
   // ════ END going live: replies to GO ════
 
   /** To the organiser, once, when the owner approves (2026-10-01: a short

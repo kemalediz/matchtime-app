@@ -21,7 +21,7 @@ async function main() {
   process.env.DATABASE_URL = url;
 
   const { db } = await import("@/lib/db");
-  const { goLiveClub, helloPreviewForClub, liveByUser, liveByWhatsapp, liveByOwner } = await import("@/lib/club-setup");
+  const { goLiveClub, helloPreviewForClub, liveByUser, liveByOwner } = await import("@/lib/club-setup");
   const { paymentsLiveKey } = await import("@/lib/payments-live-announce");
 
   let n = 0;
@@ -122,7 +122,7 @@ async function main() {
     await db.clubSetupLearning.create({ data: { orgId: a, status: "deferred", reason: "model-error" } });
 
     const preview = await helloPreviewForClub(a);
-    const out = await goLiveClub(a, liveByWhatsapp("+447700901801"), NOW);
+    const out = await goLiveClub(a, liveByUser(`${a}-u`), NOW);
     assert.equal(out.outcome, "went-live");
     if (out.outcome !== "went-live") throw new Error("unreachable");
     assert.equal(out.club, "Golive full");
@@ -133,7 +133,7 @@ async function main() {
     assert.equal(row?.setupStage, "live");
     assert.equal(row?.whatsappBotEnabled, true);
     assert.equal(row?.liveAt?.getTime(), NOW.getTime());
-    assert.equal(row?.liveBy, "whatsapp:447700901801");
+    assert.equal(row?.liveBy, `${a}-u`);
     ok("stage live, bot on, liveAt and liveBy stamped, in one write the CHECK constraint accepts");
 
     const after = await jobs(a);
@@ -176,24 +176,24 @@ async function main() {
     const again = await goLiveClub(a, liveByUser(`${a}-u`), new Date(NOW.getTime() + 60_000));
     assert.equal(again.outcome, "already-live");
     if (again.outcome !== "already-live") throw new Error("unreachable");
-    assert.equal(again.liveBy, "whatsapp:447700901801");
+    assert.equal(again.liveBy, `${a}-u`);
     assert.equal(again.liveAt?.getTime(), NOW.getTime());
     assert.equal((await jobs(a)).filter((j) => !j.sentAt).length, 1);
-    assert.equal((await org(a))?.liveBy, "whatsapp:447700901801");
+    assert.equal((await org(a))?.liveBy, `${a}-u`);
     ok("a second GO is already-live, with who and when, and queues no second hello");
 
     // ── 3. The race: two GOs at the same instant ──────────────────────
     for (let round = 1; round <= 3; round++) {
       const r = await club(`race${round}`);
       const [x, y] = await Promise.all([
-        goLiveClub(r, liveByWhatsapp("447700901811"), NOW),
+        goLiveClub(r, liveByUser("u-second-admin"), NOW),
         goLiveClub(r, liveByUser(`${r}-u`), NOW),
       ]);
       const kinds = [x.outcome, y.outcome].sort();
       assert.deepEqual(kinds, ["already-live", "went-live"], `round ${round}`);
       const hellos = (await jobs(r)).filter((j) => j.kind === "group");
       assert.equal(hellos.length, 1, `round ${round}: one hello`);
-      const winner = x.outcome === "went-live" ? "whatsapp:447700901811" : `${r}-u`;
+      const winner = x.outcome === "went-live" ? "u-second-admin" : `${r}-u`;
       assert.equal((await org(r))?.liveBy, winner);
       const loser = x.outcome === "already-live" ? x : y;
       if (loser.outcome === "already-live") assert.equal(loser.liveBy, winner);
@@ -275,6 +275,106 @@ async function main() {
     assert.ok(mJobs[1].createdAt.getTime() > mJobs[0].createdAt.getTime(), "the announcement follows the hello");
     assert.ok(await db.sentNotification.findUnique({ where: { key: paymentsLiveKey(monthly, "acct_monthly") } }));
     ok("a monthly club's hello has no fees line, so the payments announcement is queued once, after the hello");
+
+    // ── 9. Paused for the club fee (PR #234 review, fix 2) ─────────────
+    // A hello queued for a paused club is never delivered (due-posts
+    // refuses the club) and is marked sent on resume, with the intro key
+    // already spent. So going live waits.
+    async function pause(orgId: string, reason: string) {
+      await db.clubBilling.create({
+        data: { orgId, trialStartedAt: ago(70 * 24 * HOUR), trialEndsAt: ago(9 * 24 * HOUR), pausedAt: ago(HOUR), pausedReason: reason } as never,
+      });
+      await db.organisation.update({ where: { id: orgId }, data: { billingStatus: "paused" } as never });
+    }
+    const paused = await club("paused");
+    await pause(paused, "no-card");
+    const pausedOut = await goLiveClub(paused, "u", NOW, { billingEnabled: true });
+    assert.equal(pausedOut.outcome, "billing-paused");
+    assert.equal((await org(paused))?.setupStage, "setting-up");
+    assert.equal((await org(paused))?.whatsappBotEnabled, false);
+    assert.equal((await jobs(paused)).length, 0);
+    assert.equal(await db.sentNotification.findUnique({ where: { key: `org-${paused}:bot-intro` } }), null);
+    ok("a club paused for the club fee is refused (billing-paused): no hello queued to be lost, the intro key unspent");
+
+    const pausedRemoved = await club("pausedrm");
+    await pause(pausedRemoved, "removed");
+    assert.equal((await goLiveClub(pausedRemoved, "u", NOW, { billingEnabled: true })).outcome, "removed-from-group");
+    assert.equal((await jobs(pausedRemoved)).length, 0);
+    ok("paused BECAUSE MatchTime was removed from the group: the removed-from-group refusal");
+
+    assert.equal((await goLiveClub(paused, "u", NOW, { billingEnabled: false })).outcome, "went-live");
+    ok("with BILLING_ENABLED off nobody counts as paused, as everywhere else: the same club goes live");
+
+    // ── 10. The seeds skip a club that is setting up (fix 4) ────────────
+    const { seedDueRollingSquads } = await import("@/lib/rolling-squad");
+    const { seedDueMonthlySquads } = await import("@/lib/monthly-week");
+    const yesterday = ago(30 * HOUR);
+    const soon = ahead(3 * HOUR);
+    async function fixture(orgId: string, playerIds: string[]) {
+      await db.sport.create({
+        data: { id: `${orgId}-sport`, orgId, name: "Football 5-a-side", playersPerTeam: 5, positions: ["GK"], teamLabels: ["Red", "Yellow"] } as never,
+      });
+      await db.activity.create({
+        data: { id: `${orgId}-act`, orgId, sportId: `${orgId}-sport`, name: "Weekly game", dayOfWeek: 2, time: "21:00", venue: "Pitch", isActive: true } as never,
+      });
+      await db.match.create({ data: { id: `${orgId}-last`, activityId: `${orgId}-act`, date: yesterday, maxPlayers: 10, status: "COMPLETED", attendanceDeadline: yesterday } as never });
+      await db.match.create({ data: { id: `${orgId}-next`, activityId: `${orgId}-act`, date: soon, maxPlayers: 10, status: "UPCOMING", attendanceDeadline: soon } as never });
+      for (const [i, userId] of playerIds.entries()) {
+        await db.attendance.create({ data: { matchId: `${orgId}-last`, userId, status: "CONFIRMED", position: i + 1 } });
+      }
+    }
+    const seededOn = (orgId: string) => db.attendance.count({ where: { matchId: `${orgId}-next` } });
+
+    const rollHeld = await club("rollheld", { rollingSquadEnabled: true });
+    const rollLive = await club("rolllive", { rollingSquadEnabled: true, setupStage: "live", whatsappBotEnabled: true });
+    await fixture(rollHeld, [`${rollHeld}-u`]);
+    await fixture(rollLive, [`${rollLive}-u`]);
+    await seedDueRollingSquads(NOW);
+    assert.equal(await seededOn(rollLive), 1, "the control club, live, is seeded as ever");
+    assert.equal(await seededOn(rollHeld), 0, "the setting-up club is not seeded");
+    assert.equal(await db.sentNotification.count({ where: { matchId: `${rollHeld}-next` } }), 0);
+    assert.equal((await jobs(rollHeld)).length, 0);
+    ok("rolling squad: a setting-up club is not seeded and no key is claimed for it; an identical live club is seeded as before");
+    assert.equal((await goLiveClub(rollHeld, "u", NOW)).outcome, "went-live");
+    await seedDueRollingSquads(NOW);
+    assert.equal(await seededOn(rollHeld), 1);
+    ok("and it is seeded on the first run after it goes live");
+
+    const monthStart = new Date(Date.UTC(soon.getUTCFullYear(), soon.getUTCMonth(), 1));
+    async function runningMonth(orgId: string) {
+      await db.squadMonth.create({
+        data: {
+          id: `${orgId}-month`,
+          orgId,
+          activityId: `${orgId}-act`,
+          monthStart,
+          status: "running",
+          gamesScheduled: 4,
+          startedMidMonthAt: ago(2 * HOUR),
+          members: { create: [{ userId: `${orgId}-u`, kind: "regular", slot: 1, gamesCovered: 4 }] },
+        } as never,
+      });
+    }
+    const monHeld = await club("monheld", { squadMode: "monthly" });
+    const monLive = await club("monlive", { squadMode: "monthly", setupStage: "live", whatsappBotEnabled: true });
+    for (const id of [monHeld, monLive]) {
+      await fixture(id, []);
+      await db.match.delete({ where: { id: `${id}-last` } });
+      await runningMonth(id);
+    }
+    await seedDueMonthlySquads(NOW);
+    assert.equal(await seededOn(monLive), 1, "the control club, live, has its regular put on the next game");
+    assert.equal(await seededOn(monHeld), 0, "the setting-up club's regular is not");
+    assert.equal((await db.match.findUnique({ where: { id: `${monHeld}-next` }, select: { rollingSeededAt: true } }))?.rollingSeededAt, null);
+    assert.equal((await jobs(monHeld)).length, 0);
+    // The organiser starting a month on the website asks for this one club by id.
+    await seedDueMonthlySquads(NOW, monHeld);
+    assert.equal(await seededOn(monHeld), 0);
+    ok("monthly squad: a setting-up club is not seeded (nor by the website's own call), its once-mark is not spent, no DM is queued; a live one is as before");
+    assert.equal((await goLiveClub(monHeld, "u", NOW)).outcome, "went-live");
+    await seedDueMonthlySquads(NOW, monHeld);
+    assert.equal(await seededOn(monHeld), 1);
+    ok("and it is seeded once it is live");
 
     console.log(`OK: ${n} go-live checks against Postgres`);
   } finally {

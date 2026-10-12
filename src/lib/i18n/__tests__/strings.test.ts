@@ -504,12 +504,8 @@ const SAMPLES: SampleArgs = {
   sj_go_already_live: { club: "Riverside FC" },
   sj_go_many: null,
   sj_go_not_recognised: { club: "Riverside FC", url: "https://matchtime.ai/r/settings1" },
-  sj_go_not_recognised_many: {
-    clubs: [
-      { club: "Riverside FC", url: "https://matchtime.ai/r/settings1" },
-      { club: "Harbour FC", url: "https://matchtime.ai/r/settings2" },
-    ],
-  },
+  sj_go_not_recognised_many: { url: "https://matchtime.ai/admin/settings" },
+  sj_go_paused: { club: "Riverside FC", url: "https://matchtime.ai/admin/settings" },
   // ── END settings-aware group hello ──
   sj_dm_approved: {
     club: "Riverside FC",

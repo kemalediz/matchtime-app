@@ -68,6 +68,7 @@ import { handleApproverDm, nonServingClubsReason } from "@/lib/club-approval";
 import { IN_LIVE_STAGE_CLUB_WHERE, settingUpClubsReason } from "@/lib/club-setup";
 import { handleGoDm, handleSettingUpDm } from "@/lib/setup-go-dm";
 import { setupLearningEnabledForRequest } from "@/lib/setup-learning/flag";
+import { billingEnabledForApiRequest } from "@/lib/billing-flag";
 import { billingQuietMatchWhere } from "@/lib/club-billing-rules";
 import { handleConnectDm } from "@/lib/connect-dm";
 import { handleOrganiserPickDm } from "@/lib/organiser-pick";
@@ -155,9 +156,10 @@ export async function POST(request: Request) {
   //   checked first (the whole message must be GO, GO LIVE, BAŞLA or
   //   BASLA), so no other DM costs a query here; and it engages only for a
   //   current owner or admin, known by phone or a server-stored LID, of a
-  //   club that is setting up or went live in the last ten minutes. For
-  //   everybody else it returns null and the DM carries on exactly as
-  //   before. See lib/setup-go-dm.ts.
+  //   club that is setting up, or that has been through setting up and is
+  //   live (they are told "already live"). For everybody else, the admins
+  //   of every club that was never held among them, it returns null and
+  //   the DM carries on exactly as before. See lib/setup-go-dm.ts.
   {
     const go = await handleGoDm({
       text,
@@ -166,6 +168,7 @@ export async function POST(request: Request) {
       senderLid,
       waMessageId,
       learningEnabled: setupLearningEnabledForRequest(request),
+      billingEnabled: billingEnabledForApiRequest(request),
     });
     if (go) return NextResponse.json({ ok: true, ...go });
   }
@@ -511,9 +514,10 @@ export async function POST(request: Request) {
   //   PLATFORM channel, because the club's own channel is not dispatched
   //   while its bot is off:
   //     - a current owner or admin asking for help gets the help;
-  //     - a current owner or admin saying anything else is told, every
-  //       time, that the message was not recognised, and how to go live
-  //       (reply GO, or the Go live button, with their settings link);
+  //     - a current owner or admin saying anything else is told that the
+  //       message was not recognised, and how to go live (reply GO, or the
+  //       Go live button, with the settings page's address), up to a cap
+  //       per number that only a flood or an auto-reply loop reaches;
   //     - a plain member, or a sender known only by display name, gets
   //       nothing at all.
   //   GO itself never reaches here: it is handled at the top of the route.
