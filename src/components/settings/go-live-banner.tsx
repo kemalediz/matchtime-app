@@ -41,6 +41,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { CheckCircle2, Info, Loader2, Rocket } from "lucide-react";
 import { goLiveClubAction, helloPreviewAction } from "@/app/actions/club-setup";
 import { WhatsAppMessage } from "@/components/whatsapp-message";
+import { goLiveSettled, goLiveStarted } from "@/lib/go-live-in-flight";
 import { t } from "@/lib/i18n/t";
 
 /** What /api/org/settings sends an owner or admin about the club's setup. */
@@ -144,6 +145,7 @@ export function GoLiveBanner(props: {
   async function goLive() {
     if (submitting.current) return;
     submitting.current = true;
+    goLiveStarted(); // nothing else on the page may queue a request beside this one
     setBusy(true);
     setNotice(null);
     // Stays locked once the outcome is final: there is nothing left to press.
@@ -198,6 +200,7 @@ export function GoLiveBanner(props: {
       setNotice(s.sj_live_failed);
     } finally {
       if (!closed) submitting.current = false;
+      goLiveSettled();
       setBusy(false);
     }
   }

@@ -35,9 +35,12 @@
  * open ones, and with none open there is no amber block at all. A DM link
  * to a suggestion that has since been resolved lands on its line.
  *
- * The state is loaded again, in one request, when the page comes back
- * (restored from the back-forward cache, or its tab shown again) and when
- * a setting on this page that a suggestion is about is saved.
+ * The state is loaded again when a setting on this page that a
+ * suggestion is about is saved, and when the organiser comes back from
+ * somewhere else (the page restored from the back-forward cache, or its
+ * tab shown after a few seconds hidden): at most once every five seconds
+ * for coming back, never on a plain return to the tab, and never beside
+ * a go-live request (setup-learning/panel-reload.ts).
  *
  * After an Undo the page reloads, so every other section shows the
  * setting's new value from the server.
@@ -47,7 +50,9 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { AlertTriangle, ArrowRight, Check, Sparkles } from "lucide-react";
 import { getLearnedSetupAction, undoLearnedSettingAction } from "@/app/actions/setup-learning";
+import { GO_LIVE_SETTLED_EVENT, isGoLiveInFlight } from "@/lib/go-live-in-flight";
 import { t } from "@/lib/i18n/t";
+import { awayLongEnough, reloadDecision, type ReloadWhy } from "@/lib/setup-learning/panel-reload";
 import { appliedLine, monthlyPattern, suggestionLine } from "@/lib/setup-learning/dm";
 import { checkHeading, suggestionActionHref, suggestionActionLabel } from "@/lib/setup-learning/suggestion-action";
 import { LEARNED_REFRESH_EVENT, resolvedLine } from "@/lib/setup-learning/suggestion-state";
@@ -76,15 +81,29 @@ export function LearnedSetupPanel(props: { orgId: string; language: string | nul
     if (k) setHighlight(k);
   }, []);
 
-  // Load, and load again when the organiser comes back from changing
-  // something elsewhere or saves a setting on this page (a new language
-  // arrives as the prop). One request at a time, only on those events.
+  // Load, and load again only when something may have changed. Every
+  // load goes through ONE function, and the rules are in
+  // setup-learning/panel-reload.ts: a setting saved on this page loads
+  // now; coming back (a back-forward restore, or the tab shown after a
+  // few seconds hidden) loads at most once every five seconds; a plain
+  // return to the tab loads nothing; never two at once, and never beside
+  // a go-live request, which a load would be queued in front of.
+  const ask = useRef<(why: ReloadWhy) => void>(() => {});
   useEffect(() => {
     let live = true;
     let loading = false;
-    const load = () => {
-      if (loading) return;
+    let waiting = false; // a "must" that arrived while it could not be sent
+    let lastLoadAt = 0;
+    let hiddenAt: number | null = null;
+    const request = (why: ReloadWhy) => {
+      if (!live) return;
+      const now = Date.now();
+      const decision = reloadDecision({ why, now, lastLoadAt, loading, goLiveInFlight: isGoLiveInFlight() });
+      if (decision === "later") waiting = true;
+      if (decision !== "load") return;
       loading = true;
+      waiting = false;
+      lastLoadAt = now;
       getLearnedSetupAction(props.orgId)
         .then((v) => {
           if (live) setView(v);
@@ -94,25 +113,47 @@ export function LearnedSetupPanel(props: { orgId: string; language: string | nul
         })
         .finally(() => {
           loading = false;
+          if (waiting) request("must");
         });
     };
-    load();
+    ask.current = request;
+    request("must");
     const onPageShow = (e: PageTransitionEvent) => {
-      if (e.persisted) load();
+      if (e.persisted) request("came-back");
     };
-    const onVisible = () => {
-      if (document.visibilityState === "visible") load();
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") {
+        hiddenAt ??= Date.now();
+        return;
+      }
+      const away = awayLongEnough(hiddenAt, Date.now());
+      hiddenAt = null;
+      if (away) request("came-back");
+    };
+    const onSaved = () => request("must");
+    const onGoLiveSettled = () => {
+      if (waiting) request("must");
     };
     window.addEventListener("pageshow", onPageShow);
-    document.addEventListener("visibilitychange", onVisible);
-    window.addEventListener(LEARNED_REFRESH_EVENT, load);
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener(LEARNED_REFRESH_EVENT, onSaved);
+    window.addEventListener(GO_LIVE_SETTLED_EVENT, onGoLiveSettled);
     return () => {
       live = false;
       window.removeEventListener("pageshow", onPageShow);
-      document.removeEventListener("visibilitychange", onVisible);
-      window.removeEventListener(LEARNED_REFRESH_EVENT, load);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener(LEARNED_REFRESH_EVENT, onSaved);
+      window.removeEventListener(GO_LIVE_SETTLED_EVENT, onGoLiveSettled);
     };
-  }, [props.orgId, props.language]);
+  }, [props.orgId]);
+
+  // The language was saved on this page: a suggestion may be about it.
+  const shownLanguage = useRef(props.language);
+  useEffect(() => {
+    if (shownLanguage.current === props.language) return;
+    shownLanguage.current = props.language;
+    ask.current("must");
+  }, [props.language]);
 
   // Once: a later load must not pull the page back up to the panel.
   useEffect(() => {

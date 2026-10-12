@@ -13,8 +13,9 @@
  */
 import { mkdirSync } from "node:fs";
 import path from "node:path";
-import type { Page, Request } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import { test, expect, signInAs, resetDb, U } from "../fixtures";
+import { countRequestsOf } from "../helpers/action-requests";
 import { ORG_ID } from "../helpers/constants";
 
 /** Not committed (/test-results/ is gitignored): the finished panel, for review. */
@@ -67,6 +68,21 @@ async function boxesOf<K extends string>(page: Page, selectors: Record<K, string
 }
 
 const tid = (id: string): string => `[data-testid="${id}"]`;
+
+/** What a plain return to the tab does: both events fire, and the tab was never hidden. */
+const comeBack = (page: Page) =>
+  page.evaluate(() => {
+    window.dispatchEvent(new Event("focus"));
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+
+/** The tab is hidden (another tab, another app), or shown again. */
+const setHidden = (page: Page, hidden: boolean) =>
+  page.evaluate((h) => {
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => (h ? "hidden" : "visible") });
+    document.dispatchEvent(new Event("visibilitychange"));
+    if (!h) window.dispatchEvent(new Event("focus"));
+  }, hidden);
 
 test.describe.configure({ mode: "serial" });
 
@@ -283,7 +299,9 @@ test("two things to check over four switched settings: every one has a working b
  * kickoff 20:00 with the chat saying 20:30, and "organisers pick" asked.
  */
 test("a suggestion the organiser has dealt with leaves the block, and a quiet line says what the club has now", async ({ page, db }) => {
-  const isAction = (r: Request) => r.method() === "POST" && r.headers()["next-action"] !== undefined;
+  // The panel's own loads, and no other feature's on the page.
+  await page.clock.install();
+  const loads = countRequestsOf(page, (body) => body.includes('"suggestions"') && body.includes('"applied"'));
   const stored = () =>
     db.one<{ suggestions: Array<{ key: string; current: string; detected: string }> }>(
       `SELECT suggestions FROM "ClubSetupLearning" WHERE "orgId" = $1`,
@@ -348,11 +366,38 @@ test("a suggestion the organiser has dealt with leaves the block, and a quiet li
   await panel.screenshot({ path: path.join(SHOTS, "learned-resolved-phone.png") });
   await page.setViewportSize({ width: 1280, height: 720 });
 
-  // The other one is a setting on this page: saved there, it leaves the
-  // block too, and with nothing open there is no amber block at all.
+  // WHEN THE PANEL LOADS AGAIN. Each load is a server action, and those
+  // are sent one at a time, so it must not load on every return to the
+  // tab. Counted from here; a load that should not have gone would show
+  // in the exact counts below.
+  await expect.poll(() => loads.known()).toBe(true);
+  await page.waitForLoadState("networkidle");
+  loads.reset();
+  // A plain return to the tab, five times: nothing.
+  for (let i = 0; i < 5; i++) await comeBack(page);
+  // A glance away (hidden for one second): nothing.
+  await setHidden(page, true);
+  await page.clock.fastForward(1_000);
+  await setHidden(page, false);
+  // Away for six seconds (another page, or WhatsApp): one load.
+  await setHidden(page, true);
+  await page.clock.fastForward(6_000);
+  await setHidden(page, false);
+  await expect.poll(() => loads.count()).toBe(1);
+  await page.waitForLoadState("networkidle");
+  // Away again for four seconds, straight after: within five seconds of
+  // the last load, so nothing.
+  await setHidden(page, true);
+  await page.clock.fastForward(4_000);
+  await setHidden(page, false);
+
+  // The other one is a setting on this page: saved there, the panel loads
+  // at once, it leaves the block too, and with nothing open there is no
+  // amber block at all.
   await pick.getByRole("link", { name: 'Switch on "The organisers pick"' }).click();
   await page.getByTestId("wr-pick-mode").selectOption("organiser");
   await expect(page.getByTestId("learned-suggestions")).toHaveCount(0);
+  expect(loads.count()).toBe(2);
   await expect(panel.getByRole("region")).toHaveCount(0);
   await expect(panel).not.toContainText("to check");
   await expect(pickDone).toHaveText('"The organisers pick" is on.');
@@ -364,24 +409,26 @@ test("a suggestion the organiser has dealt with leaves the block, and a quiet li
 
   // The state is worked out, not stored: put the kickoff back and the card
   // returns. The page learns of it when it is restored from the browser's
-  // back-forward cache, in ONE request, and does not keep asking.
+  // back-forward cache, in ONE request, at most once every five seconds.
   await db.run(`UPDATE "Activity" SET time = '20:00' WHERE "orgId" = $1`, [ORG_ID]);
-  const loads: string[] = [];
-  page.on("request", (r) => {
-    if (isAction(r)) loads.push(r.url());
-  });
-  await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true })));
+  const restored = (persisted: boolean) =>
+    page.evaluate((p) => window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: p })), persisted);
+  await page.clock.fastForward(6_000);
+  await restored(true);
   await expect(page.getByRole("region", { name: "1 thing to check" })).toBeVisible();
   await expect(kickoff).toContainText("The chat says kickoff is at 20:30; your weekly game is set for 20:00.");
   await expect(kickoffDone).toHaveCount(0);
-  // A page shown for the first time (not restored) asks for nothing.
-  await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: false })));
+  expect(loads.count()).toBe(3);
+  // Restored again straight away: nothing. Shown for the first time (not restored): nothing.
+  await restored(true);
+  await restored(false);
   // A third value: the organiser looked and chose 19:00. Resolved, at that value.
   await db.run(`UPDATE "Activity" SET time = '19:00' WHERE "orgId" = $1`, [ORG_ID]);
-  await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true })));
+  await page.clock.fastForward(6_000);
+  await restored(true);
   await expect(kickoffDone).toHaveText("Kickoff time is now 19:00.");
   await expect(page.getByTestId("learned-suggestions")).toHaveCount(0);
-  expect(loads).toHaveLength(2);
+  expect(loads.count()).toBe(4);
 
   // The DM is a snapshot and still links to the suggestion: the link
   // lands on its line, highlighted, in the club's language.
