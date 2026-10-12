@@ -1080,7 +1080,7 @@ describe("review M1: billed again after Free, the DMs", () => {
     expect(h.state.skipped).toContainEqual({ kind: "billed-again", cycleKey: MID_M1.toISOString(), why: "not-current" });
   });
 
-  it("'billed-again' waits for daytime (10:00 to 20:00 London)", async () => {
+  it("'billed-again' waits for daytime (09:00 to 23:00 London)", async () => {
     setWorld({ billingStatus: "subscribed" }, withCard());
     const night = new Date("2026-11-15T01:00:00Z");
     h.state.pending.push({ kind: "billed-again", cycleKey: night.toISOString(), createdAt: night });

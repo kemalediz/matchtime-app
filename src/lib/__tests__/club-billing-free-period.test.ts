@@ -212,15 +212,23 @@ describe("the last free day and the first billed day", () => {
     expect(nextBillingState(paying, { type: "billing-stopped" }, monthTwo, ON)).toMatchObject({ to: "trial" });
   });
 
-  it("the card reminders count back from the end: 9 and 2 London days before, at 10:00", () => {
-    expect(london(reminderAt(trialEndsAt, 9))).toBe("2026-12-03 10:00:00.000");
-    expect(london(reminderAt(trialEndsAt, 2))).toBe("2026-12-10 10:00:00.000");
+  it("the card reminders count back from the end: 9 and 2 London days before, when the message hours open (09:00)", () => {
+    expect(london(reminderAt(trialEndsAt, 9))).toBe("2026-12-03 09:00:00.000");
+    expect(london(reminderAt(trialEndsAt, 2))).toBe("2026-12-10 09:00:00.000");
     const key = trialEndsAt.toISOString();
-    expect(billingDmsDue(sched(), new Date("2026-12-03T09:59:00Z"), { trial21Delivered: false })).toEqual([]);
-    expect(billingDmsDue(sched(), new Date("2026-12-03T10:00:00Z"), { trial21Delivered: false })).toEqual([
+    // Wed 2 Dec, in the daytime: a day early, nothing.
+    expect(billingDmsDue(sched(), new Date("2026-12-02T12:00:00Z"), { trial21Delivered: false })).toEqual([]);
+    expect(billingDmsDue(sched(), new Date("2026-12-03T08:59:00Z"), { trial21Delivered: false })).toEqual([]);
+    expect(billingDmsDue(sched(), new Date("2026-12-03T09:00:00Z"), { trial21Delivered: false })).toEqual([
       { kind: "trial-21", cycleKey: key, withTip: true },
     ]);
-    expect(billingDmsDue(sched(), new Date("2026-12-10T10:00:00Z"), { trial21Delivered: true })).toEqual([
+    // Wed 9 Dec: still the first reminder's days, the second is not due yet.
+    expect(billingDmsDue(sched(), new Date("2026-12-09T12:00:00Z"), { trial21Delivered: true })).toEqual([
+      { kind: "trial-21", cycleKey: key, withTip: true },
+    ]);
+    // 08:59 on the second reminder's day: before the message hours, nothing.
+    expect(billingDmsDue(sched(), new Date("2026-12-10T08:59:00Z"), { trial21Delivered: true })).toEqual([]);
+    expect(billingDmsDue(sched(), new Date("2026-12-10T09:00:00Z"), { trial21Delivered: true })).toEqual([
       { kind: "trial-28", cycleKey: key, withTip: false },
     ]);
   });

@@ -5,7 +5,10 @@
 import { describe, expect, it } from "vitest";
 import { formatLondon } from "../london-time";
 import { freePeriodEnd, trialWindow } from "../club-billing-rules";
+import { MESSAGE_HOURS_FROM_HOUR, MESSAGE_HOURS_TO_HOUR } from "../message-hours";
 import {
+  BILLING_DM_FROM_HOUR,
+  BILLING_DM_TO_HOUR,
   PAUSED_DM_MAX_AGE_MS,
   billingDmSendAfter,
   billingDmsDue,
@@ -24,31 +27,39 @@ function trialClub(approvedAt: Date, over: Partial<ScheduleClub> = {}): Schedule
   return { status: "trial", trialEndsAt: trialWindow(approvedAt).trialEndsAt, graceEndsAt: null, pausedAt: null, pausedReason: null, ...over };
 }
 
-describe("quiet hours: billing DMs only 10:00 to 20:00 London", () => {
-  it("summer (BST): 09:59 no, 10:00 yes, 19:59 yes, 20:00 no", () => {
-    expect(isBillingDmHour(new Date("2026-07-01T08:59:00Z"))).toBe(false);
-    expect(isBillingDmHour(new Date("2026-07-01T09:00:00Z"))).toBe(true);
-    expect(isBillingDmHour(new Date("2026-07-01T18:59:00Z"))).toBe(true);
-    expect(isBillingDmHour(new Date("2026-07-01T19:00:00Z"))).toBe(false);
+describe("quiet hours: billing DMs only 09:00 to 23:00 London", () => {
+  it("summer (BST): 08:59 no, 09:00 yes, 22:59 yes, 23:00 no", () => {
+    expect(isBillingDmHour(new Date("2026-07-01T07:59:00Z"))).toBe(false);
+    expect(isBillingDmHour(new Date("2026-07-01T08:00:00Z"))).toBe(true);
+    expect(isBillingDmHour(new Date("2026-07-01T21:59:00Z"))).toBe(true);
+    expect(isBillingDmHour(new Date("2026-07-01T22:00:00Z"))).toBe(false);
   });
 
-  it("winter (GMT): 10:00 UTC is 10:00 London", () => {
-    expect(isBillingDmHour(new Date("2026-12-01T09:59:00Z"))).toBe(false);
-    expect(isBillingDmHour(new Date("2026-12-01T10:00:00Z"))).toBe(true);
-    expect(isBillingDmHour(new Date("2026-12-01T20:00:00Z"))).toBe(false);
+  it("winter (GMT): 09:00 UTC is 09:00 London", () => {
+    expect(isBillingDmHour(new Date("2026-12-01T08:59:00Z"))).toBe(false);
+    expect(isBillingDmHour(new Date("2026-12-01T09:00:00Z"))).toBe(true);
+    expect(isBillingDmHour(new Date("2026-12-01T22:59:00Z"))).toBe(true);
+    expect(isBillingDmHour(new Date("2026-12-01T23:00:00Z"))).toBe(false);
+    expect(isBillingDmHour(new Date("2026-12-02T00:00:00Z"))).toBe(false);
   });
 
-  it("sendAfter: none in the daytime, today's 10:00 before it, tomorrow's 10:00 from 20:00", () => {
+  it("the billing hours ARE the shared message hours", () => {
+    expect(BILLING_DM_FROM_HOUR).toBe(MESSAGE_HOURS_FROM_HOUR);
+    expect(BILLING_DM_TO_HOUR).toBe(MESSAGE_HOURS_TO_HOUR);
+  });
+
+  it("sendAfter: none in the daytime, today's 09:00 before it, tomorrow's 09:00 from 23:00", () => {
     expect(billingDmSendAfter(new Date("2026-07-01T12:00:00Z"))).toBeNull();
-    expect(billingDmSendAfter(new Date("2026-07-01T05:00:00Z"))!.toISOString()).toBe("2026-07-01T09:00:00.000Z");
-    expect(billingDmSendAfter(new Date("2026-07-01T19:30:00Z"))!.toISOString()).toBe("2026-07-02T09:00:00.000Z");
-    expect(billingDmSendAfter(new Date("2026-07-01T22:59:00Z"))!.toISOString()).toBe("2026-07-02T09:00:00.000Z");
-    // Across the October clock change: Saturday 21:00 BST, then Sunday 10:00 GMT.
-    expect(billingDmSendAfter(new Date("2026-10-24T20:00:00Z"))!.toISOString()).toBe("2026-10-25T10:00:00.000Z");
+    expect(billingDmSendAfter(new Date("2026-07-01T19:30:00Z"))).toBeNull();
+    expect(billingDmSendAfter(new Date("2026-07-01T05:00:00Z"))!.toISOString()).toBe("2026-07-01T08:00:00.000Z");
+    expect(billingDmSendAfter(new Date("2026-07-01T22:00:00Z"))!.toISOString()).toBe("2026-07-02T08:00:00.000Z");
+    expect(billingDmSendAfter(new Date("2026-07-01T22:59:00Z"))!.toISOString()).toBe("2026-07-02T08:00:00.000Z");
+    // Across the October clock change: Saturday 23:00 BST, then Sunday 09:00 GMT.
+    expect(billingDmSendAfter(new Date("2026-10-24T22:00:00Z"))!.toISOString()).toBe("2026-10-25T09:00:00.000Z");
   });
 });
 
-describe("day boundaries: the reminders fall at 10:00 London on the right calendar day", () => {
+describe("day boundaries: the reminders fall at 09:00 London on the right calendar day", () => {
   const cases: Array<[string, string]> = [
     ["approved 10:00 London in October (the free period crosses the clock change)", "2026-10-01T09:00:00Z"],
     ["approved 23:30 London (late evening, BST)", "2026-09-10T22:30:00Z"],
@@ -67,8 +78,8 @@ describe("day boundaries: the reminders fall at 10:00 London on the right calend
       const endDate = formatLondon(trialEndsAt, "yyyy-MM-dd");
       const d21 = reminderAt(trialEndsAt, 9);
       const d28 = reminderAt(trialEndsAt, 2);
-      expect(formatLondon(d21, "HH:mm")).toBe("10:00");
-      expect(formatLondon(d28, "HH:mm")).toBe("10:00");
+      expect(formatLondon(d21, "HH:mm")).toBe("09:00");
+      expect(formatLondon(d28, "HH:mm")).toBe("09:00");
       const minusDays = (n: number) => {
         const [y, m, d] = endDate.split("-").map(Number);
         return new Date(Date.UTC(y, m - 1, d - n)).toISOString().slice(0, 10);
@@ -78,11 +89,11 @@ describe("day boundaries: the reminders fall at 10:00 London on the right calend
     });
   }
 
-  it("the worked example: approved Mon 31 Aug 10:00 London, first reminder Thu 22 Oct 10:00 BST, second Thu 29 Oct 10:00 GMT, ends Sat 31 Oct 10:00", () => {
+  it("the worked example: approved Mon 31 Aug 10:00 London, first reminder Thu 22 Oct 09:00 BST, second Thu 29 Oct 09:00 GMT, ends Sat 31 Oct 10:00", () => {
     const { trialEndsAt } = trialWindow(new Date("2026-08-31T09:00:00Z"));
     expect(london(trialEndsAt)).toBe("2026-10-31 10:00");
-    expect(reminderAt(trialEndsAt, 9).toISOString()).toBe("2026-10-22T09:00:00.000Z");
-    expect(reminderAt(trialEndsAt, 2).toISOString()).toBe("2026-10-29T10:00:00.000Z");
+    expect(reminderAt(trialEndsAt, 9).toISOString()).toBe("2026-10-22T08:00:00.000Z");
+    expect(reminderAt(trialEndsAt, 2).toISOString()).toBe("2026-10-29T09:00:00.000Z");
   });
 });
 
@@ -90,21 +101,23 @@ describe("billingDmsDue: one DM per state, never two reminders in a row", () => 
   // Approved Mon 31 Aug 2026, 10:00 London: free until Sat 31 Oct, 10:00 London.
   const approved = new Date("2026-08-31T09:00:00Z");
   const club = trialClub(approved);
-  const d21 = new Date("2026-10-22T09:00:00Z");
-  const d28 = new Date("2026-10-29T10:00:00Z");
+  const d21 = new Date("2026-10-22T08:00:00Z");
+  const d28 = new Date("2026-10-29T09:00:00Z");
 
-  it("nothing before day 21 at 10:00 London", () => {
+  it("nothing before day 21 at 09:00 London", () => {
     expect(billingDmsDue(club, new Date(d21.getTime() - 60_000), { trial21Delivered: false })).toEqual([]);
   });
 
-  it("day 21 at 10:00 London: the day 21 DM, with the tip", () => {
+  it("day 21 at 09:00 London: the day 21 DM, with the tip", () => {
     expect(billingDmsDue(club, d21, { trial21Delivered: false })).toEqual([
       { kind: "trial-21", cycleKey: club.trialEndsAt.toISOString(), withTip: true },
     ]);
   });
 
-  it("day 21 at night: nothing yet (the 10:00 run sends it)", () => {
-    expect(billingDmsDue(club, new Date("2026-10-22T21:00:00Z"), { trial21Delivered: false })).toEqual([]);
+  it("day 21 at night: nothing yet (the 09:00 run sends it)", () => {
+    expect(billingDmsDue(club, new Date("2026-10-22T22:00:00Z"), { trial21Delivered: false })).toEqual([]);
+    // 22:00 London that evening is still daytime now.
+    expect(billingDmsDue(club, new Date("2026-10-22T21:00:00Z"), { trial21Delivered: false })).toHaveLength(1);
   });
 
   it("day 28: the day 28 DM only, without the tip once day 21 reached the contact", () => {
@@ -171,11 +184,12 @@ describe("billingDmsDue: one DM per state, never two reminders in a row", () => 
 
 describe("feeTipDue: the admin channel's tip, once per free month, from day 21", () => {
   const club = trialClub(new Date("2026-08-31T09:00:00Z"));
-  it("from day 21 at 10:00 London until the free month ends, in the daytime", () => {
-    expect(feeTipDue(club, new Date("2026-10-22T08:59:00Z"))).toBeNull();
-    expect(feeTipDue(club, new Date("2026-10-22T09:00:00Z"))).toEqual({ cycleKey: club.trialEndsAt.toISOString() });
+  it("from day 21 at 09:00 London until the free month ends, in the daytime", () => {
+    expect(feeTipDue(club, new Date("2026-10-22T07:59:00Z"))).toBeNull();
+    expect(feeTipDue(club, new Date("2026-10-22T08:00:00Z"))).toEqual({ cycleKey: club.trialEndsAt.toISOString() });
     expect(feeTipDue(club, new Date("2026-10-30T12:00:00Z"))).toEqual({ cycleKey: club.trialEndsAt.toISOString() });
-    expect(feeTipDue(club, new Date("2026-10-22T21:00:00Z"))).toBeNull();
+    expect(feeTipDue(club, new Date("2026-10-22T21:59:00Z"))).toEqual({ cycleKey: club.trialEndsAt.toISOString() });
+    expect(feeTipDue(club, new Date("2026-10-22T22:00:00Z"))).toBeNull();
     expect(feeTipDue({ ...club, status: "grace" }, new Date("2026-10-31T12:00:00Z"))).toBeNull();
   });
 });

@@ -121,7 +121,7 @@ import { FIXTURE_NAMES, loadFixture, STUB_ANSWERS } from "./stubs";
 const ORG = "org-riverside";
 const ORGANISER_PHONE = "447700900123";
 const DAYTIME = new Date("2026-10-05T11:00:00Z"); // 12:00 London
-const NIGHT = new Date("2026-10-05T21:30:00Z"); // 22:30 London
+const NIGHT = new Date("2026-10-05T22:30:00Z"); // 23:30 London
 
 function stub(answer: unknown, opts: { fail?: boolean } = {}): PipelineModel & { calls: number } {
   const m = {
@@ -265,10 +265,16 @@ describe("learnClubSetup: writes and the DM", () => {
     expect(dms[0].text).not.toContain("✅");
   });
 
-  it("a night run queues the DM for 10:00 London", async () => {
+  it("a night run queues the DM for 09:00 London", async () => {
     setup("rolling");
     await learnClubSetup(ORG, { now: NIGHT, model: stub(STUB_ANSWERS.rolling) });
-    expect(dms[0].sendAfter).toEqual(new Date("2026-10-06T09:00:00Z"));
+    expect(dms[0].sendAfter).toEqual(new Date("2026-10-06T08:00:00Z"));
+  });
+
+  it("a 22:30 London run, night under the old 10:00 to 20:00 window, sends at once", async () => {
+    setup("rolling");
+    await learnClubSetup(ORG, { now: new Date("2026-10-05T21:30:00Z"), model: stub(STUB_ANSWERS.rolling) });
+    expect(dms[0].sendAfter).toBeNull();
   });
 
   it("never a second DM: an existing setup-learned job for the club stops it", async () => {

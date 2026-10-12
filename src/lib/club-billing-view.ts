@@ -229,7 +229,7 @@ export function gameLine(lang: LangIn, g: { kickoff: Date; outcome: string }): s
 /**
  * /admin/clubs (English): when a month's charge runs. A month ends at 00:00
  * London (`endsAt`, exclusive) and its close charges it that same London day
- * from 10:00 (daytime runs only), so the label is that day and "from 10:00",
+ * from 09:00 (daytime runs only), so the label is that day and "from 09:00",
  * never the bare 00:00 instant (test mode, 2026-10-05).
  */
 export function ownerChargeDateLabel(endsAt: Date): string {

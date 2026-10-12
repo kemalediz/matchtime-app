@@ -41,7 +41,7 @@
  * finds the invoice paid). Only objects with `purpose: "club-fee"` count.
  *
  * DMs (card added, card replaced, resumed, billed again) are queued only
- * while BILLING_ENABLED is on, and only 10:00 to 20:00 London; at night
+ * while BILLING_ENABLED is on, and only 09:00 to 23:00 London; at night
  * they are noted as PENDING and the hourly cron's daytime run re-checks
  * they are still true before sending (`flushPendingBillingNotices`). A
  * failed payment or a bank check (3DS) is noted for club-billing-dms.ts.
@@ -358,7 +358,7 @@ export async function keepPaying(args: ActionArgs): Promise<{ ok: true } | { ok:
 
 /**
  * The Keep paying DM (slice P3) to the billing contact: noted PENDING and
- * sent at once in the daytime, else by the hourly cron's 10:00 run, which
+ * sent at once in the daytime, else by the hourly cron's 09:00 run, which
  * re-checks it is still true (`flushPendingBillingNotices`). Once per
  * `cycleKey`. Never throws into the action: the action has already done
  * its work, and the cron sends what is left.
@@ -495,7 +495,7 @@ async function hasChargedMonth(orgId: string): Promise<boolean> {
  */
 export async function flushPendingBillingNotices(orgId: string, now: Date = new Date()): Promise<number> {
   if (!isBillingEnabled()) return 0;
-  // Billing DMs go out 10:00 to 20:00 London only. At night they stay
+  // Billing DMs go out 09:00 to 23:00 London only. At night they stay
   // pending and the hourly cron's daytime run sends what is still true.
   if (!isBillingDmHour(now)) return 0;
   const pending = await loadPendingBillingNotices(orgId);
@@ -893,7 +893,7 @@ async function onInvoiceEvent(type: string, obj: Record<string, unknown>, now: D
       await flushPendingBillingNotices(orgId, now);
     }
     // Slice P3: the receipt, now that the money is taken. Once per month
-    // (claimed); at night the cron's 10:00 run sends it. Never throws.
+    // (claimed); at night the cron's 09:00 run sends it. Never throws.
     await receipt(orgId, monthId, now);
     return { action: "month-paid", orgId };
   }

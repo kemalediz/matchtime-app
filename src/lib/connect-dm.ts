@@ -28,13 +28,16 @@
  */
 import { db } from "./db";
 import { t } from "./i18n/t";
+import { DRAFT_CLUB_WHERE } from "./club-approval-state";
 import { londonMidnight } from "./club-connect-rules";
 import {
   ADD_WINDOW_MS,
+  WRONG_CODE_REPLY_THROTTLE_MS,
   decideConnectDm,
   effectiveConnectStatus,
   connectCodeCandidates,
   lidDigits,
+  looksLikeConnectMessage,
   type ConnectDmReply,
 } from "./connect-dm-rules";
 import { PlatformDmRefused, platformPhoneDigits, queuePlatformDm } from "./platform-jobs";
@@ -89,7 +92,7 @@ export async function handleConnectDm(input: ConnectDmInput): Promise<ConnectDmO
     row = forCode.find((r) => LIVE.has(r.status)) ?? forCode[0];
     if (row) break;
   }
-  if (!row) return null;
+  if (!row) return wrongCodeReply(input, now);
 
   const outcome = (result: string, replied = false): ConnectDmOutcome => {
     console.log(`[connect-dm] ${row.id} code=${row.code} result=${result} replied=${replied}`);
@@ -101,11 +104,7 @@ export async function handleConnectDm(input: ConnectDmInput): Promise<ConnectDmO
     return outcome("duplicate");
   }
 
-  const phones: string[] = [];
-  for (const raw of [input.phone, input.senderAltPhone]) {
-    const d = typeof raw === "string" && raw.trim() ? platformPhoneDigits(raw) : null;
-    if (d && !phones.includes(d)) phones.push(d);
-  }
+  const phones = senderPhones(input);
   const sender = { phones, lid: lidDigits(input.senderLid) };
   const ruleRow = {
     status: row.status,
@@ -188,6 +187,72 @@ export async function handleConnectDm(input: ConnectDmInput): Promise<ConnectDmO
   return outcome("verified", await reply("connected"));
 }
 
+/** The sender's phones as digits, off the envelope. Empty when WhatsApp
+ *  gave only a LID. */
+function senderPhones(input: ConnectDmInput): string[] {
+  const phones: string[] = [];
+  for (const raw of [input.phone, input.senderAltPhone]) {
+    const d = typeof raw === "string" && raw.trim() ? platformPhoneDigits(raw) : null;
+    if (d && !phones.includes(d)) phones.push(d);
+  }
+  return phones;
+}
+
+/**
+ * A code that names no connect request (2026-10-12). An organiser who
+ * mistyped the code heard nothing, which looked like MatchTime was broken.
+ *
+ * Answered ONLY when all of this holds, and otherwise null, exactly as
+ * before (the DM goes on to today's handling and nobody is told anything):
+ *   - the text reads like the connect message, not chat that happens to
+ *     say "code" (`looksLikeConnectMessage`);
+ *   - the envelope gave a phone (a LID alone proves nothing here);
+ *   - that phone has an OPEN request: issued, not expired, on a draft club.
+ * MatchTime's number gets DMs from strangers: an unknown number is never
+ * answered, and nobody learns from the silence or the reply whether a code
+ * exists. The reply goes to the request's own verified phone and never
+ * carries the right code.
+ *
+ * At most one per request per WRONG_CODE_REPLY_THROTTLE_MS: an earlier
+ * reply is found by its refId prefix (`<connectId>:wrong-code:`) and its
+ * age. Check then queue, like every other reply here: two wrong codes
+ * handled in the same instant could both get through.
+ */
+async function wrongCodeReply(input: ConnectDmInput, now: Date): Promise<ConnectDmOutcome | null> {
+  if (!looksLikeConnectMessage(input.text)) return null;
+  const phones = senderPhones(input);
+  if (phones.length === 0) return null;
+
+  const open = await db.clubConnect.findFirst({
+    where: { phone: { in: phones }, status: "issued", expiresAt: { gt: now }, org: DRAFT_CLUB_WHERE },
+    orderBy: { issuedAt: "desc" },
+    select: {
+      id: true,
+      phone: true,
+      status: true,
+      expiresAt: true,
+      addWindowEndsAt: true,
+      org: { select: { name: true, language: true } },
+    },
+  });
+  if (!open || effectiveConnectStatus(open, now) !== "issued" || !phones.includes(open.phone)) return null;
+
+  const prefix = `${open.id}:wrong-code:`;
+  const text = connectReplyText("wrong-code", open.org.language, { name: null, club: open.org.name });
+  const recent = await db.platformJob.findFirst({
+    where: {
+      purpose: "connect-reply",
+      refId: { startsWith: prefix },
+      createdAt: { gt: new Date(now.getTime() - WRONG_CODE_REPLY_THROTTLE_MS) },
+    },
+    select: { id: true },
+  });
+  const replied = recent ? false : await queuePlatformReply(open.phone, text, `${prefix}${now.getTime()}`);
+  const result = recent ? "wrong-code-throttled" : "wrong-code";
+  console.log(`[connect-dm] ${open.id} result=${result} replied=${replied}`);
+  return { handled: "connect-dm", result, replied };
+}
+
 /** The reply's text, in the club's language (plan 5.3, 5.4). */
 export function connectReplyText(
   kind: ConnectDmReply,
@@ -204,6 +269,8 @@ export function connectReplyText(
       return s.sj_dm_code_expired;
     case "site-cap":
       return s.sj_site_cap_groups;
+    case "wrong-code":
+      return s.sj_dm_wrong_code({ club: p.club });
   }
 }
 
@@ -217,6 +284,12 @@ async function queueConnectReply(connectId: string, phone: string, kind: Connect
   const refId = `${connectId}:${kind}`;
   const already = await db.platformJob.findFirst({ where: { purpose: "connect-reply", refId }, select: { id: true } });
   if (already) return false;
+  return queuePlatformReply(phone, text, refId);
+}
+
+/** Queue a `connect-reply` DM. False, and logged, when the platform channel
+ *  refuses it (rule 12); never thrown at the DM route. */
+async function queuePlatformReply(phone: string, text: string, refId: string): Promise<boolean> {
   try {
     await queuePlatformDm({ phone, text, purpose: "connect-reply", refId });
     return true;

@@ -1687,6 +1687,8 @@ export const tr: Strings = {
   sj_dm_already_connected: "Zaten bağlısınız. Şimdi beni grubunuza eklemeniz yeterli.",
   sj_dm_code_expired:
     "Bu kodun süresi doldu. matchtime.ai'de kulübünüzü açın ve MatchTime'ı WhatsApp'a ekle düğmesine tekrar dokunun.",
+  sj_dm_wrong_code: (p) =>
+    `Mesajınızdaki kod ${p.club} için verilen kodla eşleşmiyor. matchtime.ai'de kulüp sayfanıza dönün, MatchTime'ı WhatsApp'a ekle düğmesine tekrar dokunun ve açılan mesajı hiç değiştirmeden gönderin.`,
 
   sj_dm_in_group: (p) =>
     `Teşekkürler, ${p.group ? `"${p.group}" grubuna` : "grubunuza"} katıldım. Kulübünüz onaylanana kadar orada sessiz kalacağım, genellikle bir gün içinde. Yayına geçince size buradan yazacağım.`,
@@ -1703,6 +1705,59 @@ export const tr: Strings = {
     `📊 *İstatistikler:* bana istediğinizi sorun, herkesin kendi istatistik sayfası olur.\n` +
     `💷 *Maç ücretleri:* organizatörünüz isterse kart ya da banka ile ödeme bağlantılarını açabilir.\n\n` +
     `Sohbet sırasında sessiz kalırım, sadece VARIM, YOKUM ya da etiketlenince yanıt veririm. Başka bir şey için beni etiketleyin: *@Match Time yardım*`,
+
+  // ════ BEGIN settings-aware group hello (go-live slice S2, 2026-10-12) ════
+  // The parts `buildGroupHello` (src/lib/group-hello.ts) composes the
+  // hello from. On default settings, without `sj_hello_catch_up`, the
+  // result equals `sj_group_hello` above byte for byte
+  // (`group-hello.test.ts` pins it): change one and you must change the other.
+  sj_hello_opener: (p) =>
+    `👋 Herkese merhaba, ben *MatchTime*. ${p.organiser ? `${p.organiser} beni bu grubun maçlarını düzenlemem için kurdu.` : "Bu grubun maçlarını düzenlemek için buradayım."} ` +
+    `Burada, WhatsApp'ta şunları yaparım:`,
+  sj_hello_whos_in: `✅ *Kim var:* *VARIM* ya da *YOKUM* yazmanız yeter. Listeyi tutar, mesajınıza tik koyarım.`,
+  sj_hello_rolling: (p) =>
+    `🔁 *Her hafta aynı kadro:* geçen maçta oynadıysanız bir sonrakinde de kadrodasınız. Gelemeyecekseniz${p.deadline ? ` *${p.deadline}* saatine kadar` : ""} *YOKUM* yazmanız yeter.`,
+  sj_hello_rolling_join: (p) =>
+    p.mode === "organiser"
+      ? `✅ *Henüz kadroda değil misiniz?* *VARIM* yazın, sizi yedeğe yazarım.`
+      : p.mode === "bench"
+        ? `✅ *Henüz kadroda değil misiniz?* *VARIM* yazın; yer varsa sizi eklerim, yoksa yedeğe yazarım.`
+        : `✅ *Henüz kadroda değil misiniz?* *VARIM* yazın; yer varsa sizi eklerim.`,
+  sj_hello_monthly: `📋 *Aylık kadro:* daimi oyuncular aya yazılır, tüm ay için bir kez öder ve ayın her maçında kadrodadır. Bir maça gelemeyecekseniz *YOKUM* yazın.`,
+  sj_hello_monthly_join: (p) =>
+    p.organisersPick
+      ? `✅ *Daimi oyuncu değil misiniz?* Yer açılınca *VARIM* yazın; yedek listesine girersiniz, kimin oynayacağını organizatörler seçer.`
+      : `✅ *Daimi oyuncu değil misiniz?* Yer açılınca *VARIM* yazıp yeri alın. Yalnızca o maçın ücretini ödersiniz.`,
+  sj_hello_deadline: (p) =>
+    `⏳ *Son çıkış saati:* ${p.day} ${p.time}. Oynayamayacaksanız o saatten önce *YOKUM* yazın.`,
+  sj_hello_list: (p) => `📋 *Son liste:* ${p.day} ${p.time} saatinde buraya gönderirim.`,
+  sj_hello_bench: `🪑 *Yedekler:* kadro dolunca geç gelenler yedeğe yazılır, biri çıkarsa ilk şans yedeklerindir.`,
+  sj_hello_bench_organiser: `🪑 *Yedekler:* *VARIM* yazanlar yedeğe yazılır, boşalan her yere kimin gireceğini organizatörler seçer.`,
+  sj_hello_remind: `⏰ *Hatırlatma:* *"@Match Time perşembe hatırlat"* yazın, o zaman size özelden yazarım.`,
+  sj_hello_teams: `⚖️ *Dengeli takımlar:* beni etiketleyin, oyuncu puanlarına göre dengeli takımlar kurarım.`,
+  sj_hello_mom: (p) =>
+    p.mom && p.ratings
+      ? `⭐ *Maçın oyuncusu ve puanlar* her maçtan sonra.`
+      : p.mom
+        ? `⭐ *Maçın oyuncusu* her maçtan sonra.`
+        : `⭐ *Oyuncu puanları* her maçtan sonra.`,
+  sj_hello_stats: `📊 *İstatistikler:* bana istediğinizi sorun, herkesin kendi istatistik sayfası olur.`,
+  sj_hello_fees: (p) => {
+    const how = p.mode === "card" ? "kartla" : p.mode === "bank" ? "banka ile" : "kart ya da banka ile";
+    if (p.mode !== "off") {
+      return `💷 *Maç ücretleri:* size gönderdiğim bağlantıyla ${how} ödeyebilirsiniz.${p.tracking ? " Kimin ödediğini takip eder, ödemeyenlere hatırlatırım." : ""}`;
+    }
+    return p.tracking
+      ? `💷 *Maç ücretleri:* kimin ödediğini takip eder, ödemeyenlere hatırlatırım.`
+      : `💷 *Maç ücretleri:* organizatörünüz isterse kart ya da banka ile ödeme bağlantılarını açabilir.`;
+  },
+  sj_hello_catch_up: `Sonraki maç için zaten VARIM dediniz mi? Listeye yazabilmem için bir kez daha yazın.`,
+  sj_hello_closer: (p) =>
+    p.attendance
+      ? `Sohbet sırasında sessiz kalırım, sadece VARIM, YOKUM ya da etiketlenince yanıt veririm. Başka bir şey için beni etiketleyin: *@Match Time yardım*`
+      : `Sohbet sırasında sessiz kalırım, sadece etiketlenince yanıt veririm. Başka bir şey için beni etiketleyin: *@Match Time yardım*`,
+  // ════ END settings-aware group hello ════
+
   sj_dm_approved: (p) =>
     `Güzel haber: ${p.club} artık aktif. ${p.group ? `"${p.group}" grubunda` : "Grubunuzda"} herkese merhaba dedim.\n\n` +
     `Vaktiniz olunca ayarlamanız gereken birkaç şey:\n\n` +
@@ -2453,8 +2508,21 @@ export const tr: Strings = {
   settings_learned_changed_since: "Sonradan değiştirildi",
   settings_learned_undo_failed: "Geri alınamadı",
   settings_learned_from: "Şu tür mesajlardan",
-  settings_learned_check_head: "Kontrol etmeye değer (hiçbir şey değişmedi)",
-  settings_learned_open_setting: "Ayara git",
+  settings_learned_check_count: (p) => `Kontrol edilecek ${p.count} şey`,
+  settings_learned_check_sub:
+    "MatchTime bunlar için hiçbir şeyi değiştirmedi. Bir göz atın, sohbet haklıysa kendiniz değiştirin.",
+  settings_learned_action: (p) =>
+    p.key === "organiserPicks"
+      ? `"Organizatörler seçer" ayarını aç`
+      : p.key === "weeklyGameDay"
+        ? `Maç gününü değiştir`
+        : p.key === "weeklyGameTime"
+          ? `Maç saatini değiştir`
+          : p.key === "venue"
+            ? `Sahayı değiştir`
+            : p.key === "format"
+              ? `Takım başına kişi sayısını değiştir`
+              : `Dili değiştir`,
   settings_learned_noted_head: "Fark edildi, karar sizde",
   // ── Aylık kadro (2026-10-05, dilim 2) ────────────────────────────
   // /admin/settings "Aylık kadro" bölümü (msq_) ve /admin/months (mth_).

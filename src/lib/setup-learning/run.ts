@@ -24,7 +24,7 @@
  *      the call's tokens and cost, and CLEAR the stored chat.
  *   6. DM the organiser once (purpose "setup-learned", refId
  *      "<orgId>:setup-learned"), on the platform channel, in the daytime
- *      (10:00 to 20:00 London; a night run waits for 10:00), only when
+ *      (09:00 to 23:00 London; a night run waits for 09:00), only when
  *      there is something to say.
  *
  * Sutton FC can never be read: it has no `approvedAt` (it was approved by
@@ -39,7 +39,7 @@ import { coerceHistoryMessages } from "../onboarding-enrichment-reconcile";
 import { detectGroupLang } from "../i18n/detect";
 import { appUrl, buildAdminLink } from "../admin-link";
 import { PlatformDmRefused, queuePlatformDm } from "../platform-jobs";
-import { billingDmSendAfter } from "../club-billing-schedule-rules";
+import { messageHoursSendAfter } from "../message-hours";
 import {
   SETUP_LEARNING_MAX_TOKENS,
   SETUP_LEARNING_MODEL,
@@ -359,7 +359,7 @@ async function queueSetupDm(args: {
       : "",
   });
   try {
-    await queuePlatformDm({ phone: connect.phone, text, purpose: SETUP_DM_PURPOSE, refId, sendAfter: billingDmSendAfter(now) });
+    await queuePlatformDm({ phone: connect.phone, text, purpose: SETUP_DM_PURPOSE, refId, sendAfter: messageHoursSendAfter(now) });
     return true;
   } catch (err) {
     if (err instanceof PlatformDmRefused) {

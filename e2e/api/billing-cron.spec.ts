@@ -109,9 +109,11 @@ test("day 20: nothing yet", async ({ request }) => {
   expect(await billingDms(TR_OWNER.phone)).toEqual([]);
 });
 
-test("day 21 at 10:00 London: one DM to the collector (EN) and one to the owner (TR), each with the tip; the admins get the tip once", async ({ request }) => {
-  await cron(request, "2026-10-22T09:00:00Z");
-  await cron(request, "2026-10-22T10:00:00Z"); // the next hourly run sends nothing more
+test("day 21 at 09:00 London: one DM to the collector (EN) and one to the owner (TR), each with the tip; the admins get the tip once", async ({ request }) => {
+  await cron(request, "2026-10-22T07:00:00Z"); // 08:00 London: not yet
+  expect(await billingDms(EN_COLLECTOR.phone)).toHaveLength(0);
+  await cron(request, "2026-10-22T08:00:00Z"); // 09:00 London
+  await cron(request, "2026-10-22T09:00:00Z"); // the next hourly run sends nothing more
 
   const en = await billingDms(EN_COLLECTOR.phone);
   expect(en).toHaveLength(1);
@@ -148,12 +150,15 @@ test("day 28: one reminder each, and still nothing twice", async ({ request }) =
   expect(await billingDms(TR_OWNER.phone)).toHaveLength(2);
 });
 
-test("day 30: the free month ends ON TIME (09:00 London), the DM waits for 10:00", async ({ request }) => {
+test("day 30: the free month ends ON TIME (09:00 London), which is daytime, so the same run sends the DM, once", async ({ request }) => {
+  await cron(request, "2026-10-31T08:00:00Z"); // 08:00 London: an hour early, nothing
+  expect(await status(EN_ORG)).toBe("trial");
+  expect(await billingDms(EN_COLLECTOR.phone)).toHaveLength(2);
   await cron(request, "2026-10-31T09:00:00Z");
   expect(await status(EN_ORG)).toBe("grace");
   expect(await status(SUSP_ORG)).toBe("trial");
-  expect(await billingDms(EN_COLLECTOR.phone)).toHaveLength(2);
-  await cron(request, "2026-10-31T10:00:00Z");
+  expect(await billingDms(EN_COLLECTOR.phone)).toHaveLength(3);
+  await cron(request, "2026-10-31T10:00:00Z"); // the next hourly run sends nothing more
   const en = await billingDms(EN_COLLECTOR.phone);
   expect(en).toHaveLength(3);
   expect(en[2].text).toContain("free period has ended. MatchTime will keep running in the Cron Rovers WhatsApp group for one more week, until Sat 7 Nov.");

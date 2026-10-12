@@ -344,7 +344,9 @@ const HOUR = 60 * 60 * 1000;
 const ORG = "org_cron";
 const TRIAL_ENDS = new Date("2026-11-01T14:00:00Z");
 const M1_END = new Date("2026-12-01T00:00:00Z");
-/** 10:00 London on Tue 1 Dec (GMT): the first daytime run 6+ hours after month 1 ends. */
+/** 09:00 London on Tue 1 Dec (GMT): the first daytime run 6+ hours after month 1 ends. */
+const FIRST_DAYTIME_M1 = new Date("2026-12-01T09:00:00Z");
+/** 10:00 London that morning: a daytime run, the one most of these tests close month 1 on. */
 const CLOSE_M1 = new Date("2026-12-01T10:00:00Z");
 const NOV_TUESDAYS = ["2026-11-03", "2026-11-10", "2026-11-17", "2026-11-24"];
 const DEC_TUESDAYS = ["2026-12-01", "2026-12-08", "2026-12-15", "2026-12-22", "2026-12-29"];
@@ -450,7 +452,7 @@ afterEach(() => {
 // ── Opening and closing on time ─────────────────────────────────────────
 
 describe("the cron opens and closes months (plan 6)", () => {
-  it("a full month: opened when the free month ends, closed and charged at 10:00 the morning after it ends, one receipt", async () => {
+  it("a full month: opened when the free month ends, closed and charged at 09:00 the morning after it ends, one receipt", async () => {
     club();
     weeks(NOV_TUESDAYS, ["played", "played", "played", "cancelled"]);
     // The hour before the free month ends: nothing.
@@ -460,13 +462,13 @@ describe("the cron opens and closes months (plan 6)", () => {
     expect(month(1)).toMatchObject({ status: "open", startsAt: TRIAL_ENDS, endsAt: M1_END });
     // Every hour of November and the night after: nothing closes, nothing is charged.
     await runBillingCron(at("2026-11-30T23:00:00Z"));
-    await hourly(M1_END, new Date(CLOSE_M1.getTime() - HOUR));
+    await hourly(M1_END, new Date(FIRST_DAYTIME_M1.getTime() - HOUR));
     expect(month(1).status).toBe("open");
     expect(invoices()).toEqual([]);
     // Month 2 opened at midnight, at night.
     expect(month(2)).toMatchObject({ status: "open", startsAt: M1_END });
 
-    const close = await runBillingCron(CLOSE_M1);
+    const close = await runBillingCron(FIRST_DAYTIME_M1);
     expect(close.clubs[0].closed).toBe("1:paid");
     expect(month(1)).toMatchObject({ status: "paid", scheduled: 4, played: 3, amountPence: 749 });
     expect(invoices()).toHaveLength(1);
@@ -480,7 +482,7 @@ describe("the cron opens and closes months (plan 6)", () => {
       }),
     ]);
     // The rest of the day: nothing more.
-    await hourly(new Date(CLOSE_M1.getTime() + HOUR), at("2026-12-01T19:00:00Z"));
+    await hourly(new Date(FIRST_DAYTIME_M1.getTime() + HOUR), at("2026-12-01T23:00:00Z"));
     expect(invoices()).toHaveLength(1);
     expect(dmsOf()).toHaveLength(1);
     expect(dmsOf()[0].userId).not.toBe("u_owen");
@@ -512,15 +514,15 @@ describe("the cron opens and closes months (plan 6)", () => {
     ]);
   });
 
-  it("DST: a month ending at 00:00 BST on Mon 29 Mar 2027 closes at 10:00 BST (09:00 UTC), not at 09:00 BST", async () => {
+  it("DST: a month ending at 00:00 BST on Mon 29 Mar 2027 closes at 09:00 BST (08:00 UTC), not at 08:00 BST", async () => {
     // Free month ends Fri 29 Jan 2027 12:00: month 2 runs 28 Feb (clamped) to 29 Mar 00:00 BST = 28 Mar 23:00 UTC.
     club({}, { trialEndsAt: at("2027-01-29T12:00:00Z") });
     await runBillingCron(at("2027-03-10T12:00:00Z"));
     expect(month(2)).toMatchObject({ endsAt: at("2027-03-28T23:00:00Z"), status: "open" });
-    // 09:00 BST: not daytime, the close step does not even run.
-    expect((await runBillingCron(at("2027-03-29T08:00:00Z"))).clubs[0].closed).toBeUndefined();
+    // 08:00 BST: not daytime, the close step does not even run.
+    expect((await runBillingCron(at("2027-03-29T07:00:00Z"))).clubs[0].closed).toBeUndefined();
     expect(month(2).status).toBe("open");
-    expect((await runBillingCron(at("2027-03-29T09:00:00Z"))).clubs[0].closed).toBe("2:no-games"); // 10:00 BST
+    expect((await runBillingCron(at("2027-03-29T08:00:00Z"))).clubs[0].closed).toBe("2:no-games"); // 09:00 BST
     // No games in it at all: nothing charged, the "nothing to pay" DM with the month's own dates.
     expect(invoices()).toEqual([]);
     expect(dmsOf("month-free")[0].text).toBe(
