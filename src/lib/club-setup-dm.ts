@@ -108,6 +108,7 @@ import type { PipelineModel } from "./pipeline/llm";
 import { clearCapturedChatForClub } from "./captured-chat";
 import { isSetupLearningEnabled } from "./setup-learning/flag";
 import { learnClubSetup, type LearnOutcome } from "./setup-learning/run";
+import { FEE_PATH } from "./setup-learning/suggestion-action";
 import {
   READING_OFF_REASON,
   READING_TIMED_OUT_REASON,
@@ -284,6 +285,7 @@ export async function sendSetupDm(orgId: string, now: Date = new Date(), opts: S
   let reading: ChatReading;
   let learnedUrl: string | null = null;
   let organiserPicksUrl: string | null = null;
+  let feeUrl: string | null = null;
   if (stored.kind === "findings") {
     const applied = [];
     for (const a of stored.applied) {
@@ -294,6 +296,8 @@ export async function sendSetupDm(orgId: string, now: Date = new Date(), opts: S
     if (stored.suggestions.some((sg) => sg.key === "organiserPicks")) {
       organiserPicksUrl = await link("/admin/settings?learned=organiserPicks#learned-setup");
     }
+    // The match fee suggestion: straight to the fee field, as the findings DM links it (setup-learning/run.ts).
+    if (stored.suggestions.some((sg) => sg.key === "matchFee")) feeUrl = await link(FEE_PATH);
   } else {
     reading = stored;
   }
@@ -309,6 +313,7 @@ export async function sendSetupDm(orgId: string, now: Date = new Date(), opts: S
     settingsUrl: await link("/admin/settings"),
     learnedUrl,
     organiserPicksUrl,
+    feeUrl,
     // The free period line, only when going live will start one: the test
     // `goLiveClub`'s billing step applies (billing on, plan not Free, no
     // free period had). Read from the environment, as the sweep reads the

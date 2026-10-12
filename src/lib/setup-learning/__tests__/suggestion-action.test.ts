@@ -44,6 +44,15 @@ describe("where each suggestion's button goes", () => {
     const run = readFileSync(path.join(__dirname, "..", "run.ts"), "utf8");
     expect(run).toContain(`scheduleUrl: await link("${SCHEDULE_PATH}")`);
   });
+  it("the match fee goes to the weekly game page with its fee field open, like the DM's 'Set it here' link", () => {
+    expect(suggestionActionHref("matchFee")).toBe("/admin/activities?edit=fee");
+    const run = readFileSync(path.join(__dirname, "..", "run.ts"), "utf8");
+    expect(run).toContain(`await link(FEE_PATH)`);
+    // The page reads that query and has the field.
+    const page = readFileSync(path.join(__dirname, "..", "..", "..", "app/admin/activities/page.tsx"), "utf8");
+    expect(page).toContain("FEE_EDIT_PARAM");
+    expect(page).toContain(`id="activity-fee"`);
+  });
   it("organisers pick goes to that setting on the page, and language to the language setting", () => {
     expect(suggestionActionHref("organiserPicks")).toBe(`#${ORGANISER_PICKS_ANCHOR}`);
     expect(ORGANISER_PICKS_ANCHOR).toBe("wr-pick");
@@ -65,6 +74,7 @@ describe("what each suggestion's button says", () => {
     venue: "Change the pitch",
     format: "Change players a side",
     language: "Change the language",
+    matchFee: "Set the match fee",
     organiserPicks: 'Switch on "The organisers pick"',
   };
   const TR: typeof EN = {
@@ -73,6 +83,7 @@ describe("what each suggestion's button says", () => {
     venue: "Sahayı değiştir",
     format: "Takım başına kişi sayısını değiştir",
     language: "Dili değiştir",
+    matchFee: "Maç ücretini gir",
     organiserPicks: '"Organizatörler seçer" ayarını aç',
   };
   it("a descriptive label per kind, in English and Turkish", () => {

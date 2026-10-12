@@ -178,6 +178,8 @@ export interface SetupAskDmInput {
   learnedUrl?: string | null;
   /** /admin/settings at the "organisers pick" suggestion, when it is one. */
   organiserPicksUrl?: string | null;
+  /** /admin/activities at the fee field, when the match fee is a suggestion. */
+  feeUrl?: string | null;
   /**
    * THE ADMIN GROUP BLOCK (go-live slice S7 fills it; nothing does yet).
    * When given it goes in as its own block right before the GO line.
@@ -211,6 +213,7 @@ export function composeSetupAskDm(p: SetupAskDmInput): string {
         scheduleUrl: p.scheduleUrl,
         settingsUrl: detailUrl,
         organiserPicksUrl: p.organiserPicksUrl ?? detailUrl,
+        feeUrl: p.feeUrl,
       }),
     );
   } else if (r.kind === "nothing") {

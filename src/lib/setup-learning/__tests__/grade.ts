@@ -10,6 +10,13 @@
  * the ones listed, in order; a key in `mayAlsoSuggest` is tolerated on
  * top, because a suggestion changes nothing and the model is known to
  * offer it (see rolling.json).
+ *
+ * Since go-live slice D3 (2026-10-12) a fixture may also pin `matchFee`
+ * (the fee read, in pounds, or null for none) and `fromDescription` (the
+ * switched settings and suggestions whose evidence includes a quote from
+ * the group description, in plan order). And for EVERY fixture, no quote
+ * anywhere in the plan may carry a masking placeholder or a bank-like run
+ * of digits.
  */
 import { planIsWorthTelling, type Detection, type SetupPlan } from "../rules";
 
@@ -21,6 +28,10 @@ export interface FixtureExpect extends Record<string, unknown> {
   mayAlsoSuggest?: string[];
   dm: boolean;
   skipped?: string;
+  /** The per-player fee the reading must report, in pounds; null: none. */
+  matchFee?: number | null;
+  /** Keys of applied items and suggestions backed by the description. */
+  fromDescription?: string[];
 }
 
 /** Every miss as "field: expected X, got Y". Empty when the fixture passes. */
@@ -38,6 +49,7 @@ export function gradeFixture(e: FixtureExpect, d: Detection, plan: SetupPlan): s
   check("monthlyList", e.monthlyList, d.monthlyList.answer);
   if (e.dropOutDeadline) check("dropOutDeadline", e.dropOutDeadline, { day: d.dropOutDeadline.day, time: d.dropOutDeadline.time });
   if (e.listPublished) check("listPublished", e.listPublished, { day: d.listPublished.day, time: d.listPublished.time });
+  check("matchFee", e.matchFee, d.matchFee.amount);
 
   const keys = (xs: Array<{ key: string }>) => xs.map((x) => x.key);
   check("applied", e.applied, keys(plan.applied));
@@ -48,6 +60,15 @@ export function gradeFixture(e: FixtureExpect, d: Detection, plan: SetupPlan): s
     e.suggestions,
     keys(plan.suggestions).filter((k) => !tolerated.has(k)),
   );
+  const backed = [...plan.applied, ...plan.suggestions];
+  check("fromDescription", e.fromDescription, keys(backed.filter((x) => (x.fromDescription?.length ?? 0) > 0)));
+  for (const x of [...backed, ...plan.noted]) {
+    for (const q of x.evidence) {
+      if (/removed\s*\]|\[\s*(?:number|link|email)\b/i.test(q) || /\d{6,}/.test(q.replace(/[\s-]/g, ""))) {
+        misses.push(`${x.key}: a quote carries a placeholder or a long number`);
+      }
+    }
+  }
   check("dm", e.dm, planIsWorthTelling(plan));
   return misses;
 }

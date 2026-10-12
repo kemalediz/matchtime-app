@@ -6,6 +6,7 @@ import { activitySchema } from "@/lib/validations";
 import { requireOrgAdmin } from "@/lib/org";
 import { revalidatePath } from "next/cache";
 import { londonWallClockToUtc, nextLondonKickoff } from "@/lib/london-time";
+import { activityUpdateData } from "@/lib/activity-update";
 
 export async function createActivity(formData: {
   orgId: string;
@@ -49,6 +50,9 @@ export async function updateActivity(
     ratingWindowHours?: number;
     matchDurationMins?: number;
     isActive?: boolean;
+    /** The fee per player in pounds as typed ("6", "6.50"), "" or null for
+     *  none. Left out, or undefined: the fee is not touched. */
+    feePerPlayer?: string | number | null;
   }
 ) {
   const session = await auth();
@@ -59,14 +63,20 @@ export async function updateActivity(
 
   await requireOrgAdmin(session.user.id, activity.orgId);
 
-  if (formData.sportId) {
+  // Only named, checked fields are written, whatever the request carried
+  // (src/lib/activity-update.ts). A field left out is left alone.
+  const update = activityUpdateData(formData, { feeSplitTotal: activity.feeSplitTotal });
+  if (!update.ok) throw new Error(update.error);
+  const data = update.data;
+
+  if (data.sportId) {
     const sport = await db.sport.findFirst({
-      where: { id: formData.sportId, orgId: activity.orgId },
+      where: { id: data.sportId, orgId: activity.orgId },
     });
     if (!sport) throw new Error("Sport not found in this organisation");
   }
 
-  await db.activity.update({ where: { id: activityId }, data: formData });
+  await db.activity.update({ where: { id: activityId }, data });
 
   revalidatePath("/admin/activities");
 }

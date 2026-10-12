@@ -2564,11 +2564,16 @@ export const tr: Strings = {
             ? `*Son liste:* ${p.day} ${p.time} saatinde gruba gönderilir.`
             : `*Ödeme takibi açık:* MatchTime kimin ödediğini takip eder ve ödemeyenlere nazikçe hatırlatır.`,
   sj_dm_setup_from: (p) => `Şu tür mesajlardan: "${p.quote}"`,
+  sj_dm_setup_from_description: (p) => `Grup açıklamanızdan: "${p.quote}"`,
   sj_dm_setup_undo: (p) => `Geri almak ya da değiştirmek için: ${p.url}`,
   sj_dm_setup_check_head: "Kontrol etmeye değer (burada hiçbir şeyi değiştirmedim):",
   setup_suggestion_line: (p) =>
     p.key === "organiserPicks"
       ? `Görünüşe göre boşalan yeri kimin dolduracağını organizatörler seçiyor. Öyleyse "Organizatörler seçer" ayarını açın.`
+      : p.key === "matchFee"
+      ? p.current
+        ? `Maç ücreti kişi başı £${p.detected} gibi görünüyor; haftalık maçınızda £${p.current} yazıyor.`
+        : `Maç ücreti kişi başı £${p.detected} gibi görünüyor; haftalık maçınızda ücret girilmemiş.`
       : p.key === "weeklyGameDay"
       ? `Sohbette maçlar ${p.detected} günü geçiyor; haftalık maçınız ise ${p.current} günü.`
       : p.key === "weeklyGameTime"
@@ -2580,6 +2585,7 @@ export const tr: Strings = {
             : `Sohbet çoğunlukla ${p.detected}; MatchTime bu grupta ${p.current} konuşuyor.`,
   sj_dm_setup_check_link: (p) => `Buradan değiştirebilirsiniz: ${p.url}`,
   sj_dm_setup_pick_link: (p) => `Buradan açabilirsiniz: ${p.url}`,
+  sj_dm_setup_fee_link: (p) => `Buradan girebilirsiniz: ${p.url}`,
   setup_monthly_pattern: (p) => {
     const parts = [
       p.prepay ? "düzenli oyuncular aya yazılıp ayın ücretini peşin ödüyor" : "düzenli oyuncular aya yazılıyor",
@@ -2603,12 +2609,15 @@ export const tr: Strings = {
   settings_learned_changed_since: "Sonradan değiştirildi",
   settings_learned_undo_failed: "Geri alınamadı",
   settings_learned_from: "Şu tür mesajlardan",
+  settings_learned_from_description: "Grup açıklamanızdan",
   settings_learned_check_count: (p) => `Kontrol edilecek ${p.count} şey`,
   settings_learned_check_sub:
     "MatchTime bunlar için hiçbir şeyi değiştirmedi. Bir göz atın, sohbet haklıysa kendiniz değiştirin.",
   settings_learned_action: (p) =>
     p.key === "organiserPicks"
       ? `"Organizatörler seçer" ayarını aç`
+      : p.key === "matchFee"
+        ? `Maç ücretini gir`
       : p.key === "weeklyGameDay"
         ? `Maç gününü değiştir`
         : p.key === "weeklyGameTime"
@@ -2621,6 +2630,10 @@ export const tr: Strings = {
   settings_learned_resolved_line: (p) =>
     p.value === null || (p.key === "organiserPicks" && p.value !== "organiser")
       ? `Bu, sohbet okunduktan sonra değişti.`
+      : p.key === "matchFee"
+        ? p.value === ""
+          ? `Haftalık maçınızda artık ücret girilmemiş.`
+          : `Maç ücreti artık kişi başı £${p.value}.`
       : p.key === "organiserPicks"
         ? `"Organizatörler seçer" ayarı açık.`
         : p.key === "weeklyGameDay"
@@ -2634,6 +2647,11 @@ export const tr: Strings = {
                 : `MatchTime bu grupta artık ${p.value} konuşuyor.`,
   settings_learned_resolved_label: "Halledilenler",
   settings_learned_noted_head: "Fark edildi, karar sizde",
+  act_fee_label: "Kişi başı ücret (£), isteğe bağlı",
+  act_fee_hint: "Her oyuncunun bir maç için ödediği tutar. Haftadan haftaya değişiyorsa boş bırakın.",
+  act_fee_invalid: "6 veya 6.50 gibi bir ücret girin, en fazla £100.",
+  act_fee_split: "Bu maçta saha ücreti oynayanlar arasında bölüşülüyor, bu yüzden kişi başı sabit bir ücret yok.",
+  act_fee_row: (p) => `kişi başı £${p.fee}`,
   // ── Aylık kadro (2026-10-05, dilim 2) ────────────────────────────
   // /admin/settings "Aylık kadro" bölümü (msq_) ve /admin/months (mth_).
   msq_section_title: "Aylık kadro",

@@ -294,6 +294,35 @@ describe("sendSetupDm: when it goes", () => {
       "/admin/settings",
     ]);
   });
+
+  // Review fix 6 (PR #238): the fee line linked to the plain activities
+  // page, where the fee field is closed. It is minted as the findings DM
+  // mints it (setup-learning/run.ts), in English and Turkish.
+  it("a match fee suggestion gets its own link, straight to the fee field", async () => {
+    const fee = { key: "matchFee", current: "", detected: "6", evidence: ["£6 a player"], fromDescription: ["£6 a player"] };
+    state.org = heldOrg({ setupLearning: learning("nothing", { suggestions: [fee] }) });
+    await sendSetupDm("org-riverside", DAY, { learningEnabled: true });
+    expect(adminLinkMock.mock.calls.map((c) => c[0].nextPath)).toContain("/admin/activities?edit=fee");
+    expect(String(state.jobs[0].text)).toContain(
+      `🔎 The match fee looks like £6 a player; your weekly game has no fee set.\n` +
+        `From your group description: "£6 a player"\n` +
+        `Set it here: https://mt.link/admin/activities?edit=fee`,
+    );
+
+    state.jobs.length = 0;
+    state.org = heldOrg({ language: "tr", setupLearning: learning("nothing", { suggestions: [fee] }) });
+    await sendSetupDm("org-riverside", DAY, { learningEnabled: true });
+    expect(String(state.jobs[0].text)).toContain(
+      `Grup açıklamanızdan: "£6 a player"\nBuradan girebilirsiniz: https://mt.link/admin/activities?edit=fee`,
+    );
+  });
+
+  it("with no fee suggestion no fee link is minted", async () => {
+    const pick = { key: "organiserPicks", current: "first-come", detected: "organiser", evidence: ["I'll pick", "I pick the team"] };
+    state.org = heldOrg({ setupLearning: learning("nothing", { suggestions: [pick] }) });
+    await sendSetupDm("org-riverside", DAY, { learningEnabled: true });
+    expect(adminLinkMock.mock.calls.map((c) => c[0].nextPath)).not.toContain("/admin/activities?edit=fee");
+  });
 });
 
 describe("review fix 4: the DM never states something false about the club", () => {

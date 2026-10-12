@@ -28,7 +28,7 @@
  */
 import { t } from "../i18n/t";
 import { normaliseLang } from "../i18n/lang";
-import { SUGGESTION_KEYS, sameVenue, type Suggestion, type SuggestionKey, type WeeklyGameState } from "./rules";
+import { SUGGESTION_KEYS, feeText, sameVenue, type Suggestion, type SuggestionKey, type WeeklyGameState } from "./rules";
 
 /** What the club has now, for everything a suggestion can be about. */
 export interface ClubNow {
@@ -62,11 +62,23 @@ export function weeklyGameOf(
     time: string;
     venue: string | null;
     sport: { playersPerTeam: number | null } | null;
+    /** Pounds a player; needed for the match fee suggestion (slice D3).
+     *  A caller that does not select it gets "no fee", so BOTH callers
+     *  (run.ts, view.ts) select it and `feeSplitTotal`. */
+    feePerPlayer?: number | null;
+    feeSplitTotal?: boolean | null;
   }>,
 ): WeeklyGameState | null {
   const first = activities[0];
   return first
-    ? { dayOfWeek: first.dayOfWeek, time: first.time, venue: first.venue ?? null, playersPerSide: first.sport?.playersPerTeam ?? null }
+    ? {
+        dayOfWeek: first.dayOfWeek,
+        time: first.time,
+        venue: first.venue ?? null,
+        playersPerSide: first.sport?.playersPerTeam ?? null,
+        feePerPlayer: first.feePerPlayer ?? null,
+        feeSplitTotal: first.feeSplitTotal ?? false,
+      }
     : null;
 }
 
@@ -79,6 +91,13 @@ function isKnownKey(key: string): key is SuggestionKey {
  * stored in (rules.ts, `planSetup`). Null: the club has nothing there.
  * Undefined: a key this build does not know (a row written by a newer
  * build), which is left as it is.
+ *
+ * THE MATCH FEE (slice D3). "The weekly game has no fee" is "", exactly
+ * as `planSetup` stores it in `current`, and NEVER null: null means
+ * "nothing to compare", which resolves the card, and a fee suggestion is
+ * most often about a game with no fee, so it would vanish on first load.
+ * Null is for the two cases where there is no fee per player to speak of:
+ * no weekly game, or a game that now splits the pitch cost.
  */
 export function currentSuggestionValue(key: SuggestionKey, club: ClubNow): string | null | undefined {
   const g = club.weeklyGame;
@@ -95,6 +114,9 @@ export function currentSuggestionValue(key: SuggestionKey, club: ClubNow): strin
       return club.language;
     case "organiserPicks":
       return club.benchPickMode;
+    case "matchFee":
+      if (!g || g.feeSplitTotal) return null;
+      return g.feePerPlayer != null && g.feePerPlayer > 0 ? feeText(g.feePerPlayer) : "";
     default: {
       const unknown: never = key;
       void unknown;
@@ -109,6 +131,10 @@ export function sameSuggestionValue(key: SuggestionKey, a: string, b: string): b
   switch (key) {
     case "venue":
       return sameVenue(a, b);
+    case "matchFee":
+      // As amounts ("6" is "6.00"); "no fee" equals only "no fee".
+      if (a === "" || b === "") return a === b;
+      return Math.abs(Number(a) - Number(b)) < 0.005;
     case "weeklyGameDay":
     case "weeklyGameTime":
     case "format":
