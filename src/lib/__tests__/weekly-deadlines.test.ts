@@ -131,17 +131,20 @@ describe("D1: the drop-out reminder, 3 hours before, not before 09:00", () => {
   });
 });
 
-describe("D2: the deadline summary, first tick after the deadline, 08:00 to 21:59", () => {
+describe("D2: the deadline summary, first tick after the deadline, 09:00 to 22:59", () => {
   const MON_21 = new Date("2026-10-05T20:00:00.000Z");
   it("due at and after the deadline", () => {
     expect(deadlineSummaryDue(new Date("2026-10-05T19:59:00.000Z"), MON_21, FRI_KICKOFF)).toBe(false);
     expect(deadlineSummaryDue(new Date("2026-10-05T20:05:00.000Z"), MON_21, FRI_KICKOFF)).toBe(true);
   });
 
-  it("a tick that slips past 22:00 waits until 08:00", () => {
-    expect(deadlineSummaryDue(new Date("2026-10-05T21:10:00.000Z"), MON_21, FRI_KICKOFF)).toBe(false); // 22:10
+  it("a tick that slips past 23:00 waits until 09:00", () => {
+    expect(deadlineSummaryDue(new Date("2026-10-05T21:10:00.000Z"), MON_21, FRI_KICKOFF)).toBe(true); // 22:10
+    expect(deadlineSummaryDue(new Date("2026-10-05T22:10:00.000Z"), MON_21, FRI_KICKOFF)).toBe(false); // 23:10
     expect(deadlineSummaryDue(new Date("2026-10-06T06:30:00.000Z"), MON_21, FRI_KICKOFF)).toBe(false); // 07:30
-    expect(deadlineSummaryDue(new Date("2026-10-06T07:00:00.000Z"), MON_21, FRI_KICKOFF)).toBe(true); // 08:00
+    expect(deadlineSummaryDue(new Date("2026-10-06T07:00:00.000Z"), MON_21, FRI_KICKOFF)).toBe(false); // 08:00
+    expect(deadlineSummaryDue(new Date("2026-10-06T07:59:00.000Z"), MON_21, FRI_KICKOFF)).toBe(false); // 08:59
+    expect(deadlineSummaryDue(new Date("2026-10-06T08:00:00.000Z"), MON_21, FRI_KICKOFF)).toBe(true); // 09:00
   });
 
   it("never at or after kickoff", () => {
@@ -156,7 +159,10 @@ describe("D3: the list, first tick after publish time, before kickoff", () => {
     expect(listPublishDue(new Date("2026-10-06T19:05:00.000Z"), TUE_20, FRI_KICKOFF)).toBe(true);
   });
   it("quiet hours hold it", () => {
-    expect(listPublishDue(new Date("2026-10-06T21:30:00.000Z"), TUE_20, FRI_KICKOFF)).toBe(false); // 22:30
+    expect(listPublishDue(new Date("2026-10-06T21:30:00.000Z"), TUE_20, FRI_KICKOFF)).toBe(true); // 22:30
+    expect(listPublishDue(new Date("2026-10-06T22:30:00.000Z"), TUE_20, FRI_KICKOFF)).toBe(false); // 23:30
+    expect(listPublishDue(new Date("2026-10-07T07:30:00.000Z"), TUE_20, FRI_KICKOFF)).toBe(false); // 08:30
+    expect(listPublishDue(new Date("2026-10-07T08:00:00.000Z"), TUE_20, FRI_KICKOFF)).toBe(true); // 09:00
   });
   it("never at or after kickoff", () => {
     expect(listPublishDue(new Date("2026-10-09T19:31:00.000Z"), TUE_20, FRI_KICKOFF)).toBe(false);
@@ -193,13 +199,16 @@ describe("validateWeeklyDeadlines (settings)", () => {
     expect(validateWeeklyDeadlines({ ...HAMZAH, listPublishTime: "24:00" }, [FRIDAY_ACTIVITY])).toBe("bad-value");
   });
 
-  it("refuses times outside 08:00 to 21:30", () => {
+  it("refuses times outside 09:00 to 22:30", () => {
     expect(validateWeeklyDeadlines({ ...HAMZAH, dropOutDeadlineTime: "07:59" }, [FRIDAY_ACTIVITY])).toBe(
       "outside-hours",
     );
-    expect(validateWeeklyDeadlines({ ...HAMZAH, listPublishTime: "21:31" }, [FRIDAY_ACTIVITY])).toBe("outside-hours");
+    expect(validateWeeklyDeadlines({ ...HAMZAH, dropOutDeadlineTime: "08:59" }, [FRIDAY_ACTIVITY])).toBe(
+      "outside-hours",
+    );
+    expect(validateWeeklyDeadlines({ ...HAMZAH, listPublishTime: "22:31" }, [FRIDAY_ACTIVITY])).toBe("outside-hours");
     expect(
-      validateWeeklyDeadlines({ ...HAMZAH, dropOutDeadlineTime: "08:00", listPublishTime: "21:30" }, [FRIDAY_ACTIVITY]),
+      validateWeeklyDeadlines({ ...HAMZAH, dropOutDeadlineTime: "09:00", listPublishTime: "22:30" }, [FRIDAY_ACTIVITY]),
     ).toBeNull();
   });
 

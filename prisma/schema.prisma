@@ -492,6 +492,7 @@ model Organisation {
   memberships        Membership[]
   clubConnects       ClubConnect[]
   activities         Activity[]
+  venueLookups       VenueLookup[]
   sports             Sport[]
   userAliases        UserAlias[]
   rosterSurveys      RosterSurvey[]
@@ -748,6 +749,7 @@ model Venue {
   lng              Float?
   source           String?
   activities       Activity[]
+  queries          VenueQuery[]
   createdAt        DateTime   @default(now())
   updatedAt        DateTime   @updatedAt
 }
@@ -764,6 +766,36 @@ model Activity {
   venue             String
   venueId           String?
   venueRef          Venue?       @relation(fields: [venueId], references: [id])
+  /// VENUE LOCATION (2026-10-12). All nullable, all about THIS activity's
+  /// link to a Venue row. The Venue row itself is shared across clubs by
+  /// Google place id, so nothing a club decides (how sure the match is
+  /// for the words it typed, whether its organiser confirmed it) may be
+  /// written there.
+  ///
+  /// NONE of these is ever accepted from a client. They are written only
+  /// by src/lib/venue-location.ts, by the reset an edit of the venue text
+  /// makes (src/lib/activity-update.ts), and by the backfill script.
+  ///
+  /// How sure the match is: "high" | "low". Null with no place linked.
+  venueConfidence    String?
+  /// Where the link came from: "text" (the venue text), "address" (a
+  /// fuller address the organiser typed), "link" (a pasted map link) or
+  /// "backfill".
+  venueMatchSource   String?
+  /// What the last lookup for the current venue text came to:
+  ///   null       never looked up (every game that predates this feature)
+  ///   "pending"  a lookup was scheduled and has not reported back
+  ///   "found"    a place is linked
+  ///   "none"     Google answered and found nothing
+  ///   "failed"   Google could not be asked (error, timeout, no key)
+  ///   "capped"   the club's daily lookups were used up
+  venueLookupStatus  String?
+  /// When `venueLookupStatus` was last written.
+  venueResolvedAt    DateTime?
+  /// The organiser said "Yes, this is the right place". Cleared whenever
+  /// the venue text or the linked place changes.
+  venueConfirmedAt   DateTime?
+  venueConfirmedById String?
   isActive          Boolean      @default(true)
   deadlineHours     Int          @default(5)
   matchDurationMins Int          @default(60)
@@ -789,6 +821,47 @@ model Activity {
 
   @@index([orgId])
   @@index([sportId])
+  @@index([venueId])
+}
+
+/// One row per venue lookup made for a club. The per-club daily cap
+/// counts these, and a cached answer counts exactly like a call, so the
+/// cap tells nobody what other clubs have looked up. Ids and the kind
+/// only: never the words that were looked up, an address or coordinates.
+/// (2026-10-12)
+model VenueLookup {
+  id         String       @id @default(cuid())
+  orgId      String
+  org        Organisation @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  activityId String?
+  /// "geocode"     a Google Geocoding call
+  /// "reuse"       answered from VenueQuery, no call
+  /// "short-link"  the one request that expands a short map link
+  /// "pin"         a pin read out of a pasted link, no call
+  kind       String
+  createdAt  DateTime     @default(now())
+
+  @@index([orgId, createdAt])
+}
+
+/// WHAT GOOGLE ANSWERED FOR A QUERY (2026-10-12): country plus the
+/// normalised words (for example "GB|powerleague shoreditch") to the
+/// place Google named and how sure that match was. A second club typing
+/// the same words gets the same answer with no second Google call.
+///
+/// Written ONLY by the lookup code, straight after a Google answer
+/// (`storeGoogleMatch`, src/lib/venue-store.ts), and it only ever points
+/// at a Venue with a Google place id: never a pin, never a pasted link,
+/// never anything a client supplied. No club id is stored: the row says
+/// nothing about who asked.
+model VenueQuery {
+  key        String   @id
+  venueId    String
+  venue      Venue    @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  /// "high" | "low", as judged when Google answered. Reused as it is.
+  confidence String
+  createdAt  DateTime @default(now())
+
   @@index([venueId])
 }
 

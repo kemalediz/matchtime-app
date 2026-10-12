@@ -420,11 +420,11 @@ describe("noteStuckClub: the ONE note to the owner, 72 hours after approval", ()
     expect(state.alerts).toHaveLength(1);
   });
 
-  it("in the owner's quiet hours it waits for 08:00 London", async () => {
+  it("in the owner's quiet hours it waits for 09:00 London", async () => {
     // Approved at 23:30 London; 72 hours on is 23:30 London.
     state.org = heldOrg({ approvedAt: new Date("2026-10-12T22:30:00Z") });
     await noteStuckClub("org-riverside", new Date("2026-10-15T22:30:00Z"));
-    expect(state.jobs[0].sendAfter).toEqual(new Date("2026-10-16T07:00:00Z"));
+    expect(state.jobs[0].sendAfter).toEqual(new Date("2026-10-16T08:00:00Z"));
   });
 
   it("a club that went live or was suspended is not noted", async () => {

@@ -38,6 +38,7 @@ import { FEATURE_META, type ToggleableKey } from "./org-features-meta";
 import { londonWallClockToUtc, londonDateTimeToUtc } from "./london-time";
 import { normalisePhone } from "./phone";
 import { appUrl } from "./app-url";
+import { scheduleVenueResolve } from "./venue-location-schedule";
 import { buildAdminLink } from "./admin-link";
 import { runOnboardingEnrichment } from "./onboarding-enrichment";
 import {
@@ -1319,6 +1320,8 @@ async function completeOnboarding(
       isActive: weekly,
     },
   });
+  // Venue location: looked up after the response, never part of the save.
+  await scheduleVenueResolve(activity.id);
 
   // First match: next occurrence of dayOfWeek (weekly) or the given
   // one-off date, at kickoffTime London.

@@ -4,19 +4,32 @@
  *
  * 09:00 (inclusive) to 23:00 (exclusive), London wall clock. A message
  * that becomes due outside it waits for the next 09:00 London. Owner
- * decision, 2026-10-12; the window was 10:00 to 20:00 before.
+ * decisions: 2026-10-12 for the messages that waited for 10:00 to 20:00,
+ * 2026-10-13 for the ones that waited for 08:00 to 22:00.
  *
- * The ONE pair of hours for every gate on this window. Today that is:
- *   - the billing DMs, the month's close and charge, and the day 21 and
- *     day 28 reminders (club-billing-schedule-rules.ts takes its hours
- *     from here);
- *   - the "what MatchTime learned from your chat" setup DM
- *     (setup-learning/run.ts).
+ * The ONE definition of the daytime window. Every gate on it takes its
+ * hours from here (`inMessageHours`, `messageHoursSendAfter`, or the
+ * constants where a caller has conditions of its own):
+ *   - billing DMs, the month's close and charge, the day 21 and day 28
+ *     reminders (club-billing-schedule-rules.ts);
+ *   - the setup DMs to a new club's organiser (setup-learning/run.ts,
+ *     club-setup-dm.ts, club-setup-reminder.ts, club-setup-removal.ts);
+ *   - the owner's approval and setup DMs (owner-dm.ts);
+ *   - admin notices and admin group posts (rolling-squad-rules.ts,
+ *     admin-channel-rules.ts), and the AI cap notice's cutoff
+ *     (ai-cap-notice.ts);
+ *   - the monthly squad's posts and DMs (month-signup-rules.ts,
+ *     monthly-week-rules.ts);
+ *   - the weekly deadline posts and the times an organiser may choose
+ *     for them (weekly-deadlines.ts);
+ *   - organiser picks, bench offers and recruit chases
+ *     (organiser-pick-rules.ts, bot-scheduler.ts, recruit-chase.ts).
  *
- * NOT this window, on purpose: the 08:00 to 22:00 family (admin notices,
- * the owner's approval DM, bench offers, lists, recruit chases) and the
- * posts tied to one hour of the day. They keep their own constants in
- * their own files.
+ * NOT this window: a post tied to one hour of the day (the 17:00 update,
+ * the 18:00 chases, the unpaid list, badges, Man of the Match). Those are
+ * schedules and keep their own hours in their own files.
+ * `__tests__/message-hours-source-guard.test.ts` fails when a second
+ * definition of the window appears.
  */
 import { formatLondon, londonWallClockToUtc } from "./london-time";
 

@@ -179,6 +179,13 @@ export function buildSeedBumpedDm(p: { name: string | null; activityName: string
 
 const RESERVE_HEADER = /^\s*(reserves?|subs?|substitutes?|standby|stand-by)\b\s*:?\s*$/i;
 
+/** `mwk_list_open_organiser` as MatchTime posted it in English until
+ *  2026-10-12. Never sent any more, only recognised. The Turkish line did
+ *  not change. */
+function legacyOpenOrganiserLine(open: number): string {
+  return `${open} ${open === 1 ? "place" : "places"} open. Say *IN* to go on the waiting list, and the organisers will pick who plays.`;
+}
+
 /**
  * What a member typed AROUND the list. The list's own furniture is taken
  * out: its title, its section headers, and the "N places open" line of
@@ -193,6 +200,10 @@ export function pasteResidual(body: string, ctx: { lang: string | null; maxPlaye
     own.add(s.mwk_list_open({ open, price }));
     own.add(s.mwk_list_open({ open, price: null }));
     own.add(s.mwk_list_open_organiser({ open }));
+    // The same line as it read before 2026-10-12, when the English said
+    // "waiting list" for the bench. Posts in that wording are still in the
+    // groups, and one pasted back must not reach a model as "say IN".
+    own.add(legacyOpenOrganiserLine(open));
   }
   // A not-playing header only counts BELOW a list line, exactly as the
   // reader decides it: "Can't make it" typed above the list is the sender

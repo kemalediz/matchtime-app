@@ -723,7 +723,7 @@ export async function applySignup(args: {
   const phone = member.user.phoneNumber?.replace(/^\+/, "") ?? null;
   const sendAfter = adminNoticeSendAfter(now);
   const day = formatLondon(now, "yyyy-MM-dd");
-  /** A DM to the person themselves, once per key, never 22:00 to 07:59. */
+  /** A DM to the person themselves, once per key, never 23:00 to 08:59. */
   const tell = async (key: string, text: string): Promise<void> => {
     // The page says it on the page; an organiser's change is the organiser's to pass on.
     if (!phone || args.source === "page" || args.source === "admin") return;
@@ -1146,7 +1146,7 @@ export async function recordSignupListShown(
 /**
  * The sign-up list posts due for a club right now, for `computeDuePosts`:
  * ONE message per month in sign-up, when the list differs from the one the
- * group last saw, at most every 30 minutes, 08:00 to 21:59 London. The key
+ * group last saw, at most every 30 minutes, 09:00 to 22:59 London. The key
  * carries a running number, so a list that returns to an earlier state is
  * posted again. The caller has checked the club is monthly.
  */

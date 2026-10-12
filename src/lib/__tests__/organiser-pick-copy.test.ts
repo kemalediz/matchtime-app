@@ -16,7 +16,7 @@ const FIRST_COME_PROMISE = /first to (reply|react|say|claim)|takes the slot|ilk 
 describe("organiser-pick clubs never promise first come", () => {
   it("the squad-complete invite", () => {
     expect(buildSquadCompleteBenchInvite({ organiser: true })).toBe(
-      "🪑 *Waiting list is open.* Say *IN* to go on the waiting list, and the organisers will pick who plays.",
+      "🪑 *Bench is open.* Say *IN* to go on the bench, and the organisers will pick who plays.",
     );
     expect(buildSquadCompleteBenchInvite({ organiser: true, lang: "tr" })).toBe(
       "🪑 *Yedek listesi açık.* *VARIM* yazın, yedek listesine ekleyeyim; kimin oynayacağını organizatörler seçer.",
@@ -25,7 +25,7 @@ describe("organiser-pick clubs never promise first come", () => {
 
   it("the day-one intro's bench line", () => {
     expect(buildBenchIntroLine({ organiser: true })).toBe(
-      "🔁  *Waiting list:* say *IN* to go on the waiting list. When a place opens, the organisers pick who plays.",
+      "🔁  *The bench:* say *IN* to go on the bench. When a place opens, the organisers pick who plays.",
     );
     expect(buildBenchIntroLine({ organiser: true, lang: "tr" })).not.toMatch(FIRST_COME_PROMISE);
   });
@@ -33,7 +33,7 @@ describe("organiser-pick clubs never promise first come", () => {
   it("the full-squad answer to a recruit ask", () => {
     const c = { matchName: "Friday 9-a-side", confirmedCount: 18, maxPlayers: 18, organiser: true };
     expect(buildFullSquadBenchInvite(c)).toBe(
-      "*Friday 9-a-side* is full at 18 of 18, but the waiting list is open. Say *IN* to go on the waiting list, and the organisers will pick who plays. 🙏",
+      "*Friday 9-a-side* is full at 18 of 18, but the bench is open. Say *IN* to go on the bench, and the organisers will pick who plays. 🙏",
     );
     expect(buildFullSquadBenchInvite({ ...c, lang: "tr" })).not.toMatch(FIRST_COME_PROMISE);
   });
@@ -44,14 +44,14 @@ describe("organiser-pick clubs never promise first come", () => {
       [
         "👋 Ali, we're putting the squad together for *Friday 9-a-side* on Fri 9 Oct, 20:30. 2 spots left.",
         "",
-        "Want to play? Reply *IN* to go on the waiting list, and the organisers will pick who plays.",
+        "Want to play? Reply *IN* to go on the bench, and the organisers will pick who plays.",
         "Can't make it? Reply *OUT* and I'll stop asking 🙌",
       ].join("\n"),
     );
     expect(buildRecruitInviteDm({ ...invite, lang: "tr" })).toContain("organizatörler seçer");
     const chase = { playerName: "Ali Aziz", activityName: "Friday 9-a-side", matchWhen: "Fri 9 Oct, 20:30", need: 1, organiser: true };
     expect(buildRecruitChaseText(chase)).toBe(
-      "👋 Ali, still after 1 player for *Friday 9-a-side* on Fri 9 Oct, 20:30. Reply *IN* to go on the waiting list and the organisers will pick who plays, or *OUT* and I'll stop asking 🙏",
+      "👋 Ali, still after 1 player for *Friday 9-a-side* on Fri 9 Oct, 20:30. Reply *IN* to go on the bench and the organisers will pick who plays, or *OUT* and I'll stop asking 🙏",
     );
     expect(buildRecruitChaseText({ ...chase, lang: "tr" })).toContain("organizatörler seçer");
   });
@@ -59,7 +59,7 @@ describe("organiser-pick clubs never promise first come", () => {
   it("the private ack of an IN that went on the waiting list", () => {
     const ack = { failed: false, status: "BENCH" as const, matchName: "Friday 9-a-side", matchWhen: "Fri 9 Oct, 20:30", organiser: true };
     expect(buildSelfAttendanceAck(ack)).toBe(
-      "📋 I've put you on the waiting list for *Friday 9-a-side* on Fri 9 Oct, 20:30. The organisers pick who plays, and I'll message you if you're picked 🙏",
+      "📋 I've put you on the bench for *Friday 9-a-side* on Fri 9 Oct, 20:30. The organisers pick who plays, and I'll message you if you're picked 🙏",
     );
     expect(buildSelfAttendanceAck({ ...ack, lang: "tr" })).not.toMatch(FIRST_COME_PROMISE);
   });

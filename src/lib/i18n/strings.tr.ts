@@ -1477,7 +1477,7 @@ export const tr: Strings = {
   onb_legacy_feature_blurb: (p) =>
     ({
       attendance: "VARIM ve YOKUM mesajlarını okur, kadro listesini tutar, eksik kalınca hatırlatır.",
-      bench: "Kadro dolunca gelenleri sıraya alır; biri çıkınca açılan yeri yedeklere sorar.",
+      bench: "Kadro dolunca gelenleri yedeğe yazar; biri çıkınca açılan yeri yedeklere sorar.",
       teamBalancing: "İstenince dengeli iki takım kurar.",
       momVoting: "Maçtan sonra maçın adamı oylamasını açar, kazananı duyurur.",
       playerRating: "Her oyuncuya maçtan sonra kısa bir puanlama linki gönderir.",
@@ -1959,7 +1959,7 @@ export const tr: Strings = {
   wd_saved: "Haftalık saatler kaydedildi",
   wd_err_incomplete: "Hem gün hem saat seçin ya da ikisini de boş bırakın.",
   wd_err_bad_value: "Bu gün ya da saat geçerli değil.",
-  wd_err_outside_hours: "08:00 ile 21:30 arasında bir saat seçin.",
+  wd_err_outside_hours: "09:00 ile 22:30 arasında bir saat seçin.",
   wd_err_order: "Son çıkış saati, listenin yayınlanmasından önce olmalı.",
   wd_err_after_kickoff: "Maç günü için maç saatinden önce bir saat seçin.",
   // ── Slice 2a: yönetici kanalı (2026-09-30) ──
@@ -3141,6 +3141,37 @@ export const tr: Strings = {
   mwp_cant_paid: "Ödedi ama gelemiyor",
   mwp_cant: "Gelemiyor",
   mwp_open: (p) => `${p.open} boş yer`,
+
+  // ── Saha konumu: haftalık maçın sahasının altındaki onay satırı ─────
+  // (2026-10-12; /admin/activities, yalnızca organizatör).
+  venue_loc_question: "Doğru yer burası mı?",
+  venue_loc_low_lead: "Oynadığınız yerin burası olduğundan emin değiliz.",
+  venue_loc_yes: "Evet",
+  venue_loc_change: "Değiştir",
+  venue_loc_map: "Haritada aç",
+  venue_loc_confirmed: "Yer onaylandı",
+  venue_loc_pin: (p: { coords: string }): string => `Haritadaki işaret: ${p.coords}`,
+  venue_loc_not_found:
+    "Bu yeri bulamadık. MatchTime nerede oynadığınızı bilsin diye adresi ekleyin veya bir harita bağlantısı yapıştırın.",
+  venue_loc_add: "Yeri ekle",
+  venue_loc_pending: "Bu yer aranıyor...",
+  venue_loc_input_label: "Adres veya harita bağlantısı",
+  venue_loc_input_placeholder: "örn. Whiston Road, London E2 8BN",
+  venue_loc_input_help:
+    "Daha açık bir adres yazın ya da Google Maps, Apple Maps, Yandex Haritalar, Waze veya OpenStreetMap bağlantısı yapıştırın. Bu, grubunuzun gördüğü saha adını değiştirmez.",
+  venue_loc_find: "Yeri bul",
+  venue_loc_finding: "Aranıyor...",
+  venue_loc_cancel: "Vazgeç",
+  venue_loc_err_not_found: "Bunu bulamadık. İlçe veya posta kodu ile daha açık bir adres deneyin ya da bir harita bağlantısı yapıştırın.",
+  venue_loc_err_capped: "Bugünlük yeterince arama yapıldı. Yarın tekrar deneyin.",
+  venue_loc_err_link:
+    "MatchTime bu bağlantıyı okuyamıyor. Yerin koordinatlarını gösteren bir bağlantı ya da bir Google Maps bağlantısı yapıştırın veya adresi yazın.",
+  venue_loc_err_w3w: "MatchTime what3words bağlantılarını henüz okuyamıyor. Bir Google Maps bağlantısı yapıştırın ya da adresi yazın.",
+  venue_loc_err_generic: "Bir şeyler ters gitti. Lütfen tekrar deneyin.",
+  venue_loc_never: "MatchTime konumu bilsin diye nerede oynadığınızı ekleyin.",
+  venue_loc_failed: "Bu yeri şu anda kontrol edemedik. Daha sonra tekrar deneyin.",
+  venue_loc_retry: "Tekrar dene",
+  venue_loc_retrying: "Kontrol ediliyor...",
 };
 
 /**
