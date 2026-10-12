@@ -1388,6 +1388,7 @@ function cases(lang: Lang): Case[] {
       `[${sj.billing_btn_add_card}] [${sj.billing_btn_change_card}] [${sj.billing_btn_use_mine}] [${sj.billing_btn_update_card}] [${sj.billing_btn_remove_mine}] [${sj.billing_btn_stop_paying}] [${sj.billing_btn_keep_paying}]`,
       `[${sj.billing_open}] [${sj.billing_choose_collector}]`,
       sj.billing_exempt({ club: "Sutton FC" }),
+      sj.billing_exempt_setting_up({ club: "Harbour FC" }),
     ].join("\n"),
   );
   add(

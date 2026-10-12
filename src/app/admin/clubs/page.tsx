@@ -154,8 +154,12 @@ function BillingRow({ c, billingOn, lang }: { c: LiveClub; billingOn: boolean; l
   const b = c.billing;
   const status = b?.status ?? c.billingStatus;
   const cb = b?.billing ?? null;
-  const date =
-    status === "trial" && cb
+  // Approved but still setting up: not billed, and its free period has not
+  // started. It starts by itself when the club goes live (never on Free).
+  const awaitingGoLive = !!b?.settingUp && status === "exempt" && !cb && c.billingPlan !== "free";
+  const date = awaitingGoLive
+    ? "The free period starts when the club goes live"
+    : status === "trial" && cb
       ? `Free period ends ${when(cb.trialEndsAt)}`
       : (status === "grace" || status === "past_due") && cb?.graceEndsAt
         ? `Stops ${when(cb.graceEndsAt)} without payment`
@@ -169,7 +173,7 @@ function BillingRow({ c, billingOn, lang }: { c: LiveClub; billingOn: boolean; l
     : b.contact.via === "collector"
       ? `${b.contact.name ?? "(no name)"} (money collector)`
       : `${b.contact.name ?? "(no name)"} (owner, no money collector set)`;
-  const canStart = status === "exempt" && !cb && c.billingPlan !== "free";
+  const canStart = status === "exempt" && !cb && c.billingPlan !== "free" && !b?.settingUp;
   return (
     <div data-testid="club-billing" className="mt-3 rounded-lg border border-slate-100 bg-slate-50 p-3 text-sm text-slate-700">
       <dl className="grid gap-x-4 gap-y-1 sm:grid-cols-[8rem_1fr]">
@@ -178,7 +182,8 @@ function BillingRow({ c, billingOn, lang }: { c: LiveClub; billingOn: boolean; l
           <SectionInfo k="clubs_fee" lang={lang} />
         </dt>
         <dd data-testid="club-billing-summary">
-          {planLabel(c.billingPlan, c.billingPricePence)}. {STATUS_LABEL[status] ?? status}.{date ? ` ${date}.` : ""}
+          {planLabel(c.billingPlan, c.billingPricePence)}. {awaitingGoLive ? "Not billed yet (setting up)" : (STATUS_LABEL[status] ?? status)}.
+          {date ? ` ${date}.` : ""}
           {status !== "exempt" && ` Card on file: ${cb?.cardHolderUserId || cb?.cardLast4 ? "yes" : "no"}.`}
           {c.clubBilling?.vatCountryCheck && <strong className="text-amber-700"> Check VAT country.</strong>}
         </dd>
@@ -246,6 +251,8 @@ export default async function ClubsPage() {
           id: true,
           name: true,
           approvedAt: true,
+          // A held club is "new" from the day it went live (`newClubDmCap`).
+          liveAt: true,
           whatsappGroupId: true,
           whatsappBotEnabled: true,
           billingStatus: true,
@@ -435,7 +442,7 @@ export default async function ClubsPage() {
         info="clubs_live"
         lang={lang}
         title="Live clubs that joined themselves"
-        lead={`New clubs get ${NEW_CLUB_DM_WINDOW_DAYS} days of tighter limits from the day you approve them.`}
+        lead={`New clubs get ${NEW_CLUB_DM_WINDOW_DAYS} days of tighter limits from the day they go live.`}
       >
         {live.length === 0 ? (
           <Empty>No self-join club is live yet.</Empty>

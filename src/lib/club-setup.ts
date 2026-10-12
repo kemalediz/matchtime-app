@@ -36,6 +36,7 @@ import { randomUUID } from "node:crypto";
 import type { MatchStatus } from "@/generated/prisma/enums";
 import { db } from "./db";
 import { isClubApproved, servingClubWhere } from "./club-approval-state";
+import { startFreePeriodAtGoLiveTx } from "./club-billing";
 import { BILLING_NOT_PAUSED_WHERE, isBillingEnabled } from "./club-billing-rules";
 import {
   SETTING_UP_CLUB_WHERE,
@@ -450,11 +451,16 @@ export async function goLiveClub(
         return (after && goLiveRefusal(after.org, after.info, billingOn)) ?? { outcome: "not-setting-up", orgId };
       }
 
-      // FREE PERIOD HOOK (the later money slice, S4b). The club's free
-      // period is to start HERE, at go-live, not at approval: that slice
-      // moves the `setBillingState(orgId, { type: "approved" })` call
-      // (club-approval.ts) to this point, on `tx`, with `now` as the
-      // start. Nothing is done for billing in this slice.
+      // FREE PERIOD HOOK (the money slice, S4b; owner decision 2). The
+      // club's two free months start HERE, at go-live, not at approval: it
+      // was silent in its group until this write. On `tx`, so the go-live
+      // and the start commit together or not at all (a failure here rolls
+      // the go-live back and the organiser's GO can simply be said again),
+      // and the window runs from `now`, which is the `liveAt` just
+      // stamped. Once per club: a club whose free period an approval had
+      // already started is left exactly as it is. With billing off nothing
+      // starts, as at an approval.
+      if (billingOn) await startFreePeriodAtGoLiveTx(tx, orgId, now);
 
       // THE PURGE RUNS UNDER THE CLUB'S ROW LOCK (PR #234 review, fix 8).
       // The compare-and-set above is the transaction's first WRITE, so

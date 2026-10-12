@@ -26,8 +26,9 @@
  *   - $2.00 a day for the club's FREE PERIOD: two London calendar months
  *     (`FREE_PERIOD_MONTHS`, the same length as the billing trial, through
  *     the same `freePeriodEnd`; 30 days until 2026-10-12) from the window
- *     start, which is `approvedAt ?? aiWindowStartAt ?? createdAt` (see
- *     `aiWindowStart`) (Kemal, 2026-10-01; was $0.25 for 28 days);
+ *     start, which is `liveAt ?? approvedAt ?? aiWindowStartAt ?? createdAt`
+ *     (see `aiWindowStart`: the day a held club went live, else its
+ *     approval) (Kemal, 2026-10-01; was $0.25 for 28 days);
  *   - $1.50 a day after that, the default for a paying club (Kemal,
  *     2026-10-01; was $1.00). Sutton FC is long past its free period and
  *     has its own override of the same $1.50.
@@ -102,7 +103,7 @@ import { db } from "./db";
 import { formatLondon } from "./london-time";
 import { AI_CAP_ALERT_KIND, recordOpsEvent } from "./ops-alerts";
 import { isClubApproved, isSelfJoinEnabled, isSilentGroup } from "./club-approval";
-import { freePeriodEnd, isBillingPaused } from "./club-billing-rules";
+import { freePeriodEnd, freePeriodStart, isBillingPaused } from "./club-billing-rules";
 import { SETUP_STAGE_SELECT, isClubSettingUp, type SetupStageColumns } from "./club-setup-rules";
 import { notifyAdminsOfAiCap } from "./ai-cap-notice";
 import {
@@ -122,8 +123,9 @@ export const DAILY_CAP_USD = 1.5;
 export const NEW_CLUB_CAP_USD = 2.0;
 /**
  * Spend with no approved club behind it yet (onboarding keys). Kept at the
- * old new-club figure on purpose: the free period starts at approval, and
- * this is money spent on behalf of people nobody has approved. In practice
+ * old new-club figure on purpose: the free period starts when an approved
+ * club goes live, and this is money spent on behalf of people nobody has
+ * approved. In practice
  * the in-group setup is $0 while self-join is on, so this is the web
  * wizard's chat analysis, a few cents.
  */
@@ -136,7 +138,8 @@ export const CALL_RESERVE_USD = 0.01;
  * its setup reading, and on nothing else (go-live slice S1). One reading
  * is one Haiku call of about a cent and a half, retried at most twice, so
  * ten cents is room for all three attempts and no more. It is a fixed
- * figure on purpose: the free month's $2.00 is for a club that is live.
+ * figure on purpose: the free period's $2.00 is for a club that is live,
+ * and its window starts only when the club goes live (`aiWindowStart`).
  */
 export const SETUP_READING_CAP_USD = 0.1;
 
@@ -170,6 +173,9 @@ export interface AllowanceOrg extends SetupStageColumns {
   /** When the platform owner approved a self-join club. NULL for every
    *  club that existed before self-join. */
   approvedAt: Date | null;
+  /** When a club that was approved and held went live (club-setup.ts).
+   *  NULL or absent for every club that never went through the hold. */
+  liveAt?: Date | null;
   /** Club fee billing (B1): "paused" spends nothing while BILLING_ENABLED
    *  is on (club-billing-rules.ts). Every pre-billing club is "exempt". */
   billingStatus: string;
@@ -177,9 +183,17 @@ export interface AllowanceOrg extends SetupStageColumns {
 
 /**
  * When the club's free period window starts:
- * `approvedAt ?? aiWindowStartAt ?? createdAt`.
+ * `liveAt ?? approvedAt ?? aiWindowStartAt ?? createdAt`.
  *
- * Why `approvedAt` first. It is a FACT, written once, by the approval
+ * Why `liveAt` first (owner decision 2, 2026-10-12). A club that was
+ * approved and HELD is silent until its organiser says GO, and spends
+ * nothing but its one setup reading until then. Its free period, and the
+ * higher allowance that goes with it, start the day it goes live, through
+ * the one definition (`freePeriodStart` in club-billing-rules.ts), so the
+ * allowance and the billing free period always end at the same moment. A
+ * club that was never held has no `liveAt`, and nothing changes for it.
+ *
+ * Why `approvedAt` next. It is a FACT, written once, by the approval
  * itself: the moment a self-join club was allowed to act. A club that
  * waited a week in pending must still get its full free period once live
  * (decision 5), and no other column can know that moment.
@@ -188,15 +202,15 @@ export interface AllowanceOrg extends SetupStageColumns {
  * lever, "start this club's window later than its row", for a club that
  * goes live some time after it was created. Every club that predates
  * self-join has `approvedAt` NULL, so for them the rule is exactly what
- * it was before this slice. For a self-join club the approval is the
- * go-live, so the approval flow does not ALSO write `aiWindowStartAt`
- * (one fact, one column), and the lever to change what such a club may
- * spend is the per-club override, `aiDailyCapUsd`.
+ * it was before this slice. For a self-join club that was never held the
+ * approval is the go-live, so the approval flow does not ALSO write
+ * `aiWindowStartAt` (one fact, one column), and the lever to change what
+ * such a club may spend is the per-club override, `aiDailyCapUsd`.
  */
 export function aiWindowStart(
-  org: Pick<AllowanceOrg, "approvedAt" | "aiWindowStartAt" | "createdAt">,
+  org: Pick<AllowanceOrg, "approvedAt" | "liveAt" | "aiWindowStartAt" | "createdAt">,
 ): Date {
-  return org.approvedAt ?? org.aiWindowStartAt ?? org.createdAt;
+  return freePeriodStart(org) ?? org.aiWindowStartAt ?? org.createdAt;
 }
 
 /**
@@ -274,6 +288,7 @@ const ALLOWANCE_SELECT = {
   whatsappGroupId: true,
   ...SETUP_STAGE_SELECT,
   approvedAt: true,
+  liveAt: true,
   billingStatus: true,
 } as const;
 

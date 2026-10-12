@@ -25,6 +25,8 @@ type Club = {
   billingStatus: string;
   billingPlan: string;
   whatsappGroupId: string;
+  /** Absent: a club that was never held (every club before the hold). */
+  setupStage?: string;
 };
 type Billing = {
   trialEndsAt: Date;
@@ -55,6 +57,8 @@ const h = vi.hoisted(() => {
         return {
           id: c.id,
           approvedAt: c.approvedAt,
+          approvalStatus: c.approvalStatus,
+          setupStage: c.setupStage,
           billingStatus: c.billingStatus,
           clubBilling: state.billing
             ? {
@@ -218,6 +222,49 @@ describe("removed: never billed, or the flag off, is LOGGED ONLY", () => {
       expect(stripeCalls()).toEqual([]);
     });
   }
+
+  describe("a club that is approved but still SETTING UP has never gone live: no billing state is made or paused", () => {
+    it("no billing row (every setting-up club): logged as setting up, nothing written, the writer never called, nothing to Stripe", async () => {
+      seed({ billingStatus: "exempt", setupStage: "setting-up" }, null);
+      expect(await handleBillingRemoval(GROUP, ON)).toEqual({ kind: "logged", orgId: "org_b5", why: "setting-up" });
+      expect(h.state.writes).toBe(0);
+      expect(h.state.events).toEqual([]);
+      expect(h.state.billing).toBeNull();
+      expect(h.state.club!.billingStatus).toBe("exempt");
+      expect(stripeCalls()).toEqual([]);
+    });
+
+    for (const status of ["trial", "grace", "subscribed", "past_due"]) {
+      it(`even with a billing row it should not have (${status}): never paused, the writer never called`, async () => {
+        seed({ billingStatus: status, setupStage: "setting-up" }, withCard());
+        expect(await handleBillingRemoval(GROUP, ON)).toEqual({ kind: "logged", orgId: "org_b5", why: "setting-up" });
+        expect(h.state.club!.billingStatus).toBe(status);
+        expect(h.state.billing!.pausedReason).toBeNull();
+        expect(h.state.events).toEqual([]);
+        expect(stripeCalls()).toEqual([]);
+      });
+    }
+
+    it("the same with the flag off, and the Pi's answer word", async () => {
+      seed({ billingStatus: "exempt", setupStage: "setting-up" }, null);
+      const r = await handleBillingRemoval(GROUP, { flagOn: false, now: IN_TRIAL });
+      expect(r).toEqual({ kind: "logged", orgId: "org_b5", why: "setting-up" });
+      expect(removalAnswer(r as never)).toBe("setting-up");
+      expect(h.state.writes).toBe(0);
+    });
+
+    it("added back while still setting up: nothing to resume, nothing written", async () => {
+      seed({ billingStatus: "exempt", setupStage: "setting-up" }, null);
+      expect(await handleBillingReAdd(GROUP, ON)).toEqual({ kind: "not-removed" });
+      expect(h.state.writes).toBe(0);
+      expect(h.state.events).toEqual([]);
+    });
+
+    it("once it has gone live (stage live) a removal pauses it, as for any billed club", async () => {
+      seed({ billingStatus: "trial", setupStage: "live" }, {});
+      expect((await handleBillingRemoval(GROUP, ON)).kind).toBe("paused");
+    });
+  });
 
   it("a group no approved club owns (pending, suspended, unsolicited): no-club, so the route keeps today's path", async () => {
     seed({ approvalStatus: "pending", approvedAt: null, billingStatus: "exempt" }, null);

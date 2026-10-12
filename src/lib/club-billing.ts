@@ -34,6 +34,7 @@ import {
   billingAccessRole,
   billingContact,
   clubFeeTip,
+  freePeriodStart,
   isBillingEnabled,
   isBillingPaused,
   nextBillingState,
@@ -48,6 +49,7 @@ import {
   type ClubFeeTip,
   type StartTrialRefusal,
 } from "./club-billing-rules";
+import { SETUP_STAGE_SELECT, isClubSettingUp } from "./club-setup-rules";
 import { bannerText, billingCardView, type BillingCardView } from "./club-billing-view";
 import { BILLED_EVENT_TYPE, PAUSED_EVENT_TYPE, RESUMED_EVENT_TYPE, UNBILLED_EVENT_TYPE } from "./club-billing-cycle-rules";
 import { loadMonthsSummary, loadUnpaidSummary } from "./club-billing-month-summary";
@@ -134,10 +136,14 @@ function billingPatch(
  *      with its stale jobs dropped and its stale matches quieted. If any
  *      of it fails, nothing is committed and the event can be retried.
  *
- * The free period starts at `approvedAt` for an approval (so the AI window
- * and the trial line up), at `now` for "Start free period". `trialEndsAt`
- * is written ONLY when the ClubBilling row is created, so it is never
- * reset, re-approval included.
+ * The free period starts at the club's first day (`freePeriodStart`, so
+ * the AI window and the trial line up): `liveAt` for a club that was
+ * approved and held and has now gone live ("went-live", from the go-live
+ * transaction: `startFreePeriodAtGoLiveTx`), `approvedAt` for a club that
+ * was never held ("approved"); and at `now` for "Start free period".
+ * `trialEndsAt` is written ONLY when the ClubBilling row is created, so it
+ * is never reset, re-approval and a repeated go-live included. A club that
+ * is still setting up never gets one.
  */
 export async function setBillingState(
   orgId: string,
@@ -161,10 +167,17 @@ async function applyBillingEventTx(
   now: Date,
   opts: { noticeOnResume?: BillingNoticeKind } = {},
 ): Promise<SetBillingStateResult> {
-  const orgs = await tx.$queryRaw<Array<{ billingStatus: string; billingPlan: string; approvedAt: Date | null }>>`
-    SELECT "billingStatus", "billingPlan", "approvedAt" FROM "Organisation" WHERE "id" = ${orgId} FOR UPDATE`;
+  const orgs = await tx.$queryRaw<Array<{ billingStatus: string; billingPlan: string; approvedAt: Date | null; liveAt?: Date | null }>>`
+    SELECT "billingStatus", "billingPlan", "approvedAt", "liveAt" FROM "Organisation" WHERE "id" = ${orgId} FOR UPDATE`;
   const org = orgs[0];
   if (!org) return { ok: false, reason: "not-found" };
+  // Is the club approved but STILL SETTING UP (club-setup.ts)? Read under
+  // the lock just taken, and only for the events it changes: a setting-up
+  // club never starts a free period and is never paused for a removal.
+  const stage = SETTING_UP_MATTERS.has(event.type)
+    ? await tx.organisation.findUnique({ where: { id: orgId }, select: SETUP_STAGE_SELECT })
+    : null;
+  const settingUp = !!stage && isClubSettingUp(stage);
   const billings = await tx.$queryRaw<
     Array<{
       trialEndsAt: Date;
@@ -180,6 +193,8 @@ async function applyBillingEventTx(
   const t = nextBillingState(
     {
       approvedAt: org.approvedAt,
+      liveAt: org.liveAt ?? null,
+      settingUp,
       billingStatus: from,
       billingPlan: org.billingPlan,
       // A card on file is the Customer's saved default (`stripePaymentMethodId`);
@@ -232,9 +247,13 @@ async function applyBillingEventTx(
   }
 
   if (t.createsBilling) {
-    // `approvedAt` is never null here: nextBillingState refuses a club
-    // that predates self-join.
-    const start = event.type === "approved" ? (org.approvedAt ?? now) : now;
+    // THE START. "Start free period" starts now. An approval and a go-live
+    // start at the club's first day (`freePeriodStart`): the moment it
+    // went live when it was held (`liveAt`, a stored fact, so a late or
+    // repeated event cannot move it), else its approval. `approvedAt` is
+    // never null here: nextBillingState refuses a club that predates
+    // self-join.
+    const start = event.type === "start-trial" ? now : (freePeriodStart(org) ?? now);
     await tx.clubBilling.create({ data: { orgId, ...trialWindow(start) } });
   } else {
     const patch = billingPatch(from, t, now, billings[0]?.pausedReason ?? null);
@@ -255,6 +274,49 @@ async function applyBillingEventTx(
 
   console.log(`[club-billing] ${orgId}: ${from} -> ${t.to} on ${event.type}`);
   return { ok: true, from: from as BillingStatus, to: t.to, resumed: t.resumes };
+}
+
+/** The events a club that is still setting up is refused (see
+ *  `nextBillingState`): the three that start a free period, and a removal. */
+const SETTING_UP_MATTERS: ReadonlySet<string> = new Set(["approved", "start-trial", "went-live", "removed-from-group"]);
+
+/**
+ * THE GO-LIVE TRANSACTION'S BILLING STEP (owner decision 2, 2026-10-12):
+ * the free period of a club that was approved and held starts when it goes
+ * LIVE, not when it was approved. Called by `goLiveClub` (club-setup.ts)
+ * on ITS transaction client, straight after the compare-and-set that made
+ * the club live and stamped `liveAt`, so:
+ *
+ *   - going live and starting the free period commit TOGETHER or not at
+ *     all. There is no "live, free period not started" state to recover
+ *     from, and no "free period running, club still silent" state either;
+ *   - the club's row is already locked by that write, so the lock taken
+ *     here is a no-op and nothing can interleave;
+ *   - the window is `trialWindow(liveAt)`, through the state machine's
+ *     "went-live" event. No row is written by hand.
+ *
+ * ONCE. A club that already has a ClubBilling row is no change (an
+ * approval that got there first, a repeated call), and so is the flag off
+ * or plan Free: `started` is false and the club still goes live. Such a
+ * club is "exempt", which bills nobody; with billing switched on later the
+ * platform owner's "Start free period" starts it, as for any club approved
+ * while billing was off.
+ *
+ * THROWS, so that the go-live rolls back, when the club is not there or
+ * the status write lost its compare-and-set (neither can happen under the
+ * caller's lock), and on any database error.
+ */
+export async function startFreePeriodAtGoLiveTx(
+  tx: Tx,
+  orgId: string,
+  now: Date,
+): Promise<{ started: boolean }> {
+  const r = await applyBillingEventTx(tx, orgId, { type: "went-live" }, now);
+  if (r.ok) return { started: true };
+  if (r.reason !== "no-change") {
+    throw new Error(`[club-billing] ${orgId}: the free period could not start at go-live (${r.reason})`);
+  }
+  return { started: false };
 }
 
 /** The billing contact's user id (4.5), read on a transaction client. */
@@ -526,13 +588,15 @@ export type StartTrialResult =
 
 /**
  * "Start free period" on /admin/clubs (8.3, decision 2), for a self-join
- * club approved before billing was switched on: the free period starts
- * NOW, once per club, through the one writer.
+ * club approved before billing was switched on (or one that went live out
+ * of the setup hold while it was off): the free period starts NOW, once
+ * per club, through the one writer. Refused while a club is still setting
+ * up: its free period starts by itself when it goes live.
  */
 export async function startTrial(orgId: string, now: Date = new Date()): Promise<StartTrialResult> {
   const org = await db.organisation.findUnique({
     where: { id: orgId },
-    select: { billingStatus: true, billingPlan: true, approvedAt: true, clubBilling: { select: { trialEndsAt: true } } },
+    select: { billingStatus: true, billingPlan: true, approvedAt: true, ...SETUP_STAGE_SELECT, clubBilling: { select: { trialEndsAt: true } } },
   });
   if (!org) return { ok: false, reason: "not-found" };
   const refusal = startTrialRefusal({
@@ -540,6 +604,8 @@ export async function startTrial(orgId: string, now: Date = new Date()): Promise
     billingStatus: org.billingStatus,
     billingPlan: org.billingPlan,
     hadFreeMonth: org.clubBilling !== null,
+    // Still silent in its group: its free period starts at go-live.
+    settingUp: isClubSettingUp(org),
   });
   if (refusal) return { ok: false, reason: refusal };
   const r = await setBillingState(orgId, { type: "start-trial" }, now);
@@ -632,6 +698,9 @@ export interface ClubBillingSnapshot {
   } | null;
   cardHolderName: string | null;
   members: Array<{ userId: string; role: string; leftAt: Date | null; name: string | null }>;
+  /** Approved but still setting up (club-setup.ts): not billed, and its
+   *  free period has not started. It starts when the club goes live. */
+  settingUp: boolean;
 }
 
 /** The club's billing as the web shows it, or null for no such club. */
@@ -646,6 +715,7 @@ export async function loadClubBillingSnapshot(orgId: string): Promise<ClubBillin
       billingPlan: true,
       billingPricePence: true,
       paymentHolderId: true,
+      ...SETUP_STAGE_SELECT,
       memberships: {
         orderBy: { createdAt: "asc" },
         select: { userId: true, role: true, leftAt: true, user: { select: { phoneNumber: true, name: true } } },
@@ -692,6 +762,7 @@ export async function loadClubBillingSnapshot(orgId: string): Promise<ClubBillin
     billing: org.clubBilling ?? null,
     cardHolderName,
     members: members.map(({ userId, role, leftAt, name }) => ({ userId, role, leftAt, name })),
+    settingUp: isClubSettingUp(org),
   };
 }
 

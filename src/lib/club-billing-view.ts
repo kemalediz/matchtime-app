@@ -360,6 +360,9 @@ export interface BillingViewClub {
     pausedReason?: string | null;
   } | null;
   cardHolderName: string | null;
+  /** The club is approved but still setting up (club-setup.ts): it is not
+   *  billed and its free period has not started. Absent: not setting up. */
+  settingUp?: boolean;
 }
 
 export interface BillingPageView {
@@ -482,7 +485,10 @@ export function billingPageView(
   if (role === "exempt-owner") {
     return {
       ...base,
-      exempt: s.billing_exempt({ club: c.club }),
+      // A club still setting up is "exempt" only until it goes live: its
+      // free period starts then. "No club fee" would be wrong, unless it
+      // is on the Free plan, which never starts one.
+      exempt: c.settingUp && c.plan !== "free" ? s.billing_exempt_setting_up({ club: c.club }) : s.billing_exempt({ club: c.club }),
       lines: [],
       who: null,
       holderNote: null,

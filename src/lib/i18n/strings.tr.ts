@@ -2120,6 +2120,8 @@ export const tr: Strings = {
   billing_btn_stop_confirm_yes: "Evet, ödemeyi durdur",
   billing_btn_stop_confirm_no: "Geri dön",
   billing_exempt: (p) => `${p.club} için kulüp ücreti yok. MatchTime bu kulüp için ücretsiz.`,
+  billing_exempt_setting_up: (p) =>
+    `${p.club} kulübünün kurulumu sürüyor, bu yüzden ücretsiz dönemi henüz başlamadı. ${firstMonthsFree("tr")} ve süre, MatchTime grubunuzda yayına geçtiği gün başlar. O güne kadar hiçbir ücret alınmaz.`,
   billing_open: "Ödeme sayfasını aç",
   billing_choose_collector: "Para toplayan kişiyi seçin",
   billing_banner_grace: (p) =>

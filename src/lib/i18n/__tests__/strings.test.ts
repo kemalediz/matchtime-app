@@ -704,6 +704,7 @@ const SAMPLES: SampleArgs = {
   billing_btn_stop_confirm_yes: null,
   billing_btn_stop_confirm_no: null,
   billing_exempt: { club: "Sutton FC" },
+  billing_exempt_setting_up: { club: "Harbour FC" },
   billing_open: null,
   billing_choose_collector: null,
   billing_banner_grace: { date: "Sat 7 Nov" },

@@ -16,6 +16,7 @@
  */
 import { formatLondon, londonDateTimeToUtc } from "./london-time";
 import { SLOT_TIME_TOLERANCE_MS, isSameSlot } from "./match-slot";
+import { hasGoneLive, isClubSettingUp, type SetupStageColumns } from "./club-setup-rules";
 
 /** Stripe's minimum card charge in GBP: below it nothing is charged (2A.4). */
 export const STRIPE_MIN_CHARGE_PENCE = 30;
@@ -195,6 +196,28 @@ export function notChargedSpansFrom(events: Array<{ type: string; at: Date }>): 
     ...pairedSpans(events, SUSPENDED_EVENT_TYPE, UNSUSPENDED_EVENT_TYPE),
     ...pairedSpans(events, BILLING_OFF_EVENT_TYPE, BILLING_ON_EVENT_TYPE),
   ].sort((a, b) => a.from.getTime() - b.from.getTime());
+}
+
+/**
+ * The span before a held club went live (owner decision 2, 2026-10-12): a
+ * club that is approved but setting up is silent in its group, and its
+ * free period has not started. The crons still generate and complete its
+ * fixtures, and going live force-completes the ones that kicked off
+ * earlier, so there ARE completed matches from that time. None of them is
+ * ever a game played:
+ *
+ *   - went through the hold and is live: everything before `liveAt`;
+ *   - still setting up: everything so far (open-ended);
+ *   - never held (every club that exists before the hold): no span.
+ *
+ * Belt and braces. The first billing month starts where the free period
+ * ends, two months AFTER go-live, so no month reaches back that far in the
+ * first place; this holds even if a billing month ever did.
+ */
+export function beforeGoLiveSpan(org: SetupStageColumns & { liveAt?: Date | null | undefined }): PauseSpan | null {
+  if (hasGoneLive(org)) return { from: new Date(0), to: org.liveAt as Date };
+  if (isClubSettingUp(org)) return { from: new Date(0), to: null };
+  return null;
 }
 
 function inPause(at: Date, spans: PauseSpan[]): boolean {

@@ -22,7 +22,8 @@
  * in the past) is shown on its real months (index 1 = the first month after
  * the free period). Every other club has no billing months yet, so it is shown
  * on WOULD-BE months on the day its months would run from: the London day of
- * `trialEndsAt` (or of the free period's end counted from approval,
+ * `trialEndsAt` (or of the free period's end counted from the club's first day,
+ * `freePeriodStart`: the day a held club went live, else its approval;
  * `freePeriodEnd`: two calendar months), or the 1st (plain calendar months)
  * for a club that predates self-join, such as Sutton FC, which is exempt and
  * never billed. Prices: the club's plan (Standard GBP 9.99 or its Custom
@@ -36,7 +37,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client.ts";
 import { countClubMonth, monthBounds, monthFee, monthIndexAt, type CycleGame } from "../src/lib/club-billing-cycle-rules.ts";
 import { loadClubMonthInput } from "../src/lib/club-billing-month-loader.ts";
-import { STANDARD_PRICE_PENCE, freePeriodEnd, planPricePence } from "../src/lib/club-billing-rules.ts";
+import { STANDARD_PRICE_PENCE, freePeriodEnd, freePeriodStart, planPricePence } from "../src/lib/club-billing-rules.ts";
 import { formatLondon, londonDateTimeToUtc } from "../src/lib/london-time.ts";
 
 interface Args {
@@ -112,6 +113,7 @@ async function main() {
         name: true,
         slug: true,
         approvedAt: true,
+        liveAt: true,
         approvalStatus: true,
         dormantAt: true,
         featureAttendance: true,
@@ -131,7 +133,7 @@ async function main() {
     let shown = 0;
     for (const org of orgs) {
       const trialEndsAt =
-        org.clubBilling?.trialEndsAt ?? (org.approvedAt ? freePeriodEnd(org.approvedAt) : null);
+        org.clubBilling?.trialEndsAt ?? (freePeriodStart(org) ? freePeriodEnd(freePeriodStart(org)!) : null);
       const real = !!org.clubBilling && org.clubBilling.trialEndsAt.getTime() <= now.getTime();
       const anchorDay = trialEndsAt ? Number(formatLondon(trialEndsAt, "d")) : 1;
       const anchor = real ? org.clubBilling!.trialEndsAt : syntheticAnchor(anchorDay, now);

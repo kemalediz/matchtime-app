@@ -35,10 +35,11 @@ export const PAUSED_REASONS = ["no-card", "payment-failed", "cancelled", "remove
 export type PausedReason = (typeof PAUSED_REASONS)[number];
 
 /**
- * A new club's free period, in London calendar months, from approval
- * (Kemal, 2026-10-12: two months; it was 30 days). THE one definition of
- * the length: `freePeriodEnd` below turns it into the end date, and every
- * sentence that states it is built from it in i18n/free-period.ts.
+ * A new club's free period, in London calendar months, from the day it
+ * goes live (`freePeriodStart` below) (Kemal, 2026-10-12: two months; it
+ * was 30 days). THE one definition of the length: `freePeriodEnd` below
+ * turns it into the end date, and every sentence that states it is built
+ * from it in i18n/free-period.ts.
  */
 export const FREE_PERIOD_MONTHS = 2;
 /** Grace after the free period (no card) or after a failed payment. */
@@ -135,6 +136,29 @@ export function freePeriodEnd(start: Date, months: number = FREE_PERIOD_MONTHS):
   return formatLondon(end, "yyyy-MM-dd HH:mm:ss.SSS") < wall ? new Date(end.getTime() + HOUR_MS) : end;
 }
 
+/**
+ * A CLUB'S FIRST DAY: when its free period starts, wherever a start is
+ * worked out rather than stored (owner decision 2, 2026-10-12).
+ *
+ *   - a club that went through "approved but setting up" (club-setup.ts):
+ *     the moment it went LIVE (`liveAt`). It was silent in its group until
+ *     then, and must not use up its free period while silent;
+ *   - a club that never went through the hold (`liveAt` NULL: every club
+ *     approved before the hold, and every approval with the hold off): its
+ *     approval, which switched MatchTime on in its group in the same
+ *     write, so approval and going live are one moment. Exactly as before;
+ *   - a club that predates self-join (both NULL: Sutton FC): none.
+ *
+ * THE one definition. Its readers: the billing free period (the one
+ * writer, club-billing.ts), the new club's AI allowance (`aiWindowStart`
+ * in ai-budget.ts) and the new club's member DM cap (`newClubDmCap` in
+ * club-decision-rules.ts). Everything else reads the STORED end,
+ * `ClubBilling.trialEndsAt`.
+ */
+export function freePeriodStart(org: { approvedAt: Date | null | undefined; liveAt?: Date | null | undefined }): Date | null {
+  return org.liveAt ?? org.approvedAt ?? null;
+}
+
 export function trialWindow(start: Date): { trialStartedAt: Date; trialEndsAt: Date } {
   return { trialStartedAt: start, trialEndsAt: freePeriodEnd(start) };
 }
@@ -150,6 +174,20 @@ export interface BillingClub {
   /** When the club was approved through self-join. NULL for Sutton FC and
    *  every club that predates self-join: such a club is never billed. */
   approvedAt: Date | null;
+  /**
+   * When the club went live after being held (`Organisation.liveAt`). NULL
+   * or absent for a club that never went through the hold. Read only by
+   * "went-live".
+   */
+  liveAt?: Date | null;
+  /**
+   * The club is approved but STILL SETTING UP (club-setup.ts): silent in
+   * its group, its organiser has not said GO. Such a club never starts a
+   * free period and is never paused for a removal: its free period starts
+   * when it goes live. Absent means "not setting up", which is every club
+   * that exists before the hold.
+   */
+  settingUp?: boolean;
   billingStatus: string;
   billingPlan: string;
   /** The ClubBilling row, or null when the club never had a free period. */
@@ -174,6 +212,13 @@ export type BillingEventInput =
   | { type: "approved" }
   /** The platform owner's "Start free period" on /admin/clubs (slice B2). */
   | { type: "start-trial" }
+  /**
+   * A club that was approved and held has just gone live (`goLiveClub` in
+   * club-setup.ts, inside the go-live transaction): its free period starts
+   * now, at `liveAt`. The same lines as "approved": only an exempt club
+   * with no earlier free period, a plan that is not Free and the flag on.
+   */
+  | { type: "went-live" }
   /**
    * A card was saved (Checkout in setup mode completed; slice P2), or the
    * payer pressed "Keep paying" on a club paused after Stop paying. Nothing
@@ -264,9 +309,17 @@ function to(
  * or its column says; a CHECK constraint holds the same line in the
  * database (prisma/sql/org-billing-check.sql).
  *
- * An "exempt" self-join club moves ONLY on "approved" or "start-trial",
- * and only with the flag on, a plan that is not Free and no earlier free
- * period. Every other event leaves it exempt, whatever Stripe or a cron says.
+ * An "exempt" self-join club moves ONLY on "approved", "went-live" or
+ * "start-trial", and only with the flag on, a plan that is not Free and no
+ * earlier free period. Every other event leaves it exempt, whatever Stripe
+ * or a cron says.
+ *
+ * ONE FREE PERIOD PER CLUB, STARTED ONCE. The three starting events share
+ * one test (a club that already has a ClubBilling row is refused), so
+ * whichever of approval and go-live gets there first starts it and the
+ * other is no change. A club that is still SETTING UP is refused by all
+ * three: it starts at go-live, when "went-live" finds it no longer
+ * setting up.
  */
 export function nextBillingState(
   club: BillingClub,
@@ -282,9 +335,15 @@ export function nextBillingState(
   switch (event.type) {
     case "approved":
     case "start-trial":
+    case "went-live":
       if (from !== "exempt" || b !== null) return null;
       if (club.billingPlan === "free") return null;
       if (!isBillingEnabled(env)) return null;
+      // Silent in its group until its organiser says GO: no free period
+      // runs yet (owner decision 2).
+      if (club.settingUp) return null;
+      // Only a club that has in fact gone live out of the hold.
+      if (event.type === "went-live" && !club.liveAt) return null;
       return to("trial", from, { createsBilling: true });
 
     case "trial-ended":
@@ -341,6 +400,9 @@ export function nextBillingState(
 
     case "removed-from-group":
       if (!LIVE_BILLED.has(from)) return null;
+      // A club that has never gone live has no billing to pause. (It has
+      // no billing row either; this holds the line if one ever did.)
+      if (club.settingUp) return null;
       return to("paused", from, { pausedReason: "removed" });
 
     case "re-added":
@@ -633,17 +695,18 @@ export function billingAccessRole(input: BillingAccessInput): BillingAccessRole 
 
 // ── "Start free period" (slice B2, 8.3; decision 2) ──────────────────────
 
-export type StartTrialRefusal = "not-self-join" | "flag-off" | "not-exempt" | "had-free-month" | "plan-free";
+export type StartTrialRefusal = "not-self-join" | "flag-off" | "not-exempt" | "had-free-month" | "plan-free" | "setting-up";
 
 /**
  * Why "Start free period" cannot start one, or null when it can. The same
  * line `nextBillingState` holds for "start-trial", spelled out so the
  * platform owner's page can say which. The free period happens once per
  * club (`trialEndsAt` is never reset), so a club that had one, or is
- * already billed, is refused.
+ * already billed, is refused. So is a club still setting up: its free
+ * period starts by itself when it goes live.
  */
 export function startTrialRefusal(
-  club: { approvedAt: Date | null; billingStatus: string; billingPlan: string; hadFreeMonth: boolean },
+  club: { approvedAt: Date | null; billingStatus: string; billingPlan: string; hadFreeMonth: boolean; settingUp?: boolean },
   env: Env = process.env,
 ): StartTrialRefusal | null {
   if (club.approvedAt === null) return "not-self-join";
@@ -651,6 +714,7 @@ export function startTrialRefusal(
   if (club.billingStatus !== "exempt") return "not-exempt";
   if (club.hadFreeMonth) return "had-free-month";
   if (club.billingPlan === "free") return "plan-free";
+  if (club.settingUp) return "setting-up";
   return null;
 }
 

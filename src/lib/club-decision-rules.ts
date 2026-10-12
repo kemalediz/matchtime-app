@@ -9,6 +9,7 @@
  * and only from a number in SELF_JOIN_APPROVER_PHONES, read off the DM's
  * envelope (never a directory lookup).
  */
+import { freePeriodStart } from "./club-billing-rules";
 import { formatLondon } from "./london-time";
 import { e164Digits as platformPhoneDigits } from "./phone";
 
@@ -152,12 +153,14 @@ export const NEW_CLUB_DM_WINDOW_DAYS = 28;
 /**
  * Today's DM allowance for a club's members, or null for no cap. Only a
  * club approved THROUGH self-join (`approvedAt` set), in its first 28 days
- * from approval. Every club that existed before self-join (Sutton FC) has
- * a NULL `approvedAt` and is never capped.
+ * from its first day (`freePeriodStart`: the day it went live out of the
+ * setup hold, else its approval, which for a club that was never held is
+ * the same moment). Every club that existed before self-join (Sutton FC)
+ * has a NULL `approvedAt` and is never capped.
  */
-export function newClubDmCap(org: { approvedAt: Date | null }, now: Date): number | null {
+export function newClubDmCap(org: { approvedAt: Date | null; liveAt?: Date | null }, now: Date): number | null {
   if (!org.approvedAt) return null;
-  const age = now.getTime() - org.approvedAt.getTime();
+  const age = now.getTime() - (freePeriodStart(org) ?? org.approvedAt).getTime();
   return age < NEW_CLUB_DM_WINDOW_DAYS * 24 * 60 * 60 * 1000 ? NEW_CLUB_MEMBER_DMS_PER_DAY : null;
 }
 
