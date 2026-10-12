@@ -28,6 +28,7 @@ import { setupHoldEnabledForRequest } from "@/lib/setup-hold-flag";
 import { loadLatestConnect, matchtimeWaNumber } from "@/lib/club-connect";
 import { connectPrefill, deriveConnectCard, formatPhoneForDisplay, waMeLink } from "@/lib/club-connect-rules";
 import { SETUP_STAGE_SELECT, isClubSettingUp } from "@/lib/club-setup-rules";
+import { loadClubSetupView } from "@/lib/club-setup";
 import Link from "next/link";
 import { ConnectButton } from "./connect-button";
 import { CardRefresher } from "./card-refresher";
@@ -49,8 +50,19 @@ export async function ClubConnectCard({ orgId, userId }: { orgId: string; userId
     return null;
   }
 
+  // Removed from its group before going live (the same test the Go live
+  // banner and `goLiveClub` use): the card must not say MatchTime is in
+  // the group. Read only for a club that is setting up; a failure here
+  // falls back to the plain setting-up card, never to a broken page.
+  const removedFromGroup = settingUp
+    ? await loadClubSetupView(orgId).then(
+        (v) => !!v?.removedFromGroup,
+        () => false,
+      )
+    : false;
+
   const card = deriveConnectCard({
-    org: { ...org, settingUp },
+    org: { ...org, settingUp, removedFromGroup },
     latest: await loadLatestConnect(orgId),
     now: new Date(),
   });
@@ -71,7 +83,9 @@ export async function ClubConnectCard({ orgId, userId }: { orgId: string; userId
       : card.kind === "rejected"
         ? "border-slate-200 bg-slate-50"
         : card.kind === "setting_up"
-          ? "border-emerald-300 bg-emerald-50"
+          ? card.removed
+            ? "border-amber-300 bg-amber-50"
+            : "border-emerald-300 bg-emerald-50"
           : "border-blue-200 bg-blue-50";
 
   const button = (label: string) =>
@@ -85,11 +99,12 @@ export async function ClubConnectCard({ orgId, userId }: { orgId: string; userId
     <section
       data-testid="club-connect-card"
       data-state={card.kind}
+      data-removed={card.kind === "setting_up" && card.removed ? "true" : undefined}
       lang={org.language}
       className={`rounded-xl border p-5 shadow-sm space-y-3 ${tone}`}
     >
       <div className="flex items-center gap-1">
-        <h2 className="font-semibold text-slate-800">{card.kind === "setting_up" ? s.sj_live_title : s.sj_card_title}</h2>
+        <h2 className="font-semibold text-slate-800">{card.kind === "setting_up" ? (card.removed ? s.sj_card_removed_title : s.sj_live_title) : s.sj_card_title}</h2>
         {card.kind !== "setting_up" && <SectionInfo k="dash_connect" lang={org.language} />}
       </div>
 
@@ -169,13 +184,15 @@ export async function ClubConnectCard({ orgId, userId }: { orgId: string; userId
 
       {card.kind === "setting_up" && (
         <>
-          <p className="text-sm text-slate-800">{s.sj_card_setting_up({ group: card.group })}</p>
+          <p data-testid="club-connect-setting-up-text" className="text-sm text-slate-800 [overflow-wrap:anywhere]">
+            {card.removed ? s.sj_card_setting_up_removed({ group: card.group }) : s.sj_card_setting_up({ group: card.group })}
+          </p>
           <Link
             href="/admin/settings#go-live"
             data-testid="club-connect-go-live"
             className="inline-flex min-h-11 items-center justify-center rounded-lg bg-green-600 px-4 text-sm font-medium text-white hover:bg-green-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-700"
           >
-            {s.sj_card_setting_up_link}
+            {card.removed ? s.sj_live_wa_link : s.sj_card_setting_up_link}
           </Link>
         </>
       )}

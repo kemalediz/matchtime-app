@@ -247,10 +247,21 @@ describe("deriveConnectCard", () => {
   it("approved but setting up: its own card, however long ago the approval was, and never 'you're live'", () => {
     const latest = row({ status: "closed", groupSubject: "Riverside Tuesday 5s" });
     const fresh = { approvalStatus: "approved", approvedAt: new Date(NOW.getTime() - 60 * MIN), settingUp: true };
-    expect(deriveConnectCard({ org: fresh, latest, now: NOW })).toEqual({ kind: "setting_up", group: "Riverside Tuesday 5s" });
+    expect(deriveConnectCard({ org: fresh, latest, now: NOW })).toEqual({ kind: "setting_up", group: "Riverside Tuesday 5s", removed: false });
+    // Removed from its group before going live: the same card, told apart.
+    expect(deriveConnectCard({ org: { ...fresh, removedFromGroup: true }, latest, now: NOW })).toEqual({
+      kind: "setting_up",
+      group: "Riverside Tuesday 5s",
+      removed: true,
+    });
+    // `removedFromGroup` means nothing for a club that is not setting up.
+    expect(deriveConnectCard({ org: { ...fresh, settingUp: false, removedFromGroup: true }, latest, now: NOW })).toEqual({
+      kind: "approved",
+      group: "Riverside Tuesday 5s",
+    });
     const old = { ...fresh, approvedAt: new Date(NOW.getTime() - (APPROVED_CARD_DAYS + 30) * 24 * 60 * MIN) };
-    expect(deriveConnectCard({ org: old, latest, now: NOW })).toEqual({ kind: "setting_up", group: "Riverside Tuesday 5s" });
-    expect(deriveConnectCard({ org: fresh, latest: null, now: NOW })).toEqual({ kind: "setting_up", group: null });
+    expect(deriveConnectCard({ org: old, latest, now: NOW })).toEqual({ kind: "setting_up", group: "Riverside Tuesday 5s", removed: false });
+    expect(deriveConnectCard({ org: fresh, latest: null, now: NOW })).toEqual({ kind: "setting_up", group: null, removed: false });
     // Not setting up (the caller's predicate said no): nothing changes.
     expect(deriveConnectCard({ org: { ...fresh, settingUp: false }, latest, now: NOW })).toEqual({
       kind: "approved",

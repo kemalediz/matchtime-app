@@ -103,7 +103,11 @@ export default function SettingsPage() {
       .then((r) => (r.ok ? r.json() : null))
       .then(async (data) => {
         setOrg(data);
-        setGoLiveSetup(data?.setup?.settingUp ? data.setup : null);
+        // Once shown, the banner stays for this visit: a second load of
+        // the settings (React runs this effect twice in development) that
+        // lands after the club has gone live must not take the banner, and
+        // the outcome it is about to show, off the page.
+        setGoLiveSetup((prev) => prev ?? (data?.setup?.settingUp ? data.setup : null));
         setClubName(data?.name ?? "");
         setTeamRed(data?.teamLabels?.[0] ?? "");
         setTeamYellow(data?.teamLabels?.[1] ?? "");
@@ -833,7 +837,10 @@ export default function SettingsPage() {
         <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
           <MessageCircle className="w-4 h-4 text-slate-500" />
           <h2 className="font-semibold text-slate-800">WhatsApp bot</h2>
-          <SectionInfo k={org.setup?.settingUp ? "st_whatsapp_setup" : "st_whatsapp"} lang={org.language} />
+          <SectionInfo
+            k={org.setup?.settingUp ? (org.setup.removedFromGroup ? "st_whatsapp_removed" : "st_whatsapp_setup") : "st_whatsapp"}
+            lang={org.language}
+          />
         </div>
         <div className="p-6 space-y-4">
           {/* A club that is setting up is not "Disabled": it is approved
@@ -841,9 +848,14 @@ export default function SettingsPage() {
           {org.setup?.settingUp ? (
             <span
               data-testid="wa-setting-up"
-              className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800"
+              data-removed={org.setup.removedFromGroup ? "true" : undefined}
+              className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
+                org.setup.removedFromGroup ? "bg-amber-100 text-amber-900" : "bg-emerald-100 text-emerald-800"
+              }`}
             >
-              {t(org.language).sj_live_wa_badge}
+              {/* Removed from the group while setting up: it is not "in
+                  your group, waiting", and the page must not say so. */}
+              {org.setup.removedFromGroup ? t(org.language).sj_live_wa_badge_removed : t(org.language).sj_live_wa_badge}
             </span>
           ) : (
           <span
@@ -871,7 +883,7 @@ export default function SettingsPage() {
           )}
           {org.setup?.settingUp ? (
             <p data-testid="wa-setting-up-body" className="text-sm text-slate-600">
-              {t(org.language).sj_live_wa_body}{" "}
+              {org.setup.removedFromGroup ? t(org.language).sj_live_wa_body_removed : t(org.language).sj_live_wa_body}{" "}
               <a href="#go-live" className="font-medium text-emerald-800 underline">
                 {t(org.language).sj_live_wa_link}
               </a>

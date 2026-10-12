@@ -1656,8 +1656,8 @@ export const tr: Strings = {
   sj_card_pending:
     "3. adım: kulübünüzü kontrol ediyoruz, genellikle bir gün içinde. Kulübünüz onaylanana kadar MatchTime grupta sessiz kalır, yayına geçince size WhatsApp'tan yazar.",
   sj_card_pending_other: (p) =>
-    `MatchTime "${p.group}" grubuna başka biri tarafından eklendi. Açmadan önce kontrol edeceğiz.`,
-  sj_card_approved: (p) => `Aktifsiniz. MatchTime "${p.group}" grubunda herkese merhaba dedi.`,
+    `MatchTime "${p.group}" grubuna başka biri tarafından eklendi. MatchTime orada bir şey yapmadan önce kontrol edeceğiz.`,
+  sj_card_approved: (p) => `Yayındasınız. MatchTime "${p.group}" grubunda herkese merhaba dedi.`,
   sj_card_rejected: "Bu grubu şu an alamıyoruz.",
   sj_card_expired: "Bu kodun süresi doldu. Yeni bir kod için düğmeye tekrar dokunun.",
   sj_card_code_cap: "Bugünkü kodlarınızı kullandınız. Lütfen yarın tekrar deneyin.",
@@ -1806,9 +1806,9 @@ export const tr: Strings = {
   sj_live_preview_loading: `Mesaj yükleniyor...`,
   sj_live_preview_failed: `Mesaj yüklenemedi. Tekrar denemek için sayfayı yenileyin.`,
   sj_live_done_title: `Yayındasınız.`,
-  sj_live_done: (p) => `MatchTime "${p.group}" grubunda kendini tanıttı.`,
-  sj_live_done_posted: `Gruba yazdığı mesaj`,
-  sj_live_still_reading: `MatchTime grubunuzdaki mesajları hâlâ okuyor. Birkaç dakika sonra tekrar deneyin.`,
+  sj_live_done: (p) => `MatchTime şimdi "${p.group}" grubunda kendini tanıtıyor. Mesajın görünmesi birkaç dakika sürebilir.`,
+  sj_live_done_posted: `Gruba yazmakta olduğu mesaj`,
+  sj_live_still_reading: `MatchTime grubunuzdaki mesajları hâlâ okuyor, bu biraz zaman alabilir. Bitirdiğinde kurulum mesajını kulübü bağlayan organizatöre gönderecek. Ondan sonra tekrar deneyin.`,
   sj_live_removed: (p) =>
     `MatchTime artık "${p.group}" grubunda değil. Gruba tekrar ekleyin, sonra Yayına al düğmesine basın.`,
   sj_live_paused: (p) =>
@@ -1828,6 +1828,16 @@ export const tr: Strings = {
   sj_live_wa_badge: `Yayına almanızı bekliyor`,
   sj_live_wa_body: `MatchTime onaylandı ve grubunuzda. Bu sayfanın en üstündeki Yayına al düğmesine basana kadar sessiz kalır.`,
   sj_live_wa_link: `Yayına al bölümüne git`,
+  sj_live_wa_badge_removed: `Grubunuzda değil`,
+  sj_live_wa_body_removed: `MatchTime yayına geçmeden grubunuzdan çıkarıldı, bu yüzden orada hiçbir şey başlamadı. Gruba tekrar ekleyin, sonra bu sayfanın en üstündeki Yayına al düğmesine basın.`,
+  sj_card_removed_title: `MatchTime grubunuzdan çıkarıldı`,
+  sj_card_setting_up_removed: (p) =>
+    `MatchTime yayına geçmeden ${p.group ? `"${p.group}" grubundan` : "WhatsApp grubunuzdan"} çıkarıldı. Gruba tekrar ekleyin, sonra yayına alın.`,
+  sj_live_button_label: (p) => `Yayına al: ${p.club}`,
+  sj_live_for_club: (p) => `Bu düğme ${p.club} kulübünü yayına alır.`,
+  login_link_expired: `Bu bağlantının süresi doldu. Devam etmek için WhatsApp numaranızla giriş yapın.`,
+  link_invalid: `Bu bağlantı geçerli değil.`,
+  link_go_sign_in: `Giriş sayfasına git`,
   sj_card_setting_up: (p) =>
     `MatchTime ${p.group ? `"${p.group}" grubunda` : "WhatsApp grubunuzda"} ve siz yayına alana kadar sessiz kalacak.`,
   sj_card_setting_up_link: `Ayarlarınızı kontrol edin ve yayına alın`,
@@ -1835,6 +1845,10 @@ export const tr: Strings = {
   info_st_whatsapp_setup_body:
     "MatchTime onaylandı ve WhatsApp grubunuza bağlı. Kulübün sahibi ya da bir yöneticisi bu sayfanın en üstündeki Yayına al düğmesine basana ya da WhatsApp'tan MatchTime'a BAŞLA yazana kadar grupta sessiz kalır.\n\n" +
     "Bir sorun yok: sizi bekliyor.",
+  info_st_whatsapp_removed_title: "WhatsApp botu",
+  info_st_whatsapp_removed_body:
+    "MatchTime onaylandı, ama yayına geçmeden WhatsApp grubunuzdan çıkarıldı, bu yüzden orada başlayamıyor.\n\n" +
+    "MatchTime'ı gruba tekrar ekleyin. Sonra kulübün sahibi ya da bir yöneticisi bu sayfanın en üstündeki Yayına al düğmesine basar ya da WhatsApp'tan MatchTime'a BAŞLA yazar.",
   // ════ END the go-live pages ════
 
   sj_dm_approved: (p) =>
@@ -2406,7 +2420,7 @@ export const tr: Strings = {
     "Son maçınızdan sonra kimlerin takım arkadaşlarına puan verdiği. MatchTime oynayan her oyuncuya özel bir puanlama bağlantısı gönderir; yedek listesindekiler sayılmaz. Bekleyenler henüz puan vermedi.",
   info_dash_connect_title: "MatchTime'ı bağlamak",
   info_dash_connect_body:
-    "MatchTime'ı WhatsApp grubunuza eklemenin adımları: kodu telefonunuzdan gönderin, MatchTime'ı gruba ekleyin, sonra kulübünüzü kontrol ederiz, genelde bir gün içinde. Kulübünüz onaylanana kadar MatchTime grupta sessiz kalır.",
+    "MatchTime'ı WhatsApp grubunuza eklemenin adımları: kodu telefonunuzdan gönderin, MatchTime'ı gruba ekleyin, sonra kulübünüzü kontrol ederiz, genelde bir gün içinde. Biz kontrol ederken MatchTime grupta hiçbir şey yazmaz.",
 
   info_pl_list_title: "Oyuncular",
   info_pl_list_body:

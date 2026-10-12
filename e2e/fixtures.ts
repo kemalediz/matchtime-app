@@ -52,13 +52,14 @@ export function resetDb(): void {
 /** Mint a magic-link token for a seeded user (test AUTH_SECRET). */
 export function mintToken(
   userId: string,
-  opts: { nextPath?: string; matchId?: string; purpose?: "sign-in" | "rate-match"; ttlSeconds?: number } = {},
+  opts: { nextPath?: string; matchId?: string; purpose?: "sign-in" | "rate-match"; ttlSeconds?: number; orgId?: string } = {},
 ): string {
   return signMagicLinkToken({
     userId,
     purpose: opts.purpose ?? "sign-in",
     ...(opts.matchId ? { matchId: opts.matchId } : {}),
     ...(opts.nextPath ? { nextPath: opts.nextPath } : {}),
+    ...(opts.orgId ? { orgId: opts.orgId } : {}),
     ttlSeconds: opts.ttlSeconds ?? 60 * 60,
   });
 }
