@@ -1758,6 +1758,22 @@ export const tr: Strings = {
       : `Sohbet sırasında sessiz kalırım, sadece etiketlenince yanıt veririm. Başka bir şey için beni etiketleyin: *@Match Time yardım*`,
   // ════ END settings-aware group hello ════
 
+  // ════ BEGIN going live: replies to GO (go-live slice S4, 2026-10-12) ════
+  // See the English table. The Turkish command is BAŞLA (BASLA and GO are
+  // read as well: `isGoCommand`, club-setup-rules.ts).
+  sj_go_button: `Yayına al`,
+  sj_go_done: (p) => `Tamam: "${p.group}" grubunda kendimi tanıttım.`,
+  sj_go_still_reading: `Grubunuzdaki mesajları hâlâ okuyorum. Bana birkaç dakika verin, size yazacağım.`,
+  sj_go_removed: (p) => `Artık "${p.group}" grubunda değilim. Beni tekrar ekleyin, sonra BAŞLA yazın.`,
+  sj_go_already_live: (p) => `${p.club} zaten yayında.`,
+  sj_go_many: `Kurulumu süren birden fazla kulübünüz var. Her kulübün ayarlarındaki Yayına al düğmesini kullanın.`,
+  sj_go_not_recognised: (p) =>
+    `Bu mesajı anlayamadım. ${p.club} kulübünü yayına almak için buraya *BAŞLA* yazın ya da ayarlar sayfasındaki *Yayına al* düğmesine basın:\n${p.url}`,
+  sj_go_not_recognised_many: (p) =>
+    `Bu mesajı anlayamadım. Kurulumu süren birden fazla kulübünüz var, her kulübün ayarlarındaki *Yayına al* düğmesine basın:\n` +
+    p.clubs.map((c) => `${c.club}: ${c.url}`).join("\n"),
+  // ════ END going live: replies to GO ════
+
   sj_dm_approved: (p) =>
     `Güzel haber: ${p.club} artık aktif. ${p.group ? `"${p.group}" grubunda` : "Grubunuzda"} herkese merhaba dedim.\n\n` +
     `Vaktiniz olunca ayarlamanız gereken birkaç şey:\n\n` +

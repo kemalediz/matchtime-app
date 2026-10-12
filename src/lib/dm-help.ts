@@ -25,6 +25,11 @@
  * WHERE THE REPLY GOES. To the number the DM came from. A signed-in link
  * is only minted when that number IS the account's own phone: a sender
  * resolved any other way gets public URLs, never a credential.
+ *
+ * WHICH CHANNEL. The club's own (a BotJob), except for a club that is
+ * approved but still setting up: its channel is not dispatched until its
+ * organiser says GO, so the caller asks for `deliver: "platform"` and the
+ * answer goes out on the platform channel (go-live slice S4).
  */
 import { db } from "@/lib/db";
 import { normalisePhone } from "@/lib/phone";
@@ -33,6 +38,7 @@ import { buildAdminLink } from "@/lib/admin-link";
 import { APPROVED_CLUB_WHERE } from "@/lib/club-approval-state";
 import { SETUP_STAGE_SELECT, preferLiveClubs } from "@/lib/club-setup-rules";
 import { t } from "@/lib/i18n/t";
+import { queuePlatformDm } from "@/lib/platform-jobs";
 import {
   buildHelpReply,
   helpFeaturesFrom,
@@ -100,6 +106,10 @@ export async function handleDmHelp(args: {
   text: string;
   /** The number the DM came from, in any format; "" when unknown. */
   envelopePhone: string | null | undefined;
+  /** "platform": the club is setting up and its own channel is off, so
+   *  the answer goes out on the platform channel. Default "club". Throws
+   *  `PlatformDmRefused` if that channel refuses the number. */
+  deliver?: "club" | "platform";
 }): Promise<DmHelpOutcome | null> {
   const req = readHelpRequest(args.text, { dm: true });
   if (!req) return null;
@@ -134,8 +144,12 @@ export async function handleDmHelp(args: {
   const body = buildHelpReply(req.topic, helpFeaturesFrom(features), lang, { audience, links, badgeQuery: req.badgeQuery });
   const text = clubCount > 1 ? `${t(lang).onbHelpForClub({ club: membership.org.name })}\n\n${body}` : body;
 
-  await db.botJob.create({
-    data: { orgId: membership.orgId, kind: "dm", phone: replyTo.replace(/^\+/, ""), text },
-  });
+  if (args.deliver === "platform") {
+    await queuePlatformDm({ phone: replyTo, text, purpose: "setup-reply", refId: `${membership.orgId}:help` });
+  } else {
+    await db.botJob.create({
+      data: { orgId: membership.orgId, kind: "dm", phone: replyTo.replace(/^\+/, ""), text },
+    });
+  }
   return { handled: "dm-help", topic: req.topic, orgId: membership.orgId, audience };
 }

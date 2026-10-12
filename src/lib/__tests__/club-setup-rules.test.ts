@@ -16,6 +16,15 @@ import {
   preferLiveClubs,
   settingUpClubFields,
   settingUpOnly,
+  GO_ALREADY_LIVE_WINDOW_MS,
+  STILL_READING_WINDOW_MS,
+  isGoCommand,
+  isSetupLearningFinal,
+  liveByOwner,
+  liveByUser,
+  liveByWhatsapp,
+  readingBlocksGoLive,
+  wentLiveSinceWhere,
 } from "../club-setup-rules";
 
 const live = { approvalStatus: "approved", setupStage: "live" };
@@ -134,5 +143,98 @@ describe("preferLiveClubs: a setting-up club does not exist for club selection, 
 
   it("nothing in, nothing out", () => {
     expect(preferLiveClubs([], (r: { org: typeof live }) => r.org)).toEqual([]);
+  });
+});
+
+describe("isGoCommand: the text gate of the GO handler (slice S4)", () => {
+  it.each(["GO", "go", "Go", "GO LIVE", "go live", "Go  Live", "BAŞLA", "başla", "Başla", "BASLA", "basla", " go ", "GO.", "go!", "başla!", "GO LIVE."])(
+    "%j is GO",
+    (text) => expect(isGoCommand(text)).toBe(true),
+  );
+
+  it.each([
+    "go on then",
+    "GO now",
+    "let's go",
+    "go?",
+    "go!!",
+    "go..",
+    "go, please",
+    "golive",
+    "g o",
+    "başlat",
+    "basla artik",
+    "yes",
+    "in",
+    "help",
+    "",
+    "   ",
+    "GO\nlive now please",
+    "@Match Time go",
+  ])("%j is NOT GO", (text) => expect(isGoCommand(text)).toBe(false));
+
+  it("anything that is not a string is not GO", () => {
+    expect(isGoCommand(null)).toBe(false);
+    expect(isGoCommand(undefined)).toBe(false);
+    expect(isGoCommand(42 as unknown as string)).toBe(false);
+  });
+});
+
+describe("who took a club live", () => {
+  it("a site admin is the bare user id", () => expect(liveByUser("u-hana")).toBe("u-hana"));
+  it("a WhatsApp GO is whatsapp:<digits>", () => {
+    expect(liveByWhatsapp("+44 7700 900971")).toBe("whatsapp:447700900971");
+    expect(liveByWhatsapp("447700900971")).toBe("whatsapp:447700900971");
+  });
+  it("the platform owner is owner:<id>", () => expect(liveByOwner("u-kemal")).toBe("owner:u-kemal"));
+});
+
+describe("readingBlocksGoLive: GO before the reading has finished (owner decision 4)", () => {
+  const NOW = new Date("2026-10-12T12:00:00Z");
+  const ago = (ms: number) => new Date(NOW.getTime() - ms);
+  const base = { learningEnabled: true, readingExpected: true, approvedAt: ago(10 * 60_000), now: NOW };
+
+  it("the final statuses are applied, nothing, skipped and failed", () => {
+    for (const s of ["applied", "nothing", "skipped", "failed"]) expect(isSetupLearningFinal(s)).toBe(true);
+    for (const s of ["running", "deferred", "", null, undefined]) expect(isSetupLearningFinal(s)).toBe(false);
+  });
+
+  it("the window is two hours from approval; the already-live window is ten minutes", () => {
+    expect(STILL_READING_WINDOW_MS).toBe(2 * 60 * 60 * 1000);
+    expect(GO_ALREADY_LIVE_WINDOW_MS).toBe(10 * 60 * 1000);
+  });
+
+  it.each(["running", "deferred"])("a %s reading blocks inside the window", (status) =>
+    expect(readingBlocksGoLive({ ...base, learningStatus: status })).toBe(true),
+  );
+
+  it.each(["applied", "nothing", "skipped", "failed"])("a %s reading never blocks", (status) =>
+    expect(readingBlocksGoLive({ ...base, learningStatus: status })).toBe(false),
+  );
+
+  it("no row yet blocks only when a reading is expected", () => {
+    expect(readingBlocksGoLive({ ...base, learningStatus: null })).toBe(true);
+    expect(readingBlocksGoLive({ ...base, learningStatus: null, readingExpected: false })).toBe(false);
+  });
+
+  it("nothing blocks once two hours have passed since approval", () => {
+    expect(readingBlocksGoLive({ ...base, learningStatus: "running", approvedAt: ago(STILL_READING_WINDOW_MS) })).toBe(false);
+    expect(readingBlocksGoLive({ ...base, learningStatus: null, approvedAt: ago(3 * 60 * 60_000) })).toBe(false);
+  });
+
+  it("nothing blocks with the learning flag off, whatever the row says", () => {
+    expect(readingBlocksGoLive({ ...base, learningEnabled: false, learningStatus: "running" })).toBe(false);
+    expect(readingBlocksGoLive({ ...base, learningEnabled: false, learningStatus: null })).toBe(false);
+  });
+
+  it("a club with no approval time is not blocked (nothing to measure two hours from)", () => {
+    expect(readingBlocksGoLive({ ...base, learningStatus: "running", approvedAt: null })).toBe(false);
+  });
+});
+
+describe("wentLiveSinceWhere", () => {
+  it("is approved, live, and stamped at or after the instant", () => {
+    const since = new Date("2026-10-12T11:50:00Z");
+    expect(wentLiveSinceWhere(since)).toEqual({ approvalStatus: "approved", setupStage: "live", liveAt: { gte: since } });
   });
 });

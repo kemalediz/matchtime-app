@@ -160,3 +160,92 @@ export function preferLiveClubs<T>(rows: T[], clubOf: (row: T) => SetupStageColu
 export function settingUpOnly(servedClubs: SetupStageColumns[]): boolean {
   return servedClubs.length > 0 && servedClubs.every(isClubSettingUp);
 }
+
+// ── Going live (slice S4) ───────────────────────────────────────────────
+
+/**
+ * A second owner or admin who says GO within this long of the club going
+ * live is told "already live" rather than being passed down the DM path.
+ */
+export const GO_ALREADY_LIVE_WINDOW_MS = 10 * 60 * 1000;
+
+/**
+ * GO is refused with "still reading" while the setup reading has not
+ * finished, for this long after the approval (owner decision 4). After
+ * that the organiser is never kept waiting on a reading: going live closes
+ * it (`closeUnfinishedSetupLearning` in club-setup.ts).
+ */
+export const STILL_READING_WINDOW_MS = 2 * 60 * 60 * 1000;
+
+const GO_WORDS: ReadonlySet<string> = new Set(["go", "go live", "basla"]);
+
+/**
+ * THE TEXT GATE OF THE GO HANDLER. True only when the WHOLE message is the
+ * command: GO, GO LIVE, BAŞLA or BASLA, in any letter case, with at most
+ * one trailing "." or "!". "go on then", "let's go" and "go?" are not GO.
+ * Pure and cheap, so every other DM costs no query.
+ */
+export function isGoCommand(text: unknown): boolean {
+  if (typeof text !== "string") return false;
+  const word = text
+    .trim()
+    .replace(/[ \t]*[.!]$/, "")
+    // Turkish letters first: "BAŞLA", and "GO LİVE" typed on a Turkish
+    // keyboard, must read the same as their plain forms.
+    .replace(/[İIı]/g, "i")
+    .replace(/[Şş]/g, "s")
+    .toLowerCase()
+    .replace(/[ \t]+/g, " ");
+  return GO_WORDS.has(word);
+}
+
+/** `liveBy` for an owner or admin who pressed Go live on the website. */
+export function liveByUser(userId: string): string {
+  return userId;
+}
+
+/** `liveBy` for a GO sent by WhatsApp: the sender's number, digits only. */
+export function liveByWhatsapp(phone: string): string {
+  return `whatsapp:${phone.replace(/\D/g, "")}`;
+}
+
+/** `liveBy` for the MatchTime owner's "Go live now" on the clubs page. */
+export function liveByOwner(ownerUserId: string): string {
+  return `owner:${ownerUserId}`;
+}
+
+const FINAL_LEARNING_STATUSES: ReadonlySet<string> = new Set(["applied", "nothing", "skipped", "failed"]);
+
+/** Has the setup reading finished? "running" and "deferred" have not. */
+export function isSetupLearningFinal(status: string | null | undefined): boolean {
+  return typeof status === "string" && FINAL_LEARNING_STATUSES.has(status);
+}
+
+/**
+ * Must GO wait for the setup reading (owner decision 4)? Only while ALL of
+ * these hold: the reading is switched on, the club was approved less than
+ * two hours ago, and its reading is unfinished, or has not started and
+ * one is expected (`readingExpected`: the club has a connect request, so
+ * the sweep will read it). Never blocks otherwise.
+ */
+export function readingBlocksGoLive(args: {
+  learningEnabled: boolean;
+  /** The club's reading row status, or null when it has no row. */
+  learningStatus: string | null | undefined;
+  readingExpected: boolean;
+  approvedAt: Date | null | undefined;
+  now: Date;
+}): boolean {
+  if (!args.learningEnabled || !args.approvedAt) return false;
+  if (args.now.getTime() - args.approvedAt.getTime() >= STILL_READING_WINDOW_MS) return false;
+  if (args.learningStatus === null || args.learningStatus === undefined) return args.readingExpected;
+  return !isSetupLearningFinal(args.learningStatus);
+}
+
+/**
+ * "Approved, live, and went live at or after `since`": the clubs a second
+ * admin's GO is answered "already live" for.
+ */
+export function wentLiveSinceWhere(since: Date) {
+  return { ...APPROVED_CLUB_WHERE, ...LIVE_STAGE_WHERE, liveAt: { gte: since } };
+}

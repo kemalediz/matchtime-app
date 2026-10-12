@@ -20,7 +20,9 @@
  *                       sign-up action (per phone, per IP, site per day).
  *   connect-reply,      only a number MatchTime already knows (a User with
  *   organiser-decision, that phone: a verified sign-up or a club member).
- *   billing
+ *   billing,
+ *   setup-learned,
+ *   setup-reply
  *   owner-approval,     NEVER through here. `queueOwnerDm` (owner-dm.ts)
  *   owner-ack           is the only door to Kemal's phone.
  *
@@ -62,7 +64,12 @@ import { APPROVED_CLUB_WHERE } from "./club-approval-state";
  *  billing, slice B3), queued only by `queueBillingDm` in club-billing.ts. */
 /** "setup-learned" (F3, 2026-10-05): the organiser's one DM about the
  *  settings MatchTime set up from the group chat (src/lib/setup-learning). */
-export const PLATFORM_DM_PURPOSES = ["otp", "connect-reply", "organiser-decision", "billing", "setup-learned"] as const;
+/** "setup-reply" (go-live slice S4, 2026-10-12): MatchTime's answer to a DM
+ *  from an owner or admin of a club that is approved but still setting up
+ *  (GO, help, "not recognised"). The club's own channel is off until GO,
+ *  so these cannot be BotJobs. Queued only by src/lib/setup-go-dm.ts and,
+ *  for help, src/lib/dm-help.ts; always a reply to the person's own DM. */
+export const PLATFORM_DM_PURPOSES = ["otp", "connect-reply", "organiser-decision", "billing", "setup-learned", "setup-reply"] as const;
 export type PlatformDmPurpose = (typeof PLATFORM_DM_PURPOSES)[number];
 
 /** DM purposes only `queueOwnerDm` may write. */

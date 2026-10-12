@@ -2138,6 +2138,34 @@ export const en = {
       : `I stay quiet during the banter and only reply when you tag me. Anything else, tag me: *@Match Time help*`,
   // ════ END settings-aware group hello ════
 
+  // ════ BEGIN going live: replies to GO (go-live slice S4, 2026-10-12) ════
+  // DMs to an owner or admin of a club that is approved but still setting
+  // up (src/lib/setup-go-dm.ts). All deterministic, all sent on the
+  // platform channel, because the club's own channel is off until GO.
+  /** The label of the button on the settings page, so every message that
+   *  names it and the page itself use one wording. */
+  sj_go_button: `Go live`,
+  /** GO worked: the hello is queued for the group. */
+  sj_go_done: (p: { group: string }): string => `Done: I've introduced myself in "${p.group}".`,
+  /** GO while the group's chat is still being read (owner decision 4). */
+  sj_go_still_reading: `I'm still reading your group's messages. Give me a few minutes and I'll message you.`,
+  /** GO after MatchTime was removed from the group. */
+  sj_go_removed: (p: { group: string }): string => `I'm not in "${p.group}" any more. Add me back, then reply GO.`,
+  /** GO for a club somebody else has just taken live. */
+  sj_go_already_live: (p: { club: string }): string => `${p.club} is already live.`,
+  /** GO from somebody who runs more than one club that is setting up. */
+  sj_go_many: `You have more than one club being set up. Use the Go live button in each club's settings.`,
+  /** Anything else from the organiser of a setting-up club (owner decision
+   *  8): said every time. `url` is their own signed-in link to settings. */
+  sj_go_not_recognised: (p: { club: string; url: string }): string =>
+    `I didn't recognise that message. To go live with ${p.club}, reply *GO* here, or press *Go live* on the settings page:\n${p.url}`,
+  /** The same, for somebody with more than one club setting up: GO cannot
+   *  pick one, so each club's own settings link is listed. */
+  sj_go_not_recognised_many: (p: { clubs: Array<{ club: string; url: string }> }): string =>
+    `I didn't recognise that message. You have more than one club being set up, so press *Go live* in each club's settings:\n` +
+    p.clubs.map((c) => `${c.club}: ${c.url}`).join("\n"),
+  // ════ END going live: replies to GO ════
+
   /** To the organiser, once, when the owner approves (2026-10-01: a short
    *  checklist). Each URL is the organiser's own signed-in link to that
    *  page, so this DM goes to the organiser only. Without billing the one

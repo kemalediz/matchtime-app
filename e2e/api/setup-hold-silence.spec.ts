@@ -101,6 +101,9 @@ const dm = (request: APIRequestContext, phone: string, body: string) =>
   post(request, "/api/whatsapp/dm-reply", { phone, body, waMessageId: msgId(), authorName: null });
 
 const heldJobs = (db: TestDb) => db.count(`SELECT COUNT(*) FROM "BotJob" WHERE "orgId" = $1`, [HELD_ORG]);
+/** Platform-channel replies to the held club's organiser (slice S4). */
+const organiserReplies = (db: TestDb) =>
+  db.count(`SELECT COUNT(*) FROM "PlatformJob" WHERE phone = $1 AND purpose = 'setup-reply'`, [ORGANISER_PHONE.replace(/^\+/, "")]);
 const heldSessions = (db: TestDb) =>
   db.count(`SELECT COUNT(*) FROM "OnboardingSession" WHERE "whatsappGroupId" = $1`, [HELD_GROUP]);
 const heldClub = (db: TestDb) =>
@@ -406,18 +409,25 @@ test.describe("the admin group command", () => {
 });
 
 test.describe("direct messages", () => {
-  test("its organiser gets nothing back, and no model is asked", async ({ request, db }) => {
+  // Slice S4 (owner decision 8): the organiser is no longer met with
+  // silence. The rail still stops the DM before any handler and any model;
+  // what comes back is one fixed reply on the PLATFORM channel (the club's
+  // own channel stays empty). e2e/api/setup-go-live.spec.ts has the texts.
+  test("its organiser is stopped at the rail, told how to go live, and no model is asked", async ({ request, db }) => {
     const res = await dm(request, ORGANISER_PHONE, "hi, when do we play?");
-    expect(res.ignored).toBe("club-setting-up");
+    expect(res).toMatchObject({ handled: "setup-not-recognised", orgIds: [HELD_ORG] });
     expect(await heldJobs(db)).toBe(0);
     expect(await aiSpend(db)).toEqual([]);
+    expect(await organiserReplies(db)).toBe(1);
   });
 
   test("an admin command from its organiser stops at the same rail", async ({ request, db }) => {
     const res = await dm(request, ORGANISER_PHONE, "cancel this week's game");
-    expect(res.ignored).toBe("club-setting-up");
+    expect(res.handled).toBe("setup-not-recognised");
     expect(await heldJobs(db)).toBe(0);
     expect(await aiSpend(db)).toEqual([]);
+    expect(await organiserReplies(db)).toBe(2);
+    expect(await heldClub(db)).toMatchObject({ setupStage: "setting-up", whatsappBotEnabled: false });
   });
 
   test("one of its players gets nothing back either", async ({ request, db }) => {
@@ -447,11 +457,18 @@ test.describe("direct messages", () => {
   test("deterministic help is answered first, for the organiser of the setting-up club", async ({ request, db }) => {
     const res = await dm(request, ORGANISER_PHONE, "help");
     expect(res).toMatchObject({ handled: "dm-help", orgId: HELD_ORG, audience: "admin" });
-    // KNOWN GAP, for slice S4: the answer is queued as the club's own DM
-    // job, and due-posts refuses a setting-up club (above), so it is not
-    // delivered until the club goes live. Pinned here so the gap is visible.
-    expect(await db.count(`SELECT COUNT(*) FROM "BotJob" WHERE "orgId" = $1 AND kind = 'dm' AND "sentAt" IS NULL`, [HELD_ORG])).toBe(1);
-    expect(await db.count(`SELECT COUNT(*) FROM "BotJob" WHERE "orgId" = $1 AND kind <> 'dm'`, [HELD_ORG])).toBe(0);
+    // Slice S4 closed the gap pinned here before: the answer used to be
+    // queued as the club's own DM job, which due-posts never dispatches
+    // for a setting-up club. It now goes out on the platform channel, and
+    // nothing at all is put on the club's.
+    const before = await organiserReplies(db);
+    expect(before).toBeGreaterThan(0);
+    expect(await heldJobs(db)).toBe(0);
+    expect(
+      await db.one(`SELECT purpose, status, "sendAfter" FROM "PlatformJob" WHERE phone = $1 ORDER BY "createdAt" DESC, id DESC LIMIT 1`, [
+        ORGANISER_PHONE.replace(/^\+/, ""),
+      ]),
+    ).toEqual({ purpose: "setup-reply", status: "queued", sendAfter: null });
   });
 });
 
@@ -607,9 +624,9 @@ test.describe("the one thing it may do: have its chat read", () => {
     expect(await db.count(`SELECT COUNT(*) FROM "OrgAiUsage" WHERE "orgId" = $1`, [LATE])).toBe(0);
   });
 
-  test("its organiser's DMs are still refused after the reading, and still spend nothing", async ({ request, db }) => {
+  test("its organiser's DMs still stop at the rail after the reading, and still spend nothing", async ({ request, db }) => {
     const res = await dm(request, ORGANISER_PHONE, "what did you change?");
-    expect(res.ignored).toBe("club-setting-up");
+    expect(res.handled).toBe("setup-not-recognised");
     const spend = await aiSpend(db);
     expect(spend[0].calls).toBe(1);
     expect(spend[0].refusedCalls).toBe(0);
