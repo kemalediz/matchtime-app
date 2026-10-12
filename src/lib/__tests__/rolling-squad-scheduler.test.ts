@@ -214,8 +214,9 @@ describe("R1: the rolling announcement", () => {
 
 describe("R2: the 17:00 post", () => {
   it("a rolling club's short-squad post is the fixed text plus the deadline line, no model call", async () => {
+    // Nine of the 18 places were carried over; five have dropped since.
     const m = match();
-    setWorld(m);
+    setWorld(m, { carried: 9 });
     const out = await instructions(MON_5PM);
     const post = out.find((i) => i.key.startsWith(`${m.id}:evening-update:`)) as { text: string } | undefined;
     expect(post).toBeDefined();
@@ -254,6 +255,33 @@ describe("R2: the 17:00 post", () => {
     expect(post.text).not.toContain("you're in unless you say");
     expect(post.text).toContain(buildRollingDeadlineLine({ deadline: "Friday 15:30", carried: false, lang: "en" }));
   });
+
+  // Owner decision, 2026-10-13: the same rule as the hello, measured on
+  // the match the post is about. "You're in unless you say OUT" needs the
+  // carried players to fill at least half of this match's 18 places.
+  for (const [name, carried, standing] of [
+    ["one player carried (a website In before go-live)", 1, false],
+    ["just under half the places carried", 8, false],
+    ["exactly half the places carried", 9, true],
+    ["a full squad carried", 18, true],
+  ] as Array<[string, number, boolean]>) {
+    it(`${name} (${carried} of 18): ${standing ? "you're in unless you say OUT" : "speaks only to those on the list"}`, async () => {
+      const m = match();
+      const counted: unknown[] = [];
+      setWorld(m, { carried });
+      overrides.attendanceEvent = {
+        count: async (args: unknown) => {
+          counted.push((args as { where: unknown }).where);
+          return carried;
+        },
+      };
+      const post = (await instructions(MON_5PM)).find((i) => i.key.startsWith(`${m.id}:evening-update:`)) as { text: string };
+      expect(post.text).toContain(buildRollingDeadlineLine({ deadline: "Friday 15:30", carried: standing, lang: "en" }));
+      expect(post.text.includes("you're in unless you say")).toBe(standing);
+      // Players the seeding wrote onto the squad, not its bench overflow.
+      expect(counted).toContainEqual({ matchId: m.id, cause: "rolling-squad", toStatus: "CONFIRMED" });
+    });
+  }
 
   it("the two deadline lines: carried says you're in, first game speaks only to those on the list, in both languages", () => {
     expect(buildRollingDeadlineLine({ deadline: "Friday 15:30", lang: "en" })).toBe(

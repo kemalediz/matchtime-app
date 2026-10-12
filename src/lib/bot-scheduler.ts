@@ -70,6 +70,7 @@ import {
   listPublishDue,
   weeklyDeadlinesFor,
 } from "./weekly-deadlines";
+import { isSubstantialSquad } from "./rolling-squad-rules";
 import { normaliseLang, type Lang } from "./i18n/lang";
 import {
   RECRUIT_ACK_KIND,
@@ -1371,15 +1372,24 @@ async function computeForMatch(
       // with the drop-out deadline while it is still ahead. Null for a
       // club without the setting, so Sutton's bytes are unchanged.
       const rollingDropOutDeadline = features.rollingSquad ? dropOutDeadlineFor(m, activity.org) : null;
-      // A rolling club's FIRST game (2026-10-13): nobody was carried onto
-      // it, so the line must not say "you're in unless you say OUT". The
-      // same test the rolling announcement uses: seeded, and at least one
-      // player carried. One count, only while the line is due.
+      // A rolling club's FIRST game (2026-10-13): "you're in unless you
+      // say OUT" is read by the whole group, so it is only said when the
+      // squad really was carried onto THIS match: the players the seeding
+      // wrote CONFIRMED on it fill at least half its places
+      // (`isSubstantialSquad`, the hello's rule, measured on the match the
+      // post is about). Nobody carried, or one website In carried: the
+      // line speaks only to those on the list, which is true either way.
+      // Counted from the seeding's own events, not today's list: players
+      // who said In since were never "in unless they say OUT". One count,
+      // only while the line is due.
       let rollingDeadlineLine: string | null = null;
       if (rollingDropOutDeadline && now < rollingDropOutDeadline) {
         const carried =
           m.rollingSeededAt != null &&
-          (await db.attendanceEvent.count({ where: { matchId, cause: "rolling-squad" } })) > 0;
+          isSubstantialSquad(
+            await db.attendanceEvent.count({ where: { matchId, cause: "rolling-squad", toStatus: "CONFIRMED" } }),
+            m.maxPlayers,
+          );
         rollingDeadlineLine = buildRollingDeadlineLine({
           deadline: weekdayTimeLabel(lang, rollingDropOutDeadline),
           carried,

@@ -52,6 +52,7 @@ const fixtureMatch = (id: string, offsetDays: number, status: string) => ({
   status,
   isHistorical: false,
   rollingSeededAt: null,
+  maxPlayers: 10,
   activity: { orgId: "org-1", venue: "Pitch", dayOfWeek: 2 },
 });
 const attendanceRow = (matchId: string, userId: string) => ({
@@ -61,11 +62,17 @@ const attendanceRow = (matchId: string, userId: string) => ({
   position: 1,
   user: { phoneNumber: "+447700900001", email: `${userId}@example.invalid`, isActive: true },
 });
-/** Last week's game, completed, with one member on it; next week's ahead. */
-function squadFromLastWeek() {
+/** `n` members on `matchId`, as the two reads return them. */
+function playersOn(matchId: string, n: number) {
+  const ids = Array.from({ length: n }, (_, i) => `p${i + 1}`);
+  dbMock.attendance.findMany.mockResolvedValue(ids.map((id) => attendanceRow(matchId, id)));
+  dbMock.membership.findMany.mockResolvedValue(ids.map((userId) => ({ userId, leftAt: null, provisionallyAddedAt: null })));
+}
+/** Last week's 10-a-game match, completed, with `n` members on it (half
+ *  the places unless a case says otherwise); next week's ahead. */
+function squadFromLastWeek(n = 5) {
   dbMock.match.findMany.mockResolvedValue([fixtureMatch("last", -5, "COMPLETED"), fixtureMatch("next", 2, "UPCOMING")]);
-  dbMock.attendance.findMany.mockResolvedValue([attendanceRow("last", "p1")]);
-  dbMock.membership.findMany.mockResolvedValue([{ userId: "p1", leftAt: null, provisionallyAddedAt: null }]);
+  playersOn("last", n);
 }
 
 beforeEach(() => {
@@ -169,19 +176,59 @@ describe("loadHelloInput", () => {
     expect(dbMock.attendance.findMany.mock.calls[0][0].where).toEqual({ matchId: { in: ["last"] }, status: "CONFIRMED" });
   });
 
-  it("the last game's only player has left the group: the seeding would carry nobody, so the hello does not say anybody is in", async () => {
+  // ── The squad must be SUBSTANTIAL (owner decision, 2026-10-13): at
+  //    least half of the next game's places, or most of the group still
+  //    has to say In and the first-game form is the true one. ──
+  const SIZES: Array<[string, number, boolean]> = [
+    ["nobody carried", 0, false],
+    ["one player (a website In before go-live)", 1, false],
+    ["just under half the places", 4, false],
+    ["exactly half the places", 5, true],
+    ["a full squad", 10, true],
+  ];
+  for (const lang of ["en", "tr"] as const) {
+    for (const [name, n, standing] of SIZES) {
+      it(`${lang}: ${name} (${n} of 10): ${standing ? "the standing wording" : "the first-game form"}`, async () => {
+        const s = lang === "en" ? en : tr;
+        dbMock.organisation.findUnique.mockResolvedValue({ ...ROW, language: lang, rollingSquadEnabled: true });
+        squadFromLastWeek(n);
+        const input = await loadHelloInput("org-1", { now: NOW });
+        expect(input.hasSquadToCarry).toBe(standing);
+        const said = buildGroupHello(input).split("\n");
+        const standingLine = s.sj_hello_rolling({ deadline: null });
+        const firstLine = s.sj_hello_rolling_first({ deadline: null, mode: "first-come" });
+        expect(said.includes(standingLine)).toBe(standing);
+        expect(said.includes(firstLine)).toBe(!standing);
+      });
+    }
+  }
+
+  it("the places are the next game's: 6 carried is not half of a 14-a-game match", async () => {
     dbMock.organisation.findUnique.mockResolvedValue({ ...ROW, rollingSquadEnabled: true });
-    squadFromLastWeek();
-    dbMock.membership.findMany.mockResolvedValue([{ userId: "p1", leftAt: new Date(), provisionallyAddedAt: null }]);
+    dbMock.match.findMany.mockResolvedValue([fixtureMatch("last", -5, "COMPLETED"), { ...fixtureMatch("next", 2, "UPCOMING"), maxPlayers: 14 }]);
+    playersOn("last", 6);
+    expect((await loadHelloInput("org-1", { now: NOW })).hasSquadToCarry).toBe(false);
+    playersOn("last", 7);
+    expect((await loadHelloInput("org-1", { now: NOW })).hasSquadToCarry).toBe(true);
+    expect(dbMock.match.findMany.mock.calls[0][0].select.maxPlayers).toBe(true);
+  });
+
+  it("a player who has left the group is not carried, so he does not count towards the half", async () => {
+    dbMock.organisation.findUnique.mockResolvedValue({ ...ROW, rollingSquadEnabled: true });
+    squadFromLastWeek(5);
+    dbMock.membership.findMany.mockResolvedValue(
+      ["p1", "p2", "p3", "p4", "p5"].map((userId) => ({ userId, leftAt: userId === "p5" ? new Date() : null, provisionallyAddedAt: null })),
+    );
     expect((await loadHelloInput("org-1", { now: NOW })).hasSquadToCarry).toBe(false);
   });
 
-  it("a game that kicked off while the club was setting up, with a player on it, is a squad to carry: go-live completes it and the seeding reads it", async () => {
+  it("a game that kicked off while the club was setting up is read as played: half its places is a squad, one website In is not", async () => {
     dbMock.organisation.findUnique.mockResolvedValue({ ...ROW, rollingSquadEnabled: true });
     dbMock.match.findMany.mockResolvedValue([fixtureMatch("kicked-off", -0.2, "UPCOMING"), fixtureMatch("next", 7, "UPCOMING")]);
-    dbMock.attendance.findMany.mockResolvedValue([attendanceRow("kicked-off", "p1")]);
-    dbMock.membership.findMany.mockResolvedValue([{ userId: "p1", leftAt: null, provisionallyAddedAt: null }]);
+    playersOn("kicked-off", 5);
     expect((await loadHelloInput("org-1", { now: NOW })).hasSquadToCarry).toBe(true);
+    playersOn("kicked-off", 1);
+    expect((await loadHelloInput("org-1", { now: NOW })).hasSquadToCarry).toBe(false);
   });
 
   it("a monthly club is never asked: rolling squad reads as off for it", async () => {
@@ -196,16 +243,17 @@ describe("loadHelloInput", () => {
   });
 
   it("reads through the client it is handed (a transaction), not the shared one", async () => {
+    const five = ["p1", "p2", "p3", "p4", "p5"];
     const tx = {
       organisation: { findUnique: vi.fn(async () => ({ ...ROW, rollingSquadEnabled: true })) },
       clubConnect: { findFirst: vi.fn(async () => ({ userId: "u-tx" })) },
       membership: {
         findFirst: vi.fn(async () => null),
-        findMany: vi.fn(async () => [{ userId: "p1", leftAt: null, provisionallyAddedAt: null }]),
+        findMany: vi.fn(async () => five.map((userId) => ({ userId, leftAt: null, provisionallyAddedAt: null }))),
       },
       user: { findUnique: vi.fn(async () => ({ name: "Tamsin Xu" })) },
       match: { findMany: vi.fn(async () => [fixtureMatch("last", -5, "COMPLETED"), fixtureMatch("next", 2, "UPCOMING")]) },
-      attendance: { findMany: vi.fn(async () => [attendanceRow("last", "p1")]) },
+      attendance: { findMany: vi.fn(async () => five.map((id) => attendanceRow("last", id))) },
     };
     const input = await loadHelloInput("org-1", { client: tx as unknown as HelloReadClient, now: NOW });
     expect(input.organiser).toBe("Tamsin");

@@ -67,7 +67,8 @@ export interface GroupHelloInput {
   catchUp?: boolean;
   /** Rolling squad only (2026-10-13): does MatchTime already have a squad
    *  to carry onto the next game (`hasSquadToCarry`, rolling-squad-rules.ts,
-   *  the seeding's own rule)? True: "if you played last time, you're in".
+   *  the seeding's own rule), one that fills at least HALF of that game's
+   *  places? True: "if you played last time, you're in".
    *  False OR ABSENT: the first-game form, which asks for an In. Absent
    *  reads as false on purpose: telling a whole group they are in when
    *  nobody is costs a game; asking for an In that was not needed costs

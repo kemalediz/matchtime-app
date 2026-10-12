@@ -22,7 +22,9 @@
  * time: a new club's first game has an empty list. So a rolling club gets
  * three more reads, through the same client, and `hasSquadToCarry` is the
  * seeding's own rule (`hasSquadToCarry`, rolling-squad-rules.ts): would
- * `seedDueRollingSquads` put anybody on the next game? Every other club
+ * `seedDueRollingSquads` put a squad on the next game, and is it at least
+ * half of that game's places (owner decision: one player who tapped In on
+ * the website is not "the squad")? Every other club
  * gets `false` with no read; the builder only looks at it for a rolling
  * club.
  */
@@ -45,6 +47,7 @@ type CarryMatchRow = {
   status: string;
   isHistorical: boolean;
   rollingSeededAt: Date | null;
+  maxPlayers: number;
   activity: { orgId: string; venue: string; dayOfWeek: number };
 };
 type CarryAttendanceRow = {
@@ -83,11 +86,12 @@ export interface HelloReadClient {
 }
 
 /**
- * Would the rolling seeding put anybody on this club's next game? The
- * matches are the ones `seedDueRollingSquads` reads (this club, not
- * historical, live or completed inside the lookback); the decision is
- * `hasSquadToCarry`. Reads players only for the matches that decision
- * names, and only CONFIRMED rows: nobody else is ever carried.
+ * Would the rolling seeding put a SUBSTANTIAL squad on this club's next
+ * game: at least half of its places (`Match.maxPlayers`)? The matches are
+ * the ones `seedDueRollingSquads` reads (this club, not historical, live
+ * or completed inside the lookback); the decision is `hasSquadToCarry`.
+ * Reads players only for the matches that decision names, and only
+ * CONFIRMED rows: nobody else is ever carried.
  */
 export async function loadHasSquadToCarry(orgId: string, client: HelloReadClient, now: Date): Promise<boolean> {
   const lookbackStart = new Date(now.getTime() - (ROLLING_LOOKBACK_DAYS + 7) * DAY_MS);
@@ -103,6 +107,7 @@ export async function loadHasSquadToCarry(orgId: string, client: HelloReadClient
       status: true,
       isHistorical: true,
       rollingSeededAt: true,
+      maxPlayers: true,
       activity: { select: { orgId: true, venue: true, dayOfWeek: true } },
     },
     orderBy: { date: "asc" },
