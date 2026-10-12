@@ -103,6 +103,7 @@ import { messageHoursSendAfter } from "./message-hours";
 import { SETUP_ALERT_KIND, recordOpsEvent } from "./ops-alerts";
 import { PlatformDmRefused, queuePlatformDm, type PlatformDmClient } from "./platform-jobs";
 import type { PipelineModel } from "./pipeline/llm";
+import { clearCapturedChatForClub } from "./captured-chat";
 import { isSetupLearningEnabled } from "./setup-learning/flag";
 import { learnClubSetup, type LearnOutcome } from "./setup-learning/run";
 import {
@@ -180,7 +181,8 @@ export async function closeReadingForGood(
       WHERE "ClubSetupLearning"."status" IN ('running', 'deferred')
       RETURNING (xmax = 0) AS "inserted"`;
     if (rows.length === 0) return false;
-    await tx.$executeRaw`UPDATE "ClubConnect" SET "capturedHistory" = NULL WHERE "orgId" = ${orgId}`;
+    // The group description goes with the chat (captured-chat.ts).
+    await clearCapturedChatForClub(tx, orgId);
     return true;
   });
 }
