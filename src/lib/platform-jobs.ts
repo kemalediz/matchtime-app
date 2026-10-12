@@ -147,9 +147,21 @@ export async function bridgePlatformDmsForLegacyPi(
 
 // ── Queueing ────────────────────────────────────────────────────────────
 
+/** Why a DM was refused, as a code that is safe to log and to show: it
+ *  never carries the number, the text or a name (`reason` may). */
+export type PlatformDmRefusalCode =
+  | "owner-purpose"
+  | "unknown-purpose"
+  | "not-a-phone-number"
+  | "empty-text"
+  | "number-not-known";
+
 export class PlatformDmRefused extends Error {
   override readonly name = "PlatformDmRefused";
-  constructor(readonly reason: string) {
+  constructor(
+    readonly reason: string,
+    readonly code: PlatformDmRefusalCode = "unknown-purpose",
+  ) {
     super(`[platform-jobs] DM refused: ${reason}`);
   }
 }
@@ -183,20 +195,20 @@ export async function queuePlatformDm(args: {
   const client = args.client ?? (db as unknown as PlatformDmClient);
   const purpose = args.purpose as string;
   if ((OWNER_DM_PURPOSES as readonly string[]).includes(purpose)) {
-    throw new PlatformDmRefused(`"${purpose}" DMs go through queueOwnerDm (src/lib/owner-dm.ts) only`);
+    throw new PlatformDmRefused(`"${purpose}" DMs go through queueOwnerDm (src/lib/owner-dm.ts) only`, "owner-purpose");
   }
   if (!(PLATFORM_DM_PURPOSES as readonly string[]).includes(purpose)) {
-    throw new PlatformDmRefused(`unknown purpose "${purpose}"`);
+    throw new PlatformDmRefused(`unknown purpose "${purpose}"`, "unknown-purpose");
   }
   const digits = platformPhoneDigits(args.phone);
-  if (!digits) throw new PlatformDmRefused(`not a phone number: ${JSON.stringify(args.phone)}`);
+  if (!digits) throw new PlatformDmRefused(`not a phone number: ${JSON.stringify(args.phone)}`, "not-a-phone-number");
   const text = typeof args.text === "string" ? args.text : "";
-  if (!text.trim()) throw new PlatformDmRefused("empty text");
+  if (!text.trim()) throw new PlatformDmRefused("empty text", "empty-text");
 
   if (purpose !== "otp") {
     // Rule 12: MatchTime never messages a number it does not already know.
     const known = await client.user.findFirst({ where: { phoneNumber: `+${digits}` }, select: { id: true } });
-    if (!known) throw new PlatformDmRefused(`${purpose}: no MatchTime user has this number`);
+    if (!known) throw new PlatformDmRefused(`${purpose}: no MatchTime user has this number`, "number-not-known");
   }
 
   const row = await client.platformJob.create({
@@ -211,6 +223,44 @@ export async function queuePlatformDm(args: {
     },
   });
   return { id: row.id };
+}
+
+/** DM purposes `cancelQueuedPlatformDms` will touch. A sign-up code, a
+ *  decision, a billing notice and anything for the owner are never
+ *  cancelled from here. */
+export const CANCELLABLE_DM_PURPOSES = ["setup-ask"] as const;
+
+/**
+ * Cancel DMs that are still WAITING (queued, typically held for 09:00
+ * London) for one purpose and refId, because what they say is no longer
+ * true. There is no "cancelled" status: like a job refused at dispatch, a
+ * cancelled job is `failed` with its `failReason` ("cancelled: <reason>"),
+ * which `claimDuePlatformJobs` never hands out and nothing retries.
+ *
+ * SAFE AGAINST THE PI'S CLAIM. The write is an `updateMany` on
+ * `status = "queued"`, the same compare-and-set the claim uses, so for any
+ * one job exactly one of the two wins. A job the claim won is `claimed`:
+ * it may already be on its way, so it is LEFT ALONE and reported in
+ * `alreadyClaimed`. (A claimed job the Pi then RELEASES for pacing goes
+ * back to queued; a caller that must be certain calls this again.)
+ */
+export async function cancelQueuedPlatformDms(args: {
+  purpose: (typeof CANCELLABLE_DM_PURPOSES)[number];
+  refId: string;
+  reason: string;
+  now?: Date;
+}): Promise<{ cancelled: number; alreadyClaimed: number }> {
+  if (!(CANCELLABLE_DM_PURPOSES as readonly string[]).includes(args.purpose)) {
+    throw new Error(`[platform-jobs] "${args.purpose}" DMs cannot be cancelled`);
+  }
+  const now = args.now ?? new Date();
+  const one = { kind: "dm", purpose: args.purpose, refId: args.refId } as const;
+  const { count } = await db.platformJob.updateMany({
+    where: { ...one, status: "queued" },
+    data: { status: "failed", failedAt: now, failReason: `cancelled: ${args.reason}`.slice(0, FAIL_REASON_MAX) },
+  });
+  const alreadyClaimed = await db.platformJob.count({ where: { ...one, status: "claimed" } });
+  return { cancelled: count, alreadyClaimed };
 }
 
 /**

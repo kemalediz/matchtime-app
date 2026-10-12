@@ -72,6 +72,7 @@ import {
 } from "./club-approval-state";
 import { billingQuietWhere, isBillingEnabled } from "./club-billing-rules";
 import { SETUP_STAGE_SELECT, isClubSettingUp, isSetupHoldEnabled, settingUpClubFields } from "./club-setup-rules";
+import { cancelSetupDm } from "./club-setup-dm-cancel";
 
 // ── Flags ───────────────────────────────────────────────────────────────
 
@@ -402,7 +403,9 @@ function firstName(name: string | null | undefined): string | null {
  *            only with its name typed: Sutton FC (approved by the column
  *            default, `approvedAt` NULL) can never be turned off or left
  *            from here. The bot goes off in the same write, then MatchTime
- *            leaves the group. Nobody is messaged.
+ *            leaves the group. Nobody is messaged. A club suspended
+ *            while it was still setting up also has its unsent setup DM
+ *            cancelled (`cancelSetupDm`).
  *
  * `decidedBy` is "whatsapp:<phone>" or a user id. No model, anywhere.
  */
@@ -430,6 +433,9 @@ export async function decideClub(
         participants: unknown;
       } | null;
       leaveGroupId: string | null;
+      /** The club was approved but SETTING UP when it was suspended: its
+       *  setup DM may still be waiting for 09:00 and must not go. */
+      cancelSetupDm?: boolean;
     };
   };
 
@@ -442,10 +448,11 @@ export async function decideClub(
           id: true,
           name: true,
           language: true,
-          approvalStatus: true,
           approvedAt: true,
           approvalDecidedAt: true,
           whatsappGroupId: true,
+          // The approval status, and whether the club is setting up.
+          ...SETUP_STAGE_SELECT,
         },
       });
       if (!org) return { result: { ok: false, reason: "not-found" } };
@@ -458,6 +465,8 @@ export async function decideClub(
         const refusal = suspendRefusal(org, opts.confirmName);
         if (refusal === "not-approved") return refusedAs("not-approved");
         if (refusal) return { result: { ok: false, reason: refusal, club: org.name } };
+        // As read, before the write: was it approved and still setting up?
+        const wasSettingUp = isClubSettingUp(org);
         const { count } = await tx.organisation.updateMany({
           where: { id: orgId, approvalStatus: "approved", approvedAt: { not: null } },
           data: { approvalStatus: "suspended", whatsappBotEnabled: false, ...decided },
@@ -473,7 +482,12 @@ export async function decideClub(
             groupId: org.whatsappGroupId,
             groupSubject: null,
           },
-          after: { language: org.language, link: null, leaveGroupId: org.whatsappGroupId },
+          after: {
+            language: org.language,
+            link: null,
+            leaveGroupId: org.whatsappGroupId,
+            cancelSetupDm: wasSettingUp,
+          },
         };
       }
 
@@ -642,6 +656,20 @@ export async function decideClub(
   // close re-checks the suspension itself before any money moves. A
   // failure here never undoes the suspension: it is recorded on
   // /admin/health.
+  // A club suspended while it was SETTING UP (go-live slice S3): its
+  // organiser's setup DM may be queued for 09:00 London. It says "approved,
+  // reply GO", which is no longer true, so it is cancelled. Only for such a
+  // club: for every other club this is not even called. A job the Pi has
+  // already claimed is left alone (it may be on its way) and logged. A
+  // failure here never undoes the suspension.
+  if (result.decision === "suspend" && after.cancelSetupDm) {
+    try {
+      await cancelSetupDm(orgId, "suspended", now);
+    } catch (err) {
+      console.error(`[club-approval] ${orgId}: suspended, but its waiting setup DM was NOT cancelled:`, err);
+    }
+  }
+
   if (result.decision === "suspend") {
     try {
       const { onClubSuspended } = await import("./club-billing-stripe");

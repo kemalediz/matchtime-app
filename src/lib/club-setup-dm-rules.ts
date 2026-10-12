@@ -33,7 +33,29 @@
  */
 import { t } from "./i18n/t";
 import { setupFindingsBlocks } from "./setup-learning/dm";
-import type { AppliedItem, NotedPattern, Suggestion } from "./setup-learning/rules";
+import {
+  LEARNED_KEYS,
+  currentValue,
+  sameValue,
+  type AppliedItem,
+  type LearnedKey,
+  type NotedPattern,
+  type OrgSettingsState,
+  type SettingValue,
+  type Suggestion,
+} from "./setup-learning/rules";
+
+/** The platform channel purpose of the setup DM. */
+export const SETUP_ASK_DM_PURPOSE = "setup-ask" as const;
+/** The setup DM's refId: one per club. */
+export const setupAskRefId = (orgId: string): string => `${orgId}:setup-ask`;
+
+/** Why a reading was closed without being read: the reading is switched
+ *  off (nothing was tried, so the DM says nothing about it) ... */
+export const READING_OFF_REASON = "reading-off";
+/** ... or it had not finished two hours after the approval (the DM says
+ *  the chat could not be read). */
+export const READING_TIMED_OUT_REASON = "timed-out";
 
 /** The reading statuses after which nothing more will come of the chat. */
 export const CHAT_READING_FINAL_STATUSES = ["applied", "nothing", "skipped", "failed"] as const;
@@ -53,6 +75,7 @@ export type ChatReading<U = { undoUrl: string }> =
 /** The columns of a ClubSetupLearning row the DM is composed from. */
 export interface ChatReadingRow {
   status: string;
+  reason?: string | null;
   applied: unknown;
   suggestions: unknown;
   noted: unknown;
@@ -62,14 +85,41 @@ function asArray<T>(v: unknown): T[] {
   return Array.isArray(v) ? (v as T[]) : [];
 }
 
+/** The columns `currentValue` reads: what each learnable setting holds now. */
+export type LearnedSettingColumns = Pick<
+  OrgSettingsState,
+  | "rollingSquadEnabled"
+  | "benchPickMode"
+  | "dropOutDeadlineDay"
+  | "dropOutDeadlineTime"
+  | "listPublishDay"
+  | "listPublishTime"
+  | "paymentTrackingEnabled"
+>;
+
+const valueNow = (key: LearnedKey, org: LearnedSettingColumns): SettingValue => currentValue(key, org as OrgSettingsState);
+
 /**
  * From the club's reading row to what the DM reports. A row that is not
  * final (or no row) is "none": the caller decides whether to wait for it.
+ *
+ * THE DM REPORTS WHAT IS TRUE NOW, not what was true when the reading
+ * finished. A switched setting is listed only while it still stands: not
+ * one the organiser has undone from the settings page (`undoneAt`), and,
+ * when `current` is given, not one that no longer holds the value the
+ * reading set (the organiser changed it by hand). The same two tests the
+ * settings panel uses for "undone" and "changed since" (view.ts).
  */
-export function readingFromRow(row: ChatReadingRow | null | undefined): ChatReading<object> {
+export function readingFromRow(
+  row: ChatReadingRow | null | undefined,
+  current?: LearnedSettingColumns | null,
+): ChatReading<object> {
   if (!row || !isChatReadingFinal(row.status)) return { kind: "none" };
+  if (row.status === "skipped" && row.reason === READING_OFF_REASON) return { kind: "none" };
   if (row.status === "skipped" || row.status === "failed") return { kind: "unread" };
-  const applied = asArray<AppliedItem>(row.applied);
+  const applied = asArray<AppliedItem>(row.applied).filter(
+    (a) => !a.undoneAt && (!current || sameValue(valueNow(a.key, current), a.to)),
+  );
   const suggestions = asArray<Suggestion>(row.suggestions);
   const noted = asArray<NotedPattern>(row.noted);
   if (applied.length + suggestions.length + noted.length === 0) return { kind: "nothing" };
@@ -77,15 +127,44 @@ export function readingFromRow(row: ChatReadingRow | null | undefined): ChatRead
 }
 
 /**
- * Is the club on the standard setup the DM describes: players sign up each
- * week, and a free place goes to the first person on the bench?
+ * The value each learnable setting has on a club nobody has touched (the
+ * schema defaults). ONE ENTRY PER KEY OF `LEARNED_KEYS`, the reading's own
+ * list, and typed so: a key added there does not compile until it is given
+ * its default here, so `isStandardSetup` can never forget one.
  */
-export function isStandardSetup(org: {
-  rollingSquadEnabled: boolean;
-  benchPickMode: string;
+export const STANDARD_SETTING: Record<LearnedKey, SettingValue> = {
+  rollingSquad: false,
+  organiserPicks: "first-come",
+  dropOutDeadline: null,
+  listPublish: null,
+  paymentTracking: false,
+};
+
+/** Everything `isStandardSetup` reads. */
+export type StandardSetupColumns = LearnedSettingColumns & {
   squadMode: string;
-}): boolean {
-  return !org.rollingSquadEnabled && org.benchPickMode === "first-come" && org.squadMode === "weekly";
+  featureAttendance: boolean;
+  featureBench: boolean;
+  featureSquadFromList: boolean;
+};
+
+/**
+ * Is the club on the standard setup the DM describes ("players say In or
+ * Out each week, and a free place goes to the first person on the bench")?
+ * True only when EVERY setting the reading can switch is on its default
+ * (`STANDARD_SETTING`: rolling squad, organisers pick, the drop-out
+ * deadline, the list day, payment tracking) and the club has the shape the
+ * sentence assumes: a weekly squad, In and Out tracking, a bench, and no
+ * pasted list.
+ */
+export function isStandardSetup(org: StandardSetupColumns): boolean {
+  return (
+    LEARNED_KEYS.every((key) => sameValue(valueNow(key, org), STANDARD_SETTING[key])) &&
+    org.squadMode === "weekly" &&
+    org.featureAttendance &&
+    org.featureBench &&
+    !org.featureSquadFromList
+  );
 }
 
 export interface SetupAskDmInput {

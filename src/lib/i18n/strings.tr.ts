@@ -1783,8 +1783,9 @@ export const tr: Strings = {
   sj_dm_ready_schedule: (p) => `📅 *Haftalık maçınız:* günü, saati ve sahayı kontrol edin ya da değiştirin:\n${p.url}`,
   sj_dm_ready_ratings: (p) =>
     `⭐ *Başlangıç puanları:* ilk takımlar dengeli olsun diye her oyuncuya 10 üzerinden kabaca bir puan verin:\n${p.url}`,
+  // TODO(go-live PR #234): take the button's name from `sj_go_button` once both are on main.
   sj_dm_ready_go: (p) =>
-    `Hazır olduğunuzda buraya *GO* yazın, grupta kendimi tanıtayım; ya da ayarlar sayfanızdaki *Yayına geç* düğmesine basın:\n${p.url}\nO zamana kadar grupta hiçbir şey yazmam.`,
+    `Hazır olduğunuzda buraya *BAŞLA* yazın, grupta kendimi tanıtayım; ya da ayarlar sayfanızdaki *Yayına al* düğmesine basın:\n${p.url}\nO zamana kadar grupta hiçbir şey yazmam.`,
   sj_dm_ready_free: `${firstMonthsFree("tr")}. Ücretsiz dönem, grupta yayına geçtiğimde başlar.`,
   sj_dm_connected_held: (p) =>
     `Merhaba${p.name ? ` ${p.name}` : ""}, tamamdır: ${p.club} bu sohbete bağlandı.\n` +

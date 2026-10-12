@@ -125,12 +125,16 @@ const countWord = (n: number) => (n === 2 ? "Two" : String(n));
 /**
  * What the platform owner is told after an approval, by WhatsApp and on
  * /admin/clubs alike. `held` (go-live slice S3, SETUP_HOLD_ENABLED on):
- * no hello goes out; the organiser is asked to confirm the setup and the
- * group hears nothing until they reply GO. Not held: today's sentence.
+ * no hello goes out. It is said at the moment of approval, BEFORE the
+ * chat is read or the organiser's setup DM is queued, so it states only
+ * what is true whatever happens next: the club is approved and silent,
+ * the organiser is sent the setup message (it may still be refused) and
+ * goes live by replying GO, and a problem is shown on /admin/health
+ * (`SETUP_ALERT_KIND`). Not held: today's sentence.
  */
 export function approvedOwnerText(club: string, held: boolean): string {
   return held
-    ? `Approved ${club}. Its organiser is being asked to confirm the setup, and MatchTime stays silent in the group until they reply GO.`
+    ? `Approved ${club}. It stays silent in its group: its organiser is sent the setup message and goes live by replying GO. Any problem shows on the health page.`
     : `Approved ${club}. The hello goes out in the group within a few minutes.`;
 }
 

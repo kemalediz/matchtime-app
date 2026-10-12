@@ -21,11 +21,15 @@
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import type { APIRequestContext } from "@playwright/test";
 import { test, expect, resetDb } from "../fixtures";
 import { E2E, REPO_ROOT } from "../helpers/env";
 import { testDb, type TestDb } from "../helpers/test-db";
 import { messageHoursSendAfter } from "@/lib/message-hours";
+
+const execFileAsync = promisify(execFile);
 
 test.describe.configure({ mode: "serial" });
 
@@ -234,6 +238,59 @@ async function expectHeldAndSilent(request: APIRequestContext, db: TestDb, c: Cl
   expect(poll.status()).toBe(404);
 }
 
+/** What main posts in the group at an approval today (`sj_group_hello`, English, organiser "Ali"). */
+const FLAG_OFF_HELLO = [
+  "👋 Hi everyone, I'm *MatchTime*. Ali has set me up to run this group's games. Here's what I do, right here in WhatsApp:\n",
+  "\n",
+  "✅ *Who's in:* just say *In* or *Out*. I keep the list and tick your message.\n",
+  "🪑 *The bench:* once we're full, anyone who says *In* late goes on the bench, and the bench gets first dibs if someone drops.\n",
+  "⏰ *Remind me:* say *\"@Match Time remind me Thursday\"* and I'll DM you then.\n",
+  "⚖️ *Fair teams:* tag me and I pick balanced teams from player ratings.\n",
+  "⭐ *Man of the Match and ratings* after every game.\n",
+  "📊 *Stats:* ask me anything, and everyone gets their own stats page.\n",
+  "💷 *Match fees:* your organiser can switch on card or bank pay links.\n",
+  "\n",
+  "I stay quiet during the banter and only reply to In, Out or a tag. Anything else, tag me: *@Match Time help*",
+].join("");
+/** What main DMs the organiser today (`sj_dm_approved` with the club fee tip: the suite runs with billing on). */
+const FLAG_OFF_ORGANISER_DM = [
+  "Good news: Riverside FC is live. I've said hello in \"Riverside FC group\".\n",
+  "\n",
+  "A few things to set up when you have a minute:\n",
+  "\n",
+  "📅 *Your weekly game:* check the day, time and venue, or change them:\n",
+  "<link>\n",
+  "\n",
+  "⭐ *Starting ratings:* give each player a rough score out of 10 so the first teams are fair:\n",
+  "<link>\n",
+  "\n",
+  "⚙️ *Settings:* switch on payments, rolling squad, weekly deadlines, admin messages, organiser picks and badge announcements:\n",
+  "<link>\n",
+  "\n",
+  "❓ *Help any time:* message me here, for example *help payments* or *help badges*.\n",
+  "\n",
+  "Your first two months are free.\n",
+  "\n",
+  "💷 *Club fee tip:* after that MatchTime only charges for the games you play, up to £9.99 a month for the group, paid by card by whoever collects the match fees. Each game played costs at most £2.50, about *25p a player per game* with 10 players, so a £8 game could be charged at *£8.25*.",
+].join("");
+
+const alerts = (db: TestDb, orgId: string) =>
+  db.all<{ kind: string; severity: string; title: string; detail: string; dedupeKey: string | null }>(
+    `SELECT kind, severity, title, detail, "dedupeKey" FROM "OpsAlert" WHERE "orgId" = $1 ORDER BY "firstSeenAt"`,
+    [orgId],
+  );
+
+/** A club held by hand: approved `approvedAgo` ago, setting up, its connect request closed. */
+async function seedHeld(c: Club, approvedAgo: string, opts: { history?: unknown[] | null } = {}) {
+  await seedPending(c, opts);
+  const db = testDb();
+  await db.run(
+    `UPDATE "Organisation" SET "approvalStatus" = 'approved', "approvedAt" = now() - $3::interval, "setupStage" = 'setting-up', "whatsappGroupId" = $2 WHERE id = $1`,
+    [c.org, c.group, approvedAgo],
+  );
+  await db.run(`UPDATE "ClubConnect" SET status = 'closed' WHERE "orgId" = $1`, [c.org]);
+}
+
 test.beforeAll(() => {
   resetDb();
 });
@@ -264,6 +321,65 @@ test("FLAG OFF is today's approval: hello queued, bot on, 'you're live' DM, free
   const ack = await jobs(db, E2E.APPROVER_PHONE, "owner-ack");
   expect(ack.at(-1)!.text).toBe("Approved Riverside FC. The hello goes out in the group within a few minutes.");
 
+  // PR #235 review fix 8: the COMPLETE set of what the approval wrote,
+  // pinned. These are the values main produces today for this club (the
+  // texts come from `sj_group_hello`, `sj_dm_approved` and
+  // `sj_dm_approved_tip`, none of which this slice touches); links are
+  // replaced by <link> because each one is minted.
+  const unlink = (s: string) => s.replace(/https?:\/\/\S+/g, "<link>");
+  const botJobs = await db.all<{ kind: string; phone: string | null; text: string; sendAfter: Date | null; sentAt: Date | null }>(
+    `SELECT kind, phone, text, "sendAfter", "sentAt" FROM "BotJob" WHERE "orgId" = $1 ORDER BY "createdAt"`,
+    [c.org],
+  );
+  expect(botJobs).toEqual([{ kind: "group", phone: null, sendAfter: null, sentAt: null, text: FLAG_OFF_HELLO }]);
+  const platformJobs = await db.all<{ kind: string; purpose: string; phone: string; refId: string; text: string; sendAfter: Date | null; status: string }>(
+    `SELECT kind, purpose, phone, "refId", text, "sendAfter", status FROM "PlatformJob" ORDER BY "createdAt", purpose`,
+  );
+  expect(platformJobs.map((j) => ({ ...j, text: unlink(j.text) }))).toEqual([
+    {
+      kind: "dm",
+      purpose: "organiser-decision",
+      phone: c.phone,
+      refId: `${c.org}-cc:approved`,
+      sendAfter: null,
+      status: "queued",
+      text: FLAG_OFF_ORGANISER_DM,
+    },
+    {
+      kind: "dm",
+      purpose: "owner-ack",
+      phone: E2E.APPROVER_PHONE,
+      refId: `dm:e2e-s3-wa-${wa}`,
+      sendAfter: null,
+      status: "queued",
+      text: "Approved Riverside FC. The hello goes out in the group within a few minutes.",
+    },
+  ]);
+  expect(
+    await db.one(
+      `SELECT "approvalStatus","setupStage","whatsappBotEnabled","whatsappGroupId","approvalDecidedBy","billingStatus","billingPlan",
+              "setupAskedAt","setupRemovedAt","liveAt","liveBy",("approvedAt" IS NOT NULL) AS "approvedAtSet",
+              ("approvedAt" = "approvalDecidedAt") AS "approvedWhenDecided"
+         FROM "Organisation" WHERE id = $1`,
+      [c.org],
+    ),
+  ).toEqual({
+    approvalStatus: "approved",
+    setupStage: "live",
+    whatsappBotEnabled: true,
+    whatsappGroupId: c.group,
+    approvalDecidedBy: `whatsapp:${E2E.APPROVER_PHONE}`,
+    billingStatus: "trial",
+    billingPlan: "standard",
+    setupAskedAt: null,
+    setupRemovedAt: null,
+    liveAt: null,
+    liveBy: null,
+    approvedAtSet: true,
+    approvedWhenDecided: true,
+  });
+  expect(await db.count(`SELECT COUNT(*) FROM "OpsAlert" WHERE "orgId" = $1`, [c.org])).toBe(0);
+
   // Nothing was scheduled after the approval: the reading waits for the cron, as today.
   expect(await reading(db, c.org)).toBeNull();
   const swept = await cron(request, { learning: "1", stub: ROLLING_ANSWER });
@@ -286,7 +402,7 @@ test("FLAG ON, by WhatsApp: held and silent; the reading runs after the response
   expect(r).toEqual({ ok: true, handled: "approver-dm", result: "approved", heldOrgId: c.org });
   const ack = await jobs(db, E2E.APPROVER_PHONE, "owner-ack");
   expect(ack.at(-1)!.text).toBe(
-    "Approved Harbour FC. Its organiser is being asked to confirm the setup, and MatchTime stays silent in the group until they reply GO.",
+    "Approved Harbour FC. It stays silent in its group: its organiser is sent the setup message and goes live by replying GO. Any problem shows on the health page.",
   );
 
   // The reading ran promptly, with no cron: `after()`.
@@ -357,7 +473,9 @@ test("FLAG ON, Turkish, no chat stored (skipped): the DM is Turkish and says the
   );
   expect(blocks[1]).toBe("Grubunuzun son mesajlarını okuyamadım, bu yüzden MatchTime standart düzeninde.");
   expect(blocks[2]).toBe("Standart düzen: oyuncular her hafta VARIM ya da YOKUM der, boşalan yer yedek listesindeki ilk kişiye verilir.");
-  expect(dm.text).toContain("buraya *GO* yazın");
+  // The Turkish DM asks for BAŞLA and names the button "Yayına al" (as the go-live PR does).
+  expect(dm.text).toContain("buraya *BAŞLA* yazın");
+  expect(dm.text).toContain("*Yayına al* düğmesine basın");
   expect(blocks.at(-1)).toBe("İlk iki ayınız ücretsiz. Ücretsiz dönem, grupta yayına geçtiğimde başlar.");
 });
 
@@ -495,4 +613,197 @@ test("a held club the owner then turns off, or one MatchTime was removed from, i
   await cron(request, { learning: "0" });
   expect(await setupDms(db, off)).toEqual([]);
   expect(await setupDms(db, gone)).toEqual([]);
+  // Tidy: the removed club is still readable by the reading sweep; give it
+  // a finished reading so the tests below see no club left to read.
+  await db.run(
+    `INSERT INTO "ClubSetupLearning" (id,"orgId",status,applied,suggestions,noted,"updatedAt") VALUES ($1,$2,'nothing','[]','[]','[]',now())
+     ON CONFLICT ("orgId") DO UPDATE SET status = 'nothing'`,
+    [`${gone.org}-csl`, gone.org],
+  );
+});
+
+// ── PR #235 review fix 1: the 2-hour cap ────────────────────────────────
+
+test("THE CAP: a reading stuck 'running' with its attempts used up is closed two hours after approval, and the DM goes", async ({ request, db }) => {
+  const stuck = club("Stuck FC");
+  const fresh = club("Fresh FC");
+  // Approved 3 hours ago / 1 hour 50 ago by the pinned clock. Both readings
+  // died on their last attempt: nothing may ever retake them.
+  await seedHeld(stuck, "3 hours");
+  await seedHeld(fresh, "110 minutes");
+  for (const c of [stuck, fresh]) {
+    await db.run(`UPDATE "Organisation" SET "approvedAt" = $2::timestamptz AT TIME ZONE 'UTC' - $3::interval WHERE id = $1`, [
+      c.org,
+      DAY,
+      c === stuck ? "3 hours" : "110 minutes",
+    ]);
+    await db.run(
+      `INSERT INTO "ClubSetupLearning" (id,"orgId",status,attempts,"updatedAt") VALUES ($1,$2,'running',3,now())`,
+      [`${c.org}-csl`, c.org],
+    );
+  }
+
+  const r = await cron(request, { learning: "1", stub: ROLLING_ANSWER });
+  // The reading sweep cannot take either (attempts used up) ...
+  expect(r.considered).toBe(0);
+  // ... and the cap takes only the one past two hours.
+  expect(r.setupDms).toEqual({ considered: 1, sent: 1 });
+
+  expect(await reading(db, stuck.org)).toMatchObject({ status: "skipped", reason: "timed-out" });
+  expect((await storedChat(db, stuck.org))!.h).toBeNull();
+  const [dm] = await setupDms(db, stuck);
+  expect(dm.text.split("\n\n")[1]).toBe("I couldn't read your group's recent messages, so MatchTime is on its standard setup.");
+  // Still held and silent: the cap sends a DM, it does not make the club live.
+  expect(await orgRow(db, stuck.org)).toMatchObject({
+    setupStage: "setting-up",
+    whatsappBotEnabled: false,
+    rollingSquadEnabled: false,
+    asked: new Date(DAY),
+  });
+  expect(await db.count(`SELECT COUNT(*) FROM "BotJob" WHERE "orgId" = $1`, [stuck.org])).toBe(0);
+
+  // At 1 hour 50 the other club is still waited for: untouched.
+  expect(await reading(db, fresh.org)).toMatchObject({ status: "running", attempts: 3 });
+  expect((await storedChat(db, fresh.org))!.h).not.toBeNull();
+  expect(await setupDms(db, fresh)).toEqual([]);
+
+  // Closed for good: no later sweep reads it, whatever the model would say.
+  const later = await cron(request, { learning: "1", stub: ROLLING_ANSWER });
+  expect(later.considered).toBe(0);
+  expect((await orgRow(db, stuck.org))!.rollingSquadEnabled).toBe(false);
+  expect(await setupDms(db, stuck)).toHaveLength(1);
+  // Tidy: let the fresh club's DM go so later tests see no club due.
+  await db.run(`UPDATE "Organisation" SET "setupAskedAt" = now() WHERE id = $1`, [fresh.org]);
+});
+
+test("THE CAP: 'deferred' and approved four days ago (outside the reading sweep's window) is not stranded either", async ({ request, db }) => {
+  const c = club("Long Wait FC");
+  await seedHeld(c, "4 days");
+  await db.run(
+    `INSERT INTO "ClubSetupLearning" (id,"orgId",status,reason,attempts,"updatedAt") VALUES ($1,$2,'deferred','ai-cap',2,now() - interval '4 days')`,
+    [`${c.org}-csl`, c.org],
+  );
+  const r = await cron(request, { learning: "1", stub: ROLLING_ANSWER });
+  // Past the 3-day window, so the reading sweep never selects it again.
+  expect(r.considered).toBe(0);
+  expect(r.setupDms).toEqual({ considered: 1, sent: 1 });
+  expect(await reading(db, c.org)).toMatchObject({ status: "skipped", reason: "timed-out" });
+  const [dm] = await setupDms(db, c);
+  expect(dm.text).toContain("I couldn't read your group's recent messages");
+  expect((await orgRow(db, c.org))!.rollingSquadEnabled).toBe(false);
+});
+
+test("THE CAP does not touch a reading that finished: approved three hours ago, read at 1h59, reported as read", async ({ request, db }) => {
+  const c = club("On Time FC");
+  await seedHeld(c, "3 hours", { history: null });
+  await db.run(`UPDATE "Organisation" SET "rollingSquadEnabled" = true WHERE id = $1`, [c.org]);
+  await db.run(
+    `INSERT INTO "ClubSetupLearning" (id,"orgId",status,applied,suggestions,noted,"updatedAt")
+     VALUES ($1,$2,'applied',$3::jsonb,'[]','[]',now() - interval '61 minutes')`,
+    [`${c.org}-csl`, c.org, JSON.stringify([{ key: "rollingSquad", from: false, to: true, evidence: ["Same lot as last week"] }])],
+  );
+  await cron(request, { learning: "1", stub: ROLLING_ANSWER });
+  expect(await reading(db, c.org)).toMatchObject({ status: "applied" });
+  const [dm] = await setupDms(db, c);
+  expect(dm.text).toContain("✅ *Rolling squad is on:*");
+  expect(dm.text).not.toContain("couldn't read");
+});
+
+// ── PR #235 review fix 4: the DM states what is true NOW ─────────────────
+
+test("a setting the organiser undid, and one they changed by hand, are not reported as on; 'standard setup' needs every default", async ({ request, db }) => {
+  const c = club("Changed Mind FC");
+  await seedHeld(c, "10 minutes", { history: null });
+  // The reading switched rolling squad and payment tracking on. The
+  // organiser has since undone rolling squad from the settings page, and
+  // set a drop-out deadline by hand.
+  await db.run(
+    `UPDATE "Organisation" SET "rollingSquadEnabled" = false, "paymentTrackingEnabled" = true, "dropOutDeadlineDay" = 1, "dropOutDeadlineTime" = '21:00' WHERE id = $1`,
+    [c.org],
+  );
+  await db.run(
+    `INSERT INTO "ClubSetupLearning" (id,"orgId",status,applied,suggestions,noted,"updatedAt") VALUES ($1,$2,'applied',$3::jsonb,'[]','[]',now())`,
+    [
+      `${c.org}-csl`,
+      c.org,
+      JSON.stringify([
+        { key: "rollingSquad", from: false, to: true, evidence: ["Same lot as last week"], undoneAt: new Date().toISOString() },
+        { key: "paymentTracking", from: false, to: true, evidence: ["sent £6"] },
+      ]),
+    ],
+  );
+  await cron(request, { learning: "1", stub: ROLLING_ANSWER });
+  const [dm] = await setupDms(db, c);
+  expect(dm.text).not.toContain("Rolling squad is on");
+  expect(dm.text).toContain("✅ *Payment tracking is on:*");
+  expect(dm.text).not.toMatch(/standard setup/i);
+
+  // Nothing found, but the organiser set a list day: never "standard setup".
+  const d = club("List Day FC");
+  await seedHeld(d, "10 minutes", { history: null });
+  await db.run(`UPDATE "Organisation" SET "listPublishDay" = 2, "listPublishTime" = '20:00' WHERE id = $1`, [d.org]);
+  await db.run(
+    `INSERT INTO "ClubSetupLearning" (id,"orgId",status,applied,suggestions,noted,"updatedAt") VALUES ($1,$2,'nothing','[]','[]','[]',now())`,
+    [`${d.org}-csl`, d.org],
+  );
+  await cron(request, { learning: "1", stub: NOTHING_ANSWER });
+  const [dm2] = await setupDms(db, d);
+  expect(dm2.text).toContain("found nothing that needs a setting changed, so I changed nothing.");
+  expect(dm2.text).not.toMatch(/standard setup/i);
+});
+
+// ── PR #235 review fix 2: what cannot be sent is shown to the owner, once ──
+
+test("the organiser's number is not a MatchTime user's any more: no DM, stamped, ONE ops event, not retried", async ({ request, db }) => {
+  const c = club("Lost Number FC");
+  await seedHeld(c, "10 minutes", { history: null });
+  // The organiser changed their number after connecting.
+  await db.run(`UPDATE "User" SET "phoneNumber" = '+447700900599' WHERE id = $1`, [c.user]);
+  const first = await cron(request, { learning: "0" });
+  expect(first.setupDms).toEqual({ considered: 1, sent: 0 });
+  expect(await setupDms(db, c)).toEqual([]);
+  expect((await orgRow(db, c.org))!.asked).toEqual(new Date(DAY));
+  const seen = await alerts(db, c.org);
+  expect(seen).toHaveLength(1);
+  expect(seen[0]).toMatchObject({ kind: "club-setup", severity: "warning", title: "Setup message not sent", dedupeKey: "setup-ask-not-sent" });
+  expect(seen[0].detail).toContain("(number-not-known)");
+  // Ids and codes only: no number, no name.
+  expect(seen[0].detail).not.toMatch(/4477|Lost Number/);
+
+  // Not retried: the club is no longer due, and no second event is recorded.
+  const second = await cron(request, { learning: "0" });
+  expect(second.setupDms).toBeUndefined();
+  expect(await alerts(db, c.org)).toHaveLength(1);
+});
+
+test("a held club with no organiser on record: stamped, ONE ops event, and it stops taking a place in every sweep", async ({ request, db }) => {
+  const c = club("Nobody FC");
+  await seedHeld(c, "10 minutes", { history: null });
+  await db.run(`DELETE FROM "ClubConnect" WHERE "orgId" = $1`, [c.org]);
+  const first = await cron(request, { learning: "0" });
+  expect(first.setupDms).toEqual({ considered: 1, sent: 0 });
+  expect((await orgRow(db, c.org))!.asked).toEqual(new Date(DAY));
+  const seen = await alerts(db, c.org);
+  expect(seen).toHaveLength(1);
+  expect(seen[0]).toMatchObject({ kind: "club-setup", title: "Setup message not sent" });
+  expect(seen[0].detail).toContain("(no-organiser)");
+  const second = await cron(request, { learning: "0" });
+  expect(second.setupDms).toBeUndefined();
+  expect(await alerts(db, c.org)).toHaveLength(1);
+});
+
+// ── PR #235 review fixes 3, 5 and 8: through the lib, against Postgres ──
+// LAST in this file: it claims every platform job that is due.
+
+test("decideClub and the reading against Postgres: suspend cancels the waiting DM, a closed reading applies nothing (tsx)", async () => {
+  test.setTimeout(120_000);
+  const { stdout, stderr } = await execFileAsync("npx", ["tsx", "e2e/helpers/setup-hold-lib-tests.ts"], {
+    cwd: REPO_ROOT,
+    env: process.env,
+    timeout: 110_000,
+  }).catch((err: Error & { stdout?: string; stderr?: string }) => {
+    throw new Error(`setup-hold-lib-tests failed:\n${err.stdout ?? ""}\n${err.stderr ?? ""}`);
+  });
+  console.log(stdout);
+  expect(stdout, stderr).toContain("OK: 7 setup-hold checks");
 });

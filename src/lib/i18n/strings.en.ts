@@ -2192,7 +2192,10 @@ export const en = {
     `📅 *Your weekly game:* check the day, time and venue, or change them:\n${p.url}`,
   sj_dm_ready_ratings: (p: { url: string }): string =>
     `⭐ *Starting ratings:* give each player a rough score out of 10 so the first teams are fair:\n${p.url}`,
-  /** The GO line. `url` is the organiser's signed-in link to /admin/settings. */
+  /** The GO line. `url` is the organiser's signed-in link to /admin/settings.
+   *  The GO handler takes GO, GO LIVE, BAŞLA and BASLA in any language; the
+   *  Turkish DM asks for BAŞLA. */
+  // TODO(go-live PR #234): take the button's name from `sj_go_button` once both are on main.
   sj_dm_ready_go: (p: { url: string }): string =>
     `When you're happy, reply *GO* here and I'll introduce myself in the group, or press *Go live* on your settings page:\n${p.url}\nUntil then I say nothing in the group.`,
   /** The free period: its length (from `FREE_PERIOD_MONTHS`) and when it starts. */

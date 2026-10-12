@@ -24,7 +24,7 @@ import { auth } from "@/lib/auth";
 import { isSuperadmin } from "@/lib/org";
 import { decideClub, leaveUnsolicitedGroup, type DecideClubResult } from "@/lib/club-approval";
 import { approvedOwnerText } from "@/lib/club-decision-rules";
-import { scheduleSetupAfterApproval } from "@/lib/club-setup-schedule";
+import { scheduleSetupAfterApprovalFromAction } from "@/lib/club-setup-schedule";
 import { selfJoinEnabledForRequest } from "@/lib/self-join-flag";
 import { setupHoldEnabledForRequest } from "@/lib/setup-hold-flag";
 
@@ -84,7 +84,7 @@ async function run(orgId: string, decision: "approve" | "reject" | "suspend", co
   const r = await decideClub(orgId, decision, userId, { confirmName, hold });
   // Its chat reading and its organiser's setup DM run after this action has
   // answered (`after()`); the learn-setup cron retries.
-  if (r.ok && r.held) scheduleSetupAfterApproval(r.orgId);
+  if (r.ok && r.held) await scheduleSetupAfterApprovalFromAction(r.orgId);
   revalidatePath("/admin/clubs");
   return describe(r);
 }

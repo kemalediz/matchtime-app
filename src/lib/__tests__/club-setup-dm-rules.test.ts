@@ -11,14 +11,32 @@ import { describe, expect, it } from "vitest";
 import { t } from "../i18n/t";
 import {
   CHAT_READING_FINAL_STATUSES,
+  READING_OFF_REASON,
+  STANDARD_SETTING,
   composeSetupAskDm,
   isStandardSetup,
   readingFromRow,
   type SetupAskDmInput,
   type ChatReading,
+  type StandardSetupColumns,
 } from "../club-setup-dm-rules";
 import { composeSetupDm } from "../setup-learning/dm";
-import type { AppliedItem, NotedPattern, Suggestion } from "../setup-learning/rules";
+import { LEARNED_KEYS, dataFor, type AppliedItem, type LearnedKey, type NotedPattern, type SettingValue, type Suggestion } from "../setup-learning/rules";
+
+/** A club on every default: what `isStandardSetup` calls standard. */
+const DEFAULTS: StandardSetupColumns = {
+  rollingSquadEnabled: false,
+  benchPickMode: "first-come",
+  dropOutDeadlineDay: null,
+  dropOutDeadlineTime: null,
+  listPublishDay: null,
+  listPublishTime: null,
+  paymentTrackingEnabled: false,
+  squadMode: "weekly",
+  featureAttendance: true,
+  featureBench: true,
+  featureSquadFromList: false,
+};
 
 const applied: AppliedItem[] = [
   { key: "rollingSquad", from: false, to: true, evidence: ["Same lot as last week"] },
@@ -81,17 +99,66 @@ describe("readingFromRow: what the DM says about the chat reading", () => {
     expect(readingFromRow({ status: "failed", applied: null, suggestions: null, noted: null })).toEqual({ kind: "unread" });
   });
 
+  it("review fix 4a: a setting the organiser already UNDID is not reported as on", () => {
+    const undone = [{ ...applied[0], undoneAt: "2026-10-12T10:00:00.000Z" }, applied[1]];
+    const r = readingFromRow({ status: "applied", applied: undone, suggestions: [], noted: [] });
+    expect(r).toEqual({ kind: "findings", applied: [applied[1]], suggestions: [], noted: [] });
+  });
+
+  it("review fix 4a: a setting the organiser has CHANGED since (it no longer holds what was set) is not reported either", () => {
+    // Rolling squad was switched on by the reading; the organiser has switched it off again on the website.
+    const now = { ...DEFAULTS, dropOutDeadlineDay: 1, dropOutDeadlineTime: "21:00" };
+    const r = readingFromRow({ status: "applied", applied, suggestions: [], noted: [] }, now);
+    expect(r).toEqual({ kind: "findings", applied: [applied[1]], suggestions: [], noted: [] });
+    // Still holding both: both are reported.
+    const both = { ...now, rollingSquadEnabled: true };
+    expect(readingFromRow({ status: "applied", applied, suggestions: [], noted: [] }, both)).toMatchObject({ applied });
+  });
+
+  it("review fix 4a: every switched setting undone, nothing else to tell: 'nothing', never an empty findings list", () => {
+    const undone = applied.map((a) => ({ ...a, undoneAt: "2026-10-12T10:00:00.000Z" }));
+    expect(readingFromRow({ status: "applied", applied: undone, suggestions: [], noted: [] })).toEqual({ kind: "nothing" });
+  });
+
+  it("a reading closed because the reading is switched off is 'none' (nothing was tried); closed at the 2-hour cap it is 'unread'", () => {
+    expect(readingFromRow({ status: "skipped", reason: READING_OFF_REASON, applied: null, suggestions: null, noted: null })).toEqual({ kind: "none" });
+    expect(readingFromRow({ status: "skipped", reason: "timed-out", applied: null, suggestions: null, noted: null })).toEqual({ kind: "unread" });
+  });
+
   it("the final statuses are the four the plan names", () => {
     expect([...CHAT_READING_FINAL_STATUSES].sort()).toEqual(["applied", "failed", "nothing", "skipped"]);
   });
 });
 
-describe("isStandardSetup", () => {
-  it("weekly sign-up, first come on the bench", () => {
-    expect(isStandardSetup({ rollingSquadEnabled: false, benchPickMode: "first-come", squadMode: "weekly" })).toBe(true);
-    expect(isStandardSetup({ rollingSquadEnabled: true, benchPickMode: "first-come", squadMode: "weekly" })).toBe(false);
-    expect(isStandardSetup({ rollingSquadEnabled: false, benchPickMode: "organiser", squadMode: "weekly" })).toBe(false);
-    expect(isStandardSetup({ rollingSquadEnabled: false, benchPickMode: "first-come", squadMode: "monthly" })).toBe(false);
+describe("isStandardSetup (review fix 4b: EVERY setting the DM's 'standard setup' line speaks for)", () => {
+  it("a club on every default is standard", () => {
+    expect(isStandardSetup(DEFAULTS)).toBe(true);
+  });
+
+  it("one default per learnable key, taken from the reading's own key list, so a new key cannot be forgotten", () => {
+    expect(Object.keys(STANDARD_SETTING).sort()).toEqual([...LEARNED_KEYS].sort());
+  });
+
+  // A value that is NOT the default, for each learnable key. `Record<LearnedKey, ...>`:
+  // adding a key to LEARNED_KEYS fails to compile here until it is given one.
+  const MOVED: Record<LearnedKey, SettingValue> = {
+    rollingSquad: true,
+    organiserPicks: "organiser",
+    dropOutDeadline: { day: 1, time: "21:00" },
+    listPublish: { day: 2, time: "20:00" },
+    paymentTracking: true,
+  };
+  for (const key of LEARNED_KEYS) {
+    it(`${key} moved off its default: not standard`, () => {
+      expect(isStandardSetup({ ...DEFAULTS, ...dataFor(key, MOVED[key]) })).toBe(false);
+    });
+  }
+
+  it("the club's shape beyond the learnable keys: monthly squad, no In and Out tracking, no bench, a pasted list", () => {
+    expect(isStandardSetup({ ...DEFAULTS, squadMode: "monthly" })).toBe(false);
+    expect(isStandardSetup({ ...DEFAULTS, featureAttendance: false })).toBe(false);
+    expect(isStandardSetup({ ...DEFAULTS, featureBench: false })).toBe(false);
+    expect(isStandardSetup({ ...DEFAULTS, featureSquadFromList: true })).toBe(false);
   });
 });
 
@@ -198,7 +265,7 @@ describe("composeSetupAskDm: the blocks, in order", () => {
     expect(blocks[1]).toContain("MatchTime'ı aynı şekilde kurdum");
     expect(blocks[5]).toBe("⚙️ *Grubunuzun nasıl işlediğini kontrol edin ya da değiştirin:*\nhttps://mt.link/learned");
     expect(blocks[8]).toBe(
-      "Hazır olduğunuzda buraya *GO* yazın, grupta kendimi tanıtayım; ya da ayarlar sayfanızdaki *Yayına geç* düğmesine basın:\n" +
+      "Hazır olduğunuzda buraya *BAŞLA* yazın, grupta kendimi tanıtayım; ya da ayarlar sayfanızdaki *Yayına al* düğmesine basın:\n" +
         "https://mt.link/settings\n" +
         "O zamana kadar grupta hiçbir şey yazmam.",
     );
