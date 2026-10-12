@@ -1085,6 +1085,7 @@ export async function recoverGroupMessages(
         const msgs = [...fetched].sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0));
         let queued = 0;
         let beforeFloor = 0;
+        let alreadyWaiting = 0;
         let oldestSec = Number.POSITIVE_INFINITY;
         // A club that has just gone live (2026-10-13): nothing from before
         // that instant is fed, neither as a message nor as recent chat.
@@ -1096,8 +1097,24 @@ export async function recoverGroupMessages(
           if (ts > 0 && ts < oldestSec) oldestSec = ts;
           if (m.fromMe) continue;
           if (ts < cutoffSec) continue;
-          if (floorMs !== null && ts * 1000 < floorMs) {
+          // BY THE SECOND (PR #250 review, fix 4). WhatsApp stamps whole
+          // seconds and the go-live has milliseconds. Comparing in
+          // milliseconds dropped a message sent in the same second as GO
+          // but after it. The side chosen: lose nothing said AFTER go-live.
+          // The price: a message in that same second, a few hundred
+          // milliseconds BEFORE go-live, may be fed.
+          if (floorMs !== null && ts < Math.floor(floorMs / 1000)) {
             beforeFloor++;
+            continue;
+          }
+          // ONCE PER BATCH (fix 7). The live handler may have buffered
+          // this very message a moment ago (a group that has just become
+          // monitored), and a page can hand a message back twice. The
+          // server's own dedupe looks at what is already STORED, which a
+          // copy still waiting in this batch is not.
+          const replayId = resolveWaMessageId(m).waMessageId;
+          if (isWaitingInBatch(gid, replayId)) {
+            alreadyWaiting++;
             continue;
           }
           // ── THE REPLAY IS NOT ITS OWN CONTEXT UNLESS WE MAKE IT SO ────
@@ -1134,7 +1151,8 @@ export async function recoverGroupMessages(
         console.log(
           `[recover-group] ${gid}: fetched ${msgs.length}, re-queued ${queued} from the last ` +
             `${window.lookbackHours}h (limit ${window.fetchLimit}) for catch-up` +
-            (floorMs !== null ? `; ${beforeFloor} left out as older than the club's go-live` : ""),
+            (floorMs !== null ? `; ${beforeFloor} left out as older than the club's go-live` : "") +
+            (alreadyWaiting > 0 ? `; ${alreadyWaiting} already waiting in the batch` : ""),
         );
         // The page hands back the NEWEST `limit` messages. If that many all
         // fall inside the window, older ones inside it were never seen.
@@ -1160,6 +1178,11 @@ export async function recoverGroupMessages(
 }
 
 let recoverySweepInFlight = false;
+
+/** Is a message with this id already in the group's unsent batch? */
+function isWaitingInBatch(groupId: string, waMessageId: string): boolean {
+  return (bufferByGroup.get(groupId) ?? []).some((p) => p.waMessageId === waMessageId);
+}
 
 /**
  * Is a catch-up sweep running? A second call while one runs is skipped

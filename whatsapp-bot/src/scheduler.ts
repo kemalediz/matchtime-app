@@ -24,6 +24,7 @@ import {
 } from "./api.js";
 import { runPlatformJobs } from "./platform-jobs.js";
 import { refreshIfClubSetChanged } from "./org-refresh.js";
+import { runPendingCatchUps } from "./club-catch-up.js";
 import { withTimeout } from "./with-timeout.js";
 import { config } from "./config.js";
 import { reactAndReport } from "./react-with-id.js";
@@ -166,6 +167,13 @@ async function tick(): Promise<void> {
     } catch (err) {
       console.error("[org-refresh] club set check failed:", err instanceof Error ? err.message : err);
     }
+
+    // A catch-up for a newly live group that met a running sweep waits on
+    // a small list and is tried again here, every tick, until it runs or
+    // is too old (club-catch-up.ts). Not awaited: reading a group back can
+    // take seconds, and the clubs below must not wait for it. A no-op
+    // when nothing is waiting. Never throws.
+    void runPendingCatchUps();
 
     for (const org of orgs) {
       try {

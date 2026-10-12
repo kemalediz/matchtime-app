@@ -89,6 +89,58 @@ describe("GET: the club set version", () => {
     err.mockRestore();
   });
 
+  // PR #250 review, fix 1. The stamp used to be read AFTER the claim. A
+  // read that stalled (not threw) until the function was killed took the
+  // claimed jobs with it: a sign-up code lives ten minutes and nothing
+  // reclaims a claimed job.
+  it("the stamp is read BEFORE the jobs are claimed, so nothing claimed can be waiting on it", async () => {
+    const order: string[] = [];
+    versionMock.loadClubSetVersion.mockImplementation(async () => {
+      order.push("version");
+      return "0123456789abcdef";
+    });
+    libMock.claimDuePlatformJobs.mockImplementation(async () => {
+      order.push("claim");
+      return [];
+    });
+    await get();
+    expect(order).toEqual(["version", "claim"]);
+  });
+
+  it("a stamp read that NEVER resolves: the claimed jobs still reach the Pi, promptly, without the field", async () => {
+    vi.useFakeTimers();
+    try {
+      const err = vi.spyOn(console, "error").mockImplementation(() => {});
+      versionMock.loadClubSetVersion.mockImplementation(() => new Promise<string>(() => {}));
+      const pending = get();
+      await vi.advanceTimersByTimeAsync(1_500);
+      const res = await pending;
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.jobs).toHaveLength(2);
+      expect("clubSetVersion" in body).toBe(false);
+      // Claimed only once the wait for the stamp was over.
+      expect(libMock.claimDuePlatformJobs).toHaveBeenCalledTimes(1);
+      err.mockRestore();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a stamp that arrives inside the wait is sent as usual, with no delay to speak of", async () => {
+    vi.useFakeTimers();
+    try {
+      versionMock.loadClubSetVersion.mockImplementation(
+        () => new Promise<string>((resolve) => setTimeout(() => resolve("0123456789abcdef"), 200)),
+      );
+      const pending = get();
+      await vi.advanceTimersByTimeAsync(200);
+      expect((await (await pending).json()).clubSetVersion).toBe("0123456789abcdef");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("a wrong key gets neither jobs nor a version", async () => {
     const res = await GET(new Request("http://x/api/whatsapp/platform-jobs", { headers: { "x-api-key": "nope" } }));
     expect(res.status).toBe(401);

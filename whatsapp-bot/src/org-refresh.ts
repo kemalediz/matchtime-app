@@ -340,6 +340,15 @@ export async function requestStaleGroupRecheck(groupId: string, now: number = Da
 //     started a second time.
 // A FAILED refresh is simply tried again on the next tick.
 //
+// THE BACK-OFF (PR #250 review, fix 8). Those rules still allow one
+// refresh per tick for as long as every tick brings a stamp that differs
+// (two server instances that alternate, a flag that differs mid-rollout).
+// A refresh makes no WhatsApp call, so that is only load on the server,
+// but it is capped: after CLUB_SET_BACKOFF_AFTER_TICKS ticks in a row that
+// each started a refresh, a stamp-triggered refresh runs at most once per
+// CLUB_SET_BACKOFF_MS, until a tick sees an unchanged stamp. Logged once
+// when it starts. The five-minute timer is not affected.
+//
 // AN OLDER SERVER sends neither stamp: both are null and nothing here
 // ever runs. The 5-minute timer below stays, as the backstop for that
 // server and for anything a stamp cannot see.
@@ -347,6 +356,15 @@ export async function requestStaleGroupRecheck(groupId: string, now: number = Da
 /** How long a tick waits for this refresh before carrying on without it.
  *  `fetch` has no timeout of its own; the refresh keeps running. */
 export const CLUB_SET_REFRESH_TIMEOUT_MS = 10 * 1000;
+
+/** Ticks in a row that each started a refresh, before the back-off. */
+export const CLUB_SET_BACKOFF_AFTER_TICKS = 5;
+/** While backed off: one stamp-triggered refresh per this long. */
+export const CLUB_SET_BACKOFF_MS = 2 * 60 * 1000;
+
+let refreshTicksInARow = 0;
+let lastStampRefreshAtMs = 0;
+let backOffLogged = false;
 
 /** The stamp on the latest platform-jobs poll; null when it carried none. */
 let polledClubSetVersion: string | null = null;
@@ -380,22 +398,38 @@ export type ClubSetCheck =
   | "failed"
   | "timed-out"
   /** A refresh already succeeded for this stamp and the snapshot still differs. */
-  | "already-refreshed";
+  | "already-refreshed"
+  /** Too many ticks in a row needed a refresh: held back (see THE BACK-OFF). */
+  | "backed-off";
 
 /**
  * Called once per scheduler tick, after the platform-jobs poll and before
  * the clubs. Refreshes the org picture when the server's stamp is not the
  * one this snapshot was read at. Never throws.
  */
-export async function refreshIfClubSetChanged(): Promise<ClubSetCheck> {
+export async function refreshIfClubSetChanged(nowMs: number = Date.now()): Promise<ClubSetCheck> {
   const polled = polledClubSetVersion;
   if (!polled || !snapshotClubSetVersion || !refresher) return "no-stamp";
   if (polled === snapshotClubSetVersion) {
     refreshedForStamp = null;
+    refreshTicksInARow = 0;
+    backOffLogged = false;
     return "unchanged";
   }
   if (refreshedForStamp === polled) return "already-refreshed";
   if (!clubSetRefresh) {
+    if (refreshTicksInARow >= CLUB_SET_BACKOFF_AFTER_TICKS) {
+      if (!backOffLogged) {
+        backOffLogged = true;
+        console.error(
+          `[org-refresh] the club set stamp has differed on ${refreshTicksInARow} ticks in a row; backing off to one ` +
+            `stamp-triggered refresh per ${CLUB_SET_BACKOFF_MS / 1000}s until a tick sees it unchanged`,
+        );
+      }
+      if (nowMs - lastStampRefreshAtMs < CLUB_SET_BACKOFF_MS) return "backed-off";
+    }
+    refreshTicksInARow++;
+    lastStampRefreshAtMs = nowMs;
     console.log("[org-refresh] the server's club set changed since the last refresh; refreshing now");
     clubSetRefresh = runRefreshReporting("club set changed")
       .catch((err) => {
@@ -442,6 +476,24 @@ export async function refreshIfClubSetChanged(): Promise<ClubSetCheck> {
 /** A go-live older than this is not "a moment ago": no catch-up. */
 export const CATCH_UP_MAX_AGE_MS = 15 * 60 * 1000;
 
+/**
+ * `liveAt` is the SERVER's clock and "now" is the Pi's. A Pi that runs a
+ * little behind sees a club go live "in the future"; that is a clock, not a
+ * reason to drop the catch-up (PR #250 review, fix 3: two seconds behind
+ * used to cancel it, silently). Up to this far ahead is treated as now.
+ * The floor itself is never moved: it stays the server's `liveAt`.
+ */
+export const CATCH_UP_CLOCK_SKEW_MS = 2 * 60 * 1000;
+
+/** Why a group that has just become a club's gets no catch-up. Logged. */
+export type CatchUpSkip =
+  /** /orgs gave no go-live time: an older server, or a club that was never held. */
+  | "no-live-at"
+  /** It went live more than CATCH_UP_MAX_AGE_MS ago (back from a pause or a mute). */
+  | "too-old"
+  /** Its go-live is further in the future than a clock could be out. */
+  | "clock-ahead";
+
 /** `liveAt` per club group in an /orgs body, as epoch milliseconds. */
 export function parseLiveSince(data: unknown): Map<string, number> {
   const out = new Map<string, number>();
@@ -456,20 +508,32 @@ export function parseLiveSince(data: unknown): Map<string, number> {
   return out;
 }
 
-/** The groups NEW in this refresh whose missed messages are re-read, and from when. */
+/** A group to catch up on, and the floor it was decided with. */
+export interface CatchUpTarget {
+  groupId: string;
+  /** The club's go-live, epoch milliseconds, as the server gave it. */
+  sinceMs: number;
+}
+
+/**
+ * The groups NEW in this refresh whose missed messages are re-read, and
+ * from when; and the ones that are not, each with its reason.
+ */
 export function catchUpTargets(
   addedOrgs: OrgConfig[],
   liveSince: ReadonlyMap<string, number>,
   nowMs: number,
-): Array<{ groupId: string; sinceMs: number }> {
-  const out: Array<{ groupId: string; sinceMs: number }> = [];
+): { targets: CatchUpTarget[]; skipped: Array<{ groupId: string; reason: CatchUpSkip }> } {
+  const targets: CatchUpTarget[] = [];
+  const skipped: Array<{ groupId: string; reason: CatchUpSkip }> = [];
   for (const o of addedOrgs) {
     const sinceMs = liveSince.get(o.groupId);
-    if (sinceMs === undefined) continue;
-    if (sinceMs > nowMs || nowMs - sinceMs > CATCH_UP_MAX_AGE_MS) continue;
-    out.push({ groupId: o.groupId, sinceMs });
+    if (sinceMs === undefined) skipped.push({ groupId: o.groupId, reason: "no-live-at" });
+    else if (sinceMs - nowMs > CATCH_UP_CLOCK_SKEW_MS) skipped.push({ groupId: o.groupId, reason: "clock-ahead" });
+    else if (nowMs - sinceMs > CATCH_UP_MAX_AGE_MS) skipped.push({ groupId: o.groupId, reason: "too-old" });
+    else targets.push({ groupId: o.groupId, sinceMs });
   }
-  return out;
+  return { targets, skipped };
 }
 
 /** One interval, ever (a repeat `ready` must not double it). */
@@ -499,4 +563,7 @@ export function _test_resetOrgRefresh(): void {
   snapshotClubSetVersion = null;
   refreshedForStamp = null;
   clubSetRefresh = null;
+  refreshTicksInARow = 0;
+  lastStampRefreshAtMs = 0;
+  backOffLogged = false;
 }

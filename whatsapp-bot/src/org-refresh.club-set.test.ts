@@ -13,7 +13,10 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  CATCH_UP_CLOCK_SKEW_MS,
   CATCH_UP_MAX_AGE_MS,
+  CLUB_SET_BACKOFF_AFTER_TICKS,
+  CLUB_SET_BACKOFF_MS,
   CLUB_SET_REFRESH_TIMEOUT_MS,
   _test_resetOrgRefresh,
   catchUpTargets,
@@ -232,26 +235,42 @@ describe("parseLiveSince: when each club's group went live", () => {
 describe("catchUpTargets: which newly monitored groups get their missed messages re-read", () => {
   const NOW = Date.parse("2026-10-13T12:05:00Z");
   const org = (groupId: string) => ({ groupId, orgName: "a name that is never logged" });
+  const targets = (...a: Parameters<typeof catchUpTargets>) => catchUpTargets(...a).targets;
 
   it("a club that went live a moment ago: its group, from the instant it went live", () => {
     const liveAt = NOW - 40_000;
-    expect(catchUpTargets([org("a@g.us")], new Map([["a@g.us", liveAt]]), NOW)).toEqual([{ groupId: "a@g.us", sinceMs: liveAt }]);
+    expect(catchUpTargets([org("a@g.us")], new Map([["a@g.us", liveAt]]), NOW)).toEqual({
+      targets: [{ groupId: "a@g.us", sinceMs: liveAt }],
+      skipped: [],
+    });
   });
 
-  it("a group that became a club's with NO go-live time (an older server, a club that was never held, an unmuted club): nothing, as today", () => {
-    expect(catchUpTargets([org("a@g.us")], new Map(), NOW)).toEqual([]);
+  it("a group that became a club's with NO go-live time (an older server, a club that was never held, an unmuted club): nothing, as today, and it says why", () => {
+    expect(catchUpTargets([org("a@g.us")], new Map(), NOW)).toEqual({ targets: [], skipped: [{ groupId: "a@g.us", reason: "no-live-at" }] });
   });
 
   it("a club that went live long ago and is back from a pause or a mute: nothing. Its group was deliberately not listened to", () => {
     expect(CATCH_UP_MAX_AGE_MS).toBe(15 * 60 * 1000);
     const old = NOW - CATCH_UP_MAX_AGE_MS - 1;
-    expect(catchUpTargets([org("a@g.us")], new Map([["a@g.us", old]]), NOW)).toEqual([]);
+    expect(catchUpTargets([org("a@g.us")], new Map([["a@g.us", old]]), NOW)).toEqual({ targets: [], skipped: [{ groupId: "a@g.us", reason: "too-old" }] });
     const edge = NOW - CATCH_UP_MAX_AGE_MS;
-    expect(catchUpTargets([org("a@g.us")], new Map([["a@g.us", edge]]), NOW)).toHaveLength(1);
+    expect(targets([org("a@g.us")], new Map([["a@g.us", edge]]), NOW)).toHaveLength(1);
   });
 
-  it("a go-live time in the future (clocks disagree by a lot): nothing, rather than guess", () => {
-    expect(catchUpTargets([org("a@g.us")], new Map([["a@g.us", NOW + 120_000]]), NOW)).toEqual([]);
+  // PR #250 review, fix 3. `liveAt` is the SERVER's clock. A Pi two seconds
+  // behind it saw a go-live "in the future" and silently caught up on nothing.
+  it("THE PI'S CLOCK IS BEHIND THE SERVER'S: a go-live up to two minutes 'in the future' is caught up, from the server's own time", () => {
+    expect(CATCH_UP_CLOCK_SKEW_MS).toBe(2 * 60 * 1000);
+    for (const ahead of [1, 2_000, 60_000, CATCH_UP_CLOCK_SKEW_MS]) {
+      const liveAt = NOW + ahead;
+      // The floor stays the server's liveAt: nothing is moved to the Pi's clock.
+      expect(targets([org("a@g.us")], new Map([["a@g.us", liveAt]]), NOW)).toEqual([{ groupId: "a@g.us", sinceMs: liveAt }]);
+    }
+  });
+
+  it("further ahead than that is not a clock that is slightly out: nothing, and it says why", () => {
+    const liveAt = NOW + CATCH_UP_CLOCK_SKEW_MS + 1;
+    expect(catchUpTargets([org("a@g.us")], new Map([["a@g.us", liveAt]]), NOW)).toEqual({ targets: [], skipped: [{ groupId: "a@g.us", reason: "clock-ahead" }] });
   });
 
   it("only the groups that are NEW in this refresh: a club already monitored is never re-read by this", () => {
@@ -259,7 +278,74 @@ describe("catchUpTargets: which newly monitored groups get their missed messages
       ["old@g.us", NOW - 10_000],
       ["new@g.us", NOW - 10_000],
     ]);
-    expect(catchUpTargets([org("new@g.us")], since, NOW)).toEqual([{ groupId: "new@g.us", sinceMs: NOW - 10_000 }]);
-    expect(catchUpTargets([], since, NOW)).toEqual([]);
+    expect(targets([org("new@g.us")], since, NOW)).toEqual([{ groupId: "new@g.us", sinceMs: NOW - 10_000 }]);
+    expect(catchUpTargets([], since, NOW)).toEqual({ targets: [], skipped: [] });
+  });
+});
+
+// PR #250 review, fix 8. Two server instances that alternate stamps (a flag
+// that differs mid-rollout) would have the Pi re-read /orgs on every tick.
+// A refresh makes no WhatsApp call, so it is only server load: capped anyway.
+describe("refreshIfClubSetChanged: the back-off", () => {
+  const T0 = Date.parse("2026-10-13T12:00:00Z");
+  const TICK = 30_000;
+
+  /** A server whose /orgs always answers with a stamp the poll then contradicts. */
+  function flapping() {
+    let n = 0;
+    const refresh = vi.fn(async () => {
+      noteSnapshotClubSetVersion(`orgs-${++n}`);
+    });
+    setOrgRefresher(refresh);
+    noteSnapshotClubSetVersion("orgs-0");
+    return { refresh, tick: async (i: number) => {
+      notePolledClubSetVersion(`poll-${i}`);
+      return refreshIfClubSetChanged(T0 + i * TICK);
+    } };
+  }
+
+  it("five ticks in a row that each needed a refresh: the sixth backs off, to one stamp-triggered refresh per two minutes", async () => {
+    expect([CLUB_SET_BACKOFF_AFTER_TICKS, CLUB_SET_BACKOFF_MS]).toEqual([5, 2 * 60 * 1000]);
+    const { refresh, tick } = flapping();
+    for (let i = 1; i <= 5; i++) expect(await tick(i)).toBe("refreshed");
+    expect(refresh).toHaveBeenCalledTimes(5);
+    // Ticks 6 to 8 are inside two minutes of the last refresh (tick 5).
+    for (let i = 6; i <= 8; i++) expect(await tick(i)).toBe("backed-off");
+    expect(refresh).toHaveBeenCalledTimes(5);
+    // Tick 9 is two minutes after tick 5: one refresh, then quiet again.
+    expect(await tick(9)).toBe("refreshed");
+    for (let i = 10; i <= 12; i++) expect(await tick(i)).toBe("backed-off");
+    expect(await tick(13)).toBe("refreshed");
+    expect(refresh).toHaveBeenCalledTimes(7);
+  });
+
+  it("says so ONCE when the back-off starts, not on every held tick", async () => {
+    const lines: string[] = [];
+    vi.spyOn(console, "error").mockImplementation((...a: unknown[]) => void lines.push(a.map(String).join(" ")));
+    const { tick } = flapping();
+    for (let i = 1; i <= 12; i++) await tick(i);
+    expect(lines.filter((l) => l.includes("backing off"))).toHaveLength(1);
+  });
+
+  it("a tick that sees an UNCHANGED stamp ends it: the next change is refreshed at once", async () => {
+    const { refresh, tick } = flapping();
+    for (let i = 1; i <= 7; i++) await tick(i);
+    expect(await tick(8)).toBe("backed-off");
+    // The servers agree again.
+    noteSnapshotClubSetVersion("settled");
+    notePolledClubSetVersion("settled");
+    expect(await refreshIfClubSetChanged(T0 + 9 * TICK)).toBe("unchanged");
+    const before = refresh.mock.calls.length;
+    expect(await tick(10)).toBe("refreshed");
+    expect(refresh).toHaveBeenCalledTimes(before + 1);
+  });
+
+  it("four changes in a row, then quiet, never backs off: an ordinary busy few minutes is not a storm", async () => {
+    const { tick } = flapping();
+    for (let i = 1; i <= 4; i++) expect(await tick(i)).toBe("refreshed");
+    noteSnapshotClubSetVersion("settled");
+    notePolledClubSetVersion("settled");
+    expect(await refreshIfClubSetChanged(T0 + 5 * TICK)).toBe("unchanged");
+    for (let i = 6; i <= 9; i++) expect(await tick(i)).toBe("refreshed");
   });
 });

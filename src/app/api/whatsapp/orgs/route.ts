@@ -13,7 +13,7 @@ import {
 import { loadSelfJoinSweep } from "@/lib/group-add";
 import { selfJoinEnabledForApiRequest } from "@/lib/self-join-flag";
 import { loadAdminGroups } from "@/lib/admin-group-link";
-import { loadClubSetVersion } from "@/lib/club-set-version";
+import { readClubSetVersion } from "@/lib/club-set-version-read";
 
 export async function GET(request: Request) {
   const apiKey = request.headers.get("x-api-key");
@@ -29,12 +29,8 @@ export async function GET(request: Request) {
   // make this stamp OLDER than the snapshot, which costs one extra
   // refresh; never newer, which would hide a change. Left out if it
   // cannot be read: the Pi then compares nothing, as with an older server.
-  let clubSetVersion: string | null = null;
-  try {
-    clubSetVersion = await loadClubSetVersion();
-  } catch (err) {
-    console.error("[orgs] club set version could not be read; none sent this time:", (err as Error)?.name ?? "error");
-  }
+  // Never throws, and never waits more than 1.5 seconds (club-set-version-read.ts).
+  const clubSetVersion = await readClubSetVersion("orgs");
 
   const orgs = await db.organisation.findMany({
     where: {

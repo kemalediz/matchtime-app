@@ -242,6 +242,24 @@ test.describe("every transition that changes the Pi's sets changes the stamp", (
   });
 });
 
+// PR #250 review. The tests above mostly WRITE the columns with SQL, which
+// shows the stamp reads them. This drives the real writers, the single
+// functions every door goes through, and shows each one moves the stamp.
+test.describe("through the production writers", () => {
+  test("approval with the hold, removal and re-add, GO, the billing pause and resume, an old-flow approval, a suspension (tsx)", async () => {
+    test.setTimeout(180_000);
+    const { stdout, stderr } = await execFileAsync("npx", ["tsx", "e2e/helpers/club-set-version-writers-lib-tests.ts"], {
+      cwd: REPO_ROOT,
+      env: process.env,
+      timeout: 170_000,
+    }).catch((err: Error & { stdout?: string; stderr?: string }) => {
+      throw new Error(`club-set-version writers lib tests failed:\n${err.stdout ?? ""}\n${err.stderr ?? ""}`);
+    });
+    console.log(stdout);
+    expect(stdout, stderr).toContain("OK");
+  });
+});
+
 test.describe("its cost", () => {
   test("one small query per poll: measured against Postgres (tsx)", async () => {
     test.setTimeout(120_000);

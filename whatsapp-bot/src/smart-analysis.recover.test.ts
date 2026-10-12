@@ -204,14 +204,52 @@ describe("recoverGroupMessages reads the group without getChatById", () => {
     expect(JSON.stringify(sent)).not.toContain("who is playing tuesday");
   });
 
-  it("a floor that is not a whole second: a message in the same second but before it is still left out", async () => {
+  // PR #250 review, fix 4. WhatsApp stamps whole seconds; go-live has
+  // milliseconds. The first version compared in milliseconds and so
+  // dropped a message sent in the same second as go-live but AFTER it.
+  // The side chosen: lose nothing a player said after GO. The price is
+  // that a message in that same second but a few hundred milliseconds
+  // BEFORE go-live may be fed.
+  it("the floor is compared by the SECOND: a message stamped in the second the club went live is kept", async () => {
     const nowSec = Math.floor(Date.now() / 1000);
-    const liveAtMs = (nowSec - 60) * 1000 + 700;
+    const liveAtMs = (nowSec - 60) * 1000 + 700; // went live at :00.7
     const { client } = clientWithBrokenGetChat([
-      pageMessage("SAME-SECOND", "in", nowSec - 60), // stamped :00, go-live was :00.7
+      pageMessage("SECOND-BEFORE", "in", nowSec - 61), // :59 of the minute before: left out
+      pageMessage("SAME-SECOND", "in", nowSec - 60), // stamped :00, sent at :00.9 for all we know: kept
       pageMessage("NEXT-SECOND", "in", nowSec - 59),
     ]);
+    postAnalyzeFull.mockClear();
+    postAnalyzeFull.mockResolvedValue({ results: [], nextKickoffMs: null });
     await recoverGroupMessages(asClient(client), [GID], undefined, { notBeforeMs: () => liveAtMs });
+    expect(_test_getInboundStats().buffered).toBe(2);
+    await _test_flushNow(GID);
+    const sent = postAnalyzeFull.mock.calls[0][0] as { messages: Array<{ waMessageId: string }> };
+    expect(sent.messages.map((m) => m.waMessageId.split("_").at(-1))).toEqual(["SAME-SECOND", "NEXT-SECOND"]);
+  });
+
+  // PR #250 review, fix 7. The live handler buffers a message the moment
+  // the group is monitored; a catch-up a second later re-reads the same
+  // message from the driver. Both copies used to sit in one batch.
+  it("a message that is already waiting in the group's batch is not added to it a second time", async () => {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const page = [pageMessage("AAA", "In", nowSec - 60), pageMessage("BBB", "in too", nowSec - 30)];
+    postAnalyzeFull.mockClear();
+    postAnalyzeFull.mockResolvedValue({ results: [], nextKickoffMs: null });
+    await recoverGroupMessages(asClient(clientWithBrokenGetChat(page).client), [GID]);
+    // The same two again (a second sweep before the batch has gone), and one new one.
+    await recoverGroupMessages(asClient(clientWithBrokenGetChat([...page, pageMessage("CCC", "and me", nowSec - 5)]).client), [GID]);
+    expect(_test_getInboundStats().buffered).toBe(3);
+    await _test_flushNow(GID);
+    const sent = postAnalyzeFull.mock.calls[0][0] as { messages: Array<{ waMessageId: string }> };
+    const ids = sent.messages.map((m) => m.waMessageId);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids).toHaveLength(3);
+  });
+
+  it("the page handing the same message back twice in one read: once in the batch", async () => {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const twice = [pageMessage("AAA", "In", nowSec - 60), pageMessage("AAA", "In", nowSec - 60)];
+    await recoverGroupMessages(asClient(clientWithBrokenGetChat(twice).client), [GID]);
     expect(_test_getInboundStats().buffered).toBe(1);
   });
 

@@ -101,6 +101,22 @@ describe("GET /api/whatsapp/orgs", () => {
     err.mockRestore();
   });
 
+  it("a version read that never resolves does not hang /orgs: the snapshot goes without the field", async () => {
+    vi.useFakeTimers();
+    try {
+      const err = vi.spyOn(console, "error").mockImplementation(() => {});
+      versionMock.loadClubSetVersion.mockImplementation(() => new Promise<string>(() => {}));
+      const pending = call();
+      await vi.advanceTimersByTimeAsync(1_500);
+      const body = await pending;
+      expect("clubSetVersion" in body).toBe(false);
+      expect(body.orgs).toHaveLength(1);
+      err.mockRestore();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("asks for each club's go-live time, the floor of the Pi's catch-up", async () => {
     await call();
     expect(dbMock.organisation.findMany.mock.calls[0][0].select).toMatchObject({ whatsappGroupId: true, liveAt: true });

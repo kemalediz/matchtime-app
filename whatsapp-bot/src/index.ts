@@ -37,14 +37,12 @@ import {
   isOrgsResponseBody,
   startOrgRefreshTimer,
   stopOrgRefreshTimer,
-  catchUpTargets,
   noteSnapshotClubSetVersion,
-  parseClubSetVersion,
-  parseLiveSince,
   type OrgConfig,
   type OrgSnapshot,
 } from "./org-refresh.js";
 import { initScheduler, stopScheduler } from "./scheduler.js";
+import { setActiveClubCatchUp, wireClubCatchUp } from "./club-catch-up.js";
 import {
   getEnabledOrgs,
   postReaction,
@@ -179,14 +177,10 @@ async function main() {
     // before anything calls this, and the scheduler must not start even if
     // some future path does.
     if (!shadow.enabled) initScheduler(driver, next.orgConfigs);
-    // The stamp this snapshot was read at (2026-10-13). The scheduler
-    // compares every tick's poll with it and refreshes when they differ
-    // (org-refresh.ts). null from an older server: nothing is compared.
-    noteSnapshotClubSetVersion(parseClubSetVersion(data));
-    // When each club went live, for the two catch-ups: the one at `ready`
-    // below, and the one for a group that has just become a club's.
-    liveSince = parseLiveSince(data);
-    if (!shadow.enabled && reason !== "ready") catchUpNewlyServed(diff.addedOrgs);
+    // 2026-10-13: note the stamp this snapshot was read at (the scheduler
+    // compares every tick's poll with it), and catch up on a group that
+    // has just become a club's, from its go-live on. See club-catch-up.ts.
+    clubCatchUp.onRefreshed({ reason, data, addedOrgs: diff.addedOrgs, shadow: shadow.enabled });
     if (diff.changed || reason === "ready") {
       console.log(
         `[org-refresh] (${reason}) ${next.orgConfigs.length} org(s), ${next.onboardingGroups.length} onboarding group(s): ` +
@@ -195,38 +189,18 @@ async function main() {
     }
     return next;
   }
-  /** `liveAt` per club group, from the last /orgs (empty from an older server). */
-  let liveSince: Map<string, number> = new Map();
-  /** No message stamped before a club's go-live is ever replayed. */
-  const notBeforeGoLive = (groupId: string): number | null => liveSince.get(groupId) ?? null;
-
-  /**
-   * A group that has JUST become a club's (it went live a moment ago): the
-   * messages between its go-live and this refresh were dropped, not
-   * buffered, because the group was still silent here. Read them back
-   * through the restart catch-up, from the go-live time and no earlier.
-   * The server drops what it has already analysed by WhatsApp message id.
-   * Never at `ready` (that sweep covers every club) and never for a club
-   * with no recent go-live time (`catchUpTargets`). Fire-and-forget.
-   */
-  function catchUpNewlyServed(added: OrgConfig[]): void {
-    const targets = catchUpTargets(added, liveSince, Date.now());
-    if (targets.length === 0) return;
-    const groupIds = targets.map((t) => t.groupId);
-    console.log(`[org-refresh] ${groupIds.length} group(s) newly live; catching up on what was said since go-live: ${groupIds.join(", ")}`);
-    void (async () => {
-      // One sweep runs at a time and a second call is skipped, so wait
-      // out one that is already running (the restart's, typically).
-      for (let waited = 0; isRecoverySweepRunning() && waited < 20; waited++) {
-        await new Promise((r) => setTimeout(r, 3_000));
-      }
-      if (isRecoverySweepRunning()) {
-        console.error(`[org-refresh] the catch-up for ${groupIds.length} newly live group(s) did not run: another sweep was still going after a minute`);
-        return;
-      }
-      await recoverGroupMessages(driver, groupIds, undefined, { notBeforeMs: notBeforeGoLive });
-    })().catch((err) => console.error("[org-refresh] newly-live catch-up failed:", err instanceof Error ? err.message : err));
-  }
+  // The snapshot's stamp, the catch-up for a group that has just become
+  // a club's, and the floor under the restart catch-up: all in
+  // club-catch-up.ts, where they are tested without a socket. This is the
+  // whole of the wiring.
+  const clubCatchUp = wireClubCatchUp({
+    driver,
+    recoverGroupMessages,
+    isRecoverySweepRunning,
+    isMonitoredGroup,
+    noteSnapshotClubSetVersion,
+  });
+  setActiveClubCatchUp(clubCatchUp);
 
   /** Groups a self-join sweep already settled in this process (slice 6). */
   const sweptForSelfJoin = new Set<string>();
@@ -348,10 +322,10 @@ async function main() {
       // "in" during a restart (Kemal 2026-06-06). Fire-and-forget; the
       // re-queued messages get classified by the startup flush above.
       // 2026-10-13: never a message from before a club went live (its
-      // group was deliberately not listened to until then). Only a club
-      // that went live inside the lookback has such messages; for every
-      // other club the floor is older than the window and changes nothing.
-      recoverGroupMessages(driver, currentOrgGroupIds(), undefined, { notBeforeMs: notBeforeGoLive }).catch((err) =>
+      // group was deliberately not listened to until then). With no club
+      // that has a go-live time this is the very call it always was,
+      // `recoverGroupMessages(driver, groupIds)` (club-catch-up.ts).
+      clubCatchUp.readyCatchUp(currentOrgGroupIds()).catch((err) =>
         console.error("[recover-group] sweep failed:", err),
       );
 
