@@ -3,16 +3,22 @@
  * no clock of its own (every function takes `now`).
  * Plan: MDs/club-fee-billing-plan-2026-10-01.md, sections 4.1 and 6.
  *
- *   - The state changes happen ON TIME, whatever the hour: the free month
+ *   - The state changes happen ON TIME, whatever the hour: the free period
  *     ends at `trialEndsAt` ("trial-ended", to grace), the grace week at
  *     `graceEndsAt` ("grace-ended", to paused). `nextBillingState` in
  *     club-billing-rules.ts decides each one again under the club's row
  *     lock, so a webhook that got there first simply wins.
- *   - The DMs wait for DAYTIME: 10:00 to 20:00 London. The day 21 and day
- *     28 reminders are due from 10:00 London on their calendar day, which
- *     is counted back from the London date of `trialEndsAt` (so a free
- *     month that crosses a clock change, or started near midnight, still
- *     gets its reminder at 10:00 on the right day).
+ *   - The DMs wait for DAYTIME: 09:00 to 23:00 London, the shared message
+ *     hours (message-hours.ts). The two card reminders are due from 09:00
+ *     London on their calendar day, which is counted back from the London
+ *     date of `trialEndsAt`: 9 days and 2 days before the free period ends
+ *     (so a free period that crosses a clock change, or started near
+ *     midnight, still gets its reminder at 09:00 on the right day). Their
+ *     stored kinds are still "trial-21" and "trial-28", from when the free
+ *     period was 30 days and they fell on day 21 and day 28; "day 21",
+ *     "day 28" and "day 30" (the end) in this code mean these. Being
+ *     counted from the END, they did not move when the free period became
+ *     two months (2026-10-12).
  *   - Each DM is claimed once per club, kind and cycle (`BillingNotice`),
  *     by the caller. A cron that was down for two days never sends two
  *     reminders in a row: day 21 is skipped once day 28 is due, and day 28
@@ -20,14 +26,21 @@
  */
 import { formatLondon, londonWallClockToUtc } from "./london-time";
 import { GRACE_DAYS } from "./club-billing-rules";
+import {
+  MESSAGE_HOURS_FROM_HOUR,
+  MESSAGE_HOURS_FROM_TIME,
+  MESSAGE_HOURS_TO_HOUR,
+  inMessageHours,
+  messageHoursSendAfter,
+} from "./message-hours";
 
-/** Billing DMs go out from 10:00 London ... */
-export const BILLING_DM_FROM_HOUR = 10;
-/** ... until 20:00 London (exclusive). */
-export const BILLING_DM_TO_HOUR = 20;
-/** The day 21 reminder: 9 London calendar days before the free month ends. */
+/** Billing DMs go out from 09:00 London (the shared message hours) ... */
+export const BILLING_DM_FROM_HOUR = MESSAGE_HOURS_FROM_HOUR;
+/** ... until 23:00 London (exclusive). */
+export const BILLING_DM_TO_HOUR = MESSAGE_HOURS_TO_HOUR;
+/** The first reminder ("trial-21"): 9 London calendar days before the free period ends. */
 export const TRIAL_21_DAYS_BEFORE_END = 9;
-/** The day 28 reminder: 2 London calendar days before it ends. */
+/** The second reminder ("trial-28"): 2 London calendar days before it ends. */
 export const TRIAL_28_DAYS_BEFORE_END = 2;
 /** A pause older than this gets no "paused" DM any more (for example a
  *  club paused while the flag was off, or a DM that kept failing). */
@@ -43,42 +56,31 @@ export const PENDING_BILLING_DM_MAX_AGE_MS = 3 * 24 * 60 * 60 * 1000;
 export const PAYMENT_FAILED_HOLD_MS = 30 * 60 * 1000;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const HOUR_MS = 60 * 60 * 1000;
 
-function londonHour(now: Date): number {
-  return Number(formatLondon(now, "H"));
-}
-
-/** Is it daytime in London (10:00 to 19:59), when billing DMs may go out? */
+/** Is it daytime in London (09:00 to 22:59), when billing DMs may go out? */
 export function isBillingDmHour(now: Date): boolean {
-  const h = londonHour(now);
-  return h >= BILLING_DM_FROM_HOUR && h < BILLING_DM_TO_HOUR;
+  return inMessageHours(now);
 }
 
 /**
  * The `sendAfter` for a billing DM queued at `now`: null in the daytime
- * (send at once), else the next 10:00 London.
+ * (send at once), else the next 09:00 London.
  */
 export function billingDmSendAfter(now: Date): Date | null {
-  const h = londonHour(now);
-  if (h >= BILLING_DM_FROM_HOUR && h < BILLING_DM_TO_HOUR) return null;
-  // Before 10:00: today's 10:00. From 20:00: tomorrow's (12 hours on is
-  // always tomorrow's London date, and never past tomorrow's 10:00 by more
-  // than the 10:00 itself).
-  const anchor = h < BILLING_DM_FROM_HOUR ? now : new Date(now.getTime() + 12 * HOUR_MS);
-  return londonWallClockToUtc(anchor, `${String(BILLING_DM_FROM_HOUR).padStart(2, "0")}:00`);
+  return messageHoursSendAfter(now);
 }
 
 /**
- * 10:00 London on the London calendar date `daysBefore` days before the
- * London date of `trialEndsAt`. Counting calendar days (not 24 hour
- * blocks) keeps the reminder at 10:00 across a clock change.
+ * 09:00 London (the start of the message hours) on the London calendar
+ * date `daysBefore` days before the London date of `trialEndsAt`. Counting
+ * calendar days (not 24 hour blocks) keeps the reminder at 09:00 across a
+ * clock change.
  */
 export function reminderAt(trialEndsAt: Date, daysBefore: number): Date {
   const [y, m, d] = formatLondon(trialEndsAt, "yyyy-MM-dd").split("-").map(Number);
   // Noon UTC is the same calendar date in London, in winter and summer.
   const anchor = new Date(Date.UTC(y, m - 1, d - daysBefore, 12));
-  return londonWallClockToUtc(anchor, `${String(BILLING_DM_FROM_HOUR).padStart(2, "0")}:00`);
+  return londonWallClockToUtc(anchor, MESSAGE_HOURS_FROM_TIME);
 }
 
 /** What the scheduler reads about one billed club. */
@@ -98,7 +100,7 @@ export function billingTransitionDue(club: ScheduleClub, now: Date): "trial-ende
   return null;
 }
 
-/** Grace that came from the free month ending (not from a payment
+/** Grace that came from the free period ending (not from a payment
  *  failure or from being billed again after Free, which have their own DMs). */
 function graceFromTrial(club: ScheduleClub): boolean {
   return !!club.graceEndsAt && club.graceEndsAt.getTime() === club.trialEndsAt.getTime() + GRACE_DAYS * DAY_MS;
@@ -108,7 +110,7 @@ export type ScheduledDmKind = "trial-21" | "trial-28" | "trial-ended" | "paused"
 
 export interface DueDm {
   kind: ScheduledDmKind;
-  /** The `BillingNotice` cycle: the free month's end for the trial DMs,
+  /** The `BillingNotice` cycle: the free period's end for the trial DMs,
    *  the moment of the pause for "paused". */
   cycleKey: string;
   /** Carries the club fee tip paragraph (day 21, or day 28 when day 21
@@ -118,12 +120,12 @@ export interface DueDm {
 
 /**
  * The billing contact's DM due now for this club (at most one), or none.
- * Nothing at night: the caller runs hourly, so the 10:00 run sends it.
+ * Nothing at night: the caller runs hourly, so the 09:00 run sends it.
  *
- *   trial-21     from 10:00 London on day 21, still in the free month, and
+ *   trial-21     from 09:00 London on day 21, still in the free period, and
  *                day 28 not yet due
- *   trial-28     from 10:00 London on day 28, still in the free month
- *   trial-ended  in the grace week that followed the free month
+ *   trial-28     from 09:00 London on day 28, still in the free period
+ *   trial-ended  in the grace week that followed the free period
  *   paused       paused in the last 3 days (not after removal from the
  *                group, which is silent, slice B5)
  */
@@ -155,9 +157,9 @@ export function billingDmsDue(club: ScheduleClub, now: Date, opts: { trial21Deli
 }
 
 /**
- * The admin channel's club fee tip, once per free month (7.1, 7.2): due
+ * The admin channel's club fee tip, once per free period (7.1, 7.2): due
  * with the day 21 reminder (or with day 28 when day 21 was missed), in
- * the daytime, while the club is still in its free month.
+ * the daytime, while the club is still in its free period.
  */
 export function feeTipDue(club: ScheduleClub, now: Date): { cycleKey: string } | null {
   if (!isBillingDmHour(now)) return null;

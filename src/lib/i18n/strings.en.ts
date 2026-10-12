@@ -45,6 +45,7 @@
  * See MDs/multi-language-design-2026-09-16.md section 4.2.
  */
 import { joinList } from "./text";
+import { firstMonthsFree } from "./free-period";
 import type { StatsPeriod } from "../pipeline/types";
 import type { BadgeKey, BadgeNumbers } from "../badge-rules";
 
@@ -2040,6 +2041,10 @@ export const en = {
     "I'll stay quiet in the group until your club is approved, usually within a day. I'll message you here when it's live.",
   sj_dm_already_connected: "You're already connected. Now just add me to your group.",
   sj_dm_code_expired: "That code has expired. Open your club on matchtime.ai and tap Add MatchTime to WhatsApp again.",
+  /** A connect message whose code names no request, from an organiser who
+   *  has an open one. Never carries the right code. */
+  sj_dm_wrong_code: (p: { club: string }): string =>
+    `The code in your message doesn't match the one for ${p.club}. Go back to your club page on matchtime.ai, press Add MatchTime to WhatsApp again, and send the message exactly as it opens.`,
 
   // ── Self-join slice 6: the organiser's ack after a matched group add (plan 5.4) ──
   /** Sent only when the adder WAS the organiser (matched by phone or by the
@@ -2064,10 +2069,80 @@ export const en = {
     `📊 *Stats:* ask me anything, and everyone gets their own stats page.\n` +
     `💷 *Match fees:* your organiser can switch on card or bank pay links.\n\n` +
     `I stay quiet during the banter and only reply to In, Out or a tag. Anything else, tag me: *@Match Time help*`,
+
+  // ════ BEGIN settings-aware group hello (go-live slice S2, 2026-10-12) ════
+  // The parts `buildGroupHello` (src/lib/group-hello.ts) composes the
+  // hello from, so a club is told only what its own settings do. For a
+  // club on default settings, with `sj_hello_catch_up` left out, the
+  // composed text equals `sj_group_hello` above byte for byte
+  // (`group-hello.test.ts` pins it): change one and you must change the
+  // other. Deterministic, never shown to a model. No em or en dashes.
+  sj_hello_opener: (p: { organiser: string | null }): string =>
+    `👋 Hi everyone, I'm *MatchTime*. ${p.organiser ? `${p.organiser} has set me up to run this group's games.` : "I'm here to run this group's games."} ` +
+    `Here's what I do, right here in WhatsApp:`,
+  /** A club that signs up each week. */
+  sj_hello_whos_in: `✅ *Who's in:* just say *In* or *Out*. I keep the list and tick your message.`,
+  /** Rolling squad: nobody is told to say In each week. `deadline` is
+   *  the drop-out deadline as "Monday 21:00", or null when none is set. */
+  sj_hello_rolling: (p: { deadline: string | null }): string =>
+    `🔁 *Same squad each week:* if you played last time, you're in next time too. You only need to say *Out* if you can't make it${p.deadline ? `, before *${p.deadline}*` : ""}.`,
+  /** Rolling squad, for somebody not carried over. "organiser": the
+   *  organisers pick, so an In never takes a place by itself. */
+  sj_hello_rolling_join: (p: { mode: "bench" | "no-bench" | "organiser" }): string =>
+    p.mode === "organiser"
+      ? `✅ *Not in the squad yet?* Say *In* and I'll put you on the bench.`
+      : p.mode === "bench"
+        ? `✅ *Not in the squad yet?* Say *In* and I'll add you if there's a place, or put you on the bench.`
+        : `✅ *Not in the squad yet?* Say *In* and I'll add you if there's a place.`,
+  /** Monthly squad: the regulars' line, then the line for everyone else. */
+  sj_hello_monthly: `📋 *Monthly squad:* regulars sign up and pay for the whole month, and are in every game of it. Can't make one? Say *Out*.`,
+  sj_hello_monthly_join: (p: { organisersPick: boolean }): string =>
+    p.organisersPick
+      ? `✅ *Not a regular?* When a place is open, say *In* to go on the waiting list, and the organisers pick who plays.`
+      : `✅ *Not a regular?* When a place is open, say *In* to take it. You pay for that game only.`,
+  /** A weekly sign-up club with a drop-out deadline. `day` is `wd_weekday`. */
+  sj_hello_deadline: (p: { day: string; time: string }): string =>
+    `⏳ *Drop-out deadline:* ${p.day} ${p.time}. If you can't play, say *Out* before then.`,
+  sj_hello_list: (p: { day: string; time: string }): string => `📋 *Final list:* I post it here on ${p.day} at ${p.time}.`,
+  sj_hello_bench: `🪑 *The bench:* once we're full, anyone who says *In* late goes on the bench, and the bench gets first dibs if someone drops.`,
+  /** The organisers pick: MatchTime never fills a place by itself. */
+  sj_hello_bench_organiser: `🪑 *The bench:* say *In* to go on the bench, and the organisers pick who takes each open place.`,
+  sj_hello_remind: `⏰ *Remind me:* say *"@Match Time remind me Thursday"* and I'll DM you then.`,
+  sj_hello_teams: `⚖️ *Fair teams:* tag me and I pick balanced teams from player ratings.`,
+  /** Never called with both off: the line is left out then. */
+  sj_hello_mom: (p: { mom: boolean; ratings: boolean }): string =>
+    p.mom && p.ratings
+      ? `⭐ *Man of the Match and ratings* after every game.`
+      : p.mom
+        ? `⭐ *Man of the Match* after every game.`
+        : `⭐ *Player ratings* after every game.`,
+  sj_hello_stats: `📊 *Stats:* ask me anything, and everyone gets their own stats page.`,
+  /** With nothing on, payments are only something the organiser CAN
+   *  switch on. `mode` is the pay links: off, or the ways a link can be paid. */
+  sj_hello_fees: (p: { tracking: boolean; mode: "off" | "card" | "bank" | "card-and-bank" }): string => {
+    const how = p.mode === "card" ? "by card" : p.mode === "bank" ? "by bank" : "by card or bank";
+    if (p.mode !== "off") {
+      return `💷 *Match fees:* you can pay ${how} through a link I send you.${p.tracking ? " I keep track of who has paid and remind anyone who hasn't." : ""}`;
+    }
+    return p.tracking
+      ? `💷 *Match fees:* I keep track of who has paid and remind anyone who hasn't.`
+      : `💷 *Match fees:* your organiser can switch on card or bank pay links.`;
+  },
+  /** Only for a club that signs up each week: MatchTime was not listening
+   *  before it went live, so an earlier In is not on the list. */
+  sj_hello_catch_up: `Already said In for the next game? Say it once more so I have you on the list.`,
+  /** `attendance` off: the club never says In or Out to MatchTime. */
+  sj_hello_closer: (p: { attendance: boolean }): string =>
+    p.attendance
+      ? `I stay quiet during the banter and only reply to In, Out or a tag. Anything else, tag me: *@Match Time help*`
+      : `I stay quiet during the banter and only reply when you tag me. Anything else, tag me: *@Match Time help*`,
+  // ════ END settings-aware group hello ════
+
   /** To the organiser, once, when the owner approves (2026-10-01: a short
    *  checklist). Each URL is the organiser's own signed-in link to that
    *  page, so this DM goes to the organiser only. Without billing the one
-   *  pricing sentence is "Your first month is free.", never an amount, and
+   *  pricing sentence is "Your first two months are free." (the length comes
+   *  from `FREE_PERIOD_MONTHS`, i18n/free-period.ts), never an amount, and
    *  it ends the DM. For a BILLED club (club fee billing slice B2:
    *  BILLING_ENABLED on and the plan not Free) `tip` is the
    *  `sj_dm_approved_tip` paragraph, which follows that sentence. */
@@ -2085,7 +2160,7 @@ export const en = {
     `⭐ *Starting ratings:* give each player a rough score out of 10 so the first teams are fair:\n${p.ratingsUrl}\n\n` +
     `⚙️ *Settings:* switch on payments, rolling squad, weekly deadlines, admin messages, organiser picks and badge announcements:\n${p.settingsUrl}\n\n` +
     `❓ *Help any time:* message me here, for example *help payments* or *help badges*.\n\n` +
-    `Your first month is free.` +
+    `${firstMonthsFree("en")}.` +
     (p.tip ? `\n\n${p.tip}` : ""),
   /** To the organiser, once, when the owner rejects. MatchTime has left the
    *  group without a word in it (decision 1). */
@@ -2488,7 +2563,7 @@ export const en = {
         ? `Your game is ${p.fee} each, so charging *${p.feePlus}* covers it.`
         : `If your game costs ${p.fee} each, charge *${p.feePlus}* and the club fee is covered.`) +
     ` Weeks you don't play cost nothing.`,
-  /** The short tip after "Your first month is free." in `sj_dm_approved`,
+  /** The short tip after "Your first two months are free." in `sj_dm_approved`,
    *  only for a club that is billed. */
   sj_dm_approved_tip: (p: {
     players: number;
@@ -2504,21 +2579,21 @@ export const en = {
     (p.split ? `, to add to each player's share of the pitch cost.` : `, so a ${p.fee} game could be charged at *${p.feePlus}*.`),
   billing_page_title: "Club fee",
   billing_state_trial: (p: { date: string; price: string }): string =>
-    `Free month until ${p.date}. After that you only pay for the games you play, up to ${p.price} a month for the whole group.`,
+    `Free until ${p.date}. After that you only pay for the games you play, up to ${p.price} a month for the whole group.`,
   billing_state_grace: (p: { date: string }): string =>
-    `The free month has ended. MatchTime stops on ${p.date} unless a card is added.`,
+    `The free period has ended. MatchTime stops on ${p.date} unless a card is added.`,
   /** Slice P4 (games played): no flat fee. `date` is the next charge, the
    *  morning after the current billing month ends. */
   billing_state_subscribed: (p: { price: string; date: string }): string =>
     `Only the games played are charged, up to ${p.price} a month. Next charge ${p.date}.`,
-  /** A card saved inside the free month: nothing is taken until the first
+  /** A card saved inside the free period: nothing is taken until the first
    *  month after it has been charged for its games. */
   billing_state_card_saved: (p: { date: string }): string => `Card saved. Nothing is taken until ${p.date}.`,
   billing_state_nothing_until: (p: { date: string }): string => `Nothing is taken until ${p.date}.`,
   billing_state_subscribed_ending: (p: { date: string }): string =>
     `Billing ends on ${p.date}, after this month is charged for its games.`,
   billing_state_card: (p: { brand: string; last4: string }): string => `Card ${p.brand} ending ${p.last4}.`,
-  /** `rest` is the line that follows: the free month's or the monthly one. */
+  /** `rest` is the line that follows: the free period's or the monthly one. */
   billing_state_paid_with_other: (p: { holder: string; rest: string }): string =>
     `Paid with ${p.holder}'s card until you put yours on. ${p.rest}`,
   /** `what`: the unpaid month ("for 1 Nov to 30 Nov") or months; `retrying`
@@ -2614,20 +2689,20 @@ export const en = {
   billing_btn_keep_paying: "Keep paying",
   // Stop paying asks first (test mode fix, 2026-10-05). No dashes.
   billing_stop_confirm_title: "Stop paying for MatchTime?",
-  /** After the free month: billing ends with the current month (`date`,
+  /** After the free period: billing ends with the current month (`date`,
    *  the day it is charged), then the club is paused. */
   billing_stop_confirm_month: (p: { date: string }): string =>
     `Billing ends on ${p.date}, after this month is charged for its games. Then MatchTime pauses in the group until someone starts paying again.`,
-  /** Inside the free month: the card is removed at once. */
+  /** Inside the free period: the card is removed at once. */
   billing_stop_confirm_free: (p: { date: string }): string =>
-    `Your card will be removed now and nothing is charged. The free month carries on until ${p.date}; after that a card is needed to keep MatchTime running.`,
+    `Your card will be removed now and nothing is charged. The free period carries on until ${p.date}; after that a card is needed to keep MatchTime running.`,
   billing_btn_stop_confirm_yes: "Yes, stop paying",
   billing_btn_stop_confirm_no: "Go back",
   billing_exempt: (p: { club: string }): string => `${p.club} has no club fee. MatchTime is free for this club.`,
   billing_open: "Open billing",
   billing_choose_collector: "Choose a money collector",
   billing_banner_grace: (p: { date: string }): string =>
-    `The free month has ended. Add a card before ${p.date} to keep MatchTime running.`,
+    `The free period has ended. Add a card before ${p.date} to keep MatchTime running.`,
   /** Slice P4: the unpaid month and its amount, or the total of several. */
   billing_banner_past_due: (p: { amount: string; from: string; to: string; months: number; date: string }): string =>
     (p.amount
@@ -2654,7 +2729,7 @@ export const en = {
   billing_notice_failed: "Something went wrong. Please try again.",
   billing_notice_stopped:
     "Done. Billing ends when this month ends: this month is charged for its games as usual, then nothing more. MatchTime keeps running until then.",
-  billing_notice_stopped_free: "Done. Your card has been removed and nothing has been charged. The free month carries on until it ends.",
+  billing_notice_stopped_free: "Done. Your card has been removed and nothing has been charged. The free period carries on until it ends.",
   billing_notice_kept: "Done. MatchTime keeps running, and each month is charged only for the games played.",
   billing_notice_past_due: "A payment is overdue. Update the card and pay it first.",
   /** Slice P3 (games played): saving a card charges nothing; each month is
@@ -2688,10 +2763,10 @@ export const en = {
     `MatchTime is back on for ${p.club}. I'll pick things up again in the group within a few minutes. Anyone who said IN while I was paused should say it again.`,
   billing_dm_plan_billed: (p: { name: string | null; club: string; price: string; date: string; link: string }): string =>
     `Hi${p.name ? ` ${p.name}` : ""}, ${p.club} is on the MatchTime plan again: only the games played, up to ${p.price} a month. ` +
-    `The free month has already been used, so MatchTime keeps running in the group until ${p.date}. ` +
+    `The free period has already been used, so MatchTime keeps running in the group until ${p.date}. ` +
     `Add a card before then to keep it going: ${p.link}`,
-  // Club fee billing, slice B4: the scheduled card reminders (day 21, 28,
-  // 30), the pause, the payment problems and the new collector, all by
+  // Club fee billing, slice B4: the scheduled card reminders (9 and 2 days
+  // before the free period ends, and the day it ends), the pause, the payment problems and the new collector, all by
   // platform DM to the billing contact, plus the admin channel's "no money
   // collector yet" line. No dashes, EN and TR. Plan 7.2, 7.3.
   billing_dm_trial_21: (p: {
@@ -2703,17 +2778,17 @@ export const en = {
     link: string;
     collector: boolean;
   }): string =>
-    `Hi${p.name ? ` ${p.name}` : ""}, ${p.club}'s free month on MatchTime ends on ${p.date}. ` +
+    `Hi${p.name ? ` ${p.name}` : ""}, ${p.club}'s free period on MatchTime ends on ${p.date}. ` +
     (p.collector ? `As the person who collects the match fees, you're the one I'll ask for the card. ` : "") +
     `To keep MatchTime running in the ${p.club} WhatsApp group, add a card here: ${p.link}\n` +
     `After that you only pay for the games you play, up to ${p.price} a month for the whole group, charged after each month ends. ` +
     `Nothing is taken when you add the card; the first charge is on ${p.firstCharge}.`,
   billing_dm_trial_28: (p: { name: string | null; club: string; date: string; price: string; link: string }): string =>
-    `Hi${p.name ? ` ${p.name}` : ""}, a quick reminder: ${p.club}'s free month ends on ${p.date}. ` +
+    `Hi${p.name ? ` ${p.name}` : ""}, a quick reminder: ${p.club}'s free period ends on ${p.date}. ` +
     `Add a card to keep MatchTime running in the ${p.club} WhatsApp group: ${p.link}\n` +
     `You only pay for the games you play, up to ${p.price} a month, and nothing is taken when you add the card.`,
   billing_dm_trial_ended: (p: { name: string | null; club: string; date: string; price: string; link: string }): string =>
-    `Hi${p.name ? ` ${p.name}` : ""}, ${p.club}'s free month has ended. ` +
+    `Hi${p.name ? ` ${p.name}` : ""}, ${p.club}'s free period has ended. ` +
     `MatchTime will keep running in the ${p.club} WhatsApp group for one more week, until ${p.date}. ` +
     `Add a card any time before then: ${p.link}\n` +
     `You only pay for the games you play, up to ${p.price} a month, charged after each month ends.`,
@@ -2798,7 +2873,7 @@ export const en = {
     `Nobody is set as the money collector yet. Choose one in Settings: they'll look after the card for the club fee and get this tip too.${p.link ? ` ${p.link}` : ""}`,
   // Club fee billing, slice P3 (games played): the month's receipt, the
   // first month in a row with no games, and Keep paying. To the billing
-  // contact by platform DM, 10:00 to 20:00 London, once each. No dashes,
+  // contact by platform DM, 09:00 to 23:00 London, once each. No dashes,
   // EN and TR. Plan 7.3.
   /** After a month's invoice is PAID: its count and charge. `last4` null
    *  when the card is not known; `ownCard` false when the card on file is
@@ -3050,7 +3125,7 @@ export const en = {
     "Clubs that joined by themselves and that you approved. New clubs have tighter daily limits for their first days. Turn off makes MatchTime leave the group and go silent; nobody is messaged.",
   info_clubs_fee_title: "Club fee",
   info_clubs_fee_body:
-    "The club's plan and billing state, this month and last month, who pays, and its AI cost over the last 30 days. Plan sets the monthly maximum. Start free month starts the one free month a club gets.",
+    "The club's plan and billing state, this month and last month, who pays, and its AI cost over the last 30 days. Plan sets the monthly maximum. Start free period starts the one free period a club gets.",
   info_clubs_unsolicited_title: "Groups nobody asked MatchTime into",
   info_clubs_unsolicited_body:
     "Groups someone added MatchTime to without a code. MatchTime stays silent there and leaves by itself after 48 hours, or press Leave to go now. Nobody in the group is messaged.",
@@ -3159,9 +3234,30 @@ export const en = {
   settings_learned_changed_since: "Changed since",
   settings_learned_undo_failed: "Couldn't undo that",
   settings_learned_from: "From messages like",
-  settings_learned_check_head: "Worth a check (nothing changed)",
-  /** Under the "organisers pick" suggestion on /admin/settings: jumps to the setting. */
-  settings_learned_open_setting: "Go to the setting",
+  /** The heading of the attention block over the suggestions on
+   *  /admin/settings: how many there are. */
+  settings_learned_check_count: (p: { count: number }): string =>
+    p.count === 1 ? `1 thing to check` : `${p.count} things to check`,
+  /** Under that heading: these are suggestions, changed nowhere. */
+  settings_learned_check_sub:
+    "MatchTime changed nothing for these. Have a look, and change them yourself if the chat is right.",
+  /** The button on each suggestion, by kind: it says what it does and
+   *  goes where the organiser's DM sends them for that kind. The quoted
+   *  name is wr_pick_organiser, the option on /admin/settings. */
+  settings_learned_action: (p: {
+    key: "weeklyGameDay" | "weeklyGameTime" | "venue" | "format" | "language" | "organiserPicks";
+  }): string =>
+    p.key === "organiserPicks"
+      ? `Switch on "The organisers pick"`
+      : p.key === "weeklyGameDay"
+        ? `Change game day`
+        : p.key === "weeklyGameTime"
+          ? `Change kickoff time`
+          : p.key === "venue"
+            ? `Change the pitch`
+            : p.key === "format"
+              ? `Change players a side`
+              : `Change the language`,
   /** Over the patterns the chat showed that MatchTime switched nothing
    *  for. Today that is only the monthly list, which HAS a setting
    *  (Settings, Monthly squad), so this must not say there is none. */

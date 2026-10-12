@@ -12,7 +12,7 @@
  *
  * Commands:
  *   setup    schema (prisma db push) and the CHECK constraints on the LOCAL
- *            database, then one test club in its free month: an owner (who
+ *            database, then one test club in its free period: an owner (who
  *            is also the platform owner, for /admin/clubs) and a money
  *            collector, a weekly Tuesday 5-a-side. Prints sign-in links.
  *   links    the sign-in links again (they last an hour).
@@ -36,6 +36,8 @@ import { PrismaClient } from "../src/generated/prisma/client";
 import { londonRow, localBillingTestRefusal, parsePgUtcTimestamp } from "../src/lib/billing-local-guard";
 import { signMagicLinkToken } from "../src/lib/magic-link";
 import { monthBounds, monthFee } from "../src/lib/club-billing-cycle-rules";
+import { trialWindow } from "../src/lib/club-billing-rules";
+import { freePeriodLength } from "../src/lib/i18n/free-period";
 import { formatLondon, londonDateTimeToUtc } from "../src/lib/london-time";
 
 const ORG = "billtest-club";
@@ -124,10 +126,12 @@ async function setup() {
     COLLECTOR,
   ]);
   await run(`UPDATE "Organisation" SET "paymentHolderId"=$2 WHERE id=$1`, [ORG, COLLECTOR]);
+  // The free period exactly as an approval writes it (`trialWindow`).
+  const { trialStartedAt, trialEndsAt } = trialWindow(now);
   await run(`INSERT INTO "ClubBilling" ("orgId","trialStartedAt","trialEndsAt","updatedAt") VALUES ($1,$2,$3,now())`, [
     ORG,
-    now,
-    new Date(now.getTime() + 30 * DAY),
+    trialStartedAt,
+    trialEndsAt,
   ]);
   await run(
     `INSERT INTO "Sport" (id,"orgId",name,preset,"playersPerTeam",positions,"teamLabels","updatedAt")
@@ -139,7 +143,9 @@ async function setup() {
      VALUES ('billtest-activity',$1,'billtest-sport','Tuesday 5s',2,'20:00','Test Arena',8,$2,now())`,
     [ORG, new Date(now.getTime() - 60 * DAY)],
   );
-  console.log("\nTest club 'Billing Test FC' created: free month from now, ends in 30 days, Test Collector collects.");
+  console.log(
+    `\nTest club 'Billing Test FC' created: free period from now, ends in ${freePeriodLength("en")} (${formatLondon(trialEndsAt, "EEE d MMM yyyy HH:mm")} London), Test Collector collects.`,
+  );
   printLinks();
 }
 
@@ -177,7 +183,7 @@ async function times() {
   const curl = (at: Date) =>
     `curl -s -H "authorization: Bearer $CRON_SECRET" -H "x-test-now: ${at.toISOString()}" ${base}/api/cron/billing | python3 -m json.tool`;
   console.log(`Month 1 runs from ${formatLondon(m.startsAt, "EEE d MMM HH:mm")} to ${formatLondon(m.endsAt, "EEE d MMM HH:mm")} (London).`);
-  console.log(`\n1. Open month 1 (the cron as if it ran an hour after the free month ended):\n   ${curl(open)}`);
+  console.log(`\n1. Open month 1 (the cron as if it ran an hour after the free period ended):\n   ${curl(open)}`);
   console.log(`\n2. Close and charge month 1 (10:30 London the morning after it ends):\n   ${curl(close)}`);
   for (const d of [1, 3, 5]) {
     const at = londonDateTimeToUtc(formatLondon(new Date(close.getTime() + d * DAY), "yyyy-MM-dd"), "10:30");

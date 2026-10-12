@@ -111,6 +111,47 @@ describe("computeSilentGroups", () => {
     expect(out).toEqual(["g-hq-candidate"]);
   });
 
+  it("go-live S1: a club that is approved but still SETTING UP has a silent group", () => {
+    const out = computeSilentGroups({
+      unapprovedOrgGroups: [],
+      unapprovedConnectGroups: [],
+      unsolicitedGroups: [],
+      approvedOrgGroups: [SUTTON_GROUP],
+      settingUpOrgGroups: ["g-setting-up", null, ""],
+    });
+    expect(out).toEqual(["g-setting-up"]);
+  });
+
+  it("go-live S1: a live club's group is never silenced by a stale setting-up entry, and an admin group never is", () => {
+    const out = computeSilentGroups({
+      unapprovedOrgGroups: [],
+      unapprovedConnectGroups: [],
+      unsolicitedGroups: [],
+      approvedOrgGroups: [SUTTON_GROUP],
+      adminGroups: ["g-hq"],
+      settingUpOrgGroups: [SUTTON_GROUP, "g-hq"],
+    });
+    expect(out).toEqual([]);
+  });
+
+  it("DOCUMENTS CURRENT BEHAVIOUR (not a decision): a setting-up club's players' group that is ALSO some club's admin group is NOT silent", () => {
+    // The admin-group rule wins. The Pi is then told this group is an admin
+    // group (loadAdminGroups), so it forwards each message to the
+    // admin-group route and posts that route's replies there. No code path
+    // creates this state today (linkAdminGroup refuses a club's own group,
+    // and the group add refuses a linked admin group); a later slice
+    // decides what should happen if data ever holds it.
+    const out = computeSilentGroups({
+      unapprovedOrgGroups: [],
+      unapprovedConnectGroups: [],
+      unsolicitedGroups: [],
+      approvedOrgGroups: [SUTTON_GROUP],
+      adminGroups: ["g-players-and-hq"],
+      settingUpOrgGroups: ["g-players-and-hq"],
+    });
+    expect(out).toEqual([]);
+  });
+
   it("blank ids are dropped", () => {
     expect(
       computeSilentGroups({
@@ -147,6 +188,34 @@ describe("loadSilentGroupIds (db)", () => {
     expect(connectWhere.groupId).toEqual({ not: null });
     expect(connectWhere.org).toEqual({ approvalStatus: { not: "approved" } });
     expect(dbMock.unsolicitedGroup.findMany.mock.calls[0][0].where).toEqual({ leftAt: null });
+  });
+
+  it("go-live S1: an approved club that is setting up is silent, not protected as 'approved'", async () => {
+    dbMock.organisation.findMany.mockImplementation((args: { where: { approvalStatus: unknown } }) =>
+      Promise.resolve(
+        args.where.approvalStatus === "approved"
+          ? [
+              { whatsappGroupId: SUTTON_GROUP, approvalStatus: "approved", setupStage: "live" },
+              { whatsappGroupId: "g-setting-up", approvalStatus: "approved", setupStage: "setting-up" },
+            ]
+          : [{ whatsappGroupId: "g-suspended" }],
+      ),
+    );
+    // A stale unsolicited row naming the setting-up club's group must not matter either way.
+    dbMock.unsolicitedGroup.findMany.mockResolvedValue([{ groupId: "g-stranger" }, { groupId: "g-setting-up" }]);
+    const silent = await loadSilentGroupIds();
+    expect(silent.sort()).toEqual(["g-pending", "g-setting-up", "g-stranger", "g-suspended"]);
+    expect(silent).not.toContain(SUTTON_GROUP);
+    expect(await isSilentGroup("g-setting-up")).toBe(true);
+  });
+
+  it("go-live S1: the approved clubs' query is today's WHERE; the stage is only selected", async () => {
+    await loadSilentGroupIds();
+    const approvedCall = dbMock.organisation.findMany.mock.calls.find((c) => c[0].where.approvalStatus === "approved")!;
+    expect(approvedCall[0].where).toEqual({ approvalStatus: "approved", whatsappGroupId: { not: null } });
+    expect(approvedCall[0].select).toEqual({ whatsappGroupId: true, approvalStatus: true, setupStage: true });
+    // Still five queries with billing off: no extra read for the new state.
+    expect(dbMock.organisation.findMany.mock.calls.length + dbMock.clubConnect.findMany.mock.calls.length + dbMock.unsolicitedGroup.findMany.mock.calls.length).toBe(5);
   });
 
   it("isSilentGroup answers for one group", async () => {

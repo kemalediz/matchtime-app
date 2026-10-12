@@ -26,6 +26,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { StatsShowcase, WrappedCard } from "./stats-showcase";
+import { firstMonthsFree, firstMonthsFreeBadge } from "@/lib/i18n/free-period";
 
 /**
  * Public marketing landing page served at `/` for signed-out visitors.
@@ -412,7 +413,7 @@ export function LandingPage() {
             </h2>
             <p className="mt-5 text-lg text-slate-600">
               Set it up once, play every week. MatchTime takes care of the rest.
-              Your first month is free, and you can remove it from your group any time.
+              {firstMonthsFree("en")}, and you can remove it from your group any time.
             </p>
           </div>
 
@@ -551,7 +552,7 @@ export function LandingPage() {
             </h2>
             <p className="mt-5 text-lg text-slate-600">
               Up to £9.99 a month per WhatsApp group, not per player, and you
-              only pay for the weeks you play. Your first month is free, so you
+              only pay for the weeks you play. {firstMonthsFree("en")}, so you
               can see how it runs your week before you pay.
             </p>
             <p className="mt-3 text-base text-slate-500">
@@ -572,7 +573,7 @@ export function LandingPage() {
               <div className="relative">
                 <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-400/15 text-emerald-300 text-xs font-semibold">
                   <Sparkles className="w-3 h-3" />
-                  First month free
+                  {firstMonthsFreeBadge()}
                 </div>
                 <div className="mt-5 flex items-baseline gap-2">
                   <span className="text-lg text-slate-300">Up to</span>
@@ -644,7 +645,7 @@ export function LandingPage() {
             <br /> match-day morning?
           </h2>
           <p className="mt-5 text-lg text-slate-200 leading-relaxed">
-            Your first month is free, then it&apos;s up to £9.99 a month for
+            {firstMonthsFree("en")}, then it&apos;s up to £9.99 a month for
             the whole group, and you only pay for the weeks you play. Add it,
             and if you don&apos;t like it, remove it. Card and bank payments
             are there if you want them.

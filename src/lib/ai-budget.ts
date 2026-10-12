@@ -15,19 +15,27 @@
  *     override lifts that (self-join plan, section 9, rule 1);
  *   - a club that is not live (`whatsappBotEnabled` false, or no linked
  *     group) may spend NOTHING, and no override lifts that;
+ *   - ONE EXCEPTION to the line above (go-live slice S1, 2026-10-12): a
+ *     club that is approved but still SETTING UP (club-setup.ts), with a
+ *     linked group, may pay for its one setup reading, up to
+ *     `SETUP_READING_CAP_USD` a day. Only a scope opened with
+ *     `withSetupReadingAiBudget` gets it (the setup-learning sweep is the
+ *     only caller); every other call made for that club is still $0;
  *   - the platform owner's per-club override, `Organisation.aiDailyCapUsd`,
  *     when set;
- *   - $2.00 a day for the club's FREE MONTH, the first 30 days from the
- *     window start, which is `approvedAt ?? aiWindowStartAt ?? createdAt`
- *     (see `aiWindowStart`) (Kemal, 2026-10-01; was $0.25 for 28 days);
+ *   - $2.00 a day for the club's FREE PERIOD: two London calendar months
+ *     (`FREE_PERIOD_MONTHS`, the same length as the billing trial, through
+ *     the same `freePeriodEnd`; 30 days until 2026-10-12) from the window
+ *     start, which is `approvedAt ?? aiWindowStartAt ?? createdAt` (see
+ *     `aiWindowStart`) (Kemal, 2026-10-01; was $0.25 for 28 days);
  *   - $1.50 a day after that, the default for a paying club (Kemal,
- *     2026-10-01; was $1.00). Sutton FC is long past its free month and
+ *     2026-10-01; was $1.00). Sutton FC is long past its free period and
  *     has its own override of the same $1.50.
  *
  * Spend that happens before a club exists (the in-group setup
  * conversation, the web wizard's chat analysis) is keyed on the group or
  * the user instead of an org and gets `PRE_CLUB_CAP_USD`, $0.25: nobody
- * has approved anything yet, so it is not the free month. Two exceptions
+ * has approved anything yet, so it is not the free period. Two exceptions
  * for a GROUP key, both $0: the group is silent (it belongs to a club
  * waiting for approval, or nobody asked for MatchTime there), or
  * self-join is on, which retires the in-group setup altogether.
@@ -94,7 +102,8 @@ import { db } from "./db";
 import { formatLondon } from "./london-time";
 import { AI_CAP_ALERT_KIND, recordOpsEvent } from "./ops-alerts";
 import { isClubApproved, isSelfJoinEnabled, isSilentGroup } from "./club-approval";
-import { isBillingPaused } from "./club-billing-rules";
+import { freePeriodEnd, isBillingPaused } from "./club-billing-rules";
+import { SETUP_STAGE_SELECT, isClubSettingUp, type SetupStageColumns } from "./club-setup-rules";
 import { notifyAdminsOfAiCap } from "./ai-cap-notice";
 import {
   AiBudgetExceededError,
@@ -107,15 +116,13 @@ import {
 export { bindAiBudgetKey, isAiBudgetExceeded, AiBudgetExceededError } from "./ai-budget-context";
 export { AI_CAP_ALERT_KIND } from "./ops-alerts";
 
-/** A paying club's default, after its free month (Kemal, 2026-10-01). */
+/** A paying club's default, after its free period (Kemal, 2026-10-01). */
 export const DAILY_CAP_USD = 1.5;
-/** The free month's allowance (Kemal, 2026-10-01). */
+/** The free period's allowance (Kemal, 2026-10-01). */
 export const NEW_CLUB_CAP_USD = 2.0;
-/** The free month: 30 days, the same length as the billing trial. */
-export const NEW_CLUB_WINDOW_DAYS = 30;
 /**
  * Spend with no approved club behind it yet (onboarding keys). Kept at the
- * old new-club figure on purpose: the free month starts at approval, and
+ * old new-club figure on purpose: the free period starts at approval, and
  * this is money spent on behalf of people nobody has approved. In practice
  * the in-group setup is $0 while self-join is on, so this is the web
  * wizard's chat analysis, a few cents.
@@ -124,13 +131,35 @@ export const PRE_CLUB_CAP_USD = 0.25;
 /** Held per call between reserve and settle. See the bound above. */
 export const CALL_RESERVE_USD = 0.01;
 
+/**
+ * What a club that is approved but still SETTING UP may spend in a day on
+ * its setup reading, and on nothing else (go-live slice S1). One reading
+ * is one Haiku call of about a cent and a half, retried at most twice, so
+ * ten cents is room for all three attempts and no more. It is a fixed
+ * figure on purpose: the free month's $2.00 is for a club that is live.
+ */
+export const SETUP_READING_CAP_USD = 0.1;
+
+/** What kind of scope is asking. Absent: an ordinary one. */
+export interface AllowancePurpose {
+  /** True only inside `withSetupReadingAiBudget`. */
+  setupReading?: boolean;
+}
+
 /** Keys for spend that happens before a club exists. */
 export const onboardingGroupKey = (groupId: string): string => `onboarding-group:${groupId}`;
 export const onboardingUserKey = (userId: string): string => `onboarding-user:${userId}`;
 const isPseudoKey = (key: string): boolean => key.startsWith("onboarding-");
 const ONBOARDING_GROUP_PREFIX = onboardingGroupKey("");
 
-export interface AllowanceOrg {
+/**
+ * `SetupStageColumns` (club-setup-rules.ts) carries the approval state and
+ * the setup stage. "Setting up" is the one state in which a club whose bot
+ * is off may pay for its setup reading. The stage is optional there on
+ * purpose: a caller that does not select it reads as "not setting up",
+ * which is the $0 side.
+ */
+export interface AllowanceOrg extends SetupStageColumns {
   createdAt: Date;
   aiDailyCapUsd: number | null;
   aiWindowStartAt: Date | null;
@@ -147,12 +176,12 @@ export interface AllowanceOrg {
 }
 
 /**
- * When the club's free-month window starts:
+ * When the club's free period window starts:
  * `approvedAt ?? aiWindowStartAt ?? createdAt`.
  *
  * Why `approvedAt` first. It is a FACT, written once, by the approval
  * itself: the moment a self-join club was allowed to act. A club that
- * waited a week in pending must still get its full free month once live
+ * waited a week in pending must still get its full free period once live
  * (decision 5), and no other column can know that moment.
  *
  * Why `aiWindowStartAt` stays. It was added by the cap slice as a manual
@@ -195,7 +224,22 @@ export function isAiCapDisabled(env: Record<string, string | undefined> = proces
   return v === "1" || v === "true" || v === "yes" || v === "on";
 }
 
-export function aiAllowanceUsd(org: AllowanceOrg | null, now: Date): number {
+/**
+ * The one exception to "bot off spends nothing": the setup reading of a
+ * club that is approved, still setting up, and has a linked group. Reached
+ * only after the approval and billing rules. The owner's per-club override
+ * can lower it (to $0, which stops the reading) and never raise it; the
+ * emergency switch does not apply, because this is not a live club.
+ */
+function setupReadingAllowanceUsd(org: AllowanceOrg): number {
+  if (org.whatsappBotEnabled || !org.whatsappGroupId || !isClubSettingUp(org)) return 0;
+  if (org.aiDailyCapUsd !== null && org.aiDailyCapUsd !== undefined) {
+    return Number.isFinite(org.aiDailyCapUsd) ? Math.min(SETUP_READING_CAP_USD, Math.max(0, org.aiDailyCapUsd)) : 0;
+  }
+  return SETUP_READING_CAP_USD;
+}
+
+export function aiAllowanceUsd(org: AllowanceOrg | null, now: Date, purpose: AllowancePurpose = {}): number {
   if (!org) return isAiCapDisabled() ? UNCAPPED_USD : PRE_CLUB_CAP_USD;
   // Not approved: $0 before anything else is even read. The silence
   // rails already keep such a club from reaching a model; this is the
@@ -205,14 +249,16 @@ export function aiAllowanceUsd(org: AllowanceOrg | null, now: Date): number {
   // global switch and the per-club override so neither can lift it. Never
   // paused while BILLING_ENABLED is off.
   if (isBillingPaused(org)) return 0;
-  if (!org.whatsappBotEnabled || !org.whatsappGroupId) return 0;
+  if (!org.whatsappBotEnabled || !org.whatsappGroupId) {
+    return purpose.setupReading ? setupReadingAllowanceUsd(org) : 0;
+  }
   if (isAiCapDisabled()) return UNCAPPED_USD;
   if (org.aiDailyCapUsd !== null && org.aiDailyCapUsd !== undefined) {
     return Number.isFinite(org.aiDailyCapUsd) ? Math.max(0, org.aiDailyCapUsd) : 0;
   }
-  const start = aiWindowStart(org);
-  const ageMs = now.getTime() - start.getTime();
-  return ageMs < NEW_CLUB_WINDOW_DAYS * 24 * 60 * 60 * 1000 ? NEW_CLUB_CAP_USD : DAILY_CAP_USD;
+  // The free period's allowance until the free period ends: the same
+  // length as the billing trial, from the same function (`freePeriodEnd`).
+  return now.getTime() < freePeriodEnd(aiWindowStart(org)).getTime() ? NEW_CLUB_CAP_USD : DAILY_CAP_USD;
 }
 
 /** The London calendar day `now` falls on, as YYYY-MM-DD. */
@@ -226,13 +272,13 @@ const ALLOWANCE_SELECT = {
   aiWindowStartAt: true,
   whatsappBotEnabled: true,
   whatsappGroupId: true,
-  approvalStatus: true,
+  ...SETUP_STAGE_SELECT,
   approvedAt: true,
   billingStatus: true,
 } as const;
 
 /** The cap for a key today. Throws on a database error (callers fail open). */
-async function capFor(key: string, now: Date): Promise<number> {
+async function capFor(key: string, now: Date, purpose: AllowancePurpose = {}): Promise<number> {
   if (isPseudoKey(key)) {
     if (key.startsWith(ONBOARDING_GROUP_PREFIX)) {
       // The in-group setup is retired while self-join is on (decision 4),
@@ -244,7 +290,7 @@ async function capFor(key: string, now: Date): Promise<number> {
   }
   const org = await db.organisation.findUnique({ where: { id: key }, select: ALLOWANCE_SELECT });
   // An org id that does not exist is not a club that may spend.
-  return org ? aiAllowanceUsd(org, now) : 0;
+  return org ? aiAllowanceUsd(org, now, purpose) : 0;
 }
 
 /**
@@ -309,7 +355,10 @@ async function tellClubAdmins(key: string, now: Date): Promise<void> {
  * for the life of the scope (one request), which is the only read it
  * makes besides the reservation itself.
  */
-export function prismaAiBudgetLedger(clock: () => Date = () => new Date()): AiBudgetLedger {
+export function prismaAiBudgetLedger(
+  clock: () => Date = () => new Date(),
+  purpose: AllowancePurpose = {},
+): AiBudgetLedger {
   const caps = new Map<string, number>();
   return {
     async reserve(key, label): Promise<AiBudgetHold> {
@@ -317,7 +366,7 @@ export function prismaAiBudgetLedger(clock: () => Date = () => new Date()): AiBu
       const day = londonDay(now);
       let cap: number;
       try {
-        cap = caps.get(key) ?? (await capFor(key, now));
+        cap = caps.get(key) ?? (await capFor(key, now, purpose));
         caps.set(key, cap);
       } catch (err) {
         console.error(`[ai-budget] could not read the cap for ${key}; allowing ${label} (fail open):`, err);
@@ -384,6 +433,17 @@ export function prismaAiBudgetLedger(clock: () => Date = () => new Date()): AiBu
 /** Run `fn` with every model call inside it spending from `key`'s cap. */
 export function withOrgAiBudget<T>(key: string, fn: () => Promise<T>): Promise<T> {
   return runWithAiBudget(key, prismaAiBudgetLedger(), fn);
+}
+
+/**
+ * Run `fn` as a club's SETUP READING (go-live slice S1). For a live club
+ * this is `withOrgAiBudget`: the same cap, the same ledger. The one
+ * difference: a club that is approved but still setting up (bot off, group
+ * linked) is allowed `SETUP_READING_CAP_USD` here, where every other scope
+ * allows it $0. Only src/lib/setup-learning/run.ts may call this.
+ */
+export function withSetupReadingAiBudget<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  return runWithAiBudget(key, prismaAiBudgetLedger(undefined, { setupReading: true }), fn);
 }
 
 /** Run `fn` in a scope whose club is named later with `bindAiBudgetKey`. */

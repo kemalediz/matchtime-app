@@ -74,6 +74,7 @@
  */
 import type { Strings } from "./t";
 import { joinList } from "./text";
+import { firstMonthsFree } from "./free-period";
 import type { StatsPeriod } from "../pipeline/types";
 import type { BadgeKey } from "../badge-rules";
 
@@ -1686,6 +1687,8 @@ export const tr: Strings = {
   sj_dm_already_connected: "Zaten bağlısınız. Şimdi beni grubunuza eklemeniz yeterli.",
   sj_dm_code_expired:
     "Bu kodun süresi doldu. matchtime.ai'de kulübünüzü açın ve MatchTime'ı WhatsApp'a ekle düğmesine tekrar dokunun.",
+  sj_dm_wrong_code: (p) =>
+    `Mesajınızdaki kod ${p.club} için verilen kodla eşleşmiyor. matchtime.ai'de kulüp sayfanıza dönün, MatchTime'ı WhatsApp'a ekle düğmesine tekrar dokunun ve açılan mesajı hiç değiştirmeden gönderin.`,
 
   sj_dm_in_group: (p) =>
     `Teşekkürler, ${p.group ? `"${p.group}" grubuna` : "grubunuza"} katıldım. Kulübünüz onaylanana kadar orada sessiz kalacağım, genellikle bir gün içinde. Yayına geçince size buradan yazacağım.`,
@@ -1702,6 +1705,59 @@ export const tr: Strings = {
     `📊 *İstatistikler:* bana istediğinizi sorun, herkesin kendi istatistik sayfası olur.\n` +
     `💷 *Maç ücretleri:* organizatörünüz isterse kart ya da banka ile ödeme bağlantılarını açabilir.\n\n` +
     `Sohbet sırasında sessiz kalırım, sadece VARIM, YOKUM ya da etiketlenince yanıt veririm. Başka bir şey için beni etiketleyin: *@Match Time yardım*`,
+
+  // ════ BEGIN settings-aware group hello (go-live slice S2, 2026-10-12) ════
+  // The parts `buildGroupHello` (src/lib/group-hello.ts) composes the
+  // hello from. On default settings, without `sj_hello_catch_up`, the
+  // result equals `sj_group_hello` above byte for byte
+  // (`group-hello.test.ts` pins it): change one and you must change the other.
+  sj_hello_opener: (p) =>
+    `👋 Herkese merhaba, ben *MatchTime*. ${p.organiser ? `${p.organiser} beni bu grubun maçlarını düzenlemem için kurdu.` : "Bu grubun maçlarını düzenlemek için buradayım."} ` +
+    `Burada, WhatsApp'ta şunları yaparım:`,
+  sj_hello_whos_in: `✅ *Kim var:* *VARIM* ya da *YOKUM* yazmanız yeter. Listeyi tutar, mesajınıza tik koyarım.`,
+  sj_hello_rolling: (p) =>
+    `🔁 *Her hafta aynı kadro:* geçen maçta oynadıysanız bir sonrakinde de kadrodasınız. Gelemeyecekseniz${p.deadline ? ` *${p.deadline}* saatine kadar` : ""} *YOKUM* yazmanız yeter.`,
+  sj_hello_rolling_join: (p) =>
+    p.mode === "organiser"
+      ? `✅ *Henüz kadroda değil misiniz?* *VARIM* yazın, sizi yedeğe yazarım.`
+      : p.mode === "bench"
+        ? `✅ *Henüz kadroda değil misiniz?* *VARIM* yazın; yer varsa sizi eklerim, yoksa yedeğe yazarım.`
+        : `✅ *Henüz kadroda değil misiniz?* *VARIM* yazın; yer varsa sizi eklerim.`,
+  sj_hello_monthly: `📋 *Aylık kadro:* daimi oyuncular aya yazılır, tüm ay için bir kez öder ve ayın her maçında kadrodadır. Bir maça gelemeyecekseniz *YOKUM* yazın.`,
+  sj_hello_monthly_join: (p) =>
+    p.organisersPick
+      ? `✅ *Daimi oyuncu değil misiniz?* Yer açılınca *VARIM* yazın; yedek listesine girersiniz, kimin oynayacağını organizatörler seçer.`
+      : `✅ *Daimi oyuncu değil misiniz?* Yer açılınca *VARIM* yazıp yeri alın. Yalnızca o maçın ücretini ödersiniz.`,
+  sj_hello_deadline: (p) =>
+    `⏳ *Son çıkış saati:* ${p.day} ${p.time}. Oynayamayacaksanız o saatten önce *YOKUM* yazın.`,
+  sj_hello_list: (p) => `📋 *Son liste:* ${p.day} ${p.time} saatinde buraya gönderirim.`,
+  sj_hello_bench: `🪑 *Yedekler:* kadro dolunca geç gelenler yedeğe yazılır, biri çıkarsa ilk şans yedeklerindir.`,
+  sj_hello_bench_organiser: `🪑 *Yedekler:* *VARIM* yazanlar yedeğe yazılır, boşalan her yere kimin gireceğini organizatörler seçer.`,
+  sj_hello_remind: `⏰ *Hatırlatma:* *"@Match Time perşembe hatırlat"* yazın, o zaman size özelden yazarım.`,
+  sj_hello_teams: `⚖️ *Dengeli takımlar:* beni etiketleyin, oyuncu puanlarına göre dengeli takımlar kurarım.`,
+  sj_hello_mom: (p) =>
+    p.mom && p.ratings
+      ? `⭐ *Maçın oyuncusu ve puanlar* her maçtan sonra.`
+      : p.mom
+        ? `⭐ *Maçın oyuncusu* her maçtan sonra.`
+        : `⭐ *Oyuncu puanları* her maçtan sonra.`,
+  sj_hello_stats: `📊 *İstatistikler:* bana istediğinizi sorun, herkesin kendi istatistik sayfası olur.`,
+  sj_hello_fees: (p) => {
+    const how = p.mode === "card" ? "kartla" : p.mode === "bank" ? "banka ile" : "kart ya da banka ile";
+    if (p.mode !== "off") {
+      return `💷 *Maç ücretleri:* size gönderdiğim bağlantıyla ${how} ödeyebilirsiniz.${p.tracking ? " Kimin ödediğini takip eder, ödemeyenlere hatırlatırım." : ""}`;
+    }
+    return p.tracking
+      ? `💷 *Maç ücretleri:* kimin ödediğini takip eder, ödemeyenlere hatırlatırım.`
+      : `💷 *Maç ücretleri:* organizatörünüz isterse kart ya da banka ile ödeme bağlantılarını açabilir.`;
+  },
+  sj_hello_catch_up: `Sonraki maç için zaten VARIM dediniz mi? Listeye yazabilmem için bir kez daha yazın.`,
+  sj_hello_closer: (p) =>
+    p.attendance
+      ? `Sohbet sırasında sessiz kalırım, sadece VARIM, YOKUM ya da etiketlenince yanıt veririm. Başka bir şey için beni etiketleyin: *@Match Time yardım*`
+      : `Sohbet sırasında sessiz kalırım, sadece etiketlenince yanıt veririm. Başka bir şey için beni etiketleyin: *@Match Time yardım*`,
+  // ════ END settings-aware group hello ════
+
   sj_dm_approved: (p) =>
     `Güzel haber: ${p.club} artık aktif. ${p.group ? `"${p.group}" grubunda` : "Grubunuzda"} herkese merhaba dedim.\n\n` +
     `Vaktiniz olunca ayarlamanız gereken birkaç şey:\n\n` +
@@ -1709,7 +1765,7 @@ export const tr: Strings = {
     `⭐ *Başlangıç puanları:* ilk takımlar dengeli olsun diye her oyuncuya 10 üzerinden kabaca bir puan verin:\n${p.ratingsUrl}\n\n` +
     `⚙️ *Ayarlar:* ödemeleri, devam eden kadroyu, haftalık son saatleri, yönetici mesajlarını, organizatör seçimini ve rozet duyurularını buradan açın:\n${p.settingsUrl}\n\n` +
     `❓ *Yardım:* istediğiniz zaman bana buradan yazın, örneğin *yardım ödeme* ya da *yardım rozetler*.\n\n` +
-    `İlk ayınız ücretsiz.` +
+    `${firstMonthsFree("tr")}.` +
     (p.tip ? `\n\n${p.tip}` : ""),
   sj_dm_rejected: (p) =>
     `MatchTime'ı denediğiniz için teşekkürler. ${p.group ? `"${p.group}" grubunu` : "Grubunuzu"} şu an alamıyoruz, bu yüzden gruptan ayrıldım. Bu değişirse size haber vereceğiz.`,
@@ -1955,8 +2011,8 @@ export const tr: Strings = {
       : `; ${p.fee} olan bir maç için *${p.feePlus}* alabilirsiniz.`),
   billing_page_title: "Kulüp ücreti",
   billing_state_trial: (p) =>
-    `Ücretsiz ay ${p.date} tarihine kadar. Sonrasında yalnızca oynadığınız maçlar için ödersiniz, tüm grup için ayda en fazla ${p.price}.`,
-  billing_state_grace: (p) => `Ücretsiz ay sona erdi. Kart eklenmezse MatchTime ${p.date} tarihinde durur.`,
+    `${p.date} tarihine kadar ücretsiz. Sonrasında yalnızca oynadığınız maçlar için ödersiniz, tüm grup için ayda en fazla ${p.price}.`,
+  billing_state_grace: (p) => `Ücretsiz dönem sona erdi. Kart eklenmezse MatchTime ${p.date} tarihinde durur.`,
   billing_state_subscribed: (p) => `Yalnızca oynanan maçlar için ücret alınır, ayda en fazla ${p.price}. Sonraki ödeme ${p.date}.`,
   billing_state_card_saved: (p) => `Kart kaydedildi. ${p.date} tarihine kadar hiçbir ücret alınmaz.`,
   billing_state_nothing_until: (p) => `${p.date} tarihine kadar hiçbir ücret alınmaz.`,
@@ -2043,14 +2099,14 @@ export const tr: Strings = {
   billing_stop_confirm_month: (p) =>
     `Ödeme ${p.date} tarihinde, bu ay oynanan maçlar için ücret alındıktan sonra sona erer. Sonra MatchTime, biri yeniden ödemeye başlayana kadar grupta durur.`,
   billing_stop_confirm_free: (p) =>
-    `Kartınız şimdi kaldırılır ve hiçbir ücret alınmaz. Ücretsiz ay ${p.date} tarihine kadar devam eder; sonrasında MatchTime'ın çalışmaya devam etmesi için kart gerekir.`,
+    `Kartınız şimdi kaldırılır ve hiçbir ücret alınmaz. Ücretsiz dönem ${p.date} tarihine kadar devam eder; sonrasında MatchTime'ın çalışmaya devam etmesi için kart gerekir.`,
   billing_btn_stop_confirm_yes: "Evet, ödemeyi durdur",
   billing_btn_stop_confirm_no: "Geri dön",
   billing_exempt: (p) => `${p.club} için kulüp ücreti yok. MatchTime bu kulüp için ücretsiz.`,
   billing_open: "Ödeme sayfasını aç",
   billing_choose_collector: "Para toplayan kişiyi seçin",
   billing_banner_grace: (p) =>
-    `Ücretsiz ay sona erdi. MatchTime'ın çalışmaya devam etmesi için ${p.date} tarihinden önce kart ekleyin.`,
+    `Ücretsiz dönem sona erdi. MatchTime'ın çalışmaya devam etmesi için ${p.date} tarihinden önce kart ekleyin.`,
   billing_banner_past_due: (p) =>
     (p.amount
       ? p.months > 1
@@ -2072,7 +2128,7 @@ export const tr: Strings = {
   billing_notice_failed: "Bir sorun oluştu. Lütfen tekrar deneyin.",
   billing_notice_stopped:
     "Tamam. Ödeme bu ay bitince sona eriyor: bu ay oynanan maçlar için her zamanki gibi ücretlendirilir, sonra başka bir şey alınmaz. MatchTime o zamana kadar çalışmaya devam ediyor.",
-  billing_notice_stopped_free: "Tamam. Kartınız kaldırıldı ve hiçbir ücret alınmadı. Ücretsiz ay bitene kadar devam ediyor.",
+  billing_notice_stopped_free: "Tamam. Kartınız kaldırıldı ve hiçbir ücret alınmadı. Ücretsiz dönem bitene kadar devam ediyor.",
   billing_notice_kept: "Tamam. MatchTime çalışmaya devam ediyor ve her ay yalnızca oynanan maçlar için ücret alınır.",
   billing_notice_past_due: "Gecikmiş bir ödeme var. Önce kartı güncelleyip ödeyin.",
   billing_dm_card_added: (p) =>
@@ -2093,20 +2149,20 @@ export const tr: Strings = {
     `MatchTime ${p.club} için yeniden açıldı. Birkaç dakika içinde grupta kaldığım yerden devam ediyorum. Ben duraklatılmışken VARIM yazanlar lütfen tekrar yazsın.`,
   billing_dm_plan_billed: (p) =>
     `Merhaba${p.name ? ` ${p.name}` : ""}, ${p.club} yeniden MatchTime planında: yalnızca oynanan maçlar, ayda en fazla ${p.price}. ` +
-    `Ücretsiz ay daha önce kullanıldı, bu yüzden MatchTime grupta ${p.date} tarihine kadar çalışmaya devam edecek. ` +
+    `Ücretsiz dönem daha önce kullanıldı, bu yüzden MatchTime grupta ${p.date} tarihine kadar çalışmaya devam edecek. ` +
     `Çalışmaya devam etmesi için o tarihe kadar kart ekleyin: ${p.link}`,
   billing_dm_trial_21: (p) =>
-    `Merhaba${p.name ? ` ${p.name}` : ""}, ${p.club} için MatchTime'daki ücretsiz ay ${p.date} tarihinde bitiyor. ` +
+    `Merhaba${p.name ? ` ${p.name}` : ""}, ${p.club} için MatchTime'daki ücretsiz dönem ${p.date} tarihinde bitiyor. ` +
     (p.collector ? `Maç ücretlerini siz topladığınız için kartı sizden istiyorum. ` : "") +
     `MatchTime'ın ${p.club} WhatsApp grubunda çalışmaya devam etmesi için buradan kart ekleyin: ${p.link}\n` +
     `Sonrasında yalnızca oynadığınız maçlar için ödersiniz, tüm grup için ayda en fazla ${p.price}, her ay bittikten sonra alınır. ` +
     `Kartı eklediğinizde hiçbir ücret alınmaz; ilk ödeme ${p.firstCharge} tarihinde.`,
   billing_dm_trial_28: (p) =>
-    `Merhaba${p.name ? ` ${p.name}` : ""}, kısa bir hatırlatma: ${p.club} için ücretsiz ay ${p.date} tarihinde bitiyor. ` +
+    `Merhaba${p.name ? ` ${p.name}` : ""}, kısa bir hatırlatma: ${p.club} için ücretsiz dönem ${p.date} tarihinde bitiyor. ` +
     `MatchTime'ın ${p.club} WhatsApp grubunda çalışmaya devam etmesi için kart ekleyin: ${p.link}\n` +
     `Yalnızca oynadığınız maçlar için ödersiniz, ayda en fazla ${p.price}; kartı eklediğinizde hiçbir ücret alınmaz.`,
   billing_dm_trial_ended: (p) =>
-    `Merhaba${p.name ? ` ${p.name}` : ""}, ${p.club} için ücretsiz ay sona erdi. ` +
+    `Merhaba${p.name ? ` ${p.name}` : ""}, ${p.club} için ücretsiz dönem sona erdi. ` +
     `MatchTime ${p.club} WhatsApp grubunda bir hafta daha, ${p.date} tarihine kadar çalışmaya devam edecek. ` +
     `O tarihe kadar istediğiniz zaman kart ekleyebilirsiniz: ${p.link}\n` +
     `Yalnızca oynadığınız maçlar için ödersiniz, ayda en fazla ${p.price}, her ay bittikten sonra alınır.`,
@@ -2371,7 +2427,7 @@ export const tr: Strings = {
     "Kendileri katılan ve sizin onayladığınız kulüpler. Yeni kulüplerin ilk günlerinde günlük sınırları daha sıkıdır. \"Turn off\" MatchTime'ın gruptan çıkıp sessiz kalmasını sağlar; kimseye mesaj gönderilmez.",
   info_clubs_fee_title: "Kulüp ücreti",
   info_clubs_fee_body:
-    "Kulübün planı ve fatura durumu, bu ay ve geçen ay, kimin ödediği ve son 30 gündeki yapay zeka maliyeti. \"Plan\" aylık üst sınırı belirler. \"Start free month\" bir kulübün alabileceği tek ücretsiz ayı başlatır.",
+    "Kulübün planı ve fatura durumu, bu ay ve geçen ay, kimin ödediği ve son 30 gündeki yapay zeka maliyeti. \"Plan\" aylık üst sınırı belirler. \"Start free period\" bir kulübün alabileceği tek ücretsiz dönemi başlatır.",
   info_clubs_unsolicited_title: "MatchTime'ı kimsenin istemediği gruplar",
   info_clubs_unsolicited_body:
     "Birinin MatchTime'ı kodsuz eklediği gruplar. MatchTime orada sessiz kalır ve 48 saat sonra kendisi çıkar; hemen çıkmak için \"Leave\" düğmesine basın. Gruptaki kimseye mesaj gönderilmez.",
@@ -2452,8 +2508,21 @@ export const tr: Strings = {
   settings_learned_changed_since: "Sonradan değiştirildi",
   settings_learned_undo_failed: "Geri alınamadı",
   settings_learned_from: "Şu tür mesajlardan",
-  settings_learned_check_head: "Kontrol etmeye değer (hiçbir şey değişmedi)",
-  settings_learned_open_setting: "Ayara git",
+  settings_learned_check_count: (p) => `Kontrol edilecek ${p.count} şey`,
+  settings_learned_check_sub:
+    "MatchTime bunlar için hiçbir şeyi değiştirmedi. Bir göz atın, sohbet haklıysa kendiniz değiştirin.",
+  settings_learned_action: (p) =>
+    p.key === "organiserPicks"
+      ? `"Organizatörler seçer" ayarını aç`
+      : p.key === "weeklyGameDay"
+        ? `Maç gününü değiştir`
+        : p.key === "weeklyGameTime"
+          ? `Maç saatini değiştir`
+          : p.key === "venue"
+            ? `Sahayı değiştir`
+            : p.key === "format"
+              ? `Takım başına kişi sayısını değiştir`
+              : `Dili değiştir`,
   settings_learned_noted_head: "Fark edildi, karar sizde",
   // ── Aylık kadro (2026-10-05, dilim 2) ────────────────────────────
   // /admin/settings "Aylık kadro" bölümü (msq_) ve /admin/months (mth_).

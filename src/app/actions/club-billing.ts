@@ -96,7 +96,7 @@ export async function useMyCardAction(orgId: string): Promise<void> {
 }
 
 /** Stop paying: billing ends with the current month (inside the free
- *  month the card is removed at once). */
+ *  period the card is removed at once). */
 export async function stopPayingAction(orgId: string): Promise<void> {
   const freeMonth = { value: false };
   await run(

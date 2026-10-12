@@ -72,6 +72,7 @@ import {
   servingClubWhere,
 } from "./club-approval-state";
 import { billingQuietWhere, isBillingEnabled } from "./club-billing-rules";
+import { SETUP_STAGE_SELECT, isClubSettingUp } from "./club-setup-rules";
 
 // ── Flags ───────────────────────────────────────────────────────────────
 
@@ -164,6 +165,11 @@ export interface SilentGroupSources {
    *  paused club's admin group out of `adminGroups`). Only ever filled
    *  while BILLING_ENABLED is on; absent means none. */
   pausedOrgGroups?: Array<string | null>;
+  /** Go-live slice S1: the `whatsappGroupId` of clubs that are approved
+   *  but still SETTING UP (club-setup.ts). Silent until the organiser says
+   *  GO. The caller leaves them out of `approvedOrgGroups`. Absent means
+   *  none. */
+  settingUpOrgGroups?: Array<string | null>;
 }
 
 /**
@@ -180,6 +186,7 @@ export function computeSilentGroups(src: SilentGroupSources): string[] {
     ...src.unapprovedConnectGroups,
     ...src.unsolicitedGroups,
     ...(src.pausedOrgGroups ?? []),
+    ...(src.settingUpOrgGroups ?? []),
   ]) {
     if (ok(g) && !approved.has(g)) silent.add(g);
   }
@@ -194,13 +201,21 @@ export function computeSilentGroups(src: SilentGroupSources): string[] {
  * billing-paused club's group is not protected by that rule, and is
  * listed silent, so the Pi drops its messages (plan 4.3 point 3). With
  * the flag off the queries are exactly today's.
+ *
+ * Go-live slice S1: a served club that is still SETTING UP is not
+ * protected by that rule either. It is told apart in the rows the first
+ * query already returns (the stage is selected, the WHERE is unchanged, no
+ * query is added), and its group is listed silent. Without this its group
+ * would be neither monitored (its bot is off) nor silent, and the legacy
+ * in-group setup could start there. No existing club is setting up, so for
+ * them the answer is the same as before.
  */
 export async function loadSilentGroupIds(): Promise<string[]> {
   const billing = isBillingEnabled();
   const [approvedOrgs, unapprovedOrgs, connects, unsolicited, adminGroups, pausedOrgs] = await Promise.all([
     db.organisation.findMany({
       where: { ...servingClubWhere(), whatsappGroupId: { not: null } },
-      select: { whatsappGroupId: true },
+      select: { whatsappGroupId: true, ...SETUP_STAGE_SELECT },
     }),
     db.organisation.findMany({
       where: { ...UNAPPROVED_CLUB_WHERE, whatsappGroupId: { not: null } },
@@ -228,8 +243,10 @@ export async function loadSilentGroupIds(): Promise<string[]> {
         })
       : Promise.resolve([] as Array<{ whatsappGroupId: string | null; adminGroupId: string | null }>),
   ]);
+  const settingUp = approvedOrgs.filter((o) => isClubSettingUp(o));
   return computeSilentGroups({
-    approvedOrgGroups: approvedOrgs.map((o) => o.whatsappGroupId),
+    approvedOrgGroups: approvedOrgs.filter((o) => !isClubSettingUp(o)).map((o) => o.whatsappGroupId),
+    settingUpOrgGroups: settingUp.map((o) => o.whatsappGroupId),
     unapprovedOrgGroups: unapprovedOrgs.map((o) => o.whatsappGroupId),
     unapprovedConnectGroups: connects.map((c) => c.groupId),
     unsolicitedGroups: unsolicited.map((u) => u.groupId),

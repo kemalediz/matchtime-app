@@ -22,6 +22,7 @@ import { test, expect, resetDb, signInAs, U } from "../fixtures";
 import { E2E_BASE_URL } from "../helpers/env";
 import { ORG_ID } from "../helpers/constants";
 import { testDb } from "../helpers/test-db";
+import { freePeriodEnd } from "@/lib/club-billing-rules";
 
 test.describe.configure({ mode: "serial" });
 
@@ -137,7 +138,7 @@ test.describe("/billing/[orgId] per role", () => {
     await expect(billing).toHaveAttribute("data-role", "contact", { timeout: 30_000 });
     await expect(page.getByRole("heading", { name: "Club fee" })).toBeVisible();
     await expect(page.getByTestId("billing-state")).toHaveText(
-      "Free month until Thu 31 Jan. After that you only pay for the games you play, up to £9.99 a month for the whole group.",
+      "Free until Thu 31 Jan. After that you only pay for the games you play, up to £9.99 a month for the whole group.",
     );
     const add = page.getByTestId("billing-btn-add-card");
     await expect(add).toBeVisible();
@@ -243,7 +244,7 @@ test.describe("/admin/settings billing card and the banner", () => {
     await page.waitForURL("**/admin/settings");
     const card = page.getByTestId("settings-billing-card");
     await expect(card).toBeVisible({ timeout: 30_000 });
-    await expect(card).toContainText("Free month until Thu 31 Jan. After that you only pay for the games you play, up to £9.99 a month for the whole group.");
+    await expect(card).toContainText("Free until Thu 31 Jan. After that you only pay for the games you play, up to £9.99 a month for the whole group.");
     // No month has opened yet (the free month runs): no month box.
     await expect(card.getByTestId("settings-billing-month")).toHaveCount(0);
     await expect(card).toContainText("Colin Sevens looks after the card.");
@@ -275,7 +276,7 @@ test.describe("/admin/settings billing card and the banner", () => {
   test("the banner in grace, past due and paused, linking to the card", async ({ page }) => {
     await setState(`UPDATE "ClubBilling" SET "graceEndsAt"='2030-02-07T12:00:00Z' WHERE "orgId"=$1`, [ORG]);
     for (const [status, text] of [
-      ["grace", "The free month has ended. Add a card before Thu 7 Feb to keep MatchTime running."],
+      ["grace", "The free period has ended. Add a card before Thu 7 Feb to keep MatchTime running."],
       // Slice P4: no unpaid month is seeded here, so the fallback wording;
       // billing-months.spec.ts names a real unpaid month.
       ["past_due", "The last club fee payment didn't go through. MatchTime stops on Thu 7 Feb if it can't be taken."],
@@ -343,7 +344,7 @@ test.describe("/admin/clubs: the platform owner's billing controls", () => {
     await signInAs(page, USER.owner, "/admin/clubs");
     const row = page.getByTestId("live-club").filter({ hasText: "Billing Sevens" });
     await expect(row.getByTestId("club-billing-summary")).toContainText(
-      "Standard, up to £9.99. Free month. Free month ends Thu 31 Jan, 12:00. Card on file: no.",
+      "Standard, up to £9.99. Free period. Free period ends Thu 31 Jan, 12:00. Card on file: no.",
       { timeout: 30_000 },
     );
     await expect(row).toContainText("Colin Sevens (money collector)");
@@ -356,7 +357,7 @@ test.describe("/admin/clubs: the platform owner's billing controls", () => {
       "Club fees: 0 with a card. Charged last month: £0. This month so far: £0. Failed or unpaid: 0.",
     );
     await expect(page.getByTestId("billing-totals")).toContainText("Check VAT country: 0.");
-    await expect(page.getByTestId("billing-totals")).toContainText("1 in their free month");
+    await expect(page.getByTestId("billing-totals")).toContainText("1 in their free period");
     expect(await page.getByTestId("clubs-page").innerText()).not.toMatch(DASH);
   });
 
@@ -394,7 +395,7 @@ test.describe("/admin/clubs: the platform owner's billing controls", () => {
     // Slice B3: leaving Free while the club's one free month is still
     // running puts it back in that month (its end kept); no second free
     // month is ever started.
-    await expect(page.getByText("Plan saved: Standard, up to £9.99 a month. The club is back in its free month.")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText("Plan saved: Standard, up to £9.99 a month. The club is back in its free period.")).toBeVisible({ timeout: 30_000 });
     expect(await db.one(`SELECT "billingPlan","billingStatus" FROM "Organisation" WHERE id=$1`, [ORG])).toEqual({
       billingPlan: "standard",
       billingStatus: "trial",
@@ -403,21 +404,35 @@ test.describe("/admin/clubs: the platform owner's billing controls", () => {
       trialEndsAt: new Date("2030-01-31T12:00:00Z"),
     });
     // It had its free month, so there is no "Start free month" for it.
-    await expect(row.getByRole("button", { name: "Start free month" })).toHaveCount(0);
+    await expect(row.getByRole("button", { name: "Start free period" })).toHaveCount(0);
   });
 
   test("Start free month, for a self-join club approved before billing", async ({ page, db }) => {
     const jobsBefore = await db.count(`SELECT COUNT(*) FROM "PlatformJob"`);
     await signInAs(page, USER.owner, "/admin/clubs");
     const late = page.getByTestId("live-club").filter({ hasText: "Late Starters" });
-    page.once("dialog", (d) => d.accept());
-    await late.getByRole("button", { name: "Start free month" }).click();
-    await expect(page.getByText(/^Free month started\. It ends on /)).toBeVisible({ timeout: 30_000 });
+    let asked = "";
+    page.once("dialog", (d) => {
+      asked = d.message();
+      return d.accept();
+    });
+    await late.getByRole("button", { name: "Start free period" }).click();
+    expect(asked).toBe("Start Late Starters's free period now? It runs two months from now, and a club gets only one.");
+    await expect(page.getByText(/^Free period started\. It ends on /)).toBeVisible({ timeout: 30_000 });
     expect(await db.one(`SELECT "billingStatus" FROM "Organisation" WHERE id=$1`, [LATE])).toEqual({ billingStatus: "trial" });
-    expect(
-      await db.count(`SELECT COUNT(*) FROM "ClubBilling" WHERE "orgId"=$1 AND "trialEndsAt" = "trialStartedAt" + interval '30 days'`, [LATE]),
-    ).toBe(1);
-    await expect(late.getByRole("button", { name: "Start free month" })).toHaveCount(0);
+    // It runs two London calendar months from now, and the page says so first.
+    // (AT TIME ZONE 'UTC': the columns hold UTC with no zone, and `pg` would
+    // otherwise read them as this machine's local time.)
+    const window = await db.one<{ trialStartedAt: Date; trialEndsAt: Date }>(
+      `SELECT "trialStartedAt" AT TIME ZONE 'UTC' AS "trialStartedAt", "trialEndsAt" AT TIME ZONE 'UTC' AS "trialEndsAt"
+         FROM "ClubBilling" WHERE "orgId"=$1`,
+      [LATE],
+    );
+    expect(window!.trialEndsAt).toEqual(freePeriodEnd(window!.trialStartedAt));
+    const days = (window!.trialEndsAt.getTime() - window!.trialStartedAt.getTime()) / (24 * 60 * 60 * 1000);
+    expect(days).toBeGreaterThan(58.9);
+    expect(days).toBeLessThan(62.1);
+    await expect(late.getByRole("button", { name: "Start free period" })).toHaveCount(0);
     // Nobody was messaged.
     expect(await db.count(`SELECT COUNT(*) FROM "PlatformJob"`)).toBe(jobsBefore);
     expect(await db.count(`SELECT COUNT(*) FROM "BotJob" WHERE "orgId" IN ($1,$2)`, [ORG, LATE])).toBe(0);

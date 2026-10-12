@@ -216,7 +216,7 @@ describe("decideClub: approve", () => {
         "⭐ *Starting ratings:* give each player a rough score out of 10 so the first teams are fair:\nhttps://mt.link/u-ali/org-riverside/admin/players/ratings\n\n" +
         "⚙️ *Settings:* switch on payments, rolling squad, weekly deadlines, admin messages, organiser picks and badge announcements:\nhttps://mt.link/u-ali/org-riverside/admin/settings\n\n" +
         "❓ *Help any time:* message me here, for example *help payments* or *help badges*.\n\n" +
-        "Your first month is free.",
+        "Your first two months are free.",
     );
     // Each link signs in the organiser (the DM goes to their own phone), in this club.
     expect(adminLinkMock.mock.calls.map((c) => c[0])).toEqual([
@@ -323,7 +323,7 @@ describe("decideClub: approve starts the free month (club fee billing, slice B2)
     feeSource: "example" as const,
     split: false,
   };
-  const FREE = "Your first month is free.";
+  const FREE = "Your first two months are free.";
 
   it("BILLING_ENABLED off: no free month starts and the DM is exactly today's", async () => {
     await decideClub("org-riverside", "approve", "u-kemal", { now: NOW });
@@ -352,7 +352,7 @@ describe("decideClub: approve starts the free month (club fee billing, slice B2)
     billingMock.setBillingState.mockResolvedValue({ ok: true, from: "exempt", to: "trial", resumed: false });
     billingMock.loadClubFeeTip.mockResolvedValue(TIP);
     await decideClub("org-riverside", "approve", "u-kemal", { now: NOW });
-    expect(String(created("platformJob")[0].text)).toContain("İlk ayınız ücretsiz.\n\n💷 *Kulüp ücreti ipucu:*");
+    expect(String(created("platformJob")[0].text)).toContain("İlk iki ayınız ücretsiz.\n\n💷 *Kulüp ücreti ipucu:*");
   });
 
   it("flag on but no free month started (plan Free): no tip", async () => {

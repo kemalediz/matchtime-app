@@ -284,9 +284,9 @@ const HOUR = 60 * 60 * 1000;
 const MIN = 60 * 1000;
 const APPROVED = new Date("2026-10-01T09:00:00Z"); // Thu 1 Oct, 10:00 London
 const TRIAL_ENDS = new Date(APPROVED.getTime() + 30 * DAY); // Sat 31 Oct, 09:00 London (GMT)
-const DAY21 = new Date("2026-10-22T09:00:00Z"); // Thu 22 Oct, 10:00 BST
-const DAY28 = new Date("2026-10-29T10:00:00Z"); // Thu 29 Oct, 10:00 GMT
-const NIGHT = (d: Date) => new Date(d.getTime() + 12 * HOUR); // 21:00 or 22:00 London
+const DAY21 = new Date("2026-10-22T08:00:00Z"); // Thu 22 Oct, 09:00 BST
+const DAY28 = new Date("2026-10-29T09:00:00Z"); // Thu 29 Oct, 09:00 GMT
+const NIGHT = (d: Date) => new Date(d.getTime() + 14 * HOUR); // 23:00 London
 let fake: FakeBillingStripe;
 
 const OWNER: Member = { userId: "u_owen", role: "OWNER", leftAt: null, name: "Owen", phoneNumber: "+447700900001" };
@@ -349,14 +349,14 @@ beforeEach(() => {
 // ── The cron: day boundaries and once-only ─────────────────────────────
 
 describe("runBillingCron: the day 21, 28, 30 and 37 steps", () => {
-  it("day 21 at 10:00 London: one DM to the money collector with the tip and a 9 day billing link; no state change", async () => {
+  it("day 21 at 09:00 London: one DM to the money collector with the tip and a 9 day billing link; no state change", async () => {
     club({ paymentHolderId: "u_cole" });
     await runBillingCron(DAY21);
     expect(dmsOf()).toHaveLength(1);
     const dm = dmsOf("trial-21")[0];
     expect(dm.userId).toBe("u_cole");
     expect(dm.cycleKey).toBe(TRIAL_ENDS.toISOString());
-    expect(dm.text).toContain("Hi Cole, Riverside FC's free month on MatchTime ends on Sat 31 Oct.");
+    expect(dm.text).toContain("Hi Cole, Riverside FC's free period on MatchTime ends on Sat 31 Oct.");
     expect(dm.text).toContain("As the person who collects the match fees");
     expect(dm.text).toContain(`https://mt.test/r/u_cole/billing/org_1#ttl=${9 * 24 * 60 * 60}`);
     expect(dm.text).toContain("*25p a player per game*");
@@ -365,7 +365,7 @@ describe("runBillingCron: the day 21, 28, 30 and 37 steps", () => {
     expect(h.state.transitions).toEqual([]);
   });
 
-  it("the hour before 10:00 on day 21, and at night: nothing", async () => {
+  it("the minute before 09:00 on day 21, and at night: nothing", async () => {
     club({ paymentHolderId: "u_cole" });
     await runBillingCron(new Date(DAY21.getTime() - MIN));
     await runBillingCron(NIGHT(DAY21));
@@ -409,7 +409,7 @@ describe("runBillingCron: the day 21, 28, 30 and 37 steps", () => {
     const d28 = dmsOf("trial-28");
     expect(d28).toHaveLength(1);
     expect(d28[0].text).toBe(
-      "Hi Cole, a quick reminder: Riverside FC's free month ends on Sat 31 Oct. Add a card to keep MatchTime running in the Riverside FC WhatsApp group: " +
+      "Hi Cole, a quick reminder: Riverside FC's free period ends on Sat 31 Oct. Add a card to keep MatchTime running in the Riverside FC WhatsApp group: " +
         `https://mt.test/r/u_cole/billing/org_1#ttl=${9 * 24 * 60 * 60}\n` +
         "You only pay for the games you play, up to £9.99 a month, and nothing is taken when you add the card.",
     );
@@ -433,29 +433,31 @@ describe("runBillingCron: the day 21, 28, 30 and 37 steps", () => {
     expect(dmsOf("trial-28")[0].userId).toBe("u_cole");
   });
 
-  it("day 30: the free month ends ON TIME at 09:00 London; the DM goes in the daytime with the grace date and the collector line for an owner", async () => {
+  it("day 30: the free month ends ON TIME at 09:00 London, which is daytime, so the same run sends the DM with the grace date and the collector line for an owner", async () => {
     const c = club();
     await runBillingCron(new Date(TRIAL_ENDS.getTime() - MIN));
     expect(c.billingStatus).toBe("trial");
     await runBillingCron(TRIAL_ENDS);
     expect(c.billingStatus).toBe("grace");
     expect(c.billing!.graceEndsAt!.toISOString()).toBe(new Date(TRIAL_ENDS.getTime() + 7 * DAY).toISOString());
-    expect(dmsOf("trial-ended")).toEqual([]); // 09:00 London: not yet daytime
-    await runBillingCron(new Date(TRIAL_ENDS.getTime() + HOUR)); // 10:00
-    const dm = dmsOf("trial-ended");
+    const dm = dmsOf("trial-ended"); // 09:00 London: daytime
     expect(dm).toHaveLength(1);
-    expect(dm[0].text).toContain("Hi Owen, Riverside FC's free month has ended. MatchTime will keep running in the Riverside FC WhatsApp group for one more week, until Sat 7 Nov.");
+    await runBillingCron(new Date(TRIAL_ENDS.getTime() + HOUR)); // 10:00: never a second one
+    expect(dmsOf("trial-ended")).toHaveLength(1);
+    expect(dm[0].text).toContain("Hi Owen, Riverside FC's free period has ended. MatchTime will keep running in the Riverside FC WhatsApp group for one more week, until Sat 7 Nov.");
     expect(dm[0].text).toContain("make them the money collector");
   });
 
-  it("a night-time trial end: the state moves at once, the DM waits for 10:00", async () => {
+  it("a night-time trial end: the state moves at once, the DM waits for 09:00", async () => {
     const approved = new Date("2026-10-05T23:30:00Z"); // 00:30 BST on Tue 6 Oct
     const c = club({ approvedAt: approved }, { trialEndsAt: new Date(approved.getTime() + 30 * DAY) });
     const end = c.billing!.trialEndsAt; // 23:30 GMT on Wed 4 Nov
     await runBillingCron(new Date(end.getTime() + MIN));
     expect(c.billingStatus).toBe("grace");
     expect(dmsOf()).toEqual([]);
-    await runBillingCron(new Date("2026-11-05T10:00:00Z"));
+    await runBillingCron(new Date("2026-11-05T08:00:00Z"));
+    expect(dmsOf()).toEqual([]);
+    await runBillingCron(new Date("2026-11-05T09:00:00Z"));
     expect(dmsOf("trial-ended")).toHaveLength(1);
   });
 
@@ -501,7 +503,7 @@ describe("runBillingCron: the day 21, 28, 30 and 37 steps", () => {
     club({ language: "tr", paymentHolderId: "u_cole" });
     await runBillingCron(DAY21);
     const dm = dmsOf("trial-21")[0];
-    expect(dm.text).toContain("Merhaba Cole, Riverside FC için MatchTime'daki ücretsiz ay 31 Ekim Cumartesi tarihinde bitiyor.");
+    expect(dm.text).toContain("Merhaba Cole, Riverside FC için MatchTime'daki ücretsiz dönem 31 Ekim Cumartesi tarihinde bitiyor.");
     expect(dm.text).toContain("Kulüp ücreti ipucu");
     expect(dm.text).not.toMatch(/[–—]/);
   });

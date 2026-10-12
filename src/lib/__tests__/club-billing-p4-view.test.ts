@@ -128,10 +128,10 @@ describe("past months (8.1)", () => {
 describe("state lines: no flat fee left (8.1)", () => {
   it("trial: only the games played, up to the price", () => {
     expect(billingStateLines("en", state({ status: "trial", cardHolderUserId: null, cardLast4: null, trialEndsAt: new Date("2026-10-31T09:00:00Z") }))).toEqual([
-      "Free month until Sat 31 Oct. After that you only pay for the games you play, up to £9.99 a month for the whole group.",
+      "Free until Sat 31 Oct. After that you only pay for the games you play, up to £9.99 a month for the whole group.",
     ]);
     expect(billingStateLines("tr", state({ status: "trial", cardHolderUserId: null, cardLast4: null, trialEndsAt: new Date("2026-10-31T09:00:00Z") }))).toEqual([
-      "Ücretsiz ay 31 Ekim Cumartesi tarihine kadar. Sonrasında yalnızca oynadığınız maçlar için ödersiniz, tüm grup için ayda en fazla £9.99.",
+      "31 Ekim Cumartesi tarihine kadar ücretsiz. Sonrasında yalnızca oynadığınız maçlar için ödersiniz, tüm grup için ayda en fazla £9.99.",
     ]);
   });
 
@@ -332,11 +332,11 @@ describe("receipts on the billing page", () => {
 
 describe("/admin/clubs: the next charge date (test mode: it showed 'Next charge Thu 1 Oct, 00:00')", () => {
   // A month ends at 00:00 London (BST here, 23:00 UTC the day before); its
-  // charge runs that day from 10:00 London.
-  it("the London DAY the month ends, and 'from 10:00', never 00:00 or the UTC day before", () => {
+  // charge runs that day from 09:00 London.
+  it("the London DAY the month ends, and 'from 09:00', never 00:00 or the UTC day before", () => {
     const endsAt = new Date("2026-09-30T23:00:00Z"); // 00:00 BST on Thu 1 Oct
-    expect(ownerChargeDateLabel(endsAt)).toBe("Thu 1 Oct, from 10:00");
-    expect(ownerChargeDateLabel(new Date("2026-12-01T00:00:00Z"))).toBe("Tue 1 Dec, from 10:00"); // GMT
+    expect(ownerChargeDateLabel(endsAt)).toBe("Thu 1 Oct, from 09:00");
+    expect(ownerChargeDateLabel(new Date("2026-12-01T00:00:00Z"))).toBe("Tue 1 Dec, from 09:00"); // GMT
   });
 });
 

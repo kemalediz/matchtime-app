@@ -14,8 +14,8 @@
  *      (ClubConnect.capturedHistory). Empty or too short: skipped, no
  *      model call, no change, no DM.
  *   3. ONE MODEL CALL (Haiku, structured output) inside the club's daily
- *      AI cap (`withOrgAiBudget`). At the cap: deferred, retried by a
- *      later sweep (tomorrow's allowance).
+ *      AI cap (`withSetupReadingAiBudget`). At the cap: deferred, retried
+ *      by a later sweep (tomorrow's allowance).
  *   4. PLAN (rules.ts) and APPLY in one compare-and-set write: each
  *      switched column must still hold the value the plan saw, and the
  *      organiser must not have saved any of those settings meanwhile.
@@ -24,23 +24,51 @@
  *      the call's tokens and cost, and CLEAR the stored chat.
  *   6. DM the organiser once (purpose "setup-learned", refId
  *      "<orgId>:setup-learned"), on the platform channel, in the daytime
- *      (10:00 to 20:00 London; a night run waits for 10:00), only when
+ *      (09:00 to 23:00 London; a night run waits for 09:00), only when
  *      there is something to say.
  *
  * Sutton FC can never be read: it has no `approvedAt` (it was approved by
  * the column default) and no connect request.
+ *
+ * APPROVED BUT SETTING UP (go-live slice S1, 2026-10-12). A club that is
+ * held silent until its organiser says GO has its bot OFF, so the sweep
+ * selects "bot on and never held, OR setting up", and the reading spends
+ * through the one AI budget scope that allows such a club anything.
+ *
+ * ONCE SUCH A CLUB IS LIVE IT IS NEVER READ OR CHANGED. The hello has told
+ * the group how the club runs, so three locks keep a late reading out:
+ *   - the sweep does not select a club with a go-live stamp (`liveAt`),
+ *     whatever its reading row says (deferred an hour ago, never started);
+ *   - `learnClubSetup` refuses one before claiming anything;
+ *   - the settings write is a compare-and-set on the stage the run began
+ *     in: "still setting up" for a held club, "no go-live stamp" for any
+ *     other. A reading in flight when the organiser says GO therefore
+ *     changes nothing, and what it would have switched is recorded as
+ *     kept, reason "went-live" (or "no-longer-approved" when the club was
+ *     suspended instead).
+ * Every club that exists today has no go-live stamp and is read exactly
+ * as before.
  */
 import { db } from "../db";
 import { clearCapturedChat } from "../captured-chat";
 import { APPROVED_CLUB_WHERE, servingClubWhere } from "../club-approval";
-import { withOrgAiBudget } from "../ai-budget";
+import {
+  NEVER_HELD_WHERE,
+  SETTING_UP_CLUB_WHERE,
+  SETUP_READABLE_CLUB_WHERE,
+  SETUP_STAGE_SELECT,
+  hasGoneLive,
+  isClubSettingUp,
+  type SetupStageColumns,
+} from "../club-setup";
+import { withSetupReadingAiBudget } from "../ai-budget";
 import { isAiBudgetExceeded } from "../ai-budget-context";
 import { anthropicModel, budgetedModel, extractJson, type ModelResponse, type PipelineModel } from "../pipeline/llm";
 import { coerceHistoryMessages } from "../onboarding-enrichment-reconcile";
 import { detectGroupLang } from "../i18n/detect";
 import { appUrl, buildAdminLink } from "../admin-link";
 import { PlatformDmRefused, queuePlatformDm } from "../platform-jobs";
-import { billingDmSendAfter } from "../club-billing-schedule-rules";
+import { messageHoursSendAfter } from "../message-hours";
 import {
   SETUP_LEARNING_MAX_TOKENS,
   SETUP_LEARNING_MODEL,
@@ -90,6 +118,8 @@ const ORG_SELECT = {
   language: true,
   approvedAt: true,
   whatsappBotEnabled: true,
+  ...SETUP_STAGE_SELECT,
+  liveAt: true,
   rollingSquadEnabled: true,
   benchPickMode: true,
   dropOutDeadlineDay: true,
@@ -100,7 +130,14 @@ const ORG_SELECT = {
   settingsSetByOrganiser: true,
 } as const;
 
-type OrgRow = OrgSettingsState & { id: string; name: string; approvedAt: Date | null; whatsappBotEnabled: boolean };
+type OrgRow = OrgSettingsState &
+  SetupStageColumns & {
+    id: string;
+    name: string;
+    approvedAt: Date | null;
+    whatsappBotEnabled: boolean;
+    liveAt: Date | null;
+  };
 
 async function loadOrg(orgId: string): Promise<OrgRow | null> {
   return (await db.organisation.findFirst({
@@ -152,10 +189,19 @@ function orgSettings(o: OrgRow): OrgSettingsState {
   };
 }
 
-/** The compare-and-set write. False when the club moved under us. */
-async function applyPlan(orgId: string, org: OrgSettingsState, plan: SetupPlan): Promise<boolean> {
+/**
+ * The compare-and-set write. False when the club moved under us.
+ * `held`: the club was setting up when this run read it, so the write
+ * lands only while it STILL is. Any other club is written only while it
+ * has no go-live stamp. Either way a club that has gone live is never
+ * changed.
+ */
+async function applyPlan(orgId: string, org: OrgSettingsState, plan: SetupPlan, held: boolean): Promise<boolean> {
   if (plan.applied.length === 0) return true;
-  const where: Record<string, unknown> = { id: orgId, ...APPROVED_CLUB_WHERE };
+  const where: Record<string, unknown> = {
+    id: orgId,
+    ...(held ? SETTING_UP_CLUB_WHERE : { ...APPROVED_CLUB_WHERE, ...NEVER_HELD_WHERE }),
+  };
   for (const a of plan.applied) {
     switch (a.key) {
       case "rollingSquad":
@@ -186,6 +232,12 @@ export async function learnClubSetup(orgId: string, opts: LearnOptions = {}): Pr
   const now = opts.now ?? new Date();
   const org = await loadOrg(orgId);
   if (!org || !org.approvedAt) return { kind: "not-eligible" };
+  // Read ONCE, here: a club that was held when the reading started stays
+  // "held" for this run even if it goes live before the write.
+  const held = isClubSettingUp(org);
+  // It has been through the hold and is live: never read, whatever its
+  // reading row says. Before the claim, so nothing is written for it.
+  if (!held && hasGoneLive(org)) return { kind: "not-eligible" };
   if (!(await claim(orgId, now))) return { kind: "taken" };
 
   const connect = await db.clubConnect.findFirst({
@@ -222,7 +274,7 @@ export async function learnClubSetup(orgId: string, opts: LearnOptions = {}): Pr
   const model = opts.model ? budgetedModel(opts.model) : anthropicModel();
   let resp: ModelResponse;
   try {
-    resp = await withOrgAiBudget(orgId, () =>
+    resp = await withSetupReadingAiBudget(orgId, () =>
       model.complete({
         model: SETUP_LEARNING_MODEL,
         system: SETUP_LEARNING_SYSTEM_PROMPT,
@@ -257,18 +309,32 @@ export async function learnClubSetup(orgId: string, opts: LearnOptions = {}): Pr
   const slots = activities.map((a) => ({ dayOfWeek: a.dayOfWeek, time: a.time }));
   let state = orgSettings(org);
   let plan = planSetup({ detection, org: state, weeklyGame, activities: slots, chatLanguage });
-  let ok = await applyPlan(orgId, state, plan);
+  let ok = await applyPlan(orgId, state, plan, held);
+  // Why a HELD club's write was refused, when it was the club that moved:
+  // suspended (no approved club to load) or gone live (no longer setting
+  // up). null: the club is where it was, so the organiser changed a
+  // setting. A club that was not held cannot move this way, and is
+  // re-planned exactly as before.
+  const movedTo = (fresh: OrgRow | null): "no-longer-approved" | "went-live" | null =>
+    !held ? null : !fresh ? "no-longer-approved" : isClubSettingUp(fresh) ? null : "went-live";
+  let moved: "no-longer-approved" | "went-live" | null = null;
   if (!ok) {
     const fresh = await loadOrg(orgId);
-    if (fresh) {
+    moved = movedTo(fresh);
+    if (fresh && !moved) {
       state = orgSettings(fresh);
       plan = planSetup({ detection, org: state, weeklyGame, activities: slots, chatLanguage });
-      ok = await applyPlan(orgId, state, plan);
+      ok = await applyPlan(orgId, state, plan, held);
+      // Still refused, and it was held: see whether it moved just now.
+      if (!ok && held) moved = movedTo(await loadOrg(orgId));
     }
   }
   if (!ok) {
-    // The organiser is changing settings right now: leave them alone.
-    plan = { ...plan, kept: [...plan.kept, ...plan.applied.map((a) => ({ key: a.key, reason: "organiser-set" as const }))], applied: [], data: {} };
+    // The club left setting-up under us: a late reading changes nothing.
+    // Otherwise the organiser is changing settings right now: leave them
+    // alone.
+    const reason = moved ?? ("organiser-set" as const);
+    plan = { ...plan, kept: [...plan.kept, ...plan.applied.map((a) => ({ key: a.key, reason }))], applied: [], data: {} };
   }
 
   const status = plan.applied.length > 0 ? "applied" : "nothing";
@@ -361,7 +427,7 @@ async function queueSetupDm(args: {
       : "",
   });
   try {
-    await queuePlatformDm({ phone: connect.phone, text, purpose: SETUP_DM_PURPOSE, refId, sendAfter: billingDmSendAfter(now) });
+    await queuePlatformDm({ phone: connect.phone, text, purpose: SETUP_DM_PURPOSE, refId, sendAfter: messageHoursSendAfter(now) });
     return true;
   } catch (err) {
     if (err instanceof PlatformDmRefused) {
@@ -383,7 +449,11 @@ export async function runSetupLearningSweep(
   const due = await db.organisation.findMany({
     where: {
       ...servingClubWhere(),
-      whatsappBotEnabled: true,
+      // The bot is on and the club was never held, or the club is approved
+      // and setting up (its bot is off until GO). A club that has gone
+      // live after a hold is never selected. Under AND because the query
+      // has an OR of its own.
+      AND: [SETUP_READABLE_CLUB_WHERE],
       approvedAt: { gte: new Date(now.getTime() - SWEEP_WINDOW_DAYS * DAY_MS) },
       OR: [
         { setupLearning: { is: null } },

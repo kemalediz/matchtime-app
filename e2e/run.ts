@@ -335,6 +335,10 @@ async function runSuite(): Promise<number> {
     // four states, and no count is ever negative.
     console.log("[e2e] arming the monthly-squad CHECK constraints…");
     await applySql(path.join(REPO_ROOT, "prisma", "sql", "monthly-squad-check.sql"));
+    // And "approved but setting up" (go-live slice S1): a stage is one of
+    // two, and the bot is never on for a club that is still setting up.
+    console.log("[e2e] arming the setup-stage CHECK constraints…");
+    await applySql(path.join(REPO_ROOT, "prisma", "sql", "org-setup-check.sql"));
 
     console.log("[e2e] seeding fixture world…");
     const seedCode = await run("npx", ["tsx", "e2e/helpers/seed-cli.ts"], {

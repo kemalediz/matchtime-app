@@ -30,11 +30,12 @@ import {
   recordCapSkips,
   DAILY_CAP_USD,
   NEW_CLUB_CAP_USD,
-  NEW_CLUB_WINDOW_DAYS,
   PRE_CLUB_CAP_USD,
   CALL_RESERVE_USD,
+  SETUP_READING_CAP_USD,
 } from "../ai-budget";
 import { AiBudgetExceededError } from "../ai-budget-context";
+import { FREE_PERIOD_MONTHS, freePeriodEnd } from "../club-billing-rules";
 
 const DAY = 24 * 60 * 60 * 1000;
 const NOW = new Date("2026-09-29T12:00:00Z");
@@ -59,19 +60,23 @@ describe("aiAllowanceUsd: how much a club may spend today", () => {
     expect(aiAllowanceUsd(sutton, NOW)).toBe(1.5);
   });
 
-  it("a club in its free month gets $2.00 a day", () => {
+  it("a club in its free period gets $2.00 a day", () => {
     expect(NEW_CLUB_CAP_USD).toBe(2);
-    expect(NEW_CLUB_WINDOW_DAYS).toBe(30);
+    expect(FREE_PERIOD_MONTHS).toBe(2);
     const fresh = { ...sutton, createdAt: new Date(NOW.getTime() - 3 * DAY) };
     expect(aiAllowanceUsd(fresh, NOW)).toBe(2);
   });
 
-  it("the free month is exactly 30 days: a second before is new, the boundary is established", () => {
-    const start = new Date(NOW.getTime() - 30 * DAY);
+  it("the free period is exactly two London calendar months (the billing trial's length): a second before is new, the boundary is established", () => {
+    // NOW is Tue 29 Sept 2026, 13:00 London. Two months back: Wed 29 Jul, 13:00 London.
+    const start = new Date("2026-07-29T12:00:00Z");
+    expect(freePeriodEnd(start)).toEqual(NOW);
     expect(aiAllowanceUsd({ ...sutton, createdAt: new Date(start.getTime() + 1000) }, NOW)).toBe(2);
     expect(aiAllowanceUsd({ ...sutton, createdAt: start }, NOW)).toBe(1.5);
-    // Day 29 (the old 28-day window's first day out) is still the free month.
-    expect(aiAllowanceUsd({ ...sutton, createdAt: new Date(NOW.getTime() - 29 * DAY) }, NOW)).toBe(2);
+    // Day 31 (the old 30 day window's first day out) is still the free period.
+    expect(aiAllowanceUsd({ ...sutton, createdAt: new Date(NOW.getTime() - 31 * DAY) }, NOW)).toBe(2);
+    expect(aiAllowanceUsd({ ...sutton, createdAt: new Date(NOW.getTime() - 60 * DAY) }, NOW)).toBe(2);
+    expect(aiAllowanceUsd({ ...sutton, createdAt: new Date(NOW.getTime() - 63 * DAY) }, NOW)).toBe(1.5);
   });
 
   it("aiWindowStartAt, when set, starts the window instead of createdAt", () => {
@@ -82,7 +87,7 @@ describe("aiAllowanceUsd: how much a club may spend today", () => {
     const pinnedOld = {
       ...sutton,
       createdAt: new Date(NOW.getTime() - DAY),
-      aiWindowStartAt: new Date(NOW.getTime() - 60 * DAY),
+      aiWindowStartAt: new Date(NOW.getTime() - 90 * DAY),
     };
     expect(aiAllowanceUsd(pinnedOld, NOW)).toBe(1.5);
   });
@@ -142,17 +147,17 @@ describe("aiAllowanceUsd and club approval (self-join slice 1)", () => {
     }
   });
 
-  it("the free month starts at approvedAt when set, before aiWindowStartAt and createdAt", () => {
-    // Created 60 days ago, waited in pending, approved yesterday: full free month.
+  it("the free period starts at approvedAt when set, before aiWindowStartAt and createdAt", () => {
+    // Created 90 days ago, waited in pending, approved yesterday: full free period.
     const approvedYesterday = {
       ...sutton,
-      createdAt: new Date(NOW.getTime() - 60 * DAY),
+      createdAt: new Date(NOW.getTime() - 90 * DAY),
       approvedAt: new Date(NOW.getTime() - DAY),
     };
     expect(aiAllowanceUsd(approvedYesterday, NOW)).toBe(2);
     // approvedAt wins over a stale aiWindowStartAt in either direction.
-    expect(aiAllowanceUsd({ ...approvedYesterday, aiWindowStartAt: new Date(NOW.getTime() - 90 * DAY) }, NOW)).toBe(2);
-    const approvedLongAgo = { ...sutton, approvedAt: new Date(NOW.getTime() - 31 * DAY) };
+    expect(aiAllowanceUsd({ ...approvedYesterday, aiWindowStartAt: new Date(NOW.getTime() - 120 * DAY) }, NOW)).toBe(2);
+    const approvedLongAgo = { ...sutton, approvedAt: new Date(NOW.getTime() - 63 * DAY) };
     expect(aiAllowanceUsd({ ...approvedLongAgo, aiWindowStartAt: new Date(NOW.getTime() - DAY) }, NOW)).toBe(1.5);
   });
 
@@ -429,3 +434,95 @@ describe("aiAllowanceUsd and club fee billing (B1, plan 4.3 point 5)", () => {
   });
 });
 
+
+describe("aiAllowanceUsd and a club that is approved but setting up (go-live S1, plan 2.2 point 2)", () => {
+  /** Approved through self-join, group linked, bot still off, waiting for GO. */
+  const held = {
+    ...sutton,
+    approvedAt: new Date("2026-09-29T09:00:00Z"),
+    whatsappBotEnabled: false,
+    setupStage: "setting-up",
+  };
+  const ENV = process.env.AI_DAILY_CAP_DISABLED;
+  afterEach(() => {
+    if (ENV === undefined) delete process.env.AI_DAILY_CAP_DISABLED;
+    else process.env.AI_DAILY_CAP_DISABLED = ENV;
+  });
+
+  it("spends $0 on everything, exactly like any club whose bot is off", () => {
+    expect(aiAllowanceUsd(held, NOW)).toBe(0);
+    expect(aiAllowanceUsd({ ...held, aiDailyCapUsd: 5 }, NOW)).toBe(0);
+    process.env.AI_DAILY_CAP_DISABLED = "1";
+    expect(aiAllowanceUsd(held, NOW)).toBe(0);
+  });
+
+  it("the ONE exception: its setup reading gets a small fixed allowance", () => {
+    expect(SETUP_READING_CAP_USD).toBe(0.1);
+    expect(aiAllowanceUsd(held, NOW, { setupReading: true })).toBe(SETUP_READING_CAP_USD);
+  });
+
+  it("the exception needs a linked group", () => {
+    expect(aiAllowanceUsd({ ...held, whatsappGroupId: null }, NOW, { setupReading: true })).toBe(0);
+  });
+
+  it("the exception is only for a club that is SETTING UP: a muted live club still gets $0", () => {
+    expect(aiAllowanceUsd({ ...sutton, whatsappBotEnabled: false }, NOW, { setupReading: true })).toBe(0);
+    expect(aiAllowanceUsd({ ...held, setupStage: "live" }, NOW, { setupReading: true })).toBe(0);
+    // A caller that forgot to select the stage fails closed.
+    expect(aiAllowanceUsd({ ...held, setupStage: undefined }, NOW, { setupReading: true })).toBe(0);
+  });
+
+  it("the approval and billing rules still come first", () => {
+    for (const approvalStatus of ["draft", "pending", "rejected", "suspended"]) {
+      expect(aiAllowanceUsd({ ...held, approvalStatus }, NOW, { setupReading: true })).toBe(0);
+    }
+    const before = process.env.BILLING_ENABLED;
+    process.env.BILLING_ENABLED = "1";
+    try {
+      expect(aiAllowanceUsd({ ...held, billingStatus: "paused" }, NOW, { setupReading: true })).toBe(0);
+    } finally {
+      if (before === undefined) delete process.env.BILLING_ENABLED;
+      else process.env.BILLING_ENABLED = before;
+    }
+  });
+
+  it("the owner's per-club override can only lower it, and the emergency switch does not raise it", () => {
+    expect(aiAllowanceUsd({ ...held, aiDailyCapUsd: 0 }, NOW, { setupReading: true })).toBe(0);
+    expect(aiAllowanceUsd({ ...held, aiDailyCapUsd: 0.03 }, NOW, { setupReading: true })).toBe(0.03);
+    expect(aiAllowanceUsd({ ...held, aiDailyCapUsd: 5 }, NOW, { setupReading: true })).toBe(SETUP_READING_CAP_USD);
+    process.env.AI_DAILY_CAP_DISABLED = "1";
+    expect(aiAllowanceUsd(held, NOW, { setupReading: true })).toBe(SETUP_READING_CAP_USD);
+  });
+
+  it("a LIVE club's reading is priced by the ordinary rules, flag or no flag", () => {
+    expect(aiAllowanceUsd(sutton, NOW, { setupReading: true })).toBe(aiAllowanceUsd(sutton, NOW));
+  });
+
+  describe("the ledger", () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      dbMock.organisation.findUnique.mockResolvedValue(held);
+    });
+
+    it("an ordinary scope refuses a setting-up club without reserving anything", async () => {
+      dbMock.$queryRaw.mockResolvedValue([]);
+      const ledger = prismaAiBudgetLedger(() => NOW);
+      await expect(ledger.reserve("org-held", "dm-qa")).rejects.toBeInstanceOf(AiBudgetExceededError);
+      const sql = dbMock.$queryRaw.mock.calls.map((c) => (c[0] as string[]).join("?"));
+      expect(sql).toHaveLength(1);
+      expect(sql[0]).toContain(`"refusedCalls"`);
+      expect(noticeMock.notifyAdminsOfAiCap).not.toHaveBeenCalled();
+    });
+
+    it("the setup-reading scope reserves against the small cap, and asks for the stage", async () => {
+      dbMock.$queryRaw.mockResolvedValue([{ ok: 1 }]);
+      const ledger = prismaAiBudgetLedger(() => NOW, { setupReading: true });
+      const hold = await ledger.reserve("org-held", "setup-learning");
+      expect(hold.reservedUsd).toBe(CALL_RESERVE_USD);
+      expect(dbMock.organisation.findUnique.mock.calls[0][0].select).toMatchObject({ setupStage: true });
+      // The cap the reservation was checked against is the small one.
+      expect(dbMock.$queryRaw.mock.calls[0]).toContain(SETUP_READING_CAP_USD);
+    });
+  });
+});
