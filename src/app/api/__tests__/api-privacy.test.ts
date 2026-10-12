@@ -48,6 +48,8 @@ vi.mock("@/lib/player-stats", () => ({
   loadPlayerSeasonStats: vi.fn().mockResolvedValue(null),
 }));
 vi.mock("@/lib/team-labels", () => ({ resolveTeamLabels: () => ["Red", "Yellow"] }));
+const loadClubSetupView = vi.fn();
+vi.mock("@/lib/club-setup", () => ({ loadClubSetupView: (...a: unknown[]) => loadClubSetupView(...a) }));
 vi.mock("@/lib/db", () => ({
   db: {
     activity: { findFirst: vi.fn().mockResolvedValue(null) },
@@ -361,6 +363,8 @@ describe("GET /api/org/settings", () => {
   beforeEach(() => {
     organisationFindUnique.mockResolvedValue(org);
     membershipFindMany.mockResolvedValue([{ user: { id: "u-walt", name: "Walt" } }]);
+    loadClubSetupView.mockReset();
+    loadClubSetupView.mockResolvedValue({ settingUp: true, removedFromGroup: false, group: "Sutton Tuesday 7s" });
   });
 
   it("gives a plain member the club name and features only", async () => {
@@ -375,11 +379,15 @@ describe("GET /api/org/settings", () => {
       "stripeChargesEnabled",
       "paymentHolderId",
       "members",
+      // Go-live slice S5: whether the club is setting up is for its
+      // owner and admins, and is not even read for anybody else.
+      "setup",
     ]) {
       expect(res.body, f).not.toHaveProperty(f);
     }
     expect(JSON.stringify(res.body)).not.toContain("SECRET-INVITE");
     expect(membershipFindMany).not.toHaveBeenCalled();
+    expect(loadClubSetupView).not.toHaveBeenCalled();
   });
 
   it("gives an OWNER the invite code, group id, Stripe status and collector list", async () => {
@@ -392,5 +400,39 @@ describe("GET /api/org/settings", () => {
       paymentHolderId: "u-admin",
       members: [{ id: "u-walt", name: "Walt" }],
     });
+  });
+
+  it("S5: gives an OWNER the club's setup, and only the three fields the Go live banner needs (no person, no id)", async () => {
+    getUserOrg.mockResolvedValue({ orgId: CLUB, role: "OWNER" });
+    // Whatever the loader may come to return, the route picks its own fields.
+    loadClubSetupView.mockResolvedValue({
+      settingUp: true,
+      removedFromGroup: false,
+      group: "Sutton Tuesday 7s",
+      liveBy: { kind: "user", userId: "u-secret" },
+    });
+    const res = await call();
+    expect(loadClubSetupView).toHaveBeenCalledWith(CLUB);
+    expect((res.body as { setup: unknown }).setup).toEqual({
+      settingUp: true,
+      removedFromGroup: false,
+      group: "Sutton Tuesday 7s",
+    });
+    expect(JSON.stringify(res.body)).not.toContain("u-secret");
+  });
+
+  it("S5 review fix 7: the setup block failing never fails the page: 200, everything else, no `setup`, ids only in the log", async () => {
+    getUserOrg.mockResolvedValue({ orgId: CLUB, role: "OWNER" });
+    loadClubSetupView.mockRejectedValue(new Error("connection reset: +447700900001 secret"));
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = await call();
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ inviteCode: "SECRET-INVITE", whatsappBotEnabled: true, name: "Sutton FC" });
+    expect(res.body).not.toHaveProperty("setup");
+    expect(logged).toHaveBeenCalledTimes(1);
+    const line = logged.mock.calls[0].map(String).join(" ");
+    expect(line).toContain(CLUB);
+    expect(line).not.toContain("+447700900001");
+    logged.mockRestore();
   });
 });

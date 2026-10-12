@@ -17,6 +17,7 @@ import { SectionInfo } from "@/components/info/section-info";
 import { FEATURE_INFO } from "@/lib/info-copy";
 import { LearnedSetupPanel } from "@/components/settings/learned-setup-panel";
 import { MonthlySquadSection, type MonthlySquadData } from "@/components/settings/monthly-squad-section";
+import { GoLiveBanner, type GoLiveSetup } from "@/components/settings/go-live-banner";
 
 type FeatureKey = ToggleableKey;
 
@@ -57,17 +58,52 @@ interface OrgData {
   billing?: BillingCardData | null;
   /** "Monthly squad" (2026-10-05). Admins only; "weekly" unless switched on. */
   monthlySquad?: MonthlySquadData;
+  /** Approved but setting up (go-live slice S5). Admins only; `settingUp`
+   *  is false for every club that is live. */
+  setup?: GoLiveSetup | null;
 }
 
 export default function SettingsPage() {
   const [org, setOrg] = useState<OrgData | null>(null);
   const [loading, setLoading] = useState(true);
+  // The Go live banner (slice S5): shown when the club was setting up as
+  // the page loaded, and kept after it goes live so its success note
+  // stays. `previewKey` is bumped after every save that can change the
+  // hello, so the banner fetches its preview again.
+  // `goLiveSetup` is the setup as the page loaded it: the banner keeps it
+  // if a later refresh comes back without one.
+  const [goLiveSetup, setGoLiveSetup] = useState<GoLiveSetup | null>(null);
+  const [previewKey, setPreviewKey] = useState(0);
+  const settingSaved = () => setPreviewKey((k) => k + 1);
+  /** Read the settings again. False when that failed (it may also reject). */
+  async function reloadSettings(): Promise<boolean> {
+    const res = await fetch("/api/org/settings");
+    if (!res.ok) return false;
+    const data: OrgData | null = await res.json();
+    if (!data) return false;
+    setOrg(data);
+    return true;
+  }
+  /** The club went live: make the page agree with the banner, with or
+   *  without the refresh that follows. */
+  function markLive() {
+    setOrg((prev) =>
+      prev
+        ? {
+            ...prev,
+            whatsappBotEnabled: true,
+            setup: prev.setup ? { ...prev.setup, settingUp: false, removedFromGroup: false } : prev.setup,
+          }
+        : prev,
+    );
+  }
 
   useEffect(() => {
     fetch("/api/org/settings")
       .then((r) => (r.ok ? r.json() : null))
       .then(async (data) => {
         setOrg(data);
+        setGoLiveSetup(data?.setup?.settingUp ? data.setup : null);
         setClubName(data?.name ?? "");
         setTeamRed(data?.teamLabels?.[0] ?? "");
         setTeamYellow(data?.teamLabels?.[1] ?? "");
@@ -165,6 +201,7 @@ export default function SettingsPage() {
     try {
       const { language } = await setOrgLanguage(org.id, next);
       setOrg((prev) => (prev ? { ...prev, language } : prev));
+      settingSaved();
       toast.success(`MatchTime will speak ${LANG_LABELS[normaliseLang(language)]} in this group`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Couldn't save the language");
@@ -183,6 +220,7 @@ export default function SettingsPage() {
     );
     try {
       await setOrgFeature(org.id, key, next);
+      settingSaved();
       toast.success(`${next ? "Enabled" : "Disabled"} ${key}`);
     } catch (e) {
       // Roll back on failure.
@@ -208,6 +246,7 @@ export default function SettingsPage() {
       if (!res.ok) throw new Error(res.error);
       const { rollingSquad } = res;
       setOrg((prev) => (prev ? { ...prev, weeklyRoutine: { ...prev.weeklyRoutine, rollingSquad } } : prev));
+      settingSaved();
       toast.success(rollingSquad ? s.wr_rolling_on : s.wr_rolling_off);
     } catch {
       setOrg((prev) => (prev ? { ...prev, weeklyRoutine: { ...prev.weeklyRoutine, rollingSquad: !next } } : prev));
@@ -225,6 +264,7 @@ export default function SettingsPage() {
     setOrg((prev) => (prev ? { ...prev, paymentHolderId: userId } : prev)); // optimistic
     try {
       const { name } = await setPaymentHolder(org.id, userId);
+      settingSaved();
       toast.success(`Money collector set to ${name ?? "that member"}`);
     } catch (e) {
       setOrg((prev) => (prev ? { ...prev, paymentHolderId: prevId } : prev)); // roll back
@@ -293,6 +333,21 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-6">
+      {/* Go live (slice S5): only for a club that is approved and still
+          setting up, and only to its owner and admins (the API sends
+          `setup` to nobody else). Above everything else on the page. */}
+      {goLiveSetup && (
+        <GoLiveBanner
+          orgId={org.id}
+          club={org.name}
+          language={org.language}
+          setup={org.setup ?? goLiveSetup}
+          refreshKey={previewKey}
+          onChanged={reloadSettings}
+          onLive={markLive}
+        />
+      )}
+
       {/* F3: what MatchTime set up from the group chat (nothing for a club never read). */}
       {org.inviteCode && <LearnedSetupPanel orgId={org.id} language={org.language} />}
 
@@ -628,6 +683,7 @@ export default function SettingsPage() {
                   language={org.language}
                   benchPickMode={org.weeklyRoutine?.benchPickMode ?? "first-come"}
                   benchPickFallback={org.weeklyRoutine?.benchPickFallback ?? "bench-offer"}
+                  onSaved={settingSaved}
                 />
                 {/* Weekly deadlines (slice 3): its own component. */}
                 <WeeklyDeadlineRows
@@ -635,6 +691,7 @@ export default function SettingsPage() {
                   language={org.language}
                   dropOutDeadline={org.weeklyRoutine?.dropOutDeadline ?? null}
                   listPublish={org.weeklyRoutine?.listPublish ?? null}
+                  onSaved={settingSaved}
                 />
                 {/* Slice 2a: where admin messages go. */}
                 <AdminChannelSettings orgId={org.id} lang={normaliseLang(org.language)} />
@@ -652,11 +709,12 @@ export default function SettingsPage() {
           orgId={org.id}
           language={org.language}
           initial={org.monthlySquad}
-          onSaved={({ rollingSquad, ...monthlySquad }) =>
+          onSaved={({ rollingSquad, ...monthlySquad }) => {
             setOrg((prev) =>
               prev ? { ...prev, monthlySquad, weeklyRoutine: { ...prev.weeklyRoutine, rollingSquad } } : prev,
-            )
-          }
+            );
+            settingSaved();
+          }}
         />
       )}
 
@@ -775,10 +833,21 @@ export default function SettingsPage() {
         <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
           <MessageCircle className="w-4 h-4 text-slate-500" />
           <h2 className="font-semibold text-slate-800">WhatsApp bot</h2>
-          <SectionInfo k="st_whatsapp" lang={org.language} />
+          <SectionInfo k={org.setup?.settingUp ? "st_whatsapp_setup" : "st_whatsapp"} lang={org.language} />
         </div>
         <div className="p-6 space-y-4">
+          {/* A club that is setting up is not "Disabled": it is approved
+              and waiting for its organiser to go live (slice S5). */}
+          {org.setup?.settingUp ? (
+            <span
+              data-testid="wa-setting-up"
+              className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800"
+            >
+              {t(org.language).sj_live_wa_badge}
+            </span>
+          ) : (
           <span
+            data-testid="wa-bot-state"
             className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
               org.whatsappBotEnabled
                 ? "bg-green-100 text-green-700"
@@ -787,6 +856,7 @@ export default function SettingsPage() {
           >
             {org.whatsappBotEnabled ? "Enabled" : "Disabled"}
           </span>
+          )}
           {org.whatsappGroupId && (
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1.5">
@@ -799,9 +869,18 @@ export default function SettingsPage() {
               />
             </div>
           )}
+          {org.setup?.settingUp ? (
+            <p data-testid="wa-setting-up-body" className="text-sm text-slate-600">
+              {t(org.language).sj_live_wa_body}{" "}
+              <a href="#go-live" className="font-medium text-emerald-800 underline">
+                {t(org.language).sj_live_wa_link}
+              </a>
+            </p>
+          ) : (
           <p className="text-xs text-slate-500">
             Bot configuration is managed server-side. Contact your administrator to enable or reconfigure.
           </p>
+          )}
         </div>
       </section>
     </div>
