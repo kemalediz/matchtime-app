@@ -23,6 +23,8 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { signIn } from "next-auth/react";
 import Link from "next/link";
+import { t } from "@/lib/i18n/t";
+import { useBrowserLang } from "@/lib/i18n/browser-lang";
 
 interface PayloadPreview {
   purpose: "rate-match" | "sign-in";
@@ -34,21 +36,20 @@ export default function MagicLinkLandingPage() {
   const { token } = useParams<{ token: string }>();
   const router = useRouter();
   const [state, setState] = useState<"verifying" | "ok" | "error">("verifying");
-  const [error, setError] = useState<string>("");
+  // The visitor is not signed in, so the card is in their browser's language.
+  const s = t(useBrowserLang());
 
   useEffect(() => {
     let cancelled = false;
 
-    /** Ask the server whether this is an expired link of ours; if it is,
-     *  go to its sign-in page. False when it is not. */
+    /** Ask the server whether this is an expired link of ours (it answers
+     *  410 and says nothing more); if it is, go to sign in, carrying the
+     *  link itself. The server reads it after sign-in. False when not. */
     async function leaveIfExpired(known?: Response): Promise<boolean> {
       try {
         const res = known ?? (await fetch(`/api/r/${encodeURIComponent(token)}`));
         if (res.status !== 410) return false;
-        const data = await res.json();
-        // Only ever our own sign-in page.
-        if (typeof data?.login !== "string" || !data.login.startsWith("/login?")) return false;
-        if (!cancelled) router.replace(data.login);
+        if (!cancelled) router.replace(`/login?expired=1&link=${encodeURIComponent(token)}`);
         return true;
       } catch {
         return false;
@@ -57,7 +58,6 @@ export default function MagicLinkLandingPage() {
 
     (async () => {
       if (!token) {
-        setError("No token provided.");
         setState("error");
         return;
       }
@@ -81,7 +81,6 @@ export default function MagicLinkLandingPage() {
         }
         if (cancelled) return;
         if (realToken === token) {
-          setError("This link isn't valid any more. It may have expired or already been used.");
           setState("error");
           return;
         }
@@ -112,9 +111,6 @@ export default function MagicLinkLandingPage() {
         // An expired link: sign in and carry on, not a dead end.
         if (await leaveIfExpired()) return;
         if (cancelled) return;
-        setError(
-          "This link isn't valid any more. It may have expired or already been used.",
-        );
         setState("error");
         return;
       }
@@ -162,14 +158,14 @@ export default function MagicLinkLandingPage() {
 
         {state === "error" && (
           <div className="mt-6">
-            <div className="p-3 bg-red-50 text-red-700 rounded-lg text-sm">
-              {error}
+            <div data-testid="link-invalid" className="p-3 bg-red-50 text-red-700 rounded-lg text-sm">
+              {s.link_invalid}
             </div>
             <Link
               href="/login"
               className="inline-flex items-center justify-center mt-4 px-5 h-11 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium"
             >
-              Go to sign in
+              {s.link_go_sign_in}
             </Link>
           </div>
         )}

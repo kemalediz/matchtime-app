@@ -1829,6 +1829,8 @@ export const tr: Strings = {
   sj_live_button_label: (p) => `Yayına al: ${p.club}`,
   sj_live_for_club: (p) => `Bu düğme ${p.club} kulübünü yayına alır.`,
   login_link_expired: `Bu bağlantının süresi doldu. Devam etmek için WhatsApp numaranızla giriş yapın.`,
+  link_invalid: `Bu bağlantı geçerli değil.`,
+  link_go_sign_in: `Giriş sayfasına git`,
   sj_card_setting_up: (p) =>
     `MatchTime ${p.group ? `"${p.group}" grubunda` : "WhatsApp grubunuzda"} ve siz yayına alana kadar sessiz kalacak.`,
   sj_card_setting_up_link: `Ayarlarınızı kontrol edin ve yayına alın`,

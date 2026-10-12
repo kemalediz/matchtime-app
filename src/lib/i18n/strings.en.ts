@@ -2258,6 +2258,10 @@ export const en = {
   sj_live_for_club: (p: { club: string }): string => `This takes ${p.club} live.`,
   /** On /login, after opening a signed link that has expired. */
   login_link_expired: `That link has expired. Sign in with your WhatsApp number to carry on.`,
+  /** The /r page, for a link that is not ours or cannot sign anyone in.
+   *  It does not say "already used": no link is single-use. */
+  link_invalid: `This link isn't valid.`,
+  link_go_sign_in: `Go to sign in`,
   /** The card on the club's admin home, in place of "You're live". Its
    *  heading is `sj_live_title`. */
   sj_card_setting_up: (p: { group: string | null }): string =>

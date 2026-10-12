@@ -539,6 +539,8 @@ const SAMPLES: SampleArgs = {
   sj_live_button_label: { club: "Riverside FC" },
   sj_live_for_club: { club: "Riverside FC" },
   login_link_expired: null,
+  link_invalid: null,
+  link_go_sign_in: null,
   info_st_whatsapp_removed_title: null,
   info_st_whatsapp_removed_body: null,
   sj_card_setting_up: { group: "Riverside Tuesday 5s" },

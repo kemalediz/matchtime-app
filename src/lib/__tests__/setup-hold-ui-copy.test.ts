@@ -110,3 +110,12 @@ describe("7. an expired link", () => {
     expect(tr.login_link_expired).toBe("Bu bağlantının süresi doldu. Devam etmek için WhatsApp numaranızla giriş yapın.");
   });
 });
+
+describe("a link that is not valid (security review of PR #248, fix 5)", () => {
+  it("does not claim it was 'already used': nothing is single-use", () => {
+    expect(en.link_invalid).toBe("This link isn't valid.");
+    expect(tr.link_invalid).toBe("Bu bağlantı geçerli değil.");
+    expect(en.link_go_sign_in).toBe("Go to sign in");
+    expect(tr.link_go_sign_in).toBe("Giriş sayfasına git");
+  });
+});

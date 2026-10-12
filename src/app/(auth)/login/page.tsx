@@ -27,17 +27,20 @@ import { Loader2 } from "lucide-react";
 import { startPhoneSignIn, verifyPhoneSignIn } from "@/app/actions/phone-signup";
 import { safeCallbackPath } from "@/lib/safe-callback";
 import { t } from "@/lib/i18n/t";
+import { useBrowserLang } from "@/lib/i18n/browser-lang";
 
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get("callbackUrl") || "/";
   const claimed = searchParams.get("claimed") === "1";
-  // Sent here by an expired signed link (/r, src/lib/expired-link.ts). The
-  // page it was for is `callbackUrl`, followed after sign-in only when it
-  // is a path on this site. `lang` is the club's language, when known.
+  // Sent here by an expired signed link (/r, src/lib/expired-link.ts),
+  // which is carried as `link` and read by the server only AFTER a correct
+  // code, and only for the person it was minted for. Nothing about it is
+  // known here, so the notice is in the browser's own language.
   const linkExpired = searchParams.get("expired") === "1";
-  const expiredNotice = t(searchParams.get("lang")).login_link_expired;
+  const link = searchParams.get("link");
+  const expiredNotice = t(useBrowserLang()).login_link_expired;
   const viaGoogle = searchParams.get("via") === "google";
   const urlError = searchParams.get("error");
 
@@ -79,7 +82,7 @@ function LoginForm() {
     // Stays busy on success: the next page is still loading.
     let leaving = false;
     try {
-      const res = await verifyPhoneSignIn({ phone, code, callbackUrl });
+      const res = await verifyPhoneSignIn({ phone, code, callbackUrl, link });
       if (!res.ok) {
         if (res.noAccount) {
           // The code is spent and there is nobody to sign in: back to

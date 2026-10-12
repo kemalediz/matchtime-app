@@ -2,77 +2,75 @@
  * AN EXPIRED SIGNED LINK IS NOT A DEAD END (2026-10).
  *
  * The setup DM's and the reminder's links live 7 days. An organiser who
- * opened one later saw "This link isn't valid any more" and a button to a
- * bare sign-in page that then took them to the home page, not to where
- * the link was going.
+ * opened one later saw an error card and a button to a bare sign-in page
+ * that then took them to the home page, not to where the link was going.
  *
- * Now the /r page sends them to /login with a notice ("That link has
- * expired. Sign in with your WhatsApp number to carry on.") and the page
- * the link was for as `callbackUrl`, which the sign-in follows only when
- * it is a path on this site (`safeCallbackPath`).
+ * Now the /r page sends them to `/login?expired=1&link=<the link>`, and
+ * after they have signed in with their own WhatsApp code the server reads
+ * the expired link and carries on to the page it was for, in the club it
+ * was for.
  *
- * WHAT THIS TELLS A STRANGER HOLDING AN OLD LINK: the page it pointed at
- * and the language to say so in. Never who it was for. It is read only
- * from a token whose SIGNATURE is good (`readExpiredMagicLink`), so a made
- * up token says nothing; and it signs nobody in.
+ * WHAT THE BROWSER IS TOLD BEFORE SIGN-IN: that the link has expired, and
+ * nothing else (security review of PR #248, fix 4). Not the page, not the
+ * club, not the club's language, not the person: a destination can hold
+ * ids (/billing/<orgId>, /finish-setup/<id>, /pay/<matchId>). `link` is
+ * the short code or the expired token the visitor already holds.
+ *
+ * WHAT THE SERVER DOES WITH IT AFTER SIGN-IN (fix 3), in
+ * `verifyPhoneSignIn`:
+ *   - `resolveExpiredLink` reads it: only a token with OUR signature, well
+ *     formed, and past its expiry. It signs nobody in.
+ *   - the link is honoured ONLY for the person it was minted for. Anybody
+ *     else who signs in with it gets the default page and is not told why.
+ *   - its page goes through `safeCallbackPath`; its club rides on the
+ *     short sign-in token, so `pinOrgFromMagicLink` runs its membership
+ *     check exactly as for a link that still works. Carrying the club in
+ *     the query string would be forgeable; this is not.
  */
 import { db } from "./db";
-import { normaliseLang, type Lang } from "./i18n/lang";
 import { readExpiredMagicLink, type MagicLinkPayload } from "./magic-link";
 import { safeCallbackPath } from "./safe-callback";
 
-export interface ExpiredLinkInfo {
-  /** The page the link was for, when it is a path on this site. */
-  nextPath: string | null;
-  lang: Lang;
+/** Longer than any token we mint; a short code is about ten characters. */
+const MAX_HANDLE_LENGTH = 2048;
+
+/** A short code or a token: base64url characters and the token's one dot. */
+export function isLinkHandle(raw: unknown): raw is string {
+  return typeof raw === "string" && raw.length > 0 && raw.length <= MAX_HANDLE_LENGTH && /^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)?$/.test(raw);
 }
 
 /** Where the link was going: the same choice the /r page makes on a good link. */
 export function expiredLinkDestination(payload: Pick<MagicLinkPayload, "purpose" | "matchId" | "nextPath">): string | null {
-  if (payload.purpose === "rate-match" && payload.matchId) return safeCallbackPath(`/matches/${payload.matchId}/rate`);
+  if (payload.purpose === "rate-match" && payload.matchId) {
+    // One path segment, as written: an id is never a path of its own.
+    if (!/^[A-Za-z0-9_-]+$/.test(payload.matchId)) return null;
+    return safeCallbackPath(`/matches/${payload.matchId}/rate`);
+  }
   return safeCallbackPath(payload.nextPath);
 }
 
 /**
- * `codeOrToken` is what follows /r/: a short code, or a long token (it
- * holds a "."). Null unless it is a real link of ours that has expired.
+ * SERVER ONLY. `codeOrToken` is what follows /r/: a short code, or a long
+ * token (it holds a "."). The payload of a real link of ours that has
+ * expired, else null. Never throws.
  */
-export async function expiredLinkInfo(codeOrToken: string): Promise<ExpiredLinkInfo | null> {
+export async function resolveExpiredLink(codeOrToken: unknown): Promise<MagicLinkPayload | null> {
   try {
-    if (!codeOrToken) return null;
-    let token = codeOrToken;
+    if (!isLinkHandle(codeOrToken)) return null;
+    let token: string = codeOrToken;
     if (!codeOrToken.includes(".")) {
+      // Whatever the row's own expiry says: the token decides.
       const row = await db.shortLink.findUnique({ where: { code: codeOrToken }, select: { token: true } });
       if (!row) return null;
       token = row.token;
     }
-    const payload = readExpiredMagicLink(token);
-    if (!payload) return null;
-
-    // The notice's language: the club the link opens, else the person's
-    // oldest club (the one the admin pages fall back to), else English.
-    let language: string | null = null;
-    if (payload.orgId) {
-      language = (await db.organisation.findUnique({ where: { id: payload.orgId }, select: { language: true } }))?.language ?? null;
-    }
-    if (!language) {
-      const membership = await db.membership.findFirst({
-        where: { userId: payload.userId, leftAt: null },
-        orderBy: { createdAt: "asc" },
-        select: { org: { select: { language: true } } },
-      });
-      language = membership?.org.language ?? null;
-    }
-    return { nextPath: expiredLinkDestination(payload), lang: normaliseLang(language) };
+    return readExpiredMagicLink(token);
   } catch {
     return null;
   }
 }
 
-/** The sign-in page for somebody whose link expired. */
-export function expiredLoginPath(info: ExpiredLinkInfo): string {
-  const q = new URLSearchParams({ expired: "1" });
-  if (info.lang !== "en") q.set("lang", info.lang);
-  if (info.nextPath) q.set("callbackUrl", info.nextPath);
-  return `/login?${q.toString()}`;
+/** The sign-in page for somebody whose link expired: the link is the only thing carried. */
+export function expiredLoginPath(codeOrToken: string): string {
+  return `/login?expired=1&link=${encodeURIComponent(codeOrToken)}`;
 }
