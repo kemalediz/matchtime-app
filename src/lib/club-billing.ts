@@ -124,10 +124,28 @@ function billingPatch(
 /**
  * Apply one billing event to one club, ALL OR NOTHING, in one transaction:
  *
- *   1. Lock the club: `SELECT ... FOR UPDATE` on its Organisation and
- *      ClubBilling rows. A Stripe webhook and the billing cron arriving
- *      together queue on the lock, and the second one decides on what the
- *      first one wrote (never on a stale read).
+ *   1. Lock the club: `SELECT ... FOR NO KEY UPDATE` on its Organisation
+ *      row, then `FOR UPDATE` on its ClubBilling row. A Stripe webhook and
+ *      the billing cron arriving together queue on the lock, and the
+ *      second one decides on what the first one wrote (never on a stale
+ *      read).
+ *
+ *      WHY "NO KEY" ON THE CLUB (2026-10-12; it was FOR UPDATE). The lock
+ *      has one job: one billing writer per club at a time, and no other
+ *      UPDATE of the club's row underneath it. FOR NO KEY UPDATE does
+ *      exactly that: it conflicts with itself, so two writers still queue,
+ *      and with every UPDATE of the row (an UPDATE takes this same lock).
+ *      All FOR UPDATE added was to make every INSERT of a row that
+ *      references the club wait as well (the foreign key check takes FOR
+ *      KEY SHARE, which conflicts with FOR UPDATE alone). Nothing here
+ *      relies on that: no step below reads a child table and assumes it
+ *      cannot grow, the ClubBilling row has its own FOR UPDATE, and its
+ *      creation is serialised by this lock either way. And it was harmful:
+ *      `goLiveClub` runs this writer inside its transaction and then
+ *      closes the setup reading, so with FOR UPDATE it waited for a
+ *      reading's new row while that row's insert waited for the club: a
+ *      deadlock (reproduced; the lock order is at the top of
+ *      club-setup.ts).
  *   2. Decide with the pure `nextBillingState`, from the locked rows.
  *   3. Write the status (with a compare-and-set as a second lock on the
  *      same door) and the ClubBilling fields.
@@ -170,7 +188,7 @@ async function applyBillingEventTx(
   opts: { noticeOnResume?: BillingNoticeKind } = {},
 ): Promise<SetBillingStateResult> {
   const orgs = await tx.$queryRaw<Array<{ billingStatus: string; billingPlan: string; approvedAt: Date | null; liveAt?: Date | null }>>`
-    SELECT "billingStatus", "billingPlan", "approvedAt", "liveAt" FROM "Organisation" WHERE "id" = ${orgId} FOR UPDATE`;
+    SELECT "billingStatus", "billingPlan", "approvedAt", "liveAt" FROM "Organisation" WHERE "id" = ${orgId} FOR NO KEY UPDATE`;
   const org = orgs[0];
   if (!org) return { ok: false, reason: "not-found" };
   // Is the club approved but STILL SETTING UP (club-setup.ts)? Read under
@@ -510,7 +528,7 @@ export async function setClubPlan(
   const result = await db.$transaction(
     async (tx): Promise<SetClubPlanResult> => {
       const orgs = await tx.$queryRaw<Array<{ billingStatus: string; billingPlan: string; approvedAt: Date | null }>>`
-        SELECT "billingStatus", "billingPlan", "approvedAt" FROM "Organisation" WHERE "id" = ${orgId} FOR UPDATE`;
+        SELECT "billingStatus", "billingPlan", "approvedAt" FROM "Organisation" WHERE "id" = ${orgId} FOR NO KEY UPDATE`;
       const org = orgs[0];
       if (!org) return { ok: false, reason: "not-found" };
       if (org.approvedAt === null) return { ok: false, reason: "not-self-join" };

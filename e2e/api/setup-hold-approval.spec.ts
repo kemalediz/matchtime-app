@@ -851,5 +851,5 @@ test("decideClub and the reading against Postgres: suspend cancels the waiting D
     throw new Error(`setup-hold-lib-tests failed:\n${err.stdout ?? ""}\n${err.stderr ?? ""}`);
   });
   console.log(stdout);
-  expect(stdout, stderr).toContain("OK: 14 setup-hold checks");
+  expect(stdout, stderr).toContain("OK: 20 setup-hold checks");
 });

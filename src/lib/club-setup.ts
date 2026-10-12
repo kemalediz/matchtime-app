@@ -37,8 +37,12 @@
  * Several transactions change a club's setup state at once: the setup
  * reading applying what it read (`applyAndRecord`, setup-learning/run.ts),
  * going live (`goLiveClub`, below), the setup DM's two-hour cap and its
- * stamp (`closeReadingForGood`, `sendSetupDm`, club-setup-dm.ts), and the
- * owner's suspension (`decideClub`, club-approval.ts). The rule:
+ * stamp (`closeReadingForGood`, `sendSetupDm`, club-setup-dm.ts), the
+ * 24-hour reminder (`sendSetupReminder`, club-setup-reminder.ts), the
+ * owner's suspension (`decideClub`, club-approval.ts), and the billing
+ * writer (`applyBillingEventTx` and `setClubPlan`, club-billing.ts), which
+ * go-live runs INSIDE its own transaction to start the free period. The
+ * rule:
  *
  *   1. THE CLUB FIRST. Before any other row, the transaction locks the
  *      club's `Organisation` row FOR NO KEY UPDATE and holds it to its
@@ -46,11 +50,14 @@
  *      lock, so a transaction whose first write is its compare-and-set on
  *      the club has it already (go-live, the stamp, the suspension, the
  *      approval). One whose first write is something else calls
- *      `lockClubSetup` below first (the reading's apply, the cap's close).
+ *      `lockClubSetup` below first (the reading's apply, the cap's close,
+ *      the reminder). The billing writer takes the same lock with its own
+ *      SELECT, because it reads the row it locks.
  *   2. THEN ITS OTHER ROWS, in this order where it takes more than one:
- *      the reading (`ClubSetupLearning`: an UPDATE, or the INSERT ... ON
- *      CONFLICT of the two closers), then the connect rows (`ClubConnect`:
- *      clearing the stored chat). Rows it only inserts (BotJob,
+ *      the club's billing row (`ClubBilling`, FOR UPDATE: the billing
+ *      writer), the reading (`ClubSetupLearning`: an UPDATE, or the INSERT
+ *      ... ON CONFLICT of the two closers), then the connect rows
+ *      (`ClubConnect`: clearing the stored chat). Rows it only inserts (BotJob,
  *      PlatformJob, SentNotification) and the rows of the club's own games
  *      and queued posts that go-live tidies may come anywhere after the
  *      club.
@@ -75,7 +82,10 @@
  * for the club's key share), while the cap's close held the club FOR
  * UPDATE and waited for that new row (its INSERT ... ON CONFLICT met the
  * uncommitted row). Postgres killed one of them, 2 runs in 20 of
- * e2e/api/setup-hold-approval.spec.ts. FOR NO KEY UPDATE is the weakest
+ * e2e/api/setup-hold-approval.spec.ts. The billing writer's FOR UPDATE
+ * made the same cycle on the go-live path, with billing on. A source
+ * guard now refuses FOR UPDATE on `Organisation` anywhere in `src/`
+ * (__tests__/club-setup-lock-order.test.ts). FOR NO KEY UPDATE is the weakest
  * lock that still does step 1's job: it conflicts with itself and with
  * every UPDATE of the club, and with no insert of a child row. Nothing
  * here changes a key column, so nothing here needs more.
@@ -84,7 +94,10 @@
  * can be waited for but can never be half of a cycle with these: the
  * reading's claim (its INSERT, or its retake UPDATE), every write of the
  * reading row outside `applyAndRecord`, the undo on the settings page,
- * the "no organiser" stamp, and the captured-chat expiry.
+ * the "no organiser" stamp, the captured-chat expiry, and every step of
+ * a removal from the group and of a re-add (club-setup-removal.ts: the
+ * stamp on the club first, then the DMs, then the stored chat, each its
+ * own statement).
  *
  * A CLUB THAT IS NOT APPROVED is another world: the group add and the
  * bot's removal while pending take the connect row and then the club.
@@ -93,10 +106,12 @@
  * takes the club first (approve, reject and suspend alike).
  *
  * Proved by races against a real Postgres, 200 rounds each, in
- * e2e/helpers/setup-hold-lib-tests.ts (checks 7 to 11): the reading
- * against the close, against go-live, against the whole cap, against a
- * suspension, and a never-held club's reading against a second reading
- * and other writes for the club.
+ * e2e/helpers/setup-hold-lib-tests.ts (checks 7 to 16): the reading
+ * against the close, against go-live (billing off, and on), against the
+ * whole cap, against a suspension, against a removal and against the
+ * reminder; a removal against go-live and against the cap; a re-add
+ * against the setup DM sweep; and a never-held club's reading against a
+ * second reading and other writes for the club.
  */
 import { randomUUID } from "node:crypto";
 import type { MatchStatus } from "@/generated/prisma/enums";
