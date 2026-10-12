@@ -1297,6 +1297,7 @@ function cases(lang: Lang): Case[] {
   add("R183 connect DM / connected, no name", sj.sj_dm_connected({ name: null, club: "Riverside FC" }));
   add("R183 connect DM / already connected", sj.sj_dm_already_connected);
   add("R183 connect DM / code expired", sj.sj_dm_code_expired);
+  add("R183 connect DM / wrong code", sj.sj_dm_wrong_code({ club: "Riverside FC" }));
   add("R183 connect DM / new groups today (cap 6)", sj.sj_site_cap_groups);
 
   // ── self-join slice 6: the organiser's ack after a matched add (2026-09-29) ──

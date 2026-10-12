@@ -2040,6 +2040,10 @@ export const en = {
     "I'll stay quiet in the group until your club is approved, usually within a day. I'll message you here when it's live.",
   sj_dm_already_connected: "You're already connected. Now just add me to your group.",
   sj_dm_code_expired: "That code has expired. Open your club on matchtime.ai and tap Add MatchTime to WhatsApp again.",
+  /** A connect message whose code names no request, from an organiser who
+   *  has an open one. Never carries the right code. */
+  sj_dm_wrong_code: (p: { club: string }): string =>
+    `The code in your message doesn't match the one for ${p.club}. Go back to your club page on matchtime.ai, press Add MatchTime to WhatsApp again, and send the message exactly as it opens.`,
 
   // ── Self-join slice 6: the organiser's ack after a matched group add (plan 5.4) ──
   /** Sent only when the adder WAS the organiser (matched by phone or by the
