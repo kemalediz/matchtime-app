@@ -8,7 +8,18 @@
  *         unsolicited group that is due (slice 6).
  *         Claim-on-dispatch, as due-posts: the job is marked claimed as it
  *         leaves, so a second poller (a duplicate Pi process) gets nothing
- *         for it. Response: { jobs: PlatformJobInstruction[] }.
+ *         for it. Response: { jobs: PlatformJobInstruction[],
+ *         clubSetVersion?: string }.
+ *
+ *         `clubSetVersion` (2026-10-13) is the stamp of the clubs the Pi
+ *         should serve, monitor or silence, as they are NOW
+ *         (src/lib/club-set-version.ts). It rides here because this is the
+ *         one request the Pi makes every tick. The Pi compares it with
+ *         the stamp its last /orgs refresh carried and refreshes at once
+ *         when they differ, instead of up to five minutes later. An older
+ *         Pi ignores it. One small query per poll, made BEFORE the claim
+ *         and given 1.5 seconds at most; left out, never fatal, if it
+ *         fails or is slow.
  *
  *   POST  The outcome of one job:
  *           { id, outcome: "sent", waMessageId? }
@@ -23,6 +34,7 @@ import { NextResponse } from "next/server";
 import { claimDuePlatformJobs, recordPlatformJobOutcome, type PlatformJobOutcome } from "@/lib/platform-jobs";
 import { queueUnsolicitedAutoLeaves } from "@/lib/group-add";
 import { selfJoinEnabledForApiRequest } from "@/lib/self-join-flag";
+import { readClubSetVersion } from "@/lib/club-set-version-read";
 
 function authorised(request: Request): boolean {
   return request.headers.get("x-api-key") === process.env.WHATSAPP_API_KEY;
@@ -30,6 +42,15 @@ function authorised(request: Request): boolean {
 
 export async function GET(request: Request) {
   if (!authorised(request)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // THE STAMP FIRST, BEFORE ANYTHING IS CLAIMED (PR #250 review, fix 1).
+  // The jobs below are marked claimed as they are handed out and nothing
+  // reclaims one, so nothing may stand between the claim and the response:
+  // a stamp query that stalled there would lose a sign-up code. Read here
+  // it can only delay the claim, by at most `CLUB_SET_VERSION_TIMEOUT_MS`,
+  // and a stamp that is a moment old costs the Pi one tick. Never throws;
+  // null (failed, or too slow) leaves the field out.
+  const clubSetVersion = await readClubSetVersion("platform-jobs");
+
   // Self-join slice 6 (decision 3): a group somebody added MatchTime to
   // with no connect code is left after 48 hours. Queued here, before the
   // claim, because this is the one endpoint the Pi polls whatever the
@@ -45,7 +66,7 @@ export async function GET(request: Request) {
   if (jobs.length > 0) {
     console.log(`[platform-jobs] handed out ${jobs.length}: ${jobs.map((j) => `${j.kind}:${j.id}`).join(", ")}`);
   }
-  return NextResponse.json({ jobs });
+  return NextResponse.json({ jobs, ...(clubSetVersion ? { clubSetVersion } : {}) });
 }
 
 export async function POST(request: Request) {

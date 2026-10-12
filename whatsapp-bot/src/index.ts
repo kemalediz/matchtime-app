@@ -37,10 +37,12 @@ import {
   isOrgsResponseBody,
   startOrgRefreshTimer,
   stopOrgRefreshTimer,
+  noteSnapshotClubSetVersion,
   type OrgConfig,
   type OrgSnapshot,
 } from "./org-refresh.js";
 import { initScheduler, stopScheduler } from "./scheduler.js";
+import { setActiveClubCatchUp, wireClubCatchUp } from "./club-catch-up.js";
 import {
   getEnabledOrgs,
   postReaction,
@@ -60,6 +62,7 @@ import {
   recordHistory,
   readGroupMessageForServer,
   recoverGroupMessages,
+  isRecoverySweepRunning,
   startBatchFlushTimer,
   stopBatchFlushTimer,
 } from "./smart-analysis.js";
@@ -174,6 +177,10 @@ async function main() {
     // before anything calls this, and the scheduler must not start even if
     // some future path does.
     if (!shadow.enabled) initScheduler(driver, next.orgConfigs);
+    // 2026-10-13: note the stamp this snapshot was read at (the scheduler
+    // compares every tick's poll with it), and catch up on a group that
+    // has just become a club's, from its go-live on. See club-catch-up.ts.
+    clubCatchUp.onRefreshed({ reason, data, addedOrgs: diff.addedOrgs, shadow: shadow.enabled });
     if (diff.changed || reason === "ready") {
       console.log(
         `[org-refresh] (${reason}) ${next.orgConfigs.length} org(s), ${next.onboardingGroups.length} onboarding group(s): ` +
@@ -182,6 +189,19 @@ async function main() {
     }
     return next;
   }
+  // The snapshot's stamp, the catch-up for a group that has just become
+  // a club's, and the floor under the restart catch-up: all in
+  // club-catch-up.ts, where they are tested without a socket. This is the
+  // whole of the wiring.
+  const clubCatchUp = wireClubCatchUp({
+    driver,
+    recoverGroupMessages,
+    isRecoverySweepRunning,
+    isMonitoredGroup,
+    noteSnapshotClubSetVersion,
+  });
+  setActiveClubCatchUp(clubCatchUp);
+
   /** Groups a self-join sweep already settled in this process (slice 6). */
   const sweptForSelfJoin = new Set<string>();
 
@@ -301,7 +321,11 @@ async function main() {
       // missed messages reach the LLM. Fixes the gap that lost Ibrahim's
       // "in" during a restart (Kemal 2026-06-06). Fire-and-forget; the
       // re-queued messages get classified by the startup flush above.
-      recoverGroupMessages(driver, currentOrgGroupIds()).catch((err) =>
+      // 2026-10-13: never a message from before a club went live (its
+      // group was deliberately not listened to until then). With no club
+      // that has a go-live time this is the very call it always was,
+      // `recoverGroupMessages(driver, groupIds)` (club-catch-up.ts).
+      clubCatchUp.readyCatchUp(currentOrgGroupIds()).catch((err) =>
         console.error("[recover-group] sweep failed:", err),
       );
 

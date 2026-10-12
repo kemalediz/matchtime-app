@@ -27,6 +27,9 @@ vi.mock("@/lib/group-add", () => ({
   queueUnsolicitedAutoLeaves: (...a: unknown[]) => groupAdd.queueUnsolicitedAutoLeaves(...a),
 }));
 
+const versionMock = vi.hoisted(() => ({ loadClubSetVersion: vi.fn() }));
+vi.mock("@/lib/club-set-version", () => ({ loadClubSetVersion: () => versionMock.loadClubSetVersion() }));
+
 import { GET, POST } from "../route";
 
 const ENV = process.env.WHATSAPP_API_KEY;
@@ -51,7 +54,98 @@ beforeEach(() => {
   ]);
   libMock.recordPlatformJobOutcome.mockResolvedValue({ updated: true });
   groupAdd.queueUnsolicitedAutoLeaves.mockResolvedValue({ queued: 0, markedLeft: 0 });
+  versionMock.loadClubSetVersion.mockResolvedValue("0123456789abcdef");
   delete process.env.SELF_JOIN_ENABLED;
+});
+
+// 2026-10-13: the one request the Pi makes every tick also tells it
+// whether the clubs it should serve, monitor or silence have changed.
+describe("GET: the club set version", () => {
+  const get = () => GET(new Request("http://x/api/whatsapp/platform-jobs", { headers: { "x-api-key": KEY } }));
+
+  it("rides on the poll, beside the jobs, which are exactly what they were", async () => {
+    const body = await (await get()).json();
+    expect(body.clubSetVersion).toBe("0123456789abcdef");
+    expect(body.jobs).toEqual([
+      { id: "pj1", kind: "dm", phone: "447700900123", text: "code", purpose: "otp" },
+      { id: "pj2", kind: "leave-group", groupId: "g1" },
+    ]);
+    expect(Object.keys(body).sort()).toEqual(["clubSetVersion", "jobs"]);
+  });
+
+  it("is on a poll with no jobs too: that is the usual poll", async () => {
+    libMock.claimDuePlatformJobs.mockResolvedValue([]);
+    expect(await (await get()).json()).toEqual({ jobs: [], clubSetVersion: "0123456789abcdef" });
+  });
+
+  it("NEVER costs the poll its jobs: they are already claimed, so a version that cannot be read is simply left out", async () => {
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    versionMock.loadClubSetVersion.mockRejectedValue(new Error("database hiccup"));
+    const res = await get();
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.jobs).toHaveLength(2);
+    expect("clubSetVersion" in body).toBe(false);
+    err.mockRestore();
+  });
+
+  // PR #250 review, fix 1. The stamp used to be read AFTER the claim. A
+  // read that stalled (not threw) until the function was killed took the
+  // claimed jobs with it: a sign-up code lives ten minutes and nothing
+  // reclaims a claimed job.
+  it("the stamp is read BEFORE the jobs are claimed, so nothing claimed can be waiting on it", async () => {
+    const order: string[] = [];
+    versionMock.loadClubSetVersion.mockImplementation(async () => {
+      order.push("version");
+      return "0123456789abcdef";
+    });
+    libMock.claimDuePlatformJobs.mockImplementation(async () => {
+      order.push("claim");
+      return [];
+    });
+    await get();
+    expect(order).toEqual(["version", "claim"]);
+  });
+
+  it("a stamp read that NEVER resolves: the claimed jobs still reach the Pi, promptly, without the field", async () => {
+    vi.useFakeTimers();
+    try {
+      const err = vi.spyOn(console, "error").mockImplementation(() => {});
+      versionMock.loadClubSetVersion.mockImplementation(() => new Promise<string>(() => {}));
+      const pending = get();
+      await vi.advanceTimersByTimeAsync(1_500);
+      const res = await pending;
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.jobs).toHaveLength(2);
+      expect("clubSetVersion" in body).toBe(false);
+      // Claimed only once the wait for the stamp was over.
+      expect(libMock.claimDuePlatformJobs).toHaveBeenCalledTimes(1);
+      err.mockRestore();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a stamp that arrives inside the wait is sent as usual, with no delay to speak of", async () => {
+    vi.useFakeTimers();
+    try {
+      versionMock.loadClubSetVersion.mockImplementation(
+        () => new Promise<string>((resolve) => setTimeout(() => resolve("0123456789abcdef"), 200)),
+      );
+      const pending = get();
+      await vi.advanceTimersByTimeAsync(200);
+      expect((await (await pending).json()).clubSetVersion).toBe("0123456789abcdef");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a wrong key gets neither jobs nor a version", async () => {
+    const res = await GET(new Request("http://x/api/whatsapp/platform-jobs", { headers: { "x-api-key": "nope" } }));
+    expect(res.status).toBe(401);
+    expect(versionMock.loadClubSetVersion).not.toHaveBeenCalled();
+  });
 });
 afterAll(() => {
   process.env.WHATSAPP_API_KEY = ENV;
@@ -74,6 +168,8 @@ describe("GET", () => {
         { id: "pj1", kind: "dm", phone: "447700900123", text: "code", purpose: "otp" },
         { id: "pj2", kind: "leave-group", groupId: "g1" },
       ],
+      // 2026-10-13: one field more, which an older Pi does not read.
+      clubSetVersion: "0123456789abcdef",
     });
     expect(libMock.claimDuePlatformJobs).toHaveBeenCalledTimes(1);
   });
