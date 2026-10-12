@@ -1,0 +1,185 @@
+{
+ "name": "description-supports",
+ "teaches": "The group description states a drop-out deadline that ONE chat message repeats (description + one message = two sources, so it is switched on), carries masked bank details ('Pay Kemal [number removed]') that must never be quoted, and states a fee per player that the chat never mentions (the description alone is enough to SUGGEST a fee, never to apply anything).",
+ "groupSubject": "Wednesday Night 7s",
+ "language": "en",
+ "weeklyGame": {
+  "dayOfWeek": 3,
+  "time": "20:00",
+  "venue": "Powerleague Croydon",
+  "playersPerSide": 7
+ },
+ "description": "Wednesday 7 a side, 8pm at Powerleague Croydon.\n£6 a player, pay before kick off.\nPay Kemal [number removed]\nDrop out by Tuesday 6pm or you still pay.",
+ "expect": {
+  "regularGame": true,
+  "dropOutDeadline": {
+   "day": 2,
+   "time": "18:00"
+  },
+  "matchFee": 6,
+  "applied": [
+   "dropOutDeadline"
+  ],
+  "noted": [],
+  "suggestions": [
+   "matchFee"
+  ],
+  "fromDescription": [
+   "dropOutDeadline",
+   "matchFee"
+  ],
+  "dm": true
+ },
+ "history": [
+  {
+   "author": "Kemal Arslan",
+   "text": "Morning all, who's about for Wednesday?",
+   "timestamp": "2026-09-14T08:00:00.000Z"
+  },
+  {
+   "author": "Joe Pratt",
+   "text": "in",
+   "timestamp": "2026-09-14T08:07:00.000Z"
+  },
+  {
+   "author": "Dele Akin",
+   "text": "in please",
+   "timestamp": "2026-09-14T08:14:00.000Z"
+  },
+  {
+   "author": "Sam Whitlock",
+   "text": "I'm in",
+   "timestamp": "2026-09-14T08:21:00.000Z"
+  },
+  {
+   "author": "Rory Finch",
+   "text": "count me in",
+   "timestamp": "2026-09-14T08:28:00.000Z"
+  },
+  {
+   "author": "Imran Shah",
+   "text": "in",
+   "timestamp": "2026-09-14T08:35:00.000Z"
+  },
+  {
+   "author": "Joe Pratt",
+   "text": "my knee is still sore from last week haha",
+   "timestamp": "2026-09-14T08:42:00.000Z"
+  },
+  {
+   "author": "Dele Akin",
+   "text": "you say that every week",
+   "timestamp": "2026-09-14T08:49:00.000Z"
+  },
+  {
+   "author": "Kemal Arslan",
+   "text": "Wednesday again lads, shout if you're playing",
+   "timestamp": "2026-09-21T08:00:00.000Z"
+  },
+  {
+   "author": "Sam Whitlock",
+   "text": "in",
+   "timestamp": "2026-09-21T08:07:00.000Z"
+  },
+  {
+   "author": "Imran Shah",
+   "text": "in",
+   "timestamp": "2026-09-21T08:14:00.000Z"
+  },
+  {
+   "author": "Rory Finch",
+   "text": "in for this one",
+   "timestamp": "2026-09-21T08:21:00.000Z"
+  },
+  {
+   "author": "Dele Akin",
+   "text": "in",
+   "timestamp": "2026-09-21T08:28:00.000Z"
+  },
+  {
+   "author": "Joe Pratt",
+   "text": "Can't this week, away with work",
+   "timestamp": "2026-09-21T08:35:00.000Z"
+  },
+  {
+   "author": "Kemal Arslan",
+   "text": "No worries Joe, see you next time",
+   "timestamp": "2026-09-21T08:42:00.000Z"
+  },
+  {
+   "author": "Kemal Arslan",
+   "text": "Reminder for everyone: drop out by Tuesday 6pm or you still pay, that hasn't changed",
+   "timestamp": "2026-09-21T18:00:00.000Z"
+  },
+  {
+   "author": "Kemal Arslan",
+   "text": "Who's in for Wednesday?",
+   "timestamp": "2026-09-28T08:00:00.000Z"
+  },
+  {
+   "author": "Joe Pratt",
+   "text": "back this week, in",
+   "timestamp": "2026-09-28T08:07:00.000Z"
+  },
+  {
+   "author": "Dele Akin",
+   "text": "in",
+   "timestamp": "2026-09-28T08:14:00.000Z"
+  },
+  {
+   "author": "Rory Finch",
+   "text": "in",
+   "timestamp": "2026-09-28T08:21:00.000Z"
+  },
+  {
+   "author": "Imran Shah",
+   "text": "in please",
+   "timestamp": "2026-09-28T08:28:00.000Z"
+  },
+  {
+   "author": "Sam Whitlock",
+   "text": "in, running a bit late though",
+   "timestamp": "2026-09-28T08:35:00.000Z"
+  },
+  {
+   "author": "Rory Finch",
+   "text": "great game last week by the way",
+   "timestamp": "2026-09-28T08:42:00.000Z"
+  },
+  {
+   "author": "Kemal Arslan",
+   "text": "Wednesday, usual place. Names please",
+   "timestamp": "2026-10-05T08:00:00.000Z"
+  },
+  {
+   "author": "Imran Shah",
+   "text": "in",
+   "timestamp": "2026-10-05T08:07:00.000Z"
+  },
+  {
+   "author": "Dele Akin",
+   "text": "in",
+   "timestamp": "2026-10-05T08:14:00.000Z"
+  },
+  {
+   "author": "Sam Whitlock",
+   "text": "in",
+   "timestamp": "2026-10-05T08:21:00.000Z"
+  },
+  {
+   "author": "Joe Pratt",
+   "text": "in",
+   "timestamp": "2026-10-05T08:28:00.000Z"
+  },
+  {
+   "author": "Rory Finch",
+   "text": "in again",
+   "timestamp": "2026-10-05T08:35:00.000Z"
+  },
+  {
+   "author": "Dele Akin",
+   "text": "bring the orange bibs this time Kemal",
+   "timestamp": "2026-10-05T08:42:00.000Z"
+  }
+ ]
+}

@@ -3364,20 +3364,30 @@ export const en = {
             ? `*Final list:* posted in the group on ${p.day} at ${p.time}.`
             : `*Payment tracking is on:* MatchTime keeps track of who has paid and sends a friendly reminder to anyone who hasn't.`,
   sj_dm_setup_from: (p: { quote: string }): string => `From messages like: "${p.quote}"`,
+  /** The same line for a quote found in the GROUP DESCRIPTION (slice D3,
+   *  2026-10-12): the notice an admin wrote, not a message somebody sent. */
+  sj_dm_setup_from_description: (p: { quote: string }): string => `From your group description: "${p.quote}"`,
   sj_dm_setup_undo: (p: { url: string }): string => `Undo or change: ${p.url}`,
   sj_dm_setup_check_head: "Worth a check (I changed nothing here):",
   /** A difference between the chat and what the organiser entered.
    *  `current` and `detected` arrive already worded (a day name, a
    *  time, a venue, a number a side, a language name). "organiserPicks"
    *  is the one habit MatchTime never switches on from the chat: it asks.
-   *  The quoted name is wr_pick_organiser, the option on /admin/settings. */
+   *  The quoted name is wr_pick_organiser, the option on /admin/settings.
+   *  "matchFee" (slice D3): what each player pays for a game, in pounds
+   *  ("6", "6.50"); `current` is "" when the weekly game has no fee. Never
+   *  set by MatchTime: the organiser is asked. */
   setup_suggestion_line: (p: {
-    key: "weeklyGameDay" | "weeklyGameTime" | "venue" | "format" | "language" | "organiserPicks";
+    key: "weeklyGameDay" | "weeklyGameTime" | "venue" | "format" | "language" | "matchFee" | "organiserPicks";
     current: string;
     detected: string;
   }): string =>
     p.key === "organiserPicks"
       ? `It looks like the organisers choose who fills an open place. If that's right, switch on "The organisers pick".`
+      : p.key === "matchFee"
+      ? p.current
+        ? `The match fee looks like £${p.detected} a player; your weekly game says £${p.current}.`
+        : `The match fee looks like £${p.detected} a player; your weekly game has no fee set.`
       : p.key === "weeklyGameDay"
       ? `The chat talks about games on ${p.detected}; your weekly game is on ${p.current}.`
       : p.key === "weeklyGameTime"
@@ -3390,6 +3400,8 @@ export const en = {
   sj_dm_setup_check_link: (p: { url: string }): string => `Change it here: ${p.url}`,
   /** Under the "organisers pick" suggestion: the link to the setting. */
   sj_dm_setup_pick_link: (p: { url: string }): string => `Switch it on here: ${p.url}`,
+  /** Under the match fee suggestion: the link to where the fee is entered. */
+  sj_dm_setup_fee_link: (p: { url: string }): string => `Set it here: ${p.url}`,
   /** The monthly list pattern, in words: what was seen of it. */
   setup_monthly_pattern: (p: { prepay: boolean; payg: boolean; credits: boolean }): string => {
     const parts = [
@@ -3419,6 +3431,8 @@ export const en = {
   settings_learned_changed_since: "Changed since",
   settings_learned_undo_failed: "Couldn't undo that",
   settings_learned_from: "From messages like",
+  /** The same caption for quotes found in the group description. */
+  settings_learned_from_description: "From your group description",
   /** The heading of the attention block over the suggestions on
    *  /admin/settings: how many there are. */
   settings_learned_check_count: (p: { count: number }): string =>
@@ -3430,10 +3444,12 @@ export const en = {
    *  goes where the organiser's DM sends them for that kind. The quoted
    *  name is wr_pick_organiser, the option on /admin/settings. */
   settings_learned_action: (p: {
-    key: "weeklyGameDay" | "weeklyGameTime" | "venue" | "format" | "language" | "organiserPicks";
+    key: "weeklyGameDay" | "weeklyGameTime" | "venue" | "format" | "language" | "matchFee" | "organiserPicks";
   }): string =>
     p.key === "organiserPicks"
       ? `Switch on "The organisers pick"`
+      : p.key === "matchFee"
+        ? `Set the match fee`
       : p.key === "weeklyGameDay"
         ? `Change game day`
         : p.key === "weeklyGameTime"
@@ -3449,11 +3465,15 @@ export const en = {
    *  a side, a language name; the pick mode as stored), or null when
    *  there is nothing to show. The quoted name is wr_pick_organiser. */
   settings_learned_resolved_line: (p: {
-    key: "weeklyGameDay" | "weeklyGameTime" | "venue" | "format" | "language" | "organiserPicks";
+    key: "weeklyGameDay" | "weeklyGameTime" | "venue" | "format" | "language" | "matchFee" | "organiserPicks";
     value: string | null;
   }): string =>
     p.value === null || (p.key === "organiserPicks" && p.value !== "organiser")
       ? `This has changed since the chat was read.`
+      : p.key === "matchFee"
+        ? p.value === ""
+          ? `Your weekly game has no fee set now.`
+          : `The match fee is now £${p.value} a player.`
       : p.key === "organiserPicks"
         ? `"The organisers pick" is on.`
         : p.key === "weeklyGameDay"
@@ -3471,6 +3491,17 @@ export const en = {
    *  for. Today that is only the monthly list, which HAS a setting
    *  (Settings, Monthly squad), so this must not say there is none. */
   settings_learned_noted_head: "Noticed, left for you to decide",
+  // ── The weekly game's fee per player on /admin/activities (slice D3,
+  //    2026-10-12): where the setup reading's fee suggestion sends the
+  //    organiser. See src/lib/activity-fee.ts. ──
+  act_fee_label: "Fee per player (£), optional",
+  act_fee_hint: "What each player pays for one game. Leave it empty if it changes from week to week.",
+  act_fee_invalid: "Enter a fee like 6 or 6.50, at most £100.",
+  /** Under the fee field, which is switched off, for a game whose pitch
+   *  cost is split between who played. */
+  act_fee_split: "This game splits the pitch cost between who played, so there is no fixed fee per player.",
+  /** On the list, after the day, time and venue. `fee` is "6" or "6.50". */
+  act_fee_row: (p: { fee: string }): string => `£${p.fee} a player`,
   // ── Monthly squad (2026-10-05, slice 2) ──────────────────────────
   // MDs/monthly-squad-plan-2026-10-05.md, sections 9.1, 9.2 and 4.5.
   // The "Monthly squad" section of /admin/settings (msq_) and the

@@ -1,0 +1,183 @@
+{
+ "name": "description-stale",
+ "teaches": "The group description is out of date: it says the squad is the same every week, the fee is £5 and drop-outs are due by Wednesday noon. The recent chat says players now put their names in every week, the fee is £7 and drop-outs are due by Thursday 10am, each more than once. The chat must win: rolling squad is NOT switched on, the deadline applied is the chat's, the fee suggested is the chat's, and nothing quotes the description.",
+ "groupSubject": "Thursday 5s Sutton",
+ "language": "en",
+ "weeklyGame": {
+  "dayOfWeek": 4,
+  "time": "19:00",
+  "venue": "Goals Sutton",
+  "playersPerSide": 5
+ },
+ "description": "Thursday 5 a side, 7pm at Goals Sutton. £5 each.\nSquad is the same every week, only message if you can't play.\nDrop out by Wednesday noon.",
+ "expect": {
+  "regularGame": true,
+  "squad": "sign_up_each_week",
+  "dropOutDeadline": {
+   "day": 4,
+   "time": "10:00"
+  },
+  "matchFee": 7,
+  "applied": [
+   "dropOutDeadline"
+  ],
+  "noted": [],
+  "suggestions": [
+   "matchFee"
+  ],
+  "fromDescription": [],
+  "dm": true
+ },
+ "history": [
+  {
+   "author": "Pete Lawson",
+   "text": "Right, new system from this week: names in every week please, no more automatic places",
+   "timestamp": "2026-09-14T08:00:00.000Z"
+  },
+  {
+   "author": "Pete Lawson",
+   "text": "Also the pitch has gone up, so it's £7 each from now on",
+   "timestamp": "2026-09-14T08:07:00.000Z"
+  },
+  {
+   "author": "Gaz Monroe",
+   "text": "fair enough, in",
+   "timestamp": "2026-09-14T08:14:00.000Z"
+  },
+  {
+   "author": "Tunde Bello",
+   "text": "in",
+   "timestamp": "2026-09-14T08:21:00.000Z"
+  },
+  {
+   "author": "Will Hobbs",
+   "text": "in please",
+   "timestamp": "2026-09-14T08:28:00.000Z"
+  },
+  {
+   "author": "Karim Aziz",
+   "text": "in",
+   "timestamp": "2026-09-14T08:35:00.000Z"
+  },
+  {
+   "author": "Lee Sands",
+   "text": "in, last one I think",
+   "timestamp": "2026-09-14T08:49:00.000Z"
+  },
+  {
+   "author": "Pete Lawson",
+   "text": "If you need to drop out, tell me by Thursday 10am at the latest",
+   "timestamp": "2026-09-14T13:00:00.000Z"
+  },
+  {
+   "author": "Pete Lawson",
+   "text": "Names for Thursday please, fresh list like last week",
+   "timestamp": "2026-09-21T08:00:00.000Z"
+  },
+  {
+   "author": "Tunde Bello",
+   "text": "in",
+   "timestamp": "2026-09-21T08:07:00.000Z"
+  },
+  {
+   "author": "Karim Aziz",
+   "text": "in",
+   "timestamp": "2026-09-21T08:14:00.000Z"
+  },
+  {
+   "author": "Gaz Monroe",
+   "text": "in",
+   "timestamp": "2026-09-21T08:21:00.000Z"
+  },
+  {
+   "author": "Will Hobbs",
+   "text": "not this week, daughter's birthday",
+   "timestamp": "2026-09-21T08:28:00.000Z"
+  },
+  {
+   "author": "Lee Sands",
+   "text": "in",
+   "timestamp": "2026-09-21T08:35:00.000Z"
+  },
+  {
+   "author": "Pete Lawson",
+   "text": "Reminder it's £7 each now, not a fiver",
+   "timestamp": "2026-09-21T11:20:00.000Z"
+  },
+  {
+   "author": "Pete Lawson",
+   "text": "Drop outs by Thursday 10am please",
+   "timestamp": "2026-09-22T09:00:00.000Z"
+  },
+  {
+   "author": "Pete Lawson",
+   "text": "Names for Thursday please",
+   "timestamp": "2026-09-28T08:00:00.000Z"
+  },
+  {
+   "author": "Gaz Monroe",
+   "text": "in",
+   "timestamp": "2026-09-28T08:07:00.000Z"
+  },
+  {
+   "author": "Will Hobbs",
+   "text": "back, in",
+   "timestamp": "2026-09-28T08:14:00.000Z"
+  },
+  {
+   "author": "Tunde Bello",
+   "text": "in",
+   "timestamp": "2026-09-28T08:21:00.000Z"
+  },
+  {
+   "author": "Lee Sands",
+   "text": "in",
+   "timestamp": "2026-09-28T08:28:00.000Z"
+  },
+  {
+   "author": "Karim Aziz",
+   "text": "in if there's room",
+   "timestamp": "2026-09-28T08:35:00.000Z"
+  },
+  {
+   "author": "Pete Lawson",
+   "text": "Drop outs by Thursday 10am please",
+   "timestamp": "2026-09-29T09:00:00.000Z"
+  },
+  {
+   "author": "Gaz Monroe",
+   "text": "what a goal from Tunde last week",
+   "timestamp": "2026-09-29T10:40:00.000Z"
+  },
+  {
+   "author": "Pete Lawson",
+   "text": "Names for Thursday please",
+   "timestamp": "2026-10-05T08:00:00.000Z"
+  },
+  {
+   "author": "Karim Aziz",
+   "text": "in",
+   "timestamp": "2026-10-05T08:07:00.000Z"
+  },
+  {
+   "author": "Tunde Bello",
+   "text": "in",
+   "timestamp": "2026-10-05T08:14:00.000Z"
+  },
+  {
+   "author": "Will Hobbs",
+   "text": "in",
+   "timestamp": "2026-10-05T08:21:00.000Z"
+  },
+  {
+   "author": "Gaz Monroe",
+   "text": "in",
+   "timestamp": "2026-10-05T08:28:00.000Z"
+  },
+  {
+   "author": "Lee Sands",
+   "text": "in",
+   "timestamp": "2026-10-05T08:35:00.000Z"
+  }
+ ]
+}

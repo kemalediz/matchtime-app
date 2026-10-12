@@ -15,6 +15,14 @@
  *     src/lib/setup-learning/__fixtures__/live-check-run-2.json and
  *     replayed offline by __tests__/live-replay.test.ts: all six pass, so
  *     no third paid run was needed for this change.
+ *   THE PROMPT WAS REWRITTEN AS A WHOLE 2026-10-12 (go-live slice D3: the
+ *     group description as one source of evidence, and the match fee as
+ *     a suggestion). Runs 1 and 2 say nothing about this prompt. Two
+ *     fixtures were added for it (description-supports,
+ *     description-stale) and the six older ones are the regression set:
+ *     every behaviour the old prompt handled must still pass. ONE pass of
+ *     each proves the prompt can read them, not that it always does: an
+ *     occasional miss can slip through a single pass.
  *
  * A new or rewritten prompt needs ONE approved live check before
  * SETUP_LEARNING_ENABLED is switched on. The unit tests stub the model;
@@ -31,9 +39,12 @@
  *   # One fixture only:
  *   ONLY=monthly-list node --env-file=.env ./node_modules/.bin/tsx scripts/live-check-setup-learning.ts --approved
  *
- * Six fixtures make a call (rolling, organiser-picks, deadlines, first-come,
- * turkish, monthly-list); empty and too-short are gated before the model
- * and make none, which the run also shows. Spends the DEV key only and
+ * Eight fixtures make a call (rolling, organiser-picks, deadlines,
+ * first-come, turkish, monthly-list, description-supports,
+ * description-stale); empty and too-short are gated before the model and
+ * make none, which the run also shows. Every fixture's expected outcome
+ * is asserted by `gradeFixture`, the fee and the description evidence
+ * included. Spends the DEV key only and
  * refuses without it; stops at MAX_USD. Touches no database and sends
  * nothing. Reports the number of model calls, the tokens and the cost,
  * and for each fixture the raw answer, every answer after the quote check
@@ -68,7 +79,18 @@ import { gradeFixture, type FixtureExpect } from "../src/lib/setup-learning/__te
 import { detectGroupLang } from "../src/lib/i18n/detect.ts";
 import type { HistoryMessage } from "../src/lib/onboarding-enrichment-reconcile.ts";
 
-const FIXTURES = ["rolling", "organiser-picks", "deadlines", "first-come", "turkish", "monthly-list", "empty", "too-short"];
+const FIXTURES = [
+  "rolling",
+  "organiser-picks",
+  "deadlines",
+  "first-come",
+  "turkish",
+  "monthly-list",
+  "description-supports",
+  "description-stale",
+  "empty",
+  "too-short",
+];
 const MAX_USD = 0.25;
 /** Output tokens assumed by the estimate (the schema's answer is ~300 to 600). */
 const EST_OUTPUT_TOKENS = 700;
@@ -80,6 +102,8 @@ interface Fixture {
   weeklyGame: { dayOfWeek: number; time: string; venue: string; playersPerSide: number };
   expect: FixtureExpect;
   history: HistoryMessage[];
+  /** The group description as stored (already masked), when the fixture has one. */
+  description?: string;
 }
 
 function load(name: string): Fixture {
@@ -120,7 +144,7 @@ async function main() {
       console.log(`  ${name.padEnd(16)} no call (${gate.reason})`);
       continue;
     }
-    const user = buildUserContent({ groupSubject: fx.groupSubject, weeklyGame: fx.weeklyGame, history: fx.history });
+    const user = buildUserContent({ groupSubject: fx.groupSubject, weeklyGame: fx.weeklyGame, history: fx.history, description: fx.description });
     // Haiku runs about 3.8 to 5 chars per token (pipeline/llm.ts); /3.5 errs high.
     const inTok = Math.ceil((SETUP_LEARNING_SYSTEM_PROMPT.length + user.text.length) / 3.5);
     const usd = costOf(SETUP_LEARNING_MODEL, { inputTokens: inTok, outputTokens: EST_OUTPUT_TOKENS, cacheReadTokens: 0, cacheWriteTokens: 0 }) ?? 0;
@@ -159,7 +183,7 @@ async function main() {
       console.log(`  stopped: $${spent.toFixed(4)} spent, cap $${MAX_USD}`);
       break;
     }
-    const user = buildUserContent({ groupSubject: fx.groupSubject, weeklyGame: fx.weeklyGame, history: fx.history });
+    const user = buildUserContent({ groupSubject: fx.groupSubject, weeklyGame: fx.weeklyGame, history: fx.history, description: fx.description });
     calls++;
     const resp = await model.complete({
       model: SETUP_LEARNING_MODEL,
@@ -174,7 +198,7 @@ async function main() {
     outTotal += resp.usage.outputTokens;
     console.log(`  ${resp.usage.inputTokens} in / ${resp.usage.outputTokens} out, $${(resp.costUsd ?? 0).toFixed(4)}, ${resp.ms} ms`);
     console.log(`  raw: ${resp.text}`);
-    const detection = parseDetection(extractJson(resp.text), fx.history);
+    const detection = parseDetection(extractJson(resp.text), fx.history, fx.description);
     if (!detection) {
       console.log("  FAIL: not an object");
       failures.push(name);
@@ -190,6 +214,7 @@ async function main() {
       payments: detection.payments,
       monthlyList: detection.monthlyList,
       weeklyGame: detection.weeklyGame,
+      matchFee: detection.matchFee,
     };
     for (const [k, v] of Object.entries(checked)) console.log(`  checked ${k}: ${JSON.stringify(v)}`);
     const plan = planSetup({
@@ -213,11 +238,13 @@ async function main() {
         scheduleUrl: "https://matchtime.ai/r/schedule",
         settingsUrl: "https://matchtime.ai/r/settings",
         organiserPicksUrl: "https://matchtime.ai/r/pick",
+        feeUrl: "https://matchtime.ai/r/fee",
       });
       console.log(`  DM:\n${dm.replace(/^/gm, "    | ")}`);
     } else {
       console.log("  DM: none");
     }
+    console.log(`  expected: ${JSON.stringify(fx.expect)}`);
     console.log(misses.length === 0 ? "  PASS" : `  FAIL\n    ${misses.join("\n    ")}`);
     if (misses.length > 0) failures.push(name);
     record.push({ fixture: name, usage: resp.usage, costUsd: resp.costUsd, raw: resp.text, checked, plan, expect: fx.expect, misses });

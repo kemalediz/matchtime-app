@@ -32,6 +32,8 @@ const STORED: Record<SuggestionKey, Suggestion> = {
   format: { key: "format", current: "7", detected: "5", evidence: ["5 a side"] },
   language: { key: "language", current: "en", detected: "tr", evidence: [] },
   organiserPicks: { key: "organiserPicks", current: "first-come", detected: "organiser", evidence: ["I'll pick"] },
+  // CLUB's weekly game has no fee: "" (never null, which would mean "nothing to compare").
+  matchFee: { key: "matchFee", current: "", detected: "6", evidence: ["£6 a player"], fromDescription: ["£6 a player"] },
 };
 
 /** CLUB after the organiser put `key` to the value the chat showed. */
@@ -42,6 +44,7 @@ const TO_DETECTED: Record<SuggestionKey, ClubNow> = {
   format: { ...CLUB, weeklyGame: { ...CLUB.weeklyGame!, playersPerSide: 5 } },
   language: { ...CLUB, language: "tr" },
   organiserPicks: { ...CLUB, benchPickMode: "organiser" },
+  matchFee: { ...CLUB, weeklyGame: { ...CLUB.weeklyGame!, feePerPlayer: 6 } },
 };
 
 /** CLUB after the organiser put `key` to something that is neither value. */
@@ -52,6 +55,7 @@ const TO_THIRD: Record<SuggestionKey, { club: ClubNow; now: string }> = {
   format: { club: { ...CLUB, weeklyGame: { ...CLUB.weeklyGame!, playersPerSide: 6 } }, now: "6" },
   language: { club: { ...CLUB, language: "de" }, now: "de" },
   organiserPicks: { club: { ...CLUB, benchPickMode: "lottery" }, now: "lottery" },
+  matchFee: { club: { ...CLUB, weeklyGame: { ...CLUB.weeklyGame!, feePerPlayer: 5.5 } }, now: "5.50" },
 };
 
 describe("every suggestion key is covered", () => {
@@ -127,6 +131,10 @@ describe("a club with no weekly game", () => {
     expect(resolveSuggestion(STORED[key], none)).toMatchObject({ state: "resolved", now: null });
   });
 
+  it("the match fee is the weekly game's: resolved, with no value to show", () => {
+    expect(resolveSuggestion(STORED.matchFee, none)).toMatchObject({ state: "resolved", now: null });
+  });
+
   it("the language and organisers pick do not depend on the weekly game", () => {
     expect(resolveSuggestion(STORED.language, none).state).toBe("open");
     expect(resolveSuggestion(STORED.organiserPicks, none).state).toBe("open");
@@ -143,7 +151,14 @@ describe("several activities: the weekly game is the one the reading used", () =
   const second = { dayOfWeek: 4, time: "20:30", venue: "Powerleague Croydon", sport: { playersPerTeam: 5 } };
 
   it("the first of the list (active, oldest first), never a later one", () => {
-    expect(weeklyGameOf([first, second])).toEqual({ dayOfWeek: 2, time: "20:00", venue: "Goals Sutton", playersPerSide: 7 });
+    expect(weeklyGameOf([first, second])).toEqual({
+      dayOfWeek: 2,
+      time: "20:00",
+      venue: "Goals Sutton",
+      playersPerSide: 7,
+      feePerPlayer: null,
+      feeSplitTotal: false,
+    });
   });
 
   it("a second game that matches the chat does not resolve anything", () => {
@@ -160,7 +175,66 @@ describe("several activities: the weekly game is the one the reading used", () =
       time: "19:00",
       venue: null,
       playersPerSide: null,
+      feePerPlayer: null,
+      feeSplitTotal: false,
     });
+  });
+
+  it("carries the game's fee and whether the pitch cost is split (slice D3), from the first game only", () => {
+    expect(weeklyGameOf([{ ...first, feePerPlayer: 6.5, feeSplitTotal: true }, { ...second, feePerPlayer: 9 }])).toMatchObject({
+      feePerPlayer: 6.5,
+      feeSplitTotal: true,
+    });
+  });
+});
+
+// Go-live slice D3 (2026-10-12): the match fee suggestion. "No fee" is ""
+// in the stored row and here, never null: null means there is nothing to
+// compare, which resolves the card, and would hide it on first load.
+describe("the match fee", () => {
+  const fee = (feePerPlayer: number | null, feeSplitTotal = false): ClubNow => ({
+    ...CLUB,
+    weeklyGame: { ...CLUB.weeklyGame!, feePerPlayer, feeSplitTotal },
+  });
+  const sg = STORED.matchFee;
+  const had5: Suggestion = { ...sg, current: "5" };
+
+  it("no fee when read, none now: OPEN on first load, whether the fee is null, 0 or not loaded at all", () => {
+    for (const club of [fee(null), fee(0), CLUB]) {
+      expect(resolveSuggestion(sg, club)).toMatchObject({ state: "open", now: "", current: "" });
+    }
+    expect(currentSuggestionValue("matchFee", fee(null))).toBe("");
+  });
+  it("the fee the chat showed is entered: resolved, compared as amounts and not as text", () => {
+    expect(resolveSuggestion(sg, fee(6))).toMatchObject({ state: "resolved", now: "6" });
+    expect(resolveSuggestion({ ...sg, detected: "6.50" }, fee(6.5))).toMatchObject({ state: "resolved", now: "6.50" });
+    expect(resolveSuggestion({ ...sg, detected: "6.5" }, fee(6.5)).state).toBe("resolved");
+    expect(resolveSuggestion({ ...sg, detected: "6.00" }, fee(6)).state).toBe("resolved");
+  });
+  it("any other fee than the one it had: resolved (the organiser looked and decided)", () => {
+    expect(resolveSuggestion(sg, fee(8))).toMatchObject({ state: "resolved", now: "8" });
+    expect(resolveSuggestion(had5, fee(5.5))).toMatchObject({ state: "resolved", now: "5.50" });
+    // It had £5 and now has none: that is another value too.
+    expect(resolveSuggestion(had5, fee(null))).toMatchObject({ state: "resolved", now: "" });
+  });
+  it("still the fee it had: open, worded with it", () => {
+    expect(resolveSuggestion(had5, fee(5))).toMatchObject({ state: "open", now: "5", current: "5" });
+    expect(resolveSuggestion({ ...sg, current: "5.50" }, fee(5.5))).toMatchObject({ state: "open", current: "5.50" });
+  });
+  it("the club switched to splitting the pitch: resolved, there is no fee per player to set", () => {
+    expect(resolveSuggestion(sg, fee(null, true))).toMatchObject({ state: "resolved", now: null });
+    expect(resolveSuggestion(had5, fee(5, true))).toMatchObject({ state: "resolved", now: null });
+  });
+  it("the quiet line, in English and Turkish", () => {
+    const line = (lang: string, s: Suggestion, club: ClubNow) => resolvedLine(lang, resolveSuggestion(s, club));
+    expect(line("en", sg, fee(6))).toBe("The match fee is now £6 a player.");
+    expect(line("tr", sg, fee(6))).toBe("Maç ücreti artık kişi başı £6.");
+    expect(line("en", had5, fee(5.5))).toBe("The match fee is now £5.50 a player.");
+    expect(line("tr", had5, fee(5.5))).toBe("Maç ücreti artık kişi başı £5.50.");
+    expect(line("en", had5, fee(null))).toBe("Your weekly game has no fee set now.");
+    expect(line("tr", had5, fee(null))).toBe("Haftalık maçınızda artık ücret girilmemiş.");
+    expect(line("en", sg, fee(null, true))).toBe("This has changed since the chat was read.");
+    expect(line("tr", sg, fee(null, true))).toBe("Bu, sohbet okunduktan sonra değişti.");
   });
 });
 
@@ -182,6 +256,7 @@ describe("the quiet line for a resolved item", () => {
     expect(line("en", "format", TO_DETECTED.format)).toBe("Your weekly game is now 5 a side.");
     expect(line("en", "language", TO_DETECTED.language)).toBe("MatchTime now speaks Turkish in this group.");
     expect(line("en", "organiserPicks", TO_DETECTED.organiserPicks)).toBe('"The organisers pick" is on.');
+    expect(line("en", "matchFee", TO_DETECTED.matchFee)).toBe("The match fee is now £6 a player.");
   });
 
   it("Turkish, each key at the value the club has now", () => {
@@ -191,6 +266,7 @@ describe("the quiet line for a resolved item", () => {
     expect(line("tr", "format", TO_DETECTED.format)).toBe("Haftalık maçınız artık takım başına 5 kişi.");
     expect(line("tr", "language", TO_DETECTED.language)).toBe("MatchTime bu grupta artık Türkçe konuşuyor.");
     expect(line("tr", "organiserPicks", TO_DETECTED.organiserPicks)).toBe('"Organizatörler seçer" ayarı açık.');
+    expect(line("tr", "matchFee", TO_DETECTED.matchFee)).toBe("Maç ücreti artık kişi başı £6.");
   });
 
   it("a third value is shown as it is", () => {
