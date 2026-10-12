@@ -14,8 +14,8 @@
  *      (ClubConnect.capturedHistory). Empty or too short: skipped, no
  *      model call, no change, no DM.
  *   3. ONE MODEL CALL (Haiku, structured output) inside the club's daily
- *      AI cap (`withOrgAiBudget`). At the cap: deferred, retried by a
- *      later sweep (tomorrow's allowance).
+ *      AI cap (`withSetupReadingAiBudget`). At the cap: deferred, retried
+ *      by a later sweep (tomorrow's allowance).
  *   4. PLAN (rules.ts) and APPLY in one compare-and-set write: each
  *      switched column must still hold the value the plan saw, and the
  *      organiser must not have saved any of those settings meanwhile.
@@ -29,10 +29,20 @@
  *
  * Sutton FC can never be read: it has no `approvedAt` (it was approved by
  * the column default) and no connect request.
+ *
+ * APPROVED BUT SETTING UP (go-live slice S1, 2026-10-12). A club that is
+ * held silent until its organiser says GO has its bot OFF, so the sweep
+ * selects "bot on, OR setting up", and the reading spends through the one
+ * AI budget scope that allows such a club anything. Its write carries the
+ * stage in the compare-and-set: once the club has gone live, a late
+ * reading changes NOTHING (the hello has already told the group how the
+ * club runs), and the settings it would have switched are recorded as
+ * kept, reason "went-live".
  */
 import { db } from "../db";
 import { APPROVED_CLUB_WHERE, servingClubWhere } from "../club-approval";
-import { withOrgAiBudget } from "../ai-budget";
+import { BOT_ON_OR_SETTING_UP_WHERE, SETTING_UP_CLUB_WHERE, SETUP_STAGE_SELECT, isClubSettingUp } from "../club-setup";
+import { withSetupReadingAiBudget } from "../ai-budget";
 import { isAiBudgetExceeded } from "../ai-budget-context";
 import { anthropicModel, budgetedModel, extractJson, type ModelResponse, type PipelineModel } from "../pipeline/llm";
 import { coerceHistoryMessages } from "../onboarding-enrichment-reconcile";
@@ -89,6 +99,7 @@ const ORG_SELECT = {
   language: true,
   approvedAt: true,
   whatsappBotEnabled: true,
+  ...SETUP_STAGE_SELECT,
   rollingSquadEnabled: true,
   benchPickMode: true,
   dropOutDeadlineDay: true,
@@ -99,7 +110,14 @@ const ORG_SELECT = {
   settingsSetByOrganiser: true,
 } as const;
 
-type OrgRow = OrgSettingsState & { id: string; name: string; approvedAt: Date | null; whatsappBotEnabled: boolean };
+type OrgRow = OrgSettingsState & {
+  id: string;
+  name: string;
+  approvedAt: Date | null;
+  whatsappBotEnabled: boolean;
+  approvalStatus: string;
+  setupStage: string;
+};
 
 async function loadOrg(orgId: string): Promise<OrgRow | null> {
   return (await db.organisation.findFirst({
@@ -150,10 +168,14 @@ function orgSettings(o: OrgRow): OrgSettingsState {
   };
 }
 
-/** The compare-and-set write. False when the club moved under us. */
-async function applyPlan(orgId: string, org: OrgSettingsState, plan: SetupPlan): Promise<boolean> {
+/**
+ * The compare-and-set write. False when the club moved under us.
+ * `held`: the club was setting up when this run read it, so the write
+ * lands only while it STILL is; a club that has gone live is never changed.
+ */
+async function applyPlan(orgId: string, org: OrgSettingsState, plan: SetupPlan, held: boolean): Promise<boolean> {
   if (plan.applied.length === 0) return true;
-  const where: Record<string, unknown> = { id: orgId, ...APPROVED_CLUB_WHERE };
+  const where: Record<string, unknown> = { id: orgId, ...(held ? SETTING_UP_CLUB_WHERE : APPROVED_CLUB_WHERE) };
   for (const a of plan.applied) {
     switch (a.key) {
       case "rollingSquad":
@@ -185,6 +207,9 @@ export async function learnClubSetup(orgId: string, opts: LearnOptions = {}): Pr
   const org = await loadOrg(orgId);
   if (!org || !org.approvedAt) return { kind: "not-eligible" };
   if (!(await claim(orgId, now))) return { kind: "taken" };
+  // Read ONCE, here: a club that was held when the reading started stays
+  // "held" for this run even if it goes live before the write.
+  const held = isClubSettingUp(org);
 
   const connect = await db.clubConnect.findFirst({
     where: { orgId, status: "closed", linkedAt: { not: null } },
@@ -220,7 +245,7 @@ export async function learnClubSetup(orgId: string, opts: LearnOptions = {}): Pr
   const model = opts.model ? budgetedModel(opts.model) : anthropicModel();
   let resp: ModelResponse;
   try {
-    resp = await withOrgAiBudget(orgId, () =>
+    resp = await withSetupReadingAiBudget(orgId, () =>
       model.complete({
         model: SETUP_LEARNING_MODEL,
         system: SETUP_LEARNING_SYSTEM_PROMPT,
@@ -255,18 +280,28 @@ export async function learnClubSetup(orgId: string, opts: LearnOptions = {}): Pr
   const slots = activities.map((a) => ({ dayOfWeek: a.dayOfWeek, time: a.time }));
   let state = orgSettings(org);
   let plan = planSetup({ detection, org: state, weeklyGame, activities: slots, chatLanguage });
-  let ok = await applyPlan(orgId, state, plan);
+  let ok = await applyPlan(orgId, state, plan, held);
+  let wentLive = false;
   if (!ok) {
     const fresh = await loadOrg(orgId);
-    if (fresh) {
+    wentLive = held && !(fresh && isClubSettingUp(fresh));
+    if (fresh && !wentLive) {
       state = orgSettings(fresh);
       plan = planSetup({ detection, org: state, weeklyGame, activities: slots, chatLanguage });
-      ok = await applyPlan(orgId, state, plan);
+      ok = await applyPlan(orgId, state, plan, held);
+      // Still refused, and it was held: see whether it went live just now.
+      if (!ok && held) {
+        const again = await loadOrg(orgId);
+        wentLive = !(again && isClubSettingUp(again));
+      }
     }
   }
   if (!ok) {
-    // The organiser is changing settings right now: leave them alone.
-    plan = { ...plan, kept: [...plan.kept, ...plan.applied.map((a) => ({ key: a.key, reason: "organiser-set" as const }))], applied: [], data: {} };
+    // The club left setting-up under us (the organiser said GO): a late
+    // reading changes nothing. Otherwise the organiser is changing settings
+    // right now: leave them alone.
+    const reason = wentLive ? ("went-live" as const) : ("organiser-set" as const);
+    plan = { ...plan, kept: [...plan.kept, ...plan.applied.map((a) => ({ key: a.key, reason }))], applied: [], data: {} };
   }
 
   const status = plan.applied.length > 0 ? "applied" : "nothing";
@@ -381,7 +416,9 @@ export async function runSetupLearningSweep(
   const due = await db.organisation.findMany({
     where: {
       ...servingClubWhere(),
-      whatsappBotEnabled: true,
+      // The bot is on, or the club is approved and setting up (its bot is
+      // off until GO). Under AND because the query has an OR of its own.
+      AND: [BOT_ON_OR_SETTING_UP_WHERE],
       approvedAt: { gte: new Date(now.getTime() - SWEEP_WINDOW_DAYS * DAY_MS) },
       OR: [
         { setupLearning: { is: null } },

@@ -92,7 +92,12 @@ const budget = vi.hoisted(() => ({ capped: false, keys: [] as string[] }));
 vi.mock("@/lib/ai-budget", async () => {
   const { AiBudgetExceededError } = await import("@/lib/ai-budget-context");
   return {
-    withOrgAiBudget: async (key: string, fn: () => Promise<unknown>) => {
+    // The reading spends through its own scope (go-live S1): the one path a
+    // setting-up club may pay for. The ordinary scope must not be used.
+    withOrgAiBudget: async () => {
+      throw new Error("the setup reading must use withSetupReadingAiBudget");
+    },
+    withSetupReadingAiBudget: async (key: string, fn: () => Promise<unknown>) => {
       budget.keys.push(key);
       if (budget.capped) throw new AiBudgetExceededError(key, "setup-learning");
       return fn();
@@ -300,6 +305,52 @@ describe("learnClubSetup: writes and the DM", () => {
   });
 });
 
+describe("learnClubSetup and a club that is approved but setting up (go-live S1, plan 2.2 point 1)", () => {
+  const HELD = { whatsappBotEnabled: false, approvalStatus: "approved", setupStage: "setting-up" };
+
+  it("a held club (bot off) IS read, through the setup-reading budget scope", async () => {
+    setup("rolling", HELD);
+    const model = stub(STUB_ANSWERS.rolling);
+    const out = await learnClubSetup(ORG, { now: DAYTIME, model });
+    expect(out).toMatchObject({ kind: "done", status: "applied", applied: 1 });
+    expect(model.calls).toBe(1);
+    expect(budget.keys).toEqual([ORG]);
+    expect(state.org!.rollingSquadEnabled).toBe(true);
+  });
+
+  it("its write is a compare-and-set on the club STILL setting up", async () => {
+    setup("rolling", HELD);
+    await learnClubSetup(ORG, { now: DAYTIME, model: stub(STUB_ANSWERS.rolling) });
+    expect(state.orgUpdates).toHaveLength(1);
+    expect(state.orgUpdates[0].where).toMatchObject({ id: ORG, approvalStatus: "approved", setupStage: "setting-up" });
+  });
+
+  it("the club went live between the read and the write: NOTHING is applied, even on the re-plan", async () => {
+    setup("rolling", HELD);
+    // The first read sees it held; by the write the organiser has said GO.
+    dbMock.organisation.findFirst.mockImplementationOnce(async () => {
+      const snapshot = { ...state.org! };
+      Object.assign(state.org!, { setupStage: "live", whatsappBotEnabled: true });
+      return snapshot;
+    });
+    const out = await learnClubSetup(ORG, { now: DAYTIME, model: stub(STUB_ANSWERS.rolling) });
+    expect(state.org!.rollingSquadEnabled).toBe(false);
+    expect(out).toMatchObject({ kind: "done", status: "nothing", applied: 0 });
+    expect(state.learning).toMatchObject({ status: "nothing", applied: [], kept: [{ key: "rollingSquad", reason: "went-live" }] });
+    // Both attempts carried the stage, so neither could land on a live club.
+    expect(state.orgUpdates.length).toBeGreaterThanOrEqual(1);
+    for (const u of state.orgUpdates) expect(u.where).toMatchObject({ setupStage: "setting-up" });
+  });
+
+  it("a club that was never held is written exactly as before: no stage in the WHERE", async () => {
+    setup("rolling", { approvalStatus: "approved", setupStage: "live" });
+    await learnClubSetup(ORG, { now: DAYTIME, model: stub(STUB_ANSWERS.rolling) });
+    expect(state.orgUpdates).toHaveLength(1);
+    expect(state.orgUpdates[0].where).not.toHaveProperty("setupStage");
+    expect(state.org!.rollingSquadEnabled).toBe(true);
+  });
+});
+
 describe("learnClubSetup: once per club, and only for a newly approved self-join club", () => {
   it("a second run finds the row taken and calls nothing", async () => {
     setup("rolling");
@@ -390,10 +441,19 @@ describe("runSetupLearningSweep", () => {
     expect(args.take).toBe(5);
     expect(args.where).toMatchObject({
       approvalStatus: "approved",
-      whatsappBotEnabled: true,
       approvedAt: { gte: new Date(DAYTIME.getTime() - 3 * 24 * 60 * 60 * 1000) },
     });
     expect(JSON.stringify(args.where.OR)).toContain('"is":null');
+  });
+
+  it("go-live S1: the selection is 'bot on, OR approved and setting up' (a held club has its bot off)", async () => {
+    await runSetupLearningSweep(DAYTIME, { enabled: true, model: stub(STUB_ANSWERS.rolling) });
+    const where = (state.findManyArgs[0] as { where: Row }).where;
+    expect(where.AND).toEqual([
+      { OR: [{ whatsappBotEnabled: true }, { approvalStatus: "approved", setupStage: "setting-up" }] },
+    ]);
+    // Never "any club whose bot is off": a muted live club is still left out.
+    expect(where).not.toHaveProperty("whatsappBotEnabled");
   });
 
   it("the env flag is off unless explicitly on", async () => {

@@ -394,6 +394,9 @@ export type KeptReason =
   | "monthly-list"
   /** High confidence, but fewer than MIN_QUOTES_TO_APPLY messages behind it. */
   | "thin-evidence"
+  /** The club was setting up when it was read and had gone live by the
+   *  write (run.ts): a late reading changes nothing. */
+  | "went-live"
   | `invalid:${WeeklyDeadlineError}`;
 export interface KeptItem {
   key: LearnedKey;

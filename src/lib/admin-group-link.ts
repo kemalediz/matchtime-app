@@ -33,6 +33,7 @@ import { lidDigits } from "./connect-dm-rules";
 import { parseParticipantSnapshot, snapshotPhone } from "./participant-snapshot";
 import { ACTIVE_ONBOARDING_STAGES } from "./onboarding-parse";
 import { APPROVED_CLUB_WHERE, servingClubWhere } from "./club-approval-state";
+import { SETUP_STAGE_SELECT, isClubSettingUp } from "./club-setup-rules";
 import { isBillingPaused } from "./club-billing-rules";
 import {
   ADMIN_GROUP_CODE_TTL_MS,
@@ -248,10 +249,14 @@ export async function linkAdminGroup(input: AdminGroupLinkInput): Promise<AdminG
   // A club's own community group can never be its admin group.
   const community = await db.organisation.findFirst({
     where: { whatsappGroupId: input.groupId },
-    select: { id: true, name: true, language: true },
+    select: { id: true, name: true, language: true, ...SETUP_STAGE_SELECT },
   });
   if (community) {
     if (!adminOf.has(community.id)) return ignored("another-clubs-main-group");
+    // Go-live slice S1: the Pi posts `replyText` in the group the command
+    // came from, and this group is the PLAYERS' group. While the club is
+    // still setting up MatchTime says nothing there, so not even L3.
+    if (isClubSettingUp(community)) return ignored("club-setting-up");
     return { outcome: "main-group", replyText: t(community.language).admin_group_main_group({ club: community.name }) };
   }
 

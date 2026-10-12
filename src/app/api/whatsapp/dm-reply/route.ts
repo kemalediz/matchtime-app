@@ -59,6 +59,7 @@
  */
 import { withOrgAiBudget } from "@/lib/ai-budget";
 import { handleApproverDm, nonServingClubsReason } from "@/lib/club-approval";
+import { settingUpClubsReason } from "@/lib/club-setup";
 import { billingQuietMatchWhere } from "@/lib/club-billing-rules";
 import { handleConnectDm } from "@/lib/connect-dm";
 import { handleOrganiserPickDm } from "@/lib/organiser-pick";
@@ -462,6 +463,21 @@ export async function POST(request: Request) {
     const { handleDmHelp } = await import("@/lib/dm-help");
     const help = await handleDmHelp({ userId: user.id, text, envelopePhone: phone });
     if (help) return NextResponse.json({ ok: true, ...help });
+  }
+
+  // ── Approved but setting up (go-live slice S1, 2026-10-12) ─────────────
+  //   A sender whose every served club is approved but still SETTING UP
+  //   (waiting for its organiser's GO) gets nothing from here on: no model
+  //   call, no reply. Such a club is approved, so the rail above lets it
+  //   through; this is the second rail, placed after the deterministic help
+  //   (which may answer) and ahead of every handler below, the model paths
+  //   among them (payment claim, admin commands, Q&A). A sender who also
+  //   belongs to a live club is not caught and is handled exactly as today.
+  //   No existing club is setting up, so for every one of them this is one
+  //   primary-key read that answers null.
+  if ((await settingUpClubsReason(user.memberships.map((m) => m.orgId))) === "club-setting-up") {
+    console.log(`[dm-reply] sender ${user.id} belongs only to clubs that are still setting up; ignoring`);
+    return NextResponse.json({ ok: true, ignored: "club-setting-up" });
   }
 
   // ── DM subscription-preference fast-path (2026-06-11; per-category
