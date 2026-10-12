@@ -635,7 +635,7 @@ describe("closing a month: when (plan 6)", () => {
     expect(await closeMonth(month(1).id, new Date(M1_END.getTime() + 6 * HOUR - 1))).toEqual({ skipped: "not-due", monthId: month(1).id });
   });
 
-  it("closeNextDueMonth: daytime only (10:00 to 20:00 London), the LOWEST open month first, one per run", async () => {
+  it("closeNextDueMonth: daytime only (09:00 to 23:00 London), the LOWEST open month first, one per run", async () => {
     club();
     weeks(NOV_TUESDAYS, ["played", "played", "played", "played"]);
     weeks(DEC_TUESDAYS, ["played", "played", "played", "played", "played"]);

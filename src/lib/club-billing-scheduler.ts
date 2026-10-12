@@ -19,7 +19,7 @@
  *        b. slice P3: the club's CURRENT billing month is opened if it is
  *           not yet, at any hour (`openDueMonths`: only the month
  *           containing now, never an earlier one, so no catch-up);
- *        c. in the daytime only (10:00 to 20:00 London):
+ *        c. in the daytime only (09:00 to 23:00 London):
  *             - slice P3: the club's lowest month that ended at least 6
  *               hours ago is closed: counted, and charged or recorded why
  *               not (`closeNextDueMonth`, a compare-and-set: one month per

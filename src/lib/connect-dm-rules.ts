@@ -55,6 +55,28 @@ export function connectCodeCandidates(text: string | null | undefined): string[]
   return out;
 }
 
+/** A code nobody issued gets, at most, this often, the "that code does not
+ *  match" reply, per open request, however many wrong codes arrive. */
+export const WRONG_CODE_REPLY_THROTTLE_MS = 10 * 60 * 1000;
+
+/** The verb of the prefilled text: "Connect ..." or "... kulübünü bağla"
+ *  (also "bagla" from a keyboard without ğ, and "bağlayın", "connecting").
+ *  It must start a word, so "reconnect" is not it. */
+const CONNECT_VERB_RE = /(?<![\p{L}\p{N}])(?:connect|ba[ğg]la)/iu;
+
+/**
+ * Does this text read like the connect message: the verb, and a code after
+ * "code"/"kod"? Used ONLY to decide whether a code that names no request
+ * earns the wrong-code reply. `connectCodeCandidates` alone is too wide for
+ * that: any four letters of the alphabet after "code" count ("what's the
+ * code then" gives THEN), which is right for finding a real code and wrong
+ * for answering one. Recognising a correct code never goes through here.
+ */
+export function looksLikeConnectMessage(text: string | null | undefined): boolean {
+  if (connectCodeCandidates(text).length === 0) return false;
+  return CONNECT_VERB_RE.test(text as string);
+}
+
 // ── Identities off the envelope ─────────────────────────────────────────
 
 /** A WhatsApp LID as bare digits: "123@lid", "123:4@lid" or "123" all give
@@ -100,7 +122,10 @@ export interface ConnectDmSender {
   lid: string | null;
 }
 
-export type ConnectDmReply = "connected" | "already-connected" | "expired" | "site-cap";
+/** "wrong-code" is the one reply to a code that names NO request: it is
+ *  decided in connect-dm.ts (it needs the sender's open request looked up),
+ *  not by `decideConnectDm`, which only ever sees a matched row. */
+export type ConnectDmReply = "connected" | "already-connected" | "expired" | "site-cap" | "wrong-code";
 
 export type ConnectDmDecision =
   /** Bind the request to this chat. `dmPhoneMatched` is null when the phone

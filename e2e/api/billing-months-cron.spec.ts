@@ -16,7 +16,7 @@
  *
  *   1. The free month ends: the cron opens month 1 (at night too).
  *   2. Every run during the month and the night after it: nothing closes.
- *   3. 10:00 London on 1 Jan: the month closes, 4 of 5 counted, ONE fake
+ *   3. 09:00 London on 1 Jan: the month closes, 4 of 5 counted, ONE fake
  *      invoice of 799p (the card needs a bank check, so it stays open).
  *   4. Stripe's invoice.paid (signed fixture): the month is paid and the
  *      collector gets ONE receipt; re-deliveries and later runs add nothing.
@@ -137,13 +137,13 @@ test("1. the free month ends at 00:00: the cron opens month 1, at night", async 
 });
 
 test("2. during the month and the night after it ends: nothing closes, nothing is charged", async ({ request }) => {
-  for (const at of ["2026-12-15T12:00:00Z", "2026-12-31T19:00:00Z", "2027-01-01T00:00:00Z", "2027-01-01T06:00:00Z", "2027-01-01T09:00:00Z"]) await cron(request, at);
+  for (const at of ["2026-12-15T12:00:00Z", "2026-12-31T19:00:00Z", "2027-01-01T00:00:00Z", "2027-01-01T06:00:00Z", "2027-01-01T08:00:00Z"]) await cron(request, at);
   expect((await months())[0]).toMatchObject({ index: 1, status: "open" });
   expect(clubInvoices()).toEqual([]);
 });
 
-test("3. 10:00 London on 1 Jan: the month closes ONCE (two runs at once), 4 of 5 played, one invoice of 799p", async ({ request }) => {
-  const [a, b] = await Promise.all([cron(request, "2027-01-01T10:00:00Z"), cron(request, "2027-01-01T10:00:00Z")]);
+test("3. 09:00 London on 1 Jan: the month closes ONCE (two runs at once), 4 of 5 played, one invoice of 799p", async ({ request }) => {
+  const [a, b] = await Promise.all([cron(request, "2027-01-01T09:00:00Z"), cron(request, "2027-01-01T09:00:00Z")]);
   expect([a?.closed, b?.closed].filter((c) => c === "1:invoiced")).toHaveLength(1);
   const [m1, m2] = await months();
   expect(m1).toMatchObject({ index: 1, status: "invoiced", scheduled: 5, played: 4, amountPence: 799 });
@@ -165,7 +165,7 @@ test("4. invoice.paid: the month is paid and the collector gets ONE receipt, wha
   expect(await postEvent(request, "invoice.paid", object, evtId)).toMatchObject({ received: true, action: "month-paid" });
   expect(await postEvent(request, "invoice.paid", object, evtId)).toEqual({ received: true, duplicate: true });
   await postEvent(request, "invoice.paid", object); // a second, distinct delivery
-  // Real time may be night (the webhook then leaves it for the 10:00 run):
+  // Real time may be night (the webhook then leaves it for the 09:00 run):
   // the cron's daytime run sends it if it has not gone yet.
   await cron(request, "2027-01-02T10:00:00Z");
   await cron(request, "2027-01-02T11:00:00Z");

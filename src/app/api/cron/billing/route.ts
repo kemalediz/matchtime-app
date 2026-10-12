@@ -8,7 +8,7 @@
  * BILLING_ENABLED on, the free month and grace week ended on time, the
  * billing months opened and (in the daytime) closed and charged (slice P3),
  * and the billing contact's DMs and the admins' club fee tip sent in the
- * daytime (10:00 to 20:00 London). With the flag off it only voids those invoices.
+ * daytime (09:00 to 23:00 London). With the flag off it only voids those invoices.
  */
 import { NextResponse } from "next/server";
 import { runBillingCron } from "@/lib/club-billing-scheduler";
