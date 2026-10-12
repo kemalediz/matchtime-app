@@ -282,7 +282,7 @@ test("A: NEVER TWICE: six cron runs at the same moment queue exactly one reminde
   const runs = await Promise.all(Array.from({ length: 6 }, () => cron(request, DAY)));
   expect(await reminders(db, c)).toHaveLength(1);
   expect(runs.reduce((n, r) => n + (r.setupReminders?.sent ?? 0), 0)).toBe(1);
-  expect(await db.count(`SELECT COUNT(*) FROM "SentNotification" WHERE key = $1`, [`org-${c.org}:setup-reminder`])).toBe(1);
+  expect(await db.count(`SELECT COUNT(*) FROM "SentNotification" WHERE key LIKE $1`, [`org-${c.org}:setup-reminder:%`])).toBe(1);
 });
 
 test("A: not sent to a club that went live, was suspended, or that MatchTime was removed from", async ({ request, db }) => {
@@ -651,5 +651,5 @@ test("the follow-ups against Postgres: once under concurrent runs, the cancel, t
     throw new Error(`setup-followups-lib-tests failed:\n${err.stdout ?? ""}\n${err.stderr ?? ""}`);
   });
   console.log(stdout);
-  expect(stdout, stderr).toContain("OK: 17 setup follow-up checks");
+  expect(stdout, stderr).toContain("OK: 22 setup follow-up checks");
 });

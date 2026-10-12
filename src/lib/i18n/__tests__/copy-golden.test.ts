@@ -297,7 +297,9 @@
  *     All NEW copy, sent only for a club that is setting up; the only
  *     non-additive line in either `.snap` diff is the case count. No
  *     existing case changed: SUP1 to SUP6 still render the setup DM
- *     without the admin group block.
+ *     without the admin group block. Also added the same day: R187b, the
+ *     Settings line under a code that is on screen, which now gives the
+ *     code's real expiry (the setup DM's code lasts 7 days).
  *
  *   - A deliberate CHANGE across the whole English document (2026-10-06,
  *     Kemal: "remove long dashes"). Every em and en dash used as
@@ -359,7 +361,7 @@ import {
 } from "../../scheduler-copy";
 import { buildBenchClaimAnnouncement, buildSquadCompleteBenchInvite } from "../../bench-offer-copy";
 import { t } from "../t";
-import { dayTimeLabel } from "../dates";
+import { dayTimeLabel, longDayTimeLabel } from "../dates";
 
 /** The organiser's three signed-in links in the "you're live" DM (2026-10-01). */
 const SJ_APPROVED_LINKS = {
@@ -1353,6 +1355,13 @@ function cases(lang: Lang): Case[] {
       sj.settings_admin_channel_validity,
       sj.settings_admin_channel_pending_note,
     ].join("\n"),
+  );
+  // Deliberate addition (2026-10-12): the validity line under a code that
+  // is on screen, with that code's real expiry (the code MatchTime sent in
+  // the setup DM lasts 7 days, not 48 hours).
+  add(
+    "R187b settings / a code on screen is valid until its real expiry",
+    sj.settings_admin_channel_valid_until({ when: longDayTimeLabel(lang, new Date("2026-10-19T11:00:00Z")) }),
   );
   add(
     "R187 settings / linked",

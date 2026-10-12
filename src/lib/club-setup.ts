@@ -210,6 +210,18 @@ export function settingUpAskedBy(cutoff: Date) {
 /** Oldest setup DM first. */
 export const SETUP_ASKED_ORDER = { setupAskedAt: "asc" } as const;
 
+/** The column `setupAskedAtOf` reads. Spread into a `select`. */
+export const SETUP_ASKED_SELECT = { setupAskedAt: true } as const;
+
+/**
+ * When this club's CURRENT setup DM was due, or null when it has not been
+ * asked. A club that is removed from, added back and sent a new setup DM
+ * has a new due time; the reminder is keyed on it, so its clock restarts.
+ */
+export function setupAskedAtOf(org: { setupAskedAt?: Date | null | undefined }): Date | null {
+  return org.setupAskedAt ?? null;
+}
+
 /**
  * "Setting up, and approved at or before `cutoff`", in its group or not
  * (the caller reads `wasRemovedDuringSetup`). The owner's note passes now

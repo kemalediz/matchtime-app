@@ -39,6 +39,7 @@ const dbMock = vi.hoisted(() => {
 vi.mock("@/lib/db", () => ({ db: dbMock }));
 
 import {
+  adminGroupLinkCodeForSettings,
   createAdminGroupLinkCode,
   detectAdminGroupCandidate,
   handleAdminGroupRemoved,
@@ -303,6 +304,62 @@ describe("codes, unlinking and removal", () => {
     expect(dbMock.organisation.updateMany.mock.calls[0][0]).toEqual({
       where: { id: "org-fnf" },
       data: { adminGroupLinkCode: r.code, adminGroupLinkCodeExpiresAt: r.expiresAt },
+    });
+  });
+
+  describe("the Settings button shows the code MatchTime already sent by DM (2026-10-12)", () => {
+    const HOUR = 3_600_000;
+    const open = (expiresInMs: number) =>
+      dbMock.organisation.findUnique.mockResolvedValue({ adminGroupLinkCode: "K7P3QX", adminGroupLinkCodeExpiresAt: new Date(NOW.getTime() + expiresInMs) });
+
+    it("an open code with days left (the setup DM's): returned as it is, with its REAL expiry, and nothing is written", async () => {
+      open(6 * 24 * HOUR);
+      const r = await adminGroupLinkCodeForSettings("org-fnf", { now: NOW });
+      expect(r).toEqual({ code: "K7P3QX", expiresAt: new Date(NOW.getTime() + 6 * 24 * HOUR), reused: true });
+      expect(dbMock.organisation.updateMany).not.toHaveBeenCalled();
+    });
+
+    it("an open code from the button itself, pressed again an hour later: the same code, not a new one", async () => {
+      open(47 * HOUR);
+      expect(await adminGroupLinkCodeForSettings("org-fnf", { now: NOW })).toMatchObject({ code: "K7P3QX", reused: true });
+      expect(dbMock.organisation.updateMany).not.toHaveBeenCalled();
+    });
+
+    it("an open code with an hour or less left is not worth showing: a new 48-hour code replaces it", async () => {
+      dbMock.organisation.updateMany.mockResolvedValue({ count: 1 });
+      for (const left of [HOUR, 59 * 60_000]) {
+        open(left);
+        const r = await adminGroupLinkCodeForSettings("org-fnf", { now: NOW });
+        expect(r.reused).toBe(false);
+        expect(r.expiresAt).toEqual(new Date(NOW.getTime() + 48 * HOUR));
+      }
+      expect(dbMock.organisation.updateMany).toHaveBeenCalledTimes(2);
+    });
+
+    it("no code, or an expired one: a new 48-hour code, exactly as before", async () => {
+      dbMock.organisation.updateMany.mockResolvedValue({ count: 1 });
+      for (const row of [
+        { adminGroupLinkCode: null, adminGroupLinkCodeExpiresAt: null },
+        { adminGroupLinkCode: "K7P3QX", adminGroupLinkCodeExpiresAt: new Date(NOW.getTime() - 1) },
+        null,
+      ]) {
+        dbMock.organisation.findUnique.mockResolvedValue(row);
+        const r = await adminGroupLinkCodeForSettings("org-fnf", { now: NOW });
+        expect(r.reused).toBe(false);
+        expect(r.code).toMatch(/^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/);
+        expect(r.expiresAt).toEqual(new Date(NOW.getTime() + 48 * HOUR));
+      }
+      expect(dbMock.organisation.updateMany.mock.calls.at(-1)![0].where).toEqual({ id: "org-fnf" });
+    });
+
+    it("'New code' (fresh) always mints a new 48-hour code, whatever is open, without reading the old one", async () => {
+      open(6 * 24 * HOUR);
+      dbMock.organisation.updateMany.mockResolvedValue({ count: 1 });
+      const r = await adminGroupLinkCodeForSettings("org-fnf", { now: NOW, fresh: true });
+      expect(r.reused).toBe(false);
+      expect(r.expiresAt).toEqual(new Date(NOW.getTime() + 48 * HOUR));
+      expect(dbMock.organisation.findUnique).not.toHaveBeenCalled();
+      expect(dbMock.organisation.updateMany).toHaveBeenCalledTimes(1);
     });
   });
 

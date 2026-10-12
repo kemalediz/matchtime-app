@@ -611,6 +611,7 @@ const SAMPLES: SampleArgs = {
   settings_admin_channel_step_send: null,
   settings_admin_channel_command: { code: "K7P3QX" },
   settings_admin_channel_validity: null,
+  settings_admin_channel_valid_until: { when: "Monday 19 October at 12:00" },
   settings_admin_channel_linked: { group: "FNF HQ" },
   settings_admin_channel_unlink: null,
   settings_admin_channel_pending_note: null,

@@ -28,7 +28,13 @@
  * A setup DM that is still queued or on its way (a Pi that has been down)
  * is waited for: no reminder before the message it reminds of.
  *
- * EXACTLY ONCE PER CLUB, whoever races whom. One transaction:
+ * AFTER A REMOVAL AND A RE-ADD. The once-key carries the due time of the
+ * setup DM it reminds of (`setupReminderKey`). A club that is added back
+ * and sent a NEW setup DM has a new due time, so its reminder runs 24
+ * hours from the new one, whatever happened to the first.
+ *
+ * EXACTLY ONCE PER SETUP DM (so once per club, unless it is sent a new
+ * one), whoever races whom. One transaction:
  *   1. it locks the club's row and reads it again. A go-live or a
  *      suspension is a write to that row, so it has either committed (the
  *      club is no longer due and nothing is queued) or it waits for this
@@ -45,7 +51,7 @@
  */
 import { db } from "./db";
 import { appUrl, buildAdminLink } from "./admin-link";
-import { SETUP_ASKED_ORDER, settingUpAskedBy } from "./club-setup";
+import { SETUP_ASKED_ORDER, SETUP_ASKED_SELECT, setupAskedAtOf, settingUpAskedBy } from "./club-setup";
 import { SETUP_ASK_DM_PURPOSE, setupAskRefId } from "./club-setup-dm-rules";
 import {
   REMINDER_AFTER_MS,
@@ -81,10 +87,10 @@ type RawClient = { $executeRaw(query: TemplateStringsArray, ...values: unknown[]
 
 const cutoff = (now: Date) => new Date(now.getTime() - REMINDER_AFTER_MS);
 
-/** Settle a club that will never be reminded, so no sweep reads it again. */
-async function settleNever(orgId: string, reason: string): Promise<void> {
+/** Settle a setup DM that will never be reminded of, so no sweep reads it again. */
+async function settleNever(orgId: string, key: string, reason: string): Promise<void> {
   await db.sentNotification.createMany({
-    data: [{ key: setupReminderKey(orgId), kind: SETUP_REMINDER_SKIPPED_KIND }],
+    data: [{ key, kind: SETUP_REMINDER_SKIPPED_KIND }],
     skipDuplicates: true,
   });
   console.log(`[club-setup-reminder] ${orgId}: no reminder, settled (${reason})`);
@@ -93,10 +99,11 @@ async function settleNever(orgId: string, reason: string): Promise<void> {
 /** Send this club's reminder if it is due. Never twice (see the header). */
 export async function sendSetupReminder(orgId: string, now: Date = new Date()): Promise<SetupReminderOutcome> {
   const due = { id: orgId, ...settingUpAskedBy(cutoff(now)) };
-  const org = await db.organisation.findFirst({ where: due, select: { id: true, name: true, language: true } });
-  if (!org) return { kind: "not-due" };
+  const org = await db.organisation.findFirst({ where: due, select: { id: true, name: true, language: true, ...SETUP_ASKED_SELECT } });
+  const askedAt = org ? setupAskedAtOf(org) : null;
+  if (!org || !askedAt) return { kind: "not-due" };
 
-  const key = setupReminderKey(orgId);
+  const key = setupReminderKey(orgId, askedAt);
   if (await db.sentNotification.findUnique({ where: { key }, select: { id: true } })) return { kind: "already" };
 
   // Did the setup DM itself go?
@@ -108,7 +115,7 @@ export async function sendSetupReminder(orgId: string, now: Date = new Date()): 
   const decision = reminderDecisionFromSetupDm(setupDm?.status);
   if (decision === "wait") return { kind: "waiting-for-setup-dm" };
   if (decision === "never") {
-    await settleNever(orgId, "setup-dm-not-sent");
+    await settleNever(orgId, key, "setup-dm-not-sent");
     return { kind: "never", reason: "setup-dm-not-sent" };
   }
 
@@ -119,7 +126,7 @@ export async function sendSetupReminder(orgId: string, now: Date = new Date()): 
     select: { userId: true, phone: true, groupSubject: true },
   });
   if (!connect) {
-    await settleNever(orgId, "no-organiser");
+    await settleNever(orgId, key, "no-organiser");
     return { kind: "never", reason: "no-organiser" };
   }
 
@@ -136,8 +143,10 @@ export async function sendSetupReminder(orgId: string, now: Date = new Date()): 
   const outcome = await db.$transaction(async (tx): Promise<SetupReminderOutcome> => {
     // 1. The club's row, locked, then read again: see the header.
     await (tx as unknown as RawClient).$executeRaw`SELECT 1 FROM "Organisation" WHERE "id" = ${orgId} FOR UPDATE`;
-    const still = await tx.organisation.findFirst({ where: due, select: { id: true } });
-    if (!still) return { kind: "not-due" };
+    const still = await tx.organisation.findFirst({ where: due, select: { id: true, ...SETUP_ASKED_SELECT } });
+    // Still due, and still for the SAME setup DM (not a new one sent after
+    // a removal and a re-add in between).
+    if (!still || setupAskedAtOf(still)?.getTime() !== askedAt.getTime()) return { kind: "not-due" };
     // 2. The claim. Only the run that wins it goes on.
     const claim = await tx.sentNotification.createMany({ data: [{ key, kind: SETUP_REMINDER_KIND }], skipDuplicates: true });
     if (claim.count !== 1) return { kind: "already" };
@@ -179,15 +188,16 @@ export async function runSetupReminderSweep(now: Date = new Date()): Promise<{ c
   const due = await db.organisation.findMany({
     where: settingUpAskedBy(cutoff(now)),
     orderBy: SETUP_ASKED_ORDER,
-    select: { id: true },
+    select: { id: true, ...SETUP_ASKED_SELECT },
   });
   if (due.length === 0) return { considered: 0, sent: 0 };
-  const settled = new Set(
-    (await db.sentNotification.findMany({ where: { key: { in: due.map((o) => setupReminderKey(o.id)) } }, select: { key: true } })).map(
-      (r) => r.key,
-    ),
-  );
-  const open = due.filter((o) => !settled.has(setupReminderKey(o.id))).slice(0, MAX_SETUP_REMINDERS_PER_SWEEP);
+  const keyOf = (o: (typeof due)[number]): string | null => {
+    const askedAt = setupAskedAtOf(o);
+    return askedAt ? setupReminderKey(o.id, askedAt) : null;
+  };
+  const keys = due.map(keyOf).filter((k): k is string => !!k);
+  const settled = new Set((await db.sentNotification.findMany({ where: { key: { in: keys } }, select: { key: true } })).map((r) => r.key));
+  const open = due.filter((o) => !settled.has(keyOf(o) ?? "")).slice(0, MAX_SETUP_REMINDERS_PER_SWEEP);
   let sent = 0;
   for (const o of open) {
     try {

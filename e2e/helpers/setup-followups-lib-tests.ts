@@ -132,7 +132,7 @@ async function main() {
           `^Just checking: ${c.name} is approved, but I'm still quiet in "Lib follow group \\d+"\\. Reply \\*GO\\* when you're ready and I'll introduce myself, or check the settings first: https://matchtime\\.ai/\\S+\\nI won't remind you again\\.$`,
         ),
       );
-      assert.equal(await db.sentNotification.count({ where: { key: `org-${c.orgId}:setup-reminder` } }), 1);
+      assert.equal(await db.sentNotification.count({ where: { key: { startsWith: `org-${c.orgId}:setup-reminder:` } } }), 1);
       // And never again: a sweep a month later.
       await runSetupReminderSweep(new Date(T24.getTime() + 30 * 24 * HOUR));
       assert.equal((await reminders(c.orgId)).length, 1, "a month later: still one, and no automatic go-live");
@@ -237,7 +237,7 @@ async function main() {
       await db.organisation.update({ where: { id: c.orgId }, data: { setupRemovedAt: new Date(T0.getTime() + HOUR) } });
       assert.deepEqual(await sendSetupReminder(c.orgId, T24), { kind: "not-due" });
       assert.deepEqual(await runSetupReminderSweep(T24).then(() => reminders(c.orgId)), []);
-      assert.equal(await db.sentNotification.count({ where: { key: `org-${c.orgId}:setup-reminder` } }), 0);
+      assert.equal(await db.sentNotification.count({ where: { key: { startsWith: `org-${c.orgId}:setup-reminder:` } } }), 0);
       await db.organisation.update({ where: { id: c.orgId }, data: { setupRemovedAt: null } });
       assert.equal((await sendSetupReminder(c.orgId, T24)).kind, "sent");
 
@@ -485,6 +485,128 @@ async function main() {
       const stored = await db.organisation.findUnique({ where: { id: c.orgId }, select: { adminGroupLinkCodeExpiresAt: true } });
       assert.deepEqual(stored?.adminGroupLinkCodeExpiresAt, button.expiresAt);
       ok("with the hold off: no reminder, no owner's note, no admin group command, and the Settings button's code still lasts 48 hours");
+    }
+
+    // ── 15. REMOVAL, as the removal handling will do it (set by hand here:
+    //        nothing on this branch writes the stamp) ──────────────────────
+    {
+      const NIGHT = new Date("2026-07-14T22:30:00Z"); // 23:30 London
+      // (a) Removed overnight with the setup DM and its command still queued: both taken back.
+      const a = await heldAndAsked(NIGHT, { sent: false });
+      await db.organisation.update({ where: { id: a.orgId }, data: { setupRemovedAt: new Date(NIGHT.getTime() + HOUR) } });
+      assert.deepEqual(await cancelSetupDm(a.orgId, "removed", new Date(NIGHT.getTime() + HOUR)), { cancelled: 2, alreadyClaimed: 0 });
+      for (const purpose of ["setup-ask", "setup-admin-code"]) {
+        const j = (await jobsOf(a.orgId, purpose))[0];
+        assert.equal(j.status, "failed");
+        assert.equal(j.failReason, "cancelled: removed");
+      }
+      // (b) Removed overnight with a REMINDER queued for 09:00: taken back too.
+      const ASKED = new Date("2026-07-14T21:50:00Z");
+      const AT_2305 = new Date("2026-07-15T22:05:00Z");
+      const b = await heldAndAsked(ASKED);
+      await sendSetupReminder(b.orgId, AT_2305);
+      assert.equal((await reminders(b.orgId))[0].status, "queued");
+      await db.organisation.update({ where: { id: b.orgId }, data: { setupRemovedAt: AT_2305 } });
+      assert.deepEqual(await cancelSetupDm(b.orgId, "removed", AT_2305), { cancelled: 1, alreadyClaimed: 0 });
+      assert.equal((await reminders(b.orgId))[0].failReason, "cancelled: removed");
+      // Removed: no reminder, and for the owner an ops event only.
+      assert.deepEqual(await sendSetupReminder(a.orgId, new Date(NIGHT.getTime() + 40 * HOUR)), { kind: "not-due" });
+      assert.deepEqual(await noteStuckClub(a.orgId, new Date(NIGHT.getTime() + 73 * HOUR)), { kind: "removed" });
+      assert.equal((await jobsOf(a.orgId, "owner-setup-stuck")).length, 0);
+      ok("removal: cancelSetupDm(\"removed\") takes back the queued setup DM, its admin group command and a queued reminder; a removed club gets no reminder and no owner DM");
+
+      // (c) Added back: the cancelled setup DM is un-asked and a NEW one is
+      //     sent. The reminder runs from the NEW one's due time.
+      const READD = new Date(NIGHT.getTime() + 30 * HOUR); // 05:30 London two days on
+      await db.organisation.update({ where: { id: a.orgId }, data: { setupRemovedAt: null, setupAskedAt: null } });
+      const again = await sendSetupDm(a.orgId, READD, { learningEnabled: false });
+      assert.equal(again.kind, "sent");
+      const newAsked = (await db.organisation.findUnique({ where: { id: a.orgId }, select: { setupAskedAt: true } }))!.setupAskedAt!;
+      assert.deepEqual(newAsked, messageHoursSendAfter(READD), "the new setup DM is due at the next 09:00 London");
+      const asks = await jobsOf(a.orgId, "setup-ask");
+      assert.deepEqual(asks.map((j) => j.status), ["failed", "queued"], "the cancelled one, and the new one");
+      // 24 hours after the FIRST (cancelled) one's due time: nothing, and nothing is settled.
+      const oldDue = messageHoursSendAfter(NIGHT)!;
+      assert.deepEqual(await sendSetupReminder(a.orgId, new Date(oldDue.getTime() + 24 * HOUR)), { kind: "not-due" });
+      // The new one goes; 23 hours on: not yet; 24 hours on: the reminder.
+      await db.platformJob.update({ where: { id: asks[1].id }, data: { status: "sent", sentAt: newAsked } });
+      assert.deepEqual(await sendSetupReminder(a.orgId, new Date(newAsked.getTime() + 23 * HOUR)), { kind: "not-due" });
+      assert.deepEqual(await sendSetupReminder(a.orgId, new Date(newAsked.getTime() + 24 * HOUR)), { kind: "sent", sendAfter: null });
+      assert.equal((await reminders(a.orgId)).length, 1);
+      assert.deepEqual(await sendSetupReminder(a.orgId, new Date(newAsked.getTime() + 48 * HOUR)), { kind: "already" });
+      ok("after a re-add the reminder clock runs from the NEW setup DM, not the cancelled one, and still goes once");
+    }
+
+    // ── 16. THE 48-HOUR AUTO-LEAVE AND THE CODE'S 7 DAYS AGREE ────────────
+    {
+      const { queueUnsolicitedAutoLeaves } = await import("@/lib/group-add");
+      const { recordAdminGroupCandidate, adminGroupLinkCodeForSettings } = await import("@/lib/admin-group-link");
+      const leaveOf = (groupId: string) => db.platformJob.count({ where: { kind: "leave-group", groupId } });
+      // Nothing else in the test database may be due for a leave here.
+      await db.unsolicitedGroup.updateMany({ where: { leftAt: null }, data: { leftAt: new Date() } });
+
+      // (a) The setup DM's 7-day code; the organiser adds MatchTime to the organisers' group.
+      const c = await heldAndAsked(T0);
+      const command = (await jobsOf(c.orgId, "setup-admin-code"))[0].text ?? "";
+      await recordAdminGroupCandidate({ groupId: c.hq, subject: "Lib HQ", memberCount: 2, addedByPhone: c.phone, now: T0 });
+      for (const hours of [49, 72, 6 * 24]) {
+        assert.deepEqual(await queueUnsolicitedAutoLeaves(new Date(T0.getTime() + hours * HOUR)), { queued: 0, markedLeft: 0 }, `${hours} hours after the add: not left`);
+      }
+      assert.equal(await leaveOf(c.hq), 0);
+      // Day three: the command is forwarded there, and it links.
+      const linked = await handleAdminGroupLinkCommand({ groupId: c.hq, text: command, senderPhone: c.phone, messageId: `${c.orgId}-al1`, now: new Date(T0.getTime() + 72 * HOUR) });
+      assert.equal(linked.outcome, "linked");
+      assert.deepEqual(await queueUnsolicitedAutoLeaves(new Date(T0.getTime() + 30 * 24 * HOUR)), { queued: 0, markedLeft: 0 }, "a linked admin group is never left by the sweep");
+
+      // (b) The same, but the command never comes: left when the code expires.
+      const d = await heldAndAsked(T0);
+      await recordAdminGroupCandidate({ groupId: d.hq, subject: "Lib HQ 2", memberCount: 2, addedByPhone: d.phone, now: T0 });
+      assert.deepEqual(await queueUnsolicitedAutoLeaves(new Date(T0.getTime() + 7 * 24 * HOUR - 60_000)), { queued: 0, markedLeft: 0 });
+      assert.deepEqual(await queueUnsolicitedAutoLeaves(new Date(T0.getTime() + 7 * 24 * HOUR + 60_000)), { queued: 1, markedLeft: 0 });
+      assert.equal(await leaveOf(d.hq), 1);
+      await db.unsolicitedGroup.updateMany({ where: { groupId: d.hq }, data: { leftAt: new Date() } });
+      ok("a candidate admin group is not left while its adder's club has an open code: day three links; with no command it is left when the 7-day code expires");
+
+      // (c) THE SETTINGS BUTTON, as today: a 48-hour code, then the add. Left 48 hours after the add.
+      const e = await pendingClub();
+      await decideClub(e.orgId, "approve", "lib-owner", { now: T0, hold: false });
+      const pressed = new Date(T0.getTime() + HOUR);
+      const button = await adminGroupLinkCodeForSettings(e.orgId, { now: pressed });
+      assert.deepEqual(button.expiresAt, new Date(pressed.getTime() + 48 * HOUR));
+      const added = new Date(pressed.getTime() + 10 * 60_000);
+      await recordAdminGroupCandidate({ groupId: e.hq, subject: "Lib HQ 3", memberCount: 2, addedByPhone: e.phone, now: added });
+      assert.deepEqual(await queueUnsolicitedAutoLeaves(new Date(added.getTime() + 48 * HOUR - 60_000)), { queued: 0, markedLeft: 0 }, "not before 48 hours, as today");
+      assert.deepEqual(await queueUnsolicitedAutoLeaves(new Date(added.getTime() + 48 * HOUR)), { queued: 1, markedLeft: 0 }, "at 48 hours after the add, as today");
+      assert.equal(await leaveOf(e.hq), 1);
+      await db.unsolicitedGroup.updateMany({ where: { groupId: e.hq }, data: { leftAt: new Date() } });
+
+      // A stranger's group, and a candidate whose club has no code: 48 hours.
+      const f = await pendingClub();
+      await decideClub(f.orgId, "approve", "lib-owner", { now: T0, hold: false });
+      await recordAdminGroupCandidate({ groupId: f.hq, subject: "Lib HQ 4", memberCount: 2, addedByPhone: f.phone, now: T0 });
+      await db.unsolicitedGroup.create({ data: { groupId: "120363949900099999@g.us", subject: "Strangers", addedByPhone: "447700900977", addedAt: T0 } });
+      assert.deepEqual(await queueUnsolicitedAutoLeaves(new Date(T0.getTime() + 48 * HOUR)), { queued: 2, markedLeft: 0 });
+      ok("the Settings button's 48-hour code, a candidate with no code and a stranger's group are all left 48 hours after the add, exactly as before");
+
+      // ── 17. THE SETTINGS BUTTON SHOWS THE DM'S CODE ────────────────────
+      const g = await heldAndAsked(T0);
+      const dmCode = (await db.organisation.findUnique({ where: { id: g.orgId }, select: { adminGroupLinkCode: true } }))!.adminGroupLinkCode!;
+      const day2 = new Date(T0.getTime() + 48 * HOUR);
+      const shown = await adminGroupLinkCodeForSettings(g.orgId, { now: day2 });
+      assert.deepEqual(shown, { code: dmCode, expiresAt: new Date(T0.getTime() + 7 * 24 * HOUR), reused: true }, "the same code, with its real expiry");
+      // The command in the organiser's DM still works after the button was pressed.
+      const dmCommand = (await jobsOf(g.orgId, "setup-admin-code"))[0].text ?? "";
+      const still = await linkAdminGroup({ groupId: g.hq, text: dmCommand, senderPhone: g.phone, now: day2 });
+      assert.equal(still.outcome, "linked", "pressing Link admin group did not kill the DM's command");
+      // "New code" replaces it, on purpose: the old command then gets the 'not valid' reply.
+      const h = await heldAndAsked(T0);
+      const oldCommand = (await jobsOf(h.orgId, "setup-admin-code"))[0].text ?? "";
+      const fresh = await adminGroupLinkCodeForSettings(h.orgId, { now: day2, fresh: true });
+      assert.equal(fresh.reused, false);
+      assert.deepEqual(fresh.expiresAt, new Date(day2.getTime() + 48 * HOUR));
+      assert.equal((await linkAdminGroup({ groupId: h.hq, text: oldCommand, senderPhone: h.phone, now: day2 })).outcome, "bad-code");
+      assert.equal((await linkAdminGroup({ groupId: h.hq, text: `Match Time admin group ${fresh.code}`, senderPhone: h.phone, now: day2 })).outcome, "linked");
+      ok("the Settings button shows the code MatchTime sent by DM (the DM's command keeps working); only 'New code' replaces it");
     }
 
     console.log(`OK: ${n} setup follow-up checks`);

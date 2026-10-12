@@ -161,7 +161,12 @@ describe("the 24-hour reminder", () => {
   it("its purpose, refId and once-key are its own, and it can be cancelled", () => {
     expect(SETUP_REMINDER_DM_PURPOSE).toBe("setup-reminder");
     expect(setupReminderRefId("org-a")).toBe("org-a:setup-reminder");
-    expect(setupReminderKey("org-a")).toBe("org-org-a:setup-reminder");
+    // One per SETUP DM, not one per club for ever: a club that is removed
+    // from, added back and sent a NEW setup DM has a new due time, so the
+    // reminder clock restarts from that one.
+    const asked = new Date("2026-10-12T11:00:00Z");
+    expect(setupReminderKey("org-a", asked)).toBe("org-org-a:setup-reminder:2026-10-12T11:00:00.000Z");
+    expect(setupReminderKey("org-a", new Date(asked.getTime() + 1))).not.toBe(setupReminderKey("org-a", asked));
     expect(PLATFORM_DM_PURPOSES).toContain("setup-reminder");
     expect(CANCELLABLE_DM_PURPOSES).toContain("setup-reminder");
   });

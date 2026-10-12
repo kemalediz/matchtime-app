@@ -58,10 +58,20 @@ export const setupReminderRefId = (orgId: string): string => `${orgId}:setup-rem
 /** How long after the setup DM was due the reminder goes. */
 export const REMINDER_AFTER_MS = 24 * HOUR_MS;
 
-/** The once-key of a club's reminder (a `SentNotification` row). Claimed
- *  when the reminder is queued, and also when it is settled as "never to
- *  be sent" (the setup DM itself never went). */
-export const setupReminderKey = (orgId: string): string => `org-${orgId}:setup-reminder`;
+/**
+ * The once-key of a reminder (a `SentNotification` row). Claimed when the
+ * reminder is queued, and also when it is settled as "never to be sent"
+ * (the setup DM itself never went).
+ *
+ * ONE PER SETUP DM: it carries the due time of the setup DM it reminds of
+ * (`setupAskedAt`). A club has one setup DM, so this is once per club;
+ * but a club that MatchTime is removed from, is added back to and is sent
+ * a NEW setup DM has a new due time, so its reminder clock restarts from
+ * the new one, and what happened to the first (reminded, cancelled or
+ * settled as never) does not use it up.
+ */
+export const setupReminderKey = (orgId: string, setupAskedAt: Date): string =>
+  `org-${orgId}:setup-reminder:${setupAskedAt.toISOString()}`;
 /** `SentNotification.kind` of a reminder that was queued ... */
 export const SETUP_REMINDER_KIND = "setup-reminder";
 /** ... and of one that will never be sent. */

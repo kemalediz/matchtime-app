@@ -177,7 +177,7 @@ describe("sendSetupReminder: when it goes", () => {
       nextPath: "/admin/settings",
       ttlSeconds: 7 * 24 * 60 * 60,
     });
-    expect(state.keys).toEqual([{ key: "org-org-riverside:setup-reminder", kind: "setup-reminder" }]);
+    expect(state.keys).toEqual([{ key: "org-org-riverside:setup-reminder:2026-10-12T11:00:00.000Z", kind: "setup-reminder" }]);
   });
 
   it("a minute before the 24 hours are up: nothing", async () => {
@@ -249,7 +249,7 @@ describe("sendSetupReminder: once, and only when it is still true", () => {
       state.setupDm = dm;
       state.keys = [];
       expect(await sendSetupReminder("org-riverside", AT_24H)).toEqual({ kind: "never", reason: "setup-dm-not-sent" });
-      expect(state.keys).toEqual([{ key: "org-org-riverside:setup-reminder", kind: "setup-reminder-skipped" }]);
+      expect(state.keys).toEqual([{ key: "org-org-riverside:setup-reminder:2026-10-12T11:00:00.000Z", kind: "setup-reminder-skipped" }]);
       // Settled: a later sweep does not look again, even if a job appeared.
       state.setupDm = { status: "sent" };
       expect(await sendSetupReminder("org-riverside", new Date(AT_24H.getTime() + HOUR))).toEqual({ kind: "already" });
@@ -279,7 +279,7 @@ describe("sendSetupReminder: once, and only when it is still true", () => {
   it("no organiser on record: settled, nothing sent", async () => {
     state.connect = null;
     expect(await sendSetupReminder("org-riverside", AT_24H)).toEqual({ kind: "never", reason: "no-organiser" });
-    expect(state.keys).toEqual([{ key: "org-org-riverside:setup-reminder", kind: "setup-reminder-skipped" }]);
+    expect(state.keys).toEqual([{ key: "org-org-riverside:setup-reminder:2026-10-12T11:00:00.000Z", kind: "setup-reminder-skipped" }]);
   });
 
   it("logs carry the club's id and codes only: no name, number, text or link", async () => {
@@ -290,6 +290,47 @@ describe("sendSetupReminder: once, and only when it is still true", () => {
     const all = logs.join("\n");
     expect(all).toContain("org-riverside");
     expect(all).not.toMatch(/Riverside|447700900123|mt\.link|Just checking|Tuesday 5s/);
+  });
+});
+
+describe("removed from the group, added back, and sent a NEW setup DM: the reminder runs from the new one", () => {
+  const NEW_ASKED = new Date(ASKED.getTime() + 30 * HOUR);
+
+  it("the first setup DM was cancelled before it went (never reminded); the new one is reminded 24 hours after ITS due time", async () => {
+    // Before the removal: nothing to remind about, settled for THAT setup DM.
+    state.setupDm = { status: "failed" };
+    expect(await sendSetupReminder("org-riverside", AT_24H)).toEqual({ kind: "never", reason: "setup-dm-not-sent" });
+    // Added back: a new setup DM, with a new due time, and it was sent.
+    state.org = heldOrg({ setupAskedAt: NEW_ASKED });
+    state.setupDm = { status: "sent" };
+    // Not on the OLD clock (24 hours after the cancelled one is long past) ...
+    expect(await sendSetupReminder("org-riverside", new Date(NEW_ASKED.getTime() + 23 * HOUR))).toEqual({ kind: "not-due" });
+    // ... on the new one.
+    expect(await sendSetupReminder("org-riverside", new Date(NEW_ASKED.getTime() + 24 * HOUR))).toMatchObject({ kind: "sent" });
+    expect(state.jobs).toHaveLength(1);
+    // And once for it.
+    expect(await sendSetupReminder("org-riverside", new Date(NEW_ASKED.getTime() + 48 * HOUR))).toEqual({ kind: "already" });
+  });
+
+  it("a reminder that already went for the first setup DM does not use up the second one's", async () => {
+    await sendSetupReminder("org-riverside", AT_24H);
+    state.org = heldOrg({ setupAskedAt: NEW_ASKED });
+    expect(await sendSetupReminder("org-riverside", new Date(NEW_ASKED.getTime() + 24 * HOUR))).toMatchObject({ kind: "sent" });
+    expect(state.jobs).toHaveLength(2);
+    expect(state.keys.map((k) => k.key)).toEqual([
+      "org-org-riverside:setup-reminder:2026-10-12T11:00:00.000Z",
+      `org-org-riverside:setup-reminder:${NEW_ASKED.toISOString()}`,
+    ]);
+  });
+
+  it("the due time changed between the first read and the claim (a removal and re-add in between): nothing is queued on the stale one", async () => {
+    dbMock.$executeRaw.mockImplementationOnce(async () => {
+      state.org = heldOrg({ setupAskedAt: new Date(ASKED.getTime() - HOUR) });
+      return 1;
+    });
+    expect(await sendSetupReminder("org-riverside", AT_24H)).toEqual({ kind: "not-due" });
+    expect(state.jobs).toEqual([]);
+    expect(state.keys).toEqual([]);
   });
 });
 
@@ -305,8 +346,11 @@ describe("runSetupReminderSweep", () => {
   });
 
   it("skips clubs already settled without reading them again, and sends the rest", async () => {
-    state.candidates = [{ id: "org-done" }, { id: "org-riverside" }];
-    state.keys = [{ key: "org-org-done:setup-reminder", kind: "setup-reminder" }];
+    state.candidates = [
+      { id: "org-done", setupAskedAt: ASKED },
+      { id: "org-riverside", setupAskedAt: ASKED },
+    ];
+    state.keys = [{ key: "org-org-done:setup-reminder:2026-10-12T11:00:00.000Z", kind: "setup-reminder" }];
     expect(await runSetupReminderSweep(AT_24H)).toEqual({ considered: 1, sent: 1 });
     expect(state.jobs).toHaveLength(1);
     expect(state.jobs[0].refId).toBe("org-riverside:setup-reminder");
@@ -320,7 +364,10 @@ describe("runSetupReminderSweep", () => {
   });
 
   it("one club failing does not stop the others", async () => {
-    state.candidates = [{ id: "org-broken" }, { id: "org-riverside" }];
+    state.candidates = [
+      { id: "org-broken", setupAskedAt: ASKED },
+      { id: "org-riverside", setupAskedAt: ASKED },
+    ];
     const real = dbMock.organisation.findFirst.getMockImplementation()!;
     dbMock.organisation.findFirst.mockImplementation(async (args: { where: Row }) => {
       if (args.where.id === "org-broken") throw new Error("connection reset");

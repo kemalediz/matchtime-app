@@ -547,6 +547,100 @@ describe("queueUnsolicitedAutoLeaves (decision 3)", () => {
     expect(dbMock.platformJob.create).toHaveBeenCalledWith({
       data: { kind: "leave-group", groupId: GROUP, purpose: "leave-group", refId: "ug-1", status: "queued" },
     });
+    // An ordinary unsolicited group costs no extra query: the admin-code
+    // condition below is only looked at for a candidate admin group.
+    expect(dbMock.user.findMany).not.toHaveBeenCalled();
+    expect(dbMock.membership.findMany).not.toHaveBeenCalled();
+    expect(dbMock.organisation.findMany).not.toHaveBeenCalled();
+  });
+
+  describe("a candidate admin group is not left while its adder's club has an open admin group code (2026-10-12)", () => {
+    const RAIHAN = "447700900555";
+    const candidate = (addedMinsAgo: number, over: Record<string, unknown> = {}) => ({
+      id: "ug-hq",
+      groupId: GROUP,
+      addedAt: mins(-addedMinsAgo),
+      awaitingAdminLink: true,
+      addedByPhone: RAIHAN,
+      addedByLid: null,
+      ...over,
+    });
+    /** Raihan is an admin of org-fnf; `openUntil` is that club's code expiry (null: no code). */
+    function world(openUntil: Date | null) {
+      dbMock.organisation.findFirst.mockResolvedValue(null);
+      dbMock.user.findMany.mockImplementation(async (a: { where: { phoneNumber: { in: string[] } } }) =>
+        a.where.phoneNumber.in.includes(`+${RAIHAN}`) ? [{ id: "u-raihan" }] : [],
+      );
+      dbMock.membership.findMany.mockImplementation(async (a: { where: { userId?: { in: string[] } } }) =>
+        a.where.userId?.in.includes("u-raihan") ? [{ userId: "u-raihan", orgId: "org-fnf", org: { id: "org-fnf", name: "FNF", language: "en" } }] : [],
+      );
+      dbMock.organisation.findMany.mockImplementation(async (a: { where: { adminGroupLinkCodeExpiresAt?: { gt: Date } } }) =>
+        openUntil && a.where.adminGroupLinkCodeExpiresAt && openUntil.getTime() > a.where.adminGroupLinkCodeExpiresAt.gt.getTime() ? [{ id: "org-fnf" }] : [],
+      );
+    }
+
+    it("three days after the add, with the setup DM's 7-day code still open: NOT left", async () => {
+      dbMock.unsolicitedGroup.findMany.mockResolvedValue([candidate(72 * 60)]);
+      world(mins(4 * 24 * 60));
+      expect(await queueUnsolicitedAutoLeaves(NOW)).toEqual({ queued: 0, markedLeft: 0 });
+      expect(dbMock.platformJob.create).not.toHaveBeenCalled();
+      // The code that counts: an approved club the ADDER is an owner or admin of, unexpired.
+      expect(dbMock.membership.findMany.mock.calls[0][0].where).toMatchObject({
+        userId: { in: ["u-raihan"] },
+        leftAt: null,
+        role: { in: ["OWNER", "ADMIN"] },
+        org: { approvalStatus: "approved" },
+      });
+      expect(dbMock.organisation.findMany.mock.calls[0][0].where).toMatchObject({
+        id: { in: ["org-fnf"] },
+        approvalStatus: "approved",
+        adminGroupLinkCode: { not: null },
+        adminGroupLinkCodeExpiresAt: { gt: NOW },
+      });
+    });
+
+    it("once that code has expired: left, as any unsolicited group", async () => {
+      dbMock.unsolicitedGroup.findMany.mockResolvedValue([candidate(8 * 24 * 60)]);
+      world(mins(-60));
+      expect(await queueUnsolicitedAutoLeaves(NOW)).toEqual({ queued: 1, markedLeft: 0 });
+    });
+
+    it("no code at all (never asked for, or used to link another group): left at 48 hours, as today", async () => {
+      dbMock.unsolicitedGroup.findMany.mockResolvedValue([candidate(49 * 60)]);
+      world(null);
+      expect(await queueUnsolicitedAutoLeaves(NOW)).toEqual({ queued: 1, markedLeft: 0 });
+    });
+
+    it("the Settings button's 48-hour code, minted before the add: it expires before the 48 hours are up, so the leave is exactly today's", async () => {
+      // Code minted an hour before the add; 48 hours and one minute after the add it has expired.
+      dbMock.unsolicitedGroup.findMany.mockResolvedValue([candidate(48 * 60 + 1)]);
+      world(mins(-61));
+      expect(await queueUnsolicitedAutoLeaves(NOW)).toEqual({ queued: 1, markedLeft: 0 });
+    });
+
+    it("an adder who is no longer an owner or admin of any approved club: left", async () => {
+      dbMock.unsolicitedGroup.findMany.mockResolvedValue([candidate(72 * 60)]);
+      world(mins(4 * 24 * 60));
+      dbMock.membership.findMany.mockResolvedValue([]);
+      expect(await queueUnsolicitedAutoLeaves(NOW)).toEqual({ queued: 1, markedLeft: 0 });
+    });
+
+    it("an ordinary unsolicited group added by the same person is left at 48 hours whatever codes are open", async () => {
+      dbMock.unsolicitedGroup.findMany.mockResolvedValue([candidate(49 * 60, { awaitingAdminLink: false })]);
+      world(mins(4 * 24 * 60));
+      expect(await queueUnsolicitedAutoLeaves(NOW)).toEqual({ queued: 1, markedLeft: 0 });
+      expect(dbMock.organisation.findMany).not.toHaveBeenCalled();
+    });
+
+    it("a held candidate does not stop the groups after it from being left", async () => {
+      dbMock.unsolicitedGroup.findMany.mockResolvedValue([
+        candidate(72 * 60),
+        { id: "ug-2", groupId: "120363400000000002@g.us", addedAt: mins(-50 * 60), awaitingAdminLink: false, addedByPhone: "447700900999", addedByLid: null },
+      ]);
+      world(mins(4 * 24 * 60));
+      expect(await queueUnsolicitedAutoLeaves(NOW)).toEqual({ queued: 1, markedLeft: 0 });
+      expect(dbMock.platformJob.create.mock.calls[0][0].data).toMatchObject({ groupId: "120363400000000002@g.us" });
+    });
   });
 
   it("a leave already sent marks the group left; one queued, claimed or failed is not repeated", async () => {

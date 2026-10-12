@@ -1939,6 +1939,7 @@ export const tr: Strings = {
   settings_admin_channel_step_send: "O grupta şunu gönderin:",
   settings_admin_channel_command: (p: { code: string }): string => `@Match Time yönetici grubu ${p.code}`,
   settings_admin_channel_validity: "Kod bir kez çalışır ve 48 saat geçerlidir.",
+  settings_admin_channel_valid_until: (p: { when: string }): string => `Kod bir kez çalışır ve şu zamana kadar geçerlidir: ${p.when}.`,
   settings_admin_channel_linked: (p: { group: string }): string => `Bağlı: ${p.group}`,
   settings_admin_channel_unlink: "Bağlantıyı kaldır",
   settings_admin_channel_pending_note:

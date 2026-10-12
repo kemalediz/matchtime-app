@@ -2455,6 +2455,11 @@ export const en = {
   settings_admin_channel_step_send: "In that group, send:",
   settings_admin_channel_command: (p: { code: string }): string => `@Match Time admin group ${p.code}`,
   settings_admin_channel_validity: "The code works once and lasts 48 hours.",
+  /** Under a code that is on screen: its REAL expiry (2026-10-12). The
+   *  code MatchTime sent in the setup DM lasts 7 days, and the Settings
+   *  page shows that same code instead of replacing it. `when` is
+   *  `longDayTimeLabel`: "Monday 19 October at 12:00". */
+  settings_admin_channel_valid_until: (p: { when: string }): string => `The code works once and is valid until ${p.when}.`,
   settings_admin_channel_linked: (p: { group: string }): string => `Linked: ${p.group}`,
   settings_admin_channel_unlink: "Unlink",
   settings_admin_channel_pending_note:
