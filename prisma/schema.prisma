@@ -492,6 +492,7 @@ model Organisation {
   memberships        Membership[]
   clubConnects       ClubConnect[]
   activities         Activity[]
+  venueLookups       VenueLookup[]
   sports             Sport[]
   userAliases        UserAlias[]
   rosterSurveys      RosterSurvey[]
@@ -764,6 +765,29 @@ model Activity {
   venue             String
   venueId           String?
   venueRef          Venue?       @relation(fields: [venueId], references: [id])
+  /// VENUE LOCATION (2026-10-12). All nullable, all about THIS activity's
+  /// link to a Venue row. The Venue row itself is shared across clubs by
+  /// Google place id, so nothing a club decides (how sure the match is
+  /// for the words it typed, whether its organiser confirmed it) may be
+  /// written there.
+  ///
+  /// How sure the match is: "high" | "low". Null with no place linked.
+  venueConfidence    String?
+  /// Where the link came from: "text" (the venue text), "address" (a
+  /// fuller address the organiser typed), "link" (a pasted map link) or
+  /// "backfill".
+  venueMatchSource   String?
+  /// Country plus the normalised words that were looked up, for example
+  /// "GB|powerleague shoreditch". A second club typing the same words
+  /// reuses the place with no second Google call.
+  venueQueryKey      String?
+  /// When the last lookup for the current venue text finished, found or
+  /// not. Null: not looked up yet (or the lookup failed and may be retried).
+  venueResolvedAt    DateTime?
+  /// The organiser said "Yes, this is the right place". Cleared whenever
+  /// the venue text or the linked place changes.
+  venueConfirmedAt   DateTime?
+  venueConfirmedById String?
   isActive          Boolean      @default(true)
   deadlineHours     Int          @default(5)
   matchDurationMins Int          @default(60)
@@ -790,6 +814,23 @@ model Activity {
   @@index([orgId])
   @@index([sportId])
   @@index([venueId])
+  @@index([venueQueryKey])
+}
+
+/// One row per outbound venue lookup made for a club (a Google Geocoding
+/// call, or the one request that expands a short map link). The per-club
+/// daily cap counts these. Ids and the kind only: never the words that
+/// were looked up, an address or coordinates. (2026-10-12)
+model VenueLookup {
+  id         String       @id @default(cuid())
+  orgId      String
+  org        Organisation @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  activityId String?
+  /// "geocode" | "short-link"
+  kind       String
+  createdAt  DateTime     @default(now())
+
+  @@index([orgId, createdAt])
 }
 
 /**

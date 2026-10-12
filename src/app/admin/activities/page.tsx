@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Plus, Zap, X } from "lucide-react";
 import {
@@ -11,6 +11,8 @@ import {
 import { DAYS_OF_WEEK } from "@/lib/constants";
 import { SectionInfo } from "@/components/info/section-info";
 import { useOrgLang } from "@/components/info/org-lang";
+import { VenueConfirmLine } from "@/components/venue/venue-confirm-line";
+import type { VenueLocationView } from "@/lib/venue-location-rules";
 
 interface Sport {
   id: string;
@@ -34,7 +36,12 @@ interface Activity {
   deadlineHours: number;
   matchDurationMins: number;
   ratingWindowHours: number;
+  /** Where the venue is, as far as MatchTime knows. OWNER and ADMIN only. */
+  venueLocation?: VenueLocationView;
 }
+
+/** How many times the page looks again while a venue is being looked up. */
+const PENDING_RELOADS = 12;
 
 export default function ActivitiesPage() {
   const lang = useOrgLang();
@@ -68,13 +75,32 @@ export default function ActivitiesPage() {
       const def = s.find((x) => x.name.toLowerCase().includes("football 7")) ?? s[0];
       if (def) setSportId(def.id);
     });
-    loadActivities();
   }, []);
 
-  async function loadActivities() {
+  // A venue is looked up AFTER the save has answered, so the first load
+  // can find it "pending". Look again a few times, two seconds apart.
+  const pendingReloads = useRef(0);
+  const loadActivities = useCallback(async () => {
     const res = await fetch("/api/activities");
-    if (res.ok) setActivities(await res.json());
+    if (res.ok) {
+      const rows: Activity[] = await res.json();
+      setActivities(rows);
+      if (rows.some((a) => a.venueLocation?.state === "pending") && pendingReloads.current < PENDING_RELOADS) {
+        pendingReloads.current += 1;
+        setTimeout(() => void loadActivities(), 2000);
+      }
+    }
     setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    void loadActivities();
+  }, [loadActivities]);
+
+  /** After a save: start the "pending" look-agains afresh. */
+  function reloadAfterSave() {
+    pendingReloads.current = 0;
+    void loadActivities();
   }
 
   async function handleCreate(e: React.FormEvent) {
@@ -96,7 +122,7 @@ export default function ActivitiesPage() {
       setDialogOpen(false);
       setName("");
       setVenue("");
-      loadActivities();
+      reloadAfterSave();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to create");
     }
@@ -132,7 +158,7 @@ export default function ActivitiesPage() {
       });
       toast.success("Activity updated");
       setEditId(null);
-      loadActivities();
+      reloadAfterSave();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to update");
     } finally {
@@ -193,6 +219,7 @@ export default function ActivitiesPage() {
                 <p className="text-sm text-slate-500 mt-1">
                   {DAYS_OF_WEEK[a.dayOfWeek]}s at {a.time} · {a.venue}
                 </p>
+                <VenueConfirmLine activityId={a.id} location={a.venueLocation} lang={lang} onChanged={loadActivities} />
                 <p className="flex flex-wrap items-center gap-1 text-xs text-slate-400 mt-0.5">
                   {a.sport.name} · {a.matchDurationMins}min · Sign-ups close {a.deadlineHours}h before
                   <SectionInfo k="act_deadline" lang={lang} />

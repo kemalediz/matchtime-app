@@ -6,6 +6,9 @@ import { activitySchema } from "@/lib/validations";
 import { requireOrgAdmin } from "@/lib/org";
 import { revalidatePath } from "next/cache";
 import { londonWallClockToUtc, nextLondonKickoff } from "@/lib/london-time";
+import { CLEARED_VENUE_LINK } from "@/lib/venue-location";
+import { normaliseVenueText } from "@/lib/venue-location-rules";
+import { scheduleVenueResolve } from "@/lib/venue-location-schedule";
 
 export async function createActivity(formData: {
   orgId: string;
@@ -32,7 +35,9 @@ export async function createActivity(formData: {
   });
   if (!sport) throw new Error("Sport not found in this organisation");
 
-  await db.activity.create({ data: { ...parsed, orgId } });
+  const created = await db.activity.create({ data: { ...parsed, orgId }, select: { id: true } });
+  // Venue location: looked up after the response, never part of the save.
+  scheduleVenueResolve(created.id);
 
   revalidatePath("/admin/activities");
 }
@@ -66,7 +71,18 @@ export async function updateActivity(
     if (!sport) throw new Error("Sport not found in this organisation");
   }
 
-  await db.activity.update({ where: { id: activityId }, data: formData });
+  // New venue words: the place linked to the old words is cleared in the
+  // SAME write, so a stale location never stays attached to new text, and
+  // the new words are looked up after the response. A change of case or
+  // punctuation only is not a new venue.
+  const venueChanged =
+    typeof formData.venue === "string" && normaliseVenueText(formData.venue) !== normaliseVenueText(activity.venue);
+
+  await db.activity.update({
+    where: { id: activityId },
+    data: venueChanged ? { ...formData, ...CLEARED_VENUE_LINK } : formData,
+  });
+  if (venueChanged) scheduleVenueResolve(activityId);
 
   revalidatePath("/admin/activities");
 }

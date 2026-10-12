@@ -20,6 +20,9 @@ import { revalidatePath } from "next/cache";
 import { seedFromAnalyzerRating } from "@/lib/seed-scale";
 import { normalisePhone } from "@/lib/phone";
 import { updatePlayerPhone } from "./players";
+import { CLEARED_VENUE_LINK } from "@/lib/venue-location";
+import { normaliseVenueText } from "@/lib/venue-location-rules";
+import { scheduleVenueResolve } from "@/lib/venue-location-schedule";
 
 export interface ApplyEnrichmentInput {
   sessionId: string;
@@ -118,7 +121,15 @@ export async function applyEnrichment(
     if (input.schedule.time != null) data.time = input.schedule.time;
     if (input.schedule.venue != null) data.venue = input.schedule.venue;
     if (Object.keys(data).length > 0) {
-      await db.activity.update({ where: { id: activity.id }, data });
+      // New venue words clear the place linked to the old ones in the same
+      // write; the new words are looked up after the response.
+      const venueChanged =
+        data.venue !== undefined && normaliseVenueText(data.venue) !== normaliseVenueText(activity.venue);
+      await db.activity.update({
+        where: { id: activity.id },
+        data: venueChanged ? { ...data, ...CLEARED_VENUE_LINK } : data,
+      });
+      if (venueChanged) scheduleVenueResolve(activity.id);
     }
 
     if (input.schedule.playersPerSide != null) {
