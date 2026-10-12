@@ -6,7 +6,10 @@
 import { describe, it, expect } from "vitest";
 import type { GeocodeHit } from "../geocode";
 import {
+  CLEARED_VENUE_LINK,
   VENUE_LOOKUPS_PER_CLUB_PER_DAY,
+  VENUE_PENDING_WINDOW_MS,
+  withoutVenueBookkeeping,
   buildGeocodeQuery,
   classifyConfidence,
   clubCountry,
@@ -159,15 +162,18 @@ describe("what the page is told", () => {
     venue: "Powerleague Shoreditch",
     venueId: null as string | null,
     venueConfidence: null as string | null,
+    venueLookupStatus: null as string | null,
     venueResolvedAt: null as Date | null,
     venueConfirmedAt: null as Date | null,
-    updatedAt: new Date("2026-10-01T12:00:00Z"),
     venueRef: null as null | { placeId: string | null; formattedAddress: string | null; lat: number | null; lng: number | null },
   };
   const place = { placeId: "ChIJ_abc", formattedAddress: "Braithwaite St, London E1 6GJ, UK", lat: 51.5, lng: -0.1 };
 
   it("found: the address, a map link, how sure, and whether it is confirmed", () => {
-    const v = venueLocationView({ ...row, venueId: "v1", venueConfidence: "low", venueResolvedAt: now, venueRef: place }, now);
+    const v = venueLocationView(
+      { ...row, venueId: "v1", venueConfidence: "low", venueLookupStatus: "found", venueResolvedAt: now, venueRef: place },
+      now,
+    );
     expect(v).toEqual({
       state: "found",
       address: "Braithwaite St, London E1 6GJ, UK",
@@ -202,12 +208,62 @@ describe("what the page is told", () => {
     expect(v).toMatchObject({ confidence: "low" });
   });
 
-  it("just saved and not looked up yet: pending, for a short while only", () => {
-    const fresh = { ...row, updatedAt: new Date(now.getTime() - 5_000) };
-    expect(venueLocationView(fresh, now).state).toBe("pending");
-    expect(venueLocationView(row, now).state).toBe("none");
-    expect(venueLocationView({ ...fresh, venueResolvedAt: now }, now).state).toBe("none");
-    expect(venueLocationView({ ...fresh, venue: "TBD" }, now).state).toBe("none");
+  it("NEVER LOOKED UP (every weekly game that existed before this feature): its own state, not 'not found'", () => {
+    expect(venueLocationView(row, now)).toEqual({ state: "never" });
+    expect(venueLocationView({ ...row, venue: "TBD" }, now)).toEqual({ state: "never" });
+  });
+
+  it("FOUND NOTHING only when Google really answered with no result", () => {
+    expect(venueLocationView({ ...row, venueLookupStatus: "none", venueResolvedAt: now }, now)).toEqual({ state: "none" });
+  });
+
+  it("LOOKUP FAILED or CAPPED: 'could not check', never 'not found'", () => {
+    for (const status of ["failed", "capped"]) {
+      expect(venueLocationView({ ...row, venueLookupStatus: status, venueResolvedAt: now }, now), status).toEqual({ state: "failed" });
+    }
+  });
+
+  it("PENDING only when a lookup was scheduled, whatever else was saved", () => {
+    const scheduled = { ...row, venueLookupStatus: "pending", venueResolvedAt: new Date(now.getTime() - 5_000) };
+    expect(venueLocationView(scheduled, now)).toEqual({ state: "pending" });
+    // An edit of the time only schedules nothing: the row says nothing is pending.
+    expect(venueLocationView({ ...row, venueLookupStatus: "none", venueResolvedAt: new Date(now.getTime() - 1_000) }, now).state).toBe("none");
+    expect(venueLocationView(row, now).state).toBe("never");
+  });
+
+  it("a lookup that was scheduled and never reported back is a failure, not an endless 'looking'", () => {
+    const lost = { ...row, venueLookupStatus: "pending", venueResolvedAt: new Date(now.getTime() - VENUE_PENDING_WINDOW_MS - 1) };
+    expect(venueLocationView(lost, now)).toEqual({ state: "failed" });
+    expect(venueLocationView({ ...row, venueLookupStatus: "pending", venueResolvedAt: null }, now)).toEqual({ state: "failed" });
+  });
+});
+
+describe("venue names that are not in the Latin alphabet", () => {
+  it("keep their letters: two different stadiums are two different keys", () => {
+    expect(normaliseVenueText("Стадион Динамо")).toBe("стадион динамо");
+    expect(normaliseVenueText("Стадион Спартак")).toBe("стадион спартак");
+    expect(venueQueryKey("Стадион Динамо", null)).not.toBe(venueQueryKey("Стадион Спартак", null));
+  });
+
+  it("Greek, Arabic and a mixed-script name", () => {
+    expect(normaliseVenueText("Αθήνα Arena 2")).toBe("αθηνα arena 2");
+    expect(venueQueryKey("Αθήνα Arena 2", "GR")).not.toBe(venueQueryKey("Arena 2", "GR"));
+    expect(normaliseVenueText("ملعب  الملك، فهد!")).toBe("ملعب الملك فهد");
+    expect(normaliseVenueText("ملعب الملك فهد")).not.toBe(normaliseVenueText("ملعب الأمير فيصل"));
+    expect(normaliseVenueText("Halı Saha 5 «Динамо»")).toBe("hali saha 5 динамо");
+  });
+
+  it("case folds in every script, and the Turkish handling is unchanged", () => {
+    expect(normaliseVenueText("СТАДИОН ДИНАМО")).toBe(normaliseVenueText("стадион динамо"));
+    expect(normaliseVenueText("Halı Saha İstanbul")).toBe("hali saha istanbul");
+    expect(normaliseVenueText("ΑΘΗΝΑ")).toBe(normaliseVenueText("αθηνα"));
+  });
+
+  it("such a venue is a real venue: not a placeholder, and judged by its words", () => {
+    expect(isPlaceholderVenue("Стадион Динамо")).toBe(false);
+    expect(isPlaceholderVenue("ملعب")).toBe(false);
+    expect(classifyConfidence({ query: "Стадион Динамо", hit: hit({ countryCode: null }), expectedCountry: null })).toBe("high");
+    expect(classifyConfidence({ query: "Стадион", hit: hit({ countryCode: null }), expectedCountry: null })).toBe("low");
   });
 });
 
@@ -215,15 +271,14 @@ it("the daily cap is a small number", () => {
   expect(VENUE_LOOKUPS_PER_CLUB_PER_DAY).toBe(10);
 });
 
-it("a member-facing activity carries none of the venue-location columns", async () => {
-  const { withoutVenueBookkeeping } = await import("../venue-location-rules");
+it("a member-facing activity carries none of the venue-location columns", () => {
   const row = {
     id: "act",
     venue: "Powerleague Shoreditch",
     venueId: "v1",
     venueConfidence: "high",
     venueMatchSource: "text",
-    venueQueryKey: "GB|powerleague shoreditch",
+    venueLookupStatus: "found",
     venueResolvedAt: new Date(),
     venueConfirmedAt: new Date(),
     venueConfirmedById: "user-1",
@@ -231,4 +286,11 @@ it("a member-facing activity carries none of the venue-location columns", async 
   };
   expect(withoutVenueBookkeeping(row)).toEqual({ id: "act", venue: "Powerleague Shoreditch", sport: { name: "5s" } });
   expect(row.venueId, "the row itself is not mutated").toBe("v1");
+});
+
+it("the columns an edit of the venue text clears are every venue-location column", () => {
+  expect(Object.keys(CLEARED_VENUE_LINK).sort()).toEqual(
+    ["venueId", "venueConfidence", "venueMatchSource", "venueLookupStatus", "venueResolvedAt", "venueConfirmedAt", "venueConfirmedById"].sort(),
+  );
+  expect(Object.values(CLEARED_VENUE_LINK).every((v) => v === null)).toBe(true);
 });

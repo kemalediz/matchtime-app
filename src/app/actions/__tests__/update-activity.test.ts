@@ -54,7 +54,9 @@ const EDIT = { name: "Tuesday 7s", dayOfWeek: 2, time: "21:30", venue: "Goals", 
 
 beforeEach(() => {
   vi.clearAllMocks();
-  state.activity = { id: "a1", orgId: "club-a", name: "Tuesday", feePerPlayer: null, feeSplitTotal: false };
+  // `venue` is what the edits below send, so no venue lookup is scheduled here
+  // (that path is src/lib/__tests__/activities-venue-actions.test.ts).
+  state.activity = { id: "a1", orgId: "club-a", name: "Tuesday", venue: "Goals", feePerPlayer: null, feeSplitTotal: false };
   state.memberships = [
     { userId: "u-owner", orgId: "club-a", role: "OWNER", leftAt: null },
     { userId: "u-admin", orgId: "club-a", role: "ADMIN", leftAt: null },

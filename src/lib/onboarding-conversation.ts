@@ -1321,7 +1321,7 @@ async function completeOnboarding(
     },
   });
   // Venue location: looked up after the response, never part of the save.
-  scheduleVenueResolve(activity.id);
+  await scheduleVenueResolve(activity.id);
 
   // First match: next occurrence of dayOfWeek (weekly) or the given
   // one-off date, at kickoffTime London.

@@ -5,16 +5,24 @@
  * (2026-10-12). It shows the organiser the place MatchTime found for the
  * venue they typed and asks "Is this the right place?".
  *
- * Five looks, one per `data-state`:
- *   pending    just saved, still being looked up: one quiet line;
+ * Seven looks, one per `data-state`. Each is what was RECORDED about the
+ * lookup, so the line never says "not found" about a place nobody looked
+ * for:
+ *   never      nothing was ever looked up (every game that existed
+ *              before this feature): a small neutral line asking where
+ *              the club plays. No amber, no warning icon;
+ *   pending    a lookup is under way: one quiet line;
+ *   failed     the lookup could not be made (Google failed or timed out,
+ *              or the club's daily lookups ran out): a neutral line and
+ *              "Try again";
  *   confirmed  the organiser said Yes (or pasted the pin themselves):
  *              one quiet line with the address, a map link and Change;
  *   question   found and we are fairly sure: the address, then the
  *              question with Yes and Change;
  *   low        found but we are not sure: the same question in the amber
  *              "things to check" style of the settings page;
- *   none       nothing found: the amber block asking for the address or
- *              a map link.
+ *   none       Google answered and found nothing: the amber block asking
+ *              for the address or a map link.
  *
  * "Change" opens a box for a fuller address or a pasted map link. It
  * never changes the venue name the group sees.
@@ -28,7 +36,7 @@
  */
 import { useState } from "react";
 import { AlertTriangle, ExternalLink, MapPin } from "lucide-react";
-import { changeVenueLocationAction, confirmVenueLocationAction } from "@/app/actions/venue-location";
+import { changeVenueLocationAction, confirmVenueLocationAction, retryVenueLookupAction } from "@/app/actions/venue-location";
 import { t } from "@/lib/i18n/t";
 import type { VenueLocationView } from "@/lib/venue-location-rules";
 
@@ -51,18 +59,16 @@ export function VenueConfirmLine(props: {
   const loc = props.location;
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState("");
-  const [busy, setBusy] = useState<"yes" | "find" | null>(null);
+  const [busy, setBusy] = useState<"yes" | "find" | "retry" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // A plain member's response carries no location: render nothing.
   if (!loc) return null;
 
   const state =
-    loc.state === "pending"
-      ? "pending"
-      : loc.state === "none"
-        ? "none"
-        : loc.confirmed
+    loc.state !== "found"
+      ? loc.state
+      : loc.confirmed
           ? "confirmed"
           : loc.confidence === "high"
             ? "question"
@@ -75,6 +81,20 @@ export function VenueConfirmLine(props: {
       const res = await confirmVenueLocationAction(props.activityId);
       if (!res.ok) setError(s.venue_loc_err_generic);
       else await props.onChanged();
+    } catch {
+      setError(s.venue_loc_err_generic);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function retry() {
+    setBusy("retry");
+    setError(null);
+    try {
+      // Whatever it came to is recorded: the reload shows it.
+      await retryVenueLookupAction(props.activityId);
+      await props.onChanged();
     } catch {
       setError(s.venue_loc_err_generic);
     } finally {
@@ -96,7 +116,7 @@ export function VenueConfirmLine(props: {
       } else if (res.status === "not-found") setError(s.venue_loc_err_not_found);
       else if (res.status === "capped") setError(s.venue_loc_err_capped);
       else if (res.status === "unsupported") setError(res.reason === "what3words" ? s.venue_loc_err_w3w : s.venue_loc_err_link);
-      else setError(s.venue_loc_err_generic);
+      else setError(s.venue_loc_failed);
     } catch {
       setError(s.venue_loc_err_generic);
     } finally {
@@ -170,6 +190,31 @@ export function VenueConfirmLine(props: {
 
   if (state === "pending") {
     return wrap(<p className="text-xs text-slate-400">{s.venue_loc_pending}</p>, "");
+  }
+
+  if (state === "never" || state === "failed") {
+    // Neutral on purpose: nothing is wrong, MatchTime just does not know yet.
+    return wrap(
+      <>
+        <div className="flex items-start gap-2">
+          <MapPin aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+          <p className="min-w-0 text-sm text-slate-600">{state === "never" ? s.venue_loc_never : s.venue_loc_failed}</p>
+        </div>
+        {!open && (
+          <div className="mt-2 flex flex-wrap gap-2">
+            {state === "failed" && (
+              <button type="button" onClick={retry} disabled={busy !== null} className={SECONDARY}>
+                {busy === "retry" ? s.venue_loc_retrying : s.venue_loc_retry}
+              </button>
+            )}
+            <button type="button" onClick={() => setOpen(true)} disabled={busy !== null} className={SECONDARY}>
+              {s.venue_loc_add}
+            </button>
+          </div>
+        )}
+      </>,
+      "rounded-lg border border-slate-200 bg-white p-3",
+    );
   }
 
   if (state === "none") {

@@ -23,22 +23,60 @@ import type { GeocodeHit } from "./geocode";
  *  per weekly game, plus a few corrections. */
 export const VENUE_LOOKUPS_PER_CLUB_PER_DAY = 10;
 
-/** How long the page calls a just-saved, not yet looked up venue "pending". */
-export const VENUE_PENDING_WINDOW_MS = 20_000;
+/** How long a scheduled lookup may stay "pending" before the page stops
+ *  saying "looking" and says it could not check (the lookup itself gives
+ *  up after 2.5 seconds; this covers a server that never ran it). */
+export const VENUE_PENDING_WINDOW_MS = 30_000;
+
+/** `Activity.venueLookupStatus`. Null: never looked up. */
+export type VenueLookupStatus = "pending" | "found" | "none" | "failed" | "capped";
+
+/**
+ * Every venue-location column, set to null: what an edit of the venue
+ * TEXT writes alongside the new text, so a stale place never stays
+ * attached to new words. The ONLY values a save ever writes to these
+ * columns on a client's behalf, and they are not the client's.
+ */
+export const CLEARED_VENUE_LINK = {
+  venueId: null,
+  venueConfidence: null,
+  venueMatchSource: null,
+  venueLookupStatus: null,
+  venueResolvedAt: null,
+  venueConfirmedAt: null,
+  venueConfirmedById: null,
+} as const;
 
 export type VenueConfidence = "high" | "low";
 export type VenueMatchSource = "text" | "address" | "link" | "backfill";
 
 // ── The venue text ──────────────────────────────────────────────────────
 
-/** Lower case, no accents, no punctuation, single spaces. */
+/** The combining accents of the Latin alphabets, U+0300 to U+036F. Built
+ *  from code points so no invisible character sits in this file. */
+const LATIN_ACCENTS = new RegExp(`[${String.fromCharCode(0x300)}-${String.fromCharCode(0x36f)}]`, "g");
+const DOTLESS_I = new RegExp(String.fromCharCode(0x131), "g");
+
+/**
+ * Case folded, no Latin accents, no punctuation, single spaces. Letters
+ * and digits of EVERY script are kept (with the marks that belong to
+ * them), so two stadiums named in Cyrillic are two venues and not two
+ * empty strings.
+ *
+ * The accents removed are the combining marks U+0300 to U+036F only
+ * (after NFKD): they are what separates an accented Latin letter from
+ * its plain one. Marks of other scripts (Arabic, Devanagari and so on)
+ * are part of the word and stay. Turkish: the dotted capital I
+ * decomposes to "I" plus a dot above, which goes; the dotless i is
+ * folded to "i" by hand.
+ */
 export function normaliseVenueText(text: string): string {
   return (text ?? "")
     .normalize("NFKD")
-    .replace(/[̀-ͯ]/g, "")
-    .replace(/ı/g, "i")
+    .replace(LATIN_ACCENTS, "")
+    .replace(DOTLESS_I, "i")
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/[^\p{L}\p{N}\p{M}]+/gu, " ")
     .trim();
 }
 
@@ -161,9 +199,22 @@ export function venueMapUrl(v: { placeId: string | null; lat: number | null; lng
   return `https://www.google.com/maps/search/?${q.toString()}`;
 }
 
+/**
+ * What the confirm line shows. Six states an organiser can be in, told
+ * apart by what was RECORDED, never inferred:
+ *
+ *   never    nothing was ever looked up (every game that predates this)
+ *   pending  a lookup was scheduled and has not reported back yet
+ *   failed   the lookup could not be made: Google failed or timed out,
+ *            no key, or the club's daily lookups were used up
+ *   none     Google answered and found nothing
+ *   found    a place is linked: low or high confidence, confirmed or not
+ */
 export type VenueLocationView =
-  | { state: "none" }
+  | { state: "never" }
   | { state: "pending" }
+  | { state: "failed" }
+  | { state: "none" }
   | {
       state: "found";
       address: string | null;
@@ -178,9 +229,9 @@ export interface VenueLocationRow {
   venue: string;
   venueId: string | null;
   venueConfidence: string | null;
+  venueLookupStatus: string | null;
   venueResolvedAt: Date | null;
   venueConfirmedAt: Date | null;
-  updatedAt: Date;
   venueRef: { placeId: string | null; formattedAddress: string | null; lat: number | null; lng: number | null } | null;
 }
 
@@ -197,9 +248,21 @@ export function venueLocationView(row: VenueLocationRow, now: Date): VenueLocati
       confirmed: row.venueConfirmedAt != null,
     };
   }
-  const justSaved = now.getTime() - row.updatedAt.getTime() < VENUE_PENDING_WINDOW_MS;
-  if (!row.venueResolvedAt && justSaved && !isPlaceholderVenue(row.venue)) return { state: "pending" };
-  return { state: "none" };
+  switch (row.venueLookupStatus) {
+    case "pending": {
+      // A scheduled lookup that never reported back is a failure, not an
+      // endless "looking".
+      const since = row.venueResolvedAt ? now.getTime() - row.venueResolvedAt.getTime() : Infinity;
+      return since < VENUE_PENDING_WINDOW_MS ? { state: "pending" } : { state: "failed" };
+    }
+    case "none":
+      return { state: "none" };
+    case "failed":
+    case "capped":
+      return { state: "failed" };
+    default:
+      return { state: "never" };
+  }
 }
 
 // ── What a member-facing response must not carry ────────────────────────
@@ -208,7 +271,7 @@ const VENUE_BOOKKEEPING = [
   "venueId",
   "venueConfidence",
   "venueMatchSource",
-  "venueQueryKey",
+  "venueLookupStatus",
   "venueResolvedAt",
   "venueConfirmedAt",
   "venueConfirmedById",

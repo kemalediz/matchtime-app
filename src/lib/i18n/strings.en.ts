@@ -4058,14 +4058,18 @@ export const en = {
   venue_loc_input_label: "Address or map link",
   venue_loc_input_placeholder: "e.g. Whiston Road, London E2 8BN",
   venue_loc_input_help:
-    "Type a fuller address, or paste a link from Google Maps, Apple Maps, Waze or OpenStreetMap. This does not change the venue name your group sees.",
+    "Type a fuller address, or paste a link from Google Maps, Apple Maps, Yandex Maps, Waze or OpenStreetMap. This does not change the venue name your group sees.",
   venue_loc_find: "Find place",
   venue_loc_finding: "Looking...",
   venue_loc_cancel: "Cancel",
   venue_loc_err_not_found: "We couldn't find that. Try a fuller address, with the town or postcode, or paste a map link.",
   venue_loc_err_capped: "That is enough lookups for today. Try again tomorrow.",
   venue_loc_err_link:
-    "MatchTime can't read that link. Paste a Google Maps, Apple Maps, Waze or OpenStreetMap link that shows the place, or type the address.",
+    "MatchTime can't read that link. Paste a link that shows the place's coordinates, or a Google Maps link, or type the address.",
   venue_loc_err_w3w: "MatchTime can't read what3words links yet. Paste a Google Maps link or type the address.",
   venue_loc_err_generic: "Something went wrong. Please try again.",
+  venue_loc_never: "Add where you play so MatchTime knows the location.",
+  venue_loc_failed: "We couldn't check this place just now. Try again later.",
+  venue_loc_retry: "Try again",
+  venue_loc_retrying: "Checking...",
 };

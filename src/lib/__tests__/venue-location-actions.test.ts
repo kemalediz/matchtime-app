@@ -14,6 +14,7 @@ const m = vi.hoisted(() => ({
   admins: new Set<string>(),
   change: vi.fn(async () => ({ status: "found" as const })),
   confirm: vi.fn(async () => true),
+  retry: vi.fn(async () => ({ status: "found" as string })),
 }));
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
@@ -24,9 +25,13 @@ vi.mock("@/lib/db", () => ({
 vi.mock("@/lib/org", () => ({
   isOrgAdmin: async (userId: string, orgId: string) => m.admins.has(`${userId}@${orgId}`),
 }));
-vi.mock("@/lib/venue-location", () => ({ changeActivityVenue: m.change, confirmActivityVenue: m.confirm }));
+vi.mock("@/lib/venue-location", () => ({
+  changeActivityVenue: m.change,
+  confirmActivityVenue: m.confirm,
+  resolveActivityVenueSafe: m.retry,
+}));
 
-import { changeVenueLocationAction, confirmVenueLocationAction } from "@/app/actions/venue-location";
+import { changeVenueLocationAction, confirmVenueLocationAction, retryVenueLookupAction } from "@/app/actions/venue-location";
 
 beforeEach(() => {
   m.session = null;
@@ -34,6 +39,7 @@ beforeEach(() => {
   m.admins = new Set(["owner-a@org-a", "owner-b@org-b"]);
   m.change.mockClear();
   m.confirm.mockClear();
+  m.retry.mockClear();
 });
 
 describe.each([
@@ -50,6 +56,11 @@ describe.each([
     expect(m.confirm).not.toHaveBeenCalled();
   });
 
+  it("cannot ask for another try, and nothing is looked up", async () => {
+    expect(await retryVenueLookupAction("act-a")).toEqual({ ok: false });
+    expect(m.retry).not.toHaveBeenCalled();
+  });
+
   it("cannot change, and nothing is looked up", async () => {
     expect(await changeVenueLocationAction("act-a", "12 Whiston Road")).toEqual({ status: "error" });
     expect(m.change).not.toHaveBeenCalled();
@@ -64,6 +75,15 @@ describe("the club's own admin", () => {
   it("confirms, as themselves", async () => {
     expect(await confirmVenueLocationAction("act-a")).toEqual({ ok: true });
     expect(m.confirm).toHaveBeenCalledWith("act-a", "owner-a");
+  });
+
+  it("tries the lookup again, and says whether it could be made this time", async () => {
+    expect(await retryVenueLookupAction("act-a")).toEqual({ ok: true });
+    expect(m.retry).toHaveBeenCalledWith("act-a");
+    m.retry.mockResolvedValueOnce({ status: "error" });
+    expect(await retryVenueLookupAction("act-a")).toEqual({ ok: false });
+    m.retry.mockResolvedValueOnce({ status: "capped" });
+    expect(await retryVenueLookupAction("act-a")).toEqual({ ok: false });
   });
 
   it("changes, as themselves", async () => {

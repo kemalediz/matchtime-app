@@ -3145,16 +3145,20 @@ export const tr: Strings = {
   venue_loc_input_label: "Adres veya harita bağlantısı",
   venue_loc_input_placeholder: "örn. Whiston Road, London E2 8BN",
   venue_loc_input_help:
-    "Daha açık bir adres yazın ya da Google Maps, Apple Maps, Waze veya OpenStreetMap bağlantısı yapıştırın. Bu, grubunuzun gördüğü saha adını değiştirmez.",
+    "Daha açık bir adres yazın ya da Google Maps, Apple Maps, Yandex Haritalar, Waze veya OpenStreetMap bağlantısı yapıştırın. Bu, grubunuzun gördüğü saha adını değiştirmez.",
   venue_loc_find: "Yeri bul",
   venue_loc_finding: "Aranıyor...",
   venue_loc_cancel: "Vazgeç",
   venue_loc_err_not_found: "Bunu bulamadık. İlçe veya posta kodu ile daha açık bir adres deneyin ya da bir harita bağlantısı yapıştırın.",
   venue_loc_err_capped: "Bugünlük yeterince arama yapıldı. Yarın tekrar deneyin.",
   venue_loc_err_link:
-    "MatchTime bu bağlantıyı okuyamıyor. Yeri gösteren bir Google Maps, Apple Maps, Waze veya OpenStreetMap bağlantısı yapıştırın ya da adresi yazın.",
+    "MatchTime bu bağlantıyı okuyamıyor. Yerin koordinatlarını gösteren bir bağlantı ya da bir Google Maps bağlantısı yapıştırın veya adresi yazın.",
   venue_loc_err_w3w: "MatchTime what3words bağlantılarını henüz okuyamıyor. Bir Google Maps bağlantısı yapıştırın ya da adresi yazın.",
   venue_loc_err_generic: "Bir şeyler ters gitti. Lütfen tekrar deneyin.",
+  venue_loc_never: "MatchTime konumu bilsin diye nerede oynadığınızı ekleyin.",
+  venue_loc_failed: "Bu yeri şu anda kontrol edemedik. Daha sonra tekrar deneyin.",
+  venue_loc_retry: "Tekrar dene",
+  venue_loc_retrying: "Kontrol ediliyor...",
 };
 
 /**

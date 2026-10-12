@@ -30,6 +30,9 @@ export const GEOCODE_TIMEOUT_MS = 2500;
 
 const ENDPOINT = "https://maps.googleapis.com/maps/api/geocode/json";
 
+/** Google saying "no more for now". A bulk run must stop on these. */
+const QUOTA_STATUSES = new Set(["OVER_QUERY_LIMIT", "OVER_DAILY_LIMIT", "RESOURCE_EXHAUSTED"]);
+
 export interface GeocodeHit {
   placeId: string;
   formattedAddress: string;
@@ -49,7 +52,9 @@ export type GeocodeOutcome =
   | { status: "ok"; hit: GeocodeHit }
   /** Google answered and found nothing. */
   | { status: "none" }
-  /** Timed out, failed, or answered something that is not a result. */
+  /** Timed out, failed, or answered something that is not a result.
+   *  `code` is "quota" (rate or daily limit), "denied" (the key was
+   *  refused), "timeout", "failed", or another short reason. */
   | { status: "error"; code: string }
   /** No key configured: nothing was sent. */
   | { status: "off" };
@@ -119,7 +124,8 @@ export async function geocode(request: GeocodeRequest, opts: GeocodeOptions = {}
     const res = await fetchImpl(`${ENDPOINT}?${params.toString()}`, { signal: controller.signal, cache: "no-store" });
     if (!res.ok) {
       console.debug(`[geocode] status=http-${res.status}`);
-      return { status: "error", code: `http-${res.status}` };
+      const code = res.status === 429 ? "quota" : res.status === 403 ? "denied" : `http-${res.status}`;
+      return { status: "error", code };
     }
     const data = (await res.json()) as { status?: unknown; results?: unknown };
     const status = typeof data?.status === "string" ? data.status : "unknown";
@@ -129,6 +135,8 @@ export async function geocode(request: GeocodeRequest, opts: GeocodeOptions = {}
     }
     if (status !== "OK" || !Array.isArray(data.results) || data.results.length === 0) {
       console.debug(`[geocode] status=${status.replace(/[^A-Z_a-z]/g, "").slice(0, 40)}`);
+      if (QUOTA_STATUSES.has(status)) return { status: "error", code: "quota" };
+      if (status === "REQUEST_DENIED") return { status: "error", code: "denied" };
       return { status: "error", code: status === "OK" ? "empty" : "google" };
     }
     const hit = readHit(data.results[0]);

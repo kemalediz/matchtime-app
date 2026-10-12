@@ -149,6 +149,21 @@ describe("geocode", () => {
   });
 });
 
+describe("a quota or refused-key answer has its own code, so a bulk run can stop", () => {
+  it.each([
+    ["OVER_QUERY_LIMIT", () => json({ status: "OVER_QUERY_LIMIT" }), "quota"],
+    ["OVER_DAILY_LIMIT", () => json({ status: "OVER_DAILY_LIMIT" }), "quota"],
+    ["RESOURCE_EXHAUSTED", () => json({ status: "RESOURCE_EXHAUSTED" }), "quota"],
+    ["HTTP 429", () => json({}, 429), "quota"],
+    ["REQUEST_DENIED", () => json({ status: "REQUEST_DENIED" }), "denied"],
+    ["HTTP 403", () => json({}, 403), "denied"],
+    ["INVALID_REQUEST", () => json({ status: "INVALID_REQUEST" }), "google"],
+  ])("%s", async (_name, respond, code) => {
+    const got = await geocode({ address: "x" }, { key: "k", fetchImpl: (async () => respond()) as unknown as typeof fetch });
+    expect(got).toEqual({ status: "error", code });
+  });
+});
+
 describe("the test seam", () => {
   it("is the real fetch unless MT_TEST_MODE is exactly 1", () => {
     expect(outboundFetch({})).toBe(fetch);

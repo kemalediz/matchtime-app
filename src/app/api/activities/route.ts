@@ -46,20 +46,19 @@ export async function GET() {
         venueId,
         venueConfidence,
         venueMatchSource,
-        venueQueryKey,
+        venueLookupStatus,
         venueResolvedAt,
         venueConfirmedAt,
         venueConfirmedById,
         ...rest
       } = a;
       void venueMatchSource;
-      void venueQueryKey;
       void venueConfirmedById;
       if (!isAdmin) return rest;
       return {
         ...rest,
         venueLocation: venueLocationView(
-          { venue: a.venue, venueId, venueConfidence, venueResolvedAt, venueConfirmedAt, updatedAt: a.updatedAt, venueRef },
+          { venue: a.venue, venueId, venueConfidence, venueLookupStatus, venueResolvedAt, venueConfirmedAt, venueRef },
           now,
         ),
       };

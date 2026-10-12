@@ -363,7 +363,7 @@ export async function createOrgFromWizard(data: WizardSubmission): Promise<Wizar
 
   await setCurrentOrgId(result.orgId);
   // Venue location: looked up after the response, never part of the save.
-  scheduleVenueResolveForOrg(result.orgId);
+  await scheduleVenueResolveForOrg(result.orgId);
   revalidatePath("/");
   return { ...result, playersCreated, playersLinkedExisting };
 }

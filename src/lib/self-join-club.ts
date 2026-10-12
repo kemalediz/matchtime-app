@@ -153,7 +153,7 @@ export async function createSelfJoinClub(
   });
 
   // Venue location: looked up after the response, never part of the save.
-  scheduleVenueResolveForOrg(org.id);
+  await scheduleVenueResolveForOrg(org.id);
 
   return { ok: true, orgId: org.id, slug: org.slug };
 }

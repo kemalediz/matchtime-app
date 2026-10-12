@@ -108,3 +108,30 @@ export function outboundFetch(env: Record<string, string | undefined> = process.
   if (env.MT_TEST_MODE !== "1") return fetch;
   return stubFetch(env.MT_TEST_GEOCODE_STUB_FILE || undefined);
 }
+
+/**
+ * A `fetch` that sends the two short-link hosts to a server on THIS
+ * machine and passes everything else (the method, `redirect: "manual"`,
+ * the abort signal) to `base` untouched. For the tests that run
+ * `expandShortLink` through a real `fetch` against a local hostile
+ * server: plain Node's in the unit suite, Next's patched one through
+ * /api/test/venue-short-link (a route that exists only under
+ * MT_TEST_MODE=1).
+ *
+ * It can only ever point at 127.0.0.1, and any URL that is not one of
+ * the two short hosts is refused rather than fetched, so it cannot be
+ * turned into a way to reach anything else. `requested` receives every
+ * URL the expander asked for, as the expander wrote it.
+ */
+export function remapShortHostsTo(port: number, base: typeof fetch, requested: string[] = []): typeof fetch {
+  if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error("remapShortHostsTo: bad port");
+  return (async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+    const asked = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    requested.push(asked);
+    const url = new URL(asked);
+    if (url.protocol !== "https:" || (url.hostname !== "maps.app.goo.gl" && url.hostname !== "goo.gl")) {
+      throw new Error("remapShortHostsTo: not a short-link host");
+    }
+    return base(`http://127.0.0.1:${port}${url.pathname}${url.search}`, init);
+  }) as typeof fetch;
+}

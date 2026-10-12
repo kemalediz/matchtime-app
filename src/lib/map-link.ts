@@ -36,8 +36,10 @@
  *   - what3words: a what3words link holds three words, not coordinates,
  *     and turning them into a position needs their paid API;
  *   - other short links (`maps.apple/p/...`, `waze.com/ul/h...`,
- *     `osm.org/go/...`): each would need its own host on the allow-list
- *     for little use.
+ *     `osm.org/go/...`, Yandex's `/maps/-/<code>`): each would need its
+ *     own host on the allow-list. Yandex Maps LONG links are read (owner
+ *     decision 2026-10-12, Turkish clubs use them); its short share
+ *     links are refused and Yandex is not on the outbound allow-list.
  *
  * Recognising a FULL map link is loose on purpose (any Google country
  * domain): a full link is only ever parsed, so a host that merely looks
@@ -45,7 +47,7 @@
  */
 import { outboundFetch } from "./geocode-test-seam";
 
-export type MapProvider = "google" | "apple" | "waze" | "osm";
+export type MapProvider = "google" | "apple" | "waze" | "osm" | "yandex";
 
 export type UnsupportedReason = "empty" | "unknown-host" | "no-location" | "short-link" | "what3words";
 
@@ -81,6 +83,9 @@ const APPLE_HOSTS = new Set(["maps.apple.com"]);
 const WAZE_HOSTS = new Set(["waze.com", "www.waze.com", "ul.waze.com"]);
 const OSM_HOSTS = new Set(["openstreetmap.org", "www.openstreetmap.org"]);
 const W3W_HOSTS = new Set(["what3words.com", "www.what3words.com", "w3w.co"]);
+/** Yandex Maps, EXACT hosts: the three sites and their `maps.` forms. */
+const YANDEX_SITE_HOSTS = new Set(["yandex.com", "yandex.com.tr", "yandex.ru"]);
+const YANDEX_MAPS_HOSTS = new Set(["maps.yandex.com", "maps.yandex.com.tr", "maps.yandex.ru"]);
 const OTHER_SHORT_HOSTS = new Set(["maps.apple", "osm.org", "g.co", "g.page"]);
 
 function isIpLiteral(host: string): boolean {
@@ -215,6 +220,38 @@ function parseOsm(url: URL): MapInput {
   return centre ? { kind: "coords", provider: "osm", ...centre } : NO_LOCATION;
 }
 
+/**
+ * Yandex Maps. On the three sites only `/maps` and `/harita` (the Turkish
+ * site's word for it) are the map; on a `maps.` host everything is.
+ *
+ * YANDEX WRITES LONGITUDE FIRST, THEN LATITUDE, the opposite of every
+ * other service in this file. `yandexPair` is the only place that order
+ * is read, and nothing is ever guessed by swapping a pair that does not
+ * fit.
+ *
+ * The pin wins over the map centre: `pt` (a marker; it may carry a style
+ * and several points, the first is used), then the "what is here" and
+ * place points, then `ll` (the centre of the view).
+ */
+function yandexPair(value: string | null): { lat: number; lng: number } | null {
+  if (!value) return null;
+  const [lngRaw, latRaw] = value.split("~")[0].split(",").map((part) => part.trim());
+  return lngRaw !== undefined && latRaw !== undefined ? coords(latRaw, lngRaw) : null;
+}
+
+function parseYandex(url: URL): MapInput {
+  const onMapsHost = YANDEX_MAPS_HOSTS.has(url.hostname);
+  const mapPath = /^\/(maps|harita)(\/|$)/.test(url.pathname);
+  if (!onMapsHost && !mapPath) return { kind: "unsupported", reason: "unknown-host" };
+  if (/^\/(maps|harita)\/-\//.test(url.pathname) || /^\/-\//.test(url.pathname)) return { kind: "unsupported", reason: "short-link" };
+  const q = url.searchParams;
+  for (const name of ["pt", "whatshere[point]", "poi[point]", "ll"]) {
+    const pair = yandexPair(q.get(name));
+    if (pair) return { kind: "coords", provider: "yandex", ...pair };
+  }
+  return NO_LOCATION;
+}
+
 /** A checked URL to what it says. Nothing is fetched. */
 function parseUrl(url: URL): MapInput {
   const host = url.hostname;
@@ -225,6 +262,7 @@ function parseUrl(url: URL): MapInput {
   if (APPLE_HOSTS.has(host)) return parseApple(url);
   if (WAZE_HOSTS.has(host)) return parseWaze(url);
   if (OSM_HOSTS.has(host)) return parseOsm(url);
+  if (YANDEX_SITE_HOSTS.has(host) || YANDEX_MAPS_HOSTS.has(host)) return parseYandex(url);
   return { kind: "unsupported", reason: "unknown-host" };
 }
 

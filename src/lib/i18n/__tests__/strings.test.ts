@@ -1297,6 +1297,10 @@ const SAMPLES: SampleArgs = {
   venue_loc_err_link: null,
   venue_loc_err_w3w: null,
   venue_loc_err_generic: null,
+  venue_loc_never: null,
+  venue_loc_failed: null,
+  venue_loc_retry: null,
+  venue_loc_retrying: null,
 };
 
 /** Render an entry with its sample arguments. */

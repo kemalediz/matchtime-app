@@ -2,7 +2,7 @@
 
 /**
  * The confirm line under a weekly game's venue (/admin/activities):
- * the organiser's "Yes" and "Change" (2026-10-12).
+ * the organiser's "Yes", "Change" and "Try again" (2026-10-12).
  *
  * Both are for the club's OWNER and ADMINs (and the platform superadmin)
  * only, checked against the activity's own club. They return an outcome
@@ -15,7 +15,7 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { isOrgAdmin } from "@/lib/org";
-import { changeActivityVenue, confirmActivityVenue, type ChangeResult } from "@/lib/venue-location";
+import { changeActivityVenue, confirmActivityVenue, resolveActivityVenueSafe, type ChangeResult } from "@/lib/venue-location";
 
 async function adminOf(activityId: string): Promise<string | null> {
   const session = await auth();
@@ -47,4 +47,19 @@ export async function changeVenueLocationAction(activityId: string, input: strin
     console.error(`[geocode] activity=${activityId} change failed (${(err as Error)?.name ?? "error"})`);
     return { status: "error" };
   }
+}
+
+/**
+ * "Try again": the lookup of the venue text could not be made earlier
+ * (Google failed or timed out, or the club's daily lookups were used up).
+ * Run it now, inside the cap like any other lookup. It answers within the
+ * lookup's own 2.5 second limit, and the page reloads to show what it
+ * came to.
+ */
+export async function retryVenueLookupAction(activityId: string): Promise<{ ok: boolean }> {
+  const userId = await adminOf(activityId);
+  if (!userId) return { ok: false };
+  const res = await resolveActivityVenueSafe(activityId);
+  revalidatePath("/admin/activities");
+  return { ok: res.status === "found" || res.status === "not-found" || res.status === "skipped" };
 }
