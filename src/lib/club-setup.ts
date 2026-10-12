@@ -35,7 +35,7 @@
 import { randomUUID } from "node:crypto";
 import { db } from "./db";
 import { servingClubWhere } from "./club-approval-state";
-import { SETUP_STAGE_SELECT, settingUpOnly } from "./club-setup-rules";
+import { SETTING_UP_CLUB_WHERE, SETUP_STAGE_SELECT, settingUpOnly } from "./club-setup-rules";
 
 export {
   SETTING_UP_CLUB_WHERE,
@@ -125,3 +125,40 @@ export async function closeUnfinishedSetupLearning(
   await tx.$executeRaw`UPDATE "ClubConnect" SET "capturedHistory" = NULL WHERE "orgId" = ${orgId}`;
   return rows[0].inserted ? "created-closed" : "closed";
 }
+
+// ════ BEGIN the setup DM's stamp (go-live slice S3, 2026-10-12) ════
+
+/**
+ * "This club's setup DM is due": approved, setting up, never asked, and
+ * MatchTime still in its group (a club it was removed from during setup
+ * is not told "I'm in your group"). The reading's state is the caller's
+ * to add (club-setup-dm.ts).
+ */
+export const SETUP_DM_DUE_WHERE = { ...SETTING_UP_CLUB_WHERE, setupAskedAt: null, setupRemovedAt: null } as const;
+
+/** What `markSetupAsked` needs: `db`, or a transaction client. */
+type OrgStampClient = {
+  organisation: { updateMany(args: { where: object; data: object }): Promise<{ count: number }> };
+};
+
+/**
+ * THE ONE WRITER OF `setupAskedAt`: the moment the organiser's setup DM is
+ * due (now, or the next 09:00 London for a night run). It is the clock the
+ * 24-hour reminder runs on (slice S6).
+ *
+ * A compare-and-set on `SETUP_DM_DUE_WHERE`, so it is also the claim that
+ * makes the setup DM once per club: of two runs racing (two crons, or the
+ * cron and the run that follows an approval) exactly one gets `true`, and
+ * only that one queues the DM, in the same transaction. Postgres makes the
+ * second writer wait for the first one's row lock and then re-checks the
+ * WHERE, which no longer matches.
+ */
+export async function markSetupAsked(orgId: string, dueAt: Date, client: OrgStampClient = db): Promise<boolean> {
+  const { count } = await client.organisation.updateMany({
+    where: { id: orgId, ...SETUP_DM_DUE_WHERE },
+    data: { setupAskedAt: dueAt },
+  });
+  return count === 1;
+}
+
+// ════ END the setup DM's stamp ════

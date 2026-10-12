@@ -326,6 +326,16 @@ describe("learnClubSetup and a club that is approved but setting up (go-live S1,
     expect(state.org!.rollingSquadEnabled).toBe(true);
   });
 
+  it("go-live S3: a held club gets NO separate findings DM (its one setup DM carries the findings)", async () => {
+    setup("rolling", HELD);
+    const out = await learnClubSetup(ORG, { now: DAYTIME, model: stub(STUB_ANSWERS.rolling) });
+    expect(out).toMatchObject({ kind: "done", status: "applied", applied: 1, dmQueued: false });
+    expect(dms).toEqual([]);
+    expect(state.learning!.dmQueuedAt).toBeUndefined();
+    // What the setup DM needs is on the row.
+    expect(state.learning!.applied).toEqual([expect.objectContaining({ key: "rollingSquad" })]);
+  });
+
   it("its write is a compare-and-set on the club STILL setting up", async () => {
     setup("rolling", HELD);
     await learnClubSetup(ORG, { now: DAYTIME, model: stub(STUB_ANSWERS.rolling) });

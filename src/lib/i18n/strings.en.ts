@@ -2167,6 +2167,50 @@ export const en = {
   sj_dm_rejected: (p: { group: string | null }): string =>
     `Thanks for trying MatchTime. We can't take ${p.group ? `"${p.group}"` : "your group"} on right now, so I've left the group. We'll be in touch if that changes.`,
 
+  // ════ BEGIN approval holds the club: the organiser's setup DM (go-live slice S3, 2026-10-12) ════
+  // Sent only while SETUP_HOLD_ENABLED is on. An approved club stays silent
+  // in its group until the organiser replies GO, and gets ONE DM composed
+  // from these parts (src/lib/club-setup-dm-rules.ts). It replaces both
+  // `sj_dm_approved` and the separate learned-setup DM for such a club. No
+  // dashes.
+  /** Opens the setup DM. */
+  sj_dm_ready_head: (p: { club: string; group: string | null }): string =>
+    `Good news: ${p.club} is approved. I'm in ${p.group ? `"${p.group}"` : "your group"} and I'm staying quiet there until you tell me to start.`,
+  /** The chat was read and nothing is worth telling. `standard`: the club
+   *  still runs on the default settings, so "standard setup" is true. */
+  sj_dm_ready_nothing: (p: { group: string | null; standard: boolean }): string =>
+    `I read the recent messages ${p.group ? `in "${p.group}"` : "in your group"} and found nothing that needs a setting changed, so ${p.standard ? "MatchTime is on its standard setup" : "I changed nothing"}.`,
+  /** The chat could not be read: too little of it, or the reading failed. */
+  sj_dm_ready_unread: (p: { standard: boolean }): string =>
+    `I couldn't read your group's recent messages, so ${p.standard ? "MatchTime is on its standard setup" : "I changed nothing"}.`,
+  /** What "standard setup" means. Only when the club is on it. */
+  sj_dm_ready_standard:
+    "Standard setup: players say In or Out each week, and a free place goes to the first person on the bench.",
+  sj_dm_ready_settings: (p: { url: string }): string => `⚙️ *Check or change how your group runs:*\n${p.url}`,
+  /** The same two lines as in `sj_dm_approved` (a test keeps them the same). */
+  sj_dm_ready_schedule: (p: { url: string }): string =>
+    `📅 *Your weekly game:* check the day, time and venue, or change them:\n${p.url}`,
+  sj_dm_ready_ratings: (p: { url: string }): string =>
+    `⭐ *Starting ratings:* give each player a rough score out of 10 so the first teams are fair:\n${p.url}`,
+  /** The GO line. `url` is the organiser's signed-in link to /admin/settings. */
+  sj_dm_ready_go: (p: { url: string }): string =>
+    `When you're happy, reply *GO* here and I'll introduce myself in the group, or press *Go live* on your settings page:\n${p.url}\nUntil then I say nothing in the group.`,
+  /** The free period: its length (from `FREE_PERIOD_MONTHS`) and when it starts. */
+  sj_dm_ready_free: `${firstMonthsFree("en")}. The free period starts when I go live in the group.`,
+  /** `sj_dm_connected` under the hold: only the last paragraph differs. */
+  sj_dm_connected_held: (p: { name: string | null; club: string }): string =>
+    `Hi${p.name ? ` ${p.name}` : ""}, got it: ${p.club} is connected to this chat.\n` +
+    "Next, add me to your football group. Save this number as a contact called MatchTime first, then open the group, tap Add participant and pick MatchTime.\n\n" +
+    "*Important: before you confirm, switch on \"Message history\" on that screen.* It sends me your group's recent messages, so I can set MatchTime up the way you already run things.\n\n" +
+    "I'll stay quiet in the group until your club is approved, usually within a day, and you've told me to start. I'll message you here as soon as it's approved.",
+  /** `sj_dm_in_group` under the hold. */
+  sj_dm_in_group_held: (p: { group: string | null }): string =>
+    `Thanks, I'm in ${p.group ? `"${p.group}"` : "your group"}. I'll stay quiet there until your club is approved, usually within a day, and you've told me to start. I'll message you here as soon as it's approved.`,
+  /** `sj_card_pending` under the hold (for the connect card, slice S5). */
+  sj_card_pending_held:
+    "Step 3: we're checking your club, usually within a day. MatchTime stays quiet in the group until your club is approved and you tell it to start, and messages you on WhatsApp as soon as it's approved.",
+  // ════ END approval holds the club ════
+
   // ── Admin DM: somebody was added to the club's WhatsApp group (2026-09-29) ──
   /** A number MatchTime has never seen, name unknown. `url` is the admin's
    *  own signed-in link (2026-09-30: this ended in a bare

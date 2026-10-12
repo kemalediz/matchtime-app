@@ -8,6 +8,10 @@
  * page showed. Each one is a thin wrapper round the single writer,
  * `decideClub` (or `leaveUnsolicitedGroup`) in src/lib/club-approval.ts.
  *
+ * Approve with SETUP_HOLD_ENABLED on (go-live slice S3) leaves the club
+ * approved and setting up: no hello, and the organiser's setup DM is
+ * scheduled to follow this action (`scheduleSetupAfterApproval`).
+ *
  * Approve needs SELF_JOIN_ENABLED. Reject, Turn off and Leave do not:
  * they only ever make MatchTime quieter, so they keep working after the
  * flag is switched off as a rollback.
@@ -19,7 +23,10 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { isSuperadmin } from "@/lib/org";
 import { decideClub, leaveUnsolicitedGroup, type DecideClubResult } from "@/lib/club-approval";
+import { approvedOwnerText } from "@/lib/club-decision-rules";
+import { scheduleSetupAfterApproval } from "@/lib/club-setup-schedule";
 import { selfJoinEnabledForRequest } from "@/lib/self-join-flag";
+import { setupHoldEnabledForRequest } from "@/lib/setup-hold-flag";
 
 export interface ClubActionResult {
   ok: boolean;
@@ -37,7 +44,8 @@ function describe(r: DecideClubResult): ClubActionResult {
   if (r.ok) {
     switch (r.decision) {
       case "approve":
-        return { ok: true, message: `Approved ${r.club}. The hello goes out in the group within a few minutes.` };
+        // Held (go-live slice S3): no hello yet; the organiser is asked first.
+        return { ok: true, message: approvedOwnerText(r.club, r.held === true) };
       case "reject":
         return { ok: true, message: `Rejected ${r.club}. MatchTime is leaving the group.` };
       case "suspend":
@@ -70,7 +78,13 @@ async function run(orgId: string, decision: "approve" | "reject" | "suspend", co
   if (decision === "approve" && !(await selfJoinEnabledForRequest())) {
     return { ok: false, message: "Self-join is switched off (SELF_JOIN_ENABLED), so nothing can be approved." };
   }
-  const r = await decideClub(orgId, decision, userId, { confirmName });
+  // Go-live slice S3: with SETUP_HOLD_ENABLED on, an approval leaves the
+  // club setting up (silent until its organiser says GO).
+  const hold = decision === "approve" ? await setupHoldEnabledForRequest() : false;
+  const r = await decideClub(orgId, decision, userId, { confirmName, hold });
+  // Its chat reading and its organiser's setup DM run after this action has
+  // answered (`after()`); the learn-setup cron retries.
+  if (r.ok && r.held) scheduleSetupAfterApproval(r.orgId);
   revalidatePath("/admin/clubs");
   return describe(r);
 }

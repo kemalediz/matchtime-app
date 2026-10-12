@@ -62,7 +62,16 @@ import { APPROVED_CLUB_WHERE } from "./club-approval-state";
  *  billing, slice B3), queued only by `queueBillingDm` in club-billing.ts. */
 /** "setup-learned" (F3, 2026-10-05): the organiser's one DM about the
  *  settings MatchTime set up from the group chat (src/lib/setup-learning). */
-export const PLATFORM_DM_PURPOSES = ["otp", "connect-reply", "organiser-decision", "billing", "setup-learned"] as const;
+/** "setup-ask" (go-live slice S3, 2026-10-12): the organiser's ONE setup DM
+ *  for a club held until they say GO (src/lib/club-setup-dm.ts). */
+export const PLATFORM_DM_PURPOSES = [
+  "otp",
+  "connect-reply",
+  "organiser-decision",
+  "billing",
+  "setup-learned",
+  "setup-ask",
+] as const;
 export type PlatformDmPurpose = (typeof PLATFORM_DM_PURPOSES)[number];
 
 /** DM purposes only `queueOwnerDm` may write. */
@@ -149,9 +158,19 @@ export class PlatformDmRefused extends Error {
  *  pure modules can share it; re-exported here for its existing callers. */
 export const platformPhoneDigits = e164Digits;
 
+/** The two calls `queuePlatformDm` makes: `db`, or a transaction client. */
+export type PlatformDmClient = {
+  user: { findFirst(args: { where: { phoneNumber: string }; select: { id: true } }): Promise<{ id: string } | null> };
+  platformJob: { create(args: { data: Record<string, unknown> }): Promise<{ id: string }> };
+};
+
 /**
  * Queue a DM on the platform channel. Throws `PlatformDmRefused` when the
  * recipient rule says no; the caller decides what the person sees.
+ *
+ * `client`: a transaction client, when the job must be created in the
+ * caller's own transaction (the setup DM and its once-per-club stamp,
+ * club-setup-dm.ts). Absent, `db`, exactly as before.
  */
 export async function queuePlatformDm(args: {
   phone: string;
@@ -159,7 +178,9 @@ export async function queuePlatformDm(args: {
   purpose: PlatformDmPurpose;
   refId?: string | null;
   sendAfter?: Date | null;
+  client?: PlatformDmClient;
 }): Promise<{ id: string }> {
+  const client = args.client ?? (db as unknown as PlatformDmClient);
   const purpose = args.purpose as string;
   if ((OWNER_DM_PURPOSES as readonly string[]).includes(purpose)) {
     throw new PlatformDmRefused(`"${purpose}" DMs go through queueOwnerDm (src/lib/owner-dm.ts) only`);
@@ -174,11 +195,11 @@ export async function queuePlatformDm(args: {
 
   if (purpose !== "otp") {
     // Rule 12: MatchTime never messages a number it does not already know.
-    const known = await db.user.findFirst({ where: { phoneNumber: `+${digits}` }, select: { id: true } });
+    const known = await client.user.findFirst({ where: { phoneNumber: `+${digits}` }, select: { id: true } });
     if (!known) throw new PlatformDmRefused(`${purpose}: no MatchTime user has this number`);
   }
 
-  const row = await db.platformJob.create({
+  const row = await client.platformJob.create({
     data: {
       kind: "dm",
       phone: digits,

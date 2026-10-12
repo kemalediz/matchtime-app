@@ -101,7 +101,9 @@ export function resolveApproverTarget(
 // ── The one-line ack to the owner (English only, plan 6.2) ─────────────
 
 export type OwnerAck =
-  | { kind: "approved"; club: string }
+  /** `held` (go-live slice S3): the approval left the club setting up,
+   *  silent until its organiser says GO. */
+  | { kind: "approved"; club: string; held?: boolean }
   | { kind: "rejected"; club: string }
   | { kind: "ambiguous"; waiting: WaitingClub[] }
   | { kind: "unknown-ref"; ref: string; waiting: WaitingClub[] }
@@ -120,10 +122,22 @@ export function formatDecidedAt(d: Date): string {
 const listWaiting = (w: WaitingClub[]) => w.map((c) => `${c.code} ${c.club}`).join(", ");
 const countWord = (n: number) => (n === 2 ? "Two" : String(n));
 
+/**
+ * What the platform owner is told after an approval, by WhatsApp and on
+ * /admin/clubs alike. `held` (go-live slice S3, SETUP_HOLD_ENABLED on):
+ * no hello goes out; the organiser is asked to confirm the setup and the
+ * group hears nothing until they reply GO. Not held: today's sentence.
+ */
+export function approvedOwnerText(club: string, held: boolean): string {
+  return held
+    ? `Approved ${club}. Its organiser is being asked to confirm the setup, and MatchTime stays silent in the group until they reply GO.`
+    : `Approved ${club}. The hello goes out in the group within a few minutes.`;
+}
+
 export function ownerAckText(a: OwnerAck): string {
   switch (a.kind) {
     case "approved":
-      return `Approved ${a.club}. The hello goes out in the group within a few minutes.`;
+      return approvedOwnerText(a.club, a.held === true);
     case "rejected":
       return `Rejected ${a.club}. Leaving the group now.`;
     case "ambiguous":

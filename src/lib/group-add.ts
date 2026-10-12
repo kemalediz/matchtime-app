@@ -55,6 +55,7 @@ import {
 import { PlatformDmRefused, queuePlatformDm, queuePlatformLeaveGroup } from "./platform-jobs";
 import { detectAdminGroupCandidate, recordAdminGroupCandidate } from "./admin-group-link";
 import { CAPTURED_HISTORY_RETENTION_MS } from "./captured-history-retention";
+import { isSetupHoldEnabled } from "./club-setup-rules";
 
 export interface GroupAddInput {
   groupId: string;
@@ -479,7 +480,7 @@ async function linkGroupToRequest(
     organiserAckQueued = await queueOrganiserAck(
       target.organiserAckRefId,
       row.phone,
-      t(org?.language).sj_dm_in_group({ group: subject }),
+      inGroupAckText(org?.language, subject),
     );
   }
 
@@ -668,4 +669,19 @@ export async function loadSelfJoinSweep(now: Date = new Date()): Promise<{ known
     if (typeof g === "string" && g) known.add(g);
   }
   return { knownGroups: [...known] };
+}
+
+/**
+ * The organiser's ack after a matched group add. With SETUP_HOLD_ENABLED
+ * on (go-live slice S3) an approved club stays silent until its organiser
+ * says GO, so "I'll message you here when it's live" would be false: the
+ * held variant says "as soon as it's approved". Off, today's text exactly.
+ */
+export function inGroupAckText(
+  lang: string | null | undefined,
+  group: string | null,
+  held: boolean = isSetupHoldEnabled(),
+): string {
+  const s = t(lang);
+  return (held ? s.sj_dm_in_group_held : s.sj_dm_in_group)({ group });
 }

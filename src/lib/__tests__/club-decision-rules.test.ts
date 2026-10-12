@@ -124,6 +124,17 @@ describe("ownerAckText (English only: owner-facing, plan 6.2)", () => {
   const riverside: WaitingClub = { orgId: "o1", code: "7KQ2", club: "Riverside FC" };
   const hackney: WaitingClub = { orgId: "o2", code: "9XT4", club: "Hackney Weds" };
 
+  it("go-live S3: a held approval says the organiser is being asked and the group stays silent until GO", () => {
+    const text = ownerAckText({ kind: "approved", club: "Riverside FC", held: true });
+    expect(text).toBe(
+      "Approved Riverside FC. Its organiser is being asked to confirm the setup, and MatchTime stays silent in the group until they reply GO.",
+    );
+    expect(text).not.toMatch(/hello goes out/);
+    expect(ownerAckText({ kind: "approved", club: "Riverside FC", held: false })).toBe(
+      "Approved Riverside FC. The hello goes out in the group within a few minutes.",
+    );
+  });
+
   it("says what happened, in the plan's words", () => {
     expect(ownerAckText({ kind: "approved", club: "Riverside FC" })).toBe(
       "Approved Riverside FC. The hello goes out in the group within a few minutes.",

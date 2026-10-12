@@ -25,7 +25,9 @@
  *   6. DM the organiser once (purpose "setup-learned", refId
  *      "<orgId>:setup-learned"), on the platform channel, in the daytime
  *      (09:00 to 23:00 London; a night run waits for 09:00), only when
- *      there is something to say.
+ *      there is something to say. NOT for a club that is approved but
+ *      setting up (go-live slice S3): its one setup DM carries the
+ *      findings instead (club-setup-dm.ts).
  *
  * Sutton FC can never be read: it has no `approvedAt` (it was approved by
  * the column default) and no connect request.
@@ -349,8 +351,12 @@ export async function learnClubSetup(orgId: string, opts: LearnOptions = {}): Pr
   await clearHistory(connect.id);
 
   // ── The organiser's one DM ───────────────────────────────────────────
+  // A club that was HELD when this run began (go-live slice S3) is never
+  // sent this DM: its ONE setup DM (club-setup-dm.ts) carries the same
+  // findings, composed from the record just written, and is sent by the
+  // caller once this reading is final. Every other club: exactly as before.
   let dmQueued = false;
-  if (planIsWorthTelling(plan)) {
+  if (planIsWorthTelling(plan) && !held) {
     dmQueued = await queueSetupDm({ orgId, org, connect, plan, now });
     if (dmQueued) await db.clubSetupLearning.update({ where: { orgId }, data: { dmQueuedAt: now } });
   }
