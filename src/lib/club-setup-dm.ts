@@ -49,7 +49,9 @@
  * a later sweep sends it. `setupAskedAt` is the DM's due time: the clock
  * the 24-hour reminder runs on (slice S6).
  *
- * THE 2-HOUR CAP (`SETUP_READING_CAP_MS`). A reading can fail to reach a
+ * THE 2-HOUR CAP (`STILL_READING_WINDOW_MS`, club-setup-rules.ts: the
+ * same constant that makes GO answer "still reading", so that answer's
+ * "I'll message you" is kept). A reading can fail to reach a
  * final status for ever: a run cut off on its last attempt leaves the row
  * "running" with nothing allowed to retake it, and a "deferred" row whose
  * club has left the reading sweep's 3-day window is never selected again.
@@ -64,9 +66,11 @@
  * reports. It is closed for good because the reading itself refuses to
  * write a row it no longer holds (setup-learning/run.ts: its settings
  * write and its record are one transaction that first locks the row on
- * status "running"). LOCK ORDER, everywhere: the reading row, then the
- * club. That is why the close is its own step BEFORE the stamp, never
- * inside the stamp's transaction.
+ * status "running"). LOCK ORDER, everywhere: THE CLUB'S ROW, THEN THE
+ * READING ROW. `goLiveClub` writes the club and then closes the reading;
+ * the reading locks the club and then takes its row; so the close here
+ * locks the club first too. Three transactions that all take the two rows
+ * in one order cannot deadlock.
  *
  * Also used when the DM goes with the reading switched OFF (reason
  * "reading-off"): without it, switching the reading on a day later would
@@ -88,7 +92,13 @@
 import { randomUUID } from "node:crypto";
 import { db } from "./db";
 import { appUrl, buildAdminLink } from "./admin-link";
-import { SETUP_DM_DUE_WHERE, markSetupAsked } from "./club-setup";
+import {
+  SETUP_DM_DUE_WHERE,
+  SETUP_LEARNING_FINAL_STATUSES,
+  STILL_READING_WINDOW_MS,
+  isSetupLearningFinal,
+  markSetupAsked,
+} from "./club-setup";
 import { messageHoursSendAfter } from "./message-hours";
 import { SETUP_ALERT_KIND, recordOpsEvent } from "./ops-alerts";
 import { PlatformDmRefused, queuePlatformDm, type PlatformDmClient } from "./platform-jobs";
@@ -96,12 +106,10 @@ import type { PipelineModel } from "./pipeline/llm";
 import { isSetupLearningEnabled } from "./setup-learning/flag";
 import { learnClubSetup, type LearnOutcome } from "./setup-learning/run";
 import {
-  CHAT_READING_FINAL_STATUSES,
   READING_OFF_REASON,
   READING_TIMED_OUT_REASON,
   SETUP_ASK_DM_PURPOSE,
   composeSetupAskDm,
-  isChatReadingFinal,
   isStandardSetup,
   readingFromRow,
   setupAskRefId,
@@ -115,8 +123,6 @@ export { cancelSetupDm, type SetupDmCancelReason } from "./club-setup-dm-cancel"
 const LINK_TTL_SECONDS = 7 * 24 * 60 * 60;
 /** Clubs handled per sweep. Far more than are ever approved in 15 minutes. */
 export const MAX_SETUP_DMS_PER_SWEEP = 20;
-/** A held club waits this long, from its approval, for its reading. */
-export const SETUP_READING_CAP_MS = 2 * 60 * 60 * 1000;
 
 /** Why a setup DM was not sent, as shown on /admin/health. Codes only. */
 export type SetupDmNotSentCode = "no-organiser" | PlatformDmRefused["code"];
@@ -151,6 +157,10 @@ type RawClient = {
  * then the stored chat is deleted, as after any final outcome. A row that
  * is already final is left exactly as it was (false). One statement with
  * no error to catch, in its own transaction with the chat's deletion.
+ *
+ * It takes THE CLUB'S ROW FIRST (the lock order, see the header), so it
+ * waits for a reading that is writing its result at this instant and then
+ * finds the row final, instead of meeting it half way.
  */
 export async function closeReadingForGood(
   orgId: string,
@@ -159,6 +169,7 @@ export async function closeReadingForGood(
 ): Promise<boolean> {
   return db.$transaction(async (client) => {
     const tx = client as unknown as RawClient;
+    await tx.$executeRaw`SELECT 1 FROM "Organisation" WHERE "id" = ${orgId} FOR UPDATE`;
     const rows = await tx.$queryRaw<Array<{ inserted: boolean }>>`
       INSERT INTO "ClubSetupLearning" ("id", "orgId", "status", "reason", "updatedAt")
       VALUES (${`csl-${randomUUID()}`}, ${orgId}, 'skipped', ${reason}, ${now})
@@ -222,8 +233,8 @@ export async function sendSetupDm(orgId: string, now: Date = new Date(), opts: S
   let org = await loadDue(orgId);
   if (!org) return { kind: "not-due" };
 
-  if (!isChatReadingFinal(org.setupLearning?.status)) {
-    const capReached = !!org.approvedAt && now.getTime() - org.approvedAt.getTime() >= SETUP_READING_CAP_MS;
+  if (!isSetupLearningFinal(org.setupLearning?.status)) {
+    const capReached = !!org.approvedAt && now.getTime() - org.approvedAt.getTime() >= STILL_READING_WINDOW_MS;
     if (learningEnabled && !capReached) return { kind: "reading" };
     // The reading is off, or it has had its two hours: no reading will
     // ever be reported for this club, so none may ever finish. Then read
@@ -342,8 +353,8 @@ export async function runSetupDmSweep(
       ...(learningEnabled
         ? {
             OR: [
-              { setupLearning: { is: { status: { in: [...CHAT_READING_FINAL_STATUSES] } } } },
-              { approvedAt: { lte: new Date(now.getTime() - SETUP_READING_CAP_MS) } },
+              { setupLearning: { is: { status: { in: [...SETUP_LEARNING_FINAL_STATUSES] } } } },
+              { approvedAt: { lte: new Date(now.getTime() - STILL_READING_WINDOW_MS) } },
             ],
           }
         : {}),

@@ -112,13 +112,13 @@ vi.mock("@/lib/setup-learning/run", () => ({ learnClubSetup: learnMock }));
 
 import {
   SETUP_ASK_DM_PURPOSE,
-  SETUP_READING_CAP_MS,
   runSetupAfterApproval,
   runSetupDmSweep,
   sendSetupDm,
   setupAskRefId,
 } from "../club-setup-dm";
 import { SETUP_ALERT_KIND } from "../ops-alerts";
+import { STILL_READING_WINDOW_MS } from "../club-setup-rules";
 
 const DAY = new Date("2026-10-12T11:00:00Z"); // 12:00 London
 const NIGHT = new Date("2026-10-12T22:30:00Z"); // 23:30 London (BST)
@@ -300,10 +300,19 @@ describe("review fix 4: the DM never states something false about the club", () 
 });
 
 describe("review fix 1: the 2-hour cap (a held club is never stranded waiting for a reading)", () => {
-  const TWO_HOURS_AGO = new Date(DAY.getTime() - SETUP_READING_CAP_MS);
+  const TWO_HOURS_AGO = new Date(DAY.getTime() - STILL_READING_WINDOW_MS);
 
-  it("the cap is two hours", () => {
-    expect(SETUP_READING_CAP_MS).toBe(2 * 60 * 60 * 1000);
+  it("the cap is two hours, and it is the SAME constant that makes GO answer 'still reading'", () => {
+    expect(STILL_READING_WINDOW_MS).toBe(2 * 60 * 60 * 1000);
+  });
+
+  it("the close takes the club's row BEFORE the reading row (the lock order go-live uses)", async () => {
+    state.org = heldOrg({ approvedAt: TWO_HOURS_AGO, setupLearning: learning("running", { attempts: 3 }) });
+    await sendSetupDm("org-riverside", DAY, { learningEnabled: true });
+    const lock = state.raw.findIndex((q) => /FROM "Organisation" WHERE "id" = \? FOR UPDATE/.test(q));
+    const close = state.raw.findIndex((q) => /INSERT INTO "ClubSetupLearning"/.test(q));
+    expect(lock).toBeGreaterThanOrEqual(0);
+    expect(lock).toBeLessThan(close);
   });
 
   it("stuck 'running' with its attempts used up, two hours after approval: closed for good, chat deleted, DM says it could not be read", async () => {
@@ -510,7 +519,7 @@ describe("runSetupDmSweep (the cron's half, and the retry)", () => {
       setupRemovedAt: null,
       OR: [
         { setupLearning: { is: { status: { in: ["applied", "nothing", "skipped", "failed"] } } } },
-        { approvedAt: { lte: new Date(DAY.getTime() - SETUP_READING_CAP_MS) } },
+        { approvedAt: { lte: new Date(DAY.getTime() - STILL_READING_WINDOW_MS) } },
       ],
     });
   });

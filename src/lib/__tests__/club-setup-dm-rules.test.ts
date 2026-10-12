@@ -10,7 +10,6 @@
 import { describe, expect, it } from "vitest";
 import { t } from "../i18n/t";
 import {
-  CHAT_READING_FINAL_STATUSES,
   READING_OFF_REASON,
   STANDARD_SETTING,
   composeSetupAskDm,
@@ -20,6 +19,7 @@ import {
   type ChatReading,
   type StandardSetupColumns,
 } from "../club-setup-dm-rules";
+import { SETUP_LEARNING_FINAL_STATUSES, isSetupLearningFinal } from "../club-setup-rules";
 import { composeSetupDm } from "../setup-learning/dm";
 import { LEARNED_KEYS, dataFor, type AppliedItem, type LearnedKey, type NotedPattern, type SettingValue, type Suggestion } from "../setup-learning/rules";
 
@@ -125,8 +125,12 @@ describe("readingFromRow: what the DM says about the chat reading", () => {
     expect(readingFromRow({ status: "skipped", reason: "timed-out", applied: null, suggestions: null, noted: null })).toEqual({ kind: "unread" });
   });
 
-  it("the final statuses are the four the plan names", () => {
-    expect([...CHAT_READING_FINAL_STATUSES].sort()).toEqual(["applied", "failed", "nothing", "skipped"]);
+  it("the final statuses are the four the plan names, and it is the SAME list go-live's 'still reading' uses", () => {
+    expect([...SETUP_LEARNING_FINAL_STATUSES].sort()).toEqual(["applied", "failed", "nothing", "skipped"]);
+    for (const s of ["applied", "nothing", "skipped", "failed", "running", "deferred"]) {
+      const reported = readingFromRow({ status: s, applied: null, suggestions: null, noted: null }).kind !== "none";
+      expect(reported, s).toBe(isSetupLearningFinal(s));
+    }
   });
 });
 

@@ -32,6 +32,7 @@
 import { db } from "./db";
 import { EXPLICIT_BENCH_NOTE, recordAttendanceEvent } from "./attendance-events";
 import { isClubOperational, servingClubWhere } from "./club-approval-state";
+import { LIVE_STAGE_WHERE } from "./club-setup-rules";
 import { formatLondon, londonDateTimeToUtc } from "./london-time";
 import { isSameRecurringFixture, type RecurringFixtureKey } from "./match-slot";
 import { ROLLING_LOOKBACK_DAYS, adminNoticeSendAfter, pickSeedSource, rollingSeedDue } from "./rolling-squad-rules";
@@ -480,7 +481,8 @@ export async function seedMonthlySquad(args: {
  *   - otherwise from the first 08:00 London after the previous match
  *     ended, the rolling squad's hour, so the admins keep the night to
  *     take a no-show off first.
- * Only approved, non-dormant, non-paused clubs. The mute switch does not
+ * Only approved, non-dormant, non-paused clubs that are not still setting
+ * up. The mute switch does not
  * stop seeding (posts stay muted by it), exactly like the rolling squad.
  */
 export async function seedDueMonthlySquads(
@@ -490,7 +492,13 @@ export async function seedDueMonthlySquads(
   preloaded?: RunningMonth[],
 ): Promise<{ seeded: number }> {
   const orgs = await db.organisation.findMany({
-    where: { ...servingClubWhere(), squadMode: "monthly", dormantAt: null, ...(onlyOrgId ? { id: onlyOrgId } : {}) },
+    // Not a club that is approved but still setting up (PR #234 review,
+    // fix 4): its players have not been greeted, the DMs queued here would
+    // be deleted at go-live, and the seed would stay marked as done. The
+    // first poll after go-live seeds it (`sweepMonthlyWeeks`). Every club
+    // that was never held is in the live stage, so for them this is the
+    // same selection as before.
+    where: { ...servingClubWhere(), ...LIVE_STAGE_WHERE, squadMode: "monthly", dormantAt: null, ...(onlyOrgId ? { id: onlyOrgId } : {}) },
     select: { id: true },
   });
   let seeded = 0;

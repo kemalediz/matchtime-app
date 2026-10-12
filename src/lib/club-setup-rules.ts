@@ -160,3 +160,108 @@ export function preferLiveClubs<T>(rows: T[], clubOf: (row: T) => SetupStageColu
 export function settingUpOnly(servedClubs: SetupStageColumns[]): boolean {
   return servedClubs.length > 0 && servedClubs.every(isClubSettingUp);
 }
+
+// ── Going live (slice S4) ───────────────────────────────────────────────
+
+/**
+ * HOW LONG A HELD CLUB WAITS FOR ITS SETUP READING, from its approval: two
+ * hours. THE ONE CONSTANT for both halves of that rule, so they can never
+ * disagree:
+ *   - GO is refused with "still reading" while the reading has not
+ *     finished, for this long (owner decision 4, `readingBlocksGoLive`
+ *     below). After that the organiser is never kept waiting on a
+ *     reading: going live closes it (`closeUnfinishedSetupLearning`);
+ *   - the organiser's setup DM waits for the reading for this long, then
+ *     the reading is closed for good and the DM goes anyway (the cap,
+ *     `sendSetupDm` in club-setup-dm.ts).
+ * So whenever GO is answered "still reading ... I'll message you", the
+ * setup DM is still to come, and comes by the end of this window (plus
+ * one run of the 15-minute cron).
+ */
+export const STILL_READING_WINDOW_MS = 2 * 60 * 60 * 1000;
+
+const GO_WORDS: ReadonlySet<string> = new Set(["go", "go live", "basla"]);
+
+/**
+ * THE TEXT GATE OF THE GO HANDLER. True only when the WHOLE message is the
+ * command: GO, GO LIVE, BAŞLA or BASLA, in any letter case. Pure and
+ * cheap, so every other DM costs no query.
+ *
+ * People answer with what they see and how they talk (PR #234 review, fix
+ * 6): our own messages print *GO* in bold, and a reply is as likely to be
+ * "GO!!" or "Go 👍". So before matching, the text is trimmed, every kind
+ * of space is collapsed, WhatsApp's formatting marks (* _ ~ `) round it
+ * are dropped, and so are trailing full stops, exclamation marks and
+ * emoji. What is LEFT must still be exactly one of the command words:
+ * "go on then", "let's go" and "*go* on then" are not GO. A question mark
+ * is not dropped: "go?" is a question, not a command.
+ */
+export function isGoCommand(text: unknown): boolean {
+  if (typeof text !== "string") return false;
+  const word = text
+    // Every Unicode space, zero-width ones and line breaks included.
+    .replace(/[\s​-‍⁠﻿]+/gu, " ")
+    .trim()
+    // Leading formatting marks, then anything trailing that is a mark, a
+    // space, closing punctuation or an emoji (with its modifiers).
+    .replace(/^[*_~` ]+/u, "")
+    .replace(/[*_~` .!…\p{Extended_Pictographic}\p{Emoji_Modifier}️‍]+$/u, "")
+    // Turkish letters: "BAŞLA", and "GO LİVE" typed on a Turkish
+    // keyboard, must read the same as their plain forms.
+    .replace(/[İIı]/g, "i")
+    .replace(/[Şş]/g, "s")
+    .toLowerCase();
+  return GO_WORDS.has(word);
+}
+
+/** `liveBy` for an owner or admin who pressed Go live on the website. */
+export function liveByUser(userId: string): string {
+  return userId;
+}
+
+/** `liveBy` for the MatchTime owner's "Go live now" on the clubs page. */
+export function liveByOwner(ownerUserId: string): string {
+  return `owner:${ownerUserId}`;
+}
+
+/** The reading statuses after which nothing more will come of the chat.
+ *  THE ONE LIST: `isSetupLearningFinal` below, and the setup DM sweep's
+ *  query (club-setup-dm.ts). */
+export const SETUP_LEARNING_FINAL_STATUSES = ["applied", "nothing", "skipped", "failed"] as const;
+const FINAL_LEARNING_STATUSES: ReadonlySet<string> = new Set(SETUP_LEARNING_FINAL_STATUSES);
+
+/** Has the setup reading finished? "running" and "deferred" have not. THE
+ *  ONE PREDICATE: go-live's "still reading" and the setup DM both use it. */
+export function isSetupLearningFinal(status: string | null | undefined): boolean {
+  return typeof status === "string" && FINAL_LEARNING_STATUSES.has(status);
+}
+
+/**
+ * Must GO wait for the setup reading (owner decision 4)? Only while ALL of
+ * these hold: the reading is switched on, the club was approved less than
+ * two hours ago, and its reading is unfinished, or has not started and
+ * one is expected (`readingExpected`: the club has a connect request, so
+ * the sweep will read it). Never blocks otherwise.
+ */
+export function readingBlocksGoLive(args: {
+  learningEnabled: boolean;
+  /** The club's reading row status, or null when it has no row. */
+  learningStatus: string | null | undefined;
+  readingExpected: boolean;
+  approvedAt: Date | null | undefined;
+  now: Date;
+}): boolean {
+  if (!args.learningEnabled || !args.approvedAt) return false;
+  if (args.now.getTime() - args.approvedAt.getTime() >= STILL_READING_WINDOW_MS) return false;
+  if (args.learningStatus === null || args.learningStatus === undefined) return args.readingExpected;
+  return !isSetupLearningFinal(args.learningStatus);
+}
+
+/**
+ * "Approved, live, and has been through the hold" (`liveAt` is stamped):
+ * the clubs whose owner or admin is answered "already live" when they say
+ * GO, however long ago the club went live. A club that was never held
+ * (every club that existed before the hold) has no stamp and never
+ * matches, so GO from its admin is not ours and falls through untouched.
+ */
+export const WENT_LIVE_CLUB_WHERE = { ...APPROVED_CLUB_WHERE, ...LIVE_STAGE_WHERE, liveAt: { not: null } } as const;

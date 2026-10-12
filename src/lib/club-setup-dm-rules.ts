@@ -31,6 +31,7 @@
  *   GO         reply GO here, or press Go live on the settings page
  *   free       the free period's length, and that it starts at go-live
  */
+import { isSetupLearningFinal } from "./club-setup-rules";
 import { t } from "./i18n/t";
 import { setupFindingsBlocks } from "./setup-learning/dm";
 import {
@@ -56,13 +57,6 @@ export const READING_OFF_REASON = "reading-off";
 /** ... or it had not finished two hours after the approval (the DM says
  *  the chat could not be read). */
 export const READING_TIMED_OUT_REASON = "timed-out";
-
-/** The reading statuses after which nothing more will come of the chat. */
-export const CHAT_READING_FINAL_STATUSES = ["applied", "nothing", "skipped", "failed"] as const;
-
-export function isChatReadingFinal(status: string | null | undefined): boolean {
-  return (CHAT_READING_FINAL_STATUSES as readonly string[]).includes(status ?? "");
-}
 
 /** What the DM says about the chat reading. `U` is what an applied item
  *  carries: nothing extra as stored, its undo link once minted. */
@@ -114,7 +108,7 @@ export function readingFromRow(
   row: ChatReadingRow | null | undefined,
   current?: LearnedSettingColumns | null,
 ): ChatReading<object> {
-  if (!row || !isChatReadingFinal(row.status)) return { kind: "none" };
+  if (!row || !isSetupLearningFinal(row.status)) return { kind: "none" };
   if (row.status === "skipped" && row.reason === READING_OFF_REASON) return { kind: "none" };
   if (row.status === "skipped" || row.status === "failed") return { kind: "unread" };
   const applied = asArray<AppliedItem>(row.applied).filter(
@@ -233,7 +227,8 @@ export function composeSetupAskDm(p: SetupAskDmInput): string {
   if (p.adminGroupBlock) blocks.push(p.adminGroupBlock);
   // ════ END ADMIN GROUP BLOCK ════
 
-  blocks.push(s.sj_dm_ready_go({ url: p.settingsUrl }));
+  // The button is named as the settings page and the GO replies name it.
+  blocks.push(s.sj_dm_ready_go({ url: p.settingsUrl, button: s.sj_go_button }));
   blocks.push(s.sj_dm_ready_free);
   return blocks.join("\n\n");
 }

@@ -61,11 +61,17 @@
  *     "running": a closed row is never overwritten, not with a result and
  *     not with "deferred" (which would have it read again);
  *   - the settings write and the record of it are ONE transaction that
- *     FIRST takes the row (the same compare-and-set, which locks it). A
- *     closer arriving in that instant waits for the transaction, then
- *     finds the row final and leaves it alone; a closer that got there
- *     first makes the compare-and-set fail, and nothing is applied.
- * LOCK ORDER, here and in every closer: the reading row, then the club.
+ *     locks the club's row and then takes the reading row (the same
+ *     compare-and-set). A closer arriving in that instant waits for the
+ *     transaction, then finds the row final and leaves it alone; a closer
+ *     that got there first makes the compare-and-set fail, and nothing is
+ *     applied.
+ * LOCK ORDER, here and in every closer: THE CLUB'S ROW, THEN THE READING
+ * ROW. `goLiveClub` (club-setup.ts) writes the club and then closes the
+ * reading in one transaction; `closeReadingForGood` locks the club first
+ * for the same reason. Every transaction that holds both rows takes them
+ * in that order, so none can deadlock with another. (The first version of
+ * this fix took the reading row first, which could deadlock with go-live.)
  * A run that finds its row closed returns "skipped", reason "closed". For
  * a club nobody closes (every club that is not held) the row is "running"
  * throughout and the reading behaves exactly as before.
@@ -189,6 +195,7 @@ async function claim(orgId: string, now: Date): Promise<boolean> {
 type RowClient = {
   clubSetupLearning: { updateMany(args: { where: object; data: object }): Promise<{ count: number }> };
   organisation: { updateMany(args: { where: object; data: object }): Promise<{ count: number }> };
+  $executeRaw(query: TemplateStringsArray, ...values: unknown[]): Promise<number>;
 };
 
 /**
@@ -272,8 +279,8 @@ async function applyPlan(
 }
 
 /**
- * Apply the plan and record it, as ONE transaction that first takes the
- * reading row (see the header):
+ * Apply the plan and record it, as ONE transaction that locks the club's
+ * row, then takes the reading row (the lock order, see the header):
  *   "closed"  the row is no longer this run's: nothing applied, nothing written;
  *   "moved"   the club's settings write was refused: nothing written, the
  *             caller plans again from a fresh read;
@@ -288,8 +295,10 @@ async function applyAndRecord(
 ): Promise<"closed" | "moved" | "done"> {
   return db.$transaction(async (client) => {
     const tx = client as unknown as RowClient;
-    // Take the row. A no-op write, so the row is locked until this
-    // transaction ends and a closer has to wait for it.
+    // The club's row first: go-live and the cap's close take it first too.
+    await tx.$executeRaw`SELECT 1 FROM "Organisation" WHERE "id" = ${orgId} FOR UPDATE`;
+    // Then the reading row, only while it is still this run's. A no-op
+    // write, so the row is locked until this transaction ends.
     if (!(await finish(orgId, { status: "running" }, tx))) return "closed";
     if (!(await applyPlan(orgId, org, plan, held, tx))) return "moved";
     await finish(orgId, record(plan), tx);

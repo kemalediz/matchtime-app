@@ -393,6 +393,52 @@ test("FLAG OFF is today's approval: hello queued, bot on, 'you're live' DM, free
   expect(findings[0].text).toMatch(/^I read the recent messages in "Riverside FC group" to see how it runs, and set MatchTime up the same way\./);
   expect(findings[0].text).toContain("Everything is on your settings page");
   expect(await setupDms(db, c)).toEqual([]);
+
+  // THE READING FOR A CLUB THAT WAS NEVER HELD (the path every new club
+  // takes today) gives exactly what it gave before the reading learned to
+  // refuse a closed row (PR #235): the setting switched, the row recorded
+  // as applied with what was read and what it cost, the chat deleted, and
+  // the same findings DM, word for word.
+  expect((await orgRow(db, c.org))!.rollingSquadEnabled).toBe(true);
+  expect(
+    await db.one(
+      `SELECT status, reason, attempts, applied, suggestions, noted, kept, "messageCount", "costUsd", model IS NOT NULL AS "hasModel",
+              ("dmQueuedAt" IS NOT NULL) AS "dmQueued"
+         FROM "ClubSetupLearning" WHERE "orgId" = $1`,
+      [c.org],
+    ),
+  ).toEqual({
+    status: "applied",
+    reason: null,
+    attempts: 1,
+    applied: [
+      {
+        key: "rollingSquad",
+        from: false,
+        to: true,
+        evidence: ["Same lot as last week, let me know if you can't do Tuesday", "Usual crew this week too, only message if you're dropping out"],
+        undoneAt: null,
+      },
+    ],
+    suggestions: [],
+    noted: [],
+    kept: [],
+    messageCount: rolling.history.length,
+    costUsd: 0.0145,
+    hasModel: true,
+    dmQueued: true,
+  });
+  expect((await storedChat(db, c.org))!.h).toBeNull();
+  expect(unlink(findings[0].text)).toBe(
+    [
+      `I read the recent messages in "Riverside FC group" to see how it runs, and set MatchTime up the same way.\n\n`,
+      `✅ *Rolling squad is on:* whoever played last time is in next time, unless they say OUT.\n`,
+      `From messages like: "Same lot as last week, let me know if you can't do Tuesday"\n`,
+      `Undo or change: <link>\n\n`,
+      `Everything is on your settings page, with the chat messages behind each one: <link>`,
+    ].join(""),
+  );
+  expect(findings[0].sendAfter).toBeNull();
 });
 
 test("FLAG ON, by WhatsApp: held and silent; the reading runs after the response and ONE setup DM carries its findings", async ({ request, db }) => {
@@ -796,14 +842,14 @@ test("a held club with no organiser on record: stamped, ONE ops event, and it st
 // LAST in this file: it claims every platform job that is due.
 
 test("decideClub and the reading against Postgres: suspend cancels the waiting DM, a closed reading applies nothing (tsx)", async () => {
-  test.setTimeout(120_000);
+  test.setTimeout(180_000);
   const { stdout, stderr } = await execFileAsync("npx", ["tsx", "e2e/helpers/setup-hold-lib-tests.ts"], {
     cwd: REPO_ROOT,
     env: process.env,
-    timeout: 110_000,
+    timeout: 170_000,
   }).catch((err: Error & { stdout?: string; stderr?: string }) => {
     throw new Error(`setup-hold-lib-tests failed:\n${err.stdout ?? ""}\n${err.stderr ?? ""}`);
   });
   console.log(stdout);
-  expect(stdout, stderr).toContain("OK: 7 setup-hold checks");
+  expect(stdout, stderr).toContain("OK: 11 setup-hold checks");
 });

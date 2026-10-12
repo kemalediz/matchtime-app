@@ -40,6 +40,7 @@ import { db } from "./db";
 import { sendAdminNotice } from "./admin-channel";
 import { appUrl } from "./app-url";
 import { isClubOperational } from "./club-approval-state";
+import { SETUP_STAGE_SELECT, isClubSettingUp } from "./club-setup-rules";
 import { planPricePence } from "./club-billing-rules";
 import { formatLondon } from "./london-time";
 import {
@@ -847,15 +848,19 @@ export async function sweepMonthPayments(
       where: { id: orgId },
       select: {
         squadMode: true,
-        approvalStatus: true,
         dormantAt: true,
         billingStatus: true,
         billingPlan: true,
         billingPricePence: true,
         paymentHolderId: true,
+        ...SETUP_STAGE_SELECT,
       },
     });
-    if (!org || normaliseSquadMode(org.squadMode) !== "monthly" || !isClubOperational(org)) return;
+    // Belt and braces (PR #234 review, fix 4): this sweep is only ever
+    // called from due-posts, which refuses a club whose bot is off, so a
+    // club that is still setting up cannot reach it today. Should a cron
+    // ever call it, such a club is skipped here too.
+    if (!org || normaliseSquadMode(org.squadMode) !== "monthly" || !isClubOperational(org) || isClubSettingUp(org)) return;
     const months = preloaded ?? (await loadLiveMonths(orgId, now));
     for (const month of months) {
       await priceAsk(month, org, now);

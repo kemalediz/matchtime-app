@@ -20,7 +20,9 @@
  *                       sign-up action (per phone, per IP, site per day).
  *   connect-reply,      only a number MatchTime already knows (a User with
  *   organiser-decision, that phone: a verified sign-up or a club member).
- *   billing
+ *   billing,
+ *   setup-learned,
+ *   setup-reply
  *   owner-approval,     NEVER through here. `queueOwnerDm` (owner-dm.ts)
  *   owner-ack           is the only door to Kemal's phone.
  *
@@ -64,6 +66,11 @@ import { APPROVED_CLUB_WHERE } from "./club-approval-state";
  *  settings MatchTime set up from the group chat (src/lib/setup-learning). */
 /** "setup-ask" (go-live slice S3, 2026-10-12): the organiser's ONE setup DM
  *  for a club held until they say GO (src/lib/club-setup-dm.ts). */
+/** "setup-reply" (go-live slice S4, 2026-10-12): MatchTime's answer to a DM
+ *  from an owner or admin of a club that is approved but still setting up
+ *  (GO, help, "not recognised"). The club's own channel is off until GO,
+ *  so these cannot be BotJobs. Queued only by src/lib/setup-go-dm.ts and,
+ *  for help, src/lib/dm-help.ts; always a reply to the person's own DM. */
 export const PLATFORM_DM_PURPOSES = [
   "otp",
   "connect-reply",
@@ -71,6 +78,7 @@ export const PLATFORM_DM_PURPOSES = [
   "billing",
   "setup-learned",
   "setup-ask",
+  "setup-reply",
 ] as const;
 export type PlatformDmPurpose = (typeof PLATFORM_DM_PURPOSES)[number];
 
@@ -93,6 +101,9 @@ export const MAX_JOBS_PER_POLL = 5;
 export const OTP_DM_TTL_MS = 10 * 60 * 1000;
 
 const FAIL_REASON_MAX = 500;
+
+/** Rows read per class (codes, everything else) on one poll. */
+const DUE_READ_LIMIT = 50;
 
 // ── The due-posts key (the bridge for a Pi built before slice 3) ────────
 
@@ -230,19 +241,31 @@ export async function queuePlatformDm(args: {
  *  cancelled from here. */
 export const CANCELLABLE_DM_PURPOSES = ["setup-ask"] as const;
 
+/** How a cancelled job's `failReason` starts. On a CLAIMED job it is the
+ *  mark that makes a later release fail the job instead of re-queueing it. */
+export const CANCELLED_REASON_PREFIX = "cancelled: ";
+
 /**
- * Cancel DMs that are still WAITING (queued, typically held for 09:00
- * London) for one purpose and refId, because what they say is no longer
- * true. There is no "cancelled" status: like a job refused at dispatch, a
- * cancelled job is `failed` with its `failReason` ("cancelled: <reason>"),
- * which `claimDuePlatformJobs` never hands out and nothing retries.
+ * Cancel DMs that have not gone yet for one purpose and refId, because
+ * what they say is no longer true. There is no "cancelled" status: like a
+ * job refused at dispatch, a cancelled job is `failed` with its
+ * `failReason` ("cancelled: <reason>"), which `claimDuePlatformJobs` never
+ * hands out and nothing retries.
  *
- * SAFE AGAINST THE PI'S CLAIM. The write is an `updateMany` on
- * `status = "queued"`, the same compare-and-set the claim uses, so for any
- * one job exactly one of the two wins. A job the claim won is `claimed`:
- * it may already be on its way, so it is LEFT ALONE and reported in
- * `alreadyClaimed`. (A claimed job the Pi then RELEASES for pacing goes
- * back to queued; a caller that must be certain calls this again.)
+ * ONE STATEMENT, so it cannot interleave with the Pi (the claim and the
+ * outcome report are single statements on the same row, and each waits
+ * for the other and then re-checks its own WHERE):
+ *   - a job still QUEUED (typically held for 09:00 London) becomes
+ *     `failed`: it is never handed out. Counted in `cancelled`;
+ *   - a job the Pi has already CLAIMED may be on its way, so its status is
+ *     left alone, and it is MARKED: its `failReason` is set to the
+ *     cancellation. If the Pi then RELEASES it (its one-DM-a-minute
+ *     pacing held it back), `recordPlatformJobOutcome` fails it instead of
+ *     putting it back in the queue, so it is not sent on a later poll. If
+ *     the Pi sent it, it is `sent` and the mark says it was cancelled too
+ *     late. Counted in `alreadyClaimed`.
+ * Nothing else is touched: not a sent, failed or unconfirmed job, not
+ * another purpose, not another refId.
  */
 export async function cancelQueuedPlatformDms(args: {
   purpose: (typeof CANCELLABLE_DM_PURPOSES)[number];
@@ -254,13 +277,22 @@ export async function cancelQueuedPlatformDms(args: {
     throw new Error(`[platform-jobs] "${args.purpose}" DMs cannot be cancelled`);
   }
   const now = args.now ?? new Date();
-  const one = { kind: "dm", purpose: args.purpose, refId: args.refId } as const;
-  const { count } = await db.platformJob.updateMany({
-    where: { ...one, status: "queued" },
-    data: { status: "failed", failedAt: now, failReason: `cancelled: ${args.reason}`.slice(0, FAIL_REASON_MAX) },
-  });
-  const alreadyClaimed = await db.platformJob.count({ where: { ...one, status: "claimed" } });
-  return { cancelled: count, alreadyClaimed };
+  const reason = `${CANCELLED_REASON_PREFIX}${args.reason}`.slice(0, FAIL_REASON_MAX);
+  // RETURNING reads the row AFTER the update: "failed" was queued,
+  // "claimed" was claimed and is now marked.
+  const rows = await db.$queryRaw<Array<{ status: string }>>`
+    UPDATE "PlatformJob" SET
+      "status" = CASE WHEN "status" = 'queued' THEN 'failed' ELSE "status" END,
+      "failedAt" = CASE WHEN "status" = 'queued' THEN ${now} ELSE "failedAt" END,
+      "failReason" = ${reason},
+      "updatedAt" = ${now}
+    WHERE "kind" = 'dm' AND "purpose" = ${args.purpose} AND "refId" = ${args.refId}
+      AND "status" IN ('queued', 'claimed')
+    RETURNING "status"`;
+  return {
+    cancelled: rows.filter((r) => r.status === "failed").length,
+    alreadyClaimed: rows.filter((r) => r.status === "claimed").length,
+  };
 }
 
 /**
@@ -388,16 +420,28 @@ export async function claimDuePlatformJobs(
 ): Promise<PlatformJobInstruction[]> {
   const now = opts.now ?? new Date();
   const kinds = opts.kinds ?? ["dm", "leave-group"];
-  const rows = (await db.platformJob.findMany({
-    where: {
-      status: "queued",
-      kind: { in: kinds },
-      OR: [{ sendAfter: null }, { sendAfter: { lte: now } }],
-    },
-    orderBy: { createdAt: "asc" },
-    take: 50,
-    select: { id: true, kind: true, phone: true, groupId: true, text: true, purpose: true, createdAt: true },
-  })) as PlatformJobRow[];
+  // ── Two reads, so a sign-up code can never be starved (PR #234 review,
+  //    fix 1c) ──
+  // One read of "the 50 oldest", ranked afterwards, hid a new code behind
+  // any backlog of more than 50 older DMs until its ten minutes were up.
+  // Codes are therefore read on their own, and everything else beside
+  // them; `planPlatformDispatch` still puts codes first and keeps each
+  // class oldest first, and the batch limit is applied there as before.
+  const due = {
+    status: "queued",
+    kind: { in: kinds },
+    OR: [{ sendAfter: null }, { sendAfter: { lte: now } }],
+  };
+  const read = (purpose: "otp" | { not: "otp" }) =>
+    db.platformJob.findMany({
+      where: { ...due, purpose },
+      orderBy: { createdAt: "asc" },
+      take: DUE_READ_LIMIT,
+      select: { id: true, kind: true, phone: true, groupId: true, text: true, purpose: true, createdAt: true },
+    }) as Promise<PlatformJobRow[]>;
+  const [codes, others] = await Promise.all([read("otp"), read({ not: "otp" })]);
+  const seen = new Set<string>();
+  const rows = [...(codes ?? []), ...(others ?? [])].filter((r) => (seen.has(r.id) ? false : (seen.add(r.id), true)));
   if (rows.length === 0) return [];
 
   const leaveGroups = [...new Set(rows.filter((r) => r.kind === "leave-group" && r.groupId).map((r) => r.groupId as string))];
@@ -485,7 +529,27 @@ export async function recordPlatformJobOutcome(
       data = { status: "unconfirmed", failReason: (result.reason || "unconfirmed").slice(0, FAIL_REASON_MAX) };
       break;
   }
-  const { count } = await db.platformJob.updateMany({ where: { id, status: "claimed" }, data });
+  // A job CANCELLED while the Pi held it (`cancelQueuedPlatformDms`
+  // marked it) is never put back in the queue. The release itself skips a
+  // marked job (for every other job, which is every job there has ever
+  // been, it is the one statement it always was); a marked job is then
+  // failed instead. Each is one compare-and-set, so a cancel arriving in
+  // between finds the job queued and fails it itself.
+  const notCancelled = { OR: [{ failReason: null }, { NOT: { failReason: { startsWith: CANCELLED_REASON_PREFIX } } }] };
+  const { count } = await db.platformJob.updateMany({
+    where: { id, status: "claimed", ...(result.outcome === "release" ? notCancelled : {}) },
+    data,
+  });
+  if (count === 0 && result.outcome === "release") {
+    const cancelled = await db.platformJob.updateMany({
+      where: { id, status: "claimed", failReason: { startsWith: CANCELLED_REASON_PREFIX } },
+      data: { status: "failed", failedAt: now },
+    });
+    if (cancelled.count > 0) {
+      console.log(`[platform-jobs] job ${id} was cancelled while claimed; released by the Pi, so failed instead of re-queued`);
+      return { updated: true };
+    }
+  }
   if (result.outcome === "failed" && count > 0) {
     console.error(`[platform-jobs] job ${id} FAILED on the Pi: ${result.reason}`);
   }

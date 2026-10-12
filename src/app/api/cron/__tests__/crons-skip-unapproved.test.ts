@@ -71,11 +71,15 @@ describe("seedDueRollingSquads", () => {
     vi.clearAllMocks();
     dbMock.organisation.findMany.mockResolvedValue([]);
   });
-  it("flag off: exactly today's query", async () => {
+  // `setupStage: "live"` (PR #234 review, fix 4): a club that is approved
+  // but still setting up is not seeded. The column defaults to "live", so
+  // for every club that was never held the selection is the one it was.
+  it("flag off: approved clubs that are not still setting up", async () => {
     delete process.env.BILLING_ENABLED;
     await seedDueRollingSquads(new Date("2026-09-29T22:00:00Z"));
     expect(dbMock.organisation.findMany.mock.calls[0][0].where).toEqual({
       approvalStatus: "approved",
+      setupStage: "live",
       rollingSquadEnabled: true,
       dormantAt: null,
     });
@@ -86,6 +90,7 @@ describe("seedDueRollingSquads", () => {
     expect(dbMock.organisation.findMany.mock.calls[0][0].where).toEqual({
       approvalStatus: "approved",
       billingStatus: { not: "paused" },
+      setupStage: "live",
       rollingSquadEnabled: true,
       dormantAt: null,
     });

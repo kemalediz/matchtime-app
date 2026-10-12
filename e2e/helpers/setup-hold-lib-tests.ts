@@ -51,7 +51,8 @@ async function main() {
 
   const { decideClub, loadSilentGroupIds } = await import("@/lib/club-approval");
   const { runSetupAfterApproval, sendSetupDm, closeReadingForGood, cancelSetupDm, setupAskRefId } = await import("@/lib/club-setup-dm");
-  const { claimDuePlatformJobs } = await import("@/lib/platform-jobs");
+  const { claimDuePlatformJobs, recordPlatformJobOutcome } = await import("@/lib/platform-jobs");
+  const { goLiveClub, helloPreviewForClub } = await import("@/lib/club-setup");
   const { learnClubSetup } = await import("@/lib/setup-learning/run");
   const { messageHoursSendAfter } = await import("@/lib/message-hours");
   const { db } = await import("@/lib/db");
@@ -93,7 +94,7 @@ async function main() {
         ...(opts.history ? { capturedHistory: rolling.history as object } : {}),
       },
     });
-    return { orgId, groupId, phone };
+    return { orgId, groupId, phone, userId };
   }
   const setupJob = (orgId: string) =>
     db.platformJob.findFirst({ where: { purpose: "setup-ask", refId: setupAskRefId(orgId) }, select: { id: true, status: true, sendAfter: true, failReason: true } });
@@ -140,8 +141,62 @@ async function main() {
       assert.ok(handed.some((j) => j.id === job!.id), "the Pi was handed the DM at 09:05");
       assert.equal(job?.status, "claimed");
       assert.deepEqual(await cancelSetupDm(c.orgId, "suspended", AT_0905), { cancelled: 0, alreadyClaimed: 1 });
-      assert.equal((await setupJob(c.orgId))?.status, "claimed", "a claimed job is not touched");
-      ok("a setup DM the Pi has already claimed is left alone, and the cancel says so");
+      const marked = await setupJob(c.orgId);
+      assert.equal(marked?.status, "claimed", "a claimed job keeps its status: it may be on its way");
+      assert.equal(marked?.failReason, "cancelled: suspended", "and is marked as cancelled");
+      ok("a setup DM the Pi has already claimed keeps its status, is marked, and the cancel says so");
+
+      // THE PACING GAP: the Pi's one-DM-a-minute pacing held it back, so it
+      // RELEASES the job. A cancelled job must not go back in the queue.
+      assert.deepEqual(await recordPlatformJobOutcome(job!.id, { outcome: "release" }, AT_0905), { updated: true });
+      const released = await setupJob(c.orgId);
+      assert.equal(released?.status, "failed", "released after a cancel: failed, not queued");
+      const later = await claimDuePlatformJobs({ now: new Date(AT_0905.getTime() + 60_000), limit: 50 });
+      assert.ok(!later.some((j) => j.id === job!.id), "and never handed to the Pi again");
+      ok("a cancelled job the Pi then releases for pacing is failed, not re-queued, and is never sent");
+    }
+
+    // ── 2b. A job that was NOT cancelled is released exactly as before ───
+    {
+      const c = await pendingClub(30);
+      await decideClub(c.orgId, "approve", "lib-owner", { now: AT_2330, hold: true });
+      await runSetupAfterApproval(c.orgId, { now: AT_2330, learningEnabled: false });
+      await claimDuePlatformJobs({ now: AT_0905, limit: 50 });
+      const job = await setupJob(c.orgId);
+      assert.equal(job?.status, "claimed");
+      await recordPlatformJobOutcome(job!.id, { outcome: "release" }, AT_0905);
+      assert.equal((await setupJob(c.orgId))?.status, "queued", "a plain release goes back to queued");
+      const again = await claimDuePlatformJobs({ now: new Date(AT_0905.getTime() + 60_000), limit: 50 });
+      assert.ok(again.some((j) => j.id === job!.id), "and is handed out on the next poll");
+      ok("a release of a job nobody cancelled is unchanged: back to queued, sent on a later poll");
+    }
+
+    // ── 2c. Approve at 23:30, GO LIVE at 23:40: nothing is sent at 09:00 ──
+    {
+      const c = await pendingClub(31);
+      const AT_2340 = new Date("2026-07-14T22:40:00Z");
+      await decideClub(c.orgId, "approve", "lib-owner", { now: AT_2330, hold: true });
+      await runSetupAfterApproval(c.orgId, { now: AT_2330, learningEnabled: false });
+      const queued = await setupJob(c.orgId);
+      assert.equal(queued?.status, "queued");
+      assert.deepEqual(queued?.sendAfter, messageHoursSendAfter(AT_2330), "held for 09:00 London");
+      // The organiser presses Go live on the settings page (the action calls goLiveClub).
+      const live = await goLiveClub(c.orgId, c.userId, AT_2340, { learningEnabled: false, billingEnabled: false });
+      assert.equal(live.outcome, "went-live");
+      const after = await setupJob(c.orgId);
+      assert.equal(after?.status, "failed");
+      assert.equal(after?.failReason, "cancelled: went-live");
+      const handed = await claimDuePlatformJobs({ now: AT_0905, limit: 50 });
+      assert.ok(!handed.some((j) => j.kind === "dm" && j.phone === c.phone), "no 'reply GO' DM reaches a club that is already live");
+      // A refused go-live cancels nothing: the club is still waiting for its DM.
+      const d = await pendingClub(32);
+      await decideClub(d.orgId, "approve", "lib-owner", { now: AT_2330, hold: true });
+      await runSetupAfterApproval(d.orgId, { now: AT_2330, learningEnabled: false });
+      await db.organisation.update({ where: { id: d.orgId }, data: { setupRemovedAt: AT_2330 } });
+      const refused = await goLiveClub(d.orgId, d.userId, AT_2340, { learningEnabled: false, billingEnabled: false });
+      assert.equal(refused.outcome, "removed-from-group");
+      assert.equal((await setupJob(d.orgId))?.status, "queued", "a go-live that was refused cancels nothing");
+      ok("approve at 23:30, Go live at 23:40: the waiting setup DM is cancelled and nothing is sent at 09:00");
     }
 
     // ── 3. The cancel and the claim racing for one queued job: exactly one wins ──
@@ -271,6 +326,63 @@ async function main() {
       }
     }
     ok("the reading racing the close (8 rounds): the club is switched if and only if the row says applied");
+
+    // ── 8. LOCK ORDER: go-live racing a reading that is applying, 24 rounds ──
+    //   Both take the club's row, then the reading row. No deadlock, and
+    //   the result is always one of two whole outcomes: the reading applied
+    //   BEFORE the hello was built (the hello describes a rolling squad), or
+    //   it applied nothing (the hello describes weekly sign-up).
+    {
+      let appliedFirst = 0;
+      let closedFirst = 0;
+      for (let i = 40; i < 64; i++) {
+        const c = await pendingClub(i, { history: true });
+        const now = new Date();
+        await decideClub(c.orgId, "approve", "lib-owner", { now, hold: true });
+        const model = {
+          name: "ok",
+          complete: async () => {
+            await new Promise((r) => setTimeout(r, i % 3));
+            return {
+              text: JSON.stringify(ROLLING_ANSWER),
+              stopReason: "end_turn",
+              usage: { inputTokens: 100, outputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0 },
+              costUsd: 0.001,
+              ms: 1,
+            };
+          },
+        };
+        // `learningEnabled: false` so go-live does not wait for the reading
+        // (the owner's "Go live now", or a GO after the two hours).
+        const [reading, live] = await Promise.all([
+          learnClubSetup(c.orgId, { now, model }),
+          new Promise((r) => setTimeout(r, (i * 7) % 12)).then(() =>
+            goLiveClub(c.orgId, c.userId, now, { learningEnabled: false, billingEnabled: false, organiserUserId: c.userId }),
+          ),
+        ]);
+        assert.equal(live.outcome, "went-live", `round ${i}: went live (no deadlock, no error)`);
+        const row = await db.clubSetupLearning.findUnique({ where: { orgId: c.orgId }, select: { status: true, reason: true } });
+        const org = await db.organisation.findUnique({ where: { id: c.orgId }, select: { rollingSquadEnabled: true, whatsappBotEnabled: true } });
+        assert.ok(row && ["applied", "nothing", "skipped", "failed"].includes(row.status), `round ${i}: live implies the reading is final (${row?.status})`);
+        assert.equal(org?.whatsappBotEnabled, true);
+        const hello = (await db.botJob.findFirst({ where: { orgId: c.orgId, kind: "group" }, orderBy: { createdAt: "asc" }, select: { text: true } }))?.text ?? "";
+        if (live.outcome === "went-live") assert.equal(hello, live.hello);
+        // The hello queued is the hello the stored settings produce.
+        assert.equal(hello, await helloPreviewForClub(c.orgId, { organiserUserId: c.userId }), `round ${i}: the hello matches the settings stored`);
+        if (row.status === "applied") {
+          appliedFirst++;
+          assert.equal(org?.rollingSquadEnabled, true, `round ${i}: recorded as applied, so it is applied`);
+          assert.equal(reading.kind, "done");
+        } else {
+          closedFirst++;
+          assert.deepEqual(row, { status: "skipped", reason: "went-live" });
+          assert.equal(org?.rollingSquadEnabled, false, `round ${i}: closed by go-live, so NOTHING was applied`);
+          assert.notEqual(reading.kind, "done");
+        }
+      }
+      console.log(`    (the reading applied first in ${appliedFirst} round(s), go-live closed it first in ${closedFirst})`);
+      ok("go-live racing a reading that is applying (24 rounds): no deadlock, never half of each, and the hello matches the stored settings");
+    }
 
     console.log(`OK: ${n} setup-hold checks`);
   } finally {
