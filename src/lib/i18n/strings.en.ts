@@ -2068,6 +2068,75 @@ export const en = {
     `📊 *Stats:* ask me anything, and everyone gets their own stats page.\n` +
     `💷 *Match fees:* your organiser can switch on card or bank pay links.\n\n` +
     `I stay quiet during the banter and only reply to In, Out or a tag. Anything else, tag me: *@Match Time help*`,
+
+  // ════ BEGIN settings-aware group hello (go-live slice S2, 2026-10-12) ════
+  // The parts `buildGroupHello` (src/lib/group-hello.ts) composes the
+  // hello from, so a club is told only what its own settings do. For a
+  // club on default settings, with `sj_hello_catch_up` left out, the
+  // composed text equals `sj_group_hello` above byte for byte
+  // (`group-hello.test.ts` pins it): change one and you must change the
+  // other. Deterministic, never shown to a model. No em or en dashes.
+  sj_hello_opener: (p: { organiser: string | null }): string =>
+    `👋 Hi everyone, I'm *MatchTime*. ${p.organiser ? `${p.organiser} has set me up to run this group's games.` : "I'm here to run this group's games."} ` +
+    `Here's what I do, right here in WhatsApp:`,
+  /** A club that signs up each week. */
+  sj_hello_whos_in: `✅ *Who's in:* just say *In* or *Out*. I keep the list and tick your message.`,
+  /** Rolling squad: nobody is told to say In each week. `deadline` is
+   *  the drop-out deadline as "Monday 21:00", or null when none is set. */
+  sj_hello_rolling: (p: { deadline: string | null }): string =>
+    `🔁 *Same squad each week:* if you played last time, you're in next time too. You only need to say *Out* if you can't make it${p.deadline ? `, before *${p.deadline}*` : ""}.`,
+  /** Rolling squad, for somebody not carried over. "organiser": the
+   *  organisers pick, so an In never takes a place by itself. */
+  sj_hello_rolling_join: (p: { mode: "bench" | "no-bench" | "organiser" }): string =>
+    p.mode === "organiser"
+      ? `✅ *Not in the squad yet?* Say *In* and I'll put you on the bench.`
+      : p.mode === "bench"
+        ? `✅ *Not in the squad yet?* Say *In* and I'll add you if there's a place, or put you on the bench.`
+        : `✅ *Not in the squad yet?* Say *In* and I'll add you if there's a place.`,
+  /** Monthly squad: the regulars' line, then the line for everyone else. */
+  sj_hello_monthly: `📋 *Monthly squad:* regulars sign up and pay for the whole month, and are in every game of it. Can't make one? Say *Out*.`,
+  sj_hello_monthly_join: (p: { organisersPick: boolean }): string =>
+    p.organisersPick
+      ? `✅ *Not a regular?* When a place is open, say *In* to go on the waiting list, and the organisers pick who plays.`
+      : `✅ *Not a regular?* When a place is open, say *In* to take it. You pay for that game only.`,
+  /** A weekly sign-up club with a drop-out deadline. `day` is `wd_weekday`. */
+  sj_hello_deadline: (p: { day: string; time: string }): string =>
+    `⏳ *Drop-out deadline:* ${p.day} ${p.time}. If you can't play, say *Out* before then.`,
+  sj_hello_list: (p: { day: string; time: string }): string => `📋 *Final list:* I post it here on ${p.day} at ${p.time}.`,
+  sj_hello_bench: `🪑 *The bench:* once we're full, anyone who says *In* late goes on the bench, and the bench gets first dibs if someone drops.`,
+  /** The organisers pick: MatchTime never fills a place by itself. */
+  sj_hello_bench_organiser: `🪑 *The bench:* say *In* to go on the bench, and the organisers pick who takes each open place.`,
+  sj_hello_remind: `⏰ *Remind me:* say *"@Match Time remind me Thursday"* and I'll DM you then.`,
+  sj_hello_teams: `⚖️ *Fair teams:* tag me and I pick balanced teams from player ratings.`,
+  /** Never called with both off: the line is left out then. */
+  sj_hello_mom: (p: { mom: boolean; ratings: boolean }): string =>
+    p.mom && p.ratings
+      ? `⭐ *Man of the Match and ratings* after every game.`
+      : p.mom
+        ? `⭐ *Man of the Match* after every game.`
+        : `⭐ *Player ratings* after every game.`,
+  sj_hello_stats: `📊 *Stats:* ask me anything, and everyone gets their own stats page.`,
+  /** With nothing on, payments are only something the organiser CAN
+   *  switch on. `mode` is the pay links: off, or the ways a link can be paid. */
+  sj_hello_fees: (p: { tracking: boolean; mode: "off" | "card" | "bank" | "card-and-bank" }): string => {
+    const how = p.mode === "card" ? "by card" : p.mode === "bank" ? "by bank" : "by card or bank";
+    if (p.mode !== "off") {
+      return `💷 *Match fees:* you can pay ${how} through a link I send you.${p.tracking ? " I keep track of who has paid and remind anyone who hasn't." : ""}`;
+    }
+    return p.tracking
+      ? `💷 *Match fees:* I keep track of who has paid and remind anyone who hasn't.`
+      : `💷 *Match fees:* your organiser can switch on card or bank pay links.`;
+  },
+  /** Only for a club that signs up each week: MatchTime was not listening
+   *  before it went live, so an earlier In is not on the list. */
+  sj_hello_catch_up: `Already said In for the next game? Say it once more so I have you on the list.`,
+  /** `attendance` off: the club never says In or Out to MatchTime. */
+  sj_hello_closer: (p: { attendance: boolean }): string =>
+    p.attendance
+      ? `I stay quiet during the banter and only reply to In, Out or a tag. Anything else, tag me: *@Match Time help*`
+      : `I stay quiet during the banter and only reply when you tag me. Anything else, tag me: *@Match Time help*`,
+  // ════ END settings-aware group hello ════
+
   /** To the organiser, once, when the owner approves (2026-10-01: a short
    *  checklist). Each URL is the organiser's own signed-in link to that
    *  page, so this DM goes to the organiser only. Without billing the one
