@@ -332,11 +332,11 @@ describe("receipts on the billing page", () => {
 
 describe("/admin/clubs: the next charge date (test mode: it showed 'Next charge Thu 1 Oct, 00:00')", () => {
   // A month ends at 00:00 London (BST here, 23:00 UTC the day before); its
-  // charge runs that day from 10:00 London.
-  it("the London DAY the month ends, and 'from 10:00', never 00:00 or the UTC day before", () => {
+  // charge runs that day from 09:00 London.
+  it("the London DAY the month ends, and 'from 09:00', never 00:00 or the UTC day before", () => {
     const endsAt = new Date("2026-09-30T23:00:00Z"); // 00:00 BST on Thu 1 Oct
-    expect(ownerChargeDateLabel(endsAt)).toBe("Thu 1 Oct, from 10:00");
-    expect(ownerChargeDateLabel(new Date("2026-12-01T00:00:00Z"))).toBe("Tue 1 Dec, from 10:00"); // GMT
+    expect(ownerChargeDateLabel(endsAt)).toBe("Thu 1 Oct, from 09:00");
+    expect(ownerChargeDateLabel(new Date("2026-12-01T00:00:00Z"))).toBe("Tue 1 Dec, from 09:00"); // GMT
   });
 });
 
