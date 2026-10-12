@@ -13,6 +13,7 @@
  * result.
  */
 import { formatLondon, londonDateTimeToUtc } from "./london-time";
+import { messageHoursSendAfter } from "./message-hours";
 import { isSameRecurringFixture, type RecurringFixtureKey } from "./match-slot";
 
 /** How far back "last week" may be (decision D1). A cancelled week is
@@ -202,16 +203,12 @@ export function isLateDrop(sentAt: Date, deadline: Date): boolean {
   return sentAt.getTime() > deadline.getTime();
 }
 
-/** Admin notices speak London 08:00 to 21:59. */
-const NOTICE_FROM_HOUR = 8;
-const NOTICE_QUIET_FROM_HOUR = 22;
-
-/** When an admin notice queued `now` may go out: null for "now", else
- *  08:00 London next (plan R4). */
+/**
+ * When an admin notice queued `now` may go out: null for "now" (09:00 to
+ * 22:59 London, the shared message hours), else the next 09:00 London
+ * (plan R4). No longer tied to `ROLLING_SEED_HOUR`: the squad is still
+ * carried over at 08:00, and a notice that seed queues waits for 09:00.
+ */
 export function adminNoticeSendAfter(now: Date): Date | null {
-  const hour = Number(formatLondon(now, "H"));
-  const today = formatLondon(now, "yyyy-MM-dd");
-  if (hour >= NOTICE_QUIET_FROM_HOUR) return londonDateTimeToUtc(nextDay(today), ROLLING_SEED_HOUR);
-  if (hour < NOTICE_FROM_HOUR) return londonDateTimeToUtc(today, ROLLING_SEED_HOUR);
-  return null;
+  return messageHoursSendAfter(now);
 }

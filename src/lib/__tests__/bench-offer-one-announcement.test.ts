@@ -295,13 +295,15 @@ describe("an ordinary single drop is untouched", () => {
 /**
  * SUTTON FC'S SHAPE: first come, teams published, and each offer says
  * whose place it is. Two players dropping overnight on match day wait
- * for the 08:00 gate together, so they go out as one post, and that post
+ * for the 09:00 gate together, so they go out as one post, and that post
  * must still say which team each place is on and who it replaces.
  */
 describe("Sutton's shape: first come, teams published, a replaced player", () => {
-  /** Tue 6 Oct 2026, 07:59 London: still inside the overnight quiet. */
-  const BEFORE_8AM = new Date("2026-10-06T06:59:00.000Z");
-  /** Tue 6 Oct 2026, 08:00 London. */
+  /** Tue 6 Oct 2026, 08:59 London: still inside the overnight quiet. */
+  const BEFORE_9AM = new Date("2026-10-06T07:59:00.000Z");
+  /** Tue 6 Oct 2026, 09:00 London. */
+  const AT_9AM = new Date("2026-10-06T08:00:20.000Z");
+  /** 08:00 London: daytime until 2026-10-13, night now. */
   const AT_8AM = new Date("2026-10-06T07:00:20.000Z");
   /** 00:24 and 03:10 London, the night before the match. */
   const DROP_1 = new Date("2026-10-05T23:24:00.000Z");
@@ -330,7 +332,7 @@ describe("Sutton's shape: first come, teams published, a replaced player", () =>
 
   it("ONE drop: the key and every byte are what main sent", async () => {
     setWorld(sutton([{ id: "o1", replacingUserId: "u3", createdAt: DROP_1 }]));
-    const out = await firstCome(() => offerPosts(AT_8AM));
+    const out = await firstCome(() => offerPosts(AT_9AM));
     expect(out.map((i) => [i.kind, i.key, i.text])).toEqual([
       [
         "bench-prompt",
@@ -357,14 +359,15 @@ describe("Sutton's shape: first come, teams published, a replaced player", () =>
     ]);
   });
 
-  it("TWO drops overnight: nothing before 08:00, then ONE post that still names each team and replaced player", async () => {
+  it("TWO drops overnight: nothing before 09:00, then ONE post that still names each team and replaced player", async () => {
     const offers = [
       { id: "o1", replacingUserId: "u3", createdAt: DROP_1 },
       { id: "o2", replacingUserId: "u9", createdAt: DROP_2 },
     ];
     setWorld(sutton(offers));
-    expect(await firstCome(() => offerPosts(BEFORE_8AM))).toEqual([]);
-    const out = await firstCome(() => offerPosts(AT_8AM));
+    expect(await firstCome(() => offerPosts(AT_8AM))).toEqual([]);
+    expect(await firstCome(() => offerPosts(BEFORE_9AM))).toEqual([]);
+    const out = await firstCome(() => offerPosts(AT_9AM));
     expect(shape(out)).toEqual([
       ["bench-prompt", "offer-o2"],
       ["dm", "offer-o2:dm:u20"],
@@ -394,7 +397,7 @@ describe("Sutton's shape: first come, teams published, a replaced player", () =>
         { id: "o2", replacingUserId: null, createdAt: DROP_2 },
       ]),
     );
-    const out = await firstCome(() => offerPosts(AT_8AM));
+    const out = await firstCome(() => offerPosts(AT_9AM));
     expect(out[0].text).toContain(
       "🎟 2 slots just opened for *Tuesday 7-a-side* tonight. *First to claim them play.*\n• on *Red*, replacing Player 4\n\n@",
     );
@@ -409,7 +412,7 @@ describe("Sutton's shape: first come, teams published, a replaced player", () =>
           { id: "o2", replacingUserId: "u9", createdAt: DROP_2 },
         ]),
       );
-      const out = await firstCome(() => offerPosts(AT_8AM));
+      const out = await firstCome(() => offerPosts(AT_9AM));
       expect(out[0].text).toBe(
         "🎟 2 yer açıldı: bu akşamki *Tuesday 7-a-side* için. *İlk sahiplenenler oynar.*\n" +
           "• *Kırmızı* takımında, Player 4 yerine\n" +

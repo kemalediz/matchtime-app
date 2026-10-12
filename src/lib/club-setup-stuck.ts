@@ -10,7 +10,7 @@
  *   - one DM to the MatchTime owner (`queueOwnerDm`, purpose
  *     "owner-setup-stuck"). This is an action item, not an alert: he can
  *     press "Go live now" on the clubs page, and the DM carries that
- *     page's address. His quiet hours apply (held until 08:00 London). He
+ *     page's address. His quiet hours apply (held until 09:00 London). He
  *     is never emailed;
  *   - one ops event on /admin/health (`SETUP_ALERT_KIND`).
  *

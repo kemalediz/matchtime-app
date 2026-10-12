@@ -41,6 +41,7 @@
  * missed chase beats a duplicate one.
  */
 import { t } from "./i18n/t";
+import { inMessageHours } from "./message-hours";
 import type { Lang } from "./i18n/lang";
 
 /**
@@ -55,32 +56,17 @@ export const RECRUIT_CHASE_AFTER_MS = 3 * 60 * 60 * 1000;
  *
  * Reuses the ESTABLISHED convention rather than inventing one: the
  * bench-slot-offer DM in bot-scheduler.ts already gates personal,
- * actionable nudges on "London 08:00–21:59" ("never ping anyone about a
+ * actionable nudges on the daytime window ("never ping anyone about a
  * slot overnight"). A chase is the same class of message, so it gets the
- * same window. Missing the window is harmless: the chase is not lost, it
+ * same window: 09:00 to 22:59 London, the shared message hours
+ * (message-hours.ts). Missing the window is harmless: the chase is not lost, it
  * just waits for the next poll inside it (and if the match has gone by
  * then, `isMatchChaseable` correctly drops it).
+ *
+ * Is `at` inside the sociable window for a chase DM?
  */
-export const RECRUIT_CHASE_HOUR_START = 8;
-export const RECRUIT_CHASE_HOUR_END = 22;
-
-/** Hour-of-day 0-23 in Europe/London, DST-safe. Mirrors the private
- *  helper in bot-scheduler.ts; duplicated (not exported from there) so
- *  this module stays free of the scheduler's DB imports. */
-export function londonHourOf(at: Date): number {
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Europe/London",
-    hour: "numeric",
-    hour12: false,
-  }).formatToParts(at);
-  const h = parts.find((p) => p.type === "hour")?.value ?? "0";
-  return parseInt(h, 10);
-}
-
-/** Is `at` inside the sociable window for a chase DM? */
 export function isSociableChaseHour(at: Date): boolean {
-  const h = londonHourOf(at);
-  return h >= RECRUIT_CHASE_HOUR_START && h < RECRUIT_CHASE_HOUR_END;
+  return inMessageHours(at);
 }
 
 /** Match statuses the scheduler ever hands us. */

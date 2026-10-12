@@ -65,10 +65,10 @@ const adminsWithPhone = (db: TestDb) =>
       WHERE m."orgId" = $1 AND m."leftAt" IS NULL AND m.role IN ('OWNER','ADMIN') AND u."phoneNumber" IS NOT NULL`,
     [ORG_ID],
   );
-/** From 22:00 London no notice is queued (it would arrive tomorrow). */
+/** From 23:00 London no notice is queued (it would arrive tomorrow). */
 const londonHour = () =>
   Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "numeric", hour12: false }).format(new Date()));
-const noticeExpected = () => londonHour() < 22;
+const noticeExpected = () => londonHour() < 23;
 
 async function setCap(db: TestDb, usd: number | null): Promise<void> {
   await db.run(`UPDATE "Organisation" SET "aiDailyCapUsd" = $2 WHERE id = $1`, [ORG_ID, usd]);

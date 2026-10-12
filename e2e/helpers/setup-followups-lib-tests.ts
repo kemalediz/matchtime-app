@@ -314,7 +314,7 @@ async function main() {
       const NIGHT = new Date("2026-07-14T22:30:00Z"); // 23:30 London
       const q = await heldAndAsked(NIGHT);
       await noteStuckClub(q.orgId, new Date(NIGHT.getTime() + 72 * HOUR));
-      assert.deepEqual((await jobsOf(q.orgId, "owner-setup-stuck"))[0].sendAfter, new Date("2026-07-18T07:00:00Z"), "held until 08:00 London");
+      assert.deepEqual((await jobsOf(q.orgId, "owner-setup-stuck"))[0].sendAfter, new Date("2026-07-18T08:00:00Z"), "held until 09:00 London");
 
       const r = await heldAndAsked(T0);
       await db.organisation.update({ where: { id: r.orgId }, data: { setupRemovedAt: new Date(T0.getTime() + HOUR) } });

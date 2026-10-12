@@ -58,7 +58,7 @@ export interface AdminNoticeRequest extends AdminNotice {
   orgId: string;
   now?: Date;
   /**
-   * Hold a notice queued between 22:00 and 07:59 London until 08:00
+   * Hold a notice queued between 23:00 and 08:59 London until 09:00
    * (`sendAfter`, slice 1's R4 rule). The default for every new notice.
    * The notices that existed before the admin channel (a join, a leave, a
    * new player's IN) pass false: they have always gone out at once, and a
@@ -246,7 +246,7 @@ export async function adminNoticeInstructions(args: {
 /**
  * A queued `admin-group` BotJob, at emit time. Posted in the admin group
  * when the club still has one linked and still routes there, the Pi polling
- * can send there, and it is 08:00 to 21:59 London; held (null) overnight;
+ * can send there, and it is 09:00 to 22:59 London; held (null) overnight;
  * otherwise sent to the club's one person (the owner) by DM with the same
  * text, so a rolled-back Pi or an unlinked group never swallows it.
  */

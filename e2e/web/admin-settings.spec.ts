@@ -198,9 +198,10 @@ test("Weekly routine: the drop-out deadline and list time persist, refuse bad in
   await tr.getByRole("button", { name: "What is Son çıkış saati?" }).click();
   await expect(page.getByText(/MatchTime 3 saat önce gruba hatırlatır/)).toBeVisible();
   await page.getByRole("button", { name: "Close" }).click();
-  await tr.getByTestId("wd-dropout-time").fill("07:00");
+  // 08:30 was allowed until 2026-10-13 (08:00 to 21:30); the allowed times are 09:00 to 22:30 now.
+  await tr.getByTestId("wd-dropout-time").fill("08:30");
   await tr.getByTestId("wd-dropout-save").click();
-  await expect(tr.getByTestId("wd-dropout-error")).toHaveText("08:00 ile 21:30 arasında bir saat seçin.");
+  await expect(tr.getByTestId("wd-dropout-error")).toHaveText("09:00 ile 22:30 arasında bir saat seçin.");
 
   // Clear returns the club to today's behaviour.
   await tr.getByTestId("wd-dropout-clear").click();

@@ -429,7 +429,7 @@ export async function seedMonthlySquad(args: {
             kind: "dm",
             phone: u.phoneNumber.replace(/^\+/, ""),
             text: buildSeedBumpedDm({ name: u.name, activityName: week.activityName, matchDate: week.matchDate, lang: week.language }),
-            // Never between 22:00 and 07:59 London: held until 08:00.
+            // Never between 23:00 and 08:59 London: held until 09:00.
             ...(sendAfter ? { sendAfter } : {}),
           },
         });

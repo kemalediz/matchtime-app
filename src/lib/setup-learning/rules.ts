@@ -853,12 +853,14 @@ export function planSetup(args: {
   };
   const rejected = new Map<LearnedKey, WeeklyDeadlineError>();
   if (deadline || publish) {
-    const both = validateWeeklyDeadlines(withPair(publish, withPair(deadline, base)), args.activities);
+    // `base` as the saved row: a time the club already has, saved under the
+    // earlier allowed hours, does not get a newly learned one refused.
+    const both = validateWeeklyDeadlines(withPair(publish, withPair(deadline, base)), args.activities, base);
     if (both) {
       let kept = base;
       for (const c of [deadline, publish]) {
         if (!c) continue;
-        const err = validateWeeklyDeadlines(withPair(c, kept), args.activities);
+        const err = validateWeeklyDeadlines(withPair(c, kept), args.activities, base);
         if (err) rejected.set(c.key, err);
         else kept = withPair(c, kept);
       }

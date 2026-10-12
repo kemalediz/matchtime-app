@@ -72,7 +72,7 @@ const LIVE = process.env.MT_SIM_LIVE_LLM === "1";
     ];
     expect(analyzeAnnouncements).toEqual([]);
 
-    // The scheduler side, at 13:33 London today (inside the 08:00-21:59
+    // The scheduler side, at 13:33 London today (inside the 09:00 to 22:59
     // daytime gate), claiming as the Pi does.
     const tick = await g.duePosts(londonAt(0, 13, 33), { claim: true });
     const groupFacing = tick.filter((i) => i.kind !== "dm" && /slot just opened/i.test(i.text ?? ""));

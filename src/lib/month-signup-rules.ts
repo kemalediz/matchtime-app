@@ -23,6 +23,7 @@
  * A club on "weekly" never reaches any of it.
  */
 import { formatLondon, londonDateTimeToUtc } from "./london-time";
+import { inMessageHours } from "./message-hours";
 import { foldListText, monthOfWord, type MonthlyList, type MonthlyListEntry } from "./monthly-list";
 import { candidatesFor, monthFixtureDates, monthStartToDate, nameKey } from "./squad-month-rules";
 
@@ -33,13 +34,11 @@ const DAY_MS = 24 * HOUR_MS;
 
 /** The list is posted at 10:00 London (plan 4.1). */
 export const LIST_OPEN_TIME = "10:00";
-const DAY_FROM_HOUR = 8;
-const QUIET_FROM_HOUR = 22;
 
-/** 08:00 to 21:59 London: the only hours MatchTime posts or DMs in. */
+/** 09:00 to 22:59 London (the shared message hours): the only hours
+ *  MatchTime posts or DMs in. */
 export function isDaytime(now: Date): boolean {
-  const hour = Number(formatLondon(now, "H"));
-  return hour >= DAY_FROM_HOUR && hour < QUIET_FROM_HOUR;
+  return inMessageHours(now);
 }
 
 /** "2026-11-01" after "2026-10-01". */

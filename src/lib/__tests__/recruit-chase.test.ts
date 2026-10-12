@@ -16,10 +16,9 @@
  * Pure logic — no DB, no LLM, no clock except the injected `now`.
  */
 import { describe, it, expect } from "vitest";
+import { MESSAGE_HOURS_FROM_HOUR, MESSAGE_HOURS_TO_HOUR, inMessageHours } from "@/lib/message-hours";
 import {
   RECRUIT_CHASE_AFTER_MS,
-  RECRUIT_CHASE_HOUR_START,
-  RECRUIT_CHASE_HOUR_END,
   shouldChaseRecruit,
   isSociableChaseHour,
   isMatchChaseable,
@@ -130,19 +129,27 @@ describe("shouldChaseRecruit", () => {
 });
 
 describe("isSociableChaseHour", () => {
-  it("matches the bench-slot-offer daytime gate: 08:00 to 21:59 London", () => {
-    expect(RECRUIT_CHASE_HOUR_START).toBe(8);
-    expect(RECRUIT_CHASE_HOUR_END).toBe(22);
+  it("matches the bench-slot-offer daytime gate: the shared message hours, 09:00 to 22:59 London", () => {
+    expect(MESSAGE_HOURS_FROM_HOUR).toBe(9);
+    expect(MESSAGE_HOURS_TO_HOUR).toBe(23);
+    for (let i = 0; i < 96; i++) {
+      const at = new Date(Date.UTC(2026, 8, 1) + i * 15 * 60_000);
+      expect(isSociableChaseHour(at)).toBe(inMessageHours(at));
+    }
   });
 
-  it("is false at 07:59 and true from 08:00", () => {
+  it("is false at 07:59, 08:00 and 08:59, and true from 09:00", () => {
     expect(isSociableChaseHour(london("2026-09-01T07:59:00"))).toBe(false);
-    expect(isSociableChaseHour(london("2026-09-01T08:00:00"))).toBe(true);
+    expect(isSociableChaseHour(london("2026-09-01T08:00:00"))).toBe(false);
+    expect(isSociableChaseHour(london("2026-09-01T08:59:00"))).toBe(false);
+    expect(isSociableChaseHour(london("2026-09-01T09:00:00"))).toBe(true);
   });
 
-  it("is true at 21:59 and false from 22:00", () => {
+  it("is true at 21:59, 22:00 and 22:59, and false from 23:00", () => {
     expect(isSociableChaseHour(london("2026-09-01T21:59:00"))).toBe(true);
-    expect(isSociableChaseHour(london("2026-09-01T22:00:00"))).toBe(false);
+    expect(isSociableChaseHour(london("2026-09-01T22:00:00"))).toBe(true);
+    expect(isSociableChaseHour(london("2026-09-01T22:59:00"))).toBe(true);
+    expect(isSociableChaseHour(london("2026-09-01T23:00:00"))).toBe(false);
   });
 
   it("is false at 03:00", () => {
@@ -150,8 +157,10 @@ describe("isSociableChaseHour", () => {
   });
 
   it("reads the LONDON hour, not UTC (BST offset)", () => {
-    // 07:30 UTC on a BST day is 08:30 London — inside the window.
-    expect(isSociableChaseHour(new Date("2026-09-01T07:30:00Z"))).toBe(true);
+    // 08:30 UTC on a BST day is 09:30 London — inside the window.
+    expect(isSociableChaseHour(new Date("2026-09-01T08:30:00Z"))).toBe(true);
+    // 07:30 UTC is 08:30 London — before it opens.
+    expect(isSociableChaseHour(new Date("2026-09-01T07:30:00Z"))).toBe(false);
     // 22:30 UTC on a BST day is 23:30 London — outside it.
     expect(isSociableChaseHour(new Date("2026-09-01T22:30:00Z"))).toBe(false);
   });

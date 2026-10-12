@@ -361,7 +361,7 @@ describe("planSetup: what is never changed", () => {
     const p = planFor("rolling", {}, { ...STUB_ANSWERS.rolling, regular_game: false });
     expect(p).toEqual({ applied: [], suggestions: [], noted: [], kept: [], data: {} });
   });
-  it("a deadline the settings page would refuse (after 21:30) is kept with the reason", () => {
+  it("a deadline the settings page would refuse (after 22:30) is kept with the reason", () => {
     const ans = {
       ...STUB_ANSWERS.deadlines,
       drop_out_deadline: { day: "monday", time: "23:00", confidence: "high", evidence: ["Drop out by Monday 9pm at the latest", "Drop out by Monday 9pm at the latest"] },

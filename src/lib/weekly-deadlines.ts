@@ -20,13 +20,14 @@
  *   D1  the drop-out reminder in the group, 3 hours before the deadline,
  *       not before 09:00, skipped when that leaves under an hour;
  *   D2  the summary to the organisers when the deadline has passed,
- *       08:00 to 21:59 London;
+ *       09:00 to 22:59 London;
  *   D3  the final list in the group at publish time;
  *   D4  with BOTH set, the daily 17:00 post stops except on match day.
  *
  * Pure: no database, no clock.
  */
 import { formatLondon, londonDateTimeToUtc } from "./london-time";
+import { MESSAGE_HOURS_FROM_TIME, MESSAGE_HOURS_TO_HOUR, inMessageHours } from "./message-hours";
 
 export interface DeadlineMatch {
   date: Date;
@@ -133,15 +134,14 @@ export function hasWeeklyRhythm(settings: WeeklyDeadlineInput): boolean {
 // ── When each post is due ────────────────────────────────────────────
 
 const REMINDER_LEAD_MS = 3 * HOUR_MS;
-const REMINDER_EARLIEST = "09:00";
+/** The group reminder is never before the message hours open (09:00). */
+const REMINDER_EARLIEST = MESSAGE_HOURS_FROM_TIME;
 const REMINDER_MIN_NOTICE_MS = HOUR_MS;
-/** Organiser notices and the list speak London 08:00 to 21:59. */
-const WAKING_FROM_HOUR = 8;
-const QUIET_FROM_HOUR = 22;
 
+/** Organiser notices and the list speak London 09:00 to 22:59, the
+ *  shared message hours. */
 function inWakingHours(now: Date): boolean {
-  const h = Number(formatLondon(now, "H"));
-  return h >= WAKING_FROM_HOUR && h < QUIET_FROM_HOUR;
+  return inMessageHours(now);
 }
 
 /** D1: 3 hours before the deadline, not before 09:00 London that day;
@@ -169,17 +169,26 @@ export function listPublishDue(now: Date, publishAt: Date, kickoff: Date): boole
 
 // ── Settings validation (plan 3.1) ───────────────────────────────────
 
-/** Settings times stay inside 08:00 to 21:30, so every post they trigger
- *  lands in waking hours and needs no quiet-hours special case. */
-const SETTING_EARLIEST = "08:00";
-const SETTING_LATEST = "21:30";
+/**
+ * Settings times stay inside the message hours, less the last half hour:
+ * 09:00 to 22:30. So every post they trigger lands in waking hours, with
+ * half an hour for the poll to send it before 23:00, and needs no
+ * quiet-hours special case. (08:00 to 21:30 until 2026-10-13, when the
+ * window was 08:00 to 22:00.)
+ *
+ * A time SAVED under the old rule (08:00 to 08:59) is not refused: see
+ * `saved` on `validateWeeklyDeadlines`. It keeps resolving as before; the
+ * posts it triggers wait for 09:00.
+ */
+export const SETTING_EARLIEST = MESSAGE_HOURS_FROM_TIME;
+export const SETTING_LATEST = `${String(MESSAGE_HOURS_TO_HOUR - 1).padStart(2, "0")}:30`;
 
 export type WeeklyDeadlineError =
   /** Day without time, or time without day. */
   | "incomplete"
   /** A day outside 0 to 6, or a time that is not HH:mm. */
   | "bad-value"
-  /** A time before 08:00 or after 21:30. */
+  /** A time before 09:00 or after 22:30 (`SETTING_EARLIEST`, `SETTING_LATEST`). */
   | "outside-hours"
   /** The drop-out deadline is not before the list publish time. */
   | "order"
@@ -210,20 +219,29 @@ function sampleKickoff(a: ActivitySlot): Date | null {
 /**
  * Null when the settings are acceptable for every active activity of the
  * club, else the first problem. Clearing both pairs is always valid.
+ *
+ * `saved` is what the club has stored now. A pair that is EXACTLY the
+ * saved one (same day, same time) skips the allowed-hours check and only
+ * that check: the allowed hours moved from 08:00 to 21:30 to 09:00 to
+ * 22:30 on 2026-10-13, and a club that saved 08:00 before must still be
+ * able to save its other row. Changing that pair's day or time puts it
+ * under the current hours.
  */
 export function validateWeeklyDeadlines(
   s: WeeklyDeadlineSettings,
   activities: ActivitySlot[],
+  saved?: WeeklyDeadlineInput,
 ): WeeklyDeadlineError | null {
-  const halves: [unknown, unknown][] = [
-    [s.dropOutDeadlineDay, s.dropOutDeadlineTime],
-    [s.listPublishDay, s.listPublishTime],
+  const halves: [unknown, unknown, unknown, unknown][] = [
+    [s.dropOutDeadlineDay, s.dropOutDeadlineTime, saved?.dropOutDeadlineDay, saved?.dropOutDeadlineTime],
+    [s.listPublishDay, s.listPublishTime, saved?.listPublishDay, saved?.listPublishTime],
   ];
-  for (const [day, time] of halves) {
+  for (const [day, time, savedDay, savedTime] of halves) {
     if ((day == null) !== (time == null)) return "incomplete";
     if (day == null) continue;
     if (!isDay(day) || !isTime(time)) return "bad-value";
-    if (time < SETTING_EARLIEST || time > SETTING_LATEST) return "outside-hours";
+    const unchanged = day === savedDay && time === savedTime;
+    if (!unchanged && (time < SETTING_EARLIEST || time > SETTING_LATEST)) return "outside-hours";
   }
   const d = pair(s.dropOutDeadlineDay, s.dropOutDeadlineTime);
   const p = pair(s.listPublishDay, s.listPublishTime);

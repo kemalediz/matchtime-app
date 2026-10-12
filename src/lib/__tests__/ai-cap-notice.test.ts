@@ -7,7 +7,7 @@
  *   - through `sendAdminNotice`, the admin channel's one door (one person,
  *     the admin group, or each admin), never the platform owner;
  *   - never for a club that is unapproved, dormant, muted or has no group;
- *   - never after 22:00 London: it would be held to 08:00 and arrive the
+ *   - never after 23:00 London: it would be held to 09:00 and arrive the
  *     next day talking about a day that is over;
  *   - a failed queue releases the claim so a later trip can try again.
  *
@@ -56,6 +56,7 @@ vi.mock("../admin-channel", () => ({
 }));
 
 import { aiCapNoticeKey, aiCapNoticeTooLate, buildAiCapAdminNotice, notifyAdminsOfAiCap } from "../ai-cap-notice";
+import { adminNoticeSendAfter } from "../rolling-squad-rules";
 import { en } from "../i18n/strings.en";
 import { tr } from "../i18n/strings.tr";
 
@@ -90,12 +91,41 @@ describe("aiCapNoticeKey: one key per club per London day", () => {
   });
 });
 
-describe("aiCapNoticeTooLate: no notice from 22:00 London (it would arrive tomorrow)", () => {
-  it("21:59 London is fine, 22:00 and 23:59 are too late, 00:00 is a new day", () => {
-    expect(aiCapNoticeTooLate(new Date("2026-10-01T20:59:00Z"))).toBe(false);
-    expect(aiCapNoticeTooLate(new Date("2026-10-01T21:00:00Z"))).toBe(true);
-    expect(aiCapNoticeTooLate(new Date("2026-10-01T22:59:00Z"))).toBe(true);
-    expect(aiCapNoticeTooLate(new Date("2026-10-01T23:00:00Z"))).toBe(false);
+describe("aiCapNoticeTooLate: no notice from 23:00 London (it would arrive tomorrow)", () => {
+  it("22:59 London is fine, 23:00 and 23:59 are too late, 00:00 is a new day (BST)", () => {
+    expect(aiCapNoticeTooLate(new Date("2026-10-01T20:59:00Z"))).toBe(false); // 21:59
+    expect(aiCapNoticeTooLate(new Date("2026-10-01T21:00:00Z"))).toBe(false); // 22:00, too late before
+    expect(aiCapNoticeTooLate(new Date("2026-10-01T21:59:00Z"))).toBe(false); // 22:59
+    expect(aiCapNoticeTooLate(new Date("2026-10-01T22:00:00Z"))).toBe(true); // 23:00
+    expect(aiCapNoticeTooLate(new Date("2026-10-01T22:59:00Z"))).toBe(true); // 23:59
+    expect(aiCapNoticeTooLate(new Date("2026-10-01T23:00:00Z"))).toBe(false); // 00:00
+  });
+
+  it("winter (GMT): 08:59 and 09:00 are fine, 22:59 is fine, 23:00 is too late", () => {
+    expect(aiCapNoticeTooLate(new Date("2026-12-01T08:59:00Z"))).toBe(false);
+    expect(aiCapNoticeTooLate(new Date("2026-12-01T09:00:00Z"))).toBe(false);
+    expect(aiCapNoticeTooLate(new Date("2026-12-01T22:59:00Z"))).toBe(false);
+    expect(aiCapNoticeTooLate(new Date("2026-12-01T23:00:00Z"))).toBe(true);
+  });
+
+  it("both clock change days", () => {
+    // Sun 29 Mar 2026 (BST from 01:00 UTC): 22:59 BST fine, 23:00 BST too late.
+    expect(aiCapNoticeTooLate(new Date("2026-03-29T21:59:00Z"))).toBe(false);
+    expect(aiCapNoticeTooLate(new Date("2026-03-29T22:00:00Z"))).toBe(true);
+    // Sun 25 Oct 2026 (GMT from 01:00 UTC): 22:59 GMT fine, 23:00 GMT too late.
+    expect(aiCapNoticeTooLate(new Date("2026-10-25T22:59:00Z"))).toBe(false);
+    expect(aiCapNoticeTooLate(new Date("2026-10-25T23:00:00Z"))).toBe(true);
+    // The night before, 23:00 BST is 22:00 UTC.
+    expect(aiCapNoticeTooLate(new Date("2026-10-24T22:00:00Z"))).toBe(true);
+  });
+
+  it("is exactly the hour from which a held notice would only arrive tomorrow", () => {
+    for (let i = 0; i < 96; i++) {
+      const now = new Date(Date.UTC(2026, 11, 1) + i * 15 * 60_000);
+      const held = adminNoticeSendAfter(now);
+      const arrivesTomorrow = held !== null && held.toISOString().slice(0, 10) !== now.toISOString().slice(0, 10);
+      expect(aiCapNoticeTooLate(now)).toBe(arrivesTomorrow);
+    }
   });
 });
 
@@ -151,10 +181,15 @@ describe("notifyAdminsOfAiCap", () => {
     expect(h.state.notices).toHaveLength(0);
   });
 
-  it("from 22:00 London nothing is queued and nothing is claimed", async () => {
-    expect(await notifyAdminsOfAiCap("org-1", new Date("2026-10-01T21:30:00Z"))).toBe("skipped");
+  it("from 23:00 London nothing is queued and nothing is claimed", async () => {
+    expect(await notifyAdminsOfAiCap("org-1", new Date("2026-10-01T22:30:00Z"))).toBe("skipped"); // 23:30 BST
     expect(h.state.notices).toHaveLength(0);
     expect(h.state.claimed.size).toBe(0);
+  });
+
+  it("at 22:30 London, too late under the old 22:00 cutoff, the notice goes", async () => {
+    expect(await notifyAdminsOfAiCap("org-1", new Date("2026-10-01T21:30:00Z"))).toBe("sent");
+    expect(h.state.notices).toHaveLength(1);
   });
 
   it("a failed queue releases the claim and never throws, so a later trip can try again", async () => {

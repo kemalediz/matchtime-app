@@ -265,11 +265,15 @@ describe("a share changed after somebody paid", () => {
 
 describe("the month close", () => {
   const last = at("2026-10-26", "20:00");
-  it("is due from 08:00 the morning after the last game, in waking hours", () => {
+  it("is due the morning after the last game, in waking hours (09:00 to 22:59)", () => {
+    expect(monthCloseDue({ now: at("2026-10-26", "22:30"), lastKickoff: last })).toBe(false); // still the match's own day
     expect(monthCloseDue({ now: at("2026-10-26", "23:30"), lastKickoff: last })).toBe(false);
     expect(monthCloseDue({ now: at("2026-10-27", "07:59"), lastKickoff: last })).toBe(false);
-    expect(monthCloseDue({ now: at("2026-10-27", "08:00"), lastKickoff: last })).toBe(true);
-    expect(monthCloseDue({ now: at("2026-10-27", "22:30"), lastKickoff: last })).toBe(false);
+    expect(monthCloseDue({ now: at("2026-10-27", "08:00"), lastKickoff: last })).toBe(false);
+    expect(monthCloseDue({ now: at("2026-10-27", "08:59"), lastKickoff: last })).toBe(false);
+    expect(monthCloseDue({ now: at("2026-10-27", "09:00"), lastKickoff: last })).toBe(true);
+    expect(monthCloseDue({ now: at("2026-10-27", "22:30"), lastKickoff: last })).toBe(true);
+    expect(monthCloseDue({ now: at("2026-10-27", "23:00"), lastKickoff: last })).toBe(false);
     expect(monthCloseDue({ now: at("2026-10-28", "09:00"), lastKickoff: last })).toBe(true);
   });
 

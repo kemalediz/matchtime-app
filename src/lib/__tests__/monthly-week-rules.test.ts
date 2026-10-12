@@ -387,30 +387,36 @@ describe("decideListPost", () => {
     expect(decideListPost({ ...base, now, lastPostAt: new Date(now.getTime() - LIST_REPOST_FLOOR_MS) })).toBe("change");
   });
 
-  it("never between 22:00 and 07:59 London", () => {
-    expect(decideListPost({ ...base, now: at("2026-10-08T21:00:00.000Z") })).toBeNull(); // 22:00 BST
+  it("never between 23:00 and 08:59 London", () => {
+    expect(decideListPost({ ...base, now: at("2026-10-08T21:00:00.000Z") })).toBe("change"); // 22:00 BST
+    expect(decideListPost({ ...base, now: at("2026-10-08T21:59:00.000Z") })).toBe("change"); // 22:59 BST
+    expect(decideListPost({ ...base, now: at("2026-10-08T22:00:00.000Z") })).toBeNull(); // 23:00 BST
     expect(decideListPost({ ...base, now: at("2026-10-08T06:59:00.000Z") })).toBeNull(); // 07:59 BST
-    expect(decideListPost({ ...base, now: at("2026-10-08T07:00:00.000Z") })).toBe("change"); // 08:00 BST
+    expect(decideListPost({ ...base, now: at("2026-10-08T07:00:00.000Z") })).toBeNull(); // 08:00 BST
+    expect(decideListPost({ ...base, now: at("2026-10-08T07:59:00.000Z") })).toBeNull(); // 08:59 BST
+    expect(decideListPost({ ...base, now: at("2026-10-08T08:00:00.000Z") })).toBe("change"); // 09:00 BST
   });
 
   it("always once on match morning, even with nothing changed", () => {
     const same = { ...base, lastShownHash: "h2", lastPostAt: at("2026-10-09T10:00:00.000Z") };
-    expect(decideListPost({ ...same, now: at("2026-10-12T07:30:00.000Z") })).toBe("morning"); // 08:30 BST
+    expect(decideListPost({ ...same, now: at("2026-10-12T07:30:00.000Z") })).toBeNull(); // 08:30 BST: not yet
+    expect(decideListPost({ ...same, now: at("2026-10-12T08:00:00.000Z") })).toBe("morning"); // 09:00 BST
+    expect(decideListPost({ ...same, now: at("2026-10-12T08:30:00.000Z") })).toBe("morning"); // 09:30 BST
     expect(decideListPost({ ...same, now: at("2026-10-12T12:30:00.000Z") })).toBeNull(); // afternoon
     // already posted this morning
-    expect(decideListPost({ ...same, lastPostAt: at("2026-10-12T07:10:00.000Z"), now: at("2026-10-12T08:30:00.000Z") })).toBeNull();
+    expect(decideListPost({ ...same, lastPostAt: at("2026-10-12T08:10:00.000Z"), now: at("2026-10-12T09:30:00.000Z") })).toBeNull();
   });
 
   it("match morning: not when the group saw this same list in the last three hours (2026-10-06)", () => {
-    // Somebody asked "who's in?" at 07:30 and got the list. At 08:00 the
+    // Somebody asked "who's in?" at 08:30 and got the list. At 09:00 the
     // same list is not posted again. The rule PR #204 gave the weekly
     // roster: the same squad is not shown twice inside three hours.
-    const same = { ...base, lastShownHash: "h2", lastPostAt: at("2026-10-12T06:30:00.000Z") }; // 07:30 BST
-    expect(decideListPost({ ...same, now: at("2026-10-12T07:00:00.000Z"), sameListShownRecently: true })).toBeNull(); // 08:00 BST
+    const same = { ...base, lastShownHash: "h2", lastPostAt: at("2026-10-12T07:30:00.000Z") }; // 08:30 BST
+    expect(decideListPost({ ...same, now: at("2026-10-12T08:00:00.000Z"), sameListShownRecently: true })).toBeNull(); // 09:00 BST
     // Three hours on it is no longer a repeat: the morning post goes out.
-    expect(decideListPost({ ...same, now: at("2026-10-12T09:31:00.000Z"), sameListShownRecently: false })).toBe("morning");
+    expect(decideListPost({ ...same, now: at("2026-10-12T10:31:00.000Z"), sameListShownRecently: false })).toBe("morning");
     // A list that has CHANGED since is posted whatever was shown before.
-    expect(decideListPost({ ...same, hash: "h3", now: at("2026-10-12T07:00:00.000Z"), sameListShownRecently: false })).toBe("change");
+    expect(decideListPost({ ...same, hash: "h3", now: at("2026-10-12T08:00:00.000Z"), sameListShownRecently: false })).toBe("change");
   });
 
   it("not once the teams are out, not for a match that is over, not for next week's match", () => {

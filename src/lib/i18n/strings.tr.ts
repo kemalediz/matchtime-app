@@ -1959,7 +1959,7 @@ export const tr: Strings = {
   wd_saved: "Haftalık saatler kaydedildi",
   wd_err_incomplete: "Hem gün hem saat seçin ya da ikisini de boş bırakın.",
   wd_err_bad_value: "Bu gün ya da saat geçerli değil.",
-  wd_err_outside_hours: "08:00 ile 21:30 arasında bir saat seçin.",
+  wd_err_outside_hours: "09:00 ile 22:30 arasında bir saat seçin.",
   wd_err_order: "Son çıkış saati, listenin yayınlanmasından önce olmalı.",
   wd_err_after_kickoff: "Maç günü için maç saatinden önce bir saat seçin.",
   // ── Slice 2a: yönetici kanalı (2026-09-30) ──

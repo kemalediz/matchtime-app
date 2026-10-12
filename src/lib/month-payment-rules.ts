@@ -381,7 +381,7 @@ export interface RemindersSent {
  *   "r2"    on the deadline's own day, at least six hours after the first;
  *   "late"  after the deadline, once a London day, on each of the three
  *           days that follow; then nothing.
- * Never between 22:00 and 07:59 London. Each is sent under its own key,
+ * Never between 23:00 and 08:59 London. Each is sent under its own key,
  * so none is ever sent twice.
  */
 export function duePaymentReminder(p: { now: Date; payByAt: Date; sent: RemindersSent }): "r1" | "r2" | "late" | null {
