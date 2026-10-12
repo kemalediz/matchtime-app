@@ -30,6 +30,7 @@
  * (`dormantAt`). Both keep their meanings (see org-lifecycle.ts).
  */
 import { db } from "./db";
+import { clearCapturedChat } from "./captured-chat";
 import { t } from "./i18n/t";
 import { appUrl, buildAdminLink } from "./admin-link";
 import { e164Digits } from "./phone";
@@ -514,8 +515,9 @@ export async function decideClub(
         if (count !== 1) throw new DecisionRaceLost();
         if (link) {
           await tx.clubConnect.updateMany({ where: { id: link.id, status: "group_linked" }, data: { status: "closed" } });
-          // F3: a rejected club's chat is never read; delete it now.
-          await tx.$executeRaw`UPDATE "ClubConnect" SET "capturedHistory" = NULL WHERE "id" = ${link.id}`;
+          // F3: a rejected club's chat is never read; delete it now, and
+          // the group description captured with it.
+          await clearCapturedChat(tx, link.id);
         }
         return {
           result: {

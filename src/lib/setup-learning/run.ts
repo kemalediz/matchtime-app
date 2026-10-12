@@ -77,6 +77,7 @@
  * throughout and the reading behaves exactly as before.
  */
 import { db } from "../db";
+import { clearCapturedChat } from "../captured-chat";
 import { APPROVED_CLUB_WHERE, servingClubWhere } from "../club-approval";
 import {
   NEVER_HELD_WHERE,
@@ -214,9 +215,10 @@ function closedUnderUs(orgId: string): LearnOutcome {
   return { kind: "skipped", reason: "closed" };
 }
 
-/** The chat is read once: after a final outcome it is deleted. */
+/** The chat is read once: after a final outcome it is deleted, and the
+ *  group description captured with it (captured-chat.ts). */
 async function clearHistory(connectId: string): Promise<void> {
-  await db.$executeRaw`UPDATE "ClubConnect" SET "capturedHistory" = NULL WHERE "id" = ${connectId}`;
+  await clearCapturedChat(db, connectId);
 }
 
 function orgSettings(o: OrgRow): OrgSettingsState {

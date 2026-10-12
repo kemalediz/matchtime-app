@@ -232,8 +232,10 @@ describe("learnClubSetup, fixture by fixture (one stub call each, no real model)
         expect(dms.length).toBe(fx.expect.dm ? 1 : 0);
         expect(state.learning).toMatchObject({ model: "claude-haiku-4-5", costUsd: 0.011, inputTokens: 9_000, outputTokens: 400 });
       }
-      // The chat is deleted once read, whatever came of it.
+      // The chat is deleted once read, whatever came of it, and the group
+      // description in the same statement (captured-chat.ts).
       expect(state.connect!.capturedHistory).toBeNull();
+      expect(state.raw).toContain(`UPDATE "ClubConnect" SET "capturedHistory" = NULL, "capturedDescription" = NULL WHERE "id" = ?`);
       expect(sdkCalls.n).toBe(0);
     });
   }

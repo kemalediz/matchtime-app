@@ -2117,6 +2117,13 @@ model ClubConnect {
   /// 7-day expiry measured from `linkedAt` (2026-10-08, see
   /// src/lib/captured-history-expiry.ts). NULL = none captured.
   capturedHistory Json?
+  /// The group's WhatsApp description at the add (2026-10-12), with bank
+  /// details and phone numbers masked out BEFORE it is stored
+  /// (src/lib/group-description.ts): the unmasked text is never written.
+  /// Kept beside `capturedHistory` and deleted wherever that is deleted,
+  /// always in the same statement (src/lib/captured-chat.ts). Nothing
+  /// reads it yet. NULL = the group had none, or none was sent.
+  capturedDescription String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

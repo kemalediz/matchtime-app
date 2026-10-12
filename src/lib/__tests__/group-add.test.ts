@@ -313,12 +313,119 @@ describe("F3: the chat is kept for the learned setup", () => {
     const sql = (dbMock.$executeRaw.mock.calls[0][0] as TemplateStringsArray).join("?");
     expect(sql).toContain(`SET "capturedHistory" =`);
     expect(sql).toContain(`AND "capturedHistory" IS NULL`);
+    // Never onto a request a removal, a rejection or an approval cleared
+    // after it was read: the statement checks it is still linked.
+    expect(sql.replace(/\s+/g, " ")).toContain(`AND "status" = 'group_linked' AND "botRemovedAt" IS NULL`);
   });
   it("removed from the group while pending: the chat is deleted with the link", async () => {
     dbMock.clubConnect.findMany.mockResolvedValue([{ id: "cc-ali", orgId: "org-riverside" }]);
     await handleBotRemoved(GROUP, NOW);
     const sqls = dbMock.$executeRaw.mock.calls.map((c) => (c[0] as TemplateStringsArray).join("?"));
-    expect(sqls).toContain(`UPDATE "ClubConnect" SET "capturedHistory" = NULL WHERE "id" = ?`);
+    expect(sqls).toContain(`UPDATE "ClubConnect" SET "capturedHistory" = NULL, "capturedDescription" = NULL WHERE "id" = ?`);
+  });
+});
+
+describe("the group description is kept beside the chat, masked (2026-10-12)", () => {
+  const RAW = "Mondays 20:30, 9 a side, £7.\nSort 12-34-56 Acc 12345678";
+  const MASKED = "Mondays 20:30, 9 a side, £7.\nSort [number removed] Acc [number removed]";
+  const sqlCalls = () =>
+    dbMock.$executeRaw.mock.calls.map((c) => ({ sql: (c[0] as TemplateStringsArray).join("?"), values: c.slice(1) as unknown[] }));
+  const everythingWritten = () =>
+    JSON.stringify([
+      dbMock.clubConnect.updateMany.mock.calls,
+      dbMock.$executeRaw.mock.calls,
+      dbMock.unsolicitedGroup.create.mock.calls,
+      dbMock.platformJob.create.mock.calls,
+    ]);
+
+  it("the link stores it masked, and the unmasked text is written nowhere and logged nowhere", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const out = await add({ groupDescription: RAW });
+    expect(out.kind).toBe("linked");
+    expect(dbMock.clubConnect.updateMany.mock.calls[0][0].data.capturedDescription).toBe(MASKED);
+    const written = everythingWritten();
+    const logged = JSON.stringify(log.mock.calls);
+    for (const secret of ["12-34-56", "12345678"]) {
+      expect(written).not.toContain(secret);
+      expect(logged).not.toContain(secret);
+    }
+    // The log says how long it is, and nothing of what it says.
+    expect(logged).toContain(`description ${MASKED.length} chars`);
+    expect(logged).not.toContain("9 a side");
+    // Nor is it in what the owner is told.
+    if (out.kind === "linked") expect(out.ownerDm.text).not.toContain("Mondays");
+    log.mockRestore();
+  });
+
+  it("none sent, blank, not text, or far too long: nothing stored", async () => {
+    for (const groupDescription of [undefined, null, "   ", 42, { text: "x" }, "x".repeat(4097)]) {
+      vi.clearAllMocks();
+      dbMock.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => fn(dbMock));
+      dbMock.clubConnect.updateMany.mockResolvedValue({ count: 1 });
+      dbMock.organisation.updateMany.mockResolvedValue({ count: 1 });
+      await add({ groupDescription });
+      expect(dbMock.clubConnect.updateMany.mock.calls[0][0].data.capturedDescription).toBeUndefined();
+    }
+  });
+
+  it("a re-add of a linked group fills it in only when none is stored, masked, and never replaces one", async () => {
+    dbMock.clubConnect.findFirst.mockResolvedValue({ id: "cc-ali", linkedAt: mins(-60) });
+    const out = await add({ groupDescription: RAW });
+    expect(out).toEqual({ kind: "already-linked", connectId: "cc-ali" });
+    const q = sqlCalls().find((c) => c.sql.includes(`"capturedDescription" =`));
+    expect(q).toBeDefined();
+    expect(q!.sql.replace(/\s+/g, " ")).toBe(
+      `UPDATE "ClubConnect" SET "capturedDescription" = ? WHERE "id" = ? AND "capturedDescription" IS NULL ` +
+        `AND "status" = 'group_linked' AND "botRemovedAt" IS NULL`,
+    );
+    expect(q!.values).toEqual([MASKED, "cc-ali"]);
+    expect(everythingWritten()).not.toContain("12345678");
+  });
+
+  it("a re-add that brings none writes nothing about it", async () => {
+    dbMock.clubConnect.findFirst.mockResolvedValue({ id: "cc-ali", linkedAt: mins(-60) });
+    await add({});
+    expect(sqlCalls().some((c) => c.sql.includes("capturedDescription"))).toBe(false);
+  });
+
+  it("a re-add on a link already past the retention limit stores nothing: the expiry would only delete it again", async () => {
+    dbMock.clubConnect.findFirst.mockResolvedValue({ id: "cc-ali", linkedAt: mins(-8 * 24 * 60) });
+    await add({ groupDescription: RAW, enrichmentHistory: [{ author: "Ali", text: "in", timestamp: "2026-09-28T10:00:00Z" }] });
+    expect(dbMock.$executeRaw).not.toHaveBeenCalled();
+  });
+
+  it("a group the reconnect sweep found brings no description, whatever the post carries", async () => {
+    const out = await add({ discovered: true, addedByPhone: undefined, groupDescription: RAW });
+    expect(out.kind).toBe("linked");
+    expect(dbMock.clubConnect.updateMany.mock.calls[0][0].data).not.toHaveProperty("capturedDescription");
+    expect(everythingWritten()).not.toContain("Mondays");
+
+    vi.clearAllMocks();
+    dbMock.clubConnect.findFirst.mockResolvedValue({ id: "cc-ali", linkedAt: mins(-60) });
+    await add({ discovered: true, groupDescription: RAW });
+    expect(sqlCalls().some((c) => c.sql.includes("capturedDescription"))).toBe(false);
+  });
+
+  it("an unsolicited add stores none of it", async () => {
+    dbMock.clubConnect.findMany.mockResolvedValue([]);
+    const out = await add({ addedByPhone: STRANGER, groupDescription: RAW });
+    expect(out.kind).toBe("unsolicited");
+    expect(everythingWritten()).not.toContain("Mondays");
+    expect(dbMock.clubConnect.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("a group an approved club owns (Sutton FC): the description is never read into anything", async () => {
+    dbMock.organisation.findFirst.mockResolvedValueOnce({ id: "org-sutton" });
+    const out = await add({ groupId: SUTTON_GROUP, groupDescription: RAW });
+    expect(out).toEqual({ kind: "live-org", orgId: "org-sutton" });
+    expect(dbMock.clubConnect.updateMany).not.toHaveBeenCalled();
+    expect(dbMock.$executeRaw).not.toHaveBeenCalled();
+  });
+
+  it("removed from the group while pending: the description is deleted in the same statement as the chat", async () => {
+    dbMock.clubConnect.findMany.mockResolvedValue([{ id: "cc-ali", orgId: "org-riverside" }]);
+    await handleBotRemoved(GROUP, NOW);
+    expect(sqlCalls().map((c) => c.sql)).toEqual([`UPDATE "ClubConnect" SET "capturedHistory" = NULL, "capturedDescription" = NULL WHERE "id" = ?`]);
   });
 });
 

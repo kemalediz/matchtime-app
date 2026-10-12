@@ -420,6 +420,27 @@ describe("groupSnapshot", () => {
     ]);
   });
 
+  it("carries the group description groupMetadata returned, also from the roster cache, and logs none of it", async () => {
+    const t = await started();
+    const desc = "Mondays 20:30, 9 a side. Sort 12-34-56 Acc 12345678";
+    t.sock().groups[GROUP] = { ...sutton(), desc } as GroupMetadata;
+    t.sock().metadataCalls.length = 0;
+    const first = await t.driver.groupSnapshot(GROUP, await t.driver.selfIds());
+    const second = await t.driver.groupSnapshot(GROUP, await t.driver.selfIds());
+    expect(first.description).toBe(desc);
+    expect(second.description).toBe(desc);
+    expect(t.sock().metadataCalls.filter((g) => g === GROUP).length).toBeLessThanOrEqual(1);
+    const logged = [...t.logs, ...t.errors].join("\n");
+    expect(logged).not.toContain("12-34-56");
+    expect(logged).not.toContain("12345678");
+    expect(logged).not.toContain("9 a side");
+  });
+
+  it("a group with no description: null", async () => {
+    const t = await started();
+    expect((await t.driver.groupSnapshot(GROUP, [])).description).toBeNull();
+  });
+
   it("is total: a failed read comes back as notes, not a throw", async () => {
     const t = await started();
     t.sock().groupError = new Error("forbidden");

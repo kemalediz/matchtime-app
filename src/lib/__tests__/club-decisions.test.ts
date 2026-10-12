@@ -588,7 +588,7 @@ describe("decideClub: reject", () => {
     expect(importMock).not.toHaveBeenCalled();
     // F3: a rejected club's chat is never read; it is deleted at the decision.
     const sqls = dbMock.$executeRaw.mock.calls.map((c) => (c[0] as unknown as TemplateStringsArray).join("?"));
-    expect(sqls).toContain(`UPDATE "ClubConnect" SET "capturedHistory" = NULL WHERE "id" = ?`);
+    expect(sqls).toContain(`UPDATE "ClubConnect" SET "capturedHistory" = NULL, "capturedDescription" = NULL WHERE "id" = ?`);
   });
 });
 

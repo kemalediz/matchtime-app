@@ -283,6 +283,33 @@ describe("refuseServerWriteInShadow", () => {
   });
 });
 
+describe("refuseServerWriteInShadow never logs a group description", () => {
+  it("shows its length in the payload preview, and none of its text", () => {
+    process.env[SHADOW_ENV] = "1";
+    _test_resetShadow();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const body = JSON.stringify({ groupId: "1@g.us", groupDescription: "Sort 12-34-56 Acc 12345678", discovered: true });
+    refuseServerWriteInShadow("https://x/api/whatsapp/bot-added", body);
+    const line = warn.mock.calls.flat().join(" ");
+    expect(line).toContain('"groupDescription":"<26 chars>"');
+    expect(line).toContain('"groupId":"1@g.us"');
+    expect(line).not.toContain("12-34-56");
+    expect(line).not.toContain("12345678");
+    warn.mockRestore();
+  });
+
+  it("a body it cannot read that names a description is not previewed at all", () => {
+    process.env[SHADOW_ENV] = "1";
+    _test_resetShadow();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    refuseServerWriteInShadow("https://x/api/whatsapp/bot-added", '{"groupDescription":"Sort 12-34-56"');
+    const line = warn.mock.calls.flat().join(" ");
+    expect(line).not.toContain("12-34-56");
+    expect(line).toContain("<not shown>");
+    warn.mockRestore();
+  });
+});
+
 describe("shadowPreview", () => {
   it("flattens newlines and truncates, so one send is one log line", () => {
     expect(shadowPreview("a\nb")).toBe("a\\nb");
