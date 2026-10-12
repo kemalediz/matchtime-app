@@ -410,7 +410,25 @@ const GOOGLE_DOMAINS = new Set([
   "ca", "com.au",
 ]);
 /** Map services whose links are long and may hold coordinates. */
-const LONG_MAP_HOSTS = new Set(["maps.apple.com", "maps.apple", "waze.com", "ul.waze.com", "openstreetmap.org", "osm.org"]);
+const LONG_MAP_HOSTS = new Set([
+  "maps.apple.com",
+  "maps.apple",
+  "waze.com",
+  "ul.waze.com",
+  "openstreetmap.org",
+  "osm.org",
+  "maps.yandex.com",
+  "maps.yandex.com.tr",
+  "maps.yandex.ru",
+]);
+/**
+ * Yandex's main hosts. They serve every Yandex product, so a link is a
+ * map link only under "/maps" or "/harita" (its Turkish name).
+ */
+const YANDEX_HOSTS = new Set(["yandex.com", "yandex.com.tr", "yandex.ru"]);
+const YANDEX_MAPS_PATH = /^\/(?:maps|harita)(?=[/?#]|$)/;
+/** Yandex's short share link: "/maps/-/<code>", the code one path piece. */
+const YANDEX_SHORT_PATH = /^\/(?:maps|harita)\/-\/[a-z0-9._~-]+/;
 /** Map services whose links are a short code or three words. */
 const SHORT_MAP_HOSTS = new Set(["maps.app.goo.gl", "goo.gl", "what3words.com", "w3w.co"]);
 const SHORT_PATH = /^\/[a-z0-9._/-]*/;
@@ -434,6 +452,9 @@ const OTHER_LINK_INSIDE = /:\/\/|(?:^|[^a-z0-9])www\.|[a-z0-9-]\.[a-z]{2,24}\/|@
  *   maps.apple.com, maps.apple       any path          (long)
  *   waze.com, ul.waze.com            any path          (long)
  *   openstreetmap.org, osm.org       any path          (long)
+ *   maps.yandex.com, .com.tr, .ru    any path          (long)
+ *   yandex.com, .com.tr, .ru         only under /maps or /harita (long)
+ *   the same, /maps/-/<code>         a short code      (short)
  *   maps.app.goo.gl                  a short code      (short)
  *   goo.gl/maps/...                  a short code      (short)
  *   what3words.com, w3w.co           three words       (short)
@@ -476,7 +497,18 @@ function mapLinkLength(url: string): number {
     return offset + hostPart.length + kept.length;
   }
 
-  let known = LONG_MAP_HOSTS.has(host);
+  if (YANDEX_HOSTS.has(host)) {
+    if (!YANDEX_MAPS_PATH.test(path)) return 0;
+    const short = YANDEX_SHORT_PATH.exec(path);
+    if (short) {
+      let kept = short[0];
+      while (kept.endsWith(".")) kept = kept.slice(0, -1);
+      if (SHORT_LINK_DIGITS.test(kept) || OTHER_LINK_INSIDE.test(kept)) return 0;
+      return offset + hostPart.length + kept.length;
+    }
+  }
+
+  let known = LONG_MAP_HOSTS.has(host) || YANDEX_HOSTS.has(host);
   if (!known && host.startsWith("maps.google.")) known = GOOGLE_DOMAINS.has(host.slice(12));
   if (!known && host.startsWith("google.") && GOOGLE_DOMAINS.has(host.slice(7))) {
     known = path === "/maps" || path.startsWith("/maps/") || path.startsWith("/maps?");
