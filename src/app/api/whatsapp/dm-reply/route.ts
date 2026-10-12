@@ -66,6 +66,8 @@
 import { withOrgAiBudget } from "@/lib/ai-budget";
 import { handleApproverDm, nonServingClubsReason } from "@/lib/club-approval";
 import { IN_LIVE_STAGE_CLUB_WHERE, settingUpClubsReason } from "@/lib/club-setup";
+import { scheduleSetupAfterApproval } from "@/lib/club-setup-schedule";
+import { setupHoldEnabledForApiRequest } from "@/lib/setup-hold-flag";
 import { handleGoDm, handleSettingUpDm } from "@/lib/setup-go-dm";
 import { setupLearningEnabledForRequest } from "@/lib/setup-learning/flag";
 import { billingEnabledForApiRequest } from "@/lib/billing-flag";
@@ -143,7 +145,17 @@ export async function POST(request: Request) {
   if (selfJoinEnabledForApiRequest(request)) {
     // The owner's APPROVE / REJECT (slice 7) comes first of all: it is the
     // most specific thing a DM can be, and it must never reach a model.
-    const decision = await handleApproverDm({ text, phone, senderAltPhone, waMessageId });
+    const decision = await handleApproverDm({
+      text,
+      phone,
+      senderAltPhone,
+      waMessageId,
+      setupHold: setupHoldEnabledForApiRequest(request),
+    });
+    // Go-live slice S3: an approval that HELD the club. Its chat reading
+    // and its organiser's setup DM run AFTER this response (`after()`),
+    // never inline: the Pi is awaiting it. The learn-setup cron retries.
+    if (decision?.heldOrgId) scheduleSetupAfterApproval(decision.heldOrgId, request);
     if (decision) return NextResponse.json({ ok: true, ...decision });
     const connect = await handleConnectDm({ text, phone, senderAltPhone, senderLid, waMessageId });
     if (connect) return NextResponse.json({ ok: true, ...connect });

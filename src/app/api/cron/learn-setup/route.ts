@@ -16,6 +16,15 @@
  * half stops the other: a failed sweep still expires, and a failed expiry
  * still returns the sweep's report (with `expired: null`).
  *
+ * THE SETUP DM (go-live slice S3, 2026-10-12) rides on it too: a club
+ * approved while SETUP_HOLD_ENABLED was on is silent until its organiser
+ * says GO, and gets ONE DM once its reading is final (or at once when the
+ * reading is off). `runSetupDmSweep` (src/lib/club-setup-dm.ts) sends
+ * whatever is due, on every authorised call and whatever either flag says
+ * now: it is keyed on the club's stored state. With no club setting up it
+ * is one query that finds nothing. It is the retry for the run that
+ * follows an approval (`after()`, club-setup-schedule.ts).
+ *
  * TEST SEAMS, honoured only when the server was booted with MT_TEST_MODE
  * exactly "1" (never in production): `x-test-now` pins the clock,
  * `x-mt-test-setup-learning` turns the flag on or off for this request,
@@ -26,40 +35,31 @@ import { NextResponse } from "next/server";
 import { runSetupLearningSweep } from "@/lib/setup-learning/run";
 import { setupLearningEnabledForRequest } from "@/lib/setup-learning/flag";
 import { expireCapturedHistory, type ExpiredCapturedHistory } from "@/lib/captured-history-expiry";
-import type { PipelineModel } from "@/lib/pipeline/llm";
-
-const STUB_HEADER = "x-mt-test-setup-learning-stub";
-
-function stubModel(text: string): PipelineModel {
-  return {
-    name: "setup-learning-stub",
-    complete: async () => ({
-      text,
-      stopReason: "end_turn",
-      usage: { inputTokens: 12_000, outputTokens: 500, cacheReadTokens: 0, cacheWriteTokens: 0 },
-      costUsd: 0.0145,
-      ms: 1,
-    }),
-  };
-}
+import { runSetupDmSweep } from "@/lib/club-setup-dm";
+import { setupLearningTestSeam } from "@/lib/setup-learning/test-seam";
 
 export async function GET(request: Request) {
   if (request.headers.get("authorization") !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  let now = new Date();
-  let model: PipelineModel | undefined;
-  if (process.env.MT_TEST_MODE === "1") {
-    const pinned = new Date(request.headers.get("x-test-now") ?? "");
-    if (!Number.isNaN(pinned.getTime())) now = pinned;
-    const stub = request.headers.get(STUB_HEADER);
-    if (stub) model = stubModel(stub);
-  }
+  const seam = setupLearningTestSeam(request);
+  const now = seam.now ?? new Date();
+  const model = seam.model;
+  const learningEnabled = setupLearningEnabledForRequest(request);
   let report: Awaited<ReturnType<typeof runSetupLearningSweep>> | null = null;
   try {
-    report = await runSetupLearningSweep(now, { enabled: setupLearningEnabledForRequest(request), model });
+    report = await runSetupLearningSweep(now, { enabled: learningEnabled, model });
   } catch (err) {
     console.error("[learn-setup] sweep failed:", err);
+  }
+  // The setup DM of a club held until its organiser says GO, AFTER the
+  // sweep so a reading that finished in this run is told in this run.
+  // Independent of the sweep: a failed sweep still sends what is due.
+  let setupDms: Awaited<ReturnType<typeof runSetupDmSweep>> | null = null;
+  try {
+    setupDms = await runSetupDmSweep(now, { learningEnabled });
+  } catch (err) {
+    console.error("[learn-setup] setup DM sweep failed:", err);
   }
   let expired: ExpiredCapturedHistory | null = null;
   try {
@@ -68,5 +68,7 @@ export async function GET(request: Request) {
     console.error("[learn-setup] captured chat expiry failed:", err);
   }
   if (!report) return NextResponse.json({ error: "sweep failed", expired }, { status: 500 });
-  return NextResponse.json({ ...report, expired });
+  // `setupDms` is reported only when a club was due, so with no club
+  // setting up the response is exactly what it was.
+  return NextResponse.json({ ...report, expired, ...(setupDms && setupDms.considered > 0 ? { setupDms } : {}) });
 }

@@ -25,7 +25,9 @@
  *   6. DM the organiser once (purpose "setup-learned", refId
  *      "<orgId>:setup-learned"), on the platform channel, in the daytime
  *      (09:00 to 23:00 London; a night run waits for 09:00), only when
- *      there is something to say.
+ *      there is something to say. NOT for a club that is approved but
+ *      setting up (go-live slice S3): its one setup DM carries the
+ *      findings instead (club-setup-dm.ts).
  *
  * Sutton FC can never be read: it has no `approvedAt` (it was approved by
  * the column default) and no connect request.
@@ -48,6 +50,31 @@
  *     suspended instead).
  * Every club that exists today has no go-live stamp and is read exactly
  * as before.
+ *
+ * A READING ONLY WRITES A ROW IT STILL HOLDS (PR #235 review fix 5). The
+ * row is this run's while its status is "running". It can be CLOSED FOR
+ * GOOD under a run that is still waiting for the model: by go-live
+ * (`closeUnfinishedSetupLearning`), by the setup DM's 2-hour cap or by the
+ * DM going with the reading off (`closeReadingForGood`, club-setup-dm.ts).
+ * "Closed for good" must then be true, so:
+ *   - every write of the row (`finish`) is a compare-and-set on status
+ *     "running": a closed row is never overwritten, not with a result and
+ *     not with "deferred" (which would have it read again);
+ *   - the settings write and the record of it are ONE transaction that
+ *     locks the club's row and then takes the reading row (the same
+ *     compare-and-set). A closer arriving in that instant waits for the
+ *     transaction, then finds the row final and leaves it alone; a closer
+ *     that got there first makes the compare-and-set fail, and nothing is
+ *     applied.
+ * LOCK ORDER, here and in every closer: THE CLUB'S ROW, THEN THE READING
+ * ROW. `goLiveClub` (club-setup.ts) writes the club and then closes the
+ * reading in one transaction; `closeReadingForGood` locks the club first
+ * for the same reason. Every transaction that holds both rows takes them
+ * in that order, so none can deadlock with another. (The first version of
+ * this fix took the reading row first, which could deadlock with go-live.)
+ * A run that finds its row closed returns "skipped", reason "closed". For
+ * a club nobody closes (every club that is not held) the row is "running"
+ * throughout and the reading behaves exactly as before.
  */
 import { db } from "../db";
 import { clearCapturedChat } from "../captured-chat";
@@ -165,8 +192,27 @@ async function claim(orgId: string, now: Date): Promise<boolean> {
   return count === 1;
 }
 
-async function finish(orgId: string, data: Record<string, unknown>): Promise<void> {
-  await db.clubSetupLearning.update({ where: { orgId }, data });
+/** `db`, or a transaction client. */
+type RowClient = {
+  clubSetupLearning: { updateMany(args: { where: object; data: object }): Promise<{ count: number }> };
+  organisation: { updateMany(args: { where: object; data: object }): Promise<{ count: number }> };
+  $executeRaw(query: TemplateStringsArray, ...values: unknown[]): Promise<number>;
+};
+
+/**
+ * Write the row, ONLY while this run still holds it (status "running").
+ * False: the row was closed for good under this run, and nothing was
+ * written.
+ */
+async function finish(orgId: string, data: Record<string, unknown>, client: RowClient = db as unknown as RowClient): Promise<boolean> {
+  const { count } = await client.clubSetupLearning.updateMany({ where: { orgId, status: "running" }, data });
+  return count === 1;
+}
+
+/** What a run returns when its row was closed for good under it. */
+function closedUnderUs(orgId: string): LearnOutcome {
+  console.log(`[setup-learning] ${orgId}: the reading was closed while it was in flight; nothing applied, nothing recorded`);
+  return { kind: "skipped", reason: "closed" };
 }
 
 /** The chat is read once: after a final outcome it is deleted, and the
@@ -196,7 +242,13 @@ function orgSettings(o: OrgRow): OrgSettingsState {
  * has no go-live stamp. Either way a club that has gone live is never
  * changed.
  */
-async function applyPlan(orgId: string, org: OrgSettingsState, plan: SetupPlan, held: boolean): Promise<boolean> {
+async function applyPlan(
+  orgId: string,
+  org: OrgSettingsState,
+  plan: SetupPlan,
+  held: boolean,
+  client: RowClient = db as unknown as RowClient,
+): Promise<boolean> {
   if (plan.applied.length === 0) return true;
   const where: Record<string, unknown> = {
     id: orgId,
@@ -224,8 +276,36 @@ async function applyPlan(orgId: string, org: OrgSettingsState, plan: SetupPlan, 
     }
   }
   where.NOT = { settingsSetByOrganiser: { hasSome: plan.applied.map((a) => ORGANISER_SET_KEY[a.key]) } };
-  const { count } = await db.organisation.updateMany({ where, data: plan.data });
+  const { count } = await client.organisation.updateMany({ where, data: plan.data });
   return count === 1;
+}
+
+/**
+ * Apply the plan and record it, as ONE transaction that locks the club's
+ * row, then takes the reading row (the lock order, see the header):
+ *   "closed"  the row is no longer this run's: nothing applied, nothing written;
+ *   "moved"   the club's settings write was refused: nothing written, the
+ *             caller plans again from a fresh read;
+ *   "done"    applied (or nothing to apply) and recorded.
+ */
+async function applyAndRecord(
+  orgId: string,
+  org: OrgSettingsState,
+  plan: SetupPlan,
+  held: boolean,
+  record: (plan: SetupPlan) => Record<string, unknown>,
+): Promise<"closed" | "moved" | "done"> {
+  return db.$transaction(async (client) => {
+    const tx = client as unknown as RowClient;
+    // The club's row first: go-live and the cap's close take it first too.
+    await tx.$executeRaw`SELECT 1 FROM "Organisation" WHERE "id" = ${orgId} FOR UPDATE`;
+    // Then the reading row, only while it is still this run's. A no-op
+    // write, so the row is locked until this transaction ends.
+    if (!(await finish(orgId, { status: "running" }, tx))) return "closed";
+    if (!(await applyPlan(orgId, org, plan, held, tx))) return "moved";
+    await finish(orgId, record(plan), tx);
+    return "done";
+  });
 }
 
 export async function learnClubSetup(orgId: string, opts: LearnOptions = {}): Promise<LearnOutcome> {
@@ -246,14 +326,16 @@ export async function learnClubSetup(orgId: string, opts: LearnOptions = {}): Pr
     select: { id: true, userId: true, phone: true, groupSubject: true, capturedHistory: true },
   });
   if (!connect) {
-    await finish(orgId, { status: "skipped", reason: "no-organiser" });
+    if (!(await finish(orgId, { status: "skipped", reason: "no-organiser" }))) return closedUnderUs(orgId);
     return { kind: "skipped", reason: "no-organiser" };
   }
 
   const history = coerceHistoryMessages(connect.capturedHistory);
   const gate = historyGate(history);
   if (!gate.ok) {
-    await finish(orgId, { status: "skipped", reason: gate.reason, messageCount: gate.messages, authorCount: gate.authors });
+    if (!(await finish(orgId, { status: "skipped", reason: gate.reason, messageCount: gate.messages, authorCount: gate.authors }))) {
+      return closedUnderUs(orgId);
+    }
     await clearHistory(connect.id);
     console.log(`[setup-learning] ${orgId}: skipped (${gate.reason}: ${gate.messages} messages, ${gate.authors} people)`);
     return { kind: "skipped", reason: gate.reason };
@@ -307,9 +389,20 @@ export async function learnClubSetup(orgId: string, opts: LearnOptions = {}): Pr
   // ── Plan and apply ───────────────────────────────────────────────────
   const chatLanguage = detectGroupLang({ subject: connect.groupSubject, history: history.map((m) => m.text) });
   const slots = activities.map((a) => ({ dayOfWeek: a.dayOfWeek, time: a.time }));
+  // What is written on the row for a plan: the same record as before.
+  const record = (p: SetupPlan): Record<string, unknown> => ({
+    status: p.applied.length > 0 ? "applied" : "nothing",
+    reason: detection.regularGame ? null : "not-a-game-group",
+    detected: detection as unknown as object,
+    applied: p.applied as unknown as object,
+    suggestions: p.suggestions as unknown as object,
+    noted: p.noted as unknown as object,
+    kept: p.kept as unknown as object,
+    ...usage,
+  });
   let state = orgSettings(org);
   let plan = planSetup({ detection, org: state, weeklyGame, activities: slots, chatLanguage });
-  let ok = await applyPlan(orgId, state, plan, held);
+  let res = await applyAndRecord(orgId, state, plan, held, record);
   // Why a HELD club's write was refused, when it was the club that moved:
   // suspended (no approved club to load) or gone live (no longer setting
   // up). null: the club is where it was, so the organiser changed a
@@ -318,41 +411,39 @@ export async function learnClubSetup(orgId: string, opts: LearnOptions = {}): Pr
   const movedTo = (fresh: OrgRow | null): "no-longer-approved" | "went-live" | null =>
     !held ? null : !fresh ? "no-longer-approved" : isClubSettingUp(fresh) ? null : "went-live";
   let moved: "no-longer-approved" | "went-live" | null = null;
-  if (!ok) {
+  if (res === "moved") {
     const fresh = await loadOrg(orgId);
     moved = movedTo(fresh);
     if (fresh && !moved) {
       state = orgSettings(fresh);
       plan = planSetup({ detection, org: state, weeklyGame, activities: slots, chatLanguage });
-      ok = await applyPlan(orgId, state, plan, held);
+      res = await applyAndRecord(orgId, state, plan, held, record);
       // Still refused, and it was held: see whether it moved just now.
-      if (!ok && held) moved = movedTo(await loadOrg(orgId));
+      if (res === "moved" && held) moved = movedTo(await loadOrg(orgId));
     }
   }
-  if (!ok) {
+  if (res === "moved") {
     // The club left setting-up under us: a late reading changes nothing.
     // Otherwise the organiser is changing settings right now: leave them
     // alone.
     const reason = moved ?? ("organiser-set" as const);
     plan = { ...plan, kept: [...plan.kept, ...plan.applied.map((a) => ({ key: a.key, reason }))], applied: [], data: {} };
+    res = (await finish(orgId, record(plan))) ? "done" : "closed";
   }
+  // Closed for good while the model was answering: nothing was applied and
+  // the closed row stands. The closer deleted the stored chat.
+  if (res === "closed") return closedUnderUs(orgId);
 
   const status = plan.applied.length > 0 ? "applied" : "nothing";
-  await finish(orgId, {
-    status,
-    reason: detection.regularGame ? null : "not-a-game-group",
-    detected: detection as unknown as object,
-    applied: plan.applied as unknown as object,
-    suggestions: plan.suggestions as unknown as object,
-    noted: plan.noted as unknown as object,
-    kept: plan.kept as unknown as object,
-    ...usage,
-  });
   await clearHistory(connect.id);
 
   // ── The organiser's one DM ───────────────────────────────────────────
+  // A club that was HELD when this run began (go-live slice S3) is never
+  // sent this DM: its ONE setup DM (club-setup-dm.ts) carries the same
+  // findings, composed from the record just written, and is sent by the
+  // caller once this reading is final. Every other club: exactly as before.
   let dmQueued = false;
-  if (planIsWorthTelling(plan)) {
+  if (planIsWorthTelling(plan) && !held) {
     dmQueued = await queueSetupDm({ orgId, org, connect, plan, now });
     if (dmQueued) await db.clubSetupLearning.update({ where: { orgId }, data: { dmQueuedAt: now } });
   }
@@ -382,11 +473,12 @@ async function modelTrouble(
   const last = (row?.attempts ?? MAX_ATTEMPTS) >= MAX_ATTEMPTS;
   console.error(`[setup-learning] ${orgId}: ${reason}${last ? " (last attempt)" : ", will retry"}:`, (err as Error)?.message ?? err);
   if (last) {
-    await finish(orgId, { status: "failed", reason });
+    if (!(await finish(orgId, { status: "failed", reason }))) return closedUnderUs(orgId);
     await clearHistory(connectId);
     return { kind: "failed", reason };
   }
-  await finish(orgId, { status: "deferred", reason });
+  // Never back to "deferred" over a closed row: it would be read again.
+  if (!(await finish(orgId, { status: "deferred", reason }))) return closedUnderUs(orgId);
   return { kind: "deferred", reason };
 }
 

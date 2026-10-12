@@ -52,6 +52,11 @@ export const LATE_MESSAGE_KIND = "late-message";
  *  event, never a DM (`club-billing-stripe.ts`). */
 export const BILLING_ALERT_KIND = "club-billing";
 
+/** Go-live slice S3: something went wrong while a club was being set up
+ *  that nobody would otherwise see, e.g. its organiser's setup DM could
+ *  not be sent (`club-setup-dm.ts`). An event, never a DM. */
+export const SETUP_ALERT_KIND = "club-setup";
+
 export type OpsAlertSeverity = "critical" | "warning" | "info";
 
 /** Kinds that are one-off occurrences rather than conditions that hold. */
@@ -60,6 +65,7 @@ const EVENT_KINDS: ReadonlySet<string> = new Set([
   AI_CAP_ALERT_KIND,
   LATE_MESSAGE_KIND,
   BILLING_ALERT_KIND,
+  SETUP_ALERT_KIND,
 ]);
 
 export function healthKind(code: string): string {
@@ -146,6 +152,7 @@ export function planHealthRecord(args: {
 
 /** Plain English names for the health page. Keyed by row kind. */
 const KIND_LABELS: Record<string, string> = {
+  [SETUP_ALERT_KIND]: "Club setup",
   "health:pi-silent": "Bot not reporting",
   "health:seen-not-buffered": "Messages not queued",
   "health:messages-dropped": "Messages dropped",

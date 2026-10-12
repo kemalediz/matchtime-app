@@ -61,6 +61,12 @@ const dbMock = vi.hoisted(() => ({
     updateMany: vi.fn(async ({ where, data }: { where: Row; data: Row }) => {
       const l = state.learning;
       if (!l) return { count: 0 };
+      // The reading's own writes: a compare-and-set on the status it holds.
+      if (where.attempts === undefined) {
+        if (l.status !== where.status) return { count: 0 };
+        Object.assign(l, data);
+        return { count: 1 };
+      }
       const attempts = l.attempts as number;
       if (attempts >= ((where.attempts as Row).lt as number)) return { count: 0 };
       const ok = (where.OR as Row[]).some(
@@ -80,6 +86,7 @@ const dbMock = vi.hoisted(() => ({
   clubConnect: { findFirst: vi.fn(async () => (state.connect ? { ...state.connect } : null)) },
   activity: { findMany: vi.fn(async () => state.activities) },
   platformJob: { findFirst: vi.fn(async () => null) },
+  $transaction: vi.fn(async (fn: (tx: unknown) => unknown): Promise<unknown> => fn(dbMock)),
   $executeRaw: vi.fn(async (strings: TemplateStringsArray) => {
     state.raw.push(strings.join("?"));
     if (strings.join("?").includes(`"capturedHistory" = NULL`) && state.connect) state.connect.capturedHistory = null;
@@ -328,6 +335,16 @@ describe("learnClubSetup and a club that is approved but setting up (go-live S1,
     expect(state.org!.rollingSquadEnabled).toBe(true);
   });
 
+  it("go-live S3: a held club gets NO separate findings DM (its one setup DM carries the findings)", async () => {
+    setup("rolling", HELD);
+    const out = await learnClubSetup(ORG, { now: DAYTIME, model: stub(STUB_ANSWERS.rolling) });
+    expect(out).toMatchObject({ kind: "done", status: "applied", applied: 1, dmQueued: false });
+    expect(dms).toEqual([]);
+    expect(state.learning!.dmQueuedAt).toBeUndefined();
+    // What the setup DM needs is on the row.
+    expect(state.learning!.applied).toEqual([expect.objectContaining({ key: "rollingSquad" })]);
+  });
+
   it("its write is a compare-and-set on the club STILL setting up", async () => {
     setup("rolling", HELD);
     await learnClubSetup(ORG, { now: DAYTIME, model: stub(STUB_ANSWERS.rolling) });
@@ -376,6 +393,66 @@ describe("learnClubSetup and a club that is approved but setting up (go-live S1,
     expect(state.orgUpdates[0].where).not.toHaveProperty("setupStage");
     expect(state.orgUpdates[0].where).toMatchObject({ approvalStatus: "approved", liveAt: null });
     expect(state.org!.rollingSquadEnabled).toBe(true);
+  });
+});
+
+describe("PR #235 review fix 5: a reading that was CLOSED while it was in flight changes nothing", () => {
+  const HELD = { whatsappBotEnabled: false, approvalStatus: "approved", setupStage: "setting-up" };
+  /** The 2-hour cap (or go-live) closes the row while the model is still answering. */
+  const closedMidCall = (answer: unknown, opts: { fail?: boolean } = {}): PipelineModel => ({
+    name: "closed-mid-call",
+    async complete() {
+      state.learning = { ...state.learning!, status: "skipped", reason: "timed-out" };
+      if (opts.fail) throw new Error("529 overloaded");
+      return {
+        text: JSON.stringify(answer),
+        stopReason: "end_turn",
+        usage: { inputTokens: 9_000, outputTokens: 400, cacheReadTokens: 0, cacheWriteTokens: 0 },
+        costUsd: 0.011,
+        ms: 5,
+      };
+    },
+  });
+
+  it("the late result applies NOTHING and does not overwrite the closed row", async () => {
+    setup("rolling", HELD);
+    const out = await learnClubSetup(ORG, { now: DAYTIME, model: closedMidCall(STUB_ANSWERS.rolling) });
+    expect(out).toEqual({ kind: "skipped", reason: "closed" });
+    // No settings write was even attempted, and the club is as it was.
+    expect(state.orgUpdates).toEqual([]);
+    expect(state.org!.rollingSquadEnabled).toBe(false);
+    // The row is still the closed one: no detection, no applied list, no cost written over it.
+    expect(state.learning).toMatchObject({ status: "skipped", reason: "timed-out" });
+    expect(state.learning!.applied).toBeUndefined();
+    expect(state.learning!.detected).toBeUndefined();
+    expect(dms).toEqual([]);
+  });
+
+  it("a model error arriving after the close does not put the row back to 'deferred' (it would be read again)", async () => {
+    setup("rolling", HELD);
+    const out = await learnClubSetup(ORG, { now: DAYTIME, model: closedMidCall(null, { fail: true }) });
+    expect(out).toEqual({ kind: "skipped", reason: "closed" });
+    expect(state.learning).toMatchObject({ status: "skipped", reason: "timed-out" });
+  });
+
+  it("the settings write and the record are ONE transaction, taken on the reading row first", async () => {
+    setup("rolling", HELD);
+    await learnClubSetup(ORG, { now: DAYTIME, model: stub(STUB_ANSWERS.rolling) });
+    expect(dbMock.$transaction).toHaveBeenCalledTimes(1);
+    const order = (fn: { mock: { invocationCallOrder: number[] } }) => fn.mock.invocationCallOrder;
+    // The reading row is locked (a compare-and-set on "running") before the club is written.
+    const firstRowWrite = order(dbMock.clubSetupLearning.updateMany)[0];
+    expect(firstRowWrite).toBeLessThan(order(dbMock.organisation.updateMany)[0]);
+    expect(state.learning).toMatchObject({ status: "applied" });
+    expect(state.org!.rollingSquadEnabled).toBe(true);
+  });
+
+  it("a club that was never held is read, switched and recorded exactly as before", async () => {
+    setup("rolling");
+    const out = await learnClubSetup(ORG, { now: DAYTIME, model: stub(STUB_ANSWERS.rolling) });
+    expect(out).toMatchObject({ kind: "done", status: "applied", applied: 1, dmQueued: true });
+    expect(state.learning).toMatchObject({ status: "applied" });
+    expect(dms).toHaveLength(1);
   });
 });
 

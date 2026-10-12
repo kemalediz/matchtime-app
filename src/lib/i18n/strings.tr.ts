@@ -1787,6 +1787,33 @@ export const tr: Strings = {
   sj_dm_rejected: (p) =>
     `MatchTime'ı denediğiniz için teşekkürler. ${p.group ? `"${p.group}" grubunu` : "Grubunuzu"} şu an alamıyoruz, bu yüzden gruptan ayrıldım. Bu değişirse size haber vereceğiz.`,
 
+  // ════ BEGIN approval holds the club: the organiser's setup DM (go-live slice S3, 2026-10-12) ════
+  sj_dm_ready_head: (p) =>
+    `Güzel haber: ${p.club} onaylandı. ${p.group ? `"${p.group}" grubundayım` : "Grubunuzdayım"} ve siz başlamamı söyleyene kadar orada sessiz kalacağım.`,
+  sj_dm_ready_nothing: (p) =>
+    `${p.group ? `"${p.group}" grubundaki` : "Grubunuzdaki"} son mesajları okudum ve değiştirilmesi gereken bir ayar bulamadım, bu yüzden ${p.standard ? "MatchTime standart düzeninde" : "hiçbir şeyi değiştirmedim"}.`,
+  sj_dm_ready_unread: (p) =>
+    `Grubunuzun son mesajlarını okuyamadım, bu yüzden ${p.standard ? "MatchTime standart düzeninde" : "hiçbir şeyi değiştirmedim"}.`,
+  sj_dm_ready_standard:
+    "Standart düzen: oyuncular her hafta VARIM ya da YOKUM der, boşalan yer yedek listesindeki ilk kişiye verilir.",
+  sj_dm_ready_settings: (p) => `⚙️ *Grubunuzun nasıl işlediğini kontrol edin ya da değiştirin:*\n${p.url}`,
+  sj_dm_ready_schedule: (p) => `📅 *Haftalık maçınız:* günü, saati ve sahayı kontrol edin ya da değiştirin:\n${p.url}`,
+  sj_dm_ready_ratings: (p) =>
+    `⭐ *Başlangıç puanları:* ilk takımlar dengeli olsun diye her oyuncuya 10 üzerinden kabaca bir puan verin:\n${p.url}`,
+  sj_dm_ready_go: (p) =>
+    `Hazır olduğunuzda buraya *BAŞLA* yazın, grupta kendimi tanıtayım; ya da ayarlar sayfanızdaki *${p.button}* düğmesine basın:\n${p.url}\nO zamana kadar grupta hiçbir şey yazmam.`,
+  sj_dm_ready_free: `${firstMonthsFree("tr")}. Ücretsiz dönem, grupta yayına geçtiğimde başlar.`,
+  sj_dm_connected_held: (p) =>
+    `Merhaba${p.name ? ` ${p.name}` : ""}, tamamdır: ${p.club} bu sohbete bağlandı.\n` +
+    "Sıradaki adım: beni futbol grubunuza ekleyin. Önce bu numarayı MatchTime adıyla rehberinize kaydedin, sonra grubu açıp Katılımcı ekle'ye dokunun ve MatchTime'ı seçin.\n\n" +
+    "*Önemli: onaylamadan önce o ekrandaki \"Mesaj geçmişi\" seçeneğini açın.* Böylece grubunuzun son mesajları bana gelir ve MatchTime'ı sizin düzeninize göre kurabilirim.\n\n" +
+    "Kulübünüz onaylanana (genellikle bir gün içinde) ve siz başlamamı söyleyene kadar grupta sessiz kalacağım. Onaylanır onaylanmaz size buradan yazacağım.",
+  sj_dm_in_group_held: (p) =>
+    `Teşekkürler, ${p.group ? `"${p.group}" grubuna` : "grubunuza"} katıldım. Kulübünüz onaylanana (genellikle bir gün içinde) ve siz başlamamı söyleyene kadar orada sessiz kalacağım. Onaylanır onaylanmaz size buradan yazacağım.`,
+  sj_card_pending_held:
+    "3. adım: kulübünüzü kontrol ediyoruz, genellikle bir gün içinde. Kulübünüz onaylanana ve siz başlamasını söyleyene kadar MatchTime grupta sessiz kalır, onaylanır onaylanmaz size WhatsApp'tan yazar.",
+  // ════ END approval holds the club ════
+
   dm_admin_join_new: (p) =>
     `🆕 *${p.club}* WhatsApp grubuna yeni bir oyuncu katıldı.\n\nTelefon: ${p.phone}\n` +
     `Onu oyuncu listene ekledim. Grupta ilk yazdığında WhatsApp adını kendim eklerim, istersen şimdi de girebilirsin:\n${p.url}`,

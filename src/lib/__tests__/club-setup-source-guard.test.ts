@@ -37,10 +37,10 @@ const rel = (file: string) => path.relative(REPO, file);
 const STAGE_FILES = ["src/lib/club-setup-rules.ts", "src/lib/club-setup.ts"];
 /**
  * The helper that returns the fields a held approval writes. Slice S3
- * adds exactly one file here, `src/lib/club-approval.ts`, when
- * `decideClub` spreads it; nothing else may.
+ * added exactly one file here, `src/lib/club-approval.ts`: `decideClub`
+ * spreads it in its one approving compare-and-set. Nothing else may.
  */
-const STAGE_WRITER_FILES = ["src/lib/club-setup-rules.ts", "src/lib/club-setup.ts"];
+const STAGE_WRITER_FILES = ["src/lib/club-setup-rules.ts", "src/lib/club-setup.ts", "src/lib/club-approval.ts"];
 /** The setup-reading AI budget purpose. */
 const READING_FILES = ["src/lib/ai-budget.ts", "src/lib/setup-learning/run.ts"];
 
@@ -80,8 +80,11 @@ describe("the setup stage has one home", () => {
     expect(offenders(STAGE_WORD, STAGE_FILES)).toEqual([]);
   });
 
-  it("the helper that writes the stage is named in no other file (slice S3 adds club-approval.ts here)", () => {
+  it("the helper that writes the stage is named in no other file (only decideClub's held approval spreads it)", () => {
     expect(offenders(STAGE_WRITER_WORD, STAGE_WRITER_FILES)).toEqual([]);
+    // Slice S3: exactly one use in club-approval.ts, beside its import.
+    const approval = readFileSync(path.join(SRC, "lib", "club-approval.ts"), "utf8");
+    expect(approval.match(/settingUpClubFields\(\)/g)).toHaveLength(1);
   });
 
   it("the setup-reading AI budget purpose is named only by ai-budget.ts and the sweep", () => {

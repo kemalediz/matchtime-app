@@ -32,6 +32,7 @@ const dbMock = vi.hoisted(() => {
     sentNotification: { upsert: vi.fn() },
     platformJob: { findFirst: vi.fn(), create: vi.fn() },
     $executeRaw: vi.fn(),
+    $queryRaw: vi.fn(),
     $transaction: vi.fn(),
   };
   return m;
@@ -163,6 +164,7 @@ beforeEach(() => {
   dbMock.user.findFirst.mockResolvedValue({ id: "u-ali" });
   dbMock.botJob.create.mockImplementation(async ({ data }: { data: object }) => ({ id: "bj-1", ...data }));
   dbMock.platformJob.findFirst.mockResolvedValue(null);
+  dbMock.$queryRaw.mockResolvedValue([]);
   dbMock.platformJob.create.mockImplementation(async ({ data }: { data: object }) => ({ id: "pj-1", ...data }));
   importMock.mockResolvedValue({ added: 2, alreadyKnown: 0, skippedNoPhone: 0, restoredMembership: 0, total: 2 });
   delete process.env.BILLING_ENABLED;
@@ -378,6 +380,191 @@ describe("decideClub: approve starts the free month (club fee billing, slice B2)
     orgs["org-riverside"] = riverside({ approvalStatus: "approved", approvedAt: NOW, whatsappGroupId: GROUP });
     await decideClub("org-riverside", "suspend", "u-kemal", { now: NOW, confirmName: "Riverside FC" });
     expect(billingMock.setBillingState).not.toHaveBeenCalled();
+  });
+});
+
+// ── Go-live slice S3 (2026-10-12): an approval that HOLDS the club ──────
+//   With SETUP_HOLD_ENABLED on, approval leaves the club approved and
+//   SETTING UP: silent until its organiser says GO. Every other test in
+//   this file runs with the flag off and pins today's approval byte for
+//   byte.
+describe("decideClub: approve with the setup hold ON (go-live S3)", () => {
+  const held = (by = "u-kemal") => decideClub("org-riverside", "approve", by, { now: NOW, hold: true });
+
+  it("the club is approved AND setting up: bot left off, group linked, request closed, roster imported", async () => {
+    const r = await held(`whatsapp:${APPROVER}`);
+    expect(r).toMatchObject({ ok: true, decision: "approve", club: "Riverside FC", code: "7KQ2", groupId: GROUP, held: true });
+    const write = dbMock.organisation.updateMany.mock.calls[0][0];
+    expect(write.where).toEqual({ id: "org-riverside", approvalStatus: "pending" });
+    expect(write.data).toEqual({
+      approvalStatus: "approved",
+      approvedAt: NOW,
+      whatsappGroupId: GROUP,
+      setupStage: "setting-up",
+      approvalDecidedAt: NOW,
+      approvalDecidedBy: `whatsapp:${APPROVER}`,
+    });
+    // The bot switch is not written at all: it stays off (the CHECK constraint needs that).
+    expect("whatsappBotEnabled" in write.data).toBe(false);
+    expect(dbMock.clubConnect.updateMany).toHaveBeenCalledWith({
+      where: { id: "cc-ali", status: "group_linked" },
+      data: { status: "closed" },
+    });
+    expect(importMock).toHaveBeenCalledTimes(1);
+    expect(anthropicCalls.n).toBe(0);
+  });
+
+  it("NO hello is queued and the scheduler's one-time intro is NOT claimed (go-live does both)", async () => {
+    await held();
+    expect(dbMock.botJob.create).not.toHaveBeenCalled();
+    expect(dbMock.sentNotification.upsert).not.toHaveBeenCalled();
+  });
+
+  it("the 'you're live' DM is NOT sent, and decideClub itself queues no DM at all", async () => {
+    await held();
+    expect(dbMock.platformJob.create).not.toHaveBeenCalled();
+    expect(adminLinkMock).not.toHaveBeenCalled();
+  });
+
+  it("billing on: the free period does NOT start at approval (it starts at go-live)", async () => {
+    process.env.BILLING_ENABLED = "1";
+    billingMock.setBillingState.mockResolvedValue({ ok: true, from: "exempt", to: "trial", resumed: false });
+    await held();
+    expect(billingMock.setBillingState).not.toHaveBeenCalled();
+    expect(billingMock.loadClubFeeTip).not.toHaveBeenCalled();
+  });
+
+  it("the default follows SETUP_HOLD_ENABLED, off unless explicitly on", async () => {
+    const before = process.env.SETUP_HOLD_ENABLED;
+    try {
+      delete process.env.SETUP_HOLD_ENABLED;
+      const off = await decideClub("org-riverside", "approve", "u-kemal", { now: NOW });
+      expect(off).toMatchObject({ ok: true });
+      expect("held" in off).toBe(false);
+      expect(dbMock.organisation.updateMany.mock.calls[0][0].data).toEqual({
+        approvalStatus: "approved",
+        approvedAt: NOW,
+        whatsappBotEnabled: true,
+        whatsappGroupId: GROUP,
+        approvalDecidedAt: NOW,
+        approvalDecidedBy: "u-kemal",
+      });
+      expect(created("botJob")).toHaveLength(1);
+
+      orgs["org-riverside"] = riverside();
+      vi.clearAllMocks();
+      process.env.SETUP_HOLD_ENABLED = "1";
+      expect(await decideClub("org-riverside", "approve", "u-kemal", { now: NOW })).toMatchObject({ ok: true, held: true });
+      expect(dbMock.botJob.create).not.toHaveBeenCalled();
+    } finally {
+      if (before === undefined) delete process.env.SETUP_HOLD_ENABLED;
+      else process.env.SETUP_HOLD_ENABLED = before;
+    }
+  });
+
+  it("the group-taken and no-linked-group refusals are unchanged", async () => {
+    dbMock.clubConnect.findFirst.mockResolvedValue(link({ groupId: SUTTON_GROUP }));
+    expect(await held()).toMatchObject({ ok: false, reason: "group-taken", takenBy: "Sutton FC" });
+    dbMock.clubConnect.findFirst.mockResolvedValue(null);
+    expect(await held()).toMatchObject({ ok: false, reason: "no-linked-group" });
+    expect(dbMock.organisation.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("reject is untouched by the hold", async () => {
+    const r = await decideClub("org-riverside", "reject", "u-kemal", { now: NOW, hold: true });
+    expect(r).toMatchObject({ ok: true, decision: "reject" });
+    expect("held" in r).toBe(false);
+    expect(orgs["org-riverside"].approvalStatus).toBe("rejected");
+    expect(created("platformJob").find((j) => j.kind === "dm")).toMatchObject({ refId: "cc-ali:rejected" });
+  });
+});
+
+// PR #235 review fixes 3 and 8: what the owner can still do to a club that
+// is held, through `decideClub` itself.
+describe("decideClub on a club that is approved but SETTING UP", () => {
+  const heldClub = () =>
+    Object.assign(riverside({ approvalStatus: "approved", approvedAt: NOW, whatsappGroupId: GROUP }), { setupStage: "setting-up" });
+  beforeEach(() => {
+    orgs["org-riverside"] = heldClub();
+  });
+
+  it("SUSPEND: turned off and left as for any self-join club, and its unsent setup DM is cancelled", async () => {
+    dbMock.$queryRaw.mockResolvedValue([{ status: "failed" }]);
+    const r = await decideClub("org-riverside", "suspend", "u-kemal", { now: NOW, confirmName: "Riverside FC" });
+    expect(r).toMatchObject({ ok: true, decision: "suspend" });
+    expect(orgs["org-riverside"]).toMatchObject({ approvalStatus: "suspended", whatsappBotEnabled: false });
+    // The cancel: ONE statement on the club's setup DM, by its purpose and refId, with why.
+    expect(dbMock.$queryRaw).toHaveBeenCalledTimes(1);
+    const [sql, ...values] = dbMock.$queryRaw.mock.calls[0] as [TemplateStringsArray, ...unknown[]];
+    expect(sql.join("?")).toMatch(/UPDATE "PlatformJob"[\s\S]*"status" IN \('queued', 'claimed'\)/);
+    expect(values).toEqual([NOW, "cancelled: suspended", NOW, "setup-ask", "org-riverside:setup-ask"]);
+    // MatchTime still leaves the group; nobody is messaged.
+    expect(created("platformJob")).toEqual([expect.objectContaining({ kind: "leave-group", groupId: GROUP })]);
+    expect(dbMock.botJob.create).not.toHaveBeenCalled();
+  });
+
+  it("SUSPEND: a cancel that fails never undoes the suspension", async () => {
+    dbMock.$queryRaw.mockRejectedValue(new Error("db hiccup"));
+    const r = await decideClub("org-riverside", "suspend", "u-kemal", { now: NOW, confirmName: "Riverside FC" });
+    expect(r).toMatchObject({ ok: true, decision: "suspend" });
+    expect(orgs["org-riverside"].approvalStatus).toBe("suspended");
+    expect(created("platformJob")).toEqual([expect.objectContaining({ kind: "leave-group" })]);
+  });
+
+  it("SUSPEND still needs the name typed, and cancels nothing when refused", async () => {
+    const r = await decideClub("org-riverside", "suspend", "u-kemal", { now: NOW, confirmName: "Riverside" });
+    expect(r).toMatchObject({ ok: false, reason: "confirm-mismatch" });
+    expect(dbMock.$queryRaw).not.toHaveBeenCalled();
+  });
+
+  it("REJECT and a second APPROVE are refused (it is approved already): nothing written, nothing queued, nothing cancelled", async () => {
+    for (const d of ["reject", "approve"] as const) {
+      const r = await decideClub("org-riverside", d, "u-kemal", { now: NOW, hold: true });
+      expect(r).toMatchObject({ ok: false, reason: "not-pending", status: "approved" });
+    }
+    expect(orgs["org-riverside"]).toEqual(heldClub());
+    expect(dbMock.organisation.updateMany).not.toHaveBeenCalled();
+    expect(dbMock.platformJob.create).not.toHaveBeenCalled();
+    expect(dbMock.$queryRaw).not.toHaveBeenCalled();
+  });
+
+  it("a club that is NOT setting up (every club today): suspend makes no cancel call at all", async () => {
+    orgs["org-riverside"] = riverside({ approvalStatus: "approved", approvedAt: NOW, whatsappGroupId: GROUP });
+    const r = await decideClub("org-riverside", "suspend", "u-kemal", { now: NOW, confirmName: "Riverside FC" });
+    expect(r).toMatchObject({ ok: true, decision: "suspend" });
+    expect(dbMock.$queryRaw).not.toHaveBeenCalled();
+  });
+
+  it("approving or rejecting a PENDING club cancels nothing (there is no setup DM yet)", async () => {
+    orgs["org-riverside"] = riverside();
+    await decideClub("org-riverside", "approve", "u-kemal", { now: NOW, hold: true });
+    orgs["org-riverside"] = riverside();
+    await decideClub("org-riverside", "reject", "u-kemal", { now: NOW });
+    expect(dbMock.$queryRaw).not.toHaveBeenCalled();
+  });
+});
+
+describe("handleApproverDm with the setup hold ON (go-live S3)", () => {
+  beforeEach(() => {
+    dbMock.clubConnect.findMany.mockImplementation(async ({ where }: { where: Record<string, unknown> }) =>
+      where.status === "group_linked" ? [{ code: "7KQ2", orgId: "org-riverside", org: { name: "Riverside FC" } }] : [],
+    );
+  });
+
+  it("holds the club, names it for the prompt reading, and tells the owner the organiser is being asked", async () => {
+    const r = await handleApproverDm({ text: "APPROVE 7KQ2", phone: APPROVER, waMessageId: "wa-9", now: NOW, setupHold: true });
+    expect(r).toEqual({ handled: "approver-dm", result: "approved", heldOrgId: "org-riverside" });
+    expect(dbMock.botJob.create).not.toHaveBeenCalled();
+    const jobs = created("platformJob");
+    expect(jobs.map((j) => j.purpose)).toEqual(["owner-ack"]);
+    expect(jobs[0].text).toBe(
+      "Approved Riverside FC. It stays silent in its group: its organiser is sent the setup message and goes live by replying GO. Any problem shows on the health page.",
+    );
+  });
+
+  it("hold off: the outcome carries no held club (today's reply, byte for byte)", async () => {
+    const r = await handleApproverDm({ text: "APPROVE 7KQ2", phone: APPROVER, waMessageId: "wa-9", now: NOW, setupHold: false });
+    expect(r).toEqual({ handled: "approver-dm", result: "approved" });
   });
 });
 
