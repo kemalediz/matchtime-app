@@ -1717,6 +1717,12 @@ export const tr: Strings = {
   sj_hello_whos_in: `✅ *Kim var:* *VARIM* ya da *YOKUM* yazmanız yeter. Listeyi tutar, mesajınıza tik koyarım.`,
   sj_hello_rolling: (p) =>
     `🔁 *Her hafta aynı kadro:* geçen maçta oynadıysanız bir sonrakinde de kadrodasınız. Gelemeyecekseniz${p.deadline ? ` *${p.deadline}* saatine kadar` : ""} *YOKUM* yazmanız yeter.`,
+  sj_hello_rolling_first: (p) => {
+    const until = p.deadline ? ` *${p.deadline}* saatine kadar` : "";
+    return p.mode === "organiser"
+      ? `🔁 *Her hafta aynı kadro:* bu grupta kadro bir maçtan diğerine aynı kalır. Benimle *ilk maç* için *VARIM* yazın: sizi yedeğe yazarım, kimin oynayacağını organizatörler seçer. Sonrasında oynayanlar her hafta kadroda kalır; gelemeyecekseniz${until} *YOKUM* yazmanız yeter.`
+      : `🔁 *Her hafta aynı kadro:* bu grupta kadro bir maçtan diğerine aynı kalır. Benimle *ilk maç* için *VARIM* yazın ki kimin oynadığını bileyim. Sonrasında her hafta kadroda kalırsınız; gelemeyecekseniz${until} *YOKUM* yazmanız yeter.`;
+  },
   sj_hello_rolling_join: (p) =>
     p.mode === "organiser"
       ? `✅ *Henüz kadroda değil misiniz?* *VARIM* yazın, sizi yedeğe yazarım.`
@@ -1912,6 +1918,8 @@ export const tr: Strings = {
     `${p.open} yer boş: *VARIM* yazın, yedek listesine ekleyeyim; kimin oynayacağını organizatörler seçer.`,
   rolling_tail_full: "Kadro dolu. Yedek listesine girmek için *VARIM* yazın.",
   rolling_deadline_line: (p) => `Son çıkış: *${p.deadline}*. O saate kadar *YOKUM* yazmazsanız kadrodasınız.`,
+  rolling_deadline_line_first: (p) =>
+    `Son çıkış: *${p.deadline}*. Listedeyseniz ve oynayamayacaksanız o saatten önce *YOKUM* yazın.`,
   intro_rolling_squad:
     "🔁 *Kadro devam eder*: geçen maçta oynadıysanız bir sonrakinde de kadrodasınız. Gelemeyecekseniz son çıkış saatinden önce *YOKUM* yazın.",
   late_drop_admin_notice: (p) =>

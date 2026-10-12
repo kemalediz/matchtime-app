@@ -287,7 +287,13 @@ test.describe("the organiser of a club that is setting up", () => {
 
     // Change a setting on the page: the preview follows it.
     await page.getByTestId("wr-rolling").getByRole("switch").click();
-    await expect(preview).toContainText("Same squad each week: if you played last time, you're in next time too.");
+    // This club has no game played with MatchTime yet, so the preview is
+    // the FIRST-GAME form (2026-10-13): it asks for an In, and never says
+    // "if you played last time, you're in next time too".
+    await expect(preview).toContainText(
+      "Same squad each week: this group keeps the same squad from one game to the next. For the first game with me, say In so I know who is playing.",
+    );
+    await expect(preview).not.toContainText("if you played last time");
     await expect(preview).not.toContainText("Who's in:");
     expect(await preview.innerText()).not.toBe(previewText);
     // ... and it is what a reload shows.
@@ -381,6 +387,8 @@ test.describe("the organiser of a club that is setting up", () => {
     const posts = await groupPosts(db, HARBOUR.id);
     expect(posts).toHaveLength(1);
     expect(posts[0].text).toContain("*Same squad each week:*");
+    expect(posts[0].text).toContain("For the *first game* with me, say *In* so I know who is playing.");
+    expect(posts[0].text).not.toContain("if you played last time");
     expect(posts[0].text).toContain("Hana has set me up");
     await done.getByText("The message it posted").click();
     await expect(page.getByTestId("go-live-posted")).toContainText("Same squad each week");

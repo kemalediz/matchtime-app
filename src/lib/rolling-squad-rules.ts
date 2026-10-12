@@ -38,6 +38,8 @@ export interface FixtureMatch {
    *  re-points a match to the other activity (see `match-slot.ts`). */
   activity: RecurringFixtureKey;
   rollingSeededAt?: Date | null;
+  /** The game's places (`Match.maxPlayers`). Read only by `hasSquadToCarry`. */
+  maxPlayers?: number | null;
 }
 
 /**
@@ -191,6 +193,127 @@ export function decideSeed(args: {
     }
   }
   return out;
+}
+
+/**
+ * WHERE A SQUAD TO CARRY WOULD COME FROM, AS THINGS STAND AT `now`
+ * (2026-10-13). For the group hello of a club going live: it may only say
+ * "if you played last time, you're in next time too" when the seeding will
+ * really put somebody on the next game. So this asks the seeding's own
+ * question, per weekly fixture, with the seeding's own functions:
+ *
+ *   - a live match that has ALREADY KICKED OFF is read as completed: that
+ *     is what go-live does to it (`quietMatchesBeforeGoLive`), and the
+ *     seeding does not look at `postMatchEndFlow`, so a quieted match with
+ *     players on it IS a source;
+ *   - the next game is the soonest live match still to come; its source
+ *     is `pickSeedSource` (most recent completed, same fixture, within
+ *     `ROLLING_LOOKBACK_DAYS`);
+ *   - a next game that was seeded already is its own answer: it has a
+ *     carried squad if it has players on it;
+ *   - with no next game generated yet, one a week from `now` is assumed.
+ *
+ * `seeded` true: read the match's own CONFIRMED rows. False: read the
+ * rows `carryOverExclusion` would let through.
+ */
+interface FixtureCarryPlan<T> {
+  /** The match whose players are counted; null when there is no source. */
+  match: T | null;
+  seeded: boolean;
+  /** A game of this fixture is still to come. */
+  hasNext: boolean;
+  /** The places the squad is measured against: the next game's, else
+   *  (no next game generated yet) the source's own. 0 when unknown. */
+  places: number;
+}
+
+function fixtureCarryPlans<T extends FixtureMatch>(matches: T[], now: Date): Array<FixtureCarryPlan<T>> {
+  const t = now.getTime();
+  const asAtGoLive = matches.map((m) => (LIVE.has(m.status) && m.date.getTime() <= t ? { ...m, status: "COMPLETED" } : m));
+  const fixtures: RecurringFixtureKey[] = [];
+  for (const m of asAtGoLive) {
+    if (!fixtures.some((f) => isSameRecurringFixture(f, m.activity))) fixtures.push(m.activity);
+  }
+  const out: Array<FixtureCarryPlan<T>> = [];
+  for (const fixture of fixtures) {
+    let next: T | null = null;
+    for (const m of asAtGoLive) {
+      if (m.isHistorical || !LIVE.has(m.status)) continue;
+      if (!isSameRecurringFixture(m.activity, fixture)) continue;
+      if (!next || m.date.getTime() < next.date.getTime()) next = m;
+    }
+    if (next?.rollingSeededAt) {
+      out.push({ match: next, seeded: true, hasNext: true, places: next.maxPlayers ?? 0 });
+      continue;
+    }
+    const target: FixtureMatch = next ?? { id: "", date: new Date(t + 7 * DAY_MS), status: "UPCOMING", activity: fixture };
+    const source = pickSeedSource(target, asAtGoLive);
+    out.push({
+      match: source,
+      seeded: false,
+      hasNext: next != null,
+      places: (next ? next.maxPlayers : source?.maxPlayers) ?? 0,
+    });
+  }
+  return out;
+}
+
+/** The matches whose players `hasSquadToCarry` needs, for the loader. */
+export function carrySourcesAt<T extends FixtureMatch>(matches: T[], now: Date): Array<{ match: T; seeded: boolean }> {
+  return fixtureCarryPlans(matches, now).flatMap((p) => (p.match ? [{ match: p.match, seeded: p.seeded }] : []));
+}
+
+/**
+ * IS A CARRIED SQUAD "THE SQUAD"? (owner decision, 2026-10-13.) At least
+ * HALF of the game's places (`Match.maxPlayers`, the number the
+ * squad-full logic compares against). One player who tapped In on the
+ * website before go-live is carried by the seeding, but a group told
+ * "if you played last time, you're in next time too" on the strength of
+ * him would be wrong about everybody else. Below half, most of the group
+ * still has to say In, so the copy asks for it.
+ *
+ * The seeding itself does not use this: it carries whoever it carries.
+ * This only chooses between two wordings, in the group hello and in the
+ * 17:00 post's deadline line.
+ */
+export function isSubstantialSquad(carried: number, places: number): boolean {
+  return carried > 0 && places > 0 && carried * 2 >= places;
+}
+
+/**
+ * Does MatchTime already have a squad to carry over for this club? The
+ * hello's standing wording ("if you played last time, you're in next time
+ * too") is used only when this is true.
+ *
+ * Per weekly fixture: the players the seeding would write onto the next
+ * game (or has written, when it was seeded already) are counted against
+ * that game's places with `isSubstantialSquad`. Then:
+ *   - EVERY fixture with a game coming up must have a substantial squad:
+ *     one hello speaks to the whole group, and it would be false for the
+ *     game that has none;
+ *   - with no game coming up at all, one fixture with a substantial squad
+ *     (measured against its own last game's places) is enough.
+ *
+ * The count is of carriable players on the source. Rows already on the
+ * next game are not subtracted: an early In is in either way, and an early
+ * Out before go-live is rare enough not to move a "half" threshold.
+ *
+ * `rows` holds the attendance of the matches `carrySourcesAt` named.
+ */
+export function hasSquadToCarry(args: {
+  matches: FixtureMatch[];
+  rows: Map<string, SeedSourceRow[]>;
+  now: Date;
+}): boolean {
+  const plans = fixtureCarryPlans(args.matches, args.now).map((p) => {
+    const carried = p.match
+      ? (args.rows.get(p.match.id) ?? []).filter((r) => (p.seeded ? r.status === "CONFIRMED" : carryOverExclusion(r) === null)).length
+      : 0;
+    return { hasNext: p.hasNext, substantial: isSubstantialSquad(carried, p.places) };
+  });
+  const upcoming = plans.filter((p) => p.hasNext);
+  if (upcoming.length > 0) return upcoming.every((p) => p.substantial);
+  return plans.some((p) => p.substantial);
 }
 
 /**

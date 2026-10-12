@@ -22,11 +22,18 @@ const TABLES = { en, tr } as const;
 type L = keyof typeof TABLES;
 const LANGS: L[] = ["en", "tr"];
 
-const hello = (lang: L, patch: Partial<GroupHelloSettings> = {}, extra: { organiser?: string | null; catchUp?: boolean } = {}) =>
+/** `carry`: MatchTime already has a squad to carry over. True unless a
+ *  case says otherwise, so the rolling rows below are the standing form. */
+const hello = (
+  lang: L,
+  patch: Partial<GroupHelloSettings> = {},
+  extra: { organiser?: string | null; catchUp?: boolean; carry?: boolean } = {},
+) =>
   buildGroupHello({
     organiser: extra.organiser === undefined ? "Ali" : extra.organiser,
     lang,
     catchUp: extra.catchUp,
+    hasSquadToCarry: extra.carry ?? true,
     settings: { ...DEFAULT_HELLO_SETTINGS, ...patch },
   });
 
@@ -56,7 +63,11 @@ interface Row {
   patch: Partial<GroupHelloSettings>;
   has: (s: typeof en) => string[];
   hasNot: (s: typeof en) => string[];
+  /** False: MatchTime has no squad to carry over yet (a first game). */
+  carry?: boolean;
 }
+
+const MON = (s: typeof en) => `${s.wd_weekday({ dow: 1 })} 21:00`;
 
 const ROWS: Row[] = [
   {
@@ -102,6 +113,67 @@ const ROWS: Row[] = [
     patch: { rollingSquad: true, organisersPick: true },
     has: (s) => [s.sj_hello_rolling_join({ mode: "organiser" }), s.sj_hello_bench_organiser],
     hasNot: (s) => [s.sj_hello_bench, s.sj_hello_rolling_join({ mode: "bench" })],
+  },
+  // ── A rolling club MatchTime has no squad for yet (2026-10-13): the
+  //    first game. Nobody is "in already", so nobody is told they are. ──
+  {
+    name: "rolling squad, FIRST GAME: say In for the first game, then you stay in",
+    carry: false,
+    patch: { rollingSquad: true },
+    has: (s) => [s.sj_hello_rolling_first({ deadline: null, mode: "first-come" }), s.sj_hello_bench],
+    hasNot: (s) => [
+      s.sj_hello_rolling({ deadline: null }),
+      s.sj_hello_rolling_join({ mode: "bench" }),
+      s.sj_hello_whos_in,
+      s.sj_hello_catch_up,
+    ],
+  },
+  {
+    name: "rolling squad, FIRST GAME, with a drop-out deadline folded in",
+    carry: false,
+    patch: { rollingSquad: true, dropOutDeadline: MON_2100 },
+    has: (s) => [s.sj_hello_rolling_first({ deadline: MON(s), mode: "first-come" })],
+    hasNot: (s) => [
+      s.sj_hello_rolling({ deadline: MON(s) }),
+      s.sj_hello_rolling_first({ deadline: null, mode: "first-come" }),
+      s.sj_hello_deadline({ day: s.wd_weekday({ dow: 1 }), time: "21:00" }),
+      s.sj_hello_rolling_join({ mode: "bench" }),
+      s.sj_hello_catch_up,
+    ],
+  },
+  {
+    name: "rolling squad, FIRST GAME, organisers pick: an In goes on the bench and the organisers pick",
+    carry: false,
+    patch: { rollingSquad: true, organisersPick: true, dropOutDeadline: MON_2100 },
+    has: (s) => [s.sj_hello_rolling_first({ deadline: MON(s), mode: "organiser" }), s.sj_hello_bench_organiser],
+    hasNot: (s) => [
+      s.sj_hello_rolling({ deadline: MON(s) }),
+      s.sj_hello_rolling_first({ deadline: MON(s), mode: "first-come" }),
+      s.sj_hello_rolling_join({ mode: "organiser" }),
+      s.sj_hello_bench,
+      s.sj_hello_catch_up,
+    ],
+  },
+  {
+    name: "rolling squad, FIRST GAME, bench off",
+    carry: false,
+    patch: { rollingSquad: true, bench: false },
+    has: (s) => [s.sj_hello_rolling_first({ deadline: null, mode: "first-come" })],
+    hasNot: (s) => [s.sj_hello_bench, s.sj_hello_rolling_join({ mode: "no-bench" })],
+  },
+  {
+    name: "no squad to carry changes nothing for a club that signs up each week",
+    carry: false,
+    patch: {},
+    has: (s) => [s.sj_hello_whos_in, s.sj_hello_catch_up],
+    hasNot: (s) => [s.sj_hello_rolling_first({ deadline: null, mode: "first-come" })],
+  },
+  {
+    name: "no squad to carry changes nothing for a monthly club",
+    carry: false,
+    patch: { squadMode: "monthly", rollingSquad: true },
+    has: (s) => [s.sj_hello_monthly],
+    hasNot: (s) => [s.sj_hello_rolling_first({ deadline: null, mode: "first-come" })],
   },
   {
     name: "weekly sign-up with a drop-out deadline: its own line",
@@ -241,7 +313,7 @@ describe("buildGroupHello: each setting is described only when it is on", () => 
     for (const row of ROWS) {
       it(`${lang}: ${row.name}`, () => {
         const s = TABLES[lang];
-        const out = hello(lang, row.patch);
+        const out = hello(lang, row.patch, { carry: row.carry });
         // Whole lines: the "tracking and pay links" line begins with the pay links one.
         const said = out.split("\n");
         for (const line of row.has(s)) expect(said, `missing: ${line}`).toContain(line);
@@ -258,8 +330,27 @@ describe("buildGroupHello: each setting is described only when it is on", () => 
 
   it("the Turkish hello never carries an English instruction word", () => {
     for (const row of ROWS) {
-      expect(hello("tr", row.patch), row.name).not.toMatch(/\*In\*|\*Out\*|\bMonday\b|\bTuesday\b|\bbench\b/i);
+      expect(hello("tr", row.patch, { carry: row.carry }), row.name).not.toMatch(/\*In\*|\*Out\*|\bMonday\b|\bTuesday\b|\bbench\b/i);
     }
+  });
+
+  it("a rolling club with nothing said about a squad to carry gets the first-game form: never a false 'you're in'", () => {
+    for (const lang of LANGS) {
+      const s = TABLES[lang];
+      const out = buildGroupHello({ organiser: "Ali", lang, settings: { ...DEFAULT_HELLO_SETTINGS, rollingSquad: true } });
+      expect(out).toContain(s.sj_hello_rolling_first({ deadline: null, mode: "first-come" }));
+      expect(out).not.toContain(s.sj_hello_rolling({ deadline: null }));
+    }
+  });
+
+  it("the first-game line says the three things, in order: same squad, In for the first game, then only Out", () => {
+    const first = en.sj_hello_rolling_first({ deadline: "Monday 21:00", mode: "first-come" });
+    expect(first).toMatch(/same squad.*first game.*say \*In\*.*After that.*say \*Out\*.*before \*Monday 21:00\*/i);
+    expect(first).not.toMatch(/if you played last time/i);
+    const pick = en.sj_hello_rolling_first({ deadline: null, mode: "organiser" });
+    expect(pick).toMatch(/first game.*say \*In\*.*bench.*organisers pick/i);
+    const trFirst = tr.sj_hello_rolling_first({ deadline: "Pazartesi 21:00", mode: "first-come" });
+    expect(trFirst).toMatch(/ilk maç.*\*VARIM\*.*\*Pazartesi 21:00\*.*\*YOKUM\*/);
   });
 
   it("an unknown language reads as English", () => {

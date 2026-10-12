@@ -2086,6 +2086,17 @@ export const en = {
    *  the drop-out deadline as "Monday 21:00", or null when none is set. */
   sj_hello_rolling: (p: { deadline: string | null }): string =>
     `🔁 *Same squad each week:* if you played last time, you're in next time too. You only need to say *Out* if you can't make it${p.deadline ? `, before *${p.deadline}*` : ""}.`,
+  /** Rolling squad, THE FIRST GAME (2026-10-13): MatchTime has no squad
+   *  to carry over yet, so nobody is "in already" and nobody is told they
+   *  are. Replaces `sj_hello_rolling` AND `sj_hello_rolling_join` while
+   *  `hasSquadToCarry` is false. "organiser": the organisers pick, so an
+   *  In goes on the bench (`canTakeFreePlace`, squad-capacity.ts). */
+  sj_hello_rolling_first: (p: { deadline: string | null; mode: "first-come" | "organiser" }): string => {
+    const before = p.deadline ? `, before *${p.deadline}*` : "";
+    return p.mode === "organiser"
+      ? `🔁 *Same squad each week:* this group keeps the same squad from one game to the next. For the *first game* with me, say *In*: I'll put you on the bench and the organisers pick who plays. After that, whoever played stays in each week and only needs to say *Out* if they can't make it${before}.`
+      : `🔁 *Same squad each week:* this group keeps the same squad from one game to the next. For the *first game* with me, say *In* so I know who is playing. After that you stay in each week and only need to say *Out* if you can't make it${before}.`;
+  },
   /** Rolling squad, for somebody not carried over. "organiser": the
    *  organisers pick, so an In never takes a place by itself. */
   sj_hello_rolling_join: (p: { mode: "bench" | "no-bench" | "organiser" }): string =>
@@ -2418,6 +2429,11 @@ export const en = {
   /** RSQ2: the extra line on the 17:00 post while the deadline is ahead. */
   rolling_deadline_line: (p: { deadline: string }): string =>
     `Drop-out deadline: *${p.deadline}*. Until then, you're in unless you say *OUT*.`,
+  /** RSQ2b (2026-10-13): the same line for a game nobody was carried
+   *  onto, a rolling club's first with MatchTime. Nobody is in by default
+   *  there, so it speaks only to the players on the list. */
+  rolling_deadline_line_first: (p: { deadline: string }): string =>
+    `Drop-out deadline: *${p.deadline}*. If you're on the list and can't play, say *OUT* before then.`,
   /** RSQ3: replaces `intro_attendance` in the day-one intro. */
   intro_rolling_squad:
     "🔁 *Rolling squad*: if you played last time, you're in next time too. Say *OUT* if you can't make it, before the drop-out deadline.",
