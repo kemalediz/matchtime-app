@@ -26,12 +26,18 @@ import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import { startPhoneSignIn, verifyPhoneSignIn } from "@/app/actions/phone-signup";
 import { safeCallbackPath } from "@/lib/safe-callback";
+import { t } from "@/lib/i18n/t";
 
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get("callbackUrl") || "/";
   const claimed = searchParams.get("claimed") === "1";
+  // Sent here by an expired signed link (/r, src/lib/expired-link.ts). The
+  // page it was for is `callbackUrl`, followed after sign-in only when it
+  // is a path on this site. `lang` is the club's language, when known.
+  const linkExpired = searchParams.get("expired") === "1";
+  const expiredNotice = t(searchParams.get("lang")).login_link_expired;
   const viaGoogle = searchParams.get("via") === "google";
   const urlError = searchParams.get("error");
 
@@ -121,6 +127,16 @@ function LoginForm() {
           </h1>
           <p className="text-sm text-slate-500 mt-1">Sign in to your account</p>
         </div>
+
+        {linkExpired && (
+          <div
+            role="status"
+            data-testid="login-link-expired"
+            className="mb-5 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-900"
+          >
+            {expiredNotice}
+          </div>
+        )}
 
         {claimed && (
           <div className="mb-5 p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-800">

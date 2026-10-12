@@ -21,7 +21,7 @@
  * Deterministic: no model is involved anywhere in this flow.
  */
 import type { Page } from "@playwright/test";
-import { test, expect, resetDb } from "../fixtures";
+import { test, expect, resetDb, mintToken } from "../fixtures";
 import { ORG_ID } from "../helpers/constants";
 import { testDb } from "../helpers/test-db";
 
@@ -267,4 +267,63 @@ test("an off-site callbackUrl is ignored", async ({ page }) => {
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await page.waitForURL((url) => url.pathname === "/", { timeout: 30_000 });
   expect(new URL(page.url()).host).not.toContain("evil.example");
+});
+
+// ── An expired signed link (the setup DM's and the reminder's last 7 days) ──
+
+test("an expired signed link lands on sign-in with a notice, and signing in carries on to the page it was for", async ({ page }) => {
+  const db = testDb();
+  const user = await db.one<{ id: string }>(`SELECT id FROM "User" WHERE "phoneNumber" = $1`, [ORGANISER_PHONE]);
+  await db.run(`DELETE FROM "PhoneOtp" WHERE phone = $1`, [digits(ORGANISER_PHONE)]);
+  await page.context().clearCookies();
+
+  const token = mintToken(user!.id, { nextPath: "/admin/settings", ttlSeconds: -60 });
+  await page.goto(`/r/${token}`);
+  await page.waitForURL("**/login?expired=1&callbackUrl=%2Fadmin%2Fsettings", { timeout: 30_000 });
+  await expect(page.getByTestId("login-link-expired")).toHaveText(
+    "That link has expired. Sign in with your WhatsApp number to carry on.",
+  );
+  // Not the dead end it used to be.
+  await expect(page.locator("body")).not.toContainText("isn't valid any more");
+  // Nobody was signed in by the old link.
+  expect((await page.context().cookies()).some((c) => /session-token/.test(c.name))).toBe(false);
+
+  await askForCode(page, ORGANISER_PHONE);
+  await page.getByLabel("6 digit code").fill(await latestCode(ORGANISER_PHONE));
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  // Straight to the page the link was for, not the home page.
+  await page.waitForURL("**/admin/settings", { timeout: 30_000 });
+  await expect(page.getByTestId("weekly-routine")).toBeVisible({ timeout: 30_000 });
+});
+
+test("an expired SHORT link does the same, in the club's language", async ({ page }) => {
+  const db = testDb();
+  const user = await db.one<{ id: string }>(`SELECT id FROM "User" WHERE "phoneNumber" = $1`, [ORGANISER_PHONE]);
+  await page.context().clearCookies();
+  await db.run(`UPDATE "Organisation" SET language = 'tr' WHERE id = $1`, [ORG_ID]);
+  const token = mintToken(user!.id, { nextPath: "/admin/settings#go-live", ttlSeconds: -60 });
+  await db.run(`INSERT INTO "ShortLink" (code, token, "expiresAt", "createdAt") VALUES ('e2eExpired1', $1, $2::timestamp, now())`, [
+    token,
+    new Date(Date.now() - 60_000).toISOString(),
+  ]);
+  try {
+    await page.goto("/r/e2eExpired1");
+    await page.waitForURL("**/login?expired=1&lang=tr&callbackUrl=%2Fadmin%2Fsettings%23go-live", { timeout: 30_000 });
+    await expect(page.getByTestId("login-link-expired")).toHaveText(
+      "Bu bağlantının süresi doldu. Devam etmek için WhatsApp numaranızla giriş yapın.",
+    );
+  } finally {
+    await db.run(`UPDATE "Organisation" SET language = 'en' WHERE id = $1`, [ORG_ID]);
+  }
+});
+
+test("a link that was never ours still gets the plain error, and no sign-in notice is offered for it", async ({ page }) => {
+  await page.context().clearCookies();
+  await page.goto("/r/neverACode");
+  await expect(page.getByText("This link isn't valid any more. It may have expired or already been used.")).toBeVisible({ timeout: 30_000 });
+  expect(new URL(page.url()).pathname).toBe("/r/neverACode");
+  // A forged long token is not "expired" either.
+  const forged = mintToken("e2e-nobody", { nextPath: "/admin", ttlSeconds: -60 }).split(".")[0] + ".AAAA";
+  await page.goto(`/r/${forged}`);
+  await expect(page.getByText("This link isn't valid any more. It may have expired or already been used.")).toBeVisible({ timeout: 30_000 });
 });

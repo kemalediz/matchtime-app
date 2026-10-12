@@ -252,7 +252,7 @@ test("flag ON: sign up, set up the club and its weekly game, connect, and the ca
   await db.run(`UPDATE "Organisation" SET "approvalStatus" = 'approved', "approvedAt" = now() WHERE id = $1`, [org!.id]);
   await page.reload();
   await expect(card).toHaveAttribute("data-state", "approved");
-  await expect(card).toContainText(`Aktifsiniz. MatchTime "Riverside Salı 7'ler" grubunda herkese merhaba dedi.`);
+  await expect(card).toContainText(`Yayındasınız. MatchTime "Riverside Salı 7'ler" grubunda herkese merhaba dedi.`);
   await shot(page, "07-admin-approved");
 
   await db.run(`UPDATE "Organisation" SET "approvalStatus" = 'rejected', "approvedAt" = NULL WHERE id = $1`, [org!.id]);

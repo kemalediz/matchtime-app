@@ -10,6 +10,9 @@
  *   2. On success, verify the token client-side (just to read the intended
  *      destination from its payload) and redirect there.
  *   3. On failure, show a clear error + a "Go to sign in" link.
+ *      EXCEPT an EXPIRED link of ours (2026-10): the server says where it
+ *      was going, and the holder is sent to /login with a notice and
+ *      that page to carry on to after signing in (src/lib/expired-link.ts).
  *
  * TODO (tomorrow): the rating page itself. Today this just lands the player
  * on /matches/[matchId]/rate as-is (the page exists but still has the
@@ -36,6 +39,22 @@ export default function MagicLinkLandingPage() {
   useEffect(() => {
     let cancelled = false;
 
+    /** Ask the server whether this is an expired link of ours; if it is,
+     *  go to its sign-in page. False when it is not. */
+    async function leaveIfExpired(known?: Response): Promise<boolean> {
+      try {
+        const res = known ?? (await fetch(`/api/r/${encodeURIComponent(token)}`));
+        if (res.status !== 410) return false;
+        const data = await res.json();
+        // Only ever our own sign-in page.
+        if (typeof data?.login !== "string" || !data.login.startsWith("/login?")) return false;
+        if (!cancelled) router.replace(data.login);
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
     (async () => {
       if (!token) {
         setError("No token provided.");
@@ -54,6 +73,8 @@ export default function MagicLinkLandingPage() {
           if (res.ok) {
             const data = await res.json();
             if (data?.token) realToken = data.token;
+          } else if (await leaveIfExpired(res)) {
+            return;
           }
         } catch {
           // fall through to the "couldn't resolve" check below
@@ -88,6 +109,9 @@ export default function MagicLinkLandingPage() {
       if (cancelled) return;
 
       if (result?.error || !result?.ok) {
+        // An expired link: sign in and carry on, not a dead end.
+        if (await leaveIfExpired()) return;
+        if (cancelled) return;
         setError(
           "This link isn't valid any more. It may have expired or already been used.",
         );

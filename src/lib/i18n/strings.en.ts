@@ -2003,7 +2003,7 @@ export const en = {
   sj_card_pending:
     "Step 3: we're checking your club, usually within a day. MatchTime stays quiet in the group until your club is approved, and messages you on WhatsApp when it's live.",
   sj_card_pending_other: (p: { group: string }): string =>
-    `MatchTime was added to "${p.group}" by someone else. We'll check it before switching on.`,
+    `MatchTime was added to "${p.group}" by someone else. We'll check it before MatchTime does anything there.`,
   sj_card_approved: (p: { group: string }): string => `You're live. MatchTime said hello in "${p.group}".`,
   sj_card_rejected: "We can't take this group on right now.",
   sj_card_expired: "That code expired. Tap the button again for a new one.",
@@ -2197,11 +2197,14 @@ export const en = {
   sj_live_preview_failed: `Couldn't load the message. Reload the page to try again.`,
   /** Went live: these two replace the banner. */
   sj_live_done_title: `You're live.`,
-  sj_live_done: (p: { group: string }): string => `MatchTime has introduced itself in "${p.group}".`,
-  /** Heading over the hello exactly as it was posted. */
-  sj_live_done_posted: `The message it posted`,
+  /** The hello is QUEUED at this moment: the bot picks a newly live club
+   *  up within a few minutes, so it is not in the group yet. */
+  sj_live_done: (p: { group: string }): string =>
+    `MatchTime is introducing itself in "${p.group}" now. It can take a few minutes to appear.`,
+  /** Heading over the hello exactly as it is queued. */
+  sj_live_done_posted: `The message it is posting`,
   /** Pressed while the group's chat is still being read (owner decision 4). */
-  sj_live_still_reading: `MatchTime is still reading your group's messages. Try again in a few minutes.`,
+  sj_live_still_reading: `MatchTime is still reading your group's messages, which can take a while. It will send the setup message to the organiser who connected the club when it has finished. Try again after that.`,
   /** MatchTime was removed from the group while the club was setting up. */
   sj_live_removed: (p: { group: string }): string =>
     `MatchTime is not in "${p.group}" any more. Add it back to the group, then press Go live.`,
@@ -2230,6 +2233,20 @@ export const en = {
   sj_live_wa_badge: `Waiting for you to go live`,
   sj_live_wa_body: `MatchTime is approved and in your group. It stays quiet until you press Go live at the top of this page.`,
   sj_live_wa_link: `Go to Go live`,
+  /** The same section once MatchTime has been removed from the group
+   *  while the club was setting up: it is NOT in the group. */
+  sj_live_wa_badge_removed: `Not in your group`,
+  sj_live_wa_body_removed: `MatchTime was removed from your group before going live, so nothing has started there. Add it back to the group, then press Go live at the top of this page.`,
+  /** The admin home card in that state: its heading and its body. */
+  sj_card_removed_title: `MatchTime was removed from your group`,
+  sj_card_setting_up_removed: (p: { group: string | null }): string =>
+    `MatchTime was removed from ${p.group ? `"${p.group}"` : "your WhatsApp group"} before going live. Add it back to the group, then go live.`,
+  /** The Go live button's accessible name, and the line beside it: an
+   *  organiser with more than one club setting up must see which one. */
+  sj_live_button_label: (p: { club: string }): string => `Go live: ${p.club}`,
+  sj_live_for_club: (p: { club: string }): string => `This takes ${p.club} live.`,
+  /** On /login, after opening a signed link that has expired. */
+  login_link_expired: `That link has expired. Sign in with your WhatsApp number to carry on.`,
   /** The card on the club's admin home, in place of "You're live". Its
    *  heading is `sj_live_title`. */
   sj_card_setting_up: (p: { group: string | null }): string =>
@@ -2240,6 +2257,11 @@ export const en = {
   info_st_whatsapp_setup_body:
     "MatchTime is approved and linked to your WhatsApp group. It stays quiet there until an owner or admin of the club presses Go live at the top of this page, or replies GO to MatchTime on WhatsApp.\n\n" +
     "Nothing is wrong: it is waiting for you.",
+  /** The same popup once MatchTime has been removed from the group. */
+  info_st_whatsapp_removed_title: "WhatsApp bot",
+  info_st_whatsapp_removed_body:
+    "MatchTime is approved, but it was removed from your WhatsApp group before going live, so it cannot start there.\n\n" +
+    "Add MatchTime back to the group. Then an owner or admin of the club presses Go live at the top of this page, or replies GO to MatchTime on WhatsApp.",
   // ════ END the go-live pages ════
 
   /** To the organiser, once, when the owner approves (2026-10-01: a short
@@ -3158,7 +3180,7 @@ export const en = {
     "Who has rated their teammates after your last match. MatchTime sends each player who played a private rating link; players on the bench are not counted. Pending players haven't rated yet.",
   info_dash_connect_title: "Connecting MatchTime",
   info_dash_connect_body:
-    "The steps to get MatchTime into your WhatsApp group: send the code from your phone, add MatchTime to the group, then we check your club, usually within a day. MatchTime stays quiet in the group until your club is approved.",
+    "The steps to get MatchTime into your WhatsApp group: send the code from your phone, add MatchTime to the group, then we check your club, usually within a day. MatchTime says nothing in the group while we check.",
 
   // /admin/players
   info_pl_list_title: "Players",
