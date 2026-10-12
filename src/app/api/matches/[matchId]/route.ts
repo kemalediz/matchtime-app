@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { isSuperadmin } from "@/lib/org";
 import { resolveTeamLabels } from "@/lib/team-labels";
+import { withoutVenueBookkeeping } from "@/lib/venue-location-rules";
 import { NextResponse } from "next/server";
 
 export async function GET(
@@ -90,6 +91,9 @@ export async function GET(
 
   return NextResponse.json({
     ...match,
+    // Any member reads this route: the venue-location columns (which place,
+    // how sure, who confirmed) are the organiser's and stay out of it.
+    activity: withoutVenueBookkeeping(match.activity),
     attendances: flatAttendances,
     teamAssignments: flatTeamAssignments,
     existingRatings,

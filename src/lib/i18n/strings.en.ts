@@ -4070,4 +4070,35 @@ export const en = {
   mwp_cant_paid: "Paid but can't play",
   mwp_cant: "Can't play",
   mwp_open: (p: { open: number }): string => `${p.open} ${p.open === 1 ? "place" : "places"} open`,
+
+  // ── Venue location: the confirm line under a weekly game's venue ────
+  // (2026-10-12; /admin/activities, organiser only).
+  venue_loc_question: "Is this the right place?",
+  venue_loc_low_lead: "We are not sure this is where you play.",
+  venue_loc_yes: "Yes",
+  venue_loc_change: "Change",
+  venue_loc_map: "Open map",
+  venue_loc_confirmed: "Place confirmed",
+  venue_loc_pin: (p: { coords: string }): string => `Map pin at ${p.coords}`,
+  venue_loc_not_found:
+    "We couldn't find this place. Add the address or paste a map link so MatchTime knows where you play.",
+  venue_loc_add: "Add the place",
+  venue_loc_pending: "Looking for this place...",
+  venue_loc_input_label: "Address or map link",
+  venue_loc_input_placeholder: "e.g. Whiston Road, London E2 8BN",
+  venue_loc_input_help:
+    "Type a fuller address, or paste a link from Google Maps, Apple Maps, Yandex Maps, Waze or OpenStreetMap. This does not change the venue name your group sees.",
+  venue_loc_find: "Find place",
+  venue_loc_finding: "Looking...",
+  venue_loc_cancel: "Cancel",
+  venue_loc_err_not_found: "We couldn't find that. Try a fuller address, with the town or postcode, or paste a map link.",
+  venue_loc_err_capped: "That is enough lookups for today. Try again tomorrow.",
+  venue_loc_err_link:
+    "MatchTime can't read that link. Paste a link that shows the place's coordinates, or a Google Maps link, or type the address.",
+  venue_loc_err_w3w: "MatchTime can't read what3words links yet. Paste a Google Maps link or type the address.",
+  venue_loc_err_generic: "Something went wrong. Please try again.",
+  venue_loc_never: "Add where you play so MatchTime knows the location.",
+  venue_loc_failed: "We couldn't check this place just now. Try again later.",
+  venue_loc_retry: "Try again",
+  venue_loc_retrying: "Checking...",
 };

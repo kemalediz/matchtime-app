@@ -18,6 +18,7 @@
  * never rewritten, or made to block the save, by an edit of the venue.
  */
 import { parseActivityFee } from "./activity-fee";
+import { CLEARED_VENUE_LINK, normaliseVenueText } from "./venue-location-rules";
 
 export interface ActivityUpdateData {
   name?: string;
@@ -72,4 +73,26 @@ export function activityUpdateData(input: unknown, current: { feeSplitTotal: boo
     data.feePerPlayer = fee.fee;
   }
   return { ok: true, data: data as ActivityUpdateData };
+}
+
+/**
+ * VENUE LOCATION (2026-10-12; review of PR #241, fix 1). `venue` is a
+ * named field above; the venue-location columns (`venueId`,
+ * `venueConfidence`, `venueMatchSource`, `venueLookupStatus`,
+ * `venueResolvedAt`, `venueConfirmedAt`, `venueConfirmedById`) are NOT,
+ * so a client can never set one: a place is linked only by the lookup
+ * code (src/lib/venue-location.ts).
+ *
+ * The one thing an edit does to them is this reset. When the venue's
+ * words change, every one of those columns goes to null in the SAME
+ * write as the new text, so a place found for the old words never stays
+ * attached to the new ones. A change of case, spacing or punctuation
+ * only is the same venue and resets nothing. Null: nothing to reset.
+ *
+ * The values are constants (all null). Nothing from the request reaches
+ * these columns, here or anywhere.
+ */
+export function activityVenueReset(data: { venue?: unknown }, current: { venue: string }): typeof CLEARED_VENUE_LINK | null {
+  if (typeof data.venue !== "string") return null;
+  return normaliseVenueText(data.venue) === normaliseVenueText(current.venue) ? null : CLEARED_VENUE_LINK;
 }
