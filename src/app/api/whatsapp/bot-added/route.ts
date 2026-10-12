@@ -56,7 +56,7 @@
  * Club fee billing, slice B5 (2026-10-01): before anything above, a
  * real self-add (never the sweep's `discovered`) of the group of a club
  * PAUSED BECAUSE MATCHTIME WAS REMOVED runs `handleBillingReAdd`
- * (lib/club-billing-removal.ts): back to the free month, or serving again
+ * (lib/club-billing-removal.ts): back to the free period, or serving again
  * when its subscription still pays (the cancel at period end undone), or
  * still paused waiting for a card or a payment. With BILLING_ENABLED off,
  * and for every other club, it does nothing. It never changes this

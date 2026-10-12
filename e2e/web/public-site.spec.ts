@@ -4,6 +4,14 @@
  * without the empty app sidebar, and must still work for signed-in users.
  */
 import { test, expect, signInAs, resetDb, U } from "../fixtures";
+import { firstMonthsFree, firstMonthsFreeBadge } from "@/lib/i18n/free-period";
+
+/** The only "free" a visitor may read: the free period, in the words the
+ *  pages build from FREE_PERIOD_MONTHS (two months since 2026-10-12). */
+const FIRST_FREE = firstMonthsFree("en");
+const FIRST_FREE_BADGE = firstMonthsFreeBadge();
+const withoutFreePeriod = (text: string) =>
+  text.replaceAll(FIRST_FREE, "").replaceAll(FIRST_FREE_BADGE, "").replace(/\bfree period\b/gi, "");
 
 test.beforeAll(async () => {
   resetDb();
@@ -29,8 +37,9 @@ for (const [path, heading] of GUIDES) {
 
 test("landing page shows the price and links the player guide", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByText(/First month free/i).first()).toBeVisible();
-  // Pricing section: up to £9.99 a month per group, first month free (Kemal, 2026-10-01).
+  expect(FIRST_FREE).toBe("Your first two months are free");
+  await expect(page.getByText("First two months free", { exact: true }).first()).toBeVisible();
+  // Pricing section: up to £9.99 a month per group, first two months free (Kemal, 2026-10-12).
   const pricing = page.locator("#pricing");
   await pricing.scrollIntoViewIfNeeded();
   await expect(pricing.getByRole("heading", { name: /One price for the whole group/i })).toBeVisible();
@@ -39,10 +48,14 @@ test("landing page shows the price and links the player guide", async ({ page })
   await expect(pricing.getByText(/about 50p a player/i)).toBeVisible();
   // Charged by games played, up to £9.99 a month (Kemal, 2026-10-02).
   await expect(pricing.getByText(/Up to £9\.99 a month per WhatsApp group, not per player, and you only pay for the weeks you play/)).toBeVisible();
+  await expect(pricing.getByText(/Your first two months are free, so you can see how it runs your week before you pay\./)).toBeVisible();
+  await expect(page.getByText(/Your first two months are free, and you can remove it from your group any time\./)).toBeVisible();
+  await expect(page.getByText(/Your first two months are free, then it's up to £9\.99 a month for the whole group/)).toBeVisible();
   await expect(pricing.getByText(/Play 3 weeks out of 4 and it's £7\.49\. Take a month off and it's nothing\./)).toBeVisible();
   // Nothing on the page still claims MatchTime is free.
-  const body = (await page.locator("body").innerText()).replace(/first month (is )?free/gi, "");
+  const body = withoutFreePeriod(await page.locator("body").innerText());
   expect(body).not.toMatch(/\bfree\b/i);
+  expect(body).not.toMatch(/first month/i);
   await page.getByRole("link", { name: /read the player guide/i }).click();
   await page.waitForURL("**/help/player");
   await expect(page.getByText(/The one rule/i)).toBeVisible();
@@ -65,8 +78,11 @@ test("the organiser guide explains the club fee: games played, up to £9.99, the
   await expect(guide.getByText(/only pay for the weeks you play: up to £9\.99 a month per WhatsApp group, VAT included/)).toBeVisible();
   await expect(guide.getByText(/adds a card/).first()).toBeVisible();
   await expect(guide.getByText(/at most about 25p a player per game/)).toBeVisible();
-  const text = (await guide.innerText()).replace(/first month (is )?free/gi, "");
+  await expect(guide.getByText(/Your first two months are free, counted from the day we approve your club\./)).toBeVisible();
+  await expect(guide.getByText(/Nine days before your free period ends/)).toBeVisible();
+  const text = withoutFreePeriod(await guide.innerText());
   expect(text).not.toMatch(/\bfree\b/i);
+  expect(text).not.toMatch(/first month/i);
   expect(text).not.toMatch(/[—–]/);
 });
 

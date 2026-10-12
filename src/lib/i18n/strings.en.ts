@@ -45,6 +45,7 @@
  * See MDs/multi-language-design-2026-09-16.md section 4.2.
  */
 import { joinList } from "./text";
+import { firstMonthsFree } from "./free-period";
 import type { StatsPeriod } from "../pipeline/types";
 import type { BadgeKey, BadgeNumbers } from "../badge-rules";
 
@@ -2140,7 +2141,8 @@ export const en = {
   /** To the organiser, once, when the owner approves (2026-10-01: a short
    *  checklist). Each URL is the organiser's own signed-in link to that
    *  page, so this DM goes to the organiser only. Without billing the one
-   *  pricing sentence is "Your first month is free.", never an amount, and
+   *  pricing sentence is "Your first two months are free." (the length comes
+   *  from `FREE_PERIOD_MONTHS`, i18n/free-period.ts), never an amount, and
    *  it ends the DM. For a BILLED club (club fee billing slice B2:
    *  BILLING_ENABLED on and the plan not Free) `tip` is the
    *  `sj_dm_approved_tip` paragraph, which follows that sentence. */
@@ -2158,7 +2160,7 @@ export const en = {
     `⭐ *Starting ratings:* give each player a rough score out of 10 so the first teams are fair:\n${p.ratingsUrl}\n\n` +
     `⚙️ *Settings:* switch on payments, rolling squad, weekly deadlines, admin messages, organiser picks and badge announcements:\n${p.settingsUrl}\n\n` +
     `❓ *Help any time:* message me here, for example *help payments* or *help badges*.\n\n` +
-    `Your first month is free.` +
+    `${firstMonthsFree("en")}.` +
     (p.tip ? `\n\n${p.tip}` : ""),
   /** To the organiser, once, when the owner rejects. MatchTime has left the
    *  group without a word in it (decision 1). */
@@ -2561,7 +2563,7 @@ export const en = {
         ? `Your game is ${p.fee} each, so charging *${p.feePlus}* covers it.`
         : `If your game costs ${p.fee} each, charge *${p.feePlus}* and the club fee is covered.`) +
     ` Weeks you don't play cost nothing.`,
-  /** The short tip after "Your first month is free." in `sj_dm_approved`,
+  /** The short tip after "Your first two months are free." in `sj_dm_approved`,
    *  only for a club that is billed. */
   sj_dm_approved_tip: (p: {
     players: number;
@@ -2577,21 +2579,21 @@ export const en = {
     (p.split ? `, to add to each player's share of the pitch cost.` : `, so a ${p.fee} game could be charged at *${p.feePlus}*.`),
   billing_page_title: "Club fee",
   billing_state_trial: (p: { date: string; price: string }): string =>
-    `Free month until ${p.date}. After that you only pay for the games you play, up to ${p.price} a month for the whole group.`,
+    `Free until ${p.date}. After that you only pay for the games you play, up to ${p.price} a month for the whole group.`,
   billing_state_grace: (p: { date: string }): string =>
-    `The free month has ended. MatchTime stops on ${p.date} unless a card is added.`,
+    `The free period has ended. MatchTime stops on ${p.date} unless a card is added.`,
   /** Slice P4 (games played): no flat fee. `date` is the next charge, the
    *  morning after the current billing month ends. */
   billing_state_subscribed: (p: { price: string; date: string }): string =>
     `Only the games played are charged, up to ${p.price} a month. Next charge ${p.date}.`,
-  /** A card saved inside the free month: nothing is taken until the first
+  /** A card saved inside the free period: nothing is taken until the first
    *  month after it has been charged for its games. */
   billing_state_card_saved: (p: { date: string }): string => `Card saved. Nothing is taken until ${p.date}.`,
   billing_state_nothing_until: (p: { date: string }): string => `Nothing is taken until ${p.date}.`,
   billing_state_subscribed_ending: (p: { date: string }): string =>
     `Billing ends on ${p.date}, after this month is charged for its games.`,
   billing_state_card: (p: { brand: string; last4: string }): string => `Card ${p.brand} ending ${p.last4}.`,
-  /** `rest` is the line that follows: the free month's or the monthly one. */
+  /** `rest` is the line that follows: the free period's or the monthly one. */
   billing_state_paid_with_other: (p: { holder: string; rest: string }): string =>
     `Paid with ${p.holder}'s card until you put yours on. ${p.rest}`,
   /** `what`: the unpaid month ("for 1 Nov to 30 Nov") or months; `retrying`
@@ -2687,20 +2689,20 @@ export const en = {
   billing_btn_keep_paying: "Keep paying",
   // Stop paying asks first (test mode fix, 2026-10-05). No dashes.
   billing_stop_confirm_title: "Stop paying for MatchTime?",
-  /** After the free month: billing ends with the current month (`date`,
+  /** After the free period: billing ends with the current month (`date`,
    *  the day it is charged), then the club is paused. */
   billing_stop_confirm_month: (p: { date: string }): string =>
     `Billing ends on ${p.date}, after this month is charged for its games. Then MatchTime pauses in the group until someone starts paying again.`,
-  /** Inside the free month: the card is removed at once. */
+  /** Inside the free period: the card is removed at once. */
   billing_stop_confirm_free: (p: { date: string }): string =>
-    `Your card will be removed now and nothing is charged. The free month carries on until ${p.date}; after that a card is needed to keep MatchTime running.`,
+    `Your card will be removed now and nothing is charged. The free period carries on until ${p.date}; after that a card is needed to keep MatchTime running.`,
   billing_btn_stop_confirm_yes: "Yes, stop paying",
   billing_btn_stop_confirm_no: "Go back",
   billing_exempt: (p: { club: string }): string => `${p.club} has no club fee. MatchTime is free for this club.`,
   billing_open: "Open billing",
   billing_choose_collector: "Choose a money collector",
   billing_banner_grace: (p: { date: string }): string =>
-    `The free month has ended. Add a card before ${p.date} to keep MatchTime running.`,
+    `The free period has ended. Add a card before ${p.date} to keep MatchTime running.`,
   /** Slice P4: the unpaid month and its amount, or the total of several. */
   billing_banner_past_due: (p: { amount: string; from: string; to: string; months: number; date: string }): string =>
     (p.amount
@@ -2727,7 +2729,7 @@ export const en = {
   billing_notice_failed: "Something went wrong. Please try again.",
   billing_notice_stopped:
     "Done. Billing ends when this month ends: this month is charged for its games as usual, then nothing more. MatchTime keeps running until then.",
-  billing_notice_stopped_free: "Done. Your card has been removed and nothing has been charged. The free month carries on until it ends.",
+  billing_notice_stopped_free: "Done. Your card has been removed and nothing has been charged. The free period carries on until it ends.",
   billing_notice_kept: "Done. MatchTime keeps running, and each month is charged only for the games played.",
   billing_notice_past_due: "A payment is overdue. Update the card and pay it first.",
   /** Slice P3 (games played): saving a card charges nothing; each month is
@@ -2761,10 +2763,10 @@ export const en = {
     `MatchTime is back on for ${p.club}. I'll pick things up again in the group within a few minutes. Anyone who said IN while I was paused should say it again.`,
   billing_dm_plan_billed: (p: { name: string | null; club: string; price: string; date: string; link: string }): string =>
     `Hi${p.name ? ` ${p.name}` : ""}, ${p.club} is on the MatchTime plan again: only the games played, up to ${p.price} a month. ` +
-    `The free month has already been used, so MatchTime keeps running in the group until ${p.date}. ` +
+    `The free period has already been used, so MatchTime keeps running in the group until ${p.date}. ` +
     `Add a card before then to keep it going: ${p.link}`,
-  // Club fee billing, slice B4: the scheduled card reminders (day 21, 28,
-  // 30), the pause, the payment problems and the new collector, all by
+  // Club fee billing, slice B4: the scheduled card reminders (9 and 2 days
+  // before the free period ends, and the day it ends), the pause, the payment problems and the new collector, all by
   // platform DM to the billing contact, plus the admin channel's "no money
   // collector yet" line. No dashes, EN and TR. Plan 7.2, 7.3.
   billing_dm_trial_21: (p: {
@@ -2776,17 +2778,17 @@ export const en = {
     link: string;
     collector: boolean;
   }): string =>
-    `Hi${p.name ? ` ${p.name}` : ""}, ${p.club}'s free month on MatchTime ends on ${p.date}. ` +
+    `Hi${p.name ? ` ${p.name}` : ""}, ${p.club}'s free period on MatchTime ends on ${p.date}. ` +
     (p.collector ? `As the person who collects the match fees, you're the one I'll ask for the card. ` : "") +
     `To keep MatchTime running in the ${p.club} WhatsApp group, add a card here: ${p.link}\n` +
     `After that you only pay for the games you play, up to ${p.price} a month for the whole group, charged after each month ends. ` +
     `Nothing is taken when you add the card; the first charge is on ${p.firstCharge}.`,
   billing_dm_trial_28: (p: { name: string | null; club: string; date: string; price: string; link: string }): string =>
-    `Hi${p.name ? ` ${p.name}` : ""}, a quick reminder: ${p.club}'s free month ends on ${p.date}. ` +
+    `Hi${p.name ? ` ${p.name}` : ""}, a quick reminder: ${p.club}'s free period ends on ${p.date}. ` +
     `Add a card to keep MatchTime running in the ${p.club} WhatsApp group: ${p.link}\n` +
     `You only pay for the games you play, up to ${p.price} a month, and nothing is taken when you add the card.`,
   billing_dm_trial_ended: (p: { name: string | null; club: string; date: string; price: string; link: string }): string =>
-    `Hi${p.name ? ` ${p.name}` : ""}, ${p.club}'s free month has ended. ` +
+    `Hi${p.name ? ` ${p.name}` : ""}, ${p.club}'s free period has ended. ` +
     `MatchTime will keep running in the ${p.club} WhatsApp group for one more week, until ${p.date}. ` +
     `Add a card any time before then: ${p.link}\n` +
     `You only pay for the games you play, up to ${p.price} a month, charged after each month ends.`,
@@ -3123,7 +3125,7 @@ export const en = {
     "Clubs that joined by themselves and that you approved. New clubs have tighter daily limits for their first days. Turn off makes MatchTime leave the group and go silent; nobody is messaged.",
   info_clubs_fee_title: "Club fee",
   info_clubs_fee_body:
-    "The club's plan and billing state, this month and last month, who pays, and its AI cost over the last 30 days. Plan sets the monthly maximum. Start free month starts the one free month a club gets.",
+    "The club's plan and billing state, this month and last month, who pays, and its AI cost over the last 30 days. Plan sets the monthly maximum. Start free period starts the one free period a club gets.",
   info_clubs_unsolicited_title: "Groups nobody asked MatchTime into",
   info_clubs_unsolicited_body:
     "Groups someone added MatchTime to without a code. MatchTime stays silent there and leaves by itself after 48 hours, or press Leave to go now. Nobody in the group is messaged.",

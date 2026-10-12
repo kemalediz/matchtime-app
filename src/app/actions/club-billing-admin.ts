@@ -14,7 +14,7 @@
  * the open month is waived and every unpaid club fee invoice voided; a
  * price change needs nothing in Stripe (each month close charges the lower
  * of the price when the month opened and the price at the close). A club
- * billed again after Free with its free month used up gets one DM to its
+ * billed again after Free with its free period used up gets one DM to its
  * billing contact asking for a card, unless the CONTACT's own card is on
  * file: then that card is billed and they are told. Anybody else's card is
  * removed (never billed) and its holder told (review M1).
@@ -93,9 +93,9 @@ export async function setClubPlanAction(orgId: string, plan: string, price?: str
     console.error(`[club-billing-admin] ${orgId}: pending billing DM not sent yet:`, err);
   }
   if (r.billedAgain === "grace") {
-    message += " The free month was already used, so the club has 7 days to add a card.";
+    message += " The free period was already used, so the club has 7 days to add a card.";
   } else if (r.billedAgain === "trial") {
-    message += " The club is back in its free month.";
+    message += " The club is back in its free period.";
   } else if (r.billedAgain === "subscribed") {
     message += " The billing contact's card on file is billed again, and they get a message saying so.";
   } else if (r.billedAgain === "paused") {
@@ -109,19 +109,19 @@ export async function setClubPlanAction(orgId: string, plan: string, price?: str
 
 const START_REFUSED: Record<string, string> = {
   "not-found": "That club no longer exists.",
-  "not-self-join": "Only clubs that joined themselves can have a free month.",
-  "flag-off": "Billing is switched off (BILLING_ENABLED), so no free month can start.",
+  "not-self-join": "Only clubs that joined themselves can have a free period.",
+  "flag-off": "Billing is switched off (BILLING_ENABLED), so no free period can start.",
   "not-exempt": "This club is already being billed.",
-  "had-free-month": "This club has had its free month already.",
+  "had-free-month": "This club has had its free period already.",
   "plan-free": "This club is on the Free plan. Choose Standard or Custom first.",
   raced: "Something changed at the same moment. Refresh and try again.",
 };
 
-/** "Start free month" for a self-join club approved before billing. */
+/** "Start free period" for a self-join club approved before billing. */
 export async function startFreeMonthAction(orgId: string): Promise<BillingAdminResult> {
   await requireOwner();
   const r = await startTrial(orgId);
   revalidatePath("/admin/clubs");
-  if (!r.ok) return { ok: false, message: START_REFUSED[r.reason] ?? "The free month could not start." };
-  return { ok: true, message: `Free month started. It ends on ${dayLabel("en", r.trialEndsAt)}.` };
+  if (!r.ok) return { ok: false, message: START_REFUSED[r.reason] ?? "The free period could not start." };
+  return { ok: true, message: `Free period started. It ends on ${dayLabel("en", r.trialEndsAt)}.` };
 }

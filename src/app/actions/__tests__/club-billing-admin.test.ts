@@ -134,14 +134,14 @@ describe("setClubPlanAction", () => {
     h.setClubPlan.mockResolvedValue({ ok: true, plan: "standard", pricePence: null, status: "grace", resumed: false, billedAgain: "grace" });
     const r = await setClubPlanAction("org1", "standard");
     expect(h.flushPendingBillingNotices).toHaveBeenCalledWith("org1");
-    expect(r.message).toBe("Plan saved: Standard, up to £9.99 a month. The free month was already used, so the club has 7 days to add a card.");
+    expect(r.message).toBe("Plan saved: Standard, up to £9.99 a month. The free period was already used, so the club has 7 days to add a card.");
   });
 
   // (setClubPlan writes NO pending DM for a back-to-trial: club-billing-b2.test.ts.)
   it("billed again while its free month is still running: back in trial", async () => {
     h.setClubPlan.mockResolvedValue({ ok: true, plan: "standard", pricePence: null, status: "trial", resumed: false, billedAgain: "trial" });
     const r = await setClubPlanAction("org1", "standard");
-    expect(r.message).toBe("Plan saved: Standard, up to £9.99 a month. The club is back in its free month.");
+    expect(r.message).toBe("Plan saved: Standard, up to £9.99 a month. The club is back in its free period.");
   });
 
   it("review M1: billed again with the CONTACT's card on file: billed with it, and they are told", async () => {
@@ -165,7 +165,7 @@ describe("setClubPlanAction", () => {
     const r = await setClubPlanAction("org1", "standard");
     expect(h.detachDroppedCard).toHaveBeenCalledWith("org1", "pm_old");
     expect(r.message).toBe(
-      "Plan saved: Standard, up to £9.99 a month. The free month was already used, so the club has 7 days to add a card. The card on file was not the billing contact's, so it was removed (never charged) and its holder is told.",
+      "Plan saved: Standard, up to £9.99 a month. The free period was already used, so the club has 7 days to add a card. The card on file was not the billing contact's, so it was removed (never charged) and its holder is told.",
     );
   });
 
@@ -187,12 +187,12 @@ describe("setClubPlanAction", () => {
 describe("startFreeMonthAction", () => {
   it("starts and says when it ends", async () => {
     h.startTrial.mockResolvedValue({ ok: true, trialEndsAt: new Date("2026-10-31T12:00:00Z") });
-    expect(await startFreeMonthAction("org1")).toEqual({ ok: true, message: "Free month started. It ends on Sat 31 Oct." });
+    expect(await startFreeMonthAction("org1")).toEqual({ ok: true, message: "Free period started. It ends on Sat 31 Oct." });
   });
 
   it("each refusal reads plainly", async () => {
     h.startTrial.mockResolvedValue({ ok: false, reason: "had-free-month" });
-    expect(await startFreeMonthAction("org1")).toEqual({ ok: false, message: "This club has had its free month already." });
+    expect(await startFreeMonthAction("org1")).toEqual({ ok: false, message: "This club has had its free period already." });
     h.startTrial.mockResolvedValue({ ok: false, reason: "flag-off" });
     expect((await startFreeMonthAction("org1")).message).toMatch(/BILLING_ENABLED/);
   });
