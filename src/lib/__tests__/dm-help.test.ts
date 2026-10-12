@@ -131,7 +131,9 @@ describe("handleDmHelp", () => {
     );
   });
 
-  it("deliver: 'platform' (a club that is setting up): the SAME text goes out on the platform channel, and nothing on the club's", async () => {
+  // Item 4: the help says "tag me" and "say In or Out", and the group of a
+  // club that is setting up is one MatchTime is not listening to yet.
+  it("deliver: 'platform' (a club that is setting up): the SAME help, under one paragraph saying nothing below works until GO; nothing on the club's channel", async () => {
     membershipFindMany.mockResolvedValue([mem("org-mt", "OWNER", "MT Test")]);
     const out = await handleDmHelp({ ...args("help payments"), deliver: "platform" });
     expect(out).toMatchObject({ handled: "dm-help", topic: "payments", orgId: "org-mt", audience: "admin" });
@@ -140,18 +142,33 @@ describe("handleDmHelp", () => {
     const job = queuePlatformDm.mock.calls[0][0];
     expect(job).toMatchObject({ phone: "+447700900001", purpose: "setup-reply", refId: "org-mt:help" });
     expect(job.sendAfter).toBeUndefined();
+    const help = buildHelpReply("payments", FEATS_PAY_OFF, "en", {
+      audience: "admin",
+      links: { settings: "https://mt.example/r/-admin-settings" },
+    });
     expect(job.text).toBe(
-      buildHelpReply("payments", FEATS_PAY_OFF, "en", {
-        audience: "admin",
-        links: { settings: "https://mt.example/r/-admin-settings" },
-      }),
+      "MatchTime hasn't started in your group yet. Nothing below works there until you reply *GO* here or press *Go live* on your settings page." +
+        `\n\n${help}`,
     );
   });
 
-  it("the default is still the club's own channel, never the platform one", async () => {
+  it("that paragraph is in the club's language (Turkish: BAŞLA), and still a prefix, not a replacement", async () => {
+    getOrgFeatures.mockResolvedValue({ ...FEATS_PAY_OFF, language: "tr" });
+    membershipFindMany.mockResolvedValue([mem("org-tr", "OWNER", "Kıyı SK", "tr")]);
+    await handleDmHelp({ ...args("yardım"), deliver: "platform" });
+    const text = queuePlatformDm.mock.calls[0][0].text as string;
+    const prefix =
+      "MatchTime grubunuzda henüz başlamadı. Buraya *BAŞLA* yazana ya da ayarlar sayfanızdaki *Yayına al* düğmesine basana kadar aşağıdakilerin hiçbiri grupta çalışmaz.";
+    expect(text.startsWith(`${prefix}\n\n`)).toBe(true);
+    expect(text.length).toBeGreaterThan(prefix.length + 80);
+    expect(text).not.toMatch(/[\u2013\u2014]/);
+  });
+
+  it("the default is still the club's own channel, never the platform one, and has no such paragraph", async () => {
     membershipFindMany.mockResolvedValue([mem("org-mt", "OWNER", "MT Test")]);
     await handleDmHelp(args("help"));
     expect(botJobCreate).toHaveBeenCalledTimes(1);
+    expect(botJobCreate.mock.calls[0][0].data.text).not.toContain("hasn't started in your group");
     expect(queuePlatformDm).not.toHaveBeenCalled();
   });
 

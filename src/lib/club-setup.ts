@@ -97,7 +97,10 @@
  * the "no organiser" stamp, the captured-chat expiry, and every step of
  * a removal from the group and of a re-add (club-setup-removal.ts: the
  * stamp on the club first, then the DMs, then the stored chat, each its
- * own statement).
+ * own statement). ONE EXCEPTION, which follows the rule: the removal
+ * queues the organiser's DM in a small transaction that takes the club
+ * first (`lockClubSetup`), re-reads the stamp, and then only inserts the
+ * DM, so a re-add cannot slip between "still removed" and the DM.
  *
  * A CLUB THAT IS NOT APPROVED is another world: the group add and the
  * bot's removal while pending take the connect row and then the club.
@@ -193,10 +196,12 @@ export {
  * now only in a setting-up club is caught (review of PR #232, fix 2).
  *
  * Call it AFTER `nonServingClubsReason` (a sender with no served club at
- * all is that rail's) and after the deterministic help. A sender who also
- * belongs to a live club is not caught: they carry on, and every handler
- * below selects clubs with `IN_LIVE_STAGE_CLUB_WHERE`, so they are
- * handled for the live club only. One small query.
+ * all is that rail's) and BEFORE the deterministic help: a sender it
+ * catches has their help answered by `handleSettingUpDm` (setup-go-dm.ts),
+ * on the platform channel. A sender who also belongs to a live club is not
+ * caught: they carry on, and every handler below selects clubs with
+ * `IN_LIVE_STAGE_CLUB_WHERE`, so they are handled for the live club only.
+ * One small query.
  */
 export async function settingUpClubsReason(userId: string): Promise<"club-setting-up" | null> {
   const current = await db.membership.findMany({
@@ -428,6 +433,20 @@ export async function clearSetupRemoved(orgId: string, groupId: string, client: 
     data: { setupRemovedAt: null },
   });
   return count === 1;
+}
+
+/** What `isSetupRemovedNow` needs: `db`, or a transaction client. */
+type OrgCountClient = { organisation: { count(args: { where: object }): Promise<number> } };
+
+/**
+ * Is this club STILL setting up and removed from its group, right now? For
+ * the removal handling, which reads it under the club's row lock
+ * (`lockClubSetup`) immediately before it queues the organiser's "I was
+ * removed, add me back" DM: a re-add that cleared the stamp a moment
+ * earlier must mean no such DM.
+ */
+export async function isSetupRemovedNow(orgId: string, client: OrgCountClient = db): Promise<boolean> {
+  return (await client.organisation.count({ where: { id: orgId, ...SETTING_UP_CLUB_WHERE, setupRemovedAt: { not: null } } })) === 1;
 }
 
 // ════ END removed from the group while setting up ════
@@ -814,10 +833,14 @@ async function goLiveClubTx(orgId: string, by: string, now: Date, opts: GoLiveOp
       await closeUnfinishedSetupLearning(orgId, tx, now);
 
       // The hello: read INSIDE the transaction, so it says what the club
-      // is set to at this instant, not at approval.
+      // is set to at this instant, not at approval. `now` is the go-live
+      // instant: a rolling club's hello asks whether the seeding will have
+      // a squad to carry, and reads the fixtures as they stand after the
+      // quieting just above.
       const input = await loadHelloInput(orgId, {
         client: tx as unknown as HelloReadClient,
         organiserUserId: opts.organiserUserId ?? null,
+        now,
       });
       const hello = buildGroupHello(input);
       await tx.botJob.create({ data: { orgId, kind: "group", text: hello, createdAt: now } });

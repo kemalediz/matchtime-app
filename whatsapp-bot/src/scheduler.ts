@@ -23,6 +23,8 @@ import {
   type DueInstruction,
 } from "./api.js";
 import { runPlatformJobs } from "./platform-jobs.js";
+import { refreshIfClubSetChanged } from "./org-refresh.js";
+import { runPendingCatchUps } from "./club-catch-up.js";
 import { withTimeout } from "./with-timeout.js";
 import { config } from "./config.js";
 import { reactAndReport } from "./react-with-id.js";
@@ -152,6 +154,26 @@ async function tick(): Promise<void> {
     } catch (err) {
       console.error("[platform] platform-jobs tick failed:", err);
     }
+
+    // The poll above carried the server's club set stamp. If it is not the
+    // one the org picture was read at, a club has gone live, been
+    // suspended or paused, or a group has changed hands: refresh NOW,
+    // before the loop below, so this very tick serves the new club (its
+    // hello is waiting) and stops serving the old one. One string
+    // comparison when nothing changed; nothing at all against an older
+    // server. Never throws, and gives up waiting after ten seconds.
+    try {
+      await refreshIfClubSetChanged();
+    } catch (err) {
+      console.error("[org-refresh] club set check failed:", err instanceof Error ? err.message : err);
+    }
+
+    // A catch-up for a newly live group that met a running sweep waits on
+    // a small list and is tried again here, every tick, until it runs or
+    // is too old (club-catch-up.ts). Not awaited: reading a group back can
+    // take seconds, and the clubs below must not wait for it. A no-op
+    // when nothing is waiting. Never throws.
+    void runPendingCatchUps();
 
     for (const org of orgs) {
       try {

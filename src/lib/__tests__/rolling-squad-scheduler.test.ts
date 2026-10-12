@@ -214,8 +214,9 @@ describe("R1: the rolling announcement", () => {
 
 describe("R2: the 17:00 post", () => {
   it("a rolling club's short-squad post is the fixed text plus the deadline line, no model call", async () => {
+    // Nine of the 18 places were carried over; five have dropped since.
     const m = match();
-    setWorld(m);
+    setWorld(m, { carried: 9 });
     const out = await instructions(MON_5PM);
     const post = out.find((i) => i.key.startsWith(`${m.id}:evening-update:`)) as { text: string } | undefined;
     expect(post).toBeDefined();
@@ -232,6 +233,66 @@ describe("R2: the 17:00 post", () => {
     };
     expect(post.text).toContain("squad is full");
     expect(post.text).toContain("Drop-out deadline: *Friday 15:30*.");
+  });
+
+  // 2026-10-13: a rolling club's FIRST game. Nothing was carried over, so
+  // "you're in unless you say OUT" under a list of one is false for the
+  // rest of the group. The deadline is still told, to those on the list.
+  it("a game nobody was carried onto (the club's first): the deadline line does not tell the group they are in", async () => {
+    const m = match({ rollingSeededAt: null, rollingSeededFromMatchId: null, attendances: [player("Hamzah", 0)] });
+    setWorld(m, { carried: 0 });
+    const post = (await instructions(MON_5PM)).find((i) => i.key.startsWith(`${m.id}:evening-update:`)) as { text: string };
+    expect(post.text).toContain("need *17 more*");
+    expect(post.text).not.toContain("you're in unless you say");
+    expect(post.text).toContain(buildRollingDeadlineLine({ deadline: "Friday 15:30", carried: false, lang: "en" }));
+    expect(composeChaseText).not.toHaveBeenCalled();
+  });
+
+  it("a game seeded with nobody to carry reads the same way", async () => {
+    const m = match({ attendances: [player("Hamzah", 0)] });
+    setWorld(m, { carried: 0 });
+    const post = (await instructions(MON_5PM)).find((i) => i.key.startsWith(`${m.id}:evening-update:`)) as { text: string };
+    expect(post.text).not.toContain("you're in unless you say");
+    expect(post.text).toContain(buildRollingDeadlineLine({ deadline: "Friday 15:30", carried: false, lang: "en" }));
+  });
+
+  // Owner decision, 2026-10-13: the same rule as the hello, measured on
+  // the match the post is about. "You're in unless you say OUT" needs the
+  // carried players to fill at least half of this match's 18 places.
+  for (const [name, carried, standing] of [
+    ["one player carried (a website In before go-live)", 1, false],
+    ["just under half the places carried", 8, false],
+    ["exactly half the places carried", 9, true],
+    ["a full squad carried", 18, true],
+  ] as Array<[string, number, boolean]>) {
+    it(`${name} (${carried} of 18): ${standing ? "you're in unless you say OUT" : "speaks only to those on the list"}`, async () => {
+      const m = match();
+      const counted: unknown[] = [];
+      setWorld(m, { carried });
+      overrides.attendanceEvent = {
+        count: async (args: unknown) => {
+          counted.push((args as { where: unknown }).where);
+          return carried;
+        },
+      };
+      const post = (await instructions(MON_5PM)).find((i) => i.key.startsWith(`${m.id}:evening-update:`)) as { text: string };
+      expect(post.text).toContain(buildRollingDeadlineLine({ deadline: "Friday 15:30", carried: standing, lang: "en" }));
+      expect(post.text.includes("you're in unless you say")).toBe(standing);
+      // Players the seeding wrote onto the squad, not its bench overflow.
+      expect(counted).toContainEqual({ matchId: m.id, cause: "rolling-squad", toStatus: "CONFIRMED" });
+    });
+  }
+
+  it("the two deadline lines: carried says you're in, first game speaks only to those on the list, in both languages", () => {
+    expect(buildRollingDeadlineLine({ deadline: "Friday 15:30", lang: "en" })).toBe(
+      "Drop-out deadline: *Friday 15:30*. Until then, you're in unless you say *OUT*.",
+    );
+    expect(buildRollingDeadlineLine({ deadline: "Friday 15:30", carried: false, lang: "en" })).toBe(
+      "Drop-out deadline: *Friday 15:30*. If you're on the list and can't play, say *OUT* before then.",
+    );
+    expect(buildRollingDeadlineLine({ deadline: "Cuma 15:30", carried: false, lang: "tr" })).toBe(
+      "Son çıkış: *Cuma 15:30*. Listedeyseniz ve oynayamayacaksanız o saatten önce *YOKUM* yazın.",
+    );
   });
 
   it("a club without the setting still asks the model, and gets no deadline line", async () => {

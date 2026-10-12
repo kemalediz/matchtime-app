@@ -26,12 +26,21 @@ import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import { startPhoneSignIn, verifyPhoneSignIn } from "@/app/actions/phone-signup";
 import { safeCallbackPath } from "@/lib/safe-callback";
+import { t } from "@/lib/i18n/t";
+import { useBrowserLang } from "@/lib/i18n/browser-lang";
 
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get("callbackUrl") || "/";
   const claimed = searchParams.get("claimed") === "1";
+  // Sent here by an expired signed link (/r, src/lib/expired-link.ts),
+  // which is carried as `link` and read by the server only AFTER a correct
+  // code, and only for the person it was minted for. Nothing about it is
+  // known here, so the notice is in the browser's own language.
+  const linkExpired = searchParams.get("expired") === "1";
+  const link = searchParams.get("link");
+  const expiredNotice = t(useBrowserLang()).login_link_expired;
   const viaGoogle = searchParams.get("via") === "google";
   const urlError = searchParams.get("error");
 
@@ -73,7 +82,7 @@ function LoginForm() {
     // Stays busy on success: the next page is still loading.
     let leaving = false;
     try {
-      const res = await verifyPhoneSignIn({ phone, code, callbackUrl });
+      const res = await verifyPhoneSignIn({ phone, code, callbackUrl, link });
       if (!res.ok) {
         if (res.noAccount) {
           // The code is spent and there is nobody to sign in: back to
@@ -121,6 +130,16 @@ function LoginForm() {
           </h1>
           <p className="text-sm text-slate-500 mt-1">Sign in to your account</p>
         </div>
+
+        {linkExpired && (
+          <div
+            role="status"
+            data-testid="login-link-expired"
+            className="mb-5 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-900"
+          >
+            {expiredNotice}
+          </div>
+        )}
 
         {claimed && (
           <div className="mb-5 p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-800">

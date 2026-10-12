@@ -2003,7 +2003,7 @@ export const en = {
   sj_card_pending:
     "Step 3: we're checking your club, usually within a day. MatchTime stays quiet in the group until your club is approved, and messages you on WhatsApp when it's live.",
   sj_card_pending_other: (p: { group: string }): string =>
-    `MatchTime was added to "${p.group}" by someone else. We'll check it before switching on.`,
+    `MatchTime was added to "${p.group}" by someone else. We'll check it before MatchTime does anything there.`,
   sj_card_approved: (p: { group: string }): string => `You're live. MatchTime said hello in "${p.group}".`,
   sj_card_rejected: "We can't take this group on right now.",
   sj_card_expired: "That code expired. Tap the button again for a new one.",
@@ -2086,6 +2086,17 @@ export const en = {
    *  the drop-out deadline as "Monday 21:00", or null when none is set. */
   sj_hello_rolling: (p: { deadline: string | null }): string =>
     `🔁 *Same squad each week:* if you played last time, you're in next time too. You only need to say *Out* if you can't make it${p.deadline ? `, before *${p.deadline}*` : ""}.`,
+  /** Rolling squad, THE FIRST GAME (2026-10-13): MatchTime has no squad
+   *  to carry over yet, so nobody is "in already" and nobody is told they
+   *  are. Replaces `sj_hello_rolling` AND `sj_hello_rolling_join` while
+   *  `hasSquadToCarry` is false. "organiser": the organisers pick, so an
+   *  In goes on the bench (`canTakeFreePlace`, squad-capacity.ts). */
+  sj_hello_rolling_first: (p: { deadline: string | null; mode: "first-come" | "organiser" }): string => {
+    const before = p.deadline ? `, before *${p.deadline}*` : "";
+    return p.mode === "organiser"
+      ? `🔁 *Same squad each week:* this group keeps the same squad from one game to the next. For the *first game* with me, say *In*: I'll put you on the bench and the organisers pick who plays. After that, whoever played stays in each week and only needs to say *Out* if they can't make it${before}.`
+      : `🔁 *Same squad each week:* this group keeps the same squad from one game to the next. For the *first game* with me, say *In* so I know who is playing. After that you stay in each week and only need to say *Out* if you can't make it${before}.`;
+  },
   /** Rolling squad, for somebody not carried over. "organiser": the
    *  organisers pick, so an In never takes a place by itself. */
   sj_hello_rolling_join: (p: { mode: "bench" | "no-bench" | "organiser" }): string =>
@@ -2145,10 +2156,30 @@ export const en = {
   /** The label of the button on the settings page, so every message that
    *  names it and the page itself use one wording. */
   sj_go_button: `Go live`,
-  /** GO worked: the hello is queued for the group. */
-  sj_go_done: (p: { group: string }): string => `Done: I've introduced myself in "${p.group}".`,
-  /** GO while the group's chat is still being read (owner decision 4). */
-  sj_go_still_reading: `I'm still reading your group's messages. Give me a few minutes and I'll message you.`,
+  /** GO worked: the hello is queued for the group. It is NOT there yet:
+   *  the Pi posts it once its next refresh has learnt that the group is
+   *  served, up to five minutes later, so this does not say "I have". */
+  sj_go_done: (p: { group: string }): string =>
+    `Done: I'm introducing myself in "${p.group}" now. It can take a few minutes to appear.`,
+  /** GO while the group's chat is still being read (owner decision 4).
+   *  True for whoever says GO: the reading can take up to two hours, and
+   *  the setup message goes only to the organiser who connected the club,
+   *  in the daytime. So no "in a few minutes", and no "I'll message you". */
+  sj_go_still_reading: (p: { club: string }): string =>
+    `I'm still reading your group's messages, which can take a while. When I've finished I'll send the setup message to the organiser who connected ${p.club}. Try *GO* again after that.`,
+  /** GO failed on MatchTime's side (the server threw). Nothing changed;
+   *  the Pi does not send the message again, so the organiser is asked to. */
+  sj_go_failed: `Something went wrong on my side. Please reply *GO* again.`,
+  /** Opens the help sent to an owner or admin of a club that is still
+   *  setting up: the help below describes a group MatchTime is not
+   *  listening to yet. */
+  sj_go_help_not_started:
+    "MatchTime hasn't started in your group yet. Nothing below works there until you reply *GO* here or press *Go live* on your settings page.",
+  /** To the organiser, once, when the MatchTime team took the club live
+   *  for them (the owner's "Go live now"). The free period note and the
+   *  settings link follow it (src/lib/club-setup-owner-live.ts). */
+  sj_go_owner_started: (p: { group: string }): string =>
+    `The MatchTime team has started MatchTime in "${p.group}" for you, so you don't need to reply GO. It introduces itself in the group, which can take a few minutes to appear.`,
   /** GO after MatchTime was removed from the group. */
   sj_go_removed: (p: { group: string }): string => `I'm not in "${p.group}" any more. Add me back, then reply GO.`,
   /** GO for a club somebody else has just taken live. */
@@ -2177,7 +2208,8 @@ export const en = {
    *  platform channel, in the daytime. The Turkish command is BAŞLA. */
   sj_setup_removed: (p: { club: string; group: string; url: string }): string =>
     `I was removed from "${p.group}" before ${p.club} went live, so nothing has started there. ` +
-    `Add me back to the group, then reply *GO* here or press *Go live* on your settings page:\n${p.url}`,
+    `Add me back to the group, then reply *GO* here or press *Go live* on your settings page:\n${p.url}\n` +
+    `It has to be added by you or another organiser of ${p.club}.`,
   // ════ END removed from the group while setting up ════
   // ════ BEGIN the go-live pages (go-live slice S5, 2026-10-12) ════
   // The Go live banner on /admin/settings, that page's WhatsApp bot
@@ -2197,11 +2229,14 @@ export const en = {
   sj_live_preview_failed: `Couldn't load the message. Reload the page to try again.`,
   /** Went live: these two replace the banner. */
   sj_live_done_title: `You're live.`,
-  sj_live_done: (p: { group: string }): string => `MatchTime has introduced itself in "${p.group}".`,
-  /** Heading over the hello exactly as it was posted. */
-  sj_live_done_posted: `The message it posted`,
+  /** The hello is QUEUED at this moment: the bot picks a newly live club
+   *  up within a few minutes, so it is not in the group yet. */
+  sj_live_done: (p: { group: string }): string =>
+    `MatchTime is introducing itself in "${p.group}" now. It can take a few minutes to appear.`,
+  /** Heading over the hello exactly as it is queued. */
+  sj_live_done_posted: `The message it is posting`,
   /** Pressed while the group's chat is still being read (owner decision 4). */
-  sj_live_still_reading: `MatchTime is still reading your group's messages. Try again in a few minutes.`,
+  sj_live_still_reading: `MatchTime is still reading your group's messages, which can take a while. It will send the setup message to the organiser who connected the club when it has finished. Try again after that.`,
   /** MatchTime was removed from the group while the club was setting up. */
   sj_live_removed: (p: { group: string }): string =>
     `MatchTime is not in "${p.group}" any more. Add it back to the group, then press Go live.`,
@@ -2230,6 +2265,24 @@ export const en = {
   sj_live_wa_badge: `Waiting for you to go live`,
   sj_live_wa_body: `MatchTime is approved and in your group. It stays quiet until you press Go live at the top of this page.`,
   sj_live_wa_link: `Go to Go live`,
+  /** The same section once MatchTime has been removed from the group
+   *  while the club was setting up: it is NOT in the group. */
+  sj_live_wa_badge_removed: `Not in your group`,
+  sj_live_wa_body_removed: `MatchTime was removed from your group before going live, so nothing has started there. Add it back to the group, then press Go live at the top of this page.`,
+  /** The admin home card in that state: its heading and its body. */
+  sj_card_removed_title: `MatchTime was removed from your group`,
+  sj_card_setting_up_removed: (p: { group: string | null }): string =>
+    `MatchTime was removed from ${p.group ? `"${p.group}"` : "your WhatsApp group"} before going live. Add it back to the group, then go live.`,
+  /** The Go live button's accessible name, and the line beside it: an
+   *  organiser with more than one club setting up must see which one. */
+  sj_live_button_label: (p: { club: string }): string => `Go live: ${p.club}`,
+  sj_live_for_club: (p: { club: string }): string => `This takes ${p.club} live.`,
+  /** On /login, after opening a signed link that has expired. */
+  login_link_expired: `That link has expired. Sign in with your WhatsApp number to carry on.`,
+  /** The /r page, for a link that is not ours or cannot sign anyone in.
+   *  It does not say "already used": no link is single-use. */
+  link_invalid: `This link isn't valid.`,
+  link_go_sign_in: `Go to sign in`,
   /** The card on the club's admin home, in place of "You're live". Its
    *  heading is `sj_live_title`. */
   sj_card_setting_up: (p: { group: string | null }): string =>
@@ -2240,6 +2293,11 @@ export const en = {
   info_st_whatsapp_setup_body:
     "MatchTime is approved and linked to your WhatsApp group. It stays quiet there until an owner or admin of the club presses Go live at the top of this page, or replies GO to MatchTime on WhatsApp.\n\n" +
     "Nothing is wrong: it is waiting for you.",
+  /** The same popup once MatchTime has been removed from the group. */
+  info_st_whatsapp_removed_title: "WhatsApp bot",
+  info_st_whatsapp_removed_body:
+    "MatchTime is approved, but it was removed from your WhatsApp group before going live, so it cannot start there.\n\n" +
+    "Add MatchTime back to the group. Then an owner or admin of the club presses Go live at the top of this page, or replies GO to MatchTime on WhatsApp.",
   // ════ END the go-live pages ════
 
   /** To the organiser, once, when the owner approves (2026-10-01: a short
@@ -2286,10 +2344,11 @@ export const en = {
     `I read the recent messages ${p.group ? `in "${p.group}"` : "in your group"} and found nothing that needs a setting changed, so ${p.standard ? "MatchTime is on its standard setup" : "I changed nothing"}.`,
   /** The chat could not be read: too little of it, or the reading failed. */
   sj_dm_ready_unread: (p: { standard: boolean }): string =>
-    `I couldn't read your group's recent messages, so ${p.standard ? "MatchTime is on its standard setup" : "I changed nothing"}.`,
+    `I couldn't read your group's recent messages, so ${p.standard ? "MatchTime is on its standard setup" : "I changed nothing"}. ` +
+    "That's fine: check the settings below and reply *GO* when you're happy.",
   /** What "standard setup" means. Only when the club is on it. */
   sj_dm_ready_standard:
-    "Standard setup: players say In or Out each week, and a free place goes to the first person on the bench.",
+    "Standard setup: players say In or Out each week, and a free place is offered to everyone on the bench: the first to say In takes it.",
   sj_dm_ready_settings: (p: { url: string }): string => `⚙️ *Check or change how your group runs:*\n${p.url}`,
   /** The same two lines as in `sj_dm_approved` (a test keeps them the same). */
   sj_dm_ready_schedule: (p: { url: string }): string =>
@@ -2396,6 +2455,11 @@ export const en = {
   /** RSQ2: the extra line on the 17:00 post while the deadline is ahead. */
   rolling_deadline_line: (p: { deadline: string }): string =>
     `Drop-out deadline: *${p.deadline}*. Until then, you're in unless you say *OUT*.`,
+  /** RSQ2b (2026-10-13): the same line for a game nobody was carried
+   *  onto, a rolling club's first with MatchTime. Nobody is in by default
+   *  there, so it speaks only to the players on the list. */
+  rolling_deadline_line_first: (p: { deadline: string }): string =>
+    `Drop-out deadline: *${p.deadline}*. If you're on the list and can't play, say *OUT* before then.`,
   /** RSQ3: replaces `intro_attendance` in the day-one intro. */
   intro_rolling_squad:
     "🔁 *Rolling squad*: if you played last time, you're in next time too. Say *OUT* if you can't make it, before the drop-out deadline.",
@@ -3158,7 +3222,7 @@ export const en = {
     "Who has rated their teammates after your last match. MatchTime sends each player who played a private rating link; players on the bench are not counted. Pending players haven't rated yet.",
   info_dash_connect_title: "Connecting MatchTime",
   info_dash_connect_body:
-    "The steps to get MatchTime into your WhatsApp group: send the code from your phone, add MatchTime to the group, then we check your club, usually within a day. MatchTime stays quiet in the group until your club is approved.",
+    "The steps to get MatchTime into your WhatsApp group: send the code from your phone, add MatchTime to the group, then we check your club, usually within a day. MatchTime says nothing in the group while we check.",
 
   // /admin/players
   info_pl_list_title: "Players",

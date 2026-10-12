@@ -21,7 +21,9 @@ type L = "en" | "tr";
 const MON_2100 = { day: 1, time: "21:00" };
 const TUE_2000 = { day: 2, time: "20:00" };
 
-const CASES: Array<{ id: string; patch: Partial<GroupHelloSettings>; organiser?: string | null; catchUp?: boolean }> = [
+/** `carry` false: a rolling club MatchTime has no squad for yet (the
+ *  first game). Every other case has one, so H4 to H7 are the standing form. */
+const CASES: Array<{ id: string; patch: Partial<GroupHelloSettings>; organiser?: string | null; catchUp?: boolean; carry?: boolean }> = [
   { id: "H1 defaults, catch-up left out (equals sj_group_hello)", patch: {}, catchUp: false },
   { id: "H2 defaults", patch: {} },
   { id: "H3 defaults, no organiser name", patch: {}, organiser: null },
@@ -49,6 +51,19 @@ const CASES: Array<{ id: string; patch: Partial<GroupHelloSettings>; organiser?:
   { id: "H16 squad from a pasted list, attendance on", patch: { squadFromList: true } },
   { id: "H17 monthly squad", patch: { squadMode: "monthly", paymentTracking: true, dropOutDeadline: MON_2100 } },
   { id: "H18 monthly squad, organisers pick", patch: { squadMode: "monthly", organisersPick: true } },
+  // ── 2026-10-13: the first game of a rolling club (no squad to carry) ──
+  { id: "H19 rolling squad, FIRST GAME, no deadline", patch: { rollingSquad: true }, carry: false },
+  {
+    id: "H20 rolling squad, FIRST GAME, drop-out Monday 21:00, final list Tuesday 20:00, payment tracking",
+    patch: { rollingSquad: true, dropOutDeadline: MON_2100, listPublish: TUE_2000, paymentTracking: true },
+    carry: false,
+  },
+  {
+    id: "H21 the same, organisers pick",
+    patch: { rollingSquad: true, dropOutDeadline: MON_2100, listPublish: TUE_2000, paymentTracking: true, organisersPick: true },
+    carry: false,
+  },
+  { id: "H22 rolling squad, FIRST GAME, bench off", patch: { rollingSquad: true, bench: false }, carry: false },
 ];
 
 function render(lang: L): string {
@@ -60,6 +75,7 @@ function render(lang: L): string {
         organiser: c.organiser === undefined ? "Ali" : c.organiser,
         lang,
         catchUp: c.catchUp,
+        hasSquadToCarry: c.carry ?? true,
         settings: { ...DEFAULT_HELLO_SETTINGS, ...c.patch },
       });
       return `\n### ${c.id}\n${text}\n`;

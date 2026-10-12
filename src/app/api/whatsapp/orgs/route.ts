@@ -13,12 +13,24 @@ import {
 import { loadSelfJoinSweep } from "@/lib/group-add";
 import { selfJoinEnabledForApiRequest } from "@/lib/self-join-flag";
 import { loadAdminGroups } from "@/lib/admin-group-link";
+import { readClubSetVersion } from "@/lib/club-set-version-read";
 
 export async function GET(request: Request) {
   const apiKey = request.headers.get("x-api-key");
   if (apiKey !== process.env.WHATSAPP_API_KEY) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  // ── The club set version (2026-10-13) ─────────────────────────────
+  // The stamp this snapshot is read at, taken BEFORE the sets below are
+  // read. The Pi compares it with the stamp on its next platform-jobs
+  // poll and refreshes when they differ (src/lib/club-set-version.ts). A
+  // club that changes while the sets are being read can therefore only
+  // make this stamp OLDER than the snapshot, which costs one extra
+  // refresh; never newer, which would hide a change. Left out if it
+  // cannot be read: the Pi then compares nothing, as with an older server.
+  // Never throws, and never waits more than 1.5 seconds (club-set-version-read.ts).
+  const clubSetVersion = await readClubSetVersion("orgs");
 
   const orgs = await db.organisation.findMany({
     where: {
@@ -37,6 +49,13 @@ export async function GET(request: Request) {
       name: true,
       slug: true,
       whatsappGroupId: true,
+      // When the club went live, for a club that was held until its
+      // organiser said GO; null for every other club. The Pi uses it as
+      // the floor of its catch-up: when a group has just become a club's
+      // it re-reads what was said since this instant, and never a message
+      // from before it (the group was deliberately not listened to until
+      // then). An older Pi ignores the field.
+      liveAt: true,
     },
   });
   const known = new Set(orgs.map((o) => o.whatsappGroupId));
@@ -102,6 +121,7 @@ export async function GET(request: Request) {
     // false tells the Pi to ignore "@MatchTime setup" in any group it is
     // not already monitoring. Absent (an older server) means true.
     legacySetupTrigger: isLegacySetupTriggerEnabled(),
+    ...(clubSetVersion ? { clubSetVersion } : {}),
   };
 
   // ── The reconnect sweep (self-join slice 6, plan 8) ────────────────

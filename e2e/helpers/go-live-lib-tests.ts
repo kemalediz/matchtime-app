@@ -404,6 +404,177 @@ async function main() {
     assert.equal(await seededOn(monHeld), 1);
     ok("and it is seeded once it is live");
 
+    // ── 11. A rolling club's FIRST game (2026-10-13) ────────────────────
+    // The hello told a newly live rolling club "if you played last time,
+    // you're in next time too" when MatchTime had no last time: the first
+    // game's list was empty and the group was told it was in. The hello
+    // now asks the seeding's own question, inside the go-live transaction.
+    const { t } = await import("@/lib/i18n/t");
+    const { registerAttendance } = await import("@/lib/attendance");
+    const DAY = 24 * HOUR;
+    const en = t("en");
+    const tr = t("tr");
+    async function weeklyGame(orgId: string) {
+      await db.sport.create({
+        data: { id: `${orgId}-sport`, orgId, name: "Football 5-a-side", playersPerTeam: 5, positions: ["GK"], teamLabels: ["Red", "Yellow"] } as never,
+      });
+      await db.activity.create({
+        data: { id: `${orgId}-act`, orgId, sportId: `${orgId}-sport`, name: "Weekly game", dayOfWeek: 2, time: "21:00", venue: "Pitch", isActive: true } as never,
+      });
+    }
+    const game = (orgId: string, key: string, date: Date, status = "UPCOMING") =>
+      db.match.create({ data: { id: `${orgId}-${key}`, activityId: `${orgId}-act`, date, maxPlayers: 10, status, attendanceDeadline: date } as never });
+    const rowsOn = (matchId: string) =>
+      db.attendance.findMany({ where: { matchId }, select: { userId: true, status: true }, orderBy: { position: "asc" } });
+    const sayIn = (userId: string, matchId: string) =>
+      registerAttendance(userId, matchId, {
+        event: { cause: "self-attendance", actorKind: "player", actorUserId: userId, sourceRef: "e2e:first-game" },
+      });
+
+    // 11a. No game played yet: the first-game form, in the preview and in
+    // the hello that is queued.
+    const first = await club("rollfirst", { rollingSquadEnabled: true });
+    await weeklyGame(first);
+    await game(first, "g1", ahead(2 * DAY));
+    const firstLine = en.sj_hello_rolling_first({ deadline: null, mode: "first-come" });
+    const standingLine = en.sj_hello_rolling({ deadline: null });
+    assert.ok((await helloPreviewForClub(first)).includes(firstLine), "the Go live banner previews the first-game form");
+    const firstOut = await goLiveClub(first, "u", NOW);
+    assert.equal(firstOut.outcome, "went-live");
+    if (firstOut.outcome !== "went-live") throw new Error("unreachable");
+    assert.ok(firstOut.hello.includes(firstLine), "the hello asks for an In for the first game");
+    assert.ok(!firstOut.hello.includes(standingLine), "and does not tell the group it is in already");
+    assert.ok(!firstOut.hello.includes("if you played last time"));
+    const firstHelloJob = (await jobs(first)).find((j) => j.kind === "group");
+    assert.equal(firstHelloJob?.text, firstOut.hello, "the queued group message is that hello");
+    ok("rolling squad, no game played yet: the preview and the queued hello are the first-game form, never 'you're in next time too'");
+
+    /** The owner plus `n - 1` more members of the club: `n` player ids.
+     *  Every game here has 10 places, so 5 players are exactly half. */
+    async function players(orgId: string, n: number): Promise<string[]> {
+      const ids = [`${orgId}-u`];
+      for (let i = 1; i < n; i++) {
+        const id = `${orgId}-m${i}`;
+        await db.user.create({ data: { id, name: `Member ${i}`, email: `${id}@e2e-test.invalid`, onboarded: true } });
+        await db.membership.create({ data: { userId: id, orgId, role: "PLAYER" } });
+        ids.push(id);
+      }
+      return ids;
+    }
+    const confirmedOn = (matchId: string) => db.attendance.count({ where: { matchId, status: "CONFIRMED" } });
+    const putOn = async (matchId: string, ids: string[]) => {
+      for (const [i, userId] of ids.entries()) {
+        await db.attendance.create({ data: { matchId, userId, status: "CONFIRMED", position: i + 1 } });
+      }
+    };
+
+    // 11b. Players say In, as the hello asked: each is recorded.
+    const firstPlayers = await players(first, 5);
+    for (const id of firstPlayers) await sayIn(id, `${first}-g1`);
+    assert.equal(await confirmedOn(`${first}-g1`), 5);
+    ok("the first game: the players' Ins are recorded");
+
+    // 11c. That game is played; the morning after, next week's squad is
+    // seeded from it. Five of ten places are carried, so from then on the
+    // standing wording is true.
+    await db.match.update({ where: { id: `${first}-g1` }, data: { status: "COMPLETED" } });
+    await game(first, "g2", ahead(9 * DAY));
+    await seedDueRollingSquads(ahead(2 * DAY + 26 * HOUR));
+    assert.equal(await confirmedOn(`${first}-g2`), 5);
+    assert.ok((await helloPreviewForClub(first)).includes(standingLine), "with half the places carried the standing wording stands");
+    ok("after the first game completes, next week's squad is seeded from it, and the same club now reads as having a squad to carry");
+
+    // 11d. A second club that already has a squad to carry (a completed
+    // game with half the places filled) goes live: today's wording stands.
+    const carry = await club("rollcarry", { rollingSquadEnabled: true });
+    await fixture(carry, await players(carry, 5));
+    const carryOut = await goLiveClub(carry, "u", NOW);
+    if (carryOut.outcome !== "went-live") throw new Error(`rollcarry: ${carryOut.outcome}`);
+    assert.ok(carryOut.hello.includes(standingLine));
+    assert.ok(!carryOut.hello.includes(firstLine));
+    await seedDueRollingSquads(NOW);
+    assert.equal(await seededOn(carry), 5, "and the seeding does carry that squad");
+    ok("a club with half the next game's places to carry (5 of 10) gets the standing wording, and the seeding agrees");
+
+    // 11d-2. A THIN squad is not "the squad" (owner decision, 2026-10-13):
+    // below half the places most of the group still has to say In, so the
+    // hello is the first-game form. The seeding is unchanged: it still
+    // carries whoever played.
+    for (const [key, n] of [["rollthin1", 1], ["rollthin4", 4]] as Array<[string, number]>) {
+      const thin = await club(key, { rollingSquadEnabled: true });
+      await fixture(thin, await players(thin, n));
+      assert.ok((await helloPreviewForClub(thin)).includes(firstLine), `${n} of 10: the banner previews the first-game form`);
+      const thinOut = await goLiveClub(thin, "u", NOW);
+      if (thinOut.outcome !== "went-live") throw new Error(`${key}: ${thinOut.outcome}`);
+      assert.ok(thinOut.hello.includes(firstLine), `${n} of 10 carried: the first-game form`);
+      assert.ok(!thinOut.hello.includes(standingLine), `${n} of 10 carried: nobody is told the group is in already`);
+      await seedDueRollingSquads(NOW);
+      assert.equal(await seededOn(thin), n, `the seeding still carries the ${n}`);
+    }
+    ok("a thin squad (1 of 10, and 4 of 10, just under half) gets the first-game form; the seeding carries them all the same");
+
+    // 11e. A game that kicked off while the club was setting up: go-live
+    // completes and quiets it, and the seeding reads it all the same. With
+    // half its places filled it is a squad to carry; with one player who
+    // tapped In on the website it is not, though he is still carried.
+    const quiet = await club("rollquiet", { rollingSquadEnabled: true });
+    await weeklyGame(quiet);
+    await game(quiet, "ko", ago(5 * HOUR));
+    await game(quiet, "next", ahead(7 * DAY - 5 * HOUR));
+    await putOn(`${quiet}-ko`, await players(quiet, 5));
+    const quietOut = await goLiveClub(quiet, "u", NOW);
+    if (quietOut.outcome !== "went-live") throw new Error(`rollquiet: ${quietOut.outcome}`);
+    assert.equal(quietOut.quietedMatches, 1);
+    assert.ok(quietOut.hello.includes(standingLine), "a quieted game with half its places filled is a squad to carry");
+    await seedDueRollingSquads(ahead(26 * HOUR));
+    assert.equal(await confirmedOn(`${quiet}-next`), 5);
+
+    const quietThin = await club("rollquietthin", { rollingSquadEnabled: true });
+    await weeklyGame(quietThin);
+    await game(quietThin, "ko", ago(5 * HOUR));
+    await game(quietThin, "next", ahead(7 * DAY - 5 * HOUR));
+    await putOn(`${quietThin}-ko`, await players(quietThin, 1));
+    const quietThinOut = await goLiveClub(quietThin, "u", NOW);
+    if (quietThinOut.outcome !== "went-live") throw new Error(`rollquietthin: ${quietThinOut.outcome}`);
+    assert.ok(quietThinOut.hello.includes(firstLine), "one website In on a quieted game: the first-game form");
+    assert.ok(!quietThinOut.hello.includes(standingLine));
+    await seedDueRollingSquads(ahead(26 * HOUR));
+    assert.deepEqual(await rowsOn(`${quietThin}-next`), [{ userId: `${quietThin}-u`, status: "CONFIRMED" }]);
+    // The same, with nobody on the quieted game: nothing to carry.
+    const quietEmpty = await club("rollquietempty", { rollingSquadEnabled: true });
+    await weeklyGame(quietEmpty);
+    await game(quietEmpty, "ko", ago(5 * HOUR));
+    await game(quietEmpty, "next", ahead(7 * DAY - 5 * HOUR));
+    const quietEmptyOut = await goLiveClub(quietEmpty, "u", NOW);
+    if (quietEmptyOut.outcome !== "went-live") throw new Error(`rollquietempty: ${quietEmptyOut.outcome}`);
+    assert.ok(quietEmptyOut.hello.includes(firstLine));
+    await seedDueRollingSquads(ahead(26 * HOUR));
+    assert.deepEqual(await rowsOn(`${quietEmpty}-next`), []);
+    ok("a game quieted at go-live: the standing wording with half its places filled, the first-game form with one player or none; the seeding carries whoever was on it");
+
+    // 11f. Turkish, a drop-out deadline, the organisers pick: the wording,
+    // and what it says happens to an In is what happens.
+    const pick = await club("rollpick", {
+      rollingSquadEnabled: true,
+      language: "tr",
+      benchPickMode: "organiser",
+      dropOutDeadlineDay: 1,
+      dropOutDeadlineTime: "21:00",
+    });
+    await weeklyGame(pick);
+    await game(pick, "g1", ahead(2 * DAY));
+    await db.user.create({
+      data: { id: `${pick}-p`, name: "Pelin Player", email: `${pick}-p@e2e-test.invalid`, phoneNumber: "+447700901899", onboarded: true },
+    });
+    await db.membership.create({ data: { userId: `${pick}-p`, orgId: pick, role: "PLAYER" } });
+    const pickOut = await goLiveClub(pick, "u", NOW);
+    if (pickOut.outcome !== "went-live") throw new Error(`rollpick: ${pickOut.outcome}`);
+    assert.ok(pickOut.hello.includes(tr.sj_hello_rolling_first({ deadline: "Pazartesi 21:00", mode: "organiser" })));
+    assert.ok(!pickOut.hello.includes(tr.sj_hello_rolling({ deadline: "Pazartesi 21:00" })));
+    await sayIn(`${pick}-p`, `${pick}-g1`);
+    assert.deepEqual(await rowsOn(`${pick}-g1`), [{ userId: `${pick}-p`, status: "BENCH" }]);
+    ok("Turkish, organisers pick, first game: the hello says an In goes on the bench, and a player's In does");
+
     console.log(`OK: ${n} go-live checks against Postgres`);
   } finally {
     await cleanup().catch((err) => console.error("cleanup failed:", err));

@@ -27,7 +27,8 @@
  *   settings   the settings page (the learned panel when there are findings)
  *   game       the weekly game, as in today's "you're live" DM
  *   ratings    the starting ratings, as in today's "you're live" DM
- *   [admin]    THE ADMIN GROUP BLOCK'S INSERTION POINT (a later slice)
+ *   [admin]    the optional admin group step (`adminGroupBlock`, slice
+ *              S7): only for a club with no admin group linked
  *   GO         reply GO here, or press Go live on the settings page
  *   free       the free period's length, and that it starts at go-live
  */
@@ -144,7 +145,8 @@ export type StandardSetupColumns = LearnedSettingColumns & {
 
 /**
  * Is the club on the standard setup the DM describes ("players say In or
- * Out each week, and a free place goes to the first person on the bench")?
+ * Out each week, and a free place is offered to everyone on the bench:
+ * the first to say In takes it")?
  * True only when EVERY setting the reading can switch is on its default
  * (`STANDARD_SETTING`: rolling squad, organisers pick, the drop-out
  * deadline, the list day, payment tracking) and the club has the shape the

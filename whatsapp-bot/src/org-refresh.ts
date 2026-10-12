@@ -15,7 +15,10 @@
  *   - every REFRESH_INTERVAL_MS, as a backstop;
  *   - immediately when an analyze response says a setup COMPLETED, so the
  *     group's first "in" is handled as a live org's within seconds rather
- *     than minutes.
+ *     than minutes;
+ *   - on the scheduler tick after the server's "club set version" changes
+ *     (2026-10-13, further down): a club that went live, was suspended or
+ *     paused, or an admin group linked, is acted on within one tick.
  *
  * Both designs were considered. "The server tells the Pi on each
  * response" is precise but only reaches a Pi that made the request, and
@@ -303,6 +306,236 @@ export async function requestStaleGroupRecheck(groupId: string, now: number = Da
   }
 }
 
+// ── 2026-10-13: refresh when the server says the club set changed ──────
+//
+// The periodic refresh leaves a gap of up to REFRESH_INTERVAL_MS, and for
+// a club that has just gone live the gap is the worst five minutes it
+// could be: its organiser has been told "Done", its hello is not posted
+// (the scheduler loops over the clubs of the last refresh), and every
+// message in its group is DROPPED, not buffered (index.ts: not monitored,
+// and still in the silent set). The same gap the other way round keeps
+// the Pi acting for a club that has just been suspended or paused.
+//
+// So the server now stamps two responses with a "club set version", an
+// opaque string that changes whenever the clubs the Pi should serve,
+// monitor or silence change:
+//   - /api/whatsapp/orgs: the stamp this snapshot was read at
+//     (`noteSnapshotClubSetVersion`, called by index.ts after every
+//     successful refresh, whatever asked for it);
+//   - /api/whatsapp/platform-jobs, which the scheduler polls every tick
+//     whatever the clubs' switches say: the stamp now
+//     (`notePolledClubSetVersion`, called by api.ts).
+// When the two differ the scheduler's tick calls `refreshIfClubSetChanged`
+// before it loops over the clubs, so a club that went live is served, and
+// one that was suspended is silent, on that very tick.
+//
+// NOTHING NEW RUNS while the stamp is unchanged: one string comparison.
+//
+// NO STORM, by three rules:
+//   - one refresh per call, and the tick calls it once;
+//   - a refresh that SUCCEEDED but still does not match the polled stamp
+//     (two server instances that disagree, say) is not repeated for that
+//     stamp: only a new stamp is a new change;
+//   - a refresh still running from an earlier tick is waited on, never
+//     started a second time.
+// A FAILED refresh is simply tried again on the next tick.
+//
+// THE BACK-OFF (PR #250 review, fix 8). Those rules still allow one
+// refresh per tick for as long as every tick brings a stamp that differs
+// (two server instances that alternate, a flag that differs mid-rollout).
+// A refresh makes no WhatsApp call, so that is only load on the server,
+// but it is capped: after CLUB_SET_BACKOFF_AFTER_TICKS ticks in a row that
+// each started a refresh, a stamp-triggered refresh runs at most once per
+// CLUB_SET_BACKOFF_MS, until a tick sees an unchanged stamp. Logged once
+// when it starts. The five-minute timer is not affected.
+//
+// AN OLDER SERVER sends neither stamp: both are null and nothing here
+// ever runs. The 5-minute timer below stays, as the backstop for that
+// server and for anything a stamp cannot see.
+
+/** How long a tick waits for this refresh before carrying on without it.
+ *  `fetch` has no timeout of its own; the refresh keeps running. */
+export const CLUB_SET_REFRESH_TIMEOUT_MS = 10 * 1000;
+
+/** Ticks in a row that each started a refresh, before the back-off. */
+export const CLUB_SET_BACKOFF_AFTER_TICKS = 5;
+/** While backed off: one stamp-triggered refresh per this long. */
+export const CLUB_SET_BACKOFF_MS = 2 * 60 * 1000;
+
+let refreshTicksInARow = 0;
+let lastStampRefreshAtMs = 0;
+let backOffLogged = false;
+
+/** The stamp on the latest platform-jobs poll; null when it carried none. */
+let polledClubSetVersion: string | null = null;
+/** The stamp the snapshot in use was read at; null from an older server. */
+let snapshotClubSetVersion: string | null = null;
+/** A polled stamp a refresh has already succeeded for (see NO STORM). */
+let refreshedForStamp: string | null = null;
+let clubSetRefresh: Promise<"refreshed" | "failed"> | null = null;
+
+/** The stamp in an /orgs or platform-jobs body, or null (an older server). */
+export function parseClubSetVersion(data: unknown): string | null {
+  const v = data && typeof data === "object" ? (data as { clubSetVersion?: unknown }).clubSetVersion : null;
+  return typeof v === "string" && v.length > 0 ? v : null;
+}
+
+/** api.ts: the stamp on the platform-jobs poll that has just come back. */
+export function notePolledClubSetVersion(v: unknown): void {
+  polledClubSetVersion = typeof v === "string" && v.length > 0 ? v : null;
+}
+
+/** index.ts: a refresh has just succeeded; this is the stamp /orgs carried. */
+export function noteSnapshotClubSetVersion(v: string | null): void {
+  snapshotClubSetVersion = typeof v === "string" && v.length > 0 ? v : null;
+}
+
+export type ClubSetCheck =
+  /** The poll or the snapshot has no stamp (an older server), or no refresher is wired. */
+  | "no-stamp"
+  | "unchanged"
+  | "refreshed"
+  | "failed"
+  | "timed-out"
+  /** A refresh already succeeded for this stamp and the snapshot still differs. */
+  | "already-refreshed"
+  /** Too many ticks in a row needed a refresh: held back (see THE BACK-OFF). */
+  | "backed-off";
+
+/**
+ * Called once per scheduler tick, after the platform-jobs poll and before
+ * the clubs. Refreshes the org picture when the server's stamp is not the
+ * one this snapshot was read at. Never throws.
+ */
+export async function refreshIfClubSetChanged(nowMs: number = Date.now()): Promise<ClubSetCheck> {
+  const polled = polledClubSetVersion;
+  if (!polled || !snapshotClubSetVersion || !refresher) return "no-stamp";
+  if (polled === snapshotClubSetVersion) {
+    refreshedForStamp = null;
+    refreshTicksInARow = 0;
+    backOffLogged = false;
+    return "unchanged";
+  }
+  if (refreshedForStamp === polled) return "already-refreshed";
+  if (!clubSetRefresh) {
+    if (refreshTicksInARow >= CLUB_SET_BACKOFF_AFTER_TICKS) {
+      if (!backOffLogged) {
+        backOffLogged = true;
+        console.error(
+          `[org-refresh] the club set stamp has differed on ${refreshTicksInARow} ticks in a row; backing off to one ` +
+            `stamp-triggered refresh per ${CLUB_SET_BACKOFF_MS / 1000}s until a tick sees it unchanged`,
+        );
+      }
+      if (nowMs - lastStampRefreshAtMs < CLUB_SET_BACKOFF_MS) return "backed-off";
+    }
+    refreshTicksInARow++;
+    lastStampRefreshAtMs = nowMs;
+    console.log("[org-refresh] the server's club set changed since the last refresh; refreshing now");
+    clubSetRefresh = runRefreshReporting("club set changed")
+      .catch((err) => {
+        console.error("[org-refresh] refresh (club set changed) failed:", err instanceof Error ? err.message : err);
+        return "failed" as const;
+      })
+      .then((outcome) => {
+        if (outcome === "refreshed") refreshedForStamp = polled;
+        return outcome;
+      })
+      .finally(() => {
+        clubSetRefresh = null;
+      });
+  }
+  const running = clubSetRefresh;
+  let t: NodeJS.Timeout | undefined;
+  const timeout = new Promise<"timed-out">((resolve) => {
+    t = setTimeout(() => resolve("timed-out"), CLUB_SET_REFRESH_TIMEOUT_MS);
+  });
+  try {
+    return await Promise.race([running, timeout]);
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+// ── The catch-up for a group that has just become a club's ─────────────
+//
+// Between a go-live and the refresh that follows it the group's messages
+// were dropped. The drivers keep what the line delivered (Baileys: a
+// bounded per-chat buffer of every chat, `baileys/replay.ts`), so the
+// existing restart catch-up (`recoverGroupMessages`, smart-analysis.ts)
+// can read them back, and the server drops anything it has already
+// analysed by its WhatsApp message id. Two limits, both from the club's
+// go-live time as /orgs gives it (`liveAt`):
+//   - NOTHING FROM BEFORE GO-LIVE is ever fed: until then the group was
+//     deliberately not listened to (`sinceMs` is the floor);
+//   - only a club that went live in the last CATCH_UP_MAX_AGE_MS. A club
+//     back from a pause or a mute went live long ago and was silent on
+//     purpose in between: nothing is re-read for it, as today.
+// A group with no go-live time (an older server, a club that was never
+// held) gets no catch-up, as today.
+
+/** A go-live older than this is not "a moment ago": no catch-up. */
+export const CATCH_UP_MAX_AGE_MS = 15 * 60 * 1000;
+
+/**
+ * `liveAt` is the SERVER's clock and "now" is the Pi's. A Pi that runs a
+ * little behind sees a club go live "in the future"; that is a clock, not a
+ * reason to drop the catch-up (PR #250 review, fix 3: two seconds behind
+ * used to cancel it, silently). Up to this far ahead is treated as now.
+ * The floor itself is never moved: it stays the server's `liveAt`.
+ */
+export const CATCH_UP_CLOCK_SKEW_MS = 2 * 60 * 1000;
+
+/** Why a group that has just become a club's gets no catch-up. Logged. */
+export type CatchUpSkip =
+  /** /orgs gave no go-live time: an older server, or a club that was never held. */
+  | "no-live-at"
+  /** It went live more than CATCH_UP_MAX_AGE_MS ago (back from a pause or a mute). */
+  | "too-old"
+  /** Its go-live is further in the future than a clock could be out. */
+  | "clock-ahead";
+
+/** `liveAt` per club group in an /orgs body, as epoch milliseconds. */
+export function parseLiveSince(data: unknown): Map<string, number> {
+  const out = new Map<string, number>();
+  const orgs = data && typeof data === "object" ? (data as { orgs?: unknown }).orgs : null;
+  for (const o of Array.isArray(orgs) ? orgs : []) {
+    const groupId = (o as { whatsappGroupId?: unknown } | null)?.whatsappGroupId;
+    const liveAt = (o as { liveAt?: unknown } | null)?.liveAt;
+    if (typeof groupId !== "string" || !groupId || typeof liveAt !== "string") continue;
+    const ms = Date.parse(liveAt);
+    if (Number.isFinite(ms)) out.set(groupId, ms);
+  }
+  return out;
+}
+
+/** A group to catch up on, and the floor it was decided with. */
+export interface CatchUpTarget {
+  groupId: string;
+  /** The club's go-live, epoch milliseconds, as the server gave it. */
+  sinceMs: number;
+}
+
+/**
+ * The groups NEW in this refresh whose missed messages are re-read, and
+ * from when; and the ones that are not, each with its reason.
+ */
+export function catchUpTargets(
+  addedOrgs: OrgConfig[],
+  liveSince: ReadonlyMap<string, number>,
+  nowMs: number,
+): { targets: CatchUpTarget[]; skipped: Array<{ groupId: string; reason: CatchUpSkip }> } {
+  const targets: CatchUpTarget[] = [];
+  const skipped: Array<{ groupId: string; reason: CatchUpSkip }> = [];
+  for (const o of addedOrgs) {
+    const sinceMs = liveSince.get(o.groupId);
+    if (sinceMs === undefined) skipped.push({ groupId: o.groupId, reason: "no-live-at" });
+    else if (sinceMs - nowMs > CATCH_UP_CLOCK_SKEW_MS) skipped.push({ groupId: o.groupId, reason: "clock-ahead" });
+    else if (nowMs - sinceMs > CATCH_UP_MAX_AGE_MS) skipped.push({ groupId: o.groupId, reason: "too-old" });
+    else targets.push({ groupId: o.groupId, sinceMs });
+  }
+  return { targets, skipped };
+}
+
 /** One interval, ever (a repeat `ready` must not double it). */
 export function startOrgRefreshTimer(intervalMs: number = REFRESH_INTERVAL_MS): void {
   if (timer) return;
@@ -326,4 +559,11 @@ export function _test_resetOrgRefresh(): void {
   recheckedAt.clear();
   recheckStarts = [];
   recheckInFlight = null;
+  polledClubSetVersion = null;
+  snapshotClubSetVersion = null;
+  refreshedForStamp = null;
+  clubSetRefresh = null;
+  refreshTicksInARow = 0;
+  lastStampRefreshAtMs = 0;
+  backOffLogged = false;
 }

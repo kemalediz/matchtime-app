@@ -99,3 +99,29 @@ test("app pages still require sign-in", async ({ page }) => {
   await page.goto("/admin/players");
   await page.waitForURL("**/login**", { timeout: 30_000 });
 });
+
+test("connecting is 'within a day' everywhere; the wait-for-GO sentence appears only once the approval hold is on", async ({ page, context }) => {
+  const SENTENCE =
+    "Once your club is approved, MatchTime shows you how it has read your group and waits for you to say GO before it speaks in the group.";
+  // The hold is off (as in production today): the public pages do not mention GO.
+  for (const path of ["/", "/help/admin"]) {
+    await page.goto(path);
+    const body = page.locator("body");
+    await expect(body).toContainText("usually within a day");
+    await expect(body).not.toContainText("same day");
+    await expect(body).not.toContainText("say GO");
+  }
+  await expect(page.locator("body")).toContainText("Once it's in your group, MatchTime:");
+
+  // Switched on (the test cookie, honoured only under MT_TEST_MODE=1): the
+  // same pages say it at once, with nothing else to deploy.
+  await context.addCookies([{ name: "mt-test-setup-hold", value: "1", url: new URL(page.url()).origin }]);
+  await page.goto("/");
+  await expect(page.locator("#how-it-works")).toContainText(`Sign up and we'll get your group connected, usually within a day. ${SENTENCE}`);
+  await page.goto("/help/admin");
+  await expect(page.locator("body")).toContainText(SENTENCE);
+  await expect(page.locator("body")).toContainText("Once you have said GO, MatchTime:");
+  await expect(page.locator("body")).not.toContainText("Once it's in your group, MatchTime:");
+  await expect(page.locator("body")).not.toContainText("same day");
+  await context.clearCookies();
+});

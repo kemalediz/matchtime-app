@@ -20,6 +20,7 @@ vi.mock("./api.js", () => ({
 
 const {
   recoverGroupMessages,
+  isRecoverySweepRunning,
   resolveRecoveryWindow,
   recordHistory,
   _test_flushNow,
@@ -174,6 +175,102 @@ describe("recoverGroupMessages reads the group without getChatById", () => {
     }
     expect(errs.join("\n")).toContain("message-recovery");
     expect(_test_getInboundStats().buffered).toBe(0);
+  });
+
+  // 2026-10-13. A club that has just gone live: its group was deliberately
+  // not listened to before that instant, and the messages between go-live
+  // and the Pi's refresh were dropped. The catch-up reads the second lot
+  // back and must never feed the first.
+  it("a floor per group: nothing from BEFORE it is replayed or shown to the model as context, everything from it on is", async () => {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const liveAtSec = nowSec - 120;
+    const { client } = clientWithBrokenGetChat([
+      pageMessage("BEFORE-1", "in", liveAtSec - 600),
+      pageMessage("BEFORE-2", "who is playing tuesday", liveAtSec - 1),
+      pageMessage("AT", "In", liveAtSec),
+      pageMessage("AFTER", "in please", liveAtSec + 45),
+    ]);
+    postAnalyzeFull.mockClear();
+    postAnalyzeFull.mockResolvedValue({ results: [], nextKickoffMs: null });
+    await recoverGroupMessages(asClient(client), [GID], undefined, {
+      notBeforeMs: (gid) => (gid === GID ? liveAtSec * 1000 : null),
+    });
+    expect(_test_getInboundStats().buffered).toBe(2);
+    await _test_flushNow(GID);
+    const sent = postAnalyzeFull.mock.calls[0][0] as { messages: Array<{ body: string }>; history: Array<{ body: string }> };
+    expect(sent.messages.map((m) => m.body)).toEqual(["In", "in please"]);
+    // Not as a message, and not as "recent chat" either.
+    expect(sent.history.map((h) => h.body)).toEqual(["In", "in please"]);
+    expect(JSON.stringify(sent)).not.toContain("who is playing tuesday");
+  });
+
+  // PR #250 review, fix 4. WhatsApp stamps whole seconds; go-live has
+  // milliseconds. The first version compared in milliseconds and so
+  // dropped a message sent in the same second as go-live but AFTER it.
+  // The side chosen: lose nothing a player said after GO. The price is
+  // that a message in that same second but a few hundred milliseconds
+  // BEFORE go-live may be fed.
+  it("the floor is compared by the SECOND: a message stamped in the second the club went live is kept", async () => {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const liveAtMs = (nowSec - 60) * 1000 + 700; // went live at :00.7
+    const { client } = clientWithBrokenGetChat([
+      pageMessage("SECOND-BEFORE", "in", nowSec - 61), // :59 of the minute before: left out
+      pageMessage("SAME-SECOND", "in", nowSec - 60), // stamped :00, sent at :00.9 for all we know: kept
+      pageMessage("NEXT-SECOND", "in", nowSec - 59),
+    ]);
+    postAnalyzeFull.mockClear();
+    postAnalyzeFull.mockResolvedValue({ results: [], nextKickoffMs: null });
+    await recoverGroupMessages(asClient(client), [GID], undefined, { notBeforeMs: () => liveAtMs });
+    expect(_test_getInboundStats().buffered).toBe(2);
+    await _test_flushNow(GID);
+    const sent = postAnalyzeFull.mock.calls[0][0] as { messages: Array<{ waMessageId: string }> };
+    expect(sent.messages.map((m) => m.waMessageId.split("_").at(-1))).toEqual(["SAME-SECOND", "NEXT-SECOND"]);
+  });
+
+  // PR #250 review, fix 7. The live handler buffers a message the moment
+  // the group is monitored; a catch-up a second later re-reads the same
+  // message from the driver. Both copies used to sit in one batch.
+  it("a message that is already waiting in the group's batch is not added to it a second time", async () => {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const page = [pageMessage("AAA", "In", nowSec - 60), pageMessage("BBB", "in too", nowSec - 30)];
+    postAnalyzeFull.mockClear();
+    postAnalyzeFull.mockResolvedValue({ results: [], nextKickoffMs: null });
+    await recoverGroupMessages(asClient(clientWithBrokenGetChat(page).client), [GID]);
+    // The same two again (a second sweep before the batch has gone), and one new one.
+    await recoverGroupMessages(asClient(clientWithBrokenGetChat([...page, pageMessage("CCC", "and me", nowSec - 5)]).client), [GID]);
+    expect(_test_getInboundStats().buffered).toBe(3);
+    await _test_flushNow(GID);
+    const sent = postAnalyzeFull.mock.calls[0][0] as { messages: Array<{ waMessageId: string }> };
+    const ids = sent.messages.map((m) => m.waMessageId);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids).toHaveLength(3);
+  });
+
+  it("the page handing the same message back twice in one read: once in the batch", async () => {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const twice = [pageMessage("AAA", "In", nowSec - 60), pageMessage("AAA", "In", nowSec - 60)];
+    await recoverGroupMessages(asClient(clientWithBrokenGetChat(twice).client), [GID]);
+    expect(_test_getInboundStats().buffered).toBe(1);
+  });
+
+  it("no floor for a group (null, or no option at all) is exactly the catch-up it always was", async () => {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const page = [pageMessage("AAA", "In", nowSec - 30 * 60), pageMessage("BBB", "in for tuesday", nowSec - 10 * 60)];
+    await recoverGroupMessages(asClient(clientWithBrokenGetChat(page).client), [GID], undefined, { notBeforeMs: () => null });
+    expect(_test_getInboundStats().buffered).toBe(2);
+    _test_reset();
+    await recoverGroupMessages(asClient(clientWithBrokenGetChat(page).client), [GID]);
+    expect(_test_getInboundStats().buffered).toBe(2);
+  });
+
+  it("says whether a sweep is running, so a catch-up that must not be skipped can wait for it", async () => {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const { client } = clientWithBrokenGetChat([pageMessage("AAA", "In", nowSec - 60)], { evaluateDelayMs: 20 });
+    expect(isRecoverySweepRunning()).toBe(false);
+    const sweep = recoverGroupMessages(asClient(client), [GID]);
+    expect(isRecoverySweepRunning()).toBe(true);
+    await sweep;
+    expect(isRecoverySweepRunning()).toBe(false);
   });
 
   it("refuses to run two sweeps at once (a repeat `ready` after a re-inject)", async () => {

@@ -232,7 +232,7 @@ test("a held club's two free months start when it goes LIVE: silent and unbilled
     [digits(OWNER.phone)],
   );
   expect(done!.text).toMatch(
-    /^Done: I've introduced myself in "Harbour Tuesday 5s"\.\n\nYour first two months are free\.\n\n💷 \*Club fee tip:\* after that MatchTime only charges for the games you play, up to £9\.99 a month for the group/,
+    /^Done: I'm introducing myself in "Harbour Tuesday 5s" now\. It can take a few minutes to appear\.\n\nYour first two months are free\.\n\n💷 \*Club fee tip:\* after that MatchTime only charges for the games you play, up to £9\.99 a month for the group/,
   );
 
   const after = (await club())!;

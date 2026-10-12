@@ -20,7 +20,10 @@ vi.mock("../admin-group-link", () => ({ resolveSenderUserIds }));
 
 const platform = vi.hoisted(() => {
   class PlatformDmRefused extends Error {
-    constructor(readonly reason: string) {
+    constructor(
+      readonly reason: string,
+      readonly code: string = "number-not-known",
+    ) {
       super(reason);
     }
   }
@@ -93,12 +96,17 @@ beforeEach(() => {
 
 describe("the replies to GO, word for word", () => {
   const cases: Array<[string, Parameters<typeof goReplyText>[0], string, string]> = [
-    ["went live", LIVE, `Done: I've introduced myself in "Harbour Tuesday 6s".`, `Tamam: "Harbour Tuesday 6s" grubunda kendimi tanıttım.`],
+    // Item 3: the hello is queued, not posted. The Pi posts it after its
+    // next refresh, up to five minutes later, so "I've introduced myself"
+    // could be read minutes before anything appears.
+    ["went live", LIVE, `Done: I'm introducing myself in "Harbour Tuesday 6s" now. It can take a few minutes to appear.`, `Tamam: şimdi "Harbour Tuesday 6s" grubunda kendimi tanıtıyorum. Mesajın görünmesi birkaç dakika sürebilir.`],
     [
       "still reading",
       { ...info, outcome: "still-reading" },
-      `I'm still reading your group's messages. Give me a few minutes and I'll message you.`,
-      `Grubunuzdaki mesajları hâlâ okuyorum. Bana birkaç dakika verin, size yazacağım.`,
+      // Item 2: no "a few minutes" (it can be two hours) and no "I'll
+      // message you" (the setup message goes to whoever connected the club).
+      `I'm still reading your group's messages, which can take a while. When I've finished I'll send the setup message to the organiser who connected Harbour FC. Try *GO* again after that.`,
+      `Grubunuzdaki mesajları hâlâ okuyorum, bu biraz sürebilir. Bitirdiğimde kurulum mesajını Harbour FC kulübünü bağlayan organizatöre göndereceğim. Ondan sonra yeniden *BAŞLA* yazın.`,
     ],
     [
       "removed from the group",
@@ -121,9 +129,9 @@ describe("the replies to GO, word for word", () => {
 
   it("went live AND its free period started: 'Done' is followed, in the same message, by the free period and the club fee tip", () => {
     const note = "Your first two months are free.\n\nAfter that MatchTime costs up to £9.99 a month.";
-    expect(goReplyText({ ...LIVE, freePeriodStarted: true, freePeriodNote: note })).toBe(`Done: I've introduced myself in "Harbour Tuesday 6s".\n\n${note}`);
+    expect(goReplyText({ ...LIVE, freePeriodStarted: true, freePeriodNote: note })).toBe(`Done: I'm introducing myself in "Harbour Tuesday 6s" now. It can take a few minutes to appear.\n\n${note}`);
     // No free period started (billing off, plan Free, one already running): just "Done".
-    expect(goReplyText({ ...LIVE, freePeriodStarted: false, freePeriodNote: null })).toBe(`Done: I've introduced myself in "Harbour Tuesday 6s".`);
+    expect(goReplyText({ ...LIVE, freePeriodStarted: false, freePeriodNote: null })).toBe(`Done: I'm introducing myself in "Harbour Tuesday 6s" now. It can take a few minutes to appear.`);
   });
 
   it("a club that is not setting up gets no reply at all", () => {
@@ -153,7 +161,10 @@ describe("the replies to GO, word for word", () => {
       const rendered = [
         table.sj_go_button,
         table.sj_go_done({ group: "G" }),
-        table.sj_go_still_reading,
+        table.sj_go_still_reading({ club: "C" }),
+        table.sj_go_failed,
+        table.sj_go_help_not_started,
+        table.sj_go_owner_started({ group: "G" }),
         table.sj_go_removed({ group: "G" }),
         table.sj_go_already_live({ club: "C" }),
         table.sj_go_many,
@@ -253,7 +264,7 @@ describe("handleGoDm", () => {
     expect(queuePlatformDm.mock.calls[0][0]).toMatchObject({
       phone: "+447700900971",
       purpose: "setup-reply",
-      text: `Done: I've introduced myself in "Harbour Tuesday 6s".`,
+      text: `Done: I'm introducing myself in "Harbour Tuesday 6s" now. It can take a few minutes to appear.`,
     });
     // Immediate: a reply to the organiser's own message is never held for quiet hours.
     expect(queuePlatformDm.mock.calls[0][0].sendAfter).toBeUndefined();
@@ -316,7 +327,7 @@ describe("handleGoDm", () => {
     dbMock.membership.findMany.mockResolvedValue([held("o1", "Kıyı SK", "tr")]);
     goLiveClub.mockResolvedValue({ orgId: "o1", club: "Kıyı SK", group: "Kıyı Salı Maçı", language: "tr", outcome: "still-reading" });
     expect(await go("BAŞLA")).toMatchObject({ outcome: "still-reading" });
-    expect(queuePlatformDm.mock.calls[0][0].text).toBe(tr.sj_go_still_reading);
+    expect(queuePlatformDm.mock.calls[0][0].text).toBe(tr.sj_go_still_reading({ club: "Kıyı SK" }));
   });
 
   it("paused for the club fee: refused, and the organiser is pointed at the settings page", async () => {
@@ -326,12 +337,75 @@ describe("handleGoDm", () => {
     expect(queuePlatformDm.mock.calls[0][0].text).toBe(en.sj_go_paused({ club: "Harbour FC", url: SETTINGS }));
   });
 
-  it("a go-live that throws releases the claim, so the Pi's retry can try again", async () => {
+  // Item 5. The Pi does NOT send a DM again when the server answers with
+  // an error (`postDmReply` only logs), so a GO that fails is lost unless
+  // the organiser says it again, and somebody has to tell them to.
+  it("a go-live that throws: the claim is released, the organiser is asked to say GO again, and the error still surfaces", async () => {
+    dbMock.membership.findMany.mockResolvedValue([held("o1", "Harbour FC")]);
+    goLiveClub.mockRejectedValue(new Error("go-live failed"));
+    await expect(go("GO")).rejects.toThrow("go-live failed");
+    expect(dbMock.sentNotification.deleteMany).toHaveBeenCalledWith({ where: { key: "setup-go-msg:wa-1" } });
+    expect(queuePlatformDm).toHaveBeenCalledTimes(1);
+    expect(queuePlatformDm.mock.calls[0][0]).toMatchObject({
+      phone: "+447700900971",
+      purpose: "setup-reply",
+      text: "Something went wrong on my side. Please reply *GO* again.",
+    });
+  });
+
+  it("that apology is in the club's language, and is capped like every other setup reply", async () => {
+    dbMock.membership.findMany.mockResolvedValue([held("o1", "Kıyı SK", "tr")]);
+    goLiveClub.mockRejectedValue(new Error("go-live failed"));
+    await expect(go("BAŞLA")).rejects.toThrow("go-live failed");
+    expect(queuePlatformDm.mock.calls[0][0].text).toBe("Benim tarafımda bir sorun oldu. Lütfen yeniden *BAŞLA* yazın.");
+    queuePlatformDm.mockClear();
+    repliesSoFar(15, 5);
+    await expect(handleGoDm({ text: "GO", phone: "447700900971", waMessageId: "wa-9", now: NOW })).rejects.toThrow("go-live failed");
+    expect(queuePlatformDm).not.toHaveBeenCalled();
+  });
+
+  it("when the apology cannot be queued either (the database is down), the ORIGINAL error is what surfaces", async () => {
     dbMock.membership.findMany.mockResolvedValue([held("o1", "Harbour FC")]);
     goLiveClub.mockRejectedValue(new Error("database down"));
+    queuePlatformDm.mockRejectedValue(new Error("queue down too"));
     await expect(go("GO")).rejects.toThrow("database down");
-    expect(dbMock.sentNotification.deleteMany).toHaveBeenCalledWith({ where: { key: "setup-go-msg:wa-1" } });
-    expect(queuePlatformDm).not.toHaveBeenCalled();
+  });
+
+  // Item 6. "Harbour FC is already live." to the admin of a club MatchTime
+  // is not serving is false comfort: it has the paused wording.
+  it("a club that went through the hold and is now PAUSED for the club fee: the paused wording, not 'already live'", async () => {
+    const paused = wentLive("o9", "Paused Park", 60 * 24 * 90);
+    dbMock.membership.findMany.mockResolvedValue([{ ...paused, org: { ...paused.org, billingStatus: "paused" } }]);
+    expect(
+      await handleGoDm({ text: "GO", phone: "447700900971", waMessageId: "wa-1", now: NOW, billingEnabled: true }),
+    ).toEqual({ handled: "setup-go", outcome: "billing-paused", orgId: "o9" });
+    expect(goLiveClub).not.toHaveBeenCalled();
+    expect(queuePlatformDm.mock.calls[0][0].text).toBe(en.sj_go_paused({ club: "Paused Park", url: SETTINGS }));
+  });
+
+  it("with billing off nobody counts as paused: the same club is 'already live', as before", async () => {
+    const paused = wentLive("o9", "Paused Park", 60);
+    dbMock.membership.findMany.mockResolvedValue([{ ...paused, org: { ...paused.org, billingStatus: "paused" } }]);
+    expect(
+      await handleGoDm({ text: "GO", phone: "447700900971", waMessageId: "wa-1", now: NOW, billingEnabled: false }),
+    ).toMatchObject({ outcome: "already-live" });
+    expect(queuePlatformDm.mock.calls[0][0].text).toBe("Paused Park is already live.");
+  });
+
+  // Item 10: a refusal's own message can hold the raw number.
+  it("LOGS: a refused reply is logged by its CODE, never by its reason (which can hold the number)", async () => {
+    const errors: string[] = [];
+    const spy = vi.spyOn(console, "error").mockImplementation((...a: unknown[]) => void errors.push(a.map(String).join(" ")));
+    try {
+      dbMock.membership.findMany.mockResolvedValue([held("o1", "Harbour FC")]);
+      goLiveClub.mockResolvedValue(LIVE);
+      queuePlatformDm.mockRejectedValue(new platform.PlatformDmRefused(`not a phone number: "+44 7700 900971 x"`, "not-a-phone-number"));
+      await go("GO");
+      expect(errors.join("\n")).toContain("not-a-phone-number");
+      expect(errors.join("\n")).not.toMatch(/7700|900971/);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("a reply that cannot be queued does not undo the go-live", async () => {

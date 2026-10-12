@@ -502,7 +502,9 @@ test("FLAG ON: the reading found nothing: the DM says so and explains the standa
   expect(blocks[1]).toBe(
     `I read the recent messages in "Mill Lane FC group" and found nothing that needs a setting changed, so MatchTime is on its standard setup.`,
   );
-  expect(blocks[2]).toBe("Standard setup: players say In or Out each week, and a free place goes to the first person on the bench.");
+  expect(blocks[2]).toBe(
+    "Standard setup: players say In or Out each week, and a free place is offered to everyone on the bench: the first to say In takes it.",
+  );
   expect(blocks[3]).toMatch(/^⚙️ /);
 });
 
@@ -517,8 +519,10 @@ test("FLAG ON, Turkish, no chat stored (skipped): the DM is Turkish and says the
   expect(blocks[0]).toBe(
     `Güzel haber: Kartallar onaylandı. "Kartallar group" grubundayım ve siz başlamamı söyleyene kadar orada sessiz kalacağım.`,
   );
-  expect(blocks[1]).toBe("Grubunuzun son mesajlarını okuyamadım, bu yüzden MatchTime standart düzeninde.");
-  expect(blocks[2]).toBe("Standart düzen: oyuncular her hafta VARIM ya da YOKUM der, boşalan yer yedek listesindeki ilk kişiye verilir.");
+  expect(blocks[1]).toBe("Grubunuzun son mesajlarını okuyamadım, bu yüzden MatchTime standart düzeninde. Sorun değil: aşağıdaki ayarları kontrol edin ve hazır olduğunuzda *BAŞLA* yazın.");
+  expect(blocks[2]).toBe(
+    "Standart düzen: oyuncular her hafta VARIM ya da YOKUM der, boşalan yer yedek listesindeki herkese teklif edilir: ilk VARIM diyen yeri alır.",
+  );
   // The Turkish DM asks for BAŞLA and names the button "Yayına al" (as the go-live PR does).
   expect(dm.text).toContain("buraya *BAŞLA* yazın");
   expect(dm.text).toContain("*Yayına al* düğmesine basın");
@@ -561,7 +565,9 @@ test("FLAG ON: the reading fails every time: no DM while it is retried, then the
   expect(last.setupDms).toEqual({ considered: 1, sent: 1 });
   const sent = await setupDms(db, c);
   expect(sent).toHaveLength(1);
-  expect(sent[0].text.split("\n\n")[1]).toBe("I couldn't read your group's recent messages, so MatchTime is on its standard setup.");
+  expect(sent[0].text.split("\n\n")[1]).toBe(
+    "I couldn't read your group's recent messages, so MatchTime is on its standard setup. That's fine: check the settings below and reply *GO* when you're happy.",
+  );
   await expectHeldAndSilent(request, db, c);
 
   await cron(request, broken);
@@ -698,7 +704,9 @@ test("THE CAP: a reading stuck 'running' with its attempts used up is closed two
   expect(await reading(db, stuck.org)).toMatchObject({ status: "skipped", reason: "timed-out" });
   expect((await storedChat(db, stuck.org))!.h).toBeNull();
   const [dm] = await setupDms(db, stuck);
-  expect(dm.text.split("\n\n")[1]).toBe("I couldn't read your group's recent messages, so MatchTime is on its standard setup.");
+  expect(dm.text.split("\n\n")[1]).toBe(
+    "I couldn't read your group's recent messages, so MatchTime is on its standard setup. That's fine: check the settings below and reply *GO* when you're happy.",
+  );
   // Still held and silent: the cap sends a DM, it does not make the club live.
   expect(await orgRow(db, stuck.org)).toMatchObject({
     setupStage: "setting-up",

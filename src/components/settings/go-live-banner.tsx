@@ -251,6 +251,12 @@ export function GoLiveBanner(props: {
               {s.sj_live_lead({ group })}
             </p>
           )}
+          {/* WHICH CLUB: somebody who runs more than one club that is
+              setting up must see, right at the button, which one this
+              page takes live. The button's accessible name says it too. */}
+          <p data-testid="go-live-club" className="mt-3 text-sm font-semibold text-slate-900 [overflow-wrap:anywhere]">
+            {s.sj_live_for_club({ club: props.club })}
+          </p>
         </div>
       )}
 
@@ -261,7 +267,8 @@ export function GoLiveBanner(props: {
           onClick={goLive}
           disabled={busy}
           aria-busy={busy}
-          className="mt-4 inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-green-600 px-6 text-base font-semibold text-white hover:bg-green-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-700 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+          aria-label={busy ? undefined : s.sj_live_button_label({ club: props.club })}
+          className="mt-2 inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-green-600 px-6 text-base font-semibold text-white hover:bg-green-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-700 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
         >
           {busy ? <Loader2 aria-hidden="true" className="h-5 w-5 animate-spin" /> : <Rocket aria-hidden="true" className="h-5 w-5" />}
           {busy ? s.sj_live_busy : s.sj_go_button}

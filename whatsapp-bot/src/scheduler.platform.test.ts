@@ -35,6 +35,7 @@ vi.mock("./api.js", () => ({
 }));
 
 const { initScheduler, stopScheduler } = await import("./scheduler.js");
+const { _test_resetOrgRefresh, notePolledClubSetVersion, noteSnapshotClubSetVersion, setOrgRefresher } = await import("./org-refresh.js");
 
 const GID = "447525334985-1607872139@g.us";
 
@@ -71,8 +72,103 @@ beforeEach(() => {
 
 afterEach(() => {
   stopScheduler();
+  _test_resetOrgRefresh();
   vi.useRealTimers();
   vi.restoreAllMocks();
+});
+
+// 2026-10-13. A club that went live used to wait up to five minutes for
+// the periodic refresh: no hello, and its group's messages dropped. The
+// platform-jobs poll now carries the server's club set stamp, and the tick
+// refreshes BEFORE it loops over the clubs.
+describe("the club set stamp in the scheduler tick", () => {
+  const NEW_GID = "120363900000000201@g.us";
+
+  it("a changed stamp: the org picture is refreshed in this tick, and the club that has just gone live is served in the SAME tick", async () => {
+    const driver = fakeDriver();
+    getPlatformJobs.mockImplementation(async () => {
+      // What api.ts does with the stamp on the poll's response.
+      notePolledClubSetVersion("v2");
+      return [];
+    });
+    getDuePosts.mockImplementation(async (gid: string) => {
+      order.push(`due-posts:${gid}`);
+      return { instructions: [{ kind: "group-message", key: "botjob-hello", text: "Hi everyone, I'm MatchTime." }] };
+    });
+    const refresh = vi.fn(async () => {
+      order.push("refresh");
+      // What index.ts's refreshOrgs does on success.
+      initScheduler(driver, [{ groupId: NEW_GID, orgName: "Harbour FC" }]);
+      noteSnapshotClubSetVersion("v2");
+    });
+    setOrgRefresher(refresh);
+    noteSnapshotClubSetVersion("v1");
+    initScheduler(driver, []);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(order.slice(0, 2)).toEqual(["refresh", `due-posts:${NEW_GID}`]);
+    expect(driver.sendTextWithMentions).toHaveBeenCalledTimes(1);
+  });
+
+  it("an unchanged stamp: no refresh, tick after tick", async () => {
+    getPlatformJobs.mockImplementation(async () => {
+      notePolledClubSetVersion("v1");
+      return [];
+    });
+    getDuePosts.mockResolvedValue({ instructions: [] });
+    const refresh = vi.fn(async () => {});
+    setOrgRefresher(refresh);
+    noteSnapshotClubSetVersion("v1");
+    initScheduler(fakeDriver(), [{ groupId: GID, orgName: "Sutton Football Club" }]);
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+    expect(getDuePosts.mock.calls.length).toBeGreaterThan(5);
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it("the other way round: a club that was suspended is gone from the SAME tick's loop, not served for five more minutes", async () => {
+    const driver = fakeDriver();
+    getPlatformJobs.mockImplementation(async () => {
+      notePolledClubSetVersion("v3");
+      return [];
+    });
+    getDuePosts.mockResolvedValue({ instructions: [] });
+    setOrgRefresher(async () => {
+      initScheduler(driver, []);
+      noteSnapshotClubSetVersion("v3");
+    });
+    noteSnapshotClubSetVersion("v2");
+    initScheduler(driver, [{ groupId: GID, orgName: "Suspended FC" }]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(getDuePosts).not.toHaveBeenCalled();
+  });
+
+  it("an OLDER server (no stamp): the tick is exactly what it was", async () => {
+    getPlatformJobs.mockResolvedValue([]);
+    getDuePosts.mockResolvedValue({ instructions: [] });
+    const refresh = vi.fn(async () => {});
+    setOrgRefresher(refresh);
+    initScheduler(fakeDriver(), [{ groupId: GID, orgName: "Sutton Football Club" }]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(refresh).not.toHaveBeenCalled();
+    expect(getDuePosts).toHaveBeenCalledTimes(1);
+  });
+
+  it("a refresh that fails does not cost the clubs their tick", async () => {
+    getPlatformJobs.mockImplementation(async () => {
+      notePolledClubSetVersion("v2");
+      return [];
+    });
+    getDuePosts.mockResolvedValue({ instructions: [] });
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    setOrgRefresher(async () => {
+      throw new Error("ECONNREFUSED");
+    });
+    noteSnapshotClubSetVersion("v1");
+    initScheduler(fakeDriver(), [{ groupId: GID, orgName: "Sutton Football Club" }]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(getDuePosts).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("the platform channel in the scheduler tick", () => {

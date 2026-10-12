@@ -1675,6 +1675,11 @@ function cases(lang: Lang): Case[] {
     buildRollingAnnouncePost({ ...rollingBase, confirmed: nine, bench: [{ name: "Ali Demir" }, { name: null }], maxPlayers: 4 }),
   );
   add("RSQ2 buildRollingDeadlineLine", buildRollingDeadlineLine({ deadline: rollingBase.deadline, lang }));
+  // Deliberate addition (2026-10-13): a game nobody was carried onto.
+  add(
+    "RSQ2 buildRollingDeadlineLine / first game, nobody carried",
+    buildRollingDeadlineLine({ deadline: rollingBase.deadline, carried: false, lang }),
+  );
   add(
     "RSQ3 buildBotIntro / rolling squad",
     buildBotIntro({ ...INTRO_ALL, rollingSquad: true }, buildBenchIntroLine({ lang }), lang),

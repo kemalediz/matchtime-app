@@ -328,3 +328,35 @@ test("duplicate waMessageId is deduped (bot retry safety)", async ({ request }) 
   const r = second.results.find((x: { waMessageId: string }) => x.waMessageId === id);
   expect(r.handledBy).toBe("deduped");
 });
+
+// PR #250 review, fix 7. The dedupe above looks an id up among the STORED
+// rows, so two copies of a NEW message in one batch both passed it. The
+// Pi can build such a batch when a catch-up re-reads a message the live
+// handler has just buffered.
+test("the same NEW message twice in ONE batch is analysed once", async ({ request, db }) => {
+  const id = msgId();
+  const other = msgId();
+  engineOn({ "noise twice": { route: "none" }, "another line": { route: "none" } });
+  const copy = { waMessageId: id, body: "noise twice", authorPhone: "447700900001", authorName: "Alex Admin" as string | null };
+  const res = await postAnalyze(request, [
+    copy,
+    { waMessageId: other, body: "another line", authorPhone: "447700900001", authorName: "Alex Admin" },
+    { ...copy },
+  ]);
+  const mine = res.results.filter((x: { waMessageId: string }) => x.waMessageId === id);
+  expect(mine).toHaveLength(1);
+  expect(mine[0].handledBy).not.toBe("deduped");
+  expect(res.results.filter((x: { waMessageId: string }) => x.waMessageId === other)).toHaveLength(1);
+  expect(await db.count(`SELECT COUNT(*) FROM "AnalyzedMessage" WHERE "waMessageId" = $1`, [id])).toBe(1);
+});
+
+test("a self OUT twice in ONE batch is acted on once: one attendance event, one result", async ({ request, db }) => {
+  const id = msgId();
+  engineOn({ "cant make it now sorry all": { route: "self_att", facts: selfOut() } });
+  const copy = { waMessageId: id, body: "cant make it now sorry all", authorPhone: "447700900009", authorName: "Ian Innes" as string | null };
+  const before = await db.count(`SELECT COUNT(*) FROM "AttendanceEvent" WHERE "userId" = $1`, [U.fresh]);
+  const res = await postAnalyze(request, [copy, { ...copy }]);
+  expect(res.results.filter((x: { waMessageId: string }) => x.waMessageId === id)).toHaveLength(1);
+  expect(await db.count(`SELECT COUNT(*) FROM "AnalyzedMessage" WHERE "waMessageId" = $1`, [id])).toBe(1);
+  expect((await db.count(`SELECT COUNT(*) FROM "AttendanceEvent" WHERE "userId" = $1`, [U.fresh])) - before).toBeLessThanOrEqual(1);
+});

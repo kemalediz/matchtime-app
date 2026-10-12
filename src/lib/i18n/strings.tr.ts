@@ -1656,8 +1656,8 @@ export const tr: Strings = {
   sj_card_pending:
     "3. adım: kulübünüzü kontrol ediyoruz, genellikle bir gün içinde. Kulübünüz onaylanana kadar MatchTime grupta sessiz kalır, yayına geçince size WhatsApp'tan yazar.",
   sj_card_pending_other: (p) =>
-    `MatchTime "${p.group}" grubuna başka biri tarafından eklendi. Açmadan önce kontrol edeceğiz.`,
-  sj_card_approved: (p) => `Aktifsiniz. MatchTime "${p.group}" grubunda herkese merhaba dedi.`,
+    `MatchTime "${p.group}" grubuna başka biri tarafından eklendi. MatchTime orada bir şey yapmadan önce kontrol edeceğiz.`,
+  sj_card_approved: (p) => `Yayındasınız. MatchTime "${p.group}" grubunda herkese merhaba dedi.`,
   sj_card_rejected: "Bu grubu şu an alamıyoruz.",
   sj_card_expired: "Bu kodun süresi doldu. Yeni bir kod için düğmeye tekrar dokunun.",
   sj_card_code_cap: "Bugünkü kodlarınızı kullandınız. Lütfen yarın tekrar deneyin.",
@@ -1717,6 +1717,12 @@ export const tr: Strings = {
   sj_hello_whos_in: `✅ *Kim var:* *VARIM* ya da *YOKUM* yazmanız yeter. Listeyi tutar, mesajınıza tik koyarım.`,
   sj_hello_rolling: (p) =>
     `🔁 *Her hafta aynı kadro:* geçen maçta oynadıysanız bir sonrakinde de kadrodasınız. Gelemeyecekseniz${p.deadline ? ` *${p.deadline}* saatine kadar` : ""} *YOKUM* yazmanız yeter.`,
+  sj_hello_rolling_first: (p) => {
+    const until = p.deadline ? ` *${p.deadline}* saatine kadar` : "";
+    return p.mode === "organiser"
+      ? `🔁 *Her hafta aynı kadro:* bu grupta kadro bir maçtan diğerine aynı kalır. Benimle *ilk maç* için *VARIM* yazın: sizi yedeğe yazarım, kimin oynayacağını organizatörler seçer. Sonrasında oynayanlar her hafta kadroda kalır; gelemeyecekseniz${until} *YOKUM* yazmanız yeter.`
+      : `🔁 *Her hafta aynı kadro:* bu grupta kadro bir maçtan diğerine aynı kalır. Benimle *ilk maç* için *VARIM* yazın ki kimin oynadığını bileyim. Sonrasında her hafta kadroda kalırsınız; gelemeyecekseniz${until} *YOKUM* yazmanız yeter.`;
+  },
   sj_hello_rolling_join: (p) =>
     p.mode === "organiser"
       ? `✅ *Henüz kadroda değil misiniz?* *VARIM* yazın, sizi yedeğe yazarım.`
@@ -1762,8 +1768,14 @@ export const tr: Strings = {
   // See the English table. The Turkish command is BAŞLA (BASLA and GO are
   // read as well: `isGoCommand`, club-setup-rules.ts).
   sj_go_button: `Yayına al`,
-  sj_go_done: (p) => `Tamam: "${p.group}" grubunda kendimi tanıttım.`,
-  sj_go_still_reading: `Grubunuzdaki mesajları hâlâ okuyorum. Bana birkaç dakika verin, size yazacağım.`,
+  sj_go_done: (p) => `Tamam: şimdi "${p.group}" grubunda kendimi tanıtıyorum. Mesajın görünmesi birkaç dakika sürebilir.`,
+  sj_go_still_reading: (p) =>
+    `Grubunuzdaki mesajları hâlâ okuyorum, bu biraz sürebilir. Bitirdiğimde kurulum mesajını ${p.club} kulübünü bağlayan organizatöre göndereceğim. Ondan sonra yeniden *BAŞLA* yazın.`,
+  sj_go_failed: `Benim tarafımda bir sorun oldu. Lütfen yeniden *BAŞLA* yazın.`,
+  sj_go_help_not_started:
+    "MatchTime grubunuzda henüz başlamadı. Buraya *BAŞLA* yazana ya da ayarlar sayfanızdaki *Yayına al* düğmesine basana kadar aşağıdakilerin hiçbiri grupta çalışmaz.",
+  sj_go_owner_started: (p) =>
+    `MatchTime ekibi MatchTime'ı "${p.group}" grubunda sizin için başlattı, BAŞLA yazmanıza gerek kalmadı. MatchTime grupta kendini tanıtıyor, mesajın görünmesi birkaç dakika sürebilir.`,
   sj_go_removed: (p) => `Artık "${p.group}" grubunda değilim. Beni tekrar ekleyin, sonra BAŞLA yazın.`,
   sj_go_already_live: (p) => `${p.club} zaten yayında.`,
   sj_go_many: `Kurulumu süren birden fazla kulübünüz var. Her kulübün ayarlarındaki Yayına al düğmesini kullanın.`,
@@ -1778,7 +1790,8 @@ export const tr: Strings = {
   // ════ BEGIN removed from the group while setting up (2026-10-12) ════
   sj_setup_removed: (p) =>
     `${p.club} yayına geçmeden "${p.group}" grubundan çıkarıldım, bu yüzden orada hiçbir şey başlamadı. ` +
-    `Beni gruba yeniden ekleyin, sonra buraya *BAŞLA* yazın ya da ayarlar sayfanızdaki *Yayına al* düğmesine basın:\n${p.url}`,
+    `Beni gruba yeniden ekleyin, sonra buraya *BAŞLA* yazın ya da ayarlar sayfanızdaki *Yayına al* düğmesine basın:\n${p.url}\n` +
+    `Beni sizin ya da ${p.club} kulübünün başka bir organizatörünün eklemesi gerekiyor.`,
   // ════ END removed from the group while setting up ════
   // ════ BEGIN the go-live pages (go-live slice S5, 2026-10-12) ════
   // See the English table: the Go live banner on /admin/settings, the
@@ -1793,9 +1806,9 @@ export const tr: Strings = {
   sj_live_preview_loading: `Mesaj yükleniyor...`,
   sj_live_preview_failed: `Mesaj yüklenemedi. Tekrar denemek için sayfayı yenileyin.`,
   sj_live_done_title: `Yayındasınız.`,
-  sj_live_done: (p) => `MatchTime "${p.group}" grubunda kendini tanıttı.`,
-  sj_live_done_posted: `Gruba yazdığı mesaj`,
-  sj_live_still_reading: `MatchTime grubunuzdaki mesajları hâlâ okuyor. Birkaç dakika sonra tekrar deneyin.`,
+  sj_live_done: (p) => `MatchTime şimdi "${p.group}" grubunda kendini tanıtıyor. Mesajın görünmesi birkaç dakika sürebilir.`,
+  sj_live_done_posted: `Gruba yazmakta olduğu mesaj`,
+  sj_live_still_reading: `MatchTime grubunuzdaki mesajları hâlâ okuyor, bu biraz zaman alabilir. Bitirdiğinde kurulum mesajını kulübü bağlayan organizatöre gönderecek. Ondan sonra tekrar deneyin.`,
   sj_live_removed: (p) =>
     `MatchTime artık "${p.group}" grubunda değil. Gruba tekrar ekleyin, sonra Yayına al düğmesine basın.`,
   sj_live_paused: (p) =>
@@ -1815,6 +1828,16 @@ export const tr: Strings = {
   sj_live_wa_badge: `Yayına almanızı bekliyor`,
   sj_live_wa_body: `MatchTime onaylandı ve grubunuzda. Bu sayfanın en üstündeki Yayına al düğmesine basana kadar sessiz kalır.`,
   sj_live_wa_link: `Yayına al bölümüne git`,
+  sj_live_wa_badge_removed: `Grubunuzda değil`,
+  sj_live_wa_body_removed: `MatchTime yayına geçmeden grubunuzdan çıkarıldı, bu yüzden orada hiçbir şey başlamadı. Gruba tekrar ekleyin, sonra bu sayfanın en üstündeki Yayına al düğmesine basın.`,
+  sj_card_removed_title: `MatchTime grubunuzdan çıkarıldı`,
+  sj_card_setting_up_removed: (p) =>
+    `MatchTime yayına geçmeden ${p.group ? `"${p.group}" grubundan` : "WhatsApp grubunuzdan"} çıkarıldı. Gruba tekrar ekleyin, sonra yayına alın.`,
+  sj_live_button_label: (p) => `Yayına al: ${p.club}`,
+  sj_live_for_club: (p) => `Bu düğme ${p.club} kulübünü yayına alır.`,
+  login_link_expired: `Bu bağlantının süresi doldu. Devam etmek için WhatsApp numaranızla giriş yapın.`,
+  link_invalid: `Bu bağlantı geçerli değil.`,
+  link_go_sign_in: `Giriş sayfasına git`,
   sj_card_setting_up: (p) =>
     `MatchTime ${p.group ? `"${p.group}" grubunda` : "WhatsApp grubunuzda"} ve siz yayına alana kadar sessiz kalacak.`,
   sj_card_setting_up_link: `Ayarlarınızı kontrol edin ve yayına alın`,
@@ -1822,6 +1845,10 @@ export const tr: Strings = {
   info_st_whatsapp_setup_body:
     "MatchTime onaylandı ve WhatsApp grubunuza bağlı. Kulübün sahibi ya da bir yöneticisi bu sayfanın en üstündeki Yayına al düğmesine basana ya da WhatsApp'tan MatchTime'a BAŞLA yazana kadar grupta sessiz kalır.\n\n" +
     "Bir sorun yok: sizi bekliyor.",
+  info_st_whatsapp_removed_title: "WhatsApp botu",
+  info_st_whatsapp_removed_body:
+    "MatchTime onaylandı, ama yayına geçmeden WhatsApp grubunuzdan çıkarıldı, bu yüzden orada başlayamıyor.\n\n" +
+    "MatchTime'ı gruba tekrar ekleyin. Sonra kulübün sahibi ya da bir yöneticisi bu sayfanın en üstündeki Yayına al düğmesine basar ya da WhatsApp'tan MatchTime'a BAŞLA yazar.",
   // ════ END the go-live pages ════
 
   sj_dm_approved: (p) =>
@@ -1842,9 +1869,10 @@ export const tr: Strings = {
   sj_dm_ready_nothing: (p) =>
     `${p.group ? `"${p.group}" grubundaki` : "Grubunuzdaki"} son mesajları okudum ve değiştirilmesi gereken bir ayar bulamadım, bu yüzden ${p.standard ? "MatchTime standart düzeninde" : "hiçbir şeyi değiştirmedim"}.`,
   sj_dm_ready_unread: (p) =>
-    `Grubunuzun son mesajlarını okuyamadım, bu yüzden ${p.standard ? "MatchTime standart düzeninde" : "hiçbir şeyi değiştirmedim"}.`,
+    `Grubunuzun son mesajlarını okuyamadım, bu yüzden ${p.standard ? "MatchTime standart düzeninde" : "hiçbir şeyi değiştirmedim"}. ` +
+    "Sorun değil: aşağıdaki ayarları kontrol edin ve hazır olduğunuzda *BAŞLA* yazın.",
   sj_dm_ready_standard:
-    "Standart düzen: oyuncular her hafta VARIM ya da YOKUM der, boşalan yer yedek listesindeki ilk kişiye verilir.",
+    "Standart düzen: oyuncular her hafta VARIM ya da YOKUM der, boşalan yer yedek listesindeki herkese teklif edilir: ilk VARIM diyen yeri alır.",
   sj_dm_ready_settings: (p) => `⚙️ *Grubunuzun nasıl işlediğini kontrol edin ya da değiştirin:*\n${p.url}`,
   sj_dm_ready_schedule: (p) => `📅 *Haftalık maçınız:* günü, saati ve sahayı kontrol edin ya da değiştirin:\n${p.url}`,
   sj_dm_ready_ratings: (p) =>
@@ -1904,6 +1932,8 @@ export const tr: Strings = {
     `${p.open} yer boş: *VARIM* yazın, yedek listesine ekleyeyim; kimin oynayacağını organizatörler seçer.`,
   rolling_tail_full: "Kadro dolu. Yedek listesine girmek için *VARIM* yazın.",
   rolling_deadline_line: (p) => `Son çıkış: *${p.deadline}*. O saate kadar *YOKUM* yazmazsanız kadrodasınız.`,
+  rolling_deadline_line_first: (p) =>
+    `Son çıkış: *${p.deadline}*. Listedeyseniz ve oynayamayacaksanız o saatten önce *YOKUM* yazın.`,
   intro_rolling_squad:
     "🔁 *Kadro devam eder*: geçen maçta oynadıysanız bir sonrakinde de kadrodasınız. Gelemeyecekseniz son çıkış saatinden önce *YOKUM* yazın.",
   late_drop_admin_notice: (p) =>
@@ -2390,7 +2420,7 @@ export const tr: Strings = {
     "Son maçınızdan sonra kimlerin takım arkadaşlarına puan verdiği. MatchTime oynayan her oyuncuya özel bir puanlama bağlantısı gönderir; yedek listesindekiler sayılmaz. Bekleyenler henüz puan vermedi.",
   info_dash_connect_title: "MatchTime'ı bağlamak",
   info_dash_connect_body:
-    "MatchTime'ı WhatsApp grubunuza eklemenin adımları: kodu telefonunuzdan gönderin, MatchTime'ı gruba ekleyin, sonra kulübünüzü kontrol ederiz, genelde bir gün içinde. Kulübünüz onaylanana kadar MatchTime grupta sessiz kalır.",
+    "MatchTime'ı WhatsApp grubunuza eklemenin adımları: kodu telefonunuzdan gönderin, MatchTime'ı gruba ekleyin, sonra kulübünüzü kontrol ederiz, genelde bir gün içinde. Biz kontrol ederken MatchTime grupta hiçbir şey yazmaz.",
 
   info_pl_list_title: "Oyuncular",
   info_pl_list_body:

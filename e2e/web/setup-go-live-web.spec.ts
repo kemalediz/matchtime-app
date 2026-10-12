@@ -267,6 +267,15 @@ test.describe("the organiser of a club that is setting up", () => {
     expect(bannerBox.y + bannerBox.height).toBeLessThanOrEqual(general.y);
 
     // The exact hello: WhatsApp bold is bold, the stars are gone, the lines are kept.
+    // WHICH CLUB: said beside the button, and in the button's own name.
+    await expect(page.getByTestId("go-live-club")).toHaveText("This takes Harbour FC live.");
+    await expect(page.getByRole("button", { name: "Go live: Harbour FC" })).toHaveAttribute("data-testid", "go-live-button");
+    {
+      const clubLine = (await page.getByTestId("go-live-club").boundingBox())!;
+      const btn = (await page.getByTestId("go-live-button").boundingBox())!;
+      // Straight above the button, nothing between them.
+      expect(btn.y - (clubLine.y + clubLine.height)).toBeLessThan(16);
+    }
     const preview = page.getByTestId("go-live-preview");
     await expect(preview).toContainText("Hi everyone, I'm MatchTime. Hana has set me up to run this group's games.");
     await expect(preview.locator("strong", { hasText: "Who's in:" })).toBeVisible();
@@ -287,7 +296,13 @@ test.describe("the organiser of a club that is setting up", () => {
 
     // Change a setting on the page: the preview follows it.
     await page.getByTestId("wr-rolling").getByRole("switch").click();
-    await expect(preview).toContainText("Same squad each week: if you played last time, you're in next time too.");
+    // This club has no game played with MatchTime yet, so the preview is
+    // the FIRST-GAME form (2026-10-13): it asks for an In, and never says
+    // "if you played last time, you're in next time too".
+    await expect(preview).toContainText(
+      "Same squad each week: this group keeps the same squad from one game to the next. For the first game with me, say In so I know who is playing.",
+    );
+    await expect(preview).not.toContainText("if you played last time");
     await expect(preview).not.toContainText("Who's in:");
     expect(await preview.innerText()).not.toBe(previewText);
     // ... and it is what a reload shows.
@@ -327,7 +342,11 @@ test.describe("the organiser of a club that is setting up", () => {
     await expect(done).toBeVisible({ timeout: 30_000 });
     await expect(done).toHaveAttribute("data-outcome", "live");
     await expect(done.getByRole("heading", { name: "You're live." })).toBeVisible();
-    await expect(done.getByRole("status")).toContainText('MatchTime has introduced itself in "Harbour Tuesday 6s".');
+    // The hello is queued, not yet in the group: the note says so.
+    await expect(done.getByRole("status")).toContainText(
+      'MatchTime is introducing itself in "Harbour Tuesday 6s" now. It can take a few minutes to appear.',
+    );
+    await expect(done).not.toContainText("has introduced itself");
     await expect(page.getByTestId("go-live-banner")).toHaveCount(0);
     await expect(page.getByTestId("go-live-button")).toHaveCount(0);
     // Review fix 2: the outcome was written into the SAME live region, and
@@ -381,8 +400,10 @@ test.describe("the organiser of a club that is setting up", () => {
     const posts = await groupPosts(db, HARBOUR.id);
     expect(posts).toHaveLength(1);
     expect(posts[0].text).toContain("*Same squad each week:*");
+    expect(posts[0].text).toContain("For the *first game* with me, say *In* so I know who is playing.");
+    expect(posts[0].text).not.toContain("if you played last time");
     expect(posts[0].text).toContain("Hana has set me up");
-    await done.getByText("The message it posted").click();
+    await done.getByText("The message it is posting").click();
     await expect(page.getByTestId("go-live-posted")).toContainText("Same squad each week");
 
     // After a reload the club is simply live: the page is as any live club's.
@@ -399,6 +420,8 @@ test.describe("the organiser of a club that is setting up", () => {
     await expect(banner).toBeVisible({ timeout: 30_000 });
     await expect(banner).toContainText('MatchTime "Kıyı Salı Maçı" grubunda ve siz başlatana kadar sessiz kalacak.');
     await expect(page.getByTestId("go-live-button")).toHaveText("Yayına al");
+    await expect(page.getByRole("button", { name: "Yayına al: Kıyı SK" })).toBeVisible();
+    await expect(page.getByTestId("go-live-club")).toHaveText("Bu düğme Kıyı SK kulübünü yayına alır.");
     await expect(banner.getByRole("heading", { name: "MatchTime'ın grubunuza yazacağı mesaj" })).toBeVisible();
     await expect(page.getByTestId("go-live-preview")).toContainText("Herkese merhaba, ben MatchTime.");
     await expect(page.getByTestId("wa-setting-up")).toHaveText("Yayına almanızı bekliyor");
@@ -413,7 +436,7 @@ test.describe("the organiser of a club that is setting up", () => {
     await expect(page.getByTestId("go-live-notice")).toHaveCount(0);
     await button.click();
     await expect(page.getByTestId("go-live-notice")).toHaveText(
-      "MatchTime is still reading your group's messages. Try again in a few minutes.",
+      "MatchTime is still reading your group's messages, which can take a while. It will send the setup message to the organiser who connected the club when it has finished. Try again after that.",
     );
     // A refusal is announced through the same live region as a final outcome.
     await expect(page.getByTestId("go-live-status").getByTestId("go-live-notice")).toHaveCount(1);
@@ -444,6 +467,53 @@ test.describe("the organiser of a club that is setting up", () => {
     await expect(page.getByTestId("go-live-lead")).toHaveCount(0);
     await expect(page.getByTestId("go-live-banner")).not.toContainText('MatchTime is in "Gone Thursday 7s"');
     await shot(page, "removed-desktop");
+
+    // THE WHATSAPP BOT SECTION of the same page agrees with the banner:
+    // not "approved and in your group", and no "Nothing is wrong".
+    const badge = page.getByTestId("wa-setting-up");
+    await expect(badge).toHaveText("Not in your group");
+    await expect(badge).toHaveAttribute("data-removed", "true");
+    const body = page.getByTestId("wa-setting-up-body");
+    await expect(body).toContainText(
+      "MatchTime was removed from your group before going live, so nothing has started there. Add it back to the group, then press Go live at the top of this page.",
+    );
+    await expect(body).not.toContainText("approved and in your group");
+    await expect(body.getByRole("link", { name: "Go to Go live" })).toHaveAttribute("href", "#go-live");
+    await expect(page.getByTestId("info-st_whatsapp_setup")).toHaveCount(0);
+    await page.getByTestId("info-st_whatsapp_removed").click();
+    const popup = page.getByRole("dialog");
+    await expect(popup).toContainText("it was removed from your WhatsApp group before going live, so it cannot start there.");
+    await expect(popup).toContainText("Add MatchTime back to the group.");
+    await expect(popup).not.toContainText("Nothing is wrong");
+    await page.keyboard.press("Escape");
+    await badge.scrollIntoViewIfNeeded();
+    await shot(page, "removed-whatsapp-section-desktop");
+    await page.setViewportSize({ width: 360, height: 740 });
+    await badge.scrollIntoViewIfNeeded();
+    await shot(page, "removed-whatsapp-section-360");
+    await expectNoHorizontalOverflow(page, "go-live-banner");
+    await page.setViewportSize({ width: 1280, height: 720 });
+
+    // THE ADMIN HOME CARD says it too, and still links to the banner.
+    await page.goto("/admin");
+    const card = page.getByTestId("club-connect-card");
+    await expect(card).toHaveAttribute("data-state", "setting_up", { timeout: 30_000 });
+    await expect(card).toHaveAttribute("data-removed", "true");
+    await expect(card.getByRole("heading", { name: "MatchTime was removed from your group" })).toBeVisible();
+    await expect(card).toContainText(
+      'MatchTime was removed from "Gone Thursday 7s" before going live. Add it back to the group, then go live.',
+    );
+    await expect(card).not.toContainText("MatchTime is in");
+    await expect(card).not.toContainText("staying quiet");
+    await expect(card.getByRole("link", { name: "Go to Go live" })).toHaveAttribute("href", "/admin/settings#go-live");
+    await shot(page, "removed-admin-home-card-desktop");
+    await page.setViewportSize({ width: 360, height: 740 });
+    await expect(card).toBeVisible();
+    await expectNoHorizontalOverflow(page, "club-connect-card");
+    await shot(page, "removed-admin-home-card-360");
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.goto("/admin/settings");
+    await expect(notice).toHaveText(text, { timeout: 30_000 });
     await page.getByTestId("go-live-button").click();
     await expect(page.getByTestId("go-live-button")).toBeEnabled();
     await expect(notice).toHaveText(text);
@@ -456,10 +526,6 @@ test.describe("the organiser of a club that is setting up", () => {
     await signInAs(page, RIA.id, "/admin/settings");
     const button = page.getByTestId("go-live-button");
     await expect(button).toBeVisible({ timeout: 30_000 });
-    // The page asks for its settings twice as it mounts in development
-    // (React's double mount). Both answers must be in before the club is
-    // changed under it: a late second answer, read after the change,
-    // takes the banner off the page before the press (seen 3 runs in 30).
     await page.waitForLoadState("networkidle");
     // Rob, the owner, goes live while Ria's page is open.
     await db.run(
@@ -508,7 +574,6 @@ test.describe("review of PR #236: the banner's other outcomes and rules", () => 
     await expect(button).toBeVisible({ timeout: 30_000 });
     await expect(page.getByTestId("go-live-preview")).toBeVisible();
     await page.getByTestId("go-live-status").evaluate((el) => el.setAttribute("data-same-node", "yes"));
-    await page.waitForLoadState("networkidle"); // both mount fetches answered: see "somebody else got there first"
     // The MatchTime owner turns the club off while the page is open.
     await db.run(`UPDATE "Organisation" SET "approvalStatus" = 'suspended' WHERE id = $1`, [NOPE.id]);
     await button.click();
@@ -536,7 +601,7 @@ test.describe("review of PR #236: the banner's other outcomes and rules", () => 
     await signInAs(page, SELF.ownerId, "/admin/settings");
     const button = page.getByTestId("go-live-button");
     await expect(button).toBeVisible({ timeout: 30_000 });
-    await page.waitForLoadState("networkidle"); // both mount fetches answered: see "somebody else got there first"
+    await page.waitForLoadState("networkidle");
     await db.run(
       `UPDATE "Organisation" SET "setupStage" = 'live', "whatsappBotEnabled" = true, "liveAt" = $2::timestamp, "liveBy" = $3 WHERE id = $1`,
       [SELF.id, utc(0), SELF.ownerId],
@@ -761,6 +826,20 @@ test.describe("the MatchTime owner, /admin/clubs", () => {
       status: "skipped",
       reason: "went-live",
     });
+
+    // THE ORGANISER IS TOLD (they did not say GO, so nothing else would
+    // tell them): one DM on the platform channel, and the owner sees that.
+    await expect(page.getByText("The organiser is being told by WhatsApp.")).toBeVisible();
+    const told = await db.all<{ text: string; status: string }>(
+      `SELECT text, status FROM "PlatformJob" WHERE purpose = 'setup-owner-live' AND "refId" = $1`,
+      [`${READING.id}:setup-owner-live`],
+    );
+    expect(told).toHaveLength(1);
+    expect(told[0].status).toBe("queued");
+    expect(told[0].text).toMatch(
+      /^The MatchTime team has started MatchTime in "Rovers 5s" for you, so you don't need to reply GO\. It introduces itself in the group, which can take a few minutes to appear\.\n\n/,
+    );
+    expect(told[0].text).toMatch(/\n\n⚙️ \*Check or change how your group runs:\*\nhttps?:\/\/\S+$/);
 
     // The page moves the club to the live list.
     await expect(page.getByTestId("setting-up-club").filter({ hasText: "Reading Rovers" })).toHaveCount(0);

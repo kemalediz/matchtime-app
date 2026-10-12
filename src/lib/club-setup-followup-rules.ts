@@ -77,10 +77,6 @@ export const SETUP_REMINDER_KIND = "setup-reminder";
 /** ... and of one that will never be sent. */
 export const SETUP_REMINDER_SKIPPED_KIND = "setup-reminder-skipped";
 
-/** The clock the reminder runs on: the setup DM's due time plus 24 hours. */
-export function reminderDueAt(setupAskedAt: Date): Date {
-  return new Date(setupAskedAt.getTime() + REMINDER_AFTER_MS);
-}
 
 /**
  * What the setup DM's own job says about the reminder:

@@ -41,6 +41,12 @@ vi.mock("@/lib/magic-link", () => ({
   MAGIC_LINK_TTL: {},
 }));
 
+const resolveExpiredLink = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/expired-link", async () => ({
+  ...(await vi.importActual<typeof import("@/lib/expired-link")>("@/lib/expired-link")),
+  resolveExpiredLink,
+}));
+
 import { startPhoneSignIn, startPhoneSignup, verifyPhoneSignIn } from "../phone-signup";
 import { SITE_SIGNUP_CODES_PER_DAY, SIGNUP_ATTEMPTS_PER_IP_PER_HOUR } from "@/lib/signup-caps";
 
@@ -73,6 +79,7 @@ beforeEach(() => {
   dbMock.user.update.mockImplementation(async ({ data }: { data: object }) => ({ ...USER, ...data }));
   dbMock.membership.count.mockResolvedValue(1);
   signMock.mockReturnValue("signed.token");
+  resolveExpiredLink.mockResolvedValue(null);
   liveOtp();
 });
 
@@ -300,4 +307,99 @@ describe("verifyPhoneSignIn", () => {
     const res = await verifyPhoneSignIn({ phone: PHONE, code: "123456", callbackUrl: "/" });
     expect(res).toMatchObject({ ok: true, nextPath: "/onboarding" });
   });
+});
+
+/**
+ * Security review of PR #248: what an EXPIRED signed link may do at
+ * sign-in. It is carried as `link` (the short code or the expired token),
+ * read on the server, and honoured only for the person it was minted for.
+ */
+describe("verifyPhoneSignIn: carrying on from an expired link", () => {
+  const expired = (over: Record<string, unknown> = {}) => ({
+    userId: "u1",
+    purpose: "sign-in",
+    nextPath: "/admin/settings#go-live",
+    orgId: "org-b",
+    exp: 1,
+    iat: 0,
+    ...over,
+  });
+
+  it("their own expired link: the page it was for, and its club handed to the session step to pin", async () => {
+    resolveExpiredLink.mockResolvedValue(expired());
+    const res = await verifyPhoneSignIn({ phone: PHONE, code: "123456", link: "k7Qp2m9" });
+    expect(resolveExpiredLink).toHaveBeenCalledWith("k7Qp2m9");
+    expect(res).toMatchObject({ ok: true, nextPath: "/admin/settings#go-live" });
+    // `orgId` rides on the short sign-in token, so the magic-link provider
+    // pins it through `pinOrgFromMagicLink`, membership check included.
+    expect(signMock).toHaveBeenCalledWith({
+      userId: "u1",
+      purpose: "sign-in",
+      nextPath: "/admin/settings#go-live",
+      orgId: "org-b",
+      ttlSeconds: 300,
+    });
+  });
+
+  it("a rating link carries on to the rating page", async () => {
+    resolveExpiredLink.mockResolvedValue(expired({ purpose: "rate-match", matchId: "m1", nextPath: undefined, orgId: undefined }));
+    const res = await verifyPhoneSignIn({ phone: PHONE, code: "123456", link: "k7Qp2m9" });
+    expect(res).toMatchObject({ ok: true, nextPath: "/matches/m1/rate" });
+    expect(signMock.mock.calls[0][0]).not.toHaveProperty("orgId");
+  });
+
+  it("SOMEBODY ELSE's expired link is ignored entirely: the default page, no club, and no word of why", async () => {
+    resolveExpiredLink.mockResolvedValue(expired({ userId: "u-somebody-else" }));
+    const res = await verifyPhoneSignIn({ phone: PHONE, code: "123456", link: "k7Qp2m9" });
+    expect(res).toEqual({ ok: true, magicLinkToken: "signed.token", nextPath: "/" });
+    expect(signMock).toHaveBeenCalledWith({ userId: "u1", purpose: "sign-in", nextPath: "/", ttlSeconds: 300 });
+  });
+
+  it("a forged, tampered, unknown or still-live link resolves to nothing and is ignored", async () => {
+    resolveExpiredLink.mockResolvedValue(null);
+    const res = await verifyPhoneSignIn({ phone: PHONE, code: "123456", link: "abc.AAAA" });
+    expect(res).toMatchObject({ ok: true, nextPath: "/" });
+    expect(signMock.mock.calls[0][0]).not.toHaveProperty("orgId");
+  });
+
+  it("the link's destination goes through the same validator as any callback: a hostile one falls back to the default page", async () => {
+    for (const nextPath of ["/.//evil.tld", "/r/k7Qp2m9", "/login?expired=1", "//evil.tld", "/api/auth/signout"]) {
+      signMock.mockClear();
+      liveOtp();
+      resolveExpiredLink.mockResolvedValue(expired({ nextPath }));
+      const res = await verifyPhoneSignIn({ phone: PHONE, code: "123456", link: "k7Qp2m9" });
+      expect(res, nextPath).toMatchObject({ ok: true, nextPath: "/" });
+      // The club is still theirs to open: the pin's own membership check decides.
+      expect(signMock).toHaveBeenCalledWith(expect.objectContaining({ nextPath: "/", orgId: "org-b" }));
+    }
+  });
+
+  it("a link that is not a string, or absurdly long, is never looked up", async () => {
+    await verifyPhoneSignIn({ phone: PHONE, code: "123456", link: 42 as unknown as string });
+    liveOtp();
+    await verifyPhoneSignIn({ phone: PHONE, code: "123456", link: "a".repeat(5000) });
+    liveOtp();
+    await verifyPhoneSignIn({ phone: PHONE, code: "123456", link: "has spaces/and?odd=chars" });
+    expect(resolveExpiredLink).not.toHaveBeenCalled();
+  });
+
+  it("the link is read only AFTER a correct code: a wrong code looks nothing up", async () => {
+    const res = await verifyPhoneSignIn({ phone: PHONE, code: "999999", link: "k7Qp2m9" });
+    expect(res.ok).toBe(false);
+    expect(resolveExpiredLink).not.toHaveBeenCalled();
+  });
+
+  it("with no link, a plain callbackUrl works as before (the middleware's 'you must sign in')", async () => {
+    const res = await verifyPhoneSignIn({ phone: PHONE, code: "123456", callbackUrl: "/admin/players?tab=new" });
+    expect(res).toMatchObject({ ok: true, nextPath: "/admin/players?tab=new" });
+    expect(signMock.mock.calls[0][0]).not.toHaveProperty("orgId");
+  });
+
+  it.each(["/.//evil.tld", "/x/..//evil.tld", "/%2e//evil.tld", "/%2e%2e//evil.tld/a", "/r/k7Qp2m9", "/login"])(
+    "the callbackUrl %s is refused and the default landing used",
+    async (callbackUrl) => {
+      const res = await verifyPhoneSignIn({ phone: PHONE, code: "123456", callbackUrl });
+      expect(res).toMatchObject({ ok: true, nextPath: "/" });
+    },
+  );
 });

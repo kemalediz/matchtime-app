@@ -92,6 +92,7 @@
  */
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { uniqueByWaMessageId } from "@/lib/analyze-batch";
 import { billingQuietWhere } from "@/lib/club-billing-rules";
 import { signMagicLinkToken, MAGIC_LINK_TTL } from "@/lib/magic-link";
 import { buildShortMagicLinkUrl } from "@/lib/short-link";
@@ -575,8 +576,15 @@ async function handleAnalyzeRequest(request: Request) {
     }
   }
 
-  // 1. Dedupe.
-  const all = body.messages;
+  // 1. Dedupe. First within the batch itself (a pure filter: a batch with
+  //    no repeated id is the very same array, `uniqueByWaMessageId`), then
+  //    against what is already stored. The stored-rows check below is
+  //    check-then-act: two separate batches at the same instant can both
+  //    pass it. That is not made atomic here.
+  const all = uniqueByWaMessageId(body.messages);
+  if (all.length !== body.messages.length) {
+    console.log(`[analyze] ${body.groupId}: ${body.messages.length - all.length} repeated message id(s) in one batch, each kept once`);
+  }
   const ids = all.map((m) => m.waMessageId);
   const seen = await db.analyzedMessage.findMany({
     where: { waMessageId: { in: ids } },
