@@ -6,7 +6,7 @@
  *                             billing contact (the money collector, else the
  *                             owner), from the hourly cron
  *   sendClubFeeTip            the club fee tip to the club's ADMINS through
- *                             their own admin channel, once per free month,
+ *                             their own admin channel, once per free period,
  *                             skipped when that would reach only the contact
  *   onBillingContactChanged   "payer changed", once, to a new collector
  *                             (called by `setPaymentHolder`)
@@ -24,7 +24,7 @@
  *   - DAYTIME ONLY: 10:00 to 20:00 London. A DM that becomes due at night
  *     is not queued for later: it is noted as PENDING (or simply not due
  *     yet) and the hourly cron's daytime run checks it is still true and
- *     sends it. So nobody is told "your free month has ended, add a card"
+ *     sends it. So nobody is told "your free period has ended, add a card"
  *     at 10:00 after adding one at 07:00.
  *   - ONCE: every DM is claimed in `BillingNotice(orgId, kind, cycleKey)`
  *     before it is queued (`queueBillingDm`, the only queuer of purpose
@@ -302,7 +302,7 @@ async function sendOneScheduled(club: DmClub & { billing: NonNullable<DmClub["bi
 export type FeeTipResult = "off" | "not-billed" | "not-due" | "no-tip" | "already" | "skipped-only-contact" | "sent";
 
 /**
- * The club fee tip to the club's admins, once per free month, through the
+ * The club fee tip to the club's admins, once per free period, through the
  * club's own admin channel (`sendAdminNotice`: one person, the admin group,
  * or each admin). Claimed first in `BillingNotice(orgId, "fee-tip",
  * trialEndsAt)`.

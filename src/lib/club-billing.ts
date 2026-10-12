@@ -10,10 +10,10 @@
  * the second always decides on fresh state.
  *
  * Callers: B2 wires approval (`decideClub`), the platform owner's plan
- * control (`setClubPlan`) and "Start free month" (`startTrial`); B3 the
+ * control (`setClubPlan`) and "Start free period" (`startTrial`); B3 the
  * webhook, B4 the cron, B5 removal from the group. Every club is "exempt"
  * by the column default, and an exempt club only ever moves on an
- * approval or "Start free month" with BILLING_ENABLED on.
+ * approval or "Start free period" with BILLING_ENABLED on.
  *
  * B2 also reads here for the web: the billing page's guard
  * (`requireClubBillingAccess`), the settings card, the banner and the
@@ -134,8 +134,8 @@ function billingPatch(
  *      with its stale jobs dropped and its stale matches quieted. If any
  *      of it fails, nothing is committed and the event can be retried.
  *
- * The free month starts at `approvedAt` for an approval (so the AI window
- * and the trial line up), at `now` for "Start free month". `trialEndsAt`
+ * The free period starts at `approvedAt` for an approval (so the AI window
+ * and the trial line up), at `now` for "Start free period". `trialEndsAt`
  * is written ONLY when the ClubBilling row is created, so it is never
  * reset, re-approval included.
  */
@@ -382,7 +382,7 @@ export type SetClubPlanResult =
       pricePence: number | null;
       status: BillingStatus;
       resumed: boolean;
-      /** Set when leaving Free billed the club again (its free month was
+      /** Set when leaving Free billed the club again (its free period was
        *  already used): "trial" while that month is still running, else
        *  "grace" with a fresh 7 days. Slice B3. */
       /** Billed again after Free: "subscribed" (the billing contact's card
@@ -408,10 +408,10 @@ export type SetClubPlanResult =
  *     the same transaction), THEN the plan is written. The other order
  *     would break Organisation_billingFreeExempt_check;
  *   - leaving Free (or Standard and Custom between themselves): the plan
- *     first. A club that never had a free month stays "exempt" until the
- *     owner presses "Start free month". A club that HAD one is billed
+ *     first. A club that never had a free period stays "exempt" until the
+ *     owner presses "Start free period". A club that HAD one is billed
  *     again in the same transaction ("plan-billed", slice B3): back to
- *     "trial" while its free month is still running, else "grace" with a
+ *     "trial" while its free period is still running, else "grace" with a
  *     fresh 7 days, and the caller asks the billing contact for a card.
  *     Pressing Standard again later (with the flag on) does the same, so
  *     no club is left exempt for ever by a Free spell.
@@ -460,10 +460,10 @@ export async function setClubPlan(
       console.log(`[club-billing] ${orgId}: plan ${org.billingPlan} -> ${choice.plan}${pricePence ? ` (${pricePence}p)` : ""}`);
 
       // Slice B3, the B2 gap: an EXEMPT club that already had its free
-      // month, set to Standard or Custom, is billed again (the plan is
+      // period, set to Standard or Custom, is billed again (the plan is
       // written first, so the CHECK constraints hold at every statement).
       // `nextBillingState` refuses it with the flag off, for a club never
-      // trialled (Start free month is its way in) and on Free.
+      // trialled (Start free period is its way in) and on Free.
       let billedAgain: "trial" | "grace" | "subscribed" | "paused" | null = null;
       let droppedCard: { paymentMethodId: string; holderUserId: string | null } | null = null;
       if (choice.plan !== "free" && status === "exempt") {
@@ -525,8 +525,8 @@ export type StartTrialResult =
   | { ok: false; reason: StartTrialRefusal | "not-found" | "raced" };
 
 /**
- * "Start free month" on /admin/clubs (8.3, decision 2), for a self-join
- * club approved before billing was switched on: the free month starts
+ * "Start free period" on /admin/clubs (8.3, decision 2), for a self-join
+ * club approved before billing was switched on: the free period starts
  * NOW, once per club, through the one writer.
  */
 export async function startTrial(orgId: string, now: Date = new Date()): Promise<StartTrialResult> {

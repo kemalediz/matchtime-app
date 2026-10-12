@@ -12,7 +12,7 @@
  *      came through self-join (never a suspended, unapproved, exempt or
  *      pre self-join club):
  *        a. the state change that is due, ON TIME at any hour: the free
- *           month ends (to grace), the grace week ends (to paused). Through
+ *           period ends (to grace), the grace week ends (to paused). Through
  *           the one locked writer `setBillingState`, so a webhook arriving
  *           at the same moment is serialised and the second one decides on
  *           fresh state (a card added a second earlier wins);
@@ -134,7 +134,7 @@ export async function runBillingCron(now: Date = new Date()): Promise<BillingCro
         }
       }
       // The current month, at any hour (the first one starts when the free
-      // month ends, often in the night).
+      // period ends, often in the night).
       const opened = await openDueMonths(row.orgId, now);
       if (opened.opened.length > 0) report.opened = opened.opened;
       if (daytime) {

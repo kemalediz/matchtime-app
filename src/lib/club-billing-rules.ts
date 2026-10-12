@@ -13,7 +13,7 @@
  *   - THE KILL SWITCH. `BILLING_ENABLED` is off unless explicitly on. Off
  *     means nobody counts as paused (`isBillingPaused` is false and
  *     `billingQuietWhere` is an empty fragment, so every gated query is
- *     exactly today's) and no free month starts. Turning it off brings any
+ *     exactly today's) and no free period starts. Turning it off brings any
  *     paused club straight back.
  *   - `nextBillingState` owns the transition table of section 4.2. The one
  *     writer, `setBillingState` in club-billing.ts, applies it.
@@ -152,7 +152,7 @@ export interface BillingClub {
   approvedAt: Date | null;
   billingStatus: string;
   billingPlan: string;
-  /** The ClubBilling row, or null when the club never had a free month. */
+  /** The ClubBilling row, or null when the club never had a free period. */
   billing: {
     trialEndsAt: Date;
     graceEndsAt: Date | null;
@@ -172,7 +172,7 @@ export interface BillingClub {
 export type BillingEventInput =
   /** decideClub approved the club (slice B2 wires it). */
   | { type: "approved" }
-  /** The platform owner's "Start free month" on /admin/clubs (slice B2). */
+  /** The platform owner's "Start free period" on /admin/clubs (slice B2). */
   | { type: "start-trial" }
   /**
    * A card was saved (Checkout in setup mode completed; slice P2), or the
@@ -198,7 +198,7 @@ export type BillingEventInput =
   | { type: "unpaid-cleared" }
   /**
    * Slice P2: billing ends because the payer pressed Stop paying. Inside
-   * the free month (the card has just been removed) the club goes back to
+   * the free period (the card has just been removed) the club goes back to
    * "trial" with the same end date; otherwise the month close of the last
    * month pauses it ("cancelled").
    */
@@ -215,10 +215,10 @@ export type BillingEventInput =
   | { type: "plan-free" }
   /**
    * The platform owner set Standard or Custom on an EXEMPT club that has
-   * already had its free month (slice B3; the B2 review gap: a club set to
+   * already had its free period (slice B3; the B2 review gap: a club set to
    * Free and back would otherwise stay exempt for ever, because "Start free
-   * month" refuses a second free month). Back to "trial" while the original
-   * free month is still running, else "grace" with a fresh 7 days from now.
+   * period" refuses a second free period). Back to "trial" while the original
+   * free period is still running, else "grace" with a fresh 7 days from now.
    * With a card on file: "subscribed" at once (or paused "cancelled" when
    * the payer had pressed Stop paying).
    */
@@ -228,7 +228,7 @@ export interface BillingTransition {
   to: BillingStatus;
   /** Set exactly when `to` is "paused". */
   pausedReason: PausedReason | null;
-  /** Create the ClubBilling row (the free month starts). */
+  /** Create the ClubBilling row (the free period starts). */
   createsBilling: boolean;
   /** Moving out of "paused": `resumeClub` must run. */
   resumes: boolean;
@@ -266,7 +266,7 @@ function to(
  *
  * An "exempt" self-join club moves ONLY on "approved" or "start-trial",
  * and only with the flag on, a plan that is not Free and no earlier free
- * month. Every other event leaves it exempt, whatever Stripe or a cron says.
+ * period. Every other event leaves it exempt, whatever Stripe or a cron says.
  */
 export function nextBillingState(
   club: BillingClub,
@@ -334,8 +334,8 @@ export function nextBillingState(
       // resume on the way.
       if (from === "paused" && b?.pausedReason === "payment-failed") return to("paused", from, { pausedReason: "cancelled" });
       if (from !== "subscribed" && from !== "past_due") return null;
-      // Stopped inside the free month (the card has just been removed): the
-      // free month carries on with the same end date and its reminders.
+      // Stopped inside the free period (the card has just been removed): the
+      // free period carries on with the same end date and its reminders.
       if (from === "subscribed" && b && now < b.trialEndsAt) return to("trial", from);
       return to("paused", from, { pausedReason: "cancelled" });
 
@@ -352,9 +352,9 @@ export function nextBillingState(
       // A club fee invoice is unpaid: still paused, now waiting for the
       // payment, so "Update card and pay" and the paid invoice resume it.
       if (event.card === "unpaid") return to("paused", from, { pausedReason: "payment-failed" });
-      // No card, free month still running: back to the free month.
+      // No card, free period still running: back to the free period.
       if (now < b.trialEndsAt) return to("trial", from);
-      // No card, free month over: still paused, now waiting for a card, so
+      // No card, free period over: still paused, now waiting for a card, so
       // Add a card resumes it as usual.
       return to("paused", from, { pausedReason: "no-card" });
 
@@ -376,9 +376,9 @@ export function nextBillingState(
         // The payer had stopped paying: still stopped. "Keep paying" (Start
         // again) is their way back; the card is never charged without it.
         if (b.stopped) return to("paused", from, { pausedReason: "cancelled" });
-        // Billed with the card on file at once, in or after the free month
-        // (a card in the free month is "subscribed", as after Add a card;
-        // month 1 still starts when the free month ends). Never asked for a
+        // Billed with the card on file at once, in or after the free period
+        // (a card in the free period is "subscribed", as after Add a card;
+        // month 1 still starts when the free period ends). Never asked for a
         // card it already has.
         return to("subscribed", from);
       }
@@ -631,14 +631,14 @@ export function billingAccessRole(input: BillingAccessInput): BillingAccessRole 
   return null;
 }
 
-// ── "Start free month" (slice B2, 8.3; decision 2) ──────────────────────
+// ── "Start free period" (slice B2, 8.3; decision 2) ──────────────────────
 
 export type StartTrialRefusal = "not-self-join" | "flag-off" | "not-exempt" | "had-free-month" | "plan-free";
 
 /**
- * Why "Start free month" cannot start one, or null when it can. The same
+ * Why "Start free period" cannot start one, or null when it can. The same
  * line `nextBillingState` holds for "start-trial", spelled out so the
- * platform owner's page can say which. The free month happens once per
+ * platform owner's page can say which. The free period happens once per
  * club (`trialEndsAt` is never reset), so a club that had one, or is
  * already billed, is refused.
  */

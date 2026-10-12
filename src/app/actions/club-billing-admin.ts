@@ -14,7 +14,7 @@
  * the open month is waived and every unpaid club fee invoice voided; a
  * price change needs nothing in Stripe (each month close charges the lower
  * of the price when the month opened and the price at the close). A club
- * billed again after Free with its free month used up gets one DM to its
+ * billed again after Free with its free period used up gets one DM to its
  * billing contact asking for a card, unless the CONTACT's own card is on
  * file: then that card is billed and they are told. Anybody else's card is
  * removed (never billed) and its holder told (review M1).
@@ -117,7 +117,7 @@ const START_REFUSED: Record<string, string> = {
   raced: "Something changed at the same moment. Refresh and try again.",
 };
 
-/** "Start free month" for a self-join club approved before billing. */
+/** "Start free period" for a self-join club approved before billing. */
 export async function startFreeMonthAction(orgId: string): Promise<BillingAdminResult> {
   await requireOwner();
   const r = await startTrial(orgId);

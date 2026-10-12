@@ -23,13 +23,13 @@
  *     start, which is `approvedAt ?? aiWindowStartAt ?? createdAt` (see
  *     `aiWindowStart`) (Kemal, 2026-10-01; was $0.25 for 28 days);
  *   - $1.50 a day after that, the default for a paying club (Kemal,
- *     2026-10-01; was $1.00). Sutton FC is long past its free month and
+ *     2026-10-01; was $1.00). Sutton FC is long past its free period and
  *     has its own override of the same $1.50.
  *
  * Spend that happens before a club exists (the in-group setup
  * conversation, the web wizard's chat analysis) is keyed on the group or
  * the user instead of an org and gets `PRE_CLUB_CAP_USD`, $0.25: nobody
- * has approved anything yet, so it is not the free month. Two exceptions
+ * has approved anything yet, so it is not the free period. Two exceptions
  * for a GROUP key, both $0: the group is silent (it belongs to a club
  * waiting for approval, or nobody asked for MatchTime there), or
  * self-join is on, which retires the in-group setup altogether.
@@ -109,13 +109,13 @@ import {
 export { bindAiBudgetKey, isAiBudgetExceeded, AiBudgetExceededError } from "./ai-budget-context";
 export { AI_CAP_ALERT_KIND } from "./ops-alerts";
 
-/** A paying club's default, after its free month (Kemal, 2026-10-01). */
+/** A paying club's default, after its free period (Kemal, 2026-10-01). */
 export const DAILY_CAP_USD = 1.5;
-/** The free month's allowance (Kemal, 2026-10-01). */
+/** The free period's allowance (Kemal, 2026-10-01). */
 export const NEW_CLUB_CAP_USD = 2.0;
 /**
  * Spend with no approved club behind it yet (onboarding keys). Kept at the
- * old new-club figure on purpose: the free month starts at approval, and
+ * old new-club figure on purpose: the free period starts at approval, and
  * this is money spent on behalf of people nobody has approved. In practice
  * the in-group setup is $0 while self-join is on, so this is the web
  * wizard's chat analysis, a few cents.
@@ -147,12 +147,12 @@ export interface AllowanceOrg {
 }
 
 /**
- * When the club's free-month window starts:
+ * When the club's free period window starts:
  * `approvedAt ?? aiWindowStartAt ?? createdAt`.
  *
  * Why `approvedAt` first. It is a FACT, written once, by the approval
  * itself: the moment a self-join club was allowed to act. A club that
- * waited a week in pending must still get its full free month once live
+ * waited a week in pending must still get its full free period once live
  * (decision 5), and no other column can know that moment.
  *
  * Why `aiWindowStartAt` stays. It was added by the cap slice as a manual

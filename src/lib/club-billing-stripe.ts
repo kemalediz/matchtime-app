@@ -26,7 +26,7 @@
  *                       new card the default and pays what is unpaid on it
  *   removeMyCard        an old card holder stops paying
  *   stopPaying          billing ends with the current month (inside the
- *                       free month: the card is removed at once)
+ *                       free period: the card is removed at once)
  *   keepPaying          undoes Stop paying, or starts again after it
  * Each takes the role `requireClubBillingAccess` gave the caller and
  * refuses any role it does not serve. The server actions
@@ -225,7 +225,7 @@ async function cardSessionRefusal(args: ActionArgs): Promise<
 /**
  * Add a card (5.3), for the billing contact when no card is on file:
  * Checkout in SETUP mode on the club's one Customer. NOTHING is charged
- * when the card is added, in the free month, in grace or after a pause;
+ * when the card is added, in the free period, in grace or after a pause;
  * the first charge is the first month's close (2A.1).
  */
 export async function startClubCheckout(args: ActionArgs): Promise<BillingActionResult> {
@@ -279,7 +279,7 @@ export async function removeMyCard(args: ActionArgs): Promise<{ ok: true } | { o
 
 /**
  * Stop paying, for the billing contact of a club with a card on file.
- *   - Inside the free month: the card is removed at once and the club is
+ *   - Inside the free period: the card is removed at once and the club is
  *     back in "trial" with the same end date (the reminders follow).
  *   - Otherwise: billing ends when the CURRENT month ends. MatchTime keeps
  *     working until then, that month is charged for its games as usual at
@@ -311,7 +311,7 @@ export async function stopPaying(
       data: { stripePaymentMethodId: null, cardBrand: null, cardLast4: null, cardHolderUserId: null, cancelAtPeriodEnd: false },
     });
     await setBillingState(args.orgId, { type: "billing-stopped" }, now);
-    console.log(`[club-billing-stripe] ${args.orgId}: Stop paying inside the free month; card removed, back to the free month`);
+    console.log(`[club-billing-stripe] ${args.orgId}: Stop paying inside the free period; card removed, back to the free period`);
     return { ok: true, freeMonth: true };
   }
   // The current month must be open, so its end is the stop date.
@@ -463,7 +463,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 /**
  * When the first (or next) charge is made for a club whose card was just
  * saved: the morning after the current billing month ends (month 1 while
- * still in the free month). Never "today": saving a card charges nothing.
+ * still in the free period). Never "today": saving a card charges nothing.
  */
 function nextChargeOn(trialEndsAt: Date, now: Date): Date {
   return monthBounds(trialEndsAt, Math.max(1, monthIndexAt(trialEndsAt, now))).endsAt;

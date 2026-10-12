@@ -34,9 +34,9 @@
  *     ("subscribed");
  *   - a club fee invoice unpaid: stays paused, now "payment-failed", so
  *     "Update card and pay" brings it back as usual;
- *   - no card, free month still running: back to "trial" with the same
+ *   - no card, free period still running: back to "trial" with the same
  *     `trialEndsAt` (never reset);
- *   - no card, free month over: stays paused, now "no-card", so Add a card
+ *   - no card, free period over: stays paused, now "no-card", so Add a card
  *     brings it back as usual.
  * This keeps one rule for the billing page: a club paused because removed
  * is never offered Add a card (it would pay for a group MatchTime is not
