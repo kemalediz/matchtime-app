@@ -65,6 +65,15 @@ export interface GroupHelloInput {
   /** The "say In once more" line. Default true; it is still shown only to
    *  a club that signs up each week. False gives today's hello on defaults. */
   catchUp?: boolean;
+  /** Rolling squad only (2026-10-13): does MatchTime already have a squad
+   *  to carry onto the next game (`hasSquadToCarry`, rolling-squad-rules.ts,
+   *  the seeding's own rule), one that fills at least HALF of that game's
+   *  places? True: "if you played last time, you're in".
+   *  False OR ABSENT: the first-game form, which asks for an In. Absent
+   *  reads as false on purpose: telling a whole group they are in when
+   *  nobody is costs a game; asking for an In that was not needed costs
+   *  nothing. */
+  hasSquadToCarry?: boolean;
 }
 
 /** What a club has before anybody changes a setting (the column defaults). */
@@ -110,10 +119,18 @@ export function buildGroupHello(input: GroupHelloInput): string {
     } else {
       if (rolling) {
         const d = c.dropOutDeadline ? dayTime(c.dropOutDeadline) : null;
-        lines.push(
-          s.sj_hello_rolling({ deadline: d ? `${d.day} ${d.time}` : null }),
-          s.sj_hello_rolling_join({ mode: c.organisersPick ? "organiser" : c.bench ? "bench" : "no-bench" }),
-        );
+        const deadline = d ? `${d.day} ${d.time}` : null;
+        if (input.hasSquadToCarry === true) {
+          lines.push(
+            s.sj_hello_rolling({ deadline }),
+            s.sj_hello_rolling_join({ mode: c.organisersPick ? "organiser" : c.bench ? "bench" : "no-bench" }),
+          );
+        } else {
+          // THE FIRST GAME: MatchTime has no last time for this club, so
+          // nobody is in yet. One line asks for the In; the "not in the
+          // squad yet?" line would be about everybody, so it is left out.
+          lines.push(s.sj_hello_rolling_first({ deadline, mode: c.organisersPick ? "organiser" : "first-come" }));
+        }
       } else {
         if (!c.squadFromList) lines.push(s.sj_hello_whos_in);
         if (c.dropOutDeadline) lines.push(s.sj_hello_deadline(dayTime(c.dropOutDeadline)));

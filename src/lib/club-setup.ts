@@ -814,10 +814,14 @@ async function goLiveClubTx(orgId: string, by: string, now: Date, opts: GoLiveOp
       await closeUnfinishedSetupLearning(orgId, tx, now);
 
       // The hello: read INSIDE the transaction, so it says what the club
-      // is set to at this instant, not at approval.
+      // is set to at this instant, not at approval. `now` is the go-live
+      // instant: a rolling club's hello asks whether the seeding will have
+      // a squad to carry, and reads the fixtures as they stand after the
+      // quieting just above.
       const input = await loadHelloInput(orgId, {
         client: tx as unknown as HelloReadClient,
         organiserUserId: opts.organiserUserId ?? null,
+        now,
       });
       const hello = buildGroupHello(input);
       await tx.botJob.create({ data: { orgId, kind: "group", text: hello, createdAt: now } });
