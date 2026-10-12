@@ -194,6 +194,71 @@ export function decideSeed(args: {
 }
 
 /**
+ * WHERE A SQUAD TO CARRY WOULD COME FROM, AS THINGS STAND AT `now`
+ * (2026-10-13). For the group hello of a club going live: it may only say
+ * "if you played last time, you're in next time too" when the seeding will
+ * really put somebody on the next game. So this asks the seeding's own
+ * question, per weekly fixture, with the seeding's own functions:
+ *
+ *   - a live match that has ALREADY KICKED OFF is read as completed: that
+ *     is what go-live does to it (`quietMatchesBeforeGoLive`), and the
+ *     seeding does not look at `postMatchEndFlow`, so a quieted match with
+ *     players on it IS a source;
+ *   - the next game is the soonest live match still to come; its source
+ *     is `pickSeedSource` (most recent completed, same fixture, within
+ *     `ROLLING_LOOKBACK_DAYS`);
+ *   - a next game that was seeded already is its own answer: it has a
+ *     carried squad if it has players on it;
+ *   - with no next game generated yet, one a week from `now` is assumed.
+ *
+ * `seeded` true: read the match's own CONFIRMED rows. False: read the
+ * rows `carryOverExclusion` would let through.
+ */
+export function carrySourcesAt<T extends FixtureMatch>(matches: T[], now: Date): Array<{ match: T; seeded: boolean }> {
+  const t = now.getTime();
+  const asAtGoLive = matches.map((m) => (LIVE.has(m.status) && m.date.getTime() <= t ? { ...m, status: "COMPLETED" } : m));
+  const fixtures: RecurringFixtureKey[] = [];
+  for (const m of asAtGoLive) {
+    if (!fixtures.some((f) => isSameRecurringFixture(f, m.activity))) fixtures.push(m.activity);
+  }
+  const out: Array<{ match: T; seeded: boolean }> = [];
+  for (const fixture of fixtures) {
+    let next: T | null = null;
+    for (const m of asAtGoLive) {
+      if (m.isHistorical || !LIVE.has(m.status)) continue;
+      if (!isSameRecurringFixture(m.activity, fixture)) continue;
+      if (!next || m.date.getTime() < next.date.getTime()) next = m;
+    }
+    if (next?.rollingSeededAt) {
+      out.push({ match: next, seeded: true });
+      continue;
+    }
+    const target: FixtureMatch = next ?? { id: "", date: new Date(t + 7 * DAY_MS), status: "UPCOMING", activity: fixture };
+    const source = pickSeedSource(target, asAtGoLive);
+    if (source) out.push({ match: source, seeded: false });
+  }
+  return out;
+}
+
+/**
+ * Does MatchTime already have a squad to carry over for this club? True
+ * when, for at least one weekly fixture, the seeding would write (or has
+ * written) at least one player onto the next game. `rows` holds the
+ * attendance of the matches `carrySourcesAt` named, by match id.
+ */
+export function hasSquadToCarry(args: {
+  matches: FixtureMatch[];
+  rows: Map<string, SeedSourceRow[]>;
+  now: Date;
+}): boolean {
+  return carrySourcesAt(args.matches, args.now).some(({ match, seeded }) =>
+    (args.rows.get(match.id) ?? []).some((r) =>
+      seeded ? r.status === "CONFIRMED" : carryOverExclusion(r) === null,
+    ),
+  );
+}
+
+/**
  * Is an OUT late? Judged by when the player SENT it, not when it reached
  * us (plan 1.6): "sorry can't make it" typed at 20:55 and delivered at
  * 21:40 is on time for a 21:00 deadline. Exactly at the deadline is on

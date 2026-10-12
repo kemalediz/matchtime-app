@@ -1371,10 +1371,21 @@ async function computeForMatch(
       // with the drop-out deadline while it is still ahead. Null for a
       // club without the setting, so Sutton's bytes are unchanged.
       const rollingDropOutDeadline = features.rollingSquad ? dropOutDeadlineFor(m, activity.org) : null;
-      const rollingDeadlineLine =
-        rollingDropOutDeadline && now < rollingDropOutDeadline
-          ? buildRollingDeadlineLine({ deadline: weekdayTimeLabel(lang, rollingDropOutDeadline), lang })
-          : null;
+      // A rolling club's FIRST game (2026-10-13): nobody was carried onto
+      // it, so the line must not say "you're in unless you say OUT". The
+      // same test the rolling announcement uses: seeded, and at least one
+      // player carried. One count, only while the line is due.
+      let rollingDeadlineLine: string | null = null;
+      if (rollingDropOutDeadline && now < rollingDropOutDeadline) {
+        const carried =
+          m.rollingSeededAt != null &&
+          (await db.attendanceEvent.count({ where: { matchId, cause: "rolling-squad" } })) > 0;
+        rollingDeadlineLine = buildRollingDeadlineLine({
+          deadline: weekdayTimeLabel(lang, rollingDropOutDeadline),
+          carried,
+          lang,
+        });
+      }
 
       let text: string | null = null;
       let mentions: string[] | undefined;
