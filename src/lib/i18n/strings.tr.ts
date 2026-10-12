@@ -1702,6 +1702,59 @@ export const tr: Strings = {
     `📊 *İstatistikler:* bana istediğinizi sorun, herkesin kendi istatistik sayfası olur.\n` +
     `💷 *Maç ücretleri:* organizatörünüz isterse kart ya da banka ile ödeme bağlantılarını açabilir.\n\n` +
     `Sohbet sırasında sessiz kalırım, sadece VARIM, YOKUM ya da etiketlenince yanıt veririm. Başka bir şey için beni etiketleyin: *@Match Time yardım*`,
+
+  // ════ BEGIN settings-aware group hello (go-live slice S2, 2026-10-12) ════
+  // The parts `buildGroupHello` (src/lib/group-hello.ts) composes the
+  // hello from. On default settings, without `sj_hello_catch_up`, the
+  // result equals `sj_group_hello` above byte for byte
+  // (`group-hello.test.ts` pins it): change one and you must change the other.
+  sj_hello_opener: (p) =>
+    `👋 Herkese merhaba, ben *MatchTime*. ${p.organiser ? `${p.organiser} beni bu grubun maçlarını düzenlemem için kurdu.` : "Bu grubun maçlarını düzenlemek için buradayım."} ` +
+    `Burada, WhatsApp'ta şunları yaparım:`,
+  sj_hello_whos_in: `✅ *Kim var:* *VARIM* ya da *YOKUM* yazmanız yeter. Listeyi tutar, mesajınıza tik koyarım.`,
+  sj_hello_rolling: (p) =>
+    `🔁 *Her hafta aynı kadro:* geçen maçta oynadıysanız bir sonrakinde de kadrodasınız. Gelemeyecekseniz${p.deadline ? ` *${p.deadline}* saatine kadar` : ""} *YOKUM* yazmanız yeter.`,
+  sj_hello_rolling_join: (p) =>
+    p.mode === "organiser"
+      ? `✅ *Henüz kadroda değil misiniz?* *VARIM* yazın, sizi yedeğe yazarım.`
+      : p.mode === "bench"
+        ? `✅ *Henüz kadroda değil misiniz?* *VARIM* yazın; yer varsa sizi eklerim, yoksa yedeğe yazarım.`
+        : `✅ *Henüz kadroda değil misiniz?* *VARIM* yazın; yer varsa sizi eklerim.`,
+  sj_hello_monthly: `📋 *Aylık kadro:* daimi oyuncular aya yazılır, tüm ay için bir kez öder ve ayın her maçında kadrodadır. Bir maça gelemeyecekseniz *YOKUM* yazın.`,
+  sj_hello_monthly_join: (p) =>
+    p.organisersPick
+      ? `✅ *Daimi oyuncu değil misiniz?* Yer açılınca *VARIM* yazın; yedek listesine girersiniz, kimin oynayacağını organizatörler seçer.`
+      : `✅ *Daimi oyuncu değil misiniz?* Yer açılınca *VARIM* yazıp yeri alın. Yalnızca o maçın ücretini ödersiniz.`,
+  sj_hello_deadline: (p) =>
+    `⏳ *Son çıkış saati:* ${p.day} ${p.time}. Oynayamayacaksanız o saatten önce *YOKUM* yazın.`,
+  sj_hello_list: (p) => `📋 *Son liste:* ${p.day} ${p.time} saatinde buraya gönderirim.`,
+  sj_hello_bench: `🪑 *Yedekler:* kadro dolunca geç gelenler yedeğe yazılır, biri çıkarsa ilk şans yedeklerindir.`,
+  sj_hello_bench_organiser: `🪑 *Yedekler:* *VARIM* yazanlar yedeğe yazılır, boşalan her yere kimin gireceğini organizatörler seçer.`,
+  sj_hello_remind: `⏰ *Hatırlatma:* *"@Match Time perşembe hatırlat"* yazın, o zaman size özelden yazarım.`,
+  sj_hello_teams: `⚖️ *Dengeli takımlar:* beni etiketleyin, oyuncu puanlarına göre dengeli takımlar kurarım.`,
+  sj_hello_mom: (p) =>
+    p.mom && p.ratings
+      ? `⭐ *Maçın oyuncusu ve puanlar* her maçtan sonra.`
+      : p.mom
+        ? `⭐ *Maçın oyuncusu* her maçtan sonra.`
+        : `⭐ *Oyuncu puanları* her maçtan sonra.`,
+  sj_hello_stats: `📊 *İstatistikler:* bana istediğinizi sorun, herkesin kendi istatistik sayfası olur.`,
+  sj_hello_fees: (p) => {
+    const how = p.mode === "card" ? "kartla" : p.mode === "bank" ? "banka ile" : "kart ya da banka ile";
+    if (p.mode !== "off") {
+      return `💷 *Maç ücretleri:* size gönderdiğim bağlantıyla ${how} ödeyebilirsiniz.${p.tracking ? " Kimin ödediğini takip eder, ödemeyenlere hatırlatırım." : ""}`;
+    }
+    return p.tracking
+      ? `💷 *Maç ücretleri:* kimin ödediğini takip eder, ödemeyenlere hatırlatırım.`
+      : `💷 *Maç ücretleri:* organizatörünüz isterse kart ya da banka ile ödeme bağlantılarını açabilir.`;
+  },
+  sj_hello_catch_up: `Sonraki maç için zaten VARIM dediniz mi? Listeye yazabilmem için bir kez daha yazın.`,
+  sj_hello_closer: (p) =>
+    p.attendance
+      ? `Sohbet sırasında sessiz kalırım, sadece VARIM, YOKUM ya da etiketlenince yanıt veririm. Başka bir şey için beni etiketleyin: *@Match Time yardım*`
+      : `Sohbet sırasında sessiz kalırım, sadece etiketlenince yanıt veririm. Başka bir şey için beni etiketleyin: *@Match Time yardım*`,
+  // ════ END settings-aware group hello ════
+
   sj_dm_approved: (p) =>
     `Güzel haber: ${p.club} artık aktif. ${p.group ? `"${p.group}" grubunda` : "Grubunuzda"} herkese merhaba dedim.\n\n` +
     `Vaktiniz olunca ayarlamanız gereken birkaç şey:\n\n` +
