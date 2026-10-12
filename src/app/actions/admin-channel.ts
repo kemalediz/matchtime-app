@@ -12,7 +12,7 @@
 import { auth } from "@/lib/auth";
 import { requireOrgAdmin } from "@/lib/org";
 import { loadAdminChannelStatus, type AdminChannelStatus } from "@/lib/admin-channel";
-import { createAdminGroupLinkCode, unlinkAdminGroup } from "@/lib/admin-group-link";
+import { adminGroupLinkCodeForSettings, unlinkAdminGroup } from "@/lib/admin-group-link";
 import { revalidatePath } from "next/cache";
 
 async function requireAdminOf(orgId: string): Promise<void> {
@@ -27,10 +27,19 @@ export async function getAdminChannelStatusAction(orgId: string): Promise<AdminC
   return loadAdminChannelStatus(orgId);
 }
 
-/** "Link admin group": a new single-use code, valid 48 hours. */
-export async function createAdminGroupLinkCodeAction(orgId: string): Promise<{ code: string; expiresAt: string }> {
+/**
+ * "Link admin group": the club's single-use code. The code already open
+ * for the club (the one MatchTime sent in the setup DM, or the one from an
+ * earlier press) is returned as it is, with its real expiry, while it has
+ * more than an hour left; otherwise a new one, valid 48 hours.
+ * `fresh: true` ("New code") always mints a new one, replacing the old.
+ */
+export async function createAdminGroupLinkCodeAction(
+  orgId: string,
+  opts: { fresh?: boolean } = {},
+): Promise<{ code: string; expiresAt: string }> {
   await requireAdminOf(orgId);
-  const { code, expiresAt } = await createAdminGroupLinkCode(orgId);
+  const { code, expiresAt } = await adminGroupLinkCodeForSettings(orgId, { fresh: opts?.fresh === true });
   return { code, expiresAt: expiresAt.toISOString() };
 }
 

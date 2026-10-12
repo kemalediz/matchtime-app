@@ -2318,6 +2318,30 @@ export const en = {
     "Step 3: we're checking your club, usually within a day. MatchTime stays quiet in the group until your club is approved and you tell it to start, and messages you on WhatsApp as soon as it's approved.",
   // ════ END approval holds the club ════
 
+  // ════ BEGIN the setup follow-ups: reminder and admin group step (go-live slices S6 and S7, 2026-10-12) ════
+  // For a club that is approved and still setting up. All deterministic,
+  // all on the platform channel. No dashes.
+  /** The optional admin group step of the setup DM: its own block, right
+   *  before the GO line. "My next message" is `sj_dm_ready_admin_command`,
+   *  sent as a separate DM straight after, so it can be forwarded whole. */
+  sj_dm_ready_admin_group:
+    "👥 *Admin group (optional):* if your organisers have their own WhatsApp group, add me to it and send my next message there. Admin messages will then go to that group instead of to you.",
+  /** The second DM, on its own: exactly the link command, and nothing
+   *  else. No tag: the words "Match Time" address it
+   *  (`parseAdminGroupLinkMessage`, admin-channel-rules.ts). */
+  sj_dm_ready_admin_command: (p: { code: string }): string => `Match Time admin group ${p.code}`,
+  /** The ONE reminder, 24 hours after the setup DM was due. `url` is the
+   *  organiser's signed-in link to /admin/settings. Never repeated, and
+   *  there is no automatic go-live. */
+  sj_dm_reminder: (p: { club: string; group: string | null; url: string }): string =>
+    `Just checking: ${p.club} is approved, but I'm still quiet in ${p.group ? `"${p.group}"` : "your group"}. Reply *GO* when you're ready and I'll introduce myself, or check the settings first: ${p.url}\nI won't remind you again.`,
+  /** By DM, to an organiser who sent the admin group command in their own
+   *  players' group while the club is still setting up. Nothing is posted
+   *  in that group. */
+  sj_admin_group_players_group:
+    "That is your players' group, so it can't be the admin group. Add me to a separate group for the admins and send the message there.",
+  // ════ END the setup follow-ups ════
+
   // ── Admin DM: somebody was added to the club's WhatsApp group (2026-09-29) ──
   /** A number MatchTime has never seen, name unknown. `url` is the admin's
    *  own signed-in link (2026-09-30: this ended in a bare
@@ -2502,6 +2526,11 @@ export const en = {
   settings_admin_channel_step_send: "In that group, send:",
   settings_admin_channel_command: (p: { code: string }): string => `@Match Time admin group ${p.code}`,
   settings_admin_channel_validity: "The code works once and lasts 48 hours.",
+  /** Under a code that is on screen: its REAL expiry (2026-10-12). The
+   *  code MatchTime sent in the setup DM lasts 7 days, and the Settings
+   *  page shows that same code instead of replacing it. `when` is
+   *  `longDayTimeLabel`: "Monday 19 October at 12:00". */
+  settings_admin_channel_valid_until: (p: { when: string }): string => `The code works once and is valid until ${p.when}.`,
   settings_admin_channel_linked: (p: { group: string }): string => `Linked: ${p.group}`,
   settings_admin_channel_unlink: "Unlink",
   settings_admin_channel_pending_note:

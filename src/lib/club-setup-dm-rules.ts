@@ -181,8 +181,10 @@ export interface SetupAskDmInput {
   /** /admin/activities at the fee field, when the match fee is a suggestion. */
   feeUrl?: string | null;
   /**
-   * THE ADMIN GROUP BLOCK (go-live slice S7 fills it; nothing does yet).
-   * When given it goes in as its own block right before the GO line.
+   * THE ADMIN GROUP BLOCK (go-live slice S7): `setupAdminGroupBlock`
+   * (club-setup-followup-rules.ts), passed by `sendSetupDm` for a club
+   * with no admin group linked. When given it goes in as its own block
+   * right before the GO line.
    */
   adminGroupBlock?: string | null;
   /**
@@ -233,8 +235,9 @@ export function composeSetupAskDm(p: SetupAskDmInput): string {
 
   // ════ ADMIN GROUP BLOCK: INSERTION POINT (go-live slice S7) ════
   // The optional "add me to your organisers' group" step goes here, as one
-  // block, between the ratings line and the GO line. Pass it in as
-  // `adminGroupBlock`; this slice passes nothing.
+  // block, between the ratings line and the GO line, passed in as
+  // `adminGroupBlock` (slice S7: club-setup-dm.ts, for a club with no
+  // admin group linked).
   if (p.adminGroupBlock) blocks.push(p.adminGroupBlock);
   // ════ END ADMIN GROUP BLOCK ════
 
