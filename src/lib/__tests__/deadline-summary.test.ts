@@ -150,9 +150,14 @@ describe("the deadline summary", () => {
     expect(h.state.claimed.size).toBe(0);
   });
 
-  it("a tick after 22:00 waits for 08:00", async () => {
-    expect((await sendDueDeadlineSummaries("org-fnf", new Date("2026-10-05T21:05:00.000Z"))).sent).toBe(0);
-    expect((await sendDueDeadlineSummaries("org-fnf", new Date("2026-10-06T07:05:00.000Z"))).sent).toBe(1);
+  it("a tick after 23:00 waits for 09:00", async () => {
+    expect((await sendDueDeadlineSummaries("org-fnf", new Date("2026-10-05T22:05:00.000Z"))).sent).toBe(0); // 23:05 BST
+    expect((await sendDueDeadlineSummaries("org-fnf", new Date("2026-10-06T07:05:00.000Z"))).sent).toBe(0); // 08:05 BST
+    expect((await sendDueDeadlineSummaries("org-fnf", new Date("2026-10-06T08:05:00.000Z"))).sent).toBe(1); // 09:05 BST
+  });
+
+  it("a tick at 22:05, held under the old 22:00 rule, sends", async () => {
+    expect((await sendDueDeadlineSummaries("org-fnf", new Date("2026-10-05T21:05:00.000Z"))).sent).toBe(1);
   });
 
   it("the Turkish club gets the Turkish summary", async () => {

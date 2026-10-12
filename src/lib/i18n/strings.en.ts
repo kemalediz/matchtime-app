@@ -2492,7 +2492,7 @@ export const en = {
   wd_saved: "Weekly deadlines saved",
   wd_err_incomplete: "Pick both a day and a time, or neither.",
   wd_err_bad_value: "That day or time is not valid.",
-  wd_err_outside_hours: "Pick a time between 08:00 and 21:30.",
+  wd_err_outside_hours: "Pick a time between 09:00 and 22:30.",
   wd_err_order: "The drop-out deadline has to come before the list is published.",
   wd_err_after_kickoff: "On match day, pick a time before kickoff.",
   // ── Slice 2a: the admin channel (2026-09-30) ──

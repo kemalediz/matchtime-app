@@ -73,6 +73,8 @@ export async function prepareWeeklyDeadlinesPatch(
     where: { orgId, isActive: true },
     select: { dayOfWeek: true, time: true },
   });
-  const error = validateWeeklyDeadlines(next, activities);
+  // `saved`: a time stored under the earlier allowed hours is not refused
+  // while it stays as it is (the organiser is saving the other row).
+  const error = validateWeeklyDeadlines(next, activities, saved);
   return { data: data as WeeklyDeadlinesData, error };
 }

@@ -985,7 +985,7 @@ export function renderPricedList(month: SignupMonth, facts: { collectorName: str
  *   - a DM to each regular who has not paid: a day before, on the day,
  *     then once a day for three days. Never the collector (the existing
  *     rule), never somebody who says they have paid (unless the collector
- *     answered "not arrived"), never 22:00 to 07:59.
+ *     answered "not arrived"), never 23:00 to 08:59.
  * Every instruction has its own key and is claimed when it is handed out.
  */
 export async function monthPaymentPosts(

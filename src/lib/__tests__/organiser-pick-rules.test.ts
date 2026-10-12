@@ -116,9 +116,12 @@ describe("decidePickRound", () => {
     expect(decidePickRound({ ...base, dropOutDeadline: deadline }).action).toBe("wait");
     expect(decidePickRound({ ...base, dropOutDeadline: new Date("2026-10-05T20:00:00Z") }).action).toBe("open");
   });
-  it("waits overnight (a drop at 23:00 waits for 08:00)", () => {
-    expect(decidePickRound({ ...base, now: new Date("2026-10-07T22:00:00Z") }).action).toBe("wait");
-    expect(decidePickRound({ ...base, now: new Date("2026-10-08T07:00:00Z") }).action).toBe("open");
+  it("waits overnight (a drop at 23:00 waits for 09:00)", () => {
+    expect(decidePickRound({ ...base, now: new Date("2026-10-07T21:59:00Z") }).action).toBe("open"); // 22:59 BST
+    expect(decidePickRound({ ...base, now: new Date("2026-10-07T22:00:00Z") }).action).toBe("wait"); // 23:00 BST
+    expect(decidePickRound({ ...base, now: new Date("2026-10-08T07:00:00Z") }).action).toBe("wait"); // 08:00 BST
+    expect(decidePickRound({ ...base, now: new Date("2026-10-08T07:59:00Z") }).action).toBe("wait"); // 08:59 BST
+    expect(decidePickRound({ ...base, now: new Date("2026-10-08T08:00:00Z") }).action).toBe("open"); // 09:00 BST
   });
   it("waits while the fallback offer is running, and after kickoff", () => {
     expect(decidePickRound({ ...base, openOffers: 1 }).action).toBe("wait");

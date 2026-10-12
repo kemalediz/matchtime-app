@@ -16,7 +16,7 @@
  * Once per match: claimed by the `SentNotification` key
  * `<matchId>:deadline-summary` (unique; first writer wins). If the notice
  * cannot be queued the claim is released so the next poll tries again.
- * Due 08:00 to 21:59 London, after the deadline and before kickoff, for
+ * Due 09:00 to 22:59 London, after the deadline and before kickoff, for
  * the next live match of its fixture only. A club without the setting
  * (Sutton FC), a club that is not operational (not approved or dormant)
  * and a club with the attendance feature off get nothing.

@@ -28,7 +28,7 @@ import { test, expect, resetDb } from "../fixtures";
 import { E2E, E2E_BASE_URL, REPO_ROOT } from "../helpers/env";
 import { testDb, type TestDb } from "../helpers/test-db";
 import { messageHoursSendAfter } from "@/lib/message-hours";
-import { formatLondon, londonWallClockToUtc } from "@/lib/london-time";
+import { formatLondon } from "@/lib/london-time";
 
 const execFileAsync = promisify(execFile);
 
@@ -40,20 +40,18 @@ const CRON = { authorization: `Bearer ${E2E.CRON_SECRET}` };
 
 const HOUR = 60 * 60 * 1000;
 const today = new Date().toISOString().slice(0, 10);
-/** 12:00 London in summer, 11:00 in winter: inside 09:00 to 23:00, and outside the owner's quiet hours. */
+/** 12:00 London in summer, 11:00 in winter: inside 09:00 to 23:00, the message hours and the owner's own. */
 const DAY = new Date(`${today}T11:00:00.000Z`);
 /** 00:30 or 23:30 London: outside message hours, and inside the owner's quiet hours. */
 const NIGHT = new Date(`${today}T23:30:00.000Z`);
 /**
- * The owner's quiet hours, worked out here (owner-dm.ts imports the
- * database client, which Playwright's transpiler cannot load): a DM queued
- * between 22:00 and 08:00 London waits for 08:00; otherwise null.
+ * The owner's quiet hours are the night of the shared message hours
+ * (owner-dm.ts imports the database client, which Playwright's transpiler
+ * cannot load, so the shared rule is called directly): a DM queued between
+ * 23:00 and 09:00 London waits for 09:00; otherwise null.
  */
 function ownerQuietUntil(now: Date): Date | null {
-  const hour = Number(formatLondon(now, "H"));
-  if (hour >= 22) return londonWallClockToUtc(new Date(now.getTime() + 12 * HOUR), "08:00");
-  if (hour < 8) return londonWallClockToUtc(now, "08:00");
-  return null;
+  return messageHoursSendAfter(now);
 }
 const ago = (from: Date, hours: number, extraMs = 0) => new Date(from.getTime() - hours * HOUR - extraMs);
 
@@ -369,7 +367,7 @@ test("B: still setting up 72 hours after approval: ONE owner DM with the clubs p
   await expectPlayersGroupSilent(request, db, c);
 });
 
-test("B: in the owner's quiet hours the note waits for 08:00 London; six runs at once still queue one", async ({ request, db }) => {
+test("B: in the owner's quiet hours the note waits for 09:00 London; six runs at once still queue one", async ({ request, db }) => {
   const c = club("Night Owls FC");
   await seedHeld(c, { approvedAt: ago(NIGHT, 73), askedAt: ago(NIGHT, 73), dm: "none" });
   const runs = await Promise.all(Array.from({ length: 6 }, () => cron(request, NIGHT)));
@@ -378,6 +376,8 @@ test("B: in the owner's quiet hours the note waits for 08:00 London; six runs at
   expect(runs.reduce((n, r) => n + (r.setupStuck?.noted ?? 0), 0)).toBe(1);
   expect(ownerQuietUntil(NIGHT)).not.toBeNull();
   expect(notes[0].sendAfter).toEqual(ownerQuietUntil(NIGHT));
+  // 09:00 London, said without the shared rule: the hour and the minute of the hold.
+  expect(formatLondon(notes[0].sendAfter!, "HH:mm")).toBe("09:00");
   expect(await alerts(db, c.org)).toHaveLength(1);
 });
 

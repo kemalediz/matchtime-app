@@ -28,17 +28,18 @@
  * anyway, and a BotJob queued for a muted club would go out the moment it
  * is unmuted, about a day that is long over.
  *
- * NOT FROM 22:00 LONDON. `sendAdminNotice` holds a notice queued between
- * 22:00 and 07:59 until 08:00. Before midnight that 08:00 is TOMORROW, by
- * when the allowance has reset and the message would be false. So from
- * 22:00 nothing is queued or claimed; the cap is under two hours from its
- * reset. Between 00:00 and 07:59 the notice is held to 08:00 the same day,
- * which is still true.
+ * NOT FROM 23:00 LONDON. `sendAdminNotice` holds a notice queued between
+ * 23:00 and 08:59 until 09:00 (the shared message hours). Before midnight
+ * that 09:00 is TOMORROW, by when the allowance has reset and the message
+ * would be false. So from 23:00 nothing is queued or claimed; the cap is
+ * under an hour from its reset. Between 00:00 and 08:59 the notice is
+ * held to 09:00 the same day, which is still true.
  *
  * NO MODEL. The text is a fixed string from the i18n table.
  */
 import { db } from "./db";
 import { formatLondon } from "./london-time";
+import { MESSAGE_HOURS_TO_HOUR } from "./message-hours";
 import { sendAdminNotice } from "./admin-channel";
 import { isClubOperational } from "./club-approval-state";
 import { t } from "./i18n/t";
@@ -46,17 +47,15 @@ import { t } from "./i18n/t";
 /** The SentNotification kind for the claim row. */
 export const AI_CAP_NOTICE_KIND = "ai-cap-notice";
 
-/** From this London hour on, no notice: it would only arrive tomorrow. */
-const NOTICE_LAST_HOUR_EXCLUSIVE = 22;
-
 /** The once-a-day claim key, on London's calendar day. */
 export function aiCapNoticeKey(orgId: string, now: Date): string {
   return `${orgId}:ai-cap:${formatLondon(now, "yyyy-MM-dd")}`;
 }
 
-/** True from 22:00 to 23:59 London. */
+/** True from 23:00 to 23:59 London: after the message hours close, a
+ *  notice would be held for tomorrow's 09:00. */
 export function aiCapNoticeTooLate(now: Date): boolean {
-  return Number(formatLondon(now, "H")) >= NOTICE_LAST_HOUR_EXCLUSIVE;
+  return Number(formatLondon(now, "H")) >= MESSAGE_HOURS_TO_HOUR;
 }
 
 /**

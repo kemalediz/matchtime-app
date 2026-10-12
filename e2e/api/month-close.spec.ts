@@ -424,13 +424,15 @@ test("5. the morning after the last game the month is closed once, and the summa
     [matchId(1), P.omar.id, ORG],
   );
 
-  // Not at night, and not before 08:00 the morning after.
+  // Not at night, and not before 09:00 the morning after.
   await poll(request, at(G[N - 1], 0, "23:05"));
   await poll(request, closing(7));
+  await poll(request, closing(8));
+  await poll(request, closing(8, 59));
   expect((await db.one<{ status: string }>(`SELECT status FROM "SquadMonth" WHERE id = $1`, [MONTH]))!.status).toBe("running");
 
   // Two polls at the same moment: one close, one summary.
-  await Promise.all([poll(request, closing(8)), poll(request, closing(8))]);
+  await Promise.all([poll(request, closing(9)), poll(request, closing(9))]);
   const month = await db.one<{ status: string; closedAt: Date | null }>(`SELECT status, "closedAt" FROM "SquadMonth" WHERE id = $1`, [MONTH]);
   expect(month!.status).toBe("closed");
   expect(month!.closedAt).not.toBeNull();
@@ -470,7 +472,7 @@ test("5. the morning after the last game the month is closed once, and the summa
   expect(await summaries(db, P.alex)).toEqual([]);
 
   // The next hour, and the next day: still closed once, still one summary.
-  await poll(request, closing(9));
+  await poll(request, closing(10));
   await poll(request, at(G[N - 1], 2, "10:05"));
   expect(await summaries(db, P.rob)).toHaveLength(1);
 });

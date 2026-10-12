@@ -8,7 +8,7 @@
  *   rollingSeedDueAt the first 08:00 London after the source ends
  *   decideSeed       who is carried over, in what order, and overflow
  *   isLateDrop       an OUT after the drop-out deadline, by SEND time
- *   adminNoticeSendAfter  admin notices wait for 08:00, never at night
+ *   adminNoticeSendAfter  admin notices wait for 09:00, never at night
  */
 import { describe, it, expect } from "vitest";
 import {
@@ -287,19 +287,25 @@ describe("isLateDrop (plan 1.6): send time decides", () => {
   });
 });
 
-describe("adminNoticeSendAfter: London 08:00 to 21:59, else held to 08:00", () => {
+describe("adminNoticeSendAfter: London 09:00 to 22:59, else held to 09:00", () => {
   it("daytime sends now", () => {
     expect(adminNoticeSendAfter(new Date("2026-10-05T12:00:00.000Z"))).toBeNull();
     expect(adminNoticeSendAfter(new Date("2026-10-05T20:59:00.000Z"))).toBeNull(); // 21:59 BST
+    expect(adminNoticeSendAfter(new Date("2026-10-05T21:00:00.000Z"))).toBeNull(); // 22:00 BST
+    expect(adminNoticeSendAfter(new Date("2026-10-05T21:59:00.000Z"))).toBeNull(); // 22:59 BST
+    expect(adminNoticeSendAfter(new Date("2026-10-05T08:00:00.000Z"))).toBeNull(); // 09:00 BST
   });
-  it("22:00 or later waits for 08:00 tomorrow", () => {
-    expect(adminNoticeSendAfter(new Date("2026-10-05T21:00:00.000Z"))?.toISOString()).toBe(
-      "2026-10-06T07:00:00.000Z",
+  it("23:00 or later waits for 09:00 tomorrow", () => {
+    expect(adminNoticeSendAfter(new Date("2026-10-05T22:00:00.000Z"))?.toISOString()).toBe(
+      "2026-10-06T08:00:00.000Z",
     );
   });
-  it("before 08:00 waits for 08:00 today", () => {
+  it("before 09:00 waits for 09:00 today", () => {
     expect(adminNoticeSendAfter(new Date("2026-10-06T05:00:00.000Z"))?.toISOString()).toBe(
-      "2026-10-06T07:00:00.000Z",
+      "2026-10-06T08:00:00.000Z",
     );
+    expect(adminNoticeSendAfter(new Date("2026-10-06T07:59:00.000Z"))?.toISOString()).toBe(
+      "2026-10-06T08:00:00.000Z",
+    ); // 08:59 BST
   });
 });

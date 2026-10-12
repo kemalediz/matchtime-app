@@ -196,7 +196,7 @@ export async function handleMonthlyPaste(args: {
   const day = formatLondon(now, "yyyy-MM-dd");
   const dm = (phone: string, text: string) =>
     db.botJob.create({
-      // Never between 22:00 and 07:59 London: held until 08:00.
+      // Never between 23:00 and 08:59 London: held until 09:00.
       data: { orgId, kind: "dm", phone: phone.replace(/^\+/, ""), text, ...(sendAfter ? { sendAfter } : {}) },
     });
   /** A DM to the SENDER about their own paste, at most once a day per

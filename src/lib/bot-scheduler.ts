@@ -27,6 +27,7 @@ import {
 import type { PiCaps } from "./admin-channel-rules";
 import { getOrgFeatures, type OrgFeatures } from "./org-features";
 import { formatLondon } from "./london-time";
+import { inMessageHours } from "./message-hours";
 import { evaluateFollowupGuard } from "./tentative-followup";
 import {
   RECRUIT_CHASE_AFTER_MS,
@@ -812,7 +813,7 @@ export async function computeDuePosts(
   // MONTHLY SQUAD (slice 3, 2026-10-06): the month's SIGN-UP list, for a
   // month that is "open" (MDs/monthly-squad-plan-2026-10-05.md, 4.1). One
   // message per month, when the list differs from the one the group last
-  // saw, at most every 30 minutes, 08:00 to 21:59 London
+  // saw, at most every 30 minutes, 09:00 to 22:59 London
   // (`decideSignupListPost`). Its keys are `org-<id>:msu:list:`, never the
   // weekly list's `<matchId>:month-list:`. A club on "weekly" makes no
   // query here. A failure costs this one post, never the poll.
@@ -1655,7 +1656,7 @@ async function computeForMatch(
   //    posted when the list differs from the one the group last saw, and
   //    once on match morning (held while the group has seen this same
   //    list in the last three hours). `decideListPost` holds the limits: never
-  //    within 30 minutes of the last list post, never 22:00 to 07:59
+  //    within 30 minutes of the last list post, never 23:00 to 08:59
   //    London, never once the teams are out, only for the fixture's next
   //    match. "The one the group last saw" is the newest
   //    `<matchId>:month-list:` row: a post of ours, or a member's paste
@@ -1706,7 +1707,7 @@ async function computeForMatch(
       teamsOut: m.teamAssignments.length > 0,
       // The rule the weekly roster got in PR #204, on the list's own rows:
       // the same list is not shown twice inside three hours, so a "who's
-      // in?" answered at 07:30 is not followed by the same list at 08:00.
+      // in?" answered at 08:30 is not followed by the same list at 09:00.
       sameListShownRecently: lastShownHash === hash && shownInQuietWindow(shown[0]?.createdAt, now),
     });
     if (due) {
@@ -1910,9 +1911,9 @@ async function computeForMatch(
   if (m.benchSlotOffers.length > 0) {
     // Daytime gate: never ping anyone about a slot overnight. A drop
     // at 00:24 just waits — the offer stays open (no waMessageId yet)
-    // and posts when people are awake. London 08:00–21:59.
-    const lh = londonHour(now);
-    if (lh >= 8 && lh < 22) {
+    // and posts when people are awake: 09:00 to 22:59 London, the shared
+    // message hours (message-hours.ts).
+    if (inMessageHours(now)) {
       // Per-category opt-out: benchers with subBenchOfferDm=false asked not
       // to be offered slots. Exclude them from BOTH the group @-tag and the
       // personal DM below (default is subscribed, so only explicit opt-outs

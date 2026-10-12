@@ -461,8 +461,11 @@ describe("MONTHLY: the list post (plan 5.4)", () => {
   it("never in quiet hours, and never once the teams are out", async () => {
     const m = match();
     setWorld(m, { monthly: true });
-    // Thu 8 Oct, 22:30 London.
-    expect((await instructions(new Date("2026-10-08T21:30:00.000Z"))).some((i) => i.key.includes("month-list"))).toBe(false);
+    // Thu 8 Oct, 23:30 London, and 08:30 London the same morning.
+    expect((await instructions(new Date("2026-10-08T22:30:00.000Z"))).some((i) => i.key.includes("month-list"))).toBe(false);
+    expect((await instructions(new Date("2026-10-08T07:30:00.000Z"))).some((i) => i.key.includes("month-list"))).toBe(false);
+    // 22:30 London was quiet until 2026-10-13; it is daytime now.
+    expect((await instructions(new Date("2026-10-08T21:30:00.000Z"))).some((i) => i.key.includes("month-list"))).toBe(true);
     const withTeams = match({ teamAssignments: [{ userId: "u-alex", team: "RED", user: { id: "u-alex", name: "Alex" } }] });
     setWorld(withTeams, { monthly: true });
     expect((await instructions(THU_10AM)).some((i) => i.key.includes("month-list"))).toBe(false);
@@ -475,26 +478,28 @@ describe("MONTHLY: the list post (plan 5.4)", () => {
       monthly: true,
       shown: [{ key: `${m.id}:month-list:${hash}:0`, kind: "group-message", createdAt: new Date("2026-10-07T09:00:00.000Z") }],
     });
-    // Mon 12 Oct, 08:30 London.
-    const posts = (await instructions(new Date("2026-10-12T07:30:00.000Z"))).filter((i) => i.key.includes("month-list"));
+    // Mon 12 Oct, 08:30 London: not yet.
+    expect((await instructions(new Date("2026-10-12T07:30:00.000Z"))).filter((i) => i.key.includes("month-list"))).toEqual([]);
+    // Mon 12 Oct, 09:30 London.
+    const posts = (await instructions(new Date("2026-10-12T08:30:00.000Z"))).filter((i) => i.key.includes("month-list"));
     expect(posts.map((p) => p.key)).toEqual([`${m.id}:month-list:${hash}:1`]);
   });
 
-  it("match morning: the list a reply showed at 07:30 is not posted again at 08:00 (2026-10-06)", async () => {
+  it("match morning: the list a reply showed at 08:30 is not posted again at 09:00 (2026-10-06)", async () => {
     const m = match();
     const hash = weekListHash(listText(m));
-    // Mon 12 Oct, 07:30 London: "who's in?" was answered with the list
+    // Mon 12 Oct, 08:30 London: "who's in?" was answered with the list
     // (`recordWeekListShown`, kind "group-message").
     const shown = [
       { key: `${m.id}:month-list:${hash}:0`, kind: "group-message", createdAt: new Date("2026-10-07T09:00:00.000Z") },
-      { key: `${m.id}:month-list:${hash}:1`, kind: "group-message", createdAt: new Date("2026-10-12T06:30:00.000Z") },
+      { key: `${m.id}:month-list:${hash}:1`, kind: "group-message", createdAt: new Date("2026-10-12T07:30:00.000Z") },
     ];
     setWorld(m, { monthly: true, shown });
     const lists = async (iso: string) => (await instructions(new Date(iso))).filter((i) => i.key.includes("month-list")).map((i) => i.key);
-    expect(await lists("2026-10-12T07:00:00.000Z")).toEqual([]); // 08:00
-    expect(await lists("2026-10-12T09:29:00.000Z")).toEqual([]); // 10:29, still inside three hours
+    expect(await lists("2026-10-12T08:00:00.000Z")).toEqual([]); // 09:00
+    expect(await lists("2026-10-12T10:29:00.000Z")).toEqual([]); // 11:29, still inside three hours
     // Three hours after it was shown it is no longer a repeat.
-    expect(await lists("2026-10-12T09:31:00.000Z")).toEqual([`${m.id}:month-list:${hash}:2`]); // 10:31
+    expect(await lists("2026-10-12T10:31:00.000Z")).toEqual([`${m.id}:month-list:${hash}:2`]); // 11:31
   });
 
   it("match morning: nor straight after a member pasted the same list", async () => {
@@ -504,18 +509,19 @@ describe("MONTHLY: the list post (plan 5.4)", () => {
       monthly: true,
       shown: [
         { key: `${m.id}:month-list:${hash}:0`, kind: "group-message", createdAt: new Date("2026-10-07T09:00:00.000Z") },
-        { key: `${m.id}:month-list:${hash}:1`, kind: "month-list-seen", createdAt: new Date("2026-10-12T06:50:00.000Z") },
+        { key: `${m.id}:month-list:${hash}:1`, kind: "month-list-seen", createdAt: new Date("2026-10-12T07:50:00.000Z") },
       ],
     });
-    expect((await instructions(new Date("2026-10-12T07:00:00.000Z"))).some((i) => i.key.includes("month-list"))).toBe(false);
+    // 09:00 London, ten minutes after the paste.
+    expect((await instructions(new Date("2026-10-12T08:00:00.000Z"))).some((i) => i.key.includes("month-list"))).toBe(false);
   });
 
-  it("match morning: a list that CHANGED after the 07:30 reply is posted at 08:00", async () => {
+  it("match morning: a list that CHANGED after the 08:30 reply is posted at 09:00", async () => {
     const m = match();
     const before = weekListHash(listText(m));
     m.attendances[1] = att("Bilal", 1, { status: "DROPPED" });
-    setWorld(m, { monthly: true, shown: [{ key: `${m.id}:month-list:${before}:0`, kind: "group-message", createdAt: new Date("2026-10-12T06:30:00.000Z") }] });
-    const posts = (await instructions(new Date("2026-10-12T07:00:00.000Z"))).filter((i) => i.key.includes("month-list"));
+    setWorld(m, { monthly: true, shown: [{ key: `${m.id}:month-list:${before}:0`, kind: "group-message", createdAt: new Date("2026-10-12T07:30:00.000Z") }] });
+    const posts = (await instructions(new Date("2026-10-12T08:00:00.000Z"))).filter((i) => i.key.includes("month-list"));
     expect(posts.map((p) => p.key)).toEqual([`${m.id}:month-list:${weekListHash(listText(m))}:1`]);
   });
 
@@ -1157,8 +1163,9 @@ describe("PAYMENTS: the priced list, the count and the reminder DMs", () => {
       return (await pay(iso)).filter((i) => i.kind === "dm").map((i) => i.key).sort();
     };
     expect(await dms("2026-10-29T21:45:00.000Z", sent)).toEqual([]);
-    expect(await dms("2026-10-30T08:05:00.000Z", sent)).toEqual([`${P}dm:month-nov:u-chris:r2`, `${P}dm:month-nov:u-dave:r2`]);
-    const r2 = (u: string) => ({ key: `${P}dm:month-nov:${u}:r2`, kind: "dm", createdAt: at("2026-10-30T08:05:00.000Z") });
+    expect(await dms("2026-10-30T08:05:00.000Z", sent)).toEqual([]); // 08:05 London: not yet daytime
+    expect(await dms("2026-10-30T09:05:00.000Z", sent)).toEqual([`${P}dm:month-nov:u-chris:r2`, `${P}dm:month-nov:u-dave:r2`]);
+    const r2 = (u: string) => ({ key: `${P}dm:month-nov:${u}:r2`, kind: "dm", createdAt: at("2026-10-30T09:05:00.000Z") });
     const both = [...sent, r2("u-chris"), r2("u-dave")];
     expect(await dms("2026-10-30T18:00:00.000Z", both)).toEqual([]);
     expect(await dms("2026-10-31T10:00:00.000Z", both)).toEqual([`${P}dm:month-nov:u-chris:late:2026-10-31`, `${P}dm:month-nov:u-dave:late:2026-10-31`]);

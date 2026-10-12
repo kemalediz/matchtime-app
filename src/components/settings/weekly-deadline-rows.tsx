@@ -8,7 +8,7 @@
  * component so the page only renders it; slice 2's rows sit beside it.
  *
  * Words from the club's language table, each row with its ⓘ. A refusal
- * (half a pair, outside 08:00 to 21:30, drop-out not before publish, a
+ * (half a pair, outside 09:00 to 22:30, drop-out not before publish, a
  * match-day time after kickoff) is shown under the row and nothing is
  * saved.
  */

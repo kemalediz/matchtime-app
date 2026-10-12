@@ -61,8 +61,11 @@ describe("when the list opens", () => {
     const due = (iso: string) => listOpenDue({ now: new Date(iso), opensAt, firstKickoff: first });
     expect(due("2026-10-26T09:59:00.000Z")).toBe(false);
     expect(due("2026-10-26T10:00:00.000Z")).toBe(true);
-    expect(due("2026-10-26T22:30:00.000Z")).toBe(false); // 22:30 London: tomorrow morning
-    expect(due("2026-10-27T08:00:00.000Z")).toBe(true);
+    expect(due("2026-10-26T22:30:00.000Z")).toBe(true); // 22:30 London is still daytime
+    expect(due("2026-10-26T23:00:00.000Z")).toBe(false); // 23:00 London: tomorrow morning
+    expect(due("2026-10-27T08:00:00.000Z")).toBe(false);
+    expect(due("2026-10-27T08:59:00.000Z")).toBe(false);
+    expect(due("2026-10-27T09:00:00.000Z")).toBe(true);
     expect(due("2026-11-02T20:00:00.000Z")).toBe(false); // the month has begun
   });
 
@@ -442,10 +445,14 @@ describe("when the sign-up list is posted", () => {
     expect(decideSignupListPost({ ...base, now: at("2026-10-26T12:29:00.000Z"), lastPostAt: last })).toBe(false);
     expect(decideSignupListPost({ ...base, now: at("2026-10-26T12:30:00.000Z"), lastPostAt: last })).toBe(true);
   });
-  it("never between 22:00 and 07:59 London", () => {
-    expect(decideSignupListPost({ ...base, now: at("2026-10-26T22:00:00.000Z") })).toBe(false);
+  it("never between 23:00 and 08:59 London", () => {
+    expect(decideSignupListPost({ ...base, now: at("2026-10-26T22:00:00.000Z") })).toBe(true);
+    expect(decideSignupListPost({ ...base, now: at("2026-10-26T22:59:00.000Z") })).toBe(true);
+    expect(decideSignupListPost({ ...base, now: at("2026-10-26T23:00:00.000Z") })).toBe(false);
     expect(decideSignupListPost({ ...base, now: at("2026-10-27T07:59:00.000Z") })).toBe(false);
-    expect(decideSignupListPost({ ...base, now: at("2026-10-27T08:00:00.000Z") })).toBe(true);
+    expect(decideSignupListPost({ ...base, now: at("2026-10-27T08:00:00.000Z") })).toBe(false);
+    expect(decideSignupListPost({ ...base, now: at("2026-10-27T08:59:00.000Z") })).toBe(false);
+    expect(decideSignupListPost({ ...base, now: at("2026-10-27T09:00:00.000Z") })).toBe(true);
   });
   it("never once sign-up has ended, or for a month that is not in sign-up", () => {
     expect(decideSignupListPost({ ...base, now: at("2026-10-27T10:00:00.000Z") })).toBe(false);

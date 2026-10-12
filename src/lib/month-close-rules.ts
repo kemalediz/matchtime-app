@@ -348,8 +348,9 @@ export function planShareChange(p: { members: ShareMember[]; sharePence: number;
 
 // ── The month close (plan 4.4) ─────────────────────────────────────────
 
-/** The morning after the month's last game, from 08:00 London (the hour
- *  the squad is seeded), in waking hours only. */
+/** The morning after the month's last game: not before 08:00 London (the
+ *  hour the squad is seeded) and in waking hours only, so in practice
+ *  from 09:00, when the message hours open. */
 export function monthCloseDue(p: { now: Date; lastKickoff: Date }): boolean {
   const day = new Date(`${formatLondon(p.lastKickoff, "yyyy-MM-dd")}T12:00:00.000Z`);
   day.setUTCDate(day.getUTCDate() + 1);

@@ -15,6 +15,7 @@
  * command ever leaves a silent group.
  */
 import { randomInt } from "node:crypto";
+import { inMessageHours } from "./message-hours";
 
 export const ADMIN_CHANNEL_MODES = ["one-person", "admin-group", "each-admin"] as const;
 export type AdminChannelMode = (typeof ADMIN_CHANNEL_MODES)[number];
@@ -199,18 +200,11 @@ export function parsePiCaps(header: string | null | undefined): PiCaps {
 }
 
 /**
- * Admin-group posts go out 08:00 to 21:59 London, like the bench offers;
- * anything due overnight waits for the morning. Every post is claimed once
- * by its key, so waiting delays it and never doubles it.
+ * Admin-group posts go out 09:00 to 22:59 London (the shared message
+ * hours), like the bench offers; anything due overnight waits for the
+ * morning. Every post is claimed once by its key, so waiting delays it
+ * and never doubles it.
  */
-export const ADMIN_GROUP_POST_FROM_HOUR = 8;
-export const ADMIN_GROUP_POST_TO_HOUR = 22;
-
 export function isAdminGroupPostHour(now: Date): boolean {
-  const h = Number(
-    new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "numeric", hour12: false })
-      .formatToParts(now)
-      .find((p) => p.type === "hour")?.value ?? "0",
-  );
-  return h >= ADMIN_GROUP_POST_FROM_HOUR && h < ADMIN_GROUP_POST_TO_HOUR;
+  return inMessageHours(now);
 }
