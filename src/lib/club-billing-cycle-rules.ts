@@ -206,7 +206,11 @@ export function notChargedSpansFrom(events: Array<{ type: string; at: Date }>): 
  * earlier, so there ARE completed matches from that time. None of them is
  * ever a game played:
  *
- *   - went through the hold and is live: everything before `liveAt`;
+ *   - went through the hold and is live: everything up to AND INCLUDING
+ *     the instant of `liveAt`. Going live quiets every match with
+ *     `date <= liveAt` (`quietMatchesBeforeGoLive`, club-setup.ts), and a
+ *     span is [from, to), so it ends one millisecond after the stamp: the
+ *     two agree on a match that kicked off at that very instant;
  *   - still setting up: everything so far (open-ended);
  *   - never held (every club that exists before the hold): no span.
  *
@@ -215,7 +219,7 @@ export function notChargedSpansFrom(events: Array<{ type: string; at: Date }>): 
  * first place; this holds even if a billing month ever did.
  */
 export function beforeGoLiveSpan(org: SetupStageColumns & { liveAt?: Date | null | undefined }): PauseSpan | null {
-  if (hasGoneLive(org)) return { from: new Date(0), to: org.liveAt as Date };
+  if (hasGoneLive(org)) return { from: new Date(0), to: new Date((org.liveAt as Date).getTime() + 1) };
   if (isClubSettingUp(org)) return { from: new Date(0), to: null };
   return null;
 }

@@ -60,7 +60,17 @@ const wentLive = (id: string, name: string, minsAgo: number) => ({
   org: { id, name, language: "en", liveAt: new Date(NOW.getTime() - minsAgo * 60_000), approvalStatus: "approved", setupStage: "live" },
 });
 const info = { orgId: "o1", club: "Harbour FC", group: "Harbour Tuesday 6s", language: "en" };
-const LIVE = { ...info, outcome: "went-live" as const, liveAt: NOW, liveBy: "u-hana", hello: "hi", purgedJobs: 0, quietedMatches: 0 };
+const LIVE = {
+  ...info,
+  outcome: "went-live" as const,
+  liveAt: NOW,
+  liveBy: "u-hana",
+  hello: "hi",
+  purgedJobs: 0,
+  quietedMatches: 0,
+  freePeriodStarted: false,
+  freePeriodNote: null as string | null,
+};
 const go = (text: string) => handleGoDm({ text, phone: "447700900971", waMessageId: "wa-1", now: NOW });
 const unique = () => Object.assign(new Error("Unique constraint failed"), { code: "P2002" });
 
@@ -107,6 +117,13 @@ describe("the replies to GO, word for word", () => {
   it.each(cases)("%s", (_label, result, english, turkish) => {
     expect(goReplyText(result)).toBe(english);
     expect(goReplyText({ ...result, language: "tr" } as typeof result)).toBe(turkish);
+  });
+
+  it("went live AND its free period started: 'Done' is followed, in the same message, by the free period and the club fee tip", () => {
+    const note = "Your first two months are free.\n\nAfter that MatchTime costs up to £9.99 a month.";
+    expect(goReplyText({ ...LIVE, freePeriodStarted: true, freePeriodNote: note })).toBe(`Done: I've introduced myself in "Harbour Tuesday 6s".\n\n${note}`);
+    // No free period started (billing off, plan Free, one already running): just "Done".
+    expect(goReplyText({ ...LIVE, freePeriodStarted: false, freePeriodNote: null })).toBe(`Done: I've introduced myself in "Harbour Tuesday 6s".`);
   });
 
   it("a club that is not setting up gets no reply at all", () => {

@@ -506,6 +506,7 @@ const SAMPLES: SampleArgs = {
   sj_go_not_recognised: { club: "Riverside FC", url: "https://matchtime.ai/r/settings1" },
   sj_go_not_recognised_many: { url: "https://matchtime.ai/admin/settings" },
   sj_go_paused: { club: "Riverside FC", url: "https://matchtime.ai/admin/settings" },
+  sj_setup_removed: { club: "Riverside FC", group: "Riverside Tuesday 5s", url: "https://matchtime.ai/admin/settings" },
   // ── END settings-aware group hello ──
   sj_dm_approved: {
     club: "Riverside FC",

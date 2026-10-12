@@ -151,7 +151,9 @@ export async function setBillingState(
   now: Date = new Date(),
   opts: { noticeOnResume?: BillingNoticeKind } = {},
 ): Promise<SetBillingStateResult> {
-  return db.$transaction((tx) => applyBillingEventTx(tx, orgId, event, now, opts), { timeout: TX_TIMEOUT_MS });
+  const r = await db.$transaction((tx) => applyBillingEventTx(tx, orgId, event, now, opts), { timeout: TX_TIMEOUT_MS });
+  if (r.ok) logBillingMove(orgId, event.type, r);
+  return r;
 }
 
 /**
@@ -249,10 +251,10 @@ async function applyBillingEventTx(
   if (t.createsBilling) {
     // THE START. "Start free period" starts now. An approval and a go-live
     // start at the club's first day (`freePeriodStart`): the moment it
-    // went live when it was held (`liveAt`, a stored fact, so a late or
-    // repeated event cannot move it), else its approval. `approvedAt` is
-    // never null here: nextBillingState refuses a club that predates
-    // self-join.
+    // went live when it was held (`liveAt`; only "went-live" gets here
+    // with one, from the go-live transaction that has just stamped it),
+    // else its approval. `approvedAt` is never null here: nextBillingState
+    // refuses a club that predates self-join.
     const start = event.type === "start-trial" ? now : (freePeriodStart(org) ?? now);
     await tx.clubBilling.create({ data: { orgId, ...trialWindow(start) } });
   } else {
@@ -272,8 +274,15 @@ async function applyBillingEventTx(
     }
   }
 
-  console.log(`[club-billing] ${orgId}: ${from} -> ${t.to} on ${event.type}`);
+  // NOT logged here: this runs inside a transaction that may yet roll
+  // back. Whoever owns the transaction logs the move after its commit
+  // (`logBillingMove`).
   return { ok: true, from: from as BillingStatus, to: t.to, resumed: t.resumes };
+}
+
+/** One line for a billing move that HAS been committed. */
+export function logBillingMove(orgId: string, event: string, r: { from: string; to: string }): void {
+  console.log(`[club-billing] ${orgId}: ${r.from} -> ${r.to} on ${event}`);
 }
 
 /** The events a club that is still setting up is refused (see
@@ -305,6 +314,9 @@ const SETTING_UP_MATTERS: ReadonlySet<string> = new Set(["approved", "start-tria
  * THROWS, so that the go-live rolls back, when the club is not there or
  * the status write lost its compare-and-set (neither can happen under the
  * caller's lock), and on any database error.
+ *
+ * Logs nothing: the caller's transaction has not committed. `goLiveClub`
+ * logs the move (`logBillingMove`) once it has.
  */
 export async function startFreePeriodAtGoLiveTx(
   tx: Tx,
@@ -493,7 +505,9 @@ export async function setClubPlan(
   choice: { plan: BillingPlan; pricePence: number | null },
   now: Date = new Date(),
 ): Promise<SetClubPlanResult> {
-  return db.$transaction(
+  // The billing moves made inside the transaction, logged after it commits.
+  const moves: Array<{ event: string; from: string; to: string }> = [];
+  const result = await db.$transaction(
     async (tx): Promise<SetClubPlanResult> => {
       const orgs = await tx.$queryRaw<Array<{ billingStatus: string; billingPlan: string; approvedAt: Date | null }>>`
         SELECT "billingStatus", "billingPlan", "approvedAt" FROM "Organisation" WHERE "id" = ${orgId} FOR UPDATE`;
@@ -509,6 +523,7 @@ export async function setClubPlan(
         // else would leave a Free plan on a billed club, which the CHECK
         // refuses. Throw, so nothing in this transaction is committed.
         if (!moved.ok) throw new Error(`[club-billing] ${orgId}: plan Free could not make the club exempt (${moved.reason})`);
+        moves.push({ event: "plan-free", ...moved });
         status = moved.to;
         resumed = moved.resumed;
         // WHEN the club stopped being billed, in the same transaction, for
@@ -554,6 +569,7 @@ export async function setClubPlan(
           }
         }
         const moved = await applyBillingEventTx(tx, orgId, { type: "plan-billed" }, now);
+        if (moved.ok) moves.push({ event: "plan-billed", ...moved });
         if (moved.ok && (moved.to === "trial" || moved.to === "grace" || moved.to === "subscribed" || moved.to === "paused")) {
           status = moved.to;
           billedAgain = moved.to;
@@ -580,6 +596,8 @@ export async function setClubPlan(
     },
     { timeout: TX_TIMEOUT_MS },
   );
+  for (const m of moves) logBillingMove(orgId, m.event, m);
+  return result;
 }
 
 export type StartTrialResult =

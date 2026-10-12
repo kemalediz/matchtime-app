@@ -195,12 +195,28 @@ test("a held club's two free months start when it goes LIVE: silent and unbilled
   expect(await club()).toMatchObject({ stage: "setting-up", bot: false, status: "exempt", live: null });
 
   // MatchTime removed from its group while setting up: billing is told,
-  // and neither creates nor pauses anything.
+  // and neither creates nor pauses anything. The removal is recorded, so
+  // a GO now is REFUSED and starts no free period for a group MatchTime
+  // is not in.
   const removed = await request.post("/api/whatsapp/bot-removed", { headers: PI, data: { groupId: GROUP } });
   expect(removed.status(), await removed.text()).toBe(200);
-  expect(await removed.json()).toMatchObject({ ok: true, billing: "setting-up", orgId: ORG });
+  expect(await removed.json()).toMatchObject({ ok: true, billing: "setting-up", setup: "removed", orgId: ORG });
   expect(await billingTraces()).toEqual(NONE);
   expect(await club()).toMatchObject({ stage: "setting-up", status: "exempt" });
+  const refused = await request.post("/api/whatsapp/dm-reply", {
+    headers: PI,
+    data: { phone: digits(OWNER.phone), body: "GO", waMessageId: `e2e-fp-go0-${Date.now()}`, authorName: null },
+  });
+  expect(await refused.json()).toMatchObject({ handled: "setup-go", outcome: "removed-from-group", orgId: ORG });
+  expect(await billingTraces()).toEqual(NONE);
+  expect(await club()).toMatchObject({ stage: "setting-up", bot: false, status: "exempt", live: null });
+  // The organiser adds MatchTime back to the group.
+  const readded = await request.post("/api/whatsapp/bot-added", {
+    headers: PI,
+    data: { groupId: GROUP, groupSubject: "Harbour Tuesday 5s", addedByPhone: digits(OWNER.phone) },
+  });
+  expect(readded.status(), await readded.text()).toBe(200);
+  expect(await billingTraces()).toEqual(NONE);
 
   // ── GO ──────────────────────────────────────────────────────────────
   const go = await request.post("/api/whatsapp/dm-reply", {
@@ -209,6 +225,15 @@ test("a held club's two free months start when it goes LIVE: silent and unbilled
   });
   expect(go.status(), await go.text()).toBe(200);
   expect(await go.json()).toMatchObject({ handled: "setup-go", outcome: "went-live", orgId: ORG });
+  // "Done" goes on, in the same message, with the free period and the
+  // club fee tip: the organiser hears the price on day 0.
+  const done = await testDb().one<{ text: string }>(
+    `SELECT text FROM "PlatformJob" WHERE purpose = 'setup-reply' AND phone = $1 ORDER BY "createdAt" DESC LIMIT 1`,
+    [digits(OWNER.phone)],
+  );
+  expect(done!.text).toMatch(
+    /^Done: I've introduced myself in "Harbour Tuesday 5s"\.\n\nYour first two months are free\.\n\n💷 \*Club fee tip:\* after that MatchTime only charges for the games you play, up to £9\.99 a month for the group/,
+  );
 
   const after = (await club())!;
   expect(after).toMatchObject({ stage: "live", bot: true, status: "trial" });

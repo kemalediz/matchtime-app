@@ -162,15 +162,47 @@ describe("started exactly once", () => {
     expect(h.state.row?.billing).toMatchObject({ trialStartedAt: LIVE, trialEndsAt: FREE_UNTIL });
   });
 
-  it("approval and go-live at the same instant: one free period, the loser is no-change", async () => {
+  it("approval and go-live at the same instant: one free period, from go-live, whichever is applied first", async () => {
     const [a, b] = await Promise.all([
       setBillingState("org", { type: "approved" }, LIVE),
       setBillingState("org", { type: "went-live" }, LIVE),
     ]);
-    expect([a.ok, b.ok].filter(Boolean)).toHaveLength(1);
+    // The club has a go-live stamp, so only its go-live may start it.
+    expect(a).toEqual({ ok: false, reason: "no-change" });
+    expect(b).toMatchObject({ ok: true, to: "trial" });
     expect(dbMock.clubBilling.create).toHaveBeenCalledTimes(1);
-    // Either way it runs from go-live: the club has a go-live stamp.
     expect(h.state.row?.billing).toMatchObject({ trialStartedAt: LIVE, trialEndsAt: FREE_UNTIL });
+  });
+
+  it("the latent trap: a late approval event for a club that went live long ago with no free period starts nothing", async () => {
+    const muchLater = new Date("2027-03-01T12:00:00Z");
+    expect(await setBillingState("org", { type: "approved" }, muchLater)).toEqual({ ok: false, reason: "no-change" });
+    expect(dbMock.clubBilling.create).not.toHaveBeenCalled();
+    expect(h.state.row?.billingStatus).toBe("exempt");
+  });
+
+  it("the billing move is logged only once the transaction has committed", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    try {
+      let committed = false;
+      dbMock.$transaction.mockImplementationOnce(async (fn: (tx: unknown) => unknown) => {
+        const r = await fn(dbMock);
+        expect(log.mock.calls.filter((c) => String(c[0]).includes("-> trial"))).toEqual([]);
+        committed = true;
+        return r;
+      });
+      await setBillingState("org", { type: "went-live" }, LIVE);
+      expect(committed).toBe(true);
+      expect(log.mock.calls.some((c) => String(c[0]).includes("exempt -> trial on went-live"))).toBe(true);
+      // On the caller's own transaction nothing is logged here at all: the
+      // caller logs after ITS commit.
+      log.mockClear();
+      setRow();
+      await startFreePeriodAtGoLiveTx(dbMock as never, "org", LIVE);
+      expect(log.mock.calls.filter((c) => String(c[0]).includes("-> trial"))).toEqual([]);
+    } finally {
+      log.mockRestore();
+    }
   });
 
   it("approval got there first for a club that was never held: go-live adds nothing", async () => {

@@ -189,8 +189,14 @@ export interface AllowanceOrg extends SetupStageColumns {
  * approved and HELD is silent until its organiser says GO, and spends
  * nothing but its one setup reading until then. Its free period, and the
  * higher allowance that goes with it, start the day it goes live, through
- * the one definition (`freePeriodStart` in club-billing-rules.ts), so the
- * allowance and the billing free period always end at the same moment. A
+ * the one definition (`freePeriodStart` in club-billing-rules.ts). So the
+ * higher allowance ends at the same moment as the billing free period
+ * WHEN that free period was started by the go-live (or, for a club never
+ * held, by its approval), which is the normal case. The two differ when
+ * billing started another way or not at all: the platform owner's "Start
+ * free period" starts the billing window on the day it is pressed and
+ * leaves this one where it was, and with billing off or on the Free plan
+ * there is no billing window while this one still runs its two months. A
  * club that was never held has no `liveAt`, and nothing changes for it.
  *
  * Why `approvedAt` next. It is a FACT, written once, by the approval

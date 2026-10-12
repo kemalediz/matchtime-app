@@ -14,7 +14,8 @@
  *          HOURS after the approval (the cap, below).
  *   WHAT   `composeSetupAskDm`: approved and quiet until you say so, what
  *          the reading found, the settings link, the weekly game and the
- *          starting ratings, the GO line, the free period. It REPLACES
+ *          starting ratings, the GO line, and (only when going live will
+ *          start one) the free period. It REPLACES
  *          today's "you're live" DM and the separate findings DM
  *          ("setup-learned"), which a held club is never sent. It is
  *          composed from the club AS IT IS at that moment: a setting the
@@ -99,6 +100,7 @@ import {
   isSetupLearningFinal,
   markSetupAsked,
 } from "./club-setup";
+import { freePeriodCanStart } from "./club-billing-rules";
 import { messageHoursSendAfter } from "./message-hours";
 import { SETUP_ALERT_KIND, recordOpsEvent } from "./ops-alerts";
 import { PlatformDmRefused, queuePlatformDm, type PlatformDmClient } from "./platform-jobs";
@@ -207,6 +209,10 @@ function loadDue(orgId: string) {
       featureAttendance: true,
       featureBench: true,
       featureSquadFromList: true,
+      // Whether going live will start a free period (`freePeriodCanStart`).
+      billingStatus: true,
+      billingPlan: true,
+      clubBilling: { select: { orgId: true } },
       setupLearning: { select: { status: true, reason: true, applied: true, suggestions: true, noted: true } },
     },
   });
@@ -303,6 +309,11 @@ export async function sendSetupDm(orgId: string, now: Date = new Date(), opts: S
     settingsUrl: await link("/admin/settings"),
     learnedUrl,
     organiserPicksUrl,
+    // The free period line, only when going live will start one: the test
+    // `goLiveClub`'s billing step applies (billing on, plan not Free, no
+    // free period had). Read from the environment, as the sweep reads the
+    // reading's switch.
+    freePeriod: freePeriodCanStart({ ...org, hasBilling: !!org.clubBilling }),
     // adminGroupBlock: go-live slice S7 passes the admin group step here.
   });
 

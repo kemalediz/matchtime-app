@@ -2171,6 +2171,15 @@ export const en = {
     `${p.club} is paused, so I can't go live yet. Your settings page shows what's needed:\n${p.url}`,
   // ════ END going live: replies to GO ════
 
+  // ════ BEGIN removed from the group while setting up (2026-10-12) ════
+  /** To the organiser, once per removal, when MatchTime is taken out of the
+   *  group of a club that is approved but has not gone live. On the
+   *  platform channel, in the daytime. The Turkish command is BAŞLA. */
+  sj_setup_removed: (p: { club: string; group: string; url: string }): string =>
+    `I was removed from "${p.group}" before ${p.club} went live, so nothing has started there. ` +
+    `Add me back to the group, then reply *GO* here or press *Go live* on your settings page:\n${p.url}`,
+  // ════ END removed from the group while setting up ════
+
   /** To the organiser, once, when the owner approves (2026-10-01: a short
    *  checklist). Each URL is the organiser's own signed-in link to that
    *  page, so this DM goes to the organiser only. Without billing the one

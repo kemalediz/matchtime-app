@@ -56,6 +56,7 @@ const input = (reading: ChatReading, over: Partial<SetupAskDmInput> = {}): Setup
   settingsUrl: "https://mt.link/settings",
   learnedUrl: "https://mt.link/learned",
   organiserPicksUrl: "https://mt.link/pick",
+  freePeriod: true,
   ...over,
 });
 const findings = (a = applied, sg = suggestions): ChatReading => ({
@@ -249,6 +250,20 @@ describe("composeSetupAskDm: the blocks, in order", () => {
     const text = composeSetupAskDm(input({ kind: "nothing" }, { group: null }));
     expect(text).toMatch(/^Good news: Riverside FC is approved\. I'm in your group and I'm staying quiet there/);
     expect(text).toContain("I read the recent messages in your group and found nothing");
+  });
+
+  it("THE FREE PERIOD LINE is said only when going live WILL start one (billing on, plan not Free): otherwise the DM ends on the GO line", () => {
+    for (const lang of ["en", "tr"]) {
+      for (const reading of [{ kind: "nothing" }, { kind: "unread" }, { kind: "none" }, findings()] as ChatReading[]) {
+        const withIt = composeSetupAskDm(input(reading, { lang, freePeriod: true })).split("\n\n");
+        const without = composeSetupAskDm(input(reading, { lang, freePeriod: false })).split("\n\n");
+        const free = lang === "en" ? "Your first two months are free. The free period starts when I go live in the group." : "İlk iki ayınız ücretsiz. Ücretsiz dönem, grupta yayına geçtiğimde başlar.";
+        expect(withIt.at(-1)).toBe(free);
+        // The same message, less its last block.
+        expect(without).toEqual(withIt.slice(0, -1));
+        expect(without.join(" ")).not.toMatch(/free period|months are free|ücretsiz/i);
+      }
+    }
   });
 
   it("THE ADMIN GROUP INSERTION POINT: a block given by a later slice goes in right before the GO line", () => {

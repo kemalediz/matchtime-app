@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 import { clubFeeTip, type ClubFeeTip, type TipActivity } from "@/lib/club-billing-rules";
 import {
   approvedTipText,
+  goLiveFreePeriodNote,
   bannerText,
   billingCardView,
   billingPageView,
@@ -520,6 +521,21 @@ describe("billingPageView: /billing/[orgId] per role (8.1)", () => {
   it("the owner of an exempt club: one exempt line, nothing about billing", () => {
     const v = billingPageView("en", club({ status: "exempt", billing: null, club: "Sutton FC" }), "exempt-owner", "kemal", null);
     expect(v).toMatchObject({ exempt: "Sutton FC has no club fee. MatchTime is free for this club.", lines: [], buttons: [], tip: null, who: null });
+  });
+
+  it("goLiveFreePeriodNote: what follows 'Done' at go-live is the SAME free sentence and tip paragraph as the 'you're live' DM of an approval", () => {
+    for (const lang of ["en", "tr"] as const) {
+      const s = t(lang);
+      const base = { club: "X", group: "G", scheduleUrl: "a", ratingsUrl: "b", settingsUrl: "c" };
+      const withTip = s.sj_dm_approved({ ...base, tip: approvedTipText(lang, tip) });
+      const noTip = s.sj_dm_approved({ ...base, tip: null });
+      expect(withTip.endsWith(goLiveFreePeriodNote(lang, tip))).toBe(true);
+      expect(noTip.endsWith(goLiveFreePeriodNote(lang, null))).toBe(true);
+      expect(goLiveFreePeriodNote(lang, tip)).not.toMatch(/[\u2013\u2014]/);
+    }
+    expect(goLiveFreePeriodNote("en", null)).toBe("Your first two months are free.");
+    expect(goLiveFreePeriodNote("tr", null)).toBe("İlk iki ayınız ücretsiz.");
+    expect(goLiveFreePeriodNote("en", tip)).toBe(`Your first two months are free.\n\n${approvedTipText("en", tip)}`);
   });
 
   it("the owner of a club that is still SETTING UP: the free period has not started, and when it will (not 'no club fee')", () => {

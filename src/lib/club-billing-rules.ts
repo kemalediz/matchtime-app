@@ -285,6 +285,32 @@ export interface BillingTransition {
 
 const LIVE_BILLED: ReadonlySet<string> = new Set(["trial", "grace", "subscribed", "past_due"]);
 
+/**
+ * CAN A FREE PERIOD START FOR THIS CLUB? The one test behind every start
+ * ("approved", "went-live", "start-trial" in `nextBillingState`), and
+ * behind every sentence that PROMISES one: billing switched on, a club
+ * that came through self-join, still "exempt", with no earlier free
+ * period (no ClubBilling row) and a plan that is not Free.
+ *
+ * Its other readers say only what this says: the organiser's setup DM
+ * ("the free period starts when I go live", club-setup-dm.ts) and the
+ * platform owner's clubs page. So a Free club, or a deployment with
+ * billing off, is never told about a free period that will not start.
+ */
+export function freePeriodCanStart(
+  club: { approvedAt: Date | null | undefined; billingStatus: string; billingPlan: string; hasBilling: boolean },
+  env: Env = process.env,
+): boolean {
+  return (
+    club.approvedAt !== null &&
+    club.approvedAt !== undefined &&
+    club.billingStatus === "exempt" &&
+    !club.hasBilling &&
+    club.billingPlan !== "free" &&
+    isBillingEnabled(env)
+  );
+}
+
 function to(
   status: BillingStatus,
   from: string,
@@ -336,14 +362,21 @@ export function nextBillingState(
     case "approved":
     case "start-trial":
     case "went-live":
-      if (from !== "exempt" || b !== null) return null;
-      if (club.billingPlan === "free") return null;
-      if (!isBillingEnabled(env)) return null;
+      if (!freePeriodCanStart({ ...club, hasBilling: b !== null }, env)) return null;
       // Silent in its group until its organiser says GO: no free period
       // runs yet (owner decision 2).
       if (club.settingUp) return null;
       // Only a club that has in fact gone live out of the hold.
       if (event.type === "went-live" && !club.liveAt) return null;
+      // An approval starts the free period of a club that was NEVER held,
+      // from its approval. A club with a go-live stamp is its go-live's to
+      // start: "approved" for it is REFUSED, not started from the stamp. A
+      // club that went live while billing was off has no row, and counting
+      // from a go-live weeks old could land it straight in its grace week;
+      // counting from now would hand out a free period on an event that no
+      // path fires for such a club. The owner's "Start free period" is the
+      // deliberate way in, and it starts from that day.
+      if (event.type === "approved" && club.liveAt) return null;
       return to("trial", from, { createsBilling: true });
 
     case "trial-ended":

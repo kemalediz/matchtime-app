@@ -150,15 +150,24 @@ async function loadClubMonths(o: { id: string; billingStatus: string; billingPla
  * file, who pays, its AI spend over 30 days, and the owner's controls.
  * Nothing here messages anyone.
  */
+/** The billing line of a club that is approved and still setting up. */
+function setupBillingNote(billingOn: boolean): string {
+  return billingOn
+    ? "The free period starts when the club goes live"
+    : "Billing is switched off, so no free period starts when the club goes live (Start free period does it later)";
+}
+
 function BillingRow({ c, billingOn, lang }: { c: LiveClub; billingOn: boolean; lang: string | null }) {
   const b = c.billing;
   const status = b?.status ?? c.billingStatus;
   const cb = b?.billing ?? null;
   // Approved but still setting up: not billed, and its free period has not
-  // started. It starts by itself when the club goes live (never on Free).
+  // started. It starts by itself when the club goes live, but only when
+  // billing is on then (`freePeriodCanStart`: never on Free, and nothing
+  // starts with BILLING_ENABLED off). The line says which.
   const awaitingGoLive = !!b?.settingUp && status === "exempt" && !cb && c.billingPlan !== "free";
   const date = awaitingGoLive
-    ? "The free period starts when the club goes live"
+    ? setupBillingNote(billingOn)
     : status === "trial" && cb
       ? `Free period ends ${when(cb.trialEndsAt)}`
       : (status === "grace" || status === "past_due") && cb?.graceEndsAt

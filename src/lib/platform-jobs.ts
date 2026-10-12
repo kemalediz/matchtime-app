@@ -71,6 +71,10 @@ import { APPROVED_CLUB_WHERE } from "./club-approval-state";
  *  (GO, help, "not recognised"). The club's own channel is off until GO,
  *  so these cannot be BotJobs. Queued only by src/lib/setup-go-dm.ts and,
  *  for help, src/lib/dm-help.ts; always a reply to the person's own DM. */
+/** "setup-removed" (go-live removal slice, 2026-10-12): the organiser's one
+ *  DM per removal when MatchTime is taken out of the group of a club that
+ *  is still setting up. Queued only by src/lib/club-setup-removal.ts, and
+ *  taken back by it if MatchTime is added back before it has gone. */
 export const PLATFORM_DM_PURPOSES = [
   "otp",
   "connect-reply",
@@ -79,6 +83,7 @@ export const PLATFORM_DM_PURPOSES = [
   "setup-learned",
   "setup-ask",
   "setup-reply",
+  "setup-removed",
 ] as const;
 export type PlatformDmPurpose = (typeof PLATFORM_DM_PURPOSES)[number];
 
@@ -239,7 +244,7 @@ export async function queuePlatformDm(args: {
 /** DM purposes `cancelQueuedPlatformDms` will touch. A sign-up code, a
  *  decision, a billing notice and anything for the owner are never
  *  cancelled from here. */
-export const CANCELLABLE_DM_PURPOSES = ["setup-ask"] as const;
+export const CANCELLABLE_DM_PURPOSES = ["setup-ask", "setup-removed"] as const;
 
 /** How a cancelled job's `failReason` starts. On a CLAIMED job it is the
  *  mark that makes a later release fail the job instead of re-queueing it. */

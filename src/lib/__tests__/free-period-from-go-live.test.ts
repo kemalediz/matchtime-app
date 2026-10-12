@@ -19,6 +19,7 @@ import { describe, expect, it } from "vitest";
 import { formatLondon } from "../london-time";
 import {
   GRACE_DAYS,
+  freePeriodCanStart,
   freePeriodEnd,
   freePeriodStart,
   graceEndsFrom,
@@ -184,6 +185,37 @@ describe("nextBillingState: the free period starts ONCE, at whichever of approva
     expect(nextBillingState(club({ liveAt: LIVE, approvedAt: null }), { type: "went-live" }, LIVE, ON)).toBeNull();
   });
 
+  it("THE LATENT TRAP: an approval event for a club that has ALREADY gone live out of the hold starts nothing", () => {
+    // Held, went live while billing was off (so no row), billing switched
+    // on months later, and something fires "approved". Counted from the old
+    // go-live it would land straight in the grace week. It is refused: the
+    // owner's Start free period is the way in, and it starts from that day.
+    const liveLongAgo = club({ liveAt: LIVE });
+    const muchLater = new Date("2027-03-01T12:00:00Z");
+    expect(nextBillingState(liveLongAgo, { type: "approved" }, muchLater, ON)).toBeNull();
+    expect(nextBillingState(liveLongAgo, { type: "approved" }, LIVE, ON)).toBeNull();
+    expect(nextBillingState(liveLongAgo, { type: "start-trial" }, muchLater, ON)).toMatchObject({ to: "trial", createsBilling: true });
+  });
+
+  it("freePeriodCanStart is the one test all three share: billing on, exempt, no earlier free period, not Free, came through self-join", () => {
+    const yes = { approvedAt: APPROVED, billingStatus: "exempt", billingPlan: "standard", hasBilling: false };
+    expect(freePeriodCanStart(yes, ON)).toBe(true);
+    expect(freePeriodCanStart({ ...yes, billingPlan: "custom" }, ON)).toBe(true);
+    expect(freePeriodCanStart(yes, OFF)).toBe(false);
+    expect(freePeriodCanStart({ ...yes, billingPlan: "free" }, ON)).toBe(false);
+    expect(freePeriodCanStart({ ...yes, hasBilling: true }, ON)).toBe(false);
+    expect(freePeriodCanStart({ ...yes, billingStatus: "trial" }, ON)).toBe(false);
+    expect(freePeriodCanStart({ ...yes, approvedAt: null }, ON)).toBe(false);
+    // It agrees with the state machine for a club that has just gone live.
+    for (const c of [yes, { ...yes, billingPlan: "free" }, { ...yes, hasBilling: true }, { ...yes, billingStatus: "paused" }, { ...yes, approvedAt: null }]) {
+      for (const env of [ON, OFF]) {
+        const b = c.hasBilling ? { trialEndsAt: freePeriodEnd(APPROVED), graceEndsAt: null, pausedReason: null } : null;
+        const moved = nextBillingState({ approvedAt: c.approvedAt, billingStatus: c.billingStatus, billingPlan: c.billingPlan, billing: b, liveAt: LIVE }, { type: "went-live" }, LIVE, env);
+        expect(moved !== null, JSON.stringify([c, env])).toBe(freePeriodCanStart(c, env));
+      }
+    }
+  });
+
   it("a never-held club (no go-live stamp, not setting up) is approved into its free period exactly as before", () => {
     expect(nextBillingState(club(), { type: "approved" }, APPROVED, ON)).toEqual({
       to: "trial",
@@ -311,7 +343,9 @@ describe("games from before go-live are never billable", () => {
   const stillSettingUp = { approvalStatus: "approved", liveAt: null, setupStage: "setting-up" };
 
   it("the span: everything before go-live for a held club, everything so far for one still setting up, nothing for anybody else", () => {
-    expect(beforeGoLiveSpan(held)).toEqual({ from: new Date(0), to: LIVE });
+    // Up to AND INCLUDING the go-live instant: a match that kicked off at
+    // that very moment is one `goLiveClub` completed quietly as "before".
+    expect(beforeGoLiveSpan(held)).toEqual({ from: new Date(0), to: new Date(LIVE.getTime() + 1) });
     expect(beforeGoLiveSpan(stillSettingUp)).toEqual({ from: new Date(0), to: null });
     expect(beforeGoLiveSpan({ approvalStatus: "approved", liveAt: null })).toBeNull();
     expect(beforeGoLiveSpan({ approvalStatus: "approved" })).toBeNull();
@@ -344,6 +378,15 @@ describe("games from before go-live are never billable", () => {
       }
     });
   }
+
+  it("a match that kicked off at the exact go-live instant is before go-live (as the go-live's own quieting has it), one millisecond later is after", () => {
+    const month = { startsAt: new Date("2026-10-01T09:00:00Z"), endsAt: new Date("2026-10-31T23:00:00Z") };
+    const at = (id: string, d: Date) => before(id, d.toISOString(), { confirmedCount: 10 });
+    const count = (m: CycleMatch) =>
+      countClubMonth({ ...month, activities: [], matches: [m], pauseSpans: [beforeGoLiveSpan(held)!], tracksAttendance: true }).played;
+    expect(count(at("exact", LIVE))).toBe(0);
+    expect(count(at("after", new Date(LIVE.getTime() + 1)))).toBe(1);
+  });
 
   it("a game played after go-live in that same month still counts", () => {
     const month = { startsAt: new Date("2026-10-01T09:00:00Z"), endsAt: new Date("2026-10-31T23:00:00Z") };

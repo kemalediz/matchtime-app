@@ -379,11 +379,34 @@ test.describe("the group routes are blind to it", () => {
     expect(await heldJobs(db)).toBe(0);
   });
 
-  test("MatchTime's removal from its group changes nothing yet (slice S6 adds the handling)", async ({ request, db }) => {
+  test("MatchTime's removal from its group: the club stays approved, setting up and silent; the removal is recorded, and undone when its organiser adds MatchTime back", async ({ request, db }) => {
+    const removedAt = () => db.one<{ at: Date | null }>(`SELECT "setupRemovedAt" AS at FROM "Organisation" WHERE id = $1`, [HELD_ORG]);
     const res = await post(request, "/api/whatsapp/bot-removed", { groupId: HELD_GROUP });
-    expect(res.ok).toBe(true);
+    expect(res).toMatchObject({ ok: true, billing: "setting-up", setup: "removed", orgId: HELD_ORG });
+    // Not back to draft, not live, and nothing for the group.
     expect(await heldClub(db)).toMatchObject({ approvalStatus: "approved", setupStage: "setting-up", whatsappBotEnabled: false });
     expect(await heldJobs(db)).toBe(0);
+    expect((await removedAt())!.at).not.toBeNull();
+    // (The whole removal path, GO refused and the re-add rules are in
+    // setup-go-live.spec.ts and e2e/helpers/setup-removal-lib-tests.ts.)
+
+    // Its organiser adds MatchTime back, self-join off (the legacy path):
+    // no intro, no session, and the removal is cleared.
+    const back = await post(request, "/api/whatsapp/bot-added", {
+      groupId: HELD_GROUP,
+      groupSubject: "Harbour Tuesday 6s",
+      addedByPhone: ORGANISER_PHONE.replace(/^\+/, ""),
+    });
+    expect(back.introText ?? null).toBeNull();
+    expect(await removedAt()).toEqual({ at: null });
+    expect(await heldClub(db)).toMatchObject({ approvalStatus: "approved", setupStage: "setting-up", whatsappBotEnabled: false });
+    expect(await heldJobs(db)).toBe(0);
+
+    // The removal deleted the chat captured at the add (the group took
+    // MatchTime out). The reading tests further down need it, so this
+    // fixture puts it back by hand; nothing in the product does.
+    expect(await db.one(`SELECT "capturedHistory" AS h FROM "ClubConnect" WHERE id = $1`, [`${HELD_ORG}-cc`])).toEqual({ h: null });
+    await db.run(`UPDATE "ClubConnect" SET "capturedHistory" = $2::jsonb WHERE id = $1`, [`${HELD_ORG}-cc`, JSON.stringify(rolling.history)]);
   });
 });
 

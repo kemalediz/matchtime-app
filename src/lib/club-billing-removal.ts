@@ -18,8 +18,9 @@
  *     ONLY ("setting-up"), whatever the flag and whatever its billing
  *     state says. It has never gone live, so it has no free period and no
  *     billing to pause; its free period starts when it goes live. Nothing
- *     about the removal is recorded here: that is the setup-removal
- *     slice's, in the route, beside this call;
+ *     about the removal is recorded here: on this answer the route calls
+ *     `handleSetupRemoval` (club-setup-removal.ts), which stamps it so the
+ *     club cannot go live, and no free period can start, while removed;
  *   - a club being billed (trial, grace, subscribed, past due): paused,
  *     reason "removed", through the one writer (`setBillingState`). Slice
  *     P2: NO Stripe call to end anything (there is no subscription): the

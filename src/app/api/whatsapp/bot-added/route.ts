@@ -92,6 +92,7 @@ import { queueOwnerDm } from "@/lib/owner-dm";
 import { detectAdminGroupCandidate, recordAdminGroupCandidate } from "@/lib/admin-group-link";
 import { billingEnabledForApiRequest } from "@/lib/billing-flag";
 import { handleBillingReAdd } from "@/lib/club-billing-removal";
+import { handleSetupReAdd } from "@/lib/club-setup-removal";
 import { ingestGroupDescription } from "@/lib/group-description";
 import { capturedSessionChat } from "@/lib/captured-chat";
 
@@ -106,6 +107,34 @@ async function billingReAddStep(request: Request): Promise<void> {
     if (r.kind !== "not-removed") console.log(`[bot-added] ${groupId}: club fee re-add ${JSON.stringify(r)}`);
   } catch (err) {
     console.error("[bot-added] club fee re-add step failed (the add carries on):", err);
+  }
+}
+
+/**
+ * Removal slice (2026-10-12): MatchTime added back to the group of a club
+ * that is approved, still setting up, and was REMOVED from it. When the
+ * adder is a current member of that club the removal is cleared, so GO
+ * works again and a setup DM that never went becomes due. A real add only
+ * (the reconnect sweep names no adder). Whatever the self-join switch
+ * says, like the billing step above, because such a club's group takes a
+ * different branch below in each case ("live-org" with self-join on, the
+ * silence rail with it off) and neither writes anything. It never changes
+ * this route's answer, says nothing in the group, and never throws.
+ */
+async function setupReAddStep(request: Request): Promise<void> {
+  try {
+    const peek = (await request.clone().json().catch(() => null)) as {
+      groupId?: unknown;
+      discovered?: unknown;
+      addedByPhone?: unknown;
+      addedByLid?: unknown;
+    } | null;
+    const groupId = typeof peek?.groupId === "string" && peek.groupId.endsWith("@g.us") ? peek.groupId : null;
+    if (!groupId || peek?.discovered === true) return;
+    const r = await handleSetupReAdd({ groupId, addedByPhone: peek?.addedByPhone, addedByLid: peek?.addedByLid });
+    if (r.kind !== "not-removed") console.log(`[bot-added] ${groupId}: setting-up club re-add ${r.kind} (${r.orgId})`);
+  } catch (err) {
+    console.error(`[bot-added] setting-up re-add step failed (the add carries on): ${(err as Error)?.name ?? "error"}`);
   }
 }
 
@@ -171,6 +200,7 @@ export async function POST(request: Request) {
   }
 
   await billingReAddStep(request);
+  await setupReAddStep(request);
 
   if (selfJoinEnabledForApiRequest(request)) return selfJoinAdd(request);
 

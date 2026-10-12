@@ -148,7 +148,7 @@ describe("loadClubMonthInput", () => {
       it(`held then live, ${kind}: the match completed before go-live is not played, the one after is`, async () => {
         const c = withOrg({ featureAttendance, approvalStatus: "approved", setupStage: "live", liveAt: LIVE });
         const input = await loadClubMonthInput(c as unknown as MonthLoaderClient, "org", NOV);
-        expect(input?.pauseSpans).toEqual([{ from: new Date(0), to: LIVE }]);
+        expect(input?.pauseSpans).toEqual([{ from: new Date(0), to: new Date(LIVE.getTime() + 1) }]);
         const count = countClubMonth(input!);
         // m1 (3 Nov, 9 IN) kicked off before go-live; m2 (10 Nov, scored) after.
         expect(count.played).toBe(1);
@@ -179,7 +179,7 @@ describe("loadClubMonthInput", () => {
       c.billingEvent.findMany.mockResolvedValue([{ type: "mt.paused", receivedAt: new Date("2026-11-09T00:00:00Z") }]);
       const input = await loadClubMonthInput(c as unknown as MonthLoaderClient, "org", NOV);
       expect(input?.pauseSpans).toEqual([
-        { from: new Date(0), to: LIVE },
+        { from: new Date(0), to: new Date(LIVE.getTime() + 1) },
         { from: new Date("2026-11-09T00:00:00Z"), to: null },
       ]);
       expect(countClubMonth(input!).played).toBe(0);

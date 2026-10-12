@@ -489,6 +489,7 @@ import { buildPickMessage, buildPickListChanged } from "../../organiser-pick-rul
 import { clubFeeTip, type TipActivity } from "../../club-billing-rules";
 import {
   approvedTipText,
+  goLiveFreePeriodNote,
   bannerText,
   billedAgainCardText,
   billingNoticeText,
@@ -2013,6 +2014,7 @@ function cases(lang: Lang): Case[] {
       settingsUrl: "https://matchtime.ai/r/settings",
       learnedUrl: "https://matchtime.ai/r/learned",
       organiserPicksUrl: "https://matchtime.ai/r/pick",
+      freePeriod: true,
       ...rest,
     });
   add(
@@ -2046,6 +2048,28 @@ function cases(lang: Lang): Case[] {
   add("SUP7 the held variants / connect reply", t(lang).sj_dm_connected_held({ name: "Aliyah", club: "Thursday Ladies" }));
   add("SUP8 the held variants / in-group ack", t(lang).sj_dm_in_group_held({ group: "Thursday Ladies 5s" }));
   add("SUP9 the held variants / pending card", t(lang).sj_card_pending_held);
+  // Removal slice and the free period at go-live (2026-10-12). NEW copy;
+  // no existing case changed.
+  add(
+    "SUP10 composeSetupAskDm / going live will start no free period (billing off, or the Free plan): no free period line",
+    setupAsk({ kind: "nothing" }, { freePeriod: false }),
+  );
+  add(
+    "SUP11 removed from the group while setting up / the organiser's one DM",
+    t(lang).sj_setup_removed({ club: "Thursday Ladies", group: "Thursday Ladies 5s", url: "https://matchtime.ai/admin/settings" }),
+  );
+  add(
+    "SUP12 GO / went live and the free period started: Done, the free period, the club fee tip",
+    `${t(lang).sj_go_done({ group: "Thursday Ladies 5s" })}\n\n${goLiveFreePeriodNote(
+      lang,
+      clubFeeTip({
+        status: "trial",
+        plan: "standard",
+        pricePence: null,
+        activities: [{ dayOfWeek: 2, time: "20:00", playersPerTeam: 5, feePerPlayer: null, feeSplitTotal: false, latestMatchFee: null }],
+      }),
+    )}`,
+  );
 
   // ── MWK: monthly squad, slice 5 (2026-10-06), the weekly flow ─────
   //   NEW copy, a deliberate addition: MDs/monthly-squad-plan-2026-10-05.md
@@ -2318,7 +2342,7 @@ const MIGRATED_ROWS = [
   // learned setup (2026-10-05)
   "LRN1 ", "LRN2 ", "LRN3 ",
   // the setup DM of a held club (go-live slice S3, 2026-10-12)
-  "SUP1 ", "SUP2 ", "SUP3 ", "SUP4 ", "SUP5 ", "SUP6 ", "SUP7 ", "SUP8 ", "SUP9 ",
+  "SUP1 ", "SUP2 ", "SUP3 ", "SUP4 ", "SUP5 ", "SUP6 ", "SUP7 ", "SUP8 ", "SUP9 ", "SUP10 ", "SUP11 ", "SUP12 ",
   // Monthly squad, slice 3: the month's sign-up.
   "MSU1 ", "MSU2 ", "MSU3 ", "MSU4 ", "MSU5 ", "MSU6 ", "MSU7 ",
   // Monthly squad, slice 4: price, payments and reminders.
