@@ -50,3 +50,33 @@ export function reloadDecision(a: {
 export function awayLongEnough(hiddenAt: number | null, now: number): boolean {
   return hiddenAt !== null && now - hiddenAt >= HIDDEN_MIN_MS;
 }
+
+/**
+ * WHEN THE PANEL MAY SHOW WHAT A RELOAD BROUGHT BACK (2026-10-12).
+ *
+ * The panel is at the top of a long page, and a reload can change its
+ * height: a suggestion's card (about 180px) goes when it is resolved, or
+ * comes back. Everything below the panel then moves by that much. Found
+ * live in the e2e suite: the organiser taps 'Switch on "The organisers
+ * pick"', the page starts its smooth scroll down to that setting, they
+ * save it, the card is removed while the scroll is still running, and
+ * the scroll ends where the setting USED to be: the setting they have
+ * just saved is off the top of the screen, and stays there. A browser's
+ * scroll anchoring hides the shift only when the page is at rest, and
+ * not every browser has it.
+ *
+ * So the panel never changes height where that can move what the
+ * organiser is looking at. New data is shown only when
+ *   the page has been still for SCROLL_SETTLE_MS (no scroll, and no jump
+ *   to another part of the page begun), AND
+ *   some of the panel is on the screen or below it. Wholly above the
+ *   screen, it waits until the organiser scrolls back to it.
+ *
+ * `lastMotionAt`: when the page last scrolled or its hash last changed.
+ * `panelBottom`: the bottom edge of the panel, from the top of the screen.
+ */
+export const SCROLL_SETTLE_MS = 150;
+
+export function mayShowNow(a: { now: number; lastMotionAt: number; panelBottom: number }): boolean {
+  return a.now - a.lastMotionAt >= SCROLL_SETTLE_MS && a.panelBottom > 0;
+}

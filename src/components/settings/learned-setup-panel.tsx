@@ -42,6 +42,14 @@
  * for coming back, never on a plain return to the tab, and never beside
  * a go-live request (setup-learning/panel-reload.ts).
  *
+ * A RELOAD NEVER MOVES THE PAGE (2026-10-12). The scroll to the panel
+ * happens once, on first arrival with `#learned-setup` or `?learned=`,
+ * and never again. And because a resolved card leaving the panel makes
+ * it about 180px shorter, which moves everything below it, data from a
+ * reload is shown only when the page is still and the panel is on the
+ * screen or below it; with the panel above the screen it waits until the
+ * organiser scrolls back up to it.
+ *
  * After an Undo the page reloads, so every other section shows the
  * setting's new value from the server.
  */
@@ -52,7 +60,13 @@ import { AlertTriangle, ArrowRight, Check, Sparkles } from "lucide-react";
 import { getLearnedSetupAction, undoLearnedSettingAction } from "@/app/actions/setup-learning";
 import { GO_LIVE_SETTLED_EVENT, isGoLiveInFlight } from "@/lib/go-live-in-flight";
 import { t } from "@/lib/i18n/t";
-import { awayLongEnough, reloadDecision, type ReloadWhy } from "@/lib/setup-learning/panel-reload";
+import {
+  SCROLL_SETTLE_MS,
+  awayLongEnough,
+  mayShowNow,
+  reloadDecision,
+  type ReloadWhy,
+} from "@/lib/setup-learning/panel-reload";
 import { appliedLine, monthlyPattern, suggestionLine } from "@/lib/setup-learning/dm";
 import { checkHeading, suggestionActionHref, suggestionActionLabel } from "@/lib/setup-learning/suggestion-action";
 import { LEARNED_REFRESH_EVENT, resolvedLine } from "@/lib/setup-learning/suggestion-state";
@@ -67,8 +81,11 @@ function plain(s: string): string {
 }
 
 export function LearnedSetupPanel(props: { orgId: string; language: string | null | undefined }) {
-  const s = t(props.language);
-  const lang = props.language ?? "en";
+  // The language the panel is IN. It follows `props.language`, but not
+  // always at once: see "SHOWING WHAT CHANGED" below.
+  const [language, setLanguage] = useState(props.language);
+  const s = t(language);
+  const lang = language ?? "en";
   const [view, setView] = useState<LearnedSetupView | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [highlight, setHighlight] = useState<string | null>(null);
@@ -79,6 +96,62 @@ export function LearnedSetupPanel(props: { orgId: string; language: string | nul
     if (typeof window === "undefined") return;
     const k = new URLSearchParams(window.location.search).get("learned");
     if (k) setHighlight(k);
+  }, []);
+
+  // SHOWING WHAT CHANGED. While the panel is not on the page (before the
+  // first answer) there is nothing to hold. After that, new data from a
+  // load, or a new language (measured: the same panel is 20px taller in
+  // Turkish), can change the panel's height, which moves everything
+  // below it. So `want` is what the panel should show, and it is put on
+  // the page only when that cannot move what the organiser is looking
+  // at: the page still, and the panel on the screen or below it
+  // (setup-learning/panel-reload.ts, `mayShowNow`). Nothing here scrolls
+  // the page, and nothing here may.
+  const panel = useRef<HTMLElement>(null);
+  const want = useRef<{ view: LearnedSetupView | null; language: string | null | undefined }>({
+    view: null,
+    language: props.language,
+  });
+  const wantChanged = useRef<() => void>(() => {});
+  const onPage = useRef(""); // what is on the page, as `want` in JSON
+  useEffect(() => {
+    let live = true;
+    let holding = false;
+    let lastMotionAt = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const tryShow = () => {
+      if (!live) return;
+      const next = JSON.stringify([want.current.view, want.current.language ?? null]);
+      holding = next !== onPage.current;
+      if (!holding) return;
+      const el = panel.current;
+      if (el && !mayShowNow({ now: Date.now(), lastMotionAt, panelBottom: el.getBoundingClientRect().bottom })) return;
+      holding = false;
+      onPage.current = next;
+      setView(want.current.view);
+      setLanguage(want.current.language);
+    };
+    const lookAgain = () => {
+      clearTimeout(timer);
+      timer = setTimeout(tryShow, SCROLL_SETTLE_MS);
+    };
+    wantChanged.current = () => {
+      tryShow();
+      if (holding) lookAgain();
+    };
+    // A scroll, or a jump to another part of the page that has just begun.
+    const onMotion = () => {
+      lastMotionAt = Date.now();
+      if (holding) lookAgain();
+    };
+    window.addEventListener("scroll", onMotion, { passive: true });
+    window.addEventListener("hashchange", onMotion);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+      window.removeEventListener("scroll", onMotion);
+      window.removeEventListener("hashchange", onMotion);
+    };
   }, []);
 
   // Load, and load again only when something may have changed. Every
@@ -106,7 +179,9 @@ export function LearnedSetupPanel(props: { orgId: string; language: string | nul
       lastLoadAt = now;
       getLearnedSetupAction(props.orgId)
         .then((v) => {
-          if (live) setView(v);
+          if (!live) return;
+          want.current.view = v;
+          wantChanged.current();
         })
         .catch(() => {
           // What is on the page stays; a first load that failed shows nothing.
@@ -148,10 +223,10 @@ export function LearnedSetupPanel(props: { orgId: string; language: string | nul
   }, [props.orgId]);
 
   // The language was saved on this page: a suggestion may be about it.
-  const shownLanguage = useRef(props.language);
   useEffect(() => {
-    if (shownLanguage.current === props.language) return;
-    shownLanguage.current = props.language;
+    if (want.current.language === props.language) return;
+    want.current.language = props.language;
+    wantChanged.current();
     ask.current("must");
   }, [props.language]);
 
@@ -184,6 +259,7 @@ export function LearnedSetupPanel(props: { orgId: string; language: string | nul
 
   return (
     <section
+      ref={panel}
       id="learned-setup"
       data-testid="learned-setup"
       className="bg-white rounded-xl border border-slate-200 shadow-sm scroll-mt-6"

@@ -69,6 +69,23 @@ async function boxesOf<K extends string>(page: Page, selectors: Record<K, string
 
 const tid = (id: string): string => `[data-testid="${id}"]`;
 
+/**
+ * Arm BEFORE something that starts a smooth scroll; the returned function
+ * waits until that scroll has really finished. The scroll is the
+ * browser's own animation (about 850ms for the length of this page) and
+ * no test clock speeds it up: a position read before it ends is a
+ * position on the way, and a row "in the viewport" then may only be
+ * passing through.
+ */
+async function scrollEnd(page: Page): Promise<() => Promise<void>> {
+  await page.evaluate(() => {
+    const w = window as unknown as { __scrollEnded: boolean };
+    w.__scrollEnded = false;
+    window.addEventListener("scrollend", () => (w.__scrollEnded = true), { once: true });
+  });
+  return () => expect.poll(() => page.evaluate(() => (window as unknown as { __scrollEnded: boolean }).__scrollEnded)).toBe(true);
+}
+
 /** What a plain return to the tab does: both events fire, and the tab was never hidden. */
 const comeBack = (page: Page) =>
   page.evaluate(() => {
@@ -392,10 +409,22 @@ test("a suggestion the organiser has dealt with leaves the block, and a quiet li
   await setHidden(page, false);
 
   // The other one is a setting on this page: saved there, the panel loads
-  // at once, it leaves the block too, and with nothing open there is no
-  // amber block at all.
+  // at once. The organiser is down the page at that setting and STAYS
+  // there, with the whole row on the screen: the panel, off the top of
+  // the screen, does not change height under them (it used to, about two
+  // runs in thirty: the card went while the page was still scrolling down
+  // to the setting, and the scroll ended 156px past it).
+  const scrolledDown = await scrollEnd(page);
   await pick.getByRole("link", { name: 'Switch on "The organisers pick"' }).click();
   await page.getByTestId("wr-pick-mode").selectOption("organiser");
+  await expect.poll(() => loads.count()).toBe(2);
+  await page.waitForLoadState("networkidle");
+  await scrolledDown();
+  await page.clock.runFor(2_000);
+  await expect(page.getByTestId("wr-pick")).toBeInViewport({ ratio: 1 });
+  // Back up at the panel, it shows what it loaded: it leaves the block
+  // too, and with nothing open there is no amber block at all.
+  await panel.scrollIntoViewIfNeeded();
   await expect(page.getByTestId("learned-suggestions")).toHaveCount(0);
   expect(loads.count()).toBe(2);
   await expect(panel.getByRole("region")).toHaveCount(0);
@@ -403,8 +432,6 @@ test("a suggestion the organiser has dealt with leaves the block, and a quiet li
   await expect(pickDone).toHaveText('"The organisers pick" is on.');
   await expect(sorted.getByRole("listitem")).toHaveCount(2);
   await expect(page.getByTestId("learned-item-rollingSquad")).toBeVisible();
-  // Saving it did not pull the page back up to the panel.
-  await expect(page.getByTestId("wr-pick")).toBeInViewport();
   expect(await stored()).toEqual(before);
 
   // The state is worked out, not stored: put the kickoff back and the card
@@ -445,3 +472,146 @@ test("a suggestion the organiser has dealt with leaves the block, and a quiet li
   await expect(pickDone).toHaveText('"Organizatörler seçer" ayarı açık.');
   await expect(panel.getByRole("list", { name: "Halledilenler" }).getByRole("listitem")).toHaveCount(2);
 });
+
+/**
+ * A RELOAD OF THE PANEL NEVER MOVES THE PAGE (2026-10-12).
+ *
+ * What went wrong: the organiser taps 'Switch on "The organisers pick"',
+ * the page begins its smooth scroll down to that setting (about 2,900px,
+ * 850ms), they save it, the panel reloads and its card (180px) is removed
+ * while the scroll is still running, and the scroll ends where the
+ * setting USED to be. The row they have just saved is 156px off the top
+ * of the screen. No code scrolled: the panel got shorter above them. At
+ * rest a browser with scroll anchoring hides that shift; one without it
+ * does not, so the second run switches anchoring off.
+ */
+for (const anchoring of [true, false]) {
+  test(`saving a setting never moves the page, and the panel scrolls to itself once only (scroll anchoring ${anchoring ? "on" : "off"})`, async ({ page, db }) => {
+    await db.run(`UPDATE "Organisation" SET "benchPickMode" = 'first-come', language = 'en' WHERE id = $1`, [ORG_ID]);
+    await db.run(`UPDATE "ClubSetupLearning" SET suggestions = $2::jsonb WHERE "orgId" = $1`, [
+      ORG_ID,
+      JSON.stringify([
+        { key: "language", current: "en", detected: "tr", evidence: [] },
+        {
+          key: "organiserPicks",
+          current: "first-come",
+          detected: "organiser",
+          evidence: ["Drop me a message and I'll sort the team", "I'll pick someone off the reserve list"],
+        },
+      ]),
+    ]);
+    await page.clock.install();
+    // Every scroll the panel asks for, for the life of the page.
+    await page.addInitScript((anchor) => {
+      const w = window as unknown as { __panelScrolls: string[] };
+      w.__panelScrolls = [];
+      const original = Element.prototype.scrollIntoView;
+      Element.prototype.scrollIntoView = function (this: Element, ...args: Parameters<typeof original>) {
+        if (this.id.startsWith("learned-")) w.__panelScrolls.push(this.id);
+        return original.apply(this, args);
+      };
+      if (!anchor) {
+        document.addEventListener("DOMContentLoaded", () => {
+          const style = document.createElement("style");
+          style.textContent = "* { overflow-anchor: none !important; }";
+          document.head.appendChild(style);
+        });
+      }
+    }, anchoring);
+    const panelScrolls = () => page.evaluate(() => (window as unknown as { __panelScrolls: string[] }).__panelScrolls);
+    const loads = countRequestsOf(page, (body) => body.includes('"suggestions"') && body.includes('"applied"'));
+    /** Put a control in the middle of the screen, at once, as a finger would. */
+    const goTo = (css: string) =>
+      page.evaluate((sel) => document.querySelector(sel)!.scrollIntoView({ behavior: "instant", block: "center" }), css);
+    /** Where a control is on the screen, and how far the page is scrolled. */
+    const where = (css: string) =>
+      page.evaluate(
+        (sel) => ({ top: Math.round(document.querySelector(sel)!.getBoundingClientRect().top), scrollY: Math.round(window.scrollY) }),
+        css,
+      );
+    /** Everything a save sets off has happened: the requests, and every timer. */
+    const settle = async () => {
+      await page.waitForLoadState("networkidle");
+      await page.clock.runFor(2_000);
+    };
+
+    // The DM's link to a suggestion: the page scrolls to it. Once.
+    await signInAs(page, U.admin, "/admin/settings?learned=organiserPicks#learned-setup");
+    const pickCard = page.getByTestId("learned-suggestion-organiserPicks");
+    await expect(pickCard).toHaveClass(/ring-2/, { timeout: 30_000 });
+    await expect(pickCard).toBeInViewport({ ratio: 1 });
+    await expect.poll(() => loads.known()).toBe(true);
+    await settle();
+    expect(await panelScrolls()).toEqual(["learned-organiserPicks"]);
+    expect(await page.evaluate(() => getComputedStyle(document.body).overflowAnchor)).toBe(anchoring ? "auto" : "none");
+    loads.reset();
+
+    // A weekly deadline, saved where it is.
+    await goTo(tid("wd-dropout"));
+    let was = await where(tid("wd-dropout"));
+    await page.getByTestId("wd-dropout-day").selectOption("1");
+    await page.getByTestId("wd-dropout-time").fill("21:00");
+    await page.getByTestId("wd-dropout-save").click();
+    await expect
+      .poll(() => db.one<{ d: number | null }>(`SELECT "dropOutDeadlineDay" AS d FROM "Organisation" WHERE id = $1`, [ORG_ID]))
+      .toEqual({ d: 1 });
+    await settle();
+    expect(await where(tid("wd-dropout"))).toEqual(was);
+
+    // Who fills an open place, saved where it is. The panel loads, and its
+    // card would go: but the panel is off the top of the screen, so it waits.
+    await goTo(tid("wr-pick"));
+    was = await where(tid("wr-pick"));
+    await page.getByTestId("wr-pick-mode").selectOption("organiser");
+    await expect.poll(() => loads.count()).toBe(1);
+    await settle();
+    expect(await where(tid("wr-pick"))).toEqual(was);
+    await expect(pickCard).toHaveCount(1);
+
+    // The language, saved where it is. The panel is 20px taller in
+    // Turkish, so it stays in English, off the top of the screen, until
+    // the organiser is back at it; the select stays under the finger.
+    await goTo("#bot-language select");
+    was = await where("#bot-language select");
+    await page.locator("#bot-language select").selectOption("tr");
+    await expect(page.getByText("MatchTime will speak Türkçe in this group")).toBeVisible();
+    await expect.poll(() => loads.count()).toBe(2);
+    await settle();
+    expect(await where("#bot-language select")).toEqual(was);
+    await expect(page.getByRole("heading", { name: "Set up from your group chat" })).toHaveCount(1);
+
+    // Back up at the panel: now it shows what it loaded. Nothing the panel
+    // did scrolled the page, then or since.
+    await page.getByTestId("learned-setup").scrollIntoViewIfNeeded();
+    await page.clock.runFor(1_000);
+    await expect(page.getByTestId("learned-suggestions")).toHaveCount(0);
+    await expect(page.getByTestId("learned-resolved-organiserPicks")).toHaveText('"Organizatörler seçer" ayarı açık.');
+    await expect(page.getByTestId("learned-resolved-language")).toHaveText("MatchTime bu grupta artık Türkçe konuşuyor.");
+    expect(await panelScrolls()).toEqual(["learned-organiserPicks"]);
+
+    // THE RACE THAT WAS FOUND: the button, then the save before the page
+    // has finished scrolling down to the setting. The whole row is on the
+    // screen when everything has settled, and it stays there.
+    await db.run(`UPDATE "Organisation" SET "benchPickMode" = 'first-come', language = 'en' WHERE id = $1`, [ORG_ID]);
+    await page.goto("/admin/settings#learned-setup");
+    await expect(pickCard).toBeVisible({ timeout: 30_000 });
+    await settle();
+    loads.reset();
+    const scrolledDown = await scrollEnd(page);
+    await pickCard.getByRole("link", { name: 'Switch on "The organisers pick"' }).click();
+    await page.getByTestId("wr-pick-mode").selectOption("organiser");
+    await expect.poll(() => loads.count()).toBe(1);
+    await scrolledDown();
+    await settle();
+    const rested = await where(tid("wr-pick"));
+    // Where the link leaves it: the row at the top, under its 24px margin.
+    expect(rested.top).toBe(24);
+    await page.clock.runFor(5_000);
+    expect(await where(tid("wr-pick"))).toEqual(rested);
+    // One scroll again on this visit (the `#learned-setup` arrival), none for the reload.
+    expect(await panelScrolls()).toEqual(["learned-setup"]);
+    await page.getByTestId("learned-setup").scrollIntoViewIfNeeded();
+    await page.clock.runFor(1_000);
+    await expect(page.getByTestId("learned-suggestion-organiserPicks")).toHaveCount(0);
+  });
+}
