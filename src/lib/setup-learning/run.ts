@@ -120,6 +120,7 @@ import {
   type WeeklyGameState,
 } from "./rules";
 import { composeSetupDm } from "./dm";
+import { weeklyGameOf } from "./suggestion-state";
 import { isSetupLearningEnabled } from "./flag";
 import { FEE_PATH } from "./suggestion-action";
 
@@ -364,17 +365,9 @@ export async function learnClubSetup(orgId: string, opts: LearnOptions = {}): Pr
       sport: { select: { playersPerTeam: true } },
     },
   });
-  const first = activities[0];
-  const weeklyGame: WeeklyGameState | null = first
-    ? {
-        dayOfWeek: first.dayOfWeek,
-        time: first.time,
-        venue: first.venue ?? null,
-        playersPerSide: first.sport?.playersPerTeam ?? null,
-        feePerPlayer: first.feePerPlayer ?? null,
-        feeSplitTotal: first.feeSplitTotal ?? false,
-      }
-    : null;
+  // The first active game, oldest first: the settings page holds the
+  // suggestions against the same one (suggestion-state.ts).
+  const weeklyGame: WeeklyGameState | null = weeklyGameOf(activities);
   // The description, as it is sent and as quotes are checked against it.
   // Read only now that the chat has passed the gate.
   const description = descriptionForReading(connect.capturedDescription);

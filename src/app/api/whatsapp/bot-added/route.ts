@@ -92,6 +92,8 @@ import { queueOwnerDm } from "@/lib/owner-dm";
 import { detectAdminGroupCandidate, recordAdminGroupCandidate } from "@/lib/admin-group-link";
 import { billingEnabledForApiRequest } from "@/lib/billing-flag";
 import { handleBillingReAdd } from "@/lib/club-billing-removal";
+import { handleSetupReAdd } from "@/lib/club-setup-removal";
+import { scheduleSetupAfterApproval } from "@/lib/club-setup-schedule";
 import { ingestGroupDescription } from "@/lib/group-description";
 import { capturedSessionChat } from "@/lib/captured-chat";
 
@@ -106,6 +108,51 @@ async function billingReAddStep(request: Request): Promise<void> {
     if (r.kind !== "not-removed") console.log(`[bot-added] ${groupId}: club fee re-add ${JSON.stringify(r)}`);
   } catch (err) {
     console.error("[bot-added] club fee re-add step failed (the add carries on):", err);
+  }
+}
+
+/**
+ * Removal slice (2026-10-12): MatchTime added back to the group of a club
+ * that is approved, still setting up, and was REMOVED from it. When the
+ * adder is a current member of that club the removal is cleared, so GO
+ * works again and a setup DM that never went becomes due; it is then run
+ * AT ONCE, after the response, exactly as after an approval
+ * (`scheduleSetupAfterApproval`), with the 15-minute sweep as the
+ * backstop. Whatever the self-join switch says, like the billing step
+ * above, because such a club's group takes a different branch below in
+ * each case ("live-org" with self-join on, the silence rail with it off)
+ * and neither writes anything. It never changes this route's answer, says
+ * nothing in the group, and never throws.
+ *
+ * `discovered` (the reconnect sweep found MatchTime in the group) clears
+ * it too, with no adder: the group is already that club's. THE PI DOES
+ * NOT SEND THAT FOR SUCH A GROUP TODAY: its sweep skips every group the
+ * server lists as known or silent, and a setting-up club's group is both.
+ * The server half is here so that a Pi which does report it is believed.
+ */
+async function setupReAddStep(request: Request): Promise<void> {
+  try {
+    const peek = (await request.clone().json().catch(() => null)) as {
+      groupId?: unknown;
+      discovered?: unknown;
+      addedByPhone?: unknown;
+      addedByLid?: unknown;
+    } | null;
+    const groupId = typeof peek?.groupId === "string" && peek.groupId.endsWith("@g.us") ? peek.groupId : null;
+    if (!groupId) return;
+    const r = await handleSetupReAdd({
+      groupId,
+      addedByPhone: peek?.addedByPhone,
+      addedByLid: peek?.addedByLid,
+      discovered: peek?.discovered === true,
+    });
+    if (r.kind !== "not-removed") console.log(`[bot-added] ${groupId}: setting-up club re-add ${r.kind} (${r.orgId})`);
+    // Back in its group: its setup DM (if it never went) without waiting
+    // for the sweep. Scheduled, never awaited: the Pi is waiting for this
+    // response. The run sends nothing for a club whose DM already went.
+    if (r.kind === "cleared") scheduleSetupAfterApproval(r.orgId, request);
+  } catch (err) {
+    console.error(`[bot-added] setting-up re-add step failed (the add carries on): ${(err as Error)?.name ?? "error"}`);
   }
 }
 
@@ -171,6 +218,7 @@ export async function POST(request: Request) {
   }
 
   await billingReAddStep(request);
+  await setupReAddStep(request);
 
   if (selfJoinEnabledForApiRequest(request)) return selfJoinAdd(request);
 

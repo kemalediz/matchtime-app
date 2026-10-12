@@ -50,7 +50,9 @@
  * ── Cap 8: DMs from a new self-join club (slice 7, 2026-09-29) ─────────
  * A club approved through self-join sends its members at most
  * NEW_CLUB_MEMBER_DMS_PER_DAY (20) DMs per London day for its first 28
- * days from approval. DMs over the allowance are simply not claimed, so
+ * days from its first day: the day it went live out of the setup hold,
+ * else its approval (for a club that was never held the two are the same
+ * moment). DMs over the allowance are simply not claimed, so
  * they come back on a later poll (tomorrow, once today's are spent). Group
  * posts are untouched. A club that predates self-join (Sutton FC) has a
  * NULL `approvedAt` and is never capped. Fails open, like the guards above.
@@ -220,7 +222,9 @@ export async function GET(request: Request) {
   // a post. `billingQuietWhere()` is empty while BILLING_ENABLED is off.
   const org = await db.organisation.findFirst({
     where: { whatsappGroupId: groupId, whatsappBotEnabled: true, ...billingQuietWhere() },
-    select: { id: true, approvedAt: true },
+    // `liveAt`: a club that was approved and held is "new" from the day it
+    // went live (cap 8 below, `newClubDmCap`).
+    select: { id: true, approvedAt: true, liveAt: true },
   });
   if (!org) {
     return NextResponse.json({ error: "Organisation not found / bot disabled" }, { status: 404 });

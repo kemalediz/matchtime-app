@@ -508,6 +508,7 @@ describe("the setup DM of a held club carries the same evidence lines", () => {
       ratingsUrl: "https://mt.link/ratings",
       settingsUrl: "https://mt.link/settings",
       learnedUrl: "https://mt.link/learned",
+      freePeriod: false,
     });
   it("in English: both labels under the switched setting, the fee with the weekly game page as its link", () => {
     expect(ask("en")).toContain(

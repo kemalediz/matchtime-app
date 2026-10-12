@@ -242,6 +242,27 @@ async function main() {
     assert.equal((await org(removed))?.setupStage, "setting-up");
     assert.equal((await jobs(removed)).length, 0);
     ok("removed from its group: refused, nothing changes");
+    // The MatchTime owner's door (slice S5) skips ONE check, the reading.
+    assert.equal(
+      (await goLiveClub(removed, liveByOwner("kemal"), NOW, { learningEnabled: true, skipReadingCheck: true })).outcome,
+      "removed-from-group",
+    );
+    assert.equal((await org(removed))?.setupStage, "setting-up");
+    assert.equal((await jobs(removed)).length, 0);
+    ok("skipReadingCheck does not get a removed club live: still refused, nothing changes");
+
+    const ownerDoor = await club("ownerdoor", {}, { approvedAgoMs: 10 * 60_000 });
+    await db.clubSetupLearning.create({ data: { orgId: ownerDoor, status: "running" } });
+    assert.equal((await goLiveClub(ownerDoor, "u", NOW, { learningEnabled: true })).outcome, "still-reading");
+    const viaOwner = await goLiveClub(ownerDoor, liveByOwner("kemal"), NOW, { learningEnabled: true, skipReadingCheck: true });
+    assert.equal(viaOwner.outcome, "went-live");
+    assert.equal((await org(ownerDoor))?.liveBy, "owner:kemal");
+    assert.equal((await jobs(ownerDoor)).length, 1);
+    assert.deepEqual(await db.clubSetupLearning.findUnique({ where: { orgId: ownerDoor }, select: { status: true, reason: true } }), {
+      status: "skipped",
+      reason: "went-live",
+    });
+    ok("skipReadingCheck takes a club with an unfinished reading live, once, and closes the reading for good");
 
     // ── 6. Not setting up ─────────────────────────────────────────────
     const neverHeld = await club("neverheld", { setupStage: "live", whatsappBotEnabled: true });
@@ -295,6 +316,13 @@ async function main() {
     assert.equal((await jobs(paused)).length, 0);
     assert.equal(await db.sentNotification.findUnique({ where: { key: `org-${paused}:bot-intro` } }), null);
     ok("a club paused for the club fee is refused (billing-paused): no hello queued to be lost, the intro key unspent");
+    assert.equal(
+      (await goLiveClub(paused, liveByOwner("kemal"), NOW, { billingEnabled: true, learningEnabled: true, skipReadingCheck: true })).outcome,
+      "billing-paused",
+    );
+    assert.equal((await org(paused))?.setupStage, "setting-up");
+    assert.equal((await jobs(paused)).length, 0);
+    ok("skipReadingCheck does not get a paused club live either: billing-paused, nothing changes");
 
     const pausedRemoved = await club("pausedrm");
     await pause(pausedRemoved, "removed");

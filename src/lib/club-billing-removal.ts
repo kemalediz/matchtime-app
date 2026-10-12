@@ -14,6 +14,13 @@
  *   - a club that predates self-join (`approvedAt` NULL: Sutton FC), an
  *     exempt club, or BILLING_ENABLED off: LOGGED ONLY. Nothing is
  *     written, nothing goes to Stripe;
+ *   - a club that is approved but still SETTING UP (club-setup.ts): LOGGED
+ *     ONLY ("setting-up"), whatever the flag and whatever its billing
+ *     state says. It has never gone live, so it has no free period and no
+ *     billing to pause; its free period starts when it goes live. Nothing
+ *     about the removal is recorded here: on this answer the route calls
+ *     `handleSetupRemoval` (club-setup-removal.ts), which stamps it so the
+ *     club cannot go live, and no free period can start, while removed;
  *   - a club being billed (trial, grace, subscribed, past due): paused,
  *     reason "removed", through the one writer (`setBillingState`). Slice
  *     P2: NO Stripe call to end anything (there is no subscription): the
@@ -49,6 +56,7 @@
  */
 import { db } from "./db";
 import { APPROVED_CLUB_WHERE } from "./club-approval-state";
+import { SETUP_STAGE_SELECT, isClubSettingUp } from "./club-setup-rules";
 import { setBillingState } from "./club-billing";
 import { unpaidMonthIds } from "./club-billing-months";
 import { BILLING_ALERT_KIND, recordOpsEvent } from "./ops-alerts";
@@ -64,7 +72,7 @@ export type BillingRemovalResult =
   /** No approved club owns the group: not a billing matter. */
   | { kind: "no-club" }
   /** Logged only: nothing written, nothing sent to Stripe. */
-  | { kind: "logged"; orgId: string; why: "exempt-club" | "flag-off" | "not-billed" | "paused-other" }
+  | { kind: "logged"; orgId: string; why: "exempt-club" | "setting-up" | "flag-off" | "not-billed" | "paused-other" }
   | { kind: "paused"; orgId: string; stripe: RemovalStripeOutcome }
   | { kind: "already-paused"; orgId: string; stripe: RemovalStripeOutcome };
 
@@ -81,6 +89,7 @@ async function loadApprovedClubByGroup(groupId: string) {
     select: {
       id: true,
       approvedAt: true,
+      ...SETUP_STAGE_SELECT,
       billingStatus: true,
       clubBilling: {
         select: {
@@ -111,6 +120,13 @@ export async function handleBillingRemoval(
   if (org.approvedAt === null) {
     console.log(`${tag}: MatchTime removed from the group of a club that is never billed; logged only`);
     return { kind: "logged", orgId: org.id, why: "exempt-club" };
+  }
+  if (isClubSettingUp(org)) {
+    // Never gone live: no free period has started and there is no billing
+    // to pause. Before the flag on purpose: the answer is the same either
+    // way, and the writer is never reached.
+    console.log(`${tag}: MatchTime removed from the group of a club that is still setting up; no billing state, logged only`);
+    return { kind: "logged", orgId: org.id, why: "setting-up" };
   }
   if (!opts.flagOn) {
     console.log(`${tag}: MatchTime removed from the group (billing ${org.billingStatus}); BILLING_ENABLED off, logged only`);
@@ -204,6 +220,9 @@ export async function handleBillingReAdd(
     if (!org || org.approvedAt === null || org.billingStatus !== "paused" || org.clubBilling?.pausedReason !== "removed") {
       return { kind: "not-removed" };
     }
+    // A club still setting up was never paused for a removal (above), so
+    // it has nothing to resume. Holds the line if a row ever said so.
+    if (isClubSettingUp(org)) return { kind: "not-removed" };
     const unpaid = (await unpaidMonthIds(org.id)).length > 0;
     const card: "ok" | "unpaid" | null = unpaid ? "unpaid" : org.clubBilling.stripePaymentMethodId ? "ok" : null;
     const moved = await setBillingState(org.id, { type: "re-added", card }, now);
