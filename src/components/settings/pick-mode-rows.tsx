@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { setWeeklyRoutine } from "@/app/actions/org";
 import { InfoButton } from "@/components/stats/info-button";
 import { t } from "@/lib/i18n/t";
+import { LEARNED_REFRESH_EVENT } from "@/lib/setup-learning/suggestion-state";
 import type { BenchPickFallback, BenchPickMode } from "@/lib/squad-capacity";
 
 const control =
@@ -23,6 +24,8 @@ export function PickModeRows(props: {
   language: string | null | undefined;
   benchPickMode: BenchPickMode;
   benchPickFallback: BenchPickFallback;
+  /** Called after a save has been stored (the Go live banner's preview). */
+  onSaved?: () => void;
 }) {
   const s = t(props.language);
   const [mode, setMode] = useState<BenchPickMode>(props.benchPickMode);
@@ -40,6 +43,9 @@ export function PickModeRows(props: {
       setMode(res.benchPickMode);
       setFallback(res.benchPickFallback);
       toast.success(s.wr_pick_saved);
+      // "Set up from your group chat", higher up the page, may be asking about this.
+      window.dispatchEvent(new Event(LEARNED_REFRESH_EVENT));
+      props.onSaved?.();
     } catch {
       setMode(before.mode);
       setFallback(before.fallback);

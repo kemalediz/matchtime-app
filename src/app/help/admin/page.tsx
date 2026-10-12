@@ -43,7 +43,8 @@ export default function AdminGuidePage() {
 
       <h3 id="club-fee">Club fee</h3>
       <p>
-        {firstMonthsFree("en")}, counted from the day we approve your club.
+        {firstMonthsFree("en")}, counted from the day MatchTime goes live in
+        your group.
         No card is needed to start.
       </p>
       <p>

@@ -20,7 +20,8 @@
   "mayAlsoSuggest": [
    "organiserPicks"
   ],
-  "dm": true
+  "dm": true,
+  "matchFee": null
  },
  "history": [
   {

@@ -5,7 +5,7 @@
  * racing for one DM, the 2-hour cap, the cancel) are in
  * e2e/api/setup-hold-approval.spec.ts.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const sdkCalls = vi.hoisted(() => ({ n: 0 }));
 vi.mock("@anthropic-ai/sdk", () => ({
@@ -148,6 +148,9 @@ const heldOrg = (over: Row = {}): Row => ({
   featureBench: true,
   featureSquadFromList: false,
   setupLearning: null,
+  billingStatus: "exempt",
+  billingPlan: "standard",
+  clubBilling: null,
   ...over,
 });
 
@@ -174,6 +177,43 @@ beforeEach(() => {
 });
 
 const learning = (status: string, over: Row = {}): Row => ({ status, reason: null, applied: [], suggestions: [], noted: [], ...over });
+
+describe("sendSetupDm: the free period is promised only when going live will start one", () => {
+  const FREE = "Your first two months are free. The free period starts when I go live in the group.";
+  const BILLING = process.env.BILLING_ENABLED;
+  afterEach(() => {
+    if (BILLING === undefined) delete process.env.BILLING_ENABLED;
+    else process.env.BILLING_ENABLED = BILLING;
+  });
+  const sentText = async () => {
+    expect((await sendSetupDm("org-riverside", DAY, { learningEnabled: false })).kind).toBe("sent");
+    return String(state.jobs[0].text);
+  };
+
+  it("billing on, Standard plan, no free period yet: the last line promises it", async () => {
+    process.env.BILLING_ENABLED = "1";
+    expect((await sentText()).endsWith(FREE)).toBe(true);
+  });
+
+  it("billing switched OFF: no free period is mentioned, and the DM ends on the GO line", async () => {
+    delete process.env.BILLING_ENABLED;
+    const text = await sentText();
+    expect(text).not.toMatch(/free period|months are free/i);
+    expect(text.split("\n\n").at(-1)).toMatch(/^When you're happy, reply \*GO\* here/);
+  });
+
+  it("the Free plan: no free period is mentioned (there is nothing to pay after it)", async () => {
+    process.env.BILLING_ENABLED = "1";
+    state.org = heldOrg({ billingPlan: "free" });
+    expect(await sentText()).not.toMatch(/free period|months are free/i);
+  });
+
+  it("a club that somehow already has a billing row: not promised a second one", async () => {
+    process.env.BILLING_ENABLED = "1";
+    state.org = heldOrg({ clubBilling: { orgId: "org-riverside" } });
+    expect(await sentText()).not.toMatch(/free period|months are free/i);
+  });
+});
 
 describe("sendSetupDm: when it goes", () => {
   it("the reading is switched off: the DM goes at once, with no reading sentence", async () => {
@@ -253,6 +293,35 @@ describe("sendSetupDm: when it goes", () => {
       "/admin/players/ratings",
       "/admin/settings",
     ]);
+  });
+
+  // Review fix 6 (PR #238): the fee line linked to the plain activities
+  // page, where the fee field is closed. It is minted as the findings DM
+  // mints it (setup-learning/run.ts), in English and Turkish.
+  it("a match fee suggestion gets its own link, straight to the fee field", async () => {
+    const fee = { key: "matchFee", current: "", detected: "6", evidence: ["£6 a player"], fromDescription: ["£6 a player"] };
+    state.org = heldOrg({ setupLearning: learning("nothing", { suggestions: [fee] }) });
+    await sendSetupDm("org-riverside", DAY, { learningEnabled: true });
+    expect(adminLinkMock.mock.calls.map((c) => c[0].nextPath)).toContain("/admin/activities?edit=fee");
+    expect(String(state.jobs[0].text)).toContain(
+      `🔎 The match fee looks like £6 a player; your weekly game has no fee set.\n` +
+        `From your group description: "£6 a player"\n` +
+        `Set it here: https://mt.link/admin/activities?edit=fee`,
+    );
+
+    state.jobs.length = 0;
+    state.org = heldOrg({ language: "tr", setupLearning: learning("nothing", { suggestions: [fee] }) });
+    await sendSetupDm("org-riverside", DAY, { learningEnabled: true });
+    expect(String(state.jobs[0].text)).toContain(
+      `Grup açıklamanızdan: "£6 a player"\nBuradan girebilirsiniz: https://mt.link/admin/activities?edit=fee`,
+    );
+  });
+
+  it("with no fee suggestion no fee link is minted", async () => {
+    const pick = { key: "organiserPicks", current: "first-come", detected: "organiser", evidence: ["I'll pick", "I pick the team"] };
+    state.org = heldOrg({ setupLearning: learning("nothing", { suggestions: [pick] }) });
+    await sendSetupDm("org-riverside", DAY, { learningEnabled: true });
+    expect(adminLinkMock.mock.calls.map((c) => c[0].nextPath)).not.toContain("/admin/activities?edit=fee");
   });
 });
 

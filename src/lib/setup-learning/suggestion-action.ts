@@ -11,7 +11,9 @@
  *   organisers pick: that setting, further down /admin/settings (the DM
  *     links to the suggestion on the page, which leads there);
  *   the language: the language setting on /admin/settings (the DM links
- *     to the page).
+ *     to the page);
+ *   the match fee (slice D3): the weekly game page with its fee field
+ *     open, the DM's "Set it here" link.
  *
  * Until 2026-10-12 only "organisers pick" had a link on the page: every
  * other kind was a bare line of text, so the kickoff time the DM offered
@@ -22,6 +24,10 @@ import type { SuggestionKey } from "./rules";
 
 /** Where the weekly game is changed: `scheduleUrl` in run.ts. */
 export const SCHEDULE_PATH = "/admin/activities";
+/** The query that opens the weekly game's edit form at its fee field. */
+export const FEE_EDIT_PARAM = "edit=fee";
+/** Where the match fee is entered: `feeUrl` in run.ts. */
+export const FEE_PATH = `${SCHEDULE_PATH}?${FEE_EDIT_PARAM}`;
 /** The id of "Who fills an open place" on /admin/settings (pick-mode-rows.tsx). */
 export const ORGANISER_PICKS_ANCHOR = "wr-pick";
 /** The id of the bot language section on /admin/settings. */
@@ -31,6 +37,7 @@ export const LANGUAGE_ANCHOR = "bot-language";
 export function suggestionActionHref(key: SuggestionKey): string {
   if (key === "organiserPicks") return `#${ORGANISER_PICKS_ANCHOR}`;
   if (key === "language") return `#${LANGUAGE_ANCHOR}`;
+  if (key === "matchFee") return FEE_PATH;
   return SCHEDULE_PATH;
 }
 

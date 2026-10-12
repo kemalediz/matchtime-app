@@ -379,11 +379,29 @@ test.describe("the group routes are blind to it", () => {
     expect(await heldJobs(db)).toBe(0);
   });
 
-  test("MatchTime's removal from its group changes nothing yet (slice S6 adds the handling)", async ({ request, db }) => {
+  test("MatchTime's removal from its group: the club stays approved, setting up and silent, and the removal is recorded", async ({ request, db }) => {
+    const removedAt = () => db.one<{ at: Date | null }>(`SELECT "setupRemovedAt" AS at FROM "Organisation" WHERE id = $1`, [HELD_ORG]);
     const res = await post(request, "/api/whatsapp/bot-removed", { groupId: HELD_GROUP });
-    expect(res.ok).toBe(true);
+    expect(res).toMatchObject({ ok: true, billing: "setting-up", setup: "removed", orgId: HELD_ORG });
+    // Not back to draft, not live, and nothing for the group.
     expect(await heldClub(db)).toMatchObject({ approvalStatus: "approved", setupStage: "setting-up", whatsappBotEnabled: false });
     expect(await heldJobs(db)).toBe(0);
+    expect((await removedAt())!.at).not.toBeNull();
+    // (The whole removal path, GO refused and the re-add rules are in
+    // setup-go-live.spec.ts and e2e/helpers/setup-removal-lib-tests.ts.)
+
+    // The removal deleted the chat captured at the add (the group took
+    // MatchTime out).
+    expect(await db.one(`SELECT "capturedHistory" AS h FROM "ClubConnect" WHERE id = $1`, [`${HELD_ORG}-cc`])).toEqual({ h: null });
+
+    // THE FIXTURE IS PUT BACK BY HAND for the tests further down, which
+    // need this club in its group with its chat unread: the stamp is
+    // cleared and the chat restored in SQL. (The real re-add also runs the
+    // club's setup DM at once, which would close its reading here; that
+    // path is covered in setup-go-live.spec.ts.)
+    await db.run(`UPDATE "Organisation" SET "setupRemovedAt" = NULL WHERE id = $1`, [HELD_ORG]);
+    await db.run(`UPDATE "ClubConnect" SET "capturedHistory" = $2::jsonb WHERE id = $1`, [`${HELD_ORG}-cc`, JSON.stringify(rolling.history)]);
+    await db.run(`DELETE FROM "PlatformJob" WHERE purpose = 'setup-removed'`);
   });
 });
 

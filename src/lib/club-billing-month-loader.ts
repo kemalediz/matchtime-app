@@ -4,7 +4,9 @@
  *
  * Turns the club's rows into `countClubMonth`'s input: its activities, the
  * month's matches with their IN counts, the club's attendance setting and
- * its pause spans (`mt.paused` / `mt.resumed`). It ONLY READS (find
+ * its pause spans (`mt.paused` / `mt.resumed`), with, for a club that was
+ * approved and held, everything before it went live (`beforeGoLiveSpan`:
+ * never a game played). It ONLY READS (find
  * methods), and takes the client as an argument so the read-only report
  * script (scripts/club-billing-month-report.ts) can pass its own client
  * and nothing here imports the app's `db`. The month close (P2) will call
@@ -20,10 +22,12 @@ import {
   SUSPENDED_EVENT_TYPE,
   UNBILLED_EVENT_TYPE,
   UNSUSPENDED_EVENT_TYPE,
+  beforeGoLiveSpan,
   notChargedSpansFrom,
   type CountClubMonthInput,
   type CycleActivity,
 } from "./club-billing-cycle-rules";
+import { SETUP_STAGE_SELECT, type SetupStageColumns } from "./club-setup-rules";
 
 /** The match columns the count reads, and the IN (CONFIRMED) count. */
 const MATCH_SELECT = {
@@ -46,7 +50,9 @@ type Find<R> = (args: any) => PromiseLike<R>;
 /** The read methods the loader uses, and nothing else (no write method is
  *  reachable through this type). */
 export interface MonthLoaderClient {
-  organisation: { findUnique: Find<{ featureAttendance: boolean } | null> };
+  organisation: {
+    findUnique: Find<({ featureAttendance: boolean; liveAt?: Date | null } & SetupStageColumns) | null>;
+  };
   activity: { findMany: Find<CycleActivity[]> };
   match: {
     /** Typed on the exact select, so the IN count (`_count`) is part of
@@ -83,8 +89,15 @@ export async function loadClubMonthInput(
   month: { startsAt: Date; endsAt: Date },
   opts: { now?: Date } = {},
 ): Promise<CountClubMonthInput | null> {
-  const org = await client.organisation.findUnique({ where: { id: orgId }, select: { featureAttendance: true } });
+  const org = await client.organisation.findUnique({
+    where: { id: orgId },
+    select: { featureAttendance: true, liveAt: true, ...SETUP_STAGE_SELECT },
+  });
   if (!org) return null;
+  // A club that was approved and held was silent, and not yet in its free
+  // period, until it went live: nothing that kicked off before then (or,
+  // for a club still setting up, nothing at all) is ever a game played.
+  const notLive = beforeGoLiveSpan(org);
 
   const matches = await client.match.findMany({
     where: { activity: { orgId }, isHistorical: false, date: { gte: month.startsAt, lt: month.endsAt } },
@@ -132,7 +145,7 @@ export async function loadClubMonthInput(
       yellowScore: m.yellowScore,
       confirmedCount: m._count.attendances,
     })),
-    pauseSpans: notChargedSpansFrom(events.map((e) => ({ type: e.type, at: e.receivedAt }))),
+    pauseSpans: [...(notLive ? [notLive] : []), ...notChargedSpansFrom(events.map((e) => ({ type: e.type, at: e.receivedAt })))],
     tracksAttendance: org.featureAttendance,
     ...(opts.now ? { now: opts.now } : {}),
   };
