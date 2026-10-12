@@ -67,7 +67,9 @@ async function seedClub(id: string, opts: { language: string; approvalStatus: st
   );
   await db.run(
     `INSERT INTO "ClubBilling" ("orgId","trialStartedAt","trialEndsAt","updatedAt") VALUES ($1,$2,$3,now())`,
-    // 30 days of 24 hours, as trialWindow() writes it (not Postgres's calendar interval).
+    // A STORED free period end (30 days on, as it was written before the
+    // free period became two months, 2026-10-12): the scheduler reads only
+    // the stored `trialEndsAt`, so every step below is counted from it.
     [id, new Date(APPROVED), new Date(Date.parse(APPROVED) + 30 * 24 * 60 * 60 * 1000)],
   );
   await db.run(
@@ -115,14 +117,14 @@ test("day 21 at 10:00 London: one DM to the collector (EN) and one to the owner 
   expect(en).toHaveLength(1);
   expect(en[0].refId).toBe(`${EN_ORG}:trial-21:2026-10-31T09:00:00.000Z`);
   expect(en[0].sendAfter).toBeNull();
-  expect(en[0].text).toContain("Hi Cole Collector, Cron Rovers's free month on MatchTime ends on Sat 31 Oct.");
+  expect(en[0].text).toContain("Hi Cole Collector, Cron Rovers's free period on MatchTime ends on Sat 31 Oct.");
   expect(en[0].text).toContain("*25p a player per game*");
   expect(en[0].text).toMatch(/\/r\/[A-Za-z0-9_-]+/);
   expect(en[0].text).not.toContain("make them the money collector");
 
   const tr = await billingDms(TR_OWNER.phone);
   expect(tr).toHaveLength(1);
-  expect(tr[0].text).toContain("Merhaba Erdal, Erdal Spor için MatchTime'daki ücretsiz ay 31 Ekim Cumartesi tarihinde bitiyor.");
+  expect(tr[0].text).toContain("Merhaba Erdal, Erdal Spor için MatchTime'daki ücretsiz dönem 31 Ekim Cumartesi tarihinde bitiyor.");
   expect(tr[0].text).toContain("Ayarlar'dan onu para toplayan kişi yapın");
   expect(tr[0].text).not.toMatch(/[–—]/);
 
@@ -142,7 +144,7 @@ test("day 28: one reminder each, and still nothing twice", async ({ request }) =
   await cron(request, "2026-10-29T11:00:00Z");
   const en = await billingDms(EN_COLLECTOR.phone);
   expect(en).toHaveLength(2);
-  expect(en[1].text).toContain("a quick reminder: Cron Rovers's free month ends on Sat 31 Oct.");
+  expect(en[1].text).toContain("a quick reminder: Cron Rovers's free period ends on Sat 31 Oct.");
   expect(await billingDms(TR_OWNER.phone)).toHaveLength(2);
 });
 
@@ -154,7 +156,7 @@ test("day 30: the free month ends ON TIME (09:00 London), the DM waits for 10:00
   await cron(request, "2026-10-31T10:00:00Z");
   const en = await billingDms(EN_COLLECTOR.phone);
   expect(en).toHaveLength(3);
-  expect(en[2].text).toContain("free month has ended. MatchTime will keep running in the Cron Rovers WhatsApp group for one more week, until Sat 7 Nov.");
+  expect(en[2].text).toContain("free period has ended. MatchTime will keep running in the Cron Rovers WhatsApp group for one more week, until Sat 7 Nov.");
 });
 
 test("day 37: two cron runs at the same moment pause the club ONCE and send ONE 'paused' DM", async ({ request }) => {

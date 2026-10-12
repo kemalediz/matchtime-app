@@ -1,3 +1,5 @@
+import { firstMonthsFree } from "@/lib/i18n/free-period";
+
 export const metadata = { title: "Organiser guide" };
 
 export default function AdminGuidePage() {
@@ -8,7 +10,7 @@ export default function AdminGuidePage() {
         You run the group. This guide walks through what MatchTime does for
         you each week, and what you can check or fix from the dashboard.
         MatchTime costs up to £9.99 a month per group, and you only pay for
-        the weeks you play. Your first month is free. See{" "}
+        the weeks you play. {firstMonthsFree("en")}. See{" "}
         <a href="#club-fee">Club fee</a> below.
       </p>
 
@@ -41,7 +43,7 @@ export default function AdminGuidePage() {
 
       <h3 id="club-fee">Club fee</h3>
       <p>
-        Your first month is free, counted from the day we approve your club.
+        {firstMonthsFree("en")}, counted from the day we approve your club.
         No card is needed to start.
       </p>
       <p>
@@ -60,9 +62,9 @@ export default function AdminGuidePage() {
         when the card is added.
       </p>
       <p>
-        Nine days before your first month ends, MatchTime sends a reminder by
+        Nine days before your free period ends, MatchTime sends a reminder by
         WhatsApp with a link to your billing page, and another two days
-        before the end if there is still no card. If the first month ends
+        before the end if there is still no card. If the free period ends
         without a card, MatchTime keeps running for a week. After that week
         it goes quiet in your group until a card is added: no posts, no
         replies, and nothing is said in the group. Your players, matches and

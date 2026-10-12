@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { CalendarPlus, Loader2, Save } from "lucide-react";
 import { toast } from "sonner";
+import { freePeriodLength } from "@/lib/i18n/free-period";
 import { setClubPlanAction, startFreeMonthAction, type BillingAdminResult } from "@/app/actions/club-billing-admin";
 
 /**
@@ -80,7 +81,7 @@ export function PlanControl({
         onClick={() => {
           if (choice === "free" && plan !== "free") {
             const ok = window.confirm(
-              `Make ${club} Free? It is never billed while on Free, and a free month it is in now ends for good.`,
+              `Make ${club} Free? It is never billed while on Free, and a free period it is in now ends for good.`,
             );
             if (!ok) return;
           }
@@ -103,14 +104,14 @@ export function StartFreeMonthButton({ orgId, club, enabled }: { orgId: string; 
       disabled={pending || !enabled}
       title={enabled ? undefined : "Billing is switched off (BILLING_ENABLED)"}
       onClick={() => {
-        if (window.confirm(`Start ${club}'s free month now? It runs 30 days from now, and a club gets only one.`)) {
+        if (window.confirm(`Start ${club}'s free period now? It runs ${freePeriodLength("en")} from now, and a club gets only one.`)) {
           run(() => startFreeMonthAction(orgId));
         }
       }}
       className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
     >
       {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarPlus className="h-4 w-4" />}
-      Start free month
+      Start free period
     </button>
   );
 }

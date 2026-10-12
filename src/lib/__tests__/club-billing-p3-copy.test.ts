@@ -182,7 +182,7 @@ describe("rewritten DMs", () => {
   });
 
   it("day 28 and day 30: say how it is charged", () => {
-    expect(all("en").d28).toContain("a quick reminder: Riverside FC's free month ends on Sun 1 Nov.");
+    expect(all("en").d28).toContain("a quick reminder: Riverside FC's free period ends on Sun 1 Nov.");
     expect(all("en").d28).toContain("You only pay for the games you play, up to £9.99 a month, and nothing is taken when you add the card.");
     expect(all("en").d30).toContain("until Sun 8 Nov. Add a card any time before then:");
     expect(all("en").d30).toContain("You only pay for the games you play, up to £9.99 a month, charged after each month ends.");
