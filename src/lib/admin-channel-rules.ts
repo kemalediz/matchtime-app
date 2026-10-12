@@ -132,6 +132,11 @@ export const ADMIN_GROUP_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 export const ADMIN_GROUP_CODE_LENGTH = 6;
 /** How long a code shown on the settings page stays valid. */
 export const ADMIN_GROUP_CODE_TTL_MS = 48 * 60 * 60 * 1000;
+/** How long a code minted for the setup DM of a club that is setting up
+ *  stays valid (go-live slice S7, owner decision 6): 7 days. The
+ *  organiser has it in a DM, not on a page they are looking at, and only
+ *  an owner or admin of that club can use it. */
+export const ADMIN_GROUP_DM_CODE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 export function generateAdminGroupLinkCode(rand: (max: number) => number = (max) => randomInt(max)): string {
   let out = "";

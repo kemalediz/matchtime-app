@@ -35,13 +35,13 @@ const dbMock = vi.hoisted(() => ({
       return { count: hit.length };
     }),
   },
-  // The cancel's one UPDATE ... RETURNING: values are (now, reason, now, purpose, refId).
+  // The cancel's one UPDATE ... RETURNING: values are (now, reason, now, purposes, refIds).
   $queryRaw: vi.fn(async (q: TemplateStringsArray, ...values: unknown[]) => {
     state.sql.push(q.join("?"));
-    const [now, reason, , purpose, refId] = values as [Date, string, Date, string, string];
+    const [now, reason, , purposes, refIds] = values as [Date, string, Date, string[], string[]];
     const out: Array<{ status: string }> = [];
     for (const j of state.jobs) {
-      if (j.kind !== "dm" || j.purpose !== purpose || j.refId !== refId) continue;
+      if (j.kind !== "dm" || !purposes.includes(j.purpose) || !refIds.includes(j.refId)) continue;
       if (j.status !== "queued" && j.status !== "claimed") continue;
       if (j.status === "queued") {
         j.status = "failed";
@@ -89,7 +89,54 @@ describe("cancelSetupDm", () => {
     expect(dbMock.platformJob.updateMany).not.toHaveBeenCalled();
     expect(state.sql[0]).toMatch(/UPDATE "PlatformJob" SET[\s\S]*CASE WHEN "status" = 'queued' THEN 'failed' ELSE "status" END/);
     expect(state.sql[0]).toMatch(/"status" IN \('queued', 'claimed'\)[\s\S]*RETURNING "status"/);
-    expect(dbMock.$queryRaw.mock.calls[0].slice(1)).toEqual([NOW, "cancelled: removed", NOW, "setup-ask", "org-riverside:setup-ask"]);
+    expect(state.sql[0]).toMatch(/"purpose" = ANY\(\?\) AND "refId" = ANY\(\?\)/);
+    expect(dbMock.$queryRaw.mock.calls[0].slice(1)).toEqual([
+      NOW,
+      "cancelled: removed",
+      NOW,
+      ["setup-ask", "setup-admin-code", "setup-reminder"],
+      ["org-riverside:setup-ask", "org-riverside:setup-admin-code", "org-riverside:setup-reminder"],
+    ]);
+  });
+
+  it("slices S6 and S7: the admin group command and the reminder are cancelled WITH the setup DM, in that one statement", async () => {
+    state.jobs = [
+      job(),
+      job({ id: "pj-code", purpose: "setup-admin-code", refId: "org-riverside:setup-admin-code" }),
+      job({ id: "pj-rem", purpose: "setup-reminder", refId: "org-riverside:setup-reminder" }),
+    ];
+    expect(await cancelSetupDm("org-riverside", "went-live", NOW)).toEqual({ cancelled: 3, alreadyClaimed: 0 });
+    expect(dbMock.$queryRaw).toHaveBeenCalledTimes(1);
+    for (const j of state.jobs) expect(j).toMatchObject({ status: "failed", failReason: "cancelled: went-live" });
+  });
+
+  it("a reminder queued at night for 09:00, alone (the setup DM went yesterday): cancelled when the club goes live", async () => {
+    state.jobs = [
+      job({ status: "sent" }),
+      job({ id: "pj-code", purpose: "setup-admin-code", refId: "org-riverside:setup-admin-code", status: "sent" }),
+      job({ id: "pj-rem", purpose: "setup-reminder", refId: "org-riverside:setup-reminder" }),
+    ];
+    expect(await cancelSetupDm("org-riverside", "went-live", NOW)).toEqual({ cancelled: 1, alreadyClaimed: 0 });
+    expect(state.jobs.map((j) => j.status)).toEqual(["sent", "sent", "failed"]);
+  });
+
+  it("a reminder the Pi has ALREADY CLAIMED keeps its status and is marked, like the setup DM", async () => {
+    state.jobs = [job({ id: "pj-rem", purpose: "setup-reminder", refId: "org-riverside:setup-reminder", status: "claimed" })];
+    expect(await cancelSetupDm("org-riverside", "suspended", NOW)).toEqual({ cancelled: 0, alreadyClaimed: 1 });
+    expect(state.jobs[0]).toMatchObject({ status: "claimed", failReason: "cancelled: suspended" });
+    // Released for pacing after the cancel: failed, never queued again.
+    expect(await recordPlatformJobOutcome("pj-rem", { outcome: "release" }, NOW)).toEqual({ updated: true });
+    expect(state.jobs[0].status).toBe("failed");
+  });
+
+  it("another club's reminder and command, and a setup-reply to this club, are untouched", async () => {
+    state.jobs = [
+      job({ id: "a", purpose: "setup-reminder", refId: "org-other:setup-reminder" }),
+      job({ id: "b", purpose: "setup-admin-code", refId: "org-other:setup-admin-code" }),
+      job({ id: "c", purpose: "setup-reply", refId: "org-riverside:setup-reminder" }),
+    ];
+    expect(await cancelSetupDm("org-riverside", "suspended", NOW)).toEqual({ cancelled: 0, alreadyClaimed: 0 });
+    expect(state.jobs.map((j) => j.status)).toEqual(["queued", "queued", "queued"]);
   });
 
   it("a job the Pi has ALREADY CLAIMED keeps its status (it may be on its way), is marked, and the caller is told", async () => {
@@ -162,9 +209,20 @@ describe("THE PACING GAP: a cancelled job the Pi then RELEASES is not put back i
 
 describe("cancelQueuedPlatformDms (the platform channel's guard)", () => {
   it("refuses to cancel sign-up codes and the owner's DMs by purpose", async () => {
-    for (const purpose of ["otp", "owner-approval", "owner-ack", "billing", "setup-reply"]) {
-      await expect(cancelQueuedPlatformDms({ purpose: purpose as never, refId: "x", reason: "y", now: NOW })).rejects.toThrow(/cannot be cancelled/);
+    for (const purpose of ["otp", "owner-approval", "owner-ack", "owner-setup-stuck", "billing", "setup-reply"]) {
+      await expect(cancelQueuedPlatformDms({ purposes: [purpose as never], refIds: ["x"], reason: "y", now: NOW })).rejects.toThrow(/cannot be cancelled/);
+      // One bad purpose among good ones refuses the whole call.
+      await expect(
+        cancelQueuedPlatformDms({ purposes: ["setup-ask", purpose as never], refIds: ["x"], reason: "y", now: NOW }),
+      ).rejects.toThrow(/cannot be cancelled/);
     }
+    expect(dbMock.$queryRaw).not.toHaveBeenCalled();
+  });
+
+  it("refuses a cancel that names no purpose or no refId (it would otherwise match nothing, silently)", async () => {
+    await expect(cancelQueuedPlatformDms({ purposes: [], refIds: ["x"], reason: "y", now: NOW })).rejects.toThrow(/at least one/);
+    await expect(cancelQueuedPlatformDms({ purposes: ["setup-ask"], refIds: [], reason: "y", now: NOW })).rejects.toThrow(/at least one/);
+    await expect(cancelQueuedPlatformDms({ purposes: ["setup-ask"], refIds: [" "], reason: "y", now: NOW })).rejects.toThrow(/at least one/);
     expect(dbMock.$queryRaw).not.toHaveBeenCalled();
   });
 });

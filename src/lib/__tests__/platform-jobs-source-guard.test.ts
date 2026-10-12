@@ -49,6 +49,11 @@ const OWNER_DM_IMPORTERS = new Set<string>([
   // slice 7: the decision (APPROVE / REJECT) and its ack
   "lib/club-approval.ts",
   "app/api/whatsapp/dm-reply/route.ts",
+  // go-live slice S6 (owner decision 7): ONE note per club still setting
+  // up 72 hours after its approval. An action item (he presses "Go live
+  // now" on the clubs page), not an alert. The cron route calls this
+  // module; it never imports owner-dm itself (the test below).
+  "lib/club-setup-stuck.ts",
 ]);
 
 const OWNER_DM_IMPORT = /from\s+["'](?:@\/lib\/owner-dm|\.{1,2}\/(?:[\w-]+\/)*owner-dm)["']|import\(\s*["'][^"']*owner-dm["']\s*\)/;

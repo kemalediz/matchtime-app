@@ -187,16 +187,37 @@ export async function recordAdminGroupCandidate(input: {
 
 // ── The code (2.3) ───────────────────────────────────────────────────────
 
-/** A new single-use code for this club, replacing any earlier one. */
+/** What `createAdminGroupLinkCode` writes with: `db`, or a transaction client. */
+export type AdminGroupCodeClient = {
+  organisation: { updateMany(args: { where: { id: string }; data: Record<string, unknown> }): Promise<{ count: number }> };
+};
+
+/**
+ * A new single-use code for this club, replacing any earlier one.
+ *
+ * `ttlMs`: how long it lasts. Default 48 hours (the Settings button, which
+ * passes nothing). The setup DM of a club that is setting up passes
+ * `ADMIN_GROUP_DM_CODE_TTL_MS`, 7 days (go-live slice S7).
+ *
+ * `client`: a transaction client, when the code must be minted in the
+ * caller's own transaction (the setup DM mints it only after winning its
+ * once-per-club claim, so a run that loses the race can never replace the
+ * code the winner sends). Inside a transaction a code collision (another
+ * club holds the same six characters, about one in 887 million per club)
+ * cannot be retried: the transaction is rolled back and the caller's own
+ * retry draws again.
+ */
 export async function createAdminGroupLinkCode(
   orgId: string,
   now: Date = new Date(),
+  opts: { ttlMs?: number; client?: AdminGroupCodeClient } = {},
 ): Promise<{ code: string; expiresAt: Date }> {
-  const expiresAt = new Date(now.getTime() + ADMIN_GROUP_CODE_TTL_MS);
-  for (let attempt = 0; attempt < 5; attempt++) {
+  const client = opts.client ?? (db as unknown as AdminGroupCodeClient);
+  const expiresAt = new Date(now.getTime() + (opts.ttlMs ?? ADMIN_GROUP_CODE_TTL_MS));
+  for (let attempt = 0; attempt < (opts.client ? 1 : 5); attempt++) {
     const code = generateAdminGroupLinkCode();
     try {
-      await db.organisation.updateMany({
+      await client.organisation.updateMany({
         where: { id: orgId },
         data: { adminGroupLinkCode: code, adminGroupLinkCodeExpiresAt: expiresAt },
       });
@@ -228,7 +249,19 @@ export type AdminGroupLinkResult =
   | { outcome: "linked"; replyText: string; adminGroup: { groupId: string; orgId: string } }
   | { outcome: "already-linked"; replyText: null; adminGroup: { groupId: string; orgId: string } }
   | { outcome: "bad-code" | "main-group"; replyText: string }
-  | { outcome: "ignored"; replyText: null; reason: string };
+  | {
+      outcome: "ignored";
+      replyText: null;
+      reason: string;
+      /**
+       * Go-live slice S7. Set only with reason "club-setting-up": the
+       * command came from the PLAYERS' group of a club that is still
+       * setting up, sent by this owner or admin of it. Nothing is posted
+       * there; `handleAdminGroupLinkCommand` (admin-group-link-command.ts)
+       * tells them by DM instead.
+       */
+      settingUpPlayersGroup?: { orgId: string; userId: string; language: string };
+    };
 
 const ignored = (reason: string): AdminGroupLinkResult => ({ outcome: "ignored", replyText: null, reason });
 
@@ -256,7 +289,22 @@ export async function linkAdminGroup(input: AdminGroupLinkInput): Promise<AdminG
     // Go-live slice S1: the Pi posts `replyText` in the group the command
     // came from, and this group is the PLAYERS' group. While the club is
     // still setting up MatchTime says nothing there, so not even L3.
-    if (isClubSettingUp(community)) return ignored("club-setting-up");
+    // Slice S7: the organiser is told by DM instead (the caller does it,
+    // from what is returned here). The command sent in a SEPARATE group
+    // never reaches this branch: it links below like any club's, and its
+    // confirmation is posted in that group, the organisers' own.
+    if (isClubSettingUp(community)) {
+      return {
+        outcome: "ignored",
+        replyText: null,
+        reason: "club-setting-up",
+        settingUpPlayersGroup: {
+          orgId: community.id,
+          userId: adminOf.get(community.id)!.userId,
+          language: community.language,
+        },
+      };
+    }
     return { outcome: "main-group", replyText: t(community.language).admin_group_main_group({ club: community.name }) };
   }
 

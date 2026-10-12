@@ -388,13 +388,25 @@ test.describe("the group routes are blind to it", () => {
 });
 
 test.describe("the admin group command", () => {
-  test("typed in the setting-up club's PLAYERS' group it gets no reply at all", async ({ request }) => {
+  test("typed in the setting-up club's PLAYERS' group it gets no reply at all THERE; the organiser is told by DM (slice S7)", async ({ request, db }) => {
     const out = await post(request, "/api/whatsapp/admin-group-link", {
       groupId: HELD_GROUP,
       text: "@Match Time admin group ABCDEF",
       senderPhone: ORGANISER_PHONE.replace(/^\+/, ""),
+      messageId: "e2e-silence-admin-link-1",
     });
-    expect(out).toMatchObject({ outcome: "ignored", replyText: null, reason: "club-setting-up" });
+    // No reply text: the Pi posts nothing in the players' group.
+    expect(out).toEqual({ ok: true, outcome: "ignored", replyText: null, reason: "club-setting-up" });
+    expect(await heldJobs(db)).toBe(0);
+    // Go-live slice S7: one platform DM to the organiser instead.
+    expect(await organiserReplies(db)).toBe(1);
+    const told = await db.one<{ text: string }>(
+      `SELECT text FROM "PlatformJob" WHERE phone = $1 AND purpose = 'setup-reply' ORDER BY "createdAt" DESC LIMIT 1`,
+      [ORGANISER_PHONE.replace(/^\+/, "")],
+    );
+    expect(told?.text).toBe(
+      "That is your players' group, so it can't be the admin group. Add me to a separate group for the admins and send the message there.",
+    );
   });
 
   test("the live club's own group still gets today's refusal", async ({ request }) => {
@@ -418,7 +430,8 @@ test.describe("direct messages", () => {
     expect(res).toMatchObject({ handled: "setup-not-recognised", orgIds: [HELD_ORG] });
     expect(await heldJobs(db)).toBe(0);
     expect(await aiSpend(db)).toEqual([]);
-    expect(await organiserReplies(db)).toBe(1);
+    // One more than the DM about the admin group command above.
+    expect(await organiserReplies(db)).toBe(2);
   });
 
   test("an admin command from its organiser stops at the same rail", async ({ request, db }) => {
@@ -426,7 +439,7 @@ test.describe("direct messages", () => {
     expect(res.handled).toBe("setup-not-recognised");
     expect(await heldJobs(db)).toBe(0);
     expect(await aiSpend(db)).toEqual([]);
-    expect(await organiserReplies(db)).toBe(2);
+    expect(await organiserReplies(db)).toBe(3);
     expect(await heldClub(db)).toMatchObject({ setupStage: "setting-up", whatsappBotEnabled: false });
   });
 

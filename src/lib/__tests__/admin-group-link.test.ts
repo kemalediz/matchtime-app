@@ -195,7 +195,14 @@ describe("linkAdminGroup", () => {
       communityOwner: { id: "org-fnf", name: "Friday FNF", language: "en", approvalStatus: "approved", setupStage: "setting-up" },
     });
     const r = await send("@Match Time admin group K7P3QX", { groupId: FNF_GROUP });
-    expect(r).toEqual({ outcome: "ignored", replyText: null, reason: "club-setting-up" });
+    // Slice S7: and it says whose players' group it is, so the caller can
+    // tell that organiser by DM (admin-group-link-command.test.ts).
+    expect(r).toEqual({
+      outcome: "ignored",
+      replyText: null,
+      reason: "club-setting-up",
+      settingUpPlayersGroup: { orgId: "org-fnf", userId: "u-raihan", language: "en" },
+    });
     expect(dbMock.organisation.updateMany).not.toHaveBeenCalled();
   });
 
@@ -297,6 +304,24 @@ describe("codes, unlinking and removal", () => {
       where: { id: "org-fnf" },
       data: { adminGroupLinkCode: r.code, adminGroupLinkCodeExpiresAt: r.expiresAt },
     });
+  });
+
+  it("go-live S7: a code minted for the setup DM lasts 7 days, written through the caller's transaction client", async () => {
+    const tx = { organisation: { updateMany: vi.fn(async () => ({ count: 1 })) } };
+    const r = await createAdminGroupLinkCode("org-fnf", NOW, { ttlMs: 7 * 24 * 3_600_000, client: tx });
+    expect(r.code).toMatch(/^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/);
+    expect(r.expiresAt).toEqual(new Date(NOW.getTime() + 7 * 24 * 3_600_000));
+    expect(tx.organisation.updateMany).toHaveBeenCalledWith({
+      where: { id: "org-fnf" },
+      data: { adminGroupLinkCode: r.code, adminGroupLinkCodeExpiresAt: r.expiresAt },
+    });
+    expect(dbMock.organisation.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("go-live S7: inside a transaction a code collision is not retried there (the transaction is already lost)", async () => {
+    const tx = { organisation: { updateMany: vi.fn(async () => Promise.reject(Object.assign(new Error("unique"), { code: "P2002" }))) } };
+    await expect(createAdminGroupLinkCode("org-fnf", NOW, { client: tx })).rejects.toThrow(/Could not create an admin group code/);
+    expect(tx.organisation.updateMany).toHaveBeenCalledTimes(1);
   });
 
   it("unlink clears the group, moves the club to the owner, and leaves the group", async () => {

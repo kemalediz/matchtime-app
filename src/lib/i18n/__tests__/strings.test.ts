@@ -529,6 +529,11 @@ const SAMPLES: SampleArgs = {
   sj_dm_connected_held: { name: "Aliyah", club: "Riverside FC" },
   sj_dm_in_group_held: { group: "Riverside Tuesday 5s" },
   sj_card_pending_held: null,
+  // Go-live slices S6 and S7: the reminder and the admin group step.
+  sj_dm_ready_admin_group: null,
+  sj_dm_ready_admin_command: { code: "K7P3QX" },
+  sj_dm_reminder: { club: "Riverside FC", group: "Riverside Tuesday 5s", url: "https://mt.example/r/settings" },
+  sj_admin_group_players_group: null,
   dm_admin_join_new: { club: "Sutton FC", phone: "+447376548222", url: "https://mt.example/r/phones" },
   dm_admin_join_new_named: { name: "Ali Veli", club: "Sutton FC", phone: "+447376548222", url: "https://mt.example/r/players" },
   dm_admin_join_first: { name: "Hamzah", club: "Sutton FC" },

@@ -1814,6 +1814,18 @@ export const tr: Strings = {
     "3. adım: kulübünüzü kontrol ediyoruz, genellikle bir gün içinde. Kulübünüz onaylanana ve siz başlamasını söyleyene kadar MatchTime grupta sessiz kalır, onaylanır onaylanmaz size WhatsApp'tan yazar.",
   // ════ END approval holds the club ════
 
+  // ════ BEGIN the setup follow-ups: reminder and admin group step (go-live slices S6 and S7, 2026-10-12) ════
+  // See the English table. The Turkish command word is BAŞLA, and the
+  // link command is the Turkish form the parser reads ("yönetici grubu").
+  sj_dm_ready_admin_group:
+    "👥 *Yönetici grubu (isteğe bağlı):* organizatörlerinizin kendi WhatsApp grubu varsa beni o gruba ekleyin ve bir sonraki mesajımı orada gönderin. Yönetici mesajları o zaman size değil, o gruba gider.",
+  sj_dm_ready_admin_command: (p) => `Match Time yönetici grubu ${p.code}`,
+  sj_dm_reminder: (p) =>
+    `Küçük bir hatırlatma: ${p.club} onaylandı, ama ${p.group ? `"${p.group}" grubunda` : "grubunuzda"} hâlâ sessizim. Hazır olduğunuzda *BAŞLA* yazın, kendimi tanıtayım; ya da önce ayarlara göz atın: ${p.url}\nBir daha hatırlatmayacağım.`,
+  sj_admin_group_players_group:
+    "Orası oyuncularınızın grubu, bu yüzden yönetici grubu olamaz. Beni yöneticiler için ayrı bir gruba ekleyin ve mesajı orada gönderin.",
+  // ════ END the setup follow-ups ════
+
   dm_admin_join_new: (p) =>
     `🆕 *${p.club}* WhatsApp grubuna yeni bir oyuncu katıldı.\n\nTelefon: ${p.phone}\n` +
     `Onu oyuncu listene ekledim. Grupta ilk yazdığında WhatsApp adını kendim eklerim, istersen şimdi de girebilirsin:\n${p.url}`,

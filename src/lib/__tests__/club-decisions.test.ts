@@ -497,7 +497,13 @@ describe("decideClub on a club that is approved but SETTING UP", () => {
     expect(dbMock.$queryRaw).toHaveBeenCalledTimes(1);
     const [sql, ...values] = dbMock.$queryRaw.mock.calls[0] as [TemplateStringsArray, ...unknown[]];
     expect(sql.join("?")).toMatch(/UPDATE "PlatformJob"[\s\S]*"status" IN \('queued', 'claimed'\)/);
-    expect(values).toEqual([NOW, "cancelled: suspended", NOW, "setup-ask", "org-riverside:setup-ask"]);
+    expect(values).toEqual([
+      NOW,
+      "cancelled: suspended",
+      NOW,
+      ["setup-ask", "setup-admin-code", "setup-reminder"],
+      ["org-riverside:setup-ask", "org-riverside:setup-admin-code", "org-riverside:setup-reminder"],
+    ]);
     // MatchTime still leaves the group; nobody is messaged.
     expect(created("platformJob")).toEqual([expect.objectContaining({ kind: "leave-group", groupId: GROUP })]);
     expect(dbMock.botJob.create).not.toHaveBeenCalled();

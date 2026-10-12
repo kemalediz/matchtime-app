@@ -287,6 +287,18 @@
  *     card and pay" (it now retries the unpaid invoice). No other case
  *     changed.
  *
+ *   - Deliberate additions (2026-10-12, go-live slices S6 and S7): rows
+ *     SFU1 to SFU5 and SFO1, what follows the setup DM of a club held
+ *     until its organiser says GO (the setup DM with its optional admin
+ *     group step, the admin group command sent as a second message, the
+ *     one reminder after 24 hours, the DM to an organiser who sent the
+ *     command in the players' group, and the owner's note at 72 hours,
+ *     which is English in both documents because owner copy is English).
+ *     All NEW copy, sent only for a club that is setting up; the only
+ *     non-additive line in either `.snap` diff is the case count. No
+ *     existing case changed: SUP1 to SUP6 still render the setup DM
+ *     without the admin group block.
+ *
  *   - A deliberate CHANGE across the whole English document (2026-10-06,
  *     Kemal: "remove long dashes"). Every em and en dash used as
  *     punctuation in the English table was rewritten as a comma, a
@@ -303,6 +315,12 @@
  */
 import { composeSetupDm } from "../../setup-learning/dm";
 import { composeSetupAskDm } from "../../club-setup-dm-rules";
+import {
+  composeSetupAdminCommandDm,
+  composeSetupReminderDm,
+  ownerStuckText,
+  setupAdminGroupBlock,
+} from "../../club-setup-followup-rules";
 import { describe, it, expect } from "vitest";
 import type { EngineResult, SpeechIntent, SquadState, StatsPeriod, StatsSnapshot } from "../../pipeline/types";
 import { periodKey } from "../../pipeline/stats-period";
@@ -2046,6 +2064,28 @@ function cases(lang: Lang): Case[] {
   add("SUP8 the held variants / in-group ack", t(lang).sj_dm_in_group_held({ group: "Thursday Ladies 5s" }));
   add("SUP9 the held variants / pending card", t(lang).sj_card_pending_held);
 
+  // ── SFU / SFO: what follows the setup DM (go-live slices S6 and S7,
+  //   2026-10-12). NEW copy, a deliberate addition. No existing case
+  //   changed.
+  add(
+    "SFU1 composeSetupAskDm / with the optional admin group step (a club with no admin group)",
+    setupAsk({ kind: "nothing" }, { adminGroupBlock: setupAdminGroupBlock(lang) }),
+  );
+  add("SFU2 composeSetupAdminCommandDm / the second message, exactly the link command", composeSetupAdminCommandDm({ lang, code: "K7P3QX" }));
+  add(
+    "SFU3 composeSetupReminderDm / the one reminder, 24 hours after the setup DM was due",
+    composeSetupReminderDm({ lang, club: "Thursday Ladies", group: "Thursday Ladies 5s", settingsUrl: "https://matchtime.ai/r/settings" }),
+  );
+  add(
+    "SFU4 composeSetupReminderDm / a group with no name",
+    composeSetupReminderDm({ lang, club: "Thursday Ladies", group: null, settingsUrl: "https://matchtime.ai/r/settings" }),
+  );
+  add("SFU5 the admin group command sent in the players' group / DM to the organiser", t(lang).sj_admin_group_players_group);
+  add(
+    "SFO1 ownerStuckText / to the owner, 72 hours after approval (English only: owner copy)",
+    ownerStuckText({ club: "Thursday Ladies", clubsUrl: "https://matchtime.ai/admin/clubs" }),
+  );
+
   // ── MWK: monthly squad, slice 5 (2026-10-06), the weekly flow ─────
   //   NEW copy, a deliberate addition: MDs/monthly-squad-plan-2026-10-05.md
   //   sections 5.3, 5.4 and 6.2. Sent only for a club on "monthly" with a
@@ -2318,6 +2358,9 @@ const MIGRATED_ROWS = [
   "LRN1 ", "LRN2 ", "LRN3 ",
   // the setup DM of a held club (go-live slice S3, 2026-10-12)
   "SUP1 ", "SUP2 ", "SUP3 ", "SUP4 ", "SUP5 ", "SUP6 ", "SUP7 ", "SUP8 ", "SUP9 ",
+  // what follows the setup DM (go-live slices S6 and S7, 2026-10-12).
+  // SFO1, the owner's note, is English only and is not listed.
+  "SFU1 ", "SFU2 ", "SFU3 ", "SFU4 ", "SFU5 ",
   // Monthly squad, slice 3: the month's sign-up.
   "MSU1 ", "MSU2 ", "MSU3 ", "MSU4 ", "MSU5 ", "MSU6 ", "MSU7 ",
   // Monthly squad, slice 4: price, payments and reminders.

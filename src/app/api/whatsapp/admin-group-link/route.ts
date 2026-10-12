@@ -18,11 +18,17 @@
  * refresh. Anyone who is not an owner or admin of an approved club gets
  * `replyText: null` whatever they sent.
  *
+ * GO-LIVE SLICE S7 (2026-10-12): the command sent in the PLAYERS' group of
+ * a club that is still setting up gets `replyText: null` (MatchTime says
+ * nothing there), and its organiser is told by DM instead
+ * (`handleAdminGroupLinkCommand`, src/lib/admin-group-link-command.ts).
+ * Sent in a separate group it links as for any club.
+ *
  * No model anywhere on this path. A server built before slice 2a answers
  * 404, which the Pi logs; nothing is posted.
  */
 import { NextResponse } from "next/server";
-import { linkAdminGroup } from "@/lib/admin-group-link";
+import { handleAdminGroupLinkCommand } from "@/lib/admin-group-link-command";
 
 const str = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v.trim() : null);
 
@@ -36,8 +42,9 @@ export async function POST(request: Request) {
   if (!groupId || !groupId.endsWith("@g.us") || text === null) {
     return NextResponse.json({ error: "groupId and text required" }, { status: 400 });
   }
-  const result = await linkAdminGroup({
+  const result = await handleAdminGroupLinkCommand({
     groupId,
+    messageId: str(body?.messageId),
     text,
     botMentioned: body?.botMentioned === true,
     senderPhone: str(body?.senderPhone),

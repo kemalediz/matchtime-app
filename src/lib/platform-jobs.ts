@@ -22,9 +22,13 @@
  *   organiser-decision, that phone: a verified sign-up or a club member).
  *   billing,
  *   setup-learned,
+ *   setup-ask,
+ *   setup-admin-code,
+ *   setup-reminder,
  *   setup-reply
  *   owner-approval,     NEVER through here. `queueOwnerDm` (owner-dm.ts)
- *   owner-ack           is the only door to Kemal's phone.
+ *   owner-ack,          is the only door to Kemal's phone.
+ *   owner-setup-stuck
  *
  * ── Dispatch: claim-on-dispatch, as due-posts ────────────────────────
  * `claimDuePlatformJobs` flips each job queued -> claimed with a
@@ -71,6 +75,12 @@ import { APPROVED_CLUB_WHERE } from "./club-approval-state";
  *  (GO, help, "not recognised"). The club's own channel is off until GO,
  *  so these cannot be BotJobs. Queued only by src/lib/setup-go-dm.ts and,
  *  for help, src/lib/dm-help.ts; always a reply to the person's own DM. */
+/** "setup-admin-code" (go-live slice S7, 2026-10-12): the setup DM's second
+ *  message, exactly the admin group link command, queued with the setup DM
+ *  in one transaction (src/lib/club-setup-dm.ts). */
+/** "setup-reminder" (go-live slice S6, 2026-10-12): the ONE reminder, 24
+ *  hours after the setup DM was due, to an organiser who has not gone live
+ *  (src/lib/club-setup-reminder.ts). */
 export const PLATFORM_DM_PURPOSES = [
   "otp",
   "connect-reply",
@@ -78,12 +88,18 @@ export const PLATFORM_DM_PURPOSES = [
   "billing",
   "setup-learned",
   "setup-ask",
+  "setup-admin-code",
+  "setup-reminder",
   "setup-reply",
 ] as const;
 export type PlatformDmPurpose = (typeof PLATFORM_DM_PURPOSES)[number];
 
 /** DM purposes only `queueOwnerDm` may write. */
-export const OWNER_DM_PURPOSES = ["owner-approval", "owner-ack"] as const;
+/** "owner-setup-stuck" (go-live slice S6, 2026-10-12): ONE note per club
+ *  that is still setting up 72 hours after its approval. An action item,
+ *  not an alert: the owner can press "Go live now" on the clubs page
+ *  (src/lib/club-setup-stuck.ts). */
+export const OWNER_DM_PURPOSES = ["owner-approval", "owner-ack", "owner-setup-stuck"] as const;
 export type OwnerDmPurpose = (typeof OWNER_DM_PURPOSES)[number];
 
 export const LEAVE_GROUP_PURPOSE = "leave-group" as const;
@@ -194,6 +210,12 @@ export type PlatformDmClient = {
  * `client`: a transaction client, when the job must be created in the
  * caller's own transaction (the setup DM and its once-per-club stamp,
  * club-setup-dm.ts). Absent, `db`, exactly as before.
+ *
+ * `createdAt`: only for a caller that queues TWO DMs in one transaction
+ * and needs them sent in a fixed order (the setup DM, then its admin group
+ * command). Dispatch is oldest first by `createdAt`, and two rows created
+ * in one transaction would otherwise share the database's transaction
+ * timestamp. Absent, the database default, exactly as before.
  */
 export async function queuePlatformDm(args: {
   phone: string;
@@ -202,6 +224,7 @@ export async function queuePlatformDm(args: {
   refId?: string | null;
   sendAfter?: Date | null;
   client?: PlatformDmClient;
+  createdAt?: Date;
 }): Promise<{ id: string }> {
   const client = args.client ?? (db as unknown as PlatformDmClient);
   const purpose = args.purpose as string;
@@ -231,6 +254,7 @@ export async function queuePlatformDm(args: {
       refId: args.refId ?? null,
       status: "queued",
       sendAfter: args.sendAfter ?? null,
+      ...(args.createdAt ? { createdAt: args.createdAt } : {}),
     },
   });
   return { id: row.id };
@@ -239,15 +263,18 @@ export async function queuePlatformDm(args: {
 /** DM purposes `cancelQueuedPlatformDms` will touch. A sign-up code, a
  *  decision, a billing notice and anything for the owner are never
  *  cancelled from here. */
-export const CANCELLABLE_DM_PURPOSES = ["setup-ask"] as const;
+export const CANCELLABLE_DM_PURPOSES = ["setup-ask", "setup-admin-code", "setup-reminder"] as const;
+export type CancellableDmPurpose = (typeof CANCELLABLE_DM_PURPOSES)[number];
 
 /** How a cancelled job's `failReason` starts. On a CLAIMED job it is the
  *  mark that makes a later release fail the job instead of re-queueing it. */
 export const CANCELLED_REASON_PREFIX = "cancelled: ";
 
 /**
- * Cancel DMs that have not gone yet for one purpose and refId, because
- * what they say is no longer true. There is no "cancelled" status: like a
+ * Cancel DMs that have not gone yet, because what they say is no longer
+ * true: every job whose purpose is one of `purposes` AND whose refId is
+ * one of `refIds` (a club's setup DM, its admin group command and its
+ * reminder are three purposes with three refIds, cancelled together). There is no "cancelled" status: like a
  * job refused at dispatch, a cancelled job is `failed` with its
  * `failReason` ("cancelled: <reason>"), which `claimDuePlatformJobs` never
  * hands out and nothing retries.
@@ -268,13 +295,20 @@ export const CANCELLED_REASON_PREFIX = "cancelled: ";
  * another purpose, not another refId.
  */
 export async function cancelQueuedPlatformDms(args: {
-  purpose: (typeof CANCELLABLE_DM_PURPOSES)[number];
-  refId: string;
+  purposes: readonly CancellableDmPurpose[];
+  refIds: readonly string[];
   reason: string;
   now?: Date;
 }): Promise<{ cancelled: number; alreadyClaimed: number }> {
-  if (!(CANCELLABLE_DM_PURPOSES as readonly string[]).includes(args.purpose)) {
-    throw new Error(`[platform-jobs] "${args.purpose}" DMs cannot be cancelled`);
+  const purposes = [...args.purposes] as string[];
+  const refIds = [...args.refIds];
+  for (const purpose of purposes) {
+    if (!(CANCELLABLE_DM_PURPOSES as readonly string[]).includes(purpose)) {
+      throw new Error(`[platform-jobs] "${purpose}" DMs cannot be cancelled`);
+    }
+  }
+  if (purposes.length === 0 || refIds.length === 0 || refIds.some((r) => typeof r !== "string" || !r.trim())) {
+    throw new Error("[platform-jobs] a cancel names at least one purpose and one refId");
   }
   const now = args.now ?? new Date();
   const reason = `${CANCELLED_REASON_PREFIX}${args.reason}`.slice(0, FAIL_REASON_MAX);
@@ -286,7 +320,7 @@ export async function cancelQueuedPlatformDms(args: {
       "failedAt" = CASE WHEN "status" = 'queued' THEN ${now} ELSE "failedAt" END,
       "failReason" = ${reason},
       "updatedAt" = ${now}
-    WHERE "kind" = 'dm' AND "purpose" = ${args.purpose} AND "refId" = ${args.refId}
+    WHERE "kind" = 'dm' AND "purpose" = ANY(${purposes}) AND "refId" = ANY(${refIds})
       AND "status" IN ('queued', 'claimed')
     RETURNING "status"`;
   return {
