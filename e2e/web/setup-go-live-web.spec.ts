@@ -20,6 +20,7 @@ import { mkdirSync } from "node:fs";
 import path from "node:path";
 import type { BrowserContext, Page } from "@playwright/test";
 import { test, expect, resetDb, signInAs, U } from "../fixtures";
+import { countRequestsOf } from "../helpers/action-requests";
 import { E2E, E2E_BASE_URL } from "../helpers/env";
 import { testDb, type TestDb } from "../helpers/test-db";
 
@@ -149,14 +150,13 @@ const setupJob = (db: TestDb, c: Club, status: string, sentAt: string | null) =>
     [`${c.id}-setup-job`, bare(c.ownerPhone), "setup-ask", `${c.id}:setup-ask`, status, sentAt],
   );
 
-/** Counts the server-action requests a page starts from now on. */
-function countActionRequests(page: Page): { count: () => number } {
-  let n = 0;
-  page.on("request", (req) => {
-    if (req.method() === "POST" && req.headers()["next-action"]) n++;
-  });
-  return { count: () => n };
-}
+/**
+ * Counts the PREVIEW requests a page starts, and no other feature's on
+ * the same page (helpers/action-requests.ts). The preview's answer is the
+ * hello itself; a go-live answers with the hello too, beside an outcome.
+ */
+const countPreviewRequests = (page: Page) =>
+  countRequestsOf(page, (body) => body.includes("has set me up") && !body.includes('"outcome"'));
 
 /** What coming back to the tab does: BOTH events fire. */
 const comeBack = (page: Page) =>
@@ -595,10 +595,14 @@ test.describe("review of PR #236: the banner's other outcomes and rules", () => 
 
   test("fix 3: coming back to the tab refetches the preview once per five seconds at most, never beside a go-live, never after the outcome", async ({ page }) => {
     await page.clock.install();
+    // The banner's own requests only: the page has other server actions.
+    const sent = countPreviewRequests(page);
+    const goLives = countGoLiveRequests(page);
     await signInAs(page, FOCUS.ownerId, "/admin/settings");
     await expect(page.getByTestId("go-live-preview")).toBeVisible({ timeout: 30_000 });
+    await expect.poll(() => sent.known()).toBe(true);
     await page.waitForLoadState("networkidle");
-    const sent = countActionRequests(page);
+    sent.reset();
 
     // Straight after a fetch: coming back five times asks for nothing.
     for (let i = 0; i < 5; i++) await comeBack(page);
@@ -621,10 +625,8 @@ test.describe("review of PR #236: the banner's other outcomes and rules", () => 
 
     // While the go-live request is in flight (held here for a moment),
     // coming back sends nothing to queue beside it.
-    let held = 0;
     await page.route("**/admin/settings", async (route) => {
       if (route.request().method() === "POST" && route.request().headers()["next-action"]) {
-        held++;
         await new Promise((r) => setTimeout(r, 1_500));
       }
       await route.continue();
@@ -634,8 +636,8 @@ test.describe("review of PR #236: the banner's other outcomes and rules", () => 
     await page.clock.fastForward(6_000);
     for (let i = 0; i < 3; i++) await comeBack(page);
     await expect(page.getByTestId("go-live-done")).toBeVisible({ timeout: 30_000 });
-    expect(held).toBe(1);
-    expect(sent.count()).toBe(3);
+    await expect.poll(() => goLives.count()).toBe(1);
+    expect(sent.count()).toBe(2);
 
     // The outcome is final: the listeners are gone.
     await page.unroute("**/admin/settings");

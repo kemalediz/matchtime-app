@@ -114,6 +114,7 @@ import {
   type WeeklyGameState,
 } from "./rules";
 import { composeSetupDm } from "./dm";
+import { weeklyGameOf } from "./suggestion-state";
 import { isSetupLearningEnabled } from "./flag";
 
 export const SWEEP_WINDOW_DAYS = 3;
@@ -346,10 +347,9 @@ export async function learnClubSetup(orgId: string, opts: LearnOptions = {}): Pr
     orderBy: { createdAt: "asc" },
     select: { dayOfWeek: true, time: true, venue: true, sport: { select: { playersPerTeam: true } } },
   });
-  const first = activities[0];
-  const weeklyGame: WeeklyGameState | null = first
-    ? { dayOfWeek: first.dayOfWeek, time: first.time, venue: first.venue ?? null, playersPerSide: first.sport?.playersPerTeam ?? null }
-    : null;
+  // The first active game, oldest first: the settings page holds the
+  // suggestions against the same one (suggestion-state.ts).
+  const weeklyGame: WeeklyGameState | null = weeklyGameOf(activities);
 
   // ── The one model call ───────────────────────────────────────────────
   const user = buildUserContent({ groupSubject: connect.groupSubject, weeklyGame, history });
