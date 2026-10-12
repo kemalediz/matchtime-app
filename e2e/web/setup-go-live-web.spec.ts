@@ -763,6 +763,20 @@ test.describe("the MatchTime owner, /admin/clubs", () => {
       reason: "went-live",
     });
 
+    // THE ORGANISER IS TOLD (they did not say GO, so nothing else would
+    // tell them): one DM on the platform channel, and the owner sees that.
+    await expect(page.getByText("The organiser is being told by WhatsApp.")).toBeVisible();
+    const told = await db.all<{ text: string; status: string }>(
+      `SELECT text, status FROM "PlatformJob" WHERE purpose = 'setup-owner-live' AND "refId" = $1`,
+      [`${READING.id}:setup-owner-live`],
+    );
+    expect(told).toHaveLength(1);
+    expect(told[0].status).toBe("queued");
+    expect(told[0].text).toMatch(
+      /^The MatchTime team has started MatchTime in "Rovers 5s" for you, so you don't need to reply GO\. It introduces itself in the group, which can take a few minutes to appear\.\n\n/,
+    );
+    expect(told[0].text).toMatch(/\n\n⚙️ \*Check or change how your group runs:\*\nhttps?:\/\/\S+$/);
+
     // The page moves the club to the live list.
     await expect(page.getByTestId("setting-up-club").filter({ hasText: "Reading Rovers" })).toHaveCount(0);
     await expect(page.getByTestId("live-club").filter({ hasText: "Reading Rovers" })).toHaveCount(1);

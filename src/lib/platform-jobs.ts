@@ -85,6 +85,10 @@ import { APPROVED_CLUB_WHERE } from "./club-approval-state";
  *  DM per removal when MatchTime is taken out of the group of a club that
  *  is still setting up. Queued only by src/lib/club-setup-removal.ts, and
  *  taken back by it if MatchTime is added back before it has gone. */
+/** "setup-owner-live" (setup-hold switch-on fixes, 2026-10-13): the
+ *  organiser's one DM when the MatchTime team took their club live for
+ *  them ("Go live now" on the clubs page). Queued only by
+ *  src/lib/club-setup-owner-live.ts, once per club. */
 export const PLATFORM_DM_PURPOSES = [
   "otp",
   "connect-reply",
@@ -96,6 +100,7 @@ export const PLATFORM_DM_PURPOSES = [
   "setup-reminder",
   "setup-reply",
   "setup-removed",
+  "setup-owner-live",
 ] as const;
 export type PlatformDmPurpose = (typeof PLATFORM_DM_PURPOSES)[number];
 

@@ -11,9 +11,12 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+/** The transaction client the removal DM is queued through. */
+const TX = vi.hoisted(() => ({ tx: true }));
 const dbMock = vi.hoisted(() => ({
   clubConnect: { findFirst: vi.fn() },
   membership: { findFirst: vi.fn() },
+  $transaction: vi.fn(),
 }));
 vi.mock("@/lib/db", () => ({ db: dbMock }));
 vi.mock("../db", () => ({ db: dbMock }));
@@ -23,6 +26,8 @@ const setup = vi.hoisted(() => ({
   markSetupRemoved: vi.fn(),
   clearSetupRemoved: vi.fn(),
   unaskCancelledSetupDm: vi.fn(),
+  lockClubSetup: vi.fn(),
+  isSetupRemovedNow: vi.fn(),
 }));
 vi.mock("../club-setup", () => setup);
 
@@ -70,6 +75,9 @@ beforeEach(() => {
   setup.markSetupRemoved.mockResolvedValue(true);
   setup.clearSetupRemoved.mockResolvedValue(true);
   setup.unaskCancelledSetupDm.mockResolvedValue(true);
+  setup.lockClubSetup.mockResolvedValue(undefined);
+  setup.isSetupRemovedNow.mockResolvedValue(true);
+  dbMock.$transaction.mockImplementation(async (fn: (tx: unknown) => unknown) => fn(TX));
   cancelSetupDm.mockResolvedValue({ cancelled: 0, alreadyClaimed: 0 });
   clearCapturedChatForClub.mockResolvedValue(1);
   recordOpsEvent.mockResolvedValue(true);
@@ -142,10 +150,15 @@ describe("handleSetupRemoval", () => {
       phone: PHONE,
       text:
         `I was removed from "Harbour Tuesday 6s" before Harbour FC went live, so nothing has started there. ` +
-        `Add me back to the group, then reply *GO* here or press *Go live* on your settings page:\nhttps://matchtime.test/admin/settings`,
+        `Add me back to the group, then reply *GO* here or press *Go live* on your settings page:\nhttps://matchtime.test/admin/settings\n` +
+        // Item 7: an add by somebody MatchTime does not know as a member of
+        // the club clears nothing, so the DM says who has to do it.
+        `It has to be added by you or another organiser of Harbour FC.`,
       purpose: SETUP_REMOVED_DM_PURPOSE,
       refId: setupRemovedRefId("org-harbour"),
       sendAfter: null,
+      // In the transaction that holds the club's row (the re-add race, below).
+      client: TX,
     });
     expect([SETUP_REMOVED_DM_PURPOSE, setupRemovedRefId("org-harbour")]).toEqual(["setup-removed", "org-harbour:setup-removed"]);
   });
@@ -158,9 +171,57 @@ describe("handleSetupRemoval", () => {
     expect(arg.sendAfter).toEqual(NINE);
     expect(arg.text).toBe(
       `Kıyı SK yayına geçmeden "Kıyı SK" grubundan çıkarıldım, bu yüzden orada hiçbir şey başlamadı. ` +
-        `Beni gruba yeniden ekleyin, sonra buraya *BAŞLA* yazın ya da ayarlar sayfanızdaki *Yayına al* düğmesine basın:\nhttps://matchtime.test/admin/settings`,
+        `Beni gruba yeniden ekleyin, sonra buraya *BAŞLA* yazın ya da ayarlar sayfanızdaki *Yayına al* düğmesine basın:\nhttps://matchtime.test/admin/settings\n` +
+        `Beni sizin ya da Kıyı SK kulübünün başka bir organizatörünün eklemesi gerekiyor.`,
     );
     expect(arg.text).not.toMatch(/[\u2013\u2014]/);
+  });
+
+  // Item 7, the race. The DM is queued several statements after the stamp.
+  // A re-add in between clears the stamp and finds no DM to cancel yet; the
+  // organiser would then read "add me back" with MatchTime already back.
+  it("THE RE-ADD RACE: the stamp is read again under the club's row lock, and the DM is queued in that same transaction", async () => {
+    const order: string[] = [];
+    setup.lockClubSetup.mockImplementation(async () => void order.push("lock"));
+    setup.isSetupRemovedNow.mockImplementation(async () => {
+      order.push("re-check");
+      return true;
+    });
+    jobs.queuePlatformDm.mockImplementation(async () => {
+      order.push("queue");
+      return { id: "pj" };
+    });
+    await handleSetupRemoval(GROUP, { now: NOON });
+    expect(order).toEqual(["lock", "re-check", "queue"]);
+    expect(setup.lockClubSetup).toHaveBeenCalledWith(TX, "org-harbour");
+    expect(setup.isSetupRemovedNow).toHaveBeenCalledWith("org-harbour", TX);
+    expect(jobs.queuePlatformDm.mock.calls[0][0].client).toBe(TX);
+  });
+
+  it("THE RE-ADD RACE: MatchTime was added back before the DM was queued: no 'add me back' DM, and the owner's event says so", async () => {
+    setup.isSetupRemovedNow.mockResolvedValue(false);
+    expect(await handleSetupRemoval(GROUP, { now: NOON })).toMatchObject({ kind: "removed", organiserDm: "re-added" });
+    expect(jobs.queuePlatformDm).not.toHaveBeenCalled();
+    expect(recordOpsEvent.mock.calls[0][0].detail).toContain("Organiser told: re-added.");
+  });
+
+  it("the re-add cancels a waiting removal DM AFTER the stamp is cleared, never before", async () => {
+    const order: string[] = [];
+    setup.findSettingUpClubByGroup.mockResolvedValue({ ...CLUB, removedAt: NOON });
+    setup.clearSetupRemoved.mockImplementation(async () => {
+      order.push("clear");
+      return true;
+    });
+    jobs.cancelQueuedPlatformDms.mockImplementation(async () => {
+      order.push("cancel");
+      return { cancelled: 1, alreadyClaimed: 0, byPurpose: {} };
+    });
+    expect(await handleSetupReAdd({ groupId: GROUP, discovered: true, now: NOON })).toEqual({ kind: "cleared", orgId: "org-harbour" });
+    expect(order).toEqual(["clear", "cancel"]);
+    expect(jobs.cancelQueuedPlatformDms.mock.calls[0][0]).toMatchObject({
+      purposes: ["setup-removed"],
+      refIds: ["org-harbour:setup-removed"],
+    });
   });
 
   it("the setup DM was QUEUED and is cancelled: the club is made 'never asked' again, so a fresh one goes after the re-add", async () => {

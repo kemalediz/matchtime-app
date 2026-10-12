@@ -145,7 +145,11 @@ export async function handleDmHelp(args: {
   const text = clubCount > 1 ? `${t(lang).onbHelpForClub({ club: membership.org.name })}\n\n${body}` : body;
 
   if (args.deliver === "platform") {
-    await queuePlatformDm({ phone: replyTo, text, purpose: "setup-reply", refId: `${membership.orgId}:help` });
+    // The help below says "tag me" and "say In or Out", and the group of a
+    // club that is still setting up is one MatchTime is not listening to.
+    // Say so first; the help itself is unchanged.
+    const notStarted = t(lang).sj_go_help_not_started;
+    await queuePlatformDm({ phone: replyTo, text: `${notStarted}\n\n${text}`, purpose: "setup-reply", refId: `${membership.orgId}:help` });
   } else {
     await db.botJob.create({
       data: { orgId: membership.orgId, kind: "dm", phone: replyTo.replace(/^\+/, ""), text },

@@ -328,10 +328,11 @@ export async function POST(request: Request) {
   // 1b. SILENCE RAILS (self-join slice 1, 2026-09-29). A group whose club
   //     is waiting for approval, was rejected or suspended, or that nobody
   //     asked MatchTime into, never gets an intro and never starts a
-  //     session. With self-join on, the in-group setup is retired
-  //     altogether (decision 4); the self-join branch that links a pending
-  //     club lands here in a later slice. Placed after the live-org check,
-  //     so a live club is answered exactly as before.
+  //     session. With self-join on this code is never reached: the add
+  //     went to the self-join linker at the top of the route
+  //     (`selfJoinAdd`), and the in-group setup is retired altogether
+  //     (decision 4). Placed after the live-org check, so a live club is
+  //     answered exactly as before.
   const refusal = await inGroupSetupRefusal(groupId);
   if (refusal) {
     console.log(`[bot-added] ${groupId}: no intro (${refusal})`);

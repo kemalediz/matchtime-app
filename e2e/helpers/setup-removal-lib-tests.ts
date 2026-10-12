@@ -155,7 +155,8 @@ async function main() {
       assert.equal(
         dm[0].text,
         `I was removed from "Removed group 1" before Removed Club 1 went live, so nothing has started there. ` +
-          `Add me back to the group, then reply *GO* here or press *Go live* on your settings page:\nhttps://matchtime.ai/admin/settings`,
+          `Add me back to the group, then reply *GO* here or press *Go live* on your settings page:\nhttps://matchtime.ai/admin/settings\n` +
+          `It has to be added by you or another organiser of Removed Club 1.`,
       );
       assert.equal(await alerts(c), 1);
       ok("the organiser gets ONE DM on the platform channel, and the platform owner one event");
@@ -323,6 +324,42 @@ async function main() {
       await stillHeld(c, "F swept");
       assert.equal((await goLiveClub(c.orgId, liveByUser(c.userId), new Date(NOON.getTime() + 60_000))).outcome, "went-live");
       ok("the reconnect sweep finding MatchTime in the removed club's own group clears the removal (no adder); any other group does not");
+    }
+
+    // ── G. A re-add racing the removal's own DM (2026-10-13) ───────────
+    // The removal DM is queued several statements after the stamp. A
+    // re-add landing in between cleared the stamp, found no DM to cancel
+    // yet, and the organiser was then told "add me back" with MatchTime
+    // already back. The DM is now queued under the club's row lock, only
+    // while the stamp is still set, and the re-add cancels after its clear.
+    {
+      const ROUNDS = 40;
+      let cleared = 0;
+      let dmSurvived = 0;
+      for (let r = 0; r < ROUNDS; r++) {
+        const c = await heldClub(20 + r, new Date(NOON.getTime() - 60_000));
+        const reAdd = (async () => {
+          // Keep trying for as long as the removal is in flight: the first
+          // attempts find "not removed yet", one lands mid-removal.
+          for (let tries = 0; tries < 400; tries++) {
+            const out = await handleSetupReAdd({ groupId: c.groupId, discovered: true, now: NOON });
+            if (out.kind === "cleared") return true;
+          }
+          return false;
+        })();
+        const [, wasCleared] = await Promise.all([handleSetupRemoval(c.groupId, { now: NOON }), reAdd]);
+        const stamp = (await row(c)).setupRemovedAt;
+        const waiting = (await removalJobs(c)).filter((j) => j.status === "queued" || j.status === "claimed");
+        if (wasCleared) cleared++;
+        if (waiting.length > 0) dmSurvived++;
+        // THE INVARIANT: MatchTime is back in the group AND an "add me back"
+        // DM is still going to be sent, never both.
+        assert.ok(!(stamp === null && waiting.length > 0), `round ${r}: back in the group, yet "I was removed, add me back" is still queued`);
+        // And the other way round is the ordinary case: still removed, told once.
+        if (stamp !== null) assert.equal(waiting.length, 1, `round ${r}: still removed, so the organiser is told, once`);
+      }
+      assert.ok(cleared > 0, "the race was exercised: at least one re-add landed");
+      ok(`a re-add racing the removal (${ROUNDS} rounds, ${cleared} re-adds landed, ${dmSurvived} removals still stood): never "add me back" for a group MatchTime is back in`);
     }
 
     console.log(`OK: ${n} setup-removal checks against Postgres`);

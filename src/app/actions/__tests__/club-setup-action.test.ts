@@ -37,6 +37,9 @@ vi.mock("@/lib/club-setup", () => ({
 const revalidatePath = vi.hoisted(() => vi.fn());
 vi.mock("next/cache", () => ({ revalidatePath }));
 
+const tellOrganiserOwnerWentLive = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/club-setup-owner-live", () => ({ tellOrganiserOwnerWentLive }));
+
 import { goLiveClubAction, helloPreviewAction, ownerGoLiveNowAction } from "../club-setup";
 
 const INFO = { orgId: "o1", club: "Harbour FC", group: "Harbour Tuesday 6s", language: "en" };
@@ -220,6 +223,8 @@ describe("ownerGoLiveNowAction: the MatchTime owner's Go live now (S5, owner dec
   beforeEach(() => {
     auth.mockResolvedValue({ user: { id: "u-kemal" } });
     isSuperadmin.mockResolvedValue(true);
+    tellOrganiserOwnerWentLive.mockReset();
+    tellOrganiserOwnerWentLive.mockResolvedValue("queued");
   });
 
   it("nobody signed in: refused, nothing written", async () => {
@@ -242,19 +247,63 @@ describe("ownerGoLiveNowAction: the MatchTime owner's Go live now (S5, owner dec
     learningFlag.mockResolvedValue(true);
     expect(await ownerGoLiveNowAction("o1")).toEqual({
       ok: true,
-      message: 'Harbour FC is live. The hello is on its way to "Harbour Tuesday 6s". No free period started.',
+      message:
+        'Harbour FC is live. The hello is on its way to "Harbour Tuesday 6s". No free period started. The organiser is being told by WhatsApp.',
     });
     // And when its free period did start with it, the owner is told so.
     goLiveClub.mockResolvedValue({ ...WENT_LIVE, freePeriodStarted: true, freePeriodNote: NOTE });
     expect(await ownerGoLiveNowAction("o1")).toEqual({
       ok: true,
-      message: 'Harbour FC is live. The hello is on its way to "Harbour Tuesday 6s". Its free period started now.',
+      message:
+        'Harbour FC is live. The hello is on its way to "Harbour Tuesday 6s". Its free period started now. The organiser is being told by WhatsApp.',
     });
     expect(goLiveClub).toHaveBeenCalledWith("o1", "owner:u-kemal", expect.any(Date), {
       learningEnabled: true,
       skipReadingCheck: true,
     });
     expect(revalidatePath).toHaveBeenCalledWith("/admin/clubs");
+  });
+
+  // Item 1. The organiser did not say GO, so nothing else tells them: the
+  // hello appears, the free period starts, a waiting setup DM is cancelled.
+  it("THE ORGANISER IS TOLD: after a go-live this call made, the writer's own result (free period note included) goes to the DM, once", async () => {
+    const live = { ...WENT_LIVE, freePeriodStarted: true, freePeriodNote: NOTE };
+    goLiveClub.mockResolvedValue(live);
+    await ownerGoLiveNowAction("o1");
+    expect(tellOrganiserOwnerWentLive).toHaveBeenCalledTimes(1);
+    // The very object `goLiveClub` returned: the note is reused, not rebuilt.
+    expect(tellOrganiserOwnerWentLive.mock.calls[0][0]).toBe(live);
+  });
+
+  it("nobody is told when this call did not take the club live (already live, removed, paused, not setting up)", async () => {
+    for (const refusal of [
+      { outcome: "already-live", orgId: "o1", club: "Harbour FC", group: "G", language: "en", liveAt: new Date(), liveBy: "u" },
+      { outcome: "removed-from-group", orgId: "o1", club: "Harbour FC", group: "G", language: "en" },
+      { outcome: "billing-paused", orgId: "o1", club: "Harbour FC", group: "G", language: "en" },
+      { outcome: "not-setting-up", orgId: "o1" },
+    ]) {
+      goLiveClub.mockResolvedValue(refusal);
+      await ownerGoLiveNowAction("o1");
+    }
+    expect(tellOrganiserOwnerWentLive).not.toHaveBeenCalled();
+  });
+
+  it("the owner sees what became of that DM, in every case, and the club is live whatever it was", async () => {
+    const said = async (told: string) => {
+      tellOrganiserOwnerWentLive.mockResolvedValue(told);
+      return (await ownerGoLiveNowAction("o1")).message;
+    };
+    expect(await said("already")).toMatch(/The organiser has already been told\.$/);
+    expect(await said("no-organiser")).toMatch(/There is no organiser on record, so nobody was told\.$/);
+    expect(await said("refused")).toMatch(/The organiser could NOT be told: their number was refused\.$/);
+    expect(await said("failed")).toMatch(/The organiser could NOT be told: the message was not queued\.$/);
+    for (const message of [await said("refused"), await said("failed")]) expect(message).toMatch(/^Harbour FC is live\./);
+  });
+
+  it("the organiser's own Go live button tells nobody by DM: they pressed it themselves", async () => {
+    auth.mockResolvedValue({ user: { id: "u-hana" } });
+    await goLiveClubAction("o1");
+    expect(tellOrganiserOwnerWentLive).not.toHaveBeenCalled();
   });
 
   it("every refusal is worded, and none of them names a phone number or an id", async () => {
