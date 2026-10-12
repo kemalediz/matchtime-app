@@ -33,6 +33,7 @@ import {
   validateWeeklyGame,
   type WeeklyGame,
 } from "./club-connect-rules";
+import { scheduleVenueResolveForOrg } from "./venue-location-schedule";
 
 export interface SelfJoinClubInput {
   name: string;
@@ -150,6 +151,9 @@ export async function createSelfJoinClub(
     });
     return created;
   });
+
+  // Venue location: looked up after the response, never part of the save.
+  await scheduleVenueResolveForOrg(org.id);
 
   return { ok: true, orgId: org.id, slug: org.slug };
 }

@@ -112,6 +112,14 @@ export const E2E = {
    *  the dev server and the specs through this one file. */
   BILLING_STRIPE_FILE: path.join(REPO_ROOT, ".e2e", "billing-stripe-fake.json"),
 
+  /** The GEOCODE stub file (venue location, 2026-10-12): what "Google"
+   *  answers for a venue text or a place id, and where a short map link
+   *  "redirects". Read by src/lib/geocode-test-seam.ts, which under
+   *  MT_TEST_MODE=1 never uses the real network at all: with no entry for
+   *  a request, Google finds nothing and a short link is a 404. Every
+   *  request the server makes is appended to `<file>.calls`. */
+  GEOCODE_STUB_FILE: path.join(REPO_ROOT, ".e2e", "geocode-stub.json"),
+
   /** The club fee webhook's TEST signing secret. Specs sign fixture events
    *  with it locally; it is never a real Stripe secret. */
   BILLING_WEBHOOK_SECRET: "whsec_e2e_club_fee_test_only",
@@ -244,6 +252,11 @@ export function buildTestEnv(): Record<string, string> {
     // Stripe's own retries are on, as production sets it (review L2: the
     // "it will be tried again" copy needs it explicitly on).
     BILLING_STRIPE_RETRIES: "1",
+    // Venue location: a dummy key (never a real one) so the lookup path
+    // runs, and the stub file every "Google" answer comes from. With
+    // MT_TEST_MODE=1 the seam never touches the network, key or no key.
+    GOOGLE_MAPS_API_KEY: "e2e-dummy-maps-key-never-real",
+    MT_TEST_GEOCODE_STUB_FILE: E2E.GEOCODE_STUB_FILE,
     // Deliberately inert — never let real keys load from any .env file.
     ANTHROPIC_API_KEY: "",
     STRIPE_SECRET_KEY: "",

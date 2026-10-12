@@ -20,6 +20,9 @@ import { revalidatePath } from "next/cache";
 import { seedFromAnalyzerRating } from "@/lib/seed-scale";
 import { normalisePhone } from "@/lib/phone";
 import { updatePlayerPhone } from "./players";
+import { activityVenueReset } from "@/lib/activity-update";
+import { dropOrphanPin } from "@/lib/venue-location";
+import { scheduleVenueResolve } from "@/lib/venue-location-schedule";
 
 export interface ApplyEnrichmentInput {
   sessionId: string;
@@ -116,9 +119,16 @@ export async function applyEnrichment(
     const data: { dayOfWeek?: number; time?: string; venue?: string } = {};
     if (input.schedule.dayOfWeek != null) data.dayOfWeek = input.schedule.dayOfWeek;
     if (input.schedule.time != null) data.time = input.schedule.time;
-    if (input.schedule.venue != null) data.venue = input.schedule.venue;
+    if (typeof input.schedule.venue === "string" && input.schedule.venue.trim()) data.venue = input.schedule.venue;
     if (Object.keys(data).length > 0) {
-      await db.activity.update({ where: { id: activity.id }, data });
+      // New venue words clear the place linked to the old ones in the same
+      // write; the new words are looked up after the response.
+      const reset = activityVenueReset(data, { venue: activity.venue });
+      await db.activity.update({ where: { id: activity.id }, data: reset ? { ...data, ...reset } : data });
+      if (reset) {
+        await dropOrphanPin(activity.venueId);
+        await scheduleVenueResolve(activity.id);
+      }
     }
 
     if (input.schedule.playersPerSide != null) {

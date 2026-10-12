@@ -10,6 +10,7 @@ import { normalisePhone } from "@/lib/phone";
 import { analyzeForOnboarding, type OnboardingAnalysis } from "@/lib/onboarding-analyzer";
 import { selfJoinEnabledForRequest } from "@/lib/self-join-flag";
 import { revalidatePath } from "next/cache";
+import { scheduleVenueResolveForOrg } from "@/lib/venue-location-schedule";
 
 /**
  * Server-side counterpart for the onboarding wizard (/onboarding).
@@ -361,6 +362,8 @@ export async function createOrgFromWizard(data: WizardSubmission): Promise<Wizar
   );
 
   await setCurrentOrgId(result.orgId);
+  // Venue location: looked up after the response, never part of the save.
+  await scheduleVenueResolveForOrg(result.orgId);
   revalidatePath("/");
   return { ...result, playersCreated, playersLinkedExisting };
 }
