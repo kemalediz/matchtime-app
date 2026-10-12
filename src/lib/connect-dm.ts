@@ -41,6 +41,7 @@ import {
   type ConnectDmReply,
 } from "./connect-dm-rules";
 import { PlatformDmRefused, platformPhoneDigits, queuePlatformDm } from "./platform-jobs";
+import { isSetupHoldEnabled } from "./club-setup-rules";
 
 export interface ConnectDmInput {
   text: string;
@@ -253,16 +254,24 @@ async function wrongCodeReply(input: ConnectDmInput, now: Date): Promise<Connect
   return { handled: "connect-dm", result, replied };
 }
 
-/** The reply's text, in the club's language (plan 5.3, 5.4). */
+/**
+ * The reply's text, in the club's language (plan 5.3, 5.4).
+ *
+ * `held` (go-live slice S3; by default SETUP_HOLD_ENABLED): an approved
+ * club will stay silent until its organiser says GO, so "I'll message you
+ * here when it's live" would be false. The held variant says "as soon as
+ * it's approved" instead. Off, the text is exactly what it was.
+ */
 export function connectReplyText(
   kind: ConnectDmReply,
   lang: string | null | undefined,
   p: { name: string | null; club: string },
+  held: boolean = isSetupHoldEnabled(),
 ): string {
   const s = t(lang);
   switch (kind) {
     case "connected":
-      return s.sj_dm_connected({ name: firstName(p.name), club: p.club });
+      return (held ? s.sj_dm_connected_held : s.sj_dm_connected)({ name: firstName(p.name), club: p.club });
     case "already-connected":
       return s.sj_dm_already_connected;
     case "expired":

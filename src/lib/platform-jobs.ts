@@ -64,12 +64,22 @@ import { APPROVED_CLUB_WHERE } from "./club-approval-state";
  *  billing, slice B3), queued only by `queueBillingDm` in club-billing.ts. */
 /** "setup-learned" (F3, 2026-10-05): the organiser's one DM about the
  *  settings MatchTime set up from the group chat (src/lib/setup-learning). */
+/** "setup-ask" (go-live slice S3, 2026-10-12): the organiser's ONE setup DM
+ *  for a club held until they say GO (src/lib/club-setup-dm.ts). */
 /** "setup-reply" (go-live slice S4, 2026-10-12): MatchTime's answer to a DM
  *  from an owner or admin of a club that is approved but still setting up
  *  (GO, help, "not recognised"). The club's own channel is off until GO,
  *  so these cannot be BotJobs. Queued only by src/lib/setup-go-dm.ts and,
  *  for help, src/lib/dm-help.ts; always a reply to the person's own DM. */
-export const PLATFORM_DM_PURPOSES = ["otp", "connect-reply", "organiser-decision", "billing", "setup-learned", "setup-reply"] as const;
+export const PLATFORM_DM_PURPOSES = [
+  "otp",
+  "connect-reply",
+  "organiser-decision",
+  "billing",
+  "setup-learned",
+  "setup-ask",
+  "setup-reply",
+] as const;
 export type PlatformDmPurpose = (typeof PLATFORM_DM_PURPOSES)[number];
 
 /** DM purposes only `queueOwnerDm` may write. */
@@ -148,9 +158,21 @@ export async function bridgePlatformDmsForLegacyPi(
 
 // ── Queueing ────────────────────────────────────────────────────────────
 
+/** Why a DM was refused, as a code that is safe to log and to show: it
+ *  never carries the number, the text or a name (`reason` may). */
+export type PlatformDmRefusalCode =
+  | "owner-purpose"
+  | "unknown-purpose"
+  | "not-a-phone-number"
+  | "empty-text"
+  | "number-not-known";
+
 export class PlatformDmRefused extends Error {
   override readonly name = "PlatformDmRefused";
-  constructor(readonly reason: string) {
+  constructor(
+    readonly reason: string,
+    readonly code: PlatformDmRefusalCode = "unknown-purpose",
+  ) {
     super(`[platform-jobs] DM refused: ${reason}`);
   }
 }
@@ -159,9 +181,19 @@ export class PlatformDmRefused extends Error {
  *  pure modules can share it; re-exported here for its existing callers. */
 export const platformPhoneDigits = e164Digits;
 
+/** The two calls `queuePlatformDm` makes: `db`, or a transaction client. */
+export type PlatformDmClient = {
+  user: { findFirst(args: { where: { phoneNumber: string }; select: { id: true } }): Promise<{ id: string } | null> };
+  platformJob: { create(args: { data: Record<string, unknown> }): Promise<{ id: string }> };
+};
+
 /**
  * Queue a DM on the platform channel. Throws `PlatformDmRefused` when the
  * recipient rule says no; the caller decides what the person sees.
+ *
+ * `client`: a transaction client, when the job must be created in the
+ * caller's own transaction (the setup DM and its once-per-club stamp,
+ * club-setup-dm.ts). Absent, `db`, exactly as before.
  */
 export async function queuePlatformDm(args: {
   phone: string;
@@ -169,26 +201,28 @@ export async function queuePlatformDm(args: {
   purpose: PlatformDmPurpose;
   refId?: string | null;
   sendAfter?: Date | null;
+  client?: PlatformDmClient;
 }): Promise<{ id: string }> {
+  const client = args.client ?? (db as unknown as PlatformDmClient);
   const purpose = args.purpose as string;
   if ((OWNER_DM_PURPOSES as readonly string[]).includes(purpose)) {
-    throw new PlatformDmRefused(`"${purpose}" DMs go through queueOwnerDm (src/lib/owner-dm.ts) only`);
+    throw new PlatformDmRefused(`"${purpose}" DMs go through queueOwnerDm (src/lib/owner-dm.ts) only`, "owner-purpose");
   }
   if (!(PLATFORM_DM_PURPOSES as readonly string[]).includes(purpose)) {
-    throw new PlatformDmRefused(`unknown purpose "${purpose}"`);
+    throw new PlatformDmRefused(`unknown purpose "${purpose}"`, "unknown-purpose");
   }
   const digits = platformPhoneDigits(args.phone);
-  if (!digits) throw new PlatformDmRefused(`not a phone number: ${JSON.stringify(args.phone)}`);
+  if (!digits) throw new PlatformDmRefused(`not a phone number: ${JSON.stringify(args.phone)}`, "not-a-phone-number");
   const text = typeof args.text === "string" ? args.text : "";
-  if (!text.trim()) throw new PlatformDmRefused("empty text");
+  if (!text.trim()) throw new PlatformDmRefused("empty text", "empty-text");
 
   if (purpose !== "otp") {
     // Rule 12: MatchTime never messages a number it does not already know.
-    const known = await db.user.findFirst({ where: { phoneNumber: `+${digits}` }, select: { id: true } });
-    if (!known) throw new PlatformDmRefused(`${purpose}: no MatchTime user has this number`);
+    const known = await client.user.findFirst({ where: { phoneNumber: `+${digits}` }, select: { id: true } });
+    if (!known) throw new PlatformDmRefused(`${purpose}: no MatchTime user has this number`, "number-not-known");
   }
 
-  const row = await db.platformJob.create({
+  const row = await client.platformJob.create({
     data: {
       kind: "dm",
       phone: digits,
@@ -200,6 +234,65 @@ export async function queuePlatformDm(args: {
     },
   });
   return { id: row.id };
+}
+
+/** DM purposes `cancelQueuedPlatformDms` will touch. A sign-up code, a
+ *  decision, a billing notice and anything for the owner are never
+ *  cancelled from here. */
+export const CANCELLABLE_DM_PURPOSES = ["setup-ask"] as const;
+
+/** How a cancelled job's `failReason` starts. On a CLAIMED job it is the
+ *  mark that makes a later release fail the job instead of re-queueing it. */
+export const CANCELLED_REASON_PREFIX = "cancelled: ";
+
+/**
+ * Cancel DMs that have not gone yet for one purpose and refId, because
+ * what they say is no longer true. There is no "cancelled" status: like a
+ * job refused at dispatch, a cancelled job is `failed` with its
+ * `failReason` ("cancelled: <reason>"), which `claimDuePlatformJobs` never
+ * hands out and nothing retries.
+ *
+ * ONE STATEMENT, so it cannot interleave with the Pi (the claim and the
+ * outcome report are single statements on the same row, and each waits
+ * for the other and then re-checks its own WHERE):
+ *   - a job still QUEUED (typically held for 09:00 London) becomes
+ *     `failed`: it is never handed out. Counted in `cancelled`;
+ *   - a job the Pi has already CLAIMED may be on its way, so its status is
+ *     left alone, and it is MARKED: its `failReason` is set to the
+ *     cancellation. If the Pi then RELEASES it (its one-DM-a-minute
+ *     pacing held it back), `recordPlatformJobOutcome` fails it instead of
+ *     putting it back in the queue, so it is not sent on a later poll. If
+ *     the Pi sent it, it is `sent` and the mark says it was cancelled too
+ *     late. Counted in `alreadyClaimed`.
+ * Nothing else is touched: not a sent, failed or unconfirmed job, not
+ * another purpose, not another refId.
+ */
+export async function cancelQueuedPlatformDms(args: {
+  purpose: (typeof CANCELLABLE_DM_PURPOSES)[number];
+  refId: string;
+  reason: string;
+  now?: Date;
+}): Promise<{ cancelled: number; alreadyClaimed: number }> {
+  if (!(CANCELLABLE_DM_PURPOSES as readonly string[]).includes(args.purpose)) {
+    throw new Error(`[platform-jobs] "${args.purpose}" DMs cannot be cancelled`);
+  }
+  const now = args.now ?? new Date();
+  const reason = `${CANCELLED_REASON_PREFIX}${args.reason}`.slice(0, FAIL_REASON_MAX);
+  // RETURNING reads the row AFTER the update: "failed" was queued,
+  // "claimed" was claimed and is now marked.
+  const rows = await db.$queryRaw<Array<{ status: string }>>`
+    UPDATE "PlatformJob" SET
+      "status" = CASE WHEN "status" = 'queued' THEN 'failed' ELSE "status" END,
+      "failedAt" = CASE WHEN "status" = 'queued' THEN ${now} ELSE "failedAt" END,
+      "failReason" = ${reason},
+      "updatedAt" = ${now}
+    WHERE "kind" = 'dm' AND "purpose" = ${args.purpose} AND "refId" = ${args.refId}
+      AND "status" IN ('queued', 'claimed')
+    RETURNING "status"`;
+  return {
+    cancelled: rows.filter((r) => r.status === "failed").length,
+    alreadyClaimed: rows.filter((r) => r.status === "claimed").length,
+  };
 }
 
 /**
@@ -436,7 +529,27 @@ export async function recordPlatformJobOutcome(
       data = { status: "unconfirmed", failReason: (result.reason || "unconfirmed").slice(0, FAIL_REASON_MAX) };
       break;
   }
-  const { count } = await db.platformJob.updateMany({ where: { id, status: "claimed" }, data });
+  // A job CANCELLED while the Pi held it (`cancelQueuedPlatformDms`
+  // marked it) is never put back in the queue. The release itself skips a
+  // marked job (for every other job, which is every job there has ever
+  // been, it is the one statement it always was); a marked job is then
+  // failed instead. Each is one compare-and-set, so a cancel arriving in
+  // between finds the job queued and fails it itself.
+  const notCancelled = { OR: [{ failReason: null }, { NOT: { failReason: { startsWith: CANCELLED_REASON_PREFIX } } }] };
+  const { count } = await db.platformJob.updateMany({
+    where: { id, status: "claimed", ...(result.outcome === "release" ? notCancelled : {}) },
+    data,
+  });
+  if (count === 0 && result.outcome === "release") {
+    const cancelled = await db.platformJob.updateMany({
+      where: { id, status: "claimed", failReason: { startsWith: CANCELLED_REASON_PREFIX } },
+      data: { status: "failed", failedAt: now },
+    });
+    if (cancelled.count > 0) {
+      console.log(`[platform-jobs] job ${id} was cancelled while claimed; released by the Pi, so failed instead of re-queued`);
+      return { updated: true };
+    }
+  }
   if (result.outcome === "failed" && count > 0) {
     console.error(`[platform-jobs] job ${id} FAILED on the Pi: ${result.reason}`);
   }

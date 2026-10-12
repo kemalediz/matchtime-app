@@ -64,7 +64,14 @@ export interface SetupDmInput {
   organiserPicksUrl: string;
 }
 
-export function composeSetupDm(p: SetupDmInput): string {
+/**
+ * The findings, block by block: the intro, each switched setting, the
+ * things worth a check, the monthly list. Everything `composeSetupDm`
+ * says except its closing line. Shared with the setup DM of a club that
+ * is held until its organiser says GO (club-setup-dm-rules.ts), which
+ * carries the same findings between its own head and its own links.
+ */
+export function setupFindingsBlocks(p: SetupDmInput): string[] {
   const s = t(p.lang);
   const blocks: string[] = [];
   blocks.push(p.applied.length > 0 ? s.sj_dm_setup_intro({ group: p.group }) : s.sj_dm_setup_intro_nothing({ group: p.group }));
@@ -100,6 +107,9 @@ export function composeSetupDm(p: SetupDmInput): string {
     );
   }
 
-  blocks.push(s.sj_dm_setup_outro({ url: p.settingsUrl }));
-  return blocks.join("\n\n");
+  return blocks;
+}
+
+export function composeSetupDm(p: SetupDmInput): string {
+  return [...setupFindingsBlocks(p), t(p.lang).sj_dm_setup_outro({ url: p.settingsUrl })].join("\n\n");
 }

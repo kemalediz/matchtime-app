@@ -30,6 +30,7 @@
  * (`dormantAt`). Both keep their meanings (see org-lifecycle.ts).
  */
 import { db } from "./db";
+import { clearCapturedChat } from "./captured-chat";
 import { t } from "./i18n/t";
 import { appUrl, buildAdminLink } from "./admin-link";
 import { e164Digits } from "./phone";
@@ -71,7 +72,8 @@ import {
   servingClubWhere,
 } from "./club-approval-state";
 import { billingQuietWhere, isBillingEnabled } from "./club-billing-rules";
-import { SETUP_STAGE_SELECT, isClubSettingUp } from "./club-setup-rules";
+import { SETUP_STAGE_SELECT, isClubSettingUp, isSetupHoldEnabled, settingUpClubFields } from "./club-setup-rules";
+import { cancelSetupDm } from "./club-setup-dm-cancel";
 
 // ── Flags ───────────────────────────────────────────────────────────────
 
@@ -322,6 +324,11 @@ export type DecideClubResult =
       code: string | null;
       groupId: string | null;
       groupSubject: string | null;
+      /** Go-live slice S3: present (and true) only on an approval that HELD
+       *  the club: approved, setting up, silent until its organiser says
+       *  GO. The caller then schedules the prompt reading and the setup DM
+       *  (club-setup-schedule.ts). Absent on every other result. */
+      held?: true;
     }
   | { ok: false; reason: "not-found" }
   | {
@@ -380,6 +387,15 @@ function firstName(name: string | null | undefined): string | null {
  *            BotJob; the Pi picks the group up on its next org refresh.
  *            Then imports the roster from the add's snapshot and DMs the
  *            organiser.
+ *            WITH THE SETUP HOLD ON (go-live slice S3, `opts.hold`, by
+ *            default SETUP_HOLD_ENABLED): the same compare-and-set leaves
+ *            the club approved and SETTING UP instead. The bot is left
+ *            OFF, the group is linked, and nothing is said anywhere: no
+ *            hello, no claim on the scheduler's intro (go-live does both),
+ *            no "you're live" DM, and the free period does not start (it
+ *            starts at go-live). The roster is still imported. The
+ *            organiser hears through their one setup DM
+ *            (club-setup-dm.ts), which the caller schedules.
  *   reject   pending -> rejected. The bot stays off. MatchTime leaves the
  *            group without a word in it, and the organiser gets one polite
  *            DM (decision 1).
@@ -388,7 +404,9 @@ function firstName(name: string | null | undefined): string | null {
  *            only with its name typed: Sutton FC (approved by the column
  *            default, `approvedAt` NULL) can never be turned off or left
  *            from here. The bot goes off in the same write, then MatchTime
- *            leaves the group. Nobody is messaged.
+ *            leaves the group. Nobody is messaged. A club suspended
+ *            while it was still setting up also has its unsent setup DM
+ *            cancelled (`cancelSetupDm`).
  *
  * `decidedBy` is "whatsapp:<phone>" or a user id. No model, anywhere.
  */
@@ -396,9 +414,11 @@ export async function decideClub(
   orgId: string,
   decision: ClubDecision,
   decidedBy: string,
-  opts: { now?: Date; confirmName?: string | null } = {},
+  opts: { now?: Date; confirmName?: string | null; hold?: boolean } = {},
 ): Promise<DecideClubResult> {
   const now = opts.now ?? new Date();
+  // Read once: an approval either holds the club or it does not.
+  const hold = decision === "approve" && (opts.hold ?? isSetupHoldEnabled());
 
   type Done = {
     result: DecideClubResult;
@@ -414,6 +434,9 @@ export async function decideClub(
         participants: unknown;
       } | null;
       leaveGroupId: string | null;
+      /** The club was approved but SETTING UP when it was suspended: its
+       *  setup DM may still be waiting for 09:00 and must not go. */
+      cancelSetupDm?: boolean;
     };
   };
 
@@ -426,10 +449,11 @@ export async function decideClub(
           id: true,
           name: true,
           language: true,
-          approvalStatus: true,
           approvedAt: true,
           approvalDecidedAt: true,
           whatsappGroupId: true,
+          // The approval status, and whether the club is setting up.
+          ...SETUP_STAGE_SELECT,
         },
       });
       if (!org) return { result: { ok: false, reason: "not-found" } };
@@ -442,6 +466,8 @@ export async function decideClub(
         const refusal = suspendRefusal(org, opts.confirmName);
         if (refusal === "not-approved") return refusedAs("not-approved");
         if (refusal) return { result: { ok: false, reason: refusal, club: org.name } };
+        // As read, before the write: was it approved and still setting up?
+        const wasSettingUp = isClubSettingUp(org);
         const { count } = await tx.organisation.updateMany({
           where: { id: orgId, approvalStatus: "approved", approvedAt: { not: null } },
           data: { approvalStatus: "suspended", whatsappBotEnabled: false, ...decided },
@@ -457,7 +483,12 @@ export async function decideClub(
             groupId: org.whatsappGroupId,
             groupSubject: null,
           },
-          after: { language: org.language, link: null, leaveGroupId: org.whatsappGroupId },
+          after: {
+            language: org.language,
+            link: null,
+            leaveGroupId: org.whatsappGroupId,
+            cancelSetupDm: wasSettingUp,
+          },
         };
       }
 
@@ -484,8 +515,9 @@ export async function decideClub(
         if (count !== 1) throw new DecisionRaceLost();
         if (link) {
           await tx.clubConnect.updateMany({ where: { id: link.id, status: "group_linked" }, data: { status: "closed" } });
-          // F3: a rejected club's chat is never read; delete it now.
-          await tx.$executeRaw`UPDATE "ClubConnect" SET "capturedHistory" = NULL WHERE "id" = ${link.id}`;
+          // F3: a rejected club's chat is never read; delete it now, and
+          // the group description captured with it.
+          await clearCapturedChat(tx, link.id);
         }
         return {
           result: {
@@ -515,16 +547,41 @@ export async function decideClub(
 
       const { count } = await tx.organisation.updateMany({
         where: { id: orgId, approvalStatus: "pending" },
-        data: {
-          approvalStatus: "approved",
-          approvedAt: now,
-          whatsappBotEnabled: true,
-          whatsappGroupId: groupId,
-          ...decided,
-        },
+        data: hold
+          ? // Approved AND setting up, in the one write. The bot switch is
+            // not touched: it is off (a pending club's always is) and the
+            // CHECK constraint keeps it off while the club is setting up.
+            {
+              approvalStatus: "approved",
+              approvedAt: now,
+              whatsappGroupId: groupId,
+              ...settingUpClubFields(),
+              ...decided,
+            }
+          : {
+              approvalStatus: "approved",
+              approvedAt: now,
+              whatsappBotEnabled: true,
+              whatsappGroupId: groupId,
+              ...decided,
+            },
       });
       if (count !== 1) throw new DecisionRaceLost();
       await tx.clubConnect.updateMany({ where: { id: link.id, status: "group_linked" }, data: { status: "closed" } });
+      const approved = {
+        ok: true as const,
+        decision,
+        orgId,
+        club: org.name,
+        code: link.code,
+        groupId,
+        groupSubject: link.groupSubject,
+      };
+      // HELD: nothing is said in the group and nothing is claimed. The
+      // hello and the claim on the scheduler's intro belong to go-live.
+      if (hold) {
+        return { result: { ...approved, held: true }, after: { language: org.language, link, leaveGroupId: null } };
+      }
 
       // The hello: the first thing MatchTime ever says in this group. A
       // plain group BotJob, so it goes out through due-posts with every
@@ -543,18 +600,7 @@ export async function decideClub(
         create: { key: `org-${orgId}:bot-intro`, kind: "bot-intro" },
         update: {},
       });
-      return {
-        result: {
-          ok: true,
-          decision,
-          orgId,
-          club: org.name,
-          code: link.code,
-          groupId,
-          groupSubject: link.groupSubject,
-        },
-        after: { language: org.language, link, leaveGroupId: null },
-      };
+      return { result: approved, after: { language: org.language, link, leaveGroupId: null } };
     });
   } catch (err) {
     if (!(err instanceof DecisionRaceLost)) throw err;
@@ -590,8 +636,11 @@ export async function decideClub(
   // `approvedAt`, just committed). A failure leaves the club "exempt",
   // which bills nobody, and is logged; the approval stands. A club whose
   // free month did start gets the club fee tip in its "you're live" DM.
+  // HELD (go-live slice S3): NOT here. The club's free period starts when
+  // it goes live in its group, so the "approved" event is not fired and
+  // the club stays "exempt" (no trial, no month, no charge) until then.
   let feeTip: string | null = null;
-  if (result.decision === "approve" && isBillingEnabled()) {
+  if (result.decision === "approve" && !result.held && isBillingEnabled()) {
     try {
       const started = await setBillingState(orgId, { type: "approved" }, now);
       if (started.ok && started.to === "trial") {
@@ -609,6 +658,20 @@ export async function decideClub(
   // close re-checks the suspension itself before any money moves. A
   // failure here never undoes the suspension: it is recorded on
   // /admin/health.
+  // A club suspended while it was SETTING UP (go-live slice S3): its
+  // organiser's setup DM may be queued for 09:00 London. It says "approved,
+  // reply GO", which is no longer true, so it is cancelled. Only for such a
+  // club: for every other club this is not even called. A job the Pi has
+  // already claimed is left alone (it may be on its way) and logged. A
+  // failure here never undoes the suspension.
+  if (result.decision === "suspend" && after.cancelSetupDm) {
+    try {
+      await cancelSetupDm(orgId, "suspended", now);
+    } catch (err) {
+      console.error(`[club-approval] ${orgId}: suspended, but its waiting setup DM was NOT cancelled:`, err);
+    }
+  }
+
   if (result.decision === "suspend") {
     try {
       const { onClubSuspended } = await import("./club-billing-stripe");
@@ -639,6 +702,11 @@ export async function decideClub(
     } catch (err) {
       console.error(`[club-approval] ${orgId}: roster import FAILED; the next participant sweep fills it:`, err);
     }
+  }
+  // HELD: no "you're live" DM. The organiser's one setup DM is sent by
+  // club-setup-dm.ts once the chat reading is final (the caller schedules
+  // it; the learn-setup cron retries).
+  if (result.decision === "approve" && after.link && !result.held) {
     await queueOrganiserDecisionDm(
       `${after.link.id}:approved`,
       after.link.phone,
@@ -712,10 +780,16 @@ export interface ApproverDmInput {
   senderAltPhone?: string | null;
   waMessageId: string;
   now?: Date;
+  /** Go-live slice S3: SETUP_HOLD_ENABLED as the route read it (it has a
+   *  per-request test seam). Absent: the environment decides. */
+  setupHold?: boolean;
 }
 
 export interface ApproverDmOutcome {
   handled: "approver-dm";
+  /** Go-live slice S3: the club this approval HELD (approved, setting up).
+   *  Present only then; the route schedules its reading and setup DM. */
+  heldOrgId?: string;
   result:
     | "not-approver"
     | "approved"
@@ -800,6 +874,7 @@ export async function handleApproverDm(input: ApproverDmInput): Promise<Approver
   const target = resolveApproverTarget(cmd, waiting, decided);
 
   let ack: OwnerAck;
+  let heldOrgId: string | null = null;
   switch (target.kind) {
     case "ambiguous":
     case "none-waiting":
@@ -808,8 +883,11 @@ export async function handleApproverDm(input: ApproverDmInput): Promise<Approver
       ack = target;
       break;
     case "decide": {
-      const r = await decideClub(target.target.orgId, cmd.verb, `whatsapp:${approver}`, { now });
-      if (r.ok) ack = { kind: r.decision === "approve" ? "approved" : "rejected", club: r.club };
+      const r = await decideClub(target.target.orgId, cmd.verb, `whatsapp:${approver}`, { now, hold: input.setupHold });
+      if (r.ok && r.decision === "approve" && r.held) {
+        ack = { kind: "approved", club: r.club, held: true };
+        heldOrgId = r.orgId;
+      } else if (r.ok) ack = { kind: r.decision === "approve" ? "approved" : "rejected", club: r.club };
       else if (r.reason === "group-taken") ack = { kind: "group-taken", club: r.club, takenBy: r.takenBy };
       else if ((r.reason === "not-pending" || r.reason === "not-approved") && DECIDED.has(r.status)) {
         ack = {
@@ -830,5 +908,5 @@ export async function handleApproverDm(input: ApproverDmInput): Promise<Approver
 
   await queueOwnerDm(ownerAckText(ack), "owner-ack", `dm:${input.waMessageId}`, now);
   console.log(`[club-approval] owner DM "${input.text.trim()}" -> ${ack.kind}`);
-  return { handled: "approver-dm", result: ack.kind };
+  return { handled: "approver-dm", result: ack.kind, ...(heldOrgId ? { heldOrgId } : {}) };
 }

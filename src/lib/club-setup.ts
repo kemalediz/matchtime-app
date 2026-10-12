@@ -35,6 +35,7 @@
 import { randomUUID } from "node:crypto";
 import type { MatchStatus } from "@/generated/prisma/enums";
 import { db } from "./db";
+import { clearCapturedChatForClub } from "./captured-chat";
 import { isClubApproved, servingClubWhere } from "./club-approval-state";
 import { startFreePeriodAtGoLiveTx } from "./club-billing";
 import { BILLING_NOT_PAUSED_WHERE, isBillingEnabled } from "./club-billing-rules";
@@ -56,6 +57,7 @@ import {
   paymentsLiveKey,
 } from "./payments-live-announce";
 import { isSetupLearningEnabled } from "./setup-learning/flag";
+import { cancelSetupDm } from "./club-setup-dm-cancel";
 
 export {
   SETTING_UP_CLUB_WHERE,
@@ -73,6 +75,7 @@ export {
   type SetupStageColumns,
   WENT_LIVE_CLUB_WHERE,
   STILL_READING_WINDOW_MS,
+  SETUP_LEARNING_FINAL_STATUSES,
   isGoCommand,
   isSetupLearningFinal,
   liveByOwner,
@@ -149,9 +152,47 @@ export async function closeUnfinishedSetupLearning(
     WHERE "ClubSetupLearning"."status" IN ('running', 'deferred')
     RETURNING (xmax = 0) AS "inserted"`;
   if (rows.length === 0) return "already-final";
-  await tx.$executeRaw`UPDATE "ClubConnect" SET "capturedHistory" = NULL WHERE "orgId" = ${orgId}`;
+  // The group description goes with the chat (captured-chat.ts).
+  await clearCapturedChatForClub(tx, orgId);
   return rows[0].inserted ? "created-closed" : "closed";
 }
+
+// ════ BEGIN the setup DM's stamp (go-live slice S3, 2026-10-12) ════
+
+/**
+ * "This club's setup DM is due": approved, setting up, never asked, and
+ * MatchTime still in its group (a club it was removed from during setup
+ * is not told "I'm in your group"). The reading's state is the caller's
+ * to add (club-setup-dm.ts).
+ */
+export const SETUP_DM_DUE_WHERE = { ...SETTING_UP_CLUB_WHERE, setupAskedAt: null, setupRemovedAt: null } as const;
+
+/** What `markSetupAsked` needs: `db`, or a transaction client. */
+type OrgStampClient = {
+  organisation: { updateMany(args: { where: object; data: object }): Promise<{ count: number }> };
+};
+
+/**
+ * THE ONE WRITER OF `setupAskedAt`: the moment the organiser's setup DM is
+ * due (now, or the next 09:00 London for a night run). It is the clock the
+ * 24-hour reminder runs on (slice S6).
+ *
+ * A compare-and-set on `SETUP_DM_DUE_WHERE`, so it is also the claim that
+ * makes the setup DM once per club: of two runs racing (two crons, or the
+ * cron and the run that follows an approval) exactly one gets `true`, and
+ * only that one queues the DM, in the same transaction. Postgres makes the
+ * second writer wait for the first one's row lock and then re-checks the
+ * WHERE, which no longer matches.
+ */
+export async function markSetupAsked(orgId: string, dueAt: Date, client: OrgStampClient = db): Promise<boolean> {
+  const { count } = await client.organisation.updateMany({
+    where: { id: orgId, ...SETUP_DM_DUE_WHERE },
+    data: { setupAskedAt: dueAt },
+  });
+  return count === 1;
+}
+
+// ════ END the setup DM's stamp ════
 
 // ── Going live (slice S4) ───────────────────────────────────────────────
 
@@ -409,6 +450,17 @@ async function settlePaymentsAnnouncement(
  *
  * Refusals change nothing: "still-reading" (owner decision 4),
  * "removed-from-group", "billing-paused", "not-setting-up".
+ *
+ * AFTER the transaction has committed, and only when this call took the
+ * club live: the organiser's setup DM is cancelled if it is still waiting
+ * (`cancelSetupDm`: a DM queued at night is held for 09:00 London, and
+ * "reply GO" would be false by then). Here, in the one function every
+ * door goes through, so no door can forget it. A failure is logged and
+ * never undoes the go-live.
+ *
+ * LOCK ORDER: the club's row (the compare-and-set), then the reading row
+ * (`closeUnfinishedSetupLearning`). The reading and the setup DM's cap
+ * take the two rows in the same order (setup-learning/run.ts).
  */
 export async function goLiveClub(
   orgId: string,
@@ -416,6 +468,19 @@ export async function goLiveClub(
   now: Date = new Date(),
   opts: GoLiveOptions = {},
 ): Promise<GoLiveResult> {
+  const result = await goLiveClubTx(orgId, by, now, opts);
+  if (result.outcome === "went-live") {
+    try {
+      await cancelSetupDm(orgId, "went-live", now);
+    } catch (err) {
+      console.error(`[club-setup] ${orgId}: live, but its waiting setup DM was NOT cancelled: ${(err as Error)?.name ?? "error"}`);
+    }
+  }
+  return result;
+}
+
+/** The go-live transaction itself. Only `goLiveClub` calls it. */
+async function goLiveClubTx(orgId: string, by: string, now: Date, opts: GoLiveOptions): Promise<GoLiveResult> {
   const learningEnabled = opts.learningEnabled ?? isSetupLearningEnabled();
   const billingOn = opts.billingEnabled ?? isBillingEnabled();
   return db.$transaction(

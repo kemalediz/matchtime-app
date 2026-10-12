@@ -388,6 +388,10 @@ export async function postBotAdded(params: {
   /** Self-join slice 6: found by the reconnect sweep, not by an add event.
    *  Only sent when /orgs asked for a sweep. */
   discovered?: boolean;
+  /** The group's description, as WhatsApp returned it (2026-10-12). The
+   *  server masks numbers out of it before storing it; an older server
+   *  ignores it. Never logged here, and this function logs no request. */
+  groupDescription?: string;
 }): Promise<BotAddedResult | null> {
   const res = await apiFetch(`${config.apiUrl}/api/whatsapp/bot-added`, {
     method: "POST",

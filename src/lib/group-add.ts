@@ -55,6 +55,9 @@ import {
 import { PlatformDmRefused, queuePlatformDm, queuePlatformLeaveGroup } from "./platform-jobs";
 import { detectAdminGroupCandidate, recordAdminGroupCandidate } from "./admin-group-link";
 import { CAPTURED_HISTORY_RETENTION_MS } from "./captured-history-retention";
+import { isSetupHoldEnabled } from "./club-setup-rules";
+import { capturedAtLink, clearCapturedChat, fillCapturedChatOnReAdd } from "./captured-chat";
+import { ingestGroupDescription } from "./group-description";
 
 export interface GroupAddInput {
   groupId: string;
@@ -63,6 +66,13 @@ export interface GroupAddInput {
   addedByLid?: unknown;
   participants?: unknown;
   enrichmentHistory?: unknown;
+  /**
+   * The group's WhatsApp description (2026-10-12). Whatever is handed in
+   * goes through `ingestGroupDescription` before anything else happens, so
+   * only masked text can be stored from here, whoever the caller is. The
+   * route masks it first as well; masking masked text changes nothing.
+   */
+  groupDescription?: unknown;
   discovered?: unknown;
   now?: Date;
 }
@@ -116,6 +126,11 @@ export async function handleSelfJoinGroupAdd(input: GroupAddInput): Promise<Grou
   const now = input.now ?? new Date();
   const groupId = input.groupId;
   const subject = typeof input.groupSubject === "string" && input.groupSubject.trim() ? input.groupSubject.trim() : null;
+  // Masked here, before any read or write. `input.groupDescription` is
+  // not used again below. A group the reconnect sweep found brings none:
+  // the sweep reads groups that have nothing to do with MatchTime, and
+  // only a real add may bring a description.
+  const description = input.discovered === true ? null : ingestGroupDescription(input.groupDescription).text;
 
   // 1. A club already owns this group. An APPROVED one first, whatever its
   //    mute switch or dormancy: that is Sutton FC's case, and it is today's
@@ -144,10 +159,11 @@ export async function handleSelfJoinGroupAdd(input: GroupAddInput): Promise<Grou
     const late = coerceHistoryMessages(input.enrichmentHistory);
     const pastRetention =
       existing.linkedAt != null && now.getTime() - existing.linkedAt.getTime() >= CAPTURED_HISTORY_RETENTION_MS;
-    if (late.length > 0 && !pastRetention) {
-      await db.$executeRaw`UPDATE "ClubConnect" SET "capturedHistory" = ${JSON.stringify(late)}::jsonb
-        WHERE "id" = ${existing.id} AND "capturedHistory" IS NULL`;
-    }
+    // The group description follows the same rule. And neither is written
+    // to a request that a removal, a rejection or an approval cleared
+    // since it was read above: the statement itself checks the request is
+    // still linked (captured-chat.ts).
+    if (!pastRetention) await fillCapturedChatOnReAdd(db, existing.id, { history: late, description });
     return { kind: "already-linked", connectId: existing.id };
   }
 
@@ -176,7 +192,7 @@ export async function handleSelfJoinGroupAdd(input: GroupAddInput): Promise<Grou
     // group is an admin of one with a link code open. When the rule's
     // conditions do not hold (or stop holding while linking), the add
     // carries on below exactly as before.
-    const ctx = { groupId, subject, snapshot, ev, history: input.enrichmentHistory, now };
+    const ctx = { groupId, subject, snapshot, ev, history: input.enrichmentHistory, description, now };
     const relink = await findRelinkAfterReAdd(groupId, ev, now);
     if (relink) {
       const out = await linkGroupToRequest(ctx, relink);
@@ -211,7 +227,7 @@ export async function handleSelfJoinGroupAdd(input: GroupAddInput): Promise<Grou
   const row = candidates.find((c) => c.id === decision.connectId);
   if (!row) return { kind: "race-lost" };
   const out = await linkGroupToRequest(
-    { groupId, subject, snapshot, ev, history: input.enrichmentHistory, now },
+    { groupId, subject, snapshot, ev, history: input.enrichmentHistory, description, now },
     {
       row,
       // Compare-and-set on the status the request had when it was matched.
@@ -287,6 +303,8 @@ interface AddContext {
   ev: AddEvidence;
   /** The Pi's `enrichmentHistory`, unread. */
   history: unknown;
+  /** The group description, ALREADY MASKED (`ingestGroupDescription`), or null. */
+  description: string | null;
   now: Date;
 }
 
@@ -370,7 +388,7 @@ async function linkGroupToRequest(
   ctx: AddContext,
   target: LinkTarget,
 ): Promise<GroupAddOutcome | typeof RELINK_ABANDONED> {
-  const { groupId, subject, snapshot, ev, now } = ctx;
+  const { groupId, subject, snapshot, ev, now, description } = ctx;
   const { row } = target;
   const relinked = target.relink !== null;
   const history = coerceHistoryMessages(ctx.history);
@@ -403,7 +421,10 @@ async function linkGroupToRequest(
           // after approval (or the club is rejected). See setup-learning/.
           // A relink stores what THIS add brought: the removal deleted
           // the earlier chat, so there is nothing older to keep.
-          capturedHistory: history.length > 0 ? (history as unknown as object) : undefined,
+          // With it, the group description, masked, kept and deleted
+          // with the chat. A first link has none stored, and a removal
+          // deleted any earlier one, so this never replaces one.
+          ...capturedAtLink({ history, description }),
           // Also where the chat's retention is measured from (captured-
           // history-expiry.ts). A relink sets it again: its chat was
           // stored now, and the club has been waiting since now.
@@ -479,14 +500,15 @@ async function linkGroupToRequest(
     organiserAckQueued = await queueOrganiserAck(
       target.organiserAckRefId,
       row.phone,
-      t(org?.language).sj_dm_in_group({ group: subject }),
+      inGroupAckText(org?.language, subject),
     );
   }
 
   console.log(
     `[group-add] ${groupId} ("${subject ?? "?"}") ${relinked ? "relinked after re-add" : "linked"} to ${row.id} ` +
       `(club ${row.orgId}, now pending): adder=${target.adderMatch}, ${snapshot.length} member(s), ` +
-      `${history.length} chat message(s), looks ${detected.lang}` +
+      `${history.length} chat message(s), ${description ? `description ${description.length} chars` : "no description"}, ` +
+      `looks ${detected.lang}` +
       `${detected.confident ? "" : " (unsure)"}, organiser ack ${organiserAckQueued ? "queued" : "not sent"}`,
   );
   return {
@@ -580,8 +602,9 @@ export async function handleBotRemoved(
         where: { id: l.id, botRemovedAt: null },
         data: { botRemovedAt: now },
       });
-      // F3: the chat goes with the link; a re-add brings it again.
-      await tx.$executeRaw`UPDATE "ClubConnect" SET "capturedHistory" = NULL WHERE "id" = ${l.id}`;
+      // F3: the chat goes with the link, and the group description with
+      // it; a re-add brings them again.
+      await clearCapturedChat(tx, l.id);
       return count === 1 && (await returnPendingClubToDraft(l.orgId, tx));
     });
     if (moved) returnedToDraft++;
@@ -668,4 +691,19 @@ export async function loadSelfJoinSweep(now: Date = new Date()): Promise<{ known
     if (typeof g === "string" && g) known.add(g);
   }
   return { knownGroups: [...known] };
+}
+
+/**
+ * The organiser's ack after a matched group add. With SETUP_HOLD_ENABLED
+ * on (go-live slice S3) an approved club stays silent until its organiser
+ * says GO, so "I'll message you here when it's live" would be false: the
+ * held variant says "as soon as it's approved". Off, today's text exactly.
+ */
+export function inGroupAckText(
+  lang: string | null | undefined,
+  group: string | null,
+  held: boolean = isSetupHoldEnabled(),
+): string {
+  const s = t(lang);
+  return (held ? s.sj_dm_in_group_held : s.sj_dm_in_group)({ group });
 }

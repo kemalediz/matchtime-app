@@ -302,6 +302,7 @@
  *     them.
  */
 import { composeSetupDm } from "../../setup-learning/dm";
+import { composeSetupAskDm } from "../../club-setup-dm-rules";
 import { describe, it, expect } from "vitest";
 import type { EngineResult, SpeechIntent, SquadState, StatsPeriod, StatsSnapshot } from "../../pipeline/types";
 import { periodKey } from "../../pipeline/stats-period";
@@ -1995,6 +1996,57 @@ function cases(lang: Lang): Case[] {
     ),
   );
 
+  // ── SUP: the setup DM of a club held until its organiser says GO
+  //   (go-live slice S3, 2026-10-12). NEW copy, a deliberate addition:
+  //   sent only while SETUP_HOLD_ENABLED is on, in place of the "you're
+  //   live" DM and of LRN1 to LRN3 for such a club. No existing case
+  //   changed.
+  const setupAsk = (reading: Parameters<typeof composeSetupAskDm>[0]["reading"], rest: Partial<Parameters<typeof composeSetupAskDm>[0]> = {}) =>
+    composeSetupAskDm({
+      lang,
+      club: "Thursday Ladies",
+      group: "Thursday Ladies 5s",
+      reading,
+      standard: true,
+      scheduleUrl: "https://matchtime.ai/r/sched",
+      ratingsUrl: "https://matchtime.ai/r/ratings",
+      settingsUrl: "https://matchtime.ai/r/settings",
+      learnedUrl: "https://matchtime.ai/r/learned",
+      organiserPicksUrl: "https://matchtime.ai/r/pick",
+      ...rest,
+    });
+  add(
+    "SUP1 composeSetupAskDm / the reading applied four settings, two things worth a check",
+    setupAsk({
+      kind: "findings",
+      applied: [
+        { key: "rollingSquad", from: false, to: true, evidence: ["Same lot as last week"], undoUrl: "https://matchtime.ai/r/u1" },
+        { key: "dropOutDeadline", from: null, to: { day: 1, time: "21:00" }, evidence: ["Drop out by Monday 9pm"], undoUrl: "https://matchtime.ai/r/u2" },
+        { key: "listPublish", from: null, to: { day: 2, time: "20:00" }, evidence: ["Final list goes up Tuesday at 8pm"], undoUrl: "https://matchtime.ai/r/u3" },
+        { key: "paymentTracking", from: false, to: true, evidence: ["sent £6"], undoUrl: "https://matchtime.ai/r/u4" },
+      ],
+      suggestions: [
+        { key: "weeklyGameTime", current: "19:00", detected: "20:00", evidence: [] },
+        { key: "organiserPicks", current: "first-come", detected: "organiser", evidence: ["Drop me a message", "I'll pick someone"] },
+      ],
+      noted: [],
+    }, { standard: false }),
+  );
+  add("SUP2 composeSetupAskDm / the reading found nothing", setupAsk({ kind: "nothing" }));
+  add("SUP3 composeSetupAskDm / the chat could not be read", setupAsk({ kind: "unread" }));
+  add("SUP4 composeSetupAskDm / no reading at all (the reading is off), a group with no name", setupAsk({ kind: "none" }, { group: null }));
+  add(
+    "SUP5 composeSetupAskDm / nothing switched, one thing worth a check",
+    setupAsk({ kind: "findings", applied: [], suggestions: [{ key: "venue", current: "Hackney Marshes", detected: "Mabley Green", evidence: [] }], noted: [] }),
+  );
+  add(
+    "SUP6 composeSetupAskDm / nothing found, but the organiser already changed how the club runs",
+    setupAsk({ kind: "nothing" }, { standard: false }),
+  );
+  add("SUP7 the held variants / connect reply", t(lang).sj_dm_connected_held({ name: "Aliyah", club: "Thursday Ladies" }));
+  add("SUP8 the held variants / in-group ack", t(lang).sj_dm_in_group_held({ group: "Thursday Ladies 5s" }));
+  add("SUP9 the held variants / pending card", t(lang).sj_card_pending_held);
+
   // ── MWK: monthly squad, slice 5 (2026-10-06), the weekly flow ─────
   //   NEW copy, a deliberate addition: MDs/monthly-squad-plan-2026-10-05.md
   //   sections 5.3, 5.4 and 6.2. Sent only for a club on "monthly" with a
@@ -2265,6 +2317,8 @@ const MIGRATED_ROWS = [
   "BDG1 ",
   // learned setup (2026-10-05)
   "LRN1 ", "LRN2 ", "LRN3 ",
+  // the setup DM of a held club (go-live slice S3, 2026-10-12)
+  "SUP1 ", "SUP2 ", "SUP3 ", "SUP4 ", "SUP5 ", "SUP6 ", "SUP7 ", "SUP8 ", "SUP9 ",
   // Monthly squad, slice 3: the month's sign-up.
   "MSU1 ", "MSU2 ", "MSU3 ", "MSU4 ", "MSU5 ", "MSU6 ", "MSU7 ",
   // Monthly squad, slice 4: price, payments and reminders.
