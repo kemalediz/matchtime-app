@@ -25,17 +25,32 @@
  * with a ring round it, and a suggestion that is deep-linked gets that
  * ring inside the block.
  *
+ * A SUGGESTION THAT NO LONGER STANDS LEAVES THE BLOCK (2026-10-12). The
+ * stored suggestions are a snapshot of the day the chat was read, and the
+ * owner, having moved his kickoff on the weekly game page, came back to a
+ * card that still told him to. The server now holds each one against what
+ * the club has today (setup-learning/suggestion-state.ts): an OPEN one is
+ * a card as before, worded with today's value; a RESOLVED one is a small
+ * green-tick line under the block, with no button. The heading counts the
+ * open ones, and with none open there is no amber block at all. A DM link
+ * to a suggestion that has since been resolved lands on its line.
+ *
+ * The state is loaded again, in one request, when the page comes back
+ * (restored from the back-forward cache, or its tab shown again) and when
+ * a setting on this page that a suggestion is about is saved.
+ *
  * After an Undo the page reloads, so every other section shows the
  * setting's new value from the server.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { AlertTriangle, ArrowRight, Sparkles } from "lucide-react";
+import { AlertTriangle, ArrowRight, Check, Sparkles } from "lucide-react";
 import { getLearnedSetupAction, undoLearnedSettingAction } from "@/app/actions/setup-learning";
 import { t } from "@/lib/i18n/t";
 import { appliedLine, monthlyPattern, suggestionLine } from "@/lib/setup-learning/dm";
 import { checkHeading, suggestionActionHref, suggestionActionLabel } from "@/lib/setup-learning/suggestion-action";
+import { LEARNED_REFRESH_EVENT, resolvedLine } from "@/lib/setup-learning/suggestion-state";
 import type { LearnedSetupView } from "@/lib/setup-learning/view";
 
 const ACTION_CLASS =
@@ -53,25 +68,65 @@ export function LearnedSetupPanel(props: { orgId: string; language: string | nul
   const [busy, setBusy] = useState<string | null>(null);
   const [highlight, setHighlight] = useState<string | null>(null);
 
-  useEffect(() => {
-    getLearnedSetupAction(props.orgId)
-      .then(setView)
-      .catch(() => setView(null));
-    if (typeof window !== "undefined") {
-      const k = new URLSearchParams(window.location.search).get("learned");
-      if (k) setHighlight(k);
-    }
-  }, [props.orgId]);
+  const scrolled = useRef(false);
 
   useEffect(() => {
-    if (!view || typeof document === "undefined") return;
+    if (typeof window === "undefined") return;
+    const k = new URLSearchParams(window.location.search).get("learned");
+    if (k) setHighlight(k);
+  }, []);
+
+  // Load, and load again when the organiser comes back from changing
+  // something elsewhere or saves a setting on this page (a new language
+  // arrives as the prop). One request at a time, only on those events.
+  useEffect(() => {
+    let live = true;
+    let loading = false;
+    const load = () => {
+      if (loading) return;
+      loading = true;
+      getLearnedSetupAction(props.orgId)
+        .then((v) => {
+          if (live) setView(v);
+        })
+        .catch(() => {
+          // What is on the page stays; a first load that failed shows nothing.
+        })
+        .finally(() => {
+          loading = false;
+        });
+    };
+    load();
+    const onPageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) load();
+    };
+    const onVisible = () => {
+      if (document.visibilityState === "visible") load();
+    };
+    window.addEventListener("pageshow", onPageShow);
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener(LEARNED_REFRESH_EVENT, load);
+    return () => {
+      live = false;
+      window.removeEventListener("pageshow", onPageShow);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener(LEARNED_REFRESH_EVENT, load);
+    };
+  }, [props.orgId, props.language]);
+
+  // Once: a later load must not pull the page back up to the panel.
+  useEffect(() => {
+    if (!view || scrolled.current || typeof document === "undefined") return;
     const target = document.getElementById(highlight ? `learned-${highlight}` : "learned-setup");
     if (target && (highlight || window.location.hash === "#learned-setup")) {
       target.scrollIntoView({ block: "center" });
+      scrolled.current = true;
     }
   }, [view, highlight]);
 
   if (!view) return null;
+  const open = view.suggestions.filter((sg) => sg.state === "open");
+  const resolved = view.suggestions.filter((sg) => sg.state === "resolved");
 
   async function undo(key: string) {
     setBusy(key);
@@ -97,7 +152,7 @@ export function LearnedSetupPanel(props: { orgId: string; language: string | nul
         <h2 className="font-semibold text-slate-800">{s.settings_learned_title}</h2>
       </div>
       <div className="p-6 space-y-4">
-        {view.suggestions.length > 0 && (
+        {open.length > 0 && (
           <section
             aria-labelledby="learned-check-heading"
             data-testid="learned-suggestions"
@@ -107,13 +162,13 @@ export function LearnedSetupPanel(props: { orgId: string; language: string | nul
               <AlertTriangle aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
               <div className="min-w-0">
                 <h3 id="learned-check-heading" className="font-semibold text-amber-900">
-                  {checkHeading(lang, view.suggestions.length)}
+                  {checkHeading(lang, open.length)}
                 </h3>
                 <p className="text-sm text-amber-900">{s.settings_learned_check_sub}</p>
               </div>
             </div>
             <ul className="mt-3 space-y-3">
-              {view.suggestions.map((sg) => {
+              {open.map((sg) => {
                 const href = suggestionActionHref(sg.key);
                 const label = (
                   <>
@@ -156,6 +211,24 @@ export function LearnedSetupPanel(props: { orgId: string; language: string | nul
               })}
             </ul>
           </section>
+        )}
+
+        {resolved.length > 0 && (
+          <ul aria-label={s.settings_learned_resolved_label} data-testid="learned-resolved" className="space-y-1">
+            {resolved.map((sg) => (
+              <li
+                key={sg.key}
+                id={`learned-${sg.key}`}
+                data-testid={`learned-resolved-${sg.key}`}
+                className={`flex items-start gap-1.5 rounded-md text-sm text-slate-600 scroll-mt-6 ${
+                  highlight === sg.key ? "bg-emerald-50 px-2 py-1 ring-2 ring-emerald-400" : ""
+                }`}
+              >
+                <Check aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+                <span className="min-w-0 break-words">{resolvedLine(lang, sg)}</span>
+              </li>
+            ))}
+          </ul>
         )}
 
         <p className="text-sm text-slate-500">{s.settings_learned_lead}</p>

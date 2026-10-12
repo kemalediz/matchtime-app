@@ -2567,6 +2567,21 @@ export const tr: Strings = {
             : p.key === "format"
               ? `Takım başına kişi sayısını değiştir`
               : `Dili değiştir`,
+  settings_learned_resolved_line: (p) =>
+    p.value === null || (p.key === "organiserPicks" && p.value !== "organiser")
+      ? `Bu, sohbet okunduktan sonra değişti.`
+      : p.key === "organiserPicks"
+        ? `"Organizatörler seçer" ayarı açık.`
+        : p.key === "weeklyGameDay"
+          ? `Maç günü artık ${p.value}.`
+          : p.key === "weeklyGameTime"
+            ? `Maç saati artık ${p.value}.`
+            : p.key === "venue"
+              ? `Saha artık ${p.value}.`
+              : p.key === "format"
+                ? `Haftalık maçınız artık takım başına ${p.value} kişi.`
+                : `MatchTime bu grupta artık ${p.value} konuşuyor.`,
+  settings_learned_resolved_label: "Halledilenler",
   settings_learned_noted_head: "Fark edildi, karar sizde",
   // ── Aylık kadro (2026-10-05, dilim 2) ────────────────────────────
   // /admin/settings "Aylık kadro" bölümü (msq_) ve /admin/months (mth_).

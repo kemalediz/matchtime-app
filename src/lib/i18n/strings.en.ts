@@ -3338,6 +3338,30 @@ export const en = {
             : p.key === "format"
               ? `Change players a side`
               : `Change the language`,
+  /** The quiet line for a suggestion that no longer stands, because the
+   *  club's value changed since the chat was read: what the club has
+   *  now. `value` arrives worded (a day name, a time, a venue, a number
+   *  a side, a language name; the pick mode as stored), or null when
+   *  there is nothing to show. The quoted name is wr_pick_organiser. */
+  settings_learned_resolved_line: (p: {
+    key: "weeklyGameDay" | "weeklyGameTime" | "venue" | "format" | "language" | "organiserPicks";
+    value: string | null;
+  }): string =>
+    p.value === null || (p.key === "organiserPicks" && p.value !== "organiser")
+      ? `This has changed since the chat was read.`
+      : p.key === "organiserPicks"
+        ? `"The organisers pick" is on.`
+        : p.key === "weeklyGameDay"
+          ? `Game day is now ${p.value}.`
+          : p.key === "weeklyGameTime"
+            ? `Kickoff time is now ${p.value}.`
+            : p.key === "venue"
+              ? `The pitch is now ${p.value}.`
+              : p.key === "format"
+                ? `Your weekly game is now ${p.value} a side.`
+                : `MatchTime now speaks ${p.value} in this group.`,
+  /** The name of the list of those lines, for a screen reader. */
+  settings_learned_resolved_label: "Already sorted",
   /** Over the patterns the chat showed that MatchTime switched nothing
    *  for. Today that is only the monthly list, which HAS a setting
    *  (Settings, Monthly squad), so this must not say there is none. */

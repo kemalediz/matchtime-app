@@ -5,7 +5,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 type Row = Record<string, unknown>;
-const state = vi.hoisted(() => ({ org: {} as Row, learning: null as Row | null, updates: [] as Array<{ where: Row; data: Row }> }));
+const state = vi.hoisted(() => ({
+  org: {} as Row,
+  learning: null as Row | null,
+  activities: [] as Row[],
+  updates: [] as Array<{ where: Row; data: Row }>,
+}));
 const dbMock = vi.hoisted(() => ({
   organisation: {
     findUnique: vi.fn(async () => ({ ...state.org })),
@@ -19,6 +24,12 @@ const dbMock = vi.hoisted(() => ({
       Object.assign(state.org, rest);
       state.org.settingsSetByOrganiser = [...((state.org.settingsSetByOrganiser as string[]) ?? []), settingsSetByOrganiser.push];
       return { count: 1 };
+    }),
+  },
+  activity: {
+    findMany: vi.fn(async (args: { where: Row; orderBy: Row; select: Row }) => {
+      void args;
+      return state.activities.map((a) => ({ ...a }));
     }),
   },
   clubSetupLearning: {
@@ -37,6 +48,7 @@ const NOW = new Date("2026-10-05T12:00:00Z");
 beforeEach(() => {
   vi.clearAllMocks();
   state.updates = [];
+  state.activities = [{ dayOfWeek: 2, time: "19:00", venue: "Goals Sutton", sport: { playersPerTeam: 7 } }];
   state.org = {
     rollingSquadEnabled: true,
     benchPickMode: "organiser",
@@ -71,6 +83,45 @@ describe("loadLearnedSetupView", () => {
       ["organiserPicks", "undone"],
     ]);
     expect(v!.suggestions).toHaveLength(1);
+  });
+  it("a suggestion is held against what the club has NOW, not what it had when the chat was read", async () => {
+    state.org.benchPickMode = "first-come";
+    state.learning!.suggestions = [
+      { key: "weeklyGameTime", current: "19:00", detected: "20:00", evidence: ["Kickoff 8pm"] },
+      { key: "organiserPicks", current: "first-come", detected: "organiser", evidence: ["I'll pick"] },
+    ];
+    const open = await loadLearnedSetupView(ORG);
+    expect(open!.suggestions.map((s) => [s.key, s.state, s.now])).toEqual([
+      ["weeklyGameTime", "open", "19:00"],
+      ["organiserPicks", "open", "first-come"],
+    ]);
+
+    // The organiser moves the kickoff on the weekly game page. Nothing is written to the row.
+    state.activities[0].time = "20:00";
+    const after = await loadLearnedSetupView(ORG);
+    expect(after!.suggestions.map((s) => [s.key, s.state, s.now])).toEqual([
+      ["weeklyGameTime", "resolved", "20:00"],
+      ["organiserPicks", "open", "first-come"],
+    ]);
+    expect(dbMock.clubSetupLearning.update).not.toHaveBeenCalled();
+
+    state.org.benchPickMode = "organiser";
+    const both = await loadLearnedSetupView(ORG);
+    expect(both!.suggestions.map((s) => s.state)).toEqual(["resolved", "resolved"]);
+  });
+  it("the weekly game is the one the reading used: the club's active games, oldest first, the first", async () => {
+    state.learning!.suggestions = [{ key: "weeklyGameTime", current: "19:00", detected: "20:00", evidence: [] }];
+    state.activities.push({ dayOfWeek: 4, time: "20:00", venue: "Elsewhere", sport: { playersPerTeam: 5 } });
+    const v = await loadLearnedSetupView(ORG);
+    expect(v!.suggestions[0]).toMatchObject({ state: "open", now: "19:00" });
+    expect(dbMock.activity.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { orgId: ORG, isActive: true }, orderBy: { createdAt: "asc" } }),
+    );
+  });
+  it("no suggestion: the weekly game is not loaded", async () => {
+    state.learning!.suggestions = [];
+    await loadLearnedSetupView(ORG);
+    expect(dbMock.activity.findMany).not.toHaveBeenCalled();
   });
   it("nothing for a club never read, or read with nothing to show", async () => {
     state.learning = null;
