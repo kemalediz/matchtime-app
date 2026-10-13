@@ -39,6 +39,9 @@ import { AlertTriangle, ExternalLink, MapPin } from "lucide-react";
 import { changeVenueLocationAction, confirmVenueLocationAction, retryVenueLookupAction } from "@/app/actions/venue-location";
 import { t } from "@/lib/i18n/t";
 import type { VenueLocationView } from "@/lib/venue-location-rules";
+import { venueSuggestLabels } from "@/lib/venue-suggest-labels";
+import { pickForSubmit, type VenuePickState } from "@/lib/venue-suggest-rules";
+import { VenueSuggestInput } from "./venue-suggest-input";
 
 const PRIMARY =
   "inline-flex min-h-9 items-center justify-center rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50";
@@ -59,6 +62,8 @@ export function VenueConfirmLine(props: {
   const loc = props.location;
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState("");
+  const [pick, setPick] = useState<VenuePickState | null>(null);
+  const suggestLabels = venueSuggestLabels(s);
   const [busy, setBusy] = useState<"yes" | "find" | "retry" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -108,10 +113,13 @@ export function VenueConfirmLine(props: {
     setBusy("find");
     setError(null);
     try {
-      const res = await changeVenueLocationAction(props.activityId, value);
+      // A place picked from the suggestions goes with the text, as long as
+      // the text is still the picked place's own.
+      const res = await changeVenueLocationAction(props.activityId, value, pickForSubmit(pick, value));
       if (res.status === "found") {
         setOpen(false);
         setValue("");
+        setPick(null);
         await props.onChanged();
       } else if (res.status === "not-found") setError(s.venue_loc_err_not_found);
       else if (res.status === "capped") setError(s.venue_loc_err_capped);
@@ -145,16 +153,24 @@ export function VenueConfirmLine(props: {
       <label htmlFor={inputId} className="block text-sm font-medium text-slate-700">
         {s.venue_loc_input_label}
       </label>
-      <input
+      {/* Typing a place shows suggestions; a pasted map link shows none
+          (venue-suggest-rules.ts) and is read as before. */}
+      <VenueSuggestInput
         id={inputId}
         value={value}
-        onChange={(e) => setValue(e.target.value)}
+        onChange={(text, picked) => {
+          setValue(text);
+          setPick(picked);
+        }}
+        lang={props.lang}
+        labels={suggestLabels}
         placeholder={s.venue_loc_input_placeholder}
         maxLength={2000}
-        autoComplete="off"
         className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-base text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
       />
-      <p className="text-xs text-slate-500">{s.venue_loc_input_help}</p>
+      <p className="text-xs text-slate-500">
+        {s.venue_loc_input_help} {suggestLabels.privacy}
+      </p>
       <div className="flex flex-wrap gap-2">
         <button type="submit" disabled={busy !== null || !value.trim()} className={PRIMARY}>
           {busy === "find" ? s.venue_loc_finding : s.venue_loc_find}

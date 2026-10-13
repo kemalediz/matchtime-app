@@ -4179,4 +4179,19 @@ export const en = {
   venue_loc_failed: "We couldn't check this place just now. Try again later.",
   venue_loc_retry: "Try again",
   venue_loc_retrying: "Checking...",
+
+  // ── Venue suggestions (2026-10-13) ───────────────────────────────────
+  // The list of real places under the venue box as the organiser types
+  // (components/venue/venue-suggest-input.tsx): /create-org, and the new
+  // game, edit game and Change boxes on /admin/activities. Suggestions
+  // are a helper, never a gate: the hint says so in plain words.
+  //
+  // `venue_suggest_powered` is the attribution Google's terms require
+  // wherever its predictions are shown without a map.
+  venue_suggest_list_label: "Suggested places",
+  venue_suggest_count: (p: { count: number }): string =>
+    p.count === 1 ? "1 suggestion. Use the arrow keys to choose." : `${p.count} suggestions. Use the arrow keys to choose.`,
+  venue_suggest_powered: "Powered by Google",
+  venue_suggest_hint: "Pick your venue from the list, or keep what you typed.",
+  venue_suggest_privacy: "What you type here is sent to Google to suggest places.",
 };

@@ -1,7 +1,9 @@
 /**
  * THE TEST SEAM FOR EVERY OUTBOUND VENUE REQUEST (2026-10-12): the Google
- * Geocoding call (geocode.ts) and the one request that expands a short
- * map link (map-link.ts). Both take their `fetch` from `outboundFetch()`.
+ * Geocoding call (geocode.ts), the one request that expands a short map
+ * link (map-link.ts) and, since 2026-10-13, the two Places API (New)
+ * calls behind the venue suggestions (places.ts). All of them take their
+ * `fetch` from `outboundFetch()`.
  *
  * Honoured ONLY when the server was booted with MT_TEST_MODE exactly "1",
  * which nothing sets but `e2e/helpers/env.ts`. In production this returns
@@ -9,7 +11,8 @@
  *
  * Under MT_TEST_MODE=1 the real network is NEVER used, stub file or not:
  *   - with no stub file, or no entry for the request, Google "answers"
- *     ZERO_RESULTS and a short link is a 404;
+ *     ZERO_RESULTS, a short link is a 404, Places Autocomplete has no
+ *     suggestions (an empty object) and Place Details is a 404;
  *   - `MT_TEST_GEOCODE_STUB_FILE` names a JSON file the e2e suite writes:
  *
  *       {
@@ -19,13 +22,22 @@
  *           "<address>":             { "httpStatus": 500 },
  *           "<address>":             { "delayMs": 30000, "body": { ... } }
  *         },
- *         "shortLinks": { "<https url>": { "status": 302, "location": "<url>" } }
+ *         "shortLinks": { "<https url>": { "status": 302, "location": "<url>" } },
+ *         "places": {
+ *           "autocomplete": { "<input, lower case>": { "body": { ...Google's JSON... } } },
+ *           "details":      { "<place id>": { "body": { ...Google's JSON... } } }
+ *         }
  *       }
  *
  *     `"*"` under "geocode" answers every address without an entry of its
- *     own. Every request is appended, as one JSON line, to `<file>.calls`
- *     (without the key), so a spec can assert how many calls were made
- *     and exactly what was sent.
+ *     own (and under "autocomplete", every input). Every request is
+ *     appended, as one JSON line, to `<file>.calls` (without the key), so
+ *     a spec can assert how many calls were made and exactly what was
+ *     sent. Places requests go to `<file>.places-calls` instead, a file
+ *     of their own, so a spec that counts Geocoding calls is not
+ *     disturbed by an organiser typing. They record the input or place
+ *     id, the session token, the language, the field mask and WHETHER a
+ *     key header was sent, never the key.
  */
 import { appendFileSync, readFileSync } from "node:fs";
 
@@ -37,9 +49,11 @@ interface StubEntry {
 interface StubFile {
   geocode?: Record<string, StubEntry>;
   shortLinks?: Record<string, { status?: number; location?: string; delayMs?: number }>;
+  places?: { autocomplete?: Record<string, StubEntry>; details?: Record<string, StubEntry> };
 }
 
 const GEOCODE_HOST = "maps.googleapis.com";
+const PLACES_HOST = "places.googleapis.com";
 
 function readStub(file: string | undefined): StubFile {
   if (!file) return {};
@@ -50,10 +64,10 @@ function readStub(file: string | undefined): StubFile {
   }
 }
 
-function record(file: string | undefined, call: Record<string, unknown>): void {
+function record(file: string | undefined, call: Record<string, unknown>, suffix = "calls"): void {
   if (!file) return;
   try {
-    appendFileSync(`${file}.calls`, `${JSON.stringify(call)}\n`);
+    appendFileSync(`${file}.${suffix}`, `${JSON.stringify(call)}\n`);
   } catch {
     // A spec that never created the directory simply gets no call log.
   }
@@ -69,6 +83,61 @@ function wait(ms: number, signal: AbortSignal | null | undefined): Promise<void>
       reject(new DOMException("aborted", "AbortError"));
     });
   });
+}
+
+const jsonResponse = (body: unknown, status: number) =>
+  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+
+/** Places API (New): `POST /v1/places:autocomplete` and `GET /v1/places/<id>`. */
+async function placesStub(file: string | undefined, stub: StubFile, url: URL, init: RequestInit | undefined): Promise<Response> {
+  const headers = new Headers(init?.headers);
+  const common = { hasKey: !!headers.get("x-goog-api-key"), fieldMask: headers.get("x-goog-fieldmask") };
+
+  if (url.pathname === "/v1/places:autocomplete") {
+    let body: Record<string, unknown> = {};
+    try {
+      body = JSON.parse(typeof init?.body === "string" ? init.body : "{}") as Record<string, unknown>;
+    } catch {
+      // Recorded as an empty request.
+    }
+    const input = typeof body.input === "string" ? body.input : "";
+    record(
+      file,
+      {
+        kind: "autocomplete",
+        method: init?.method ?? "GET",
+        input,
+        sessionToken: body.sessionToken ?? null,
+        languageCode: body.languageCode ?? null,
+        bodyKeys: Object.keys(body).sort(),
+        ...common,
+      },
+      "places-calls",
+    );
+    const table = stub.places?.autocomplete ?? {};
+    const entry = table[input.toLowerCase()] ?? table["*"];
+    if (entry?.delayMs) await wait(entry.delayMs, init?.signal);
+    return jsonResponse(entry?.body ?? {}, entry?.httpStatus ?? 200);
+  }
+
+  const placeId = decodeURIComponent(url.pathname.replace(/^\/v1\/places\//, ""));
+  record(
+    file,
+    {
+      kind: "place-details",
+      method: init?.method ?? "GET",
+      placeId,
+      sessionToken: url.searchParams.get("sessionToken"),
+      languageCode: url.searchParams.get("languageCode"),
+      params: [...url.searchParams.keys()].sort(),
+      ...common,
+    },
+    "places-calls",
+  );
+  const entry = stub.places?.details?.[placeId];
+  if (entry?.delayMs) await wait(entry.delayMs, init?.signal);
+  if (!entry) return jsonResponse({ error: { code: 404, message: "Not found", status: "NOT_FOUND" } }, 404);
+  return jsonResponse(entry.body ?? {}, entry.httpStatus ?? 200);
 }
 
 function stubFetch(file: string | undefined): typeof fetch {
@@ -94,6 +163,8 @@ function stubFetch(file: string | undefined): typeof fetch {
         headers: { "content-type": "application/json" },
       });
     }
+
+    if (url.hostname === PLACES_HOST) return placesStub(file, stub, url, init);
 
     record(file, { kind: "short-link", url: url.href });
     const entry = stub.shortLinks?.[url.href];

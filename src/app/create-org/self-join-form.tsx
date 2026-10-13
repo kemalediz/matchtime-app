@@ -10,8 +10,13 @@ import { useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createSelfJoinClubAction } from "@/app/actions/org";
+import { VenueSuggestInput } from "@/components/venue/venue-suggest-input";
+import type { VenueSuggestLabels } from "@/lib/venue-suggest-labels";
+import { pickForSubmit, type VenuePickState } from "@/lib/venue-suggest-rules";
 
 export interface SelfJoinFormCopy {
+  /** The suggestion list under the venue box. */
+  venueSuggest: VenueSuggestLabels;
   title: string;
   lead: string;
   clubName: string;
@@ -58,6 +63,9 @@ export function SelfJoinForm(props: {
   const [day, setDay] = useState(2);
   const [time, setTime] = useState("");
   const [venue, setVenue] = useState("");
+  // The place picked from the suggestions, if any. Dropped the moment the
+  // text is edited: the venue is always whatever the box holds.
+  const [venuePick, setVenuePick] = useState<VenuePickState | null>(null);
   const [perSide, setPerSide] = useState(7);
   const [refusal, setRefusal] = useState<Refusal>(props.refusal);
   const [error, setError] = useState("");
@@ -79,6 +87,8 @@ export function SelfJoinForm(props: {
         name,
         language: lang,
         game: { dayOfWeek: day, time, venue, playersPerSide: perSide },
+        // Only while the box still holds the picked place's own text.
+        venuePick: pickForSubmit(venuePick, venue),
       });
       if (res.ok) {
         leaving = true;
@@ -188,17 +198,25 @@ export function SelfJoinForm(props: {
                 <label htmlFor="sj-venue" className="block text-sm font-medium text-slate-700 mb-1.5">
                   {c.venue}
                 </label>
-                <input
+                <VenueSuggestInput
                   id="sj-venue"
-                  type="text"
                   required
                   minLength={2}
                   maxLength={120}
                   value={venue}
-                  onChange={(e) => setVenue(e.target.value)}
+                  onChange={(text, pick) => {
+                    setVenue(text);
+                    setVenuePick(pick);
+                  }}
+                  lang={lang}
+                  labels={c.venueSuggest}
+                  describedBy="sj-venue-hint"
                   placeholder={c.venuePlaceholder}
                   className={INPUT}
                 />
+                <p id="sj-venue-hint" data-testid="sj-venue-hint" className="mt-1 text-xs text-slate-500">
+                  {c.venueSuggest.hint} {c.venueSuggest.privacy}
+                </p>
               </div>
               <div>
                 <label htmlFor="sj-per-side" className="block text-sm font-medium text-slate-700 mb-1.5">

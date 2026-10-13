@@ -146,6 +146,12 @@ export default async function AdminGuidePage() {
         </li>
       </ol>
       <p>
+        As you type a venue, MatchTime suggests real places. Pick yours from
+        the list, or keep what you typed if your pitch is not listed. Venue
+        names you type into the venue box are sent to Google to suggest
+        places.
+      </p>
+      <p>
         <em>What the group is told:</em> Nothing is posted. A new day or time
         applies to matches created from then on; matches already created keep
         their date and time.

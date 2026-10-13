@@ -12,7 +12,10 @@ import { DAYS_OF_WEEK } from "@/lib/constants";
 import { SectionInfo } from "@/components/info/section-info";
 import { useOrgLang } from "@/components/info/org-lang";
 import { VenueConfirmLine } from "@/components/venue/venue-confirm-line";
+import { VenueSuggestInput } from "@/components/venue/venue-suggest-input";
 import type { VenueLocationView } from "@/lib/venue-location-rules";
+import { venueSuggestLabels } from "@/lib/venue-suggest-labels";
+import { pickForSubmit, type VenuePickState } from "@/lib/venue-suggest-rules";
 import { t } from "@/lib/i18n/t";
 import { activityFeeText, parseActivityFee } from "@/lib/activity-fee";
 import { FEE_EDIT_PARAM } from "@/lib/setup-learning/suggestion-action";
@@ -65,6 +68,11 @@ export default function ActivitiesPage() {
   const [dayOfWeek, setDayOfWeek] = useState("2");
   const [time, setTime] = useState("21:30");
   const [venue, setVenue] = useState("");
+  // A place picked from the suggestions under a venue box, if any. It is
+  // dropped the moment the text is edited (venue-suggest-input.tsx).
+  const [venuePick, setVenuePick] = useState<VenuePickState | null>(null);
+  const [eVenuePick, setEVenuePick] = useState<VenuePickState | null>(null);
+  const suggestLabels = venueSuggestLabels(s);
   const [deadlineHours, setDeadlineHours] = useState("5");
   const [matchDurationMins, setMatchDurationMins] = useState("60");
 
@@ -148,6 +156,7 @@ export default function ActivitiesPage() {
         dayOfWeek: parseInt(dayOfWeek),
         time,
         venue,
+        venuePick: pickForSubmit(venuePick, venue),
         deadlineHours: parseInt(deadlineHours),
         matchDurationMins: parseInt(matchDurationMins),
       });
@@ -155,6 +164,7 @@ export default function ActivitiesPage() {
       setDialogOpen(false);
       setName("");
       setVenue("");
+      setVenuePick(null);
       reloadAfterSave();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to create");
@@ -176,6 +186,7 @@ export default function ActivitiesPage() {
     setEDay(String(a.dayOfWeek));
     setETime(a.time);
     setEVenue(a.venue);
+    setEVenuePick(null);
     setEFee(activityFeeText(a.feePerPlayer));
     setEFeeWas(activityFeeText(a.feePerPlayer));
     setESplit(a.feeSplitTotal);
@@ -194,6 +205,7 @@ export default function ActivitiesPage() {
         dayOfWeek: parseInt(eDay),
         time: eTime,
         venue: eVenue,
+        venuePick: pickForSubmit(eVenuePick, eVenue),
         ...(feeChanged ? { feePerPlayer: eFee } : {}),
       });
       toast.success("Activity updated");
@@ -363,13 +375,23 @@ export default function ActivitiesPage() {
                 </Field>
               </div>
               <Field label="Venue">
-                <input
+                <VenueSuggestInput
                   value={venue}
-                  onChange={(e) => setVenue(e.target.value)}
+                  onChange={(text, pick) => {
+                    setVenue(text);
+                    setVenuePick(pick);
+                  }}
+                  lang={lang}
+                  labels={suggestLabels}
+                  describedBy="new-venue-hint"
+                  testId="new-activity-venue"
                   placeholder="e.g. Goals North Cheam"
                   required
                   className="w-full h-11 px-3 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
+                <p id="new-venue-hint" className="mt-1 text-xs text-slate-400">
+                  {suggestLabels.hint} {suggestLabels.privacy}
+                </p>
               </Field>
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Deadline (h before)">
@@ -447,12 +469,22 @@ export default function ActivitiesPage() {
                 </Field>
               </div>
               <Field label="Venue">
-                <input
+                <VenueSuggestInput
                   value={eVenue}
-                  onChange={(e) => setEVenue(e.target.value)}
+                  onChange={(text, pick) => {
+                    setEVenue(text);
+                    setEVenuePick(pick);
+                  }}
+                  lang={lang}
+                  labels={suggestLabels}
+                  describedBy="edit-venue-hint"
+                  testId="edit-activity-venue"
                   required
                   className="w-full h-11 px-3 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
+                <p id="edit-venue-hint" className="mt-1 text-xs text-slate-400">
+                  {suggestLabels.hint} {suggestLabels.privacy}
+                </p>
               </Field>
               <div>
                 <label htmlFor="activity-fee" className="block text-sm font-medium text-slate-700 mb-1.5">

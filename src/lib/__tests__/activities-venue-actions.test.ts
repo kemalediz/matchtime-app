@@ -25,6 +25,7 @@ const m = vi.hoisted(() => ({
     feeSplitTotal: false,
   } as Record<string, unknown>,
   schedule: vi.fn(async () => undefined),
+  schedulePick: vi.fn(async () => undefined),
   dropPin: vi.fn(async () => undefined),
 }));
 
@@ -32,7 +33,7 @@ vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/auth", () => ({ auth: async () => ({ user: { id: "owner-a" } }) }));
 vi.mock("@/lib/org", () => ({ requireOrgAdmin: async () => undefined }));
 vi.mock("@/lib/venue-location", () => ({ dropOrphanPin: m.dropPin }));
-vi.mock("@/lib/venue-location-schedule", () => ({ scheduleVenueResolve: m.schedule }));
+vi.mock("@/lib/venue-location-schedule", () => ({ scheduleVenueResolve: m.schedule, scheduleVenuePickResolve: m.schedulePick }));
 vi.mock("@/lib/db", () => ({
   db: {
     sport: { findFirst: async () => ({ id: "sport-a" }) },
@@ -69,6 +70,7 @@ const COLUMNS = Object.keys(SNEAKY);
 beforeEach(() => {
   m.writes.length = 0;
   m.schedule.mockClear();
+  m.schedulePick.mockClear();
   m.dropPin.mockClear();
 });
 
@@ -161,5 +163,79 @@ describe("createActivity", () => {
   it("the new game's venue is looked up after the save", async () => {
     await createActivity(form);
     expect(m.schedule).toHaveBeenCalledWith("act-new");
+  });
+});
+
+// ── A venue picked from the suggestions under the venue box (2026-10-13) ──
+
+describe("a venue picked from the suggestions", () => {
+  const PICK = { placeId: "ChIJ_croydon_0001", sessionToken: "3f2c1d7e-8a4b-4c1d-9e2f-0a1b2c3d4e5f" };
+  /** What a hostile browser might add to a pick. None of it may travel on. */
+  const DRESSED_UP = { ...PICK, lat: 1, lng: 2, formattedAddress: "Attacker Lane", venueId: "attacker-pin", confidence: "high" };
+  const CLEARED = {
+    venueId: null,
+    venueConfidence: null,
+    venueMatchSource: null,
+    venueLookupStatus: null,
+    venueResolvedAt: null,
+    venueConfirmedAt: null,
+    venueConfirmedById: null,
+  };
+  const form = { orgId: "org-a", sportId: "sport-a", name: "Tuesday 7s", dayOfWeek: 2, time: "21:00", venue: "Powerleague Croydon" };
+
+  it("createActivity: the game is saved with the typed text only, and the SERVER looks the picked place up afterwards", async () => {
+    await createActivity({ ...form, venuePick: DRESSED_UP } as never);
+    expect(Object.keys(m.writes[0].data).sort()).toEqual(
+      ["dayOfWeek", "deadlineHours", "matchDurationMins", "name", "orgId", "ratingWindowHours", "sportId", "time", "venue"].sort(),
+    );
+    expect(m.writes[0].data.venue).toBe("Powerleague Croydon");
+    expect(m.schedulePick).toHaveBeenCalledTimes(1);
+    expect(m.schedulePick).toHaveBeenCalledWith("act-new", "owner-a", PICK);
+    expect(m.schedule).not.toHaveBeenCalled();
+  });
+
+  it("updateActivity: new venue words with a pick clear the old place in the same write, then the picked place is looked up", async () => {
+    await updateActivity("act-a", { venue: "Powerleague Croydon", venuePick: DRESSED_UP } as never);
+    expect(m.writes).toEqual([{ op: "update", data: { venue: "Powerleague Croydon", ...CLEARED } }]);
+    expect(m.schedulePick).toHaveBeenCalledWith("act-a", "owner-a", PICK);
+    expect(m.schedule).not.toHaveBeenCalled();
+    expect(m.dropPin).toHaveBeenCalledWith("venue-old");
+  });
+
+  it("updateActivity: a pick for the SAME words still replaces the place that was linked (the organiser chose this exact one)", async () => {
+    await updateActivity("act-a", { venue: "Powerleague Shoreditch", venuePick: PICK });
+    expect(m.writes).toEqual([{ op: "update", data: { venue: "Powerleague Shoreditch", ...CLEARED } }]);
+    expect(m.schedulePick).toHaveBeenCalledWith("act-a", "owner-a", PICK);
+  });
+
+  it("updateActivity: a pick with NO venue text in the same request is ignored (a pick belongs to the text it was picked for)", async () => {
+    await updateActivity("act-a", { time: "21:00", venuePick: PICK });
+    expect(m.writes).toEqual([{ op: "update", data: { time: "21:00" } }]);
+    expect(m.schedulePick).not.toHaveBeenCalled();
+    expect(m.schedule).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["a place id that is not one", { placeId: "../../etc/passwd", sessionToken: "x" }],
+    ["a bare string", "ChIJ_croydon_0001"],
+    ["null", null],
+    ["an array", ["ChIJ_croydon_0001"]],
+  ])("%s is not a pick: the save goes through as FREE TEXT and the text is looked up", async (_label, venuePick) => {
+    await createActivity({ ...form, venuePick } as never);
+    expect(m.writes).toHaveLength(1);
+    expect(m.schedulePick).not.toHaveBeenCalled();
+    expect(m.schedule).toHaveBeenCalledWith("act-new");
+
+    m.schedule.mockClear();
+    await updateActivity("act-a", { venue: "Goals North Cheam", venuePick } as never);
+    expect(m.schedulePick).not.toHaveBeenCalled();
+    expect(m.schedule).toHaveBeenCalledWith("act-a");
+  });
+
+  it("free text with no pick is exactly as before", async () => {
+    await createActivity({ ...form, venue: "School cage behind the library" });
+    expect(m.writes[0].data.venue).toBe("School cage behind the library");
+    expect(m.schedule).toHaveBeenCalledWith("act-new");
+    expect(m.schedulePick).not.toHaveBeenCalled();
   });
 });

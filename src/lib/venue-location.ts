@@ -45,7 +45,9 @@ import { db } from "./db";
 import { londonMidnight } from "./club-connect-rules";
 import { geocode, geocodingConfigured } from "./geocode";
 import { expandShortLink, parseMapInput, type MapInput } from "./map-link";
+import { placeDetails, placesConfigured, type PlaceDetails } from "./places";
 import { storeGoogleMatch, upsertGooglePlace, type VenueStoreClient } from "./venue-store";
+import { suggestLanguage, validPlaceId, type VenuePick } from "./venue-suggest-rules";
 import {
   VENUE_LOOKUPS_PER_CLUB_PER_DAY,
   buildGeocodeQuery,
@@ -99,7 +101,7 @@ function countryOf(a: LoadedActivity): string | null {
 }
 
 /** Lookup kinds, as stored in `VenueLookup.kind`. */
-type LookupKind = "geocode" | "reuse" | "short-link" | "pin";
+type LookupKind = "geocode" | "reuse" | "short-link" | "pin" | "place-details";
 
 /**
  * Count one lookup against the club's London day, or refuse it.
@@ -440,6 +442,129 @@ export async function changeActivityVenue(
       return { status: "found" };
     }
   }
+}
+
+// ── A place picked from the suggestions under the venue box ─────────────
+
+/**
+ * THE SERVER FINDS OUT WHAT A PICKED PLACE IS (2026-10-13). A browser
+ * hands over a place id and nothing else about the place; this asks
+ * Google's Place Details for it (with the suggestions' session token, so
+ * the exchange is billed as one session) and upserts the shared place
+ * from GOOGLE'S answer. Charged to the club's daily cap like any lookup.
+ *
+ * A pick answers no query, so nothing is written to `VenueQuery`.
+ */
+type PickedPlace =
+  | { status: "found"; venueId: string }
+  /** The club's daily lookups are used up: nothing was sent. */
+  | { status: "capped" }
+  /** No key, an unknown place id, or Google failing: the caller falls
+   *  back to looking the venue text up. */
+  | { status: "unresolved" };
+
+async function lookupPick(a: LoadedActivity, pick: VenuePick, now: Date, fetchImpl: typeof fetch | undefined): Promise<PickedPlace> {
+  // Nothing is counted, or sent, for an id that is not one.
+  if (!placesConfigured() || !validPlaceId(pick.placeId)) return { status: "unresolved" };
+  if (!(await claimLookup(a.orgId, a.id, "place-details", now))) return { status: "capped" };
+  const got = await placeDetails(
+    { placeId: pick.placeId, sessionToken: pick.sessionToken ?? null, languageCode: suggestLanguage(a.org.language) },
+    { fetchImpl },
+  );
+  if (got.status !== "ok") {
+    // A reason code only: never the place id.
+    console.debug(`[geocode] activity=${a.id} pick=unresolved reason=${got.status === "error" ? got.code : got.status}`);
+    return { status: "unresolved" };
+  }
+  const place: PlaceDetails = got.place;
+  return { status: "found", venueId: await upsertGooglePlace(store, place, place.name || a.venue) };
+}
+
+/**
+ * After a save that carried a pick (a new club, a new weekly game, or an
+ * edit of the venue): link the picked place. HIGH confidence, source
+ * "pick", and CONFIRMED by the organiser, because choosing this exact
+ * place from a list is the confirmation (the same reasoning as a pasted
+ * pin). Run AFTER the save has answered, like every other lookup.
+ *
+ * IT NEVER FAILS THE SAVE AND NEVER LEAVES THE VENUE UNLOOKED. If Google
+ * does not resolve the place id (unknown, refused, slow, down, no key),
+ * the venue TEXT is looked up exactly as if nothing had been picked
+ * (`resolveActivityVenue`): a text match, unconfirmed.
+ *
+ * Like `resolveActivityVenue` it only writes to an activity with no
+ * place linked and the same venue words as when it started.
+ */
+export async function resolveActivityVenuePick(
+  activityId: string,
+  userId: string,
+  pick: VenuePick,
+  opts: VenueLookupOptions = {},
+): Promise<ResolveResult> {
+  const now = opts.now ?? new Date();
+  const a = await loadActivity(activityId);
+  if (!a || a.venueId) return { status: "skipped" };
+
+  const got = await lookupPick(a, pick, now, opts.fetchImpl);
+
+  if (got.status === "capped") {
+    const written = await writeIfSameVenue(a.id, a.venue, { venueLookupStatus: "capped" satisfies VenueLookupStatus, venueResolvedAt: now });
+    console.debug(`[geocode] activity=${a.id} outcome=${written ? "capped" : "stale"} source=pick`);
+    return { status: written ? "capped" : "stale" };
+  }
+  if (got.status === "unresolved") return resolveActivityVenue(activityId, opts);
+
+  const written = await writeIfSameVenue(a.id, a.venue, {
+    venueId: got.venueId,
+    venueConfidence: "high" satisfies VenueConfidence,
+    venueMatchSource: "pick" satisfies VenueMatchSource,
+    venueLookupStatus: "found" satisfies VenueLookupStatus,
+    venueResolvedAt: now,
+    venueConfirmedAt: now,
+    venueConfirmedById: userId,
+  });
+  console.debug(`[geocode] activity=${a.id} outcome=${written ? "found" : "stale"} source=pick confidence=high`);
+  return written ? { status: "found", confidence: "high" } : { status: "stale" };
+}
+
+/** `resolveActivityVenuePick` for a caller that must never see an exception. */
+export async function resolveActivityVenuePickSafe(
+  activityId: string,
+  userId: string,
+  pick: VenuePick,
+  opts: VenueLookupOptions = {},
+): Promise<ResolveResult> {
+  try {
+    return await resolveActivityVenuePick(activityId, userId, pick, opts);
+  } catch (err) {
+    console.error(`[geocode] activity=${activityId} outcome=failed source=pick (${(err as Error)?.name ?? "error"})`);
+    // Whatever broke, the venue text still gets its ordinary lookup.
+    return resolveActivityVenueSafe(activityId, opts);
+  }
+}
+
+/**
+ * The organiser's "Change", with a place picked from the suggestions in
+ * its box. Links the picked place over whatever was linked, confirmed.
+ * The venue TEXT is never changed here.
+ *
+ * "unresolved": Google did not resolve the place id. Nothing was changed,
+ * and the caller looks the typed words up instead (`changeActivityVenue`).
+ */
+export async function changeActivityVenueToPick(
+  activityId: string,
+  userId: string,
+  pick: VenuePick,
+  opts: VenueLookupOptions = {},
+): Promise<{ status: "found" | "capped" | "unresolved" }> {
+  const now = opts.now ?? new Date();
+  const a = await loadActivity(activityId);
+  if (!a) return { status: "unresolved" };
+  const got = await lookupPick(a, pick, now, opts.fetchImpl);
+  if (got.status !== "found") return { status: got.status };
+  await link(a, { venueId: got.venueId, confidence: "high", source: "pick", confirmedBy: userId }, now);
+  console.debug(`[geocode] activity=${a.id} outcome=found source=pick confidence=high`);
+  return { status: "found" };
 }
 
 // ── The organiser's "Yes" ───────────────────────────────────────────────

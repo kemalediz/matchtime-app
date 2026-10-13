@@ -135,10 +135,12 @@ vi.mock("@/lib/db", () => {
 
 import {
   changeActivityVenue,
+  changeActivityVenueToPick,
   confirmActivityVenue,
   dropOrphanPin,
   markVenueLookupPending,
   resolveActivityVenue,
+  resolveActivityVenuePick,
   sweepOrphanPins,
 } from "../venue-location";
 import { VENUE_LOOKUPS_PER_CLUB_PER_DAY } from "../venue-location-rules";
@@ -675,5 +677,196 @@ describe("Yes, this is the right place", () => {
   it("there is nothing to confirm when no place is linked", async () => {
     expect(await confirmActivityVenue("act-a", "user-a", NOW)).toBe(false);
     expect(activity("act-a").venueConfirmedAt).toBeNull();
+  });
+});
+
+// ── A place PICKED from the suggestions under the venue box (2026-10-13) ──
+
+const PICK_TOKEN = "3f2c1d7e-8a4b-4c1d-9e2f-0a1b2c3d4e5f";
+const PICK = { placeId: "ChIJ_croydon_0001", sessionToken: PICK_TOKEN };
+const DETAILS = {
+  id: "ChIJ_croydon_0001",
+  displayName: { text: "Powerleague Croydon", languageCode: "en" },
+  formattedAddress: "Purley Way, Croydon CR0 4RQ, UK",
+  location: { latitude: 51.3562, longitude: -0.1167 },
+};
+
+/** "Google": Place Details on places.googleapis.com, Geocoding on maps.googleapis.com. */
+function googleBoth(opts: { details?: () => Response | Promise<Response>; geocode?: unknown } = {}) {
+  return vi.fn(async (...args: [string, RequestInit?]) => {
+    const host = new URL(args[0]).hostname;
+    if (host === "places.googleapis.com") return opts.details ? opts.details() : json(DETAILS);
+    return json(opts.geocode ?? place());
+  });
+}
+const hosts = (f: ReturnType<typeof googleBoth>) => f.mock.calls.map((c) => new URL(c[0]).hostname);
+
+describe("a place picked from the suggestions", () => {
+  beforeEach(() => {
+    game("act-a", "org-a", "Powerleague Croydon");
+  });
+
+  it("the SERVER asks Google for the place and links it: high confidence, picked by the organiser, confirmed by them", async () => {
+    const f = googleBoth();
+    const got = await resolveActivityVenuePick("act-a", "user-a", PICK, { now: NOW, fetchImpl: asFetch(f) });
+    expect(got).toEqual({ status: "found", confidence: "high" });
+    expect(hosts(f)).toEqual(["places.googleapis.com"]);
+    expect(venues()).toMatchObject([
+      {
+        placeId: "ChIJ_croydon_0001",
+        name: "Powerleague Croydon",
+        formattedAddress: "Purley Way, Croydon CR0 4RQ, UK",
+        lat: 51.3562,
+        lng: -0.1167,
+        source: "google",
+      },
+    ]);
+    expect(activity("act-a")).toMatchObject({
+      venue: "Powerleague Croydon",
+      venueId: venues()[0].id,
+      venueConfidence: "high",
+      venueMatchSource: "pick",
+      venueLookupStatus: "found",
+      venueResolvedAt: NOW,
+      venueConfirmedAt: NOW,
+      venueConfirmedById: "user-a",
+    });
+  });
+
+  it("Place Details is asked with the SAME session token the suggestions used, and in the club's language", async () => {
+    club("org-a", { language: "tr" });
+    const f = googleBoth();
+    await resolveActivityVenuePick("act-a", "user-a", PICK, { now: NOW, fetchImpl: asFetch(f) });
+    const u = new URL(f.mock.calls[0][0]);
+    expect(u.pathname).toBe("/v1/places/ChIJ_croydon_0001");
+    expect(Object.fromEntries(u.searchParams)).toEqual({ sessionToken: PICK_TOKEN, languageCode: "tr" });
+    expect(new Headers(f.mock.calls[0][1]?.headers).get("x-goog-fieldmask")).toBe("id,displayName,formattedAddress,location");
+    expect(f.mock.calls[0][0]).not.toMatch(/Secret|447700900001|org-a|act-a|user-a|test-key/);
+  });
+
+  it("NOTHING ABOUT THE PLACE COMES FROM THE BROWSER: extra fields on the pick are never read", async () => {
+    const hostile = { ...PICK, lat: 1, lng: 2, formattedAddress: "Attacker Lane", name: "Evil", confidence: "high" };
+    await resolveActivityVenuePick("act-a", "user-a", hostile as never, { now: NOW, fetchImpl: asFetch(googleBoth()) });
+    expect(venues()).toHaveLength(1);
+    expect(venues()[0]).toMatchObject({ name: "Powerleague Croydon", formattedAddress: "Purley Way, Croydon CR0 4RQ, UK", lat: 51.3562, lng: -0.1167 });
+  });
+
+  it("a pick answers no query: nothing goes into the shared query cache", async () => {
+    await resolveActivityVenuePick("act-a", "user-a", PICK, { now: NOW, fetchImpl: asFetch(googleBoth()) });
+    expect(world.queries.size).toBe(0);
+  });
+
+  it("counts as one of the club's lookups for the day", async () => {
+    await resolveActivityVenuePick("act-a", "user-a", PICK, { now: NOW, fetchImpl: asFetch(googleBoth()) });
+    expect(world.lookups.map((l) => [l.orgId, l.kind])).toEqual([["org-a", "place-details"]]);
+  });
+
+  it.each([
+    ["Google does not know the place id (404)", () => json({ error: { code: 404, status: "NOT_FOUND" } }, 404)],
+    ["Places API is not enabled (403)", () => json({ error: { code: 403, status: "PERMISSION_DENIED" } }, 403)],
+    ["Google is down (500)", () => json({}, 500)],
+    ["the answer has no position", () => json({ id: "ChIJ_croydon_0001", displayName: { text: "X" } })],
+    [
+      "the network fails",
+      () => {
+        throw new TypeError("fetch failed");
+      },
+    ],
+  ])("%s: FALLS BACK to the ordinary lookup of the venue text, and the save is not failed", async (_label, details) => {
+    const f = googleBoth({ details });
+    const got = await resolveActivityVenuePick("act-a", "user-a", PICK, { now: NOW, fetchImpl: asFetch(f) });
+    expect(hosts(f)).toEqual(["places.googleapis.com", "maps.googleapis.com"]);
+    expect(new URL(f.mock.calls[1][0]).searchParams.get("address")).toBe("Powerleague Croydon");
+    // Exactly what a venue typed with no pick gets: a text match, unconfirmed.
+    expect(got).toEqual({ status: "found", confidence: "high" });
+    expect(activity("act-a")).toMatchObject({
+      venueConfidence: "high",
+      venueMatchSource: "text",
+      venueLookupStatus: "found",
+      venueConfirmedAt: null,
+      venueConfirmedById: null,
+    });
+    expect(venues()[0].placeId).toBe("PID_SHOREDITCH");
+  });
+
+  it("an unusable place id never reaches Google as a place: the venue text is looked up instead", async () => {
+    const f = googleBoth();
+    await resolveActivityVenuePick("act-a", "user-a", { placeId: "../../etc", sessionToken: PICK_TOKEN }, { now: NOW, fetchImpl: asFetch(f) });
+    expect(hosts(f)).toEqual(["maps.googleapis.com"]);
+    expect(activity("act-a").venueMatchSource).toBe("text");
+  });
+
+  it("with the club's daily lookups used up, nothing is sent and it is recorded as capped", async () => {
+    for (let i = 0; i < VENUE_LOOKUPS_PER_CLUB_PER_DAY; i++) world.lookups.push({ id: `l${i}`, orgId: "org-a", kind: "geocode", createdAt: NOW });
+    const f = googleBoth();
+    const got = await resolveActivityVenuePick("act-a", "user-a", PICK, { now: NOW, fetchImpl: asFetch(f) });
+    expect(got).toEqual({ status: "capped" });
+    expect(f).not.toHaveBeenCalled();
+    expect(activity("act-a")).toMatchObject({ venueId: null, venueLookupStatus: "capped" });
+  });
+
+  it("the venue words changed while Google was answering: the stale place is not linked", async () => {
+    const f = googleBoth({
+      details: () => {
+        activity("act-a").venue = "School cage";
+        return json(DETAILS);
+      },
+    });
+    const got = await resolveActivityVenuePick("act-a", "user-a", PICK, { now: NOW, fetchImpl: asFetch(f) });
+    expect(got).toEqual({ status: "stale" });
+    expect(activity("act-a")).toMatchObject({ venue: "School cage", venueId: null, venueConfirmedById: null });
+  });
+
+  it("two clubs picking the same place share one place row, and each keeps its own confirmation", async () => {
+    club("org-b", { ownerPhone: "+447700900002" });
+    game("act-b", "org-b", "PL Croydon");
+    await resolveActivityVenuePick("act-a", "user-a", PICK, { now: NOW, fetchImpl: asFetch(googleBoth()) });
+    await resolveActivityVenuePick("act-b", "user-b", PICK, { now: NOW, fetchImpl: asFetch(googleBoth()) });
+    expect(venues()).toHaveLength(1);
+    expect(activity("act-a").venueConfirmedById).toBe("user-a");
+    expect(activity("act-b").venueConfirmedById).toBe("user-b");
+  });
+
+  it("a game that does not exist is skipped", async () => {
+    const f = googleBoth();
+    expect(await resolveActivityVenuePick("nope", "user-a", PICK, { now: NOW, fetchImpl: asFetch(f) })).toEqual({ status: "skipped" });
+    expect(f).not.toHaveBeenCalled();
+  });
+});
+
+describe("Change: a place picked from the suggestions", () => {
+  it("links the picked place over whatever was there, confirmed; the venue text is not touched", async () => {
+    await resolveActivityVenue("act-a", { now: NOW, fetchImpl: asFetch(google()) });
+    const f = googleBoth();
+    const got = await changeActivityVenueToPick("act-a", "user-a", PICK, { now: NOW, fetchImpl: asFetch(f) });
+    expect(got).toEqual({ status: "found" });
+    expect(hosts(f)).toEqual(["places.googleapis.com"]);
+    expect(activity("act-a")).toMatchObject({
+      venue: "Powerleague Shoreditch",
+      venueConfidence: "high",
+      venueMatchSource: "pick",
+      venueLookupStatus: "found",
+      venueConfirmedAt: NOW,
+      venueConfirmedById: "user-a",
+    });
+    expect(venues().find((v) => v.id === activity("act-a").venueId)).toMatchObject({ placeId: "ChIJ_croydon_0001", lat: 51.3562 });
+  });
+
+  it.each([
+    ["a place id Google does not know", () => json({ error: {} }, 404)],
+    ["Google failing", () => json({}, 500)],
+  ])("%s is 'unresolved' (the caller then looks the typed words up) and the place that was there stays", async (_label, details) => {
+    await resolveActivityVenue("act-a", { now: NOW, fetchImpl: asFetch(google()) });
+    const before = { ...activity("act-a") };
+    const got = await changeActivityVenueToPick("act-a", "user-a", PICK, { now: NOW, fetchImpl: asFetch(googleBoth({ details })) });
+    expect(got).toEqual({ status: "unresolved" });
+    expect(activity("act-a")).toEqual(before);
+  });
+
+  it("is under the club's daily cap", async () => {
+    for (let i = 0; i < VENUE_LOOKUPS_PER_CLUB_PER_DAY; i++) world.lookups.push({ id: `l${i}`, orgId: "org-a", kind: "geocode", createdAt: NOW });
+    const f = googleBoth();
+    expect(await changeActivityVenueToPick("act-a", "user-a", PICK, { now: NOW, fetchImpl: asFetch(f) })).toEqual({ status: "capped" });
+    expect(f).not.toHaveBeenCalled();
   });
 });

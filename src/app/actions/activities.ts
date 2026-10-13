@@ -8,7 +8,12 @@ import { revalidatePath } from "next/cache";
 import { londonWallClockToUtc, nextLondonKickoff } from "@/lib/london-time";
 import { activityUpdateData, activityVenueReset } from "@/lib/activity-update";
 import { dropOrphanPin } from "@/lib/venue-location";
-import { scheduleVenueResolve } from "@/lib/venue-location-schedule";
+import { scheduleVenuePickResolve, scheduleVenueResolve } from "@/lib/venue-location-schedule";
+import { CLEARED_VENUE_LINK } from "@/lib/venue-location-rules";
+import { parseVenuePick } from "@/lib/venue-suggest-rules";
+
+/** What a form sends for a picked place. Anything else on it is dropped. */
+type VenuePickInput = { placeId: string; sessionToken?: string | null };
 
 export async function createActivity(formData: {
   orgId: string;
@@ -20,13 +25,18 @@ export async function createActivity(formData: {
   deadlineHours?: number;
   matchDurationMins?: number;
   ratingWindowHours?: number;
+  /** A place picked from the suggestions under the venue box: Google's
+   *  place id and the suggestions' session token, nothing else. The
+   *  server asks Google what the place is; see `parseVenuePick`. */
+  venuePick?: VenuePickInput | null;
 }) {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Not authenticated");
 
   await requireOrgAdmin(session.user.id, formData.orgId);
 
-  const { orgId, ...rest } = formData;
+  const { orgId, venuePick, ...rest } = formData;
+  const pick = parseVenuePick(venuePick);
   const parsed = activitySchema.parse(rest);
 
   // Verify the sport belongs to this org (stops cross-org writes).
@@ -37,7 +47,10 @@ export async function createActivity(formData: {
 
   const created = await db.activity.create({ data: { ...parsed, orgId }, select: { id: true } });
   // Venue location: looked up after the response, never part of the save.
-  await scheduleVenueResolve(created.id);
+  // A picked place is looked up by its id (and, if Google does not resolve
+  // it, the text is looked up after all); free text is looked up as text.
+  if (pick) await scheduleVenuePickResolve(created.id, session.user.id, pick);
+  else await scheduleVenueResolve(created.id);
 
   revalidatePath("/admin/activities");
 }
@@ -57,6 +70,9 @@ export async function updateActivity(
     /** The fee per player in pounds as typed ("6", "6.50"), "" or null for
      *  none. Left out, or undefined: the fee is not touched. */
     feePerPlayer?: string | number | null;
+    /** A place picked from the suggestions for the `venue` sent with it.
+     *  Ignored unless `venue` is sent in the same request. */
+    venuePick?: VenuePickInput | null;
   }
 ) {
   const session = await auth();
@@ -85,12 +101,20 @@ export async function updateActivity(
   // the new words are looked up after the response. A change of case or
   // punctuation only is not a new venue. The venue-location columns are
   // written from here only: none is ever accepted from the request.
-  const reset = activityVenueReset(data, { venue: activity.venue });
+  //
+  // A PICK (a place chosen from the suggestions for the venue sent with
+  // it) always resets, even for the same words: the organiser chose this
+  // exact place, so whatever was linked gives way to it. Only Google's
+  // place id and the session token are kept from the request; the server
+  // asks Google what the place is after the response.
+  const pick = typeof data.venue === "string" ? parseVenuePick(formData?.venuePick) : null;
+  const reset = pick ? CLEARED_VENUE_LINK : activityVenueReset(data, { venue: activity.venue });
 
   await db.activity.update({ where: { id: activityId }, data: reset ? { ...data, ...reset } : data });
   if (reset) {
     await dropOrphanPin(activity.venueId);
-    await scheduleVenueResolve(activityId);
+    if (pick) await scheduleVenuePickResolve(activityId, session.user.id, pick);
+    else await scheduleVenueResolve(activityId);
   }
 
   revalidatePath("/admin/activities");

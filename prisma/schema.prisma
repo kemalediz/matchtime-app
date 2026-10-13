@@ -779,8 +779,9 @@ model Activity {
   /// How sure the match is: "high" | "low". Null with no place linked.
   venueConfidence    String?
   /// Where the link came from: "text" (the venue text), "address" (a
-  /// fuller address the organiser typed), "link" (a pasted map link) or
-  /// "backfill".
+  /// fuller address the organiser typed), "link" (a pasted map link),
+  /// "pick" (a place the organiser picked from the suggestions under the
+  /// venue box, 2026-10-13) or "backfill".
   venueMatchSource   String?
   /// What the last lookup for the current venue text came to:
   ///   null       never looked up (every game that predates this feature)
@@ -838,10 +839,36 @@ model VenueLookup {
   /// "reuse"       answered from VenueQuery, no call
   /// "short-link"  the one request that expands a short map link
   /// "pin"         a pin read out of a pasted link, no call
+  /// "place-details"  the Places call for a place the organiser picked
+  ///                  from the suggestions (2026-10-13)
   kind       String
   createdAt  DateTime     @default(now())
 
   @@index([orgId, createdAt])
+}
+
+/// HOW MANY VENUE SUGGESTION CALLS ONE PERSON CAUSED IN ONE CLOCK HOUR
+/// (2026-10-13). The venue box asks Google for suggestions as the
+/// organiser types (/api/venue/suggest); each call that reaches Google
+/// adds one here first, and past the cap
+/// (`VENUE_SUGGEST_CALLS_PER_USER_PER_HOUR`, src/lib/venue-suggest-rules.ts)
+/// the box quietly becomes a plain text box until the next hour.
+///
+/// Per PERSON, not per club: on /create-org there is no club yet, which
+/// is why `VenueLookup` (per club) cannot hold this.
+///
+/// One row per person per hour, counted with a single atomic upsert.
+/// `key` is "<userId>|<windowStart ISO>". A person's older rows are
+/// deleted when their next hour starts. A user id, an hour and a count
+/// only: never what was typed, a place or a session token. No foreign
+/// key on purpose: adding this table touches no other table.
+model VenueSuggestUsage {
+  key         String   @id
+  userId      String
+  windowStart DateTime
+  count       Int      @default(0)
+
+  @@index([userId, windowStart])
 }
 
 /// WHAT GOOGLE ANSWERED FOR A QUERY (2026-10-12): country plus the

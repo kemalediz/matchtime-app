@@ -33,12 +33,19 @@ import {
   validateWeeklyGame,
   type WeeklyGame,
 } from "./club-connect-rules";
-import { scheduleVenueResolveForOrg } from "./venue-location-schedule";
+import { scheduleVenuePickResolve, scheduleVenueResolveForOrg } from "./venue-location-schedule";
+import { parseVenuePick } from "./venue-suggest-rules";
 
 export interface SelfJoinClubInput {
   name: string;
   language: string;
   game: Partial<WeeklyGame> | null;
+  /** A place picked from the suggestions under the venue box
+   *  (2026-10-13): Google's place id and the suggestions' session token.
+   *  Optional, and never needed: the venue is the typed text either way.
+   *  Nothing else on it is read (`parseVenuePick`); the SERVER asks
+   *  Google what the place is, after the club exists. */
+  venuePick?: { placeId: string; sessionToken?: string | null } | null;
 }
 
 export type SelfJoinRefusal = "invalid" | "verify-phone" | "one-club" | "site-cap";
@@ -139,7 +146,7 @@ export async function createSelfJoinClub(
         positionComposition: sport.positionComposition,
       },
     });
-    await tx.activity.create({
+    const activity = await tx.activity.create({
       data: {
         orgId: created.id,
         sportId: sportRow.id,
@@ -149,11 +156,16 @@ export async function createSelfJoinClub(
         venue: game.game.venue,
       },
     });
-    return created;
+    return { ...created, activityId: activity?.id as string | undefined };
   });
 
   // Venue location: looked up after the response, never part of the save.
-  await scheduleVenueResolveForOrg(org.id);
+  // A place picked from the suggestions is looked up by its id (and the
+  // text is looked up after all if Google does not resolve it); anything
+  // else is free text, looked up as text. Either way the club exists.
+  const pick = parseVenuePick(input.venuePick);
+  if (pick && org.activityId) await scheduleVenuePickResolve(org.activityId, userId, pick);
+  else await scheduleVenueResolveForOrg(org.id);
 
   return { ok: true, orgId: org.id, slug: org.slug };
 }

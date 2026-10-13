@@ -49,8 +49,12 @@ export interface VenueStoreClient extends VenuePlaceClient {
   };
 }
 
+/** What a Google answer must carry to become a shared place: Geocoding's
+ *  hit and Places' details (src/lib/places.ts) both do. */
+export type GooglePlace = Pick<GeocodeHit, "placeId" | "formattedAddress" | "lat" | "lng">;
+
 /** Upsert the shared place for a Google result. Returns its id. */
-export async function upsertGooglePlace(client: VenuePlaceClient, hit: GeocodeHit, name: string): Promise<string> {
+export async function upsertGooglePlace(client: VenuePlaceClient, hit: GooglePlace, name: string): Promise<string> {
   const venue = await client.venue.upsert({
     where: { placeId: hit.placeId },
     update: {},
