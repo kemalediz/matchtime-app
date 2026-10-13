@@ -26,7 +26,13 @@
  * "pending" and the page treats it as failed after half a minute.
  */
 import { after } from "next/server";
-import { markVenueLookupPending, resolveActivityVenueSafe, resolvePendingVenuesForOrg } from "./venue-location";
+import {
+  markVenueLookupPending,
+  resolveActivityVenuePickSafe,
+  resolveActivityVenueSafe,
+  resolvePendingVenuesForOrg,
+} from "./venue-location";
+import type { VenuePick } from "./venue-suggest-rules";
 
 function later(work: () => Promise<unknown>): void {
   const run = async () => {
@@ -61,4 +67,15 @@ export async function scheduleVenueResolve(activityId: string): Promise<void> {
 /** A club that was just created, weekly game and all, in one transaction. */
 export async function scheduleVenueResolveForOrg(orgId: string): Promise<void> {
   if (await record({ orgId })) later(() => resolvePendingVenuesForOrg(orgId));
+}
+
+/**
+ * One activity whose venue was PICKED from the suggestions under the
+ * venue box (2026-10-13): after the response, the server asks Google
+ * what the picked place is and links it. If Google does not resolve it,
+ * the venue text gets the ordinary lookup instead
+ * (`resolveActivityVenuePickSafe`). Never part of the save.
+ */
+export async function scheduleVenuePickResolve(activityId: string, userId: string, pick: VenuePick): Promise<void> {
+  if (await record({ activityId })) later(() => resolveActivityVenuePickSafe(activityId, userId, pick));
 }

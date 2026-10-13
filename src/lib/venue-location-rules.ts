@@ -48,7 +48,9 @@ export const CLEARED_VENUE_LINK = {
 } as const;
 
 export type VenueConfidence = "high" | "low";
-export type VenueMatchSource = "text" | "address" | "link" | "backfill";
+/** "pick": a place the organiser picked from the suggestions under the
+ *  venue box (2026-10-13). Always high confidence and confirmed by them. */
+export type VenueMatchSource = "text" | "address" | "link" | "pick" | "backfill";
 
 // ── The venue text ──────────────────────────────────────────────────────
 

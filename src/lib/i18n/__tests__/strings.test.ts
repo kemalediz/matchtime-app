@@ -1326,6 +1326,11 @@ const SAMPLES: SampleArgs = {
   venue_loc_failed: null,
   venue_loc_retry: null,
   venue_loc_retrying: null,
+  venue_suggest_list_label: null,
+  venue_suggest_count: { count: 3 },
+  venue_suggest_powered: null,
+  venue_suggest_hint: null,
+  venue_suggest_privacy: null,
 };
 
 /** Render an entry with its sample arguments. */

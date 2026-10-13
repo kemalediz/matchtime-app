@@ -3206,6 +3206,13 @@ export const tr: Strings = {
   venue_loc_failed: "Bu yeri şu anda kontrol edemedik. Daha sonra tekrar deneyin.",
   venue_loc_retry: "Tekrar dene",
   venue_loc_retrying: "Kontrol ediliyor...",
+
+  // ── Venue suggestions (2026-10-13). See strings.en.ts. ───────────────
+  venue_suggest_list_label: "Önerilen yerler",
+  venue_suggest_count: (p: { count: number }): string => `${p.count} öneri. Seçmek için ok tuşlarını kullanın.`,
+  venue_suggest_powered: "Google tarafından desteklenmektedir",
+  venue_suggest_hint: "Sahanızı listeden seçin ya da yazdığınız haliyle bırakın.",
+  venue_suggest_privacy: "Buraya yazdıklarınız, yer önerilebilmesi için Google'a gönderilir.",
 };
 
 /**

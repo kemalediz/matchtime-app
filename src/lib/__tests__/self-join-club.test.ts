@@ -33,6 +33,12 @@ vi.mock("@/lib/db", () => ({
       }),
   },
 }));
+// The venue lookups a new club schedules (they run after the response).
+const schedule = vi.hoisted(() => ({ org: vi.fn(async () => undefined), pick: vi.fn(async () => undefined) }));
+vi.mock("@/lib/venue-location-schedule", () => ({
+  scheduleVenueResolveForOrg: schedule.org,
+  scheduleVenuePickResolve: schedule.pick,
+}));
 
 import { createSelfJoinClub } from "../self-join-club";
 import { SELF_JOIN_CLUB_WHERE } from "../club-approval";
@@ -157,6 +163,48 @@ describe("createSelfJoinClub", () => {
   it("an unknown user is refused", async () => {
     dbMock.user.findUnique.mockResolvedValue(null);
     expect(await createSelfJoinClub("u1", INPUT, NOW)).toEqual({ ok: false, reason: "verify-phone" });
+  });
+});
+
+// ── A venue picked from the suggestions on the setup form (2026-10-13) ──
+
+describe("createSelfJoinClub with a venue picked from the suggestions", () => {
+  const PICK = { placeId: "ChIJ_croydon_0001", sessionToken: "3f2c1d7e-8a4b-4c1d-9e2f-0a1b2c3d4e5f" };
+
+  it("the picked place is looked up by the SERVER after the save, for the new game, as the organiser", async () => {
+    const res = await createSelfJoinClub("u1", { ...INPUT, venuePick: PICK }, NOW);
+    expect(res.ok).toBe(true);
+    expect(schedule.pick).toHaveBeenCalledTimes(1);
+    expect(schedule.pick).toHaveBeenCalledWith("act-new", "u1", PICK);
+    expect(schedule.org).not.toHaveBeenCalled();
+  });
+
+  it("the venue TEXT is stored as typed, and nothing of the pick is written with the game", async () => {
+    await createSelfJoinClub("u1", { ...INPUT, venuePick: { ...PICK, lat: 1, lng: 2, venueId: "x" } as never }, NOW);
+    const data = txActivityCreate.mock.calls[0][0].data;
+    expect(data.venue).toBe("Goals Wembley");
+    expect(Object.keys(data).filter((k) => /venue|place|lat|lng/i.test(k))).toEqual(["venue"]);
+    // Only the place id and the session token travel on.
+    expect(schedule.pick).toHaveBeenCalledWith("act-new", "u1", PICK);
+  });
+
+  it.each([
+    ["no pick", undefined],
+    ["a pick that is not one", { placeId: "../../etc", sessionToken: "x" }],
+    ["a string", "ChIJ_croydon_0001"],
+    ["null", null],
+  ])("%s: FREE TEXT is accepted exactly as before, and the text is looked up", async (_label, venuePick) => {
+    const res = await createSelfJoinClub("u1", { ...INPUT, venuePick } as never, NOW);
+    expect(res.ok).toBe(true);
+    expect(schedule.pick).not.toHaveBeenCalled();
+    expect(schedule.org).toHaveBeenCalledWith("org-new");
+  });
+
+  it("a refused club schedules nothing", async () => {
+    dbMock.membership.count.mockResolvedValue(1);
+    expect(await createSelfJoinClub("u1", { ...INPUT, venuePick: PICK }, NOW)).toEqual({ ok: false, reason: "one-club" });
+    expect(schedule.pick).not.toHaveBeenCalled();
+    expect(schedule.org).not.toHaveBeenCalled();
   });
 });
 

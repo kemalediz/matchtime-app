@@ -13,6 +13,7 @@ const m = vi.hoisted(() => ({
   activityOrg: "org-a" as string | null,
   admins: new Set<string>(),
   change: vi.fn(async () => ({ status: "found" as const })),
+  changeToPick: vi.fn(async () => ({ status: "found" as string })),
   confirm: vi.fn(async () => true),
   retry: vi.fn(async () => ({ status: "found" as string })),
 }));
@@ -27,6 +28,7 @@ vi.mock("@/lib/org", () => ({
 }));
 vi.mock("@/lib/venue-location", () => ({
   changeActivityVenue: m.change,
+  changeActivityVenueToPick: m.changeToPick,
   confirmActivityVenue: m.confirm,
   resolveActivityVenueSafe: m.retry,
 }));
@@ -38,6 +40,8 @@ beforeEach(() => {
   m.activityOrg = "org-a";
   m.admins = new Set(["owner-a@org-a", "owner-b@org-b"]);
   m.change.mockClear();
+  m.changeToPick.mockClear();
+  m.changeToPick.mockResolvedValue({ status: "found" });
   m.confirm.mockClear();
   m.retry.mockClear();
 });
@@ -89,6 +93,40 @@ describe("the club's own admin", () => {
   it("changes, as themselves", async () => {
     expect(await changeVenueLocationAction("act-a", "12 Whiston Road")).toEqual({ status: "found" });
     expect(m.change).toHaveBeenCalledWith("act-a", "owner-a", "12 Whiston Road");
+  });
+
+  // A place picked from the suggestions in the Change box (2026-10-13).
+  const PICK = { placeId: "ChIJ_croydon_0001", sessionToken: "3f2c1d7e-8a4b-4c1d-9e2f-0a1b2c3d4e5f" };
+
+  it("changes to a place picked from the suggestions: only the place id and the session token travel on", async () => {
+    const sent = { ...PICK, lat: 1, lng: 2, formattedAddress: "Attacker Lane" };
+    expect(await changeVenueLocationAction("act-a", "Powerleague Croydon", sent as never)).toEqual({ status: "found" });
+    expect(m.changeToPick).toHaveBeenCalledWith("act-a", "owner-a", PICK);
+    expect(m.change).not.toHaveBeenCalled();
+  });
+
+  it("a picked place Google does not resolve: the typed words are looked up instead", async () => {
+    m.changeToPick.mockResolvedValueOnce({ status: "unresolved" });
+    expect(await changeVenueLocationAction("act-a", "Powerleague Croydon", PICK)).toEqual({ status: "found" });
+    expect(m.change).toHaveBeenCalledWith("act-a", "owner-a", "Powerleague Croydon");
+  });
+
+  it("a picked place over the club's daily cap says so, and nothing else is looked up", async () => {
+    m.changeToPick.mockResolvedValueOnce({ status: "capped" });
+    expect(await changeVenueLocationAction("act-a", "Powerleague Croydon", PICK)).toEqual({ status: "capped" });
+    expect(m.change).not.toHaveBeenCalled();
+  });
+
+  it("something that is not a pick is ignored: the words are looked up as before", async () => {
+    expect(await changeVenueLocationAction("act-a", "12 Whiston Road", { placeId: "../x" } as never)).toEqual({ status: "found" });
+    expect(m.changeToPick).not.toHaveBeenCalled();
+    expect(m.change).toHaveBeenCalledWith("act-a", "owner-a", "12 Whiston Road");
+  });
+
+  it("someone who is not the club's admin cannot change by a pick either", async () => {
+    m.session = { user: { id: "player-a" } };
+    expect(await changeVenueLocationAction("act-a", "Powerleague Croydon", PICK)).toEqual({ status: "error" });
+    expect(m.changeToPick).not.toHaveBeenCalled();
   });
 
   it("an activity that does not exist is refused", async () => {

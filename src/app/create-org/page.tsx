@@ -6,6 +6,7 @@ import { selfJoinEligibility } from "@/lib/self-join-club";
 import { langFromAcceptLanguage, PLAYERS_PER_SIDE_OPTIONS } from "@/lib/club-connect-rules";
 import { LANGS, LANG_LABELS } from "@/lib/i18n/lang";
 import { t } from "@/lib/i18n/t";
+import { venueSuggestLabels } from "@/lib/venue-suggest-labels";
 import { LegacyCreateOrgForm } from "./legacy-form";
 import { SelfJoinForm, type SelfJoinFormCopy } from "./self-join-form";
 
@@ -46,6 +47,7 @@ export default async function CreateOrgPage() {
         time: s.sj_form_time,
         venue: s.sj_form_venue,
         venuePlaceholder: s.sj_form_venue_placeholder,
+        venueSuggest: venueSuggestLabels(s),
         perSide: s.sj_form_per_side,
         submit: s.sj_form_submit,
         submitting: s.sj_form_submitting,
