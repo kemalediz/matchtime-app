@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { getUserOrg, isOrgAdmin } from "@/lib/org";
 import { AdminSubnav } from "@/components/layout/admin-subnav";
 import { loadBillingBanner } from "@/lib/club-billing";
@@ -8,6 +9,9 @@ import { billingUiEnabledForRequest } from "@/lib/billing-flag";
 import { t } from "@/lib/i18n/t";
 import { OrgLangProvider } from "@/components/info/org-lang";
 import { normaliseSquadMode } from "@/lib/squad-month-rules";
+import { CONNECT_FOCUS_HOME, PATHNAME_HEADER, connectFocusAdminView } from "@/lib/connect-focus";
+import { connectFocusFor } from "@/lib/connect-focus-server";
+import { ConnectFocusGate } from "@/components/club-connect/connect-focus-gate";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
@@ -18,6 +22,25 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
   const admin = await isOrgAdmin(session.user.id, membership.orgId);
   if (!admin) redirect("/");
+
+  // "Finish connecting" mode (src/lib/connect-focus.ts): the owner of a
+  // club that is a draft or pending gets the connect panel and nothing
+  // else. No tabs, no "Admin" heading. Any admin page but the panel and
+  // the two edit pages goes back to the panel: here on a full load (the
+  // middleware hands the pathname over), and in the gate, on the client,
+  // when the organiser moves between pages without one.
+  if (await connectFocusFor(session.user.id, membership)) {
+    if (connectFocusAdminView((await headers()).get(PATHNAME_HEADER)) === "redirect") redirect(CONNECT_FOCUS_HOME);
+    const s = t(membership.org.language);
+    return (
+      <ConnectFocusGate
+        lang={membership.org.language}
+        labels={{ back: s.cf_back, club: s.cf_edit_tab_club, game: s.cf_edit_tab_game }}
+      >
+        <OrgLangProvider lang={membership.org.language}>{children}</OrgLangProvider>
+      </ConnectFocusGate>
+    );
+  }
 
   // Club fee billing (slice B2, plan 8.2): one line for the club's OWNER
   // and ADMINs in grace, past due or paused. Never in trial, never for an

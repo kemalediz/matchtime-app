@@ -4194,4 +4194,23 @@ export const en = {
   venue_suggest_powered: "Powered by Google",
   venue_suggest_hint: "Pick your venue from the list, or keep what you typed.",
   venue_suggest_privacy: "What you type here is sent to Google to suggest places.",
+
+  // ── "Finish connecting" mode (2026-10-13) ────────────────────────────
+  // While an organiser's club is a draft or pending, /admin shows the
+  // connect card and nothing else (src/lib/connect-focus.ts). These are
+  // the few words around the card; the card's own copy is `sj_card_*`.
+  /** Under the club name while there is something to do (a draft). */
+  cf_lead_connect:
+    "MatchTime can't do anything for your club until it is connected to your WhatsApp group. That is the one thing to do now.",
+  /** Under the club name while the club waits for approval. */
+  cf_lead_pending:
+    "Nothing more for you to do right now. The rest of your club's pages open here as soon as your club is approved.",
+  /** Above the card's text. The three steps are the card's own. */
+  cf_step: (p: { step: number; total: number }): string => `Step ${p.step} of ${p.total}`,
+  /** The one quiet link under the card. */
+  cf_edit_link: "Edit club details",
+  /** On the two edit pages: the way back, and the two pages. */
+  cf_back: "Back to connecting MatchTime",
+  cf_edit_tab_club: "Club name and settings",
+  cf_edit_tab_game: "Weekly game",
 };

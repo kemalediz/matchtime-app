@@ -21,6 +21,8 @@ import { setupHoldEnabledForRequest } from "@/lib/setup-hold-flag";
 import { getMomSummaries } from "@/lib/mom";
 import { loadClubRating } from "@/lib/player-stats";
 import { t } from "@/lib/i18n/t";
+import { connectFocusFor } from "@/lib/connect-focus-server";
+import { CONNECT_FOCUS_HOME } from "@/lib/connect-focus";
 
 function getGreeting(hour: number): string {
   if (hour < 5) return "Good night";
@@ -54,6 +56,12 @@ export default async function DashboardPage() {
 
   const membership = await getUserOrg(session.user.id);
   if (!membership) redirect("/create-org");
+
+  // "Finish connecting" mode (src/lib/connect-focus.ts): sign-in lands
+  // here, and so does the sidebar's Dashboard link. An organiser whose
+  // club is not connected and approved yet has nothing to see on this
+  // dashboard, so they are taken to the one thing there is to do.
+  if (await connectFocusFor(session.user.id, membership)) redirect(CONNECT_FOCUS_HOME);
 
   const orgId = membership.orgId;
 

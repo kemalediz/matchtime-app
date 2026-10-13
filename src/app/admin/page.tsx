@@ -7,6 +7,10 @@ import { Users, Calendar, Clock, CheckCircle, ChevronRight, Star } from "lucide-
 import { format } from "date-fns";
 import { ClubConnectCard } from "@/components/club-connect/club-connect-card";
 import { SectionInfo } from "@/components/info/section-info";
+import { connectFocusFor } from "@/lib/connect-focus-server";
+import { CONNECT_FOCUS_SETTINGS_PATH } from "@/lib/connect-focus";
+import { PENDING_CLUB_WHERE } from "@/lib/club-approval-state";
+import { t } from "@/lib/i18n/t";
 
 const TILE = {
   blue: "bg-blue-50 text-blue-700 border-blue-200",
@@ -24,6 +28,38 @@ export default async function AdminDashboardPage() {
 
   const orgId = membership.orgId;
   const lang = membership.org.language;
+
+  // "Finish connecting" mode (src/lib/connect-focus.ts): until the club
+  // is approved the connect card is the whole page. Without it nothing
+  // else here does anything, so nothing else is shown: the club's name,
+  // one line, the card, and one quiet link to fix what was typed at
+  // sign-up. The admin layout drops the tabs in the same breath.
+  if (await connectFocusFor(session.user.id, membership)) {
+    const s = t(lang);
+    const waiting = membership.org.approvalStatus === PENDING_CLUB_WHERE.approvalStatus;
+    return (
+      <div data-testid="connect-focus-panel" lang={lang} className="space-y-6">
+        <div className="space-y-2 text-center">
+          <h1 data-testid="connect-focus-club" className="text-2xl font-bold text-slate-800 [overflow-wrap:anywhere]">
+            {membership.org.name}
+          </h1>
+          <p data-testid="connect-focus-lead" className="text-sm text-slate-600">
+            {waiting ? s.cf_lead_pending : s.cf_lead_connect}
+          </p>
+        </div>
+        <ClubConnectCard orgId={orgId} userId={session.user.id} showStep />
+        <p className="text-center">
+          <Link
+            href={CONNECT_FOCUS_SETTINGS_PATH}
+            data-testid="connect-focus-edit"
+            className="inline-flex min-h-11 items-center text-sm text-slate-500 underline underline-offset-4 hover:text-slate-700"
+          >
+            {s.cf_edit_link}
+          </Link>
+        </p>
+      </div>
+    );
+  }
 
   const [playerCount, activeActivities, upcomingMatches, completedMatches, latestMatch] = await Promise.all([
     db.membership.count({ where: { orgId, leftAt: null } }),
