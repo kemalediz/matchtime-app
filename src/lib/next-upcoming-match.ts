@@ -2,7 +2,7 @@
  * "Is this the match the bot should post about?" — the gate shared by the
  * scheduler's announce-match and 17:00 evening-update paths.
  *
- * Two responsibilities:
+ * Three responsibilities:
  *
  *   1. Same-FIXTURE rollover guard: when next week's match in the same
  *      recurring fixture has just been auto-created, only the current
@@ -32,16 +32,38 @@
  *      matches ANYWHERE in the org, only the one with the lowest `id` is
  *      treated as next-upcoming; the rest are suppressed.
  *
- * Note the deliberate asymmetry: the "strictly earlier" suppression is
- * scoped to the SAME fixture (so a separate Thursday game, or a different
- * venue on the same weekday, never suppresses this one in a multi-activity
- * org), while the co-timed tie-break is org-wide (so a cross-activity ghost
- * sharing the timestamp is caught).
+ *   3. Cancelled-day hold (2026-10-13, Sutton FC), only when the caller
+ *      passes `now`: a CANCELLED match strictly earlier in the same
+ *      fixture keeps suppressing this one until the cancelled match's own
+ *      London calendar day is over. From London midnight after that day
+ *      it suppresses nothing. So the weekly rhythm is the same whether
+ *      the game was played or cancelled: next week's announcement lands
+ *      the morning after the day the game was (or would have been) on.
+ *      Before this rule a cancelled match suppressed nothing at all: the
+ *      Tue 13 Oct match was cancelled on the Monday evening, and at 09:00
+ *      on the Tuesday the bot announced Tue 20 Oct, with its 0/14 squad
+ *      post at 17:00 the same day.
+ *
+ *      The hold starts when the match is cancelled, not on its day (a
+ *      game cancelled on Monday holds Monday evening too), and it chains
+ *      by itself: with 13 and 20 Oct cancelled, 27 Oct waits for 21 Oct.
+ *      It is opt-in because it belongs to the posts that open a new week
+ *      for the group, the announcement and the 17:00 squad post. Callers
+ *      tied to the match's own clock (weekly deadlines, the month's list,
+ *      the organiser pick, the deadline summary) pass no `now` and are
+ *      never held by a cancelled match.
+ *
+ * Note the deliberate asymmetry: the "strictly earlier" suppression (1 and
+ * 3) is scoped to the SAME fixture (so a separate Thursday game, or a
+ * different venue on the same weekday, never suppresses this one in a
+ * multi-activity org), while the co-timed tie-break is org-wide (so a
+ * cross-activity ghost sharing the timestamp is caught).
  *
  * Pure function — no DB. The scheduler loads the org's matches once and
  * delegates here so the same logic is shared and unit-testable.
  */
 
+import { formatLondon } from "./london-time";
 import { isSameRecurringFixture } from "./match-slot";
 
 export type SchedulerMatchStatus =
@@ -81,15 +103,31 @@ const LIVE_STATUSES = new Set([
 const isLive = (m: SchedulerMatch): boolean =>
   !m.isHistorical && LIVE_STATUSES.has(m.status);
 
+/** The London calendar day of an instant, "yyyy-MM-dd". DST-safe. */
+const londonDay = (d: Date): string => formatLondon(d, "yyyy-MM-dd");
+
+/**
+ * A cancelled match still holding its fixture's later posts at `now`: its
+ * London calendar day has not ended yet. Comparing day keys rather than
+ * adding 24 hours keeps this right on the 25- and 23-hour days of a clock
+ * change.
+ */
+const isCancelledDayHold = (m: SchedulerMatch, now: Date): boolean =>
+  !m.isHistorical && m.status === "CANCELLED" && londonDay(now) <= londonDay(m.date);
+
 /**
  * @param matches  All of the org's candidate matches (the same set the
  *                 scheduler iterates). May include completed/historical/
- *                 cancelled rows — they're filtered out as blockers.
+ *                 cancelled rows: completed and historical ones never
+ *                 block, and a cancelled one blocks only under rule 3.
  * @param target   The match currently being evaluated.
+ * @param now      Pass the clock to apply the cancelled-day hold (rule 3).
+ *                 Omit it and cancelled matches block nothing.
  */
 export function isNextUpcomingForPosting(
   matches: SchedulerMatch[],
   target: SchedulerMatch,
+  now?: Date,
 ): boolean {
   if (!isLive(target)) return false;
 
@@ -97,7 +135,12 @@ export function isNextUpcomingForPosting(
 
   const blocked = matches.some((other) => {
     if (other.id === target.id) return false;
-    if (!isLive(other)) return false;
+    // (3) A cancelled match blocks only as a strictly earlier match of the
+    //     same fixture, through the `sameFixture` test below, and only
+    //     until its London day is over. It never takes part in the
+    //     co-timed tie-break.
+    const cancelledHold = now !== undefined && isCancelledDayHold(other, now);
+    if (!isLive(other) && !cancelledHold) return false;
 
     // (1) Strictly earlier match in the SAME recurring fixture (rollover
     //     guard). Same activityId always means same fixture; when both
@@ -113,8 +156,9 @@ export function isNextUpcomingForPosting(
       return true;
     }
 
-    // (2) Co-timed match anywhere in the org with a lower id (tie-break).
-    if (other.date.getTime() === targetTime && other.id < target.id) {
+    // (2) Co-timed LIVE match anywhere in the org with a lower id
+    //     (tie-break).
+    if (!cancelledHold && other.date.getTime() === targetTime && other.id < target.id) {
       return true;
     }
 

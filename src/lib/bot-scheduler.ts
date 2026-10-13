@@ -767,7 +767,16 @@ export async function computeDuePosts(
   // of this lookback is not free-standing: see the deadline block near
   // the top of this file for the invariant it has to satisfy.
   const windowStart = new Date(now.getTime() - POST_MATCH_LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
-  const matches = await getMatchesForScheduler(org.id, windowStart);
+  //
+  // The query also returns CANCELLED matches whose London day may not be
+  // over yet. They are split off here, so `matches` is exactly the list it
+  // always was and nothing that reads it ever sees a cancelled match. The
+  // cancelled ones have a single reader: the next-upcoming gate of the
+  // announcement and the 17:00 post, which holds next week's posts until
+  // the cancelled game's day is over (see next-upcoming-match.ts, rule 3).
+  const loaded = await getMatchesForScheduler(org.id, windowStart, now);
+  const matches = loaded.filter((x) => x.status !== "CANCELLED");
+  const cancelledHolds = loaded.filter((x) => x.status === "CANCELLED");
 
   // Read ONCE, before the per-match loop, and used twice: the 17:00
   // full-squad post needs `features.bench` while it composes (a post
@@ -868,7 +877,7 @@ export async function computeDuePosts(
       : signupMonth
         ? { monthId: signupMonth.id, seeded: false, signup: true, members: [], paygPricePence: org.paygPricePence ?? null }
         : null;
-    await computeForMatch(m, now, sentKeys, out, groupId, matches, features, admin, monthly);
+    await computeForMatch(m, now, sentKeys, out, groupId, matches, features, admin, monthly, cancelledHolds);
   }
 
   // ── Badge announcements (2026-10-01) ──────────────────────────────
@@ -980,7 +989,15 @@ interface AdminNoticeContext {
   getChannel: () => Promise<LoadedAdminChannel | null>;
 }
 
-async function getMatchesForScheduler(orgId: string, windowStart: Date) {
+/**
+ * How far back a CANCELLED match is loaded. Its only use is the
+ * cancelled-day hold, which ends at London midnight after its kickoff
+ * day, always less than 24 hours after kickoff. The pure gate decides the
+ * exact moment; this only has to be wide enough.
+ */
+const CANCELLED_HOLD_LOOKBACK_MS = 24 * 60 * 60 * 1000;
+
+async function getMatchesForScheduler(orgId: string, windowStart: Date, now: Date) {
   return db.match.findMany({
     where: {
       activity: { orgId },
@@ -988,6 +1005,9 @@ async function getMatchesForScheduler(orgId: string, windowStart: Date) {
       OR: [
         { status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] } },
         { status: "COMPLETED", date: { gte: windowStart } },
+        // For the cancelled-day hold ONLY. The caller splits these rows
+        // off before anything else reads the list.
+        { status: "CANCELLED", date: { gte: new Date(now.getTime() - CANCELLED_HOLD_LOOKBACK_MS) } },
       ],
     },
     include: {
@@ -1039,6 +1059,9 @@ async function computeForMatch(
   admin: AdminNoticeContext,
   /** Monthly squad, slice 5. Null: a weekly club, or no running month. */
   monthly: MonthlyMatchContext | null = null,
+  /** CANCELLED matches of the club whose day may not be over. Read ONLY by
+   *  the next-upcoming gate of the announcement and the 17:00 post. */
+  cancelledHolds: MatchWithIncludes[] = [],
 ) {
   /**
    * LLM compose with a static fallback. If Claude is unavailable
@@ -1195,11 +1218,14 @@ async function computeForMatch(
     // when an earlier unplayed match in the same fixture (org/venue/
     // weekday — NOT activityId, which a format switch re-points) exists
     // (next-week rollover), OR when a co-timed duplicate/ghost with a
-    // lower id exists anywhere in the org (format-switch defense).
+    // lower id exists anywhere in the org (format-switch defense), OR
+    // while an earlier CANCELLED match of the fixture has not had its
+    // London day yet (2026-10-13: the week after a cancelled game is
+    // announced the morning after that game's day, as after a played one).
     // Pure, unit-tested.
     const isNextUpcoming =
       m.status === "UPCOMING" && hoursUntilMatch > 24
-        ? isNextUpcomingForPosting(siblingMatches, m)
+        ? isNextUpcomingForPosting([...siblingMatches, ...cancelledHolds], m, now)
         : false;
 
     // "Non-empty" means CONFIRMED, deliberately — not "confirmed or
@@ -1322,9 +1348,11 @@ async function computeForMatch(
     // week's match has been auto-created, only the current week's
     // 5pm post is relevant. Without this, both matches fire their own
     // evening-update and the group sees a "next week is empty, need
-    // 14" chase at 17:00 the same day as today's actual match.
+    // 14" chase at 17:00 the same day as today's actual match. The same
+    // goes for the day of a CANCELLED match: next week's 17:00 post
+    // starts the day after it (the cancelled-day hold, 2026-10-13).
     const isNextUpcoming = isPrematch
-      ? isNextUpcomingForPosting(siblingMatches, m)
+      ? isNextUpcomingForPosting([...siblingMatches, ...cancelledHolds], m, now)
       : false;
 
     // Single shared key for the entire 17:00 evening slot. Whichever
