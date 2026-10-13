@@ -3213,6 +3213,17 @@ export const tr: Strings = {
   venue_suggest_powered: "Google tarafından desteklenmektedir",
   venue_suggest_hint: "Sahanızı listeden seçin ya da yazdığınız haliyle bırakın.",
   venue_suggest_privacy: "Buraya yazdıklarınız, yer önerilebilmesi için Google'a gönderilir.",
+
+  // "Bağlamayı bitirin" modu (2026-10-13): bkz. strings.en.ts.
+  cf_lead_connect:
+    "MatchTime, WhatsApp grubunuza bağlanana kadar kulübünüz için hiçbir şey yapamaz. Şu an yapılacak tek şey bu.",
+  cf_lead_pending:
+    "Şu an yapmanız gereken başka bir şey yok. Kulübünüz onaylanır onaylanmaz kulüp sayfalarınızın geri kalanı burada açılır.",
+  cf_step: (p) => `${p.step}. adım, toplam ${p.total} adım`,
+  cf_edit_link: "Kulüp bilgilerini düzenle",
+  cf_back: "MatchTime'ı bağlamaya dön",
+  cf_edit_tab_club: "Kulüp adı ve ayarlar",
+  cf_edit_tab_game: "Haftalık maç",
 };
 
 /**

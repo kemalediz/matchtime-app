@@ -50,6 +50,9 @@ const NAV: NavItem[] = [
   },
 ];
 
+/** Left out of the nav in "finish connecting" mode. */
+const CONNECT_FOCUS_HIDDEN = ["/", "/matches"];
+
 export function Sidebar() {
   const pathname = usePathname();
   const { data: session } = useSession();
@@ -76,9 +79,15 @@ export function Sidebar() {
   // "disappear" even though it was still accessible. Keep link + page in
   // sync.
   const [isAdmin, setIsAdmin] = useState(false);
+  // "Finish connecting" mode (src/lib/connect-focus.ts): the organiser's
+  // club is not connected and approved yet, so Dashboard (which sends
+  // them to the connect panel anyway) and Matches (an empty list) are
+  // left out. Admin, which IS the panel, Profile, Help and Sign out stay.
+  const [connectFocus, setConnectFocus] = useState(false);
   useEffect(() => {
     if (!user) {
       setIsAdmin(false);
+      setConnectFocus(false);
       return;
     }
     let cancelled = false;
@@ -86,6 +95,7 @@ export function Sidebar() {
       .then((r) => (r.ok ? r.json() : { memberships: [], currentOrgId: null }))
       .then((data) => {
         if (cancelled) return;
+        setConnectFocus(data.connectFocus === true);
         if (data.isSuperadmin) {
           setIsAdmin(true);
           return;
@@ -98,14 +108,19 @@ export function Sidebar() {
         setIsAdmin(current?.role === "OWNER" || current?.role === "ADMIN");
       })
       .catch(() => {
-        if (!cancelled) setIsAdmin(false);
+        if (!cancelled) {
+          setIsAdmin(false);
+          setConnectFocus(false);
+        }
       });
     return () => {
       cancelled = true;
     };
   }, [user, pathname]);
 
-  const items = NAV.filter((n) => !n.adminOnly || isAdmin);
+  const items = NAV.filter(
+    (n) => (!n.adminOnly || isAdmin) && !(connectFocus && CONNECT_FOCUS_HIDDEN.includes(n.href)),
+  );
 
   const sidebarContent = (
     <>

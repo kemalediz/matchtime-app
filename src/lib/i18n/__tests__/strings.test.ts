@@ -1331,6 +1331,13 @@ const SAMPLES: SampleArgs = {
   venue_suggest_powered: null,
   venue_suggest_hint: null,
   venue_suggest_privacy: null,
+  cf_lead_connect: null,
+  cf_lead_pending: null,
+  cf_step: { step: 1, total: 3 },
+  cf_edit_link: null,
+  cf_back: null,
+  cf_edit_tab_club: null,
+  cf_edit_tab_game: null,
 };
 
 /** Render an entry with its sample arguments. */

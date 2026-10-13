@@ -28,13 +28,27 @@ import { setupHoldEnabledForRequest } from "@/lib/setup-hold-flag";
 import { loadLatestConnect, matchtimeWaNumber } from "@/lib/club-connect";
 import { connectPrefill, deriveConnectCard, formatPhoneForDisplay, waMeLink } from "@/lib/club-connect-rules";
 import { SETUP_STAGE_SELECT, isClubSettingUp } from "@/lib/club-setup-rules";
+import { CONNECT_FOCUS_STEPS, connectFocusStep } from "@/lib/connect-focus";
 import { loadClubSetupView } from "@/lib/club-setup";
 import Link from "next/link";
 import { ConnectButton } from "./connect-button";
 import { CardRefresher } from "./card-refresher";
 import { SectionInfo } from "@/components/info/section-info";
 
-export async function ClubConnectCard({ orgId, userId }: { orgId: string; userId: string }) {
+/**
+ * `showStep` ("finish connecting" mode, src/lib/connect-focus.ts): the
+ * card is the whole page, so it also says which of its three steps the
+ * organiser is on. Everything else about the card is the same.
+ */
+export async function ClubConnectCard({
+  orgId,
+  userId,
+  showStep = false,
+}: {
+  orgId: string;
+  userId: string;
+  showStep?: boolean;
+}) {
   const flagOn = await selfJoinEnabledForRequest();
 
   const [membership, org] = await Promise.all([
@@ -77,6 +91,8 @@ export async function ClubConnectCard({ orgId, userId }: { orgId: string; userId
   const number = matchtimeWaNumber();
   const owner = await db.user.findUnique({ where: { id: userId }, select: { phoneNumber: true } });
 
+  const step = showStep ? connectFocusStep(card.kind) : null;
+
   const tone =
     card.kind === "approved"
       ? "border-green-200 bg-green-50"
@@ -103,6 +119,18 @@ export async function ClubConnectCard({ orgId, userId }: { orgId: string; userId
       lang={org.language}
       className={`rounded-xl border p-5 shadow-sm space-y-3 ${tone}`}
     >
+      {step !== null && (
+        <div className="space-y-1.5">
+          <p data-testid="club-connect-step" className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+            {s.cf_step({ step, total: CONNECT_FOCUS_STEPS })}
+          </p>
+          <div aria-hidden className="flex gap-1.5">
+            {Array.from({ length: CONNECT_FOCUS_STEPS }, (_, i) => (
+              <span key={i} className={`h-1.5 flex-1 rounded-full ${i < step ? "bg-green-600" : "bg-slate-200"}`} />
+            ))}
+          </div>
+        </div>
+      )}
       <div className="flex items-center gap-1">
         <h2 className="font-semibold text-slate-800">{card.kind === "setting_up" ? (card.removed ? s.sj_card_removed_title : s.sj_live_title) : s.sj_card_title}</h2>
         {card.kind !== "setting_up" && <SectionInfo k="dash_connect" lang={org.language} />}

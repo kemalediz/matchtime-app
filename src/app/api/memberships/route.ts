@@ -5,7 +5,8 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { getCurrentOrgId, isSuperadmin } from "@/lib/org";
+import { getCurrentOrgId, getUserOrg, isSuperadmin } from "@/lib/org";
+import { connectFocusFor } from "@/lib/connect-focus-server";
 
 export async function GET() {
   const session = await auth();
@@ -17,9 +18,13 @@ export async function GET() {
     orderBy: { createdAt: "asc" },
   });
 
-  const [currentOrgId, superadmin] = await Promise.all([
+  const userId = session.user.id;
+  const [currentOrgId, superadmin, connectFocus] = await Promise.all([
     getCurrentOrgId(),
-    isSuperadmin(session.user.id),
+    isSuperadmin(userId),
+    // "Finish connecting" mode for the selected club: the sidebar leaves
+    // out the links that lead nowhere useful yet (src/lib/connect-focus.ts).
+    getUserOrg(userId).then((m) => connectFocusFor(userId, m)),
   ]);
 
   return NextResponse.json({
@@ -30,5 +35,6 @@ export async function GET() {
     })),
     currentOrgId,
     isSuperadmin: superadmin,
+    connectFocus,
   });
 }
