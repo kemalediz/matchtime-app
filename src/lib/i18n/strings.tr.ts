@@ -2633,6 +2633,9 @@ export const tr: Strings = {
   info_clubs_rejected_body: "Reddettiğiniz kulüpler, en yenisi önce. MatchTime gruplarından çıktı.",
   info_clubs_suspended_title: "Kapatılanlar",
   info_clubs_suspended_body: "Kapattığınız aktif kulüpler, en yenisi önce. MatchTime gruplarından çıktı ve orada sessiz.",
+  info_clubs_posters_title: "Afiş tasarımları",
+  info_clubs_posters_body:
+    "Kendi afiş şablonu olan her kulüp. Birini paylaşırsanız diğer her kulüp onu Afişler kartından seçebilir; kendi adı ve oyuncularıyla çizilir, şablonun marka alanı kapatılır. Kulübün adını içermeyen bir görünen ad verin: diğer kulüpler bunu görür. Paylaşmadan önce kulübe sorun.",
   info_clubs_limits_title: "Bugünkü site sınırları",
   info_clubs_limits_body:
     "Tüm sitenin bugün kullandığı kayıt kodu, yeni kulüp ve grup bağlantısı sayısı, günlük sınırlarla birlikte. Londra saatiyle gece yarısı sıfırlanır.",
@@ -3325,6 +3328,48 @@ export const tr: Strings = {
     "kimin oynadığını soran oyuncuya listeyi organizatörlerin paylaşacağı söylenir.",
   wr_announce_matchtime: "MatchTime paylaşır",
   wr_announce_organisers: "Organizatörler paylaşır",
+  // /admin/settings, "Afişler" kartı (2026-10-14).
+  gp_title: "Afişler",
+  gp_lead: "MatchTime'ın yönetici grubunuza gönderdiği kadro afişi ve takım listesi, oyunculara iletmeye hazır.",
+  gp_info:
+    "Her maçtan önce MatchTime bir kadro afişi (kimler oynuyor) ve bir takım listesi (iki takım) hazırlar ve bunları yönetici " +
+    "grubunuza, oyuncu grubuna iletmeye hazır olarak gönderir. Bir sahip ya da yönetici bunları orada afiş ya da takım listesi " +
+    "yazarak da isteyebilir. Görünümlerini değiştirmek için aşağıdan bir tasarım seçin: MatchTime tasarımı, kulübünüzün kendi " +
+    "tasarımı, MatchTime'ın kulüplerle paylaştığı bir tasarım; ya da kendi arka plan resminizi yükleyin, MatchTime isimleri, günü, " +
+    "saati ve sahayı üstüne yazar. Buradaki resimler bir sonraki maçınızı gösterir; yeterli oyuncu katılana kadar örnek isimler görünür.",
+  gp_list_caption: "Kadro afişi",
+  gp_teams_caption: "Takım listesi",
+  gp_alt_list: (p: { club: string }): string => `Kadro afişi: ${p.club}`,
+  gp_alt_teams: (p: { club: string }): string => `Takım listesi: ${p.club}`,
+  gp_sample_note: "Örnek isimler: yeterli oyuncu katıldığında ya da takımlar kurulduğunda gerçek isimler burada görünür.",
+  gp_preview_loading: "Önizleme hazırlanıyor",
+  gp_preview_failed: "Önizleme hazırlanamadı. Daha sonra yeniden deneyin.",
+  gp_design_heading: "Tasarım",
+  gp_design_matchtime: "MatchTime tasarımı",
+  gp_design_own_measured: "Kulübünüzün tasarımı",
+  gp_design_own_background: "Sizin arka planınız",
+  gp_design_shared: (p: { n: number }): string => `Paylaşılan tasarım ${p.n}`,
+  gp_design_in_use: "Kullanımda",
+  gp_use_label: (p: { name: string }): string => `Bu tasarımı kullan: ${p.name}`,
+  gp_saved: "Tasarım kaydedildi. MatchTime bundan sonra bunu kullanır.",
+  gp_save_failed: "Kaydedilemedi. Lütfen yeniden deneyin.",
+  gp_upload_heading: "Kendi arka planınız",
+  gp_upload_blurb: "Dikey bir resim (eni boyundan kısa), JPEG, PNG ya da WebP, en fazla 4 MB. MatchTime kendi panosunu üstüne çizer.",
+  gp_upload_button: "Arka plan yükle",
+  gp_upload_replace: "Yeni arka plan yükle",
+  gp_uploading: "Yükleniyor",
+  gp_uploaded: "Arka plan kaydedildi ve kullanımda.",
+  gp_remove: "Arka planı kaldır",
+  gp_removing: "Kaldırılıyor",
+  gp_removed: "Arka plan kaldırıldı.",
+  gp_problem_empty: "Bir resim seçilmedi.",
+  gp_problem_too_large: "Bu resim 4 MB'tan büyük. Lütfen daha küçük bir resim seçin.",
+  gp_problem_bad_type: "Bu bir JPEG, PNG ya da WebP resmi değil.",
+  gp_problem_bad_bytes: "Bu resim okunamadı. Bozuk olabilir; lütfen başka bir resim deneyin.",
+  gp_problem_too_small: "Bu resim çok küçük. Lütfen en az 540 piksel genişliğinde ve 675 piksel yüksekliğinde bir resim kullanın.",
+  gp_problem_not_portrait: "Bu resmin eni boyundan uzun. Lütfen dikey bir resim kullanın.",
+  gp_problem_made_by_matchtime: "Kulübünüzün tasarımını MatchTime hazırladı. Değiştirmek için MatchTime'a yazın.",
+  gp_problem_failed: "Bir şeyler ters gitti. Lütfen yeniden deneyin.",
 };
 
 /**

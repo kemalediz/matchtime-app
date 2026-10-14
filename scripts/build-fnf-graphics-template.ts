@@ -10,12 +10,18 @@
  * shirts, the shirt icon on every row and the separators.
  *
  *   npx tsx scripts/build-fnf-graphics-template.ts <source.jpg> <out-dir>
+ *   npx tsx scripts/build-fnf-graphics-template.ts --shared <fnf-template.jpg> <out-dir>
  *
- * Writes <out-dir>/fnf-template.jpg and <out-dir>/fnf-layout.json. Run it
+ * Writes <out-dir>/fnf-template.jpg and <out-dir>/fnf-layout.json (FNF's
+ * own board), and <out-dir>/fnf-shared-template.jpg and
+ * fnf-shared-layout.json: the "Floodlights" variant other clubs get when
+ * FNF's board is shared, with FNF's logo, its "FRIDAY NIGHT FOOTBALL" line
+ * and the FNF on both shirts painted out (see below). `--shared` builds
+ * only the variant, from an already blank fnf-template.jpg. Run it
  * LOCALLY and keep the output OUTSIDE the repo: the source carries real
- * names and the template carries FNF's branding, which is club data and
+ * names and the templates carry FNF's artwork, which is club data and
  * never goes into git. `scripts/seed-club-graphics-template.ts` then
- * stores the pair on the club.
+ * stores them on the club (its header has both commands).
  *
  * HOW A NAME IS PAINTED OUT. Every row's background is a smooth
  * horizontal gradient (near black on the left, glowing pink towards the
@@ -96,6 +102,123 @@ const FNF_LAYOUT: ClubGraphicsLayout = {
   reserves: { centreX: 470, centreY: 1096, fontSize: 19, colour: "#ffffff", maxWidth: 760 },
 };
 
+// ── The shared variant, "Floodlights" (2026-10-14) ──────────────────────
+//
+// Other clubs may pick FNF's board (FNF agreed), but never with FNF on it.
+// The shared variant is the blank template with FNF's branding painted
+// out, the same way the names are: the big "FNF" logo with its "FRIDAY
+// NIGHT FOOTBALL" line, and the "FNF" printed on the white shirt and on
+// the pink bib in the two headers (refilled from the fabric above and
+// below, so the shirts read as plain). In its layout, `brandArea` is where
+// the logo was: MatchTime writes the picking club's name there in the
+// logo's heavy italic, and under it "<WEEKDAY> NIGHT FOOTBALL" spaced out
+// like FNF's line (`club-graphics-render.tsx`). FNF itself keeps the
+// branded template; the variant is stored beside it (`sharedImage`,
+// `sharedLayout`) and only drawn for other clubs.
+
+/** The logo and the line under it, up to the calendar and clock icons. */
+const LOGO_BOX = { x0: 232, x1: 712, top: 206, bottom: 339 };
+/**
+ * "FNF" on the white shirt (TEAM 1) and on the pink bib (TEAM 2), each
+ * with a clean patch of the same fabric below the print (its fine texture,
+ * the bib's mesh, is tiled into the fill).
+ */
+interface FabricBox {
+  x0: number;
+  x1: number;
+  top: number;
+  bottom: number;
+  /** A clean patch of the same fabric whose fine grain is tiled in. */
+  texture: { x: number; y: number; w: number; h: number };
+  /** How much of that grain: the bib's mesh needs it, the shirt hardly. */
+  grain: number;
+}
+
+const SHIRT_BOXES: FabricBox[] = [
+  { x0: 133, x1: 238, top: 401, bottom: 455, texture: { x: 150, y: 460, w: 40, h: 28 }, grain: 0.4 },
+  { x0: 733, x1: 832, top: 399, bottom: 461, texture: { x: 782, y: 465, w: 40, h: 26 }, grain: 1 },
+];
+
+const SHARED_LAYOUT: ClubGraphicsLayout = {
+  ...FNF_LAYOUT,
+  brandArea: {
+    x: 236,
+    y: 206,
+    width: 468,
+    height: 132,
+    colour: "#ececee",
+    maxFontSize: 96,
+    nameCentreY: 266,
+    subtitle: { centreY: 329, fontSize: 17, colour: "#ffffff", letterSpacing: 5 },
+  },
+};
+
+function paintOutBranding(pixels: Buffer, channels: number) {
+  refill(pixels, channels, LOGO_BOX);
+  for (const box of SHIRT_BOXES) refillFabric(pixels, channels, box);
+}
+
+/**
+ * A print on a garment refilled so it reads as plain fabric:
+ *   - the shading: each pixel column interpolated between the fabric just
+ *     above and just below the print (as for the names), which meets the
+ *     garment with no step at the top or the bottom;
+ *   - the texture: the FINE grain of a clean patch of the same fabric
+ *     (each pixel minus the mean of its 3 x 3 neighbours, so folds and
+ *     shading do not come along), tiled mirrored across the box, so the
+ *     bib's mesh carries on through it;
+ *   - the sides: blended into the untouched garment over `FEATHER`
+ *     pixels, so no vertical edge shows where the shading turns.
+ */
+const FEATHER = 6;
+
+function refillFabric(pixels: Buffer, channels: number, box: FabricBox) {
+  const at = (x: number, y: number, c: number) => (y * WIDTH + x) * channels + c;
+  const { x0, x1, top, bottom, texture: tx, grain: amount } = box;
+  const original = Buffer.from(pixels);
+  const span = bottom - top + 1;
+
+  const detail: number[][] = [0, 1, 2].map((c) => {
+    const out: number[] = [];
+    for (let j = 0; j < tx.h; j++) {
+      for (let i = 0; i < tx.w; i++) {
+        let sum = 0;
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) sum += original[at(tx.x + i + dx, tx.y + j + dy, c)];
+        out.push((original[at(tx.x + i, tx.y + j, c)] - sum / 9) * amount);
+      }
+    }
+    return out;
+  });
+  const mirror = (v: number, n: number) => {
+    const q = v % (2 * n);
+    return q < n ? q : 2 * n - 1 - q;
+  };
+
+  for (let c = 0; c < 3; c++) {
+    const edge = (y0: number, step: number) =>
+      medianSmooth(
+        Array.from({ length: x1 - x0 + 1 }, (_, i) => {
+          let sum = 0;
+          for (let k = 1; k <= SAMPLE; k++) sum += original[at(x0 + i, y0 + step * k, c)];
+          return sum / SAMPLE;
+        }),
+        3,
+      );
+    const above = edge(top, -1);
+    const below = edge(bottom, 1);
+    for (let x = x0; x <= x1; x++) {
+      const i = x - x0;
+      const alpha = Math.min(1, (Math.min(x - x0, x1 - x) + 1) / FEATHER);
+      for (let y = top; y <= bottom; y++) {
+        const t = (y - top + 1) / (span + 1);
+        const fill = above[i] + (below[i] - above[i]) * t + detail[c][mirror(y - top, tx.h) * tx.w + mirror(i, tx.w)];
+        const v = alpha * fill + (1 - alpha) * original[at(x, y, c)];
+        pixels[at(x, y, c)] = Math.max(0, Math.min(255, Math.round(v)));
+      }
+    }
+  }
+}
+
 function grain(): number {
   // Small, roughly normal noise (sum of uniforms), about +-1.5 levels.
   return (Math.random() + Math.random() + Math.random() - 1.5) * 1.8;
@@ -138,37 +261,57 @@ function refill(pixels: Buffer, channels: number, box: { x0: number; x1: number;
   }
 }
 
-async function main() {
-  const [source, outDir] = process.argv.slice(2);
-  if (!source || !outDir) {
-    console.error("usage: build-fnf-graphics-template.ts <source.jpg> <out-dir>");
-    process.exit(1);
-  }
-  const { data, info } = await sharp(source).removeAlpha().raw().toBuffer({ resolveWithObject: true });
-  if (info.width !== WIDTH || info.height !== HEIGHT) {
-    console.error(`expected a ${WIDTH}x${HEIGHT} source, got ${info.width}x${info.height}`);
-    process.exit(1);
-  }
-  const pixels = Buffer.from(data);
-
-  for (const [x0, x1] of COLUMN_SPANS) {
-    for (const [capTop, capBottom] of ROW_CAPS) {
-      refill(pixels, info.channels, { x0, x1, top: capTop - PAD, bottom: capBottom + PAD });
-    }
-  }
-  refill(pixels, info.channels, DATE_BOX);
-  refill(pixels, info.channels, TIME_BOX);
-
-  await mkdir(outDir, { recursive: true });
-  const jpg = await sharp(pixels, { raw: { width: WIDTH, height: HEIGHT, channels: info.channels } })
+const encode = (pixels: Buffer, channels: number) =>
+  sharp(pixels, { raw: { width: WIDTH, height: HEIGHT, channels: channels as 3 } })
     .jpeg({ quality: 92, mozjpeg: true, chromaSubsampling: "4:4:4" })
     .toBuffer();
-  const imagePath = path.join(outDir, "fnf-template.jpg");
-  const layoutPath = path.join(outDir, "fnf-layout.json");
+
+async function readPixels(file: string): Promise<{ pixels: Buffer; channels: number }> {
+  const { data, info } = await sharp(file).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  if (info.width !== WIDTH || info.height !== HEIGHT) {
+    console.error(`expected a ${WIDTH}x${HEIGHT} image, got ${info.width}x${info.height}`);
+    process.exit(1);
+  }
+  return { pixels: Buffer.from(data), channels: info.channels };
+}
+
+async function writePair(outDir: string, name: string, jpg: Buffer, layout: ClubGraphicsLayout) {
+  const imagePath = path.join(outDir, `${name}-template.jpg`);
+  const layoutPath = path.join(outDir, `${name}-layout.json`);
   await writeFile(imagePath, jpg);
-  await writeFile(layoutPath, `${JSON.stringify(FNF_LAYOUT, null, 2)}\n`);
+  await writeFile(layoutPath, `${JSON.stringify(layout, null, 2)}\n`);
   console.log(`template ${imagePath} bytes=${jpg.length}`);
   console.log(`layout   ${layoutPath}`);
+}
+
+/**
+ *   <source.jpg> <out-dir>              FNF's own blank template AND the shared variant
+ *   --shared <fnf-template.jpg> <out-dir>   only the shared variant, from the blank template
+ */
+async function main() {
+  const args = process.argv.slice(2);
+  const sharedOnly = args[0] === "--shared";
+  const [source, outDir] = sharedOnly ? args.slice(1) : args;
+  if (!source || !outDir) {
+    console.error("usage: build-fnf-graphics-template.ts [--shared] <source.jpg> <out-dir>");
+    process.exit(1);
+  }
+  const { pixels, channels } = await readPixels(source);
+  await mkdir(outDir, { recursive: true });
+
+  if (!sharedOnly) {
+    for (const [x0, x1] of COLUMN_SPANS) {
+      for (const [capTop, capBottom] of ROW_CAPS) {
+        refill(pixels, channels, { x0, x1, top: capTop - PAD, bottom: capBottom + PAD });
+      }
+    }
+    refill(pixels, channels, DATE_BOX);
+    refill(pixels, channels, TIME_BOX);
+    await writePair(outDir, "fnf", await encode(pixels, channels), FNF_LAYOUT);
+  }
+
+  paintOutBranding(pixels, channels);
+  await writePair(outDir, "fnf-shared", await encode(pixels, channels), SHARED_LAYOUT);
 }
 
 main().catch((err) => {

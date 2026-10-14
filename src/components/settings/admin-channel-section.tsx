@@ -48,8 +48,11 @@ export function AdminChannelSettings({ orgId, lang }: { orgId: string; lang: Lan
     return next;
   }, [orgId]);
 
+  // The saved mode becomes the pick only if the organiser has not picked
+  // yet: a load that lands late (React runs this twice in development,
+  // and a busy server answers slowly) must not undo a choice on screen.
   useEffect(() => {
-    refresh().then((st) => st && setPicked(st.mode));
+    refresh().then((st) => st && setPicked((prev) => prev ?? st.mode));
   }, [refresh]);
 
   // Poll while a code is on screen and no group is linked yet.

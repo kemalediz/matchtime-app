@@ -23,7 +23,7 @@ import { selectRegistrationMatch } from "./registration-match-select";
 import { displayNames } from "./match-graphics-layout";
 import type { GraphicTarget } from "./graphic-token";
 
-interface GraphicBase {
+export interface GraphicBase {
   clubName: string;
   lang: Lang;
   matchDate: Date;

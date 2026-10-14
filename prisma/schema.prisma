@@ -524,6 +524,7 @@ model Organisation {
   squadMonths        SquadMonth[]
   squadCredits       SquadCredit[]
   graphicsTemplate   ClubGraphicsTemplate?
+  graphicsChoice     ClubGraphicsChoice?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2638,15 +2639,61 @@ model SquadCredit {
 /// carries the club's branding. Seeded by
 /// `scripts/seed-club-graphics-template.ts`.
 /// Migration: prisma/migrations/20261014170000_club_graphics_template.
+///
+/// The "Posters" card (2026-10-14, migration
+/// 20261014190000_club_graphics_designs) adds: `kind` ("measured", the
+/// above, made by MatchTime; or "background", a picture an owner uploaded
+/// on /admin/settings, on which the default board is drawn), and `shared`
+/// with a `displayName`, set by the platform owner on /admin/clubs, which
+/// lets other clubs pick the template (drawn with their own name, its
+/// brand area covered). See src/lib/club-graphics-choice.ts.
 model ClubGraphicsTemplate {
-  orgId     String       @id
-  org       Organisation @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  orgId       String       @id
+  org         Organisation @relation(fields: [orgId], references: [id], onDelete: Cascade)
   /// The background: JPEG or PNG bytes.
-  image     Bytes
+  image       Bytes
   /// "image/jpeg" or "image/png".
-  mimeType  String
-  /// A `ClubGraphicsLayout` (src/lib/club-graphics-layout.ts), checked when read.
-  layout    Json
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
+  mimeType    String
+  /// "measured": a `ClubGraphicsLayout` (src/lib/club-graphics-layout.ts), checked when read.
+  /// "background": { width, height } of the stored picture.
+  layout      Json
+  /// "measured" | "background".
+  kind        String       @default("measured")
+  /// Other clubs may pick it. Only the platform owner sets this.
+  shared      Boolean      @default(false)
+  /// What other clubs see it called. Never the club's own name.
+  displayName String?
+  /// The variant drawn for OTHER clubs when it is shared: the same board
+  /// with the club's branding painted out, and its layout (with a
+  /// `brandArea` for the picking club's name). Null: other clubs get
+  /// `image` itself, its `brandArea` covered if it has one. The club's own
+  /// graphics always use `image`. FNF's "Floodlights" is built by
+  /// scripts/build-fnf-graphics-template.ts.
+  sharedImage    Bytes?
+  sharedMimeType String?
+  sharedLayout   Json?
+  pickedBy    ClubGraphicsChoice[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([shared])
+}
+
+/// Which design a club's list poster and team sheet are drawn in
+/// (2026-10-14, the "Posters" card). No row: the club's own template when
+/// it has one, else the default. `design`: "matchtime" | "own" | "shared";
+/// for "shared", `sharedFromOrgId` is the template's club, set to null if
+/// that template is deleted (the club then falls back to its own, then the
+/// default). Rules: src/lib/club-graphics-choice.ts.
+model ClubGraphicsChoice {
+  orgId           String                @id
+  org             Organisation          @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  design          String
+  sharedFromOrgId String?
+  sharedFrom      ClubGraphicsTemplate? @relation(fields: [sharedFromOrgId], references: [orgId], onDelete: SetNull)
+  updatedById     String?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  @@index([sharedFromOrgId])
 }

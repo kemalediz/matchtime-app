@@ -21,7 +21,9 @@
  *   - `squadHeader`: the band the list poster lays over the two team
  *     headers, a gradient from one team colour to the other with the
  *     squad word across it, with `keep` boxes (the shirts) put back on top;
- *   - `reserves`: the one line under the board for the bench.
+ *   - `reserves`: the one line under the board for the bench;
+ *   - `brandArea` (optional, 2026-10-14): the club's own logo or name,
+ *     covered when a shared template is drawn for another club.
  *
  * THE RULES (`templateChoice`): the team sheet uses the template only when
  * both teams have exactly as many players as it has rows; the list poster
@@ -65,6 +67,30 @@ const layoutSchema = z
       keep: z.array(box).max(4),
     }),
     reserves: z.object({ centreX: px, centreY: px, fontSize: size, colour: hex, maxWidth: px }),
+    /**
+     * Where the template carries its own club's branding (a logo, a
+     * name). Optional. When the template is SHARED and drawn for another
+     * club, this box is covered with `fill` (none: the image it belongs
+     * to has the branding painted out already, e.g. FNF's "Floodlights"
+     * variant) and the picking club's name is drawn in it in `colour`,
+     * centred on `nameCentreY` (default: the box's middle), with an
+     * optional `subtitle` line under it, "<WEEKDAY> NIGHT FOOTBALL", spaced
+     * out (`club-graphics-render.tsx`). Drawn for its own club it is left
+     * alone. A shared template without one is offered as it is.
+     */
+    brandArea: z
+      .object({
+        x: px,
+        y: px,
+        width: px,
+        height: px,
+        fill: hex.optional(),
+        colour: hex,
+        maxFontSize: size,
+        nameCentreY: px.optional(),
+        subtitle: z.object({ centreY: px, fontSize: size, colour: hex, letterSpacing: z.number().finite().min(0).max(40) }).optional(),
+      })
+      .optional(),
   })
   .refine((l) => l.name.minFontSize <= l.name.maxFontSize);
 
@@ -149,6 +175,21 @@ export function templateTimeLabel(lang: Lang | string | null | undefined, d: Dat
   if (normaliseLang(lang) === "tr") return formatLondon(d, "HH:mm");
   const minutes = formatLondon(d, "mm");
   return formatLondon(d, minutes === "00" ? "haaa" : "h:mmaaa");
+}
+
+/**
+ * The line under the picking club's name in a shared template's brand
+ * area: "TUESDAY NIGHT FOOTBALL" for a kickoff from 17:00 London,
+ * "SUNDAY FOOTBALL" before; "SALI AKŞAMI FUTBOLU" / "PAZAR FUTBOLU".
+ */
+export function brandSubtitleLabel(lang: Lang | string | null | undefined, d: Date): string {
+  const night = Number(formatLondon(d, "H")) >= 17;
+  if (normaliseLang(lang) === "tr") {
+    const day = formatLondon(d, "EEEE", trLocale).toLocaleUpperCase("tr");
+    return night ? `${day} AKŞAMI FUTBOLU` : `${day} FUTBOLU`;
+  }
+  const day = formatLondon(d, "EEEE").toUpperCase();
+  return night ? `${day} NIGHT FOOTBALL` : `${day} FOOTBALL`;
 }
 
 /**

@@ -20,6 +20,7 @@ import { FEATURE_INFO } from "@/lib/info-copy";
 import { LearnedSetupPanel } from "@/components/settings/learned-setup-panel";
 import { MonthlySquadSection, type MonthlySquadData } from "@/components/settings/monthly-squad-section";
 import { GoLiveBanner, type GoLiveSetup } from "@/components/settings/go-live-banner";
+import { PostersCard } from "@/components/settings/posters-card";
 
 type FeatureKey = ToggleableKey;
 
@@ -355,6 +356,12 @@ export default function SettingsPage() {
           onLive={markLive}
         />
       )}
+
+      {/* Posters (2026-10-14): right under the Go live banner while the
+          club is setting up, so the owner sees the poster before GO; for
+          a live club, after the weekly routine. Owner and admin only: the
+          card renders nothing for anyone else. */}
+      {goLiveSetup && <PostersCard club={org.name} language={org.language} />}
 
       {/* F3: what MatchTime set up from the group chat (nothing for a club never read). */}
       {org.inviteCode && <LearnedSetupPanel orgId={org.id} language={org.language} />}
@@ -717,6 +724,8 @@ export default function SettingsPage() {
           </section>
         );
       })()}
+
+      {!goLiveSetup && <PostersCard club={org.name} language={org.language} />}
 
       {/* Monthly squad (2026-10-05, slice 2). Admins only (the API sends
           `monthlySquad` to nobody else). Off by default: a weekly club

@@ -25,6 +25,7 @@ import { notFound, redirect } from "next/navigation";
 import { DecideButtons, GoLiveNowButton, LeaveButton, TurnOffButton } from "./club-buttons";
 import { loadSetupStatuses, type SetupMessageState } from "@/lib/club-setup";
 import { PlanControl, StartFreeMonthButton } from "./billing-controls";
+import { TemplateSharingControl } from "./graphics-template-controls";
 import { loadClubBillingSnapshot } from "@/lib/club-billing";
 import { billingTotals, isBillingEnabled, planPricePence } from "@/lib/club-billing-rules";
 import { moneyLabel, ownerChargeDateLabel, ownerLastMonthLabel, ownerThisMonthLabel } from "@/lib/club-billing-view";
@@ -389,6 +390,19 @@ export default async function ClubsPage() {
     })),
   );
 
+  // Poster designs (2026-10-14): every club's own template, ANY club (not
+  // only self-join ones), with the sharing switch. Meta only, never the
+  // image. Empty, not an error, before the 20261014190000 migration.
+  const templates = await db.clubGraphicsTemplate
+    .findMany({
+      orderBy: { createdAt: "asc" },
+      select: { orgId: true, kind: true, shared: true, displayName: true, updatedAt: true, org: { select: { name: true } }, _count: { select: { pickedBy: true } } },
+    })
+    .catch((err: unknown) => {
+      console.error(`[graphics] /admin/clubs templates read failed: ${err instanceof Error ? err.message.slice(0, 120) : "unknown"}`);
+      return [];
+    });
+
   const leaveJobs = unsolicited.length
     ? await db.platformJob.findMany({
         where: { kind: "leave-group", groupId: { in: unsolicited.map((u) => u.groupId) } },
@@ -649,6 +663,37 @@ export default async function ClubsPage() {
           )}
         </Section>
       </div>
+
+      <Section
+        id="posters"
+        info="clubs_posters"
+        lang={lang}
+        title="Poster designs"
+        lead="Clubs with their own poster template. Shared ones can be picked by every other club, drawn with that club's name. Ask the club first."
+      >
+        {templates.length === 0 ? (
+          <Empty>No club has its own poster template.</Empty>
+        ) : (
+          <ul className="space-y-2">
+            {templates.map((tpl) => (
+              <li
+                key={tpl.orgId}
+                data-testid="poster-template"
+                className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-3 text-sm"
+              >
+                <span className="text-slate-700">
+                  {tpl.org.name}{" "}
+                  <span className="text-slate-500">
+                    {tpl.kind === "background" ? "uploaded background" : "made by MatchTime"}, updated {when(tpl.updatedAt)}
+                    {tpl._count.pickedBy > 0 ? `, picked by ${tpl._count.pickedBy} club${tpl._count.pickedBy === 1 ? "" : "s"}` : ""}
+                  </span>
+                </span>
+                <TemplateSharingControl orgId={tpl.orgId} club={tpl.org.name} shared={tpl.shared} displayName={tpl.displayName} />
+              </li>
+            ))}
+          </ul>
+        )}
+      </Section>
 
       <Section id="limits" info="clubs_limits" lang={lang} title="Today's site limits" lead="London day. They reset at midnight.">
         <ul className="grid gap-2 text-sm text-slate-700 sm:grid-cols-3" data-testid="site-limits">
