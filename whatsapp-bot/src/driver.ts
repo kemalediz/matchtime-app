@@ -296,6 +296,14 @@ export interface WaDriver {
   ): Promise<unknown>;
 
   /**
+   * Post a PNG with a caption (2026-10-14): a club's list poster or team
+   * sheet, in its admin group (`graphic-fetch.ts`, scheduler.ts). Resolves
+   * to the library's send result, like `sendText`. MAY THROW, as every
+   * send may: the scheduler logs it and does not retry.
+   */
+  sendImage(chatId: string, png: Buffer, caption: string): Promise<unknown>;
+
+  /**
    * Place `emoji` on the message with `waMessageId`, from the id alone.
    *
    * Never throws: every failure is a named `ReactionOutcome` reason, which

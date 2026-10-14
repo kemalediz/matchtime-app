@@ -96,6 +96,10 @@ export function postabilityGate<T extends WaDriver>(driver: T, opts: { log?: (li
       check(chatId, "sendPoll");
       return driver.sendPoll(chatId, question, options, multi);
     },
+    sendImage: async (chatId: string, png: Buffer, caption: string) => {
+      check(chatId, "sendImage");
+      return driver.sendImage(chatId, png, caption);
+    },
     replyTo: async (msg: Parameters<WaDriver["replyTo"]>[0], text: string) => {
       check(chatOf(msg), "replyTo");
       return driver.replyTo(msg, text);

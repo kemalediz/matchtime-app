@@ -40,7 +40,7 @@
  */
 import pkg from "whatsapp-web.js";
 import type { Client, Message } from "whatsapp-web.js";
-const { Client: WwebClient, LocalAuth, Poll } = pkg;
+const { Client: WwebClient, LocalAuth, Poll, MessageMedia } = pkg;
 import qrcode from "qrcode-terminal";
 import type {
   DmChatRef,
@@ -240,6 +240,13 @@ export function makeWwebjsDriver(client: WwebjsClientLike): WaDriver {
         allowMultipleAnswers,
       } as ConstructorParameters<typeof Poll>[2]);
       return client.sendMessage(chatId, poll);
+    },
+
+    // A list poster or team sheet (2026-10-14). Baileys is the live driver;
+    // this keeps the interface whole for a rollback.
+    sendImage(chatId, png, caption) {
+      const media = new MessageMedia("image/png", png.toString("base64"), "graphic.png");
+      return client.sendMessage(chatId, media, { caption });
     },
 
     sendReaction(waMessageId, emoji) {

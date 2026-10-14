@@ -130,6 +130,9 @@ export type DueInstruction =
       groupId: string;
       text: string;
       matchId?: string;
+      /** A list poster or team sheet (2026-10-14): fetch this signed PNG
+       *  from our own server and post it with `text` as its caption. */
+      imageUrl?: string;
     };
 
 /**
