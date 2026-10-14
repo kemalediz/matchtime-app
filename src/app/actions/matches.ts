@@ -18,6 +18,9 @@ import {
   renderKickoffMoveLine,
 } from "@/lib/format-switch-time";
 import { findCarryOverSource, seedRollingSquad } from "@/lib/rolling-squad";
+import { organisersAnnounce } from "@/lib/list-announcer";
+import { buildOrganiserRelay } from "@/lib/organisers-list-copy";
+import { sendAdminNotice } from "@/lib/admin-channel";
 
 /**
  * Switch a match's format by swapping its `activityId` to another activity
@@ -42,7 +45,7 @@ export async function switchMatchFormat(matchId: string, newActivityId: string) 
 
   const match = await db.match.findUnique({
     where: { id: matchId },
-    include: { activity: { include: { sport: true, org: { select: { language: true } } } } },
+    include: { activity: { include: { sport: true, org: { select: { language: true, listAnnouncer: true } } } } },
   });
   if (!match) throw new Error("Match not found");
 
@@ -151,21 +154,29 @@ export async function switchMatchFormat(matchId: string, newActivityId: string) 
   // switch moves it, say so in the same message. Empty when it didn't.
   const kickoffLine = renderKickoffMoveLine(schedule, lang);
 
-  await db.botJob.create({
-    data: {
-      orgId: match.activity.orgId,
-      kind: "group",
-      // The words live in `group-copy.ts` (pure, golden-pinned).
-      text: buildFormatSwitchAnnouncement({
-        sportName: newActivity.sport.name,
-        maxPlayers: newMaxPlayers,
-        kickoffLine,
-        playing: fresh.map((a) => a.user.name),
-        bench: benchList.map((a) => a.user.name),
-        lang,
-      }),
-    },
+  // The words live in `group-copy.ts` (pure, golden-pinned).
+  const announcement = buildFormatSwitchAnnouncement({
+    sportName: newActivity.sport.name,
+    maxPlayers: newMaxPlayers,
+    kickoffLine,
+    playing: fresh.map((a) => a.user.name),
+    bench: benchList.map((a) => a.user.name),
+    lang,
   });
+  // The club's organisers announce the list (2026-10-14, list-announcer.ts):
+  // the post lists who is playing, so it goes to them, and they tell the
+  // players. Same words, with a lead saying it was not posted in the group.
+  if (organisersAnnounce(match.activity.org)) {
+    await sendAdminNotice({ orgId: match.activity.orgId, text: buildOrganiserRelay(announcement, lang) });
+  } else {
+    await db.botJob.create({
+      data: {
+        orgId: match.activity.orgId,
+        kind: "group",
+        text: announcement,
+      },
+    });
+  }
 
   revalidatePath(`/matches/${matchId}`);
   revalidatePath(`/admin/matches/${matchId}/teams`);

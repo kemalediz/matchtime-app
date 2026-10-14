@@ -10,6 +10,7 @@ import { loadBillingCard } from "@/lib/club-billing";
 import { billingUiEnabledForRequest } from "@/lib/billing-flag";
 import { normaliseCreditRule, normaliseSquadMode } from "@/lib/squad-month-rules";
 import { loadClubSetupView } from "@/lib/club-setup";
+import { normaliseListAnnouncer } from "@/lib/list-announcer";
 import { NextResponse } from "next/server";
 
 export async function GET() {
@@ -134,6 +135,8 @@ export async function GET() {
       // Slice 2b: who fills an open place, and the fallback.
       benchPickMode: normaliseBenchPickMode(org.benchPickMode),
       benchPickFallback: normaliseBenchPickFallback(org.benchPickFallback),
+      // 2026-10-14: who announces the list and teams.
+      listAnnouncer: normaliseListAnnouncer(org.listAnnouncer),
     },
     billing,
     // "Monthly squad" (2026-10-05, slice 2). "weekly" for every club that

@@ -7,6 +7,7 @@
  */
 import { db } from "./db";
 import { getOrgFeatures } from "./org-features";
+import { organisersAnnounce } from "./list-announcer";
 import {
   buildOutOfBandAttendanceLine,
   shouldAnnounceAttendanceChange,
@@ -59,6 +60,10 @@ export async function announceOutOfBandAttendance(
   // 2. A MoM/ratings-only org has no squad to report a count for.
   const features = await getOrgFeatures(orgId);
   if (!features.attendance) return { announced: false, reason: "attendance-off" };
+  // 2b. The club's organisers announce the list (2026-10-14,
+  //     list-announcer.ts): MatchTime never names who is in in the
+  //     players' group. Their squad updates come from the scheduler.
+  if (organisersAnnounce(features)) return { announced: false, reason: "organisers-announce" };
 
   // 3. Spam guard — see MAX_OUT_OF_BAND_ANNOUNCEMENTS_PER_HOUR.
   const recent = await db.sentNotification.count({

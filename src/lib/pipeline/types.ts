@@ -792,6 +792,11 @@ export interface SquadState {
      *  Optional so every state fixture that predates it keeps its shape;
      *  absent means "first-come". */
     benchPickMode?: "first-come" | "organiser";
+    /** Who announces the list and teams (2026-10-14, list-announcer.ts).
+     *  "organisers": the composer never posts the squad or a team sheet
+     *  in the players' group. Optional so every fixture that predates it
+     *  keeps its shape; absent means "matchtime". */
+    listAnnouncer?: "matchtime" | "organisers";
   };
   /**
    * RECLAIMS (slice 2b, 2026-10-01): players whose last move on this

@@ -21,6 +21,7 @@ import {
 } from "@/lib/weekly-deadlines-settings";
 import { saveAdminChannelChoice, type SaveAdminChannelResult } from "@/lib/admin-channel";
 import { normaliseSquadMode } from "@/lib/squad-month-rules";
+import { normaliseListAnnouncer, type ListAnnouncer } from "@/lib/list-announcer";
 
 /**
  * Today's club creation (/create-org with SELF_JOIN_ENABLED off).
@@ -489,6 +490,8 @@ export interface WeeklyRoutinePatch extends WeeklyDeadlinesPatch {
   /** Slice 2b: when nobody picks in time. */
   benchPickFallback?: "bench-offer" | "leave-empty";
   adminChannel?: { mode: string; userId: string | null };
+  /** 2026-10-14: who announces the list and teams (list-announcer.ts). */
+  listAnnouncer?: ListAnnouncer;
 }
 
 export async function setWeeklyRoutine(orgId: string, patch: WeeklyRoutinePatch) {
@@ -497,7 +500,12 @@ export async function setWeeklyRoutine(orgId: string, patch: WeeklyRoutinePatch)
   const { requireOrgAdmin } = await import("@/lib/org");
   await requireOrgAdmin(session.user.id, orgId);
 
-  const data: { rollingSquadEnabled?: boolean; benchPickMode?: string; benchPickFallback?: string } & WeeklyDeadlinesData = {};
+  const data: {
+    rollingSquadEnabled?: boolean;
+    benchPickMode?: string;
+    benchPickFallback?: string;
+    listAnnouncer?: ListAnnouncer;
+  } & WeeklyDeadlinesData = {};
   if (patch && "rollingSquad" in patch) {
     if (typeof patch.rollingSquad !== "boolean") throw new Error("rollingSquad must be true or false");
     // Monthly squad (2026-10-05): the month replaces the rolling squad, so
@@ -524,6 +532,12 @@ export async function setWeeklyRoutine(orgId: string, patch: WeeklyRoutinePatch)
     }
     data.benchPickFallback = patch.benchPickFallback;
   }
+  if (patch && "listAnnouncer" in patch) {
+    if (patch.listAnnouncer !== "matchtime" && patch.listAnnouncer !== "organisers") {
+      throw new Error('listAnnouncer must be "matchtime" or "organisers"');
+    }
+    data.listAnnouncer = patch.listAnnouncer;
+  }
   if (hasWeeklyDeadlinesPatch(patch)) {
     const deadlines = await prepareWeeklyDeadlinesPatch(orgId, patch);
     if (deadlines.error) return { ok: false as const, error: deadlines.error };
@@ -547,12 +561,13 @@ export async function setWeeklyRoutine(orgId: string, patch: WeeklyRoutinePatch)
     dropOutDeadlineTime: true,
     listPublishDay: true,
     listPublishTime: true,
+    listAnnouncer: true,
   } as const;
   // A patch with only `adminChannel` writes nothing here; the row is read
   // so the answer has the same shape either way.
   // F3: the keys the organiser saved; the learned setup never overrides them.
   const setKeys = Object.keys(patch ?? {}).filter((k) =>
-    ["rollingSquad", "benchPickMode", "benchPickFallback", "dropOutDeadline", "listPublish"].includes(k),
+    ["rollingSquad", "benchPickMode", "benchPickFallback", "dropOutDeadline", "listPublish", "listAnnouncer"].includes(k),
   );
   const row =
     Object.keys(data).length > 0
@@ -570,6 +585,7 @@ export async function setWeeklyRoutine(orgId: string, patch: WeeklyRoutinePatch)
     rollingSquad: row.rollingSquadEnabled,
     benchPickMode: normaliseBenchPickMode(row.benchPickMode),
     benchPickFallback: normaliseBenchPickFallback(row.benchPickFallback),
+    listAnnouncer: normaliseListAnnouncer(row.listAnnouncer),
     ...weeklyDeadlinesView(row),
     ...saved,
   };

@@ -185,6 +185,8 @@ import { describeEngineBatch, runAttendanceEngineBatch } from "@/lib/attendance-
 import { resolveBenchConfirmation } from "@/lib/bench-confirmation";
 import { moveNamedSlot } from "@/lib/team-slot-fill";
 import { getOrgFeatures } from "@/lib/org-features";
+import { organisersAnnounce } from "@/lib/list-announcer";
+import { organisersGroupReply } from "@/lib/organisers-list-copy";
 import {
   bindAiBudgetKey,
   claimCapReply,
@@ -510,11 +512,13 @@ async function handleAnalyzeRequest(request: Request) {
     // the group's language (Phase 2 of the multi-language design).
     // `squadMode` (monthly squad, slice 5): read once here so a club on
     // "weekly" never runs a monthly query below.
-    select: { id: true, name: true, language: true, squadMode: true },
+    // `listAnnouncer` (2026-10-14): whether the squad may be posted here.
+    select: { id: true, name: true, language: true, squadMode: true, listAnnouncer: true },
   });
   if (!org) {
     return NextResponse.json({ ok: true, ignored: "unknown-or-disabled-group", results: [] });
   }
+  const organisersMode = organisersAnnounce(org);
   bindAiBudgetKey(org.id);
 
   // Name every @-mention the roster can vouch for BEFORE anything reads a
@@ -3390,7 +3394,8 @@ async function handleAnalyzeRequest(request: Request) {
     engineBatch?.squadPostForMessageId && lateById.has(engineBatch.squadPostForMessageId)
       ? lastFreshActedId
       : (engineBatch?.squadPostForMessageId ?? null);
-  if (squadPostId) {
+  // The organisers announce the list (2026-10-14): no batch squad post.
+  if (squadPostId && !organisersMode) {
     const speaks = results.filter(
       (r) => (r.reply ?? "").length > 0 && !lateById.has(r.waMessageId),
     );
@@ -3862,6 +3867,18 @@ async function handleAnalyzeRequest(request: Request) {
     results,
     augment: augmentAnalysis,
   });
+
+  // ── The organisers announce the list (2026-10-14) ───────────────────
+  //   `Organisation.listAnnouncer = "organisers"` (list-announcer.ts): the
+  //   players' group never gets the squad from MatchTime. The composer
+  //   already says nothing about it in this mode and the batch's squad
+  //   marker is never attached (above); this is the net under every path
+  //   that can still carry one, after every merge: a bare marker becomes
+  //   silence (the reaction stands), a reply that shows the squad becomes
+  //   "The organisers will post the list." A club on "matchtime" skips it.
+  if (organisersMode) {
+    for (const r of results) r.reply = organisersGroupReply(r.reply, org.language);
+  }
 
   // ── The marker is never posted to a group ───────────────────────────
   //   The prompt asks the model to end a squad-state reply with
