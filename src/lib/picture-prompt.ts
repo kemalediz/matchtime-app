@@ -10,6 +10,11 @@
  * Model: the cheap one the setup reading uses (Haiku 4.5). It reads images,
  * and a poster is about 1,600 image tokens at most (the API scales the long
  * edge down to 1,568 px), so one reading is about half a cent.
+ *
+ * Rewritten 2026-10-14 after the first paid check read an "I'M BACK" poster
+ * (18 numbered names in two columns) as a team sheet and dropped its footer.
+ * The two shapes are now defined by structure (one list vs named sides),
+ * and both start with the date, time, venue and price found anywhere on it.
  */
 import { SETUP_LEARNING_MODEL } from "./setup-learning/prompt";
 
@@ -18,25 +23,29 @@ export const PICTURE_READING_MODEL = SETUP_LEARNING_MODEL;
 /** A poster of 18 names and a venue is about 150 tokens of text. */
 export const PICTURE_READING_MAX_TOKENS = 600;
 
-export const PICTURE_READING_SYSTEM_PROMPT = `You read one picture posted in a WhatsApp group that organises a weekly amateur football (soccer) game, and write down what it says about the game as short plain text. Your text is shown to another system as if the person who posted the picture had typed it, so copy what is on the picture faithfully and add nothing of your own.
+export const PICTURE_READING_SYSTEM_PROMPT = `You read one picture posted in a WhatsApp group that organises a weekly amateur football (soccer) game, and write down what it says about the game as short plain text. Your text is passed on as if the person who posted the picture had typed it, so copy faithfully and add nothing of your own.
 
-Answer in exactly one of these three shapes.
+First decide which of three things the picture is:
+- Poster: ONE list of players for a game. It is a Poster whether the names are numbered or not, with any design and any title (even "I'M BACK"), in any number of columns. Columns are not teams.
+- Team sheet: the players split into two or more named sides, teams or colours (TEAM 1 and TEAM 2, Bibs and Non-bibs, Red and Blue), each with its own names.
+- Not about the game: anything else, such as a meme, a tweet, a photo of people, a chat screenshot, bank or payment details, an advert.
 
-1. A poster or list for a game (the players for a date, a time, a venue, a price, a waiting list):
-Poster: <what it is for, with the day, date, time and venue as written>: 1. <name> 2. <name> ...
-Add "Reserves: ..." or "Waiting list: ..." when the picture has one, and the price when it shows one.
-
-2. A team sheet (two or more teams, sides or colours):
-Team sheet: <team name or colour>: <name>, <name>, ... <next team>: <name>, ...
-
-3. Anything else (a meme, a photo of people, a screenshot of a chat, bank or payment details, an advert):
+Then answer in exactly one of these shapes:
+Poster: <date>, <time>, <venue>, <price>: 1. <name> 2. <name> ...
+Team sheet: <date>, <time>, <venue>, <price>: <team>: <name>, <name>, ... <next team>: <name>, ...
 Not about the game
 
+In both shapes, the date, time, venue and price come first, copied from anywhere on the picture (title, header, footer, corner badges). Leave out any that are not shown; when none is shown, start straight with the names.
+On a Poster, number the names in the order shown (the picture's own numbers if it has them, otherwise each column top to bottom, left column first). Put "Reserves: ..." or "Waiting list: ..." on its own line when the picture has one.
+
+Example: a poster titled "I'M BACK" with 18 numbered names in two columns and the footer "LOCATION HARRIS MERTON | DATE 9 OCTOBER | TIME 8:30PM" is answered with all 18 names:
+Poster: 9 OCTOBER, 8:30PM, HARRIS MERTON: 1. Shehryar 2. Imz ... 18. Naim
+
 Rules:
-- Copy names exactly as they are spelled on the picture, in the order shown, including nicknames and emojis that are part of a name. Never correct, translate or guess a name; leave out a name you cannot read.
-- Keep dates, times and venues as written. Do not work out a date that is not on the picture.
-- Write the labels (Poster, Team sheet, Reserves, Waiting list) in English; keep everything copied from the picture in its own language.
-- Never copy bank details, card numbers, sort codes, account numbers, IBANs or phone numbers, even when the picture is about the game. Leave them out.
+- Copy names exactly as spelled, including nicknames and emojis that are part of a name. Never correct, translate or guess a name; leave out one you cannot read.
+- Copy dates, times, venues and prices as written. Never work out a date that is not on the picture.
+- Write the labels (Poster, Team sheet, Reserves, Waiting list, Result) in English; keep everything copied in its own language.
+- Never copy bank details, card numbers, sort codes, account numbers, IBANs or phone numbers, even on a picture about the game.
 - A result on the picture ("Team 1 5 - 3 Team 2") goes on its own line: Result: <as written>.
 - No commentary, no explanation, no markdown, at most 20 lines.`;
 
