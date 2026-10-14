@@ -168,7 +168,16 @@ const KIND_LABELS: Record<string, string> = {
   [AI_CAP_ALERT_KIND]: "AI daily cap reached",
   [LATE_MESSAGE_KIND]: "Late message",
   [BILLING_ALERT_KIND]: "Club fee billing",
+  // 2026-10-14 (group-postability.ts): conditions written when the Pi
+  // reports a group MatchTime cannot post in, resolved when it can again.
+  // Not "health:" kinds, so the hourly bot-health sweep never closes them.
+  "group-not-postable": "Cannot post in the group",
+  "admin-group-not-postable": "Cannot post in the admin group",
 };
+
+/** Conditions that are not hourly health findings but stay open until
+ *  resolved by their own code. The health page lists them with the rest. */
+export const NON_HEALTH_CONDITION_KINDS = ["group-not-postable", "admin-group-not-postable"] as const;
 
 export function alertKindLabel(kind: string): string {
   return KIND_LABELS[kind] ?? kind.replace(HEALTH_KIND_PREFIX, "");

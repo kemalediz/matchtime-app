@@ -110,6 +110,8 @@ export interface BotAddedDeps {
     discovered?: boolean;
     /** The group's description, when it has one worth sending. */
     groupDescription?: string;
+    /** Whether MatchTime can post there (2026-10-14), when the read could tell. */
+    postability?: PostabilityForServer;
   }) => Promise<BotAddedResponse | null>;
   log?: (line: string) => void;
   error?: (line: string, err?: unknown) => void;
@@ -124,6 +126,23 @@ export interface BotAddedResponse {
   language?: string;
   silent?: boolean;
   selfJoin?: string;
+}
+
+// ── Can MatchTime post there (2026-10-14) ─────────────────────────────
+
+/** What the server is told about a group's settings: three booleans. It
+ *  decides from them, with the same rule as group-postability.ts. */
+export interface PostabilityForServer {
+  announce: boolean;
+  communityAnnounce: boolean;
+  botIsAdmin: boolean;
+}
+
+/** The snapshot's reading in the server's shape, or nothing when there is none. */
+function postabilityField(snapshot: GroupSnapshot): { postability?: PostabilityForServer } {
+  const p = snapshot.postability;
+  if (!p) return {};
+  return { postability: { announce: p.announce, communityAnnounce: p.communityAnnounce, botIsAdmin: p.botIsAdmin } };
 }
 
 // ── The group description (2026-10-12) ────────────────────────────────
@@ -221,6 +240,10 @@ export async function handleGroupJoinForSelfAdd(
       (snapshot.notes.length ? ` (${snapshot.notes.join("; ")})` : ""),
   );
 
+  if (snapshot.postability) {
+    log(`[bot-added] ${gid} can MatchTime post here: ${snapshot.postability.canPost} (${snapshot.postability.reason})`);
+  }
+
   // The adder: phone and LID. Resolved AFTER the snapshot on purpose: its
   // groupMetadata read seeds every participant's LID-to-phone pair, so a
   // LID author the event could not map may map now (plan 2.3).
@@ -254,6 +277,7 @@ export async function handleGroupJoinForSelfAdd(
       })),
       enrichmentHistory: history.length > 0 ? history : undefined,
       ...(desc.send !== undefined ? { groupDescription: desc.send } : {}),
+      ...postabilityField(snapshot),
     });
   } catch (err) {
     error(`[bot-added] ${gid} server call failed:`, err);
@@ -261,6 +285,15 @@ export async function handleGroupJoinForSelfAdd(
   }
 
   if (res?.silent) deps.addSilentGroup?.(gid);
+
+  // Only admins can send there and MatchTime is not one: nothing it posts
+  // would be seen. Never an intro, never monitored; the server has told the
+  // organiser what to do (2026-10-14). Checked before the server's answer
+  // is read, so an older server handing back an intro changes nothing.
+  if (snapshot.postability && !snapshot.postability.canPost) {
+    log(`[bot-added] ${gid}: MatchTime cannot post here (${snapshot.postability.reason}); no intro, not monitored`);
+    return { kind: "silent", reason: "not-postable" };
+  }
 
   if (!res?.introText) {
     const reason = res?.ignored ?? (res?.existing ? "existing-session-mid-flow" : "no-intro");
@@ -523,6 +556,7 @@ export async function sweepForMissedSelfAdds(deps: SweepDeps): Promise<{ checked
           pushname: p.pushname ?? null,
         })),
         discovered: true,
+        ...postabilityField(snapshot),
       });
     } catch (err) {
       error(`[self-join-sweep] ${g.id} server call failed:`, err);
