@@ -3339,14 +3339,14 @@ Son adım: hangi özellikleri istiyorsunuz? Yapabildiklerimin hepsi burada:
 1. *Yoklama*: VARIM ve YOKUM mesajlarını okur, kadro listesini tutar, eksik kalınca hatırlatır.
 2. *Yedek listesi*: Kadro dolunca gelenleri yedeğe yazar; biri çıkınca açılan yeri yedeklere sorar.
 3. *Takım kurma*: İstenince dengeli iki takım kurar.
-4. *Maçın adamı*: Maçtan sonra maçın adamı oylamasını açar, kazananı duyurur.
+4. *Maçın adamı*: Kazananı grupta duyurur. Oyuncular puanlama linkinden oy verir.
 5. *Oyuncu puanları*: Her oyuncuya maçtan sonra kısa bir puanlama linki gönderir.
 6. *Hatırlatmalar*: İstenen gün oyuncuya özelden hatırlatma yazar.
 7. *İstatistik cevapları*: Geçmişle ilgili soruları cevaplar (en çok gelenler, eski maçın adamları, skorlar).
 8. *Ödeme takibi*: Kimin ödediğini takip eder, ödemeyenlere hatırlatır (isteğe bağlı).
 9. *Maç ücreti toplama*: Her maçtan sonra oyunculara ödeme linki gönderir. Bağlı bir banka hesabı gerekir.
-10. *Banka ile ödeme*: En ucuz yöntem (yaklaşık 10p). Önerilen varsayılan.
-11. *Kart ile ödeme*: Kartla ödeme (£10 için yaklaşık 35p).
+10. *Banka ile ödeme*: Linkle ödemenin en ucuz yolu: £10'luk ücrette £10.36. Önerilen varsayılan.
+11. *Kart ile ödeme*: Kart, Apple Pay ya da Google Pay: £10'luk ücrette £10.46.
 12. *Organizatöre ödeme*: Nakit ya da havale; parayı toplayan kişi alındığını onaylar. Ücret yok.
 
 İstediklerinizi yazın, örneğin "maçın adamı ve oyuncu puanları", "hepsi" ya da "ödeme hariç hepsi". Numaralarını da yazabilirsiniz: "1, 3 ve 4".
@@ -3357,14 +3357,14 @@ Hangilerini seçtiğinizi anlayamadım, istediğiniz özellikleri yazın:
 1. *Yoklama*: VARIM ve YOKUM mesajlarını okur, kadro listesini tutar, eksik kalınca hatırlatır.
 2. *Yedek listesi*: Kadro dolunca gelenleri yedeğe yazar; biri çıkınca açılan yeri yedeklere sorar.
 3. *Takım kurma*: İstenince dengeli iki takım kurar.
-4. *Maçın adamı*: Maçtan sonra maçın adamı oylamasını açar, kazananı duyurur.
+4. *Maçın adamı*: Kazananı grupta duyurur. Oyuncular puanlama linkinden oy verir.
 5. *Oyuncu puanları*: Her oyuncuya maçtan sonra kısa bir puanlama linki gönderir.
 6. *Hatırlatmalar*: İstenen gün oyuncuya özelden hatırlatma yazar.
 7. *İstatistik cevapları*: Geçmişle ilgili soruları cevaplar (en çok gelenler, eski maçın adamları, skorlar).
 8. *Ödeme takibi*: Kimin ödediğini takip eder, ödemeyenlere hatırlatır (isteğe bağlı).
 9. *Maç ücreti toplama*: Her maçtan sonra oyunculara ödeme linki gönderir. Bağlı bir banka hesabı gerekir.
-10. *Banka ile ödeme*: En ucuz yöntem (yaklaşık 10p). Önerilen varsayılan.
-11. *Kart ile ödeme*: Kartla ödeme (£10 için yaklaşık 35p).
+10. *Banka ile ödeme*: Linkle ödemenin en ucuz yolu: £10'luk ücrette £10.36. Önerilen varsayılan.
+11. *Kart ile ödeme*: Kart, Apple Pay ya da Google Pay: £10'luk ücrette £10.46.
 12. *Organizatöre ödeme*: Nakit ya da havale; parayı toplayan kişi alındığını onaylar. Ücret yok.
 
 İstediklerinizi yazın, örneğin "maçın adamı ve oyuncu puanları", "hepsi" ya da "ödeme hariç hepsi". Numaralarını da yazabilirsiniz: "1, 3 ve 4".

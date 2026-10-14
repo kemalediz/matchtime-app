@@ -75,6 +75,7 @@
 import type { Strings } from "./t";
 import { joinList } from "./text";
 import { firstMonthsFree } from "./free-period";
+import { totalOnTenPounds } from "../payments";
 import type { StatsPeriod } from "../pipeline/types";
 import type { BadgeKey } from "../badge-rules";
 
@@ -1479,14 +1480,14 @@ export const tr: Strings = {
       attendance: "VARIM ve YOKUM mesajlarını okur, kadro listesini tutar, eksik kalınca hatırlatır.",
       bench: "Kadro dolunca gelenleri yedeğe yazar; biri çıkınca açılan yeri yedeklere sorar.",
       teamBalancing: "İstenince dengeli iki takım kurar.",
-      momVoting: "Maçtan sonra maçın adamı oylamasını açar, kazananı duyurur.",
+      momVoting: "Kazananı grupta duyurur. Oyuncular puanlama linkinden oy verir.",
       playerRating: "Her oyuncuya maçtan sonra kısa bir puanlama linki gönderir.",
       reminders: "İstenen gün oyuncuya özelden hatırlatma yazar.",
       statsQa: "Geçmişle ilgili soruları cevaplar (en çok gelenler, eski maçın adamları, skorlar).",
       paymentTracking: "Kimin ödediğini takip eder, ödemeyenlere hatırlatır (isteğe bağlı).",
       paymentCollection: "Her maçtan sonra oyunculara ödeme linki gönderir. Bağlı bir banka hesabı gerekir.",
-      payByBank: "En ucuz yöntem (yaklaşık 10p). Önerilen varsayılan.",
-      payCard: "Kartla ödeme (£10 için yaklaşık 35p).",
+      payByBank: `Linkle ödemenin en ucuz yolu: £10'luk ücrette ${totalOnTenPounds("pay_by_bank")}. Önerilen varsayılan.`,
+      payCard: `Kart, Apple Pay ya da Google Pay: £10'luk ücrette ${totalOnTenPounds("card")}.`,
       payDirect: "Nakit ya da havale; parayı toplayan kişi alındığını onaylar. Ücret yok.",
     })[p.key] ?? p.englishBlurb,
 
@@ -3280,7 +3281,7 @@ export const tr: Strings = {
   gp_saved: "Tasarım kaydedildi. MatchTime bundan sonra bunu kullanır.",
   gp_save_failed: "Kaydedilemedi. Lütfen yeniden deneyin.",
   gp_upload_heading: "Kendi arka planınız",
-  gp_upload_blurb: "Dikey bir resim (eni boyundan kısa), JPEG, PNG ya da WebP, en fazla 4 MB. MatchTime kendi panosunu üstüne çizer.",
+  gp_upload_blurb: "Dikey ya da kare bir resim (eni boyundan uzun olmamalı), en az 540 x 675 piksel, JPEG, PNG ya da WebP, en fazla 4 MB. MatchTime kendi panosunu üstüne çizer.",
   gp_upload_button: "Arka plan yükle",
   gp_upload_replace: "Yeni arka plan yükle",
   gp_uploading: "Yükleniyor",
@@ -3296,6 +3297,82 @@ export const tr: Strings = {
   gp_problem_not_portrait: "Bu resmin eni boyundan uzun. Lütfen dikey bir resim kullanın.",
   gp_problem_made_by_matchtime: "Kulübünüzün tasarımını MatchTime hazırladı. Değiştirmek için MatchTime'a yazın.",
   gp_problem_failed: "Bir şeyler ters gitti. Lütfen yeniden deneyin.",
+
+  // ── /admin/settings: sayfanın kendi kelimeleri (2026-10-15). ──
+  st_loading: "Yükleniyor…",
+  st_not_found: "Kulüp bulunamadı.",
+  st_general_title: "Genel",
+  st_org_name: "Kulüp adı",
+  st_save_name: "Adı kaydet",
+  st_saving_name: "Kaydediliyor...",
+  st_name_saved: "Ad kaydedildi",
+  st_name_save_failed: "Ad kaydedilemedi. Lütfen yeniden deneyin.",
+  st_name_editable_note: "MatchTime'ı WhatsApp grubunuza ekleyene kadar adı değiştirebilirsiniz.",
+  st_name_locked: "Ad artık buradan değiştirilemez. MatchTime bir kulübü adıyla onaylar.",
+  st_url_slug: "Web adresi (URL slug)",
+  st_members: (p) => `${p.count} üye`,
+  st_team_names_title: "Takım adları",
+  st_team_names_lead: (p) =>
+    `İki tarafın takım listelerinde, skor mesajlarında ve maç sayfalarında görünen adı. Varsayılanı (“${p.first}” ve “${p.second}”) kullanmak için kutuyu boş bırakın.`,
+  st_first_team: "Birinci takım",
+  st_second_team: "İkinci takım",
+  st_save_team_names: "Takım adlarını kaydet",
+  st_saving: "Kaydediliyor…",
+  st_team_names_saved: (p) => `Takımların adı ${p.first} ve ${p.second} olacak`,
+  st_team_names_reset: "Varsayılan takım adlarına dönüldü",
+  st_team_names_failed: "Takım adları kaydedilemedi",
+  st_language_title: "Bot dili",
+  st_language_lead: "MatchTime'ın bu grupta konuştuğu dil: grup mesajları, oyunculara ve yöneticilere özel mesajlar ve afişler.",
+  st_language_saved: (p) => `MatchTime bu grupta ${p.language} konuşacak`,
+  st_language_failed: "Dil kaydedilemedi",
+  st_invite_title: "Davet bağlantısı",
+  st_invite_lead: "Oyuncuların kulübünüze katılması için bu bağlantıyı paylaşın.",
+  st_copy: "Kopyala",
+  st_invite_copied: "Davet bağlantısı kopyalandı!",
+  st_features_title: "Bot özellikleri",
+  st_features_lead:
+    "Özellikleri tek tek açın ya da kapatın. Bir grup yalnızca istediği kısımları kullanabilir, örneğin sadece maçın adamı ve oyuncu puanları. Değişiklikler botun bir sonraki turunda geçerli olur.",
+  st_switch_enable: "Açmak için tıklayın",
+  st_switch_disable: "Kapatmak için tıklayın",
+  st_feature_on: (p) => `${p.label} açık`,
+  st_feature_off: (p) => `${p.label} kapalı`,
+  st_save_failed: "Kaydedilemedi",
+  st_bank_title: "Para toplayan kişinin bankası",
+  st_collector: "Para toplayan kişi",
+  st_choose_member: "Bir üye seçin…",
+  st_unnamed: "Adsız",
+  st_collector_help:
+    "Her maçtan sonra “kişi başı ne kadar?” sorusunu alır, “doğrudan ödeyeceğim” bildirimlerini onaylar ve kartla yapılan ödemeler onun bağlı bankasına yatar. Yalnızca telefon numarası olan üyeler listelenir.",
+  st_collector_saved: (p) => `Para toplayan kişi: ${p.name}`,
+  st_collector_that_member: "o üye",
+  st_collector_failed: "Para toplayan kişi değiştirilemedi",
+  st_bank_lead:
+    "Kartla yapılan ödemeler Stripe üzerinden doğrudan para toplayan kişinin bankasına gider. Bir kez bağlayın, gerisini Stripe halleder. (“Doğrudan ödeme” için banka gerekmez.)",
+  st_bank_stripe_help:
+    "Stripe sizden birkaç kimlik bilgisini onaylamanızı ve banka hesabınızı eklemenizi ister. Sorulduğunda Individual'ı seçin; işletme bilgileri sizin için doldurulmuştur. Yaklaşık 2 dakika sürer.",
+  st_bank_connected: "Banka bağlı, ödeme almaya hazır",
+  st_bank_not_finished: "Kurulum henüz bitmedi",
+  st_manage_bank: "Bankayı ve ödemeleri yönet",
+  st_disconnect: "Bağlantıyı kes ve baştan başla",
+  st_disconnecting: "Bağlantı kesiliyor…",
+  st_connect_bank: "Bankayı bağla",
+  st_finish_bank: "Banka kurulumunu bitir",
+  st_opening_stripe: "Stripe açılıyor…",
+  st_refresh_status: "Durumu yenile",
+  st_start_over: "Baştan başla",
+  st_resetting: "Sıfırlanıyor…",
+  st_bank_reset_confirm:
+    "Yeni bir hesap bağlayabilmek için mevcut Stripe hesabının bağlantısı kesilsin mi?\n\nBu yalnızca MatchTime'daki bağlantıyı kaldırır. Daha önce alınmış ödemeler etkilenmez. Banka kurulumunu yeniden yapmanız gerekir.",
+  st_bank_reset_done: "Bağlantı kesildi. Yeni bir hesap kurmak için “Bankayı bağla”ya dokunun",
+  st_bank_start_failed: "Banka bağlantısı başlatılamadı",
+  st_bank_refresh_failed: "Yenilenemedi",
+  st_bank_open_failed: "Banka paneli açılamadı",
+  st_bank_reset_failed: "Sıfırlanamadı",
+  st_wa_title: "WhatsApp botu",
+  st_wa_enabled: "Açık",
+  st_wa_disabled: "Kapalı",
+  st_wa_group_id: "WhatsApp grup kimliği",
+  st_wa_managed: "Bot ayarlarını MatchTime yönetir. Açmak ya da yeniden ayarlamak için yöneticinizle iletişime geçin.",
 };
 
 /**

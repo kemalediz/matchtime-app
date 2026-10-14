@@ -146,7 +146,7 @@ test("/admin/settings: every section and every feature switch (EN and TR)", asyn
   // A Turkish club reads the popups in Turkish.
   await db.run(`UPDATE "Organisation" SET language = 'tr' WHERE id = $1`, [ORG_ID]);
   await page.reload();
-  await page.getByRole("button", { name: "Katılım takibi nedir?" }).click({ timeout: 30_000 });
+  await page.getByRole("button", { name: "Yoklama nedir?" }).click({ timeout: 30_000 });
   await expect(page.getByRole("dialog")).toContainText("VARIM ve YOKUM");
   await page.getByRole("button", { name: "Kapat" }).click();
   await db.run(`UPDATE "Organisation" SET language = 'en' WHERE id = $1`, [ORG_ID]);

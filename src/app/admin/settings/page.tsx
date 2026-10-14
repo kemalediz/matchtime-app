@@ -16,6 +16,7 @@ import { ListAnnouncerRow } from "@/components/settings/list-announcer-row";
 import { BillingSettingsCard, type BillingCardData } from "@/components/settings/billing-card";
 import { SectionInfo } from "@/components/info/section-info";
 import { SettingInfo } from "@/components/info/setting-info";
+import { useOrgLang } from "@/components/info/org-lang";
 import { LearnedSetupPanel } from "@/components/settings/learned-setup-panel";
 import { MonthlySquadSection, type MonthlySquadData } from "@/components/settings/monthly-squad-section";
 import { GoLiveBanner, type GoLiveSetup } from "@/components/settings/go-live-banner";
@@ -68,6 +69,7 @@ interface OrgData {
 }
 
 export default function SettingsPage() {
+  const layoutLang = useOrgLang();
   const [org, setOrg] = useState<OrgData | null>(null);
   const [loading, setLoading] = useState(true);
   // The Go live banner (slice S5): shown when the club was setting up as
@@ -128,7 +130,7 @@ export default function SettingsPage() {
             setOrg((prev) =>
               prev ? { ...prev, stripeChargesEnabled: chargesEnabled, stripeConnected: true } : prev,
             );
-            if (chargesEnabled) toast.success("Bank connected, ready to take payments");
+            if (chargesEnabled) toast.success(t(data.language).st_bank_connected);
           } catch {
             /* non-fatal — the "Refresh status" button is the fallback */
           }
@@ -141,7 +143,7 @@ export default function SettingsPage() {
     if (!org) return;
     const link = `${window.location.origin}/join/${org.inviteCode}`;
     await navigator.clipboard.writeText(link);
-    toast.success("Invite link copied!");
+    toast.success(t(org.language).st_invite_copied);
   }
 
   // Organisation name. Editable only while the club is a draft; the
@@ -169,7 +171,7 @@ export default function SettingsPage() {
         setClubNameState({ kind: "error", message: res.error });
       }
     } catch {
-      setClubNameState({ kind: "error", message: "Couldn't save the name. Please try again." });
+      setClubNameState({ kind: "error", message: t(org.language).st_name_save_failed });
     } finally {
       submittingClubName.current = false;
       setSavingClubName(false);
@@ -189,13 +191,17 @@ export default function SettingsPage() {
       setOrg((prev) => (prev ? { ...prev, teamLabels } : prev));
       setTeamRed(teamLabels[0] ?? "");
       setTeamYellow(teamLabels[1] ?? "");
+      const st = t(org.language);
       toast.success(
         teamLabels.length
-          ? `Teams will be called ${teamLabels[0] || org.defaultTeamLabels?.[0] || "Red"} and ${teamLabels[1] || org.defaultTeamLabels?.[1] || "Yellow"}`
-          : "Back to the default team names",
+          ? st.st_team_names_saved({
+              first: teamLabels[0] || org.defaultTeamLabels?.[0] || "Red",
+              second: teamLabels[1] || org.defaultTeamLabels?.[1] || "Yellow",
+            })
+          : st.st_team_names_reset,
       );
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Couldn't save team names");
+      toast.error(e instanceof Error ? e.message : t(org.language).st_team_names_failed);
     } finally {
       setSavingTeamLabels(false);
     }
@@ -210,9 +216,9 @@ export default function SettingsPage() {
       const { language } = await setOrgLanguage(org.id, next);
       setOrg((prev) => (prev ? { ...prev, language } : prev));
       settingSaved();
-      toast.success(`MatchTime will speak ${LANG_LABELS[normaliseLang(language)]} in this group`);
+      toast.success(t(language).st_language_saved({ language: LANG_LABELS[normaliseLang(language)] }));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Couldn't save the language");
+      toast.error(e instanceof Error ? e.message : t(org.language).st_language_failed);
     } finally {
       setSavingLanguage(false);
     }
@@ -229,13 +235,20 @@ export default function SettingsPage() {
     try {
       await setOrgFeature(org.id, key, next);
       settingSaved();
-      toast.success(`${next ? "Enabled" : "Disabled"} ${key}`);
+      const st = t(org.language);
+      const label =
+        key === "badgeAnnouncements"
+          ? st.badges_feature_label
+          : key === "gearReminder"
+            ? st.gear_feature_label
+            : st.onbFeatureLabel({ key, englishLabel: (FEATURE_META.find((m) => m.key === key)?.label ?? key).replace(/^\s*↳\s*/, "") });
+      toast.success(next ? st.st_feature_on({ label }) : st.st_feature_off({ label }));
     } catch (e) {
       // Roll back on failure.
       setOrg((prev) =>
         prev ? { ...prev, features: { ...prev.features, [key]: !next } } : prev,
       );
-      toast.error(e instanceof Error ? e.message : "Failed");
+      toast.error(e instanceof Error ? e.message : t(org.language).st_save_failed);
     } finally {
       setSavingFeature(null);
     }
@@ -273,10 +286,10 @@ export default function SettingsPage() {
     try {
       const { name } = await setPaymentHolder(org.id, userId);
       settingSaved();
-      toast.success(`Money collector set to ${name ?? "that member"}`);
+      toast.success(t(org.language).st_collector_saved({ name: name ?? t(org.language).st_collector_that_member }));
     } catch (e) {
       setOrg((prev) => (prev ? { ...prev, paymentHolderId: prevId } : prev)); // roll back
-      toast.error(e instanceof Error ? e.message : "Couldn't change collector");
+      toast.error(e instanceof Error ? e.message : t(org.language).st_collector_failed);
     } finally {
       setSavingHolder(false);
     }
@@ -290,7 +303,7 @@ export default function SettingsPage() {
       const { url } = await startCollectorOnboarding(org.id);
       window.location.href = url; // Stripe-hosted onboarding
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Couldn't start bank connect");
+      toast.error(e instanceof Error ? e.message : t(org.language).st_bank_start_failed);
       setConnecting(false);
     }
   }
@@ -299,9 +312,9 @@ export default function SettingsPage() {
     try {
       const { chargesEnabled } = await refreshCollectorStatus(org.id);
       setOrg((prev) => (prev ? { ...prev, stripeChargesEnabled: chargesEnabled, stripeConnected: true } : prev));
-      toast.success(chargesEnabled ? "Bank connected, ready to take payments" : "Onboarding not finished yet");
+      toast.success(chargesEnabled ? t(org.language).st_bank_connected : t(org.language).st_bank_not_finished);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Couldn't refresh");
+      toast.error(e instanceof Error ? e.message : t(org.language).st_bank_refresh_failed);
     }
   }
   async function manageBank() {
@@ -310,32 +323,30 @@ export default function SettingsPage() {
       const { url } = await openCollectorDashboard(org.id);
       window.open(url, "_blank", "noopener,noreferrer"); // Stripe Express dashboard
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Couldn't open the bank dashboard");
+      toast.error(e instanceof Error ? e.message : t(org.language).st_bank_open_failed);
     }
   }
   const [resetting, setResetting] = useState(false);
   async function resetBank() {
     if (!org) return;
-    if (
-      !confirm(
-        "Disconnect the current Stripe account so you can connect a fresh one?\n\nThis only clears the link in MatchTime. It won't affect any payments already taken. You'll need to complete bank setup again.",
-      )
-    )
-      return;
+    if (!confirm(t(org.language).st_bank_reset_confirm)) return;
     setResetting(true);
     try {
       await resetCollectorConnect(org.id);
       setOrg((prev) => (prev ? { ...prev, stripeConnected: false, stripeChargesEnabled: false } : prev));
-      toast.success("Disconnected. Tap “Connect bank” to set up a fresh account");
+      toast.success(t(org.language).st_bank_reset_done);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Couldn't reset");
+      toast.error(e instanceof Error ? e.message : t(org.language).st_bank_reset_failed);
     } finally {
       setResetting(false);
     }
   }
 
-  if (loading) return <div className="p-10 text-center text-slate-400">Loading…</div>;
-  if (!org) return <div className="p-10 text-center text-slate-400">Organisation not found.</div>;
+  if (loading) return <div className="p-10 text-center text-slate-400">{t(layoutLang).st_loading}</div>;
+  if (!org) return <div className="p-10 text-center text-slate-400">{t(layoutLang).st_not_found}</div>;
+
+  /** The page's own words, in the club's language. */
+  const w = t(org.language);
 
   const inviteLink = `${typeof window !== "undefined" ? window.location.origin : ""}/join/${org.inviteCode}`;
 
@@ -369,7 +380,7 @@ export default function SettingsPage() {
       <section className="bg-white rounded-xl border border-slate-200 shadow-sm">
         <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
           <Settings className="w-4 h-4 text-slate-500" />
-          <h2 className="font-semibold text-slate-800">General</h2>
+          <h2 className="font-semibold text-slate-800">{w.st_general_title}</h2>
           <SectionInfo k="st_general" lang={org.language} />
         </div>
         <div className="p-6 space-y-4">
@@ -377,7 +388,7 @@ export default function SettingsPage() {
             <form onSubmit={saveClubName} className="space-y-2" data-setting="clubName">
               <div className="flex items-center gap-1">
                 <label htmlFor="org-name" className="block text-sm font-medium text-slate-700">
-                  Organisation name
+                  {w.st_org_name}
                 </label>
                 <SettingInfo k="clubName" lang={org.language} />
               </div>
@@ -399,12 +410,12 @@ export default function SettingsPage() {
                   disabled={savingClubName || clubName.trim().length < 2 || clubName.trim() === org.name}
                   className="shrink-0 inline-flex items-center justify-center px-4 h-11 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {savingClubName ? "Saving..." : "Save name"}
+                  {savingClubName ? w.st_saving_name : w.st_save_name}
                 </button>
               </div>
               {clubNameState?.kind === "saved" && (
                 <p role="status" data-testid="club-name-saved" className="text-sm text-green-700">
-                  Name saved
+                  {w.st_name_saved}
                 </p>
               )}
               {clubNameState?.kind === "error" && (
@@ -412,15 +423,13 @@ export default function SettingsPage() {
                   {clubNameState.message}
                 </p>
               )}
-              <p className="text-sm text-slate-500">
-                You can change the name until you add MatchTime to your WhatsApp group.
-              </p>
+              <p className="text-sm text-slate-500">{w.st_name_editable_note}</p>
             </form>
           ) : (
             <div data-setting="clubName">
               <div className="flex items-center gap-1 mb-1.5">
                 <label htmlFor="org-name" className="block text-sm font-medium text-slate-700">
-                  Organisation name
+                  {w.st_org_name}
                 </label>
                 <SettingInfo k="clubName" lang={org.language} />
               </div>
@@ -432,13 +441,13 @@ export default function SettingsPage() {
               />
               {org.nameEditable === false && (
                 <p data-testid="club-name-locked" className="mt-1.5 text-sm text-slate-500">
-                  The name can no longer be changed here. MatchTime approves a club by its name.
+                  {w.st_name_locked}
                 </p>
               )}
             </div>
           )}
           <div>
-            <label htmlFor="org-slug" className="block text-sm font-medium text-slate-700 mb-1.5">URL slug</label>
+            <label htmlFor="org-slug" className="block text-sm font-medium text-slate-700 mb-1.5">{w.st_url_slug}</label>
             <input
               id="org-slug"
               value={org.slug}
@@ -448,7 +457,7 @@ export default function SettingsPage() {
           </div>
           <div className="flex items-center gap-1.5 text-sm text-slate-500">
             <Users className="w-4 h-4" />
-            {org.memberCount} members
+            {w.st_members({ count: org.memberCount })}
           </div>
         </div>
       </section>
@@ -457,21 +466,18 @@ export default function SettingsPage() {
       <section className="bg-white rounded-xl border border-slate-200 shadow-sm" data-setting="teamNames">
         <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
           <Shirt className="w-4 h-4 text-slate-500" />
-          <h2 className="font-semibold text-slate-800">Team names</h2>
+          <h2 className="font-semibold text-slate-800">{w.st_team_names_title}</h2>
           <SettingInfo k="teamNames" lang={org.language} />
         </div>
         <div className="p-6 space-y-4">
           <p className="text-sm text-slate-500">
-            What the two sides are called in lineups, score messages and match
-            pages. Leave a field empty to use the default
-            (&ldquo;{org.defaultTeamLabels?.[0] ?? "Red"}&rdquo; /
-            &ldquo;{org.defaultTeamLabels?.[1] ?? "Yellow"}&rdquo;).
+            {w.st_team_names_lead({ first: org.defaultTeamLabels?.[0] ?? "Red", second: org.defaultTeamLabels?.[1] ?? "Yellow" })}
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="flex items-center gap-1.5 text-sm font-medium text-slate-700 mb-1.5">
                 <span className="h-2.5 w-2.5 rounded-full bg-red-500" />
-                First team
+                {w.st_first_team}
               </label>
               <input
                 value={teamRed}
@@ -484,7 +490,7 @@ export default function SettingsPage() {
             <div>
               <label className="flex items-center gap-1.5 text-sm font-medium text-slate-700 mb-1.5">
                 <span className="h-2.5 w-2.5 rounded-full bg-amber-400" />
-                Second team
+                {w.st_second_team}
               </label>
               <input
                 value={teamYellow}
@@ -500,7 +506,7 @@ export default function SettingsPage() {
             disabled={savingTeamLabels}
             className="inline-flex items-center gap-2 px-4 h-11 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium disabled:opacity-50"
           >
-            {savingTeamLabels ? "Saving…" : "Save team names"}
+            {savingTeamLabels ? w.st_saving : w.st_save_team_names}
           </button>
         </div>
       </section>
@@ -510,15 +516,11 @@ export default function SettingsPage() {
       <section id="bot-language" className="bg-white rounded-xl border border-slate-200 shadow-sm scroll-mt-6" data-setting="language">
         <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
           <Languages className="w-4 h-4 text-slate-500" />
-          <h2 className="font-semibold text-slate-800">Bot language</h2>
+          <h2 className="font-semibold text-slate-800">{w.st_language_title}</h2>
           <SettingInfo k="language" lang={org.language} />
         </div>
         <div className="p-6 space-y-4">
-          <p className="text-sm text-slate-500">
-            The language MatchTime speaks in this group. Turkish copy is
-            being added in stages; until a message has been translated it
-            is sent in English.
-          </p>
+          <p className="text-sm text-slate-500">{w.st_language_lead}</p>
           <select
             value={normaliseLang(org.language)}
             onChange={(e) => saveLanguage(e.target.value as Lang)}
@@ -538,13 +540,11 @@ export default function SettingsPage() {
       <section className="bg-white rounded-xl border border-slate-200 shadow-sm">
         <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
           <LinkIcon className="w-4 h-4 text-slate-500" />
-          <h2 className="font-semibold text-slate-800">Invite link</h2>
+          <h2 className="font-semibold text-slate-800">{w.st_invite_title}</h2>
           <SectionInfo k="st_invite" lang={org.language} />
         </div>
         <div className="p-6 space-y-4">
-          <p className="text-sm text-slate-500">
-            Share this link with players to join your organisation.
-          </p>
+          <p className="text-sm text-slate-500">{w.st_invite_lead}</p>
           <div className="flex items-center gap-2">
             <input
               value={inviteLink}
@@ -556,7 +556,7 @@ export default function SettingsPage() {
               className="inline-flex items-center gap-2 px-4 h-11 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-medium"
             >
               <Copy className="w-4 h-4" />
-              Copy
+              {w.st_copy}
             </button>
           </div>
         </div>
@@ -566,15 +566,11 @@ export default function SettingsPage() {
       <section className="bg-white rounded-xl border border-slate-200 shadow-sm">
         <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
           <SlidersHorizontal className="w-4 h-4 text-slate-500" />
-          <h2 className="font-semibold text-slate-800">Bot features</h2>
+          <h2 className="font-semibold text-slate-800">{w.st_features_title}</h2>
           <SectionInfo k="st_features" lang={org.language} />
         </div>
         <div className="p-6">
-          <p className="text-sm text-slate-500 mb-4">
-            Turn individual capabilities on or off. A group can run just the
-            bits it wants, e.g. only Man of the Match and player ratings.
-            Changes take effect on the bot&apos;s next cycle.
-          </p>
+          <p className="text-sm text-slate-500 mb-4">{w.st_features_lead}</p>
           <div className="divide-y divide-slate-100">
             {FEATURE_META.map((m) => {
               const key = m.key as FeatureKey;
@@ -587,10 +583,17 @@ export default function SettingsPage() {
                 >
                   <div className="min-w-0">
                     <div className="flex items-center gap-1 text-sm font-medium text-slate-800">
-                      <span>{m.label}</span>
+                      <span>
+                        {/* English keeps the menu's own label (the ↳ marks a
+                            payment method); other languages read the same
+                            words as the in-group menu. */}
+                        {normaliseLang(org.language) === "en"
+                          ? m.label
+                          : `${/^\s*↳/.test(m.label) ? "  ↳ " : ""}${w.onbFeatureLabel({ key: m.key, englishLabel: m.label })}`}
+                      </span>
                       <SettingInfo k={key} lang={org.language} />
                     </div>
-                    <p className="text-xs text-slate-500">{m.blurb}</p>
+                    <p className="text-xs text-slate-500">{w.onb_legacy_feature_blurb({ key: m.key, englishBlurb: m.blurb })}</p>
                   </div>
                   <button
                     role="switch"
@@ -600,7 +603,7 @@ export default function SettingsPage() {
                     className={`relative shrink-0 w-11 h-6 rounded-full transition-colors disabled:opacity-50 ${
                       on ? "bg-green-500" : "bg-slate-300"
                     }`}
-                    title={on ? "Click to disable" : "Click to enable"}
+                    title={on ? w.st_switch_disable : w.st_switch_enable}
                   >
                     <span
                       className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
@@ -636,7 +639,7 @@ export default function SettingsPage() {
                     className={`relative shrink-0 w-11 h-6 rounded-full transition-colors disabled:opacity-50 ${
                       on ? "bg-green-500" : "bg-slate-300"
                     }`}
-                    title={on ? "Click to disable" : "Click to enable"}
+                    title={on ? w.st_switch_disable : w.st_switch_enable}
                   >
                     <span
                       className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
@@ -671,7 +674,7 @@ export default function SettingsPage() {
                     className={`relative shrink-0 w-11 h-6 rounded-full transition-colors disabled:opacity-50 ${
                       on ? "bg-green-500" : "bg-slate-300"
                     }`}
-                    title={on ? "Click to disable" : "Click to enable"}
+                    title={on ? w.st_switch_disable : w.st_switch_enable}
                   >
                     <span
                       className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
@@ -795,14 +798,14 @@ export default function SettingsPage() {
         <section id="payments" className="bg-white rounded-xl border border-slate-200 shadow-sm scroll-mt-6" data-setting="collectorBank">
           <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
             <Landmark className="w-4 h-4 text-slate-500" />
-            <h2 className="font-semibold text-slate-800">Money collector&apos;s bank</h2>
+            <h2 className="font-semibold text-slate-800">{w.st_bank_title}</h2>
           <SettingInfo k="collectorBank" lang={org.language} />
           </div>
           <div className="p-6 space-y-4">
             {/* Who collects the money */}
             <div data-setting="moneyCollector">
               <div className="flex items-center gap-1 mb-1.5">
-                <label className="block text-sm font-medium text-slate-700">Money collector</label>
+                <label className="block text-sm font-medium text-slate-700">{w.st_collector}</label>
                 <SettingInfo k="moneyCollector" lang={org.language} />
               </div>
               <select
@@ -812,52 +815,40 @@ export default function SettingsPage() {
                 className="w-full h-11 px-3 rounded-lg border border-slate-200 bg-white text-slate-700 disabled:opacity-50"
               >
                 <option value="" disabled>
-                  Choose a member…
+                  {w.st_choose_member}
                 </option>
                 {(org.members ?? []).map((m) => (
                   <option key={m.id} value={m.id}>
-                    {m.name ?? "Unnamed"}
+                    {m.name ?? w.st_unnamed}
                   </option>
                 ))}
               </select>
-              <p className="text-xs text-slate-400 mt-1.5">
-                Gets the &ldquo;how much per player?&rdquo; prompt after each match, receives
-                &ldquo;pay you directly&rdquo; confirmations, and is whose connected bank the
-                card payouts settle to. Only members with a phone number are listed.
-              </p>
+              <p className="text-xs text-slate-400 mt-1.5">{w.st_collector_help}</p>
             </div>
 
             <hr className="border-slate-100" />
 
-            <p className="text-sm text-slate-500">
-              Card payments go straight to the money collector&apos;s bank
-              (via Stripe). Connect it once and Stripe handles the rest. (&ldquo;Pay
-              directly&rdquo; needs no bank.)
-            </p>
+            <p className="text-sm text-slate-500">{w.st_bank_lead}</p>
             {!org.stripeChargesEnabled && (
-              <p className="text-xs text-slate-400">
-                Stripe will ask you to confirm a few identity details and add your bank
-                account. Choose <span className="font-medium text-slate-500">Individual</span>{" "}
-                when asked; the business details are already filled in for you. Takes ~2 minutes.
-              </p>
+              <p className="text-xs text-slate-400">{w.st_bank_stripe_help}</p>
             )}
             {org.stripeChargesEnabled ? (
               <div className="flex flex-wrap items-center gap-3">
                 <div className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-50 text-emerald-700 text-sm font-medium">
-                  <CheckCircle2 className="w-4 h-4" /> Bank connected, ready to take payments
+                  <CheckCircle2 className="w-4 h-4" /> {w.st_bank_connected}
                 </div>
                 <button
                   onClick={manageBank}
                   className="inline-flex items-center gap-2 px-4 h-11 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-medium"
                 >
-                  <Landmark className="w-4 h-4" /> Manage bank / payouts
+                  <Landmark className="w-4 h-4" /> {w.st_manage_bank}
                 </button>
                 <button
                   onClick={resetBank}
                   disabled={resetting}
                   className="inline-flex items-center gap-2 px-4 h-11 rounded-lg border border-slate-200 bg-white hover:bg-red-50 hover:border-red-200 text-slate-600 hover:text-red-600 font-medium disabled:opacity-50"
                 >
-                  {resetting ? "Disconnecting…" : "Disconnect / start over"}
+                  {resetting ? w.st_disconnecting : w.st_disconnect}
                 </button>
               </div>
             ) : (
@@ -868,7 +859,7 @@ export default function SettingsPage() {
                   className="inline-flex items-center gap-2 px-4 h-11 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium disabled:opacity-50"
                 >
                   <Landmark className="w-4 h-4" />
-                  {connecting ? "Opening Stripe…" : org.stripeConnected ? "Finish bank setup" : "Connect bank"}
+                  {connecting ? w.st_opening_stripe : org.stripeConnected ? w.st_finish_bank : w.st_connect_bank}
                 </button>
                 {org.stripeConnected && (
                   <>
@@ -876,14 +867,14 @@ export default function SettingsPage() {
                       onClick={refreshBank}
                       className="inline-flex items-center gap-2 px-4 h-11 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-medium"
                     >
-                      Refresh status
+                      {w.st_refresh_status}
                     </button>
                     <button
                       onClick={resetBank}
                       disabled={resetting}
                       className="inline-flex items-center gap-2 px-4 h-11 rounded-lg border border-slate-200 bg-white hover:bg-red-50 hover:border-red-200 text-slate-600 hover:text-red-600 font-medium disabled:opacity-50"
                     >
-                      {resetting ? "Resetting…" : "Start over"}
+                      {resetting ? w.st_resetting : w.st_start_over}
                     </button>
                   </>
                 )}
@@ -897,7 +888,7 @@ export default function SettingsPage() {
       <section className="bg-white rounded-xl border border-slate-200 shadow-sm">
         <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
           <MessageCircle className="w-4 h-4 text-slate-500" />
-          <h2 className="font-semibold text-slate-800">WhatsApp bot</h2>
+          <h2 className="font-semibold text-slate-800">{w.st_wa_title}</h2>
           <SectionInfo
             k={org.setup?.settingUp ? (org.setup.removedFromGroup ? "st_whatsapp_removed" : "st_whatsapp_setup") : "st_whatsapp"}
             lang={org.language}
@@ -927,13 +918,13 @@ export default function SettingsPage() {
                 : "bg-slate-100 text-slate-600"
             }`}
           >
-            {org.whatsappBotEnabled ? "Enabled" : "Disabled"}
+            {org.whatsappBotEnabled ? w.st_wa_enabled : w.st_wa_disabled}
           </span>
           )}
           {org.whatsappGroupId && (
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                WhatsApp group ID
+                {w.st_wa_group_id}
               </label>
               <input
                 value={org.whatsappGroupId}
@@ -950,9 +941,7 @@ export default function SettingsPage() {
               </a>
             </p>
           ) : (
-          <p className="text-xs text-slate-500">
-            Bot configuration is managed server-side. Contact your administrator to enable or reconfigure.
-          </p>
+          <p className="text-xs text-slate-500">{w.st_wa_managed}</p>
           )}
         </div>
       </section>

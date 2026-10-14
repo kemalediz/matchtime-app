@@ -248,7 +248,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       ],
     },
     tr: {
-      title: "Katılım takibi",
+      title: "Yoklama",
       what: [
         "MatchTime WhatsApp grubunuzda VARIM ve YOKUM mesajlarını okur ve bir sonraki maçın kadrosunu tutar. Her maçı duyurur, 17:00'de kadro güncellemesi paylaşır, boş yer varken maç sabahı oyuncu arar ve başlama saatinden yaklaşık 2 saat önce son çağrıyı yapar.",
       ],
@@ -307,7 +307,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       newClubs: "Açık.",
       suits: "Çoğu zaman yerden fazla oyuncusu olan kulüpler.",
       together: [
-        "Katılım takibi açık olmalıdır.",
+        "Yoklama açık olmalıdır.",
         "Boşalan yeri kim doldurur ayarında Organizatörler seçer seçiliyse MatchTime yeri yedeklere sunmaz: yöneticilerinizden seçmelerini ister.",
       ],
     },
@@ -374,7 +374,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       ],
     },
     tr: {
-      title: "Man of the Match (maçın adamı)",
+      title: "Maçın adamı",
       what: [
         "Oyuncular Man of the Match oyunu, MatchTime'ın her maçtan sonra gönderdiği puanlama sayfasında verir. Bu düğme MatchTime'ın kazananı grupta duyurup duyurmayacağını belirler.",
         "Sonuç, oynayan herkes oy ya da puan verince 09:00 ile 21:00 arasında paylaşılır. Bazı oyuncular hiç puan vermezse maçtan 5 gün sonra, 15:00'ten itibaren paylaşılır. Oy yoksa paylaşım da yoktur.",
@@ -450,7 +450,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       together: ["The player needs a phone number on MatchTime to get the private message."],
     },
     tr: {
-      title: "Kişisel hatırlatmalar",
+      title: "Hatırlatmalar",
       what: [
         "Bir oyuncu grupta MatchTime'ı etiketleyip hatırlatma isteyebilir, örneğin \"@Match Time pazartesi bana hatırlat\". MatchTime onaylayan bir cevap yazar ve o zaman oyuncuya özel mesaj gönderir.",
       ],
@@ -529,7 +529,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       newClubs: "Kapalı. Grup sohbetiniz oyuncuların ödeme yaptığını açıkça gösteriyorsa MatchTime kulübünüz başlarken bunu açabilir; size haber verir ve geri alabilirsiniz.",
       suits: "Nakit ya da havaleyle para toplayan ve hafif bir hatırlatma isteyen kulüpler.",
       together: [
-        "Maç ücretlerini topla ayarından ayrıdır; birini ya da ikisini birden kullanabilirsiniz.",
+        "Maç ücreti toplama ayarından ayrıdır; birini ya da ikisini birden kullanabilirsiniz.",
         "Para toplayan kişi hiçbir zaman ödemeyen sayılmaz. Aylık daimi oyuncular da sayılmaz ve ayın maçları için ödeme anketi gönderilmez.",
         "İki haftalık son saat de ayarlıysa MatchTime maçtan iki gün sonra gruba bekleyen ödeme sayısını da yazar.",
         "Yönetici mesajları Her yöneticiye DM olarak ayarlıysa ödemeyenler listesi gönderilmez.",
@@ -558,10 +558,10 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       ],
     },
     tr: {
-      title: "Maç ücretlerini topla",
+      title: "Maç ücreti toplama",
       what: [
         "Her maçtan sonra MatchTime para toplayan kişiye her oyuncunun ne kadar ödeyeceğini sorar, sonra oynayan her oyuncuya ödeme için özel bir bağlantı gönderir. Hâlâ borcu olanlara maçtan sonra 6 güne kadar her gün 18:00 civarında hatırlatma gider.",
-        "Oyuncular aşağıda açık bıraktığınız yöntemlerle öder. Kartla ve Pay by Bank ile yapılan ödemeler Stripe üzerinden para toplayan kişinin kendi bankasına gider.",
+        "Oyuncular aşağıda açık bıraktığınız yöntemlerle öder. Kartla ve bankadan yapılan ödemeler Stripe üzerinden para toplayan kişinin kendi bankasına gider.",
       ],
       example: "💷 Elvin, *Salı 7'li maç* için her oyuncu ne kadar ödemeli (12 kişi oynadı)?\n\nTutarı yazman yeterli, örneğin \"kişi başı £8\" ya da \"toplam £80, bölüşülsün\". Onaylarım, sonra herkese ödeme bağlantısını gönderirim.",
       choices: [
@@ -572,7 +572,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       suits: "Sahanın parasını bir kişinin ödediği ve kimseyi kovalamadan parasını geri almak istediği kulüpler.",
       together: [
         "Bir para toplayan kişi seçin (bu açılınca aşağıda görünür). Seçilmezse MatchTime'ın ücreti soracağı kimse olmaz.",
-        "Kart ve Pay by Bank için para toplayan kişinin bankasını bağlayın. Bağlanmazsa ödeme sayfası, açıksa, yalnızca organizatöre doğrudan ödemeyi sunar.",
+        "Kart ve bankadan ödeme için para toplayan kişinin bankasını bağlayın. Bağlanmazsa ödeme sayfası, açıksa, yalnızca organizatöre doğrudan ödemeyi sunar.",
         "Para toplayan kişiye ve aylık daimi oyunculara ödeme bağlantısı gönderilmez.",
         "Ödeme takibi ayarından ayrıdır.",
       ],
@@ -596,7 +596,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       ],
     },
     tr: {
-      title: "Pay by Bank (bankadan ödeme)",
+      title: "Banka ile ödeme",
       what: [
         "Oyuncular Stripe üzerinden doğrudan banka uygulamalarından öder. Bağlantıyla ödemenin en ucuz yoludur.",
         "Para toplayan kişinin tam tutarı alması için ücretler üstüne eklenir: £10'luk bir ücrette oyuncu £10.36 öder. Bu, Stripe'ın ücretini ve MatchTime'ın %1 hizmet ücretini karşılar.",
@@ -607,7 +607,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       ],
       newClubs: "Açık.",
       together: [
-        "Yalnızca Maç ücretlerini topla açıkken ve para toplayan kişinin bankası bağlıyken kullanılır.",
+        "Yalnızca Maç ücreti toplama açıkken ve para toplayan kişinin bankası bağlıyken kullanılır.",
         "MatchTime üç ödeme yöntemini birden kapatmanızı engellemez. En az birini açık tutun, yoksa ödeme sayfası hiçbir yöntem sunamaz.",
       ],
     },
@@ -631,7 +631,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       ],
     },
     tr: {
-      title: "Kart ve Apple Pay",
+      title: "Kart ile ödeme",
       what: [
         "Oyuncular Stripe üzerinden kart, Apple Pay ya da Google Pay ile öder.",
         "Para toplayan kişinin tam tutarı alması için ücretler üstüne eklenir: £10'luk bir ücrette oyuncu £10.46 öder. Bu, Stripe'ın ücretini ve MatchTime'ın %1 hizmet ücretini karşılar.",
@@ -643,7 +643,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       newClubs: "Açık.",
       suits: "Çoğu kulüp: neredeyse her oyuncu bu yolla ödeyebilir.",
       together: [
-        "Yalnızca Maç ücretlerini topla açıkken ve para toplayan kişinin bankası bağlıyken kullanılır.",
+        "Yalnızca Maç ücreti toplama açıkken ve para toplayan kişinin bankası bağlıyken kullanılır.",
         "Üç ödeme yönteminden en az birini açık tutun.",
       ],
     },
@@ -666,7 +666,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       ],
     },
     tr: {
-      title: "Organizatöre doğrudan ödeme",
+      title: "Organizatöre ödeme",
       what: [
         "Oyuncular bunun yerine para toplayan kişiye nakit ya da havaleyle ödemeyi seçebilir. MatchTime para toplayan kişiye haber verir; para gelince o ödendi olarak işaretler. Ücret alınmaz.",
       ],
@@ -677,7 +677,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       newClubs: "Açık.",
       suits: "Bazı oyuncuların hâlâ nakit tercih ettiği kulüpler.",
       together: [
-        "Yalnızca Maç ücretlerini topla açıkken kullanılır.",
+        "Yalnızca Maç ücreti toplama açıkken kullanılır.",
         "Üç ödeme yönteminden en az birini açık tutun.",
       ],
     },
@@ -752,7 +752,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       ],
       newClubs: "Kapalı. 15 Ekim 2026'dan önce MatchTime'da olan kulüplerde açıldı, böylece onlar için hiçbir şey değişmedi.",
       suits: "Malzemeyi oyuncuların sırayla getirdiği kulüpler.",
-      together: ["Bir kadro mesajı olduğu için Katılım takibi açık olmalıdır."],
+      together: ["Bir kadro mesajı olduğu için Yoklama açık olmalıdır."],
     },
   },
 
@@ -794,7 +794,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       newClubs: "Kapalı. Grup sohbetiniz her hafta aynı kadroyu açıkça gösteriyorsa MatchTime kulübünüz başlarken bunu açabilir; size haber verir ve geri alabilirsiniz.",
       suits: "Çoğu hafta aynı oyuncuların oynadığı gruplar.",
       together: [
-        "Katılım takibi açık olmalıdır.",
+        "Yoklama açık olmalıdır.",
         "Son çıkış saati ayarlıysa ondan sonraki YOKUM yine geçerlidir ve yöneticilerinize geç olduğu bildirilir.",
         "Kadronuz aylıkken gizlenir: onun yerini ayın daimi oyuncuları alır.",
         "Listeyi organizatörler duyuruyorsa aktarılan kadro grup yerine yönetici mesajlarınıza gider.",
@@ -1320,16 +1320,16 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
     },
     tr: {
       title: "Para toplayan kişi",
-      what: ["Maç ücretlerini toplayan üye. MatchTime:"],
+      what: ["Maç ücreti toplamayan üye. MatchTime:"],
       choices: [
-        { name: "Ona sorar", text: "Maç ücretlerini topla açıkken her maçtan sonra her oyuncunun ne kadar ödeyeceğini." },
+        { name: "Ona sorar", text: "Maç ücreti toplama açıkken her maçtan sonra her oyuncunun ne kadar ödeyeceğini." },
         { name: "Ona haber verir", text: "bir oyuncu ona doğrudan ödeyeceğini söyleyince, ödendi olarak işaretleyebilsin diye." },
-        { name: "Ona öder", text: "kartla ve Pay by Bank ile yapılan ödemeler onun bağlı bankasına gider." },
+        { name: "Ona öder", text: "kartla ve bankadan yapılan ödemeler onun bağlı bankasına gider." },
         { name: "Onu dışarıda tutar", text: "ona ödeme bağlantısı gönderilmez, hatırlatma yapılmaz ve ödemeyen sayılmaz." },
       ],
       newClubs: "Kimse seçili değil.",
       together: [
-        "Bu seçici yalnızca Maç ücretlerini topla açıkken görünür. Yalnızca telefon numarası olan üyeler listelenir.",
+        "Bu seçici yalnızca Maç ücreti toplama açıkken görünür. Yalnızca telefon numarası olan üyeler listelenir.",
         "MatchTime'ın kulüp ücreti için kartla da o ilgilenir; para toplayan kişi yoksa sahip ilgilenir. Kulübünüz bu ücreti ödüyorsa MatchTime yeni para toplayan kişiye bunu bildirir.",
         "Aylık kadroda ayın ödemelerini o onaylar.",
       ],
@@ -1356,16 +1356,16 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
     tr: {
       title: "Para toplayan kişinin bankası",
       what: [
-        "Kartla ve Pay by Bank ile yapılan ödemelerin ulaşması için para toplayan kişinin banka hesabını Stripe üzerinden bir kez bağlayın. Stripe birkaç kimlik bilgisi ve banka hesabını ister. Sorulduğunda Individual'ı seçin.",
+        "Kartla ve bankadan yapılan ödemelerin ulaşması için para toplayan kişinin banka hesabını Stripe üzerinden bir kez bağlayın. Stripe birkaç kimlik bilgisi ve banka hesabını ister. Sorulduğunda Individual'ı seçin.",
       ],
       choices: [
-        { name: "Connect bank", text: "Kurulum için Stripe'ı açar. Başlanıp bitirilmediyse Finish bank setup görünür." },
-        { name: "Manage bank and payouts", text: "Ödemeleri görmek ve ödeme alınacak bankayı değiştirmek için Stripe'ı açar." },
-        { name: "Start over", text: "MatchTime'daki bağlantıyı kaldırır, böylece başka bir hesap bağlayabilirsiniz. Daha önce alınan ödemeler etkilenmez." },
+        { name: "Bankayı bağla", text: "Kurulum için Stripe'ı açar. Başlanıp bitirilmediyse Banka kurulumunu bitir görünür." },
+        { name: "Bankayı ve ödemeleri yönet", text: "Ödemeleri görmek ve ödeme alınacak bankayı değiştirmek için Stripe'ı açar." },
+        { name: "Baştan başla", text: "MatchTime'daki bağlantıyı kaldırır, böylece başka bir hesap bağlayabilirsiniz. Daha önce alınan ödemeler etkilenmez." },
       ],
       newClubs: "Bağlı değil.",
       together: [
-        "Bu bölüm yalnızca Maç ücretlerini topla açıkken görünür.",
+        "Bu bölüm yalnızca Maç ücreti toplama açıkken görünür.",
         "Organizatöre doğrudan ödeme için banka gerekmez.",
         "Bağlanınca MatchTime gruba bir kez maç ücretlerinin artık MatchTime üzerinden alındığını söyler.",
       ],

@@ -328,8 +328,11 @@ model Organisation {
   /// Per-match fee collection. The money collector is `paymentHolderId`
   /// (surfaced as "Money collector" in org setup). The three methods
   /// below are independently toggleable; at least one must stay on when
-  /// `paymentCollectionEnabled`. Surcharge-safe pricing: card is the
-  /// standard (highest) price, pay-by-bank a discount, direct = base.
+  /// `paymentCollectionEnabled` (stated, NOT enforced: all three can be
+  /// switched off). Pricing (`totalForMethod`, payments.ts): direct is the
+  /// base fee; card and pay-by-bank are grossed UP so the collector nets
+  /// the base after Stripe's fee and MatchTime's 1%. Bank costs the player
+  /// less than card, but both cost more than the base: neither is a discount.
   /// Nothing here charges anyone until Stripe is connected AND
   /// paymentCollectionEnabled is true — fully gated, additive.
   paymentCollectionEnabled Boolean @default(false)

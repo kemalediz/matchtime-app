@@ -177,6 +177,11 @@ test("phone width: a 16px gutter, scrolls inside, and dark mode is dark", async 
 test("a Turkish club reads every popup in Turkish", async ({ page, db }) => {
   await db.run(`UPDATE "Organisation" SET language = 'tr' WHERE id = $1`, [ORG_ID]);
   await openSettings(page);
+  // The page's own headings are Turkish too.
+  for (const heading of ["Genel", "Takım adları", "Bot dili", "Davet bağlantısı", "Bot özellikleri", "WhatsApp botu"]) {
+    await expect(page.getByRole("heading", { name: heading, exact: true })).toBeVisible();
+  }
+  await expect(page.getByText("added in stages")).toHaveCount(0);
   await page.getByRole("button", { name: "Listeyi ve takımları kim duyurur nedir?" }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByRole("heading", { name: "Listeyi ve takımları kim duyurur" })).toBeVisible();

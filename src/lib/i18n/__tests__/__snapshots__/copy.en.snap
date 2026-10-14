@@ -3324,14 +3324,14 @@ Last step: which features do you want? Here's everything I can do:
 1. *Attendance tracking*: Reads IN/OUT messages, keeps the squad list, chases when short.
 2. *Bench management*: Runs the bench; when someone drops, asks the next bencher to step up.
 3. *Team generation*: Builds two balanced teams on request.
-4. *Man of the Match*: Posts the MoM vote after the match and announces the winner.
+4. *Man of the Match*: Announces the winner in the group. Players vote on their rating link.
 5. *Player ratings*: DMs each player a quick post-match rating link.
 6. *Personal reminders*: "@MatchTime remind me Monday" and the bot DMs you then.
 7. *Stats answers*: Answers history questions (top attenders, past MoMs, scores).
 8. *Payment tracking*: Tracks who has paid and chases the unpaid (opt-in).
 9. *Collect match fees (Stripe)*: After each match, DM each player a link to pay. Needs a connected bank (below).
-10. *  ↳ Pay by Bank*: Cheapest method (~10p). The recommended default.
-11. *  ↳ Card / Apple Pay*: Card payments (~35p on £10).
+10. *  ↳ Pay by Bank*: Cheapest way to pay by link: £10.36 on a £10 fee. The recommended default.
+11. *  ↳ Card and Apple Pay*: Card, Apple Pay or Google Pay: £10.46 on a £10 fee.
 12. *  ↳ Pay organiser directly*: Cash/transfer; the money collector confirms receipt. No fee.
 
 Reply with the ones you want, e.g. "Man of the Match and player ratings", "everything", or "all except payments".
@@ -3342,14 +3342,14 @@ I didn't catch which ones. Reply with the features you want:
 1. *Attendance tracking*: Reads IN/OUT messages, keeps the squad list, chases when short.
 2. *Bench management*: Runs the bench; when someone drops, asks the next bencher to step up.
 3. *Team generation*: Builds two balanced teams on request.
-4. *Man of the Match*: Posts the MoM vote after the match and announces the winner.
+4. *Man of the Match*: Announces the winner in the group. Players vote on their rating link.
 5. *Player ratings*: DMs each player a quick post-match rating link.
 6. *Personal reminders*: "@MatchTime remind me Monday" and the bot DMs you then.
 7. *Stats answers*: Answers history questions (top attenders, past MoMs, scores).
 8. *Payment tracking*: Tracks who has paid and chases the unpaid (opt-in).
 9. *Collect match fees (Stripe)*: After each match, DM each player a link to pay. Needs a connected bank (below).
-10. *  ↳ Pay by Bank*: Cheapest method (~10p). The recommended default.
-11. *  ↳ Card / Apple Pay*: Card payments (~35p on £10).
+10. *  ↳ Pay by Bank*: Cheapest way to pay by link: £10.36 on a £10 fee. The recommended default.
+11. *  ↳ Card and Apple Pay*: Card, Apple Pay or Google Pay: £10.46 on a £10 fee.
 12. *  ↳ Pay organiser directly*: Cash/transfer; the money collector confirms receipt. No fee.
 
 Reply with the ones you want, e.g. "Man of the Match and player ratings", "everything", or "all except payments".
