@@ -13,6 +13,8 @@
  *   - `e2e/replay/**\/*.test.ts` — the history-replay harness's pure
  *     half: reconstruction rules, the differ, the noise floor, the
  *     sampler and the resume ledger.
+ *   - `e2e/rehearsal/**\/*.test.ts` — the club rehearsal's pure half:
+ *     the scenario parser, the clock driver, the transcript.
  * Every file runs behind `e2e/helpers/unit-model-guard.setup.ts`: no
  * model call is possible unless MT_UNIT_LIVE_LLM=1, whatever keys the
  * environment or `.env` hold.
@@ -31,6 +33,7 @@ export default defineConfig({
       "e2e/corpus/**/*.test.ts",
       "e2e/helpers/**/*.test.ts",
       "e2e/replay/**/*.test.ts",
+      "e2e/rehearsal/**/*.test.ts",
     ],
     environment: "node",
     // No unit test reaches a model unless MT_UNIT_LIVE_LLM=1. Pins every
