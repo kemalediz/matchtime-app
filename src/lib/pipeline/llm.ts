@@ -216,6 +216,12 @@ export interface ModelRequest {
    * take. The extractors ask; the router does not.
    */
   thinking?: "off";
+  /**
+   * Pictures sent before `user` in the one user turn (picture reading,
+   * 2026-10-14). Base64, in memory only. Omitted: the request is exactly
+   * what it was before this field existed (content is the plain string).
+   */
+  images?: Array<{ mediaType: "image/jpeg" | "image/png" | "image/webp"; data: string }>;
   /** Appears in logs and in the cost breakdown. */
   label: string;
 }
@@ -420,7 +426,20 @@ export function anthropicModel(opts?: {
             ...(cacheAttempted ? { cache_control: PIPELINE_CACHE_CONTROL } : {}),
           },
         ],
-        messages: [{ role: "user" as const, content: req.user }],
+        messages: [
+          {
+            role: "user" as const,
+            content: req.images?.length
+              ? [
+                  ...req.images.map((img) => ({
+                    type: "image" as const,
+                    source: { type: "base64" as const, media_type: img.mediaType, data: img.data },
+                  })),
+                  { type: "text" as const, text: req.user },
+                ]
+              : req.user,
+          },
+        ],
         ...(req.schema
           ? { output_config: { format: { type: "json_schema" as const, schema: req.schema } } }
           : {}),
