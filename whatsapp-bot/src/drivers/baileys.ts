@@ -240,6 +240,8 @@ import { createPollArchive, type PollArchive } from "../baileys/poll-store.js";
 import { createDebouncedWriter, jsonFileIO, type DebouncedWriter } from "../baileys/json-file.js";
 import { resolveBaileysConfig } from "../baileys/config.js";
 import { makeBaileysLogger } from "../baileys/logging.js";
+import type { PictureReader } from "../picture-reader.js";
+import { createLivePictureReader } from "../picture-live.js";
 
 /** The part of Baileys' `WASocket` this driver touches. */
 export interface BaileysSocketLike extends LifecycleSocket {
@@ -316,6 +318,12 @@ export interface BaileysDriverDeps {
    * ever touches the network. Defaults to the global fetch.
    */
   fetchMedia?: BundleFetch;
+  /**
+   * Picture reading (picture-reader.ts): a picture in a monitored group is
+   * handed to it instead of straight up, and it hands the message up once,
+   * with a transcript or as it was. Absent (every test): handed up as before.
+   */
+  pictures?: PictureReader | null;
   /**
    * A cancellable timer, for the undecryptable-message grace period.
    * Injected for tests; defaults to an unref'd setTimeout.
@@ -1108,6 +1116,11 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
         `media=${mapped.hasMedia} mentions=${mapped.mentionedJids.length}`,
     );
     tally(`handed up (${mapped.type})`);
+    // Picture reading: handed up by the reader, once, after it is read.
+    if (deps.pictures?.wants(view as InboundMessage)) {
+      deps.pictures.handle(view as InboundMessage, m, (v) => hand(messageHandlers, v, "onMessage"));
+      return;
+    }
     hand(messageHandlers, view as InboundMessage, "onMessage");
   }
 
@@ -2031,6 +2044,7 @@ export function createBaileysDriver(env: NodeJS.ProcessEnv = process.env): Baile
     contacts,
     pollArchive,
     flushState: () => contactsWriter?.flush(),
+    pictures: createLivePictureReader(),
   });
   return driver;
 }

@@ -428,6 +428,8 @@ export type UnpackResult =
       authors: number;
       /** True when the time budget ran out and the rest was left undecoded. */
       partial: boolean;
+      /** Pictures among the decoded entries (Phase 0 of picture reading). */
+      imageCounts: BundleImageCounts;
       rows: BundleRow[];
     }
   | { ok: false; reason: string; shapes: string[] };
@@ -642,6 +644,38 @@ export interface NoTextShape {
   count: number;
 }
 
+// ── Pictures in a bundle (picture reading, Phase 0, 2026-10-14) ──────
+// Whether WhatsApp's shared history carries pictures at all is NOT known.
+// An entry is a whole WebMessageInfo, so it CAN hold an imageMessage with
+// everything a download needs (url or directPath, and mediaKey); the one
+// open-source sender (whatsapp-rust, which mirrors WhatsApp Web) shares
+// plain `conversation` text only. These counts settle it from the next
+// real bundle: how many entries were pictures, how many carried a
+// downloadable pointer, how many had a caption (which is already kept as
+// that row's text). COUNTS ONLY: never a URL, path, key or hash.
+
+export interface BundleImageCounts {
+  images: number;
+  /** With a url or directPath AND a mediaKey: enough to download. */
+  withPointer: number;
+  captioned: number;
+}
+
+function imageFacts(m: proto.IWebMessageInfo): { pointer: boolean; captioned: boolean } | null {
+  try {
+    const content = normalizeMessageContent(currentContent(m).message ?? undefined);
+    const image = content?.imageMessage;
+    if (!image) return null;
+    const hasKey = image.mediaKey instanceof Uint8Array ? image.mediaKey.length > 0 : !!image.mediaKey;
+    return {
+      pointer: hasKey && (!!image.url || !!image.directPath),
+      captioned: typeof image.caption === "string" && image.caption.trim().length > 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
 type RowOutcome =
   | { kind: "row"; row: BundleRow; edited: boolean; rank: number }
   | { kind: "other-chat" }
@@ -777,6 +811,7 @@ export async function unpackBundle(plain: Buffer, group: string, opts: UnpackOpt
         let otherChat = 0;
         let partial = false;
         let spent = 0;
+        const imageCounts: BundleImageCounts = { images: 0, withPointer: 0, captioned: 0 };
         for (let i = chosen.length - 1; i >= 0; ) {
           const started = nowMs();
           for (let n = 0; n < DECODE_CHUNK && i >= 0; n++, i--) {
@@ -789,6 +824,12 @@ export async function unpackBundle(plain: Buffer, group: string, opts: UnpackOpt
             const m = decodeOne(decoder.decode, entry);
             if (!m) continue;
             valid++;
+            const pic = imageFacts(m);
+            if (pic) {
+              imageCounts.images++;
+              if (pic.pointer) imageCounts.withPointer++;
+              if (pic.captioned) imageCounts.captioned++;
+            }
             const got = toRow(m, group);
             if (got.kind === "other-chat") otherChat++;
             else if (got.kind === "no-text") {
@@ -854,6 +895,7 @@ export async function unpackBundle(plain: Buffer, group: string, opts: UnpackOpt
           textCut: rows.filter((r) => r.truncated).length,
           authors: new Set(rows.map((r) => r.senderJid ?? (r.fromBundleSender ? "(sharer)" : "(unknown)"))).size,
           partial,
+          imageCounts,
           rows,
         };
       }
@@ -921,6 +963,7 @@ export interface BundleReport {
   authors?: number;
   kept?: number;
   partial?: boolean;
+  imageCounts?: BundleImageCounts;
   shapes?: string[];
 }
 
@@ -1054,6 +1097,7 @@ export async function readGroupHistoryBundle(
     report.read = unpacked.read;
     report.tooLarge = unpacked.tooLarge;
     report.partial = unpacked.partial;
+    report.imageCounts = unpacked.imageCounts;
     report.valid = unpacked.valid;
     report.otherChat = unpacked.otherChat;
     report.withText = unpacked.withText;
@@ -1121,6 +1165,11 @@ export function formatBundleReport(report: BundleReport): string[] {
           // Both are left off when zero.
           (report.edited ? `; edited=${report.edited}` : "") +
           (report.noText ? `; ${noTextSummary(report.noText, report.noTextShapes)}` : "") +
+          // Picture reading, Phase 0: left off when there were none.
+          (report.imageCounts?.images
+            ? `; images=${toNumber(report.imageCounts.images)} (withPointer=${toNumber(report.imageCounts.withPointer)}, ` +
+              `captioned=${toNumber(report.imageCounts.captioned)})`
+            : "") +
           (report.partial ? "; STOPPED EARLY: the decode time budget ran out, the oldest entries were left unread" : ""),
       );
       return [parts.join("; ")];

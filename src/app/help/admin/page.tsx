@@ -1,6 +1,7 @@
 import { firstMonthsFree } from "@/lib/i18n/free-period";
 import { setupHoldEnabledForRequest } from "@/lib/setup-hold-flag";
 import { CONNECT_HOW_LONG, holdHowItWorksSentence } from "@/lib/setup-hold-public-copy";
+import { isPictureReadingEnabled } from "@/lib/picture-reading-flag";
 
 export const metadata = { title: "Organiser guide" };
 
@@ -10,6 +11,8 @@ export default async function AdminGuidePage() {
   // flag is on (src/lib/setup-hold-public-copy.ts); off, it reads as before.
   const holdOn = await setupHoldEnabledForRequest();
   const holdSentence = holdHowItWorksSentence(holdOn);
+  // Picture reading (2026-10-14): described only while it is switched on.
+  const picturesOn = isPictureReadingEnabled();
   return (
     <>
       <h2 className="!mt-0">Organiser guide</h2>
@@ -529,6 +532,20 @@ export default async function AdminGuidePage() {
         No. It only acts on In, Out and messages that tag{" "}
         <strong>@Match Time</strong>. The rest of the chat is left alone.
       </p>
+
+      {picturesOn && (
+        <>
+          <h3>Does MatchTime read pictures?</h3>
+          <p>
+            Only pictures that look like they are about the game: ones posted
+            by a club owner or admin, and ones captioned like a list, the teams
+            or a result. It reads the names, date, time and venue on a poster
+            or team sheet as if they had been typed, then the picture is
+            discarded. Only that text is kept, the same as a typed message.
+            Memes and photos from players are not read.
+          </p>
+        </>
+      )}
 
       <h3>Can I run two games from one group?</h3>
       <p>
