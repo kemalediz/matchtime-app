@@ -128,6 +128,7 @@ import {
   buildUnpaidTailText,
 } from "./scheduler-copy";
 import { organisersAnnounce } from "./list-announcer";
+import { buildProvisionalReviewNotice } from "./provisional-review-copy";
 import { buildOrganiserListUpdate, type OrganiserListReason } from "./organisers-list-copy";
 
 // All user-facing times in bot-posted messages are Europe/London wall
@@ -562,16 +563,25 @@ export async function computeDuePosts(
     const channel = provisional.length > 0 ? await getAdminChannel() : null;
     if (channel) {
       const todayKey = formatLondon(now, "yyyy-MM-dd");
-      const names = provisional
-        .map((p) => p.user.name)
-        .filter(Boolean)
-        .slice(0, 5)
-        .join(", ");
-      const more = provisional.length > 5 ? ` (+${provisional.length - 5} more)` : "";
-      const count = `${provisional.length} ${provisional.length === 1 ? "person was" : "people were"}`;
-      // Through the admin channel (slice 2a). The DM is today's text, byte
-      // for byte, with each admin's own signed-in link that names the club
-      // (2026-09-30). In an admin group: the plain URL, once.
+      // HOW EACH GOT THERE (2026-10-14). A provisional player who has a
+      // message of their own on record posted in the group; one with none
+      // was added by name (a pasted list, or someone else's message). It
+      // used to say "auto-added after posting in the group" of all of them.
+      const authored = new Set(
+        (
+          await db.analyzedMessage.findMany({
+            where: { orgId: org.id, authorUserId: { in: provisional.map((p) => p.userId) } },
+            select: { authorUserId: true },
+            distinct: ["authorUserId"],
+          })
+        ).map((r) => r.authorUserId),
+      );
+      const named = provisional.filter((p) => p.user.name);
+      const posted = named.filter((p) => authored.has(p.userId)).map((p) => p.user.name!);
+      const listed = named.filter((p) => !authored.has(p.userId)).map((p) => p.user.name!);
+      // Through the admin channel (slice 2a), each admin's own signed-in
+      // link that names the club by DM (2026-09-30); in an admin group the
+      // plain URL, once. In the club's language.
       out.push(
         ...(await adminNoticeInstructions({
           channel,
@@ -582,14 +592,14 @@ export async function computeDuePosts(
           notice: {
             nextPath: "/admin/players",
             text: (link, audience) =>
-              audience === "dm"
-                ? `✨ *New players to review*: ${count} auto-added after posting in the group:\n\n` +
-                  `${names}${more}\n\n` +
-                  `Tap to review and set phone/position/rating, or remove:\n${link}\n\n` +
-                  `Or open: ${appUrl("/admin/players")}`
-                : `✨ *New players to review*: ${count} auto-added after posting in the group:\n\n` +
-                  `${names}${more}\n\n` +
-                  `Review them and set phone, position and rating, or remove them:\n${link}`,
+              buildProvisionalReviewNotice({
+                posted,
+                listed,
+                link,
+                audience,
+                plainUrl: appUrl("/admin/players"),
+                lang: channel.language,
+              }),
           },
         })),
       );

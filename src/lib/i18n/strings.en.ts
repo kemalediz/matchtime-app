@@ -2656,6 +2656,16 @@ export const en = {
   tp_teams_set_aside: "The teams still need approving: type *teams* after this.",
   /** Under a team proposal, when a pasted list was waiting for YES. */
   tp_list_superseded: "The list pasted earlier was not applied.",
+  /** At "Teams ready" with a short squad (once per match), and the answer
+   *  to "teams" when the squad is too short to balance. "of", no slash. */
+  tp_short_squad: (p: { kickoff: string; confirmed: number; needed: number }): string =>
+    `⚠️ Not enough players to make the teams for ${p.kickoff}: ${p.confirmed} of ${p.needed} in. Add players, then type *teams*.`,
+  /** Under a proposal whose sides differ by more than an odd total needs. */
+  tp_uneven: (p: { redLabel: string; red: number; yellowLabel: string; yellow: number }): string =>
+    `⚠️ The sides are uneven: ${p.redLabel} ${p.red}, ${p.yellowLabel} ${p.yellow}. *move* a player to even them, or reply *YES* twice to keep them.`,
+  /** The answer to the first YES on uneven sides. */
+  tp_uneven_confirm: (p: { redLabel: string; red: number; yellowLabel: string; yellow: number }): string =>
+    `The sides are uneven: ${p.redLabel} ${p.red}, ${p.yellowLabel} ${p.yellow}. Reply *YES* again to make them final as they are, or *move* a player first.`,
   // Settings: "Teams ready".
   tp_settings_label: "Teams ready",
   tp_settings_blurb: "When MatchTime proposes the teams in your admin group on match day.",
@@ -4349,6 +4359,30 @@ export const en = {
   oa_list_by_organisers: "The organisers will post the list.",
   /** In the players' group, to "show the teams" when the organisers announce. */
   oa_teams_by_organisers: "The organisers will post the teams.",
+  /** To the organisers when a slot opens (compose.ts, `slot_opened`):
+   *  the players' group hears nothing. "of", never a slash. */
+  oa_slot_opened: (p: { outFirstNames: string[]; confirmed: number; maxPlayers: number; kickoffLabel: string; open: number }): string => {
+    const names = p.outFirstNames;
+    const lead =
+      names.length === 0
+        ? `A place opened for ${p.kickoffLabel}`
+        : `${joinList("en", names)} ${names.length === 1 ? "is" : "are"} out of ${p.kickoffLabel}`;
+    const open = `${p.open} ${p.open === 1 ? "place" : "places"} open`;
+    return `📋 ${lead}: ${p.confirmed} of ${p.maxPlayers} in, ${open}. MatchTime has not posted this in the players' group.`;
+  },
+  // ── The daily "New players to review" notice (provisional-review-copy.ts) ──
+  pr_header: (p: { count: number }): string =>
+    `✨ *New players to review*: ${p.count} ${p.count === 1 ? "person was" : "people were"} added automatically.`,
+  pr_posted: (p: { names: string }): string => `Posted in the group: ${p.names}`,
+  pr_listed: (p: { names: string }): string => `Added by name, from a list or someone else's message: ${p.names}`,
+  pr_more: (p: { count: number }): string => ` (+${p.count} more)`,
+  pr_tail_dm: (p: { link: string; url: string }): string =>
+    `Tap to review and set phone, position and rating, or remove:\n${p.link}\n\nOr open: ${p.url}`,
+  pr_tail_group: (p: { link: string }): string => `Review them and set phone, position and rating, or remove them:\n${p.link}`,
+  /** In the players' group, a bench claim that lost the race, without the
+   *  squad count (`bench_claim_too_late` carries one). */
+  oa_bench_claim_too_late: (p: { firstName: string }): string =>
+    `Thanks ${p.firstName} 🙏 someone got there first. You're still on the bench and first in line if another slot opens.`,
   // /admin/settings, "Weekly routine".
   wr_announce_label: "Who announces the list and teams",
   wr_announce_blurb: "MatchTime posts them in the group, or your organisers do.",

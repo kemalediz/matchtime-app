@@ -77,6 +77,7 @@ import {
   parseTeamCommand,
   resolveSheetName,
   resolveSwap,
+  unevenSides,
   type ChangeItem,
   type SheetPlayer,
   type SheetSlot,
@@ -100,6 +101,7 @@ export type TeamReplyOutcome =
   | "teams-moved"
   | "teams-name-unclear"
   | "teams-same-team"
+  | "teams-uneven"
   | "teams-final";
 
 export interface TeamReply {
@@ -216,7 +218,29 @@ function teamsText(sheet: Sheet, lang: string | null | undefined, final: boolean
   });
 }
 
+/** Too few confirmed to balance: the balancer's own minimum, two full sides. */
+const neededFor = (sheet: Sheet) => sheet.perTeam * 2;
+const isShort = (sheet: Sheet) => sheet.confirmed < neededFor(sheet);
+
+function shortSquadText(sheet: Sheet, lang: string | null | undefined): string {
+  return t(lang).tp_short_squad({ kickoff: sheet.kickoff, confirmed: sheet.confirmed, needed: neededFor(sheet) });
+}
+
+/** Players still playing on each side of the sheet. */
+function sideCounts(sheet: Sheet): { red: number; yellow: number } {
+  const n = (team: SheetTeam) => sheet.slots.filter((x) => x.team === team && x.playing).length;
+  return { red: n("RED"), yellow: n("YELLOW") };
+}
+
 // ── The proposal row ──────────────────────────────────────────────────
+
+/**
+ * The states in which the teams are the question waiting for YES:
+ * "proposed", and "uneven-asked" (the sides were uneven and the first YES
+ * was answered with a warning; the next YES makes them final). Any change
+ * reposts them and goes back to "proposed".
+ */
+const WAITING = ["proposed", "uneven-asked"];
 
 interface ProposalRow {
   id: string;
@@ -259,7 +283,7 @@ async function propose(sheet: Sheet, lang: string | null | undefined, now: Date,
  * list. Returns how many were set aside (0 or 1).
  */
 export async function setAsideTeamProposal(orgId: string): Promise<number> {
-  const res = await db.adminTeamProposal.updateMany({ where: { orgId, state: "proposed" }, data: { state: "set-aside" } });
+  const res = await db.adminTeamProposal.updateMany({ where: { orgId, state: { in: WAITING } }, data: { state: "set-aside" } });
   return res.count;
 }
 
@@ -291,7 +315,12 @@ export async function handleTeamCommand(args: {
     const res = await gen(deps)(match.id);
     if (!res.ok) {
       console.log(`[team-proposal] ${args.messageId}: teams not built on match ${match.id}`);
-      return { outcome: "teams-not-built", replyText: res.reason };
+      // A whole sentence, never the generator's bare fragment: the count
+      // and what to do when the squad is short, else the reason wrapped
+      // as the players' group gets it (`balancer_refusal`).
+      const now = await loadSheet(match, lang);
+      const replyText = isShort(now) ? shortSquadText(now, lang) : s.balancer_refusal({ reason: res.reason });
+      return { outcome: "teams-not-built", replyText };
     }
     const fresh = (await db.match.findUnique({ where: { id: match.id } })) as unknown as MatchRow;
     const sheet = await loadSheet(fresh ?? match, lang);
@@ -369,24 +398,38 @@ export async function answerTeamsYes(args: {
   const { orgId, lang, now, deps } = args;
   const s = t(lang);
   const row = (await db.adminTeamProposal.findFirst({
-    where: { orgId, state: "proposed" },
+    where: { orgId, state: { in: WAITING } },
     orderBy: { askedAt: "desc" },
   })) as ProposalRow | null;
   if (!row) return null;
   const match = (await db.match.findUnique({ where: { id: row.matchId } })) as unknown as MatchRow | null;
   if (!match || !(ACTIVE as string[]).includes(match.status) || match.date.getTime() < now.getTime() - 6 * 60 * 60 * 1000) {
     // A question about a game that is over: it no longer waits.
-    await db.adminTeamProposal.updateMany({ where: { id: row.id, state: "proposed" }, data: { state: "set-aside" } });
+    await db.adminTeamProposal.updateMany({ where: { id: row.id, state: row.state }, data: { state: "set-aside" } });
     return null;
   }
   const sheet = await loadSheet(match, lang);
   if (sheet.slots.length === 0) {
-    await db.adminTeamProposal.updateMany({ where: { id: row.id, state: "proposed" }, data: { state: "set-aside" } });
+    await db.adminTeamProposal.updateMany({ where: { id: row.id, state: row.state }, data: { state: "set-aside" } });
     return { outcome: "teams-no-teams", replyText: s.tp_no_teams };
+  }
+  // UNEVEN SIDES ASK TWICE (2026-10-14). The first YES on uneven sides is
+  // answered with the counts and leaves them unapproved; the next YES,
+  // with nothing changed in between, makes them final as they are. A
+  // change reposts the teams and puts the question back to "proposed".
+  const { red, yellow } = sideCounts(sheet);
+  if (row.state === "proposed" && unevenSides(red, yellow)) {
+    const asked = await db.adminTeamProposal.updateMany({ where: { id: row.id, state: "proposed" }, data: { state: "uneven-asked" } });
+    if (asked.count === 0) return null;
+    console.log(`[team-proposal] ${args.messageId}: uneven sides on match ${match.id}, asked again`);
+    return {
+      outcome: "teams-uneven",
+      replyText: s.tp_uneven_confirm({ redLabel: sheet.labels[0], red, yellowLabel: sheet.labels[1], yellow }),
+    };
   }
   // Claimed once: two admins' YES approve once.
   const claimed = await db.adminTeamProposal.updateMany({
-    where: { id: row.id, state: "proposed" },
+    where: { id: row.id, state: row.state },
     data: { state: "approved", approvedAt: now, approvedByUserId: args.senderUserId, toldSheet: sheet.slots as unknown as object },
   });
   if (claimed.count === 0) return null;
@@ -473,7 +516,19 @@ export async function teamProposalJobs(args: { org: TeamProposalOrg; now: Date; 
     if (!isProposalDue({ now, kickoff: match.date, readyTime: effectiveTeamsReadyTime(org.teamsReadyTime, organisersAnnounce(org)) })) return 0;
     const sheet = await loadSheet(match, lang);
     // The balancer's own minimum: two full sides (`generateTeamsForMatch`).
-    if (sheet.slots.length === 0 && sheet.confirmed < sheet.perTeam * 2) return 0;
+    // Short at the ready time: the admin group is told once per match (the
+    // count, and what to do), and the proposal still follows on its own
+    // if the squad fills before kickoff. Never repeated on every poll.
+    if (sheet.slots.length === 0 && isShort(sheet)) {
+      try {
+        await db.sentNotification.create({ data: { key: `team-proposal:short:${match.id}`, kind: "admin-notice", matchId: match.id } });
+      } catch {
+        return 0;
+      }
+      await queueAdminGroup(org.id, shortSquadText(sheet, lang));
+      console.log(`[team-proposal] org ${org.id}: squad short for teams on match ${match.id} (${sheet.confirmed} of ${neededFor(sheet)})`);
+      return 1;
+    }
     const key = `team-proposal:auto:${match.id}`;
     try {
       await db.sentNotification.create({ data: { key, kind: "admin-notice", matchId: match.id } });

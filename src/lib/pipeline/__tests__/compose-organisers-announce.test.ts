@@ -83,3 +83,89 @@ describe("compose(): MatchTime announces (default) is unchanged", () => {
     expect(absent).toHaveLength(3);
   });
 });
+
+// ── Rehearsal fixes (2026-10-14, PR #264's FNF rehearsal) ─────────────
+//   A confirmed player's OUT used to post "X is out, 17 of 18 for Fri
+//   20:30. One slot open, say *IN* to take it." in the players' group.
+//   In organisers mode that line goes to the organisers instead
+//   (`adminNotices`, sent on the admin channel by the analyze route), and
+//   nothing else in the players' group carries a squad count.
+
+function composed(state: SquadState, ...speech: SpeechIntent[]) {
+  const result: EngineResult = { outcomes: [], writes: [], nextState: state, speech, degradations: [] };
+  return compose(result);
+}
+
+const THIRTEEN = FOURTEEN.slice(0, 13);
+
+describe("compose(): the organisers announce, a slot opens", () => {
+  it("nothing in the players' group; one line for the organisers instead (EN)", () => {
+    const out = composed(
+      world({ confirmed: THIRTEEN, dropped: ["wasim"], features: { listAnnouncer: "organisers" } }),
+      { kind: "slot_opened", messageId: "m1", outNames: ["Wasim Akhtar"] },
+    );
+    expect(out.utterances).toEqual([]);
+    expect(out.adminNotices).toEqual([
+      "📋 Wasim is out of Tue 21:30: 13 of 14 in, 1 place open. MatchTime has not posted this in the players' group.",
+    ]);
+  });
+
+  it("several out, two places, Turkish", () => {
+    const out = composed(
+      world({ confirmed: FOURTEEN.slice(0, 12), dropped: ["zair", "wasim"], features: { language: "tr", listAnnouncer: "organisers" } }),
+      { kind: "slot_opened", messageId: "m1", outNames: ["Wasim Akhtar", "Zair Malik"] },
+    );
+    expect(out.utterances).toEqual([]);
+    expect(out.adminNotices).toEqual([
+      "📋 Wasim ve Zair, Tue 21:30 maçından çıktı: 14 kişilik kadroda 12 kişi var, 2 yer boş. MatchTime bunu oyuncu grubunda paylaşmadı.",
+    ]);
+  });
+
+  it("a slot opened with nobody out (a move to the bench) leads with the count", () => {
+    const out = composed(world({ confirmed: THIRTEEN, bench: ["wasim"], features: { listAnnouncer: "organisers" } }), {
+      kind: "slot_opened",
+      messageId: "m1",
+      outNames: [],
+    });
+    expect(out.adminNotices).toEqual([
+      "📋 A place opened for Tue 21:30: 13 of 14 in, 1 place open. MatchTime has not posted this in the players' group.",
+    ]);
+  });
+
+  it("an organiser-pick club: no 'say IN to go on the bench' in the players' group either", () => {
+    const out = composed(
+      world({ confirmed: THIRTEEN, dropped: ["wasim"], features: { listAnnouncer: "organisers", benchPickMode: "organiser" } }),
+      { kind: "slot_opened", messageId: "m1", outNames: ["Wasim Akhtar"] },
+    );
+    expect(out.utterances).toEqual([]);
+    expect(out.adminNotices).toHaveLength(1);
+  });
+
+  it("a bench claim that lost the race: thanked without the squad count", () => {
+    const out = composed(world({ confirmed: FOURTEEN, bench: ["erdal"], features: { listAnnouncer: "organisers" } }), {
+      kind: "bench_claim_too_late",
+      messageId: "m1",
+      userId: "u-erdal",
+    });
+    expect(out.utterances).toHaveLength(1);
+    expect(out.utterances[0].text).not.toMatch(/\d+\s*\/\s*\d+|\d+ of \d+/);
+    expect(out.utterances[0].text).toContain("someone got there first");
+    const tr = composed(world({ confirmed: FOURTEEN, bench: ["erdal"], features: { language: "tr", listAnnouncer: "organisers" } }), {
+      kind: "bench_claim_too_late",
+      messageId: "m1",
+      userId: "u-erdal",
+    });
+    expect(tr.utterances[0].text).not.toMatch(/\d+\s*\/\s*\d+/);
+  });
+
+  it("MatchTime announces: the slot line is in the players' group as before, nothing for the organisers", () => {
+    const out = composed(world({ confirmed: THIRTEEN, dropped: ["wasim"] }), {
+      kind: "slot_opened",
+      messageId: "m1",
+      outNames: ["Wasim Akhtar"],
+    });
+    expect(out.utterances).toHaveLength(1);
+    expect(out.utterances[0].text).toContain("One slot open");
+    expect(out.adminNotices).toEqual([]);
+  });
+});

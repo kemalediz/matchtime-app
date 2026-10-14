@@ -18,9 +18,37 @@ import {
   resolveSheetName,
   resolveSwap,
   teamsReadyAt,
+  unevenSides,
   type SheetPlayer,
   type SheetSlot,
 } from "../team-proposal-rules";
+
+describe("unevenSides: an even total splits exactly, an odd one may be one apart", () => {
+  it.each([
+    [9, 9, false],
+    [8, 10, true],
+    [9, 8, false],
+    [7, 10, true],
+    [10, 8, true],
+    [0, 0, false],
+  ])("%i v %i: %s", (red, yellow, uneven) => {
+    expect(unevenSides(red, yellow)).toBe(uneven);
+  });
+
+  it("the proposal names the counts; final teams and an even split do not", () => {
+    const base = { lang: "en", announce: true, redLabel: "Red", yellowLabel: "Yellow", unseated: [], kickoff: "20:30", venue: "Powerleague" };
+    const n = (k: number) => Array.from({ length: k }, (_, i) => ({ name: `P${i}` }));
+    expect(buildTeamsText({ ...base, final: false, red: n(8), yellow: n(10) })).toContain(
+      "⚠️ The sides are uneven: Red 8, Yellow 10. *move* a player to even them, or reply *YES* twice to keep them.",
+    );
+    // A player who is out does not count on his side.
+    expect(buildTeamsText({ ...base, final: false, red: [...n(9), { name: "X", out: true }], yellow: n(9) })).not.toContain("uneven");
+    expect(buildTeamsText({ ...base, final: true, red: n(8), yellow: n(10) })).not.toContain("uneven");
+    expect(buildTeamsText({ ...base, lang: "tr", final: false, red: n(8), yellow: n(10) })).toContain(
+      "⚠️ Takımlar dengesiz: Red 8, Yellow 10. Dengelemek için bir oyuncuyu *taşı* ile geçirin ya da böyle kalsın diye iki kez *EVET* yazın.",
+    );
+  });
+});
 
 describe("parseTeamCommand: whole-message commands, EN and TR", () => {
   it.each([

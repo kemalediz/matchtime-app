@@ -317,6 +317,18 @@ export function diffSheets(before: SheetSlot[], after: SheetSlot[]): SheetChange
   return [...out, ...removed, ...added];
 }
 
+// ── Uneven sides ──────────────────────────────────────────────────────
+
+/**
+ * Are the sides uneven? (2026-10-14, the FNF rehearsal: `move A` left
+ * 8 v 10 and YES finalised it silently.) An even total must split
+ * exactly; an odd one may be one apart and no more. Counts are the
+ * players still playing on each side.
+ */
+export function unevenSides(red: number, yellow: number): boolean {
+  return Math.abs(red - yellow) > (red + yellow) % 2;
+}
+
 // ── The words ─────────────────────────────────────────────────────────
 
 const firstName = (name: string) => name.trim().split(/\s+/)[0] || name;
@@ -350,6 +362,11 @@ export function buildTeamsText(p: {
   if (p.final) {
     blocks.push(s.tp_final_footer);
   } else {
+    const red = p.red.filter((x) => !x.out).length;
+    const yellow = p.yellow.filter((x) => !x.out).length;
+    if (unevenSides(red, yellow)) {
+      blocks.push(s.tp_uneven({ redLabel: p.redLabel, red, yellowLabel: p.yellowLabel, yellow }));
+    }
     const a = firstName(p.red[0]?.name ?? "Ali");
     const b = firstName(p.yellow[0]?.name ?? "Bilal");
     blocks.push(`${s.tp_how_to_change({ a, b })}\n${p.announce ? s.tp_ask_yes_quiet : s.tp_ask_yes_post}`);
