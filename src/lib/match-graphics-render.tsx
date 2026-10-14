@@ -3,6 +3,12 @@
  * (Satori + Resvg), as the badge card and the Wrapped card do, in the same
  * visual family: deep navy, a gold accent, MatchTime in the corner.
  *
+ * ON AN OWNER'S PICTURE (2026-10-14, the "Posters" card): with a
+ * `background`, the same board (header with the club's name, two columns
+ * of names, the day, time and venue footer, the team sheet's two coloured
+ * headers) is drawn on a semi-transparent dark panel over the picture the
+ * club's owner uploaded, which shows round the edge.
+ *
  * Everything that depends on the data (columns, sizes, cuts, colours) is
  * decided in `match-graphics-layout.ts`; this file only draws it. Satori
  * does flexbox and a subset of CSS, no grid: every element with more than
@@ -65,22 +71,54 @@ function loadFonts(): Promise<FontSpec[]> {
   return fontsPromise;
 }
 
-function Frame({ children }: { children: React.ReactNode }) {
+/** An owner's picture under the board (2026-10-14): a data URI, JPEG or PNG. */
+export interface BoardBackground {
+  src: string;
+}
+
+/** How far in from the edge the dark panel sits over an owner's picture. */
+export const BACKGROUND_PANEL_INSET = 28;
+
+function Frame({ children, background }: { children: React.ReactNode; background?: BoardBackground }) {
+  const board = {
+    display: "flex",
+    flexDirection: "column" as const,
+    color: "white",
+    padding: GRAPHIC_PADDING,
+    fontFamily: FONT,
+    fontWeight: 800,
+  };
+  if (!background) {
+    return <div style={{ width: "100%", height: "100%", background: "linear-gradient(160deg, #0f172a 0%, #1e3a8a 60%, #1e40af 100%)", ...board }}>{children}</div>;
+  }
+  // The owner's picture, filling the poster; a semi-transparent dark panel
+  // over it, inset so the picture shows round the edge; the same board on
+  // top, at the same padding as the default, so every size and cut above
+  // holds.
+  const inset = BACKGROUND_PANEL_INSET;
   return (
-    <div
-      style={{
-        width: "100%",
-        height: "100%",
-        display: "flex",
-        flexDirection: "column",
-        background: "linear-gradient(160deg, #0f172a 0%, #1e3a8a 60%, #1e40af 100%)",
-        color: "white",
-        padding: GRAPHIC_PADDING,
-        fontFamily: FONT,
-        fontWeight: 800,
-      }}
-    >
-      {children}
+    <div style={{ width: "100%", height: "100%", display: "flex", position: "relative", background: NAVY }}>
+      {/* eslint-disable-next-line @next/next/no-img-element, jsx-a11y/alt-text */}
+      <img
+        src={background.src}
+        width={GRAPHIC_WIDTH}
+        height={GRAPHIC_HEIGHT}
+        style={{ position: "absolute", left: 0, top: 0, width: GRAPHIC_WIDTH, height: GRAPHIC_HEIGHT, objectFit: "cover" }}
+      />
+      <div
+        style={{
+          position: "absolute",
+          left: inset,
+          top: inset,
+          width: GRAPHIC_WIDTH - 2 * inset,
+          height: GRAPHIC_HEIGHT - 2 * inset,
+          display: "flex",
+          borderRadius: 28,
+          background: "rgba(15, 23, 42, 0.74)",
+          border: "2px solid rgba(255, 255, 255, 0.18)",
+        }}
+      />
+      <div style={{ position: "absolute", left: 0, top: 0, width: GRAPHIC_WIDTH, height: GRAPHIC_HEIGHT, ...board }}>{children}</div>
     </div>
   );
 }
@@ -161,13 +199,13 @@ function NameRow(props: { n: number; name: string; rowHeight: number; fontSize: 
   );
 }
 
-function ListPoster({ data }: { data: ListPosterData }) {
+function ListPoster({ data, background }: { data: ListPosterData; background?: BoardBackground }) {
   const s = graphicsCopy(data.lang);
   const l = listPosterLayout({ count: data.players.length, reserves: data.reserves.length });
   const columns = Array.from({ length: l.columns }, (_, c) => data.players.slice(c * l.rows, (c + 1) * l.rows).map((name, i) => ({ name, n: c * l.rows + i + 1 })));
   const shown = data.reserves.slice(0, l.reservesShown);
   return (
-    <Frame>
+    <Frame background={background}>
       <Header data={data} title={s.listTitle} />
       <div style={{ display: "flex", fontSize: 34, fontWeight: 600, color: GOLD, letterSpacing: 3, marginTop: 6, marginBottom: 18 }}>
         {s.players(data.players.length)}
@@ -201,11 +239,11 @@ function ListPoster({ data }: { data: ListPosterData }) {
   );
 }
 
-function TeamSheet({ data }: { data: TeamSheetData }) {
+function TeamSheet({ data, background }: { data: TeamSheetData; background?: BoardBackground }) {
   const s = graphicsCopy(data.lang);
   const l = teamSheetLayout({ maxPerTeam: Math.max(data.teams[0].names.length, data.teams[1].names.length) });
   return (
-    <Frame>
+    <Frame background={background}>
       <Header data={data} title={s.teamsTitle} />
       <div style={{ display: "flex", marginTop: 28 }}>
         {data.teams.map((team, slot) => {
@@ -242,10 +280,11 @@ function TeamSheet({ data }: { data: TeamSheetData }) {
   );
 }
 
-/** The graphic as PNG bytes. */
-export async function renderGraphicPng(data: GraphicData): Promise<Buffer> {
+/** The graphic as PNG bytes; on an owner's picture with `background` (2026-10-14). */
+export async function renderGraphicPng(data: GraphicData, opts: { background?: BoardBackground } = {}): Promise<Buffer> {
   const fonts = await loadFonts();
-  const element = data.kind === "list" ? <ListPoster data={data} /> : <TeamSheet data={data} />;
+  const { background } = opts;
+  const element = data.kind === "list" ? <ListPoster data={data} background={background} /> : <TeamSheet data={data} background={background} />;
   const res = new ImageResponse(element, { width: GRAPHIC_WIDTH, height: GRAPHIC_HEIGHT, fonts });
   return Buffer.from(await res.arrayBuffer());
 }

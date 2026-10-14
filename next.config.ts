@@ -6,6 +6,8 @@ const nextConfig: NextConfig = {
   // runtime readFile is not traced on its own, so the fonts are named here.
   outputFileTracingIncludes: {
     "/api/graphics/*": ["./assets/fonts/**/*"],
+    // The Posters card's previews (2026-10-14) draw the same graphics.
+    "/api/org/graphics/*": ["./assets/fonts/**/*"],
   },
 };
 

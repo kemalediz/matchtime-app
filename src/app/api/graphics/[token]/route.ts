@@ -21,11 +21,17 @@
  * (`src/lib/club-graphics-render.tsx`). Which one, and why, is said in
  * this log line only, never in the admin group.
  *
+ * Since 2026-10-14 the design is the one the club chose on its Posters
+ * card (`loadClubDesign`): its own template, an uploaded background, a
+ * template another club shares (drawn with this club's name, its brand
+ * area covered), or the default. A club that never chose keeps its own
+ * template, so FNF's board is unchanged.
+ *
  * Logged: ids, kind, the design and sizes only, never a name.
  */
 import { verifyGraphicToken } from "@/lib/graphic-token";
 import { loadGraphicData } from "@/lib/match-graphics";
-import { loadClubGraphicsTemplate } from "@/lib/club-graphics-template";
+import { loadClubDesign } from "@/lib/club-graphics-template";
 import { renderClubGraphic } from "@/lib/club-graphics-render";
 
 export const dynamic = "force-dynamic";
@@ -40,10 +46,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
   const data = await loadGraphicData(target);
   if (!data) return notFound();
 
-  const template = await loadClubGraphicsTemplate(target.orgId);
-  const { png, design } = await renderClubGraphic(data, template);
+  const chosen = await loadClubDesign(target.orgId);
+  const { png, design } = await renderClubGraphic(data, chosen.template, { foreign: chosen.foreign });
   const count = data.kind === "list" ? data.players.length + data.reserves.length : data.teams[0].names.length + data.teams[1].names.length;
-  const how = design.design === "template" ? "design=template" : `design=default reason=${design.reason}`;
+  const how = design.design === "default" ? `design=default reason=${design.reason}` : `design=${design.design} source=${chosen.source}`;
   console.log(`[graphics] ${target.kind} org=${target.orgId} match=${target.matchId} names=${count} ${how} bytes=${png.length}`);
   return new Response(new Uint8Array(png), {
     status: 200,

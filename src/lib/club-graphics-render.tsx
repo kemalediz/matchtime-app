@@ -25,6 +25,12 @@
  * shrink text to fit, and every line is placed by the centre of its
  * capitals, which is what the layout measures.
  *
+ * SHARED AND UPLOADED DESIGNS (2026-10-14, the "Posters" card): an
+ * owner's uploaded picture gets the default board drawn on it
+ * (`renderGraphicPng` with a background); a shared measured template
+ * drawn for another club (`foreign`) loses its own squad title and has
+ * its `brandArea` covered with the picking club's name.
+ *
  * No name, phone number or rating is logged here; the route logs ids,
  * sizes and the design.
  */
@@ -40,12 +46,14 @@ import {
   fitTemplateName,
   graphicDesign,
   reservesLine,
+  brandSubtitleLabel,
   templateDateLabel,
   templateTimeLabel,
   type ClubGraphicsLayout,
   type GraphicDesign,
 } from "./club-graphics-layout";
 import type { ClubGraphicsTemplate } from "./club-graphics-template";
+import { foreignLayout } from "./club-graphics-choice";
 
 const NAME_FONT = "Barlow Semi Condensed";
 const INFO_FONT = "Barlow";
@@ -105,9 +113,10 @@ interface TextProps {
   /** Left edge, or a centre with `align: "centre"`. */
   x: number;
   align?: "left" | "centre";
+  letterSpacing?: number;
 }
 
-function Text({ text, m, family, weight, italic, fontSize, colour, centreY, x, align = "left" }: TextProps) {
+function Text({ text, m, family, weight, italic, fontSize, colour, centreY, x, align = "left", letterSpacing }: TextProps) {
   const { top, lineHeight } = lineBox(m, fontSize, centreY);
   const centred = align === "centre";
   return (
@@ -126,6 +135,7 @@ function Text({ text, m, family, weight, italic, fontSize, colour, centreY, x, a
         lineHeight,
         color: colour,
         whiteSpace: "nowrap",
+        ...(letterSpacing ? { letterSpacing } : {}),
       }}
     >
       {text}
@@ -169,7 +179,7 @@ function NameOnRow(props: { name: string; lang: string; column: ClubGraphicsLayo
   );
 }
 
-function TeamSheet({ data, layout, src, fonts }: { data: TeamSheetData; layout: ClubGraphicsLayout; src: string; fonts: LoadedFonts }) {
+function TeamSheet({ data, layout, src, fonts, overlay }: { data: TeamSheetData; layout: ClubGraphicsLayout; src: string; fonts: LoadedFonts; overlay?: React.ReactNode }) {
   return (
     <div style={{ width: "100%", height: "100%", display: "flex", position: "relative" }}>
       <Background src={src} layout={layout} />
@@ -179,6 +189,7 @@ function TeamSheet({ data, layout, src, fonts }: { data: TeamSheetData; layout: 
           <NameOnRow key={`${c}-${r}`} name={name} lang={data.lang} column={layout.columns[c]} centreY={layout.rows[r]} layout={layout} fonts={fonts} />
         )),
       )}
+      {overlay}
     </div>
   );
 }
@@ -221,7 +232,7 @@ function SquadHeader({ data, layout, src, fonts }: { data: ListPosterData; layou
   );
 }
 
-function ListPoster({ data, layout, src, fonts }: { data: ListPosterData; layout: ClubGraphicsLayout; src: string; fonts: LoadedFonts }) {
+function ListPoster({ data, layout, src, fonts, overlay }: { data: ListPosterData; layout: ClubGraphicsLayout; src: string; fonts: LoadedFonts; overlay?: React.ReactNode }) {
   const perColumn = layout.rows.length;
   const s = graphicsCopy(data.lang);
   const badgeSize = Math.round(layout.capHeight * 0.78);
@@ -259,28 +270,111 @@ function ListPoster({ data, layout, src, fonts }: { data: ListPosterData; layout
       {reserves ? (
         <Text text={reserves} m={fonts.name} family={NAME_FONT} weight={900} italic fontSize={r.fontSize} colour={r.colour} centreY={r.centreY} x={r.centreX} align="centre" />
       ) : null}
+      {overlay}
     </div>
   );
 }
 
+/**
+ * A shared template drawn for another club (2026-10-14): its brand area
+ * covered with its fill (none when the image's branding is painted out
+ * already), the picking club's name drawn there as big as fits, and the
+ * subtitle line ("TUESDAY NIGHT FOOTBALL") under it when the layout has
+ * one. Nothing of the template's own club shows through.
+ */
+function BrandCover({ area, data, fonts }: { area: NonNullable<ClubGraphicsLayout["brandArea"]>; data: GraphicData; fonts: LoadedFonts }) {
+  const pad = Math.round(area.height * 0.12);
+  const ceiling = area.nameCentreY !== undefined ? area.maxFontSize : Math.min(area.maxFontSize, Math.round(area.height * 0.7));
+  const fit = fitTemplateName(shoutCase(data.clubName, data.lang), {
+    maxWidth: Math.max(1, area.width - 2 * pad),
+    maxFontSize: ceiling,
+    minFontSize: Math.max(6, Math.round(ceiling * 0.4)),
+    measure: (t, size) => textWidth(fonts.name, t, size) * SLACK,
+  });
+  const sub = area.subtitle;
+  const subtitle = sub
+    ? fitTemplateName(brandSubtitleLabel(data.lang, data.matchDate), {
+        maxWidth: Math.max(1, area.width - 2 * pad),
+        maxFontSize: sub.fontSize,
+        minFontSize: Math.max(6, Math.round(sub.fontSize * 0.7)),
+        // Spaced letters: the gaps count too.
+        measure: (t, size) => textWidth(fonts.info, t, size) * SLACK + sub.letterSpacing * Math.max(0, t.length - 1),
+      })
+    : null;
+  return (
+    <>
+      {area.fill ? (
+        <div style={{ position: "absolute", left: area.x, top: area.y, width: area.width, height: area.height, display: "flex", background: area.fill }} />
+      ) : null}
+      <Text
+        text={fit.text}
+        m={fonts.name}
+        family={NAME_FONT}
+        weight={900}
+        italic
+        fontSize={fit.fontSize}
+        colour={area.colour}
+        centreY={area.nameCentreY ?? area.y + area.height / 2}
+        x={area.x + area.width / 2}
+        align="centre"
+      />
+      {sub && subtitle ? (
+        <Text
+          text={subtitle.text}
+          m={fonts.info}
+          family={INFO_FONT}
+          weight={500}
+          fontSize={subtitle.fontSize}
+          colour={sub.colour}
+          centreY={sub.centreY}
+          x={area.x + area.width / 2}
+          align="centre"
+          letterSpacing={sub.letterSpacing}
+        />
+      ) : null}
+    </>
+  );
+}
+
+export type RenderedDesign = GraphicDesign | { design: "background" };
+
 export interface RenderedGraphic {
   png: Buffer;
-  design: GraphicDesign;
+  design: RenderedDesign;
 }
 
 /**
- * The graphic as PNG bytes, on the club's template when it has one that
- * can hold it (`graphicDesign`), else in the default MatchTime design.
+ * The graphic as PNG bytes:
+ *   - a BACKGROUND template (an owner's upload): the default board on it;
+ *   - a MEASURED template that can hold this graphic (`graphicDesign`):
+ *     drawn on it; with `foreign` (a shared template drawn for another
+ *     club) its own squad title is dropped and its brand area covered
+ *     with the picking club's name;
+ *   - else the default MatchTime design.
  */
-export async function renderClubGraphic(data: GraphicData, template: ClubGraphicsTemplate | null): Promise<RenderedGraphic> {
-  const design = graphicDesign(data, template?.layout ?? null);
-  if (design.design === "default" || !template) return { png: await renderGraphicPng(data), design };
+export async function renderClubGraphic(
+  data: GraphicData,
+  template: ClubGraphicsTemplate | null,
+  opts: { foreign?: boolean } = {},
+): Promise<RenderedGraphic> {
+  if (template?.kind === "background") {
+    const src = `data:${template.mimeType};base64,${template.image.toString("base64")}`;
+    return { png: await renderGraphicPng(data, { background: { src } }), design: { design: "background" } };
+  }
+  const measured = template?.kind === "measured" ? template : null;
+  const design = graphicDesign(data, measured?.layout ?? null);
+  if (design.design === "default" || !measured) return { png: await renderGraphicPng(data), design };
 
   const fonts = await loadFonts();
-  const { layout } = template;
-  const src = `data:${template.mimeType};base64,${template.image.toString("base64")}`;
+  const layout = opts.foreign ? foreignLayout(measured.layout) : measured.layout;
+  const src = `data:${measured.mimeType};base64,${measured.image.toString("base64")}`;
+  const overlay = opts.foreign && layout.brandArea ? <BrandCover area={layout.brandArea} data={data} fonts={fonts} /> : null;
   const element =
-    data.kind === "teams" ? <TeamSheet data={data} layout={layout} src={src} fonts={fonts} /> : <ListPoster data={data} layout={layout} src={src} fonts={fonts} />;
+    data.kind === "teams" ? (
+      <TeamSheet data={data} layout={layout} src={src} fonts={fonts} overlay={overlay} />
+    ) : (
+      <ListPoster data={data} layout={layout} src={src} fonts={fonts} overlay={overlay} />
+    );
   const res = new ImageResponse(element, { width: layout.width, height: layout.height, fonts: fonts.specs });
   return { png: Buffer.from(await res.arrayBuffer()), design };
 }

@@ -23,6 +23,8 @@ const en = {
   moreReserves: (n: number) => `+${n} more`,
   /** A player with no usable name (never a phone number on an image). */
   player: "Player",
+  /** The Posters card's sample, when the club has no match yet (2026-10-14). */
+  sampleVenue: "Your venue",
   /** The caption the image is posted with in the admin group. */
   listCaption: (club: string, day: string) => `Ready to post: ${club} list for ${day}`,
   teamsCaption: (club: string, day: string) => `Ready to post: ${club} teams for ${day}`,
@@ -44,6 +46,7 @@ const tr: MatchGraphicsCopy = {
   players: (n: number) => `${n} OYUNCU`,
   moreReserves: (n: number) => `+${n} kişi daha`,
   player: "Oyuncu",
+  sampleVenue: "Sahanız",
   listCaption: (club: string, day: string) => `Paylaşıma hazır: ${club} listesi, ${day}`,
   teamsCaption: (club: string, day: string) => `Paylaşıma hazır: ${club} takımları, ${day}`,
   noTeams: "Henüz takım yok.",

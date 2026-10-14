@@ -3475,6 +3475,9 @@ export const en = {
   info_clubs_rejected_body: "Clubs you rejected, newest first. MatchTime left their groups.",
   info_clubs_suspended_title: "Turned off",
   info_clubs_suspended_body: "Live clubs you turned off, newest first. MatchTime left their groups and is silent there.",
+  info_clubs_posters_title: "Poster designs",
+  info_clubs_posters_body:
+    "Every club with its own poster template. Share one and every other club can pick it on its Posters card, drawn with that club's own name and players, the template's brand area covered. Give it a display name without the club's name: other clubs see it. Ask the club before sharing.",
   info_clubs_limits_title: "Today's site limits",
   info_clubs_limits_body:
     "How many sign-up codes, new clubs and group connections the whole site has used today, against the daily caps. They reset at midnight, London time.",
@@ -4356,4 +4359,46 @@ export const en = {
     "who is playing is told the organisers will post the list.",
   wr_announce_matchtime: "MatchTime",
   wr_announce_organisers: "The organisers",
+  // /admin/settings, the "Posters" card (2026-10-14).
+  gp_title: "Posters",
+  gp_lead: "The list poster and the team sheet MatchTime sends to your admin group, ready to forward to the players.",
+  gp_info:
+    "Before each match MatchTime makes a list poster (who is playing) and a team sheet (the two teams) and sends them to your " +
+    "admin group, ready to forward to the players' group. An owner or admin can also ask for them there by typing poster or " +
+    "team sheet. To change how they look, pick a design below: the MatchTime design, your club's own design, a design MatchTime " +
+    "shares with clubs, or upload your own background picture and MatchTime draws the names, day, time and venue over it. " +
+    "The pictures here show your next match; until enough players are in they show sample names.",
+  gp_list_caption: "List poster",
+  gp_teams_caption: "Team sheet",
+  gp_alt_list: (p: { club: string }): string => `List poster: ${p.club}`,
+  gp_alt_teams: (p: { club: string }): string => `Team sheet: ${p.club}`,
+  gp_sample_note: "Sample names: your real names show here once enough players are in or the teams are made.",
+  gp_preview_loading: "Drawing the preview",
+  gp_preview_failed: "The preview could not be drawn. Try again later.",
+  gp_design_heading: "Design",
+  gp_design_matchtime: "MatchTime design",
+  gp_design_own_measured: "Your club's design",
+  gp_design_own_background: "Your background",
+  gp_design_shared: (p: { n: number }): string => `Shared design ${p.n}`,
+  gp_design_in_use: "In use",
+  gp_use_label: (p: { name: string }): string => `Use this design: ${p.name}`,
+  gp_saved: "Design saved. MatchTime uses it from now on.",
+  gp_save_failed: "Could not save. Please try again.",
+  gp_upload_heading: "Your own background",
+  gp_upload_blurb: "A portrait picture (taller than wide), JPEG, PNG or WebP, up to 4 MB. MatchTime draws its board over it.",
+  gp_upload_button: "Upload a background",
+  gp_upload_replace: "Upload a new background",
+  gp_uploading: "Uploading",
+  gp_uploaded: "Background saved and in use.",
+  gp_remove: "Remove background",
+  gp_removing: "Removing",
+  gp_removed: "Background removed.",
+  gp_problem_empty: "No picture was chosen.",
+  gp_problem_too_large: "That picture is over 4 MB. Please choose a smaller one.",
+  gp_problem_bad_type: "That is not a JPEG, PNG or WebP picture.",
+  gp_problem_bad_bytes: "That picture could not be read. It may be damaged; please try another.",
+  gp_problem_too_small: "That picture is too small. Please use one at least 540 pixels wide and 675 tall.",
+  gp_problem_not_portrait: "That picture is wider than it is tall. Please use a portrait one.",
+  gp_problem_made_by_matchtime: "Your club's design was made by MatchTime. Ask MatchTime to change it.",
+  gp_problem_failed: "Something went wrong. Please try again.",
 };

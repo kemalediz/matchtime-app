@@ -6,6 +6,7 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  brandSubtitleLabel,
   fitTemplateName,
   graphicDesign,
   parseClubGraphicsLayout,
@@ -194,5 +195,47 @@ describe("reservesLine", () => {
     const line = reservesLine(["ALEXANDER", "BARTHOLOMEW", "CHRISTOPHER", "DOMINIC", "EZEKIEL"], { ...opts, maxWidth: 400 })!;
     expect(line).toBe("RESERVES: ALEXANDER, BARTHOLOMEW +3 more");
     expect(halfEm(line, 20)).toBeLessThanOrEqual(400);
+  });
+});
+
+describe("brandSubtitleLabel: the line under the club's name on a shared template", () => {
+  it("an evening kickoff: '<WEEKDAY> NIGHT FOOTBALL', London's day", () => {
+    expect(brandSubtitleLabel("en", new Date("2026-10-13T19:00:00Z"))).toBe("TUESDAY NIGHT FOOTBALL");
+    // 23:30 London on a Friday is still Friday (22:30 UTC in BST).
+    expect(brandSubtitleLabel("en", new Date("2026-10-16T22:30:00Z"))).toBe("FRIDAY NIGHT FOOTBALL");
+  });
+
+  it("a daytime kickoff: '<WEEKDAY> FOOTBALL'", () => {
+    expect(brandSubtitleLabel("en", new Date("2026-10-18T09:00:00Z"))).toBe("SUNDAY FOOTBALL");
+  });
+
+  it("in Turkish, in Turkish capitals", () => {
+    expect(brandSubtitleLabel("tr", new Date("2026-10-13T19:00:00Z"))).toBe("SALI AKŞAMI FUTBOLU");
+    expect(brandSubtitleLabel("tr", new Date("2026-10-15T19:00:00Z"))).toBe("PERŞEMBE AKŞAMI FUTBOLU");
+    expect(brandSubtitleLabel("tr", new Date("2026-10-18T09:00:00Z"))).toBe("PAZAR FUTBOLU");
+  });
+});
+
+describe("parseClubGraphicsLayout: brandArea (2026-10-14, shared templates)", () => {
+  const brandArea = { x: 300, y: 60, width: 340, height: 120, fill: "#0b0b0d", colour: "#ffffff", maxFontSize: 64 };
+
+  it("is optional: a layout without one (FNF's today) still parses, with none", () => {
+    expect(parseClubGraphicsLayout(JSON.parse(JSON.stringify(LAYOUT)))?.brandArea).toBeUndefined();
+  });
+
+  it("a layout that declares one keeps it", () => {
+    expect(parseClubGraphicsLayout({ ...LAYOUT, brandArea })?.brandArea).toEqual(brandArea);
+  });
+
+  it("on an image whose branding is already painted out: no fill, the name's own centre and a subtitle line", () => {
+    const clean = { x: 236, y: 206, width: 468, height: 132, colour: "#ececee", maxFontSize: 96, nameCentreY: 266, subtitle: { centreY: 329, fontSize: 17, colour: "#ffffff", letterSpacing: 5 } };
+    expect(parseClubGraphicsLayout({ ...LAYOUT, brandArea: clean })?.brandArea).toEqual(clean);
+    expect(parseClubGraphicsLayout({ ...LAYOUT, brandArea: { ...clean, subtitle: { centreY: 329 } } })).toBeNull();
+  });
+
+  it("a broken one makes the layout unusable, rather than drawing a club's logo for another club", () => {
+    expect(parseClubGraphicsLayout({ ...LAYOUT, brandArea: { ...brandArea, fill: "black" } })).toBeNull();
+    expect(parseClubGraphicsLayout({ ...LAYOUT, brandArea: { ...brandArea, width: -1 } })).toBeNull();
+    expect(parseClubGraphicsLayout({ ...LAYOUT, brandArea: { x: 1 } })).toBeNull();
   });
 });
