@@ -137,4 +137,15 @@ describe("the 3-letter guard stays for pushnames and third-party mentions", () =
     expect(await resolveOrProvisionByName("org", "Mo")).toBeNull();
     expect(await resolveOrProvisionByName("org", "Mo", { adminConfirmed: true })).toEqual({ userId: "new-mo", name: "Mo" });
   });
+
+  it("admin-confirmed: two CURRENT members sharing the name is still ambiguous, no duplicate is made", async () => {
+    dbMock.membership.findMany.mockResolvedValue([
+      { id: "m-a", userId: "u-mo1", leftAt: null, user: { id: "u-mo1", name: "Mo Ali" } },
+      { id: "m-b", userId: "u-mo2", leftAt: new Date(), user: { id: "u-mo2", name: "Mo Bashir" } },
+      { id: "m-c", userId: "u-mo3", leftAt: null, user: { id: "u-mo3", name: "Mo Celik" } },
+    ]);
+    const { resolveOrProvisionByName } = await import("../resolve-or-provision-name");
+    expect(await resolveOrProvisionByName("org", "Mo", { adminConfirmed: true })).toBeNull();
+    expect(dbMock.user.create).not.toHaveBeenCalled();
+  });
 });

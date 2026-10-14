@@ -73,7 +73,7 @@ test("an admin's 'Tom out': applied through the engine, confirmed in the admin g
     `SELECT cause, "actorKind", "actorUserId", "sourceRef" FROM "AttendanceEvent" WHERE "matchId" = $1 AND "userId" = $2 ORDER BY at DESC LIMIT 1`,
     [MATCH.upcoming, U.third],
   );
-  expect(ev).toMatchObject({ cause: "admin-message", actorKind: "admin", actorUserId: U.admin, sourceRef: "e2e-ags-tom-out" });
+  expect(ev).toMatchObject({ cause: "admin-message", actorKind: "admin", actorUserId: U.admin, sourceRef: "admin-group:e2e-ags-tom-out" });
 
   // No post to the players' group and no analysis row from the admin group.
   expect((await groupJobs(db)).length).toBe(before.jobs);

@@ -31,7 +31,14 @@ const state = {
   attendance: [] as Att[],
   events: [] as Array<Record<string, unknown>>,
   /** AttendanceEvent rows written before the test: the club's history. */
-  history: [] as Array<{ orgId: string; userId: string; actorKind: string; cause: string; toStatus: string | null }>,
+  history: [] as Array<{
+    orgId: string;
+    userId: string;
+    actorKind: string;
+    cause: string;
+    toStatus: string | null;
+    sourceRef?: string | null;
+  }>,
   sent: [] as string[],
   users: new Map<string, { phoneNumber: string | null; email: string; isActive: boolean }>(),
   memberships: new Map<string, { leftAt: Date | null; provisionallyAddedAt: Date | null }>(),
@@ -77,7 +84,13 @@ const fake = {
     findMany: async ({
       where,
     }: {
-      where: { orgId: string; userId: { in: string[] }; actorKind: string; cause: { in: string[] }; toStatus: { in: string[] } };
+      where: {
+        orgId: string;
+        userId: { in: string[] };
+        actorKind: string;
+        toStatus: { in: string[] };
+        OR: Array<{ cause: string; sourceRef: string | { startsWith: string } }>;
+      };
     }) =>
       [...state.history, ...(state.events as typeof state.history)]
         .filter(
@@ -85,9 +98,15 @@ const fake = {
             e.orgId === where.orgId &&
             where.userId.in.includes(e.userId) &&
             e.actorKind === where.actorKind &&
-            where.cause.in.includes(e.cause) &&
             e.toStatus != null &&
-            where.toStatus.in.includes(e.toStatus),
+            where.toStatus.in.includes(e.toStatus) &&
+            where.OR.some(
+              (o) =>
+                o.cause === e.cause &&
+                (typeof o.sourceRef === "string"
+                  ? e.sourceRef === o.sourceRef
+                  : (e.sourceRef ?? "").startsWith(o.sourceRef.startsWith)),
+            ),
         )
         .map((e) => ({ userId: e.userId })),
     create: async ({ data }: { data: Record<string, unknown> }) => {
@@ -259,54 +278,76 @@ describe("a phoneless player an admin added (club rehearsal, 2026-10-14)", () =>
   const carried = (userId: string) => state.attendance.find((a) => a.matchId === "next" && a.userId === userId)?.status ?? null;
   const seed = () => seedRollingSquad({ targetId: "next", sourceId: "last", actor: { kind: "scheduler" }, now: SAT_0805 });
 
+  const admin = (userId: string, cause: string, sourceRef: string, toStatus: string | null = "CONFIRMED") =>
+    state.history.push({ orgId: "org-fnf", userId, actorKind: "admin", cause, sourceRef, toStatus });
+
   it("Uncle, pasted in the admin group and confirmed, is carried to next week", async () => {
     addPlaceholder("uncle");
-    state.history.push({ orgId: "org-fnf", userId: "uncle", actorKind: "admin", cause: "admin-message", toStatus: "CONFIRMED" });
+    admin("uncle", "admin-message", "admin-group:wa-paste");
     await seed();
     expect(carried("uncle")).toBe("CONFIRMED");
   });
 
-  it("an admin's squad edit on the website counts the same", async () => {
+  it('an admin-group squad change ("put Mo in" in HQ) counts the same', async () => {
+    addPlaceholder("mo");
+    admin("mo", "admin-message", "admin-group:wa-hq-1");
+    await seed();
+    expect(carried("mo")).toBe("CONFIRMED");
+  });
+
+  it("an admin's Add to match on the website counts the same", async () => {
     addPlaceholder("uncle");
-    state.history.push({ orgId: "org-fnf", userId: "uncle", actorKind: "admin", cause: "admin-squad-edit", toStatus: "CONFIRMED" });
+    admin("uncle", "admin-squad-edit", "admin:addPlayerToMatch");
     await seed();
     expect(carried("uncle")).toBe("CONFIRMED");
   });
 
   it("he stays carried the week after: the admin's add is in the club's log, not on last week's row", async () => {
     addPlaceholder("uncle");
-    state.history.push({ orgId: "org-fnf", userId: "uncle", actorKind: "admin", cause: "admin-message", toStatus: "CONFIRMED" });
+    admin("uncle", "admin-message", "admin-group:wa-paste");
     // Last week's row was itself written by the seeding, not by the admin.
-    state.history.push({ orgId: "org-fnf", userId: "uncle", actorKind: "scheduler", cause: "rolling-squad", toStatus: "CONFIRMED" });
+    state.history.push({ orgId: "org-fnf", userId: "uncle", actorKind: "scheduler", cause: "rolling-squad", sourceRef: "prev", toStatus: "CONFIRMED" });
     await seed();
     expect(carried("uncle")).toBe("CONFIRMED");
   });
 
   it("a one-off guest another player registered stays excluded", async () => {
     addPlaceholder("gary");
-    state.history.push({ orgId: "org-fnf", userId: "gary", actorKind: "member", cause: "third-party-attendance", toStatus: "CONFIRMED" });
+    state.history.push({ orgId: "org-fnf", userId: "gary", actorKind: "member", cause: "third-party-attendance", sourceRef: "wa-9", toStatus: "CONFIRMED" });
     await seed();
     expect(carried("gary")).toBeNull();
   });
 
-  it("an admin pressing Carry over does not make a guest admin-added", async () => {
+  it('an ADMIN\'s "my mate Gary is in" in the PLAYERS\' group stays excluded: a one-off guest, not a member', async () => {
     addPlaceholder("gary");
-    state.history.push({ orgId: "org-fnf", userId: "gary", actorKind: "member", cause: "third-party-attendance", toStatus: "CONFIRMED" });
-    state.history.push({ orgId: "org-fnf", userId: "gary", actorKind: "admin", cause: "rolling-squad", toStatus: "CONFIRMED" });
+    // attendance-engine.ts: an admin's third-party add there is cause
+    // admin-message, sourceRef the players' group message id.
+    admin("gary", "admin-message", "false_120363000000000000@g.us_3EB0ABC");
+    await seed();
+    expect(carried("gary")).toBeNull();
+  });
+
+  it("promoting somebody already registered does not count: move up, promote, reorder, organiser pick, carry over", async () => {
+    addPlaceholder("gary");
+    admin("gary", "admin-squad-edit", "admin:moveUpFromBench");
+    admin("gary", "admin-squad-edit", "admin:promoteFromBench");
+    admin("gary", "admin-squad-edit", "admin:reorderWaitingList");
+    admin("gary", "organiser-pick", "pick-round-1");
+    admin("gary", "rolling-squad", "prev");
     await seed();
     expect(carried("gary")).toBeNull();
   });
 
   it("an admin removing a guest does not make him admin-added", async () => {
     addPlaceholder("gary");
-    state.history.push({ orgId: "org-fnf", userId: "gary", actorKind: "admin", cause: "admin-message", toStatus: null });
+    admin("gary", "admin-message", "admin-group:wa-out", null);
     await seed();
     expect(carried("gary")).toBeNull();
   });
 
   it("an admin's add in ANOTHER club does not count here", async () => {
     addPlaceholder("gary");
-    state.history.push({ orgId: "org-other", userId: "gary", actorKind: "admin", cause: "admin-message", toStatus: "CONFIRMED" });
+    state.history.push({ orgId: "org-other", userId: "gary", actorKind: "admin", cause: "admin-message", sourceRef: "admin-group:x", toStatus: "CONFIRMED" });
     await seed();
     expect(carried("gary")).toBeNull();
   });

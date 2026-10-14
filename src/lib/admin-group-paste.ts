@@ -27,6 +27,7 @@ import type { AttendanceEventContext } from "./attendance-events";
 import { selectRegistrationMatch } from "./registration-match-select";
 import { resolveOrProvisionByName } from "./resolve-or-provision-name";
 import { isDeliberateNameProvisionable } from "./resolve-sender";
+import { adminGroupSourceRef } from "./admin-added";
 import {
   PASTE_PROPOSAL_TTL_MS,
   buildPasteExpiredReply,
@@ -224,7 +225,9 @@ export async function answerSquadPasteYes(args: {
     cause: "admin-message",
     actorKind: "admin",
     actorUserId: args.senderUserId,
-    sourceRef: proposal.waMessageId,
+    // The admin group's mark: the rolling squad carries a phoneless player
+    // added here (admin-added.ts).
+    sourceRef: adminGroupSourceRef(proposal.waMessageId),
   };
   const changes: Array<{ kind: SquadChangeKind; userId: string | null; name: string | null }> = [];
   const failed: Array<{ userId: string | null; name: string | null }> = [];

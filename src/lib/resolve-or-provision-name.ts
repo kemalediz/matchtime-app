@@ -92,16 +92,17 @@ export async function resolveOrProvisionByName(
         }
       }
     }
-    if (!deliberate) {
+    // An admin's deliberate name that only REMOVED members share is a new
+    // player (a pasted list's preview matches current members only and
+    // promised exactly that). Two CURRENT members sharing it is a real
+    // ambiguity: nothing is guessed and no duplicate is made.
+    if (!deliberate || firstNameMatches.some((c) => !c.leftAt)) {
       console.warn(
         `[analyze] third-party name "${name}" is ambiguous in org ${orgId} (${firstNameMatches.length} candidates, no alias to disambiguate). Skipping registration.`,
       );
       return null;
     }
-    // The admin was told this name is nobody in the club and will be
-    // added as a new player (the preview matches against current members
-    // only, so the candidates here are removed ones): keep that promise.
-    console.log(`[analyze] admin-confirmed name in org ${orgId} matches ${firstNameMatches.length} candidates; adding as new`);
+    console.log(`[analyze] admin-confirmed name in org ${orgId} matches ${firstNameMatches.length} removed members; adding as new`);
   }
 
   // 1c. Alias lookup — admin-curated nickname → user mapping. Same

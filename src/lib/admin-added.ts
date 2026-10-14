@@ -1,36 +1,58 @@
 /**
- * WHO DID AN ADMIN ADD TO A SQUAD? (2026-10-14.)
+ * WHO DID AN ADMIN ADD AS A MEMBER? (2026-10-14.)
  *
  * The rolling squad carries last week's players, but not a phoneless
- * placeholder: that is usually a one-off guest a player registered ("my
- * mate Gary is in"), who cannot be DMed and was never asked. A phoneless
- * player an ADMIN added (a name pasted in the admin group and confirmed,
- * an admin-group squad change, an admin's edit on the match page) is a
- * deliberate member and is carried. The club rehearsal found "Uncle",
- * pasted by an admin in week 1, dropped from week 2 because nothing told
- * the two apart.
+ * placeholder: that is usually a one-off guest ("my mate Gary is in"),
+ * who cannot be DMed, cannot say OUT himself, and was never asked. A
+ * phoneless player an admin added AS A MEMBER is carried. The club
+ * rehearsal found "Uncle", pasted in the admin group in week 1, dropped
+ * from week 2 because nothing told the two apart.
  *
  * The durable marker is the append-only AttendanceEvent log, not a new
- * column: an admin putting this player on a squad of THIS club at any
- * time, with an admin cause:
+ * column. An admin actor put the player on a squad of THIS club
+ * (toStatus CONFIRMED or BENCH) through one of exactly these paths:
  *
- *   actorKind  "admin"
- *   cause      "admin-message" (admin group, or an admin's instruction in
- *              the players' group) or "admin-squad-edit" (an admin
- *              screen)
- *   toStatus   CONFIRMED or BENCH (an add, not a removal)
+ *   cause "admin-message",  sourceRef "admin-group:<waMessageId>"
+ *       the club's linked ADMIN GROUP: a pasted list's YES
+ *       (`admin-group-paste.ts`) or a typed squad change
+ *       (`admin-group-squad-change.ts`). Both writers stamp this prefix.
+ *   cause "admin-squad-edit", sourceRef "admin:addPlayerToMatch"
+ *       an admin's "Add to match" on the match page.
  *
- * NOT counted: "rolling-squad" with actorKind "admin" (the Carry over
- * button carries whoever it carries, guests included, so it says nothing
- * about who the player is), and "organiser-pick" (bringing in somebody
- * already on the waiting list, possibly a guest a player registered).
- * The log is never updated or deleted (a Postgres trigger), so once added
- * by an admin, always added by an admin, including the week after, when
- * last week's row was itself written by the seeding.
+ * NOT counted, on purpose:
+ *   - an admin's third-party add in the PLAYERS' group ("my mate Gary is
+ *     in"): cause "admin-message" too (`attendance-engine.ts`), but its
+ *     sourceRef is the bare message id. That is a guest for one game;
+ *     carried forever he could never say OUT;
+ *   - promoting somebody already registered: move up from the bench,
+ *     promote onto a team, reorder the waiting list, organiser pick;
+ *   - "Carry over last squad" (cause "rolling-squad", actorKind admin),
+ *     which carries whoever it carries.
+ *
+ * Admin-group events written before 2026-10-14 carry the bare message id
+ * and so do not count: a placeholder an admin added then is treated as a
+ * guest until an admin adds him again. The log is never updated or
+ * deleted (a Postgres trigger), so once counted, always counted,
+ * including the week after, when last week's row was written by the
+ * seeding.
  */
 
-/** The causes that mean "an admin put this player on the squad". */
-export const ADMIN_ADD_CAUSES = ["admin-message", "admin-squad-edit"] as const;
+/** The `sourceRef` prefix every admin-group squad write carries. */
+export const ADMIN_GROUP_SOURCE_PREFIX = "admin-group:";
+
+/** The `sourceRef` for a squad write made from the admin group. */
+export function adminGroupSourceRef(waMessageId: string | null | undefined): string {
+  const ref = waMessageId ?? "";
+  return ref.startsWith(ADMIN_GROUP_SOURCE_PREFIX) ? ref : `${ADMIN_GROUP_SOURCE_PREFIX}${ref}`;
+}
+
+/** The paths that mean "an admin added this player as a member". */
+export const ADMIN_ADD_PATHS = [
+  { cause: "admin-message", sourceRef: { startsWith: ADMIN_GROUP_SOURCE_PREFIX } },
+  { cause: "admin-squad-edit", sourceRef: "admin:addPlayerToMatch" },
+] as const;
+
+type AdminAddPath = { cause: string; sourceRef: string | { startsWith: string } };
 
 /** The part of the Prisma client (or of a transaction) this reads through. */
 export interface AdminAddedReadClient {
@@ -40,8 +62,8 @@ export interface AdminAddedReadClient {
         orgId: string;
         userId: { in: string[] };
         actorKind: "admin";
-        cause: { in: string[] };
         toStatus: { in: Array<"CONFIRMED" | "BENCH"> };
+        OR: AdminAddPath[];
       };
       select: { userId: true };
       distinct: ["userId"];
@@ -49,7 +71,7 @@ export interface AdminAddedReadClient {
   };
 }
 
-/** Of `userIds`, the ones an admin has added to a squad of `orgId`. */
+/** Of `userIds`, the ones an admin has added as members of `orgId`. */
 export async function loadAdminAddedUserIds(
   client: AdminAddedReadClient,
   orgId: string,
@@ -62,8 +84,8 @@ export async function loadAdminAddedUserIds(
       orgId,
       userId: { in: ids },
       actorKind: "admin",
-      cause: { in: [...ADMIN_ADD_CAUSES] },
       toStatus: { in: ["CONFIRMED", "BENCH"] },
+      OR: ADMIN_ADD_PATHS.map((p) => ({ ...p })),
     },
     select: { userId: true },
     distinct: ["userId"],
