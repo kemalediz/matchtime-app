@@ -75,6 +75,7 @@ function fakeDriver(): Spy {
     sendTextWithMentions: async (...a) => note("sendTextWithMentions")(...a),
     sendDirectText: async (...a) => note("sendDirectText")(...a),
     sendPoll: async (...a) => note("sendPoll")(...a),
+    sendImage: async (...a) => note("sendImage")(...a),
     sendReaction: async (...a) => {
       note("sendReaction")(...a);
       return { ok: true } as const;
@@ -160,6 +161,7 @@ describe("shadowGuard refuses every send path", () => {
         "leaveGroup",
         "replyTo",
         "sendDirectText",
+        "sendImage",
         "sendPoll",
         "sendReaction",
         "sendText",
@@ -182,6 +184,8 @@ describe("shadowGuard refuses every send path", () => {
       ],
       ["sendDirectText", () => guarded.sendDirectText("447700900001", "rate the lads")],
       ["sendPoll", () => guarded.sendPoll("120363@g.us", "MoM?", ["Ali", "Sam"], false)],
+      // A list poster or team sheet (2026-10-14).
+      ["sendImage", () => guarded.sendImage("120363@g.us", Buffer.from([0x89, 0x50]), "Ready to post")],
       ["replyTo", () => guarded.replyTo({} as never, "got it")],
       ["sendTextViaChat", () => guarded.sendTextViaChat("120363@g.us", "squad is up")],
       // Leaving a group is an action on the real account: a shadow number

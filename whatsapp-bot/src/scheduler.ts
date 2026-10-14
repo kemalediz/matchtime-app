@@ -29,6 +29,7 @@ import { withTimeout } from "./with-timeout.js";
 import { config } from "./config.js";
 import { reactAndReport } from "./react-with-id.js";
 import { isAdminGroup } from "./handlers.js";
+import { fetchGraphic } from "./graphic-fetch.js";
 import {
   waMessageIdFrom,
   isMissingSendResult,
@@ -244,6 +245,44 @@ function ackMessageId(kind: string, key: string, sent: unknown): string | undefi
   return id;
 }
 
+/**
+ * A club's list poster or team sheet for its admin group (2026-10-14): an
+ * `admin-group-message` with an `imageUrl`. Fetch the PNG from our own
+ * server (`graphic-fetch.ts`: own host only, PNG only, size-capped, timed
+ * out), post it with the text as its caption, ack with its id.
+ *
+ * A fetch that fails posts NOTHING: the caption alone would announce a
+ * picture nobody can see. It is acked all the same (nothing was sent, and
+ * a release would re-emit it every poll if the route keeps failing); the
+ * admin can ask again. Logged by key and size, never the URL: it carries
+ * a token.
+ */
+async function sendAdminGroupGraphic(instr: Extract<DueInstruction, { kind: "admin-group-message" }> & { imageUrl: string }): Promise<void> {
+  if (!driver) return;
+  let png: Buffer;
+  try {
+    png = await fetchGraphic(instr.imageUrl, { apiUrl: config.apiUrl });
+  } catch (err) {
+    console.error(
+      `[graphics] ${instr.key}: could not fetch the picture, nothing posted: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    await ackInstruction({ key: instr.key, kind: instr.kind, matchId: instr.matchId });
+    return;
+  }
+  const msg = await withTimeout(
+    driver.sendImage(instr.groupId, png, instr.text),
+    SEND_TIMEOUT_MS,
+    `admin-group image send to ${instr.groupId}`,
+  );
+  console.log(`[graphics] ${instr.key}: posted ${png.length} bytes in ${instr.groupId}`);
+  await ackInstruction({
+    key: instr.key,
+    kind: instr.kind,
+    matchId: instr.matchId,
+    waMessageId: ackMessageId(instr.kind, instr.key, msg),
+  });
+}
+
 async function executeInstruction(instr: DueInstruction, groupId: string): Promise<void> {
   if (!driver) return;
 
@@ -368,6 +407,10 @@ async function executeInstruction(instr: DueInstruction, groupId: string): Promi
           `[admin-group] ${instr.key}: ${instr.groupId} is not a known admin group on this Pi; releasing the claim`,
         );
         await releaseInstruction(instr.key);
+        return;
+      }
+      if (instr.imageUrl) {
+        await sendAdminGroupGraphic(instr as typeof instr & { imageUrl: string });
         return;
       }
       const msg = await withTimeout(

@@ -30,6 +30,10 @@ function fakeDriver(states: Record<string, GroupPostability | undefined>) {
       calls.push(`poll ${chat}`);
       return {};
     }),
+    sendImage: vi.fn(async (chat: string) => {
+      calls.push(`image ${chat}`);
+      return {};
+    }),
     sendDirectText: vi.fn(async (phone: string) => {
       calls.push(`dm ${phone}`);
       return {};
@@ -64,9 +68,10 @@ describe("postabilityGate", () => {
     await expect(g.sendPoll(GROUP, "q", ["a", "b"], false)).rejects.toSatisfy(isGroupNotPostable);
     await expect(g.replyTo({ from: GROUP } as never, "hi")).rejects.toBeInstanceOf(GroupNotPostableError);
     await expect(g.sendTextViaChat(GROUP, "hi")).rejects.toBeInstanceOf(GroupNotPostableError);
+    await expect(g.sendImage(GROUP, Buffer.from([1]), "hi")).rejects.toBeInstanceOf(GroupNotPostableError);
     expect(calls).toEqual([]);
     // A count, never the text.
-    expect(logs.at(-1)).toMatch(/5 skipped/);
+    expect(logs.at(-1)).toMatch(/6 skipped/);
     expect(logs.join("\n")).not.toMatch(/hi"/);
   });
 

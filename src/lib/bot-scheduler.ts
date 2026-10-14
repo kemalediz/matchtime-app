@@ -264,6 +264,9 @@ export type DueInstruction =
       groupId: string;
       text: string;
       matchId?: string;
+      /** A list poster or team sheet (2026-10-14, graphic-job.ts): the Pi
+       *  fetches this signed PNG and posts it with `text` as its caption. */
+      imageUrl?: string;
     };
 
 export interface DuePostsResult {

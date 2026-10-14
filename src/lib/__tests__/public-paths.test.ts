@@ -50,6 +50,14 @@ describe("isPublicPath", () => {
     },
   );
 
+  // A club's list poster or team sheet (2026-10-14): fetched by the Pi with
+  // no session. The signed, short-lived token in the path is the access
+  // control (src/lib/graphic-token.ts); the route 404s without one.
+  it("serves a graphic by its signed token without a session", () => {
+    expect(isPublicPath("/api/graphics/abc.def")).toBe(true);
+    expect(isPublicPath("/api/graphicsx")).toBe(false);
+  });
+
   it.each(["/admin", "/admin/players", "/profile", "/matches/123", "/helpdesk", "/help-me", "/create-org"])(
     "still gates the signed-in route %s",
     (p) => {
