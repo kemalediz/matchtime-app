@@ -1607,6 +1607,9 @@ export const tr: Strings = {
   badges_feature_label: "Rozet duyuruları",
   badges_feature_blurb:
     "Her maçtan iki gün sonra yeni rozetleri grupta paylaşır: ilk maç, Regular, Man of the Match, MoM Machine, Masterclass, Mr Reliable.",
+  gear_feature_label: "Maç günü malzeme hatırlatması",
+  gear_feature_blurb:
+    "Futbol maçından iki saat önce gruba kaleci eldiveni, top ve yedek yelek getirmeyi hatırlatır.",
 
   // ── Self-join, 4. dilim: organizatörün web sayfaları (2026-09-29) ──
   // Sayılara gelen ek (7'ye, 5'e, 6'ya...) sayının okunuşuna göre
@@ -2586,6 +2589,9 @@ export const tr: Strings = {
   info_feat_badges_title: "Rozet duyuruları",
   info_feat_badges_body:
     "Her maçtan iki gün sonra MatchTime oyuncuların kazandığı yeni rozetleri grupta paylaşır. Kapatırsanız grupta rozetlerle ilgili hiçbir şey paylaşılmaz.",
+  info_feat_gear_title: "Maç günü malzeme hatırlatması",
+  info_feat_gear_body:
+    "Her futbol maçından yaklaşık iki saat önce MatchTime oyuncu grubunda maçın saatini ve yerini paylaşır, kaleci eldiveni, top ve yedek yelek getirmeyi hatırlatır. Kapatırsanız bu hatırlatma hiçbir yere gönderilmez.",
 
   info_act_page_title: "Etkinlikler",
   info_act_page_body:

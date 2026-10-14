@@ -423,6 +423,8 @@ const SAMPLES: SampleArgs = {
   badges_line_reliable: { emoji: "🧱", label: "Mr Reliable", names: ["Najib"] },
   badges_feature_label: null,
   badges_feature_blurb: null,
+  gear_feature_label: null,
+  gear_feature_blurb: null,
 
   // ── self-join slice 4: the organiser web ──
   sj_activity_name: { perSide: 7 },
@@ -966,6 +968,8 @@ const SAMPLES: SampleArgs = {
   info_feat_pay_direct_body: null,
   info_feat_badges_title: null,
   info_feat_badges_body: null,
+  info_feat_gear_title: null,
+  info_feat_gear_body: null,
   info_act_page_title: null,
   info_act_page_body: null,
   info_act_generate_title: null,

@@ -69,9 +69,18 @@ const graphics = vi.hoisted(() => ({ sendGraphicToAdminChannel: vi.fn(async () =
 vi.mock("@/lib/admin-group-graphics", () => graphics);
 // The "Teams ready" hook (team-proposal.ts) has its own tests.
 vi.mock("@/lib/team-proposal", () => ({ teamProposalJobs: async () => 0 }));
+// The badges post's own rules are tested in badge-announcements.test.ts;
+// here only where it goes. Empty unless a test sets it.
+const badges = vi.hoisted(() => ({ posts: [] as Array<Record<string, unknown>> }));
+vi.mock("@/lib/badge-announcement-scheduler", async (orig) => ({
+  ...(await orig<object>()),
+  computeBadgeAnnouncements: async () => badges.posts.map((p) => ({ ...p })),
+}));
 
 import { computeDuePosts, type DueInstruction } from "@/lib/bot-scheduler";
-import { buildOrganiserListUpdate } from "@/lib/organisers-list-copy";
+import { buildOrganiserListUpdate, buildOrganiserRelay } from "@/lib/organisers-list-copy";
+import { buildGearReminder } from "@/lib/scheduler-copy";
+import { buildRatePromoPost } from "@/lib/group-copy";
 
 const GROUP = "group-fnf@g.us";
 const ADMIN_GROUP = "admins-fnf@g.us";
@@ -221,6 +230,7 @@ const ADMIN_TEXT = (reason: Parameters<typeof buildOrganiserListUpdate>[0]["reas
 beforeEach(() => {
   resetFeatures();
   composeChaseText.mockClear();
+  badges.posts = [];
 });
 
 describe("the default (MatchTime announces) is exactly what it was", () => {
@@ -387,8 +397,6 @@ describe('"The organisers": the squad posts go to the admin group', () => {
     setWorld([m]);
     const last = await instructions(FRI_1830);
     expect(byKey(last, `${m.id}:pre-kickoff`)?.kind).toBe("admin-group-message");
-    // The gear reminder lists nobody and stays in the group.
-    expect(byKey(last, `${m.id}:football-gear-reminder`)?.kind).toBe("group-message");
     expect(composeChaseText).not.toHaveBeenCalled();
   });
 
@@ -486,5 +494,203 @@ describe("the daily 'New players to review' notice", () => {
     withProvisional([]);
     const text = notice(await instructions(MON_1005))?.text;
     expect(text).toContain("Bir listeden ya da başkasının mesajından adıyla eklendi: Poster Pete, Listed Larry");
+  });
+});
+
+// ── The rating notice and the badges post (2026-10-14) ──
+//   Kemal, after the club rehearsal: for a club whose organisers announce,
+//   these two go to the admin channel, not the players' group, under the
+//   relay lead ("For the organisers, not posted in the players' group:")
+//   so the organisers can forward them. The go-live hello, the payments
+//   poll, the score ask and the Man of the Match result stay in the group.
+//   The rating DMs themselves still go to every player.
+//
+//   The match-day gear reminder is NOT moved (Kemal, 2026-10-15): it is a
+//   club setting (`featureGearReminder`, OFF for a new club, ON for every
+//   existing one), the same for every club whoever announces. Off: it is
+//   not sent anywhere.
+
+/** Sat 10 Oct 2026, 09:05 London: the morning after, inside the admin group's hours. */
+const SAT_0905 = new Date("2026-10-10T08:05:00.000Z");
+/** Sun 11 Oct 2026, 18:05 London: the badges post's evening. */
+const SUN_1805 = new Date("2026-10-11T17:05:00.000Z");
+
+const GEAR_KEY = (m: { id: string }) => `${m.id}:football-gear-reminder`;
+const PROMO_KEY = (m: { id: string }) => `${m.id}:rate-promo`;
+const BADGES_KEY = (m: { id: string }) => `${m.id}:badges`;
+const RATE_DM_KEYS = (m: { id: string }) => NAMES.map((_, i) => `${m.id}:rate-dm:u${i}`);
+const GEAR_TEXT = (lang: string) => buildGearReminder({ timeLabel: "20:30", venue: "Powerleague", lang });
+const PROMO_TEXT = buildRatePromoPost({ activityName: "FNF", matchDateLabel: "Fri 9 Oct", lang: "en" });
+const LEDGER = [{ userId: "u0", badgeKey: "first-game", matchId: "m-fri-9-oct" }];
+const BADGES_TEXT = "🏅 *New badges this week*\n\n🎉 First game: Hamzah";
+const badgePost = (m: { id: string }) => ({ kind: "group-message", key: BADGES_KEY(m), matchId: m.id, text: BADGES_TEXT, badgeLedger: LEDGER });
+
+const completed = (club: Record<string, unknown> = {}) =>
+  match({ ...NO_DEADLINES, ...club }, { status: "COMPLETED", redScore: 3, yellowScore: 2 });
+
+describe("the default (MatchTime announces): the three posts stay in the players' group, unchanged", () => {
+  it("the gear reminder", async () => {
+    const m = match(NO_DEADLINES);
+    setWorld([m]);
+    const before = await instructions(FRI_1830);
+    features.listAnnouncer = "matchtime";
+    setWorld([m]);
+    const after = await instructions(FRI_1830);
+    expect(after).toEqual(before);
+    expect(byKey(after, GEAR_KEY(m))).toEqual({ kind: "group-message", key: GEAR_KEY(m), matchId: m.id, text: GEAR_TEXT("en") });
+  });
+
+  it("the rating notice", async () => {
+    const m = completed();
+    setWorld([m], { sent: RATE_DM_KEYS(m) });
+    const before = await instructions(SAT_0905);
+    features.listAnnouncer = "matchtime";
+    setWorld([m], { sent: RATE_DM_KEYS(m) });
+    const after = await instructions(SAT_0905);
+    expect(after).toEqual(before);
+    expect(byKey(after, PROMO_KEY(m))).toEqual({ kind: "group-message", key: PROMO_KEY(m), matchId: m.id, text: PROMO_TEXT });
+  });
+
+  it("the badges post", async () => {
+    features.badgeAnnouncements = true;
+    const m = completed();
+    badges.posts = [badgePost(m)];
+    setWorld([m]);
+    const before = await instructions(SUN_1805);
+    features.listAnnouncer = "matchtime";
+    setWorld([m]);
+    const after = await instructions(SUN_1805);
+    expect(after).toEqual(before);
+    expect(byKey(after, BADGES_KEY(m))).toEqual(badgePost(m));
+  });
+});
+
+describe("the gear reminder is a club setting, the same whoever announces", () => {
+  for (const announcer of ["matchtime", "organisers"] as const) {
+    it(`${announcer}: on (an existing club), it posts in the players' group exactly as before`, async () => {
+      features.listAnnouncer = announcer;
+      features.gearReminder = true;
+      const m = match(NO_DEADLINES);
+      setWorld([m]);
+      const out = await instructions(FRI_1830);
+      expect(out.filter((i) => i.key.startsWith(GEAR_KEY(m)))).toEqual([
+        { kind: "group-message", key: GEAR_KEY(m), matchId: m.id, text: GEAR_TEXT("en") },
+      ]);
+    });
+
+    it(`${announcer}: off (the default for a new club), it is sent nowhere`, async () => {
+      features.listAnnouncer = announcer;
+      features.gearReminder = false;
+      const m = match(NO_DEADLINES);
+      setWorld([m]);
+      const out = await instructions(FRI_1830);
+      expect(out.filter((i) => i.key.includes("football-gear-reminder"))).toEqual([]);
+      expect(out.some((i) => "text" in i && /goalie gloves/.test(i.text))).toBe(false);
+    });
+  }
+
+  it("on, in Turkish", async () => {
+    features.language = "tr";
+    features.gearReminder = true;
+    const m = match({ ...NO_DEADLINES, language: "tr" });
+    setWorld([m]);
+    expect(byKey(await instructions(FRI_1830), GEAR_KEY(m))?.text).toBe(GEAR_TEXT("tr"));
+  });
+
+  it("on, it still respects the attendance switch", async () => {
+    features.attendance = false;
+    features.gearReminder = true;
+    const m = match(NO_DEADLINES);
+    setWorld([m]);
+    expect(byKey(await instructions(FRI_1830), GEAR_KEY(m))).toBeUndefined();
+  });
+});
+
+describe('"The organisers": the rating notice and the badges post go to the admins', () => {
+  beforeEach(() => {
+    features.listAnnouncer = "organisers";
+  });
+
+  it("the players still get their rating DMs, and the notice waits for them", async () => {
+    vi.stubEnv("AUTH_SECRET", "test-secret-for-rating-links");
+    const m = completed();
+    setWorld([m]);
+    const out = await instructions(SAT_0905);
+    const dms = out.filter((i) => i.key.startsWith(`${m.id}:rate-dm:`));
+    expect(dms.map((i) => i.key).sort()).toEqual(RATE_DM_KEYS(m).sort());
+    expect(dms.every((i) => i.kind === "dm" && i.phone.startsWith("44770090000"))).toBe(true);
+    expect(out.filter((i) => i.key.startsWith(PROMO_KEY(m)))).toHaveLength(0);
+  });
+
+  it("once every rating DM is out, the notice goes to the admin group, not the players' group", async () => {
+    const m = completed();
+    setWorld([m], { sent: RATE_DM_KEYS(m) });
+    const out = await instructions(SAT_0905);
+    expect(byKey(out, PROMO_KEY(m))).toEqual({
+      kind: "admin-group-message",
+      key: PROMO_KEY(m),
+      matchId: m.id,
+      groupId: ADMIN_GROUP,
+      text: buildOrganiserRelay(PROMO_TEXT, "en"),
+    });
+    expect(groupPosts(out).some((i) => i.key.startsWith(PROMO_KEY(m)))).toBe(false);
+  });
+
+  it("the rating notice, in Turkish", async () => {
+    features.language = "tr";
+    const m = completed({ language: "tr" });
+    setWorld([m], { sent: RATE_DM_KEYS(m) });
+    const text = byKey(await instructions(SAT_0905), PROMO_KEY(m))?.text ?? "";
+    expect(text.startsWith("📋 Organizatörler için, oyuncu grubuna gönderilmedi:\n\n🎯 ")).toBe(true);
+    expect(text).toContain("puanlama linkini DM'den gönderdim");
+  });
+
+  it("the rating notice already sent to the admin group: nothing again", async () => {
+    const m = completed();
+    setWorld([m], { sent: [...RATE_DM_KEYS(m), PROMO_KEY(m)] });
+    expect(byKey(await instructions(SAT_0905), PROMO_KEY(m))).toBeUndefined();
+  });
+
+  it("the badges post goes to the admin group under the relay lead, and still carries its ledger rows", async () => {
+    features.badgeAnnouncements = true;
+    const m = completed();
+    badges.posts = [badgePost(m)];
+    setWorld([m]);
+    const out = await instructions(SUN_1805);
+    expect(byKey(out, BADGES_KEY(m))).toEqual({
+      kind: "admin-group-message",
+      key: BADGES_KEY(m),
+      matchId: m.id,
+      groupId: ADMIN_GROUP,
+      text: buildOrganiserRelay(BADGES_TEXT, "en"),
+      badgeLedger: LEDGER,
+    });
+    expect(groupPosts(out).some((i) => i.key.includes(":badges"))).toBe(false);
+  });
+});
+
+describe('"The organisers" with no admin group to post in: the same fallback as the squad posts', () => {
+  beforeEach(() => {
+    features.listAnnouncer = "organisers";
+  });
+
+  it("an older Pi: the rating notice goes to the owner by DM", async () => {
+    const m = completed();
+    setWorld([m], { sent: RATE_DM_KEYS(m) });
+    const out = await instructions(SAT_0905, { adminGroup: false });
+    expect(byKey(out, `${PROMO_KEY(m)}:${OWNER.id}`)).toMatchObject({ kind: "dm", phone: "447700111111", targetUser: OWNER.id });
+    expect(groupPosts(out).some((i) => i.key.startsWith(PROMO_KEY(m)))).toBe(false);
+  });
+
+  it("each admin by DM: every badges DM carries the ledger rows (written once, duplicates skipped)", async () => {
+    features.badgeAnnouncements = true;
+    const m = completed();
+    badges.posts = [badgePost(m)];
+    setWorld([m], { channelMode: "each-admin", adminGroupId: null });
+    const out = await instructions(SUN_1805);
+    const dms = out.filter((i) => i.key.startsWith(BADGES_KEY(m)));
+    expect(dms).toHaveLength(2);
+    for (const d of dms) expect(d).toMatchObject({ kind: "dm", text: buildOrganiserRelay(BADGES_TEXT, "en"), badgeLedger: LEDGER });
+    expect(groupPosts(out)).toHaveLength(0);
   });
 });

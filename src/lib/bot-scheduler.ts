@@ -129,7 +129,7 @@ import {
 } from "./scheduler-copy";
 import { organisersAnnounce } from "./list-announcer";
 import { buildProvisionalReviewNotice } from "./provisional-review-copy";
-import { buildOrganiserListUpdate, type OrganiserListReason } from "./organisers-list-copy";
+import { buildOrganiserListUpdate, buildOrganiserRelay, type OrganiserListReason } from "./organisers-list-copy";
 
 // All user-facing times in bot-posted messages are Europe/London wall
 // clock. Wrap date-fns-tz in a short helper so this file reads cleanly.
@@ -232,6 +232,9 @@ export type DueInstruction =
       text: string;
       matchId?: string;
       targetUser?: string;
+      /** A badges post relayed to an admin by DM (organisers announce):
+       *  as on `group-message`. Server-side; stripped before the Pi sees it. */
+      badgeLedger?: { userId: string; badgeKey: string; matchId: string }[];
     }
   | {
       kind: "bench-prompt";
@@ -270,6 +273,9 @@ export type DueInstruction =
       /** A list poster or team sheet (2026-10-14, graphic-job.ts): the Pi
        *  fetches this signed PNG and posts it with `text` as its caption. */
       imageUrl?: string;
+      /** A badges post relayed to the admin group (organisers announce):
+       *  as on `group-message`. Server-side; stripped before the Pi sees it. */
+      badgeLedger?: { userId: string; badgeKey: string; matchId: string }[];
     };
 
 export interface DuePostsResult {
@@ -908,16 +914,35 @@ export async function computeDuePosts(
   //   badges newly earned and never announced. Skipped outright, with no
   //   query, when the club has the feature off; also caught by the
   //   key filter below. See badge-announcements.ts.
+  //   Organisers announce (Kemal, 2026-10-14): the post goes to the
+  //   admin channel under the relay lead, on the same key (a DM keyed
+  //   `…:badges:<adminId>`). Each instruction carries the ledger rows, so
+  //   whichever is claimed records the badges; the rows are unique per
+  //   player and badge, so a second claim adds nothing.
   if (features.badgeAnnouncements) {
-    out.push(
-      ...(await computeBadgeAnnouncements({
-        orgId: org.id,
-        lang: features.language,
-        matches,
-        sentKeys,
-        now,
-      })),
-    );
+    const badgePosts = await computeBadgeAnnouncements({
+      orgId: org.id,
+      lang: features.language,
+      matches,
+      sentKeys,
+      now,
+    });
+    if (!organisersAnnounce(features)) out.push(...badgePosts);
+    else {
+      const channel = badgePosts.length > 0 ? await admin.getChannel() : null;
+      for (const post of channel ? badgePosts : []) {
+        const relayed = await adminNoticeInstructions({
+          channel: channel!,
+          piCaps: admin.piCaps,
+          sentKeys,
+          now,
+          matchId: post.matchId,
+          key: (who) => (who === "admin-group" ? post.key : `${post.key}:${who}`),
+          notice: { text: buildOrganiserRelay(post.text, features.language) },
+        });
+        out.push(...relayed.map((i) => ({ ...i, badgeLedger: post.badgeLedger })));
+      }
+    }
   }
 
   // ── Per-org feature gate (post-compute filter) ───────────────────
@@ -1245,6 +1270,29 @@ async function computeForMatch(
             ...extra,
           }),
         },
+      })),
+    );
+  }
+  /**
+   * A players' group post that names nobody, relayed to the admin channel
+   * under the relay lead ("For the organisers, not posted in the players'
+   * group:") for the organisers to forward. Kemal, 2026-10-14, after the
+   * club rehearsal: the rating notice (the badges post, built per club,
+   * is relayed the same way in `computeDuePosts`).
+   * Same channel, same keys and same fallback as `toOrganisers`.
+   */
+  async function relayToOrganisers(key: string, text: string): Promise<void> {
+    const channel = await admin.getChannel();
+    if (!channel) return;
+    out.push(
+      ...(await adminNoticeInstructions({
+        channel,
+        piCaps: admin.piCaps,
+        sentKeys,
+        now,
+        matchId,
+        key: (who) => (who === "admin-group" ? key : `${key}:${who}`),
+        notice: { text: buildOrganiserRelay(text, lang) },
       })),
     );
   }
@@ -2506,10 +2554,14 @@ async function computeForMatch(
   //       Detection: we match on the sport name starting with "football"
   //       so this covers 5-a-side, 7-a-side, 11-a-side etc. — but not
   //       Basketball / other sports.
+  //       A CLUB SETTING (Kemal, 2026-10-15, `OrgFeatures.gearReminder`):
+  //       off for a new club, on for every club that existed before it,
+  //       whoever announces the list. Off: not sent anywhere.
   {
     const key = `${matchId}:football-gear-reminder`;
     const isFootball = sport.name.trim().toLowerCase().startsWith("football");
     if (
+      features.gearReminder !== false &&
       !sentKeys.has(key) &&
       isFootball &&
       hoursUntilMatch <= 2 &&
@@ -3001,22 +3053,21 @@ async function computeForMatch(
           expectedRateDmKeys.length > 0 &&
           expectedRateDmKeys.every((k) => sentKeys.has(k));
         if (allRateDmsSent && !sentKeys.has(promoKey)) {
-          out.push({
-            kind: "group-message",
-            key: promoKey,
-            matchId,
-            // Neither "Morning" nor "last night" is safe here: the promo
-            // waits for the last rating DM to land, so it fires at any
-            // hour from 08:00 onward, 6-36h after kickoff. It said
-            // "Morning all" at 16:05 on 2026-09-16 after an outage.
-            // Copy lives in group-copy.ts so it can be tested without
-            // Prisma.
-            text: buildRatePromoPost({
-              activityName: activity.name,
-              matchDateLabel: dayLabel(lang, m.date),
-              lang,
-            }),
+          // Neither "Morning" nor "last night" is safe here: the promo
+          // waits for the last rating DM to land, so it fires at any
+          // hour from 08:00 onward, 6-36h after kickoff. It said
+          // "Morning all" at 16:05 on 2026-09-16 after an outage.
+          // Copy lives in group-copy.ts so it can be tested without
+          // Prisma.
+          const text = buildRatePromoPost({
+            activityName: activity.name,
+            matchDateLabel: dayLabel(lang, m.date),
+            lang,
           });
+          // Organisers announce (Kemal, 2026-10-14): the notice goes to
+          // the admins; the players still got their DMs above.
+          if (organisers) await relayToOrganisers(promoKey, text);
+          else out.push({ kind: "group-message", key: promoKey, matchId, text });
         }
       }
     }

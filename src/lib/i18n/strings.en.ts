@@ -1945,6 +1945,9 @@ export const en = {
   badges_feature_label: "Badge announcements",
   badges_feature_blurb:
     "Two days after each match, posts the new badges in the group: first game, Regular, Man of the Match, MoM Machine, Masterclass, Mr Reliable.",
+  gear_feature_label: "Match-day kit reminder",
+  gear_feature_blurb:
+    "Two hours before a football kickoff, reminds the group to bring goalie gloves, a ball and spare bibs.",
 
   // ── Self-join, slice 4: the organiser web (2026-09-29) ────────────
   // MDs/self-join-and-approval-plan-2026-09-28.md sections 5.1 to 5.3.
@@ -3426,6 +3429,9 @@ export const en = {
   info_feat_badges_title: "Badge announcements",
   info_feat_badges_body:
     "Two days after each match MatchTime posts the new badges players earned in the group. Turn it off and nothing about badges is posted in the group.",
+  info_feat_gear_title: "Match-day kit reminder",
+  info_feat_gear_body:
+    "About two hours before each football match MatchTime posts in the players' group: the kickoff time and place, and a reminder to bring goalie gloves, a ball and spare bibs. Turn it off and this reminder is not sent anywhere.",
 
   // /admin/activities
   info_act_page_title: "Activities",

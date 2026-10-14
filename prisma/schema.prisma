@@ -305,6 +305,14 @@ model Organisation {
   /// guard, see that file). Read through `OrgFeatures.badgeAnnouncements`.
   featureBadgeAnnouncements Boolean @default(true)
 
+  /// The match-day gear reminder (2026-10-15): 1.5 to 2 hours before a
+  /// football kickoff, "see you there, bring goalie gloves, a ball and
+  /// spare bibs" in the players' group. OFF for a new club; the migration
+  /// (20261015090000_gear_reminder_setting) turned it ON for every club
+  /// that existed, so they keep today's behaviour. Off: not sent anywhere.
+  /// Read through `OrgFeatures.gearReminder`.
+  featureGearReminder Boolean @default(false)
+
   /// ─── Weekly deadlines (2026-09-30, slice 3 of
   /// MDs/friday-group-features-plan-2026-09-30.md) ────────────────────
   /// Club level (D8). Each pair is a London weekday (0=Sun..6=Sat) and

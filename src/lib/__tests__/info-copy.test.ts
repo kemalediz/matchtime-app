@@ -60,6 +60,7 @@ describe("info popup copy", () => {
   it("every Bot features switch, including Badge announcements, has a popup", () => {
     for (const m of FEATURE_META) expect(FEATURE_INFO[m.key], m.key).toBeTruthy();
     expect(FEATURE_INFO.badgeAnnouncements).toBe("feat_badges");
+    expect(FEATURE_INFO.gearReminder).toBe("feat_gear");
     for (const k of Object.values(FEATURE_INFO)) expect(keys).toContain(k);
   });
 

@@ -138,6 +138,38 @@ test("Badge announcements: ON by default, the switch persists, and it reads in T
   await db.run(`UPDATE "Organisation" SET language = 'en', "featureBadgeAnnouncements" = true WHERE id = $1`, [ORG_ID]);
 });
 
+test("Match-day kit reminder: follows the club's setting, the switch persists, and it reads in Turkish", async ({ page, db }) => {
+  const read = async () =>
+    (await db.one<{ v: boolean }>(`SELECT "featureGearReminder" AS v FROM "Organisation" WHERE id = $1`, [ORG_ID]))?.v;
+  // A new club's column default is off.
+  await db.run(`UPDATE "Organisation" SET "featureGearReminder" = DEFAULT WHERE id = $1`, [ORG_ID]);
+  expect(await read()).toBe(false);
+  await signInAs(page, U.admin, "/admin/settings");
+  await page.waitForURL("**/admin/settings");
+  const row = page.getByTestId("feature-gear-reminder");
+  const toggle = row.getByRole("switch", { name: "Match-day kit reminder" });
+  await expect(toggle).toHaveAttribute("aria-checked", "false", { timeout: 30_000 });
+  await expect(row.getByText(/reminds the group to bring goalie gloves, a ball and spare bibs/)).toBeVisible();
+
+  // ON persists to the org row and survives a reload.
+  await toggle.click();
+  await expect.poll(read).toBe(true);
+  await page.reload();
+  await expect(
+    page.getByTestId("feature-gear-reminder").getByRole("switch", { name: "Match-day kit reminder" }),
+  ).toHaveAttribute("aria-checked", "true", { timeout: 30_000 });
+
+  // A Turkish club reads it in Turkish.
+  await db.run(`UPDATE "Organisation" SET language = 'tr' WHERE id = $1`, [ORG_ID]);
+  await page.reload();
+  await expect(
+    page.getByTestId("feature-gear-reminder").getByRole("switch", { name: "Maç günü malzeme hatırlatması" }),
+  ).toBeVisible({ timeout: 30_000 });
+
+  // Restore for later specs.
+  await db.run(`UPDATE "Organisation" SET language = 'en', "featureGearReminder" = true WHERE id = $1`, [ORG_ID]);
+});
+
 test("Weekly routine: the drop-out deadline and list time persist, refuse bad input, and explain themselves (EN and TR)", async ({
   page,
   db,

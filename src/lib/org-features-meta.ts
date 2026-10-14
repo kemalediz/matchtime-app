@@ -24,7 +24,11 @@ export type ToggleableKey =
   /// the Bot features section with its own EN/TR row, but deliberately NOT
   /// in `FEATURE_META`: that list is also the numbered in-group setup menu,
   /// and inserting an entry would renumber the payment picks. Default ON.
-  | "badgeAnnouncements";
+  | "badgeAnnouncements"
+  /// The match-day gear reminder (2026-10-15). Its own row on
+  /// /admin/settings like the badges, not in `FEATURE_META`. Default OFF
+  /// for a new club, ON for clubs that existed before it.
+  | "gearReminder";
 
 /// Features shown in the admin Settings toggles + the in-group onboarding
 /// menu. `squadFromList` is INTENTIONALLY NOT here — it's a derived
