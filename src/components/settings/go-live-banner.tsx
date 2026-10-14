@@ -43,6 +43,7 @@ import { goLiveClubAction, helloPreviewAction } from "@/app/actions/club-setup";
 import { WhatsAppMessage } from "@/components/whatsapp-message";
 import { goLiveSettled, goLiveStarted } from "@/lib/go-live-in-flight";
 import { t } from "@/lib/i18n/t";
+import { SettingInfo } from "@/components/info/setting-info";
 
 /** What /api/org/settings sends an owner or admin about the club's setup. */
 export interface GoLiveSetup {
@@ -245,13 +246,16 @@ export function GoLiveBanner(props: {
       }`}
     >
       {!final && (
-        <div className="min-w-0">
-          <h2 id="go-live-heading" className="text-lg font-semibold text-emerald-950">
-            {/* Its own heading while MatchTime is out of the group:
-                "Approved. MatchTime is waiting for you." above "MatchTime
-                is not in X any more" said two things at once. */}
-            {removed ? s.sj_live_title_removed : s.sj_live_title}
-          </h2>
+        <div className="min-w-0" data-setting="goLive">
+          <div className="flex items-center gap-1">
+            <h2 id="go-live-heading" className="text-lg font-semibold text-emerald-950">
+              {/* Its own heading while MatchTime is out of the group:
+                  "Approved. MatchTime is waiting for you." above "MatchTime
+                  is not in X any more" said two things at once. */}
+              {removed ? s.sj_live_title_removed : s.sj_live_title}
+            </h2>
+            <SettingInfo k="goLive" lang={props.language} />
+          </div>
           {/* Not while MatchTime is out of the group: "MatchTime is in
               <group>" would contradict the notice below. */}
           {!removed && (

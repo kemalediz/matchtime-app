@@ -20,6 +20,7 @@ import { toast } from "sonner";
 import { CalendarDays } from "lucide-react";
 import { setMonthlySquad, type MonthlySquadSettings } from "@/app/actions/squad-month";
 import { SectionInfo } from "@/components/info/section-info";
+import { SettingInfo } from "@/components/info/setting-info";
 import { t } from "@/lib/i18n/t";
 import {
   LIST_OPENS_DAYS_MAX,
@@ -101,10 +102,10 @@ export function MonthlySquadSection(props: {
       <div className="p-6">
         <p className="text-sm text-slate-500 mb-4">{s.msq_section_lead}</p>
         <div className="divide-y divide-slate-100">
-          <div className="py-3">
+          <div className="py-3" data-setting="squadMode">
             <div className={label}>
               {s.msq_mode_label}
-              <SectionInfo k="msq_mode" lang={lang} />
+              <SettingInfo k="squadMode" lang={lang} />
             </div>
             <p className="text-xs text-slate-500">{s.msq_mode_blurb}</p>
             <select
@@ -136,10 +137,10 @@ export function MonthlySquadSection(props: {
 
           {monthly && (
             <>
-              <div className="py-3" data-testid="msq-credit">
+              <div className="py-3" data-testid="msq-credit" data-setting="monthCreditRule">
                 <div className={label}>
                   {s.msq_credit_label}
-                  <SectionInfo k="msq_credit" lang={lang} />
+                  <SettingInfo k="monthCreditRule" lang={lang} />
                 </div>
                 <p className="text-xs text-slate-500">{s.msq_credit_blurb}</p>
                 <select
@@ -156,10 +157,10 @@ export function MonthlySquadSection(props: {
                 </select>
               </div>
 
-              <div className="py-3">
+              <div className="py-3" data-setting="paygPrice">
                 <div className={label}>
                   <label htmlFor="msq-payg">{s.msq_payg_label}</label>
-                  <SectionInfo k="msq_payg" lang={lang} />
+                  <SettingInfo k="paygPrice" lang={lang} />
                 </div>
                 <p className="text-xs text-slate-500">{s.msq_payg_blurb}</p>
                 <input
@@ -174,10 +175,10 @@ export function MonthlySquadSection(props: {
                 />
               </div>
 
-              <div className="py-3">
+              <div className="py-3" data-setting="monthListOpens">
                 <div className={label}>
                   <label htmlFor="msq-opens">{s.msq_opens_label}</label>
-                  <SectionInfo k="msq_opens" lang={lang} />
+                  <SettingInfo k="monthListOpens" lang={lang} />
                 </div>
                 <p className="text-xs text-slate-500">{s.msq_opens_blurb}</p>
                 <div className="mt-2 flex items-center gap-2 text-sm text-slate-600">
@@ -194,10 +195,10 @@ export function MonthlySquadSection(props: {
                 </div>
               </div>
 
-              <div className="py-3">
+              <div className="py-3" data-setting="paymentInstructions">
                 <div className={label}>
                   <label htmlFor="msq-instructions">{s.msq_instructions_label}</label>
-                  <SectionInfo k="msq_instructions" lang={lang} />
+                  <SettingInfo k="paymentInstructions" lang={lang} />
                 </div>
                 <p className="text-xs text-slate-500">{s.msq_instructions_blurb}</p>
                 <textarea

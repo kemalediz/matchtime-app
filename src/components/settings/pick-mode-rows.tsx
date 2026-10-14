@@ -11,7 +11,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { setWeeklyRoutine } from "@/app/actions/org";
-import { InfoButton } from "@/components/stats/info-button";
+import { SettingInfo } from "@/components/info/setting-info";
 import { t } from "@/lib/i18n/t";
 import { LEARNED_REFRESH_EVENT } from "@/lib/setup-learning/suggestion-state";
 import type { BenchPickFallback, BenchPickMode } from "@/lib/squad-capacity";
@@ -57,12 +57,10 @@ export function PickModeRows(props: {
 
   return (
     <>
-      <div id="wr-pick" className="py-3 scroll-mt-6" data-testid="wr-pick">
+      <div id="wr-pick" className="py-3 scroll-mt-6" data-testid="wr-pick" data-setting="benchPickMode">
         <div className="flex items-center gap-1 text-sm font-medium text-slate-800">
           {s.wr_pick_label}
-          <InfoButton title={s.wr_pick_label}>
-            <p>{s.wr_pick_info}</p>
-          </InfoButton>
+          <SettingInfo k="benchPickMode" lang={props.language} />
         </div>
         <p className="text-xs text-slate-500">{s.wr_pick_blurb}</p>
         <select
@@ -78,12 +76,10 @@ export function PickModeRows(props: {
         </select>
       </div>
       {mode === "organiser" && (
-        <div className="py-3" data-testid="wr-fallback">
+        <div className="py-3" data-testid="wr-fallback" data-setting="benchPickFallback">
           <div className="flex items-center gap-1 text-sm font-medium text-slate-800">
             {s.wr_fallback_label}
-            <InfoButton title={s.wr_fallback_label}>
-              <p>{s.wr_fallback_info}</p>
-            </InfoButton>
+            <SettingInfo k="benchPickFallback" lang={props.language} />
           </div>
           <select
             aria-label={s.wr_fallback_label}

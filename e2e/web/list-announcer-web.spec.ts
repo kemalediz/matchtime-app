@@ -19,7 +19,7 @@ test("settings: who announces the list and teams persists", async ({ page, db })
   await expect(row).toContainText("Who announces the list and teams");
 
   await row.getByRole("button", { name: "What is Who announces the list and teams?" }).click();
-  await expect(page.getByText(/never posts the list or the teams there/)).toBeVisible();
+  await expect(page.getByRole("dialog")).toContainText("never posts the list or the teams there");
   await page.keyboard.press("Escape");
 
   await mode.selectOption("organisers");

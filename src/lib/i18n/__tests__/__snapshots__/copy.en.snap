@@ -2504,9 +2504,8 @@ This is *Friday FNF*'s main group, so it can't be the admin group. Add me to a s
 ### R186 admin group / L4 removed, DM to the owner
 I was removed from *Friday FNF*'s admin group, so admin messages now come to you by DM. You can link a group again in Settings.
 
-### R187 settings / admin messages heading and info
+### R187 settings / admin messages heading
 Admin messages go to
-Where MatchTime sends messages only admins should see: the bench to pick from, the drop-out summary, late drop-outs, who hasn't paid and new players to check. One person: a DM to the person you choose. Admin WhatsApp group: one message in your admins' group, and admins can reply there with a number, a name or a tag to pick a player. For a weekly squad they can also change it there by writing "Shehryar out" or "Bilal in", or by pasting the list, and check and change the teams there (teams, swap, move, reshuffle, YES). MatchTime reads nothing else in that group. Each admin by DM: every admin gets their own copy.
 
 ### R187 settings / the three choices
 One person
@@ -2518,7 +2517,6 @@ Who: Hamzah (owner)
 
 ### R187 settings / link flow
 [Link admin group] [New code]
-Link admin group: Press the button, then add MatchTime to your admins' WhatsApp group and send the code shown here in that group. The code works once and lasts 48 hours. MatchTime will not start a club setup in that group.
 1. Keep this page open. Your code: K7P3QX
 2. Add MatchTime to your admins' WhatsApp group.
 3. In that group, send: @Match Time admin group K7P3QX
@@ -3448,7 +3446,6 @@ Late drop-out: *Wasim Ali* said OUT for *Friday 9-a-side* (Fri 9 Oct at 20:30) a
 Weekly routine
 How your squad is put together each week. Each setting stays off until you turn it on.
 Rolling squad: Everyone who played last time is in again, unless they say OUT.
-(i) When this is on, everyone who played the last match is automatically in for the next one, and only needs to say OUT if they can't make it. Players who were on the bench, guests without a phone number and anyone who has left the group are not carried over. The squad is carried over at 08:00 the morning after each match, so you have the night to remove anyone who didn't turn up. Anyone still on the list at the final whistle counts as having played, for payments and ratings.
 Rolling squad is on
 Rolling squad is off
 Couldn't save the setting
@@ -3531,9 +3528,7 @@ Can't make it now? Say *OUT* as soon as you can so a replacement can be brought 
 
 ### WDL4 weekly deadline settings
 Drop-out deadline: The last day and time players can pull out without it counting as late.
-(i) The last time players can pull out without it counting as late. MatchTime reminds the group 3 hours before, then messages the admins with who is out and who is waiting. An OUT after the deadline still counts, and the admins are told it was late.
 List published: When MatchTime posts the final list in the group.
-(i) When MatchTime posts the final list in the group: who is playing and who is on the bench. With this and a drop-out deadline set, MatchTime stops the daily 17:00 post, except on match day.
 Day / Time / Not set
 Sunday, Monday, Tuesday, Wednesday, Thursday, Friday, Saturday
 Save / Clear / Weekly deadlines saved
@@ -3669,10 +3664,8 @@ Tip: to carry the squad over each week, to pick replacements from the bench your
 
 ### OPK8 settings: who fills an open place
 Who fills an open place: First to say IN, or the organisers pick from the bench.
-(i) First to say IN: when a place opens, MatchTime offers it to the bench and the first to say IN gets it. The organisers pick: MatchTime never fills a place by itself. Anyone who says IN goes on the bench, and your admin messages (see Admin messages go to) list the bench with positions and club ratings. The first admin to reply with a number, a name or a tag brings that player in.
 First to say IN / The organisers pick
 If nobody picks in time
-(i) If no admin replies within a day, or 4 hours before kickoff at the latest, MatchTime either offers the place to the whole bench (first to say IN gets it) or leaves it open.
 Offer it to the bench / Leave it open
 Saved
 

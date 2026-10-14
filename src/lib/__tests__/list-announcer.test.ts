@@ -125,7 +125,6 @@ describe("buildOrganiserListUpdate", () => {
         s.oa_teams_by_organisers,
         s.wr_announce_label,
         s.wr_announce_blurb,
-        s.wr_announce_info,
         s.wr_announce_matchtime,
         s.wr_announce_organisers,
       ];

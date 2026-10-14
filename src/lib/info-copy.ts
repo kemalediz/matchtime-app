@@ -10,7 +10,6 @@
  */
 import { t, type Strings } from "./i18n/t";
 import type { Lang } from "./i18n/lang";
-import type { ToggleableKey } from "./org-features-meta";
 
 /** Every popup key: `fs_players` for `info_fs_players_title` / `_body`. */
 export type InfoKey = {
@@ -39,27 +38,7 @@ export function allInfoKeys(): InfoKey[] {
     .map((k) => k.slice("info_".length, -"_title".length) as InfoKey);
 }
 
-/**
- * One popup per switch in the settings page's Bot features section,
- * including the badge row that is not in `FEATURE_META`. A new switch
- * without a popup is a `tsc` error here.
- */
-export const FEATURE_INFO: Record<ToggleableKey, InfoKey> = {
-  attendance: "feat_attendance",
-  bench: "feat_bench",
-  teamBalancing: "feat_teams",
-  momVoting: "feat_mom",
-  playerRating: "feat_rating",
-  reminders: "feat_reminders",
-  statsQa: "feat_stats",
-  paymentTracking: "feat_pay_tracking",
-  paymentCollection: "feat_pay_collect",
-  payByBank: "feat_pay_bank",
-  payCard: "feat_pay_card",
-  payDirect: "feat_pay_direct",
-  badgeAnnouncements: "feat_badges",
-  gearReminder: "feat_gear",
-};
+// Every setting on /admin/settings has its popup in ./settings-info.ts.
 
 // ── /finish-setup ──────────────────────────────────────────────────────
 

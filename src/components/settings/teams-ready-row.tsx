@@ -13,7 +13,7 @@
  */
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { InfoButton } from "@/components/stats/info-button";
+import { SettingInfo } from "@/components/info/setting-info";
 import { t } from "@/lib/i18n/t";
 import { getTeamsReady, setTeamsReady, type TeamsReadyStatus } from "@/app/actions/teams-ready";
 
@@ -68,12 +68,10 @@ export function TeamsReadyRow(props: { orgId: string; language: string | null | 
     "h-10 px-3 rounded-lg border border-slate-200 bg-white text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50";
 
   return (
-    <div className="py-3" data-testid="teams-ready">
+    <div className="py-3" data-testid="teams-ready" data-setting="teamsReady">
       <div className="flex items-center gap-1 text-sm font-medium text-slate-800">
         {s.tp_settings_label}
-        <InfoButton title={s.tp_settings_label}>
-          <p>{s.tp_settings_info}</p>
-        </InfoButton>
+        <SettingInfo k="teamsReady" lang={props.language} />
       </div>
       <p className="text-xs text-slate-500">{s.tp_settings_blurb}</p>
       <div className="mt-2 flex flex-wrap items-center gap-3">

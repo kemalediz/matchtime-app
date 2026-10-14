@@ -23,7 +23,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ImageIcon, Loader2, Trash2, Upload } from "lucide-react";
-import { InfoButton } from "@/components/stats/info-button";
+import { SettingInfo } from "@/components/info/setting-info";
 import { t, type Strings } from "@/lib/i18n/t";
 
 interface DesignOption {
@@ -181,6 +181,7 @@ export function PostersCard(props: { club: string; language: string | null | und
       id="posters"
       aria-labelledby="posters-heading"
       data-testid="posters-card"
+      data-setting="posters"
       lang={props.language ?? undefined}
       className="scroll-mt-6 bg-white rounded-xl border border-slate-200 shadow-sm"
     >
@@ -189,9 +190,7 @@ export function PostersCard(props: { club: string; language: string | null | und
         <h2 id="posters-heading" className="font-semibold text-slate-800">
           {s.gp_title}
         </h2>
-        <InfoButton title={s.gp_title} testId="posters">
-          <p>{s.gp_info}</p>
-        </InfoButton>
+        <SettingInfo k="posters" lang={props.language} />
       </div>
 
       <div className="p-4 sm:p-6 space-y-5 min-w-0">
@@ -207,8 +206,11 @@ export function PostersCard(props: { club: string; language: string | null | und
           </p>
         )}
 
-        <div>
-          <h3 className="text-sm font-semibold text-slate-800">{s.gp_design_heading}</h3>
+        <div data-setting="posterDesign">
+          <div className="flex items-center gap-1">
+            <h3 className="text-sm font-semibold text-slate-800">{s.gp_design_heading}</h3>
+            <SettingInfo k="posterDesign" lang={props.language} />
+          </div>
           <ul className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-4" data-testid="posters-gallery">
             {named.map(({ o, name }) => {
               const inUse = state.current === o.id;
@@ -244,8 +246,11 @@ export function PostersCard(props: { club: string; language: string | null | und
         </div>
 
         {!ownIsMeasured && (
-          <div>
-            <h3 className="text-sm font-semibold text-slate-800">{s.gp_upload_heading}</h3>
+          <div data-setting="posterBackground">
+            <div className="flex items-center gap-1">
+              <h3 className="text-sm font-semibold text-slate-800">{s.gp_upload_heading}</h3>
+              <SettingInfo k="posterBackground" lang={props.language} />
+            </div>
             <p className="mt-0.5 text-xs text-slate-500">{s.gp_upload_blurb}</p>
             <input
               ref={fileInput}

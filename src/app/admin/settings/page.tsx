@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Copy, Link as LinkIcon, Users, Settings, MessageCircle, SlidersHorizontal, Landmark, CheckCircle2, Shirt, Languages, Repeat } from "lucide-react";
 import { renameDraftClub, setOrgFeature, setOrgLanguage, setOrgTeamLabels, setWeeklyRoutine } from "@/app/actions/org";
-import { InfoButton } from "@/components/stats/info-button";
 import { WeeklyDeadlineRows, type DayTimeValue } from "@/components/settings/weekly-deadline-rows";
 import { t } from "@/lib/i18n/t";
 import { startCollectorOnboarding, refreshCollectorStatus, resetCollectorConnect, openCollectorDashboard, setPaymentHolder } from "@/app/actions/payments";
@@ -16,7 +15,7 @@ import { TeamsReadyRow } from "@/components/settings/teams-ready-row";
 import { ListAnnouncerRow } from "@/components/settings/list-announcer-row";
 import { BillingSettingsCard, type BillingCardData } from "@/components/settings/billing-card";
 import { SectionInfo } from "@/components/info/section-info";
-import { FEATURE_INFO } from "@/lib/info-copy";
+import { SettingInfo } from "@/components/info/setting-info";
 import { LearnedSetupPanel } from "@/components/settings/learned-setup-panel";
 import { MonthlySquadSection, type MonthlySquadData } from "@/components/settings/monthly-squad-section";
 import { GoLiveBanner, type GoLiveSetup } from "@/components/settings/go-live-banner";
@@ -375,10 +374,13 @@ export default function SettingsPage() {
         </div>
         <div className="p-6 space-y-4">
           {org.nameEditable ? (
-            <form onSubmit={saveClubName} className="space-y-2">
-              <label htmlFor="org-name" className="block text-sm font-medium text-slate-700">
-                Organisation name
-              </label>
+            <form onSubmit={saveClubName} className="space-y-2" data-setting="clubName">
+              <div className="flex items-center gap-1">
+                <label htmlFor="org-name" className="block text-sm font-medium text-slate-700">
+                  Organisation name
+                </label>
+                <SettingInfo k="clubName" lang={org.language} />
+              </div>
               <div className="flex flex-col sm:flex-row gap-2">
                 <input
                   id="org-name"
@@ -415,10 +417,13 @@ export default function SettingsPage() {
               </p>
             </form>
           ) : (
-            <div>
-              <label htmlFor="org-name" className="block text-sm font-medium text-slate-700 mb-1.5">
-                Organisation name
-              </label>
+            <div data-setting="clubName">
+              <div className="flex items-center gap-1 mb-1.5">
+                <label htmlFor="org-name" className="block text-sm font-medium text-slate-700">
+                  Organisation name
+                </label>
+                <SettingInfo k="clubName" lang={org.language} />
+              </div>
               <input
                 id="org-name"
                 value={org.name}
@@ -449,11 +454,11 @@ export default function SettingsPage() {
       </section>
 
       {/* Team names */}
-      <section className="bg-white rounded-xl border border-slate-200 shadow-sm">
+      <section className="bg-white rounded-xl border border-slate-200 shadow-sm" data-setting="teamNames">
         <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
           <Shirt className="w-4 h-4 text-slate-500" />
           <h2 className="font-semibold text-slate-800">Team names</h2>
-          <SectionInfo k="st_team_names" lang={org.language} />
+          <SettingInfo k="teamNames" lang={org.language} />
         </div>
         <div className="p-6 space-y-4">
           <p className="text-sm text-slate-500">
@@ -502,11 +507,11 @@ export default function SettingsPage() {
 
       {/* Bot language. The id is where the learned-setup panel's
           "Change the language" button lands (setup-learning/suggestion-action.ts). */}
-      <section id="bot-language" className="bg-white rounded-xl border border-slate-200 shadow-sm scroll-mt-6">
+      <section id="bot-language" className="bg-white rounded-xl border border-slate-200 shadow-sm scroll-mt-6" data-setting="language">
         <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
           <Languages className="w-4 h-4 text-slate-500" />
           <h2 className="font-semibold text-slate-800">Bot language</h2>
-          <SectionInfo k="st_language" lang={org.language} />
+          <SettingInfo k="language" lang={org.language} />
         </div>
         <div className="p-6 space-y-4">
           <p className="text-sm text-slate-500">
@@ -578,11 +583,12 @@ export default function SettingsPage() {
                 <div
                   key={key}
                   className="flex items-center justify-between gap-4 py-3"
+                  data-setting={key}
                 >
                   <div className="min-w-0">
                     <div className="flex items-center gap-1 text-sm font-medium text-slate-800">
                       <span>{m.label}</span>
-                      <SectionInfo k={FEATURE_INFO[key]} lang={org.language} />
+                      <SettingInfo k={key} lang={org.language} />
                     </div>
                     <p className="text-xs text-slate-500">{m.blurb}</p>
                   </div>
@@ -613,11 +619,11 @@ export default function SettingsPage() {
               const key: FeatureKey = "badgeAnnouncements";
               const on = org.features?.[key] ?? true;
               return (
-                <div className="flex items-center justify-between gap-4 py-3" data-testid="feature-badge-announcements">
+                <div className="flex items-center justify-between gap-4 py-3" data-testid="feature-badge-announcements" data-setting="badgeAnnouncements">
                   <div className="min-w-0">
                     <div className="flex items-center gap-1 text-sm font-medium text-slate-800">
                       {s.badges_feature_label}
-                      <SectionInfo k={FEATURE_INFO.badgeAnnouncements} lang={org.language} />
+                      <SettingInfo k="badgeAnnouncements" lang={org.language} />
                     </div>
                     <p className="text-xs text-slate-500">{s.badges_feature_blurb}</p>
                   </div>
@@ -648,11 +654,11 @@ export default function SettingsPage() {
               const key: FeatureKey = "gearReminder";
               const on = org.features?.[key] ?? false;
               return (
-                <div className="flex items-center justify-between gap-4 py-3" data-testid="feature-gear-reminder">
+                <div className="flex items-center justify-between gap-4 py-3" data-testid="feature-gear-reminder" data-setting="gearReminder">
                   <div className="min-w-0">
                     <div className="flex items-center gap-1 text-sm font-medium text-slate-800">
                       {s.gear_feature_label}
-                      <SectionInfo k={FEATURE_INFO.gearReminder} lang={org.language} />
+                      <SettingInfo k="gearReminder" lang={org.language} />
                     </div>
                     <p className="text-xs text-slate-500">{s.gear_feature_blurb}</p>
                   </div>
@@ -699,13 +705,11 @@ export default function SettingsPage() {
                 {/* A monthly club has no rolling squad: the month's regulars
                     take its place (monthly squad, slice 2). */}
                 {!monthly && (
-                <div className="flex items-center justify-between gap-4 py-3" data-testid="wr-rolling">
+                <div className="flex items-center justify-between gap-4 py-3" data-testid="wr-rolling" data-setting="rollingSquad">
                   <div className="min-w-0">
                     <div className="flex items-center gap-1 text-sm font-medium text-slate-800">
                       {s.wr_rolling_label}
-                      <InfoButton title={s.wr_rolling_label}>
-                        <p>{s.wr_rolling_info}</p>
-                      </InfoButton>
+                      <SettingInfo k="rollingSquad" lang={org.language} />
                     </div>
                     <p className="text-xs text-slate-500">{s.wr_rolling_blurb}</p>
                   </div>
@@ -788,18 +792,18 @@ export default function SettingsPage() {
 
       {/* Payments — Connect bank */}
       {org.features?.paymentCollection && (
-        <section id="payments" className="bg-white rounded-xl border border-slate-200 shadow-sm scroll-mt-6">
+        <section id="payments" className="bg-white rounded-xl border border-slate-200 shadow-sm scroll-mt-6" data-setting="collectorBank">
           <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
             <Landmark className="w-4 h-4 text-slate-500" />
             <h2 className="font-semibold text-slate-800">Money collector&apos;s bank</h2>
-          <SectionInfo k="st_bank" lang={org.language} />
+          <SettingInfo k="collectorBank" lang={org.language} />
           </div>
           <div className="p-6 space-y-4">
             {/* Who collects the money */}
-            <div>
+            <div data-setting="moneyCollector">
               <div className="flex items-center gap-1 mb-1.5">
                 <label className="block text-sm font-medium text-slate-700">Money collector</label>
-                <SectionInfo k="st_collector" lang={org.language} />
+                <SettingInfo k="moneyCollector" lang={org.language} />
               </div>
               <select
                 value={org.paymentHolderId ?? ""}

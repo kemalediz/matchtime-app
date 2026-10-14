@@ -2505,9 +2505,8 @@ Bu, *Friday FNF* kulübünün ana grubu; yönetici grubu olamaz. Beni yöneticil
 ### R186 admin group / L4 removed, DM to the owner
 *Friday FNF* yönetici grubundan çıkarıldım, bu yüzden yönetici mesajları artık size DM olarak gelecek. Ayarlar'dan yeniden bir grup bağlayabilirsiniz.
 
-### R187 settings / admin messages heading and info
+### R187 settings / admin messages heading
 Yönetici mesajları
-MatchTime'ın yalnızca yöneticilerin görmesi gereken mesajları nereye gönderdiği: seçim için yedek listesi, son çıkış özeti, geç çıkanlar, ödemeyenler ve kontrol edilecek yeni oyuncular. Tek kişi: seçtiğiniz kişiye DM. Yönetici WhatsApp grubu: yöneticilerin grubuna tek mesaj; yöneticiler orada numara, isim ya da etiketle oyuncu seçebilir. Haftalık kadroda "Ali çıktı" ya da "Can girsin" yazarak veya listeyi yapıştırarak kadroyu orada da değiştirebilirler; takımları da orada görüp değiştirebilirler (takımlar, değiş, taşı, yeniden, EVET). MatchTime o grupta başka hiçbir şeyi okumaz. Her yöneticiye DM: her yönetici kendi kopyasını alır.
 
 ### R187 settings / the three choices
 Tek kişi
@@ -2519,7 +2518,6 @@ Kim: Hamzah (kulüp sahibi)
 
 ### R187 settings / link flow
 [Yönetici grubunu bağla] [Yeni kod]
-Yönetici grubunu bağla: Düğmeye basın, sonra MatchTime'ı yöneticilerin WhatsApp grubuna ekleyip burada görünen kodu o gruba gönderin. Kod bir kez çalışır ve 48 saat geçerlidir. MatchTime o grupta kulüp kurulumu başlatmaz.
 1. Bu sayfayı açık tutun. Kodunuz: K7P3QX
 2. MatchTime'ı yöneticilerin WhatsApp grubuna ekleyin.
 3. O grupta şunu gönderin: @Match Time yönetici grubu K7P3QX
@@ -3463,7 +3461,6 @@ Geç çıkış: *Wasim Ali*, *Friday 9-a-side* (9 Ekim Cuma 20:30) için 16:05 s
 Haftalık düzen
 Kadronun her hafta nasıl oluştuğu. Her ayar siz açana kadar kapalı kalır.
 Kadro devam eder: Geçen maçta oynayan herkes, YOKUM demedikçe yine kadroda.
-(i) Bu açıkken, son maçta oynayan herkes bir sonraki maçta otomatik olarak kadroda olur; gelemeyecekse sadece YOKUM yazması yeterli. Yedek listesindekiler, telefon numarası olmayan misafirler ve gruptan ayrılanlar aktarılmaz. Kadro her maçtan sonraki sabah 08:00'de aktarılır, böylece gelmeyenleri o gece listeden çıkarabilirsiniz. Maç bittiğinde listede olan herkes ödeme ve puanlama için oynamış sayılır.
 Kadro devam eder: açık
 Kadro devam eder: kapalı
 Ayar kaydedilemedi
@@ -3546,9 +3543,7 @@ Artık gelemiyorsanız yerinize birinin alınabilmesi için hemen *YOKUM* yazın
 
 ### WDL4 weekly deadline settings
 Son çıkış saati: Oyuncuların geç sayılmadan çıkabileceği son gün ve saat.
-(i) Oyuncuların geç sayılmadan çıkabileceği son saat. MatchTime 3 saat önce gruba hatırlatır, sonra yöneticilere kimin çıktığını ve kimin beklediğini yazar. Son çıkış saatinden sonra YOKUM yine geçerlidir, yöneticilere geç olduğu bildirilir.
 Liste yayını: MatchTime'ın son listeyi gruba gönderdiği zaman.
-(i) MatchTime'ın son listeyi gruba gönderdiği zaman: kim oynuyor, kim yedekte. Bu ve son çıkış saati ayarlıysa MatchTime, maç günü dışında her gün 17:00'de gönderdiği mesajı durdurur.
 Gün / Saat / Ayarlanmadı
 Pazar, Pazartesi, Salı, Çarşamba, Perşembe, Cuma, Cumartesi
 Kaydet / Temizle / Haftalık saatler kaydedildi
@@ -3684,10 +3679,8 @@ Cum 20:30 maçında bir yer açıldı. *VARIM* yazın, yedek listesine ekleyeyim
 
 ### OPK8 settings: who fills an open place
 Boşalan yeri kim doldurur: İlk VARIM diyen, ya da organizatörler yedek listesinden seçer.
-(i) İlk VARIM diyen: bir yer açılınca MatchTime yeri yedek listesine sunar, ilk VARIM diyen alır. Organizatörler seçer: MatchTime hiçbir yeri kendisi doldurmaz. VARIM diyen herkes yedek listesine girer; yönetici mesajlarınız (bkz. Yönetici mesajları) yedek listesini, mevkileri ve kulüp puanlarını içerir. Numara, isim ya da etiketle ilk yanıt veren yöneticinin seçtiği oyuncu kadroya girer.
 İlk VARIM diyen / Organizatörler seçer
 Zamanında kimse seçmezse
-(i) Hiçbir yönetici bir gün içinde, en geç maçtan 4 saat önce yanıt vermezse, MatchTime yeri ya tüm yedek listesine sunar (ilk VARIM diyen alır) ya da boş bırakır.
 Yedek listesine sun / Boş bırak
 Kaydedildi
 

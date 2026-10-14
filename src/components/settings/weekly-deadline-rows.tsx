@@ -15,7 +15,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { setWeeklyRoutine } from "@/app/actions/org";
-import { InfoButton } from "@/components/stats/info-button";
+import { SettingInfo } from "@/components/info/setting-info";
 import { t } from "@/lib/i18n/t";
 import type { WeeklyDeadlineError } from "@/lib/weekly-deadlines";
 
@@ -52,7 +52,6 @@ export function WeeklyDeadlineRows(props: {
         language={props.language}
         label={s.wd_dropout_label}
         blurb={s.wd_dropout_blurb}
-        info={s.wd_dropout_info}
         initial={props.dropOutDeadline}
         onSaved={props.onSaved}
       />
@@ -63,7 +62,6 @@ export function WeeklyDeadlineRows(props: {
         language={props.language}
         label={s.wd_publish_label}
         blurb={s.wd_publish_blurb}
-        info={s.wd_publish_info}
         initial={props.listPublish}
         onSaved={props.onSaved}
       />
@@ -78,7 +76,6 @@ function DeadlineRow(props: {
   language: string | null | undefined;
   label: string;
   blurb: string;
-  info: string;
   initial: DayTimeValue | null;
   onSaved?: () => void;
 }) {
@@ -114,12 +111,10 @@ function DeadlineRow(props: {
     "h-10 px-3 rounded-lg border border-slate-200 bg-white text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50";
 
   return (
-    <div className="py-3" data-testid={props.testId}>
+    <div className="py-3" data-testid={props.testId} data-setting={props.rowKey}>
       <div className="flex items-center gap-1 text-sm font-medium text-slate-800">
         {props.label}
-        <InfoButton title={props.label}>
-          <p>{props.info}</p>
-        </InfoButton>
+        <SettingInfo k={props.rowKey} lang={props.language} />
       </div>
       <p className="text-xs text-slate-500">{props.blurb}</p>
       <div className="mt-2 flex flex-wrap items-center gap-2">

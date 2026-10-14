@@ -40,7 +40,7 @@ test("the section and its ⓘ, and One person persists", async ({ page, db }) =>
   await expect(section.getByLabel("Each admin by DM")).toBeChecked();
 
   await section.getByRole("button", { name: "What is Admin messages go to?" }).click();
-  await expect(page.getByText(/Where MatchTime sends messages only admins should see/)).toBeVisible();
+  await expect(page.getByRole("dialog")).toContainText("Where MatchTime sends the messages only organisers should see");
   await page.getByRole("button", { name: "Close" }).click();
 
   await section.getByLabel("One person").check();

@@ -56,7 +56,7 @@ test("an owner: the card, its ⓘ, sample previews, the gallery; upload then rem
   expect(order).toEqual(["weekly-routine", "posters-card"]);
 
   await card.getByRole("button", { name: "What is Posters?" }).click();
-  await expect(page.getByText(/sends them to your admin group, ready to forward/)).toBeVisible();
+  await expect(page.getByRole("dialog")).toContainText("ready to forward to the players' group");
   await page.getByRole("button", { name: "Close" }).click();
 
   await expect(card.getByTestId("poster-preview-list")).toHaveAttribute("data-state", "ready", { timeout: 30_000 });
