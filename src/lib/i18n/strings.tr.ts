@@ -2021,6 +2021,10 @@ export const tr: Strings = {
       ? `Tanımadığım isimler: ${p.names} (henüz üye değil, yeni oyuncu olarak ekleyeceğim).`
       : `Tanımadığım isimler: ${p.names} (henüz üye değiller, yeni oyuncu olarak ekleyeceğim).`,
   ag_paste_unclear: (p: { names: string }): string => `${p.names} kim, emin değilim; dışarıda bırakıyorum, tam adını yazın.`,
+  ag_paste_cannot_add: (p: { names: string; many: boolean }): string =>
+    !p.many
+      ? `${p.names} adını oyuncu olarak ekleyemem, dışarıda bırakıyorum.`
+      : `${p.names} adlarını oyuncu olarak ekleyemem, dışarıda bırakıyorum.`,
   ag_paste_over: (p: { listed: number; max: number }): string =>
     `Listede ${p.max} yer için ${p.listed} isim var, sondakiler yedek listesine gider.`,
   ag_paste_confirm: "Uygulamak için EVET yazın.",

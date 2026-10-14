@@ -37,6 +37,7 @@ import {
   type FixtureMatch,
   type SeedSourceRow,
 } from "./rolling-squad-rules";
+import { loadAdminAddedUserIds, type AdminAddedReadClient } from "./admin-added";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const LIVE_STATUSES = ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"];
@@ -83,6 +84,9 @@ export interface HelloReadClient {
   user: { findUnique(args: { where: { id: string }; select: { name: true } }): Promise<{ name: string | null } | null> };
   match: { findMany(args: object): Promise<CarryMatchRow[]> };
   attendance: { findMany(args: object): Promise<CarryAttendanceRow[]> };
+  /** Read only when a carried player has no phone. Optional so a double
+   *  without it reads as "no admin added anybody". */
+  attendanceEvent?: AdminAddedReadClient["attendanceEvent"];
 }
 
 /**
@@ -131,6 +135,13 @@ export async function loadHasSquadToCarry(orgId: string, client: HelloReadClient
     select: { userId: true, leftAt: true, provisionallyAddedAt: true },
   });
   const membershipOf = new Map(memberships.map((m) => [m.userId, m]));
+  // The seeding's own read: a phoneless player is carried only when an
+  // admin added him (`admin-added.ts`).
+  const phoneless = attendance.filter((a) => !a.user.phoneNumber).map((a) => a.userId);
+  const adminAdded =
+    phoneless.length > 0 && client.attendanceEvent
+      ? await loadAdminAddedUserIds(client as AdminAddedReadClient, orgId, phoneless)
+      : new Set<string>();
   const rows = new Map<string, SeedSourceRow[]>();
   for (const a of attendance) {
     const mem = membershipOf.get(a.userId);
@@ -143,6 +154,7 @@ export async function loadHasSquadToCarry(orgId: string, client: HelloReadClient
       email: a.user.email,
       isActive: a.user.isActive,
       membership: mem ? { leftAt: mem.leftAt, provisionallyAddedAt: mem.provisionallyAddedAt } : null,
+      addedByAdmin: adminAdded.has(a.userId),
     });
     rows.set(a.matchId, list);
   }

@@ -20,9 +20,18 @@ import { createProvisionalByName, restoreMembership } from "./resolve-sender";
 export async function resolveOrProvisionByName(
   orgId: string,
   rawName: string,
+  opts: {
+    /** An admin pasted this name in the admin group, was told "I'll add
+     *  them as a new player", and confirmed with YES. The name is
+     *  deliberate: a short one ("Mo") is provisioned, and when only
+     *  removed members make it ambiguous a new player is added as
+     *  promised rather than nothing. */
+    adminConfirmed?: boolean;
+  } = {},
 ): Promise<{ userId: string; name: string | null } | null> {
   const name = rawName.trim();
   if (!name || name.length < 2) return null;
+  const deliberate = opts.adminConfirmed === true;
 
   // 1. Fuzzy lookup against existing members. Soft-removed members are
   //    INCLUDED in the candidate set so we restore them rather than
@@ -83,10 +92,16 @@ export async function resolveOrProvisionByName(
         }
       }
     }
-    console.warn(
-      `[analyze] third-party name "${name}" is ambiguous in org ${orgId} (${firstNameMatches.length} candidates, no alias to disambiguate). Skipping registration.`,
-    );
-    return null;
+    if (!deliberate) {
+      console.warn(
+        `[analyze] third-party name "${name}" is ambiguous in org ${orgId} (${firstNameMatches.length} candidates, no alias to disambiguate). Skipping registration.`,
+      );
+      return null;
+    }
+    // The admin was told this name is nobody in the club and will be
+    // added as a new player (the preview matches against current members
+    // only, so the candidates here are removed ones): keep that promise.
+    console.log(`[analyze] admin-confirmed name in org ${orgId} matches ${firstNameMatches.length} candidates; adding as new`);
   }
 
   // 1c. Alias lookup — admin-curated nickname → user mapping. Same
@@ -107,7 +122,7 @@ export async function resolveOrProvisionByName(
   }
 
   // 2. No unique match and no ambiguity → provision. No phone known (third party).
-  const provisioned = await createProvisionalByName(orgId, name, null);
+  const provisioned = await createProvisionalByName(orgId, name, null, { deliberate });
   if (provisioned) return { userId: provisioned.userId!, name: provisioned.name };
   return null;
 }

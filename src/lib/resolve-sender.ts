@@ -265,24 +265,45 @@ export async function createProvisionalMember(
 ): Promise<ResolvedSender | null> {
   return createProvisionalByName(orgId, msg.authorName?.trim() ?? null, msg.authorPhone);
 }
+/**
+ * Can a name an ADMIN typed on purpose (a pasted squad list confirmed with
+ * YES) become a new player? The same rule as a usable WhatsApp name: 2 to
+ * 60 characters, not a raw number, not the bot or a system author. The
+ * paste's preview asks this BEFORE the YES and the provisioner applies the
+ * same rule at the YES, so a name the preview promised is never refused.
+ */
+export function isDeliberateNameProvisionable(raw: string | null | undefined): boolean {
+  return usableWhatsAppName(raw) !== null;
+}
+
 export async function createProvisionalByName(
   orgId: string,
   rawName: string | null,
   rawPhone: string | null,
+  opts: {
+    /** An admin typed this name on purpose and confirmed it (a pasted
+     *  squad list's YES): `isDeliberateNameProvisionable` decides, so a
+     *  short real name ("Mo") is added. Without it the name is a
+     *  pushname or a third party's mention, held to the stricter rule. */
+    deliberate?: boolean;
+  } = {},
 ): Promise<ResolvedSender | null> {
   const trimmed = rawName?.trim();
+  if (opts.deliberate && !isDeliberateNameProvisionable(trimmed)) return null;
   // Never stamp a raw phone number / @lid numeric id as a display name
   // (RC4, 2026-06-12): provision under a neutral placeholder instead
   // and let the admin rename from the dashboard — the membership is
   // flagged provisional either way, and group posts must never show
   // bare digits as a player.
   const name = trimmed && isRawDigitName(trimmed) ? "New player" : trimmed;
-  // Require ≥3 chars: 2-char pushnames like "ba" are almost always
-  // truncations of a real name we already have (e.g. "Baki Sutton") and
-  // provisioning them creates duplicate ghost users. The relaxed fuzzy
-  // matcher (see firstNameMatches) now resolves short pushnames to
-  // existing members; provisioning is reserved for genuinely new names.
-  if (!name || name.length < 3) return null;
+  // Require ≥3 chars unless deliberate: 2-char pushnames like "ba" are
+  // almost always truncations of a real name we already have (e.g. "Baki
+  // Sutton") and provisioning them creates duplicate ghost users. The
+  // relaxed fuzzy matcher (see firstNameMatches) now resolves short
+  // pushnames to existing members; provisioning is reserved for genuinely
+  // new names. An admin's pasted "Mo" is not a truncation: it is checked
+  // above instead.
+  if (!name || (!opts.deliberate && name.length < 3)) return null;
   // Skip obvious non-player authors (bot itself, group admin system messages).
   const blocked = /^(match time|matchtime|whatsapp|system)$/i;
   if (blocked.test(name)) return null;

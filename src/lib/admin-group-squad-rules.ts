@@ -274,14 +274,19 @@ export function buildPasteProposalReply(p: {
   newNames: string[];
   /** Names two players could be: left out. */
   unclear: string[];
+  /** Names nobody in the club has that cannot be a player's name either
+   *  ("WhatsApp", a phone number): left out, said before the YES. */
+  cannotAdd?: string[];
   /** Playing names in the list, for the "too many names" line. */
   listed: number;
   maxPlayers: number;
 }): string {
   const s = t(p.lang);
   const unclear = p.unclear.length > 0 ? s.ag_paste_unclear({ names: p.unclear.join(", ") }) : null;
+  const cannotAdd = p.cannotAdd ?? [];
+  const refused = cannotAdd.length > 0 ? s.ag_paste_cannot_add({ names: cannotAdd.join(", "), many: cannotAdd.length > 1 }) : null;
   if (p.add.length === 0 && p.remove.length === 0 && p.toBench.length === 0 && p.newNames.length === 0) {
-    return [s.ag_paste_same, unclear].filter(Boolean).join(" ");
+    return [s.ag_paste_same, unclear, refused].filter(Boolean).join(" ");
   }
   const parts: string[] = [];
   if (p.add.length > 0) parts.push(s.ag_paste_adding({ names: p.add.join(", ") }));
@@ -289,6 +294,7 @@ export function buildPasteProposalReply(p: {
   if (p.toBench.length > 0) parts.push(s.ag_paste_to_bench({ names: p.toBench.join(", ") }));
   if (p.newNames.length > 0) parts.push(s.ag_paste_new({ names: p.newNames.join(", "), many: p.newNames.length > 1 }));
   if (unclear) parts.push(unclear);
+  if (refused) parts.push(refused);
   if (p.listed > p.maxPlayers) parts.push(s.ag_paste_over({ listed: p.listed, max: p.maxPlayers }));
   parts.push(s.ag_paste_confirm);
   return parts.join(" ");

@@ -180,7 +180,7 @@ describe("answerSquadPasteYes", () => {
       sourceRef: "wa-paste",
     });
     expect(att.registerAttendance.mock.calls[0][2]).toMatchObject({ promoteFromBench: true, actorIsAdmin: true });
-    expect(prov.resolveOrProvisionByName).toHaveBeenCalledWith("org", "Naim");
+    expect(prov.resolveOrProvisionByName).toHaveBeenCalledWith("org", "Naim", { adminConfirmed: true });
   });
 
   it("the diff is worked out again at the YES: a change made since is not undone twice", async () => {

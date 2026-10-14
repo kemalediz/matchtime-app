@@ -30,6 +30,8 @@ const state = {
   matches: [] as Mt[],
   attendance: [] as Att[],
   events: [] as Array<Record<string, unknown>>,
+  /** AttendanceEvent rows written before the test: the club's history. */
+  history: [] as Array<{ orgId: string; userId: string; actorKind: string; cause: string; toStatus: string | null }>,
   sent: [] as string[],
   users: new Map<string, { phoneNumber: string | null; email: string; isActive: boolean }>(),
   memberships: new Map<string, { leftAt: Date | null; provisionallyAddedAt: Date | null }>(),
@@ -72,6 +74,22 @@ const fake = {
         .map((u) => ({ userId: u, ...state.memberships.get(u)! })),
   },
   attendanceEvent: {
+    findMany: async ({
+      where,
+    }: {
+      where: { orgId: string; userId: { in: string[] }; actorKind: string; cause: { in: string[] }; toStatus: { in: string[] } };
+    }) =>
+      [...state.history, ...(state.events as typeof state.history)]
+        .filter(
+          (e) =>
+            e.orgId === where.orgId &&
+            where.userId.in.includes(e.userId) &&
+            e.actorKind === where.actorKind &&
+            where.cause.in.includes(e.cause) &&
+            e.toStatus != null &&
+            where.toStatus.in.includes(e.toStatus),
+        )
+        .map((e) => ({ userId: e.userId })),
     create: async ({ data }: { data: Record<string, unknown> }) => {
       state.events.push(data);
       return data;
@@ -119,6 +137,7 @@ function reset(maxPlayers = 18) {
   ];
   state.attendance.push({ matchId: "last", userId: "kemal", status: "CONFIRMED", position: 5 });
   state.events = [];
+  state.history = [];
   state.sent = [];
   state.users = new Map(
     ["hamzah", "raihan", "wasim", "benchy", "kemal"].map((u) => [
@@ -226,5 +245,69 @@ describe("seedDueRollingSquads", () => {
     const next = matchById("next")!;
     next.date = new Date("2026-10-30T20:30:00.000Z");
     expect(await seedDueRollingSquads(new Date("2026-10-24T07:05:00.000Z"))).toEqual({ seeded: 0 });
+  });
+});
+
+describe("a phoneless player an admin added (club rehearsal, 2026-10-14)", () => {
+  /** A name pasted in the admin group and provisioned: no phone, a
+   *  `provisional+` email, the provisional flag set. */
+  function addPlaceholder(userId: string) {
+    state.attendance.push({ matchId: "last", userId, status: "CONFIRMED", position: 10 + state.attendance.length });
+    state.users.set(userId, { phoneNumber: null, email: `provisional+${userId}-abc@matchtime.local`, isActive: true });
+    state.memberships.set(userId, { leftAt: null, provisionallyAddedAt: new Date("2026-09-30T12:00:00Z") });
+  }
+  const carried = (userId: string) => state.attendance.find((a) => a.matchId === "next" && a.userId === userId)?.status ?? null;
+  const seed = () => seedRollingSquad({ targetId: "next", sourceId: "last", actor: { kind: "scheduler" }, now: SAT_0805 });
+
+  it("Uncle, pasted in the admin group and confirmed, is carried to next week", async () => {
+    addPlaceholder("uncle");
+    state.history.push({ orgId: "org-fnf", userId: "uncle", actorKind: "admin", cause: "admin-message", toStatus: "CONFIRMED" });
+    await seed();
+    expect(carried("uncle")).toBe("CONFIRMED");
+  });
+
+  it("an admin's squad edit on the website counts the same", async () => {
+    addPlaceholder("uncle");
+    state.history.push({ orgId: "org-fnf", userId: "uncle", actorKind: "admin", cause: "admin-squad-edit", toStatus: "CONFIRMED" });
+    await seed();
+    expect(carried("uncle")).toBe("CONFIRMED");
+  });
+
+  it("he stays carried the week after: the admin's add is in the club's log, not on last week's row", async () => {
+    addPlaceholder("uncle");
+    state.history.push({ orgId: "org-fnf", userId: "uncle", actorKind: "admin", cause: "admin-message", toStatus: "CONFIRMED" });
+    // Last week's row was itself written by the seeding, not by the admin.
+    state.history.push({ orgId: "org-fnf", userId: "uncle", actorKind: "scheduler", cause: "rolling-squad", toStatus: "CONFIRMED" });
+    await seed();
+    expect(carried("uncle")).toBe("CONFIRMED");
+  });
+
+  it("a one-off guest another player registered stays excluded", async () => {
+    addPlaceholder("gary");
+    state.history.push({ orgId: "org-fnf", userId: "gary", actorKind: "member", cause: "third-party-attendance", toStatus: "CONFIRMED" });
+    await seed();
+    expect(carried("gary")).toBeNull();
+  });
+
+  it("an admin pressing Carry over does not make a guest admin-added", async () => {
+    addPlaceholder("gary");
+    state.history.push({ orgId: "org-fnf", userId: "gary", actorKind: "member", cause: "third-party-attendance", toStatus: "CONFIRMED" });
+    state.history.push({ orgId: "org-fnf", userId: "gary", actorKind: "admin", cause: "rolling-squad", toStatus: "CONFIRMED" });
+    await seed();
+    expect(carried("gary")).toBeNull();
+  });
+
+  it("an admin removing a guest does not make him admin-added", async () => {
+    addPlaceholder("gary");
+    state.history.push({ orgId: "org-fnf", userId: "gary", actorKind: "admin", cause: "admin-message", toStatus: null });
+    await seed();
+    expect(carried("gary")).toBeNull();
+  });
+
+  it("an admin's add in ANOTHER club does not count here", async () => {
+    addPlaceholder("gary");
+    state.history.push({ orgId: "org-other", userId: "gary", actorKind: "admin", cause: "admin-message", toStatus: "CONFIRMED" });
+    await seed();
+    expect(carried("gary")).toBeNull();
   });
 });
