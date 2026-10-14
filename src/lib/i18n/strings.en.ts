@@ -4213,4 +4213,35 @@ export const en = {
   cf_back: "Back to connecting MatchTime",
   cf_edit_tab_club: "Club name and settings",
   cf_edit_tab_game: "Weekly game",
+
+  // ── A group MatchTime cannot post in (2026-10-14) ────────────────────
+  // Only admins can send messages in the group (or it is a community's
+  // announcements group) and MatchTime is not an admin there, so nothing
+  // it posts would be seen. src/lib/group-postability-rules.ts.
+  /** To the organiser who added MatchTime to such a group, by DM, while
+   *  connecting: the link waits until one of the two ways out is done. */
+  gp_connect_admin_only: (p: { group: string | null }): string =>
+    `I'm in ${p.group ? `"${p.group}"` : "your group"}, but only admins can send messages there, so MatchTime can't post. ` +
+    `Either make MatchTime a group admin (Group info, tap MatchTime, Make group admin), or add MatchTime to the group your players chat in instead. ` +
+    `I'll carry on as soon as one of those is done.`,
+  /** The same, for a community's announcements group. */
+  gp_connect_community: (p: { group: string | null }): string =>
+    `I'm in ${p.group ? `"${p.group}"` : "your group"}, which is your community's announcements group. Only admins can send messages there, so MatchTime can't post. ` +
+    `Add MatchTime to the community group your players chat in instead (recommended), or make MatchTime an admin of the announcements group. ` +
+    `I'll carry on as soon as one of those is done.`,
+  /** To a live club's organisers (their admin channel), once per stretch:
+   *  the club's group has become one MatchTime cannot post in. */
+  gp_live_blocked: (p: { club: string; community: boolean }): string =>
+    `MatchTime can't post in ${p.club}'s WhatsApp group any more: ` +
+    (p.community ? "it is a community announcements group where only admins can send messages" : "only admins can send messages there") +
+    `, and MatchTime is not an admin. Until that changes, match posts, reminders and team sheets will not go out. ` +
+    (p.community
+      ? "Make MatchTime an admin of that group. "
+      : `Make MatchTime a group admin, or turn off "only admins can send messages" in the group settings. `) +
+    "MatchTime starts posting again by itself once it can.",
+  /** To a club's one person by DM, once per stretch: its admin group has
+   *  become one MatchTime cannot post in. */
+  gp_admin_group_blocked: (p: { club: string; group: string | null }): string =>
+    `MatchTime can't post in ${p.club}'s admin group${p.group ? ` "${p.group}"` : ""} any more: only admins can send messages there. ` +
+    `Admin messages will come to you by DM instead until MatchTime is made a group admin there or that setting is turned off.`,
 };

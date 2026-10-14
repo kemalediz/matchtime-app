@@ -239,6 +239,7 @@ import { decodePollMessage, describeVia, encodePollMessage, mapPollVote, pollUpd
 import { createPollArchive, type PollArchive } from "../baileys/poll-store.js";
 import { createDebouncedWriter, jsonFileIO, type DebouncedWriter } from "../baileys/json-file.js";
 import { resolveBaileysConfig } from "../baileys/config.js";
+import { createPostabilityTracker, type PostabilityTracker } from "../group-postability.js";
 import { makeBaileysLogger } from "../baileys/logging.js";
 
 /** The part of Baileys' `WASocket` this driver touches. */
@@ -292,6 +293,8 @@ export interface BaileysDriverDeps {
   groupAddressingMode?(groupJid: string): "lid" | "pn" | undefined;
   /** Rosters, the group list and addressing modes. Defaults to a fresh cache. */
   groupCache?: GroupCache;
+  /** Whether MatchTime can post in each group (group-postability.ts). Defaults to a fresh tracker. */
+  postability?: PostabilityTracker;
   /** Polls we sent, on disk. Defaults to an in-memory archive. */
   pollArchive?: PollArchive;
   /** Write any pending harvested state to disk. Called on every close. */
@@ -656,6 +659,7 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
     },
   });
   const groupCache = deps.groupCache ?? createGroupCache({ now });
+  const postability = deps.postability ?? createPostabilityTracker({ error: (l) => error(l) });
   /** One forced roster re-read per group per ten minutes (mention LIDs). */
   const rosterRefresh = createRosterRefreshLimiter({ now });
   const pollArchive = deps.pollArchive ?? createPollArchive({ io: { load: () => null, save: () => {} }, now });
@@ -836,6 +840,7 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
     if (!sock.groupMetadata) throw new Error(`[baileys driver] ${member}: this socket has no groupMetadata`);
     const meta = await sock.groupMetadata(groupId);
     groupCache.putVerified(meta, epoch);
+    postability.applyMetadata(meta, selfLegacy());
     stats.rosterReads++;
     const stored = await seedFrom(meta.participants ?? [], groupId);
     let phones = 0;
@@ -871,6 +876,7 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
     await seedFrom(update.participants ?? [], `${update.action} in ${update.id}`);
     const self = selfLegacy();
     groupCache.applyParticipants(update, self);
+    postability.applyParticipants(update, self);
     const mapped = await membershipEvent(update, { phoneForLid });
     if (!mapped) return;
     const ids = mapped.event.recipientIds ?? [];
@@ -894,6 +900,7 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
   async function receiveGroupUpsert(meta: GroupMetaLike): Promise<void> {
     if (!meta?.id) return;
     groupCache.putVerified(meta, epoch);
+    postability.applyMetadata(meta, selfLegacy());
     await seedFrom(meta.participants ?? [], `new group ${meta.id}`);
     const self = me();
     const mine = self.pn ?? self.lid;
@@ -1477,6 +1484,7 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
     conn.on("groups.update", (partials) => {
       for (const p of Array.isArray(partials) ? partials : []) {
         groupCache.applyGroupUpdate(p as Partial<GroupMetaLike> & { id?: string | null });
+        postability.applyGroupUpdate(p as { id?: string | null; announce?: boolean | null });
       }
     });
 
@@ -1691,6 +1699,7 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
       // Stop serving what we no longer see: the roster, and the listing
       // that still names the group (re-read on the next listGroups).
       groupCache.forget(jid);
+      postability.forget(jid);
       log(`[baileys][groups] left ${jid}`);
     },
 
@@ -1711,6 +1720,8 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
       }
       const all = Object.values((await sock.groupFetchAllParticipating()) ?? {});
       groupCache.putListing(all);
+      const self = selfLegacy();
+      for (const g of all) postability.applyMetadata(g, self);
       stats.listings++;
       // Whatever pairs the listing does carry are genuine. It is never
       // used as a roster: Baileys marks its LID/PN parsing as a TODO.
@@ -1735,7 +1746,8 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
       // Total: whatever fails goes into notes, as the contract says.
       try {
         const meta = await readRoster(groupId, "groupSnapshot");
-        return await snapshotFromMetadata(meta, selfIds.length ? selfIds : [...selfLegacy()], {
+        const reading = postability.get(groupId);
+        const snap = await snapshotFromMetadata(meta, selfIds.length ? selfIds : [...selfLegacy()], {
           phoneForLid,
           pushnameFor: (ids) => {
             for (const id of ids) {
@@ -1745,6 +1757,7 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
             return undefined;
           },
         });
+        return reading ? { ...snap, postability: reading } : snap;
       } catch (err) {
         return {
           subject: groupCache.subject(groupId),
@@ -1772,6 +1785,15 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
         error(`[baileys][groups] ${groupId} roster re-read for a mention failed: ${errorText(err)}`);
         return false;
       }
+    },
+
+    // ── Can MatchTime post here (2026-10-14, group-postability.ts) ────
+    groupPostability(groupId) {
+      return postability.get(groupId);
+    },
+
+    onGroupPostability(handler) {
+      postability.onChange(handler);
     },
 
     getContact(jid) {

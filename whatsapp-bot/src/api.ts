@@ -400,6 +400,10 @@ export async function postBotAdded(params: {
    *  server masks numbers out of it before storing it; an older server
    *  ignores it. Never logged here, and this function logs no request. */
   groupDescription?: string;
+  /** Whether MatchTime can post there (2026-10-14): only admins can send,
+   *  a community announcements group, MatchTime an admin. Absent when the
+   *  read could not tell. An older server ignores it. */
+  postability?: { announce: boolean; communityAnnounce: boolean; botIsAdmin: boolean };
 }): Promise<BotAddedResult | null> {
   const res = await apiFetch(`${config.apiUrl}/api/whatsapp/bot-added`, {
     method: "POST",
@@ -454,6 +458,36 @@ export async function postBotRemoved(params: { groupId: string }): Promise<BotRe
   } catch (err) {
     console.error("bot-removed post failed:", err instanceof Error ? err.message : err);
     return null;
+  }
+}
+
+/**
+ * Whether MatchTime can post in a group, as the Pi last read it
+ * (2026-10-14, postability-report.ts). Group id and four booleans, nothing
+ * else. True when the server took it; false on any failure (a 404 from an
+ * older server included). Never throws.
+ */
+export async function postGroupPostability(body: {
+  groupId: string;
+  announce: boolean;
+  communityAnnounce: boolean;
+  botIsAdmin: boolean;
+  canPost: boolean;
+}): Promise<boolean> {
+  try {
+    const res = await apiFetch(`${config.apiUrl}/api/whatsapp/group-postability`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      console.error(`group-postability post failed: ${res.status}`);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error("group-postability post failed:", err instanceof Error ? err.message : err);
+    return false;
   }
 }
 

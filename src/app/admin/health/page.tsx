@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { getUserOrg, isSuperadmin } from "@/lib/org";
 import { SectionInfo } from "@/components/info/section-info";
 import { formatLondon } from "@/lib/london-time";
-import { alertKindLabel, clubStatus, isActiveAlert, type ClubStatus } from "@/lib/ops-alerts";
+import { NON_HEALTH_CONDITION_KINDS, alertKindLabel, clubStatus, isActiveAlert, type ClubStatus } from "@/lib/ops-alerts";
 import { notFound, redirect } from "next/navigation";
 import { formatDistanceToNow } from "date-fns";
 
@@ -63,7 +63,10 @@ export default async function HealthPage() {
     // Every open condition, whatever its age, so the summary is never
     // missing one because the recent list was cut short.
     db.opsAlert.findMany({
-      where: { resolvedAt: null, kind: { startsWith: "health:" } },
+      where: {
+        resolvedAt: null,
+        OR: [{ kind: { startsWith: "health:" } }, { kind: { in: [...NON_HEALTH_CONDITION_KINDS] } }],
+      },
       select: { orgId: true, kind: true, severity: true, resolvedAt: true, title: true },
     }),
   ]);

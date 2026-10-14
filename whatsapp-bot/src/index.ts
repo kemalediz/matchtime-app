@@ -72,6 +72,9 @@ import { dmSenderExtras, type DmSenderExtras } from "./dm-identity.js";
 import { withTimeout } from "./with-timeout.js";
 import { acquireInstanceLock } from "./instance-lock.js";
 import { resolveShadowMode, shadowBanner, shadowGroup, shadowOpenNotice } from "./shadow.js";
+import { postabilityGate } from "./postability-gate.js";
+import { createPostabilityReporter } from "./postability-report.js";
+import { postGroupPostability } from "./api.js";
 
 /**
  * Retry an async call a few times with a fixed delay. Used for the ONE
@@ -139,7 +142,16 @@ async function main() {
   const shadow = resolveShadowMode(process.env);
   // Async since Phase 5: the Baileys driver is imported only when it is
   // actually selected, so an unset WA_DRIVER never loads the library.
-  const driver = await createDriver(process.env);
+  // 2026-10-14: every GROUP send is refused, without touching WhatsApp,
+  // in a group MatchTime cannot post in (only admins can send there and it
+  // is not one). See postability-gate.ts. A group with no reading is never
+  // gated.
+  const driver = postabilityGate(await createDriver(process.env));
+  // ...and the server is told each group's reading, first and on every
+  // change, so it can tell the organiser, show it on the health page and
+  // route admin notices elsewhere (postability-report.ts).
+  const postabilityReporter = createPostabilityReporter({ post: postGroupPostability });
+  driver.onGroupPostability?.((gid, reading) => void postabilityReporter.observe(gid, reading));
   console.log(`WhatsApp driver: ${driver.name}`);
   if (shadow.enabled) console.log(shadowBanner(driver.name, shadow));
   const liveBanner = baileysLiveBanner(driver.name, shadow, process.env);
@@ -181,6 +193,9 @@ async function main() {
     // compares every tick's poll with it), and catch up on a group that
     // has just become a club's, from its go-live on. See club-catch-up.ts.
     clubCatchUp.onRefreshed({ reason, data, addedOrgs: diff.addedOrgs, shadow: shadow.enabled });
+    // Any group reading the server has not taken yet, retried here: every
+    // few minutes, never in a loop. Never throws.
+    void postabilityReporter.flush();
     if (diff.changed || reason === "ready") {
       console.log(
         `[org-refresh] (${reason}) ${next.orgConfigs.length} org(s), ${next.onboardingGroups.length} onboarding group(s): ` +

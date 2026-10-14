@@ -3224,6 +3224,27 @@ export const tr: Strings = {
   cf_back: "MatchTime'ı bağlamaya dön",
   cf_edit_tab_club: "Kulüp adı ve ayarlar",
   cf_edit_tab_game: "Haftalık maç",
+
+  // ── A group MatchTime cannot post in (2026-10-14) ────────────────────
+  gp_connect_admin_only: (p) =>
+    `${p.group ? `"${p.group}" grubuna` : "Grubunuza"} katıldım, ama orada yalnızca yöneticiler mesaj gönderebiliyor, bu yüzden MatchTime mesaj atamıyor. ` +
+    `MatchTime'ı grup yöneticisi yapın (Grup bilgisi, MatchTime'a dokunun, Grup yöneticisi yap) ya da onun yerine MatchTime'ı oyuncularınızın yazıştığı gruba ekleyin. ` +
+    `Bunlardan biri yapılır yapılmaz devam edeceğim.`,
+  gp_connect_community: (p) =>
+    `${p.group ? `"${p.group}" grubuna` : "Grubunuza"} katıldım; bu, topluluğunuzun duyuru grubu. Orada yalnızca yöneticiler mesaj gönderebiliyor, bu yüzden MatchTime mesaj atamıyor. ` +
+    `Onun yerine MatchTime'ı topluluktaki, oyuncularınızın yazıştığı gruba ekleyin (önerilen) ya da MatchTime'ı duyuru grubunun yöneticisi yapın. ` +
+    `Bunlardan biri yapılır yapılmaz devam edeceğim.`,
+  gp_live_blocked: (p) =>
+    `MatchTime artık ${p.club} WhatsApp grubunda mesaj gönderemiyor: ` +
+    (p.community ? "bu, yalnızca yöneticilerin mesaj gönderebildiği bir topluluk duyuru grubu" : "orada yalnızca yöneticiler mesaj gönderebiliyor") +
+    ` ve MatchTime yönetici değil. Bu değişene kadar maç duyuruları, hatırlatmalar ve takım listeleri gönderilmeyecek. ` +
+    (p.community
+      ? "MatchTime'ı o grubun yöneticisi yapın. "
+      : `MatchTime'ı grup yöneticisi yapın ya da grup ayarlarında "yalnızca yöneticiler mesaj gönderebilir" seçeneğini kapatın. `) +
+    "MatchTime, gönderebildiği anda kendiliğinden yeniden yazmaya başlar.",
+  gp_admin_group_blocked: (p) =>
+    `MatchTime artık ${p.club} yönetici grubunda${p.group ? ` ("${p.group}")` : ""} mesaj gönderemiyor: orada yalnızca yöneticiler mesaj gönderebiliyor. ` +
+    `MatchTime orada grup yöneticisi yapılana ya da bu ayar kapatılana kadar yönetici mesajları size DM olarak gelecek.`,
 };
 
 /**

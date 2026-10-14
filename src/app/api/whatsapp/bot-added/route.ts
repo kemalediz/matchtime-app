@@ -96,6 +96,8 @@ import { handleSetupReAdd } from "@/lib/club-setup-removal";
 import { scheduleSetupAfterApproval } from "@/lib/club-setup-schedule";
 import { ingestGroupDescription } from "@/lib/group-description";
 import { capturedSessionChat } from "@/lib/captured-chat";
+import { connectNotPostableText, decideGroupPostability, parsePostabilityInput } from "@/lib/group-postability-rules";
+import { PlatformDmRefused, queuePlatformDm } from "@/lib/platform-jobs";
 
 /** Slice B5: MatchTime added back to a club paused because it was removed.
  *  Reads a CLONE of the body, so the route below still reads it. Never throws. */
@@ -167,6 +169,7 @@ const SELF_JOIN_IGNORED: Record<GroupAddOutcome["kind"], string> = {
   "race-lost": "self-join-race-lost",
   "admin-group": "admin-group",
   "admin-group-candidate": "admin-group-awaiting-code",
+  "held-not-postable": "not-postable",
 };
 
 async function selfJoinAdd(request: Request): Promise<NextResponse> {
@@ -189,6 +192,7 @@ async function selfJoinAdd(request: Request): Promise<NextResponse> {
     enrichmentHistory: body.enrichmentHistory,
     groupDescription: description.text,
     discovered: body.discovered,
+    postability: body.postability,
   });
   if (outcome.kind === "linked") {
     // The ONE DM to the owner about this link. queueOwnerDm is also once
@@ -248,6 +252,8 @@ export async function POST(request: Request) {
     discovered?: unknown;
     /** The adder's LID, bare digits, when it was LID-addressed. */
     addedByLid?: unknown;
+    /** What the Pi read of the group's settings (2026-10-14). */
+    postability?: unknown;
   } | null;
   if (!body?.groupId) {
     return NextResponse.json({ error: "groupId required" }, { status: 400 });
@@ -337,6 +343,36 @@ export async function POST(request: Request) {
   if (refusal) {
     console.log(`[bot-added] ${groupId}: no intro (${refusal})`);
     return NextResponse.json({ ok: true, ignored: refusal, introText: null });
+  }
+
+  // 1c. A GROUP MATCHTIME CANNOT POST IN (2026-10-14): only admins can
+  //     send there and MatchTime is not one, so an intro would reach
+  //     nobody and the setup could never be answered. No intro, no
+  //     session; the adder (when MatchTime knows their number) gets one DM
+  //     saying why and what to do. The Pi refuses to post there anyway.
+  const reading = parsePostabilityInput(body.postability);
+  const decided = reading ? decideGroupPostability(reading) : null;
+  if (decided && !decided.canPost && decided.reason !== "ok") {
+    const lang = detectGroupLang({ subject: body.groupSubject?.trim() || null, history: captured.map((m) => m.text) }).lang;
+    const phone = typeof body.addedByPhone === "string" ? body.addedByPhone.replace(/\D/g, "") : "";
+    const refId = `onboarding:${groupId}:not-postable`;
+    let dm = "not sent";
+    if (phone && !(await db.platformJob.findFirst({ where: { purpose: "connect-reply", refId }, select: { id: true } }))) {
+      try {
+        await queuePlatformDm({
+          phone,
+          text: connectNotPostableText(lang, { group: body.groupSubject?.trim() || null, reason: decided.reason }),
+          purpose: "connect-reply",
+          refId,
+        });
+        dm = "queued";
+      } catch (err) {
+        if (!(err instanceof PlatformDmRefused)) throw err;
+        dm = `refused (${err.reason})`;
+      }
+    }
+    console.log(`[bot-added] ${groupId}: MatchTime cannot post here (${decided.reason}); no intro, no session, adder DM ${dm}`);
+    return NextResponse.json({ ok: true, ignored: "not-postable", silent: true, introText: null });
   }
 
   // 2. Idempotent re-add while a session is in flight.

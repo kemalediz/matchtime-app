@@ -2237,6 +2237,47 @@ model ClubConnect {
   @@index([dmAt])
 }
 
+/// Can MatchTime post in this WhatsApp group (2026-10-14)? One row per
+/// group, as the Pi last read it: only admins can send messages there
+/// (`announce`), it is a community's announcements group
+/// (`communityAnnounce`), and whether MatchTime is an admin. MatchTime can
+/// post when it is an admin or the group is neither. See
+/// src/lib/group-postability.ts. Group ids and booleans only.
+///
+/// Two more jobs on the same row:
+///   - a live club's group (or a club's admin group) that MatchTime cannot
+///     post in: `blockedSince` is when that began, `noticeSentAt` when the
+///     club's organisers were last told (once per stretch, and at most once a day);
+///   - a connect request whose group add was put ON HOLD because MatchTime
+///     could not post there (`heldConnectId`, `heldAdd`): the request stays
+///     `dm_verified`, nothing is linked, and the link is finished once
+///     MatchTime is made an admin there.
+///
+/// No relation on purpose: written by monitoring code, it must never block
+/// deleting a club or a request.
+model GroupPostState {
+  groupId           String    @id
+  announce          Boolean   @default(false)
+  communityAnnounce Boolean   @default(false)
+  botIsAdmin        Boolean   @default(false)
+  canPost           Boolean   @default(true)
+  /// When the latest stretch of "cannot post" began; null while it can.
+  blockedSince      DateTime?
+  /// When the club's organisers were last told (at most once a day).
+  noticeSentAt      DateTime?
+  /// A connect request whose add here waits for MatchTime to be made admin.
+  heldConnectId     String?
+  /// What that add brought (adder, members, how it matched), to finish
+  /// the link with. Cleared when it is finished or no longer can be.
+  heldAdd           Json?
+  heldAt            DateTime?
+  observedAt        DateTime
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([heldConnectId])
+}
+
 /// A group MatchTime was added to with no connect code behind it
 /// (2026-09-29, plan section 5.6). MatchTime never speaks in it and never
 /// forwards its messages: it is in `silentGroups` from the moment the

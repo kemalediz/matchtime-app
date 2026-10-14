@@ -36,6 +36,7 @@
  * below says whether it may throw.
  */
 import type { ReactionOutcome } from "./react-with-id.js";
+import type { GroupPostability } from "./group-postability.js";
 
 /**
  * One inbound message, opaque above the driver.
@@ -138,6 +139,14 @@ export interface GroupSnapshot {
    * details.
    */
   description?: string | null;
+  /**
+   * Whether MatchTime can post in the group (2026-10-14,
+   * group-postability.ts): only-admins-can-send, community announcements
+   * group, and MatchTime's own admin flag, as the same read found them.
+   * Absent when the path cannot tell (whatsapp-web.js) or MatchTime was not
+   * in the roster: then nothing is gated, as before.
+   */
+  postability?: GroupPostability;
 }
 
 export interface WaDriver {
@@ -364,6 +373,24 @@ export interface WaDriver {
    * catches.
    */
   refreshGroupRoster?(groupId: string): Promise<boolean>;
+
+  /**
+   * Can MatchTime post in this group right now (2026-10-14)? The last
+   * reading of only-admins-can-send, community announcements group and
+   * MatchTime's own admin flag (group-postability.ts), kept current from
+   * group metadata reads, group settings changes and promote/demote
+   * events. Undefined when there is no reading: never gated. Optional:
+   * whatsapp-web.js has no reading, and nothing is gated there.
+   */
+  groupPostability?(groupId: string): GroupPostability | undefined;
+
+  /**
+   * Called with a group's first reading and with every change of it, so
+   * the server can be told (postability-report.ts). Optional, as above.
+   */
+  onGroupPostability?(
+    handler: (groupId: string, next: GroupPostability, prev: GroupPostability | undefined) => void,
+  ): void;
 
   /**
    * The contact record for a JID, RAW.

@@ -1338,6 +1338,11 @@ const SAMPLES: SampleArgs = {
   cf_back: null,
   cf_edit_tab_club: null,
   cf_edit_tab_game: null,
+  // A group MatchTime cannot post in (2026-10-14).
+  gp_connect_admin_only: { group: "Riverside Announcements" },
+  gp_connect_community: { group: "Riverside Announcements" },
+  gp_live_blocked: { club: "Riverside FC", community: true },
+  gp_admin_group_blocked: { club: "Riverside FC", group: "Riverside admins" },
 };
 
 /** Render an entry with its sample arguments. */

@@ -58,6 +58,15 @@ import { CAPTURED_HISTORY_RETENTION_MS } from "./captured-history-retention";
 import { isSetupHoldEnabled } from "./club-setup-rules";
 import { capturedAtLink, clearCapturedChat, fillCapturedChatOnReAdd } from "./captured-chat";
 import { ingestGroupDescription } from "./group-description";
+import {
+  connectNotPostableText,
+  decideGroupPostability,
+  parsePostabilityInput,
+  type PostabilityInput,
+  type PostabilityReason,
+} from "./group-postability-rules";
+import { clearHeldAdd, holdGroupAdd, parseHeldAdd, readPostState, type HeldAdd } from "./group-postability-store";
+import { queueOwnerDm } from "./owner-dm";
 
 export interface GroupAddInput {
   groupId: string;
@@ -74,6 +83,12 @@ export interface GroupAddInput {
    */
   groupDescription?: unknown;
   discovered?: unknown;
+  /**
+   * What the Pi read of the group's settings (2026-10-14): only admins can
+   * send, a community announcements group, MatchTime an admin. Absent or
+   * malformed is no reading, and changes nothing.
+   */
+  postability?: unknown;
   now?: Date;
 }
 
@@ -106,7 +121,21 @@ export type GroupAddOutcome =
   | { kind: "admin-group"; orgId: string }
   /** Slice 2a: added by an owner or admin of an approved club: an admin
    *  group waiting for its code. Silent, no approval DM, no ack. */
-  | { kind: "admin-group-candidate"; id: string };
+  | { kind: "admin-group-candidate"; id: string }
+  /**
+   * 2026-10-14: the add matched an organiser's request, but only admins can
+   * send in the group and MatchTime is not one, so it could never post
+   * there. NOT linked: the add is held (GroupPostState), the request and
+   * the club are untouched, the owner is not asked, and the organiser is
+   * told once what to do. Finished by `resumeHeldGroupAdd` when MatchTime
+   * is made an admin there.
+   */
+  | {
+      kind: "held-not-postable";
+      connectId: string;
+      reason: Exclude<PostabilityReason, "ok">;
+      organiserDmQueued: boolean;
+    };
 
 /** Must MatchTime stay silent in the group after this outcome? */
 export function isSilentOutcome(o: GroupAddOutcome): boolean {
@@ -175,6 +204,7 @@ export async function handleSelfJoinGroupAdd(input: GroupAddInput): Promise<Grou
   });
   const decision = decideGroupAddLink(ev, candidates, now);
   const snapshot = parseParticipantSnapshot(input.participants);
+  const blocked = blockedBy(input.postability);
 
   if (!decision.link) {
     console.log(
@@ -194,6 +224,16 @@ export async function handleSelfJoinGroupAdd(input: GroupAddInput): Promise<Grou
     // carries on below exactly as before.
     const ctx = { groupId, subject, snapshot, ev, history: input.enrichmentHistory, description, now };
     const relink = await findRelinkAfterReAdd(groupId, ev, now);
+    if (relink && blocked) {
+      const removedAt = relink.expect.botRemovedAt instanceof Date ? relink.expect.botRemovedAt.toISOString() : null;
+      return holdAdd(groupId, subject, ev, input.participants, blocked, relink.row, {
+        kind: "relink",
+        status: "group_linked",
+        removedAt,
+        adderMatch: relink.adderMatch,
+        organiserPresent: relink.organiserPresent,
+      }, now);
+    }
     if (relink) {
       const out = await linkGroupToRequest(ctx, relink);
       if (out !== RELINK_ABANDONED) return out;
@@ -226,6 +266,18 @@ export async function handleSelfJoinGroupAdd(input: GroupAddInput): Promise<Grou
 
   const row = candidates.find((c) => c.id === decision.connectId);
   if (!row) return { kind: "race-lost" };
+  // 2026-10-14: a group MatchTime could never post in is not linked. The
+  // add is held until MatchTime is made admin there (or the organiser adds
+  // it to the players' group instead, which links this same request).
+  if (blocked) {
+    return holdAdd(groupId, subject, ev, input.participants, blocked, row, {
+      kind: "first",
+      status: row.status,
+      removedAt: null,
+      adderMatch: decision.adderMatch,
+      organiserPresent: decision.organiserPresent,
+    }, now);
+  }
   const out = await linkGroupToRequest(
     { groupId, subject, snapshot, ev, history: input.enrichmentHistory, description, now },
     {
@@ -241,6 +293,139 @@ export async function handleSelfJoinGroupAdd(input: GroupAddInput): Promise<Grou
   );
   // Only a relink can be abandoned; a first link never is.
   return out === RELINK_ABANDONED ? { kind: "race-lost" } : out;
+}
+
+// ── A group MatchTime cannot post in (2026-10-14) ────────────────────────
+
+/** The reading, when it says MatchTime cannot post; null otherwise (no reading included). */
+function blockedBy(raw: unknown): { input: PostabilityInput; reason: Exclude<PostabilityReason, "ok"> } | null {
+  const input = parsePostabilityInput(raw);
+  if (!input) return null;
+  const d = decideGroupPostability(input);
+  return d.canPost ? null : { input, reason: d.reason as Exclude<PostabilityReason, "ok"> };
+}
+
+/**
+ * Hold a matched add in a group MatchTime cannot post in, and tell the
+ * organiser once (per request and group) what to do. Nothing is linked, no
+ * club changes state, the owner is not asked. The DM goes on the platform
+ * channel (purpose connect-reply, like the organiser's "I'm in" ack), to
+ * the organiser who asked for the code, in the club's language.
+ */
+async function holdAdd(
+  groupId: string,
+  subject: string | null,
+  ev: AddEvidence,
+  participants: unknown,
+  blocked: NonNullable<ReturnType<typeof blockedBy>>,
+  row: { id: string; orgId: string; phone: string },
+  how: Pick<HeldAdd, "kind" | "status" | "removedAt" | "adderMatch" | "organiserPresent">,
+  now: Date,
+): Promise<GroupAddOutcome> {
+  const held: HeldAdd = {
+    ...how,
+    subject,
+    addedByPhone: ev.addedByPhone,
+    addedByLid: ev.addedByLid,
+    participants: Array.isArray(participants) ? participants : [],
+    reason: blocked.reason,
+  };
+  const stored = await holdGroupAdd({ groupId, connectId: row.id, held, input: blocked.input, now });
+  const org = await db.organisation.findUnique({ where: { id: row.orgId }, select: { language: true } });
+  const refId = `${row.id}:not-postable:${groupId}`;
+  let organiserDmQueued = false;
+  const already = await db.platformJob.findFirst({ where: { purpose: "connect-reply", refId }, select: { id: true } });
+  if (!already) {
+    try {
+      await queuePlatformDm({
+        phone: row.phone,
+        text: connectNotPostableText(org?.language, { group: subject, reason: blocked.reason }),
+        purpose: "connect-reply",
+        refId,
+      });
+      organiserDmQueued = true;
+    } catch (err) {
+      if (!(err instanceof PlatformDmRefused)) throw err;
+      console.error(`[group-add] not-postable DM for ${row.id} not queued: ${err.reason}`);
+    }
+  }
+  console.log(
+    `[group-add] ${groupId}: matched request ${row.id} (${how.kind}) but MatchTime cannot post there (${blocked.reason}); ` +
+      `held${stored ? "" : " (NOT stored: no table yet)"}, not linked; organiser DM ${organiserDmQueued ? "queued" : "not sent"}`,
+  );
+  return { kind: "held-not-postable", connectId: row.id, reason: blocked.reason, organiserDmQueued };
+}
+
+export type ResumeOutcome =
+  | { kind: "none" }
+  | { kind: "superseded" }
+  | { kind: "race-lost" }
+  | { kind: "linked"; connectId: string; orgId: string };
+
+/**
+ * MatchTime can post in a group where an add was held (it was made an
+ * admin, or the setting was switched off): finish the link exactly as the
+ * add would have, through the same `linkGroupToRequest`, then queue the
+ * owner's one approval DM as the bot-added route does. The chat history
+ * and the description the add brought were not kept while it was held, so
+ * a resumed link has none (the learned setup then has nothing to read).
+ *
+ * The hold is cleared whatever happens: linked, or the request moved on
+ * (linked elsewhere, expired, a newer code). Never throws on a missing
+ * table; answers "none" when nothing is held.
+ */
+export async function resumeHeldGroupAdd(groupId: string, now: Date = new Date()): Promise<ResumeOutcome> {
+  const state = await readPostState(groupId);
+  const connectId = state?.heldConnectId ?? null;
+  const held = parseHeldAdd(state?.heldAdd);
+  if (!connectId || !held) return { kind: "none" };
+
+  const row = await db.clubConnect.findUnique({ where: { id: connectId }, select: LINK_ROW_SELECT });
+  if (!row) {
+    await clearHeldAdd(groupId, connectId);
+    return { kind: "race-lost" };
+  }
+  const newer = newerRequestWhere(row);
+  if (held.kind === "first" && (await db.clubConnect.count({ where: newer })) > 0) {
+    await clearHeldAdd(groupId, connectId);
+    console.log(`[group-add] ${groupId}: held add for ${connectId} not finished (newer request)`);
+    return { kind: "superseded" };
+  }
+  const ev = addEvidenceFrom({
+    addedByPhone: held.addedByPhone,
+    addedByLid: held.addedByLid,
+    participants: held.participants,
+    discovered: false,
+  });
+  const snapshot = parseParticipantSnapshot(held.participants);
+  const removedAt = held.removedAt ? new Date(held.removedAt) : null;
+  const relink = held.kind === "relink" && removedAt && !Number.isNaN(removedAt.getTime());
+  const refs = relink ? relinkRefIds(row.id, removedAt!) : null;
+  const out = await linkGroupToRequest(
+    { groupId, subject: held.subject, snapshot, ev, history: [], description: null, now },
+    {
+      row,
+      expect: relink
+        ? { id: row.id, status: "group_linked", groupId, botRemovedAt: removedAt }
+        : { id: row.id, status: held.status },
+      adderMatch: held.adderMatch as AdderMatch,
+      organiserPresent: held.organiserPresent,
+      ownerDmRefId: refs?.ownerDm ?? row.id,
+      organiserAckRefId: refs?.organiserAck ?? `${row.id}:in-group`,
+      relink: relink ? { newerRequestWhere: newer } : null,
+    },
+  );
+  await clearHeldAdd(groupId, connectId);
+  if (out === RELINK_ABANDONED) return { kind: "superseded" };
+  if (out.kind !== "linked") {
+    console.log(`[group-add] ${groupId}: held add for ${connectId} not finished (${out.kind})`);
+    return { kind: "race-lost" };
+  }
+  // As the bot-added route does after a link: the ONE owner DM.
+  const dm = await queueOwnerDm(out.ownerDm.text, "owner-approval", out.ownerDm.refId);
+  if (dm.queued > 0 || dm.skipped > 0) await markOwnerDmQueued(out.connectId);
+  console.log(`[group-add] ${groupId}: MatchTime can post there now; held add for ${connectId} linked`);
+  return { kind: "linked", connectId: out.connectId, orgId: out.orgId };
 }
 
 /** `linkGroupToRequest` gave a relink up under its locks: the club got a

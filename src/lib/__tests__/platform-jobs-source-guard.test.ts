@@ -54,6 +54,12 @@ const OWNER_DM_IMPORTERS = new Set<string>([
   // now" on the clubs page), not an alert. The cron route calls this
   // module; it never imports owner-dm itself (the test below).
   "lib/club-setup-stuck.ts",
+  // 2026-10-14: a connect add held because MatchTime could not post in the
+  // group is linked once MatchTime is made admin there
+  // (`resumeHeldGroupAdd`). That link sends the SAME one approval DM the
+  // bot-added route sends for any link, with the same refId. An action
+  // item, not an alert.
+  "lib/group-add.ts",
 ]);
 
 const OWNER_DM_IMPORT = /from\s+["'](?:@\/lib\/owner-dm|\.{1,2}\/(?:[\w-]+\/)*owner-dm)["']|import\(\s*["'][^"']*owner-dm["']\s*\)/;

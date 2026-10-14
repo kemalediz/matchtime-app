@@ -25,6 +25,13 @@
  * group would let anyone in that group sign in as that admin.
  *
  * NO MODEL. Nothing here composes text; callers hand in a text builder.
+ *
+ * AN ADMIN GROUP MATCHTIME CANNOT POST IN (2026-10-14). When the linked
+ * admin group is one where only admins can send and MatchTime is not one
+ * (group-postability.ts), a notice routed there would reach nobody. So the
+ * group is treated exactly as if the Pi could not post there: the notice
+ * goes to the club's one person (the owner) by DM. No reading, or no table
+ * yet, means "can post": today's routing.
  */
 import { db } from "./db";
 import { appUrl, buildAdminLink } from "./admin-link";
@@ -38,6 +45,7 @@ import {
 } from "./admin-channel-rules";
 import { adminNoticeSendAfter } from "./rolling-squad-rules";
 import type { DueInstruction } from "./bot-scheduler";
+import { isGroupPostable } from "./group-postability-store";
 
 /** What a notice says, and whom it points at. */
 export interface AdminNotice {
@@ -74,6 +82,14 @@ export interface LoadedAdminChannel {
   language: string;
   cfg: AdminChannelConfig;
   admins: ChannelAdmin[];
+  /** False only when MatchTime is known to be unable to post in the linked
+   *  admin group (2026-10-14). Absent or true: post there as before. */
+  adminGroupPostable?: boolean;
+}
+
+/** What the Pi can do, narrowed by whether MatchTime can post in the admin group. */
+function effectiveCaps(ch: LoadedAdminChannel, piCaps: PiCaps): PiCaps {
+  return { adminGroup: piCaps.adminGroup && ch.adminGroupPostable !== false };
 }
 
 /**
@@ -119,6 +135,7 @@ export async function loadAdminChannel(orgId: string): Promise<LoadedAdminChanne
       adminGroupId: org.adminGroupId ?? null,
     },
     admins: await loadChannelAdmins(org.id),
+    adminGroupPostable: await isGroupPostable(org.adminGroupId),
   };
 }
 
@@ -166,7 +183,7 @@ export async function sendAdminNotice(req: AdminNoticeRequest): Promise<{ channe
   const ch = await loadAdminChannel(orgId);
   if (!ch) return { channel: "none", queued: 0 };
 
-  if (ch.cfg.mode === "admin-group" && ch.cfg.adminGroupId) {
+  if (ch.cfg.mode === "admin-group" && ch.cfg.adminGroupId && ch.adminGroupPostable !== false) {
     await db.botJob.create({
       data: { orgId, kind: "admin-group", text: groupText(req), ...(sendAfter ? { sendAfter } : {}) },
     });
@@ -216,7 +233,7 @@ export async function adminNoticeInstructions(args: {
   notice: AdminNotice;
 }): Promise<DueInstruction[]> {
   const { channel: ch, notice } = args;
-  const target = resolveAdminNoticeTargets(ch.cfg, ch.admins, args.piCaps);
+  const target = resolveAdminNoticeTargets(ch.cfg, ch.admins, effectiveCaps(ch, args.piCaps));
   const withMatch = args.matchId ? { matchId: args.matchId } : {};
 
   if (target.kind === "group") {
@@ -257,7 +274,7 @@ export function adminGroupJobInstruction(
   now: Date,
 ): DueInstruction | null {
   const key = `botjob-${job.id}`;
-  const target = resolveAdminNoticeTargets(ch.cfg, ch.admins, piCaps);
+  const target = resolveAdminNoticeTargets(ch.cfg, ch.admins, effectiveCaps(ch, piCaps));
   if (target.kind === "group") {
     if (!isAdminGroupPostHour(now)) return null;
     return { kind: "admin-group-message", key, groupId: target.groupId, text: job.text };
