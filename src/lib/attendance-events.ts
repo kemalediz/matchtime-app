@@ -48,6 +48,14 @@
  * It changes no behaviour. Nothing reads it on the write path, no
  * decision branches on it, and a caller cannot influence the squad
  * through it. It is observation, and it is meant to stay that way.
+ *
+ * Two deliberate exceptions READ it, and both only read facts it
+ * already records: the monthly squad's `EXPLICIT_BENCH_NOTE` (below),
+ * and the rolling squad's "did an admin add this phoneless player?"
+ * (`admin-added.ts`: an `admin` actor, cause `admin-message` with the
+ * admin group's `sourceRef` prefix "admin-group:", or the match page's
+ * "admin:addPlayerToMatch"). That prefix is the one `sourceRef` that is
+ * read; the admin-group writers stamp it.
  */
 import type { AttendanceStatus } from "@/generated/prisma/enums";
 

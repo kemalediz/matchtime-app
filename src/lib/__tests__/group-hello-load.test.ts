@@ -11,6 +11,7 @@ const dbMock = vi.hoisted(() => ({
   user: { findUnique: vi.fn() },
   match: { findMany: vi.fn() },
   attendance: { findMany: vi.fn() },
+  attendanceEvent: { findMany: vi.fn() },
 }));
 vi.mock("@/lib/db", () => ({ db: dbMock }));
 
@@ -84,9 +85,11 @@ beforeEach(() => {
     dbMock.user.findUnique,
     dbMock.match.findMany,
     dbMock.attendance.findMany,
+    dbMock.attendanceEvent.findMany,
   ]) {
     m.mockReset();
   }
+  dbMock.attendanceEvent.findMany.mockResolvedValue([]);
   dbMock.match.findMany.mockResolvedValue([]);
   dbMock.attendance.findMany.mockResolvedValue([]);
   dbMock.membership.findMany.mockResolvedValue([]);
@@ -220,6 +223,28 @@ describe("loadHelloInput", () => {
       ["p1", "p2", "p3", "p4", "p5"].map((userId) => ({ userId, leftAt: userId === "p5" ? new Date() : null, provisionallyAddedAt: null })),
     );
     expect((await loadHelloInput("org-1", { now: NOW })).hasSquadToCarry).toBe(false);
+  });
+
+  it("a phoneless placeholder counts only when an admin added him: the seeding's own rule", async () => {
+    dbMock.organisation.findUnique.mockResolvedValue({ ...ROW, rollingSquadEnabled: true });
+    squadFromLastWeek(5);
+    const rows = ["p1", "p2", "p3", "p4"].map((id) => attendanceRow("last", id));
+    rows.push({ ...attendanceRow("last", "uncle"), user: { phoneNumber: null, email: "provisional+uncle-x@matchtime.local", isActive: true } } as never);
+    dbMock.attendance.findMany.mockResolvedValue(rows);
+    dbMock.membership.findMany.mockResolvedValue(
+      ["p1", "p2", "p3", "p4", "uncle"].map((userId) => ({ userId, leftAt: null, provisionallyAddedAt: userId === "uncle" ? NOW : null })),
+    );
+    // A guest a player registered: not carried, 4 of 10.
+    dbMock.attendanceEvent.findMany.mockResolvedValue([]);
+    expect((await loadHelloInput("org-1", { now: NOW })).hasSquadToCarry).toBe(false);
+    // Pasted in the admin group: carried, 5 of 10.
+    dbMock.attendanceEvent.findMany.mockResolvedValue([{ userId: "uncle" }]);
+    expect((await loadHelloInput("org-1", { now: NOW })).hasSquadToCarry).toBe(true);
+    expect(dbMock.attendanceEvent.findMany.mock.calls[0][0].where).toMatchObject({
+      orgId: "org-1",
+      userId: { in: ["uncle"] },
+      actorKind: "admin",
+    });
   });
 
   it("a game that kicked off while the club was setting up is read as played: half its places is a squad, one website In is not", async () => {

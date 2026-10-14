@@ -123,6 +123,10 @@ export interface SeedSourceRow {
   isActive: boolean;
   /** The player's membership of THIS club, or null when there is none. */
   membership: { leftAt: Date | null; provisionallyAddedAt: Date | null } | null;
+  /** An admin has put this player on a squad of this club (an admin-group
+   *  paste or squad change, an admin screen): see `admin-added.ts`.
+   *  Missing means no. */
+  addedByAdmin?: boolean;
 }
 
 export type CarryOverExclusion = "did not play" | "left the group" | "deactivated" | "guest without a phone";
@@ -135,17 +139,20 @@ export type CarryOverExclusion = "did not play" | "left the group" | "deactivate
  *   User.isActive false    deactivated
  *   phoneless placeholder  a one-off guest someone else registered
  *                          (`provisional+` email or `provisionallyAddedAt`,
- *                          and no phone): cannot be DMed, never asked
+ *                          and no phone, and never added by an admin):
+ *                          cannot be DMed, never asked
  *
- * A phoneless member an admin confirmed, and a provisional member WITH a
- * phone, are real regulars and are carried.
+ * A phoneless member an admin added (`addedByAdmin`: a name pasted in the
+ * admin group and confirmed, an admin squad change), a phoneless member
+ * who is no placeholder, and a provisional member WITH a phone, are real
+ * regulars and are carried.
  */
 export function carryOverExclusion(row: SeedSourceRow): CarryOverExclusion | null {
   if (row.status !== "CONFIRMED") return "did not play";
   if (!row.membership || row.membership.leftAt) return "left the group";
   if (!row.isActive) return "deactivated";
   const placeholder = row.email.startsWith("provisional+") || row.membership.provisionallyAddedAt != null;
-  if (!row.phoneNumber && placeholder) return "guest without a phone";
+  if (!row.phoneNumber && placeholder && !row.addedByAdmin) return "guest without a phone";
   return null;
 }
 

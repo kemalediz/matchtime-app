@@ -42,6 +42,7 @@ import { buildClaimGuestNameAsk } from "./owner-deps";
 import { moveNamedSlot } from "./team-slot-fill";
 import { recordTentative, resolveTentative } from "./tentative-store";
 import { resolveOrProvisionByName } from "./resolve-or-provision-name";
+import { adminGroupSourceRef } from "./admin-added";
 import { ADMIN_GROUP_SQUAD_ROUTES, buildSquadChangeReply, type SquadChangeKind } from "./admin-group-squad-rules";
 
 export interface AdminSquadChangeInput {
@@ -122,19 +123,29 @@ export async function handleAdminSquadChange(input: AdminSquadChangeInput): Prom
       ],
       deps: {
         aiCapped: capped,
+        // Every write is stamped as the admin group's (sourceRef
+        // "admin-group:<id>"): the rolling squad carries a phoneless
+        // player an admin added HERE, and not a guest an admin named in
+        // the players' group (admin-added.ts).
         registerAttendance: async (userId, matchId, options) => {
           const before = await statusOf(matchId, userId);
-          const res = await registerAttendance(userId, matchId, options);
+          const res = await registerAttendance(
+            userId,
+            matchId,
+            options?.event ? { ...options, event: { ...options.event, sourceRef: adminGroupSourceRef(options.event.sourceRef) } } : options,
+          );
           if (res.status !== before) moved.push({ userId, to: res.status as Status });
           return res;
         },
         cancelAttendance: async (userId, matchId, event, options) => {
           const before = await statusOf(matchId, userId);
-          const res = await cancelAttendance(userId, matchId, event, options);
+          const res = await cancelAttendance(userId, matchId, { ...event, sourceRef: adminGroupSourceRef(event.sourceRef) }, options);
           if (before !== "DROPPED") moved.push({ userId, to: "DROPPED" });
           return res;
         },
-        resolveOrProvision: (name) => resolveOrProvisionByName(orgId, name),
+        // An admin typed this name in HQ on purpose ("put Mo in"): a
+        // short real name is added, as in a pasted list.
+        resolveOrProvision: (name) => resolveOrProvisionByName(orgId, name, { adminConfirmed: true }),
         moveTeamSlot: async (matchId, fromUserId, toUserId) => {
           const res = await db.$transaction((tx) => moveNamedSlot(tx, matchId, fromUserId, toUserId));
           if (res.kind === "refused") throw new Error(`slot move refused (${res.reason})`);

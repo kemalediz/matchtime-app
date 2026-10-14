@@ -26,6 +26,7 @@ import { servingClubWhere } from "./club-approval-state";
 import { LIVE_STAGE_WHERE } from "./club-setup-rules";
 import { formatLondon } from "./london-time";
 import { recordAttendanceEvent } from "./attendance-events";
+import { loadAdminAddedUserIds, type AdminAddedReadClient } from "./admin-added";
 import { isSameRecurringFixture, type RecurringFixtureKey } from "./match-slot";
 import {
   ROLLING_LOOKBACK_DAYS,
@@ -89,6 +90,12 @@ export async function seedRollingSquad(args: {
     select: { userId: true, leftAt: true, provisionallyAddedAt: true },
   });
   const membershipOf = new Map(memberships.map((m) => [m.userId, m]));
+  // Only a phoneless player's carry depends on whether an admin added him.
+  const adminAdded = await loadAdminAddedUserIds(
+    db as unknown as AdminAddedReadClient,
+    orgId,
+    sourceAtt.filter((a) => a.status === "CONFIRMED" && !a.user.phoneNumber).map((a) => a.userId),
+  );
   const sourceRows: SeedSourceRow[] = sourceAtt.map((a) => {
     const mem = membershipOf.get(a.userId);
     return {
@@ -99,6 +106,7 @@ export async function seedRollingSquad(args: {
       email: a.user.email,
       isActive: a.user.isActive,
       membership: mem ? { leftAt: mem.leftAt, provisionallyAddedAt: mem.provisionallyAddedAt } : null,
+      addedByAdmin: adminAdded.has(a.userId),
     };
   });
   const sourceLabel = formatLondon(source.date, "yyyy-MM-dd");

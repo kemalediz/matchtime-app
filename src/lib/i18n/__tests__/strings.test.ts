@@ -657,6 +657,7 @@ const SAMPLES: SampleArgs = {
   ag_paste_to_bench: { names: "Tom" },
   ag_paste_new: { names: "Naim", many: false },
   ag_paste_unclear: { names: "Ali" },
+  ag_paste_cannot_add: { names: "WhatsApp", many: false },
   ag_paste_over: { listed: 19, max: 18 },
   ag_paste_confirm: null,
   ag_paste_same: null,

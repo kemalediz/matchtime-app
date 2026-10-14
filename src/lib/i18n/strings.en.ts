@@ -2609,6 +2609,8 @@ export const en = {
       ? `Unknown names: ${p.names} (not a member yet, I'll add them as a new player).`
       : `Unknown names: ${p.names} (not members yet, I'll add them as new players).`,
   ag_paste_unclear: (p: { names: string }): string => `Not sure who ${p.names} is, so I'll leave them out; use the full name.`,
+  ag_paste_cannot_add: (p: { names: string; many: boolean }): string =>
+    !p.many ? `I can't add ${p.names} as a player, so I'll leave it out.` : `I can't add ${p.names} as players, so I'll leave them out.`,
   ag_paste_over: (p: { listed: number; max: number }): string =>
     `The list has ${p.listed} names for ${p.max} places, so the last ones go on the bench.`,
   ag_paste_confirm: "Reply YES to apply.",

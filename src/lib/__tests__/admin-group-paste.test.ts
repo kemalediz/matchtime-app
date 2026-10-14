@@ -177,10 +177,12 @@ describe("answerSquadPasteYes", () => {
       cause: "admin-message",
       actorKind: "admin",
       actorUserId: "u-admin2",
-      sourceRef: "wa-paste",
+      // Marked as the admin group's, so the rolling squad knows an admin
+      // added these players (admin-added.ts).
+      sourceRef: "admin-group:wa-paste",
     });
     expect(att.registerAttendance.mock.calls[0][2]).toMatchObject({ promoteFromBench: true, actorIsAdmin: true });
-    expect(prov.resolveOrProvisionByName).toHaveBeenCalledWith("org", "Naim");
+    expect(prov.resolveOrProvisionByName).toHaveBeenCalledWith("org", "Naim", { adminConfirmed: true });
   });
 
   it("the diff is worked out again at the YES: a change made since is not undone twice", async () => {

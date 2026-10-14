@@ -26,6 +26,8 @@ import { cancelAttendance, registerAttendance } from "./attendance";
 import type { AttendanceEventContext } from "./attendance-events";
 import { selectRegistrationMatch } from "./registration-match-select";
 import { resolveOrProvisionByName } from "./resolve-or-provision-name";
+import { isDeliberateNameProvisionable } from "./resolve-sender";
+import { adminGroupSourceRef } from "./admin-added";
 import {
   PASTE_PROPOSAL_TTL_MS,
   buildPasteExpiredReply,
@@ -105,13 +107,19 @@ export async function proposeSquadPaste(args: {
   const onMatch = new Set(current.filter((c) => c.status !== "DROPPED").map((c) => c.userId));
 
   const unclear: string[] = [];
+  // Nobody in the club, and not a name a player can have ("WhatsApp", a
+  // phone number): said in the preview and left out, never promised and
+  // then refused at the YES. The YES provisions with the same rule.
+  const cannotAdd: string[] = [];
   const place = (names: string[]): SquadRef[] => {
     const out: SquadRef[] = [];
     for (const name of names) {
       const m = matchPastedName(name, members, onMatch);
       if (m.kind === "member") out.push({ userId: m.userId });
-      else if (m.kind === "new") out.push({ newName: name });
-      else if (!unclear.includes(name)) unclear.push(name);
+      else if (m.kind === "new" && isDeliberateNameProvisionable(name)) out.push({ newName: name });
+      else if (m.kind === "new") {
+        if (!cannotAdd.includes(name)) cannotAdd.push(name);
+      } else if (!unclear.includes(name)) unclear.push(name);
     }
     return out;
   };
@@ -133,6 +141,7 @@ export async function proposeSquadPaste(args: {
     toBench: diff.toBench.map(label),
     newNames,
     unclear,
+    cannotAdd,
     listed: playing.length,
     maxPlayers: match.maxPlayers,
   });
@@ -166,7 +175,7 @@ export async function proposeSquadPaste(args: {
   }
   console.log(
     `[admin-group] ${args.messageId}: pasted list proposed on match ${match.id}: ` +
-      `${diff.add.length} in, ${diff.remove.length} out, ${diff.toBench.length} to the waiting list, ${unclear.length} unclear`,
+      `${diff.add.length} in, ${diff.remove.length} out, ${diff.toBench.length} to the waiting list, ${unclear.length} unclear, ${cannotAdd.length} cannot be added`,
   );
   return { outcome: "paste-proposed", replyText };
 }
@@ -216,14 +225,16 @@ export async function answerSquadPasteYes(args: {
     cause: "admin-message",
     actorKind: "admin",
     actorUserId: args.senderUserId,
-    sourceRef: proposal.waMessageId,
+    // The admin group's mark: the rolling squad carries a phoneless player
+    // added here (admin-added.ts).
+    sourceRef: adminGroupSourceRef(proposal.waMessageId),
   };
   const changes: Array<{ kind: SquadChangeKind; userId: string | null; name: string | null }> = [];
   const failed: Array<{ userId: string | null; name: string | null }> = [];
 
   const resolve = async (r: SquadRef): Promise<{ userId: string; name: string | null } | null> => {
     if ("userId" in r) return { userId: r.userId, name: null };
-    const res = await resolveOrProvisionByName(orgId, r.newName);
+    const res = await resolveOrProvisionByName(orgId, r.newName, { adminConfirmed: true });
     return res ? { userId: res.userId, name: res.name ?? r.newName } : null;
   };
 

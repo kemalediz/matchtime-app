@@ -31,6 +31,8 @@ const budget = vi.hoisted(() => ({
 vi.mock("@/lib/ai-budget", () => budget);
 const tentative = vi.hoisted(() => ({ recordTentative: vi.fn(), resolveTentative: vi.fn() }));
 vi.mock("@/lib/tentative-store", () => tentative);
+const prov = vi.hoisted(() => ({ resolveOrProvisionByName: vi.fn() }));
+vi.mock("@/lib/resolve-or-provision-name", () => prov);
 
 import { handleAdminSquadChange } from "../admin-group-squad-change";
 
@@ -130,6 +132,30 @@ describe("handleAdminSquadChange", () => {
     });
     const r = await handleAdminSquadChange({ ...input, text: "swap Shehryar for Bilal" });
     expect(r).toMatchObject({ handled: true, replyText: "Done: Shehryar out, Bilal in. 18 of 18." });
+  });
+
+  it("the writes it hands the real writers are marked as the admin group's (sourceRef admin-group:<id>)", async () => {
+    routed("other_att");
+    statuses.set("u-shehryar", "CONFIRMED");
+    engineDoes(async (a) => {
+      const ev = { cause: "admin-message" as const, actorKind: "admin" as const, actorUserId: "u-admin", sourceRef: "wa-1" };
+      await a.deps.cancelAttendance("u-shehryar", MATCH_ID, ev);
+      await a.deps.registerAttendance("u-bilal", MATCH_ID, { event: ev });
+    });
+    await handleAdminSquadChange({ ...input, text: "swap Shehryar for Bilal" });
+    expect(att.cancelAttendance.mock.calls[0][2]).toMatchObject({ cause: "admin-message", sourceRef: "admin-group:wa-1" });
+    expect(att.registerAttendance.mock.calls[0][2].event).toMatchObject({ cause: "admin-message", sourceRef: "admin-group:wa-1" });
+  });
+
+  it('"put Mo in": a new name an admin typed in HQ is resolved as deliberate, so a 2-letter name is added', async () => {
+    routed("other_att");
+    prov.resolveOrProvisionByName.mockResolvedValue({ userId: "u-mo", name: "Mo" });
+    engineDoes(async (a) => {
+      const who = await a.deps.resolveOrProvision("Mo");
+      expect(who).toEqual({ userId: "u-mo", name: "Mo" });
+    });
+    await handleAdminSquadChange({ ...input, text: "put Mo in" });
+    expect(prov.resolveOrProvisionByName).toHaveBeenCalledWith("org-fnf", "Mo", { adminConfirmed: true });
   });
 
   it("Turkish club: Turkish reply", async () => {

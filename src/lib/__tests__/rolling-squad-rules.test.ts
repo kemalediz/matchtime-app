@@ -217,6 +217,21 @@ describe("carryOverExclusion (plan 1.3)", () => {
     ).toBe("guest without a phone");
     expect(carryOverExclusion(row("a", { phoneNumber: null }))).toBeNull();
   });
+  it("a phoneless placeholder an ADMIN added (pasted in the admin group, squad change) is carried", () => {
+    const uncle = {
+      phoneNumber: null,
+      email: "provisional+uncle-x@matchtime.local",
+      membership: { leftAt: null, provisionallyAddedAt: new Date() },
+    };
+    expect(carryOverExclusion(row("uncle", uncle))).toBe("guest without a phone");
+    expect(carryOverExclusion(row("uncle", { ...uncle, addedByAdmin: false }))).toBe("guest without a phone");
+    expect(carryOverExclusion(row("uncle", { ...uncle, addedByAdmin: true }))).toBeNull();
+    // An admin's add never brings back somebody who left or did not play.
+    expect(carryOverExclusion(row("uncle", { ...uncle, addedByAdmin: true, status: "BENCH" }))).toBe("did not play");
+    expect(
+      carryOverExclusion(row("uncle", { ...uncle, addedByAdmin: true, membership: { leftAt: new Date(), provisionallyAddedAt: null } })),
+    ).toBe("left the group");
+  });
   it("a provisional member WITH a phone is carried", () => {
     expect(
       carryOverExclusion(row("a", { membership: { leftAt: null, provisionallyAddedAt: new Date() } })),
