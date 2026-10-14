@@ -41,6 +41,10 @@ vi.mock("@/lib/attendance-events", () => ({
 vi.mock("@/lib/email", () => ({ sendRatingEmails: vi.fn() }));
 vi.mock("@/lib/elo", () => ({ computeEloDeltas: vi.fn(() => []) }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+const sendAdminNotice = vi.fn(async (..._a: unknown[]) => ({ channel: "admin-group", queued: 1 }));
+vi.mock("@/lib/admin-channel", () => ({
+  sendAdminNotice: (...a: unknown[]) => sendAdminNotice(...a),
+}));
 vi.mock("@/lib/db", () => ({
   db: {
     match: {
@@ -208,5 +212,33 @@ describe("switchMatchFormat — the group announcement", () => {
 
     const text = botJobCreate.mock.calls[0][0].data.text as string;
     expect(text).not.toMatch(/kickoff/i);
+  });
+});
+
+describe("switchMatchFormat: the organisers announce the list (2026-10-14)", () => {
+  it("the announcement, which lists who is playing, goes to the admin channel, not the players' group", async () => {
+    arrange({ from: sevenASide, to: fiveASide, matchDate: TUE_2130_BST });
+    matchFindUnique.mockResolvedValue({
+      id: "match-1",
+      date: TUE_2130_BST,
+      maxPlayers: 14,
+      activity: { ...sevenASide, org: { language: "en", listAnnouncer: "organisers" } },
+    });
+
+    await switchMatchFormat("match-1", "tuesday-5aside");
+
+    expect(botJobCreate).not.toHaveBeenCalled();
+    expect(sendAdminNotice).toHaveBeenCalledTimes(1);
+    const notice = sendAdminNotice.mock.calls[0][0] as { orgId: string; text: string };
+    expect(notice.orgId).toBe("sutton-fc");
+    expect(notice.text.startsWith("📋 For the organisers, not posted in the players' group:\n\n")).toBe(true);
+    expect(notice.text).toMatch(/kickoff/i);
+  });
+
+  it("default: the group post, no admin notice", async () => {
+    arrange({ from: sevenASide, to: fiveASide, matchDate: TUE_2130_BST });
+    await switchMatchFormat("match-1", "tuesday-5aside");
+    expect(botJobCreate).toHaveBeenCalledTimes(1);
+    expect(sendAdminNotice).not.toHaveBeenCalled();
   });
 });

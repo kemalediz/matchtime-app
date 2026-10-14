@@ -35,11 +35,19 @@ test("with an admin group: the row and its ⓘ, then a time and Off persist", as
   const row = page.getByTestId("teams-ready");
   await expect(row).toBeVisible({ timeout: 30_000 });
   await expect(row.getByText("Teams ready", { exact: true })).toBeVisible();
-  await expect(row.getByTestId("teams-ready-time")).toHaveValue("10:00");
+  // Not set, and MatchTime announces this club's list: the default is Off.
+  await expect(row.getByTestId("teams-ready-off")).toBeChecked();
+  await expect(row.getByTestId("teams-ready-default")).toHaveText("Not set yet, so this is your club's default.");
+  expect(await setting(db)).toBeNull();
 
   await row.getByRole("button", { name: "What is Teams ready?" }).click();
   await expect(page.getByText(/On match day at this time MatchTime builds balanced teams/)).toBeVisible();
   await page.getByRole("button", { name: "Close" }).click();
+
+  // Turning it on stores 10:00 explicitly.
+  await row.getByTestId("teams-ready-off").uncheck();
+  await expect.poll(() => setting(db)).toBe("10:00");
+  await expect(row.getByTestId("teams-ready-default")).toHaveCount(0);
 
   await row.getByTestId("teams-ready-time").fill("11:30");
   await row.getByTestId("teams-ready-time").blur();
@@ -48,4 +56,14 @@ test("with an admin group: the row and its ⓘ, then a time and Off persist", as
   await row.getByTestId("teams-ready-off").check();
   await expect.poll(() => setting(db)).toBe("off");
   await expect(row.getByTestId("teams-ready-time")).toBeDisabled();
+});
+
+test("not set and the organisers announce: the default shown is 10:00", async ({ page, db }) => {
+  await db.run(`UPDATE "Organisation" SET "teamsReadyTime" = NULL, "listAnnouncer" = 'organisers' WHERE id = $1`, [ORG_ID]);
+  await signInAs(page, U.admin, "/admin/settings");
+  const row = page.getByTestId("teams-ready");
+  await expect(row).toBeVisible({ timeout: 30_000 });
+  await expect(row.getByTestId("teams-ready-off")).not.toBeChecked();
+  await expect(row.getByTestId("teams-ready-time")).toHaveValue("10:00");
+  await expect(row.getByTestId("teams-ready-default")).toBeVisible();
 });

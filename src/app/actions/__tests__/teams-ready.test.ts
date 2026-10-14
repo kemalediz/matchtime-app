@@ -26,8 +26,15 @@ beforeEach(() => {
 
 describe("Teams ready", () => {
   it("reads the setting and whether an admin group is linked", async () => {
-    expect(await getTeamsReady("org-1")).toEqual({ value: "10:00", adminGroupLinked: true, weekly: true });
+    expect(await getTeamsReady("org-1")).toEqual({ value: "10:00", isDefault: false, adminGroupLinked: true, weekly: true });
     expect(orgMock.requireOrgAdmin).toHaveBeenCalledWith("u-admin", "org-1");
+  });
+
+  it("not set: 10:00 when the organisers announce, Off when MatchTime does", async () => {
+    dbMock.organisation.findUnique.mockResolvedValue({ teamsReadyTime: null, listAnnouncer: "organisers", adminGroupId: "hq@g.us", squadMode: "weekly" });
+    expect(await getTeamsReady("org-1")).toMatchObject({ value: "10:00", isDefault: true });
+    dbMock.organisation.findUnique.mockResolvedValue({ teamsReadyTime: null, listAnnouncer: "matchtime", adminGroupId: "hq@g.us", squadMode: "weekly" });
+    expect(await getTeamsReady("org-1")).toMatchObject({ value: "off", isDefault: true });
   });
 
   it("saves a time, zero-padded", async () => {

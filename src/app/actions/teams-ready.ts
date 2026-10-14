@@ -3,13 +3,15 @@
 /**
  * "Teams ready" on /admin/settings (2026-10-14): when MatchTime proposes
  * the teams in the club's admin group on match day, as a London time
- * ("HH:MM", default 10:00) or "off". OWNER/ADMIN of the club only. The
+ * ("HH:MM") or "off". Not set: 10:00 when the club's organisers announce
+ * the list and teams, else off. OWNER/ADMIN of the club only. The
  * behaviour lives in src/lib/team-proposal.ts.
  */
 import { auth } from "@/lib/auth";
 import { requireOrgAdmin } from "@/lib/org";
 import { db } from "@/lib/db";
-import { normaliseTeamsReadyTime } from "@/lib/team-proposal-rules";
+import { effectiveTeamsReadyTime, normaliseTeamsReadyTime } from "@/lib/team-proposal-rules";
+import { organisersAnnounce } from "@/lib/list-announcer";
 import { revalidatePath } from "next/cache";
 
 async function requireAdminOf(orgId: string): Promise<void> {
@@ -19,8 +21,11 @@ async function requireAdminOf(orgId: string): Promise<void> {
 }
 
 export interface TeamsReadyStatus {
-  /** "HH:MM" or "off". */
+  /** "HH:MM" or "off": the time in force. */
   value: string;
+  /** Not set by an organiser: the default for who announces (10:00 when
+   *  the organisers announce, else off). */
+  isDefault: boolean;
   /** The setting only does anything with an admin group linked. */
   adminGroupLinked: boolean;
   /** ...and for a weekly club. */
@@ -31,11 +36,12 @@ export async function getTeamsReady(orgId: string): Promise<TeamsReadyStatus | n
   await requireAdminOf(orgId);
   const org = await db.organisation.findUnique({
     where: { id: orgId },
-    select: { teamsReadyTime: true, adminGroupId: true, squadMode: true },
+    select: { teamsReadyTime: true, listAnnouncer: true, adminGroupId: true, squadMode: true },
   });
   if (!org) return null;
   return {
-    value: normaliseTeamsReadyTime(org.teamsReadyTime) ?? "off",
+    value: effectiveTeamsReadyTime(org.teamsReadyTime, organisersAnnounce(org)),
+    isDefault: org.teamsReadyTime == null,
     adminGroupLinked: !!org.adminGroupId,
     weekly: org.squadMode !== "monthly",
   };

@@ -16,6 +16,7 @@ import { describe, it, expect, vi } from "vitest";
 import { generateWAMessage, generateWAMessageContent, proto, type WAMessage } from "baileys";
 import {
   completeOwnKey,
+  imageContent,
   mentionContent,
   mentionJids,
   pollContent,
@@ -140,6 +141,33 @@ describe("pollContent", () => {
       genOptions() as never,
     );
     expect(multi.pollCreationMessage?.selectableOptionsCount).toBe(0);
+  });
+});
+
+describe("imageContent (2026-10-14: a list poster or team sheet)", () => {
+  // A real 1x1 PNG, so Baileys' own thumbnail step has something to read.
+  const PNG_1X1 = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=",
+    "base64",
+  );
+
+  it("is the PNG, its caption and its type", () => {
+    expect(imageContent(PNG_1X1, "Ready to post: FNF list for Fri 16 Oct")).toEqual({
+      image: PNG_1X1,
+      caption: "Ready to post: FNF list for Fri 16 Oct",
+      mimetype: "image/png",
+    });
+  });
+
+  it("reaches the wire as an image message with the caption, uploaded once", async () => {
+    const upload = vi.fn(async () => ({ mediaUrl: "https://mmg.example/x", directPath: "/v/x" }));
+    const m = await generateWAMessageContent(imageContent(PNG_1X1, "Ready to post"), {
+      getUrlInfo: vi.fn(async () => undefined),
+      upload,
+    } as never);
+    expect(m.imageMessage?.caption).toBe("Ready to post");
+    expect(m.imageMessage?.mimetype).toBe("image/png");
+    expect(upload).toHaveBeenCalledTimes(1);
   });
 });
 

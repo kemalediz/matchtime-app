@@ -114,6 +114,10 @@ function table(name: string) {
 const dbMock = vi.hoisted(() => ({}) as Record<string, unknown>);
 vi.mock("@/lib/db", () => ({ db: dbMock }));
 vi.mock("@/lib/team-generation", () => ({ generateTeamsForMatch: vi.fn() }));
+const graphics = vi.hoisted(() => ({ sendGraphicToAdminChannel: vi.fn() }));
+vi.mock("@/lib/admin-group-graphics", () => graphics);
+const announcer = vi.hoisted(() => ({ loadOrganisersAnnounce: vi.fn() }));
+vi.mock("@/lib/list-announcer-store", () => announcer);
 
 import {
   answerTeamsYes,
@@ -200,6 +204,8 @@ const yes = (deps = quiet, now = NOON) =>
 beforeEach(() => {
   vi.clearAllMocks();
   seed();
+  graphics.sendGraphicToAdminChannel.mockResolvedValue({ queued: true, jobId: "job-g" });
+  announcer.loadOrganisersAnnounce.mockResolvedValue(true);
 });
 
 describe("the commands", () => {
@@ -342,6 +348,27 @@ describe("YES", () => {
     expect(groupJobs()[0].text).toContain("Ali Khan");
   });
 
+  it("YES queues the team sheet graphic in the admin group, once per match", async () => {
+    await cmd("teams");
+    await yes();
+    expect(graphics.sendGraphicToAdminChannel).toHaveBeenCalledTimes(1);
+    expect(graphics.sendGraphicToAdminChannel).toHaveBeenCalledWith(ORG, MATCH, "teams", { onceKey: `${MATCH}:teams-approved` });
+  });
+
+  it("a graphic that fails to queue never undoes the approval", async () => {
+    graphics.sendGraphicToAdminChannel.mockRejectedValue(new Error("boom"));
+    await cmd("teams");
+    expect(await yes()).toEqual({ outcome: "teams-final", replyText: "Teams are final." });
+    expect((store.tables.match[0] as Row).status).toBe("TEAMS_PUBLISHED");
+  });
+
+  it("with no announce dependency injected, the club's own setting is read", async () => {
+    await cmd("teams", { generate });
+    announcer.loadOrganisersAnnounce.mockResolvedValue(false);
+    expect((await yes({ generate }))?.replyText).toBe("Teams are final. I've posted them in the players' group.");
+    expect(announcer.loadOrganisersAnnounce).toHaveBeenCalledWith(ORG);
+  });
+
   it("nothing proposed: null (a pasted list's YES may still be waiting)", async () => {
     expect(await yes()).toBeNull();
   });
@@ -429,6 +456,27 @@ describe("the scheduled proposal ('Teams ready')", () => {
   it("admins already typed 'teams': no second proposal", async () => {
     await cmd("teams", quiet, new Date("2026-10-16T08:00:00.000Z"));
     expect(await tick(NOON)).toBe(0);
+  });
+
+  it("nothing stored and the organisers announce: the default 10:00 applies", async () => {
+    orgRow().teamsReadyTime = null;
+    orgRow().listAnnouncer = "organisers";
+    expect(await tick(new Date("2026-10-16T08:59:00.000Z"))).toBe(0);
+    expect(await tick(new Date("2026-10-16T09:00:00.000Z"))).toBe(1);
+  });
+
+  it("nothing stored and MatchTime announces: Off, nothing proposed", async () => {
+    orgRow().teamsReadyTime = null;
+    orgRow().listAnnouncer = "matchtime";
+    expect(await tick(NOON)).toBe(0);
+    expect(generate).not.toHaveBeenCalled();
+  });
+
+  it("an explicit time wins even when MatchTime announces", async () => {
+    orgRow().teamsReadyTime = "11:00";
+    orgRow().listAnnouncer = "matchtime";
+    expect(await tick(new Date("2026-10-16T09:30:00.000Z"))).toBe(0);
+    expect(await tick(new Date("2026-10-16T10:00:00.000Z"))).toBe(1);
   });
 
   it("off, no admin group, a monthly club, or not match day: nothing", async () => {

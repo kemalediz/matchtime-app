@@ -62,6 +62,16 @@ describe("the driver owns the JID suffix, so nothing above it does", () => {
     const client = { sendMessage: vi.fn(async () => undefined) };
     await expect(wrap(client).sendText(GID, "hi")).resolves.toBeUndefined();
   });
+
+  it("sends an image as a base64 PNG MessageMedia with its caption (2026-10-14)", async () => {
+    const { client, sendMessage } = sendingClient();
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+    await wrap(client).sendImage(GID, png, "Ready to post");
+    const call = sendMessage.mock.calls[0] as unknown as [string, { mimetype: string; data: string }, { caption: string }];
+    expect(call[0]).toBe(GID);
+    expect(call[1]).toMatchObject({ mimetype: "image/png", data: png.toString("base64") });
+    expect(call[2]).toEqual({ caption: "Ready to post" });
+  });
 });
 
 // ─── The throws that are part of the contract ────────────────────────

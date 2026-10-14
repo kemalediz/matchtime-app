@@ -12,8 +12,8 @@ import {
   diffSheets,
   isProposalDue,
   isReminderDue,
+  effectiveTeamsReadyTime,
   normaliseTeamsReadyTime,
-  organisersAnnounce,
   parseTeamCommand,
   resolveSheetName,
   resolveSwap,
@@ -216,9 +216,18 @@ describe("Teams ready: the setting and the timing", () => {
   });
 });
 
-describe("organisersAnnounce: the local stand-in for the club setting", () => {
-  it("is true for every club until the setting lands: nothing is posted in the players' group", () => {
-    expect(organisersAnnounce({ id: "org-1" })).toBe(true);
+describe("effectiveTeamsReadyTime: the default follows who announces", () => {
+  it("nothing stored: 10:00 when the organisers announce, Off when MatchTime does", () => {
+    expect(effectiveTeamsReadyTime(null, true)).toBe("10:00");
+    expect(effectiveTeamsReadyTime(null, false)).toBe("off");
+    expect(effectiveTeamsReadyTime(undefined, true)).toBe("10:00");
+  });
+  it("an explicit setting always wins", () => {
+    expect(effectiveTeamsReadyTime("11:30", false)).toBe("11:30");
+    expect(effectiveTeamsReadyTime("off", true)).toBe("off");
+  });
+  it("a stored value that is not a time is Off, never a guess", () => {
+    expect(effectiveTeamsReadyTime("nonsense", true)).toBe("off");
   });
 });
 

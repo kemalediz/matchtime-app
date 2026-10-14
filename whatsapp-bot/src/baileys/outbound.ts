@@ -97,6 +97,22 @@ export function pollContent(
   };
 }
 
+export interface ImageContent {
+  image: Buffer;
+  caption: string;
+  mimetype: "image/png";
+}
+
+/**
+ * A PNG with a caption (2026-10-14: a club's list poster or team sheet).
+ * Baileys uploads the bytes once and builds the thumbnail itself (sharp,
+ * already installed as its peer; a thumbnail failure is logged by Baileys
+ * and the image still goes).
+ */
+export function imageContent(png: Buffer, caption: string): ImageContent {
+  return { image: png, caption, mimetype: "image/png" };
+}
+
 /**
  * A reaction on the message with `key`. `emoji: ""` removes one.
  *

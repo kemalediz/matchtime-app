@@ -305,6 +305,7 @@ export async function loadSquadState(
       // Already normalised to a shipped language by `getOrgFeatures`.
       language: features.language,
       benchPickMode: features.benchPickMode,
+      listAnnouncer: features.listAnnouncer ?? "matchtime",
     },
     reclaimUserIds,
     smallerFormats,

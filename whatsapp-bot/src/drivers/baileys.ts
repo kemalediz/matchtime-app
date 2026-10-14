@@ -168,6 +168,7 @@ import { acquireInstanceLock } from "../instance-lock.js";
 import { legacyJid, parseKey, serializeKey } from "../baileys/key.js";
 import {
   completeOwnKey,
+  imageContent,
   mentionContent,
   pollContent,
   reactionContent,
@@ -1650,6 +1651,13 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
         }
       }
       return result;
+    },
+
+    // A list poster or team sheet in the admin group (2026-10-14). The same
+    // one door as every send: no socket is a throw, the result is read for
+    // the ack exactly as a text's is.
+    sendImage(chatId, png, caption) {
+      return send(wireChatJid(chatId), imageContent(png, caption));
     },
 
     async sendReaction(waMessageId, emoji): Promise<ReactionOutcome> {

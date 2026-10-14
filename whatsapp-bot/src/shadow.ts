@@ -122,6 +122,7 @@ export const SHADOW_SEND_MEMBERS = [
   "sendTextWithMentions",
   "sendDirectText",
   "sendPoll",
+  "sendImage",
   "sendReaction",
   "replyTo",
   "sendTextViaChat",
@@ -226,6 +227,11 @@ export function shadowGuard<T extends WaDriver>(driver: T, opts: ShadowGuardOpti
         `poll in ${chatId}: "${shadowPreview(question, 80)}" ` +
           `[${shadowPreview(opts2.join(" | "), 120)}] multi=${allowMultipleAnswers === true}`,
       );
+    },
+
+    sendImage: async (chatId: string, png: Buffer, caption: string) => {
+      const bytes = Buffer.isBuffer(png) ? png.length : 0;
+      throw refuse("sendImage", `image (${bytes} bytes) in ${chatId}: "${shadowPreview(caption)}"`);
     },
 
     replyTo: async (msg: unknown, text: string) => {

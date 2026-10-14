@@ -479,9 +479,10 @@ model Organisation {
   /// "Teams ready" (2026-10-14): on match day at this London time ("HH:MM")
   /// MatchTime builds the teams and proposes them in the club's linked
   /// admin group, for the admins to change and approve there. "off" = never.
-  /// Only read for a live weekly club with a linked admin group. See
-  /// src/lib/team-proposal.ts.
-  teamsReadyTime           String  @default("10:00")
+  /// NULL (not set) = 10:00 when `listAnnouncer` is "organisers", else off
+  /// (`effectiveTeamsReadyTime`). Only read for a live weekly club with a
+  /// linked admin group. See src/lib/team-proposal.ts.
+  teamsReadyTime           String?
   /// Default PAYG price per game, in pence (800 = £8). NULL = not set.
   paygPricePence           Int?
   /// "List for <Month>" is posted this many days before the month's first
@@ -494,6 +495,17 @@ model Organisation {
   /// ("bank details are in the group description"). MatchTime never asks
   /// for account numbers and never reads this as anything but text.
   paymentInstructions      String?
+
+  /// ─── Who announces the list and teams (2026-10-14) ────────────────
+  /// "matchtime" (default, today's behaviour for every club, Sutton FC
+  /// included): MatchTime posts the squad, the list and the team sheets
+  /// in the players' group. "organisers": MatchTime still collects In and
+  /// Out in the players' group, but every post that lists the squad goes
+  /// to the club's admin channel instead, and no team sheet is posted in
+  /// the players' group; the organisers reveal both themselves. Read
+  /// through `OrgFeatures.listAnnouncer` (src/lib/list-announcer.ts).
+  /// CHECK constraint in prisma/migrations/20261014160000_list_announcer.
+  listAnnouncer            String  @default("matchtime")
 
   memberships        Membership[]
   clubConnects       ClubConnect[]

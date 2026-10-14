@@ -253,22 +253,17 @@ export function isReminderDue(p: { now: Date; kickoff: Date }): boolean {
   return n >= p.kickoff.getTime() - REMINDER_LEAD_MS && n < p.kickoff.getTime();
 }
 
-// ── Organisers announce ───────────────────────────────────────────────
-
 /**
- * Do this club's organisers announce the teams themselves, so MatchTime
- * must never post them in the players' group?
- *
- * A LOCAL STAND-IN. Another change is adding the club setting "organisers
- * announce" (with a helper like `organisersAnnounce(org)`). Until it lands
- * this answers true for every club, which is the safe side: an approval
- * in the admin group posts nothing anywhere else. When the setting lands,
- * swap this body for the real helper; `team-proposal.ts` already does
- * the other branch (post the final teams in the players' group) when it
- * answers false, and its tests cover both.
+ * The "Teams ready" time in force. An explicit setting (a time, or "off")
+ * always wins. With none stored (NULL, every club until an organiser sets
+ * it): 10:00 for a club whose organisers announce the list and teams
+ * (`Organisation.listAnnouncer = "organisers"`, list-announcer.ts), Off
+ * for a club MatchTime announces for, so no such club starts getting
+ * proposals it never asked for.
  */
-export function organisersAnnounce(_org: { id: string }): boolean {
-  return true;
+export function effectiveTeamsReadyTime(stored: string | null | undefined, organisersAnnounce: boolean): string {
+  if (stored != null) return normaliseTeamsReadyTime(stored) ?? "off";
+  return organisersAnnounce ? DEFAULT_TEAMS_READY_TIME : "off";
 }
 
 // ── The sheet, and what changed in it ─────────────────────────────────

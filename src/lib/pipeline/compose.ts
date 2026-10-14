@@ -183,7 +183,26 @@ export function compose(result: EngineResult): ComposedOutput {
     });
   };
 
+  // WHO ANNOUNCES THE LIST AND TEAMS (2026-10-14, list-announcer.ts). When
+  // the club's organisers do, the players' group never gets the squad or a
+  // team sheet from MatchTime: an IN or OUT gets its reaction and nothing
+  // else, a question about who is playing gets one line saying the
+  // organisers will post the list, and one about the teams the same for
+  // the teams. Every other answer (counts, stats, scores) is unchanged.
+  const organisersAnnounce = state.features.listAnnouncer === "organisers";
+
   for (const sp of result.speech) {
+    if (organisersAnnounce) {
+      if (sp.kind === "squad_status" || sp.kind === "replacement_teams_post") continue;
+      if (sp.kind === "answer_squad" || sp.kind === "answer_bench" || sp.kind === "answer_person_status") {
+        utterances.push({ messageId: sp.messageId, text: s.oa_list_by_organisers });
+        continue;
+      }
+      if (sp.kind === "teams_post" || sp.kind === "teams_not_generated") {
+        utterances.push({ messageId: sp.messageId, text: s.oa_teams_by_organisers });
+        continue;
+      }
+    }
     switch (sp.kind) {
       case "squad_status":
         // The composer that already existed and was only ever used as a

@@ -5,7 +5,9 @@
  * /admin/settings: when MatchTime proposes the teams in the club's admin
  * group on match day. A London time, or Off. Shown only for a weekly club
  * with an admin group linked, the only clubs it does anything for. Words
- * from the club's language table, with its ⓘ. Loads and saves through
+ * from the club's language table, with its ⓘ. Until an organiser sets it
+ * the default applies (10:00 when the organisers announce the list and
+ * teams, else Off), and the row says so. Loads and saves through
  * its own server actions (`app/actions/teams-ready.ts`), so the page only
  * renders it.
  */
@@ -52,7 +54,7 @@ export function TeamsReadyRow(props: { orgId: string; language: string | null | 
       }
       setOff(res.value === "off");
       if (res.value !== "off") setTime(res.value);
-      setStatus((prev) => (prev ? { ...prev, value: res.value } : prev));
+      setStatus((prev) => (prev ? { ...prev, value: res.value, isDefault: false } : prev));
       toast.success(s.tp_settings_saved);
     } catch {
       setOff(wasOff);
@@ -96,6 +98,11 @@ export function TeamsReadyRow(props: { orgId: string; language: string | null | 
           {s.tp_settings_off}
         </label>
       </div>
+      {status.isDefault && (
+        <p className="mt-1 text-xs text-slate-500" data-testid="teams-ready-default">
+          {s.tp_settings_default}
+        </p>
+      )}
       {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
     </div>
   );

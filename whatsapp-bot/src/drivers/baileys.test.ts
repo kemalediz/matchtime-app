@@ -194,6 +194,35 @@ describe("sendPoll", () => {
   });
 });
 
+describe("sendImage (2026-10-14: a list poster or team sheet in the admin group)", () => {
+  const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+  const imageSocket = () => {
+    const sock = fakeSocket();
+    sock.sendMessage.mockImplementation(
+      async (jid: string, content: unknown) =>
+        ({
+          key: { remoteJid: jid, fromMe: true, id: "3EB0IMAGE00001" },
+          message: { imageMessage: { caption: (content as { caption?: string }).caption } },
+        }) as never,
+    );
+    return sock;
+  };
+
+  it("sends the PNG with its caption to the group as given, and returns an id the scheduler can ack with", async () => {
+    const sock = imageSocket();
+    const result = await driverWith(sock).sendImage(GROUP, PNG, "Ready to post: FNF list for Fri 16 Oct");
+    expect(sock.sendMessage).toHaveBeenCalledTimes(1);
+    const [jid, content] = sock.sendMessage.mock.calls[0];
+    expect(jid).toBe(GROUP);
+    expect(content).toEqual({ image: PNG, caption: "Ready to post: FNF list for Fri 16 Oct", mimetype: "image/png" });
+    expect(waMessageIdFrom(result)).toBe(`true_${GROUP}_3EB0IMAGE00001_447700900001@c.us`);
+  });
+
+  it("throws when there is no socket, rather than pretending it sent", async () => {
+    await expect(driverWith(null).sendImage(GROUP, PNG, "x")).rejects.toThrow(/not connected/);
+  });
+});
+
 describe("getMessage (§2.12)", () => {
   it("returns what we sent, so a recipient's retry can be re-encrypted", async () => {
     const sock = fakeSocket();

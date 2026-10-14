@@ -10,6 +10,10 @@
  * Alex Admin (OWNER), Colin Collector, Pat Player, Tom Third; Ben Bench on
  * the bench. Its admin group is linked and admin notices go there.
  *
+ * The club's organisers announce the list and teams ("listAnnouncer" =
+ * 'organisers') and "Teams ready" is not set, so its default, 10:00,
+ * applies.
+ *
  * Pinned: the "Teams ready" proposal at 10:00, once; the commands writing
  * TeamAssignment; one question at a time with a pasted list; the reminder
  * at kickoff minus 2 hours; YES making the teams final with NOTHING posted
@@ -65,7 +69,7 @@ const playersGroupJobs = (db: TestDb) => db.count(`SELECT count(*) FROM "BotJob"
 test.beforeAll(async ({ db }) => {
   resetDb();
   await db.run(
-    `UPDATE "Organisation" SET "adminGroupId" = $2, "adminChannelMode" = 'admin-group', "teamsReadyTime" = '10:00' WHERE id = $1`,
+    `UPDATE "Organisation" SET "adminGroupId" = $2, "adminChannelMode" = 'admin-group', "teamsReadyTime" = NULL, "listAnnouncer" = 'organisers' WHERE id = $1`,
     [ORG_ID, HQ],
   );
   await db.run(`UPDATE "Sport" SET "playersPerTeam" = 2 WHERE id = $1`, [SPORT_ID]);
@@ -174,6 +178,13 @@ test("YES: 'Teams are final.', TEAMS_PUBLISHED, nothing posted in the players' g
   expect(out).toEqual(expect.objectContaining({ handled: true, outcome: "teams-final", replyText: "Teams are final." }));
   expect(await status(db)).toBe("TEAMS_PUBLISHED");
   expect(await playersGroupJobs(db)).toBe(0);
+  // The team sheet image is queued for the admin group, once.
+  const graphics = await db.all<{ text: string }>(
+    `SELECT text FROM "BotJob" WHERE "orgId" = $1 AND kind = 'admin-group' AND text LIKE 'Ready to post:%teams%'`,
+    [ORG_ID],
+  );
+  expect(graphics).toHaveLength(1);
+  expect(await db.count(`SELECT count(*) FROM "SentNotification" WHERE key = $1`, [`graphic:${MATCH.upcoming}:teams-approved`])).toBe(1);
   // Tom is still in: the superseded list was never applied.
   const tom = await db.one<{ status: string }>(`SELECT status FROM "Attendance" WHERE "matchId" = $1 AND "userId" = $2`, [MATCH.upcoming, U.third]);
   expect(tom?.status).toBe("CONFIRMED");
@@ -199,4 +210,14 @@ test("a Turkish club gets Turkish", async ({ request, db }) => {
   expect(out.replyText).toContain("✅ *Kesin takımlar*");
   expect((await say(request, "Zed'i taşı")).replyText).toBe("Zed takımlarda yok.");
   await db.run(`UPDATE "Organisation" SET language = 'en' WHERE id = $1`, [ORG_ID]);
+});
+
+test("MatchTime announces and nothing is stored: Teams ready is off, nothing is proposed", async ({ request, db }) => {
+  await db.run(`UPDATE "Organisation" SET "listAnnouncer" = 'matchtime', "teamsReadyTime" = NULL WHERE id = $1`, [ORG_ID]);
+  await db.run(`DELETE FROM "AdminTeamProposal" WHERE "orgId" = $1`, [ORG_ID]);
+  await db.run(`DELETE FROM "TeamAssignment" WHERE "matchId" = $1`, [MATCH.upcoming]);
+  await db.run(`UPDATE "Match" SET status = 'UPCOMING' WHERE id = $1`, [MATCH.upcoming]);
+  await db.run(`UPDATE "Attendance" SET status = 'CONFIRMED' WHERE "matchId" = $1 AND "userId" = $2`, [MATCH.upcoming, U.third]);
+  expect(teamText(await poll(request, londonAt(0, 12, 0)), /Proposed teams/)).toEqual([]);
+  expect(await sheet(db)).toEqual([]);
 });

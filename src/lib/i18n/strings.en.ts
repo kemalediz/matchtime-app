@@ -2660,7 +2660,8 @@ export const en = {
   tp_settings_label: "Teams ready",
   tp_settings_blurb: "When MatchTime proposes the teams in your admin group on match day.",
   tp_settings_info:
-    "On match day at this time MatchTime builds balanced teams from the squad and posts them in your admin WhatsApp group. Admins can change them there (swap Ali Bilal, move Ali, reshuffle) and reply YES when they are final. If nobody has said YES two hours before kickoff, MatchTime reminds the admin group once. Off: MatchTime never proposes teams on its own; admins can still type teams in the admin group.",
+    "On match day at this time MatchTime builds balanced teams from the squad and posts them in your admin WhatsApp group. Admins can change them there (swap Ali Bilal, move Ali, reshuffle) and reply YES when they are final. If nobody has said YES two hours before kickoff, MatchTime reminds the admin group once. Off: MatchTime never proposes teams on its own; admins can still type teams in the admin group. Until you set it: 10:00 when your organisers announce the list and teams, otherwise Off.",
+  tp_settings_default: "Not set yet, so this is your club's default.",
   tp_settings_off: "Off",
   tp_settings_saved: "Saved",
   tp_settings_bad_time: "Pick a time, or Off.",
@@ -4322,4 +4323,37 @@ export const en = {
   gp_admin_group_blocked: (p: { club: string; group: string | null }): string =>
     `MatchTime can't post in ${p.club}'s admin group${p.group ? ` "${p.group}"` : ""} any more: only admins can send messages there. ` +
     `Admin messages will come to you by DM instead until MatchTime is made a group admin there or that setting is turned off.`,
+
+  // ── Who announces the list and teams (2026-10-14, list-announcer.ts) ──
+  //   With "The organisers", MatchTime sends the squad to the admin
+  //   channel instead of the players' group (organisers-list-copy.ts).
+  /** The admin list update's first line. "of", never a slash. */
+  oa_header: (p: { activityName: string; whenLabel: string; confirmed: number; maxPlayers: number }): string => {
+    const open = Math.max(0, p.maxPlayers - p.confirmed);
+    const tail = open === 0 ? "full" : `${open} ${open === 1 ? "space" : "spaces"}`;
+    return `📋 *Squad for ${p.activityName}, ${p.whenLabel}*: ${p.confirmed} of ${p.maxPlayers} in, ${tail}.`;
+  },
+  oa_reason_announce: "The list for this match is open. Players' In and Out are being collected in the group.",
+  oa_reason_dropout: (p: { time: string }): string => `The drop-out deadline is today at ${p.time}.`,
+  oa_reason_list_published: "This is the final list at your publish time.",
+  oa_reason_chase: "Kickoff is getting close and the squad is still short.",
+  oa_reason_squad_complete: "The squad is complete.",
+  oa_unpaid: (p: { count: number }): string => `💷 ${p.count} still to pay for the last match.`,
+  oa_footer: "MatchTime has not posted this in the players' group: you announce the list and the teams.",
+  /** Above a player-facing post relayed to the organisers instead of the group. */
+  oa_relay_lead: "📋 For the organisers, not posted in the players' group:",
+  /** In the players' group, to "who's playing?" when the organisers announce. */
+  oa_list_by_organisers: "The organisers will post the list.",
+  /** In the players' group, to "show the teams" when the organisers announce. */
+  oa_teams_by_organisers: "The organisers will post the teams.",
+  // /admin/settings, "Weekly routine".
+  wr_announce_label: "Who announces the list and teams",
+  wr_announce_blurb: "MatchTime posts them in the group, or your organisers do.",
+  wr_announce_info:
+    "MatchTime: MatchTime posts the squad, the final list and the team sheets in the players' group, as it always has. " +
+    "The organisers: MatchTime still collects In and Out in the players' group and ticks each message, but it never posts the list " +
+    "or the teams there. Its squad updates go to your admin messages (see Admin messages go to) instead, and a player who asks " +
+    "who is playing is told the organisers will post the list.",
+  wr_announce_matchtime: "MatchTime",
+  wr_announce_organisers: "The organisers",
 };

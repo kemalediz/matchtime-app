@@ -57,6 +57,7 @@ import { handleAdminSquadChange } from "./admin-group-squad-change";
 import { isAdminGroupYes } from "./admin-group-squad-rules";
 import { answerTeamsYes, handleTeamCommand, setAsideTeamProposal } from "./team-proposal";
 import { t } from "./i18n/t";
+import { handleAdminGraphicsCommand } from "./admin-group-graphics";
 
 export interface AdminGroupMessage {
   groupId: string;
@@ -162,6 +163,10 @@ export async function handleAdminGroupMessage(msg: AdminGroupMessage): Promise<A
     const paid = await handleCollectorPaidReply({ text: msg.text, waMessageId: msg.messageId ?? null, senderUserIds: senders, orgId: org.id, now });
     if (paid) return { handled: true, orgId: org.id, outcome: paid.handled, replyText: paid.replyText || null };
   }
+
+  // "poster" / "team sheet" (2026-10-14, admin-group-graphics.ts): owner or admin only, no model.
+  const graphic = await handleAdminGraphicsCommand({ org, msg, now });
+  if (graphic) return graphic;
 
   // Squad changes are read for a LIVE WEEKLY club only: a club still
   // setting up has its bot off, and a monthly club keeps exactly today's

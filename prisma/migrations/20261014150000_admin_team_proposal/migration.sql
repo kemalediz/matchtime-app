@@ -10,12 +10,13 @@
 --
 -- WHAT APPLYING THIS DOES TO A LIVE DATABASE
 -- ------------------------------------------
--- 1. "Organisation"."teamsReadyTime": a new TEXT column with a constant
---    default ('10:00'). On Postgres 11 and later adding a column with a
---    constant default is a catalogue change only: no table rewrite, and
---    every existing club reads '10:00'. The code reads it only for a live
---    weekly club with a linked admin group, so no other club sees any
---    change.
+-- 1. "Organisation"."teamsReadyTime": a new NULLABLE TEXT column with no
+--    default, so adding it is a catalogue change only (no table rewrite)
+--    and every existing club reads NULL. NULL means "not set": 10:00 for a
+--    club whose "listAnnouncer" is 'organisers', otherwise off
+--    (src/lib/team-proposal-rules.ts, effectiveTeamsReadyTime). So no club
+--    MatchTime announces for starts getting team proposals from this. The
+--    code reads it only for a live weekly club with a linked admin group.
 -- 2. "AdminTeamProposal": one new, empty table and two indexes on it. No
 --    foreign keys, on purpose (as "AdminSquadProposal"): a proposal is
 --    read only by club and by match, and a deleted match leaves at most a
@@ -42,7 +43,7 @@
 BEGIN;
 SET LOCAL lock_timeout = '5s';
 
-ALTER TABLE "Organisation" ADD COLUMN IF NOT EXISTS "teamsReadyTime" TEXT NOT NULL DEFAULT '10:00';
+ALTER TABLE "Organisation" ADD COLUMN IF NOT EXISTS "teamsReadyTime" TEXT;
 
 CREATE TABLE IF NOT EXISTS "AdminTeamProposal" (
   "id" TEXT NOT NULL,

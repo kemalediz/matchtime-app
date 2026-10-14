@@ -46,6 +46,9 @@ import {
 import { adminNoticeSendAfter } from "./rolling-squad-rules";
 import type { DueInstruction } from "./bot-scheduler";
 import { isGroupPostable } from "./group-postability-store";
+import { graphicUrl, readGraphicJob, type GraphicJob } from "./graphic-job";
+import { DM_GRAPHIC_TTL_SECONDS, GROUP_GRAPHIC_TTL_SECONDS } from "./graphic-token";
+import { graphicsCopy } from "./match-graphics-copy";
 
 /** What a notice says, and whom it points at. */
 export interface AdminNotice {
@@ -268,12 +271,14 @@ export async function adminNoticeInstructions(args: {
  * text, so a rolled-back Pi or an unlinked group never swallows it.
  */
 export function adminGroupJobInstruction(
-  job: { id: string; text: string },
+  job: { id: string; text: string; pollOptions?: readonly string[] | null },
   ch: LoadedAdminChannel,
   piCaps: PiCaps,
   now: Date,
 ): DueInstruction | null {
   const key = `botjob-${job.id}`;
+  const graphic = readGraphicJob(job.pollOptions);
+  if (graphic) return graphicJobInstruction(key, job.text, graphic, ch, piCaps, now);
   const target = resolveAdminNoticeTargets(ch.cfg, ch.admins, effectiveCaps(ch, piCaps));
   if (target.kind === "group") {
     if (!isAdminGroupPostHour(now)) return null;
@@ -284,6 +289,48 @@ export function adminGroupJobInstruction(
   const user = target.users.find((u) => ch.admins.some((a) => a.id === u.id && a.role === "OWNER")) ?? target.users[0];
   if (!user) return null;
   return { kind: "dm", key, phone: bare(user.phoneNumber), text: job.text, targetUser: user.id };
+}
+
+/**
+ * A queued list poster or team sheet (`graphic-job.ts`, 2026-10-14). It
+ * goes to the club's LINKED admin group whatever the channel mode: it is a
+ * picture for the admins to forward, and that group is where they forward
+ * from. An admin's own request goes at once; a trigger's waits for the
+ * group's posting hours. The image URL is signed now, so it is fresh.
+ * With no group to post in (an older Pi, unlinked since, or MatchTime
+ * cannot post there) the owner gets the caption and a day-long link by DM.
+ */
+function graphicJobInstruction(
+  key: string,
+  caption: string,
+  graphic: GraphicJob,
+  ch: LoadedAdminChannel,
+  piCaps: PiCaps,
+  now: Date,
+): DueInstruction | null {
+  const target = { orgId: ch.orgId, matchId: graphic.matchId, kind: graphic.kind };
+  if (ch.cfg.adminGroupId && effectiveCaps(ch, piCaps).adminGroup) {
+    if (!graphic.asked && !isAdminGroupPostHour(now)) return null;
+    return {
+      kind: "admin-group-message",
+      key,
+      matchId: graphic.matchId,
+      groupId: ch.cfg.adminGroupId,
+      text: caption,
+      imageUrl: graphicUrl(target, GROUP_GRAPHIC_TTL_SECONDS),
+    };
+  }
+  const reachable = ch.admins.filter((a) => !!a.phoneNumber);
+  const user = reachable.find((a) => a.role === "OWNER") ?? reachable[0];
+  if (!user?.phoneNumber) return null;
+  console.warn(`[admin-channel] org ${ch.orgId}: ${graphic.kind} graphic for ${graphic.matchId} sent to an admin by DM (no admin group to post in)`);
+  return {
+    kind: "dm",
+    key,
+    phone: bare(user.phoneNumber),
+    text: graphicsCopy(ch.language).dmFallback(caption, graphicUrl(target, DM_GRAPHIC_TTL_SECONDS)),
+    targetUser: user.id,
+  };
 }
 
 // ── The settings page (plan section 5) ──────────────────────────────────

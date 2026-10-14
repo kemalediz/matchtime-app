@@ -13,6 +13,7 @@ import { LANGS, LANG_LABELS, normaliseLang, type Lang } from "@/lib/i18n/lang";
 import { AdminChannelSettings } from "@/components/settings/admin-channel-section";
 import { PickModeRows } from "@/components/settings/pick-mode-rows";
 import { TeamsReadyRow } from "@/components/settings/teams-ready-row";
+import { ListAnnouncerRow } from "@/components/settings/list-announcer-row";
 import { BillingSettingsCard, type BillingCardData } from "@/components/settings/billing-card";
 import { SectionInfo } from "@/components/info/section-info";
 import { FEATURE_INFO } from "@/lib/info-copy";
@@ -53,6 +54,8 @@ interface OrgData {
     /** Organiser pick (slice 2b). */
     benchPickMode?: "first-come" | "organiser";
     benchPickFallback?: "bench-offer" | "leave-empty";
+    /** 2026-10-14: who announces the list and teams. */
+    listAnnouncer?: "matchtime" | "organisers";
   };
   /** Club fee billing (slice B2): null or absent with billing off and for
    *  an exempt club, so nothing new shows. */
@@ -688,6 +691,13 @@ export default function SettingsPage() {
                   language={org.language}
                   benchPickMode={org.weeklyRoutine?.benchPickMode ?? "first-come"}
                   benchPickFallback={org.weeklyRoutine?.benchPickFallback ?? "bench-offer"}
+                  onSaved={settingSaved}
+                />
+                {/* 2026-10-14: who announces the list and teams. */}
+                <ListAnnouncerRow
+                  orgId={org.id}
+                  language={org.language}
+                  listAnnouncer={org.weeklyRoutine?.listAnnouncer ?? "matchtime"}
                   onSaved={settingSaved}
                 />
                 {/* Weekly deadlines (slice 3): its own component. */}

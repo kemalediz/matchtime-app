@@ -19,8 +19,9 @@
  * the players on the teams by the club's own rules (`nameCandidates`); an
  * unknown or ambiguous name gets one short line and changes nothing.
  *
- * "TEAMS READY". A club setting, a London time on match day (default
- * 10:00) or "off". From that time until kickoff the due-posts poll
+ * "TEAMS READY". A club setting, a London time on match day or "off";
+ * not set, it is 10:00 when the organisers announce the list and teams
+ * and off otherwise. From that time until kickoff the due-posts poll
  * (`teamProposalJobs`, one hook in `bot-scheduler.ts`) builds the teams,
  * once, with the shared generator, if the squad is full enough to balance
  * (the balancer's own minimum, two full sides), and posts the proposal in
@@ -42,9 +43,9 @@
  * "Done: ..." for a list). A pick round's own YES (organiser pick) is read
  * before both, as it always was.
  *
- * NOTHING IN THE PLAYERS' GROUP while the organisers announce the teams
- * (`organisersAnnounce`, a local stand-in for the club setting another
- * change adds: true for every club until then). When it answers false,
+ * NOTHING IN THE PLAYERS' GROUP while the organisers announce the list and
+ * teams (`Organisation.listAnnouncer = "organisers"`, list-announcer.ts,
+ * read through `loadOrganisersAnnounce`). When they do not,
  * YES posts the final teams in the players' group, once. Nothing here ever
  * posts in the players' group on its own initiative.
  *
@@ -60,6 +61,9 @@ import { formatLondon } from "./london-time";
 import { selectRegistrationMatch } from "./registration-match-select";
 import { lockTeamSlots, type SlotFillTx } from "./team-slot-fill";
 import { isBillingPaused } from "./club-billing-rules";
+import { organisersAnnounce } from "./list-announcer";
+import { loadOrganisersAnnounce } from "./list-announcer-store";
+import { sendGraphicToAdminChannel } from "./admin-group-graphics";
 import { t } from "./i18n/t";
 import {
   buildChangeNotice,
@@ -69,7 +73,7 @@ import {
   diffSheets,
   isProposalDue,
   isReminderDue,
-  organisersAnnounce,
+  effectiveTeamsReadyTime,
   parseTeamCommand,
   resolveSheetName,
   resolveSwap,
@@ -83,7 +87,7 @@ export interface TeamProposalDeps {
   /** The shared generator. Injected in tests only. */
   generate?: (matchId: string) => Promise<GenerateTeamsResult>;
   /** Do the organisers announce the teams themselves? */
-  announce?: (org: { id: string }) => boolean;
+  announce?: (org: { id: string }) => boolean | Promise<boolean>;
 }
 
 export type TeamReplyOutcome =
@@ -106,7 +110,8 @@ export interface TeamReply {
 const ACTIVE: Array<"UPCOMING" | "TEAMS_GENERATED" | "TEAMS_PUBLISHED"> = ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"];
 
 const gen = (deps: TeamProposalDeps | undefined) => deps?.generate ?? ((id: string) => generateTeamsForMatch(id));
-const announces = (deps: TeamProposalDeps | undefined, orgId: string) => (deps?.announce ?? organisersAnnounce)({ id: orgId });
+const announces = async (deps: TeamProposalDeps | undefined, orgId: string): Promise<boolean> =>
+  deps?.announce ? deps.announce({ id: orgId }) : loadOrganisersAnnounce(orgId);
 
 // ── Reading the match and its teams ───────────────────────────────────
 
@@ -277,7 +282,7 @@ export async function handleTeamCommand(args: {
   if (!command) return null;
   const { orgId, lang, now, deps } = args;
   const s = t(lang);
-  const announce = announces(deps, orgId);
+  const announce = await announces(deps, orgId);
 
   const match = await commandMatch(orgId, now);
   if (!match) return { outcome: "teams-no-match", replyText: s.tp_no_match };
@@ -387,7 +392,13 @@ export async function answerTeamsYes(args: {
   if (claimed.count === 0) return null;
   await db.match.update({ where: { id: match.id }, data: { status: "TEAMS_PUBLISHED" } });
 
-  if (announces(deps, orgId)) {
+  // The team sheet image, in the admin group, once per match (#260). A
+  // graphic that cannot be queued never undoes the approval.
+  await sendGraphicToAdminChannel(orgId, match.id, "teams", { onceKey: `${match.id}:teams-approved` }).catch((err) =>
+    console.error(`[team-proposal] ${args.messageId}: team sheet graphic not queued:`, err instanceof Error ? err.message : "failed"),
+  );
+
+  if (await announces(deps, orgId)) {
     console.log(`[team-proposal] ${args.messageId}: teams final on match ${match.id}, organisers announce`);
     return { outcome: "teams-final", replyText: s.tp_final_reply_quiet };
   }
@@ -420,6 +431,7 @@ export interface TeamProposalOrg {
   adminGroupId: string | null;
   squadMode?: string | null;
   teamsReadyTime?: string | null;
+  listAnnouncer?: string | null;
   billingStatus?: string | null;
   whatsappBotEnabled?: boolean | null;
 }
@@ -452,13 +464,13 @@ export async function teamProposalJobs(args: { org: TeamProposalOrg; now: Date; 
   const match = await matchDayMatch(org.id, now);
   if (!match) return 0;
   const lang = org.language;
-  const announce = announces(deps, org.id);
+  const announce = deps?.announce ? await deps.announce({ id: org.id }) : organisersAnnounce(org);
   const row = (await db.adminTeamProposal.findUnique({ where: { matchId: match.id } })) as ProposalRow | null;
 
   // 1. "Teams ready".
   if (!row) {
     if (match.status === "TEAMS_PUBLISHED") return 0;
-    if (!isProposalDue({ now, kickoff: match.date, readyTime: org.teamsReadyTime ?? "off" })) return 0;
+    if (!isProposalDue({ now, kickoff: match.date, readyTime: effectiveTeamsReadyTime(org.teamsReadyTime, organisersAnnounce(org)) })) return 0;
     const sheet = await loadSheet(match, lang);
     // The balancer's own minimum: two full sides (`generateTeamsForMatch`).
     if (sheet.slots.length === 0 && sheet.confirmed < sheet.perTeam * 2) return 0;

@@ -44,6 +44,10 @@ export function isPublicPath(pathname: string): boolean {
     // shared into WhatsApp). The route 404s unless the badge is EARNED at
     // a club the player is in, and shows no rating (src/lib/badge-card.ts).
     pathname.startsWith("/api/badge-card/") ||
+    // A club's list poster or team sheet (2026-10-14), fetched by the Pi to
+    // post in the admin group. The signed, short-lived token in the path is
+    // the access control (src/lib/graphic-token.ts); anything else is a 404.
+    pathname.startsWith("/api/graphics/") ||
     // Public brand / icon / social-preview assets must be reachable
     // without a session: they appear on the signed-out landing & login
     // pages and are fetched by social scrapers. (Kemal 2026-06-02: the

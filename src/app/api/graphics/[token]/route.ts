@@ -1,0 +1,44 @@
+/**
+ * A club's list poster or team sheet as a PNG (2026-10-14).
+ *
+ *   GET /api/graphics/<token>
+ *
+ * Fetched by the Pi to post in a club's admin group, ready for the admins
+ * to forward. The token (`src/lib/graphic-token.ts`) is the whole of the
+ * access control: signed, naming one org, one match and one kind, and
+ * short-lived. Anything else is a 404, the same answer whether the token
+ * is forged, expired, for a match at another club, or for teams that do
+ * not exist yet, so the route says nothing about what exists.
+ *
+ * The image carries first names, the club's name, the day, kickoff and
+ * venue: no phone number, no rating (`src/lib/match-graphics.ts`).
+ * Logged: ids, kind and size only, never a name.
+ */
+import { verifyGraphicToken } from "@/lib/graphic-token";
+import { loadGraphicData } from "@/lib/match-graphics";
+import { renderGraphicPng } from "@/lib/match-graphics-render";
+
+export const dynamic = "force-dynamic";
+
+const notFound = () => new Response("Not found", { status: 404, headers: { "Cache-Control": "no-store" } });
+
+export async function GET(_req: Request, { params }: { params: Promise<{ token: string }> }) {
+  const { token } = await params;
+  const target = verifyGraphicToken(token);
+  if (!target) return notFound();
+
+  const data = await loadGraphicData(target);
+  if (!data) return notFound();
+
+  const png = await renderGraphicPng(data);
+  const count = data.kind === "list" ? data.players.length + data.reserves.length : data.teams[0].names.length + data.teams[1].names.length;
+  console.log(`[graphics] ${target.kind} org=${target.orgId} match=${target.matchId} names=${count} bytes=${png.length}`);
+  return new Response(new Uint8Array(png), {
+    status: 200,
+    headers: {
+      "Content-Type": "image/png",
+      "Content-Length": String(png.length),
+      "Cache-Control": "private, no-store",
+    },
+  });
+}

@@ -132,6 +132,8 @@ describe("setWeeklyRoutine: weekly deadlines (slice 3)", () => {
       // Slice 2b: read back with every patch; unset rows read as today.
       benchPickMode: "first-come",
       benchPickFallback: "bench-offer",
+      // 2026-10-14: read back with every patch; unset reads as MatchTime.
+      listAnnouncer: "matchtime",
     });
   });
 
@@ -263,6 +265,41 @@ describe("setWeeklyRoutine: slice 2b, who fills an open place", () => {
   it("refuses a value that is not one of the choices, nothing written", async () => {
     await expect(setWeeklyRoutine("org-fnf", { benchPickMode: "random" as "organiser" })).rejects.toThrow();
     await expect(setWeeklyRoutine("org-fnf", { benchPickFallback: "maybe" as "leave-empty" })).rejects.toThrow();
+    expect(orgUpdate).not.toHaveBeenCalled();
+  });
+});
+
+describe("setWeeklyRoutine: who announces the list and teams (2026-10-14)", () => {
+  it("sets it to the organisers, records it as the organiser's own choice, and returns it", async () => {
+    const res = await setWeeklyRoutine("org-fnf", { listAnnouncer: "organisers" });
+    expect(requireOrgAdmin).toHaveBeenCalledWith("u-hamzah", "org-fnf");
+    expect(orgUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { listAnnouncer: "organisers", settingsSetByOrganiser: { push: ["listAnnouncer"] } } }),
+    );
+    expect(res).toMatchObject({ ok: true, listAnnouncer: "organisers" });
+  });
+
+  it("sets it back to MatchTime", async () => {
+    const res = await setWeeklyRoutine("org-fnf", { listAnnouncer: "matchtime" });
+    expect(orgUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { listAnnouncer: "matchtime", settingsSetByOrganiser: { push: ["listAnnouncer"] } } }),
+    );
+    expect(res).toMatchObject({ ok: true, listAnnouncer: "matchtime" });
+  });
+
+  it("an unset row reads as MatchTime", async () => {
+    const res = await setWeeklyRoutine("org-fnf", { rollingSquad: false });
+    expect(res).toMatchObject({ ok: true, listAnnouncer: "matchtime" });
+  });
+
+  it("refuses anything else, nothing written", async () => {
+    await expect(setWeeklyRoutine("org-fnf", { listAnnouncer: "players" as "organisers" })).rejects.toThrow();
+    expect(orgUpdate).not.toHaveBeenCalled();
+  });
+
+  it("an admin only: a non-admin is refused before anything is written", async () => {
+    requireOrgAdmin.mockRejectedValueOnce(new Error("Not an admin"));
+    await expect(setWeeklyRoutine("org-fnf", { listAnnouncer: "organisers" })).rejects.toThrow(/admin/i);
     expect(orgUpdate).not.toHaveBeenCalled();
   });
 });
