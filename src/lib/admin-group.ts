@@ -13,7 +13,11 @@
  *   2. a reply to an open pick round (numbers, names, @tags, ALL, NONE,
  *      YES to a pending question), as a WHOLE message;
  *   3. for a live weekly club (2026-10-14):
- *      a. YES to a squad list an admin pasted here (`admin-group-paste.ts`);
+ *      a. YES to the teams waiting for approval (`team-proposal.ts`), else
+ *         YES to a squad list an admin pasted here (`admin-group-paste.ts`);
+ *         only one of the two is ever waiting;
+ *      a'. a team command: "teams", "reshuffle", "swap A B", "move A"
+ *         (`team-proposal.ts`, deterministic);
  *      b. a pasted squad list: proposed, applied only on YES;
  *      c. one squad change ("Shehryar out", "put Bilal in"), through the
  *         same router and attendance engine as the players' group
@@ -30,10 +34,14 @@
  * (`admin-group-msg:<messageId>`), so a Pi retry never applies anything
  * twice.
  *
- * A MODEL ONLY BEHIND 3c. Until 2026-10-14 nothing here could reach a
- * model. Now exactly one module can, `admin-group-squad-change.ts`, and
- * only for a message from an owner or admin of a live weekly club that is
- * not a pick, a PAID, a YES or a pasted list.
+ * A MODEL ONLY BEHIND 3c, AND THE SHARED TEAM GENERATOR. Until 2026-10-14
+ * nothing here could reach a model. Now one module can for reading,
+ * `admin-group-squad-change.ts`, and only for a message from an owner or
+ * admin of a live weekly club that is not a pick, a PAID, a YES, a team
+ * command or a pasted list. The team commands are parsed with no model;
+ * "teams" and "reshuffle" build through `generateTeamsForMatch`, the one
+ * shared generator, whose rating adjuster is a model call on every path
+ * that builds teams (the players' group, the website button) and here.
  * `admin-group-no-model.source.test.ts` follows every import and pins that
  * the rest of this path still reaches none.
  */
@@ -47,6 +55,8 @@ import { readCollectorReply } from "./month-payment-rules";
 import { answerSquadPasteYes, proposeSquadPaste } from "./admin-group-paste";
 import { handleAdminSquadChange } from "./admin-group-squad-change";
 import { isAdminGroupYes } from "./admin-group-squad-rules";
+import { answerTeamsYes, handleTeamCommand, setAsideTeamProposal } from "./team-proposal";
+import { t } from "./i18n/t";
 import { handleAdminGraphicsCommand } from "./admin-group-graphics";
 
 export interface AdminGroupMessage {
@@ -95,14 +105,30 @@ async function readSquadMessage(args: {
   const base = { orgId: org.id, lang: org.language, messageId, senderUserId: adminUserId, now };
 
   if (isAdminGroupYes(msg.text)) {
-    // A YES is never a squad change of its own: with no list waiting it
-    // is chat, and it is never sent to the model.
+    // A YES is never a squad change of its own: with nothing waiting it
+    // is chat, and it is never sent to the model. ONE QUESTION AT A TIME
+    // (team-proposal.ts): teams waiting for YES and a pasted list waiting
+    // for YES are never both open, so trying the teams first can only
+    // ever answer the one question that was asked last.
+    const teamsYes = await answerTeamsYes(base);
+    if (teamsYes) return { handled: true, orgId: org.id, outcome: teamsYes.outcome, replyText: teamsYes.replyText };
     const yes = await answerSquadPasteYes(base);
     return yes ? { handled: true, orgId: org.id, outcome: yes.outcome, replyText: yes.replyText } : null;
   }
 
+  // 3a'. A team command ("teams", "swap A B", "move A", "reshuffle"), as a
+  // whole message, deterministic. Before the pasted list and the squad
+  // change, so "move Tom" never reaches the model.
+  const teamCommand = await handleTeamCommand({ ...base, text: msg.text });
+  if (teamCommand) return { handled: true, orgId: org.id, outcome: teamCommand.outcome, replyText: teamCommand.replyText };
+
   const pasted = await proposeSquadPaste({ ...base, text: msg.text });
-  if (pasted) return { handled: true, orgId: org.id, outcome: pasted.outcome, replyText: pasted.replyText };
+  if (pasted) {
+    // The list is now the question: teams waiting for YES are set aside.
+    const setAside = pasted.outcome === "paste-proposed" ? await setAsideTeamProposal(org.id) : 0;
+    const replyText = setAside > 0 ? `${pasted.replyText} ${t(org.language).tp_teams_set_aside}` : pasted.replyText;
+    return { handled: true, orgId: org.id, outcome: pasted.outcome, replyText };
+  }
 
   const sender = await db.user.findUnique({ where: { id: adminUserId }, select: { name: true } });
   const change = await handleAdminSquadChange({

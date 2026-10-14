@@ -596,6 +596,12 @@ export async function computeDuePosts(
     }
   }
 
+  // Teams proposed in the admin group ("Teams ready", team-proposal.ts):
+  // queues admin-group BotJobs only, emitted by the loop just below.
+  await (await import("./team-proposal"))
+    .teamProposalJobs({ org, now })
+    .catch((err) => console.error(`[team-proposal] org ${org.id}:`, err instanceof Error ? err.message : "failed"));
+
   // ── Ad-hoc admin-queued BotJobs (test DMs, one-off messages) ────────
   // Any unsent row is emitted as a matching instruction; idempotency key
   // is `botjob-${id}` so ACK marks sentAt via the existing flow + our
@@ -1776,6 +1782,10 @@ async function computeForMatch(
       if (listDue && organisers) {
         // The organisers announce: the final list is theirs to post.
         await toOrganisers(listKey, "list-published");
+        // ...and the list poster for it, in the admin group, once per match.
+        await (await import("./admin-group-graphics"))
+          .sendGraphicToAdminChannel(activity.orgId, matchId, "list", { onceKey: `${matchId}:final-list` })
+          .catch((err) => console.error(`[graphics] match ${matchId}: list poster not queued:`, err instanceof Error ? err.message : "failed"));
       } else if (listDue) {
         out.push({
           kind: "group-message",

@@ -14,6 +14,10 @@
  *     reaches the SDK statically (attendance -> bot-scheduler ->
  *     message-analyzer) and has always done so for every caller; that
  *     chain is pinned below so a new one cannot hide behind it;
+ *   - since 2026-10-14 the shared team generator (`team-generation.ts`,
+ *     whose rating adjuster is a model call wherever teams are built) is
+ *     cut too, and pinned to one importer, `team-proposal.ts`; the team
+ *     commands themselves are parsed with no model;
  *   - that module is imported by `admin-group.ts` and by nothing else on
  *     the path, so the admin and club checks in front of it are the only
  *     way in (and `admin-group.test.ts` pins that a non-admin never gets
@@ -29,6 +33,7 @@ import path from "node:path";
 const ROOT = path.resolve(__dirname, "../../..");
 const SQUAD_CHANGE = "src/lib/admin-group-squad-change.ts";
 const WRITER = "src/lib/attendance.ts";
+const GENERATOR = "src/lib/team-generation.ts";
 
 function resolveImport(from: string, spec: string): string | null {
   let base: string;
@@ -78,14 +83,27 @@ describe("admin-group paths and the model", () => {
     expectModelFree(files, packages);
   });
 
-  it("the admin-group route reaches one only through the squad-change module", () => {
+  it("the admin-group route reaches one only through the squad-change module (and the shared team generator)", () => {
     const { files, packages, importers } = importGraph(path.join(ROOT, "src/app/api/whatsapp/admin-group/route.ts"), [
       SQUAD_CHANGE,
       WRITER,
+      GENERATOR,
     ]);
     expectModelFree(files, packages);
     expect([...(importers.get(SQUAD_CHANGE) ?? [])]).toEqual(["src/lib/admin-group.ts"]);
     expect([...(importers.get(WRITER) ?? [])]).toEqual(["src/lib/admin-group-paste.ts"]);
+    // 2026-10-14: "teams" and "reshuffle" build through the one shared
+    // generator, whose rating adjuster is a model call on every path that
+    // builds teams. Only the team-proposal module imports it, and only
+    // that module's "build" step calls it; the commands are parsed with
+    // no model (`team-proposal-rules.ts`, pinned below).
+    expect([...(importers.get(GENERATOR) ?? [])]).toEqual(["src/lib/team-proposal.ts"]);
+  });
+
+  it("the team commands are read with no model: the rules module reaches none", () => {
+    const { files, packages } = importGraph(path.join(ROOT, "src/lib/team-proposal-rules.ts"));
+    expect(packages.filter((p) => p.includes("anthropic"))).toEqual([]);
+    expect(files.filter((f) => FORBIDDEN_FILES.test(f))).toEqual([]);
   });
 
   it("the shared writer reaches the SDK only by the scheduler's old import", () => {

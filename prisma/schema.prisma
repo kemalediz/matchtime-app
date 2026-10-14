@@ -476,6 +476,13 @@ model Organisation {
   /// `OrgFeatures.squadMode`; "monthly" also reads the rolling squad as
   /// off. CHECK constraint: prisma/sql/monthly-squad-check.sql.
   squadMode                String  @default("weekly")
+  /// "Teams ready" (2026-10-14): on match day at this London time ("HH:MM")
+  /// MatchTime builds the teams and proposes them in the club's linked
+  /// admin group, for the admins to change and approve there. "off" = never.
+  /// NULL (not set) = 10:00 when `listAnnouncer` is "organisers", else off
+  /// (`effectiveTeamsReadyTime`). Only read for a live weekly club with a
+  /// linked admin group. See src/lib/team-proposal.ts.
+  teamsReadyTime           String?
   /// Default PAYG price per game, in pence (800 = £8). NULL = not set.
   paygPricePence           Int?
   /// "List for <Month>" is posted this many days before the month's first
@@ -1631,6 +1638,34 @@ model OrganiserPickRound {
 
   @@index([matchId, resolvedAt])
   @@index([orgId, resolvedAt])
+}
+
+/// Teams proposed to a club's admins in its admin group (2026-10-14), one
+/// row per match. "proposed": the last question MatchTime asked the admin
+/// group, so a YES makes these teams final. "set-aside": a pasted squad
+/// list was asked about after them, so a YES no longer means these teams
+/// ("teams" asks again). "approved": final (Match.status TEAMS_PUBLISHED).
+/// `toldSheet` is the sheet as the admin group last saw it after approval,
+/// so a later change (a drop-out, a replacement) is reported once. See
+/// src/lib/team-proposal.ts.
+model AdminTeamProposal {
+  id               String    @id @default(cuid())
+  orgId            String
+  matchId          String    @unique
+  state            String    @default("proposed")
+  /// When the teams were last posted asking for YES.
+  askedAt          DateTime
+  approvedAt       DateTime?
+  approvedByUserId String?
+  /// [{ slotId, userId, team, playing }], set at approval and after each
+  /// change reported to the admin group.
+  toldSheet        Json?
+  /// When the "not final yet" reminder was queued (kickoff minus 2 hours).
+  remindedAt       DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([orgId, state])
 }
 
 /// A squad list an admin pasted in the club's admin group (2026-10-14),

@@ -65,6 +65,11 @@ vi.mock("@/lib/message-analyzer", () => ({
   composeChaseText: (...a: unknown[]) => composeChaseText(...(a as [])),
 }));
 
+const graphics = vi.hoisted(() => ({ sendGraphicToAdminChannel: vi.fn(async () => ({ queued: true, jobId: "g" })) }));
+vi.mock("@/lib/admin-group-graphics", () => graphics);
+// The "Teams ready" hook (team-proposal.ts) has its own tests.
+vi.mock("@/lib/team-proposal", () => ({ teamProposalJobs: async () => 0 }));
+
 import { computeDuePosts, type DueInstruction } from "@/lib/bot-scheduler";
 import { buildOrganiserListUpdate } from "@/lib/organisers-list-copy";
 
@@ -240,6 +245,13 @@ describe("the default (MatchTime announces) is exactly what it was", () => {
       expect(adminPosts(after)).toHaveLength(0);
     });
   }
+
+  it("MatchTime announces: the final list queues no poster", async () => {
+    graphics.sendGraphicToAdminChannel.mockClear();
+    setWorld([match(FNF_DEADLINES)]);
+    await instructions(TUE_2005);
+    expect(graphics.sendGraphicToAdminChannel).not.toHaveBeenCalled();
+  });
 });
 
 describe('"The organisers": the squad posts go to the admin group', () => {
@@ -319,6 +331,30 @@ describe('"The organisers": the squad posts go to the admin group', () => {
     expect(byKey(out, key)?.kind).toBe("admin-group-message");
     expect(byKey(out, key)?.text).toBe(ADMIN_TEXT("list-published"));
     expect(groupPosts(out)).toHaveLength(0);
+  });
+
+  it("the final list also queues the list poster in the admin group, once per match", async () => {
+    graphics.sendGraphicToAdminChannel.mockClear();
+    const m = match(FNF_DEADLINES);
+    setWorld([m]);
+    await instructions(TUE_2005);
+    expect(graphics.sendGraphicToAdminChannel).toHaveBeenCalledTimes(1);
+    expect(graphics.sendGraphicToAdminChannel).toHaveBeenCalledWith(ORG.id, m.id, "list", { onceKey: `${m.id}:final-list` });
+  });
+
+  it("a poster that fails to queue never costs the club its posts", async () => {
+    graphics.sendGraphicToAdminChannel.mockRejectedValueOnce(new Error("boom"));
+    const m = match(FNF_DEADLINES);
+    setWorld([m]);
+    const out = await instructions(TUE_2005);
+    expect(byKey(out, `${m.id}:list-published`)?.kind).toBe("admin-group-message");
+  });
+
+  it("no final list due: no poster", async () => {
+    graphics.sendGraphicToAdminChannel.mockClear();
+    setWorld([match(FNF_DEADLINES)]);
+    await instructions(MON_1805);
+    expect(graphics.sendGraphicToAdminChannel).not.toHaveBeenCalled();
   });
 
   it("the rolling squad's announcement goes to the admins", async () => {

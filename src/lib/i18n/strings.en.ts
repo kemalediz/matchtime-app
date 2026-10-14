@@ -2614,9 +2614,60 @@ export const en = {
   ag_paste_confirm: "Reply YES to apply.",
   ag_paste_same: "That matches the squad, nothing to change.",
   ag_paste_expired: "That list is more than 30 minutes old, so I haven't applied it. Paste it again if it still stands.",
+  // ── Teams proposed and approved in the admin group (2026-10-14) ──
+  // src/lib/team-proposal-rules.ts. Said only in the admin group.
+  /** The proposal's first line. */
+  tp_header_proposed: (p: { kickoff: string; venue: string }): string => `📝 *Proposed teams*: ${p.kickoff} at ${p.venue}`,
+  /** The approved teams' first line. */
+  tp_header_final: (p: { kickoff: string; venue: string }): string => `✅ *Final teams*: ${p.kickoff} at ${p.venue}`,
+  /** After a name whose holder dropped out and nobody has the place yet. */
+  tp_note_out: "out, place open",
+  /** Confirmed players with no team yet. */
+  tp_unseated: (p: { names: string }): string => `Not on a team yet: ${p.names}.`,
+  /** How to change them, with two real first names from the teams. */
+  tp_how_to_change: (p: { a: string; b: string }): string =>
+    `To change them: *swap ${p.a} ${p.b}* swaps two players, *move ${p.a}* moves one to the other team, *reshuffle* builds new teams.`,
+  /** The question, when the organisers announce the teams themselves. */
+  tp_ask_yes_quiet: "Reply *YES* when they are final. I won't post them in the players' group.",
+  /** The question, when MatchTime posts the final teams. */
+  tp_ask_yes_post: "Reply *YES* when they are final and I'll post them in the players' group.",
+  /** Under the final teams. */
+  tp_final_footer: "These are final. *swap* and *move* still work; *reshuffle* builds new teams to approve again.",
+  /** The answer to YES. */
+  tp_final_reply_quiet: "Teams are final.",
+  tp_final_reply_posted: "Teams are final. I've posted them in the players' group.",
+  tp_no_teams: "There are no teams yet. Type *teams* and I'll build them.",
+  tp_no_match: "There's no upcoming game to build teams for.",
+  tp_name_unknown: (p: { name: string }): string => `I can't find ${p.name} in the teams.`,
+  tp_name_ambiguous: (p: { name: string; names: string }): string => `${p.name} could be ${p.names}; use the full name.`,
+  tp_same_team: (p: { a: string; b: string }): string => `${p.a} and ${p.b} are on the same team, so there's nothing to swap.`,
+  /** Kickoff minus 2 hours, teams still not approved. */
+  tp_reminder: (p: { kickoff: string }): string =>
+    `⏰ The teams for ${p.kickoff} aren't final yet. Type *teams* to see them, then *YES*.`,
+  /** After approval, something changed in the teams. */
+  tp_change_header: "🔄 *Team change*",
+  tp_change_replaced: (p: { to: string; from: string; team: string }): string => `${p.to} replaces ${p.from} on ${p.team}`,
+  tp_change_moved: (p: { name: string; team: string }): string => `${p.name} moved to ${p.team}`,
+  tp_change_out: (p: { name: string; team: string }): string => `${p.name} is out, ${p.team} has a place open`,
+  tp_change_back: (p: { name: string; team: string }): string => `${p.name} is back in on ${p.team}`,
+  tp_change_added: (p: { name: string; team: string }): string => `${p.name} added to ${p.team}`,
+  tp_change_removed: (p: { name: string; team: string }): string => `${p.name} taken off ${p.team}`,
+  /** Under a pasted list's question, when teams were waiting for YES. */
+  tp_teams_set_aside: "The teams still need approving: type *teams* after this.",
+  /** Under a team proposal, when a pasted list was waiting for YES. */
+  tp_list_superseded: "The list pasted earlier was not applied.",
+  // Settings: "Teams ready".
+  tp_settings_label: "Teams ready",
+  tp_settings_blurb: "When MatchTime proposes the teams in your admin group on match day.",
+  tp_settings_info:
+    "On match day at this time MatchTime builds balanced teams from the squad and posts them in your admin WhatsApp group. Admins can change them there (swap Ali Bilal, move Ali, reshuffle) and reply YES when they are final. If nobody has said YES two hours before kickoff, MatchTime reminds the admin group once. Off: MatchTime never proposes teams on its own; admins can still type teams in the admin group. Until you set it: 10:00 when your organisers announce the list and teams, otherwise Off.",
+  tp_settings_default: "Not set yet, so this is your club's default.",
+  tp_settings_off: "Off",
+  tp_settings_saved: "Saved",
+  tp_settings_bad_time: "Pick a time, or Off.",
   settings_admin_channel_heading: "Admin messages go to",
   settings_admin_channel_info:
-    "Where MatchTime sends messages only admins should see: the bench to pick from, the drop-out summary, late drop-outs, who hasn't paid and new players to check. One person: a DM to the person you choose. Admin WhatsApp group: one message in your admins' group, and admins can reply there with a number, a name or a tag to pick a player. For a weekly squad they can also change it there by writing \"Shehryar out\" or \"Bilal in\", or by pasting the list. MatchTime reads nothing else in that group. Each admin by DM: every admin gets their own copy.",
+    "Where MatchTime sends messages only admins should see: the bench to pick from, the drop-out summary, late drop-outs, who hasn't paid and new players to check. One person: a DM to the person you choose. Admin WhatsApp group: one message in your admins' group, and admins can reply there with a number, a name or a tag to pick a player. For a weekly squad they can also change it there by writing \"Shehryar out\" or \"Bilal in\", or by pasting the list, and check and change the teams there (teams, swap, move, reshuffle, YES). MatchTime reads nothing else in that group. Each admin by DM: every admin gets their own copy.",
   settings_admin_channel_mode_one_person: "One person",
   settings_admin_channel_mode_admin_group: "Admin WhatsApp group",
   settings_admin_channel_mode_each_admin: "Each admin by DM",
