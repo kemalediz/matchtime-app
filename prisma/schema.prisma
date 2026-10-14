@@ -523,6 +523,7 @@ model Organisation {
   billingMonths      ClubBillingMonth[]
   squadMonths        SquadMonth[]
   squadCredits       SquadCredit[]
+  graphicsTemplate   ClubGraphicsTemplate?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2627,4 +2628,25 @@ model SquadCredit {
   @@index([orgId, userId])
   @@index([earnedMonthId])
   @@index([appliedMonthId])
+}
+
+/// A club's own graphics template (2026-10-14): the blank background of
+/// the team sheet the club already posts, and where the names, the date
+/// and the time go on it. When a club has one, its list poster and team
+/// sheet are drawn on it (`src/lib/club-graphics-render.tsx`); else in the
+/// default MatchTime design. Club data, never committed to the repo: it
+/// carries the club's branding. Seeded by
+/// `scripts/seed-club-graphics-template.ts`.
+/// Migration: prisma/migrations/20261014170000_club_graphics_template.
+model ClubGraphicsTemplate {
+  orgId     String       @id
+  org       Organisation @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  /// The background: JPEG or PNG bytes.
+  image     Bytes
+  /// "image/jpeg" or "image/png".
+  mimeType  String
+  /// A `ClubGraphicsLayout` (src/lib/club-graphics-layout.ts), checked when read.
+  layout    Json
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
 }
