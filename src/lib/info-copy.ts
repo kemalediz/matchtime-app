@@ -58,6 +58,7 @@ export const FEATURE_INFO: Record<ToggleableKey, InfoKey> = {
   payCard: "feat_pay_card",
   payDirect: "feat_pay_direct",
   badgeAnnouncements: "feat_badges",
+  gearReminder: "feat_gear",
 };
 
 // ── /finish-setup ──────────────────────────────────────────────────────

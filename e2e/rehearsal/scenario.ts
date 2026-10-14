@@ -138,6 +138,7 @@ export const SETTINGS: Record<string, "string" | "boolean" | "int" | "string|nul
   featureStatsQa: "boolean",
   featureSquadFromList: "boolean",
   featureBadgeAnnouncements: "boolean",
+  featureGearReminder: "boolean",
   dropOutDeadlineDay: "int|null",
   dropOutDeadlineTime: "string|null",
   listPublishDay: "int|null",

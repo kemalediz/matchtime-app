@@ -60,7 +60,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { computeDuePosts, sweepExpiredBenchConfirmations, type DueInstruction } from "@/lib/bot-scheduler";
-import { badgeLedgerOf, claimBadgePost } from "@/lib/badge-announcement-scheduler";
+import { badgeLedgerOf, claimBadgePost, withoutServerBookkeeping } from "@/lib/badge-announcement-scheduler";
 import { ROSTER_SHOWN_KIND, rosterShownKey } from "@/lib/roster-shown";
 import { bridgePlatformDmsForLegacyPi } from "@/lib/platform-jobs";
 import { billingQuietWhere } from "@/lib/club-billing-rules";
@@ -168,13 +168,9 @@ async function fetchRecentGroupTexts(orgId: string, now: Date): Promise<RecentOu
 }
 
 /** Server-side bookkeeping never reaches the Pi: the badges ledger and
- *  the roster-shown marker. */
+ *  the roster-shown marker, on any kind (badge-announcement-scheduler.ts). */
 function withoutBadgeLedger(instr: DueInstruction): DueInstruction {
-  if (instr.kind !== "group-message" || !("badgeLedger" in instr || "rosterShown" in instr)) return instr;
-  const rest = { ...instr };
-  delete rest.badgeLedger;
-  delete rest.rosterShown;
-  return rest;
+  return withoutServerBookkeeping(instr);
 }
 
 /**

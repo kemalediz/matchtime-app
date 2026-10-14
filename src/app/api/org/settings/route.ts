@@ -84,6 +84,7 @@ export async function GET() {
       payCard: org.payMethodCard,
       payDirect: org.payMethodDirect,
       badgeAnnouncements: org.featureBadgeAnnouncements,
+      gearReminder: org.featureGearReminder,
     },
   };
   if (!isAdmin) return NextResponse.json(publicView);

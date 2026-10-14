@@ -320,6 +320,7 @@ const FEATURE_COLUMN: Record<string, string> = {
   payCard: "payMethodCard",
   payDirect: "payMethodDirect",
   badgeAnnouncements: "featureBadgeAnnouncements",
+  gearReminder: "featureGearReminder",
 };
 
 export async function setOrgFeature(

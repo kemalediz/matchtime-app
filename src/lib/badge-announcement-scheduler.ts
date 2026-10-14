@@ -150,18 +150,39 @@ export function badgeLedgerOf(instr: unknown): BadgeAward[] | null {
 }
 
 /**
+ * Server-side bookkeeping never reaches the Pi: the badges ledger and the
+ * roster-shown marker, whatever the instruction's kind. A club whose
+ * organisers announce gets its badges post in the admin group or by DM
+ * (2026-10-14), and those carry the ledger too.
+ */
+export function withoutServerBookkeeping<T extends object>(instr: T): T {
+  if (!("badgeLedger" in instr || "rosterShown" in instr)) return instr;
+  const rest = { ...instr } as T & { badgeLedger?: unknown; rosterShown?: unknown };
+  delete rest.badgeLedger;
+  delete rest.rosterShown;
+  return rest;
+}
+
+/**
  * Claim a badges post: the SentNotification row and the ledger rows in
  * one transaction. A lost race (P2002 on the notification key) rolls the
- * ledger back with it, so only the winner records anything.
+ * ledger back with it, so only the winner records anything. A badges DM
+ * to an admin (organisers announce) records its recipient, as every DM
+ * claim does.
  */
 export async function claimBadgePost(
   orgId: string,
-  instr: { key: string; kind: string; matchId?: string },
+  instr: { key: string; kind: string; matchId?: string; targetUser?: string },
   rows: BadgeAward[],
 ): Promise<void> {
   await db.$transaction([
     db.sentNotification.create({
-      data: { key: instr.key, kind: instr.kind, matchId: instr.matchId },
+      data: {
+        key: instr.key,
+        kind: instr.kind,
+        matchId: instr.matchId,
+        ...(instr.targetUser ? { targetUser: instr.targetUser } : {}),
+      },
     }),
     db.badgeAnnouncement.createMany({
       data: rows.map((r) => ({ orgId, userId: r.userId, badgeKey: r.badgeKey, matchId: r.matchId })),

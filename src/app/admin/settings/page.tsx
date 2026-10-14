@@ -641,6 +641,41 @@ export default function SettingsPage() {
                 </div>
               );
             })()}
+            {/* The match-day kit reminder (2026-10-15). Its own row like
+                the badges. Off for a new club, on for clubs from before. */}
+            {(() => {
+              const s = t(org.language);
+              const key: FeatureKey = "gearReminder";
+              const on = org.features?.[key] ?? false;
+              return (
+                <div className="flex items-center justify-between gap-4 py-3" data-testid="feature-gear-reminder">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1 text-sm font-medium text-slate-800">
+                      {s.gear_feature_label}
+                      <SectionInfo k={FEATURE_INFO.gearReminder} lang={org.language} />
+                    </div>
+                    <p className="text-xs text-slate-500">{s.gear_feature_blurb}</p>
+                  </div>
+                  <button
+                    role="switch"
+                    aria-checked={on}
+                    aria-label={s.gear_feature_label}
+                    disabled={savingFeature === key}
+                    onClick={() => toggleFeature(key, !on)}
+                    className={`relative shrink-0 w-11 h-6 rounded-full transition-colors disabled:opacity-50 ${
+                      on ? "bg-green-500" : "bg-slate-300"
+                    }`}
+                    title={on ? "Click to disable" : "Click to enable"}
+                  >
+                    <span
+                      className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
+                        on ? "translate-x-5" : "translate-x-0"
+                      }`}
+                    />
+                  </button>
+                </div>
+              );
+            })()}
           </div>
         </div>
       </section>

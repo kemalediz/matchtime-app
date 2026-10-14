@@ -128,6 +128,7 @@ test("/admin/settings: every section and every feature switch (EN and TR)", asyn
       "feat_pay_card",
       "feat_pay_direct",
       "feat_badges",
+      "feat_gear",
       "st_weekly",
       "st_collector",
       "st_bank",

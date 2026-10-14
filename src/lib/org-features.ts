@@ -88,6 +88,14 @@ export interface OrgFeatures {
    *  hand-built fixture keeps its shape; absent means "matchtime". Not in
    *  `FEATURE_META`; it is set on /admin/settings, "Weekly routine". */
   listAnnouncer?: ListAnnouncer;
+  /** The match-day gear reminder (2026-10-15,
+   *  `Organisation.featureGearReminder`): "see you there, bring goalie
+   *  gloves, a ball and spare bibs" before a football kickoff. OFF for a
+   *  new club, ON for every club that existed before the setting. Optional
+   *  so every hand-built fixture keeps its shape; absent means ON, today's
+   *  behaviour. Not in `FEATURE_META`; it has its own row on
+   *  /admin/settings. */
+  gearReminder?: boolean;
 }
 
 
@@ -109,6 +117,7 @@ const ALL_OFF: OrgFeatures = {
   badgeAnnouncements: false,
   squadMode: "weekly",
   listAnnouncer: "matchtime",
+  gearReminder: false,
 };
 
 function fromRow(row: {
@@ -129,6 +138,7 @@ function fromRow(row: {
   featureBadgeAnnouncements?: boolean | null;
   squadMode?: string | null;
   listAnnouncer?: string | null;
+  featureGearReminder?: boolean | null;
 }): OrgFeatures {
   return {
     botEnabled: row.whatsappBotEnabled,
@@ -151,6 +161,9 @@ function fromRow(row: {
     squadMode: normaliseSquadMode(row.squadMode),
     // Absent or unrecognised: MatchTime announces, today's behaviour.
     listAnnouncer: normaliseListAnnouncer(row.listAnnouncer),
+    // Absent (an older caller's select): ON, today's behaviour. A new
+    // club's row says false (the column default).
+    gearReminder: row.featureGearReminder ?? true,
   };
 }
 
@@ -172,6 +185,7 @@ const SELECT = {
   featureBadgeAnnouncements: true,
   squadMode: true,
   listAnnouncer: true,
+  featureGearReminder: true,
 } as const;
 
 export async function getOrgFeatures(orgId: string): Promise<OrgFeatures> {
