@@ -2052,6 +2052,12 @@ export const tr: Strings = {
   tp_change_removed: (p) => `${p.name} ${p.team} takımından çıkarıldı`,
   tp_teams_set_aside: "Takımlar hâlâ onay bekliyor: bundan sonra *takımlar* yazın.",
   tp_list_superseded: "Daha önce yapıştırılan liste uygulanmadı.",
+  tp_short_squad: (p) =>
+    `⚠️ ${p.kickoff} maçı için takım kuracak kadar oyuncu yok: ${p.needed} kişi gerekiyor, ${p.confirmed} kişi var. Oyuncu ekleyin, sonra *takımlar* yazın.`,
+  tp_uneven: (p) =>
+    `⚠️ Takımlar dengesiz: ${p.redLabel} ${p.red}, ${p.yellowLabel} ${p.yellow}. Dengelemek için bir oyuncuyu *taşı* ile geçirin ya da böyle kalsın diye iki kez *EVET* yazın.`,
+  tp_uneven_confirm: (p) =>
+    `Takımlar dengesiz: ${p.redLabel} ${p.red}, ${p.yellowLabel} ${p.yellow}. Böyle kesinleşsin istiyorsanız yine *EVET* yazın, ya da önce bir oyuncuyu *taşı* ile geçirin.`,
   tp_settings_label: "Takımlar hazır",
   tp_settings_blurb: "Maç günü MatchTime'ın takımları yönetici grubunuzda ne zaman önereceği.",
   tp_settings_info:
@@ -3319,6 +3325,20 @@ export const tr: Strings = {
   oa_relay_lead: "📋 Organizatörler için, oyuncu grubuna gönderilmedi:",
   oa_list_by_organisers: "Listeyi organizatörler paylaşacak.",
   oa_teams_by_organisers: "Takımları organizatörler paylaşacak.",
+  oa_slot_opened: (p) => {
+    const names = p.outFirstNames;
+    const lead =
+      names.length === 0 ? `${p.kickoffLabel} maçında yer açıldı` : `${joinList("tr", names)}, ${p.kickoffLabel} maçından çıktı`;
+    return `📋 ${lead}: ${p.maxPlayers} kişilik kadroda ${p.confirmed} kişi var, ${p.open} yer boş. MatchTime bunu oyuncu grubunda paylaşmadı.`;
+  },
+  pr_header: (p) => `✨ *İncelenecek yeni oyuncular*: ${p.count} kişi otomatik eklendi.`,
+  pr_posted: (p) => `Grupta yazdı: ${p.names}`,
+  pr_listed: (p) => `Bir listeden ya da başkasının mesajından adıyla eklendi: ${p.names}`,
+  pr_more: (p) => ` (+${p.count} kişi daha)`,
+  pr_tail_dm: (p) => `İncelemek, telefon, mevki ve puanı ayarlamak ya da kaldırmak için dokunun:\n${p.link}\n\nYa da açın: ${p.url}`,
+  pr_tail_group: (p) => `İnceleyin; telefon, mevki ve puanı ayarlayın ya da kaldırın:\n${p.link}`,
+  oa_bench_claim_too_late: (p) =>
+    `Sağ ol ${p.firstName} 🙏 biri senden önce davrandı. Yedekte kalmaya devam ediyorsun, başka bir yer açılırsa sıra sende.`,
   wr_announce_label: "Listeyi ve takımları kim duyurur",
   wr_announce_blurb: "MatchTime grupta paylaşır ya da organizatörleriniz paylaşır.",
   wr_announce_info:

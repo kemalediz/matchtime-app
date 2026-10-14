@@ -187,6 +187,7 @@ import { moveNamedSlot } from "@/lib/team-slot-fill";
 import { getOrgFeatures } from "@/lib/org-features";
 import { organisersAnnounce } from "@/lib/list-announcer";
 import { organisersGroupReply } from "@/lib/organisers-list-copy";
+import { sendAdminNotice } from "@/lib/admin-channel";
 import {
   bindAiBudgetKey,
   claimCapReply,
@@ -2362,6 +2363,17 @@ async function handleAnalyzeRequest(request: Request) {
     const report = describeEngineBatch(engineBatch, fresh.length);
     for (const w of report.warns) console.warn(w);
     if (report.info) console.log(report.info);
+  }
+
+  // ── The organisers announce: what they are told instead (2026-10-14) ──
+  //   A slot opening in a club whose organisers announce the list is not
+  //   said in the players' group (compose.ts); the line goes to the
+  //   club's admin channel here, the same door the organisers' squad
+  //   updates use. Empty for every other club.
+  for (const text of engineBatch?.adminNotices ?? []) {
+    await sendAdminNotice({ orgId: org.id, text }).catch((err) =>
+      console.error("[analyze] organisers' slot notice not queued:", err instanceof Error ? err.message : "failed"),
+    );
   }
 
   // ── §10 STEP 8 — THE LAST FOUR OWNERS, AND THE END OF THE PROMPT ───

@@ -435,3 +435,56 @@ describe('"The organisers" with no admin group the Pi can post in: the existing 
     ]);
   });
 });
+
+// ── "New players to review" says how each got there (2026-10-14) ─────
+//   The FNF rehearsal: a player an organiser pasted into a list was
+//   reported as "auto-added after posting in the group". Whether a
+//   provisional player posted is read from `AnalyzedMessage.authorUserId`.
+
+describe("the daily 'New players to review' notice", () => {
+  function withProvisional(authoredUserIds: string[]) {
+    const roles = overrides.membership.findMany;
+    overrides.membership = {
+      findMany: async (args: unknown) => {
+        const where = (args as { where?: { provisionallyAddedAt?: unknown } }).where;
+        if (where?.provisionallyAddedAt) {
+          return [
+            { userId: "p-posted", user: { name: "Poster Pete" } },
+            { userId: "p-listed", user: { name: "Listed Larry" } },
+          ];
+        }
+        return roles(args);
+      },
+    };
+    overrides.analyzedMessage = {
+      findMany: async () => authoredUserIds.map((authorUserId) => ({ authorUserId })),
+    };
+  }
+  const notice = (out: DueInstruction[]) =>
+    adminPosts(out).find((i) => i.key.startsWith(`org-${ORG.id}:provisional-review:`)) as { text?: string } | undefined;
+
+  it("a pasted player is 'added by name', a poster 'posted in the group'", async () => {
+    setWorld([match(NO_DEADLINES)]);
+    withProvisional(["p-posted"]);
+    const text = notice(await instructions(MON_1005))?.text;
+    expect(text).toContain("2 people were added automatically.");
+    expect(text).toContain("Posted in the group: Poster Pete\nAdded by name, from a list or someone else's message: Listed Larry");
+    expect(text).not.toContain("auto-added after posting in the group");
+  });
+
+  it("Turkish", async () => {
+    features.language = "tr";
+    setWorld([match({ ...NO_DEADLINES, language: "tr" })]);
+    overrides.organisation.findUnique = async () => ({
+      id: ORG.id,
+      name: "FNF",
+      language: "tr",
+      adminChannelMode: "admin-group",
+      adminChannelUserId: null,
+      adminGroupId: ADMIN_GROUP,
+    });
+    withProvisional([]);
+    const text = notice(await instructions(MON_1005))?.text;
+    expect(text).toContain("Bir listeden ya da başkasının mesajından adıyla eklendi: Poster Pete, Listed Larry");
+  });
+});

@@ -141,6 +141,8 @@ test("'move Pat' moves one player to the other team", async ({ request, db }) =>
   const out = await say(request, "move Pat");
   expect(out).toMatchObject({ handled: true, outcome: "teams-moved" });
   expect(await teamOf(db, U.player)).toBe(was === "RED" ? "YELLOW" : "RED");
+  // Four players, now 3 v 1: the proposal says so.
+  expect(out.replyText).toMatch(/⚠️ The sides are uneven: Red [13], Yellow [13]\./);
 });
 
 test("a name not on the teams: one short line, nothing changed", async ({ request, db }) => {
@@ -173,7 +175,16 @@ test("kickoff minus 2 hours with nobody approving: one reminder in the admin gro
   expect(teamText(await poll(request, londonAt(0, 20, 30)), /aren't final yet/)).toEqual([]);
 });
 
-test("YES: 'Teams are final.', TEAMS_PUBLISHED, nothing posted in the players' group, the list not applied", async ({ request, db }) => {
+test("YES on uneven sides ('move Pat' left 3 v 1): asked again, nothing final yet", async ({ request, db }) => {
+  const out = await say(request, "YES");
+  expect(out).toMatchObject({ handled: true, outcome: "teams-uneven" });
+  expect(out.replyText).toMatch(
+    /^The sides are uneven: Red [13], Yellow [13]\. Reply \*YES\* again to make them final as they are, or \*move\* a player first\.$/,
+  );
+  expect(await status(db)).not.toBe("TEAMS_PUBLISHED");
+});
+
+test("the second YES: 'Teams are final.', TEAMS_PUBLISHED, nothing posted in the players' group, the list not applied", async ({ request, db }) => {
   const out = await say(request, "YES");
   expect(out).toEqual(expect.objectContaining({ handled: true, outcome: "teams-final", replyText: "Teams are final." }));
   expect(await status(db)).toBe("TEAMS_PUBLISHED");

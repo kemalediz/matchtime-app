@@ -1139,6 +1139,28 @@ describe("a drop off a full squad reaches the group; an IN still does not", () =
     expect(r.outcomes.get("wa-1")?.intent).toBe("out");
   });
 
+  it("the organisers announce: the drop gets its reaction only, and the slot line is for the organisers", async () => {
+    const organisersSquad = async () => {
+      const s = await fullSquad();
+      return { ...s, features: { ...s.features, listAnnouncer: "organisers" as const } };
+    };
+    const d = deps({ model: modelReturning(SELF_OUT), loadState: organisersSquad });
+    const r = await run([msg({ body: "foot injury lads, I am out today" })], d);
+
+    expect(d.cancelled).toEqual(["u-pete"]);
+    expect(r.outcomes.get("wa-1")?.reply).toBeNull();
+    expect(r.outcomes.get("wa-1")?.react).toBe("👋");
+    expect(r.adminNotices).toEqual([
+      "📋 Pete is out of Tue 20:00: 3 of 4 in, 1 place open. MatchTime has not posted this in the players' group.",
+    ]);
+  });
+
+  it("MatchTime announces: nothing for the organisers", async () => {
+    const d = deps({ model: modelReturning(SELF_OUT), loadState: fullSquad });
+    const r = await run([msg({ body: "foot injury lads, I am out today" })], d);
+    expect(r.adminNotices ?? []).toEqual([]);
+  });
+
   it("an IN into the same squad still says nothing at all", async () => {
     const d = deps({ loadState: async () => state({ rows: [] }) });
     const r = await run([msg()], d);

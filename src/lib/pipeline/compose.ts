@@ -82,6 +82,14 @@ export interface ComposedOutput {
    * part (see guest-name-ask.ts's four gates).
    */
   operatorNotes: string[];
+  /**
+   * Lines for the club's ORGANISERS, never the players' group. Only a club
+   * whose organisers announce the list and teams (list-announcer.ts) gets
+   * any: a slot opening there is told to the organisers instead of the
+   * players' group. The analyze route sends each on the admin channel
+   * (`sendAdminNotice`); `compose()` itself sends nothing.
+   */
+  adminNotices: string[];
 }
 
 /** A pushname that is really a phone number is never printed as a name.
@@ -115,6 +123,7 @@ export function compose(result: EngineResult): ComposedOutput {
   const utterances: Utterance[] = [];
   const reacts: Array<{ messageId: string; emoji: string }> = [];
   const operatorNotes: string[] = [];
+  const adminNotices: string[] = [];
   // THE GROUP'S LANGUAGE, once. Carried on the state by `load-state.ts`
   // from `Organisation.language`; English for every group that has not
   // set one, and the English bytes are pinned by the golden snapshot.
@@ -189,6 +198,11 @@ export function compose(result: EngineResult): ComposedOutput {
   // else, a question about who is playing gets one line saying the
   // organisers will post the list, and one about the teams the same for
   // the teams. Every other answer (counts, stats, scores) is unchanged.
+  //
+  // A SLOT OPENING is not said in the players' group either (2026-10-14,
+  // the FNF rehearsal: "X is out, 17 of 18. One slot open, say IN" went
+  // out under an OUT). It goes to the organisers (`adminNotices`), and a
+  // bench claim that lost the race is thanked without the squad count.
   const organisersAnnounce = state.features.listAnnouncer === "organisers";
 
   for (const sp of result.speech) {
@@ -789,6 +803,20 @@ export function compose(result: EngineResult): ComposedOutput {
           );
           break;
         }
+        // The organisers announce the list (see the loop's head): they
+        // are told, the players' group is not.
+        if (organisersAnnounce) {
+          adminNotices.push(
+            s.oa_slot_opened({
+              outFirstNames: sp.outNames.map(first),
+              confirmed: confirmed.length,
+              maxPlayers: state.maxPlayers,
+              kickoffLabel: state.kickoffLabel,
+              open,
+            }),
+          );
+          break;
+        }
         // An organiser-pick club (slice 2b, P13): the place is not first
         // come. The engine only lets this through with an empty waiting
         // list; the admins are asked to pick otherwise.
@@ -833,7 +861,9 @@ export function compose(result: EngineResult): ComposedOutput {
         const who = first(state.roster.find((m) => m.userId === sp.userId)?.name ?? "");
         utterances.push({
           messageId: sp.messageId,
-          text: s.bench_claim_too_late({ firstName: who, confirmed: confirmed.length, maxPlayers: state.maxPlayers }),
+          text: organisersAnnounce
+            ? s.oa_bench_claim_too_late({ firstName: who })
+            : s.bench_claim_too_late({ firstName: who, confirmed: confirmed.length, maxPlayers: state.maxPlayers }),
         });
         break;
       }
@@ -871,7 +901,7 @@ export function compose(result: EngineResult): ComposedOutput {
     operatorNotes.push(`[${d.stage}${d.messageId ? ` ${d.messageId}` : ""}] ${d.detail}`);
   }
 
-  return { utterances, reacts, operatorNotes };
+  return { utterances, reacts, operatorNotes, adminNotices };
 }
 
 /** Exposed for the corpus adapter: what MatchTime would SAY, in order. */

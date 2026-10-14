@@ -271,6 +271,13 @@ export interface EngineBatchResult {
   matchId: string | null;
   degradations: string[];
   cost: { usd: number; calls: number; ms: number };
+  /**
+   * Lines for the club's organisers (`ComposedOutput.adminNotices`): only
+   * when they announce the list and teams, e.g. "a slot opened". This
+   * runner sends nothing; the analyze route puts each on the admin
+   * channel. Absent or empty: nothing to tell them.
+   */
+  adminNotices?: string[];
 }
 
 /**
@@ -1082,6 +1089,9 @@ export async function runAttendanceEngineBatch(args: {
     matchId,
     degradations,
     cost: { ...cost, ms: Date.now() - t0 },
+    // Only when a write landed: a slot that the projection opened but the
+    // database never did is not news for the organisers.
+    adminNotices: applied.some((a) => a.ok) ? composed.adminNotices : [],
   };
 }
 

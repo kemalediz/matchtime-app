@@ -234,11 +234,38 @@ describe("the commands", () => {
     expect(proposal()).toMatchObject({ state: "proposed" });
   });
 
-  it("'teams' with too few players: the generator's own reason, nothing stored", async () => {
-    const short = vi.fn(async () => ({ ok: false as const, reason: "Not enough confirmed players (3/4)." }));
+  it("'teams' with too few players: a whole sentence with the count and what to do, nothing stored", async () => {
+    store.tables.attendance = store.tables.attendance.slice(0, 3);
+    const short = vi.fn(async () => ({ ok: false as const, reason: "not enough confirmed players (3/4)" }));
     const r = await cmd("teams", { generate: short, announce: () => true });
-    expect(r).toEqual({ outcome: "teams-not-built", replyText: "Not enough confirmed players (3/4)." });
+    expect(r).toEqual({
+      outcome: "teams-not-built",
+      replyText: "⚠️ Not enough players to make the teams for 20:00: 3 of 4 in. Add players, then type *teams*.",
+    });
     expect(proposal()).toBeUndefined();
+  });
+
+  it("'takımlar' with too few players, in Turkish", async () => {
+    store.tables.attendance = store.tables.attendance.slice(0, 3);
+    const short = vi.fn(async () => ({ ok: false as const, reason: "yeterli onaylı oyuncu yok, 3/4" }));
+    const r = await handleTeamCommand({
+      orgId: ORG,
+      lang: "tr",
+      text: "takımlar",
+      senderUserId: "u-admin",
+      messageId: "wa-tr",
+      now: NOON,
+      deps: { generate: short, announce: () => true },
+    });
+    expect(r?.replyText).toBe(
+      "⚠️ 20:00 maçı için takım kuracak kadar oyuncu yok: 4 kişi gerekiyor, 3 kişi var. Oyuncu ekleyin, sonra *takımlar* yazın.",
+    );
+  });
+
+  it("'teams' refused for another reason: the reason inside a sentence", async () => {
+    const refused = vi.fn(async () => ({ ok: false as const, reason: "match is cancelled" }));
+    const r = await cmd("teams", { generate: refused, announce: () => true });
+    expect(r).toEqual({ outcome: "teams-not-built", replyText: "Can't build teams right now: match is cancelled." });
   });
 
   it("no upcoming game: says so", async () => {
@@ -434,12 +461,28 @@ describe("the scheduled proposal ('Teams ready')", () => {
     expect(adminJobs()).toHaveLength(1);
   });
 
-  it("too few to balance (the balancer's own minimum): nothing yet, and it tries again later", async () => {
+  it("too few to balance (the balancer's own minimum): HQ is told once, and the proposal follows when the squad fills", async () => {
     store.tables.attendance = store.tables.attendance.slice(0, 3);
-    expect(await tick(new Date("2026-10-16T09:00:00.000Z"))).toBe(0);
+    expect(await tick(new Date("2026-10-16T09:00:00.000Z"))).toBe(1);
     expect(generate).not.toHaveBeenCalled();
+    expect(adminJobs().map((j) => j.text)).toEqual([
+      "⚠️ Not enough players to make the teams for 20:00: 3 of 4 in. Add players, then type *teams*.",
+    ]);
+    expect(groupJobs()).toEqual([]);
+    // Not repeated on every tick.
+    expect(await tick(new Date("2026-10-16T09:05:00.000Z"))).toBe(0);
+    expect(await tick(new Date("2026-10-16T10:00:00.000Z"))).toBe(0);
+    expect(adminJobs()).toHaveLength(1);
     store.tables.attendance.push({ id: "att-x", matchId: MATCH, userId: "u-zara", status: "CONFIRMED" });
-    expect(await tick(new Date("2026-10-16T09:30:00.000Z"))).toBe(1);
+    expect(await tick(new Date("2026-10-16T10:30:00.000Z"))).toBe(1);
+    expect(adminJobs()).toHaveLength(2);
+    expect(adminJobs()[1].text).toContain("📝 *Proposed teams*");
+  });
+
+  it("too few, before the ready time: nothing yet", async () => {
+    store.tables.attendance = store.tables.attendance.slice(0, 3);
+    expect(await tick(new Date("2026-10-16T08:59:00.000Z"))).toBe(0);
+    expect(adminJobs()).toEqual([]);
   });
 
   it("teams already built: proposes those, does not rebuild", async () => {
@@ -541,5 +584,75 @@ describe("after approval: a squad change is told to the admin group", () => {
     await cmd("teams");
     await yes();
     expect(await tick(new Date("2026-10-16T13:00:00.000Z"))).toBe(0);
+  });
+});
+
+// ── Uneven sides (2026-10-14, the FNF rehearsal: `move A` left 8 v 10 and
+//    YES finalised it without a word) ────────────────────────────────────
+
+/** Five confirmed, Red: Ali, Bilal, Tom. Yellow: Shehryar, Zara. 3 v 2: as even as five can be. */
+function seedFive() {
+  store.tables.attendance.push({ id: "att-z", matchId: MATCH, userId: "u-zara", status: "CONFIRMED" });
+  store.tables.teamAssignment = [
+    { id: "ta-1", matchId: MATCH, userId: "u-ali", team: "RED" },
+    { id: "ta-2", matchId: MATCH, userId: "u-bilal", team: "RED" },
+    { id: "ta-3", matchId: MATCH, userId: "u-tom", team: "RED" },
+    { id: "ta-4", matchId: MATCH, userId: "u-sheh", team: "YELLOW" },
+    { id: "ta-5", matchId: MATCH, userId: "u-zara", team: "YELLOW" },
+  ];
+  (store.tables.match[0] as Row).status = "TEAMS_GENERATED";
+}
+
+describe("uneven sides", () => {
+  it("'move Bilal' leaving 3 v 1: the proposal says the sides are uneven", async () => {
+    seedSheet();
+    const r = await cmd("move Bilal");
+    expect(r?.replyText).toContain("⚠️ The sides are uneven: Red 1, Yellow 3.");
+  });
+
+  it("even sides, and an odd total split one apart, say nothing about it", async () => {
+    seedSheet();
+    expect((await cmd("teams"))?.replyText).not.toContain("uneven");
+    seedFive();
+    expect((await cmd("teams"))?.replyText).not.toContain("uneven");
+  });
+
+  it("YES on uneven sides asks again; a second YES makes them final", async () => {
+    seedSheet();
+    await cmd("move Bilal");
+    const first = await yes();
+    expect(first).toEqual({
+      outcome: "teams-uneven",
+      replyText: "The sides are uneven: Red 1, Yellow 3. Reply *YES* again to make them final as they are, or *move* a player first.",
+    });
+    expect((store.tables.match[0] as Row).status).toBe("TEAMS_GENERATED");
+    const second = await yes();
+    expect(second?.outcome).toBe("teams-final");
+    expect((store.tables.match[0] as Row).status).toBe("TEAMS_PUBLISHED");
+  });
+
+  it("a change after the warning asks the question afresh: evened up, one YES is enough", async () => {
+    seedSheet();
+    await cmd("move Bilal");
+    expect((await yes())?.outcome).toBe("teams-uneven");
+    await cmd("move Bilal");
+    expect((await yes())?.outcome).toBe("teams-final");
+  });
+
+  it("a pasted list sets aside teams waiting for the second YES too", async () => {
+    seedSheet();
+    await cmd("move Bilal");
+    await yes();
+    expect(await setAsideTeamProposal(ORG)).toBe(1);
+    expect(await yes()).toBeNull();
+  });
+
+  it("Turkish", async () => {
+    seedSheet();
+    await handleTeamCommand({ orgId: ORG, lang: "tr", text: "Bilal taşı", senderUserId: "u-admin", messageId: "wa-tr", now: NOON, deps: quiet });
+    const r = await answerTeamsYes({ orgId: ORG, lang: "tr", senderUserId: "u-admin", messageId: "wa-yes", now: NOON, deps: quiet });
+    expect(r?.replyText).toBe(
+      "Takımlar dengesiz: Kırmızı 1, Sarı 3. Böyle kesinleşsin istiyorsanız yine *EVET* yazın, ya da önce bir oyuncuyu *taşı* ile geçirin.",
+    );
   });
 });
