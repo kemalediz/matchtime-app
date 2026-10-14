@@ -36,7 +36,7 @@
  *   6. Stops the embedded Postgres (data dir persists for fast re-runs).
  */
 import { config as loadEnv } from "dotenv";
-import { DevApiKeyMissingError, forgetProductionApiKey } from "./helpers/dev-api-key";
+import { DevApiKeyMissingError, forgetProductionApiKey, requireDevApiKey } from "./helpers/dev-api-key";
 
 // Load the repo-root .env so ANTHROPIC_API_KEY_DEV is in scope before
 // helpers/env builds the child overlay.
@@ -52,6 +52,17 @@ import { DevApiKeyMissingError, forgetProductionApiKey } from "./helpers/dev-api
 // MDs/llm-spend-september-2026.md §6 item 1.
 loadEnv();
 forgetProductionApiKey();
+
+// A LIVE club rehearsal (e2e/rehearsal/) is an ordinary live run: the
+// developer key or nothing, checked before anything starts.
+if (process.env.REHEARSAL_LIVE === "1") {
+  if (!process.env.MT_REHEARSAL_SCENARIO) {
+    console.error("[e2e] REHEARSAL_LIVE=1 needs MT_REHEARSAL_SCENARIO (the scenario to rehearse).");
+    process.exit(2);
+  }
+  requireDevApiKey("a LIVE club rehearsal (REHEARSAL_LIVE=1)");
+  process.env.MT_SIM_LIVE_LLM = "1";
+}
 
 import { spawn } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";

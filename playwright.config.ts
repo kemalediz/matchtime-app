@@ -7,7 +7,7 @@
  * present and the DB URL is a local loopback address.
  */
 import { defineConfig, devices } from "@playwright/test";
-import { E2E, E2E_BASE_URL, assertSafeTestDbUrl, buildTestEnv } from "./e2e/helpers/env";
+import { E2E, E2E_BASE_URL, assertSafeTestDbUrl, buildTestEnv, rehearsalServerEnv } from "./e2e/helpers/env";
 
 if (process.env.MT_E2E !== "1") {
   throw new Error(
@@ -27,7 +27,7 @@ for (const [k, v] of Object.entries(testEnv)) process.env[k] = v;
 
 export default defineConfig({
   testDir: "./e2e",
-  testMatch: /(api|web|sim)\/.*\.spec\.ts/,
+  testMatch: /(api|web|sim|rehearsal)\/.*\.spec\.ts/,
   // Deterministic, state-sharing-safe: one worker, files in order.
   fullyParallel: false,
   workers: 1,
@@ -54,6 +54,8 @@ export default defineConfig({
     // this is the second lock on the same door.
     reuseExistingServer: false,
     timeout: 180_000,
-    env: testEnv,
+    // The club rehearsal's clock (e2e/rehearsal/clock-shim.cjs), for the
+    // server only and only when a rehearsal was asked for.
+    env: { ...testEnv, ...rehearsalServerEnv() },
   },
 });

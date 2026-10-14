@@ -379,3 +379,28 @@ export function buildTestEnv(): Record<string, string> {
   }
   return env;
 }
+
+/**
+ * The CLUB REHEARSAL's server-only env (e2e/rehearsal/), empty unless a
+ * rehearsal was asked for with MT_REHEARSAL_SCENARIO.
+ *
+ * It loads `e2e/rehearsal/clock-shim.cjs` into the Next dev server, which
+ * moves the server's "now" by the offset the runner writes to
+ * REHEARSAL_CLOCK_FILE before each step, so a fortnight of a club's life
+ * can be replayed in minutes against routes that read `new Date()`.
+ *
+ * Given to the WEB SERVER only (playwright.config.ts), never copied into
+ * the Playwright workers' environment: the runner keeps the real clock and
+ * computes the simulated one itself.
+ */
+export const REHEARSAL_CLOCK_FILE = path.join(REPO_ROOT, ".e2e", "rehearsal-clock.json");
+
+export function rehearsalServerEnv(env: Record<string, string | undefined> = process.env): Record<string, string> {
+  if (!env.MT_REHEARSAL_SCENARIO) return {};
+  const shim = path.join(REPO_ROOT, "e2e", "rehearsal", "clock-shim.cjs");
+  const existing = env.NODE_OPTIONS ? `${env.NODE_OPTIONS} ` : "";
+  return {
+    NODE_OPTIONS: `${existing}--require ${JSON.stringify(shim)}`,
+    MT_REHEARSAL_CLOCK_FILE: REHEARSAL_CLOCK_FILE,
+  };
+}

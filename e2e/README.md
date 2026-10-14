@@ -240,6 +240,41 @@ design): the squad-from-list LLM *extraction* call, the in-group
 in its context — the DM path's context flags ARE asserted), and rating
 submission with a merged-away player (covered in `web/rate.spec.ts`).
 
+### Club rehearsal (`e2e/rehearsal/`): a club's fortnight, before it goes live
+
+Plays a whole club, its groups and its people against this same isolated
+stack, from a scenario file, and writes a transcript of every message in and
+everything MatchTime did: posts per group, admin-group posts, DMs, reactions,
+the list poster and team sheet images, and database changes.
+
+```bash
+MT_REHEARSAL_SCENARIO=e2e/rehearsal/examples/riverside.scenario.json \
+  npx tsx e2e/run.ts rehearsal/
+# transcript: .e2e/rehearsal-out/transcript.html (+ .md, run.json, graphics/)
+# MT_REHEARSAL_OUT=<dir> writes it somewhere else.
+```
+
+- **Format**: `scenario.ts` (club, settings, groups, people, a timeline of
+  messages, DMs, votes, rating-page submissions and setup steps). The example
+  is entirely fictional. A real club's scenario, built from its chat exports,
+  belongs outside the repo with its outputs: never commit one.
+- **Clock**: the Next server runs with `clock-shim.cjs`, which moves its
+  `Date` to each tick's simulated time (`MT_REHEARSAL_CLOCK_FILE`), so the
+  analyze route, crons and libraries that read `new Date()` see the
+  fortnight. Crons fire on their `vercel.json` schedule (`clock.ts`); the
+  emulated Pi batches the players' group every ten minutes like the real one.
+- **Stand-ins**: the website sign-up, the settings page and the admin-group
+  link button are database writes, each labelled `STAND-IN` in the transcript.
+  Everything else goes through the real routes.
+- **Stubbed (default)**: chat gets no route (silence); plain in/out gets the
+  obvious one; scripted steps say theirs (`route`/`facts`, or `stub`). The
+  transcript says plainly that this does not prove the model's behaviour.
+- **Live** (`REHEARSAL_LIVE=1`): the developer key only, refused without it.
+  It costs money: ask Kemal first. A stubbed run prints the call count and an
+  estimate for one live pass in its summary.
+- Skipped unless `MT_REHEARSAL_SCENARIO` is set. Pure parts are unit tested
+  (`e2e/rehearsal/*.test.ts`, in `npm run test:unit`).
+
 ### DEFERRED (known gaps — next wave candidates)
 
 - **Stripe webhook flow** (`/api/stripe/*`): checkout completion →

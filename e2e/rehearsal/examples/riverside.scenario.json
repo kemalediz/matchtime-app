@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "title": "Riverside Friday (fictional example)",
+  "timezone": "Europe/London",
+  "start": "2027-01-04 09:00",
+  "end": "2027-01-09 12:00",
+  "pollEveryMinutes": 60,
+  "club": {
+    "name": "Riverside FC",
+    "owner": "ann",
+    "paymentHolder": "bob",
+    "maxPlayers": 6,
+    "sport": { "name": "Football 3-a-side", "playersPerTeam": 3, "teamLabels": ["Bibs", "Non-bibs"] },
+    "activity": { "day": "friday", "time": "20:00", "durationMinutes": 90, "venue": "Riverside Park" },
+    "settings": {
+      "listAnnouncer": "organisers",
+      "rollingSquadEnabled": true,
+      "paymentTrackingEnabled": true
+    }
+  },
+  "groups": [
+    { "key": "main", "subject": "Riverside Friday", "role": "players" },
+    { "key": "hq", "subject": "Riverside HQ", "role": "admin" },
+    { "key": "news", "subject": "Riverside News", "role": "other", "matchtime": false, "onlyAdminsCanSend": true }
+  ],
+  "members": [
+    { "key": "ann", "name": "Ann Archer", "phone": "+447700970001", "role": "OWNER", "groups": ["main", "hq", "news"] },
+    { "key": "bob", "name": "Bob Baker", "phone": "+447700970002", "role": "ADMIN", "groups": ["main", "hq", "news"] },
+    { "key": "cal", "name": "Cal Cooper", "phone": "+447700970003", "groups": ["main", "news"] },
+    { "key": "dee", "name": "Dee Dunn", "phone": "+447700970004", "groups": ["main", "news"] },
+    { "key": "eve", "name": "Eve Evans", "phone": "+447700970005", "groups": ["main", "news"] },
+    { "key": "fay", "name": "Fay Ford", "phone": "+447700970006", "groups": ["main", "news"] },
+    { "key": "gus", "name": "Gus Grant", "phone": "+447700970007", "groups": ["main", "news"] }
+  ],
+  "steps": [
+    { "at": "2027-01-04 09:00", "do": "note", "text": "Monday: setting up" },
+    { "at": "2027-01-04 09:05", "do": "club-signup" },
+    { "at": "2027-01-04 09:10", "do": "bot-added", "group": "main", "by": "ann" },
+    { "at": "2027-01-04 09:20", "do": "approve" },
+    { "at": "2027-01-04 09:30", "do": "settings", "values": {} },
+    { "at": "2027-01-04 09:35", "do": "bot-added", "group": "hq", "by": "ann" },
+    { "at": "2027-01-04 09:40", "do": "link-admin-group", "group": "hq", "by": "ann" },
+    { "at": "2027-01-04 09:50", "do": "go-live", "from": "ann" },
+    { "at": "2027-01-04 18:02", "do": "message", "group": "main", "from": "cal", "body": "Who's watching the game tonight?" },
+    { "at": "2027-01-04 18:04", "do": "message", "group": "main", "from": "dee", "body": "Me, should be a good one" },
+
+    { "at": "2027-01-05 12:00", "do": "note", "text": "Tuesday: the list" },
+    { "at": "2027-01-05 12:05", "do": "message", "group": "hq", "from": "ann", "body": "1. Ann\n2. Bob\n3. Cal\n4. Dee\n5. Eve\n6. Skipper" },
+    { "at": "2027-01-05 12:07", "do": "message", "group": "hq", "from": "ann", "body": "YES" },
+    { "at": "2027-01-05 12:30", "do": "message", "group": "news", "from": "bob", "body": "List is in!", "media": "image" },
+    { "at": "2027-01-05 18:31", "do": "message", "group": "main", "from": "eve", "body": "out" },
+    { "at": "2027-01-05 19:00", "do": "message", "group": "hq", "from": "bob", "body": "put Fay in", "stub": "other-in:Fay" },
+    { "at": "2027-01-06 12:00", "do": "message", "group": "hq", "from": "ann", "body": "poster" },
+
+    { "at": "2027-01-08 09:55", "do": "note", "text": "Friday: match day" },
+    { "at": "2027-01-08 10:30", "do": "message", "group": "hq", "from": "ann", "body": "swap Ann with Bob" },
+    { "at": "2027-01-08 10:32", "do": "message", "group": "hq", "from": "ann", "body": "YES" },
+    { "at": "2027-01-08 22:05", "do": "message", "group": "main", "from": "ann", "body": "3-2 to bibs", "stub": "score:3-2" },
+    { "at": "2027-01-08 22:40", "do": "vote", "from": "cal", "poll": "Payments", "option": "Non-bibs" },
+    { "at": "2027-01-09 08:30", "do": "rate", "from": "cal", "mom": "Dee" },
+    { "at": "2027-01-09 08:35", "do": "rate", "from": "fay", "mom": "Dee" },
+    { "at": "2027-01-09 09:10", "do": "rate", "from": "bob", "mom": "Ann" }
+  ]
+}
