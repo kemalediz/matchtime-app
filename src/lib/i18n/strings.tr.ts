@@ -2004,9 +2004,31 @@ export const tr: Strings = {
     `Bu, *${p.club}* kulübünün ana grubu; yönetici grubu olamaz. Beni yöneticiler için ayrı bir gruba ekleyin.`,
   admin_group_removed_dm: (p: { club: string }): string =>
     `*${p.club}* yönetici grubundan çıkarıldım, bu yüzden yönetici mesajları artık size DM olarak gelecek. Ayarlar'dan yeniden bir grup bağlayabilirsiniz.`,
+  // ── Yönetici grubunda yazılan kadro değişiklikleri (2026-10-14) ──
+  ag_sq_done: (p: { items: string }): string => `Tamam: ${p.items}.`,
+  ag_sq_item_in: (p: { name: string }): string => `${p.name} kadroya girdi`,
+  ag_sq_item_out: (p: { name: string }): string => `${p.name} çıktı`,
+  ag_sq_item_bench: (p: { name: string }): string => `${p.name} yedek listesinde`,
+  ag_sq_item_maybe: (p: { name: string }): string => `${p.name} belki`,
+  ag_sq_failed: (p: { names: string }): string => `${p.names} için değişiklik yapamadım. Lütfen maç sayfasını kontrol edin.`,
+  ag_sq_nothing: "Değişecek bir şey yok: kadro zaten öyle.",
+  ag_sq_count: (p: { confirmed: number; max: number }): string => `${p.confirmed}/${p.max}.`,
+  ag_paste_adding: (p: { names: string }): string => `Eklenecek: ${p.names}.`,
+  ag_paste_removing: (p: { names: string }): string => `Çıkarılacak: ${p.names}.`,
+  ag_paste_to_bench: (p: { names: string }): string => `Yedek listesine alınacak: ${p.names}.`,
+  ag_paste_new: (p: { names: string; many: boolean }): string =>
+    !p.many
+      ? `Tanımadığım isimler: ${p.names} (henüz üye değil, yeni oyuncu olarak ekleyeceğim).`
+      : `Tanımadığım isimler: ${p.names} (henüz üye değiller, yeni oyuncu olarak ekleyeceğim).`,
+  ag_paste_unclear: (p: { names: string }): string => `${p.names} kim, emin değilim; dışarıda bırakıyorum, tam adını yazın.`,
+  ag_paste_over: (p: { listed: number; max: number }): string =>
+    `Listede ${p.max} yer için ${p.listed} isim var, sondakiler yedek listesine gider.`,
+  ag_paste_confirm: "Uygulamak için EVET yazın.",
+  ag_paste_same: "Bu liste kadroyla aynı, değişecek bir şey yok.",
+  ag_paste_expired: "O liste 30 dakikadan eski, bu yüzden uygulamadım. Hâlâ geçerliyse yeniden yapıştırın.",
   settings_admin_channel_heading: "Yönetici mesajları",
   settings_admin_channel_info:
-    "MatchTime'ın yalnızca yöneticilerin görmesi gereken mesajları nereye gönderdiği: seçim için yedek listesi, son çıkış özeti, geç çıkanlar, ödemeyenler ve kontrol edilecek yeni oyuncular. Tek kişi: seçtiğiniz kişiye DM. Yönetici WhatsApp grubu: yöneticilerin grubuna tek mesaj; yöneticiler orada numara, isim ya da etiketle oyuncu seçebilir. MatchTime o grupta başka hiçbir şeyi okumaz. Her yöneticiye DM: her yönetici kendi kopyasını alır.",
+    "MatchTime'ın yalnızca yöneticilerin görmesi gereken mesajları nereye gönderdiği: seçim için yedek listesi, son çıkış özeti, geç çıkanlar, ödemeyenler ve kontrol edilecek yeni oyuncular. Tek kişi: seçtiğiniz kişiye DM. Yönetici WhatsApp grubu: yöneticilerin grubuna tek mesaj; yöneticiler orada numara, isim ya da etiketle oyuncu seçebilir. Haftalık kadroda \"Ali çıktı\" ya da \"Can girsin\" yazarak veya listeyi yapıştırarak kadroyu orada da değiştirebilirler. MatchTime o grupta başka hiçbir şeyi okumaz. Her yöneticiye DM: her yönetici kendi kopyasını alır.",
   settings_admin_channel_mode_one_person: "Tek kişi",
   settings_admin_channel_mode_admin_group: "Yönetici WhatsApp grubu",
   settings_admin_channel_mode_each_admin: "Her yöneticiye DM",

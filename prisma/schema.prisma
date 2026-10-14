@@ -1622,6 +1622,34 @@ model OrganiserPickRound {
   @@index([orgId, resolvedAt])
 }
 
+/// A squad list an admin pasted in the club's admin group (2026-10-14),
+/// waiting for an admin's YES. Holds the list as the admin wrote it, read
+/// onto members when pasted; the changes are worked out again against the
+/// squad at the moment of the YES. One open per club: a new paste
+/// supersedes the last. See src/lib/admin-group-paste.ts.
+model AdminSquadProposal {
+  id               String    @id @default(cuid())
+  orgId            String
+  matchId          String
+  /// The paste's WhatsApp message id. A Pi retry proposes nothing twice.
+  waMessageId      String    @unique
+  proposedByUserId String
+  /// Members the list names in its playing block, in list order.
+  playingUserIds   String[]  @default([])
+  /// Names in the playing block that are nobody in the club yet.
+  playingNewNames  String[]  @default([])
+  reserveUserIds   String[]  @default([])
+  reserveNewNames  String[]  @default([])
+  expiresAt        DateTime
+  resolvedAt       DateTime?
+  /// "applied" | "superseded"
+  outcome          String?
+  resolvedByUserId String?
+  createdAt        DateTime  @default(now())
+
+  @@index([orgId, resolvedAt])
+}
+
 model BenchSlotOffer {
   id              String    @id @default(cuid())
   matchId         String
