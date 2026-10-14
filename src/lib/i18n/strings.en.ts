@@ -2586,9 +2586,37 @@ export const en = {
   /** L4. To the owner, by DM, after MatchTime was removed from the admin group. */
   admin_group_removed_dm: (p: { club: string }): string =>
     `I was removed from *${p.club}*'s admin group, so admin messages now come to you by DM. You can link a group again in Settings.`,
+  // ── Squad changes typed in the admin group (2026-10-14) ──
+  // src/lib/admin-group-squad-rules.ts. Said only in the admin group.
+  /** One change applied: "Done: Shehryar out, Bilal in." */
+  ag_sq_done: (p: { items: string }): string => `Done: ${p.items}.`,
+  ag_sq_item_in: (p: { name: string }): string => `${p.name} in`,
+  ag_sq_item_out: (p: { name: string }): string => `${p.name} out`,
+  ag_sq_item_bench: (p: { name: string }): string => `${p.name} on the bench`,
+  ag_sq_item_maybe: (p: { name: string }): string => `${p.name} a maybe`,
+  /** A change that did not land. */
+  ag_sq_failed: (p: { names: string }): string => `I couldn't change ${p.names}. Please check the match page.`,
+  /** The admin asked for what the squad already says. */
+  ag_sq_nothing: "Nothing to change: the squad already says that.",
+  /** The count after the change. */
+  ag_sq_count: (p: { confirmed: number; max: number }): string => `${p.confirmed} of ${p.max}.`,
+  /** A pasted list: what it would change, then YES. */
+  ag_paste_adding: (p: { names: string }): string => `Adding: ${p.names}.`,
+  ag_paste_removing: (p: { names: string }): string => `Removing: ${p.names}.`,
+  ag_paste_to_bench: (p: { names: string }): string => `To the bench: ${p.names}.`,
+  ag_paste_new: (p: { names: string; many: boolean }): string =>
+    !p.many
+      ? `Unknown names: ${p.names} (not a member yet, I'll add them as a new player).`
+      : `Unknown names: ${p.names} (not members yet, I'll add them as new players).`,
+  ag_paste_unclear: (p: { names: string }): string => `Not sure who ${p.names} is, so I'll leave them out; use the full name.`,
+  ag_paste_over: (p: { listed: number; max: number }): string =>
+    `The list has ${p.listed} names for ${p.max} places, so the last ones go on the bench.`,
+  ag_paste_confirm: "Reply YES to apply.",
+  ag_paste_same: "That matches the squad, nothing to change.",
+  ag_paste_expired: "That list is more than 30 minutes old, so I haven't applied it. Paste it again if it still stands.",
   settings_admin_channel_heading: "Admin messages go to",
   settings_admin_channel_info:
-    "Where MatchTime sends messages only admins should see: the bench to pick from, the drop-out summary, late drop-outs, who hasn't paid and new players to check. One person: a DM to the person you choose. Admin WhatsApp group: one message in your admins' group, and admins can reply there with a number, a name or a tag to pick a player. MatchTime reads nothing else in that group. Each admin by DM: every admin gets their own copy.",
+    "Where MatchTime sends messages only admins should see: the bench to pick from, the drop-out summary, late drop-outs, who hasn't paid and new players to check. One person: a DM to the person you choose. Admin WhatsApp group: one message in your admins' group, and admins can reply there with a number, a name or a tag to pick a player. For a weekly squad they can also change it there by writing \"Shehryar out\" or \"Bilal in\", or by pasting the list. MatchTime reads nothing else in that group. Each admin by DM: every admin gets their own copy.",
   settings_admin_channel_mode_one_person: "One person",
   settings_admin_channel_mode_admin_group: "Admin WhatsApp group",
   settings_admin_channel_mode_each_admin: "Each admin by DM",
