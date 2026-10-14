@@ -79,6 +79,12 @@ export default function SettingsPage() {
   // `goLiveSetup` is the setup as the page loaded it: the banner keeps it
   // if a later refresh comes back without one.
   const [goLiveSetup, setGoLiveSetup] = useState<GoLiveSetup | null>(null);
+  // The language the page's own words are in: the club's language as the
+  // page loaded. Changing the language here does not re-word the page at
+  // once: longer words above the language picker would move it under the
+  // finger ("saving a setting never moves the page"). It reads in the new
+  // language from the next visit.
+  const [pageLang, setPageLang] = useState<string | null>(null);
   const [previewKey, setPreviewKey] = useState(0);
   const settingSaved = () => setPreviewKey((k) => k + 1);
   /** Read the settings again. False when that failed (it may also reject). */
@@ -114,6 +120,7 @@ export default function SettingsPage() {
         // lands after the club has gone live must not take the banner, and
         // the outcome it is about to show, off the page.
         setGoLiveSetup((prev) => prev ?? (data?.setup?.settingUp ? data.setup : null));
+        setPageLang((prev) => prev ?? data?.language ?? null);
         setClubName(data?.name ?? "");
         setTeamRed(data?.teamLabels?.[0] ?? "");
         setTeamYellow(data?.teamLabels?.[1] ?? "");
@@ -346,7 +353,7 @@ export default function SettingsPage() {
   if (!org) return <div className="p-10 text-center text-slate-400">{t(layoutLang).st_not_found}</div>;
 
   /** The page's own words, in the club's language. */
-  const w = t(org.language);
+  const w = t(pageLang ?? org.language);
 
   const inviteLink = `${typeof window !== "undefined" ? window.location.origin : ""}/join/${org.inviteCode}`;
 
