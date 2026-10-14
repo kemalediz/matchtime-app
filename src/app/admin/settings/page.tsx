@@ -12,6 +12,7 @@ import { FEATURE_META, type ToggleableKey } from "@/lib/org-features-meta";
 import { LANGS, LANG_LABELS, normaliseLang, type Lang } from "@/lib/i18n/lang";
 import { AdminChannelSettings } from "@/components/settings/admin-channel-section";
 import { PickModeRows } from "@/components/settings/pick-mode-rows";
+import { TeamsReadyRow } from "@/components/settings/teams-ready-row";
 import { BillingSettingsCard, type BillingCardData } from "@/components/settings/billing-card";
 import { SectionInfo } from "@/components/info/section-info";
 import { FEATURE_INFO } from "@/lib/info-copy";
@@ -699,6 +700,8 @@ export default function SettingsPage() {
                 />
                 {/* Slice 2a: where admin messages go. */}
                 <AdminChannelSettings orgId={org.id} lang={normaliseLang(org.language)} />
+                {/* Teams ready (2026-10-14): shown with an admin group linked. */}
+                <TeamsReadyRow orgId={org.id} language={org.language} />
               </div>
             </div>
           </section>

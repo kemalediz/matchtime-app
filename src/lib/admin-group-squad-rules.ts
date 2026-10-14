@@ -128,31 +128,45 @@ function fold(s: string): string {
  * is already there, that is who the list means.
  */
 export function matchPastedName(raw: string, members: PasteMember[], onMatch: ReadonlySet<string> = new Set()): NameMatch {
-  const name = fold(raw);
-  if (!name) return { kind: "new" };
-  const pick = (ids: string[]): NameMatch | null => {
-    const unique = [...new Set(ids)];
-    if (unique.length === 1) return { kind: "member", userId: unique[0] };
-    if (unique.length > 1) {
-      const here = unique.filter((id) => onMatch.has(id));
-      return here.length === 1 ? { kind: "member", userId: here[0] } : { kind: "ambiguous" };
-    }
-    return null;
-  };
-  const exact = pick(members.filter((m) => m.name && fold(m.name) === name).map((m) => m.userId));
-  if (exact) return exact;
-  const alias = pick(members.filter((m) => m.aliases.some((a) => fold(a) === name)).map((m) => m.userId));
-  if (alias) return alias;
+  const ids = nameCandidates(raw, members);
+  if (ids.length === 1) return { kind: "member", userId: ids[0] };
+  if (ids.length > 1) {
+    const here = ids.filter((id) => onMatch.has(id));
+    return here.length === 1 ? { kind: "member", userId: here[0] } : { kind: "ambiguous" };
+  }
+  return { kind: "new" };
+}
+
+/**
+ * Who a typed name could be, by the rules above, in order: the whole name,
+ * then an alias, then a first name (or a first name one is a prefix of,
+ * three letters or more). The first rule that finds anyone decides; the
+ * ids come back without repeats, in `members` order. Empty: nobody. Also
+ * read by the team commands in the admin group (`team-proposal-rules.ts`),
+ * with `members` the players on the teams, so a name there means what it
+ * means in a pasted list.
+ */
+export function nameCandidates(raw: string, members: PasteMember[]): string[] {
+  const name = fold(typeof raw === "string" ? raw : "");
+  if (!name) return [];
+  const uniq = (ids: string[]) => [...new Set(ids)];
+  const exact = uniq(members.filter((m) => m.name && fold(m.name) === name).map((m) => m.userId));
+  if (exact.length) return exact;
+  const alias = uniq(members.filter((m) => m.aliases.some((a) => fold(a) === name)).map((m) => m.userId));
+  if (alias.length) return alias;
   const first = name.split(" ")[0];
-  const byFirst = members.filter((m) => {
-    if (!m.name) return false;
-    const mFirst = fold(m.name).split(" ")[0] ?? "";
-    return (
-      mFirst === first ||
-      (mFirst.length >= 3 && first.length >= 3 && (mFirst.startsWith(first) || first.startsWith(mFirst)))
-    );
-  });
-  return pick(byFirst.map((m) => m.userId)) ?? { kind: "new" };
+  return uniq(
+    members
+      .filter((m) => {
+        if (!m.name) return false;
+        const mFirst = fold(m.name).split(" ")[0] ?? "";
+        return (
+          mFirst === first ||
+          (mFirst.length >= 3 && first.length >= 3 && (mFirst.startsWith(first) || first.startsWith(mFirst)))
+        );
+      })
+      .map((m) => m.userId),
+  );
 }
 
 // ── The diff ──────────────────────────────────────────────────────────

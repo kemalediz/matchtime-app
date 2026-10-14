@@ -28,6 +28,8 @@ const change = vi.hoisted(() => ({ handleAdminSquadChange: vi.fn() }));
 vi.mock("@/lib/admin-group-squad-change", () => change);
 const pay = vi.hoisted(() => ({ handleCollectorPaidReply: vi.fn() }));
 vi.mock("@/lib/month-payment", () => pay);
+const teams = vi.hoisted(() => ({ handleTeamCommand: vi.fn(), answerTeamsYes: vi.fn(), setAsideTeamProposal: vi.fn() }));
+vi.mock("@/lib/team-proposal", () => teams);
 
 import { handleAdminGroupMessage } from "../admin-group";
 
@@ -54,6 +56,9 @@ beforeEach(() => {
   paste.proposeSquadPaste.mockResolvedValue(null);
   paste.answerSquadPasteYes.mockResolvedValue(null);
   change.handleAdminSquadChange.mockResolvedValue({ handled: false, why: "not-a-squad-change" });
+  teams.handleTeamCommand.mockResolvedValue(null);
+  teams.answerTeamsYes.mockResolvedValue(null);
+  teams.setAsideTeamProposal.mockResolvedValue(0);
 });
 
 describe("handleAdminGroupMessage: one squad change", () => {
@@ -203,5 +208,68 @@ describe("handleAdminGroupMessage: pasted lists and YES", () => {
     pick.handlePickReply.mockResolvedValue({ handled: true, outcome: "filled", replyText: "Done." });
     await handleAdminGroupMessage(msg("YES"));
     expect(paste.answerSquadPasteYes).not.toHaveBeenCalled();
+    expect(teams.answerTeamsYes).not.toHaveBeenCalled();
+  });
+});
+
+describe("handleAdminGroupMessage: the team commands (2026-10-14)", () => {
+  it("a team command is read before a pasted list or a squad change, never sent to the model", async () => {
+    teams.handleTeamCommand.mockResolvedValue({ outcome: "teams-swapped", replyText: "📝 *Proposed teams* ..." });
+    const r = await handleAdminGroupMessage(msg("swap Ali Bilal"));
+    expect(r).toEqual({ handled: true, orgId: "org-fnf", outcome: "teams-swapped", replyText: "📝 *Proposed teams* ..." });
+    expect(teams.handleTeamCommand).toHaveBeenCalledWith({
+      orgId: "org-fnf",
+      lang: "en",
+      messageId: "wa-1",
+      text: "swap Ali Bilal",
+      senderUserId: "u-admin",
+      now: new Date("2026-10-14T12:00:00Z"),
+    });
+    expect(paste.proposeSquadPaste).not.toHaveBeenCalled();
+    expect(change.handleAdminSquadChange).not.toHaveBeenCalled();
+  });
+
+  it("a non-admin's 'teams' is never read", async () => {
+    dbMock.membership.findFirst.mockResolvedValue(null);
+    const r = await handleAdminGroupMessage(msg("teams"));
+    expect(r).toMatchObject({ handled: false, replyText: null });
+    expect(teams.handleTeamCommand).not.toHaveBeenCalled();
+  });
+
+  it("a monthly club: no team commands either (today's behaviour)", async () => {
+    dbMock.organisation.findFirst.mockResolvedValue({ ...LIVE_ORG, squadMode: "monthly" });
+    await handleAdminGroupMessage(msg("teams"));
+    expect(teams.handleTeamCommand).not.toHaveBeenCalled();
+  });
+
+  it("YES with teams waiting makes them final, and the list's YES is not asked", async () => {
+    teams.answerTeamsYes.mockResolvedValue({ outcome: "teams-final", replyText: "Teams are final." });
+    const r = await handleAdminGroupMessage(msg("EVET"));
+    expect(r).toEqual({ handled: true, orgId: "org-fnf", outcome: "teams-final", replyText: "Teams are final." });
+    expect(paste.answerSquadPasteYes).not.toHaveBeenCalled();
+  });
+
+  it("YES with no teams waiting goes on to a pasted list's YES", async () => {
+    paste.answerSquadPasteYes.mockResolvedValue({ outcome: "paste-applied", replyText: "Done: Bilal in. 18 of 18." });
+    const r = await handleAdminGroupMessage(msg("YES"));
+    expect(teams.answerTeamsYes).toHaveBeenCalled();
+    expect(r).toMatchObject({ outcome: "paste-applied" });
+  });
+
+  it("a pasted list asked about while teams wait: the teams are set aside, and the reply says so", async () => {
+    paste.proposeSquadPaste.mockResolvedValue({ outcome: "paste-proposed", replyText: "Adding: Bilal. Reply YES to apply." });
+    teams.setAsideTeamProposal.mockResolvedValue(1);
+    const r = await handleAdminGroupMessage(msg("1. Bilal\n2. Ali\n3. Tom\n4. Sam\n5. Naim"));
+    expect(teams.setAsideTeamProposal).toHaveBeenCalledWith("org-fnf");
+    expect(r).toMatchObject({
+      outcome: "paste-proposed",
+      replyText: "Adding: Bilal. Reply YES to apply. The teams still need approving: type *teams* after this.",
+    });
+  });
+
+  it("a pasted list with no teams waiting: the reply is unchanged", async () => {
+    paste.proposeSquadPaste.mockResolvedValue({ outcome: "paste-proposed", replyText: "Adding: Bilal. Reply YES to apply." });
+    const r = await handleAdminGroupMessage(msg("1. Bilal\n2. Ali\n3. Tom\n4. Sam\n5. Naim"));
+    expect(r).toMatchObject({ replyText: "Adding: Bilal. Reply YES to apply." });
   });
 });
