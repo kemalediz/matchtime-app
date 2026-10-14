@@ -16,6 +16,7 @@
  * (src/lib/graphic-token.ts), which pins that format from the outside.
  */
 import { createHmac } from "node:crypto";
+import { deflateSync } from "node:zlib";
 import { test, expect, resetDb } from "../fixtures";
 import { MATCH, ORG_ID, PHONE, U } from "../helpers/constants";
 import { E2E } from "../helpers/env";
@@ -106,6 +107,130 @@ test.describe("GET /api/graphics/<token>", () => {
     expect(res.headers()["content-type"]).toBe("image/png");
     expect([...(await res.body()).subarray(0, 4)]).toEqual(PNG_MAGIC);
     await db.run(`DELETE FROM "TeamAssignment" WHERE "matchId" = $1`, [MATCH.upcoming]);
+  });
+});
+
+// ── A club's own graphics template ──────────────────────────────────────
+
+const CRC_TABLE = Array.from({ length: 256 }, (_, n) => {
+  let c = n;
+  for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+  return c >>> 0;
+});
+function crc32(buf: Buffer): number {
+  let c = 0xffffffff;
+  for (const b of buf) c = CRC_TABLE[(c ^ b) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+function chunk(type: string, data: Buffer): Buffer {
+  const len = Buffer.alloc(4);
+  len.writeUInt32BE(data.length);
+  const body = Buffer.concat([Buffer.from(type, "latin1"), data]);
+  const crc = Buffer.alloc(4);
+  crc.writeUInt32BE(crc32(body));
+  return Buffer.concat([len, body, crc]);
+}
+/** A plain dark PNG: a stand-in background with no club's branding on it. */
+function plainPng(width: number, height: number): Buffer {
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr.set([8, 2, 0, 0, 0], 8); // 8-bit RGB
+  const row = Buffer.concat([Buffer.from([0]), Buffer.alloc(width * 3, 0x18)]);
+  const raw = Buffer.concat(Array.from({ length: height }, () => row));
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", ihdr), chunk("IDAT", deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
+}
+
+const TEMPLATE_W = 400;
+const TEMPLATE_H = 700;
+/** Two rows a column: a 2 v 2 team sheet fits it exactly. */
+const TEMPLATE_LAYOUT = {
+  version: 1,
+  width: TEMPLATE_W,
+  height: TEMPLATE_H,
+  rows: [300, 360],
+  capHeight: 20,
+  name: { colour: "#ffffff", maxFontSize: 30, minFontSize: 18 },
+  columns: [
+    { nameX: 60, maxWidth: 130, iconCentreX: 30, badgeColour: "#000000" },
+    { nameX: 260, maxWidth: 130, iconCentreX: 230, badgeColour: "#ffffff" },
+  ],
+  date: { x: 250, centreY: 40, fontSize: 16, colour: "#ffffff", maxWidth: 140 },
+  time: { x: 250, centreY: 70, fontSize: 16, colour: "#ffffff", maxWidth: 140 },
+  squadHeader: { panel: { x: 20, y: 150, width: 360, height: 80 }, from: "#eeeeee", to: "#ff1493", titleColour: "#000000", titleFontSize: 40, keep: [{ x: 20, y: 150, width: 60, height: 80 }] },
+  reserves: { centreX: 200, centreY: 420, fontSize: 14, colour: "#ffffff", maxWidth: 360 },
+};
+
+async function pngSize(res: { body(): Promise<Buffer> }): Promise<[number, number]> {
+  const body = await res.body();
+  expect([...body.subarray(0, 4)]).toEqual(PNG_MAGIC);
+  return [body.readUInt32BE(16), body.readUInt32BE(20)];
+}
+
+test.describe("GET /api/graphics/<token> for a club with its own template", () => {
+  test.beforeAll(async ({ db }) => {
+    await db.run(
+      `INSERT INTO "ClubGraphicsTemplate" ("orgId", image, "mimeType", layout, "updatedAt") VALUES ($1, $2, 'image/png', $3::jsonb, now())`,
+      [ORG_ID, plainPng(TEMPLATE_W, TEMPLATE_H), JSON.stringify(TEMPLATE_LAYOUT)],
+    );
+  });
+
+  test.afterAll(async ({ db }) => {
+    await db.run(`DELETE FROM "ClubGraphicsTemplate" WHERE "orgId" = $1`, [ORG_ID]);
+    await db.run(`DELETE FROM "TeamAssignment" WHERE "matchId" = $1`, [MATCH.upcoming]);
+  });
+
+  test("the list poster is drawn on the template: a PNG at the template's size", async ({ request }) => {
+    const res = await request.get(`/api/graphics/${token({ o: ORG_ID, m: MATCH.upcoming, k: "list" })}`);
+    expect(res.status()).toBe(200);
+    expect(res.headers()["content-type"]).toBe("image/png");
+    expect(res.headers()["cache-control"]).toContain("no-store");
+    expect(await pngSize(res)).toEqual([TEMPLATE_W, TEMPLATE_H]);
+  });
+
+  test("a team sheet whose teams fill the template's rows: drawn on the template", async ({ request, db }) => {
+    await db.run(
+      `INSERT INTO "TeamAssignment" (id, "matchId", "userId", team) VALUES
+         ('e2e-tt-1', $1, $2, 'RED'), ('e2e-tt-2', $1, $3, 'YELLOW'), ('e2e-tt-3', $1, $4, 'RED'), ('e2e-tt-4', $1, $5, 'YELLOW')`,
+      [MATCH.upcoming, U.admin, U.collector, U.player, U.third],
+    );
+    const res = await request.get(`/api/graphics/${token({ o: ORG_ID, m: MATCH.upcoming, k: "teams" })}`);
+    expect(res.status()).toBe(200);
+    expect(res.headers()["content-type"]).toBe("image/png");
+    expect(await pngSize(res)).toEqual([TEMPLATE_W, TEMPLATE_H]);
+  });
+
+  test("teams that do not fill its rows (3 v 1): the default design instead, 1080 x 1350", async ({ request, db }) => {
+    await db.run(`UPDATE "TeamAssignment" SET team = 'RED' WHERE id = 'e2e-tt-2'`);
+    const res = await request.get(`/api/graphics/${token({ o: ORG_ID, m: MATCH.upcoming, k: "teams" })}`);
+    expect(res.status()).toBe(200);
+    expect(res.headers()["content-type"]).toBe("image/png");
+    expect(await pngSize(res)).toEqual([1080, 1350]);
+  });
+
+  test("a stored layout the renderer cannot draw: the default design, never an error", async ({ request, db }) => {
+    await db.run(`UPDATE "ClubGraphicsTemplate" SET layout = '{"version": 99}'::jsonb WHERE "orgId" = $1`, [ORG_ID]);
+    const res = await request.get(`/api/graphics/${token({ o: ORG_ID, m: MATCH.upcoming, k: "list" })}`);
+    expect(res.status()).toBe(200);
+    expect(res.headers()["content-type"]).toBe("image/png");
+    expect(await pngSize(res)).toEqual([1080, 1350]);
+  });
+
+  test("another club's template is never used: no template of its own, the default design", async ({ request, db }) => {
+    await db.run(`DELETE FROM "ClubGraphicsTemplate" WHERE "orgId" = $1`, [ORG_ID]);
+    await db.run(
+      `INSERT INTO "Organisation" (id, name, slug, "inviteCode", "createdAt", "updatedAt") VALUES ('e2e-org-tpl', 'Other FC', 'e2e-other-fc-tpl', 'e2e-invite-tpl', now(), now())`,
+    );
+    await db.run(
+      `INSERT INTO "ClubGraphicsTemplate" ("orgId", image, "mimeType", layout, "updatedAt") VALUES ('e2e-org-tpl', $1, 'image/png', $2::jsonb, now())`,
+      [plainPng(TEMPLATE_W, TEMPLATE_H), JSON.stringify(TEMPLATE_LAYOUT)],
+    );
+    const res = await request.get(`/api/graphics/${token({ o: ORG_ID, m: MATCH.upcoming, k: "list" })}`);
+    expect(res.status()).toBe(200);
+    expect(await pngSize(res)).toEqual([1080, 1350]);
+    // Deleting the club deletes its template.
+    await db.run(`DELETE FROM "Organisation" WHERE id = 'e2e-org-tpl'`);
+    expect(await db.all(`SELECT 1 FROM "ClubGraphicsTemplate" WHERE "orgId" = 'e2e-org-tpl'`)).toHaveLength(0);
   });
 });
 

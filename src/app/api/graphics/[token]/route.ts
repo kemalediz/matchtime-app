@@ -12,11 +12,21 @@
  *
  * The image carries first names, the club's name, the day, kickoff and
  * venue: no phone number, no rating (`src/lib/match-graphics.ts`).
- * Logged: ids, kind and size only, never a name.
+ *
+ * A club with its own graphics template (`ClubGraphicsTemplate`, e.g.
+ * FNF's night stadium board) gets the graphic drawn on it, at the
+ * template's size; any other club, or a graphic the template cannot hold
+ * (a team sheet whose teams are not exactly its rows, a list longer than
+ * its two columns), gets the default 1080 x 1350 design
+ * (`src/lib/club-graphics-render.tsx`). Which one, and why, is said in
+ * this log line only, never in the admin group.
+ *
+ * Logged: ids, kind, the design and sizes only, never a name.
  */
 import { verifyGraphicToken } from "@/lib/graphic-token";
 import { loadGraphicData } from "@/lib/match-graphics";
-import { renderGraphicPng } from "@/lib/match-graphics-render";
+import { loadClubGraphicsTemplate } from "@/lib/club-graphics-template";
+import { renderClubGraphic } from "@/lib/club-graphics-render";
 
 export const dynamic = "force-dynamic";
 
@@ -30,9 +40,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
   const data = await loadGraphicData(target);
   if (!data) return notFound();
 
-  const png = await renderGraphicPng(data);
+  const template = await loadClubGraphicsTemplate(target.orgId);
+  const { png, design } = await renderClubGraphic(data, template);
   const count = data.kind === "list" ? data.players.length + data.reserves.length : data.teams[0].names.length + data.teams[1].names.length;
-  console.log(`[graphics] ${target.kind} org=${target.orgId} match=${target.matchId} names=${count} bytes=${png.length}`);
+  const how = design.design === "template" ? "design=template" : `design=default reason=${design.reason}`;
+  console.log(`[graphics] ${target.kind} org=${target.orgId} match=${target.matchId} names=${count} ${how} bytes=${png.length}`);
   return new Response(new Uint8Array(png), {
     status: 200,
     headers: {
