@@ -17,7 +17,10 @@ import { db } from "./db";
 import { getOrgFeatures } from "./org-features";
 import { buildSquadCompleteBenchInvite } from "./bench-offer-copy";
 import { buildSquadCompletePost } from "./group-copy";
-import { squadCompleteLabel } from "./i18n/dates";
+import { dayTimeLabel, squadCompleteLabel } from "./i18n/dates";
+import { organisersAnnounce } from "./list-announcer";
+import { buildOrganiserListUpdate } from "./organisers-list-copy";
+import { sendAdminNotice } from "./admin-channel";
 import { normaliseLang } from "./i18n/lang";
 
 export async function announceSquadFullIfJustFilled(
@@ -98,6 +101,25 @@ export async function announceSquadFullIfJustFilled(
     console.error("[squad-announce] feature lookup failed, posting without bench invite:", err);
     return null;
   });
+  // WHO ANNOUNCES THE LIST (2026-10-14, list-announcer.ts): a club whose
+  // organisers announce it themselves is told on the admin channel, and
+  // the players' group hears nothing. The claim above still holds, so the
+  // admins are told once per fill, like the group.
+  if (organisersAnnounce(features)) {
+    await sendAdminNotice({
+      orgId: m.activity.orgId,
+      text: buildOrganiserListUpdate({
+        reason: "squad-complete",
+        activityName: m.activity.name,
+        whenLabel: dayTimeLabel(lang, m.date),
+        confirmed: confirmed.map((a) => a.user),
+        bench: bench.map((a) => a.user),
+        maxPlayers: m.maxPlayers,
+        lang,
+      }),
+    });
+    return;
+  }
   const benchOn = features?.bench === true;
   // An organiser-pick club (slice 2b): the waiting list, never "first to
   // reply IN takes the slot".

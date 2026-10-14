@@ -45,6 +45,7 @@ import { normaliseBenchPickFallback } from "./squad-capacity";
 import { dayTimeLabel, weekdayTimeLabel } from "./i18n/dates";
 import { t } from "./i18n/t";
 import { normalisePhone } from "./phone";
+import { organisersAnnounce } from "./list-announcer";
 import {
   PICK_CONFIRM_TTL_MS,
   PICK_LATE_REPLY_MS,
@@ -624,10 +625,16 @@ export async function announcePickToGroupAndPlayers(matchId: string, result: App
   if (result.applied.length === 0) return;
   const m = await db.match.findUnique({
     where: { id: matchId },
-    include: { activity: { include: { sport: true, org: { select: { id: true, teamLabels: true, language: true } } } } },
+    include: {
+      activity: { include: { sport: true, org: { select: { id: true, teamLabels: true, language: true, listAnnouncer: true } } } },
+    },
   });
   if (!m) return;
   const org = m.activity.org;
+  // The club's organisers announce the list (2026-10-14, list-announcer.ts):
+  // A2 would name the player in the players' group, so it is not posted.
+  // The organisers made the pick; the player still gets A3 by DM.
+  const postInGroup = !organisersAnnounce(org);
   const s = t(org.language);
   const labels = resolveTeamLabels(m, org, m.activity.sport, org.language);
   const confirmedNow = await db.attendance.count({ where: { matchId, status: "CONFIRMED" } });
@@ -636,19 +643,21 @@ export async function announcePickToGroupAndPlayers(matchId: string, result: App
     select: { id: true, phoneNumber: true, memberships: { where: { orgId: org.id }, select: { subMatchInviteDm: true } } },
   });
   for (const a of result.applied) {
-    await db.botJob.create({
-      data: {
-        orgId: org.id,
-        kind: "group",
-        text: s.pick_group_post({
-          name: a.name,
-          replacedName: a.replacedName,
-          team: a.team ? (a.team === "RED" ? labels[0] : labels[1]) : null,
-          confirmed: confirmedNow,
-          maxPlayers: m.maxPlayers,
-        }),
-      },
-    });
+    if (postInGroup) {
+      await db.botJob.create({
+        data: {
+          orgId: org.id,
+          kind: "group",
+          text: s.pick_group_post({
+            name: a.name,
+            replacedName: a.replacedName,
+            team: a.team ? (a.team === "RED" ? labels[0] : labels[1]) : null,
+            confirmed: confirmedNow,
+            maxPlayers: m.maxPlayers,
+          }),
+        },
+      });
+    }
     const u = users.find((x) => x.id === a.userId);
     const subscribed = u?.memberships[0]?.subMatchInviteDm !== false;
     if (u?.phoneNumber && subscribed) {

@@ -1361,6 +1361,23 @@ const SAMPLES: SampleArgs = {
   gp_connect_community: { group: "Riverside Announcements" },
   gp_live_blocked: { club: "Riverside FC", community: true },
   gp_admin_group_blocked: { club: "Riverside FC", group: "Riverside admins" },
+  // Who announces the list and teams (2026-10-14).
+  oa_header: { activityName: "FNF", whenLabel: "Fri 16 Oct at 20:30", confirmed: 16, maxPlayers: 18 },
+  oa_reason_announce: null,
+  oa_reason_dropout: { time: "21:00" },
+  oa_reason_list_published: null,
+  oa_reason_chase: null,
+  oa_reason_squad_complete: null,
+  oa_unpaid: { count: 2 },
+  oa_footer: null,
+  oa_relay_lead: null,
+  oa_list_by_organisers: null,
+  oa_teams_by_organisers: null,
+  wr_announce_label: null,
+  wr_announce_blurb: null,
+  wr_announce_info: null,
+  wr_announce_matchtime: null,
+  wr_announce_organisers: null,
 };
 
 /** Render an entry with its sample arguments. */

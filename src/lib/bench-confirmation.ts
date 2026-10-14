@@ -19,6 +19,9 @@ import { recordAttendanceEvent } from "./attendance-events";
 import { announceSquadFullIfJustFilled } from "./squad-announce";
 import { resolveTeamLabels } from "./team-labels";
 import { buildBenchClaimAnnouncement } from "./bench-offer-copy";
+import { organisersAnnounce } from "./list-announcer";
+import { buildOrganiserRelay } from "./organisers-list-copy";
+import { sendAdminNotice } from "./admin-channel";
 import { fillVacatedSlots, lockTeamSlots, type AppliedSlotMove } from "./team-slot-fill";
 
 export type BenchConfirmationResult =
@@ -213,9 +216,16 @@ export async function resolveBenchConfirmation(args: {
       lang: ctx.activity.org.language,
     });
     try {
-      await db.botJob.create({
-        data: { orgId: ctx.activity.org.id, kind: "group", text },
-      });
+      // The club's organisers announce the list (2026-10-14,
+      // list-announcer.ts): the players' group is not told who took the
+      // place; the organisers are, on their admin channel.
+      if (organisersAnnounce(ctx.activity.org)) {
+        await sendAdminNotice({ orgId: ctx.activity.org.id, text: buildOrganiserRelay(text, ctx.activity.org.language) });
+      } else {
+        await db.botJob.create({
+          data: { orgId: ctx.activity.org.id, kind: "group", text },
+        });
+      }
     } catch (err) {
       console.error("[bench-claim] announcement queue failed:", err);
     }

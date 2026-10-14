@@ -24,6 +24,7 @@ import type { FeatureKey } from "./org-features-meta";
 import { normaliseLang, type Lang } from "./i18n/lang";
 import { normaliseBenchPickMode, type BenchPickMode } from "./squad-capacity";
 import { normaliseSquadMode, type SquadMode } from "./squad-month-rules";
+import { normaliseListAnnouncer, type ListAnnouncer } from "./list-announcer";
 
 export { FEATURE_META } from "./org-features-meta";
 export type { FeatureKey, ToggleableKey } from "./org-features-meta";
@@ -80,6 +81,13 @@ export interface OrgFeatures {
    *  it has its own section on /admin/settings. Slice 2: nothing but the
    *  settings page and /admin/months reads it yet. */
   squadMode: SquadMode;
+  /** Who announces the list and teams (2026-10-14,
+   *  `Organisation.listAnnouncer`, list-announcer.ts): "matchtime" (today,
+   *  every existing club) or "organisers" (squad posts go to the admin
+   *  channel, no team sheet in the players' group). Optional so every
+   *  hand-built fixture keeps its shape; absent means "matchtime". Not in
+   *  `FEATURE_META`; it is set on /admin/settings, "Weekly routine". */
+  listAnnouncer?: ListAnnouncer;
 }
 
 
@@ -100,6 +108,7 @@ const ALL_OFF: OrgFeatures = {
   benchPickMode: "first-come",
   badgeAnnouncements: false,
   squadMode: "weekly",
+  listAnnouncer: "matchtime",
 };
 
 function fromRow(row: {
@@ -119,6 +128,7 @@ function fromRow(row: {
   benchPickMode?: string | null;
   featureBadgeAnnouncements?: boolean | null;
   squadMode?: string | null;
+  listAnnouncer?: string | null;
 }): OrgFeatures {
   return {
     botEnabled: row.whatsappBotEnabled,
@@ -139,6 +149,8 @@ function fromRow(row: {
     badgeAnnouncements: row.featureBadgeAnnouncements ?? true,
     // Absent or unrecognised: weekly, today's behaviour.
     squadMode: normaliseSquadMode(row.squadMode),
+    // Absent or unrecognised: MatchTime announces, today's behaviour.
+    listAnnouncer: normaliseListAnnouncer(row.listAnnouncer),
   };
 }
 
@@ -159,6 +171,7 @@ const SELECT = {
   benchPickMode: true,
   featureBadgeAnnouncements: true,
   squadMode: true,
+  listAnnouncer: true,
 } as const;
 
 export async function getOrgFeatures(orgId: string): Promise<OrgFeatures> {

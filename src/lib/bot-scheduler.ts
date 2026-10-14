@@ -127,6 +127,8 @@ import {
   buildUnpaidGroupReminder,
   buildUnpaidTailText,
 } from "./scheduler-copy";
+import { organisersAnnounce } from "./list-announcer";
+import { buildOrganiserListUpdate, type OrganiserListReason } from "./organisers-list-copy";
 
 // All user-facing times in bot-posted messages are Europe/London wall
 // clock. Wrap date-fns-tz in a short helper so this file reads cleanly.
@@ -366,7 +368,7 @@ function londonHour(at: Date = new Date()): number {
 async function buildUnpaidTail(
   activityId: string,
   lang: Lang,
-): Promise<{ text: string; mentions: string[] } | null> {
+): Promise<{ text: string; mentions: string[]; unpaid: number } | null> {
   const lastCompleted = await db.match.findFirst({
     where: { activityId, status: "COMPLETED", isHistorical: false },
     orderBy: { date: "desc" },
@@ -420,7 +422,9 @@ async function buildUnpaidTail(
   const text = buildUnpaidTailText(unpaid, lang);
   // No mentions needed — we don't tag anyone in the poll-only style.
   const mentions: string[] = [];
-  return { text, mentions };
+  // `unpaid` is for the organisers' list update (list-announcer.ts), which
+  // says the count in its own words; the group's tail is `text`.
+  return { text, mentions, unpaid };
 }
 
 // `buildSquadRosterBlock` and `buildMatchDayTeamsBlock` moved verbatim to
@@ -1178,6 +1182,54 @@ async function computeForMatch(
     return { text: stripRosterBlock(text) || stripRosterBlock(staticFallback()) };
   }
 
+  // ── WHO ANNOUNCES THE LIST AND TEAMS (2026-10-14) ────────────────────
+  //   `Organisation.listAnnouncer` (list-announcer.ts). On "organisers"
+  //   (FNF: the admins reveal the list and the teams as graphics in their
+  //   own announcements group) every post below that would list the squad
+  //   in the players' group goes to the club's ADMIN CHANNEL instead
+  //   (admin-channel.ts: the admin group when linked and postable, else
+  //   the existing DM fallback), as `buildOrganiserListUpdate`, written for
+  //   the admins and built from the rows. No model call.
+  //
+  //   KEYS. The post's own key for the admin group, `<key>:<adminId>` for
+  //   a DM, so a switch of channel cannot send it twice on one channel.
+  //   The key classifier at the bottom of `computeDuePosts` reads the same
+  //   prefix, so the attendance gate still applies.
+  //
+  //   Each call site keeps the default branch untouched in an `else`, so
+  //   a club on "matchtime" (Sutton FC) posts byte for byte as before.
+  const organisers = organisersAnnounce(features);
+  async function toOrganisers(
+    key: string,
+    reason: OrganiserListReason,
+    extra: { dropOutTime?: string | null; unpaid?: number | null } = {},
+  ): Promise<void> {
+    const channel = await admin.getChannel();
+    if (!channel) return;
+    out.push(
+      ...(await adminNoticeInstructions({
+        channel,
+        piCaps: admin.piCaps,
+        sentKeys,
+        now,
+        matchId,
+        key: (who) => (who === "admin-group" ? key : `${key}:${who}`),
+        notice: {
+          text: buildOrganiserListUpdate({
+            reason,
+            activityName: activity.name,
+            whenLabel: dayTimeLabel(lang, m.date),
+            confirmed: confirmed.map((a) => a.user),
+            bench: bench.map((a) => a.user),
+            maxPlayers,
+            lang,
+            ...extra,
+          }),
+        },
+      })),
+    );
+  }
+
   // ── 1. Announce the match ─────────────────────────────────────────────
   //     Two gates beyond "this match exists":
   //
@@ -1268,7 +1320,9 @@ async function computeForMatch(
         });
         if (carried > 0) {
           rollingAnnounceDue = true;
-          out.push({
+          // The organisers announce: the carried squad goes to them.
+          if (organisers) await toOrganisers(rollingKey, "announce");
+          else out.push({
             kind: "group-message",
             key: rollingKey,
             matchId,
@@ -1303,7 +1357,9 @@ async function computeForMatch(
       // the regulars to sign up twice. Undefined for every weekly club.
       !monthly?.signup
     ) {
-      out.push({
+      // The organisers announce: they are told the list is open instead.
+      if (organisers) await toOrganisers(key, "announce");
+      else out.push({
         kind: "group-message",
         key,
         matchId,
@@ -1370,7 +1426,43 @@ async function computeForMatch(
     // both settings, so Sutton FC's 17:00 post is untouched.
     const weeklyRhythmQuietDay = hasWeeklyRhythm(activity.org) && dayKey !== londonDateKey(m.date);
 
-    if (isEvening && isPrematch && isNextUpcoming && !weeklyRhythmQuietDay && !sentKeys.has(eveningKey)) {
+    // THE ORGANISERS ANNOUNCE (2026-10-14, see `toOrganisers`): the same
+    // gates and the same branches as the post below, but the squad goes to
+    // the admin channel and nothing goes to the players' group:
+    //   2-pre      match day, teams out: NOTHING. No team sheet is ever
+    //              posted in the players' group in this mode, and the
+    //              team review in the admin group is its own feature.
+    //   2-monthly  nothing, as below.
+    //   2-pre-alt, 2a, 2b: the admins get the squad, with the unpaid count
+    //              where the group post would have carried the tail. 2b's
+    //              squad-complete skip holds: that post went to them too.
+    if (organisers && isEvening && isPrematch && isNextUpcoming && !weeklyRhythmQuietDay && !sentKeys.has(eveningKey)) {
+      const matchDayKey = londonDateKey(m.date);
+      const isMatchDay = dayKey === matchDayKey;
+      const teamsReady = m.teamAssignments.length > 0;
+      const skipUnpaidChase =
+        isMatchDay || dayKey === londonDateKey(new Date(m.date.getTime() - 24 * 60 * 60 * 1000));
+      let due = false;
+      if (isMatchDay && teamsReady) {
+        // 2-pre: no team sheet anywhere from here.
+      } else if (monthly) {
+        // 2-monthly: the month's list.
+      } else if (isMatchDay && need === 0) due = true;
+      else if (beforeDeadline && need > 0) due = true;
+      else if (beforeDeadline && need === 0) {
+        const squadLocked = await db.sentNotification.findFirst({
+          where: { key: `${matchId}:squad-locked` },
+          select: { createdAt: true },
+        });
+        due = !(squadLocked != null && londonDateKey(squadLocked.createdAt) === dayKey);
+      }
+      if (due) {
+        const unpaidTail = skipUnpaidChase ? null : await buildUnpaidTail(activity.id, lang);
+        await toOrganisers(eveningKey, "evening", { unpaid: unpaidTail?.unpaid ?? null });
+      }
+    }
+
+    if (!organisers && isEvening && isPrematch && isNextUpcoming && !weeklyRhythmQuietDay && !sentKeys.has(eveningKey)) {
       // Stop the unpaid-chase tail once we're in the final day before
       // kickoff. Whoever has paid has paid; ~5 reminders (Wed → Sun for
       // a Tue match) is enough. From the day-before-match onward, drop
@@ -1652,7 +1744,10 @@ async function computeForMatch(
       m.teamAssignments.length === 0 &&
       listPublishDue(now, weekly.listPublish, m.date);
     if (isLive && (reminderDue || listDue) && isNextUpcomingForPosting(siblingMatches, m)) {
-      if (reminderDue) {
+      if (reminderDue && organisers) {
+        // The organisers announce: the squad and the deadline go to them.
+        await toOrganisers(reminderKey, "dropout-reminder", { dropOutTime: format(weekly.dropOut!, "HH:mm") });
+      } else if (reminderDue) {
         const showsRoster = !(await rosterJustShown());
         out.push({
           kind: "group-message",
@@ -1675,7 +1770,10 @@ async function computeForMatch(
           ...(showsRoster ? { rosterShown: rosterMark } : {}),
         });
       }
-      if (listDue) {
+      if (listDue && organisers) {
+        // The organisers announce: the final list is theirs to post.
+        await toOrganisers(listKey, "list-published");
+      } else if (listDue) {
         out.push({
           kind: "group-message",
           key: listKey,
@@ -2306,13 +2404,18 @@ async function computeForMatch(
         // different marker).
         !recruitAckRecently(await loadQuietRows(), { matchId, need, now })
       ) {
-        const chase = await chaseText(
-          "match-day-morning",
-          // No "Morning all": the slot is 8-9am but the post can land
-          // late (see buildMatchDayChaseFallback's docblock).
-          () => buildMatchDayChaseFallback({ need, activityName: activity.name, lang }),
-        );
-        out.push({ kind: "group-message", key, matchId, ...chase });
+        // The organisers announce: the short squad goes to them. (An admin
+        // GROUP's hours start at 09:00, so there it waits for the 3h chase.)
+        if (organisers) await toOrganisers(key, "chase");
+        else {
+          const chase = await chaseText(
+            "match-day-morning",
+            // No "Morning all": the slot is 8-9am but the post can land
+            // late (see buildMatchDayChaseFallback's docblock).
+            () => buildMatchDayChaseFallback({ need, activityName: activity.name, lang }),
+          );
+          out.push({ kind: "group-message", key, matchId, ...chase });
+        }
       }
     }
 
@@ -2326,15 +2429,18 @@ async function computeForMatch(
         hoursUntilMatch <= 4 &&
         hoursUntilMatch >= 3
       ) {
-        const chase = await chaseText("chase-pre-kickoff", () =>
-          buildChasePreKickoffFallback({
-            need,
-            activityName: activity.name,
-            timeLabel: format(m.date, "HH:mm"),
-            lang,
-          }),
-        );
-        out.push({ kind: "group-message", key, matchId, ...chase });
+        if (organisers) await toOrganisers(key, "chase");
+        else {
+          const chase = await chaseText("chase-pre-kickoff", () =>
+            buildChasePreKickoffFallback({
+              need,
+              activityName: activity.name,
+              timeLabel: format(m.date, "HH:mm"),
+              lang,
+            }),
+          );
+          out.push({ kind: "group-message", key, matchId, ...chase });
+        }
       }
     }
   }
@@ -2354,17 +2460,20 @@ async function computeForMatch(
       hoursUntilMatch > 0.5 &&
       (m.status === "TEAMS_PUBLISHED" || m.status === "TEAMS_GENERATED" || m.status === "UPCOMING")
     ) {
-      const chase = await chaseText("pre-kickoff-short", () =>
-        buildPreKickoffShortFallback({
-          timeLabel: format(m.date, "HH:mm"),
-          venue: activity.venue,
-          confirmed: confirmed.length,
-          maxPlayers,
-          need,
-          lang,
-        }),
-      );
-      out.push({ kind: "group-message", key, matchId, ...chase });
+      if (organisers) await toOrganisers(key, "chase");
+      else {
+        const chase = await chaseText("pre-kickoff-short", () =>
+          buildPreKickoffShortFallback({
+            timeLabel: format(m.date, "HH:mm"),
+            venue: activity.venue,
+            confirmed: confirmed.length,
+            maxPlayers,
+            need,
+            lang,
+          }),
+        );
+        out.push({ kind: "group-message", key, matchId, ...chase });
+      }
     }
   }
 

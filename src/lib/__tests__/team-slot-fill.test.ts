@@ -47,6 +47,9 @@ class World {
   events: Array<{ userId: string; note: string | null }> = [];
   locks = 0;
   staleOfferRead = false;
+  /** `Organisation.listAnnouncer` (2026-10-14). */
+  listAnnouncer = "matchtime";
+  adminNotices: string[] = [];
   private seq = 0;
   private clock = 0;
   nextPos = 0;
@@ -158,7 +161,7 @@ class World {
           teamLabels: [],
           activity: {
             sport: { teamLabels: [] },
-            org: { id: "org1", teamLabels: [], language: "en" },
+            org: { id: "org1", teamLabels: [], language: "en", listAnnouncer: w.listAnnouncer },
           },
           attendances: [...w.att.values()].filter((a) => a.status === "CONFIRMED"),
         }),
@@ -198,6 +201,12 @@ vi.mock("../attendance-events", () => ({
 }));
 vi.mock("../squad-announce", () => ({ announceSquadFullIfJustFilled: async () => {} }));
 vi.mock("../team-labels", () => ({ resolveTeamLabels: () => ["Red", "Yellow"] }));
+vi.mock("../admin-channel", () => ({
+  sendAdminNotice: async ({ text }: { text: string }) => {
+    world.adminNotices.push(text);
+    return { channel: "admin-group", queued: 1 };
+  },
+}));
 
 import { resolveBenchConfirmation } from "../bench-confirmation";
 import { fillVacatedSlots, moveNamedSlot, type SlotFillTx } from "../team-slot-fill";
@@ -404,6 +413,18 @@ describe("concurrency: a decision taken on a stale snapshot", () => {
     expect(held).not.toContain("elnur");
     expect(held).not.toContain("abid");
     assertSheetHonest(world);
+  });
+
+  it("the organisers announce the list (2026-10-14): the claim is told to them, not to the players' group", async () => {
+    world.listAnnouncer = "organisers";
+    world.drop("abid");
+    const jobsBefore = world.jobs.length;
+    const res = await benchClaim("ozgur");
+    expect(res).toMatchObject({ kind: "confirmed" });
+    expect(world.jobs.length).toBe(jobsBefore);
+    expect(world.adminNotices).toHaveLength(1);
+    expect(world.adminNotices[0]).toContain("📋 For the organisers, not posted in the players' group:");
+    expect(world.adminNotices[0]).toContain("*Ozgur*");
   });
 
   it("every seat change takes the per-match lock", async () => {

@@ -3267,6 +3267,30 @@ export const tr: Strings = {
   gp_admin_group_blocked: (p) =>
     `MatchTime artık ${p.club} yönetici grubunda${p.group ? ` ("${p.group}")` : ""} mesaj gönderemiyor: orada yalnızca yöneticiler mesaj gönderebiliyor. ` +
     `MatchTime orada grup yöneticisi yapılana ya da bu ayar kapatılana kadar yönetici mesajları size DM olarak gelecek.`,
+  oa_header: (p) => {
+    const open = Math.max(0, p.maxPlayers - p.confirmed);
+    const tail = open === 0 ? "kadro tam" : `${open} yer boş`;
+    return `📋 *${p.activityName} kadrosu, ${p.whenLabel}*: ${p.maxPlayers} kişilik kadroda ${p.confirmed} kişi var, ${tail}.`;
+  },
+  oa_reason_announce: "Bu maçın listesi açıldı. Oyuncuların VARIM ve YOKUM mesajları grupta toplanıyor.",
+  oa_reason_dropout: (p) => `Son çıkış saati bugün ${p.time}.`,
+  oa_reason_list_published: "Yayın saatinizdeki son liste bu.",
+  oa_reason_chase: "Maç yaklaşıyor ve kadro hâlâ eksik.",
+  oa_reason_squad_complete: "Kadro tamamlandı.",
+  oa_unpaid: (p) => `💷 Son maç için ${p.count} kişi henüz ödemedi.`,
+  oa_footer: "MatchTime bunu oyuncu grubuna göndermedi: listeyi ve takımları siz duyuruyorsunuz.",
+  oa_relay_lead: "📋 Organizatörler için, oyuncu grubuna gönderilmedi:",
+  oa_list_by_organisers: "Listeyi organizatörler paylaşacak.",
+  oa_teams_by_organisers: "Takımları organizatörler paylaşacak.",
+  wr_announce_label: "Listeyi ve takımları kim duyurur",
+  wr_announce_blurb: "MatchTime grupta paylaşır ya da organizatörleriniz paylaşır.",
+  wr_announce_info:
+    "MatchTime: MatchTime kadroyu, son listeyi ve takım listelerini her zamanki gibi oyuncu grubunda paylaşır. " +
+    "Organizatörler: MatchTime oyuncu grubundaki VARIM ve YOKUM mesajlarını yine toplar ve her mesaja tik koyar, ama listeyi " +
+    "ya da takımları orada hiç paylaşmaz. Kadro güncellemeleri bunun yerine yönetici mesajlarınıza (bkz. Yönetici mesajları) gider; " +
+    "kimin oynadığını soran oyuncuya listeyi organizatörlerin paylaşacağı söylenir.",
+  wr_announce_matchtime: "MatchTime paylaşır",
+  wr_announce_organisers: "Organizatörler paylaşır",
 };
 
 /**

@@ -176,3 +176,19 @@ describe("announceOutOfBandAttendance", () => {
     );
   });
 });
+
+describe("announceOutOfBandAttendance: the organisers announce the list (2026-10-14)", () => {
+  it("names nobody in the players' group: no post, no ledger row", async () => {
+    getOrgFeatures.mockResolvedValue({ attendance: true, listAnnouncer: "organisers" });
+    const res = await announceOutOfBandAttendance({
+      matchId: MATCH,
+      userId: USER,
+      before: null,
+      after: "CONFIRMED",
+      source: "dm",
+    });
+    expect(res).toEqual({ announced: false, reason: "organisers-announce" });
+    expect(botJobCreate).not.toHaveBeenCalled();
+    expect(sentCreate).not.toHaveBeenCalled();
+  });
+});

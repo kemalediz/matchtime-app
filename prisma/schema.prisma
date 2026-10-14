@@ -489,6 +489,17 @@ model Organisation {
   /// for account numbers and never reads this as anything but text.
   paymentInstructions      String?
 
+  /// ─── Who announces the list and teams (2026-10-14) ────────────────
+  /// "matchtime" (default, today's behaviour for every club, Sutton FC
+  /// included): MatchTime posts the squad, the list and the team sheets
+  /// in the players' group. "organisers": MatchTime still collects In and
+  /// Out in the players' group, but every post that lists the squad goes
+  /// to the club's admin channel instead, and no team sheet is posted in
+  /// the players' group; the organisers reveal both themselves. Read
+  /// through `OrgFeatures.listAnnouncer` (src/lib/list-announcer.ts).
+  /// CHECK constraint in prisma/migrations/20261014160000_list_announcer.
+  listAnnouncer            String  @default("matchtime")
+
   memberships        Membership[]
   clubConnects       ClubConnect[]
   activities         Activity[]
