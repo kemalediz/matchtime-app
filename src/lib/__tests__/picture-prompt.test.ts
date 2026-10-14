@@ -57,8 +57,14 @@ describe("the picture reading prompt", () => {
     expect(p).toContain("Team sheet: <date>, <time>, <venue>, <price>: <team>: <name>, <name>");
   });
 
-  it("shows the failing poster as a worked example, with its footer copied", () => {
-    expect(PICTURE_READING_SYSTEM_PROMPT).toContain("Poster: 9 OCTOBER, 8:30PM, HARRIS MERTON: 1. Shehryar 2. Imz");
+  it("has an invented worked example: a three-column poster with its footer and corner price copied", () => {
+    expect(PICTURE_READING_SYSTEM_PROMPT).toContain("Poster: Sun 2 Nov, 10:00, Hackney Marshes, £6: 1. Dele 2. Marco 3. Tunde");
+  });
+
+  it("does not leak the paid check's pictures (the FNF poster and team sheet) into the prompt", () => {
+    for (const leak of [/I'M BACK/i, /Harris/i, /Merton/i, /9 October/i, /8:30/, /Shehryar/i, /\bImz\b/i, /Naim/i, /Hamzah/i, /FNF/i]) {
+      expect(PICTURE_READING_SYSTEM_PROMPT).not.toMatch(leak);
+    }
   });
 
   it("has no em or en dashes", () => {
