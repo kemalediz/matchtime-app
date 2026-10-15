@@ -44,6 +44,11 @@ const MARKED = {
 };
 const KICKOFF = new Date(Date.now() + 3 * 24 * 3600_000);
 const WEEKDAY = new Intl.DateTimeFormat("en-GB", { weekday: "long", timeZone: "Europe/London" }).format(KICKOFF);
+// The weekly activity sits on KICKOFF's own London weekday and time, so the
+// games GO makes (generate-upcoming-matches.ts, since #281) land on that
+// same slot and the slot dedupe keeps the one game.
+const KICKOFF_DOW = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"].indexOf(WEEKDAY);
+const KICKOFF_TIME = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Europe/London" }).format(KICKOFF);
 
 async function dm(request: APIRequestContext, phone: string, body: string) {
   const res = await request.post("/api/whatsapp/dm-reply", {
@@ -80,8 +85,8 @@ async function fnfLikeClub(db: TestDb, c: typeof FERN) {
   );
   await db.run(
     `INSERT INTO "Activity" ("id","orgId","sportId","name","dayOfWeek","time","venue","isActive","deadlineHours","createdAt","updatedAt")
-     VALUES ($1,$2,$3,'Weekly game',5,'21:00','Powerleague',true,5,now(),now())`,
-    [`${c.id}-activity`, c.id, `${c.id}-sport`],
+     VALUES ($1,$2,$3,'Weekly game',$4,$5,'Powerleague',true,5,now(),now())`,
+    [`${c.id}-activity`, c.id, `${c.id}-sport`, KICKOFF_DOW, KICKOFF_TIME],
   );
   await db.run(
     `INSERT INTO "Match" (id,"activityId",date,"maxPlayers",status,"attendanceDeadline","updatedAt")
