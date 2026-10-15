@@ -4296,12 +4296,13 @@ export const en = {
     const open = `${p.open} ${p.open === 1 ? "place" : "places"} open`;
     return `📋 ${lead}: ${p.confirmed} of ${p.maxPlayers} in, ${open}. MatchTime has not posted this in the players' group.`;
   },
-  // ── The daily "New players to review" notice (provisional-review-copy.ts) ──
+  // ── The "New players to review" notice (provisional-review-copy.ts) ──
   pr_header: (p: { count: number }): string =>
     `✨ *New players to review*: ${p.count} ${p.count === 1 ? "person was" : "people were"} added automatically.`,
   pr_posted: (p: { names: string }): string => `Posted in the group: ${p.names}`,
   pr_listed: (p: { names: string }): string => `Added by name, from a list or someone else's message: ${p.names}`,
   pr_more: (p: { count: number }): string => ` (+${p.count} more)`,
+  pr_still_waiting: (p: { count: number }): string => `Still waiting from earlier: ${p.count}`,
   pr_tail_dm: (p: { link: string; url: string }): string =>
     `Tap to review and set phone, position and rating, or remove:\n${p.link}\n\nOr open: ${p.url}`,
   pr_tail_group: (p: { link: string }): string => `Review them and set phone, position and rating, or remove them:\n${p.link}`,

@@ -449,7 +449,7 @@ describe('"The organisers" with no admin group the Pi can post in: the existing 
 //   reported as "auto-added after posting in the group". Whether a
 //   provisional player posted is read from `AnalyzedMessage.authorUserId`.
 
-describe("the daily 'New players to review' notice", () => {
+describe("the 'New players to review' notice", () => {
   function withProvisional(authoredUserIds: string[]) {
     const roles = overrides.membership.findMany;
     overrides.membership = {
@@ -457,8 +457,8 @@ describe("the daily 'New players to review' notice", () => {
         const where = (args as { where?: { provisionallyAddedAt?: unknown } }).where;
         if (where?.provisionallyAddedAt) {
           return [
-            { userId: "p-posted", user: { name: "Poster Pete" } },
-            { userId: "p-listed", user: { name: "Listed Larry" } },
+            { userId: "p-posted", provisionallyAddedAt: new Date("2026-10-04T18:00:01.000Z"), user: { name: "Poster Pete" } },
+            { userId: "p-listed", provisionallyAddedAt: new Date("2026-10-04T18:00:00.000Z"), user: { name: "Listed Larry" } },
           ];
         }
         return roles(args);
@@ -478,6 +478,16 @@ describe("the daily 'New players to review' notice", () => {
     expect(text).toContain("2 people were added automatically.");
     expect(text).toContain("Posted in the group: Poster Pete\nAdded by name, from a list or someone else's message: Listed Larry");
     expect(text).not.toContain("auto-added after posting in the group");
+  });
+
+  it("once per player: the next day, the same two players get no second notice", async () => {
+    setWorld([match(NO_DEADLINES)]);
+    withProvisional(["p-posted"]);
+    const first = notice(await instructions(MON_1005)) as { key: string } | undefined;
+    expect(first?.key).toBe(`org-${ORG.id}:provisional-review:admin-group:p${Date.parse("2026-10-04T18:00:01.000Z")}`);
+    setWorld([match(NO_DEADLINES)], { sent: [first!.key] });
+    withProvisional(["p-posted"]);
+    expect(notice(await instructions(TUE_2005))).toBeUndefined();
   });
 
   it("Turkish", async () => {

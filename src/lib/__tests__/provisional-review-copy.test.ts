@@ -66,4 +66,20 @@ describe("buildProvisionalReviewNotice", () => {
       buildProvisionalReviewNotice({ posted: [], listed: ["A1", "A2", "A3", "A4", "A5", "A6"], link: URL, audience: "group", plainUrl: URL, lang: "tr" }),
     ).toContain("A1, A2, A3, A4, A5 (+1 kişi daha)");
   });
+  it("players already told and still waiting: one short line, English and Turkish", () => {
+    const en = buildProvisionalReviewNotice({ posted: [], listed: ["Zaid"], stillWaiting: 2, link: URL, audience: "group", plainUrl: URL, lang: "en" });
+    expect(en).toBe(
+      "✨ *New players to review*: 1 person was added automatically.\n\n" +
+        "Added by name, from a list or someone else's message: Zaid\n" +
+        "Still waiting from earlier: 2\n\n" +
+        `Review them and set phone, position and rating, or remove them:\n${URL}`,
+    );
+    const tr = buildProvisionalReviewNotice({ posted: ["Ali"], listed: [], stillWaiting: 3, link: URL, audience: "group", plainUrl: URL, lang: "tr" });
+    expect(tr).toContain("Grupta yazdı: Ali\nÖnceden bekleyen: 3\n\n");
+  });
+
+  it("nobody still waiting: no extra line", () => {
+    const text = buildProvisionalReviewNotice({ posted: ["P"], listed: [], stillWaiting: 0, link: URL, audience: "group", plainUrl: URL, lang: "en" });
+    expect(text).not.toContain("Still waiting");
+  });
 });

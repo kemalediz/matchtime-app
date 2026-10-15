@@ -3260,6 +3260,7 @@ export const tr: Strings = {
   pr_posted: (p) => `Grupta yazdı: ${p.names}`,
   pr_listed: (p) => `Bir listeden ya da başkasının mesajından adıyla eklendi: ${p.names}`,
   pr_more: (p) => ` (+${p.count} kişi daha)`,
+  pr_still_waiting: (p) => `Önceden bekleyen: ${p.count}`,
   pr_tail_dm: (p) => `İncelemek, telefon, mevki ve puanı ayarlamak ya da kaldırmak için dokunun:\n${p.link}\n\nYa da açın: ${p.url}`,
   pr_tail_group: (p) => `İnceleyin; telefon, mevki ve puanı ayarlayın ya da kaldırın:\n${p.link}`,
   oa_bench_claim_too_late: (p) =>

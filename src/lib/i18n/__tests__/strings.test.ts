@@ -1370,6 +1370,7 @@ const SAMPLES: SampleArgs = {
   pr_posted: { names: "Hamzah Khan" },
   pr_listed: { names: "Raihan Ahmed" },
   pr_more: { count: 3 },
+  pr_still_waiting: { count: 2 },
   pr_tail_dm: { link: "https://matchtime.example/l/abc", url: "https://matchtime.example/admin/players" },
   pr_tail_group: { link: "https://matchtime.example/admin/players" },
   wr_announce_label: null,

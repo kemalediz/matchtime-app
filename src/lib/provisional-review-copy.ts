@@ -1,6 +1,8 @@
 /**
- * THE DAILY "NEW PLAYERS TO REVIEW" NOTICE (bot-scheduler.ts), pure, no
- * Prisma.
+ * THE "NEW PLAYERS TO REVIEW" NOTICE (bot-scheduler.ts), pure, no Prisma.
+ * Sent once per player (provisional-review-rules.ts says when): it names
+ * only the players not yet told about, and `stillWaiting` counts the ones
+ * named in an earlier notice and not reviewed since.
  *
  * A provisional member (`Membership.provisionallyAddedAt`) is added one of
  * two ways, and the notice says which (2026-10-14, the FNF rehearsal: it
@@ -24,6 +26,8 @@ const MAX_NAMES = 5;
 export function buildProvisionalReviewNotice(args: {
   posted: string[];
   listed: string[];
+  /** Players told about in an earlier notice and still not reviewed. */
+  stillWaiting?: number;
   link: string;
   audience: "dm" | "group";
   /** The plain admin URL (`appUrl("/admin/players")`), for the DM's last line. */
@@ -36,6 +40,7 @@ export function buildProvisionalReviewNotice(args: {
   const lines: string[] = [];
   if (args.posted.length > 0) lines.push(s.pr_posted({ names: names(args.posted) }));
   if (args.listed.length > 0) lines.push(s.pr_listed({ names: names(args.listed) }));
+  if (args.stillWaiting && args.stillWaiting > 0) lines.push(s.pr_still_waiting({ count: args.stillWaiting }));
   const header = s.pr_header({ count: args.posted.length + args.listed.length });
   const tail =
     args.audience === "dm" ? s.pr_tail_dm({ link: args.link, url: args.plainUrl }) : s.pr_tail_group({ link: args.link });
