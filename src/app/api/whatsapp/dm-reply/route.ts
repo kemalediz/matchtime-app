@@ -70,6 +70,7 @@ import { scheduleSetupAfterApproval } from "@/lib/club-setup-schedule";
 import { setupHoldEnabledForApiRequest } from "@/lib/setup-hold-flag";
 import { handleGoDm, handleSettingUpDm } from "@/lib/setup-go-dm";
 import { setupLearningEnabledForRequest } from "@/lib/setup-learning/flag";
+import { setupLearningTestSeam } from "@/lib/setup-learning/test-seam";
 import { billingEnabledForApiRequest } from "@/lib/billing-flag";
 import { billingQuietMatchWhere } from "@/lib/club-billing-rules";
 import { handleConnectDm } from "@/lib/connect-dm";
@@ -151,6 +152,12 @@ export async function POST(request: Request) {
       senderAltPhone,
       waMessageId,
       setupHold: setupHoldEnabledForApiRequest(request),
+      // The approval is stamped on the same clock as the run that follows
+      // it (`scheduleSetupAfterApproval` reads the same seam), so the
+      // reading's 2-hour cap is measured on one clock. Only under
+      // MT_TEST_MODE=1 is this ever set (`x-test-now`); in production it is
+      // undefined and the approval uses the real clock, as before.
+      now: setupLearningTestSeam(request).now,
     });
     // Go-live slice S3: an approval that HELD the club. Its chat reading
     // and its organiser's setup DM run AFTER this response (`after()`),
