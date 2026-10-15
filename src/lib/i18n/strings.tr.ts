@@ -2005,6 +2005,12 @@ export const tr: Strings = {
   ag_sq_item_maybe: (p: { name: string }): string => `${p.name} belki`,
   ag_sq_failed: (p: { names: string }): string => `${p.names} için değişiklik yapamadım. Lütfen maç sayfasını kontrol edin.`,
   ag_sq_nothing: "Değişecek bir şey yok: kadro zaten öyle.",
+  ag_sq_unknown: (p: { name: string }): string =>
+    `${p.name} adında birini henüz tanımıyorum. Eklemek için "${p.name} var" yazın.`,
+  ag_sq_self_hint_out: (p: { name: string; when: string }): string =>
+    `${p.when} kadrosundan çıkmak isterseniz "${p.name} yok" yazın.`,
+  ag_sq_self_hint_in: (p: { name: string; when: string }): string =>
+    `${p.when} kadrosuna girmek isterseniz "${p.name} var" yazın.`,
   ag_sq_count: (p: { confirmed: number; max: number }): string => `${p.confirmed}/${p.max}.`,
   ag_paste_adding: (p: { names: string }): string => `Eklenecek: ${p.names}.`,
   ag_paste_removing: (p: { names: string }): string => `Çıkarılacak: ${p.names}.`,

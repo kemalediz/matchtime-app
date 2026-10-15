@@ -1433,3 +1433,31 @@ describe("a mention nobody could name gets one 'who is that?'", () => {
     expect(r.outcomes.get("wa-raw")?.reply).toBe("I couldn't tell who that is, can you say their name?");
   });
 });
+
+// ── THE CALLER'S VETTING HOOK (2026-10-15) ──────────────────────────
+//
+// The admin group reads a message through this same runner, but in HQ only
+// an explicit instruction may write (`admin-group-squad-rules.ts`). The
+// hook sees the extractor's facts and the squad state BEFORE `decide()`,
+// so a held claim can never become a write, a tentative or a follow-on.
+describe("deps.vetFacts: the caller narrows the facts before the engine decides", () => {
+  it("is handed the message, the facts and the state, and what it returns is all the engine sees", async () => {
+    const seen: Array<{ id: string; claims: number; matchId: string | null }> = [];
+    const d = deps({
+      vetFacts: ({ message, facts, state: s }) => {
+        seen.push({ id: message.waMessageId, claims: facts.claims.length, matchId: s.matchId });
+        return { ...facts, claims: [] };
+      },
+    });
+    const r = await run([msg()], d);
+    expect(seen).toEqual([{ id: "wa-1", claims: 1, matchId: "match-1" }]);
+    expect(d.registered).toEqual([]);
+    expect(r.outcomes.get("wa-1")).toMatchObject({ claimCount: 0, recordTentativeForUserIds: [] });
+  });
+
+  it("absent: nothing changes", async () => {
+    const d = deps();
+    await run([msg()], d);
+    expect(d.registered).toEqual(["u-pete"]);
+  });
+});

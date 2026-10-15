@@ -43,7 +43,17 @@ import { moveNamedSlot } from "./team-slot-fill";
 import { recordTentative, resolveTentative } from "./tentative-store";
 import { resolveOrProvisionByName } from "./resolve-or-provision-name";
 import { adminGroupSourceRef } from "./admin-added";
-import { ADMIN_GROUP_SQUAD_ROUTES, buildSquadChangeReply, type SquadChangeKind } from "./admin-group-squad-rules";
+import { floorAttendanceFacts } from "./pipeline/router";
+import { resolvePerson } from "./pipeline/identity";
+import type { SquadState } from "./pipeline/types";
+import {
+  ADMIN_GROUP_SQUAD_ROUTES,
+  buildAdminSquadReply,
+  vetAdminGroupFacts,
+  type AdminClaimRef,
+  type SquadChangeKind,
+  type VettedClaim,
+} from "./admin-group-squad-rules";
 
 export interface AdminSquadChangeInput {
   orgId: string;
@@ -59,9 +69,25 @@ export interface AdminSquadChangeInput {
 
 export type AdminSquadChangeResult =
   | { handled: false; why: "not-a-squad-change" | "no-match" }
-  | { handled: true; outcome: "squad-changed" | "squad-unchanged" | "squad-change-failed"; replyText: string };
+  | {
+      handled: true;
+      /** "squad-question": nothing written, one line saying how to make the
+       *  change (an unknown name, the sender's own plain IN/OUT in chat). */
+      outcome: "squad-changed" | "squad-unchanged" | "squad-change-failed" | "squad-question";
+      replyText: string;
+    };
 
 type Status = "CONFIRMED" | "BENCH" | "DROPPED";
+
+/** Who a claim names, on the squad state the engine is about to decide
+ *  against: the engine's own resolver (`pipeline/identity.ts`). */
+function refOn(state: SquadState, personRef: string): AdminClaimRef {
+  const r = resolvePerson(personRef, state.roster);
+  if (r.kind === "resolved") return { kind: "member", userId: r.member.userId, name: r.member.name };
+  if (r.kind === "unknown") return { kind: "unknown", name: r.name };
+  if (r.kind === "ambiguous") return { kind: "ambiguous", name: personRef.trim().replace(/^@/, "") };
+  return { kind: "none" };
+}
 
 /** "@447700900123 out": name the tag from the club's roster, as the
  *  players' group does. Only read when the text carries a raw tag. */
@@ -101,6 +127,32 @@ export async function handleAdminSquadChange(input: AdminSquadChangeInput): Prom
       ((await db.attendance.findUnique({ where: { matchId_userId: { matchId, userId } }, select: { status: true } }))
         ?.status as Status | undefined) ?? null;
 
+    // HQ IS WHERE THE ORGANISERS TALK (2026-10-15). Only an explicit
+    // instruction reaches `decide()`; every claim the extractor read is
+    // kept here with why it was held, who it is about and where they stood,
+    // for the one line back. See `admin-group-squad-rules.ts`.
+    let vetted: VettedClaim[] = [];
+    let kickoffLabel = "";
+    const vetFacts: NonNullable<Parameters<typeof runAttendanceEngineBatch>[0]["deps"]["vetFacts"]> = ({ message, facts, state }) => {
+      if (message.waMessageId !== messageId) return facts;
+      kickoffLabel = state.kickoffLabel;
+      const out = vetAdminGroupFacts({
+        body: message.body,
+        facts,
+        senderUserId: input.senderUserId,
+        senderName: input.senderName,
+        bareDeclaration: floorAttendanceFacts(message.body) !== null,
+        resolve: (ref) => refOn(state, ref),
+        statusOf: (userId) => state.rows.find((r) => r.userId === userId)?.status ?? null,
+      });
+      vetted = out.vetted;
+      const held = vetted.filter((v) => v.hold !== null);
+      if (held.length > 0) {
+        console.log(`[admin-group] ${messageId}: ${held.length} of ${vetted.length} claim(s) held (${held.map((v) => v.hold).join(", ")})`);
+      }
+      return out.facts;
+    };
+
     const batch = await runAttendanceEngineBatch({
       orgId,
       now: input.now,
@@ -123,6 +175,7 @@ export async function handleAdminSquadChange(input: AdminSquadChangeInput): Prom
       ],
       deps: {
         aiCapped: capped,
+        vetFacts,
         // Every write is stamped as the admin group's (sourceRef
         // "admin-group:<id>"): the rolling squad carries a phoneless
         // player an admin added HERE, and not a guest an admin named in
@@ -178,7 +231,7 @@ export async function handleAdminSquadChange(input: AdminSquadChangeInput): Prom
       await resolveTentative({ matchId, userId: m.userId }).catch(() => {});
     }
 
-    if (moved.length === 0 && maybeIds.length === 0 && outcome.failures.length === 0 && outcome.claimCount === 0) {
+    if (moved.length === 0 && maybeIds.length === 0 && outcome.failures.length === 0 && outcome.claimCount === 0 && vetted.length === 0) {
       console.log(`[admin-group] ${messageId}: routed ${route}, no claim read`);
       return { handled: false, why: "not-a-squad-change" };
     }
@@ -198,17 +251,24 @@ export async function handleAdminSquadChange(input: AdminSquadChangeInput): Prom
     ];
     const failed = [...new Set(outcome.failures.map((f) => f.who ?? input.senderName ?? "?"))];
     const confirmed = await db.attendance.count({ where: { matchId, status: "CONFIRMED" } });
-    const replyText = buildSquadChangeReply({
+    const reply = buildAdminSquadReply({
       lang: input.lang,
       changes,
+      movedUserIds: [...last.keys()],
       failed,
       confirmed,
       maxPlayers: match?.maxPlayers ?? confirmed,
+      vetted,
+      kickoffLabel,
+      senderName: input.senderName,
     });
-    const result = failed.length > 0 ? "squad-change-failed" : changes.length > 0 ? "squad-changed" : "squad-unchanged";
+    if (reply === null) {
+      console.log(`[admin-group] ${messageId}: routed ${route}, nothing to apply or say (${vetted.length} claim(s) read)`);
+      return { handled: false, why: "not-a-squad-change" };
+    }
     console.log(
-      `[admin-group] ${messageId}: ${route} on match ${matchId}: ${changes.length} change(s), ${failed.length} failure(s), ${confirmed} confirmed`,
+      `[admin-group] ${messageId}: ${route} on match ${matchId}: ${changes.length} change(s), ${failed.length} failure(s), ${confirmed} confirmed, ${reply.outcome}`,
     );
-    return { handled: true, outcome: result, replyText };
+    return { handled: true, outcome: reply.outcome, replyText: reply.text };
   });
 }

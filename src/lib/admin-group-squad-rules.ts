@@ -20,7 +20,7 @@
 import { cleanName, parsePastedRoster, readListLine } from "./pasted-roster";
 import { normaliseName } from "./name-normalise";
 import { t } from "./i18n/t";
-import type { Route } from "./pipeline/types";
+import type { AttendanceFacts, Claim, Route } from "./pipeline/types";
 
 /**
  * The router routes acted on in the admin group: attendance about the
@@ -302,4 +302,325 @@ export function buildPasteProposalReply(p: {
 
 export function buildPasteExpiredReply(lang: string | null | undefined): string {
   return t(lang).ag_paste_expired;
+}
+
+// ── An organiser's sentence in HQ: instruction or conversation? ───────
+//
+// WHY (2026-10-15). The live club rehearsal replayed a real organisers'
+// group and found ordinary conversation there turned into squad writes and
+// false lines: a confirmed player's "might have to pull out" answered
+// "Nothing to change: the squad already says that", the same player's next
+// message about an injured foot took him out of the squad, and a name in
+// passing ("X is back as well", X nobody in the club) answered "Nothing to
+// change" too. Traced in code: `admin-group-squad-change.ts` handed every
+// claim the extractor read to the attendance engine, which reads a message
+// exactly as it would in the players' group (where a player's own injury
+// report rightly frees his place), and it replied "Nothing to change"
+// whenever the extractor had read ANY claim and nothing moved, whether the
+// engine had declined the claim (contingent, availability, past) or the
+// squad already said it.
+//
+// HQ is where the organisers talk. Silence is the default there, and only
+// an INSTRUCTION is applied. What follows reads the extractor's facts as
+// they are (no prompt changed) plus the shape of the sentence, with no
+// model and no database: `admin-group-squad-change.ts` supplies the name
+// resolver and the squad as it stands.
+
+/** The engine's own confidence floor (`pipeline/engine.ts`). */
+const HQ_CONFIDENCE_FLOOR = 0.7;
+
+/** Why a claim read in HQ is NOT applied. Null: it is an instruction. */
+export type AdminClaimHold =
+  /** "if", "might", "may have to": tentative or conditional. */
+  | "contingent"
+  /** past or hypothetical: never a registration. */
+  | "not-now"
+  /** reports what someone can do ("I'm injured"), not a decision. */
+  | "availability"
+  /** relays what someone else said. */
+  | "reported"
+  /** below the engine's confidence floor. */
+  | "unsure"
+  /** a statement in conversation, not a command. */
+  | "not-a-command";
+
+/** Words that carry no instruction and no content either way. Folded. */
+const HQ_FILLER = new Set([
+  // English
+  "please", "pls", "plz", "can", "could", "would", "you", "u", "mt", "matchtime", "match", "time", "also", "too",
+  "then", "now", "ok", "okay", "so", "and", "just", "lads", "guys", "is", "are", "s", "he", "she", "they", "for",
+  "this", "week", "weekend", "fri", "friday", "tonight", "today", "tomorrow", "the", "a", "an", "game", "sir",
+  "bro", "mate", "yeah", "yep", "as", "well", "i", "im", "m", "am", "me", "myself", "has", "have", "been",
+  "again", "list", "squad", "t", "ll", "d", "re", "ve",
+  // Turkish
+  "bu", "hafta", "cuma", "de", "da", "lutfen", "abi", "ve", "ile", "simdi", "ben", "beni", "yi", "i", "u",
+  "yu", "e", "a", "ye", "ya",
+]);
+
+/** Words a squad instruction is built from. Folded. */
+const HQ_COMMAND = new Set([
+  // English
+  "put", "add", "bring", "get", "move", "take", "drop", "remove", "bench", "swap", "sub", "stick", "pop", "mark",
+  "register", "book", "replace", "replacing", "replaces", "instead", "of", "with", "kick", "count", "in", "out",
+  "off", "on", "to", "into", "onto", "from", "reserve", "reserves", "waiting", "back", "dropping", "dropped",
+  "drops", "pulled", "pulling", "pulls", "cant", "cannot", "can", "make", "it", "not", "isn", "isnt", "coming",
+  "playing", "play", "him", "her", "them",
+  // Turkish
+  "var", "varim", "yok", "yokum", "yedek", "yedege", "yedekte", "ekle", "cikar", "sil", "al", "kadroya",
+  "kadrodan", "listeye", "listeden", "gelmiyor", "gelemiyor", "geliyor", "gelecek", "gelmeyecek", "cikti",
+  "girdi", "yerine", "oynamiyor", "oynuyor", "oynayacak", "oynamayacak",
+]);
+
+/** The command words that give an instruction its direction. "back" alone
+ *  ("X is back as well") is not one: it says where somebody is, not what to do. */
+const HQ_ANCHOR = new Set([
+  "put", "add", "bring", "move", "take", "drop", "remove", "bench", "swap", "sub", "replace", "replacing",
+  "replaces", "kick", "count", "in", "out", "off", "reserve", "reserves", "dropping", "dropped", "drops",
+  "pulled", "pulls", "cant", "cannot", "make", "coming", "playing", "play", "register", "book", "mark",
+  "var", "varim", "yok", "yokum", "yedek", "yedege", "yedekte", "ekle", "cikar", "sil", "kadroya", "kadrodan",
+  "listeye", "listeden", "gelmiyor", "gelemiyor", "geliyor", "gelecek", "gelmeyecek", "cikti", "girdi",
+  "yerine", "oynamiyor", "oynuyor", "oynayacak", "oynamayacak",
+]);
+
+/** The sender naming themselves in a command ("put me in"). Folded. */
+const SELF_MARKERS = new Set(["i", "im", "me", "myself", "ben", "beni"]);
+
+function hqWords(s: string): string[] {
+  return fold(typeof s === "string" ? s : "").split(" ").filter(Boolean);
+}
+
+/** The clauses of a message, each as folded words. */
+function hqClauses(body: string): string[][] {
+  return (typeof body === "string" ? body : "")
+    .split(/[,.;:!?\n]+|\s[-&+/]\s/)
+    .map(hqWords)
+    .filter((w) => w.length > 0);
+}
+
+/**
+ * Is `clause`, once the names in the message are taken out, made only of
+ * filler and command words, with at least one word that gives a direction?
+ * "Kai out", "put Kai in", "Kai can't make it", "Kai'yi yedeğe al": yes.
+ * "Kai is back as well", "Kai is in the hospital": no.
+ */
+function isCommandClause(clause: string[], names: ReadonlySet<string>): boolean {
+  const rest = clause.filter((w) => !names.has(w) && !HQ_FILLER.has(w));
+  return rest.length > 0 && rest.every((w) => HQ_COMMAND.has(w)) && rest.some((w) => HQ_ANCHOR.has(w));
+}
+
+/**
+ * Why this claim, read from an organiser's message in the admin group, is
+ * not applied; null when it is an explicit instruction.
+ *
+ * Every claim must be definite (not contingent, not past or hypothetical,
+ * a decision rather than availability, not relayed, above the engine's
+ * confidence floor). Then:
+ *
+ *   - about the SENDER: a bare IN/OUT (`bareDeclaration`, the router's own
+ *     floor), a stated wish for the bench, or a command naming them ("put
+ *     me in", "I'm out this week", "<own name> out"). A sentence about
+ *     themselves ("won't be around on Friday", "my ankle is wrecked") is held.
+ *   - about SOMEONE ELSE: the clause that names them must be a command
+ *     ("put X in", "X out", "X can't make it", "X yok"). "X is back as well"
+ *     is held.
+ */
+export function adminClaimHold(p: {
+  body: string;
+  claim: Claim;
+  /** Every claim in the message: their names are not words of a sentence. */
+  claims: Claim[];
+  senderName: string | null;
+  bareDeclaration: boolean;
+}): AdminClaimHold | null {
+  const c = p.claim;
+  const self = c.subject === "sender";
+  if (c.contingent) return "contingent";
+  if (c.tense === "past" || c.tense === "hypothetical") return "not-now";
+  if (self && p.bareDeclaration) return null;
+  if (c.basis === "availability") return "availability";
+  if (c.reported) return "reported";
+  if (c.confidence < HQ_CONFIDENCE_FLOOR) return "unsure";
+  if (self && c.polarity === "bench") return null;
+
+  const names = new Set(p.claims.flatMap((x) => [...hqWords(x.personRef ?? ""), ...hqWords(x.replaces ?? "")]));
+  const clauses = hqClauses(p.body);
+  if (self) {
+    const own = new Set(hqWords(p.senderName ?? ""));
+    const mine = new Set([...names, ...own, ...SELF_MARKERS]);
+    const ok = clauses.some((cl) => cl.some((w) => own.has(w) || SELF_MARKERS.has(w)) && isCommandClause(cl, mine));
+    return ok ? null : "not-a-command";
+  }
+  const first = hqWords(c.personRef ?? "")[0];
+  if (!first) return "not-a-command";
+  const ok = clauses.some((cl) => cl.includes(first) && isCommandClause(cl, names));
+  return ok ? null : "not-a-command";
+}
+
+/** Who a claim is about, as `admin-group-squad-change.ts` resolved it. */
+export type AdminClaimRef =
+  | { kind: "member"; userId: string; name: string }
+  /** a real name nobody in the club has */
+  | { kind: "unknown"; name: string }
+  /** two or more members could be meant */
+  | { kind: "ambiguous"; name: string }
+  /** not a person ("my brother", raw digits) */
+  | { kind: "none" };
+
+export interface VettedClaim {
+  claim: Claim;
+  self: boolean;
+  /** Null: applied. */
+  hold: AdminClaimHold | null;
+  ref: AdminClaimRef;
+  /** Their status on the match BEFORE the message; null with no row. */
+  before: SquadStatus | null;
+}
+
+/**
+ * The facts the attendance engine may act on in HQ: the explicit claims
+ * only, and never a bare affirmation (a "yeah" in HQ points at nothing
+ * MatchTime said there). `vetted` keeps every claim, with why it was held
+ * and who it is about, for the reply.
+ */
+export function vetAdminGroupFacts(p: {
+  body: string;
+  facts: AttendanceFacts;
+  senderUserId: string;
+  senderName: string | null;
+  bareDeclaration: boolean;
+  resolve: (ref: string) => AdminClaimRef;
+  statusOf: (userId: string) => SquadStatus | null;
+}): { facts: AttendanceFacts; vetted: VettedClaim[] } {
+  const vetted: VettedClaim[] = p.facts.claims.map((claim) => {
+    const self = claim.subject === "sender";
+    const ref: AdminClaimRef = self
+      ? { kind: "member", userId: p.senderUserId, name: p.senderName ?? "?" }
+      : p.resolve(claim.personRef ?? "");
+    return {
+      claim,
+      self,
+      hold: adminClaimHold({ body: p.body, claim, claims: p.facts.claims, senderName: p.senderName, bareDeclaration: p.bareDeclaration }),
+      ref,
+      before: ref.kind === "member" ? p.statusOf(ref.userId) : null,
+    };
+  });
+  return {
+    facts: { ...p.facts, claims: vetted.filter((v) => v.hold === null).map((v) => v.claim), affirmation: null },
+    vetted,
+  };
+}
+
+/** What `admin-group-squad-change.ts` reports as the message's outcome.
+ *  "squad-question": nothing written; the line says how to make the change
+ *  or asks for a full name. */
+export type AdminSquadReplyOutcome = "squad-changed" | "squad-unchanged" | "squad-change-failed" | "squad-question";
+
+function wantedStatus(polarity: Claim["polarity"]): SquadStatus {
+  return polarity === "in" ? "CONFIRMED" : polarity === "bench" ? "BENCH" : "DROPPED";
+}
+
+/** Does the squad already say what the claim asks? No row counts as out. */
+function alreadySo(v: VettedClaim): boolean {
+  const want = wantedStatus(v.claim.polarity);
+  return want === "DROPPED" ? v.before === null || v.before === "DROPPED" : v.before === want;
+}
+
+/**
+ * What MatchTime says in HQ after one message, or null for silence.
+ *
+ *   - Something moved or failed: "Done: ..." as before.
+ *   - Only explicit claims, all about members whose status already says
+ *     it: "Nothing to change". Never for a held claim, and never for the
+ *     sender's own sentence that changed nothing (that is chat).
+ *   - An explicit claim about a member that did not move and is not
+ *     already so: "I couldn't change X".
+ *   - An explicit claim two members could mean: "use the full name".
+ *   - A name nobody in the club has, said in passing as coming in: "I
+ *     don't know X yet", with the command that adds them.
+ *   - The sender saying plainly, in conversation, that they are out (or
+ *     in), when that would change the squad: one line with the command
+ *     that does it. Never a write, and never a YES question: a YES in HQ
+ *     answers whatever list or teams are waiting.
+ *   - Anything else held (tentative, contingent, availability, past,
+ *     relayed, unsure): silence.
+ */
+export function buildAdminSquadReply(p: {
+  lang: string | null | undefined;
+  changes: Array<{ kind: SquadChangeKind; name: string }>;
+  /** Whose rows actually moved (the same people as `changes`). */
+  movedUserIds?: string[];
+  failed: string[];
+  confirmed: number;
+  maxPlayers: number;
+  vetted: VettedClaim[];
+  kickoffLabel: string;
+  senderName: string | null;
+}): { text: string; outcome: AdminSquadReplyOutcome } | null {
+  const s = t(p.lang);
+  const kept = p.vetted.filter((v) => v.hold === null);
+  const moved = new Set(p.movedUserIds ?? []);
+  const changedNames = new Set(p.changes.map((c) => c.name));
+  const parts: string[] = [];
+
+  // Explicit claims about members that neither moved nor already said it.
+  const notDone = kept.filter(
+    (v) =>
+      v.ref.kind === "member" && !v.self && !moved.has(v.ref.userId) && !changedNames.has(v.ref.name) && !alreadySo(v),
+  );
+  const failed = [...new Set([...p.failed, ...notDone.map((v) => (v.ref as { name: string }).name)])];
+  const literalNothing =
+    kept.length > 0 &&
+    kept.some((v) => !v.self) &&
+    kept.every((v) => v.ref.kind === "member" && alreadySo(v));
+
+  if (p.changes.length > 0 || failed.length > 0 || literalNothing) {
+    parts.push(buildSquadChangeReply({ lang: p.lang, changes: p.changes, failed, confirmed: p.confirmed, maxPlayers: p.maxPlayers }));
+  }
+
+  const unclear = [...new Set(kept.flatMap((v) => (v.ref.kind === "ambiguous" ? [v.ref.name] : [])))];
+  if (unclear.length > 0) parts.push(s.ag_paste_unclear({ names: unclear.join(", ") }));
+
+  const strangers = [
+    ...new Set(
+      p.vetted.flatMap((v) =>
+        v.hold !== null &&
+        v.hold !== "contingent" &&
+        v.hold !== "not-now" &&
+        !v.self &&
+        v.claim.polarity === "in" &&
+        v.claim.personNamed &&
+        v.ref.kind === "unknown"
+          ? [v.ref.name]
+          : [],
+      ),
+    ),
+  ];
+  for (const name of strangers) parts.push(s.ag_sq_unknown({ name }));
+
+  const ownHeld = p.vetted.find(
+    (v) =>
+      v.self &&
+      v.hold === "not-a-command" &&
+      (v.claim.polarity === "in" || v.claim.polarity === "out") &&
+      !alreadySo(v),
+  );
+  if (ownHeld && !kept.some((v) => v.self)) {
+    const name = ownHeld.ref.kind === "member" ? ownHeld.ref.name : (p.senderName ?? "?");
+    parts.push(
+      ownHeld.claim.polarity === "out"
+        ? s.ag_sq_self_hint_out({ name, when: p.kickoffLabel })
+        : s.ag_sq_self_hint_in({ name, when: p.kickoffLabel }),
+    );
+  }
+
+  if (parts.length === 0) return null;
+  const outcome: AdminSquadReplyOutcome =
+    failed.length > 0
+      ? "squad-change-failed"
+      : p.changes.length > 0
+        ? "squad-changed"
+        : literalNothing
+          ? "squad-unchanged"
+          : "squad-question";
+  return { text: parts.join(" "), outcome };
 }

@@ -2590,6 +2590,13 @@ export const en = {
   ag_sq_failed: (p: { names: string }): string => `I couldn't change ${p.names}. Please check the match page.`,
   /** The admin asked for what the squad already says. */
   ag_sq_nothing: "Nothing to change: the squad already says that.",
+  /** A name nobody in the club has, said in passing as coming in (2026-10-15). */
+  ag_sq_unknown: (p: { name: string }): string => `I don't know ${p.name} yet. To add them, write "put ${p.name} in".`,
+  /** The sender said in conversation that they are out; nothing is written (2026-10-15). */
+  ag_sq_self_hint_out: (p: { name: string; when: string }): string =>
+    `To take yourself out of ${p.when}, write "${p.name} out".`,
+  /** The sender said in conversation that they are in; nothing is written (2026-10-15). */
+  ag_sq_self_hint_in: (p: { name: string; when: string }): string => `To put yourself in for ${p.when}, write "${p.name} in".`,
   /** The count after the change. */
   ag_sq_count: (p: { confirmed: number; max: number }): string => `${p.confirmed} of ${p.max}.`,
   /** A pasted list: what it would change, then YES. */
