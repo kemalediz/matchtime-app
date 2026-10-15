@@ -4,9 +4,10 @@
  * ── Why ─────────────────────────────────────────────────────────────
  * A new organiser tried to add MatchTime to his group and WhatsApp said
  * "Can't add MatchTime. You can invite them privately to join this group",
- * offering "Invite to group". WhatsApp refuses an add server-side when the
- * adder is not one of MatchTime's contacts (the only add that ever worked
- * was by the owner, who is). Pressing "Invite to group" DMs MatchTime a
+ * offering "Invite to group". WhatsApp refused the add server-side (the bot
+ * saw no event). Its reason is NOT confirmed: MatchTime's groups privacy
+ * showed Everyone, and the only add that ever worked was by the owner, who
+ * is in MatchTime's contacts. group-add-privacy.ts logs the server's value. Pressing "Invite to group" DMs MatchTime a
  * `groupInviteMessage`; an organiser may also paste the group's
  * `chat.whatsapp.com/<code>` link. Nothing read either, so the setup died
  * there. The product must work for a customer setting up alone.

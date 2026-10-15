@@ -1,9 +1,11 @@
 /**
  * MatchTime ACCEPTS A GROUP INVITE: the pure rule (2026-10-15).
  *
- * WhatsApp will not let somebody who is not in MatchTime's contacts add it
- * to a group: it says "Can't add MatchTime" and offers "Invite to group"
- * instead, which sends MatchTime a private invite message. An organiser
+ * WhatsApp can refuse to let an organiser add MatchTime to a group: it says
+ * "Can't add MatchTime" and offers "Invite to group" instead, which sends
+ * MatchTime a private invite message. (Seen 2026-10-15 for an organiser not
+ * in MatchTime's contacts while its groups privacy showed Everyone; WhatsApp's
+ * reason is NOT confirmed.) An organiser
  * may also paste the group's invite link into the DM. Either way MatchTime
  * has to join by itself, because the product must work for a customer
  * setting up alone.

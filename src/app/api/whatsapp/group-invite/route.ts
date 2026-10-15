@@ -2,8 +2,8 @@
  * The Pi received a GROUP INVITE by DM and asks whether to join it
  * (2026-10-15).
  *
- * WhatsApp refuses to let somebody who is not in MatchTime's contacts add
- * it to a group, and offers "Invite to group" instead. That sends MatchTime
+ * WhatsApp can refuse an organiser's add of MatchTime (reason not confirmed,
+ * see lib/group-invite-rules.ts), and offers "Invite to group". That sends MatchTime
  * a private invite message (`groupInviteMessage`). An organiser may also
  * paste the group's invite link. Either way the Pi posts:
  *   { phone?, senderAltPhone?, senderLid?, kind: "invite-message" | "invite-link" }
