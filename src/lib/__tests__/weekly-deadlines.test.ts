@@ -19,6 +19,7 @@ import {
   dropOutReminderDue,
   deadlineSummaryDue,
   listPublishDue,
+  madeAfterDropOutDeadline,
   validateWeeklyDeadlines,
   NO_WEEKLY_DEADLINES,
 } from "../weekly-deadlines";
@@ -257,5 +258,25 @@ describe("validateWeeklyDeadlines (settings)", () => {
     expect(
       validateWeeklyDeadlines({ ...HAMZAH, dropOutDeadlineDay: 4, dropOutDeadlineTime: "10:00" }, [FRIDAY_ACTIVITY]),
     ).toBe("order");
+  });
+});
+
+// 2026-10-15, FNF: the club went live at 22:12 on Thursday, after its
+// Thursday 20:30 drop-out deadline, and its Friday game was made at 22:17.
+describe("madeAfterDropOutDeadline: a game made after its own deadline", () => {
+  const THU_2030 = new Date("2026-10-15T19:30:00.000Z");
+  it("made after (or at) the deadline: true", () => {
+    expect(madeAfterDropOutDeadline(new Date("2026-10-15T21:17:00.000Z"), THU_2030)).toBe(true);
+    expect(madeAfterDropOutDeadline(THU_2030, THU_2030)).toBe(true);
+  });
+  it("made before it (the cron's normal week): false", () => {
+    expect(madeAfterDropOutDeadline(new Date("2026-10-10T00:00:00.000Z"), THU_2030)).toBe(false);
+  });
+  it("no createdAt (an old row or a hand-built fixture): false, so nothing changes for it", () => {
+    expect(madeAfterDropOutDeadline(undefined, THU_2030)).toBe(false);
+    expect(madeAfterDropOutDeadline(null, THU_2030)).toBe(false);
+  });
+  it("the drop-out reminder (D1) is never due once the deadline has passed, so such a game never gets one either", () => {
+    expect(dropOutReminderDue(new Date("2026-10-15T21:18:00.000Z"), THU_2030)).toBe(false);
   });
 });

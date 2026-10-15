@@ -127,6 +127,7 @@ describe("the deadline summary", () => {
         text: buildDeadlineSummaryAdminNotice({
           activityName: "Friday 9-a-side",
           whenLabel: "Fri 9 Oct at 20:30",
+          deadlineLabel: "Mon 5 Oct at 21:00",
           confirmed: 2,
           maxPlayers: 18,
           out: ["Wasim"],
@@ -137,6 +138,42 @@ describe("the deadline summary", () => {
         }),
       },
     ]);
+  });
+
+  it("the first line names the deadline AND the kick-off, each for what it is (2026-10-15, FNF)", async () => {
+    await sendDueDeadlineSummaries("org-fnf", MON_2105);
+    expect(h.state.notices[0].text.split("\n")[0]).toBe(
+      "Drop-out deadline (Mon 5 Oct at 21:00) passed for *Friday 9-a-side*, kick-off Fri 9 Oct at 20:30. Squad 2/18.",
+    );
+    h.state.claimed = new Set();
+    h.state.notices = [];
+    h.state.org = { ...h.state.org!, language: "tr" };
+    await sendDueDeadlineSummaries("org-fnf", MON_2105);
+    expect(h.state.notices[0].text.split("\n")[0]).toBe(
+      "*Friday 9-a-side* için son çıkış saati (5 Ekim Pazartesi 21:00) geçti, maç 9 Ekim Cuma 20:30. Kadro 2/18.",
+    );
+  });
+
+  // 2026-10-15, FNF: the club went live at 22:12 on Thursday, after its
+  // Thursday 20:30 drop-out deadline; the game was made at 22:17 and the
+  // organisers got "Drop-out deadline passed ... Squad 0/18" a minute
+  // later. Nobody could have dropped out of a game that did not exist.
+  it("a match made AFTER its own drop-out deadline gets no summary, and claims nothing", async () => {
+    h.state.org = { ...h.state.org!, dropOutDeadlineDay: 4, dropOutDeadlineTime: "20:30" };
+    // Thu 15 Oct 2026 20:30 BST = 19:30 UTC; kickoff Fri 16 Oct 20:30 BST.
+    const fnf = fridayMatch({ id: "m-fnf", date: new Date("2026-10-16T19:30:00.000Z"), createdAt: new Date("2026-10-15T21:17:00.000Z"), attendances: [] });
+    h.state.matches = [fnf];
+    expect((await sendDueDeadlineSummaries("org-fnf", new Date("2026-10-15T21:18:00.000Z"))).sent).toBe(0);
+    expect(h.state.notices).toEqual([]);
+    expect(h.state.claimed.size).toBe(0);
+  });
+
+  it("a match made BEFORE its deadline still gets it (the normal week)", async () => {
+    h.state.org = { ...h.state.org!, dropOutDeadlineDay: 4, dropOutDeadlineTime: "20:30" };
+    h.state.matches = [
+      fridayMatch({ id: "m-fnf", date: new Date("2026-10-16T19:30:00.000Z"), createdAt: new Date("2026-10-10T00:00:00.000Z") }),
+    ];
+    expect((await sendDueDeadlineSummaries("org-fnf", new Date("2026-10-15T21:18:00.000Z"))).sent).toBe(1);
   });
 
   it("only once: a second tick finds the claim taken", async () => {
@@ -163,7 +200,7 @@ describe("the deadline summary", () => {
   it("the Turkish club gets the Turkish summary", async () => {
     h.state.org = { ...h.state.org!, language: "tr" };
     await sendDueDeadlineSummaries("org-fnf", MON_2105);
-    expect(h.state.notices[0].text).toContain("için son çıkış saati geçti. Kadro 2/18.");
+    expect(h.state.notices[0].text).toContain("için son çıkış saati (5 Ekim Pazartesi 21:00) geçti, maç 9 Ekim Cuma 20:30. Kadro 2/18.");
   });
 
   it("next week's match waits while this week's is still live", async () => {

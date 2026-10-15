@@ -400,7 +400,7 @@ test("slice 3: no pick round before the drop-out deadline; the summary IS the fi
   expect(after).toHaveLength(1);
   expect(after[0].text).toBe(
     [
-      "Drop-out deadline passed for *Friday 1-a-side* (Fri 15 Jan at 20:30). 1 place open, squad 1/2.",
+      "Drop-out deadline (Mon 11 Jan at 21:00) passed for *Friday 1-a-side*, kick-off Fri 15 Jan at 20:30. 1 place open, squad 1/2.",
       "",
       "Bench:",
       "1. Ben Best (no position, new)",

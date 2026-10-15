@@ -120,6 +120,9 @@ async function main() {
     await db.billingEvent.deleteMany({ where: { orgId: { startsWith: P } } });
     await db.sentNotification.deleteMany({ where: { key: { contains: P } } });
     await db.botJob.deleteMany({ where: { orgId: { startsWith: P } } });
+    // Including the games going live made, which carry generated ids.
+    await db.attendance.deleteMany({ where: { match: { activity: { orgId: { startsWith: P } } } } });
+    await db.match.deleteMany({ where: { activity: { orgId: { startsWith: P } } } });
     await db.organisation.deleteMany({ where: { id: { startsWith: P } } });
     await db.user.deleteMany({ where: { id: { startsWith: P } } });
   };
@@ -247,11 +250,17 @@ async function main() {
 
     // ── 4. Games from before go-live are never billable ────────────────
     const ms = await db.match.findMany({ where: { activityId: `${a}-act` }, select: { id: true, status: true, postMatchEndFlow: true }, orderBy: { date: "asc" } });
-    assert.deepEqual(ms, [
+    // The games played before go-live, then the next game going live made
+    // with the cron's generator (2026-10-15): upcoming, nothing to bill.
+    assert.deepEqual(ms.slice(0, 3), [
       { id: `${a}-oct06`, status: "COMPLETED", postMatchEndFlow: false },
       { id: `${a}-oct13`, status: "COMPLETED", postMatchEndFlow: false },
       { id: `${a}-oct20`, status: "COMPLETED", postMatchEndFlow: false },
     ]);
+    assert.deepEqual(
+      ms.slice(3).map((m) => ({ status: m.status, postMatchEndFlow: m.postMatchEndFlow })),
+      [{ status: "UPCOMING", postMatchEndFlow: true }],
+    );
     for (const featureAttendance of [true, false]) {
       await db.organisation.update({ where: { id: a }, data: { featureAttendance } });
       const kind = featureAttendance ? "tracks attendance" : "does NOT track attendance";

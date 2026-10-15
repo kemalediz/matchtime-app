@@ -42,7 +42,7 @@ import { isClubOperational } from "./club-approval-state";
 import { billingQuietWhere, isBillingPaused } from "./club-billing-rules";
 import { getOrgFeatures } from "./org-features";
 import { isNextUpcomingForPosting } from "./next-upcoming-match";
-import { weeklyDeadlinesFor } from "./weekly-deadlines";
+import { madeAfterDropOutDeadline, weeklyDeadlinesFor } from "./weekly-deadlines";
 import { summariseClubDisplayRatings } from "./player-rating";
 import { normaliseBenchPickFallback } from "./squad-capacity";
 import { dayTimeLabel, weekdayTimeLabel } from "./i18n/dates";
@@ -234,7 +234,15 @@ export async function sweepOrganiserPicks(orgId: string, now: Date = new Date())
 
   const matches = await db.match.findMany({
     where: { activity: { orgId }, isHistorical: false, status: { in: [...LIVE] } },
-    select: { id: true, date: true, status: true, activityId: true, isHistorical: true, activity: { select: { orgId: true, venue: true, dayOfWeek: true } } },
+    select: {
+      id: true,
+      date: true,
+      createdAt: true,
+      status: true,
+      activityId: true,
+      isHistorical: true,
+      activity: { select: { orgId: true, venue: true, dayOfWeek: true } },
+    },
     orderBy: { date: "asc" },
   });
 
@@ -248,7 +256,7 @@ export async function sweepOrganiserPicks(orgId: string, now: Date = new Date())
   return out;
 }
 
-type SweepMatch = Parameters<typeof isNextUpcomingForPosting>[1];
+type SweepMatch = Parameters<typeof isNextUpcomingForPosting>[1] & { createdAt?: Date | null };
 
 async function sweepOneMatch(
   org: PickOrg,
@@ -341,10 +349,12 @@ async function sweepOneMatch(
 
   // The first round after the club's drop-out deadline IS the deadline
   // summary (slice 3, plan 3.2): it claims the summary's key so D2 does
-  // not also go out.
+  // not also go out. Not for a game made after its own deadline
+  // (2026-10-15, `madeAfterDropOutDeadline`): there is no deadline to sum
+  // up, so the round leads as it otherwise would and claims nothing.
   let reason: PickReason =
     announcedIds.length > 0 ? "drop" : decision.action === "supersede" && decision.news === "bench" ? "bench-update" : "open-place";
-  if (dropOut && now.getTime() >= dropOut.getTime()) {
+  if (dropOut && now.getTime() >= dropOut.getTime() && !madeAfterDropOutDeadline(m.createdAt, dropOut)) {
     try {
       await db.sentNotification.create({ data: { key: deadlineSummaryKey(m.id), kind: "admin-notice", matchId: m.id } });
       reason = "deadline-summary";
@@ -408,6 +418,7 @@ async function sweepOneMatch(
       audience,
       fallback,
       fallbackWhen: weekdayTimeLabel(org.language, fallbackAt),
+      deadlineLabel: dropOut ? dayTimeLabel(org.language, dropOut) : "",
     });
   await sendAdminNotice({ orgId: org.id, now, text: (_link, audience) => message(audience) });
 }

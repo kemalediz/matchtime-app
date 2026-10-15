@@ -68,6 +68,7 @@ import {
   dropOutReminderDue,
   hasWeeklyRhythm,
   listPublishDue,
+  madeAfterDropOutDeadline,
   weeklyDeadlinesFor,
 } from "./weekly-deadlines";
 import { isSubstantialSquad } from "./rolling-squad-rules";
@@ -1851,8 +1852,14 @@ async function computeForMatch(
     const weekly = weeklyDeadlinesFor(m.date, activity.org);
     const reminderKey = `${matchId}:dropout-reminder`;
     const listKey = `${matchId}:list-published`;
+    // A game made after its own deadline gets no reminder about it
+    // (2026-10-15): already implied by `dropOutReminderDue` (never due
+    // after the deadline), stated so the summary's rule reads the same here.
     const reminderDue =
-      weekly.dropOut !== null && !sentKeys.has(reminderKey) && dropOutReminderDue(now, weekly.dropOut);
+      weekly.dropOut !== null &&
+      !sentKeys.has(reminderKey) &&
+      dropOutReminderDue(now, weekly.dropOut) &&
+      !madeAfterDropOutDeadline(m.createdAt, weekly.dropOut);
     // Once the teams are out the team sheet is the announcement; a
     // fourteen-name list after it would be the roster the group was
     // told not to get again (2026-09-15).

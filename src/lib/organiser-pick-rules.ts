@@ -445,6 +445,9 @@ export function buildPickMessage(p: {
   audience: "dm" | "group";
   fallback: "bench-offer" | "leave-empty";
   fallbackWhen: string;
+  /** The drop-out deadline as a label, for the "deadline-summary" lead:
+   *  it names the deadline and the kick-off each for what it is. */
+  deadlineLabel: string;
 }): string {
   const s = t(p.lang);
   const places = s.pick_places_line({ open: p.open, confirmed: p.confirmed, maxPlayers: p.maxPlayers });
@@ -460,7 +463,7 @@ export function buildPickMessage(p: {
   }
   const lead =
     p.reason === "deadline-summary"
-      ? `${s.pick_lead_deadline({ activityName: p.activityName, whenLabel: p.whenLabel })} ${places}`
+      ? `${s.pick_lead_deadline({ activityName: p.activityName, whenLabel: p.whenLabel, deadlineLabel: p.deadlineLabel })} ${places}`
       : p.reason === "drop" && p.droppedNames.length > 0
         ? `${s.pick_lead_drop({ names: p.droppedNames, activityName: p.activityName, whenLabel: p.whenLabel, late: p.late })} ${places}`
         : s.pick_lead_open_place({

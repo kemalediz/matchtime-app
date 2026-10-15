@@ -2615,10 +2615,13 @@ export const en = {
     `⏰ *${p.activityName}*, ${p.whenLabel}: the drop-out deadline is *today at ${p.time}*. If you can't play, say *OUT* before then.\n\n${p.rosterBlock}`,
   /** WDL2 (D2): to the organisers once the deadline has passed. The
    *  "Said maybe" and "places open" lines only when there is something
-   *  to say. */
+   *  to say. `deadlineLabel` is the drop-out deadline, `whenLabel` the
+   *  kick-off: each is named for what it is (2026-10-15, FNF read the
+   *  kick-off in brackets as the deadline). */
   deadline_summary_admin: (p: {
     activityName: string;
     whenLabel: string;
+    deadlineLabel: string;
     confirmed: number;
     maxPlayers: number;
     out: string[];
@@ -2627,7 +2630,7 @@ export const en = {
     open: number;
   }): string =>
     [
-      `Drop-out deadline passed for *${p.activityName}* (${p.whenLabel}). Squad ${p.confirmed}/${p.maxPlayers}.`,
+      `Drop-out deadline (${p.deadlineLabel}) passed for *${p.activityName}*, kick-off ${p.whenLabel}. Squad ${p.confirmed}/${p.maxPlayers}.`,
       `Out this week: ${p.out.length > 0 ? p.out.join(", ") : "nobody"}.`,
       ...(p.maybe.length > 0 ? [`Said maybe: ${p.maybe.join(", ")}.`] : []),
       `On the bench: ${p.waiting.length > 0 ? p.waiting.join(", ") : "nobody"}.`,
@@ -2776,6 +2779,14 @@ export const en = {
   ag_paste_confirm: "Reply YES to apply.",
   ag_paste_same: "That matches the squad, nothing to change.",
   ag_paste_expired: "That list is more than 30 minutes old, so I haven't applied it. Paste it again if it still stands.",
+  /** A pasted list with no game to put it on (2026-10-15): the club has a
+   *  weekly game, and the nightly cron makes the next one at `time`
+   *  (London wall clock of 00:00 UTC). */
+  ag_paste_no_game: (p: { time: string }): string =>
+    `There's no upcoming game to put this list on yet. MatchTime adds the next game every night at ${p.time} (London time). Paste the list again after that.`,
+  /** A pasted list when the club has no active weekly game at all. */
+  ag_paste_no_weekly_game:
+    "This club has no weekly game set up yet, so there's nothing to put this list on. Add the game under Activities on the website, then paste the list again.",
   // ── Teams proposed and approved in the admin group (2026-10-14) ──
   // src/lib/team-proposal-rules.ts. Said only in the admin group.
   /** The proposal's first line. */
@@ -2874,8 +2885,8 @@ export const en = {
   pick_lead_drop: (p: { names: string[]; activityName: string; whenLabel: string; late: boolean }): string =>
     `${joinList("en", p.names.map((n) => `*${n}*`))} dropped out of *${p.activityName}* (${p.whenLabel})${p.late ? " after the deadline" : ""}.`,
   /** P1 first line: the deadline summary opens the first round (slice 3). */
-  pick_lead_deadline: (p: { activityName: string; whenLabel: string }): string =>
-    `Drop-out deadline passed for *${p.activityName}* (${p.whenLabel}).`,
+  pick_lead_deadline: (p: { activityName: string; whenLabel: string; deadlineLabel: string }): string =>
+    `Drop-out deadline (${p.deadlineLabel}) passed for *${p.activityName}*, kick-off ${p.whenLabel}.`,
   /** P1 first line: a place that was never filled. */
   pick_lead_open_place: (p: { open: number; activityName: string; whenLabel: string; confirmed: number; maxPlayers: number }): string =>
     p.open === 1

@@ -304,6 +304,17 @@ export function buildPasteExpiredReply(lang: string | null | undefined): string 
   return t(lang).ag_paste_expired;
 }
 
+/**
+ * A squad list pasted when the club has no game to put it on (2026-10-15).
+ * `nextRunTime` is the London wall clock ("01:00") of the nightly cron
+ * that makes the next game; null when the club has no active weekly game,
+ * so the cron would make nothing and the reply says to add one.
+ */
+export function buildPasteNoMatchReply(p: { lang: string | null | undefined; nextRunTime: string | null }): string {
+  const s = t(p.lang);
+  return p.nextRunTime === null ? s.ag_paste_no_weekly_game : s.ag_paste_no_game({ time: p.nextRunTime });
+}
+
 // ── An organiser's sentence in HQ: instruction or conversation? ───────
 //
 // WHY (2026-10-15). The live club rehearsal replayed a real organisers'

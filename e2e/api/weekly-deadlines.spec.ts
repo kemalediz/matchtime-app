@@ -109,7 +109,7 @@ async function duePosts(request: APIRequestContext, group: string, now: Date, pr
 
 const summaryJobs = (db: TestDb) =>
   db.all<{ orgId: string; phone: string; text: string }>(
-    `SELECT "orgId", phone, text FROM "BotJob" WHERE kind = 'dm' AND text LIKE 'Drop-out deadline passed%'`,
+    `SELECT "orgId", phone, text FROM "BotJob" WHERE kind = 'dm' AND text LIKE 'Drop-out deadline (%) passed%'`,
   );
 
 test.beforeAll(async () => {
@@ -203,7 +203,7 @@ test("Mon 21:05: the organisers get the summary once; preview never sends it; Su
   expect(jobs[0]).toMatchObject({ orgId: "e2e-wd-org-w", phone: W_OWNER_PHONE.replace(/^\+/, "") });
   expect(jobs[0].text).toBe(
     [
-      "Drop-out deadline passed for *Friday 9-a-side* (Fri 15 Jan at 20:30). Squad 3/18.",
+      "Drop-out deadline (Mon 11 Jan at 21:00) passed for *Friday 9-a-side*, kick-off Fri 15 Jan at 20:30. Squad 3/18.",
       "Out this week: Dan Dropped.",
       "Said maybe: Raihan Ahmed.",
       "On the bench: Ali Demir.",

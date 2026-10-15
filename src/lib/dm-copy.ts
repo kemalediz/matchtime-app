@@ -371,7 +371,10 @@ export function buildLateDropAdminNotice(
 export function buildDeadlineSummaryAdminNotice(
   p: {
     activityName: string;
+    /** The kick-off. */
     whenLabel: string;
+    /** The drop-out deadline that has passed. */
+    deadlineLabel: string;
     confirmed: number;
     maxPlayers: number;
     out: string[];
