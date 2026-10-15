@@ -19,6 +19,7 @@ import { pickForSubmit, type VenuePickState } from "@/lib/venue-suggest-rules";
 import { t } from "@/lib/i18n/t";
 import { activityFeeText, parseActivityFee } from "@/lib/activity-fee";
 import { FEE_EDIT_PARAM } from "@/lib/setup-learning/suggestion-action";
+import { activityTimingsPatch, type ActivityTimings } from "@/lib/activity-timings";
 
 interface Sport {
   id: string;
@@ -88,6 +89,12 @@ export default function ActivitiesPage() {
   // never blocks the save, by an edit of something else.
   const [eFeeWas, setEFeeWas] = useState("");
   const [eSplit, setESplit] = useState(false);
+  // Match length and sign-up deadline as typed, and as stored. Each is
+  // SENT only when changed (src/lib/activity-timings.ts), so a stored
+  // value outside today's bounds never blocks an edit of something else.
+  const [eDuration, setEDuration] = useState("60");
+  const [eDeadline, setEDeadline] = useState("5");
+  const [eTimingsWas, setETimingsWas] = useState<ActivityTimings>({ matchDurationMins: 60, deadlineHours: 5 });
   const [eSaving, setESaving] = useState(false);
   // The setup reading's fee suggestion links here with `?edit=fee`
   // (setup-learning/suggestion-action.ts): the weekly game's edit form
@@ -190,6 +197,9 @@ export default function ActivitiesPage() {
     setEFee(activityFeeText(a.feePerPlayer));
     setEFeeWas(activityFeeText(a.feePerPlayer));
     setESplit(a.feeSplitTotal);
+    setEDuration(String(a.matchDurationMins));
+    setEDeadline(String(a.deadlineHours));
+    setETimingsWas({ matchDurationMins: a.matchDurationMins, deadlineHours: a.deadlineHours });
     setFocusFee(false);
   }
 
@@ -198,6 +208,8 @@ export default function ActivitiesPage() {
     if (!editId) return;
     const feeChanged = !eSplit && eFee.trim() !== eFeeWas;
     if (feeChanged && !parseActivityFee(eFee).ok) return toast.error(s.act_fee_invalid);
+    const timings = activityTimingsPatch({ matchDurationMins: eDuration, deadlineHours: eDeadline }, eTimingsWas);
+    if (!timings.ok) return toast.error(timings.field === "matchDurationMins" ? s.act_duration_invalid : s.act_deadline_invalid);
     setESaving(true);
     try {
       await updateActivity(editId, {
@@ -207,6 +219,7 @@ export default function ActivitiesPage() {
         venue: eVenue,
         venuePick: pickForSubmit(eVenuePick, eVenue),
         ...(feeChanged ? { feePerPlayer: eFee } : {}),
+        ...timings.patch,
       });
       toast.success("Activity updated");
       setEditId(null);
@@ -394,7 +407,7 @@ export default function ActivitiesPage() {
                 </p>
               </Field>
               <div className="grid grid-cols-2 gap-3">
-                <Field label="Deadline (h before)">
+                <Field label={s.act_deadline_label}>
                   <input
                     type="number"
                     value={deadlineHours}
@@ -404,7 +417,7 @@ export default function ActivitiesPage() {
                     className="w-full h-11 px-3 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </Field>
-                <Field label="Match duration (min)">
+                <Field label={s.act_duration_label}>
                   <input
                     type="number"
                     value={matchDurationMins}
@@ -486,6 +499,47 @@ export default function ActivitiesPage() {
                   {suggestLabels.hint} {suggestLabels.privacy}
                 </p>
               </Field>
+              <div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label htmlFor="activity-duration" className="flex items-center gap-1 text-sm font-medium text-slate-700 mb-1.5">
+                      {s.act_duration_label}
+                      <SectionInfo k="act_duration" lang={lang} />
+                    </label>
+                    {/* No min or max here: a stored value outside the
+                        bounds must not block an edit of something else.
+                        A changed value is checked on save. */}
+                    <input
+                      id="activity-duration"
+                      data-testid="activity-duration"
+                      type="number"
+                      inputMode="numeric"
+                      value={eDuration}
+                      onChange={(e) => setEDuration(e.target.value)}
+                      aria-describedby="activity-timings-hint"
+                      className="w-full h-11 px-3 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="activity-deadline" className="flex items-center gap-1 text-sm font-medium text-slate-700 mb-1.5">
+                      {s.act_deadline_label}
+                    </label>
+                    <input
+                      id="activity-deadline"
+                      data-testid="activity-deadline"
+                      type="number"
+                      inputMode="numeric"
+                      value={eDeadline}
+                      onChange={(e) => setEDeadline(e.target.value)}
+                      aria-describedby="activity-timings-hint"
+                      className="w-full h-11 px-3 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+                <p id="activity-timings-hint" data-testid="activity-timings-hint" className="mt-1 text-xs text-slate-400">
+                  {s.act_timings_hint}
+                </p>
+              </div>
               <div>
                 <label htmlFor="activity-fee" className="block text-sm font-medium text-slate-700 mb-1.5">
                   {s.act_fee_label}

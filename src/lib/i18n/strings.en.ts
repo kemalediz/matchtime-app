@@ -3542,6 +3542,10 @@ export const en = {
   info_act_deadline_title: "Sign-ups close",
   info_act_deadline_body:
     "How many hours before kick-off MatchTime stops chasing for players. Players can still say IN or OUT right up to kick-off.",
+  info_act_duration_title: "Match length",
+  info_act_duration_body:
+    "How long the game lasts. MatchTime counts a game as finished at kick-off plus this many minutes.\n\n" +
+    "From then it posts the payment poll (not for a monthly squad), marks the match as played, which starts the rating messages, and an hour later asks the group for the score. A score sent in the group only counts for a game that has finished. A change applies to every game of this activity, including ones already created.",
 
   // /admin/block-bookings and /admin/matches/bulk
   info_bb_page_title: "Block bookings",
@@ -3776,6 +3780,15 @@ export const en = {
   act_fee_split: "This game splits the pitch cost between who played, so there is no fixed fee per player.",
   /** On the list, after the day, time and venue. `fee` is "6" or "6.50". */
   act_fee_row: (p: { fee: string }): string => `£${p.fee} a player`,
+  // ── Match length and sign-up deadline on /admin/activities (2026-10-15).
+  //    See src/lib/activity-timings.ts. ──
+  act_duration_label: "Match duration (min)",
+  act_duration_invalid: "Match duration must be 20 to 180 minutes.",
+  act_deadline_label: "Deadline (h before)",
+  act_deadline_invalid: "The deadline must be 1 to 48 hours before kick-off.",
+  /** Under the two fields on the edit form. */
+  act_timings_hint:
+    "A new match length applies to every game of this activity, including ones already created. A new deadline applies to matches created after you save.",
   // ── Monthly squad (2026-10-05, slice 2) ──────────────────────────
   // MDs/monthly-squad-plan-2026-10-05.md, sections 9.1, 9.2 and 4.5.
   // The "Monthly squad" section of /admin/settings (msq_) and the
