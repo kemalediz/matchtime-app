@@ -1743,7 +1743,8 @@ function cases(lang: Lang): Case[] {
     "WDL1 buildDropOutReminderPost",
     buildDropOutReminderPost({ activityName: "Friday 9-a-side", whenLabel: wdWhen, time: "21:00", rosterBlock: wdRoster, lang }),
   );
-  const wdSummary = { activityName: "Friday 9-a-side", whenLabel: wdWhen, maxPlayers: 18, lang };
+  const wdDeadline = lang === "tr" ? "5 Ekim Pazartesi 21:00" : "Mon 5 Oct at 21:00";
+  const wdSummary = { activityName: "Friday 9-a-side", whenLabel: wdWhen, deadlineLabel: wdDeadline, maxPlayers: 18, lang };
   add(
     "WDL2 buildDeadlineSummaryAdminNotice / drops, maybes, waiting, places open",
     buildDeadlineSummaryAdminNotice({
@@ -1820,6 +1821,7 @@ function cases(lang: Lang): Case[] {
     audience: "dm" as "dm" | "group",
     fallback: "bench-offer" as "bench-offer" | "leave-empty",
     fallbackWhen: opFallbackWhen,
+    deadlineLabel: lang === "tr" ? "5 Ekim Pazartesi 21:00" : "Mon 5 Oct at 21:00",
   };
   add("OPK1 buildPickMessage / one drop, by DM", buildPickMessage(op));
   add("OPK1 buildPickMessage / in the admin group, leave it open", buildPickMessage({ ...op, audience: "group", fallback: "leave-empty" }));

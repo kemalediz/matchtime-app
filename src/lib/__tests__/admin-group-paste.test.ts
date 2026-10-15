@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const dbMock = vi.hoisted(() => ({
   match: { findMany: vi.fn(), findUnique: vi.fn() },
+  activity: { findMany: vi.fn() },
   attendance: { findMany: vi.fn(), count: vi.fn() },
   membership: { findMany: vi.fn() },
   userAlias: { findMany: vi.fn() },
@@ -48,6 +49,7 @@ beforeEach(() => {
   ];
   dbMock.match.findMany.mockResolvedValue([MATCH]);
   dbMock.match.findUnique.mockResolvedValue(MATCH);
+  dbMock.activity.findMany.mockResolvedValue([{ sport: { playersPerTeam: 3 } }]);
   dbMock.attendance.findMany.mockImplementation(async () => rows.map((r) => ({ ...r })));
   dbMock.attendance.count.mockImplementation(async () => rows.filter((r) => r.status === "CONFIRMED").length);
   dbMock.membership.findMany.mockResolvedValue(people.map(([id, name]) => ({ user: { id, name } })));
@@ -127,9 +129,60 @@ describe("proposeSquadPaste", () => {
     expect(await proposeSquadPaste({ ...base, text: LIST })).toBeNull();
   });
 
-  it("no upcoming match: not handled", async () => {
-    dbMock.match.findMany.mockResolvedValue([]);
-    expect(await proposeSquadPaste({ ...base, text: LIST })).toBeNull();
+  // 2026-10-15 (FNF): the organiser pasted the squad a minute after going
+  // live, before any game existed, and heard nothing.
+  describe("no game to put it on", () => {
+    beforeEach(() => dbMock.match.findMany.mockResolvedValue([]));
+
+    it("a weekly game is set up: says there is no game yet and when the next one is made (BST: 01:00 London)", async () => {
+      const r = await proposeSquadPaste({ ...base, now: new Date("2026-10-15T21:13:00Z"), text: LIST });
+      expect(r).toEqual({
+        outcome: "paste-no-match",
+        replyText:
+          "There's no upcoming game to put this list on yet. MatchTime adds the next game every night at 01:00 (London time). Paste the list again after that.",
+      });
+      expect(dbMock.adminSquadProposal.create).not.toHaveBeenCalled();
+      expect(dbMock.adminSquadProposal.updateMany).not.toHaveBeenCalled();
+    });
+
+    it("in winter (GMT) the same run is at 00:00 London", async () => {
+      const r = await proposeSquadPaste({ ...base, now: new Date("2026-12-03T21:13:00Z"), text: LIST });
+      expect(r?.replyText).toContain("every night at 00:00 (London time)");
+    });
+
+    it("Turkish club: Turkish", async () => {
+      const r = await proposeSquadPaste({ ...base, lang: "tr", now: new Date("2026-10-15T21:13:00Z"), text: LIST });
+      expect(r).toEqual({
+        outcome: "paste-no-match",
+        replyText:
+          "Bu listeyi koyacağım yaklaşan bir maç henüz yok. MatchTime bir sonraki maçı her gece ekler (Londra saatiyle 01:00). Ondan sonra listeyi yeniden yapıştırın.",
+      });
+    });
+
+    it("no weekly game at all: says to add one under Activities", async () => {
+      dbMock.activity.findMany.mockResolvedValue([]);
+      const r = await proposeSquadPaste({ ...base, text: LIST });
+      expect(r).toEqual({
+        outcome: "paste-no-match",
+        replyText:
+          "This club has no weekly game set up yet, so there's nothing to put this list on. Add the game under Activities on the website, then paste the list again.",
+      });
+      const tr = await proposeSquadPaste({ ...base, lang: "tr", text: LIST });
+      expect(tr?.replyText).toBe(
+        "Bu kulübün henüz ayarlanmış haftalık maçı yok, bu yüzden listeyi koyacak bir maç yok. Maçı web sitesinde Etkinlikler bölümünden ekleyin, sonra listeyi yeniden yapıştırın.",
+      );
+    });
+
+    it("chatter is not a list: still not handled, so it goes on as before", async () => {
+      expect(await proposeSquadPaste({ ...base, text: "Shehryar out" })).toBeNull();
+      expect(await proposeSquadPaste({ ...base, text: "who's free friday?\nanyone?" })).toBeNull();
+    });
+
+    it("too short to be the squad (under half the places of the weekly game): not handled", async () => {
+      dbMock.activity.findMany.mockResolvedValue([{ sport: { playersPerTeam: 9 } }]);
+      // 18 places: a list needs 9 names.
+      expect(await proposeSquadPaste({ ...base, text: LIST })).toBeNull();
+    });
   });
 });
 

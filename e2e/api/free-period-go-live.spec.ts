@@ -250,14 +250,18 @@ test("a held club's two free months start when it goes LIVE: silent and unbilled
   // Not from the approval: the 19 days of silence were not taken off it.
   expect((row.ends.getTime() - fromApproval.getTime()) / DAY).toBeGreaterThan(HELD_DAYS - 3.1);
   expect((row.ends.getTime() - approved.getTime()) / DAY).toBeGreaterThan(58.9 + HELD_DAYS - 3.1);
-  // The fixtures from before the GO are completed and quiet.
-  expect(
-    await db.all(`SELECT id, status, "postMatchEndFlow" AS flow FROM "Match" WHERE "activityId" = $1 ORDER BY date`, [`${ORG}-activity`]),
-  ).toEqual([
+  // The fixtures from before the GO are completed and quiet; going live
+  // then made next week's game (2026-10-15, the cron's own generator).
+  const fixtures = await db.all<{ id: string; status: string; flow: boolean }>(
+    `SELECT id, status, "postMatchEndFlow" AS flow FROM "Match" WHERE "activityId" = $1 ORDER BY date`,
+    [`${ORG}-activity`],
+  );
+  expect(fixtures.slice(0, 3)).toEqual([
     { id: `${ORG}-m-two-weeks`, status: "COMPLETED", flow: false },
     { id: `${ORG}-m-last-week`, status: "COMPLETED", flow: false },
     { id: `${ORG}-m-tonight`, status: "COMPLETED", flow: false },
   ]);
+  expect(fixtures.slice(3)).toEqual([{ id: expect.any(String), status: "UPCOMING", flow: true }]);
 
   // A second GO, and a second removal-free look by the cron: nothing moves.
   const again = await request.post("/api/whatsapp/dm-reply", {

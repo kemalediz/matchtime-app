@@ -28,9 +28,12 @@ import { selectRegistrationMatch } from "./registration-match-select";
 import { resolveOrProvisionByName } from "./resolve-or-provision-name";
 import { isDeliberateNameProvisionable } from "./resolve-sender";
 import { adminGroupSourceRef } from "./admin-added";
+import { formatLondon } from "./london-time";
+import { nextNightlyFixtureRun } from "./nightly-fixture-run";
 import {
   PASTE_PROPOSAL_TTL_MS,
   buildPasteExpiredReply,
+  buildPasteNoMatchReply,
   buildPasteProposalReply,
   buildSquadChangeReply,
   diffPastedSquad,
@@ -43,7 +46,7 @@ import {
 } from "./admin-group-squad-rules";
 
 export interface PasteReply {
-  outcome: "paste-proposed" | "paste-same" | "paste-applied" | "paste-expired";
+  outcome: "paste-proposed" | "paste-same" | "paste-applied" | "paste-expired" | "paste-no-match";
   replyText: string;
 }
 
@@ -76,8 +79,40 @@ function isUniqueViolation(err: unknown): boolean {
 }
 
 /**
- * The paste, proposed. Null when the text is not a squad list, there is no
- * match to put it on, or this message was already proposed (a Pi retry).
+ * A squad list pasted when the club has no game to put it on (2026-10-15).
+ * Club FNF's organiser pasted the squad a minute after going live, before
+ * the nightly cron had made the game, and heard nothing. Now a message
+ * that reads as the squad (the same `readSquadPaste`, against the places
+ * of the club's weekly game) gets one line saying there is no game yet
+ * and when the next one is made; anything else is still null, so chatter
+ * goes on exactly as before. Nothing is stored. Once per message: the
+ * caller has already claimed `admin-group-msg:<messageId>`.
+ */
+async function answerPasteWithoutMatch(args: {
+  orgId: string;
+  lang: string | null | undefined;
+  messageId: string;
+  text: string;
+  now: Date;
+}): Promise<PasteReply | null> {
+  const games = await db.activity.findMany({
+    where: { orgId: args.orgId, isActive: true },
+    select: { sport: { select: { playersPerTeam: true } } },
+  });
+  // The places the cron's game would have (2 x per side), the smallest
+  // when the club has more than one weekly game. With none, the floor of
+  // four names `readSquadPaste` always asks for.
+  const places = games.length > 0 ? Math.min(...games.map((g) => g.sport.playersPerTeam * 2)) : 0;
+  if (!readSquadPaste(args.text, places)) return null;
+  const nextRunTime = games.length > 0 ? formatLondon(nextNightlyFixtureRun(args.now), "HH:mm") : null;
+  console.log(`[admin-group] ${args.messageId}: pasted list with no game to put it on (${games.length} weekly game(s))`);
+  return { outcome: "paste-no-match", replyText: buildPasteNoMatchReply({ lang: args.lang, nextRunTime }) };
+}
+
+/**
+ * The paste, proposed. Null when the text is not a squad list or this
+ * message was already proposed (a Pi retry). With no match to put it on,
+ * a list gets the "no game yet" line (`answerPasteWithoutMatch`).
  */
 export async function proposeSquadPaste(args: {
   orgId: string;
@@ -90,7 +125,7 @@ export async function proposeSquadPaste(args: {
   const { orgId, now } = args;
   if (!args.text.includes("\n")) return null;
   const match = await registrationMatch(orgId);
-  if (!match) return null;
+  if (!match) return answerPasteWithoutMatch(args);
   const paste = readSquadPaste(args.text, match.maxPlayers);
   if (!paste) return null;
 

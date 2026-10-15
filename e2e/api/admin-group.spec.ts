@@ -260,7 +260,7 @@ test("slice 3's deadline summary follows the channel: one post in the admin grou
   });
   expect(res.status(), await res.text()).toBe(200);
   const instructions = (await res.json()).instructions as Array<{ kind: string; groupId?: string; text?: string }>;
-  const summary = instructions.filter((i) => (i.text ?? "").startsWith("Drop-out deadline passed"));
+  const summary = instructions.filter((i) => (i.text ?? "").startsWith("Drop-out deadline (Mon 11 Jan at 21:00) passed"));
   expect(summary).toHaveLength(1);
   expect(summary[0]).toMatchObject({ kind: "admin-group-message", groupId: HQ2 });
   const jobs = await db.all<{ kind: string }>(`SELECT kind FROM "BotJob" WHERE "orgId" = 'e2e-ag-org'`);

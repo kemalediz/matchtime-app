@@ -162,6 +162,20 @@ export function deadlineSummaryDue(now: Date, deadline: Date, kickoff: Date): bo
   return now.getTime() >= deadline.getTime() && now.getTime() < kickoff.getTime() && inWakingHours(now);
 }
 
+/**
+ * Was this match made AFTER its own drop-out deadline (2026-10-15)? Then
+ * nobody can have dropped out of it before the deadline, and the posts
+ * about that deadline (D1 the reminder, D2 the summary, and the pick
+ * round that stands in for D2) would be noise. FNF went live at 22:12 on
+ * a Thursday, after its Thursday 20:30 deadline; the game was made at
+ * 22:17 and the organisers got "Drop-out deadline passed ... Squad 0/18".
+ * `Match.createdAt` absent (an old fixture or a hand-built test row):
+ * not after, so nothing changes for them.
+ */
+export function madeAfterDropOutDeadline(createdAt: Date | null | undefined, deadline: Date): boolean {
+  return createdAt instanceof Date && createdAt.getTime() >= deadline.getTime();
+}
+
 /** D3: the first tick after publish time, inside waking hours, before kickoff. */
 export function listPublishDue(now: Date, publishAt: Date, kickoff: Date): boolean {
   return now.getTime() >= publishAt.getTime() && now.getTime() < kickoff.getTime() && inWakingHours(now);
