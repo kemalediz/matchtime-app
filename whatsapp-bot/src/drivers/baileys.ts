@@ -254,7 +254,6 @@ import {
 } from "../baileys/group-invite.js";
 import { createGroupAddPrivacyCheck, groupAddPrivacyEnabled, type PrivacySocketLike } from "../baileys/group-add-privacy.js";
 import { installLibsignalConsoleFilter } from "../baileys/libsignal-console.js";
-import { maskDigits, maskIdsIn, maskJid } from "../baileys/log-mask.js";
 import { postGroupInviteCheck } from "../group-invite-api.js";
 import { shadowMode } from "../shadow.js";
 import type { PictureReader } from "../picture-reader.js";
@@ -611,12 +610,11 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
   const store = deps.store ?? createSentMessageStore<proto.IMessage>();
   const contacts = deps.contacts ?? createContactDirectory();
   const conn = deps.connection;
-  // Every line this driver writes has each person's JID masked (2026-10-15:
-  // bot.log held whole phone numbers). Group ids are kept; see log-mask.ts.
-  const rawLog = deps.log ?? ((l: string) => console.log(l));
-  const rawError = deps.error ?? ((l: string) => console.error(l));
-  const log = (l: string) => rawLog(maskIdsIn(l));
-  const error = (l: string) => rawError(maskIdsIn(l));
+  // Phone numbers, JIDs, LIDs and display names ARE logged in full: they
+  // are how a new group is debugged (Kemal, 2026-10-15). Message text,
+  // media keys, invite codes/links and session keys are never logged.
+  const log = deps.log ?? ((l: string) => console.log(l));
+  const error = deps.error ?? ((l: string) => console.error(l));
   const getSocket = deps.getSocket ?? (() => conn?.openSocket() ?? null);
   const stats = emptyStats();
   const firstSighting = createSeenIds();
@@ -1111,7 +1109,7 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
 
     const line =
       `[baileys][msg] upsert=${upsertType}${requestId ? ` requestId=${requestId}` : ""} ` +
-      `chat=${maskJid(key.remoteJid)} id=${key.id ?? "?"} age=${ageOf(m)}s`;
+      `chat=${key.remoteJid ?? "?"} id=${key.id ?? "?"} age=${ageOf(m)}s`;
 
     // Diagnostic only (baileys/history-sync.ts): names an upsert that is a
     // way history travels. It changes nothing about what happens to it.
@@ -1159,7 +1157,7 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
       } else {
         stats.undecryptable++;
         log(
-          `${line} could not be decrypted ("${entry.reason}", sender ${maskJid(entry.sender)}); ` +
+          `${line} could not be decrypted ("${entry.reason}", sender ${entry.sender ?? "?"}); ` +
             "Baileys has asked for a re-send. Waiting up to " +
             `${Math.round(UNDECRYPTABLE_GRACE_MS / 1000)}s for its content`,
         );
@@ -1182,7 +1180,7 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
         log(
           `${line} recovered${recovered.late ? " late" : ""}: the content of a message that ` +
             `failed to decrypt arrived after ${Math.round(recovered.waitedMs / 1000)}s` +
-            (authorFilled ? `; its author was missing and was taken from the stub (${maskJid(recovered.entry.sender)})` : ""),
+            (authorFilled ? `; its author was missing and was taken from the stub (${recovered.entry.sender ?? "?"})` : ""),
         );
       }
     }
@@ -1239,8 +1237,8 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
       } else {
         stats.unresolvedSenders++;
         error(
-          `[baileys][msg] sender UNRESOLVED for ${mapped.id}: ${who.reason.replace(/\S*\d{6,}\S*/g, (j) => maskJid(j))}` +
-            `${who.lid ? ` (lid ${maskDigits(who.lid)})` : ""}. Handed up under the LID; the server will ` +
+          `[baileys][msg] sender UNRESOLVED for ${mapped.id}: ${who.reason}` +
+            `${who.lid ? ` (lid ${who.lid})` : ""}. Handed up under the LID; the server will ` +
             "try the pushname.",
         );
       }
@@ -1253,11 +1251,10 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
     // the spelling `index.ts` passes back in (baileys/replay.ts).
     if (mapped.isGroup) replay.remember(view.from, view as InboundMessage);
     stats.delivered++;
-    // Masked (2026-10-15): never a whole number, a LID or a name in the log.
     log(
       `${line} group=${mapped.isGroup} fromMe=${mapped.fromMe} ` +
-        `sender=${maskJid(view.baileys.senderJid)} phone=${senderPhone ? maskDigits(senderPhone) : "?"}${source ? `(${source})` : ""} ` +
-        `name=${mapped.pushName ? "yes" : "no"} type=${mapped.type} bodyLen=${mapped.body.length} ` +
+        `sender=${view.baileys.senderJid ?? "?"} phone=${senderPhone ?? "?"}${source ? `(${source})` : ""} ` +
+        `name=${mapped.pushName ?? "?"} type=${mapped.type} bodyLen=${mapped.body.length} ` +
         `media=${mapped.hasMedia} mentions=${mapped.mentionedJids.length}`,
     );
     tally(`handed up (${mapped.type})`);
@@ -2166,7 +2163,7 @@ export function createBaileysDriver(env: NodeJS.ProcessEnv = process.env): Baile
   installLibsignalConsoleFilter();
   console.log(
     `Baileys driver: session ${config.authDir} | log level ${config.logLevel} | ` +
-      `login ${config.pairPhone ? `pairing code for ${maskDigits(config.pairPhone)}` : "QR"}`,
+      `login ${config.pairPhone ? `pairing code for ${config.pairPhone}` : "QR"}`,
   );
 
   async function prepare() {
