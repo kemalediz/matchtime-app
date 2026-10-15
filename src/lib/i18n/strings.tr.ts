@@ -3372,6 +3372,20 @@ export const tr: Strings = {
   pr_still_waiting: (p) => `Önceden bekleyen: ${p.count}`,
   pr_tail_dm: (p) => `İncelemek, telefon, mevki ve puanı ayarlamak ya da kaldırmak için dokunun:\n${p.link}\n\nYa da açın: ${p.url}`,
   pr_tail_group: (p) => `İnceleyin; telefon, mevki ve puanı ayarlayın ya da kaldırın:\n${p.link}`,
+  sn_title: (p) => `⭐ *${p.weekday} günkü takımlardan önce bir şey*`,
+  sn_unknown_all:
+    "Henüz kimsenin seviyesini bilmiyorum, bu yüzden şimdilik her oyuncuyu aynı sayarım ve takımlar dengesiz çıkabilir.",
+  sn_unknown_most:
+    "Oyuncuların çoğunun seviyesini henüz bilmiyorum, bu yüzden şimdilik hepsini aynı sayarım ve takımlar dengesiz çıkabilir.",
+  sn_ask_named: (p) => `${p.names}: her oyuncuya 1 ile 10 arasında kabaca bir puan verin:\n${p.link}`,
+  sn_ask: (p) => `Her oyuncuya 1 ile 10 arasında kabaca bir puan verin:\n${p.link}`,
+  sn_never_seen: "Oyuncular bu puanları hiç görmez, yalnızca takımları dengelememe yardım ederler.",
+  sn_size_week: (p) => `Bu haftaki ${p.count} oyuncu yeterli, yaklaşık ${p.minutes} dakika sürer.`,
+  sn_size_club: (p) => `Puanı olmayan ${p.count} oyuncu var, yaklaşık ${p.minutes} dakika sürer.`,
+  sn_learn: "Sonrasında her maçtan sonra oyuncuların birbirine verdiği puanlardan öğrenirim, yani bu yalnızca bir kez gerekir.",
+  sn_change_any_time: "Puanları istediğiniz zaman aynı sayfadan değiştirebilirsiniz.",
+  sn_names: (p) =>
+    p.names.length <= 1 ? (p.names[0] ?? "") : `${p.names.slice(0, -1).join(", ")} ya da ${p.names[p.names.length - 1]}`,
   oa_bench_claim_too_late: (p) =>
     `Sağ ol ${p.firstName} 🙏 biri senden önce davrandı. Yedekte kalmaya devam ediyorsun, başka bir yer açılırsa sıra sende.`,
   wr_announce_label: "Listeyi ve takımları kim duyurur",

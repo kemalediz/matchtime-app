@@ -201,6 +201,9 @@ function setWorld(
   };
   overrides.attendanceEvent = { count: async () => opts.carried ?? 0 };
   overrides.activity = { count: async () => 0, findMany: async () => [] };
+  // The club has played and been rated before, so the one-off
+  // seed-rating nudge (seed-nudge.ts, its own tests) is not due here.
+  overrides.rating = { findFirst: async () => ({ id: "r-earlier" }) };
 }
 
 const GROUP_CAPS = { adminGroup: true };

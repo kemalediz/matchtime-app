@@ -4467,6 +4467,27 @@ export const en = {
   pr_tail_dm: (p: { link: string; url: string }): string =>
     `Tap to review and set phone, position and rating, or remove:\n${p.link}\n\nOr open: ${p.url}`,
   pr_tail_group: (p: { link: string }): string => `Review them and set phone, position and rating, or remove them:\n${p.link}`,
+  // ── The seed-rating nudge (2026-10-15, seed-nudge-copy.ts): once per club,
+  //    to its admins, when most players likely to play have no seed and the
+  //    club has no peer ratings yet. The rule: seed-nudge-rules.ts.
+  sn_title: (p: { weekday: string }): string => `⭐ *One thing before ${p.weekday}'s teams*`,
+  sn_unknown_all:
+    "I don't know anyone's level yet, so for now I'd treat every player the same and the teams could come out lopsided.",
+  sn_unknown_most:
+    "I don't know most players' level yet, so for now I'd treat them all the same and the teams could come out lopsided.",
+  sn_ask_named: (p: { names: string; link: string }): string =>
+    `${p.names}: give each player a rough rating from 1 to 10 here:\n${p.link}`,
+  sn_ask: (p: { link: string }): string => `Give each player a rough rating from 1 to 10 here:\n${p.link}`,
+  sn_never_seen: "Players never see these, they only help me balance the sides.",
+  sn_size_week: (p: { count: number; minutes: number }): string =>
+    `This week's ${p.count} is enough, about ${p.minutes} minutes.`,
+  sn_size_club: (p: { count: number; minutes: number }): string =>
+    `That's ${p.count} players without one, about ${p.minutes} minutes.`,
+  sn_learn: "After that I learn from the ratings players give each other after every game, so this is only needed once.",
+  sn_change_any_time: "You can change them any time on the same page.",
+  /** "Hamzah", "Hamzah or Raihan", "Hamzah, Raihan or Ali". */
+  sn_names: (p: { names: string[] }): string =>
+    p.names.length <= 1 ? (p.names[0] ?? "") : `${p.names.slice(0, -1).join(", ")} or ${p.names[p.names.length - 1]}`,
   /** In the players' group, a bench claim that lost the race, without the
    *  squad count (`bench_claim_too_late` carries one). */
   oa_bench_claim_too_late: (p: { firstName: string }): string =>
