@@ -1057,6 +1057,10 @@ export const en = {
     /** The club's organisers share the list and teams
      *  (`Organisation.listAnnouncer = "organisers"`). Absent: off. */
     organisersAnnounce?: boolean;
+    /** With payments off, end with the organiser's "Want to collect match
+     *  fees?" pointer. False in bare help for the players' group and a
+     *  player's DM (FNF, 2026-10-15): it is for an organiser. Absent: on. */
+    feesNudge?: boolean;
   }): string => {
     const lines: string[] = [];
     if (f.attendance) {
@@ -1097,7 +1101,7 @@ export const en = {
     // organiser whose club does not collect yet learns that it can.
     if (f.paymentCollection) lines.push(`💷 After each game I'll DM you a pay link: card, Apple or Google Pay, or bank.`);
     if (f.paymentTracking) lines.push(`💳 I keep track of who's *paid*.`);
-    if (!f.paymentTracking && !f.paymentCollection) lines.push(`💷 Want to collect match fees? Ask me: *@Match Time help payments*`);
+    if (!f.paymentTracking && !f.paymentCollection && f.feesNudge !== false) lines.push(`💷 Want to collect match fees? Ask me: *@Match Time help payments*`);
     lines.push(`\nType *"@Match Time help"* any time to see this again.`);
     return lines.join("\n");
   },

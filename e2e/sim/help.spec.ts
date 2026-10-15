@@ -71,8 +71,8 @@ test('tagged bare "help" → topic menu, omits the disabled payments topic', asy
   expect(r.intent).toBe("help");
   expect(r.reply).toMatch(/MatchTime help/);
   expect(r.reply).toMatch(/help ratings/); // an enabled topic
-  // payments off → not in the topic menu (the how-to's 💷 line still
-  // points at it, 2026-09-30)
+  // payments off → not in the topic menu, and the organiser's 💷 fees
+  // pointer is left out of the group's help too (FNF, 2026-10-15)
   expect(r.reply).not.toMatch(/• \*@Match Time help payments\*/);
 });
 

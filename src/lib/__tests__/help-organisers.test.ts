@@ -348,3 +348,64 @@ describe("an organiser's DM help in organisers mode", () => {
     expect(buildHelpReply(null, FNF, "en", { audience: "group", adminGroupLinked: true })).not.toContain(SECTION_EN);
   });
 });
+
+// FNF (2026-10-15): the players' group bare help ended, for a club with
+// payments off, with "💷 Want to collect match fees? Ask me: *@Match Time
+// help payments*". That line is for an organiser, yet every player in the
+// main chat saw it. The group no longer gets it; an organiser's DM still
+// does, and "help payments" asked outright still answers as before.
+describe("the fee-collection nudge is for organisers, not the players' group", () => {
+  const NUDGE_EN = `💷 Want to collect match fees? Ask me: *@Match Time help payments*`;
+  const NUDGE_TR = `💷 Maç ücretlerini toplamak mı istiyorsunuz? Bana sorun: *@Match Time yardım ödeme*`;
+  const PAY_OFF: HelpFeatures = { ...ALL_ON, paymentTracking: false, paymentCollection: false };
+  const FNF_PAY_OFF: HelpFeatures = { ...FNF, paymentTracking: false, paymentCollection: false };
+
+  it("group bare help with payments off: no nudge and no payments topic, in English and Turkish", () => {
+    for (const f of [PAY_OFF, FNF_PAY_OFF, FEATURE_SETS.allOff, FEATURE_SETS.noTeamsNoPay]) {
+      const en = buildHelpReply(null, f, "en", { audience: "group" });
+      const tr = buildHelpReply(null, f, "tr", { audience: "group" });
+      expect(en).not.toContain(NUDGE_EN);
+      expect(tr).not.toContain(NUDGE_TR);
+      expect(en).not.toMatch(/help payments/);
+      expect(tr).not.toMatch(/yardım ödeme/);
+      expect(en).not.toContain("💷");
+      expect(tr).not.toContain("💷");
+      // The closing line still follows the last feature line directly.
+      expect(en.endsWith(`\n\nType *"@Match Time help"* any time to see this again.`)).toBe(true);
+    }
+  });
+
+  it("a player's DM matches the group's (no nudge), in English and Turkish", () => {
+    for (const lang of ["en", "tr"]) {
+      expect(buildHelpReply(null, PAY_OFF, lang, { audience: "player" })).toBe(buildHelpReply(null, PAY_OFF, lang, { audience: "group" }));
+    }
+  });
+
+  it("an organiser's DM keeps the nudge, in English and Turkish", () => {
+    expect(buildHelpReply(null, PAY_OFF, "en", { audience: "admin", links: LINKS })).toContain(NUDGE_EN);
+    expect(buildHelpReply(null, PAY_OFF, "tr", { audience: "admin", links: LINKS })).toContain(NUDGE_TR);
+    expect(buildHelpReply(null, FNF_PAY_OFF, "en", { audience: "admin", links: LINKS, adminGroupLinked: true })).toContain(NUDGE_EN);
+  });
+
+  it("group bare help is otherwise the admin's text without the nudge line and the admin tail", () => {
+    for (const lang of ["en", "tr"]) {
+      const nudge = lang === "en" ? NUDGE_EN : NUDGE_TR;
+      const group = buildHelpReply(null, PAY_OFF, lang, { audience: "group" });
+      const admin = buildHelpReply(null, PAY_OFF, lang, { audience: "admin", links: LINKS });
+      expect(admin.startsWith(group.replace(/\n\n(Type|Bunu)/, `\n${nudge}\n\n$1`))).toBe(true);
+    }
+  });
+
+  it("'help payments' asked outright in the group still answers as before", () => {
+    for (const lang of ["en", "tr"]) {
+      expect(buildHelpReply("payments", PAY_OFF, lang, { audience: "group" })).toBe(BEFORE[`allOff|${lang}|group|payments`]);
+    }
+  });
+
+  it("payments on: the group bare help is unchanged and lists the payments topic", () => {
+    for (const lang of ["en", "tr"]) {
+      expect(buildHelpReply(null, ALL_ON, lang, { audience: "group" })).toBe(BEFORE[`allOn|${lang}|group|bare`]);
+    }
+    expect(buildHelpReply(null, ALL_ON, "en", { audience: "group" })).toMatch(/• \*@Match Time help payments\*/);
+  });
+});
