@@ -1779,7 +1779,7 @@ function cases(lang: Lang): Case[] {
   ];
   const op = {
     lang,
-    reason: "drop" as "drop" | "open-place" | "deadline-summary",
+    reason: "drop" as "drop" | "open-place" | "deadline-summary" | "bench-update",
     droppedNames: ["Hamzah"],
     late: false,
     activityName: "Friday 9-a-side",
@@ -1799,6 +1799,7 @@ function cases(lang: Lang): Case[] {
   add("OPK1 buildPickMessage / a place never filled", buildPickMessage({ ...op, reason: "open-place", droppedNames: [] }));
   add("OPK1 buildPickMessage / two places never filled", buildPickMessage({ ...op, reason: "open-place", droppedNames: [], open: 2, confirmed: 16 }));
   add("OPK1 buildPickMessage / the deadline summary", buildPickMessage({ ...op, reason: "deadline-summary" }));
+  add("OPK1 buildPickMessage / the bench changed, in the admin group", buildPickMessage({ ...op, reason: "bench-update", audience: "group" }));
   add("OPK2 buildPickListChanged (P5)", buildPickListChanged({ lang, rows: opRows, audience: "group" }));
   add(
     "OPK3 the pick, told (A1 to A3)",

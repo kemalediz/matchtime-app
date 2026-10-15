@@ -103,6 +103,8 @@ describe("decidePickRound", () => {
     openRound: null,
     lastClosedRound: null,
     dropsSince: 1,
+    confirmed: 17,
+    pastePending: false,
   };
   it("opens with a free place and a waiting list", () => {
     expect(decidePickRound(base)).toEqual({ action: "open" });
@@ -147,6 +149,55 @@ describe("decidePickRound", () => {
   it("after a round was filled, a free place always opens a new one (the picked player said OUT)", () => {
     const closed = { createdAt: new Date(base.now.getTime() - 2 * H), listUserIds: base.waitingUserIds, openPlaces: 1, outcome: "filled" };
     expect(decidePickRound({ ...base, lastClosedRound: closed, dropsSince: 0 }).action).toBe("open");
+  });
+
+  // ── The squad is not set yet (rehearsal 2026-10-15, finding 1) ──
+  it("no confirmed player yet: no pick round, however many places are open (the organisers are still making the list)", () => {
+    expect(decidePickRound({ ...base, openPlaces: 18, confirmed: 0, dropsSince: 0 })).toEqual({
+      action: "wait",
+      why: "no squad yet",
+    });
+  });
+  it("a pasted list waiting for YES: no pick round, nor a superseding one", () => {
+    expect(decidePickRound({ ...base, pastePending: true })).toEqual({ action: "wait", why: "a pasted list is waiting for YES" });
+    const openRound = { createdAt: new Date(base.now.getTime() - 5 * H), listUserIds: ["u-kemal"], openPlaces: 1 };
+    expect(decidePickRound({ ...base, openRound, pastePending: true }).action).toBe("wait");
+  });
+
+  // ── One prompt per opening (rehearsal 2026-10-15, finding 2) ──
+  describe("an open round after the admins changed the squad themselves", () => {
+    const openRound = { createdAt: new Date(base.now.getTime() - 5 * H), listUserIds: base.waitingUserIds, openPlaces: 2 };
+    it("they filled a place ('put Zed in'): no new message, the round just records the count", () => {
+      expect(decidePickRound({ ...base, openRound, openPlaces: 1, dropsSince: 0 })).toEqual({ action: "refresh" });
+    });
+    it("they took a player out in the admin group (not a player's drop): no new message either", () => {
+      expect(decidePickRound({ ...base, openRound, openPlaces: 3, dropsSince: 0 })).toEqual({ action: "refresh" });
+    });
+    it("they brought in someone from the bench: the shorter bench is still answered by the list as sent", () => {
+      expect(decidePickRound({ ...base, openRound, openPlaces: 1, waitingUserIds: ["u-wasim"], dropsSince: 0 })).toEqual({
+        action: "refresh",
+      });
+    });
+    it("nothing at all changed: wait", () => {
+      expect(decidePickRound({ ...base, openRound, openPlaces: 2, dropsSince: 0 }).action).toBe("wait");
+    });
+    it("a player dropped since: a new message, about that drop", () => {
+      expect(decidePickRound({ ...base, openRound, openPlaces: 2, dropsSince: 1 })).toEqual({ action: "supersede", news: "drop" });
+    });
+    it("somebody new joined the bench: a new message, the bench update", () => {
+      expect(decidePickRound({ ...base, openRound, waitingUserIds: [...base.waitingUserIds, "u-ali"], dropsSince: 0 })).toEqual({
+        action: "supersede",
+        news: "bench",
+      });
+    });
+  });
+  it("after NONE, the admins' own change to the count opens nothing; a player's drop or a new name on the bench does", () => {
+    const closed = { createdAt: new Date(base.now.getTime() - 2 * H), listUserIds: base.waitingUserIds, openPlaces: 1, outcome: "none-by-admin" };
+    expect(decidePickRound({ ...base, lastClosedRound: closed, openPlaces: 2, dropsSince: 0 }).action).toBe("wait");
+    expect(decidePickRound({ ...base, lastClosedRound: closed, openPlaces: 2, dropsSince: 1 }).action).toBe("open");
+    expect(decidePickRound({ ...base, lastClosedRound: closed, waitingUserIds: [...base.waitingUserIds, "u-ali"], dropsSince: 0 }).action).toBe(
+      "open",
+    );
   });
 });
 
@@ -255,7 +306,7 @@ describe("the pick message (P1) and the list again (P5)", () => {
     { name: "Ali", position: null, rating: null },
   ];
   const base = {
-    reason: "drop" as "drop" | "open-place" | "deadline-summary",
+    reason: "drop" as "drop" | "open-place" | "deadline-summary" | "bench-update",
     droppedNames: ["Hamzah"],
     late: false,
     activityName: "Friday 9-a-side",
@@ -311,6 +362,23 @@ describe("the pick message (P1) and the list again (P5)", () => {
     );
     expect(first({ reason: "deadline-summary" })).toBe(
       "Drop-out deadline passed for *Friday 9-a-side* (Fri 9 Oct at 20:30). 1 place open, squad 17/18.",
+    );
+  });
+  it("the bench update: no drop-out named again, no fallback line again, just the count, the list and how to answer", () => {
+    expect(buildPickMessage({ ...base, lang: "en", reason: "bench-update", audience: "group" })).toBe(
+      [
+        "The bench for *Friday 9-a-side* (Fri 9 Oct at 20:30) has changed. 1 place open, squad 17/18.",
+        "",
+        "Bench:",
+        "1. Kemal (GK, 7.4)",
+        "2. Wasim (MID, 7.9)",
+        "3. Ali (no position, new)",
+        "",
+        "Reply here with a number, a name or an @tag, e.g. *2*, or *2 3* for two. *NONE* leaves it open.",
+      ].join("\n"),
+    );
+    expect(buildPickMessage({ ...base, lang: "tr", reason: "bench-update", audience: "group" }).split("\n")[0]).toBe(
+      "*Friday 9-a-side* (Fri 9 Oct at 20:30) için yedek listesi değişti. 1 yer boş, kadro 17/18.",
     );
   });
   it("P5 repeats the list with the instructions", () => {

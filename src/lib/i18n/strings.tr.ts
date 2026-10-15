@@ -2097,6 +2097,7 @@ export const tr: Strings = {
   pick_lead_deadline: (p) => `*${p.activityName}* (${p.whenLabel}) için son çıkış saati geçti.`,
   pick_lead_open_place: (p) =>
     `*${p.activityName}* (${p.whenLabel}) için ${p.open} yer boş, kadro ${p.confirmed}/${p.maxPlayers}.`,
+  pick_lead_bench_update: (p) => `*${p.activityName}* (${p.whenLabel}) için yedek listesi değişti.`,
   pick_places_line: (p) => `${p.open} yer boş, kadro ${p.confirmed}/${p.maxPlayers}.`,
   pick_waiting_header: "Yedek listesi:",
   pick_list_row: (p) => `${p.n}. ${p.name} (${p.position ?? "mevki yok"}, ${p.rating ?? "yeni"})`,

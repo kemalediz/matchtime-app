@@ -7,8 +7,11 @@
  *
  *   sweepOrganiserPicks   (every due-posts poll, before the posts are
  *                         computed) opens a pick round when a place is free
- *                         and somebody is waiting, supersedes a stale one,
- *                         closes rounds that are filled or past kickoff,
+ *                         and somebody is waiting, supersedes one only on
+ *                         news (a player's drop, a new name on the bench),
+ *                         records the count when the admins changed it
+ *                         themselves, closes rounds that are filled or
+ *                         past kickoff,
  *                         and runs the fallback (D5) when nobody picked;
  *   handlePickReply       reads an admin's reply (the admin group or a DM)
  *                         and acts on it: first valid reply wins;
@@ -46,6 +49,7 @@ import { dayTimeLabel, weekdayTimeLabel } from "./i18n/dates";
 import { t } from "./i18n/t";
 import { normalisePhone } from "./phone";
 import { organisersAnnounce } from "./list-announcer";
+import { ADMIN_GROUP_SOURCE_PREFIX } from "./admin-added";
 import {
   PICK_CONFIRM_TTL_MS,
   PICK_LATE_REPLY_MS,
@@ -187,14 +191,24 @@ async function loadMatchWorld(matchId: string): Promise<MatchWorld | null> {
 }
 
 /** CONFIRMED to DROPPED moves on the match since `since`, oldest first,
- *  with whether each was after the drop-out deadline. */
-async function dropsSince(matchId: string, since: Date): Promise<Array<{ userId: string; late: boolean }>> {
+ *  with whether each was after the drop-out deadline, and whether the
+ *  admins made it themselves in the admin group (the admin-group writers
+ *  stamp `sourceRef` with "admin-group:", see `admin-added.ts`): such a
+ *  drop is no news to the admin group, which was told "Done" there. */
+async function dropsSince(
+  matchId: string,
+  since: Date,
+): Promise<Array<{ userId: string; late: boolean; byAdminGroup: boolean }>> {
   const events = await db.attendanceEvent.findMany({
     where: { matchId, fromStatus: "CONFIRMED", toStatus: "DROPPED", at: { gt: since } },
     orderBy: { at: "asc" },
-    select: { userId: true, note: true },
+    select: { userId: true, note: true, actorKind: true, sourceRef: true },
   });
-  return events.map((e) => ({ userId: e.userId, late: /after the drop-out deadline/.test(e.note ?? "") }));
+  return events.map((e) => ({
+    userId: e.userId,
+    late: /after the drop-out deadline/.test(e.note ?? ""),
+    byAdminGroup: e.actorKind === "admin" && (e.sourceRef ?? "").startsWith(ADMIN_GROUP_SOURCE_PREFIX),
+  }));
 }
 
 // ── The sweep ────────────────────────────────────────────────────────────
@@ -274,20 +288,35 @@ async function sweepOneMatch(
 
   const reference = open ?? lastClosed;
   const drops = await dropsSince(m.id, reference?.createdAt ?? new Date(0));
+  // News for the admins: the players' own drops, still out. A drop the
+  // admins made in the admin group, or one already put right, is not.
+  const stillOut = new Set(world.dropped);
+  const news = drops.filter((d) => !d.byAdminGroup && stillOut.has(d.userId));
   const openOffers = await db.benchSlotOffer.count({ where: { matchId: m.id, resolvedAt: null } });
   const { dropOut } = weeklyDeadlinesFor(m.date, org);
+  const pastePending =
+    (await db.adminSquadProposal.count({ where: { matchId: m.id, resolvedAt: null, expiresAt: { gt: now } } })) > 0;
   const decision = decidePickRound({
     now,
     kickoff: m.date,
     openPlaces,
     waitingUserIds: world.waiting.map((w) => w.userId),
+    confirmed: world.confirmed.length,
+    pastePending,
     dropOutDeadline: dropOut,
     openOffers,
     openRound: open,
     lastClosedRound: lastClosed,
-    dropsSince: drops.length,
+    dropsSince: news.length,
   });
   if (decision.action === "wait") return;
+  if (decision.action === "refresh") {
+    // The admins changed the count themselves: the round as sent still
+    // answers (numbers resolve against its stored list), so it only
+    // records the count, which keeps the next poll from seeing a change.
+    if (open) await db.organiserPickRound.updateMany({ where: { id: open.id, resolvedAt: null }, data: { openPlaces } });
+    return;
+  }
 
   // Claim the opening, so two polls at the same instant open one round.
   const previousId = rounds[0]?.id ?? null;
@@ -297,17 +326,24 @@ async function sweepOneMatch(
     return; // another poll opened it
   }
 
-  // The drops this round is about: the superseded round's, plus any since,
-  // still out.
-  const stillOut = new Set(world.dropped);
+  // The drops this round is about, still out: the superseded round's plus
+  // any since. They decide whose place a pick takes (`applyOrganiserPick`)
+  // and which drop a fallback offer replaces.
   const vacated = [...new Set([...(open?.vacatedByUserIds ?? []), ...drops.map((d) => d.userId)])].filter((id) => stillOut.has(id));
   const late = new Set([...(open?.lateDropUserIds ?? []), ...drops.filter((d) => d.late).map((d) => d.userId)]);
   const lateIds = vacated.filter((id) => late.has(id));
+  // The drops the MESSAGE names: only the news since the last message went
+  // out (2026-10-15). The superseded round already named its drops, and
+  // the admins were told "Done" for their own: naming them again made
+  // every admin change repeat the old drop-out announcement.
+  const announcedIds = [...new Set(news.map((d) => d.userId))];
+  const announcedLate = announcedIds.filter((id) => late.has(id));
 
   // The first round after the club's drop-out deadline IS the deadline
   // summary (slice 3, plan 3.2): it claims the summary's key so D2 does
   // not also go out.
-  let reason: PickReason = vacated.length > 0 ? "drop" : "open-place";
+  let reason: PickReason =
+    announcedIds.length > 0 ? "drop" : decision.action === "supersede" && decision.news === "bench" ? "bench-update" : "open-place";
   if (dropOut && now.getTime() >= dropOut.getTime()) {
     try {
       await db.sentNotification.create({ data: { key: deadlineSummaryKey(m.id), kind: "admin-notice", matchId: m.id } });
@@ -354,15 +390,15 @@ async function sweepOneMatch(
   });
   out.opened++;
 
-  const names = await namesOf(vacated);
+  const names = await namesOf(announcedIds);
   const rows = await loadPickListRows(org.id, world.activityId, world.waiting);
   const fallback = normaliseBenchPickFallback(org.benchPickFallback);
   const message = (audience: "dm" | "group") =>
     buildPickMessage({
       lang: org.language,
       reason,
-      droppedNames: vacated.map((id) => names.get(id) ?? "?"),
-      late: vacated.length > 0 && lateIds.length === vacated.length,
+      droppedNames: announcedIds.map((id) => names.get(id) ?? "?"),
+      late: announcedIds.length > 0 && announcedLate.length === announcedIds.length,
       activityName: world.activityName,
       whenLabel: dayTimeLabel(org.language, m.date),
       open: openPlaces,

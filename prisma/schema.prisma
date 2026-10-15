@@ -1633,7 +1633,7 @@ model OrganiserPickRound {
   /// Of those, which were after the drop-out deadline (wording only).
   lateDropUserIds             String[]  @default([])
   openPlaces                  Int
-  /// "drop" | "open-place" | "deadline-summary"
+  /// "drop" | "open-place" | "deadline-summary" | "bench-update"
   reason                      String
   fallbackAt                  DateTime
   /// E1: a "not on the waiting list, YES?" question waiting for an answer.

@@ -2720,6 +2720,10 @@ export const en = {
     p.open === 1
       ? `There is 1 place open in *${p.activityName}* (${p.whenLabel}), squad ${p.confirmed}/${p.maxPlayers}.`
       : `There are ${p.open} places open in *${p.activityName}* (${p.whenLabel}), squad ${p.confirmed}/${p.maxPlayers}.`,
+  /** P1 first line: the open round is replaced only because somebody new
+   *  is on the bench (2026-10-15). Names no drop again. */
+  pick_lead_bench_update: (p: { activityName: string; whenLabel: string }): string =>
+    `The bench for *${p.activityName}* (${p.whenLabel}) has changed.`,
   /** P1: the count, after a drop or deadline lead. */
   pick_places_line: (p: { open: number; confirmed: number; maxPlayers: number }): string =>
     `${p.open === 1 ? "1 place open" : `${p.open} places open`}, squad ${p.confirmed}/${p.maxPlayers}.`,

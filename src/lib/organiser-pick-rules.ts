@@ -72,9 +72,18 @@ export interface RoundSnapshot {
 export type RoundDecision =
   | { action: "wait"; why: string }
   | { action: "open" }
-  | { action: "supersede" };
+  /** A new message replaces the open round's: a player dropped since it
+   *  went out ("drop"), or somebody new is on the bench ("bench"). */
+  | { action: "supersede"; news: "drop" | "bench" }
+  /** The open round still answers as sent (the admins changed the count
+   *  themselves): record the count on it, post nothing. */
+  | { action: "refresh" };
 
-const sameList = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
+/** Is anyone on the bench now who was not on the list as sent? */
+const benchGained = (sent: readonly string[], now: readonly string[]) => {
+  const was = new Set(sent);
+  return now.some((id) => !was.has(id));
+};
 
 /**
  * How many offers the fallback opens: one per free place, but never more
@@ -109,48 +118,83 @@ export function buildPickFallbackOffered(p: {
 
 /**
  * Should a pick round open for this match now (plan 2.7)? All of:
- * a free place, somebody waiting, the club's drop-out deadline passed (or
- * none set), London 09:00 to 22:59, no fallback offer running, and either
- * no open round or an open round that has gone stale (a new drop, or the
- * list or the count changed) whose message went out at least an hour ago.
+ * a free place, somebody waiting, the squad set (below), the club's
+ * drop-out deadline passed (or none set), London 09:00 to 22:59, and no
+ * fallback offer running.
+ *
+ * THE SQUAD IS SET (2026-10-15, club rehearsal): at least one player is
+ * confirmed, and no pasted list for this match is waiting for an admin's
+ * YES. A pick round fills a gap in a squad the organisers have made. With
+ * nobody confirmed there is no squad yet (a new club's first week: every
+ * IN goes on the bench and the organisers paste the list), and a pasted
+ * list waiting for YES is about to rewrite the squad, so a pick asked now
+ * would answer a list that is about to change. "18 places open, bench: 1"
+ * was noise.
+ *
+ * ONE MESSAGE PER OPENING (2026-10-15). `dropsSince` counts only news:
+ * players who dropped since the open round (or the last closed one) went
+ * out, never a change the admins made themselves in the admin group. With
+ * an open round:
+ *   - a player dropped since, or somebody new is on the bench: a new
+ *     message replaces it, at most one an hour ("supersede");
+ *   - only the count changed (the admins filled a place, or took a player
+ *     out, themselves; or a listed player was brought in): the round as
+ *     sent still answers, so it records the count and nothing is posted
+ *     ("refresh");
+ *   - nothing changed: wait.
  *
  * After a round has CLOSED (NONE from an admin, a fallback), a new one
- * opens only when something changed since it: a drop, the list, or the
- * count. A round that closed "filled" always counts as changed, because a
- * free place after it means somebody left.
+ * opens only on news: a player's drop, or somebody new on the bench. A
+ * round that closed "filled" always counts as changed, because a free
+ * place after it means somebody left.
  */
 export function decidePickRound(p: {
   now: Date;
   kickoff: Date;
   openPlaces: number;
   waitingUserIds: string[];
+  /** CONFIRMED players now. */
+  confirmed: number;
+  /** A pasted squad list for this match is waiting for an admin's YES. */
+  pastePending: boolean;
   dropOutDeadline: Date | null;
   openOffers: number;
   openRound: RoundSnapshot | null;
   lastClosedRound: RoundSnapshot | null;
-  /** CONFIRMED to DROPPED moves since the open round (or the last closed one) went out. */
+  /** Players' CONFIRMED to DROPPED moves since the open round (or the last
+   *  closed one) went out, leaving out those made in the admin group. */
   dropsSince: number;
 }): RoundDecision {
   if (p.now.getTime() >= p.kickoff.getTime()) return { action: "wait", why: "kicked off" };
   if (p.openPlaces <= 0) return { action: "wait", why: "no free place" };
   if (p.waitingUserIds.length === 0) return { action: "wait", why: "nobody waiting" };
+  if (p.confirmed <= 0) return { action: "wait", why: "no squad yet" };
+  if (p.pastePending) return { action: "wait", why: "a pasted list is waiting for YES" };
   if (p.dropOutDeadline && p.now.getTime() < p.dropOutDeadline.getTime()) return { action: "wait", why: "before the drop-out deadline" };
   if (!isPickHour(p.now)) return { action: "wait", why: "quiet hours" };
   if (p.openOffers > 0) return { action: "wait", why: "the fallback offer is running" };
 
-  const changedSince = (r: RoundSnapshot) =>
-    p.dropsSince > 0 || !sameList(r.listUserIds, p.waitingUserIds) || r.openPlaces !== p.openPlaces;
-
   if (p.openRound) {
-    if (!changedSince(p.openRound)) return { action: "wait", why: "the open round is current" };
-    if (p.now.getTime() - p.openRound.createdAt.getTime() < PICK_SUPERSEDE_AFTER_MS) {
-      return { action: "wait", why: "at most one pick message an hour" };
+    const news = p.dropsSince > 0 ? "drop" : benchGained(p.openRound.listUserIds, p.waitingUserIds) ? "bench" : null;
+    if (news) {
+      if (p.now.getTime() - p.openRound.createdAt.getTime() < PICK_SUPERSEDE_AFTER_MS) {
+        return { action: "wait", why: "at most one pick message an hour" };
+      }
+      return { action: "supersede", news };
     }
-    return { action: "supersede" };
+    if (p.openRound.openPlaces !== p.openPlaces) return { action: "refresh" };
+    return { action: "wait", why: "the open round is current" };
   }
   const last = p.lastClosedRound;
-  if (last && last.outcome !== "filled" && last.outcome !== "superseded" && last.outcome !== "closed-at-kickoff" && !changedSince(last)) {
-    return { action: "wait", why: `nothing changed since the last round closed (${last.outcome})` };
+  if (
+    last &&
+    last.outcome !== "filled" &&
+    last.outcome !== "superseded" &&
+    last.outcome !== "closed-at-kickoff" &&
+    p.dropsSince === 0 &&
+    !benchGained(last.listUserIds, p.waitingUserIds)
+  ) {
+    return { action: "wait", why: `nothing new since the last round closed (${last.outcome})` };
   }
   return { action: "open" };
 }
@@ -380,7 +424,10 @@ export function buildPickListBlock(lang: string | null | undefined, rows: PickLi
   ].join("\n");
 }
 
-export type PickReason = "drop" | "open-place" | "deadline-summary";
+/** "bench-update" (2026-10-15): a round that replaces an open one only
+ *  because somebody new is on the bench. It names no drop again and does
+ *  not repeat the fallback line (the time carries over unchanged). */
+export type PickReason = "drop" | "open-place" | "deadline-summary" | "bench-update";
 
 /** P1: the pick message, for a DM or the admin group. */
 export function buildPickMessage(p: {
@@ -401,6 +448,16 @@ export function buildPickMessage(p: {
 }): string {
   const s = t(p.lang);
   const places = s.pick_places_line({ open: p.open, confirmed: p.confirmed, maxPlayers: p.maxPlayers });
+  const instructions = p.audience === "group" ? s.pick_instructions_group : s.pick_instructions_dm;
+  if (p.reason === "bench-update") {
+    return [
+      `${s.pick_lead_bench_update({ activityName: p.activityName, whenLabel: p.whenLabel })} ${places}`,
+      "",
+      buildPickListBlock(p.lang, p.rows),
+      "",
+      instructions,
+    ].join("\n");
+  }
   const lead =
     p.reason === "deadline-summary"
       ? `${s.pick_lead_deadline({ activityName: p.activityName, whenLabel: p.whenLabel })} ${places}`
@@ -418,7 +475,7 @@ export function buildPickMessage(p: {
     "",
     buildPickListBlock(p.lang, p.rows),
     "",
-    p.audience === "group" ? s.pick_instructions_group : s.pick_instructions_dm,
+    instructions,
     p.fallback === "leave-empty" ? s.pick_fallback_leave({ when: p.fallbackWhen }) : s.pick_fallback_offer({ when: p.fallbackWhen }),
   ].join("\n");
 }
