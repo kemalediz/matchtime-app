@@ -129,6 +129,12 @@ import {
 } from "./scheduler-copy";
 import { organisersAnnounce } from "./list-announcer";
 import { buildProvisionalReviewNotice } from "./provisional-review-copy";
+import {
+  parseProvisionalReviewKey,
+  provisionalReviewCutoff,
+  provisionalReviewKey,
+  splitProvisionalByCutoff,
+} from "./provisional-review-rules";
 import { buildOrganiserListUpdate, buildOrganiserRelay, type OrganiserListReason } from "./organisers-list-copy";
 
 // All user-facing times in bot-posted messages are Europe/London wall
@@ -552,23 +558,47 @@ export async function computeDuePosts(
     }
   }
 
-  // ── Provisional-member review DM for admins ─────────────────────────
+  // ── "New players to review", for the admins ─────────────────────────
   // When the analyzer auto-creates Memberships for unknown group senders
-  // (see api/whatsapp/analyze/route.ts createProvisionalByName), admins
-  // need to review them — set phone, position, seed rating, or remove if
-  // not a player. DM each admin once per day while there are unresolved
-  // provisional members pending. Idempotency key includes the date and
-  // the admin ID so tomorrow's DM fires fresh.
+  // or names in a pasted list (see api/whatsapp/analyze/route.ts
+  // createProvisionalByName), admins need to review them: set phone,
+  // position, seed rating, or remove if not a player.
+  //
+  // ONCE PER PLAYER (2026-10-15). It used to be keyed by the day, so it
+  // fired every morning about the same unreviewed players (twelve times in
+  // two weeks in a club rehearsal). Now it is keyed by the newest waiting
+  // player's added time and names only players added since the last
+  // notice, with a count of those still waiting from earlier
+  // (provisional-review-rules.ts).
   {
-    const provisional = await db.membership.findMany({
+    const waiting = await db.membership.findMany({
       where: { orgId: org.id, provisionallyAddedAt: { not: null }, leftAt: null },
       include: { user: { select: { name: true } } },
       orderBy: { provisionallyAddedAt: "desc" },
-      take: 10,
+      take: 200,
     });
-    const channel = provisional.length > 0 ? await getAdminChannel() : null;
-    if (channel) {
-      const todayKey = formatLondon(now, "yyyy-MM-dd");
+    const newestAddedAt = waiting[0]?.provisionallyAddedAt ?? null;
+    let fresh: typeof waiting = [];
+    let earlier: typeof waiting = [];
+    if (newestAddedAt) {
+      // A notice sent before this change (keyed by the day) counts from
+      // when it was sent; read only if there is one.
+      const legacyKeys = [...sentKeys].filter((k) => parseProvisionalReviewKey(org.id, k) === "legacy");
+      const legacySentAt = new Map(
+        legacyKeys.length === 0
+          ? []
+          : (
+              await db.sentNotification.findMany({
+                where: { key: { in: legacyKeys } },
+                select: { key: true, createdAt: true },
+              })
+            ).map((r) => [r.key, r.createdAt] as const),
+      );
+      const cutoff = provisionalReviewCutoff({ orgId: org.id, sentKeys, legacySentAt, newestAddedAt });
+      ({ fresh, earlier } = splitProvisionalByCutoff(waiting, cutoff));
+    }
+    const channel = newestAddedAt && fresh.length > 0 ? await getAdminChannel() : null;
+    if (channel && newestAddedAt) {
       // HOW EACH GOT THERE (2026-10-14). A provisional player who has a
       // message of their own on record posted in the group; one with none
       // was added by name (a pasted list, or someone else's message). It
@@ -576,13 +606,13 @@ export async function computeDuePosts(
       const authored = new Set(
         (
           await db.analyzedMessage.findMany({
-            where: { orgId: org.id, authorUserId: { in: provisional.map((p) => p.userId) } },
+            where: { orgId: org.id, authorUserId: { in: fresh.map((p) => p.userId) } },
             select: { authorUserId: true },
             distinct: ["authorUserId"],
           })
         ).map((r) => r.authorUserId),
       );
-      const named = provisional.filter((p) => p.user.name);
+      const named = fresh.filter((p) => p.user.name);
       const posted = named.filter((p) => authored.has(p.userId)).map((p) => p.user.name!);
       const listed = named.filter((p) => !authored.has(p.userId)).map((p) => p.user.name!);
       // Through the admin channel (slice 2a), each admin's own signed-in
@@ -594,13 +624,14 @@ export async function computeDuePosts(
           piCaps,
           sentKeys,
           now,
-          key: (who) => `org-${org.id}:provisional-review:${who}:${todayKey}`,
+          key: (who) => provisionalReviewKey(org.id, who, newestAddedAt),
           notice: {
             nextPath: "/admin/players",
             text: (link, audience) =>
               buildProvisionalReviewNotice({
                 posted,
                 listed,
+                stillWaiting: earlier.length,
                 link,
                 audience,
                 plainUrl: appUrl("/admin/players"),
