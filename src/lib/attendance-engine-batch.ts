@@ -382,6 +382,16 @@ export interface EngineBatchDeps extends EngineApplyDeps {
   aiCapped?: boolean;
   /** Injected so tests can load a state without a database. */
   loadState?: (orgId: string, now: Date) => Promise<SquadState>;
+  /**
+   * THE CALLER NARROWS WHAT THE ENGINE MAY ACT ON (2026-10-15). Called
+   * once per owned message with attendance facts, after extraction and
+   * the pasted-roster clamp and BEFORE `decide()`; what it returns is all
+   * the engine sees. Only the admin group passes it
+   * (`admin-group-squad-change.ts`): there an organiser's conversation
+   * ("might have to pull out", "my ankle is wrecked") must not write, and
+   * only an explicit instruction does. Absent, nothing changes.
+   */
+  vetFacts?: (args: { message: EngineBatchMessage; facts: AttendanceFacts; state: SquadState }) => AttendanceFacts;
 }
 
 export async function runAttendanceEngineBatch(args: {
@@ -776,6 +786,18 @@ export async function runAttendanceEngineBatch(args: {
         `discarding ${clamped.dropped} other claim(s) read off the list.`,
     );
     factsById.set(m.waMessageId, { facts: clamped.facts, degraded: before.degraded });
+  }
+
+  // ── Stage 2c: THE CALLER'S VETTING (admin group only) ──────────────
+  // See `EngineBatchDeps.vetFacts`. Facts only; ownership is unchanged, so
+  // a message left with no claims is decided as "no claims extracted".
+  if (deps.vetFacts) {
+    for (const m of owned) {
+      if (!ownedIds.has(m.waMessageId)) continue;
+      const f = factsById.get(m.waMessageId);
+      if (!f || f.facts.kind !== "attendance") continue;
+      factsById.set(m.waMessageId, { facts: deps.vetFacts({ message: m, facts: f.facts, state }), degraded: f.degraded });
+    }
   }
 
   // Carrying `degradations` matters here: this is the branch where

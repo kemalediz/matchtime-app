@@ -35,6 +35,7 @@ const prov = vi.hoisted(() => ({ resolveOrProvisionByName: vi.fn() }));
 vi.mock("@/lib/resolve-or-provision-name", () => prov);
 
 import { handleAdminSquadChange } from "../admin-group-squad-change";
+import type { AttendanceFacts, Claim, SquadState } from "../pipeline/types";
 
 const MATCH_ID = "m1";
 const input = {
@@ -71,6 +72,44 @@ function engineDoes(fn: (args: EngineArgs) => Promise<void>, outcome: Record<str
       cost: { usd: 0, calls: 0, ms: 0 },
     };
   });
+}
+
+function claim(over: Partial<Claim> = {}): Claim {
+  return {
+    subject: "other",
+    personRef: "Shehryar",
+    personNamed: true,
+    polarity: "in",
+    contingent: false,
+    conditionOn: "none",
+    tense: "present",
+    basis: "decision",
+    reported: false,
+    confidence: 0.95,
+    replaces: "",
+    ...over,
+  };
+}
+const self = (over: Partial<Claim> = {}) => claim({ subject: "sender", personRef: "", personNamed: false, ...over });
+
+/** Run the facts through the hook this module handed the engine, against
+ *  a squad state, as the real runner does before `decide()`. */
+function vetThrough(a: EngineArgs, claims: Claim[], rows: SquadState["rows"], body?: string): AttendanceFacts {
+  expect(a.deps.vetFacts).toBeTypeOf("function");
+  const state = {
+    matchId: MATCH_ID,
+    maxPlayers: 18,
+    kickoffLabel: "Fri 20:30",
+    rows,
+    roster: [
+      { userId: "u-admin", name: "Omar", isAdmin: true, hasPhone: true },
+      { userId: "u-shehryar", name: "Shehryar", isAdmin: false, hasPhone: true },
+      { userId: "u-dev", name: "Dev", isAdmin: false, hasPhone: true },
+      { userId: "u-kofi", name: "Kofi", isAdmin: false, hasPhone: true },
+    ],
+  } as unknown as SquadState;
+  const message = { ...a.messages[0], ...(body ? { body } : {}) };
+  return a.deps.vetFacts!({ message, facts: { kind: "attendance", claims, affirmation: null, sideRequests: [] }, state });
 }
 
 const statuses = new Map<string, string>();
@@ -198,10 +237,12 @@ describe("handleAdminSquadChange", () => {
     expect(await handleAdminSquadChange(input)).toEqual({ handled: false, why: "no-match" });
   });
 
-  it("a claim that changes nothing: says so", async () => {
+  it("an explicit claim the squad already says: says so", async () => {
     routed("other_att");
     statuses.set("u-shehryar", "DROPPED");
-    engineDoes(async () => {});
+    engineDoes(async (a) => {
+      vetThrough(a, [claim({ personRef: "Shehryar", polarity: "out" })], [{ userId: "u-shehryar", status: "DROPPED", position: 3 }]);
+    });
     const r = await handleAdminSquadChange(input);
     expect(r).toEqual({ handled: true, outcome: "squad-unchanged", replyText: "Nothing to change: the squad already says that. 17 of 18." });
   });
@@ -223,13 +264,117 @@ describe("handleAdminSquadChange", () => {
     });
   });
 
-  it("an admin's maybe is recorded for the 24h chase", async () => {
+  it("engine maybes are still recorded for the 24h chase if the engine ever returns one", async () => {
     routed("other_att");
     dbMock.user.findMany.mockResolvedValue([{ id: "u-sait", name: "Sait" }]);
     engineDoes(async () => {}, { recordTentativeForUserIds: ["u-sait"] });
     const r = await handleAdminSquadChange({ ...input, text: "Sait is a maybe" });
     expect(tentative.recordTentative).toHaveBeenCalledWith(expect.objectContaining({ matchId: MATCH_ID, userId: "u-sait" }));
     expect(r).toMatchObject({ replyText: "Done: Sait a maybe. 17 of 18." });
+  });
+
+  // ── 2026-10-15: conversation in HQ is not an instruction ────────────
+  // The live rehearsal's shapes, paraphrased, through the real vetting
+  // hook this module hands the engine. The engine mock stands in for
+  // `decide()`: it writes only what survives the hook.
+
+  it("hands the engine a vetting hook that resolves names on the squad state and reads a bare IN/OUT as explicit", async () => {
+    routed("self_att");
+    engineDoes(async (a) => {
+      const kept = vetThrough(a, [self({ polarity: "out" })], [{ userId: "u-admin", status: "CONFIRMED", position: 1 }], "out");
+      expect(kept.claims).toHaveLength(1);
+      await a.deps.cancelAttendance("u-admin", MATCH_ID, { cause: "admin-message", actorKind: "admin", actorUserId: "u-admin", sourceRef: "wa-1" });
+    });
+    dbMock.user.findMany.mockResolvedValue([{ id: "u-admin", name: "Omar" }]);
+    statuses.set("u-admin", "CONFIRMED");
+    const r = await handleAdminSquadChange({ ...input, senderName: "Omar", text: "out" });
+    expect(r).toMatchObject({ handled: true, outcome: "squad-changed", replyText: "Done: Omar out. 17 of 18." });
+  });
+
+  it('a confirmed organiser saying he "might have to pull out": no write, no reply', async () => {
+    routed("self_att");
+    statuses.set("u-admin", "CONFIRMED");
+    engineDoes(
+      async (a) => {
+        const kept = vetThrough(a, [self({ polarity: "out", contingent: true, conditionOn: "self" })], [
+          { userId: "u-admin", status: "CONFIRMED", position: 1 },
+        ]);
+        expect(kept.claims).toEqual([]);
+      },
+      { claimCount: 0 },
+    );
+    expect(await handleAdminSquadChange({ ...input, text: "might have to pull out this week" })).toEqual({ handled: false, why: "not-a-squad-change" });
+    expect(att.cancelAttendance).not.toHaveBeenCalled();
+    expect(tentative.recordTentative).not.toHaveBeenCalled();
+  });
+
+  it("his next message about an injury: never applied, no reply", async () => {
+    routed("self_att");
+    statuses.set("u-admin", "CONFIRMED");
+    engineDoes(
+      async (a) => {
+        const kept = vetThrough(a, [self({ polarity: "out", basis: "availability" })], [{ userId: "u-admin", status: "CONFIRMED", position: 1 }]);
+        expect(kept.claims).toEqual([]);
+      },
+      { claimCount: 0 },
+    );
+    expect(await handleAdminSquadChange({ ...input, text: "my ankle is wrecked" })).toEqual({ handled: false, why: "not-a-squad-change" });
+  });
+
+  it("a plain self OUT said in conversation by a confirmed organiser: no write, one line with the command", async () => {
+    routed("self_att");
+    statuses.set("u-admin", "CONFIRMED");
+    engineDoes(
+      async (a) => {
+        vetThrough(a, [self({ polarity: "out" })], [{ userId: "u-admin", status: "CONFIRMED", position: 1 }]);
+      },
+      { claimCount: 0 },
+    );
+    const r = await handleAdminSquadChange({ ...input, senderName: "Omar", text: "won't be around on friday" });
+    expect(r).toEqual({ handled: true, outcome: "squad-question", replyText: 'To take yourself out of Fri 20:30, write "Omar out".' });
+    expect(att.cancelAttendance).not.toHaveBeenCalled();
+  });
+
+  it("the same said by an organiser not in the squad: silence (not a false 'Nothing to change')", async () => {
+    routed("self_att");
+    engineDoes(async (a) => void vetThrough(a, [self({ polarity: "out" })], []), { claimCount: 0 });
+    expect(await handleAdminSquadChange({ ...input, senderName: "Omar", text: "won't be around on friday" })).toEqual({ handled: false, why: "not-a-squad-change" });
+  });
+
+  it("a name nobody in the club has, said in passing: no write, says it does not know them and how to add them", async () => {
+    routed("other_att");
+    engineDoes(async (a) => void vetThrough(a, [claim({ personRef: "Zayn" })], []), { claimCount: 0 });
+    const r = await handleAdminSquadChange({ ...input, text: "Zayn is around again" });
+    expect(r).toEqual({ handled: true, outcome: "squad-question", replyText: 'I don\'t know Zayn yet. To add them, write "put Zayn in".' });
+    expect(prov.resolveOrProvisionByName).not.toHaveBeenCalled();
+  });
+
+  it("a member mentioned in passing: silence", async () => {
+    routed("other_att");
+    engineDoes(async (a) => void vetThrough(a, [claim({ personRef: "Dev" })], []), { claimCount: 0 });
+    expect(await handleAdminSquadChange({ ...input, text: "Dev is around again" })).toEqual({ handled: false, why: "not-a-squad-change" });
+  });
+
+  it("an admin reporting someone else's maybe in HQ: held, no tentative, no reply", async () => {
+    routed("other_att");
+    engineDoes(
+      async (a) => {
+        const kept = vetThrough(a, [claim({ personRef: "Dev", contingent: true, conditionOn: "self" })], []);
+        expect(kept.claims).toEqual([]);
+      },
+      { claimCount: 0 },
+    );
+    expect(await handleAdminSquadChange({ ...input, text: "Dev is a maybe" })).toEqual({ handled: false, why: "not-a-squad-change" });
+    expect(tentative.recordTentative).not.toHaveBeenCalled();
+  });
+
+  it("an explicit command still goes through the hook untouched", async () => {
+    routed("other_att");
+    engineDoes(async (a) => {
+      const kept = vetThrough(a, [claim({ personRef: "Kofi" })], []);
+      expect(kept.claims.map((c) => c.personRef)).toEqual(["Kofi"]);
+    }, { claimCount: 1 });
+    await handleAdminSquadChange({ ...input, text: "put Kofi in" });
   });
 
   it("logs ids and counts, never the text or a name", async () => {

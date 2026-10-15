@@ -12,7 +12,7 @@
 import { test, expect, resetDb } from "../fixtures";
 import { MATCH, ORG_ID, PHONE, U } from "../helpers/constants";
 import { E2E } from "../helpers/env";
-import { engineOn, clearPipelineStubs, otherFacts } from "../helpers/stub";
+import { engineOn, clearPipelineStubs, otherFacts, selfOut } from "../helpers/stub";
 import type { TestDb } from "../helpers/test-db";
 import type { APIRequestContext } from "@playwright/test";
 
@@ -93,6 +93,37 @@ test("'put Ian in': in, with the new count", async ({ request, db }) => {
 test("chat the router does not route to attendance is ignored, no reply", async ({ request }) => {
   engineOn({ "Wasim played well last week": { route: "none" } });
   expect(await say(request, "Wasim played well last week")).toMatchObject({ handled: false, ignored: "no-open-pick", replyText: null });
+});
+
+// ── 2026-10-15: organisers talking in HQ is not an instruction ────────
+// Alex (the owner) is CONFIRMED. The extractor's facts are stubbed to what
+// the live rehearsal saw for these shapes; the rest is the shipped code.
+
+test("an organiser who 'might have to pull out': no write, no reply", async ({ request, db }) => {
+  engineOn({ "might have to pull out this week": { route: "self_att", facts: selfOut({ contingent: true, conditionOn: "self" }) } });
+  expect(await say(request, "might have to pull out this week")).toMatchObject({ handled: false, replyText: null });
+  expect(await statusOf(db, U.admin)).toBe("CONFIRMED");
+});
+
+test("then an injury report: no write, no reply", async ({ request, db }) => {
+  engineOn({ "my knee is gone lads": { route: "self_att", facts: selfOut({ basis: "availability" }) } });
+  expect(await say(request, "my knee is gone lads")).toMatchObject({ handled: false, replyText: null });
+  expect(await statusOf(db, U.admin)).toBe("CONFIRMED");
+});
+
+test("a plain 'won't be around' in conversation: no write, one line with the command that does it", async ({ request, db }) => {
+  engineOn({ "won't be around on friday": { route: "self_att", facts: selfOut() } });
+  const out = await say(request, "won't be around on friday");
+  expect(out).toMatchObject({ handled: true, outcome: "squad-question" });
+  expect(out.replyText).toMatch(/^To take yourself out of .+, write "Alex Admin out"\.$/);
+  expect(await statusOf(db, U.admin)).toBe("CONFIRMED");
+});
+
+test("a name nobody in the club has, said in passing: not added, and it says how to add them", async ({ request, db }) => {
+  engineOn({ "Zed is around again": { route: "other_att", facts: otherFacts("Zed", "in") } });
+  const out = await say(request, "Zed is around again");
+  expect(out).toMatchObject({ handled: true, outcome: "squad-question", replyText: 'I don\'t know Zed yet. To add them, write "put Zed in".' });
+  expect(await db.one(`SELECT id FROM "User" WHERE name = 'Zed'`)).toBeFalsy();
 });
 
 const LIST = ["Friday squad", "1. Alex Admin", "2. Colin Collector", "3. Ian Innes", "4. Zara Zest", "5. Naim Newman"].join("\n");
