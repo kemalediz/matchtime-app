@@ -123,6 +123,8 @@ const GATES: Array<[string, (now: Date) => boolean]> = [
         kickoff: new Date(now.getTime() + 2 * DAY),
         openPlaces: 1,
         waitingUserIds: ["u1"],
+        confirmed: 17,
+        pastePending: false,
         dropOutDeadline: null,
         openOffers: 0,
         openRound: null,

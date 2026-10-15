@@ -722,6 +722,7 @@ const SAMPLES: SampleArgs = {
   pick_lead_drop: { names: ["Hamzah"], activityName: "Friday 9-a-side", whenLabel: "Fri 9 Oct at 20:30", late: false },
   pick_lead_deadline: { activityName: "Friday 9-a-side", whenLabel: "Fri 9 Oct at 20:30" },
   pick_lead_open_place: { open: 1, activityName: "Friday 9-a-side", whenLabel: "Fri 9 Oct at 20:30", confirmed: 17, maxPlayers: 18 },
+  pick_lead_bench_update: { activityName: "Friday 9-a-side", whenLabel: "Fri 9 Oct at 20:30" },
   pick_places_line: { open: 1, confirmed: 17, maxPlayers: 18 },
   pick_waiting_header: null,
   pick_list_row: { n: 3, name: "Ali", position: null, rating: null },
