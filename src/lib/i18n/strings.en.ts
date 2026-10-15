@@ -2089,6 +2089,11 @@ export const en = {
    *  none of the group's past chat and the learned setup has nothing to read. */
   sj_card_history_tip:
     "Important: before you confirm, switch on \"Message history\" on that screen. It sends MatchTime your group's recent messages, so it can set itself up the way you already run things.",
+  /** 2026-10-15: WhatsApp refuses an add by somebody who is not in
+   *  MatchTime's contacts and offers "Invite to group" instead. MatchTime
+   *  accepts the organiser's invite by itself; an invite brings no chat. */
+  sj_card_invite_tip:
+    "If WhatsApp says it can't add MatchTime and offers \"Invite to group\", tap that. MatchTime joins by itself. An invite doesn't bring the message history, so you'll set things up on the settings page instead.",
   sj_card_number_label: "MatchTime's WhatsApp number",
   sj_card_pending:
     "Step 3: we're checking your club, usually within a day. MatchTime stays quiet in the group until your club is approved, and messages you on WhatsApp when it's live.",

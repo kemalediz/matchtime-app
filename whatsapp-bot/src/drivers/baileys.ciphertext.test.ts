@@ -103,7 +103,9 @@ describe("a message that failed to decrypt at first", () => {
     const line = t.logs.find((l) => l.includes(ID));
     expect(line).toMatch(/could not be decrypted/);
     expect(line).toMatch(/No session found to decrypt message/);
-    expect(line).toMatch(/89485761081551:59@lid/);
+    // The sender, masked (2026-10-15): never a whole LID in the log.
+    expect(line).toMatch(/sender \*\*\*551@lid/);
+    expect(line).not.toMatch(/89485761081551/);
     expect(t.driver.stats()).toMatchObject({ undecryptable: 1, decryptRecovered: 0, decryptLost: 0 });
   });
 

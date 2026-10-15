@@ -463,6 +463,7 @@ const SAMPLES: SampleArgs = {
   sj_card_wrong_number: { seen: "+44 77** ***123", expected: "+44 7700 900123" },
   sj_card_dm_verified: null,
   sj_card_history_tip: null,
+  sj_card_invite_tip: null,
   sj_card_number_label: null,
   sj_card_pending: null,
   sj_card_pending_other: { group: "Riverside Tuesday 5s" },
