@@ -66,6 +66,7 @@ import { buildBadgeHelp } from "./badge-help";
 import { normaliseLang, type Lang } from "./i18n/lang";
 import { detectGroupLang, langOfConsentReply } from "./i18n/detect";
 import { guardedAnthropicCall } from "@/lib/pipeline/llm";
+import { organisersAnnounce } from "./list-announcer";
 
 const MODEL = "claude-haiku-4-5";
 
@@ -196,6 +197,8 @@ export function buildHowToUseMe(
     paymentTracking: boolean;
     /** Stripe fee collection; a missing value reads as off. */
     paymentCollection?: boolean;
+    /** The organisers share the list and teams; a missing value reads as off. */
+    organisersAnnounce?: boolean;
   },
   lang: Lang | string = "en",
 ): string {
@@ -286,6 +289,15 @@ export type HelpFeatures = {
   /** Stripe fee collection. Optional: most callers only know the tracking
    *  flag, and a missing value reads as off. */
   paymentCollection?: boolean;
+  /** The club's organisers share the list and the teams
+   *  (`Organisation.listAnnouncer = "organisers"`, 2026-10-15). MatchTime
+   *  then posts neither in the players' group, so the help offers neither.
+   *  A missing value reads as off: today's help, byte for byte. */
+  organisersAnnounce?: boolean;
+  /** The organisers pick who fills an open place
+   *  (`Organisation.benchPickMode = "organiser"`): no bench offer on a
+   *  drop. A missing value reads as off. */
+  organiserPicks?: boolean;
 };
 
 /** The help builder's view of a club's live flags. One mapping, so the
@@ -300,6 +312,8 @@ export function helpFeaturesFrom(f: {
   bench: boolean;
   paymentTracking: boolean;
   paymentCollection: boolean;
+  listAnnouncer?: string | null;
+  benchPickMode?: string | null;
 }): HelpFeatures {
   return {
     attendance: f.attendance,
@@ -311,6 +325,8 @@ export function helpFeaturesFrom(f: {
     bench: f.bench,
     paymentTracking: f.paymentTracking,
     paymentCollection: f.paymentCollection,
+    organisersAnnounce: organisersAnnounce(f),
+    organiserPicks: f.benchPickMode === "organiser",
   };
 }
 
@@ -476,6 +492,9 @@ export interface HelpContext {
   links?: Partial<Record<HelpAdminPage, string>>;
   /** "help badges <name>": the badge name as typed (readHelpRequest). */
   badgeQuery?: string;
+  /** The club has an admin group linked (`Organisation.adminGroupId`), so
+   *  an organiser's DM can point at the "help" there. */
+  adminGroupLinked?: boolean;
 }
 
 /** The admin pages a given answer links to, so a DM caller mints only the
@@ -514,6 +533,17 @@ function topicIsOn(topic: HelpTopic, features: HelpFeatures): boolean {
  *     worded for the audience (2026-09-30; it used to decline, so an
  *     organiser asking "help payments" after setup learned nothing about
  *     a feature that is off by default).
+ *
+ * ORGANISERS MODE (2026-10-15, `features.organisersAnnounce`): the club's
+ * organisers share the list and the teams, so nothing here offers a squad
+ * post, a team sheet or team building in the players' group. "help teams"
+ * says the organisers share them, whatever the team flag (it is their job,
+ * not a feature to switch on); availability and reminders say where the
+ * list goes; the schedule's format switch says its line-up goes to them;
+ * an organiser's DM points at the "help" in their admin group.
+ * `features.organiserPicks` (organiser pick) replaces the bench nudge in
+ * "help availability". With both off every answer is today's, byte for
+ * byte (`help-organisers.test.ts`).
  */
 export function buildHelpReply(
   topic: HelpTopic | null,
@@ -523,6 +553,8 @@ export function buildHelpReply(
 ): string {
   const s = t(lang);
   const adminTail = (line: string) => (ctx.audience === "admin" ? `\n\n${line}` : "");
+  const organisers = features.organisersAnnounce === true;
+  const picks = features.organiserPicks === true;
   if (topic === "badges") return buildBadgeHelp(ctx.badgeQuery, lang, { dm: ctx.audience !== "group" });
   if (topic === "schedule") {
     return s.onbHelpSchedule({
@@ -531,13 +563,23 @@ export function buildHelpReply(
       blockBookings: helpLink(ctx, "blockBookings"),
       bulk: helpLink(ctx, "bulk"),
       matches: helpLink(ctx, "matches"),
+      ...(organisers ? { organisers: true } : {}),
     });
   }
+  if (organisers && topic === "teams") {
+    return s.onbHelpOrganisersExplainer({ topic, organiserPicks: picks }) + adminTail(s.onbHelpAdminSettings({ url: helpLink(ctx, "settings") }));
+  }
   if (topic) {
+    const explainer =
+      organisers && (topic === "availability" || topic === "reminders")
+        ? s.onbHelpOrganisersExplainer({ topic, organiserPicks: picks })
+        : topic === "availability" && picks
+          ? s.onbHelpAvailabilityOrganiserPicks
+          : s.onbHelpExplainer({ topic });
     if (topicIsOn(topic, features)) {
-      return s.onbHelpExplainer({ topic }) + adminTail(s.onbHelpAdminSettings({ url: helpLink(ctx, "settings") }));
+      return explainer + adminTail(s.onbHelpAdminSettings({ url: helpLink(ctx, "settings") }));
     }
-    const body = topic === "payments" ? s.onbHelpPaymentsOff() : s.onbHelpExplainer({ topic });
+    const body = topic === "payments" ? s.onbHelpPaymentsOff() : explainer;
     const switchOn = s.onbHelpSwitchOn({
       topic,
       audience: ctx.audience,
@@ -555,8 +597,10 @@ export function buildHelpReply(
   );
   const head = s.onbHelpHead();
   const list = topicLines.length > 0 ? `\n${topicLines.join("\n")}` : "";
+  const hqPointer = organisers && ctx.adminGroupLinked === true ? adminTail(s.onbHelpAdminOrganisers) : "";
   return (
     `${head}${list}\n\n${buildHowToUseMe(features, lang)}` +
+    hqPointer +
     adminTail(s.onbHelpAdminPage({ url: helpLink(ctx, "settings") }))
   );
 }

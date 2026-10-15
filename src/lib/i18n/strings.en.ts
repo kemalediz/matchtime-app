@@ -1054,6 +1054,9 @@ export const en = {
     bench: boolean;
     paymentTracking: boolean;
     paymentCollection?: boolean;
+    /** The club's organisers share the list and teams
+     *  (`Organisation.listAnnouncer = "organisers"`). Absent: off. */
+    organisersAnnounce?: boolean;
   }): string => {
     const lines: string[] = [];
     if (f.attendance) {
@@ -1062,12 +1065,26 @@ export const en = {
     } else {
       lines.push(`📋 Paste your squad list and I'll read who's playing, no need to tag me.`);
     }
+    // Organisers mode (2026-10-15): a squad or count question in the
+    // players' group is answered "The organisers will post the list." and a
+    // team request "The organisers will post the teams." (pipeline/compose.ts,
+    // organisers-list-copy.ts), so neither is offered as something to ask.
+    const organisers = f.organisersAnnounce === true;
     const caps: string[] = [];
-    if (f.attendance) caps.push(`see who's in / how many we've got`);
-    if (f.teamBalancing) caps.push(`make / show the teams`);
+    if (f.attendance && !organisers) caps.push(`see who's in / how many we've got`);
+    if (f.teamBalancing && !organisers) caps.push(`make / show the teams`);
     if (f.statsQa) caps.push(`who won last week? / past stats`);
-    lines.push(`💬 Tag *@Match Time* when you want me to do or tell you something:`);
-    for (const c of caps) lines.push(`   • ${c}`);
+    if (organisers) {
+      lines.push(
+        f.attendance
+          ? `📣 The organisers share the squad list and the teams. I keep track of who's in and out for them.`
+          : `📣 The organisers share the squad list and the teams.`,
+      );
+    }
+    if (!organisers || caps.length > 0) {
+      lines.push(`💬 Tag *@Match Time* when you want me to do or tell you something:`);
+      for (const c of caps) lines.push(`   • ${c}`);
+    }
     lines.push(`🤐 I stay quiet the rest of the time: banter and jokes are safe, I won't butt in.`);
     if (f.momVoting) lines.push(`🏆 After the game I'll run a quick *Man of the Match* vote.`);
     if (f.playerRating) lines.push(`⭐ I'll DM you a one-tap *rating* link after the match.`);
@@ -1129,17 +1146,21 @@ export const en = {
     blockBookings: string;
     bulk: string;
     matches: string;
+    /** Organisers mode: a format switch's line-up goes to them
+     *  (actions/matches.ts), not the group. Absent: off. */
+    organisers?: boolean;
   }): string => {
     if (p.audience === "player") {
       return `🗓️ Match days, kick-off times, cancellations and block bookings are set by your organiser on the admin page. Ask them if something needs changing.`;
     }
+    const switchTold = p.organisers ? `I send the new line-up to the organisers to share.` : `I post the new line-up in the group.`;
     return (
       `🗓️ *Changing the schedule*\n` +
       `Schedule changes are made on the admin page, not by message. Each takes a few taps.\n\n` +
       `1️⃣ *Weekly game (day, kick-off time, venue):* on *Activities*, tap *Edit* on the game, change it, then *Save changes*. Only future matches change. The group isn't told.\n${p.activities}\n\n` +
       `2️⃣ *Block booking for the season:* on *Block bookings*, tap *New block booking*, pick the start date and an end date or a number of matches, tap *Preview dates*, then *Create block*. The group isn't told.\n${p.blockBookings}\n\n` +
       `3️⃣ *Cancel one week (or a run of dates):* on *Block bookings*, tap *Bulk cancel / restore*, set *From* and *To* to the date, tap *Find matches*, tick *Announce to the group* if you want me to post it, then confirm. Restoring works the same way.\n${p.bulk}\n\n` +
-      `4️⃣ *Switch one match to another format:* open the match from your match list, tap *Switch format*, pick the format, then *Confirm switch*. I post the new line-up in the group.\n${p.matches}\n\n` +
+      `4️⃣ *Switch one match to another format:* open the match from your match list, tap *Switch format*, pick the format, then *Confirm switch*. ${switchTold}\n${p.matches}\n\n` +
       `One week's kick-off time can't be moved on its own yet: change the weekly game instead, for the weeks ahead.` +
       (p.audience === "group"
         ? `\nAdmins: DM me *help schedule* and I'll send these as links that sign you straight in.`
@@ -1254,6 +1275,72 @@ export const en = {
         `I send friendly reminders to anyone outstanding. Players can pay by card, or the organiser can mark cash and bank transfers as received.\n` +
         `This only runs when payment tracking is switched on. Tag *@Match Time who still owes?* to see the latest.`,
     })[p.topic],
+
+  // ── Help for a club whose organisers announce (2026-10-15) ───────────
+  // `Organisation.listAnnouncer = "organisers"` (list-announcer.ts) and
+  // `benchPickMode = "organiser"`. Each line is what the code does in that
+  // mode: squad and team questions in the players' group are answered
+  // "the organisers will post ..." (pipeline/compose.ts,
+  // organisers-list-copy.ts); squad updates before the game go to the admin
+  // channel (bot-scheduler.ts `toOrganisers`); a drop opens no bench offer
+  // and the organisers pick (bench-confirmation.ts, organiser-pick.ts).
+
+  /** "help teams" / "help availability" / "help reminders" when the
+   *  organisers announce. `organiserPicks`: `benchPickMode = "organiser"`. */
+  onbHelpOrganisersExplainer: (p: { topic: "availability" | "teams" | "reminders"; organiserPicks: boolean }): string =>
+    ({
+      teams:
+        `🟥🟦 *Teams: how it works*\n` +
+        `The organisers sort out the teams and share them with the group themselves, so I don't post team sheets in this chat.\n` +
+        `Keep an eye out for their post before the game.`,
+      availability:
+        `⚽ *Squad & availability: how it works*\n` +
+        `Just say *In* or *Out* in the group to mark yourself for the next game. No need to tag me, I read it automatically.\n` +
+        `I keep track of who's in for the organisers, and they share the list with the group. Not sure yet? Say *"maybe"* and I'll DM you ~24h before kick-off for a final answer.\n` +
+        (p.organiserPicks
+          ? `When the squad is full, say *In* to go on the bench. When a place opens, the organisers pick who plays.`
+          : `When the squad is full, extra players go on the *bench*, and the bench gets first go at any place that opens.`) +
+        ` Say *Out* any time if you can't make it.`,
+      reminders:
+        `⏰ *Reminders: how it works*\n` +
+        `Want a personal nudge? Say *"@Match Time remind me Thursday"* and I'll DM you then.\n` +
+        `Squad updates before the game go to the organisers, and they share the list with the group.`,
+    })[p.topic],
+
+  /** "help availability" for a club MatchTime announces for but whose
+   *  organisers pick who fills a place (`benchPickMode = "organiser"`). */
+  onbHelpAvailabilityOrganiserPicks:
+    `⚽ *Squad & availability: how it works*\n` +
+    `Just say *In* or *Out* in the group to mark yourself for the next game. No need to tag me, I read it automatically.\n` +
+    `I keep a live, numbered squad list. When it's full, extra players go on the *bench*. Not sure yet? Say *"maybe"* and I'll DM you ~24h before kick-off for a final answer.\n` +
+    `When a place opens, the organisers pick who plays from the bench. Say *Out* any time if you can't make it.`,
+
+  /** An organiser's DM bare help, organisers mode with an admin group
+   *  linked: where the HQ commands are. */
+  onbHelpAdminOrganisers: `📣 Your organisers share the list and the teams. In your admin group, type *help* and I'll show the commands I take there.`,
+
+  /** "help" in a club's admin group (admin-group-help.ts). Every line is a
+   *  command the admin group reads; which file reads it is in that module's
+   *  header. `squad`: a live weekly club (pasted list, one change, team
+   *  commands). `graphics`: a live club. `picks`: organiser pick. `paid`:
+   *  a monthly club's collector. */
+  hq_help: (p: { squad: boolean; graphics: boolean; picks: boolean; paid: boolean }): string => {
+    const lines = [`🛠️ *MatchTime in your admin group*`, `Send any of these here, each as a message of its own. No need to tag me.`, ``];
+    if (p.squad) {
+      lines.push(`📋 *Paste the whole squad list*: I show you what would change, and *YES* within 30 minutes applies it.`);
+      lines.push(`✏️ *"put Bilal in"*, *"Sam out"*, *"Tom to the bench"*: one change to the squad.`);
+      lines.push(`🟥🟦 *teams*: show the teams, or build them if there are none yet.`);
+      lines.push(`🔀 *reshuffle*: build new teams.`);
+      lines.push(`🔁 *swap Sam and Alex*: swap two players between the teams.`);
+      lines.push(`➡️ *move Sam*: move one player to the other team.`);
+      lines.push(`✅ *YES*: make the proposed teams final.`);
+    }
+    if (p.graphics) lines.push(`🖼️ *poster*: the list as a graphic. *team sheet*: the teams as a graphic. Both ready to forward.`);
+    if (p.picks) lines.push(`🙋 When I ask you to pick who plays, reply with the numbers or names from my list, or *ALL* or *NONE*.`);
+    if (p.paid) lines.push(`💷 *PAID ALL*, *PAID 1 3* or *PAID NONE*: the money collector's answer to my list of payment claims.`);
+    lines.push(``, `Type *help* here any time to see this again.`);
+    return lines.join("\n");
+  },
 
   // ── "help badges" (2026-10-01) ──────────────────────────────────────
   // Deterministic, no model. Every number comes from `BadgeNumbers`,

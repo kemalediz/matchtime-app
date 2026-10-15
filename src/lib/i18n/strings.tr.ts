@@ -936,6 +936,7 @@ export const tr: Strings = {
     bench: boolean;
     paymentTracking: boolean;
     paymentCollection?: boolean;
+    organisersAnnounce?: boolean;
   }): string => {
     const lines: string[] = [];
     if (f.attendance) {
@@ -944,12 +945,22 @@ export const tr: Strings = {
     } else {
       lines.push(`📋 Kadro listesini yapıştırın, kimin oynadığını okurum, beni etiketlemenize gerek yok.`);
     }
+    const organisers = f.organisersAnnounce === true;
     const caps: string[] = [];
-    if (f.attendance) caps.push(`kim var / kaç kişiyiz`);
-    if (f.teamBalancing) caps.push(`takımları kur / takımları göster`);
+    if (f.attendance && !organisers) caps.push(`kim var / kaç kişiyiz`);
+    if (f.teamBalancing && !organisers) caps.push(`takımları kur / takımları göster`);
     if (f.statsQa) caps.push(`geçen hafta kim kazandı? / eski istatistikler`);
-    lines.push(`💬 Bir şey yapmamı veya söylememi istediğinizde *@Match Time* etiketleyin:`);
-    for (const c of caps) lines.push(`   • ${c}`);
+    if (organisers) {
+      lines.push(
+        f.attendance
+          ? `📣 Kadro listesini ve takımları organizatörler paylaşır. Kimin var kimin yok olduğunu onlar için ben takip ederim.`
+          : `📣 Kadro listesini ve takımları organizatörler paylaşır.`,
+      );
+    }
+    if (!organisers || caps.length > 0) {
+      lines.push(`💬 Bir şey yapmamı veya söylememi istediğinizde *@Match Time* etiketleyin:`);
+      for (const c of caps) lines.push(`   • ${c}`);
+    }
     lines.push(`🤐 Diğer zamanlarda sessizim, sohbet ve şaka serbest, araya girmem.`);
     if (f.momVoting) lines.push(`🏆 Maçtan sonra kısa bir *maçın adamı* oylaması yaparım.`);
     if (f.playerRating) lines.push(`⭐ Maçtan sonra tek dokunuşla *puanlama* bağlantısını özelden gönderirim.`);
@@ -1002,17 +1013,19 @@ export const tr: Strings = {
     blockBookings: string;
     bulk: string;
     matches: string;
+    organisers?: boolean;
   }): string => {
     if (p.audience === "player") {
       return `🗓️ Maç günlerini, saatleri, iptalleri ve blok rezervasyonları organizatör yönetici sayfasından ayarlar. Bir şeyin değişmesi gerekiyorsa ona söyle.`;
     }
+    const switchTold = p.organisers ? `Yeni kadroyu paylaşmaları için organizatörlere gönderirim.` : `Yeni kadroyu gruba ben yazarım.`;
     return (
       `🗓️ *Programı değiştirmek*\n` +
       `Program değişiklikleri mesajla değil, yönetici sayfasından yapılır, her biri birkaç dokunuş sürer. Sayfa İngilizce, düğme adları aşağıdaki gibi.\n\n` +
       `1️⃣ *Haftalık maç (gün, başlama saati, saha):* *Activities* › maçta *Edit* › *Save changes*. Yalnızca ileriki maçlar değişir, gruba bir şey yazılmaz.\n${p.activities}\n\n` +
       `2️⃣ *Sezonluk blok rezervasyon:* *Block bookings* › *New block booking* › başlangıç tarihi ile bitiş tarihi ya da maç sayısı › *Preview dates* › *Create block*. Gruba bir şey yazılmaz.\n${p.blockBookings}\n\n` +
       `3️⃣ *Bir haftayı (ya da birkaç tarihi) iptal etmek:* *Block bookings* › *Bulk cancel / restore* › *From* ve *To* alanlarına o tarih › *Find matches* › gruba duyurmamı istiyorsanız *Announce to the group* › onay. Geri almak da aynı şekilde.\n${p.bulk}\n\n` +
-      `4️⃣ *Bir maçı başka bir formata çevirmek:* maç listesinden maçı aç › *Switch format* › formatı seç › *Confirm switch*. Yeni kadroyu gruba ben yazarım.\n${p.matches}\n\n` +
+      `4️⃣ *Bir maçı başka bir formata çevirmek:* maç listesinden maçı aç › *Switch format* › formatı seç › *Confirm switch*. ${switchTold}\n${p.matches}\n\n` +
       `Tek bir haftanın başlama saati henüz ayrıca değiştirilemiyor: ileriki haftalar için haftalık maçı değiştirmek gerekiyor.` +
       (p.audience === "group"
         ? `\nYöneticiler: bana özelden *yardım program* yazın, bunları sizi doğrudan giriş yapmış olarak açan bağlantılar olarak göndereyim.`
@@ -1107,6 +1120,57 @@ export const tr: Strings = {
         `Ödemeyenlere nazik hatırlatmalar gönderirim. Oyuncular kartla ödeyebilir, organizatör nakit ve havaleleri alındı olarak işaretleyebilir.\n` +
         `Bu yalnızca ödeme takibi açıkken çalışır. Son durum için *@Match Time kim ödemedi?* yazın.`,
     })[p.topic],
+
+  // Organizatörlerin listeyi ve takımları paylaştığı kulüp (2026-10-15).
+  onbHelpOrganisersExplainer: (p) =>
+    ({
+      teams:
+        `🟥🟦 *Takımlar nasıl çalışır*\n` +
+        `Takımları organizatörler ayarlar ve grupla kendileri paylaşır, bu yüzden bu sohbete takım listesi yazmam.\n` +
+        `Maçtan önce onların paylaşımını takip edin.`,
+      availability:
+        `⚽ *Kadro ve katılım nasıl çalışır*\n` +
+        `Bir sonraki maç için grupta *varım* veya *yokum* yazmanız yeter, beni etiketlemenize gerek yok, otomatik okurum.\n` +
+        `Kimin geldiğini organizatörler için ben takip ederim, listeyi grupla onlar paylaşır. Emin değil misiniz? *"belki"* yazın, maçtan yaklaşık 24 saat önce özelden kesin cevabınızı sorarım.\n` +
+        (p.organiserPicks
+          ? `Kadro doluysa yedeğe girmek için *varım* yazın. Bir yer açılınca kimin oynayacağını organizatörler seçer.`
+          : `Kadro dolunca sonra yazanlar *yedek* listesine girer, açılan bir yer için ilk şans yedeklerindir.`) +
+        ` Gelemeyecekseniz istediğiniz zaman *yokum* yazın.`,
+      reminders:
+        `⏰ *Hatırlatmalar nasıl çalışır*\n` +
+        `Kişisel bir hatırlatma mı istiyorsunuz? *"@Match Time perşembe hatırlat"* yazın, o zaman size özelden yazarım.\n` +
+        `Maçtan önceki kadro bilgileri organizatörlere gider, listeyi grupla onlar paylaşır.`,
+    })[p.topic],
+
+  onbHelpAvailabilityOrganiserPicks:
+    `⚽ *Kadro ve katılım nasıl çalışır*\n` +
+    `Bir sonraki maç için grupta *varım* veya *yokum* yazmanız yeter, beni etiketlemenize gerek yok, otomatik okurum.\n` +
+    `Numaralı ve güncel bir kadro listesi tutarım. Kadro dolunca sonra yazanlar *yedek* listesine girer. Emin değil misiniz? *"belki"* yazın, maçtan yaklaşık 24 saat önce özelden kesin cevabınızı sorarım.\n` +
+    `Bir yer açılınca yedeklerden kimin oynayacağını organizatörler seçer. Gelemeyecekseniz istediğiniz zaman *yokum* yazın.`,
+
+  onbHelpAdminOrganisers: `📣 Listeyi ve takımları organizatörler paylaşıyor. Yönetici grubunda *yardım* yaz, orada kabul ettiğim komutları göstereyim.`,
+
+  // Komutlar, yönetici grubunun gerçekten okuduğu biçimleriyle
+  // (admin-group-help.ts başlığı): "takımlar", "yeniden", "A ile B değiş",
+  // "A'yı taşı", "liste posteri", "takım listesi", "HEPSİ"/"HİÇBİRİ",
+  // "ÖDENDİ HEPSİ".
+  hq_help: (p) => {
+    const lines = [`🛠️ *Yönetici grubunda MatchTime*`, `Bunları burada, her birini ayrı bir mesaj olarak yazın. Beni etiketlemenize gerek yok.`, ``];
+    if (p.squad) {
+      lines.push(`📋 *Kadro listesinin tamamını yapıştırın*: neyin değişeceğini gösteririm, 30 dakika içinde *EVET* yazarsanız uygularım.`);
+      lines.push(`✏️ *"Bilal var"*, *"Sam yok"*, *"Tom yedek"*: kadroda tek bir değişiklik.`);
+      lines.push(`🟥🟦 *takımlar*: takımları gösteririm, henüz yoksa kurarım.`);
+      lines.push(`🔀 *yeniden*: yeni takımlar kurarım.`);
+      lines.push(`🔁 *Sam ile Alex değiş*: iki oyuncunun takımlarını değiştiririm.`);
+      lines.push(`➡️ *Sam'i taşı*: bir oyuncuyu diğer takıma geçiririm.`);
+      lines.push(`✅ *EVET*: önerilen takımları kesinleştiririm.`);
+    }
+    if (p.graphics) lines.push(`🖼️ *liste posteri*: listeyi görsel olarak. *takım listesi*: takımları görsel olarak. İkisi de iletmeye hazır gelir.`);
+    if (p.picks) lines.push(`🙋 Kimin oynayacağını seçmenizi istediğimde listemdeki numaraları ya da isimleri, veya *HEPSİ* ya da *HİÇBİRİ* yazın.`);
+    if (p.paid) lines.push(`💷 *ÖDENDİ HEPSİ*, *ÖDENDİ 1 3* ya da *ÖDENDİ YOK*: parayı toplayan kişinin ödeme bildirimleri listeme cevabı.`);
+    lines.push(``, `Bunu tekrar görmek için burada istediğiniz zaman *yardım* yazın.`);
+    return lines.join("\n");
+  },
 
   // ── "help badges" (2026-10-01) ──────────────────────────────────────
   // Rozet adları istatistik sayfasındaki gibi (İngilizce) kalır. Ondalık
