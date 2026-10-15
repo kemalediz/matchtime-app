@@ -415,6 +415,7 @@ import {
   buildSignupWaitingDm,
 } from "../../month-signup-copy";
 import { monthKickoffs } from "../../month-signup-rules";
+import { buildFirstTeamsNotice, buildGettingReady } from "../../admin-onboarding-rules";
 import {
   buildClaimsDigest,
   buildCollectorReplyAnswer,
@@ -1563,6 +1564,36 @@ function cases(lang: Lang): Case[] {
       cardDroppedText(lang, { name: "Elvin", club: "Riverside FC" }),
     ].join("\n"),
   );
+  {
+    // The standard welcome notices to a club's admins (2026-10-15,
+    // admin-onboarding-rules.ts).
+    const fnf = {
+      name: "FNF",
+      language: lang,
+      squadMode: "weekly",
+      featureAttendance: true,
+      listAnnouncer: "organisers",
+      benchPickMode: "organiser",
+      paymentCollectionEnabled: true,
+      paymentHolderId: null,
+    };
+    const fri = new Date("2026-10-16T20:00:00.000Z");
+    const ready = (club: typeof fnf, audience: "group" | "dm", nextMatchDate: Date | null = fri) =>
+      buildGettingReady({ club, audience, nextMatchDate, activityDays: [5], link: "https://matchtime.ai/admin/settings" }) ?? "(not sent)";
+    add("R194 admin onboarding / A getting ready, organisers announce, admin group, fees with no collector (FNF-like)", ready(fnf, "group"));
+    add("R194 admin onboarding / A getting ready, no game yet", ready({ ...fnf, paymentCollectionEnabled: false }, "group", null));
+    add(
+      "R194 admin onboarding / A getting ready, a club on the defaults, admin group",
+      ready({ ...fnf, name: "Harbour FC", listAnnouncer: "matchtime", benchPickMode: "first-come", paymentCollectionEnabled: false }, "group"),
+    );
+    add("R194 admin onboarding / A getting ready, by DM, fees with no collector", ready({ ...fnf, name: "Harbour FC", listAnnouncer: "matchtime" }, "dm"));
+    const teams = { lang, matchDate: fri, readyTime: "10:00", confirmed: 18, maxPlayers: 18 };
+    add(
+      "R194 admin onboarding / B teams for Friday, organisers share, nobody seeded (FNF-like)",
+      buildFirstTeamsNotice({ ...teams, organisers: true, seed: { anySeeded: false, link: "https://matchtime.ai/admin/players/ratings" } }),
+    );
+    add("R194 admin onboarding / B teams for Friday, MatchTime posts them, ratings set", buildFirstTeamsNotice({ ...teams, readyTime: "18:00", organisers: false, seed: null }));
+  }
 
   add("R138 detailsFollowUpQuestion / all three missing", detailsFollowUpQuestion(["day", "time", "venue"]));
   add("R138 detailsFollowUpQuestion / day only", detailsFollowUpQuestion(["day"]));

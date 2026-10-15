@@ -139,15 +139,31 @@ export function seedNudgePrecheck(
   return null;
 }
 
+/**
+ * Rules 4 and 5 alone: would the club's players still be told apart only by
+ * a seed, and are most of them without one? No clock, no "already". The
+ * nudge reads it after its precheck; the first-teams notice
+ * (admin-onboarding.ts) reads it to decide whether to carry the seed line.
+ */
+export function seedPoolUnseeded(
+  i: Pick<SeedNudgeInput, "confirmed" | "active" | "clubHasPeerRatings">,
+):
+  | { unseeded: true; pool: "confirmed" | "members"; total: number; count: number }
+  | { unseeded: false; reason: "has-peer-ratings" | "no-players" | "mostly-seeded" } {
+  if (i.clubHasPeerRatings) return { unseeded: false, reason: "has-peer-ratings" };
+  const pool = i.confirmed.total > 0 ? "confirmed" : "members";
+  const { total, seeded } = pool === "confirmed" ? i.confirmed : i.active;
+  if (total === 0) return { unseeded: false, reason: "no-players" };
+  if (seeded * 2 >= total) return { unseeded: false, reason: "mostly-seeded" };
+  return { unseeded: true, pool, total, count: total - seeded };
+}
+
 export function decideSeedNudge(i: SeedNudgeInput): SeedNudgeDecision {
   const early = seedNudgePrecheck(i);
   if (early) return early;
-  if (i.clubHasPeerRatings) return { due: false, reason: "has-peer-ratings" };
-  const pool = i.confirmed.total > 0 ? "confirmed" : "members";
-  const { total, seeded } = pool === "confirmed" ? i.confirmed : i.active;
-  if (total === 0) return { due: false, reason: "no-players" };
-  if (seeded * 2 >= total) return { due: false, reason: "mostly-seeded" };
-  return { due: true, pool, total, unseeded: total - seeded };
+  const pool = seedPoolUnseeded(i);
+  if (!pool.unseeded) return { due: false, reason: pool.reason };
+  return { due: true, pool: pool.pool, total: pool.total, unseeded: pool.count };
 }
 
 /** "Hamzah or Raihan": the admins' first names, each once, in the club's language. */

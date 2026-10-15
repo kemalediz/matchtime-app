@@ -1794,6 +1794,14 @@ export const tr: Strings = {
       ? `🔁 *Her hafta aynı kadro:* bu grupta kadro bir maçtan diğerine aynı kalır. Benimle *ilk maç* için *VARIM* yazın: sizi yedeğe yazarım, kimin oynayacağını organizatörler seçer. Sonrasında oynayanlar her hafta kadroda kalır; gelemeyecekseniz${until} *YOKUM* yazmanız yeter.`
       : `🔁 *Her hafta aynı kadro:* bu grupta kadro bir maçtan diğerine aynı kalır. Benimle *ilk maç* için *VARIM* yazın ki kimin oynadığını bileyim. Sonrasında her hafta kadroda kalırsınız; gelemeyecekseniz${until} *YOKUM* yazmanız yeter.`;
   },
+  sj_hello_rolling_first_organisers: (p) =>
+    `🔁 *Her hafta aynı kadro:* benimle *ilk maçın* kadrosunu organizatörler seçer ve listeyi paylaşır. Sonrasında oynayanlar her hafta kadroda kalır; gelemeyecekseniz${p.deadline ? ` *${p.deadline}* saatine kadar` : ""} *YOKUM* yazmanız yeter.`,
+  sj_hello_organisers_share: (p) =>
+    p.list && p.teams
+      ? `📣 *Liste ve takımlar:* kadro listesini ve takımları size organizatörler paylaşır.`
+      : p.list
+        ? `📣 *Liste:* kadro listesini size organizatörler paylaşır.`
+        : `📣 *Takımlar:* takımları size organizatörler paylaşır.`,
   sj_hello_rolling_join: (p) =>
     p.mode === "organiser"
       ? `✅ *Henüz kadroda değil misiniz?* *VARIM* yazın, sizi yedeğe yazarım.`
@@ -3396,6 +3404,30 @@ export const tr: Strings = {
   sn_change_any_time: "Puanları istediğiniz zaman aynı sayfadan değiştirebilirsiniz.",
   sn_names: (p) =>
     p.names.length <= 1 ? (p.names[0] ?? "") : `${p.names.slice(0, -1).join(", ")} ya da ${p.names[p.names.length - 1]}`,
+  ao_ready_title: (p) => `🧰 *${p.club} kulübünü hazırlayalım*`,
+  ao_ready_collector: (p) =>
+    `💷 Ayarlar'da *Para toplayan kişi* seçimini yapın; maçtan sonra her oyuncunun ne kadar ödeyeceğini ona sorarım:\n${p.link}`,
+  ao_ready_paste_now: (p) =>
+    `📋 ${p.weekday} günkü maçın kadro listesini şimdi buraya yapıştırın. Neyin değişeceğini gösteririm, 30 dakika içinde *EVET* yazarsanız uygularım.`,
+  ao_ready_paste_later: (p) =>
+    `📋 ${p.weekday ? `${p.weekday} günkü maç` : "Sonraki maçınız"} gece ekleniyor. Yarından itibaren kadro listesini buraya yapıştırın: neyin değişeceğini gösteririm, 30 dakika içinde *EVET* yazarsanız uygularım.`,
+  ao_ready_no_tag: (p) =>
+    (p.reads
+      ? `💬 Burada beni etiketlemenize gerek yok. Bu gruptaki yöneticilerin her mesajını okurum, komutu yazmanız yeter. Normal sohbetiniz de sorun değil, yalnızca açık talimatlarla bir şey yaparım.`
+      : `💬 Burada beni etiketlemenize gerek yok, komutu yazmanız yeter. Normal sohbetiniz de sorun değil, yalnızca açık komutlarla bir şey yaparım.`) +
+    (p.mainChat ? ` Ana grupta oyuncular beni etiketlemeden *VARIM* ya da *YOKUM* yazar, beni yalnızca bir şey sormak için etiketler.` : ``),
+  ao_ready_main_chat: `💬 Ana grupta oyuncular beni etiketlemeden *VARIM* ya da *YOKUM* yazar, beni yalnızca bir şey sormak için etiketler.`,
+  ao_ready_help_group: `Neleri kabul ettiğimi görmek için burada istediğiniz zaman *yardım* yazın.`,
+  ao_ready_help_dm: `Neler yapabildiğimi görmek için bana istediğiniz zaman *yardım* yazın.`,
+  ao_teams_title: (p) => `🟥🟦 *${p.weekday} günkü takımlar*`,
+  ao_teams_set: (p) =>
+    `Kadro belli: ${p.confirmed}/${p.max}. ${p.weekday} günü saat ${p.time} itibarıyla iki dengeli takım kurar, kontrol etmeniz için buraya gönderirim.`,
+  ao_teams_approve: (p) =>
+    p.organisers
+      ? `Kesinleştirmek için *EVET* yazın; değişiklik isterseniz *değiş*, *taşı* ya da *yeniden* yazın. Kesinleşince oyunculara paylaşmanız için takım listesi görselini buraya gönderirim, *takım listesi* yazarak istediğiniz zaman yeniden alabilirsiniz.`
+      : `Kesinleştirmek için *EVET* yazın, ana grupta ben paylaşırım; değişiklik isterseniz *değiş*, *taşı* ya da *yeniden* yazın.`,
+  ao_teams_seed: (p) =>
+    `⭐ ${p.anySeeded ? "Bu kadronun çoğunun henüz puanı yok" : "Bu kadroda henüz kimsenin puanı yok"}, bu yüzden takımlar dengesiz çıkabilir. ${p.weekday} günü saat ${p.time} öncesinde her oyuncuya 1 ile 10 arasında kabaca bir puan verin:\n${p.link}\nOyuncular bu puanları hiç görmez.`,
   oa_bench_claim_too_late: (p) =>
     `Sağ ol ${p.firstName} 🙏 biri senden önce davrandı. Yedekte kalmaya devam ediyorsun, başka bir yer açılırsa sıra sende.`,
   wr_announce_label: "Listeyi ve takımları kim duyurur",

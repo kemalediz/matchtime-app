@@ -137,6 +137,8 @@ import {
 } from "./provisional-review-rules";
 import { buildOrganiserListUpdate, buildOrganiserRelay, type OrganiserListReason } from "./organisers-list-copy";
 import { seedNudgeInstructions } from "./seed-nudge";
+import { firstTeamsInstructions } from "./admin-onboarding";
+import { isBillingPaused } from "./club-billing-rules";
 import { isClubSettingUp } from "./club-setup-rules";
 
 // All user-facing times in bot-posted messages are Europe/London wall
@@ -948,17 +950,42 @@ export async function computeDuePosts(
   //   ratings yet, so the first balanced teams would be close to random.
   //   The rule and its timing: seed-nudge-rules.ts. Keys
   //   `org-<id>:seed-nudge:<who>`, unclassified by the feature filter below.
-  out.push(
-    ...(await seedNudgeInstructions({
-      org: { id: org.id, live: !isClubSettingUp(org), liveAt: org.liveAt },
-      features,
-      matches,
-      sentKeys,
-      now,
-      piCaps,
-      getChannel: getAdminChannel,
-    })),
-  );
+  //
+  // ── "Teams for <weekday>" (2026-10-15, admin-onboarding-rules.ts) ────
+  //   Once per club, in its admin group, when the squad is first set for
+  //   its first proposed teams. Computed BEFORE the seed nudge: when it
+  //   carries the seed line its key is under the nudge's namespace, and the
+  //   nudge is skipped on this poll, so the admins never get both.
+  const firstTeams = await firstTeamsInstructions({
+    org: {
+      id: org.id,
+      live: !isClubSettingUp(org),
+      adminGroupId: org.adminGroupId ?? null,
+      teamsReadyTime: org.teamsReadyTime ?? null,
+      listAnnouncer: org.listAnnouncer ?? null,
+      billingPaused: isBillingPaused(org),
+    },
+    features,
+    matches,
+    sentKeys,
+    now,
+    piCaps,
+    getChannel: getAdminChannel,
+  });
+  out.push(...firstTeams.instructions);
+  if (!firstTeams.withSeed) {
+    out.push(
+      ...(await seedNudgeInstructions({
+        org: { id: org.id, live: !isClubSettingUp(org), liveAt: org.liveAt },
+        features,
+        matches,
+        sentKeys,
+        now,
+        piCaps,
+        getChannel: getAdminChannel,
+      })),
+    );
+  }
 
   // ── Badge announcements (2026-10-01) ──────────────────────────────
   //   One post per match, 18:00 London two days after it, listing the

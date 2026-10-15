@@ -137,11 +137,19 @@ async function main() {
     ok("stage live, bot on, liveAt and liveBy stamped, in one write the CHECK constraint accepts");
 
     const after = await jobs(a);
+    // Besides the hello: "Getting <club> ready" for the admins (2026-10-15,
+    // admin-onboarding-rules.ts), queued AFTER the purge. This club collects
+    // match fees with no money collector set, so it goes to the owner by DM.
+    const isReady = (j: { text: string }) => j.text.startsWith("🧰 *Getting Golive full ready*");
     assert.deepEqual(
-      after.filter((j) => !j.sentAt).map((j) => ({ kind: j.kind, text: j.text })),
+      after.filter((j) => !j.sentAt && !isReady(j)).map((j) => ({ kind: j.kind, text: j.text })),
       [{ kind: "group", text: preview }],
-      "the only unsent job is the hello",
+      "the only unsent job besides the admins' checklist is the hello",
     );
+    const ready = after.filter((j) => !j.sentAt && isReady(j));
+    assert.equal(ready.length, 1, "one checklist");
+    assert.equal(ready[0].kind, "dm");
+    assert.match(ready[0].text, /Pick your \*Money collector\* in Settings/);
     assert.equal(after.filter((j) => j.text.startsWith("STALE")).length, 0);
     assert.equal(after.filter((j) => j.text.startsWith("ALREADY SENT")).length, 1);
     assert.match(preview, /Greta/);
@@ -178,9 +186,9 @@ async function main() {
     if (again.outcome !== "already-live") throw new Error("unreachable");
     assert.equal(again.liveBy, `${a}-u`);
     assert.equal(again.liveAt?.getTime(), NOW.getTime());
-    assert.equal((await jobs(a)).filter((j) => !j.sentAt).length, 1);
+    assert.equal((await jobs(a)).filter((j) => !j.sentAt).length, 2, "the hello and the one checklist");
     assert.equal((await org(a))?.liveBy, `${a}-u`);
-    ok("a second GO is already-live, with who and when, and queues no second hello");
+    ok("a second GO is already-live, with who and when, and queues no second hello or checklist");
 
     // ── 3. The race: two GOs at the same instant ──────────────────────
     for (let round = 1; round <= 3; round++) {

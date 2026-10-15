@@ -150,6 +150,7 @@ import {
 } from "./payments-live-announce";
 import { isSetupLearningEnabled } from "./setup-learning/flag";
 import { cancelSetupDm } from "./club-setup-dm-cancel";
+import { queueGettingReady } from "./admin-onboarding";
 
 export {
   SETTING_UP_CLUB_WHERE,
@@ -748,6 +749,10 @@ export async function goLiveClub(
     } catch (err) {
       console.error(`[club-setup] ${orgId}: live, but its waiting setup DM was NOT cancelled: ${(err as Error)?.name ?? "error"}`);
     }
+    // "Getting <club> ready" for the admins (2026-10-15,
+    // admin-onboarding-rules.ts): AFTER the commit, so the go-live purge
+    // above never deletes it. Once per club; never throws.
+    await queueGettingReady(orgId, now);
     if (result.freePeriodStarted) {
       // Committed: only now is the billing move a fact worth a log line.
       logBillingMove(orgId, "went-live", { from: "exempt", to: "trial" });
