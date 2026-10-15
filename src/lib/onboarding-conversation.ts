@@ -199,6 +199,9 @@ export function buildHowToUseMe(
     paymentCollection?: boolean;
     /** The organisers share the list and teams; a missing value reads as off. */
     organisersAnnounce?: boolean;
+    /** The organiser's "Want to collect match fees?" pointer while payments
+     *  are off; a missing value reads as on. */
+    feesNudge?: boolean;
   },
   lang: Lang | string = "en",
 ): string {
@@ -598,8 +601,13 @@ export function buildHelpReply(
   const head = s.onbHelpHead();
   const list = topicLines.length > 0 ? `\n${topicLines.join("\n")}` : "";
   const hqPointer = organisers && ctx.adminGroupLinked === true ? adminTail(s.onbHelpAdminOrganisers) : "";
+  // The "Want to collect match fees?" pointer is for an organiser; in the
+  // players' group every player saw it (FNF, 2026-10-15), so only an
+  // organiser's DM keeps it (a player's DM stays identical to the group's).
+  // Payments off already keeps "payments" out of the topic list.
+  const howTo = buildHowToUseMe(ctx.audience === "admin" ? features : { ...features, feesNudge: false }, lang);
   return (
-    `${head}${list}\n\n${buildHowToUseMe(features, lang)}` +
+    `${head}${list}\n\n${howTo}` +
     hqPointer +
     adminTail(s.onbHelpAdminPage({ url: helpLink(ctx, "settings") }))
   );
