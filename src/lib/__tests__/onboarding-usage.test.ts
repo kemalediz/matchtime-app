@@ -350,11 +350,14 @@ describe("buildHelpReply — bare help (topic null)", () => {
     expect(r).toMatch(/MatchTime help/);
     // Enabled topic present, disabled topic absent.
     expect(r).toMatch(/help ratings/);
-    // Not in the topic MENU (it is off); the how-to block's 💷 line
-    // still points at it.
+    // Not in the topic MENU (it is off). In the players' group the how-to
+    // block leaves out the organiser's 💷 fees pointer too (FNF, 2026-10-15);
+    // an organiser's DM keeps it.
     expect(r).not.toMatch(/• \*@Match Time help payments\*/);
+    expect(r).not.toMatch(/help payments/);
     // The feature-aware how-to block is appended.
-    expect(r).toContain(buildHowToUseMe(feats));
+    expect(r).toContain(buildHowToUseMe({ ...feats, feesNudge: false }));
+    expect(buildHelpReply(null, feats, "en", { audience: "admin" })).toContain(buildHowToUseMe(feats));
   });
 
   it("with payments ON the payments topic IS listed", () => {

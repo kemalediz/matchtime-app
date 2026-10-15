@@ -937,6 +937,7 @@ export const tr: Strings = {
     paymentTracking: boolean;
     paymentCollection?: boolean;
     organisersAnnounce?: boolean;
+    feesNudge?: boolean;
   }): string => {
     const lines: string[] = [];
     if (f.attendance) {
@@ -967,7 +968,7 @@ export const tr: Strings = {
     if (f.reminders) lines.push(`⏰ Hatırlatma mı lazım? *"@Match Time perşembe hatırlat"* yazın, o zaman size özelden yazarım.`);
     if (f.paymentCollection) lines.push(`💷 Her maçtan sonra size özelden bir ödeme bağlantısı gönderirim: kart, Apple veya Google Pay ya da banka.`);
     if (f.paymentTracking) lines.push(`💳 Kimin *ödediğini* takip ederim.`);
-    if (!f.paymentTracking && !f.paymentCollection) lines.push(`💷 Maç ücretlerini toplamak mı istiyorsunuz? Bana sorun: *@Match Time yardım ödeme*`);
+    if (!f.paymentTracking && !f.paymentCollection && f.feesNudge !== false) lines.push(`💷 Maç ücretlerini toplamak mı istiyorsunuz? Bana sorun: *@Match Time yardım ödeme*`);
     lines.push(`\nBunu tekrar görmek için istediğiniz zaman *"@Match Time yardım"* yazın.`);
     return lines.join("\n");
   },
