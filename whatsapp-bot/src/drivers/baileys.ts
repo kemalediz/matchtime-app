@@ -225,6 +225,7 @@ import {
   authorLid,
   createGroupCache,
   handedUpId,
+  legacyIdsOf,
   lidPnPairs,
   membershipEvent,
   participantPhone,
@@ -242,6 +243,20 @@ import { createDebouncedWriter, jsonFileIO, type DebouncedWriter } from "../bail
 import { resolveBaileysConfig } from "../baileys/config.js";
 import { createPostabilityTracker, type PostabilityTracker } from "../group-postability.js";
 import { makeBaileysLogger } from "../baileys/logging.js";
+import {
+  createGroupInviteHandler,
+  inviteLinkCode,
+  inviteMessageOf,
+  inviteSenderOf,
+  type GroupInviteDeps,
+  type GroupInviteHandler,
+  type InviteSender,
+} from "../baileys/group-invite.js";
+import { createGroupAddPrivacyCheck, groupAddPrivacyEnabled, type PrivacySocketLike } from "../baileys/group-add-privacy.js";
+import { installLibsignalConsoleFilter } from "../baileys/libsignal-console.js";
+import { maskDigits, maskIdsIn, maskJid } from "../baileys/log-mask.js";
+import { postGroupInviteCheck } from "../group-invite-api.js";
+import { shadowMode } from "../shadow.js";
 import type { PictureReader } from "../picture-reader.js";
 import { createLivePictureReader } from "../picture-live.js";
 
@@ -269,6 +284,15 @@ export interface BaileysSocketLike extends LifecycleSocket {
   groupMetadata?(jid: string): Promise<GroupMetaLike>;
   /** Leave a group. One IQ about a group we are in; no directory lookup. */
   groupLeave?(jid: string): Promise<void>;
+  /** Accept a private invite (`groupInviteMessage`). Resolves to the group JID. */
+  groupAcceptInviteV4?(key: string | WAMessageKey, inviteMessage: proto.Message.IGroupInviteMessage): Promise<unknown>;
+  /** What a `chat.whatsapp.com/<code>` link is for. Throws for a bad link. */
+  groupGetInviteInfo?(code: string): Promise<{ id?: string | null }>;
+  /** Join by an invite link's code. Resolves to the group JID. */
+  groupAcceptInvite?(code: string): Promise<string | undefined>;
+  /** The server's privacy values, `{ groupadd: "all", ... }`. */
+  fetchPrivacySettings?(force?: boolean): Promise<Record<string, string>>;
+  updateGroupsAddPrivacy?(value: "all"): Promise<void>;
 }
 
 export interface BaileysDriverDeps {
@@ -338,6 +362,14 @@ export interface BaileysDriverDeps {
   store?: SentMessageStore<proto.IMessage>;
   /** Injected for tests; defaults to a fresh bounded directory. */
   contacts?: ContactDirectory;
+  /**
+   * Asks the server whether the sender of a group invite is a verified
+   * organiser (`group-invite-api.ts`). Absent (most tests): no invite is
+   * ever accepted. See `baileys/group-invite.ts`.
+   */
+  groupInviteCheck?: GroupInviteDeps["check"];
+  /** Checks, once per process, who may add MatchTime to groups (`baileys/group-add-privacy.ts`). */
+  privacyCheck?: { onOpen(sock: PrivacySocketLike | null | undefined): Promise<void> };
   log?(line: string): void;
   error?(line: string): void;
 }
@@ -579,8 +611,12 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
   const store = deps.store ?? createSentMessageStore<proto.IMessage>();
   const contacts = deps.contacts ?? createContactDirectory();
   const conn = deps.connection;
-  const log = deps.log ?? ((l: string) => console.log(l));
-  const error = deps.error ?? ((l: string) => console.error(l));
+  // Every line this driver writes has each person's JID masked (2026-10-15:
+  // bot.log held whole phone numbers). Group ids are kept; see log-mask.ts.
+  const rawLog = deps.log ?? ((l: string) => console.log(l));
+  const rawError = deps.error ?? ((l: string) => console.error(l));
+  const log = (l: string) => rawLog(maskIdsIn(l));
+  const error = (l: string) => rawError(maskIdsIn(l));
   const getSocket = deps.getSocket ?? (() => conn?.openSocket() ?? null);
   const stats = emptyStats();
   const firstSighting = createSeenIds();
@@ -957,6 +993,90 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
     }
   }
 
+  // ── Group invites (2026-10-15) ───────────────────────────────────────
+
+  /**
+   * Is MatchTime already in this group? The listing and a fresh roster
+   * first; otherwise ONE `groupMetadata`, which WhatsApp answers only for a
+   * member. Never throws.
+   */
+  async function alreadyInGroup(groupJid: string): Promise<boolean> {
+    if (groupCache.listing()?.some((g) => g.id === groupJid)) return true;
+    const self = selfLegacy();
+    const inRoster = (meta: GroupMetaLike | null | undefined) =>
+      (meta?.participants ?? []).some((p) => legacyIdsOf(p).some((id) => self.has(id)));
+    if (inRoster(groupCache.verified(groupJid))) return true;
+    const sock = safeSocket();
+    if (!sock?.groupMetadata) return false;
+    try {
+      return inRoster(await sock.groupMetadata(groupJid));
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * The self-join an invite produced, handed up with the INVITER as its
+   * author, exactly as a participants update would. `handJoin` dedupes it
+   * against that update (rc14 emits one for a private invite, see
+   * `baileys/group-invite.ts`; for a link nothing is emitted locally).
+   */
+  async function joinedByInvite(groupJid: string, sender: InviteSender): Promise<void> {
+    const self = me();
+    const mine = self.pn ?? self.lid;
+    if (!mine) return;
+    const event: GroupMembershipEvent = { chatId: groupJid, recipientIds: [mine] };
+    const pn = sender.phone ? toUserJid(sender.phone) : null;
+    const author = await authorId(sender.jid, pn, phoneForLid);
+    if (author) event.author = author;
+    const lid = authorLid(sender.jid);
+    if (lid) event.authorLid = lid;
+    watchJoin(groupJid);
+    handJoin(event, true);
+  }
+
+  const invites: GroupInviteHandler | null = deps.groupInviteCheck
+    ? createGroupInviteHandler({
+        check: deps.groupInviteCheck,
+        async acceptV4(key, invite) {
+          const sock = getSocket();
+          if (!sock?.groupAcceptInviteV4) throw new NotConnectedError("the invite was not accepted");
+          const out = await sock.groupAcceptInviteV4(key as WAMessageKey, invite);
+          return typeof out === "string" ? out : undefined;
+        },
+        async inviteInfo(code) {
+          const sock = getSocket();
+          if (!sock?.groupGetInviteInfo) throw new NotConnectedError("the link was not read");
+          return sock.groupGetInviteInfo(code);
+        },
+        async acceptLink(code) {
+          const sock = getSocket();
+          if (!sock?.groupAcceptInvite) throw new NotConnectedError("the link was not joined");
+          return sock.groupAcceptInvite(code);
+        },
+        alreadyIn: alreadyInGroup,
+        joined(groupJid, sender) {
+          void joinedByInvite(groupJid, sender).catch((err) =>
+            error(`[baileys][group-invite] could not hand up the join: ${errorText(err)}`),
+          );
+        },
+        now,
+        log,
+        error,
+      })
+    : null;
+
+  /** The inviter, for the server's check. Never asks WhatsApp. */
+  async function inviteSender(key: InboundKeyLike): Promise<InviteSender> {
+    let phone: string | null = null;
+    try {
+      phone = (await senderPhoneOf(key)).phone;
+    } catch {
+      phone = null;
+    }
+    return inviteSenderOf(key, phone);
+  }
+
   // ── Inbound wiring ───────────────────────────────────────────────────
 
   /** A batch at a time, in order, so a replay reaches the analyzer oldest first. */
@@ -991,7 +1111,7 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
 
     const line =
       `[baileys][msg] upsert=${upsertType}${requestId ? ` requestId=${requestId}` : ""} ` +
-      `chat=${key.remoteJid ?? "?"} id=${key.id ?? "?"} age=${ageOf(m)}s`;
+      `chat=${maskJid(key.remoteJid)} id=${key.id ?? "?"} age=${ageOf(m)}s`;
 
     // Diagnostic only (baileys/history-sync.ts): names an upsert that is a
     // way history travels. It changes nothing about what happens to it.
@@ -1039,7 +1159,7 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
       } else {
         stats.undecryptable++;
         log(
-          `${line} could not be decrypted ("${entry.reason}", sender ${entry.sender ?? "?"}); ` +
+          `${line} could not be decrypted ("${entry.reason}", sender ${maskJid(entry.sender)}); ` +
             "Baileys has asked for a re-send. Waiting up to " +
             `${Math.round(UNDECRYPTABLE_GRACE_MS / 1000)}s for its content`,
         );
@@ -1062,9 +1182,25 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
         log(
           `${line} recovered${recovered.late ? " late" : ""}: the content of a message that ` +
             `failed to decrypt arrived after ${Math.round(recovered.waitedMs / 1000)}s` +
-            (authorFilled ? `; its author was missing and was taken from the stub (${recovered.entry.sender ?? "?"})` : ""),
+            (authorFilled ? `; its author was missing and was taken from the stub (${maskJid(recovered.entry.sender)})` : ""),
         );
       }
+    }
+    // A group invite DMed to us ("Invite to group"). Never handed up: it is
+    // not a chat message. Checked and accepted off this chain, which the
+    // live clubs' messages come through (baileys/group-invite.ts).
+    if (!isGroupJid(key.remoteJid) && !key.fromMe && inviteMessageOf(m)) {
+      stats.skipped++;
+      log(`${line} a group invite${invites ? "" : " (invites are not handled by this process)"}`);
+      tally("a group invite");
+      if (invites) {
+        const inviteKey = key;
+        const inviteMsg = m;
+        void inviteSender(inviteKey)
+          .then((sender) => invites.handleInviteMessage(inviteMsg, sender))
+          .catch((err) => error(`[baileys][group-invite] invite-message: failed: ${errorText(err)}`));
+      }
+      return;
     }
     // A poll vote is not a chat message: it is decrypted and handed to
     // onPollVote, and never reaches the analyzer.
@@ -1103,8 +1239,8 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
       } else {
         stats.unresolvedSenders++;
         error(
-          `[baileys][msg] sender UNRESOLVED for ${mapped.id}: ${who.reason}` +
-            `${who.lid ? ` (lid ${who.lid})` : ""}. Handed up under the LID; the server will ` +
+          `[baileys][msg] sender UNRESOLVED for ${mapped.id}: ${who.reason.replace(/\S*\d{6,}\S*/g, (j) => maskJid(j))}` +
+            `${who.lid ? ` (lid ${maskDigits(who.lid)})` : ""}. Handed up under the LID; the server will ` +
             "try the pushname.",
         );
       }
@@ -1117,16 +1253,36 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
     // the spelling `index.ts` passes back in (baileys/replay.ts).
     if (mapped.isGroup) replay.remember(view.from, view as InboundMessage);
     stats.delivered++;
+    // Masked (2026-10-15): never a whole number, a LID or a name in the log.
     log(
       `${line} group=${mapped.isGroup} fromMe=${mapped.fromMe} ` +
-        `sender=${view.baileys.senderJid ?? "?"} phone=${senderPhone ?? "?"}${source ? `(${source})` : ""} ` +
-        `name=${mapped.pushName ?? "?"} type=${mapped.type} bodyLen=${mapped.body.length} ` +
+        `sender=${maskJid(view.baileys.senderJid)} phone=${senderPhone ? maskDigits(senderPhone) : "?"}${source ? `(${source})` : ""} ` +
+        `name=${mapped.pushName ? "yes" : "no"} type=${mapped.type} bodyLen=${mapped.body.length} ` +
         `media=${mapped.hasMedia} mentions=${mapped.mentionedJids.length}`,
     );
     tally(`handed up (${mapped.type})`);
     // Picture reading: handed up by the reader, once, after it is read.
     if (deps.pictures?.wants(view as InboundMessage)) {
       deps.pictures.handle(view as InboundMessage, m, (v) => hand(messageHandlers, v, "onMessage"));
+      return;
+    }
+    // A pasted group invite link in a DM (2026-10-15). Checked off this
+    // chain; handed up as before UNLESS MatchTime joined the group for a
+    // verified organiser, so a stranger's link reaches dm-reply as it
+    // always did.
+    const linkCode = invites && !mapped.isGroup && !mapped.fromMe ? inviteLinkCode(mapped.body) : null;
+    if (invites && linkCode) {
+      log(`${line} carries a group invite link`);
+      const inviteKey = key;
+      void inviteSender(inviteKey)
+        .then((sender) => invites.handleInviteLink(linkCode, sender))
+        .catch((err) => {
+          error(`[baileys][group-invite] invite-link: failed: ${errorText(err)}`);
+          return "failed" as const;
+        })
+        .then((outcome) => {
+          if (outcome !== "joined") hand(messageHandlers, view as InboundMessage, "onMessage");
+        });
       return;
     }
     hand(messageHandlers, view as InboundMessage, "onMessage");
@@ -1505,6 +1661,12 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
     // Registered here, at construction, so it runs before any handler
     // index.ts adds: every read after this open belongs to the new epoch.
     conn.onOpen(() => {
+      // Who may add MatchTime to a group, once per process (never awaited,
+      // never throws: baileys/group-add-privacy.ts).
+      if (deps.privacyCheck) {
+        const sock = safeSocket();
+        void deps.privacyCheck.onOpen(sock).catch((err) => error(`[baileys][privacy] check failed: ${errorText(err)}`));
+      }
       epoch++;
       lastOpenAt = now();
       // The §2.15 measurement is "what arrived after THIS open", so the
@@ -1999,9 +2161,12 @@ const POLLS_FILE = "matchtime-polls.json";
 export function createBaileysDriver(env: NodeJS.ProcessEnv = process.env): BaileysDriver {
   const config = resolveBaileysConfig(env, BOT_DIR);
   const logger = makeBaileysLogger(config.logLevel);
+  // libsignal prints whole session records (root and base keys) straight to
+  // the console, around Baileys' logger. Once, for the process.
+  installLibsignalConsoleFilter();
   console.log(
     `Baileys driver: session ${config.authDir} | log level ${config.logLevel} | ` +
-      `login ${config.pairPhone ? `pairing code for ${config.pairPhone}` : "QR"}`,
+      `login ${config.pairPhone ? `pairing code for ${maskDigits(config.pairPhone)}` : "QR"}`,
   );
 
   async function prepare() {
@@ -2075,6 +2240,16 @@ export function createBaileysDriver(env: NodeJS.ProcessEnv = process.env): Baile
     pollArchive,
     flushState: () => contactsWriter?.flush(),
     pictures: createLivePictureReader(),
+    // Group invites from verified organisers (2026-10-15). Refused in
+    // shadow mode by group-invite-api.ts, so a shadow bot never joins.
+    groupInviteCheck: (body) => postGroupInviteCheck(body),
+    privacyCheck: createGroupAddPrivacyCheck({
+      enabled: groupAddPrivacyEnabled(env),
+      // A shadow process changes nothing on WhatsApp: it reads and logs.
+      readOnly: shadowMode().enabled,
+      log: (l) => console.log(l),
+      error: (l) => console.error(l),
+    }),
   });
   return driver;
 }

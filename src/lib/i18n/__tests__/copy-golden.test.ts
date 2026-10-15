@@ -1304,6 +1304,7 @@ function cases(lang: Lang): Case[] {
   );
   add("R182 card / code sent from another number", sj.sj_card_wrong_number({ seen: "+44 77** ***123", expected: "+44 7700 900123" }));
   add("R182 card / add me to your group", `${sj.sj_card_dm_verified}\n${sj.sj_card_history_tip}\n${sj.sj_card_number_label}: +44 7700 900777`);
+  add("R182 card / WhatsApp offers Invite to group", sj.sj_card_invite_tip);
   add("R182 card / pending approval", sj.sj_card_pending);
   add("R182 card / pending, added by someone else", sj.sj_card_pending_other({ group: "Riverside Tuesday 5s" }));
   add("R182 card / approved", sj.sj_card_approved({ group: "Riverside Tuesday 5s" }));

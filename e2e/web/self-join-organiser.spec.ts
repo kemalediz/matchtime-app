@@ -215,6 +215,9 @@ test("flag ON: sign up, set up the club and its weekly game, connect, and the ca
   // other page finds the number here, so those checks are not vacuous.
   expect(await page.content()).toMatch(NUMBER_ANYWHERE);
   await expect(card).toContainText("2. adım");
+  // 2026-10-15: WhatsApp may refuse the add and offer "Invite to group".
+  await expect(page.getByTestId("club-connect-invite-tip")).toContainText('"Gruba davet et"');
+  await expect(page.getByTestId("club-connect-invite-tip")).toContainText("MatchTime gruba kendisi katılır");
   await shot(page, "05-admin-add-me-to-your-group");
 
   // ── 7. Added to the group (slice 6): pending approval ──

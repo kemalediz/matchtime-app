@@ -1720,6 +1720,8 @@ export const tr: Strings = {
     "2. adım: MatchTime'ı futbol grubunuza ekleyin. Aşağıdaki numarayı MatchTime adıyla rehberinize kaydedin, sonra grubu açıp Katılımcı ekle'ye dokunun ve MatchTime'ı seçin.",
   sj_card_history_tip:
     "Önemli: onaylamadan önce o ekrandaki \"Mesaj geçmişi\" seçeneğini açın. Böylece grubunuzun son mesajları MatchTime'a gelir ve kendini sizin düzeninize göre kurabilir.",
+  sj_card_invite_tip:
+    "WhatsApp MatchTime'ı ekleyemediğini söyleyip \"Gruba davet et\" seçeneğini sunarsa ona dokunun. MatchTime gruba kendisi katılır. Davetle mesaj geçmişi gelmez, bu yüzden ayarları ayarlar sayfasından yaparsınız.",
   sj_card_number_label: "MatchTime'ın WhatsApp numarası",
   sj_card_pending:
     "3. adım: kulübünüzü kontrol ediyoruz, genellikle bir gün içinde. Kulübünüz onaylanana kadar MatchTime grupta sessiz kalır, yayına geçince size WhatsApp'tan yazar.",
