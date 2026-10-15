@@ -4,6 +4,7 @@
  * Phase 2's in-group feature menu) can import the labels without
  * pulling server-only Prisma.
  */
+import { totalOnTenPounds } from "./payments";
 export type FeatureKey =
   | "attendance"
   | "bench"
@@ -46,13 +47,13 @@ export const FEATURE_META: Array<{
   { key: "attendance", label: "Attendance tracking", blurb: "Reads IN/OUT messages, keeps the squad list, chases when short." },
   { key: "bench", label: "Bench management", blurb: "Runs the bench; when someone drops, asks the next bencher to step up." },
   { key: "teamBalancing", label: "Team generation", blurb: "Builds two balanced teams on request." },
-  { key: "momVoting", label: "Man of the Match", blurb: "Posts the MoM vote after the match and announces the winner." },
+  { key: "momVoting", label: "Man of the Match", blurb: "Announces the winner in the group. Players vote on their rating link." },
   { key: "playerRating", label: "Player ratings", blurb: "DMs each player a quick post-match rating link." },
   { key: "reminders", label: "Personal reminders", blurb: '"@MatchTime remind me Monday" and the bot DMs you then.' },
   { key: "statsQa", label: "Stats answers", blurb: "Answers history questions (top attenders, past MoMs, scores)." },
   { key: "paymentTracking", label: "Payment tracking", blurb: "Tracks who has paid and chases the unpaid (opt-in)." },
   { key: "paymentCollection", label: "Collect match fees (Stripe)", blurb: "After each match, DM each player a link to pay. Needs a connected bank (below)." },
-  { key: "payByBank", label: "  ↳ Pay by Bank", blurb: "Cheapest method (~10p). The recommended default." },
-  { key: "payCard", label: "  ↳ Card / Apple Pay", blurb: "Card payments (~35p on £10)." },
+  { key: "payByBank", label: "  ↳ Pay by Bank", blurb: `Cheapest way to pay by link: ${totalOnTenPounds("pay_by_bank")} on a £10 fee. The recommended default.` },
+  { key: "payCard", label: "  ↳ Card and Apple Pay", blurb: `Card, Apple Pay or Google Pay: ${totalOnTenPounds("card")} on a £10 fee.` },
   { key: "payDirect", label: "  ↳ Pay organiser directly", blurb: "Cash/transfer; the money collector confirms receipt. No fee." },
 ];

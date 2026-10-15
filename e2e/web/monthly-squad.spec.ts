@@ -74,7 +74,7 @@ test("mode off: one switch on settings, no Months tab, and /admin/months is a 40
 test("the section and every control has its info button", async ({ page }) => {
   await setMode("monthly");
   await openSettings(page);
-  for (const k of ["st_monthly", "msq_mode", "msq_credit", "msq_payg", "msq_opens", "msq_instructions"]) {
+  for (const k of ["st_monthly", "setting-squadMode", "setting-monthCreditRule", "setting-paygPrice", "setting-monthListOpens", "setting-paymentInstructions"]) {
     await expect(page.getByTestId(`info-${k}`), k).toBeVisible();
   }
   await page.getByTestId("info-st_monthly").click();
@@ -484,7 +484,7 @@ test("a Turkish club reads Turkish, on both pages", async ({ page, db }) => {
   await expect(section).toContainText("Kadronuz nasıl oluşuyor");
   await expect(section).toContainText("Ödeme talimatı");
   await expect(page.getByRole("link", { name: "Aylar", exact: true })).toBeVisible();
-  await page.getByTestId("info-msq_credit").click();
+  await page.getByTestId("info-setting-monthCreditRule").click();
   await expect(page.getByRole("dialog").getByRole("heading", { name: "Krediler" })).toBeVisible();
   await page.getByRole("dialog").getByRole("button", { name: "Kapat" }).click();
 

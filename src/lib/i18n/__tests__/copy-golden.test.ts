@@ -1339,7 +1339,7 @@ function cases(lang: Lang): Case[] {
   add("R186 admin group / L2 wrong or expired code", sj.admin_group_bad_code);
   add("R186 admin group / L3 the club's main group", sj.admin_group_main_group({ club: "Friday FNF" }));
   add("R186 admin group / L4 removed, DM to the owner", sj.admin_group_removed_dm({ club: "Friday FNF" }));
-  add("R187 settings / admin messages heading and info", `${sj.settings_admin_channel_heading}\n${sj.settings_admin_channel_info}`);
+  add("R187 settings / admin messages heading", sj.settings_admin_channel_heading);
   add(
     "R187 settings / the three choices",
     [sj.settings_admin_channel_mode_one_person, sj.settings_admin_channel_mode_admin_group, sj.settings_admin_channel_mode_each_admin].join("\n"),
@@ -1349,7 +1349,6 @@ function cases(lang: Lang): Case[] {
     "R187 settings / link flow",
     [
       `[${sj.settings_admin_channel_link_button}] [${sj.settings_admin_channel_link_again}]`,
-      `${sj.settings_admin_channel_link_info_title}: ${sj.settings_admin_channel_link_info}`,
       `1. ${sj.settings_admin_channel_step_code({ code: "K7P3QX" })}`,
       `2. ${sj.settings_admin_channel_step_add}`,
       `3. ${sj.settings_admin_channel_step_send} ${sj.settings_admin_channel_command({ code: "K7P3QX" })}`,
@@ -1700,7 +1699,7 @@ function cases(lang: Lang): Case[] {
   const wr = t(lang);
   add(
     "RSQ5 weekly routine settings",
-    [wr.wr_section_title, wr.wr_section_lead, `${wr.wr_rolling_label}: ${wr.wr_rolling_blurb}`, `(i) ${wr.wr_rolling_info}`, wr.wr_rolling_on, wr.wr_rolling_off, wr.wr_save_failed].join("\n"),
+    [wr.wr_section_title, wr.wr_section_lead, `${wr.wr_rolling_label}: ${wr.wr_rolling_blurb}`, wr.wr_rolling_on, wr.wr_rolling_off, wr.wr_save_failed].join("\n"),
   );
   add(
     "RSQ5 carry over button",
@@ -1757,9 +1756,7 @@ function cases(lang: Lang): Case[] {
     "WDL4 weekly deadline settings",
     [
       `${wr.wd_dropout_label}: ${wr.wd_dropout_blurb}`,
-      `(i) ${wr.wd_dropout_info}`,
       `${wr.wd_publish_label}: ${wr.wd_publish_blurb}`,
-      `(i) ${wr.wd_publish_info}`,
       `${wr.wd_day_label} / ${wr.wd_time_label} / ${wr.wd_not_set}`,
       [0, 1, 2, 3, 4, 5, 6].map((dow) => wr.wd_weekday({ dow })).join(", "),
       `${wr.wd_save} / ${wr.wd_clear} / ${wr.wd_saved}`,
@@ -1852,10 +1849,8 @@ function cases(lang: Lang): Case[] {
     "OPK8 settings: who fills an open place",
     [
       `${wr.wr_pick_label}: ${wr.wr_pick_blurb}`,
-      `(i) ${wr.wr_pick_info}`,
       `${wr.wr_pick_first_come} / ${wr.wr_pick_organiser}`,
       wr.wr_fallback_label,
-      `(i) ${wr.wr_fallback_info}`,
       `${wr.wr_fallback_offer} / ${wr.wr_fallback_leave}`,
       wr.wr_pick_saved,
     ].join("\n"),

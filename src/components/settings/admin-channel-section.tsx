@@ -19,7 +19,7 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { InfoButton } from "@/components/stats/info-button";
+import { SettingInfo } from "@/components/info/setting-info";
 import { t } from "@/lib/i18n/t";
 import type { Lang } from "@/lib/i18n/lang";
 import { longDayTimeLabel } from "@/lib/i18n/dates";
@@ -137,12 +137,10 @@ export function AdminChannelSettings({ orgId, lang }: { orgId: string; lang: Lan
   );
 
   return (
-    <div className="py-3 space-y-3" data-testid="admin-channel-section">
+    <div className="py-3 space-y-3" data-testid="admin-channel-section" data-setting="adminChannel">
       <div className="flex items-center gap-1 text-sm font-medium text-slate-800">
         {s.settings_admin_channel_heading}
-        <InfoButton title={s.settings_admin_channel_heading}>
-          <p>{s.settings_admin_channel_info}</p>
-        </InfoButton>
+        <SettingInfo k="adminChannel" lang={lang} />
       </div>
       <div className="space-y-4">
         <div role="radiogroup" aria-label={s.settings_admin_channel_heading}>
@@ -204,9 +202,7 @@ export function AdminChannelSettings({ orgId, lang }: { orgId: string; lang: Lan
               >
                 {status.code ? s.settings_admin_channel_link_again : s.settings_admin_channel_link_button}
               </button>
-              <InfoButton title={s.settings_admin_channel_link_info_title}>
-                <p>{s.settings_admin_channel_link_info}</p>
-              </InfoButton>
+              <SettingInfo k="adminGroupLink" lang={lang} />
             </div>
             {status.code && (
               <ol className="list-decimal pl-5 space-y-1.5 text-sm text-slate-700" data-testid="admin-group-steps">

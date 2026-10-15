@@ -618,7 +618,8 @@ for (const anchoring of [true, false]) {
     await goTo("#bot-language select");
     was = await where("#bot-language select");
     await page.locator("#bot-language select").selectOption("tr");
-    await expect(page.getByText("MatchTime will speak Türkçe in this group")).toBeVisible();
+    // The page now speaks the language just chosen, its toast included.
+    await expect(page.getByText("MatchTime bu grupta Türkçe konuşacak")).toBeVisible();
     await loaded(2);
     expect(await where("#bot-language select")).toEqual(was);
     await expect(page.getByRole("heading", { name: "Set up from your group chat" })).toHaveCount(1);

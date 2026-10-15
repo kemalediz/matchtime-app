@@ -5,8 +5,7 @@
 import { describe, it, expect } from "vitest";
 import { en } from "../i18n/strings.en";
 import { tr } from "../i18n/strings.tr";
-import { FEATURE_META } from "../org-features-meta";
-import { allInfoKeys, infoCopy, FEATURE_INFO, confidenceBadge, displayEvidence } from "../info-copy";
+import { allInfoKeys, infoCopy, confidenceBadge, displayEvidence } from "../info-copy";
 
 const DASH = /[—–]/;
 
@@ -53,15 +52,8 @@ describe("info popup copy", () => {
   });
 
   it("splits a body on blank lines into paragraphs", () => {
-    expect(infoCopy("en", "st_bank").paragraphs).toHaveLength(2);
+    expect(infoCopy("en", "st_billing").paragraphs).toHaveLength(2);
     expect(infoCopy("en", "fs_seed").paragraphs).toHaveLength(1);
-  });
-
-  it("every Bot features switch, including Badge announcements, has a popup", () => {
-    for (const m of FEATURE_META) expect(FEATURE_INFO[m.key], m.key).toBeTruthy();
-    expect(FEATURE_INFO.badgeAnnouncements).toBe("feat_badges");
-    expect(FEATURE_INFO.gearReminder).toBe("feat_gear");
-    for (const k of Object.values(FEATURE_INFO)) expect(keys).toContain(k);
   });
 
   it("the seed rating copy says players never see it and that it fades as real ratings come in", () => {

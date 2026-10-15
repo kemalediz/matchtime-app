@@ -21,6 +21,13 @@ export type PayMethod = "pay_by_bank" | "card" | "direct";
  *  and carries none. Change this single number to reprice. */
 export const PLATFORM_FEE_RATE = 0.01; // 1% of base
 
+/** What a player pays by `method` on a £10 fee, as the copy prints it
+ *  ("£10.36"). The settings blurbs and the in-group menu read it, so the
+ *  amount they quote is always the one `totalForMethod` charges. */
+export function totalOnTenPounds(method: Exclude<PayMethod, "direct">): string {
+  return `£${totalForMethod(10, method, 1).toFixed(2)}`;
+}
+
 /** Stripe UK processing rates by rail (2026): % of the charge + a fixed
  *  fee. Passed through exactly so the collector nets the full base fee.
  *    - card        1.5% + 20p

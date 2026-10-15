@@ -111,30 +111,30 @@ test("/admin/settings: every section and every feature switch (EN and TR)", asyn
     page,
     [
       "st_general",
-      "st_team_names",
-      "st_language",
+      "setting-teamNames",
+      "setting-language",
       "st_invite",
       "st_features",
-      "feat_attendance",
-      "feat_bench",
-      "feat_teams",
-      "feat_mom",
-      "feat_rating",
-      "feat_reminders",
-      "feat_stats",
-      "feat_pay_tracking",
-      "feat_pay_collect",
-      "feat_pay_bank",
-      "feat_pay_card",
-      "feat_pay_direct",
-      "feat_badges",
-      "feat_gear",
+      "setting-attendance",
+      "setting-bench",
+      "setting-teamBalancing",
+      "setting-momVoting",
+      "setting-playerRating",
+      "setting-reminders",
+      "setting-statsQa",
+      "setting-paymentTracking",
+      "setting-paymentCollection",
+      "setting-payByBank",
+      "setting-payCard",
+      "setting-payDirect",
+      "setting-badgeAnnouncements",
+      "setting-gearReminder",
       "st_weekly",
-      "st_collector",
-      "st_bank",
+      "setting-moneyCollector",
+      "setting-collectorBank",
       "st_whatsapp",
     ],
-    "feat_attendance",
+    "setting-attendance",
     "Attendance tracking",
   );
   // The Friday features keep their own ⓘ.
@@ -146,7 +146,7 @@ test("/admin/settings: every section and every feature switch (EN and TR)", asyn
   // A Turkish club reads the popups in Turkish.
   await db.run(`UPDATE "Organisation" SET language = 'tr' WHERE id = $1`, [ORG_ID]);
   await page.reload();
-  await page.getByRole("button", { name: "Katılım takibi nedir?" }).click({ timeout: 30_000 });
+  await page.getByRole("button", { name: "Yoklama nedir?" }).click({ timeout: 30_000 });
   await expect(page.getByRole("dialog")).toContainText("VARIM ve YOKUM");
   await page.getByRole("button", { name: "Kapat" }).click();
   await db.run(`UPDATE "Organisation" SET language = 'en' WHERE id = $1`, [ORG_ID]);

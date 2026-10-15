@@ -9,7 +9,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { setWeeklyRoutine } from "@/app/actions/org";
-import { InfoButton } from "@/components/stats/info-button";
+import { SettingInfo } from "@/components/info/setting-info";
 import { t } from "@/lib/i18n/t";
 import { LEARNED_REFRESH_EVENT } from "@/lib/setup-learning/suggestion-state";
 import type { ListAnnouncer } from "@/lib/list-announcer";
@@ -48,12 +48,10 @@ export function ListAnnouncerRow(props: {
   }
 
   return (
-    <div id="wr-announce" className="py-3 scroll-mt-6" data-testid="wr-announce">
+    <div id="wr-announce" className="py-3 scroll-mt-6" data-testid="wr-announce" data-setting="listAnnouncer">
       <div className="flex items-center gap-1 text-sm font-medium text-slate-800">
         {s.wr_announce_label}
-        <InfoButton title={s.wr_announce_label}>
-          <p>{s.wr_announce_info}</p>
-        </InfoButton>
+        <SettingInfo k="listAnnouncer" lang={props.language} />
       </div>
       <p className="text-xs text-slate-500">{s.wr_announce_blurb}</p>
       <select

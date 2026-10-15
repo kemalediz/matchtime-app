@@ -41,7 +41,7 @@ test("with an admin group: the row and its ⓘ, then a time and Off persist", as
   expect(await setting(db)).toBeNull();
 
   await row.getByRole("button", { name: "What is Teams ready?" }).click();
-  await expect(page.getByText(/On match day at this time MatchTime builds balanced teams/)).toBeVisible();
+  await expect(page.getByRole("dialog")).toContainText("On match day at this time, MatchTime builds balanced teams");
   await page.getByRole("button", { name: "Close" }).click();
 
   // Turning it on stores 10:00 explicitly.

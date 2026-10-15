@@ -48,7 +48,7 @@ test("a draft club: the owner renames it, the button is busy meanwhile, the slug
   await signInAs(page, U.admin, "/admin/settings");
   await page.waitForURL("**/admin/settings");
 
-  const name = page.getByLabel("Organisation name");
+  const name = page.getByLabel("Organisation name", { exact: true });
   await expect(name).toBeEnabled({ timeout: 30_000 });
   await expect(name).toHaveValue("E2E Test FC");
   const save = page.getByRole("button", { name: "Save name" });
@@ -85,7 +85,7 @@ test("a draft club: the owner renames it, the button is busy meanwhile, the slug
 
   // It is the saved name after a reload, and the slug field still shows the old slug.
   await page.reload();
-  await expect(page.getByLabel("Organisation name")).toHaveValue("Friday Football", { timeout: 30_000 });
+  await expect(page.getByLabel("Organisation name", { exact: true })).toHaveValue("Friday Football", { timeout: 30_000 });
   await expect(page.getByLabel("URL slug")).toHaveValue(SLUG);
 });
 
@@ -94,7 +94,7 @@ test("a draft club: a name that is too short cannot be saved", async ({ page }) 
   await signInAs(page, U.admin, "/admin/settings");
   await page.waitForURL("**/admin/settings");
 
-  const name = page.getByLabel("Organisation name");
+  const name = page.getByLabel("Organisation name", { exact: true });
   await expect(name).toBeEnabled({ timeout: 30_000 });
   await name.fill("A");
   await expect(page.getByRole("button", { name: "Save name" })).toBeDisabled();
@@ -106,7 +106,7 @@ test("an approved club: the name is read-only, with a line saying why", async ({
   await signInAs(page, U.admin, "/admin/settings");
   await page.waitForURL("**/admin/settings");
 
-  const name = page.getByLabel("Organisation name");
+  const name = page.getByLabel("Organisation name", { exact: true });
   await expect(name).toHaveValue("Friday Football", { timeout: 30_000 });
   await expect(name).toBeDisabled();
   await expect(page.getByRole("button", { name: "Save name" })).toHaveCount(0);

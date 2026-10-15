@@ -75,6 +75,7 @@
 import type { Strings } from "./t";
 import { joinList } from "./text";
 import { firstMonthsFree } from "./free-period";
+import { totalOnTenPounds } from "../payments";
 import type { StatsPeriod } from "../pipeline/types";
 import type { BadgeKey } from "../badge-rules";
 
@@ -1479,14 +1480,14 @@ export const tr: Strings = {
       attendance: "VARIM ve YOKUM mesajlarını okur, kadro listesini tutar, eksik kalınca hatırlatır.",
       bench: "Kadro dolunca gelenleri yedeğe yazar; biri çıkınca açılan yeri yedeklere sorar.",
       teamBalancing: "İstenince dengeli iki takım kurar.",
-      momVoting: "Maçtan sonra maçın adamı oylamasını açar, kazananı duyurur.",
+      momVoting: "Kazananı grupta duyurur. Oyuncular puanlama linkinden oy verir.",
       playerRating: "Her oyuncuya maçtan sonra kısa bir puanlama linki gönderir.",
       reminders: "İstenen gün oyuncuya özelden hatırlatma yazar.",
       statsQa: "Geçmişle ilgili soruları cevaplar (en çok gelenler, eski maçın adamları, skorlar).",
       paymentTracking: "Kimin ödediğini takip eder, ödemeyenlere hatırlatır (isteğe bağlı).",
       paymentCollection: "Her maçtan sonra oyunculara ödeme linki gönderir. Bağlı bir banka hesabı gerekir.",
-      payByBank: "En ucuz yöntem (yaklaşık 10p). Önerilen varsayılan.",
-      payCard: "Kartla ödeme (£10 için yaklaşık 35p).",
+      payByBank: `Linkle ödemenin en ucuz yolu: £10'luk ücrette ${totalOnTenPounds("pay_by_bank")}. Önerilen varsayılan.`,
+      payCard: `Kart, Apple Pay ya da Google Pay: £10'luk ücrette ${totalOnTenPounds("card")}.`,
       payDirect: "Nakit ya da havale; parayı toplayan kişi alındığını onaylar. Ücret yok.",
     })[p.key] ?? p.englishBlurb,
 
@@ -1949,11 +1950,6 @@ export const tr: Strings = {
   wr_section_lead: "Kadronun her hafta nasıl oluştuğu. Her ayar siz açana kadar kapalı kalır.",
   wr_rolling_label: "Kadro devam eder",
   wr_rolling_blurb: "Geçen maçta oynayan herkes, YOKUM demedikçe yine kadroda.",
-  wr_rolling_info:
-    "Bu açıkken, son maçta oynayan herkes bir sonraki maçta otomatik olarak kadroda olur; gelemeyecekse sadece YOKUM yazması yeterli. " +
-    "Yedek listesindekiler, telefon numarası olmayan misafirler ve gruptan ayrılanlar aktarılmaz. " +
-    "Kadro her maçtan sonraki sabah 08:00'de aktarılır, böylece gelmeyenleri o gece listeden çıkarabilirsiniz. " +
-    "Maç bittiğinde listede olan herkes ödeme ve puanlama için oynamış sayılır.",
   wr_rolling_on: "Kadro devam eder: açık",
   wr_rolling_off: "Kadro devam eder: kapalı",
   wr_save_failed: "Ayar kaydedilemedi",
@@ -1979,14 +1975,8 @@ export const tr: Strings = {
   list_published_footer: "Artık gelemiyorsanız yerinize birinin alınabilmesi için hemen *YOKUM* yazın.",
   wd_dropout_label: "Son çıkış saati",
   wd_dropout_blurb: "Oyuncuların geç sayılmadan çıkabileceği son gün ve saat.",
-  wd_dropout_info:
-    "Oyuncuların geç sayılmadan çıkabileceği son saat. MatchTime 3 saat önce gruba hatırlatır, sonra yöneticilere kimin çıktığını ve kimin beklediğini yazar. " +
-    "Son çıkış saatinden sonra YOKUM yine geçerlidir, yöneticilere geç olduğu bildirilir.",
   wd_publish_label: "Liste yayını",
   wd_publish_blurb: "MatchTime'ın son listeyi gruba gönderdiği zaman.",
-  wd_publish_info:
-    "MatchTime'ın son listeyi gruba gönderdiği zaman: kim oynuyor, kim yedekte. " +
-    "Bu ve son çıkış saati ayarlıysa MatchTime, maç günü dışında her gün 17:00'de gönderdiği mesajı durdurur.",
   wd_day_label: "Gün",
   wd_time_label: "Saat",
   wd_not_set: "Ayarlanmadı",
@@ -2067,15 +2057,11 @@ export const tr: Strings = {
     `Takımlar dengesiz: ${p.redLabel} ${p.red}, ${p.yellowLabel} ${p.yellow}. Böyle kesinleşsin istiyorsanız yine *EVET* yazın, ya da önce bir oyuncuyu *taşı* ile geçirin.`,
   tp_settings_label: "Takımlar hazır",
   tp_settings_blurb: "Maç günü MatchTime'ın takımları yönetici grubunuzda ne zaman önereceği.",
-  tp_settings_info:
-    "Maç günü bu saatte MatchTime kadrodan dengeli takımlar kurar ve yönetici WhatsApp grubunuza gönderir. Yöneticiler takımları orada değiştirebilir (Ali ile Bilal değiş, Ali taşı, yeniden) ve kesinleşince EVET yazar. Başlama saatinden iki saat önce hâlâ EVET yazan olmadıysa MatchTime yönetici grubuna bir kez hatırlatır. Kapalı: MatchTime kendiliğinden takım önermez; yöneticiler yine de yönetici grubunda takımlar yazabilir. Siz ayarlayana kadar: listeyi ve takımları organizatörler duyuruyorsa 10:00, değilse Kapalı.",
   tp_settings_default: "Henüz ayarlanmadı, bu kulübünüzün varsayılanı.",
   tp_settings_off: "Kapalı",
   tp_settings_saved: "Kaydedildi",
   tp_settings_bad_time: "Bir saat seçin ya da Kapalı.",
   settings_admin_channel_heading: "Yönetici mesajları",
-  settings_admin_channel_info:
-    "MatchTime'ın yalnızca yöneticilerin görmesi gereken mesajları nereye gönderdiği: seçim için yedek listesi, son çıkış özeti, geç çıkanlar, ödemeyenler ve kontrol edilecek yeni oyuncular. Tek kişi: seçtiğiniz kişiye DM. Yönetici WhatsApp grubu: yöneticilerin grubuna tek mesaj; yöneticiler orada numara, isim ya da etiketle oyuncu seçebilir. Haftalık kadroda \"Ali çıktı\" ya da \"Can girsin\" yazarak veya listeyi yapıştırarak kadroyu orada da değiştirebilirler; takımları da orada görüp değiştirebilirler (takımlar, değiş, taşı, yeniden, EVET). MatchTime o grupta başka hiçbir şeyi okumaz. Her yöneticiye DM: her yönetici kendi kopyasını alır.",
   settings_admin_channel_mode_one_person: "Tek kişi",
   settings_admin_channel_mode_admin_group: "Yönetici WhatsApp grubu",
   settings_admin_channel_mode_each_admin: "Her yöneticiye DM",
@@ -2083,9 +2069,6 @@ export const tr: Strings = {
   settings_admin_channel_person_owner: (p: { name: string }): string => `${p.name} (kulüp sahibi)`,
   settings_admin_channel_link_button: "Yönetici grubunu bağla",
   settings_admin_channel_link_again: "Yeni kod",
-  settings_admin_channel_link_info_title: "Yönetici grubunu bağla",
-  settings_admin_channel_link_info:
-    "Düğmeye basın, sonra MatchTime'ı yöneticilerin WhatsApp grubuna ekleyip burada görünen kodu o gruba gönderin. Kod bir kez çalışır ve 48 saat geçerlidir. MatchTime o grupta kulüp kurulumu başlatmaz.",
   settings_admin_channel_step_code: (p: { code: string }): string => `Bu sayfayı açık tutun. Kodunuz: ${p.code}`,
   settings_admin_channel_step_add: "MatchTime'ı yöneticilerin WhatsApp grubuna ekleyin.",
   settings_admin_channel_step_send: "O grupta şunu gönderin:",
@@ -2150,16 +2133,9 @@ export const tr: Strings = {
     "İpucu: kadroyu her hafta devam ettirmek, yerine geçecekleri yedek listesinden kendiniz seçmek ya da yönetici mesajlarını yöneticilerin grubunda almak için sitedeki Ayarlar sayfasını açın.",
   wr_pick_label: "Boşalan yeri kim doldurur",
   wr_pick_blurb: "İlk VARIM diyen, ya da organizatörler yedek listesinden seçer.",
-  wr_pick_info:
-    "İlk VARIM diyen: bir yer açılınca MatchTime yeri yedek listesine sunar, ilk VARIM diyen alır. " +
-    "Organizatörler seçer: MatchTime hiçbir yeri kendisi doldurmaz. VARIM diyen herkes yedek listesine girer; yönetici mesajlarınız " +
-    "(bkz. Yönetici mesajları) yedek listesini, mevkileri ve kulüp puanlarını içerir. Numara, isim ya da etiketle ilk yanıt veren yöneticinin seçtiği oyuncu kadroya girer.",
   wr_pick_first_come: "İlk VARIM diyen",
   wr_pick_organiser: "Organizatörler seçer",
   wr_fallback_label: "Zamanında kimse seçmezse",
-  wr_fallback_info:
-    "Hiçbir yönetici bir gün içinde, en geç maçtan 4 saat önce yanıt vermezse, MatchTime yeri ya tüm yedek listesine sunar " +
-    "(ilk VARIM diyen alır) ya da boş bırakır.",
   wr_fallback_offer: "Yedek listesine sun",
   wr_fallback_leave: "Boş bırak",
   wr_pick_saved: "Kaydedildi",
@@ -2524,12 +2500,6 @@ export const tr: Strings = {
 
   info_st_general_title: "Genel",
   info_st_general_body: "Kulübünüzün MatchTime'daki adı ve web adresi. Buradan değiştirilemez.",
-  info_st_team_names_title: "Takım adları",
-  info_st_team_names_body:
-    "Takım listelerinde, skor mesajlarında ve maç sayfalarında iki tarafın adı. Varsayılan adı kullanmak için kutuyu boş bırakın.",
-  info_st_language_title: "Bot dili",
-  info_st_language_body:
-    "MatchTime'ın grubunuzda ve oyuncularınıza özel mesajlarda yazdığı dil. Henüz çevrilmemiş mesajlar İngilizce gönderilir.",
   info_st_invite_title: "Davet bağlantısı",
   info_st_invite_body:
     "Birinin MatchTime web sitesinde kulübünüze katılabilmesi için bu bağlantıyı gönderin. WhatsApp grubunuzda yazanlar kendiliğinden eklenir, bu yüzden çoğu oyuncunun buna ihtiyacı yoktur.",
@@ -2543,55 +2513,10 @@ export const tr: Strings = {
   info_st_billing_body:
     "MatchTime'ın kulübünüze maliyeti. Her ay yalnızca oynanan maçlar için ücret alınır, aylık üst sınırı asla geçmez, ödeme ay bittikten sonraki sabah alınır.\n\n" +
     "Kartla fatura sayfasında para toplayan kişi ilgilenir; para toplayan kişi yoksa kart kulüp sahibinden istenir. Diğer yöneticiler görebilir ama kartı değiştiremez.",
-  info_st_collector_title: "Para toplayan kişi",
-  info_st_collector_body:
-    "Maç ücretlerini toplayan üye. Her maçtan sonra MatchTime ona her oyuncunun ne kadar ödeyeceğini sorar, kendisine doğrudan yapılan ödemeleri o onaylar ve kartla yapılan ödemeler onun banka hesabına gider. MatchTime'ın kulüp ücreti için kartla da o ilgilenir. Yalnızca telefon numarası olan üyeler listelenir.",
-  info_st_bank_title: "Para toplayan kişinin bankası",
-  info_st_bank_body:
-    "Kartla ve Pay by Bank ile yapılan ödemeler Stripe üzerinden para toplayan kişinin kendi banka hesabına gider. Bir kez bağlayın: Stripe birkaç kimlik bilgisi ve banka hesabını ister.\n\n" +
-    "\"Manage bank / payouts\" ödemeleri görmek için Stripe'ı açar. \"Start over\" bu Stripe hesabının MatchTime'daki bağlantısını kaldırır, böylece başka bir hesap bağlayabilirsiniz; daha önce alınmış ödemeler etkilenmez.",
   info_st_whatsapp_title: "WhatsApp botu",
   info_st_whatsapp_body:
     "MatchTime'ın WhatsApp grubunuz için açık olup olmadığı ve hangi gruba bağlı olduğu. Bunu MatchTime yönetir, buradan değiştirilemez.",
 
-  info_feat_attendance_title: "Katılım takibi",
-  info_feat_attendance_body:
-    "MatchTime grupta VARIM ve YOKUM mesajlarını okur, bir sonraki maçın kadro listesini tutar, güncellemeler paylaşır ve kadro eksikse oyuncu arar. Grubunuz yalnızca puanlama ya da Man of the Match istiyorsa kapatın.",
-  info_feat_bench_title: "Yedek listesi",
-  info_feat_bench_body:
-    "Kadro dolunca fazladan VARIM diyenler yedek listesine girer. Biri çıkarsa yer yedek listesine geçer: onlara sunulur ya da Haftalık düzen altında bunu seçtiyseniz bir organizatör seçer.",
-  info_feat_teams_title: "Takım kurma",
-  info_feat_teams_body:
-    "MatchTime'dan grupta takımları kurmasını isteyin ya da bir maçın takım sayfasında \"Generate teams\" düğmesine basın. Kadroyu kulüp puanlarına ve mevkilere göre iki dengeli takıma böler ve maçtan sonra skoru sorar.",
-  info_feat_mom_title: "Man of the Match (maçın adamı)",
-  info_feat_mom_body: "Her maçtan sonra MatchTime grupta Man of the Match oylaması başlatır ve kazananı duyurur.",
-  info_feat_rating_title: "Oyuncu puanları",
-  info_feat_rating_body:
-    "Her maçtan sonra MatchTime, oynayan ve telefon numarası olan her oyuncuya diğerlerine puan vermesi için özel bir bağlantı gönderir. Bu puanlar her oyuncunun kulüp puanını ekler ve takımları dengelemeye yardım eder.",
-  info_feat_reminders_title: "Kişisel hatırlatmalar",
-  info_feat_reminders_body:
-    "Oyuncular MatchTime'ı etiketleyip hatırlatma isteyebilir, örneğin \"pazartesi bana hatırlat\", ve MatchTime o zaman onlara özel mesaj gönderir.",
-  info_feat_stats_title: "İstatistik cevapları",
-  info_feat_stats_body:
-    "Oyuncular MatchTime'ı etiketleyip grubun geçmişi hakkında soru sorabilir, örneğin en çok kim oynadı ya da geçmiş Man of the Match kazananları, ve MatchTime grupta cevaplar.",
-  info_feat_pay_tracking_title: "Ödeme takibi",
-  info_feat_pay_tracking_body: "MatchTime her maç için kimin ödediğini takip eder ve ödemeyenlere hatırlatır.",
-  info_feat_pay_collect_title: "Maç ücretlerini topla",
-  info_feat_pay_collect_body:
-    "Her maçtan sonra MatchTime para toplayan kişiye her oyuncunun ne kadar ödeyeceğini sorar, sonra her oyuncuya ödeme için özel bir bağlantı gönderir. Kartla yapılan ödemeler para toplayan kişinin bankasına gider; banka aşağıdan bağlanmalıdır.",
-  info_feat_pay_bank_title: "Pay by Bank (bankadan ödeme)",
-  info_feat_pay_bank_body: "Oyuncular doğrudan banka uygulamalarından öder. En ucuz ödeme yoludur.",
-  info_feat_pay_card_title: "Kart ve Apple Pay",
-  info_feat_pay_card_body: "Oyuncular kart, Apple Pay ya da Google Pay ile öder. Stripe her ödemeden küçük bir ücret alır.",
-  info_feat_pay_direct_title: "Organizatöre doğrudan ödeme",
-  info_feat_pay_direct_body:
-    "Oyuncular para toplayan kişiye nakit ya da havaleyle ödediklerini söyleyebilir. Para toplayan kişi bunu onaylar. Ücret alınmaz.",
-  info_feat_badges_title: "Rozet duyuruları",
-  info_feat_badges_body:
-    "Her maçtan iki gün sonra MatchTime oyuncuların kazandığı yeni rozetleri grupta paylaşır. Kapatırsanız grupta rozetlerle ilgili hiçbir şey paylaşılmaz.",
-  info_feat_gear_title: "Maç günü malzeme hatırlatması",
-  info_feat_gear_body:
-    "Her futbol maçından yaklaşık iki saat önce MatchTime oyuncu grubunda maçın saatini ve yerini paylaşır, kaleci eldiveni, top ve yedek yelek getirmeyi hatırlatır. Kapatırsanız bu hatırlatma hiçbir yere gönderilmez.",
 
   info_act_page_title: "Etkinlikler",
   info_act_page_body:
@@ -2880,23 +2805,6 @@ export const tr: Strings = {
   info_st_monthly_body:
     "Daimi oyuncuların aya yazılıp tüm ay için ödediği, diğer oyuncuların boş yerleri maç başı ödeyerek doldurduğu gruplar için. Siz açana kadar kapalıdır ve o zamana kadar grubunuz için hiçbir şey değişmez.\n\n" +
     "Açıkken yönetici sayfalarınızda Aylar sayfası görünür. Ayın listesini orada tutarsınız: kim daimi, kim ödedi ve krediler.",
-  info_msq_mode_title: "Kadronuz nasıl oluşuyor",
-  info_msq_mode_body:
-    "Haftalık: her maçın kadrosu o hafta VARIM diyenlerden oluşur. Siz değiştirmedikçe MatchTime böyle çalışır.\n\n" +
-    "Aylık: daimi oyuncular ayın her maçında kadrodadır ve ay için bir kez öder. Maç başı ödeyenler boş yerleri alır ve maç başına öder. Bu açıkken \"Kadro devam eder\" kapalıdır, çünkü onun yerini ayın daimi oyuncuları alır.",
-  info_msq_payg_title: "Maç başı ücret (PAYG)",
-  info_msq_payg_body:
-    "Maç başı ödeyen bir oyuncunun tek maç için ödediği tutar, örneğin £8. Daimi oyuncular bunu ödemez. Onlar ay için kendi paylarını öder.",
-  info_msq_opens_title: "Liste açılışı",
-  info_msq_opens_body:
-    "Gelecek ayın listesinin, ayın ilk maçından kaç gün önce açılacağı. Bu ayın daimi oyuncuları listede hazır gelir. Çoğu grup için 7 gün uygundur.",
-  info_msq_credit_title: "Krediler",
-  info_msq_credit_body:
-    "Bir kredi, gelecek ayın ödemesinden bir maç düşülmesi demektir. Ödemesini yapmış bir daimi oyuncunun ne zaman kredi kazanacağını seçin: kaçırdığı her maçta, yalnızca yerini başkası aldığında ya da hiç. Krediler pound ile değil, maç sayısıyla tutulur.",
-  info_msq_instructions_title: "Ödeme talimatı",
-  info_msq_instructions_body:
-    "Nasıl ödeneceğini anlatan kendi cümleleriniz. Oyunculara borçlarının yanında gösterilir. Örneğin: banka bilgileri grup açıklamasında.\n\n" +
-    "MatchTime asla banka hesap numarası istemez. Bu yalnızca sizin buraya yazdığınız metindir.",
   info_mth_page_title: "Aylar",
   info_mth_page_body:
     "Her haftalık maç için ayda bir liste. Daimi oyuncular ayın her maçında kadrodadır ve bir kez öder. Maç başı ödeyenler boş yerleri alır ve maç başına öder.\n\n" +
@@ -3351,22 +3259,11 @@ export const tr: Strings = {
     `Sağ ol ${p.firstName} 🙏 biri senden önce davrandı. Yedekte kalmaya devam ediyorsun, başka bir yer açılırsa sıra sende.`,
   wr_announce_label: "Listeyi ve takımları kim duyurur",
   wr_announce_blurb: "MatchTime grupta paylaşır ya da organizatörleriniz paylaşır.",
-  wr_announce_info:
-    "MatchTime: MatchTime kadroyu, son listeyi ve takım listelerini her zamanki gibi oyuncu grubunda paylaşır. " +
-    "Organizatörler: MatchTime oyuncu grubundaki VARIM ve YOKUM mesajlarını yine toplar ve her mesaja tik koyar, ama listeyi " +
-    "ya da takımları orada hiç paylaşmaz. Kadro güncellemeleri bunun yerine yönetici mesajlarınıza (bkz. Yönetici mesajları) gider; " +
-    "kimin oynadığını soran oyuncuya listeyi organizatörlerin paylaşacağı söylenir.",
   wr_announce_matchtime: "MatchTime paylaşır",
   wr_announce_organisers: "Organizatörler paylaşır",
   // /admin/settings, "Afişler" kartı (2026-10-14).
   gp_title: "Afişler",
   gp_lead: "MatchTime'ın yönetici grubunuza gönderdiği kadro afişi ve takım listesi, oyunculara iletmeye hazır.",
-  gp_info:
-    "Her maçtan önce MatchTime bir kadro afişi (kimler oynuyor) ve bir takım listesi (iki takım) hazırlar ve bunları yönetici " +
-    "grubunuza, oyuncu grubuna iletmeye hazır olarak gönderir. Bir sahip ya da yönetici bunları orada afiş ya da takım listesi " +
-    "yazarak da isteyebilir. Görünümlerini değiştirmek için aşağıdan bir tasarım seçin: MatchTime tasarımı, kulübünüzün kendi " +
-    "tasarımı, MatchTime'ın kulüplerle paylaştığı bir tasarım; ya da kendi arka plan resminizi yükleyin, MatchTime isimleri, günü, " +
-    "saati ve sahayı üstüne yazar. Buradaki resimler bir sonraki maçınızı gösterir; yeterli oyuncu katılana kadar örnek isimler görünür.",
   gp_list_caption: "Kadro afişi",
   gp_teams_caption: "Takım listesi",
   gp_alt_list: (p: { club: string }): string => `Kadro afişi: ${p.club}`,
@@ -3384,7 +3281,7 @@ export const tr: Strings = {
   gp_saved: "Tasarım kaydedildi. MatchTime bundan sonra bunu kullanır.",
   gp_save_failed: "Kaydedilemedi. Lütfen yeniden deneyin.",
   gp_upload_heading: "Kendi arka planınız",
-  gp_upload_blurb: "Dikey bir resim (eni boyundan kısa), JPEG, PNG ya da WebP, en fazla 4 MB. MatchTime kendi panosunu üstüne çizer.",
+  gp_upload_blurb: "Dikey ya da kare bir resim (eni boyundan uzun olmamalı), en az 540 x 675 piksel, JPEG, PNG ya da WebP, en fazla 4 MB. MatchTime kendi panosunu üstüne çizer.",
   gp_upload_button: "Arka plan yükle",
   gp_upload_replace: "Yeni arka plan yükle",
   gp_uploading: "Yükleniyor",
@@ -3400,6 +3297,82 @@ export const tr: Strings = {
   gp_problem_not_portrait: "Bu resmin eni boyundan uzun. Lütfen dikey bir resim kullanın.",
   gp_problem_made_by_matchtime: "Kulübünüzün tasarımını MatchTime hazırladı. Değiştirmek için MatchTime'a yazın.",
   gp_problem_failed: "Bir şeyler ters gitti. Lütfen yeniden deneyin.",
+
+  // ── /admin/settings: sayfanın kendi kelimeleri (2026-10-15). ──
+  st_loading: "Yükleniyor…",
+  st_not_found: "Kulüp bulunamadı.",
+  st_general_title: "Genel",
+  st_org_name: "Kulüp adı",
+  st_save_name: "Adı kaydet",
+  st_saving_name: "Kaydediliyor...",
+  st_name_saved: "Ad kaydedildi",
+  st_name_save_failed: "Ad kaydedilemedi. Lütfen yeniden deneyin.",
+  st_name_editable_note: "MatchTime'ı WhatsApp grubunuza ekleyene kadar adı değiştirebilirsiniz.",
+  st_name_locked: "Ad artık buradan değiştirilemez. MatchTime bir kulübü adıyla onaylar.",
+  st_url_slug: "Web adresi (URL slug)",
+  st_members: (p) => `${p.count} üye`,
+  st_team_names_title: "Takım adları",
+  st_team_names_lead: (p) =>
+    `İki tarafın takım listelerinde, skor mesajlarında ve maç sayfalarında görünen adı. Varsayılanı (“${p.first}” ve “${p.second}”) kullanmak için kutuyu boş bırakın.`,
+  st_first_team: "Birinci takım",
+  st_second_team: "İkinci takım",
+  st_save_team_names: "Takım adlarını kaydet",
+  st_saving: "Kaydediliyor…",
+  st_team_names_saved: (p) => `Takımların adı ${p.first} ve ${p.second} olacak`,
+  st_team_names_reset: "Varsayılan takım adlarına dönüldü",
+  st_team_names_failed: "Takım adları kaydedilemedi",
+  st_language_title: "Bot dili",
+  st_language_lead: "MatchTime'ın bu grupta konuştuğu dil: grup mesajları, oyunculara ve yöneticilere özel mesajlar ve afişler.",
+  st_language_saved: (p) => `MatchTime bu grupta ${p.language} konuşacak`,
+  st_language_failed: "Dil kaydedilemedi",
+  st_invite_title: "Davet bağlantısı",
+  st_invite_lead: "Oyuncuların kulübünüze katılması için bu bağlantıyı paylaşın.",
+  st_copy: "Kopyala",
+  st_invite_copied: "Davet bağlantısı kopyalandı!",
+  st_features_title: "Bot özellikleri",
+  st_features_lead:
+    "Özellikleri tek tek açın ya da kapatın. Bir grup yalnızca istediği kısımları kullanabilir, örneğin sadece maçın adamı ve oyuncu puanları. Değişiklikler botun bir sonraki turunda geçerli olur.",
+  st_switch_enable: "Açmak için tıklayın",
+  st_switch_disable: "Kapatmak için tıklayın",
+  st_feature_on: (p) => `${p.label} açık`,
+  st_feature_off: (p) => `${p.label} kapalı`,
+  st_save_failed: "Kaydedilemedi",
+  st_bank_title: "Para toplayan kişinin bankası",
+  st_collector: "Para toplayan kişi",
+  st_choose_member: "Bir üye seçin…",
+  st_unnamed: "Adsız",
+  st_collector_help:
+    "Her maçtan sonra “kişi başı ne kadar?” sorusunu alır, “doğrudan ödeyeceğim” bildirimlerini onaylar ve kartla yapılan ödemeler onun bağlı bankasına yatar. Yalnızca telefon numarası olan üyeler listelenir.",
+  st_collector_saved: (p) => `Para toplayan kişi: ${p.name}`,
+  st_collector_that_member: "o üye",
+  st_collector_failed: "Para toplayan kişi değiştirilemedi",
+  st_bank_lead:
+    "Kartla yapılan ödemeler Stripe üzerinden doğrudan para toplayan kişinin bankasına gider. Bir kez bağlayın, gerisini Stripe halleder. (“Doğrudan ödeme” için banka gerekmez.)",
+  st_bank_stripe_help:
+    "Stripe sizden birkaç kimlik bilgisini onaylamanızı ve banka hesabınızı eklemenizi ister. Sorulduğunda Individual'ı seçin; işletme bilgileri sizin için doldurulmuştur. Yaklaşık 2 dakika sürer.",
+  st_bank_connected: "Banka bağlı, ödeme almaya hazır",
+  st_bank_not_finished: "Kurulum henüz bitmedi",
+  st_manage_bank: "Bankayı ve ödemeleri yönet",
+  st_disconnect: "Bağlantıyı kes ve baştan başla",
+  st_disconnecting: "Bağlantı kesiliyor…",
+  st_connect_bank: "Bankayı bağla",
+  st_finish_bank: "Banka kurulumunu bitir",
+  st_opening_stripe: "Stripe açılıyor…",
+  st_refresh_status: "Durumu yenile",
+  st_start_over: "Baştan başla",
+  st_resetting: "Sıfırlanıyor…",
+  st_bank_reset_confirm:
+    "Yeni bir hesap bağlayabilmek için mevcut Stripe hesabının bağlantısı kesilsin mi?\n\nBu yalnızca MatchTime'daki bağlantıyı kaldırır. Daha önce alınmış ödemeler etkilenmez. Banka kurulumunu yeniden yapmanız gerekir.",
+  st_bank_reset_done: "Bağlantı kesildi. Yeni bir hesap kurmak için “Bankayı bağla”ya dokunun",
+  st_bank_start_failed: "Banka bağlantısı başlatılamadı",
+  st_bank_refresh_failed: "Yenilenemedi",
+  st_bank_open_failed: "Banka paneli açılamadı",
+  st_bank_reset_failed: "Sıfırlanamadı",
+  st_wa_title: "WhatsApp botu",
+  st_wa_enabled: "Açık",
+  st_wa_disabled: "Kapalı",
+  st_wa_group_id: "WhatsApp grup kimliği",
+  st_wa_managed: "Bot ayarlarını MatchTime yönetir. Açmak ya da yeniden ayarlamak için yöneticinizle iletişime geçin.",
 };
 
 /**

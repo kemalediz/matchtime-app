@@ -78,7 +78,7 @@ test("Weekly routine: the rolling squad switch persists, and its info opens (EN 
 
   // The ⓘ explains it.
   await section.getByRole("button", { name: "What is Rolling squad?" }).click();
-  await expect(page.getByText(/everyone who played the last match is automatically in for the next one/)).toBeVisible();
+  await expect(page.getByRole("dialog")).toContainText("Everyone who played the last match is put in the squad for the next one automatically");
   await page.getByRole("button", { name: "Close" }).click();
 
   // ON persists to the org row and survives a reload.
@@ -100,8 +100,8 @@ test("Weekly routine: the rolling squad switch persists, and its info opens (EN 
   await page.reload();
   const tr = page.getByTestId("weekly-routine");
   await expect(tr.getByRole("heading", { name: "Haftalık düzen" })).toBeVisible({ timeout: 30_000 });
-  await tr.getByRole("button", { name: "What is Kadro devam eder?" }).click();
-  await expect(page.getByText(/son maçta oynayan herkes bir sonraki maçta otomatik olarak kadroda olur/)).toBeVisible();
+  await tr.getByRole("button", { name: "Kadro devam eder nedir?" }).click();
+  await expect(page.getByRole("dialog")).toContainText("Son maçta oynayan herkes bir sonraki maçın kadrosuna otomatik olarak girer");
 
   // Restore for later specs.
   await db.run(`UPDATE "Organisation" SET language = 'en', "rollingSquadEnabled" = false WHERE id = $1`, [ORG_ID]);
@@ -188,10 +188,10 @@ test("Weekly routine: the drop-out deadline and list time persist, refuse bad in
 
   // The ⓘ for each.
   await section.getByRole("button", { name: "What is Drop-out deadline?" }).click();
-  await expect(page.getByText(/MatchTime reminds the group 3 hours before/)).toBeVisible();
+  await expect(page.getByRole("dialog")).toContainText("About 3 hours before the deadline (not before 09:00), MatchTime reminds the group");
   await page.getByRole("button", { name: "Close" }).click();
   await section.getByRole("button", { name: "What is List published?" }).click();
-  await expect(page.getByText(/MatchTime stops the daily 17:00 post, except on match day/)).toBeVisible();
+  await expect(page.getByRole("dialog")).toContainText("MatchTime stops its daily 17:00 post, except on match day");
   await page.getByRole("button", { name: "Close" }).click();
 
   // Monday 21:00 and Tuesday 19:00: saved.
@@ -227,9 +227,9 @@ test("Weekly routine: the drop-out deadline and list time persist, refuse bad in
   await page.reload();
   const tr = page.getByTestId("weekly-routine");
   await expect(tr.getByRole("heading", { name: "Haftalık düzen" })).toBeVisible({ timeout: 30_000 });
-  await tr.getByRole("button", { name: "What is Son çıkış saati?" }).click();
-  await expect(page.getByText(/MatchTime 3 saat önce gruba hatırlatır/)).toBeVisible();
-  await page.getByRole("button", { name: "Close" }).click();
+  await tr.getByRole("button", { name: "Son çıkış saati nedir?" }).click();
+  await expect(page.getByRole("dialog")).toContainText("MatchTime kadroyla birlikte gruba hatırlatır");
+  await page.getByRole("button", { name: "Kapat" }).click();
   // 08:30 was allowed until 2026-10-13 (08:00 to 21:30); the allowed times are 09:00 to 22:30 now.
   await tr.getByTestId("wd-dropout-time").fill("08:30");
   await tr.getByTestId("wd-dropout-save").click();

@@ -2499,11 +2499,6 @@ export const en = {
   wr_section_lead: "How your squad is put together each week. Each setting stays off until you turn it on.",
   wr_rolling_label: "Rolling squad",
   wr_rolling_blurb: "Everyone who played last time is in again, unless they say OUT.",
-  wr_rolling_info:
-    "When this is on, everyone who played the last match is automatically in for the next one, and only needs to say OUT if they can't make it. " +
-    "Players who were on the bench, guests without a phone number and anyone who has left the group are not carried over. " +
-    "The squad is carried over at 08:00 the morning after each match, so you have the night to remove anyone who didn't turn up. " +
-    "Anyone still on the list at the final whistle counts as having played, for payments and ratings.",
   wr_rolling_on: "Rolling squad is on",
   wr_rolling_off: "Rolling squad is off",
   wr_save_failed: "Couldn't save the setting",
@@ -2554,14 +2549,8 @@ export const en = {
   // ── WDL4: /admin/settings "Weekly routine", the two deadline rows. ──
   wd_dropout_label: "Drop-out deadline",
   wd_dropout_blurb: "The last day and time players can pull out without it counting as late.",
-  wd_dropout_info:
-    "The last time players can pull out without it counting as late. MatchTime reminds the group 3 hours before, " +
-    "then messages the admins with who is out and who is waiting. An OUT after the deadline still counts, and the admins are told it was late.",
   wd_publish_label: "List published",
   wd_publish_blurb: "When MatchTime posts the final list in the group.",
-  wd_publish_info:
-    "When MatchTime posts the final list in the group: who is playing and who is on the bench. " +
-    "With this and a drop-out deadline set, MatchTime stops the daily 17:00 post, except on match day.",
   wd_day_label: "Day",
   wd_time_label: "Time",
   wd_not_set: "Not set",
@@ -2674,15 +2663,11 @@ export const en = {
   // Settings: "Teams ready".
   tp_settings_label: "Teams ready",
   tp_settings_blurb: "When MatchTime proposes the teams in your admin group on match day.",
-  tp_settings_info:
-    "On match day at this time MatchTime builds balanced teams from the squad and posts them in your admin WhatsApp group. Admins can change them there (swap Ali Bilal, move Ali, reshuffle) and reply YES when they are final. If nobody has said YES two hours before kickoff, MatchTime reminds the admin group once. Off: MatchTime never proposes teams on its own; admins can still type teams in the admin group. Until you set it: 10:00 when your organisers announce the list and teams, otherwise Off.",
   tp_settings_default: "Not set yet, so this is your club's default.",
   tp_settings_off: "Off",
   tp_settings_saved: "Saved",
   tp_settings_bad_time: "Pick a time, or Off.",
   settings_admin_channel_heading: "Admin messages go to",
-  settings_admin_channel_info:
-    "Where MatchTime sends messages only admins should see: the bench to pick from, the drop-out summary, late drop-outs, who hasn't paid and new players to check. One person: a DM to the person you choose. Admin WhatsApp group: one message in your admins' group, and admins can reply there with a number, a name or a tag to pick a player. For a weekly squad they can also change it there by writing \"Shehryar out\" or \"Bilal in\", or by pasting the list, and check and change the teams there (teams, swap, move, reshuffle, YES). MatchTime reads nothing else in that group. Each admin by DM: every admin gets their own copy.",
   settings_admin_channel_mode_one_person: "One person",
   settings_admin_channel_mode_admin_group: "Admin WhatsApp group",
   settings_admin_channel_mode_each_admin: "Each admin by DM",
@@ -2690,9 +2675,6 @@ export const en = {
   settings_admin_channel_person_owner: (p: { name: string }): string => `${p.name} (owner)`,
   settings_admin_channel_link_button: "Link admin group",
   settings_admin_channel_link_again: "New code",
-  settings_admin_channel_link_info_title: "Link admin group",
-  settings_admin_channel_link_info:
-    "Press the button, then add MatchTime to your admins' WhatsApp group and send the code shown here in that group. The code works once and lasts 48 hours. MatchTime will not start a club setup in that group.",
   settings_admin_channel_step_code: (p: { code: string }): string => `Keep this page open. Your code: ${p.code}`,
   settings_admin_channel_step_add: "Add MatchTime to your admins' WhatsApp group.",
   settings_admin_channel_step_send: "In that group, send:",
@@ -2808,16 +2790,9 @@ export const en = {
   // ── OPK8: /admin/settings "Weekly routine", who fills an open place. ──
   wr_pick_label: "Who fills an open place",
   wr_pick_blurb: "First to say IN, or the organisers pick from the bench.",
-  wr_pick_info:
-    "First to say IN: when a place opens, MatchTime offers it to the bench and the first to say IN gets it. " +
-    "The organisers pick: MatchTime never fills a place by itself. Anyone who says IN goes on the bench, and your admin messages " +
-    "(see Admin messages go to) list the bench with positions and club ratings. The first admin to reply with a number, a name or a tag brings that player in.",
   wr_pick_first_come: "First to say IN",
   wr_pick_organiser: "The organisers pick",
   wr_fallback_label: "If nobody picks in time",
-  wr_fallback_info:
-    "If no admin replies within a day, or 4 hours before kickoff at the latest, MatchTime either offers the place to the whole bench " +
-    "(first to say IN gets it) or leaves it open.",
   wr_fallback_offer: "Offer it to the bench",
   wr_fallback_leave: "Leave it open",
   wr_pick_saved: "Saved",
@@ -3363,12 +3338,6 @@ export const en = {
   // /admin/settings
   info_st_general_title: "General",
   info_st_general_body: "Your club's name and web address on MatchTime. They can't be changed here.",
-  info_st_team_names_title: "Team names",
-  info_st_team_names_body:
-    "What the two sides are called in team sheets, score messages and match pages. Leave a box empty to use the default name.",
-  info_st_language_title: "Bot language",
-  info_st_language_body:
-    "The language MatchTime writes in, in your group and in private messages to your players. Messages that haven't been translated yet are sent in English.",
   info_st_invite_title: "Invite link",
   info_st_invite_body:
     "Send this link to someone so they can join your club on the MatchTime website. People who post in your WhatsApp group are added by themselves, so most players don't need it.",
@@ -3382,56 +3351,11 @@ export const en = {
   info_st_billing_body:
     "What MatchTime costs your club. Each month only the games played are charged, never more than the monthly maximum, the morning after the month ends.\n\n" +
     "The money collector looks after the card on the billing page; with no money collector, the owner is asked. Other admins can see it but not change the card.",
-  info_st_collector_title: "Money collector",
-  info_st_collector_body:
-    "The member who collects match fees. After each match MatchTime asks them how much each player owes, they confirm payments made to them directly, and card payments go to their bank. They also look after the card for MatchTime's club fee. Only members with a phone number are listed.",
-  info_st_bank_title: "Money collector's bank",
-  info_st_bank_body:
-    "Card and Pay by Bank payments go to the money collector's own bank account through Stripe. Connect it once: Stripe asks for a few identity details and the bank account.\n\n" +
-    "Manage bank / payouts opens Stripe to see payouts. Start over unlinks this Stripe account in MatchTime so you can connect another; payments already taken are not affected.",
   info_st_whatsapp_title: "WhatsApp bot",
   info_st_whatsapp_body:
     "Whether MatchTime is switched on for your WhatsApp group, and which group it is linked to. This is managed by MatchTime and can't be changed here.",
 
-  // /admin/settings: one popup per feature switch
-  info_feat_attendance_title: "Attendance tracking",
-  info_feat_attendance_body:
-    "MatchTime reads IN and OUT in the group, keeps the squad list for the next match, posts updates and chases for players when the squad is short. Turn it off if your group only wants ratings or Man of the Match.",
-  info_feat_bench_title: "Bench management",
-  info_feat_bench_body:
-    "When the squad is full, extra INs go on the bench. If someone drops out, the place goes to the bench: offered to them, or picked by an organiser if you chose that under Weekly routine.",
-  info_feat_teams_title: "Team generation",
-  info_feat_teams_body:
-    "Ask MatchTime in the group to make the teams, or press Generate teams on a match. It splits the squad into two even sides using club ratings and positions, and asks for the final score after the match.",
-  info_feat_mom_title: "Man of the Match",
-  info_feat_mom_body: "After each match MatchTime posts a Man of the Match vote in the group and announces the winner.",
-  info_feat_rating_title: "Player ratings",
-  info_feat_rating_body:
-    "After each match MatchTime sends every player who played, and has a phone number, a private link to rate the others. The ratings make up each player's club rating and help balance the teams.",
-  info_feat_reminders_title: "Personal reminders",
-  info_feat_reminders_body:
-    "Players can tag MatchTime and ask for a reminder, for example \"remind me Monday\", and MatchTime sends them a private message then.",
-  info_feat_stats_title: "Stats answers",
-  info_feat_stats_body:
-    "Players can tag MatchTime with questions about the group's history, like who has played the most or past Man of the Match winners, and it answers in the group.",
-  info_feat_pay_tracking_title: "Payment tracking",
-  info_feat_pay_tracking_body: "MatchTime keeps track of who has paid for each match and reminds the people who haven't.",
-  info_feat_pay_collect_title: "Collect match fees",
-  info_feat_pay_collect_body:
-    "After each match MatchTime asks the money collector how much each player owes, then sends each player a private link to pay. Card payments go to the money collector's bank, which needs connecting below.",
-  info_feat_pay_bank_title: "Pay by Bank",
-  info_feat_pay_bank_body: "Players pay straight from their banking app. It is the cheapest way to pay.",
-  info_feat_pay_card_title: "Card and Apple Pay",
-  info_feat_pay_card_body: "Players pay by card, Apple Pay or Google Pay. Stripe takes a small fee from each payment.",
-  info_feat_pay_direct_title: "Pay organiser directly",
-  info_feat_pay_direct_body:
-    "Players can say they paid the money collector in cash or by bank transfer. The money collector confirms it. There is no fee.",
-  info_feat_badges_title: "Badge announcements",
-  info_feat_badges_body:
-    "Two days after each match MatchTime posts the new badges players earned in the group. Turn it off and nothing about badges is posted in the group.",
-  info_feat_gear_title: "Match-day kit reminder",
-  info_feat_gear_body:
-    "About two hours before each football match MatchTime posts in the players' group: the kickoff time and place, and a reminder to bring goalie gloves, a ball and spare bibs. Turn it off and this reminder is not sent anywhere.",
+  // /admin/settings: every setting's popup lives in src/lib/settings-info.ts.
 
   // /admin/activities
   info_act_page_title: "Activities",
@@ -3790,23 +3714,6 @@ export const en = {
   info_st_monthly_body:
     "For groups where the regulars sign up and pay for the whole month, and other players pay as they go to fill the gaps. It is off until you switch it on, and nothing changes for your group until then.\n\n" +
     "With it on, a Months page appears in your admin pages. That is where you keep the month's list: who is a regular, who has paid, and any credits.",
-  info_msq_mode_title: "How your squad works",
-  info_msq_mode_body:
-    "Weekly: each game's squad is whoever said IN that week. This is how MatchTime works unless you change it.\n\n" +
-    "Monthly: regulars are in every game of the month and pay once for the month. Pay-as-you-go players take the free places and pay per game. Rolling squad is switched off while this is on, because the month's regulars take its place.",
-  info_msq_payg_title: "PAYG price per game",
-  info_msq_payg_body:
-    "What a pay-as-you-go player pays for one game, for example £8. Regulars don't pay this. They pay their share for the month.",
-  info_msq_opens_title: "List opens",
-  info_msq_opens_body:
-    "How many days before the month's first game next month's list opens, with this month's regulars already on it. 7 days suits most groups.",
-  info_msq_credit_title: "Credits",
-  info_msq_credit_body:
-    "A credit is one game off next month's payment. Choose when a regular who has paid earns one: for every game they miss, only when someone else took their place, or never. Credits are counted in games, not pounds.",
-  info_msq_instructions_title: "Payment instructions",
-  info_msq_instructions_body:
-    "Your own words on how to pay, shown to players next to the amount they owe. For example: bank details are in the group description.\n\n" +
-    "MatchTime never asks for bank account numbers. This is only the text you write here.",
   info_mth_page_title: "Months",
   info_mth_page_body:
     "One list a month for each weekly game. Regulars are in every game of the month and pay once. Pay-as-you-go players take the free places and pay per game.\n\n" +
@@ -4394,22 +4301,11 @@ export const en = {
   // /admin/settings, "Weekly routine".
   wr_announce_label: "Who announces the list and teams",
   wr_announce_blurb: "MatchTime posts them in the group, or your organisers do.",
-  wr_announce_info:
-    "MatchTime: MatchTime posts the squad, the final list and the team sheets in the players' group, as it always has. " +
-    "The organisers: MatchTime still collects In and Out in the players' group and ticks each message, but it never posts the list " +
-    "or the teams there. Its squad updates go to your admin messages (see Admin messages go to) instead, and a player who asks " +
-    "who is playing is told the organisers will post the list.",
   wr_announce_matchtime: "MatchTime",
   wr_announce_organisers: "The organisers",
   // /admin/settings, the "Posters" card (2026-10-14).
   gp_title: "Posters",
   gp_lead: "The list poster and the team sheet MatchTime sends to your admin group, ready to forward to the players.",
-  gp_info:
-    "Before each match MatchTime makes a list poster (who is playing) and a team sheet (the two teams) and sends them to your " +
-    "admin group, ready to forward to the players' group. An owner or admin can also ask for them there by typing poster or " +
-    "team sheet. To change how they look, pick a design below: the MatchTime design, your club's own design, a design MatchTime " +
-    "shares with clubs, or upload your own background picture and MatchTime draws the names, day, time and venue over it. " +
-    "The pictures here show your next match; until enough players are in they show sample names.",
   gp_list_caption: "List poster",
   gp_teams_caption: "Team sheet",
   gp_alt_list: (p: { club: string }): string => `List poster: ${p.club}`,
@@ -4427,7 +4323,7 @@ export const en = {
   gp_saved: "Design saved. MatchTime uses it from now on.",
   gp_save_failed: "Could not save. Please try again.",
   gp_upload_heading: "Your own background",
-  gp_upload_blurb: "A portrait picture (taller than wide), JPEG, PNG or WebP, up to 4 MB. MatchTime draws its board over it.",
+  gp_upload_blurb: "A portrait or square picture (not wider than it is tall), at least 540 by 675 pixels, JPEG, PNG or WebP, up to 4 MB. MatchTime draws its board over it.",
   gp_upload_button: "Upload a background",
   gp_upload_replace: "Upload a new background",
   gp_uploading: "Uploading",
@@ -4443,4 +4339,81 @@ export const en = {
   gp_problem_not_portrait: "That picture is wider than it is tall. Please use a portrait one.",
   gp_problem_made_by_matchtime: "Your club's design was made by MatchTime. Ask MatchTime to change it.",
   gp_problem_failed: "Something went wrong. Please try again.",
+
+  // ── /admin/settings: the page's own words (2026-10-15). Were hardcoded
+  //    English; every setting's ⓘ is in src/lib/settings-info.ts. ──
+  st_loading: "Loading…",
+  st_not_found: "Organisation not found.",
+  st_general_title: "General",
+  st_org_name: "Organisation name",
+  st_save_name: "Save name",
+  st_saving_name: "Saving...",
+  st_name_saved: "Name saved",
+  st_name_save_failed: "Couldn't save the name. Please try again.",
+  st_name_editable_note: "You can change the name until you add MatchTime to your WhatsApp group.",
+  st_name_locked: "The name can no longer be changed here. MatchTime approves a club by its name.",
+  st_url_slug: "URL slug",
+  st_members: (p: { count: number }): string => `${p.count} members`,
+  st_team_names_title: "Team names",
+  st_team_names_lead: (p: { first: string; second: string }): string =>
+    `What the two sides are called in lineups, score messages and match pages. Leave a field empty to use the default (“${p.first}” and “${p.second}”).`,
+  st_first_team: "First team",
+  st_second_team: "Second team",
+  st_save_team_names: "Save team names",
+  st_saving: "Saving…",
+  st_team_names_saved: (p: { first: string; second: string }): string => `Teams will be called ${p.first} and ${p.second}`,
+  st_team_names_reset: "Back to the default team names",
+  st_team_names_failed: "Couldn't save team names",
+  st_language_title: "Bot language",
+  st_language_lead: "The language MatchTime speaks in this group: its posts in the group, its private messages to players and admins, and the posters.",
+  st_language_saved: (p: { language: string }): string => `MatchTime will speak ${p.language} in this group`,
+  st_language_failed: "Couldn't save the language",
+  st_invite_title: "Invite link",
+  st_invite_lead: "Share this link with players to join your organisation.",
+  st_copy: "Copy",
+  st_invite_copied: "Invite link copied!",
+  st_features_title: "Bot features",
+  st_features_lead:
+    "Turn individual capabilities on or off. A group can run just the bits it wants, e.g. only Man of the Match and player ratings. Changes take effect on the bot's next cycle.",
+  st_switch_enable: "Click to enable",
+  st_switch_disable: "Click to disable",
+  st_feature_on: (p: { label: string }): string => `${p.label} is on`,
+  st_feature_off: (p: { label: string }): string => `${p.label} is off`,
+  st_save_failed: "Failed",
+  st_bank_title: "Money collector's bank",
+  st_collector: "Money collector",
+  st_choose_member: "Choose a member…",
+  st_unnamed: "Unnamed",
+  st_collector_help:
+    "Gets the “how much per player?” prompt after each match, receives “pay you directly” confirmations, and is whose connected bank the card payouts settle to. Only members with a phone number are listed.",
+  st_collector_saved: (p: { name: string }): string => `Money collector set to ${p.name}`,
+  st_collector_that_member: "that member",
+  st_collector_failed: "Couldn't change collector",
+  st_bank_lead:
+    "Card payments go straight to the money collector's bank (via Stripe). Connect it once and Stripe handles the rest. (“Pay directly” needs no bank.)",
+  st_bank_stripe_help:
+    "Stripe will ask you to confirm a few identity details and add your bank account. Choose Individual when asked; the business details are already filled in for you. Takes about 2 minutes.",
+  st_bank_connected: "Bank connected, ready to take payments",
+  st_bank_not_finished: "Onboarding not finished yet",
+  st_manage_bank: "Manage bank and payouts",
+  st_disconnect: "Disconnect and start over",
+  st_disconnecting: "Disconnecting…",
+  st_connect_bank: "Connect bank",
+  st_finish_bank: "Finish bank setup",
+  st_opening_stripe: "Opening Stripe…",
+  st_refresh_status: "Refresh status",
+  st_start_over: "Start over",
+  st_resetting: "Resetting…",
+  st_bank_reset_confirm:
+    "Disconnect the current Stripe account so you can connect a fresh one?\n\nThis only clears the link in MatchTime. It won't affect any payments already taken. You'll need to complete bank setup again.",
+  st_bank_reset_done: "Disconnected. Tap “Connect bank” to set up a fresh account",
+  st_bank_start_failed: "Couldn't start bank connect",
+  st_bank_refresh_failed: "Couldn't refresh",
+  st_bank_open_failed: "Couldn't open the bank dashboard",
+  st_bank_reset_failed: "Couldn't reset",
+  st_wa_title: "WhatsApp bot",
+  st_wa_enabled: "Enabled",
+  st_wa_disabled: "Disabled",
+  st_wa_group_id: "WhatsApp group ID",
+  st_wa_managed: "Bot configuration is managed server-side. Contact your administrator to enable or reconfigure.",
 };

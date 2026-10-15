@@ -168,7 +168,7 @@ test("the edit link: the club's details open without the tabs, a rename saves, t
   }
 
   // A rename still saves (PR #226).
-  const name = page.getByLabel("Organisation name");
+  const name = page.getByLabel("Organisation name", { exact: true });
   await expect(name).toBeEnabled({ timeout: 30_000 });
   await expect(name).toHaveValue(CLUB);
   await name.fill(RENAMED);
