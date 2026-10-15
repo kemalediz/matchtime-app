@@ -17,7 +17,9 @@
  * `<matchId>:deadline-summary` (unique; first writer wins). If the notice
  * cannot be queued the claim is released so the next poll tries again.
  * Due 09:00 to 22:59 London, after the deadline and before kickoff, for
- * the next live match of its fixture only. A club without the setting
+ * the next live match of its fixture only, and never for a match made
+ * after its own deadline (2026-10-15, `madeAfterDropOutDeadline`). The
+ * first line names the deadline and the kick-off, each for what it is. A club without the setting
  * (Sutton FC), a club that is not operational (not approved or dormant)
  * and a club with the attendance feature off get nothing.
  *
@@ -37,7 +39,7 @@ import { t } from "./i18n/t";
 import { isClubOperational } from "./club-approval-state";
 import { getOrgFeatures } from "./org-features";
 import { isNextUpcomingForPosting } from "./next-upcoming-match";
-import { deadlineSummaryDue, weeklyDeadlinesFor } from "./weekly-deadlines";
+import { deadlineSummaryDue, madeAfterDropOutDeadline, weeklyDeadlinesFor } from "./weekly-deadlines";
 
 const LIVE = ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] as const;
 
@@ -80,6 +82,9 @@ export async function sendDueDeadlineSummaries(orgId: string, now: Date = new Da
   for (const m of matches) {
     const { dropOut } = weeklyDeadlinesFor(m.date, org);
     if (!dropOut || !deadlineSummaryDue(now, dropOut, m.date)) continue;
+    // A game made after its own deadline (a club that went live late in
+    // the week, 2026-10-15): nobody could drop out of it, nothing to sum up.
+    if (madeAfterDropOutDeadline(m.createdAt, dropOut)) continue;
     if (!isNextUpcomingForPosting(matches, m)) continue;
 
     const key = deadlineSummaryKey(m.id);
@@ -104,6 +109,7 @@ export async function sendDueDeadlineSummaries(orgId: string, now: Date = new Da
         text: buildDeadlineSummaryAdminNotice({
           activityName: m.activity.name,
           whenLabel: dayTimeLabel(org.language, m.date),
+          deadlineLabel: dayTimeLabel(org.language, dropOut),
           confirmed: confirmed.length,
           maxPlayers: m.maxPlayers,
           out: named(byPosition.filter((a) => a.status === "DROPPED")),

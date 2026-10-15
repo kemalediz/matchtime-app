@@ -2038,7 +2038,7 @@ export const tr: Strings = {
     `⏰ *${p.activityName}*, ${p.whenLabel}: son çıkış saati *bugün ${p.time}*. Oynayamayacaksanız o saatten önce *YOKUM* yazın.\n\n${p.rosterBlock}`,
   deadline_summary_admin: (p) =>
     [
-      `*${p.activityName}* (${p.whenLabel}) için son çıkış saati geçti. Kadro ${p.confirmed}/${p.maxPlayers}.`,
+      `*${p.activityName}* için son çıkış saati (${p.deadlineLabel}) geçti, maç ${p.whenLabel}. Kadro ${p.confirmed}/${p.maxPlayers}.`,
       `Bu hafta çıkanlar: ${p.out.length > 0 ? p.out.join(", ") : "kimse"}.`,
       ...(p.maybe.length > 0 ? [`Belki diyenler: ${p.maybe.join(", ")}.`] : []),
       `Yedek listesi: ${p.waiting.length > 0 ? p.waiting.join(", ") : "boş"}.`,
@@ -2146,6 +2146,10 @@ export const tr: Strings = {
   ag_paste_confirm: "Uygulamak için EVET yazın.",
   ag_paste_same: "Bu liste kadroyla aynı, değişecek bir şey yok.",
   ag_paste_expired: "O liste 30 dakikadan eski, bu yüzden uygulamadım. Hâlâ geçerliyse yeniden yapıştırın.",
+  ag_paste_no_game: (p) =>
+    `Bu listeyi koyacağım yaklaşan bir maç henüz yok. MatchTime bir sonraki maçı her gece ekler (Londra saatiyle ${p.time}). Ondan sonra listeyi yeniden yapıştırın.`,
+  ag_paste_no_weekly_game:
+    "Bu kulübün henüz ayarlanmış haftalık maçı yok, bu yüzden listeyi koyacak bir maç yok. Maçı web sitesinde Etkinlikler bölümünden ekleyin, sonra listeyi yeniden yapıştırın.",
   tp_header_proposed: (p) => `📝 *Önerilen takımlar*: ${p.kickoff}, ${p.venue}`,
   tp_header_final: (p) => `✅ *Kesin takımlar*: ${p.kickoff}, ${p.venue}`,
   tp_note_out: "çıktı, yeri boş",
@@ -2211,7 +2215,7 @@ export const tr: Strings = {
     `${p.kickoffLabel} maçında bir yer açıldı. *VARIM* yazın, yedek listesine ekleyeyim; kimin oynayacağını organizatörler seçer.`,
   pick_lead_drop: (p) =>
     `${joinList("tr", p.names.map((n) => `*${n}*`))}, *${p.activityName}* (${p.whenLabel}) maçından ${p.late ? "son çıkış saatinden sonra " : ""}çıktı.`,
-  pick_lead_deadline: (p) => `*${p.activityName}* (${p.whenLabel}) için son çıkış saati geçti.`,
+  pick_lead_deadline: (p) => `*${p.activityName}* için son çıkış saati (${p.deadlineLabel}) geçti, maç ${p.whenLabel}.`,
   pick_lead_open_place: (p) =>
     `*${p.activityName}* (${p.whenLabel}) için ${p.open} yer boş, kadro ${p.confirmed}/${p.maxPlayers}.`,
   pick_lead_bench_update: (p) => `*${p.activityName}* (${p.whenLabel}) için yedek listesi değişti.`,

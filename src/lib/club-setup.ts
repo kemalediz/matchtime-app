@@ -151,6 +151,7 @@ import {
 import { isSetupLearningEnabled } from "./setup-learning/flag";
 import { cancelSetupDm } from "./club-setup-dm-cancel";
 import { queueGettingReady } from "./admin-onboarding";
+import { generateUpcomingMatches } from "./generate-upcoming-matches";
 
 export {
   SETTING_UP_CLUB_WHERE,
@@ -728,7 +729,9 @@ async function settlePaymentsAnnouncement(
  * built (the free period sentence and the club fee tip) for the reply and
  * the page; and the organiser's setup DM is cancelled if it is still waiting
  * (`cancelSetupDm`: a DM queued at night is held for 09:00 London, and
- * "reply GO" would be false by then). Here, in the one function every
+ * "reply GO" would be false by then); and the club's upcoming games are
+ * made by the nightly cron's own generator (`generateUpcomingMatches`,
+ * 2026-10-15), so a pasted squad has a game to go on at once. Here, in the one function every
  * door goes through, so no door can forget it. A failure is logged and
  * never undoes the go-live.
  *
@@ -749,6 +752,22 @@ export async function goLiveClub(
     } catch (err) {
       console.error(`[club-setup] ${orgId}: live, but its waiting setup DM was NOT cancelled: ${(err as Error)?.name ?? "error"}`);
     }
+    // The club's upcoming games, NOW (2026-10-15). Until then only the
+    // nightly cron (00:00 UTC) made them, so a club that went live in the
+    // evening had no game until after midnight: FNF's organiser pasted the
+    // squad at 22:13 and got no reply. The cron's own generator, for this
+    // club only: the same slot dedupe (a game the cron already made while
+    // the club was setting up is not made twice) and the same skips.
+    // After the commit, so a failure here never undoes the go-live; the
+    // cron makes the game that night as before.
+    try {
+      const gen = await generateUpcomingMatches({ orgId, now });
+      if (gen.created > 0) console.log(`[club-setup] ${orgId}: live, ${gen.created} upcoming game(s) made`);
+    } catch (err) {
+      console.error(`[club-setup] ${orgId}: live, but its upcoming games were NOT made (the nightly cron will): ${(err as Error)?.name ?? "error"}`);
+    }
+    // After the games are made, so its paste line knows whether this
+    // week's game exists yet.
     // "Getting <club> ready" for the admins (2026-10-15,
     // admin-onboarding-rules.ts): AFTER the commit, so the go-live purge
     // above never deletes it. Once per club; never throws.

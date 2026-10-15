@@ -623,7 +623,7 @@ const SAMPLES: SampleArgs = {
   carry_over_nothing: null,
   // Weekly deadlines (2026-09-30, slice 3)
   dropout_reminder_post: { activityName: "Friday 9-a-side", whenLabel: "Fri 9 Oct at 20:30", time: "21:00", rosterBlock: "*In (16/18):*\n1. Hamzah" },
-  deadline_summary_admin: { activityName: "Friday 9-a-side", whenLabel: "Fri 9 Oct at 20:30", confirmed: 16, maxPlayers: 18, out: ["Wasim"], maybe: ["Raihan"], waiting: ["Ali"], open: 2 },
+  deadline_summary_admin: { activityName: "Friday 9-a-side", whenLabel: "Fri 9 Oct at 20:30", deadlineLabel: "Mon 5 Oct at 21:00", confirmed: 16, maxPlayers: 18, out: ["Wasim"], maybe: ["Raihan"], waiting: ["Ali"], open: 2 },
   list_published_head: { activityName: "Friday 9-a-side", dateLabel: "Friday 9 October at 20:30", venue: "Powerleague Shoreditch" },
   list_published_playing_header: { confirmed: 16, maxPlayers: 18 },
   list_published_open: { open: 2 },
@@ -688,6 +688,8 @@ const SAMPLES: SampleArgs = {
   ag_paste_confirm: null,
   ag_paste_same: null,
   ag_paste_expired: null,
+  ag_paste_no_game: { time: "01:00" },
+  ag_paste_no_weekly_game: null,
   tp_header_proposed: { kickoff: "20:15", venue: "Goals Wimbledon" },
   tp_header_final: { kickoff: "20:15", venue: "Goals Wimbledon" },
   tp_note_out: null,
@@ -744,7 +746,7 @@ const SAMPLES: SampleArgs = {
   // ── slice 2b: organiser pick (2026-10-01) ──
   slot_opened_organiser: { kickoffLabel: "Fri 20:30" },
   pick_lead_drop: { names: ["Hamzah"], activityName: "Friday 9-a-side", whenLabel: "Fri 9 Oct at 20:30", late: false },
-  pick_lead_deadline: { activityName: "Friday 9-a-side", whenLabel: "Fri 9 Oct at 20:30" },
+  pick_lead_deadline: { activityName: "Friday 9-a-side", whenLabel: "Fri 9 Oct at 20:30", deadlineLabel: "Mon 5 Oct at 21:00" },
   pick_lead_open_place: { open: 1, activityName: "Friday 9-a-side", whenLabel: "Fri 9 Oct at 20:30", confirmed: 17, maxPlayers: 18 },
   pick_lead_bench_update: { activityName: "Friday 9-a-side", whenLabel: "Fri 9 Oct at 20:30" },
   pick_places_line: { open: 1, confirmed: 17, maxPlayers: 18 },

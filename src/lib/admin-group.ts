@@ -20,7 +20,9 @@
  *         only one of the two is ever waiting;
  *      a'. a team command: "teams", "reshuffle", "swap A B", "move A"
  *         (`team-proposal.ts`, deterministic);
- *      b. a pasted squad list: proposed, applied only on YES;
+ *      b. a pasted squad list: proposed, applied only on YES; with no game
+ *         to put it on, one line saying so and when the next game is
+ *         made (2026-10-15);
  *      c. one squad change ("Shehryar out", "put Bilal in"), through the
  *         same router and attendance engine as the players' group
  *         (`admin-group-squad-change.ts`).
