@@ -266,8 +266,145 @@ export function relinkRefIds(connectId: string, removedAt: Date): { ownerDm: str
   return { ownerDm: `${connectId}:relink:${stamp}`, organiserAck: `${connectId}:in-group:relink:${stamp}` };
 }
 
+// ── Community groups (2026-10-15) ───────────────────────────────────────
+//
+// A WhatsApp community is a PARENT group with groups inside it, one of
+// which is its ANNOUNCEMENTS group. Joining a group inside a community also
+// puts MatchTime into the parent and the announcements group, and each of
+// those arrives as an add of its own (the FNF incident, 2026-10-15). Neither
+// is ever a club's group: the parent is the community's shell (its add is
+// authored by MatchTime itself), and only admins can post in the
+// announcements group. Baileys rc14 reads both facts off the group's
+// metadata (`extractGroupMetadata`, lib/Socket/groups.js): `isCommunity`
+// is the group node's `parent` child, `isCommunityAnnounce` its
+// `default_sub_group` child, and `linkedParent` names the community of a
+// group inside one (that group, the club's real chat, is ordinary).
+
+export type CommunityRole = "parent" | "announce";
+
+/**
+ * The community role the Pi's reading gives a group, or null for an
+ * ordinary group (a group INSIDE a community included) and for no reading.
+ * Read from the add's `community` facts and, for the announcements group,
+ * from the `postability` reading too (an older Pi sends only that).
+ */
+export function communityRoleOf(body: { community?: unknown; postability?: unknown }): CommunityRole | null {
+  const c = body.community;
+  if (c && typeof c === "object") {
+    const o = c as Record<string, unknown>;
+    if (o.isCommunity === true) return "parent";
+    if (o.isCommunityAnnounce === true) return "announce";
+  }
+  const p = body.postability;
+  if (p && typeof p === "object" && (p as Record<string, unknown>).communityAnnounce === true) return "announce";
+  return null;
+}
+
+// ── The stronger add wins (2026-10-15) ──────────────────────────────────
+//
+// Strength beats arrival order. A request linked on weak evidence (the
+// organiser is merely IN the group: "other-organiser-present", "unknown")
+// is moved to the group the ORGANISER then adds MatchTime to themselves
+// (phone or connect-DM LID, the proof a matched add uses), when ALL hold:
+//
+//   1. the request is `group_linked` to ANOTHER group, MatchTime still in
+//      it, and was linked on weak evidence;
+//   2. its club is still PENDING (never approved, rejected or a draft);
+//   3. the weak link is less than UPGRADE_WINDOW_MS old;
+//   4. the adder is that request's organiser.
+//
+// The earlier group is then simply not linked: silent, not left, nobody
+// told about it. A link the organiser made themselves is never moved.
+
+/** How long after a weak link the organiser's own add still moves it:
+ *  the 24 hours a verified connect DM leaves for the add itself. */
+export const UPGRADE_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+const WEAK_ADDER_MATCHES: ReadonlySet<string> = new Set(["other-organiser-present", "unknown"]);
+export const WEAK_ADDER_MATCH_LIST = [...WEAK_ADDER_MATCHES];
+
+/** The columns of a linked request (and its club) the upgrade rule reads. */
+export interface UpgradeCandidate {
+  id: string;
+  groupId: string | null;
+  status: string;
+  botRemovedAt: Date | null;
+  adderMatch: string | null;
+  /** The organiser's verified sign-up phone, digits. */
+  phone: string;
+  /** The LID the connect DM came from, bare digits. */
+  dmLid: string | null;
+  orgApprovalStatus: string;
+  linkedAt: Date | null;
+}
+
+export type UpgradeDecision =
+  | { upgrade: true; connectId: string; fromGroupId: string; adderMatch: "phone" | "lid" }
+  | { upgrade: false; reason: "no-weak-link" | "club-not-pending" | "outside-window" | "adder-not-organiser" };
+
+export function decideWeakLinkUpgrade(
+  ev: AddEvidence,
+  groupId: string,
+  candidates: UpgradeCandidate[],
+  now: Date,
+): UpgradeDecision {
+  const weak = candidates
+    .filter(
+      (c): c is UpgradeCandidate & { groupId: string } =>
+        c.status === "group_linked" &&
+        c.botRemovedAt === null &&
+        typeof c.groupId === "string" &&
+        c.groupId !== groupId &&
+        c.adderMatch !== null &&
+        WEAK_ADDER_MATCHES.has(c.adderMatch),
+    )
+    .sort((a, b) => (b.linkedAt?.getTime() ?? 0) - (a.linkedAt?.getTime() ?? 0));
+  if (weak.length === 0) return { upgrade: false, reason: "no-weak-link" };
+  const mine = weak.filter((c) => adderIsOrganiserByPhone(ev, c) || adderIsOrganiserByLid(ev, c));
+  if (mine.length === 0) return { upgrade: false, reason: "adder-not-organiser" };
+  const pending = mine.filter((c) => c.orgApprovalStatus === "pending");
+  if (pending.length === 0) return { upgrade: false, reason: "club-not-pending" };
+  const c = pending.find((x) => x.linkedAt !== null && now.getTime() - x.linkedAt.getTime() < UPGRADE_WINDOW_MS);
+  if (!c) return { upgrade: false, reason: "outside-window" };
+  return {
+    upgrade: true,
+    connectId: c.id,
+    fromGroupId: c.groupId,
+    adderMatch: adderIsOrganiserByPhone(ev, c) ? "phone" : "lid",
+  };
+}
+
 // ── The owner's approval DM (plan 6.1) ──────────────────────────────────
 // English only: owner-facing copy, not player-facing.
+
+function groupLabel(subject: string | null | undefined, memberCount: number | null | undefined): string {
+  const name = subject?.trim() ? `"${subject.trim()}"` : "(no name)";
+  if (memberCount == null) return name;
+  const members = memberCount > 0 ? `${memberCount} ${memberCount === 1 ? "member" : "members"}` : "member list not read";
+  return `${name}, ${members}`;
+}
+
+/**
+ * The owner already heard about this club with the WRONG group (a weak
+ * link that the organiser's own add then replaced). One correction, so he
+ * never approves the group that is not the club's.
+ */
+export function ownerLinkCorrectionDmText(p: {
+  club: string;
+  code: string;
+  groupSubject: string | null;
+  memberCount: number;
+  previousSubject: string | null;
+  previousMemberCount: number | null;
+  adderMatch: "phone" | "lid";
+}): string {
+  return [
+    `Correction: *${p.club}* (ref ${p.code}) is now linked to ${groupLabel(p.groupSubject, p.memberCount)}.`,
+    `It replaces ${groupLabel(p.previousSubject, p.previousMemberCount)}, from my earlier message: that was not the club's group.`,
+    adderLine(p.adderMatch, true, false),
+    `Reply APPROVE ${p.code} or REJECT ${p.code}, or use matchtime.ai/admin/clubs`,
+  ].join("\n");
+}
 
 /** "Added by: ...", naming which rule applied. */
 export function adderLine(match: AdderMatch, organiserPresent: boolean, numberUnconfirmed: boolean): string {

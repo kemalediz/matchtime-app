@@ -41,6 +41,7 @@ vi.mock("@/lib/db", () => ({ db: dbMock }));
 import {
   handleBotRemoved,
   handleSelfJoinGroupAdd,
+  isSilentOutcome,
   loadSelfJoinSweep,
   markOwnerDmQueued,
   queueUnsolicitedAutoLeaves,
@@ -1058,5 +1059,172 @@ describe("relink after a re-add (2026-10-11): removed while pending, added strai
     expect(await add({ discovered: true, addedByPhone: undefined })).toEqual({ kind: "discovered-no-match" });
     expect(removedLinksCalls()).toHaveLength(0);
     expect(dbMock.clubConnect.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+// ── 2026-10-15: the FNF incident ──────────────────────────────────────────
+
+describe("a WhatsApp community's parent or announcements group", () => {
+  it("the parent group: refused before any request is read; nothing written, recorded or sent", async () => {
+    const out = await add({
+      addedByPhone: undefined,
+      community: { isCommunity: true, isCommunityAnnounce: false, linkedParent: null },
+    });
+    expect(out).toEqual({ kind: "community-group", role: "parent" });
+    expect(isSilentOutcome(out)).toBe(true);
+    expect(dbMock.clubConnect.findMany).not.toHaveBeenCalled();
+    expect(dbMock.clubConnect.updateMany).not.toHaveBeenCalled();
+    expect(dbMock.unsolicitedGroup.create).not.toHaveBeenCalled();
+    expect(dbMock.platformJob.create).not.toHaveBeenCalled();
+  });
+
+  it("the announcements group, even added by the organiser", async () => {
+    const out = await add({ community: { isCommunity: false, isCommunityAnnounce: true, linkedParent: "120363400000000777@g.us" } });
+    expect(out).toEqual({ kind: "community-group", role: "announce" });
+    expect(dbMock.clubConnect.updateMany).not.toHaveBeenCalled();
+    expect(dbMock.platformJob.create).not.toHaveBeenCalled();
+  });
+
+  it("a group INSIDE a community (it has a parent) links as any group does", async () => {
+    const out = await add({ community: { isCommunity: false, isCommunityAnnounce: false, linkedParent: "120363400000000777@g.us" } });
+    expect(out.kind).toBe("linked");
+  });
+
+  it("an approved club's group is still 'live-org' first, whatever the community facts say", async () => {
+    dbMock.organisation.findFirst.mockImplementation(async (args: { where: Record<string, unknown> }) =>
+      args.where.approvalStatus === "approved" ? { id: "sutton" } : null,
+    );
+    const out = await add({ community: { isCommunity: true } });
+    expect(out).toEqual({ kind: "live-org", orgId: "sutton" });
+  });
+});
+
+describe("the stronger add wins: the organiser's own add moves a request linked on weak evidence", () => {
+  const PARENT = "120363400000000777@g.us";
+  const weakRow = (over: Record<string, unknown> = {}) => ({
+    ...connectRow(),
+    status: "group_linked",
+    groupId: PARENT,
+    botRemovedAt: null,
+    adderMatch: "other-organiser-present",
+    linkedAt: mins(-0.2),
+    org: { approvalStatus: "pending" },
+    ...over,
+  });
+  const isUpgradeQuery = (a: { where?: Record<string, unknown> }) =>
+    !!a?.where && (a.where.adderMatch as { in?: unknown } | undefined)?.in !== undefined;
+  const moveCall = () =>
+    dbMock.clubConnect.updateMany.mock.calls.find(
+      (c) => (c[0] as { where: { groupId?: unknown } }).where.groupId === PARENT,
+    )?.[0] as { where: Record<string, unknown>; data: Record<string, unknown> } | undefined;
+
+  beforeEach(() => {
+    (dbMock.clubConnect as unknown as { findUnique: ReturnType<typeof vi.fn> }).findUnique = vi.fn(async () => connectRow());
+    dbMock.clubConnect.findFirst.mockImplementation(async (a: { where: Record<string, unknown> }) =>
+      a.where.id === "cc-ali" && a.where.groupId === PARENT ? { groupSubject: "FNF ⚽️", memberCount: 8 } : null,
+    );
+  });
+
+  it("THE RACE OF THAT DAY: the first link loses its compare-and-set to the parent group's weak link, and the request is moved here", async () => {
+    dbMock.clubConnect.findMany.mockImplementation(async (a: { where?: Record<string, unknown> }) => {
+      if (isUpgradeQuery(a)) return [weakRow()];
+      if (a?.where?.status === "group_linked") return []; // the relink rule's removed links
+      return [connectRow()]; // the open request, as read before the weak link committed
+    });
+    dbMock.clubConnect.updateMany.mockResolvedValueOnce({ count: 0 }); // the first link's CAS: lost
+    const out = await add({ groupSubject: "Friday Night Football 🏟", addedByLid: ALI_LID });
+    expect(out).toMatchObject({
+      kind: "linked",
+      connectId: "cc-ali",
+      adderMatch: "phone",
+      upgradedFrom: { groupId: PARENT, subject: "FNF ⚽️", memberCount: 8 },
+      organiserAckQueued: true,
+    });
+    const move = moveCall();
+    expect(move?.where).toMatchObject({
+      id: "cc-ali",
+      status: "group_linked",
+      groupId: PARENT,
+      botRemovedAt: null,
+      adderMatch: { in: ["other-organiser-present", "unknown"] },
+    });
+    expect(move?.where.org).toBeDefined();
+    expect(move?.data).toMatchObject({ groupId: GROUP, groupSubject: "Friday Night Football 🏟", memberCount: 2, adderMatch: "phone" });
+    // Both groups' locks, in sorted order; the other group's chat cleared.
+    const sql = dbMock.$executeRaw.mock.calls.map((c) => (c[0] as TemplateStringsArray).join("?"));
+    expect(sql.filter((s) => s.includes("pg_advisory_xact_lock")).length).toBeGreaterThanOrEqual(2);
+    expect(sql.some((s) => s.includes(`"capturedHistory" = NULL`))).toBe(true);
+    // The owner's DMs are built, not sent here.
+    if (out.kind !== "linked") throw new Error("not linked");
+    expect(out.ownerDm.refId).toBe("cc-ali");
+    expect(out.ownerDm.text).toContain(`Group: "Friday Night Football 🏟", 2 members`);
+    expect(out.correctionDm?.refId).toBe(`cc-ali:relinked:${GROUP}`);
+    expect(out.correctionDm?.text).toContain(`It replaces "FNF ⚽️", 8 members`);
+    // The organiser's one "I'm in" ack.
+    expect(dbMock.platformJob.create.mock.calls.map((c) => c[0].data)).toEqual([
+      expect.objectContaining({ phone: ALI, refId: "cc-ali:in-group" }),
+    ]);
+  });
+
+  it("the weak link already committed when this add read the requests: no match, then moved", async () => {
+    dbMock.clubConnect.findMany.mockImplementation(async (a: { where?: Record<string, unknown> }) =>
+      isUpgradeQuery(a) ? [weakRow({ adderMatch: "unknown" })] : [],
+    );
+    const out = await add();
+    expect(out).toMatchObject({ kind: "linked", upgradedFrom: { groupId: PARENT } });
+    expect(dbMock.unsolicitedGroup.create).not.toHaveBeenCalled();
+  });
+
+  it("an add by anybody else never moves it: unsolicited, as before", async () => {
+    dbMock.clubConnect.findMany.mockImplementation(async (a: { where?: Record<string, unknown> }) =>
+      isUpgradeQuery(a) ? [weakRow()] : [],
+    );
+    const out = await add({ addedByPhone: STRANGER });
+    expect(out.kind).toBe("unsolicited");
+    expect(moveCall()).toBeUndefined();
+  });
+
+  it("a club no longer pending is never moved", async () => {
+    dbMock.clubConnect.findMany.mockImplementation(async (a: { where?: Record<string, unknown> }) =>
+      isUpgradeQuery(a) ? [weakRow({ org: { approvalStatus: "approved" } })] : [],
+    );
+    const out = await add();
+    expect(out.kind).toBe("unsolicited");
+    expect(moveCall()).toBeUndefined();
+  });
+
+  it("never into a group MatchTime cannot post in", async () => {
+    dbMock.clubConnect.findMany.mockImplementation(async (a: { where?: Record<string, unknown> }) =>
+      isUpgradeQuery(a) ? [weakRow()] : [],
+    );
+    await add({ postability: { announce: true, communityAnnounce: false, botIsAdmin: false } });
+    expect(moveCall()).toBeUndefined();
+  });
+
+  it("the request moved again under the locks (or the club was decided): nothing written, nobody told", async () => {
+    dbMock.clubConnect.findMany.mockImplementation(async (a: { where?: Record<string, unknown> }) =>
+      isUpgradeQuery(a) ? [weakRow()] : [],
+    );
+    dbMock.clubConnect.updateMany.mockResolvedValue({ count: 0 });
+    const out = await add();
+    expect(out.kind).not.toBe("linked");
+    expect(dbMock.platformJob.create).not.toHaveBeenCalled();
+    const sql = dbMock.$executeRaw.mock.calls.map((c) => (c[0] as TemplateStringsArray).join("?"));
+    expect(sql.some((s) => s.includes(`"capturedHistory" = NULL`))).toBe(false);
+  });
+
+  it("another request already linked to this group: already-linked, nothing moved", async () => {
+    dbMock.clubConnect.findMany.mockImplementation(async (a: { where?: Record<string, unknown> }) =>
+      isUpgradeQuery(a) ? [weakRow()] : [],
+    );
+    let calls = 0;
+    dbMock.clubConnect.findFirst.mockImplementation(async (a: { where: Record<string, unknown> }) => {
+      // Step 2 (before the matcher) sees nothing; inside the move's locks, another request has it.
+      if (a.where.groupId === GROUP && a.where.status === "group_linked") return ++calls > 1 ? { id: "cc-other" } : null;
+      return null;
+    });
+    const out = await add();
+    expect(out).toEqual({ kind: "already-linked", connectId: "cc-other" });
+    expect(moveCall()).toBeUndefined();
   });
 });

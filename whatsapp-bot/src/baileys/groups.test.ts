@@ -312,4 +312,29 @@ describe("snapshotFromMetadata: the self-setup POST's roster", () => {
   it("an empty description stays an empty string: WhatsApp answered, with nothing", async () => {
     expect((await snapshotFromMetadata(meta([BOT], { desc: "" }), [], noNames)).description).toBe("");
   });
+
+  // 2026-10-15, the FNF incident: the community's parent and announcements
+  // groups each arrived as an add, and the server could not tell them from
+  // the club's chat.
+  it("carries the community facts rc14 reads: the parent, the announcements group, a group inside one", async () => {
+    const parent = await snapshotFromMetadata(meta([BOT], { isCommunity: true }), [], noNames);
+    expect(parent.community).toEqual({ isCommunity: true, isCommunityAnnounce: false, linkedParent: null });
+    const announce = await snapshotFromMetadata(
+      meta([BOT], { isCommunityAnnounce: true, linkedParent: "120363409700000000@g.us" }),
+      [],
+      noNames,
+    );
+    expect(announce.community).toEqual({
+      isCommunity: false,
+      isCommunityAnnounce: true,
+      linkedParent: "120363409700000000@g.us",
+    });
+    const inside = await snapshotFromMetadata(meta([BOT], { linkedParent: "120363409700000000@g.us" }), [], noNames);
+    expect(inside.community).toEqual({ isCommunity: false, isCommunityAnnounce: false, linkedParent: "120363409700000000@g.us" });
+    expect((await snapshotFromMetadata(meta([BOT]), [], noNames)).community).toEqual({
+      isCommunity: false,
+      isCommunityAnnounce: false,
+      linkedParent: null,
+    });
+  });
 });

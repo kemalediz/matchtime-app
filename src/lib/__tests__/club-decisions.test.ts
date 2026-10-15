@@ -25,7 +25,7 @@ vi.mock("@anthropic-ai/sdk", () => ({
 const dbMock = vi.hoisted(() => {
   const m = {
     organisation: { findFirst: vi.fn(), findUnique: vi.fn(), findMany: vi.fn(), updateMany: vi.fn(), count: vi.fn() },
-    clubConnect: { findFirst: vi.fn(), findMany: vi.fn(), updateMany: vi.fn() },
+    clubConnect: { findFirst: vi.fn(), findMany: vi.fn(), updateMany: vi.fn(), count: vi.fn(), findUnique: vi.fn() },
     unsolicitedGroup: { findUnique: vi.fn(), findMany: vi.fn(), updateMany: vi.fn() },
     user: { findUnique: vi.fn(), findFirst: vi.fn() },
     botJob: { create: vi.fn() },
@@ -160,6 +160,9 @@ beforeEach(() => {
   dbMock.clubConnect.findFirst.mockResolvedValue(link());
   dbMock.clubConnect.findMany.mockResolvedValue([]);
   dbMock.clubConnect.updateMany.mockResolvedValue({ count: 1 });
+  // Under the group lock, the request still names the group it was read with.
+  dbMock.clubConnect.count.mockResolvedValue(1);
+  dbMock.clubConnect.findUnique.mockImplementation(async () => ({ groupId: (await dbMock.clubConnect.findFirst()).groupId }));
   dbMock.user.findUnique.mockResolvedValue({ name: "Ali Demir" });
   dbMock.user.findFirst.mockResolvedValue({ id: "u-ali" });
   dbMock.botJob.create.mockImplementation(async ({ data }: { data: object }) => ({ id: "bj-1", ...data }));
@@ -293,6 +296,31 @@ describe("decideClub: approve", () => {
     expect(orgs["org-riverside"].approvalStatus).toBe("pending");
     expect(dbMock.organisation.updateMany).not.toHaveBeenCalled();
     expect(dbMock.botJob.create).not.toHaveBeenCalled();
+  });
+
+  // 2026-10-15 (the FNF incident): the organiser's own add may MOVE the
+  // request off a group it was linked to on weak evidence while the
+  // approval waits for that group's lock. The group it was moved off is
+  // never approved.
+  it("refuses when the request was moved to another group while it waited for the lock, and writes nothing", async () => {
+    dbMock.clubConnect.count.mockResolvedValue(0);
+    const r = await decideClub("org-riverside", "approve", "u-kemal", { now: NOW });
+    expect(r).toMatchObject({ ok: false });
+    expect(dbMock.clubConnect.count).toHaveBeenCalledWith({
+      where: { id: "cc-ali", status: "group_linked", botRemovedAt: null, groupId: GROUP },
+    });
+    expect(orgs["org-riverside"].approvalStatus).toBe("pending");
+    expect(orgs["org-riverside"].whatsappGroupId ?? null).toBe(null);
+    expect(dbMock.organisation.updateMany).not.toHaveBeenCalled();
+    expect(dbMock.botJob.create).not.toHaveBeenCalled();
+  });
+
+  it("a rejection leaves the group the request names once it is closed, not the one it was read with", async () => {
+    dbMock.clubConnect.findUnique.mockResolvedValue({ groupId: "120363400000000999@g.us" });
+    const r = await decideClub("org-riverside", "reject", "u-kemal", { now: NOW });
+    expect(r).toMatchObject({ ok: true, decision: "reject" });
+    const leaves = created("platformJob").filter((j) => j.kind === "leave-group");
+    expect(leaves.map((j) => j.groupId)).toEqual(["120363400000000999@g.us"]);
   });
 
   it("refuses a pending club with no linked group", async () => {

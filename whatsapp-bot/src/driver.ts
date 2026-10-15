@@ -147,6 +147,22 @@ export interface GroupSnapshot {
    * in the roster: then nothing is gated, as before.
    */
   postability?: GroupPostability;
+  /**
+   * The group's place in a WhatsApp community (2026-10-15), as Baileys rc14
+   * reads it off the group's metadata (`extractGroupMetadata`): the
+   * community's PARENT group (`isCommunity`), its ANNOUNCEMENTS group
+   * (`isCommunityAnnounce`), and the parent of a group inside one
+   * (`linkedParent`). Sent to the server, which never links a parent or an
+   * announcements group as a club's group. Absent when the path cannot tell
+   * (whatsapp-web.js).
+   */
+  community?: GroupCommunity;
+}
+
+export interface GroupCommunity {
+  isCommunity: boolean;
+  isCommunityAnnounce: boolean;
+  linkedParent: string | null;
 }
 
 export interface WaDriver {
@@ -447,6 +463,14 @@ export interface WaDriver {
    * Until this is called the driver assumes it serves none.
    */
   ignoreJoinHistoryWhen?(isServedGroup: (groupId: string) => boolean): void;
+
+  /**
+   * Called when a group's shared-history bundle was read AFTER the
+   * bot-added flow had stopped waiting for it (2026-10-15). The bundle is
+   * still held, for `joinHistory` to hand over; the handler sends it to the
+   * server on its own. Optional: only the Baileys driver reads bundles.
+   */
+  onLateJoinHistory?(handler: (groupId: string) => void): void;
 
   /**
    * Every one-to-one chat, for `BOT_RECOVER_DM_REPLIES=1` only.

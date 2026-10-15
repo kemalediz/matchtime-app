@@ -21,7 +21,7 @@
  * the flow is unit-tested against a fake client whose page calls throw
  * the way the live build does.
  */
-import type { GroupSnapshot, GroupSummary, WaDriver } from "./driver.js";
+import type { GroupCommunity, GroupSnapshot, GroupSummary, WaDriver } from "./driver.js";
 
 /** Recipient ids as strings, whatever shape the page handed over. */
 export function normaliseRecipientIds(raw: unknown): string[] {
@@ -112,6 +112,10 @@ export interface BotAddedDeps {
     groupDescription?: string;
     /** Whether MatchTime can post there (2026-10-14), when the read could tell. */
     postability?: PostabilityForServer;
+    /** The group's place in a WhatsApp community (2026-10-15), when the read could tell. */
+    community?: GroupCommunity;
+    /** A shared-history bundle read AFTER the add post (2026-10-15): not an add. */
+    lateHistory?: boolean;
   }) => Promise<BotAddedResponse | null>;
   log?: (line: string) => void;
   error?: (line: string, err?: unknown) => void;
@@ -143,6 +147,15 @@ function postabilityField(snapshot: GroupSnapshot): { postability?: PostabilityF
   const p = snapshot.postability;
   if (!p) return {};
   return { postability: { announce: p.announce, communityAnnounce: p.communityAnnounce, botIsAdmin: p.botIsAdmin } };
+}
+
+/** The snapshot's community facts in the server's shape, or nothing when there are none. */
+function communityField(snapshot: GroupSnapshot): { community?: GroupCommunity } {
+  const c = snapshot.community;
+  if (!c) return {};
+  return {
+    community: { isCommunity: c.isCommunity === true, isCommunityAnnounce: c.isCommunityAnnounce === true, linkedParent: c.linkedParent ?? null },
+  };
 }
 
 // ── The group description (2026-10-12) ────────────────────────────────
@@ -247,12 +260,26 @@ export async function handleGroupJoinForSelfAdd(
   // The adder: phone and LID. Resolved AFTER the snapshot on purpose: its
   // groupMetadata read seeds every participant's LID-to-phone pair, so a
   // LID author the event could not map may map now (plan 2.3).
-  const adder = await resolveAdder(deps.driver, notification);
-  const { addedByPhone, addedByLid } = adder;
+  const resolved = await resolveAdder(deps.driver, notification);
+  // An add authored by MatchTime ITSELF is evidence of nobody (2026-10-15):
+  // joining a group inside a WhatsApp community puts MatchTime in the
+  // community's parent group with its own account as the author. The
+  // server is told "no adder", never MatchTime's own number.
+  const own = isOwnAdder(resolved, selfIds);
+  const { addedByPhone, addedByLid } = own ? { addedByPhone: undefined, addedByLid: undefined } : resolved;
   log(
-    `[bot-added] ${gid} adder: phone=${addedByPhone ?? "-"} lid=${addedByLid ?? "-"} via=${adder.via} ` +
-      `(event author=${notification.author ?? "?"})`,
+    own
+      ? `[bot-added] ${gid} adder: MatchTime's own account (phone=${resolved.addedByPhone ?? "-"} lid=${resolved.addedByLid ?? "-"}); ` +
+          "sent as no adder"
+      : `[bot-added] ${gid} adder: phone=${addedByPhone ?? "-"} lid=${addedByLid ?? "-"} via=${resolved.via} ` +
+          `(event author=${notification.author ?? "?"})`,
   );
+  if (snapshot.community && (snapshot.community.isCommunity || snapshot.community.isCommunityAnnounce)) {
+    log(
+      `[bot-added] ${gid} is a WhatsApp community's ${snapshot.community.isCommunity ? "parent group" : "announcements group"}` +
+        `${snapshot.community.linkedParent ? ` (community ${snapshot.community.linkedParent})` : ""}`,
+    );
+  }
 
   // Recent history: the language evidence and the enrichment source.
   let history: HistoryMessageForServer[] = [];
@@ -278,6 +305,7 @@ export async function handleGroupJoinForSelfAdd(
       enrichmentHistory: history.length > 0 ? history : undefined,
       ...(desc.send !== undefined ? { groupDescription: desc.send } : {}),
       ...postabilityField(snapshot),
+      ...communityField(snapshot),
     });
   } catch (err) {
     error(`[bot-added] ${gid} server call failed:`, err);
@@ -362,6 +390,69 @@ export async function resolveAdder(
     }
   }
   return withLid({ via: "none" as const });
+}
+
+/**
+ * Is this adder MatchTime's own account? `selfIds` as `driver.selfIds()`
+ * gives them (`447...@c.us`, `158...@lid`). With no ids known, nothing is.
+ */
+export function isOwnAdder(
+  adder: { addedByPhone?: string | null; addedByLid?: string | null },
+  selfIds: readonly string[],
+): boolean {
+  if (selfIds.length === 0) return false;
+  const self = new Set(selfIds);
+  if (adder.addedByPhone && self.has(`${adder.addedByPhone}@c.us`)) return true;
+  if (adder.addedByLid && self.has(`${adder.addedByLid}@lid`)) return true;
+  return false;
+}
+
+// ── A history bundle that arrived after the add post (2026-10-15) ─────
+
+export interface LateJoinHistoryDeps {
+  resolveSelfIds: () => Promise<string[]>;
+  /** The join's shared history, shaped for the server, TAKEN from the
+   *  driver (`driver.joinHistory`); [] when there is none left. */
+  readJoinHistory: (gid: string, selfIds: string[]) => Promise<HistoryMessageForServer[]>;
+  /** Resolves once this group's bot-added post has been answered, so the
+   *  server has linked the group before its chat arrives. */
+  awaitAddSettled?: (gid: string) => Promise<void>;
+  isMonitoredGroup: (gid: string) => boolean;
+  postBotAdded: BotAddedDeps["postBotAdded"];
+  log?: (line: string) => void;
+}
+
+/**
+ * The group's shared-history bundle was read AFTER the bot-added flow had
+ * stopped waiting for it and posted without it (the FNF main chat's, on
+ * 2026-10-15). Post it on its own, as `lateHistory`: the server stores it
+ * on the request linked to that group, as a re-add would, and treats it as
+ * nothing else (no matching, nothing recorded, nobody told). Waits for the
+ * add post to be answered first. Logs counts only, never the chat. Never
+ * throws.
+ */
+export async function handleLateJoinHistory(
+  deps: LateJoinHistoryDeps,
+  gid: string,
+): Promise<"posted" | "empty" | "monitored" | "failed"> {
+  const log = deps.log ?? ((l) => console.log(l));
+  try {
+    if (deps.awaitAddSettled) await deps.awaitAddSettled(gid);
+    if (deps.isMonitoredGroup(gid)) return "monitored";
+    const selfIds = await deps.resolveSelfIds();
+    const rows = await deps.readJoinHistory(gid, selfIds);
+    if (rows.length === 0) {
+      log(`[bot-added] ${gid}: late shared history: nothing left to send`);
+      return "empty";
+    }
+    const res = await deps.postBotAdded({ groupId: gid, lateHistory: true, enrichmentHistory: rows });
+    const answer = (res as { lateHistory?: unknown } | null)?.lateHistory;
+    log(`[bot-added] ${gid}: late shared history sent: ${rows.length} message(s); server: ${String(answer ?? res?.ignored ?? "?")}`);
+    return "posted";
+  } catch (err) {
+    log(`[bot-added] ${gid}: late shared history not sent: ${err instanceof Error ? err.message : String(err)}`);
+    return "failed";
+  }
 }
 
 // ── Self-join slice 6: MatchTime removed from a silent group ──────────
@@ -557,6 +648,7 @@ export async function sweepForMissedSelfAdds(deps: SweepDeps): Promise<{ checked
         })),
         discovered: true,
         ...postabilityField(snapshot),
+        ...communityField(snapshot),
       });
     } catch (err) {
       error(`[self-join-sweep] ${g.id} server call failed:`, err);

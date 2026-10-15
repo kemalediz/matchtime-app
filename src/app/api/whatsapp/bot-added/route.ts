@@ -20,7 +20,15 @@
  *     removed from that same group while the club waited, with no new
  *     code (2026-10-11): the same request is linked again, exactly as
  *     above (same answer to the Pi, one ack, one owner DM for the relink);
+ *   - a WhatsApp community's parent group or announcements group
+ *     (2026-10-15): never linked, never recorded, never left, nobody told;
+ *   - the organiser's own add of a group while their request is linked to
+ *     ANOTHER group on weak evidence (2026-10-15): the request is moved
+ *     here, and the owner gets the approval DM or one correction;
  *   - anything else: recorded as unsolicited (silent, left after 48h).
+ * A body with `lateHistory: true` is not an add: a shared-history bundle
+ * read after the add post, stored on the request linked to the group
+ * (`lateHistoryStep` below).
  * The add may carry the group's description (`groupDescription`,
  * 2026-10-12). Numbers are masked out of it before it is stored on the
  * linked request, beside the chat (src/lib/group-description.ts); it is
@@ -83,12 +91,12 @@ import { detectGroupLang } from "@/lib/i18n/detect";
 import { inGroupSetupRefusal } from "@/lib/club-approval";
 import { selfJoinEnabledForApiRequest } from "@/lib/self-join-flag";
 import {
+  attachLateGroupHistory,
   handleSelfJoinGroupAdd,
   isSilentOutcome,
-  markOwnerDmQueued,
+  queueOwnerDmForLink,
   type GroupAddOutcome,
 } from "@/lib/group-add";
-import { queueOwnerDm } from "@/lib/owner-dm";
 import { detectAdminGroupCandidate, recordAdminGroupCandidate } from "@/lib/admin-group-link";
 import { billingEnabledForApiRequest } from "@/lib/billing-flag";
 import { handleBillingReAdd } from "@/lib/club-billing-removal";
@@ -158,6 +166,32 @@ async function setupReAddStep(request: Request): Promise<void> {
   }
 }
 
+/**
+ * A LATE HISTORY BUNDLE (2026-10-15). WhatsApp shares a group's recent chat
+ * with a member who has just joined, as a bundle the Pi downloads. It can
+ * land after the Pi's add post has gone without it (the FNF main chat's
+ * did). The Pi then posts `{ groupId, lateHistory: true, enrichmentHistory }`
+ * on its own. It is stored on the request linked to that group, as a re-add
+ * would store it (`attachLateGroupHistory`), and is NOT an add: no
+ * matching, no billing or setting-up step, nothing recorded, nobody told,
+ * nothing about the group's silence changes. Null for an ordinary add.
+ */
+async function lateHistoryStep(request: Request): Promise<NextResponse | null> {
+  const peek = (await request.clone().json().catch(() => null)) as {
+    groupId?: unknown;
+    lateHistory?: unknown;
+    enrichmentHistory?: unknown;
+  } | null;
+  if (peek?.lateHistory !== true) return null;
+  const groupId = typeof peek.groupId === "string" && peek.groupId.endsWith("@g.us") ? peek.groupId : null;
+  if (!groupId) return NextResponse.json({ error: "groupId required" }, { status: 400 });
+  const stored = selfJoinEnabledForApiRequest(request)
+    ? await attachLateGroupHistory(groupId, peek.enrichmentHistory)
+    : "self-join-off";
+  console.log(`[bot-added] ${groupId}: late history bundle: ${stored}`);
+  return NextResponse.json({ ok: true, ignored: "late-history", lateHistory: stored, introText: null });
+}
+
 /** The `ignored` word the Pi logs for each self-join outcome. */
 const SELF_JOIN_IGNORED: Record<GroupAddOutcome["kind"], string> = {
   "live-org": "live-org",
@@ -170,6 +204,7 @@ const SELF_JOIN_IGNORED: Record<GroupAddOutcome["kind"], string> = {
   "admin-group": "admin-group",
   "admin-group-candidate": "admin-group-awaiting-code",
   "held-not-postable": "not-postable",
+  "community-group": "community-group",
 };
 
 async function selfJoinAdd(request: Request): Promise<NextResponse> {
@@ -193,19 +228,27 @@ async function selfJoinAdd(request: Request): Promise<NextResponse> {
     groupDescription: description.text,
     discovered: body.discovered,
     postability: body.postability,
+    community: body.community,
   });
+  let ownerDm = "";
   if (outcome.kind === "linked") {
     // The ONE DM to the owner about this link. queueOwnerDm is also once
     // per (purpose, refId, phone), so a retry cannot DM twice. A relink
     // after a re-add brings its own refId (one per removal), so the owner
-    // hears once that the club is waiting again.
-    const dm = await queueOwnerDm(outcome.ownerDm.text, "owner-approval", outcome.ownerDm.refId);
-    if (dm.queued > 0 || dm.skipped > 0) await markOwnerDmQueued(outcome.connectId);
+    // hears once that the club is waiting again. A request MOVED here by
+    // the organiser's own add (2026-10-15) gets the approval DM, or the
+    // correction when the owner was already asked about the other group.
+    ownerDm = `, owner DM ${await queueOwnerDmForLink(groupId, outcome)}`;
   }
-  console.log(
-    `[bot-added] ${groupId}: self-join ${outcome.kind}${outcome.kind === "linked" && outcome.relinked ? " (relinked after re-add)" : ""}, ` +
-      `desc=${description.note}`,
-  );
+  const how =
+    outcome.kind === "linked" && outcome.relinked
+      ? " (relinked after re-add)"
+      : outcome.kind === "linked" && outcome.upgradedFrom
+        ? ` (moved here from ${outcome.upgradedFrom.groupId})`
+        : outcome.kind === "community-group"
+          ? ` (${outcome.role})`
+          : "";
+  console.log(`[bot-added] ${groupId}: self-join ${outcome.kind}${how}${ownerDm}, desc=${description.note}`);
   return NextResponse.json({
     ok: true,
     ignored: SELF_JOIN_IGNORED[outcome.kind],
@@ -220,6 +263,11 @@ export async function POST(request: Request) {
   if (apiKey !== process.env.WHATSAPP_API_KEY) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  // A shared-history bundle the Pi read AFTER its add post (2026-10-15).
+  // Not an add: none of the steps below run for it.
+  const late = await lateHistoryStep(request);
+  if (late) return late;
 
   await billingReAddStep(request);
   await setupReAddStep(request);

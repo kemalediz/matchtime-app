@@ -96,6 +96,16 @@ export interface GroupMetaLike {
    * there to the server; NEVER logged (it often holds bank details).
    */
   desc?: string | null;
+  /**
+   * The community facts rc14's `extractGroupMetadata` reads
+   * (`lib/Socket/groups.js`): `isCommunity` is the group node's `parent`
+   * child (the community's parent group), `isCommunityAnnounce` its
+   * `default_sub_group` child (the announcements group), `linkedParent` the
+   * `linked_parent` child's jid (the community a group sits in).
+   */
+  isCommunity?: boolean | null;
+  isCommunityAnnounce?: boolean | null;
+  linkedParent?: string | null;
 }
 
 /** One pair for `storeLIDPNMappings`: full wire JIDs, no device. */
@@ -473,5 +483,10 @@ export async function snapshotFromMetadata(
     // when there was none (or it was not text). Never trimmed, cut or
     // masked here: the server does all of that, in one place.
     description: typeof meta.desc === "string" ? meta.desc : null,
+    community: {
+      isCommunity: meta.isCommunity === true,
+      isCommunityAnnounce: meta.isCommunityAnnounce === true,
+      linkedParent: typeof meta.linkedParent === "string" && meta.linkedParent ? meta.linkedParent : null,
+    },
   };
 }

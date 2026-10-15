@@ -524,10 +524,42 @@ describe("a bundle that lands after the flow stopped waiting (M2)", () => {
     expect(calls).toHaveLength(1);
     expect(t.join().at(-1)).toBe(
       `[baileys][join-history] ${GROUP}: bundle AC0F00000000000000B1: read AFTER the bot-added flow had stopped waiting ` +
-        "and posted without it. It is kept until this join's window closes and handed over only if the flow asks again; " +
-        "it is NOT sent to the server by itself",
+        "and posted without it. It is kept until this join's window closes; " +
+        "nothing is listening, so it is NOT sent to the server by itself",
     );
     expect(await t.collect(GROUP, SELF_IDS)).toHaveLength(5);
+  });
+
+  // 2026-10-15, the FNF incident: the main chat's bundle arrived after the
+  // add post, and nothing ever sent it.
+  it("tells the late-history listener, which can then take it (and only once)", async () => {
+    const { enc, bundle } = synthetic();
+    const { fetchBundle } = servingFetch(enc);
+    const t = await opened(fetchBundle);
+    const told: string[] = [];
+    t.driver.onLateJoinHistory!((gid) => void told.push(gid));
+    t.sock.emit("messages.upsert", { messages: [joinNotice()], type: "notify" });
+    await flush();
+    expect(await t.collect(GROUP, SELF_IDS)).toEqual([]);
+    expect(told).toEqual([]);
+
+    t.sock.emit("messages.upsert", { messages: [carrier(bundle)], type: "notify" });
+    await flush();
+    expect(told).toEqual([GROUP]);
+    expect(t.join().at(-1)).toContain("handed to the late-history sender");
+    expect(await t.collect(GROUP, SELF_IDS)).toHaveLength(5);
+  });
+
+  it("a bundle read in time is never reported late", async () => {
+    const { enc, bundle } = synthetic();
+    const { fetchBundle } = servingFetch(enc);
+    const t = await opened(fetchBundle);
+    const told: string[] = [];
+    t.driver.onLateJoinHistory!((gid) => void told.push(gid));
+    t.sock.emit("messages.upsert", { messages: [joinNotice(), carrier(bundle)], type: "notify" });
+    await flush();
+    expect(await t.collect(GROUP, SELF_IDS)).toHaveLength(5);
+    expect(told).toEqual([]);
   });
 });
 

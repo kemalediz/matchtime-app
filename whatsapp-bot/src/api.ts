@@ -407,6 +407,14 @@ export async function postBotAdded(params: {
    *  a community announcements group, MatchTime an admin. Absent when the
    *  read could not tell. An older server ignores it. */
   postability?: { announce: boolean; communityAnnounce: boolean; botIsAdmin: boolean };
+  /** The group's place in a WhatsApp community (2026-10-15): a community's
+   *  parent group or announcements group is never linked. An older server
+   *  ignores it. */
+  community?: { isCommunity: boolean; isCommunityAnnounce: boolean; linkedParent: string | null };
+  /** A shared-history bundle read AFTER the add post (2026-10-15), sent on
+   *  its own with `enrichmentHistory`. The server stores it on the request
+   *  linked to the group and treats it as nothing else. */
+  lateHistory?: boolean;
 }): Promise<BotAddedResult | null> {
   const res = await apiFetch(`${config.apiUrl}/api/whatsapp/bot-added`, {
     method: "POST",
@@ -430,6 +438,8 @@ export interface BotAddedResult {
   silent?: boolean;
   /** Self-join slice 6: what the linker decided ("linked", "unsolicited", ...). */
   selfJoin?: string;
+  /** A late history post (2026-10-15): what the server did with it. */
+  lateHistory?: string;
 }
 
 /**

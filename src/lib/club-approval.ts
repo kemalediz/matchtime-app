@@ -518,6 +518,11 @@ export async function decideClub(
           // F3: a rejected club's chat is never read; delete it now, and
           // the group description captured with it.
           await clearCapturedChat(tx, link.id);
+          // The close above waited for any move to the organiser's own
+          // group (2026-10-15) to commit: leave the group the request
+          // names NOW, never the one it was moved off.
+          const now = await tx.clubConnect.findUnique({ where: { id: link.id }, select: { groupId: true } });
+          if (now && now.groupId !== link.groupId) link.groupId = now.groupId;
         }
         return {
           result: {
@@ -539,6 +544,14 @@ export async function decideClub(
       // The same lock the group add takes, so two clubs can never both end
       // up owning one group.
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`group-add:${groupId}`}))`;
+      // The request may have been MOVED to the organiser's own group while
+      // we waited for that lock (group-add.ts `relinkToOrganiserGroup`,
+      // which holds this lock while it moves it): never approve the group
+      // it was moved off. The owner answers again.
+      const stillThere = await tx.clubConnect.count({
+        where: { id: link.id, status: "group_linked", botRemovedAt: null, groupId },
+      });
+      if (stillThere !== 1) throw new DecisionRaceLost();
       const taken = await tx.organisation.findFirst({
         where: { ...APPROVED_CLUB_WHERE, whatsappGroupId: groupId, id: { not: orgId } },
         select: { id: true, name: true },
