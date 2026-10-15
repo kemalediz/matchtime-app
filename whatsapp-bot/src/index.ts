@@ -24,6 +24,7 @@ import { asString, readInboundHeadline, safePath, safeRead } from "./wa-read.js"
 import { createHistoryCollector } from "./history-capture.js";
 import {
   handleGroupJoinForSelfAdd,
+  handleLateJoinHistory,
   handleGroupLeaveForSelfRemoval,
   handleMonitoredGroupSelfRemoval,
   sweepForMissedSelfAdds,
@@ -891,6 +892,25 @@ async function main() {
   // the same check the bot-added flow answers "already monitored" with.
   driver.ignoreJoinHistoryWhen?.(isMonitoredGroup);
 
+  // A shared-history bundle read AFTER the bot-added flow posted without it
+  // (2026-10-15, the FNF main chat): sent on its own once that group's add
+  // post has been answered, so the server has linked the group first.
+  const addsInFlight = new Map<string, Promise<unknown>>();
+  driver.onLateJoinHistory?.((gid) => {
+    void handleLateJoinHistory(
+      {
+        resolveSelfIds: () => driver.selfIds(),
+        readJoinHistory: async (g, selfIds) => (driver.joinHistory ? (await driver.joinHistory(g, selfIds)).messages : []),
+        awaitAddSettled: async (g) => {
+          await addsInFlight.get(g)?.catch(() => undefined);
+        },
+        isMonitoredGroup,
+        postBotAdded,
+      },
+      gid,
+    );
+  });
+
   driver.onGroupJoin(async (notification: GroupMembershipEvent) => {
     try {
       const groupId = notification.chatId;
@@ -906,7 +926,7 @@ async function main() {
       // back. Identity matching, the snapshot and the history live in
       // bot-added.ts / group-snapshot.ts (2026-09-17), tested against
       // a client whose page calls throw like the live build's.
-      const outcome = await handleGroupJoinForSelfAdd(
+      const adding = handleGroupJoinForSelfAdd(
         {
           driver,
           isMonitoredGroup,
@@ -925,6 +945,13 @@ async function main() {
         },
         notification,
       );
+      addsInFlight.set(groupId, adding);
+      let outcome: Awaited<typeof adding>;
+      try {
+        outcome = await adding;
+      } finally {
+        if (addsInFlight.get(groupId) === adding) addsInFlight.delete(groupId);
+      }
       if (outcome.kind !== "not-self-add") return;
 
       // ── Existing human-join path (byte-identical behaviour) ────

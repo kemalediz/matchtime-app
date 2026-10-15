@@ -13,6 +13,14 @@
  * its 24-hour window are in group-add-rules.ts (`decideRelinkAfterReAdd`);
  * the link itself is `linkGroupToRequest`, the one a first link uses.
  *
+ * COMMUNITIES AND THE STRONGER ADD (2026-10-15, the FNF incident). A
+ * WhatsApp community's parent group and announcements group are never
+ * linked (`communityRoleOf`). A request linked on weak evidence (the
+ * organiser merely in the group) is MOVED to the group the organiser then
+ * adds MatchTime to themselves, while the club waits (`decideWeakLinkUpgrade`,
+ * `relinkToOrganiserGroup`); the owner gets the approval DM, or a
+ * correction if he was already asked about the other group.
+ *
  * THE GROUP STAYS SILENT. Nothing here posts in a group, reacts, DMs a
  * member or calls a model. What it may send:
  *   - the organiser's ack, one DM on the platform channel, only when the
@@ -44,13 +52,18 @@ import {
 } from "./club-approval";
 import {
   UNSOLICITED_AUTO_LEAVE_MS,
+  WEAK_ADDER_MATCH_LIST,
   addEvidenceFrom,
+  communityRoleOf,
   decideGroupAddLink,
   decideRelinkAfterReAdd,
+  decideWeakLinkUpgrade,
   ownerApprovalDmText,
+  ownerLinkCorrectionDmText,
   relinkRefIds,
   type AddEvidence,
   type AdderMatch,
+  type CommunityRole,
 } from "./group-add-rules";
 import { PlatformDmRefused, queuePlatformDm, queuePlatformLeaveGroup } from "./platform-jobs";
 import { adderHasOpenAdminGroupCode, detectAdminGroupCandidate, recordAdminGroupCandidate } from "./admin-group-link";
@@ -89,6 +102,13 @@ export interface GroupAddInput {
    * malformed is no reading, and changes nothing.
    */
   postability?: unknown;
+  /**
+   * What the Pi read of the group's place in a WhatsApp community
+   * (2026-10-15): `{ isCommunity, isCommunityAnnounce, linkedParent }`. A
+   * community's parent group or announcements group is never linked
+   * (`communityRoleOf`). Absent or malformed is no reading.
+   */
+  community?: unknown;
   now?: Date;
 }
 
@@ -110,7 +130,23 @@ export type GroupAddOutcome =
       /** Present (true) when this linked a request again after a removal
        *  and a re-add with no new code: see "Relink after a re-add". */
       relinked?: true;
+      /**
+       * Present when the organiser's own add MOVED a request that was
+       * linked on weak evidence to another group ("The stronger add
+       * wins"). `ownerDm` is then the full approval DM under the request's
+       * own key (for when the owner has not been asked yet), and
+       * `correctionDm` the correction for when he has.
+       */
+      upgradedFrom?: { groupId: string; subject: string | null; memberCount: number | null };
+      correctionDm?: { text: string; refId: string };
     }
+  /**
+   * 2026-10-15: a WhatsApp community's parent group or its announcements
+   * group. Never a club's group: nothing linked, nothing recorded, nobody
+   * told, and MatchTime does not leave it (leaving a community's parent
+   * would take it out of the community, and so out of the club's chat).
+   */
+  | { kind: "community-group"; role: CommunityRole }
   /** Nobody asked MatchTime in (plan 5.6). */
   | { kind: "unsolicited"; recorded: boolean; id: string }
   /** The reconnect sweep found a group that matches no request. */
@@ -175,6 +211,17 @@ export async function handleSelfJoinGroupAdd(input: GroupAddInput): Promise<Grou
   const adminGroupOwner = await db.organisation.findFirst({ where: { adminGroupId: groupId }, select: { id: true } });
   if (adminGroupOwner) return { kind: "admin-group", orgId: adminGroupOwner.id };
 
+  // 1b. A WhatsApp community's parent group or announcements group
+  //     (2026-10-15, the FNF incident). Joining a group inside a community
+  //     puts MatchTime in both, each as an add of its own, and the
+  //     organiser is in their rosters. Never a club's group: not linked,
+  //     not recorded (so never auto-left), nobody told.
+  const community = communityRoleOf(input);
+  if (community) {
+    console.log(`[group-add] ${groupId} ("${subject ?? "?"}"): a community ${community} group; not linked, not left, nobody told`);
+    return { kind: "community-group", role: community };
+  }
+
   // 2. A re-add of a group already linked and waiting.
   const existing = await db.clubConnect.findFirst({
     where: LINKED_AND_WAITING(groupId),
@@ -238,6 +285,14 @@ export async function handleSelfJoinGroupAdd(input: GroupAddInput): Promise<Grou
       const out = await linkGroupToRequest(ctx, relink);
       if (out !== RELINK_ABANDONED) return out;
     }
+    // The stronger add wins (2026-10-15): the organiser's own add of this
+    // group moves their request off a group it was linked to on weak
+    // evidence (the FNF incident: a community's parent group). Never into
+    // a group MatchTime cannot post in.
+    if (!blocked) {
+      const upgraded = await upgradeWeakLinkFor(ctx);
+      if (upgraded) return upgraded;
+    }
     // Slice 2a (plan 2.4): after every connect-request match has failed,
     // an add by an owner or admin of an approved club is their admins' HQ
     // group, waiting for "@Match Time admin group CODE". Still silent, and
@@ -278,21 +333,320 @@ export async function handleSelfJoinGroupAdd(input: GroupAddInput): Promise<Grou
       organiserPresent: decision.organiserPresent,
     }, now);
   }
-  const out = await linkGroupToRequest(
-    { groupId, subject, snapshot, ev, history: input.enrichmentHistory, description, now },
-    {
-      row,
-      // Compare-and-set on the status the request had when it was matched.
-      expect: { id: row.id, status: row.status },
-      adderMatch: decision.adderMatch,
-      organiserPresent: decision.organiserPresent,
-      ownerDmRefId: row.id,
-      organiserAckRefId: `${row.id}:in-group`,
-      relink: null,
-    },
-  );
+  const ctx = { groupId, subject, snapshot, ev, history: input.enrichmentHistory, description, now };
+  const out = await linkGroupToRequest(ctx, {
+    row,
+    // Compare-and-set on the status the request had when it was matched.
+    expect: { id: row.id, status: row.status },
+    adderMatch: decision.adderMatch,
+    organiserPresent: decision.organiserPresent,
+    ownerDmRefId: row.id,
+    organiserAckRefId: `${row.id}:in-group`,
+    relink: null,
+  });
   // Only a relink can be abandoned; a first link never is.
-  return out === RELINK_ABANDONED ? { kind: "race-lost" } : out;
+  if (out === RELINK_ABANDONED) return { kind: "race-lost" };
+  // The race of the FNF incident: a weaker add of another group (the
+  // community's parent) linked this request a moment before the
+  // organiser's own add could. Strength beats arrival order.
+  if (out.kind === "race-lost" && (decision.adderMatch === "phone" || decision.adderMatch === "lid")) {
+    const upgraded = await upgradeWeakLinkFor(ctx);
+    if (upgraded) return upgraded;
+  }
+  return out;
+}
+
+// ── The stronger add wins (2026-10-15) ───────────────────────────────────
+
+/**
+ * The organiser added MatchTime to this group themselves, and their
+ * request is linked to ANOTHER group on weak evidence: move it here. The
+ * rule is `decideWeakLinkUpgrade` (group-add-rules.ts); the move is
+ * `relinkToOrganiserGroup`, which the one-off correction script uses too.
+ * Null when the rule does not hold, or the request moved while linking.
+ */
+async function upgradeWeakLinkFor(ctx: AddContext): Promise<GroupAddOutcome | null> {
+  const { groupId, ev, now } = ctx;
+  if (ev.discovered || (!ev.addedByPhone && !ev.addedByLid)) return null;
+  const or: Array<Record<string, unknown>> = [];
+  if (ev.addedByPhone) or.push({ phone: ev.addedByPhone });
+  if (ev.addedByLid) or.push({ dmLid: ev.addedByLid });
+  const rows = await db.clubConnect.findMany({
+    where: {
+      status: "group_linked",
+      botRemovedAt: null,
+      adderMatch: { in: WEAK_ADDER_MATCH_LIST },
+      groupId: { not: groupId },
+      OR: or,
+    },
+    select: {
+      id: true,
+      groupId: true,
+      status: true,
+      botRemovedAt: true,
+      adderMatch: true,
+      phone: true,
+      dmLid: true,
+      linkedAt: true,
+      org: { select: { approvalStatus: true } },
+    },
+  });
+  if (!rows || rows.length === 0) return null;
+  const decision = decideWeakLinkUpgrade(
+    ev,
+    groupId,
+    // The rule re-checks every condition the query filtered on.
+    rows.map((r) => ({ ...r, orgApprovalStatus: r.org?.approvalStatus ?? "" })),
+    now,
+  );
+  if (!decision.upgrade) {
+    console.log(`[group-add] ${groupId}: weak link not moved here (${decision.reason})`);
+    return null;
+  }
+  const out = await relinkToOrganiserGroup({
+    connectId: decision.connectId,
+    fromGroupId: decision.fromGroupId,
+    toGroupId: groupId,
+    subject: ctx.subject,
+    snapshot: ctx.snapshot,
+    ev,
+    adderMatch: decision.adderMatch,
+    history: ctx.history,
+    description: ctx.description,
+    now,
+  });
+  return out.kind === "linked" || out.kind === "already-linked" ? out : null;
+}
+
+export interface RelinkToOrganiserGroupInput {
+  connectId: string;
+  /** The group the request is linked to now, on weak evidence. */
+  fromGroupId: string;
+  /** The organiser's group. */
+  toGroupId: string;
+  subject: string | null;
+  snapshot: ReturnType<typeof parseParticipantSnapshot>;
+  /** Stored as the member count; defaults to the snapshot's size. */
+  memberCount?: number;
+  ev: AddEvidence;
+  adderMatch: "phone" | "lid";
+  /** The Pi's `enrichmentHistory`, unread. */
+  history: unknown;
+  /** ALREADY MASKED, or null. */
+  description: string | null;
+  now: Date;
+}
+
+/**
+ * Move a request linked on weak evidence to the organiser's group. THE one
+ * move: the live add path and `scripts/relink-self-join.ts` both come
+ * through here. Writes only while the request still looks exactly as the
+ * rule saw it (linked to `fromGroupId`, MatchTime still there, weak
+ * evidence, club pending), under the locks of BOTH groups, taken in sorted
+ * order so two moves cannot deadlock. The approval (`decideClub`) takes
+ * the lock of the group it reads and checks the request still names it.
+ *
+ * The earlier group is simply not linked any more: not left, not recorded,
+ * nobody told. The chat captured with the weak link was the other group's,
+ * so it is deleted and replaced with what this add brought.
+ *
+ * Builds, never sends, the owner's DMs: the caller hands the outcome to
+ * `queueOwnerDmForLink`. Queues the organiser's "I'm in" ack, once ever.
+ */
+export async function relinkToOrganiserGroup(
+  a: RelinkToOrganiserGroupInput,
+): Promise<GroupAddOutcome> {
+  const history = coerceHistoryMessages(a.history);
+  const memberCount = a.memberCount ?? a.snapshot.length;
+  const detected = detectGroupLang({ subject: a.subject, history: history.map((m) => m.text) });
+  let before: { groupSubject: string | null; memberCount: number | null } | null = null;
+  let result: "linked" | "race-lost" | { already: string };
+  result = await db.$transaction(async (tx) => {
+    for (const g of [a.fromGroupId, a.toGroupId].sort()) {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`group-add:${g}`}))`;
+    }
+    const taken = await tx.clubConnect.findFirst({ where: LINKED_AND_WAITING(a.toGroupId), select: { id: true } });
+    if (taken) return { already: taken.id };
+    before = await tx.clubConnect.findFirst({
+      where: { id: a.connectId, groupId: a.fromGroupId },
+      select: { groupSubject: true, memberCount: true },
+    });
+    const { count } = await tx.clubConnect.updateMany({
+      where: {
+        id: a.connectId,
+        status: "group_linked",
+        groupId: a.fromGroupId,
+        botRemovedAt: null,
+        adderMatch: { in: WEAK_ADDER_MATCH_LIST },
+        org: PENDING_CLUB_WHERE,
+      },
+      data: {
+        groupId: a.toGroupId,
+        groupSubject: a.subject,
+        memberCount,
+        addedByPhone: a.ev.addedByPhone,
+        addedByLid: a.ev.addedByLid,
+        adderMatch: a.adderMatch,
+        participants: a.snapshot.length > 0 ? (a.snapshot.map((p) => ({ ...p })) as unknown as object) : undefined,
+        detectedLang: detected.lang,
+        linkedAt: a.now,
+      },
+    });
+    if (count !== 1) return "race-lost" as const;
+    if (a.snapshot.length === 0) {
+      // The other group's member list must not be imported at approval.
+      await tx.$executeRaw`UPDATE "ClubConnect" SET "participants" = NULL WHERE "id" = ${a.connectId}`;
+    }
+    // The chat captured with the weak link is the OTHER group's.
+    await clearCapturedChat(tx, a.connectId);
+    await fillCapturedChatOnReAdd(tx, a.connectId, { history, description: a.description });
+    // A waiting club's group now: never auto-left.
+    await tx.unsolicitedGroup.updateMany({
+      where: { groupId: a.toGroupId, leftAt: null },
+      data: { leftAt: a.now, awaitingAdminLink: false },
+    });
+    return "linked" as const;
+  });
+  if (typeof result === "object") return { kind: "already-linked", connectId: result.already };
+  if (result === "race-lost") {
+    console.warn(`[group-add] ${a.toGroupId}: request ${a.connectId} moved while being moved here; nothing written`);
+    return { kind: "race-lost" };
+  }
+  const prev = before as { groupSubject: string | null; memberCount: number | null } | null;
+
+  const row = await db.clubConnect.findUnique({
+    where: { id: a.connectId },
+    select: { id: true, orgId: true, userId: true, code: true, phone: true, dmAt: true, dmPhone: true },
+  });
+  if (!row) return { kind: "race-lost" };
+  const [org, organiser, alsoIn] = await Promise.all([
+    db.organisation.findUnique({ where: { id: row.orgId }, select: { name: true, language: true } }),
+    db.user.findUnique({ where: { id: row.userId }, select: { name: true } }),
+    loadAlsoIn(a.snapshot),
+  ]);
+  const club = org?.name ?? "(unnamed club)";
+  const ownerDm = {
+    refId: row.id,
+    text: ownerApprovalDmText({
+      club,
+      code: row.code,
+      organiserName: organiser?.name ?? null,
+      organiserPhone: row.phone,
+      adderMatch: a.adderMatch,
+      organiserPresent: true,
+      numberUnconfirmed: row.dmAt !== null && row.dmPhone === null,
+      groupSubject: a.subject,
+      memberCount,
+      detectedLang: detected,
+      clubLang: org?.language ?? null,
+      alsoIn,
+    }),
+  };
+  const correctionDm = {
+    refId: `${row.id}:relinked:${a.toGroupId}`,
+    text: ownerLinkCorrectionDmText({
+      club,
+      code: row.code,
+      groupSubject: a.subject,
+      memberCount,
+      previousSubject: prev?.groupSubject ?? null,
+      previousMemberCount: prev?.memberCount ?? null,
+      adderMatch: a.adderMatch,
+    }),
+  };
+  // The weak link sent no ack (the adder was not the organiser): this is
+  // the organiser's one "I'm in", under the link's own once-ever key.
+  const organiserAckQueued = await queueOrganiserAck(`${row.id}:in-group`, row.phone, inGroupAckText(org?.language, a.subject));
+  console.log(
+    `[group-add] ${a.toGroupId} ("${a.subject ?? "?"}"): request ${row.id} MOVED here from ${a.fromGroupId} ` +
+      `("${prev?.groupSubject ?? "?"}", weak link): adder=${a.adderMatch}, ${memberCount} member(s), ` +
+      `${history.length} chat message(s); the earlier group is not linked, not left; organiser ack ${organiserAckQueued ? "queued" : "not sent"}`,
+  );
+  return {
+    kind: "linked",
+    connectId: row.id,
+    orgId: row.orgId,
+    adderMatch: a.adderMatch,
+    ownerDm,
+    organiserAckQueued,
+    upgradedFrom: { groupId: a.fromGroupId, subject: prev?.groupSubject ?? null, memberCount: prev?.memberCount ?? null },
+    correctionDm,
+  };
+}
+
+/**
+ * The owner's DM after a link, through `queueOwnerDm` (purpose
+ * owner-approval), and `ownerDmQueuedAt`. Used by the bot-added route and
+ * by the resume of a held add.
+ *
+ *   An ordinary link: its one approval DM, unless the request no longer
+ *   names this group (the organiser's own add moved it a moment ago, and
+ *   the move has told the owner itself).
+ *
+ *   A move ("The stronger add wins"): if the owner has not been asked
+ *   about this request yet, the full approval DM under the request's own
+ *   key, which also stops a late copy of the weak link's DM (same key);
+ *   if he has, the correction, once.
+ */
+export async function queueOwnerDmForLink(
+  groupId: string,
+  outcome: Extract<GroupAddOutcome, { kind: "linked" }>,
+): Promise<"queued" | "corrected" | "skipped-moved" | "not-queued"> {
+  if (outcome.upgradedFrom && outcome.correctionDm) {
+    const asked = await db.platformJob.findFirst({
+      where: { purpose: "owner-approval", refId: outcome.ownerDm.refId },
+      select: { id: true },
+    });
+    if (!asked) {
+      const dm = await queueOwnerDm(outcome.ownerDm.text, "owner-approval", outcome.ownerDm.refId);
+      if (dm.queued > 0 || dm.skipped > 0) await markOwnerDmQueued(outcome.connectId);
+      // Nobody slipped the weak link's DM in first: this one is the only one.
+      if (dm.skipped === 0) return dm.queued > 0 ? "queued" : "not-queued";
+    }
+    const fix = await queueOwnerDm(outcome.correctionDm.text, "owner-approval", outcome.correctionDm.refId);
+    if (fix.queued > 0 || fix.skipped > 0) await markOwnerDmQueued(outcome.connectId);
+    return fix.queued > 0 || fix.skipped > 0 ? "corrected" : "not-queued";
+  }
+  const still = await db.clubConnect.findFirst({
+    where: { id: outcome.connectId, groupId, status: "group_linked" },
+    select: { id: true },
+  });
+  if (!still) {
+    console.log(`[group-add] ${groupId}: request ${outcome.connectId} was moved to the organiser's group; its DM is that move's`);
+    return "skipped-moved";
+  }
+  const dm = await queueOwnerDm(outcome.ownerDm.text, "owner-approval", outcome.ownerDm.refId);
+  if (dm.queued > 0 || dm.skipped > 0) await markOwnerDmQueued(outcome.connectId);
+  return dm.queued > 0 || dm.skipped > 0 ? "queued" : "not-queued";
+}
+
+// ── A history bundle that arrived after the add (2026-10-15) ─────────────
+
+/**
+ * The Pi read the group's shared-history bundle AFTER its bot-added post
+ * had gone without it, and posts it on its own (`lateHistory`). It is
+ * stored only on a request linked to this very group and waiting, where
+ * none is stored yet, inside the retention limit: the same rule as a re-add
+ * (`fillCapturedChatOnReAdd`). Anything else writes nothing at all: no
+ * request is matched, nothing recorded, nothing left.
+ */
+export async function attachLateGroupHistory(
+  groupId: string,
+  enrichmentHistory: unknown,
+  now: Date = new Date(),
+): Promise<"stored" | "not-linked" | "already-stored" | "past-retention" | "empty"> {
+  const history = coerceHistoryMessages(enrichmentHistory);
+  if (history.length === 0) return "empty";
+  const linked = await db.clubConnect.findFirst({
+    where: LINKED_AND_WAITING(groupId),
+    select: { id: true, linkedAt: true },
+  });
+  if (!linked) return "not-linked";
+  if (linked.linkedAt != null && now.getTime() - linked.linkedAt.getTime() >= CAPTURED_HISTORY_RETENTION_MS) {
+    return "past-retention";
+  }
+  const r = await fillCapturedChatOnReAdd(db, linked.id, { history, description: null });
+  return r.history > 0 ? "stored" : "already-stored";
 }
 
 // ── A group MatchTime cannot post in (2026-10-14) ────────────────────────
@@ -380,6 +734,14 @@ export async function resumeHeldGroupAdd(groupId: string, now: Date = new Date()
   const held = parseHeldAdd(state?.heldAdd);
   if (!connectId || !held) return { kind: "none" };
 
+  // 2026-10-15: a community's announcements group is never a club's group,
+  // even once MatchTime is made admin there. An add held there before that
+  // rule existed is dropped, not finished.
+  if (held.reason === "community-announce") {
+    await clearHeldAdd(groupId, connectId);
+    console.log(`[group-add] ${groupId}: held add for ${connectId} dropped (a community announcements group)`);
+    return { kind: "superseded" };
+  }
   const row = await db.clubConnect.findUnique({ where: { id: connectId }, select: LINK_ROW_SELECT });
   if (!row) {
     await clearHeldAdd(groupId, connectId);
@@ -422,8 +784,7 @@ export async function resumeHeldGroupAdd(groupId: string, now: Date = new Date()
     return { kind: "race-lost" };
   }
   // As the bot-added route does after a link: the ONE owner DM.
-  const dm = await queueOwnerDm(out.ownerDm.text, "owner-approval", out.ownerDm.refId);
-  if (dm.queued > 0 || dm.skipped > 0) await markOwnerDmQueued(out.connectId);
+  await queueOwnerDmForLink(groupId, out);
   console.log(`[group-add] ${groupId}: MatchTime can post there now; held add for ${connectId} linked`);
   return { kind: "linked", connectId: out.connectId, orgId: out.orgId };
 }

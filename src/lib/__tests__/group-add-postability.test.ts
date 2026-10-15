@@ -139,11 +139,41 @@ describe("an organiser's add into a group only admins can send in", () => {
     expect(dms()[0].text).toMatch(/yalnızca yöneticiler/);
   });
 
-  it("a community announcements group: named as such, the players' group recommended", async () => {
+  // 2026-10-15 (the FNF incident): a community's announcements group is
+  // never a club's group, so it is not held either: refused outright,
+  // nothing written, nobody told, and not left.
+  it("a community announcements group: never linked or held, nobody told", async () => {
     const out = await add({ postability: COMMUNITY });
-    expect(out).toMatchObject({ kind: "held-not-postable", reason: "community-announce" });
-    expect(dms()[0].text).toMatch(/announcements group/);
-    expect(dms()[0].text).toMatch(/recommended/);
+    expect(out).toEqual({ kind: "community-group", role: "announce" });
+    expect(isSilentOutcome(out)).toBe(true);
+    expect(dbMock.groupPostState.upsert).not.toHaveBeenCalled();
+    expect(dbMock.clubConnect.updateMany).not.toHaveBeenCalled();
+    expect(dbMock.unsolicitedGroup.create).not.toHaveBeenCalled();
+    expect(dms()).toHaveLength(0);
+  });
+
+  it("an add held in an announcements group before that rule is dropped when MatchTime is made admin, never linked", async () => {
+    dbMock.groupPostState.findUnique.mockResolvedValue({
+      groupId: GROUP,
+      canPost: true,
+      heldConnectId: "cc-ali",
+      heldAt: mins(-30),
+      heldAdd: {
+        kind: "first",
+        status: "dm_verified",
+        subject: "Riverside Announcements",
+        addedByPhone: ALI,
+        addedByLid: null,
+        participants: PARTICIPANTS,
+        adderMatch: "phone",
+        organiserPresent: true,
+        reason: "community-announce",
+      },
+    });
+    const out = await resumeHeldGroupAdd(GROUP, NOW);
+    expect(out.kind).toBe("superseded");
+    expect(dbMock.clubConnect.updateMany).not.toHaveBeenCalled();
+    expect(ownerDm.queueOwnerDm).not.toHaveBeenCalled();
   });
 
   it("MatchTime already an admin there: linked exactly as before", async () => {
@@ -192,6 +222,9 @@ describe("resumeHeldGroupAdd: MatchTime was made an admin there", () => {
   it("finishes the link as a normal add would: linked, club pending, the owner's one DM, the hold cleared", async () => {
     dbMock.groupPostState.findUnique.mockResolvedValue(held());
     dbMock.clubConnect.findUnique.mockResolvedValue(connectRow());
+    // Nothing else linked to the group (inside the link), then: the request
+    // still names this group when the owner's DM is queued.
+    dbMock.clubConnect.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: "cc-ali" });
     const out = await resumeHeldGroupAdd(GROUP, NOW);
     expect(out.kind).toBe("linked");
     const link = dbMock.clubConnect.updateMany.mock.calls[0][0];

@@ -664,6 +664,8 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
   const queuedBundles = new Map<string, BundleJob>();
   /** Set by `index.ts`: a group the bot already serves never has a bundle read. */
   let servesGroup: (groupId: string) => boolean = () => false;
+  /** Told when a bundle is read after the bot-added flow stopped waiting (2026-10-15). */
+  const lateJoinHistoryHandlers: Array<(groupId: string) => void> = [];
   function isServed(chat: string): boolean {
     try {
       return servesGroup(chat) === true;
@@ -1451,9 +1453,18 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
             if (late) {
               log(
                 `${JOIN_HISTORY_PREFIX} ${chat}: bundle ${id}: read AFTER the bot-added flow had stopped waiting ` +
-                  "and posted without it. It is kept until this join's window closes and handed over only " +
-                  "if the flow asks again; it is NOT sent to the server by itself",
+                  "and posted without it. It is kept until this join's window closes; " +
+                  (lateJoinHistoryHandlers.length > 0
+                    ? "handed to the late-history sender"
+                    : "nothing is listening, so it is NOT sent to the server by itself"),
               );
+              for (const h of lateJoinHistoryHandlers) {
+                try {
+                  h(chat);
+                } catch (err) {
+                  error(`${JOIN_HISTORY_PREFIX} ${chat}: the late-history handler threw: ${errorText(err)}`);
+                }
+              }
             }
           }),
         (err) =>
@@ -2093,6 +2104,10 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
 
     ignoreJoinHistoryWhen(isServedGroup) {
       servesGroup = isServedGroup;
+    },
+
+    onLateJoinHistory(handler) {
+      lateJoinHistoryHandlers.push(handler);
     },
 
     async listDmChats() {
