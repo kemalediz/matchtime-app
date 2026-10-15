@@ -2198,6 +2198,23 @@ export const en = {
       ? `🔁 *Same squad each week:* this group keeps the same squad from one game to the next. For the *first game* with me, say *In*: I'll put you on the bench and the organisers pick who plays. After that, whoever played stays in each week and only needs to say *Out* if they can't make it${before}.`
       : `🔁 *Same squad each week:* this group keeps the same squad from one game to the next. For the *first game* with me, say *In* so I know who is playing. After that you stay in each week and only need to say *Out* if you can't make it${before}.`;
   },
+  /** Rolling squad, THE FIRST GAME, organiser pick, in a club whose
+   *  organisers share the list and teams (`listAnnouncer` "organisers",
+   *  2026-10-15, FNF). An In goes on the bench (`canTakeFreePlace`), and the
+   *  organisers set the first squad themselves (a pasted list in their admin
+   *  group, or the website), so nobody is told to say In for it. */
+  sj_hello_rolling_first_organisers: (p: { deadline: string | null }): string =>
+    `🔁 *Same squad each week:* the organisers pick the squad for the *first game* with me and share the list. After that, whoever played stays in each week and only needs to say *Out* if they can't make it${p.deadline ? `, before *${p.deadline}*` : ""}.`,
+  /** Organisers mode (2026-10-15): the squad list and the teams go to the
+   *  organisers (bot-scheduler.ts `toOrganisers`; no team sheet in the
+   *  players' group, list-announcer.ts), who share them. Replaces
+   *  `sj_hello_list` and `sj_hello_teams`. Never called with both off. */
+  sj_hello_organisers_share: (p: { list: boolean; teams: boolean }): string =>
+    p.list && p.teams
+      ? `📣 *List and teams:* the organisers share the squad list and the teams with you.`
+      : p.list
+        ? `📣 *The list:* the organisers share the squad list with you.`
+        : `📣 *Teams:* the organisers share the teams with you.`,
   /** Rolling squad, for somebody not carried over. "organiser": the
    *  organisers pick, so an In never takes a place by itself. */
   sj_hello_rolling_join: (p: { mode: "bench" | "no-bench" | "organiser" }): string =>
@@ -4509,6 +4526,43 @@ export const en = {
     `That's ${p.count} players without one, about ${p.minutes} minutes.`,
   sn_learn: "After that I learn from the ratings players give each other after every game, so this is only needed once.",
   sn_change_any_time: "You can change them any time on the same page.",
+  // ── The standard welcome notices to a club's admins (2026-10-15,
+  //    admin-onboarding-rules.ts, which says which code backs each line).
+  //    A: "Getting <club> ready", at GO. B: "Teams for <weekday>", once the
+  //    squad is first set for the club's first proposed teams.
+  ao_ready_title: (p: { club: string }): string => `🧰 *Getting ${p.club} ready*`,
+  /** Collect match fees on and no money collector (settings, Payments). */
+  ao_ready_collector: (p: { link: string }): string =>
+    `💷 Pick your *Money collector* in Settings, so I know who to ask how much each player owes after a match:\n${p.link}`,
+  /** The admin group reads a pasted list (admin-group-paste.ts). */
+  ao_ready_paste_now: (p: { weekday: string }): string =>
+    `📋 Paste the squad list for ${p.weekday}'s game here now. I'll show you what it changes, and *YES* within 30 minutes applies it.`,
+  /** No game yet: the nightly fixture run adds it (cron/generate-matches). */
+  ao_ready_paste_later: (p: { weekday: string | null }): string =>
+    `📋 ${p.weekday ? `${p.weekday}'s game` : "Your next game"} is added overnight. From tomorrow, paste its squad list here: I'll show you what it changes, and *YES* within 30 minutes applies it.`,
+  /** `reads`: a weekly club, whose admins' every message is read
+   *  (admin-group.ts `readsSquad`). `mainChat`: attendance is on. */
+  ao_ready_no_tag: (p: { reads: boolean; mainChat: boolean }): string =>
+    (p.reads
+      ? `💬 No need to tag me here. I read every message from an admin in this group, so just type the command. Your normal chat is fine too, I only act on clear instructions.`
+      : `💬 No need to tag me here: just type the command. Your normal chat is fine too, I only act on clear commands.`) +
+    (p.mainChat ? ` In the main chat, players say IN or OUT without tagging me, and tag me only to ask me something.` : ``),
+  /** By DM (no admin group). */
+  ao_ready_main_chat: `💬 In the main chat, players say IN or OUT without tagging me, and tag me only to ask me something.`,
+  ao_ready_help_group: `Type *help* here any time to see what I take.`,
+  ao_ready_help_dm: `Message me *help* any time to see what I can do.`,
+  ao_teams_title: (p: { weekday: string }): string => `🟥🟦 *Teams for ${p.weekday}*`,
+  ao_teams_set: (p: { confirmed: number; max: number; time: string; weekday: string }): string =>
+    `The squad is set, ${p.confirmed} of ${p.max}. At ${p.time} on ${p.weekday} I'll build two balanced teams and post them here for you to check.`,
+  /** `organisers`: the organisers share the teams (no post in the main
+   *  chat); otherwise YES posts them there (team-proposal.ts answerTeamsYes).
+   *  Either way the team sheet graphic comes here on YES. */
+  ao_teams_approve: (p: { organisers: boolean }): string =>
+    p.organisers
+      ? `Reply *YES* to make them final, or say *swap*, *move* or *reshuffle* if you want changes. Once they're final I send the team sheet here, a graphic to share with the players, and *team sheet* sends it again any time.`
+      : `Reply *YES* to make them final and I'll post them in the main chat, or say *swap*, *move* or *reshuffle* if you want changes.`,
+  ao_teams_seed: (p: { anySeeded: boolean; time: string; weekday: string; link: string }): string =>
+    `⭐ ${p.anySeeded ? "Most of this squad have no rating yet" : "No one in this squad has a rating yet"}, so the teams could come out lopsided. Before ${p.time} on ${p.weekday}, give each player a rough rating from 1 to 10 here:\n${p.link}\nPlayers never see these.`,
   /** "Hamzah", "Hamzah or Raihan", "Hamzah, Raihan or Ali". */
   sn_names: (p: { names: string[] }): string =>
     p.names.length <= 1 ? (p.names[0] ?? "") : `${p.names.slice(0, -1).join(", ")} or ${p.names[p.names.length - 1]}`,

@@ -150,6 +150,7 @@ import {
 } from "./payments-live-announce";
 import { isSetupLearningEnabled } from "./setup-learning/flag";
 import { cancelSetupDm } from "./club-setup-dm-cancel";
+import { queueGettingReady } from "./admin-onboarding";
 import { generateUpcomingMatches } from "./generate-upcoming-matches";
 
 export {
@@ -765,6 +766,12 @@ export async function goLiveClub(
     } catch (err) {
       console.error(`[club-setup] ${orgId}: live, but its upcoming games were NOT made (the nightly cron will): ${(err as Error)?.name ?? "error"}`);
     }
+    // After the games are made, so its paste line knows whether this
+    // week's game exists yet.
+    // "Getting <club> ready" for the admins (2026-10-15,
+    // admin-onboarding-rules.ts): AFTER the commit, so the go-live purge
+    // above never deletes it. Once per club; never throws.
+    await queueGettingReady(orgId, now);
     if (result.freePeriodStarted) {
       // Committed: only now is the billing move a fact worth a log line.
       logBillingMove(orgId, "went-live", { from: "exempt", to: "trial" });

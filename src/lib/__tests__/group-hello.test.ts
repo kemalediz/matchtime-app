@@ -489,4 +489,65 @@ describe("helloInputFromOrg: an Organisation row to the builder's input", () => 
       squadFromList: true,
     });
   });
+
+  it("reads listAnnouncer: only \"organisers\" is organisers mode", () => {
+    expect(from({ listAnnouncer: "organisers" }).settings.organisersAnnounce).toBe(true);
+    expect(from({ listAnnouncer: "matchtime" }).settings.organisersAnnounce).toBe(false);
+    expect(from({ listAnnouncer: null }).settings.organisersAnnounce).toBe(false);
+  });
+});
+
+/**
+ * ORGANISERS MODE (2026-10-15). `Organisation.listAnnouncer = "organisers"`
+ * (FNF): the squad list and every team sheet go to the club's admin channel,
+ * never the players' group (bot-scheduler.ts `toOrganisers`,
+ * list-announcer.ts), and a players' team request is answered "The
+ * organisers will post the teams." (organisers-list-copy.ts). FNF's hello
+ * said "Fair teams: tag me and I pick balanced teams" and, as a rolling
+ * organiser-pick club, "For the first game with me, say In: I'll put you on
+ * the bench", while its organisers had pasted the list themselves.
+ */
+describe("buildGroupHello: a club whose organisers share the list and teams", () => {
+  const FNF: Partial<GroupHelloSettings> = { organisersAnnounce: true, rollingSquad: true, organisersPick: true };
+
+  for (const lang of LANGS) {
+    const s = TABLES[lang] as typeof en;
+    it(`${lang}: never offers teams on a tag, and says the organisers share the list and teams`, () => {
+      const out = hello(lang, FNF);
+      expect(out).not.toContain(s.sj_hello_teams);
+      expect(out).toContain(s.sj_hello_organisers_share({ list: true, teams: true }));
+    });
+    it(`${lang}: the first game is the organisers' pick, not "say In and go on the bench"`, () => {
+      const out = hello(lang, FNF, { carry: false });
+      expect(out).not.toContain(s.sj_hello_rolling_first({ deadline: null, mode: "organiser" }));
+      expect(out).toContain(s.sj_hello_rolling_first_organisers({ deadline: null }));
+      // An In from anyone else still goes on the bench for the organisers to pick.
+      expect(out).toContain(s.sj_hello_bench_organiser);
+    });
+    it(`${lang}: the final list is the organisers' to share, not "I post it here"`, () => {
+      const out = hello(lang, { organisersAnnounce: true, listPublish: TUE_2000 });
+      expect(out).not.toContain(s.sj_hello_list({ day: s.wd_weekday({ dow: 2 }), time: "20:00" }));
+      expect(out).toContain(s.sj_hello_organisers_share({ list: true, teams: true }));
+    });
+    it(`${lang}: team balancing off: only the list is theirs; attendance off: only the teams`, () => {
+      expect(hello(lang, { organisersAnnounce: true, teamBalancing: false })).toContain(
+        s.sj_hello_organisers_share({ list: true, teams: false }),
+      );
+      expect(hello(lang, { organisersAnnounce: true, attendance: false })).toContain(
+        s.sj_hello_organisers_share({ list: false, teams: true }),
+      );
+    });
+    it(`${lang}: a rolling club with a squad to carry keeps its standing lines`, () => {
+      const out = hello(lang, FNF, { carry: true });
+      expect(out).toContain(s.sj_hello_rolling({ deadline: null }));
+      expect(out).not.toContain(s.sj_hello_teams);
+    });
+    it(`${lang}: a rolling first-come club in organisers mode is still asked for an In (it takes a place)`, () => {
+      const out = hello(lang, { organisersAnnounce: true, rollingSquad: true }, { carry: false });
+      expect(out).toContain(s.sj_hello_rolling_first({ deadline: null, mode: "first-come" }));
+    });
+    it(`${lang}: a club MatchTime announces for is unchanged`, () => {
+      expect(hello(lang, { organisersAnnounce: false }, { catchUp: false })).toBe(s.sj_group_hello({ organiser: "Ali" }));
+    });
+  }
 });

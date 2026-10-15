@@ -25,6 +25,7 @@ import { t } from "./i18n/t";
 import { normaliseLang } from "./i18n/lang";
 import { normaliseBenchPickMode } from "./squad-capacity";
 import { normaliseSquadMode, type SquadMode } from "./squad-month-rules";
+import { organisersAnnounce } from "./list-announcer";
 
 /** A London weekday (0 = Sunday) and a wall-clock "HH:mm". */
 export interface HelloDayTime {
@@ -55,6 +56,9 @@ export interface GroupHelloSettings {
   statsQa: boolean;
   paymentTracking: boolean;
   payLinks: HelloPayLinks;
+  /** The organisers share the list and teams (`listAnnouncer`
+   *  "organisers", list-announcer.ts). Absent: off, today's hello. */
+  organisersAnnounce?: boolean;
 }
 
 export interface GroupHelloInput {
@@ -93,6 +97,7 @@ export const DEFAULT_HELLO_SETTINGS: GroupHelloSettings = {
   statsQa: true,
   paymentTracking: false,
   payLinks: "off",
+  organisersAnnounce: false,
 };
 
 /** Do this club's players say In for each game? Not when last week's
@@ -107,6 +112,13 @@ export function buildGroupHello(input: GroupHelloInput): string {
   const c = input.settings;
   const monthly = c.squadMode === "monthly";
   const rolling = c.rollingSquad && !monthly;
+  // ORGANISERS MODE (2026-10-15): the list and the teams are theirs to
+  // share (bot-scheduler.ts `toOrganisers`; a players' team request gets
+  // "The organisers will post the teams."), so neither "I post it here" nor
+  // "tag me and I pick balanced teams" is said.
+  const organisers = c.organisersAnnounce === true;
+  const shareList = organisers && c.attendance && !monthly;
+  const shareTeams = organisers && c.teamBalancing;
   const dayTime = (v: HelloDayTime) => ({ day: s.wd_weekday({ dow: v.day }), time: v.time });
   const lines: string[] = [];
 
@@ -129,19 +141,27 @@ export function buildGroupHello(input: GroupHelloInput): string {
           // THE FIRST GAME: MatchTime has no last time for this club, so
           // nobody is in yet. One line asks for the In; the "not in the
           // squad yet?" line would be about everybody, so it is left out.
-          lines.push(s.sj_hello_rolling_first({ deadline, mode: c.organisersPick ? "organiser" : "first-come" }));
+          // Organiser pick in organisers mode: the organisers set the first
+          // squad (a pasted list, or the website); an In goes on the bench,
+          // which the bench line below says. Nobody is asked for an In.
+          lines.push(
+            organisers && c.organisersPick
+              ? s.sj_hello_rolling_first_organisers({ deadline })
+              : s.sj_hello_rolling_first({ deadline, mode: c.organisersPick ? "organiser" : "first-come" }),
+          );
         }
       } else {
         if (!c.squadFromList) lines.push(s.sj_hello_whos_in);
         if (c.dropOutDeadline) lines.push(s.sj_hello_deadline(dayTime(c.dropOutDeadline)));
       }
-      if (c.listPublish) lines.push(s.sj_hello_list(dayTime(c.listPublish)));
+      if (c.listPublish && !organisers) lines.push(s.sj_hello_list(dayTime(c.listPublish)));
       if (c.organisersPick) lines.push(s.sj_hello_bench_organiser);
       else if (c.bench) lines.push(s.sj_hello_bench);
     }
   }
   if (c.reminders) lines.push(s.sj_hello_remind);
-  if (c.teamBalancing) lines.push(s.sj_hello_teams);
+  if (shareList || shareTeams) lines.push(s.sj_hello_organisers_share({ list: shareList, teams: shareTeams }));
+  else if (c.teamBalancing) lines.push(s.sj_hello_teams);
   if (c.momVoting || c.playerRating) lines.push(s.sj_hello_mom({ mom: c.momVoting, ratings: c.playerRating }));
   if (c.statsQa) lines.push(s.sj_hello_stats);
   if (!monthly) lines.push(s.sj_hello_fees({ tracking: c.paymentTracking, mode: c.payLinks }));
@@ -178,6 +198,7 @@ export const HELLO_ORG_SELECT = {
   stripeChargesEnabled: true,
   payMethodCard: true,
   payMethodPayByBank: true,
+  listAnnouncer: true,
 } as const;
 
 export interface HelloOrgRow {
@@ -203,6 +224,8 @@ export interface HelloOrgRow {
   stripeChargesEnabled: boolean;
   payMethodCard: boolean;
   payMethodPayByBank: boolean;
+  /** Absent (a row read before 2026-10-15): "matchtime". */
+  listAnnouncer?: string | null;
 }
 
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -254,6 +277,7 @@ export function helloInputFromOrg(row: HelloOrgRow, organiserName: string | null
       statsQa: row.featureStatsQa,
       paymentTracking: row.paymentTrackingEnabled,
       payLinks,
+      organisersAnnounce: organisersAnnounce(row),
     },
   };
 }

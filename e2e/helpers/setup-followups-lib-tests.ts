@@ -425,8 +425,12 @@ async function main() {
       assert.equal(live.outcome, "went-live");
       const after = await db.organisation.findUnique({ where: { id: c.orgId }, select: { adminGroupId: true, adminChannelMode: true, whatsappBotEnabled: true } });
       assert.deepEqual(after, { adminGroupId: c.hq, adminChannelMode: "admin-group", whatsappBotEnabled: true });
-      const posts = await db.botJob.findMany({ where: { orgId: c.orgId }, select: { kind: true } });
-      assert.deepEqual(posts.map((p) => p.kind), ["group"], "go-live queued the hello for the players' group and nothing else");
+      const posts = await db.botJob.findMany({ where: { orgId: c.orgId }, select: { kind: true, text: true }, orderBy: { createdAt: "asc" } });
+      // The hello for the players' group, and (2026-10-15,
+      // admin-onboarding-rules.ts) "Getting <club> ready" for the admins, in
+      // the linked admin group. Nothing else.
+      assert.deepEqual(posts.map((p) => p.kind), ["group", "admin-group"], "go-live queued the hello and the admins' checklist, nothing else");
+      assert.ok(posts[1].text.startsWith(`🧰 *Getting ${c.name} ready*`), posts[1].text);
       ok("a setting-up club links its admin group from a separate group with the DM's command; the same command in the players' group posts nothing there and is answered by DM; the link survives go-live");
 
       // An eighth day: the code has expired.

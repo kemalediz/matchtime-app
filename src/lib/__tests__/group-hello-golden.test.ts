@@ -64,6 +64,15 @@ const CASES: Array<{ id: string; patch: Partial<GroupHelloSettings>; organiser?:
     carry: false,
   },
   { id: "H22 rolling squad, FIRST GAME, bench off", patch: { rollingSquad: true, bench: false }, carry: false },
+  {
+    id: "H23 organisers share the list and teams, rolling, organisers pick, FIRST GAME (FNF)",
+    patch: { organisersAnnounce: true, rollingSquad: true, organisersPick: true },
+    carry: false,
+  },
+  {
+    id: "H24 organisers share the list and teams, weekly sign-up, final list Tuesday 20:00",
+    patch: { organisersAnnounce: true, listPublish: TUE_2000 },
+  },
 ];
 
 function render(lang: L): string {

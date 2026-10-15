@@ -34,6 +34,41 @@ interface SchedulerMatch {
   attendances: ReadonlyArray<{ userId: string; status: string }>;
 }
 
+/**
+ * What the seed rules read from the database, for one club and the players
+ * confirmed for its next match: its peer ratings, how many of those players
+ * and of its active members have a seed, and whether the one-off manual
+ * nudge (`MANUAL_SEED_NUDGE_MARKER`) was queued. Shared with the
+ * first-teams notice (admin-onboarding.ts), so the two read one rule.
+ */
+export async function loadSeedState(
+  orgId: string,
+  confirmedUserIds: readonly string[],
+): Promise<{
+  clubHasPeerRatings: boolean;
+  confirmed: { total: number; seeded: number };
+  active: { total: number; seeded: number };
+  manualNudge: boolean;
+}> {
+  const peer = await db.rating.findFirst({ where: { match: { activity: { orgId } } }, select: { id: true } });
+  const members = await db.membership.findMany({
+    where: { orgId },
+    select: { userId: true, seedRating: true, leftAt: true },
+  });
+  const seedOf = new Map(members.map((m) => [m.userId, m.seedRating]));
+  const active = members.filter((m) => m.leftAt == null);
+  const manual = await db.botJob.findFirst({
+    where: { orgId, text: { contains: MANUAL_SEED_NUDGE_MARKER } },
+    select: { id: true },
+  });
+  return {
+    clubHasPeerRatings: !!peer,
+    confirmed: { total: confirmedUserIds.length, seeded: confirmedUserIds.filter((u) => seedOf.get(u) != null).length },
+    active: { total: active.length, seeded: active.filter((m) => m.seedRating != null).length },
+    manualNudge: !!manual,
+  };
+}
+
 export async function seedNudgeInstructions(args: {
   /** `live`: not setting up (`isClubSettingUp`, club-setup-rules.ts). */
   org: { id: string; live: boolean; liveAt: Date | null };
@@ -62,25 +97,16 @@ export async function seedNudgeInstructions(args: {
     };
     if (seedNudgePrecheck(base) || !next) return [];
 
-    const peer = await db.rating.findFirst({ where: { match: { activity: { orgId: org.id } } }, select: { id: true } });
-    const members = await db.membership.findMany({
-      where: { orgId: org.id },
-      select: { userId: true, seedRating: true, leftAt: true },
-    });
-    const seedOf = new Map(members.map((m) => [m.userId, m.seedRating]));
-    const confirmed = next.attendances.filter((a) => a.status === "CONFIRMED").map((a) => a.userId);
-    const active = members.filter((m) => m.leftAt == null);
-    const manual = await db.botJob.findFirst({
-      where: { orgId: org.id, text: { contains: MANUAL_SEED_NUDGE_MARKER } },
-      select: { id: true },
-    });
-
+    const state = await loadSeedState(
+      org.id,
+      next.attendances.filter((a) => a.status === "CONFIRMED").map((a) => a.userId),
+    );
     const decision = decideSeedNudge({
       ...base,
-      alreadyNudged: base.alreadyNudged || !!manual,
-      confirmed: { total: confirmed.length, seeded: confirmed.filter((u) => seedOf.get(u) != null).length },
-      active: { total: active.length, seeded: active.filter((m) => m.seedRating != null).length },
-      clubHasPeerRatings: !!peer,
+      alreadyNudged: base.alreadyNudged || state.manualNudge,
+      confirmed: state.confirmed,
+      active: state.active,
+      clubHasPeerRatings: state.clubHasPeerRatings,
     });
     if (!decision.due) return [];
 
