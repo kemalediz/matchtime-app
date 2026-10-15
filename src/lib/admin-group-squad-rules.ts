@@ -365,6 +365,10 @@ const HQ_COMMAND = new Set([
   "off", "on", "to", "into", "onto", "from", "reserve", "reserves", "waiting", "back", "dropping", "dropped",
   "drops", "pulled", "pulling", "pulls", "cant", "cannot", "can", "make", "it", "not", "isn", "isnt", "coming",
   "playing", "play", "him", "her", "them",
+  // future and negative auxiliaries (review of #269): "Mo will play", "Ravi
+  // won't be playing", "Ali is going to play", "Kofi is joining us". They
+  // carry no direction of their own, so "will be good to see Mo" stays held.
+  "will", "won", "wont", "be", "going", "gonna", "us", "join", "joins", "joining",
   // Turkish
   "var", "varim", "yok", "yokum", "yedek", "yedege", "yedekte", "ekle", "cikar", "sil", "al", "kadroya",
   "kadrodan", "listeye", "listeden", "gelmiyor", "gelemiyor", "geliyor", "gelecek", "gelmeyecek", "cikti",
@@ -377,6 +381,7 @@ const HQ_ANCHOR = new Set([
   "put", "add", "bring", "move", "take", "drop", "remove", "bench", "swap", "sub", "replace", "replacing",
   "replaces", "kick", "count", "in", "out", "off", "reserve", "reserves", "dropping", "dropped", "drops",
   "pulled", "pulls", "cant", "cannot", "make", "coming", "playing", "play", "register", "book", "mark",
+  "join", "joins", "joining",
   "var", "varim", "yok", "yokum", "yedek", "yedege", "yedekte", "ekle", "cikar", "sil", "kadroya", "kadrodan",
   "listeye", "listeden", "gelmiyor", "gelemiyor", "geliyor", "gelecek", "gelmeyecek", "cikti", "girdi",
   "yerine", "oynamiyor", "oynuyor", "oynayacak", "oynamayacak",

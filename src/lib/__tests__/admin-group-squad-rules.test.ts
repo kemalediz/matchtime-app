@@ -294,6 +294,39 @@ describe("adminClaimHold: an explicit instruction applies, conversation does not
     expect(hold(body, c, { claims: [c, claim({ personRef: "Ravi" }), claim({ personRef: "Kai" })] })).toBeNull();
   });
 
+  // Review of #269: future and negative auxiliaries. Every one an
+  // organiser's plain instruction about somebody else.
+  it.each<[string, string, Partial<Claim>]>([
+    ["Mo will play", "Mo", {}],
+    ["Ravi won't be playing", "Ravi", { polarity: "out" }],
+    ["Kofi is joining us", "Kofi", {}],
+    ["Yusuf's gonna play", "Yusuf", {}],
+    ["Ali is going to play", "Ali", {}],
+    ["Sam will be in", "Sam", {}],
+    ["Dev wont make it", "Dev", { polarity: "out" }],
+    ["Hari not playing", "Hari", { polarity: "out" }],
+    ["Kofi in for Dev", "Kofi", { replaces: "Dev" }],
+    ["Kofi in for Dev", "Dev", { polarity: "out" }],
+    ["Sam replaces Dev", "Sam", { replaces: "Dev" }],
+    ["Add Kofi to the list", "Kofi", {}],
+    ["Ali gelecek", "Ali", {}],
+    ["Ali bu hafta oynamayacak", "Ali", { polarity: "out" }],
+  ])("%s (%s): applies", (body, ref, over) => {
+    const c = claim({ personRef: ref, ...over });
+    const others = [claim({ personRef: "Kofi", replaces: "Dev" }), claim({ personRef: "Dev", polarity: "out" })];
+    expect(hold(body, c, { claims: [c, ...others] })).toBeNull();
+  });
+
+  it.each<[string, Claim]>([
+    ["Dev is back too", claim({ personRef: "Dev" })],
+    ["Kai is in the hospital", claim()],
+    ["will be good to see Mo", claim({ personRef: "Mo" })],
+    ["I might have to pull out", self({ polarity: "out" })],
+    ["my foot is wrecked", self({ polarity: "out" })],
+  ])("%s: held, even if the extractor calls it a definite decision", (body, c) => {
+    expect(hold(body, c)).toBe("not-a-command");
+  });
+
   it("a third party mentioned in passing is not an instruction", () => {
     expect(hold("Kai is back as well", claim())).toBe("not-a-command");
     expect(hold("Kai is in the hospital", claim())).toBe("not-a-command");
@@ -315,6 +348,9 @@ describe("adminClaimHold: an explicit instruction applies, conversation does not
     expect(hold("I'm out this week", self({ polarity: "out" }))).toBeNull();
     expect(hold("Omar out", self({ polarity: "out", personRef: "Omar" }))).toBeNull();
     expect(hold("Omar Shah in", self({ personRef: "Omar Shah" }))).toBeNull();
+    // since the review of #269 the auxiliaries are command words, so the
+    // sender's own plain "won't be playing" is an instruction too
+    expect(hold("I won't be playing on friday", self({ polarity: "out" }))).toBeNull();
     // the rehearsal's shapes, paraphrased
     expect(hold("won't be around on friday", self({ polarity: "out" }))).toBe("not-a-command");
     expect(hold("might have to pull out lads", self({ polarity: "out", contingent: true, conditionOn: "self" }))).toBe("contingent");
