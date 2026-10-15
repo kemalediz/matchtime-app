@@ -2646,6 +2646,10 @@ export const tr: Strings = {
   info_act_deadline_title: "Kayıtların kapanması",
   info_act_deadline_body:
     "MatchTime'ın maçtan kaç saat önce oyuncu aramayı bıraktığı. Oyuncular maç başlayana kadar VARIM ya da YOKUM diyebilir.",
+  info_act_duration_title: "Maç süresi",
+  info_act_duration_body:
+    "Maçın ne kadar sürdüğü. MatchTime bir maçı, başlama saatine bu kadar dakika eklendiğinde bitmiş sayar.\n\n" +
+    "O andan itibaren ödeme anketini paylaşır (aylık kadroda değil), maçı oynanmış olarak işaretler, bu da puanlama mesajlarını başlatır, ve bir saat sonra gruba skoru sorar. Grupta yazılan skor yalnızca bitmiş bir maç için sayılır. Değişiklik bu etkinliğin önceden eklenmiş maçları dahil tüm maçları için geçerlidir.",
 
   info_bb_page_title: "Toplu rezervasyonlar",
   info_bb_page_body:
@@ -2815,6 +2819,12 @@ export const tr: Strings = {
   act_fee_invalid: "6 veya 6.50 gibi bir ücret girin, en fazla £100.",
   act_fee_split: "Bu maçta saha ücreti oynayanlar arasında bölüşülüyor, bu yüzden kişi başı sabit bir ücret yok.",
   act_fee_row: (p) => `kişi başı £${p.fee}`,
+  act_duration_label: "Maç süresi (dk)",
+  act_duration_invalid: "Maç süresi 20 ile 180 dakika arasında olmalı.",
+  act_deadline_label: "Son kayıt (saat önce)",
+  act_deadline_invalid: "Son kayıt, maçtan 1 ile 48 saat önce olmalı.",
+  act_timings_hint:
+    "Yeni maç süresi bu etkinliğin önceden eklenmiş maçları dahil tüm maçlarına uygulanır. Yeni son kayıt saati, kaydettikten sonra eklenen maçlara uygulanır.",
   // ── Aylık kadro (2026-10-05, dilim 2) ────────────────────────────
   // /admin/settings "Aylık kadro" bölümü (msq_) ve /admin/months (mth_).
   msq_section_title: "Aylık kadro",
