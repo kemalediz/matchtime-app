@@ -181,10 +181,11 @@ const orgRow = (db: TestDb, id: string) =>
     billingStatus: string;
     rollingSquadEnabled: boolean;
     asked: Date | null;
+    approved: Date | null;
     liveAt: Date | null;
   }>(
     `SELECT "approvalStatus","setupStage","whatsappBotEnabled","whatsappGroupId","billingStatus","rollingSquadEnabled",
-            "setupAskedAt" AT TIME ZONE 'UTC' AS asked, "liveAt"
+            "setupAskedAt" AT TIME ZONE 'UTC' AS asked, "approvedAt" AT TIME ZONE 'UTC' AS approved, "liveAt"
        FROM "Organisation" WHERE id = $1`,
     [id],
   );
@@ -551,6 +552,10 @@ test("FLAG ON: the reading fails every time: no DM while it is retried, then the
   // The model "answers" with something that is not JSON, every time.
   const broken = { learning: "1" as const, rawStub: "sorry, I cannot help with that" };
   await approve(request, c, { hold: "1", ...broken });
+  // The approval is stamped on the same pinned clock as the run that follows
+  // it, so the 2-hour cap is measured from DAY whatever the real time is (it
+  // was the real clock: before 09:00 UTC the cap closed attempt 1 at once).
+  expect((await orgRow(db, c.org))!.approved).toEqual(new Date(DAY));
 
   // Attempt 1 ran after the response and was deferred: nothing is sent yet.
   await expect.poll(async () => (await reading(db, c.org))?.status, { timeout: 30_000 }).toBe("deferred");
