@@ -2663,8 +2663,73 @@ export const en = {
   wd_err_after_kickoff: "On match day, pick a time before kickoff.",
   // ── Slice 2a: the admin channel (2026-09-30) ──
   // MDs/friday-group-features-plan-2026-09-30.md, sections 2.3 and 5.
-  /** L1. Posted in the group that has just been linked. */
+  /** L1. Posted in a group linked again after it already had its
+   *  introduction (`admin_group_intro`): the intro is said once per club
+   *  and group (`hq-intro:<orgId>:<groupId>`). */
   admin_group_linked: (p: { club: string }): string => `✅ Linked as the admin group for *${p.club}*.`,
+  /**
+   * L1a. MatchTime's introduction in a newly linked admin group (2026-10-15),
+   * built by `buildAdminGroupIntro` (admin-group-help.ts), which says which
+   * code backs every clause. Each flag is a club setting already resolved:
+   * `dow` the one weekday all its active games are on (else null), `tracks`
+   * a weekly club tracking IN and OUT, `teamsAt` the effective "Teams ready"
+   * time (null when off), `organisersShare` / `mainChatList` who posts the
+   * list, `teamsPosted` YES posts the teams in the main chat, `relayRatings`
+   * / `relayBadges` what organisers mode relays here.
+   */
+  admin_group_intro: (p: {
+    club: string;
+    live: boolean;
+    dow: number | null;
+    tracks: boolean;
+    teamsAt: string | null;
+    graphics: boolean;
+    mom: boolean;
+    ratings: boolean;
+    organisersShare: boolean;
+    mainChatList: boolean;
+    teamsPosted: boolean;
+    picks: boolean;
+    paid: boolean;
+    relayRatings: boolean;
+    relayBadges: boolean;
+  }): string => {
+    const days = ["Sundays", "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays"];
+    const what = p.dow != null && days[p.dow] ? days[p.dow] : "games";
+    const lines = [`👋 I'm MatchTime, I'll help run *${p.club}*'s ${what}.${p.live ? "" : " Once I'm switched on for the club, this is what I do."}`];
+    const does: string[] = [];
+    if (p.tracks) does.push(`keep track of who's *IN* and *OUT* in the main chat`);
+    if (p.teamsAt) does.push(`build balanced teams here at ${p.teamsAt} on match day for you to check`);
+    if (p.graphics) does.push(`make the poster and team sheet`);
+    if (p.mom && p.ratings) does.push(`run Man of the Match and ratings after the game`);
+    else if (p.mom) does.push(`run Man of the Match after the game`);
+    else if (p.ratings) does.push(`run player ratings after the game`);
+    if (does.length === 1) lines.push(`I ${does[0]}.`);
+    else if (does.length === 2) lines.push(`I ${does[0]} and ${does[1]}.`);
+    else if (does.length > 2) lines.push(`I ${does.slice(0, -1).join(", ")}, and ${does[does.length - 1]}.`);
+    if (p.organisersShare) lines.push(`The squad list and the teams stay here for you to share with the players.`);
+    if (p.mainChatList) {
+      lines.push(p.teamsPosted ? `I post the squad list in the main chat, and the teams there once you say *YES* here.` : `I post the squad list in the main chat.`);
+    }
+    if (p.picks) lines.push(`When a place opens and someone is waiting, I ask here who plays.`);
+    if (p.paid) lines.push(`Money collector: answer my list of payment claims here with *PAID ALL*, *PAID 1 3* or *PAID NONE*.`);
+    const relay =
+      p.relayRatings && p.relayBadges
+        ? `, and so do the rating notice and new badges, for you to pass on to the players`
+        : p.relayRatings
+          ? `, and so does the rating notice, for you to pass on to the players`
+          : p.relayBadges
+            ? `, and so do new badges, for you to pass on to the players`
+            : ``;
+    lines.push(`Notices meant only for the organisers come here instead of by DM${relay}.`);
+    lines.push(
+      ``,
+      p.live
+        ? `Nothing I say here goes to the players. Type *help* here any time to see what I take.`
+        : `Nothing I say here goes to the players. Once I'm on, type *help* here to see what I take.`,
+    );
+    return lines.join("\n");
+  },
   /** L2. A wrong or expired code, from an owner or admin of an approved club. */
   admin_group_bad_code:
     "That code isn't valid any more. Open Settings on the website and press *Link admin group* for a new one.",

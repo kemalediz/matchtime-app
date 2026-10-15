@@ -510,12 +510,10 @@ test("C: the command forwarded into the PLAYERS' group by mistake: nothing is po
 
 test("C: the command in the SEPARATE group links it for the setting-up club, and the confirmation is posted THERE", async ({ request, db }) => {
   const out = await link(request, { groupId: HELD.hq, text: COMMAND, senderPhone: HELD.phone, botMentioned: false, messageId: "e2e-s7-m3" });
-  expect(out).toEqual({
-    ok: true,
-    outcome: "linked",
-    replyText: "✅ Linked as the admin group for *Harbour FC*.",
-    adminGroup: { groupId: HELD.hq, orgId: HELD.org },
-  });
+  expect(out).toMatchObject({ ok: true, outcome: "linked", adminGroup: { groupId: HELD.hq, orgId: HELD.org } });
+  // The introduction, for a club not switched on yet: it says so.
+  expect(out.replyText).toMatch(/^👋 I'm MatchTime, I'll help run \*Harbour FC\*'s .*Once I'm switched on for the club, this is what I do\./);
+  expect(out.replyText).toContain("Once I'm on, type *help* here to see what I take.");
   expect(await orgRow(db, HELD.org)).toMatchObject({
     approvalStatus: "approved",
     setupStage: "setting-up",
@@ -599,7 +597,10 @@ test("C: Turkish club: the Turkish block and the Turkish form of the command, wh
     "Orası oyuncularınızın grubu, bu yüzden yönetici grubu olamaz. Beni yöneticiler için ayrı bir gruba ekleyin ve mesajı orada gönderin.",
   ]);
   const ok = await link(request, { groupId: c.hq, text: second[0].text, senderPhone: c.phone, messageId: "e2e-s7-tr2" });
-  expect(ok).toMatchObject({ outcome: "linked", replyText: "✅ *Moda Spor* için yönetici grubu olarak bağlandı." });
+  expect(ok).toMatchObject({ outcome: "linked" });
+  // The introduction in Turkish, for a club not switched on yet.
+  expect(ok.replyText).toMatch(/^👋 Ben MatchTime\. \*Moda Spor\* .*Kulüp için açıldığımda burada şunları yaparım\./);
+  expect(ok.replyText).toContain("Açıldığımda, neleri kabul ettiğimi görmek için burada *yardım* yazın.");
   await expectPlayersGroupSilent(request, db, c);
 });
 

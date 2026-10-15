@@ -44,6 +44,8 @@
  * monthly club.
  */
 import { t } from "./i18n/t";
+import { organisersAnnounce } from "./list-announcer";
+import { effectiveTeamsReadyTime } from "./team-proposal-rules";
 
 /** "@Match Time", "MatchTime,", or a raw tag ("@447700900999") in front:
  *  the same address `parseGraphicsCommand` strips. */
@@ -80,4 +82,104 @@ export function buildHqHelp(p: {
   paid: boolean;
 }): string {
   return t(p.lang).hq_help({ squad: p.squad, graphics: p.graphics, picks: p.picks, paid: p.paid });
+}
+
+/**
+ * Which HQ commands a club gets, the ONE place the help (`answerHqHelp`,
+ * admin-group.ts, which asks only for a live club) and the introduction
+ * below read them from, so the two never disagree: the squad and team
+ * commands for a weekly club, the graphics for any club, the pick line for
+ * organiser pick, PAID for a monthly club.
+ */
+export function hqHelpGates(org: { squadMode?: string | null; benchPickMode?: string | null }): {
+  squad: boolean;
+  graphics: boolean;
+  picks: boolean;
+  paid: boolean;
+} {
+  const monthly = org.squadMode === "monthly";
+  return { squad: !monthly, graphics: true, picks: org.benchPickMode === "organiser", paid: monthly };
+}
+
+/** What the introduction reads: Organisation columns plus the weekdays of
+ *  the club's active games. A missing feature column reads as its database
+ *  default (on). */
+export interface AdminGroupIntroClub {
+  name: string;
+  language: string | null;
+  whatsappBotEnabled: boolean | null;
+  squadMode?: string | null;
+  benchPickMode?: string | null;
+  listAnnouncer?: string | null;
+  teamsReadyTime?: string | null;
+  featureAttendance?: boolean | null;
+  featureMomVoting?: boolean | null;
+  featurePlayerRating?: boolean | null;
+  featureBadgeAnnouncements?: boolean | null;
+  /** `Activity.dayOfWeek` of each active activity (0 = Sunday). */
+  activityDays: number[];
+}
+
+/**
+ * MATCHTIME'S INTRODUCTION IN A NEWLY LINKED ADMIN GROUP (2026-10-15).
+ *
+ * Replaces the bare "Linked as the admin group" line (FNF HQ, 2026-10-15:
+ * another organiser asked "Whats this?"). Posted once per club and group
+ * (`admin-group-intro.ts`). Every clause is true for THIS club:
+ *
+ *   the weekday           every active Activity on one `dayOfWeek`; else "games"
+ *   not switched on       `whatsappBotEnabled` false (a club setting up):
+ *                         the lines describe what happens once it is on
+ *   IN and OUT            a weekly club with `featureAttendance` (the
+ *                         attendance engine; a monthly club's list is
+ *                         monthly-paste.ts's, so not claimed)
+ *   balanced teams at T   team-proposal.ts `teamProposalJobs`: weekly only,
+ *                         at `effectiveTeamsReadyTime` (10:00 when the
+ *                         organisers announce and nothing is set, else off)
+ *   poster, team sheet    admin-group-graphics.ts (the help's `graphics`
+ *                         gate), and the team sheet on approval
+ *   MoM, ratings          `featureMomVoting`, `featurePlayerRating`
+ *                         (bot-scheduler.ts `featureForKey`: mom-, rate-)
+ *   list stays here       `listAnnouncer` "organisers" (list-announcer.ts;
+ *                         bot-scheduler.ts `toOrganisers`), weekly + attendance
+ *   list in main chat     `listAnnouncer` "matchtime", weekly + attendance;
+ *                         with a teams time, YES posts the teams there
+ *                         (team-proposal.ts `answerTeamsYes`)
+ *   who plays             the help's `picks` gate (organiser-pick.ts)
+ *   PAID                  the help's `paid` gate (month-payment.ts)
+ *   notices here          linking sets `adminChannelMode` "admin-group"
+ *                         (admin-channel.ts `sendAdminNotice`)
+ *   rating notice, badges organisers mode relays the rate promo and the
+ *                         badges post (bot-scheduler.ts `relayToOrganisers`,
+ *                         badge relay), each behind its own feature
+ *   help                  `isHqHelpRequest`, answered for a live club only
+ */
+export function buildAdminGroupIntro(club: AdminGroupIntroClub): string {
+  const gates = hqHelpGates(club);
+  const weekly = club.squadMode !== "monthly";
+  const organisers = organisersAnnounce(club);
+  const attendance = club.featureAttendance !== false;
+  const ratings = club.featurePlayerRating !== false;
+  const badges = club.featureBadgeAnnouncements !== false;
+  const days = [...new Set(club.activityDays)];
+  const time = effectiveTeamsReadyTime(club.teamsReadyTime, organisers);
+  const teamsAt = weekly && time !== "off" ? time : null;
+  const lists = weekly && attendance;
+  return t(club.language).admin_group_intro({
+    club: club.name,
+    live: club.whatsappBotEnabled === true,
+    dow: days.length === 1 ? days[0] : null,
+    tracks: lists,
+    teamsAt,
+    graphics: gates.graphics,
+    mom: club.featureMomVoting !== false,
+    ratings,
+    organisersShare: lists && organisers,
+    mainChatList: lists && !organisers,
+    teamsPosted: !organisers && teamsAt !== null,
+    picks: gates.picks,
+    paid: gates.paid,
+    relayRatings: organisers && ratings,
+    relayBadges: organisers && badges,
+  });
 }

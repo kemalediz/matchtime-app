@@ -43,6 +43,7 @@ import {
   parseAdminGroupLinkMessage,
 } from "./admin-channel-rules";
 import { queuePlatformLeaveGroup } from "./platform-jobs";
+import { introduceOnLink } from "./admin-group-intro";
 
 const ADMIN_ROLES = { in: ["OWNER", "ADMIN"] as Array<"OWNER" | "ADMIN"> };
 
@@ -473,9 +474,13 @@ export async function linkAdminGroup(input: AdminGroupLinkInput): Promise<AdminG
     await queuePlatformLeaveGroup({ groupId: target.adminGroupId, refId: `admin-group-replaced:${target.id}` });
   }
   console.log(`[admin-group] ${input.groupId} ("${subject ?? "?"}") linked as the admin group of ${target.id} by ${linker.userId}`);
+  // The reply IS MatchTime's introduction, worded for this club, once per
+  // club and group (admin-group-intro.ts). The same group linked again
+  // after an unlink already had it: the short line.
+  const intro = await introduceOnLink(target.id, input.groupId);
   return {
     outcome: "linked",
-    replyText: t(target.language).admin_group_linked({ club: target.name }),
+    replyText: intro ?? t(target.language).admin_group_linked({ club: target.name }),
     adminGroup: { groupId: input.groupId, orgId: target.id },
   };
 }

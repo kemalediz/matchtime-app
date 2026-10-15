@@ -2058,6 +2058,48 @@ export const tr: Strings = {
   wd_err_after_kickoff: "Maç günü için maç saatinden önce bir saat seçin.",
   // ── Slice 2a: yönetici kanalı (2026-09-30) ──
   admin_group_linked: (p: { club: string }): string => `✅ *${p.club}* için yönetici grubu olarak bağlandı.`,
+  admin_group_intro: (p) => {
+    const days = ["pazar", "pazartesi", "salı", "çarşamba", "perşembe", "cuma", "cumartesi"];
+    const what = p.dow != null && days[p.dow] ? `${days[p.dow]} maçlarını` : "maçlarını";
+    const lines = [`👋 Ben MatchTime. *${p.club}* ${what} yönetmenize yardım edeceğim.${p.live ? "" : " Kulüp için açıldığımda burada şunları yaparım."}`];
+    const does: string[] = [];
+    if (p.tracks) does.push(`ana grupta kimin *varım*, kimin *yokum* dediğini takip ederim`);
+    if (p.teamsAt) does.push(`maç günü saat ${p.teamsAt} itibarıyla kontrol etmeniz için burada dengeli takımlar kurarım`);
+    if (p.graphics) does.push(`liste posterini ve takım listesini hazırlarım`);
+    if (p.mom && p.ratings) does.push(`maçtan sonra maçın adamı oylamasını ve puanlamayı yürütürüm`);
+    else if (p.mom) does.push(`maçtan sonra maçın adamı oylamasını yürütürüm`);
+    else if (p.ratings) does.push(`maçtan sonra oyuncu puanlamasını yürütürüm`);
+    if (does.length > 0) {
+      const joined = does.length === 1 ? does[0] : `${does.slice(0, -1).join(", ")} ve ${does[does.length - 1]}`;
+      lines.push(`${joined.charAt(0).toLocaleUpperCase("tr")}${joined.slice(1)}.`);
+    }
+    if (p.organisersShare) lines.push(`Kadro listesi ve takımlar, oyunculara sizin paylaşmanız için burada kalır.`);
+    if (p.mainChatList) {
+      lines.push(
+        p.teamsPosted
+          ? `Kadro listesini ana grupta ben paylaşırım; burada *EVET* yazdığınızda takımları da orada paylaşırım.`
+          : `Kadro listesini ana grupta ben paylaşırım.`,
+      );
+    }
+    if (p.picks) lines.push(`Bir yer açılınca ve bekleyen biri varsa, kimin oynayacağını burada sorarım.`);
+    if (p.paid) lines.push(`Parayı toplayan kişi, ödeme bildirimleri listeme burada *ÖDENDİ HEPSİ*, *ÖDENDİ 1 3* ya da *ÖDENDİ YOK* diye cevap verir.`);
+    const relay =
+      p.relayRatings && p.relayBadges
+        ? `; oyunculara iletmeniz için puanlama duyurusu ve yeni rozetler de buraya gelir`
+        : p.relayRatings
+          ? `; oyunculara iletmeniz için puanlama duyurusu da buraya gelir`
+          : p.relayBadges
+            ? `; oyunculara iletmeniz için yeni rozetler de buraya gelir`
+            : ``;
+    lines.push(`Sadece organizatörlere yönelik bildirimler özel mesaj yerine buraya gelir${relay}.`);
+    lines.push(
+      ``,
+      p.live
+        ? `Burada yazdıklarım oyunculara gitmez. Neleri kabul ettiğimi görmek için burada istediğiniz zaman *yardım* yazın.`
+        : `Burada yazdıklarım oyunculara gitmez. Açıldığımda, neleri kabul ettiğimi görmek için burada *yardım* yazın.`,
+    );
+    return lines.join("\n");
+  },
   admin_group_bad_code:
     "Bu kod artık geçerli değil. Sitede Ayarlar sayfasını açıp yeni kod için *Yönetici grubunu bağla* düğmesine basın.",
   admin_group_main_group: (p: { club: string }): string =>

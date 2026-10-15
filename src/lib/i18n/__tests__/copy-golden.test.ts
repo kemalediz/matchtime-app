@@ -1336,7 +1336,35 @@ function cases(lang: Lang): Case[] {
   add("R185 organiser DM / rejected, no group name", sj.sj_dm_rejected({ group: null }));
 
   // ── slice 2a: the admin channel (2026-09-30), new copy ──
-  add("R186 admin group / L1 linked", sj.admin_group_linked({ club: "Friday FNF" }));
+  add("R186 admin group / L1 linked again (introduced already)", sj.admin_group_linked({ club: "Friday FNF" }));
+  {
+    const intro = {
+      club: "Friday FNF",
+      live: true,
+      dow: 5,
+      tracks: true,
+      teamsAt: "10:00" as string | null,
+      graphics: true,
+      mom: true,
+      ratings: true,
+      organisersShare: true,
+      mainChatList: false,
+      teamsPosted: false,
+      picks: true,
+      paid: false,
+      relayRatings: true,
+      relayBadges: true,
+    };
+    add("R186 admin group / L1a introduction, organisers announce and pick (FNF)", sj.admin_group_intro(intro));
+    add(
+      "R186 admin group / L1a introduction, a club on the defaults",
+      sj.admin_group_intro({ ...intro, dow: 2, teamsAt: null, organisersShare: false, mainChatList: true, picks: false, relayRatings: false, relayBadges: false }),
+    );
+    add(
+      "R186 admin group / L1a introduction, monthly, not switched on yet",
+      sj.admin_group_intro({ ...intro, live: false, dow: null, tracks: false, teamsAt: null, organisersShare: false, picks: false, paid: true, relayRatings: false, relayBadges: false }),
+    );
+  }
   add("R186 admin group / L2 wrong or expired code", sj.admin_group_bad_code);
   add("R186 admin group / L3 the club's main group", sj.admin_group_main_group({ club: "Friday FNF" }));
   add("R186 admin group / L4 removed, DM to the owner", sj.admin_group_removed_dm({ club: "Friday FNF" }));
