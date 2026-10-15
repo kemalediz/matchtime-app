@@ -137,11 +137,11 @@ test("the link code: nobody else is answered; a wrong code gets L2; the right on
   expect((await org(db))?.adminGroupId).toBeNull();
 
   const ok = await link("@Match Time admin group k7p3qx", ADMIN);
-  expect(ok).toMatchObject({
-    outcome: "linked",
-    replyText: "✅ Linked as the admin group for *E2E Test FC*.",
-    adminGroup: { groupId: HQ, orgId: ORG_ID },
-  });
+  expect(ok).toMatchObject({ outcome: "linked", adminGroup: { groupId: HQ, orgId: ORG_ID } });
+  // The one reply is MatchTime's introduction (admin-group-intro.ts), claimed once.
+  expect(ok.replyText).toMatch(/^👋 I'm MatchTime, I'll help run \*E2E Test FC\*'s /);
+  expect(ok.replyText).toContain("Notices meant only for the organisers come here instead of by DM");
+  expect(await db.count(`SELECT COUNT(*) FROM "SentNotification" WHERE key = $1`, [`hq-intro:${ORG_ID}:${HQ}`])).toBe(1);
   expect(await org(db)).toMatchObject({
     adminChannelMode: "admin-group",
     adminGroupId: HQ,

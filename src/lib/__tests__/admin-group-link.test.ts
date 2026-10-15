@@ -31,6 +31,8 @@ const dbMock = vi.hoisted(() => {
     unsolicitedGroup: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
     botJob: { create: vi.fn() },
     platformJob: { findFirst: vi.fn(), create: vi.fn() },
+    activity: { findMany: vi.fn() },
+    sentNotification: { createMany: vi.fn() },
     $transaction: vi.fn(),
   };
   m.$transaction.mockImplementation(async (fn: (tx: typeof m) => unknown) => fn(m));
@@ -48,6 +50,7 @@ import {
   recordAdminGroupCandidate,
   unlinkAdminGroup,
 } from "../admin-group-link";
+import { buildAdminGroupIntro } from "../admin-group-help";
 
 const NOW = new Date("2026-09-30T12:00:00Z");
 const HQ = "120363900000000001@g.us";
@@ -64,7 +67,17 @@ const FNF = {
   adminGroupId: null as string | null,
   adminGroupLinkCode: "K7P3QX" as string | null,
   adminGroupLinkCodeExpiresAt: new Date(NOW.getTime() + 3_600_000) as Date | null,
+  // The settings the introduction reads (admin-group-intro.ts): FNF's.
+  whatsappBotEnabled: true,
+  squadMode: "weekly",
+  benchPickMode: "organiser",
+  listAnnouncer: "organisers",
+  teamsReadyTime: null as string | null,
+  adminChannelMode: "admin-group",
 };
+
+/** One introduction per club and group: the claim keys taken so far. */
+const introKeys = new Set<string>();
 
 /** Users by phone. Raihan is an admin of Friday FNF (approved). */
 function world(opts: { code?: Partial<typeof FNF>; adminGroupOwner?: unknown; communityOwner?: unknown } = {}) {
@@ -86,6 +99,7 @@ function world(opts: { code?: Partial<typeof FNF>; adminGroupOwner?: unknown; co
     return null;
   });
   dbMock.organisation.updateMany.mockResolvedValue({ count: 1 });
+  dbMock.organisation.findUnique.mockImplementation(async (args: { where: { id: string } }) => (args.where.id === fnf.id ? fnf : null));
   return fnf;
 }
 
@@ -105,20 +119,32 @@ beforeEach(() => {
   dbMock.organisation.findMany.mockResolvedValue([]);
   dbMock.platformJob.findFirst.mockResolvedValue(null);
   dbMock.platformJob.create.mockResolvedValue({ id: "pj1" });
+  introKeys.clear();
+  dbMock.activity.findMany.mockResolvedValue([{ dayOfWeek: 5 }]);
+  dbMock.sentNotification.createMany.mockImplementation(async (args: { data: Array<{ key: string }> }) => {
+    let count = 0;
+    for (const d of args.data) if (!introKeys.has(d.key)) (introKeys.add(d.key), count++);
+    return { count };
+  });
 });
 
 const send = (text: string, over: Record<string, unknown> = {}) =>
   linkAdminGroup({ groupId: HQ, text, senderPhone: RAIHAN_PHONE, groupSubject: "FNF HQ", now: NOW, ...over });
 
 describe("linkAdminGroup", () => {
-  it("a valid code from an admin links the group, clears the code, abandons a setup, closes the candidate row, replies L1", async () => {
+  it("a valid code from an admin links the group, clears the code, abandons a setup, closes the candidate row, replies with the introduction", async () => {
     world();
     const r = await send("@Match Time admin group k7p3qx");
     expect(r).toEqual({
       outcome: "linked",
-      replyText: "✅ Linked as the admin group for *Friday FNF*.",
+      replyText: buildAdminGroupIntro({ ...FNF, activityDays: [5] }),
       adminGroup: { groupId: HQ, orgId: "org-fnf" },
     });
+    expect(r.replyText).toMatch(/^👋 I'm MatchTime, I'll help run \*Friday FNF\*'s Fridays\./);
+    // The ONE message is the reply the Pi posts: nothing else is queued.
+    expect(dbMock.botJob.create).not.toHaveBeenCalled();
+    expect(dbMock.platformJob.create).not.toHaveBeenCalled();
+    expect([...introKeys]).toEqual([`hq-intro:org-fnf:${HQ}`]);
     const update = dbMock.organisation.updateMany.mock.calls[0][0];
     expect(update.where).toMatchObject({ id: "org-fnf", adminGroupLinkCode: "K7P3QX" });
     expect(update.data).toMatchObject({
@@ -158,7 +184,23 @@ describe("linkAdminGroup", () => {
       { userId: "u-raihan", orgId: "org-fnf", org: { id: "org-fnf", name: "Friday FNF", language: "tr" } },
     ]);
     const r = await send("@Match Time yönetici grubu K7P3QX");
-    expect(r.replyText).toBe("✅ *Friday FNF* için yönetici grubu olarak bağlandı.");
+    expect(r.replyText).toBe(buildAdminGroupIntro({ ...FNF, language: "tr", activityDays: [5] }));
+    expect(r.replyText).toMatch(/^👋 Ben MatchTime\. \*Friday FNF\* cuma maçlarını/);
+  });
+
+  it("the same code posted again (a Pi retry, or twice): linked already, no second message", async () => {
+    world();
+    expect((await send("@Match Time admin group K7P3QX")).outcome).toBe("linked");
+    // The group is now FNF's admin group; the code is spent.
+    world({ adminGroupOwner: { id: "org-fnf", name: "Friday FNF", language: "en" }, code: { adminGroupLinkCode: null } });
+    expect(await send("@Match Time admin group K7P3QX")).toEqual({ outcome: "already-linked", replyText: null, adminGroup: { groupId: HQ, orgId: "org-fnf" } });
+    expect(introKeys.size).toBe(1);
+  });
+
+  it("the same group linked again after an unlink: introduced already, so the short line", async () => {
+    introKeys.add(`hq-intro:org-fnf:${HQ}`);
+    world();
+    expect((await send("@Match Time admin group K7P3QX")).replyText).toBe("✅ Linked as the admin group for *Friday FNF*.");
   });
 
   it("a wrong code from an admin gets L2", async () => {

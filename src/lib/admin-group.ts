@@ -60,7 +60,7 @@ import { isAdminGroupYes } from "./admin-group-squad-rules";
 import { answerTeamsYes, handleTeamCommand, setAsideTeamProposal } from "./team-proposal";
 import { t } from "./i18n/t";
 import { handleAdminGraphicsCommand } from "./admin-group-graphics";
-import { buildHqHelp, isHqHelpRequest } from "./admin-group-help";
+import { buildHqHelp, hqHelpGates, isHqHelpRequest } from "./admin-group-help";
 
 export interface AdminGroupMessage {
   groupId: string;
@@ -169,16 +169,10 @@ async function answerHqHelp(
       return { handled: false, ignored: "duplicate", orgId: org.id, replyText: null };
     }
   }
-  const monthly = org.squadMode === "monthly";
-  const replyText = buildHqHelp({
-    lang: org.language,
-    // The same gates as below: squad and team commands for a live weekly
-    // club, the posters for any live club, PAID for a monthly one.
-    squad: !monthly,
-    graphics: true,
-    picks: org.benchPickMode === "organiser",
-    paid: monthly,
-  });
+  // The same gates as below (squad and team commands for a live weekly
+  // club, the posters for any live club, PAID for a monthly one), read from
+  // the one place the admin group's introduction reads them too.
+  const replyText = buildHqHelp({ lang: org.language, ...hqHelpGates(org) });
   return { handled: true, orgId: org.id, outcome: "hq-help", replyText };
 }
 

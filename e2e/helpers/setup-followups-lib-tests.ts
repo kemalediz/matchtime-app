@@ -400,11 +400,11 @@ async function main() {
       // (2b) The command in the SEPARATE group, six days later: linked, confirmed THERE.
       const day6 = new Date(T0.getTime() + 6 * 24 * HOUR);
       const linked = await handleAdminGroupLinkCommand({ groupId: c.hq, text: command, senderPhone: c.phone, groupSubject: "Lib HQ", messageId: `${c.orgId}-m2`, now: day6 });
-      assert.deepEqual(linked, {
-        outcome: "linked",
-        replyText: `✅ Linked as the admin group for *${c.name}*.`,
-        adminGroup: { groupId: c.hq, orgId: c.orgId },
-      });
+      assert.equal(linked.outcome, "linked");
+      assert.deepEqual("adminGroup" in linked ? linked.adminGroup : null, { groupId: c.hq, orgId: c.orgId });
+      // The one reply is the introduction, for a club not switched on yet.
+      assert.ok(linked.replyText?.startsWith(`👋 I'm MatchTime, I'll help run *${c.name}*'s `), linked.replyText ?? "no reply");
+      assert.ok(linked.replyText?.includes("Once I'm switched on for the club, this is what I do."));
       const org = await db.organisation.findUnique({
         where: { id: c.orgId },
         select: { adminGroupId: true, adminChannelMode: true, adminGroupLinkCode: true, approvalStatus: true, liveAt: true },
