@@ -2650,6 +2650,10 @@ export const tr: Strings = {
   info_act_deadline_title: "Kayıtların kapanması",
   info_act_deadline_body:
     "MatchTime'ın maçtan kaç saat önce oyuncu aramayı bıraktığı. Oyuncular maç başlayana kadar VARIM ya da YOKUM diyebilir.",
+  info_act_duration_title: "Maç süresi",
+  info_act_duration_body:
+    "Maçın ne kadar sürdüğü. MatchTime bir maçı, başlama saatine bu kadar dakika eklendiğinde bitmiş sayar.\n\n" +
+    "O andan itibaren ödeme anketini paylaşır (aylık kadroda değil), maçı oynanmış olarak işaretler, bu da puanlama mesajlarını başlatır, ve bir saat sonra gruba skoru sorar. Grupta yazılan skor yalnızca bitmiş bir maç için sayılır. Değişiklik bu etkinliğin önceden eklenmiş maçları dahil tüm maçları için geçerlidir.",
 
   info_bb_page_title: "Toplu rezervasyonlar",
   info_bb_page_body:
@@ -2819,6 +2823,12 @@ export const tr: Strings = {
   act_fee_invalid: "6 veya 6.50 gibi bir ücret girin, en fazla £100.",
   act_fee_split: "Bu maçta saha ücreti oynayanlar arasında bölüşülüyor, bu yüzden kişi başı sabit bir ücret yok.",
   act_fee_row: (p) => `kişi başı £${p.fee}`,
+  act_duration_label: "Maç süresi (dk)",
+  act_duration_invalid: "Maç süresi 20 ile 180 dakika arasında olmalı.",
+  act_deadline_label: "Son kayıt (saat önce)",
+  act_deadline_invalid: "Son kayıt, maçtan 1 ile 48 saat önce olmalı.",
+  act_timings_hint:
+    "Yeni maç süresi bu etkinliğin önceden eklenmiş maçları dahil tüm maçlarına uygulanır. Yeni son kayıt saati, kaydettikten sonra eklenen maçlara uygulanır.",
   // ── Aylık kadro (2026-10-05, dilim 2) ────────────────────────────
   // /admin/settings "Aylık kadro" bölümü (msq_) ve /admin/months (mth_).
   msq_section_title: "Aylık kadro",
@@ -3376,6 +3386,20 @@ export const tr: Strings = {
   pr_still_waiting: (p) => `Önceden bekleyen: ${p.count}`,
   pr_tail_dm: (p) => `İncelemek, telefon, mevki ve puanı ayarlamak ya da kaldırmak için dokunun:\n${p.link}\n\nYa da açın: ${p.url}`,
   pr_tail_group: (p) => `İnceleyin; telefon, mevki ve puanı ayarlayın ya da kaldırın:\n${p.link}`,
+  sn_title: (p) => `⭐ *${p.weekday} günkü takımlardan önce bir şey*`,
+  sn_unknown_all:
+    "Henüz kimsenin seviyesini bilmiyorum, bu yüzden şimdilik her oyuncuyu aynı sayarım ve takımlar dengesiz çıkabilir.",
+  sn_unknown_most:
+    "Oyuncuların çoğunun seviyesini henüz bilmiyorum, bu yüzden şimdilik hepsini aynı sayarım ve takımlar dengesiz çıkabilir.",
+  sn_ask_named: (p) => `${p.names}: her oyuncuya 1 ile 10 arasında kabaca bir puan verin:\n${p.link}`,
+  sn_ask: (p) => `Her oyuncuya 1 ile 10 arasında kabaca bir puan verin:\n${p.link}`,
+  sn_never_seen: "Oyuncular bu puanları hiç görmez, yalnızca takımları dengelememe yardım ederler.",
+  sn_size_week: (p) => `Bu haftaki ${p.count} oyuncu yeterli, yaklaşık ${p.minutes} dakika sürer.`,
+  sn_size_club: (p) => `Puanı olmayan ${p.count} oyuncu var, yaklaşık ${p.minutes} dakika sürer.`,
+  sn_learn: "Sonrasında her maçtan sonra oyuncuların birbirine verdiği puanlardan öğrenirim, yani bu yalnızca bir kez gerekir.",
+  sn_change_any_time: "Puanları istediğiniz zaman aynı sayfadan değiştirebilirsiniz.",
+  sn_names: (p) =>
+    p.names.length <= 1 ? (p.names[0] ?? "") : `${p.names.slice(0, -1).join(", ")} ya da ${p.names[p.names.length - 1]}`,
   oa_bench_claim_too_late: (p) =>
     `Sağ ol ${p.firstName} 🙏 biri senden önce davrandı. Yedekte kalmaya devam ediyorsun, başka bir yer açılırsa sıra sende.`,
   wr_announce_label: "Listeyi ve takımları kim duyurur",

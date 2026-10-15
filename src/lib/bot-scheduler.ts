@@ -137,6 +137,8 @@ import {
   splitProvisionalByCutoff,
 } from "./provisional-review-rules";
 import { buildOrganiserListUpdate, buildOrganiserRelay, type OrganiserListReason } from "./organisers-list-copy";
+import { seedNudgeInstructions } from "./seed-nudge";
+import { isClubSettingUp } from "./club-setup-rules";
 
 // All user-facing times in bot-posted messages are Europe/London wall
 // clock. Wrap date-fns-tz in a short helper so this file reads cleanly.
@@ -940,6 +942,24 @@ export async function computeDuePosts(
         : null;
     await computeForMatch(m, now, sentKeys, out, groupId, matches, features, admin, monthly, cancelledHolds);
   }
+
+  // ── "Rate your players before the first teams" (2026-10-15) ─────────
+  //   Once per club, to its admins through the admin channel, when most
+  //   players likely to play have no seed rating and the club has no peer
+  //   ratings yet, so the first balanced teams would be close to random.
+  //   The rule and its timing: seed-nudge-rules.ts. Keys
+  //   `org-<id>:seed-nudge:<who>`, unclassified by the feature filter below.
+  out.push(
+    ...(await seedNudgeInstructions({
+      org: { id: org.id, live: !isClubSettingUp(org), liveAt: org.liveAt },
+      features,
+      matches,
+      sentKeys,
+      now,
+      piCaps,
+      getChannel: getAdminChannel,
+    })),
+  );
 
   // ── Badge announcements (2026-10-01) ──────────────────────────────
   //   One post per match, 18:00 London two days after it, listing the

@@ -430,6 +430,12 @@ test("nobody picks with SEVERAL places open: one offer per waiting player, annou
      VALUES ($1, 'New FNF', 'e2e-op-many', 'e2e-op-many-invite', $2, true, 'organiser', 'admin-group', $3, now())`,
     [O, G, H],
   );
+  // This spec is about the organiser pick: the club's one-off seed-rating
+  // nudge (seed-nudge.ts, its own tests) is marked as already sent.
+  await db.run(`INSERT INTO "SentNotification" (id, key, kind) VALUES ($1, $2, 'seed-nudge')`, [
+    "e2e-op-many-seed-nudge",
+    `org-${O}:seed-nudge`,
+  ]);
   await db.run(
     `INSERT INTO "Sport" (id, "orgId", name, "playersPerTeam", positions, "teamLabels", "updatedAt")
      VALUES ('e2e-op-many-sport', $1, 'Football 5-a-side', 5, ARRAY['GK'], ARRAY['Red','Yellow'], now())`,
