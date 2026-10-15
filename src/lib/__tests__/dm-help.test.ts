@@ -182,6 +182,38 @@ describe("handleDmHelp", () => {
     expect(text).not.toMatch(/https?:\/\//);
   });
 
+  // 2026-10-15: a club whose organisers announce the list and teams.
+  describe("an organisers-mode club (listAnnouncer 'organisers', organiser pick)", () => {
+    const FNF = { ...FEATS_PAY_OFF, listAnnouncer: "organisers", benchPickMode: "organiser" };
+    const POINTER = "In your admin group, type *help* and I'll show the commands I take there.";
+
+    it("an organiser's bare help points at the admin group's commands, and keeps the settings link", async () => {
+      getOrgFeatures.mockResolvedValue(FNF);
+      membershipFindMany.mockResolvedValue([{ ...mem("org-fnf", "OWNER", "FNF"), org: { id: "org-fnf", name: "FNF", language: "en", adminGroupId: "hq@g.us" } }]);
+      await handleDmHelp(args("help"));
+      const text = botJobCreate.mock.calls[0][0].data.text as string;
+      expect(text).toContain(POINTER);
+      expect(text.endsWith("⚙️ Your club's settings, signed in:\nhttps://mt.example/r/-admin-settings")).toBe(true);
+      expect(membershipFindMany.mock.calls[0][0].select.org.select).toMatchObject({ adminGroupId: true });
+    });
+
+    it("no admin group linked: no pointer to one", async () => {
+      getOrgFeatures.mockResolvedValue(FNF);
+      membershipFindMany.mockResolvedValue([mem("org-fnf", "OWNER", "FNF")]);
+      await handleDmHelp(args("help"));
+      expect(botJobCreate.mock.calls[0][0].data.text).not.toContain(POINTER);
+    });
+
+    it("a player's DM help never gets it, and says the organisers share the teams", async () => {
+      getOrgFeatures.mockResolvedValue(FNF);
+      membershipFindMany.mockResolvedValue([{ ...mem("org-fnf", "PLAYER", "FNF"), org: { id: "org-fnf", name: "FNF", language: "en", adminGroupId: "hq@g.us" } }]);
+      await handleDmHelp(args("help teams"));
+      const text = botJobCreate.mock.calls[0][0].data.text as string;
+      expect(text).not.toContain(POINTER);
+      expect(text).toContain("The organisers sort out the teams");
+    });
+  });
+
   it("group and DM agree: a player's bare help is the group's bare help", async () => {
     membershipFindMany.mockResolvedValue([mem("org-mt", "PLAYER")]);
     await handleDmHelp(args("help"));

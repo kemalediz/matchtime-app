@@ -9,6 +9,8 @@
  * owner or admin of the club (by phone, or a LID pair the server stored
  * itself; never the pushname):
  *
+ *   0. "help" / "yardım" in a live club (2026-10-15, `admin-group-help.ts`):
+ *      the HQ command list, deterministic, before every reader below;
  *   1. the collector's "PAID ALL / PAID 1 3" for a monthly club;
  *   2. a reply to an open pick round (numbers, names, @tags, ALL, NONE,
  *      YES to a pending question), as a WHOLE message;
@@ -58,6 +60,7 @@ import { isAdminGroupYes } from "./admin-group-squad-rules";
 import { answerTeamsYes, handleTeamCommand, setAsideTeamProposal } from "./team-proposal";
 import { t } from "./i18n/t";
 import { handleAdminGraphicsCommand } from "./admin-group-graphics";
+import { buildHqHelp, isHqHelpRequest } from "./admin-group-help";
 
 export interface AdminGroupMessage {
   groupId: string;
@@ -141,11 +144,49 @@ async function readSquadMessage(args: {
   return change.handled ? { handled: true, orgId: org.id, outcome: change.outcome, replyText: change.replyText } : null;
 }
 
+/**
+ * An owner's or admin's "help": the HQ command list for this club. Null
+ * when the sender is not one (the caller then carries on, and a non-admin
+ * gets exactly what they got before). Claims the message id with the same
+ * key as every other admin-group reply, so a Pi retry is answered once.
+ */
+async function answerHqHelp(
+  org: { id: string; language: string | null; squadMode: string | null; benchPickMode?: string | null },
+  msg: AdminGroupMessage,
+): Promise<AdminGroupMessageResult | null> {
+  const senderIds = await resolveSenderUserIds({ phones: [msg.senderPhone, msg.senderAltPhone], lid: msg.senderLid ?? null });
+  const admin = senderIds.length
+    ? await db.membership.findFirst({
+        where: { orgId: org.id, userId: { in: senderIds }, leftAt: null, role: { in: ["OWNER", "ADMIN"] } },
+        select: { userId: true },
+      })
+    : null;
+  if (!admin) return null;
+  if (msg.messageId) {
+    try {
+      await db.sentNotification.create({ data: { key: `admin-group-msg:${msg.messageId}`, kind: "admin-notice" } });
+    } catch {
+      return { handled: false, ignored: "duplicate", orgId: org.id, replyText: null };
+    }
+  }
+  const monthly = org.squadMode === "monthly";
+  const replyText = buildHqHelp({
+    lang: org.language,
+    // The same gates as below: squad and team commands for a live weekly
+    // club, the posters for any live club, PAID for a monthly one.
+    squad: !monthly,
+    graphics: true,
+    picks: org.benchPickMode === "organiser",
+    paid: monthly,
+  });
+  return { handled: true, orgId: org.id, outcome: "hq-help", replyText };
+}
+
 export async function handleAdminGroupMessage(msg: AdminGroupMessage): Promise<AdminGroupMessageResult> {
   const now = msg.now ?? new Date();
   const org = await db.organisation.findFirst({
     where: { adminGroupId: msg.groupId },
-    select: { id: true, billingStatus: true, whatsappBotEnabled: true, squadMode: true, language: true },
+    select: { id: true, billingStatus: true, whatsappBotEnabled: true, squadMode: true, language: true, benchPickMode: true },
   });
   if (!org) return { handled: false, ignored: "not-an-admin-group", replyText: null };
   // Club fee billing (B1): a club paused for the club fee answers nothing,
@@ -153,6 +194,15 @@ export async function handleAdminGroupMessage(msg: AdminGroupMessage): Promise<A
   // off. (The Pi should not forward from a paused club's admin group at
   // all: it is listed silent. This is the server's own refusal.)
   if (isBillingPaused(org)) return { handled: false, ignored: "club-billing-paused", orgId: org.id, replyText: null };
+
+  // "help" (2026-10-15, admin-group-help.ts): the HQ command list, for an
+  // owner or admin of a live club. FIRST, so a help request is never read
+  // as a pick, a team command or a squad change (which asks the router, a
+  // model). Anyone else, or a club that is not live: on as before.
+  if (org.whatsappBotEnabled === true && isHqHelpRequest(msg.text)) {
+    const help = await answerHqHelp(org, msg);
+    if (help) return help;
+  }
 
   // MONTHLY SQUAD (slice 4): the collector answering the claims digest in
   // the admin group ("PAID ALL", "PAID 1 3", "PAID NONE"). Read only when

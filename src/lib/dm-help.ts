@@ -55,7 +55,7 @@ export { readHelpRequest };
 type HelpMembership = {
   orgId: string;
   role: "OWNER" | "ADMIN" | "PLAYER";
-  org: { id: string; name: string; language: string };
+  org: { id: string; name: string; language: string; adminGroupId?: string | null };
 };
 
 const runs = (m: HelpMembership) => m.role === "OWNER" || m.role === "ADMIN";
@@ -70,7 +70,7 @@ export async function pickDmHelpClub(
   const memberships = preferLiveClubs(
     (await db.membership.findMany({
       where: { userId, leftAt: null, org: APPROVED_CLUB_WHERE },
-      select: { orgId: true, role: true, org: { select: { id: true, name: true, language: true, ...SETUP_STAGE_SELECT } } },
+      select: { orgId: true, role: true, org: { select: { id: true, name: true, language: true, adminGroupId: true, ...SETUP_STAGE_SELECT } } },
       orderBy: { createdAt: "asc" },
     })) as Array<HelpMembership & { org: { approvalStatus: string } }>,
     (m) => m.org,
@@ -141,7 +141,14 @@ export async function handleDmHelp(args: {
 
   const features = await getOrgFeatures(membership.orgId);
   const lang = features.language;
-  const body = buildHelpReply(req.topic, helpFeaturesFrom(features), lang, { audience, links, badgeQuery: req.badgeQuery });
+  // An organisers-mode club's organiser is pointed at the "help" in their
+  // admin group (2026-10-15), only when there is one to type it in.
+  const body = buildHelpReply(req.topic, helpFeaturesFrom(features), lang, {
+    audience,
+    links,
+    badgeQuery: req.badgeQuery,
+    adminGroupLinked: !!membership.org.adminGroupId,
+  });
   const text = clubCount > 1 ? `${t(lang).onbHelpForClub({ club: membership.org.name })}\n\n${body}` : body;
 
   if (args.deliver === "platform") {

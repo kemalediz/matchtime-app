@@ -3888,8 +3888,18 @@ async function handleAnalyzeRequest(request: Request) {
   //   that can still carry one, after every merge: a bare marker becomes
   //   silence (the reaction stands), a reply that shows the squad becomes
   //   "The organisers will post the list." A club on "matchtime" skips it.
+  //
+  //   EXCEPT THE HELP ANSWER (2026-10-15). It is deterministic copy that
+  //   `buildHelpReply` already writes for this mode, and it shows no squad;
+  //   but its heading "*Squad & availability: how it works*" ("*Kadro ve
+  //   katılım ...*") matches `displaysSquadState`'s header rule, so "@Match
+  //   Time help availability" used to come back as "The organisers will
+  //   post the list."
   if (organisersMode) {
-    for (const r of results) r.reply = organisersGroupReply(r.reply, org.language);
+    for (const r of results) {
+      if (r.intent === "help") continue;
+      r.reply = organisersGroupReply(r.reply, org.language);
+    }
   }
 
   // ── The marker is never posted to a group ───────────────────────────
