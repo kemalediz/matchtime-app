@@ -525,9 +525,7 @@ describe("onReaction: the id handed up is the id the database stored", () => {
     // degraded and logs its own CRITICAL. That is the off-Pi signal.
     expect(asIndexSees(reactions[0]).waMessageId).toBe("");
     expect(asIndexSees(reactions[0]).emoji).toBe("👍");
-    // Masked (2026-10-15): the reactor shows as its last three digits.
-    expect(t.errors.join("\n")).toMatch(/CRITICAL.*reaction.*\*\*\*020@lid/);
-    expect(t.errors.join("\n")).not.toMatch(/158055467598020/);
+    expect(t.errors.join("\n")).toMatch(/CRITICAL.*reaction.*158055467598020@lid/);
     expect(t.driver.stats().unresolvedReactionTargets).toBe(1);
   });
 

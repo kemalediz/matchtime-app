@@ -39,13 +39,18 @@
  * is left alone. An expired invite is ignored without asking anyone. A
  * stranger's link is never looked up at WhatsApp: the server is asked
  * first. A server that cannot be reached is not a yes. Nothing is ever
- * replied, and NOTHING about the sender, the code, the link or the group's
- * name is logged.
+ * replied.
+ *
+ * ── Logs ────────────────────────────────────────────────────────────
+ * Every decision line names the sender (JID and phone) and, once it is
+ * known, the group's JID, so a join or a refusal can be traced (Kemal,
+ * 2026-10-15: ids and names are allowed in bot logs). The invite code and
+ * the link are NEVER logged, nor is any error text that carries them:
+ * either one lets anybody join the group.
  */
 import { normalizeMessageContent, type WAMessage, type proto } from "baileys";
 import { bareLid, isGroupJid, phoneFromJid, type InboundKeyLike } from "./jid.js";
 import { toNumber } from "./inbound.js";
-import { maskJid } from "./log-mask.js";
 
 const PREFIX = "[baileys][group-invite]";
 
@@ -143,10 +148,17 @@ function boundedSet(): { has(k: string): boolean; add(k: string): void } {
   };
 }
 
-/** An error, for a log line: its text with anything id-shaped taken out. */
-function safeError(err: unknown): string {
-  const text = err instanceof Error ? err.message : String(err);
-  return text.replace(/\S*\d{6,}\S*/g, "<id>").replace(/\s+/g, " ").slice(0, 80) || "error";
+/** An error, for a log line: its text with any invite code or link taken out. */
+function safeError(err: unknown, codes: string[]): string {
+  let text = err instanceof Error ? err.message : String(err);
+  text = text.replace(/\S*chat\.whatsapp\.com\S*/gi, "<link>");
+  for (const code of codes) if (code) text = text.split(code).join("<code>");
+  return text.replace(/\s+/g, " ").slice(0, 160) || "error";
+}
+
+/** Who and where, for a decision line: never the code or the link. */
+function traceOf(sender: InviteSender, group: string | null): string {
+  return `(sender=${sender.jid ?? "?"} phone=${sender.phone ?? "?"} group=${group ?? "?"})`;
 }
 
 export function createGroupInviteHandler(deps: GroupInviteDeps): GroupInviteHandler {
@@ -154,7 +166,8 @@ export function createGroupInviteHandler(deps: GroupInviteDeps): GroupInviteHand
   const joinedGroups = boundedSet();
   const inFlight = new Set<string>();
 
-  const say = (kind: InviteKind, what: string) => deps.log(`${PREFIX} ${kind}: ${what}`);
+  const say = (kind: InviteKind, what: string, sender: InviteSender, group: string | null) =>
+    deps.log(`${PREFIX} ${kind}: ${what} ${traceOf(sender, group)}`);
 
   function senderBody(sender: InviteSender, kind: InviteKind) {
     const body: Parameters<GroupInviteDeps["check"]>[0] = { kind };
@@ -165,7 +178,7 @@ export function createGroupInviteHandler(deps: GroupInviteDeps): GroupInviteHand
   }
 
   /** The server's yes, or the outcome that ends the attempt. */
-  async function ask(sender: InviteSender, kind: InviteKind): Promise<true | InviteOutcome> {
+  async function ask(sender: InviteSender, kind: InviteKind, group: string | null): Promise<true | InviteOutcome> {
     let answer: { accept: boolean; reason?: string } | null;
     try {
       answer = await deps.check(senderBody(sender, kind));
@@ -173,12 +186,12 @@ export function createGroupInviteHandler(deps: GroupInviteDeps): GroupInviteHand
       answer = null;
     }
     if (!answer) {
-      say(kind, "ignored: the server could not be asked whether the sender is a verified organiser");
+      say(kind, "ignored: the server could not be asked whether the sender is a verified organiser", sender, group);
       return "no-answer";
     }
     if (answer.accept !== true) {
       const reason = typeof answer.reason === "string" && /^[a-z-]{1,40}$/.test(answer.reason) ? answer.reason : "no";
-      say(kind, `ignored: the sender is not a verified organiser (${reason})`);
+      say(kind, `ignored: the sender is not a verified organiser (${reason})`, sender, group);
       return "refused";
     }
     return true;
@@ -190,9 +203,10 @@ export function createGroupInviteHandler(deps: GroupInviteDeps): GroupInviteHand
     sender: InviteSender,
     doJoin: () => Promise<string | undefined>,
     remember: string[],
+    codes: string[],
   ): Promise<InviteOutcome> {
     if (inFlight.has(groupJid) || joinedGroups.has(groupJid)) {
-      say(kind, "ignored: this group was already joined, or is being joined");
+      say(kind, "ignored: this group was already joined, or is being joined", sender, groupJid);
       return "duplicate";
     }
     inFlight.add(groupJid);
@@ -202,11 +216,11 @@ export function createGroupInviteHandler(deps: GroupInviteDeps): GroupInviteHand
       joinedGroups.add(groupJid);
       if (jid !== groupJid) joinedGroups.add(jid);
       const group = isGroupJid(jid) ? jid : groupJid;
-      say(kind, `joined ${maskJid(group)} for a verified organiser; the bot-added flow takes it from here`);
+      say(kind, `joined ${group} for a verified organiser; the bot-added flow takes it from here`, sender, group);
       deps.joined(group, sender, kind);
       return "joined";
     } catch (err) {
-      deps.error(`${PREFIX} ${kind}: could not join: ${safeError(err)}`);
+      deps.error(`${PREFIX} ${kind}: could not join: ${safeError(err, codes)} ${traceOf(sender, groupJid)}`);
       return "failed";
     } finally {
       inFlight.delete(groupJid);
@@ -226,33 +240,35 @@ export function createGroupInviteHandler(deps: GroupInviteDeps): GroupInviteHand
       const code = typeof invite.inviteCode === "string" ? invite.inviteCode : "";
       const ids = [`msg:${key.id ?? "?"}`, `v4:${groupJid}:${code}`];
       if (ids.some((k) => done.has(k)) || joinedGroups.has(groupJid) || inFlight.has(groupJid)) {
-        say(kind, "ignored: this invite was already handled");
+        say(kind, "ignored: this invite was already handled", sender, groupJid);
         return "duplicate";
       }
       const expiresSec = toNumber(invite.inviteExpiration);
       if (!code || expiresSec <= 0 || expiresSec * 1000 <= deps.now()) {
         for (const k of ids) done.add(k);
-        say(kind, "ignored: the invite has expired or was already used");
+        say(kind, "ignored: the invite has expired or was already used", sender, groupJid);
         return "expired";
       }
       if (await safeAlreadyIn(groupJid)) {
         for (const k of ids) done.add(k);
-        say(kind, "ignored: MatchTime is already in that group");
+        say(kind, "ignored: MatchTime is already in that group", sender, groupJid);
         return "already-in";
       }
-      const yes = await ask(sender, kind);
+      const yes = await ask(sender, kind, groupJid);
       if (yes !== true) return yes;
-      return join(kind, groupJid, sender, () => deps.acceptV4(key, invite), ids);
+      return join(kind, groupJid, sender, () => deps.acceptV4(key, invite), ids, [code]);
     },
 
     async handleInviteLink(code, sender) {
       const kind: InviteKind = "invite-link";
       const id = `link:${code}`;
       if (done.has(id) || inFlight.has(id)) {
-        say(kind, "ignored: this link was already handled");
+        say(kind, "ignored: this link was already handled", sender, null);
         return "duplicate";
       }
-      const yes = await ask(sender, kind);
+      // The group is not known before the server says yes: a stranger's
+      // link is never looked up at WhatsApp.
+      const yes = await ask(sender, kind, null);
       if (yes !== true) return yes;
       inFlight.add(id);
       try {
@@ -265,20 +281,20 @@ export function createGroupInviteHandler(deps: GroupInviteDeps): GroupInviteHand
         }
         if (!groupJid) {
           done.add(id);
-          say(kind, "ignored: the link is invalid, revoked or expired");
+          say(kind, "ignored: the link is invalid, revoked or expired", sender, null);
           return "invalid-link";
         }
         if (joinedGroups.has(groupJid)) {
           done.add(id);
-          say(kind, "ignored: this group was already joined, or is being joined");
+          say(kind, "ignored: this group was already joined, or is being joined", sender, groupJid);
           return "duplicate";
         }
         if (await safeAlreadyIn(groupJid)) {
           done.add(id);
-          say(kind, "ignored: MatchTime is already in that group");
+          say(kind, "ignored: MatchTime is already in that group", sender, groupJid);
           return "already-in";
         }
-        return join(kind, groupJid, sender, () => deps.acceptLink(code), [id]);
+        return join(kind, groupJid, sender, () => deps.acceptLink(code), [id], [code]);
       } finally {
         inFlight.delete(id);
       }

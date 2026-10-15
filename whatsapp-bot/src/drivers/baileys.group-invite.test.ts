@@ -13,7 +13,9 @@
  *     exactly as before;
  *   - the server-side groupadd privacy value is checked on the first open
  *     only;
- *   - the per-message log line carries no whole number, LID or name.
+ *   - the per-message log line carries the whole chat, sender, phone and
+ *     name (2026-10-15: needed to debug new groups), never the text, and a
+ *     pasted link's code is never logged.
  */
 import { describe, expect, it, vi } from "vitest";
 import type { WAMessage } from "baileys";
@@ -255,13 +257,27 @@ describe("the groupadd privacy check", () => {
 });
 
 describe("log hygiene", () => {
-  it("the per-message line masks the chat, the sender and the phone, and never names the sender", async () => {
+  it("the per-message line carries the whole chat, sender, phone and name, never the text", async () => {
     const t = await started(no);
     t.sockets[0].emit("messages.upsert", { messages: [textDm("hello there")], type: "notify" });
     await settle();
     const all = [...t.logs, ...t.errors].join("\n");
-    expect(all).toContain("[baileys][msg] upsert=notify chat=***961@lid");
-    expect(all).not.toMatch(/447700900961|158055467598961/);
-    expect(all).not.toContain("Fikret");
+    expect(all).toContain(`[baileys][msg] upsert=notify chat=${ORGANISER_LID}`);
+    expect(all).toContain(`sender=${ORGANISER_LID}`);
+    expect(all).toContain("phone=447700900961");
+    expect(all).toContain("name=Fikret");
+    expect(all).not.toContain("hello there");
+  });
+
+  it("a pasted invite link's code and the link itself are never logged", async () => {
+    const t = await started(yes);
+    t.sockets[0].emit("messages.upsert", {
+      messages: [textDm(`join us https://chat.whatsapp.com/${CODE}`, "LNK9")],
+      type: "notify",
+    });
+    await settle();
+    const all = [...t.logs, ...t.errors].join("\n");
+    expect(all).not.toContain(CODE);
+    expect(all).not.toContain("chat.whatsapp.com");
   });
 });

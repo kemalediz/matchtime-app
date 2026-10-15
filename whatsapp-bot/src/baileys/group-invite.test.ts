@@ -6,7 +6,10 @@
  * An organiser may also paste the group's chat.whatsapp.com link. The Pi
  * asks the server whether the sender is a verified organiser and joins
  * only on a yes; never twice; never an expired invite; never a group it is
- * already in. Nothing about the sender, the link or the code is logged.
+ * already in. Each decision line names the sender (JID and phone) and,
+ * once known, the group's JID, so a join or a refusal can be traced
+ * (2026-10-15). The invite code and the link are never logged: either one
+ * lets anybody join the group.
  */
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -58,9 +61,18 @@ function deps(over: Partial<GroupInviteDeps> = {}) {
 
 const SENDER = { phone: "447700900961", senderLid: "158055467598961", senderAltPhone: "447700900961", jid: SENDER_LID };
 
+/** Every line names the sender in full; `group` too when it is known. */
+function traced(lines: string[], group: string | null) {
+  expect(lines.length).toBeGreaterThan(0);
+  for (const l of lines) {
+    expect(l).toContain(`sender=${SENDER_LID}`);
+    expect(l).toContain("phone=447700900961");
+    if (group) expect(l).toContain(`group=${group}`);
+  }
+}
+
 function noLeaks(lines: string[]) {
   const all = lines.join("\n");
-  expect(all).not.toMatch(/447700900961|158055467598961/);
   expect(all).not.toContain(CODE);
   expect(all).not.toContain("v4code123");
   expect(all).not.toContain("chat.whatsapp.com");
@@ -130,6 +142,8 @@ describe("the private invite (Invite to group)", () => {
     });
     expect(d.acceptV4).toHaveBeenCalledWith(msg.key, msg.message.groupInviteMessage);
     expect(d.joined).toHaveBeenCalledWith(GROUP, SENDER, "invite-message");
+    expect(lines.join("\n")).toContain(`joined ${GROUP}`);
+    traced(lines, GROUP);
     noLeaks(lines);
   });
 
@@ -141,6 +155,7 @@ describe("the private invite (Invite to group)", () => {
     expect(d.joined).not.toHaveBeenCalled();
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain("not-organiser");
+    traced(lines, GROUP);
     noLeaks(lines);
   });
 
@@ -154,6 +169,7 @@ describe("the private invite (Invite to group)", () => {
     expect(d.check).not.toHaveBeenCalled();
     expect(d.acceptV4).not.toHaveBeenCalled();
     expect(lines.join("\n")).toContain("expired");
+    traced(lines, GROUP);
     noLeaks(lines);
   });
 
@@ -220,6 +236,17 @@ describe("the private invite (Invite to group)", () => {
     const out = await createGroupInviteHandler(d).handleInviteMessage(inviteMsg() as never, SENDER);
     expect(out).toBe("failed");
     expect(d.joined).not.toHaveBeenCalled();
+    traced(lines, GROUP);
+    noLeaks(lines);
+  });
+
+  it("a failed accept whose error carries the code or a link does not log them", async () => {
+    const { d, lines } = deps({
+      acceptV4: vi.fn(async () => {
+        throw new Error(`bad code v4code123 for https://chat.whatsapp.com/${CODE}`);
+      }),
+    });
+    expect(await createGroupInviteHandler(d).handleInviteMessage(inviteMsg() as never, SENDER)).toBe("failed");
     noLeaks(lines);
   });
 
@@ -249,6 +276,8 @@ describe("a pasted invite link", () => {
     expect(d.inviteInfo).toHaveBeenCalledWith(CODE);
     expect(d.acceptLink).toHaveBeenCalledWith(CODE);
     expect(d.joined).toHaveBeenCalledWith(GROUP, SENDER, "invite-link");
+    expect(lines.join("\n")).toContain(`joined ${GROUP}`);
+    traced(lines, GROUP);
     noLeaks(lines);
   });
 
@@ -259,6 +288,9 @@ describe("a pasted invite link", () => {
     expect(d.inviteInfo).not.toHaveBeenCalled();
     expect(d.acceptLink).not.toHaveBeenCalled();
     expect(lines).toHaveLength(1);
+    // The group is not known yet: the link is never looked up for a stranger.
+    traced(lines, null);
+    expect(lines[0]).toContain("group=?");
     noLeaks(lines);
   });
 
@@ -272,6 +304,7 @@ describe("a pasted invite link", () => {
     expect(out).toBe("invalid-link");
     expect(d.acceptLink).not.toHaveBeenCalled();
     expect(lines.join("\n")).toMatch(/invalid, revoked or expired/);
+    traced(lines, null);
     noLeaks(lines);
   });
 
@@ -307,6 +340,7 @@ describe("a pasted invite link", () => {
     });
     expect(await createGroupInviteHandler(d).handleInviteLink(CODE, SENDER)).toBe("failed");
     expect(d.joined).not.toHaveBeenCalled();
+    traced(lines, GROUP);
     noLeaks(lines);
   });
 });
