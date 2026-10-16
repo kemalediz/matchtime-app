@@ -25,7 +25,7 @@ import { totalPlayersFor } from "../format-switch";
 import { guestNameAskKey, GUEST_NAME_ASK_KIND } from "../guest-name-ask";
 import { decidePaymentSnapshot, type PaymentSnapshot } from "./payment-answer";
 import type { RatingProgress } from "../rating-progress-answer";
-import type { SquadState } from "./types";
+import type { PartnerAskView, SquadState } from "./types";
 
 /** Statuses `selectRegistrationMatch` considers, plus COMPLETED so the
  *  "previous match still in flight" guard can see the whole picture. */
@@ -246,6 +246,14 @@ export async function loadSquadState(
       )
     : resolveTeamLabels(null, null, null, lang);
 
+  // PARTNER CLUBS' ASKS POSTED HERE (cross-club ask, slice S3): open ones,
+  // and those closed in the last day, so a late reply to a closed ask is
+  // still recognised as about it ("that place has gone"). Only asks whose
+  // post's id came back can be matched by a reply. Read-only, one indexed
+  // query; empty for every club no partner has asked. Never fails the
+  // state: before the migration, nothing.
+  const partnerAsks = await loadPartnerAskViews(orgId, now);
+
   return {
     matchId: match?.id ?? null,
     maxPlayers: match?.maxPlayers ?? 0,
@@ -310,6 +318,7 @@ export async function loadSquadState(
     reclaimUserIds,
     smallerFormats,
     guestAskedUserIds: guestAsked,
+    partnerAsks,
     // NOT LOADED HERE, on purpose — see `SquadState.payments` and
     // `loadPaymentSnapshot` below. Everything else in this object is
     // read on every batch including the 69% that are banter; a payment
@@ -435,3 +444,28 @@ export async function loadPaymentSnapshot(
   });
 }
 
+
+async function loadPartnerAskViews(orgId: string, now: Date): Promise<PartnerAskView[]> {
+  try {
+    const rows = await db.partnerAsk.findMany({
+      where: {
+        partnerOrgId: orgId,
+        postWaMessageId: { not: null },
+        OR: [{ status: "posted" }, { closedAt: { gte: new Date(now.getTime() - 24 * 60 * 60 * 1000) } }],
+      },
+      select: { id: true, status: true, closesAt: true, postWaMessageId: true, askerOrgId: true },
+    });
+    if (rows.length === 0) return [];
+    const askers = await db.organisation.findMany({ where: { id: { in: rows.map((r) => r.askerOrgId) } }, select: { id: true, name: true } });
+    const nameOf = new Map(askers.map((o) => [o.id, o.name]));
+    return rows.map((r) => ({
+      askId: r.id,
+      postWaMessageId: r.postWaMessageId!,
+      askerName: nameOf.get(r.askerOrgId) ?? "",
+      open: r.status === "posted" && now.getTime() < r.closesAt.getTime(),
+    }));
+  } catch (err) {
+    console.error(`[load-state] org ${orgId}: partner asks not read:`, err instanceof Error ? err.message : "failed");
+    return [];
+  }
+}

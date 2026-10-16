@@ -121,6 +121,8 @@ export const ATTENDANCE_EVENT_CAUSES = [
    *  page's "Bring in" (actorKind `admin`, `actorUserId` the admin).
    *  `sourceRef` is the pick round id, or "admin:web". */
   "organiser-pick",
+  /** A partner club's player replied to its ask (cross-club ask, S3). */
+  "partner-ask",
   /** A posted squad list was extracted and written to the DB
    *  (`featureSquadFromList` orgs). */
   "pasted-roster",

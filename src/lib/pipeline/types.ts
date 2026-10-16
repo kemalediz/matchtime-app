@@ -696,6 +696,22 @@ export interface BenchOffer {
  * `load-state.ts` (the only I/O in this directory) and then never
  * re-read: the engine is a pure function of this value.
  */
+/**
+ * A partner club's ask posted INTO this club's group (cross-club ask,
+ * slice S3, 2026-10-16; plan 3.6). Loaded read-only by `load-state.ts`. A
+ * reply that quotes `postWaMessageId` is about this ask, not about the
+ * club's own match: decided by which post it quotes (`quoted-message.ts`),
+ * never by its words.
+ */
+export interface PartnerAskView {
+  askId: string;
+  /** The post's acknowledged message id. */
+  postWaMessageId: string;
+  askerName: string;
+  /** Still taking volunteers (posted, before kickoff), or closed. */
+  open: boolean;
+}
+
 export interface SquadState {
   /** The ACTIVE registration match, chosen by `selectRegistrationMatch`.
    *  null = no match to register anyone for, or registration is blocked
@@ -712,6 +728,9 @@ export interface SquadState {
   openOffers: BenchOffer[];
   teams: Array<{ userId: string; team: "RED" | "YELLOW" }>;
   teamLabels: [string, string];
+  /** Partner clubs' asks posted in this group, open or recently closed
+   *  (slice S3). Absent or empty for every club no partner has asked. */
+  partnerAsks?: PartnerAskView[];
   /**
    * THE LAST MATCH THAT HAS ACTUALLY BEEN PLAYED — the one a score
    * report and a payment credit are about.
@@ -1059,6 +1078,23 @@ export type ProposedWrite =
       /** Straight from the bench into the squad, skipping the 👍 step.
        *  Authorised by `promote-authorization.ts`, never by a model. */
       promote: boolean;
+      sourceMessageId: string;
+      reason: string;
+    }
+  | {
+      /**
+       * A REPLY TO A PARTNER CLUB'S ASK (cross-club ask, slice S3). The
+       * sender's own IN or OUT, aimed at the asking club's match instead
+       * of this club's, because the message QUOTES the ask's post. The
+       * engine only picks the target; `partner-guest.ts` decides on the
+       * database whether he may volunteer (the ask still open, a known
+       * member, no overlapping game of his own) and does the write.
+       */
+      kind: "partner_volunteer";
+      askId: string;
+      userId: string | null;
+      name: string;
+      polarity: "in" | "out";
       sourceMessageId: string;
       reason: string;
     }

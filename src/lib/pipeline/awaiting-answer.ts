@@ -109,7 +109,11 @@
  * in the Playwright worker the recall harness runs in, and a runtime
  * Prisma import anywhere in their graph breaks that.
  */
-export type AwaitingKind = "bench-slot-offer" | "bench-confirmation" | "tentative-followup";
+/** `partner-ask` (cross-club ask, slice S3): a partner club's ask posted in
+ *  this group, so a bare 👍 or "me" replying to it in its first hour is
+ *  never routed `none`. Whether it IS about the ask is still decided by the
+ *  post it quotes (`engine.ts`, `quotedPartnerAsk`). */
+export type AwaitingKind = "bench-slot-offer" | "bench-confirmation" | "tentative-followup" | "partner-ask";
 
 /** One question MatchTime asked and has not had an answer to. */
 export interface AwaitingQuestion {

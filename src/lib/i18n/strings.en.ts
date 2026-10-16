@@ -4858,4 +4858,22 @@ export const en = {
       ? `🤝 Your automatic ask: a place is still open for ${p.day} and nobody is on your bench, so I've posted an ask in *${p.partner}*'s group.`
       : `🤝 Your automatic ask: a place is still open for ${p.day} and nobody is on your bench, so I've asked *${p.partner}*'s organisers if one of their players can play.`,
   xask_offer_line: (p: { partners: string; link: string }) => `🤝 Want me to ask ${p.partners} for a player? Open the match page: ${p.link}`,
+  // ─── Volunteers for a partner club's ask (slice S3, 2026-10-16) ─────
+  // The replies are in the VOLUNTEER's club's language (D9); the notices
+  // to the asking club in its own. Read by src/lib/partner-guest.ts.
+  xask_vol_bench: (p: { name: string; asker: string }) =>
+    `Thanks ${p.name}, you're on *${p.asker}*'s bench. Their organisers pick, and they'll let you know.`,
+  xask_vol_in: (p: { name: string; asker: string; day: string }) => `✅ Thanks ${p.name}, you're in for *${p.asker}*: ${p.day}.`,
+  xask_vol_out: (p: { asker: string }) => `OK, I've taken you off *${p.asker}*'s list.`,
+  xask_vol_not_on: (p: { asker: string }) => `You weren't on *${p.asker}*'s list, so there's nothing to change.`,
+  xask_vol_closed: (p: { asker: string }) => `*${p.asker}*'s place has gone now, thanks for offering.`,
+  xask_vol_overlap: (p: { club: string; time: string; asker: string }) =>
+    `You're in ${p.club}'s ${p.time} game that day, so I can't put you on *${p.asker}*'s list.`,
+  xask_vol_unknown: (p: { club: string }) =>
+    `I can only put ${p.club} players on another club's list, and I don't know you here yet. Message one of ${p.club}'s organisers.`,
+  xask_vol_failed: "I couldn't add you just now. Please try again in a minute.",
+  xask_vol_notice_asker: (p: { name: string; partner: string; day: string; bench: boolean }) =>
+    `🤝 ${p.name} (${p.partner}) answered your ask for ${p.day}: ${p.bench ? "on your bench for you to pick" : "in the squad"}.`,
+  xask_vol_out_notice_asker: (p: { name: string; partner: string; day: string }) =>
+    `${p.name} (${p.partner}) can't play ${p.day} after all, so I've taken them off.`,
 };

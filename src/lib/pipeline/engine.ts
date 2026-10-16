@@ -42,6 +42,7 @@
  *   format-switch.ts          the arithmetic the model got wrong
  * The engine is built OUT of the pure core, not beside it.
  */
+import { sameWhatsAppMessage } from "../quoted-message";
 import { canTakeFreePlace, ORGANISER_PICK_BENCH_NOTE } from "../squad-capacity";
 import {
   actionRequiresTag,
@@ -103,6 +104,7 @@ import type {
   ProposedWrite,
   SpeechIntent,
   SquadState,
+  PartnerAskView,
   StatsPeriod,
 } from "./types";
 
@@ -708,6 +710,45 @@ export function decide(input: EngineInput): EngineResult {
           );
           return { ...c, polarity: "in" as const };
         });
+      }
+
+      // ══════════════════════════════════════════════════════════════
+      // A REPLY TO A PARTNER CLUB'S ASK IS ABOUT THAT ASK (2026-10-16)
+      // ══════════════════════════════════════════════════════════════
+      //
+      // Cross-club ask, slice S3 (plan 3.6). FNF's ask is posted in Sutton
+      // FC's group: "Reply to this message with IN". A Sutton player who
+      // REPLIES to it with IN is volunteering for FNF's game, and that is
+      // decided by which post the message quotes, a fact WhatsApp gives
+      // us (`quoted-message.ts`), never by its words. The claims are the
+      // same claims; only their target changes. The sender's own IN or
+      // OUT becomes `partner_volunteer`, and `partner-guest.ts` decides on
+      // the database whether he may (the ask still open, a known member,
+      // no overlapping game of his own). Nothing is written on this club's
+      // own match. A message that quotes anything else, or nothing, is
+      // exactly what it was before this branch existed.
+      //
+      // A RETURN, ON PURPOSE. Every rule below is about this club's own
+      // match, and this message is not about it.
+      const ask = quotedPartnerAsk(msg, state);
+      if (ask) {
+        const own = claims.filter((c) => c.subject === "sender");
+        if (own.length === 0) {
+          out.reasons.push(`a reply to ${ask.askerName}'s partner club's ask with no claim about the sender: nothing`);
+          return;
+        }
+        const last = own[own.length - 1];
+        emit({
+          kind: "partner_volunteer",
+          askId: ask.askId,
+          userId: msg.senderUserId,
+          name: msg.senderName ?? "",
+          polarity: last.polarity === "out" ? "out" : "in",
+          sourceMessageId: msg.id,
+          reason: `a quoted reply to ${ask.askerName}'s ask (${ask.askId})`,
+        });
+        out.reasons.push(`partner club's ask ${ask.askId}: the reply is about ${ask.askerName}'s game, not this club's`);
+        return;
       }
 
       // Side requests are facts in their own right and must survive
@@ -3709,6 +3750,13 @@ function applyClaim(args: {
  * banner. Here it is an assertion, and it throws rather than warns —
  * a coverage hole is a bug in this file, not a bad model day.
  */
+/** The partner club's ask a message replies to, if it quotes one's post
+ *  (cross-club ask, slice S3). Pure: two ids compared. */
+export function quotedPartnerAsk(msg: EngineMessage, state: SquadState): PartnerAskView | null {
+  if (!msg.quoted) return null;
+  return (state.partnerAsks ?? []).find((a) => sameWhatsAppMessage(msg.quoted!.id, a.postWaMessageId)) ?? null;
+}
+
 export function assertCoverage(messages: EngineMessage[], outcomes: MessageOutcome[]): void {
   if (messages.length !== outcomes.length) {
     throw new Error(

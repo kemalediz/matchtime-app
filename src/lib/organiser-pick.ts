@@ -122,7 +122,7 @@ export async function loadPickListRows(
 ): Promise<PickListRow[]> {
   if (users.length === 0) return [];
   const ids = users.map((u) => u.userId);
-  const [positions, ratings] = await Promise.all([
+  const [positions, ratings, guests] = await Promise.all([
     db.playerActivityPosition.findMany({
       where: { activityId, userId: { in: ids } },
       select: { userId: true, positions: true },
@@ -132,10 +132,24 @@ export async function loadPickListRows(
       orderBy: { createdAt: "desc" },
       select: { playerId: true, matchId: true, score: true },
     }),
+    // Guests from a partner club (cross-club ask, slice S3): their club's
+    // name for the label. Empty for every club no partner has lent to.
+    db.membership
+      .findMany({ where: { orgId, userId: { in: ids }, guestFromOrgId: { not: null } }, select: { userId: true, guestFromOrgId: true } })
+      .catch(() => [] as Array<{ userId: string; guestFromOrgId: string | null }>),
   ]);
   const posOf = new Map(positions.map((p) => [p.userId, positionLabel(p.positions)]));
   const summary = summariseClubDisplayRatings(ids, ratings, CLUB_RATING_WINDOW);
-  return users.map((u) => ({ name: u.name, position: posOf.get(u.userId) ?? null, rating: summary[u.userId]?.rating ?? null }));
+  const clubIds = [...new Set((guests ?? []).map((g) => g.guestFromOrgId).filter((x): x is string => !!x))];
+  const clubs = clubIds.length ? await db.organisation.findMany({ where: { id: { in: clubIds } }, select: { id: true, name: true } }) : [];
+  const clubName = new Map(clubs.map((c) => [c.id, c.name]));
+  const fromOf = new Map((guests ?? []).map((g) => [g.userId, g.guestFromOrgId ? clubName.get(g.guestFromOrgId) ?? null : null]));
+  return users.map((u) => ({
+    name: u.name,
+    position: posOf.get(u.userId) ?? null,
+    rating: summary[u.userId]?.rating ?? null,
+    ...(fromOf.get(u.userId) ? { fromClub: fromOf.get(u.userId)! } : {}),
+  }));
 }
 
 interface MatchWorld {

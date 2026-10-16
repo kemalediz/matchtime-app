@@ -136,6 +136,7 @@
  * message" true across the split.
  */
 import type { QuotedRef } from "./quoted-message";
+import type { ProposedWrite } from "./pipeline/types";
 import type { AttendanceWriteFailure } from "./attendance-write-outcome";
 import { clampPastedRosterFacts } from "./pasted-roster-registration";
 // Traced: the extractor's facts are kept on the message's AnalyzedMessage
@@ -395,6 +396,14 @@ export interface EngineBatchDeps extends EngineApplyDeps {
    * only an explicit instruction does. Absent, nothing changes.
    */
   vetFacts?: (args: { message: EngineBatchMessage; facts: AttendanceFacts; state: SquadState }) => AttendanceFacts;
+  /**
+   * A REPLY TO A PARTNER CLUB'S ASK (cross-club ask, slice S3). The engine's
+   * `partner_volunteer` writes go here, never to `applyEngineWrites`: they
+   * are about ANOTHER club's match. `partner-guest.ts`'s
+   * `handlePartnerVolunteer` in production. Absent (the admin group, tests
+   * that never meet one): such a write is refused and reported.
+   */
+  partnerVolunteer?: (w: Extract<ProposedWrite, { kind: "partner_volunteer" }>) => Promise<{ ok: boolean; outcome: string; replyText: string | null }>;
 }
 
 export async function runAttendanceEngineBatch(args: {
@@ -942,8 +951,11 @@ export async function runAttendanceEngineBatch(args: {
       },
     ]),
   );
-  const applicable = result.writes.filter((w) => ownedIds.has(w.sourceMessageId));
-  const foreign = result.writes.length - applicable.length;
+  const owned_ = result.writes.filter((w) => ownedIds.has(w.sourceMessageId));
+  // Partner volunteers (slice S3) are executed apart: another club's match.
+  const partnerWrites = owned_.filter((w): w is Extract<ProposedWrite, { kind: "partner_volunteer" }> => w.kind === "partner_volunteer");
+  const applicable = owned_.filter((w) => w.kind !== "partner_volunteer");
+  const foreign = result.writes.length - owned_.length;
   if (foreign > 0) {
     degradations.push(
       `${foreign} write(s) came from a message the engine does not own; refused`,
@@ -965,6 +977,21 @@ export async function runAttendanceEngineBatch(args: {
     degradations.push(
       `team slot ${a.write.fromName} → ${a.write.toName} did not move: ${a.error ?? "unknown"}`,
     );
+  }
+
+  const partnerByMessage = new Map<string, { ok: boolean; outcome: string; replyText: string | null }>();
+  for (const w of partnerWrites) {
+    if (!deps.partnerVolunteer) {
+      degradations.push(`partner_volunteer for ask ${w.askId} with no executor; refused`);
+      partnerByMessage.set(w.sourceMessageId, { ok: false, outcome: "no-executor", replyText: null });
+      continue;
+    }
+    try {
+      partnerByMessage.set(w.sourceMessageId, await deps.partnerVolunteer(w));
+    } catch (err) {
+      degradations.push(`partner_volunteer for ask ${w.askId} threw: ${err instanceof Error ? err.message : "failed"}`);
+      partnerByMessage.set(w.sourceMessageId, { ok: false, outcome: "failed", replyText: null });
+    }
   }
 
   // ── Stage 4: composition ───────────────────────────────────────────
@@ -1040,6 +1067,9 @@ export async function runAttendanceEngineBatch(args: {
     // ONE reply per message. Several speech intents for the same
     // message join into one send; they never become two results.
     let reply: string | null = utterances.length > 0 ? utterances.join("\n\n") : null;
+    // A reply to a partner club's ask (slice S3): its one answer.
+    const partner = partnerByMessage.get(m.waMessageId);
+    if (partner?.replyText) reply = reply ? `${reply}\n\n${partner.replyText}` : partner.replyText;
     if (landed.length > 0) lastActed = m.waMessageId;
 
     // An extractor failure must surface to an admin, not vanish. §9
@@ -1067,8 +1097,8 @@ export async function runAttendanceEngineBatch(args: {
       route: m.route as Route,
       reply,
       react: reactByMessageId.get(m.waMessageId) ?? null,
-      intent: intentFor(landed, m.senderUserId, attendanceFacts, reply),
-      action: analyzedActionFor(landed, m.senderUserId),
+      intent: partner ? "partner_volunteer" : intentFor(landed, m.senderUserId, attendanceFacts, reply),
+      action: partner ? `partner-volunteer:${partner.outcome}` : analyzedActionFor(landed, m.senderUserId),
       reasoning,
       failures,
       senderOwnRowMoved,

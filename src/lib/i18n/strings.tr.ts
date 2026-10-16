@@ -3672,6 +3672,19 @@ export const tr: Strings = {
       ? `🤝 Otomatik isteğiniz: ${p.day} için hâlâ boş yer var ve yedek listenizde kimse yok, bu yüzden *${p.partner}* grubunda bir istek paylaştım.`
       : `🤝 Otomatik isteğiniz: ${p.day} için hâlâ boş yer var ve yedek listenizde kimse yok, bu yüzden *${p.partner}* organizatörlerine oyuncularından birinin oynayıp oynayamayacağını sordum.`,
   xask_offer_line: (p) => `🤝 ${p.partners} kulübünden oyuncu isteyeyim mi? Maç sayfasını açın: ${p.link}`,
+  // ─── Partner kulüp isteğine gönüllüler (slice S3) ───────────────────
+  xask_vol_bench: (p) => `Teşekkürler ${p.name}, *${p.asker}* yedek listesindesin. Organizatörleri seçecek ve sana haber verecekler.`,
+  xask_vol_in: (p) => `✅ Teşekkürler ${p.name}, *${p.asker}* için kadrodasın: ${p.day}.`,
+  xask_vol_out: (p) => `Tamam, seni *${p.asker}* listesinden çıkardım.`,
+  xask_vol_not_on: (p) => `*${p.asker}* listesinde değildin, değiştirecek bir şey yok.`,
+  xask_vol_closed: (p) => `*${p.asker}* için yer artık doldu, teklifin için teşekkürler.`,
+  xask_vol_overlap: (p) => `O gün ${p.club} kulübünün ${p.time} maçındasın, bu yüzden seni *${p.asker}* listesine yazamıyorum.`,
+  xask_vol_unknown: (p) =>
+    `Başka bir kulübün listesine yalnızca ${p.club} oyuncularını yazabilirim ve seni burada henüz tanımıyorum. ${p.club} organizatörlerinden birine yaz.`,
+  xask_vol_failed: "Seni şu an ekleyemedim. Lütfen bir dakika sonra tekrar dene.",
+  xask_vol_notice_asker: (p) =>
+    `🤝 ${p.name} (${p.partner}) ${p.day} isteğinize yanıt verdi: ${p.bench ? "seçmeniz için yedek listenizde" : "kadroda"}.`,
+  xask_vol_out_notice_asker: (p) => `${p.name} (${p.partner}) ${p.day} maçına gelemiyor, bu yüzden listeden çıkardım.`,
 };
 
 /**

@@ -380,6 +380,7 @@ import { resolveOrProvisionByName } from "@/lib/resolve-or-provision-name";
 import { planUnresolvedNudge } from "@/lib/unresolved-nudge";
 import { recordGroupSightings, sightedUserIds } from "@/lib/group-sighting";
 import { quotedRefOf } from "@/lib/quoted-message";
+import { handlePartnerVolunteer } from "@/lib/partner-guest";
 
 interface InboundMessage {
   waMessageId: string;
@@ -2326,6 +2327,9 @@ async function handleAnalyzeRequest(request: Request) {
             aiCapped,
             registerAttendance,
             cancelAttendance,
+            // A reply to a partner club's ask (cross-club ask, S3): the one
+            // writer onto another club's match.
+            partnerVolunteer: (w) => handlePartnerVolunteer(w),
             resolveOrProvision: (name) => resolveOrProvisionByName(org.id, name),
             // THE SLOT A REPLACEMENT INHERITS (2026-09-15). ONE row
             // updated IN PLACE — `load-state.ts` reads the sheet in

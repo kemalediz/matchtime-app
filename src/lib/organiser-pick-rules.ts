@@ -401,6 +401,10 @@ export interface PickListRow {
   position: string | null;
   /** The club rating players see, e.g. 7.4; null for "new". */
   rating: number | null;
+  /** A guest from a partner club (cross-club ask, slice S3): that club's
+   *  name, shown beside his ("Ali K (Sutton FC)"). Never his phone, never
+   *  his rating there: `rating` above is THIS club's. */
+  fromClub?: string | null;
 }
 
 /** "GK/DEF" from a player's positions for the activity, or null. */
@@ -416,7 +420,7 @@ export function buildPickListBlock(lang: string | null | undefined, rows: PickLi
     ...rows.map((r, i) =>
       s.pick_list_row({
         n: i + 1,
-        name: r.name,
+        name: r.fromClub ? `${r.name} (${r.fromClub})` : r.name,
         position: r.position,
         rating: r.rating === null ? null : r.rating.toFixed(1),
       }),

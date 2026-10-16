@@ -1632,6 +1632,16 @@ const SAMPLES: SampleArgs = {
   xask_page_not_allowed: null,
   xask_auto_notice_asker: { partner: "SUTTONCLUB", day: "DAYLABEL", posted: false },
   xask_offer_line: { partners: "SUTTONCLUB", link: "https://x/LINK" },
+  xask_vol_bench: { name: "NAMEX", asker: "FNFCLUB" },
+  xask_vol_in: { name: "NAMEX", asker: "FNFCLUB", day: "DAYLABEL" },
+  xask_vol_out: { asker: "FNFCLUB" },
+  xask_vol_not_on: { asker: "FNFCLUB" },
+  xask_vol_closed: { asker: "FNFCLUB" },
+  xask_vol_overlap: { club: "SUTTONCLUB", time: "TIMEX", asker: "FNFCLUB" },
+  xask_vol_unknown: { club: "SUTTONCLUB" },
+  xask_vol_failed: null,
+  xask_vol_notice_asker: { name: "NAMEX", partner: "SUTTONCLUB", day: "DAYLABEL", bench: true },
+  xask_vol_out_notice_asker: { name: "NAMEX", partner: "SUTTONCLUB", day: "DAYLABEL" },
 };
 
 /** Render an entry with its sample arguments. */
