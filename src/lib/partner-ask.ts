@@ -43,6 +43,7 @@ import { t } from "./i18n/t";
 import {
   MISSING_POST_ID_AFTER_MS,
   OPEN_ASK_STATUSES,
+  PARTNER_ASKS_PER_DAY,
   askWindows,
   autoAskAt,
   autoAskDue,
@@ -51,6 +52,7 @@ import {
   closeTells,
   closedStatus,
   gamesOverlap,
+  movedWindows,
   partnerReachable,
   type AskRefusal,
   type PartnerAskVia,
@@ -228,7 +230,7 @@ export async function requestPartnerAsk(args: {
     partnerAsksToday(partnership.partnerOrgId, now),
     roleIn(args.requestedByUserId, args.askerOrgId),
   ]);
-  const verdict = canAsk({
+  const verdict0 = canAsk({
     partnershipStatus: partnership.status,
     askWhen: settings.when,
     via: args.via,
@@ -242,14 +244,23 @@ export async function requestPartnerAsk(args: {
     openAskForPair: open > 0,
     partnerAsksToday: today,
   });
-  if (!verdict.ok) return { ok: false, refusal: verdict.refusal, partnerName };
+  if (!verdict0.ok) return { ok: false, refusal: verdict0.refusal, partnerName };
   if (gate.refusal || !gate.org) return { ok: false, refusal: gate.refusal ?? "partner-not-approved", partnerName };
   const partner = gate.org;
 
+  // THE DAILY CAP, ATOMICALLY (review L2): two requests for one partner
+  // club at once must not both pass a count of 1. One transaction-scoped
+  // advisory lock per partner club, then the count again, then the row.
   let askId: string;
   try {
-    askId = (
-      await db.partnerAsk.create({
+    const created = await db.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`xask-cap:${partner.id}`}))`;
+      const since = londonMidnight(now);
+      const todayNow = await tx.partnerAsk.count({
+        where: { partnerOrgId: partner.id, OR: [{ postedAt: { gte: since } }, { status: "awaiting-approval", createdAt: { gte: since } }] },
+      });
+      if (todayNow >= PARTNER_ASKS_PER_DAY) return null;
+      return tx.partnerAsk.create({
         data: {
           partnershipId: partnership.id,
           askerOrgId: asker.id,
@@ -262,8 +273,10 @@ export async function requestPartnerAsk(args: {
           closesAt,
         },
         select: { id: true },
-      })
-    ).id;
+      });
+    });
+    if (!created) return { ok: false, refusal: "daily-cap", partnerName };
+    askId = created.id;
   } catch (err) {
     // The partial unique index: another press or poll opened it first.
     if ((err as { code?: string })?.code === "P2002") return { ok: false, refusal: "already-open", partnerName };
@@ -495,6 +508,23 @@ export async function sweepPartnerAsks(orgId: string, now: Date = new Date()): P
     });
     for (const ask of asks) {
       const match = ask.match as unknown as AskMatch;
+      // A MOVED game (review H3): the ask follows the new kickoff and stays
+      // open; nobody is told it is off. A compare-and-set on the old close.
+      if (match.status !== "CANCELLED") {
+        const cutoff = (await loadPartnerAskSettings(ask.askerOrgId))?.cutoffHours ?? 4;
+        const moved = movedWindows({ closesAt: ask.closesAt, matchDate: match.date, cutoffHours: cutoff });
+        if (moved) {
+          const done = await db.partnerAsk.updateMany({
+            where: { id: ask.id, status: ask.status, closesAt: ask.closesAt },
+            data: { closesAt: moved.closesAt, postBy: moved.postBy },
+          });
+          if (done.count > 0) {
+            console.log(`[partner-ask] ${ask.id}: the game moved; the ask follows it`);
+            await afterMove(ask.id, now);
+          }
+          continue;
+        }
+      }
       const places = await placesOpen(match.id, match.maxPlayers);
       const reason = closeReason({
         status: ask.status,
@@ -524,6 +554,12 @@ export async function sweepPartnerAsks(orgId: string, now: Date = new Date()): P
     console.error(`[partner-ask] org ${orgId}: sweep failed:`, err instanceof Error ? err.message : "failed");
   }
   return { closed };
+}
+
+/** After a moved game: the hook S4 fills in (guests told the new time). */
+async function afterMove(askId: string, now: Date): Promise<void> {
+  void askId;
+  void now;
 }
 
 async function tellClose(askId: string, reason: Parameters<typeof closeTells>[0], wasStatus: string, volunteers: number, now: Date): Promise<void> {

@@ -17,6 +17,7 @@ const dbMock = vi.hoisted(() => ({
   botJob: { create: vi.fn(), delete: vi.fn() },
   sentNotification: { create: vi.fn() },
   $transaction: vi.fn(),
+  $executeRaw: vi.fn(),
 }));
 vi.mock("../db", () => ({ db: dbMock }));
 const noticeMock = vi.hoisted(() => ({ sendAdminNotice: vi.fn() }));
