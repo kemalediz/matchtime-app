@@ -398,6 +398,24 @@ describe("vetAdminGroupFacts: only explicit claims reach the engine", () => {
     expect(out.vetted[0]).toMatchObject({ self: true, hold: "not-a-command", before: "CONFIRMED", ref: { kind: "member", userId: "u-omar" } });
   });
 
+  it("the list is not set yet (the rolling squad still to carry over): nothing reaches the engine, the instruction is marked not-set", () => {
+    const out = vetAdminGroupFacts({
+      body: "Kai out, Ravi is back as well",
+      facts: facts([claim({ polarity: "out" }), claim({ personRef: "Ravi" })]),
+      senderUserId: "u-omar",
+      senderName: "Omar Shah",
+      bareDeclaration: false,
+      listNotSet: true,
+      resolve,
+      statusOf: () => null,
+    });
+    expect(out.facts.claims).toEqual([]);
+    expect(out.vetted.map((v) => [v.claim.personRef, v.hold])).toEqual([
+      ["Kai", "not-set"],
+      ["Ravi", "not-a-command"],
+    ]);
+  });
+
   it('a bare "yes" pointing at something else is never read in HQ', () => {
     expect(vet("yeah", facts([], "yes")).facts.affirmation).toBeNull();
   });
@@ -450,29 +468,82 @@ describe("buildAdminSquadReply: what MatchTime says back, and when it says nothi
     expect(reply({ ...base, vetted: [] })).toBeNull();
   });
 
-  it("a name nobody in the club has, mentioned in passing: says so and how to add them", () => {
+  it("a name nobody in the club has, mentioned in passing to MatchTime (a tag or a reply to it): says so and how to add them", () => {
     const vetted = [v({ claim: claim({ personRef: "Zayn" }), hold: "not-a-command", ref: { kind: "unknown", name: "Zayn" } })];
-    expect(reply({ ...base, vetted })).toBe('I don\'t know Zayn yet. To add them, write "put Zayn in".');
-    expect(reply({ ...base, lang: "tr", vetted })).toBe('Zayn ad\u0131nda birini hen\u00fcz tan\u0131m\u0131yorum. Eklemek i\u00e7in "Zayn var" yaz\u0131n.');
+    expect(reply({ ...base, addressed: true, vetted })).toBe('I don\'t know Zayn yet. To add them, write "put Zayn in".');
+    expect(reply({ ...base, addressed: true, lang: "tr", vetted })).toBe('Zayn ad\u0131nda birini hen\u00fcz tan\u0131m\u0131yorum. Eklemek i\u00e7in "Zayn var" yaz\u0131n.');
     // but not for a past or contingent mention, nor a drop of a stranger
     expect(
       reply({
         ...base,
+        addressed: true,
         vetted: [v({ claim: claim({ personRef: "Zayn", tense: "past" }), hold: "not-now", ref: { kind: "unknown", name: "Zayn" } })],
       }),
     ).toBeNull();
     expect(
       reply({
         ...base,
+        addressed: true,
         vetted: [v({ claim: claim({ personRef: "Zayn", contingent: true }), hold: "contingent", ref: { kind: "unknown", name: "Zayn" } })],
       }),
     ).toBeNull();
     expect(
       reply({
         ...base,
+        addressed: true,
         vetted: [v({ claim: claim({ personRef: "Zayn", polarity: "out" }), hold: "not-a-command", ref: { kind: "unknown", name: "Zayn" } })],
       }),
     ).toBeNull();
+  });
+
+  // FNF HQ, 2026-10-16 23:49 London: "Imti Rafi AH back", a WhatsApp reply
+  // to ANOTHER organiser about next week, got a tick and "I don't know AH
+  // yet...". Nothing was written. A hint for a held claim is said only when
+  // the message was addressed to MatchTime; otherwise it is their chat.
+  it("the incident: held chatter about a stranger and members, not addressed: silence", () => {
+    const vetted = [
+      v({ claim: claim({ personRef: "Imti" }), hold: "not-a-command", ref: { kind: "member", userId: "u-imti", name: "Imti" } }),
+      v({ claim: claim({ personRef: "Rafi" }), hold: "not-a-command", ref: { kind: "member", userId: "u-rafi", name: "Rafi" } }),
+      v({ claim: claim({ personRef: "AH" }), hold: "unsure", ref: { kind: "unknown", name: "AH" } }),
+    ];
+    expect(buildAdminSquadReply({ ...base, vetted })).toBeNull();
+    expect(buildAdminSquadReply({ ...base, addressed: false, vetted })).toBeNull();
+    expect(reply({ ...base, addressed: true, vetted })).toBe('I don\'t know AH yet. To add them, write "put AH in".');
+  });
+
+  it("the sender's own plain line in conversation, not addressed: silence", () => {
+    expect(
+      buildAdminSquadReply({ ...base, vetted: [v({ claim: self({ polarity: "out" }), hold: "not-a-command", before: "CONFIRMED", ref: me })] }),
+    ).toBeNull();
+  });
+
+  it("an instruction is answered whether or not it was addressed", () => {
+    expect(
+      reply({ ...base, changes: [{ kind: "out", name: "Kai Patel" }], vetted: [v({ claim: claim({ polarity: "out" }), before: "CONFIRMED" })] }),
+    ).toBe("Done: Kai Patel out. 17 of 18.");
+    expect(reply({ ...base, vetted: [v({ claim: claim({ personRef: "Ali" }), ref: { kind: "ambiguous", name: "Ali" } })] })).toBe(
+      "Not sure who Ali is, so I'll leave them out; use the full name.",
+    );
+  });
+
+  // Owner rule 4 (2026-10-17): the rolling squad of the next game is carried
+  // over at 08:00 the morning after the last one. Until then that list is not
+  // set: an instruction for it is not applied and gets one line saying so;
+  // chatter about it stays silent.
+  it("the list is not set yet: an instruction gets one line, chatter nothing", () => {
+    const notSet = { day: "Saturday", time: "08:00" };
+    const instruction = [v({ claim: claim({ polarity: "out" }), hold: "not-set", before: null })];
+    expect(buildAdminSquadReply({ ...base, notSet, vetted: instruction })).toEqual({
+      text: "The list for Fri 20:30 isn't set yet: last week's squad carries over at 08:00 on Saturday. Send it again after that.",
+      outcome: "squad-not-set",
+    });
+    expect(reply({ ...base, lang: "tr", kickoffLabel: "Cuma 20:30", notSet: { day: "Cumartesi", time: "08:00" }, vetted: instruction })).toBe(
+      "Cuma 20:30 listesi henüz belli değil: geçen haftanın kadrosu Cumartesi saat 08:00 itibarıyla aktarılacak. Ondan sonra tekrar yazın.",
+    );
+    const chatter = [v({ claim: claim({ personRef: "AH" }), hold: "not-a-command", ref: { kind: "unknown", name: "AH" } })];
+    expect(buildAdminSquadReply({ ...base, notSet, vetted: chatter })).toBeNull();
+    // addressed to MatchTime: the same one line, never silence
+    expect(buildAdminSquadReply({ ...base, notSet, addressed: true, vetted: chatter })?.outcome).toBe("squad-not-set");
   });
 
   it("an explicit command naming two possible players asks for the full name", () => {
@@ -481,30 +552,32 @@ describe("buildAdminSquadReply: what MatchTime says back, and when it says nothi
     );
   });
 
-  it("the sender says plainly they are out (or in) in conversation: no write, one line saying how", () => {
-    const outLine = buildAdminSquadReply({ ...base, vetted: [v({ claim: self({ polarity: "out" }), hold: "not-a-command", before: "CONFIRMED", ref: me })] });
+  it("the sender says plainly they are out (or in) to MatchTime: no write, one line saying how", () => {
+    const outLine = buildAdminSquadReply({ ...base, addressed: true, vetted: [v({ claim: self({ polarity: "out" }), hold: "not-a-command", before: "CONFIRMED", ref: me })] });
     expect(outLine).toEqual({ text: 'To take yourself out of Fri 20:30, write "Omar Shah out".', outcome: "squad-question" });
-    const inLine = reply({ ...base, vetted: [v({ claim: self(), hold: "not-a-command", before: null, ref: me })] });
+    const inLine = reply({ ...base, addressed: true, vetted: [v({ claim: self(), hold: "not-a-command", before: null, ref: me })] });
     expect(inLine).toBe('To put yourself in for Fri 20:30, write "Omar Shah in".');
     expect(
       reply({
         ...base,
+        addressed: true,
         lang: "tr",
         kickoffLabel: "Cum 20:30",
         vetted: [v({ claim: self({ polarity: "out" }), hold: "not-a-command", before: "CONFIRMED", ref: me })],
       }),
     ).toBe('Cum 20:30 kadrosundan \u00e7\u0131kmak isterseniz "Omar Shah yok" yaz\u0131n.');
     expect(
-      reply({ ...base, lang: "tr", kickoffLabel: "Cum 20:30", vetted: [v({ claim: self(), hold: "not-a-command", before: null, ref: me })] }),
+      reply({ ...base, addressed: true, lang: "tr", kickoffLabel: "Cum 20:30", vetted: [v({ claim: self(), hold: "not-a-command", before: null, ref: me })] }),
     ).toBe('Cum 20:30 kadrosuna girmek isterseniz "Omar Shah var" yaz\u0131n.');
     // already where they say: silence, not "Nothing to change"
     expect(
-      reply({ ...base, vetted: [v({ claim: self({ polarity: "out" }), hold: "not-a-command", before: null, ref: me })] }),
+      reply({ ...base, addressed: true, vetted: [v({ claim: self({ polarity: "out" }), hold: "not-a-command", before: null, ref: me })] }),
     ).toBeNull();
     // an injury report (availability) is never turned into a question
     expect(
       reply({
         ...base,
+        addressed: true,
         vetted: [v({ claim: self({ polarity: "out", basis: "availability" }), hold: "availability", before: "CONFIRMED", ref: me })],
       }),
     ).toBeNull();
@@ -516,9 +589,9 @@ describe("buildAdminSquadReply: what MatchTime says back, and when it says nothi
 
   it("no dashes in the new lines", () => {
     const all = ["en", "tr"].flatMap((lang) => [
-      reply({ ...base, lang, vetted: [v({ claim: claim({ personRef: "Zayn" }), hold: "not-a-command", ref: { kind: "unknown", name: "Zayn" } })] }),
-      reply({ ...base, lang, vetted: [v({ claim: self({ polarity: "out" }), hold: "not-a-command", before: "CONFIRMED", ref: me })] }),
-      reply({ ...base, lang, vetted: [v({ claim: self(), hold: "not-a-command", before: null, ref: me })] }),
+      reply({ ...base, addressed: true, lang, vetted: [v({ claim: claim({ personRef: "Zayn" }), hold: "not-a-command", ref: { kind: "unknown", name: "Zayn" } })] }),
+      reply({ ...base, addressed: true, lang, vetted: [v({ claim: self({ polarity: "out" }), hold: "not-a-command", before: "CONFIRMED", ref: me })] }),
+      reply({ ...base, addressed: true, lang, vetted: [v({ claim: self(), hold: "not-a-command", before: null, ref: me })] }),
     ]);
     expect(all.join(" ")).not.toMatch(/[\u2013\u2014]/);
   });

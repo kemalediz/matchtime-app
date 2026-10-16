@@ -9,6 +9,7 @@ import { formatLondon } from "./london-time";
 import type { HqLogRow } from "./admin-group-log";
 import type { PendingItem, QuotedMessage } from "./admin-group-confirm-rules";
 import { replyingToLine } from "./pipeline/router";
+import { messageMentionsBotExplicitly } from "./interaction-contract";
 
 export interface PendingWithLabel extends PendingItem {
   /** The game's day, in the club's language, for teams and a partner ask. */
@@ -64,4 +65,24 @@ export function organisersContext(p: {
     for (const r of p.recent) lines.push(`- ${r.fromMatchTime ? "MatchTime" : "an organiser"}: ${oneLine(r.text, 200)}`);
   }
   return lines;
+}
+
+/**
+ * WHO AN HQ MESSAGE IS SAID TO (2026-10-17). Pure, so the live check
+ * (`scripts/live-check-hq-chatter.ts`) decides exactly as production does.
+ *
+ *   tagged              an @tag of MatchTime (never the bare word, which is
+ *                       talk ABOUT MatchTime)
+ *   addressed           tagged, or a WhatsApp reply to MatchTime's own message
+ *   toAnotherOrganiser  a reply to someone else's message, not tagged: the
+ *                       organisers talking to each other (FNF HQ 2026-10-16,
+ *                       "Imti Rafi AH back")
+ */
+export function hqAddressing(p: { text: string; quoted: QuotedMessage | null; quotedIsMatchTime: boolean }): {
+  tagged: boolean;
+  addressed: boolean;
+  toAnotherOrganiser: boolean;
+} {
+  const tagged = messageMentionsBotExplicitly({ body: p.text });
+  return { tagged, addressed: p.quotedIsMatchTime || tagged, toAnotherOrganiser: !!p.quoted && !p.quotedIsMatchTime && !tagged };
 }

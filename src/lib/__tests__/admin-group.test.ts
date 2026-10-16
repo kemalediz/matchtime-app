@@ -115,7 +115,10 @@ describe("the ✅ on a message MatchTime acted on", () => {
     expect(await handleAdminGroupMessage(msg("@Match Time do it"))).toMatchObject({ handled: true, react: "✅" });
   });
 
-  it.each(["hq-not-here", "hq-not-understood"])("%s: no tick, the line is the answer", async (outcome) => {
+  // Owner rule 3 (2026-10-17): a tick only when something was done or a
+  // real answer given. These lines change nothing: how to make a change,
+  // a list that is not set yet.
+  it.each(["hq-not-here", "hq-not-understood", "squad-question", "squad-not-set"])("%s: no tick, the line is the answer", async (outcome) => {
     understand.understandAdminMessage.mockResolvedValue({ route: "unsure", outcome, replyText: "I didn't catch that." });
     expect(await handleAdminGroupMessage(msg("@Match Time hmm"))).toMatchObject({ handled: true, react: null });
   });

@@ -2936,6 +2936,9 @@ export const en = {
   ag_sq_nothing: "Nothing to change: the squad already says that.",
   /** A name nobody in the club has, said in passing as coming in (2026-10-15). */
   ag_sq_unknown: (p: { name: string }): string => `I don't know ${p.name} yet. To add them, write "put ${p.name} in".`,
+  /** The game's list is not set yet: the rolling squad carries over in the morning (2026-10-17). */
+  ag_sq_not_set: (p: { when: string; day: string; time: string }): string =>
+    `The list for ${p.when} isn't set yet: last week's squad carries over at ${p.time} on ${p.day}. Send it again after that.`,
   /** The sender said in conversation that they are out; nothing is written (2026-10-15). */
   ag_sq_self_hint_out: (p: { name: string; when: string }): string =>
     `To take yourself out of ${p.when}, write "${p.name} out".`,
