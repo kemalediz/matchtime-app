@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Check, X, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { attendMatch, dropFromMatch } from "@/app/actions/attendance";
+import { t } from "@/lib/i18n/t";
 
 type Status = "CONFIRMED" | "BENCH" | "DROPPED" | null;
 
@@ -12,6 +13,7 @@ export function AttendButton({
   currentStatus,
   isPastDeadline,
   blockedByPriorMatch,
+  lang,
 }: {
   matchId: string;
   currentStatus: Status;
@@ -22,6 +24,8 @@ export function AttendButton({
    *  src/lib/attendance.ts (registerAttendance) so the UI doesn't
    *  let the user click a button that would just throw server-side. */
   blockedByPriorMatch?: boolean;
+  /** The club's language (`Organisation.language`); English when absent. */
+  lang?: string | null;
 }) {
   const [loading, setLoading] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -31,8 +35,9 @@ export function AttendButton({
   async function handleAttend() {
     setLoading(true);
     try {
-      await attendMatch(matchId);
-      toast.success("You're in! See you at the match 🎉");
+      // The toast says what the write did: "You're in" only for CONFIRMED.
+      const res = await attendMatch(matchId);
+      toast.success(t(lang).web_attend_toast(res));
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to sign up");
     } finally {

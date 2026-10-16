@@ -314,6 +314,7 @@ export default async function MatchDetailPage({
             currentStatus={myAttendance?.status as "CONFIRMED" | "BENCH" | "DROPPED" | null}
             isPastDeadline={isPastDeadline}
             blockedByPriorMatch={blockedByPriorMatch}
+            lang={match.activity.org.language}
           />
           {!isPastDeadline && (
             <p className="text-sm text-slate-500 flex items-center gap-1.5">

@@ -1162,6 +1162,7 @@ export const tr: Strings = {
       lines.push(`🟥🟦 *"takımları göster"*, *"yeniden karıştır"*: takımlar, henüz yoksa kurarım.`);
       lines.push(`🔁 *"Sam ile Alex'i değiştir"*, *"Sam'i diğer takıma al"*: takımlarda değişiklik.`);
       lines.push(`✅ *EVET* (ya da mesajıma EVET diye cevap verin): önerilen takımları kesinleştiririm.`);
+      lines.push(`📣 *"gruba sor, oynayabilecek var mı"*: boş yer varsa ana grupta sorarım.`);
     }
     if (p.graphics) lines.push(`🖼️ *"posteri gönder"*, *"takım listesi görseli"*: listeyi ya da takımları görsel olarak, iletmeye hazır.`);
     if (p.picks) lines.push(`🙋 Kimin oynayacağını seçmenizi istediğimde listemdeki numaraları ya da isimleri, veya *HEPSİ* ya da *HİÇBİRİ* yazın.`);
@@ -1177,6 +1178,13 @@ export const tr: Strings = {
   hq_nothing_waiting: `Şu anda EVET bekleyen bir şey yok.`,
   hq_not_here: `Bunu bu gruptan yapamam. Burada neler yapabildiğimi görmek için *neler yapabilirsin?* diye sorun.`,
   hq_not_understood: `Ne yapmamı istediğinizi anlayamadım. Burada neler yapabildiğimi görmek için *neler yapabilirsin?* diye sorun.`,
+  group_ask_organiser: (p) =>
+    `${p.kickoffLabel} maçı için ${p.open} oyuncu daha lazım. *VARIM* yazın, kimin oynayacağını organizatörler seçer. Seçilirseniz size mesaj atarım.`,
+  hq_group_asked: (p) => `Ana grupta ${p.open} oyuncu için sordum.`,
+  hq_group_ask_full: (p) =>
+    `${p.kickoffLabel} kadrosu dolu: ${p.maxPlayers} kişilik kadroda ${p.confirmed} kişi var. Ana grupta sorulacak bir şey yok.`,
+  hq_group_ask_already: (p) =>
+    `Ana grupta ${p.at} saatinde ${p.open} oyuncu için zaten sordum. Tekrar paylaşmamı istersen bir daha söyle.`,
   tp_which_players: `Hangi oyuncular? Örneğin: Sam ile Alex'i değiştir, ya da Sam'i diğer takıma al.`,
   tp_already_on: (p) => `${p.name} zaten ${p.team} takımında.`,
 
@@ -2297,6 +2305,12 @@ export const tr: Strings = {
     `Varsan *VARIM* yaz, yedek listesine ekleyeyim (kimin oynayacağını organizatörler seçer); yoksan *YOKUM* yaz, bir daha sormam 🙏`,
   dm_self_ack_waiting_organiser: (p) =>
     `📋 *${p.matchName}* (${p.matchWhen}) için seni yedek listesine yazdım. Kimin oynayacağını organizatörler seçer; seçilirsen sana haber veririm 🙏`,
+  web_attend_toast: (p) =>
+    p.status === "CONFIRMED"
+      ? "Kadrodasın! Maçta görüşürüz 🎉"
+      : p.organiser
+        ? "Seni yedek listesine yazdım. Kimin oynayacağını organizatörler seçer; seçilirsen sana haber veririm 🙏"
+        : "Kadro dolu, o yüzden seni yedeğe yazdım. Bir yer açılınca sana haber veririm 🙏",
 
   // ── UNP1 (2026-10-01): yöneticilere ödemeyenler listesi ──
   unpaid_list_admin: (p) =>

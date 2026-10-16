@@ -61,6 +61,7 @@ export const OWNER_OF: Record<Route, Owner> = {
   poster: "A",
   team_sheet: "A",
   help: "A",
+  ask_group: "A",
 };
 
 export interface RegressionCase {

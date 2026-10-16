@@ -35,6 +35,8 @@ const paste = vi.hoisted(() => ({ answerSquadPasteYes: vi.fn() }));
 vi.mock("@/lib/admin-group-paste", () => paste);
 const graphics = vi.hoisted(() => ({ answerGraphicRequest: vi.fn() }));
 vi.mock("@/lib/admin-group-graphics", () => graphics);
+const groupAsk = vi.hoisted(() => ({ askPlayersGroup: vi.fn() }));
+vi.mock("@/lib/admin-group-ask-group", () => groupAsk);
 
 import { understandAdminMessage } from "../admin-group-understand";
 
@@ -87,6 +89,7 @@ beforeEach(() => {
   paste.answerSquadPasteYes.mockResolvedValue({ outcome: "paste-applied", replyText: "Done." });
   graphics.answerGraphicRequest.mockResolvedValue({ outcome: "graphic-queued", replyText: null });
   squad.handleAdminSquadChange.mockResolvedValue({ handled: true, outcome: "squad-changed", replyText: "Done: Tom out." });
+  groupAsk.askPlayersGroup.mockResolvedValue({ outcome: "group-asked", replyText: "Asked in the main chat for 1 player." });
 });
 
 describe("the router is the players' group's router, shown the organisers' context", () => {
@@ -208,6 +211,20 @@ describe("the other routes reach the code the rest of MatchTime uses", () => {
 
   it.each(["question", "score", "admin_ops"])("%s: clearly for MatchTime but not done from HQ: one line, never silent", async (route) => {
     expect((await ask("@Match Time who has paid?", route))?.replyText).toBe("I can't do that from this group. Ask *what can you do?* to see what I can do here.");
+    expect(groupAsk.askPlayersGroup).not.toHaveBeenCalled();
+  });
+
+  it("ask_group: the players' group is asked for a player, HQ hears one line, no extractor call", async () => {
+    const r = await ask("@Match Time ask in the group if anyone is available", "ask_group");
+    expect(r).toEqual({ route: "ask_group", outcome: "group-asked", replyText: "Asked in the main chat for 1 player." });
+    expect(groupAsk.askPlayersGroup).toHaveBeenCalledWith({ orgId: "org-fnf", lang: "en", messageId: "wa-9", now: NOW });
+    expect(requests).toHaveLength(1);
+  });
+
+  it("ask_group in a monthly club: no weekly squad to ask for, one line", async () => {
+    const r = await ask("gruba sor, oynayabilecek var mı", "ask_group", { org: { ...ORG, squadMode: "monthly" } });
+    expect(r?.outcome).toBe("hq-not-here");
+    expect(groupAsk.askPlayersGroup).not.toHaveBeenCalled();
   });
 
   it.each(["none", "offer", "unsure"])("%s: the organisers' own conversation, silent", async (route) => {

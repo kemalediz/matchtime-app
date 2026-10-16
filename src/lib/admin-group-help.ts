@@ -20,6 +20,8 @@
  *                                (admin-group-confirm-rules.ts), answerTeamsYes
  *   poster / team sheet          router poster / team_sheet, then
  *                                admin-group-graphics.ts answerGraphicRequest
+ *   ask the group for a player   router ask_group, then
+ *                                admin-group-ask-group.ts askPlayersGroup
  *   pick: numbers, names, ALL, NONE
  *                                organiser-pick.ts handlePickReply (structured)
  *   PAID ALL / PAID 1 3 / PAID NONE

@@ -339,6 +339,10 @@ const SAMPLES: SampleArgs = {
   hq_nothing_waiting: null,
   hq_not_here: null,
   hq_not_understood: null,
+  group_ask_organiser: { open: 3, kickoffLabel: "Fri 19:15" },
+  hq_group_asked: { open: 3 },
+  hq_group_ask_full: { confirmed: 13, maxPlayers: 14, kickoffLabel: "Fri 19:15" },
+  hq_group_ask_already: { open: 3, at: "14:05" },
   tp_which_players: null,
   tp_already_on: { name: "Ahmet", team: "Kırmızı" },
   onbHelpBadgesHead: null,
@@ -805,6 +809,7 @@ const SAMPLES: SampleArgs = {
   dm_recruit_invite_play_organiser: null,
   dm_recruit_chase_organiser: { firstName: "Ali", count: 1, activityName: "Friday 9-a-side", matchWhen: "Fri 9 Oct, 20:30" },
   dm_self_ack_waiting_organiser: { matchName: "Friday 9-a-side", matchWhen: "Fri 9 Oct, 20:30" },
+  web_attend_toast: { status: "BENCH", organiser: true },
   // U1, the organisers' unpaid list (2026-10-01)
   unpaid_group_reminder: { unpaid: 4, dayName: "Friday" },
   unpaid_list_admin: { activityName: "Friday 9-a-side", whenLabel: "Fri 9 Oct at 20:30", names: ["Wasim", "Raihan"], paid: 14, n: 16 },

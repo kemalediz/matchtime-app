@@ -93,6 +93,7 @@ export function extractorFor(route: Route): ExtractorKind {
     case "poster":
     case "team_sheet":
     case "help":
+    case "ask_group":
       return "none";
   }
 }

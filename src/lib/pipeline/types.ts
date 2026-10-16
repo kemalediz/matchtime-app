@@ -82,7 +82,11 @@ export type Route =
   /** ORGANISERS' GROUP ONLY: the teams as a graphic. */
   | "team_sheet"
   /** ORGANISERS' GROUP ONLY: what MatchTime can do there. */
-  | "help";
+  | "help"
+  /** ORGANISERS' GROUP ONLY (2026-10-16): MatchTime is asked to find a
+   *  player, i.e. to ask the players' group whether anyone can play
+   *  (`admin-group-ask-group.ts`). */
+  | "ask_group";
 
 /**
  * The routes the router may give a message from a club's organisers'
@@ -90,7 +94,7 @@ export type Route =
  * message routed to one of them is read as `unsure` (`router.ts`), the
  * same bias toward action as a missing route.
  */
-export const ORGANISER_ONLY_ROUTES: readonly Route[] = ["approve", "poster", "team_sheet", "help"];
+export const ORGANISER_ONLY_ROUTES: readonly Route[] = ["approve", "poster", "team_sheet", "help", "ask_group"];
 
 export const ALL_ROUTES: readonly Route[] = [
   "none",
