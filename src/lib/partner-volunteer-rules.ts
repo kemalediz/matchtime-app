@@ -19,7 +19,7 @@
 export type VolunteerDecision =
   | { kind: "register"; asGuest: boolean }
   | { kind: "withdraw" }
-  | { kind: "refuse"; why: "closed" | "unknown-sender" | "overlap" | "not-on-list" };
+  | { kind: "refuse"; why: "closed" | "unknown-sender" | "overlap" | "not-on-list" | "game-over" };
 
 export interface VolunteerInput {
   polarity: "in" | "out";
@@ -32,11 +32,20 @@ export interface VolunteerInput {
   ordinaryAskerMember: boolean;
   /** He has a row (CONFIRMED or BENCH) on the asking club's match. */
   onAskerMatch: boolean;
+  /** The asking club's match is still to play (UPCOMING or teams out). */
+  askerMatchLive: boolean;
+  /** He is already a past guest there (his match is over). */
+  pastGuest: boolean;
 }
 
 export function decideVolunteer(i: VolunteerInput): VolunteerDecision {
   if (!i.senderIsPartnerMember) return { kind: "refuse", why: "unknown-sender" };
-  if (i.polarity === "out") return i.onAskerMatch ? { kind: "withdraw" } : { kind: "refuse", why: "not-on-list" };
+  if (i.polarity === "out") {
+    if (!i.onAskerMatch) return { kind: "refuse", why: "not-on-list" };
+    // Review H2: never drop a guest from a game that is over or played.
+    if (!i.askerMatchLive || i.pastGuest) return { kind: "refuse", why: "game-over" };
+    return { kind: "withdraw" };
+  }
   if (!i.askOpen) return { kind: "refuse", why: "closed" };
   if (i.inOverlappingOwnGame) return { kind: "refuse", why: "overlap" };
   return { kind: "register", asGuest: !i.ordinaryAskerMember };

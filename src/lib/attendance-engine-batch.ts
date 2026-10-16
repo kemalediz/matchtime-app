@@ -137,6 +137,7 @@
  */
 import type { QuotedRef } from "./quoted-message";
 import type { ProposedWrite } from "./pipeline/types";
+import { quotedPartnerAsk } from "./pipeline/engine";
 import type { AttendanceWriteFailure } from "./attendance-write-outcome";
 import { clampPastedRosterFacts } from "./pasted-roster-registration";
 // Traced: the extractor's facts are kept on the message's AnalyzedMessage
@@ -470,9 +471,22 @@ export async function runAttendanceEngineBatch(args: {
     return empty();
   }
 
+  // Review M1: replies that QUOTE a partner club's ask are about another
+  // club's game. The carve-outs below are about this club's own match (no
+  // match, attendance off, a different match, an open bench prompt), so
+  // they never swallow one: when a carve-out applies, the batch continues
+  // with those replies ONLY.
+  const isPartnerReply = (m: EngineBatchMessage) =>
+    !!m.quoted && quotedPartnerAsk({ quoted: m.quoted } as EngineMessage, state) !== null;
+  const partnerReplies = candidates.filter(isPartnerReply);
+  const ownMatchBlocked =
+    !state.features.attendance || !state.matchId || (expectedMatchId !== null && state.matchId !== expectedMatchId);
+
   // ── The carve-outs, all in the "own nothing" direction ─────────────
-  if (!state.features.attendance) return empty();
-  if (!state.matchId) {
+  if (ownMatchBlocked && partnerReplies.length === 0) {
+    if (!state.features.attendance) return empty();
+  }
+  if (!state.matchId && partnerReplies.length === 0) {
     // No active registration match.
     //
     // What stood here until 2026-09-06: "The analyzer's
@@ -491,7 +505,7 @@ export async function runAttendanceEngineBatch(args: {
     // lost to "no match yet" is still a query.
     return empty();
   }
-  if (expectedMatchId !== null && state.matchId !== expectedMatchId) {
+  if (expectedMatchId !== null && state.matchId !== expectedMatchId && partnerReplies.length === 0) {
     console.warn(
       `[attendance-engine] the route's registration match (${expectedMatchId}) and the ` +
         `engine's (${state.matchId}) disagree; owning nothing`,
@@ -525,13 +539,15 @@ export async function runAttendanceEngineBatch(args: {
   // loss.
   let promptedUserIds = new Set<string>();
   try {
-    promptedUserIds = new Set(await deps.openBenchPromptUserIds(matchId));
+    if (matchId && !ownMatchBlocked) promptedUserIds = new Set(await deps.openBenchPromptUserIds(matchId));
   } catch (err) {
     console.error("[attendance-engine] bench-prompt lookup failed; owning nothing:", err);
     return empty();
   }
 
-  const owned = candidates.filter((m) => {
+  const owned = (ownMatchBlocked ? partnerReplies : candidates).filter((m) => {
+    // Review M1: an open bench prompt is about this club's match.
+    if (isPartnerReply(m)) return true;
     if (m.senderUserId && promptedUserIds.has(m.senderUserId)) return false;
     // ── A PASTED ROSTER IS OWNED FOR ONE THING ONLY: THE SENDER'S OUT ─
     //
@@ -910,7 +926,8 @@ export async function runAttendanceEngineBatch(args: {
       }
       let claimed = false;
       try {
-        claimed = await deps.claimGuestNameAsk({ matchId, userId });
+        // No own match (only partner replies were owned): nothing to claim.
+        claimed = matchId ? await deps.claimGuestNameAsk({ matchId, userId }) : false;
       } catch (err) {
         // A dedupe row that could not be written must not become an ask
         // nobody recorded — that is the nag, one batch later.
@@ -961,7 +978,9 @@ export async function runAttendanceEngineBatch(args: {
       `${foreign} write(s) came from a message the engine does not own; refused`,
     );
   }
-  const applied = await applyEngineWrites({
+  // With the own match blocked only partner replies were owned, so there
+  // are no own-match writes to apply (review M1).
+  const applied = !matchId || ownMatchBlocked ? [] : await applyEngineWrites({
     matchId,
     writes: applicable,
     actorByMessageId,

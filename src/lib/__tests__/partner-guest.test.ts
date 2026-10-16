@@ -6,6 +6,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const dbMock = vi.hoisted(() => ({
   partnerAsk: { findUnique: vi.fn(), updateMany: vi.fn() },
+  sentNotification: { create: vi.fn() },
+  $executeRaw: vi.fn(),
   organisation: { findUnique: vi.fn() },
   membership: { findUnique: vi.fn(), upsert: vi.fn() },
   attendance: { findUnique: vi.fn(), findMany: vi.fn() },
@@ -28,7 +30,7 @@ const ASK = {
   partnerOrgId: "sutton",
   matchId: "m-fnf",
   volunteerUserIds: [] as string[],
-  match: { date: KICKOFF, activity: { matchDurationMins: 60 } },
+  match: { date: KICKOFF, status: "UPCOMING", activity: { matchDurationMins: 60 } },
 };
 const write = (over: Partial<Parameters<typeof handlePartnerVolunteer>[0]> = {}) => ({
   askId: "ask1",
@@ -53,6 +55,7 @@ beforeEach(() => {
   att.registerAttendance.mockResolvedValue({ status: "BENCH" });
   dbMock.partnerAsk.updateMany.mockResolvedValue({ count: 1 });
   notice.sendAdminNotice.mockResolvedValue({ channel: "dm", queued: 1 });
+  dbMock.sentNotification.create.mockResolvedValue({});
 });
 
 describe("handlePartnerVolunteer", () => {
@@ -68,7 +71,12 @@ describe("handlePartnerVolunteer", () => {
       event: expect.objectContaining({ cause: "partner-ask", actorKind: "player", actorUserId: "ali", sourceRef: "xask:ask1" }),
       actorIsAdmin: false,
     });
-    expect(dbMock.partnerAsk.updateMany).toHaveBeenCalledWith({ where: { id: "ask1" }, data: { volunteerUserIds: { push: "ali" } } });
+    // Review M7: the volunteer is claimed on the ask FIRST, and only while it is open.
+    expect(dbMock.partnerAsk.updateMany).toHaveBeenCalledWith({
+      where: { id: "ask1", status: "posted", closesAt: { gt: NOW }, NOT: { volunteerUserIds: { has: "ali" } } },
+      data: { volunteerUserIds: { push: "ali" } },
+    });
+    expect(dbMock.partnerAsk.updateMany.mock.invocationCallOrder[0]).toBeLessThan(att.registerAttendance.mock.invocationCallOrder[0]);
     // His reply is in HIS club's language (Turkish here); the asking club's notice in its own.
     expect(r.replyText).toContain("FNF* yedek listesindesin");
     expect(notice.sendAdminNotice).toHaveBeenCalledWith(expect.objectContaining({ orgId: "fnf", text: expect.stringContaining("Ali Kaya (Sutton FC) answered your ask") }));
@@ -109,13 +117,61 @@ describe("handlePartnerVolunteer", () => {
     expect(att.registerAttendance).not.toHaveBeenCalled();
   });
 
-  it("OUT takes his row off the asking club's match and off the ask", async () => {
+  it("OUT takes his row off the asking club's match and off the ask, atomically (review M7)", async () => {
     dbMock.attendance.findUnique.mockResolvedValue({ status: "BENCH" });
     dbMock.partnerAsk.findUnique.mockResolvedValue({ ...ASK, volunteerUserIds: ["ali", "bob"] });
     const r = await handlePartnerVolunteer(write({ polarity: "out" }), NOW);
     expect(r.outcome).toBe("withdrawn");
     expect(att.cancelAttendance).toHaveBeenCalledWith("ali", "m-fnf", expect.objectContaining({ cause: "partner-ask" }));
-    expect(dbMock.partnerAsk.updateMany).toHaveBeenCalledWith({ where: { id: "ask1" }, data: { volunteerUserIds: ["bob"] } });
+    // array_remove in SQL, never a rewrite from a stale read.
+    expect(dbMock.$executeRaw).toHaveBeenCalled();
+    expect(dbMock.partnerAsk.updateMany).not.toHaveBeenCalledWith(expect.objectContaining({ data: { volunteerUserIds: ["bob"] } }));
+  });
+
+  it("H2 (review): OUT after the game was played drops nobody", async () => {
+    dbMock.attendance.findUnique.mockResolvedValue({ status: "CONFIRMED" });
+    dbMock.partnerAsk.findUnique.mockResolvedValue({ ...ASK, status: "filled", match: { ...ASK.match, status: "COMPLETED" } });
+    const r = await handlePartnerVolunteer(write({ polarity: "out" }), NOW);
+    expect(r.outcome).toBe("game-over");
+    expect(att.cancelAttendance).not.toHaveBeenCalled();
+  });
+
+  it("H2 (review): a past guest's OUT drops nobody", async () => {
+    dbMock.attendance.findUnique.mockResolvedValue({ status: "CONFIRMED" });
+    dbMock.membership.findUnique.mockImplementation(({ where }: { where: { userId_orgId: { orgId: string } } }) =>
+      Promise.resolve(where.userId_orgId.orgId === "sutton" ? { leftAt: null, guestFromOrgId: null } : { id: "g", leftAt: new Date(), guestFromOrgId: "sutton" }),
+    );
+    expect((await handlePartnerVolunteer(write({ polarity: "out" }), NOW)).outcome).toBe("game-over");
+    expect(att.cancelAttendance).not.toHaveBeenCalled();
+  });
+
+  it("M7 (review): the ask closed between the read and the claim: nothing written, he is told", async () => {
+    dbMock.partnerAsk.updateMany.mockResolvedValue({ count: 0 });
+    dbMock.partnerAsk.findUnique
+      .mockResolvedValueOnce(ASK)
+      .mockResolvedValueOnce({ ...ASK, status: "filled", volunteerUserIds: [] });
+    const r = await handlePartnerVolunteer(write(), NOW);
+    expect(r.outcome).toBe("closed");
+    expect(att.registerAttendance).not.toHaveBeenCalled();
+    expect(dbMock.membership.upsert).not.toHaveBeenCalled();
+  });
+
+  it("M7 (review): the ask closed while he was being written: his bench row is undone", async () => {
+    dbMock.partnerAsk.findUnique
+      .mockResolvedValueOnce(ASK)
+      .mockResolvedValueOnce({ ...ASK, status: "filled" });
+    const r = await handlePartnerVolunteer(write(), NOW);
+    expect(r.outcome).toBe("closed");
+    expect(att.cancelAttendance).toHaveBeenCalledWith("ali", "m-fnf", expect.objectContaining({ cause: "partner-ask" }));
+  });
+
+  it("M7 (review): the asking club's notice is keyed, so a replayed reply tells it once", async () => {
+    await handlePartnerVolunteer(write(), NOW);
+    expect(dbMock.sentNotification.create).toHaveBeenCalledWith({ data: { key: "xask:ask1:vol:ali:in:wa-1", kind: "xask-volunteer" } });
+    notice.sendAdminNotice.mockClear();
+    dbMock.sentNotification.create.mockRejectedValue(Object.assign(new Error("dup"), { code: "P2002" }));
+    await handlePartnerVolunteer(write(), NOW);
+    expect(notice.sendAdminNotice).not.toHaveBeenCalled();
   });
 
   it("a failed write says so to him and to the log, never silence", async () => {

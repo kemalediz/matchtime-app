@@ -417,6 +417,9 @@ export function decide(input: EngineInput): EngineResult {
   messages.forEach((m, i) => {
     if (!m.senderUserId) return;
     if (m.facts.kind !== "attendance") return;
+    // Review M2: a reply to a partner club's ask is about ANOTHER club's
+    // game; it neither supersedes nor is superseded by an own-club claim.
+    if (quotedPartnerAsk(m, state)) return;
     const sender = m.senderUserId;
     // A self claim the swap guard in `handleAttendance` will refuse
     // ("swap me with David") writes nothing, so it must not supersede
@@ -504,7 +507,10 @@ export function decide(input: EngineInput): EngineResult {
     // ── the handlers ───────────────────────────────────────────────────
 
     function handleAttendance(msg: EngineMessage, facts: AttendanceFacts, i: number) {
-      if (!state.features.attendance) {
+      // Review M1: a reply to a partner club's ask is about ANOTHER club's
+      // game, so this club's own settings (attendance off) never swallow it.
+      // Every other message stops here, exactly as before.
+      if (!state.features.attendance && !quotedPartnerAsk(msg, state)) {
         out.reasons.push("org does not track attendance");
         return;
       }

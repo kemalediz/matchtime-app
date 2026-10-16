@@ -4876,4 +4876,5 @@ export const en = {
     `🤝 ${p.name} (${p.partner}) answered your ask for ${p.day}: ${p.bench ? "on your bench for you to pick" : "in the squad"}.`,
   xask_vol_out_notice_asker: (p: { name: string; partner: string; day: string }) =>
     `${p.name} (${p.partner}) can't play ${p.day} after all, so I've taken them off.`,
+  xask_vol_game_over: (p: { asker: string }) => `*${p.asker}*'s game is over now, so there's nothing to change.`,
 };

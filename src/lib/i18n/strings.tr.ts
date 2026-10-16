@@ -3685,6 +3685,7 @@ export const tr: Strings = {
   xask_vol_notice_asker: (p) =>
     `🤝 ${p.name} (${p.partner}) ${p.day} isteğinize yanıt verdi: ${p.bench ? "seçmeniz için yedek listenizde" : "kadroda"}.`,
   xask_vol_out_notice_asker: (p) => `${p.name} (${p.partner}) ${p.day} maçına gelemiyor, bu yüzden listeden çıkardım.`,
+  xask_vol_game_over: (p) => `*${p.asker}* maçı artık bitti, değiştirecek bir şey yok.`,
 };
 
 /**

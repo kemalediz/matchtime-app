@@ -1640,6 +1640,7 @@ const SAMPLES: SampleArgs = {
   xask_vol_overlap: { club: "SUTTONCLUB", time: "TIMEX", asker: "FNFCLUB" },
   xask_vol_unknown: { club: "SUTTONCLUB" },
   xask_vol_failed: null,
+  xask_vol_game_over: { asker: "FNFCLUB" },
   xask_vol_notice_asker: { name: "NAMEX", partner: "SUTTONCLUB", day: "DAYLABEL", bench: true },
   xask_vol_out_notice_asker: { name: "NAMEX", partner: "SUTTONCLUB", day: "DAYLABEL" },
 };

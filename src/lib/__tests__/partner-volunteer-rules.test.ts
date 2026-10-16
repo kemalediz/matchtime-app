@@ -11,6 +11,8 @@ const base = (over: Partial<VolunteerInput> = {}): VolunteerInput => ({
   inOverlappingOwnGame: false,
   ordinaryAskerMember: false,
   onAskerMatch: false,
+  askerMatchLive: true,
+  pastGuest: false,
   ...over,
 });
 

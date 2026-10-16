@@ -49,7 +49,7 @@ export async function loadAwaitingQuestions(
 ): Promise<AwaitingQuestion[]> {
   const since = new Date(now.getTime() - LOOKBACK_MS);
 
-  const [offers, pending, tentative, partnerAsks] = await Promise.all([
+  const [offers, pending, tentative] = await Promise.all([
     db.benchSlotOffer.findMany({
       where: { resolvedAt: null, createdAt: { gte: since }, match: { activity: { orgId } } },
       select: { id: true, createdAt: true, match: { select: { date: true } } },
@@ -66,16 +66,6 @@ export async function loadAwaitingQuestions(
       },
       select: { id: true, notifiedAt: true, match: { select: { date: true } } },
     }),
-    // A partner club's ask posted here (cross-club ask, slice S3). Never
-    // fails the router: before the migration, or on an error, nothing.
-    Promise.resolve()
-      .then(() =>
-        db.partnerAsk.findMany({
-          where: { partnerOrgId: orgId, status: "posted", postedAt: { gte: since } },
-          select: { id: true, postedAt: true, closesAt: true },
-        }),
-      )
-      .catch(() => [] as Array<{ id: string; postedAt: Date | null; closesAt: Date }>),
   ]);
 
   return [
@@ -100,15 +90,6 @@ export async function loadAwaitingQuestions(
       askedAt: t.notifiedAt!,
       closesAt: t.match.date,
     })),
-    ...(partnerAsks ?? [])
-      .filter((a) => a.postedAt)
-      .map((a) => ({
-        id: a.id,
-        orgId,
-        kind: "partner-ask" as const,
-        askedAt: a.postedAt!,
-        closesAt: a.closesAt,
-      })),
   ];
 }
 
