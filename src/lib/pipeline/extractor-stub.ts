@@ -119,8 +119,10 @@ export function extractorStubFromEnv(env: NodeJS.ProcessEnv = process.env): Pipe
   });
 }
 
-/** Everything after the "THE MESSAGE (from …):" header, trimmed. */
+/** Everything after the "THE MESSAGE (from …):" header, trimmed. The
+ *  header runs to the end of its line: an unknown sender is "(unknown)",
+ *  brackets and all. */
 export function messageBodyOf(user: string): string {
-  const m = /^THE MESSAGE \(from [^)]*\):\n([\s\S]*)$/m.exec(user);
+  const m = /^THE MESSAGE \(from .*\):\n([\s\S]*)$/m.exec(user);
   return (m ? m[1] : user).trim();
 }

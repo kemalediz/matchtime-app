@@ -248,9 +248,12 @@ test.describe("the admin-group request", () => {
   );
   test.afterAll(() => clearPipelineStubs());
 
-  test("a non-admin's 'poster' is ignored: no reply, no job", async ({ request, db }) => {
-    const out = await say(request, "poster", PLAYER);
-    expect(out).toMatchObject({ handled: false, replyText: null });
+  // 2026-10-16 (Kemal): anyone in HQ may ask for a graphic, as for a
+  // question; only what changes the club is the organisers'. Before any
+  // teams, so no job is queued and the counts below stand.
+  test("a non-admin's 'team sheet' is answered too: 'No teams yet.', no job", async ({ request, db }) => {
+    const out = await say(request, "team sheet", PLAYER);
+    expect(out).toMatchObject({ handled: true, outcome: "graphic-no-teams", replyText: "No teams yet." });
     expect(await graphicJobs(db)).toHaveLength(0);
   });
 

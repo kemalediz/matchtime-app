@@ -1374,6 +1374,12 @@ export const en = {
   /** A message addressed to MatchTime in the admin group (an @tag, or a
    *  reply to its own message) that it could not read as anything it does. */
   hq_not_understood: `I didn't catch what you'd like me to do. Ask *what can you do?* to see what I can do here.`,
+  /** Someone in the admin group who is not an owner or admin of the club
+   *  asked MatchTime to change something (2026-10-16). `names` is the
+   *  club's owners and admins, joined ("Hamzah or Raihan"); empty when it
+   *  has none on record. */
+  hq_only_organisers: (p: { names: string }): string =>
+    p.names ? `Only ${p.names} can change that.` : `Only the club's organisers can change that.`,
   // ── An organiser asks MatchTime, in HQ, to ask the players' group for a
   //    player (2026-10-16, admin-group-ask-group.ts). A first-come club's
   //    post is `slot_opened`, unchanged. ──
