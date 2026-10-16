@@ -31,7 +31,7 @@ export async function attendMatch(matchId: string) {
           // anyway, so the degraded path now costs one query FEWER than
           // the `MAX(Membership.lastSeenInGroupAt)` aggregate it replaces,
           // and the healthy path still costs nothing extra.
-          org: { select: { name: true, lastParticipantSweepAt: true } },
+          org: { select: { name: true, lastParticipantSweepAt: true, benchPickMode: true } },
         },
       },
     },
@@ -140,6 +140,13 @@ export async function attendMatch(matchId: string) {
   revalidatePath(`/matches/${matchId}`);
   revalidatePath("/matches");
   revalidatePath("/");
+
+  // What the write did, so the button's toast never says "you're in" of a
+  // BENCH row (2026-10-16, the FNF tentative follow-up incident's class).
+  return {
+    status: (result.status === "BENCH" ? "BENCH" : "CONFIRMED") as "CONFIRMED" | "BENCH",
+    organiser: match.activity.org.benchPickMode === "organiser",
+  };
 }
 
 export async function dropFromMatch(matchId: string) {

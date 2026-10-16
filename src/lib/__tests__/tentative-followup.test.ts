@@ -143,34 +143,96 @@ describe("evaluateFollowupGuard", () => {
  * have. The ack must be derived from what the DB actually did.
  */
 describe("buildTentativeFollowupAck", () => {
-  it("confirms an IN that actually landed", () => {
-    const ack = buildTentativeFollowupAck({ decision: "in", failed: false });
+  const M = { matchName: "Friday 9-a-side", matchWhen: "Fri 16 Oct, 20:30" };
+
+  it("confirms an IN that actually landed in the squad", () => {
+    const ack = buildTentativeFollowupAck({ decision: "in", failed: false, status: "CONFIRMED", ...M });
     expect(ack).toContain("you're in");
     expect(ack.toLowerCase()).not.toContain("sorry");
   });
 
   it("acknowledges an OUT that actually landed", () => {
-    const ack = buildTentativeFollowupAck({ decision: "out", failed: false });
+    const ack = buildTentativeFollowupAck({ decision: "out", failed: false, status: "DROPPED", ...M });
     expect(ack.toLowerCase()).toContain("no worries");
     expect(ack).not.toContain("you're in");
   });
 
+  it("acknowledges an OUT from a player with no row (a no-op, not a failure)", () => {
+    const ack = buildTentativeFollowupAck({ decision: "out", failed: false, status: null, ...M });
+    expect(ack.toLowerCase()).toContain("no worries");
+  });
+
   it("NEVER claims the player is in when the write threw", () => {
-    const ack = buildTentativeFollowupAck({ decision: "in", failed: true });
+    const ack = buildTentativeFollowupAck({ decision: "in", failed: true, status: null, ...M });
     expect(ack).not.toContain("you're in");
     expect(ack).not.toContain("Brilliant");
     expect(ack.toLowerCase()).toContain("couldn't update the squad");
   });
 
   it("is honest about a failed OUT too", () => {
-    const ack = buildTentativeFollowupAck({ decision: "out", failed: true });
+    const ack = buildTentativeFollowupAck({ decision: "out", failed: true, status: null, ...M });
     expect(ack.toLowerCase()).toContain("couldn't update the squad");
   });
 
-  it("has no em dashes (house rule)", () => {
+  // FNF, 2026-10-16: Naim answered the follow-up DM with IN, the write put
+  // him on the BENCH (an organiser-pick club: the organisers pick who
+  // fills a place), and he was told "✅ Brilliant, you're in!" two minutes
+  // before anybody picked him. The ack was built from his answer, not from
+  // the row the write left.
+  it("an IN that landed on the bench in an organiser-pick club says bench, and that the organisers pick", () => {
+    const ack = buildTentativeFollowupAck({ decision: "in", failed: false, status: "BENCH", organiser: true, ...M });
+    expect(ack).not.toContain("you're in");
+    expect(ack).not.toContain("Brilliant");
+    expect(ack).toContain("bench");
+    expect(ack).toContain("organisers pick who plays");
+    expect(ack).toContain("Friday 9-a-side");
+    expect(ack).not.toMatch(/full/i);
+  });
+
+  it("an IN that landed on the bench in a first-come club says the squad is full and you're on the bench", () => {
+    const ack = buildTentativeFollowupAck({ decision: "in", failed: false, status: "BENCH", organiser: false, ...M });
+    expect(ack).not.toContain("you're in");
+    expect(ack).toContain("bench");
+    expect(ack).toContain("full");
+    expect(ack).not.toContain("organisers");
+  });
+
+  it("an IN with no row left behind and no exception promises nothing", () => {
+    const ack = buildTentativeFollowupAck({ decision: "in", failed: false, status: null, ...M });
+    expect(ack).not.toContain("you're in");
+    expect(ack).not.toContain("Brilliant");
+  });
+
+  it("Turkish: the bench answer never says 'kadrodasın'", () => {
+    for (const organiser of [true, false]) {
+      const ack = buildTentativeFollowupAck({
+        decision: "in",
+        failed: false,
+        status: "BENCH",
+        organiser,
+        lang: "tr",
+        ...M,
+      });
+      expect(ack).not.toContain("kadrodasın");
+      // "yedek" (the bench) inflects: "yedek listesine", "yedeğe".
+      expect(ack.toLowerCase()).toMatch(/yede[kğ]/);
+    }
+    expect(
+      buildTentativeFollowupAck({ decision: "in", failed: false, status: "CONFIRMED", lang: "tr", ...M }),
+    ).toContain("kadrodasın");
+  });
+
+  it("has no em or en dashes (house rule)", () => {
     for (const decision of ["in", "out"] as const) {
       for (const failed of [false, true]) {
-        expect(buildTentativeFollowupAck({ decision, failed })).not.toContain("—");
+        for (const status of ["CONFIRMED", "BENCH", "DROPPED", null] as const) {
+          for (const organiser of [true, false]) {
+            for (const lang of ["en", "tr"]) {
+              const ack = buildTentativeFollowupAck({ decision, failed, status, organiser, lang, ...M });
+              expect(ack).not.toMatch(/[—–]/);
+            }
+          }
+        }
       }
     }
   });
