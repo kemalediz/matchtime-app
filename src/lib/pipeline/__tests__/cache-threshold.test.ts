@@ -233,7 +233,13 @@ describe("the prompts this pipeline actually sends", () => {
     // claude-sonnet-5, dev key, the free endpoint): 10,688 characters /
     // 4,064 tokens before, 11,770 / 4,447 after. The estimator's 2,943 sits
     // under it, and the cache stands.
-    expect(estimateTokens(EXTRACTOR_PROMPTS.question)).toBeLessThanOrEqual(4_447);
+    //
+    // 2026-10-16, later: the `club` topic (FNF HQ, "MatchTime who are the
+    // admins?"), folded into the topic list, two close calls and one
+    // example group the same way. MEASURED (`count_tokens`,
+    // claude-sonnet-5, dev key, the free endpoint, system prompt alone):
+    // 12,463 characters / 4,725 tokens. The estimator's 3,115 sits under it.
+    expect(estimateTokens(EXTRACTOR_PROMPTS.question)).toBeLessThanOrEqual(4_725);
     expect(shouldCachePrompt(EXTRACTOR_MODEL, EXTRACTOR_PROMPTS.question)).toBe(true);
   });
 

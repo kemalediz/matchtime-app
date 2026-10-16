@@ -135,7 +135,7 @@ const Q: QCase[] = [
   { text: "@Match Time istatistiklerim", check: (f) => f.topic === "my_stats", why: "my_stats, TR" },
   { text: "@Match Time top 5 ratings in the last month", check: (f) => f.topic === "stats" && f.table === "ratings" && f.listSize === 5 && f.period?.kind === "last", why: "stats, table, size, period" },
   { text: "@Match Time we're short, what are our options?", check: (f) => f.topic === "options", why: "options" },
-  { text: "@Match Time how much do we pay each?", check: (f) => f.topic === "other", why: "the fee is other" },
+  { text: "@Match Time how much do we pay each?", check: (f) => f.topic === "club", why: "the fee is club since 2026-10-16 (in the prompt)" },
 ];
 
 async function main() {

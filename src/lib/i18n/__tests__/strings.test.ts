@@ -98,6 +98,7 @@ const SAMPLES: SampleArgs = {
   fallback_player: null,
   answer_count: { stated: true, confirmed: 11, maxPlayers: 14, kickoffLabel: "Tue 21:30", need: 3 },
   answer_fixture: { kickoffLabel: "Tue 21:30", venue: "Goals North Cheam" },
+  answer_club: { admins: "Hamzah ve Raihan", collector: "Hamzah", fee: "5", feeSplit: false, teamsReady: "10:00", forOrganisers: false },
   answer_score_no_match: null,
   answer_score_no_score: { kickoffLabel: "Tue 21:30" },
   answer_score_result: { kickoffLabel: "Tue 21:30", redLabel: "Kırmızı", red: 4, yellow: 2, yellowLabel: "Sarı", winnerLabel: "Kırmızı" },

@@ -410,6 +410,13 @@ export type QuestionTopic =
    * already sends, written for the club's settings (`buildHelpReply`).
    */
   | "how_it_works"
+  /**
+   * HOW THE CLUB ITSELF IS RUN (2026-10-16, FNF HQ: "MatchTime who are the
+   * admins?" got the help menu). Who the admins are, who collects the
+   * money, the match fee, what time the teams are made. Answered in both
+   * groups (nothing private), from the roster and `SquadState.club`.
+   */
+  | "club"
   | "other";
 
 /** The help topics a `how_it_works` question can name: the ones the
@@ -915,6 +922,27 @@ export interface SquadState {
    * reasons as `payments` above. Optional; absent means NOT LOADED.
    */
   results?: Record<string, RecentResults> | null;
+  /**
+   * THE CLUB'S SETUP (2026-10-16), for a `club` question in the admin
+   * group. Loaded by `answer-batch.ts` only when one survived ownership
+   * (`loadClubSnapshot`). Optional; absent means NOT LOADED.
+   */
+  club?: ClubSnapshot | null;
+}
+
+/** What a `club` question is answered from, beside the roster's admins. */
+export interface ClubSnapshot {
+  /** The money collector's name (`Organisation.paymentHolderId`), or null when none is set. */
+  collectorName: string | null;
+  /** The per-player fee of the upcoming match (its own, else its game's), or null. */
+  feePerPlayer: number | null;
+  /** The collector enters the pitch total and it is split between who played. */
+  feeSplitTotal: boolean;
+  /** "Teams ready" as `effectiveTeamsReadyTime` reads it: "HH:MM" or "off". */
+  teamsReady: string;
+  /** Set by `answer-batch.ts`, never by the loader: the answer is for the
+   *  organisers (HQ), which only changes the teams line's wording. */
+  forOrganisers?: boolean;
 }
 
 /**
@@ -1297,6 +1325,8 @@ export type SpeechIntent =
   | { kind: "answer_squad"; messageId: string }
   /** kickoff time and venue, and nothing else — see `QuestionTopic`. */
   | { kind: "answer_fixture"; messageId: string }
+  /** The club's setup, for the organisers (`QuestionTopic.club`). */
+  | { kind: "answer_club"; messageId: string }
   | { kind: "answer_person_status"; messageId: string; personRef: string; userId: string | null }
   | { kind: "answer_phones"; messageId: string }
   /**

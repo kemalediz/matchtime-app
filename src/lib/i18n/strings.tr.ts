@@ -323,6 +323,15 @@ export const tr: Strings = {
     return `${head}${tail}`;
   },
   answer_fixture: (p) => (p.venue ? `⚽ ${p.kickoffLabel}, ${p.venue}.` : `⚽ ${p.kickoffLabel}.`),
+  answer_club: (p) =>
+    [
+      `👥 Yöneticiler: ${p.admins || "yok"}`,
+      `💷 Parayı toplayan: ${p.collector ?? "ayarlanmadı"}`,
+      `💷 Maç ücreti: ${p.fee !== null ? `kişi başı £${p.fee}` : p.feeSplit ? "saha ücreti oynayanlar arasında bölünür" : "ayarlanmadı"}`,
+      p.forOrganisers
+        ? `⚽ Takımlar hazır: ${p.teamsReady === "off" ? "kapalı" : `maç günü ${p.teamsReady}`}`
+        : p.teamsReady === "off" ? "⚽ Takımlar: maçtan önce organizatörler ayarlıyor" : `⚽ Takımların kurulduğu saat: maç günü ${p.teamsReady}`,
+    ].join("\n"),
   answer_score_no_match: "Bu grup için kayıtlı oynanmış bir maç bulamadım.",
   answer_score_no_score: (p) => `${p.kickoffLabel} için henüz skor bildirilmedi, sonucu yazın, kaydedeyim.`,
   answer_score_result: (p) =>

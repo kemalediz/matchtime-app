@@ -37,6 +37,8 @@ const graphics = vi.hoisted(() => ({ answerGraphicRequest: vi.fn() }));
 vi.mock("@/lib/admin-group-graphics", () => graphics);
 const groupAsk = vi.hoisted(() => ({ askPlayersGroup: vi.fn() }));
 vi.mock("@/lib/admin-group-ask-group", () => groupAsk);
+const hqQuestion = vi.hoisted(() => ({ answerHqQuestion: vi.fn() }));
+vi.mock("@/lib/admin-group-question", () => hqQuestion);
 
 import { understandAdminMessage } from "../admin-group-understand";
 
@@ -90,6 +92,7 @@ beforeEach(() => {
   graphics.answerGraphicRequest.mockResolvedValue({ outcome: "graphic-queued", replyText: null });
   squad.handleAdminSquadChange.mockResolvedValue({ handled: true, outcome: "squad-changed", replyText: "Done: Tom out." });
   groupAsk.askPlayersGroup.mockResolvedValue({ outcome: "group-asked", replyText: "Asked in the main chat for 1 player." });
+  hqQuestion.answerHqQuestion.mockResolvedValue(null);
 });
 
 describe("the router is the players' group's router, shown the organisers' context", () => {
@@ -170,7 +173,7 @@ describe("the other routes reach the code the rest of MatchTime uses", () => {
     expect(graphics.answerGraphicRequest).toHaveBeenLastCalledWith({ orgId: "org-fnf", lang: "en", kind: "teams", now: NOW });
   });
 
-  it("help: the HQ list for this club", async () => {
+  it("help that the question extractor does not answer: the HQ list for this club", async () => {
     const r = await ask("what can you do?", "help");
     expect(r?.outcome).toBe("hq-help");
     expect(r?.replyText).toContain("*MatchTime in your admin group*");
@@ -209,9 +212,10 @@ describe("the other routes reach the code the rest of MatchTime uses", () => {
     expect(squad.handleAdminSquadChange).not.toHaveBeenCalled();
   });
 
-  it.each(["question", "score", "admin_ops"])("%s: clearly for MatchTime but not done from HQ: one line, never silent", async (route) => {
+  it.each(["score", "admin_ops"])("%s: clearly for MatchTime but not done from HQ: one line, never silent", async (route) => {
     expect((await ask("@Match Time who has paid?", route))?.replyText).toBe("I can't do that from this group. Ask *what can you do?* to see what I can do here.");
     expect(groupAsk.askPlayersGroup).not.toHaveBeenCalled();
+    expect(hqQuestion.answerHqQuestion).not.toHaveBeenCalled();
   });
 
   it("ask_group: the players' group is asked for a player, HQ hears one line, no extractor call", async () => {
@@ -286,5 +290,60 @@ describe("unsure, addressed to MatchTime: never silent", () => {
     const r = await ask("@Match Time can you sort it", "unsure", { org: { ...ORG, squadMode: "monthly" } });
     expect(r?.outcome).toBe("hq-not-understood");
     expect(squad.handleAdminSquadChange).not.toHaveBeenCalled();
+  });
+});
+
+// FNF, 2026-10-16 14:29 London: Hamzah wrote "MatchTime who are the admins?"
+// in HQ. The router returned `help` (Vercel: "routed help by model"), and
+// `help` sent the generic HQ menu. `question` had a canned "not from this
+// group" line. Both now ask the SAME question extractor and answer code the
+// players' group uses (`answerHqQuestion`, `runAnswerBatch` with the
+// organisers as the audience); the HQ menu stays for what that code does not
+// answer on the help route.
+describe("questions in HQ: the shared question answering, with the organisers' context", () => {
+  const ADMINS = "👥 Admins: Hamzah and Raihan\n💷 Money collector: Hamzah\n💷 Match fee: £5 a player\n⚽ Teams ready: 10:00 on match day";
+
+  it("the incident: routed help, the extractor reads a club question, the admins are named", async () => {
+    hqQuestion.answerHqQuestion.mockResolvedValue({ outcome: "hq-answered", replyText: ADMINS });
+    const r = await ask("MatchTime who are the admins?", "help");
+    expect(r).toEqual({ route: "help", outcome: "hq-answered", replyText: ADMINS });
+    expect(hqQuestion.answerHqQuestion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orgId: "org-fnf",
+        lang: "en",
+        messageId: "wa-9",
+        body: "MatchTime who are the admins?",
+        senderUserId: "u-admin",
+        senderName: "Raihan",
+        now: NOW,
+      }),
+    );
+    // The help menu is what a how-it-works question is answered with in HQ.
+    expect(hqQuestion.answerHqQuestion.mock.calls[0][0].hqHelp).toContain("*MatchTime in your admin group*");
+  });
+
+  it("routed question: the same path", async () => {
+    hqQuestion.answerHqQuestion.mockResolvedValue({ outcome: "hq-answered", replyText: "On the bench: Tom." });
+    const r = await ask("who's on the bench?", "question");
+    expect(r).toEqual({ route: "question", outcome: "hq-answered", replyText: "On the bench: Tom." });
+  });
+
+  it("the recent HQ chat is the extractor's history, MatchTime's own lines as MatchTime", async () => {
+    hqLog.hqLogSince.mockResolvedValue([mtRow(ASKED, "teams:m1"), orgRow(new Date("2026-10-16T09:05:00Z"))]);
+    await ask("how many are in?", "question");
+    expect(hqQuestion.answerHqQuestion.mock.calls[0][0].history).toEqual([
+      { author: "MatchTime", body: TEAMS_TEXT },
+      { author: null, body: "who has the bibs?" },
+    ]);
+  });
+
+  it("a question nothing answers: one line, never silent", async () => {
+    const r = await ask("what's the weather like?", "question");
+    expect(r).toEqual({ route: "question", outcome: "hq-not-here", replyText: "I can't do that from this group. Ask *what can you do?* to see what I can do here." });
+  });
+
+  it("in Turkish: the club's language reaches the answering code", async () => {
+    await ask("yöneticiler kim?", "help", { org: { ...ORG, language: "tr" } });
+    expect(hqQuestion.answerHqQuestion.mock.calls[0][0].lang).toBe("tr");
   });
 });

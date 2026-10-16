@@ -1995,6 +1995,13 @@ export function decide(input: EngineInput): EngineResult {
           out.helpRequested = { topic: facts.feature ?? null };
           out.reasons.push(`how-it-works question: the help explainer for ${facts.feature ?? "MatchTime as a whole"}`);
           break;
+        case "club":
+          // THE CLUB'S SETUP (2026-10-16), for the organisers: who to ask
+          // is `answer-batch.ts`'s (`audience`), the facts are the roster's
+          // admins and `state.club`, rendered by the composer.
+          speech.push({ kind: "answer_club", messageId: msg.id });
+          out.reasons.push(`club question answered from the roster and the club's settings (${state.club ? "loaded" : "not loaded"})`);
+          break;
         default:
           // The `question` route is the least designed part of the
           // proposal (§14.3) and this is where that shows. Saying so is
