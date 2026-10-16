@@ -74,8 +74,8 @@ const TODAY =
   `*Playing:*\n${ROSTER}\n\nSee you all there ⚽`;
 
 const INVITE_NO_REACTIONS =
-  "🪑 *Bench is open.* Say *IN* and I'll put you on the bench. " +
-  "If someone drops out I tag the bench here and the first to reply *IN* takes the slot.";
+  "🪑 *The waiting list (the bench) is open.* Say *IN* and I'll put you on it. " +
+  "If someone drops out, I tag everyone on it here and the first to reply *IN* takes the slot.";
 
 function features(bench: boolean) {
   return { botEnabled: true, attendance: true, bench };
@@ -106,7 +106,7 @@ describe("announceSquadFullIfJustFilled: bench feature OFF", () => {
     await announceSquadFullIfJustFilled("m1");
     expect(await postedText()).toBe(
       `✅ *Squad complete (14/14)* for *Tuesday 7-a-side* on Tue 22 Sept 21:30 🙌\n\n` +
-        `*Playing:*\n${ROSTER}\n\n*Bench (1):*\n1. Najib Ahmadi\n\nSee you all there ⚽`,
+        `*Playing:*\n${ROSTER}\n\n*Waiting list (1):*\n1. Najib Ahmadi\n\nSee you all there ⚽`,
     );
   });
 
@@ -146,7 +146,7 @@ describe("announceSquadFullIfJustFilled: bench feature ON", () => {
     await announceSquadFullIfJustFilled("m1");
     expect(await postedText()).toBe(
       `✅ *Squad complete (14/14)* for *Tuesday 7-a-side* on Tue 22 Sept 21:30 🙌\n\n` +
-        `*Playing:*\n${ROSTER}\n\n*Bench (2):*\n1. Najib Ahmadi\n2. Mojib Sadat\n\n` +
+        `*Playing:*\n${ROSTER}\n\n*Waiting list (2):*\n1. Najib Ahmadi\n2. Mojib Sadat\n\n` +
         `See you all there ⚽\n\n${INVITE_NO_REACTIONS}`,
     );
   });
@@ -190,8 +190,8 @@ describe("buildSquadCompleteBenchInvite: the closing line", () => {
 
   it("offers the 👍 again the moment the gate is flipped back on", () => {
     expect(buildSquadCompleteBenchInvite({ mentionReactions: true })).toBe(
-      "🪑 *Bench is open.* Say *IN* and I'll put you on the bench. " +
-        "If someone drops out I tag the bench here and the first to react 👍 or reply *IN* takes the slot.",
+      "🪑 *The waiting list (the bench) is open.* Say *IN* and I'll put you on it. " +
+        "If someone drops out, I tag everyone on it here and the first to react 👍 or reply *IN* takes the slot.",
     );
   });
 

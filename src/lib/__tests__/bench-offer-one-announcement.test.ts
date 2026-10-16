@@ -178,12 +178,12 @@ describe("nobody picked in time: the offers are announced once", () => {
       "🎟 3 slots just opened for *Tuesday 7-a-side* on Tue 6 Oct. *First to claim them play.*\n\n" +
         "@447700900020 @447700900021\n\n" +
         "Just reply *IN* here to take one. No rush and no timeout, the slots go to whoever replies first " +
-        "and anyone who misses out stays on the bench. 🙏",
+        "and anyone who misses out stays on the waiting list (the bench). 🙏",
     );
     expect(out[1].text).toBe(
-      "👋 Hi Ozgur, 3 slots just opened for Tuesday 7-a-side on Tue 6 Oct and you're on the bench.\n\n" +
+      "👋 Hi Ozgur, 3 slots just opened for Tuesday 7-a-side on Tue 6 Oct and you're on the waiting list (the bench).\n\n" +
         "Want one? Reply *YES* here, or *IN* on the message I tagged you in, in the group. First to claim plays. " +
-        "No timeout, and if you're not free no worries, you stay on the bench. 🙏",
+        "No timeout, and if you're not free no worries, you stay on the waiting list. 🙏",
     );
   });
 
@@ -228,7 +228,7 @@ describe("nobody picked in time: the offers are announced once", () => {
     setWorld(match([offer(1), offer(2)]));
     const out = await offerPosts(MATCH_DAY);
     expect(out[0].text).toContain("🎟 2 slots just opened for *Tuesday 7-a-side* tonight.");
-    expect(out[1].text).toContain("2 slots just opened for Tuesday 7-a-side tonight and you're on the bench.");
+    expect(out[1].text).toContain("2 slots just opened for Tuesday 7-a-side tonight and you're on the waiting list (the bench).");
   });
 
   it("in Turkish, with no long dashes", async () => {
@@ -245,12 +245,12 @@ describe("nobody picked in time: the offers are announced once", () => {
         "🎟 3 yer açıldı: 6 Ekim Salı günkü *Tuesday 7-a-side* için. *İlk sahiplenenler oynar.*\n\n" +
           "@447700900020 @447700900021\n\n" +
           "Birini almak için buraya *VARIM* yazmanız yeterli. Acele yok, süre sınırı yok; yerler önce yazanların olur, " +
-          "yer kalmazsa diğerleri yedekte kalır. 🙏",
+          "yer kalmazsa diğerleri yedek listesinde kalır. 🙏",
       );
       expect(out[1].text).toBe(
-        "👋 Ozgur, 3 yer açıldı: 6 Ekim Salı günkü Tuesday 7-a-side için. Yedekte olduğun için sana da yazıyorum.\n\n" +
+        "👋 Ozgur, 3 yer açıldı: 6 Ekim Salı günkü Tuesday 7-a-side için. Yedek listesinde olduğun için sana da yazıyorum.\n\n" +
           "Birini ister misin? Almak için buraya *EVET* yaz ya da gruptaki etiketlediğim mesaja *VARIM* diye cevap ver. " +
-          "İlk sahiplenen oynar. Süre sınırı yok, müsait değilsen de sorun değil, yedekte kalırsın. 🙏",
+          "İlk sahiplenen oynar. Süre sınırı yok, müsait değilsen de sorun değil, yedek listesinde kalırsın. 🙏",
       );
       for (const i of out) expect(i.text).not.toMatch(/[–—]/);
     } finally {
@@ -340,21 +340,21 @@ describe("Sutton's shape: first come, teams published, a replaced player", () =>
         "🎟 A slot just opened on *Red* (replacing Player 4) for *Tuesday 7-a-side* tonight. *First to claim it plays.*\n\n" +
           `${TAGS}\n\n` +
           "Just reply *IN* here to take it. No rush and no timeout, whoever is free first gets it " +
-          "and everyone else stays on the bench. 🙏",
+          "and everyone else stays on the waiting list (the bench). 🙏",
       ],
       [
         "dm",
         "offer-o1:dm:u20",
-        "👋 Hi Ozgur, a slot just opened on Red (replacing Player 4) for Tuesday 7-a-side tonight and you're on the bench.\n\n" +
+        "👋 Hi Ozgur, a slot just opened on Red (replacing Player 4) for Tuesday 7-a-side tonight and you're on the waiting list (the bench).\n\n" +
           "Want it? Reply *YES* here, or *IN* on the message I tagged you in, in the group. First to claim plays. " +
-          "No timeout, and if you're not free no worries, you stay on the bench. 🙏",
+          "No timeout, and if you're not free no worries, you stay on the waiting list. 🙏",
       ],
       [
         "dm",
         "offer-o1:dm:u21",
-        "👋 Hi Wasim, a slot just opened on Red (replacing Player 4) for Tuesday 7-a-side tonight and you're on the bench.\n\n" +
+        "👋 Hi Wasim, a slot just opened on Red (replacing Player 4) for Tuesday 7-a-side tonight and you're on the waiting list (the bench).\n\n" +
           "Want it? Reply *YES* here, or *IN* on the message I tagged you in, in the group. First to claim plays. " +
-          "No timeout, and if you're not free no worries, you stay on the bench. 🙏",
+          "No timeout, and if you're not free no worries, you stay on the waiting list. 🙏",
       ],
     ]);
   });
@@ -379,14 +379,14 @@ describe("Sutton's shape: first come, teams published, a replaced player", () =>
         "• on *Yellow*, replacing Player 10\n\n" +
         `${TAGS}\n\n` +
         "Just reply *IN* here to take one. No rush and no timeout, the slots go to whoever replies first " +
-        "and anyone who misses out stays on the bench. 🙏",
+        "and anyone who misses out stays on the waiting list (the bench). 🙏",
     );
     expect(out[1].text).toBe(
-      "👋 Hi Ozgur, 2 slots just opened for Tuesday 7-a-side tonight and you're on the bench.\n" +
+      "👋 Hi Ozgur, 2 slots just opened for Tuesday 7-a-side tonight and you're on the waiting list (the bench).\n" +
         "• on Red, replacing Player 4\n" +
         "• on Yellow, replacing Player 10\n\n" +
         "Want one? Reply *YES* here, or *IN* on the message I tagged you in, in the group. First to claim plays. " +
-        "No timeout, and if you're not free no worries, you stay on the bench. 🙏",
+        "No timeout, and if you're not free no worries, you stay on the waiting list. 🙏",
     );
   });
 
@@ -419,14 +419,14 @@ describe("Sutton's shape: first come, teams published, a replaced player", () =>
           "• *Sarı* takımında, Player 10 yerine\n\n" +
           `${TAGS}\n\n` +
           "Birini almak için buraya *VARIM* yazmanız yeterli. Acele yok, süre sınırı yok; yerler önce yazanların olur, " +
-          "yer kalmazsa diğerleri yedekte kalır. 🙏",
+          "yer kalmazsa diğerleri yedek listesinde kalır. 🙏",
       );
       expect(out[1].text).toBe(
-        "👋 Ozgur, 2 yer açıldı: bu akşamki Tuesday 7-a-side için. Yedekte olduğun için sana da yazıyorum.\n" +
+        "👋 Ozgur, 2 yer açıldı: bu akşamki Tuesday 7-a-side için. Yedek listesinde olduğun için sana da yazıyorum.\n" +
           "• Kırmızı takımında, Player 4 yerine\n" +
           "• Sarı takımında, Player 10 yerine\n\n" +
           "Birini ister misin? Almak için buraya *EVET* yaz ya da gruptaki etiketlediğim mesaja *VARIM* diye cevap ver. " +
-          "İlk sahiplenen oynar. Süre sınırı yok, müsait değilsen de sorun değil, yedekte kalırsın. 🙏",
+          "İlk sahiplenen oynar. Süre sınırı yok, müsait değilsen de sorun değil, yedek listesinde kalırsın. 🙏",
       );
       for (const i of out) expect(i.text).not.toMatch(/[–—]/);
     } finally {

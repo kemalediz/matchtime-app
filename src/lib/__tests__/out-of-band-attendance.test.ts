@@ -78,7 +78,7 @@ describe("buildOutOfBandAttendanceLine", () => {
       maxPlayers: 14,
     });
     expect(line).toBe(
-      "📋 *Zara Zest* replied IN by DM and goes to the bench. Squad *14/14*.",
+      "📋 *Zara Zest* replied IN by DM and goes on the waiting list (the bench). Squad *14/14*.",
     );
   });
 

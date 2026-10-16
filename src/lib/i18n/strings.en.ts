@@ -117,12 +117,20 @@ export const en = {
   squad_status_lead: (p: { withBench: boolean; confirmed: number; maxPlayers: number; need: number }): string => {
     const count = `*${p.confirmed}/${p.maxPlayers}*`;
     return (
-      `📋 Based on all the messages I've picked up, here's the latest squad${p.withBench ? " and bench" : ""}: ` +
+      `📋 Based on all the messages I've picked up, here's the latest squad${p.withBench ? " and waiting list (the bench)" : ""}: ` +
       (p.need > 0 ? `${count}, need *${p.need} more* 🙏` : `${count} ✅ full squad.`)
     );
   },
   playing_header: "*Playing:*",
+  /** ⚠️ MODEL PROMPT ONLY (2026-10-16). `buildLanguageTail`
+   *  (message-analyzer.ts) hands this header to the chase model, so it is
+   *  left as it was: changing it is a prompt change. Every deterministic
+   *  post prints `waiting_list_header` instead. */
   bench_header: (p: { count: number }): string => `*Bench (${p.count}):*`,
+  /** The players' heading over the people waiting for a place, in every
+   *  deterministic post (2026-10-16, FNF: players did not know what "the
+   *  bench" meant). */
+  waiting_list_header: (p: { count: number }): string => `*Waiting list (${p.count}):*`,
 
   // ── row 2: formatTeamsPost (group-copy.ts) ───────────────────────
 
@@ -193,8 +201,8 @@ export const en = {
   /** The closing line of the squad-complete post when the bench feature
    *  is on. `how` is `bench_promotion_how`. */
   squad_complete_bench_invite: (p: { how: string }): string =>
-    `🪑 *Bench is open.* Say *IN* and I'll put you on the bench. ` +
-    `If someone drops out I tag the bench here and ${p.how}.`,
+    `🪑 *The waiting list (the bench) is open.* Say *IN* and I'll put you on it. ` +
+    `If someone drops out, I tag everyone on it here and ${p.how}.`,
   /** The group post that offers an open slot to the whole bench at once. */
   bench_offer_group_post: (p: { context: string; tagList: string; reactions: boolean }): string => {
     const claim = p.reactions
@@ -204,7 +212,7 @@ export const en = {
       `🎟 A slot just opened ${p.context}. *First to claim it plays.*\n\n` +
       `${p.tagList}\n\n` +
       `${claim} No rush and no timeout, whoever is free first gets it ` +
-      `and everyone else stays on the bench. 🙏`
+      `and everyone else stays on the waiting list (the bench). 🙏`
     );
   },
   /** The same post when SEVERAL slots opened at once (an organiser-pick
@@ -222,7 +230,7 @@ export const en = {
       `\n` +
       `${p.tagList}\n\n` +
       `${claim} No rush and no timeout, the slots go to whoever replies first ` +
-      `and anyone who misses out stays on the bench. 🙏`
+      `and anyone who misses out stays on the waiting list (the bench). 🙏`
     );
   },
 
@@ -378,10 +386,10 @@ export const en = {
   answer_payments_all_settled: (p: { kickoffLabel: string }): string => `💳 All settled for ${p.kickoffLabel} 🙌`,
   answer_payments_unpaid: (p: { unpaid: number; chargeable: number; kickoffLabel: string }): string =>
     `💳 ${p.unpaid} of ${p.chargeable} still to pay for ${p.kickoffLabel}. I don't put names to that in the group.`,
-  answer_bench_empty: "Nobody's on the bench right now.",
-  answer_bench_list: (p: { names: string[] }): string => `On the bench: ${joinList("en", p.names)}.`,
+  answer_bench_empty: "Nobody's on the waiting list (the bench) right now.",
+  answer_bench_list: (p: { names: string[] }): string => `On the waiting list (the bench): ${joinList("en", p.names)}.`,
   answer_person_not_down: (p: { who: string; kickoffLabel: string }): string => `${p.who} isn't down for ${p.kickoffLabel} yet.`,
-  answer_person_bench: (p: { who: string; kickoffLabel: string }): string => `${p.who} is on the bench for ${p.kickoffLabel}.`,
+  answer_person_bench: (p: { who: string; kickoffLabel: string }): string => `${p.who} is on the waiting list (the bench) for ${p.kickoffLabel}.`,
   answer_person_confirmed: (p: { who: string; kickoffLabel: string }): string => `Yes, ${p.who} has a slot for ${p.kickoffLabel}.`,
   answer_phones_none: "Everyone in the squad has a number on record.",
   answer_phones_missing: (p: { names: string[] }): string => `No number on record for ${joinList("en", p.names)}.`,
@@ -571,7 +579,7 @@ export const en = {
   needs_tag_for_rest: (p: { dropped: string[]; benched: string[] }): string => {
     const parts: string[] = [];
     if (p.dropped.length > 0) parts.push(`taken ${joinList("en", p.dropped)} out`);
-    if (p.benched.length > 0) parts.push(`moved ${joinList("en", p.benched)} to the bench`);
+    if (p.benched.length > 0) parts.push(`moved ${joinList("en", p.benched)} to the waiting list (the bench)`);
     return (
       `One thing I've left alone: I've not ${parts.join(" or ")}. ` +
       `That bit needs an @Match Time tag, so tag me and I'll sort it 👍`
@@ -579,8 +587,8 @@ export const en = {
   },
   bench_claim_too_late: (p: { firstName: string; confirmed: number; maxPlayers: number }): string =>
     `Thanks ${p.firstName} 🙏 someone got there first, so the squad is back to ` +
-    `${p.confirmed}/${p.maxPlayers}. You're still on the bench and ` +
-    `first in line if another slot opens.`,
+    `${p.confirmed}/${p.maxPlayers}. You're still on the waiting list (the bench) ` +
+    `if another slot opens.`,
   pending_confirmed_ack: (p: { names: string[]; kickoffLabel: string }): string =>
     `Got it 🙌 ${joinList("en", p.names)} ${p.names.length === 1 ? "is" : "are"} down for ${p.kickoffLabel}.`,
 
@@ -641,7 +649,7 @@ export const en = {
         : p.source === "dm"
           ? "replied IN by DM"
           : "marked IN on the app";
-    return `📋 *${p.name}* ${how} and goes to the bench. Squad *${p.confirmed}/${p.maxPlayers}*.`;
+    return `📋 *${p.name}* ${how} and goes on the waiting list (the bench). Squad *${p.confirmed}/${p.maxPlayers}*.`;
   },
   oob_out: (p: { name: string; source: "dm" | "app" | "reaction"; confirmed: number; maxPlayers: number }): string => {
     const how = p.source === "reaction" ? "👎 on their invite" : p.source === "dm" ? "replied by DM" : "from the app";
@@ -661,11 +669,11 @@ export const en = {
   // ── rows 53, 54, 55: the rest of bench-offer-copy.ts ───────────────
 
   bench_intro_line: (p: { how: string }): string =>
-    `🔁  *Bench promotion*: If someone drops, I tag the bench here and ` +
+    `🔁  *The waiting list (the bench)*: If someone drops, I tag everyone on it here and ` +
     `${p.how}. No timeout, and nobody loses their place for missing it.`,
   full_squad_bench_invite: (p: { matchName: string; confirmed: number; maxPlayers: number; how: string }): string =>
-    `*${p.matchName}* is full at ${p.confirmed} of ${p.maxPlayers}, but the bench is open. ` +
-    `Say *IN* and I'll put you on the bench. If someone drops out I tag the bench in the group ` +
+    `*${p.matchName}* is full at ${p.confirmed} of ${p.maxPlayers}, but the waiting list (the bench) is open. ` +
+    `Say *IN* and I'll put you on it. If someone drops out, I tag everyone on it in the group ` +
     `and ${p.how}. 🙏`,
   bench_asked_line: (p: { benchName: string; confirmed: number; maxPlayers: number; reactions: boolean }): string => {
     const how = p.reactions
@@ -760,7 +768,7 @@ export const en = {
     `🔁 *Match switched*: now *${p.sportName}* (${p.maxPlayers} players).`,
   format_switch_playing_header: (p: { confirmed: number; maxPlayers: number }): string =>
     `*Playing (${p.confirmed}/${p.maxPlayers}):*`,
-  format_switch_bench_header: "*Bench:*",
+  format_switch_bench_header: "*Waiting list:*",
   match_cancelled: (p: { activityName: string; whenLabel: string }): string =>
     `❌ *Match cancelled*: ${p.activityName} on ${p.whenLabel}.\n\n` +
     `Not enough players this week. See you next week!`,
@@ -916,7 +924,7 @@ export const en = {
   onbIntro: (): string =>
     `👋 Hi, I'm *MatchTime*. I take care of the weekly admin for football groups, right here in WhatsApp:\n\n` +
     `✅ *Who's in:* just say *In* or *Out*. I keep the list and tick your message.\n` +
-    `🪑 *The bench:* once you're full, anyone who says *In* late goes on the bench, and the bench gets first dibs if someone drops.\n` +
+    `🪑 *The waiting list (the bench):* once you're full, anyone who says *In* late goes on the waiting list, and it gets first dibs if someone drops.\n` +
     `📣 *Chasing:* short of players? I remind the group, and stop once you're full.\n` +
     `⚖️ *Fair teams:* tag me and I pick balanced teams from player ratings.\n` +
     `⭐ *Ratings and Man of the Match* after every game.\n` +
@@ -1266,8 +1274,8 @@ export const en = {
       availability:
         `⚽ *Squad & availability: how it works*\n` +
         `Just say *In* or *Out* in the group to mark yourself for the next game. No need to tag me, I read it automatically.\n` +
-        `I keep a live, numbered squad list. When it's full, extra players go on the *bench* in order. Not sure yet? Say *"maybe"* and I'll DM you ~24h before kick-off for a final answer.\n` +
-        `If you drop out, I can nudge the bench to step in so we're never short. Say *Out* any time and I'll sort the rest.`,
+        `I keep a live, numbered squad list. When it's full, extra players go on the *waiting list (the bench)* in order. Not sure yet? Say *"maybe"* and I'll DM you ~24h before kick-off for a final answer.\n` +
+        `If you drop out, I can nudge everyone on the waiting list to step in so we're never short. Say *Out* any time and I'll sort the rest.`,
       reminders:
         `⏰ *Reminders: how it works*\n` +
         `I gently nudge anyone who hasn't said *In* or *Out* yet, then remind the whole squad before kick-off so nobody forgets.\n` +
@@ -1302,8 +1310,8 @@ export const en = {
         `Just say *In* or *Out* in the group to mark yourself for the next game. No need to tag me, I read it automatically.\n` +
         `I keep track of who's in for the organisers, and they share the list with the group. Not sure yet? Say *"maybe"* and I'll DM you ~24h before kick-off for a final answer.\n` +
         (p.organiserPicks
-          ? `When the squad is full, say *In* to go on the bench. When a place opens, the organisers pick who plays.`
-          : `When the squad is full, extra players go on the *bench*, and the bench gets first go at any place that opens.`) +
+          ? `When the squad is full, say *In* to go on the waiting list (the bench). When a place opens, the organisers pick who plays.`
+          : `When the squad is full, extra players go on the *waiting list (the bench)*, and it gets first go at any place that opens.`) +
         ` Say *Out* any time if you can't make it.`,
       reminders:
         `⏰ *Reminders: how it works*\n` +
@@ -1316,8 +1324,8 @@ export const en = {
   onbHelpAvailabilityOrganiserPicks:
     `⚽ *Squad & availability: how it works*\n` +
     `Just say *In* or *Out* in the group to mark yourself for the next game. No need to tag me, I read it automatically.\n` +
-    `I keep a live, numbered squad list. When it's full, extra players go on the *bench*. Not sure yet? Say *"maybe"* and I'll DM you ~24h before kick-off for a final answer.\n` +
-    `When a place opens, the organisers pick who plays from the bench. Say *Out* any time if you can't make it.`,
+    `I keep a live, numbered squad list. When it's full, extra players go on the *waiting list (the bench)*. Not sure yet? Say *"maybe"* and I'll DM you ~24h before kick-off for a final answer.\n` +
+    `When a place opens, the organisers pick who plays from the waiting list. Say *Out* any time if you can't make it.`,
 
   /** An organiser's DM bare help, organisers mode with an admin group
    *  linked: where the HQ commands are. */
@@ -1522,9 +1530,9 @@ export const en = {
       ? "Reply *YES* here, tap 👍 on the message I tagged you in, or reply *IN* there."
       : "Reply *YES* here, or *IN* on the message I tagged you in, in the group.";
     return (
-      `👋 Hi${hi}, a slot just opened ${p.context} and you're on the bench.\n\n` +
+      `👋 Hi${hi}, a slot just opened ${p.context} and you're on the waiting list (the bench).\n\n` +
       `Want it? ${claim} First to claim plays. No timeout, and if you're ` +
-      `not free no worries, you stay on the bench. 🙏`
+      `not free no worries, you stay on the waiting list. 🙏`
     );
   },
 
@@ -1537,11 +1545,11 @@ export const en = {
       ? "Reply *YES* here, tap 👍 on the message I tagged you in, or reply *IN* there."
       : "Reply *YES* here, or *IN* on the message I tagged you in, in the group.";
     return (
-      `👋 Hi${hi}, ${p.count} slots just opened ${p.context} and you're on the bench.\n` +
+      `👋 Hi${hi}, ${p.count} slots just opened ${p.context} and you're on the waiting list (the bench).\n` +
       p.details.map((d) => `${d}\n`).join("") +
       `\n` +
       `Want one? ${claim} First to claim plays. No timeout, and if you're ` +
-      `not free no worries, you stay on the bench. 🙏`
+      `not free no worries, you stay on the waiting list. 🙏`
     );
   },
 
@@ -1549,14 +1557,14 @@ export const en = {
    *  context clause: null on match day ("tonight"), else "Tue 6 Oct". */
   dm_bench_unclear: (p: { day: string | null }): string =>
     `Want the open slot for ${p.day ?? "tonight"}? Reply *YES* to grab it. ` +
-    `If not, no worries, you stay on the bench either way 🙏`,
+    `If not, no worries, you stay on the waiting list (the bench) either way 🙏`,
 
   /** Row 104: the bench DM's ack, from what the claim did. */
   dm_bench_ack: (p: { kind: "declined" | "confirmed" | "taken" | "other"; day: string | null }): string =>
     ({
-      declined: `👍 No worries, you're still on the bench, nothing changes.`,
+      declined: `👍 No worries, you're still on the waiting list (the bench), nothing changes.`,
       confirmed: `✅ You got it, you're in for ${p.day ?? "tonight"}! ⚽`,
-      taken: `Ah, someone just grabbed that one first. You're still first in line on the bench if another opens 🙏`,
+      taken: `Ah, someone just grabbed that one first. You're still on the waiting list (the bench) if another opens 🙏`,
       other: `👍 Got it.`,
     })[p.kind],
 
@@ -1614,7 +1622,7 @@ export const en = {
     if (p.status === "BENCH") {
       return (
         `📋 Squad's full for *${matchName}* on ${matchWhen}, so I've put you ` +
-        `first on the bench. I'll message you the moment a spot opens 🙏`
+        `on the waiting list (the bench). I'll message you the moment a spot opens 🙏`
       );
     }
     if (p.status === "DROPPED") {
@@ -1810,7 +1818,7 @@ export const en = {
     `Here's what I do:\n` +
     `⚽ *Attendance:* players just say "in" or "out" right here; I keep the squad list live and chase the stragglers\n` +
     `⚖️ *Fair teams:* auto-balanced sides every week from real player ratings\n` +
-    `🪑 *Smart bench:* squad full? I offer the spot to the whole bench, first to claim it plays. Nobody's ever dropped for being asleep\n` +
+    `🪑 *Smart waiting list (the bench):* squad full? I offer the spot to everyone on the waiting list, first to claim it plays. Nobody's ever dropped for being asleep\n` +
     `🏆 *Man of the Match & ratings:* a quick post-match vote and a one-tap rating link, no app to install\n` +
     `⏰ *Reminders & stats:* "@MatchTime remind me Thursday", or ask me "who got MoM last week?"\n\n` +
     `No spreadsheets, no chasing, no admin headaches. ⚡\n\n` +
@@ -2179,7 +2187,7 @@ export const en = {
     `👋 Hi everyone, I'm *MatchTime*. ${p.organiser ? `${p.organiser} has set me up to run this group's games.` : "I'm here to run this group's games."} ` +
     `Here's what I do, right here in WhatsApp:\n\n` +
     `✅ *Who's in:* just say *In* or *Out*. I keep the list and tick your message.\n` +
-    `🪑 *The bench:* once we're full, anyone who says *In* late goes on the bench, and the bench gets first dibs if someone drops.\n` +
+    `🪑 *The waiting list (the bench):* once we're full, anyone who says *In* late goes on the waiting list, and it gets first dibs if someone drops.\n` +
     `⏰ *Remind me:* say *"@Match Time remind me Thursday"* and I'll DM you then.\n` +
     `⚖️ *Fair teams:* tag me and I pick balanced teams from player ratings.\n` +
     `⭐ *Man of the Match and ratings* after every game.\n` +
@@ -2211,7 +2219,7 @@ export const en = {
   sj_hello_rolling_first: (p: { deadline: string | null; mode: "first-come" | "organiser" }): string => {
     const before = p.deadline ? `, before *${p.deadline}*` : "";
     return p.mode === "organiser"
-      ? `🔁 *Same squad each week:* this group keeps the same squad from one game to the next. For the *first game* with me, say *In*: I'll put you on the bench and the organisers pick who plays. After that, whoever played stays in each week and only needs to say *Out* if they can't make it${before}.`
+      ? `🔁 *Same squad each week:* this group keeps the same squad from one game to the next. For the *first game* with me, say *In*: I'll put you on the waiting list and the organisers pick who plays. After that, whoever played stays in each week and only needs to say *Out* if they can't make it${before}.`
       : `🔁 *Same squad each week:* this group keeps the same squad from one game to the next. For the *first game* with me, say *In* so I know who is playing. After that you stay in each week and only need to say *Out* if you can't make it${before}.`;
   },
   /** Rolling squad, THE FIRST GAME, organiser pick, in a club whose
@@ -2235,23 +2243,23 @@ export const en = {
    *  organisers pick, so an In never takes a place by itself. */
   sj_hello_rolling_join: (p: { mode: "bench" | "no-bench" | "organiser" }): string =>
     p.mode === "organiser"
-      ? `✅ *Not in the squad yet?* Say *In* and I'll put you on the bench.`
+      ? `✅ *Not in the squad yet?* Say *In* and I'll put you on the waiting list.`
       : p.mode === "bench"
-        ? `✅ *Not in the squad yet?* Say *In* and I'll add you if there's a place, or put you on the bench.`
+        ? `✅ *Not in the squad yet?* Say *In* and I'll add you if there's a place, or put you on the waiting list.`
         : `✅ *Not in the squad yet?* Say *In* and I'll add you if there's a place.`,
   /** Monthly squad: the regulars' line, then the line for everyone else. */
   sj_hello_monthly: `📋 *Monthly squad:* regulars sign up and pay for the whole month, and are in every game of it. Can't make one? Say *Out*.`,
   sj_hello_monthly_join: (p: { organisersPick: boolean }): string =>
     p.organisersPick
-      ? `✅ *Not a regular?* When a place is open, say *In* to go on the bench, and the organisers pick who plays.`
+      ? `✅ *Not a regular?* When a place is open, say *In* to go on the waiting list (the bench), and the organisers pick who plays.`
       : `✅ *Not a regular?* When a place is open, say *In* to take it. You pay for that game only.`,
   /** A weekly sign-up club with a drop-out deadline. `day` is `wd_weekday`. */
   sj_hello_deadline: (p: { day: string; time: string }): string =>
     `⏳ *Drop-out deadline:* ${p.day} ${p.time}. If you can't play, say *Out* before then.`,
   sj_hello_list: (p: { day: string; time: string }): string => `📋 *Final list:* I post it here on ${p.day} at ${p.time}.`,
-  sj_hello_bench: `🪑 *The bench:* once we're full, anyone who says *In* late goes on the bench, and the bench gets first dibs if someone drops.`,
+  sj_hello_bench: `🪑 *The waiting list (the bench):* once we're full, anyone who says *In* late goes on the waiting list, and it gets first dibs if someone drops.`,
   /** The organisers pick: MatchTime never fills a place by itself. */
-  sj_hello_bench_organiser: `🪑 *The bench:* say *In* to go on the bench, and the organisers pick who takes each open place.`,
+  sj_hello_bench_organiser: `🪑 *The waiting list (the bench):* say *In* to go on it, and the organisers pick who takes each open place.`,
   sj_hello_remind: `⏰ *Remind me:* say *"@Match Time remind me Thursday"* and I'll DM you then.`,
   sj_hello_teams: `⚖️ *Fair teams:* tag me and I pick balanced teams from player ratings.`,
   /** Never called with both off: the line is left out then. */
@@ -2591,13 +2599,16 @@ export const en = {
     `Everyone who played last time is in again. Drop-out deadline: *${p.deadline}*. Until then, you're in unless you say *OUT*.`,
   rolling_in_header: (p: { confirmed: number; maxPlayers: number }): string =>
     `*In (${p.confirmed}/${p.maxPlayers}):*`,
-  rolling_waiting_header: (p: { count: number }): string => `*Bench (${p.count}):*`,
   rolling_tail_open: (p: { open: number }): string =>
     `${p.open === 1 ? "1 place open" : `${p.open} places open`}: say *IN* to take one.`,
   /** For a club where the organisers pick who plays (slice 2 wires it). */
   rolling_tail_open_organiser: (p: { open: number }): string =>
-    `${p.open === 1 ? "1 place open" : `${p.open} places open`}: say *IN* to go on the bench, and the organisers will pick who plays.`,
-  rolling_tail_full: "The squad is full. Say *IN* to go on the bench.",
+    `${p.open === 1 ? "1 place open" : `${p.open} places open`}: say *IN* to go on the waiting list (the bench), and the organisers will pick who plays.`,
+  rolling_tail_full: "The squad is full. Say *IN* to go on the waiting list (the bench).",
+  /** The same, for a club where the organisers pick who fills a place
+   *  (2026-10-16): nobody who says IN is promised a place by being first. */
+  rolling_tail_full_organiser:
+    "The squad is full. Say *IN* to go on the waiting list (the bench), and if a place opens the organisers pick who plays.",
   /** RSQ2: the extra line on the 17:00 post while the deadline is ahead. */
   rolling_deadline_line: (p: { deadline: string }): string =>
     `Drop-out deadline: *${p.deadline}*. Until then, you're in unless you say *OUT*.`,
@@ -2913,7 +2924,7 @@ export const en = {
   /** P13: the engine's "a place just opened" post for an organiser-pick
    *  club with an empty waiting list. */
   slot_opened_organiser: (p: { kickoffLabel: string }): string =>
-    `A place just opened for ${p.kickoffLabel}. Say *IN* to go on the bench, and the organisers will pick who plays.`,
+    `A place just opened for ${p.kickoffLabel}. Say *IN* to go on the waiting list (the bench), and the organisers will pick who plays.`,
   /** P1 first line: one or more drops (`late`: after the drop-out deadline). */
   pick_lead_drop: (p: { names: string[]; activityName: string; whenLabel: string; late: boolean }): string =>
     `${joinList("en", p.names.map((n) => `*${n}*`))} dropped out of *${p.activityName}* (${p.whenLabel})${p.late ? " after the deadline" : ""}.`,
@@ -3029,23 +3040,24 @@ export const en = {
   //    First-come clubs keep their rows unchanged. ──
   /** The squad-complete post's closing line. */
   squad_complete_bench_invite_organiser:
-    "🪑 *Bench is open.* Say *IN* to go on the bench, and the organisers will pick who plays.",
+    "🪑 *The waiting list (the bench) is open.* Say *IN* to go on it, and when a place opens the organisers pick who plays.",
   /** The day-one intro's bench line. */
   bench_intro_line_organiser:
-    "🔁  *The bench:* say *IN* to go on the bench. When a place opens, the organisers pick who plays.",
-  /** The answer to a recruit ask when the squad is full. */
+    "🔁  *The waiting list (the bench):* say *IN* to go on it. When a place opens, the organisers pick who plays.",
+  /** The answer to a recruit ask when the squad is full (2026-10-16, FNF:
+   *  "the bench is open" left the players asking what a bench was). */
   full_squad_bench_invite_organiser: (p: { matchName: string; confirmed: number; maxPlayers: number }): string =>
-    `*${p.matchName}* is full at ${p.confirmed} of ${p.maxPlayers}, but the bench is open. ` +
-    `Say *IN* to go on the bench, and the organisers will pick who plays. 🙏`,
+    `*${p.matchName}* is full at ${p.confirmed} of ${p.maxPlayers}, but the waiting list (the bench) is open. ` +
+    `Say *IN* to go on it, and when a place opens the organisers pick who plays. 🙏`,
   /** The recruit invite DM's "playing?" line. */
-  dm_recruit_invite_play_organiser: "Want to play? Reply *IN* to go on the bench, and the organisers will pick who plays.",
+  dm_recruit_invite_play_organiser: "Want to play? Reply *IN* to go on the waiting list (the bench), and the organisers will pick who plays.",
   /** The recruit chase DM. */
   dm_recruit_chase_organiser: (p: { firstName: string | null; count: number; activityName: string; matchWhen: string }): string =>
     `👋 ${p.firstName ?? "there"}, still after ${p.count} ${p.count === 1 ? "player" : "players"} for *${p.activityName}* on ${p.matchWhen}. ` +
-    `Reply *IN* to go on the bench and the organisers will pick who plays, or *OUT* and I'll stop asking 🙏`,
+    `Reply *IN* to go on the waiting list (the bench) and the organisers will pick who plays, or *OUT* and I'll stop asking 🙏`,
   /** The private ack of an IN that went on the waiting list. */
   dm_self_ack_waiting_organiser: (p: { matchName: string; matchWhen: string }): string =>
-    `📋 I've put you on the bench for *${p.matchName}* on ${p.matchWhen}. The organisers pick who plays, and I'll message you if you're picked 🙏`,
+    `📋 I've put you on the waiting list (the bench) for *${p.matchName}* on ${p.matchWhen}. The organisers pick who plays, and I'll message you if you're picked 🙏`,
 
   // ── UNP1 (2026-10-01): U1 of MDs/friday-group-features-plan-2026-09-30.md
   //    (2.12), the organisers' unpaid list, 10:00 two days after the
@@ -3984,7 +3996,7 @@ export const en = {
     `${p.open} ${p.open === 1 ? "place" : "places"} open${p.price ? `, ${p.price} PAYG` : ""}: say *IN* to take ${p.open === 1 ? "it" : "one"}.`,
   /** The same, for a club whose organisers pick who fills a place. */
   mwk_list_open_organiser: (p: { open: number }): string =>
-    `${p.open} ${p.open === 1 ? "place" : "places"} open. Say *IN* to go on the bench, and the organisers will pick who plays.`,
+    `${p.open} ${p.open === 1 ? "place" : "places"} open. Say *IN* to go on the waiting list (the bench), and the organisers will pick who plays.`,
   /** A place opened and nobody is waiting: one line in the group. */
   mwk_pool_group: (p: { open: number; when: string; price: string | null }): string =>
     `🎟 ${p.open} ${p.open === 1 ? "place" : "places"} open for *${p.when}*${p.price ? `, ${p.price} PAYG` : ""}. ` +
@@ -4024,7 +4036,7 @@ export const en = {
    *  the match, and whose place a regular has taken. */
   mwk_dm_bumped: (p: { firstName: string | null; activityName: string; when: string }): string =>
     `👋 ${p.firstName ?? "there"}, the regulars who have paid for the month have their places for *${p.activityName}* on ${p.when}, ` +
-    `so you are on the bench for now. I'll message you if a place opens.`,
+    `so you are on the waiting list (the bench) for now. I'll message you if a place opens.`,
 
   // ── Monthly squad, slice 3 (2026-10-06): the month opens, sign-up ──
   // MDs/monthly-squad-plan-2026-10-05.md, sections 4.1 and 6.2. Only ever
@@ -4585,7 +4597,7 @@ export const en = {
   /** In the players' group, a bench claim that lost the race, without the
    *  squad count (`bench_claim_too_late` carries one). */
   oa_bench_claim_too_late: (p: { firstName: string }): string =>
-    `Thanks ${p.firstName} 🙏 someone got there first. You're still on the bench and first in line if another slot opens.`,
+    `Thanks ${p.firstName} 🙏 someone got there first. You're still on the waiting list (the bench) if another slot opens.`,
   // /admin/settings, "Weekly routine".
   wr_announce_label: "Who announces the list and teams",
   wr_announce_blurb: "MatchTime posts them in the group, or your organisers do.",

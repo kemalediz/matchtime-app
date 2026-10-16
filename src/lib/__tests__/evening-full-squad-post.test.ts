@@ -199,7 +199,7 @@ describe("the full-squad 17:00 post", () => {
     expect(text).toContain("1. Kemal Ediz");
     expect(text).toContain("14. David Ross");
     // The bench says it is empty rather than going missing.
-    expect(text).toContain("*Bench (0):*");
+    expect(text).toContain("*Waiting list (0):*");
     expect(text).toContain("_nobody yet_");
     // And it asks for benchers, in the approved words.
     expect(text).toContain(buildSquadCompleteBenchInvite({ lang: "en" }));
@@ -207,23 +207,23 @@ describe("the full-squad 17:00 post", () => {
 
   it("names the benchers when there are some, and still asks below the floor", async () => {
     const text = await evening({ matches: [match({ attendances: squad(14, 2) })] });
-    expect(text).toContain("*Bench (2):*");
+    expect(text).toContain("*Waiting list (2):*");
     expect(text).toContain("1. Erdal Ozkan");
     expect(text).toContain("2. Amir Ahmadi");
-    expect(text).not.toContain("*Bench (0):*");
+    expect(text).not.toContain("*Waiting list (0):*");
     expect(text).toContain(buildSquadCompleteBenchInvite({ lang: "en" }));
   });
 
   it(`stops asking at the floor: ${BENCH_THIN_BELOW} on the bench is enough cover`, async () => {
     const text = await evening({ matches: [match({ attendances: squad(14, 3) })] });
-    expect(text).toContain("*Bench (3):*");
+    expect(text).toContain("*Waiting list (3):*");
     expect(text).toContain("3. Najib Ahmadi");
     expect(text).not.toContain(buildSquadCompleteBenchInvite({ lang: "en" }));
   });
 
   it("a bench above the floor still gets its list, never the ask", async () => {
     const text = await evening({ matches: [match({ attendances: squad(14, 4) })] });
-    expect(text).toContain("*Bench (4):*");
+    expect(text).toContain("*Waiting list (4):*");
     expect(text).not.toContain(buildSquadCompleteBenchInvite({ lang: "en" }));
   });
 
@@ -231,7 +231,7 @@ describe("the full-squad 17:00 post", () => {
     benchFeature = false;
     const text = await evening();
     expect(text).toContain("*Confirmed (14/14):*");
-    expect(text).toContain("*Bench (0):*");
+    expect(text).toContain("*Waiting list (0):*");
     // Promising to tag a bench the scheduler will never tag is a lie.
     expect(text).not.toContain(buildSquadCompleteBenchInvite({ lang: "en" }));
   });
@@ -239,7 +239,7 @@ describe("the full-squad 17:00 post", () => {
   it("a Turkish org reads it in Turkish, with no English left in it", async () => {
     const text = await evening({ matches: [match({ attendances: squad(14, 1) }, "tr")] });
     expect(text).toContain("*Onaylananlar (14/14):*");
-    expect(text).toContain("*Yedekler (1):*");
+    expect(text).toContain("*Yedek listesi (1):*");
     expect(text).toContain(buildSquadCompleteBenchInvite({ lang: "tr" }));
     expect(text).not.toMatch(/\*Confirmed \(|\*Bench \(|Say \*IN\*|squad is full/);
   });
@@ -250,7 +250,7 @@ describe("one post per evening, and nothing else changed", () => {
     const text = await evening({ matches: [match({ attendances: squad(11, 1) })] });
     expect(text).toContain("need *3 more*");
     expect(text).toContain("*Confirmed (11/14):*");
-    expect(text).toContain("*Bench (1):*");
+    expect(text).toContain("*Waiting list (1):*");
     expect(text).not.toContain("squad is full");
     expect(text).not.toContain(buildSquadCompleteBenchInvite({ lang: "en" }));
   });
@@ -348,7 +348,7 @@ describe("buildSquadFullEveningPost (pure)", () => {
   });
 
   it("the empty-bench block is only added when the roster block has no bench", () => {
-    expect(post([], null)).toContain("*Bench (0):*");
-    expect(post(["Erdal Ozkan"], null)).not.toContain("*Bench (0):*");
+    expect(post([], null)).toContain("*Waiting list (0):*");
+    expect(post(["Erdal Ozkan"], null)).not.toContain("*Waiting list (0):*");
   });
 });

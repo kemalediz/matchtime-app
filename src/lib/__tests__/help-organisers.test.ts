@@ -254,23 +254,23 @@ describe("organisers mode, main chat (FNF: organisers announce, organisers pick)
       `⚽ *Squad & availability: how it works*\n` +
         `Just say *In* or *Out* in the group to mark yourself for the next game. No need to tag me, I read it automatically.\n` +
         `I keep track of who's in for the organisers, and they share the list with the group. Not sure yet? Say *"maybe"* and I'll DM you ~24h before kick-off for a final answer.\n` +
-        `When the squad is full, say *In* to go on the bench. When a place opens, the organisers pick who plays. Say *Out* any time if you can't make it.`,
+        `When the squad is full, say *In* to go on the waiting list (the bench). When a place opens, the organisers pick who plays. Say *Out* any time if you can't make it.`,
     );
     expect(buildHelpReply("availability", FNF, "tr", { audience: "group" })).toBe(
       `⚽ *Kadro ve katılım nasıl çalışır*\n` +
         `Bir sonraki maç için grupta *varım* veya *yokum* yazmanız yeter, beni etiketlemenize gerek yok, otomatik okurum.\n` +
         `Kimin geldiğini organizatörler için ben takip ederim, listeyi grupla onlar paylaşır. Emin değil misiniz? *"belki"* yazın, maçtan yaklaşık 24 saat önce özelden kesin cevabınızı sorarım.\n` +
-        `Kadro doluysa yedeğe girmek için *varım* yazın. Bir yer açılınca kimin oynayacağını organizatörler seçer. Gelemeyecekseniz istediğiniz zaman *yokum* yazın.`,
+        `Kadro doluysa yedek listesine girmek için *varım* yazın. Bir yer açılınca kimin oynayacağını organizatörler seçer. Gelemeyecekseniz istediğiniz zaman *yokum* yazın.`,
     );
   });
 
   it("help availability, organisers announce but the bench is first come", () => {
     const f = { ...FNF, organiserPicks: false };
     expect(buildHelpReply("availability", f, "en", { audience: "group" })).toContain(
-      `When the squad is full, extra players go on the *bench*, and the bench gets first go at any place that opens. Say *Out* any time if you can't make it.`,
+      `When the squad is full, extra players go on the *waiting list (the bench)*, and it gets first go at any place that opens. Say *Out* any time if you can't make it.`,
     );
     expect(buildHelpReply("availability", f, "tr", { audience: "group" })).toContain(
-      `Kadro dolunca sonra yazanlar *yedek* listesine girer, açılan bir yer için ilk şans yedeklerindir. Gelemeyecekseniz istediğiniz zaman *yokum* yazın.`,
+      `Kadro dolunca sonra yazanlar *yedek listesine* girer, açılan bir yer için ilk şans yedek listesindekilerindir. Gelemeyecekseniz istediğiniz zaman *yokum* yazın.`,
     );
   });
 
@@ -309,14 +309,14 @@ describe("organiser pick in a club MatchTime still announces for", () => {
     expect(buildHelpReply("availability", f, "en", { audience: "group" })).toBe(
       `⚽ *Squad & availability: how it works*\n` +
         `Just say *In* or *Out* in the group to mark yourself for the next game. No need to tag me, I read it automatically.\n` +
-        `I keep a live, numbered squad list. When it's full, extra players go on the *bench*. Not sure yet? Say *"maybe"* and I'll DM you ~24h before kick-off for a final answer.\n` +
-        `When a place opens, the organisers pick who plays from the bench. Say *Out* any time if you can't make it.`,
+        `I keep a live, numbered squad list. When it's full, extra players go on the *waiting list (the bench)*. Not sure yet? Say *"maybe"* and I'll DM you ~24h before kick-off for a final answer.\n` +
+        `When a place opens, the organisers pick who plays from the waiting list. Say *Out* any time if you can't make it.`,
     );
     expect(buildHelpReply("availability", f, "tr", { audience: "group" })).toBe(
       `⚽ *Kadro ve katılım nasıl çalışır*\n` +
         `Bir sonraki maç için grupta *varım* veya *yokum* yazmanız yeter, beni etiketlemenize gerek yok, otomatik okurum.\n` +
-        `Numaralı ve güncel bir kadro listesi tutarım. Kadro dolunca sonra yazanlar *yedek* listesine girer. Emin değil misiniz? *"belki"* yazın, maçtan yaklaşık 24 saat önce özelden kesin cevabınızı sorarım.\n` +
-        `Bir yer açılınca yedeklerden kimin oynayacağını organizatörler seçer. Gelemeyecekseniz istediğiniz zaman *yokum* yazın.`,
+        `Numaralı ve güncel bir kadro listesi tutarım. Kadro dolunca sonra yazanlar *yedek listesine* girer. Emin değil misiniz? *"belki"* yazın, maçtan yaklaşık 24 saat önce özelden kesin cevabınızı sorarım.\n` +
+        `Bir yer açılınca yedek listesinden kimin oynayacağını organizatörler seçer. Gelemeyecekseniz istediğiniz zaman *yokum* yazın.`,
     );
   });
   it("every other topic is as before", () => {

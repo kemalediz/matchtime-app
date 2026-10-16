@@ -114,7 +114,7 @@ describe("a model-authored roster is replaced, never patched (Wasim's drop, ef8d
   it("nobody in the database can be omitted from it, because the model does not write it", () => {
     const r = composeSquadStateReply("*Squad:*\n1. Kemal\n2. Elvin", truth);
     for (const name of truth.confirmed) expect(r.text).toContain(name);
-    expect(r.text).toContain("*Bench (1):*");
+    expect(r.text).toContain("*Waiting list (1):*");
     expect(r.text).toContain("Greg Gale");
   });
 });
@@ -144,7 +144,7 @@ describe("stale counts and slot prose cannot survive (RC3 of Sutton Lads 2026-06
   it("replaces a wrong bench claim", () => {
     const r = composeSquadStateReply("Bench is empty — nobody on standby right now.", truth);
     expect(r.composed).toBe(true);
-    expect(r.text).toContain("*Bench (1):*");
+    expect(r.text).toContain("*Waiting list (1):*");
     expect(r.text).not.toContain("Bench is empty");
   });
 });
@@ -167,7 +167,7 @@ describe("an announced move that the database does not back is replaced (S7, Erd
     expect(r.composed).toBe(true);
     expect(r.text).not.toMatch(/moves up/i);
     // …and the composed post shows where he actually is.
-    expect(r.text).toContain("*Bench (1):*");
+    expect(r.text).toContain("*Waiting list (1):*");
     expect(r.text).toContain("Greg Gale");
   });
 

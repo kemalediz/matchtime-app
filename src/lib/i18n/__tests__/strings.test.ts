@@ -609,10 +609,11 @@ const SAMPLES: SampleArgs = {
   // Rolling squad (2026-09-30)
   rolling_announce_lead: { activityName: "Friday 9-a-side", dateLabel: "Friday 9 October at 20:30", venue: "Powerleague Shoreditch", deadline: "Thursday 15:30" },
   rolling_in_header: { confirmed: 16, maxPlayers: 18 },
-  rolling_waiting_header: { count: 3 },
+  waiting_list_header: { count: 3 },
   rolling_tail_open: { open: 2 },
   rolling_tail_open_organiser: { open: 2 },
   rolling_tail_full: null,
+  rolling_tail_full_organiser: null,
   rolling_deadline_line: { deadline: "Thursday 15:30" },
   rolling_deadline_line_first: { deadline: "Thursday 15:30" },
   intro_rolling_squad: null,

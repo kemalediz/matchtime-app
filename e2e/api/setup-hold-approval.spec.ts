@@ -244,7 +244,7 @@ const FLAG_OFF_HELLO = [
   "👋 Hi everyone, I'm *MatchTime*. Ali has set me up to run this group's games. Here's what I do, right here in WhatsApp:\n",
   "\n",
   "✅ *Who's in:* just say *In* or *Out*. I keep the list and tick your message.\n",
-  "🪑 *The bench:* once we're full, anyone who says *In* late goes on the bench, and the bench gets first dibs if someone drops.\n",
+  "🪑 *The waiting list (the bench):* once we're full, anyone who says *In* late goes on the waiting list, and it gets first dibs if someone drops.\n",
   "⏰ *Remind me:* say *\"@Match Time remind me Thursday\"* and I'll DM you then.\n",
   "⚖️ *Fair teams:* tag me and I pick balanced teams from player ratings.\n",
   "⭐ *Man of the Match and ratings* after every game.\n",

@@ -3,7 +3,7 @@
 # A case that still reads as English here is a composer not yet moved into the string table.
 
 ### R1 squad_status / short with bench
-📋 Aldığım mesajlara göre son kadro ve yedekler: *11/14*, *3 kişi daha* lazım 🙏
+📋 Aldığım mesajlara göre son kadro ve yedek listesi: *11/14*, *3 kişi daha* lazım 🙏
 
 *Oynayanlar:*
 1. Kemal Ediz
@@ -21,12 +21,12 @@
 13. 🥁
 14. 🥁
 
-*Yedekler (2):*
+*Yedek listesi (2):*
 1. Erdal Ozkan
 2. Amir Ahmadi
 
 ### R1 squad_status / full
-📋 Aldığım mesajlara göre son kadro ve yedekler: *14/14* ✅ kadro tamam.
+📋 Aldığım mesajlara göre son kadro ve yedek listesi: *14/14* ✅ kadro tamam.
 
 *Oynayanlar:*
 1. Kemal Ediz
@@ -44,7 +44,7 @@
 13. Zair Malik
 14. Wasim Akhtar
 
-*Yedekler (1):*
+*Yedek listesi (1):*
 1. Najib Ahmadi
 
 ### R1 squad_status / empty squad
@@ -76,7 +76,7 @@ Tam değil, Salı 21:30 için 11/14 kişiyiz, 3 kişi daha lazım 🙏
 Salı 21:30 için 14/14 kişiyiz ✅ kadro tamam.
 
 ### R7 answer_squad / short
-📋 Aldığım mesajlara göre son kadro ve yedekler: *11/14*, *3 kişi daha* lazım 🙏
+📋 Aldığım mesajlara göre son kadro ve yedek listesi: *11/14*, *3 kişi daha* lazım 🙏
 
 *Oynayanlar:*
 1. Kemal Ediz
@@ -94,7 +94,7 @@ Salı 21:30 için 14/14 kişiyiz ✅ kadro tamam.
 13. 🥁
 14. 🥁
 
-*Yedekler (2):*
+*Yedek listesi (2):*
 1. Erdal Ozkan
 2. Amir Ahmadi
 
@@ -331,16 +331,16 @@ Kontrol edilecek yakın tarihli tamamlanmış bir maç yok.
 (says nothing)
 
 ### R18 answer_bench / empty
-Şu an yedekte kimse yok.
+Şu an yedek listesinde kimse yok.
 
 ### R19 answer_bench / two
-Yedekler: Erdal Ozkan ve Amir Ahmadi.
+Yedek listesi: Erdal Ozkan ve Amir Ahmadi.
 
 ### R19 answer_bench / one
-Yedekler: Erdal Ozkan.
+Yedek listesi: Erdal Ozkan.
 
 ### R19 answer_bench / three
-Yedekler: Erdal Ozkan, Amir Ahmadi ve Zeeshan Khan.
+Yedek listesi: Erdal Ozkan, Amir Ahmadi ve Zeeshan Khan.
 
 ### R20 answer_person_status / not down
 Zeeshan Khan Salı 21:30 için henüz kadroda değil.
@@ -349,7 +349,7 @@ Zeeshan Khan Salı 21:30 için henüz kadroda değil.
 Habib Rahman Salı 21:30 için henüz kadroda değil.
 
 ### R21 answer_person_status / bench
-Erdal Ozkan Salı 21:30 için yedekte.
+Erdal Ozkan Salı 21:30 için yedek listesinde.
 
 ### R22 answer_person_status / confirmed
 Evet, Sait Demir Salı 21:30 için kadroda.
@@ -686,13 +686,13 @@ Salı 21:30 için 13 kişiyiz, kadro 14 kişilik. Bir yer açıldı, almak için
 Şunlara dokunmadım, çıkış: Abid Hussain. Bunlar için @Match Time etiketi gerekiyor, beni etiketleyin, hallederim 👍
 
 ### R40 needs_tag_for_rest / bench only
-Şunlara dokunmadım, yedek: Abid Hussain ve Idris Bello. Bunlar için @Match Time etiketi gerekiyor, beni etiketleyin, hallederim 👍
+Şunlara dokunmadım, yedek listesine alma: Abid Hussain ve Idris Bello. Bunlar için @Match Time etiketi gerekiyor, beni etiketleyin, hallederim 👍
 
 ### R40 needs_tag_for_rest / both
-Şunlara dokunmadım, çıkış: Abid Hussain; yedek: Idris Bello. Bunlar için @Match Time etiketi gerekiyor, beni etiketleyin, hallederim 👍
+Şunlara dokunmadım, çıkış: Abid Hussain; yedek listesine alma: Idris Bello. Bunlar için @Match Time etiketi gerekiyor, beni etiketleyin, hallederim 👍
 
 ### R41 bench_claim_too_late
-Sağ ol Najib 🙏 biri senden önce davrandı, kadro yine 14/14. Yedekte kalmaya devam ediyorsun, başka bir yer açılırsa sıra sende.
+Sağ ol Najib 🙏 biri senden önce davrandı, kadro yine 14/14. Başka bir yer açılırsa diye yedek listesinde kalmaya devam ediyorsun.
 
 ### R42 pending_confirmed_ack / one
 Tamam 🙌 Sait Demir, Salı 21:30 için kadroda.
@@ -712,7 +712,7 @@ Tamam 🙌 Sait Demir ve Abid Hussain, Salı 21:30 için kadroda.
 ### R1 composeSquadStateReply / marker with a lead
 Cheers Sait, noted.
 
-📋 Aldığım mesajlara göre son kadro ve yedekler: *2/14*, *12 kişi daha* lazım 🙏
+📋 Aldığım mesajlara göre son kadro ve yedek listesi: *2/14*, *12 kişi daha* lazım 🙏
 
 *Oynayanlar:*
 1. Kemal Ediz
@@ -730,11 +730,11 @@ Cheers Sait, noted.
 13. 🥁
 14. 🥁
 
-*Yedekler (1):*
+*Yedek listesi (1):*
 1. Erdal Ozkan
 
 ### R1 composeSquadStateReply / model roster replaced
-📋 Aldığım mesajlara göre son kadro ve yedekler: *2/14*, *12 kişi daha* lazım 🙏
+📋 Aldığım mesajlara göre son kadro ve yedek listesi: *2/14*, *12 kişi daha* lazım 🙏
 
 *Oynayanlar:*
 1. Kemal Ediz
@@ -752,7 +752,7 @@ Cheers Sait, noted.
 13. 🥁
 14. 🥁
 
-*Yedekler (1):*
+*Yedek listesi (1):*
 1. Erdal Ozkan
 
 ### R1 composeSquadStateReply / plain reply kept
@@ -798,13 +798,13 @@ Maçta görüşürüz ⚽
 13. Zair Malik
 14. Wasim Akhtar
 
-*Yedekler (2):*
+*Yedek listesi (2):*
 1. Erdal Ozkan
 2. Amir Ahmadi
 
 Maçta görüşürüz ⚽
 
-🪑 *Yedek listesi açık.* *VARIM* yazın, sizi yedeğe ekleyeyim. Biri çıkarsa yedekleri burada etiketlerim ve ilk *VARIM* yazan yeri alır.
+🪑 *Yedek listesi açık.* *VARIM* yazın, sizi yedek listesine ekleyeyim. Biri çıkarsa yedek listesindekileri burada etiketlerim ve ilk *VARIM* yazan yeri alır.
 
 ### R186 payments_live_announcement / every method
 💳 *Maç ücretleri artık MatchTime üzerinden toplanıyor*
@@ -833,7 +833,7 @@ Nasıl işliyor:
 2. (isimsiz)
 3. Sait Demir
 
-*Yedekler (1):*
+*Yedek listesi (1):*
 1. (isimsiz)
 
 Maçta görüşürüz ⚽
@@ -875,7 +875,7 @@ _henüz kimse yok_
 10. Efat Rahman
 11. (isimsiz)
 
-*Yedekler (2):*
+*Yedek listesi (2):*
 1. Erdal Ozkan
 2. Amir Ahmadi
 
@@ -896,7 +896,7 @@ _henüz kimse yok_
 13. Zair Malik
 14. Wasim Akhtar
 
-*Yedekler (1):*
+*Yedek listesi (1):*
 1. Najib Ahmadi
 
 ### R71b buildSquadFullEveningPost / empty bench, asks
@@ -918,10 +918,10 @@ _henüz kimse yok_
 13. Zair Malik
 14. Wasim Akhtar
 
-*Yedekler (0):*
+*Yedek listesi (0):*
 _henüz kimse yok_
 
-🪑 *Yedek listesi açık.* *VARIM* yazın, sizi yedeğe ekleyeyim. Biri çıkarsa yedekleri burada etiketlerim ve ilk *VARIM* yazan yeri alır.
+🪑 *Yedek listesi açık.* *VARIM* yazın, sizi yedek listesine ekleyeyim. Biri çıkarsa yedek listesindekileri burada etiketlerim ve ilk *VARIM* yazan yeri alır.
 
 ### R71b buildSquadFullEveningPost / bench of two, still asks
 🗓 *Tuesday 7-a-side*: kadro tamam, *14/14* ✅
@@ -942,11 +942,11 @@ _henüz kimse yok_
 13. Zair Malik
 14. Wasim Akhtar
 
-*Yedekler (2):*
+*Yedek listesi (2):*
 1. Erdal Ozkan
 2. Amir Ahmadi
 
-🪑 *Yedek listesi açık.* *VARIM* yazın, sizi yedeğe ekleyeyim. Biri çıkarsa yedekleri burada etiketlerim ve ilk *VARIM* yazan yeri alır.
+🪑 *Yedek listesi açık.* *VARIM* yazın, sizi yedek listesine ekleyeyim. Biri çıkarsa yedek listesindekileri burada etiketlerim ve ilk *VARIM* yazan yeri alır.
 
 ### R71b buildSquadFullEveningPost / bench of 3, no ask
 🗓 *Tuesday 7-a-side*: kadro tamam, *14/14* ✅
@@ -967,7 +967,7 @@ _henüz kimse yok_
 13. Zair Malik
 14. Wasim Akhtar
 
-*Yedekler (3):*
+*Yedek listesi (3):*
 1. Erdal Ozkan
 2. Amir Ahmadi
 3. Najib Ahmadi
@@ -991,7 +991,7 @@ _henüz kimse yok_
 13. Zair Malik
 14. Wasim Akhtar
 
-*Yedekler (0):*
+*Yedek listesi (0):*
 _henüz kimse yok_
 
 ### R69 buildMatchDayTeamsBlock
@@ -1064,7 +1064,7 @@ Kadro kilitlendi. Bu akşamın takımlarını belirlemek için sohbete *@Match T
 13. Zair Malik
 14. Wasim Akhtar
 
-*Yedekler (1):*
+*Yedek listesi (1):*
 1. Najib Ahmadi
 
 ### R72 buildDailyInListFallback
@@ -1083,7 +1083,7 @@ Kadro kilitlendi. Bu akşamın takımlarını belirlemek için sohbete *@Match T
 10. Efat Rahman
 11. Usama Tariq
 
-*Yedekler (1):*
+*Yedek listesi (1):*
 1. Erdal Ozkan
 
 ### R72 buildDailyInListFallback / one more
@@ -1149,7 +1149,7 @@ Yaptıklarım:
 
 🗒  *Günlük hatırlatma*, kadro dolana kadar her gün 17:00'de kadro listesini yeniden paylaşırım, kaç kişi eksik hep birlikte görürüz.
 
-🔁  *Yedekten kadroya*, biri çıkarsa yedekleri burada etiketlerim ve ilk *VARIM* yazan yeri alır. Süre sınırı yok, geç görene de bir şey olmaz, yedekteki yeri kalır.
+🔁  *Yedek listesi*: biri çıkarsa yedek listesindekileri burada etiketlerim ve ilk *VARIM* yazan yeri alır. Süre sınırı yok, geç görene de bir şey olmaz, yedek listesindeki yeri kalır.
 
 ⚽  *Takımlar*, "@Match Time takımları kur" deyin, dengeli takımları paylaşırım. İtirazı olan `@Match Time X ile Y'yi değiştir` yazsın, admin onaylar.
 
@@ -1224,7 +1224,7 @@ _Yeni kadroyla takımları yeniden dengelemek isterseniz "@Match Time takımlar�
 9. Adam Osman
 10. Efat Rahman
 
-*Yedekler:*
+*Yedek listesi:*
 1. Usama Tariq
 2. Karahan Yildiz
 
@@ -1241,7 +1241,7 @@ _henüz kimse yok_
 1. Kemal Ediz
 2. ?
 
-*Yedekler:*
+*Yedek listesi:*
 1. ?
 
 ### R65 buildMatchCancelledAnnouncement
@@ -1369,18 +1369,18 @@ yeterli onaylı oyuncu yok, 9/14
 
 @447700900001 @447700900002
 
-Almak için buraya *VARIM* yazmanız yeterli. Acele yok, süre sınırı yok; kim önce müsaitse yeri o alır, diğerleri yedekte kalır. 🙏
+Almak için buraya *VARIM* yazmanız yeterli. Acele yok, süre sınırı yok; kim önce müsaitse yeri o alır, diğerleri yedek listesinde kalır. 🙏
 
 ### R85 buildBenchOfferDm / reactions off
-👋 Erdal, bir yer açıldı: bu akşamki Tuesday 7-a-side için, Kırmızı takımında (Sait Demir yerine). Yedekte olduğun için sana da yazıyorum.
+👋 Erdal, bir yer açıldı: bu akşamki Tuesday 7-a-side için, Kırmızı takımında (Sait Demir yerine). Yedek listesinde olduğun için sana da yazıyorum.
 
-İster misin? Almak için buraya *EVET* yaz ya da gruptaki etiketlediğim mesaja *VARIM* diye cevap ver. İlk sahiplenen oynar. Süre sınırı yok, müsait değilsen de sorun değil, yedekte kalırsın. 🙏
+İster misin? Almak için buraya *EVET* yaz ya da gruptaki etiketlediğim mesaja *VARIM* diye cevap ver. İlk sahiplenen oynar. Süre sınırı yok, müsait değilsen de sorun değil, yedek listesinde kalırsın. 🙏
 
 ### R53 buildBenchIntroLine / reactions off
-🔁  *Yedekten kadroya*, biri çıkarsa yedekleri burada etiketlerim ve ilk *VARIM* yazan yeri alır. Süre sınırı yok, geç görene de bir şey olmaz, yedekteki yeri kalır.
+🔁  *Yedek listesi*: biri çıkarsa yedek listesindekileri burada etiketlerim ve ilk *VARIM* yazan yeri alır. Süre sınırı yok, geç görene de bir şey olmaz, yedek listesindeki yeri kalır.
 
 ### R54 buildFullSquadBenchInvite / reactions off
-*Tuesday 7-a-side* kadrosu dolu, 14 kişilik kadroda 14 kişiyiz, ama yedek listesi açık. *VARIM* yazın, sizi yedeğe ekleyeyim. Biri çıkarsa yedekleri grupta etiketlerim ve ilk *VARIM* yazan yeri alır. 🙏
+*Tuesday 7-a-side* kadrosu dolu, 14 kişilik kadroda 14 kişiyiz, ama yedek listesi açık. *VARIM* yazın, sizi yedek listesine ekleyeyim. Biri çıkarsa yedek listesindekileri grupta etiketlerim ve ilk *VARIM* yazan yeri alır. 🙏
 
 ### R55 buildBenchAskedLine / reactions off
 *Erdal Ozkan* kadroya çağrılıyor, burada etiketlendi, *VARIM* yazması yeterli. Onaylayana kadar kadro *13/14*.
@@ -1393,18 +1393,18 @@ Almak için buraya *VARIM* yazmanız yeterli. Acele yok, süre sınırı yok; ki
 
 @447700900001 @447700900002
 
-Almak için buraya 👍 verin ya da *VARIM* yazın. Acele yok, süre sınırı yok; kim önce müsaitse yeri o alır, diğerleri yedekte kalır. 🙏
+Almak için buraya 👍 verin ya da *VARIM* yazın. Acele yok, süre sınırı yok; kim önce müsaitse yeri o alır, diğerleri yedek listesinde kalır. 🙏
 
 ### R85 buildBenchOfferDm / reactions on
-👋 Erdal, bir yer açıldı: bu akşamki Tuesday 7-a-side için, Kırmızı takımında (Sait Demir yerine). Yedekte olduğun için sana da yazıyorum.
+👋 Erdal, bir yer açıldı: bu akşamki Tuesday 7-a-side için, Kırmızı takımında (Sait Demir yerine). Yedek listesinde olduğun için sana da yazıyorum.
 
-İster misin? Almak için buraya *EVET* yaz, gruptaki etiketlediğim mesaja 👍 ver ya da orada *VARIM* yaz. İlk sahiplenen oynar. Süre sınırı yok, müsait değilsen de sorun değil, yedekte kalırsın. 🙏
+İster misin? Almak için buraya *EVET* yaz, gruptaki etiketlediğim mesaja 👍 ver ya da orada *VARIM* yaz. İlk sahiplenen oynar. Süre sınırı yok, müsait değilsen de sorun değil, yedek listesinde kalırsın. 🙏
 
 ### R53 buildBenchIntroLine / reactions on
-🔁  *Yedekten kadroya*, biri çıkarsa yedekleri burada etiketlerim ve ilk 👍 veren ya da *VARIM* yazan yeri alır. Süre sınırı yok, geç görene de bir şey olmaz, yedekteki yeri kalır.
+🔁  *Yedek listesi*: biri çıkarsa yedek listesindekileri burada etiketlerim ve ilk 👍 veren ya da *VARIM* yazan yeri alır. Süre sınırı yok, geç görene de bir şey olmaz, yedek listesindeki yeri kalır.
 
 ### R54 buildFullSquadBenchInvite / reactions on
-*Tuesday 7-a-side* kadrosu dolu, 14 kişilik kadroda 14 kişiyiz, ama yedek listesi açık. *VARIM* yazın, sizi yedeğe ekleyeyim. Biri çıkarsa yedekleri grupta etiketlerim ve ilk 👍 veren ya da *VARIM* yazan yeri alır. 🙏
+*Tuesday 7-a-side* kadrosu dolu, 14 kişilik kadroda 14 kişiyiz, ama yedek listesi açık. *VARIM* yazın, sizi yedek listesine ekleyeyim. Biri çıkarsa yedek listesindekileri grupta etiketlerim ve ilk 👍 veren ya da *VARIM* yazan yeri alır. 🙏
 
 ### R55 buildBenchAskedLine / reactions on
 *Erdal Ozkan* kadroya çağrılıyor, burada 👍 istemiyle etiketlendi. Onaylayana kadar kadro *13/14*.
@@ -1413,38 +1413,38 @@ Almak için buraya 👍 verin ya da *VARIM* yazın. Acele yok, süre sınırı y
 "<name>, you're up — 👍/👎 above"
 
 ### R85 buildBenchOfferDm / no first name
-👋 Bir yer açıldı: bu akşamki Tuesday 7-a-side için. Yedekte olduğun için sana da yazıyorum.
+👋 Bir yer açıldı: bu akşamki Tuesday 7-a-side için. Yedek listesinde olduğun için sana da yazıyorum.
 
-İster misin? Almak için buraya *EVET* yaz ya da gruptaki etiketlediğim mesaja *VARIM* diye cevap ver. İlk sahiplenen oynar. Süre sınırı yok, müsait değilsen de sorun değil, yedekte kalırsın. 🙏
+İster misin? Almak için buraya *EVET* yaz ya da gruptaki etiketlediğim mesaja *VARIM* diye cevap ver. İlk sahiplenen oynar. Süre sınırı yok, müsait değilsen de sorun değil, yedek listesinde kalırsın. 🙏
 
 ### R52b buildBenchOfferGroupPost / several slots / with reactions
 🎟 3 yer açıldı: 6 Ekim Salı günkü *Tuesday 7-a-side* için. *İlk sahiplenenler oynar.*
 
 @447700900001 @447700900002
 
-Birini almak için buraya 👍 verin ya da *VARIM* yazın. Acele yok, süre sınırı yok; yerler önce yazanların olur, yer kalmazsa diğerleri yedekte kalır. 🙏
+Birini almak için buraya 👍 verin ya da *VARIM* yazın. Acele yok, süre sınırı yok; yerler önce yazanların olur, yer kalmazsa diğerleri yedek listesinde kalır. 🙏
 
 ### R85b buildBenchOfferDm / several slots / with reactions
-👋 Erdal, 3 yer açıldı: 6 Ekim Salı günkü Tuesday 7-a-side için. Yedekte olduğun için sana da yazıyorum.
+👋 Erdal, 3 yer açıldı: 6 Ekim Salı günkü Tuesday 7-a-side için. Yedek listesinde olduğun için sana da yazıyorum.
 
-Birini ister misin? Almak için buraya *EVET* yaz, gruptaki etiketlediğim mesaja 👍 ver ya da orada *VARIM* yaz. İlk sahiplenen oynar. Süre sınırı yok, müsait değilsen de sorun değil, yedekte kalırsın. 🙏
+Birini ister misin? Almak için buraya *EVET* yaz, gruptaki etiketlediğim mesaja 👍 ver ya da orada *VARIM* yaz. İlk sahiplenen oynar. Süre sınırı yok, müsait değilsen de sorun değil, yedek listesinde kalırsın. 🙏
 
 ### R52b buildBenchOfferGroupPost / several slots / reactions off
 🎟 3 yer açıldı: 6 Ekim Salı günkü *Tuesday 7-a-side* için. *İlk sahiplenenler oynar.*
 
 @447700900001 @447700900002
 
-Birini almak için buraya *VARIM* yazmanız yeterli. Acele yok, süre sınırı yok; yerler önce yazanların olur, yer kalmazsa diğerleri yedekte kalır. 🙏
+Birini almak için buraya *VARIM* yazmanız yeterli. Acele yok, süre sınırı yok; yerler önce yazanların olur, yer kalmazsa diğerleri yedek listesinde kalır. 🙏
 
 ### R85b buildBenchOfferDm / several slots / reactions off
-👋 Erdal, 3 yer açıldı: 6 Ekim Salı günkü Tuesday 7-a-side için. Yedekte olduğun için sana da yazıyorum.
+👋 Erdal, 3 yer açıldı: 6 Ekim Salı günkü Tuesday 7-a-side için. Yedek listesinde olduğun için sana da yazıyorum.
 
-Birini ister misin? Almak için buraya *EVET* yaz ya da gruptaki etiketlediğim mesaja *VARIM* diye cevap ver. İlk sahiplenen oynar. Süre sınırı yok, müsait değilsen de sorun değil, yedekte kalırsın. 🙏
+Birini ister misin? Almak için buraya *EVET* yaz ya da gruptaki etiketlediğim mesaja *VARIM* diye cevap ver. İlk sahiplenen oynar. Süre sınırı yok, müsait değilsen de sorun değil, yedek listesinde kalırsın. 🙏
 
 ### R85b buildBenchOfferDm / several slots / no first name, match day
-👋 2 yer açıldı: bu akşamki Tuesday 7-a-side için. Yedekte olduğun için sana da yazıyorum.
+👋 2 yer açıldı: bu akşamki Tuesday 7-a-side için. Yedek listesinde olduğun için sana da yazıyorum.
 
-Birini ister misin? Almak için buraya *EVET* yaz ya da gruptaki etiketlediğim mesaja *VARIM* diye cevap ver. İlk sahiplenen oynar. Süre sınırı yok, müsait değilsen de sorun değil, yedekte kalırsın. 🙏
+Birini ister misin? Almak için buraya *EVET* yaz ya da gruptaki etiketlediğim mesaja *VARIM* diye cevap ver. İlk sahiplenen oynar. Süre sınırı yok, müsait değilsen de sorun değil, yedek listesinde kalırsın. 🙏
 
 ### R52c buildBenchOfferGroupPost / several slots with team detail
 🎟 2 yer açıldı: bu akşamki *Tuesday 7-a-side* için. *İlk sahiplenenler oynar.*
@@ -1453,14 +1453,14 @@ Birini ister misin? Almak için buraya *EVET* yaz ya da gruptaki etiketlediğim 
 
 @447700900001 @447700900002
 
-Birini almak için buraya *VARIM* yazmanız yeterli. Acele yok, süre sınırı yok; yerler önce yazanların olur, yer kalmazsa diğerleri yedekte kalır. 🙏
+Birini almak için buraya *VARIM* yazmanız yeterli. Acele yok, süre sınırı yok; yerler önce yazanların olur, yer kalmazsa diğerleri yedek listesinde kalır. 🙏
 
 ### R85c buildBenchOfferDm / several slots with team detail
-👋 Erdal, 2 yer açıldı: bu akşamki Tuesday 7-a-side için. Yedekte olduğun için sana da yazıyorum.
+👋 Erdal, 2 yer açıldı: bu akşamki Tuesday 7-a-side için. Yedek listesinde olduğun için sana da yazıyorum.
 • Kırmızı takımında, Sait Demir yerine
 • Kırmızı takımında, ? yerine
 
-Birini ister misin? Almak için buraya *EVET* yaz ya da gruptaki etiketlediğim mesaja *VARIM* diye cevap ver. İlk sahiplenen oynar. Süre sınırı yok, müsait değilsen de sorun değil, yedekte kalırsın. 🙏
+Birini ister misin? Almak için buraya *EVET* yaz ya da gruptaki etiketlediğim mesaja *VARIM* diye cevap ver. İlk sahiplenen oynar. Süre sınırı yok, müsait değilsen de sorun değil, yedek listesinde kalırsın. 🙏
 
 ### R59 formatRatingProgressReply / not ok, no reason
 Şu an kontrol edemedim.
@@ -1563,13 +1563,13 @@ Admins switch by rebooking the venue and flipping the match in the portal; a swi
 ✅ *Sait Demir* geliyor (davetine 👍 verdi). Kadro *12/14*.
 
 ### R48 buildOutOfBandAttendanceLine / BENCH via dm
-📋 *Sait Demir* DM'den varım dedi, yedeğe geçti. Kadro *12/14*.
+📋 *Sait Demir* DM'den varım dedi, yedek listesine geçti. Kadro *12/14*.
 
 ### R48 buildOutOfBandAttendanceLine / BENCH via app
-📋 *Sait Demir* uygulamadan varım dedi, yedeğe geçti. Kadro *12/14*.
+📋 *Sait Demir* uygulamadan varım dedi, yedek listesine geçti. Kadro *12/14*.
 
 ### R48 buildOutOfBandAttendanceLine / BENCH via reaction
-📋 *Sait Demir* davetine 👍 verdi, yedeğe geçti. Kadro *12/14*.
+📋 *Sait Demir* davetine 👍 verdi, yedek listesine geçti. Kadro *12/14*.
 
 ### R48 buildOutOfBandAttendanceLine / DROPPED via dm
 ❌ *Sait Demir* gelmiyor (DM'den yazdı). Kadro *12/14*.
@@ -1767,7 +1767,7 @@ Kusura bakma, kadroyu şu an güncelleyemedim. Bir yönetici halleder, istersen 
 ✅ *Tuesday 7-a-side* (8 Eylül Salı 21:30) için kadrodasın. Maçta görüşürüz ⚽
 
 ### R101 buildSelfAttendanceAck / BENCH
-📋 *Tuesday 7-a-side* (8 Eylül Salı 21:30) için kadro dolu, o yüzden seni yedeğe yazdım. Bir yer açılınca sana haber veririm 🙏
+📋 *Tuesday 7-a-side* (8 Eylül Salı 21:30) için kadro dolu, o yüzden seni yedek listesine yazdım. Bir yer açılınca sana haber veririm 🙏
 
 ### R101 buildSelfAttendanceAck / DROPPED
 👋 Sorun değil, *Tuesday 7-a-side* (8 Eylül Salı 21:30) için seni çıkardım. Haber verdiğin için sağ ol.
@@ -1794,7 +1794,7 @@ Süper, puanlama ve maçın adamı linklerini yeniden göndereceğim 👍
 👋 Hi, I'm *MatchTime*. I take care of the weekly admin for football groups, right here in WhatsApp:
 
 ✅ *Who's in:* just say *In* or *Out*. I keep the list and tick your message.
-🪑 *The bench:* once you're full, anyone who says *In* late goes on the bench, and the bench gets first dibs if someone drops.
+🪑 *The waiting list (the bench):* once you're full, anyone who says *In* late goes on the waiting list, and it gets first dibs if someone drops.
 📣 *Chasing:* short of players? I remind the group, and stop once you're full.
 ⚖️ *Fair teams:* tag me and I pick balanced teams from player ratings.
 ⭐ *Ratings and Man of the Match* after every game.
@@ -1885,8 +1885,8 @@ Type *"@Match Time help"* any time to see this again.
 ### R142 buildHelpReply / availability
 ⚽ *Squad & availability: how it works*
 Just say *In* or *Out* in the group to mark yourself for the next game. No need to tag me, I read it automatically.
-I keep a live, numbered squad list. When it's full, extra players go on the *bench* in order. Not sure yet? Say *"maybe"* and I'll DM you ~24h before kick-off for a final answer.
-If you drop out, I can nudge the bench to step in so we're never short. Say *Out* any time and I'll sort the rest.
+I keep a live, numbered squad list. When it's full, extra players go on the *waiting list (the bench)* in order. Not sure yet? Say *"maybe"* and I'll DM you ~24h before kick-off for a final answer.
+If you drop out, I can nudge everyone on the waiting list to step in so we're never short. Say *Out* any time and I'll sort the rest.
 
 ### R142 buildHelpReply / teams
 🟥🟦 *Fair teams: how it works*
@@ -2431,7 +2431,7 @@ Teşekkürler, grubunuza katıldım. Kulübünüz onaylanana kadar orada sessiz 
 👋 Herkese merhaba, ben *MatchTime*. Ali beni bu grubun maçlarını düzenlemem için kurdu. Burada, WhatsApp'ta şunları yaparım:
 
 ✅ *Kim var:* *VARIM* ya da *YOKUM* yazmanız yeter. Listeyi tutar, mesajınıza tik koyarım.
-🪑 *Yedekler:* kadro dolunca geç gelenler yedeğe yazılır, biri çıkarsa ilk şans yedeklerindir.
+🪑 *Yedek listesi:* kadro dolunca geç gelenler yedek listesine yazılır, biri çıkarsa ilk şans yedek listesindekilerindir.
 ⏰ *Hatırlatma:* *"@Match Time perşembe hatırlat"* yazın, o zaman size özelden yazarım.
 ⚖️ *Dengeli takımlar:* beni etiketleyin, oyuncu puanlarına göre dengeli takımlar kurarım.
 ⭐ *Maçın oyuncusu ve puanlar* her maçtan sonra.
@@ -2444,7 +2444,7 @@ Sohbet sırasında sessiz kalırım, sadece VARIM, YOKUM ya da etiketlenince yan
 👋 Herkese merhaba, ben *MatchTime*. Bu grubun maçlarını düzenlemek için buradayım. Burada, WhatsApp'ta şunları yaparım:
 
 ✅ *Kim var:* *VARIM* ya da *YOKUM* yazmanız yeter. Listeyi tutar, mesajınıza tik koyarım.
-🪑 *Yedekler:* kadro dolunca geç gelenler yedeğe yazılır, biri çıkarsa ilk şans yedeklerindir.
+🪑 *Yedek listesi:* kadro dolunca geç gelenler yedek listesine yazılır, biri çıkarsa ilk şans yedek listesindekilerindir.
 ⏰ *Hatırlatma:* *"@Match Time perşembe hatırlat"* yazın, o zaman size özelden yazarım.
 ⚖️ *Dengeli takımlar:* beni etiketleyin, oyuncu puanlarına göre dengeli takımlar kurarım.
 ⭐ *Maçın oyuncusu ve puanlar* her maçtan sonra.
@@ -3288,19 +3288,19 @@ Tamam, *Tuesday 7-a-side* için kişi başı *£8*.
 Herkese ödeme linkini göndermek için *✅* (ya da "evet") yaz, değiştirmek için başka bir tutar gönder.
 
 ### R103 buildBenchDmUnclear
-Bu akşamki boş yeri ister misin? Almak için *EVET* yaz. İstemiyorsan sorun değil, her durumda yedekte kalırsın 🙏
+Bu akşamki boş yeri ister misin? Almak için *EVET* yaz. İstemiyorsan sorun değil, her durumda yedek listesinde kalırsın 🙏
 
 ### R103 buildBenchDmUnclear / not match day
-6 Ekim Salı günkü boş yeri ister misin? Almak için *EVET* yaz. İstemiyorsan sorun değil, her durumda yedekte kalırsın 🙏
+6 Ekim Salı günkü boş yeri ister misin? Almak için *EVET* yaz. İstemiyorsan sorun değil, her durumda yedek listesinde kalırsın 🙏
 
 ### R104 buildBenchDmAck / declined
-👍 Sorun değil, yedekte kalmaya devam ediyorsun, bir şey değişmedi.
+👍 Sorun değil, yedek listesinde kalmaya devam ediyorsun, bir şey değişmedi.
 
 ### R104 buildBenchDmAck / confirmed
 ✅ Yer senin, bu akşam oynuyorsun! ⚽
 
 ### R104 buildBenchDmAck / taken
-Maalesef biri senden önce davrandı. Yedekte kalmaya devam ediyorsun, başka bir yer açılırsa sıra sende 🙏
+Maalesef biri senden önce davrandı. Başka bir yer açılırsa diye yedek listesinde kalmaya devam ediyorsun 🙏
 
 ### R104 buildBenchDmAck / other
 👍 Tamam.
@@ -3385,7 +3385,7 @@ Link 48 saat geçerli.
 Neler yaparım:
 ⚽ *Katılım*, oyuncular buraya "varım" ya da "yokum" yazar; kadro listesini güncel tutarım, eksik kalınca hatırlatırım
 ⚖️ *Dengeli takımlar*, gerçek oyuncu puanlarına göre her hafta dengeli iki takım
-🪑 *Akıllı yedek listesi*, kadro dolu mu? Açılan yeri bütün yedeklere sorarım, ilk sahiplenen oynar. Geç gördü diye kimse yerini kaybetmez
+🪑 *Akıllı yedek listesi*, kadro dolu mu? Açılan yeri yedek listesindeki herkese sorarım, ilk sahiplenen oynar. Geç gördü diye kimse yerini kaybetmez
 🏆 *Maçın adamı ve puanlar*, maçtan sonra kısa bir oylama ve tek dokunuşla puanlama linki, uygulama indirmeye gerek yok
 ⏰ *Hatırlatmalar ve istatistikler*, maçtan önce herkese hatırlatırım, "geçen hafta maçın adamı kim oldu?" gibi sorulara cevap veririm
 
@@ -3523,7 +3523,7 @@ Yaptıklarım:
 
 🗒  *Günlük hatırlatma*, kadro dolana kadar her gün 17:00'de kadro listesini yeniden paylaşırım, kaç kişi eksik hep birlikte görürüz.
 
-🔁  *Yedekten kadroya*, biri çıkarsa yedekleri burada etiketlerim ve ilk *VARIM* yazan yeri alır. Süre sınırı yok, geç görene de bir şey olmaz, yedekteki yeri kalır.
+🔁  *Yedek listesi*: biri çıkarsa yedek listesindekileri burada etiketlerim ve ilk *VARIM* yazan yeri alır. Süre sınırı yok, geç görene de bir şey olmaz, yedek listesindeki yeri kalır.
 
 ⚽  *Takımlar*, "@Match Time takımları kur" deyin, dengeli takımları paylaşırım. İtirazı olan `@Match Time X ile Y'yi değiştir` yazsın, admin onaylar.
 
@@ -3564,7 +3564,7 @@ Aktarılacak kimse yok
 3. Wasim Ali
 4. Kemal Ediz
 
-*Yedekler (1):*
+*Yedek listesi (1):*
 1. Ali Demir
 
 ### WDL2 buildDeadlineSummaryAdminNotice / drops, maybes, waiting, places open

@@ -75,7 +75,7 @@ describe("a model-authored Turkish roster is replaced, never patched", () => {
     expect(r.text).toBe(composed);
     expect(r.text).toContain("*4/5*");
     expect(r.text).toContain("*Oynayanlar:*");
-    expect(r.text).toContain("*Yedekler (1):*");
+    expect(r.text).toContain("*Yedek listesi (1):*");
     expect(r.text).not.toContain("3/5");
     expect(r.text).not.toContain("Bu akşam oynayanlar");
   });
@@ -133,7 +133,7 @@ describe("an announced Turkish move that the database does not back is replaced 
   it("cannot announce a promotion while the player is still benched", () => {
     const r = tr("Çağrı Yılmaz kadroya geçti, hallettik.");
     expect(r.composed).toBe(true);
-    expect(r.text).toContain("*Yedekler (1):*");
+    expect(r.text).toContain("*Yedek listesi (1):*");
     expect(r.text).toContain("Çağrı Yılmaz");
   });
 

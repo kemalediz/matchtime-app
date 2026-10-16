@@ -73,7 +73,7 @@ describe("bench offer context: the day, in English", () => {
     const post = buildBenchOfferGroupPost({ context: c.group, tagList: "@447700900001", lang: "en" });
     expect(post.startsWith("🎟 A slot just opened for *Tuesday 7-a-side* on Tue 6 Oct. *First to claim it plays.*")).toBe(true);
     const dm = buildBenchOfferDm({ firstName: "Ozgur", context: c.plain, lang: "en" });
-    expect(dm.startsWith("👋 Hi Ozgur, a slot just opened for Tuesday 7-a-side on Tue 6 Oct and you're on the bench.")).toBe(true);
+    expect(dm.startsWith("👋 Hi Ozgur, a slot just opened for Tuesday 7-a-side on Tue 6 Oct and you're on the waiting list (the bench).")).toBe(true);
     for (const text of [post, dm]) {
       expect(text).not.toMatch(/tonight/i);
       expect(text).not.toMatch(DASHES);
@@ -115,10 +115,10 @@ describe("bench offer context: the day, in Turkish", () => {
 describe("the bench DM's clarification and ack say the day too", () => {
   it("English: 'tonight' only on match day", () => {
     expect(buildBenchDmUnclear("en", MATCH, SATURDAY)).toBe(
-      "Want the open slot for Tue 6 Oct? Reply *YES* to grab it. If not, no worries, you stay on the bench either way 🙏",
+      "Want the open slot for Tue 6 Oct? Reply *YES* to grab it. If not, no worries, you stay on the waiting list (the bench) either way 🙏",
     );
     expect(buildBenchDmUnclear("en", MATCH, MATCH_DAY)).toBe(
-      "Want the open slot for tonight? Reply *YES* to grab it. If not, no worries, you stay on the bench either way 🙏",
+      "Want the open slot for tonight? Reply *YES* to grab it. If not, no worries, you stay on the waiting list (the bench) either way 🙏",
     );
     expect(buildBenchDmAck("confirmed", "en", MATCH, SATURDAY)).toBe("✅ You got it, you're in for Tue 6 Oct! ⚽");
     expect(buildBenchDmAck("confirmed", "en", MATCH, MATCH_DAY)).toBe("✅ You got it, you're in for tonight! ⚽");
@@ -126,10 +126,10 @@ describe("the bench DM's clarification and ack say the day too", () => {
 
   it("Turkish: 'bu akşam' only on match day", () => {
     expect(buildBenchDmUnclear("tr", MATCH, SATURDAY)).toBe(
-      "6 Ekim Salı günkü boş yeri ister misin? Almak için *EVET* yaz. İstemiyorsan sorun değil, her durumda yedekte kalırsın 🙏",
+      "6 Ekim Salı günkü boş yeri ister misin? Almak için *EVET* yaz. İstemiyorsan sorun değil, her durumda yedek listesinde kalırsın 🙏",
     );
     expect(buildBenchDmUnclear("tr", MATCH, MATCH_DAY)).toBe(
-      "Bu akşamki boş yeri ister misin? Almak için *EVET* yaz. İstemiyorsan sorun değil, her durumda yedekte kalırsın 🙏",
+      "Bu akşamki boş yeri ister misin? Almak için *EVET* yaz. İstemiyorsan sorun değil, her durumda yedek listesinde kalırsın 🙏",
     );
     expect(buildBenchDmAck("confirmed", "tr", MATCH, SATURDAY)).toBe("✅ Yer senin, 6 Ekim Salı günü oynuyorsun! ⚽");
     expect(buildBenchDmAck("confirmed", "tr", MATCH, MATCH_DAY)).toBe("✅ Yer senin, bu akşam oynuyorsun! ⚽");

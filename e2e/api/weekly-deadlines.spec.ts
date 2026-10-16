@@ -180,7 +180,7 @@ test("Mon 18:05: the drop-out reminder, 3 hours before the deadline, with the sq
       "2. Raihan Ahmed",
       "3. Wasim Ali",
       "",
-      "*Bench (1):*",
+      "*Waiting list (1):*",
       "1. Ali Demir",
     ].join("\n"),
   );
@@ -240,7 +240,7 @@ test("Tue 20:05: the final list in the group; not before; Sutton gets none", asy
       "2. Raihan Ahmed",
       "3. Wasim Ali",
       "",
-      "*Bench (1):*",
+      "*Waiting list (1):*",
       "1. Ali Demir",
       "",
       "15 places still open.",

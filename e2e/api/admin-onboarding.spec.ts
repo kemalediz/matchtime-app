@@ -123,7 +123,7 @@ test("GO: the admins get 'Getting <club> ready' once, in the admin group, and th
   expect(hello).toHaveLength(1);
   expect(hello[0].text).toContain("📣 *List and teams:* the organisers share the squad list and the teams with you.");
   expect(hello[0].text).not.toContain("Fair teams");
-  expect(hello[0].text).not.toContain("I'll put you on the bench and the organisers pick who plays");
+  expect(hello[0].text).not.toContain("I'll put you on the waiting list and the organisers pick who plays");
 
   expect(ready).toHaveLength(1);
   expect(ready[0].text).toBe(

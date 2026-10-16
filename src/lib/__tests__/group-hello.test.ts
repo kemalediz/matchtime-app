@@ -348,7 +348,7 @@ describe("buildGroupHello: each setting is described only when it is on", () => 
     expect(first).toMatch(/same squad.*first game.*say \*In\*.*After that.*say \*Out\*.*before \*Monday 21:00\*/i);
     expect(first).not.toMatch(/if you played last time/i);
     const pick = en.sj_hello_rolling_first({ deadline: null, mode: "organiser" });
-    expect(pick).toMatch(/first game.*say \*In\*.*bench.*organisers pick/i);
+    expect(pick).toMatch(/first game.*say \*In\*.*waiting list.*organisers pick/i);
     const trFirst = tr.sj_hello_rolling_first({ deadline: "Pazartesi 21:00", mode: "first-come" });
     expect(trFirst).toMatch(/ilk maç.*\*VARIM\*.*\*Pazartesi 21:00\*.*\*YOKUM\*/);
   });

@@ -1,8 +1,12 @@
 /**
- * One word for one thing (owner decision, 2026-10-12): a player who wants
- * to play when the squad is full is "on the bench". MatchTime's own words
- * never call that a "waiting list", "reserves" or a "standby list", and
- * the Turkish is always a form of "yedek".
+ * One thing, two audiences (owner decision 2026-10-12, revised 2026-10-16):
+ * a player who wants to play when the squad is full is on "the waiting
+ * list (the bench)" in everything a PLAYER reads, and "on the bench" in
+ * what the organisers read. FNF's players did not know what "the bench"
+ * meant, so the player copy says it plainly
+ * (`src/lib/__tests__/bench-plain-words.test.ts` pins that). What this
+ * file still bans is a THIRD word: "reserves", a "standby list", a "sub
+ * list". The Turkish is always a form of "yedek".
  *
  * This reads the SOURCE of the two string files rather than rendering the
  * strings, so every branch of every function is covered, not only the
@@ -49,7 +53,7 @@ function offenders(hits: Hit[], allowed: Record<string, string>): string[] {
   return hits.filter((h) => !(h.key in allowed)).map((h) => `${h.key} (line ${h.line}): ${h.text}`);
 }
 
-describe("the bench is called the bench (English)", () => {
+describe("the bench is the bench or the waiting list, nothing else (English)", () => {
   /** Keys that keep an old word, each with the reason. Add a key here only
    *  when the text is NOT about a player waiting for a place in a match. */
   const ALLOWED: Record<string, string> = {
@@ -60,9 +64,9 @@ describe("the bench is called the bench (English)", () => {
     // Left for the owner to decide (see the PR that added this test).
     mwk_list_reserves: "the pasted monthly list's section title, read back by the list reader",
   };
-  const BANNED = /wait(?:ing)?[\s-]?list|\breserves?\b|stand-?by|\bsub(?:s|stitutes?)? list/i;
+  const BANNED = /\breserves?\b|stand-?by|\bsub(?:s|stitutes?)? list/i;
 
-  it("no 'waiting list', 'reserve', 'standby' or 'sub list' outside the allow-list", () => {
+  it("no 'reserve', 'standby' or 'sub list' outside the allow-list", () => {
     expect(offenders(scan("strings.en.ts", BANNED), ALLOWED)).toEqual([]);
   });
 

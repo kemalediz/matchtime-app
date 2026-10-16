@@ -149,12 +149,13 @@ export const tr: Strings = {
   squad_status_lead: (p) => {
     const count = `*${p.confirmed}/${p.maxPlayers}*`;
     return (
-      `📋 Aldığım mesajlara göre son kadro${p.withBench ? " ve yedekler" : ""}: ` +
+      `📋 Aldığım mesajlara göre son kadro${p.withBench ? " ve yedek listesi" : ""}: ` +
       (p.need > 0 ? `${count}, *${p.need} kişi daha* lazım 🙏` : `${count} ✅ kadro tamam.`)
     );
   },
   playing_header: "*Oynayanlar:*",
   bench_header: (p) => `*Yedekler (${p.count}):*`,
+  waiting_list_header: (p) => `*Yedek listesi (${p.count}):*`,
 
   // ── row 2: formatTeamsPost ───────────────────────────────────────
 
@@ -198,8 +199,8 @@ export const tr: Strings = {
   bench_promotion_how: (p) =>
     p.reactions ? "ilk 👍 veren ya da *VARIM* yazan yeri alır" : "ilk *VARIM* yazan yeri alır",
   squad_complete_bench_invite: (p) =>
-    `🪑 *Yedek listesi açık.* *VARIM* yazın, sizi yedeğe ekleyeyim. ` +
-    `Biri çıkarsa yedekleri burada etiketlerim ve ${p.how}.`,
+    `🪑 *Yedek listesi açık.* *VARIM* yazın, sizi yedek listesine ekleyeyim. ` +
+    `Biri çıkarsa yedek listesindekileri burada etiketlerim ve ${p.how}.`,
   bench_offer_group_post: (p) => {
     const claim = p.reactions
       ? "Almak için buraya 👍 verin ya da *VARIM* yazın."
@@ -208,7 +209,7 @@ export const tr: Strings = {
       `🎟 Bir yer açıldı: ${p.context}. *İlk sahiplenen oynar.*\n\n` +
       `${p.tagList}\n\n` +
       `${claim} Acele yok, süre sınırı yok; kim önce müsaitse yeri o alır, ` +
-      `diğerleri yedekte kalır. 🙏`
+      `diğerleri yedek listesinde kalır. 🙏`
     );
   },
   bench_offer_group_post_many: (p) => {
@@ -221,7 +222,7 @@ export const tr: Strings = {
       `\n` +
       `${p.tagList}\n\n` +
       `${claim} Acele yok, süre sınırı yok; yerler önce yazanların olur, ` +
-      `yer kalmazsa diğerleri yedekte kalır. 🙏`
+      `yer kalmazsa diğerleri yedek listesinde kalır. 🙏`
     );
   },
 
@@ -347,10 +348,10 @@ export const tr: Strings = {
   answer_payments_all_settled: (p) => `💳 ${p.kickoffLabel} için herkes ödedi 🙌`,
   answer_payments_unpaid: (p) =>
     `💳 ${p.kickoffLabel} için ${p.chargeable} kişiden ${p.unpaid} kişinin ödemesi bekleniyor. Grupta isim vermiyorum.`,
-  answer_bench_empty: "Şu an yedekte kimse yok.",
-  answer_bench_list: (p) => `Yedekler: ${joinList("tr", p.names)}.`,
+  answer_bench_empty: "Şu an yedek listesinde kimse yok.",
+  answer_bench_list: (p) => `Yedek listesi: ${joinList("tr", p.names)}.`,
   answer_person_not_down: (p) => `${p.who} ${p.kickoffLabel} için henüz kadroda değil.`,
-  answer_person_bench: (p) => `${p.who} ${p.kickoffLabel} için yedekte.`,
+  answer_person_bench: (p) => `${p.who} ${p.kickoffLabel} için yedek listesinde.`,
   answer_person_confirmed: (p) => `Evet, ${p.who} ${p.kickoffLabel} için kadroda.`,
   answer_phones_none: "Kadrodaki herkesin kayıtlı numarası var.",
   answer_phones_missing: (p) => `Kayıtlı numarası olmayanlar: ${joinList("tr", p.names)}.`,
@@ -494,7 +495,7 @@ export const tr: Strings = {
   needs_tag_for_rest: (p) => {
     const parts: string[] = [];
     if (p.dropped.length > 0) parts.push(`çıkış: ${joinList("tr", p.dropped)}`);
-    if (p.benched.length > 0) parts.push(`yedek: ${joinList("tr", p.benched)}`);
+    if (p.benched.length > 0) parts.push(`yedek listesine alma: ${joinList("tr", p.benched)}`);
     return (
       `Şunlara dokunmadım, ${parts.join("; ")}. ` +
       `Bunlar için @Match Time etiketi gerekiyor, beni etiketleyin, hallederim 👍`
@@ -502,8 +503,8 @@ export const tr: Strings = {
   },
   bench_claim_too_late: (p) =>
     `Sağ ol ${p.firstName} 🙏 biri senden önce davrandı, kadro yine ` +
-    `${p.confirmed}/${p.maxPlayers}. Yedekte kalmaya devam ediyorsun, ` +
-    `başka bir yer açılırsa sıra sende.`,
+    `${p.confirmed}/${p.maxPlayers}. Başka bir yer açılırsa diye ` +
+    `yedek listesinde kalmaya devam ediyorsun.`,
   pending_confirmed_ack: (p) => `Tamam 🙌 ${joinList("tr", p.names)}, ${p.kickoffLabel} için kadroda.`,
 
   // ── row 44: renderGuestNameAsk ─────────────────────────────────────
@@ -556,7 +557,7 @@ export const tr: Strings = {
         : p.source === "dm"
           ? "DM'den varım dedi"
           : "uygulamadan varım dedi";
-    return `📋 *${p.name}* ${how}, yedeğe geçti. Kadro *${p.confirmed}/${p.maxPlayers}*.`;
+    return `📋 *${p.name}* ${how}, yedek listesine geçti. Kadro *${p.confirmed}/${p.maxPlayers}*.`;
   },
   oob_out: (p) => {
     const how = p.source === "reaction" ? "davetine 👎 verdi" : p.source === "dm" ? "DM'den yazdı" : "uygulamadan";
@@ -575,11 +576,11 @@ export const tr: Strings = {
   // ── rows 53, 54, 55: the rest of bench-offer-copy.ts ───────────────
 
   bench_intro_line: (p) =>
-    `🔁  *Yedekten kadroya*, biri çıkarsa yedekleri burada etiketlerim ve ` +
-    `${p.how}. Süre sınırı yok, geç görene de bir şey olmaz, yedekteki yeri kalır.`,
+    `🔁  *Yedek listesi*: biri çıkarsa yedek listesindekileri burada etiketlerim ve ` +
+    `${p.how}. Süre sınırı yok, geç görene de bir şey olmaz, yedek listesindeki yeri kalır.`,
   full_squad_bench_invite: (p) =>
     `*${p.matchName}* kadrosu dolu, ${p.maxPlayers} kişilik kadroda ${p.confirmed} kişiyiz, ama yedek listesi açık. ` +
-    `*VARIM* yazın, sizi yedeğe ekleyeyim. Biri çıkarsa yedekleri grupta etiketlerim ` +
+    `*VARIM* yazın, sizi yedek listesine ekleyeyim. Biri çıkarsa yedek listesindekileri grupta etiketlerim ` +
     `ve ${p.how}. 🙏`,
   bench_asked_line: (p) => {
     const how = p.reactions
@@ -675,7 +676,7 @@ export const tr: Strings = {
 
   format_switch_header: (p) => `🔁 *Format değişti*, artık *${p.sportName}* (${p.maxPlayers} kişi).`,
   format_switch_playing_header: (p) => `*Oynayanlar (${p.confirmed}/${p.maxPlayers}):*`,
-  format_switch_bench_header: "*Yedekler:*",
+  format_switch_bench_header: "*Yedek listesi:*",
   match_cancelled: (p) =>
     `❌ *Maç iptal*, ${p.activityName}, ${p.whenLabel}.\n\n` +
     `Bu hafta yeterli oyuncu yok. Haftaya görüşürüz!`,
@@ -802,7 +803,7 @@ export const tr: Strings = {
   onbIntro: (): string =>
     `👋 Merhaba, ben *MatchTime*. Futbol gruplarının haftalık işlerini burada, WhatsApp'ta üstlenirim:\n\n` +
     `✅ *Kim var:* *VARIM* ya da *YOKUM* yazmanız yeter. Listeyi tutar, mesajınıza tik koyarım.\n` +
-    `🪑 *Yedekler:* kadro dolunca geç gelenler yedeğe yazılır, biri çıkarsa ilk şans yedeklerindir.\n` +
+    `🪑 *Yedek listesi:* kadro dolunca geç gelenler yedek listesine yazılır, biri çıkarsa ilk şans yedek listesindekilerindir.\n` +
     `📣 *Hatırlatma:* oyuncu mu eksik? Gruba hatırlatırım, kadro dolunca dururum.\n` +
     `⚖️ *Dengeli takımlar:* beni etiketleyin, oyuncu puanlarına göre dengeli takımlar kurarım.\n` +
     `⭐ *Puanlar ve maçın oyuncusu* her maçtan sonra.\n` +
@@ -1109,8 +1110,8 @@ export const tr: Strings = {
       availability:
         `⚽ *Kadro ve katılım nasıl çalışır*\n` +
         `Bir sonraki maç için grupta *varım* veya *yokum* yazmanız yeter, beni etiketlemenize gerek yok, otomatik okurum.\n` +
-        `Numaralı ve güncel bir kadro listesi tutarım. Kadro dolunca sonra yazanlar sırayla *yedek* listesine girer. Emin değil misiniz? *"belki"* yazın, maçtan yaklaşık 24 saat önce özelden kesin cevabınızı sorarım.\n` +
-        `Biri çıkarsa yedekleri dürterim, böylece hiç eksik kalmayız. İstediğiniz zaman *yokum* yazın, gerisini ben hallederim.`,
+        `Numaralı ve güncel bir kadro listesi tutarım. Kadro dolunca sonra yazanlar sırayla *yedek listesine* girer. Emin değil misiniz? *"belki"* yazın, maçtan yaklaşık 24 saat önce özelden kesin cevabınızı sorarım.\n` +
+        `Biri çıkarsa yedek listesindekileri dürterim, böylece hiç eksik kalmayız. İstediğiniz zaman *yokum* yazın, gerisini ben hallederim.`,
       reminders:
         `⏰ *Hatırlatmalar nasıl çalışır*\n` +
         `Henüz *varım* veya *yokum* demeyenleri nazikçe dürterim, sonra maçtan önce bütün kadroya hatırlatırım ki kimse unutmasın.\n` +
@@ -1134,8 +1135,8 @@ export const tr: Strings = {
         `Bir sonraki maç için grupta *varım* veya *yokum* yazmanız yeter, beni etiketlemenize gerek yok, otomatik okurum.\n` +
         `Kimin geldiğini organizatörler için ben takip ederim, listeyi grupla onlar paylaşır. Emin değil misiniz? *"belki"* yazın, maçtan yaklaşık 24 saat önce özelden kesin cevabınızı sorarım.\n` +
         (p.organiserPicks
-          ? `Kadro doluysa yedeğe girmek için *varım* yazın. Bir yer açılınca kimin oynayacağını organizatörler seçer.`
-          : `Kadro dolunca sonra yazanlar *yedek* listesine girer, açılan bir yer için ilk şans yedeklerindir.`) +
+          ? `Kadro doluysa yedek listesine girmek için *varım* yazın. Bir yer açılınca kimin oynayacağını organizatörler seçer.`
+          : `Kadro dolunca sonra yazanlar *yedek listesine* girer, açılan bir yer için ilk şans yedek listesindekilerindir.`) +
         ` Gelemeyecekseniz istediğiniz zaman *yokum* yazın.`,
       reminders:
         `⏰ *Hatırlatmalar nasıl çalışır*\n` +
@@ -1146,8 +1147,8 @@ export const tr: Strings = {
   onbHelpAvailabilityOrganiserPicks:
     `⚽ *Kadro ve katılım nasıl çalışır*\n` +
     `Bir sonraki maç için grupta *varım* veya *yokum* yazmanız yeter, beni etiketlemenize gerek yok, otomatik okurum.\n` +
-    `Numaralı ve güncel bir kadro listesi tutarım. Kadro dolunca sonra yazanlar *yedek* listesine girer. Emin değil misiniz? *"belki"* yazın, maçtan yaklaşık 24 saat önce özelden kesin cevabınızı sorarım.\n` +
-    `Bir yer açılınca yedeklerden kimin oynayacağını organizatörler seçer. Gelemeyecekseniz istediğiniz zaman *yokum* yazın.`,
+    `Numaralı ve güncel bir kadro listesi tutarım. Kadro dolunca sonra yazanlar *yedek listesine* girer. Emin değil misiniz? *"belki"* yazın, maçtan yaklaşık 24 saat önce özelden kesin cevabınızı sorarım.\n` +
+    `Bir yer açılınca yedek listesinden kimin oynayacağını organizatörler seçer. Gelemeyecekseniz istediğiniz zaman *yokum* yazın.`,
 
   onbHelpAdminOrganisers: `📣 Listeyi ve takımları organizatörler paylaşıyor. Yönetici grubunda *yardım* yaz, orada kabul ettiğim komutları göstereyim.`,
 
@@ -1317,8 +1318,8 @@ export const tr: Strings = {
       ? "Almak için buraya *EVET* yaz, gruptaki etiketlediğim mesaja 👍 ver ya da orada *VARIM* yaz."
       : "Almak için buraya *EVET* yaz ya da gruptaki etiketlediğim mesaja *VARIM* diye cevap ver.";
     return (
-      `👋 ${p.firstName ? `${p.firstName}, bir` : "Bir"} yer açıldı: ${p.context}. Yedekte olduğun için sana da yazıyorum.\n\n` +
-      `İster misin? ${claim} İlk sahiplenen oynar. Süre sınırı yok, müsait değilsen de sorun değil, yedekte kalırsın. 🙏`
+      `👋 ${p.firstName ? `${p.firstName}, bir` : "Bir"} yer açıldı: ${p.context}. Yedek listesinde olduğun için sana da yazıyorum.\n\n` +
+      `İster misin? ${claim} İlk sahiplenen oynar. Süre sınırı yok, müsait değilsen de sorun değil, yedek listesinde kalırsın. 🙏`
     );
   },
 
@@ -1327,21 +1328,21 @@ export const tr: Strings = {
       ? "Almak için buraya *EVET* yaz, gruptaki etiketlediğim mesaja 👍 ver ya da orada *VARIM* yaz."
       : "Almak için buraya *EVET* yaz ya da gruptaki etiketlediğim mesaja *VARIM* diye cevap ver.";
     return (
-      `👋 ${p.firstName ? `${p.firstName}, ${p.count}` : `${p.count}`} yer açıldı: ${p.context}. Yedekte olduğun için sana da yazıyorum.\n` +
+      `👋 ${p.firstName ? `${p.firstName}, ${p.count}` : `${p.count}`} yer açıldı: ${p.context}. Yedek listesinde olduğun için sana da yazıyorum.\n` +
       p.details.map((d) => `${d}\n`).join("") +
       `\n` +
-      `Birini ister misin? ${claim} İlk sahiplenen oynar. Süre sınırı yok, müsait değilsen de sorun değil, yedekte kalırsın. 🙏`
+      `Birini ister misin? ${claim} İlk sahiplenen oynar. Süre sınırı yok, müsait değilsen de sorun değil, yedek listesinde kalırsın. 🙏`
     );
   },
 
   dm_bench_unclear: (p) =>
-    `${p.day ? `${p.day} günkü` : "Bu akşamki"} boş yeri ister misin? Almak için *EVET* yaz. İstemiyorsan sorun değil, her durumda yedekte kalırsın 🙏`,
+    `${p.day ? `${p.day} günkü` : "Bu akşamki"} boş yeri ister misin? Almak için *EVET* yaz. İstemiyorsan sorun değil, her durumda yedek listesinde kalırsın 🙏`,
 
   dm_bench_ack: (p) =>
     ({
-      declined: "👍 Sorun değil, yedekte kalmaya devam ediyorsun, bir şey değişmedi.",
+      declined: "👍 Sorun değil, yedek listesinde kalmaya devam ediyorsun, bir şey değişmedi.",
       confirmed: `✅ Yer senin, ${p.day ? `${p.day} günü` : "bu akşam"} oynuyorsun! ⚽`,
-      taken: "Maalesef biri senden önce davrandı. Yedekte kalmaya devam ediyorsun, başka bir yer açılırsa sıra sende 🙏",
+      taken: "Maalesef biri senden önce davrandı. Başka bir yer açılırsa diye yedek listesinde kalmaya devam ediyorsun 🙏",
       other: "👍 Tamam.",
     })[p.kind],
 
@@ -1373,7 +1374,7 @@ export const tr: Strings = {
     }
     if (p.status === "CONFIRMED") return `✅ ${m} için kadrodasın. Maçta görüşürüz ⚽`;
     if (p.status === "BENCH") {
-      return `📋 ${m} için kadro dolu, o yüzden seni yedeğe yazdım. Bir yer açılınca sana haber veririm 🙏`;
+      return `📋 ${m} için kadro dolu, o yüzden seni yedek listesine yazdım. Bir yer açılınca sana haber veririm 🙏`;
     }
     if (p.status === "DROPPED") return `👋 Sorun değil, ${m} için seni çıkardım. Haber verdiğin için sağ ol.`;
     return `👍 Not aldım. ${m} için zaten kadroda değildin, bir şey değişmedi.`;
@@ -1520,7 +1521,7 @@ export const tr: Strings = {
     `Neler yaparım:\n` +
     `⚽ *Katılım*, oyuncular buraya "varım" ya da "yokum" yazar; kadro listesini güncel tutarım, eksik kalınca hatırlatırım\n` +
     `⚖️ *Dengeli takımlar*, gerçek oyuncu puanlarına göre her hafta dengeli iki takım\n` +
-    `🪑 *Akıllı yedek listesi*, kadro dolu mu? Açılan yeri bütün yedeklere sorarım, ilk sahiplenen oynar. Geç gördü diye kimse yerini kaybetmez\n` +
+    `🪑 *Akıllı yedek listesi*, kadro dolu mu? Açılan yeri yedek listesindeki herkese sorarım, ilk sahiplenen oynar. Geç gördü diye kimse yerini kaybetmez\n` +
     `🏆 *Maçın adamı ve puanlar*, maçtan sonra kısa bir oylama ve tek dokunuşla puanlama linki, uygulama indirmeye gerek yok\n` +
     `⏰ *Hatırlatmalar ve istatistikler*, maçtan önce herkese hatırlatırım, "geçen hafta maçın adamı kim oldu?" gibi sorulara cevap veririm\n\n` +
     `Tablo yok, kovalamaca yok, organizasyon derdi yok. ⚡\n\n` +
@@ -1775,7 +1776,7 @@ export const tr: Strings = {
     `👋 Herkese merhaba, ben *MatchTime*. ${p.organiser ? `${p.organiser} beni bu grubun maçlarını düzenlemem için kurdu.` : "Bu grubun maçlarını düzenlemek için buradayım."} ` +
     `Burada, WhatsApp'ta şunları yaparım:\n\n` +
     `✅ *Kim var:* *VARIM* ya da *YOKUM* yazmanız yeter. Listeyi tutar, mesajınıza tik koyarım.\n` +
-    `🪑 *Yedekler:* kadro dolunca geç gelenler yedeğe yazılır, biri çıkarsa ilk şans yedeklerindir.\n` +
+    `🪑 *Yedek listesi:* kadro dolunca geç gelenler yedek listesine yazılır, biri çıkarsa ilk şans yedek listesindekilerindir.\n` +
     `⏰ *Hatırlatma:* *"@Match Time perşembe hatırlat"* yazın, o zaman size özelden yazarım.\n` +
     `⚖️ *Dengeli takımlar:* beni etiketleyin, oyuncu puanlarına göre dengeli takımlar kurarım.\n` +
     `⭐ *Maçın oyuncusu ve puanlar* her maçtan sonra.\n` +
@@ -1797,7 +1798,7 @@ export const tr: Strings = {
   sj_hello_rolling_first: (p) => {
     const until = p.deadline ? ` *${p.deadline}* saatine kadar` : "";
     return p.mode === "organiser"
-      ? `🔁 *Her hafta aynı kadro:* bu grupta kadro bir maçtan diğerine aynı kalır. Benimle *ilk maç* için *VARIM* yazın: sizi yedeğe yazarım, kimin oynayacağını organizatörler seçer. Sonrasında oynayanlar her hafta kadroda kalır; gelemeyecekseniz${until} *YOKUM* yazmanız yeter.`
+      ? `🔁 *Her hafta aynı kadro:* bu grupta kadro bir maçtan diğerine aynı kalır. Benimle *ilk maç* için *VARIM* yazın: sizi yedek listesine yazarım, kimin oynayacağını organizatörler seçer. Sonrasında oynayanlar her hafta kadroda kalır; gelemeyecekseniz${until} *YOKUM* yazmanız yeter.`
       : `🔁 *Her hafta aynı kadro:* bu grupta kadro bir maçtan diğerine aynı kalır. Benimle *ilk maç* için *VARIM* yazın ki kimin oynadığını bileyim. Sonrasında her hafta kadroda kalırsınız; gelemeyecekseniz${until} *YOKUM* yazmanız yeter.`;
   },
   sj_hello_rolling_first_organisers: (p) =>
@@ -1810,9 +1811,9 @@ export const tr: Strings = {
         : `📣 *Takımlar:* takımları size organizatörler paylaşır.`,
   sj_hello_rolling_join: (p) =>
     p.mode === "organiser"
-      ? `✅ *Henüz kadroda değil misiniz?* *VARIM* yazın, sizi yedeğe yazarım.`
+      ? `✅ *Henüz kadroda değil misiniz?* *VARIM* yazın, sizi yedek listesine yazarım.`
       : p.mode === "bench"
-        ? `✅ *Henüz kadroda değil misiniz?* *VARIM* yazın; yer varsa sizi eklerim, yoksa yedeğe yazarım.`
+        ? `✅ *Henüz kadroda değil misiniz?* *VARIM* yazın; yer varsa sizi eklerim, yoksa yedek listesine yazarım.`
         : `✅ *Henüz kadroda değil misiniz?* *VARIM* yazın; yer varsa sizi eklerim.`,
   sj_hello_monthly: `📋 *Aylık kadro:* daimi oyuncular aya yazılır, tüm ay için bir kez öder ve ayın her maçında kadrodadır. Bir maça gelemeyecekseniz *YOKUM* yazın.`,
   sj_hello_monthly_join: (p) =>
@@ -1822,8 +1823,8 @@ export const tr: Strings = {
   sj_hello_deadline: (p) =>
     `⏳ *Son çıkış saati:* ${p.day} ${p.time}. Oynayamayacaksanız o saatten önce *YOKUM* yazın.`,
   sj_hello_list: (p) => `📋 *Son liste:* ${p.day} ${p.time} saatinde buraya gönderirim.`,
-  sj_hello_bench: `🪑 *Yedekler:* kadro dolunca geç gelenler yedeğe yazılır, biri çıkarsa ilk şans yedeklerindir.`,
-  sj_hello_bench_organiser: `🪑 *Yedekler:* *VARIM* yazanlar yedeğe yazılır, boşalan her yere kimin gireceğini organizatörler seçer.`,
+  sj_hello_bench: `🪑 *Yedek listesi:* kadro dolunca geç gelenler yedek listesine yazılır, biri çıkarsa ilk şans yedek listesindekilerindir.`,
+  sj_hello_bench_organiser: `🪑 *Yedek listesi:* *VARIM* yazanlar yedek listesine yazılır, boşalan her yere kimin gireceğini organizatörler seçer.`,
   sj_hello_remind: `⏰ *Hatırlatma:* *"@Match Time perşembe hatırlat"* yazın, o zaman size özelden yazarım.`,
   sj_hello_teams: `⚖️ *Dengeli takımlar:* beni etiketleyin, oyuncu puanlarına göre dengeli takımlar kurarım.`,
   sj_hello_mom: (p) =>
@@ -2015,11 +2016,11 @@ export const tr: Strings = {
     `📅 *${p.activityName}*, *${p.dateLabel}*, ${p.venue}.\n\n` +
     `Geçen maçta oynayan herkes yine kadroda. Son çıkış: *${p.deadline}*. O saate kadar *YOKUM* yazmazsanız kadrodasınız.`,
   rolling_in_header: (p) => `*Kadroda (${p.confirmed}/${p.maxPlayers}):*`,
-  rolling_waiting_header: (p) => `*Yedek listesi (${p.count}):*`,
   rolling_tail_open: (p) => `${p.open} yer boş: almak için *VARIM* yazın.`,
   rolling_tail_open_organiser: (p) =>
     `${p.open} yer boş: *VARIM* yazın, yedek listesine ekleyeyim; kimin oynayacağını organizatörler seçer.`,
   rolling_tail_full: "Kadro dolu. Yedek listesine girmek için *VARIM* yazın.",
+  rolling_tail_full_organiser: "Kadro dolu. Yedek listesine girmek için *VARIM* yazın; bir yer açılırsa kimin oynayacağını organizatörler seçer.",
   rolling_deadline_line: (p) => `Son çıkış: *${p.deadline}*. O saate kadar *YOKUM* yazmazsanız kadrodasınız.`,
   rolling_deadline_line_first: (p) =>
     `Son çıkış: *${p.deadline}*. Listedeyseniz ve oynayamayacaksanız o saatten önce *YOKUM* yazın.`,
@@ -3439,7 +3440,7 @@ export const tr: Strings = {
   ao_teams_seed: (p) =>
     `⭐ ${p.anySeeded ? "Bu kadronun çoğunun henüz puanı yok" : "Bu kadroda henüz kimsenin puanı yok"}, bu yüzden takımlar dengesiz çıkabilir. ${p.weekday} günü saat ${p.time} öncesinde her oyuncuya 1 ile 10 arasında kabaca bir puan verin:\n${p.link}\nOyuncular bu puanları hiç görmez.`,
   oa_bench_claim_too_late: (p) =>
-    `Sağ ol ${p.firstName} 🙏 biri senden önce davrandı. Yedekte kalmaya devam ediyorsun, başka bir yer açılırsa sıra sende.`,
+    `Sağ ol ${p.firstName} 🙏 biri senden önce davrandı. Başka bir yer açılırsa diye yedek listesinde kalmaya devam ediyorsun.`,
   wr_announce_label: "Listeyi ve takımları kim duyurur",
   wr_announce_blurb: "MatchTime grupta paylaşır ya da organizatörleriniz paylaşır.",
   wr_announce_matchtime: "MatchTime paylaşır",

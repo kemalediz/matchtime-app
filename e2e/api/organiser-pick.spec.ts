@@ -222,7 +222,7 @@ test("'2' picks the second on the list: A1 here, A2 in the group, A3 to the play
   // "first to reply IN takes the slot".
   const complete = j.filter((x) => x.kind === "group" && x.text.includes("Squad complete"));
   expect(complete).toHaveLength(1);
-  expect(complete[0].text).toContain("🪑 *Bench is open.* Say *IN* to go on the bench, and the organisers will pick who plays.");
+  expect(complete[0].text).toContain("🪑 *The waiting list (the bench) is open.* Say *IN* to go on it, and when a place opens the organisers pick who plays.");
   expect(j.some((x) => /takes the slot|first to reply/.test(x.text))).toBe(false);
 });
 
@@ -499,11 +499,11 @@ test("nobody picks with SEVERAL places open: one offer per waiting player, annou
     "🎟 2 slots just opened for *Friday 5-a-side* on Fri 15 Jan. *First to claim them play.*\n\n" +
       "@447700942002 @447700942003\n\n" +
       "Just reply *IN* here to take one. No rush and no timeout, the slots go to whoever replies first " +
-      "and anyone who misses out stays on the bench. 🙏",
+      "and anyone who misses out stays on the waiting list (the bench). 🙏",
   ]);
   const dms = sent.filter((i) => i.kind === "dm" && /just opened/.test(i.text ?? ""));
   expect(dms.map((i) => i.phone).sort()).toEqual(["447700942002", "447700942003"]);
-  expect(dms[0].text).toContain("2 slots just opened for Friday 5-a-side on Fri 15 Jan and you're on the bench.");
+  expect(dms[0].text).toContain("2 slots just opened for Friday 5-a-side on Fri 15 Jan and you're on the waiting list (the bench).");
 
   // Both waiting players can still take a place each.
   for (const [n, phone] of ["447700942002", "447700942003"].entries()) {

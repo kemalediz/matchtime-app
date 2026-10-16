@@ -92,7 +92,7 @@ describe("sj_group_hello: the full intro for an approved group", () => {
 
   it("tr: every feature line, and payments only as something the organiser can switch on", () => {
     const h = tr.sj_group_hello({ organiser: "Ayşe" });
-    for (const f of ["Yedekler", `"@Match Time perşembe hatırlat"`, "takımlar", "Maçın oyuncusu", "puanlar", "istatistik"]) {
+    for (const f of ["Yedek listesi", `"@Match Time perşembe hatırlat"`, "takımlar", "Maçın oyuncusu", "puanlar", "istatistik"]) {
       expect(h).toContain(f);
     }
     expect(h).toContain("💷 *Maç ücretleri:* organizatörünüz isterse kart ya da banka ile ödeme bağlantılarını açabilir.");

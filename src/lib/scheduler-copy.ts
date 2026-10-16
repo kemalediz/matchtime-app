@@ -72,7 +72,7 @@ export function buildSquadRosterBlock(
   }
   if (bench.length > 0) {
     lines.push("");
-    lines.push(s.bench_header({ count: bench.length }));
+    lines.push(s.waiting_list_header({ count: bench.length }));
     lines.push(...numbered(bench, s.unnamed));
   }
   return lines.join("\n");
@@ -159,7 +159,7 @@ export function buildSquadFullEveningPost(
   ];
   if (args.rosterBlock) lines.push(``, args.rosterBlock);
   if (args.benchCount === 0) {
-    lines.push(``, s.bench_header({ count: 0 }), s.roster_nobody_yet);
+    lines.push(``, s.waiting_list_header({ count: 0 }), s.roster_nobody_yet);
   }
   if (args.benchInvite && args.benchCount < BENCH_THIN_BELOW) {
     lines.push(``, args.benchInvite);
@@ -436,12 +436,14 @@ export function buildRollingAnnouncePost(
     ...numbered(args.confirmed, s.unnamed),
   ];
   if (args.bench.length > 0) {
-    lines.push(``, s.rolling_waiting_header({ count: args.bench.length }), ...numbered(args.bench, s.unnamed));
+    lines.push(``, s.waiting_list_header({ count: args.bench.length }), ...numbered(args.bench, s.unnamed));
   }
   const open = Math.max(0, args.maxPlayers - args.confirmed.length);
   const tail =
     open === 0
-      ? s.rolling_tail_full
+      ? args.organiserPicks
+        ? s.rolling_tail_full_organiser
+        : s.rolling_tail_full
       : args.organiserPicks
         ? s.rolling_tail_open_organiser({ open })
         : s.rolling_tail_open({ open });
@@ -508,7 +510,7 @@ export function buildListPublishedPost(
     ...numbered(args.confirmed, s.unnamed),
   ];
   if (args.bench.length > 0) {
-    lines.push(``, s.rolling_waiting_header({ count: args.bench.length }), ...numbered(args.bench, s.unnamed));
+    lines.push(``, s.waiting_list_header({ count: args.bench.length }), ...numbered(args.bench, s.unnamed));
   }
   lines.push(``);
   const open = Math.max(0, args.maxPlayers - args.confirmed.length);

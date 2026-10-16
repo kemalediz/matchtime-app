@@ -101,7 +101,7 @@ describe("the squad post is read out of the projected state", () => {
         ],
       }),
     );
-    expect(a.utterances.map((u) => u.text).join()).toMatch(/Bench \(2\)/);
+    expect(a.utterances.map((u) => u.text).join()).toMatch(/Waiting list \(2\)/);
 
     const noBench = world({ confirmed: TEN });
     const b = compose(
@@ -781,7 +781,7 @@ describe("a partially applied instruction says which half did not happen", () =>
   it("names the refused player, the remedy, and nothing else", () => {
     const { out } = incident();
     const text = out.utterances.map((u) => u.text).join("\n");
-    expect(text).toContain("I've not moved Mojib Sadat to the bench");
+    expect(text).toContain("I've not moved Mojib Sadat to the waiting list (the bench)");
     expect(text).toContain("@Match Time");
   });
 
@@ -838,7 +838,7 @@ describe("a partially applied instruction says which half did not happen", () =>
       ],
     );
     const refusal = out.utterances.find((u) => u.text.includes("left alone"))!;
-    expect(refusal.text).toContain("I've not taken David out or moved Mojib Sadat to the bench");
+    expect(refusal.text).toContain("I've not taken David out or moved Mojib Sadat to the waiting list (the bench)");
   });
 });
 

@@ -179,11 +179,16 @@ export function buildSeedBumpedDm(p: { name: string | null; activityName: string
 
 const RESERVE_HEADER = /^\s*(reserves?|subs?|substitutes?|standby|stand-by)\b\s*:?\s*$/i;
 
-/** `mwk_list_open_organiser` as MatchTime posted it in English until
- *  2026-10-12. Never sent any more, only recognised. The Turkish line did
- *  not change. */
-function legacyOpenOrganiserLine(open: number): string {
-  return `${open} ${open === 1 ? "place" : "places"} open. Say *IN* to go on the waiting list, and the organisers will pick who plays.`;
+/** `mwk_list_open_organiser` as MatchTime posted it in English before
+ *  today's wording: "the waiting list" until 2026-10-12, then "the bench"
+ *  until 2026-10-16. Never sent any more, only recognised. The Turkish
+ *  line did not change. */
+function legacyOpenOrganiserLines(open: number): string[] {
+  const places = `${open} ${open === 1 ? "place" : "places"} open.`;
+  return [
+    `${places} Say *IN* to go on the waiting list, and the organisers will pick who plays.`,
+    `${places} Say *IN* to go on the bench, and the organisers will pick who plays.`,
+  ];
 }
 
 /**
@@ -200,10 +205,10 @@ export function pasteResidual(body: string, ctx: { lang: string | null; maxPlaye
     own.add(s.mwk_list_open({ open, price }));
     own.add(s.mwk_list_open({ open, price: null }));
     own.add(s.mwk_list_open_organiser({ open }));
-    // The same line as it read before 2026-10-12, when the English said
-    // "waiting list" for the bench. Posts in that wording are still in the
-    // groups, and one pasted back must not reach a model as "say IN".
-    own.add(legacyOpenOrganiserLine(open));
+    // The same line in its earlier English wordings. Posts in those words
+    // are still in the groups, and one pasted back must not reach a model
+    // as "say IN".
+    for (const line of legacyOpenOrganiserLines(open)) own.add(line);
   }
   // A not-playing header only counts BELOW a list line, exactly as the
   // reader decides it: "Can't make it" typed above the list is the sender

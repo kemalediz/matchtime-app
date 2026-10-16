@@ -56,7 +56,7 @@ export function composeSquadStatusPost(args: {
   }
   const lines = [lead, "", s.playing_header, ...rows];
   if (bench.length > 0) {
-    lines.push("", s.bench_header({ count: bench.length }));
+    lines.push("", s.waiting_list_header({ count: bench.length }));
     bench.forEach((n, i) => lines.push(`${i + 1}. ${n}`));
   }
   return lines.join("\n");
@@ -139,7 +139,7 @@ export function buildSquadCompletePost(args: {
   // name rather than wonder if they were dropped.
   const benchBlock =
     args.bench.length > 0
-      ? `\n\n${s.bench_header({ count: args.bench.length })}\n${args.bench
+      ? `\n\n${s.waiting_list_header({ count: args.bench.length })}\n${args.bench
           .map((n, i) => `${i + 1}. ${n ?? s.unnamed}`)
           .join("\n")}`
       : "";

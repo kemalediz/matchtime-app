@@ -39,7 +39,7 @@ describe("compose(): an English world is untouched", () => {
   it("squad status, teams and slot-opened read exactly as before", () => {
     const short = world({ confirmed: ELEVEN, bench: ["erdal"] });
     expect(say(short, { kind: "squad_status", messageId: null })[0]).toMatch(
-      /^📋 Based on all the messages I've picked up, here's the latest squad and bench: \*11\/14\*, need \*3 more\* 🙏\n\n\*Playing:\*\n1\. Kemal Ediz/,
+      /^📋 Based on all the messages I've picked up, here's the latest squad and waiting list \(the bench\): \*11\/14\*, need \*3 more\* 🙏\n\n\*Playing:\*\n1\. Kemal Ediz/,
     );
     const thirteen = world({ confirmed: FOURTEEN.slice(0, 13) });
     expect(say(thirteen, { kind: "slot_opened", messageId: "m", outNames: ["Wasim Akhtar"] })[0]).toBe(
@@ -51,8 +51,8 @@ describe("compose(): an English world is untouched", () => {
 describe("compose(): a Turkish world speaks Turkish", () => {
   it("squad status: Turkish lead, headers and bench header", () => {
     const text = say(turkish({ confirmed: ELEVEN, bench: ["erdal"] }), { kind: "squad_status", messageId: null })[0];
-    expect(text).toMatch(/^📋 Aldığım mesajlara göre son kadro ve yedekler: \*11\/14\*, \*3 kişi daha\* lazım 🙏\n\n\*Oynayanlar:\*\n1\. Kemal Ediz/);
-    expect(text).toContain("*Yedekler (1):*\n1. Erdal Ozkan");
+    expect(text).toMatch(/^📋 Aldığım mesajlara göre son kadro ve yedek listesi: \*11\/14\*, \*3 kişi daha\* lazım 🙏\n\n\*Oynayanlar:\*\n1\. Kemal Ediz/);
+    expect(text).toContain("*Yedek listesi (1):*\n1. Erdal Ozkan");
     expect(text).toContain("12. 🥁");
     expect(text).not.toMatch(/Playing|Bench|squad/);
   });

@@ -61,7 +61,10 @@ const TO_BENCH = "(?:on|onto|to)?\\s*(?:the\\s+)?bench";
 
 /** English, byte for byte the patterns `group-copy.ts` carried inline. */
 const en: GuardVocab = {
-  headers: /\*(?:Playing\b[^*\n]*|Squad\b[^*\n]*|Confirmed\s*\(\d+\/\d+\)[^*\n]*|Bench\s*\(\d+\)[^*\n]*):?\*/i,
+  // "*Waiting list (N):*" (2026-10-16) is the players' header in every
+  // deterministic post now; "*Bench (N):*" is still what the chase model
+  // is told to write.
+  headers: /\*(?:Playing\b[^*\n]*|Squad\b[^*\n]*|Confirmed\s*\(\d+\/\d+\)[^*\n]*|Bench\s*\(\d+\)[^*\n]*|Waiting list\s*\(\d+\)[^*\n]*):?\*/i,
   squadWords: /\b(?:squad|bench|slot|full|need|player)/i,
   benchEmpty: /\bbench is empty\b/i,
   need: /\bneed\s+\*?\s*(\d+|one|two|three|four|five)\s*\*?\s+more\b/gi,
@@ -98,11 +101,13 @@ const TR_NUM = "(\\d+|bir|iki|üç|dört|beş)";
  *  `*Kadro:*`, `*Onaylananlar (n/m):*`, `*Yedekler (n):*`). */
 const tr: GuardVocab = {
   headers: new RegExp(
-    `\\*(?:[^*\\n]*?[Oo]ynayanlar[^*\\n]*|Kadro\\b[^*\\n]*|Onaylananlar\\s*\\(\\d+\\/\\d+\\)[^*\\n]*|Yedekler\\s*\\(\\d+\\)[^*\\n]*):?\\*`,
+    `\\*(?:[^*\\n]*?[Oo]ynayanlar[^*\\n]*|Kadro\\b[^*\\n]*|Onaylananlar\\s*\\(\\d+\\/\\d+\\)[^*\\n]*|Yedekler\\s*\\(\\d+\\)[^*\\n]*|Yedek listesi\\s*\\(\\d+\\)[^*\\n]*):?\\*`,
     "u",
   ),
   squadWords: new RegExp(`${L}(?:kadro|yedek|yer|lazım|kişi|eksik|oyuncu)`, "iu"),
-  benchEmpty: new RegExp(`${L}(?:yedek(?:\\s+listesi)?\\s+boş|yedekte\\s+kimse\\s+yok)${R}`, "iu"),
+  // "yedek listesinde kimse yok" is `answer_bench_empty` since 2026-10-16;
+  // it was "yedekte kimse yok" before, and both are read the same way.
+  benchEmpty: new RegExp(`${L}(?:yedek(?:\\s+listesi)?\\s+boş|(?:yedekte|yedek\\s+listesinde)\\s+kimse\\s+yok)${R}`, "iu"),
   // "3 kişi daha lazım", "*3 kişi daha* lazım", "3 kişi daha gerek(iyor)", "3 kişi eksiğiz"
   need: new RegExp(
     `${L}\\*?\\s*${TR_NUM}\\s*\\*?\\s+kişi\\s+(?:daha\\s*\\*?\\s*(?:lazım|gerek(?:iyor|li)?)|eksi(?:ğiz|k))${R}`,

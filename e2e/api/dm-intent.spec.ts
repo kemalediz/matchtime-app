@@ -178,7 +178,7 @@ test("a recruit ask by DM into a FULL squad invites the bench, and DMs nobody", 
   expect(json.handled).toBe("recruit-dm");
 
   const replies = await dmsTo(db, PHONE.admin);
-  expect(replies[0].text).toContain("the bench is open");
+  expect(replies[0].text).toContain("the waiting list (the bench) is open");
   expect(replies[0].text).toContain("*IN*");
   expect(replies[0].text).not.toContain("already full");
   expect(replies[0].text).not.toContain("already responded");

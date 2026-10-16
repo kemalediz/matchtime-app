@@ -113,7 +113,7 @@ test("a burst of mixed messages collapses to ONE squad+bench post built from the
   expect(post).toContain("*Playing:*");
   expect(post).toContain("5. 🥁"); // open slot shown as a drum
   // Bench is ALWAYS listed.
-  expect(post).toContain("*Bench (1):*");
+  expect(post).toContain("*Waiting list (1):*");
   expect(post).toContain("Greg Gale");
   // …and the counts are the DATABASE's, not the pre-batch snapshot's.
   expect(post).not.toContain("3/5");
@@ -205,7 +205,7 @@ test("a raw-digit pushname never appears as a player name anywhere", async ({ re
   const spoke = batch.results.filter((r) => (r.reply ?? "").length > 0);
   expect(spoke).toHaveLength(1);
   const status = spoke[0].reply!;
-  expect(status).toContain("*Bench (2):*");
+  expect(status).toContain("*Waiting list (2):*");
   expect(status).toContain("Greg Gale");
   expect(status).toContain("New player");
   // No reply, post or DM anywhere contains the raw digits.

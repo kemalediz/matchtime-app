@@ -103,7 +103,7 @@ describe("a drop in an organiser club", () => {
     expect(r.speech.map((s) => s.kind)).toEqual(["slot_opened"]);
     const out = compose(r);
     expect(out.utterances.map((u) => u.text)).toEqual([
-      "A place just opened for Tue 21:30. Say *IN* to go on the bench, and the organisers will pick who plays.",
+      "A place just opened for Tue 21:30. Say *IN* to go on the waiting list (the bench), and the organisers will pick who plays.",
     ]);
   });
 

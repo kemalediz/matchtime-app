@@ -248,7 +248,7 @@ test("a cold 'IN' on a FULL squad goes to the bench, exactly like the group path
   expect(ack?.text).toContain("bench");
 
   expect(
-    await groupPostsLike(db, "*Zara Zest* replied IN by DM and goes to the bench. Squad *5/5*."),
+    await groupPostsLike(db, "*Zara Zest* replied IN by DM and goes on the waiting list (the bench). Squad *5/5*."),
   ).toBe(1);
 });
 

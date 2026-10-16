@@ -90,11 +90,11 @@ test.describe("capacity lifecycle", () => {
     expect(announce).toContain("8/8");
     // All eight names, numbered; bench empty → no bench block.
     for (const name of await grp.confirmed()) expect(announce).toContain(name);
-    expect(announce).not.toContain("*Bench (");
+    expect(announce).not.toContain("*Waiting list (");
     // Bench feature on (the sim default): the SAME post ends by inviting
     // benchers, so the owner never has to ask (Sutton, 2026-09-16).
     expect(announce!.endsWith(buildSquadCompleteBenchInvite())).toBe(true);
-    expect(r.groupPosts.filter((t) => t.includes("Bench is open"))).toHaveLength(1);
+    expect(r.groupPosts.filter((t) => t.includes("The waiting list (the bench) is open"))).toHaveLength(1);
   });
 
   test("bench feature OFF: the squad-complete post ends as it always did, no invite", async ({
@@ -115,7 +115,7 @@ test.describe("capacity lifecycle", () => {
     const announce = r.groupPosts.find((t) => t.includes("Squad complete"));
     expect(announce).toBeTruthy();
     expect(announce!.endsWith("See you all there ⚽")).toBe(true);
-    expect(announce).not.toContain("Bench is open");
+    expect(announce).not.toContain("The waiting list (the bench) is open");
   });
 
   test("IN at capacity lands on the BENCH with 🪑", async ({ request, db }) => {
