@@ -33,6 +33,9 @@ const ALL_ON = {
   bench: true,
   paymentTracking: true,
 } as const;
+/** Payments count as on when the club collects match fees (payment
+ *  tracking is hidden, 2026-10-16). */
+const FEES_ON = { ...ALL_ON, paymentCollection: true } as const;
 
 describe("BOT_ADDED_INTRO (the short on-add intro, 2026-09-17)", () => {
   it("is a single string: one line on what MatchTime is, one question", () => {
@@ -268,7 +271,8 @@ describe("buildHelpReply — a topic that is OFF explains itself and how to swit
     expect(r).toMatch(/daily reminder/);
     expect(r).toMatch(/money collector to confirm/);
     expect(r).toContain(URL);
-    expect(r).toMatch(/\*Payment tracking\* and \*Collect match fees\*/);
+    expect(r).toMatch(/turns on \*Collect match fees\* under Bot features/);
+    expect(r).not.toMatch(/Payment tracking/);
     expect(r).toMatch(/Stripe once/);
     expect(r).toMatch(/DM me \*help payments\*/);
     expect(r).not.toContain(LINK);
@@ -323,13 +327,13 @@ describe("buildHelpReply — a topic that is OFF explains itself and how to swit
 describe("buildHelpReply — a topic that is ON, by audience", () => {
   const LINK = "https://matchtime.ai/r/abc123";
   it("group and player: the explainer, byte for byte as before", () => {
-    const before = buildHelpReply("payments", ALL_ON);
-    expect(buildHelpReply("payments", ALL_ON, "en", { audience: "player", links: { settings: LINK } })).toBe(before);
+    const before = buildHelpReply("payments", FEES_ON);
+    expect(buildHelpReply("payments", FEES_ON, "en", { audience: "player", links: { settings: LINK } })).toBe(before);
     expect(before).not.toContain(LINK);
   });
   it("admin DM: the explainer plus where its settings live", () => {
-    const r = buildHelpReply("payments", ALL_ON, "en", { audience: "admin", links: { settings: LINK } });
-    expect(r.startsWith(buildHelpReply("payments", ALL_ON))).toBe(true);
+    const r = buildHelpReply("payments", FEES_ON, "en", { audience: "admin", links: { settings: LINK } });
+    expect(r.startsWith(buildHelpReply("payments", FEES_ON))).toBe(true);
     expect(r).toContain(`⚙️ Its settings are on your admin page:\n${LINK}`);
   });
   it("bare help, admin DM: the menu plus the settings link", () => {
@@ -361,7 +365,7 @@ describe("buildHelpReply — bare help (topic null)", () => {
   });
 
   it("with payments ON the payments topic IS listed", () => {
-    const r = buildHelpReply(null, ALL_ON);
+    const r = buildHelpReply(null, FEES_ON);
     expect(r).toMatch(/help payments/);
   });
 });

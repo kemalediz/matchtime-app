@@ -47,7 +47,7 @@ export const SETTING_INFO_KEYS = [
   "playerRating",
   "reminders",
   "statsQa",
-  "paymentTracking",
+  // "paymentTracking" is hidden for now (2026-10-16): no row, no ⓘ.
   "paymentCollection",
   "payByBank",
   "payCard",
@@ -497,52 +497,6 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       suits: "Rekorlar üzerine biraz şakalaşmayı seven kulüpler.",
     },
   },
-  paymentTracking: {
-    en: {
-      title: "Payment tracking",
-      what: [
-        "MatchTime keeps track of who has paid for each match and nudges the rest, without naming anyone in the players' group.",
-      ],
-      example: "💳 *3* payments still pending for last week's match. If you've already paid, just tick your team in the poll above to clear it 🙏",
-      choices: [
-        {
-          name: ON.en,
-          text: "After each match MatchTime posts a payment poll in the group and players tick their team when they've paid. The 17:00 update says how many payments are still pending (not on match day or the day before). An admin can tell it \"Amir paid for 4 players\". Two days after the match, at 10:00, your admin messages get the names of who hasn't paid.",
-        },
-        { name: OFF.en, text: "No payment poll, no pending count and no unpaid list. Payments made through MatchTime's pay links are still recorded." },
-      ],
-      newClubs: "Off. If your group chat clearly shows players paying, MatchTime may switch it on when your club starts; it tells you, and you can undo it.",
-      suits: "Clubs that collect cash or bank transfers and want a light reminder.",
-      together: [
-        "It is separate from Collect match fees; you can use either, or both.",
-        "The money collector is never counted as unpaid. Monthly regulars are not counted either, and a month's games get no payment poll.",
-        "With both weekly deadlines set, MatchTime also posts a pending count in the group two days after the match.",
-        "The unpaid list is not sent when Admin messages go to Each admin by DM.",
-      ],
-    },
-    tr: {
-      title: "Ödeme takibi",
-      what: [
-        "MatchTime her maç için kimin ödediğini takip eder ve oyuncu grubunda kimsenin adını vermeden diğerlerine hatırlatır.",
-      ],
-      example: "💳 Geçen haftaki maç için *3* ödeme hâlâ bekliyor, ödediyseniz yukarıdaki ankette takımınızı işaretlemeniz yeterli 🙏",
-      choices: [
-        {
-          name: ON.tr,
-          text: "Her maçtan sonra MatchTime gruba bir ödeme anketi gönderir; oyuncular ödeyince takımlarını işaretler. 17:00 güncellemesi kaç ödemenin beklediğini söyler (maç günü ve önceki gün hariç). Bir yönetici \"Amir 4 kişinin parasını ödedi\" diyebilir. Maçtan iki gün sonra saat 10:00'da yönetici mesajlarınıza ödemeyenlerin adları gider.",
-        },
-        { name: OFF.tr, text: "Ödeme anketi, bekleyen ödeme sayısı ve ödemeyenler listesi yok. MatchTime ödeme bağlantılarıyla yapılan ödemeler yine kaydedilir." },
-      ],
-      newClubs: "Kapalı. Grup sohbetiniz oyuncuların ödeme yaptığını açıkça gösteriyorsa MatchTime kulübünüz başlarken bunu açabilir; size haber verir ve geri alabilirsiniz.",
-      suits: "Nakit ya da havaleyle para toplayan ve hafif bir hatırlatma isteyen kulüpler.",
-      together: [
-        "Maç ücreti toplama ayarından ayrıdır; birini ya da ikisini birden kullanabilirsiniz.",
-        "Para toplayan kişi hiçbir zaman ödemeyen sayılmaz. Aylık daimi oyuncular da sayılmaz ve ayın maçları için ödeme anketi gönderilmez.",
-        "İki haftalık son saat de ayarlıysa MatchTime maçtan iki gün sonra gruba bekleyen ödeme sayısını da yazar.",
-        "Yönetici mesajları Her yöneticiye DM olarak ayarlıysa ödemeyenler listesi gönderilmez.",
-      ],
-    },
-  },
   paymentCollection: {
     en: {
       title: "Collect match fees",
@@ -561,7 +515,6 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
         "Choose a money collector (it appears below once this is on). Without one, MatchTime has nobody to ask for the fee.",
         "Connect the money collector's bank for card and Pay by Bank. Without it, the pay page only offers paying the organiser directly, if that is on.",
         "The money collector and monthly regulars are not sent pay links.",
-        "It is separate from Payment tracking.",
       ],
     },
     tr: {
@@ -581,7 +534,6 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
         "Bir para toplayan kişi seçin (bu açılınca aşağıda görünür). Seçilmezse MatchTime'ın ücreti soracağı kimse olmaz.",
         "Kart ve bankadan ödeme için para toplayan kişinin bankasını bağlayın. Bağlanmazsa ödeme sayfası, açıksa, yalnızca organizatöre doğrudan ödemeyi sunar.",
         "Para toplayan kişiye ve aylık daimi oyunculara ödeme bağlantısı gönderilmez.",
-        "Ödeme takibi ayarından ayrıdır.",
       ],
     },
   },
@@ -1345,7 +1297,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       together: [
         "Monthly: MatchTime posts next month's sign-up list in the group at 10:00, the number of days set in List opens before the month's first game, with this month's regulars already on it. Names close 2 days before the first game.",
         "Switching to monthly turns Rolling squad off. Switching back does not turn it on again.",
-        "The weekly deadlines and the daily 17:00 post are not used for a month's games, and regulars get no per-game pay links or payment poll.",
+        "The weekly deadlines and the daily 17:00 post are not used for a month's games, and regulars get no per-game pay links.",
       ],
     },
     tr: {
@@ -1364,7 +1316,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       together: [
         "Aylık: MatchTime gelecek ayın kayıt listesini, Liste açılışı ayarındaki gün sayısı kadar ayın ilk maçından önce, saat 10:00'da gruba gönderir; bu ayın daimi oyuncuları listede hazır gelir. Kayıtlar ilk maçtan 2 gün önce kapanır.",
         "Aylığa geçmek Kadro devam eder ayarını kapatır. Haftalığa dönmek onu tekrar açmaz.",
-        "Haftalık son saatler ve her gün 17:00 mesajı ayın maçlarında kullanılmaz; daimi oyunculara maç başı ödeme bağlantısı ya da ödeme anketi gitmez.",
+        "Haftalık son saatler ve her gün 17:00 mesajı ayın maçlarında kullanılmaz; daimi oyunculara maç başı ödeme bağlantısı gitmez.",
       ],
     },
   },

@@ -17,7 +17,8 @@
  *   - "YES" → recommended bundle, replier captured as admin
  *   - combined "Tuesdays 9pm at Goals" → org + OWNER membership +
  *     Activity + first Match + roster import + magic-link DM BotJob
- *   - "EVERYTHING" → payment tracking enabled too
+ *   - "EVERYTHING" → every offered feature; payment tracking stays off
+ *     (hidden for now, 2026-10-16)
  *   - named subset ("just MoM and ratings") → exactly those features
  *     (+ derived featureSquadFromList)
  *
@@ -371,7 +372,7 @@ test('"Tuesdays 9pm at Goals Wembley" → org live: OWNER, activity, match, rost
 
 // ───────────────────────── EVERYTHING path ──────────────────────────────
 
-test('"EVERYTHING" enables payment tracking too', async ({ request, db }) => {
+test('"EVERYTHING" switches on every offered feature, and payment tracking (hidden) stays off', async ({ request, db }) => {
   await postBotAdded(request, {
     groupId: GROUP_B,
     groupSubject: "Sunday League Legends",
@@ -396,7 +397,7 @@ test('"EVERYTHING" enables payment tracking too', async ({ request, db }) => {
     paymentCollectionEnabled: boolean;
     featureAttendance: boolean;
   }>(`SELECT * FROM "Organisation" WHERE "whatsappGroupId" = $1`, [GROUP_B]);
-  expect(org?.paymentTrackingEnabled).toBe(true);
+  expect(org?.paymentTrackingEnabled).toBe(false); // hidden for now (2026-10-16)
   expect(org?.paymentCollectionEnabled).toBe(false); // NEVER chat-set
   expect(org?.featureAttendance).toBe(true);
 

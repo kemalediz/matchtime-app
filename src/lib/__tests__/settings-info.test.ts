@@ -18,7 +18,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { SETTINGS_INFO, SETTING_INFO_KEYS, settingInfo, settingInfoLabels, type SettingInfoCopy, type SettingInfoKey } from "../settings-info";
-import { FEATURE_META } from "../org-features-meta";
+import { OFFERED_FEATURE_META as FEATURE_META } from "../org-features-meta";
 import { LANGS, type Lang } from "../i18n/lang";
 import { t } from "../i18n/t";
 import { totalForMethod, PLATFORM_FEE_RATE } from "../payments";
@@ -93,7 +93,7 @@ describe("settings explanations: coverage", () => {
       for (const m of src.matchAll(/<SettingInfo k="(\w+)"/g)) used.add(m[1]);
       for (const m of src.matchAll(/data-setting="(\w+)"/g)) rows.add(m[1]);
     }
-    // The three rows whose key is a variable: the FEATURE_META loop on the
+    // The three rows whose key is a variable: the OFFERED_FEATURE_META loop on the
     // page (`k={key}`) and the two weekly-deadline rows (`k={props.rowKey}`).
     expect(read(PAGE)).toMatch(/<SettingInfo k=\{key\}/);
     expect(read(PAGE)).toMatch(/data-setting=\{key\}/);
@@ -225,7 +225,6 @@ describe("settings explanations: the facts match the code", () => {
       playerRating: "featurePlayerRating",
       reminders: "featureReminders",
       statsQa: "featureStatsQa",
-      paymentTracking: "paymentTrackingEnabled",
       paymentCollection: "paymentCollectionEnabled",
       payByBank: "payMethodPayByBank",
       payCard: "payMethodCard",

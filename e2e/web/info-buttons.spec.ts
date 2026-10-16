@@ -122,7 +122,6 @@ test("/admin/settings: every section and every feature switch (EN and TR)", asyn
       "setting-playerRating",
       "setting-reminders",
       "setting-statsQa",
-      "setting-paymentTracking",
       "setting-paymentCollection",
       "setting-payByBank",
       "setting-payCard",

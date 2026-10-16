@@ -34,7 +34,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { db } from "./db";
 import { SPORT_PRESETS } from "./sport-presets";
-import { FEATURE_META, type ToggleableKey } from "./org-features-meta";
+import { FEATURE_META, OFFERED_FEATURE_META, isFeatureOffered, type ToggleableKey } from "./org-features-meta";
 import { londonWallClockToUtc, londonDateTimeToUtc } from "./london-time";
 import { normalisePhone } from "./phone";
 import { appUrl } from "./app-url";
@@ -515,9 +515,12 @@ function helpLink(ctx: HelpContext, page: HelpAdminPage): string {
 
 function topicIsOn(topic: HelpTopic, features: HelpFeatures): boolean {
   if (topic === "schedule" || topic === "badges") return true;
-  // Payments count as on when either payment flag is: a club that
-  // collects fees without the tracking flag still has the feature.
-  if (topic === "payments") return features.paymentTracking || features.paymentCollection === true;
+  // Payments are on when the club collects match fees. Payment tracking
+  // (the old payment poll) is hidden for now (2026-10-16): a club that
+  // still has only that flag is shown how fee collection works and how to
+  // switch it on, which is true of it, rather than an explainer of a
+  // setting nobody can find.
+  if (topic === "payments") return features.paymentCollection === true;
   return features[HELP_TOPIC_FEATURE[topic]] === true;
 }
 
@@ -979,7 +982,7 @@ export async function handleOnboardingTurn(
     // import, admin magic-link DM).
     const orgId = await provisionOrg(merged);
     merged = { ...merged, orgId };
-    const valid = new Set<ToggleableKey>(FEATURE_META.map((f) => f.key));
+    const valid = new Set<ToggleableKey>(OFFERED_FEATURE_META.map((f) => f.key));
     const chosen = [...new Set(merged.selectedFeatures)].filter(
       (k): k is ToggleableKey => valid.has(k as ToggleableKey),
     );
@@ -1116,7 +1119,7 @@ export async function handleOnboardingTurn(
     const rxSel = regexExtract(messages).featureSelection ?? [];
     const llmSel = ex?.featureSelection ?? [];
     const rawSel = rxSel.length > 0 ? rxSel : llmSel;
-    const valid = new Set<ToggleableKey>(FEATURE_META.map((f) => f.key));
+    const valid = new Set<ToggleableKey>(OFFERED_FEATURE_META.map((f) => f.key));
     const chosen = [...new Set(rawSel)].filter((k): k is ToggleableKey =>
       valid.has(k as ToggleableKey),
     );
@@ -1210,7 +1213,7 @@ export function buildLegacyFeatureMenu(lead: string, lang: Lang | string = "en")
   const s = t(lang);
   return s.onb_legacy_menu({
     lead,
-    items: FEATURE_META.map((f) => ({
+    items: OFFERED_FEATURE_META.map((f) => ({
       label: s.onbFeatureLabel({ key: f.key, englishLabel: f.label }),
       blurb: s.onb_legacy_feature_blurb({ key: f.key, englishBlurb: f.blurb }),
     })),
@@ -1323,6 +1326,9 @@ async function completeOnboarding(
   adminUserIdOverride?: string | null,
   history?: HistoryMessage[],
 ): Promise<string> {
+  // A hidden switch (payment tracking, 2026-10-16) is never turned on,
+  // claimed in the completion post or named in the admin DM.
+  chosen = chosen.filter((k) => isFeatureOffered(k));
   const orgId = s.orgId!;
   const adminUserId = adminUserIdOverride ?? s.adminUserId ?? null;
   const sport = await db.sport.findFirst({ where: { orgId }, select: { id: true, playersPerTeam: true } });
@@ -1353,7 +1359,8 @@ async function completeOnboarding(
     // Recent History block only renders when there ARE completed
     // matches, so an early-launch org with no history sees nothing.
     featureStatsQa: true,
-    paymentTrackingEnabled: chosenSet.has("paymentTracking"),
+    // Hidden for now (2026-10-16): never switched on at setup.
+    paymentTrackingEnabled: chosenSet.has("paymentTracking") && isFeatureOffered("paymentTracking"),
     featureSquadFromList: !needsAttendance && needsPostMatchPersonalisation,
   };
 
