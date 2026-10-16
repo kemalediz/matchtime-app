@@ -3581,6 +3581,139 @@ export const tr: Strings = {
   st_wa_disabled: "Kapalı",
   st_wa_group_id: "WhatsApp grup kimliği",
   st_wa_managed: "Bot ayarlarını MatchTime yönetir. Açmak ya da yeniden ayarlamak için yöneticinizle iletişime geçin.",
+  // ─── Partner kulüpler (slice S1, 2026-10-16) ────────────────────────
+  pc_paired_notice_asker: (p: { club: string; other: string; link: string }) =>
+    `🤝 MatchTime, *${p.club}* ile *${p.other}* kulüplerini eşleştirdi: oyuncunuz eksik olduğunda MatchTime, onların organizatörlerinin onayıyla ${p.other} grubundan oyuncu isteyebilir. İki kulübün sahibi de kabul edene kadar hiçbir şey olmaz. Kulüp sahibiniz buradan kabul edebilir ya da reddedebilir: ${p.link}`,
+  pc_paired_notice_partner: (p: { club: string; other: string; link: string }) =>
+    `🤝 MatchTime, *${p.club}* ile *${p.other}* kulüplerini eşleştirdi: ${p.other} oyuncu eksik olduğunda MatchTime grubunuza onlar için oynayabilecek biri olup olmadığını sorabilir. Başka bir seçim yapmazsanız her isteği önce organizatörleriniz onaylar. İki kulübün sahibi de kabul edene kadar hiçbir şey olmaz. Kulüp sahibiniz buradan kabul edebilir ya da reddedebilir: ${p.link}`,
+  pc_section_title: "Partner kulüpler",
+  pc_section_lead:
+    "Oyuncunuz eksik olduğunda MatchTime'ın oyuncu isteyebileceği kulüpler ve sizden oyuncu isteyebilecek kulüpler. İki kulübü yalnızca MatchTime ekibi eşleştirir; sonra her kulübün sahibi kabul eder.",
+  pc_list_label: "Partner kulüpleriniz",
+  pc_row_we_ask: (p: { other: string }) => `${p.other} kulübünden oyuncu isteyebilirsiniz`,
+  pc_row_they_ask: (p: { other: string }) => `${p.other} sizden oyuncu isteyebilir`,
+  pc_status_waiting_both: "İki kulüp sahibinin de kabulü bekleniyor",
+  pc_status_waiting_us: "Kulüp sahibinizin kabulü bekleniyor",
+  pc_status_waiting_them: (p: { other: string }) => `Diğer kulübün sahibinin kabulü bekleniyor: ${p.other}`,
+  pc_status_active: "Etkin",
+  pc_status_paused_us: "Sizin tarafınızdan durduruldu",
+  pc_status_paused_them: (p: { other: string }) => `Diğer kulüp durdurdu: ${p.other}`,
+  pc_accept: "Kabul et",
+  pc_decline: "Reddet",
+  pc_pause: "Durdur",
+  pc_resume: "Devam ettir",
+  pc_remove: "Kaldır",
+  pc_remove_confirm: (p: { other: string }) =>
+    `Bu kulüple ortaklık kaldırılsın mı: ${p.other}? İki kulübü yeniden yalnızca MatchTime ekibi eşleştirebilir.`,
+  pc_owner_only: "Bir partner kulübü yalnızca kulübünüzün sahibi kabul edebilir, reddedebilir ya da kaldırabilir.",
+  pc_when_label: "Partner kulüplerden oyuncu iste",
+  pc_when_off: "Kapalı",
+  pc_when_on_request: "Biz isteyince",
+  pc_when_auto: "Belirli bir saatte kendiliğinden",
+  pc_time_label: "Otomatik istek saati",
+  pc_cutoff_label: "Başlama saatinden önce son istek",
+  pc_cutoff_hours: (p: { hours: number }) => `${p.hours} saat`,
+  pc_approval_label: "Partner kulüplerden gelen istekler",
+  pc_approval_each: "Her seferinde organizatörlerimize sor",
+  pc_approval_standing: "Sormadan paylaş",
+  pc_saved: "Kaydedildi",
+  pc_save_failed: "Kaydedilemedi",
+  pc_refused: "Bu şu an yapılamıyor. Sayfayı yenileyip tekrar deneyin.",
+  // ─── Partner kulüpten oyuncu isteme (slice S2, 2026-10-16) ──────────
+  xask_post: (p) => {
+    const extras = [p.format, p.fee].filter(Boolean).join(", ");
+    return (
+      `⚽ *${p.asker}* ${p.places} oyuncu arıyor: ${p.day}, ${p.venue}${extras ? ` (${extras})` : ""}.\n` +
+      `Oynamak ister misin? *Bu mesajı yanıtlayıp* *VARIM* yaz, organizatörleri sana özel mesajla dönecek.`
+    );
+  },
+  xask_approval_notice: (p) => {
+    const extras = [p.format, p.fee].filter(Boolean).join(", ");
+    const who = p.places === 1 ? "oyuncularınızdan birinin" : `oyuncularınızdan ${p.places} kişinin`;
+    const own = p.own ? ` O gün kendi maçınızda ${p.own.max} kişilik kadroda ${p.own.confirmed} kişi var.` : "";
+    const how = p.inGroup
+      ? `Bu mesajı yanıtlayıp EVET yazın${p.link ? ` ya da şunu açın: ${p.link}` : ""}.`
+      : `Evet ya da hayır demek için dokunun: ${p.link}`;
+    return `🤝 *${p.asker}*, ${who} onlar için oynayıp oynayamayacağını soruyor: ${p.day}, ${p.venue}${extras ? ` (${extras})` : ""}.${own}\nBunu oyuncu grubunuzda paylaşayım mı? ${how}`;
+  },
+  xask_posted_notice_partner: (p) =>
+    `🤝 *${p.asker}* kulübünün oyuncu isteğini oyuncu grubunuzda paylaştım: ${p.day}, ${p.venue}. Kulübünüz ${p.asker} kulübünden gelen istekleri önce sormadan geçiriyor.`,
+  xask_approved_notice_asker: (p) =>
+    `✅ *${p.partner}* evet dedi: ${p.day} için onların oyuncu grubundan oyuncu istedim. VARIM yazan herkes yedek listenize (${p.partner}) notuyla girer.`,
+  xask_declined_notice_asker: (p) => `*${p.partner}* organizatörleri, ${p.day} için gruplarına sorulmasına hayır dedi.`,
+  xask_expired_notice_asker: (p) => `*${p.partner}* organizatörleri zamanında yanıt vermedi, bu yüzden ${p.day} için gruplarına sormadım.`,
+  xask_nobody_notice_asker: (p) => `${p.day} için *${p.partner}* kulübünden kimse yeri almadı.`,
+  xask_no_post_id_notice_asker: (p) =>
+    `⚠️ İsteğinizin *${p.partner}* grubuna ulaştığını doğrulayamıyorum, bu yüzden yanıtlar size ulaşmayabilir. Hâlâ oyuncuya ihtiyacınız varsa onların organizatörlerine sorun.`,
+  xask_filled_line: (p) => `✅ *${p.asker}* için yer doldu, herkese teşekkürler 🙌`,
+  xask_off_line: (p) => `*${p.asker}* kulübünün ${p.day} isteği artık kapandı, herkese teşekkürler.`,
+  hq_confirm_partner_ask: (p) => `Bu EVET, *${p.asker}* kulübünün ${p.day} isteğini oyuncu grubunuzda paylaşmak için mi?`,
+  xask_hq_approved: (p) => `Tamam: *${p.asker}* kulübünün isteği artık oyuncu grubunuzda.`,
+  xask_hq_not_posted: (p) => `*${p.asker}* kulübünün isteğini paylaşmadım: istek kapandı, yer doldu ya da artık çok geç.`,
+  xask_refused_too_late: (p) => `Partner kulüpten istemek için artık çok geç: son istek başlama saatinden ${p.hours} saat önce gider (sizin ayarınız).`,
+  xask_refused_daily_cap: (p) => `${p.partner} bugün zaten iki istek aldı.`,
+  xask_refused_already_open: (p) => `Bu maç için ${p.partner} kulübüne açık bir istek zaten var.`,
+  xask_refused_no_places: "Bu maçta boş yer yok.",
+  xask_refused_off: "Ayarlarınızda partner kulüplerden oyuncu isteme kapalı.",
+  xask_refused_unreachable: (p) => `${p.partner} grubuna şu an sorulamıyor.`,
+  xask_refused_generic: "Bu şu an istenemiyor. Sayfayı yenileyip tekrar deneyin.",
+  xask_panel_title: "Partner kulüpten iste",
+  xask_panel_lead: "Oyuncunuz mu eksik? MatchTime bir partner kulübün oyuncu grubuna sorabilir. VARIM yazan herkes yedek listenize girer.",
+  xask_ask_button: (p) => `${p.partner} kulübünden oyuncu iste`,
+  xask_status_awaiting: (p) => `${p.partner} organizatörlerinin onayı bekleniyor`,
+  xask_status_posted: (p) => `${p.partner} grubuna soruldu${p.volunteers > 0 ? `: ${p.volunteers} oyuncu yanıt verdi` : ""}`,
+  xask_asked_toast: (p) => `${p.partner} organizatörlerine soruldu`,
+  xask_posted_toast: (p) => `${p.partner} grubunda paylaşıldı`,
+  xask_page_title: "Bir partner kulüp oyuncu istiyor",
+  xask_page_summary: (p) => {
+    const extras = [p.format, p.fee].filter(Boolean).join(", ");
+    return `${p.asker}, ${p.places === 1 ? "oyuncularınızdan birinin" : `oyuncularınızdan ${p.places} kişinin`} onlar için oynayıp oynayamayacağını soruyor: ${p.day}, ${p.venue}${extras ? ` (${extras})` : ""}.`;
+  },
+  xask_page_own: (p) => `O gün kendi maçınızda ${p.max} kişilik kadroda ${p.confirmed} kişi var.`,
+  xask_page_how: "Evet derseniz MatchTime isteği oyuncu grubunuzda paylaşır. Oyuncular mesajı yanıtlayıp VARIM yazarak cevap verir; düz bir VARIM yine kendi maçınız anlamına gelir.",
+  xask_page_approve: "Evet, grubumuzda paylaş",
+  xask_page_decline: "Hayır, teşekkürler",
+  xask_page_posted: "Oyuncu grubunuzda paylaşıldı.",
+  xask_page_declined: "Teşekkürler. Onlara haber verildi.",
+  xask_page_closed: "Bu istek artık kapandı.",
+  xask_page_not_allowed: "Buna yalnızca kendisine sorulan kulübün sahibi ya da bir yöneticisi yanıt verebilir.",
+  // ─── Otomatik istek ve organizatör satırı (slice S5) ────────────────
+  xask_auto_notice_asker: (p) =>
+    p.posted
+      ? `🤝 Otomatik isteğiniz: ${p.day} için hâlâ boş yer var ve yedek listenizde kimse yok, bu yüzden *${p.partner}* grubunda bir istek paylaştım.`
+      : `🤝 Otomatik isteğiniz: ${p.day} için hâlâ boş yer var ve yedek listenizde kimse yok, bu yüzden *${p.partner}* organizatörlerine oyuncularından birinin oynayıp oynayamayacağını sordum.`,
+  xask_offer_line: (p) => `🤝 ${p.partners} kulübünden oyuncu isteyeyim mi? Maç sayfasını açın: ${p.link}`,
+  // ─── Partner kulüp isteğine gönüllüler (slice S3) ───────────────────
+  xask_vol_bench: (p) => `Teşekkürler ${p.name}, *${p.asker}* yedek listesindesin. Organizatörleri seçecek ve sana haber verecekler.`,
+  xask_vol_in: (p) => `✅ Teşekkürler ${p.name}, *${p.asker}* için kadrodasın: ${p.day}.`,
+  xask_vol_out: (p) => `Tamam, seni *${p.asker}* listesinden çıkardım.`,
+  xask_vol_not_on: (p) => `*${p.asker}* listesinde değildin, değiştirecek bir şey yok.`,
+  xask_vol_closed: (p) => `*${p.asker}* için yer artık doldu, teklifin için teşekkürler.`,
+  xask_vol_overlap: (p) => `O gün ${p.club} kulübünün ${p.time} maçındasın, bu yüzden seni *${p.asker}* listesine yazamıyorum.`,
+  xask_vol_unknown: (p) =>
+    `Başka bir kulübün listesine yalnızca ${p.club} oyuncularını yazabilirim ve seni burada henüz tanımıyorum. ${p.club} organizatörlerinden birine yaz.`,
+  xask_vol_failed: "Seni şu an ekleyemedim. Lütfen bir dakika sonra tekrar dene.",
+  xask_vol_notice_asker: (p) =>
+    `🤝 ${p.name} (${p.partner}) ${p.day} isteğinize yanıt verdi: ${p.bench ? "seçmeniz için yedek listenizde" : "kadroda"}.`,
+  xask_vol_out_notice_asker: (p) => `${p.name} (${p.partner}) ${p.day} maçına gelemiyor, bu yüzden listeden çıkardım.`,
+  // ─── İstekten sonra misafirler (slice S4) ───────────────────────────
+  xask_thanks_dm: (p) => `*${p.asker}* oyuncusunu buldu. Teklifin için teşekkürler 🙏`,
+  xask_game_off_dm: (p) => `*${p.asker}* kulübünün ${p.day} maçı iptal oldu, yani artık gerek kalmadı. Teklifin için teşekkürler 🙏`,
+  xask_picked_dm: (p) =>
+    `✅ *${p.asker}* için oynuyorsun: ${p.day}, ${p.venue}. Gelemeyeceksen grubundaki isteklerini yanıtlayıp *YOKUM* yaz.`,
+  xask_guests_title: "Partner kulüplerden misafirler",
+  xask_guest_row: (p) => `${p.name}, misafir: ${p.club}`,
+  xask_keep_button: (p) => `${p.club} kulübüne ekle`,
+  xask_keep_done: "Üye olarak eklendi.",
+  xask_guest_badge: (p) => `Misafir: ${p.club}`,
+  // ─── D5b, tek soru (slice S5b) ──────────────────────────────────────
+  xask_which: (p) =>
+    `Bu VARIM *${p.asker}* maçı için mi, bizim maç için mi? ${p.asker} için ${p.asker} mesajımı yanıtlayıp VARIM yaz. Bizim maç için tekrar VARIM yazman yeterli.`,
+  xask_vol_game_over: (p) => `*${p.asker}* maçı artık bitti, değiştirecek bir şey yok.`,
+  xask_dm_which: (p) =>
+    `Hangi maçtan çıkıyorsun? *${p.asker}* (${p.askerDay}) için *1*, *${p.own}* (${p.ownDay}) için *2* yaz.`,
+  xask_moved_dm: (p) => `*${p.asker}* maçının saati değişti: artık ${p.day}. Yerin duruyor. Gelemeyeceksen grubundaki isteklerini yanıtlayıp *YOKUM* yaz.`,
+  xask_guest_overlap: (p) => `O saatte *${p.asker}* için oynuyorsun, bu yüzden seni bu maça da yazamıyorum.`,
 };
 
 /**

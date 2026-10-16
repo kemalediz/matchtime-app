@@ -87,7 +87,7 @@ export async function seedRollingSquad(args: {
   });
   const memberships = await db.membership.findMany({
     where: { orgId, userId: { in: sourceAtt.map((a) => a.userId) } },
-    select: { userId: true, leftAt: true, provisionallyAddedAt: true },
+    select: { userId: true, leftAt: true, provisionallyAddedAt: true, guestFromOrgId: true },
   });
   const membershipOf = new Map(memberships.map((m) => [m.userId, m]));
   // Only a phoneless player's carry depends on whether an admin added him.
@@ -105,7 +105,7 @@ export async function seedRollingSquad(args: {
       phoneNumber: a.user.phoneNumber,
       email: a.user.email,
       isActive: a.user.isActive,
-      membership: mem ? { leftAt: mem.leftAt, provisionallyAddedAt: mem.provisionallyAddedAt } : null,
+      membership: mem ? { leftAt: mem.leftAt, provisionallyAddedAt: mem.provisionallyAddedAt, guestFromOrgId: mem.guestFromOrgId } : null,
       addedByAdmin: adminAdded.has(a.userId),
     };
   });

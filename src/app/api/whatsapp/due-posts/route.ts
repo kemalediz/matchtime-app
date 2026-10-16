@@ -67,6 +67,8 @@ import { billingQuietWhere } from "@/lib/club-billing-rules";
 import { sendDueDeadlineSummaries } from "@/lib/deadline-summary";
 import { sendDueUnpaidLists } from "@/lib/unpaid-list";
 import { sweepOrganiserPicks } from "@/lib/organiser-pick";
+import { piSendsQuotedIds } from "@/lib/quoted-message";
+import { sweepAutoPartnerAsks, sweepPartnerAsks } from "@/lib/partner-ask";
 import { sweepMonthlyWeeks } from "@/lib/monthly-week";
 import { sweepMonthSignups } from "@/lib/month-signup";
 import { sweepMonthPayments } from "@/lib/month-payment";
@@ -263,6 +265,14 @@ export async function GET(request: Request) {
     }
   }
 
+  // PARTNER CLUBS (cross-club ask, slice S2, 2026-10-16): close the asks
+  // this club made or received that should close, with one line to each
+  // side. A club with no partner makes one query. Never throws.
+  if (!previewOnly) await sweepPartnerAsks(org.id, nowOverride ?? new Date());
+  // The automatic ask (slice S5): a club on "Automatically at a time"
+  // only; every other club makes one read. Never throws.
+  if (!previewOnly) await sweepAutoPartnerAsks(org.id, nowOverride ?? new Date());
+
   if (!previewOnly) {
     try {
       await sendDueDeadlineSummaries(org.id, nowOverride ?? new Date());
@@ -332,7 +342,12 @@ export async function GET(request: Request) {
   // Slice 2a: what this Pi can do. Only a Pi that says "admin-group" is
   // ever handed an admin-group post; for any other, admin notices fall
   // back to the owner by DM (src/lib/admin-channel.ts).
-  const piCaps = parsePiCaps(request.headers.get(PI_CAPS_HEADER));
+  const piCaps = {
+    ...parsePiCaps(request.headers.get(PI_CAPS_HEADER)),
+    // Cross-club ask (review M3): a partner club's ask is posted only by a Pi
+    // that forwards quoted ids, or replies to it could not be told apart.
+    quotedIds: piSendsQuotedIds(request.headers.get(PI_CAPS_HEADER)),
+  };
 
   // The sweep's running months are handed on, so a monthly club's month is
   // read once per poll. Null (a weekly club, preview mode, a failed sweep):

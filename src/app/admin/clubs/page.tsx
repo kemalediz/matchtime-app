@@ -26,6 +26,7 @@ import { DecideButtons, GoLiveNowButton, LeaveButton, TurnOffButton } from "./cl
 import { loadSetupStatuses, type SetupMessageState } from "@/lib/club-setup";
 import { PlanControl, StartFreeMonthButton } from "./billing-controls";
 import { TemplateSharingControl } from "./graphics-template-controls";
+import Link from "next/link";
 import { loadClubBillingSnapshot } from "@/lib/club-billing";
 import { billingTotals, isBillingEnabled, planPricePence } from "@/lib/club-billing-rules";
 import { moneyLabel, ownerChargeDateLabel, ownerLastMonthLabel, ownerThisMonthLabel } from "@/lib/club-billing-view";
@@ -693,6 +694,16 @@ export default async function ClubsPage() {
             ))}
           </ul>
         )}
+      </Section>
+
+      <Section
+        id="partners"
+        title="Partner clubs"
+        lead="Let one club ask another for a player when it is short. Pairing works across every club, so it has its own page."
+      >
+        <Link href="/admin/clubs/partners" className="text-sm font-medium text-blue-700 underline" data-testid="partners-link">
+          Open partner clubs
+        </Link>
       </Section>
 
       <Section id="limits" info="clubs_limits" lang={lang} title="Today's site limits" lead="London day. They reset at midnight.">

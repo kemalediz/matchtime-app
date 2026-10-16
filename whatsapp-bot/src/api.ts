@@ -153,7 +153,9 @@ export const PLATFORM_JOBS_CAPABLE_HEADER = "x-mt-platform-jobs";
  * an older server ignores the header.
  */
 export const PI_CAPS_HEADER = "x-mt-pi-caps";
-export const PI_CAPS = "admin-group";
+/** "quoted-id" (cross-club ask, S0): this Pi forwards a reply's quoted
+ *  message id; the server posts a partner club's ask only when it sees it. */
+export const PI_CAPS = "admin-group,quoted-id";
 
 export async function getDuePosts(groupId: string): Promise<{
   instructions: DueInstruction[];
@@ -627,6 +629,8 @@ export interface AnalyzeInboundMessage {
    *  addressed to it, like a tag. Absent when the message is not a reply. */
   quotedBody?: string;
   quotedFromMatchTime?: boolean;
+  /** The quoted message's WhatsApp id (cross-club ask, S0). */
+  quotedMessageId?: string;
 }
 
 export interface AnalyzeInboundHistory {

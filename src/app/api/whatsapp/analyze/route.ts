@@ -379,6 +379,8 @@ import { resolveSender, type ResolvedSender } from "@/lib/resolve-sender";
 import { resolveOrProvisionByName } from "@/lib/resolve-or-provision-name";
 import { planUnresolvedNudge } from "@/lib/unresolved-nudge";
 import { recordGroupSightings, sightedUserIds } from "@/lib/group-sighting";
+import { quotedRefOf } from "@/lib/quoted-message";
+import { handlePartnerVolunteer } from "@/lib/partner-guest";
 
 interface InboundMessage {
   waMessageId: string;
@@ -411,6 +413,9 @@ interface InboundMessage {
    *  it, like a tag (`messageTagsBot`), and the router and the question
    *  extractor are shown the post it quotes (`quotedMatchTimeText`). */
   quotedFromMatchTime?: boolean;
+  /** The quoted message's WhatsApp id (cross-club ask, S0, 2026-10-16):
+   *  which post a reply answers. Absent from older Pi builds. */
+  quotedMessageId?: string;
   /** Did this message @-mention the bot's own JID? Computed on the Pi
    *  (only it knows the bot's selfId) and forwarded as a structured
    *  signal. PRIMARY input to the @Match Time interaction-contract gate;
@@ -2308,6 +2313,12 @@ async function handleAnalyzeRequest(request: Request) {
               tagged: messageTagsBot(m),
               route: gateRouteById.get(m.waMessageId),
               gated: gatedIds.has(m.waMessageId),
+              // A WhatsApp reply: which message it quotes (S0). Read by
+              // the engine only where a quoted post decides the target.
+              ...(() => {
+                const quoted = quotedRefOf(m);
+                return quoted ? { quoted } : {};
+              })(),
             };
           }),
           deps: {
@@ -2316,6 +2327,18 @@ async function handleAnalyzeRequest(request: Request) {
             aiCapped,
             registerAttendance,
             cancelAttendance,
+            // A reply to a partner club's ask (cross-club ask, S3): the one
+            // writer onto another club's match.
+            partnerVolunteer: (w) => handlePartnerVolunteer(w),
+            // D5b (S5b): the one "FNF or ours?" per sender per ask.
+            claimPartnerAskWhich: async ({ askId, userId }) => {
+              try {
+                await db.sentNotification.create({ data: { key: `xask:${askId}:which:${userId}`, kind: "xask-which" } });
+                return true;
+              } catch {
+                return false;
+              }
+            },
             resolveOrProvision: (name) => resolveOrProvisionByName(org.id, name),
             // THE SLOT A REPLACEMENT INHERITS (2026-09-15). ONE row
             // updated IN PLACE — `load-state.ts` reads the sheet in

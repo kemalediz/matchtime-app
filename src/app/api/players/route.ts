@@ -70,6 +70,16 @@ export async function GET(request: Request) {
     orderBy: { user: { name: "asc" } },
   });
 
+  // Guests from partner clubs (cross-club ask, S4): the club's name for
+  // the label. Their phone and email are never shown to this club.
+  const guestClubIds = [...new Set(memberships.map((m) => m.guestFromOrgId).filter((x): x is string => !!x))];
+  const guestClubName = new Map(
+    (guestClubIds.length ? await db.organisation.findMany({ where: { id: { in: guestClubIds } }, select: { id: true, name: true } }) : []).map(
+      (o) => [o.id, o.name] as const,
+    ),
+  );
+  const guestFromOf = (m: { guestFromOrgId: string | null }) => (m.guestFromOrgId ? guestClubName.get(m.guestFromOrgId) ?? "" : null);
+
   // A plain member stops here: names, ids and positions only.
   if (!isAdmin) {
     return NextResponse.json({
@@ -81,6 +91,7 @@ export async function GET(request: Request) {
         positions: m.user.activityPositions?.[0]?.positions ?? [],
         isActive: m.user.isActive,
         leftAt: m.leftAt ? m.leftAt.toISOString() : null,
+        guestFrom: guestFromOf(m),
       })),
       activityId: targetActivityId,
     });
@@ -120,9 +131,11 @@ export async function GET(request: Request) {
   const players = memberships.map((m) => ({
     id: m.user.id,
     name: m.user.name,
-    email: m.user.email,
+    // Hidden for a partner club's guest: never shown to the asking club.
+    email: m.guestFromOrgId ? null : m.user.email,
     image: m.user.image,
-    phoneNumber: m.user.phoneNumber,
+    phoneNumber: m.guestFromOrgId ? null : m.user.phoneNumber,
+    guestFrom: guestFromOf(m),
     role: m.role,
     positions: m.user.activityPositions?.[0]?.positions ?? [],
     // THIS club's seed, off the membership we are already iterating.
@@ -146,7 +159,7 @@ export async function GET(request: Request) {
   // else is offered here for a one-tap merge. Rules:
   // src/lib/placeholder-link-rules.ts.
   const duplicateSuggestions = findDuplicateSuggestions(
-    memberships.map((m) => ({
+    memberships.filter((m) => !m.guestFromOrgId).map((m) => ({
       id: m.user.id,
       name: m.user.name,
       phoneNumber: m.user.phoneNumber,

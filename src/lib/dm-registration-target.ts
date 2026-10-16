@@ -43,7 +43,10 @@ export async function findDmRegistrationTarget(
   // Never a club that is still setting up (club-setup.ts): its generated
   // fixture is not a match anybody can sign up for yet.
   const memberships = await db.membership.findMany({
-    where: { userId, leftAt: null, ...IN_LIVE_STAGE_CLUB_WHERE },
+    // Not a club he is only a guest of (cross-club ask, S4): a DM IN for
+    // his own Tuesday must never land on the partner's Friday. To drop
+    // out of the partner's game he replies OUT to its ask in his group.
+    where: { userId, leftAt: null, guestFromOrgId: null, ...IN_LIVE_STAGE_CLUB_WHERE },
     select: { orgId: true, org: { select: { name: true } } },
   });
   if (memberships.length === 0) return null;

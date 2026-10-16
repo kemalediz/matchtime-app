@@ -360,6 +360,12 @@ async function runSuite(): Promise<number> {
     // two, and the bot is never on for a club that is still setting up.
     console.log("[e2e] arming the setup-stage CHECK constraints…");
     await applySql(path.join(REPO_ROOT, "prisma", "sql", "org-setup-check.sql"));
+    // And the partner clubs' (cross-club ask, slice S1): each setting and
+    // status one of its values, a club never its own partner, a guest
+    // membership with both marks or neither, and one open ask per match
+    // and partner club.
+    console.log("[e2e] arming the partner-ask CHECK constraints…");
+    await applySql(path.join(REPO_ROOT, "prisma", "sql", "partner-ask-check.sql"));
 
     console.log("[e2e] seeding fixture world…");
     const seedCode = await run("npx", ["tsx", "e2e/helpers/seed-cli.ts"], {

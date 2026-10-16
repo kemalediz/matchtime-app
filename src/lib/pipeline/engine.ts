@@ -42,6 +42,8 @@
  *   format-switch.ts          the arithmetic the model got wrong
  * The engine is built OUT of the pure core, not beside it.
  */
+import { sameWhatsAppMessage } from "../quoted-message";
+import { partnerAskToQuestion } from "../partner-volunteer-rules";
 import { canTakeFreePlace, ORGANISER_PICK_BENCH_NOTE } from "../squad-capacity";
 import {
   actionRequiresTag,
@@ -103,6 +105,7 @@ import type {
   ProposedWrite,
   SpeechIntent,
   SquadState,
+  PartnerAskView,
   StatsPeriod,
 } from "./types";
 
@@ -415,6 +418,9 @@ export function decide(input: EngineInput): EngineResult {
   messages.forEach((m, i) => {
     if (!m.senderUserId) return;
     if (m.facts.kind !== "attendance") return;
+    // Review M2: a reply to a partner club's ask is about ANOTHER club's
+    // game; it neither supersedes nor is superseded by an own-club claim.
+    if (quotedPartnerAsk(m, state)) return;
     const sender = m.senderUserId;
     // A self claim the swap guard in `handleAttendance` will refuse
     // ("swap me with David") writes nothing, so it must not supersede
@@ -502,7 +508,10 @@ export function decide(input: EngineInput): EngineResult {
     // ── the handlers ───────────────────────────────────────────────────
 
     function handleAttendance(msg: EngineMessage, facts: AttendanceFacts, i: number) {
-      if (!state.features.attendance) {
+      // Review M1: a reply to a partner club's ask is about ANOTHER club's
+      // game, so this club's own settings (attendance off) never swallow it.
+      // Every other message stops here, exactly as before.
+      if (!state.features.attendance && !quotedPartnerAsk(msg, state)) {
         out.reasons.push("org does not track attendance");
         return;
       }
@@ -708,6 +717,107 @@ export function decide(input: EngineInput): EngineResult {
           );
           return { ...c, polarity: "in" as const };
         });
+      }
+
+      // ══════════════════════════════════════════════════════════════
+      // A REPLY TO A PARTNER CLUB'S ASK IS ABOUT THAT ASK (2026-10-16)
+      // ══════════════════════════════════════════════════════════════
+      //
+      // Cross-club ask, slice S3 (plan 3.6). FNF's ask is posted in Sutton
+      // FC's group: "Reply to this message with IN". A Sutton player who
+      // REPLIES to it with IN is volunteering for FNF's game, and that is
+      // decided by which post the message quotes, a fact WhatsApp gives
+      // us (`quoted-message.ts`), never by its words. The claims are the
+      // same claims; only their target changes. The sender's own IN or
+      // OUT becomes `partner_volunteer`, and `partner-guest.ts` decides on
+      // the database whether he may (the ask still open, a known member,
+      // no overlapping game of his own). Nothing is written on this club's
+      // own match. A message that quotes anything else, or nothing, is
+      // exactly what it was before this branch existed.
+      //
+      // A RETURN, ON PURPOSE. Every rule below is about this club's own
+      // match, and this message is not about it.
+      const ask = quotedPartnerAsk(msg, state);
+      if (ask) {
+        const own = claims.filter((c) => c.subject === "sender");
+        if (own.length === 0) {
+          out.reasons.push(`a reply to ${ask.askerName}'s partner club's ask with no claim about the sender: nothing`);
+          return;
+        }
+        const last = own[own.length - 1];
+        emit({
+          kind: "partner_volunteer",
+          askId: ask.askId,
+          userId: msg.senderUserId,
+          name: msg.senderName ?? "",
+          polarity: last.polarity === "out" ? "out" : "in",
+          sourceMessageId: msg.id,
+          reason: `a quoted reply to ${ask.askerName}'s ask (${ask.askId})`,
+        });
+        out.reasons.push(`partner club's ask ${ask.askId}: the reply is about ${ask.askerName}'s game, not this club's`);
+        return;
+      }
+
+      // Review L1: a member picked as a partner club's guest for a game that
+      // overlaps this one cannot also say IN here. One reply, no write. His
+      // OUT is never refused.
+      if (
+        msg.senderUserId &&
+        state.guestElsewhere?.[msg.senderUserId] &&
+        claims.length > 0 &&
+        claims.every((c) => c.subject === "sender" && c.polarity !== "out")
+      ) {
+        speech.push({ kind: "partner_guest_overlap", messageId: msg.id, askerName: state.guestElsewhere[msg.senderUserId].askerName });
+        out.reasons.push("L1: the sender plays for a partner club at an overlapping time; own IN refused");
+        out.disposition = out.disposition === "degraded" ? "degraded" : "acted";
+        return;
+      }
+
+      // REVIEW M3: an open ask whose post id has not come back yet cannot be
+      // matched to a reply. A reply quoting a MatchTime post while one is
+      // open is therefore never written as an own-club IN: the sender is
+      // asked once which game, then held until the id is known.
+      if (
+        msg.quoted?.fromMatchTime &&
+        msg.senderUserId &&
+        claims.length > 0 &&
+        claims.every((c) => c.subject === "sender" && c.polarity === "in")
+      ) {
+        const pending = (state.partnerAsks ?? []).find((a) => a.open && a.postIdKnown === false);
+        if (pending) {
+          if (!(pending.whichAskedUserIds ?? []).includes(msg.senderUserId)) {
+            speech.push({ kind: "partner_ask_which", messageId: msg.id, askId: pending.askId, userId: msg.senderUserId, askerName: pending.askerName });
+            out.disposition = out.disposition === "degraded" ? "degraded" : "acted";
+          }
+          out.reasons.push(`M3: a reply to a MatchTime post while ${pending.askerName}'s ask has no post id yet: not an own-club IN`);
+          return;
+        }
+      }
+
+      // D5b (slice S5b): a PLAIN IN soon after a partner club's ask, from a
+      // sender with no row at all on this club's game, may mean either. A
+      // state rule: MatchTime asks him once which, and writes nothing. A
+      // sender with a row is clearly talking about his own game; once
+      // asked, his next IN is his own game's. Only the sender's own IN.
+      if (
+        msg.route === "self_att" &&
+        // A reply quoting a post is about that post; D5b is for a PLAIN IN.
+        !msg.quoted &&
+        claims.length > 0 &&
+        claims.every((c) => c.subject === "sender" && c.polarity === "in")
+      ) {
+        const which = partnerAskToQuestion({
+          now: input.now,
+          asks: state.partnerAsks ?? [],
+          senderUserId: msg.senderUserId,
+          senderHasOwnRow: !!msg.senderUserId && state.rows.some((r) => r.userId === msg.senderUserId),
+        });
+        if (which && msg.senderUserId) {
+          speech.push({ kind: "partner_ask_which", messageId: msg.id, askId: which.askId, userId: msg.senderUserId, askerName: which.askerName });
+          out.reasons.push(`D5b: a plain IN under an hour after ${which.askerName}'s ask, with no row on this club's game: asked which`);
+          out.disposition = out.disposition === "degraded" ? "degraded" : "acted";
+          return;
+        }
       }
 
       // Side requests are facts in their own right and must survive
@@ -3716,6 +3826,13 @@ function applyClaim(args: {
  * banner. Here it is an assertion, and it throws rather than warns —
  * a coverage hole is a bug in this file, not a bad model day.
  */
+/** The partner club's ask a message replies to, if it quotes one's post
+ *  (cross-club ask, slice S3). Pure: two ids compared. */
+export function quotedPartnerAsk(msg: EngineMessage, state: SquadState): PartnerAskView | null {
+  if (!msg.quoted) return null;
+  return (state.partnerAsks ?? []).find((a) => sameWhatsAppMessage(msg.quoted!.id, a.postWaMessageId)) ?? null;
+}
+
 export function assertCoverage(messages: EngineMessage[], outcomes: MessageOutcome[]): void {
   if (messages.length !== outcomes.length) {
     throw new Error(

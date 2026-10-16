@@ -19,6 +19,9 @@ import { formatLondon } from "@/lib/london-time";
 import { Calendar, MapPin, Clock, Star, ChevronRight } from "lucide-react";
 import { t } from "@/lib/i18n/t";
 import { buildWeekList } from "@/lib/monthly-week-rules";
+import { PartnerAskPanel } from "@/components/match/partner-ask-panel";
+import { PartnerGuestsPanel } from "@/components/match/partner-guests-panel";
+import { loadPartnerAskPanel } from "@/lib/partner-ask";
 
 export default async function MatchDetailPage({
   params,
@@ -32,7 +35,7 @@ export default async function MatchDetailPage({
   const match = await db.match.findUnique({
     where: { id: matchId },
     include: {
-      activity: { include: { sport: true, org: { select: { teamLabels: true, language: true } } } },
+      activity: { include: { sport: true, org: { select: { name: true, teamLabels: true, language: true } } } },
       attendances: {
         where: { status: { in: ["CONFIRMED", "BENCH"] } },
         include: {
@@ -136,6 +139,31 @@ export default async function MatchDetailPage({
         .filter((u) => u.name && !inMatchIds.has(u.id))
         .map((u) => ({ id: u.id, name: u.name as string, hasPhone: !!u.phoneNumber }))
         .sort((a, b) => a.name.localeCompare(b.name))
+    : [];
+  // Ask a partner club (cross-club ask, slice S2): admins of a club with an
+  // active partner and asking switched on, for a match still to play.
+  const partnerAskRows =
+    isAdmin && ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"].includes(match.status)
+      ? await loadPartnerAskPanel(matchId, match.activity.orgId).catch(() => null)
+      : null;
+  // Guests from partner clubs on this match (S4): name and club, never a
+  // phone, with "Add to <club>". Admins only; none for every club today.
+  const partnerGuestRows = isAdmin
+    ? await (async () => {
+        const ids = match.attendances.map((a) => a.userId);
+        if (ids.length === 0) return [];
+        const guests = await db.membership
+          .findMany({ where: { orgId: match.activity.orgId, userId: { in: ids }, guestFromOrgId: { not: null } }, select: { userId: true, guestFromOrgId: true } })
+          .catch(() => []);
+        if (guests.length === 0) return [];
+        const clubs = await db.organisation.findMany({ where: { id: { in: guests.map((g) => g.guestFromOrgId!) } }, select: { id: true, name: true } });
+        const nameOf = new Map(clubs.map((c) => [c.id, c.name]));
+        return guests.map((g) => ({
+          userId: g.userId,
+          name: match.attendances.find((a) => a.userId === g.userId)?.user.name ?? "?",
+          club: nameOf.get(g.guestFromOrgId!) ?? "",
+        }));
+      })()
     : [];
   const isPastDeadline = new Date() > match.attendanceDeadline;
   const hasTeams = match.teamAssignments.length > 0;
@@ -416,6 +444,14 @@ export default async function MatchDetailPage({
           )}
         </div>
       </section>
+
+      {partnerGuestRows.length > 0 && (
+        <PartnerGuestsPanel matchId={matchId} clubName={match.activity.org.name} language={match.activity.org.language} rows={partnerGuestRows} />
+      )}
+
+      {partnerAskRows && partnerAskRows.length > 0 && (
+        <PartnerAskPanel matchId={matchId} language={match.activity.org.language} rows={partnerAskRows} />
+      )}
 
       {/* Actions */}
       <div className="flex flex-wrap gap-3">

@@ -25,7 +25,8 @@ import { totalPlayersFor } from "../format-switch";
 import { guestNameAskKey, GUEST_NAME_ASK_KIND } from "../guest-name-ask";
 import { decidePaymentSnapshot, type PaymentSnapshot } from "./payment-answer";
 import type { RatingProgress } from "../rating-progress-answer";
-import type { ClubSnapshot, SquadState } from "./types";
+import type { ClubSnapshot, PartnerAskView, SquadState } from "./types";
+import { gamesOverlap } from "../partner-ask-rules";
 
 /** Statuses `selectRegistrationMatch` considers, plus COMPLETED so the
  *  "previous match still in flight" guard can see the whole picture. */
@@ -246,6 +247,17 @@ export async function loadSquadState(
       )
     : resolveTeamLabels(null, null, null, lang);
 
+  // PARTNER CLUBS' ASKS POSTED HERE (cross-club ask, slice S3): open ones,
+  // and those closed in the last day, so a late reply to a closed ask is
+  // still recognised as about it ("that place has gone"). Only asks whose
+  // post's id came back can be matched by a reply. Read-only, one indexed
+  // query; empty for every club no partner has asked. Never fails the
+  // state: before the migration, nothing.
+  const partnerAsks = await loadPartnerAskViews(orgId, now);
+  // Review L1: members playing for a partner club as a guest at a time
+  // overlapping this club's active match. Empty for nearly every club.
+  const guestElsewhere = match ? await loadGuestElsewhere(orgId, match.date, now) : {};
+
   return {
     matchId: match?.id ?? null,
     maxPlayers: match?.maxPlayers ?? 0,
@@ -310,6 +322,8 @@ export async function loadSquadState(
     reclaimUserIds,
     smallerFormats,
     guestAskedUserIds: guestAsked,
+    partnerAsks,
+    guestElsewhere,
     // NOT LOADED HERE, on purpose — see `SquadState.payments` and
     // `loadPaymentSnapshot` below. Everything else in this object is
     // read on every batch including the 69% that are banter; a payment
@@ -435,6 +449,80 @@ export async function loadPaymentSnapshot(
   });
 }
 
+
+async function loadPartnerAskViews(orgId: string, now: Date): Promise<PartnerAskView[]> {
+  try {
+    const rows = await db.partnerAsk.findMany({
+      where: {
+        partnerOrgId: orgId,
+        // An open ask whose post id has not come back is loaded too (review
+        // M3), so a reply is never mistaken for an own-club IN meanwhile.
+        OR: [
+          { status: "posted" },
+          // A picked guest's quoted OUT must still find the ask after it
+          // filled, until its game is over (S4).
+          { postWaMessageId: { not: null }, closesAt: { gte: now } },
+          { postWaMessageId: { not: null }, closedAt: { gte: new Date(now.getTime() - 24 * 60 * 60 * 1000) } },
+        ],
+      },
+      select: { id: true, status: true, closesAt: true, postWaMessageId: true, askerOrgId: true, postedAt: true },
+    });
+    if (rows.length === 0) return [];
+    // D5b (S5b): who has been asked "FNF or ours?" per open ask.
+    const open = rows.filter((r) => r.status === "posted");
+    const asked = open.length
+      ? await db.sentNotification.findMany({
+          where: { kind: "xask-which", OR: open.map((r) => ({ key: { startsWith: `xask:${r.id}:which:` } })) },
+          select: { key: true },
+        })
+      : [];
+    const askers = await db.organisation.findMany({ where: { id: { in: rows.map((r) => r.askerOrgId) } }, select: { id: true, name: true } });
+    const nameOf = new Map(askers.map((o) => [o.id, o.name]));
+    return rows.map((r) => ({
+      askId: r.id,
+      postWaMessageId: r.postWaMessageId ?? "",
+      postIdKnown: !!r.postWaMessageId,
+      askerName: nameOf.get(r.askerOrgId) ?? "",
+      open: r.status === "posted" && now.getTime() < r.closesAt.getTime(),
+      postedAt: r.postedAt ? r.postedAt.toISOString() : null,
+      whichAskedUserIds: asked.filter((a) => a.key.startsWith(`xask:${r.id}:which:`)).map((a) => a.key.slice(`xask:${r.id}:which:`.length)),
+    }));
+  } catch (err) {
+    console.error(`[load-state] org ${orgId}: partner asks not read:`, err instanceof Error ? err.message : "failed");
+    return [];
+  }
+}
+
+async function loadGuestElsewhere(orgId: string, kickoff: Date, now: Date): Promise<Record<string, { askerName: string }>> {
+  try {
+    const rows = await db.attendance.findMany({
+      where: {
+        status: { in: ["CONFIRMED", "BENCH"] },
+        user: { memberships: { some: { orgId, leftAt: null, guestFromOrgId: null } } },
+        match: {
+          status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] },
+          date: { gte: new Date(kickoff.getTime() - 24 * 3600_000), lte: new Date(kickoff.getTime() + 24 * 3600_000) },
+          activity: { orgId: { not: orgId } },
+        },
+      },
+      select: { userId: true, match: { select: { id: true, date: true, activity: { select: { orgId: true, matchDurationMins: true, org: { select: { name: true } } } } } } },
+    });
+    const out: Record<string, { askerName: string }> = {};
+    for (const r of rows) {
+      const guest = await db.membership.findUnique({
+        where: { userId_orgId: { userId: r.userId, orgId: r.match.activity.orgId } },
+        select: { guestMatchId: true, leftAt: true },
+      });
+      if (!guest || guest.leftAt || guest.guestMatchId !== r.match.id) continue;
+      if (!gamesOverlap({ kickoff, durationMins: 60 }, { kickoff: r.match.date, durationMins: r.match.activity.matchDurationMins })) continue;
+      out[r.userId] = { askerName: r.match.activity.org.name };
+    }
+    void now;
+    return out;
+  } catch {
+    return {};
+  }
+}
 
 /**
  * THE FIFTH TARGETED EXTRA READ — the club's setup, and only when asked

@@ -68,7 +68,8 @@ export async function startMonth(
   if (existing) return { ok: false, error: "already-started" };
 
   const members = await db.membership.findMany({
-    where: { orgId, leftAt: null, user: { isActive: true } },
+    // Not a partner club's guest (cross-club ask, review M6).
+    where: { orgId, leftAt: null, guestFromOrgId: null, user: { isActive: true } },
     select: { userId: true },
   });
   const plan = planMonthSeed(input, { memberUserIds: new Set(members.map((m) => m.userId)), actorUserId, now });

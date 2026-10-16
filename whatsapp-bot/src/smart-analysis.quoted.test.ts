@@ -71,6 +71,11 @@ describe("a players' group reply on the wire to /api/whatsapp/analyze", () => {
     expect(m).toMatchObject({ body: "Bench? We do bench now?", quotedBody: BENCH_POST, quotedFromMatchTime: true });
   });
 
+  it("a reply carries the quoted message's id too (cross-club ask, S0): a reply to an ask finds the ask by it", async () => {
+    await enqueueForAnalysis(driver, viewOf(reply("IN", BOT_LID, BENCH_POST)));
+    expect(posted()).toMatchObject({ quotedMessageId: "3EB0BENCH", quotedFromMatchTime: true });
+  });
+
   it("matched on the phone form of the bot's id as well as the LID", async () => {
     await enqueueForAnalysis(driver, viewOf(reply("IN", BOT, BENCH_POST)));
     expect(posted()).toMatchObject({ body: "IN", quotedFromMatchTime: true });
@@ -89,5 +94,13 @@ describe("a players' group reply on the wire to /api/whatsapp/analyze", () => {
     const m = posted();
     expect(m).not.toHaveProperty("quotedBody");
     expect(m).not.toHaveProperty("quotedFromMatchTime");
+    expect(m).not.toHaveProperty("quotedMessageId");
+  });
+});
+
+describe("the Pi says it forwards quoted ids (review M3)", () => {
+  it("its capability header carries quoted-id beside admin-group", async () => {
+    const api = await vi.importActual<typeof import("./api.js")>("./api.js");
+    expect(api.PI_CAPS.split(",")).toEqual(expect.arrayContaining(["admin-group", "quoted-id"]));
   });
 });

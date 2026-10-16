@@ -21,6 +21,7 @@ import { LearnedSetupPanel } from "@/components/settings/learned-setup-panel";
 import { MonthlySquadSection, type MonthlySquadData } from "@/components/settings/monthly-squad-section";
 import { GoLiveBanner, type GoLiveSetup } from "@/components/settings/go-live-banner";
 import { PostersCard } from "@/components/settings/posters-card";
+import { PartnerClubsSection } from "@/components/settings/partner-clubs-section";
 
 type FeatureKey = ToggleableKey;
 
@@ -773,6 +774,10 @@ export default function SettingsPage() {
           </section>
         );
       })()}
+
+      {/* Partner clubs (cross-club ask, 2026-10-16): only for a club the
+          platform owner has paired with another; nothing shows otherwise. */}
+      <PartnerClubsSection orgId={org.id} language={org.language} />
 
       {!goLiveSetup && <PostersCard club={org.name} language={org.language} />}
 

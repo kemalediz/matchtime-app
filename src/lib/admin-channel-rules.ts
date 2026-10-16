@@ -187,6 +187,9 @@ export const PI_CAP_ADMIN_GROUP = "admin-group";
 
 export interface PiCaps {
   adminGroup: boolean;
+  /** The Pi forwards a reply's quoted message id ("quoted-id", cross-club
+   *  ask S0). Set by the due-posts route; absent means no. */
+  quotedIds?: boolean;
 }
 
 export function parsePiCaps(header: string | null | undefined): PiCaps {

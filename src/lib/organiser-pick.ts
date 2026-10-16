@@ -45,7 +45,7 @@ import { isNextUpcomingForPosting } from "./next-upcoming-match";
 import { madeAfterDropOutDeadline, weeklyDeadlinesFor } from "./weekly-deadlines";
 import { summariseClubDisplayRatings } from "./player-rating";
 import { normaliseBenchPickFallback } from "./squad-capacity";
-import { dayTimeLabel, weekdayTimeLabel } from "./i18n/dates";
+import { dayCommaTimeLabel, dayTimeLabel, weekdayTimeLabel } from "./i18n/dates";
 import { t } from "./i18n/t";
 import { normalisePhone } from "./phone";
 import { organisersAnnounce } from "./list-announcer";
@@ -122,7 +122,7 @@ export async function loadPickListRows(
 ): Promise<PickListRow[]> {
   if (users.length === 0) return [];
   const ids = users.map((u) => u.userId);
-  const [positions, ratings] = await Promise.all([
+  const [positions, ratings, guests] = await Promise.all([
     db.playerActivityPosition.findMany({
       where: { activityId, userId: { in: ids } },
       select: { userId: true, positions: true },
@@ -132,10 +132,24 @@ export async function loadPickListRows(
       orderBy: { createdAt: "desc" },
       select: { playerId: true, matchId: true, score: true },
     }),
+    // Guests from a partner club (cross-club ask, slice S3): their club's
+    // name for the label. Empty for every club no partner has lent to.
+    Promise.resolve()
+      .then(() => db.membership.findMany({ where: { orgId, userId: { in: ids }, guestFromOrgId: { not: null } }, select: { userId: true, guestFromOrgId: true } }))
+      .catch(() => [] as Array<{ userId: string; guestFromOrgId: string | null }>),
   ]);
   const posOf = new Map(positions.map((p) => [p.userId, positionLabel(p.positions)]));
   const summary = summariseClubDisplayRatings(ids, ratings, CLUB_RATING_WINDOW);
-  return users.map((u) => ({ name: u.name, position: posOf.get(u.userId) ?? null, rating: summary[u.userId]?.rating ?? null }));
+  const clubIds = [...new Set((guests ?? []).map((g) => g.guestFromOrgId).filter((x): x is string => !!x))];
+  const clubs = clubIds.length ? await db.organisation.findMany({ where: { id: { in: clubIds } }, select: { id: true, name: true } }) : [];
+  const clubName = new Map(clubs.map((c) => [c.id, c.name]));
+  const fromOf = new Map((guests ?? []).map((g) => [g.userId, g.guestFromOrgId ? clubName.get(g.guestFromOrgId) ?? null : null]));
+  return users.map((u) => ({
+    name: u.name,
+    position: posOf.get(u.userId) ?? null,
+    rating: summary[u.userId]?.rating ?? null,
+    ...(fromOf.get(u.userId) ? { fromClub: fromOf.get(u.userId)! } : {}),
+  }));
 }
 
 interface MatchWorld {
@@ -669,11 +683,22 @@ export async function applyOrganiserPick(args: {
  * rest of the waiting list is told nothing and keeps its order.
  */
 export async function announcePickToGroupAndPlayers(matchId: string, result: ApplyPickResult): Promise<void> {
+  /** A guest from a partner club (cross-club ask, S4): his DM names the
+   *  club he plays for, in HIS club's language (D9). Anyone else: as before. */
+  const pickDmText = async (guestFromOrgId: string | null, member: () => string): Promise<string> => {
+    if (!guestFromOrgId || !m) return member();
+    const from = await db.organisation.findUnique({ where: { id: guestFromOrgId }, select: { language: true } });
+    return t(from?.language ?? org.language).xask_picked_dm({
+      asker: m.activity.org.name,
+      day: dayCommaTimeLabel(from?.language ?? org.language, m.date),
+      venue: m.activity.venue,
+    });
+  };
   if (result.applied.length === 0) return;
   const m = await db.match.findUnique({
     where: { id: matchId },
     include: {
-      activity: { include: { sport: true, org: { select: { id: true, teamLabels: true, language: true, listAnnouncer: true } } } },
+      activity: { include: { sport: true, org: { select: { id: true, name: true, teamLabels: true, language: true, listAnnouncer: true } } } },
     },
   });
   if (!m) return;
@@ -687,7 +712,7 @@ export async function announcePickToGroupAndPlayers(matchId: string, result: App
   const confirmedNow = await db.attendance.count({ where: { matchId, status: "CONFIRMED" } });
   const users = await db.user.findMany({
     where: { id: { in: result.applied.map((a) => a.userId) } },
-    select: { id: true, phoneNumber: true, memberships: { where: { orgId: org.id }, select: { subMatchInviteDm: true } } },
+    select: { id: true, phoneNumber: true, memberships: { where: { orgId: org.id }, select: { subMatchInviteDm: true, guestFromOrgId: true } } },
   });
   for (const a of result.applied) {
     if (postInGroup) {
@@ -713,7 +738,9 @@ export async function announcePickToGroupAndPlayers(matchId: string, result: App
           orgId: org.id,
           kind: "dm",
           phone: bare(u.phoneNumber),
-          text: s.pick_player_dm({ dayTime: weekdayTimeLabel(org.language, m.date), venue: m.activity.venue }),
+          text: await pickDmText(u.memberships[0]?.guestFromOrgId ?? null, () =>
+            s.pick_player_dm({ dayTime: weekdayTimeLabel(org.language, m.date), venue: m.activity.venue }),
+          ),
         },
       });
     }

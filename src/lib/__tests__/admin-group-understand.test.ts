@@ -40,6 +40,15 @@ const groupAsk = vi.hoisted(() => ({ askPlayersGroup: vi.fn() }));
 vi.mock("@/lib/admin-group-ask-group", () => groupAsk);
 const hqQuestion = vi.hoisted(() => ({ answerHqQuestion: vi.fn() }));
 vi.mock("@/lib/admin-group-question", () => hqQuestion);
+// A partner club's ask waiting for this club's YES (cross-club ask, S2).
+// None by default; the #297 cases below set one.
+const partnerAsk = vi.hoisted(() => ({
+  partnerAsksAwaitingApproval: vi.fn().mockResolvedValue([]),
+  answerPartnerAskYes: vi.fn(),
+  partnerAskRef: (id: string) => `xask:${id}`,
+  parsePartnerAskRef: (ref: string) => (ref.startsWith("xask:") ? ref.slice(5) : null),
+}));
+vi.mock("@/lib/partner-ask", () => partnerAsk);
 
 import { understandAdminMessage } from "../admin-group-understand";
 
@@ -449,5 +458,31 @@ describe("a sender who is not an organiser", () => {
     const r = await ask("@Match Time can you sort it", "unsure", player());
     expect(r?.outcome).toBe("hq-not-understood");
     expect(squad.handleAdminSquadChange).not.toHaveBeenCalled();
+  });
+});
+
+// A partner club's ask in HQ and #297 (merge of main, 2026-10-16): only an
+// organiser's YES posts it, and the organiser is who is recorded.
+describe("a partner club's ask waiting for this club's YES", () => {
+  beforeEach(() => {
+    partnerAsk.partnerAsksAwaitingApproval.mockResolvedValue([
+      { askId: "ask1", askedAt: ASKED, askerName: "Sutton FC", matchDate: new Date("2026-10-16T19:30:00Z") },
+    ]);
+    partnerAsk.answerPartnerAskYes.mockResolvedValue({ outcome: "xask-approved", replyText: "Done." });
+  });
+
+  it("a player's YES posts nothing: the one line naming who can", async () => {
+    const r = await ask("@Match Time yes", "approve", { senderUserId: "u-kemal", organiser: false, senderName: "Kemal" });
+    expect(r?.outcome).toBe("hq-only-organisers");
+    expect(partnerAsk.answerPartnerAskYes).not.toHaveBeenCalled();
+  });
+
+  it("an organiser's YES, the next message after the question: posted, approved by that organiser", async () => {
+    hqLog.hqLogSince.mockResolvedValue([
+      { waMessageId: "mt:xask:ask1:1", fromMatchTime: true, senderUserId: null, text: "🤝 *Sutton FC* ask if one of your players can play", askRef: "xask:ask1", createdAt: ASKED },
+    ]);
+    const r = await ask("yes", "approve");
+    expect(partnerAsk.answerPartnerAskYes).toHaveBeenCalledWith(expect.objectContaining({ orgId: "org-fnf", askId: "ask1", userId: "u-admin" }));
+    expect(r?.outcome).toBe("xask-approved");
   });
 });

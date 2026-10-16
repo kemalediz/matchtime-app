@@ -98,6 +98,8 @@ export async function postAnalyze(
      *  own message (the Pi's signal, 2026-10-16). */
     quotedBody?: string;
     quotedFromMatchTime?: boolean;
+    /** The quoted message's id (cross-club ask, S0). */
+    quotedMessageId?: string;
   }>,
 ) {
   const res = await request.post("/api/whatsapp/analyze", {

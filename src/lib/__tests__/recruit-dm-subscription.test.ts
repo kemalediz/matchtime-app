@@ -75,7 +75,7 @@ describe("inviteRecentPlayers — subMatchInviteDm gating", () => {
 
     // The opt-out query targeted the right flag.
     expect(membershipFindMany).toHaveBeenCalledWith({
-      where: { orgId: ORG, subMatchInviteDm: false },
+      where: { orgId: ORG, OR: [{ subMatchInviteDm: false }, { guestFromOrgId: { not: null } }] },
       select: { userId: true },
     });
   });

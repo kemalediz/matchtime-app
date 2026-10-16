@@ -11,8 +11,10 @@ import type { PendingItem, QuotedMessage } from "./admin-group-confirm-rules";
 import { replyingToLine } from "./pipeline/router";
 
 export interface PendingWithLabel extends PendingItem {
-  /** The game's day, in the club's language, for teams. */
+  /** The game's day, in the club's language, for teams and a partner ask. */
   day: string | null;
+  /** A partner club's ask: the asking club's name. */
+  club?: string | null;
   askedAt: Date;
 }
 
@@ -28,7 +30,13 @@ export function organisersContext(p: {
   if (p.pending.length === 0) lines.push("WAITING: nothing.");
   for (const i of p.pending) {
     const at = formatLondon(i.askedAt, "HH:mm");
-    lines.push(i.kind === "teams" ? `WAITING: approval of the proposed teams for ${i.day}, asked at ${at}.` : `WAITING: YES to apply the squad list pasted at ${at}.`);
+    lines.push(
+      i.kind === "teams"
+        ? `WAITING: approval of the proposed teams for ${i.day}, asked at ${at}.`
+        : i.kind === "partner-ask"
+          ? `WAITING: YES to post ${i.club}'s ask for a player in the players' group, for ${i.day}, asked at ${at}.`
+          : `WAITING: YES to apply the squad list pasted at ${at}.`,
+    );
   }
   if (p.quoted?.text || p.quoted?.fromMatchTime) {
     lines.push(replyingToLine(p.quotedIsMatchTime ? "MatchTime" : "another organiser", p.quoted.text ?? ""));

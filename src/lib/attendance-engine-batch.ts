@@ -135,6 +135,9 @@
  * `assertCoverage` requires and what keeps "exactly one outcome per
  * message" true across the split.
  */
+import type { QuotedRef } from "./quoted-message";
+import type { ProposedWrite } from "./pipeline/types";
+import { quotedPartnerAsk } from "./pipeline/engine";
 import type { AttendanceWriteFailure } from "./attendance-write-outcome";
 import { clampPastedRosterFacts } from "./pasted-roster-registration";
 // Traced: the extractor's facts are kept on the message's AnalyzedMessage
@@ -182,6 +185,8 @@ export interface EngineBatchMessage {
   route: Route | undefined;
   /** Did step 5's gate skip this message? Then step 6 never sees it. */
   gated: boolean;
+  /** The quoted message, for a WhatsApp reply (cross-club ask, S0). */
+  quoted?: QuotedRef | null;
 }
 
 /** What the route needs in order to turn one owned message into exactly
@@ -392,6 +397,20 @@ export interface EngineBatchDeps extends EngineApplyDeps {
    * only an explicit instruction does. Absent, nothing changes.
    */
   vetFacts?: (args: { message: EngineBatchMessage; facts: AttendanceFacts; state: SquadState }) => AttendanceFacts;
+  /**
+   * A REPLY TO A PARTNER CLUB'S ASK (cross-club ask, slice S3). The engine's
+   * `partner_volunteer` writes go here, never to `applyEngineWrites`: they
+   * are about ANOTHER club's match. `partner-guest.ts`'s
+   * `handlePartnerVolunteer` in production. Absent (the admin group, tests
+   * that never meet one): such a write is refused and reported.
+   */
+  partnerVolunteer?: (w: Extract<ProposedWrite, { kind: "partner_volunteer" }>) => Promise<{ ok: boolean; outcome: string; replyText: string | null }>;
+  /**
+   * D5b (slice S5b): claim the one "FNF or ours?" question per sender per
+   * ask BEFORE it is said. `true` when this batch got it. Absent: the
+   * question is not asked (and nothing is written for the message).
+   */
+  claimPartnerAskWhich?: (args: { askId: string; userId: string }) => Promise<boolean>;
 }
 
 export async function runAttendanceEngineBatch(args: {
@@ -458,9 +477,22 @@ export async function runAttendanceEngineBatch(args: {
     return empty();
   }
 
+  // Review M1: replies that QUOTE a partner club's ask are about another
+  // club's game. The carve-outs below are about this club's own match (no
+  // match, attendance off, a different match, an open bench prompt), so
+  // they never swallow one: when a carve-out applies, the batch continues
+  // with those replies ONLY.
+  const isPartnerReply = (m: EngineBatchMessage) =>
+    !!m.quoted && quotedPartnerAsk({ quoted: m.quoted } as EngineMessage, state) !== null;
+  const partnerReplies = candidates.filter(isPartnerReply);
+  const ownMatchBlocked =
+    !state.features.attendance || !state.matchId || (expectedMatchId !== null && state.matchId !== expectedMatchId);
+
   // ── The carve-outs, all in the "own nothing" direction ─────────────
-  if (!state.features.attendance) return empty();
-  if (!state.matchId) {
+  if (ownMatchBlocked && partnerReplies.length === 0) {
+    if (!state.features.attendance) return empty();
+  }
+  if (!state.matchId && partnerReplies.length === 0) {
     // No active registration match.
     //
     // What stood here until 2026-09-06: "The analyzer's
@@ -479,7 +511,7 @@ export async function runAttendanceEngineBatch(args: {
     // lost to "no match yet" is still a query.
     return empty();
   }
-  if (expectedMatchId !== null && state.matchId !== expectedMatchId) {
+  if (expectedMatchId !== null && state.matchId !== expectedMatchId && partnerReplies.length === 0) {
     console.warn(
       `[attendance-engine] the route's registration match (${expectedMatchId}) and the ` +
         `engine's (${state.matchId}) disagree; owning nothing`,
@@ -513,13 +545,15 @@ export async function runAttendanceEngineBatch(args: {
   // loss.
   let promptedUserIds = new Set<string>();
   try {
-    promptedUserIds = new Set(await deps.openBenchPromptUserIds(matchId));
+    if (matchId && !ownMatchBlocked) promptedUserIds = new Set(await deps.openBenchPromptUserIds(matchId));
   } catch (err) {
     console.error("[attendance-engine] bench-prompt lookup failed; owning nothing:", err);
     return empty();
   }
 
-  const owned = candidates.filter((m) => {
+  const owned = (ownMatchBlocked ? partnerReplies : candidates).filter((m) => {
+    // Review M1: an open bench prompt is about this club's match.
+    if (isPartnerReply(m)) return true;
     if (m.senderUserId && promptedUserIds.has(m.senderUserId)) return false;
     // ── A PASTED ROSTER IS OWNED FOR ONE THING ONLY: THE SENDER'S OUT ─
     //
@@ -820,6 +854,7 @@ export async function runAttendanceEngineBatch(args: {
       route: m.route ?? "none",
       facts: f?.facts ?? { kind: "none" },
       degraded: f?.degraded ?? null,
+      ...(m.quoted ? { quoted: m.quoted } : {}),
     };
   });
 
@@ -897,7 +932,8 @@ export async function runAttendanceEngineBatch(args: {
       }
       let claimed = false;
       try {
-        claimed = await deps.claimGuestNameAsk({ matchId, userId });
+        // No own match (only partner replies were owned): nothing to claim.
+        claimed = matchId ? await deps.claimGuestNameAsk({ matchId, userId }) : false;
       } catch (err) {
         // A dedupe row that could not be written must not become an ask
         // nobody recorded — that is the nag, one batch later.
@@ -921,6 +957,28 @@ export async function runAttendanceEngineBatch(args: {
     }
   }
 
+  // ── Stage 3a': CLAIM THE D5b QUESTION (slice S5b), like the name ask ──
+  const whichSpeech = result.speech.filter((sp) => sp.kind === "partner_ask_which");
+  if (whichSpeech.length > 0) {
+    const lostWhich = new Set<string>();
+    for (const sp of whichSpeech) {
+      if (sp.kind !== "partner_ask_which") continue;
+      let claimed = false;
+      try {
+        claimed = ownedIds.has(sp.messageId) && !!deps.claimPartnerAskWhich && (await deps.claimPartnerAskWhich({ askId: sp.askId, userId: sp.userId }));
+      } catch (err) {
+        console.error(`[attendance-engine] partner-ask-which claim threw for ${sp.userId}:`, err);
+      }
+      if (!claimed) {
+        lostWhich.add(sp.messageId);
+        degradations.push(`D5b question for ${sp.userId} on ask ${sp.askId} not claimed; not asked`);
+      }
+    }
+    if (lostWhich.size > 0) {
+      result = { ...result, speech: result.speech.filter((sp) => !(sp.kind === "partner_ask_which" && lostWhich.has(sp.messageId))) };
+    }
+  }
+
   // ── Stage 3b: APPLY. Only writes from owned messages. ──────────────
   //
   // The engine cannot produce a write from a message it was not given
@@ -938,14 +996,19 @@ export async function runAttendanceEngineBatch(args: {
       },
     ]),
   );
-  const applicable = result.writes.filter((w) => ownedIds.has(w.sourceMessageId));
-  const foreign = result.writes.length - applicable.length;
+  const owned_ = result.writes.filter((w) => ownedIds.has(w.sourceMessageId));
+  // Partner volunteers (slice S3) are executed apart: another club's match.
+  const partnerWrites = owned_.filter((w): w is Extract<ProposedWrite, { kind: "partner_volunteer" }> => w.kind === "partner_volunteer");
+  const applicable = owned_.filter((w) => w.kind !== "partner_volunteer");
+  const foreign = result.writes.length - owned_.length;
   if (foreign > 0) {
     degradations.push(
       `${foreign} write(s) came from a message the engine does not own; refused`,
     );
   }
-  const applied = await applyEngineWrites({
+  // With the own match blocked only partner replies were owned, so there
+  // are no own-match writes to apply (review M1).
+  const applied = !matchId || ownMatchBlocked ? [] : await applyEngineWrites({
     matchId,
     writes: applicable,
     actorByMessageId,
@@ -961,6 +1024,21 @@ export async function runAttendanceEngineBatch(args: {
     degradations.push(
       `team slot ${a.write.fromName} → ${a.write.toName} did not move: ${a.error ?? "unknown"}`,
     );
+  }
+
+  const partnerByMessage = new Map<string, { ok: boolean; outcome: string; replyText: string | null }>();
+  for (const w of partnerWrites) {
+    if (!deps.partnerVolunteer) {
+      degradations.push(`partner_volunteer for ask ${w.askId} with no executor; refused`);
+      partnerByMessage.set(w.sourceMessageId, { ok: false, outcome: "no-executor", replyText: null });
+      continue;
+    }
+    try {
+      partnerByMessage.set(w.sourceMessageId, await deps.partnerVolunteer(w));
+    } catch (err) {
+      degradations.push(`partner_volunteer for ask ${w.askId} threw: ${err instanceof Error ? err.message : "failed"}`);
+      partnerByMessage.set(w.sourceMessageId, { ok: false, outcome: "failed", replyText: null });
+    }
   }
 
   // ── Stage 4: composition ───────────────────────────────────────────
@@ -1036,6 +1114,9 @@ export async function runAttendanceEngineBatch(args: {
     // ONE reply per message. Several speech intents for the same
     // message join into one send; they never become two results.
     let reply: string | null = utterances.length > 0 ? utterances.join("\n\n") : null;
+    // A reply to a partner club's ask (slice S3): its one answer.
+    const partner = partnerByMessage.get(m.waMessageId);
+    if (partner?.replyText) reply = reply ? `${reply}\n\n${partner.replyText}` : partner.replyText;
     if (landed.length > 0) lastActed = m.waMessageId;
 
     // An extractor failure must surface to an admin, not vanish. §9
@@ -1063,8 +1144,8 @@ export async function runAttendanceEngineBatch(args: {
       route: m.route as Route,
       reply,
       react: reactByMessageId.get(m.waMessageId) ?? null,
-      intent: intentFor(landed, m.senderUserId, attendanceFacts, reply),
-      action: analyzedActionFor(landed, m.senderUserId),
+      intent: partner ? "partner_volunteer" : intentFor(landed, m.senderUserId, attendanceFacts, reply),
+      action: partner ? `partner-volunteer:${partner.outcome}` : analyzedActionFor(landed, m.senderUserId),
       reasoning,
       failures,
       senderOwnRowMoved,

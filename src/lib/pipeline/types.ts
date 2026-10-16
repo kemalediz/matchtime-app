@@ -24,6 +24,7 @@
  */
 // Type-only, and from a module with no Prisma import of its own — see
 // `SquadState.payments` and `payment-answer.ts`'s header.
+import type { QuotedRef } from "../quoted-message";
 import type { PaymentSnapshot } from "./payment-answer";
 // Same rule, same reason: `rating-progress-answer.ts` is the Prisma-free
 // half of `rating-progress.ts`, split out on 2026-09-11 so the composer
@@ -702,6 +703,29 @@ export interface BenchOffer {
  * `load-state.ts` (the only I/O in this directory) and then never
  * re-read: the engine is a pure function of this value.
  */
+/**
+ * A partner club's ask posted INTO this club's group (cross-club ask,
+ * slice S3, 2026-10-16; plan 3.6). Loaded read-only by `load-state.ts`. A
+ * reply that quotes `postWaMessageId` is about this ask, not about the
+ * club's own match: decided by which post it quotes (`quoted-message.ts`),
+ * never by its words.
+ */
+export interface PartnerAskView {
+  askId: string;
+  /** The post's acknowledged message id. */
+  postWaMessageId: string;
+  askerName: string;
+  /** Still taking volunteers (posted, before kickoff), or closed. */
+  open: boolean;
+  /** When it was posted (ISO), for D5b's one-hour window (slice S5b). */
+  postedAt?: string | null;
+  /** Who has been asked "FNF or ours?" for this ask already (D5b). */
+  whichAskedUserIds?: string[];
+  /** False while the post's message id has not come back from the Pi
+   *  (review M3): a reply cannot be matched to it yet. Absent: known. */
+  postIdKnown?: boolean;
+}
+
 export interface SquadState {
   /** The ACTIVE registration match, chosen by `selectRegistrationMatch`.
    *  null = no match to register anyone for, or registration is blocked
@@ -718,6 +742,13 @@ export interface SquadState {
   openOffers: BenchOffer[];
   teams: Array<{ userId: string; team: "RED" | "YELLOW" }>;
   teamLabels: [string, string];
+  /** Partner clubs' asks posted in this group, open or recently closed
+   *  (slice S3). Absent or empty for every club no partner has asked. */
+  partnerAsks?: PartnerAskView[];
+  /** Members with a live guest place in a partner club's game that
+   *  overlaps this club's active match (review L1), by user id. Absent or
+   *  empty for every club no partner has borrowed from. */
+  guestElsewhere?: Record<string, { askerName: string }>;
   /**
    * THE LAST MATCH THAT HAS ACTUALLY BEEN PLAYED — the one a score
    * report and a payment credit are about.
@@ -1090,6 +1121,23 @@ export type ProposedWrite =
       reason: string;
     }
   | {
+      /**
+       * A REPLY TO A PARTNER CLUB'S ASK (cross-club ask, slice S3). The
+       * sender's own IN or OUT, aimed at the asking club's match instead
+       * of this club's, because the message QUOTES the ask's post. The
+       * engine only picks the target; `partner-guest.ts` decides on the
+       * database whether he may volunteer (the ask still open, a known
+       * member, no overlapping game of his own) and does the write.
+       */
+      kind: "partner_volunteer";
+      askId: string;
+      userId: string | null;
+      name: string;
+      polarity: "in" | "out";
+      sourceMessageId: string;
+      reason: string;
+    }
+  | {
       kind: "open_bench_offer";
       replacingUserId: string;
       offeredToUserIds: string[];
@@ -1303,6 +1351,15 @@ export type SpeechIntent =
   /** The one authoritative squad post for the batch (§3.2 S36). */
   | { kind: "squad_status"; messageId: string | null }
   | { kind: "guest_name_ask"; messageId: string; askerName: string | null; body: string }
+  /** Review L1: his own IN refused, he plays for a partner club then. */
+  | { kind: "partner_guest_overlap"; messageId: string; askerName: string }
+  /**
+   * D5b (cross-club ask, slice S5b): a plain IN soon after a partner club's
+   * ask, from someone with no row on his own game. Asks him once which game
+   * he means; nothing is written. Claimed before it is said
+   * (`claimPartnerAskWhich`), like the guest-name ask.
+   */
+  | { kind: "partner_ask_which"; messageId: string; askId: string; userId: string; askerName: string }
   /**
    * A third-party claim named nobody but raw digits: a WhatsApp mention
    * neither the Pi nor the server could put a name to (2026-09-30). Asks
@@ -1623,6 +1680,13 @@ export interface EngineMessage {
   /** Set when a stage above failed for this message. The engine must
    *  surface it, never swallow it. */
   degraded?: string | null;
+  /**
+   * The message it REPLIES to, when it is a WhatsApp reply and the Pi sent
+   * the quoted id (cross-club ask, S0, 2026-10-16). A structured fact: a
+   * reply to a partner club's ask is about that ask, decided by WHICH post
+   * it quotes (`quoted-message.ts`), never by its words. Absent otherwise.
+   */
+  quoted?: QuotedRef | null;
 }
 
 export interface EngineInput {
