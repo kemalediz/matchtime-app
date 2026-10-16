@@ -619,6 +619,11 @@ export interface AnalyzeInboundMessage {
    *  @Match Time interaction-contract gate; the server falls back to body
    *  text matching when this is absent (older Pi builds). */
   botMentioned?: boolean;
+  /** A WhatsApp reply (2026-10-16): the quoted message's text, and whether
+   *  it was this bot's own. A reply to MatchTime's own message is
+   *  addressed to it, like a tag. Absent when the message is not a reply. */
+  quotedBody?: string;
+  quotedFromMatchTime?: boolean;
 }
 
 export interface AnalyzeInboundHistory {

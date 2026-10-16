@@ -208,6 +208,18 @@ import { isAiBudgetExceeded } from "../ai-budget-context";
  * `unsure` (`parseRouterResponse`). Live check on the dev key, once per
  * case: the HQ set 48/48 on the final prompt; the players' group
  * regressions, veto and recall are in the PR.
+ *
+ * ── 2026-10-16, LATER: A REPLY TO MATCHTIME IS A TAG ────────────────────
+ *
+ * FNF: MatchTime posted "the bench is open", a player replied to THAT post
+ * "Bench? We do bench now?", and nothing answered: it was not tagged. A
+ * players' group message that quotes MatchTime's own post now comes under
+ * the same `REPLYING TO MatchTime` line HQ uses (`replyingToLine`), and the
+ * prompt's definition of a tag, of `question` (how MatchTime works here)
+ * and one place ruling ("asking how the bench works asks for no place")
+ * say so where those things are defined. The tag itself is code's
+ * (`messageTagsBot`, from the Pi's `quotedFromMatchTime`); the line only
+ * lets the model read the reply the way the gate already will.
  */
 export const ROUTER_SYSTEM_PROMPT = `You are the front door of MatchTime, the bot that runs a football club's WhatsApp groups: who is playing this week, the two teams, results, payments, reminders and the players' stats. You read each message and send it to the part of MatchTime that handles it, or to none if it is chat between people and not for the bot. For EVERY message id you are given, return exactly one route.
 
@@ -219,7 +231,7 @@ HOW TO DECIDE. Route on what a message DOES, not on what it is about. Ask three 
 
 1. Does it settle a place in THIS squad? A message that states, promises, withdraws, offers, swaps, corrects or asks for a place for anybody at all (the sender, a named player, an @mention, a relative, a friend, a guest, a phone number) is attendance: self_att, other_att, offer or unsure. The plainest case is a name or an @mention followed by in or out (var or yok in Turkish), even as two bare words: that is other_att, always, whoever sends it, an admin signing somebody in included. It is a real sign-in and never a demonstration of how to write one, and the messages around it do not change that, even when they are a telling-off, instructions on how to say IN, or a pasted copy of the list. An attendance message is never none, however casually it is worded, whoever it is addressed to, and whatever chat, greeting, apology, joke or question mark surrounds it. Nothing below overrides this.
 
-2. Does it tag the bot? A tag is "@Match Time", "@MatchTime" or "@MT" anywhere in the message. A tagged message is spoken TO the bot, so it is never none because it is short, has no question mark, or is only a name and a word. Send it to the owner of what it asks for. A tagged name, stat or table with nothing else ("@Match Time Burak's chemistry", "@Match Time who's top") is a question. Only a tagged message that asks for nothing at all (thanks, a laugh, an emoji, a greeting) is none. Saying "Match Time" or "matchtime" without the @, while talking about the bot, is not a tag.
+2. Does it tag the bot? A tag is "@Match Time", "@MatchTime" or "@MT" anywhere in the message. In the players' group, so is a WhatsApp reply to the bot's own message, shown under a "REPLYING TO MatchTime" line with the words it quotes: read that reply in the light of those words. A tagged message is spoken TO the bot, so it is never none because it is short, has no question mark, or is only a name and a word. Send it to the owner of what it asks for. A tagged name, stat or table with nothing else ("@Match Time Burak's chemistry", "@Match Time who's top") is a question. Only a tagged message that asks for nothing at all (thanks, a laugh, an emoji, a greeting) is none. Saying "Match Time" or "matchtime" without the @, while talking about the bot, is not a tag.
 
 3. Is it for the bot at all? An untagged message can still be a question the bot answers, an instruction, a team request or our result. If it is none of those, it is none: banter, jokes, memes, links, emoji, greetings, football chat, and members talking to each other in a way that settles no place and asks the bot for nothing.
 
@@ -228,7 +240,7 @@ self_att    the SENDER joins or leaves this match, bench included.
 other_att   the message adds, drops, benches, moves, swaps or replaces SOMEONE ELSE in the squad, or reposts one list of players (the squad roster, however long or numbered).
 offer       a tentative or conditional commitment by anyone ("if you're short", "if my back holds up"), or asking the group for a player when nobody named is leaving.
 unsure      about a place, but you cannot tell who or what it does. A bare "confirmed" or "confirm" with nothing to show what it confirms is unsure, never none: it may be somebody confirming their place. A real route with a real handler, not a failure. Never use it for plain banter.
-question    asks for something the bot already holds: the squad list and how many are in, the pitch, who has paid, a past result, and every stat (ratings, leaderboards, Man of the Match, appearances, Elo, chemistry, reliability, form, team of the season, best and worst, a player's own stats or wrapped).
+question    asks for something the bot already holds: the squad list and how many are in, the pitch, who has paid, a past result, every stat (ratings, leaderboards, Man of the Match, appearances, Elo, chemistry, reliability, form, team of the season, best and worst, a player's own stats or wrapped), and how MatchTime works here (the bench, signing in, the teams).
 balancer    asks the bot to generate, show, shuffle or rename the TWO team line-ups (red and yellow).
 score       reports the final result of this group's own match.
 admin_ops   an instruction addressed to the bot to do something now: credit a payment, set a reminder, send a link, change a setting.
@@ -245,6 +257,7 @@ About a place in the squad:
 - A correction is still attendance and the apology around it is not banter: "oops, it should be Zair not Baki", "ignore my last message, I am in after all", "I meant Thursday not Tuesday".
 - Asking the group for a player is attendance, not question, question mark or not: "anyone able to replace me?", "we need one more player, anyone interested?", "can we have more INs please?". It is other_att when a named or implied person is leaving, otherwise offer. The ask is often buried in praise, reassurance or a pitch, and that changes nothing.
 - One list of players is the squad roster, other_att. balancer is only about the TWO teams.
+- Asking how the bench or the list works ("we do bench now?", "how does the waiting list work?") asks for no place: question.
 
 About questions and instructions:
 - ASKING is question; INSTRUCTING is admin_ops. "Amir paid for 4 players" and "remind me on Monday" tell the bot to do something: admin_ops. "Who hasn't paid?" asks for what the bot knows: question.
@@ -331,6 +344,10 @@ A tagged message asks the bot, however short:
   "@Match Time Ali'nin kimyası" -> question
   "@Match Time istatistiklerim" -> question
   "@Match Time cheers 👍" -> none
+  "Bench? We do bench now?" replying to MatchTime's "the bench is open, say IN to go on the bench" -> question
+  "yedek ne demek?" replying to that post -> question
+  "IN" replying to that post -> self_att
+  "😂" replying to MatchTime -> none
 
 Questions about the squad and the matches:
   "@Match Time how many players so far?" -> question
@@ -611,18 +628,35 @@ export interface RouterMessage {
    * players' group, whose user turn is byte-for-byte what it always was.
    */
   organisers?: { context: string[] };
+  /**
+   * A players' group message that is a WhatsApp reply to MatchTime's OWN
+   * message (2026-10-16): the text it quotes. Shown above it as the same
+   * `REPLYING TO MatchTime` line the organisers' group uses, and the prompt
+   * reads that line as a tag. Absent for every other message, whose line is
+   * unchanged.
+   */
+  quotedMatchTime?: string;
 }
 
 /** The header an organisers' group message is shown under. */
 export const ORGANISERS_HEADER = "ORGANISERS' GROUP. The sender is an organiser of the club.";
 
+/** The line shown above a message that is a WhatsApp reply: who it quotes
+ *  and what they said, on one line. One wording for both groups
+ *  (`admin-group-context.ts` builds the organisers' one with it). */
+export function replyingToLine(who: string, text: string): string {
+  return `REPLYING TO ${who}: "${text.replace(/\s+/g, " ").trim().slice(0, 300)}"`;
+}
+
 /** The user turn: each message on its own line; an organisers' group
- *  message under its header and context lines. */
+ *  message under its header and context lines; a players' group reply to
+ *  MatchTime under the line saying so. */
 export function renderRouterTurn(messages: RouterMessage[]): string {
   return messages
     .map((m) => {
       const line = `[${m.id}] ${m.authorName ?? "(unknown)"}: ${m.body}`;
-      return m.organisers ? [ORGANISERS_HEADER, ...m.organisers.context, line].join("\n") : line;
+      if (m.organisers) return [ORGANISERS_HEADER, ...m.organisers.context, line].join("\n");
+      return m.quotedMatchTime ? `${replyingToLine("MatchTime", m.quotedMatchTime)}\n${line}` : line;
     })
     .join("\n");
 }

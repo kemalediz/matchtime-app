@@ -31,6 +31,12 @@ describe("by intent", () => {
     expect(skipsSquadComposition("generate_teams_request")).toBe(true);
     expect(skipsSquadComposition("show_teams_request")).toBe(true);
   });
+  it("the help explainer is skipped (2026-10-16): its heading reads as a squad post", () => {
+    // A how-it-works question answered by the pipeline is `handledBy:
+    // "llm"`, so unlike the "@Match Time help" fast path it reaches this pass.
+    expect(skipsSquadComposition("help")).toBe(true);
+    expect(displaysSquadState("⚽ *Squad & availability: how it works*\nJust say *In* or *Out*.", "en")).toBe(true);
+  });
   it("an ordinary question or attendance reply is still recomposed", () => {
     for (const i of ["question", "attendance", "self_att", null]) expect(skipsSquadComposition(i), String(i)).toBe(false);
   });

@@ -8,6 +8,7 @@
 import { formatLondon } from "./london-time";
 import type { HqLogRow } from "./admin-group-log";
 import type { PendingItem, QuotedMessage } from "./admin-group-confirm-rules";
+import { replyingToLine } from "./pipeline/router";
 
 export interface PendingWithLabel extends PendingItem {
   /** The game's day, in the club's language, for teams. */
@@ -30,8 +31,7 @@ export function organisersContext(p: {
     lines.push(i.kind === "teams" ? `WAITING: approval of the proposed teams for ${i.day}, asked at ${at}.` : `WAITING: YES to apply the squad list pasted at ${at}.`);
   }
   if (p.quoted?.text || p.quoted?.fromMatchTime) {
-    const who = p.quotedIsMatchTime ? "MatchTime" : "another organiser";
-    lines.push(`REPLYING TO ${who}: "${oneLine(p.quoted.text ?? "", 300)}"`);
+    lines.push(replyingToLine(p.quotedIsMatchTime ? "MatchTime" : "another organiser", p.quoted.text ?? ""));
   }
   if (p.recent.length > 0) {
     lines.push("EARLIER HERE, oldest first:");

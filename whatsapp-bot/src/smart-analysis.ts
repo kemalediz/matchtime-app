@@ -141,6 +141,11 @@ interface Pending {
    *  (only the Pi knows its selfId); forwarded as the PRIMARY signal for
    *  the server's @Match Time interaction-contract gate. */
   botMentioned?: boolean;
+  /** A WhatsApp reply (2026-10-16): the quoted message's text, and whether
+   *  it was this bot's own. Read by `quotedFields`, the same reader the
+   *  admin group uses. Absent when the message is not a reply. */
+  quotedBody?: string;
+  quotedFromMatchTime?: boolean;
   // Deliberately NO `msg: Message` here any more.
   //
   // It existed so the flush could call `target.react(emoji)` later. That is
@@ -476,6 +481,9 @@ export async function enqueueForAnalysis(driver: WaDriver, msg: InboundMessage):
     // the payload does not grow for the ordinary no-mention message.
     mentionNames: mentionNames.length > 0 ? mentionNames : undefined,
     botMentioned,
+    // A reply (2026-10-16). The server reads a reply to MatchTime's own
+    // message as addressed to it, like a tag (`messageTagsBot`).
+    ...analyzeQuotedFields(driver, msg),
     attempts: 0,
   };
 
@@ -493,7 +501,9 @@ export async function enqueueForAnalysis(driver: WaDriver, msg: InboundMessage):
   // stays a tested no-op here and live batching is unchanged.
   const kickoff = nextKickoffMsByGroup.get(groupId) ?? null;
   const reason = immediateFlushReason({
-    botMentioned,
+    // A reply to MatchTime's own message is addressed to it, so it is
+    // answered within seconds exactly as a tag is.
+    botMentioned: botMentioned || pending.quotedFromMatchTime === true,
     bufferLen: arr.length,
     maxBufferLen: Infinity,
     kickoffMs: kickoff,
@@ -596,6 +606,15 @@ function quotedFields(driver: WaDriver, msg: InboundMessage): Pick<GroupMessageF
     ...(q.text ? { quotedText: q.text.slice(0, 2000) } : {}),
     quotedFromMatchTime: quotedFromBot(driver, q.participant),
   };
+}
+
+/** `quotedFields` in the analyze route's names (`quotedBody` is the field
+ *  the server has read since the monthly squad, slice 3). One reader for
+ *  both doors; only the name of the text differs. */
+function analyzeQuotedFields(driver: WaDriver, msg: InboundMessage): Pick<Pending, "quotedBody" | "quotedFromMatchTime"> {
+  const { quotedText, quotedFromMatchTime } = quotedFields(driver, msg);
+  if (quotedFromMatchTime === undefined) return {};
+  return { ...(quotedText ? { quotedBody: quotedText } : {}), quotedFromMatchTime };
 }
 
 /**
@@ -789,6 +808,8 @@ async function flushGroup(driver: WaDriver, groupId: string): Promise<void> {
       mentions: p.mentions,
       mentionNames: p.mentionNames,
       botMentioned: p.botMentioned,
+      ...(p.quotedBody !== undefined ? { quotedBody: p.quotedBody } : {}),
+      ...(p.quotedFromMatchTime !== undefined ? { quotedFromMatchTime: p.quotedFromMatchTime } : {}),
     }));
     const history = getHistory(groupId);
 
