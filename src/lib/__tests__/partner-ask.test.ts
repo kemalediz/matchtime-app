@@ -18,6 +18,7 @@ const dbMock = vi.hoisted(() => {
     botJob: { create: vi.fn(), delete: vi.fn() },
     sentNotification: { create: vi.fn() },
     $transaction: vi.fn(),
+    $executeRaw: vi.fn(),
   };
   return m;
 });
@@ -180,6 +181,15 @@ describe("requestPartnerAsk", () => {
     expect(dbMock.partnerAsk.create).not.toHaveBeenCalled();
   });
 
+  it("L2 (review): the daily cap is counted and the ask created under one lock per partner club", async () => {
+    await request();
+    expect(dbMock.$transaction).toHaveBeenCalled();
+    expect(dbMock.$executeRaw).toHaveBeenCalled();
+    const lockOrder = dbMock.$executeRaw.mock.invocationCallOrder[0];
+    const createOrder = dbMock.partnerAsk.create.mock.invocationCallOrder[0];
+    expect(lockOrder).toBeLessThan(createOrder);
+  });
+
   it("two asks into the partner group today already: refused", async () => {
     dbMock.partnerAsk.count.mockImplementation(({ where }: { where: { OR?: unknown } }) => Promise.resolve(where.OR ? 2 : 0));
     expect(await request()).toMatchObject({ ok: false, refusal: "daily-cap" });
@@ -331,6 +341,18 @@ describe("sweepPartnerAsks", () => {
     await sweepPartnerAsks("fnf", NOW);
     expect(dbMock.partnerAsk.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "cancelled", reason: "match-cancelled" }) }));
     expect(dbMock.botJob.create.mock.calls[0][0].data.text).toContain("is closed now");
+  });
+
+  it("H3 (review): the game moved: the ask follows the new kickoff, nothing is closed, nobody is told it is off", async () => {
+    const moved = new Date(KICKOFF.getTime() + 2 * H);
+    dbMock.partnerAsk.findMany.mockResolvedValue([{ ...posted, match: { ...MATCH, date: moved } }]);
+    await sweepPartnerAsks("fnf", NOW);
+    expect(dbMock.partnerAsk.updateMany).toHaveBeenCalledWith({
+      where: { id: "ask1", status: "posted", closesAt: KICKOFF },
+      data: { closesAt: moved, postBy: new Date(moved.getTime() - 4 * H) },
+    });
+    expect(dbMock.partnerAsk.updateMany).not.toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "cancelled" }) }));
+    expect(dbMock.botJob.create).not.toHaveBeenCalled();
   });
 
   it("the pairing paused: open asks are cancelled", async () => {

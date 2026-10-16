@@ -133,7 +133,6 @@ export function partnerReachable(p: PartnerGateInput): PartnerGateRefusal | null
 
 export type CloseReason =
   | "match-cancelled"
-  | "match-moved"
   | "partnership-inactive"
   | "approval-expired"
   | "filled"
@@ -155,12 +154,21 @@ export interface CloseInput {
 export function closeReason(i: CloseInput): CloseReason | null {
   if (!isOpenAskStatus(i.status)) return null;
   if (i.matchStatus === "CANCELLED") return "match-cancelled";
-  if (i.matchDate.getTime() !== i.closesAt.getTime()) return "match-moved";
   if (i.partnershipStatus !== "active") return "partnership-inactive";
   if (i.placesOpen <= 0) return "filled";
   if (i.status === "awaiting-approval" && i.now.getTime() >= i.postBy.getTime()) return "approval-expired";
   if (i.now.getTime() >= i.closesAt.getTime()) return "kickoff";
   return null;
+}
+
+/**
+ * A MOVED game (review H3): the ask is not closed. Its cut-off and close
+ * follow the new kickoff, with the club's same hours, so a picked guest
+ * keeps his place and nobody is told the game is off. Null: not moved.
+ */
+export function movedWindows(p: { closesAt: Date; matchDate: Date; cutoffHours: number }): { postBy: Date; closesAt: Date } | null {
+  if (p.matchDate.getTime() === p.closesAt.getTime()) return null;
+  return askWindows(p.matchDate, p.cutoffHours);
 }
 
 /** The status an ask closes into. Only a POSTED ask can be filled through
