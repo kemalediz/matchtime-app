@@ -195,6 +195,7 @@ import {
   stepSevenOwnsRoute,
 } from "./route-flags";
 import type {
+  ClubSnapshot,
   EngineInput,
   EngineMessage,
   EngineResult,
@@ -395,6 +396,10 @@ export const ANSWERABLE_TOPICS: readonly QuestionTopic[] = [
   // "the bench is open". Answered with the help explainer for the club's
   // settings (`deps.helpReply`), not from the squad.
   "how_it_works",
+  // 2026-10-16, FNF HQ: "MatchTime who are the admins?". The club's own
+  // setup, for the organisers only (`audience`), from the roster and one
+  // targeted read (`loadClub`).
+  "club",
 ];
 
 /**
@@ -688,7 +693,25 @@ export interface AnswerBatchDeps {
    *  Time help <topic>" sends; imported lazily because that module reads
    *  the database for other things. */
   helpReply?: (topic: HelpFeature | null, features: OrgFeatures) => Promise<string> | string;
+  /** The FIFTH targeted read (2026-10-16): the club's setup, only when a
+   *  `club` question survived ownership (the organisers' group only).
+   *  `matchId` is the upcoming match the fee is read from, or null. */
+  loadClub?: (orgId: string, matchId: string | null) => Promise<ClubSnapshot>;
 }
+
+/**
+ * WHO IS ASKING (2026-10-16, FNF HQ). The players' group by default. The
+ * club's admin group (HQ) asks the same questions through this same batch
+ * (`admin-group-question.ts`), and two things differ there, both here so
+ * there is one answering path:
+ *
+ *   - `club` questions (admins, money collector, fee, teams time) are
+ *     organisers' facts, answered only to the organisers;
+ *   - the squad and the bench are shown to the organisers even when they,
+ *     not MatchTime, announce the list to the players (the organisers-
+ *     announce net in `compose.ts` is for the players' group).
+ */
+export type AnswerAudience = "players" | "organisers";
 
 /**
  * "This module owns nothing." It used to say "; the analyzer keeps the
@@ -754,8 +777,11 @@ export async function runAnswerBatch(args: {
    * was. See the essay at the foot of `awaiting-answer.ts`.
    */
   clarifications?: StatsClarification[];
+  /** See `AnswerAudience`. Absent is the players' group. */
+  audience?: AnswerAudience;
 }): Promise<AnswerBatchResult> {
   const { orgId, now, messages, history, expectedMatchId, enabled, deps } = args;
+  const organisers = args.audience === "organisers";
   const t0 = Date.now();
 
   // ── A REPLY TO MATCHTIME'S OWN QUESTION ────────────────────────────
@@ -807,6 +833,9 @@ export async function runAnswerBatch(args: {
     console.error("[answer-engine] state load failed:", err);
     return empty([detail]);
   }
+  // The organisers are who the list is FOR when they announce it: they see
+  // it as a club whose list MatchTime announces would. See `AnswerAudience`.
+  if (organisers) state = { ...state, features: { ...state.features, listAnnouncer: "matchtime" } };
 
   let features: OrgFeatures;
   try {
@@ -1101,6 +1130,19 @@ export async function runAnswerBatch(args: {
       // ⚠️ TERMINAL BRANCH, like the two above.
       if (facts.topic === "how_it_works") {
         ownedIds.add(m.waMessageId);
+        continue;
+      }
+      // ── THE CLUB'S SETUP (2026-10-16) ──────────────────────────────
+      //
+      // Organisers' facts (who the admins are, who collects the money):
+      // answered to the organisers only. Owned on the same argument as the
+      // three above: not a claim about the upcoming squad, so no match is
+      // needed and no neighbour's write can contradict it.
+      //
+      // ⚠️ TERMINAL BRANCH, like the three above.
+      if (facts.topic === "club") {
+        if (organisers) ownedIds.add(m.waMessageId);
+        else hand("a question about the club's setup is answered only in the organisers' group");
         continue;
       }
       // A reply to a clarification that did not re-read as a stats
@@ -1437,6 +1479,34 @@ export async function runAnswerBatch(args: {
           err instanceof Error ? err.message : String(err)
         }); the results question in this batch goes unanswered and onto this note`;
       console.error("[answer-engine] results load failed:", err);
+      degradations.push(detail);
+    }
+  }
+
+  // ── Stage 2f: THE CLUB'S SETUP, and only when asked (2026-10-16) ──
+  //
+  // The fifth targeted read, the same shape and the same fail-open as the
+  // four above: a throw leaves `state.club` unloaded, the composer says
+  // nothing, and the silent-id check disowns the message with a receipt.
+  const wantsClub = [...ownedIds].some((id) => {
+    const f = factsById.get(id);
+    return f?.kind === "question" && f.topic === "club";
+  });
+  if (wantsClub) {
+    try {
+      const load =
+        deps.loadClub ??
+        (async (o: string, matchId: string | null) => {
+          const mod = await import("./load-state");
+          return mod.loadClubSnapshot(o, matchId);
+        });
+      state = { ...state, club: await load(orgId, state.matchId) };
+    } catch (err) {
+      const detail =
+        `${ANSWER_DEGRADED_PREFIX} the club read failed (${
+          err instanceof Error ? err.message : String(err)
+        }); the club question in this batch goes unanswered and onto this note`;
+      console.error("[answer-engine] club load failed:", err);
       degradations.push(detail);
     }
   }

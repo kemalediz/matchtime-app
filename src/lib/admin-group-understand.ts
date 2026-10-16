@@ -22,11 +22,14 @@
  *   approve               the safe-YES rule (`admin-group-confirm-rules.ts`),
  *                         then `answerTeamsYes` / `answerSquadPasteYes`
  *   poster, team_sheet    `admin-group-graphics.ts`
- *   help                  `admin-group-help.ts`
+ *   question, help        the players' group's question answering, for the
+ *                         organisers (`admin-group-question.ts`); the HQ
+ *                         menu (`admin-group-help.ts`) for how-it-works,
+ *                         and for help it does not answer
  *   ask_group             one place-open ask in the players' group
  *                         (`admin-group-ask-group.ts`)
- *   question, score,      one line: not from this group (an organiser
- *   admin_ops             clearly asked MatchTime; never silent on that)
+ *   score, admin_ops      one line: not from this group (an organiser
+ *                         clearly asked MatchTime; never silent on that)
  *   unsure                addressed to MatchTime (an @tag, or a reply to
  *                         its own message): the attendance engine, as in
  *                         the players' group, else one line saying it did
@@ -59,6 +62,7 @@ import { hqLogSince, listAskRef, recordMatchTimeQuestion, teamsAskRef } from "./
 import { WHICH_ASK_REF, decideApproval, matchQuoted, type QuotedMessage } from "./admin-group-confirm-rules";
 import { organisersContext, type PendingWithLabel } from "./admin-group-context";
 import { askPlayersGroup } from "./admin-group-ask-group";
+import { answerHqQuestion } from "./admin-group-question";
 
 /** How far back the router's "earlier here" lines reach, and how many. */
 const RECENT_MS = 30 * 60 * 1000;
@@ -124,6 +128,12 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
     const log = logAll.filter((r) => r.waMessageId !== messageId);
     const quotedIsMatchTime = !!input.quoted && (input.quoted.fromMatchTime === true || (!!input.quoted.text && !!matchQuoted(input.quoted.text, log)));
     const recent = log.filter((r) => now.getTime() - r.createdAt.getTime() <= RECENT_MS).slice(-RECENT_MAX);
+    // The extractors' recent chat: MatchTime's own lines as MatchTime.
+    const history = recent.map((r) => ({ author: r.fromMatchTime ? "MatchTime" : null, body: r.text }));
+    // MatchTime's last line in HQ, and the post a question is about: the
+    // MatchTime message it replies to, else that last line.
+    const lastHqPost = [...log].reverse().find((r) => r.fromMatchTime)?.text ?? null;
+    const lastBotPost = (quotedIsMatchTime && input.quoted?.text) || lastHqPost;
     const capped = (await getAiBudgetStatus(org.id).catch(() => null))?.capped ?? false;
 
     const gate = await gateBatch(
@@ -179,7 +189,29 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
         return said(r.outcome, r.replyText);
       }
       case "help":
-        return said("hq-help", buildHqHelp({ lang, ...hqHelpGates(org) }));
+      case "question": {
+        // The players' group's own question answering, for the organisers
+        // (`admin-group-question.ts`). The HQ menu answers a how-it-works
+        // question there, and anything it does not answer on the help
+        // route (2026-10-16, FNF: "MatchTime who are the admins?" came back
+        // `help` and got the menu instead of the admins).
+        const hqHelp = buildHqHelp({ lang, ...hqHelpGates(org) });
+        const r = await answerHqQuestion({
+          orgId: org.id,
+          lang,
+          messageId,
+          body,
+          senderUserId: input.adminUserId,
+          senderName: input.senderName,
+          now,
+          history,
+          lastBotPost,
+          hqHelp,
+          ...(input.deps?.extractorModel ? { deps: { model: input.deps.extractorModel } } : {}),
+        });
+        if (r) return said(r.outcome, r.replyText);
+        return route === "help" ? said("hq-help", hqHelp) : said("hq-not-here", s.hq_not_here);
+      }
       case "balancer": {
         if (!weekly) return said("hq-not-here", s.hq_not_here);
         const model = input.deps?.extractorModel ?? extractorStubFromEnv() ?? anthropicModel();
@@ -188,8 +220,8 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
           body,
           authorName: input.senderName,
           tagged: true,
-          history: recent.map((r) => ({ author: r.fromMatchTime ? "MatchTime" : null, body: r.text })),
-          lastBotPost: [...log].reverse().find((r) => r.fromMatchTime)?.text ?? null,
+          history,
+          lastBotPost: lastHqPost,
         });
         if (extracted.facts.kind !== "teams") {
           console.log(`[admin-group] ${messageId}: the teams extractor gave nothing (${extracted.degradations.length} degradation(s))`);
@@ -224,7 +256,6 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
         const r = await askPlayersGroup({ orgId: org.id, lang, messageId, now });
         return said(r.outcome, r.replyText);
       }
-      case "question":
       case "score":
       case "admin_ops":
         return said("hq-not-here", s.hq_not_here);

@@ -63,6 +63,8 @@ import {
   renderStatsTable,
 } from "./stats-answer";
 import { t } from "../i18n/t";
+import { joinList } from "../i18n/text";
+import { activityFeeText } from "../activity-fee";
 import type { EngineResult, SquadState } from "./types";
 
 export interface Utterance {
@@ -344,6 +346,29 @@ export function compose(result: EngineResult): ComposedOutput {
         utterances.push({
           messageId: sp.messageId,
           text: s.answer_fixture({ kickoffLabel: state.kickoffLabel, venue: state.venue.trim() }),
+        });
+        break;
+      }
+
+      case "answer_club": {
+        // THE CLUB'S SETUP, for the organisers (2026-10-16). Admins are the
+        // roster's OWNER and ADMIN members; the rest is `state.club`, which
+        // `answer-batch.ts` loads only for this question. Not loaded: say
+        // nothing, and the batch disowns the message with a receipt.
+        const club = state.club;
+        if (!club) {
+          operatorNotes.push(`compose: answer_club for ${sp.messageId} with no club snapshot loaded; saying nothing`);
+          break;
+        }
+        utterances.push({
+          messageId: sp.messageId,
+          text: s.answer_club({
+            admins: joinList(lang, state.roster.filter((m) => m.isAdmin && m.name).map((m) => m.name)),
+            collector: club.collectorName,
+            fee: club.feePerPlayer !== null ? activityFeeText(club.feePerPlayer) : null,
+            feeSplit: club.feeSplitTotal,
+            teamsReady: club.teamsReady,
+          }),
         });
         break;
       }

@@ -179,7 +179,7 @@ Banter still contains claims. "Zeeshan is out lol vote him out" DOES claim Zeesh
 
 Return an empty claims array only when the message genuinely says nothing about anyone's attendance.`,
 
-  question: `You classify ONE question from a football club's WhatsApp group. You never answer it. Code reads the club's records and writes every name, date and number the group sees; your fields only tell it which question was asked. A field the message does not state gets its empty value. Never fill one in from a guess.
+  question: `You classify ONE question from a football club's WhatsApp group: the players' group, or the organisers' own group. You never answer it. Code reads the club's records and writes every name, date and number the group sees; your fields only tell it which question was asked. A field the message does not state gets its empty value. Never fill one in from a guess.
 
 Classify THE MESSAGE only. The recent chat and MatchTime's last post are context for what it refers to; when the message quotes a MatchTime post, that post is the one shown. Messages come in English and Turkish, often mixed, misspelt or unpunctuated.
 
@@ -200,7 +200,8 @@ What the asker wants back. Exactly one of:
   stats            a table or record about PLAYERS across matches (ratings, appearances, Man of the Match, Elo and the rest), about the club or about anyone but the asker's own numbers
   options          what to do about being short of players: a smaller format, alternatives
   how_it_works     how MatchTime itself works here: what the bench is, how signing in works, how the teams are made, and the rest
-  other            anything else, including how much the fee is
+  club             how the club itself is run: who the admins or organisers are, who collects the money, the match fee, what time the teams are made
+  other            anything else
 
 personRef
 The person the question is about, as the message names them, without a possessive or suffix: "Idris's" and "Idris'in" are "Idris". On a stats question about the asker ("my chemistry", "my nemesis"), "me". "" when it names nobody.
@@ -256,8 +257,9 @@ CLOSE CALLS
 - one table or other: a question that needs two or more tables together ("is anyone in both the Elo top ten and the Man of the Match table?", a comparison across tables) is other, even when it names a table. Name a table only when that table alone answers it.
 - my_stats or stats: my_stats only when the numbers are the asker's own and they ask to see them. Anyone else's numbers, a ranking of the group, and the asker's own pairings are stats.
 - rating_progress or other: rating_progress asks who has submitted ratings. A message that tells the players to rate, thanks them, or remarks on ratings asks for nothing: other.
-- payments or other: who owes is payments. What the fee is, is other.
+- payments, how_it_works or club: WHO owes is payments. HOW to pay is how_it_works, payments. WHO collects the money, and what the fee is, is club.
 - bench or how_it_works: WHO is on the bench is bench. What the bench is, or whether there is one now, is how_it_works, availability.
+- how_it_works or club: HOW the teams are made is how_it_works, teams. WHEN they are made, as a time, is club, and so is WHO runs the club.
 
 EXAMPLES
 Each line is a message, then the fields that are not empty.
@@ -280,6 +282,12 @@ How MatchTime works:
   "@Match Time how are the teams picked?" / "@Match Time takımları nasıl kuruyorsun?" -> how_it_works, feature teams
   "@Match Time what can you do?" / "@Match Time neler yapabiliyorsun?" -> how_it_works
 
+The club itself:
+  "@Match Time who runs this group?" / "@Match Time grubun yöneticisi kim?" -> club
+  "@Match Time who do we pay?" / "@Match Time ücreti kime ödüyoruz?" -> club
+  "@Match Time how much do we pay each?" / "@Match Time kişi başı ne kadar?" -> club
+  "@Match Time what time do the teams come out?" / "@Match Time takımlar saat kaçta çıkıyor?" -> club
+
 Results:
   "@Match Time did we win on tuesday?" / "@Match Time salı kim kazandı?" -> score
   "@Match Time how did we get on last night" / "@Match Time skor ne oldu?" -> score
@@ -293,7 +301,6 @@ Results:
 After a match:
   "@Match Time who hasn't paid?" / "@Match Time kim ödemedi?" -> payments
   "@Match Time has everyone paid for last week?" -> payments
-  "@Match Time how much do we pay each?" -> other: the fee
   "@Match Time who hasn't rated yet?" / "@Match Time kimler puan vermedi?" -> rating_progress
   "@Match Time who still needs to pick a MoM?" -> rating_progress
   "please do not forget to rate the players via the link from Matchtime DM'ed to you" -> other: it tells the players to rate
@@ -506,6 +513,7 @@ const QUESTION_SCHEMA = {
         "stats",
         "options",
         "how_it_works",
+        "club",
         "other",
       ],
     },
@@ -659,6 +667,8 @@ const TOPICS: QuestionTopic[] = [
   "options",
   // 2026-10-16: "Bench? We do bench now?" (FNF). See `QuestionFacts.feature`.
   "how_it_works",
+  // 2026-10-16: "MatchTime who are the admins?" (FNF HQ). See `QuestionTopic`.
+  "club",
   "other",
 ];
 
