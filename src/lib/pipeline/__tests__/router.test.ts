@@ -16,6 +16,8 @@ import {
   parseRouterResponse,
   routeFloor,
   routeBatch,
+  renderRouterTurn,
+  ORGANISERS_HEADER,
 } from "../router";
 import {
   MIN_CACHEABLE_TOKENS,
@@ -602,5 +604,51 @@ describe("the router prompt reads Turkish", () => {
     expect(
       [...taught.entries()].some(([body, route]) => /hadi|maç|😂/.test(body) && route === "none"),
     ).toBe(true);
+  });
+});
+
+// ── ONE ROUTER FOR EVERY GROUP (2026-10-16) ─────────────────────────
+//
+// A club's organisers' (admin) group goes through this same router, with
+// its context under a header. The players' group must not see any of it:
+// its user turn is byte-for-byte what it was, and the organisers' routes
+// can never land on a players' message.
+describe("the organisers' group", () => {
+  it("a players' group turn is exactly the old one-line-per-message shape", () => {
+    expect(renderRouterTurn([{ id: "a", authorName: "Ali", body: "in" }, { id: "b", authorName: null, body: "out" }])).toBe(
+      "[a] Ali: in\n[b] (unknown): out",
+    );
+  });
+
+  it("an organisers' message comes under its header and context lines", () => {
+    expect(renderRouterTurn([{ id: "h", authorName: "Raihan", body: "yes", organisers: { context: ["WAITING: nothing."] } }])).toBe(
+      `${ORGANISERS_HEADER}\nWAITING: nothing.\n[h] Raihan: yes`,
+    );
+  });
+
+  it("an organisers' route on a players' group message reads as unsure, never none", () => {
+    for (const route of ["approve", "poster", "team_sheet", "help"]) {
+      const r = parseRouterResponse(JSON.stringify({ routes: [{ id: "p", route }] }), ["p"]);
+      expect(r.routes[0]).toMatchObject({ messageId: "p", route: "unsure" });
+      const hq = parseRouterResponse(JSON.stringify({ routes: [{ id: "h", route }] }), ["h"], new Set(["h"]));
+      expect(hq.routes[0]).toMatchObject({ messageId: "h", route });
+    }
+  });
+
+  it("the prompt defines the organisers' routes once, in their own section, after every players' rule", () => {
+    const section = ROUTER_SYSTEM_PROMPT.indexOf("IN THE ORGANISERS' GROUP.");
+    expect(section).toBeGreaterThan(ROUTER_SYSTEM_PROMPT.indexOf("About none:"));
+    for (const r of ["approve", "poster", "team_sheet", "help"]) {
+      expect(ROUTER_SYSTEM_PROMPT.indexOf(`\n${r} `)).toBeGreaterThan(section);
+    }
+    // Code, not the model, decides who a YES was for.
+    expect(ROUTER_SYSTEM_PROMPT).toMatch(/code checks who it was for/);
+  });
+
+  it("the model is sent the organisers' context and the routes enum includes theirs", async () => {
+    const m = fakeModel([JSON.stringify({ routes: [{ id: "h", route: "approve" }] })]);
+    const r = await routeBatch(m, [{ id: "h", authorName: "R", body: "looks good", organisers: { context: ["WAITING: approval of the proposed teams for Fri 16 Oct, asked at 10:00."] } }], { floor: false });
+    expect(r.routes[0].route).toBe("approve");
+    expect(m.calls[0].user).toContain("WAITING: approval of the proposed teams");
   });
 });

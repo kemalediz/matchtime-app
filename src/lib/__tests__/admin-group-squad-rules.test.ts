@@ -17,7 +17,6 @@ import {
   buildPasteProposalReply,
   buildSquadChangeReply,
   diffPastedSquad,
-  isAdminGroupYes,
   matchPastedName,
   readSquadPaste,
   type PasteMember,
@@ -121,10 +120,6 @@ describe("diffPastedSquad", () => {
   });
 });
 
-describe("isAdminGroupYes", () => {
-  it.each(["YES", "yes", " Yes ", "yes.", "EVET", "evet!"])("%s is a yes", (t) => expect(isAdminGroupYes(t)).toBe(true));
-  it.each(["yes please add him too", "no", "y", "yep"])("%s is not", (t) => expect(isAdminGroupYes(t)).toBe(false));
-});
 
 describe("the routes the admin group acts on", () => {
   it("only attendance about players: self_att and other_att", () => {

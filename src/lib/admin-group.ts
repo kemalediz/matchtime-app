@@ -1,53 +1,44 @@
 /**
- * A MESSAGE IN A CLUB'S ADMIN GROUP (slice 2a 2026-09-30, picks in 2b
- * 2026-10-01, squad changes 2026-10-14). Plan:
+ * A MESSAGE IN A CLUB'S ADMIN GROUP (slice 2a 2026-09-30; read by the
+ * shared pipeline since 2026-10-16). Plan:
  * MDs/friday-group-features-plan-2026-09-30.md, sections 2.5 and 2.8.
  *
- * The Pi forwards every message in a linked admin group here at once,
- * flagged `channel: "admin-group"`, and never into the analysis history or
- * the analyze batch. MatchTime reads, in this order, and only from an
- * owner or admin of the club (by phone, or a LID pair the server stored
- * itself; never the pushname):
+ * The Pi forwards every message in a linked admin group (HQ) here at once,
+ * flagged `channel: "admin-group"`, never into the players' group's
+ * analysis history or batch. MatchTime acts only for an owner or admin of
+ * the club (by phone, or a LID pair the server stored itself; never the
+ * pushname), in this order:
  *
- *   0. "help" / "yardım" in a live club (2026-10-15, `admin-group-help.ts`):
- *      the HQ command list, deterministic, before every reader below;
- *   1. the collector's "PAID ALL / PAID 1 3" for a monthly club;
- *   2. a reply to an open pick round (numbers, names, @tags, ALL, NONE,
- *      YES to a pending question), as a WHOLE message;
- *   3. for a live weekly club (2026-10-14):
- *      a. YES to the teams waiting for approval (`team-proposal.ts`), else
- *         YES to a squad list an admin pasted here (`admin-group-paste.ts`);
- *         only one of the two is ever waiting;
- *      a'. a team command: "teams", "reshuffle", "swap A B", "move A"
- *         (`team-proposal.ts`, deterministic);
- *      b. a pasted squad list: proposed, applied only on YES; with no game
- *         to put it on, one line saying so and when the next game is
- *         made (2026-10-15);
- *      c. one squad change ("Shehryar out", "put Bilal in"), through the
- *         same router and attendance engine as the players' group
- *         (`admin-group-squad-change.ts`).
+ *   1. STRUCTURED DATA, read deterministically, because it is data and not
+ *      language:
+ *      a. the collector's answer to MatchTime's numbered PAID digest
+ *         ("PAID ALL", "PAID 1 3") for a monthly club;
+ *      b. a reply to an open pick round: numbers, names or @tags from
+ *         MatchTime's own numbered list, ALL, NONE;
+ *      c. a pasted multi-line squad list (a live weekly club): proposed,
+ *         applied only on YES.
+ *   2. EVERYTHING ELSE from an owner or admin of a live club goes through
+ *      the SAME pipeline as the players' group: the shared router with the
+ *      organisers' group context, then the shared extractors and owners
+ *      (`admin-group-understand.ts`). That is where a team swap, a squad
+ *      change, a poster or team sheet request, "what can you do?" and a
+ *      YES are understood, in the admins' own words, English or Turkish.
+ *      A YES approves only what it is clearly about
+ *      (`admin-group-confirm-rules.ts`).
+ *
+ * Every message of a live club, from anyone, is recorded for a day
+ * (`admin-group-log.ts`): the safe-YES rule needs to know whether anybody
+ * spoke between MatchTime's question and a YES.
  *
  * Anything else is ignored with no reply: a non-admin, a club that is not
- * live, a monthly club (today's behaviour, unchanged), chat, questions.
- * The `ignored` labels are the ones this route always gave ("no-open-pick"
- * with no round open, "not-a-pick" or "not-an-admin" with one), so nothing
- * that reads them changes.
+ * live, the organisers' own conversation. The `ignored` labels are the
+ * ones this route always gave ("no-open-pick" with no round open,
+ * "not-a-pick" or "not-an-admin" with one).
  *
  * The answer, when there is one, goes back as `replyText`, which the Pi
  * posts in the same group. Idempotent per WhatsApp message id
  * (`admin-group-msg:<messageId>`), so a Pi retry never applies anything
  * twice.
- *
- * A MODEL ONLY BEHIND 3c, AND THE SHARED TEAM GENERATOR. Until 2026-10-14
- * nothing here could reach a model. Now one module can for reading,
- * `admin-group-squad-change.ts`, and only for a message from an owner or
- * admin of a live weekly club that is not a pick, a PAID, a YES, a team
- * command or a pasted list. The team commands are parsed with no model;
- * "teams" and "reshuffle" build through `generateTeamsForMatch`, the one
- * shared generator, whose rating adjuster is a model call on every path
- * that builds teams (the players' group, the website button) and here.
- * `admin-group-no-model.source.test.ts` follows every import and pins that
- * the rest of this path still reaches none.
  */
 import { db } from "./db";
 import { resolveSenderUserIds } from "./admin-group-link";
@@ -56,13 +47,11 @@ import { PICK_RACE_WINDOW_MS } from "./organiser-pick-rules";
 import { isBillingPaused } from "./club-billing-rules";
 import { handleCollectorPaidReply } from "./month-payment";
 import { readCollectorReply } from "./month-payment-rules";
-import { answerSquadPasteYes, proposeSquadPaste } from "./admin-group-paste";
-import { handleAdminSquadChange } from "./admin-group-squad-change";
-import { isAdminGroupYes } from "./admin-group-squad-rules";
-import { answerTeamsYes, handleTeamCommand, setAsideTeamProposal } from "./team-proposal";
+import { proposeSquadPaste } from "./admin-group-paste";
+import { setAsideTeamProposal } from "./team-proposal";
 import { t } from "./i18n/t";
-import { handleAdminGraphicsCommand } from "./admin-group-graphics";
-import { buildHqHelp, hqHelpGates, isHqHelpRequest } from "./admin-group-help";
+import { listAskRef, recordHqMessage, recordMatchTimeQuestion } from "./admin-group-log";
+import { understandAdminMessage } from "./admin-group-understand";
 
 export interface AdminGroupMessage {
   groupId: string;
@@ -73,6 +62,8 @@ export interface AdminGroupMessage {
   senderAltPhone?: string | null;
   timestamp?: string | null;
   mentionNames?: Array<{ jid: string; name?: string; phone?: string }>;
+  /** The message this one replies to (a WhatsApp reply), as the Pi saw it. */
+  quoted?: { messageId?: string | null; text?: string | null; fromMatchTime?: boolean } | null;
   now?: Date;
 }
 
@@ -86,96 +77,11 @@ export type AdminGroupMessageResult =
     }
   | { handled: true; orgId: string; outcome: string | null; replyText: string | null };
 
-type Replied = Extract<AdminGroupMessageResult, { handled: true }>;
-
 function parseTimestamp(ts: string | null | undefined): Date | null {
   if (!ts) return null;
   const n = Number(ts);
   const d = Number.isFinite(n) ? new Date(n < 1e12 ? n * 1000 : n) : new Date(ts);
   return Number.isNaN(d.getTime()) ? null : d;
-}
-
-/**
- * 3a to 3c above, for a sender already proven an owner or admin and a
- * message id already claimed. Null when none of them answers.
- */
-async function readSquadMessage(args: {
-  org: { id: string; language: string | null };
-  msg: AdminGroupMessage;
-  adminUserId: string;
-  now: Date;
-}): Promise<Replied | null> {
-  const { org, msg, adminUserId, now } = args;
-  const messageId = msg.messageId ?? `admin-group:${org.id}:${now.getTime()}`;
-  const base = { orgId: org.id, lang: org.language, messageId, senderUserId: adminUserId, now };
-
-  if (isAdminGroupYes(msg.text)) {
-    // A YES is never a squad change of its own: with nothing waiting it
-    // is chat, and it is never sent to the model. ONE QUESTION AT A TIME
-    // (team-proposal.ts): teams waiting for YES and a pasted list waiting
-    // for YES are never both open, so trying the teams first can only
-    // ever answer the one question that was asked last.
-    const teamsYes = await answerTeamsYes(base);
-    if (teamsYes) return { handled: true, orgId: org.id, outcome: teamsYes.outcome, replyText: teamsYes.replyText };
-    const yes = await answerSquadPasteYes(base);
-    return yes ? { handled: true, orgId: org.id, outcome: yes.outcome, replyText: yes.replyText } : null;
-  }
-
-  // 3a'. A team command ("teams", "swap A B", "move A", "reshuffle"), as a
-  // whole message, deterministic. Before the pasted list and the squad
-  // change, so "move Tom" never reaches the model.
-  const teamCommand = await handleTeamCommand({ ...base, text: msg.text });
-  if (teamCommand) return { handled: true, orgId: org.id, outcome: teamCommand.outcome, replyText: teamCommand.replyText };
-
-  const pasted = await proposeSquadPaste({ ...base, text: msg.text });
-  if (pasted) {
-    // The list is now the question: teams waiting for YES are set aside.
-    const setAside = pasted.outcome === "paste-proposed" ? await setAsideTeamProposal(org.id) : 0;
-    const replyText = setAside > 0 ? `${pasted.replyText} ${t(org.language).tp_teams_set_aside}` : pasted.replyText;
-    return { handled: true, orgId: org.id, outcome: pasted.outcome, replyText };
-  }
-
-  const sender = await db.user.findUnique({ where: { id: adminUserId }, select: { name: true } });
-  const change = await handleAdminSquadChange({
-    ...base,
-    text: msg.text,
-    mentionNames: msg.mentionNames,
-    senderName: sender?.name ?? null,
-    sentAt: parseTimestamp(msg.timestamp),
-  });
-  return change.handled ? { handled: true, orgId: org.id, outcome: change.outcome, replyText: change.replyText } : null;
-}
-
-/**
- * An owner's or admin's "help": the HQ command list for this club. Null
- * when the sender is not one (the caller then carries on, and a non-admin
- * gets exactly what they got before). Claims the message id with the same
- * key as every other admin-group reply, so a Pi retry is answered once.
- */
-async function answerHqHelp(
-  org: { id: string; language: string | null; squadMode: string | null; benchPickMode?: string | null },
-  msg: AdminGroupMessage,
-): Promise<AdminGroupMessageResult | null> {
-  const senderIds = await resolveSenderUserIds({ phones: [msg.senderPhone, msg.senderAltPhone], lid: msg.senderLid ?? null });
-  const admin = senderIds.length
-    ? await db.membership.findFirst({
-        where: { orgId: org.id, userId: { in: senderIds }, leftAt: null, role: { in: ["OWNER", "ADMIN"] } },
-        select: { userId: true },
-      })
-    : null;
-  if (!admin) return null;
-  if (msg.messageId) {
-    try {
-      await db.sentNotification.create({ data: { key: `admin-group-msg:${msg.messageId}`, kind: "admin-notice" } });
-    } catch {
-      return { handled: false, ignored: "duplicate", orgId: org.id, replyText: null };
-    }
-  }
-  // The same gates as below (squad and team commands for a live weekly
-  // club, the posters for any live club, PAID for a monthly one), read from
-  // the one place the admin group's introduction reads them too.
-  const replyText = buildHqHelp({ lang: org.language, ...hqHelpGates(org) });
-  return { handled: true, orgId: org.id, outcome: "hq-help", replyText };
 }
 
 export async function handleAdminGroupMessage(msg: AdminGroupMessage): Promise<AdminGroupMessageResult> {
@@ -191,33 +97,17 @@ export async function handleAdminGroupMessage(msg: AdminGroupMessage): Promise<A
   // all: it is listed silent. This is the server's own refusal.)
   if (isBillingPaused(org)) return { handled: false, ignored: "club-billing-paused", orgId: org.id, replyText: null };
 
-  // "help" (2026-10-15, admin-group-help.ts): the HQ command list, for an
-  // owner or admin of a live club. FIRST, so a help request is never read
-  // as a pick, a team command or a squad change (which asks the router, a
-  // model). Anyone else, or a club that is not live: on as before.
-  if (org.whatsappBotEnabled === true && isHqHelpRequest(msg.text)) {
-    const help = await answerHqHelp(org, msg);
-    if (help) return help;
-  }
-
-  // MONTHLY SQUAD (slice 4): the collector answering the claims digest in
-  // the admin group ("PAID ALL", "PAID 1 3", "PAID NONE"). Read only when
-  // the text is exactly that (a pure check, no query), so every other
-  // message in the group goes on as before. Deterministic, no model.
+  // 1a. MONTHLY SQUAD (slice 4): the collector answering the claims digest
+  // ("PAID ALL", "PAID 1 3", "PAID NONE"): numbers against MatchTime's own
+  // numbered digest. Read only when the text is exactly that.
   if (readCollectorReply(msg.text)) {
     const senders = await resolveSenderUserIds({ phones: [msg.senderPhone, msg.senderAltPhone], lid: msg.senderLid ?? null });
     const paid = await handleCollectorPaidReply({ text: msg.text, waMessageId: msg.messageId ?? null, senderUserIds: senders, orgId: org.id, now });
     if (paid) return { handled: true, orgId: org.id, outcome: paid.handled, replyText: paid.replyText || null };
   }
 
-  // "poster" / "team sheet" (2026-10-14, admin-group-graphics.ts): owner or admin only, no model.
-  const graphic = await handleAdminGraphicsCommand({ org, msg, now });
-  if (graphic) return graphic;
-
-  // Squad changes are read for a LIVE WEEKLY club only: a club still
-  // setting up has its bot off, and a monthly club keeps exactly today's
-  // behaviour (its list is `monthly-paste.ts`'s, in the players' group).
-  const readsSquad = org.whatsappBotEnabled === true && org.squadMode !== "monthly";
+  const live = org.whatsappBotEnabled === true;
+  const weekly = org.squadMode !== "monthly";
 
   const round = await db.organiserPickRound.findFirst({
     where: {
@@ -227,9 +117,9 @@ export async function handleAdminGroupMessage(msg: AdminGroupMessage): Promise<A
     },
     select: { id: true },
   });
-  // Nothing open and nothing else this club's group is read for: the
-  // group is the admins' own conversation, and it stays theirs.
-  if (!round && !readsSquad) return { handled: false, ignored: "no-open-pick", orgId: org.id, replyText: null };
+  // Nothing open and the club is not live: the group is the admins' own
+  // conversation, and it stays theirs.
+  if (!round && !live) return { handled: false, ignored: "no-open-pick", orgId: org.id, replyText: null };
 
   const senderIds = await resolveSenderUserIds({
     phones: [msg.senderPhone, msg.senderAltPhone],
@@ -241,6 +131,12 @@ export async function handleAdminGroupMessage(msg: AdminGroupMessage): Promise<A
         select: { userId: true },
       })
     : null;
+
+  // Everything said in a live club's HQ, by anyone, for the safe-YES rule.
+  if (live && msg.messageId) {
+    await recordHqMessage({ orgId: org.id, waMessageId: msg.messageId, senderUserId: admin?.userId ?? null, text: msg.text, now });
+  }
+
   // With no round open a non-admin gets the answer they always got.
   if (!admin) return { handled: false, ignored: round ? "not-an-admin" : "no-open-pick", orgId: org.id, replyText: null };
 
@@ -252,6 +148,7 @@ export async function handleAdminGroupMessage(msg: AdminGroupMessage): Promise<A
     }
   }
 
+  // 1b. A pick from MatchTime's numbered list.
   if (round) {
     const outcome = await handlePickReply({
       orgId: org.id,
@@ -264,10 +161,38 @@ export async function handleAdminGroupMessage(msg: AdminGroupMessage): Promise<A
     });
     if (outcome.handled) return { handled: true, orgId: org.id, outcome: outcome.outcome ?? null, replyText: outcome.replyText };
   }
+  if (!live) return { handled: false, ignored: round ? "not-a-pick" : "no-open-pick", orgId: org.id, replyText: null };
 
-  if (readsSquad) {
-    const squad = await readSquadMessage({ org, msg, adminUserId: admin.userId, now });
-    if (squad) return squad;
+  const messageId = msg.messageId ?? `admin-group:${org.id}:${now.getTime()}`;
+
+  // 1c. A pasted squad list (a live weekly club).
+  if (weekly) {
+    const pasted = await proposeSquadPaste({ orgId: org.id, lang: org.language, messageId, senderUserId: admin.userId, now, text: msg.text });
+    if (pasted) {
+      let replyText = pasted.replyText;
+      if (pasted.outcome === "paste-proposed") {
+        // The list is now the question: teams waiting for YES are set aside.
+        const setAside = await setAsideTeamProposal(org.id);
+        if (setAside > 0) replyText = `${replyText} ${t(org.language).tp_teams_set_aside}`;
+        await recordMatchTimeQuestion({ orgId: org.id, askRef: listAskRef(messageId), text: replyText, now });
+      }
+      return { handled: true, orgId: org.id, outcome: pasted.outcome, replyText };
+    }
   }
+
+  // 2. Everything else, through the shared pipeline.
+  const sender = await db.user.findUnique({ where: { id: admin.userId }, select: { name: true } });
+  const understood = await understandAdminMessage({
+    org,
+    messageId,
+    text: msg.text,
+    mentionNames: msg.mentionNames,
+    quoted: msg.quoted ? { text: msg.quoted.text ?? null, fromMatchTime: msg.quoted.fromMatchTime === true } : null,
+    adminUserId: admin.userId,
+    senderName: sender?.name ?? null,
+    sentAt: parseTimestamp(msg.timestamp),
+    now,
+  });
+  if (understood) return { handled: true, orgId: org.id, outcome: understood.outcome, replyText: understood.replyText };
   return { handled: false, ignored: round ? "not-a-pick" : "no-open-pick", orgId: org.id, replyText: null };
 }

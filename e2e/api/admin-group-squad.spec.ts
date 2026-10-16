@@ -24,10 +24,16 @@ const ADMIN = PHONE.admin.replace(/^\+/, "");
 const PLAYER = PHONE.player.replace(/^\+/, "");
 
 let seq = 0;
-async function say(request: APIRequestContext, text: string, senderPhone = ADMIN, messageId = `e2e-ags-${++seq}`) {
+async function say(
+  request: APIRequestContext,
+  text: string,
+  senderPhone = ADMIN,
+  messageId = `e2e-ags-${++seq}`,
+  extra: Record<string, unknown> = {},
+) {
   const res = await request.post("/api/whatsapp/admin-group", {
     headers: KEY,
-    data: { channel: "admin-group", groupId: HQ, messageId, text, senderPhone, timestamp: String(Math.floor(Date.now() / 1000)) },
+    data: { channel: "admin-group", groupId: HQ, messageId, text, senderPhone, timestamp: String(Math.floor(Date.now() / 1000)), ...extra },
   });
   expect(res.status(), await res.text()).toBe(200);
   return res.json();
@@ -128,9 +134,13 @@ test("a name nobody in the club has, said in passing: not added, and it says how
 
 const LIST = ["Friday squad", "1. Alex Admin", "2. Colin Collector", "3. Ian Innes", "4. Zara Zest", "5. Naim Newman"].join("\n");
 
+let pasteQuestion = "";
+
 test("a pasted list: the exact changes and a YES question, nothing applied yet", async ({ request, db }) => {
-  clearPipelineStubs();
+  // The shared router reads every YES below (stubbed: what it would say).
+  engineOn({ YES: { route: "approve" }, yes: { route: "approve" } });
   const out = await say(request, LIST, ADMIN, "e2e-ags-paste");
+  pasteQuestion = out.replyText;
   expect(out).toMatchObject({
     handled: true,
     outcome: "paste-proposed",
@@ -146,8 +156,19 @@ test("a non-admin's YES applies nothing", async ({ request, db }) => {
   expect(await statusOf(db, U.player)).toBe("CONFIRMED");
 });
 
-test("an admin's YES applies it: out first, then in, new names added as players", async ({ request, db }) => {
+test("an admin's YES straight after a non-admin spoke: asked once which it is for, nothing applied", async ({ request, db }) => {
+  // The non-admin's message above is conversation in between, so the
+  // safe-YES rule (admin-group-confirm-rules.ts) asks rather than applies.
   const out = await say(request, "YES");
+  expect(out).toMatchObject({ handled: true, outcome: "hq-confirm-asked", replyText: "Is that YES to the squad list pasted here?" });
+  expect(await statusOf(db, U.player)).toBe("CONFIRMED");
+});
+
+test("an admin's YES as a WhatsApp reply to the list question applies it: out first, then in, new names added as players", async ({ request, db }) => {
+  // A reply to MatchTime's question is clearly about it, whatever was said
+  // since (the Pi forwards the quoted text and whose it was).
+  await say(request, "who's got the bibs?", PLAYER);
+  const out = await say(request, "YES", ADMIN, undefined, { quotedText: pasteQuestion, quotedFromMatchTime: true });
   expect(out).toMatchObject({ handled: true, outcome: "paste-applied" });
   expect(out.replyText).toBe("Done: Pat Player out, Zara Zest in, Naim Newman in. 5 of 5.");
   expect(await statusOf(db, U.player)).toBe("DROPPED");
@@ -180,6 +201,7 @@ test("YES more than 30 minutes after the list: not applied, and it says so", asy
     ORG_ID,
     new Date(Date.now() - 60_000).toISOString(),
   ]);
+  engineOn({ YES: { route: "approve" } });
   expect(await say(request, "YES")).toMatchObject({
     handled: true,
     outcome: "paste-expired",
@@ -196,10 +218,14 @@ test("a Turkish club gets Turkish", async ({ request, db }) => {
   await db.run(`UPDATE "Organisation" SET language = 'en' WHERE id = $1`, [ORG_ID]);
 });
 
-test("a monthly club keeps today's behaviour: nothing read", async ({ request, db }) => {
+test("a monthly club: no squad change from the admin group, and it says so in one line", async ({ request, db }) => {
   await db.run(`UPDATE "Organisation" SET "squadMode" = 'monthly' WHERE id = $1`, [ORG_ID]);
   engineOn({ "Colin out": { route: "other_att", facts: otherFacts("Colin", "out") } });
-  expect(await say(request, "Colin out")).toMatchObject({ handled: false, ignored: "no-open-pick", replyText: null });
+  expect(await say(request, "Colin out")).toMatchObject({
+    handled: true,
+    outcome: "hq-not-here",
+    replyText: "I can't do that from this group. Ask *what can you do?* to see what I can do here.",
+  });
   expect(await statusOf(db, U.collector)).toBe("CONFIRMED");
   await db.run(`UPDATE "Organisation" SET "squadMode" = 'weekly' WHERE id = $1`, [ORG_ID]);
 });

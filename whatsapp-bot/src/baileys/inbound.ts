@@ -53,6 +53,12 @@ export interface MappedInbound {
   timestampSec: number;
   /** Raw mentioned JIDs. Names are NOT resolved here; see mentions.ts. */
   mentionedJids: string[];
+  /**
+   * The message this one replies to (a WhatsApp reply), off `contextInfo`
+   * (2026-10-16): its id, who sent it (raw JID) and its text or caption.
+   * Absent when the message is not a reply.
+   */
+  quoted?: { id: string | null; participant: string | null; text: string };
 }
 
 /**
@@ -118,6 +124,7 @@ export function mapInboundMessage(msg: WAMessage): MappedInbound | null {
       pushName: msg.pushName?.trim() || null,
       timestampSec: toNumber(msg.messageTimestamp),
       mentionedJids: readMentions(bag, contentType),
+      ...readQuoted(bag, contentType),
     };
 
     if (contentType === "conversation" || contentType === "extendedTextMessage") {
@@ -174,6 +181,36 @@ function readMentions(content: Record<string, unknown>, contentType: string): st
   const node = content[contentType] as { contextInfo?: { mentionedJid?: string[] | null } } | undefined;
   const list = node?.contextInfo?.mentionedJid;
   return Array.isArray(list) ? list.filter((j): j is string => typeof j === "string") : [];
+}
+
+/**
+ * The message a reply quotes, off the content node's `contextInfo`:
+ * `stanzaId` (its id), `participant` (its sender) and `quotedMessage`
+ * (its text, or a media caption). Nothing when the message is not a reply.
+ */
+function readQuoted(content: Record<string, unknown>, contentType: string): { quoted?: MappedInbound["quoted"] } {
+  const ctx = (content[contentType] as { contextInfo?: Record<string, unknown> | null } | undefined)?.contextInfo;
+  if (!ctx) return {};
+  const id = typeof ctx.stanzaId === "string" && ctx.stanzaId ? ctx.stanzaId : null;
+  const participant = typeof ctx.participant === "string" && ctx.participant ? ctx.participant : null;
+  const qm = ctx.quotedMessage as Record<string, { text?: unknown; caption?: unknown } | string | undefined> | null | undefined;
+  let text = "";
+  if (qm) {
+    if (typeof qm.conversation === "string") text = qm.conversation;
+    else {
+      for (const node of Object.values(qm)) {
+        if (node && typeof node === "object") {
+          const v = typeof node.text === "string" ? node.text : typeof node.caption === "string" ? node.caption : "";
+          if (v) {
+            text = v;
+            break;
+          }
+        }
+      }
+    }
+  }
+  if (!id && !qm) return {};
+  return { quoted: { id, participant, text: text.trim() } };
 }
 
 /**

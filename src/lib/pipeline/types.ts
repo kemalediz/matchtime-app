@@ -72,7 +72,25 @@ export type Route =
   /** payment credit, reminder request, other bot admin instruction */
   | "admin_ops"
   /** attendance-shaped but the router genuinely cannot tell */
-  | "unsure";
+  | "unsure"
+  /** ORGANISERS' GROUP ONLY (2026-10-16): yes to what MatchTime is
+   *  waiting to hear from the organisers. Who it was for is decided by
+   *  code (`admin-group-confirm-rules.ts`), never by the model. */
+  | "approve"
+  /** ORGANISERS' GROUP ONLY: the squad list as a graphic. */
+  | "poster"
+  /** ORGANISERS' GROUP ONLY: the teams as a graphic. */
+  | "team_sheet"
+  /** ORGANISERS' GROUP ONLY: what MatchTime can do there. */
+  | "help";
+
+/**
+ * The routes the router may give a message from a club's organisers'
+ * (admin) group and never one from the players' group. A players' group
+ * message routed to one of them is read as `unsure` (`router.ts`), the
+ * same bias toward action as a missing route.
+ */
+export const ORGANISER_ONLY_ROUTES: readonly Route[] = ["approve", "poster", "team_sheet", "help"];
 
 export const ALL_ROUTES: readonly Route[] = [
   "none",
@@ -478,6 +496,14 @@ export interface TeamFacts {
   includeRefs: string[];
   teamNames: [string, string] | null;
   swaps: Array<{ personRef: string; team: "RED" | "YELLOW" }>;
+  /**
+   * People to move to the OTHER team from wherever they are now, verbatim
+   * (2026-10-16): "swap Ali and Can" is two, "move Tom" is one. Relative,
+   * so never a `swaps` entry. Read by the organisers' group
+   * (`admin-group-understand.ts`); optional so older stubs keep their
+   * shape, the parser always sets it.
+   */
+  moves?: string[];
   /**
    * "put me and Kemal on the same team" — a PAIRING, added 2026-09-06.
    *

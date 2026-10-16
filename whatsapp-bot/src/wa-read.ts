@@ -157,3 +157,22 @@ export function readInboundHeadline(msg: unknown): InboundHeadline {
     notifyName: readNotifyName(msg),
   };
 }
+
+/**
+ * The message a reply quotes, off the raw payload, in whatsapp-web.js's
+ * names (`_data.quotedStanzaID`, `_data.quotedParticipant`,
+ * `_data.quotedMsg.body`), which the Baileys view also sets (2026-10-16).
+ * Null when the message is not a reply. Total.
+ */
+export function readQuoted(msg: unknown): { id: string | null; participant: string | null; text: string } | null {
+  const id = asString(safePath(msg, "_data", "quotedStanzaID")) || null;
+  const participant = asString(safePath(msg, "_data", "quotedParticipant")) || null;
+  const quotedMsg = safePath(msg, "_data", "quotedMsg");
+  if (!id && quotedMsg === undefined) return null;
+  return { id, participant, text: asString(safeRead(quotedMsg, "body")).trim() };
+}
+
+/** The digits of a JID ("447700900123:5@s.whatsapp.net" -> "447700900123"). */
+export function jidDigits(jid: string | null | undefined): string {
+  return typeof jid === "string" ? jid.replace(/@.*$/, "").replace(/:\d+$/, "").replace(/\D/g, "") : "";
+}

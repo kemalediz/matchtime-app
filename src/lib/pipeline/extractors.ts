@@ -86,6 +86,12 @@ export function extractorFor(route: Route): ExtractorKind {
     case "admin_ops":
       return "admin";
     case "none":
+    // The organisers' group's own routes have no extractor: code owns
+    // them (`admin-group-understand.ts`).
+    case "approve":
+    case "poster":
+    case "team_sheet":
+    case "help":
       return "none";
   }
 }
@@ -308,27 +314,20 @@ Which period:
   "@Match Time all-time most MoMs" / "@Match Time tüm zamanların en çok maçın adamı kim" -> stats, mom, period all_time
   "@Match Time who played most this month" / "@Match Time bu ay en çok kim oynadı" -> stats, appearances, period this, periodUnit month`,
 
-  teams: `You read ONE message about the two team line-ups and report what it asks for. You never pick the teams.
+  teams: `You read ONE message about the two team line-ups (red and yellow) and report what it asks for. You never pick the teams.
 
-  action       "show" re-post the teams that already exist, unchanged
-               "generate" work out new teams ("generate the teams", "regenerate", "make the teams", "set up the teams again", "come up with an alternative")
-               "rename" change the NAMES of the existing teams and leave the line-ups exactly as they are
-               "swap" move named players between the two teams, leaving everyone else where they are
-  includeRefs  names the message says to include, verbatim
+  action       what has to change:
+               "show" re-post the teams that exist, unchanged ("teams?", "show me the teams", "takımları göster")
+               "generate" work the line-ups out again ("generate the teams", "regenerate", "make the teams", "shuffle them again", "come up with an alternative", "takımları kur", "yeniden kur")
+               "rename" keep the SAME two line-ups under different names
+               "swap" move named players between the existing teams and leave everyone else where they are
+  includeRefs  people the message says to include ("generate the teams, Ibrahim is playing"), verbatim
   teamNames    the two names the message SUPPLIES, in order, or an empty array
-  swaps        for "swap": each named person and the team they should be on ("RED" or "YELLOW")
-  pairings     people the message says must be on the SAME team as each other, verbatim, one array per group ("put me and David on the same team" -> [["me","David"]]). Empty when the message names no such pair.
+  swaps        people the message puts on a NAMED side, with that side: "put David in Red" -> {"personRef":"David","team":"RED"}
+  moves        people to move to the OTHER team from wherever they are now, when no side is named: "swap Ali and Can" -> ["Ali","Can"], "move Tom to the other team" -> ["Tom"], "Ali ile Can'ı değiştir" -> ["Ali","Can"], "Tom'u diğer takıma al" -> ["Tom"]
+  pairings     people who must be on the SAME team as each other, one array per group ("put me and David on the same team" -> [["me","David"]])
 
-Choose the action on what would have to CHANGE. If the line-ups have to be worked out again, it is "generate" — even when the message also asks for new names, and even when it says "again", "once more" or "instead". "rename" is ONLY for a message that wants the SAME two line-ups under different names. A message that asks you to invent names while generating is "generate": leave teamNames empty, because it supplies none.
-
-A person the message says to include ("generate the teams, Ibrahim is playing") goes in includeRefs. A person the message puts on a NAMED side ("put David in Red") goes in swaps. A person the message puts WITH somebody rather than on a side goes in pairings. The sender may refer to themselves as "me", "myself" or "I" — keep that word verbatim; do not guess their name.
-
-The message may be in ENGLISH or TURKISH. Report the same facts either way:
-  "takımları kur"                    -> generate
-  "takımları yeniden kur"            -> generate
-  "takımları göster"                 -> show
-  "Ali ile Can'ı değiştir"           -> swap (swaps empty when no side is named)
-When the sender refers to themselves in Turkish ("beni", "bana", "ben"), write "me".`,
+If the line-ups have to be worked out again it is "generate", even when the message also asks for new names or says "again", "once more" or "instead"; a message that asks you to invent names while generating leaves teamNames empty. "rename" is only for the same line-ups under new names. Write every name as the message writes it; when the sender means themselves ("me", "I", "beni", "bana", "ben") write "me". Any field the message says nothing about is empty.`,
 
   score: `You read ONE message from a football group's WhatsApp chat about the result of the group's own match, and you report what it SAYS. You report facts about the text. You never decide which team is which, who won, or what gets recorded: code does that, from the club's records.
 
@@ -532,8 +531,12 @@ const TEAMS_SCHEMA = {
     // list could not tell "A with B, C with D" from "A, B, C and D all
     // together", and those are different line-ups.
     pairings: { type: "array", items: { type: "array", items: { type: "string" } } },
+    // 2026-10-16: "swap Ali and Can" / "move Tom" name no side, so they
+    // cannot be `swaps` (absolute). Each person here goes to the other
+    // team from where they stand now.
+    moves: { type: "array", items: { type: "string" } },
   },
-  required: ["action", "includeRefs", "teamNames", "swaps", "pairings"],
+  required: ["action", "includeRefs", "teamNames", "swaps", "moves", "pairings"],
   additionalProperties: false,
 } as const;
 
@@ -826,6 +829,7 @@ export function parseFacts(
             team: str(s.team).toUpperCase() === "YELLOW" ? ("YELLOW" as const) : ("RED" as const),
           }))
           .filter((s) => s.personRef),
+        moves: (Array.isArray(raw.moves) ? (raw.moves as unknown[]) : []).map((m) => str(m).trim()).filter(Boolean),
         // A "pairing" of one person constrains nothing, so a stray
         // single-element group is dropped here rather than pinning
         // somebody to an arbitrary colour on the strength of it.

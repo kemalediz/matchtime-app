@@ -9,8 +9,8 @@
  *
  * This module holds what needs no database and no model:
  *
- *   - the admin-group team commands, read as WHOLE messages, English and
- *     Turkish, deterministically (`parseTeamCommand`);
+ *   - the extractor's facts for an admin-group team change, as a command
+ *     (`teamCommandFromFacts`);
  *   - a typed name, placed on a player on the teams by the club's own
  *     rules (`resolveSheetName`, through `nameCandidates`);
  *   - when the "Teams ready" proposal and the reminder are due;
@@ -25,137 +25,44 @@ import { nameCandidates } from "./admin-group-squad-rules";
 
 // ── The commands ───────────────────────────────────────────────────────
 
+/**
+ * A team change asked for in the admin group. Not parsed from the text:
+ * the shared pipeline reads the message (router `balancer`, then the
+ * teams extractor) and `teamCommandFromFacts` turns its facts into this.
+ */
 export type TeamCommand =
   | { kind: "show" }
   | { kind: "reshuffle" }
-  /** Every way to read the two names, the most likely first. */
+  /** Two named players swap sides. */
   | { kind: "swap"; pairs: Array<[string, string]> }
-  | { kind: "move"; name: string };
-
-/** Longer than this is a conversation, not a command. */
-const MAX_COMMAND_LENGTH = 80;
-
-/** A command is never about more than this many words of names. */
-const MAX_NAME_WORDS = 4;
-
-/** Lower case, Turkish dotless i folded, accents gone: for the keywords only. */
-function fold(s: string): string {
-  return s
-    .replace(/İ/g, "i")
-    .replace(/I/g, "i")
-    .toLowerCase()
-    .replace(/ı/g, "i")
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "");
-}
-
-const SHOW = new Set(["teams", "team", "the teams", "show teams", "show the teams", "takimlar", "takimlari goster"]);
-const RESHUFFLE = new Set([
-  "reshuffle",
-  "re-shuffle",
-  "reshuffle teams",
-  "reshuffle the teams",
-  "shuffle",
-  "new teams",
-  "regenerate",
-  "regenerate teams",
-  "yeniden",
-  "yeniden karistir",
-  "karistir",
-  "yeni takimlar",
-]);
-
-/** A name as typed: one to four words, letters in it, no digits. */
-function nameOk(s: string): boolean {
-  const words = s.trim().split(/\s+/).filter(Boolean);
-  return words.length >= 1 && words.length <= MAX_NAME_WORDS && /\p{L}/u.test(s) && !/\d/.test(s);
-}
-
-/** "Bilal'i", "Ali'yi", "Tom'u": the Turkish case ending, after an apostrophe. */
-function stripTurkishSuffix(s: string): string {
-  return s.replace(/['’](?:y)?[ıiuü]$/u, "").trim();
-}
-
-function swapPairs(rest: string): Array<[string, string]> | null {
-  const sep = rest.split(/\s+(?:and|with|for|&|ve)\s+|\s*,\s*/i);
-  if (sep.length === 2) {
-    const [a, b] = sep.map((x) => x.trim());
-    return a && b && nameOk(a) && nameOk(b) ? [[a, b]] : null;
-  }
-  if (sep.length > 2) return null;
-  const words = rest.split(/\s+/).filter(Boolean);
-  if (words.length < 2 || words.length > MAX_NAME_WORDS * 2) return null;
-  // "swap Ali and": half a command, not a player called "and".
-  if (words.some((w) => /^(?:and|with|for|ve|ile|&)$/i.test(w))) return null;
-  const pairs: Array<[string, string]> = [];
-  for (let i = 1; i < words.length; i++) {
-    const a = words.slice(0, i).join(" ");
-    const b = words.slice(i).join(" ");
-    if (nameOk(a) && nameOk(b)) pairs.push([a, b]);
-  }
-  return pairs.length ? pairs : null;
-}
+  /** One named player to the other side, or to `to` when one is named. */
+  | { kind: "move"; name: string; to?: "RED" | "YELLOW" };
 
 /**
- * Is this whole message one of the admin-group team commands? Null when
- * it is anything else, so the message goes on to the readers after this
- * one (a pasted list, a squad change). No model, ever.
- *
- *   teams | takımlar                   show the teams (build them if none)
- *   reshuffle | yeniden                build new teams
- *   swap A B | swap A and B            swap two players between the teams
- *   A ile B değiş | değiş A B
- *   move A | A'yı taşı | A diğer takıma   move one player to the other team
- *
- * YES and EVET are not read here: `isAdminGroupYes` reads them.
+ * The teams extractor's facts for an admin-group message, as a command.
+ * "unclear" when they name no usable change (a rename, which the admin
+ * group does not do, or a swap with no players or too many): the caller
+ * says so in one line.
  */
-export function parseTeamCommand(text: string): TeamCommand | null {
-  if (typeof text !== "string") return null;
-  let s = text.replace(/\s+/g, " ").trim();
-  if (!s || s.length > MAX_COMMAND_LENGTH || text.includes("\n")) return null;
-  s = s.replace(/^@\s*match\s*time\b[,:]?\s*/i, "").replace(/[.!?]+$/, "").trim();
-  if (!s) return null;
-  const key = fold(s);
-
-  if (SHOW.has(key)) return { kind: "show" };
-  if (RESHUFFLE.has(key)) return { kind: "reshuffle" };
-
-  // EN swap: "swap A B", "swap A and B".
-  let m = /^swap\s+(.+)$/i.exec(s);
-  if (m) {
-    const pairs = swapPairs(m[1]);
-    return pairs ? { kind: "swap", pairs } : null;
+export function teamCommandFromFacts(facts: {
+  action: "show" | "generate" | "rename" | "swap";
+  swaps: Array<{ personRef: string; team: "RED" | "YELLOW" }>;
+  moves?: string[];
+}): TeamCommand | { kind: "unclear" } {
+  if (facts.action === "show") return { kind: "show" };
+  if (facts.action === "generate") return { kind: "reshuffle" };
+  if (facts.action === "rename") return { kind: "unclear" };
+  const moves = (facts.moves ?? []).map((m) => m.trim()).filter(Boolean);
+  const sided = facts.swaps.filter((x) => x.personRef.trim());
+  if (moves.length === 2 && sided.length === 0) return { kind: "swap", pairs: [[moves[0], moves[1]]] };
+  if (moves.length === 1 && sided.length === 0) return { kind: "move", name: moves[0] };
+  if (moves.length === 0 && sided.length === 1) return { kind: "move", name: sided[0].personRef.trim(), to: sided[0].team };
+  // Two players each put on a named side, one on each: the same as a swap.
+  if (moves.length === 0 && sided.length === 2 && sided[0].team !== sided[1].team) {
+    return { kind: "swap", pairs: [[sided[0].personRef.trim(), sided[1].personRef.trim()]] };
   }
-  // TR swap: "A ile B değiş", "A ile B'yi değiştir", "A ile B yer değiştir".
-  m = /^(.+?)\s+ile\s+(.+?)\s+(?:yer\s+)?de[gğ][iı][sş](?:t[iı]r)?$/iu.exec(s);
-  if (m) {
-    const a = m[1].trim();
-    const b = stripTurkishSuffix(m[2]);
-    return nameOk(a) && nameOk(b) ? { kind: "swap", pairs: [[a, b]] } : null;
-  }
-  // TR swap, verb first: "değiş A B".
-  m = /^de[gğ][iı][sş](?:t[iı]r)?\s+(.+)$/iu.exec(s);
-  if (m) {
-    const pairs = swapPairs(m[1].replace(/\s+ile\s+/i, " and "));
-    return pairs ? { kind: "swap", pairs } : null;
-  }
-
-  // EN move: "move A", "move A to the other team".
-  m = /^move\s+(.+?)(?:\s+(?:to\s+)?(?:the\s+)?other\s+(?:team|side))?$/i.exec(s);
-  if (m) return nameOk(m[1]) ? { kind: "move", name: m[1].trim() } : null;
-  // TR move: "A'yı taşı", "taşı A", "A diğer takıma".
-  m = /^(.+?)\s+ta[sş][ıi]$/iu.exec(s) ?? /^(.+?)\s+di[gğ]er\s+tak[ıi]ma(?:\s+ge[cç]sin)?$/iu.exec(s);
-  if (m) {
-    const name = stripTurkishSuffix(m[1]);
-    return nameOk(name) ? { kind: "move", name } : null;
-  }
-  m = /^ta[sş][ıi]\s+(.+)$/iu.exec(s);
-  if (m) return nameOk(m[1]) ? { kind: "move", name: m[1].trim() } : null;
-
-  return null;
+  return { kind: "unclear" };
 }
-
-// ── A name, on the teams ───────────────────────────────────────────────
 
 export interface SheetPlayer {
   userId: string;

@@ -6,14 +6,18 @@
  * proposed to the admins in the club's linked admin group, changed there,
  * and approved there.
  *
- * WHAT ADMINS TYPE in the admin group (whole messages, English or
- * Turkish, read by `parseTeamCommand`, no model):
+ * WHAT ADMINS ASK in the admin group, in their own words, English or
+ * Turkish (2026-10-16): read by the SHARED pipeline, the router's
+ * `balancer` route and the teams extractor, in `admin-group-understand.ts`,
+ * which hands this file a `TeamCommand`:
  *
- *   teams | takımlar          the teams as they stand; built first if none
- *   reshuffle | yeniden       build new teams (asks for YES again)
- *   swap A B | A ile B değiş  swap two players between the teams
- *   move A | A'yı taşı        move one player to the other team
- *   YES | EVET                the teams are final (TEAMS_PUBLISHED)
+ *   show       the teams as they stand; built first if none
+ *   reshuffle  build new teams (asks for YES again)
+ *   swap       swap two players between the teams
+ *   move       move one player to the other team (or to a named one)
+ *
+ * A YES that approves them goes through the safe-YES rule first
+ * (`admin-group-confirm-rules.ts`), then `answerTeamsYes`.
  *
  * Every change reposts the teams in the admin group. Names are placed on
  * the players on the teams by the club's own rules (`nameCandidates`); an
@@ -30,8 +34,8 @@
  * inheriting the dropped player's slot through `team-slot-fill.ts`, a
  * change on the website) is told to the admin group once.
  *
- * ONE QUESTION AT A TIME (the YES rule, decided 2026-10-14). A YES in the
- * admin group always answers the last thing MatchTime asked there:
+ * ONE QUESTION AT A TIME (decided 2026-10-14). Teams and a pasted list
+ * are never both waiting for YES:
  *
  *   - posting teams for approval supersedes a pasted squad list still
  *     waiting for YES (the reply says the list was not applied);
@@ -74,7 +78,6 @@ import {
   isProposalDue,
   isReminderDue,
   effectiveTeamsReadyTime,
-  parseTeamCommand,
   resolveSheetName,
   resolveSwap,
   unevenSides,
@@ -82,7 +85,9 @@ import {
   type SheetPlayer,
   type SheetSlot,
   type SheetTeam,
+  type TeamCommand,
 } from "./team-proposal-rules";
+import { recordMatchTimeQuestion, teamsAskRef } from "./admin-group-log";
 
 export interface TeamProposalDeps {
   /** The shared generator. Injected in tests only. */
@@ -101,6 +106,7 @@ export type TeamReplyOutcome =
   | "teams-moved"
   | "teams-name-unclear"
   | "teams-same-team"
+  | "teams-already-there"
   | "teams-uneven"
   | "teams-final";
 
@@ -270,11 +276,16 @@ async function askAboutTeams(orgId: string, matchId: string, now: Date): Promise
   return liveLists > 0;
 }
 
-/** The proposal text, with the "list not applied" line when one was superseded. */
+/** The proposal text, with the "list not applied" line when one was
+ *  superseded. Recorded as MatchTime's question about these teams, so a
+ *  YES that follows it (or quotes it) is known to be about them
+ *  (`admin-group-confirm-rules.ts`). */
 async function propose(sheet: Sheet, lang: string | null | undefined, now: Date, announce: boolean): Promise<string> {
   const superseded = await askAboutTeams(sheet.orgId, sheet.match.id, now);
   const text = teamsText(sheet, lang, false, announce);
-  return superseded ? `${t(lang).tp_list_superseded}\n\n${text}` : text;
+  const out = superseded ? `${t(lang).tp_list_superseded}\n\n${text}` : text;
+  await recordMatchTimeQuestion({ orgId: sheet.orgId, askRef: teamsAskRef(sheet.match.id), text: out, now });
+  return out;
 }
 
 /**
@@ -290,21 +301,20 @@ export async function setAsideTeamProposal(orgId: string): Promise<number> {
 // ── The commands ──────────────────────────────────────────────────────
 
 /**
- * One admin-group team command from a proven owner or admin. Null when
- * the text is not one, so the message goes on to the next reader.
+ * One team change asked for in the admin group by a proven owner or
+ * admin, as the shared pipeline read it (the router's `balancer` route,
+ * then the teams extractor: `admin-group-understand.ts`).
  */
 export async function handleTeamCommand(args: {
   orgId: string;
   lang: string | null | undefined;
-  text: string;
+  command: TeamCommand;
   senderUserId: string;
   messageId: string;
   now: Date;
   deps?: TeamProposalDeps;
-}): Promise<TeamReply | null> {
-  const command = parseTeamCommand(args.text);
-  if (!command) return null;
-  const { orgId, lang, now, deps } = args;
+}): Promise<TeamReply> {
+  const { orgId, lang, now, deps, command } = args;
   const s = t(lang);
   const announce = await announces(deps, orgId);
 
@@ -357,6 +367,11 @@ export async function handleTeamCommand(args: {
     const res = resolveSheetName(command.name, sheet.players);
     if (res.kind !== "one") {
       return { outcome: "teams-name-unclear", replyText: buildNameProblems(lang, [{ raw: command.name, res }]) };
+    }
+    const slot = sheet.slots.find((x) => x.userId === res.userId)!;
+    if (command.to && slot.team === command.to) {
+      const label = command.to === "RED" ? sheet.labels[0] : sheet.labels[1];
+      return { outcome: "teams-already-there", replyText: s.tp_already_on({ name: sheet.nameOf.get(res.userId) ?? "?", team: label }) };
     }
     ids = [res.userId];
   }
@@ -422,10 +437,9 @@ export async function answerTeamsYes(args: {
     const asked = await db.adminTeamProposal.updateMany({ where: { id: row.id, state: "proposed" }, data: { state: "uneven-asked" } });
     if (asked.count === 0) return null;
     console.log(`[team-proposal] ${args.messageId}: uneven sides on match ${match.id}, asked again`);
-    return {
-      outcome: "teams-uneven",
-      replyText: s.tp_uneven_confirm({ redLabel: sheet.labels[0], red, yellowLabel: sheet.labels[1], yellow }),
-    };
+    const replyText = s.tp_uneven_confirm({ redLabel: sheet.labels[0], red, yellowLabel: sheet.labels[1], yellow });
+    await recordMatchTimeQuestion({ orgId, askRef: teamsAskRef(match.id), text: replyText, now });
+    return { outcome: "teams-uneven", replyText };
   }
   // Claimed once: two admins' YES approve once.
   const claimed = await db.adminTeamProposal.updateMany({
@@ -556,7 +570,9 @@ export async function teamProposalJobs(args: { org: TeamProposalOrg; now: Date; 
     if (row.remindedAt || !isReminderDue({ now, kickoff: match.date })) return 0;
     const claimed = await db.adminTeamProposal.updateMany({ where: { id: row.id, remindedAt: null }, data: { remindedAt: now } });
     if (claimed.count === 0) return 0;
-    await queueAdminGroup(org.id, buildReminderText(lang, match.date));
+    const reminder = buildReminderText(lang, match.date);
+    await queueAdminGroup(org.id, reminder);
+    await recordMatchTimeQuestion({ orgId: org.id, askRef: teamsAskRef(match.id), text: reminder, now });
     console.log(`[team-proposal] org ${org.id}: reminder on match ${match.id}`);
     return 1;
   }

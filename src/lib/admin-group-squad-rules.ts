@@ -223,15 +223,6 @@ export function diffPastedSquad(input: {
   return { add, remove, toBench, same: add.length === 0 && remove.length === 0 && toBench.length === 0 };
 }
 
-// ── YES ───────────────────────────────────────────────────────────────
-
-/** A whole-message YES (or EVET), the same words the pick round reads. */
-export function isAdminGroupYes(text: string): boolean {
-  if (typeof text !== "string") return false;
-  const folded = text.toLocaleLowerCase("tr").replace(/[.!\s]+$/g, "").trim();
-  return folded === "yes" || folded === "evet";
-}
-
 // ── What MatchTime says ───────────────────────────────────────────────
 
 export type SquadChangeKind = "in" | "out" | "bench" | "maybe";

@@ -123,16 +123,20 @@ test("an organiser's DM bare help points at 'help' in the admin group, and keeps
   expect(dm?.text).toMatch(/Your club's settings, signed in:\nhttps?:\/\/\S+\/r\/\S+$/);
 });
 
-test("HQ: an admin's '@Match Time help' gets the command list and never reaches the squad path", async ({ request, db }) => {
-  // If the squad path were asked, the router stub would read this as "Tom out".
-  engineOn({ "@Match Time help": { route: "other_att", facts: otherFacts("Tom", "out") } });
+test("HQ: an admin asking what MatchTime can do gets the list, and never reaches the squad path", async ({ request, db }) => {
+  // The SHARED router reads it (stubbed: what it would say). The extractor
+  // stub would read it as "Tom out" if the squad path were ever asked.
+  engineOn({
+    "@Match Time what can you do here?": { route: "help", facts: otherFacts("Tom", "out") },
+    "yardım": { route: "help" },
+  });
   const before = await db.one<{ n: string }>(`SELECT count(*)::text AS n FROM "AnalyzedMessage"`);
-  const out = await hq(request, "@Match Time help");
+  const out = await hq(request, "@Match Time what can you do here?");
   expect(out).toMatchObject({ handled: true, outcome: "hq-help" });
   expect(out.replyText).toContain("🛠️ *MatchTime in your admin group*");
   expect(out.replyText).toContain("*Paste the whole squad list*");
-  expect(out.replyText).toContain("*reshuffle*");
-  expect(out.replyText).toContain("*poster*");
+  expect(out.replyText).toContain("shuffle them again");
+  expect(out.replyText).toContain("send the poster");
   expect(out.replyText).toContain("pick who plays");
   expect(out.replyText).not.toContain("PAID ALL");
   expect(await statusOf(db, U.third)).toBe("CONFIRMED");
@@ -152,6 +156,7 @@ test("HQ: bare 'yardım' in a Turkish club answers in Turkish", async ({ request
 
 test("HQ: a non-admin's help is ignored as before, with no reply", async ({ request }) => {
   expect(await hq(request, "help", PLAYER)).toMatchObject({ handled: false, replyText: null });
+  clearPipelineStubs();
 });
 
 test("back on the defaults, the group's bare help still offers the squad and the teams", async ({ request, db }) => {

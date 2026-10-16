@@ -23,7 +23,7 @@
  *
  * NO MODEL, EVER. Every word is composed by code from database facts, and
  * the admin-group route that reaches this module is pinned model-free by
- * `admin-group-no-model.source.test.ts`, which follows every import. That
+ * `admin-group-model-door.source.test.ts`, which follows every import. That
  * is why nothing here imports `attendance.ts` or `bot-scheduler.ts`.
  *
  * Messages to the admin channel go through `sendAdminNotice` (the one door,

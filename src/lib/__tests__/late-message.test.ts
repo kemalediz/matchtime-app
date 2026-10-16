@@ -126,6 +126,10 @@ describe("lateRouteAllowed: the age gate on each route kind", () => {
     balancer: false,
     score: false,
     admin_ops: false,
+    approve: false,
+    poster: false,
+    team_sheet: false,
+    help: false,
   };
   for (const route of ALL_ROUTES) {
     it(`${route} → ${expected[route] ? "attendance, recorded silently" : "not executed"}`, () => {

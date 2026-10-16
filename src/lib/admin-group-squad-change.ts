@@ -3,16 +3,16 @@
  *
  * "Shehryar out", "put Bilal in", "Abdul-Hafeez dropping out", "Tom to the
  * bench", from an owner or admin of the club, in the club's linked admin
- * group. The caller (`admin-group.ts`) has already proven the sender is an
- * owner or admin, claimed the message id, and ruled out a pick reply, a
- * YES and a pasted list. This module is the ONLY part of the admin-group
- * path that can reach a model, and `admin-group-no-model.source.test.ts`
- * pins that.
+ * group. The caller (`admin-group-understand.ts`) has already proven the
+ * sender is an owner or admin, claimed the message id, ruled out a pick
+ * reply and a pasted list, and routed the message through the SHARED
+ * router (`gateBatch`, with the organisers' group context) to `self_att`
+ * or `other_att`. It hands that route here.
  *
  * It applies the message through the SAME code a message in the players'
  * group goes through, and through nothing else:
  *
- *   router (`gateBatch`, unchanged prompt)
+ *   the route the shared router gave
  *     -> only `self_att` and `other_att` go on; anything else is silence
  *   attendance engine (`runAttendanceEngineBatch`, unchanged extractor
  *     prompt, the real `registerAttendance` / `cancelAttendance`, the
@@ -36,7 +36,6 @@ import { db } from "./db";
 import { cancelAttendance, registerAttendance } from "./attendance";
 import { runAttendanceEngineBatch } from "./attendance-engine-batch";
 import { getAiBudgetStatus, withOrgAiBudget } from "./ai-budget";
-import { gateBatch } from "./pipeline/gate";
 import { resolveMentionNames } from "./pipeline/mention-names";
 import { buildClaimGuestNameAsk } from "./owner-deps";
 import { moveNamedSlot } from "./team-slot-fill";
@@ -45,7 +44,7 @@ import { resolveOrProvisionByName } from "./resolve-or-provision-name";
 import { adminGroupSourceRef } from "./admin-added";
 import { floorAttendanceFacts } from "./pipeline/router";
 import { resolvePerson } from "./pipeline/identity";
-import type { SquadState } from "./pipeline/types";
+import type { Route, SquadState } from "./pipeline/types";
 import {
   ADMIN_GROUP_SQUAD_ROUTES,
   buildAdminSquadReply,
@@ -65,6 +64,10 @@ export interface AdminSquadChangeInput {
   senderName: string | null;
   sentAt: Date | null;
   now: Date;
+  /** What the shared router called this message (`admin-group-understand.ts`). */
+  route: Route;
+  /** The body with raw @tags named (`nameMentions`), when the caller has it. */
+  namedBody?: string;
 }
 
 export type AdminSquadChangeResult =
@@ -91,7 +94,7 @@ function refOn(state: SquadState, personRef: string): AdminClaimRef {
 
 /** "@447700900123 out": name the tag from the club's roster, as the
  *  players' group does. Only read when the text carries a raw tag. */
-async function nameMentions(orgId: string, text: string, mentionNames: AdminSquadChangeInput["mentionNames"]): Promise<string> {
+export async function nameMentions(orgId: string, text: string, mentionNames: AdminSquadChangeInput["mentionNames"]): Promise<string> {
   if (!mentionNames?.length || !/@\d{5,}/.test(text)) return text;
   const [members, aliases] = await Promise.all([
     db.membership.findMany({ where: { orgId }, select: { user: { select: { id: true, name: true, phoneNumber: true } } } }),
@@ -107,15 +110,13 @@ async function nameMentions(orgId: string, text: string, mentionNames: AdminSqua
 export async function handleAdminSquadChange(input: AdminSquadChangeInput): Promise<AdminSquadChangeResult> {
   const { orgId, messageId } = input;
   return withOrgAiBudget(orgId, async () => {
-    const body = await nameMentions(orgId, input.text, input.mentionNames);
+    const body = input.namedBody ?? (await nameMentions(orgId, input.text, input.mentionNames));
     // The club's daily AI cap, as in the players' group: at the cap the
-    // router is not asked, and a bare IN/OUT is read by the floor.
+    // extractor is not asked, and a bare IN/OUT is read by the floor.
     const capped = (await getAiBudgetStatus(orgId).catch(() => null))?.capped ?? false;
-
-    const gate = await gateBatch([{ waMessageId: messageId, body, authorName: input.senderName }], { capped });
-    const route = gate.routes.find((r) => r.messageId === messageId)?.route;
-    if (!route || !ADMIN_GROUP_SQUAD_ROUTES.has(route) || gate.skipped.includes(messageId)) {
-      console.log(`[admin-group] ${messageId}: routed ${route ?? "nowhere"}, not a squad change`);
+    const route = input.route;
+    if (!ADMIN_GROUP_SQUAD_ROUTES.has(route)) {
+      console.log(`[admin-group] ${messageId}: routed ${route}, not a squad change`);
       return { handled: false, why: "not-a-squad-change" };
     }
 

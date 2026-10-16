@@ -38,7 +38,7 @@ import {
   type MentionName,
   type RawMentionContact,
 } from "./mentions.js";
-import { firstUsableName, readMessageBody, readNotifyName, safeRead } from "./wa-read.js";
+import { firstUsableName, jidDigits, readMessageBody, readNotifyName, readQuoted, safeRead } from "./wa-read.js";
 import { degradedMessage } from "./degraded.js";
 import {
   missingMessageIdMessage,
@@ -528,6 +528,23 @@ export interface GroupMessageForServer {
   senderLid?: string;
   timestamp: string;
   mentionNames?: Array<{ jid: string; name?: string; phone?: string }>;
+  /** A WhatsApp reply (2026-10-16): the quoted message's id and text, and
+   *  whether it was this bot's own. Absent when the message is not a reply. */
+  quotedMessageId?: string;
+  quotedText?: string;
+  quotedFromMatchTime?: boolean;
+}
+
+/** Was a quoted message sent by this bot? Compared on digits against every
+ *  form of the bot's own id. False when the driver cannot say. */
+function quotedFromBot(driver: WaDriver, participant: string | null): boolean {
+  const digits = jidDigits(participant);
+  if (!digits) return false;
+  try {
+    return driver.selfIdentities().some((id) => jidDigits(id) === digits);
+  } catch {
+    return false;
+  }
 }
 
 export async function readGroupMessageForServer(
@@ -567,6 +584,17 @@ export async function readGroupMessageForServer(
     ...(lid ? { senderLid: lid } : {}),
     timestamp: new Date(safeTimestampSec(msg) * 1000).toISOString(),
     ...(enriched.mentionNames.length > 0 ? { mentionNames: enriched.mentionNames } : {}),
+    ...quotedFields(driver, msg),
+  };
+}
+
+function quotedFields(driver: WaDriver, msg: InboundMessage): Pick<GroupMessageForServer, "quotedMessageId" | "quotedText" | "quotedFromMatchTime"> {
+  const q = readQuoted(msg);
+  if (!q) return {};
+  return {
+    ...(q.id ? { quotedMessageId: q.id } : {}),
+    ...(q.text ? { quotedText: q.text.slice(0, 2000) } : {}),
+    quotedFromMatchTime: quotedFromBot(driver, q.participant),
   };
 }
 

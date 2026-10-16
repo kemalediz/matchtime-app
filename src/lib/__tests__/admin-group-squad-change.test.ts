@@ -1,8 +1,9 @@
 /**
  * One squad change typed in the admin group (2026-10-14): the wiring.
- * The router and the attendance engine are mocked at their module
- * boundary; what is under test is what this module hands them and what it
- * says back. No database, no model.
+ * Since 2026-10-16 the SHARED router has already run
+ * (`admin-group-understand.ts`) and its route is handed in. The attendance
+ * engine is mocked at its module boundary; what is under test is what this
+ * module hands it and what it says back. No database, no model.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -18,8 +19,6 @@ const dbMock = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/db", () => ({ db: dbMock }));
 
-const gate = vi.hoisted(() => ({ gateBatch: vi.fn() }));
-vi.mock("@/lib/pipeline/gate", () => gate);
 const engine = vi.hoisted(() => ({ runAttendanceEngineBatch: vi.fn() }));
 vi.mock("@/lib/attendance-engine-batch", () => engine);
 const att = vi.hoisted(() => ({ registerAttendance: vi.fn(), cancelAttendance: vi.fn() }));
@@ -35,7 +34,7 @@ const prov = vi.hoisted(() => ({ resolveOrProvisionByName: vi.fn() }));
 vi.mock("@/lib/resolve-or-provision-name", () => prov);
 
 import { handleAdminSquadChange } from "../admin-group-squad-change";
-import type { AttendanceFacts, Claim, SquadState } from "../pipeline/types";
+import type { AttendanceFacts, Claim, Route, SquadState } from "../pipeline/types";
 
 const MATCH_ID = "m1";
 const input = {
@@ -49,8 +48,10 @@ const input = {
   now: new Date("2026-10-14T12:00:00Z"),
 };
 
-function routed(route: string, skipped: string[] = []) {
-  gate.gateBatch.mockResolvedValue({ routes: [{ messageId: "wa-1", route }], skipped, analysed: [], floorForced: [] });
+/** The route the shared router gave, handed to every call below. */
+let route: Route = "other_att";
+function routed(r: string) {
+  route = r as Route;
 }
 
 type EngineArgs = Parameters<typeof import("../attendance-engine-batch").runAttendanceEngineBatch>[0];
@@ -147,10 +148,9 @@ describe("handleAdminSquadChange", () => {
     engineDoes(async (a) => {
       await a.deps.cancelAttendance("u-shehryar", MATCH_ID, { cause: "admin-message", actorKind: "admin", actorUserId: "u-admin", sourceRef: "wa-1" });
     });
-    const r = await handleAdminSquadChange(input);
+    const r = await handleAdminSquadChange({ ...input, route });
     expect(r).toEqual({ handled: true, outcome: "squad-changed", replyText: "Done: Shehryar out. 17 of 18." });
 
-    expect(gate.gateBatch).toHaveBeenCalledWith([{ waMessageId: "wa-1", body: "Shehryar out", authorName: "Raihan" }], { capped: false });
     const args = engine.runAttendanceEngineBatch.mock.calls[0][0] as EngineArgs;
     expect(args.messages).toEqual([
       expect.objectContaining({ waMessageId: "wa-1", senderUserId: "u-admin", senderIsAdmin: true, tagged: true, route: "other_att", gated: false }),
@@ -169,7 +169,7 @@ describe("handleAdminSquadChange", () => {
       await a.deps.cancelAttendance("u-shehryar", MATCH_ID, ev);
       await a.deps.registerAttendance("u-bilal", MATCH_ID, { event: ev });
     });
-    const r = await handleAdminSquadChange({ ...input, text: "swap Shehryar for Bilal" });
+    const r = await handleAdminSquadChange({ ...input, route, text: "swap Shehryar for Bilal" });
     expect(r).toMatchObject({ handled: true, replyText: "Done: Shehryar out, Bilal in. 18 of 18." });
   });
 
@@ -181,7 +181,7 @@ describe("handleAdminSquadChange", () => {
       await a.deps.cancelAttendance("u-shehryar", MATCH_ID, ev);
       await a.deps.registerAttendance("u-bilal", MATCH_ID, { event: ev });
     });
-    await handleAdminSquadChange({ ...input, text: "swap Shehryar for Bilal" });
+    await handleAdminSquadChange({ ...input, route, text: "swap Shehryar for Bilal" });
     expect(att.cancelAttendance.mock.calls[0][2]).toMatchObject({ cause: "admin-message", sourceRef: "admin-group:wa-1" });
     expect(att.registerAttendance.mock.calls[0][2].event).toMatchObject({ cause: "admin-message", sourceRef: "admin-group:wa-1" });
   });
@@ -193,7 +193,7 @@ describe("handleAdminSquadChange", () => {
       const who = await a.deps.resolveOrProvision("Mo");
       expect(who).toEqual({ userId: "u-mo", name: "Mo" });
     });
-    await handleAdminSquadChange({ ...input, text: "put Mo in" });
+    await handleAdminSquadChange({ ...input, route, text: "put Mo in" });
     expect(prov.resolveOrProvisionByName).toHaveBeenCalledWith("org-fnf", "Mo", { adminConfirmed: true });
   });
 
@@ -203,7 +203,7 @@ describe("handleAdminSquadChange", () => {
     engineDoes(async (a) => {
       await a.deps.cancelAttendance("u-shehryar", MATCH_ID, { cause: "admin-message", actorKind: "admin", actorUserId: "u-admin", sourceRef: "wa-1" });
     });
-    const r = await handleAdminSquadChange({ ...input, lang: "tr" });
+    const r = await handleAdminSquadChange({ ...input, route, lang: "tr" });
     expect(r).toMatchObject({ replyText: "Tamam: Shehryar çıktı. 17/18." });
   });
 
@@ -211,30 +211,23 @@ describe("handleAdminSquadChange", () => {
     "routed %s: no engine, no reply",
     async (route) => {
       routed(route);
-      expect(await handleAdminSquadChange(input)).toEqual({ handled: false, why: "not-a-squad-change" });
+      expect(await handleAdminSquadChange({ ...input, route: route as Route })).toEqual({ handled: false, why: "not-a-squad-change" });
       expect(engine.runAttendanceEngineBatch).not.toHaveBeenCalled();
     },
   );
 
-  it("skipped as banter by the gate: no engine", async () => {
-    routed("other_att", ["wa-1"]);
-    expect(await handleAdminSquadChange(input)).toEqual({ handled: false, why: "not-a-squad-change" });
-    expect(engine.runAttendanceEngineBatch).not.toHaveBeenCalled();
-  });
-
-  it("at the daily AI cap: the gate and engine are told, so only the floor reads it", async () => {
+  it("at the daily AI cap: the engine is told, so only the floor reads it", async () => {
     budget.getAiBudgetStatus.mockResolvedValue({ capped: true });
     routed("other_att");
     engineDoes(async () => {}, { claimCount: 0 });
-    await handleAdminSquadChange(input);
-    expect(gate.gateBatch.mock.calls[0][1]).toEqual({ capped: true });
+    await handleAdminSquadChange({ ...input, route });
     expect((engine.runAttendanceEngineBatch.mock.calls[0][0] as EngineArgs).deps.aiCapped).toBe(true);
   });
 
   it("the engine owned nothing (no match, attendance off): silent", async () => {
     routed("other_att");
     engine.runAttendanceEngineBatch.mockResolvedValue({ ownedIds: new Set(), outcomes: new Map(), matchId: null, degradations: [] });
-    expect(await handleAdminSquadChange(input)).toEqual({ handled: false, why: "no-match" });
+    expect(await handleAdminSquadChange({ ...input, route })).toEqual({ handled: false, why: "no-match" });
   });
 
   it("an explicit claim the squad already says: says so", async () => {
@@ -243,20 +236,20 @@ describe("handleAdminSquadChange", () => {
     engineDoes(async (a) => {
       vetThrough(a, [claim({ personRef: "Shehryar", polarity: "out" })], [{ userId: "u-shehryar", status: "DROPPED", position: 3 }]);
     });
-    const r = await handleAdminSquadChange(input);
+    const r = await handleAdminSquadChange({ ...input, route });
     expect(r).toEqual({ handled: true, outcome: "squad-unchanged", replyText: "Nothing to change: the squad already says that. 17 of 18." });
   });
 
   it("no claim read at all: silent", async () => {
     routed("other_att");
     engineDoes(async () => {}, { claimCount: 0 });
-    expect(await handleAdminSquadChange(input)).toEqual({ handled: false, why: "not-a-squad-change" });
+    expect(await handleAdminSquadChange({ ...input, route })).toEqual({ handled: false, why: "not-a-squad-change" });
   });
 
   it("a write that failed is reported, never confirmed", async () => {
     routed("other_att");
     engineDoes(async () => {}, { failures: [{ action: "OUT", who: "Shehryar", error: "x" }] });
-    const r = await handleAdminSquadChange(input);
+    const r = await handleAdminSquadChange({ ...input, route });
     expect(r).toEqual({
       handled: true,
       outcome: "squad-change-failed",
@@ -268,7 +261,7 @@ describe("handleAdminSquadChange", () => {
     routed("other_att");
     dbMock.user.findMany.mockResolvedValue([{ id: "u-sait", name: "Sait" }]);
     engineDoes(async () => {}, { recordTentativeForUserIds: ["u-sait"] });
-    const r = await handleAdminSquadChange({ ...input, text: "Sait is a maybe" });
+    const r = await handleAdminSquadChange({ ...input, route, text: "Sait is a maybe" });
     expect(tentative.recordTentative).toHaveBeenCalledWith(expect.objectContaining({ matchId: MATCH_ID, userId: "u-sait" }));
     expect(r).toMatchObject({ replyText: "Done: Sait a maybe. 17 of 18." });
   });
@@ -287,7 +280,7 @@ describe("handleAdminSquadChange", () => {
     });
     dbMock.user.findMany.mockResolvedValue([{ id: "u-admin", name: "Omar" }]);
     statuses.set("u-admin", "CONFIRMED");
-    const r = await handleAdminSquadChange({ ...input, senderName: "Omar", text: "out" });
+    const r = await handleAdminSquadChange({ ...input, route, senderName: "Omar", text: "out" });
     expect(r).toMatchObject({ handled: true, outcome: "squad-changed", replyText: "Done: Omar out. 17 of 18." });
   });
 
@@ -303,7 +296,7 @@ describe("handleAdminSquadChange", () => {
       },
       { claimCount: 0 },
     );
-    expect(await handleAdminSquadChange({ ...input, text: "might have to pull out this week" })).toEqual({ handled: false, why: "not-a-squad-change" });
+    expect(await handleAdminSquadChange({ ...input, route, text: "might have to pull out this week" })).toEqual({ handled: false, why: "not-a-squad-change" });
     expect(att.cancelAttendance).not.toHaveBeenCalled();
     expect(tentative.recordTentative).not.toHaveBeenCalled();
   });
@@ -318,7 +311,7 @@ describe("handleAdminSquadChange", () => {
       },
       { claimCount: 0 },
     );
-    expect(await handleAdminSquadChange({ ...input, text: "my ankle is wrecked" })).toEqual({ handled: false, why: "not-a-squad-change" });
+    expect(await handleAdminSquadChange({ ...input, route, text: "my ankle is wrecked" })).toEqual({ handled: false, why: "not-a-squad-change" });
   });
 
   it("a plain self OUT said in conversation by a confirmed organiser: no write, one line with the command", async () => {
@@ -330,7 +323,7 @@ describe("handleAdminSquadChange", () => {
       },
       { claimCount: 0 },
     );
-    const r = await handleAdminSquadChange({ ...input, senderName: "Omar", text: "won't be around on friday" });
+    const r = await handleAdminSquadChange({ ...input, route, senderName: "Omar", text: "won't be around on friday" });
     expect(r).toEqual({ handled: true, outcome: "squad-question", replyText: 'To take yourself out of Fri 20:30, write "Omar out".' });
     expect(att.cancelAttendance).not.toHaveBeenCalled();
   });
@@ -338,13 +331,13 @@ describe("handleAdminSquadChange", () => {
   it("the same said by an organiser not in the squad: silence (not a false 'Nothing to change')", async () => {
     routed("self_att");
     engineDoes(async (a) => void vetThrough(a, [self({ polarity: "out" })], []), { claimCount: 0 });
-    expect(await handleAdminSquadChange({ ...input, senderName: "Omar", text: "won't be around on friday" })).toEqual({ handled: false, why: "not-a-squad-change" });
+    expect(await handleAdminSquadChange({ ...input, route, senderName: "Omar", text: "won't be around on friday" })).toEqual({ handled: false, why: "not-a-squad-change" });
   });
 
   it("a name nobody in the club has, said in passing: no write, says it does not know them and how to add them", async () => {
     routed("other_att");
     engineDoes(async (a) => void vetThrough(a, [claim({ personRef: "Zayn" })], []), { claimCount: 0 });
-    const r = await handleAdminSquadChange({ ...input, text: "Zayn is around again" });
+    const r = await handleAdminSquadChange({ ...input, route, text: "Zayn is around again" });
     expect(r).toEqual({ handled: true, outcome: "squad-question", replyText: 'I don\'t know Zayn yet. To add them, write "put Zayn in".' });
     expect(prov.resolveOrProvisionByName).not.toHaveBeenCalled();
   });
@@ -352,7 +345,7 @@ describe("handleAdminSquadChange", () => {
   it("a member mentioned in passing: silence", async () => {
     routed("other_att");
     engineDoes(async (a) => void vetThrough(a, [claim({ personRef: "Dev" })], []), { claimCount: 0 });
-    expect(await handleAdminSquadChange({ ...input, text: "Dev is around again" })).toEqual({ handled: false, why: "not-a-squad-change" });
+    expect(await handleAdminSquadChange({ ...input, route, text: "Dev is around again" })).toEqual({ handled: false, why: "not-a-squad-change" });
   });
 
   it("an admin reporting someone else's maybe in HQ: held, no tentative, no reply", async () => {
@@ -364,7 +357,7 @@ describe("handleAdminSquadChange", () => {
       },
       { claimCount: 0 },
     );
-    expect(await handleAdminSquadChange({ ...input, text: "Dev is a maybe" })).toEqual({ handled: false, why: "not-a-squad-change" });
+    expect(await handleAdminSquadChange({ ...input, route, text: "Dev is a maybe" })).toEqual({ handled: false, why: "not-a-squad-change" });
     expect(tentative.recordTentative).not.toHaveBeenCalled();
   });
 
@@ -374,7 +367,7 @@ describe("handleAdminSquadChange", () => {
       const kept = vetThrough(a, [claim({ personRef: "Kofi" })], []);
       expect(kept.claims.map((c) => c.personRef)).toEqual(["Kofi"]);
     }, { claimCount: 1 });
-    await handleAdminSquadChange({ ...input, text: "put Kofi in" });
+    await handleAdminSquadChange({ ...input, route, text: "put Kofi in" });
   });
 
   it("logs ids and counts, never the text or a name", async () => {
@@ -384,7 +377,7 @@ describe("handleAdminSquadChange", () => {
     engineDoes(async (a) => {
       await a.deps.cancelAttendance("u-shehryar", MATCH_ID, { cause: "admin-message", actorKind: "admin", actorUserId: "u-admin", sourceRef: "wa-1" });
     });
-    await handleAdminSquadChange(input);
+    await handleAdminSquadChange({ ...input, route });
     const lines = log.mock.calls.map((c) => c.join(" ")).join("\n");
     expect(lines).not.toMatch(/Shehryar|Raihan|out\b/);
     log.mockRestore();

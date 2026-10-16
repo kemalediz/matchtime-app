@@ -1709,6 +1709,30 @@ model AdminSquadProposal {
   @@index([orgId, resolvedAt])
 }
 
+/// What was said in a club's linked admin group (HQ), kept for one day
+/// (2026-10-16). Two readers, both in src/lib/admin-group-understand.ts:
+/// the safe-YES rule (was anybody else talking between MatchTime's
+/// question and this YES?) and the shared router's context (the last few
+/// messages, so "yes" to another organiser reads as their chat). Rows
+/// written by MatchTime itself (`fromMatchTime`) are the questions it put
+/// to the organisers, with `askRef` naming what each asked about
+/// ("teams:<matchId>", "list:<proposalId>"). Text is cut to 500
+/// characters and rows older than a day are deleted on every write.
+model AdminGroupMessage {
+  id            String   @id @default(cuid())
+  orgId         String
+  /// The WhatsApp message id, or "mt:<cuid>" for MatchTime's own question.
+  waMessageId   String   @unique
+  fromMatchTime Boolean  @default(false)
+  senderUserId  String?
+  text          String
+  /// What a MatchTime question asked about. Null for everything else.
+  askRef        String?
+  createdAt     DateTime @default(now())
+
+  @@index([orgId, createdAt])
+}
+
 model BenchSlotOffer {
   id              String    @id @default(cuid())
   matchId         String

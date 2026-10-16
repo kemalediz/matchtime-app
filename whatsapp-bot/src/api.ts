@@ -517,6 +517,10 @@ export interface AdminGroupForward {
   timestamp: string;
   mentionNames?: Array<{ jid: string; name?: string; phone?: string }>;
   groupSubject?: string;
+  /** A WhatsApp reply (2026-10-16). See `readGroupMessageForServer`. */
+  quotedMessageId?: string;
+  quotedText?: string;
+  quotedFromMatchTime?: boolean;
 }
 
 export interface AdminGroupAnswer {

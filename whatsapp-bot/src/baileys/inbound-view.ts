@@ -49,7 +49,14 @@ export interface BaileysInboundView extends InboundMessage {
   hasMedia: boolean;
   timestamp?: number;
   mentionedIds: string[];
-  _data: { body: string; notifyName?: string };
+  _data: {
+    body: string;
+    notifyName?: string;
+    /** A reply's quoted message, in whatsapp-web.js's names (2026-10-16). */
+    quotedStanzaID?: string;
+    quotedParticipant?: string;
+    quotedMsg?: { body: string };
+  };
   /** Driver-side facts, for the log and for contactOf. Not read above the seam. */
   baileys: {
     upsertType: string;
@@ -98,6 +105,11 @@ export function buildInboundView(
   // rather than to 1970.
   if (mapped.timestampSec > 0) view.timestamp = mapped.timestampSec;
   if (mapped.pushName) view._data.notifyName = mapped.pushName;
+  if (mapped.quoted) {
+    if (mapped.quoted.id) view._data.quotedStanzaID = mapped.quoted.id;
+    if (mapped.quoted.participant) view._data.quotedParticipant = mapped.quoted.participant;
+    view._data.quotedMsg = { body: mapped.quoted.text };
+  }
   if (mapped.isGroup && !mapped.fromMe) {
     const author = extra.senderPhone ? `${extra.senderPhone}@c.us` : senderJid;
     if (author) view.author = author;

@@ -118,6 +118,8 @@ const graphics = vi.hoisted(() => ({ sendGraphicToAdminChannel: vi.fn() }));
 vi.mock("@/lib/admin-group-graphics", () => graphics);
 const announcer = vi.hoisted(() => ({ loadOrganisersAnnounce: vi.fn() }));
 vi.mock("@/lib/list-announcer-store", () => announcer);
+const hqLog = vi.hoisted(() => ({ recordMatchTimeQuestion: vi.fn(), teamsAskRef: (id: string) => `teams:${id}` }));
+vi.mock("@/lib/admin-group-log", () => hqLog);
 
 import {
   answerTeamsYes,
@@ -126,6 +128,7 @@ import {
   teamProposalJobs,
   type TeamProposalDeps,
 } from "../team-proposal";
+import type { TeamCommand } from "../team-proposal-rules";
 
 const ORG = "org-fnf";
 const MATCH = "m-fri";
@@ -196,8 +199,27 @@ const generate = vi.fn(async (matchId: string) => {
 const quiet: TeamProposalDeps = { generate, announce: () => true };
 const loud: TeamProposalDeps = { generate, announce: () => false };
 
+/**
+ * What the shared teams extractor reads from these words, as the command
+ * `admin-group-understand.ts` hands over (`teamCommandFromFacts`). The
+ * reading itself is the model's and is tested live; this file tests what
+ * the command does.
+ */
+function asCommand(text: string): TeamCommand {
+  if (text === "teams" || text === "takımlar") return { kind: "show" };
+  if (text === "reshuffle") return { kind: "reshuffle" };
+  let m = /^swap (\S+) (\S+)$/.exec(text);
+  if (m) return { kind: "swap", pairs: [[m[1], m[2]]] };
+  m = /^(\S+) ile (\S+) değiş$/.exec(text);
+  if (m) return { kind: "swap", pairs: [[m[1], m[2]]] };
+  m = /^move (\S+)$/.exec(text);
+  if (m) return { kind: "move", name: m[1] };
+  m = /^(\S+) taşı$/.exec(text);
+  if (m) return { kind: "move", name: m[1] };
+  throw new Error(`no command for ${text}`);
+}
 const cmd = (text: string, deps = quiet, now = NOON) =>
-  handleTeamCommand({ orgId: ORG, lang: "en", text, senderUserId: "u-admin", messageId: `wa-${text}`, now, deps });
+  handleTeamCommand({ orgId: ORG, lang: "en", command: asCommand(text), senderUserId: "u-admin", messageId: `wa-${text}`, now, deps });
 const yes = (deps = quiet, now = NOON) =>
   answerTeamsYes({ orgId: ORG, lang: "en", senderUserId: "u-admin", messageId: "wa-yes", now, deps });
 
@@ -209,9 +231,23 @@ beforeEach(() => {
 });
 
 describe("the commands", () => {
-  it("not a command: null, nothing read", async () => {
-    expect(await cmd("Shehryar out")).toBeNull();
-    expect(generate).not.toHaveBeenCalled();
+  it("records each proposal as MatchTime's question about these teams, for the safe-YES rule", async () => {
+    const r = await cmd("teams");
+    expect(hqLog.recordMatchTimeQuestion).toHaveBeenCalledWith({ orgId: ORG, askRef: `teams:${MATCH}`, text: r.replyText, now: NOON });
+  });
+
+  it("a move to a named team the player is already on: one line, nothing moved", async () => {
+    seedSheet();
+    const r = await handleTeamCommand({
+      orgId: ORG,
+      lang: "en",
+      command: { kind: "move", name: "Ali", to: "RED" },
+      senderUserId: "u-admin",
+      messageId: "wa-red",
+      now: NOON,
+      deps: quiet,
+    });
+    expect(r).toEqual({ outcome: "teams-already-there", replyText: "Ali Khan is already on Red." });
   });
 
   it("'teams' with none built: builds them with the shared generator and proposes them", async () => {
@@ -251,7 +287,7 @@ describe("the commands", () => {
     const r = await handleTeamCommand({
       orgId: ORG,
       lang: "tr",
-      text: "takımlar",
+      command: { kind: "show" },
       senderUserId: "u-admin",
       messageId: "wa-tr",
       now: NOON,
@@ -649,7 +685,7 @@ describe("uneven sides", () => {
 
   it("Turkish", async () => {
     seedSheet();
-    await handleTeamCommand({ orgId: ORG, lang: "tr", text: "Bilal taşı", senderUserId: "u-admin", messageId: "wa-tr", now: NOON, deps: quiet });
+    await handleTeamCommand({ orgId: ORG, lang: "tr", command: asCommand("Bilal taşı"), senderUserId: "u-admin", messageId: "wa-tr", now: NOON, deps: quiet });
     const r = await answerTeamsYes({ orgId: ORG, lang: "tr", senderUserId: "u-admin", messageId: "wa-yes", now: NOON, deps: quiet });
     expect(r?.replyText).toBe(
       "Takımlar dengesiz: Kırmızı 1, Sarı 3. Böyle kesinleşsin istiyorsanız yine *EVET* yazın, ya da önce bir oyuncuyu *taşı* ile geçirin.",

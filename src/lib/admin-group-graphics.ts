@@ -6,11 +6,11 @@
  * drops them in the club's ADMIN group, captioned "Ready to post: ...",
  * for the admins to forward.
  *
- *   parseGraphicsCommand(text)          the command, whole message only,
- *                                       English and Turkish, no model;
- *   handleAdminGraphicsCommand(...)     an owner's or admin's command in the
- *                                       admin group (hooked into
- *                                       `admin-group.ts`);
+ *   answerGraphicRequest(...)           an owner's or admin's request in the
+ *                                       admin group, in their own words: the
+ *                                       shared router's `poster` and
+ *                                       `team_sheet` routes
+ *                                       (`admin-group-understand.ts`);
  *   sendGraphicToAdminChannel(...)      queue one graphic for the admin
  *                                       group. The command calls it, and so
  *                                       will the final-list and the
@@ -21,48 +21,13 @@
  * signed (`admin-channel.ts`, `adminGroupJobInstruction`). The Pi fetches
  * the PNG from `/api/graphics/<token>` and posts it with the caption.
  *
- * NO MODEL. Nothing here or below it calls one
- * (`admin-group-no-model.source.test.ts`).
+ * Nothing here calls a model: the request was read before it got here.
  */
 import { db } from "./db";
-import { resolveSenderUserIds } from "./admin-group-link";
 import { isGroupPostable } from "./group-postability-store";
 import { loadGraphicData, nextGraphicMatch } from "./match-graphics";
 import { graphicCaption, graphicsCopy, type GraphicKind } from "./match-graphics-copy";
 import { graphicJobOptions } from "./graphic-job";
-import type { AdminGroupMessage, AdminGroupMessageResult } from "./admin-group";
-
-// ── The command ─────────────────────────────────────────────────────────
-
-const LIST_COMMANDS = new Set(["poster", "list poster", "squad poster", "liste", "liste posteri", "kadro posteri"]);
-const TEAM_COMMANDS = new Set(["teams poster", "team poster", "team sheet", "teamsheet", "takim listesi", "takimlar posteri"]);
-
-/** Lower case in Turkish, dotless and dotted i folded to "i", Turkish letters to ASCII. */
-function fold(text: string): string {
-  return text
-    .toLocaleLowerCase("tr")
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .replace(/ı/g, "i");
-}
-
-/** "@Match Time", "MatchTime," or a raw tag ("@447700900999", "@<lid digits>") in front. */
-const ADDRESS = /^(?:@?match\s*time\b|@[\p{L}\p{N}_]+)[\s,:]*/u;
-
-/**
- * Which graphic an admin's message asks for, or null. The WHOLE message
- * must be the command (after an optional tag of MatchTime and trailing
- * punctuation), so chat that merely mentions a list is never read as one.
- */
-export function parseGraphicsCommand(text: string): GraphicKind | null {
-  if (typeof text !== "string") return null;
-  let t = fold(text).trim();
-  for (let i = 0; i < 3 && ADDRESS.test(t); i++) t = t.replace(ADDRESS, "");
-  t = t.replace(/[\s.!?]+$/u, "").replace(/\s+/g, " ").trim();
-  if (LIST_COMMANDS.has(t)) return "list";
-  if (TEAM_COMMANDS.has(t)) return "teams";
-  return null;
-}
 
 // ── Queue one graphic ───────────────────────────────────────────────────
 
@@ -119,53 +84,28 @@ export async function sendGraphicToAdminChannel(
   return { queued: true, jobId: job.id };
 }
 
-// ── The admin's command ─────────────────────────────────────────────────
+// ── The admin's request ─────────────────────────────────────────────
 
 /**
- * An owner's or admin's "poster" / "team sheet" in the admin group of a
- * live club. Null when the message is not the command, the club is not
- * live, or the sender is not an owner or admin: `admin-group.ts` then
- * carries on exactly as before. Claims the message id with the same key
- * the rest of the admin-group route uses, so a Pi retry queues nothing
- * twice.
- *
- * The graphic itself is the answer: there is no text reply when it is
- * queued. "No teams yet." when the team sheet is asked for too early.
+ * An owner's or admin's request for the list poster or the team sheet in
+ * the admin group of a live club. The caller has proven the sender and
+ * claimed the message id. The graphic itself is the answer: no text when
+ * it is queued. After the teams are approved a team sheet request sends it
+ * again (no once-key here).
  */
-export async function handleAdminGraphicsCommand(args: {
-  org: { id: string; language: string | null; whatsappBotEnabled: boolean | null };
-  msg: Pick<AdminGroupMessage, "text" | "messageId" | "senderPhone" | "senderAltPhone" | "senderLid">;
+export async function answerGraphicRequest(args: {
+  orgId: string;
+  lang: string | null;
+  kind: GraphicKind;
   now: Date;
-}): Promise<AdminGroupMessageResult | null> {
-  const { org, msg, now } = args;
-  const kind = parseGraphicsCommand(msg.text);
-  if (!kind || org.whatsappBotEnabled !== true) return null;
-
-  const senders = await resolveSenderUserIds({ phones: [msg.senderPhone, msg.senderAltPhone], lid: msg.senderLid ?? null });
-  const admin = senders.length
-    ? await db.membership.findFirst({
-        where: { orgId: org.id, userId: { in: senders }, leftAt: null, role: { in: ["OWNER", "ADMIN"] } },
-        select: { userId: true },
-      })
-    : null;
-  if (!admin) return null;
-
-  if (msg.messageId) {
-    try {
-      await db.sentNotification.create({ data: { key: `admin-group-msg:${msg.messageId}`, kind: "admin-notice" } });
-    } catch {
-      return { handled: false, ignored: "duplicate", orgId: org.id, replyText: null };
-    }
-  }
-
-  const s = graphicsCopy(org.language);
-  const matchId = await nextGraphicMatch(org.id, now);
-  if (!matchId) return { handled: true, orgId: org.id, outcome: "graphic-no-match", replyText: s.noMatch };
-
-  const r = await sendGraphicToAdminChannel(org.id, matchId, kind, { asked: true });
-  if (r.queued) return { handled: true, orgId: org.id, outcome: "graphic-queued", replyText: null };
-  if (r.reason === "no-teams") return { handled: true, orgId: org.id, outcome: "graphic-no-teams", replyText: s.noTeams };
-  if (r.reason === "no-match") return { handled: true, orgId: org.id, outcome: "graphic-no-match", replyText: s.noMatch };
+}): Promise<{ outcome: string; replyText: string | null }> {
+  const s = graphicsCopy(args.lang);
+  const matchId = await nextGraphicMatch(args.orgId, args.now);
+  if (!matchId) return { outcome: "graphic-no-match", replyText: s.noMatch };
+  const r = await sendGraphicToAdminChannel(args.orgId, matchId, args.kind, { asked: true });
+  if (r.queued) return { outcome: "graphic-queued", replyText: null };
+  if (r.reason === "no-teams") return { outcome: "graphic-no-teams", replyText: s.noTeams };
+  if (r.reason === "no-match") return { outcome: "graphic-no-match", replyText: s.noMatch };
   // No group MatchTime can post in: a reply would not reach it either.
-  return { handled: true, orgId: org.id, outcome: `graphic-${r.reason}`, replyText: null };
+  return { outcome: `graphic-${r.reason}`, replyText: null };
 }

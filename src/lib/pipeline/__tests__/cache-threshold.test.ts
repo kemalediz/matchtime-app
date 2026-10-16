@@ -148,7 +148,15 @@ describe("the minimum cacheable prefix is a token count, per model", () => {
     // under the Sonnet count the extractor actually runs on; the
     // estimator's 2,429 sits under both, as it must. More than three
     // times Sonnet 5's 1,024, so the cache stands.
-    expect(estimateTokens(ROUTER_SYSTEM_PROMPT)).toBeLessThanOrEqual(3_386);
+    //
+    // 2026-10-16, ONE ROUTER FOR EVERY GROUP: the prompt now also reads a
+    // club's organisers' group (the routes approve, poster, team_sheet and
+    // help, and what differs there), rewritten as one document. Measured
+    // (`count_tokens`, claude-haiku-4-5, dev key, the free counting
+    // endpoint): 13,710 characters / 3,920 tokens, from 11,734 / 3,386.
+    // The estimator's 3,427 sits under it. Still under Haiku's 4,096 (a
+    // first cut at 4,186 was trimmed to stay there), so still no marker.
+    expect(estimateTokens(ROUTER_SYSTEM_PROMPT)).toBeLessThanOrEqual(3_920);
     expect(estimateTokens(EXTRACTOR_PROMPTS.attendance)).toBeLessThanOrEqual(2_699);
   });
 });
