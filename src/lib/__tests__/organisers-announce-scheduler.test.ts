@@ -512,11 +512,14 @@ describe("the 'New players to review' notice", () => {
 
 // ── The rating notice and the badges post (2026-10-14) ──
 //   Kemal, after the club rehearsal: for a club whose organisers announce,
-//   these two go to the admin channel, not the players' group, under the
+//   these two went to the admin channel, not the players' group, under the
 //   relay lead ("For the organisers, not posted in the players' group:")
 //   so the organisers can forward them. The go-live hello, the payments
 //   poll, the score ask and the Man of the Match result stay in the group.
 //   The rating DMs themselves still go to every player.
+//   Badges moved back (Kemal, 2026-10-16): the badges post goes in the
+//   players' group for every club, whoever announces. Only the rating
+//   notice is still relayed to the admins.
 //
 //   The match-day gear reminder is NOT moved (Kemal, 2026-10-15): it is a
 //   club setting (`featureGearReminder`, OFF for a new club, ON for every
@@ -619,7 +622,7 @@ describe("the gear reminder is a club setting, the same whoever announces", () =
   });
 });
 
-describe('"The organisers": the rating notice and the badges post go to the admins', () => {
+describe('"The organisers": the rating notice goes to the admins, the badges post to the players', () => {
   beforeEach(() => {
     features.listAnnouncer = "organisers";
   });
@@ -664,21 +667,36 @@ describe('"The organisers": the rating notice and the badges post go to the admi
     expect(byKey(await instructions(SAT_0905), PROMO_KEY(m))).toBeUndefined();
   });
 
-  it("the badges post goes to the admin group under the relay lead, and still carries its ledger rows", async () => {
+  // Kemal, 2026-10-16: badges go in the players' group for every club,
+  // whoever announces; only the rating notice is still relayed here.
+  it("the badges post goes to the PLAYERS' group with its ledger rows, never to the admin group", async () => {
     features.badgeAnnouncements = true;
     const m = completed();
     badges.posts = [badgePost(m)];
     setWorld([m]);
     const out = await instructions(SUN_1805);
-    expect(byKey(out, BADGES_KEY(m))).toEqual({
-      kind: "admin-group-message",
-      key: BADGES_KEY(m),
-      matchId: m.id,
-      groupId: ADMIN_GROUP,
-      text: buildOrganiserRelay(BADGES_TEXT, "en"),
-      badgeLedger: LEDGER,
-    });
-    expect(groupPosts(out).some((i) => i.key.includes(":badges"))).toBe(false);
+    expect(out.filter((i) => i.key.startsWith(BADGES_KEY(m)))).toEqual([badgePost(m)]);
+    expect(out.some((i) => i.kind !== "group-message" && i.key.includes(":badges"))).toBe(false);
+  });
+
+  it("the badges post is the same instruction whoever announces", async () => {
+    features.badgeAnnouncements = true;
+    const m = completed();
+    badges.posts = [badgePost(m)];
+    setWorld([m]);
+    const organisers = (await instructions(SUN_1805)).filter((i) => i.key.startsWith(BADGES_KEY(m)));
+    features.listAnnouncer = "matchtime";
+    setWorld([m]);
+    const matchtime = (await instructions(SUN_1805)).filter((i) => i.key.startsWith(BADGES_KEY(m)));
+    expect(organisers).toEqual(matchtime);
+  });
+
+  it("badge announcements off: no badges post anywhere", async () => {
+    features.badgeAnnouncements = false;
+    const m = completed();
+    badges.posts = [badgePost(m)];
+    setWorld([m]);
+    expect((await instructions(SUN_1805)).some((i) => i.key.includes(":badges"))).toBe(false);
   });
 });
 
@@ -695,15 +713,12 @@ describe('"The organisers" with no admin group to post in: the same fallback as 
     expect(groupPosts(out).some((i) => i.key.startsWith(PROMO_KEY(m)))).toBe(false);
   });
 
-  it("each admin by DM: every badges DM carries the ledger rows (written once, duplicates skipped)", async () => {
+  it("each admin by DM: the badges post still goes to the players' group, and no admin gets a badges DM", async () => {
     features.badgeAnnouncements = true;
     const m = completed();
     badges.posts = [badgePost(m)];
     setWorld([m], { channelMode: "each-admin", adminGroupId: null });
     const out = await instructions(SUN_1805);
-    const dms = out.filter((i) => i.key.startsWith(BADGES_KEY(m)));
-    expect(dms).toHaveLength(2);
-    for (const d of dms) expect(d).toMatchObject({ kind: "dm", text: buildOrganiserRelay(BADGES_TEXT, "en"), badgeLedger: LEDGER });
-    expect(groupPosts(out)).toHaveLength(0);
+    expect(out.filter((i) => i.key.startsWith(BADGES_KEY(m)))).toEqual([badgePost(m)]);
   });
 });

@@ -244,8 +244,10 @@ export type DueInstruction =
       text: string;
       matchId?: string;
       targetUser?: string;
-      /** A badges post relayed to an admin by DM (organisers announce):
-       *  as on `group-message`. Server-side; stripped before the Pi sees it. */
+      /** A badges post relayed to an admin by DM (organisers announce,
+       *  2026-10-14 to 2026-10-16; nothing emits it now, badges post in the
+       *  players' group): as on `group-message`. Server-side; stripped
+       *  before the Pi sees it. */
       badgeLedger?: { userId: string; badgeKey: string; matchId: string }[];
     }
   | {
@@ -285,8 +287,10 @@ export type DueInstruction =
       /** A list poster or team sheet (2026-10-14, graphic-job.ts): the Pi
        *  fetches this signed PNG and posts it with `text` as its caption. */
       imageUrl?: string;
-      /** A badges post relayed to the admin group (organisers announce):
-       *  as on `group-message`. Server-side; stripped before the Pi sees it. */
+      /** A badges post relayed to the admin group (organisers announce,
+       *  2026-10-14 to 2026-10-16; nothing emits it now, badges post in the
+       *  players' group): as on `group-message`. Server-side; stripped
+       *  before the Pi sees it. */
       badgeLedger?: { userId: string; badgeKey: string; matchId: string }[];
     };
 
@@ -1016,35 +1020,23 @@ export async function computeDuePosts(
   //   badges newly earned and never announced. Skipped outright, with no
   //   query, when the club has the feature off; also caught by the
   //   key filter below. See badge-announcements.ts.
-  //   Organisers announce (Kemal, 2026-10-14): the post goes to the
-  //   admin channel under the relay lead, on the same key (a DM keyed
-  //   `…:badges:<adminId>`). Each instruction carries the ledger rows, so
-  //   whichever is claimed records the badges; the rows are unique per
-  //   player and badge, so a second claim adds nothing.
+  //   The players' group for EVERY club, whoever announces the list
+  //   (Kemal, 2026-10-16; from 2026-10-14 to 2026-10-16 an organisers-mode
+  //   club had it relayed to the admin channel). No double post from that
+  //   window: a post relayed to the admin group used this same key, so it
+  //   is in `sentKeys` and not due again; one relayed by DM
+  //   (`…:badges:<adminId>`) wrote its ledger rows, so those badges are
+  //   announced already and the post builds empty.
   if (features.badgeAnnouncements) {
-    const badgePosts = await computeBadgeAnnouncements({
-      orgId: org.id,
-      lang: features.language,
-      matches,
-      sentKeys,
-      now,
-    });
-    if (!organisersAnnounce(features)) out.push(...badgePosts);
-    else {
-      const channel = badgePosts.length > 0 ? await admin.getChannel() : null;
-      for (const post of channel ? badgePosts : []) {
-        const relayed = await adminNoticeInstructions({
-          channel: channel!,
-          piCaps: admin.piCaps,
-          sentKeys,
-          now,
-          matchId: post.matchId,
-          key: (who) => (who === "admin-group" ? post.key : `${post.key}:${who}`),
-          notice: { text: buildOrganiserRelay(post.text, features.language) },
-        });
-        out.push(...relayed.map((i) => ({ ...i, badgeLedger: post.badgeLedger })));
-      }
-    }
+    out.push(
+      ...(await computeBadgeAnnouncements({
+        orgId: org.id,
+        lang: features.language,
+        matches,
+        sentKeys,
+        now,
+      })),
+    );
   }
 
   // ── Per-org feature gate (post-compute filter) ───────────────────
@@ -1397,8 +1389,8 @@ async function computeForMatch(
    * A players' group post that names nobody, relayed to the admin channel
    * under the relay lead ("For the organisers, not posted in the players'
    * group:") for the organisers to forward. Kemal, 2026-10-14, after the
-   * club rehearsal: the rating notice (the badges post, built per club,
-   * is relayed the same way in `computeDuePosts`).
+   * club rehearsal: the rating notice. (The badges post was relayed too
+   * until 2026-10-16; it now goes in the players' group for every club.)
    * Same channel, same keys and same fallback as `toOrganisers`.
    */
   async function relayToOrganisers(key: string, text: string): Promise<void> {

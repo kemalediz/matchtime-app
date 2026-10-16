@@ -152,9 +152,10 @@ export function badgeLedgerOf(instr: unknown): BadgeAward[] | null {
 
 /**
  * Server-side bookkeeping never reaches the Pi: the badges ledger and the
- * roster-shown marker, whatever the instruction's kind. A club whose
- * organisers announce gets its badges post in the admin group or by DM
- * (2026-10-14), and those carry the ledger too.
+ * roster-shown marker, whatever the instruction's kind. (From 2026-10-14
+ * to 2026-10-16 a club whose organisers announce got its badges post in
+ * the admin group or by DM, carrying the ledger; since then every club's
+ * badges post goes in the players' group, but any kind is still handled.)
  */
 export function withoutServerBookkeeping<T extends object>(instr: T): T {
   if (!("badgeLedger" in instr || "rosterShown" in instr)) return instr;

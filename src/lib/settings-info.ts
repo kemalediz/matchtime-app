@@ -706,7 +706,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       together: [
         "With Man of the Match off, its badges are announced only once the match is more than 9 days old.",
         "The post points players to the stats link in their rating message, which needs Player ratings on.",
-        "With the organisers announcing the list, the badge post goes to your admin messages instead of the players' group, for you to share.",
+        "The badge post goes in the players' group whoever announces the list.",
       ],
     },
     tr: {
@@ -725,7 +725,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       together: [
         "Man of the Match kapalıyken onun rozetleri ancak maçın üzerinden 9 günden fazla geçince duyurulur.",
         "Mesaj oyuncuları puanlama mesajındaki istatistik bağlantısına yönlendirir; bunun için Oyuncu puanları açık olmalıdır.",
-        "Listeyi organizatörler duyuruyorsa rozet mesajı paylaşmanız için oyuncu grubu yerine yönetici mesajlarınıza gider.",
+        "Rozet mesajı, listeyi kim duyurursa duyursun oyuncu grubunda paylaşılır.",
       ],
     },
   },

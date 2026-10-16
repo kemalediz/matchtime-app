@@ -675,7 +675,6 @@ const SAMPLES: SampleArgs = {
     picks: true,
     paid: true,
     relayRatings: true,
-    relayBadges: true,
   },
   admin_group_bad_code: null,
   admin_group_main_group: { club: "Friday FNF" },
