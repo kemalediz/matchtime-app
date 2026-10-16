@@ -125,6 +125,13 @@ function capTr(s: string): string {
 /** Tek sonuç, kazanan önce: "*Sarı* 9 - 6 kazandı, rakip Kırmızı" ya da
  *  "berabere, Kırmızı 7 - 7 Sarı". Üç skor yanıtı da bunu kullanır.
  *  Takım adına ek getirilmez (ünlü uyumu her ada uymaz). */
+/** "Sarı 7, Kırmızı 4": the winner first, a draw in the match's order. */
+function sidesTr(p: { redLabel: string; red: number; yellow: number; yellowLabel: string }): string {
+  return p.yellow > p.red
+    ? `${p.yellowLabel} ${p.yellow}, ${p.redLabel} ${p.red}`
+    : `${p.redLabel} ${p.red}, ${p.yellowLabel} ${p.yellow}`;
+}
+
 function resultTr(p: { redLabel: string; red: number; yellow: number; yellowLabel: string }): string {
   if (p.red === p.yellow) return `berabere, ${p.redLabel} ${p.red} - ${p.yellow} ${p.yellowLabel}`;
   return p.red > p.yellow
@@ -788,6 +795,8 @@ export const tr: Strings = {
   ask_score: (p) =>
     `🏁 *${p.activityName}*, umarım iyi geçmiştir. Skor ne oldu? ` +
     `Gelecek haftaki takımları dengeli kurmak için kullanacağım.`,
+  ask_score_hq: (p) =>
+    `🏁 *${p.activityName}*: maç kaç kaç bitti, hangi takım kazandı? Buraya yazın, kaydedeyim.`,
 
   // ═══════════════════════════════════════════════════════════════════
   // Phase 2, slice 3: the chase model's server-computed headers.
@@ -1189,6 +1198,12 @@ export const tr: Strings = {
   hq_not_here: `Bunu bu gruptan yapamam. Burada neler yapabildiğimi görmek için *neler yapabilirsin?* diye sorun.`,
   hq_not_understood: `Ne yapmamı istediğinizi anlayamadım. Burada neler yapabildiğimi görmek için *neler yapabilirsin?* diye sorun.`,
   hq_only_organisers: (p) => (p.names ? `Bunu yalnızca ${p.names} değiştirebilir.` : `Bunu yalnızca kulübün organizatörleri değiştirebilir.`),
+  hq_score_saved: (p) => `Skor kaydedildi: ${sidesTr(p)}.`,
+  hq_score_changed: (p) =>
+    `Skor değiştirildi: ${sidesTr(p)} (önceki: ${sidesTr({ ...p, red: p.oldRed, yellow: p.oldYellow })}).`,
+  hq_score_unclear: `Bundan son skoru çıkaramadım. Maç kaç kaç bitti ve hangi takım kazandı?`,
+  hq_score_no_match: `Skoru beklenen, bitmiş bir maç yok.`,
+  hq_score_failed: `Bu skoru şu an kaydedemedim. Lütfen bir dakika sonra tekrar gönderin.`,
   group_ask_organiser: (p) =>
     `${p.kickoffLabel} maçı için ${p.open} oyuncu daha lazım. *VARIM* yazın, kimin oynayacağını organizatörler seçer. Seçilirseniz size mesaj atarım.`,
   hq_group_asked: (p) => `Ana grupta ${p.open} oyuncu için sordum.`,

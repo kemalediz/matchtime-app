@@ -23,14 +23,32 @@ export interface PendingWithLabel extends PendingItem {
 
 const oneLine = (s: string, n: number) => s.replace(/\s+/g, " ").trim().slice(0, n);
 
+/**
+ * The match score MatchTime is waiting to hear (2026-10-16,
+ * `admin-group-score.ts`): the latest played match has no result, or
+ * MatchTime asked which team won a scoreline.
+ */
+export type ScoreWaiting =
+  | { kind: "result"; day: string; labels: readonly [string, string] }
+  | { kind: "which-team"; first: number; second: number; labels: readonly [string, string]; askedAt: Date };
+
 export function organisersContext(p: {
   pending: PendingWithLabel[];
   quoted: QuotedMessage | null;
   quotedIsMatchTime: boolean;
   recent: Array<Pick<HqLogRow, "fromMatchTime" | "text">>;
+  score?: ScoreWaiting | null;
 }): string[] {
   const lines: string[] = [];
-  if (p.pending.length === 0) lines.push("WAITING: nothing.");
+  if (p.pending.length === 0 && !p.score) lines.push("WAITING: nothing.");
+  if (p.score) {
+    const [a, b] = p.score.labels;
+    lines.push(
+      p.score.kind === "result"
+        ? `WAITING: the final score of ${p.score.day}'s match, ${a} against ${b}.`
+        : `WAITING: which team won ${p.score.first}-${p.score.second}, ${a} or ${b}, asked at ${formatLondon(p.score.askedAt, "HH:mm")}.`,
+    );
+  }
   for (const i of p.pending) {
     const at = formatLondon(i.askedAt, "HH:mm");
     lines.push(

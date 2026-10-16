@@ -403,6 +403,12 @@ export function buildAskScorePost(args: { activityName: string } & WithLang): st
   return t(args.lang).ask_score(args);
 }
 
+/** Row 77, in the club's admin group (2026-10-16): asks for the score and
+ *  which team won. */
+export function buildAskScoreHqPost(args: { activityName: string } & WithLang): string {
+  return t(args.lang).ask_score_hq(args);
+}
+
 /**
  * Row RSQ1 (2026-09-30, rolling squad): the morning announcement for a
  * match the squad was carried over onto (slice 1 of

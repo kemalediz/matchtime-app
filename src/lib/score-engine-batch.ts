@@ -189,6 +189,12 @@ export interface ScoreMessageOutcome {
   eloApplied: number;
   /** The write threw. The caller must not say anything cheerful. */
   writeFailed: boolean;
+  /** The result that LANDED, with the one it replaced on a correction.
+   *  Null when nothing was written. The organisers' group words its own
+   *  reply from it (`admin-group-score.ts`). */
+  recorded: { red: number; yellow: number; previous: { red: number; yellow: number } | null } | null;
+  /** The engine asked which team won this message's scoreline. */
+  askedWhichTeam: boolean;
 }
 
 export interface ScoreBatchResult {
@@ -610,6 +616,10 @@ export async function runScoreBatch(args: {
       matchId: write?.write.matchId ?? null,
       eloApplied: write?.eloApplied ?? 0,
       writeFailed: failed,
+      recorded: write?.ok
+        ? { red: write.write.red, yellow: write.write.yellow, previous: write.write.previous ?? null }
+        : null,
+      askedWhichTeam: askWrites.some((a) => a.sourceMessageId === m.waMessageId),
     });
   }
 

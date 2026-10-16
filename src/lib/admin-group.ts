@@ -99,6 +99,11 @@ const NO_TICK: ReadonlySet<string> = new Set([
   HQ_FEE_FREE_NOTHING_DONE,
   // A YES to a free place question past its 30 minutes: nothing done.
   HQ_FEE_FREE_EXPIRED,
+  // The score (2026-10-16): a tick only when it was recorded.
+  "hq-score-asked",
+  "hq-score-not-changed",
+  "hq-score-no-match",
+  "hq-score-failed",
 ]);
 export const HQ_TICK = "✅";
 

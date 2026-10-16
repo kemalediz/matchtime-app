@@ -56,6 +56,9 @@ const feeWaiver = vi.hoisted(() => ({
   feeProposalsAwaiting: vi.fn().mockResolvedValue([]),
 }));
 vi.mock("@/lib/fee-waiver", () => feeWaiver);
+// The score in HQ (2026-10-16): nothing waiting and no override by default.
+const hqScore = vi.hoisted(() => ({ answerHqScore: vi.fn(), hqScoreRouting: vi.fn() }));
+vi.mock("@/lib/admin-group-score", () => hqScore);
 
 import { understandAdminMessage } from "../admin-group-understand";
 
@@ -115,6 +118,8 @@ beforeEach(() => {
   groupAsk.askPlayersGroup.mockResolvedValue({ outcome: "group-asked", replyText: "Asked in the main chat for 1 player." });
   hqQuestion.answerHqQuestion.mockResolvedValue(null);
   dbMock.membership.findMany.mockResolvedValue([{ user: { name: "Hamzah Ali" } }, { user: { name: "Raihan" } }]);
+  hqScore.hqScoreRouting.mockResolvedValue({ waiting: null, scoreAnswerIds: new Set(), scoreCorrectionIds: new Set() });
+  hqScore.answerHqScore.mockResolvedValue({ outcome: "hq-score-saved", replyText: "Score saved: Yellow 7, Red 4." });
 });
 
 describe("the router is the players' group's router, shown the organisers' context", () => {
@@ -234,7 +239,7 @@ describe("the other routes reach the code the rest of MatchTime uses", () => {
     expect(squad.handleAdminSquadChange).not.toHaveBeenCalled();
   });
 
-  it.each(["score", "admin_ops"])("%s: clearly for MatchTime but not done from HQ: one line, never silent", async (route) => {
+  it.each(["admin_ops"])("%s: clearly for MatchTime but not done from HQ: one line, never silent", async (route) => {
     const deps = { routerModel: routeTo(route), extractorModel: adminFacts({ action: "other" }) };
     expect((await ask("@Match Time who has paid?", route, { deps }))?.replyText).toBe("I can't do that from this group. Ask *what can you do?* to see what I can do here.");
     expect(feeWaiver.proposeFeeFreeInHq).not.toHaveBeenCalled();
@@ -613,5 +618,67 @@ describe("a partner club's ask waiting for this club's YES", () => {
     const r = await ask("yes", "approve");
     expect(partnerAsk.answerPartnerAskYes).toHaveBeenCalledWith(expect.objectContaining({ orgId: "org-fnf", askId: "ask1", userId: "u-admin" }));
     expect(r?.outcome).toBe("xask-approved");
+  });
+});
+
+describe("score: the players' group's score handling, with HQ's context (2026-10-16)", () => {
+  it("an organiser's score goes to the shared score handler, addressed or not", async () => {
+    const r = await ask("Yellow won 7-4", "score");
+    expect(r).toEqual({ route: "score", outcome: "hq-score-saved", replyText: "Score saved: Yellow 7, Red 4." });
+    expect(hqScore.answerHqScore).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: "org-fnf", lang: "en", messageId: "wa-9", body: "Yellow won 7-4", senderUserId: "u-admin", organiser: true, addressed: false, now: NOW }),
+    );
+  });
+
+  it("anyone else: handed over as not an organiser; a change they may not make gets the organisers' line", async () => {
+    hqScore.answerHqScore.mockResolvedValue("organisers-only");
+    const r = await ask("@Match Time no it was 7-5", "score", { organiser: false, senderUserId: "u-p" });
+    expect(hqScore.answerHqScore).toHaveBeenCalledWith(expect.objectContaining({ organiser: false, addressed: true }));
+    expect(r).toEqual({ route: "score", outcome: "hq-only-organisers", replyText: "Only Hamzah or Raihan can change that." });
+  });
+
+  it("nothing to say: silent", async () => {
+    hqScore.answerHqScore.mockResolvedValue(null);
+    expect(await ask("7-4 lads", "score")).toBeNull();
+  });
+
+  it("the router is shown the score MatchTime is waiting for", async () => {
+    hqScore.hqScoreRouting.mockResolvedValue({
+      waiting: { kind: "result", day: "Thu 15 Oct", labels: ["Red", "Yellow"] },
+      scoreAnswerIds: new Set(),
+      scoreCorrectionIds: new Set(),
+    });
+    await ask("Yellow won 7-4", "score");
+    expect(requests[0].user).toContain("WAITING: the final score of Thu 15 Oct's match, Red against Yellow.");
+  });
+
+  it("a scoreline the router could not place (unsure) while a score is waiting: the score handling reads it", async () => {
+    hqScore.hqScoreRouting.mockResolvedValue({
+      waiting: { kind: "result", day: "Thu 15 Oct", labels: ["Kırmızı", "Sarı"] },
+      scoreAnswerIds: new Set(),
+      scoreCorrectionIds: new Set(),
+    });
+    hqScore.answerHqScore.mockResolvedValue({ outcome: "hq-score-asked", replyText: "Bundan son skoru çıkaramadım." });
+    const r = await ask("7-4 mü 7-5 mi emin değilim", "unsure");
+    expect(r).toEqual({ route: "score", outcome: "hq-score-asked", replyText: "Bundan son skoru çıkaramadım." });
+    expect(squad.handleAdminSquadChange).not.toHaveBeenCalled();
+  });
+
+  it("unsure with no score waiting, or with no scoreline: as before, never the score handling", async () => {
+    expect(await ask("7-4 mü 7-5 mi emin değilim", "unsure")).toBeNull();
+    hqScore.hqScoreRouting.mockResolvedValue({
+      waiting: { kind: "result", day: "Thu 15 Oct", labels: ["Red", "Yellow"] },
+      scoreAnswerIds: new Set(),
+      scoreCorrectionIds: new Set(),
+    });
+    expect(await ask("see you at 21:00", "unsure")).toBeNull();
+    expect(hqScore.answerHqScore).not.toHaveBeenCalled();
+  });
+
+  it('an answer to MatchTime\'s open "which team won?" goes to score whatever the router says', async () => {
+    hqScore.hqScoreRouting.mockResolvedValue({ waiting: null, scoreAnswerIds: new Set(["wa-9"]), scoreCorrectionIds: new Set() });
+    const r = await ask("Yellow", "none");
+    expect(r?.route).toBe("score");
+    expect(hqScore.answerHqScore).toHaveBeenCalledWith(expect.objectContaining({ body: "Yellow" }));
   });
 });
