@@ -5,8 +5,8 @@
  * THE GAP
  * ═══════════════════════════════════════════════════════════════════════
  *
- * After each match every player gets a pay link: "Pay by bank, card,
- * Apple or Google Pay, or settle directly". The pay page's "Pay the
+ * After each match every player gets a pay link naming the ways the
+ * club takes payment (`availablePayMethods`). The pay page's "Pay the
  * collector directly" button does the right thing. But the less
  * technical half of a club skips the link and just DMs the bot "Paid",
  * and nothing read that. Abid Kazmi's "Paid" at 18:09 on 2026-09-23 was
