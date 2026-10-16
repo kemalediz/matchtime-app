@@ -45,3 +45,14 @@ describe("quotedRefOf: what the analyze route carries on to the engine", () => {
     expect(quotedRefOf({ quotedMessageId: 42 as unknown as string })).toBeNull();
   });
 });
+
+describe("M3 (review): a Pi that forwards quoted ids says so", () => {
+  it("reads the quoted-id capability from the Pi's header, and nothing from an older Pi", async () => {
+    const { piSendsQuotedIds, PI_CAP_QUOTED_ID } = await import("../quoted-message");
+    expect(PI_CAP_QUOTED_ID).toBe("quoted-id");
+    expect(piSendsQuotedIds("admin-group,quoted-id")).toBe(true);
+    expect(piSendsQuotedIds(" Quoted-ID ")).toBe(true);
+    expect(piSendsQuotedIds("admin-group")).toBe(false);
+    expect(piSendsQuotedIds(null)).toBe(false);
+  });
+});

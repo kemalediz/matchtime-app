@@ -131,3 +131,15 @@ test("OUT replying to the ask takes him off the asking club's match", async ({ r
   expect(await rowOf(db, ASKER_MATCH, U.fresh)).toBe("DROPPED");
   expect(await rowOf(db, MATCH.upcoming, U.fresh)).toBeUndefined();
 });
+
+test("M1 (review, Kemal): a partner club with NO upcoming game of its own still lends: the reply registers", async ({ request, db }) => {
+  await db.run(`UPDATE "Match" SET status = 'CANCELLED' WHERE id = $1`, [MATCH.upcoming]);
+  engineOn({ IN: { route: "self_att", facts: selfIn() } });
+  const m = id();
+  const res = await postAnalyze(request, [
+    { waMessageId: m, body: "IN", authorPhone: "447700900010", authorName: "Zara Zest", quotedFromMatchTime: true, quotedMessageId: "3EB0XVOLASK" },
+  ]);
+  const r = (res.results as Result[]).find((x) => x.waMessageId === m)!;
+  expect(await rowOf(db, ASKER_MATCH, U.extra)).toBe("BENCH");
+  expect(r.reply ?? "").toContain("bench");
+});

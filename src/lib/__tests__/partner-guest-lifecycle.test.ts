@@ -12,7 +12,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const dbMock = vi.hoisted(() => ({
-  partnerAsk: { findUnique: vi.fn(), updateMany: vi.fn() },
+  partnerAsk: { findUnique: vi.fn(), updateMany: vi.fn(), count: vi.fn() },
   organisation: { findUnique: vi.fn() },
   attendance: { findMany: vi.fn() },
   user: { findMany: vi.fn() },
@@ -53,6 +53,12 @@ beforeEach(() => {
     { id: "bob", phoneNumber: "+447700900222" },
   ]);
   dbMock.membership.updateMany.mockResolvedValue({ count: 1 });
+  // Both are this ask's own guests (review M5), on no other open ask (L4).
+  dbMock.membership.findMany.mockResolvedValue([
+    { userId: "ali", guestFromOrgId: "sutton", guestMatchId: "m-fnf", leftAt: null },
+    { userId: "bob", guestFromOrgId: "sutton", guestMatchId: "m-fnf", leftAt: null },
+  ]);
+  dbMock.partnerAsk.count.mockResolvedValue(0);
 });
 
 describe("standDownVolunteers: the ask has closed", () => {

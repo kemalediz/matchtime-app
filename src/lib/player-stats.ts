@@ -23,7 +23,7 @@ import {
   summariseClubDisplayRatings,
   type ClubRatingSource,
 } from "./player-rating";
-import { buildRankedRoster, loadLastPlayedByUser } from "./ranked-table-activity";
+import { buildRankedRoster, loadGuestUserIds, loadLastPlayedByUser } from "./ranked-table-activity";
 import { earnsMrReliable, ratingSpread } from "./mr-reliable";
 import {
   ABOVE_CURVE_MIN_RATED_GAMES,
@@ -526,16 +526,6 @@ export async function loadRatingLeaderboard(
 
   const latestMatchId = matches[matches.length - 1].id;
 
-  // A partner club's guest, current or past (cross-club ask, S4), is not
-  // listed in this club's table: he played for it, he is not its player.
-  // His ratings here still make his club rating here, on his own profile.
-  const guestIds = new Set(
-    (
-      (await Promise.resolve()
-        .then(() => db.membership.findMany({ where: { orgId, guestFromOrgId: { not: null } }, select: { userId: true } }))
-        .catch(() => [])) ?? []
-    ).map((g) => g.userId),
-  );
 
   // playerId -> { scores[], distinct matchIds } — `games` must count
   // matches, NOT rating rows (a game with 12 raters is still one game).
@@ -550,7 +540,6 @@ export async function loadRatingLeaderboard(
   };
   for (const m of matches) {
     for (const r of m.ratings) {
-      if (guestIds.has(r.playerId)) continue;
       bump(all, r.playerId, r.score, m.id);
       if (m.id !== latestMatchId) bump(prior, r.playerId, r.score, m.id);
     }
@@ -566,7 +555,7 @@ export async function loadRatingLeaderboard(
   // the list reads 1, 2, 3 with no gap where a departed player used to
   // sit. Movement arrows are computed the same way in both passes, so a
   // player's arrow never jumps because somebody else aged out.
-  const roster = buildRankedRoster(await loadLastPlayedByUser(db, orgId));
+  const roster = buildRankedRoster(await loadLastPlayedByUser(db, orgId), undefined, await loadGuestUserIds(db, orgId));
   const rankActive = (map: Map<string, Acc>) => {
     const rows = [...map.entries()]
       .map(([id, a]) => ({ id, avg: mean(a.scores)!, games: a.matches.size }))
@@ -678,7 +667,7 @@ export async function loadMrReliableHolders(orgId: string): Promise<MrReliableHo
       perPlayer.set(pid, acc);
     }
   }
-  const roster = buildRankedRoster(await loadLastPlayedByUser(db, orgId));
+  const roster = buildRankedRoster(await loadLastPlayedByUser(db, orgId), undefined, await loadGuestUserIds(db, orgId));
   const earned = [...perPlayer.entries()]
     .filter(([pid, a]) => roster.isRanked(pid) && earnsMrReliable({ perGameAverages: a.perGame, avgRating: mean(a.all) }))
     .map(([pid, a]) => ({ userId: pid, avg: mean(a.all)!, games: a.perGame.length, spread: ratingSpread(a.perGame)! }));
@@ -751,7 +740,7 @@ export async function loadTeamOfSeason(
       acc.set(r.playerId, a);
     }
   }
-  const roster = buildRankedRoster(await loadLastPlayedByUser(db, orgId));
+  const roster = buildRankedRoster(await loadLastPlayedByUser(db, orgId), undefined, await loadGuestUserIds(db, orgId));
   const eligible = [...acc.entries()]
     .map(([id, a]) => ({ id, avg: mean(a.scores)!, games: a.matches.size }))
     .filter((r) => r.games >= minGames)

@@ -5,6 +5,7 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  movedWindows,
   PARTNER_ASKS_PER_DAY,
   askWindows,
   canAsk,
@@ -146,7 +147,9 @@ describe("closing an ask", () => {
   });
   it("cancelled, moved, or the pairing paused: cancelled", () => {
     expect(closeReason(c({ matchStatus: "CANCELLED" }))).toBe("match-cancelled");
-    expect(closeReason(c({ matchDate: new Date(KICKOFF.getTime() + H) }))).toBe("match-moved");
+    // H3 (review): a MOVED game does not close the ask; its windows follow
+    // the new kickoff (`movedWindows`), so nobody is told the game is off.
+    expect(closeReason(c({ matchDate: new Date(KICKOFF.getTime() + H) }))).toBeNull();
     expect(closeReason(c({ partnershipStatus: "paused" }))).toBe("partnership-inactive");
     expect(closedStatus("match-cancelled", "posted")).toBe("cancelled");
     expect(closedStatus("partnership-inactive", "posted")).toBe("cancelled");
@@ -158,5 +161,18 @@ describe("closing an ask", () => {
     expect(closeTells("kickoff", "posted", 0)).toEqual({ partnerGroup: null, asker: "nobody" });
     expect(closeTells("kickoff", "posted", 2)).toEqual({ partnerGroup: null, asker: null });
     expect(closeTells("approval-expired", "awaiting-approval", 0)).toEqual({ partnerGroup: null, asker: "expired-approval" });
+  });
+});
+
+describe("H3 (review): a moved game", () => {
+  it("the ask follows the new kickoff: new cut-off and close, same hours", () => {
+    const moved = new Date(KICKOFF.getTime() + 2 * H);
+    expect(movedWindows({ closesAt: KICKOFF, matchDate: moved, cutoffHours: 4 })).toEqual({
+      postBy: new Date(moved.getTime() - 4 * H),
+      closesAt: moved,
+    });
+  });
+  it("not moved: nothing to change", () => {
+    expect(movedWindows({ closesAt: KICKOFF, matchDate: KICKOFF, cutoffHours: 4 })).toBeNull();
   });
 });

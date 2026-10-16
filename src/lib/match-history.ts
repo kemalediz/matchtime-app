@@ -49,6 +49,7 @@ import type { Lang } from "./i18n/lang";
 import {
   RANKED_TABLE_INACTIVE_AFTER_MONTHS,
   buildRankedRoster,
+  loadGuestUserIds,
   lastPlayedFromRows,
   type RankedRoster,
 } from "./ranked-table-activity";
@@ -217,6 +218,9 @@ export async function loadRecentHistory(orgId: string): Promise<RecentHistory | 
     lastPlayedFromRows(
       attendanceRows.map((a) => ({ userId: a.userId, date: matchDateById.get(a.matchId) })),
     ),
+    undefined,
+    // A partner club's guests are in none of the club's tables (review L3).
+    await loadGuestUserIds(db, orgId),
   );
 
   // 2. MoM votes for the matches we actually render — uses the shared
@@ -458,7 +462,7 @@ export async function loadClubRecordTables(
   const dated = attendanceRows
     .map((a) => ({ userId: a.userId, date: dateById.get(a.matchId) }))
     .filter((a): a is { userId: string; date: Date } => a.date instanceof Date);
-  const roster = buildRankedRoster(lastPlayedFromRows(dated));
+  const roster = buildRankedRoster(lastPlayedFromRows(dated), undefined, await loadGuestUserIds(db, orgId));
   const users = await db.user.findMany({
     where: { id: { in: [...new Set(dated.map((a) => a.userId))] } },
     select: { id: true, name: true },

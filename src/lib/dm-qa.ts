@@ -60,7 +60,8 @@ export async function pickRelevantOrgForUser(userId: string): Promise<string | n
   // Never a club that is still setting up (club-setup.ts): it may spend
   // nothing, so a question routed to it would get no answer at all.
   const memberships = await db.membership.findMany({
-    where: { userId, leftAt: null, ...IN_LIVE_STAGE_CLUB_WHERE },
+    // Not a club he is only a guest of (cross-club ask, review M6).
+    where: { userId, leftAt: null, guestFromOrgId: null, ...IN_LIVE_STAGE_CLUB_WHERE },
     select: { orgId: true },
   });
   if (memberships.length === 0) return null;

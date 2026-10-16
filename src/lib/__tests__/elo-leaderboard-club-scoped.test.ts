@@ -143,7 +143,9 @@ describe("the Elo leaderboard", () => {
 
     await loadRecentHistory(ORG);
 
-    const call = membershipFindMany.mock.calls[0][0] as {
+    // The Elo read (the guests read for the tables comes first since the
+    // cross-club ask's review L3, and asks for no user ids).
+    const call = membershipFindMany.mock.calls.find((c) => (c[0] as { where: { userId?: unknown } }).where.userId)![0] as {
       where: { orgId: string; userId: { in: string[] } };
     };
     expect(call.where.orgId).toBe(ORG);

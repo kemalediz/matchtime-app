@@ -735,6 +735,10 @@ export interface SquadState {
   /** Partner clubs' asks posted in this group, open or recently closed
    *  (slice S3). Absent or empty for every club no partner has asked. */
   partnerAsks?: PartnerAskView[];
+  /** Members with a live guest place in a partner club's game that
+   *  overlaps this club's active match (review L1), by user id. Absent or
+   *  empty for every club no partner has borrowed from. */
+  guestElsewhere?: Record<string, { askerName: string }>;
   /**
    * THE LAST MATCH THAT HAS ACTUALLY BEEN PLAYED — the one a score
    * report and a payment credit are about.
@@ -1316,6 +1320,8 @@ export type SpeechIntent =
   /** The one authoritative squad post for the batch (§3.2 S36). */
   | { kind: "squad_status"; messageId: string | null }
   | { kind: "guest_name_ask"; messageId: string; askerName: string | null; body: string }
+  /** Review L1: his own IN refused, he plays for a partner club then. */
+  | { kind: "partner_guest_overlap"; messageId: string; askerName: string }
   /**
    * D5b (cross-club ask, slice S5b): a plain IN soon after a partner club's
    * ask, from someone with no row on his own game. Asks him once which game

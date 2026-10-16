@@ -79,13 +79,14 @@ describe("the readers that leave a guest out", () => {
     expect(src("badge-announcement-scheduler.ts")).toMatch(/where: \{ orgId, leftAt: null, guestFromOrgId: null \}/);
   });
   it("seed nudge: guests are not counted", () => {
-    expect(src("seed-nudge.ts")).toMatch(/where: \{ orgId, guestFromOrgId: null \}/);
+    expect(src("seed-nudge.ts")).toMatch(/const members = all\.filter\(\(m\) => !m\.guestFromOrgId\)/);
   });
   it("a cold DM never lands on a club he is only a guest of", () => {
     expect(src("dm-registration-target.ts")).toMatch(/where: \{ userId, leftAt: null, guestFromOrgId: null, \.\.\.IN_LIVE_STAGE_CLUB_WHERE \}/);
   });
   it("the club's leaderboard skips a guest's ratings", () => {
-    expect(src("player-stats.ts")).toMatch(/if \(guestIds\.has\(r\.playerId\)\) continue;/);
+    // One rule for every season table since review L3: the ranked roster.
+    expect(src("player-stats.ts")).toMatch(/loadGuestUserIds\(db, orgId\)/);
   });
   it("the players API hides a guest's phone and email and never offers him for a merge", () => {
     const api = readFileSync(join(__dirname, "..", "..", "app", "api", "players", "route.ts"), "utf8");

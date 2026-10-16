@@ -3699,6 +3699,11 @@ export const tr: Strings = {
   // ─── D5b, tek soru (slice S5b) ──────────────────────────────────────
   xask_which: (p) =>
     `Bu VARIM *${p.asker}* maçı için mi, bizim maç için mi? ${p.asker} için ${p.asker} mesajımı yanıtlayıp VARIM yaz. Bizim maç için tekrar VARIM yazman yeterli.`,
+  xask_vol_game_over: (p) => `*${p.asker}* maçı artık bitti, değiştirecek bir şey yok.`,
+  xask_dm_which: (p) =>
+    `Hangi maçtan çıkıyorsun? *${p.asker}* (${p.askerDay}) için *1*, *${p.own}* (${p.ownDay}) için *2* yaz.`,
+  xask_moved_dm: (p) => `*${p.asker}* maçının saati değişti: artık ${p.day}. Yerin duruyor. Gelemeyeceksen grubundaki isteklerini yanıtlayıp *YOKUM* yaz.`,
+  xask_guest_overlap: (p) => `O saatte *${p.asker}* için oynuyorsun, bu yüzden seni bu maça da yazamıyorum.`,
 };
 
 /**

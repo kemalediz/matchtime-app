@@ -234,6 +234,9 @@ export interface RankedRoster {
 export function buildRankedRoster(
   lastPlayedByUser: Map<string, Date>,
   now: Date = new Date(),
+  /** A partner club's guests, current or past (cross-club ask, review L3):
+   *  never ranked in this club's season tables. Empty: as before. */
+  excluded: ReadonlySet<string> = new Set(),
 ): RankedRoster {
   const cutoff = rankedTableCutoff(now);
   const hidden = [...lastPlayedByUser.entries()]
@@ -243,7 +246,7 @@ export function buildRankedRoster(
   const hiddenSet = new Set(hidden);
   return {
     cutoff,
-    isRanked: (userId) => lastPlayedByUser.has(userId) && !hiddenSet.has(userId),
+    isRanked: (userId) => lastPlayedByUser.has(userId) && !hiddenSet.has(userId) && !excluded.has(userId),
     lastPlayed: (userId) => lastPlayedByUser.get(userId) ?? null,
     hiddenUserIds: hidden,
     hiddenCount: hidden.length,
@@ -340,4 +343,26 @@ export function formatLastPlayed(d: Date): string {
     month: "short",
     year: "numeric",
   }).format(d);
+}
+
+interface GuestReader {
+  membership: {
+    findMany(args: {
+      where: { orgId: string; guestFromOrgId: { not: null } };
+      select: { userId: true; guestFromOrgId: true };
+    }): Promise<Array<{ userId: string; guestFromOrgId: string | null }>>;
+  };
+}
+
+/**
+ * The club's guests from partner clubs, current or past (cross-club ask,
+ * review L3), for `buildRankedRoster`'s `excluded`. Never fails a table: a
+ * read error (or a database before the migration) reads as none.
+ */
+export async function loadGuestUserIds(db: GuestReader, orgId: string): Promise<Set<string>> {
+  const rows = await Promise.resolve()
+    .then(() => db.membership.findMany({ where: { orgId, guestFromOrgId: { not: null } }, select: { userId: true, guestFromOrgId: true } }))
+    .catch(() => [] as Array<{ userId: string; guestFromOrgId: string | null }>);
+  // Filtered again here: only a row that says it is a guest's counts.
+  return new Set((rows ?? []).filter((r) => !!r?.guestFromOrgId).map((r) => r.userId));
 }

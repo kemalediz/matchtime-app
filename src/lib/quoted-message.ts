@@ -40,3 +40,19 @@ export function quotedRefOf(m: { quotedMessageId?: unknown; quotedFromMatchTime?
   if (typeof m.quotedMessageId !== "string" || m.quotedMessageId.trim() === "") return null;
   return { id: m.quotedMessageId.trim(), fromMatchTime: m.quotedFromMatchTime === true };
 }
+
+/**
+ * The Pi's capability for quoted ids (review M3). A Pi that forwards
+ * `quotedMessageId` says "quoted-id" in its capability header
+ * (`x-mt-pi-caps`, beside "admin-group"); the server posts a partner
+ * club's ask only to such a Pi, because without the id a reply to the ask
+ * cannot be told from an IN for the player's own game.
+ */
+export const PI_CAP_QUOTED_ID = "quoted-id";
+
+export function piSendsQuotedIds(header: string | null | undefined): boolean {
+  return (header ?? "")
+    .split(",")
+    .map((c) => c.trim().toLowerCase())
+    .includes(PI_CAP_QUOTED_ID);
+}

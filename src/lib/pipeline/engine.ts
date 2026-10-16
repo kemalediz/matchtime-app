@@ -418,6 +418,9 @@ export function decide(input: EngineInput): EngineResult {
   messages.forEach((m, i) => {
     if (!m.senderUserId) return;
     if (m.facts.kind !== "attendance") return;
+    // Review M2: a reply to a partner club's ask is about ANOTHER club's
+    // game; it neither supersedes nor is superseded by an own-club claim.
+    if (quotedPartnerAsk(m, state)) return;
     const sender = m.senderUserId;
     // A self claim the swap guard in `handleAttendance` will refuse
     // ("swap me with David") writes nothing, so it must not supersede
@@ -505,7 +508,10 @@ export function decide(input: EngineInput): EngineResult {
     // ── the handlers ───────────────────────────────────────────────────
 
     function handleAttendance(msg: EngineMessage, facts: AttendanceFacts, i: number) {
-      if (!state.features.attendance) {
+      // Review M1: a reply to a partner club's ask is about ANOTHER club's
+      // game, so this club's own settings (attendance off) never swallow it.
+      // Every other message stops here, exactly as before.
+      if (!state.features.attendance && !quotedPartnerAsk(msg, state)) {
         out.reasons.push("org does not track attendance");
         return;
       }
@@ -749,6 +755,21 @@ export function decide(input: EngineInput): EngineResult {
           reason: `a quoted reply to ${ask.askerName}'s ask (${ask.askId})`,
         });
         out.reasons.push(`partner club's ask ${ask.askId}: the reply is about ${ask.askerName}'s game, not this club's`);
+        return;
+      }
+
+      // Review L1: a member picked as a partner club's guest for a game that
+      // overlaps this one cannot also say IN here. One reply, no write. His
+      // OUT is never refused.
+      if (
+        msg.senderUserId &&
+        state.guestElsewhere?.[msg.senderUserId] &&
+        claims.length > 0 &&
+        claims.every((c) => c.subject === "sender" && c.polarity !== "out")
+      ) {
+        speech.push({ kind: "partner_guest_overlap", messageId: msg.id, askerName: state.guestElsewhere[msg.senderUserId].askerName });
+        out.reasons.push("L1: the sender plays for a partner club at an overlapping time; own IN refused");
+        out.disposition = out.disposition === "degraded" ? "degraded" : "acted";
         return;
       }
 

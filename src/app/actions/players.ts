@@ -427,9 +427,12 @@ export async function updatePlayerPhone(userId: string, orgId: string, phone: st
 
   const membership = await db.membership.findUnique({
     where: { userId_orgId: { userId, orgId } },
-    select: { userId: true },
+    select: { userId: true, guestFromOrgId: true },
   });
   if (!membership) throw new Error("Player is not a member of this organisation");
+  // A partner club's guest (cross-club ask, review H1): his number is not
+  // this club's to see or to set.
+  if (membership.guestFromOrgId) throw new Error("This player is a guest from a partner club");
 
   const normalised = normalisePhone(phone);
   if (!normalised) throw new Error("Phone number is not a valid international format");

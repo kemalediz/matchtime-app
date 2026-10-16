@@ -165,8 +165,9 @@ ALTER TABLE "PartnerAsk" ADD CONSTRAINT "PartnerAsk_places_check"
 ALTER TABLE "PartnerAsk" DROP CONSTRAINT IF EXISTS "PartnerAsk_two_clubs_check";
 ALTER TABLE "PartnerAsk" ADD CONSTRAINT "PartnerAsk_two_clubs_check"
   CHECK ("askerOrgId" <> "partnerOrgId");
-DROP INDEX IF EXISTS "PartnerAsk_one_open_per_match_partner";
-CREATE UNIQUE INDEX "PartnerAsk_one_open_per_match_partner"
+-- Created if missing and never dropped, so a re-run never leaves a window
+-- without it (review of the stack, L5).
+CREATE UNIQUE INDEX IF NOT EXISTS "PartnerAsk_one_open_per_match_partner"
   ON "PartnerAsk" ("matchId", "partnerOrgId")
   WHERE "status" IN ('awaiting-approval', 'posted');
 
