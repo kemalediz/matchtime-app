@@ -43,6 +43,7 @@
  * The engine is built OUT of the pure core, not beside it.
  */
 import { sameWhatsAppMessage } from "../quoted-message";
+import { partnerAskToQuestion } from "../partner-volunteer-rules";
 import { canTakeFreePlace, ORGANISER_PICK_BENCH_NOTE } from "../squad-capacity";
 import {
   actionRequiresTag,
@@ -749,6 +750,30 @@ export function decide(input: EngineInput): EngineResult {
         });
         out.reasons.push(`partner club's ask ${ask.askId}: the reply is about ${ask.askerName}'s game, not this club's`);
         return;
+      }
+
+      // D5b (slice S5b): a PLAIN IN soon after a partner club's ask, from a
+      // sender with no row at all on this club's game, may mean either. A
+      // state rule: MatchTime asks him once which, and writes nothing. A
+      // sender with a row is clearly talking about his own game; once
+      // asked, his next IN is his own game's. Only the sender's own IN.
+      if (
+        msg.route === "self_att" &&
+        claims.length > 0 &&
+        claims.every((c) => c.subject === "sender" && c.polarity === "in")
+      ) {
+        const which = partnerAskToQuestion({
+          now: input.now,
+          asks: state.partnerAsks ?? [],
+          senderUserId: msg.senderUserId,
+          senderHasOwnRow: !!msg.senderUserId && state.rows.some((r) => r.userId === msg.senderUserId),
+        });
+        if (which && msg.senderUserId) {
+          speech.push({ kind: "partner_ask_which", messageId: msg.id, askId: which.askId, userId: msg.senderUserId, askerName: which.askerName });
+          out.reasons.push(`D5b: a plain IN under an hour after ${which.askerName}'s ask, with no row on this club's game: asked which`);
+          out.disposition = out.disposition === "degraded" ? "degraded" : "acted";
+          return;
+        }
       }
 
       // Side requests are facts in their own right and must survive

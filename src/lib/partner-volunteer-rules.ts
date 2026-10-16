@@ -57,3 +57,30 @@ export function isPastGuestDue(p: { kickoff: Date; status: string; now: Date }):
   if (p.status === "CANCELLED") return true;
   return p.now.getTime() >= pastGuestAt(p.kickoff).getTime();
 }
+
+/** D5b's window: an ask posted within this long. */
+export const PARTNER_WHICH_WINDOW_MS = 60 * 60 * 1000;
+
+/**
+ * D5b (slice S5b): should MatchTime ask a sender "FNF or ours?" about a
+ * plain IN? A state rule, never a reading of words: an open ask posted in
+ * the last hour, a sender with NO row at all on his own club's game, and
+ * not asked about this ask before. The newest such ask, or null.
+ */
+export function partnerAskToQuestion(p: {
+  now: Date;
+  asks: ReadonlyArray<{ askId: string; askerName: string; open: boolean; postedAt?: string | null; whichAskedUserIds?: string[] }>;
+  senderUserId: string | null;
+  senderHasOwnRow: boolean;
+}): { askId: string; askerName: string } | null {
+  if (!p.senderUserId || p.senderHasOwnRow) return null;
+  let best: { askId: string; askerName: string; at: number } | null = null;
+  for (const a of p.asks) {
+    if (!a.open || !a.postedAt) continue;
+    const at = new Date(a.postedAt).getTime();
+    if (!Number.isFinite(at) || p.now.getTime() - at >= PARTNER_WHICH_WINDOW_MS || at > p.now.getTime()) continue;
+    if ((a.whichAskedUserIds ?? []).includes(p.senderUserId)) continue;
+    if (!best || at > best.at) best = { askId: a.askId, askerName: a.askerName, at };
+  }
+  return best ? { askId: best.askId, askerName: best.askerName } : null;
+}

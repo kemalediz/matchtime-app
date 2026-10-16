@@ -404,6 +404,12 @@ export interface EngineBatchDeps extends EngineApplyDeps {
    * that never meet one): such a write is refused and reported.
    */
   partnerVolunteer?: (w: Extract<ProposedWrite, { kind: "partner_volunteer" }>) => Promise<{ ok: boolean; outcome: string; replyText: string | null }>;
+  /**
+   * D5b (slice S5b): claim the one "FNF or ours?" question per sender per
+   * ask BEFORE it is said. `true` when this batch got it. Absent: the
+   * question is not asked (and nothing is written for the message).
+   */
+  claimPartnerAskWhich?: (args: { askId: string; userId: string }) => Promise<boolean>;
 }
 
 export async function runAttendanceEngineBatch(args: {
@@ -931,6 +937,28 @@ export async function runAttendanceEngineBatch(args: {
           (sp) => !(sp.kind === "guest_name_ask" && lost.has(sp.messageId)),
         ),
       };
+    }
+  }
+
+  // ── Stage 3a': CLAIM THE D5b QUESTION (slice S5b), like the name ask ──
+  const whichSpeech = result.speech.filter((sp) => sp.kind === "partner_ask_which");
+  if (whichSpeech.length > 0) {
+    const lostWhich = new Set<string>();
+    for (const sp of whichSpeech) {
+      if (sp.kind !== "partner_ask_which") continue;
+      let claimed = false;
+      try {
+        claimed = ownedIds.has(sp.messageId) && !!deps.claimPartnerAskWhich && (await deps.claimPartnerAskWhich({ askId: sp.askId, userId: sp.userId }));
+      } catch (err) {
+        console.error(`[attendance-engine] partner-ask-which claim threw for ${sp.userId}:`, err);
+      }
+      if (!claimed) {
+        lostWhich.add(sp.messageId);
+        degradations.push(`D5b question for ${sp.userId} on ask ${sp.askId} not claimed; not asked`);
+      }
+    }
+    if (lostWhich.size > 0) {
+      result = { ...result, speech: result.speech.filter((sp) => !(sp.kind === "partner_ask_which" && lostWhich.has(sp.messageId))) };
     }
   }
 

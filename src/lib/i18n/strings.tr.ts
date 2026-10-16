@@ -3696,6 +3696,9 @@ export const tr: Strings = {
   xask_keep_button: (p) => `${p.club} kulübüne ekle`,
   xask_keep_done: "Üye olarak eklendi.",
   xask_guest_badge: (p) => `Misafir: ${p.club}`,
+  // ─── D5b, tek soru (slice S5b) ──────────────────────────────────────
+  xask_which: (p) =>
+    `Bu VARIM *${p.asker}* maçı için mi, bizim maç için mi? ${p.asker} için ${p.asker} mesajımı yanıtlayıp VARIM yaz. Bizim maç için tekrar VARIM yazman yeterli.`,
 };
 
 /**

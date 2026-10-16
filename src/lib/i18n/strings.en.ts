@@ -4892,4 +4892,7 @@ export const en = {
   xask_keep_button: (p: { club: string }) => `Add to ${p.club}`,
   xask_keep_done: "Added as a member.",
   xask_guest_badge: (p: { club: string }) => `Guest from ${p.club}`,
+  // ─── D5b, the one question (slice S5b, 2026-10-16) ──────────────────
+  xask_which: (p: { asker: string }) =>
+    `Is that IN for *${p.asker}*'s game or for ours? For ${p.asker}, reply to my ${p.asker} message with IN. For ours, just say IN again.`,
 };

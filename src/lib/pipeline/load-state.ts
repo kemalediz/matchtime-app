@@ -455,9 +455,17 @@ async function loadPartnerAskViews(orgId: string, now: Date): Promise<PartnerAsk
         // filled, until its game is over (S4).
         OR: [{ status: "posted" }, { closesAt: { gte: now } }, { closedAt: { gte: new Date(now.getTime() - 24 * 60 * 60 * 1000) } }],
       },
-      select: { id: true, status: true, closesAt: true, postWaMessageId: true, askerOrgId: true },
+      select: { id: true, status: true, closesAt: true, postWaMessageId: true, askerOrgId: true, postedAt: true },
     });
     if (rows.length === 0) return [];
+    // D5b (S5b): who has been asked "FNF or ours?" per open ask.
+    const open = rows.filter((r) => r.status === "posted");
+    const asked = open.length
+      ? await db.sentNotification.findMany({
+          where: { kind: "xask-which", OR: open.map((r) => ({ key: { startsWith: `xask:${r.id}:which:` } })) },
+          select: { key: true },
+        })
+      : [];
     const askers = await db.organisation.findMany({ where: { id: { in: rows.map((r) => r.askerOrgId) } }, select: { id: true, name: true } });
     const nameOf = new Map(askers.map((o) => [o.id, o.name]));
     return rows.map((r) => ({
@@ -465,6 +473,8 @@ async function loadPartnerAskViews(orgId: string, now: Date): Promise<PartnerAsk
       postWaMessageId: r.postWaMessageId!,
       askerName: nameOf.get(r.askerOrgId) ?? "",
       open: r.status === "posted" && now.getTime() < r.closesAt.getTime(),
+      postedAt: r.postedAt ? r.postedAt.toISOString() : null,
+      whichAskedUserIds: asked.filter((a) => a.key.startsWith(`xask:${r.id}:which:`)).map((a) => a.key.slice(`xask:${r.id}:which:`.length)),
     }));
   } catch (err) {
     console.error(`[load-state] org ${orgId}: partner asks not read:`, err instanceof Error ? err.message : "failed");

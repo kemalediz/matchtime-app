@@ -1631,6 +1631,7 @@ const SAMPLES: SampleArgs = {
   xask_page_declined: null,
   xask_page_closed: null,
   xask_page_not_allowed: null,
+  xask_which: { asker: "FNFCLUB" },
   xask_thanks_dm: { asker: "FNFCLUB" },
   xask_game_off_dm: { asker: "FNFCLUB", day: "DAYLABEL" },
   xask_picked_dm: { asker: "FNFCLUB", day: "DAYLABEL", venue: "VENUEX" },

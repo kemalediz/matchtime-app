@@ -67,8 +67,10 @@ test.beforeAll(async ({ db }) => {
   );
   await db.run(
     `INSERT INTO "PartnerAsk" (id,"partnershipId","askerOrgId","partnerOrgId","matchId",places,status,"requestedVia","postedAt","postWaMessageId","postBy","closesAt","createdAt","updatedAt")
-     VALUES ($1,'e2e-xvol-pair',$2,$3,$4,1,'posted','button',now(),$5,$6,$7,now(),now())`,
-    [ASK, ASKER, ORG_ID, ASKER_MATCH, POST, new Date(kickoff.getTime() - 4 * 3600_000), kickoff],
+     VALUES ($1,'e2e-xvol-pair',$2,$3,$4,1,'posted','button',$8,$5,$6,$7,now(),now())`,
+    // Posted two hours ago (UTC wall time: the column has no time zone), so
+    // D5b's one-hour question (slice S5b) is not what these cases test.
+    [ASK, ASKER, ORG_ID, ASKER_MATCH, POST, new Date(kickoff.getTime() - 4 * 3600_000), kickoff, new Date(Date.now() - 2 * 3600_000).toISOString().replace("Z", "")],
   );
 });
 

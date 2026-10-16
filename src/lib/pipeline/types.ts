@@ -710,6 +710,10 @@ export interface PartnerAskView {
   askerName: string;
   /** Still taking volunteers (posted, before kickoff), or closed. */
   open: boolean;
+  /** When it was posted (ISO), for D5b's one-hour window (slice S5b). */
+  postedAt?: string | null;
+  /** Who has been asked "FNF or ours?" for this ask already (D5b). */
+  whichAskedUserIds?: string[];
 }
 
 export interface SquadState {
@@ -1312,6 +1316,13 @@ export type SpeechIntent =
   /** The one authoritative squad post for the batch (§3.2 S36). */
   | { kind: "squad_status"; messageId: string | null }
   | { kind: "guest_name_ask"; messageId: string; askerName: string | null; body: string }
+  /**
+   * D5b (cross-club ask, slice S5b): a plain IN soon after a partner club's
+   * ask, from someone with no row on his own game. Asks him once which game
+   * he means; nothing is written. Claimed before it is said
+   * (`claimPartnerAskWhich`), like the guest-name ask.
+   */
+  | { kind: "partner_ask_which"; messageId: string; askId: string; userId: string; askerName: string }
   /**
    * A third-party claim named nobody but raw digits: a WhatsApp mention
    * neither the Pi nor the server could put a name to (2026-09-30). Asks

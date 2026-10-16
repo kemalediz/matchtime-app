@@ -2330,6 +2330,15 @@ async function handleAnalyzeRequest(request: Request) {
             // A reply to a partner club's ask (cross-club ask, S3): the one
             // writer onto another club's match.
             partnerVolunteer: (w) => handlePartnerVolunteer(w),
+            // D5b (S5b): the one "FNF or ours?" per sender per ask.
+            claimPartnerAskWhich: async ({ askId, userId }) => {
+              try {
+                await db.sentNotification.create({ data: { key: `xask:${askId}:which:${userId}`, kind: "xask-which" } });
+                return true;
+              } catch {
+                return false;
+              }
+            },
             resolveOrProvision: (name) => resolveOrProvisionByName(org.id, name),
             // THE SLOT A REPLACEMENT INHERITS (2026-09-15). ONE row
             // updated IN PLACE — `load-state.ts` reads the sheet in
