@@ -629,7 +629,7 @@ describe("the organisers' group", () => {
   });
 
   it("an organisers' route on a players' group message reads as unsure, never none", () => {
-    for (const route of ["approve", "poster", "team_sheet", "help"]) {
+    for (const route of ["approve", "poster", "team_sheet", "help", "ask_group"]) {
       const r = parseRouterResponse(JSON.stringify({ routes: [{ id: "p", route }] }), ["p"]);
       expect(r.routes[0]).toMatchObject({ messageId: "p", route: "unsure" });
       const hq = parseRouterResponse(JSON.stringify({ routes: [{ id: "h", route }] }), ["h"], new Set(["h"]));
@@ -640,7 +640,7 @@ describe("the organisers' group", () => {
   it("the prompt defines the organisers' routes once, in their own section, after every players' rule", () => {
     const section = ROUTER_SYSTEM_PROMPT.indexOf("IN THE ORGANISERS' GROUP.");
     expect(section).toBeGreaterThan(ROUTER_SYSTEM_PROMPT.indexOf("About none:"));
-    for (const r of ["approve", "poster", "team_sheet", "help"]) {
+    for (const r of ["approve", "poster", "team_sheet", "help", "ask_group"]) {
       expect(ROUTER_SYSTEM_PROMPT.indexOf(`\n${r} `)).toBeGreaterThan(section);
     }
     // Code, not the model, decides who a YES was for.

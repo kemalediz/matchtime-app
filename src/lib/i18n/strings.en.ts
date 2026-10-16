@@ -1336,6 +1336,7 @@ export const en = {
       lines.push(`🟥🟦 *"show me the teams"*, *"shuffle them again"*: the teams, built if there are none yet.`);
       lines.push(`🔁 *"swap Sam and Alex"*, *"move Sam to the other team"*: changes to the teams.`);
       lines.push(`✅ *YES* (or reply YES to my message): make the proposed teams final.`);
+      lines.push(`📣 *"ask the group if anyone can play"*: when a place is open, I ask in the main chat.`);
     }
     if (p.graphics) lines.push(`🖼️ *"send the poster"*, *"team sheet please"*: the list or the teams as a graphic, ready to forward.`);
     if (p.picks) lines.push(`🙋 When I ask you to pick who plays, reply with the numbers or names from my list, or *ALL* or *NONE*.`);
@@ -1357,6 +1358,24 @@ export const en = {
   hq_nothing_waiting: `There's nothing waiting for a YES right now.`,
   /** An admin asked MatchTime for something the admin group cannot do. */
   hq_not_here: `I can't do that from this group. Ask *what can you do?* to see what I can do here.`,
+  // ── An organiser asks MatchTime, in HQ, to ask the players' group for a
+  //    player (2026-10-16, admin-group-ask-group.ts). A first-come club's
+  //    post is `slot_opened`, unchanged. ──
+  /** The players' group post in an organiser-pick club: an IN goes on the
+   *  bench, the organisers pick, the picked player gets a DM. */
+  group_ask_organiser: (p: { open: number; kickoffLabel: string }): string =>
+    p.open === 1
+      ? `We need 1 more player for ${p.kickoffLabel}. Say *IN* and the organisers will pick who takes the place. I'll message you if it's you.`
+      : `We need ${p.open} more players for ${p.kickoffLabel}. Say *IN* and the organisers will pick who takes the places. I'll message you if it's you.`,
+  /** Back in HQ, once the post is queued. */
+  hq_group_asked: (p: { open: number }): string =>
+    `Asked in the main chat for ${p.open} ${p.open === 1 ? "player" : "players"}.`,
+  /** No place open: nothing is posted. "of", never a slash. */
+  hq_group_ask_full: (p: { confirmed: number; maxPlayers: number; kickoffLabel: string }): string =>
+    `The squad is full for ${p.kickoffLabel}: ${p.confirmed} of ${p.maxPlayers}. Nothing to ask the main chat for.`,
+  /** The same opening asked about again: not posted twice unless asked once more. */
+  hq_group_ask_already: (p: { open: number; at: string }): string =>
+    `Already asked in the main chat at ${p.at} for ${p.open} ${p.open === 1 ? "player" : "players"}. Ask me again and I'll post it again.`,
   /** A team change whose players MatchTime could not tell. */
   tp_which_players: `Which players? For example: swap Sam and Alex, or move Sam to the other team.`,
   /** "move Sam to Red" when Sam is already there. */

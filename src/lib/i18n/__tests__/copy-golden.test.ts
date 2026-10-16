@@ -507,6 +507,7 @@ import { buildBenchUpgradeReply } from "../../bench-upgrade-ack";
 import { resolveReminderPhrase } from "../../reminder-time";
 import { FEE_REPLY_SYSTEM_PROMPT, buildFeeReplySystemPrompt } from "../../fee-confirm";
 import { buildPickMessage, buildPickListChanged } from "../../organiser-pick-rules";
+import { buildGroupAskPost } from "../../admin-group-ask-group-rules";
 import { clubFeeTip, type TipActivity } from "../../club-billing-rules";
 import {
   approvedTipText,
@@ -1911,6 +1912,17 @@ function cases(lang: Lang): Case[] {
   );
   add("OPK6 slot_opened_organiser (P13)", wr.slot_opened_organiser({ kickoffLabel: lang === "tr" ? "Cum 20:30" : "Fri 20:30" }));
   add("OPK7 onb_weekly_routine_tip (D7)", wr.onb_weekly_routine_tip);
+  {
+    // An organiser asks, in HQ, for the players' group to be asked (2026-10-16).
+    const ko = lang === "tr" ? "Cuma 19:15" : "Fri 19:15";
+    const ask = (pickMode: string, open: number) => buildGroupAskPost({ lang, pickMode, kickoffLabel: ko, confirmed: 14 - open, maxPlayers: 14, open });
+    add("GAK1 buildGroupAskPost / organisers pick, one place", ask("organiser", 1));
+    add("GAK1 buildGroupAskPost / organisers pick, two places", ask("organiser", 2));
+    add("GAK1 buildGroupAskPost / first come, two places", ask("first-come", 2));
+    add("GAK2 hq_group_asked / one, two", [wr.hq_group_asked({ open: 1 }), wr.hq_group_asked({ open: 2 })].join("\n"));
+    add("GAK3 hq_group_ask_full", wr.hq_group_ask_full({ confirmed: 14, maxPlayers: 14, kickoffLabel: ko }));
+    add("GAK4 hq_group_ask_already", wr.hq_group_ask_already({ open: 1, at: "14:05" }));
+  }
   add(
     "OPK8 settings: who fills an open place",
     [
@@ -2450,6 +2462,8 @@ const MIGRATED_ROWS = [
   "WDL1 ", "WDL2 ", "WDL3 ", "WDL4 ",
   // organiser pick (2026-10-01)
   "OPK1 ", "OPK2 ", "OPK3 ", "OPK4 ", "OPK5 ", "OPK6 ", "OPK7 ", "OPK8 ", "OPK9 ", "OPK10 ",
+  // asking the players' group for a player, from HQ (2026-10-16)
+  "GAK1 ", "GAK2 ", "GAK3 ", "GAK4 ",
   // the organisers' unpaid list (2026-10-01)
   "UNP1 ", "UNP2 ",
   // badge announcements (2026-10-01)
