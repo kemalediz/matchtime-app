@@ -49,6 +49,9 @@ const partnerAsk = vi.hoisted(() => ({
   parsePartnerAskRef: (ref: string) => (ref.startsWith("xask:") ? ref.slice(5) : null),
 }));
 vi.mock("@/lib/partner-ask", () => partnerAsk);
+// Free places (2026-10-16): the owner behind admin_ops' fee_waiver.
+const feeWaiver = vi.hoisted(() => ({ answerFeeFreeInHq: vi.fn() }));
+vi.mock("@/lib/fee-waiver", () => feeWaiver);
 
 import { understandAdminMessage } from "../admin-group-understand";
 
@@ -70,6 +73,8 @@ function model(answer: (req: ModelRequest) => unknown): PipelineModel {
 const routeTo = (route: string) => model(() => ({ routes: [{ id: "wa-9", route }] }));
 const teamsFacts = (facts: Record<string, unknown>) =>
   model(() => ({ action: "swap", includeRefs: [], teamNames: [], swaps: [], moves: [], pairings: [], ...facts }));
+const adminFacts = (facts: Record<string, unknown>) =>
+  model(() => ({ action: "other", payerRef: "", count: 0, coveredRefs: [], phrase: "", note: "", lookbackMatches: 0, ...facts }));
 
 const mtRow = (at: Date, askRef: string, text = TEAMS_TEXT): HqLogRow => ({ waMessageId: `mt:${askRef}:1`, fromMatchTime: true, senderUserId: null, text, askRef, createdAt: at });
 const orgRow = (at: Date, text = "who has the bibs?"): HqLogRow => ({ waMessageId: `wa-${at.getTime()}`, fromMatchTime: false, senderUserId: "u-2", text, askRef: null, createdAt: at });
@@ -225,7 +230,9 @@ describe("the other routes reach the code the rest of MatchTime uses", () => {
   });
 
   it.each(["score", "admin_ops"])("%s: clearly for MatchTime but not done from HQ: one line, never silent", async (route) => {
-    expect((await ask("@Match Time who has paid?", route))?.replyText).toBe("I can't do that from this group. Ask *what can you do?* to see what I can do here.");
+    const deps = { routerModel: routeTo(route), extractorModel: adminFacts({ action: "other" }) };
+    expect((await ask("@Match Time who has paid?", route, { deps }))?.replyText).toBe("I can't do that from this group. Ask *what can you do?* to see what I can do here.");
+    expect(feeWaiver.answerFeeFreeInHq).not.toHaveBeenCalled();
     expect(groupAsk.askPlayersGroup).not.toHaveBeenCalled();
     expect(hqQuestion.answerHqQuestion).not.toHaveBeenCalled();
   });
@@ -458,6 +465,62 @@ describe("a sender who is not an organiser", () => {
     const r = await ask("@Match Time can you sort it", "unsure", player());
     expect(r?.outcome).toBe("hq-not-understood");
     expect(squad.handleAdminSquadChange).not.toHaveBeenCalled();
+  });
+});
+
+// Free places (2026-10-16): "Bilal washed the bibs, he's free this week"
+// routes admin_ops; the SHARED admin extractor reads fee_waiver and who;
+// `answerFeeFreeInHq` (fee-waiver.ts) does the rest.
+describe("a free place, given in HQ in the organisers' own words", () => {
+  const free = (facts: Record<string, unknown> = {}) => ({
+    routerModel: routeTo("admin_ops"),
+    extractorModel: adminFacts({ action: "fee_waiver", coveredRefs: ["Bilal"], ...facts }),
+  });
+  beforeEach(() => {
+    feeWaiver.answerFeeFreeInHq.mockResolvedValue({
+      outcome: "fee-free",
+      replyText: "Free place for Fri 16 Oct: Bilal Ahmed. No pay link and no reminders to pay.",
+    });
+  });
+
+  it("an organiser, untagged: the free place is given and HQ hears who is free", async () => {
+    const r = await ask("Bilal washed the bibs, he's free this week", "admin_ops", { deps: free() });
+    expect(r).toEqual({ route: "admin_ops", outcome: "fee-free", replyText: "Free place for Fri 16 Oct: Bilal Ahmed. No pay link and no reminders to pay." });
+    expect(feeWaiver.answerFeeFreeInHq).toHaveBeenCalledWith({
+      orgId: "org-fnf",
+      lang: "en",
+      refs: ["Bilal"],
+      senderUserId: "u-admin",
+      messageId: "wa-9",
+      now: NOW,
+    });
+    // The router, then the admin extractor: two calls, nothing else.
+    expect(requests).toHaveLength(2);
+    expect(requests[1].system).toContain('"fee_waiver"');
+  });
+
+  it("someone in HQ who is not an organiser, tagged: the #297 line, nothing waived", async () => {
+    const r = await ask("@Match Time Bilal is free this week", "admin_ops", {
+      deps: free(),
+      senderUserId: "u-kemal",
+      organiser: false,
+      senderName: "Kemal",
+    });
+    expect(r).toEqual({ route: "admin_ops", outcome: "hq-only-organisers", replyText: "Only Hamzah or Raihan can change that." });
+    expect(feeWaiver.answerFeeFreeInHq).not.toHaveBeenCalled();
+  });
+
+  it("not an organiser, untagged: their own chat, silent, and the extractor is never asked", async () => {
+    const r = await ask("Bilal is free this week", "admin_ops", { deps: free(), senderUserId: "u-kemal", organiser: false });
+    expect(r).toBeNull();
+    expect(requests).toHaveLength(1);
+    expect(feeWaiver.answerFeeFreeInHq).not.toHaveBeenCalled();
+  });
+
+  it("an organiser's other instruction on admin_ops: still the one line, never a free place", async () => {
+    const r = await ask("@Match Time remind me on Monday", "admin_ops", { deps: free({ action: "reminder", coveredRefs: [], phrase: "on Monday" }) });
+    expect(r?.outcome).toBe("hq-not-here");
+    expect(feeWaiver.answerFeeFreeInHq).not.toHaveBeenCalled();
   });
 });
 

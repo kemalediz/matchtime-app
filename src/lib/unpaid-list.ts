@@ -73,7 +73,7 @@ export async function sendDueUnpaidLists(orgId: string, now: Date = new Date()):
       activity: { select: { name: true } },
       attendances: {
         where: { status: "CONFIRMED" },
-        select: { userId: true, position: true, paidAt: true, paymentMethod: true, user: { select: { name: true } } },
+        select: { userId: true, position: true, paidAt: true, feeWaivedAt: true, paymentMethod: true, user: { select: { name: true } } },
       },
       paymentCredits: { select: { count: true } },
     },
@@ -90,7 +90,7 @@ export async function sendDueUnpaidLists(orgId: string, now: Date = new Date()):
         // 5): never on the unpaid list. No weekly club has such a row.
         .filter((a) => a.paymentMethod !== "monthly")
         .sort((a, b) => a.position - b.position)
-        .map((a) => ({ userId: a.userId, paidAt: a.paidAt, name: a.user.name })),
+        .map((a) => ({ userId: a.userId, paidAt: a.paidAt, feeWaivedAt: a.feeWaivedAt, name: a.user.name })),
       payerId: org.paymentHolderId ?? null,
       creditCount: (m.paymentCredits ?? []).reduce((sum, c) => sum + c.count, 0),
     });

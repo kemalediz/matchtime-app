@@ -560,7 +560,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       together: [
         "Choose a money collector (it appears below once this is on). Without one, MatchTime has nobody to ask for the fee.",
         "Connect the money collector's bank for card and Pay by Bank. Without it, the pay page only offers paying the organiser directly, if that is on.",
-        "The money collector and monthly regulars are not sent pay links.",
+        "The money collector and monthly regulars are not sent pay links. Nor is a player on a free place: mark one with Mark free on the payments page, or say \"Bilal is free this week\" in your admin group.",
         "It is separate from Payment tracking.",
       ],
     },
@@ -580,7 +580,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       together: [
         "Bir para toplayan kişi seçin (bu açılınca aşağıda görünür). Seçilmezse MatchTime'ın ücreti soracağı kimse olmaz.",
         "Kart ve bankadan ödeme için para toplayan kişinin bankasını bağlayın. Bağlanmazsa ödeme sayfası, açıksa, yalnızca organizatöre doğrudan ödemeyi sunar.",
-        "Para toplayan kişiye ve aylık daimi oyunculara ödeme bağlantısı gönderilmez.",
+        "Para toplayan kişiye ve aylık daimi oyunculara ödeme bağlantısı gönderilmez. Ücretsiz yerdeki oyuncuya da gönderilmez: ödemeler sayfasında Ücretsiz yap ile işaretleyin ya da yönetici grubunuzda \"Bilal bu hafta ücretsiz\" yazın.",
         "Ödeme takibi ayarından ayrıdır.",
       ],
     },

@@ -1901,6 +1901,18 @@ model Attendance {
   /// Who confirmed the direct payment (the money collector).
   directConfirmedByUserId String?
 
+  /// ─── Free places (2026-10-16, `lib/fee-waiver.ts`) ──────────────
+  /// Set when an organiser or the money collector gives this player a
+  /// free place on this match: they owe nothing. Distinct from `paidAt`
+  /// (no money moved): no pay link, no chase, out of the fee headcount
+  /// and of "collected" and "owed". NULL on every existing row. Written
+  /// only while the row is unpaid, so a payment is never relabelled.
+  feeWaivedAt       DateTime?
+  /// Why, as a short code. Today only "organiser"; kept generic.
+  feeWaivedReason   String?
+  /// Who gave the free place (an organiser or the collector).
+  feeWaivedByUserId String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

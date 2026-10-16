@@ -148,6 +148,28 @@ test("a free place marked paid before the links went out is never chased (FNF, 2
   expect(keys).toContain(payChaseKey(U.fresh, dayKey));
 });
 
+test("a free place given after the links went out: no more chase, and no 'confirm receipt' nudge for it (2026-10-16)", async ({
+  request,
+  db,
+}) => {
+  const now = londonAt(0, 18, 30);
+  const dayKey = londonDateKey(now);
+  // Before: Pat is chased, and Gary (paying directly) makes the collector nudge fire.
+  const before = (await duePostsAt(request, now)).map((i) => i.key);
+  expect(before).toContain(payChaseKey(U.player, dayKey));
+  expect(before).toContain(collectorKey(dayKey));
+  await db.run(
+    `UPDATE "Attendance" SET "feeWaivedAt" = now(), "feeWaivedReason" = 'organiser', "feeWaivedByUserId" = $3
+      WHERE "matchId" = $1 AND "userId" = ANY($2)`,
+    [MATCH.pay, [U.player, U.guest], U.admin],
+  );
+  const after = (await duePostsAt(request, now)).map((i) => i.key);
+  expect(after).not.toContain(payChaseKey(U.player, dayKey));
+  expect(after).not.toContain(collectorKey(dayKey));
+  // Ian, still unpaid, is chased as before.
+  expect(after).toContain(payChaseKey(U.fresh, dayKey));
+});
+
 test("a card-paid player never receives a pay-link DM", async ({ request }) => {
   // Riley Rater is seeded paidAt via card (qty 2). They must never appear
   // in the pay-chase loop, before any mutation.

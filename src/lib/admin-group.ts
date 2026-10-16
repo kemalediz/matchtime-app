@@ -58,6 +58,7 @@ import { setAsideTeamProposal } from "./team-proposal";
 import { t } from "./i18n/t";
 import { listAskRef, recordHqMessage, recordMatchTimeQuestion } from "./admin-group-log";
 import { understandAdminMessage } from "./admin-group-understand";
+import { HQ_FEE_FREE_NOTHING_DONE } from "./fee-waiver-rules";
 
 export interface AdminGroupMessage {
   groupId: string;
@@ -90,7 +91,13 @@ export type AdminGroupMessageResult =
  * as a command. Not on the one line saying it cannot do, or could not
  * read, what was asked; ignored chat never reaches here.
  */
-const NO_TICK: ReadonlySet<string> = new Set(["hq-not-here", "hq-not-understood", "hq-only-organisers"]);
+const NO_TICK: ReadonlySet<string> = new Set([
+  "hq-not-here",
+  "hq-not-understood",
+  "hq-only-organisers",
+  // A free place asked for and none given (already paid, not in the squad, no match).
+  HQ_FEE_FREE_NOTHING_DONE,
+]);
 export const HQ_TICK = "✅";
 
 function acted(orgId: string, outcome: string | null, replyText: string | null): AdminGroupMessageResult {
@@ -108,7 +115,17 @@ export async function handleAdminGroupMessage(msg: AdminGroupMessage): Promise<A
   const now = msg.now ?? new Date();
   const org = await db.organisation.findFirst({
     where: { adminGroupId: msg.groupId },
-    select: { id: true, billingStatus: true, whatsappBotEnabled: true, squadMode: true, language: true, benchPickMode: true },
+    select: {
+      id: true,
+      billingStatus: true,
+      whatsappBotEnabled: true,
+      squadMode: true,
+      language: true,
+      benchPickMode: true,
+      // The HQ help's free-place line (admin-group-help.ts `hqHelpGates`).
+      paymentCollectionEnabled: true,
+      paymentTrackingEnabled: true,
+    },
   });
   if (!org) return { handled: false, ignored: "not-an-admin-group", replyText: null };
   // Club fee billing (B1): a club paused for the club fee answers nothing,

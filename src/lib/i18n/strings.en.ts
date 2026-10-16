@@ -1340,8 +1340,9 @@ export const en = {
    *  words (the shared router's `help` route). Every line is something the
    *  admin group really does. `squad`: a live weekly club (pasted list,
    *  squad changes, the teams). `graphics`: a live club. `picks`:
-   *  organiser pick. `paid`: a monthly club's collector. */
-  hq_help: (p: { squad: boolean; graphics: boolean; picks: boolean; paid: boolean }): string => {
+   *  organiser pick. `paid`: a monthly club's collector. `free`: a club
+   *  that takes match fees (free places, 2026-10-16). */
+  hq_help: (p: { squad: boolean; graphics: boolean; picks: boolean; paid: boolean; free?: boolean }): string => {
     const lines = [`🛠️ *MatchTime in your admin group*`, `Just ask here in your own words. No need to tag me. For example:`, ``];
     if (p.squad) {
       lines.push(`📋 *Paste the whole squad list*: I show you what would change, and *YES* within 30 minutes applies it.`);
@@ -1354,6 +1355,7 @@ export const en = {
     if (p.graphics) lines.push(`🖼️ *"send the poster"*, *"team sheet please"*: the list or the teams as a graphic, ready to forward.`);
     if (p.picks) lines.push(`🙋 When I ask you to pick who plays, reply with the numbers or names from my list, or *ALL* or *NONE*.`);
     if (p.paid) lines.push(`💷 *PAID ALL*, *PAID 1 3* or *PAID NONE*: the money collector's answer to my list of payment claims.`);
+    if (p.free) lines.push(`🎁 *"Bilal is free this week"*: a free place, so no pay link and no reminders to pay.`);
     lines.push(``, `Ask *what can you do?* here any time to see this again.`);
     return lines.join("\n");
   },
@@ -1398,6 +1400,21 @@ export const en = {
   /** The same opening asked about again: not posted twice unless asked once more. */
   hq_group_ask_already: (p: { open: number; at: string }): string =>
     `Already asked in the main chat at ${p.at} for ${p.open} ${p.open === 1 ? "player" : "players"}. Ask me again and I'll post it again.`,
+  // ── Free places, given in HQ (2026-10-16, fee-waiver.ts). `names` is
+  //    already joined ("Bilal and Tom"); `day` is `dayLabel`. ──
+  hq_fee_free_done: (p: { names: string; day: string }): string =>
+    `Free place for ${p.day}: ${p.names}. No pay link and no reminders to pay.`,
+  hq_fee_free_already: (p: { names: string; day: string }): string => `Already a free place for ${p.day}: ${p.names}.`,
+  /** Never moves money: a player who paid stays paid. */
+  hq_fee_free_paid: (p: { name: string; day: string }): string =>
+    `${p.name} has already paid for ${p.day}, so I've left it as paid. The money collector can refund it if they should play free.`,
+  hq_fee_free_monthly: (p: { name: string; day: string }): string => `${p.name}'s place for ${p.day} is paid for by the month.`,
+  hq_fee_free_not_in_squad: (p: { name: string; day: string }): string => `I can't find ${p.name} in the squad for ${p.day}.`,
+  /** `choices` is joined with "or". */
+  hq_fee_free_which: (p: { ref: string; choices: string }): string => `Which ${p.ref}: ${p.choices}?`,
+  hq_fee_free_no_match: `There's no match to give a free place on right now.`,
+  hq_fee_free_no_payments: `This club doesn't take match fees through MatchTime, so there's nothing to make free.`,
+  hq_fee_free_who: `Who should play free? For example: Bilal is free this week.`,
   /** A team change whose players MatchTime could not tell. */
   tp_which_players: `Which players? For example: swap Sam and Alex, or move Sam to the other team.`,
   /** "move Sam to Red" when Sam is already there. */
@@ -1722,6 +1739,22 @@ export const en = {
       `.\n\nReply *✅* (or "yes") to send everyone their pay link, or send a different amount to change it.`
     );
   },
+
+  /** Appended to the fee question and its confirm when some players have
+   *  a free place (2026-10-16): they are not in the count. */
+  dm_fee_free_note: (p: { count: number }): string =>
+    `(${p.count} ${p.count === 1 ? "player is" : "players are"} on a free place and not counted.)`,
+
+  // ── Free places on the payments pages (2026-10-16) ──
+  pay_free_title: `Nothing to pay`,
+  pay_free_body: (p: { firstName: string; activityName: string }): string =>
+    `${p.firstName}, you're on a free place for ${p.activityName}. Nothing to pay.`,
+  collect_free: `Free place`,
+  collect_mark_free: `Mark free`,
+  collect_undo_free: `Undo free`,
+  collect_marked_free: `Marked as a free place`,
+  collect_unmarked_free: `Free place removed`,
+  collect_free_count: (p: { count: number }): string => `${p.count} free`,
 
   /** Row 96: the collector's ack once the links went out. */
   dm_fee_released: (p: { released: number; fee: string; matchName: string }): string =>

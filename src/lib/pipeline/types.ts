@@ -640,10 +640,18 @@ export interface AdminFacts {
    * is now the only recogniser, and `lib/stats-blast.ts` carries the
    * argument.
    */
-  action: "bulk_payment" | "reminder" | "recruit" | "stats_blast" | "other";
+  /**
+   * `fee_waiver` (2026-10-16): named players are given a free place on a
+   * match ("Bilal washed the bibs, he's free this week"). Owned in the
+   * organisers' group only (`admin-group-understand.ts` →
+   * `fee-waiver.ts`); in the players' group it is answered like `other`
+   * (`admin-ops-engine-batch.ts`).
+   */
+  action: "bulk_payment" | "fee_waiver" | "reminder" | "recruit" | "stats_blast" | "other";
   /** bulk_payment */
   payerRef?: string;
   count?: number;
+  /** bulk_payment: who was paid for; fee_waiver: who plays free. */
   coveredRefs?: string[];
   /** reminder — the PHRASE as written ("on Monday", "tomorrow at 6").
    *  §3.2 S22: calendar arithmetic is `date-fns-tz`'s job, not the

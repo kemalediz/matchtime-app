@@ -655,8 +655,21 @@ export interface RouterMessage {
   quotedMatchTime?: string;
 }
 
-/** The header an organisers' group message is shown under. */
-export const ORGANISERS_HEADER = "ORGANISERS' GROUP. The sender is an organiser of the club.";
+/**
+ * The header an organisers' group message is shown under.
+ *
+ * FREE PLACES (2026-10-16) are given only in the organisers' group
+ * ("Bilal washed the bibs, he's free this week", `fee-waiver.ts`), so the
+ * one sentence the router needs for them is HERE, in the HQ user turn, and
+ * not in `ROUTER_SYSTEM_PROMPT`. Measured on the dev key: a single
+ * free-place sentence in the system prompt, even inside its organisers'
+ * section, turned the players' group's "@Match Time Ali is free this week,
+ * add him" from other_att (6 of 6 message ids) to admin_ops (5 of 6). Here
+ * the players' group's prompt and user turn stay byte for byte what they
+ * were, and the system prompt keeps its size (3,922 tokens).
+ */
+export const ORGANISERS_HEADER =
+  "ORGANISERS' GROUP. The sender is an organiser of the club. Here, saying a named player owes nothing for the match, a free place (\"he's free this week, he did the bibs\", \"no fee for him\", \"ödemesin\"), tells MatchTime to give it: admin_ops, tagged or not. Free as in able to play (\"he's free, add him\") is other_att.";
 
 /** The line shown above a message that is a WhatsApp reply: who it quotes
  *  and what they said, on one line. One wording for both groups

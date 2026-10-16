@@ -343,6 +343,35 @@ describe("WEEKLY: a club on weekly mode is untouched on every branch slice 5 cha
     );
   });
 
+  it("a free place (2026-10-16): out of the fee question's count, which says how many are free", async () => {
+    const m = weekly();
+    (m.attendances[1] as Record<string, unknown>).feeWaivedAt = new Date("2026-10-12T19:00:00.000Z");
+    setWorld(m, { monthly: false });
+    const ask = (await instructions(AFTER_MATCH)).find((i) => i.key === `${m.id}:fee-ask`) as { text: string };
+    expect(ask.text).toBe(
+      buildFeeAskDm({ collectorName: "Sam Collector", activityName: "Monday 7-a-side", headcount: 3, freeCount: 1, lang: "en" }),
+    );
+    expect(ask.text).toContain("(3 played)");
+    expect(ask.text).toContain("(1 player is on a free place and not counted.)");
+  });
+
+  it("a free place is never chased; everyone else unpaid still is", async () => {
+    const m = weekly({
+      status: "COMPLETED",
+      feePerPlayer: 8,
+      paymentLinksReleasedAt: new Date("2026-10-12T21:00:00.000Z"),
+    });
+    const free = m.attendances.find((a) => (a as { userId: string }).userId === "u-bilal") as Record<string, unknown>;
+    free.feeWaivedAt = new Date("2026-10-12T22:00:00.000Z");
+    setWorld(m, { monthly: false });
+    const out = await instructions(new Date("2026-10-13T17:05:00.000Z"));
+    expect(out.filter((i) => i.key.includes(":pay-chase:")).map((i) => (i as { targetUser: string }).targetUser)).toEqual([
+      "u-alex",
+      "u-chris",
+      "u-dave",
+    ]);
+  });
+
   it("the daily pay chase still goes to everyone unpaid", async () => {
     const m = weekly({
       status: "COMPLETED",

@@ -1176,6 +1176,7 @@ export const tr: Strings = {
     if (p.graphics) lines.push(`🖼️ *"posteri gönder"*, *"takım listesi görseli"*: listeyi ya da takımları görsel olarak, iletmeye hazır.`);
     if (p.picks) lines.push(`🙋 Kimin oynayacağını seçmenizi istediğimde listemdeki numaraları ya da isimleri, veya *HEPSİ* ya da *HİÇBİRİ* yazın.`);
     if (p.paid) lines.push(`💷 *ÖDENDİ HEPSİ*, *ÖDENDİ 1 3* ya da *ÖDENDİ YOK*: parayı toplayan kişinin ödeme bildirimleri listeme cevabı.`);
+    if (p.free) lines.push(`🎁 *"Bilal bu hafta ücretsiz"*: ücretsiz yer, ödeme linki ve ödeme hatırlatması gitmez.`);
     lines.push(``, `Bunu tekrar görmek için burada istediğiniz zaman *neler yapabilirsin?* diye sorun.`);
     return lines.join("\n");
   },
@@ -1195,6 +1196,16 @@ export const tr: Strings = {
     `${p.kickoffLabel} kadrosu dolu: ${p.maxPlayers} kişilik kadroda ${p.confirmed} kişi var. Ana grupta sorulacak bir şey yok.`,
   hq_group_ask_already: (p) =>
     `Ana grupta ${p.at} saatinde ${p.open} oyuncu için zaten sordum. Tekrar paylaşmamı istersen bir daha söyle.`,
+  hq_fee_free_done: (p) => `${p.day} için ücretsiz yer: ${p.names}. Ödeme linki ve ödeme hatırlatması gitmeyecek.`,
+  hq_fee_free_already: (p) => `${p.day} için zaten ücretsiz: ${p.names}.`,
+  hq_fee_free_paid: (p) =>
+    `${p.name}, ${p.day} maçı için zaten ödedi, ödenmiş olarak bıraktım. Ücretsiz oynaması gerekiyorsa parayı toplayan kişi iade edebilir.`,
+  hq_fee_free_monthly: (p) => `${p.name}, ${p.day} maçı için aylık ödemeyle oynuyor.`,
+  hq_fee_free_not_in_squad: (p) => `${p.day} kadrosunda ${p.name} adında birini bulamadım.`,
+  hq_fee_free_which: (p) => `Hangi ${p.ref}: ${p.choices}?`,
+  hq_fee_free_no_match: `Şu anda ücretsiz yer verilecek bir maç yok.`,
+  hq_fee_free_no_payments: `Bu kulüp maç ücretlerini MatchTime ile toplamıyor, ücretsiz yapılacak bir şey yok.`,
+  hq_fee_free_who: `Kim ücretsiz oynasın? Örneğin: Bilal bu hafta ücretsiz.`,
   tp_which_players: `Hangi oyuncular? Örneğin: Sam ile Alex'i değiştir, ya da Sam'i diğer takıma al.`,
   tp_already_on: (p) => `${p.name} zaten ${p.team} takımında.`,
 
@@ -1443,6 +1454,17 @@ export const tr: Strings = {
       `.\n\nHerkese ödeme linkini göndermek için *✅* (ya da "evet") yaz, değiştirmek için başka bir tutar gönder.`
     );
   },
+
+  dm_fee_free_note: (p) => `(Ücretsiz yerdeki ${p.count} kişi sayılmadı.)`,
+
+  pay_free_title: `Ödenecek bir şey yok`,
+  pay_free_body: (p) => `${p.firstName}, ${p.activityName} için ücretsiz yerdesin. Ödeme yapman gerekmiyor.`,
+  collect_free: `Ücretsiz yer`,
+  collect_mark_free: `Ücretsiz yap`,
+  collect_undo_free: `Ücretsizi geri al`,
+  collect_marked_free: `Ücretsiz yer olarak işaretlendi`,
+  collect_unmarked_free: `Ücretsiz yer kaldırıldı`,
+  collect_free_count: (p) => `${p.count} ücretsiz`,
 
   dm_fee_released: (p) =>
     `✅ Tamam, *${p.matchName}* için kişi başı *${p.fee}* üzerinden ${p.released} ödeme linki gönderdim. ` +

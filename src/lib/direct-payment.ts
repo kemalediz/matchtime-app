@@ -68,6 +68,7 @@ async function loadPayRows(userId: string, matchId: string) {
   // that surface as a toast on the pay page.
   const blocked = payBlockedReason({
     paidAt: attendance.paidAt,
+    feeWaivedAt: attendance.feeWaivedAt,
     paymentMethod: attendance.paymentMethod,
     attendanceStatus: attendance.status,
     matchStatus: match.status,

@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { redirect } from "next/navigation";
 import { priceMethods, gbp, type PayMethod } from "@/lib/payments";
 import { PayOptions } from "@/components/pay/pay-options";
+import { t } from "@/lib/i18n/t";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +29,7 @@ export default async function PayPage({
           org: {
             select: {
               name: true,
+              language: true,
               payMethodPayByBank: true,
               payMethodCard: true,
               payMethodDirect: true,
@@ -42,7 +44,7 @@ export default async function PayPage({
 
   const attendance = await db.attendance.findUnique({
     where: { matchId_userId: { matchId, userId } },
-    select: { paidAt: true, directPendingAt: true, paymentMethod: true },
+    select: { paidAt: true, directPendingAt: true, paymentMethod: true, feeWaivedAt: true },
   });
 
   const me = await db.user.findUnique({ where: { id: userId }, select: { name: true } });
@@ -62,6 +64,22 @@ export default async function PayPage({
             {first}, your place for {match.activity.name} is paid for by the month. If that&apos;s not right, speak to the
             organiser.
           </p>
+        </div>
+      </Shell>
+    );
+  }
+
+  // A free place (2026-10-16, fee-waiver.ts): nothing to pay, no buttons
+  // (the actions refuse it too, `payBlockedReason`). Paid wins: a free
+  // place that was paid anyway shows as paid below.
+  if (attendance?.feeWaivedAt && !attendance.paidAt && paid !== "1") {
+    const w = t(org.language);
+    return (
+      <Shell>
+        <div className="text-center" data-testid="pay-free">
+          <div className="text-5xl mb-3">🎁</div>
+          <h1 className="text-xl font-bold text-slate-900">{w.pay_free_title}</h1>
+          <p className="text-sm text-slate-500 mt-2">{w.pay_free_body({ firstName: first, activityName: match.activity.name })}</p>
         </div>
       </Shell>
     );

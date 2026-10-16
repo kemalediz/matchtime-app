@@ -25,6 +25,7 @@ import {
 } from "@/lib/stripe";
 import { totalForMethod, platformFeePence, type PayMethod } from "@/lib/payments";
 import { markDirectPaymentPending, resolvePayContext } from "@/lib/direct-payment";
+import { unwaiveMatchFee, waiveMatchFee } from "@/lib/fee-waiver";
 import { formatLondon } from "@/lib/london-time";
 import { announcePaymentsLiveIfJustLive, readPaymentLiveState } from "@/lib/payments-live-announce";
 
@@ -260,6 +261,33 @@ export async function confirmDirectPayment(matchId: string, userId: string): Pro
   });
   revalidatePath(`/collect/${matchId}`);
   return { ok: true };
+}
+
+/** "Mark free" on /collect (2026-10-16): give this player a free place on
+ *  this match. Organiser or money collector only, as "Mark received".
+ *  Never touches a paid row; idempotent (`waiveMatchFee`). A refusal the
+ *  page can show is returned, not thrown (Next hides thrown messages). */
+export async function markFeeWaived(
+  matchId: string,
+  userId: string,
+): Promise<{ ok: true } | { ok: false; reason: "already-paid" | "monthly" | "not-in-squad" | "unchanged" }> {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Not authenticated");
+  await requireMatchCollectorOrAdmin(session.user.id, matchId);
+  const outcome = await waiveMatchFee({ matchId, userId, byUserId: session.user.id, now: new Date() });
+  revalidatePath(`/collect/${matchId}`);
+  return outcome === "waived" || outcome === "already-free" ? { ok: true } : { ok: false, reason: outcome };
+}
+
+/** "Undo free" on /collect: take a mistaken free place back. The daily
+ *  chase picks the player up again; nothing is sent from here. */
+export async function undoFeeWaived(matchId: string, userId: string): Promise<{ ok: boolean }> {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Not authenticated");
+  await requireMatchCollectorOrAdmin(session.user.id, matchId);
+  const ok = await unwaiveMatchFee({ matchId, userId });
+  revalidatePath(`/collect/${matchId}`);
+  return { ok };
 }
 
 /** Throws unless `userId` is an org admin or the org's money collector for

@@ -27,6 +27,7 @@ import { anchoredFeeReply, classifyFeeReply, type FeeReply } from "./fee-confirm
 import { normaliseLang, type Lang } from "./i18n/lang";
 import { withOrgAiBudget } from "./ai-budget";
 import { MONTHLY_PAYMENT_METHOD, isMonthlyRow, recordPaygFeeDeclined, stagePaygFeeForReply } from "./monthly-week";
+import { isFeeWaived } from "./fee-waiver-rules";
 import type Stripe from "stripe";
 
 /** DM each confirmed player (with a phone) a pay link, once. Idempotent
@@ -64,11 +65,12 @@ export async function releaseMatchPayments(matchId: string): Promise<number> {
     // "weekly" has such a row.
     if (isMonthlyRow(a)) continue;
     // Already settled before the links went out: an organiser or the
-    // collector marked them paid on /collect/<match> ("Mark received").
-    // This is how a club's free places work for now (FNF, 2026-10-16:
-    // the bib washer and the Man of the Match). They owe nothing, so no
-    // pay link, and the daily chase skips them on the same paidAt.
+    // collector marked them paid on /collect/<match> ("Mark received",
+    // the FNF stopgap of #299). No pay link; the chase skips paidAt too.
     if (a.paidAt) continue;
+    // A free place (fee-waiver.ts): they owe nothing, whenever the fee is
+    // set. The chase and the fee headcount skip it on the same column.
+    if (isFeeWaived(a)) continue;
     if (!a.user.phoneNumber) continue;
     const token = signMagicLinkToken({
       userId: a.user.id,
@@ -310,6 +312,9 @@ export interface CollectorFeeDeps {
   /** Confirmed squad MINUS the collector — they collect the pot, they
    *  do not pay into it. */
   headcount: (matchId: string) => Promise<number>;
+  /** Players on a free place (fee-waiver.ts), already left out of
+   *  `headcount`; the confirm says how many. Absent means none. */
+  freeCount?: (matchId: string) => Promise<number>;
   /** The model's read of the reply. Consulted ONLY when the anchored
    *  allowlist abstains AND the message is not an amount, which on the
    *  measured history is approximately never. */
@@ -351,6 +356,7 @@ export async function runCollectorFeeReply(
   if (!match) return null;
 
   const headcount = await deps.headcount(match.id);
+  const freeCount = deps.freeCount ? await deps.freeCount(match.id) : 0;
   const lang: Lang = match.lang ?? "en";
 
   const releaseNow = async (amount: number): Promise<CollectorReplyResult> => {
@@ -371,6 +377,7 @@ export async function runCollectorFeeReply(
         headcount,
         matchName: match.name,
         wasTotal: parsed.wasTotal,
+        freeCount,
         lang,
       }),
     };
@@ -463,15 +470,32 @@ export async function handleCollectorFeeReply(
           }
         : null;
     },
+    // Monthly squad (slice 5): a regular's row is paid for by the month
+    // and is not part of the per-match headcount. No club on "weekly" has
+    // such a row, so its count is what it always was. A free place
+    // (2026-10-16) is not either: neither counted nor part of a total's
+    // split, and the confirm says how many were left out. A free place
+    // that was paid anyway (money moved) still counts.
     headcount: (matchId) =>
       db.attendance.count({
-        // Monthly squad (slice 5): a regular's row is paid for by the
-        // month and is not part of the per-match headcount. No club on
-        // "weekly" has such a row, so its count is what it always was.
         where: {
           matchId,
           status: "CONFIRMED",
           userId: { not: userId },
+          AND: [
+            { OR: [{ paymentMethod: null }, { paymentMethod: { not: MONTHLY_PAYMENT_METHOD } }] },
+            { OR: [{ feeWaivedAt: null }, { paidAt: { not: null } }] },
+          ],
+        },
+      }),
+    freeCount: (matchId) =>
+      db.attendance.count({
+        where: {
+          matchId,
+          status: "CONFIRMED",
+          userId: { not: userId },
+          feeWaivedAt: { not: null },
+          paidAt: null,
           OR: [{ paymentMethod: null }, { paymentMethod: { not: MONTHLY_PAYMENT_METHOD } }],
         },
       }),

@@ -42,6 +42,19 @@ describe("summariseUnpaid: the group tail's rule", () => {
     expect(s).toEqual({ n: 2, paid: 1, unpaid: 1, unpaidNames: ["Bea"] });
   });
 
+  it("leaves a free place out (2026-10-16): it owes nothing and paid nothing", () => {
+    const s = summariseUnpaid({
+      confirmed: [row("a", true), { ...row("bibs", false, "Bilal"), feeWaivedAt: new Date() }, row("c", false, "Cem")],
+      payerId: null,
+      creditCount: 0,
+    });
+    expect(s).toEqual({ n: 2, paid: 1, unpaid: 1, unpaidNames: ["Cem"] });
+    // Everyone else paid: nothing to report, the free place is not "owing".
+    expect(
+      summariseUnpaid({ confirmed: [row("a", true), { ...row("bibs", false), feeWaivedAt: new Date() }], payerId: null, creditCount: 0 }),
+    ).toBeNull();
+  });
+
   it("subtracts bulk credits from the unpaid count", () => {
     const s = summariseUnpaid({
       confirmed: [row("a", true), row("b", false), row("c", false), row("d", false)],

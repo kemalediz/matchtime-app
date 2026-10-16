@@ -86,6 +86,7 @@ import {
   type QuietMarkerRow,
 } from "./roster-shown";
 import { summariseUnpaid, unpaidFollowUpDue } from "./unpaid-rules";
+import { isFeeWaived } from "./fee-waiver-rules";
 import { recordOpsEvent } from "./ops-alerts";
 import {
   feeAskKeys,
@@ -2785,7 +2786,7 @@ async function computeForMatch(
     ) {
       const summary = summariseUnpaid({
         // A regular's row is paid for by the month (slice 5): never unpaid.
-        confirmed: confirmed.filter((a) => !isMonthlyRow(a)).map((a) => ({ userId: a.userId, paidAt: a.paidAt })),
+        confirmed: confirmed.filter((a) => !isMonthlyRow(a)).map((a) => ({ userId: a.userId, paidAt: a.paidAt, feeWaivedAt: a.feeWaivedAt })),
         payerId: activity.org.paymentHolderId ?? null,
         creditCount: (m.paymentCredits ?? []).reduce((s, c) => s + c.count, 0),
       });
@@ -2819,9 +2820,14 @@ async function computeForMatch(
   //    does in the weekly flow (`stage` in payment-flow.ts runs on the
   //    collector's own reply). `monthlyPayers` is null for a weekly club,
   //    which leaves the condition and the message exactly as they were.
+  //    FREE PLACES (2026-10-16): a player on a free place owes nothing,
+  //    so they are not in either count, and the question says how many
+  //    were left out (`freeCount`). With no free place both numbers are
+  //    exactly what they were.
   const monthlyPayers = monthly
-    ? confirmed.filter((a) => !isMonthlyRow(a) && a.userId !== activity.org?.paymentHolderId).length
+    ? confirmed.filter((a) => !isMonthlyRow(a) && a.userId !== activity.org?.paymentHolderId && !isFeeWaived(a)).length
     : null;
+  const freePlaces = confirmed.filter((a) => isFeeWaived(a) && !a.paidAt && !isMonthlyRow(a)).length;
   const paygFeeToConfirm = monthly && monthly.paygPricePence != null ? monthly.paygPricePence / 100 : null;
   if (
     m.postMatchEndFlow !== false &&
@@ -2882,12 +2888,14 @@ async function computeForMatch(
                   headcount: monthlyPayers ?? 0,
                   matchName: activity.name,
                   wasTotal: false,
+                  freeCount: freePlaces,
                   lang,
                 })
               : buildFeeAskDm({
                   collectorName,
                   activityName: activity.name,
-                  headcount: monthlyPayers ?? confirmed.length,
+                  headcount: monthlyPayers ?? confirmed.length - freePlaces,
+                  freeCount: freePlaces,
                   lang,
                 }),
         });
@@ -2932,6 +2940,7 @@ async function computeForMatch(
         if (a.userId === activity.org.paymentHolderId) continue; // collector doesn't pay
         if (isMonthlyRow(a)) continue; // a regular: the month paid for it (slice 5)
         if (a.paidAt) continue;
+        if (isFeeWaived(a)) continue; // a free place owes nothing (fee-waiver.ts)
         if (a.directPendingAt) continue; // handled via collector nudge below
         if (!a.user.phoneNumber) continue;
         const key = `${matchId}:pay-chase:${a.userId}:${dayKey}`;
@@ -2960,7 +2969,9 @@ async function computeForMatch(
       }
 
       // Direct-pending → one daily nudge to the collector to confirm.
-      const pendingDirect = confirmed.filter((a) => !a.paidAt && a.directPendingAt && !isMonthlyRow(a));
+      // A free place is not waiting on the collector, even if the player
+      // had said they would pay directly before it was given.
+      const pendingDirect = confirmed.filter((a) => !a.paidAt && a.directPendingAt && !isMonthlyRow(a) && !isFeeWaived(a));
       if (pendingDirect.length > 0 && activity.org.paymentHolderId) {
         const ckey = `${matchId}:pay-chase-collector:${dayKey}`;
         if (!sentKeys.has(ckey)) {

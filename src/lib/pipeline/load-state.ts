@@ -426,7 +426,10 @@ export async function loadPaymentSnapshot(
     select: {
       paymentLinksReleasedAt: true,
       attendances: {
-        where: { status: "CONFIRMED" },
+        // A free place (fee-waiver.ts) is not chargeable: it is neither
+        // paid nor owing, so "who hasn't paid" never counts it. Unless it
+        // was paid anyway: money moved, so it is a paid row.
+        where: { status: "CONFIRMED", OR: [{ feeWaivedAt: null }, { paidAt: { not: null } }] },
         select: { userId: true, paidAt: true },
       },
       paymentCredits: { select: { count: true } },

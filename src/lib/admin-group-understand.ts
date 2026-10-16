@@ -28,7 +28,11 @@
  *                         and for help it does not answer
  *   ask_group             one place-open ask in the players' group
  *                         (`admin-group-ask-group.ts`)
- *   score, admin_ops      one line: not from this group (an organiser
+ *   admin_ops             the shared admin extractor: a free place
+ *                         ("Bilal washed the bibs, he's free this week",
+ *                         action fee_waiver) is given by `fee-waiver.ts`;
+ *                         any other instruction is the one line below
+ *   score                 one line: not from this group (an organiser
  *                         clearly asked MatchTime; never silent on that)
  *   unsure                addressed to MatchTime (an @tag, or a reply to
  *                         its own message): the attendance engine, as in
@@ -71,6 +75,7 @@ import { answerPartnerAskYes, parsePartnerAskRef, partnerAskRef, partnerAsksAwai
 import { askPlayersGroup } from "./admin-group-ask-group";
 import { answerHqQuestion } from "./admin-group-question";
 import { joinAdminNames } from "./seed-nudge-rules";
+import { answerFeeFreeInHq } from "./fee-waiver";
 
 /** How far back the router's "earlier here" lines reach, and how many. */
 const RECENT_MS = 30 * 60 * 1000;
@@ -78,7 +83,15 @@ const RECENT_MAX = 5;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export interface UnderstandInput {
-  org: { id: string; language: string | null; squadMode: string | null; benchPickMode?: string | null };
+  org: {
+    id: string;
+    language: string | null;
+    squadMode: string | null;
+    benchPickMode?: string | null;
+    /** The HQ help's free-place line: a club that takes match fees. */
+    paymentCollectionEnabled?: boolean | null;
+    paymentTrackingEnabled?: boolean | null;
+  };
   messageId: string;
   text: string;
   mentionNames?: Array<{ jid: string; name?: string; phone?: string }>;
@@ -314,8 +327,33 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
         const r = await askPlayersGroup({ orgId: org.id, lang, messageId, now });
         return said(r.outcome, r.replyText);
       }
+      case "admin_ops": {
+        // A free place (2026-10-16): "Bilal washed the bibs, he's free
+        // this week". The players' group's own admin extractor reads the
+        // instruction; only `fee_waiver` is done from HQ, by
+        // `answerFeeFreeInHq` (fee-waiver.ts). Every other admin action
+        // stays the one line. Someone who is not an organiser, untagged,
+        // is chatting: silent, and the extractor is not asked.
+        if (!actor && !addressed) return null;
+        const model = input.deps?.extractorModel ?? extractorStubFromEnv() ?? anthropicModel();
+        const extracted = await extractForRoute(model, "admin_ops", {
+          id: messageId,
+          body,
+          authorName: input.senderName,
+          tagged: true,
+          history,
+          lastBotPost: lastHqPost,
+        });
+        const facts = extracted.facts;
+        if (facts.kind === "admin" && facts.action === "fee_waiver") {
+          if (!actor) return notYours();
+          const r = await answerFeeFreeInHq({ orgId: org.id, lang, refs: facts.coveredRefs ?? [], senderUserId: actor, messageId, now });
+          return said(r.outcome, r.replyText);
+        }
+        console.log(`[admin-group] ${messageId}: admin_ops read as ${facts.kind === "admin" ? facts.action : facts.kind}, not done from HQ`);
+        return said("hq-not-here", s.hq_not_here);
+      }
       case "score":
-      case "admin_ops":
         return actor || addressed ? said("hq-not-here", s.hq_not_here) : null;
       case "unsure": {
         // Not addressed to MatchTime: the organisers' own conversation.
