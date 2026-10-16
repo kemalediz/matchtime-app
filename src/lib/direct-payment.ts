@@ -21,6 +21,7 @@
  * `__tests__/paid-claim-never-sets-paid-at.test.ts` holds that line.
  */
 import { db } from "./db";
+import { REPLY_PRIORITY } from "./dm-reply-priority";
 import { ALREADY_PAID_REASON, payBlockedReason } from "./payment-outcome";
 import { buildDirectPayCollectorNotice } from "./dm-copy";
 
@@ -197,6 +198,9 @@ export async function markDirectPaymentPending(input: {
             claimedPaid: via === "dm-claim",
             lang: org.language,
           }),
+          // About a claim the player has just made (a "Paid" DM or the pay
+          // page's button): a conversational send (dm-reply-priority.ts).
+          ...REPLY_PRIORITY,
         },
       });
       collectorNotified = true;
