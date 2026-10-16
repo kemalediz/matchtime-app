@@ -201,8 +201,9 @@ export default function PlayerGuidePage() {
       <h3>Paying</h3>
       <p>
         If your organiser has switched on payments, you get a pay link by DM
-        after the game: card, Apple Pay, Google Pay or pay by bank. If you
-        haven&apos;t paid, you&apos;ll get a reminder.
+        after the game. It shows the ways your club takes payment, which can
+        be card, Apple Pay, Google Pay, pay by bank or paying the collector
+        directly. If you haven&apos;t paid, you&apos;ll get a reminder.
       </p>
 
       {/* ───────────────────────────────────────────────── */}

@@ -83,6 +83,15 @@ async function loadPayRows(userId: string, matchId: string) {
  */
 export const resolvePayContext = loadPayRows;
 
+/** The money collector's stored name, for "pay Raihan directly" in the
+ *  pay copy. Null when the club has no collector or no name is on
+ *  record; the copy then says "the organiser". */
+export async function payCollectorName(collectorId: string | null | undefined): Promise<string | null> {
+  if (!collectorId) return null;
+  const u = await db.user.findUnique({ where: { id: collectorId }, select: { name: true } });
+  return u?.name?.trim() || null;
+}
+
 export type DirectPendingOutcome =
   | { ok: false; reason: string }
   | {

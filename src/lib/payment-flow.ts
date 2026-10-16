@@ -15,7 +15,8 @@
 import { db } from "./db";
 import { signMagicLinkToken, MAGIC_LINK_TTL } from "./magic-link";
 import { buildShortMagicLinkUrl } from "./short-link";
-import { parseFeeReply } from "./payments";
+import { PAY_METHOD_SELECT, availablePayMethods, parseFeeReply, type PayMethod } from "./payments";
+import { payCollectorName } from "./direct-payment";
 import {
   buildFeeCancelledAck,
   buildFeeConfirmPrompt,
@@ -42,7 +43,9 @@ export async function releaseMatchPayments(matchId: string): Promise<number> {
           name: true,
           orgId: true,
           // `language`: the pay links are written in the match's org language.
-          org: { select: { paymentHolderId: true, language: true } },
+          // The pay-method switches and the Stripe account: the link names
+          // only the ways `availablePayMethods` allows (FNF, 2026-10-16).
+          org: { select: { paymentHolderId: true, language: true, ...PAY_METHOD_SELECT } },
         },
       },
       attendances: {
@@ -56,6 +59,13 @@ export async function releaseMatchPayments(matchId: string): Promise<number> {
   const orgId = match.activity.orgId;
   // The money collector doesn't pay themselves — never DM them a pay link.
   const collectorId = match.activity.org.paymentHolderId;
+  const methods = availablePayMethods(match.activity.org);
+  // The collector's name, from the squad when they played, else looked
+  // up. A failed lookup only costs the name ("the organiser"), never the
+  // pay links.
+  const collectorName =
+    match.attendances.find((a) => a.user.id === collectorId)?.user.name?.trim() ||
+    (await payCollectorName(collectorId).catch(() => null));
   let queued = 0;
   for (const a of match.attendances) {
     if (a.user.id === collectorId) continue; // collector collects, doesn't pay
@@ -86,6 +96,8 @@ export async function releaseMatchPayments(matchId: string): Promise<number> {
           activityName: match.activity.name,
           fee: match.feePerPlayer,
           url: await buildShortMagicLinkUrl(token),
+          methods,
+          collectorName,
           lang: match.activity.org.language,
         }),
       },
@@ -271,7 +283,9 @@ async function findCollectorPendingMatch(userId: string) {
     // Prefer a match already awaiting confirmation (feePendingConfirm set);
     // nulls last so an amount-pending match wins over a fee-less one.
     orderBy: [{ feePendingConfirm: { sort: "desc", nulls: "last" } }, { date: "desc" }],
-    include: { activity: { select: { name: true, orgId: true, org: { select: { language: true } } } } },
+    include: {
+      activity: { select: { name: true, orgId: true, org: { select: { language: true, ...PAY_METHOD_SELECT } } } },
+    },
   });
   return match;
 }
@@ -295,6 +309,10 @@ export interface CollectorPendingMatch {
    *  written in it, the allowlist accepts its words and the model is told
    *  which question was asked. English when absent. */
   lang?: Lang;
+  /** `availablePayMethods(org)`: the "links sent" ack names only these.
+   *  The database wiring always sets it; absent (a test double) reads as
+   *  all three, the ack as it was before 2026-10-16. */
+  payMethods?: PayMethod[];
 }
 
 /**
@@ -355,7 +373,8 @@ export async function runCollectorFeeReply(
 
   const releaseNow = async (amount: number): Promise<CollectorReplyResult> => {
     const released = await deps.release(match.id, amount);
-    return { released, reply: buildFeeReleasedAck({ released, fee: amount, matchName: match.name, lang }) };
+    const methods = match.payMethods ?? ["pay_by_bank", "card", "direct"];
+    return { released, reply: buildFeeReleasedAck({ released, fee: amount, matchName: match.name, methods, lang }) };
   };
   const cancelNow = async (): Promise<CollectorReplyResult> => {
     await deps.cancel(match.id);
@@ -460,6 +479,7 @@ export async function handleCollectorFeeReply(
             name: m.activity.name,
             feePendingConfirm: pending,
             lang: normaliseLang(m.activity.org.language),
+            payMethods: availablePayMethods(m.activity.org),
           }
         : null;
     },

@@ -211,7 +211,7 @@ describe("organisers mode, main chat (FNF: organisers announce, organisers pick)
         `🏆 After the game I'll run a quick *Man of the Match* vote.`,
         `⭐ I'll DM you a one-tap *rating* link after the match.`,
         `⏰ Need a nudge? Say *"@Match Time remind me Thursday"* and I'll DM you then.`,
-        `💷 After each game I'll DM you a pay link: card, Apple or Google Pay, or bank.`,
+        `💷 After each game I'll DM you a link to pay your match fee.`,
         `💳 I keep track of who's *paid*.`,
         ``,
         `Type *"@Match Time help"* any time to see this again.`,

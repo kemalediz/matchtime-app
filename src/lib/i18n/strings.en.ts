@@ -1112,7 +1112,11 @@ export const en = {
     // the organiser at how fee collection works instead of saying nothing.
     // Players learn they can pay through MatchTime (2026-09-30); an
     // organiser whose club does not collect yet learns that it can.
-    if (f.paymentCollection) lines.push(`💷 After each game I'll DM you a pay link: card, Apple or Google Pay, or bank.`);
+    // No method list (FNF, 2026-10-16): the help cannot see which ways
+    // the club takes payment, and "card, Apple or Google Pay, or bank"
+    // was untrue for a club that takes direct payment only. The pay link
+    // itself names the methods (`dm_pay_link`).
+    if (f.paymentCollection) lines.push(`💷 After each game I'll DM you a link to pay your match fee.`);
     if (f.paymentTracking) lines.push(`💳 I keep track of who's *paid*.`);
     if (!f.paymentTracking && !f.paymentCollection && f.feesNudge !== false) lines.push(`💷 Want to collect match fees? Ask me: *@Match Time help payments*`);
     lines.push(`\nType *"@Match Time help"* any time to see this again.`);
@@ -1727,29 +1731,95 @@ export const en = {
     );
   },
 
-  /** Row 96: the collector's ack once the links went out. */
-  dm_fee_released: (p: { released: number; fee: string; matchName: string }): string =>
-    `✅ Done, sent ${p.released} pay link${p.released === 1 ? "" : "s"} at *${p.fee}* each for *${p.matchName}*. ` +
-    `Players can pay by bank, card, Apple or Google Pay, or settle with you directly. I'll chase anyone who hasn't paid.`,
+  /** Row 96: the collector's ack once the links went out. `bank`, `card`
+   *  and `direct` are `availablePayMethods(org)`: it names only those
+   *  (FNF, 2026-10-16). */
+  dm_fee_released: (p: {
+    released: number;
+    fee: string;
+    matchName: string;
+    bank: boolean;
+    card: boolean;
+    direct: boolean;
+  }): string => {
+    const online = [p.bank && "bank", p.card && "card, Apple or Google Pay"].filter(Boolean).join(", ");
+    const how =
+      online && p.direct
+        ? `Players can pay by ${online}, or settle with you directly. `
+        : online
+          ? `Players can pay by ${online}. `
+          : p.direct
+            ? `Players pay you directly, and I'll let you know when someone says they have. `
+            : "";
+    return (
+      `✅ Done, sent ${p.released} pay link${p.released === 1 ? "" : "s"} at *${p.fee}* each for *${p.matchName}*. ` +
+      `${how}I'll chase anyone who hasn't paid.`
+    );
+  },
 
   /** Row 97: the collector's ack to a cancel. */
   dm_fee_cancelled: `No problem, cancelled. Just tell me the amount per player when you're ready.`,
 
-  /** Row 95: the pay link to each confirmed player. */
-  dm_pay_link: (p: { firstName: string | null; activityName: string; fee: string; url: string }): string =>
-    `💷 ${p.firstName ?? "there"}, match fee for *${p.activityName}* is *${p.fee}*.\n\n` +
-    `Tap to pay (bank, card, Apple or Google Pay, or pay the organiser directly):\n${p.url}\n\n` +
-    `You can also pay for anyone you brought along.`,
+  /** Row 95: the pay link to each confirmed player. `bank`, `card` and
+   *  `direct` are `availablePayMethods(org)`, the buttons the pay page
+   *  shows; it names nothing else (FNF, 2026-10-16: it promised bank,
+   *  card and Apple Pay to a club that takes direct payment only).
+   *  `collector` is the money collector's first name, or null. */
+  dm_pay_link: (p: {
+    firstName: string | null;
+    activityName: string;
+    fee: string;
+    url: string;
+    bank: boolean;
+    card: boolean;
+    direct: boolean;
+    collector: string | null;
+  }): string => {
+    const who = p.collector ?? "the organiser";
+    const online = [p.bank && "bank", p.card && "card, Apple or Google Pay"].filter(Boolean).join(", ");
+    const how =
+      online && p.direct
+        ? `Tap to pay (${online}, or pay ${who} directly):`
+        : online
+          ? p.card
+            ? `Tap to pay (${online}):`
+            : `Tap to pay by bank:`
+          : p.direct
+            ? `Pay ${who} directly, by cash or transfer. Tap to see what you owe and tell me once you've paid:`
+            : `Tap to see what you owe:`;
+    // The page's "Paying for" stepper covers every method, so the line
+    // holds whenever there is a method to pay by.
+    const guests = online || p.direct ? `\n\nYou can also pay for anyone you brought along.` : "";
+    return `💷 ${p.firstName ?? "there"}, match fee for *${p.activityName}* is *${p.fee}*.\n\n${how}\n${p.url}${guests}`;
+  },
 
-  /** Row 89: the daily pay chase; `dayNum` picks the opener. */
-  dm_pay_chase: (p: { firstName: string | null; dayNum: number; fee: string; activityName: string; url: string }): string => {
+  /** Row 89: the daily pay chase; `dayNum` picks the opener. Names only
+   *  `availablePayMethods(org)`, as the pay link does. */
+  dm_pay_chase: (p: {
+    firstName: string | null;
+    dayNum: number;
+    fee: string;
+    activityName: string;
+    url: string;
+    bank: boolean;
+    card: boolean;
+    direct: boolean;
+    collector: string | null;
+  }): string => {
     const first = p.firstName ?? "there";
     const opener =
       p.dayNum <= 1 ? `Quick one ${first}` : p.dayNum === 2 ? `${first}, gentle nudge` : `${first}, still owed`;
-    return (
-      `💷 ${opener}: your *${p.fee}* for *${p.activityName}* is still outstanding.\n\n` +
-      `Pay by bank, card, Apple or Google Pay, or settle directly:\n${p.url}`
-    );
+    const who = p.collector ?? "the organiser";
+    const online = [p.bank && "bank", p.card && "card, Apple or Google Pay"].filter(Boolean).join(", ");
+    const how =
+      online && p.direct
+        ? `Pay by ${online}, or pay ${who} directly:`
+        : online
+          ? `Pay by ${online}:`
+          : p.direct
+            ? `Pay ${who} directly, then tap here to tell me you've paid:`
+            : `See what you owe:`;
+    return `💷 ${opener}: your *${p.fee}* for *${p.activityName}* is still outstanding.\n\n${how}\n${p.url}`;
   },
 
   /** Row 90: the collector's daily "tick off the direct payers" nudge. */
