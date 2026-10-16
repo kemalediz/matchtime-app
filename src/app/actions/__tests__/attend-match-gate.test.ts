@@ -118,7 +118,7 @@ describe("attendMatch — group-membership gate", () => {
       role: "PLAYER",
     });
 
-    await expect(attendMatch("match-1")).resolves.toBeUndefined();
+    await expect(attendMatch("match-1")).resolves.toEqual({ status: "CONFIRMED", organiser: false });
     expect(registerAttendance).toHaveBeenCalledWith("user-1", "match-1", {
       event: {
         cause: "self-attendance",
@@ -198,7 +198,7 @@ describe("attendMatch — out-of-band group announcement", () => {
 
   it("a failing announcement never breaks the registration", async () => {
     announce.mockRejectedValue(new Error("bot job queue down"));
-    await expect(attendMatch("match-1")).resolves.toBeUndefined();
+    await expect(attendMatch("match-1")).resolves.toEqual({ status: "CONFIRMED", organiser: false });
     expect(registerAttendance).toHaveBeenCalled();
   });
 
@@ -262,7 +262,8 @@ describe("attendMatch — degraded participant sweep", () => {
           activity: {
             select: {
               orgId: true,
-              org: { select: { name: true, lastParticipantSweepAt: true } },
+              // benchPickMode rides along for the toast (2026-10-16).
+              org: { select: { name: true, lastParticipantSweepAt: true, benchPickMode: true } },
             },
           },
         },
@@ -285,7 +286,7 @@ describe("attendMatch — degraded participant sweep", () => {
     membershipFindUnique.mockResolvedValue(neverSeenPlayer);
     attendanceCount.mockResolvedValue(1);
 
-    await expect(attendMatch("match-1")).resolves.toBeUndefined();
+    await expect(attendMatch("match-1")).resolves.toEqual({ status: "CONFIRMED", organiser: false });
     expect(registerAttendance).toHaveBeenCalled();
   });
 
@@ -311,7 +312,7 @@ describe("attendMatch — degraded participant sweep", () => {
     membershipFindUnique.mockResolvedValue(neverSeenPlayer);
     attendanceCount.mockResolvedValue(2);
 
-    await expect(attendMatch("match-1")).resolves.toBeUndefined();
+    await expect(attendMatch("match-1")).resolves.toEqual({ status: "CONFIRMED", organiser: false });
     expect(registerAttendance).toHaveBeenCalledWith("user-1", "match-1", {
       event: {
         cause: "self-attendance",
@@ -331,7 +332,7 @@ describe("attendMatch — degraded participant sweep", () => {
     matchFindUnique.mockResolvedValue(matchRow(STALE));
     analyzedMessageCount.mockResolvedValue(4);
 
-    await expect(attendMatch("match-1")).resolves.toBeUndefined();
+    await expect(attendMatch("match-1")).resolves.toEqual({ status: "CONFIRMED", organiser: false });
     expect(analyzedMessageCount).toHaveBeenCalledWith({
       where: { orgId: "org-1", authorUserId: "user-1" },
     });
@@ -362,7 +363,7 @@ describe("attendMatch — degraded participant sweep", () => {
     matchFindUnique.mockResolvedValue(matchRow(null));
     attendanceCount.mockResolvedValue(1);
 
-    await expect(attendMatch("match-1")).resolves.toBeUndefined();
+    await expect(attendMatch("match-1")).resolves.toEqual({ status: "CONFIRMED", organiser: false });
   });
 
   it("DENIES a member who LEFT even when the sweep is stale, with the plain message", async () => {
@@ -477,10 +478,35 @@ describe("attendMatch — Raihan: a sighting earned by posting", () => {
     attendanceCount.mockResolvedValue(0);
     analyzedMessageCount.mockResolvedValue(0);
 
-    await expect(attendMatch("match-1")).resolves.toBeUndefined();
+    await expect(attendMatch("match-1")).resolves.toEqual({ status: "CONFIRMED", organiser: false });
     expect(registerAttendance).toHaveBeenCalled();
     // Not the degraded fallback — the plain `seen-in-group` allow.
     expect(attendanceCount).not.toHaveBeenCalled();
     expect(analyzedMessageCount).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The action returns what the write did, so the button's toast never says
+ * "You're in!" of a BENCH row (2026-10-16, the FNF "Brilliant, you're in!"
+ * incident's bug class on the web path).
+ */
+describe("attendMatch: returns the status the write left", () => {
+  beforeEach(() => {
+    membershipFindUnique.mockResolvedValue({ leftAt: null, lastSeenInGroupAt: new Date(), role: "PLAYER" });
+  });
+
+  it("a BENCH in an organiser-pick club comes back as BENCH, organiser", async () => {
+    matchFindUnique.mockResolvedValue({
+      id: "match-1",
+      activity: { orgId: "org-1", org: { name: "FNF", lastParticipantSweepAt: new Date(), benchPickMode: "organiser" } },
+    });
+    registerAttendance.mockResolvedValue({ status: "BENCH", position: 9, slot: 1, confirmedCount: 17, maxPlayers: 18 });
+    await expect(attendMatch("match-1")).resolves.toEqual({ status: "BENCH", organiser: true });
+  });
+
+  it("a BENCH in a first-come club comes back as BENCH, not organiser", async () => {
+    registerAttendance.mockResolvedValue({ status: "BENCH", position: 15, slot: 1, confirmedCount: 14, maxPlayers: 14 });
+    await expect(attendMatch("match-1")).resolves.toEqual({ status: "BENCH", organiser: false });
   });
 });

@@ -1184,9 +1184,12 @@ function cases(lang: Lang): Case[] {
   add("R84 buildRecruitChaseText / one", buildRecruitChaseText({ playerName: "Sait Demir", activityName: "Tuesday 7-a-side", matchWhen: W, need: 1, lang }));
   add("R84 buildRecruitChaseText / three", buildRecruitChaseText({ playerName: "Sait Demir", activityName: "Tuesday 7-a-side", matchWhen: W, need: 3, lang }));
   add("R84 buildRecruitChaseText / no name", buildRecruitChaseText({ playerName: null, activityName: "Tuesday 7-a-side", matchWhen: W, need: 2, lang }));
-  add("R102 buildTentativeFollowupAck / in", buildTentativeFollowupAck({ decision: "in", failed: false, lang }));
-  add("R102 buildTentativeFollowupAck / out", buildTentativeFollowupAck({ decision: "out", failed: false, lang }));
-  add("R102 buildTentativeFollowupAck / failed", buildTentativeFollowupAck({ decision: "in", failed: true, lang }));
+  const r102 = { matchName: "Friday 9-a-side", matchWhen: "Fri 16 Oct, 20:30", lang };
+  add("R102 buildTentativeFollowupAck / in", buildTentativeFollowupAck({ decision: "in", failed: false, status: "CONFIRMED", ...r102 }));
+  add("R102 buildTentativeFollowupAck / out", buildTentativeFollowupAck({ decision: "out", failed: false, status: "DROPPED", ...r102 }));
+  add("R102 buildTentativeFollowupAck / failed", buildTentativeFollowupAck({ decision: "in", failed: true, status: null, ...r102 }));
+  add("R102 buildTentativeFollowupAck / in, landed on the bench (first-come, full)", buildTentativeFollowupAck({ decision: "in", failed: false, status: "BENCH", organiser: false, ...r102 }));
+  add("R102 buildTentativeFollowupAck / in, landed on the bench (organisers pick)", buildTentativeFollowupAck({ decision: "in", failed: false, status: "BENCH", organiser: true, ...r102 }));
   for (const status of ["CONFIRMED", "BENCH", "DROPPED", null] as const) {
     add(`R101 buildSelfAttendanceAck / ${status ?? "no row"}`, buildSelfAttendanceAck({ failed: false, status, matchName: "Tuesday 7-a-side", matchWhen: W, lang }));
   }
