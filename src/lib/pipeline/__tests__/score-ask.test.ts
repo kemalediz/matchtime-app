@@ -16,10 +16,28 @@ import {
   scoreAnswerRef,
   scoreAnswerSide,
   scoreAskKey,
+  hasScorelineShape,
+  statesSeveralScorelines,
 } from "../score-ask";
 
 const EN: [string, string] = ["Red", "Yellow"];
 const TR: [string, string] = ["Kırmızı", "Sarı"];
+
+describe("the organisers' group's clear-or-ask shapes (2026-10-16)", () => {
+  it("several scorelines in one message", () => {
+    expect(statesSeveralScorelines("7-4 or 7-5")).toBe(true);
+    expect(statesSeveralScorelines("7-4 mü 7-5 mi")).toBe(true);
+    expect(statesSeveralScorelines("Yellow won 7-4")).toBe(false);
+    expect(statesSeveralScorelines("@447700900001 Yellow won 7-4")).toBe(false);
+  });
+  it("the shape of a scoreline, never a time", () => {
+    expect(hasScorelineShape("7-4 mü 7-5 mi emin değilim")).toBe(true);
+    expect(hasScorelineShape("10 - 7 to yellows")).toBe(true);
+    expect(hasScorelineShape("see you at 21:00")).toBe(false);
+    expect(hasScorelineShape("Tom out, 2 more needed")).toBe(false);
+    expect(hasScorelineShape("call 07700-900001")).toBe(false);
+  });
+});
 
 describe("the stored question", () => {
   it("round-trips its numbers through the key", () => {

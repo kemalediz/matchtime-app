@@ -90,7 +90,16 @@ export type AdminGroupMessageResult =
  * as a command. Not on the one line saying it cannot do, or could not
  * read, what was asked; ignored chat never reaches here.
  */
-const NO_TICK: ReadonlySet<string> = new Set(["hq-not-here", "hq-not-understood", "hq-only-organisers"]);
+const NO_TICK: ReadonlySet<string> = new Set([
+  "hq-not-here",
+  "hq-not-understood",
+  "hq-only-organisers",
+  // The score (2026-10-16): a tick only when it was recorded.
+  "hq-score-asked",
+  "hq-score-not-changed",
+  "hq-score-no-match",
+  "hq-score-failed",
+]);
 export const HQ_TICK = "✅";
 
 function acted(orgId: string, outcome: string | null, replyText: string | null): AdminGroupMessageResult {
