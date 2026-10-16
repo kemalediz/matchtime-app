@@ -208,6 +208,19 @@ import { isAiBudgetExceeded } from "../ai-budget-context";
  * `unsure` (`parseRouterResponse`). Live check on the dev key, once per
  * case: the HQ set 48/48 on the final prompt; the players' group
  * regressions, veto and recall are in the PR.
+ *
+ * ── 2026-10-16: ask_group, THE FIFTH ORGANISERS' ROUTE ─────────────────
+ *
+ * In FNF's HQ "@Match Time ask in the group if anyone is available" routed
+ * admin_ops and was answered "I can't do that from this group". Measured on
+ * this prompt before the change (dev key, once each): of six such asks one
+ * reached admin_ops-then-recruit, the rest went admin_ops-then-other, offer
+ * or none. The shared admin extractor's `recruit` is the players' group's
+ * DM blast, so widening it would have changed the players' group; HQ gets
+ * its own code-owned route instead, like poster and help, and its one line
+ * sits in the organisers' section with the other four. Size: 14,234
+ * characters / 4,067 tokens (`count_tokens`, claude-haiku-4-5, with a
+ * one-token message), from 13,710 / 3,920. Still under 4,096.
  */
 export const ROUTER_SYSTEM_PROMPT = `You are the front door of MatchTime, the bot that runs a football club's WhatsApp groups: who is playing this week, the two teams, results, payments, reminders and the players' stats. You read each message and send it to the part of MatchTime that handles it, or to none if it is chat between people and not for the bot. For EVERY message id you are given, return exactly one route.
 
@@ -233,7 +246,7 @@ balancer    asks the bot to generate, show, shuffle or rename the TWO team line-
 score       reports the final result of this group's own match.
 admin_ops   an instruction addressed to the bot to do something now: credit a payment, set a reminder, send a link, change a setting.
 none        everything else, as defined in question 3.
-approve, poster, team_sheet and help exist ONLY in the organisers' group; see that section.
+approve, poster, team_sheet, help and ask_group exist ONLY in the organisers' group; see that section.
 
 RULINGS. Each one settles a confusion that has really happened in a group.
 
@@ -263,6 +276,7 @@ approve     a yes to what MatchTime is WAITING for ("yes", "go ahead", "looks go
 poster      asks for the squad list as an image or graphic to share.
 team_sheet  asks for the teams as an image or graphic to share. A bare "teams" asks to see them: balancer.
 help        asks what MatchTime can do here.
+ask_group   tells the bot to find a player, or to ask the players' group whether anyone can play. Nobody's place changes until somebody answers there, so it is not offer. It must tell the BOT to do it: a shortage put to the other organisers ("one short this week, any ideas?"), or an organiser saying they will ask the group themselves, is none.
 There, moving or swapping players between the two teams is balancer, not attendance, because nobody joins or leaves: "swap Ali and Can", "move Tom to the other team", "put Sam in yellow". A reply to another organiser's message is their conversation: none, unless it plainly tells the bot to act.
 
 LANGUAGE. Messages may be in English or Turkish. Route on meaning; every rule applies in both. In Turkish, "var", "varım", "ben varım" and "geliyorum" are the sender joining, like "in"; "yok", "yokum", "ben yokum" and "gelemiyorum" are the sender leaving, like "out". Neither is ever none. "belki", "bakarız", "kesin değil" (maybe, we'll see, not certain) are offer. "X de geliyor" or "X de var" adds X and "X gelemiyor" or "X yok" drops X: other_att. "X, Y'nin yerine geliyor", "Y yerine X" and "Y çıkıyor X giriyor" are replacements.
@@ -374,6 +388,9 @@ In the organisers' group, teams waiting for approval:
   "send us the team sheet image" -> team_sheet
   "Ali ile Can'ı değiştir" -> balancer
   "neler yapabiliyorsun?" -> help
+  "we're one short, can you find us a player" -> ask_group
+  "ana gruba sorar mısın, gelebilecek var mı" -> ask_group
+  "I'll ask the lads in the group later" -> none
   "the teams look a bit uneven, what do you reckon?" -> none
 
 Return JSON only: {"routes":[{"id":"<id>","route":"<route>"}]}`;
@@ -396,6 +413,7 @@ const VALID: Record<string, Route> = {
   poster: "poster",
   team_sheet: "team_sheet",
   help: "help",
+  ask_group: "ask_group",
   // Aliases. §6.1's unfixed prototype failure was "move Mustafa to the
   // bench" routing `team_ops` 3/3 because "bench" reads as team-shaped
   // vocabulary; the doc's own remedy is to rename it and add a lineup

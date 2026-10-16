@@ -156,6 +156,10 @@ describe("the minimum cacheable prefix is a token count, per model", () => {
     // endpoint): 13,710 characters / 3,920 tokens, from 11,734 / 3,386.
     // The estimator's 3,427 sits under it. Still under Haiku's 4,096 (a
     // first cut at 4,186 was trimmed to stay there), so still no marker.
+    //
+    // 2026-10-16, the organisers' fifth route (ask_group): 14,234
+    // characters / 4,067 tokens measured the same way (with a one-token
+    // message). Estimator 3,558. Still under 4,096, still no marker.
     expect(estimateTokens(ROUTER_SYSTEM_PROMPT)).toBeLessThanOrEqual(3_920);
     expect(estimateTokens(EXTRACTOR_PROMPTS.attendance)).toBeLessThanOrEqual(2_699);
   });

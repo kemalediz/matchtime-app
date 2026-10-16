@@ -11,6 +11,9 @@
  *   - the organisers' group: posters and team sheets, swaps, moves and
  *     reshuffles in natural words, help, YES (quoted, next, after chat),
  *     squad changes, organiser chatter (must be none), EN and TR;
+ *   - asking the players' group for a player (`ask_group`, added the same
+ *     day after FNF's "ask in the group if anyone is available"), and the
+ *     organisers' own talk about a shortage (must not be `ask_group`);
  *   - the rewritten teams extractor, on what the players' group already
  *     asks it (generate, show, rename, pairings, includes, Turkish) and
  *     the new moves.
@@ -126,6 +129,17 @@ const HQ: HqCase[] = [
   { text: "nice one lads 👍", ctx: nothing, want: ["none"], why: "chatter" },
   { text: "I'll call the pitch tomorrow about the booking", ctx: nothing, want: ["none"], why: "chatter" },
   { text: "yes", ctx: { pending: [], recent: [{ fromMatchTime: false, text: "can you do Friday?" }] }, want: ["none", "approve"], why: "yes between organisers, nothing waiting: code silent on either" },
+  // Asking the players' group for a player (2026-10-16, ask_group). None of
+  // these is a worked example in the prompt.
+  { text: "@Match Time ask in the group if anyone is available", ctx: nothing, want: ["ask_group"], why: "ask the group: the FNF message, word for word" },
+  { text: "can you ask the main group if anyone can play tonight", ctx: nothing, want: ["ask_group"], why: "ask the group, untagged" },
+  { text: "we're short, can you put a message out in the group", ctx: nothing, want: ["ask_group"], why: "ask the group, the shortage stated" },
+  { text: "@Match Time find us a player for Friday", ctx: waiting, want: ["ask_group"], why: "find a player, teams waiting" },
+  { text: "gruba sor, oynayabilecek var mı", ctx: nothing, want: ["ask_group"], why: "ask the group, TR" },
+  { text: "bir oyuncu eksiğimiz var, ana gruba yazar mısın", ctx: nothing, want: ["ask_group"], why: "ask the group, TR, the shortage stated" },
+  { text: "I'll post in the main chat that we need one", ctx: nothing, want: ["none"], why: "the organiser will ask himself: chatter" },
+  { text: "we need one more, does anyone know someone?", ctx: nothing, want: ["none", "offer"], why: "organisers asking each other: code silent on either" },
+  { text: "@Match Time remind me on Monday to book the pitch", ctx: nothing, want: ["admin_ops"], why: "another instruction stays admin_ops" },
 ];
 
 interface TeamsCase {
