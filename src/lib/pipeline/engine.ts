@@ -773,6 +773,27 @@ export function decide(input: EngineInput): EngineResult {
         return;
       }
 
+      // REVIEW M3: an open ask whose post id has not come back yet cannot be
+      // matched to a reply. A reply quoting a MatchTime post while one is
+      // open is therefore never written as an own-club IN: the sender is
+      // asked once which game, then held until the id is known.
+      if (
+        msg.quoted?.fromMatchTime &&
+        msg.senderUserId &&
+        claims.length > 0 &&
+        claims.every((c) => c.subject === "sender" && c.polarity === "in")
+      ) {
+        const pending = (state.partnerAsks ?? []).find((a) => a.open && a.postIdKnown === false);
+        if (pending) {
+          if (!(pending.whichAskedUserIds ?? []).includes(msg.senderUserId)) {
+            speech.push({ kind: "partner_ask_which", messageId: msg.id, askId: pending.askId, userId: msg.senderUserId, askerName: pending.askerName });
+            out.disposition = out.disposition === "degraded" ? "degraded" : "acted";
+          }
+          out.reasons.push(`M3: a reply to a MatchTime post while ${pending.askerName}'s ask has no post id yet: not an own-club IN`);
+          return;
+        }
+      }
+
       // D5b (slice S5b): a PLAIN IN soon after a partner club's ask, from a
       // sender with no row at all on this club's game, may mean either. A
       // state rule: MatchTime asks him once which, and writes nothing. A
@@ -780,6 +801,8 @@ export function decide(input: EngineInput): EngineResult {
       // asked, his next IN is his own game's. Only the sender's own IN.
       if (
         msg.route === "self_att" &&
+        // A reply quoting a post is about that post; D5b is for a PLAIN IN.
+        !msg.quoted &&
         claims.length > 0 &&
         claims.every((c) => c.subject === "sender" && c.polarity === "in")
       ) {

@@ -714,6 +714,9 @@ export interface PartnerAskView {
   postedAt?: string | null;
   /** Who has been asked "FNF or ours?" for this ask already (D5b). */
   whichAskedUserIds?: string[];
+  /** False while the post's message id has not come back from the Pi
+   *  (review M3): a reply cannot be matched to it yet. Absent: known. */
+  postIdKnown?: boolean;
 }
 
 export interface SquadState {

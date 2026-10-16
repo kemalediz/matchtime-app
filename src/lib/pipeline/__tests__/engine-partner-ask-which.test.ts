@@ -81,3 +81,25 @@ describe("D5b: an unquoted IN soon after an ask, from someone with no row on his
     expect(withNone.speech).toEqual(without.speech);
   });
 });
+
+describe("M3 (review): an ask whose post id has not come back yet", () => {
+  const unknownAsk = () => ask({ postWaMessageId: "", postIdKnown: false } as never);
+  const quotedIn = () => plainIn({ quoted: { id: "3EB0SOMEPOST", fromMatchTime: true } });
+
+  it("a reply quoting a MatchTime post is never written as an own-club IN: one question instead", () => {
+    const r = decide({ now: NOW, state: state({ confirmed: ["kemal", "sait"], asks: [unknownAsk()] }), messages: [quotedIn()] });
+    expect(r.writes).toEqual([]);
+    expect(r.speech).toEqual([{ kind: "partner_ask_which", messageId: "wa-in", askId: "ask-1", userId: "u-sait", askerName: "FNF" }]);
+  });
+
+  it("asked once already: held, still nothing written", () => {
+    const r = decide({ now: NOW, state: state({ asks: [{ ...unknownAsk(), whichAskedUserIds: ["u-sait"] }] }), messages: [quotedIn()] });
+    expect(r.writes).toEqual([]);
+    expect(r.speech).toEqual([]);
+  });
+
+  it("once the post id is known, a reply quoting another post is today's own IN", () => {
+    const r = decide({ now: NOW, state: state({ asks: [ask()] }), messages: [quotedIn()] });
+    expect(r.writes[0]).toMatchObject({ kind: "attendance", userId: "u-sait" });
+  });
+});

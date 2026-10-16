@@ -455,10 +455,15 @@ async function loadPartnerAskViews(orgId: string, now: Date): Promise<PartnerAsk
     const rows = await db.partnerAsk.findMany({
       where: {
         partnerOrgId: orgId,
-        postWaMessageId: { not: null },
-        // A picked guest's quoted OUT must still find the ask after it
-        // filled, until its game is over (S4).
-        OR: [{ status: "posted" }, { closesAt: { gte: now } }, { closedAt: { gte: new Date(now.getTime() - 24 * 60 * 60 * 1000) } }],
+        // An open ask whose post id has not come back is loaded too (review
+        // M3), so a reply is never mistaken for an own-club IN meanwhile.
+        OR: [
+          { status: "posted" },
+          // A picked guest's quoted OUT must still find the ask after it
+          // filled, until its game is over (S4).
+          { postWaMessageId: { not: null }, closesAt: { gte: now } },
+          { postWaMessageId: { not: null }, closedAt: { gte: new Date(now.getTime() - 24 * 60 * 60 * 1000) } },
+        ],
       },
       select: { id: true, status: true, closesAt: true, postWaMessageId: true, askerOrgId: true, postedAt: true },
     });
@@ -475,7 +480,8 @@ async function loadPartnerAskViews(orgId: string, now: Date): Promise<PartnerAsk
     const nameOf = new Map(askers.map((o) => [o.id, o.name]));
     return rows.map((r) => ({
       askId: r.id,
-      postWaMessageId: r.postWaMessageId!,
+      postWaMessageId: r.postWaMessageId ?? "",
+      postIdKnown: !!r.postWaMessageId,
       askerName: nameOf.get(r.askerOrgId) ?? "",
       open: r.status === "posted" && now.getTime() < r.closesAt.getTime(),
       postedAt: r.postedAt ? r.postedAt.toISOString() : null,
