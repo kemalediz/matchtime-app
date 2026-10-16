@@ -44,6 +44,9 @@ import { resolveOrProvisionByName } from "./resolve-or-provision-name";
 import { adminGroupSourceRef } from "./admin-added";
 import { floorAttendanceFacts } from "./pipeline/router";
 import { resolvePerson } from "./pipeline/identity";
+import { loadSquadState } from "./pipeline/load-state";
+import { rollingSeedPendingAt } from "./rolling-squad";
+import { timeLabel, weekdayLabel } from "./i18n/dates";
 import type { Route, SquadState } from "./pipeline/types";
 import {
   ADMIN_GROUP_SQUAD_ROUTES,
@@ -68,6 +71,9 @@ export interface AdminSquadChangeInput {
   route: Route;
   /** The body with raw @tags named (`nameMentions`), when the caller has it. */
   namedBody?: string;
+  /** Addressed to MatchTime: an @tag, or a reply to its own message. Only
+   *  then does a held claim get a line back (2026-10-17). Absent: not. */
+  addressed?: boolean;
 }
 
 export type AdminSquadChangeResult =
@@ -76,7 +82,7 @@ export type AdminSquadChangeResult =
       handled: true;
       /** "squad-question": nothing written, one line saying how to make the
        *  change (an unknown name, the sender's own plain IN/OUT in chat). */
-      outcome: "squad-changed" | "squad-unchanged" | "squad-change-failed" | "squad-question";
+      outcome: "squad-changed" | "squad-unchanged" | "squad-change-failed" | "squad-question" | "squad-not-set";
       replyText: string;
     };
 
@@ -134,6 +140,16 @@ export async function handleAdminSquadChange(input: AdminSquadChangeInput): Prom
     // for the one line back. See `admin-group-squad-rules.ts`.
     let vetted: VettedClaim[] = [];
     let kickoffLabel = "";
+    // THE NEXT GAME'S LIST NOT SET YET (2026-10-17): a rolling club's
+    // squad is carried over at 08:00 the morning after the last game. Until
+    // then nothing said in HQ is applied to it. Read on the match the
+    // engine itself picks, as it loads the squad.
+    let notSetAt = null as Date | null;
+    const loadState: NonNullable<Parameters<typeof runAttendanceEngineBatch>[0]["deps"]["loadState"]> = async (o, n) => {
+      const state = await loadSquadState(o, n);
+      notSetAt = state.matchId ? await rollingSeedPendingAt(state.matchId, n) : null;
+      return state;
+    };
     const vetFacts: NonNullable<Parameters<typeof runAttendanceEngineBatch>[0]["deps"]["vetFacts"]> = ({ message, facts, state }) => {
       if (message.waMessageId !== messageId) return facts;
       kickoffLabel = state.kickoffLabel;
@@ -143,6 +159,7 @@ export async function handleAdminSquadChange(input: AdminSquadChangeInput): Prom
         senderUserId: input.senderUserId,
         senderName: input.senderName,
         bareDeclaration: floorAttendanceFacts(message.body) !== null,
+        listNotSet: notSetAt !== null,
         resolve: (ref) => refOn(state, ref),
         statusOf: (userId) => state.rows.find((r) => r.userId === userId)?.status ?? null,
       });
@@ -176,6 +193,7 @@ export async function handleAdminSquadChange(input: AdminSquadChangeInput): Prom
       ],
       deps: {
         aiCapped: capped,
+        loadState,
         vetFacts,
         // Every write is stamped as the admin group's (sourceRef
         // "admin-group:<id>"): the rolling squad carries a phoneless
@@ -262,6 +280,8 @@ export async function handleAdminSquadChange(input: AdminSquadChangeInput): Prom
       vetted,
       kickoffLabel,
       senderName: input.senderName,
+      addressed: input.addressed === true,
+      notSet: notSetAt ? { day: weekdayLabel(input.lang, notSetAt), time: timeLabel(notSetAt) } : null,
     });
     if (reply === null) {
       console.log(`[admin-group] ${messageId}: routed ${route}, nothing to apply or say (${vetted.length} claim(s) read)`);

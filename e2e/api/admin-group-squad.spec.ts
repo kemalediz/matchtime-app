@@ -133,18 +133,41 @@ test("then an injury report: no write, no reply", async ({ request, db }) => {
   expect(await statusOf(db, U.admin)).toBe("CONFIRMED");
 });
 
-test("a plain 'won't be around' in conversation: no write, one line with the command that does it", async ({ request, db }) => {
+// 2026-10-17 (FNF HQ, "Imti Rafi AH back"): a line back for a held claim
+// only when the message was addressed to MatchTime; in the organisers' own
+// conversation, silence and no tick.
+test("a plain 'won't be around' in conversation: no write, no reply", async ({ request, db }) => {
   engineOn({ "won't be around on friday": { route: "self_att", facts: selfOut() } });
-  const out = await say(request, "won't be around on friday");
-  expect(out).toMatchObject({ handled: true, outcome: "squad-question" });
+  expect(await say(request, "won't be around on friday")).toMatchObject({ handled: false, replyText: null });
+  expect(await statusOf(db, U.admin)).toBe("CONFIRMED");
+});
+
+test("the same, tagged to MatchTime: no write, one line with the command that does it, no tick", async ({ request, db }) => {
+  engineOn({ "@Match Time won't be around on friday": { route: "self_att", facts: selfOut() } });
+  const out = await say(request, "@Match Time won't be around on friday");
+  expect(out).toMatchObject({ handled: true, outcome: "squad-question", react: null });
   expect(out.replyText).toMatch(/^To take yourself out of .+, write "Alex Admin out"\.$/);
   expect(await statusOf(db, U.admin)).toBe("CONFIRMED");
 });
 
-test("a name nobody in the club has, said in passing: not added, and it says how to add them", async ({ request, db }) => {
+test("a name nobody in the club has, said in passing: not added, no reply", async ({ request, db }) => {
   engineOn({ "Zed is around again": { route: "other_att", facts: otherFacts("Zed", "in") } });
-  const out = await say(request, "Zed is around again");
-  expect(out).toMatchObject({ handled: true, outcome: "squad-question", replyText: 'I don\'t know Zed yet. To add them, write "put Zed in".' });
+  expect(await say(request, "Zed is around again")).toMatchObject({ handled: false, replyText: null });
+  expect(await db.one(`SELECT id FROM "User" WHERE name = 'Zed'`)).toBeFalsy();
+});
+
+test("the same, tagged to MatchTime: not added, and it says how to add them", async ({ request, db }) => {
+  engineOn({ "@Match Time Zed is around again": { route: "other_att", facts: otherFacts("Zed", "in") } });
+  const out = await say(request, "@Match Time Zed is around again");
+  expect(out).toMatchObject({ handled: true, outcome: "squad-question", replyText: 'I don\'t know Zed yet. To add them, write "put Zed in".', react: null });
+  expect(await db.one(`SELECT id FROM "User" WHERE name = 'Zed'`)).toBeFalsy();
+});
+
+test("the incident: a reply to another organiser naming players for next week: silent, nothing written, no tick", async ({ request, db }) => {
+  engineOn({ "Imti Rafi Zed back": { route: "other_att", facts: otherFacts("Zed", "in") } });
+  const out = await say(request, "Imti Rafi Zed back", ADMIN, undefined, { quotedText: "We have the below out", quotedFromMatchTime: false });
+  expect(out).toMatchObject({ handled: false, replyText: null });
+  expect(out).not.toHaveProperty("react");
   expect(await db.one(`SELECT id FROM "User" WHERE name = 'Zed'`)).toBeFalsy();
 });
 

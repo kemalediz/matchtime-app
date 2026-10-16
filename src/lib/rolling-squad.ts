@@ -34,6 +34,7 @@ import {
   pickSeedSource,
   pickSeedTarget,
   rollingSeedDue,
+  rollingSeedDueAt,
   type SeedSourceRow,
 } from "./rolling-squad-rules";
 
@@ -303,4 +304,49 @@ export async function findCarryOverSource(
   });
   const source = pickSeedSource(target, completed, { lookbackDays: Infinity });
   return source ? { id: source.id, date: source.date } : null;
+}
+
+/**
+ * WHEN THE SQUAD OF `matchId` IS STILL TO BE CARRIED OVER (2026-10-17):
+ * the time it is due, else null.
+ *
+ * Pending means: the club has the rolling squad, the match is not seeded
+ * yet, last week's played match is there to carry from (`pickSeedSource`,
+ * the scheduler's own rule), and the 08:00 carry-over (`rollingSeedDueAt`)
+ * has not come yet. Past that time the scheduler seeds within 15 minutes
+ * and the list is MatchTime's to change again, so it is not pending.
+ *
+ * Read by the admin group (`admin-group-squad-change.ts`): FNF's
+ * organisers talk about next week the night of a game, before its list is
+ * set (2026-10-16, "Imti Rafi AH back"), and nothing they say then is
+ * applied to it.
+ */
+export async function rollingSeedPendingAt(matchId: string, now: Date): Promise<Date | null> {
+  const target = await db.match.findUnique({
+    where: { id: matchId },
+    select: {
+      id: true,
+      date: true,
+      status: true,
+      isHistorical: true,
+      rollingSeededAt: true,
+      activity: { select: { orgId: true, venue: true, dayOfWeek: true, org: { select: { rollingSquadEnabled: true } } } },
+    },
+  });
+  if (!target || target.rollingSeededAt || target.activity.org?.rollingSquadEnabled !== true) return null;
+  const lookbackStart = new Date(target.date.getTime() - ROLLING_LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
+  const completed = await db.match.findMany({
+    where: { activity: { orgId: target.activity.orgId }, status: "COMPLETED", isHistorical: false, date: { gte: lookbackStart, lt: target.date } },
+    select: {
+      id: true,
+      date: true,
+      status: true,
+      isHistorical: true,
+      activity: { select: { orgId: true, venue: true, dayOfWeek: true, matchDurationMins: true } },
+    },
+  });
+  const source = pickSeedSource(target, completed);
+  if (!source) return null;
+  const due = rollingSeedDueAt(new Date(source.date.getTime() + source.activity.matchDurationMins * 60 * 1000));
+  return now.getTime() < due.getTime() ? due : null;
 }
