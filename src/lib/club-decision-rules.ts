@@ -10,6 +10,7 @@
  * envelope (never a directory lookup).
  */
 import { freePeriodStart } from "./club-billing-rules";
+import { isClubLimitExempt } from "./club-limit-exempt";
 import { formatLondon } from "./london-time";
 import { e164Digits as platformPhoneDigits } from "./phone";
 
@@ -176,7 +177,12 @@ export const NEW_CLUB_DM_WINDOW_DAYS = 28;
  * the same moment). Every club that existed before self-join (Sutton FC)
  * has a NULL `approvedAt` and is never capped.
  */
-export function newClubDmCap(org: { approvedAt: Date | null; liveAt?: Date | null }, now: Date): number | null {
+export function newClubDmCap(
+  org: { id?: string; approvedAt: Date | null; liveAt?: Date | null },
+  now: Date,
+): number | null {
+  // A club listed in CLUB_LIMIT_EXEMPT_ORG_IDS is never capped.
+  if (isClubLimitExempt(org.id)) return null;
   if (!org.approvedAt) return null;
   const age = now.getTime() - (freePeriodStart(org) ?? org.approvedAt).getTime();
   return age < NEW_CLUB_DM_WINDOW_DAYS * 24 * 60 * 60 * 1000 ? NEW_CLUB_MEMBER_DMS_PER_DAY : null;

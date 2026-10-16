@@ -44,6 +44,7 @@ import {
   type PiCaps,
 } from "./admin-channel-rules";
 import { adminNoticeSendAfter } from "./rolling-squad-rules";
+import { isClubLimitExempt } from "./club-limit-exempt";
 import type { DueInstruction } from "./bot-scheduler";
 import { isGroupPostable } from "./group-postability-store";
 import { graphicUrl, readGraphicJob, type GraphicJob } from "./graphic-job";
@@ -187,8 +188,10 @@ export async function sendAdminNotice(req: AdminNoticeRequest): Promise<{ channe
   if (!ch) return { channel: "none", queued: 0 };
 
   if (ch.cfg.mode === "admin-group" && ch.cfg.adminGroupId && ch.adminGroupPostable !== false) {
+    // An exempt club's admin-group post is not held overnight (CLUB_LIMIT_EXEMPT_ORG_IDS).
+    const groupSendAfter = isClubLimitExempt(orgId) ? null : sendAfter;
     await db.botJob.create({
-      data: { orgId, kind: "admin-group", text: groupText(req), ...(sendAfter ? { sendAfter } : {}) },
+      data: { orgId, kind: "admin-group", text: groupText(req), ...(groupSendAfter ? { sendAfter: groupSendAfter } : {}) },
     });
     return { channel: "admin-group", queued: 1 };
   }
@@ -241,7 +244,7 @@ export async function adminNoticeInstructions(args: {
 
   if (target.kind === "group") {
     const key = args.key("admin-group");
-    if (args.sentKeys.has(key) || !isAdminGroupPostHour(args.now)) return [];
+    if (args.sentKeys.has(key) || !isAdminGroupPostHour(args.now, ch.orgId)) return [];
     return [{ kind: "admin-group-message", key, ...withMatch, groupId: target.groupId, text: groupText(notice) }];
   }
 
@@ -264,6 +267,40 @@ export async function adminNoticeInstructions(args: {
 }
 
 /**
+ * A scheduled post that belongs in the club's admin group when the club
+ * has one MatchTime can post in (admin-group mode, linked, postable, and
+ * the polling Pi can send there), and somewhere else otherwise: the
+ * caller's own post, never a DM. Used by the "what was the final score?"
+ * ask (2026-10-16): the organisers report the score in HQ. In the group it
+ * keeps the caller's key, so it is never posted twice, and waits for the
+ * group's posting hours (`instruction` null until then).
+ */
+export function adminGroupPost(args: {
+  channel: LoadedAdminChannel | null;
+  piCaps: PiCaps;
+  now: Date;
+  key: string;
+  matchId?: string;
+  text: string;
+}): { to: "admin-group"; instruction: DueInstruction | null } | { to: "elsewhere" } {
+  const ch = args.channel;
+  if (!ch) return { to: "elsewhere" };
+  const target = resolveAdminNoticeTargets(ch.cfg, ch.admins, effectiveCaps(ch, args.piCaps));
+  if (target.kind !== "group") return { to: "elsewhere" };
+  if (!isAdminGroupPostHour(args.now)) return { to: "admin-group", instruction: null };
+  return {
+    to: "admin-group",
+    instruction: {
+      kind: "admin-group-message",
+      key: args.key,
+      ...(args.matchId ? { matchId: args.matchId } : {}),
+      groupId: target.groupId,
+      text: args.text,
+    },
+  };
+}
+
+/**
  * A queued `admin-group` BotJob, at emit time. Posted in the admin group
  * when the club still has one linked and still routes there, the Pi polling
  * can send there, and it is 09:00 to 22:59 London; held (null) overnight;
@@ -281,7 +318,7 @@ export function adminGroupJobInstruction(
   if (graphic) return graphicJobInstruction(key, job.text, graphic, ch, piCaps, now);
   const target = resolveAdminNoticeTargets(ch.cfg, ch.admins, effectiveCaps(ch, piCaps));
   if (target.kind === "group") {
-    if (!isAdminGroupPostHour(now)) return null;
+    if (!isAdminGroupPostHour(now, ch.orgId)) return null;
     return { kind: "admin-group-message", key, groupId: target.groupId, text: job.text };
   }
   logFallback(ch.orgId, target.via);
@@ -310,7 +347,7 @@ function graphicJobInstruction(
 ): DueInstruction | null {
   const target = { orgId: ch.orgId, matchId: graphic.matchId, kind: graphic.kind };
   if (ch.cfg.adminGroupId && effectiveCaps(ch, piCaps).adminGroup) {
-    if (!graphic.asked && !isAdminGroupPostHour(now)) return null;
+    if (!graphic.asked && !isAdminGroupPostHour(now, ch.orgId)) return null;
     return {
       kind: "admin-group-message",
       key,

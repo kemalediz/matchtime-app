@@ -176,6 +176,26 @@ export function messageStatesScore(body: string, first: number, second: number):
 }
 
 /**
+ * More than two numbers (mentions removed): more than one possible
+ * scoreline ("7-4 or 7-5"). The organisers' group records a score only
+ * when it is clear, so it asks once instead (`admin-group-score.ts`).
+ */
+export function statesSeveralScorelines(body: string): boolean {
+  return numbersIn(body).length > 2;
+}
+
+/**
+ * The shape of a scoreline, "7-4" (a hyphen or dash between two numbers
+ * of one or two digits; never a time, "21:00"). In the organisers' group,
+ * while MatchTime waits for a score, a message the router could not place
+ * (`unsure`) with this shape goes to the score handling, which still reads
+ * it with the extractor and records only what is clear.
+ */
+export function hasScorelineShape(body: string): boolean {
+  return new RegExp("(?:^|[^\\d])\\d{1,2}\\s*[-\\u2013]\\s*\\d{1,2}(?:[^\\d]|$)", "u").test(plainText(body));
+}
+
+/**
  * THE OPEN QUESTION, ANSWERED BY RESTATING IT (third review, item 2):
  * "Yellow 7-10", "10-7 yellow". The message is the pair that was asked
  * about, in either order, plus ONE team of the match and nothing else.

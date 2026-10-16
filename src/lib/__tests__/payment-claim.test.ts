@@ -44,6 +44,7 @@ function recorder(over: Partial<PaymentClaimDeps> = {}) {
     links: [] as string[],
     replies: [] as Array<{ orgId: string; text: string }>,
     sightings: 0,
+    reacted: [] as string[],
   };
   const deps: PaymentClaimDeps = {
     owedMatch: async () => OWED,
@@ -65,6 +66,10 @@ function recorder(over: Partial<PaymentClaimDeps> = {}) {
     },
     reply: async (args) => {
       calls.replies.push(args);
+    },
+    react: async (orgId) => {
+      calls.reacted.push(orgId);
+      return true;
     },
     playerName: "Abid Kazmi",
     ...over,
@@ -111,8 +116,15 @@ describe("a claim", () => {
   it("marks the owed match pending (the settle-directly write) and thanks the player", async () => {
     const r = recorder(says("paid"));
     const out = await runPaymentClaim(r.deps);
-    expect(out).toEqual({ handled: "paid-claim", matchId: "m-tue", alreadyPending: false, collectorNotified: true });
+    expect(out).toEqual({
+      handled: "paid-claim",
+      matchId: "m-tue",
+      alreadyPending: false,
+      collectorNotified: true,
+      reactionQueued: true,
+    });
     expect(r.calls.marked).toEqual(["m-tue"]);
+    expect(r.calls.reacted).toEqual(["org-sutton"]);
     expect(r.calls.replies).toHaveLength(1);
     expect(r.calls.replies[0].orgId).toBe("org-sutton");
     expect(r.calls.replies[0].text).toBe(
@@ -148,6 +160,8 @@ describe("a claim", () => {
     expect(r.calls.replies[0].text).toBe(
       "Already done Abid: Kemal knows about your *£8* for *Tuesday 7-a-side* and will confirm once it lands 👍",
     );
+    // "Already done" still gets its ✅.
+    expect(r.calls.reacted).toEqual(["org-sutton"]);
   });
 
   it("a REPLAY of the same WhatsApp message is silent and writes nothing", async () => {
@@ -156,6 +170,7 @@ describe("a claim", () => {
     expect(out.handled).toBe("paid-claim-replay");
     expect(r.calls.marked).toEqual([]);
     expect(r.calls.replies).toEqual([]);
+    expect(r.calls.reacted).toEqual([]);
   });
 
   it("blocked at write time (the collector confirmed a moment ago): silent, and does not fall through", async () => {
@@ -166,6 +181,26 @@ describe("a claim", () => {
     const out = await runPaymentClaim(r.deps);
     expect(out.handled).toBe("paid-claim-blocked");
     expect(r.calls.replies).toEqual([]);
+    expect(r.calls.reacted).toEqual([]);
+  });
+
+  it("a failed ✅ is logged and changes nothing else: the claim is still recorded and the player still thanked", async () => {
+    const r = recorder({
+      ...says("paid"),
+      react: async () => {
+        throw new Error("db down");
+      },
+    });
+    const out = await runPaymentClaim(r.deps);
+    expect(out).toMatchObject({ handled: "paid-claim", reactionQueued: false });
+    expect(r.calls.marked).toEqual(["m-tue"]);
+    expect(r.calls.replies).toHaveLength(1);
+  });
+
+  it("not a claim never reacts", async () => {
+    const r = recorder(says("other"));
+    await runPaymentClaim(r.deps);
+    expect(r.calls.reacted).toEqual([]);
   });
 });
 
