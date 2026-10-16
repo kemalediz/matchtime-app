@@ -31,6 +31,7 @@
  * so a muted club sends nothing until unmuted, like every other post.
  */
 import { db } from "./db";
+import { REPLY_PRIORITY } from "./dm-reply-priority";
 import { recordAttendanceEvent } from "./attendance-events";
 import { fillVacatedSlots, lockTeamSlots } from "./team-slot-fill";
 import { resolveTeamLabels } from "./team-labels";
@@ -1077,7 +1078,7 @@ export async function handleOrganiserPickDm(input: {
       }
       const replyPhone = bare(user.phoneNumber ?? phones[0]);
       if (outcome.replyText) {
-        await db.botJob.create({ data: { orgId, kind: "dm", phone: replyPhone, text: outcome.replyText } });
+        await db.botJob.create({ data: { orgId, kind: "dm", phone: replyPhone, text: outcome.replyText, ...REPLY_PRIORITY } });
       }
       if (outcome.alsoTell && outcome.alsoTell.length > 0) {
         const others = await db.user.findMany({
@@ -1086,7 +1087,7 @@ export async function handleOrganiserPickDm(input: {
         });
         for (const a of outcome.alsoTell) {
           const ph = others.find((o) => o.id === a.userId)?.phoneNumber;
-          if (ph) await db.botJob.create({ data: { orgId, kind: "dm", phone: bare(ph), text: a.text } });
+          if (ph) await db.botJob.create({ data: { orgId, kind: "dm", phone: bare(ph), text: a.text, ...REPLY_PRIORITY } });
         }
       }
       return { handled: "organiser-pick", outcome: outcome.outcome };

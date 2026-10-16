@@ -56,3 +56,15 @@ Put the dev key in the repo-root `.env`. See `MDs/dev-vs-production-api-keys.md`
 - Examples grouped by what they teach, deduplicated, English and Turkish side by side.
 - Shorter if clarity allows, but clarity wins over length. Report before and after size, and keep it above the model's prompt-cache floor (`src/lib/pipeline/__tests__/cache-threshold.test.ts`).
 - **A rewrite widens the regression risk, so the approved live check must cover every behaviour the prompt already handles, not just the new one.** Say so when asking Kemal to approve the run, and size the budget accordingly. Any case that passed before and fails after is a regression to fix before merging.
+
+## RULE: one architecture for every WhatsApp group (Kemal, 2026-10-16)
+
+**The players' group, the admin group (HQ) and DMs share the analysis pipeline. No parallel code paths, and no rules the owner didn't ask for.**
+
+**Why:** HQ had its own "never analysed" route with exact-phrase readers that we invented; natural requests failed silently (FNF, 2026-10-16). See `MDs/fnf-onboarding-2026-10-16.md`.
+
+## RULE: never make MatchTime understand people via exact phrases or regex (Kemal, 2026-10-16)
+
+**Use the pipeline, or make the step automatic** (e.g. redraw the team sheet after a change instead of waiting for "update the graphic").
+
+**Why:** people never type the phrase you expect; "Make teams" and "replace X with Y" were missed in FNF HQ (2026-10-16).

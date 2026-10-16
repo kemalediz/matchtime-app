@@ -15,11 +15,14 @@
  * Date to London wall-clock hour — DST-safe.
  */
 import { db } from "./db";
+import type { BotJob } from "@/generated/prisma/client";
+import { BOTJOB_PRIORITY_DEFAULT, mergeBotJobBatches, prioritiseReplyDms } from "./dm-reply-priority";
 import { signMagicLinkToken, MAGIC_LINK_TTL } from "./magic-link";
 import { appUrl } from "./app-url";
 import { buildShortMagicLinkUrl } from "./short-link";
 import {
   adminGroupJobInstruction,
+  adminGroupPost,
   adminNoticeInstructions,
   loadAdminChannel,
   type LoadedAdminChannel,
@@ -49,6 +52,8 @@ import {
   buildRatingReminderDm,
   buildTentativeFollowupDm,
 } from "./dm-copy";
+import { PAY_METHOD_SELECT, availablePayMethods, directPayInstructions } from "./payments";
+import { payCollectorName } from "./direct-payment";
 import { isNextUpcomingForPosting } from "./next-upcoming-match";
 import { isSameRecurringFixture } from "./match-slot";
 import { buildMomAnnouncement } from "./mom-announcement";
@@ -109,6 +114,7 @@ import { buildPaygPoolDm, buildPaygPoolGroupPost, buildWeekListPost } from "./mo
 import { londonMonthStart } from "./squad-month-rules";
 import {
   buildAnnounceMatchPost,
+  buildAskScoreHqPost,
   buildAskScorePost,
   buildBenchOfferContext,
   buildBotIntro,
@@ -509,6 +515,10 @@ export async function computeDuePosts(
   /** A monthly club's live months (sign-up, slice 3), when the due-posts
    *  route's sweep has just read them. Null or omitted: read here. */
   preloadedLiveMonths: import("./month-signup").SignupMonth[] | null = null,
+  /** `replyPriority`: DM_REPLY_PRIORITY_ENABLED as the due-posts route
+   *  read it (src/lib/dm-reply-priority.ts). Off or omitted: today's
+   *  BotJob query and today's order, exactly. */
+  opts: { replyPriority?: boolean } = {},
 ): Promise<DuePostsResult | null> {
   const org = await db.organisation.findFirst({
     where: { whatsappGroupId: groupId, whatsappBotEnabled: true },
@@ -517,6 +527,9 @@ export async function computeDuePosts(
 
   const now = nowOverride ?? new Date();
   const out: DueInstruction[] = [];
+  // `botjob-<id>` keys of queued replies (dm-reply-priority.ts). Filled
+  // only when `opts.replyPriority` is on.
+  const replyKeys = new Set<string>();
 
   // The club's admin channel (slice 2a), read at most once per poll and
   // only when an admin notice is actually due, exactly as the admin list
@@ -664,7 +677,7 @@ export async function computeDuePosts(
   // is `botjob-${id}` so ACK marks sentAt via the existing flow + our
   // separate BotJob update below (see /api/whatsapp/ack).
   {
-    const jobs = await db.botJob.findMany({
+    let jobs = await db.botJob.findMany({
       where: {
         orgId: org.id,
         sentAt: null,
@@ -676,6 +689,16 @@ export async function computeDuePosts(
       orderBy: { createdAt: "asc" },
       take: 20,
     });
+    // Conversational replies first (FNF 2026-10-16, dm-reply-priority.ts):
+    // only with the flag on, also read the due reply DMs the 20 above
+    // missed and the older unsent DMs to the same phones. Fails open to
+    // the 20 above.
+    if (opts.replyPriority) {
+      jobs = await withReplyPriorityJobs(org.id, now, jobs);
+      for (const job of jobs) {
+        if (job.kind === "dm" && job.phone && job.priority > BOTJOB_PRIORITY_DEFAULT) replyKeys.add(`botjob-${job.id}`);
+      }
+    }
     // A partner club's ask (cross-club ask, review M3): held until the Pi
     // polling says it forwards quoted ids, or a reply to the ask could not
     // be told from an IN for the player's own game. It stays queued; the
@@ -1099,7 +1122,40 @@ export async function computeDuePosts(
     return f === null ? true : features[f];
   });
 
-  return { instructions: gated, waGroupId: groupId, orgId: org.id };
+  // Conversational replies take the first DM slots (dm-reply-priority.ts).
+  // Off: `gated` exactly as before.
+  const instructions = opts.replyPriority ? prioritiseReplyDms(gated, replyKeys) : gated;
+  return { instructions, waGroupId: groupId, orgId: org.id };
+}
+
+/**
+ * Flag on only (dm-reply-priority.ts): today's createdAt-ordered 20 BotJob
+ * rows, plus the due reply DMs they missed, plus every older unsent DM to
+ * those replies' phones, so that a reply never overtakes an earlier DM to
+ * the same person. Merged in createdAt order. Any failure: today's rows.
+ */
+async function withReplyPriorityJobs(orgId: string, now: Date, base: BotJob[]): Promise<BotJob[]> {
+  try {
+    const due = { orgId, sentAt: null, OR: [{ sendAfter: null }, { sendAfter: { lte: now } }] };
+    const replies = await db.botJob.findMany({
+      where: { ...due, kind: "dm", priority: { gt: BOTJOB_PRIORITY_DEFAULT } },
+      orderBy: { createdAt: "asc" },
+      take: 20,
+    });
+    const have = new Set(base.map((j) => j.id));
+    const missing = replies.filter((r) => !have.has(r.id) && r.phone);
+    if (missing.length === 0) return base;
+    const latest = new Date(Math.max(...missing.map((r) => r.createdAt.getTime())));
+    const earlier = await db.botJob.findMany({
+      where: { ...due, kind: "dm", phone: { in: [...new Set(missing.map((r) => r.phone!))] }, createdAt: { lte: latest } },
+      orderBy: { createdAt: "asc" },
+      take: 40,
+    });
+    return mergeBotJobBatches(base, missing, earlier);
+  } catch (err) {
+    console.error(`[reply-priority] org ${orgId}: the reply DMs could not be read; today's order this poll:`, err);
+    return base;
+  }
 }
 
 type MatchWithIncludes = Awaited<ReturnType<typeof getMatchesForScheduler>>[number];
@@ -1162,6 +1218,14 @@ async function getMatchesForScheduler(orgId: string, windowStart: Date, now: Dat
             select: {
               paymentCollectionEnabled: true,
               paymentHolderId: true,
+              // The daily pay chase names only the ways the club can
+              // take payment (`availablePayMethods`, FNF 2026-10-16).
+              ...PAY_METHOD_SELECT,
+              // And the club's own words on paying the collector directly
+              // (one line, only when direct is offered, 2026-10-16). Not for
+              // a monthly club (`squadMode`, read by `directPayInstructions`).
+              paymentInstructions: true,
+              squadMode: true,
               // The weekly-rhythm unpaid reminder (2026-10-01) is gated on it.
               paymentTrackingEnabled: true,
               teamLabels: true,
@@ -2712,12 +2776,29 @@ async function computeForMatch(
       now >= askAt &&
       now.getTime() < askAt.getTime() + 24 * 60 * 60 * 1000 // only within 24h window
     ) {
-      out.push({
-        kind: "group-message",
+      // A club with a linked admin group asks THERE (2026-10-16, Kemal):
+      // the organisers report the score in HQ (`admin-group-score.ts`).
+      // Same key, so it is asked once, wherever it goes. Every other club,
+      // and an admin group MatchTime cannot post in, keeps the players'
+      // group post. A score said in the players' group is read either way.
+      const hq = adminGroupPost({
+        channel: await admin.getChannel(),
+        piCaps: admin.piCaps,
+        now,
         key,
         matchId,
-        text: buildAskScorePost({ activityName: activity.name, lang }),
+        text: buildAskScoreHqPost({ activityName: activity.name, lang }),
       });
+      if (hq.to === "admin-group") {
+        if (hq.instruction) out.push(hq.instruction);
+      } else {
+        out.push({
+          kind: "group-message",
+          key,
+          matchId,
+          text: buildAskScorePost({ activityName: activity.name, lang }),
+        });
+      }
     }
   }
 
@@ -2928,6 +3009,12 @@ async function computeForMatch(
     ) {
       const dayKey = londonDateKey(now);
       const dayNum = Math.max(1, Math.ceil(daysSinceRelease));
+      // The chase names only the ways the club can take payment, and the
+      // collector by name (FNF, 2026-10-16). The name is looked up once,
+      // only when somebody is actually chased.
+      const payMethods = availablePayMethods(activity.org);
+      const payInstructions = directPayInstructions(activity.org);
+      let chaseCollectorName: string | null | undefined;
 
       // Players paying electronically (or undecided) — re-send the link.
       for (const a of confirmed) {
@@ -2944,6 +3031,12 @@ async function computeForMatch(
           nextPath: `/pay/${matchId}`,
           ttlSeconds: MAGIC_LINK_TTL.bookmark,
         });
+        if (chaseCollectorName === undefined) {
+          const holderId = activity.org.paymentHolderId;
+          chaseCollectorName =
+            m.attendances.find((x) => x.userId === holderId)?.user.name?.trim() ||
+            (await payCollectorName(holderId).catch(() => null));
+        }
         out.push({
           kind: "dm",
           key,
@@ -2956,6 +3049,9 @@ async function computeForMatch(
             fee: m.feePerPlayer,
             activityName: activity.name,
             url: await buildShortMagicLinkUrl(token),
+            methods: payMethods,
+            collectorName: chaseCollectorName,
+            instructions: payInstructions,
             lang,
           }),
         });

@@ -19,6 +19,7 @@ import { SettingInfo } from "@/components/info/setting-info";
 import { useOrgLang } from "@/components/info/org-lang";
 import { LearnedSetupPanel } from "@/components/settings/learned-setup-panel";
 import { MonthlySquadSection, type MonthlySquadData } from "@/components/settings/monthly-squad-section";
+import { PaymentInstructionsRow } from "@/components/settings/payment-instructions-row";
 import { GoLiveBanner, type GoLiveSetup } from "@/components/settings/go-live-banner";
 import { PostersCard } from "@/components/settings/posters-card";
 import { PartnerClubsSection } from "@/components/settings/partner-clubs-section";
@@ -842,6 +843,25 @@ export default function SettingsPage() {
               </select>
               <p className="text-xs text-slate-400 mt-1.5">{w.st_collector_help}</p>
             </div>
+
+            {/* Payment instructions for weekly match fees (2026-10-16). A
+                monthly club edits the same field in its Monthly squad
+                section, so it is not shown twice. */}
+            {org.monthlySquad && org.monthlySquad.squadMode !== "monthly" && (
+              <>
+                <hr className="border-slate-100" />
+                <PaymentInstructionsRow
+                  orgId={org.id}
+                  language={org.language}
+                  initial={org.monthlySquad.paymentInstructions}
+                  onSaved={({ rollingSquad: _rolling, ...monthlySquad }) => {
+                    void _rolling;
+                    setOrg((prev) => (prev ? { ...prev, monthlySquad } : prev));
+                    settingSaved();
+                  }}
+                />
+              </>
+            )}
 
             <hr className="border-slate-100" />
 

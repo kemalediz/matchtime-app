@@ -21,6 +21,7 @@
  * `__tests__/paid-claim-never-sets-paid-at.test.ts` holds that line.
  */
 import { db } from "./db";
+import { REPLY_PRIORITY } from "./dm-reply-priority";
 import { ALREADY_PAID_REASON, payBlockedReason } from "./payment-outcome";
 import { buildDirectPayCollectorNotice } from "./dm-copy";
 
@@ -82,6 +83,15 @@ async function loadPayRows(userId: string, matchId: string) {
  * checkout and by settle-directly, so the guards are written once.
  */
 export const resolvePayContext = loadPayRows;
+
+/** The money collector's stored name, for "pay Raihan directly" in the
+ *  pay copy. Null when the club has no collector or no name is on
+ *  record; the copy then says "the organiser". */
+export async function payCollectorName(collectorId: string | null | undefined): Promise<string | null> {
+  if (!collectorId) return null;
+  const u = await db.user.findUnique({ where: { id: collectorId }, select: { name: true } });
+  return u?.name?.trim() || null;
+}
 
 export type DirectPendingOutcome =
   | { ok: false; reason: string }
@@ -188,6 +198,9 @@ export async function markDirectPaymentPending(input: {
             claimedPaid: via === "dm-claim",
             lang: org.language,
           }),
+          // About a claim the player has just made (a "Paid" DM or the pay
+          // page's button): a conversational send (dm-reply-priority.ts).
+          ...REPLY_PRIORITY,
         },
       });
       collectorNotified = true;

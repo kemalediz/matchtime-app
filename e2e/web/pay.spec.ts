@@ -29,7 +29,7 @@ test("three methods render with correct per-method totals", async ({ page }) => 
 
   const bank = page.getByRole("button", { name: /Pay by Bank/ });
   const card = page.getByRole("button", { name: /Card, Apple or Google Pay/ });
-  const direct = page.getByRole("button", { name: /Pay the collector directly/ });
+  const direct = page.getByRole("button", { name: /Pay Colin directly/ });
   await expect(bank).toBeVisible();
   await expect(card).toBeVisible();
   await expect(direct).toBeVisible();
@@ -50,7 +50,7 @@ test("quantity stepper reprices all methods", async ({ page }) => {
 
   await expect(page.getByRole("button", { name: /Pay by Bank/ })).toContainText("£16.45");
   await expect(page.getByRole("button", { name: /Card, Apple or Google Pay/ })).toContainText("£16.61");
-  await expect(page.getByRole("button", { name: /Pay the collector directly/ })).toContainText("£16");
+  await expect(page.getByRole("button", { name: /Pay Colin directly/ })).toContainText("£16");
 
   await page.getByRole("button", { name: "Fewer" }).click(); // back to 1
   await expect(page.getByRole("button", { name: /Pay by Bank/ })).toContainText("£8.33");
@@ -81,10 +81,10 @@ test("'pay directly' marks pending and notifies the collector exactly once", asy
 
   await signInAs(page, U.fresh, `/pay/${MATCH.pay}`);
   await page.waitForURL(`**/pay/${MATCH.pay}`);
-  await page.getByRole("button", { name: /Pay the collector directly/ }).click();
+  await page.getByRole("button", { name: /Pay Colin directly/ }).click();
 
   // Page reloads into the "paying directly" pending state.
-  await expect(page.getByText(/Paying the organiser directly/)).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText(/Paying Colin directly/)).toBeVisible({ timeout: 15_000 });
 
   const att = await db.one<{
     paymentMethod: string | null;
@@ -100,8 +100,8 @@ test("'pay directly' marks pending and notifies the collector exactly once", asy
   expect(await collectorDmCount(db)).toBe(before + 1);
 
   // Repeat tap while still pending → state refresh only, NO second DM.
-  await page.getByRole("button", { name: /Pay the collector directly/ }).click();
-  await expect(page.getByText(/Paying the organiser directly/)).toBeVisible({ timeout: 15_000 });
+  await page.getByRole("button", { name: /Pay Colin directly/ }).click();
+  await expect(page.getByText(/Paying Colin directly/)).toBeVisible({ timeout: 15_000 });
   expect(await collectorDmCount(db)).toBe(before + 1);
 });
 

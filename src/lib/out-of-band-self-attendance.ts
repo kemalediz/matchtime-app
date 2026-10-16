@@ -14,6 +14,7 @@
  * apology, not a cheerful tick, and the group hears nothing.
  */
 import { db } from "./db";
+import { REPLY_PRIORITY } from "./dm-reply-priority";
 import { t } from "./i18n/t";
 import type { Lang } from "./i18n/lang";
 import { registerAttendance, cancelAttendance } from "./attendance";
@@ -127,7 +128,7 @@ export async function applyOutOfBandSelfAttendance(
 
   if (input.replyPhone) {
     await db.botJob
-      .create({ data: { orgId: input.orgId, kind: "dm", phone: input.replyPhone, text: ack } })
+      .create({ data: { orgId: input.orgId, kind: "dm", phone: input.replyPhone, text: ack, ...REPLY_PRIORITY } })
       .catch((err) => console.error("[oob-self-attendance] ack DM queue failed:", err));
   }
 

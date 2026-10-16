@@ -5,8 +5,8 @@
  * THE GAP
  * ═══════════════════════════════════════════════════════════════════════
  *
- * After each match every player gets a pay link: "Pay by bank, card,
- * Apple or Google Pay, or settle directly". The pay page's "Pay the
+ * After each match every player gets a pay link naming the ways the
+ * club takes payment (`availablePayMethods`). The pay page's "Pay the
  * collector directly" button does the right thing. But the less
  * technical half of a club skips the link and just DMs the bot "Paid",
  * and nothing read that. Abid Kazmi's "Paid" at 18:09 on 2026-09-23 was
@@ -82,6 +82,12 @@
  * message (the bot's recovery walk re-forwards recent DMs) is silent:
  * `SentNotification` key `paid-claim:<waMessageId>`.
  *
+ * THE ✅ (2026-10-16). Every RECORDED claim, the "already done" repeat
+ * included, also queues a ✅ reaction on the player's DM through the
+ * existing retro-reaction queue (`paid-claim-reaction.ts`). A replay, a
+ * blocked claim and "paid for my mate" get none. A failure to queue it is
+ * logged and nothing is said.
+ *
  * PAYING FOR SOMEONE ELSE ("paid for me and my mate"): its own intent,
  * `paid_for_others`. Nothing is written, because MatchTime does not
  * guess how many people a payment covered. The player is sent their pay
@@ -89,12 +95,14 @@
  * directly", which is the button path with the right quantity.
  */
 import { db } from "./db";
+import { REPLY_PRIORITY } from "./dm-reply-priority";
 import { normaliseLang, type Lang } from "./i18n/lang";
 import { buildPaidClaimAck, buildPaidForOthersReply } from "./dm-copy";
 import { markDirectPaymentPending, type DirectPendingOutcome } from "./direct-payment";
 import { gbp } from "./payments";
 import { withOrgAiBudget } from "./ai-budget";
 import { classifyPaymentClaim, type PaymentClaimIntent } from "./payment-claim-classifier";
+import { queuePaidClaimReaction } from "./paid-claim-reaction";
 
 export {
   PAYMENT_CLAIM_MIN_CONFIDENCE,
@@ -173,10 +181,21 @@ export interface PaymentClaimDeps {
   payLink: (matchId: string) => Promise<string>;
   /** The ONE private reply, to the player. */
   reply: (args: { orgId: string; text: string }) => Promise<void>;
+  /** Queue a ✅ on the player's own DM (`paid-claim-reaction.ts`). Runs
+   *  only for a RECORDED claim, the "already done" repeat included. True
+   *  when a reaction is (or already was) queued. A throw is logged and
+   *  changes nothing else: the claim and the reply already happened. */
+  react: (orgId: string) => Promise<boolean>;
 }
 
 export type PaymentClaimResult =
-  | { handled: "paid-claim"; matchId: string; alreadyPending: boolean; collectorNotified: boolean }
+  | {
+      handled: "paid-claim";
+      matchId: string;
+      alreadyPending: boolean;
+      collectorNotified: boolean;
+      reactionQueued: boolean;
+    }
   | { handled: "paid-claim-for-others"; matchId: string }
   | { handled: "paid-claim-replay" }
   | { handled: "paid-claim-blocked"; reason: string }
@@ -238,11 +257,19 @@ export async function runPaymentClaim(deps: PaymentClaimDeps): Promise<PaymentCl
       lang: owed.lang,
     }),
   });
+  let reactionQueued = false;
+  try {
+    reactionQueued = await deps.react(owed.orgId);
+  } catch (err) {
+    // Silent to the player, by rule: a missing ✅ is logged, never said.
+    console.error(`[payment-claim] could not queue the ✅ for match ${owed.matchId}:`, err);
+  }
   return {
     handled: "paid-claim",
     matchId: owed.matchId,
     alreadyPending: marked.alreadyPending,
     collectorNotified: marked.collectorNotified,
+    reactionQueued,
   };
 }
 
@@ -358,7 +385,14 @@ export async function handlePaymentClaimDm(input: {
       );
     },
     reply: async ({ orgId, text: replyText }) => {
-      await db.botJob.create({ data: { orgId, kind: "dm", phone: replyPhone, text: replyText } });
+      await db.botJob.create({ data: { orgId, kind: "dm", phone: replyPhone, text: replyText, ...REPLY_PRIORITY } });
+    },
+    react: async (orgId) => {
+      const outcome = await queuePaidClaimReaction(db, { orgId, waMessageId, reason: "paid claim" });
+      if (outcome === "no-real-id") {
+        console.warn(`[payment-claim] no ✅: ${waMessageId} is not a real WhatsApp id`);
+      }
+      return outcome !== "no-real-id";
     },
   });
 }

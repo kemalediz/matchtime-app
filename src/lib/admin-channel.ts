@@ -272,6 +272,40 @@ export async function adminNoticeInstructions(args: {
 }
 
 /**
+ * A scheduled post that belongs in the club's admin group when the club
+ * has one MatchTime can post in (admin-group mode, linked, postable, and
+ * the polling Pi can send there), and somewhere else otherwise: the
+ * caller's own post, never a DM. Used by the "what was the final score?"
+ * ask (2026-10-16): the organisers report the score in HQ. In the group it
+ * keeps the caller's key, so it is never posted twice, and waits for the
+ * group's posting hours (`instruction` null until then).
+ */
+export function adminGroupPost(args: {
+  channel: LoadedAdminChannel | null;
+  piCaps: PiCaps;
+  now: Date;
+  key: string;
+  matchId?: string;
+  text: string;
+}): { to: "admin-group"; instruction: DueInstruction | null } | { to: "elsewhere" } {
+  const ch = args.channel;
+  if (!ch) return { to: "elsewhere" };
+  const target = resolveAdminNoticeTargets(ch.cfg, ch.admins, effectiveCaps(ch, args.piCaps));
+  if (target.kind !== "group") return { to: "elsewhere" };
+  if (!isAdminGroupPostHour(args.now)) return { to: "admin-group", instruction: null };
+  return {
+    to: "admin-group",
+    instruction: {
+      kind: "admin-group-message",
+      key: args.key,
+      ...(args.matchId ? { matchId: args.matchId } : {}),
+      groupId: target.groupId,
+      text: args.text,
+    },
+  };
+}
+
+/**
  * A queued `admin-group` BotJob, at emit time. Posted in the admin group
  * when the club still has one linked and still routes there, the Pi polling
  * can send there, and it is outside the club's quiet hours; held (null) in them;
