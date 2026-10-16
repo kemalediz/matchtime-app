@@ -3696,6 +3696,7 @@ export const tr: Strings = {
   xask_keep_button: (p) => `${p.club} kulübüne ekle`,
   xask_keep_done: "Üye olarak eklendi.",
   xask_guest_badge: (p) => `Misafir: ${p.club}`,
+  xask_vol_game_over: (p) => `*${p.asker}* maçı artık bitti, değiştirecek bir şey yok.`,
 };
 
 /**

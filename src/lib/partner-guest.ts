@@ -44,7 +44,7 @@ export interface VolunteerWrite {
 export interface VolunteerResult {
   ok: boolean;
   /** What happened, for the message's log line. */
-  outcome: "registered-bench" | "registered-in" | "withdrawn" | "closed" | "unknown-sender" | "overlap" | "not-on-list" | "failed";
+  outcome: "registered-bench" | "registered-in" | "withdrawn" | "closed" | "unknown-sender" | "overlap" | "not-on-list" | "game-over" | "failed";
   /** The reply to the volunteer, in his own group. */
   replyText: string | null;
 }
@@ -83,7 +83,7 @@ export async function handlePartnerVolunteer(w: VolunteerWrite, now: Date = new 
       partnerOrgId: true,
       matchId: true,
       volunteerUserIds: true,
-      match: { select: { date: true, activity: { select: { matchDurationMins: true } } } },
+      match: { select: { date: true, status: true, activity: { select: { matchDurationMins: true } } } },
     },
   });
   if (!ask) return { ok: false, outcome: "failed", replyText: null };
@@ -114,6 +114,10 @@ export async function handlePartnerVolunteer(w: VolunteerWrite, now: Date = new 
     inOverlappingOwnGame: overlap.yes,
     ordinaryAskerMember: !!askerMember && !askerMember.leftAt && !askerMember.guestFromOrgId,
     onAskerMatch: !!row && (row.status === "CONFIRMED" || row.status === "BENCH"),
+    // Review H2: an OUT never touches a game that is over or played, nor a
+    // past guest's row.
+    askerMatchLive: LIVE.includes(ask.match.status as (typeof LIVE)[number]),
+    pastGuest: !!askerMember?.guestFromOrgId && !!askerMember.leftAt,
   });
 
   if (decision.kind === "refuse") {
@@ -124,7 +128,9 @@ export async function handlePartnerVolunteer(w: VolunteerWrite, now: Date = new 
           ? ps.xask_vol_unknown({ club: partner.name })
           : decision.why === "overlap"
             ? ps.xask_vol_overlap({ club: partner.name, time: overlap.time ?? "", asker: asker.name })
-            : ps.xask_vol_not_on({ asker: asker.name });
+            : decision.why === "game-over"
+              ? ps.xask_vol_game_over({ asker: asker.name })
+              : ps.xask_vol_not_on({ asker: asker.name });
     console.log(`[partner-guest] ask ${ask.id}: ${w.userId ?? "unknown sender"} refused (${decision.why})`);
     return { ok: true, outcome: decision.why, replyText };
   }
@@ -139,22 +145,38 @@ export async function handlePartnerVolunteer(w: VolunteerWrite, now: Date = new 
   };
   const askerLang = asker.language;
   const day = dayCommaTimeLabel(askerLang, ask.match.date);
+  /** The asking club hears once per reply (review M7): keyed on the ask,
+   *  the person, the direction and the message. */
+  const tellAskerOnce = async (dir: "in" | "out", text: string) => {
+    try {
+      await db.sentNotification.create({ data: { key: `xask:${ask.id}:vol:${userId}:${dir}:${w.sourceMessageId}`, kind: "xask-volunteer" } });
+    } catch {
+      return; // told already
+    }
+    await sendAdminNotice({ orgId: asker.id, now, holdOvernight: false, text });
+  };
 
   try {
     if (decision.kind === "withdraw") {
       await cancelAttendance(userId, ask.matchId, event);
-      await db.partnerAsk.updateMany({
-        where: { id: ask.id },
-        data: { volunteerUserIds: ask.volunteerUserIds.filter((id) => id !== userId) },
-      });
-      await sendAdminNotice({
-        orgId: asker.id,
-        now,
-        holdOvernight: false,
-        text: t(askerLang).xask_vol_out_notice_asker({ name: w.name, partner: partner.name, day }),
-      });
+      // Review M7: removed in SQL, never rewritten from a stale read.
+      await db.$executeRaw`UPDATE "PartnerAsk" SET "volunteerUserIds" = array_remove("volunteerUserIds", ${userId}) WHERE id = ${ask.id}`;
+      await tellAskerOnce("out", t(askerLang).xask_vol_out_notice_asker({ name: w.name, partner: partner.name, day }));
       console.log(`[partner-guest] ask ${ask.id}: ${userId} withdrew`);
       return { ok: true, outcome: "withdrawn", replyText: ps.xask_vol_out({ asker: asker.name }) };
+    }
+
+    // Review M7: claim the volunteer on the ask FIRST, and only while it is
+    // open (a compare-and-set). Lost: the ask closed, or he is on it already.
+    const claimed = await db.partnerAsk.updateMany({
+      where: { id: ask.id, status: "posted", closesAt: { gt: now }, NOT: { volunteerUserIds: { has: userId } } },
+      data: { volunteerUserIds: { push: userId } },
+    });
+    if (claimed.count === 0) {
+      const again = await db.partnerAsk.findUnique({ where: { id: ask.id }, select: { status: true, volunteerUserIds: true } });
+      if (!again || again.status !== "posted" || !again.volunteerUserIds.includes(userId)) {
+        return { ok: true, outcome: "closed", replyText: ps.xask_vol_closed({ asker: asker.name }) };
+      }
     }
 
     if (decision.asGuest) {
@@ -168,16 +190,16 @@ export async function handlePartnerVolunteer(w: VolunteerWrite, now: Date = new 
       });
     }
     const result = await registerAttendance(userId, ask.matchId, { event, actorIsAdmin: false });
-    if (!ask.volunteerUserIds.includes(userId)) {
-      await db.partnerAsk.updateMany({ where: { id: ask.id }, data: { volunteerUserIds: { push: userId } } });
+    // Review M7: the ask may have closed (and stood its volunteers down)
+    // while he was written. Re-checked after the write: a bench row it no
+    // longer covers is undone, and he is told the place has gone.
+    const after = await db.partnerAsk.findUnique({ where: { id: ask.id }, select: { status: true } });
+    if (after?.status !== "posted" && result.status !== "CONFIRMED") {
+      await cancelAttendance(userId, ask.matchId, { ...event, actorKind: "system", note: "the ask closed while he was written" });
+      return { ok: true, outcome: "closed", replyText: ps.xask_vol_closed({ asker: asker.name }) };
     }
     const bench = result.status === "BENCH";
-    await sendAdminNotice({
-      orgId: asker.id,
-      now,
-      holdOvernight: false,
-      text: t(askerLang).xask_vol_notice_asker({ name: w.name, partner: partner.name, day, bench }),
-    });
+    await tellAskerOnce("in", t(askerLang).xask_vol_notice_asker({ name: w.name, partner: partner.name, day, bench }));
     console.log(`[partner-guest] ask ${ask.id}: ${userId} on match ${ask.matchId} as ${result.status}${decision.asGuest ? " (guest)" : ""}`);
     return {
       ok: true,

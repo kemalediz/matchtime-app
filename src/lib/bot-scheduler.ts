@@ -672,9 +672,31 @@ export async function computeDuePosts(
       orderBy: { createdAt: "asc" },
       take: 20,
     });
+    // A partner club's ask (cross-club ask, review M3): held until the Pi
+    // polling says it forwards quoted ids, or a reply to the ask could not
+    // be told from an IN for the player's own game. It stays queued; the
+    // asking club is told after 10 minutes if its id never comes back.
+    const partnerAskPostJobIds = new Set(
+      jobs.some((j) => j.kind === "group")
+        ? (
+            (await Promise.resolve()
+              .then(() =>
+                db.partnerAsk.findMany({
+                  where: { postJobId: { in: jobs.filter((j) => j.kind === "group").map((j) => j.id) } },
+                  select: { postJobId: true },
+                }),
+              )
+              .catch(() => [])) ?? []
+          ).map((a) => a.postJobId)
+        : [],
+    );
     for (const job of jobs) {
       const key = `botjob-${job.id}`;
       if (sentKeys.has(key)) continue;
+      if (partnerAskPostJobIds.has(job.id) && !piCaps.quotedIds) {
+        console.warn(`[partner-ask] job ${job.id}: held, this Pi does not forward quoted ids`);
+        continue;
+      }
       if (job.kind === "dm" && job.phone) {
         out.push({
           kind: "dm",

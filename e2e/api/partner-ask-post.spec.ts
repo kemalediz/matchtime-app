@@ -28,9 +28,9 @@ interface Instruction {
   text?: string;
 }
 
-async function poll(request: APIRequestContext, groupId: string): Promise<Instruction[]> {
+async function poll(request: APIRequestContext, groupId: string, caps = "admin-group,quoted-id"): Promise<Instruction[]> {
   const res = await request.get(`/api/whatsapp/due-posts?groupId=${encodeURIComponent(groupId)}`, {
-    headers: { "x-api-key": E2E.WHATSAPP_API_KEY },
+    headers: { "x-api-key": E2E.WHATSAPP_API_KEY, "x-mt-pi-caps": caps },
   });
   expect(res.status(), await res.text()).toBe(200);
   return ((await res.json()).instructions ?? []) as Instruction[];
@@ -66,6 +66,10 @@ test("the post goes out in the partner's group, its id comes back, and a filled 
   // The asking club's poll does not carry the partner's post.
   const own = await poll(request, E2E.GROUP_ID);
   expect(own.some((i) => i.key === `botjob-${JOB}`)).toBe(false);
+
+  // Review M3: a Pi that does not forward quoted ids is never handed it.
+  const older = await poll(request, PARTNER_GROUP, "admin-group");
+  expect(older.some((i) => i.key === `botjob-${JOB}`)).toBe(false);
 
   // The partner's poll does, as a group message.
   const theirs = await poll(request, PARTNER_GROUP);

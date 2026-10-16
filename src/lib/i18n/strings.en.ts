@@ -4892,4 +4892,5 @@ export const en = {
   xask_keep_button: (p: { club: string }) => `Add to ${p.club}`,
   xask_keep_done: "Added as a member.",
   xask_guest_badge: (p: { club: string }) => `Guest from ${p.club}`,
+  xask_vol_game_over: (p: { asker: string }) => `*${p.asker}*'s game is over now, so there's nothing to change.`,
 };

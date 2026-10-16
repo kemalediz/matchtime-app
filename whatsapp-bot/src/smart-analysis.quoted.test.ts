@@ -97,3 +97,10 @@ describe("a players' group reply on the wire to /api/whatsapp/analyze", () => {
     expect(m).not.toHaveProperty("quotedMessageId");
   });
 });
+
+describe("the Pi says it forwards quoted ids (review M3)", () => {
+  it("its capability header carries quoted-id beside admin-group", async () => {
+    const api = await vi.importActual<typeof import("./api.js")>("./api.js");
+    expect(api.PI_CAPS.split(",")).toEqual(expect.arrayContaining(["admin-group", "quoted-id"]));
+  });
+});
