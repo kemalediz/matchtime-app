@@ -3666,6 +3666,12 @@ export const tr: Strings = {
   xask_page_declined: "Teşekkürler. Onlara haber verildi.",
   xask_page_closed: "Bu istek artık kapandı.",
   xask_page_not_allowed: "Buna yalnızca kendisine sorulan kulübün sahibi ya da bir yöneticisi yanıt verebilir.",
+  // ─── Otomatik istek ve organizatör satırı (slice S5) ────────────────
+  xask_auto_notice_asker: (p) =>
+    p.posted
+      ? `🤝 Otomatik isteğiniz: ${p.day} için hâlâ boş yer var ve yedek listenizde kimse yok, bu yüzden *${p.partner}* grubunda bir istek paylaştım.`
+      : `🤝 Otomatik isteğiniz: ${p.day} için hâlâ boş yer var ve yedek listenizde kimse yok, bu yüzden *${p.partner}* organizatörlerine oyuncularından birinin oynayıp oynayamayacağını sordum.`,
+  xask_offer_line: (p) => `🤝 ${p.partners} kulübünden oyuncu isteyeyim mi? Maç sayfasını açın: ${p.link}`,
 };
 
 /**

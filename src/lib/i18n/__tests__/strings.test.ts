@@ -1630,6 +1630,8 @@ const SAMPLES: SampleArgs = {
   xask_page_declined: null,
   xask_page_closed: null,
   xask_page_not_allowed: null,
+  xask_auto_notice_asker: { partner: "SUTTONCLUB", day: "DAYLABEL", posted: false },
+  xask_offer_line: { partners: "SUTTONCLUB", link: "https://x/LINK" },
 };
 
 /** Render an entry with its sample arguments. */

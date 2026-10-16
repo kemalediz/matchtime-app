@@ -4852,4 +4852,10 @@ export const en = {
   xask_page_declined: "Thanks. They've been told.",
   xask_page_closed: "This ask is closed now.",
   xask_page_not_allowed: "Only an owner or admin of the club that was asked can answer this.",
+  // ─── The automatic ask and the organisers' line (slice S5) ──────────
+  xask_auto_notice_asker: (p: { partner: string; day: string; posted: boolean }) =>
+    p.posted
+      ? `🤝 Your automatic ask: a place is still open for ${p.day} and nobody is on your bench, so I've posted an ask in *${p.partner}*'s group.`
+      : `🤝 Your automatic ask: a place is still open for ${p.day} and nobody is on your bench, so I've asked *${p.partner}*'s organisers if one of their players can play.`,
+  xask_offer_line: (p: { partners: string; link: string }) => `🤝 Want me to ask ${p.partners} for a player? Open the match page: ${p.link}`,
 };
