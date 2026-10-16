@@ -44,6 +44,7 @@ import {
   type PiCaps,
 } from "./admin-channel-rules";
 import { adminNoticeSendAfter } from "./rolling-squad-rules";
+import { isClubLimitExempt } from "./club-limit-exempt";
 import type { DueInstruction } from "./bot-scheduler";
 import { isGroupPostable } from "./group-postability-store";
 import { graphicUrl, readGraphicJob, type GraphicJob } from "./graphic-job";
@@ -187,8 +188,10 @@ export async function sendAdminNotice(req: AdminNoticeRequest): Promise<{ channe
   if (!ch) return { channel: "none", queued: 0 };
 
   if (ch.cfg.mode === "admin-group" && ch.cfg.adminGroupId && ch.adminGroupPostable !== false) {
+    // An exempt club's admin-group post is not held overnight (CLUB_LIMIT_EXEMPT_ORG_IDS).
+    const groupSendAfter = isClubLimitExempt(orgId) ? null : sendAfter;
     await db.botJob.create({
-      data: { orgId, kind: "admin-group", text: groupText(req), ...(sendAfter ? { sendAfter } : {}) },
+      data: { orgId, kind: "admin-group", text: groupText(req), ...(groupSendAfter ? { sendAfter: groupSendAfter } : {}) },
     });
     return { channel: "admin-group", queued: 1 };
   }
@@ -241,7 +244,7 @@ export async function adminNoticeInstructions(args: {
 
   if (target.kind === "group") {
     const key = args.key("admin-group");
-    if (args.sentKeys.has(key) || !isAdminGroupPostHour(args.now)) return [];
+    if (args.sentKeys.has(key) || !isAdminGroupPostHour(args.now, ch.orgId)) return [];
     return [{ kind: "admin-group-message", key, ...withMatch, groupId: target.groupId, text: groupText(notice) }];
   }
 
@@ -315,7 +318,7 @@ export function adminGroupJobInstruction(
   if (graphic) return graphicJobInstruction(key, job.text, graphic, ch, piCaps, now);
   const target = resolveAdminNoticeTargets(ch.cfg, ch.admins, effectiveCaps(ch, piCaps));
   if (target.kind === "group") {
-    if (!isAdminGroupPostHour(now)) return null;
+    if (!isAdminGroupPostHour(now, ch.orgId)) return null;
     return { kind: "admin-group-message", key, groupId: target.groupId, text: job.text };
   }
   logFallback(ch.orgId, target.via);
@@ -344,7 +347,7 @@ function graphicJobInstruction(
 ): DueInstruction | null {
   const target = { orgId: ch.orgId, matchId: graphic.matchId, kind: graphic.kind };
   if (ch.cfg.adminGroupId && effectiveCaps(ch, piCaps).adminGroup) {
-    if (!graphic.asked && !isAdminGroupPostHour(now)) return null;
+    if (!graphic.asked && !isAdminGroupPostHour(now, ch.orgId)) return null;
     return {
       kind: "admin-group-message",
       key,

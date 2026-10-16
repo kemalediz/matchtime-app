@@ -7,7 +7,7 @@
  * "each-admin" (every club that existed before the migration, Sutton FC
  * included) gets exactly today's rows, texts and keys.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const dbMock = vi.hoisted(() => ({
   organisation: { findUnique: vi.fn() },
@@ -231,6 +231,56 @@ describe("adminGroupJobInstruction (a queued admin-group BotJob at emit time)", 
         targetUser: "u-owner",
       });
     }
+  });
+});
+
+describe("CLUB_LIMIT_EXEMPT_ORG_IDS: an exempt club's admin-group posts are not held overnight", () => {
+  afterEach(() => vi.unstubAllEnvs());
+  const job = { id: "job1", text: "hello admins" };
+  const linked = { adminChannelMode: "admin-group", adminGroupId: GROUP };
+
+  it("sendAdminNotice: the admin-group job has no overnight sendAfter for an exempt club, and keeps it otherwise", async () => {
+    dbMock.organisation.findUnique.mockResolvedValue(org(linked));
+    vi.stubEnv("CLUB_LIMIT_EXEMPT_ORG_IDS", "org-other");
+    await sendAdminNotice({ orgId: ORG, text: "late", now: NIGHT });
+    expect(jobs()[0].sendAfter).toEqual(new Date("2026-10-01T08:00:00Z"));
+    vi.stubEnv("CLUB_LIMIT_EXEMPT_ORG_IDS", ORG);
+    await sendAdminNotice({ orgId: ORG, text: "late", now: NIGHT });
+    expect(jobs()[1]).toMatchObject({ kind: "admin-group" });
+    expect(jobs()[1].sendAfter).toBeUndefined();
+  });
+
+  it("sendAdminNotice: an exempt club's DM notices are still held overnight", async () => {
+    dbMock.organisation.findUnique.mockResolvedValue(org({ adminChannelMode: "one-person" }));
+    vi.stubEnv("CLUB_LIMIT_EXEMPT_ORG_IDS", ORG);
+    await sendAdminNotice({ orgId: ORG, text: "late", now: NIGHT });
+    expect(jobs()[0]).toMatchObject({ kind: "dm" });
+    expect(jobs()[0].sendAfter).toEqual(new Date("2026-10-01T08:00:00Z"));
+  });
+
+  it("adminGroupJobInstruction: posts at night for an exempt club, held otherwise", async () => {
+    dbMock.organisation.findUnique.mockResolvedValue(org(linked));
+    const channel = (await loadAdminChannel(ORG))!;
+    vi.stubEnv("CLUB_LIMIT_EXEMPT_ORG_IDS", "org-other");
+    expect(adminGroupJobInstruction(job, channel, { adminGroup: true }, NIGHT)).toBeNull();
+    vi.stubEnv("CLUB_LIMIT_EXEMPT_ORG_IDS", ORG);
+    expect(adminGroupJobInstruction(job, channel, { adminGroup: true }, NIGHT)).toEqual({
+      kind: "admin-group-message",
+      key: "botjob-job1",
+      groupId: GROUP,
+      text: "hello admins",
+    });
+  });
+
+  it("adminNoticeInstructions: posts at night for an exempt club, nothing otherwise", async () => {
+    dbMock.organisation.findUnique.mockResolvedValue(org(linked));
+    const channel = (await loadAdminChannel(ORG))!;
+    const args = { channel, piCaps: { adminGroup: true }, sentKeys: new Set<string>(), now: NIGHT, key: (s: string) => `k:${s}`, notice: NOTICE };
+    vi.stubEnv("CLUB_LIMIT_EXEMPT_ORG_IDS", "");
+    expect(await adminNoticeInstructions(args)).toEqual([]);
+    vi.stubEnv("CLUB_LIMIT_EXEMPT_ORG_IDS", ORG);
+    const out = await adminNoticeInstructions(args);
+    expect(out.map((i) => [i.kind, i.key])).toEqual([["admin-group-message", "k:admin-group"]]);
   });
 });
 
