@@ -37,6 +37,12 @@ function payWays(methods: readonly PayMethod[]): { bank: boolean; card: boolean;
   return { bank: methods.includes("pay_by_bank"), card: methods.includes("card"), direct: methods.includes("direct") };
 }
 
+/** The club's payment instructions as the pay copy quotes them: trimmed,
+ *  verbatim, or null when blank. The strings show them only with direct. */
+function payInstructionsText(text: string | null | undefined): string | null {
+  return text?.trim() || null;
+}
+
 // ── row 91: the rating-link DM (bot-scheduler.ts and the late one in
 //    app/actions/players.ts, which were two copies of one message) ──────
 
@@ -147,6 +153,10 @@ export function buildPayChaseDm(
     /** The money collector's name (`Organisation.paymentHolderId`), or
      *  null: "the organiser". */
     collectorName: string | null;
+    /** `directPayInstructions(org)`: the club's own words on how to pay
+     *  the collector, or null. One short line when set and direct is
+     *  among `methods`. */
+    instructions?: string | null;
   } & WithLang,
 ): string {
   return t(p.lang).dm_pay_chase({
@@ -157,6 +167,7 @@ export function buildPayChaseDm(
     url: p.url,
     ...payWays(p.methods),
     collector: firstOf(p.collectorName),
+    instructions: payInstructionsText(p.instructions),
   });
 }
 
@@ -238,6 +249,10 @@ export function buildPayLinkDm(
     /** The money collector's name (`Organisation.paymentHolderId`), or
      *  null: "the organiser". */
     collectorName: string | null;
+    /** `directPayInstructions(org)`: the club's own words on how to pay
+     *  the collector, or null. One short line when set and direct is
+     *  among `methods`. */
+    instructions?: string | null;
   } & WithLang,
 ): string {
   return t(p.lang).dm_pay_link({
@@ -247,6 +262,7 @@ export function buildPayLinkDm(
     url: p.url,
     ...payWays(p.methods),
     collector: firstOf(p.collectorName),
+    instructions: payInstructionsText(p.instructions),
   });
 }
 

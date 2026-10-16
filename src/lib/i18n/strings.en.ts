@@ -1866,9 +1866,13 @@ export const en = {
     card: boolean;
     direct: boolean;
     collector: string | null;
+    /** The club's payment instructions (verbatim), or null. One line,
+     *  only when paying directly is offered (2026-10-16). */
+    instructions: string | null;
   }): string => {
     const who = p.collector ?? "the organiser";
     const online = [p.bank && "bank", p.card && "card, Apple or Google Pay"].filter(Boolean).join(", ");
+    const howTo = p.direct && p.instructions ? `\n\nHow to pay ${who}: ${p.instructions}` : "";
     const how =
       online && p.direct
         ? `Tap to pay (${online}, or pay ${who} directly):`
@@ -1882,7 +1886,7 @@ export const en = {
     // The page's "Paying for" stepper covers every method, so the line
     // holds whenever there is a method to pay by.
     const guests = online || p.direct ? `\n\nYou can also pay for anyone you brought along.` : "";
-    return `💷 ${p.firstName ?? "there"}, match fee for *${p.activityName}* is *${p.fee}*.\n\n${how}\n${p.url}${guests}`;
+    return `💷 ${p.firstName ?? "there"}, match fee for *${p.activityName}* is *${p.fee}*.\n\n${how}\n${p.url}${howTo}${guests}`;
   },
 
   /** Row 89: the daily pay chase; `dayNum` picks the opener. Names only
@@ -1897,6 +1901,8 @@ export const en = {
     card: boolean;
     direct: boolean;
     collector: string | null;
+    /** As `dm_pay_link`: one line, only when paying directly is offered. */
+    instructions: string | null;
   }): string => {
     const first = p.firstName ?? "there";
     const opener =
@@ -1911,7 +1917,8 @@ export const en = {
           : p.direct
             ? `Pay ${who} directly, then tap here to tell me you've paid:`
             : `See what you owe:`;
-    return `💷 ${opener}: your *${p.fee}* for *${p.activityName}* is still outstanding.\n\n${how}\n${p.url}`;
+    const howTo = p.direct && p.instructions ? `\n\nHow to pay ${who}: ${p.instructions}` : "";
+    return `💷 ${opener}: your *${p.fee}* for *${p.activityName}* is still outstanding.\n\n${how}\n${p.url}${howTo}`;
   },
 
   /** Row 90: the collector's daily "tick off the direct payers" nudge. */
@@ -4079,6 +4086,13 @@ export const en = {
   msq_err_price: "Enter a price like 8 or 7.50, up to £100.",
   msq_err_days: "Enter a whole number of days from 1 to 28.",
   msq_err_long: "Keep the payment instructions under 500 characters.",
+  /** The same field for a WEEKLY club that collects match fees, under the
+   *  Payments section (2026-10-16). Label, placeholder and errors are the
+   *  `msq_` ones above. */
+  pi_weekly_blurb:
+    "Your own words on how to pay the money collector directly, for example bank details. Shown on the pay page and in the pay link and reminders, when players can pay directly. Optional.",
+  /** /pay/<match>: the heading over the club's instructions. */
+  pi_pay_heading: (p: { collector: string | null }): string => `How to pay ${p.collector ?? "the organiser"}`,
 
   mth_nav: "Months",
   mth_page_title: "Months",

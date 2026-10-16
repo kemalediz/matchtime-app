@@ -24,7 +24,7 @@
  * evaluated at send time.
  */
 import { test, expect, resetDb } from "../fixtures";
-import { U, MATCH, londonAt } from "../helpers/constants";
+import { U, MATCH, ORG_ID, londonAt } from "../helpers/constants";
 import { E2E } from "../helpers/env";
 import type { APIRequestContext } from "@playwright/test";
 
@@ -168,6 +168,31 @@ test("a free place given after the links went out: no more chase, and no 'confir
   expect(after).not.toContain(collectorKey(dayKey));
   // Ian, still unpaid, is chased as before.
   expect(after).toContain(payChaseKey(U.fresh, dayKey));
+});
+
+test("the chase carries the club's payment instructions only when set and paying directly is offered (2026-10-16)", async ({
+  request,
+  db,
+}) => {
+  const now = londonAt(0, 18, 30);
+  const dayKey = londonDateKey(now);
+  const chaseText = async () =>
+    (await duePostsAt(request, now)).find((i) => i.key === payChaseKey(U.player, dayKey))?.text ?? "";
+
+  // Not set: no line.
+  expect(await chaseText()).not.toContain("How to pay");
+
+  const text = "Sort code 12-34-56, account 12345678";
+  await db.run(`UPDATE "Organisation" SET "paymentInstructions" = $2 WHERE id = $1`, [ORG_ID, text]);
+  const withLine = await chaseText();
+  expect(withLine).toMatch(/still outstanding/);
+  expect(withLine).toContain(`How to pay Colin: ${text}`);
+
+  // Direct switched off: card and bank only, no line.
+  await db.run(`UPDATE "Organisation" SET "payMethodDirect" = false WHERE id = $1`, [ORG_ID]);
+  const noDirect = await chaseText();
+  expect(noDirect).toMatch(/still outstanding/);
+  expect(noDirect).not.toContain(text);
 });
 
 test("a card-paid player never receives a pay-link DM", async ({ request }) => {

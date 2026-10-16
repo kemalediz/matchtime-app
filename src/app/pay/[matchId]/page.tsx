@@ -1,10 +1,10 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { redirect } from "next/navigation";
-import { availablePayMethods, priceMethods, gbp, PAY_METHOD_SELECT, type PayMethodSwitches } from "@/lib/payments";
+import { availablePayMethods, directPayInstructions, priceMethods, gbp, PAY_METHOD_SELECT, type PayMethodSwitches } from "@/lib/payments";
+import { t } from "@/lib/i18n/t";
 import { payCollectorName } from "@/lib/direct-payment";
 import { PayOptions } from "@/components/pay/pay-options";
-import { t } from "@/lib/i18n/t";
 
 export const dynamic = "force-dynamic";
 
@@ -30,9 +30,13 @@ export default async function PayPage({
           org: {
             select: {
               name: true,
-              language: true,
               paymentHolderId: true,
               ...PAY_METHOD_SELECT,
+              // The club's own words on paying the collector directly
+              // (2026-10-16), shown under the buttons when direct is one.
+              paymentInstructions: true,
+              squadMode: true,
+              language: true,
             },
           },
         },
@@ -161,13 +165,31 @@ function Methods({
 }: {
   matchId: string;
   base: number;
-  org: PayMethodSwitches;
+  org: PayMethodSwitches & { paymentInstructions: string | null; squadMode: string | null; language: string | null };
   collector: string | null;
 }) {
   // The one availability rule, shared with the pay link DM and the chase
   // (card/bank only once the collector's Stripe account can take charges).
   const prices = priceMethods(base, availablePayMethods(org), collector);
-  return <PayOptions matchId={matchId} prices={prices} collector={collector} />;
+  // The club's payment instructions, verbatim as plain text (React
+  // escapes it; nothing is turned into a link), only when paying the
+  // collector directly is offered. The pay link and chase quote the same.
+  const instructions = directPayInstructions(org);
+  return (
+    <>
+      <PayOptions matchId={matchId} prices={prices} collector={collector} />
+      {instructions && (
+        <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3" data-testid="pay-instructions">
+          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+            {t(org.language).pi_pay_heading({ collector })}
+          </p>
+          <p className="mt-1 whitespace-pre-line break-words text-sm text-slate-700" data-testid="pay-instructions-text">
+            {instructions}
+          </p>
+        </div>
+      )}
+    </>
+  );
 }
 
 function Shell({ children }: { children: React.ReactNode }) {

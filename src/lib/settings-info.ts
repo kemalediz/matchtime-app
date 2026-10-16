@@ -1392,20 +1392,28 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
     en: {
       title: "Payment instructions",
       what: [
-        "Your own words on how to pay, for example \"Bank details are in the group description\". They are shown with the amount owed: in the month's list once prices are set, in the reminders to regulars who haven't paid, and on the player's month page.",
+        "Your own words on how to pay, for example \"Bank details are in the group description\" or the money collector's bank details.",
+        "With a monthly squad they are shown with the amount owed: in the month's list once prices are set, in the reminders to regulars who haven't paid, and on the player's month page.",
+        "With weekly match fees they are shown when players can pay the money collector directly: on the pay page, in the pay link and in the daily reminder to players who haven't paid.",
         "Up to 500 characters. MatchTime shows exactly what you write here and never asks players for bank details itself.",
       ],
       newClubs: "Empty.",
-      together: ["Only used with a monthly squad."],
+      together: [
+        "A monthly squad, or Collect match fees with Pay organiser directly on. With card and Pay by Bank only, weekly players do not see them.",
+      ],
     },
     tr: {
       title: "Ödeme talimatı",
       what: [
-        "Nasıl ödeneceğini anlatan kendi cümleleriniz, örneğin \"Banka bilgileri grup açıklamasında\". Borçla birlikte gösterilir: ücretler belirlenince ayın listesinde, ödemeyen daimi oyunculara giden hatırlatmalarda ve oyuncunun ay sayfasında.",
+        "Nasıl ödeneceğini anlatan kendi cümleleriniz, örneğin \"Banka bilgileri grup açıklamasında\" ya da para toplayan kişinin banka bilgileri.",
+        "Aylık kadroda borçla birlikte gösterilir: ücretler belirlenince ayın listesinde, ödemeyen daimi oyunculara giden hatırlatmalarda ve oyuncunun ay sayfasında.",
+        "Haftalık maç ücretlerinde, oyuncular para toplayan kişiye doğrudan ödeyebildiğinde gösterilir: ödeme sayfasında, ödeme linkinde ve ödemeyenlere giden günlük hatırlatmada.",
         "En fazla 500 karakter. MatchTime buraya yazdığınızı aynen gösterir ve oyunculardan kendisi asla banka bilgisi istemez.",
       ],
       newClubs: "Boş.",
-      together: ["Yalnızca aylık kadroda kullanılır."],
+      together: [
+        "Aylık kadro ya da \"Organizatöre ödeme\" açıkken \"Maç ücreti toplama\". Yalnızca kart ve banka ile ödemede haftalık oyuncular bunu görmez.",
+      ],
     },
   },
 
