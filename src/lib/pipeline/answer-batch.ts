@@ -397,8 +397,8 @@ export const ANSWERABLE_TOPICS: readonly QuestionTopic[] = [
   // settings (`deps.helpReply`), not from the squad.
   "how_it_works",
   // 2026-10-16, FNF HQ: "MatchTime who are the admins?". The club's own
-  // setup, for the organisers only (`audience`), from the roster and one
-  // targeted read (`loadClub`).
+  // setup, in both groups, from the roster and one targeted read
+  // (`loadClub`).
   "club",
 ];
 
@@ -694,8 +694,8 @@ export interface AnswerBatchDeps {
    *  the database for other things. */
   helpReply?: (topic: HelpFeature | null, features: OrgFeatures) => Promise<string> | string;
   /** The FIFTH targeted read (2026-10-16): the club's setup, only when a
-   *  `club` question survived ownership (the organisers' group only).
-   *  `matchId` is the upcoming match the fee is read from, or null. */
+   *  `club` question survived ownership. `matchId` is the upcoming match
+   *  the fee is read from, or null. */
   loadClub?: (orgId: string, matchId: string | null) => Promise<ClubSnapshot>;
 }
 
@@ -705,8 +705,9 @@ export interface AnswerBatchDeps {
  * (`admin-group-question.ts`), and two things differ there, both here so
  * there is one answering path:
  *
- *   - `club` questions (admins, money collector, fee, teams time) are
- *     organisers' facts, answered only to the organisers;
+ *   - a `club` answer's wording: the teams-ready line is the organisers'
+ *     setting in HQ, and plain words for the players (`ClubSnapshot.
+ *     forOrganisers`); the facts are the same in both groups;
  *   - the squad and the bench are shown to the organisers even when they,
  *     not MatchTime, announce the list to the players (the organisers-
  *     announce net in `compose.ts` is for the players' group).
@@ -1134,15 +1135,15 @@ export async function runAnswerBatch(args: {
       }
       // ── THE CLUB'S SETUP (2026-10-16) ──────────────────────────────
       //
-      // Organisers' facts (who the admins are, who collects the money):
-      // answered to the organisers only. Owned on the same argument as the
-      // three above: not a claim about the upcoming squad, so no match is
-      // needed and no neighbour's write can contradict it.
+      // Who the admins are, who collects the money, the fee, the teams time:
+      // fine for players and organisers alike (no phone numbers, nothing
+      // private), so answered in both groups. Owned on the same argument as
+      // the three above: not a claim about the upcoming squad, so no match
+      // is needed and no neighbour's write can contradict it.
       //
       // ⚠️ TERMINAL BRANCH, like the three above.
       if (facts.topic === "club") {
-        if (organisers) ownedIds.add(m.waMessageId);
-        else hand("a question about the club's setup is answered only in the organisers' group");
+        ownedIds.add(m.waMessageId);
         continue;
       }
       // A reply to a clarification that did not re-read as a stats
@@ -1500,7 +1501,7 @@ export async function runAnswerBatch(args: {
           const mod = await import("./load-state");
           return mod.loadClubSnapshot(o, matchId);
         });
-      state = { ...state, club: await load(orgId, state.matchId) };
+      state = { ...state, club: { ...(await load(orgId, state.matchId)), forOrganisers: organisers } };
     } catch (err) {
       const detail =
         `${ANSWER_DEGRADED_PREFIX} the club read failed (${

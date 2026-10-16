@@ -351,7 +351,7 @@ export function compose(result: EngineResult): ComposedOutput {
       }
 
       case "answer_club": {
-        // THE CLUB'S SETUP, for the organisers (2026-10-16). Admins are the
+        // THE CLUB'S SETUP, in either group (2026-10-16). Admins are the
         // roster's OWNER and ADMIN members; the rest is `state.club`, which
         // `answer-batch.ts` loads only for this question. Not loaded: say
         // nothing, and the batch disowns the message with a receipt.
@@ -368,6 +368,7 @@ export function compose(result: EngineResult): ComposedOutput {
             fee: club.feePerPlayer !== null ? activityFeeText(club.feePerPlayer) : null,
             feeSplit: club.feeSplitTotal,
             teamsReady: club.teamsReady,
+            forOrganisers: club.forOrganisers === true,
           }),
         });
         break;

@@ -5,7 +5,8 @@
  * uses, with `audience: "organisers"`:
  *
  *   - a `club` question (who the admins are, who collects the money, the
- *     fee, what time the teams are made) is answered there, and only there;
+ *     fee, what time the teams are made) is answered there, and in the
+ *     players' group too, with the teams line worded for players;
  *   - the squad and the bench are shown to the organisers even when they,
  *     not MatchTime, announce the list to the players;
  *   - nothing else changes: same topics, same composers.
@@ -161,12 +162,39 @@ describe("a club question, asked by the organisers", () => {
   });
 });
 
-describe("a club question in the players' group is not answered (organisers' facts)", () => {
-  it.each([undefined, "players" as const])("audience %s: owns nothing, reads nothing", async (audience) => {
-    const { res, loads } = await ask("club", audience ? { audience } : {});
-    expect(res.ownedIds.size).toBe(0);
-    expect(loads).toEqual([]);
-    expect(res.degradations.join("\n")).toMatch(/answered only in the organisers' group/);
+// Manager review of #296: "how much do we pay each?" and "what time do the
+// teams come out?" must not go unanswered in the players' group. The same
+// facts (nothing private); only the teams line is worded for players.
+describe("a club question in the players' group: the same answer, the teams line in plain words", () => {
+  it.each([undefined, "players" as const])("audience %s", async (audience) => {
+    const { reply, loads } = await ask("club", audience ? { audience } : {});
+    expect(reply).toBe(
+      [
+        "👥 Admins: Kemal Ediz and Elvin Aliyev",
+        "💷 Money collector: Elvin Aliyev",
+        "💷 Match fee: £6.50 a player",
+        "⚽ Teams: worked out at 10:00 on match day",
+      ].join("\n"),
+    );
+    expect(loads).toEqual([{ orgId: "org-1", matchId: "match-1" }]);
+  });
+
+  it("teams-ready off: the organisers sort them out", async () => {
+    const { reply } = await ask("club", { club: { ...CLUB, teamsReady: "off" } });
+    expect(reply).toContain("⚽ Teams: sorted by the organisers before the game");
+  });
+
+  it("in Turkish", async () => {
+    const { reply } = await ask("club", { lang: "tr" });
+    expect(reply).toContain("👥 Yöneticiler: Kemal Ediz ve Elvin Aliyev");
+    expect(reply).toContain("⚽ Takımların kurulduğu saat: maç günü 10:00");
+    const off = await ask("club", { lang: "tr", club: { ...CLUB, teamsReady: "off" } });
+    expect(off.reply).toContain("⚽ Takımlar: maçtan önce organizatörler ayarlıyor");
+  });
+
+  it("no phone number in the answer, ever: the roster's names only", async () => {
+    const { reply } = await ask("club");
+    expect(reply).not.toMatch(/\+?\d{9,}/);
   });
 });
 

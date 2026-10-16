@@ -413,9 +413,8 @@ export type QuestionTopic =
   /**
    * HOW THE CLUB ITSELF IS RUN (2026-10-16, FNF HQ: "MatchTime who are the
    * admins?" got the help menu). Who the admins are, who collects the
-   * money, the match fee, what time the teams are made. Organisers' facts:
-   * answered only in the admin group (`runAnswerBatch`'s `audience`), from
-   * the roster and `SquadState.club`.
+   * money, the match fee, what time the teams are made. Answered in both
+   * groups (nothing private), from the roster and `SquadState.club`.
    */
   | "club"
   | "other";
@@ -941,6 +940,9 @@ export interface ClubSnapshot {
   feeSplitTotal: boolean;
   /** "Teams ready" as `effectiveTeamsReadyTime` reads it: "HH:MM" or "off". */
   teamsReady: string;
+  /** Set by `answer-batch.ts`, never by the loader: the answer is for the
+   *  organisers (HQ), which only changes the teams line's wording. */
+  forOrganisers?: boolean;
 }
 
 /**

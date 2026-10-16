@@ -70,6 +70,15 @@ const HQ: HqQuestion[] = [
   { text: "what can you do?", topics: ["how_it_works"], why: "a genuine help question: the HQ menu" },
 ];
 
+/** Players' group (manager review of #296): the fee and the teams time, held out
+ *  from the prompt's own examples, EN and TR. */
+const PLAYERS = [
+  "@Match Time what's the fee this week?",
+  "@Match Time when will the teams be out?",
+  "@Match Time bu hafta ücret ne kadar?",
+  "@Match Time takımlar ne zaman belli olur?",
+];
+
 interface QCase {
   text: string;
   lastBotPost?: string;
@@ -105,10 +114,13 @@ async function main() {
   const mark = (ok: boolean) => (ok ? (pass++, "PASS") : (fail++, "FAIL"));
   const context = organisersContext({ pending: [], quoted: null, quotedIsMatchTime: false, recent: [] });
 
+  // ONLY=players: the players' group section and the regressions only (a
+  // rerun after `club` became answerable there; no prompt changed).
+  const playersOnly = process.env.ONLY === "players";
   // ROUTER_ONLY="a|b": the router on those texts only (a rerun after a
   // case's wording changed; the router prompt is untouched by this change).
   const routerOnly = process.env.ROUTER_ONLY?.split("|");
-  const routerCases = routerOnly ? HQ.filter((c) => routerOnly.includes(c.text)) : HQ;
+  const routerCases = playersOnly ? [] : routerOnly ? HQ.filter((c) => routerOnly.includes(c.text)) : HQ;
   console.log(`\n== Router (unchanged), organisers' group: ${routerCases.length} cases, each once ==\n`);
   const want: Route[] = ["question", "help"];
   for (const [i, c] of routerCases.entries()) {
@@ -117,8 +129,21 @@ async function main() {
     console.log(`${mark(!!route && want.includes(route))}  ${JSON.stringify(c.text)}  routed ${route}   (${c.why}; want question|help)`);
   }
 
-  console.log(`\n== Question extractor, the HQ questions: ${HQ.length} cases, each once ==\n`);
-  for (const [i, c] of HQ.entries()) {
+  // The players' group: a tagged fee or teams-time question must reach the
+  // answering code (router: question) and read as `club` (extractor).
+  console.log(`\n== Players' group, club questions: ${PLAYERS.length} cases, router + extractor, each once ==\n`);
+  for (const [i, c] of PLAYERS.entries()) {
+    const r = await routeBatch(model, [{ id: `p${i}`, authorName: "Can", body: c }], { floor: false, awaiting: null });
+    const route = r.routes[0]?.route;
+    console.log(`${mark(route === "question")}  ${JSON.stringify(c)}  routed ${route}   (want question)`);
+    const ex = await extractForRoute(model, "question", { id: `pq${i}`, body: c, authorName: "Can", tagged: true, history: [], lastBotPost: null });
+    const f = ex.facts.kind === "question" ? ex.facts : null;
+    console.log(`${mark(f?.topic === "club")}  ${JSON.stringify(c)}  ${f?.topic}   (want club)`);
+  }
+
+  const hqCases = playersOnly ? [] : HQ;
+  console.log(`\n== Question extractor, the HQ questions: ${hqCases.length} cases, each once ==\n`);
+  for (const [i, c] of hqCases.entries()) {
     const ex = await extractForRoute(model, "question", { id: `q${i}`, body: c.text, authorName: "Hamzah", tagged: true, history: [], lastBotPost: null });
     const f = ex.facts.kind === "question" ? ex.facts : null;
     console.log(`${mark(!!f && c.topics.includes(f.topic))}  ${JSON.stringify(c.text)}  ${f?.topic}${f?.feature ? `/${f.feature}` : ""}   (${c.why}; want ${c.topics.join("|")})`);

@@ -12,7 +12,7 @@
  * Tom Third, and Ben Bench on the bench. Its game's fee is £8. Set up like
  * FNF here: the organisers announce the list, so "Teams ready" is 10:00.
  */
-import { test, expect, resetDb } from "../fixtures";
+import { test, expect, postAnalyze, resetDb } from "../fixtures";
 import { ORG_ID, PHONE } from "../helpers/constants";
 import { E2E } from "../helpers/env";
 import { engineOn, clearPipelineStubs } from "../helpers/stub";
@@ -108,5 +108,41 @@ test("a question nothing answers: one line, never silent", async ({ request }) =
     handled: true,
     outcome: "hq-not-here",
     replyText: "I can't do that from this group. Ask *what can you do?* to see what I can do here.",
+  });
+});
+
+// Manager review of #296: the same `club` answer in the PLAYERS' group,
+// through the real analyze route (so the squad-composition pass and the
+// organisers-announce net run too), with the teams line worded for players.
+// Nothing private: names only, never a phone number.
+test.describe("the players' group asks the same club questions", () => {
+  const FEE_Q = "@Match Time how much do we pay each?";
+  const TEAMS_Q = "@Match Time what time do the teams come out?";
+  const FEE_TR = "@Match Time kişi başı ne kadar?";
+  type Result = { waMessageId: string; reply?: string | null };
+  const ask = async (request: APIRequestContext, body: string) => {
+    const id = `e2e-agq-p-${++seq}`;
+    const res = await postAnalyze(request, [{ waMessageId: id, body, authorPhone: PHONE.player.replace(/^\+/, ""), authorName: "Pat Player" }]);
+    return (res.results as Result[]).find((x) => x.waMessageId === id)!;
+  };
+
+  test.beforeAll(() => {
+    engineOn({ [FEE_Q]: q("club"), [TEAMS_Q]: q("club"), [FEE_TR]: q("club") });
+  });
+
+  test("how much do we pay each, and when do the teams come out: answered, in plain words", async ({ request }) => {
+    const expected = "👥 Admins: Alex Admin\n💷 Money collector: Colin Collector\n💷 Match fee: £8 a player\n⚽ Teams: worked out at 10:00 on match day";
+    for (const body of [FEE_Q, TEAMS_Q]) {
+      const r = await ask(request, body);
+      expect(r.reply).toBe(expected);
+      expect(r.reply).not.toMatch(/\d{9,}/);
+    }
+  });
+
+  test("in Turkish", async ({ request, db }) => {
+    await db.run(`UPDATE "Organisation" SET language = 'tr' WHERE id = $1`, [ORG_ID]);
+    const r = await ask(request, FEE_TR);
+    await db.run(`UPDATE "Organisation" SET language = 'en' WHERE id = $1`, [ORG_ID]);
+    expect(r.reply).toBe("👥 Yöneticiler: Alex Admin\n💷 Parayı toplayan: Colin Collector\n💷 Maç ücreti: kişi başı £8\n⚽ Takımların kurulduğu saat: maç günü 10:00");
   });
 });

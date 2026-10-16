@@ -328,7 +328,9 @@ export const tr: Strings = {
       `👥 Yöneticiler: ${p.admins || "yok"}`,
       `💷 Parayı toplayan: ${p.collector ?? "ayarlanmadı"}`,
       `💷 Maç ücreti: ${p.fee !== null ? `kişi başı £${p.fee}` : p.feeSplit ? "saha ücreti oynayanlar arasında bölünür" : "ayarlanmadı"}`,
-      `⚽ Takımlar hazır: ${p.teamsReady === "off" ? "kapalı" : `maç günü ${p.teamsReady}`}`,
+      p.forOrganisers
+        ? `⚽ Takımlar hazır: ${p.teamsReady === "off" ? "kapalı" : `maç günü ${p.teamsReady}`}`
+        : p.teamsReady === "off" ? "⚽ Takımlar: maçtan önce organizatörler ayarlıyor" : `⚽ Takımların kurulduğu saat: maç günü ${p.teamsReady}`,
     ].join("\n"),
   answer_score_no_match: "Bu grup için kayıtlı oynanmış bir maç bulamadım.",
   answer_score_no_score: (p) => `${p.kickoffLabel} için henüz skor bildirilmedi, sonucu yazın, kaydedeyim.`,
