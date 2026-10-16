@@ -76,6 +76,15 @@ describe("settings explanations: coverage", () => {
     expect(SETTING_INFO_KEYS).toContain("gearReminder");
   });
 
+  it("badges post in the players' group whoever announces the list (Kemal, 2026-10-16)", () => {
+    const en = (SETTINGS_INFO.badgeAnnouncements.en.together ?? []).join(" ");
+    const tr = (SETTINGS_INFO.badgeAnnouncements.tr.together ?? []).join(" ");
+    expect(en).not.toMatch(/admin messages/);
+    expect(tr).not.toMatch(/yönetici mesajlarınıza/);
+    expect(en).toContain("The badge post goes in the players' group whoever announces the list.");
+    expect(tr).toContain("Rozet mesajı, listeyi kim duyurursa duyursun oyuncu grubunda paylaşılır.");
+  });
+
   it("every setting row on the page has an ⓘ, and every explanation is shown somewhere", () => {
     const used = new Set<string>();
     const rows = new Set<string>();

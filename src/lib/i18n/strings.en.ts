@@ -2752,7 +2752,8 @@ export const en = {
    * a weekly club tracking IN and OUT, `teamsAt` the effective "Teams ready"
    * time (null when off), `organisersShare` / `mainChatList` who posts the
    * list, `teamsPosted` YES posts the teams in the main chat, `relayRatings`
-   * / `relayBadges` what organisers mode relays here.
+   * the rating notice organisers mode relays here (badges are not relayed:
+   * they post in the players' group for every club, 2026-10-16).
    */
   admin_group_intro: (p: {
     club: string;
@@ -2769,7 +2770,6 @@ export const en = {
     picks: boolean;
     paid: boolean;
     relayRatings: boolean;
-    relayBadges: boolean;
   }): string => {
     const days = ["Sundays", "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays"];
     const what = p.dow != null && days[p.dow] ? days[p.dow] : "games";
@@ -2790,14 +2790,7 @@ export const en = {
     }
     if (p.picks) lines.push(`When a place opens and someone is waiting, I ask here who plays.`);
     if (p.paid) lines.push(`Money collector: answer my list of payment claims here with *PAID ALL*, *PAID 1 3* or *PAID NONE*.`);
-    const relay =
-      p.relayRatings && p.relayBadges
-        ? `, and so do the rating notice and new badges, for you to pass on to the players`
-        : p.relayRatings
-          ? `, and so does the rating notice, for you to pass on to the players`
-          : p.relayBadges
-            ? `, and so do new badges, for you to pass on to the players`
-            : ``;
+    const relay = p.relayRatings ? `, and so does the rating notice, for you to pass on to the players` : ``;
     lines.push(`Notices meant only for the organisers come here instead of by DM${relay}.`);
     lines.push(
       ``,

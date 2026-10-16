@@ -51,7 +51,6 @@ const FNF = {
   featureAttendance: true,
   featureMomVoting: true,
   featurePlayerRating: true,
-  featureBadgeAnnouncements: true,
   adminGroupId: HQ,
   adminChannelMode: "admin-group",
 };

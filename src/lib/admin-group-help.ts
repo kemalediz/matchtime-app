@@ -82,7 +82,6 @@ export interface AdminGroupIntroClub {
   featureAttendance?: boolean | null;
   featureMomVoting?: boolean | null;
   featurePlayerRating?: boolean | null;
-  featureBadgeAnnouncements?: boolean | null;
   /** `Activity.dayOfWeek` of each active activity (0 = Sunday). */
   activityDays: number[];
 }
@@ -116,9 +115,11 @@ export interface AdminGroupIntroClub {
  *   PAID                  the help's `paid` gate (month-payment.ts)
  *   notices here          linking sets `adminChannelMode` "admin-group"
  *                         (admin-channel.ts `sendAdminNotice`)
- *   rating notice, badges organisers mode relays the rate promo and the
- *                         badges post (bot-scheduler.ts `relayToOrganisers`,
- *                         badge relay), each behind its own feature
+ *   rating notice         organisers mode relays the rate promo, behind
+ *                         `featurePlayerRating` (bot-scheduler.ts
+ *                         `relayToOrganisers`). Badges are NOT relayed: they
+ *                         post in the players' group for every club
+ *                         (2026-10-16), so the intro does not mention them
  *   help                  the router's `help` route, answered for a live club only
  */
 export function buildAdminGroupIntro(club: AdminGroupIntroClub): string {
@@ -127,7 +128,6 @@ export function buildAdminGroupIntro(club: AdminGroupIntroClub): string {
   const organisers = organisersAnnounce(club);
   const attendance = club.featureAttendance !== false;
   const ratings = club.featurePlayerRating !== false;
-  const badges = club.featureBadgeAnnouncements !== false;
   const days = [...new Set(club.activityDays)];
   const time = effectiveTeamsReadyTime(club.teamsReadyTime, organisers);
   const teamsAt = weekly && time !== "off" ? time : null;
@@ -147,6 +147,5 @@ export function buildAdminGroupIntro(club: AdminGroupIntroClub): string {
     picks: gates.picks,
     paid: gates.paid,
     relayRatings: organisers && ratings,
-    relayBadges: organisers && badges,
   });
 }
