@@ -52,7 +52,8 @@ export async function loadSeedState(
 }> {
   const peer = await db.rating.findFirst({ where: { match: { activity: { orgId } } }, select: { id: true } });
   const members = await db.membership.findMany({
-    where: { orgId },
+    // Not a partner club's guest (cross-club ask, S4).
+    where: { orgId, guestFromOrgId: null },
     select: { userId: true, seedRating: true, leftAt: true },
   });
   const seedOf = new Map(members.map((m) => [m.userId, m.seedRating]));
@@ -63,7 +64,10 @@ export async function loadSeedState(
   });
   return {
     clubHasPeerRatings: !!peer,
-    confirmed: { total: confirmedUserIds.length, seeded: confirmedUserIds.filter((u) => seedOf.get(u) != null).length },
+    confirmed: (() => {
+      const own = confirmedUserIds.filter((u) => seedOf.has(u));
+      return { total: own.length, seeded: own.filter((u) => seedOf.get(u) != null).length };
+    })(),
     active: { total: active.length, seeded: active.filter((m) => m.seedRating != null).length },
     manualNudge: !!manual,
   };

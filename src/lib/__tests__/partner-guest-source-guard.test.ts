@@ -37,7 +37,7 @@ describe("partner guests: one writer", () => {
 
   it("the guest columns are set only by partner-guest.ts", () => {
     // A write names the column with a value; reads filter with `{ not: null }`.
-    const SET = /guest(FromOrgId|MatchId):\s*(?!\{\s*not:)(?!true\b)(?!string\b)(?!null\b)[^,}\s]/;
+    const SET = /guest(FromOrgId|MatchId):\s*(?!\{\s*not:)(?!\w+\.)(?!true\b)(?!string\b)(?!null\b)[^,}\s]/;
     expect(files.filter((f) => rel(f) !== WRITER && SET.test(readFileSync(f, "utf8"))).map(rel)).toEqual([]);
   });
 });

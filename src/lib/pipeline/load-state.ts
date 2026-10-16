@@ -451,7 +451,9 @@ async function loadPartnerAskViews(orgId: string, now: Date): Promise<PartnerAsk
       where: {
         partnerOrgId: orgId,
         postWaMessageId: { not: null },
-        OR: [{ status: "posted" }, { closedAt: { gte: new Date(now.getTime() - 24 * 60 * 60 * 1000) } }],
+        // A picked guest's quoted OUT must still find the ask after it
+        // filled, until its game is over (S4).
+        OR: [{ status: "posted" }, { closesAt: { gte: now } }, { closedAt: { gte: new Date(now.getTime() - 24 * 60 * 60 * 1000) } }],
       },
       select: { id: true, status: true, closesAt: true, postWaMessageId: true, askerOrgId: true },
     });

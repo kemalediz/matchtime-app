@@ -29,7 +29,7 @@ import { sendAdminNotice } from "./admin-channel";
 import { dayCommaTimeLabel, timeLabel } from "./i18n/dates";
 import { t } from "./i18n/t";
 import { gamesOverlap } from "./partner-ask-rules";
-import { decideVolunteer } from "./partner-volunteer-rules";
+import { decideVolunteer, isPastGuestDue } from "./partner-volunteer-rules";
 
 const LIVE = ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] as const;
 
@@ -190,4 +190,140 @@ export async function handlePartnerVolunteer(w: VolunteerWrite, now: Date = new 
     console.error(`[partner-guest] ask ${ask.id}: ${userId} not written:`, err instanceof Error ? err.message : "failed");
     return { ok: false, outcome: "failed", replyText: ps.xask_vol_failed };
   }
+}
+
+// ── After the ask, and after the match (slice S4) ─────────────────────────
+
+/**
+ * When an ask closes (filled, kickoff, cancelled, paused), its volunteers
+ * who did NOT get a place are thanked and stood down (plan 3.10): their
+ * bench row on the asking club's match is dropped (cause "partner-ask"),
+ * they become past guests (the membership is kept, closed with `leftAt`),
+ * and they get one DM in their own club's language. A volunteer who got a
+ * place keeps it and is recorded as picked; if the game itself is off he
+ * is told so. Called by `sweepPartnerAsks` once per close (its
+ * compare-and-set). Never throws.
+ */
+export async function standDownVolunteers(askId: string, reason: string, now: Date = new Date()): Promise<{ thanked: number; picked: number }> {
+  let thanked = 0;
+  let picked = 0;
+  try {
+    const ask = await db.partnerAsk.findUnique({
+      where: { id: askId },
+      select: { id: true, matchId: true, askerOrgId: true, partnerOrgId: true, volunteerUserIds: true, match: { select: { date: true } } },
+    });
+    if (!ask || ask.volunteerUserIds.length === 0) return { thanked, picked };
+    const [asker, partner, rows, users] = await Promise.all([
+      db.organisation.findUnique({ where: { id: ask.askerOrgId }, select: { name: true } }),
+      db.organisation.findUnique({ where: { id: ask.partnerOrgId }, select: { id: true, language: true } }),
+      db.attendance.findMany({ where: { matchId: ask.matchId, userId: { in: ask.volunteerUserIds } }, select: { userId: true, status: true } }),
+      db.user.findMany({ where: { id: { in: ask.volunteerUserIds } }, select: { id: true, phoneNumber: true } }),
+    ]);
+    if (!asker || !partner) return { thanked, picked };
+    const ps = t(partner.language);
+    const statusOf = new Map(rows.map((r) => [r.userId, r.status]));
+    const phoneOf = new Map(users.map((u) => [u.id, u.phoneNumber]));
+    const gameOff = reason === "match-cancelled" || reason === "match-moved";
+    const pickedIds: string[] = [];
+    for (const userId of ask.volunteerUserIds) {
+      const status = statusOf.get(userId);
+      const phone = phoneOf.get(userId);
+      if (status === "CONFIRMED" && !gameOff) {
+        pickedIds.push(userId);
+        picked++;
+        continue;
+      }
+      if (status === "BENCH") {
+        await cancelAttendance(userId, ask.matchId, {
+          cause: "partner-ask",
+          actorKind: "system",
+          sourceRef: `xask:${ask.id}`,
+          note: `ask closed (${reason}): stood down`,
+        });
+      }
+      // He becomes a past guest of the asking club (D10): kept, closed.
+      await db.membership.updateMany({
+        where: { userId, orgId: ask.askerOrgId, guestMatchId: ask.matchId, leftAt: null },
+        data: { leftAt: now },
+      });
+      if (phone) {
+        await db.botJob.create({
+          data: {
+            orgId: partner.id,
+            kind: "dm",
+            phone: phone.replace(/^\+/, ""),
+            text: gameOff
+              ? ps.xask_game_off_dm({ asker: asker.name, day: dayCommaTimeLabel(partner.language, ask.match.date) })
+              : ps.xask_thanks_dm({ asker: asker.name }),
+          },
+        });
+      }
+      thanked++;
+    }
+    if (pickedIds.length > 0) {
+      await db.partnerAsk.updateMany({ where: { id: ask.id }, data: { pickedUserIds: pickedIds } });
+    }
+    console.log(`[partner-guest] ask ${ask.id} closed (${reason}): ${picked} kept a place, ${thanked} stood down`);
+  } catch (err) {
+    console.error(`[partner-guest] ask ${askId}: standing down failed:`, err instanceof Error ? err.message : "failed");
+  }
+  return { thanked, picked };
+}
+
+/**
+ * The morning after his match a guest becomes a PAST guest (Kemal,
+ * 2026-10-16): the membership is kept, with its guest marks, and closed
+ * with `leftAt`, so every roster reader of the asking club skips him and
+ * his profile still shows that club's row with his rating there
+ * (the profile's all-clubs card). From the morning after kickoff, or at
+ * once for a cancelled match. Every due-posts poll of the asking club; one
+ * indexed query when there are none. Never throws.
+ */
+export async function retirePastGuests(orgId: string, now: Date = new Date()): Promise<number> {
+  try {
+    const guests = await db.membership.findMany({
+      where: { orgId, leftAt: null, guestMatchId: { not: null } },
+      select: { id: true, guestMatchId: true },
+    });
+    if (guests.length === 0) return 0;
+    const matches = await db.match.findMany({
+      where: { id: { in: guests.map((g) => g.guestMatchId!) } },
+      select: { id: true, date: true, status: true },
+    });
+    const byId = new Map(matches.map((m) => [m.id, m]));
+    const due = guests.filter((g) => {
+      const m = byId.get(g.guestMatchId!);
+      return !m || isPastGuestDue({ kickoff: m.date, status: m.status, now });
+    });
+    if (due.length === 0) return 0;
+    const done = await db.membership.updateMany({ where: { id: { in: due.map((g) => g.id) }, leftAt: null }, data: { leftAt: now } });
+    console.log(`[partner-guest] org ${orgId}: ${done.count} guest(s) now past guests`);
+    return done.count;
+  } catch (err) {
+    console.error(`[partner-guest] org ${orgId}: retiring guests failed:`, err instanceof Error ? err.message : "failed");
+    return 0;
+  }
+}
+
+/**
+ * "Add to <club>" (plan 3.10): the asking club keeps a guest as an
+ * ordinary member. Both guest marks and `leftAt` cleared. The caller has
+ * proven the actor is an owner or admin of `orgId`.
+ */
+export async function keepGuestAsMember(orgId: string, userId: string): Promise<boolean> {
+  const done = await db.membership.updateMany({
+    where: { orgId, userId, guestFromOrgId: { not: null } },
+    data: { guestFromOrgId: null, guestMatchId: null, leftAt: null },
+  });
+  if (done.count > 0) console.log(`[partner-guest] org ${orgId}: guest ${userId} kept as a member`);
+  return done.count > 0;
+}
+
+/** Is this person a guest in this club, and from which club (for the
+ *  language of his DMs and the label)? Null for an ordinary member. */
+export async function guestOf(userId: string, orgId: string): Promise<{ fromOrgId: string; fromName: string; language: string } | null> {
+  const m = await db.membership.findUnique({ where: { userId_orgId: { userId, orgId } }, select: { guestFromOrgId: true } });
+  if (!m?.guestFromOrgId) return null;
+  const from = await db.organisation.findUnique({ where: { id: m.guestFromOrgId }, select: { name: true, language: true } });
+  return from ? { fromOrgId: m.guestFromOrgId, fromName: from.name, language: from.language } : null;
 }

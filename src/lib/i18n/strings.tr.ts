@@ -3686,6 +3686,16 @@ export const tr: Strings = {
   xask_vol_notice_asker: (p) =>
     `🤝 ${p.name} (${p.partner}) ${p.day} isteğinize yanıt verdi: ${p.bench ? "seçmeniz için yedek listenizde" : "kadroda"}.`,
   xask_vol_out_notice_asker: (p) => `${p.name} (${p.partner}) ${p.day} maçına gelemiyor, bu yüzden listeden çıkardım.`,
+  // ─── İstekten sonra misafirler (slice S4) ───────────────────────────
+  xask_thanks_dm: (p) => `*${p.asker}* oyuncusunu buldu. Teklifin için teşekkürler 🙏`,
+  xask_game_off_dm: (p) => `*${p.asker}* kulübünün ${p.day} maçı iptal oldu, yani artık gerek kalmadı. Teklifin için teşekkürler 🙏`,
+  xask_picked_dm: (p) =>
+    `✅ *${p.asker}* için oynuyorsun: ${p.day}, ${p.venue}. Gelemeyeceksen grubundaki isteklerini yanıtlayıp *YOKUM* yaz.`,
+  xask_guests_title: "Partner kulüplerden misafirler",
+  xask_guest_row: (p) => `${p.name}, misafir: ${p.club}`,
+  xask_keep_button: (p) => `${p.club} kulübüne ekle`,
+  xask_keep_done: "Üye olarak eklendi.",
+  xask_guest_badge: (p) => `Misafir: ${p.club}`,
 };
 
 /**

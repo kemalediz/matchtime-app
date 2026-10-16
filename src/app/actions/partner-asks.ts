@@ -13,6 +13,7 @@ import { requireOrgAdmin } from "@/lib/org";
 import { t } from "@/lib/i18n/t";
 import { loadPartnerAskSettings } from "@/lib/club-partnership";
 import { approvePartnerAsk, askRefusalText, declinePartnerAsk, requestPartnerAsk } from "@/lib/partner-ask";
+import { keepGuestAsMember } from "@/lib/partner-guest";
 
 async function sessionUserId(): Promise<string> {
   const session = await auth();
@@ -45,4 +46,16 @@ export async function answerPartnerAskAction(askId: string, answer: "yes" | "no"
   const r = answer === "yes" ? await approvePartnerAsk({ askId, userId }) : await declinePartnerAsk({ askId, userId });
   revalidatePath(`/partner-asks/${askId}`);
   return { ok: r.ok, outcome: r.outcome };
+}
+
+/** "Add to <club>" on the match page (slice S4): the asking club keeps a
+ *  guest as an ordinary member. OWNER or ADMIN of the match's club only. */
+export async function keepGuestAction(matchId: string, userId: string): Promise<{ ok: boolean }> {
+  const actor = await sessionUserId();
+  const match = await db.match.findUnique({ where: { id: matchId }, select: { activity: { select: { orgId: true } } } });
+  if (!match) throw new Error("Not found");
+  await requireOrgAdmin(actor, match.activity.orgId);
+  const ok = await keepGuestAsMember(match.activity.orgId, userId);
+  revalidatePath(`/matches/${matchId}`);
+  return { ok };
 }

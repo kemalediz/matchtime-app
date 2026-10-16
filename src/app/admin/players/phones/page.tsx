@@ -13,6 +13,8 @@ interface Player {
   isActive: boolean;
   positions: string[];
   _count: { attendances: number };
+  /** A partner club's guest (cross-club ask, S4): not this club's to phone. */
+  guestFrom?: string | null;
 }
 
 type RowState = "idle" | "dirty" | "saving" | "saved" | "error";
@@ -110,6 +112,9 @@ export default function BulkPhonesPage() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return players.filter((p) => {
+      // A partner club's guest is never listed here: his number is not this
+      // club's to see or to type (cross-club ask, S4).
+      if (p.guestFrom) return false;
       if (filter === "missing" && p.phoneNumber) return false;
       if (filter === "active" && !p.isActive) return false;
       if (!q) return true;

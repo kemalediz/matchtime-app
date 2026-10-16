@@ -49,6 +49,9 @@ interface Player {
   isActive: boolean;
   leftAt: string | null;
   provisionallyAddedAt: string | null;
+  /** A guest from a partner club (cross-club ask, S4): that club's name.
+   *  His phone and email are never sent. */
+  guestFrom?: string | null;
   aliases: Array<{ alias: string; source: string }>;
   _count: { attendances: number };
 }
@@ -485,12 +488,17 @@ export default function PlayersPage() {
                         Left
                       </span>
                     )}
+                    {p.guestFrom && (
+                      <span data-testid="guest-badge" className="inline-flex shrink-0 px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 text-[10px] font-semibold">
+                        {t(lang).xask_guest_badge({ club: p.guestFrom })}
+                      </span>
+                    )}
                     {p.provisionallyAddedAt && !p.leftAt && (
                       <span className="inline-flex shrink-0 items-center gap-1 px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 text-[10px] font-semibold uppercase tracking-wider">
                         <Sparkles className="w-3 h-3" /> New
                       </span>
                     )}
-                    {!p.leftAt && (
+                    {!p.leftAt && !p.guestFrom && (
                       <button
                         onClick={() => setMergeFrom(mergeFrom === p.id ? null : p.id)}
                         className={`inline-flex shrink-0 items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold ${
@@ -612,7 +620,8 @@ export default function PlayersPage() {
                       </span>
                     ))}
                     <span>{p.positions.length > 0 ? "·" : ""} {p._count.attendances} matches</span>
-                    <span className="text-slate-300">·</span>
+                    {!p.guestFrom && <span className="text-slate-300">·</span>}
+                    {!p.guestFrom && (
                     <input
                       type="tel"
                       defaultValue={p.phoneNumber ?? ""}
@@ -628,6 +637,7 @@ export default function PlayersPage() {
                       className="text-xs text-slate-500 bg-transparent border-0 border-b border-transparent hover:border-slate-200 focus:border-blue-500 focus:outline-none w-32 px-0 py-0.5 rounded-none"
                       title="Phone number, used for personal DMs (rating links, reminders)"
                     />
+                    )}
                   </div>
                 </div>
               </div>

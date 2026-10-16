@@ -526,6 +526,17 @@ export async function loadRatingLeaderboard(
 
   const latestMatchId = matches[matches.length - 1].id;
 
+  // A partner club's guest, current or past (cross-club ask, S4), is not
+  // listed in this club's table: he played for it, he is not its player.
+  // His ratings here still make his club rating here, on his own profile.
+  const guestIds = new Set(
+    (
+      (await db.membership
+        .findMany({ where: { orgId, guestFromOrgId: { not: null } }, select: { userId: true } })
+        .catch(() => [])) ?? []
+    ).map((g) => g.userId),
+  );
+
   // playerId -> { scores[], distinct matchIds } — `games` must count
   // matches, NOT rating rows (a game with 12 raters is still one game).
   type Acc = { scores: number[]; matches: Set<string> };
@@ -539,6 +550,7 @@ export async function loadRatingLeaderboard(
   };
   for (const m of matches) {
     for (const r of m.ratings) {
+      if (guestIds.has(r.playerId)) continue;
       bump(all, r.playerId, r.score, m.id);
       if (m.id !== latestMatchId) bump(prior, r.playerId, r.score, m.id);
     }
@@ -1091,8 +1103,11 @@ export async function loadAllClubsOverview(args: {
     );
   }
 
+  // Live memberships, AND a guest's or past guest's membership of a club
+  // he played for through a partner ask (Kemal, 2026-10-16): his ratings
+  // there are his club rating there, and he sees them here.
   const memberships = await db.membership.findMany({
-    where: { userId, leftAt: null },
+    where: { userId, OR: [{ leftAt: null }, { guestFromOrgId: { not: null } }] },
     select: { org: { select: { id: true, name: true } } },
   });
   const orgs = memberships.map((m) => m.org);

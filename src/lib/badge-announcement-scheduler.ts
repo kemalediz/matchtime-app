@@ -105,7 +105,8 @@ export async function computeBadgeAnnouncements(args: {
   const [raw, members, ledger] = await Promise.all([
     loadRawBadgeMatches(orgId),
     db.membership.findMany({
-      where: { orgId, leftAt: null },
+      // Not a partner club's guest (cross-club ask, S4).
+      where: { orgId, leftAt: null, guestFromOrgId: null },
       select: { user: { select: { id: true, name: true } } },
     }),
     db.badgeAnnouncement.findMany({ where: { orgId }, select: { userId: true, badgeKey: true } }),

@@ -38,6 +38,7 @@ import { isGroupPostable } from "./group-postability-store";
 import { londonMidnight } from "./club-connect-rules";
 import { isNextUpcomingForPosting } from "./next-upcoming-match";
 import { loadPartnerAskSettings } from "./club-partnership";
+import { retirePastGuests, standDownVolunteers } from "./partner-guest";
 import { dayCommaTimeLabel } from "./i18n/dates";
 import { t } from "./i18n/t";
 import {
@@ -488,6 +489,8 @@ export async function loadPartnerAskPanel(matchId: string, askerOrgId: string) {
  */
 export async function sweepPartnerAsks(orgId: string, now: Date = new Date()): Promise<{ closed: number }> {
   let closed = 0;
+  // Guests whose match is over become past guests (S4). Never throws.
+  await retirePastGuests(orgId, now);
   try {
     const asks = await db.partnerAsk.findMany({
       where: { OR: [{ askerOrgId: orgId }, { partnerOrgId: orgId }], status: { in: [...OPEN_ASK_STATUSES] } },
@@ -519,6 +522,8 @@ export async function sweepPartnerAsks(orgId: string, now: Date = new Date()): P
       closed++;
       console.log(`[partner-ask] ${ask.id}: closed ${status} (${reason})`);
       await tellClose(ask.id, reason, ask.status, ask.volunteerUserIds.length, now);
+      // Its volunteers without a place are thanked and stood down (S4).
+      await standDownVolunteers(ask.id, reason, now);
     }
   } catch (err) {
     console.error(`[partner-ask] org ${orgId}: sweep failed:`, err instanceof Error ? err.message : "failed");

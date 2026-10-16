@@ -4879,4 +4879,17 @@ export const en = {
     `🤝 ${p.name} (${p.partner}) answered your ask for ${p.day}: ${p.bench ? "on your bench for you to pick" : "in the squad"}.`,
   xask_vol_out_notice_asker: (p: { name: string; partner: string; day: string }) =>
     `${p.name} (${p.partner}) can't play ${p.day} after all, so I've taken them off.`,
+  // ─── Guests after the ask (slice S4, 2026-10-16) ────────────────────
+  // DMs to a guest are in HIS club's language (D9); the page words in the
+  // asking club's. Read by partner-guest.ts, organiser-pick.ts and the
+  // match page's guests panel.
+  xask_thanks_dm: (p: { asker: string }) => `*${p.asker}* have their player now. Thanks for offering 🙏`,
+  xask_game_off_dm: (p: { asker: string; day: string }) => `*${p.asker}*'s game on ${p.day} is off now, so you're not needed after all. Thanks for offering 🙏`,
+  xask_picked_dm: (p: { asker: string; day: string; venue: string }) =>
+    `✅ You're playing for *${p.asker}*: ${p.day} at ${p.venue}. Can't make it after all? Reply *OUT* to their ask in your group.`,
+  xask_guests_title: "Guests from partner clubs",
+  xask_guest_row: (p: { name: string; club: string }) => `${p.name}, guest from ${p.club}`,
+  xask_keep_button: (p: { club: string }) => `Add to ${p.club}`,
+  xask_keep_done: "Added as a member.",
+  xask_guest_badge: (p: { club: string }) => `Guest from ${p.club}`,
 };

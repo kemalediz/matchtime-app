@@ -15,6 +15,8 @@
  *
  * Pure.
  */
+import { londonWallClockToUtc } from "./london-time";
+import { ROLLING_SEED_HOUR } from "./rolling-squad-rules";
 
 export type VolunteerDecision =
   | { kind: "register"; asGuest: boolean }
@@ -40,4 +42,18 @@ export function decideVolunteer(i: VolunteerInput): VolunteerDecision {
   if (!i.askOpen) return { kind: "refuse", why: "closed" };
   if (i.inOverlappingOwnGame) return { kind: "refuse", why: "overlap" };
   return { kind: "register", asGuest: !i.ordinaryAskerMember };
+}
+
+/** The morning after kickoff, at the rolling squad's hour (plan 3.10:
+ *  "the morning after, the rolling sweep, same run"): when a guest becomes
+ *  a past guest (Kemal, 2026-10-16). A wall clock, so the same London
+ *  time on either side of a clock change. */
+export function pastGuestAt(kickoff: Date): Date {
+  return londonWallClockToUtc(new Date(kickoff.getTime() + 24 * 3600_000), ROLLING_SEED_HOUR);
+}
+
+/** Is his match over for good: the morning after it, or cancelled? */
+export function isPastGuestDue(p: { kickoff: Date; status: string; now: Date }): boolean {
+  if (p.status === "CANCELLED") return true;
+  return p.now.getTime() >= pastGuestAt(p.kickoff).getTime();
 }

@@ -419,7 +419,9 @@ export async function inviteRecentPlayers(
   const inviteOptedOut = new Set(
     (
       await db.membership.findMany({
-        where: { orgId, subMatchInviteDm: false },
+        // Opted out, or a guest from a partner club, current or past
+        // (cross-club ask, S4): never DM'd for this club's later games.
+        where: { orgId, OR: [{ subMatchInviteDm: false }, { guestFromOrgId: { not: null } }] },
         select: { userId: true },
       })
     ).map((mem) => mem.userId),
