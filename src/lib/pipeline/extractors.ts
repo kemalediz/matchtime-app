@@ -28,6 +28,7 @@
 import { anthropicModel, degradation, extractJson, EXTRACTOR_MODEL, type ModelRequest, type PipelineModel } from "./llm";
 import { isAiBudgetExceeded } from "../ai-budget-context";
 import { parsePeriodFields } from "./stats-period";
+import { HELP_FEATURES } from "./types";
 import type {
   AdminFacts,
   AttendanceFacts,
@@ -179,7 +180,7 @@ Return an empty claims array only when the message genuinely says nothing about 
 
   question: `You classify ONE question from a football club's WhatsApp group. You never answer it. Code reads the club's records and writes every name, date and number the group sees; your fields only tell it which question was asked. A field the message does not state gets its empty value. Never fill one in from a guess.
 
-Classify THE MESSAGE only. The recent chat and MatchTime's last post are context for what it refers to. Messages come in English and Turkish, often mixed, misspelt or unpunctuated.
+Classify THE MESSAGE only. The recent chat and MatchTime's last post are context for what it refers to; when the message quotes a MatchTime post, that post is the one shown. Messages come in English and Turkish, often mixed, misspelt or unpunctuated.
 
 FIELDS
 
@@ -197,6 +198,7 @@ What the asker wants back. Exactly one of:
   my_stats         the asker's OWN stats, ratings, form or season summary, which they are sent privately
   stats            a table or record about PLAYERS across matches (ratings, appearances, Man of the Match, Elo and the rest), about the club or about anyone but the asker's own numbers
   options          what to do about being short of players: a smaller format, alternatives
+  how_it_works     how MatchTime itself works here: what the bench is, how signing in works, how the teams are made, and the rest
   other            anything else, including how much the fee is
 
 personRef
@@ -204,6 +206,16 @@ The person the question is about, as the message names them, without a possessiv
 
 statedCount
 A number the message ASSERTS about the squad, for checking: "we're 9/14 right?" is 9. -1 otherwise.
+
+feature
+For how_it_works only, the part of MatchTime it asks about:
+  availability     signing in and out, the squad list, the bench or waiting list, saying maybe
+  teams            how the two teams are made
+  mom              Man of the Match
+  ratings          player ratings
+  reminders        reminders
+  payments         the match fee and paying it
+  none             MatchTime as a whole or none of these, and every other topic
 
 The remaining fields describe a LIST. table and listEnd belong to stats only; listSize and period belong to stats and score. Every other topic leaves them all empty: table "none", listSize -1, listEnd "top", period "none", periodCount -1, periodUnit "none".
 
@@ -244,6 +256,7 @@ CLOSE CALLS
 - my_stats or stats: my_stats only when the numbers are the asker's own and they ask to see them. Anyone else's numbers, a ranking of the group, and the asker's own pairings are stats.
 - rating_progress or other: rating_progress asks who has submitted ratings. A message that tells the players to rate, thanks them, or remarks on ratings asks for nothing: other.
 - payments or other: who owes is payments. What the fee is, is other.
+- bench or how_it_works: WHO is on the bench is bench. What the bench is, or whether there is one now, is how_it_works, availability.
 
 EXAMPLES
 Each line is a message, then the fields that are not empty.
@@ -260,6 +273,11 @@ The upcoming match:
   "@Match Time what time is kickoff?" / "@Match Time maç kaçta?" -> fixture
   "@Match Time where are we playing?" / "@Match Time is the game still on?" -> fixture
   "@Match Time we're short, what are our options?" / "@Match Time eksiğiz, ne yapabiliriz?" -> options
+
+How MatchTime works:
+  "Bench? We do bench now?" / "yedek ne demek?" -> how_it_works, feature availability
+  "@Match Time how are the teams picked?" / "@Match Time takımları nasıl kuruyorsun?" -> how_it_works, feature teams
+  "@Match Time what can you do?" / "@Match Time neler yapabiliyorsun?" -> how_it_works
 
 Results:
   "@Match Time did we win on tuesday?" / "@Match Time salı kim kazandı?" -> score
@@ -486,6 +504,7 @@ const QUESTION_SCHEMA = {
         "my_stats",
         "stats",
         "options",
+        "how_it_works",
         "other",
       ],
     },
@@ -504,8 +523,10 @@ const QUESTION_SCHEMA = {
     period: { type: "string", enum: ["none", "last", "this", "season", "all_time"] },
     periodCount: { type: "number" },
     periodUnit: { type: "string", enum: ["none", "day", "week", "month", "year"] },
+    // 2026-10-16: for `how_it_works` only, the help topic it asks about.
+    feature: { type: "string", enum: [...HELP_FEATURES, "none"] },
   },
-  required: ["topic", "personRef", "statedCount", "table", "listSize", "listEnd", "period", "periodCount", "periodUnit"],
+  required: ["topic", "personRef", "statedCount", "table", "listSize", "listEnd", "period", "periodCount", "periodUnit", "feature"],
   additionalProperties: false,
 } as const;
 
@@ -635,6 +656,8 @@ const TOPICS: QuestionTopic[] = [
   "my_stats",
   "stats",
   "options",
+  // 2026-10-16: "Bench? We do bench now?" (FNF). See `QuestionFacts.feature`.
+  "how_it_works",
   "other",
 ];
 
@@ -807,6 +830,13 @@ export function parseFacts(
         const period = parsePeriodFields(raw);
         if (period.problem) bad(period.problem);
         facts.period = period.period;
+      } else if (topic === "how_it_works") {
+        // Which help topic, or null for MatchTime as a whole (the help
+        // menu). An unreadable one is read as the menu, loudly.
+        const featureRaw = str(raw.feature).toLowerCase();
+        const feature = HELP_FEATURES.find((f) => f === featureRaw) ?? null;
+        if (!feature && featureRaw && featureRaw !== "none") bad(`unknown feature "${str(raw.feature)}"; answered with the help menu`);
+        facts.feature = feature;
       }
       return { facts, degradations };
     }

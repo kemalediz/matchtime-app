@@ -114,6 +114,7 @@ const LIVE_HARNESSES: Array<[file: string, owes: RegExp]> = [
   ["scripts/dryrun-pipeline.ts", RESOLVER_CALL],
   ["scripts/live-check-admin-group.ts", RESOLVER_CALL],
   ["scripts/live-check-picture-reading.ts", RESOLVER_CALL],
+  ["scripts/live-check-reply-to-matchtime.ts", RESOLVER_CALL],
   ["scripts/measure-claimless.ts", RESOLVER_CALL],
   ["scripts/sim-onboarding.ts", RESOLVER_CALL],
 ];

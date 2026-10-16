@@ -41,6 +41,10 @@ export interface TagInput {
    *  the bot's own JID? PRIMARY tag signal. `undefined` when an older Pi
    *  build didn't send it → fall back to text matching. */
   botMentioned?: boolean;
+  /** Structured signal forwarded by the Pi (2026-10-16): is this message a
+   *  WhatsApp reply quoting MatchTime's OWN message? Only the Pi knows the
+   *  bot's ids, so this is computed there, never from the text. */
+  quotedFromMatchTime?: boolean;
 }
 
 /**
@@ -48,6 +52,11 @@ export interface TagInput {
  *
  *  - PRIMARY:  msg.botMentioned === true — the Pi matched the bot inside
  *              the message's mention list. Authoritative when true.
+ *  - REPLY:    msg.quotedFromMatchTime === true: a WhatsApp reply quoting
+ *              MatchTime's own message is addressed to it, exactly as a tag
+ *              is (Kemal, 2026-10-16: FNF's "Bench? We do bench now?",
+ *              replying to MatchTime's "the bench is open", went
+ *              unanswered). A reply quoting a PLAYER is not.
  *  - FALLBACK: an explicit textual bot tag in the body. This runs whenever
  *              the structured signal is NOT a positive true — i.e. when
  *              botMentioned is `false` OR `undefined`.
@@ -65,6 +74,7 @@ export interface TagInput {
  */
 export function messageTagsBot(msg: TagInput): boolean {
   if (msg.botMentioned === true) return true;
+  if (msg.quotedFromMatchTime === true) return true;
   const body = msg.body ?? "";
   return (
     /@?\s*match\s*time\b/i.test(body) ||
@@ -121,7 +131,11 @@ export function messageTagsBot(msg: TagInput): boolean {
  *     2026-06-29 hardening survives: a FALSE structured signal still
  *     cannot suppress a real @-tag.
  *
- * NOT the bare word. THE COST, stated rather than discovered later: an
+ * NOT the bare word, and NOT a WhatsApp reply to MatchTime's own message
+ * (2026-10-16): that counts for `messageTagsBot`, never here, so a reply
+ * can ask MatchTime a question but cannot open a bulk-DM door.
+ *
+ * THE COST, stated rather than discovered later: an
  * admin who types "matchtime send everyone their stats", with no @, gets
  * silence and has to send it again with the tag on. That is the cheap
  * direction of the asymmetry above, and it is the whole point.

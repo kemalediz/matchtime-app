@@ -24,6 +24,7 @@
  */
 // Type-only, and from a module with no Prisma import of its own — see
 // `SquadState.payments` and `payment-answer.ts`'s header.
+import type { QuotedRef } from "../quoted-message";
 import type { PaymentSnapshot } from "./payment-answer";
 // Same rule, same reason: `rating-progress-answer.ts` is the Prisma-free
 // half of `rating-progress.ts`, split out on 2026-09-11 so the composer
@@ -398,7 +399,21 @@ export type QuestionTopic =
   | "my_stats"
   | "stats"
   | "options"
+  /**
+   * HOW MATCHTIME ITSELF WORKS HERE (2026-10-16). FNF: "Bench? We do bench
+   * now?", replying to MatchTime's own "the bench is open", asked what the
+   * bench is, and `other` answered nobody. Which part is `QuestionFacts.
+   * feature`; the answer is the help explainer "@Match Time help <topic>"
+   * already sends, written for the club's settings (`buildHelpReply`).
+   */
+  | "how_it_works"
   | "other";
+
+/** The help topics a `how_it_works` question can name: the ones the
+ *  players' help menu explains (`HelpTopic` in onboarding-conversation.ts,
+ *  less `schedule` and `badges`, which are not asked this way). */
+export const HELP_FEATURES = ["availability", "teams", "mom", "ratings", "reminders", "payments"] as const;
+export type HelpFeature = (typeof HELP_FEATURES)[number];
 
 /**
  * WHICH STATS TABLE a `stats` question is about (2026-09-23).
@@ -486,6 +501,9 @@ export interface QuestionFacts {
    *  when it names none. For `topic: "stats"` and, since 2026-09-29,
    *  `topic: "score"` ("results this season"). */
   period?: StatsPeriod | null;
+  /** For `topic: "how_it_works"` only (2026-10-16): the help topic it
+   *  asks about, or null for MatchTime as a whole (the help menu). */
+  feature?: HelpFeature | null;
 }
 
 export interface TeamFacts {
@@ -1501,6 +1519,13 @@ export interface MessageOutcome {
    */
   statsLinkRequested?: boolean;
   /**
+   * A how-it-works question (2026-10-16): the asker gets the help
+   * explainer for this topic (null: the help menu), written for the club's
+   * settings. Decided here; the words are `buildHelpReply`'s, attached by
+   * `answer-batch.ts`, which can load the club's features. Absent means no.
+   */
+  helpRequested?: { topic: HelpFeature | null };
+  /**
    * The engine asked the poster who they meant instead of answering
    * (`ask_stats_person`). The route records the message with the
    * `stats_clarification` intent, which is what opens the question.
@@ -1565,6 +1590,13 @@ export interface EngineMessage {
   /** Set when a stage above failed for this message. The engine must
    *  surface it, never swallow it. */
   degraded?: string | null;
+  /**
+   * The message it REPLIES to, when it is a WhatsApp reply and the Pi sent
+   * the quoted id (cross-club ask, S0, 2026-10-16). A structured fact: a
+   * reply to a partner club's ask is about that ask, decided by WHICH post
+   * it quotes (`quoted-message.ts`), never by its words. Absent otherwise.
+   */
+  quoted?: QuotedRef | null;
 }
 
 export interface EngineInput {

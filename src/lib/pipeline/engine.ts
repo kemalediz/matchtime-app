@@ -1986,6 +1986,15 @@ export function decide(input: EngineInput): EngineResult {
         case "options":
           speech.push({ kind: "answer_options", messageId: msg.id });
           break;
+        case "how_it_works":
+          // HOW MATCHTIME WORKS HERE (2026-10-16, FNF's "Bench? We do bench
+          // now?"). The decision only: the words are the help explainer
+          // "@Match Time help <topic>" already sends, for this club's
+          // settings, and `answer-batch.ts` attaches them because only it
+          // holds the club's features. No write, no speech here.
+          out.helpRequested = { topic: facts.feature ?? null };
+          out.reasons.push(`how-it-works question: the help explainer for ${facts.feature ?? "MatchTime as a whole"}`);
+          break;
         default:
           // The `question` route is the least designed part of the
           // proposal (§14.3) and this is where that shows. Saying so is

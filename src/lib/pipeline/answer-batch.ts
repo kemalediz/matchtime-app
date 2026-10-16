@@ -199,6 +199,7 @@ import type {
   EngineMessage,
   EngineResult,
   Facts,
+  HelpFeature,
   PaymentSnapshot,
   ProposedWrite,
   QuestionTopic,
@@ -390,6 +391,10 @@ export const ANSWERABLE_TOPICS: readonly QuestionTopic[] = [
   // It replaced the English-only `STATS_REQUEST` regex. See
   // `QuestionTopic.my_stats` and the ownership loop below.
   "my_stats",
+  // 2026-10-16, FNF: "Bench? We do bench now?" in reply to MatchTime's own
+  // "the bench is open". Answered with the help explainer for the club's
+  // settings (`deps.helpReply`), not from the squad.
+  "how_it_works",
 ];
 
 /**
@@ -595,6 +600,10 @@ export interface AnswerBatchMessage {
   route: Route | undefined;
   /** Did step 5's gate skip this message? Then step 7 never sees it. */
   gated: boolean;
+  /** A WhatsApp reply to MatchTime's own message (2026-10-16): the text it
+   *  quotes. The extractor is shown it as MatchTime's post, because it is
+   *  the post this message is about. Absent otherwise. */
+  quotedMatchTime?: string;
 }
 
 /** What the analyze route needs in order to turn one owned message into
@@ -674,6 +683,11 @@ export interface AnswerBatchDeps {
   /** Injected so a test can prove the write assertion and the
    *  throw-safety without a fabricated engine rule in the real engine. */
   decide?: (input: EngineInput) => EngineResult;
+  /** The help explainer for a how-it-works question (2026-10-16), for
+   *  this club's settings. Defaults to `buildHelpReply`, the copy "@Match
+   *  Time help <topic>" sends; imported lazily because that module reads
+   *  the database for other things. */
+  helpReply?: (topic: HelpFeature | null, features: OrgFeatures) => Promise<string> | string;
 }
 
 /**
@@ -695,6 +709,14 @@ export interface AnswerBatchDeps {
  *  deleted fast path wrote. */
 function isRatingProgress(f: Facts | undefined): boolean {
   return f?.kind === "question" && f.topic === "rating_progress";
+}
+
+/** The help explainer "@Match Time help <topic>" sends, for this club's
+ *  settings. Lazy: `onboarding-conversation.ts` reads the database for
+ *  other things, and this path only needs its copy. */
+async function defaultHelpReply(topic: HelpFeature | null, features: OrgFeatures): Promise<string> {
+  const m = await import("../onboarding-conversation");
+  return m.buildHelpReply(topic, m.helpFeaturesFrom(features), features.language, { audience: "group" });
 }
 
 function empty(degradations: string[] = []): AnswerBatchResult {
@@ -938,7 +960,9 @@ export async function runAnswerBatch(args: {
         authorName: m.authorName,
         tagged: clar ? true : m.tagged,
         history,
-        lastBotPost,
+        // A reply to MatchTime is about the post it quotes, not whatever
+        // MatchTime said last.
+        lastBotPost: m.quotedMatchTime ?? lastBotPost,
       });
       if (clar && res.facts.kind === "question" && res.facts.topic === "stats") {
         res.facts.personRef = clar.subject;
@@ -1065,6 +1089,17 @@ export async function runAnswerBatch(args: {
       // ⚠️ TERMINAL BRANCH, like the one above: it skips no write, no
       // send and no state mutation, only the checks that do not apply.
       if (facts.topic === "stats") {
+        ownedIds.add(m.waMessageId);
+        continue;
+      }
+      // ── HOW MATCHTIME WORKS (2026-10-16) ───────────────────────────
+      //
+      // Owned on the same argument again: the help explainer describes
+      // the club's settings, not the upcoming squad, so no match is
+      // needed and no neighbour's write can contradict it.
+      //
+      // ⚠️ TERMINAL BRANCH, like the two above.
+      if (facts.topic === "how_it_works") {
         ownedIds.add(m.waMessageId);
         continue;
       }
@@ -1502,6 +1537,28 @@ export async function runAnswerBatch(args: {
     if (!degradations.includes(n)) degradations.push(n);
   }
 
+  // ── HOW MATCHTIME WORKS (2026-10-16) ───────────────────────────────
+  //
+  // The engine decided THAT the asker gets the help explainer; the words
+  // are the help copy "@Match Time help <topic>" sends, for this club's
+  // settings, which is why they are attached here (the composer has no
+  // features and cannot import the module that writes them). A failure
+  // leaves the message with nothing to say, and the assertion below
+  // disowns it with this reason on the note.
+  const helpIds = new Set<string>();
+  for (const o of result.outcomes) {
+    if (!o.helpRequested || !ownedIds.has(o.messageId)) continue;
+    try {
+      const text = await (deps.helpReply ?? defaultHelpReply)(o.helpRequested.topic, features);
+      utteranceByMessageId.set(o.messageId, [...(utteranceByMessageId.get(o.messageId) ?? []), text]);
+      helpIds.add(o.messageId);
+    } catch (err) {
+      degradations.push(
+        `${ANSWER_DEGRADED_PREFIX} ${o.messageId}: the help explainer failed (${err instanceof Error ? err.message : String(err)})`,
+      );
+    }
+  }
+
   // ── AN OWNED MESSAGE THAT SAYS NOTHING IS NOT OWNED ────────────────
   //
   // Ownership is decided before `decide()` runs, so an owned id that
@@ -1587,14 +1644,19 @@ export async function runAnswerBatch(args: {
       // `stats_link` / `dm-stats-link`: the labels the deleted
       // `STATS_REQUEST` fast path wrote (2026-09-17), kept for the same
       // reason `rating_progress` keeps its own.
+      // `help` (2026-10-16): the label the "@Match Time help" fast path
+      // writes, and what keeps the organisers-mode net and the squad
+      // composition pass off the explainer (`skipsSquadComposition`).
       intent:
         m.route === "balancer"
           ? "show_teams_request"
           : statsLink
             ? "stats_link"
-            : isRatingProgress(factsById.get(m.waMessageId))
-              ? "rating_progress"
-              : statsIntent(m.waMessageId, engineOutcome?.statsClarificationAsked === true),
+            : helpIds.has(m.waMessageId)
+              ? "help"
+              : isRatingProgress(factsById.get(m.waMessageId))
+                ? "rating_progress"
+                : statsIntent(m.waMessageId, engineOutcome?.statsClarificationAsked === true),
       // `AnalyzedMessage.action`, derived exactly as `route.ts:2197-2200`
       // derives it for a message with no attendance write. "none" would
       // make every step-7 answer look like a no-op to anything filtering

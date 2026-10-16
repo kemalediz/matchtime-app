@@ -688,7 +688,13 @@ export async function POST(request: Request) {
             id: true,
             date: true,
             status: true,
-            activity: { select: { orgId: true, org: { select: { language: true } } } },
+            activity: {
+              select: {
+                orgId: true,
+                name: true,
+                org: { select: { language: true, benchPickMode: true } },
+              },
+            },
           },
         },
       },
@@ -826,9 +832,15 @@ export async function POST(request: Request) {
             orgId: row.match.activity.orgId,
             kind: "dm",
             phone: replyPhone,
+            // Built from the STATUS the write left, never from the answer
+            // alone: an IN can land on the bench (FNF, 2026-10-16).
             text: buildTentativeFollowupAck({
               decision: isIn ? "in" : "out",
               failed: writeFailed,
+              status: newStatus,
+              organiser: row.match.activity.org.benchPickMode === "organiser",
+              matchName: row.match.activity.name,
+              matchWhen: dayCommaTimeLabel(tentLang, row.match.date),
               lang: tentLang,
             }),
           },
