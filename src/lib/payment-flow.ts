@@ -63,6 +63,12 @@ export async function releaseMatchPayments(matchId: string): Promise<number> {
     // the month, so they never get a per-match pay link. No club on
     // "weekly" has such a row.
     if (isMonthlyRow(a)) continue;
+    // Already settled before the links went out: an organiser or the
+    // collector marked them paid on /collect/<match> ("Mark received").
+    // This is how a club's free places work for now (FNF, 2026-10-16:
+    // the bib washer and the Man of the Match). They owe nothing, so no
+    // pay link, and the daily chase skips them on the same paidAt.
+    if (a.paidAt) continue;
     if (!a.user.phoneNumber) continue;
     const token = signMagicLinkToken({
       userId: a.user.id,

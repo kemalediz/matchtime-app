@@ -126,6 +126,28 @@ test("per-player pay-link DM is suppressed once the player is marked paid", asyn
   expect(afterKeys).toContain(payChaseKey(U.fresh, dayKey));
 });
 
+test("a free place marked paid before the links went out is never chased (FNF, 2026-10-16)", async ({
+  request,
+  db,
+}) => {
+  // The shape `confirmDirectPayment` writes when an organiser taps
+  // "Mark received" on /collect/<match> before the fee is confirmed: paidAt
+  // + who confirmed it, no payment method (the player never picked one).
+  await db.run(
+    `UPDATE "Attendance"
+       SET "paidAt" = now(), "directPendingAt" = null,
+           "paymentMethod" = null, "directConfirmedByUserId" = $3
+     WHERE "matchId" = $1 AND "userId" = $2`,
+    [MATCH.pay, U.player, U.collector],
+  );
+  const now = londonAt(0, 18, 30);
+  const dayKey = londonDateKey(now);
+  const keys = (await duePostsAt(request, now)).map((i) => i.key);
+  expect(keys).not.toContain(payChaseKey(U.player, dayKey));
+  // The unmarked player is still chased.
+  expect(keys).toContain(payChaseKey(U.fresh, dayKey));
+});
+
 test("a card-paid player never receives a pay-link DM", async ({ request }) => {
   // Riley Rater is seeded paidAt via card (qty 2). They must never appear
   // in the pay-chase loop, before any mutation.
