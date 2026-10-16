@@ -1357,6 +1357,9 @@ export const en = {
   hq_nothing_waiting: `There's nothing waiting for a YES right now.`,
   /** An admin asked MatchTime for something the admin group cannot do. */
   hq_not_here: `I can't do that from this group. Ask *what can you do?* to see what I can do here.`,
+  /** A message addressed to MatchTime in the admin group (an @tag, or a
+   *  reply to its own message) that it could not read as anything it does. */
+  hq_not_understood: `I didn't catch what you'd like me to do. Ask *what can you do?* to see what I can do here.`,
   /** A team change whose players MatchTime could not tell. */
   tp_which_players: `Which players? For example: swap Sam and Alex, or move Sam to the other team.`,
   /** "move Sam to Red" when Sam is already there. */

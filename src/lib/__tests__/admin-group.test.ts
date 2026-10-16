@@ -71,7 +71,7 @@ describe("everything that is not structured data goes through the shared pipelin
     const r = await handleAdminGroupMessage(
       msg("can you do the poster for this week", { mentionNames: [{ jid: "1@lid" }], quotedText: undefined, quoted: { text: "Teams?", fromMatchTime: true } }),
     );
-    expect(r).toEqual({ handled: true, orgId: "org-fnf", outcome: "graphic-queued", replyText: null });
+    expect(r).toEqual({ handled: true, orgId: "org-fnf", outcome: "graphic-queued", replyText: null, react: "✅" });
     expect(understand.understandAdminMessage).toHaveBeenCalledWith({
       org: LIVE_ORG,
       messageId: "wa-1",
@@ -95,6 +95,41 @@ describe("everything that is not structured data goes through the shared pipelin
     understand.understandAdminMessage.mockResolvedValue({ route: "help", outcome: "hq-help", replyText: "🛠️" });
     expect(await handleAdminGroupMessage(msg("what can you do?"))).toMatchObject({ handled: true, outcome: "hq-help" });
     expect(paste.proposeSquadPaste).not.toHaveBeenCalled();
+  });
+});
+
+// "It should put a tick if it recognises a command" (Kemal, 2026-10-16):
+// the Pi reacts ✅ to the admin's message, as it does to a player's IN in
+// the players' group. Not on chat it ignores, and not on the one line that
+// says MatchTime could not do or could not read what was asked.
+describe("the ✅ on a message MatchTime acted on", () => {
+  it.each([
+    ["graphic-queued", null],
+    ["hq-help", "🛠️"],
+    ["squad-changed", "Done: Bilal is in."],
+    ["teams-swapped", "✅ *Final teams*"],
+    ["teams-final", "Teams are final."],
+  ])("%s: ✅", async (outcome, replyText) => {
+    understand.understandAdminMessage.mockResolvedValue({ route: "balancer", outcome, replyText });
+    expect(await handleAdminGroupMessage(msg("@Match Time do it"))).toMatchObject({ handled: true, react: "✅" });
+  });
+
+  it.each(["hq-not-here", "hq-not-understood"])("%s: no tick, the line is the answer", async (outcome) => {
+    understand.understandAdminMessage.mockResolvedValue({ route: "unsure", outcome, replyText: "I didn't catch that." });
+    expect(await handleAdminGroupMessage(msg("@Match Time hmm"))).toMatchObject({ handled: true, react: null });
+  });
+
+  it("ignored chat: no tick", async () => {
+    expect(await handleAdminGroupMessage(msg("who is bringing the bibs?"))).not.toHaveProperty("react");
+  });
+
+  it("a pick and a pasted list: ✅", async () => {
+    dbMock.organiserPickRound.findFirst.mockResolvedValue({ id: "round-1" });
+    pick.handlePickReply.mockResolvedValue({ handled: true, outcome: "filled", replyText: "Done: Wasim is in." });
+    expect(await handleAdminGroupMessage(msg("1"))).toMatchObject({ react: "✅" });
+    dbMock.organiserPickRound.findFirst.mockResolvedValue(null);
+    paste.proposeSquadPaste.mockResolvedValue({ outcome: "paste-proposed", replyText: "Adding: Bilal. Reply YES to apply." });
+    expect(await handleAdminGroupMessage(msg("1. Bilal\n2. Ali", { messageId: "wa-2" }))).toMatchObject({ react: "✅" });
   });
 });
 
@@ -152,7 +187,7 @@ describe("structured data first, deterministically", () => {
     dbMock.organiserPickRound.findFirst.mockResolvedValue({ id: "round" });
     pick.handlePickReply.mockResolvedValue({ handled: true, outcome: "filled", replyText: "Done: Wasim is in." });
     const r = await handleAdminGroupMessage(msg("2"));
-    expect(r).toEqual({ handled: true, orgId: "org-fnf", outcome: "filled", replyText: "Done: Wasim is in." });
+    expect(r).toEqual({ handled: true, orgId: "org-fnf", outcome: "filled", replyText: "Done: Wasim is in.", react: "✅" });
     expect(understand.understandAdminMessage).not.toHaveBeenCalled();
   });
 
@@ -181,7 +216,7 @@ describe("structured data first, deterministically", () => {
     const LIST = "1. Bilal\n2. Ali\n3. Tom\n4. Sam\n5. Naim";
     paste.proposeSquadPaste.mockResolvedValue({ outcome: "paste-proposed", replyText: "Adding: Bilal. Reply YES to apply." });
     const r = await handleAdminGroupMessage(msg(LIST));
-    expect(r).toEqual({ handled: true, orgId: "org-fnf", outcome: "paste-proposed", replyText: "Adding: Bilal. Reply YES to apply." });
+    expect(r).toEqual({ handled: true, orgId: "org-fnf", outcome: "paste-proposed", replyText: "Adding: Bilal. Reply YES to apply.", react: "✅" });
     expect(paste.proposeSquadPaste).toHaveBeenCalledWith({ orgId: "org-fnf", lang: "en", messageId: "wa-1", text: LIST, senderUserId: "u-admin", now: NOW });
     expect(hqLog.recordMatchTimeQuestion).toHaveBeenCalledWith({ orgId: "org-fnf", askRef: "list:wa-1", text: "Adding: Bilal. Reply YES to apply.", now: NOW });
     expect(understand.understandAdminMessage).not.toHaveBeenCalled();

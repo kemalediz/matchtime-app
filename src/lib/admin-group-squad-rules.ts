@@ -24,11 +24,15 @@ import type { AttendanceFacts, Claim, Route } from "./pipeline/types";
 
 /**
  * The router routes acted on in the admin group: attendance about the
- * sender or about another player. Everything else the router can say
- * (questions, teams, scores, admin ops, unsure, none) is left alone with
- * no reply, as the admin group always was.
+ * sender or about another player, and `unsure` (about a place, but the
+ * router could not tell who or what; also a failed router call), which
+ * `admin-group-understand.ts` hands over only for a message addressed to
+ * MatchTime (2026-10-16), as the players' group hands it to the same
+ * engine. Every claim still goes through `vetAdminGroupFacts`. Everything
+ * else the router can say (questions, teams, scores, admin ops, none) is
+ * not a squad change.
  */
-export const ADMIN_GROUP_SQUAD_ROUTES: ReadonlySet<Route> = new Set<Route>(["self_att", "other_att"]);
+export const ADMIN_GROUP_SQUAD_ROUTES: ReadonlySet<Route> = new Set<Route>(["self_att", "other_att", "unsure"]);
 
 /** How long a pasted list waits for YES. The same 30 minutes as the
  *  organiser-pick "bring them in anyway? YES" question. */

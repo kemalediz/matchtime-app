@@ -36,7 +36,9 @@
  * "not-a-pick" or "not-an-admin" with one).
  *
  * The answer, when there is one, goes back as `replyText`, which the Pi
- * posts in the same group. Idempotent per WhatsApp message id
+ * posts in the same group, and `react` ("✅" on a message MatchTime acted
+ * on, 2026-10-16), which the Pi places on the admin's message the way it
+ * reacts in the players' group. Idempotent per WhatsApp message id
  * (`admin-group-msg:<messageId>`), so a Pi retry never applies anything
  * twice.
  */
@@ -75,7 +77,21 @@ export type AdminGroupMessageResult =
       orgId: string;
       replyText: null;
     }
-  | { handled: true; orgId: string; outcome: string | null; replyText: string | null };
+  | { handled: true; orgId: string; outcome: string | null; replyText: string | null; react: string | null };
+
+/**
+ * "It should put a tick if it recognises a command" (Kemal, 2026-10-16).
+ * The emoji the Pi places on the admin's message, as it does on a player's
+ * IN in the players' group: on everything MatchTime acted on or answered
+ * as a command. Not on the one line saying it cannot do, or could not
+ * read, what was asked; ignored chat never reaches here.
+ */
+const NO_TICK: ReadonlySet<string> = new Set(["hq-not-here", "hq-not-understood"]);
+export const HQ_TICK = "✅";
+
+function acted(orgId: string, outcome: string | null, replyText: string | null): AdminGroupMessageResult {
+  return { handled: true, orgId, outcome, replyText, react: outcome && NO_TICK.has(outcome) ? null : HQ_TICK };
+}
 
 function parseTimestamp(ts: string | null | undefined): Date | null {
   if (!ts) return null;
@@ -103,7 +119,7 @@ export async function handleAdminGroupMessage(msg: AdminGroupMessage): Promise<A
   if (readCollectorReply(msg.text)) {
     const senders = await resolveSenderUserIds({ phones: [msg.senderPhone, msg.senderAltPhone], lid: msg.senderLid ?? null });
     const paid = await handleCollectorPaidReply({ text: msg.text, waMessageId: msg.messageId ?? null, senderUserIds: senders, orgId: org.id, now });
-    if (paid) return { handled: true, orgId: org.id, outcome: paid.handled, replyText: paid.replyText || null };
+    if (paid) return acted(org.id, paid.handled, paid.replyText || null);
   }
 
   const live = org.whatsappBotEnabled === true;
@@ -159,7 +175,7 @@ export async function handleAdminGroupMessage(msg: AdminGroupMessage): Promise<A
       sentAt: parseTimestamp(msg.timestamp),
       now,
     });
-    if (outcome.handled) return { handled: true, orgId: org.id, outcome: outcome.outcome ?? null, replyText: outcome.replyText };
+    if (outcome.handled) return acted(org.id, outcome.outcome ?? null, outcome.replyText);
   }
   if (!live) return { handled: false, ignored: round ? "not-a-pick" : "no-open-pick", orgId: org.id, replyText: null };
 
@@ -176,7 +192,7 @@ export async function handleAdminGroupMessage(msg: AdminGroupMessage): Promise<A
         if (setAside > 0) replyText = `${replyText} ${t(org.language).tp_teams_set_aside}`;
         await recordMatchTimeQuestion({ orgId: org.id, askRef: listAskRef(messageId), text: replyText, now });
       }
-      return { handled: true, orgId: org.id, outcome: pasted.outcome, replyText };
+      return acted(org.id, pasted.outcome, replyText);
     }
   }
 
@@ -193,6 +209,6 @@ export async function handleAdminGroupMessage(msg: AdminGroupMessage): Promise<A
     sentAt: parseTimestamp(msg.timestamp),
     now,
   });
-  if (understood) return { handled: true, orgId: org.id, outcome: understood.outcome, replyText: understood.replyText };
+  if (understood) return acted(org.id, understood.outcome, understood.replyText);
   return { handled: false, ignored: round ? "not-a-pick" : "no-open-pick", orgId: org.id, replyText: null };
 }

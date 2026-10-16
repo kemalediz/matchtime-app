@@ -1176,6 +1176,7 @@ export const tr: Strings = {
     `Bu EVET hangisi için: ${p.day} için önerilen takımlar mı, yapıştırılan kadro listesi mi? O mesaja EVET diye cevap verin.`,
   hq_nothing_waiting: `Şu anda EVET bekleyen bir şey yok.`,
   hq_not_here: `Bunu bu gruptan yapamam. Burada neler yapabildiğimi görmek için *neler yapabilirsin?* diye sorun.`,
+  hq_not_understood: `Ne yapmamı istediğinizi anlayamadım. Burada neler yapabildiğimi görmek için *neler yapabilirsin?* diye sorun.`,
   tp_which_players: `Hangi oyuncular? Örneğin: Sam ile Alex'i değiştir, ya da Sam'i diğer takıma al.`,
   tp_already_on: (p) => `${p.name} zaten ${p.team} takımında.`,
 

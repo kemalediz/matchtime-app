@@ -527,6 +527,9 @@ export interface AdminGroupAnswer {
   replyText?: string | null;
   adminGroup?: { groupId?: unknown; orgId?: unknown } | null;
   outcome?: string;
+  /** The emoji to place on the admin's message: "✅" when MatchTime acted
+   *  on it (2026-10-16). Absent or null: none. */
+  react?: string | null;
 }
 
 /**

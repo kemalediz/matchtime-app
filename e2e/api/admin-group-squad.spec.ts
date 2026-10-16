@@ -71,7 +71,8 @@ test("an admin's 'Tom out': applied through the engine, confirmed in the admin g
   engineOn({ "Tom out": { route: "other_att", facts: otherFacts("Tom", "out") } });
   const before = { jobs: (await groupJobs(db)).length, analyzed: await analyzed(db) };
   const out = await say(request, "Tom out", ADMIN, "e2e-ags-tom-out");
-  expect(out).toMatchObject({ handled: true, outcome: "squad-changed", replyText: "Done: Tom Third out. 3 of 5." });
+  // The Pi puts a ✅ on the admin's message (2026-10-16).
+  expect(out).toMatchObject({ handled: true, outcome: "squad-changed", replyText: "Done: Tom Third out. 3 of 5.", react: "✅" });
   expect(await statusOf(db, U.third)).toBe("DROPPED");
 
   // Recorded as an admin's instruction from that message.
@@ -98,7 +99,22 @@ test("'put Ian in': in, with the new count", async ({ request, db }) => {
 
 test("chat the router does not route to attendance is ignored, no reply", async ({ request }) => {
   engineOn({ "Wasim played well last week": { route: "none" } });
-  expect(await say(request, "Wasim played well last week")).toMatchObject({ handled: false, ignored: "no-open-pick", replyText: null });
+  const out = await say(request, "Wasim played well last week");
+  expect(out).toMatchObject({ handled: false, ignored: "no-open-pick", replyText: null });
+  expect(out.react ?? null).toBeNull();
+});
+
+// FNF 2026-10-16: a tagged request the router called `unsure` was met with
+// silence. Now the attendance engine reads it and, owning nothing, one line.
+test("a tagged message the router calls unsure: one line, never silence, and no tick", async ({ request }) => {
+  engineOn({ "@Match Time update the graphic please": { route: "unsure" } });
+  const out = await say(request, "@Match Time update the graphic please");
+  expect(out).toMatchObject({
+    handled: true,
+    outcome: "hq-not-understood",
+    replyText: "I didn't catch what you'd like me to do. Ask *what can you do?* to see what I can do here.",
+    react: null,
+  });
 });
 
 // ── 2026-10-15: organisers talking in HQ is not an instruction ────────

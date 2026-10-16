@@ -338,6 +338,7 @@ const SAMPLES: SampleArgs = {
   hq_confirm_which: { day: "Fri 16 Oct" },
   hq_nothing_waiting: null,
   hq_not_here: null,
+  hq_not_understood: null,
   tp_which_players: null,
   tp_already_on: { name: "Ahmet", team: "Kırmızı" },
   onbHelpBadgesHead: null,

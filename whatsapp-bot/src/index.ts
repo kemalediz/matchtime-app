@@ -678,6 +678,7 @@ async function main() {
           postAdminGroupMessage,
           postAdminGroupLink,
           reply: (text) => driver.sendText(head.from, text),
+          sendReaction: (id, emoji) => driver.sendReaction(id, emoji),
         },
         { from: head.from, body: effectiveBody },
       );

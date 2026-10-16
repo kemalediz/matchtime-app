@@ -12,9 +12,12 @@
  *                                       `team_sheet` routes
  *                                       (`admin-group-understand.ts`);
  *   sendGraphicToAdminChannel(...)      queue one graphic for the admin
- *                                       group. The command calls it, and so
- *                                       will the final-list and the
- *                                       approved-teams triggers.
+ *                                       group: the command, the final-list
+ *                                       and the approved-teams triggers;
+ *   redrawTeamSheet(...)                the final teams changed after their
+ *                                       team sheet went out: the updated
+ *                                       one, on its own, after a short
+ *                                       quiet period (2026-10-16).
  *
  * A graphic is queued as an `admin-group` BotJob (`graphic-job.ts`) and
  * goes out on the club's next due-posts poll, where its image URL is
@@ -52,7 +55,7 @@ export async function sendGraphicToAdminChannel(
   orgId: string,
   matchId: string,
   kind: GraphicKind,
-  opts: { asked?: boolean; onceKey?: string } = {},
+  opts: { asked?: boolean; onceKey?: string; sendAfter?: Date } = {},
 ): Promise<SendGraphicResult> {
   const org = await db.organisation.findUnique({
     where: { id: orgId },
@@ -78,10 +81,55 @@ export async function sendGraphicToAdminChannel(
       kind: "admin-group",
       text: graphicCaption(kind, org.language, org.name, data.matchDate),
       pollOptions: graphicJobOptions({ kind, matchId, asked: opts.asked === true }),
+      ...(opts.sendAfter ? { sendAfter: opts.sendAfter } : {}),
     },
   });
   console.log(`[graphics] queued ${kind} org=${orgId} match=${matchId} job=${job.id}${opts.asked ? " (asked)" : ""}`);
   return { queued: true, jobId: job.id };
+}
+
+// ── The teams changed after the team sheet was sent ─────────────────────
+
+/**
+ * How long the teams must stay unchanged before the updated team sheet
+ * goes out, so a burst of changes (a pick, then a swap) is one graphic.
+ */
+export const REDRAW_QUIET_MS = 2 * 60 * 1000;
+
+export type RedrawResult = SendGraphicResult | { queued: true; jobId: string; coalesced: true } | { queued: false; reason: "never-sent" };
+
+/**
+ * "Poster generation should be automated as soon as the teams are final.
+ * No need for any extra command" (Kemal, 2026-10-16). Called when the
+ * teams of `matchId` changed after they were made final
+ * (`team-proposal.ts`). Only once a team sheet has gone to the admin group
+ * for that match; never the first one (that is the approval's).
+ *
+ * The updated sheet waits `REDRAW_QUIET_MS` (`BotJob.sendAfter`). Another
+ * change in that time pushes the same job back instead of queuing a second
+ * one. A team sheet already due and not yet posted is left as it is: the
+ * image is drawn when the Pi fetches it (`/api/graphics/<token>`), so it
+ * shows the teams as they are then.
+ */
+export async function redrawTeamSheet(orgId: string, matchId: string, now: Date): Promise<RedrawResult> {
+  const sheetJobs = { orgId, kind: "admin-group", pollOptions: { hasEvery: graphicJobOptions({ kind: "teams", matchId, asked: false }).slice(0, 3) } };
+  const sent = await db.botJob.findFirst({ where: sheetJobs, select: { id: true } });
+  if (!sent) return { queued: false, reason: "never-sent" };
+
+  const sendAfter = new Date(now.getTime() + REDRAW_QUIET_MS);
+  const waiting = await db.botJob.findFirst({
+    where: { ...sheetJobs, sentAt: null },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, sendAfter: true },
+  });
+  if (waiting) {
+    if (waiting.sendAfter && waiting.sendAfter.getTime() > now.getTime()) {
+      await db.botJob.updateMany({ where: { id: waiting.id, sentAt: null }, data: { sendAfter } });
+    }
+    console.log(`[graphics] team sheet redraw org=${orgId} match=${matchId} folded into job=${waiting.id}`);
+    return { queued: true, jobId: waiting.id, coalesced: true };
+  }
+  return sendGraphicToAdminChannel(orgId, matchId, "teams", { sendAfter });
 }
 
 // ── The admin's request ─────────────────────────────────────────────
