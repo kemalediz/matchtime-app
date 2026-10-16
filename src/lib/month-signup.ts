@@ -866,7 +866,8 @@ async function isLiveMonthlyClub(orgId: string): Promise<boolean> {
 async function loadRoster(orgId: string): Promise<{ roster: SignupRosterMember[]; phoneOf: Map<string, string | null> }> {
   const [memberships, aliases] = await Promise.all([
     db.membership.findMany({
-      where: { orgId, leftAt: null, user: { isActive: true } },
+      // Not a partner club's guest (cross-club ask, review M6).
+      where: { orgId, leftAt: null, guestFromOrgId: null, user: { isActive: true } },
       select: { user: { select: { id: true, name: true, phoneNumber: true } } },
     }),
     db.userAlias.findMany({ where: { orgId }, select: { userId: true, alias: true } }),

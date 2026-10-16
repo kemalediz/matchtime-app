@@ -38,7 +38,7 @@ import { isGroupPostable } from "./group-postability-store";
 import { londonMidnight } from "./club-connect-rules";
 import { isNextUpcomingForPosting } from "./next-upcoming-match";
 import { loadPartnerAskSettings } from "./club-partnership";
-import { retirePastGuests, standDownVolunteers } from "./partner-guest";
+import { retirePastGuests, standDownVolunteers, tellGuestsMoved } from "./partner-guest";
 import { dayCommaTimeLabel } from "./i18n/dates";
 import { t } from "./i18n/t";
 import {
@@ -563,8 +563,8 @@ export async function sweepPartnerAsks(orgId: string, now: Date = new Date()): P
 
 /** After a moved game: the hook S4 fills in (guests told the new time). */
 async function afterMove(askId: string, now: Date): Promise<void> {
-  void askId;
-  void now;
+  // Its guests keep their place and are told the new time (S4).
+  await tellGuestsMoved(askId, now);
 }
 
 async function tellClose(askId: string, reason: Parameters<typeof closeTells>[0], wasStatus: string, volunteers: number, now: Date): Promise<void> {

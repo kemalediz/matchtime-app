@@ -244,7 +244,8 @@ describe("startCurrentMonth: a month already under way", () => {
   it("only current members of THIS club can be seeded", async () => {
     await startCurrentMonth("org-vets", SEED);
     expect(membershipFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { orgId: "org-vets", leftAt: null, user: { isActive: true } } }),
+      // Never a partner club's guest (cross-club ask, review M6).
+      expect.objectContaining({ where: { orgId: "org-vets", leftAt: null, guestFromOrgId: null, user: { isActive: true } } }),
     );
     const res = await startCurrentMonth("org-vets", { ...SEED, rows: [{ userId: "u-other-club", kind: "regular" }] });
     expect(res).toEqual({ ok: false, error: "not-a-member" });

@@ -98,7 +98,7 @@ export async function handlePartnerVolunteer(w: VolunteerWrite, now: Date = new 
   const [partnerMember, askerMember, row] = w.userId
     ? await Promise.all([
         db.membership.findUnique({ where: { userId_orgId: { userId: w.userId, orgId: partner.id } }, select: { leftAt: true, guestFromOrgId: true } }),
-        db.membership.findUnique({ where: { userId_orgId: { userId: w.userId, orgId: asker.id } }, select: { id: true, leftAt: true, guestFromOrgId: true } }),
+        db.membership.findUnique({ where: { userId_orgId: { userId: w.userId, orgId: asker.id } }, select: { id: true, leftAt: true, guestFromOrgId: true, guestMatchId: true } }),
         db.attendance.findUnique({ where: { matchId_userId: { matchId: ask.matchId, userId: w.userId } }, select: { status: true } }),
       ])
     : [null, null, null];
@@ -186,7 +186,12 @@ export async function handlePartnerVolunteer(w: VolunteerWrite, now: Date = new 
       await db.membership.upsert({
         where: { userId_orgId: { userId, orgId: asker.id } },
         create: { userId, orgId: asker.id, role: "PLAYER", guestFromOrgId: partner.id, guestMatchId: ask.matchId },
-        update: { leftAt: null, guestFromOrgId: partner.id, guestMatchId: ask.matchId },
+        // Review L4: a live guest mark for this match (from another partner
+        // club's ask) is kept, never overwritten.
+        update:
+          askerMember && !askerMember.leftAt && askerMember.guestFromOrgId && askerMember.guestMatchId === ask.matchId
+            ? {}
+            : { leftAt: null, guestFromOrgId: partner.id, guestMatchId: ask.matchId },
       });
     }
     const result = await registerAttendance(userId, ask.matchId, { event, actorIsAdmin: false });
@@ -245,7 +250,17 @@ export async function standDownVolunteers(askId: string, reason: string, now: Da
     const ps = t(partner.language);
     const statusOf = new Map(rows.map((r) => [r.userId, r.status]));
     const phoneOf = new Map(users.map((u) => [u.id, u.phoneNumber]));
-    const gameOff = reason === "match-cancelled" || reason === "match-moved";
+    const gameOff = reason === "match-cancelled";
+    // Review M5: only the guests THIS ask registered are stood down: a
+    // guest from this ask's club for this match, still live. An ordinary
+    // member who volunteered keeps whatever row he has.
+    const mems = await db.membership.findMany({
+      where: { orgId: ask.askerOrgId, userId: { in: ask.volunteerUserIds } },
+      select: { userId: true, guestFromOrgId: true, guestMatchId: true, leftAt: true },
+    });
+    const ownGuest = new Set(
+      mems.filter((m) => m.guestFromOrgId === ask.partnerOrgId && m.guestMatchId === ask.matchId && !m.leftAt).map((m) => m.userId),
+    );
     const pickedIds: string[] = [];
     for (const userId of ask.volunteerUserIds) {
       const status = statusOf.get(userId);
@@ -255,6 +270,13 @@ export async function standDownVolunteers(askId: string, reason: string, now: Da
         picked++;
         continue;
       }
+      if (!ownGuest.has(userId)) continue;
+      // Review L4: still a volunteer on another open ask for this match
+      // (another partner club): that ask stands him down, not this one.
+      const elsewhere = await db.partnerAsk.count({
+        where: { matchId: ask.matchId, id: { not: ask.id }, status: { in: ["awaiting-approval", "posted"] }, volunteerUserIds: { has: userId } },
+      });
+      if (elsewhere > 0) continue;
       if (status === "BENCH") {
         await cancelAttendance(userId, ask.matchId, {
           cause: "partner-ask",
@@ -348,4 +370,100 @@ export async function guestOf(userId: string, orgId: string): Promise<{ fromOrgI
   if (!m?.guestFromOrgId) return null;
   const from = await db.organisation.findUnique({ where: { id: m.guestFromOrgId }, select: { name: true, language: true } });
   return from ? { fromOrgId: m.guestFromOrgId, fromName: from.name, language: from.language } : null;
+}
+
+/**
+ * A guest takes himself out of the asking club's match by DM (review H4,
+ * after he answered "which game?"). Only while the match is still to play
+ * and he is a current guest there. His row is dropped (cause partner-ask),
+ * he is taken off every ask of that match, the asking club is told once,
+ * and he is told, in his club's language. False when there was nothing to
+ * do.
+ */
+export async function withdrawGuest(args: { userId: string; matchId: string; now?: Date }): Promise<boolean> {
+  const now = args.now ?? new Date();
+  const match = await db.match.findUnique({
+    where: { id: args.matchId },
+    select: { id: true, date: true, status: true, activity: { select: { orgId: true } } },
+  });
+  if (!match || !LIVE.includes(match.status as (typeof LIVE)[number])) return false;
+  const orgId = match.activity.orgId;
+  const mem = await db.membership.findUnique({
+    where: { userId_orgId: { userId: args.userId, orgId } },
+    select: { leftAt: true, guestFromOrgId: true, guestMatchId: true },
+  });
+  if (!mem?.guestFromOrgId || mem.leftAt || mem.guestMatchId !== args.matchId) return false;
+  const row = await db.attendance.findUnique({ where: { matchId_userId: { matchId: args.matchId, userId: args.userId } }, select: { status: true } });
+  if (!row || (row.status !== "CONFIRMED" && row.status !== "BENCH")) return false;
+  await cancelAttendance(args.userId, args.matchId, {
+    cause: "partner-ask",
+    actorKind: "player",
+    actorUserId: args.userId,
+    sourceRef: `xask-dm:${args.matchId}`,
+    note: "the guest said OUT by DM",
+  });
+  await db.$executeRaw`UPDATE "PartnerAsk" SET "volunteerUserIds" = array_remove("volunteerUserIds", ${args.userId}) WHERE "matchId" = ${args.matchId}`;
+  const [asker, from, user] = await Promise.all([
+    db.organisation.findUnique({ where: { id: orgId }, select: { name: true, language: true } }),
+    db.organisation.findUnique({ where: { id: mem.guestFromOrgId }, select: { id: true, name: true, language: true } }),
+    db.user.findUnique({ where: { id: args.userId }, select: { name: true, phoneNumber: true } }),
+  ]);
+  if (asker && from) {
+    try {
+      await db.sentNotification.create({ data: { key: `xask-dm:${args.matchId}:out:${args.userId}`, kind: "xask-volunteer" } });
+      await sendAdminNotice({
+        orgId,
+        now,
+        holdOvernight: false,
+        text: t(asker.language).xask_vol_out_notice_asker({ name: user?.name ?? "", partner: from.name, day: dayCommaTimeLabel(asker.language, match.date) }),
+      });
+    } catch {
+      // told already
+    }
+    if (user?.phoneNumber) {
+      await db.botJob.create({
+        data: { orgId: from.id, kind: "dm", phone: user.phoneNumber.replace(/^\+/, ""), text: t(from.language).xask_vol_out({ asker: asker.name }) },
+      });
+    }
+  }
+  console.log(`[partner-guest] ${args.userId}: out of match ${args.matchId} by DM`);
+  return true;
+}
+
+/**
+ * A MOVED game (review H3): the ask follows the new kickoff (S2), and its
+ * volunteers who have a place (CONFIRMED or on the bench) keep it and are
+ * told the new time, once, in their own club's language. Nothing is
+ * dropped and nobody becomes a past guest. Never throws.
+ */
+export async function tellGuestsMoved(askId: string, now: Date = new Date()): Promise<number> {
+  void now;
+  try {
+    const ask = await db.partnerAsk.findUnique({
+      where: { id: askId },
+      select: { id: true, matchId: true, askerOrgId: true, partnerOrgId: true, volunteerUserIds: true, match: { select: { date: true } } },
+    });
+    if (!ask || ask.volunteerUserIds.length === 0) return 0;
+    const [asker, partner, rows, users] = await Promise.all([
+      db.organisation.findUnique({ where: { id: ask.askerOrgId }, select: { name: true } }),
+      db.organisation.findUnique({ where: { id: ask.partnerOrgId }, select: { id: true, language: true } }),
+      db.attendance.findMany({ where: { matchId: ask.matchId, userId: { in: ask.volunteerUserIds } }, select: { userId: true, status: true } }),
+      db.user.findMany({ where: { id: { in: ask.volunteerUserIds } }, select: { id: true, phoneNumber: true } }),
+    ]);
+    if (!asker || !partner) return 0;
+    const phoneOf = new Map(users.map((u) => [u.id, u.phoneNumber]));
+    const text = t(partner.language).xask_moved_dm({ asker: asker.name, day: dayCommaTimeLabel(partner.language, ask.match.date) });
+    let told = 0;
+    for (const r of rows) {
+      if (r.status !== "CONFIRMED" && r.status !== "BENCH") continue;
+      const phone = phoneOf.get(r.userId);
+      if (!phone) continue;
+      await db.botJob.create({ data: { orgId: partner.id, kind: "dm", phone: phone.replace(/^\+/, ""), text } });
+      told++;
+    }
+    return told;
+  } catch (err) {
+    console.error(`[partner-guest] ask ${askId}: telling guests of the move failed:`, err instanceof Error ? err.message : "failed");
+    return 0;
+  }
 }

@@ -664,6 +664,10 @@ export function compose(result: EngineResult): ComposedOutput {
         utterances.push({ messageId: sp.messageId, text: s.ask_who_mentioned });
         break;
 
+      case "partner_guest_overlap":
+        utterances.push({ messageId: sp.messageId, text: s.xask_guest_overlap({ asker: sp.askerName }) });
+        break;
+
       // THE FOUR SCORE REPLIES. All of them name the teams as the PLAYED
       // match called them (`completedMatch.teamLabels`); `state.teamLabels`
       // belongs to the upcoming match, which can carry its own names.

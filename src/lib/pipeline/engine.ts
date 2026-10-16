@@ -757,6 +757,21 @@ export function decide(input: EngineInput): EngineResult {
         return;
       }
 
+      // Review L1: a member picked as a partner club's guest for a game that
+      // overlaps this one cannot also say IN here. One reply, no write. His
+      // OUT is never refused.
+      if (
+        msg.senderUserId &&
+        state.guestElsewhere?.[msg.senderUserId] &&
+        claims.length > 0 &&
+        claims.every((c) => c.subject === "sender" && c.polarity !== "out")
+      ) {
+        speech.push({ kind: "partner_guest_overlap", messageId: msg.id, askerName: state.guestElsewhere[msg.senderUserId].askerName });
+        out.reasons.push("L1: the sender plays for a partner club at an overlapping time; own IN refused");
+        out.disposition = out.disposition === "degraded" ? "degraded" : "acted";
+        return;
+      }
+
       // Side requests are facts in their own right and must survive
       // alongside the claims. Today's incident was a fast path claiming
       // a two-intent message and throwing half of it away.

@@ -51,11 +51,14 @@ export async function loadSeedState(
   manualNudge: boolean;
 }> {
   const peer = await db.rating.findFirst({ where: { match: { activity: { orgId } } }, select: { id: true } });
-  const members = await db.membership.findMany({
-    // Not a partner club's guest (cross-club ask, S4).
-    where: { orgId, guestFromOrgId: null },
-    select: { userId: true, seedRating: true, leftAt: true },
+  const all = await db.membership.findMany({
+    where: { orgId },
+    select: { userId: true, seedRating: true, leftAt: true, guestFromOrgId: true },
   });
+  // A partner club's guest is not this club's player to seed (cross-club
+  // ask); with no guest, the counts are exactly what they always were.
+  const guestIds = new Set(all.filter((m) => m.guestFromOrgId).map((m) => m.userId));
+  const members = all.filter((m) => !m.guestFromOrgId);
   const seedOf = new Map(members.map((m) => [m.userId, m.seedRating]));
   const active = members.filter((m) => m.leftAt == null);
   const manual = await db.botJob.findFirst({
@@ -65,7 +68,7 @@ export async function loadSeedState(
   return {
     clubHasPeerRatings: !!peer,
     confirmed: (() => {
-      const own = confirmedUserIds.filter((u) => seedOf.has(u));
+      const own = confirmedUserIds.filter((u) => !guestIds.has(u));
       return { total: own.length, seeded: own.filter((u) => seedOf.get(u) != null).length };
     })(),
     active: { total: active.length, seeded: active.filter((m) => m.seedRating != null).length },

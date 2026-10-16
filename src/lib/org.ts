@@ -73,7 +73,8 @@ export async function getUserOrg(userId: string) {
       where: { userId_orgId: { userId, orgId } },
       include: { org: true },
     });
-    if (membership && membership.leftAt === null) return membership;
+    // Never a club he is only a guest of (cross-club ask, review M6).
+    if (membership && membership.leftAt === null && !membership.guestFromOrgId) return membership;
 
     // Superadmin → synthesise a membership-shaped result for any org in DB
     if (superuser) {
@@ -94,7 +95,7 @@ export async function getUserOrg(userId: string) {
 
   // Fallback 1: user's first real membership
   const membership = await db.membership.findFirst({
-    where: { userId, leftAt: null },
+    where: { userId, leftAt: null, guestFromOrgId: null },
     include: { org: true },
     orderBy: { createdAt: "asc" },
   });

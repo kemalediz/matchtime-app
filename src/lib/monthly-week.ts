@@ -166,7 +166,8 @@ async function loadMonthsWhere(orgId: string, where: MonthStatusWhere): Promise<
       ? []
       : (
           await db.membership.findMany({
-            where: { orgId, userId: { in: memberIds }, leftAt: null, user: { isActive: true } },
+            // Not a partner club's guest (cross-club ask, review M6).
+            where: { orgId, userId: { in: memberIds }, leftAt: null, guestFromOrgId: null, user: { isActive: true } },
             select: { userId: true },
           })
         ).map((r) => r.userId),

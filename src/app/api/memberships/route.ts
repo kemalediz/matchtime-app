@@ -13,7 +13,9 @@ export async function GET() {
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const memberships = await db.membership.findMany({
-    where: { userId: session.user.id, leftAt: null },
+    // Not a club he is only a guest of (cross-club ask, review M6): the
+    // switcher never opens a partner club's squad, stats or pages to him.
+    where: { userId: session.user.id, leftAt: null, guestFromOrgId: null },
     include: { org: { select: { id: true, name: true, slug: true } } },
     orderBy: { createdAt: "asc" },
   });

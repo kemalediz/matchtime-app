@@ -96,6 +96,7 @@ import { buildTentativeFollowupAck } from "@/lib/tentative-followup";
 import { classifyMatchAvailability } from "@/lib/match-availability-classifier";
 import { resolveDmSelfAttendance } from "@/lib/dm-self-attendance";
 import { findDmRegistrationTarget } from "@/lib/dm-registration-target";
+import { handleGuestDmOut } from "@/lib/partner-guest-dm";
 import { announceOutOfBandAttendance } from "@/lib/out-of-band-announce";
 import { applyOutOfBandSelfAttendance } from "@/lib/out-of-band-self-attendance";
 import { dayCommaTimeLabel } from "@/lib/i18n/dates";
@@ -1090,6 +1091,24 @@ export async function POST(request: Request) {
     // Only worth asking the model when there is actually something to
     // register against: an active match on an attendance-tracking org,
     // chosen by the SAME selector the group path uses.
+    // A GUEST'S "OUT" (cross-club ask, review H4): while he has a live
+    // place in a partner club's match, a DM OUT asks which game first and
+    // acts only on the answer, so it never drops him from his own game.
+    if (!dm) {
+      const guestOut = await handleGuestDmOut({
+        userId: user.id,
+        userName: user.name,
+        text,
+        replyPhone:
+          (phone ? normalisePhone(phone)?.replace(/^\+/, "") ?? null : null) ??
+          (await db.user.findUnique({ where: { id: user.id }, select: { phoneNumber: true } }))?.phoneNumber?.replace(/^\+/, "") ??
+          null,
+      }).catch((err: unknown) => {
+        console.error("[dm-reply] guest DM OUT failed:", err instanceof Error ? err.message : "failed");
+        return null;
+      });
+      if (guestOut) return NextResponse.json({ ok: true, ...guestOut });
+    }
     const target = !dm ? await findDmRegistrationTarget(user.id) : null;
     if (target) {
       // Did we DM this player about this very match? Unlocks bare

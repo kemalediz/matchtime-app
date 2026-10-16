@@ -3697,6 +3697,10 @@ export const tr: Strings = {
   xask_keep_done: "Üye olarak eklendi.",
   xask_guest_badge: (p) => `Misafir: ${p.club}`,
   xask_vol_game_over: (p) => `*${p.asker}* maçı artık bitti, değiştirecek bir şey yok.`,
+  xask_dm_which: (p) =>
+    `Hangi maçtan çıkıyorsun? *${p.asker}* (${p.askerDay}) için *1*, *${p.own}* (${p.ownDay}) için *2* yaz.`,
+  xask_moved_dm: (p) => `*${p.asker}* maçının saati değişti: artık ${p.day}. Yerin duruyor. Gelemeyeceksen grubundaki isteklerini yanıtlayıp *YOKUM* yaz.`,
+  xask_guest_overlap: (p) => `O saatte *${p.asker}* için oynuyorsun, bu yüzden seni bu maça da yazamıyorum.`,
 };
 
 /**

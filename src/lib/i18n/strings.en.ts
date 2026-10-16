@@ -4893,4 +4893,8 @@ export const en = {
   xask_keep_done: "Added as a member.",
   xask_guest_badge: (p: { club: string }) => `Guest from ${p.club}`,
   xask_vol_game_over: (p: { asker: string }) => `*${p.asker}*'s game is over now, so there's nothing to change.`,
+  xask_dm_which: (p: { asker: string; askerDay: string; own: string; ownDay: string }) =>
+    `Which game are you out of? Reply *1* for *${p.asker}* (${p.askerDay}) or *2* for *${p.own}* (${p.ownDay}).`,
+  xask_moved_dm: (p: { asker: string; day: string }) => `*${p.asker}*'s game has moved: it is now ${p.day}. Your place stands. Can't make it? Reply *OUT* to their ask in your group.`,
+  xask_guest_overlap: (p: { asker: string }) => `You're playing for *${p.asker}* at that time, so I can't put you in this game as well.`,
 };

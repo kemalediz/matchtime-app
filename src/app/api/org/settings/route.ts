@@ -43,7 +43,8 @@ export async function GET() {
   // can receive the "how much?" + confirm-direct DMs). Used by the collector
   // picker in the Payments section.
   const members = !isAdmin ? [] : await db.membership.findMany({
-    where: { orgId: org.id, leftAt: null, user: { phoneNumber: { not: null } } },
+    // Never a partner club's guest (cross-club ask, review H1).
+    where: { orgId: org.id, leftAt: null, guestFromOrgId: null, user: { phoneNumber: { not: null } } },
     select: { user: { select: { id: true, name: true } } },
     orderBy: { user: { name: "asc" } },
   });

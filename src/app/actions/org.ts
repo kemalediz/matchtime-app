@@ -287,7 +287,8 @@ export async function switchOrg(orgId: string) {
     const membership = await db.membership.findUnique({
       where: { userId_orgId: { userId: session.user.id, orgId } },
     });
-    if (!membership || membership.leftAt !== null) {
+    // A partner club's guest is not that club's member (review M6).
+    if (!membership || membership.leftAt !== null || membership.guestFromOrgId) {
       throw new Error("Not a member of this organisation");
     }
   } else {
