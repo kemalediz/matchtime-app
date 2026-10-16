@@ -52,6 +52,26 @@ export function availablePayMethods(org: PayMethodSwitches): PayMethod[] {
   return out;
 }
 
+/**
+ * The club's own payment instructions (`Organisation.paymentInstructions`)
+ * for a WEEKLY match fee: the trimmed text, shown verbatim, but only when
+ * paying the collector directly is one of `availablePayMethods` (Kemal,
+ * 2026-10-16: FNF's collector bank details were only in the group
+ * description). Null when not set or when direct is not offered. The
+ * /pay page, the pay link DM and the daily chase all read it from here.
+ *
+ * A monthly club gets null: its instructions already reach players with
+ * the month's money, and its per-match copy stays exactly as it was.
+ */
+export function directPayInstructions(
+  org: PayMethodSwitches & { paymentInstructions?: string | null; squadMode?: string | null },
+): string | null {
+  if (org.squadMode === "monthly") return null;
+  const text = org.paymentInstructions?.trim();
+  if (!text) return null;
+  return availablePayMethods(org).includes("direct") ? text : null;
+}
+
 /** MatchTime's platform fee as a fraction of the base match fee — our
  *  revenue. 1% of base (e.g. 8p on £8). Skimmed from each Stripe-rail
  *  payment via `application_fee_amount`; "direct" (cash) is off-platform

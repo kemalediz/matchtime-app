@@ -1499,9 +1499,10 @@ export const tr: Strings = {
       : p.direct
         ? `\n\nGetirdiğin misafirlerin ücretini de birlikte ödeyebilirsin.`
         : "";
+    const howTo = p.direct && p.instructions ? `\n\nÖdeme bilgisi: ${p.instructions}` : "";
     return (
       `💷 ${p.firstName ? `${p.firstName}, ` : ""}*${p.activityName}* için maç ücreti *${p.fee}*.\n\n` +
-      `${how}\n${p.url}${guests}`
+      `${how}\n${p.url}${howTo}${guests}`
     );
   },
 
@@ -1519,7 +1520,8 @@ export const tr: Strings = {
           : p.direct
             ? cap(`${direct} ödeyebilirsin, ödeyince buradan bana haber ver:`)
             : `Ne kadar ödeyeceğini görmek için dokun:`;
-    return `💷 ${opener}: *${p.activityName}* için *${p.fee}* ödemen hâlâ açık.\n\n${how}\n${p.url}`;
+    const howTo = p.direct && p.instructions ? `\n\nÖdeme bilgisi: ${p.instructions}` : "";
+    return `💷 ${opener}: *${p.activityName}* için *${p.fee}* ödemen hâlâ açık.\n\n${how}\n${p.url}${howTo}`;
   },
 
   dm_direct_pay_nudge: (p) =>
@@ -2950,6 +2952,9 @@ export const tr: Strings = {
   msq_err_price: "8 veya 7.50 gibi bir ücret girin, en fazla £100.",
   msq_err_days: "1 ile 28 arasında tam bir gün sayısı girin.",
   msq_err_long: "Ödeme talimatı 500 karakteri geçmesin.",
+  pi_weekly_blurb:
+    "Para toplayan kişiye doğrudan nasıl ödeneceğini anlatan kendi cümleleriniz, örneğin banka bilgileri. Oyuncular doğrudan ödeyebildiğinde ödeme sayfasında, ödeme linkinde ve hatırlatmalarda gösterilir. İsteğe bağlı.",
+  pi_pay_heading: (p) => (p.collector ? `Doğrudan ${p.collector} ile ödeme` : "Doğrudan organizatöre ödeme"),
 
   mth_nav: "Aylar",
   mth_page_title: "Aylar",

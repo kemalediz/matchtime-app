@@ -78,6 +78,35 @@ describe("releaseMatchPayments writes the pay link from the club's available met
     expect(botJobs[0].text).toContain("Tap to pay (bank, card, Apple or Google Pay, or pay Elvin directly):");
   });
 
+  it("the club's payment instructions: one line when direct is offered (2026-10-16)", async () => {
+    users.col = { name: "Raihan Ahmed" };
+    const paymentInstructions = "Sort code 12-34-56, account 12345678";
+    matchRow = match({ language: "en", paymentInstructions, ...FNF_SWITCHES }, [att("ali", "Ali Khan", "+447700900001")]);
+    await releaseMatchPayments("m1");
+    expect(botJobs[0].text).toContain(`How to pay Raihan: ${paymentInstructions}`);
+
+    botJobs.length = 0;
+    matchRow = match({ language: "tr", paymentInstructions, ...FNF_SWITCHES }, [att("ali", "Ali Khan", "+447700900001")]);
+    await releaseMatchPayments("m1");
+    expect(botJobs[0].text).toContain(`Ödeme bilgisi: ${paymentInstructions}`);
+
+    // A monthly club's PAYG link: as it was.
+    botJobs.length = 0;
+    matchRow = match({ language: "en", squadMode: "monthly", paymentInstructions, ...FNF_SWITCHES }, [
+      att("ali", "Ali Khan", "+447700900001"),
+    ]);
+    await releaseMatchPayments("m1");
+    expect(botJobs[0].text).not.toContain("Sort code");
+
+    // Card and bank only: no direct, so no instructions.
+    botJobs.length = 0;
+    matchRow = match({ language: "en", paymentInstructions, ...LIVE_SWITCHES, payMethodDirect: false }, [
+      att("ali", "Ali Khan", "+447700900001"),
+    ]);
+    await releaseMatchPayments("m1");
+    expect(botJobs[0].text).not.toContain("Sort code");
+  });
+
   it("card and bank on but Stripe not connected: direct only", async () => {
     users.col = { name: "Raihan Ahmed" };
     matchRow = match({ language: "en", ...LIVE_SWITCHES, stripeChargesEnabled: false }, [
