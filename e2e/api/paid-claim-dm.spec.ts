@@ -57,6 +57,22 @@ const dmsTo = (db: TestDb, phone: string) =>
     [phone.replace(/^\+/, "")],
   );
 
+/** The ✅ reactions queued on a DM (the retro-reaction queue the Pi
+ *  already drains via due-posts `update-reaction`). */
+const ticksOn = (db: TestDb, waMessageId: string) =>
+  db.all<{ orgId: string; emoji: string; sentAt: Date | null }>(
+    `SELECT "orgId", emoji, "sentAt" FROM "RetroReaction" WHERE "waMessageId" = $1`,
+    [waMessageId],
+  );
+
+async function duePostsPreview(request: APIRequestContext) {
+  const res = await request.get(`/api/whatsapp/due-posts?groupId=${encodeURIComponent(E2E.GROUP_ID)}`, {
+    headers: { "x-api-key": E2E.WHATSAPP_API_KEY, "x-no-claim": "1" },
+  });
+  expect(res.status(), await res.text()).toBe(200);
+  return ((await res.json()).instructions ?? []) as Array<{ kind: string; waMessageId?: string; emoji?: string }>;
+}
+
 test("'Paid' from an owing player: PENDING (never paid), collector told once, player thanked", async ({
   request,
   db,
@@ -64,8 +80,16 @@ test("'Paid' from an owing player: PENDING (never paid), collector told once, pl
   setPaymentClaimStub({ bodies: { Paid: "paid" } });
   const before = (await collectorClaimDms(db)).length;
 
-  const json = await postDm(request, PHONE.player, "Paid");
+  const dmId = `false_111222333@lid_E2EPAID${Date.now()}`;
+  const json = await postDm(request, PHONE.player, "Paid", dmId);
   expect(json.handled).toBe("paid-claim");
+  expect(json.reactionQueued).toBe(true);
+
+  // ✅ queued on the player's own DM, once, for the owing club, and the
+  // Pi is handed it as the update-reaction it already places.
+  expect(await ticksOn(db, dmId)).toEqual([{ orgId: ORG_ID, emoji: "✅", sentAt: null }]);
+  const due = await duePostsPreview(request);
+  expect(due).toContainEqual(expect.objectContaining({ kind: "update-reaction", waMessageId: dmId, emoji: "✅" }));
 
   const r = await row(db, U.player);
   expect(r?.paidAt).toBeNull();
@@ -89,8 +113,11 @@ test("a second 'Paid': the collector is NOT told again, the player gets the shor
 }) => {
   setPaymentClaimStub({ bodies: { "paid 👍": "paid" } });
   const before = (await collectorClaimDms(db)).length;
-  const json = await postDm(request, PHONE.player, "paid 👍");
-  expect(json).toMatchObject({ handled: "paid-claim", alreadyPending: true, collectorNotified: false });
+  const dmId = `false_111222333@lid_E2EPAID2${Date.now()}`;
+  const json = await postDm(request, PHONE.player, "paid 👍", dmId);
+  expect(json).toMatchObject({ handled: "paid-claim", alreadyPending: true, collectorNotified: false, reactionQueued: true });
+  // "Already done" gets its ✅ too.
+  expect(await ticksOn(db, dmId)).toEqual([{ orgId: ORG_ID, emoji: "✅", sentAt: null }]);
   expect(await collectorClaimDms(db)).toHaveLength(before);
   expect((await dmsTo(db, PHONE.player))[0].text).toMatch(/^Already done Pat: Colin knows about your \*£8\*/);
   expect((await row(db, U.player))?.paidAt).toBeNull();
@@ -109,8 +136,10 @@ test("a replay of the SAME WhatsApp message is silent", async ({ request, db }) 
 test("not a claim ('I'll pay later'): nothing written, falls through", async ({ request, db }) => {
   resetDb();
   setPaymentClaimStub({}); // the model says `other`
-  const json = await postDm(request, PHONE.player, "I'll pay later");
+  const dmId = `false_111222333@lid_E2ELATER${Date.now()}`;
+  const json = await postDm(request, PHONE.player, "I'll pay later", dmId);
   expect(json.handled).not.toBe("paid-claim");
+  expect(await ticksOn(db, dmId)).toEqual([]);
   const r = await row(db, U.player);
   expect(r?.directPendingAt).toBeNull();
   expect(r?.paidAt).toBeNull();

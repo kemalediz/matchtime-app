@@ -20,6 +20,7 @@ import { appUrl } from "./app-url";
 import { buildShortMagicLinkUrl } from "./short-link";
 import {
   adminGroupJobInstruction,
+  adminGroupPost,
   adminNoticeInstructions,
   loadAdminChannel,
   type LoadedAdminChannel,
@@ -111,6 +112,7 @@ import { buildPaygPoolDm, buildPaygPoolGroupPost, buildWeekListPost } from "./mo
 import { londonMonthStart } from "./squad-month-rules";
 import {
   buildAnnounceMatchPost,
+  buildAskScoreHqPost,
   buildAskScorePost,
   buildBenchOfferContext,
   buildBotIntro,
@@ -2715,12 +2717,29 @@ async function computeForMatch(
       now >= askAt &&
       now.getTime() < askAt.getTime() + 24 * 60 * 60 * 1000 // only within 24h window
     ) {
-      out.push({
-        kind: "group-message",
+      // A club with a linked admin group asks THERE (2026-10-16, Kemal):
+      // the organisers report the score in HQ (`admin-group-score.ts`).
+      // Same key, so it is asked once, wherever it goes. Every other club,
+      // and an admin group MatchTime cannot post in, keeps the players'
+      // group post. A score said in the players' group is read either way.
+      const hq = adminGroupPost({
+        channel: await admin.getChannel(),
+        piCaps: admin.piCaps,
+        now,
         key,
         matchId,
-        text: buildAskScorePost({ activityName: activity.name, lang }),
+        text: buildAskScoreHqPost({ activityName: activity.name, lang }),
       });
+      if (hq.to === "admin-group") {
+        if (hq.instruction) out.push(hq.instruction);
+      } else {
+        out.push({
+          kind: "group-message",
+          key,
+          matchId,
+          text: buildAskScorePost({ activityName: activity.name, lang }),
+        });
+      }
     }
   }
 

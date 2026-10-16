@@ -16,6 +16,7 @@
  */
 import { randomInt } from "node:crypto";
 import { inMessageHours } from "./message-hours";
+import { isClubLimitExempt } from "./club-limit-exempt";
 
 export const ADMIN_CHANNEL_MODES = ["one-person", "admin-group", "each-admin"] as const;
 export type AdminChannelMode = (typeof ADMIN_CHANNEL_MODES)[number];
@@ -208,6 +209,8 @@ export function parsePiCaps(header: string | null | undefined): PiCaps {
  * morning. Every post is claimed once by its key, so waiting delays it
  * and never doubles it.
  */
-export function isAdminGroupPostHour(now: Date): boolean {
+export function isAdminGroupPostHour(now: Date, orgId?: string | null): boolean {
+  // A club listed in CLUB_LIMIT_EXEMPT_ORG_IDS posts at any hour.
+  if (isClubLimitExempt(orgId)) return true;
   return inMessageHours(now);
 }

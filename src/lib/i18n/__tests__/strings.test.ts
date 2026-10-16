@@ -272,6 +272,7 @@ const SAMPLES: SampleArgs = {
   pre_kickoff_short_fallback: { timeLabel: "21:30", venue: "Goals North Cheam", confirmed: 12, maxPlayers: 14, need: 2 },
   gear_reminder: { timeLabel: "21:30", venue: "Goals North Cheam" },
   ask_score: { activityName: "Tuesday 7-a-side" },
+  ask_score_hq: { activityName: "Tuesday 7-a-side" },
 
   // ── slice 3 ──
   roster_header_past: null,
@@ -341,6 +342,11 @@ const SAMPLES: SampleArgs = {
   hq_not_here: null,
   hq_not_understood: null,
   hq_only_organisers: { names: "Hamzah or Raihan" },
+  hq_score_saved: { redLabel: "Red", red: 4, yellow: 7, yellowLabel: "Yellow" },
+  hq_score_changed: { redLabel: "Red", yellowLabel: "Yellow", oldRed: 4, oldYellow: 7, red: 5, yellow: 7 },
+  hq_score_unclear: null,
+  hq_score_no_match: null,
+  hq_score_failed: null,
   group_ask_organiser: { open: 3, kickoffLabel: "Fri 19:15" },
   hq_group_asked: { open: 3 },
   hq_group_ask_full: { confirmed: 13, maxPlayers: 14, kickoffLabel: "Fri 19:15" },
