@@ -24,6 +24,7 @@
  */
 // Type-only, and from a module with no Prisma import of its own — see
 // `SquadState.payments` and `payment-answer.ts`'s header.
+import type { QuotedRef } from "../quoted-message";
 import type { PaymentSnapshot } from "./payment-answer";
 // Same rule, same reason: `rating-progress-answer.ts` is the Prisma-free
 // half of `rating-progress.ts`, split out on 2026-09-11 so the composer
@@ -1589,6 +1590,13 @@ export interface EngineMessage {
   /** Set when a stage above failed for this message. The engine must
    *  surface it, never swallow it. */
   degraded?: string | null;
+  /**
+   * The message it REPLIES to, when it is a WhatsApp reply and the Pi sent
+   * the quoted id (cross-club ask, S0, 2026-10-16). A structured fact: a
+   * reply to a partner club's ask is about that ask, decided by WHICH post
+   * it quotes (`quoted-message.ts`), never by its words. Absent otherwise.
+   */
+  quoted?: QuotedRef | null;
 }
 
 export interface EngineInput {

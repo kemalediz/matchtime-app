@@ -135,6 +135,7 @@
  * `assertCoverage` requires and what keeps "exactly one outcome per
  * message" true across the split.
  */
+import type { QuotedRef } from "./quoted-message";
 import type { AttendanceWriteFailure } from "./attendance-write-outcome";
 import { clampPastedRosterFacts } from "./pasted-roster-registration";
 // Traced: the extractor's facts are kept on the message's AnalyzedMessage
@@ -182,6 +183,8 @@ export interface EngineBatchMessage {
   route: Route | undefined;
   /** Did step 5's gate skip this message? Then step 6 never sees it. */
   gated: boolean;
+  /** The quoted message, for a WhatsApp reply (cross-club ask, S0). */
+  quoted?: QuotedRef | null;
 }
 
 /** What the route needs in order to turn one owned message into exactly
@@ -820,6 +823,7 @@ export async function runAttendanceEngineBatch(args: {
       route: m.route ?? "none",
       facts: f?.facts ?? { kind: "none" },
       degraded: f?.degraded ?? null,
+      ...(m.quoted ? { quoted: m.quoted } : {}),
     };
   });
 

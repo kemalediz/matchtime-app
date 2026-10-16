@@ -146,6 +146,9 @@ interface Pending {
    *  admin group uses. Absent when the message is not a reply. */
   quotedBody?: string;
   quotedFromMatchTime?: boolean;
+  /** The quoted message's WhatsApp id (its stanza id), so the server can
+   *  tell WHICH MatchTime post a reply answers (cross-club ask, S0). */
+  quotedMessageId?: string;
   // Deliberately NO `msg: Message` here any more.
   //
   // It existed so the flush could call `target.react(emoji)` later. That is
@@ -611,10 +614,14 @@ function quotedFields(driver: WaDriver, msg: InboundMessage): Pick<GroupMessageF
 /** `quotedFields` in the analyze route's names (`quotedBody` is the field
  *  the server has read since the monthly squad, slice 3). One reader for
  *  both doors; only the name of the text differs. */
-function analyzeQuotedFields(driver: WaDriver, msg: InboundMessage): Pick<Pending, "quotedBody" | "quotedFromMatchTime"> {
-  const { quotedText, quotedFromMatchTime } = quotedFields(driver, msg);
+function analyzeQuotedFields(driver: WaDriver, msg: InboundMessage): Pick<Pending, "quotedBody" | "quotedFromMatchTime" | "quotedMessageId"> {
+  const { quotedText, quotedFromMatchTime, quotedMessageId } = quotedFields(driver, msg);
   if (quotedFromMatchTime === undefined) return {};
-  return { ...(quotedText ? { quotedBody: quotedText } : {}), quotedFromMatchTime };
+  return {
+    ...(quotedText ? { quotedBody: quotedText } : {}),
+    quotedFromMatchTime,
+    ...(quotedMessageId ? { quotedMessageId } : {}),
+  };
 }
 
 /**
@@ -810,6 +817,7 @@ async function flushGroup(driver: WaDriver, groupId: string): Promise<void> {
       botMentioned: p.botMentioned,
       ...(p.quotedBody !== undefined ? { quotedBody: p.quotedBody } : {}),
       ...(p.quotedFromMatchTime !== undefined ? { quotedFromMatchTime: p.quotedFromMatchTime } : {}),
+      ...(p.quotedMessageId !== undefined ? { quotedMessageId: p.quotedMessageId } : {}),
     }));
     const history = getHistory(groupId);
 

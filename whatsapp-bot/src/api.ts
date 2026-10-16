@@ -624,6 +624,8 @@ export interface AnalyzeInboundMessage {
    *  addressed to it, like a tag. Absent when the message is not a reply. */
   quotedBody?: string;
   quotedFromMatchTime?: boolean;
+  /** The quoted message's WhatsApp id (cross-club ask, S0). */
+  quotedMessageId?: string;
 }
 
 export interface AnalyzeInboundHistory {
