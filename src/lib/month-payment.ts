@@ -37,6 +37,7 @@
  * called anywhere in this file.
  */
 import { db } from "./db";
+import { REPLY_PRIORITY } from "./dm-reply-priority";
 import { sendAdminNotice } from "./admin-channel";
 import { appUrl } from "./app-url";
 import { isClubOperational } from "./club-approval-state";
@@ -556,6 +557,7 @@ export async function handlePlayerPaidDm(input: {
           collectorName: collector?.name ?? null,
           lang: row.month.org.language,
         }),
+        ...REPLY_PRIORITY,
       },
     });
   }
@@ -819,7 +821,7 @@ export async function handleCollectorPaidDm(input: {
   const res = await handleCollectorPaidReply({ text: input.text, waMessageId: input.waMessageId, senderUserIds: users.map((u) => u.id), now: input.now });
   if (!res) return null;
   const phone = users[0].phoneNumber?.replace(/^\+/, "");
-  if (res.replyText && phone) await db.botJob.create({ data: { orgId: res.orgId, kind: "dm", phone, text: res.replyText } });
+  if (res.replyText && phone) await db.botJob.create({ data: { orgId: res.orgId, kind: "dm", phone, text: res.replyText, ...REPLY_PRIORITY } });
   return { handled: res.handled };
 }
 

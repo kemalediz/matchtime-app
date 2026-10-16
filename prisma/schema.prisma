@@ -1600,6 +1600,13 @@ model BotJob {
   sendAfter    DateTime?
   sentAt       DateTime?
   createdAt    DateTime  @default(now())
+  /// 1 = a conversational reply (it answers something a person has just
+  /// sent: a payment-claim ack, a dm-reply answer, the collector's notice
+  /// about a claim). 0 = everything else (pay links, reminders, chases,
+  /// blasts). Read ONLY while DM_REPLY_PRIORITY_ENABLED is on, when reply
+  /// DMs take the first of the Pi's one-a-minute DM slots
+  /// (src/lib/dm-reply-priority.ts). Additive; default 0.
+  priority     Int       @default(0)
 
   @@index([orgId, sentAt])
   @@index([orgId, sendAfter])

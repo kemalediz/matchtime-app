@@ -21,6 +21,7 @@
  * out as his club's BotJobs. Logs carry ids only.
  */
 import { db } from "./db";
+import { REPLY_PRIORITY } from "./dm-reply-priority";
 import { withOrgAiBudget } from "./ai-budget";
 import { resolveDmSelfAttendance } from "./dm-self-attendance";
 import { findDmRegistrationTarget } from "./dm-registration-target";
@@ -75,7 +76,7 @@ async function findLiveGuestPlace(userId: string): Promise<LiveGuestPlace | null
 
 async function dm(orgId: string, phone: string | null, text: string): Promise<void> {
   if (!phone) return;
-  await db.botJob.create({ data: { orgId, kind: "dm", phone, text } });
+  await db.botJob.create({ data: { orgId, kind: "dm", phone, text, ...REPLY_PRIORITY } });
 }
 
 export type GuestDmResult = { handled: "guest-dm-which" | "guest-dm-out-guest" | "guest-dm-out-own" } | null;

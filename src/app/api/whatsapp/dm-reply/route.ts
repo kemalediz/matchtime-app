@@ -78,6 +78,7 @@ import { handleOrganiserPickDm } from "@/lib/organiser-pick";
 import { handleCollectorPaidDm, handlePlayerPaidDm } from "@/lib/month-payment";
 import { selfJoinEnabledForApiRequest } from "@/lib/self-join-flag";
 import { NextResponse } from "next/server";
+import { REPLY_PRIORITY } from "@/lib/dm-reply-priority";
 import { db } from "@/lib/db";
 import { normalisePhone } from "@/lib/phone";
 import { classifyRosterReply } from "@/lib/roster-survey-classifier";
@@ -316,6 +317,7 @@ export async function POST(request: Request) {
                 kind: "dm",
                 phone: phoneNoPlus,
                 text: buildBenchDmUnclear(benchLang, offerMatchDate, replyNow),
+                ...REPLY_PRIORITY,
               },
             });
           }
@@ -342,7 +344,7 @@ export async function POST(request: Request) {
             replyNow,
           );
           await db.botJob.create({
-            data: { orgId, kind: "dm", phone: phoneNoPlus, text: ack },
+            data: { orgId, kind: "dm", phone: phoneNoPlus, text: ack, ...REPLY_PRIORITY },
           });
         }
         return NextResponse.json({
@@ -608,7 +610,7 @@ export async function POST(request: Request) {
         const replyPhone = phoneNoPlus ?? u?.phoneNumber?.replace(/^\+/, "") ?? null;
         if (replyPhone && subMem) {
           await db.botJob.create({
-            data: { orgId: subMem.orgId, kind: "dm", phone: replyPhone, text: dmSubAckMessage(cmd, subLang) },
+            data: { orgId: subMem.orgId, kind: "dm", phone: replyPhone, text: dmSubAckMessage(cmd, subLang), ...REPLY_PRIORITY },
           });
         }
         return NextResponse.json({ ok: true, handled: "dm-subscription", cmd });
@@ -756,6 +758,7 @@ export async function POST(request: Request) {
               kind: "dm",
               phone: replyPhone,
               text: buildTentativeReask(tentLang),
+              ...REPLY_PRIORITY,
             },
           });
         }
@@ -844,6 +847,7 @@ export async function POST(request: Request) {
               matchWhen: dayCommaTimeLabel(tentLang, row.match.date),
               lang: tentLang,
             }),
+            ...REPLY_PRIORITY,
           },
         });
       }
@@ -879,7 +883,7 @@ export async function POST(request: Request) {
       });
       if (replyPhone && orgId) {
         await db.botJob.create({
-          data: { orgId: orgId.id, kind: "dm", phone: replyPhone, text: feeResult.reply },
+          data: { orgId: orgId.id, kind: "dm", phone: replyPhone, text: feeResult.reply, ...REPLY_PRIORITY },
         });
       }
       return NextResponse.json({ ok: true, handled: "collector-fee", released: feeResult.released });
@@ -1020,7 +1024,7 @@ export async function POST(request: Request) {
         const replyPhone = phoneNoPlus ?? u?.phoneNumber?.replace(/^\+/, "") ?? null;
         if (!replyPhone) return;
         await db.botJob.create({
-          data: { orgId, kind: "dm", phone: replyPhone, text: replyText },
+          data: { orgId, kind: "dm", phone: replyPhone, text: replyText, ...REPLY_PRIORITY },
         });
       },
     });
@@ -1231,7 +1235,7 @@ export async function POST(request: Request) {
       });
       if (result) {
         await db.botJob.create({
-          data: { orgId, kind: "dm", phone: replyPhone, text: result.answer },
+          data: { orgId, kind: "dm", phone: replyPhone, text: result.answer, ...REPLY_PRIORITY },
         });
         return NextResponse.json({ ok: true, handled: "dm-qa" });
       }
@@ -1299,6 +1303,7 @@ export async function POST(request: Request) {
           kind: "dm",
           phone: phoneNoPlus,
           text: clarification,
+          ...REPLY_PRIORITY,
         },
       });
     } else {
@@ -1369,6 +1374,7 @@ export async function POST(request: Request) {
         kind: "dm",
         phone: phoneNoPlus,
         text: confirmation,
+        ...REPLY_PRIORITY,
       },
     });
   } else {

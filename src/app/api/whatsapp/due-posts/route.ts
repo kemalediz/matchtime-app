@@ -77,6 +77,7 @@ import { holdDmsOverAllowance, newClubDmCap } from "@/lib/club-decision-rules";
 import { londonMidnight } from "@/lib/club-connect-rules";
 import { countOrgDmsSince } from "@/lib/org-dm-count";
 import { PI_CAPS_HEADER, parsePiCaps } from "@/lib/admin-channel-rules";
+import { dmReplyPriorityEnabledForApiRequest } from "@/lib/dm-reply-priority";
 import {
   CIRCUIT_BREAKER_WINDOW_MS,
   GROUP_DIRECTED_KINDS,
@@ -353,7 +354,14 @@ export async function GET(request: Request) {
   // read once per poll. Null (a weekly club, preview mode, a failed sweep):
   // `computeDuePosts` reads what it needs itself.
   // So are the sign-up's live months (slice 3): one read per poll.
-  const result = await computeDuePosts(groupId, nowOverride, piCaps, runningMonths, liveMonths);
+  // Conversational replies first (FNF 2026-10-16, src/lib/dm-reply-priority.ts):
+  // only while DM_REPLY_PRIORITY_ENABLED is on. Off, the BotJob read and
+  // the order are exactly today's. Everything below keeps list order (the
+  // DM cap keeps the first DMs, the claim keeps order), and the Pi sends
+  // the first DM it is handed, so the order chosen there is what is sent.
+  const result = await computeDuePosts(groupId, nowOverride, piCaps, runningMonths, liveMonths, {
+    replyPriority: dmReplyPriorityEnabledForApiRequest(request),
+  });
   if (!result) {
     return NextResponse.json({ instructions: previewOnly ? [] : await bridgePlatformDmsForLegacyPi(request) });
   }
