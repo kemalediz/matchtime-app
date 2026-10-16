@@ -265,7 +265,8 @@ describe("slice 2a: the capability header and the admin-group forwards", () => {
     await getDuePosts("g@g.us");
     const init = fetchMock.mock.calls[0][1] as { headers: Record<string, string> };
     expect(PI_CAPS_HEADER).toBe("x-mt-pi-caps");
-    expect(init.headers[PI_CAPS_HEADER]).toBe("admin-group");
+    // "quoted-id" beside it since the cross-club ask (S0); the server splits on commas.
+    expect(init.headers[PI_CAPS_HEADER]).toBe("admin-group,quoted-id");
     // The slice 3 platform header is still there.
     expect(init.headers["x-mt-platform-jobs"]).toBe("1");
   });
