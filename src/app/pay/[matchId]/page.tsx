@@ -1,7 +1,8 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { redirect } from "next/navigation";
-import { priceMethods, gbp, type PayMethod } from "@/lib/payments";
+import { availablePayMethods, priceMethods, gbp, PAY_METHOD_SELECT, type PayMethodSwitches } from "@/lib/payments";
+import { payCollectorName } from "@/lib/direct-payment";
 import { PayOptions } from "@/components/pay/pay-options";
 import { t } from "@/lib/i18n/t";
 
@@ -30,10 +31,8 @@ export default async function PayPage({
             select: {
               name: true,
               language: true,
-              payMethodPayByBank: true,
-              payMethodCard: true,
-              payMethodDirect: true,
-              stripeChargesEnabled: true,
+              paymentHolderId: true,
+              ...PAY_METHOD_SELECT,
             },
           },
         },
@@ -50,6 +49,10 @@ export default async function PayPage({
   const me = await db.user.findUnique({ where: { id: userId }, select: { name: true } });
   const first = me?.name?.split(" ")[0] ?? "there";
   const org = match.activity.org;
+  // "Pay Raihan directly", as the pay link DM says. "the organiser" when
+  // no collector name is on record.
+  const collector = (await payCollectorName(org.paymentHolderId))?.split(" ")[0] ?? null;
+  const collectorLabel = collector ?? "the organiser";
 
   // Monthly squad (slice 5): a regular's place is paid for by the month.
   // No pay buttons, so the "monthly" mark on their row cannot be replaced
@@ -110,14 +113,14 @@ export default async function PayPage({
       <Shell>
         <div className="text-center">
           <div className="text-5xl mb-3">🤝</div>
-          <h1 className="text-xl font-bold text-slate-900">Paying the organiser directly</h1>
+          <h1 className="text-xl font-bold text-slate-900">Paying {collectorLabel} directly</h1>
           <p className="text-sm text-slate-500 mt-2">
-            Noted, {first}. The organiser will confirm once they&apos;ve received it. Changed your
-            mind? Pick another method below.
+            Noted, {first}. {collector ?? "The organiser"} will confirm once they&apos;ve received it.
+            {availablePayMethods(org).length > 1 ? " Changed your mind? Pick another method below." : ""}
           </p>
         </div>
         {match.feePerPlayer != null && (
-          <Methods matchId={matchId} base={match.feePerPlayer} org={org} />
+          <Methods matchId={matchId} base={match.feePerPlayer} org={org} collector={collector} />
         )}
       </Shell>
     );
@@ -145,7 +148,7 @@ export default async function PayPage({
           Match fee: <span className="font-semibold text-slate-800">{gbp(match.feePerPlayer)}</span>
         </p>
       </div>
-      <Methods matchId={matchId} base={match.feePerPlayer} org={org} />
+      <Methods matchId={matchId} base={match.feePerPlayer} org={org} collector={collector} />
     </Shell>
   );
 }
@@ -154,23 +157,17 @@ function Methods({
   matchId,
   base,
   org,
+  collector,
 }: {
   matchId: string;
   base: number;
-  org: {
-    payMethodPayByBank: boolean;
-    payMethodCard: boolean;
-    payMethodDirect: boolean;
-    stripeChargesEnabled: boolean;
-  };
+  org: PayMethodSwitches;
+  collector: string | null;
 }) {
-  const enabled: PayMethod[] = [];
-  // Card/bank only offered when the collector's bank is connected.
-  if (org.payMethodPayByBank && org.stripeChargesEnabled) enabled.push("pay_by_bank");
-  if (org.payMethodCard && org.stripeChargesEnabled) enabled.push("card");
-  if (org.payMethodDirect) enabled.push("direct");
-  const prices = priceMethods(base, enabled);
-  return <PayOptions matchId={matchId} prices={prices} />;
+  // The one availability rule, shared with the pay link DM and the chase
+  // (card/bank only once the collector's Stripe account can take charges).
+  const prices = priceMethods(base, availablePayMethods(org), collector);
+  return <PayOptions matchId={matchId} prices={prices} collector={collector} />;
 }
 
 function Shell({ children }: { children: React.ReactNode }) {

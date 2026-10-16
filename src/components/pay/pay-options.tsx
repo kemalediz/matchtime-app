@@ -12,7 +12,16 @@ const ICON: Record<string, React.ReactNode> = {
   direct: <HandCoins className="w-5 h-5" />,
 };
 
-export function PayOptions({ matchId, prices }: { matchId: string; prices: MethodPrice[] }) {
+export function PayOptions({
+  matchId,
+  prices,
+  collector = null,
+}: {
+  matchId: string;
+  prices: MethodPrice[];
+  /** The money collector's first name, or null: "the organiser". */
+  collector?: string | null;
+}) {
   const [qty, setQty] = useState(1);
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -21,7 +30,7 @@ export function PayOptions({ matchId, prices }: { matchId: string; prices: Metho
     try {
       if (p.method === "direct") {
         await payDirect(matchId, qty);
-        toast.success("Told the organiser, they'll confirm when it lands.");
+        toast.success(`Told ${collector ?? "the organiser"}, they'll confirm when it lands.`);
         location.reload();
         return;
       }

@@ -18,7 +18,7 @@
  *
  * Rows refer to the design's inventory (section 1.3).
  */
-import { gbp } from "./payments";
+import { gbp, type PayMethod } from "./payments";
 import { t } from "./i18n/t";
 import type { Lang } from "./i18n/lang";
 import { dayUnlessToday } from "./i18n/dates";
@@ -29,6 +29,12 @@ type WithLang = { lang?: Lang | string | null };
  *  fallbacks ("there", "mate") live in the English table. */
 function firstOf(name: string | null | undefined, split: RegExp | string = " "): string | null {
   return name?.split(split)[0] ?? null;
+}
+
+/** The pay copy's view of `availablePayMethods` (payments.ts): which ways
+ *  to pay it may name. Never more than the pay page offers. */
+function payWays(methods: readonly PayMethod[]): { bank: boolean; card: boolean; direct: boolean } {
+  return { bank: methods.includes("pay_by_bank"), card: methods.includes("card"), direct: methods.includes("direct") };
 }
 
 // ── row 91: the rating-link DM (bot-scheduler.ts and the late one in
@@ -136,6 +142,11 @@ export function buildPayChaseDm(
     fee: number;
     activityName: string;
     url: string;
+    /** `availablePayMethods(org)`: the chase names only these. */
+    methods: readonly PayMethod[];
+    /** The money collector's name (`Organisation.paymentHolderId`), or
+     *  null: "the organiser". */
+    collectorName: string | null;
   } & WithLang,
 ): string {
   return t(p.lang).dm_pay_chase({
@@ -144,6 +155,8 @@ export function buildPayChaseDm(
     fee: gbp(p.fee),
     activityName: p.activityName,
     url: p.url,
+    ...payWays(p.methods),
+    collector: firstOf(p.collectorName),
   });
 }
 
@@ -214,20 +227,46 @@ export function buildPaidForOthersReply(
 // ── row 95: the pay link ───────────────────────────────────────────────
 
 export function buildPayLinkDm(
-  p: { playerName: string | null; activityName: string; fee: number; url: string } & WithLang,
+  p: {
+    playerName: string | null;
+    activityName: string;
+    fee: number;
+    url: string;
+    /** `availablePayMethods(org)`: the DM names only these, the buttons
+     *  the pay page will show (FNF, 2026-10-16). */
+    methods: readonly PayMethod[];
+    /** The money collector's name (`Organisation.paymentHolderId`), or
+     *  null: "the organiser". */
+    collectorName: string | null;
+  } & WithLang,
 ): string {
   return t(p.lang).dm_pay_link({
     firstName: firstOf(p.playerName),
     activityName: p.activityName,
     fee: gbp(p.fee),
     url: p.url,
+    ...payWays(p.methods),
+    collector: firstOf(p.collectorName),
   });
 }
 
 // ── rows 96, 97, 98: the collector fee flow's replies ──────────────────
 
-export function buildFeeReleasedAck(p: { released: number; fee: number; matchName: string } & WithLang): string {
-  return t(p.lang).dm_fee_released({ released: p.released, fee: gbp(p.fee), matchName: p.matchName });
+export function buildFeeReleasedAck(
+  p: {
+    released: number;
+    fee: number;
+    matchName: string;
+    /** `availablePayMethods(org)`: the ack names only these. */
+    methods: readonly PayMethod[];
+  } & WithLang,
+): string {
+  return t(p.lang).dm_fee_released({
+    released: p.released,
+    fee: gbp(p.fee),
+    matchName: p.matchName,
+    ...payWays(p.methods),
+  });
 }
 
 export function buildFeeCancelledAck(lang?: Lang | string | null): string {
