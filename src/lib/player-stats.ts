@@ -531,8 +531,8 @@ export async function loadRatingLeaderboard(
   // His ratings here still make his club rating here, on his own profile.
   const guestIds = new Set(
     (
-      (await db.membership
-        .findMany({ where: { orgId, guestFromOrgId: { not: null } }, select: { userId: true } })
+      (await Promise.resolve()
+        .then(() => db.membership.findMany({ where: { orgId, guestFromOrgId: { not: null } }, select: { userId: true } }))
         .catch(() => [])) ?? []
     ).map((g) => g.userId),
   );

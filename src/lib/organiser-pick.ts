@@ -134,8 +134,8 @@ export async function loadPickListRows(
     }),
     // Guests from a partner club (cross-club ask, slice S3): their club's
     // name for the label. Empty for every club no partner has lent to.
-    db.membership
-      .findMany({ where: { orgId, userId: { in: ids }, guestFromOrgId: { not: null } }, select: { userId: true, guestFromOrgId: true } })
+    Promise.resolve()
+      .then(() => db.membership.findMany({ where: { orgId, userId: { in: ids }, guestFromOrgId: { not: null } }, select: { userId: true, guestFromOrgId: true } }))
       .catch(() => [] as Array<{ userId: string; guestFromOrgId: string | null }>),
   ]);
   const posOf = new Map(positions.map((p) => [p.userId, positionLabel(p.positions)]));
