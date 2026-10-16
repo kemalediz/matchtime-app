@@ -278,6 +278,12 @@
  *     again with your card" DM and the "your card was removed" DM to a
  *     previous holder). No other case changed.
  *
+ *   - 2026-10-16, badges post in the players' group for every club
+ *     (Kemal): CHANGED, on purpose: R186 L1a (FNF) no longer says new
+ *     badges come to HQ, only the rating notice ("and so does the rating
+ *     notice, for you to pass on to the players"; TR "puanlama duyurusu da
+ *     buraya gelir"). No other case changed.
+ *
  *   - 2026-10-01, club fee billing slice B3 (Stripe): ADDED R190 (the
  *     billing page's notices after a card action; the "card added",
  *     "card replaced", "resumed" and "billed again after Free" DMs).
@@ -1358,16 +1364,15 @@ function cases(lang: Lang): Case[] {
       picks: true,
       paid: false,
       relayRatings: true,
-      relayBadges: true,
     };
     add("R186 admin group / L1a introduction, organisers announce and pick (FNF)", sj.admin_group_intro(intro));
     add(
       "R186 admin group / L1a introduction, a club on the defaults",
-      sj.admin_group_intro({ ...intro, dow: 2, teamsAt: null, organisersShare: false, mainChatList: true, picks: false, relayRatings: false, relayBadges: false }),
+      sj.admin_group_intro({ ...intro, dow: 2, teamsAt: null, organisersShare: false, mainChatList: true, picks: false, relayRatings: false }),
     );
     add(
       "R186 admin group / L1a introduction, monthly, not switched on yet",
-      sj.admin_group_intro({ ...intro, live: false, dow: null, tracks: false, teamsAt: null, organisersShare: false, picks: false, paid: true, relayRatings: false, relayBadges: false }),
+      sj.admin_group_intro({ ...intro, live: false, dow: null, tracks: false, teamsAt: null, organisersShare: false, picks: false, paid: true, relayRatings: false }),
     );
   }
   add("R186 admin group / L2 wrong or expired code", sj.admin_group_bad_code);

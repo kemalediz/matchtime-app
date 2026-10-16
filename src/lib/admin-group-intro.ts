@@ -52,7 +52,6 @@ const INTRO_SELECT = {
   featureAttendance: true,
   featureMomVoting: true,
   featurePlayerRating: true,
-  featureBadgeAnnouncements: true,
   adminGroupId: true,
   adminChannelMode: true,
 } as const;

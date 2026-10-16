@@ -2116,14 +2116,7 @@ export const tr: Strings = {
     }
     if (p.picks) lines.push(`Bir yer açılınca ve bekleyen biri varsa, kimin oynayacağını burada sorarım.`);
     if (p.paid) lines.push(`Parayı toplayan kişi, ödeme bildirimleri listeme burada *ÖDENDİ HEPSİ*, *ÖDENDİ 1 3* ya da *ÖDENDİ YOK* diye cevap verir.`);
-    const relay =
-      p.relayRatings && p.relayBadges
-        ? `; oyunculara iletmeniz için puanlama duyurusu ve yeni rozetler de buraya gelir`
-        : p.relayRatings
-          ? `; oyunculara iletmeniz için puanlama duyurusu da buraya gelir`
-          : p.relayBadges
-            ? `; oyunculara iletmeniz için yeni rozetler de buraya gelir`
-            : ``;
+    const relay = p.relayRatings ? `; oyunculara iletmeniz için puanlama duyurusu da buraya gelir` : ``;
     lines.push(`Sadece organizatörlere yönelik bildirimler özel mesaj yerine buraya gelir${relay}.`);
     lines.push(
       ``,

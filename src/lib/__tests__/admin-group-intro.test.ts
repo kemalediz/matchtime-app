@@ -25,7 +25,6 @@ const FNF: AdminGroupIntroClub = {
   featureAttendance: true,
   featureMomVoting: true,
   featurePlayerRating: true,
-  featureBadgeAnnouncements: true,
   activityDays: [5],
 };
 
@@ -41,7 +40,6 @@ const DEFAULT_CLUB: AdminGroupIntroClub = {
   featureAttendance: true,
   featureMomVoting: true,
   featurePlayerRating: true,
-  featureBadgeAnnouncements: true,
   activityDays: [2],
 };
 
@@ -53,7 +51,7 @@ describe("buildAdminGroupIntro, English", () => {
         `I keep track of who's *IN* and *OUT* in the main chat, build balanced teams here at 10:00 on match day for you to check, make the poster and team sheet, and run Man of the Match and ratings after the game.`,
         `The squad list and the teams stay here for you to share with the players.`,
         `When a place opens and someone is waiting, I ask here who plays.`,
-        `Notices meant only for the organisers come here instead of by DM, and so do the rating notice and new badges, for you to pass on to the players.`,
+        `Notices meant only for the organisers come here instead of by DM, and so does the rating notice, for you to pass on to the players.`,
         ``,
         `Nothing I say here goes to the players. Type *help* here any time to see what I take.`,
       ].join("\n"),
@@ -92,17 +90,24 @@ describe("buildAdminGroupIntro, English", () => {
   });
 
   it("only what is switched on: no MoM, no ratings, no attendance", () => {
-    const text = buildAdminGroupIntro({ ...FNF, featureMomVoting: false, featurePlayerRating: false, featureAttendance: false, featureBadgeAnnouncements: false });
+    const text = buildAdminGroupIntro({ ...FNF, featureMomVoting: false, featurePlayerRating: false, featureAttendance: false });
     expect(text).not.toMatch(/Man of the Match|ratings|IN\*|squad list|rating notice|badges/);
     expect(text).toContain(`I build balanced teams here at 10:00 on match day for you to check and make the poster and team sheet.`);
     expect(text).toContain(`Notices meant only for the organisers come here instead of by DM.`);
   });
 
-  it("MoM alone, ratings alone, and the relay of only one of them", () => {
+  it("MoM alone, ratings alone; the rating notice is relayed only with ratings on", () => {
     expect(buildAdminGroupIntro({ ...FNF, featurePlayerRating: false })).toContain(`run Man of the Match after the game.`);
     expect(buildAdminGroupIntro({ ...FNF, featureMomVoting: false })).toContain(`run player ratings after the game.`);
-    expect(buildAdminGroupIntro({ ...FNF, featurePlayerRating: false })).toContain(`and so do new badges, for you to pass on to the players.`);
-    expect(buildAdminGroupIntro({ ...FNF, featureBadgeAnnouncements: false })).toContain(`and so does the rating notice, for you to pass on to the players.`);
+    expect(buildAdminGroupIntro({ ...FNF, featurePlayerRating: false })).toContain(`Notices meant only for the organisers come here instead of by DM.`);
+  });
+
+  it("badges are never claimed for HQ: they post in the players' group for every club (Kemal, 2026-10-16)", () => {
+    for (const club of [FNF, DEFAULT_CLUB, { ...FNF, featurePlayerRating: false }]) {
+      for (const language of ["en", "tr"]) {
+        expect(buildAdminGroupIntro({ ...club, language })).not.toMatch(/badge|rozet/i);
+      }
+    }
   });
 
   it("a monthly club: no weekly list, no teams time, the collector's PAID", () => {
@@ -120,8 +125,8 @@ describe("buildAdminGroupIntro, English", () => {
   });
 
   it("a row with the feature columns missing reads them at their database defaults (on)", () => {
-    const { featureAttendance, featureMomVoting, featurePlayerRating, featureBadgeAnnouncements, ...bare } = FNF;
-    void featureAttendance; void featureMomVoting; void featurePlayerRating; void featureBadgeAnnouncements;
+    const { featureAttendance, featureMomVoting, featurePlayerRating, ...bare } = FNF;
+    void featureAttendance; void featureMomVoting; void featurePlayerRating;
     expect(buildAdminGroupIntro(bare)).toBe(buildAdminGroupIntro(FNF));
   });
 
@@ -143,7 +148,7 @@ describe("buildAdminGroupIntro, Turkish", () => {
         `Ana grupta kimin *varım*, kimin *yokum* dediğini takip ederim, maç günü saat 10:00 itibarıyla kontrol etmeniz için burada dengeli takımlar kurarım, liste posterini ve takım listesini hazırlarım ve maçtan sonra maçın adamı oylamasını ve puanlamayı yürütürüm.`,
         `Kadro listesi ve takımlar, oyunculara sizin paylaşmanız için burada kalır.`,
         `Bir yer açılınca ve bekleyen biri varsa, kimin oynayacağını burada sorarım.`,
-        `Sadece organizatörlere yönelik bildirimler özel mesaj yerine buraya gelir; oyunculara iletmeniz için puanlama duyurusu ve yeni rozetler de buraya gelir.`,
+        `Sadece organizatörlere yönelik bildirimler özel mesaj yerine buraya gelir; oyunculara iletmeniz için puanlama duyurusu da buraya gelir.`,
         ``,
         `Burada yazdıklarım oyunculara gitmez. Neleri kabul ettiğimi görmek için burada istediğiniz zaman *yardım* yazın.`,
       ].join("\n"),
