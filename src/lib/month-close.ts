@@ -43,6 +43,7 @@ import { formatLondon, londonDateTimeToUtc } from "./london-time";
 import { hasMatchForSlot, isSameRecurringFixture, type RecurringFixtureKey } from "./match-slot";
 import { buildLeaverNotice, buildMidMonthJoinDm, buildMidMonthJoinNotice, buildMonthSummaryNotice, buildShareChangeNotice } from "./month-close-copy";
 import { adminNoticeSendAfter } from "./rolling-squad-rules";
+import { QUIET_HOURS_SELECT, quietHoursOf, type QuietHours } from "./message-hours";
 import {
   REFUNDED_NOTE,
   refundAllowed,
@@ -842,7 +843,7 @@ export async function tellMidMonthJoin(args: { orgId: string; monthId: string; u
       paidAt: true,
       paidClaimedAt: true,
       user: { select: { name: true, phoneNumber: true } },
-      month: { select: { monthStart: true, org: { select: { language: true, squadMode: true, paymentHolderId: true } } } },
+      month: { select: { monthStart: true, org: { select: { language: true, squadMode: true, paymentHolderId: true, ...QUIET_HOURS_SELECT } } } },
     },
   });
   if (!row || row.kind !== "regular" || row.leftAt !== null || normaliseSquadMode(row.month.org.squadMode) !== "monthly") return;
@@ -857,7 +858,7 @@ export async function tellMidMonthJoin(args: { orgId: string; monthId: string; u
     const collector = row.month.org.paymentHolderId
       ? await db.user.findUnique({ where: { id: row.month.org.paymentHolderId }, select: { name: true } })
       : null;
-    const sendAfter = adminNoticeSendAfter(now);
+    const sendAfter = adminNoticeSendAfter(now, quietHoursOf(row.month.org));
     await db.botJob.create({
       data: { orgId: args.orgId, kind: "dm", phone, text: buildMidMonthJoinDm({ ...facts, collectorName: collector?.name ?? null }), ...(sendAfter ? { sendAfter } : {}) },
     });
@@ -1161,8 +1162,14 @@ export async function loadMonthSummaryById(orgId: string, monthId: string, now: 
  * numbers are frozen: nothing here or in the weekly flow writes a credit
  * for a closed month again. The collector can still confirm a payment.
  */
-export async function closeDueMonths(orgId: string, now: Date = new Date(), preloaded?: CloseMonth[]): Promise<string[]> {
-  const months = (preloaded ?? (await loadCloseMonths(orgId))).filter((m) => m.status === "running" && m.lastKickoff && monthCloseDue({ now, lastKickoff: m.lastKickoff }));
+export async function closeDueMonths(
+  orgId: string,
+  now: Date = new Date(),
+  preloaded?: CloseMonth[],
+  /** The club's quiet hours (absent: the default). */
+  quiet?: QuietHours | null,
+): Promise<string[]> {
+  const months = (preloaded ?? (await loadCloseMonths(orgId))).filter((m) => m.status === "running" && m.lastKickoff && monthCloseDue({ now, lastKickoff: m.lastKickoff, quiet }));
   const closed: string[] = [];
   for (const month of months) {
     try {
@@ -1261,7 +1268,7 @@ export async function sweepMonthClose(orgId: string, now: Date = new Date()): Pr
     if (!(await claimHourly(orgId, now))) return [];
     const org = await db.organisation.findUnique({
       where: { id: orgId },
-      select: { squadMode: true, dormantAt: true, billingStatus: true, ...SETUP_STAGE_SELECT },
+      select: { squadMode: true, dormantAt: true, billingStatus: true, ...SETUP_STAGE_SELECT, ...QUIET_HOURS_SELECT },
     });
     // Belt and braces (PR #234 review, fix 4): this sweep is only ever
     // called from due-posts, which refuses a club whose bot is off, so a
@@ -1276,7 +1283,7 @@ export async function sweepMonthClose(orgId: string, now: Date = new Date()): Pr
     }
     await reconcileCancelledWeeks(orgId, now, months);
     await reconcileLeavers(orgId, now, months);
-    return await closeDueMonths(orgId, now, months);
+    return await closeDueMonths(orgId, now, months, quietHoursOf(org));
   } catch (err) {
     console.error(`[month-close] sweep for ${orgId} failed (the next hour retries):`, err);
     return [];

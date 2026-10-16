@@ -43,6 +43,7 @@ import { billingQuietWhere, isBillingPaused } from "./club-billing-rules";
 import { getOrgFeatures } from "./org-features";
 import { isNextUpcomingForPosting } from "./next-upcoming-match";
 import { madeAfterDropOutDeadline, weeklyDeadlinesFor } from "./weekly-deadlines";
+import { QUIET_HOURS_SELECT, quietHoursOf } from "./message-hours";
 import { summariseClubDisplayRatings } from "./player-rating";
 import { normaliseBenchPickFallback } from "./squad-capacity";
 import { dayCommaTimeLabel, dayTimeLabel, weekdayTimeLabel } from "./i18n/dates";
@@ -93,6 +94,9 @@ interface PickOrg {
   billingStatus: string;
   dropOutDeadlineDay: number | null;
   dropOutDeadlineTime: string | null;
+  quietHoursEnabled?: boolean | null;
+  quietHoursFrom?: string | null;
+  quietHoursTo?: string | null;
 }
 
 async function loadPickOrg(orgId: string): Promise<PickOrg | null> {
@@ -109,6 +113,7 @@ async function loadPickOrg(orgId: string): Promise<PickOrg | null> {
       billingStatus: true,
       dropOutDeadlineDay: true,
       dropOutDeadlineTime: true,
+      ...QUIET_HOURS_SELECT,
     },
   });
 }
@@ -330,6 +335,7 @@ async function sweepOneMatch(
     openRound: open,
     lastClosedRound: lastClosed,
     dropsSince: news.length,
+    quiet: quietHoursOf(org),
   });
   if (decision.action === "wait") return;
   if (decision.action === "refresh") {

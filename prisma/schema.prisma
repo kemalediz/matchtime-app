@@ -313,6 +313,19 @@ model Organisation {
   /// Read through `OrgFeatures.gearReminder`.
   featureGearReminder Boolean @default(false)
 
+  /// ─── Quiet hours (2026-10-16) ─────────────────────────────────────
+  /// The club's own quiet hours: when MatchTime holds the club's held
+  /// messages (admin notices and admin group posts, bench offers, picks,
+  /// chases, the weekly deadline posts, the monthly squad's posts and DMs)
+  /// until they end. London "HH:MM", `quietHoursFrom` inclusive,
+  /// `quietHoursTo` exclusive. Default ON, 23:00 to 09:00: exactly the
+  /// shared window before the setting existed. Off: nothing is held.
+  /// Read through `quietHoursOf` (src/lib/message-hours.ts). Migration
+  /// 20261016230000_quiet_hours_setting.
+  quietHoursEnabled Boolean @default(true)
+  quietHoursFrom    String  @default("23:00")
+  quietHoursTo      String  @default("09:00")
+
   /// ─── Weekly deadlines (2026-09-30, slice 3 of
   /// MDs/friday-group-features-plan-2026-09-30.md) ────────────────────
   /// Club level (D8). Each pair is a London weekday (0=Sun..6=Sat) and

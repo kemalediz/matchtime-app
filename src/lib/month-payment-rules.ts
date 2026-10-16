@@ -19,6 +19,7 @@
  */
 import { formatLondon, londonDateTimeToUtc } from "./london-time";
 import { isDaytime } from "./month-signup-rules";
+import type { QuietHours } from "./message-hours";
 import { foldListText, monthOfWord } from "./monthly-list";
 import { MAX_PER_GAME_PENCE } from "./squad-month-rules";
 
@@ -381,11 +382,11 @@ export interface RemindersSent {
  *   "r2"    on the deadline's own day, at least six hours after the first;
  *   "late"  after the deadline, once a London day, on each of the three
  *           days that follow; then nothing.
- * Never between 23:00 and 08:59 London. Each is sent under its own key,
+ * Never in the club's quiet hours (by default 23:00 to 08:59 London). Each is sent under its own key,
  * so none is ever sent twice.
  */
-export function duePaymentReminder(p: { now: Date; payByAt: Date; sent: RemindersSent }): "r1" | "r2" | "late" | null {
-  if (!isDaytime(p.now)) return null;
+export function duePaymentReminder(p: { now: Date; payByAt: Date; sent: RemindersSent; quiet?: QuietHours | null }): "r1" | "r2" | "late" | null {
+  if (!isDaytime(p.now, p.quiet)) return null;
   const t = p.now.getTime();
   const due = p.payByAt.getTime();
   if (t < due - DAY_MS) return null;
@@ -403,14 +404,14 @@ export function duePaymentReminder(p: { now: Date; payByAt: Date; sent: Reminder
 
 /** The group's count ("4 still to pay for November by Fri 30 Oct"): once,
  *  in the last 24 hours before the pay-by date, in waking hours. */
-export function groupReminderDue(p: { now: Date; payByAt: Date; sent: boolean; unpaid: number }): boolean {
+export function groupReminderDue(p: { now: Date; payByAt: Date; sent: boolean; unpaid: number; quiet?: QuietHours | null }): boolean {
   const t = p.now.getTime();
   const due = p.payByAt.getTime();
-  return !p.sent && p.unpaid > 0 && t >= due - DAY_MS && t < due && isDaytime(p.now);
+  return !p.sent && p.unpaid > 0 && t >= due - DAY_MS && t < due && isDaytime(p.now, p.quiet);
 }
 
 /** The collector's digest of claims: once a London day, from 10:00, in
  *  waking hours, while a claim is waiting for their word. */
-export function claimsDigestDue(p: { now: Date; sentToday: boolean; waiting: number }): boolean {
-  return !p.sentToday && p.waiting > 0 && isDaytime(p.now) && Number(formatLondon(p.now, "H")) >= DIGEST_FROM_HOUR;
+export function claimsDigestDue(p: { now: Date; sentToday: boolean; waiting: number; quiet?: QuietHours | null }): boolean {
+  return !p.sentToday && p.waiting > 0 && isDaytime(p.now, p.quiet) && Number(formatLondon(p.now, "H")) >= DIGEST_FROM_HOUR;
 }

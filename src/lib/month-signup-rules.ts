@@ -23,7 +23,7 @@
  * A club on "weekly" never reaches any of it.
  */
 import { formatLondon, londonDateTimeToUtc } from "./london-time";
-import { inMessageHours } from "./message-hours";
+import { inMessageHours, type QuietHours } from "./message-hours";
 import { foldListText, monthOfWord, type MonthlyList, type MonthlyListEntry } from "./monthly-list";
 import { candidatesFor, monthFixtureDates, monthStartToDate, nameKey } from "./squad-month-rules";
 
@@ -35,10 +35,10 @@ const DAY_MS = 24 * HOUR_MS;
 /** The list is posted at 10:00 London (plan 4.1). */
 export const LIST_OPEN_TIME = "10:00";
 
-/** 09:00 to 22:59 London (the shared message hours): the only hours
- *  MatchTime posts or DMs in. */
-export function isDaytime(now: Date): boolean {
-  return inMessageHours(now);
+/** Outside the club's quiet hours (by default London 09:00 to 22:59):
+ *  the only hours MatchTime posts or DMs in for a monthly club. */
+export function isDaytime(now: Date, quiet?: QuietHours | null): boolean {
+  return inMessageHours(now, quiet ?? undefined);
 }
 
 /** "2026-11-01" after "2026-10-01". */
@@ -81,9 +81,9 @@ export function listOpensAt(firstKickoff: Date, daysBefore: number): Date {
 /** Is it time to open the list? From its hour, in waking hours only, and
  *  never once the month's first game has kicked off (a month already
  *  under way is started by the organiser, plan 4.5). */
-export function listOpenDue(p: { now: Date; opensAt: Date; firstKickoff: Date }): boolean {
+export function listOpenDue(p: { now: Date; opensAt: Date; firstKickoff: Date; quiet?: QuietHours | null }): boolean {
   const t = p.now.getTime();
-  return t >= p.opensAt.getTime() && t < p.firstKickoff.getTime() && isDaytime(p.now);
+  return t >= p.opensAt.getTime() && t < p.firstKickoff.getTime() && isDaytime(p.now, p.quiet);
 }
 
 /** Names are in two days before the month's first game. */
@@ -631,8 +631,10 @@ export function decideSignupListPost(p: {
   hash: string;
   lastShownHash: string | null;
   lastPostAt: Date | null;
+  /** The club's quiet hours (absent: the default). */
+  quiet?: QuietHours | null;
 }): boolean {
-  if (!p.open || p.now.getTime() >= p.endsAt.getTime() || !isDaytime(p.now)) return false;
+  if (!p.open || p.now.getTime() >= p.endsAt.getTime() || !isDaytime(p.now, p.quiet)) return false;
   if (p.lastPostAt && p.now.getTime() - p.lastPostAt.getTime() < SIGNUP_REPOST_FLOOR_MS) return false;
   return p.hash !== p.lastShownHash;
 }

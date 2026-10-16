@@ -28,6 +28,7 @@ import { db } from "./db";
 import { cancelAttendance, registerAttendance } from "./attendance";
 import { sendAdminNotice } from "./admin-channel";
 import { adminNoticeSendAfter } from "./rolling-squad-rules";
+import { loadClubQuietHours } from "./club-quiet-hours";
 import { formatLondon } from "./london-time";
 import { parseMonthlyList } from "./monthly-list";
 import { loadMonthlyWeek, recordWeekListShown, renderWeekList, syncMonthlyWeek } from "./monthly-week";
@@ -192,11 +193,11 @@ export async function handleMonthlyPaste(args: {
   const phoneOf = new Map(memberships.map((m) => [m.user.id, m.user.phoneNumber]));
   const memberOf = new Map(week.members.map((m) => [m.userId, m]));
   const rowOf = new Map(week.rows.map((r) => [r.userId, r]));
-  const sendAfter = adminNoticeSendAfter(now);
+  const sendAfter = adminNoticeSendAfter(now, await loadClubQuietHours(orgId));
   const day = formatLondon(now, "yyyy-MM-dd");
   const dm = (phone: string, text: string) =>
     db.botJob.create({
-      // Never between 23:00 and 08:59 London: held until 09:00.
+      // Never in the club's quiet hours: held until they end.
       data: { orgId, kind: "dm", phone: phone.replace(/^\+/, ""), text, ...(sendAfter ? { sendAfter } : {}) },
     });
   /** A DM to the SENDER about their own paste, at most once a day per

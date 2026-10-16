@@ -20,6 +20,7 @@
  */
 import { formatLondon, londonDateTimeToUtc } from "./london-time";
 import { isDaytime } from "./month-signup-rules";
+import type { QuietHours } from "./message-hours";
 import { ROLLING_SEED_HOUR } from "./rolling-squad-rules";
 
 export type Paid = "none" | "claimed" | "confirmed";
@@ -351,11 +352,11 @@ export function planShareChange(p: { members: ShareMember[]; sharePence: number;
 /** The morning after the month's last game: not before 08:00 London (the
  *  hour the squad is seeded) and in waking hours only, so in practice
  *  from 09:00, when the message hours open. */
-export function monthCloseDue(p: { now: Date; lastKickoff: Date }): boolean {
+export function monthCloseDue(p: { now: Date; lastKickoff: Date; quiet?: QuietHours | null }): boolean {
   const day = new Date(`${formatLondon(p.lastKickoff, "yyyy-MM-dd")}T12:00:00.000Z`);
   day.setUTCDate(day.getUTCDate() + 1);
   const from = londonDateTimeToUtc(day.toISOString().slice(0, 10), ROLLING_SEED_HOUR);
-  return p.now.getTime() >= from.getTime() && isDaytime(p.now);
+  return p.now.getTime() >= from.getTime() && isDaytime(p.now, p.quiet);
 }
 
 export interface SummaryRegular {

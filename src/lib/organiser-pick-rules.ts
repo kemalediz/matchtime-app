@@ -19,7 +19,7 @@
  * reaches it is pinned model-free by `admin-group-model-door.source.test.ts`.
  */
 import { t } from "./i18n/t";
-import { inMessageHours } from "./message-hours";
+import { inMessageHours, type QuietHours } from "./message-hours";
 import { normaliseName } from "./name-normalise";
 
 const MINUTE_MS = 60 * 1000;
@@ -43,10 +43,10 @@ const MAX_RANGE = 10;
 
 // ── When a round opens ──────────────────────────────────────────────────
 
-/** Pick messages speak London 09:00 to 22:59 (the shared message hours),
- *  like every admin notice. */
-export function isPickHour(now: Date): boolean {
-  return inMessageHours(now);
+/** Pick messages speak outside the club's quiet hours (by default London
+ *  09:00 to 22:59), like every admin notice. */
+export function isPickHour(now: Date, quiet?: QuietHours | null): boolean {
+  return inMessageHours(now, quiet ?? undefined);
 }
 
 /**
@@ -119,7 +119,7 @@ export function buildPickFallbackOffered(p: {
 /**
  * Should a pick round open for this match now (plan 2.7)? All of:
  * a free place, somebody waiting, the squad set (below), the club's
- * drop-out deadline passed (or none set), London 09:00 to 22:59, and no
+ * drop-out deadline passed (or none set), outside the club's quiet hours, and no
  * fallback offer running.
  *
  * THE SQUAD IS SET (2026-10-15, club rehearsal): at least one player is
@@ -164,6 +164,8 @@ export function decidePickRound(p: {
   /** Players' CONFIRMED to DROPPED moves since the open round (or the last
    *  closed one) went out, leaving out those made in the admin group. */
   dropsSince: number;
+  /** The club's quiet hours (absent: the default). */
+  quiet?: QuietHours | null;
 }): RoundDecision {
   if (p.now.getTime() >= p.kickoff.getTime()) return { action: "wait", why: "kicked off" };
   if (p.openPlaces <= 0) return { action: "wait", why: "no free place" };
@@ -171,7 +173,7 @@ export function decidePickRound(p: {
   if (p.confirmed <= 0) return { action: "wait", why: "no squad yet" };
   if (p.pastePending) return { action: "wait", why: "a pasted list is waiting for YES" };
   if (p.dropOutDeadline && p.now.getTime() < p.dropOutDeadline.getTime()) return { action: "wait", why: "before the drop-out deadline" };
-  if (!isPickHour(p.now)) return { action: "wait", why: "quiet hours" };
+  if (!isPickHour(p.now, p.quiet)) return { action: "wait", why: "quiet hours" };
   if (p.openOffers > 0) return { action: "wait", why: "the fallback offer is running" };
 
   if (p.openRound) {

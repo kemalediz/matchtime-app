@@ -44,7 +44,7 @@ import {
   type PiCaps,
 } from "./admin-channel-rules";
 import { adminNoticeSendAfter } from "./rolling-squad-rules";
-import { isClubLimitExempt } from "./club-limit-exempt";
+import { QUIET_HOURS_SELECT, quietHoursOf, type QuietHours } from "./message-hours";
 import type { DueInstruction } from "./bot-scheduler";
 import { isGroupPostable } from "./group-postability-store";
 import { graphicUrl, readGraphicJob, type GraphicJob } from "./graphic-job";
@@ -70,7 +70,8 @@ export interface AdminNoticeRequest extends AdminNotice {
   orgId: string;
   now?: Date;
   /**
-   * Hold a notice queued between 23:00 and 08:59 London until 09:00
+   * Hold a notice queued in the club's quiet hours (by default 23:00 to
+   * 08:59 London) until they end; with quiet hours off nothing is held
    * (`sendAfter`, slice 1's R4 rule). The default for every new notice.
    * The notices that existed before the admin channel (a join, a leave, a
    * new player's IN) pass false: they have always gone out at once, and a
@@ -89,6 +90,9 @@ export interface LoadedAdminChannel {
   /** False only when MatchTime is known to be unable to post in the linked
    *  admin group (2026-10-14). Absent or true: post there as before. */
   adminGroupPostable?: boolean;
+  /** The club's quiet hours (2026-10-16). Absent (a hand-built channel):
+   *  the default, ON 23:00 to 09:00. */
+  quietHours?: QuietHours;
 }
 
 /** What the Pi can do, narrowed by whether MatchTime can post in the admin group. */
@@ -126,6 +130,7 @@ export async function loadAdminChannel(orgId: string): Promise<LoadedAdminChanne
       adminChannelMode: true,
       adminChannelUserId: true,
       adminGroupId: true,
+      ...QUIET_HOURS_SELECT,
     },
   });
   if (!org) return null;
@@ -140,6 +145,7 @@ export async function loadAdminChannel(orgId: string): Promise<LoadedAdminChanne
     },
     admins: await loadChannelAdmins(org.id),
     adminGroupPostable: await isGroupPostable(org.adminGroupId),
+    quietHours: quietHoursOf(org),
   };
 }
 
@@ -183,15 +189,14 @@ function groupText(notice: AdminNotice): string {
 export async function sendAdminNotice(req: AdminNoticeRequest): Promise<{ channel: "dm" | "admin-group" | "none"; queued: number }> {
   const { orgId } = req;
   const now = req.now ?? new Date();
-  const sendAfter = req.holdOvernight === false ? null : adminNoticeSendAfter(now);
   const ch = await loadAdminChannel(orgId);
   if (!ch) return { channel: "none", queued: 0 };
+  // Held until the club's quiet hours end (none held with them off).
+  const sendAfter = req.holdOvernight === false ? null : adminNoticeSendAfter(now, ch.quietHours);
 
   if (ch.cfg.mode === "admin-group" && ch.cfg.adminGroupId && ch.adminGroupPostable !== false) {
-    // An exempt club's admin-group post is not held overnight (CLUB_LIMIT_EXEMPT_ORG_IDS).
-    const groupSendAfter = isClubLimitExempt(orgId) ? null : sendAfter;
     await db.botJob.create({
-      data: { orgId, kind: "admin-group", text: groupText(req), ...(groupSendAfter ? { sendAfter: groupSendAfter } : {}) },
+      data: { orgId, kind: "admin-group", text: groupText(req), ...(sendAfter ? { sendAfter } : {}) },
     });
     return { channel: "admin-group", queued: 1 };
   }
@@ -244,7 +249,7 @@ export async function adminNoticeInstructions(args: {
 
   if (target.kind === "group") {
     const key = args.key("admin-group");
-    if (args.sentKeys.has(key) || !isAdminGroupPostHour(args.now, ch.orgId)) return [];
+    if (args.sentKeys.has(key) || !isAdminGroupPostHour(args.now, ch.quietHours)) return [];
     return [{ kind: "admin-group-message", key, ...withMatch, groupId: target.groupId, text: groupText(notice) }];
   }
 
@@ -269,7 +274,7 @@ export async function adminNoticeInstructions(args: {
 /**
  * A queued `admin-group` BotJob, at emit time. Posted in the admin group
  * when the club still has one linked and still routes there, the Pi polling
- * can send there, and it is 09:00 to 22:59 London; held (null) overnight;
+ * can send there, and it is outside the club's quiet hours; held (null) in them;
  * otherwise sent to the club's one person (the owner) by DM with the same
  * text, so a rolled-back Pi or an unlinked group never swallows it.
  */
@@ -284,7 +289,7 @@ export function adminGroupJobInstruction(
   if (graphic) return graphicJobInstruction(key, job.text, graphic, ch, piCaps, now);
   const target = resolveAdminNoticeTargets(ch.cfg, ch.admins, effectiveCaps(ch, piCaps));
   if (target.kind === "group") {
-    if (!isAdminGroupPostHour(now, ch.orgId)) return null;
+    if (!isAdminGroupPostHour(now, ch.quietHours)) return null;
     return { kind: "admin-group-message", key, groupId: target.groupId, text: job.text };
   }
   logFallback(ch.orgId, target.via);
@@ -313,7 +318,7 @@ function graphicJobInstruction(
 ): DueInstruction | null {
   const target = { orgId: ch.orgId, matchId: graphic.matchId, kind: graphic.kind };
   if (ch.cfg.adminGroupId && effectiveCaps(ch, piCaps).adminGroup) {
-    if (!graphic.asked && !isAdminGroupPostHour(now, ch.orgId)) return null;
+    if (!graphic.asked && !isAdminGroupPostHour(now, ch.quietHours)) return null;
     return {
       kind: "admin-group-message",
       key,

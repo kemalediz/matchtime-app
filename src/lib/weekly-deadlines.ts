@@ -20,14 +20,14 @@
  *   D1  the drop-out reminder in the group, 3 hours before the deadline,
  *       not before 09:00, skipped when that leaves under an hour;
  *   D2  the summary to the organisers when the deadline has passed,
- *       09:00 to 22:59 London;
+ *       outside the club's quiet hours (by default 09:00 to 22:59 London);
  *   D3  the final list in the group at publish time;
  *   D4  with BOTH set, the daily 17:00 post stops except on match day.
  *
  * Pure: no database, no clock.
  */
 import { formatLondon, londonDateTimeToUtc } from "./london-time";
-import { MESSAGE_HOURS_FROM_TIME, MESSAGE_HOURS_TO_HOUR, inMessageHours } from "./message-hours";
+import { MESSAGE_HOURS_FROM_TIME, MESSAGE_HOURS_TO_HOUR, inMessageHours, type QuietHours } from "./message-hours";
 
 export interface DeadlineMatch {
   date: Date;
@@ -138,10 +138,10 @@ const REMINDER_LEAD_MS = 3 * HOUR_MS;
 const REMINDER_EARLIEST = MESSAGE_HOURS_FROM_TIME;
 const REMINDER_MIN_NOTICE_MS = HOUR_MS;
 
-/** Organiser notices and the list speak London 09:00 to 22:59, the
- *  shared message hours. */
-function inWakingHours(now: Date): boolean {
-  return inMessageHours(now);
+/** Organiser notices and the list speak outside the club's quiet hours
+ *  (by default London 09:00 to 22:59). */
+function inWakingHours(now: Date, quiet?: QuietHours | null): boolean {
+  return inMessageHours(now, quiet ?? undefined);
 }
 
 /** D1: 3 hours before the deadline, not before 09:00 London that day;
@@ -152,14 +152,17 @@ export function dropOutReminderAt(deadline: Date): Date | null {
   return deadline.getTime() - at.getTime() >= REMINDER_MIN_NOTICE_MS ? at : null;
 }
 
-export function dropOutReminderDue(now: Date, deadline: Date): boolean {
+/** Due from `dropOutReminderAt` until the deadline, and never inside the
+ *  club's quiet hours (with the default hours it is always due between
+ *  09:00 and 22:30, so this only bites a club's own window). */
+export function dropOutReminderDue(now: Date, deadline: Date, quiet?: QuietHours | null): boolean {
   const at = dropOutReminderAt(deadline);
-  return at !== null && now.getTime() >= at.getTime() && now.getTime() < deadline.getTime();
+  return at !== null && now.getTime() >= at.getTime() && now.getTime() < deadline.getTime() && inWakingHours(now, quiet);
 }
 
 /** D2: the first tick after the deadline, inside waking hours, before kickoff. */
-export function deadlineSummaryDue(now: Date, deadline: Date, kickoff: Date): boolean {
-  return now.getTime() >= deadline.getTime() && now.getTime() < kickoff.getTime() && inWakingHours(now);
+export function deadlineSummaryDue(now: Date, deadline: Date, kickoff: Date, quiet?: QuietHours | null): boolean {
+  return now.getTime() >= deadline.getTime() && now.getTime() < kickoff.getTime() && inWakingHours(now, quiet);
 }
 
 /**
@@ -177,8 +180,8 @@ export function madeAfterDropOutDeadline(createdAt: Date | null | undefined, dea
 }
 
 /** D3: the first tick after publish time, inside waking hours, before kickoff. */
-export function listPublishDue(now: Date, publishAt: Date, kickoff: Date): boolean {
-  return now.getTime() >= publishAt.getTime() && now.getTime() < kickoff.getTime() && inWakingHours(now);
+export function listPublishDue(now: Date, publishAt: Date, kickoff: Date, quiet?: QuietHours | null): boolean {
+  return now.getTime() >= publishAt.getTime() && now.getTime() < kickoff.getTime() && inWakingHours(now, quiet);
 }
 
 // ── Settings validation (plan 3.1) ───────────────────────────────────
