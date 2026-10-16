@@ -67,6 +67,7 @@ import { billingQuietWhere } from "@/lib/club-billing-rules";
 import { sendDueDeadlineSummaries } from "@/lib/deadline-summary";
 import { sendDueUnpaidLists } from "@/lib/unpaid-list";
 import { sweepOrganiserPicks } from "@/lib/organiser-pick";
+import { sweepPartnerAsks } from "@/lib/partner-ask";
 import { sweepMonthlyWeeks } from "@/lib/monthly-week";
 import { sweepMonthSignups } from "@/lib/month-signup";
 import { sweepMonthPayments } from "@/lib/month-payment";
@@ -262,6 +263,11 @@ export async function GET(request: Request) {
       console.error(`[due-posts] org ${org.id}: organiser pick sweep failed:`, err);
     }
   }
+
+  // PARTNER CLUBS (cross-club ask, slice S2, 2026-10-16): close the asks
+  // this club made or received that should close, with one line to each
+  // side. A club with no partner makes one query. Never throws.
+  if (!previewOnly) await sweepPartnerAsks(org.id, nowOverride ?? new Date());
 
   if (!previewOnly) {
     try {

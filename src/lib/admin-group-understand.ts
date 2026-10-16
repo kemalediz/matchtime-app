@@ -51,6 +51,7 @@ import { buildHqHelp, hqHelpGates } from "./admin-group-help";
 import { hqLogSince, listAskRef, recordMatchTimeQuestion, teamsAskRef } from "./admin-group-log";
 import { WHICH_ASK_REF, decideApproval, matchQuoted, type QuotedMessage } from "./admin-group-confirm-rules";
 import { organisersContext, type PendingWithLabel } from "./admin-group-context";
+import { answerPartnerAskYes, parsePartnerAskRef, partnerAskRef, partnerAsksAwaitingApproval } from "./partner-ask";
 
 /** How far back the router's "earlier here" lines reach, and how many. */
 const RECENT_MS = 30 * 60 * 1000;
@@ -98,6 +99,13 @@ export async function loadPending(orgId: string, now: Date, lang: string | null)
     orderBy: { createdAt: "desc" },
   });
   if (list) out.push({ ref: listAskRef(list.waMessageId), kind: "list", day: null, askedAt: list.createdAt });
+  // A partner club's ask for a player, waiting for this club's YES
+  // (cross-club ask, slice S2). Before its cut-off only.
+  // Never fails HQ: before the migration, or on a read error, nothing waits.
+  const asks = await partnerAsksAwaitingApproval(orgId, now).catch(() => []);
+  for (const a of asks) {
+    out.push({ ref: partnerAskRef(a.askId), kind: "partner-ask", day: dayLabel(lang, a.matchDate), club: a.askerName, askedAt: a.askedAt });
+  }
   return out;
 }
 
@@ -139,18 +147,26 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
         const decision = decideApproval({ pending, quoted: input.quoted ? { ...input.quoted, fromMatchTime: quotedIsMatchTime } : null, log, now });
         console.log(`[admin-group] ${messageId}: approval ${decision.kind}${"why" in decision ? ` (${decision.why})` : ""}`);
         if (decision.kind === "approve") {
+          if (decision.item.kind === "partner-ask") {
+            const askId = parsePartnerAskRef(decision.item.ref);
+            const r = askId ? await answerPartnerAskYes({ orgId: org.id, askId, userId: input.adminUserId, lang, now }) : null;
+            return r ? said(r.outcome, r.replyText) : said("hq-nothing-waiting", s.hq_nothing_waiting);
+          }
           const r = decision.item.kind === "teams" ? await answerTeamsYes(base) : await answerSquadPasteYes(base);
           return r ? said(r.outcome, r.replyText) : said("hq-nothing-waiting", s.hq_nothing_waiting);
         }
         if (decision.kind === "nothing-waiting") return said("hq-nothing-waiting", s.hq_nothing_waiting);
         if (decision.kind === "silent") return null;
         const day = pending.find((i) => i.kind === "teams")?.day ?? "";
+        const item = decision.kind === "ask-which" ? null : pending.find((i) => i.ref === decision.item.ref);
         const text =
           decision.kind === "ask-which"
             ? s.hq_confirm_which({ day })
             : decision.item.kind === "teams"
               ? s.hq_confirm_teams({ day })
-              : s.hq_confirm_list;
+              : decision.item.kind === "partner-ask"
+                ? s.hq_confirm_partner_ask({ asker: item?.club ?? "", day: item?.day ?? "" })
+                : s.hq_confirm_list;
         const askRef = decision.kind === "ask-which" ? WHICH_ASK_REF : decision.item.ref;
         await recordMatchTimeQuestion({ orgId: org.id, askRef, text, now, confirm: true });
         return said("hq-confirm-asked", text);

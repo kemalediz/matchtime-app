@@ -19,6 +19,8 @@ import { formatLondon } from "@/lib/london-time";
 import { Calendar, MapPin, Clock, Star, ChevronRight } from "lucide-react";
 import { t } from "@/lib/i18n/t";
 import { buildWeekList } from "@/lib/monthly-week-rules";
+import { PartnerAskPanel } from "@/components/match/partner-ask-panel";
+import { loadPartnerAskPanel } from "@/lib/partner-ask";
 
 export default async function MatchDetailPage({
   params,
@@ -137,6 +139,12 @@ export default async function MatchDetailPage({
         .map((u) => ({ id: u.id, name: u.name as string, hasPhone: !!u.phoneNumber }))
         .sort((a, b) => a.name.localeCompare(b.name))
     : [];
+  // Ask a partner club (cross-club ask, slice S2): admins of a club with an
+  // active partner and asking switched on, for a match still to play.
+  const partnerAskRows =
+    isAdmin && ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"].includes(match.status)
+      ? await loadPartnerAskPanel(matchId, match.activity.orgId).catch(() => null)
+      : null;
   const isPastDeadline = new Date() > match.attendanceDeadline;
   const hasTeams = match.teamAssignments.length > 0;
 
@@ -415,6 +423,10 @@ export default async function MatchDetailPage({
           )}
         </div>
       </section>
+
+      {partnerAskRows && partnerAskRows.length > 0 && (
+        <PartnerAskPanel matchId={matchId} language={match.activity.org.language} rows={partnerAskRows} />
+      )}
 
       {/* Actions */}
       <div className="flex flex-wrap gap-3">

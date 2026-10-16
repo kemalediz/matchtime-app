@@ -1151,7 +1151,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
         { name: "When we ask", text: "MatchTime asks a partner club only when one of your owners or admins asks it to, from the match page." },
         {
           name: "Automatically at a time",
-          text: "As When we ask, and also by itself on match day at the Automatic ask time, if a place is still open and nobody is on your waiting list.",
+          text: "As When we ask, and also by itself on match day at the Automatic ask time, if a place is still open and nobody is on your bench.",
         },
       ],
       newClubs: "Off.",
@@ -1159,7 +1159,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       together: [
         "The ask goes into the partner club's players' group once their organisers approve it, unless they chose to let asks through without asking.",
         "No ask goes out later than Last ask before kickoff.",
-        "Players who answer join your waiting list as guests, and Who fills an open place decides who plays, as it does for your own players.",
+        "Players who answer go on your bench as guests, and Who fills an open place decides who plays, as it does for your own players.",
         "At most 2 asks a day go into any one partner club's group, and only one at a time for each of your matches.",
         "Nothing is asked while MatchTime is switched off or paused for your club.",
       ],
@@ -1173,7 +1173,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
         { name: "Biz isteyince", text: "MatchTime bir partner kulüpten yalnızca kulübünüzün sahibi ya da bir yöneticisi maç sayfasından isteyince oyuncu ister." },
         {
           name: "Belirli bir saatte kendiliğinden",
-          text: "Biz isteyince gibi, ayrıca maç günü Otomatik istek saatinde, hâlâ boş yer varsa ve bekleme listenizde kimse yoksa kendiliğinden de ister.",
+          text: "Biz isteyince gibi, ayrıca maç günü Otomatik istek saatinde, hâlâ boş yer varsa ve yedek listenizde kimse yoksa kendiliğinden de ister.",
         },
       ],
       newClubs: "Kapalı.",
@@ -1181,7 +1181,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       together: [
         "İstek, partner kulübün organizatörleri onaylayınca onların oyuncu grubuna gider; sormadan geçmesini seçtilerse hemen gider.",
         "Hiçbir istek Başlama saatinden önce son istek ayarından daha geç gönderilmez.",
-        "Yanıt veren oyuncular bekleme listenize misafir olarak girer ve kimin oynayacağına, kendi oyuncularınızda olduğu gibi, Boşalan yeri kim doldurur ayarı karar verir.",
+        "Yanıt veren oyuncular yedek listenize misafir olarak girer ve kimin oynayacağına, kendi oyuncularınızda olduğu gibi, Boşalan yeri kim doldurur ayarı karar verir.",
         "Bir partner kulübün grubuna günde en fazla 2 istek gider ve maçlarınızın her biri için aynı anda yalnızca bir istek açık olur.",
         "MatchTime kulübünüz için kapalıyken ya da durdurulmuşken hiçbir şey istenmez.",
       ],
@@ -1193,7 +1193,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       what: ["Only used with Automatically at a time: the London time on match day when MatchTime asks your partner clubs by itself."],
       newClubs: "16:00.",
       together: [
-        "MatchTime asks only if a place is still open, nobody is on your waiting list, and it is still before Last ask before kickoff. A time after that is never reached, so MatchTime then never asks by itself.",
+        "MatchTime asks only if a place is still open, nobody is on your bench, and it is still before Last ask before kickoff. A time after that is never reached, so MatchTime then never asks by itself.",
       ],
     },
     tr: {
@@ -1201,7 +1201,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       what: ["Yalnızca Belirli bir saatte kendiliğinden seçiliyken kullanılır: MatchTime'ın partner kulüplerinizden maç günü kendiliğinden oyuncu istediği Londra saati."],
       newClubs: "16:00.",
       together: [
-        "MatchTime yalnızca hâlâ boş yer varsa, bekleme listenizde kimse yoksa ve Başlama saatinden önce son istek henüz geçmemişse ister. Bundan sonraki bir saate hiç gelinmez, yani MatchTime o zaman kendiliğinden hiç istemez.",
+        "MatchTime yalnızca hâlâ boş yer varsa, yedek listenizde kimse yoksa ve Başlama saatinden önce son istek henüz geçmemişse ister. Bundan sonraki bir saate hiç gelinmez, yani MatchTime o zaman kendiliğinden hiç istemez.",
       ],
     },
   },

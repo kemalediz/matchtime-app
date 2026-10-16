@@ -37,6 +37,7 @@ import { db } from "@/lib/db";
 import { planAckSideEffects } from "@/lib/dispatch-claim";
 import { parsePlatformJobKey, recordPlatformJobOutcome } from "@/lib/platform-jobs";
 import { stagePaygFeeOnAck } from "@/lib/monthly-week";
+import { stampPartnerAskPost } from "@/lib/partner-ask";
 
 export async function POST(request: Request) {
   const apiKey = request.headers.get("x-api-key");
@@ -135,6 +136,11 @@ export async function POST(request: Request) {
         await db.botJob
           .update({ where: { id: effect.botJobId }, data: { sentAt: new Date() } })
           .catch(() => {}); // tolerate already-sent or deleted rows
+        // A partner club's ask (cross-club ask, slice S2): its post's
+        // WhatsApp id is how a quoted reply finds the ask.
+        await stampPartnerAskPost(effect.botJobId, waMessageId).catch((err: unknown) =>
+          console.error(`[ack] stamping a partner ask's post for ${key} failed:`, err),
+        );
         break;
 
       case "retro-reaction-sent":

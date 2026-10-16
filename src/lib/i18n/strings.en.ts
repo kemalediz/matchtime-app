@@ -4746,4 +4746,82 @@ export const en = {
   pc_saved: "Saved",
   pc_save_failed: "Couldn't save",
   pc_refused: "That can't be done now. Reload the page and try again.",
+  // ─── Asking a partner club for a player (slice S2, 2026-10-16) ──────
+  // MDs/cross-club-player-ask-plan-2026-10-16.md, sections 3.3 to 3.5.
+  // Read by src/lib/partner-ask.ts, the match page's partner panel and
+  // the approve page. The post and the partner's notices are in the
+  // PARTNER club's language; the asking club's notices in its own.
+  xask_post: (p: { asker: string; places: number; day: string; venue: string; format: string | null; fee: string | null }) => {
+    const extras = [p.format, p.fee].filter(Boolean).join(", ");
+    return (
+      `⚽ *${p.asker}* need ${p.places === 1 ? "1 player" : `${p.places} players`}: ${p.day} at ${p.venue}${extras ? ` (${extras})` : ""}.\n` +
+      `Fancy a game? *Reply to this message* with *IN* and their organisers will confirm by private message.`
+    );
+  },
+  xask_approval_notice: (p: {
+    asker: string;
+    places: number;
+    day: string;
+    venue: string;
+    format: string | null;
+    fee: string | null;
+    own: { confirmed: number; max: number } | null;
+    link: string;
+    inGroup: boolean;
+  }) => {
+    const extras = [p.format, p.fee].filter(Boolean).join(", ");
+    const who = p.places === 1 ? "one of your players" : `${p.places} of your players`;
+    const own = p.own ? ` Your own game that day is ${p.own.confirmed} of ${p.own.max}.` : "";
+    const how = p.inGroup
+      ? `Reply YES to this message${p.link ? `, or open ${p.link}` : ""}.`
+      : `Tap to say yes or no: ${p.link}`;
+    return `🤝 *${p.asker}* ask if ${who} can play for them: ${p.day} at ${p.venue}${extras ? ` (${extras})` : ""}.${own}\nOK to post this in your players' group? ${how}`;
+  },
+  xask_posted_notice_partner: (p: { asker: string; day: string; venue: string }) =>
+    `🤝 I've posted *${p.asker}*'s ask for a player in your players' group: ${p.day} at ${p.venue}. Your club lets asks from ${p.asker} through without asking first.`,
+  xask_approved_notice_asker: (p: { partner: string; day: string }) =>
+    `✅ *${p.partner}* said yes: I've asked their players' group for a player for ${p.day}. Anyone who replies IN goes on your bench marked (${p.partner}).`,
+  xask_declined_notice_asker: (p: { partner: string; day: string }) =>
+    `*${p.partner}*'s organisers said no to asking their group for ${p.day}.`,
+  xask_expired_notice_asker: (p: { partner: string; day: string }) =>
+    `*${p.partner}*'s organisers didn't answer in time, so I didn't ask their group for ${p.day}.`,
+  xask_nobody_notice_asker: (p: { partner: string; day: string }) => `Nobody from *${p.partner}* took the place for ${p.day}.`,
+  xask_no_post_id_notice_asker: (p: { partner: string }) =>
+    `⚠️ I can't confirm your ask reached *${p.partner}*'s group, so replies to it may not reach you. Check with their organisers if you still need a player.`,
+  xask_filled_line: (p: { asker: string }) => `✅ *${p.asker}*'s place is filled, thanks all 🙌`,
+  xask_off_line: (p: { asker: string; day: string }) => `*${p.asker}*'s ask for ${p.day} is closed now, thanks all.`,
+  hq_confirm_partner_ask: (p: { asker: string; day: string }) =>
+    `Is that YES to posting *${p.asker}*'s ask for ${p.day} in your players' group?`,
+  xask_hq_approved: (p: { asker: string }) => `Done: *${p.asker}*'s ask is in your players' group now.`,
+  xask_hq_not_posted: (p: { asker: string }) =>
+    `I didn't post *${p.asker}*'s ask: it has closed, its place is filled, or it is too late for it now.`,
+  xask_refused_too_late: (p: { hours: number }) =>
+    `Too late to ask a partner club now: the last ask goes out ${p.hours === 1 ? "1 hour" : `${p.hours} hours`} before kickoff (your setting).`,
+  xask_refused_daily_cap: (p: { partner: string }) => `${p.partner} have had two asks today already.`,
+  xask_refused_already_open: (p: { partner: string }) => `There's already an ask to ${p.partner} open for this game.`,
+  xask_refused_no_places: "No place is open in this game.",
+  xask_refused_off: "Asking partner clubs is off in your settings.",
+  xask_refused_unreachable: (p: { partner: string }) => `${p.partner}'s group can't be asked right now.`,
+  xask_refused_generic: "That can't be asked now. Reload the page and try again.",
+  xask_panel_title: "Ask a partner club",
+  xask_panel_lead: "Short of players? MatchTime can ask a partner club's players' group. Anyone who replies IN goes on your bench.",
+  xask_ask_button: (p: { partner: string }) => `Ask ${p.partner} for a player`,
+  xask_status_awaiting: (p: { partner: string }) => `Waiting for ${p.partner}'s organisers to say yes`,
+  xask_status_posted: (p: { partner: string; volunteers: number }) =>
+    `Asked in ${p.partner}'s group${p.volunteers > 0 ? `: ${p.volunteers === 1 ? "1 player" : `${p.volunteers} players`} replied` : ""}`,
+  xask_asked_toast: (p: { partner: string }) => `Asked ${p.partner}'s organisers`,
+  xask_posted_toast: (p: { partner: string }) => `Posted in ${p.partner}'s group`,
+  xask_page_title: "A partner club asks for a player",
+  xask_page_summary: (p: { asker: string; places: number; day: string; venue: string; format: string | null; fee: string | null }) => {
+    const extras = [p.format, p.fee].filter(Boolean).join(", ");
+    return `${p.asker} ask if ${p.places === 1 ? "one of your players" : `${p.places} of your players`} can play for them: ${p.day} at ${p.venue}${extras ? ` (${extras})` : ""}.`;
+  },
+  xask_page_own: (p: { confirmed: number; max: number }) => `Your own game that day is ${p.confirmed} of ${p.max}.`,
+  xask_page_how: "If you say yes, MatchTime posts the ask in your players' group. Players answer by replying to it with IN; a plain IN still means your own game.",
+  xask_page_approve: "Yes, post it in our group",
+  xask_page_decline: "No thanks",
+  xask_page_posted: "Posted in your players' group.",
+  xask_page_declined: "Thanks. They've been told.",
+  xask_page_closed: "This ask is closed now.",
+  xask_page_not_allowed: "Only an owner or admin of the club that was asked can answer this.",
 };
