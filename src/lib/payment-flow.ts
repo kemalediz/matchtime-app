@@ -15,7 +15,7 @@
 import { db } from "./db";
 import { signMagicLinkToken, MAGIC_LINK_TTL } from "./magic-link";
 import { buildShortMagicLinkUrl } from "./short-link";
-import { PAY_METHOD_SELECT, availablePayMethods, parseFeeReply, type PayMethod } from "./payments";
+import { PAY_METHOD_SELECT, availablePayMethods, directPayInstructions, parseFeeReply, type PayMethod } from "./payments";
 import { payCollectorName } from "./direct-payment";
 import {
   buildFeeCancelledAck,
@@ -45,7 +45,12 @@ export async function releaseMatchPayments(matchId: string): Promise<number> {
           // `language`: the pay links are written in the match's org language.
           // The pay-method switches and the Stripe account: the link names
           // only the ways `availablePayMethods` allows (FNF, 2026-10-16).
-          org: { select: { paymentHolderId: true, language: true, ...PAY_METHOD_SELECT } },
+          // `paymentInstructions`: the club's own words on paying the
+          // collector directly, one line when direct is offered (2026-10-16);
+          // `squadMode`: a monthly club's PAYG link stays as it was.
+          org: {
+            select: { paymentHolderId: true, language: true, paymentInstructions: true, squadMode: true, ...PAY_METHOD_SELECT },
+          },
         },
       },
       attendances: {
@@ -60,6 +65,7 @@ export async function releaseMatchPayments(matchId: string): Promise<number> {
   // The money collector doesn't pay themselves — never DM them a pay link.
   const collectorId = match.activity.org.paymentHolderId;
   const methods = availablePayMethods(match.activity.org);
+  const instructions = directPayInstructions(match.activity.org);
   // The collector's name, from the squad when they played, else looked
   // up. A failed lookup only costs the name ("the organiser"), never the
   // pay links.
@@ -98,6 +104,7 @@ export async function releaseMatchPayments(matchId: string): Promise<number> {
           url: await buildShortMagicLinkUrl(token),
           methods,
           collectorName,
+          instructions,
           lang: match.activity.org.language,
         }),
       },
