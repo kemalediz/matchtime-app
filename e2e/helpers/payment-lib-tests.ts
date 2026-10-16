@@ -299,6 +299,51 @@ async function main() {
     }
   }
 
+  // ── 14. A player marked paid BEFORE release gets no pay link ───────
+  //   FNF's free places (2026-10-16): the bib washer and the Man of the
+  //   Match are marked paid on /collect/<match> before the collector
+  //   answers the fee question. Prove it on a real database, through the
+  //   collector's own DM path: fresh fee, ✅, links to everyone else.
+  {
+    await db.match.update({
+      where: { id: MATCH.rate },
+      data: { feePendingConfirm: null, feePerPlayer: null, feeSetAt: null, paymentLinksReleasedAt: null },
+    });
+    await db.botJob.deleteMany({ where: { kind: "dm", text: { contains: "match fee for" } } });
+    const free: string[] = [U.rater, U.third];
+    await db.attendance.updateMany({
+      where: { matchId: MATCH.rate, userId: { in: free } },
+      data: { paidAt: new Date(), directConfirmedByUserId: U.collector },
+    });
+    const confirmed = await db.attendance.findMany({
+      where: { matchId: MATCH.rate, status: "CONFIRMED", userId: { not: U.collector } },
+      select: { userId: true, user: { select: { phoneNumber: true } } },
+    });
+    const phone = (uid: string) => confirmed.find((a) => a.userId === uid)?.user.phoneNumber?.replace(/^\+/, "") ?? null;
+    const payers = confirmed.filter((a) => !free.includes(a.userId) && a.user.phoneNumber).map((a) => a.userId);
+    assert.ok(payers.length > 0, "the fixture has players who still pay");
+
+    const staged = await handleCollectorFeeReply(U.collector, "£7 each");
+    assert.ok(staged, "the fee is staged");
+    const yes = await handleCollectorFeeReply(U.collector, "✅");
+    assert.equal(yes?.released, payers.length, "links went to the payers only");
+    const links = await db.botJob.findMany({
+      where: { kind: "dm", text: { contains: "match fee for" } },
+      select: { phone: true },
+    });
+    const linkPhones = links.map((l) => l.phone).sort();
+    assert.deepEqual(linkPhones, payers.map((uid) => phone(uid)!).sort(), "one link per payer, none for a free place");
+    for (const uid of free) {
+      const p = phone(uid);
+      if (p) assert.ok(!linkPhones.includes(p), `${uid} was marked paid first and got no pay link`);
+    }
+    await db.attendance.updateMany({
+      where: { matchId: MATCH.rate, userId: { in: free } },
+      data: { paidAt: null, directConfirmedByUserId: null },
+    });
+    ok("players marked paid before the fee is confirmed get no pay link; the rest do");
+  }
+
   // Leave the fixture world as we found it — later specs assume the seed.
   await db.match.update({
     where: { id: MATCH.rate },
