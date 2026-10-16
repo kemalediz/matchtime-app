@@ -94,6 +94,10 @@ export async function postAnalyze(
     /** The message's ORIGINAL WhatsApp send time, ISO. Defaults to now;
      *  set it to replay a copy that arrived late. */
     timestamp?: string;
+    /** A WhatsApp reply: the quoted text, and whether it was MatchTime's
+     *  own message (the Pi's signal, 2026-10-16). */
+    quotedBody?: string;
+    quotedFromMatchTime?: boolean;
   }>,
 ) {
   const res = await request.post("/api/whatsapp/analyze", {

@@ -83,6 +83,25 @@ describe("messageTagsBot — text fallback (undefined botMentioned, older Pi)", 
   });
 });
 
+// 2026-10-16, FNF: "Bench? We do bench now?", sent as a WhatsApp reply to
+// MatchTime's own "the bench is open" post, went unanswered because it was
+// not tagged. A reply quoting MatchTime's own message is addressed to it.
+describe("messageTagsBot: a WhatsApp reply to MatchTime's own message", () => {
+  it("a reply quoting MatchTime's own message is a tag", () => {
+    expect(messageTagsBot({ body: "Bench? We do bench now?", quotedFromMatchTime: true })).toBe(true);
+    expect(messageTagsBot({ body: "Bench? We do bench now?", botMentioned: false, quotedFromMatchTime: true })).toBe(true);
+  });
+
+  it("a reply quoting another player's message is not", () => {
+    expect(messageTagsBot({ body: "Bench? We do bench now?", botMentioned: false, quotedFromMatchTime: false })).toBe(false);
+    expect(messageTagsBot({ body: "Bench? We do bench now?" })).toBe(false);
+  });
+
+  it("the stricter bulk-DM test still asks for an explicit @, a reply is not one", () => {
+    expect(messageMentionsBotExplicitly({ body: "send everyone their stats", quotedFromMatchTime: true })).toBe(false);
+  });
+});
+
 describe("isSelfAttendanceVerdict — only the sender's own IN/OUT is tag-free", () => {
   it("plain self IN is self-attendance", () => {
     const v: GateVerdict = { intent: "in", registerAttendance: "IN", registerFor: null };

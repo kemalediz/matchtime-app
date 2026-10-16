@@ -287,10 +287,13 @@ export const STATS_ANSWER_INTENTS: ReadonlySet<string> = new Set([
 
 const TEAM_POST_INTENTS: ReadonlySet<string> = new Set(["generate_teams_request", "show_teams_request"]);
 
-/** PURE. Does the squad-composition pass skip a reply with this intent? */
+/** PURE. Does the squad-composition pass skip a reply with this intent?
+ *  `help` (2026-10-16): the help explainer, which a how-it-works question
+ *  now reaches through the pipeline; its "Squad & availability" heading
+ *  would otherwise be read as a squad post and replaced by the roster. */
 export function skipsSquadComposition(intent: string | null | undefined): boolean {
   if (!intent) return false;
-  return TEAM_POST_INTENTS.has(intent) || STATS_ANSWER_INTENTS.has(intent);
+  return TEAM_POST_INTENTS.has(intent) || STATS_ANSWER_INTENTS.has(intent) || intent === "help";
 }
 
 /**

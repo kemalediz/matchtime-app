@@ -406,11 +406,25 @@ interface InboundMessage {
    *  squad, slice 3): until one does, a bare "IN" in reply to the month's
    *  list is read as it always was, and only "IN FOR NOVEMBER" signs up. */
   quotedBody?: string | null;
+  /** Is the quoted message MatchTime's OWN (2026-10-16)? Computed on the Pi,
+   *  which alone knows the bot's ids. A reply to MatchTime is addressed to
+   *  it, like a tag (`messageTagsBot`), and the router and the question
+   *  extractor are shown the post it quotes (`quotedMatchTimeText`). */
+  quotedFromMatchTime?: boolean;
   /** Did this message @-mention the bot's own JID? Computed on the Pi
    *  (only it knows the bot's selfId) and forwarded as a structured
    *  signal. PRIMARY input to the @Match Time interaction-contract gate;
    *  `undefined` from older Pi builds falls back to body text matching. */
   botMentioned?: boolean;
+}
+
+/** The text of the MatchTime post a message replies to, as the field the
+ *  router and the answer owner read; nothing for any other message (a
+ *  reply to a player is ordinary chat and is shown no quote). */
+function quotedMatchTimeField(m: InboundMessage): { quotedMatchTime?: string } {
+  return m.quotedFromMatchTime === true && typeof m.quotedBody === "string" && m.quotedBody.trim()
+    ? { quotedMatchTime: m.quotedBody }
+    : {};
 }
 
 interface InboundHistory {
@@ -2147,6 +2161,8 @@ async function handleAnalyzeRequest(request: Request) {
             // routes `balancer`, and the drop is never seen.
             body: pipelineBody(m),
             authorName: m.authorName,
+            // A reply to MatchTime: the post it quotes, shown above it.
+            ...quotedMatchTimeField(m),
           })),
           // The ONE thing the router was missing, and the reason PR #42
           // would not turn this flag on: a bare `👍` answering a slot
@@ -2472,6 +2488,9 @@ async function handleAnalyzeRequest(request: Request) {
         taggedExplicitly: messageMentionsBotExplicitly(m),
         route: gateRouteById.get(m.waMessageId),
         gated: gatedIds.has(m.waMessageId),
+        // A reply to MatchTime: the question extractor reads the post it
+        // quotes as MatchTime's post (`answer-batch.ts`).
+        ...quotedMatchTimeField(m),
       };
     });
   const ownerHistory = history.map((h) => ({ author: h.authorName, body: h.body }));

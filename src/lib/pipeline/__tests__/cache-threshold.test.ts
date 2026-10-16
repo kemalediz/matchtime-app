@@ -157,10 +157,22 @@ describe("the minimum cacheable prefix is a token count, per model", () => {
     // The estimator's 3,427 sits under it. Still under Haiku's 4,096 (a
     // first cut at 4,186 was trimmed to stay there), so still no marker.
     //
-    // 2026-10-16, the organisers' fifth route (ask_group): 14,234
-    // characters / 4,067 tokens measured the same way (with a one-token
-    // message). Estimator 3,558. Still under 4,096, still no marker.
-    expect(estimateTokens(ROUTER_SYSTEM_PROMPT)).toBeLessThanOrEqual(3_920);
+    // 2026-10-16, A REPLY TO MATCHTIME IS A TAG: the tag definition, the
+    // question route and one ruling now cover a WhatsApp reply to the bot's
+    // own message ("REPLYING TO MatchTime", players' group only) and asking
+    // how the bench works. Measured (`count_tokens`, claude-haiku-4-5, dev
+    // key, the free endpoint): 13,709 characters / 3,912 tokens before,
+    // 14,326 / 4,090 after. The estimator's 3,582 sits under it. Still under
+    // Haiku's 4,096, by six: the next addition to this prompt has to take
+    // something out.
+    //
+    // 2026-10-16, REWRITTEN AS ONE DOCUMENT for the organisers' fifth route
+    // (ask_group) together with the reply-is-a-tag rules above, shorter
+    // than before: duplicated rulings and examples merged. Measured
+    // (`count_tokens`, claude-haiku-4-5, dev key, with a one-token user
+    // message, the same way both sides): 14,326 characters / 4,098 tokens
+    // before, 13,683 / 3,922 after. The estimator's 3,420 sits under it.
+    expect(estimateTokens(ROUTER_SYSTEM_PROMPT)).toBeLessThanOrEqual(3_922);
     expect(estimateTokens(EXTRACTOR_PROMPTS.attendance)).toBeLessThanOrEqual(2_699);
   });
 });
@@ -214,7 +226,14 @@ describe("the prompts this pipeline actually sends", () => {
     // example group. MEASURED (`count_tokens`, claude-sonnet-5, dev key,
     // 2026-09-29): 9,077 characters / 3,468 tokens before, 10,688
     // characters / 4,071 tokens after. The estimator's 2,672 sits under it.
-    expect(estimateTokens(EXTRACTOR_PROMPTS.question)).toBeLessThanOrEqual(4_071);
+    //
+    // 2026-10-16: the `how_it_works` topic and its `feature` field ("Bench?
+    // We do bench now?"), folded into the topic list, the fields, the close
+    // calls and one example group. MEASURED (`count_tokens`,
+    // claude-sonnet-5, dev key, the free endpoint): 10,688 characters /
+    // 4,064 tokens before, 11,770 / 4,447 after. The estimator's 2,943 sits
+    // under it, and the cache stands.
+    expect(estimateTokens(EXTRACTOR_PROMPTS.question)).toBeLessThanOrEqual(4_447);
     expect(shouldCachePrompt(EXTRACTOR_MODEL, EXTRACTOR_PROMPTS.question)).toBe(true);
   });
 
