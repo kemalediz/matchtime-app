@@ -121,6 +121,16 @@ export function evaluateFollowupGuard(args: {
  * ("never tell a player something happened unless it actually landed"),
  * and it belongs on both reply paths, not one.
  *
+ * The STATUS the write left behind decides an IN's words, not the
+ * player's answer (FNF, 2026-10-16): an IN can land on the BENCH, in a
+ * first-come club because the squad filled after the follow-up went out,
+ * and in an organiser-pick club whenever no admin, reclaim or running
+ * offer lets him take a free place. Naim answered IN, landed on the
+ * bench, and was told "Brilliant, you're in!" two minutes before an
+ * organiser picked him. "You're in" is said only of a CONFIRMED row; a
+ * BENCH gets the same words the cold DM IN gets
+ * (`out-of-band-self-attendance.ts:buildSelfAttendanceAck`).
+ *
  * House style: no em dashes.
  */
 export function buildTentativeFollowupAck(args: {
@@ -128,8 +138,26 @@ export function buildTentativeFollowupAck(args: {
   decision: "in" | "out";
   /** Did the attendance write throw? Then we promise nothing. */
   failed: boolean;
+  /** The row's status AFTER the write (null: no row, or nothing written). */
+  status: "CONFIRMED" | "BENCH" | "DROPPED" | null;
+  /** `Organisation.benchPickMode === "organiser"`: a BENCH is the waiting
+   *  list the organisers pick from, not a full squad. */
+  organiser?: boolean;
+  /** The activity's name and `dayCommaTimeLabel(lang, date)`, for a bench ack. */
+  matchName: string;
+  matchWhen: string;
   /** The match's org language (`Organisation.language`); English when absent. */
   lang?: Lang | string | null;
 }): string {
-  return t(args.lang).dm_tentative_ack({ decision: args.decision, failed: args.failed });
+  const s = t(args.lang);
+  if (args.decision === "in" && !args.failed && args.status !== "CONFIRMED") {
+    if (args.status === "BENCH") {
+      return args.organiser
+        ? s.dm_self_ack_waiting_organiser({ matchName: args.matchName, matchWhen: args.matchWhen })
+        : s.dm_self_ack({ failed: false, status: "BENCH", matchName: args.matchName, matchWhen: args.matchWhen });
+    }
+    // An IN that left no squad row and threw nothing: promise nothing.
+    return s.dm_tentative_ack({ decision: "in", failed: true });
+  }
+  return s.dm_tentative_ack({ decision: args.decision, failed: args.failed });
 }

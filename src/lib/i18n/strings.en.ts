@@ -3065,6 +3065,15 @@ export const en = {
   /** The private ack of an IN that went on the waiting list. */
   dm_self_ack_waiting_organiser: (p: { matchName: string; matchWhen: string }): string =>
     `📋 I've put you on the bench for *${p.matchName}* on ${p.matchWhen}. The organisers pick who plays, and I'll message you if you're picked 🙏`,
+  /** The web app's "I'm in" toast, from the status the write left
+   *  (2026-10-16): "You're in" only for a CONFIRMED row. `organiser`:
+   *  `benchPickMode = "organiser"`, so a BENCH is the waiting list. */
+  web_attend_toast: (p: { status: "CONFIRMED" | "BENCH"; organiser: boolean }): string =>
+    p.status === "CONFIRMED"
+      ? "You're in! See you at the match 🎉"
+      : p.organiser
+        ? "You're on the bench. The organisers pick who plays, and I'll message you if you're picked 🙏"
+        : "The squad's full, so you're on the bench. I'll message you if a spot opens 🙏",
 
   // ── UNP1 (2026-10-01): U1 of MDs/friday-group-features-plan-2026-09-30.md
   //    (2.12), the organisers' unpaid list, 10:00 two days after the
