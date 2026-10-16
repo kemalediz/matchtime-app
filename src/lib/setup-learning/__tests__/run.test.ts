@@ -130,6 +130,7 @@ vi.mock("@/lib/platform-jobs", async (orig) => ({
 import { learnClubSetup, runSetupLearningSweep, MAX_ATTEMPTS } from "../run";
 import type { PipelineModel } from "../../pipeline/llm";
 import { FIXTURE_NAMES, loadFixture, STUB_ANSWERS } from "./stubs";
+import { isFeatureOffered } from "../../org-features-meta";
 
 const ORG = "org-riverside";
 const ORGANISER_PHONE = "447700900123";
@@ -228,7 +229,11 @@ describe("learnClubSetup, fixture by fixture (one stub call each, no real model)
       } else {
         expect(model.calls).toBe(1);
         expect(budget.keys).toEqual([ORG]);
-        expect((state.learning!.applied as Array<{ key: string }>).map((a) => a.key)).toEqual(fx.expect.applied);
+        // The fixture says what the rules decide; the run never writes a
+        // hidden setting (payment tracking, 2026-10-16).
+        expect((state.learning!.applied as Array<{ key: string }>).map((a) => a.key)).toEqual(
+          (fx.expect.applied as string[]).filter((k) => isFeatureOffered(k)),
+        );
         expect((state.learning!.noted as Array<{ key: string }>).map((a) => a.key)).toEqual(fx.expect.noted);
         expect((state.learning!.suggestions as Array<{ key: string }>).map((a) => a.key)).toEqual(fx.expect.suggestions);
         expect(dms.length).toBe(fx.expect.dm ? 1 : 0);
@@ -400,10 +405,12 @@ describe("learnClubSetup: writes and the DM", () => {
       approvalStatus: "approved",
       dropOutDeadlineDay: null,
       listPublishDay: null,
-      paymentTrackingEnabled: false,
-      NOT: { settingsSetByOrganiser: { hasSome: ["dropOutDeadline", "listPublish", "paymentTracking"] } },
+      NOT: { settingsSetByOrganiser: { hasSome: ["dropOutDeadline", "listPublish"] } },
     });
-    expect(state.org).toMatchObject({ dropOutDeadlineDay: 1, dropOutDeadlineTime: "21:00", listPublishDay: 2, paymentTrackingEnabled: true });
+    // Payment tracking is hidden (2026-10-16): the chat shows players
+    // paying, and it is still left off.
+    expect(state.orgUpdates[0].where).not.toHaveProperty("paymentTrackingEnabled");
+    expect(state.org).toMatchObject({ dropOutDeadlineDay: 1, dropOutDeadlineTime: "21:00", listPublishDay: 2, paymentTrackingEnabled: false });
     expect(state.learning).toMatchObject({ status: "applied", messageCount: 32, authorCount: 4 });
   });
 

@@ -150,8 +150,8 @@ test("the popup: keyboard, Escape, a tap outside, and what it says", async ({ pa
 test("phone width: a 16px gutter, scrolls inside, and dark mode is dark", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 640 });
   await openSettings(page);
-  await page.getByTestId("info-setting-paymentTracking").click();
-  const dialog = page.getByRole("dialog", { name: "Payment tracking" });
+  await page.getByTestId("info-setting-paymentCollection").click();
+  const dialog = page.getByRole("dialog", { name: "Collect match fees" });
   await expect(dialog).toBeVisible();
   // Measure where it settles, after its short slide-in.
   await dialog.evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished)));
@@ -220,4 +220,16 @@ test("screenshots for the PR (only with SETTINGS_INFO_SHOTS)", async ({ page, db
     }
   }
   await page.emulateMedia({ colorScheme: "light" });
+});
+
+// Payment tracking is hidden for now (Kemal, 2026-10-16). The seeded club
+// still has the column ON, and the page shows no row, no switch and no ⓘ
+// for it; Collect match fees is still there.
+test("payment tracking is hidden: no row, no switch, no explanation", async ({ page }) => {
+  await openSettings(page);
+  await expect(page.locator('[data-setting="paymentCollection"]')).toBeVisible();
+  await expect(page.locator('[data-setting="paymentTracking"]')).toHaveCount(0);
+  await expect(page.getByTestId("info-setting-paymentTracking")).toHaveCount(0);
+  await expect(page.getByText(/Payment tracking/i)).toHaveCount(0);
+  await expect(page.getByText(/tick when you've paid/i)).toHaveCount(0);
 });

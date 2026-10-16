@@ -1856,7 +1856,6 @@ Type *"@Match Time help"* any time to see this again.
    • *@Match Time help ratings*: player ratings
    • *@Match Time help badges*: badges and how to earn them
    • *@Match Time help reminders*: reminders
-   • *@Match Time help payments*: payment tracking
    • *@Match Time help schedule*: schedule & bookings
 
 ✅ Say *"In"* or *"Out"* to mark your own availability, no need to tag me.
@@ -1918,10 +1917,15 @@ Want a personal nudge? Say *"@Match Time remind me Thursday"* and I'll DM you th
 It all happens automatically, so you don't need to chase anyone yourself.
 
 ### R142 buildHelpReply / payments
-💳 *Payment tracking: how it works*
-I keep track of who's paid the match fee. The organiser sets the fee, and I show who's paid and who still owes at a glance.
-I send friendly reminders to anyone outstanding. Players can pay by card, or the organiser can mark cash and bank transfers as received.
-This only runs when payment tracking is switched on. Tag *@Match Time who still owes?* to see the latest.
+ℹ️ This isn't switched on for this group yet, but here's how it works.
+
+💷 *Match fees: how it works*
+After each game I ask your money collector for the fee per player, then DM everyone who played a link to pay their share, by card or bank. The money goes straight to the money collector's bank.
+I chase anyone who hasn't paid with a daily reminder, so nobody has to chase their mates for cash.
+Paid in cash or by transfer instead? The player tells me *"paid"* and I ask the money collector to confirm it landed.
+
+🔧 To switch it on, an admin opens *Settings* on the admin page (https://matchtime.ai/admin/settings) and turns on *Collect match fees* under Bot features, picks the money collector, then connects their bank with Stripe once (about 2 minutes).
+Admins: DM me *help payments* and I'll send you a link that signs you straight in.
 
 ### R143 buildHelpReply / topic switched off
 ℹ️ This isn't switched on for this group yet, but here's how it works.
@@ -1931,7 +1935,7 @@ After each game I ask your money collector for the fee per player, then DM every
 I chase anyone who hasn't paid with a daily reminder, so nobody has to chase their mates for cash.
 Paid in cash or by transfer instead? The player tells me *"paid"* and I ask the money collector to confirm it landed.
 
-🔧 To switch it on, an admin opens *Settings* on the admin page (https://matchtime.ai/admin/settings) and turns on *Payment tracking* and *Collect match fees* under Bot features, picks the money collector, then connects their bank with Stripe once (about 2 minutes).
+🔧 To switch it on, an admin opens *Settings* on the admin page (https://matchtime.ai/admin/settings) and turns on *Collect match fees* under Bot features, picks the money collector, then connects their bank with Stripe once (about 2 minutes).
 Admins: DM me *help payments* and I'll send you a link that signs you straight in.
 
 ### R147 buildHowToUseMe / fee collection on
@@ -1973,7 +1977,7 @@ After each game I ask your money collector for the fee per player, then DM every
 I chase anyone who hasn't paid with a daily reminder, so nobody has to chase their mates for cash.
 Paid in cash or by transfer instead? The player tells me *"paid"* and I ask the money collector to confirm it landed.
 
-🔧 To switch it on, an admin opens *Settings* on the admin page (https://matchtime.ai/admin/settings) and turns on *Payment tracking* and *Collect match fees* under Bot features, picks the money collector, then connects their bank with Stripe once (about 2 minutes).
+🔧 To switch it on, an admin opens *Settings* on the admin page (https://matchtime.ai/admin/settings) and turns on *Collect match fees* under Bot features, picks the money collector, then connects their bank with Stripe once (about 2 minutes).
 Admins: DM me *help payments* and I'll send you a link that signs you straight in.
 
 ### R148 buildHelpReply / mom off / group
@@ -2014,7 +2018,7 @@ After each game I ask your money collector for the fee per player, then DM every
 I chase anyone who hasn't paid with a daily reminder, so nobody has to chase their mates for cash.
 Paid in cash or by transfer instead? The player tells me *"paid"* and I ask the money collector to confirm it landed.
 
-🔧 To switch it on, open *Settings* on your admin page and turn on *Payment tracking* and *Collect match fees* under Bot features, pick the money collector, then connect their bank with Stripe once (about 2 minutes):
+🔧 To switch it on, open *Settings* on your admin page and turn on *Collect match fees* under Bot features, pick the money collector, then connect their bank with Stripe once (about 2 minutes):
 https://mt.example/r/settings
 
 ### R148 buildHelpReply / mom off / admin
@@ -2070,12 +2074,14 @@ Nothing to set up: I'll start the vote myself once the game's done. Type *@Match
 🗓️ Match days, kick-off times, cancellations and block bookings are set by your organiser on the admin page. Ask them if something needs changing.
 
 ### R148 buildHelpReply / payments on / admin
-💳 *Payment tracking: how it works*
-I keep track of who's paid the match fee. The organiser sets the fee, and I show who's paid and who still owes at a glance.
-I send friendly reminders to anyone outstanding. Players can pay by card, or the organiser can mark cash and bank transfers as received.
-This only runs when payment tracking is switched on. Tag *@Match Time who still owes?* to see the latest.
+ℹ️ This isn't switched on for this group yet, but here's how it works.
 
-⚙️ Its settings are on your admin page:
+💷 *Match fees: how it works*
+After each game I ask your money collector for the fee per player, then DM everyone who played a link to pay their share, by card or bank. The money goes straight to the money collector's bank.
+I chase anyone who hasn't paid with a daily reminder, so nobody has to chase their mates for cash.
+Paid in cash or by transfer instead? The player tells me *"paid"* and I ask the money collector to confirm it landed.
+
+🔧 To switch it on, open *Settings* on your admin page and turn on *Collect match fees* under Bot features, pick the money collector, then connect their bank with Stripe once (about 2 minutes):
 https://mt.example/r/settings
 
 ### R148 buildHelpReply / bare / admin
@@ -2086,7 +2092,6 @@ https://mt.example/r/settings
    • *@Match Time help ratings*: player ratings
    • *@Match Time help badges*: badges and how to earn them
    • *@Match Time help reminders*: reminders
-   • *@Match Time help payments*: payment tracking
    • *@Match Time help schedule*: schedule & bookings
 
 ✅ Say *"In"* or *"Out"* to mark your own availability, no need to tag me.
@@ -3417,11 +3422,10 @@ Last step: which features do you want? Here's everything I can do:
 5. *Player ratings*: DMs each player a quick post-match rating link.
 6. *Personal reminders*: "@MatchTime remind me Monday" and the bot DMs you then.
 7. *Stats answers*: Answers history questions (top attenders, past MoMs, scores).
-8. *Payment tracking*: Tracks who has paid and chases the unpaid (opt-in).
-9. *Collect match fees (Stripe)*: After each match, DM each player a link to pay. Needs a connected bank (below).
-10. *  ↳ Pay by Bank*: Cheapest way to pay by link: £10.36 on a £10 fee. The recommended default.
-11. *  ↳ Card and Apple Pay*: Card, Apple Pay or Google Pay: £10.46 on a £10 fee.
-12. *  ↳ Pay organiser directly*: Cash/transfer; the money collector confirms receipt. No fee.
+8. *Collect match fees (Stripe)*: After each match, DM each player a link to pay. Needs a connected bank (below).
+9. *  ↳ Pay by Bank*: Cheapest way to pay by link: £10.36 on a £10 fee. The recommended default.
+10. *  ↳ Card and Apple Pay*: Card, Apple Pay or Google Pay: £10.46 on a £10 fee.
+11. *  ↳ Pay organiser directly*: Cash/transfer; the money collector confirms receipt. No fee.
 
 Reply with the ones you want, e.g. "Man of the Match and player ratings", "everything", or "all except payments".
 
@@ -3435,11 +3439,10 @@ I didn't catch which ones. Reply with the features you want:
 5. *Player ratings*: DMs each player a quick post-match rating link.
 6. *Personal reminders*: "@MatchTime remind me Monday" and the bot DMs you then.
 7. *Stats answers*: Answers history questions (top attenders, past MoMs, scores).
-8. *Payment tracking*: Tracks who has paid and chases the unpaid (opt-in).
-9. *Collect match fees (Stripe)*: After each match, DM each player a link to pay. Needs a connected bank (below).
-10. *  ↳ Pay by Bank*: Cheapest way to pay by link: £10.36 on a £10 fee. The recommended default.
-11. *  ↳ Card and Apple Pay*: Card, Apple Pay or Google Pay: £10.46 on a £10 fee.
-12. *  ↳ Pay organiser directly*: Cash/transfer; the money collector confirms receipt. No fee.
+8. *Collect match fees (Stripe)*: After each match, DM each player a link to pay. Needs a connected bank (below).
+9. *  ↳ Pay by Bank*: Cheapest way to pay by link: £10.36 on a £10 fee. The recommended default.
+10. *  ↳ Card and Apple Pay*: Card, Apple Pay or Google Pay: £10.46 on a £10 fee.
+11. *  ↳ Pay organiser directly*: Cash/transfer; the money collector confirms receipt. No fee.
 
 Reply with the ones you want, e.g. "Man of the Match and player ratings", "everything", or "all except payments".
 

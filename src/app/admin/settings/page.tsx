@@ -7,7 +7,7 @@ import { renameDraftClub, setOrgFeature, setOrgLanguage, setOrgTeamLabels, setWe
 import { WeeklyDeadlineRows, type DayTimeValue } from "@/components/settings/weekly-deadline-rows";
 import { t } from "@/lib/i18n/t";
 import { startCollectorOnboarding, refreshCollectorStatus, resetCollectorConnect, openCollectorDashboard, setPaymentHolder } from "@/app/actions/payments";
-import { FEATURE_META, type ToggleableKey } from "@/lib/org-features-meta";
+import { FEATURE_META, OFFERED_FEATURE_META, type ToggleableKey } from "@/lib/org-features-meta";
 import { LANGS, LANG_LABELS, normaliseLang, type Lang } from "@/lib/i18n/lang";
 import { AdminChannelSettings } from "@/components/settings/admin-channel-section";
 import { PickModeRows } from "@/components/settings/pick-mode-rows";
@@ -580,8 +580,9 @@ export default function SettingsPage() {
         <div className="p-6">
           <p className="text-sm text-slate-500 mb-4">{w.st_features_lead}</p>
           <div className="divide-y divide-slate-100">
-            {FEATURE_META.map((m) => {
-              const key = m.key as FeatureKey;
+            {/* Hidden switches (payment tracking, 2026-10-16) are left out. */}
+            {OFFERED_FEATURE_META.map((m) => {
+              const key = m.key;
               const on = org.features?.[key] ?? false;
               return (
                 <div
