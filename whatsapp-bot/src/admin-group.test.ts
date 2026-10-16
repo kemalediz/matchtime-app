@@ -103,6 +103,64 @@ describe("routeAdminGroupInbound", () => {
     expect(linkForwarded).toHaveLength(0);
   });
 
+  // "It should put a tick if it recognises a command" (Kemal, 2026-10-16).
+  describe("the server's ✅ on an admin's message", () => {
+    const reacting = (answer: Record<string, unknown> | null, outcome: { ok: true } | { ok: false; reason: "message-not-found" } = { ok: true }) => {
+      const reacts: Array<[string, string]> = [];
+      const sendReaction = vi.fn(async (id: string, emoji: string) => {
+        reacts.push([id, emoji]);
+        return outcome;
+      });
+      const { d, replies } = deps(
+        {
+          postAdminGroupMessage: async () => answer,
+          sendReaction,
+          read: async () => ({ groupId: HQ, messageId: `false_${HQ}_3EB0ABC_1@lid`, text: "@Match Time swap Sam and Alex", botMentioned: true, senderPhone: "", timestamp: "t" }),
+        },
+        [HQ],
+      );
+      return { d, replies, reacts };
+    };
+
+    it("is placed on the admin's own message, by the id the server was sent, through the shared reaction path", async () => {
+      const { d, reacts, replies } = reacting({ replyText: "✅ *Final teams*", react: "✅" });
+      await routeAdminGroupInbound(d, { from: HQ, body: "@Match Time swap Sam and Alex" });
+      expect(reacts).toEqual([[`false_${HQ}_3EB0ABC_1@lid`, "✅"]]);
+      expect(replies).toEqual(["✅ *Final teams*"]);
+    });
+
+    it("with no reply at all (a graphic queued): still the tick", async () => {
+      const { d, reacts, replies } = reacting({ replyText: null, react: "✅" });
+      await routeAdminGroupInbound(d, { from: HQ, body: "x" });
+      expect(reacts).toHaveLength(1);
+      expect(replies).toEqual([]);
+    });
+
+    it("no react in the answer (ignored chat, an older server, no answer): no tick", async () => {
+      for (const answer of [{ replyText: null }, { replyText: null, react: null }, null]) {
+        const { d, reacts } = reacting(answer);
+        await routeAdminGroupInbound(d, { from: HQ, body: "x" });
+        expect(reacts).toEqual([]);
+      }
+    });
+
+    it("a reaction WhatsApp refuses is logged, never posted as words, and the reply still goes", async () => {
+      const lines: string[] = [];
+      const { d, replies } = reacting({ replyText: "Done.", react: "✅" }, { ok: false, reason: "message-not-found" });
+      d.log = (l) => void lines.push(l);
+      await routeAdminGroupInbound(d, { from: HQ, body: "x" });
+      expect(replies).toEqual(["Done."]);
+      expect(lines.some((l) => l.includes("react") && l.includes("message-not-found"))).toBe(true);
+    });
+
+    it("a synthetic id (the real one was unreadable) is never sent to WhatsApp", async () => {
+      const { d, reacts } = reacting({ replyText: null, react: "✅" });
+      d.read = async () => ({ groupId: HQ, messageId: "synthetic:abc", text: "x", botMentioned: false, senderPhone: "", timestamp: "t" });
+      await routeAdminGroupInbound(d, { from: HQ, body: "x" });
+      expect(reacts).toEqual([]);
+    });
+  });
+
   it("a DM is never handled here", async () => {
     const { d } = deps({}, [HQ]);
     expect(await routeAdminGroupInbound(d, { from: "447700900102@c.us", body: "@Match Time admin group K7P3QX" })).toBe("not-handled");

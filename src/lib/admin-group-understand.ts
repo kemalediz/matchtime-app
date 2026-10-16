@@ -27,7 +27,11 @@
  *                         (`admin-group-ask-group.ts`)
  *   question, score,      one line: not from this group (an organiser
  *   admin_ops             clearly asked MatchTime; never silent on that)
- *   none, offer, unsure   nothing: the organisers' own conversation
+ *   unsure                addressed to MatchTime (an @tag, or a reply to
+ *                         its own message): the attendance engine, as in
+ *                         the players' group, else one line saying it did
+ *                         not catch that (2026-10-16). Otherwise nothing.
+ *   none, offer           nothing: the organisers' own conversation
  *
  * The caller (`admin-group.ts`) has proven the sender is an owner or admin
  * of a live club, claimed the message id, and tried the readers of
@@ -44,6 +48,7 @@ import { anthropicModel, type PipelineModel } from "./pipeline/llm";
 import type { Route } from "./pipeline/types";
 import { dayLabel } from "./i18n/dates";
 import { t } from "./i18n/t";
+import { messageMentionsBotExplicitly } from "./interaction-contract";
 import { handleAdminSquadChange, nameMentions } from "./admin-group-squad-change";
 import { answerTeamsYes, handleTeamCommand } from "./team-proposal";
 import { teamCommandFromFacts } from "./team-proposal-rules";
@@ -140,8 +145,18 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
       ],
       { capped, ...(input.deps?.routerModel ? { model: input.deps.routerModel } : {}) },
     );
-    const route = gate.routes.find((r) => r.messageId === messageId)?.route ?? null;
-    console.log(`[admin-group] ${messageId}: routed ${route ?? "nowhere"} (${pending.length} waiting${input.quoted ? ", a reply" : ""})`);
+    const routed = gate.routes.find((r) => r.messageId === messageId);
+    const route = routed?.route ?? null;
+    // The source says whether the model chose the route or a fallback did
+    // (a failed or unparseable router call is `unsure`, source "fallback").
+    // Without it the 2026-10-16 FNF incident could not tell the two apart.
+    console.log(
+      `[admin-group] ${messageId}: routed ${route ?? "nowhere"} by ${routed?.source ?? "nothing"} (${pending.length} waiting${input.quoted ? ", a reply" : ""})`,
+    );
+    for (const d of gate.degradations) console.log(`[admin-group] ${messageId}: router degradation: ${d.detail}`);
+    // Addressed to MatchTime: an @tag (never the bare word, which is talk
+    // ABOUT MatchTime), or a WhatsApp reply to MatchTime's own message.
+    const addressed = quotedIsMatchTime || messageMentionsBotExplicitly({ body: input.text });
     const base = { orgId: org.id, lang, messageId, senderUserId: input.adminUserId, now };
     const said = (outcome: string, replyText: string | null): Understood => ({ route, outcome, replyText });
 
@@ -229,8 +244,28 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
       case "score":
       case "admin_ops":
         return said("hq-not-here", s.hq_not_here);
+      case "unsure": {
+        // Not addressed to MatchTime: the organisers' own conversation.
+        if (!addressed) return null;
+        // Addressed, and the router could not tell what it does (or its
+        // call failed): the attendance engine, as in the players' group,
+        // then one line rather than silence (FNF, 2026-10-16).
+        if (weekly) {
+          const change = await handleAdminSquadChange({
+            ...base,
+            text: input.text,
+            namedBody: body,
+            mentionNames: input.mentionNames,
+            senderName: input.senderName,
+            sentAt: input.sentAt,
+            route,
+          });
+          if (change.handled) return said(change.outcome, change.replyText);
+        }
+        return said("hq-not-understood", s.hq_not_understood);
+      }
       default:
-        // none, offer, unsure, or no route at all: the organisers' own
+        // none, offer, or no route at all: the organisers' own
         // conversation, and it stays theirs (#269).
         return null;
     }

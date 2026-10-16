@@ -338,6 +338,7 @@ const SAMPLES: SampleArgs = {
   hq_confirm_which: { day: "Fri 16 Oct" },
   hq_nothing_waiting: null,
   hq_not_here: null,
+  hq_not_understood: null,
   group_ask_organiser: { open: 3, kickoffLabel: "Fri 19:15" },
   hq_group_asked: { open: 3 },
   hq_group_ask_full: { confirmed: 13, maxPlayers: 14, kickoffLabel: "Fri 19:15" },
