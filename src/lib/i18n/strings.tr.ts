@@ -984,7 +984,7 @@ export const tr: Strings = {
     if (f.momVoting) lines.push(`🏆 Maçtan sonra kısa bir *maçın adamı* oylaması yaparım.`);
     if (f.playerRating) lines.push(`⭐ Maçtan sonra tek dokunuşla *puanlama* bağlantısını özelden gönderirim.`);
     if (f.reminders) lines.push(`⏰ Hatırlatma mı lazım? *"@Match Time perşembe hatırlat"* yazın, o zaman size özelden yazarım.`);
-    if (f.paymentCollection) lines.push(`💷 Her maçtan sonra size özelden bir ödeme bağlantısı gönderirim: kart, Apple veya Google Pay ya da banka.`);
+    if (f.paymentCollection) lines.push(`💷 Her maçtan sonra size özelden maç ücreti için bir ödeme bağlantısı gönderirim.`);
     if (f.paymentTracking) lines.push(`💳 Kimin *ödediğini* takip ederim.`);
     if (!f.paymentTracking && !f.paymentCollection && f.feesNudge !== false) lines.push(`💷 Maç ücretlerini toplamak mı istiyorsunuz? Bana sorun: *@Match Time yardım ödeme*`);
     lines.push(`\nBunu tekrar görmek için istediğiniz zaman *"@Match Time yardım"* yazın.`);
@@ -1459,26 +1459,69 @@ export const tr: Strings = {
     );
   },
 
-  dm_fee_released: (p) =>
-    `✅ Tamam, *${p.matchName}* için kişi başı *${p.fee}* üzerinden ${p.released} ödeme linki gönderdim. ` +
-    `Oyuncular bankayla, kartla, Apple ya da Google Pay ile veya doğrudan sana ödeyebilir. Ödemeyenlere ben hatırlatırım.`,
+  // Rows 96, 95, 89 name only `availablePayMethods(org)` (FNF,
+  // 2026-10-16). The collector's name takes "ile", never a case suffix,
+  // so no name needs Turkish vowel harmony.
+  dm_fee_released: (p) => {
+    const online = [p.bank && "bankayla", p.card && "kartla, Apple ya da Google Pay ile"].filter(Boolean).join(", ");
+    const how =
+      online && p.direct
+        ? `Oyuncular ${online} veya doğrudan sana ödeyebilir. `
+        : online
+          ? `Oyuncular ${online} ödeyebilir. `
+          : p.direct
+            ? `Oyuncular doğrudan sana ödeyecek, ödediğini söyleyen olursa sana haber veririm. `
+            : "";
+    return (
+      `✅ Tamam, *${p.matchName}* için kişi başı *${p.fee}* üzerinden ${p.released} ödeme linki gönderdim. ` +
+      `${how}Ödemeyenlere ben hatırlatırım.`
+    );
+  },
 
   dm_fee_cancelled: "Sorun değil, iptal ettim. Hazır olunca kişi başı tutarı yazman yeterli.",
 
-  dm_pay_link: (p) =>
-    `💷 ${p.firstName ? `${p.firstName}, ` : ""}*${p.activityName}* için maç ücreti *${p.fee}*.\n\n` +
-    `Ödemek için dokun (banka, kart, Apple ya da Google Pay, ya da doğrudan organizatöre):\n${p.url}\n\n` +
-    `Getirdiğin misafirlerin ücretini de buradan ödeyebilirsin.`,
+  dm_pay_link: (p) => {
+    const direct = p.collector ? `doğrudan ${p.collector} ile` : "doğrudan organizatöre";
+    const online = [p.bank && "banka", p.card && "kart, Apple ya da Google Pay"].filter(Boolean).join(", ");
+    const how =
+      online && p.direct
+        ? `Ödemek için dokun (${online}, ya da ${direct}):`
+        : online
+          ? p.card
+            ? `Ödemek için dokun (${online}):`
+            : `Bankayla ödemek için dokun:`
+          : p.direct
+            ? `Ödemeyi doğrudan ${p.collector ?? "organizatör"} ile, nakit ya da havaleyle hallediyorsun. ` +
+              `Ne kadar ödeyeceğini görmek ve ödeyince bana haber vermek için dokun:`
+            : `Ne kadar ödeyeceğini görmek için dokun:`;
+    const guests = online
+      ? `\n\nGetirdiğin misafirlerin ücretini de buradan ödeyebilirsin.`
+      : p.direct
+        ? `\n\nGetirdiğin misafirlerin ücretini de birlikte ödeyebilirsin.`
+        : "";
+    const howTo = p.direct && p.instructions ? `\n\nÖdeme bilgisi: ${p.instructions}` : "";
+    return (
+      `💷 ${p.firstName ? `${p.firstName}, ` : ""}*${p.activityName}* için maç ücreti *${p.fee}*.\n\n` +
+      `${how}\n${p.url}${howTo}${guests}`
+    );
+  },
 
   dm_pay_chase: (p) => {
     const phrase = p.dayNum <= 1 ? "kısa bir not" : p.dayNum === 2 ? "nazik bir hatırlatma" : "tekrar hatırlatıyorum";
-    const opener = p.firstName
-      ? `${p.firstName}, ${phrase}`
-      : phrase.charAt(0).toLocaleUpperCase("tr") + phrase.slice(1);
-    return (
-      `💷 ${opener}: *${p.activityName}* için *${p.fee}* ödemen hâlâ açık.\n\n` +
-      `Bankayla, kartla, Apple ya da Google Pay ile veya doğrudan organizatöre ödeyebilirsin:\n${p.url}`
-    );
+    const cap = (s: string) => s.charAt(0).toLocaleUpperCase("tr") + s.slice(1);
+    const opener = p.firstName ? `${p.firstName}, ${phrase}` : cap(phrase);
+    const direct = p.collector ? `doğrudan ${p.collector} ile` : "doğrudan organizatöre";
+    const online = [p.bank && "bankayla", p.card && "kartla, Apple ya da Google Pay ile"].filter(Boolean).join(", ");
+    const how =
+      online && p.direct
+        ? cap(`${online} veya ${direct} ödeyebilirsin:`)
+        : online
+          ? cap(`${online} ödeyebilirsin:`)
+          : p.direct
+            ? cap(`${direct} ödeyebilirsin, ödeyince buradan bana haber ver:`)
+            : `Ne kadar ödeyeceğini görmek için dokun:`;
+    const howTo = p.direct && p.instructions ? `\n\nÖdeme bilgisi: ${p.instructions}` : "";
+    return `💷 ${opener}: *${p.activityName}* için *${p.fee}* ödemen hâlâ açık.\n\n${how}\n${p.url}${howTo}`;
   },
 
   dm_direct_pay_nudge: (p) =>
@@ -2157,6 +2200,8 @@ export const tr: Strings = {
   ag_sq_nothing: "Değişecek bir şey yok: kadro zaten öyle.",
   ag_sq_unknown: (p: { name: string }): string =>
     `${p.name} adında birini henüz tanımıyorum. Eklemek için "${p.name} var" yazın.`,
+  ag_sq_not_set: (p: { when: string; day: string; time: string }): string =>
+    `${p.when} listesi henüz belli değil: geçen haftanın kadrosu ${p.day} saat ${p.time} itibarıyla aktarılacak. Ondan sonra tekrar yazın.`,
   ag_sq_self_hint_out: (p: { name: string; when: string }): string =>
     `${p.when} kadrosundan çıkmak isterseniz "${p.name} yok" yazın.`,
   ag_sq_self_hint_in: (p: { name: string; when: string }): string =>
@@ -2909,6 +2954,9 @@ export const tr: Strings = {
   msq_err_price: "8 veya 7.50 gibi bir ücret girin, en fazla £100.",
   msq_err_days: "1 ile 28 arasında tam bir gün sayısı girin.",
   msq_err_long: "Ödeme talimatı 500 karakteri geçmesin.",
+  pi_weekly_blurb:
+    "Para toplayan kişiye doğrudan nasıl ödeneceğini anlatan kendi cümleleriniz, örneğin banka bilgileri. Oyuncular doğrudan ödeyebildiğinde ödeme sayfasında, ödeme linkinde ve hatırlatmalarda gösterilir. İsteğe bağlı.",
+  pi_pay_heading: (p) => (p.collector ? `Doğrudan ${p.collector} ile ödeme` : "Doğrudan organizatöre ödeme"),
 
   mth_nav: "Aylar",
   mth_page_title: "Aylar",

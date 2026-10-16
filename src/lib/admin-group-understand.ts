@@ -39,6 +39,15 @@
  *                         not catch that (2026-10-16). Otherwise nothing.
  *   none, offer           nothing: the organisers' own conversation
  *
+ * A WhatsApp reply to ANOTHER organiser's message, with no @tag, is the
+ * organisers' own conversation whatever the route (FNF HQ, 2026-10-16
+ * 23:49: "Imti Rafi AH back" between organisers was routed other_att and got
+ * a tick and "I don't know AH yet"). Only approve (the safe-YES rule) and
+ * the score keep their own rules for it. A squad change says something back
+ * for a claim it did not apply only when the message was addressed to
+ * MatchTime (`buildAdminSquadReply`), and the next game's list is not
+ * changed before the rolling squad is carried over (`rollingSeedPendingAt`).
+ *
  * The caller (`admin-group.ts`) has found the club live, claimed the
  * message id, and, for an owner or admin, tried the readers of STRUCTURED
  * data first (a PAID digest answer, a pick from MatchTime's numbered list,
@@ -60,7 +69,6 @@ import { anthropicModel, type PipelineModel } from "./pipeline/llm";
 import type { Route } from "./pipeline/types";
 import { dayLabel } from "./i18n/dates";
 import { t } from "./i18n/t";
-import { messageMentionsBotExplicitly } from "./interaction-contract";
 import { handleAdminSquadChange, nameMentions } from "./admin-group-squad-change";
 import { answerTeamsYes, handleTeamCommand } from "./team-proposal";
 import { teamCommandFromFacts } from "./team-proposal-rules";
@@ -69,7 +77,7 @@ import { answerGraphicRequest } from "./admin-group-graphics";
 import { buildHqHelp, hqHelpGates } from "./admin-group-help";
 import { hqLogSince, listAskRef, recordMatchTimeQuestion, teamsAskRef } from "./admin-group-log";
 import { WHICH_ASK_REF, decideApproval, matchQuoted, type QuotedMessage } from "./admin-group-confirm-rules";
-import { organisersContext, type PendingWithLabel } from "./admin-group-context";
+import { hqAddressing, organisersContext, type PendingWithLabel } from "./admin-group-context";
 import { answerPartnerAskYes, parsePartnerAskRef, partnerAskRef, partnerAsksAwaitingApproval } from "./partner-ask";
 import { askPlayersGroup } from "./admin-group-ask-group";
 import { answerHqQuestion } from "./admin-group-question";
@@ -168,7 +176,11 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
     const quotedIsMatchTime = !!input.quoted && (input.quoted.fromMatchTime === true || (!!input.quoted.text && !!matchQuoted(input.quoted.text, log)));
     // Addressed to MatchTime: an @tag (never the bare word, which is talk
     // ABOUT MatchTime), or a WhatsApp reply to MatchTime's own message.
-    const addressed = quotedIsMatchTime || messageMentionsBotExplicitly({ body: input.text });
+    // A WhatsApp reply to ANOTHER organiser's message, with no @tag, is the
+    // organisers talking to each other (FNF HQ 2026-10-16 23:49, "Imti Rafi
+    // AH back" quoting an organiser about next week, routed other_att, got
+    // a tick and "I don't know AH yet"). Nothing MatchTime does from it.
+    const { addressed, toAnotherOrganiser } = hqAddressing({ text: input.text, quoted: input.quoted, quotedIsMatchTime });
     // The score MatchTime is waiting for, and the answers and corrections
     // that go to `score` whatever the model says (`admin-group-score.ts`).
     const score = await hqScoreRouting({
@@ -245,6 +257,15 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
       if (r === "organisers-only") return notYours();
       return r ? { route: "score", outcome: r.outcome, replyText: r.replyText } : null;
     };
+
+    // The safe-YES rule and the score keep their own rules for a quoted
+    // message (a YES quoting another organiser is already silent there; a
+    // scoreline answering "what was the score?" is still the score).
+    const scorelineWhileWaiting = !!score.waiting && hasScorelineShape(body);
+    if (toAnotherOrganiser && route !== "approve" && route !== "score" && !(route === "unsure" && scorelineWhileWaiting)) {
+      console.log(`[admin-group] ${messageId}: a reply to another organiser, not tagged: their conversation`);
+      return null;
+    }
 
     switch (route) {
       case "approve": {
@@ -345,6 +366,7 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
           senderName: input.senderName,
           sentAt: input.sentAt,
           route,
+          addressed,
         });
         return change.handled ? said(change.outcome, change.replyText) : null;
       }
@@ -364,7 +386,7 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
         // score, that the router could not place: the score handling
         // reads it, and records only what is clear (2026-10-16 live check:
         // the router sent that Turkish message to `unsure`).
-        if (score.waiting && hasScorelineShape(body)) return scoreHere();
+        if (scorelineWhileWaiting) return scoreHere();
         // Not addressed to MatchTime: the organisers' own conversation.
         if (!addressed) return null;
         // Addressed, and the router could not tell what it does (or its
@@ -380,6 +402,7 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
             senderName: input.senderName,
             sentAt: input.sentAt,
             route,
+            addressed,
           });
           if (change.handled) return said(change.outcome, change.replyText);
         }

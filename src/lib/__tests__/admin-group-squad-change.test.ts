@@ -32,6 +32,13 @@ const tentative = vi.hoisted(() => ({ recordTentative: vi.fn(), resolveTentative
 vi.mock("@/lib/tentative-store", () => tentative);
 const prov = vi.hoisted(() => ({ resolveOrProvisionByName: vi.fn() }));
 vi.mock("@/lib/resolve-or-provision-name", () => prov);
+// The engine's own squad loader, and whether the rolling squad of the match
+// it picks is still to be carried over (2026-10-17). Called only when a
+// test's engine double calls `deps.loadState`, as the real runner does.
+const loadState = vi.hoisted(() => ({ loadSquadState: vi.fn() }));
+vi.mock("@/lib/pipeline/load-state", () => loadState);
+const rolling = vi.hoisted(() => ({ rollingSeedPendingAt: vi.fn() }));
+vi.mock("@/lib/rolling-squad", () => rolling);
 
 import { handleAdminSquadChange } from "../admin-group-squad-change";
 import type { AttendanceFacts, Claim, Route, SquadState } from "../pipeline/types";
@@ -322,7 +329,7 @@ describe("handleAdminSquadChange", () => {
     expect(await handleAdminSquadChange({ ...input, route, text: "my ankle is wrecked" })).toEqual({ handled: false, why: "not-a-squad-change" });
   });
 
-  it("a plain self OUT said in conversation by a confirmed organiser: no write, one line with the command", async () => {
+  it("a plain self OUT said to MatchTime by a confirmed organiser: no write, one line with the command", async () => {
     routed("self_att");
     statuses.set("u-admin", "CONFIRMED");
     engineDoes(
@@ -331,9 +338,21 @@ describe("handleAdminSquadChange", () => {
       },
       { claimCount: 0 },
     );
-    const r = await handleAdminSquadChange({ ...input, route, senderName: "Omar", text: "won't be around on friday" });
+    const r = await handleAdminSquadChange({ ...input, route, addressed: true, senderName: "Omar", text: "@Match Time won't be around on friday" });
     expect(r).toEqual({ handled: true, outcome: "squad-question", replyText: 'To take yourself out of Fri 20:30, write "Omar out".' });
     expect(att.cancelAttendance).not.toHaveBeenCalled();
+  });
+
+  it("the same said in the organisers' own conversation (not addressed): silence", async () => {
+    routed("self_att");
+    statuses.set("u-admin", "CONFIRMED");
+    engineDoes(
+      async (a) => {
+        vetThrough(a, [self({ polarity: "out" })], [{ userId: "u-admin", status: "CONFIRMED", position: 1 }]);
+      },
+      { claimCount: 0 },
+    );
+    expect(await handleAdminSquadChange({ ...input, route, senderName: "Omar", text: "won't be around on friday" })).toEqual({ handled: false, why: "not-a-squad-change" });
   });
 
   it("the same said by an organiser not in the squad: silence (not a false 'Nothing to change')", async () => {
@@ -342,12 +361,84 @@ describe("handleAdminSquadChange", () => {
     expect(await handleAdminSquadChange({ ...input, route, senderName: "Omar", text: "won't be around on friday" })).toEqual({ handled: false, why: "not-a-squad-change" });
   });
 
-  it("a name nobody in the club has, said in passing: no write, says it does not know them and how to add them", async () => {
+  it("a name nobody in the club has, said in passing to MatchTime: no write, says it does not know them and how to add them", async () => {
     routed("other_att");
     engineDoes(async (a) => void vetThrough(a, [claim({ personRef: "Zayn" })], []), { claimCount: 0 });
-    const r = await handleAdminSquadChange({ ...input, route, text: "Zayn is around again" });
+    const r = await handleAdminSquadChange({ ...input, route, addressed: true, text: "@Match Time Zayn is around again" });
     expect(r).toEqual({ handled: true, outcome: "squad-question", replyText: 'I don\'t know Zayn yet. To add them, write "put Zayn in".' });
     expect(prov.resolveOrProvisionByName).not.toHaveBeenCalled();
+  });
+
+  // FNF HQ, 2026-10-16 23:49 London (prod logs: "routed other_att by model
+  // (0 waiting, a reply)", "3 of 3 claim(s) held", "0 change(s) ...
+  // squad-question" on next week's match): organisers talking about next
+  // week. Nothing was written, yet HQ got a tick and "I don't know AH yet".
+  it("the incident: 'Imti Rafi AH back', organisers' chat, every claim held: silence, nothing written", async () => {
+    routed("other_att");
+    engineDoes(
+      async (a) => {
+        const kept = vetThrough(a, [claim({ personRef: "Imti" }), claim({ personRef: "Rafi" }), claim({ personRef: "AH", confidence: 0.6 })], [], "Imti Rafi AH back");
+        expect(kept.claims).toEqual([]);
+      },
+      { claimCount: 0 },
+    );
+    expect(await handleAdminSquadChange({ ...input, route, text: "Imti Rafi AH back" })).toEqual({ handled: false, why: "not-a-squad-change" });
+    expect(att.registerAttendance).not.toHaveBeenCalled();
+    expect(prov.resolveOrProvisionByName).not.toHaveBeenCalled();
+  });
+
+  describe("the next game's list is not set yet (rolling squad still to carry over)", () => {
+    const DUE = new Date("2026-10-17T07:00:00Z"); // 08:00 London, Saturday
+    beforeEach(() => {
+      loadState.loadSquadState.mockResolvedValue({ matchId: MATCH_ID });
+      rolling.rollingSeedPendingAt.mockResolvedValue(DUE);
+    });
+
+    it("a clear instruction: nothing written, one line saying the list is not set yet and when it will be", async () => {
+      routed("other_att");
+      statuses.set("u-shehryar", "CONFIRMED");
+      engineDoes(
+        async (a) => {
+          await a.deps.loadState!("org-fnf", input.now);
+          const kept = vetThrough(a, [claim({ personRef: "Shehryar", polarity: "out" })], []);
+          expect(kept.claims).toEqual([]);
+        },
+        { claimCount: 0 },
+      );
+      const r = await handleAdminSquadChange({ ...input, route });
+      expect(r).toEqual({
+        handled: true,
+        outcome: "squad-not-set",
+        replyText: "The list for Fri 20:30 isn't set yet: last week's squad carries over at 08:00 on Saturday. Send it again after that.",
+      });
+      expect(rolling.rollingSeedPendingAt).toHaveBeenCalledWith(MATCH_ID, input.now);
+      expect(att.cancelAttendance).not.toHaveBeenCalled();
+    });
+
+    it("chatter about it: silence", async () => {
+      routed("other_att");
+      engineDoes(
+        async (a) => {
+          await a.deps.loadState!("org-fnf", input.now);
+          vetThrough(a, [claim({ personRef: "Zayn" })], [], "Zayn is back");
+        },
+        { claimCount: 0 },
+      );
+      expect(await handleAdminSquadChange({ ...input, route, text: "Zayn is back" })).toEqual({ handled: false, why: "not-a-squad-change" });
+    });
+
+    it("the list is set (nothing pending): applied as usual", async () => {
+      rolling.rollingSeedPendingAt.mockResolvedValue(null);
+      routed("other_att");
+      statuses.set("u-shehryar", "CONFIRMED");
+      engineDoes(async (a) => {
+        await a.deps.loadState!("org-fnf", input.now);
+        const kept = vetThrough(a, [claim({ personRef: "Shehryar", polarity: "out" })], []);
+        expect(kept.claims).toHaveLength(1);
+        await a.deps.cancelAttendance("u-shehryar", MATCH_ID, { cause: "admin-message", actorKind: "admin", actorUserId: "u-admin", sourceRef: "wa-1" });
+      });
+      expect((await handleAdminSquadChange({ ...input, route }))?.handled).toBe(true);
+    });
   });
 
   it("a member mentioned in passing: silence", async () => {

@@ -52,6 +52,8 @@ import {
   buildRatingReminderDm,
   buildTentativeFollowupDm,
 } from "./dm-copy";
+import { PAY_METHOD_SELECT, availablePayMethods, directPayInstructions } from "./payments";
+import { payCollectorName } from "./direct-payment";
 import { isNextUpcomingForPosting } from "./next-upcoming-match";
 import { isSameRecurringFixture } from "./match-slot";
 import { buildMomAnnouncement } from "./mom-announcement";
@@ -1216,6 +1218,14 @@ async function getMatchesForScheduler(orgId: string, windowStart: Date, now: Dat
             select: {
               paymentCollectionEnabled: true,
               paymentHolderId: true,
+              // The daily pay chase names only the ways the club can
+              // take payment (`availablePayMethods`, FNF 2026-10-16).
+              ...PAY_METHOD_SELECT,
+              // And the club's own words on paying the collector directly
+              // (one line, only when direct is offered, 2026-10-16). Not for
+              // a monthly club (`squadMode`, read by `directPayInstructions`).
+              paymentInstructions: true,
+              squadMode: true,
               // The weekly-rhythm unpaid reminder (2026-10-01) is gated on it.
               paymentTrackingEnabled: true,
               teamLabels: true,
@@ -2997,6 +3007,12 @@ async function computeForMatch(
     ) {
       const dayKey = londonDateKey(now);
       const dayNum = Math.max(1, Math.ceil(daysSinceRelease));
+      // The chase names only the ways the club can take payment, and the
+      // collector by name (FNF, 2026-10-16). The name is looked up once,
+      // only when somebody is actually chased.
+      const payMethods = availablePayMethods(activity.org);
+      const payInstructions = directPayInstructions(activity.org);
+      let chaseCollectorName: string | null | undefined;
 
       // Players paying electronically (or undecided) — re-send the link.
       for (const a of confirmed) {
@@ -3013,6 +3029,12 @@ async function computeForMatch(
           nextPath: `/pay/${matchId}`,
           ttlSeconds: MAGIC_LINK_TTL.bookmark,
         });
+        if (chaseCollectorName === undefined) {
+          const holderId = activity.org.paymentHolderId;
+          chaseCollectorName =
+            m.attendances.find((x) => x.userId === holderId)?.user.name?.trim() ||
+            (await payCollectorName(holderId).catch(() => null));
+        }
         out.push({
           kind: "dm",
           key,
@@ -3025,6 +3047,9 @@ async function computeForMatch(
             fee: m.feePerPlayer,
             activityName: activity.name,
             url: await buildShortMagicLinkUrl(token),
+            methods: payMethods,
+            collectorName: chaseCollectorName,
+            instructions: payInstructions,
             lang,
           }),
         });

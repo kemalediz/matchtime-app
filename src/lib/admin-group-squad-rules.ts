@@ -348,7 +348,10 @@ export type AdminClaimHold =
   /** below the engine's confidence floor. */
   | "unsure"
   /** a statement in conversation, not a command. */
-  | "not-a-command";
+  | "not-a-command"
+  /** an instruction, but the game's list is not set yet: the rolling
+   *  squad is still to be carried over (2026-10-17). */
+  | "not-set";
 
 /** Words that carry no instruction and no content either way. Folded. */
 const HQ_FILLER = new Set([
@@ -499,6 +502,9 @@ export function vetAdminGroupFacts(p: {
   senderUserId: string;
   senderName: string | null;
   bareDeclaration: boolean;
+  /** The game's list is not set yet (`rollingSeedPendingAt`): nothing is
+   *  applied, and an instruction is held as "not-set". */
+  listNotSet?: boolean;
   resolve: (ref: string) => AdminClaimRef;
   statusOf: (userId: string) => SquadStatus | null;
 }): { facts: AttendanceFacts; vetted: VettedClaim[] } {
@@ -507,10 +513,11 @@ export function vetAdminGroupFacts(p: {
     const ref: AdminClaimRef = self
       ? { kind: "member", userId: p.senderUserId, name: p.senderName ?? "?" }
       : p.resolve(claim.personRef ?? "");
+    const hold = adminClaimHold({ body: p.body, claim, claims: p.facts.claims, senderName: p.senderName, bareDeclaration: p.bareDeclaration });
     return {
       claim,
       self,
-      hold: adminClaimHold({ body: p.body, claim, claims: p.facts.claims, senderName: p.senderName, bareDeclaration: p.bareDeclaration }),
+      hold: hold === null && p.listNotSet ? "not-set" : hold,
       ref,
       before: ref.kind === "member" ? p.statusOf(ref.userId) : null,
     };
@@ -524,7 +531,7 @@ export function vetAdminGroupFacts(p: {
 /** What `admin-group-squad-change.ts` reports as the message's outcome.
  *  "squad-question": nothing written; the line says how to make the change
  *  or asks for a full name. */
-export type AdminSquadReplyOutcome = "squad-changed" | "squad-unchanged" | "squad-change-failed" | "squad-question";
+export type AdminSquadReplyOutcome = "squad-changed" | "squad-unchanged" | "squad-change-failed" | "squad-question" | "squad-not-set";
 
 function wantedStatus(polarity: Claim["polarity"]): SquadStatus {
   return polarity === "in" ? "CONFIRMED" : polarity === "bench" ? "BENCH" : "DROPPED";
@@ -546,14 +553,23 @@ function alreadySo(v: VettedClaim): boolean {
  *   - An explicit claim about a member that did not move and is not
  *     already so: "I couldn't change X".
  *   - An explicit claim two members could mean: "use the full name".
+ *   - The game's list not set yet (`notSet`, the rolling squad still to
+ *     carry over): nothing was applied; one line saying so and when, for
+ *     an instruction or a message addressed to MatchTime. Chatter: silence.
+ *
+ * Only when the message was ADDRESSED to MatchTime (an @tag, or a reply to
+ * its own message; FNF HQ 2026-10-16, "Imti Rafi AH back" between
+ * organisers got "I don't know AH yet"), for a claim that was held:
+ *
  *   - A name nobody in the club has, said in passing as coming in: "I
  *     don't know X yet", with the command that adds them.
- *   - The sender saying plainly, in conversation, that they are out (or
- *     in), when that would change the squad: one line with the command
- *     that does it. Never a write, and never a YES question: a YES in HQ
- *     answers whatever list or teams are waiting.
- *   - Anything else held (tentative, contingent, availability, past,
- *     relayed, unsure): silence.
+ *   - The sender saying plainly that they are out (or in), when that would
+ *     change the squad: one line with the command that does it. Never a
+ *     write, and never a YES question: a YES in HQ answers whatever list or
+ *     teams are waiting.
+ *
+ * Anything else held (tentative, contingent, availability, past, relayed,
+ * unsure, or any held claim not addressed to MatchTime): silence.
  */
 export function buildAdminSquadReply(p: {
   lang: string | null | undefined;
@@ -566,8 +582,17 @@ export function buildAdminSquadReply(p: {
   vetted: VettedClaim[];
   kickoffLabel: string;
   senderName: string | null;
+  /** An @tag, or a reply to MatchTime's own message. Absent: not addressed. */
+  addressed?: boolean;
+  /** The game's list is not set yet: when the squad carries over, labelled. */
+  notSet?: { day: string; time: string } | null;
 }): { text: string; outcome: AdminSquadReplyOutcome } | null {
   const s = t(p.lang);
+  if (p.notSet) {
+    return p.addressed || p.vetted.some((v) => v.hold === "not-set")
+      ? { text: s.ag_sq_not_set({ when: p.kickoffLabel, day: p.notSet.day, time: p.notSet.time }), outcome: "squad-not-set" }
+      : null;
+  }
   const kept = p.vetted.filter((v) => v.hold === null);
   const moved = new Set(p.movedUserIds ?? []);
   const changedNames = new Set(p.changes.map((c) => c.name));
@@ -594,6 +619,7 @@ export function buildAdminSquadReply(p: {
   const strangers = [
     ...new Set(
       p.vetted.flatMap((v) =>
+        p.addressed === true &&
         v.hold !== null &&
         v.hold !== "contingent" &&
         v.hold !== "not-now" &&
@@ -615,7 +641,7 @@ export function buildAdminSquadReply(p: {
       (v.claim.polarity === "in" || v.claim.polarity === "out") &&
       !alreadySo(v),
   );
-  if (ownHeld && !kept.some((v) => v.self)) {
+  if (p.addressed === true && ownHeld && !kept.some((v) => v.self)) {
     const name = ownHeld.ref.kind === "member" ? ownHeld.ref.name : (p.senderName ?? "?");
     parts.push(
       ownHeld.claim.polarity === "out"
