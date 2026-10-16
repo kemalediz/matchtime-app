@@ -7,8 +7,9 @@
  *   1. Anything in a club's linked ADMIN group. Forwarded at once (no
  *      10-minute batch) to /api/whatsapp/admin-group, flagged as the admin
  *      channel, and NEVER recorded in the analysis history or enqueued for
- *      analyze. That route has no model path. The server answers with an
- *      optional reply, posted in the same group.
+ *      analyze. The server answers with an optional reply, posted in the
+ *      same group, and an optional reaction (✅ on a message it acted on,
+ *      2026-10-16), placed on the admin's message.
  *   2. "@Match Time admin group CODE" (or "yönetici grubu") in any other
  *      group, a silent one included. This is the one narrow exception to
  *      the silence rail: only a message shaped exactly like the command
@@ -24,6 +25,7 @@
  * server's src/lib/admin-channel-rules.ts; keep the two in step.
  */
 import type { AdminGroupAnswer, AdminGroupForward } from "./api.js";
+import { describeReactionFailure, planReaction, type ReactionOutcome } from "./react-with-id.js";
 
 const LINK_COMMAND =
   /(?<![\p{L}\p{N}])(?:admin\s+group|y[oö]netici\s+grub[uü])\s*[:\-]?\s*([a-z0-9]{6})(?![\p{L}\p{N}])/u;
@@ -54,7 +56,31 @@ export interface AdminGroupInboundDeps {
   postAdminGroupLink(msg: AdminGroupForward): Promise<AdminGroupAnswer | null>;
   /** Post a reply in the same group. */
   reply(text: string): Promise<unknown>;
+  /** Place an emoji on a message by its id: the driver's `sendReaction`,
+   *  the same path the players' group reacts through. Never throws. */
+  sendReaction?(waMessageId: string, emoji: string): Promise<ReactionOutcome>;
   log?(line: string): void;
+}
+
+/**
+ * The server's tick on an admin's message it acted on (2026-10-16), placed
+ * by the id the Pi forwarded, exactly as the players' group reacts
+ * (`planReaction`, then the driver's `sendReaction`). A reaction that does
+ * not land is logged and nothing is said in the group.
+ */
+async function postReaction(deps: AdminGroupInboundDeps, messageId: string, answer: AdminGroupAnswer | null): Promise<void> {
+  const emoji = typeof answer?.react === "string" ? answer.react : "";
+  if (!emoji || !deps.sendReaction) return;
+  const log = deps.log ?? console.error;
+  const plan = planReaction(messageId, emoji);
+  if (plan.action === "skip") {
+    log(`[admin-group] react ${emoji} skipped for ${messageId}: ${plan.reason}`);
+    return;
+  }
+  const outcome = await deps.sendReaction(plan.messageId, plan.emoji);
+  if (!outcome.ok) {
+    log(`[admin-group] react ${plan.emoji} failed for ${plan.messageId}: ${outcome.reason} (${describeReactionFailure(outcome.reason)})`);
+  }
 }
 
 export type AdminGroupRoute = "admin-group" | "link-command" | "not-handled";
@@ -81,6 +107,7 @@ export async function routeAdminGroupInbound(
     if (!msg) return "admin-group";
     const answer = await deps.postAdminGroupMessage(msg);
     log(`[admin-group] forwarded ${msg.messageId} from ${head.from}`);
+    await postReaction(deps, msg.messageId, answer);
     await postReply(deps, answer);
     return "admin-group";
   }

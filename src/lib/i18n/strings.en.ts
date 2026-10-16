@@ -1358,6 +1358,9 @@ export const en = {
   hq_nothing_waiting: `There's nothing waiting for a YES right now.`,
   /** An admin asked MatchTime for something the admin group cannot do. */
   hq_not_here: `I can't do that from this group. Ask *what can you do?* to see what I can do here.`,
+  /** A message addressed to MatchTime in the admin group (an @tag, or a
+   *  reply to its own message) that it could not read as anything it does. */
+  hq_not_understood: `I didn't catch what you'd like me to do. Ask *what can you do?* to see what I can do here.`,
   // ── An organiser asks MatchTime, in HQ, to ask the players' group for a
   //    player (2026-10-16, admin-group-ask-group.ts). A first-come club's
   //    post is `slot_opened`, unchanged. ──

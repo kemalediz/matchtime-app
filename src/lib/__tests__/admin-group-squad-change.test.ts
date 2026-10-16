@@ -207,7 +207,7 @@ describe("handleAdminSquadChange", () => {
     expect(r).toMatchObject({ replyText: "Tamam: Shehryar çıktı. 17/18." });
   });
 
-  it.each(["none", "question", "balancer", "admin_ops", "score", "unsure", "offer"])(
+  it.each(["none", "question", "balancer", "admin_ops", "score", "offer"])(
     "routed %s: no engine, no reply",
     async (route) => {
       routed(route);
@@ -215,6 +215,14 @@ describe("handleAdminSquadChange", () => {
       expect(engine.runAttendanceEngineBatch).not.toHaveBeenCalled();
     },
   );
+
+  it("routed unsure (the caller hands it over only when addressed to MatchTime): the engine reads it, as in the players' group", async () => {
+    routed("unsure");
+    engineDoes(async () => {}, { claimCount: 0 });
+    await handleAdminSquadChange({ ...input, route: "unsure" });
+    expect(engine.runAttendanceEngineBatch).toHaveBeenCalledTimes(1);
+    expect((engine.runAttendanceEngineBatch.mock.calls[0][0] as EngineArgs).messages[0].route).toBe("unsure");
+  });
 
   it("at the daily AI cap: the engine is told, so only the floor reads it", async () => {
     budget.getAiBudgetStatus.mockResolvedValue({ capped: true });

@@ -227,7 +227,9 @@ test("the second YES: 'Teams are final.', TEAMS_PUBLISHED, nothing posted in the
   expect(await say(request, "yes")).toMatchObject({ handled: false, replyText: null });
 });
 
-test("after approval, a drop-out is told to the admin group once, with the teams", async ({ request, db }) => {
+test("after approval, a drop-out is told to the admin group once, with the teams; the updated team sheet follows on its own", async ({ request, db }) => {
+  // The approved team sheet went out (the Pi's ack), as at FNF on 2026-10-16.
+  await db.run(`UPDATE "BotJob" SET "sentAt" = now() WHERE "orgId" = $1 AND text LIKE 'Ready to post:%teams%'`, [ORG_ID]);
   await db.run(`UPDATE "Attendance" SET status = 'DROPPED' WHERE "matchId" = $1 AND "userId" = $2`, [MATCH.upcoming, U.third]);
   const ins = await poll(request, londonAt(0, 20, 40));
   const notice = teamText(ins, /Team change/);
@@ -235,7 +237,40 @@ test("after approval, a drop-out is told to the admin group once, with the teams
   expect(notice[0].kind).toBe("admin-group-message");
   expect(notice[0].text).toMatch(/Tom Third is out, (Red|Yellow) has a place open\./);
   expect(notice[0].text).toContain("✅ *Final teams*");
-  expect(teamText(await poll(request, londonAt(0, 20, 45)), /Team change/)).toEqual([]);
+
+  // "Poster generation should be automated as soon as the teams are final.
+  // no need for any extra command" (Kemal, 2026-10-16). The updated team
+  // sheet is queued by the poll that told the change, for 2 quiet minutes on.
+  const waiting = () =>
+    // Epoch milliseconds: the column holds UTC without a zone, and a Date
+    // read back would be shifted by the machine's own zone.
+    db.all<{ id: string; sendAfter: string | null }>(
+      `SELECT id, (EXTRACT(EPOCH FROM "sendAfter") * 1000)::bigint::text AS "sendAfter" FROM "BotJob" WHERE "orgId" = $1 AND kind = 'admin-group' AND text LIKE 'Ready to post:%teams%' AND "sentAt" IS NULL`,
+      [ORG_ID],
+    );
+  const queued = await waiting();
+  expect(queued).toHaveLength(1);
+  expect(Number(queued[0].sendAfter)).toBe(londonAt(0, 20, 42).getTime());
+  expect(teamText(ins, /Ready to post/)).toEqual([]);
+
+  // Another change inside the quiet period (Tom back): told, and the SAME
+  // sheet waits longer instead of a second one.
+  await db.run(`UPDATE "Attendance" SET status = 'CONFIRMED' WHERE "matchId" = $1 AND "userId" = $2`, [MATCH.upcoming, U.third]);
+  const at41 = await poll(request, londonAt(0, 20, 41));
+  expect(teamText(at41, /Team change/)).toHaveLength(1);
+  expect(teamText(at41, /Ready to post/)).toEqual([]);
+  const later = await waiting();
+  expect(later.map((j) => j.id)).toEqual([queued[0].id]);
+  expect(Number(later[0].sendAfter)).toBe(londonAt(0, 20, 43).getTime());
+  expect(teamText(await poll(request, londonAt(0, 20, 42)), /Ready to post/)).toEqual([]);
+
+  // Then once, with the image, and nothing more to tell.
+  const at45 = await poll(request, londonAt(0, 20, 45));
+  expect(teamText(at45, /Team change/)).toEqual([]);
+  const sheetOut = teamText(at45, /Ready to post/) as Array<Instruction & { imageUrl?: string }>;
+  expect(sheetOut).toHaveLength(1);
+  expect(sheetOut[0]).toMatchObject({ kind: "admin-group-message", groupId: HQ });
+  expect(sheetOut[0].imageUrl).toContain("/api/graphics/");
   expect(await playersGroupJobs(db)).toBe(0);
 });
 

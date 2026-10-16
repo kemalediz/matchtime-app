@@ -114,7 +114,7 @@ function table(name: string) {
 const dbMock = vi.hoisted(() => ({}) as Record<string, unknown>);
 vi.mock("@/lib/db", () => ({ db: dbMock }));
 vi.mock("@/lib/team-generation", () => ({ generateTeamsForMatch: vi.fn() }));
-const graphics = vi.hoisted(() => ({ sendGraphicToAdminChannel: vi.fn() }));
+const graphics = vi.hoisted(() => ({ sendGraphicToAdminChannel: vi.fn(), redrawTeamSheet: vi.fn() }));
 vi.mock("@/lib/admin-group-graphics", () => graphics);
 const announcer = vi.hoisted(() => ({ loadOrganisersAnnounce: vi.fn() }));
 vi.mock("@/lib/list-announcer-store", () => announcer);
@@ -227,6 +227,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   seed();
   graphics.sendGraphicToAdminChannel.mockResolvedValue({ queued: true, jobId: "job-g" });
+  graphics.redrawTeamSheet.mockResolvedValue({ queued: true, jobId: "job-r" });
   announcer.loadOrganisersAnnounce.mockResolvedValue(true);
 });
 
@@ -381,6 +382,22 @@ describe("the commands", () => {
     expect(proposal()).toMatchObject({ state: "approved" });
     expect((store.tables.match[0] as Row).status).toBe("TEAMS_PUBLISHED");
     expect(proposal()?.toldSheet).toEqual(expect.arrayContaining([expect.objectContaining({ userId: "u-bilal", team: "YELLOW" })]));
+    // The team sheet graphic follows on its own (Kemal, 2026-10-16).
+    expect(graphics.redrawTeamSheet).toHaveBeenCalledWith(ORG, MATCH, NOON);
+  });
+
+  it("a change before approval: no team sheet graphic (the approval sends the first one)", async () => {
+    seedSheet();
+    await cmd("move Bilal");
+    expect(graphics.redrawTeamSheet).not.toHaveBeenCalled();
+  });
+
+  it("a team sheet that cannot be queued never fails the change", async () => {
+    seedSheet();
+    await cmd("teams");
+    await yes();
+    graphics.redrawTeamSheet.mockRejectedValue(new Error("db down"));
+    expect((await cmd("move Bilal"))?.outcome).toBe("teams-moved");
   });
 
   it("'reshuffle' after approval reopens the question", async () => {
@@ -389,6 +406,17 @@ describe("the commands", () => {
     await yes();
     await cmd("reshuffle");
     expect(proposal()).toMatchObject({ state: "proposed", approvedAt: null });
+  });
+
+  it("final again after a reshuffle: the team sheet goes again (the first one's once-key is spent)", async () => {
+    seedSheet();
+    await cmd("teams");
+    await yes();
+    expect(graphics.redrawTeamSheet).not.toHaveBeenCalled();
+    await cmd("reshuffle");
+    graphics.sendGraphicToAdminChannel.mockResolvedValue({ queued: false, reason: "already-sent" });
+    await yes();
+    expect(graphics.redrawTeamSheet).toHaveBeenCalledWith(ORG, MATCH, NOON);
   });
 });
 
@@ -605,6 +633,9 @@ describe("after approval: a squad change is told to the admin group", () => {
     // Told once.
     expect(await tick(new Date("2026-10-16T13:01:00.000Z"))).toBe(0);
     expect(groupJobs()).toEqual([]);
+    // And the updated team sheet graphic follows, no command needed (Kemal, 2026-10-16).
+    expect(graphics.redrawTeamSheet).toHaveBeenCalledTimes(1);
+    expect(graphics.redrawTeamSheet).toHaveBeenCalledWith(ORG, MATCH, new Date("2026-10-16T13:00:00.000Z"));
   });
 
   it("a drop-out with nobody yet: the place is open", async () => {
@@ -620,6 +651,7 @@ describe("after approval: a squad change is told to the admin group", () => {
     await cmd("teams");
     await yes();
     expect(await tick(new Date("2026-10-16T13:00:00.000Z"))).toBe(0);
+    expect(graphics.redrawTeamSheet).not.toHaveBeenCalled();
   });
 });
 

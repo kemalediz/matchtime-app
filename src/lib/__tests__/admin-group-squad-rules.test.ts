@@ -122,8 +122,8 @@ describe("diffPastedSquad", () => {
 
 
 describe("the routes the admin group acts on", () => {
-  it("only attendance about players: self_att and other_att", () => {
-    expect([...ADMIN_GROUP_SQUAD_ROUTES].sort()).toEqual(["other_att", "self_att"]);
+  it("attendance about players, and unsure (handed over only when addressed to MatchTime)", () => {
+    expect([...ADMIN_GROUP_SQUAD_ROUTES].sort()).toEqual(["other_att", "self_att", "unsure"]);
   });
   it("a pasted list waits 30 minutes for YES, like the pick question", () => {
     expect(PASTE_PROPOSAL_TTL_MS).toBe(30 * 60 * 1000);

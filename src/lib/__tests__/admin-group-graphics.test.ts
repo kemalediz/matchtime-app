@@ -11,7 +11,7 @@ const dbMock = vi.hoisted(() => ({
   organisation: { findUnique: vi.fn() },
   membership: { findFirst: vi.fn() },
   sentNotification: { create: vi.fn() },
-  botJob: { create: vi.fn() },
+  botJob: { create: vi.fn(), findFirst: vi.fn(), updateMany: vi.fn() },
 }));
 vi.mock("@/lib/db", () => ({ db: dbMock }));
 const data = vi.hoisted(() => ({ loadGraphicData: vi.fn(), nextGraphicMatch: vi.fn() }));
@@ -19,7 +19,7 @@ vi.mock("@/lib/match-graphics", () => data);
 const postable = vi.hoisted(() => ({ isGroupPostable: vi.fn() }));
 vi.mock("@/lib/group-postability-store", () => postable);
 
-import { answerGraphicRequest, sendGraphicToAdminChannel } from "../admin-group-graphics";
+import { REDRAW_QUIET_MS, answerGraphicRequest, redrawTeamSheet, sendGraphicToAdminChannel } from "../admin-group-graphics";
 
 const HQ = "120363777000000001@g.us";
 const NOW = new Date("2026-10-14T12:00:00Z");
@@ -121,5 +121,63 @@ describe("sendGraphicToAdminChannel (for the final-list and approved-teams trigg
     dbMock.sentNotification.create.mockRejectedValue(new Error("P2002"));
     expect(await sendGraphicToAdminChannel("org-fnf", "m-1", "list", { onceKey: "m-1:final-list" })).toEqual({ queued: false, reason: "already-sent" });
     expect(dbMock.botJob.create).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("redrawTeamSheet: the teams changed after the team sheet was sent (Kemal, 2026-10-16)", () => {
+  const SHEET_JOB = { id: "job-0", sentAt: new Date("2026-10-16T09:30:00Z"), sendAfter: null };
+  const QUIET_END = new Date(NOW.getTime() + REDRAW_QUIET_MS);
+
+  beforeEach(() => {
+    dbMock.botJob.findFirst.mockReset();
+    dbMock.botJob.updateMany.mockResolvedValue({ count: 1 });
+  });
+
+  it("an updated team sheet is queued for after a short quiet period, as a trigger's graphic ('auto')", async () => {
+    // The sent one, then no unsent one.
+    dbMock.botJob.findFirst.mockResolvedValueOnce(SHEET_JOB).mockResolvedValueOnce(null);
+    expect(await redrawTeamSheet("org-fnf", "m-1", NOW)).toEqual({ queued: true, jobId: "job-1" });
+    expect(dbMock.botJob.create).toHaveBeenCalledWith({
+      data: {
+        orgId: "org-fnf",
+        kind: "admin-group",
+        text: "Ready to post: FNF teams for Fri 16 Oct",
+        pollOptions: ["graphic:v1", "teams", "m-1", "auto"],
+        sendAfter: QUIET_END,
+      },
+    });
+    expect(dbMock.botJob.findFirst.mock.calls[0][0].where).toMatchObject({
+      orgId: "org-fnf",
+      kind: "admin-group",
+      pollOptions: { hasEvery: ["graphic:v1", "teams", "m-1"] },
+    });
+  });
+
+  it("never before the first team sheet: nothing queued", async () => {
+    dbMock.botJob.findFirst.mockResolvedValue(null);
+    expect(await redrawTeamSheet("org-fnf", "m-1", NOW)).toEqual({ queued: false, reason: "never-sent" });
+    expect(dbMock.botJob.create).not.toHaveBeenCalled();
+  });
+
+  it("changes in quick succession: ONE updated sheet, its quiet period pushed back each time", async () => {
+    const waiting = { id: "job-7", sentAt: null, sendAfter: new Date(NOW.getTime() + 30_000) };
+    dbMock.botJob.findFirst.mockResolvedValueOnce(SHEET_JOB).mockResolvedValueOnce(waiting);
+    expect(await redrawTeamSheet("org-fnf", "m-1", NOW)).toEqual({ queued: true, jobId: "job-7", coalesced: true });
+    expect(dbMock.botJob.updateMany).toHaveBeenCalledWith({ where: { id: "job-7", sentAt: null }, data: { sendAfter: QUIET_END } });
+    expect(dbMock.botJob.create).not.toHaveBeenCalled();
+  });
+
+  it("a team sheet already due and not yet posted is drawn from the teams as they are then: no second one", async () => {
+    const due = { id: "job-8", sentAt: null, sendAfter: null };
+    dbMock.botJob.findFirst.mockResolvedValueOnce(SHEET_JOB).mockResolvedValueOnce(due);
+    expect(await redrawTeamSheet("org-fnf", "m-1", NOW)).toEqual({ queued: true, jobId: "job-8", coalesced: true });
+    expect(dbMock.botJob.updateMany).not.toHaveBeenCalled();
+    expect(dbMock.botJob.create).not.toHaveBeenCalled();
+  });
+
+  it("no group MatchTime can post in: nothing", async () => {
+    dbMock.botJob.findFirst.mockResolvedValueOnce(SHEET_JOB).mockResolvedValueOnce(null);
+    postable.isGroupPostable.mockResolvedValue(false);
+    expect(await redrawTeamSheet("org-fnf", "m-1", NOW)).toEqual({ queued: false, reason: "not-postable" });
   });
 });

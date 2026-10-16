@@ -231,3 +231,60 @@ describe("the other routes reach the code the rest of MatchTime uses", () => {
     expect(await ask("who is bringing the bibs?", route)).toBeNull();
   });
 });
+
+// FNF, 2026-10-16 13:10 London: "@Match Time update the graphic please", a
+// WhatsApp reply to MatchTime's own "Team change" message, came back from
+// the router as `unsure`, and HQ treated `unsure` as the organisers' own
+// conversation: no graphic, no reply, nothing. A message addressed to
+// MatchTime (an @tag, or a reply to MatchTime's own message) is never met
+// with silence. `unsure` goes to the attendance engine, as in the players'
+// group; when that owns nothing, one line says so.
+describe("unsure, addressed to MatchTime: never silent", () => {
+  const NOT_UNDERSTOOD = "I didn't catch what you'd like me to do. Ask *what can you do?* to see what I can do here.";
+  const changeMsg = { text: "🔄 *Team change*: Naim replaces Uncle Najib on Red.\n\n✅ *Final teams*: 20:30 at Harris Merton", fromMatchTime: true };
+
+  beforeEach(() => {
+    squad.handleAdminSquadChange.mockResolvedValue({ handled: false, why: "not-a-squad-change" });
+  });
+
+  it("the incident: a tagged reply to MatchTime's team change that the router called unsure gets one line", async () => {
+    const r = await ask("@Match Time update the graphic please", "unsure", { quoted: changeMsg });
+    expect(r).toEqual({ route: "unsure", outcome: "hq-not-understood", replyText: NOT_UNDERSTOOD });
+    // The attendance engine was asked first, with the route the router gave.
+    expect(squad.handleAdminSquadChange).toHaveBeenCalledWith(expect.objectContaining({ route: "unsure", messageId: "wa-9" }));
+  });
+
+  it("an @tag alone is enough", async () => {
+    expect((await ask("@Match Time can you sort it", "unsure"))?.outcome).toBe("hq-not-understood");
+  });
+
+  it("a reply to MatchTime's own message, with no tag, is enough", async () => {
+    expect((await ask("can you sort it", "unsure", { quoted: changeMsg }))?.outcome).toBe("hq-not-understood");
+  });
+
+  it("the attendance engine owns it: its line, not the fallback", async () => {
+    squad.handleAdminSquadChange.mockResolvedValue({ handled: true, outcome: "squad-changed", replyText: "Done: Uncle Najib is out, AbdulHafeez is in." });
+    const r = await ask("@Match Time replace Uncle with AbdulHafeez", "unsure");
+    expect(r).toEqual({ route: "unsure", outcome: "squad-changed", replyText: "Done: Uncle Najib is out, AbdulHafeez is in." });
+  });
+
+  it("in Turkish", async () => {
+    const r = await ask("@Match Time şunu hallet", "unsure", { org: { ...ORG, language: "tr" } });
+    expect(r?.replyText).toBe("Ne yapmamı istediğinizi anlayamadım. Burada neler yapabildiğimi görmek için *neler yapabilirsin?* diye sorun.");
+  });
+
+  it("the bare word matchtime, no @ and no reply, is talk ABOUT MatchTime: silent, nothing asked", async () => {
+    expect(await ask("Matchtime has done it according to ratings", "unsure")).toBeNull();
+    expect(squad.handleAdminSquadChange).not.toHaveBeenCalled();
+  });
+
+  it("a reply to another organiser: silent", async () => {
+    expect(await ask("can you sort it", "unsure", { quoted: { text: "who has the bibs?", fromMatchTime: false } })).toBeNull();
+  });
+
+  it("a monthly club: the one line, no weekly squad engine", async () => {
+    const r = await ask("@Match Time can you sort it", "unsure", { org: { ...ORG, squadMode: "monthly" } });
+    expect(r?.outcome).toBe("hq-not-understood");
+    expect(squad.handleAdminSquadChange).not.toHaveBeenCalled();
+  });
+});

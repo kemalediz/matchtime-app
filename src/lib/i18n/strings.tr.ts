@@ -1177,6 +1177,7 @@ export const tr: Strings = {
     `Bu EVET hangisi için: ${p.day} için önerilen takımlar mı, yapıştırılan kadro listesi mi? O mesaja EVET diye cevap verin.`,
   hq_nothing_waiting: `Şu anda EVET bekleyen bir şey yok.`,
   hq_not_here: `Bunu bu gruptan yapamam. Burada neler yapabildiğimi görmek için *neler yapabilirsin?* diye sorun.`,
+  hq_not_understood: `Ne yapmamı istediğinizi anlayamadım. Burada neler yapabildiğimi görmek için *neler yapabilirsin?* diye sorun.`,
   group_ask_organiser: (p) =>
     `${p.kickoffLabel} maçı için ${p.open} oyuncu daha lazım. *VARIM* yazın, kimin oynayacağını organizatörler seçer. Seçilirseniz size mesaj atarım.`,
   hq_group_asked: (p) => `Ana grupta ${p.open} oyuncu için sordum.`,

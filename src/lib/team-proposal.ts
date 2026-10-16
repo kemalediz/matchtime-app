@@ -67,7 +67,7 @@ import { lockTeamSlots, type SlotFillTx } from "./team-slot-fill";
 import { isBillingPaused } from "./club-billing-rules";
 import { organisersAnnounce } from "./list-announcer";
 import { loadOrganisersAnnounce } from "./list-announcer-store";
-import { sendGraphicToAdminChannel } from "./admin-group-graphics";
+import { redrawTeamSheet, sendGraphicToAdminChannel } from "./admin-group-graphics";
 import { t } from "./i18n/t";
 import {
   buildChangeNotice,
@@ -392,6 +392,7 @@ export async function handleTeamCommand(args: {
     const row = (await db.adminTeamProposal.findUnique({ where: { matchId: match.id } })) as ProposalRow | null;
     if (row?.state === "approved") {
       await db.adminTeamProposal.update({ where: { id: row.id }, data: { toldSheet: after.slots as unknown as object } });
+      await redrawAfterChange(orgId, match.id, now);
     }
     return { outcome, replyText: teamsText(after, lang, true, announce) };
   }
@@ -449,11 +450,15 @@ export async function answerTeamsYes(args: {
   if (claimed.count === 0) return null;
   await db.match.update({ where: { id: match.id }, data: { status: "TEAMS_PUBLISHED" } });
 
-  // The team sheet image, in the admin group, once per match (#260). A
-  // graphic that cannot be queued never undoes the approval.
-  await sendGraphicToAdminChannel(orgId, match.id, "teams", { onceKey: `${match.id}:teams-approved` }).catch((err) =>
-    console.error(`[team-proposal] ${args.messageId}: team sheet graphic not queued:`, err instanceof Error ? err.message : "failed"),
-  );
+  // The team sheet image, in the admin group, once per match (#260). Final
+  // again after a reshuffle: the first one's once-key is spent, so the
+  // updated sheet follows as after any other change. A graphic that cannot
+  // be queued never undoes the approval.
+  const sheetSent = await sendGraphicToAdminChannel(orgId, match.id, "teams", { onceKey: `${match.id}:teams-approved` }).catch((err) => {
+    console.error(`[team-proposal] ${args.messageId}: team sheet graphic not queued:`, err instanceof Error ? err.message : "failed");
+    return null;
+  });
+  if (sheetSent && !sheetSent.queued && sheetSent.reason === "already-sent") await redrawAfterChange(orgId, match.id, now);
 
   if (await announces(deps, orgId)) {
     console.log(`[team-proposal] ${args.messageId}: teams final on match ${match.id}, organisers announce`);
@@ -597,5 +602,19 @@ export async function teamProposalJobs(args: { org: TeamProposalOrg; now: Date; 
   );
   await queueAdminGroup(org.id, buildChangeNotice({ lang, items, teamsText: teamsText(sheet, lang, true, announce) }));
   console.log(`[team-proposal] org ${org.id}: ${changes.length} team change(s) told on match ${match.id}`);
+  await redrawAfterChange(org.id, match.id, now);
   return 1;
+}
+
+/**
+ * The final teams changed: the updated team sheet graphic follows in the
+ * admin group on its own, once the teams have been quiet for a moment
+ * (`redrawTeamSheet`). Kemal, 2026-10-16: "poster generation should be
+ * automated as soon as the teams are final. no need for any extra
+ * command". A graphic that cannot be queued never undoes the change.
+ */
+async function redrawAfterChange(orgId: string, matchId: string, now: Date): Promise<void> {
+  await redrawTeamSheet(orgId, matchId, now).catch((err) =>
+    console.error(`[team-proposal] match ${matchId}: updated team sheet not queued:`, err instanceof Error ? err.message : "failed"),
+  );
 }
