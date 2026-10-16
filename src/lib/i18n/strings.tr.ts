@@ -323,6 +323,15 @@ export const tr: Strings = {
     return `${head}${tail}`;
   },
   answer_fixture: (p) => (p.venue ? `⚽ ${p.kickoffLabel}, ${p.venue}.` : `⚽ ${p.kickoffLabel}.`),
+  answer_club: (p) =>
+    [
+      `👥 Yöneticiler: ${p.admins || "yok"}`,
+      `💷 Parayı toplayan: ${p.collector ?? "ayarlanmadı"}`,
+      `💷 Maç ücreti: ${p.fee !== null ? `kişi başı £${p.fee}` : p.feeSplit ? "saha ücreti oynayanlar arasında bölünür" : "ayarlanmadı"}`,
+      p.forOrganisers
+        ? `⚽ Takımlar hazır: ${p.teamsReady === "off" ? "kapalı" : `maç günü ${p.teamsReady}`}`
+        : p.teamsReady === "off" ? "⚽ Takımlar: maçtan önce organizatörler ayarlıyor" : `⚽ Takımların kurulduğu saat: maç günü ${p.teamsReady}`,
+    ].join("\n"),
   answer_score_no_match: "Bu grup için kayıtlı oynanmış bir maç bulamadım.",
   answer_score_no_score: (p) => `${p.kickoffLabel} için henüz skor bildirilmedi, sonucu yazın, kaydedeyim.`,
   answer_score_result: (p) =>
@@ -1178,6 +1187,7 @@ export const tr: Strings = {
   hq_nothing_waiting: `Şu anda EVET bekleyen bir şey yok.`,
   hq_not_here: `Bunu bu gruptan yapamam. Burada neler yapabildiğimi görmek için *neler yapabilirsin?* diye sorun.`,
   hq_not_understood: `Ne yapmamı istediğinizi anlayamadım. Burada neler yapabildiğimi görmek için *neler yapabilirsin?* diye sorun.`,
+  hq_only_organisers: (p) => (p.names ? `Bunu yalnızca ${p.names} değiştirebilir.` : `Bunu yalnızca kulübün organizatörleri değiştirebilir.`),
   group_ask_organiser: (p) =>
     `${p.kickoffLabel} maçı için ${p.open} oyuncu daha lazım. *VARIM* yazın, kimin oynayacağını organizatörler seçer. Seçilirseniz size mesaj atarım.`,
   hq_group_asked: (p) => `Ana grupta ${p.open} oyuncu için sordum.`,

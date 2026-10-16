@@ -57,8 +57,10 @@ test.afterAll(() => {
   resetDb();
 });
 
-test("a non-admin's ask is ignored: no reply, nothing posted", async ({ request, db }) => {
-  expect(await say(request, ASK, PLAYER)).toMatchObject({ handled: false, replyText: null });
+// 2026-10-16 (Kemal): anyone in HQ may ask questions; asking the players'
+// group is the organisers'. A non-admin who tags MatchTime is told who can.
+test("a non-admin's ask: not done, one line naming who can, nothing posted", async ({ request, db }) => {
+  expect(await say(request, ASK, PLAYER)).toMatchObject({ handled: true, outcome: "hq-only-organisers", replyText: "Only Alex can change that.", react: null });
   expect(await groupJobs(db)).toHaveLength(0);
 });
 

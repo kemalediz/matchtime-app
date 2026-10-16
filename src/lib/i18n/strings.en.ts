@@ -345,6 +345,19 @@ export const en = {
   },
   answer_fixture: (p: { kickoffLabel: string; venue: string }): string =>
     p.venue ? `⚽ ${p.kickoffLabel} at ${p.venue}.` : `⚽ ${p.kickoffLabel}.`,
+  /** The club's setup (2026-10-16, `QuestionTopic.club`), in either group.
+   *  `admins` is already joined; `fee` is "6" or "6.50", null when none is
+   *  set; `teamsReady` is "HH:MM" or "off". The teams line names the
+   *  setting for the organisers and says it plainly to the players. */
+  answer_club: (p: { admins: string; collector: string | null; fee: string | null; feeSplit: boolean; teamsReady: string; forOrganisers: boolean }): string =>
+    [
+      `👥 Admins: ${p.admins || "none"}`,
+      `💷 Money collector: ${p.collector ?? "not set"}`,
+      `💷 Match fee: ${p.fee !== null ? `£${p.fee} a player` : p.feeSplit ? "the pitch cost split between who played" : "not set"}`,
+      p.forOrganisers
+        ? `⚽ Teams ready: ${p.teamsReady === "off" ? "off" : `${p.teamsReady} on match day`}`
+        : `⚽ Teams: ${p.teamsReady === "off" ? "sorted by the organisers before the game" : `worked out at ${p.teamsReady} on match day`}`,
+    ].join("\n"),
   answer_score_no_match: "I haven't got a played match on record for this group yet.",
   answer_score_no_score: (p: { kickoffLabel: string }): string =>
     `No score reported for ${p.kickoffLabel} yet. Tell me the result and I'll record it.`,
@@ -1361,6 +1374,12 @@ export const en = {
   /** A message addressed to MatchTime in the admin group (an @tag, or a
    *  reply to its own message) that it could not read as anything it does. */
   hq_not_understood: `I didn't catch what you'd like me to do. Ask *what can you do?* to see what I can do here.`,
+  /** Someone in the admin group who is not an owner or admin of the club
+   *  asked MatchTime to change something (2026-10-16). `names` is the
+   *  club's owners and admins, joined ("Hamzah or Raihan"); empty when it
+   *  has none on record. */
+  hq_only_organisers: (p: { names: string }): string =>
+    p.names ? `Only ${p.names} can change that.` : `Only the club's organisers can change that.`,
   // ── An organiser asks MatchTime, in HQ, to ask the players' group for a
   //    player (2026-10-16, admin-group-ask-group.ts). A first-come club's
   //    post is `slot_opened`, unchanged. ──

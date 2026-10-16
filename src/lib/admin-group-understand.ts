@@ -22,22 +22,31 @@
  *   approve               the safe-YES rule (`admin-group-confirm-rules.ts`),
  *                         then `answerTeamsYes` / `answerSquadPasteYes`
  *   poster, team_sheet    `admin-group-graphics.ts`
- *   help                  `admin-group-help.ts`
+ *   question, help        the players' group's question answering, for the
+ *                         organisers (`admin-group-question.ts`); the HQ
+ *                         menu (`admin-group-help.ts`) for how-it-works,
+ *                         and for help it does not answer
  *   ask_group             one place-open ask in the players' group
  *                         (`admin-group-ask-group.ts`)
- *   question, score,      one line: not from this group (an organiser
- *   admin_ops             clearly asked MatchTime; never silent on that)
+ *   score, admin_ops      one line: not from this group (an organiser
+ *                         clearly asked MatchTime; never silent on that)
  *   unsure                addressed to MatchTime (an @tag, or a reply to
  *                         its own message): the attendance engine, as in
  *                         the players' group, else one line saying it did
  *                         not catch that (2026-10-16). Otherwise nothing.
  *   none, offer           nothing: the organisers' own conversation
  *
- * The caller (`admin-group.ts`) has proven the sender is an owner or admin
- * of a live club, claimed the message id, and tried the readers of
- * STRUCTURED data first (a PAID digest answer, a pick from MatchTime's
- * numbered list, a pasted multi-line squad list). Logs carry ids and
- * counts only.
+ * The caller (`admin-group.ts`) has found the club live, claimed the
+ * message id, and, for an owner or admin, tried the readers of STRUCTURED
+ * data first (a PAID digest answer, a pick from MatchTime's numbered list,
+ * a pasted multi-line squad list). It says whether the sender is an
+ * organiser (an owner or admin). Anyone else in HQ (2026-10-16, Kemal:
+ * "Anyone in that group should be able to ask questions") gets question,
+ * help, poster and team_sheet exactly as an organiser does; approve,
+ * balancer, self_att, other_att and ask_group change the club and are an
+ * organiser's alone: addressed to MatchTime, one line naming the club's
+ * owners and admins ("Only Hamzah or Raihan can change that."), otherwise
+ * nothing. Logs carry ids and counts only.
  */
 import { db } from "./db";
 import { withOrgAiBudget, getAiBudgetStatus } from "./ai-budget";
@@ -60,6 +69,8 @@ import { WHICH_ASK_REF, decideApproval, matchQuoted, type QuotedMessage } from "
 import { organisersContext, type PendingWithLabel } from "./admin-group-context";
 import { answerPartnerAskYes, parsePartnerAskRef, partnerAskRef, partnerAsksAwaitingApproval } from "./partner-ask";
 import { askPlayersGroup } from "./admin-group-ask-group";
+import { answerHqQuestion } from "./admin-group-question";
+import { joinAdminNames } from "./seed-nudge-rules";
 
 /** How far back the router's "earlier here" lines reach, and how many. */
 const RECENT_MS = 30 * 60 * 1000;
@@ -72,7 +83,10 @@ export interface UnderstandInput {
   text: string;
   mentionNames?: Array<{ jid: string; name?: string; phone?: string }>;
   quoted: QuotedMessage | null;
-  adminUserId: string;
+  /** Who sent it, when MatchTime knows them; null for someone it does not. */
+  senderUserId: string | null;
+  /** An owner or admin of the club. Only an organiser changes anything. */
+  organiser: boolean;
   senderName: string | null;
   sentAt: Date | null;
   now: Date;
@@ -117,6 +131,22 @@ export async function loadPending(orgId: string, now: Date, lang: string | null)
   return out;
 }
 
+/**
+ * "Only Hamzah or Raihan can change that." The club's current owners and
+ * admins by first name, in the club's language (`joinAdminNames`, the
+ * seed nudge's join), for someone in HQ who asked MatchTime for a change
+ * only they can make.
+ */
+export async function onlyOrganisersLine(orgId: string, lang: string | null): Promise<string> {
+  const rows =
+    (await db.membership.findMany({
+      where: { orgId, leftAt: null, role: { in: ["OWNER", "ADMIN"] } },
+      select: { user: { select: { name: true } } },
+      orderBy: [{ role: "asc" }, { id: "asc" }],
+    })) ?? [];
+  return t(lang).hq_only_organisers({ names: joinAdminNames(rows.map((r) => r.user?.name ?? null), lang) });
+}
+
 export async function understandAdminMessage(input: UnderstandInput): Promise<Understood | null> {
   const { org, messageId, now } = input;
   const lang = org.language;
@@ -132,6 +162,12 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
     const log = logAll.filter((r) => r.waMessageId !== messageId);
     const quotedIsMatchTime = !!input.quoted && (input.quoted.fromMatchTime === true || (!!input.quoted.text && !!matchQuoted(input.quoted.text, log)));
     const recent = log.filter((r) => now.getTime() - r.createdAt.getTime() <= RECENT_MS).slice(-RECENT_MAX);
+    // The extractors' recent chat: MatchTime's own lines as MatchTime.
+    const history = recent.map((r) => ({ author: r.fromMatchTime ? "MatchTime" : null, body: r.text }));
+    // MatchTime's last line in HQ, and the post a question is about: the
+    // MatchTime message it replies to, else that last line.
+    const lastHqPost = [...log].reverse().find((r) => r.fromMatchTime)?.text ?? null;
+    const lastBotPost = (quotedIsMatchTime && input.quoted?.text) || lastHqPost;
     const capped = (await getAiBudgetStatus(org.id).catch(() => null))?.capped ?? false;
 
     const gate = await gateBatch(
@@ -157,20 +193,30 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
     // Addressed to MatchTime: an @tag (never the bare word, which is talk
     // ABOUT MatchTime), or a WhatsApp reply to MatchTime's own message.
     const addressed = quotedIsMatchTime || messageMentionsBotExplicitly({ body: input.text });
-    const base = { orgId: org.id, lang, messageId, senderUserId: input.adminUserId, now };
     const said = (outcome: string, replyText: string | null): Understood => ({ route, outcome, replyText });
+
+    // Someone in HQ who is not an owner or admin (2026-10-16): questions,
+    // help and the graphics are theirs too; anything that changes the club
+    // is not. Clearly asked of MatchTime (an @tag, or a reply to its own
+    // message): one line naming who can. Otherwise it is their own chat,
+    // and silent, as an organiser's is. `actor` is set only for an organiser.
+    const actor = input.organiser ? input.senderUserId : null;
+    const notYours = async (): Promise<Understood | null> =>
+      addressed ? said("hq-only-organisers", await onlyOrganisersLine(org.id, lang)) : null;
+    const base = (senderUserId: string) => ({ orgId: org.id, lang, messageId, senderUserId, now });
 
     switch (route) {
       case "approve": {
+        if (!actor) return notYours();
         const decision = decideApproval({ pending, quoted: input.quoted ? { ...input.quoted, fromMatchTime: quotedIsMatchTime } : null, log, now });
         console.log(`[admin-group] ${messageId}: approval ${decision.kind}${"why" in decision ? ` (${decision.why})` : ""}`);
         if (decision.kind === "approve") {
           if (decision.item.kind === "partner-ask") {
             const askId = parsePartnerAskRef(decision.item.ref);
-            const r = askId ? await answerPartnerAskYes({ orgId: org.id, askId, userId: input.adminUserId, lang, now }) : null;
+            const r = askId ? await answerPartnerAskYes({ orgId: org.id, askId, userId: actor, lang, now }) : null;
             return r ? said(r.outcome, r.replyText) : said("hq-nothing-waiting", s.hq_nothing_waiting);
           }
-          const r = decision.item.kind === "teams" ? await answerTeamsYes(base) : await answerSquadPasteYes(base);
+          const r = decision.item.kind === "teams" ? await answerTeamsYes(base(actor)) : await answerSquadPasteYes(base(actor));
           return r ? said(r.outcome, r.replyText) : said("hq-nothing-waiting", s.hq_nothing_waiting);
         }
         if (decision.kind === "nothing-waiting") return said("hq-nothing-waiting", s.hq_nothing_waiting);
@@ -195,8 +241,34 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
         return said(r.outcome, r.replyText);
       }
       case "help":
-        return said("hq-help", buildHqHelp({ lang, ...hqHelpGates(org) }));
+      case "question": {
+        // The players' group's own question answering, for the organisers
+        // (`admin-group-question.ts`). The HQ menu answers a how-it-works
+        // question there, and anything it does not answer on the help
+        // route (2026-10-16, FNF: "MatchTime who are the admins?" came back
+        // `help` and got the menu instead of the admins).
+        const hqHelp = buildHqHelp({ lang, ...hqHelpGates(org) });
+        const r = await answerHqQuestion({
+          orgId: org.id,
+          lang,
+          messageId,
+          body,
+          senderUserId: input.senderUserId,
+          senderName: input.senderName,
+          now,
+          history,
+          lastBotPost,
+          hqHelp,
+          ...(input.deps?.extractorModel ? { deps: { model: input.deps.extractorModel } } : {}),
+        });
+        if (r) return said(r.outcome, r.replyText);
+        if (route === "help") return said("hq-help", hqHelp);
+        // Nothing answered it. An organiser always hears the one line; anyone
+        // else only when they asked MatchTime, else it is their own chat.
+        return actor || addressed ? said("hq-not-here", s.hq_not_here) : null;
+      }
       case "balancer": {
+        if (!actor) return notYours();
         if (!weekly) return said("hq-not-here", s.hq_not_here);
         const model = input.deps?.extractorModel ?? extractorStubFromEnv() ?? anthropicModel();
         const extracted = await extractForRoute(model, "balancer", {
@@ -204,8 +276,8 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
           body,
           authorName: input.senderName,
           tagged: true,
-          history: recent.map((r) => ({ author: r.fromMatchTime ? "MatchTime" : null, body: r.text })),
-          lastBotPost: [...log].reverse().find((r) => r.fromMatchTime)?.text ?? null,
+          history,
+          lastBotPost: lastHqPost,
         });
         if (extracted.facts.kind !== "teams") {
           console.log(`[admin-group] ${messageId}: the teams extractor gave nothing (${extracted.degradations.length} degradation(s))`);
@@ -217,14 +289,15 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
             ? said("hq-not-here", s.hq_not_here)
             : said("teams-which-players", s.tp_which_players);
         }
-        const r = await handleTeamCommand({ ...base, command });
+        const r = await handleTeamCommand({ ...base(actor), command });
         return said(r.outcome, r.replyText);
       }
       case "self_att":
       case "other_att": {
+        if (!actor) return notYours();
         if (!weekly) return said("hq-not-here", s.hq_not_here);
         const change = await handleAdminSquadChange({
-          ...base,
+          ...base(actor),
           text: input.text,
           namedBody: body,
           mentionNames: input.mentionNames,
@@ -236,23 +309,24 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
       }
       case "ask_group": {
         // One place-open ask in the players' group (`admin-group-ask-group.ts`).
+        if (!actor) return notYours();
         if (!weekly) return said("hq-not-here", s.hq_not_here);
         const r = await askPlayersGroup({ orgId: org.id, lang, messageId, now });
         return said(r.outcome, r.replyText);
       }
-      case "question":
       case "score":
       case "admin_ops":
-        return said("hq-not-here", s.hq_not_here);
+        return actor || addressed ? said("hq-not-here", s.hq_not_here) : null;
       case "unsure": {
         // Not addressed to MatchTime: the organisers' own conversation.
         if (!addressed) return null;
         // Addressed, and the router could not tell what it does (or its
         // call failed): the attendance engine, as in the players' group,
-        // then one line rather than silence (FNF, 2026-10-16).
-        if (weekly) {
+        // then one line rather than silence (FNF, 2026-10-16). The engine
+        // changes the squad, so it is tried for an organiser only.
+        if (weekly && actor) {
           const change = await handleAdminSquadChange({
-            ...base,
+            ...base(actor),
             text: input.text,
             namedBody: body,
             mentionNames: input.mentionNames,

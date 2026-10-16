@@ -13,7 +13,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const dbMock = vi.hoisted(() => ({
   organisation: { findFirst: vi.fn() },
   organiserPickRound: { findFirst: vi.fn() },
-  membership: { findFirst: vi.fn() },
+  membership: { findMany: vi.fn() },
   sentNotification: { create: vi.fn() },
   user: { findUnique: vi.fn() },
 }));
@@ -56,7 +56,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   dbMock.organisation.findFirst.mockResolvedValue(LIVE_ORG);
   dbMock.organiserPickRound.findFirst.mockResolvedValue(null);
-  dbMock.membership.findFirst.mockResolvedValue({ userId: "u-admin" });
+  dbMock.membership.findMany.mockResolvedValue([{ userId: "u-admin", role: "ADMIN" }]);
   dbMock.sentNotification.create.mockResolvedValue({});
   dbMock.user.findUnique.mockResolvedValue({ name: "Raihan" });
   link.resolveSenderUserIds.mockResolvedValue(["u-admin"]);
@@ -78,7 +78,8 @@ describe("everything that is not structured data goes through the shared pipelin
       text: "can you do the poster for this week",
       mentionNames: [{ jid: "1@lid" }],
       quoted: { text: "Teams?", fromMatchTime: true },
-      adminUserId: "u-admin",
+      senderUserId: "u-admin",
+      organiser: true,
       senderName: "Raihan",
       sentAt: new Date(1760443200 * 1000),
       now: NOW,
@@ -134,15 +135,6 @@ describe("the ✅ on a message MatchTime acted on", () => {
 });
 
 describe("the door", () => {
-  it("a NON-admin: no pipeline, no claim, no reply; still recorded for the safe-YES rule", async () => {
-    dbMock.membership.findFirst.mockResolvedValue(null);
-    const r = await handleAdminGroupMessage(msg("yes"));
-    expect(r).toEqual({ handled: false, ignored: "no-open-pick", orgId: "org-fnf", replyText: null });
-    expect(understand.understandAdminMessage).not.toHaveBeenCalled();
-    expect(dbMock.sentNotification.create).not.toHaveBeenCalled();
-    expect(hqLog.recordHqMessage).toHaveBeenCalledWith({ orgId: "org-fnf", waMessageId: "wa-1", senderUserId: null, text: "yes", now: NOW });
-  });
-
   it("the sender is found by phone or a stored LID, never a pushname", async () => {
     await handleAdminGroupMessage(msg("Shehryar out", { senderLid: "999@lid", senderAltPhone: "447700900002", pushname: "Raihan" }));
     expect(link.resolveSenderUserIds).toHaveBeenCalledWith({ phones: ["447700900001", "447700900002"], lid: "999@lid" });
@@ -198,10 +190,11 @@ describe("structured data first, deterministically", () => {
     expect(understand.understandAdminMessage).toHaveBeenCalled();
   });
 
-  it("a non-admin while a round is open: not-an-admin, as before", async () => {
+  it("a non-admin while a round is open: never a pick; their chat is still not-an-admin", async () => {
     dbMock.organiserPickRound.findFirst.mockResolvedValue({ id: "round" });
-    dbMock.membership.findFirst.mockResolvedValue(null);
+    dbMock.membership.findMany.mockResolvedValue([{ userId: "u-player", role: "PLAYER" }]);
     expect(await handleAdminGroupMessage(msg("2"))).toMatchObject({ handled: false, ignored: "not-an-admin" });
+    expect(pick.handlePickReply).not.toHaveBeenCalled();
   });
 
   it("a pick round in a club that is not live is still read (its own question)", async () => {
@@ -237,5 +230,86 @@ describe("structured data first, deterministically", () => {
     dbMock.organisation.findFirst.mockResolvedValue({ ...LIVE_ORG, squadMode: "monthly" });
     await handleAdminGroupMessage(msg("1. A\n2. B\n3. C\n4. D\n5. E"));
     expect(paste.proposeSquadPaste).not.toHaveBeenCalled();
+  });
+});
+
+// "Anyone in that group should be able to ask questions" (Kemal,
+// 2026-10-16). FNF HQ, 15:13: Kemal, a PLAYER of FNF, asked "Who are are
+// admins?" and got nothing, and his row was recorded with no sender: only
+// an owner's or admin's membership was ever looked up, so anyone else was
+// recorded as nobody. Every sender in a live club's HQ now reaches the
+// shared pipeline, told whether they are an organiser; what changes the
+// club stays the organisers' (`admin-group-understand.ts`).
+describe("anyone in HQ: questions for all, changes for the organisers", () => {
+  const PLAYER = [{ userId: "u-kemal", role: "PLAYER" }];
+
+  it("a player of the club: recorded as who they are, and read by the shared pipeline as a non-organiser", async () => {
+    dbMock.membership.findMany.mockResolvedValue(PLAYER);
+    dbMock.user.findUnique.mockResolvedValue({ name: "Kemal" });
+    link.resolveSenderUserIds.mockResolvedValue(["u-kemal"]);
+    understand.understandAdminMessage.mockResolvedValue({ route: "question", outcome: "hq-answered", replyText: "👥 Admins: Hamzah and Raihan" });
+    const r = await handleAdminGroupMessage(msg("Who are are admins?"));
+    expect(r).toEqual({ handled: true, orgId: "org-fnf", outcome: "hq-answered", replyText: "👥 Admins: Hamzah and Raihan", react: "✅" });
+    expect(hqLog.recordHqMessage).toHaveBeenCalledWith({ orgId: "org-fnf", waMessageId: "wa-1", senderUserId: "u-kemal", text: "Who are are admins?", now: NOW });
+    expect(understand.understandAdminMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ senderUserId: "u-kemal", organiser: false, senderName: "Kemal", text: "Who are are admins?" }),
+    );
+    // Claimed, so a Pi retry never answers twice.
+    expect(dbMock.sentNotification.create).toHaveBeenCalledWith({ data: { key: "admin-group-msg:wa-1", kind: "admin-notice" } });
+  });
+
+  it("someone MatchTime does not know at all: still read, with no sender", async () => {
+    link.resolveSenderUserIds.mockResolvedValue([]);
+    understand.understandAdminMessage.mockResolvedValue({ route: "question", outcome: "hq-answered", replyText: "On the bench: Tom." });
+    expect(await handleAdminGroupMessage(msg("who's on the bench?"))).toMatchObject({ handled: true, outcome: "hq-answered", react: "✅" });
+    expect(hqLog.recordHqMessage).toHaveBeenCalledWith(expect.objectContaining({ senderUserId: null }));
+    expect(understand.understandAdminMessage).toHaveBeenCalledWith(expect.objectContaining({ senderUserId: null, organiser: false, senderName: null }));
+  });
+
+  it("a known user who is not in this club: recorded as who they are, not an organiser", async () => {
+    link.resolveSenderUserIds.mockResolvedValue(["u-other"]);
+    dbMock.membership.findMany.mockResolvedValue([]);
+    dbMock.user.findUnique.mockResolvedValue({ name: "Ali" });
+    await handleAdminGroupMessage(msg("who's playing tonight?"));
+    expect(hqLog.recordHqMessage).toHaveBeenCalledWith(expect.objectContaining({ senderUserId: "u-other" }));
+    expect(understand.understandAdminMessage).toHaveBeenCalledWith(expect.objectContaining({ senderUserId: "u-other", organiser: false, senderName: "Ali" }));
+  });
+
+  it("two identities, one of them an owner: the owner one acts", async () => {
+    link.resolveSenderUserIds.mockResolvedValue(["u-player", "u-owner"]);
+    dbMock.membership.findMany.mockResolvedValue([{ userId: "u-player", role: "PLAYER" }, { userId: "u-owner", role: "OWNER" }]);
+    await handleAdminGroupMessage(msg("Shehryar out"));
+    expect(understand.understandAdminMessage).toHaveBeenCalledWith(expect.objectContaining({ senderUserId: "u-owner", organiser: true }));
+  });
+
+  it("a non-admin's chat the pipeline leaves alone: ignored, no reply, no tick", async () => {
+    dbMock.membership.findMany.mockResolvedValue(PLAYER);
+    expect(await handleAdminGroupMessage(msg("yes"))).toEqual({ handled: false, ignored: "no-open-pick", orgId: "org-fnf", replyText: null });
+  });
+
+  it("a non-admin never reaches the structured readers that change things (a pasted list)", async () => {
+    dbMock.membership.findMany.mockResolvedValue(PLAYER);
+    await handleAdminGroupMessage(msg("1. Bilal\n2. Ali\n3. Tom\n4. Sam\n5. Naim"));
+    expect(paste.proposeSquadPaste).not.toHaveBeenCalled();
+  });
+
+  it("the line saying only the organisers can change that: no tick", async () => {
+    dbMock.membership.findMany.mockResolvedValue(PLAYER);
+    understand.understandAdminMessage.mockResolvedValue({ route: "balancer", outcome: "hq-only-organisers", replyText: "Only Hamzah or Raihan can change that." });
+    expect(await handleAdminGroupMessage(msg("@Match Time swap Maj and Kieran"))).toEqual({
+      handled: true,
+      orgId: "org-fnf",
+      outcome: "hq-only-organisers",
+      replyText: "Only Hamzah or Raihan can change that.",
+      react: null,
+    });
+  });
+
+  it("a club that is not live: a non-admin is still ignored, nothing read", async () => {
+    dbMock.organisation.findFirst.mockResolvedValue({ ...LIVE_ORG, whatsappBotEnabled: false });
+    dbMock.organiserPickRound.findFirst.mockResolvedValue({ id: "round" });
+    dbMock.membership.findMany.mockResolvedValue(PLAYER);
+    expect(await handleAdminGroupMessage(msg("who are the admins?"))).toMatchObject({ handled: false, ignored: "not-an-admin" });
+    expect(understand.understandAdminMessage).not.toHaveBeenCalled();
   });
 });
