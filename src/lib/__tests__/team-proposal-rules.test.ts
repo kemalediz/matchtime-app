@@ -1,6 +1,6 @@
 /**
  * Teams proposed and approved in a club's admin group (2026-10-14): the
- * pure half. The command parser (EN and TR, whole messages only), the name
+ * pure half. The teams extractor's facts as a command, the name
  * resolver against the teams, the timing of the proposal and the
  * reminder, the sheet diff after approval, and the words.
  */
@@ -14,7 +14,7 @@ import {
   isReminderDue,
   effectiveTeamsReadyTime,
   normaliseTeamsReadyTime,
-  parseTeamCommand,
+  teamCommandFromFacts,
   resolveSheetName,
   resolveSwap,
   teamsReadyAt,
@@ -50,88 +50,34 @@ describe("unevenSides: an even total splits exactly, an odd one may be one apart
   });
 });
 
-describe("parseTeamCommand: whole-message commands, EN and TR", () => {
-  it.each([
-    ["teams", { kind: "show" }],
-    ["Teams", { kind: "show" }],
-    ["TEAMS!", { kind: "show" }],
-    ["the teams?", { kind: "show" }],
-    ["show teams", { kind: "show" }],
-    ["@Match Time teams", { kind: "show" }],
-    ["takımlar", { kind: "show" }],
-    ["Takımlar", { kind: "show" }],
-    ["TAKIMLAR", { kind: "show" }],
-    ["takimlar", { kind: "show" }],
-    ["takımları göster", { kind: "show" }],
-    ["reshuffle", { kind: "reshuffle" }],
-    ["Reshuffle.", { kind: "reshuffle" }],
-    ["reshuffle the teams", { kind: "reshuffle" }],
-    ["shuffle", { kind: "reshuffle" }],
-    ["new teams", { kind: "reshuffle" }],
-    ["yeniden", { kind: "reshuffle" }],
-    ["Yeniden karıştır", { kind: "reshuffle" }],
-    ["karıştır", { kind: "reshuffle" }],
-  ])("%s", (text, want) => {
-    expect(parseTeamCommand(text)).toEqual(want);
-  });
+describe("teamCommandFromFacts: the shared teams extractor's facts as an admin-group command", () => {
+  const f = (action: "show" | "generate" | "rename" | "swap", moves: string[] = [], swaps: Array<{ personRef: string; team: "RED" | "YELLOW" }> = []) =>
+    teamCommandFromFacts({ action, moves, swaps });
 
-  it("swap with a separator gives one pair, names as typed", () => {
-    expect(parseTeamCommand("swap Ali and Bilal Khan")).toEqual({ kind: "swap", pairs: [["Ali", "Bilal Khan"]] });
-    expect(parseTeamCommand("Swap Ali with Bilal")).toEqual({ kind: "swap", pairs: [["Ali", "Bilal"]] });
-    expect(parseTeamCommand("swap Ali & Bilal")).toEqual({ kind: "swap", pairs: [["Ali", "Bilal"]] });
-    expect(parseTeamCommand("swap Ali, Bilal")).toEqual({ kind: "swap", pairs: [["Ali", "Bilal"]] });
-    expect(parseTeamCommand("swap Ali for Bilal")).toEqual({ kind: "swap", pairs: [["Ali", "Bilal"]] });
+  it("show and generate are show and reshuffle", () => {
+    expect(f("show")).toEqual({ kind: "show" });
+    expect(f("generate")).toEqual({ kind: "reshuffle" });
   });
-
-  it("swap without a separator gives every split, left to right", () => {
-    expect(parseTeamCommand("swap Ali Bilal")).toEqual({ kind: "swap", pairs: [["Ali", "Bilal"]] });
-    expect(parseTeamCommand("swap Ali Khan Bilal")).toEqual({
-      kind: "swap",
-      pairs: [
-        ["Ali", "Khan Bilal"],
-        ["Ali Khan", "Bilal"],
-      ],
-    });
+  it("two people with no side named swap", () => {
+    expect(f("swap", ["Ali", "Bilal Khan"])).toEqual({ kind: "swap", pairs: [["Ali", "Bilal Khan"]] });
   });
-
-  it("Turkish swap: 'A ile B değiş', with or without the case ending", () => {
-    expect(parseTeamCommand("Ali ile Bilal değiş")).toEqual({ kind: "swap", pairs: [["Ali", "Bilal"]] });
-    expect(parseTeamCommand("Ali ile Bilal'i değiştir")).toEqual({ kind: "swap", pairs: [["Ali", "Bilal"]] });
-    expect(parseTeamCommand("Ali ile Bilal yer değiştir")).toEqual({ kind: "swap", pairs: [["Ali", "Bilal"]] });
-    expect(parseTeamCommand("Ali ile Bilal degis")).toEqual({ kind: "swap", pairs: [["Ali", "Bilal"]] });
-    expect(parseTeamCommand("değiş Ali Bilal")).toEqual({ kind: "swap", pairs: [["Ali", "Bilal"]] });
+  it("one person with no side named moves to the other team", () => {
+    expect(f("swap", ["Tom"])).toEqual({ kind: "move", name: "Tom" });
   });
-
-  it("move, EN and TR", () => {
-    expect(parseTeamCommand("move Ali")).toEqual({ kind: "move", name: "Ali" });
-    expect(parseTeamCommand("Move Ali Khan to the other team")).toEqual({ kind: "move", name: "Ali Khan" });
-    expect(parseTeamCommand("move Ali to other side")).toEqual({ kind: "move", name: "Ali" });
-    expect(parseTeamCommand("Ali'yi taşı")).toEqual({ kind: "move", name: "Ali" });
-    expect(parseTeamCommand("taşı Ali")).toEqual({ kind: "move", name: "Ali" });
-    expect(parseTeamCommand("Ali diğer takıma")).toEqual({ kind: "move", name: "Ali" });
+  it("one person put on a named side moves there", () => {
+    expect(f("swap", [], [{ personRef: "Sam", team: "YELLOW" }])).toEqual({ kind: "move", name: "Sam", to: "YELLOW" });
   });
-
-  it.each([
-    "",
-    "   ",
-    "yes",
-    "Shehryar out",
-    "teams look good",
-    "what are the teams",
-    "can you swap Ali and Bilal please",
-    "swap",
-    "swap Ali",
-    "move",
-    "I'll move Ali later",
-    "1. Alex\n2. Bilal",
-    "swap Ali and",
-    `swap ${"a ".repeat(60)}b`,
-  ])("not a command: %j", (text) => {
-    expect(parseTeamCommand(text)).toBeNull();
+  it("two people put on opposite named sides swap", () => {
+    expect(f("swap", [], [{ personRef: "Sam", team: "YELLOW" }, { personRef: "Ali", team: "RED" }])).toEqual({ kind: "swap", pairs: [["Sam", "Ali"]] });
   });
-
-  it("is never thrown by a non-string", () => {
-    expect(parseTeamCommand(undefined as unknown as string)).toBeNull();
+  it("a rename, no players, or too many is unclear", () => {
+    expect(f("rename")).toEqual({ kind: "unclear" });
+    expect(f("swap")).toEqual({ kind: "unclear" });
+    expect(f("swap", ["A", "B", "C"])).toEqual({ kind: "unclear" });
+    expect(f("swap", [], [{ personRef: "Sam", team: "RED" }, { personRef: "Ali", team: "RED" }])).toEqual({ kind: "unclear" });
+  });
+  it("an older stub with no moves field still reads", () => {
+    expect(teamCommandFromFacts({ action: "swap", swaps: [{ personRef: "Sam", team: "RED" }] })).toEqual({ kind: "move", name: "Sam", to: "RED" });
   });
 });
 

@@ -1323,28 +1323,44 @@ export const en = {
    *  linked: where the HQ commands are. */
   onbHelpAdminOrganisers: `📣 Your organisers share the list and the teams. In your admin group, type *help* and I'll show the commands I take there.`,
 
-  /** "help" in a club's admin group (admin-group-help.ts). Every line is a
-   *  command the admin group reads; which file reads it is in that module's
-   *  header. `squad`: a live weekly club (pasted list, one change, team
-   *  commands). `graphics`: a live club. `picks`: organiser pick. `paid`:
-   *  a monthly club's collector. */
+  /** "help" in a club's admin group (admin-group-help.ts), asked in any
+   *  words (the shared router's `help` route). Every line is something the
+   *  admin group really does. `squad`: a live weekly club (pasted list,
+   *  squad changes, the teams). `graphics`: a live club. `picks`:
+   *  organiser pick. `paid`: a monthly club's collector. */
   hq_help: (p: { squad: boolean; graphics: boolean; picks: boolean; paid: boolean }): string => {
-    const lines = [`🛠️ *MatchTime in your admin group*`, `Send any of these here, each as a message of its own. No need to tag me.`, ``];
+    const lines = [`🛠️ *MatchTime in your admin group*`, `Just ask here in your own words. No need to tag me. For example:`, ``];
     if (p.squad) {
       lines.push(`📋 *Paste the whole squad list*: I show you what would change, and *YES* within 30 minutes applies it.`);
-      lines.push(`✏️ *"put Bilal in"*, *"Sam out"*, *"Tom to the bench"*: one change to the squad.`);
-      lines.push(`🟥🟦 *teams*: show the teams, or build them if there are none yet.`);
-      lines.push(`🔀 *reshuffle*: build new teams.`);
-      lines.push(`🔁 *swap Sam and Alex*: swap two players between the teams.`);
-      lines.push(`➡️ *move Sam*: move one player to the other team.`);
-      lines.push(`✅ *YES*: make the proposed teams final.`);
+      lines.push(`✏️ *"put Bilal in"*, *"Sam can't make it"*, *"Tom to the bench"*: changes to the squad.`);
+      lines.push(`🟥🟦 *"show me the teams"*, *"shuffle them again"*: the teams, built if there are none yet.`);
+      lines.push(`🔁 *"swap Sam and Alex"*, *"move Sam to the other team"*: changes to the teams.`);
+      lines.push(`✅ *YES* (or reply YES to my message): make the proposed teams final.`);
     }
-    if (p.graphics) lines.push(`🖼️ *poster*: the list as a graphic. *team sheet*: the teams as a graphic. Both ready to forward.`);
+    if (p.graphics) lines.push(`🖼️ *"send the poster"*, *"team sheet please"*: the list or the teams as a graphic, ready to forward.`);
     if (p.picks) lines.push(`🙋 When I ask you to pick who plays, reply with the numbers or names from my list, or *ALL* or *NONE*.`);
     if (p.paid) lines.push(`💷 *PAID ALL*, *PAID 1 3* or *PAID NONE*: the money collector's answer to my list of payment claims.`);
-    lines.push(``, `Type *help* here any time to see this again.`);
+    lines.push(``, `Ask *what can you do?* here any time to see this again.`);
     return lines.join("\n");
   },
+
+  // ── The safe YES in the admin group (2026-10-16, admin-group-confirm-rules.ts) ──
+
+  /** A YES MatchTime cannot be sure was meant for the teams. */
+  hq_confirm_teams: (p: { day: string }): string => `Is that YES to the proposed teams for ${p.day}?`,
+  /** A YES MatchTime cannot be sure was meant for the pasted list. */
+  hq_confirm_list: `Is that YES to the squad list pasted here?`,
+  /** Two things waiting: which one. */
+  hq_confirm_which: (p: { day: string }): string =>
+    `Which one is that YES for: the proposed teams for ${p.day}, or the pasted squad list? Reply YES to that message.`,
+  /** YES quoting MatchTime with nothing waiting. */
+  hq_nothing_waiting: `There's nothing waiting for a YES right now.`,
+  /** An admin asked MatchTime for something the admin group cannot do. */
+  hq_not_here: `I can't do that from this group. Ask *what can you do?* to see what I can do here.`,
+  /** A team change whose players MatchTime could not tell. */
+  tp_which_players: `Which players? For example: swap Sam and Alex, or move Sam to the other team.`,
+  /** "move Sam to Red" when Sam is already there. */
+  tp_already_on: (p: { name: string; team: string }): string => `${p.name} is already on ${p.team}.`,
 
   // ── "help badges" (2026-10-01) ──────────────────────────────────────
   // Deterministic, no model. Every number comes from `BadgeNumbers`,

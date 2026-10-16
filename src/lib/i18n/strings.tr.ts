@@ -1151,27 +1151,33 @@ export const tr: Strings = {
 
   onbHelpAdminOrganisers: `📣 Listeyi ve takımları organizatörler paylaşıyor. Yönetici grubunda *yardım* yaz, orada kabul ettiğim komutları göstereyim.`,
 
-  // Komutlar, yönetici grubunun gerçekten okuduğu biçimleriyle
-  // (admin-group-help.ts başlığı): "takımlar", "yeniden", "A ile B değiş",
-  // "A'yı taşı", "liste posteri", "takım listesi", "HEPSİ"/"HİÇBİRİ",
-  // "ÖDENDİ HEPSİ".
+  // Yönetici grubunda her şey kendi cümlelerinizle sorulur (paylaşılan
+  // yönlendiricinin `help` rotası, 2026-10-16). Örnekler gerçekten
+  // yapılanlardır.
   hq_help: (p) => {
-    const lines = [`🛠️ *Yönetici grubunda MatchTime*`, `Bunları burada, her birini ayrı bir mesaj olarak yazın. Beni etiketlemenize gerek yok.`, ``];
+    const lines = [`🛠️ *Yönetici grubunda MatchTime*`, `Burada kendi cümlelerinizle sorun. Beni etiketlemenize gerek yok. Örneğin:`, ``];
     if (p.squad) {
       lines.push(`📋 *Kadro listesinin tamamını yapıştırın*: neyin değişeceğini gösteririm, 30 dakika içinde *EVET* yazarsanız uygularım.`);
-      lines.push(`✏️ *"Bilal var"*, *"Sam yok"*, *"Tom yedek"*: kadroda tek bir değişiklik.`);
-      lines.push(`🟥🟦 *takımlar*: takımları gösteririm, henüz yoksa kurarım.`);
-      lines.push(`🔀 *yeniden*: yeni takımlar kurarım.`);
-      lines.push(`🔁 *Sam ile Alex değiş*: iki oyuncunun takımlarını değiştiririm.`);
-      lines.push(`➡️ *Sam'i taşı*: bir oyuncuyu diğer takıma geçiririm.`);
-      lines.push(`✅ *EVET*: önerilen takımları kesinleştiririm.`);
+      lines.push(`✏️ *"Bilal'i ekle"*, *"Sam gelemiyor"*, *"Tom yedek"*: kadroda değişiklik.`);
+      lines.push(`🟥🟦 *"takımları göster"*, *"yeniden karıştır"*: takımlar, henüz yoksa kurarım.`);
+      lines.push(`🔁 *"Sam ile Alex'i değiştir"*, *"Sam'i diğer takıma al"*: takımlarda değişiklik.`);
+      lines.push(`✅ *EVET* (ya da mesajıma EVET diye cevap verin): önerilen takımları kesinleştiririm.`);
     }
-    if (p.graphics) lines.push(`🖼️ *liste posteri*: listeyi görsel olarak. *takım listesi*: takımları görsel olarak. İkisi de iletmeye hazır gelir.`);
+    if (p.graphics) lines.push(`🖼️ *"posteri gönder"*, *"takım listesi görseli"*: listeyi ya da takımları görsel olarak, iletmeye hazır.`);
     if (p.picks) lines.push(`🙋 Kimin oynayacağını seçmenizi istediğimde listemdeki numaraları ya da isimleri, veya *HEPSİ* ya da *HİÇBİRİ* yazın.`);
     if (p.paid) lines.push(`💷 *ÖDENDİ HEPSİ*, *ÖDENDİ 1 3* ya da *ÖDENDİ YOK*: parayı toplayan kişinin ödeme bildirimleri listeme cevabı.`);
-    lines.push(``, `Bunu tekrar görmek için burada istediğiniz zaman *yardım* yazın.`);
+    lines.push(``, `Bunu tekrar görmek için burada istediğiniz zaman *neler yapabilirsin?* diye sorun.`);
     return lines.join("\n");
   },
+
+  hq_confirm_teams: (p) => `Bu EVET, ${p.day} için önerilen takımlara mı?`,
+  hq_confirm_list: `Bu EVET, buraya yapıştırılan kadro listesine mi?`,
+  hq_confirm_which: (p) =>
+    `Bu EVET hangisi için: ${p.day} için önerilen takımlar mı, yapıştırılan kadro listesi mi? O mesaja EVET diye cevap verin.`,
+  hq_nothing_waiting: `Şu anda EVET bekleyen bir şey yok.`,
+  hq_not_here: `Bunu bu gruptan yapamam. Burada neler yapabildiğimi görmek için *neler yapabilirsin?* diye sorun.`,
+  tp_which_players: `Hangi oyuncular? Örneğin: Sam ile Alex'i değiştir, ya da Sam'i diğer takıma al.`,
+  tp_already_on: (p) => `${p.name} zaten ${p.team} takımında.`,
 
   // ── "help badges" (2026-10-01) ──────────────────────────────────────
   // Rozet adları istatistik sayfasındaki gibi (İngilizce) kalır. Ondalık

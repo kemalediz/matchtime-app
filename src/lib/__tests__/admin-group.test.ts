@@ -1,12 +1,12 @@
 /**
- * A message in a club's admin group (2026-10-14): which reader gets it.
+ * A message in a club's admin group: which reader gets it (2026-10-16).
  *
- *   PAID reply -> pick reply (round open) -> YES to a pasted list ->
- *   a pasted list -> one squad change (the only path with a model)
+ *   PAID digest answer -> pick reply (round open) -> pasted list ->
+ *   everything else through the shared pipeline (`admin-group-understand.ts`)
  *
  * and who never gets past the door: a non-admin, a duplicate, a club that
- * is not live, a monthly club. Every collaborator is mocked at its module
- * boundary. No database, no model.
+ * is not live. Every collaborator is mocked at its module boundary. No
+ * database, no model.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -22,26 +22,33 @@ const link = vi.hoisted(() => ({ resolveSenderUserIds: vi.fn() }));
 vi.mock("@/lib/admin-group-link", () => link);
 const pick = vi.hoisted(() => ({ handlePickReply: vi.fn() }));
 vi.mock("@/lib/organiser-pick", () => pick);
-const paste = vi.hoisted(() => ({ proposeSquadPaste: vi.fn(), answerSquadPasteYes: vi.fn() }));
+const paste = vi.hoisted(() => ({ proposeSquadPaste: vi.fn() }));
 vi.mock("@/lib/admin-group-paste", () => paste);
-const change = vi.hoisted(() => ({ handleAdminSquadChange: vi.fn() }));
-vi.mock("@/lib/admin-group-squad-change", () => change);
 const pay = vi.hoisted(() => ({ handleCollectorPaidReply: vi.fn() }));
 vi.mock("@/lib/month-payment", () => pay);
-const teams = vi.hoisted(() => ({ handleTeamCommand: vi.fn(), answerTeamsYes: vi.fn(), setAsideTeamProposal: vi.fn() }));
+const teams = vi.hoisted(() => ({ setAsideTeamProposal: vi.fn() }));
 vi.mock("@/lib/team-proposal", () => teams);
+const hqLog = vi.hoisted(() => ({
+  recordHqMessage: vi.fn(),
+  recordMatchTimeQuestion: vi.fn(),
+  listAskRef: (id: string) => `list:${id}`,
+}));
+vi.mock("@/lib/admin-group-log", () => hqLog);
+const understand = vi.hoisted(() => ({ understandAdminMessage: vi.fn() }));
+vi.mock("@/lib/admin-group-understand", () => understand);
 
 import { handleAdminGroupMessage } from "../admin-group";
 
 const HQ = "120363777000000001@g.us";
-const LIVE_ORG = { id: "org-fnf", billingStatus: null, whatsappBotEnabled: true, squadMode: "weekly", language: "en" };
+const NOW = new Date("2026-10-14T12:00:00Z");
+const LIVE_ORG = { id: "org-fnf", billingStatus: null, whatsappBotEnabled: true, squadMode: "weekly", language: "en", benchPickMode: null };
 const msg = (text: string, over: Record<string, unknown> = {}) => ({
   groupId: HQ,
   messageId: "wa-1",
   text,
   senderPhone: "447700900001",
   timestamp: "1760443200",
-  now: new Date("2026-10-14T12:00:00Z"),
+  now: NOW,
   ...over,
 });
 
@@ -54,29 +61,51 @@ beforeEach(() => {
   dbMock.user.findUnique.mockResolvedValue({ name: "Raihan" });
   link.resolveSenderUserIds.mockResolvedValue(["u-admin"]);
   paste.proposeSquadPaste.mockResolvedValue(null);
-  paste.answerSquadPasteYes.mockResolvedValue(null);
-  change.handleAdminSquadChange.mockResolvedValue({ handled: false, why: "not-a-squad-change" });
-  teams.handleTeamCommand.mockResolvedValue(null);
-  teams.answerTeamsYes.mockResolvedValue(null);
   teams.setAsideTeamProposal.mockResolvedValue(0);
+  understand.understandAdminMessage.mockResolvedValue(null);
 });
 
-describe("handleAdminGroupMessage: one squad change", () => {
-  it("an admin's 'Shehryar out' goes to the squad change, and its reply comes back", async () => {
-    change.handleAdminSquadChange.mockResolvedValue({ handled: true, outcome: "squad-changed", replyText: "Done: Shehryar out. 17 of 18." });
-    const r = await handleAdminGroupMessage(msg("Shehryar out", { mentionNames: [{ jid: "1@lid", phone: "447" }] }));
-    expect(r).toEqual({ handled: true, orgId: "org-fnf", outcome: "squad-changed", replyText: "Done: Shehryar out. 17 of 18." });
-    expect(change.handleAdminSquadChange).toHaveBeenCalledWith({
-      orgId: "org-fnf",
-      lang: "en",
+describe("everything that is not structured data goes through the shared pipeline", () => {
+  it("an admin's words go to the shared pipeline with the club, the sender and the quoted message, and its answer is the route's", async () => {
+    understand.understandAdminMessage.mockResolvedValue({ route: "poster", outcome: "graphic-queued", replyText: null });
+    const r = await handleAdminGroupMessage(
+      msg("can you do the poster for this week", { mentionNames: [{ jid: "1@lid" }], quotedText: undefined, quoted: { text: "Teams?", fromMatchTime: true } }),
+    );
+    expect(r).toEqual({ handled: true, orgId: "org-fnf", outcome: "graphic-queued", replyText: null });
+    expect(understand.understandAdminMessage).toHaveBeenCalledWith({
+      org: LIVE_ORG,
       messageId: "wa-1",
-      text: "Shehryar out",
-      mentionNames: [{ jid: "1@lid", phone: "447" }],
-      senderUserId: "u-admin",
+      text: "can you do the poster for this week",
+      mentionNames: [{ jid: "1@lid" }],
+      quoted: { text: "Teams?", fromMatchTime: true },
+      adminUserId: "u-admin",
       senderName: "Raihan",
       sentAt: new Date(1760443200 * 1000),
-      now: new Date("2026-10-14T12:00:00Z"),
+      now: NOW,
     });
+  });
+
+  it("the organisers' own conversation: ignored, no reply", async () => {
+    const r = await handleAdminGroupMessage(msg("who is bringing the bibs?"));
+    expect(r).toEqual({ handled: false, ignored: "no-open-pick", orgId: "org-fnf", replyText: null });
+  });
+
+  it("a monthly club is read too (help, the graphics)", async () => {
+    dbMock.organisation.findFirst.mockResolvedValue({ ...LIVE_ORG, squadMode: "monthly" });
+    understand.understandAdminMessage.mockResolvedValue({ route: "help", outcome: "hq-help", replyText: "🛠️" });
+    expect(await handleAdminGroupMessage(msg("what can you do?"))).toMatchObject({ handled: true, outcome: "hq-help" });
+    expect(paste.proposeSquadPaste).not.toHaveBeenCalled();
+  });
+});
+
+describe("the door", () => {
+  it("a NON-admin: no pipeline, no claim, no reply; still recorded for the safe-YES rule", async () => {
+    dbMock.membership.findFirst.mockResolvedValue(null);
+    const r = await handleAdminGroupMessage(msg("yes"));
+    expect(r).toEqual({ handled: false, ignored: "no-open-pick", orgId: "org-fnf", replyText: null });
+    expect(understand.understandAdminMessage).not.toHaveBeenCalled();
+    expect(dbMock.sentNotification.create).not.toHaveBeenCalled();
+    expect(hqLog.recordHqMessage).toHaveBeenCalledWith({ orgId: "org-fnf", waMessageId: "wa-1", senderUserId: null, text: "yes", now: NOW });
   });
 
   it("the sender is found by phone or a stored LID, never a pushname", async () => {
@@ -84,176 +113,78 @@ describe("handleAdminGroupMessage: one squad change", () => {
     expect(link.resolveSenderUserIds).toHaveBeenCalledWith({ phones: ["447700900001", "447700900002"], lid: "999@lid" });
   });
 
-  it("a NON-admin's 'Shehryar out' is ignored: no model, no claim, no reply", async () => {
-    dbMock.membership.findFirst.mockResolvedValue(null);
-    const r = await handleAdminGroupMessage(msg("Shehryar out"));
-    expect(r).toEqual({ handled: false, ignored: "no-open-pick", orgId: "org-fnf", replyText: null });
-    expect(change.handleAdminSquadChange).not.toHaveBeenCalled();
-    expect(paste.proposeSquadPaste).not.toHaveBeenCalled();
-    expect(dbMock.sentNotification.create).not.toHaveBeenCalled();
-  });
-
-  it("a sender nobody knows: ignored the same way", async () => {
-    link.resolveSenderUserIds.mockResolvedValue([]);
-    const r = await handleAdminGroupMessage(msg("Shehryar out"));
-    expect(r).toMatchObject({ handled: false, ignored: "no-open-pick", replyText: null });
-    expect(change.handleAdminSquadChange).not.toHaveBeenCalled();
-  });
-
-  it("chat the squad change does not claim: ignored, no reply", async () => {
-    const r = await handleAdminGroupMessage(msg("Wasim played well last week"));
-    expect(r).toEqual({ handled: false, ignored: "no-open-pick", orgId: "org-fnf", replyText: null });
+  it("an admin's message is recorded with who sent it", async () => {
+    await handleAdminGroupMessage(msg("Shehryar out"));
+    expect(hqLog.recordHqMessage).toHaveBeenCalledWith({ orgId: "org-fnf", waMessageId: "wa-1", senderUserId: "u-admin", text: "Shehryar out", now: NOW });
   });
 
   it("idempotent per WhatsApp message id: a Pi retry is never applied twice", async () => {
     dbMock.sentNotification.create.mockRejectedValueOnce(new Error("unique"));
     const r = await handleAdminGroupMessage(msg("Shehryar out"));
     expect(r).toEqual({ handled: false, ignored: "duplicate", orgId: "org-fnf", replyText: null });
-    expect(change.handleAdminSquadChange).not.toHaveBeenCalled();
+    expect(understand.understandAdminMessage).not.toHaveBeenCalled();
     expect(dbMock.sentNotification.create).toHaveBeenCalledWith({ data: { key: "admin-group-msg:wa-1", kind: "admin-notice" } });
   });
 
-  it("a club that is not live (bot off, still setting up): nothing is read", async () => {
+  it("a club that is not live (bot off, still setting up): nothing is read or recorded", async () => {
     dbMock.organisation.findFirst.mockResolvedValue({ ...LIVE_ORG, whatsappBotEnabled: false });
     const r = await handleAdminGroupMessage(msg("Shehryar out"));
     expect(r).toMatchObject({ handled: false, ignored: "no-open-pick" });
     expect(link.resolveSenderUserIds).not.toHaveBeenCalled();
-    expect(change.handleAdminSquadChange).not.toHaveBeenCalled();
+    expect(hqLog.recordHqMessage).not.toHaveBeenCalled();
+    expect(understand.understandAdminMessage).not.toHaveBeenCalled();
   });
 
-  it("a monthly club: today's behaviour, no squad change and no paste", async () => {
-    dbMock.organisation.findFirst.mockResolvedValue({ ...LIVE_ORG, squadMode: "monthly" });
-    const r = await handleAdminGroupMessage(msg("1. A\n2. B\n3. C\n4. D\n5. E"));
-    expect(r).toMatchObject({ handled: false, ignored: "no-open-pick", replyText: null });
-    expect(change.handleAdminSquadChange).not.toHaveBeenCalled();
-    expect(paste.proposeSquadPaste).not.toHaveBeenCalled();
+  it("a club paused for the club fee: nothing", async () => {
+    vi.stubEnv("BILLING_ENABLED", "1");
+    try {
+      dbMock.organisation.findFirst.mockResolvedValue({ ...LIVE_ORG, billingStatus: "paused" });
+      expect(await handleAdminGroupMessage(msg("poster"))).toMatchObject({ ignored: "club-billing-paused" });
+      expect(understand.understandAdminMessage).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });
 
-describe("handleAdminGroupMessage: a pick round open", () => {
-  beforeEach(() => dbMock.organiserPickRound.findFirst.mockResolvedValue({ id: "round" }));
-
-  it("a pick reply is still the pick round's, and nothing else runs", async () => {
+describe("structured data first, deterministically", () => {
+  it("a pick reply to MatchTime's numbered list is the pick round's, and nothing else runs", async () => {
+    dbMock.organiserPickRound.findFirst.mockResolvedValue({ id: "round" });
     pick.handlePickReply.mockResolvedValue({ handled: true, outcome: "filled", replyText: "Done: Wasim is in." });
     const r = await handleAdminGroupMessage(msg("2"));
     expect(r).toEqual({ handled: true, orgId: "org-fnf", outcome: "filled", replyText: "Done: Wasim is in." });
-    expect(change.handleAdminSquadChange).not.toHaveBeenCalled();
+    expect(understand.understandAdminMessage).not.toHaveBeenCalled();
   });
 
-  it("not a pick: a squad change is still read", async () => {
+  it("not a pick: the shared pipeline reads it, and the old answer stands when it says nothing", async () => {
+    dbMock.organiserPickRound.findFirst.mockResolvedValue({ id: "round" });
     pick.handlePickReply.mockResolvedValue({ handled: false });
-    change.handleAdminSquadChange.mockResolvedValue({ handled: true, outcome: "squad-changed", replyText: "Done: Bilal in. 18 of 18." });
-    const r = await handleAdminGroupMessage(msg("put Bilal in"));
-    expect(r).toMatchObject({ handled: true, outcome: "squad-changed" });
-  });
-
-  it("not a pick and not a change: the old answer, not-a-pick", async () => {
-    pick.handlePickReply.mockResolvedValue({ handled: false });
-    const r = await handleAdminGroupMessage(msg("Wasim played well last week"));
-    expect(r).toEqual({ handled: false, ignored: "not-a-pick", orgId: "org-fnf", replyText: null });
+    expect(await handleAdminGroupMessage(msg("Wasim played well last week"))).toEqual({ handled: false, ignored: "not-a-pick", orgId: "org-fnf", replyText: null });
+    expect(understand.understandAdminMessage).toHaveBeenCalled();
   });
 
   it("a non-admin while a round is open: not-an-admin, as before", async () => {
+    dbMock.organiserPickRound.findFirst.mockResolvedValue({ id: "round" });
     dbMock.membership.findFirst.mockResolvedValue(null);
-    const r = await handleAdminGroupMessage(msg("2"));
-    expect(r).toMatchObject({ handled: false, ignored: "not-an-admin" });
+    expect(await handleAdminGroupMessage(msg("2"))).toMatchObject({ handled: false, ignored: "not-an-admin" });
   });
-});
 
-describe("handleAdminGroupMessage: pasted lists and YES", () => {
-  const LIST = "1. Bilal\n2. Ali\n3. Tom\n4. Sam\n5. Naim";
+  it("a pick round in a club that is not live is still read (its own question)", async () => {
+    dbMock.organisation.findFirst.mockResolvedValue({ ...LIVE_ORG, whatsappBotEnabled: false });
+    dbMock.organiserPickRound.findFirst.mockResolvedValue({ id: "round" });
+    pick.handlePickReply.mockResolvedValue({ handled: false });
+    expect(await handleAdminGroupMessage(msg("hello"))).toMatchObject({ ignored: "not-a-pick" });
+    expect(understand.understandAdminMessage).not.toHaveBeenCalled();
+  });
 
-  it("a pasted list is proposed, never sent to the model", async () => {
+  it("a pasted list is proposed, recorded as MatchTime's question, and never sent to the model", async () => {
+    const LIST = "1. Bilal\n2. Ali\n3. Tom\n4. Sam\n5. Naim";
     paste.proposeSquadPaste.mockResolvedValue({ outcome: "paste-proposed", replyText: "Adding: Bilal. Reply YES to apply." });
     const r = await handleAdminGroupMessage(msg(LIST));
     expect(r).toEqual({ handled: true, orgId: "org-fnf", outcome: "paste-proposed", replyText: "Adding: Bilal. Reply YES to apply." });
-    expect(paste.proposeSquadPaste).toHaveBeenCalledWith({
-      orgId: "org-fnf",
-      lang: "en",
-      messageId: "wa-1",
-      text: LIST,
-      senderUserId: "u-admin",
-      now: new Date("2026-10-14T12:00:00Z"),
-    });
-    expect(change.handleAdminSquadChange).not.toHaveBeenCalled();
-  });
-
-  it("an admin's YES applies the waiting list", async () => {
-    paste.answerSquadPasteYes.mockResolvedValue({ outcome: "paste-applied", replyText: "Done: Bilal in. 18 of 18." });
-    const r = await handleAdminGroupMessage(msg("YES", { messageId: "wa-2" }));
-    expect(r).toMatchObject({ handled: true, outcome: "paste-applied", replyText: "Done: Bilal in. 18 of 18." });
-    expect(paste.answerSquadPasteYes).toHaveBeenCalledWith({
-      orgId: "org-fnf",
-      lang: "en",
-      messageId: "wa-2",
-      senderUserId: "u-admin",
-      now: new Date("2026-10-14T12:00:00Z"),
-    });
-  });
-
-  it("YES with nothing waiting: silent, and never sent to the model", async () => {
-    const r = await handleAdminGroupMessage(msg("yes"));
-    expect(r).toMatchObject({ handled: false, ignored: "no-open-pick", replyText: null });
-    expect(change.handleAdminSquadChange).not.toHaveBeenCalled();
-  });
-
-  it("a non-admin's YES applies nothing", async () => {
-    dbMock.membership.findFirst.mockResolvedValue(null);
-    await handleAdminGroupMessage(msg("YES"));
-    expect(paste.answerSquadPasteYes).not.toHaveBeenCalled();
-  });
-
-  it("a YES while a pick question is pending is the pick round's first", async () => {
-    dbMock.organiserPickRound.findFirst.mockResolvedValue({ id: "round" });
-    pick.handlePickReply.mockResolvedValue({ handled: true, outcome: "filled", replyText: "Done." });
-    await handleAdminGroupMessage(msg("YES"));
-    expect(paste.answerSquadPasteYes).not.toHaveBeenCalled();
-    expect(teams.answerTeamsYes).not.toHaveBeenCalled();
-  });
-});
-
-describe("handleAdminGroupMessage: the team commands (2026-10-14)", () => {
-  it("a team command is read before a pasted list or a squad change, never sent to the model", async () => {
-    teams.handleTeamCommand.mockResolvedValue({ outcome: "teams-swapped", replyText: "📝 *Proposed teams* ..." });
-    const r = await handleAdminGroupMessage(msg("swap Ali Bilal"));
-    expect(r).toEqual({ handled: true, orgId: "org-fnf", outcome: "teams-swapped", replyText: "📝 *Proposed teams* ..." });
-    expect(teams.handleTeamCommand).toHaveBeenCalledWith({
-      orgId: "org-fnf",
-      lang: "en",
-      messageId: "wa-1",
-      text: "swap Ali Bilal",
-      senderUserId: "u-admin",
-      now: new Date("2026-10-14T12:00:00Z"),
-    });
-    expect(paste.proposeSquadPaste).not.toHaveBeenCalled();
-    expect(change.handleAdminSquadChange).not.toHaveBeenCalled();
-  });
-
-  it("a non-admin's 'teams' is never read", async () => {
-    dbMock.membership.findFirst.mockResolvedValue(null);
-    const r = await handleAdminGroupMessage(msg("teams"));
-    expect(r).toMatchObject({ handled: false, replyText: null });
-    expect(teams.handleTeamCommand).not.toHaveBeenCalled();
-  });
-
-  it("a monthly club: no team commands either (today's behaviour)", async () => {
-    dbMock.organisation.findFirst.mockResolvedValue({ ...LIVE_ORG, squadMode: "monthly" });
-    await handleAdminGroupMessage(msg("teams"));
-    expect(teams.handleTeamCommand).not.toHaveBeenCalled();
-  });
-
-  it("YES with teams waiting makes them final, and the list's YES is not asked", async () => {
-    teams.answerTeamsYes.mockResolvedValue({ outcome: "teams-final", replyText: "Teams are final." });
-    const r = await handleAdminGroupMessage(msg("EVET"));
-    expect(r).toEqual({ handled: true, orgId: "org-fnf", outcome: "teams-final", replyText: "Teams are final." });
-    expect(paste.answerSquadPasteYes).not.toHaveBeenCalled();
-  });
-
-  it("YES with no teams waiting goes on to a pasted list's YES", async () => {
-    paste.answerSquadPasteYes.mockResolvedValue({ outcome: "paste-applied", replyText: "Done: Bilal in. 18 of 18." });
-    const r = await handleAdminGroupMessage(msg("YES"));
-    expect(teams.answerTeamsYes).toHaveBeenCalled();
-    expect(r).toMatchObject({ outcome: "paste-applied" });
+    expect(paste.proposeSquadPaste).toHaveBeenCalledWith({ orgId: "org-fnf", lang: "en", messageId: "wa-1", text: LIST, senderUserId: "u-admin", now: NOW });
+    expect(hqLog.recordMatchTimeQuestion).toHaveBeenCalledWith({ orgId: "org-fnf", askRef: "list:wa-1", text: "Adding: Bilal. Reply YES to apply.", now: NOW });
+    expect(understand.understandAdminMessage).not.toHaveBeenCalled();
   });
 
   it("a pasted list asked about while teams wait: the teams are set aside, and the reply says so", async () => {
@@ -267,84 +198,9 @@ describe("handleAdminGroupMessage: the team commands (2026-10-14)", () => {
     });
   });
 
-  it("a pasted list with no teams waiting: the reply is unchanged", async () => {
-    paste.proposeSquadPaste.mockResolvedValue({ outcome: "paste-proposed", replyText: "Adding: Bilal. Reply YES to apply." });
-    const r = await handleAdminGroupMessage(msg("1. Bilal\n2. Ali\n3. Tom\n4. Sam\n5. Naim"));
-    expect(r).toMatchObject({ replyText: "Adding: Bilal. Reply YES to apply." });
-  });
-});
-
-describe("handleAdminGroupMessage: help (2026-10-15)", () => {
-  it("'@Match Time help' is answered before the squad change (the router, a model call) is ever asked", async () => {
-    // The route's order is PAID, poster, pick, YES, team command, pasted
-    // list, then the squad change. 'help' is none of the first five, so
-    // without its own reader it reached `handleAdminSquadChange`. Now the
-    // help reader answers first.
-    const r = await handleAdminGroupMessage(msg("@Match Time help"));
-    expect(change.handleAdminSquadChange).not.toHaveBeenCalled();
-    expect(r).toMatchObject({ handled: true, orgId: "org-fnf", outcome: "hq-help" });
-  });
-
-  it.each(["help", "@Match Time help", "@447700900999 help", "yardım", "HELP?"])(
-    "an admin's %j gets the HQ command list; no squad path, no pick, no team command",
-    async (text) => {
-      dbMock.organiserPickRound.findFirst.mockResolvedValue({ id: "round" });
-      const r = await handleAdminGroupMessage(msg(text));
-      expect(r.handled).toBe(true);
-      expect(r.replyText).toContain("*MatchTime in your admin group*");
-      expect(change.handleAdminSquadChange).not.toHaveBeenCalled();
-      expect(paste.proposeSquadPaste).not.toHaveBeenCalled();
-      expect(teams.handleTeamCommand).not.toHaveBeenCalled();
-      expect(pick.handlePickReply).not.toHaveBeenCalled();
-      expect(pay.handleCollectorPaidReply).not.toHaveBeenCalled();
-    },
-  );
-
-  it("in the club's language", async () => {
-    dbMock.organisation.findFirst.mockResolvedValue({ ...LIVE_ORG, language: "tr" });
-    const r = await handleAdminGroupMessage(msg("yardım"));
-    expect(r.replyText).toContain("*Yönetici grubunda MatchTime*");
-  });
-
-  it("an organiser-pick weekly club gets the pick line and the squad commands", async () => {
-    dbMock.organisation.findFirst.mockResolvedValue({ ...LIVE_ORG, benchPickMode: "organiser" });
-    const r = await handleAdminGroupMessage(msg("help"));
-    expect(r.replyText).toContain("pick who plays");
-    expect(r.replyText).toContain("Paste the whole squad list");
-    expect(r.replyText).not.toContain("PAID ALL");
-  });
-
-  it("a monthly club: the PAID line, no weekly squad commands", async () => {
+  it("a monthly club never has its message read as a pasted list", async () => {
     dbMock.organisation.findFirst.mockResolvedValue({ ...LIVE_ORG, squadMode: "monthly" });
-    const r = await handleAdminGroupMessage(msg("help"));
-    expect(r.replyText).toContain("PAID ALL");
-    expect(r.replyText).not.toContain("Paste the whole squad list");
-    expect(r.replyText).not.toContain("pick who plays");
-  });
-
-  it("claims the message id, so a Pi retry is not answered twice", async () => {
-    await handleAdminGroupMessage(msg("help"));
-    expect(dbMock.sentNotification.create).toHaveBeenCalledWith({ data: { key: "admin-group-msg:wa-1", kind: "admin-notice" } });
-    dbMock.sentNotification.create.mockRejectedValueOnce(new Error("unique"));
-    expect(await handleAdminGroupMessage(msg("help"))).toEqual({ handled: false, ignored: "duplicate", orgId: "org-fnf", replyText: null });
-  });
-
-  it("a non-admin's help: today's answer (ignored, no reply), and still never the squad path", async () => {
-    dbMock.membership.findFirst.mockResolvedValue(null);
-    const r = await handleAdminGroupMessage(msg("help"));
-    expect(r).toEqual({ handled: false, ignored: "no-open-pick", orgId: "org-fnf", replyText: null });
-    expect(change.handleAdminSquadChange).not.toHaveBeenCalled();
-  });
-
-  it("a club that is not live: unchanged, nothing read", async () => {
-    dbMock.organisation.findFirst.mockResolvedValue({ ...LIVE_ORG, whatsappBotEnabled: false });
-    const r = await handleAdminGroupMessage(msg("help"));
-    expect(r).toMatchObject({ handled: false, ignored: "no-open-pick", replyText: null });
-    expect(link.resolveSenderUserIds).not.toHaveBeenCalled();
-  });
-
-  it("chat that mentions help is not help: it goes on as before", async () => {
-    await handleAdminGroupMessage(msg("can someone help with the list"));
-    expect(change.handleAdminSquadChange).toHaveBeenCalled();
+    await handleAdminGroupMessage(msg("1. A\n2. B\n3. C\n4. D\n5. E"));
+    expect(paste.proposeSquadPaste).not.toHaveBeenCalled();
   });
 });

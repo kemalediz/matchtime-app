@@ -195,7 +195,7 @@ describe("the intro and the help read the same gates", () => {
       const help = buildHqHelp({ lang: "en", ...gates });
       expect(intro.includes("I ask here who plays")).toBe(help.includes("pick who plays"));
       expect(intro.includes("*PAID ALL*")).toBe(help.includes("*PAID ALL*"));
-      expect(intro.includes("poster")).toBe(help.includes("*poster*"));
+      expect(intro.includes("poster")).toBe(help.includes("poster"));
     }
   });
 });

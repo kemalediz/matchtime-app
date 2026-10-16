@@ -16,7 +16,7 @@
  * NO MODEL, EVER. The reply parser is code: a whole-message number, name,
  * @tag, ALL, NONE, or YES to a pending question. This module imports only
  * the string table and the name folding, and the admin-group route that
- * reaches it is pinned model-free by `admin-group-no-model.source.test.ts`.
+ * reaches it is pinned model-free by `admin-group-model-door.source.test.ts`.
  */
 import { t } from "./i18n/t";
 import { inMessageHours } from "./message-hours";

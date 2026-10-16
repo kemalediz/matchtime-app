@@ -1,9 +1,12 @@
 /**
  * TEAMS PROPOSED AND APPROVED IN THE ADMIN GROUP (2026-10-14), against a
  * real Postgres, the real admin-group route and the real due-posts poll.
- * No model is called: the team commands are parsed deterministically, and
- * the shared generator's rating adjuster has no API key in this suite
- * (it falls back to the base ratings, as it does on any failure).
+ * No model is called: since 2026-10-16 an organiser's words go through the
+ * SHARED router and teams extractor, which are STUBBED here (`hqStubs`:
+ * what the model would have read), and everything after them is the
+ * shipped code, the safe-YES rule included. The shared generator's rating
+ * adjuster has no API key in this suite (it falls back to the base
+ * ratings, as it does on any failure).
  *
  * The fixture club (E2E Test FC, weekly) plays TODAY at 22:00 London here,
  * 2-a-side so the real balancer builds from the seeded four confirmed:
@@ -22,6 +25,7 @@
 import { test, expect, resetDb } from "../fixtures";
 import { MATCH, ORG_ID, PHONE, SPORT_ID, U, londonAt } from "../helpers/constants";
 import { E2E } from "../helpers/env";
+import { clearPipelineStubs, engineOn, teamsFacts } from "../helpers/stub";
 import type { TestDb } from "../helpers/test-db";
 import type { APIRequestContext } from "@playwright/test";
 
@@ -81,7 +85,25 @@ test.beforeAll(async ({ db }) => {
   ]);
 });
 
+/** What the shared router and teams extractor read from each message. */
+function hqStubs(extra: Parameters<typeof engineOn>[0] = {}) {
+  engineOn({
+    teams: { route: "balancer", facts: teamsFacts("show") },
+    "takımlar": { route: "balancer", facts: teamsFacts("show") },
+    reshuffle: { route: "balancer", facts: teamsFacts("generate") },
+    "move Pat": { route: "balancer", facts: teamsFacts("swap", ["Pat"]) },
+    "move Zed": { route: "balancer", facts: teamsFacts("swap", ["Zed"]) },
+    "Zed'i taşı": { route: "balancer", facts: teamsFacts("swap", ["Zed"]) },
+    YES: { route: "approve" },
+    yes: { route: "approve" },
+    ...extra,
+  });
+}
+
+test.beforeEach(() => hqStubs());
+
 test.afterAll(() => {
+  clearPipelineStubs();
   resetDb();
 });
 
@@ -129,7 +151,9 @@ test("'swap A B' swaps two players in TeamAssignment and reposts", async ({ requ
   const red = rows.find((r) => r.team === "RED")!;
   const yellow = rows.find((r) => r.team === "YELLOW")!;
   const name = async (id: string) => (await db.one<{ name: string }>(`SELECT name FROM "User" WHERE id = $1`, [id]))!.name;
-  const out = await say(request, `swap ${await name(red.userId)} with ${await name(yellow.userId)}`);
+  const [a, b] = [await name(red.userId), await name(yellow.userId)];
+  hqStubs({ [`swap ${a} with ${b}`]: { route: "balancer", facts: teamsFacts("swap", [a, b]) } });
+  const out = await say(request, `swap ${a} with ${b}`);
   expect(out).toMatchObject({ handled: true, outcome: "teams-swapped" });
   expect(await teamOf(db, red.userId)).toBe("YELLOW");
   expect(await teamOf(db, yellow.userId)).toBe("RED");

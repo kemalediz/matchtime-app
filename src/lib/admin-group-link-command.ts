@@ -29,7 +29,7 @@
  * Telling them never fails the command: an error is logged and the route
  * still answers the Pi with "ignored" and no reply text.
  *
- * NO MODEL anywhere on this path (`admin-group-no-model.source.test.ts`
+ * NO MODEL anywhere on this path (`admin-group-model-door.source.test.ts`
  * follows every import of the route). LOGS carry ids and reason codes
  * only.
  */

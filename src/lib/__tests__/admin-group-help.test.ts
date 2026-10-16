@@ -1,68 +1,17 @@
 /**
- * "help" IN A CLUB'S ADMIN GROUP (2026-10-15): the pure half.
+ * "WHAT CAN YOU DO?" IN A CLUB'S ADMIN GROUP (2026-10-15; asked in any
+ * words since 2026-10-16): the answer.
  *
- * Every command the HQ help quotes is fed here to the parser that reads it
- * in the admin group, so the help can never list a command the code does
- * not take:
- *
- *   paste + YES           admin-group-squad-rules.ts readSquadPaste, isAdminGroupYes
- *   teams / reshuffle / swap / move
- *                         team-proposal-rules.ts parseTeamCommand
- *   poster / team sheet   admin-group-graphics.ts parseGraphicsCommand
- *   PAID ALL / 1 3 / NONE month-payment-rules.ts readCollectorReply
- *   ALL / NONE (picks)    organiser-pick-rules.ts parsePickReply
- *
- * The one-change line ("put Bilal in") is read by the router, a model call,
- * so it is not run here; its wording is the module's own header
- * (admin-group-squad-change.ts) and e2e/api/admin-group-squad.spec.ts.
+ * Asking for it, and every request its examples show, is read by the
+ * shared router (live check in the PR). The STRUCTURED lines (PAID, a pick
+ * from the numbered list, a pasted list) are still read deterministically,
+ * so those are fed here to the reader that takes them.
  */
 import { describe, expect, it } from "vitest";
-import { buildHqHelp, isHqHelpRequest } from "@/lib/admin-group-help";
-import { parseTeamCommand } from "@/lib/team-proposal-rules";
-import { parseGraphicsCommand } from "@/lib/admin-group-graphics";
+import { buildHqHelp } from "@/lib/admin-group-help";
 import { readCollectorReply } from "@/lib/month-payment-rules";
-import { isAdminGroupYes, readSquadPaste } from "@/lib/admin-group-squad-rules";
+import { readSquadPaste } from "@/lib/admin-group-squad-rules";
 import { parsePickReply } from "@/lib/organiser-pick-rules";
-
-describe("isHqHelpRequest", () => {
-  it.each([
-    "help",
-    "Help",
-    "HELP",
-    "help?",
-    "help!",
-    " help ",
-    "@Match Time help",
-    "@MatchTime help",
-    "Match Time, help",
-    "matchtime help",
-    "@447700900999 help",
-    "@123456789012345 help",
-    "yardım",
-    "Yardım",
-    "YARDIM",
-    "yardim",
-    "@Match Time yardım",
-    "@447700900999 yardım?",
-  ])("reads %j as help", (text) => {
-    expect(isHqHelpRequest(text)).toBe(true);
-  });
-
-  it.each([
-    "",
-    "help me out here lads",
-    "can someone help with the list",
-    "help teams",
-    "Tom out",
-    "put Bilal in",
-    "teams",
-    "helpful",
-    "yardımcı olur musun",
-    "1. help\n2. Tom",
-  ])("does not read %j as help", (text) => {
-    expect(isHqHelpRequest(text)).toBe(false);
-  });
-});
 
 const ALL = { squad: true, graphics: true, picks: true, paid: true };
 
@@ -71,19 +20,17 @@ describe("buildHqHelp, English", () => {
     expect(buildHqHelp({ lang: "en", squad: true, graphics: true, picks: true, paid: false })).toBe(
       [
         `🛠️ *MatchTime in your admin group*`,
-        `Send any of these here, each as a message of its own. No need to tag me.`,
+        `Just ask here in your own words. No need to tag me. For example:`,
         ``,
         `📋 *Paste the whole squad list*: I show you what would change, and *YES* within 30 minutes applies it.`,
-        `✏️ *"put Bilal in"*, *"Sam out"*, *"Tom to the bench"*: one change to the squad.`,
-        `🟥🟦 *teams*: show the teams, or build them if there are none yet.`,
-        `🔀 *reshuffle*: build new teams.`,
-        `🔁 *swap Sam and Alex*: swap two players between the teams.`,
-        `➡️ *move Sam*: move one player to the other team.`,
-        `✅ *YES*: make the proposed teams final.`,
-        `🖼️ *poster*: the list as a graphic. *team sheet*: the teams as a graphic. Both ready to forward.`,
+        `✏️ *"put Bilal in"*, *"Sam can't make it"*, *"Tom to the bench"*: changes to the squad.`,
+        `🟥🟦 *"show me the teams"*, *"shuffle them again"*: the teams, built if there are none yet.`,
+        `🔁 *"swap Sam and Alex"*, *"move Sam to the other team"*: changes to the teams.`,
+        `✅ *YES* (or reply YES to my message): make the proposed teams final.`,
+        `🖼️ *"send the poster"*, *"team sheet please"*: the list or the teams as a graphic, ready to forward.`,
         `🙋 When I ask you to pick who plays, reply with the numbers or names from my list, or *ALL* or *NONE*.`,
         ``,
-        `Type *help* here any time to see this again.`,
+        `Ask *what can you do?* here any time to see this again.`,
       ].join("\n"),
     );
   });
@@ -92,9 +39,9 @@ describe("buildHqHelp, English", () => {
     const out = buildHqHelp({ lang: "en", squad: false, graphics: true, picks: false, paid: true });
     expect(out).toContain(`💷 *PAID ALL*, *PAID 1 3* or *PAID NONE*: the money collector's answer to my list of payment claims.`);
     expect(out).not.toContain("Paste the whole squad list");
-    expect(out).not.toContain("*reshuffle*");
+    expect(out).not.toContain("shuffle them again");
     expect(out).not.toContain("pick who plays");
-    expect(out).toContain("*poster*");
+    expect(out).toContain("send the poster");
   });
 
   it("first-come club: no pick line", () => {
@@ -107,20 +54,18 @@ describe("buildHqHelp, Turkish", () => {
     expect(buildHqHelp({ lang: "tr", ...ALL })).toBe(
       [
         `🛠️ *Yönetici grubunda MatchTime*`,
-        `Bunları burada, her birini ayrı bir mesaj olarak yazın. Beni etiketlemenize gerek yok.`,
+        `Burada kendi cümlelerinizle sorun. Beni etiketlemenize gerek yok. Örneğin:`,
         ``,
         `📋 *Kadro listesinin tamamını yapıştırın*: neyin değişeceğini gösteririm, 30 dakika içinde *EVET* yazarsanız uygularım.`,
-        `✏️ *"Bilal var"*, *"Sam yok"*, *"Tom yedek"*: kadroda tek bir değişiklik.`,
-        `🟥🟦 *takımlar*: takımları gösteririm, henüz yoksa kurarım.`,
-        `🔀 *yeniden*: yeni takımlar kurarım.`,
-        `🔁 *Sam ile Alex değiş*: iki oyuncunun takımlarını değiştiririm.`,
-        `➡️ *Sam'i taşı*: bir oyuncuyu diğer takıma geçiririm.`,
-        `✅ *EVET*: önerilen takımları kesinleştiririm.`,
-        `🖼️ *liste posteri*: listeyi görsel olarak. *takım listesi*: takımları görsel olarak. İkisi de iletmeye hazır gelir.`,
+        `✏️ *"Bilal'i ekle"*, *"Sam gelemiyor"*, *"Tom yedek"*: kadroda değişiklik.`,
+        `🟥🟦 *"takımları göster"*, *"yeniden karıştır"*: takımlar, henüz yoksa kurarım.`,
+        `🔁 *"Sam ile Alex'i değiştir"*, *"Sam'i diğer takıma al"*: takımlarda değişiklik.`,
+        `✅ *EVET* (ya da mesajıma EVET diye cevap verin): önerilen takımları kesinleştiririm.`,
+        `🖼️ *"posteri gönder"*, *"takım listesi görseli"*: listeyi ya da takımları görsel olarak, iletmeye hazır.`,
         `🙋 Kimin oynayacağını seçmenizi istediğimde listemdeki numaraları ya da isimleri, veya *HEPSİ* ya da *HİÇBİRİ* yazın.`,
         `💷 *ÖDENDİ HEPSİ*, *ÖDENDİ 1 3* ya da *ÖDENDİ YOK*: parayı toplayan kişinin ödeme bildirimleri listeme cevabı.`,
         ``,
-        `Bunu tekrar görmek için burada istediğiniz zaman *yardım* yazın.`,
+        `Bunu tekrar görmek için burada istediğiniz zaman *neler yapabilirsin?* diye sorun.`,
       ].join("\n"),
     );
   });
@@ -137,30 +82,7 @@ describe("house rules", () => {
   });
 });
 
-describe("every command the help quotes is one the admin group really takes", () => {
-  it("team commands (team-proposal-rules.ts parseTeamCommand)", () => {
-    expect(parseTeamCommand("teams")).toEqual({ kind: "show" });
-    expect(parseTeamCommand("reshuffle")).toEqual({ kind: "reshuffle" });
-    expect(parseTeamCommand("swap Sam and Alex")).toMatchObject({ kind: "swap", pairs: [["Sam", "Alex"]] });
-    expect(parseTeamCommand("move Sam")).toEqual({ kind: "move", name: "Sam" });
-    expect(parseTeamCommand("takımlar")).toEqual({ kind: "show" });
-    expect(parseTeamCommand("yeniden")).toEqual({ kind: "reshuffle" });
-    expect(parseTeamCommand("Sam ile Alex değiş")).toMatchObject({ kind: "swap", pairs: [["Sam", "Alex"]] });
-    expect(parseTeamCommand("Sam'i taşı")).toEqual({ kind: "move", name: "Sam" });
-  });
-
-  it("YES / EVET (admin-group-squad-rules.ts isAdminGroupYes)", () => {
-    expect(isAdminGroupYes("YES")).toBe(true);
-    expect(isAdminGroupYes("EVET")).toBe(true);
-  });
-
-  it("graphics (admin-group-graphics.ts parseGraphicsCommand)", () => {
-    expect(parseGraphicsCommand("poster")).toBe("list");
-    expect(parseGraphicsCommand("team sheet")).toBe("teams");
-    expect(parseGraphicsCommand("liste posteri")).toBe("list");
-    expect(parseGraphicsCommand("takım listesi")).toBe("teams");
-  });
-
+describe("every STRUCTURED reply the help quotes is one the admin group really takes", () => {
   it("PAID (month-payment-rules.ts readCollectorReply)", () => {
     expect(readCollectorReply("PAID ALL")).toMatchObject({ kind: "all" });
     expect(readCollectorReply("PAID 1 3")).not.toBeNull();
@@ -182,12 +104,9 @@ describe("every command the help quotes is one the admin group really takes", ()
     expect(readSquadPaste("1. Sam\n2. Alex\n3. Tom\n4. Ben", 6)).not.toBeNull();
   });
 
-  it("help itself is none of those, so nothing else could answer it first", () => {
-    for (const text of ["help", "@Match Time help", "yardım"]) {
-      expect(parseTeamCommand(text)).toBeNull();
-      expect(parseGraphicsCommand(text)).toBeNull();
+  it("asking what MatchTime can do is none of those structured replies", () => {
+    for (const text of ["help", "what can you do?", "neler yapabilirsin?"]) {
       expect(readCollectorReply(text)).toBeNull();
-      expect(isAdminGroupYes(text)).toBe(false);
       expect(readSquadPaste(text, 18)).toBeNull();
     }
   });

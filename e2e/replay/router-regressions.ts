@@ -55,6 +55,12 @@ export const OWNER_OF: Record<Route, Owner> = {
   score: "S",
   admin_ops: "D",
   none: "N",
+  // The organisers' group's own routes. The parser reads any of them on a
+  // players' group message as `unsure`, so a players' case never ends here.
+  approve: "A",
+  poster: "A",
+  team_sheet: "A",
+  help: "A",
 };
 
 export interface RegressionCase {

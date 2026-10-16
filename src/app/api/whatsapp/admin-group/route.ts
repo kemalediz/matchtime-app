@@ -6,12 +6,12 @@
  * once and flagged `channel: "admin-group"`:
  *
  *   { channel, groupId, messageId, text, mentionNames, senderPhone,
- *     senderLid, senderAltPhone, timestamp }
+ *     senderLid, senderAltPhone, timestamp,
+ *     quotedMessageId?, quotedText?, quotedFromMatchTime? }
  *
- * Never analysed, never a model call: this route imports no model path
- * (`src/lib/__tests__/admin-group-no-model.source.test.ts`). Slice 2b
- * reads the organisers' picks here, deterministically, and only while a
- * pick round is open; everything else is "ignored" with no reply.
+ * Never mixed into the players' group's analysis history or batch. An
+ * owner's or admin's message is read by the same pipeline as the players'
+ * group, with the organisers' group context (`src/lib/admin-group.ts`).
  */
 import { NextResponse } from "next/server";
 import { handleAdminGroupMessage } from "@/lib/admin-group";
@@ -44,6 +44,16 @@ export async function POST(request: Request) {
             ...(typeof m.phone === "string" ? { phone: m.phone } : {}),
           }))
       : undefined,
+    // A WhatsApp reply (2026-10-16): what it quotes, and whether the Pi saw
+    // that the quoted message was MatchTime's own. Older Pis send none.
+    quoted:
+      str(body.quotedMessageId) || str(body.quotedText) || body.quotedFromMatchTime === true
+        ? {
+            messageId: str(body.quotedMessageId),
+            text: typeof body.quotedText === "string" ? body.quotedText.slice(0, 2000) : null,
+            fromMatchTime: body.quotedFromMatchTime === true,
+          }
+        : null,
   });
   return NextResponse.json({ ok: true, ...result });
 }

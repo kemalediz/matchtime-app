@@ -281,6 +281,19 @@ export function unnamedOther(
 
 // ── The one-call arming helper every ported spec uses ─────────────────
 
+/**
+ * The teams extractor's raw answer (2026-10-16): what the shared pipeline
+ * reads from an organiser's "show me the teams", "reshuffle", "swap A and
+ * B" or "move A". `moves` are people to the other team, no side named.
+ */
+export function teamsFacts(
+  action: "show" | "generate" | "rename" | "swap",
+  moves: string[] = [],
+  over: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return { action, includeRefs: [], teamNames: [], swaps: [], moves, pairings: [], ...over };
+}
+
 export interface BodyRouting {
   route: string;
   facts?: Record<string, unknown>;

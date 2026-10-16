@@ -20,6 +20,7 @@ import { deflateSync } from "node:zlib";
 import { test, expect, resetDb } from "../fixtures";
 import { MATCH, ORG_ID, PHONE, U } from "../helpers/constants";
 import { E2E } from "../helpers/env";
+import { clearPipelineStubs, engineOn } from "../helpers/stub";
 import type { TestDb } from "../helpers/test-db";
 import type { APIRequestContext } from "@playwright/test";
 
@@ -234,7 +235,19 @@ test.describe("GET /api/graphics/<token> for a club with its own template", () =
   });
 });
 
-test.describe("the admin-group command", () => {
+test.describe("the admin-group request", () => {
+  // Since 2026-10-16 the request is read by the SHARED router (stubbed
+  // here: what the model would have said), in the admins' own words.
+  test.beforeEach(() =>
+    engineOn({
+      poster: { route: "poster" },
+      "can you do the poster for this week": { route: "poster" },
+      "team sheet": { route: "team_sheet" },
+      "takım listesi": { route: "team_sheet" },
+    }),
+  );
+  test.afterAll(() => clearPipelineStubs());
+
   test("a non-admin's 'poster' is ignored: no reply, no job", async ({ request, db }) => {
     const out = await say(request, "poster", PLAYER);
     expect(out).toMatchObject({ handled: false, replyText: null });
@@ -246,8 +259,8 @@ test.describe("the admin-group command", () => {
     expect(await graphicJobs(db)).toHaveLength(0);
   });
 
-  test("an admin's 'poster': a graphic job, emitted with a signed image URL the Pi can fetch", async ({ request, db }) => {
-    const out = await say(request, "poster");
+  test("an admin's 'can you do the poster for this week': a graphic job, emitted with a signed image URL the Pi can fetch", async ({ request, db }) => {
+    const out = await say(request, "can you do the poster for this week");
     expect(out).toMatchObject({ handled: true, outcome: "graphic-queued", replyText: null });
 
     const jobs = await graphicJobs(db);

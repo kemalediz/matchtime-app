@@ -823,7 +823,7 @@ async function placeOnWeek(p: {
   if (live.length === 0) return;
   // Loaded here, not at the top: the attendance path reaches the pipeline,
   // and this module is imported by the admin group's route, which must
-  // import nothing that can call a model (admin-group-no-model test).
+  // import nothing that can call a model (admin-group-model-door test: only the shared-pipeline door may).
   const { loadMonthlyWeek } = await import("./monthly-week");
   const { cancelAttendance, registerAttendance } = await import("./attendance");
   const self = p.args.actorUserId === userId && !p.args.byOrganiser;

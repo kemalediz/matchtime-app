@@ -89,6 +89,7 @@ import {
   type PipelineModel,
 } from "./llm";
 import type { AttendanceFacts, Claim, Degradation, Route, RoutedMessage } from "./types";
+import { ORGANISER_ONLY_ROUTES } from "./types";
 import { isAiBudgetExceeded } from "../ai-budget-context";
 
 /**
@@ -190,8 +191,27 @@ import { isAiBudgetExceeded } from "../ai-budget-context";
  * unnumbered: "ASKING is question; INSTRUCTING is admin_ops" word for
  * word, and "the place wins" for an instruction that carries a setting
  * change and a place.
+ *
+ * ── 2026-10-16: ONE ROUTER FOR EVERY GROUP ─────────────────────────────
+ *
+ * Kemal: "There has to be a general module which analyzes the messages
+ * coming from multiple groups and then processes accordingly." A club's
+ * organisers' (admin) group, HQ, now comes through this same router
+ * (`admin-group-understand.ts`), under `ORGANISERS_HEADER` with its
+ * context lines (what MatchTime is waiting to hear, the message replied
+ * to, recent HQ messages). The prompt was rewritten as one document that
+ * covers both groups: one paragraph saying which group a message is from,
+ * the same three questions and rulings, and one "IN THE ORGANISERS' GROUP"
+ * section with the four routes only HQ has (approve, poster, team_sheet,
+ * help) and what differs there. A players' group message's user turn is
+ * byte-for-byte what it was, and an HQ-only route on one reads as
+ * `unsure` (`parseRouterResponse`). Live check on the dev key, once per
+ * case: the HQ set 48/48 on the final prompt; the players' group
+ * regressions, veto and recall are in the PR.
  */
-export const ROUTER_SYSTEM_PROMPT = `You are the front door of MatchTime, the bot that runs a football club's WhatsApp group: who is playing this week, the two teams, results, payments, reminders and the players' stats. You read each message and send it to the part of MatchTime that handles it, or to none if it is chat for the players and not for the bot. For EVERY message id you are given, return exactly one route.
+export const ROUTER_SYSTEM_PROMPT = `You are the front door of MatchTime, the bot that runs a football club's WhatsApp groups: who is playing this week, the two teams, results, payments, reminders and the players' stats. You read each message and send it to the part of MatchTime that handles it, or to none if it is chat between people and not for the bot. For EVERY message id you are given, return exactly one route.
+
+TWO KINDS OF GROUP. A message is from the PLAYERS' GROUP unless it comes under an "ORGANISERS' GROUP" header, with what MatchTime is waiting to hear, the message it replies to and recent messages there. Everything applies to both; "IN THE ORGANISERS' GROUP" adds what differs there.
 
 WHAT IS AT STAKE. A message routed none is gone: nothing is written, nobody replies, and a player who said they are playing loses their place without knowing. A wrong route to anything else costs a few pence and is caught later. So when in doubt between none and anything else, choose the other route.
 
@@ -205,7 +225,7 @@ HOW TO DECIDE. Route on what a message DOES, not on what it is about. Ask three 
 
 THE ROUTES.
 self_att    the SENDER joins or leaves this match, bench included.
-other_att   the message adds, drops, benches, moves, swaps or replaces SOMEONE ELSE, or reposts one list of players (the squad roster, however long or numbered).
+other_att   the message adds, drops, benches, moves, swaps or replaces SOMEONE ELSE in the squad, or reposts one list of players (the squad roster, however long or numbered).
 offer       a tentative or conditional commitment by anyone ("if you're short", "if my back holds up"), or asking the group for a player when nobody named is leaving.
 unsure      about a place, but you cannot tell who or what it does. A bare "confirmed" or "confirm" with nothing to show what it confirms is unsure, never none: it may be somebody confirming their place. A real route with a real handler, not a failure. Never use it for plain banter.
 question    asks for something the bot already holds: the squad list and how many are in, the pitch, who has paid, a past result, and every stat (ratings, leaderboards, Man of the Match, appearances, Elo, chemistry, reliability, form, team of the season, best and worst, a player's own stats or wrapped).
@@ -213,8 +233,9 @@ balancer    asks the bot to generate, show, shuffle or rename the TWO team line-
 score       reports the final result of this group's own match.
 admin_ops   an instruction addressed to the bot to do something now: credit a payment, set a reminder, send a link, change a setting.
 none        everything else, as defined in question 3.
+approve, poster, team_sheet and help exist ONLY in the organisers' group; see that section.
 
-RULINGS. Each one settles a confusion that has really happened in this group.
+RULINGS. Each one settles a confusion that has really happened in a group.
 
 About a place in the squad:
 - Saying when you will be away or back ("not this week", "I will be back next month") settles the sender's place for the coming match: self_att.
@@ -237,9 +258,16 @@ About none:
 - Untagged talk about players or stats ("crazy statistics", "his chemistry with that ball is zero") is none. The same words tagged are a question.
 - score is only our own result, given with our team names, our colours or a bare scoreline ("5-3 to Yellows", "10-10"). A professional or international scoreline somebody is watching ("Arsenal 2 Spurs 1") is none.
 
+IN THE ORGANISERS' GROUP. Every sender is an organiser, and they mostly talk to each other. Question 1 still comes first and is never none: a message saying a player is in, out, can or cannot play ("Tom out", "put Bilal in", "Shehryar can't make it tonight") is an organiser changing the squad, other_att, however chatty. Otherwise a message is for the bot only when it tells the bot to do something or answers what the bot is WAITING for; other discussion between organisers is none, even when it names teams or players.
+approve     a yes to what MatchTime is WAITING for ("yes", "go ahead", "looks good", "evet", "tamam", "olur"), even if it might be for another organiser: code checks who it was for. With nothing waiting, it is none.
+poster      asks for the squad list as an image or graphic to share.
+team_sheet  asks for the teams as an image or graphic to share. A bare "teams" asks to see them: balancer.
+help        asks what MatchTime can do here.
+There, moving or swapping players between the two teams is balancer, not attendance, because nobody joins or leaves: "swap Ali and Can", "move Tom to the other team", "put Sam in yellow". A reply to another organiser's message is their conversation: none, unless it plainly tells the bot to act.
+
 LANGUAGE. Messages may be in English or Turkish. Route on meaning; every rule applies in both. In Turkish, "var", "varım", "ben varım" and "geliyorum" are the sender joining, like "in"; "yok", "yokum", "ben yokum" and "gelemiyorum" are the sender leaving, like "out". Neither is ever none. "belki", "bakarız", "kesin değil" (maybe, we'll see, not certain) are offer. "X de geliyor" or "X de var" adds X and "X gelemiyor" or "X yok" drops X: other_att. "X, Y'nin yerine geliyor", "Y yerine X" and "Y çıkıyor X giriyor" are replacements.
 
-WORKED EXAMPLES from this group, grouped by what they teach, Turkish beside English. Copy the reasoning, not the wording.
+WORKED EXAMPLES, grouped by what they teach, Turkish beside English. Copy the reasoning, not the wording.
 
 The sender's own place:
   "In" -> self_att
@@ -339,6 +367,15 @@ Chat for the players, not the bot:
   "hadi be ya 😂😂" -> none
   "dünkü maç efsaneydi" -> none
 
+In the organisers' group, teams waiting for approval:
+  "looks good, go" -> approve
+  "tamam onaylıyorum" -> approve
+  "can you do the poster for this week" -> poster
+  "send us the team sheet image" -> team_sheet
+  "Ali ile Can'ı değiştir" -> balancer
+  "neler yapabiliyorsun?" -> help
+  "the teams look a bit uneven, what do you reckon?" -> none
+
 Return JSON only: {"routes":[{"id":"<id>","route":"<route>"}]}`;
 
 const ROUTER_MAX_TOKENS = 1_024;
@@ -353,6 +390,12 @@ const VALID: Record<string, Route> = {
   score: "score",
   admin_ops: "admin_ops",
   unsure: "unsure",
+  // The organisers' group only (2026-10-16). `parseRouterResponse` reads
+  // any of these on a players' group message as `unsure`.
+  approve: "approve",
+  poster: "poster",
+  team_sheet: "team_sheet",
+  help: "help",
   // Aliases. §6.1's unfixed prototype failure was "move Mustafa to the
   // bench" routing `team_ops` 3/3 because "bench" reads as team-shaped
   // vocabulary; the doc's own remedy is to rename it and add a lineup
@@ -561,6 +604,27 @@ export interface RouterMessage {
   id: string;
   authorName: string | null;
   body: string;
+  /**
+   * Set for a message from a club's ORGANISERS' (admin) group, 2026-10-16:
+   * the lines shown above it (what MatchTime is waiting to hear, the
+   * message it replies to, the last few messages there). Absent for the
+   * players' group, whose user turn is byte-for-byte what it always was.
+   */
+  organisers?: { context: string[] };
+}
+
+/** The header an organisers' group message is shown under. */
+export const ORGANISERS_HEADER = "ORGANISERS' GROUP. The sender is an organiser of the club.";
+
+/** The user turn: each message on its own line; an organisers' group
+ *  message under its header and context lines. */
+export function renderRouterTurn(messages: RouterMessage[]): string {
+  return messages
+    .map((m) => {
+      const line = `[${m.id}] ${m.authorName ?? "(unknown)"}: ${m.body}`;
+      return m.organisers ? [ORGANISERS_HEADER, ...m.organisers.context, line].join("\n") : line;
+    })
+    .join("\n");
 }
 
 export interface RouterResult {
@@ -569,7 +633,7 @@ export interface RouterResult {
   usage?: { costUsd: number | null; ms: number; inputTokens: number; outputTokens: number };
 }
 
-export function parseRouterResponse(text: string, ids: string[]): RouterResult {
+export function parseRouterResponse(text: string, ids: string[], organiserIds: ReadonlySet<string> = new Set()): RouterResult {
   const degradations: Degradation[] = [];
   const byId = new Map<string, Route>();
 
@@ -590,6 +654,13 @@ export function parseRouterResponse(text: string, ids: string[]): RouterResult {
         degradations.push(
           degradation("router", id, `router returned an unknown route "${String(row.route)}"`),
         );
+        continue;
+      }
+      if (ORGANISER_ONLY_ROUTES.includes(route) && !organiserIds.has(id)) {
+        // An organisers' group route on a players' group message: the
+        // same bias toward action as a missing route.
+        degradations.push(degradation("router", id, `router gave the organisers' route "${route}" to a players' group message; unsure`));
+        byId.set(id, "unsure");
         continue;
       }
       byId.set(id, route);
@@ -785,9 +856,7 @@ async function routeBatchInner(
   }
 
   const ids = messages.map((m) => m.id);
-  const user = messages
-    .map((m) => `[${m.id}] ${m.authorName ?? "(unknown)"}: ${m.body}`)
-    .join("\n");
+  const user = renderRouterTurn(messages);
 
   const req: ModelRequest = {
     model: ROUTER_MODEL,
@@ -820,7 +889,7 @@ async function routeBatchInner(
   let usage: RouterResult["usage"];
   try {
     const resp = await model.complete(req);
-    result = parseRouterResponse(resp.text, ids);
+    result = parseRouterResponse(resp.text, ids, new Set(messages.filter((m) => m.organisers).map((m) => m.id)));
     usage = {
       costUsd: resp.costUsd,
       ms: resp.ms,

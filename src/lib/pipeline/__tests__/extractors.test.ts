@@ -323,6 +323,20 @@ describe("parseFacts (other routes)", () => {
     // A response predating `pairings` parses to an EMPTY list, not to
     // `undefined`: the engine iterates it unconditionally.
     expect(facts).toMatchObject({ pairings: [] });
+    // Likewise `moves` (2026-10-16), an empty list for an older response.
+    expect(facts).toMatchObject({ moves: [] });
+  });
+
+  it("teams carries MOVES: people to the other team, no side named (2026-10-16)", () => {
+    // "swap Ali and Can" and "move Tom" name no colour, so they cannot be
+    // `swaps` (absolute). The organisers' group turns them into a swap or
+    // a move (`teamCommandFromFacts`).
+    const { facts } = parseFacts(
+      "teams",
+      '{"action":"swap","includeRefs":[],"teamNames":[],"swaps":[],"moves":["Ali"," Can ",""],"pairings":[]}',
+      "wa-1",
+    );
+    expect(facts).toMatchObject({ kind: "teams", action: "swap", swaps: [], moves: ["Ali", "Can"] });
   });
 
   // ── §10 step 8's additions to the teams extractor ───────────────────
@@ -377,11 +391,11 @@ describe("parseFacts (other routes)", () => {
     // `rename` is handed back, and handing that message back would lose
     // the club's most-used command to a wording detail.
     const p = EXTRACTOR_PROMPTS.teams;
-    expect(p).toMatch(/If the line-ups have to be worked out again, it is "generate"/);
-    expect(p).toMatch(/"rename" is ONLY for a message that wants the SAME two line-ups/);
-    // …and it still never picks anything itself.
+    expect(p).toMatch(/If the line-ups have to be worked out again it is "generate"/);
+    expect(p).toMatch(/"rename" is only for the same line-ups under new names/);
+    // …and it still never picks anything itself, or guesses the sender.
     expect(p).toMatch(/You never pick the teams/);
-    expect(p).toMatch(/keep that word verbatim; do not guess their name/);
+    expect(p).toMatch(/when the sender means themselves[^\n]*write "me"/);
   });
 
   it("the teams prompt reads the Turkish commands the Turkish copy tells a group to type", () => {
@@ -389,11 +403,11 @@ describe("parseFacts (other routes)", () => {
     // that has to read them. One language line and one example per
     // action, the Phase 1 way (#90).
     const p = EXTRACTOR_PROMPTS.teams;
-    expect(p).toMatch(/ENGLISH or TURKISH/);
-    expect(p).toMatch(/"takımları kur"[^\n]*-> generate/);
-    expect(p).toMatch(/"takımları yeniden kur"[^\n]*-> generate/);
-    expect(p).toMatch(/"takımları göster"[^\n]*-> show/);
-    expect(p).toMatch(/"Ali ile Can'ı değiştir"[^\n]*-> swap/);
+    // Since the 2026-10-16 rewrite the Turkish forms sit beside the English
+    // ones under the action they teach.
+    expect(p).toMatch(/"generate"[^\n]*"takımları kur"[^\n]*"yeniden kur"/);
+    expect(p).toMatch(/"show"[^\n]*"takımları göster"/);
+    expect(p).toMatch(/moves[^\n]*"Ali ile Can'ı değiştir" -> \["Ali","Can"\]/);
     // The Turkish first person is written "me" so the engine's closed
     // list rebinds it; "ben" is also an English name, so it is not on it.
     expect(p).toMatch(/"beni"[^\n]*"me"/);
