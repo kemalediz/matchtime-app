@@ -157,3 +157,121 @@ test("flag ON, claimed poll (what the Pi gets): the first DM it is handed is a r
   const firstPay = Math.min(...payKeys.map((k) => claimed.map((i) => i.key).indexOf(k)));
   expect(claimed.findIndex((i) => i.key === replyKey)).toBeLessThan(firstPay);
 });
+
+// ── The new-club DM cap (follow-up, same night) ────────────────────────
+// FNF is a new self-join club: at most 20 member DMs a London day for its
+// first 28 days (`newClubDmCap`). The pay links and earlier DMs spent the
+// 20, so the reply and the collector notice were held until midnight.
+// Flag on: replies are never held by the cap and do not count toward it;
+// bulk DMs stay held. Flag off: held, as today.
+
+/** Make the seeded club a new self-join club with `spent` DMs claimed today. */
+async function newClubWithSpent(db: TestDb, spent: number): Promise<void> {
+  await db.run(
+    `UPDATE "Organisation" SET "approvedAt" = (now() AT TIME ZONE 'UTC') - interval '2 days',
+                               "liveAt" = (now() AT TIME ZONE 'UTC') - interval '2 days'
+      WHERE id = $1`,
+    [ORG_ID],
+  );
+  for (let i = 0; i < spent; i++) {
+    const id = `e2e-cap-sent-${String(i).padStart(2, "0")}`;
+    await db.run(
+      `INSERT INTO "BotJob" (id, "orgId", kind, phone, text, "sentAt", "createdAt")
+       VALUES ($1, $2, 'dm', $3, 'earlier DM', now() AT TIME ZONE 'UTC', (now() AT TIME ZONE 'UTC') - interval '1 minute')`,
+      [id, ORG_ID, `4477009992${String(i).padStart(2, "0")}`],
+    );
+    await db.run(
+      `INSERT INTO "SentNotification" (id, key, kind, "createdAt") VALUES ($1, $2, 'dm', (now() AT TIME ZONE 'UTC') - interval '1 minute')`,
+      [`e2e-cap-sn-${i}`, `botjob-${id}`],
+    );
+  }
+}
+
+/** A "Paid" from the player; returns the reply's and the notice's keys. */
+async function paidClaim(request: APIRequestContext, db: TestDb): Promise<{ reply: string; notice: string }> {
+  setPaymentClaimStub({ bodies: { "I've transferred already": "paid" } });
+  expect((await postDm(request, PHONE.player, "I've transferred already")).handled).toBe("paid-claim");
+  const rows = await db.all<{ id: string; phone: string }>(
+    `SELECT id, phone FROM "BotJob" WHERE "orgId" = $1 AND kind = 'dm' AND "sentAt" IS NULL AND priority = 1`,
+    [ORG_ID],
+  );
+  return {
+    reply: `botjob-${rows.find((r) => r.phone === bare(PHONE.player))!.id}`,
+    notice: `botjob-${rows.find((r) => r.phone === bare(PHONE.collector))!.id}`,
+  };
+}
+
+async function release(request: APIRequestContext, key: string) {
+  const res = await request.post("/api/whatsapp/ack", {
+    headers: { "x-api-key": E2E.WHATSAPP_API_KEY },
+    data: { key, kind: "dm", release: true },
+  });
+  expect(res.status(), await res.text()).toBe(200);
+}
+
+test.describe("the new-club DM cap, reached (20 spent)", () => {
+  let capPay: string[] = [];
+  let k = { reply: "", notice: "" };
+
+  test("setup: a new club whose 20 DMs for today are spent, 16 pay links waiting, then a 'Paid'", async ({
+    request,
+    db,
+  }) => {
+    resetDb();
+    await newClubWithSpent(db, 20);
+    capPay = await queuePayLinks(db);
+    k = await paidClaim(request, db);
+  });
+
+  test("flag OFF: the reply and the notice are HELD with the pay links (today)", async ({ request }) => {
+    const sent = dms(await duePosts(request, { flag: "0", claim: true })).map((i) => i.key);
+    expect(sent).toEqual([]);
+  });
+
+  test("flag ON: the reply and the notice still go; every bulk DM stays held", async ({ request }) => {
+    const sent = dms(await duePosts(request, { flag: "1", claim: true })).map((i) => i.key);
+    expect([...sent].sort()).toEqual([k.reply, k.notice].sort());
+    expect(sent.filter((x) => capPay.includes(x))).toEqual([]);
+  });
+});
+
+test.describe("the new-club DM cap: replies do not count toward it (19 spent)", () => {
+  let capPay: string[] = [];
+  let k = { reply: "", notice: "" };
+
+  test("setup: 19 of 20 spent, 16 pay links, then a 'Paid'", async ({ request, db }) => {
+    resetDb();
+    await newClubWithSpent(db, 19);
+    capPay = await queuePayLinks(db);
+    k = await paidClaim(request, db);
+  });
+
+  // The one DM the allowance has left: the first bulk DM in the list (a pay
+  // link, or a DM the seeded world's scheduler emits).
+  let bulk = "";
+
+  test("flag ON: both replies plus exactly ONE bulk DM (the one left in the allowance)", async ({ request }) => {
+    const sent = dms(await duePosts(request, { flag: "1", claim: true })).map((i) => i.key);
+    expect(sent).toContain(k.reply);
+    expect(sent).toContain(k.notice);
+    const others = sent.filter((x) => x !== k.reply && x !== k.notice);
+    expect(others).toHaveLength(1);
+    bulk = others[0];
+    // The Pi's pacing releases the bulk DM (it sends the reply first).
+    await release(request, bulk);
+  });
+
+  test("flag ON, next poll: the two claimed replies did not use the allowance, so one bulk DM goes again", async ({
+    request,
+  }) => {
+    const sent = dms(await duePosts(request, { flag: "1", claim: true })).map((i) => i.key);
+    expect(sent).toEqual([bulk]);
+    expect(capPay.filter((x) => sent.includes(x)).length).toBeLessThanOrEqual(1);
+  });
+
+  test("flag OFF, same state: the replies DO count (today), so every bulk DM is held", async ({ request }) => {
+    await release(request, bulk);
+    const sent = dms(await duePosts(request, { flag: "0", claim: true })).map((i) => i.key);
+    expect(sent).toEqual([]);
+  });
+});

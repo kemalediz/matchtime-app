@@ -186,16 +186,22 @@ export function newClubDmCap(org: { approvedAt: Date | null; liveAt?: Date | nul
  * Keep at most `remaining` DM instructions, in order; hold the rest (they
  * are not claimed, so they come back on a later poll, tomorrow once the
  * day's allowance is spent). Group posts are never held here.
+ *
+ * `exempt` (DM_REPLY_PRIORITY_ENABLED on only, src/lib/dm-reply-priority.ts):
+ * a DM it says yes to is a conversational reply. It is always kept and
+ * does not use up the allowance. Omitted: today's behaviour exactly.
  */
 export function holdDmsOverAllowance<T extends { kind: string }>(
   instructions: T[],
   remaining: number,
+  exempt?: (instruction: T) => boolean,
 ): { keep: T[]; held: T[] } {
   let left = Math.max(0, remaining);
   const keep: T[] = [];
   const held: T[] = [];
   for (const i of instructions) {
     if (i.kind !== "dm") keep.push(i);
+    else if (exempt?.(i)) keep.push(i);
     else if (left > 0) {
       keep.push(i);
       left--;

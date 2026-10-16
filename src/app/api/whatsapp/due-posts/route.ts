@@ -77,7 +77,7 @@ import { holdDmsOverAllowance, newClubDmCap } from "@/lib/club-decision-rules";
 import { londonMidnight } from "@/lib/club-connect-rules";
 import { countOrgDmsSince } from "@/lib/org-dm-count";
 import { PI_CAPS_HEADER, parsePiCaps } from "@/lib/admin-channel-rules";
-import { dmReplyPriorityEnabledForApiRequest } from "@/lib/dm-reply-priority";
+import { BOTJOB_PRIORITY_DEFAULT, dmReplyPriorityEnabledForApiRequest } from "@/lib/dm-reply-priority";
 import {
   CIRCUIT_BREAKER_WINDOW_MS,
   GROUP_DIRECTED_KINDS,
@@ -168,6 +168,21 @@ async function fetchRecentGroupTexts(orgId: string, now: Date): Promise<RecentOu
     );
     return [];
   }
+}
+
+/**
+ * The keys of the DM instructions that are conversational replies: BotJob
+ * DMs (`botjob-<id>`) queued with priority 1 (src/lib/dm-reply-priority.ts).
+ * Read only with DM_REPLY_PRIORITY_ENABLED on and the new-club cap in play.
+ */
+async function replyDmKeys(instructions: DueInstruction[]): Promise<Set<string>> {
+  const ids = instructions.flatMap((i) => (i.kind === "dm" && i.key.startsWith("botjob-") ? [i.key.slice(7)] : []));
+  if (ids.length === 0) return new Set();
+  const rows = await db.botJob.findMany({
+    where: { id: { in: ids }, kind: "dm", priority: { gt: BOTJOB_PRIORITY_DEFAULT } },
+    select: { id: true },
+  });
+  return new Set(rows.map((r) => `botjob-${r.id}`));
 }
 
 /** Server-side bookkeeping never reaches the Pi: the badges ledger and
@@ -359,8 +374,9 @@ export async function GET(request: Request) {
   // the order are exactly today's. Everything below keeps list order (the
   // DM cap keeps the first DMs, the claim keeps order), and the Pi sends
   // the first DM it is handed, so the order chosen there is what is sent.
+  const replyPriority = dmReplyPriorityEnabledForApiRequest(request);
   const result = await computeDuePosts(groupId, nowOverride, piCaps, runningMonths, liveMonths, {
-    replyPriority: dmReplyPriorityEnabledForApiRequest(request),
+    replyPriority,
   });
   if (!result) {
     return NextResponse.json({ instructions: previewOnly ? [] : await bridgePlatformDmsForLegacyPi(request) });
@@ -385,12 +401,21 @@ export async function GET(request: Request) {
 
   // Cap 8 (see the header). Only a club approved through self-join, in
   // its first 28 days.
+  // With DM_REPLY_PRIORITY_ENABLED on, a conversational reply (BotJob
+  // priority 1, src/lib/dm-reply-priority.ts) is never held by the cap and
+  // does not count toward it; bulk DMs are capped exactly as before. Off:
+  // the same count and the same hold as before, nothing else read.
   let instructions = result.instructions;
   const dmCap = newClubDmCap(org, now);
   if (dmCap !== null && instructions.some((i) => i.kind === "dm")) {
     try {
-      const sentToday = await countOrgDmsSince(org.id, londonMidnight(now));
-      const { keep, held } = holdDmsOverAllowance(instructions, dmCap - sentToday);
+      const sentToday = await countOrgDmsSince(org.id, londonMidnight(now), replyPriority ? { excludeReplies: true } : {});
+      const replyKeys = replyPriority ? await replyDmKeys(instructions) : null;
+      const { keep, held } = holdDmsOverAllowance(
+        instructions,
+        dmCap - sentToday,
+        replyKeys ? (i) => replyKeys.has(i.key) : undefined,
+      );
       if (held.length > 0) {
         console.warn(
           `[due-posts] org ${org.id}: new-club DM cap (${dmCap} a day) reached with ${sentToday} sent today; ` +

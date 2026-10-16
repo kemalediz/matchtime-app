@@ -19,6 +19,7 @@ import { parseParticipantSnapshot, snapshotPhone } from "@/lib/participant-snaps
 import { londonDay, getAiBudgetStatus } from "@/lib/ai-budget";
 import { NEW_CLUB_DM_WINDOW_DAYS, newClubDmCap } from "@/lib/club-decision-rules";
 import { countOrgDmsSince } from "@/lib/org-dm-count";
+import { isDmReplyPriorityEnabled } from "@/lib/dm-reply-priority";
 import { selfJoinEnabledForRequest } from "@/lib/self-join-flag";
 import { ownerLearningSummary } from "@/lib/setup-learning/owner-summary";
 import { notFound, redirect } from "next/navigation";
@@ -365,7 +366,11 @@ export default async function ClubsPage() {
     liveOrgs.map(async (o) => {
       const cap = newClubDmCap(o, now);
       const [dmsToday, ai, billing, months] = await Promise.all([
-        cap !== null ? countOrgDmsSince(o.id, midnight) : Promise.resolve(null),
+        // The same count the cap uses: replies left out only while
+        // DM_REPLY_PRIORITY_ENABLED is on (src/lib/dm-reply-priority.ts).
+        cap !== null
+          ? countOrgDmsSince(o.id, midnight, isDmReplyPriorityEnabled() ? { excludeReplies: true } : {})
+          : Promise.resolve(null),
         getAiBudgetStatus(o.id, now),
         loadClubBillingSnapshot(o.id),
         loadClubMonths(o, now),
