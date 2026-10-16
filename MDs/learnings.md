@@ -247,3 +247,17 @@ Three rules that came out of it, worth applying to any new write path:
 3. **Store what happened, not what was intended.** If the row says `action: "IN"` for a write that threw, no dashboard, query or audit will ever find it. `handledBy: "error"` with an `attendance-failed:*` action, plus a CRITICAL log and a line in the admin unresolved queue, is the minimum for an operator to catch it.
 
 Testing note: the failure was reproduced with a Postgres BEFORE-trigger on `"Attendance"` that raises for a given userId. That gives a genuine thrown write in e2e with zero test-only hooks in production code, which is much better than an env-var escape hatch.
+
+## FNF onboarding lessons (2026-10-15 to 2026-10-17)
+
+Full story: `MDs/fnf-onboarding-2026-10-16.md`.
+
+1. **One architecture for every group.** HQ had its own deterministic route ("never analysed, never a model call") with exact-phrase readers, a rule we invented and Kemal never asked for. "Update the graphic please", "Make teams" and "replace X with Y" failed silently, and "who are the admins?" got the help menu (proven in logs). Moving HQ onto the shared pipeline (#283, #296, #297, #305) fixed the class. Lesson: a parallel code path for one kind of group is a bug farm; share the pipeline.
+2. **Do not understand people with exact phrases or regex.** Same incident. People never use the phrase you expect. Use the pipeline, or make the step automatic (the team sheet now redraws itself after changes, #291).
+3. **A WhatsApp Community join is several joins.** Adding MatchTime to a group inside a Community also adds it to the parent and announcements groups, and whichever add reaches the server first can win the link (proven: FNF was linked to the parent group). Never link Community groups, and let the organiser's own add beat a weaker link (#276).
+4. **A club is not live until its first game exists.** The first match only appeared after the 00:00 UTC cron, so a list pasted at go-live got no reply (proven). Create games at go-live, and reply when a paste has no game to attach to (#281).
+5. **Build a reply from what was saved, not from what the person said.** A benched player got "you're in" because the tentative follow-up reply used the answer, not the saved status (proven, #288). Same rule as the 2026-08-31 entry above.
+6. **Rate limits must not hold replies.** The new-club DM cap (20 a day for 28 days) held acknowledgements and collector notices on payments night, and DMs go out one a minute in queue order (both proven). Replies need priority and an exemption from the cap (#303), not a per-club env workaround (#304 is a stopgap).
+7. **Only promise what the club has switched on.** The pay-link DM listed bank, card, Apple Pay and Google Pay when only paying directly was available (#302). Copy that lists options must read them from the club's settings.
+8. **A tick is a claim that something was done.** HQ chat ("Imti Rafi AH back") got a ✅ and a reply with no write behind it (verified). Act only on clear instructions, stay silent when unsure, tick only after a write.
+9. **Do not state a cause you have not traced.** WhatsApp refused a direct add ("invite them privately") although privacy was `groupadd=all`; the reason is still not confirmed. The fix (#274, accept invites and pasted links) works without knowing it.

@@ -1658,10 +1658,16 @@ function cases(lang: Lang): Case[] {
   add("R83 buildTentativeFollowupDm / no name", buildTentativeFollowupDm({ playerName: null, activityName: "Tuesday 7-a-side", whenLabel: lang === "tr" ? "8 Eylül Salı 21:30" : "Tue 8 Sep at 21:30", lang }));
   add("R88 buildFeeAskDm / fourteen played", buildFeeAskDm({ collectorName: "Kemal Ediz", activityName: "Tuesday 7-a-side", headcount: 14, lang }));
   add("R88 buildFeeAskDm / nobody, no name", buildFeeAskDm({ collectorName: null, activityName: "Tuesday 7-a-side", headcount: 0, lang }));
+  // Pay copy names only `availablePayMethods(org)` (FNF, 2026-10-16).
+  const ALL_WAYS = ["pay_by_bank", "card", "direct"] as const;
   for (const dayNum of [1, 2, 3]) {
-    add(`R89 buildPayChaseDm / day ${dayNum}`, buildPayChaseDm({ playerName: "Sait Demir", dayNum, fee: 8.5, activityName: "Tuesday 7-a-side", url: "https://mt.example/s/pay", lang }));
+    add(`R89 buildPayChaseDm / day ${dayNum}`, buildPayChaseDm({ playerName: "Sait Demir", dayNum, fee: 8.5, activityName: "Tuesday 7-a-side", url: "https://mt.example/s/pay", methods: ALL_WAYS, collectorName: "Elvin Aliyev", lang }));
   }
-  add("R89 buildPayChaseDm / no name, whole pounds", buildPayChaseDm({ playerName: null, dayNum: 1, fee: 8, activityName: "Tuesday 7-a-side", url: "https://mt.example/s/pay", lang }));
+  add("R89 buildPayChaseDm / no name, whole pounds", buildPayChaseDm({ playerName: null, dayNum: 1, fee: 8, activityName: "Tuesday 7-a-side", url: "https://mt.example/s/pay", methods: ALL_WAYS, collectorName: null, lang }));
+  add("R89 buildPayChaseDm / direct only", buildPayChaseDm({ playerName: "Sait Demir", dayNum: 1, fee: 8, activityName: "Tuesday 7-a-side", url: "https://mt.example/s/pay", methods: ["direct"], collectorName: "Raihan Ahmed", lang }));
+  add("R89 buildPayChaseDm / direct only, with the club's instructions", buildPayChaseDm({ playerName: "Sait Demir", dayNum: 1, fee: 8, activityName: "Tuesday 7-a-side", url: "https://mt.example/s/pay", methods: ["direct"], collectorName: "Raihan Ahmed", instructions: "Sort code 12-34-56, account 12345678", lang }));
+  add("R89 buildPayChaseDm / card only", buildPayChaseDm({ playerName: "Sait Demir", dayNum: 2, fee: 8, activityName: "Tuesday 7-a-side", url: "https://mt.example/s/pay", methods: ["card"], collectorName: "Raihan Ahmed", lang }));
+  add("R89 buildPayChaseDm / nothing available", buildPayChaseDm({ playerName: "Sait Demir", dayNum: 3, fee: 8, activityName: "Tuesday 7-a-side", url: "https://mt.example/s/pay", methods: [], collectorName: null, lang }));
   add("R90 buildDirectPayCollectorNudge / one", buildDirectPayCollectorNudge({ count: 1, activityName: "Tuesday 7-a-side", url: "https://mt.example/s/collect", lang }));
   add("R90 buildDirectPayCollectorNudge / three", buildDirectPayCollectorNudge({ count: 3, activityName: "Tuesday 7-a-side", url: "https://mt.example/s/collect", lang }));
   add("R157 buildDirectPayCollectorNotice / pay page, one", buildDirectPayCollectorNotice({ playerName: "Sait Demir", activityName: "Tuesday 7-a-side", amount: 8, quantity: 1, url: "https://mt.example/s/collect", claimedPaid: false, lang }));
@@ -1674,10 +1680,18 @@ function cases(lang: Lang): Case[] {
   add("R159 buildPaidClaimAck / already told, no names", buildPaidClaimAck({ playerName: null, collectorName: null, amount: 8, activityName: "Tuesday 7-a-side", alreadyPending: true, lang }));
   add("R160 buildPaidForOthersReply", buildPaidForOthersReply({ playerName: "Sait Demir", collectorName: "Kemal Ediz", url: "https://mt.example/s/pay", lang }));
   add("R160 buildPaidForOthersReply / no names", buildPaidForOthersReply({ playerName: null, collectorName: null, url: "https://mt.example/s/pay", lang }));
-  add("R95 buildPayLinkDm", buildPayLinkDm({ playerName: "Sait Demir", activityName: "Tuesday 7-a-side", fee: 8, url: "https://mt.example/s/pay", lang }));
-  add("R95 buildPayLinkDm / no name, pence", buildPayLinkDm({ playerName: null, activityName: "Tuesday 7-a-side", fee: 7.5, url: "https://mt.example/s/pay", lang }));
-  add("R96 buildFeeReleasedAck / one", buildFeeReleasedAck({ released: 1, fee: 8, matchName: "Tuesday 7-a-side", lang }));
-  add("R96 buildFeeReleasedAck / thirteen", buildFeeReleasedAck({ released: 13, fee: 8.5, matchName: "Tuesday 7-a-side", lang }));
+  add("R95 buildPayLinkDm", buildPayLinkDm({ playerName: "Sait Demir", activityName: "Tuesday 7-a-side", fee: 8, url: "https://mt.example/s/pay", methods: ALL_WAYS, collectorName: "Elvin Aliyev", lang }));
+  add("R95 buildPayLinkDm / no name, pence", buildPayLinkDm({ playerName: null, activityName: "Tuesday 7-a-side", fee: 7.5, url: "https://mt.example/s/pay", methods: ALL_WAYS, collectorName: null, lang }));
+  add("R95 buildPayLinkDm / direct only (FNF)", buildPayLinkDm({ playerName: "Sait Demir", activityName: "Tuesday 7-a-side", fee: 8, url: "https://mt.example/s/pay", methods: ["direct"], collectorName: "Raihan Ahmed", lang }));
+  add("R95 buildPayLinkDm / direct only, with the club's instructions", buildPayLinkDm({ playerName: "Sait Demir", activityName: "Tuesday 7-a-side", fee: 8, url: "https://mt.example/s/pay", methods: ["direct"], collectorName: "Raihan Ahmed", instructions: "Sort code 12-34-56, account 12345678", lang }));
+  add("R95 buildPayLinkDm / direct only, no collector", buildPayLinkDm({ playerName: "Sait Demir", activityName: "Tuesday 7-a-side", fee: 8, url: "https://mt.example/s/pay", methods: ["direct"], collectorName: null, lang }));
+  add("R95 buildPayLinkDm / card and direct", buildPayLinkDm({ playerName: "Sait Demir", activityName: "Tuesday 7-a-side", fee: 8, url: "https://mt.example/s/pay", methods: ["card", "direct"], collectorName: "Raihan Ahmed", lang }));
+  add("R95 buildPayLinkDm / bank only", buildPayLinkDm({ playerName: "Sait Demir", activityName: "Tuesday 7-a-side", fee: 8, url: "https://mt.example/s/pay", methods: ["pay_by_bank"], collectorName: "Raihan Ahmed", lang }));
+  add("R95 buildPayLinkDm / nothing available", buildPayLinkDm({ playerName: "Sait Demir", activityName: "Tuesday 7-a-side", fee: 8, url: "https://mt.example/s/pay", methods: [], collectorName: null, lang }));
+  add("R96 buildFeeReleasedAck / one", buildFeeReleasedAck({ released: 1, fee: 8, matchName: "Tuesday 7-a-side", methods: ALL_WAYS, lang }));
+  add("R96 buildFeeReleasedAck / thirteen", buildFeeReleasedAck({ released: 13, fee: 8.5, matchName: "Tuesday 7-a-side", methods: ALL_WAYS, lang }));
+  add("R96 buildFeeReleasedAck / direct only", buildFeeReleasedAck({ released: 12, fee: 8, matchName: "Tuesday 7-a-side", methods: ["direct"], lang }));
+  add("R96 buildFeeReleasedAck / card only", buildFeeReleasedAck({ released: 12, fee: 8, matchName: "Tuesday 7-a-side", methods: ["card"], lang }));
   add("R97 buildFeeCancelledAck", buildFeeCancelledAck(lang));
   add("R98 buildFeeConfirmPrompt / per player", buildFeeConfirmPrompt({ perPlayer: 8, headcount: 13, matchName: "Tuesday 7-a-side", wasTotal: false, lang }));
   add("R98 buildFeeConfirmPrompt / total split", buildFeeConfirmPrompt({ perPlayer: 7.69, headcount: 13, matchName: "Tuesday 7-a-side", wasTotal: true, lang }));

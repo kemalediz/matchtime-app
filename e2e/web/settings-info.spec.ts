@@ -96,6 +96,8 @@ test("weekly club, every optional row showing: every control has its ⓘ", async
     "squadMode",
     "moneyCollector",
     "collectorBank",
+    // Weekly match fees (2026-10-16): the club's payment instructions.
+    "paymentInstructions",
   ]) {
     expect(keys, k).toContain(k);
   }
