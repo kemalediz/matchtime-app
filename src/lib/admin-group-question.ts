@@ -29,7 +29,8 @@ export interface HqQuestionInput {
   messageId: string;
   /** The message as the router read it (mentions named). */
   body: string;
-  senderUserId: string;
+  /** Null for someone in HQ MatchTime does not know (2026-10-16). */
+  senderUserId: string | null;
   senderName: string | null;
   now: Date;
   /** The recent HQ chat, oldest first; MatchTime's own lines as "MatchTime". */

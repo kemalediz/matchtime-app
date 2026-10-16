@@ -5,9 +5,13 @@
  *
  * The Pi forwards every message in a linked admin group (HQ) here at once,
  * flagged `channel: "admin-group"`, never into the players' group's
- * analysis history or batch. MatchTime acts only for an owner or admin of
- * the club (by phone, or a LID pair the server stored itself; never the
- * pushname), in this order:
+ * analysis history or batch. The sender is found by phone, or a LID pair
+ * the server stored itself; never the pushname. ANYONE in a live club's HQ
+ * is read by the shared pipeline (2026-10-16, Kemal: "Anyone in that group
+ * should be able to ask questions"): a question, help and the graphics are
+ * answered for them; what changes the club stays an owner's or admin's
+ * (`admin-group-understand.ts` says who can). For an owner or admin, in
+ * this order:
  *
  *   1. STRUCTURED DATA, read deterministically, because it is data and not
  *      language:
@@ -30,8 +34,8 @@
  * (`admin-group-log.ts`): the safe-YES rule needs to know whether anybody
  * spoke between MatchTime's question and a YES.
  *
- * Anything else is ignored with no reply: a non-admin, a club that is not
- * live, the organisers' own conversation. The `ignored` labels are the
+ * Anything else is ignored with no reply: a club that is not live (a
+ * non-admin there gets nothing at all), the organisers' own conversation. The `ignored` labels are the
  * ones this route always gave ("no-open-pick" with no round open,
  * "not-a-pick" or "not-an-admin" with one).
  *
@@ -86,7 +90,7 @@ export type AdminGroupMessageResult =
  * as a command. Not on the one line saying it cannot do, or could not
  * read, what was asked; ignored chat never reaches here.
  */
-const NO_TICK: ReadonlySet<string> = new Set(["hq-not-here", "hq-not-understood"]);
+const NO_TICK: ReadonlySet<string> = new Set(["hq-not-here", "hq-not-understood", "hq-only-organisers"]);
 export const HQ_TICK = "✅";
 
 function acted(orgId: string, outcome: string | null, replyText: string | null): AdminGroupMessageResult {
@@ -141,20 +145,26 @@ export async function handleAdminGroupMessage(msg: AdminGroupMessage): Promise<A
     phones: [msg.senderPhone, msg.senderAltPhone],
     lid: msg.senderLid ?? null,
   });
-  const admin = senderIds.length
-    ? await db.membership.findFirst({
-        where: { orgId: org.id, userId: { in: senderIds }, leftAt: null, role: { in: ["OWNER", "ADMIN"] } },
-        select: { userId: true },
-      })
-    : null;
+  // Who the sender is in this club, whatever their role (2026-10-16: only
+  // an owner's or admin's membership used to be looked up, so a player
+  // asking a question in HQ was recorded, and treated, as nobody).
+  const memberships = senderIds.length
+    ? ((await db.membership.findMany({
+        where: { orgId: org.id, userId: { in: senderIds }, leftAt: null },
+        select: { userId: true, role: true },
+      })) ?? [])
+    : [];
+  const admin = memberships.find((m) => m.role === "OWNER" || m.role === "ADMIN") ?? null;
+  const senderUserId = admin?.userId ?? memberships[0]?.userId ?? senderIds[0] ?? null;
 
   // Everything said in a live club's HQ, by anyone, for the safe-YES rule.
   if (live && msg.messageId) {
-    await recordHqMessage({ orgId: org.id, waMessageId: msg.messageId, senderUserId: admin?.userId ?? null, text: msg.text, now });
+    await recordHqMessage({ orgId: org.id, waMessageId: msg.messageId, senderUserId, text: msg.text, now });
   }
 
-  // With no round open a non-admin gets the answer they always got.
-  if (!admin) return { handled: false, ignored: round ? "not-an-admin" : "no-open-pick", orgId: org.id, replyText: null };
+  // A club that is not live: only its own pick round is read, and only
+  // from an organiser.
+  if (!admin && !live) return { handled: false, ignored: round ? "not-an-admin" : "no-open-pick", orgId: org.id, replyText: null };
 
   if (msg.messageId) {
     try {
@@ -162,6 +172,35 @@ export async function handleAdminGroupMessage(msg: AdminGroupMessage): Promise<A
     } catch {
       return { handled: false, ignored: "duplicate", orgId: org.id, replyText: null };
     }
+  }
+
+  const messageId = msg.messageId ?? `admin-group:${org.id}:${now.getTime()}`;
+  const understand = async (organiser: boolean) => {
+    const sender = senderUserId ? await db.user.findUnique({ where: { id: senderUserId }, select: { name: true } }) : null;
+    return understandAdminMessage({
+      org,
+      messageId,
+      text: msg.text,
+      mentionNames: msg.mentionNames,
+      quoted: msg.quoted ? { text: msg.quoted.text ?? null, fromMatchTime: msg.quoted.fromMatchTime === true } : null,
+      senderUserId,
+      organiser,
+      senderName: sender?.name ?? null,
+      sentAt: parseTimestamp(msg.timestamp),
+      now,
+    });
+  };
+
+  // Anyone else in a live club's HQ (2026-10-16, Kemal: "Anyone in that
+  // group should be able to ask questions"): the shared pipeline, told they
+  // are not an organiser. It answers questions, help and the graphics for
+  // them, and says who can for anything that changes the club. The
+  // structured readers below (a pick, a pasted list) change the club, and
+  // stay the organisers'.
+  if (!admin) {
+    const understood = await understand(false);
+    if (understood) return acted(org.id, understood.outcome, understood.replyText);
+    return { handled: false, ignored: round ? "not-an-admin" : "no-open-pick", orgId: org.id, replyText: null };
   }
 
   // 1b. A pick from MatchTime's numbered list.
@@ -179,8 +218,6 @@ export async function handleAdminGroupMessage(msg: AdminGroupMessage): Promise<A
   }
   if (!live) return { handled: false, ignored: round ? "not-a-pick" : "no-open-pick", orgId: org.id, replyText: null };
 
-  const messageId = msg.messageId ?? `admin-group:${org.id}:${now.getTime()}`;
-
   // 1c. A pasted squad list (a live weekly club).
   if (weekly) {
     const pasted = await proposeSquadPaste({ orgId: org.id, lang: org.language, messageId, senderUserId: admin.userId, now, text: msg.text });
@@ -197,18 +234,7 @@ export async function handleAdminGroupMessage(msg: AdminGroupMessage): Promise<A
   }
 
   // 2. Everything else, through the shared pipeline.
-  const sender = await db.user.findUnique({ where: { id: admin.userId }, select: { name: true } });
-  const understood = await understandAdminMessage({
-    org,
-    messageId,
-    text: msg.text,
-    mentionNames: msg.mentionNames,
-    quoted: msg.quoted ? { text: msg.quoted.text ?? null, fromMatchTime: msg.quoted.fromMatchTime === true } : null,
-    adminUserId: admin.userId,
-    senderName: sender?.name ?? null,
-    sentAt: parseTimestamp(msg.timestamp),
-    now,
-  });
+  const understood = await understand(true);
   if (understood) return acted(org.id, understood.outcome, understood.replyText);
   return { handled: false, ignored: round ? "not-a-pick" : "no-open-pick", orgId: org.id, replyText: null };
 }
