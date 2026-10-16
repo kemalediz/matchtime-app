@@ -18,6 +18,8 @@
  * Pure: no database, no model. Code decides; nothing here reads words.
  */
 import type { ClubRole, PartnerAskWhen } from "./club-partnership-rules";
+import { londonWallClockToUtc } from "./london-time";
+import { t } from "./i18n/t";
 
 /** D12: at most this many asks a London day into one partner group. */
 export const PARTNER_ASKS_PER_DAY = 2;
@@ -180,4 +182,56 @@ export function closeTells(reason: CloseReason, status: string, volunteers: numb
     partnerGroup: !posted ? null : reason === "filled" ? "filled" : reason === "kickoff" ? null : "off",
     asker: reason === "approval-expired" ? "expired-approval" : reason === "kickoff" && posted && volunteers === 0 ? "nobody" : null,
   };
+}
+
+// ── The automatic ask (slice S5) ────────────────────────────────────────
+
+/** The automatic ask's moment: the club's London time ON MATCH DAY. Wall
+ *  clock, so it is the same London time either side of a clock change. */
+export function autoAskAt(kickoff: Date, askTime: string): Date {
+  return londonWallClockToUtc(kickoff, askTime);
+}
+
+export interface AutoAskInput {
+  now: Date;
+  /** `autoAskAt(kickoff, the club's time)`. */
+  askAt: Date;
+  postBy: Date;
+  placesOpen: number;
+  /** BENCH rows of the asking club's match: its own waiting list. */
+  waitingCount: number;
+  /** Any ask, open or closed, already made to this partner for this match:
+   *  the automatic ask asks each partner once per match. */
+  askedBefore: boolean;
+  /** The partner's own game overlaps this one and is short itself
+   *  (plan 3.13): MatchTime never asks a club for a player it needs. */
+  partnerOwnGameShort: boolean;
+}
+
+/** Is the automatic ask due for this partner now (D4)? Only from the
+ *  club's time on match day until the cut-off, with a place open and the
+ *  club's own waiting list empty. */
+export function autoAskDue(i: AutoAskInput): boolean {
+  if (i.askedBefore || i.partnerOwnGameShort) return false;
+  if (i.placesOpen <= 0 || i.waitingCount > 0) return false;
+  return i.now.getTime() >= i.askAt.getTime() && i.now.getTime() < i.postBy.getTime();
+}
+
+/** Do two games' windows overlap? Each is kickoff minus an hour to kickoff
+ *  plus its length plus an hour (plan 3.6: travel either side). */
+export function gamesOverlap(a: { kickoff: Date; durationMins: number }, b: { kickoff: Date; durationMins: number }): boolean {
+  const HOUR_MS = 3600_000;
+  const start = (g: { kickoff: Date }) => g.kickoff.getTime() - HOUR_MS;
+  const end = (g: { kickoff: Date; durationMins: number }) => g.kickoff.getTime() + g.durationMins * 60_000 + HOUR_MS;
+  return start(a) < end(b) && start(b) < end(a);
+}
+
+/**
+ * The organisers' short-squad notice, with the line offering to ask the
+ * partner clubs (slice S5) when there are any to ask. With none (every
+ * club without a partner) the notice is returned EXACTLY as it was.
+ */
+export function withPartnerOffer(text: string, partners: string[] | null, link: string, lang: string | null): string {
+  if (!partners || partners.length === 0) return text;
+  return `${text}\n\n${t(lang).xask_offer_line({ partners: partners.join(", "), link })}`;
 }

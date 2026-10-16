@@ -128,6 +128,7 @@ import {
   buildUnpaidGroupReminder,
   buildUnpaidTailText,
 } from "./scheduler-copy";
+import { withPartnerOffer } from "./partner-ask-rules";
 import { organisersAnnounce } from "./list-announcer";
 import { buildProvisionalReviewNotice } from "./provisional-review-copy";
 import {
@@ -1322,13 +1323,21 @@ async function computeForMatch(
   //   Each call site keeps the default branch untouched in an `else`, so
   //   a club on "matchtime" (Sutton FC) posts byte for byte as before.
   const organisers = organisersAnnounce(features);
+  /** The partner clubs the organisers could ask for this match (slice
+   *  S5), read once, and only when a short-squad notice goes to them. */
+  let partnerOfferRead: Promise<string[] | null> | null = null;
+  const partnerOffer = (): Promise<string[] | null> =>
+    (partnerOfferRead ??= import("./partner-ask")
+      .then((x) => x.partnerOfferFor(m.activity.orgId, { id: matchId, date: m.date }, now))
+      .catch(() => null));
   async function toOrganisers(
     key: string,
     reason: OrganiserListReason,
-    extra: { dropOutTime?: string | null; unpaid?: number | null } = {},
+    extra: { dropOutTime?: string | null; unpaid?: number | null; partnerOffer?: string[] | null } = {},
   ): Promise<void> {
     const channel = await admin.getChannel();
     if (!channel) return;
+    const { partnerOffer, ...listExtra } = extra;
     out.push(
       ...(await adminNoticeInstructions({
         channel,
@@ -1338,16 +1347,26 @@ async function computeForMatch(
         matchId,
         key: (who) => (who === "admin-group" ? key : `${key}:${who}`),
         notice: {
-          text: buildOrganiserListUpdate({
-            reason,
-            activityName: activity.name,
-            whenLabel: dayTimeLabel(lang, m.date),
-            confirmed: confirmed.map((a) => a.user),
-            bench: bench.map((a) => a.user),
-            maxPlayers,
-            lang,
-            ...extra,
-          }),
+          // A partner club to ask (cross-club ask, slice S5): the notice
+          // ends with one line and links the match page. None: the
+          // notice is exactly as before (`withPartnerOffer`).
+          ...(partnerOffer ? { nextPath: `/matches/${matchId}` } : {}),
+          text: (link: string) =>
+            withPartnerOffer(
+              buildOrganiserListUpdate({
+                reason,
+                activityName: activity.name,
+                whenLabel: dayTimeLabel(lang, m.date),
+                confirmed: confirmed.map((a) => a.user),
+                bench: bench.map((a) => a.user),
+                maxPlayers,
+                lang,
+                ...listExtra,
+              }),
+              partnerOffer ?? null,
+              link,
+              lang,
+            ),
         },
       })),
     );
@@ -2562,7 +2581,7 @@ async function computeForMatch(
       ) {
         // The organisers announce: the short squad goes to them. (An admin
         // GROUP's hours start at 09:00, so there it waits for the 3h chase.)
-        if (organisers) await toOrganisers(key, "chase");
+        if (organisers) await toOrganisers(key, "chase", { partnerOffer: await partnerOffer() });
         else {
           const chase = await chaseText(
             "match-day-morning",
@@ -2585,7 +2604,7 @@ async function computeForMatch(
         hoursUntilMatch <= 4 &&
         hoursUntilMatch >= 3
       ) {
-        if (organisers) await toOrganisers(key, "chase");
+        if (organisers) await toOrganisers(key, "chase", { partnerOffer: await partnerOffer() });
         else {
           const chase = await chaseText("chase-pre-kickoff", () =>
             buildChasePreKickoffFallback({
@@ -2616,7 +2635,7 @@ async function computeForMatch(
       hoursUntilMatch > 0.5 &&
       (m.status === "TEAMS_PUBLISHED" || m.status === "TEAMS_GENERATED" || m.status === "UPCOMING")
     ) {
-      if (organisers) await toOrganisers(key, "chase");
+      if (organisers) await toOrganisers(key, "chase", { partnerOffer: await partnerOffer() });
       else {
         const chase = await chaseText("pre-kickoff-short", () =>
           buildPreKickoffShortFallback({

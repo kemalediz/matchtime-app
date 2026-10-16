@@ -44,15 +44,18 @@ import {
   MISSING_POST_ID_AFTER_MS,
   OPEN_ASK_STATUSES,
   askWindows,
+  autoAskAt,
+  autoAskDue,
   canAsk,
   closeReason,
   closeTells,
   closedStatus,
+  gamesOverlap,
   partnerReachable,
   type AskRefusal,
   type PartnerAskVia,
 } from "./partner-ask-rules";
-import type { ClubRole } from "./club-partnership-rules";
+import { effectiveAskTime, type ClubRole } from "./club-partnership-rules";
 
 /** The ask ref of the approval question in the partner's admin group. */
 export const partnerAskRef = (askId: string): string => `xask:${askId}`;
@@ -613,4 +616,114 @@ export function askRefusalText(lang: string | null, refusal: AskRefusal | "not-f
     default:
       return s.xask_refused_generic;
   }
+}
+
+// ── The automatic ask (slice S5) ────────────────────────────────────────
+
+/**
+ * The automatic ask (D4), every due-posts poll of a club on "Automatically
+ * at a time": from the club's time on match day until the cut-off, when a
+ * place is open and its own waiting list is empty, ask each active partner
+ * once for the match (`autoAskDue`), unless that partner's own game at an
+ * overlapping time is short itself (plan 3.13). Through `requestPartnerAsk`,
+ * so every rule and gate of a button press applies; the asking club's
+ * organisers are told what was asked. A club on Off or When we ask makes
+ * one read. Never throws.
+ */
+export async function sweepAutoPartnerAsks(orgId: string, now: Date = new Date()): Promise<{ asked: number }> {
+  let asked = 0;
+  try {
+    const settings = await loadPartnerAskSettings(orgId);
+    if (!settings || settings.when !== "auto") return { asked };
+    const partnerships = await db.clubPartnership.findMany({
+      where: { askerOrgId: orgId, status: "active" },
+      orderBy: { createdAt: "asc" },
+      select: { id: true, partnerOrgId: true },
+    });
+    if (partnerships.length === 0) return { asked };
+    const dayStart = londonMidnight(now);
+    const matches = (await db.match.findMany({
+      where: { activity: { orgId }, isHistorical: false, status: { in: LIVE_MATCH }, date: { gte: now, lt: new Date(dayStart.getTime() + 30 * 3600_000) } },
+      orderBy: { date: "asc" },
+      select: { ...MATCH_SELECT, activity: { select: { ...MATCH_SELECT.activity.select, matchDurationMins: true } } },
+    })) as Array<AskMatch & { activity: { matchDurationMins: number } }>;
+    for (const match of matches) {
+      // Match day only: the club's time is a time ON the day of the game.
+      if (londonMidnight(match.date).getTime() !== dayStart.getTime()) continue;
+      if (!(await isNextMatch(orgId, match, now))) continue;
+      const { postBy } = askWindows(match.date, settings.cutoffHours);
+      const askAt = autoAskAt(match.date, effectiveAskTime(settings.time));
+      const [places, waiting] = await Promise.all([
+        placesOpen(match.id, match.maxPlayers),
+        db.attendance.count({ where: { matchId: match.id, status: "BENCH" } }),
+      ]);
+      for (const p of partnerships) {
+        const askedBefore = (await db.partnerAsk.count({ where: { matchId: match.id, partnerOrgId: p.partnerOrgId } })) > 0;
+        const due = autoAskDue({
+          now,
+          askAt,
+          postBy,
+          placesOpen: places,
+          waitingCount: waiting,
+          askedBefore,
+          partnerOwnGameShort: await partnerOwnOverlappingGameShort(p.partnerOrgId, match.date, match.activity.matchDurationMins),
+        });
+        if (!due) continue;
+        const r = await requestPartnerAsk({ askerOrgId: orgId, matchId: match.id, partnershipId: p.id, requestedByUserId: null, via: "auto", now });
+        if (!r.ok) {
+          console.log(`[partner-ask] auto ask for match ${match.id} to ${p.partnerOrgId} not made: ${r.refusal}`);
+          continue;
+        }
+        asked++;
+        const asker = await db.organisation.findUnique({ where: { id: orgId }, select: { language: true } });
+        const lang = asker?.language ?? null;
+        await sendAdminNotice({
+          orgId,
+          now,
+          holdOvernight: false,
+          text: t(lang).xask_auto_notice_asker({ partner: r.partnerName, day: dayCommaTimeLabel(lang, match.date), posted: r.status === "posted" }),
+        });
+      }
+    }
+  } catch (err) {
+    console.error(`[partner-ask] org ${orgId}: auto sweep failed:`, err instanceof Error ? err.message : "failed");
+  }
+  return { asked };
+}
+
+/** The partner's own live game overlapping this one, when it is short. */
+async function partnerOwnOverlappingGameShort(partnerOrgId: string, kickoff: Date, durationMins: number): Promise<boolean> {
+  const dayStart = londonMidnight(kickoff);
+  const own = await db.match.findMany({
+    where: { activity: { orgId: partnerOrgId }, status: { in: LIVE_MATCH }, isHistorical: false, date: { gte: dayStart, lt: new Date(dayStart.getTime() + 30 * 3600_000) } },
+    select: { id: true, date: true, maxPlayers: true, activity: { select: { matchDurationMins: true } } },
+  });
+  for (const g of own) {
+    if (!gamesOverlap({ kickoff, durationMins }, { kickoff: g.date, durationMins: g.activity.matchDurationMins })) continue;
+    const confirmed = await db.attendance.count({ where: { matchId: g.id, status: "CONFIRMED" } });
+    if (confirmed < g.maxPlayers) return true;
+  }
+  return false;
+}
+
+/**
+ * The line the organisers' short-squad notice ends with (slice S5): the
+ * partner clubs they could ask now, or null (no partner, asking Off, past
+ * the cut-off, or an ask already open to each). Null leaves the notice
+ * exactly as it was.
+ */
+export async function partnerOfferFor(orgId: string, match: { id: string; date: Date }, now: Date): Promise<string[] | null> {
+  const settings = await loadPartnerAskSettings(orgId);
+  if (!settings || settings.when === "off") return null;
+  if (now.getTime() >= askWindows(match.date, settings.cutoffHours).postBy.getTime()) return null;
+  const partnerships = await db.clubPartnership.findMany({
+    where: { askerOrgId: orgId, status: "active" },
+    orderBy: { createdAt: "asc" },
+    select: { partnerOrgId: true, partnerOrg: { select: { name: true } } },
+  });
+  if (partnerships.length === 0) return null;
+  const open = await db.partnerAsk.findMany({ where: { matchId: match.id, status: { in: [...OPEN_ASK_STATUSES] } }, select: { partnerOrgId: true } });
+  const busy = new Set(open.map((a) => a.partnerOrgId));
+  const names = partnerships.filter((p) => !busy.has(p.partnerOrgId)).map((p) => p.partnerOrg.name);
+  return names.length > 0 ? names : null;
 }

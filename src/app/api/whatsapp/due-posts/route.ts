@@ -67,7 +67,7 @@ import { billingQuietWhere } from "@/lib/club-billing-rules";
 import { sendDueDeadlineSummaries } from "@/lib/deadline-summary";
 import { sendDueUnpaidLists } from "@/lib/unpaid-list";
 import { sweepOrganiserPicks } from "@/lib/organiser-pick";
-import { sweepPartnerAsks } from "@/lib/partner-ask";
+import { sweepAutoPartnerAsks, sweepPartnerAsks } from "@/lib/partner-ask";
 import { sweepMonthlyWeeks } from "@/lib/monthly-week";
 import { sweepMonthSignups } from "@/lib/month-signup";
 import { sweepMonthPayments } from "@/lib/month-payment";
@@ -268,6 +268,9 @@ export async function GET(request: Request) {
   // this club made or received that should close, with one line to each
   // side. A club with no partner makes one query. Never throws.
   if (!previewOnly) await sweepPartnerAsks(org.id, nowOverride ?? new Date());
+  // The automatic ask (slice S5): a club on "Automatically at a time"
+  // only; every other club makes one read. Never throws.
+  if (!previewOnly) await sweepAutoPartnerAsks(org.id, nowOverride ?? new Date());
 
   if (!previewOnly) {
     try {
