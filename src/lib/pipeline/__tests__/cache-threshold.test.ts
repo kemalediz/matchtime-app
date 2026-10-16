@@ -165,7 +165,14 @@ describe("the minimum cacheable prefix is a token count, per model", () => {
     // 14,326 / 4,090 after. The estimator's 3,582 sits under it. Still under
     // Haiku's 4,096, by six: the next addition to this prompt has to take
     // something out.
-    expect(estimateTokens(ROUTER_SYSTEM_PROMPT)).toBeLessThanOrEqual(4_090);
+    //
+    // 2026-10-16, REWRITTEN AS ONE DOCUMENT for the organisers' fifth route
+    // (ask_group) together with the reply-is-a-tag rules above, shorter
+    // than before: duplicated rulings and examples merged. Measured
+    // (`count_tokens`, claude-haiku-4-5, dev key, with a one-token user
+    // message, the same way both sides): 14,326 characters / 4,098 tokens
+    // before, 13,683 / 3,922 after. The estimator's 3,420 sits under it.
+    expect(estimateTokens(ROUTER_SYSTEM_PROMPT)).toBeLessThanOrEqual(3_922);
     expect(estimateTokens(EXTRACTOR_PROMPTS.attendance)).toBeLessThanOrEqual(2_699);
   });
 });

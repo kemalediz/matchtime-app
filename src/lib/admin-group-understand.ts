@@ -23,6 +23,8 @@
  *                         then `answerTeamsYes` / `answerSquadPasteYes`
  *   poster, team_sheet    `admin-group-graphics.ts`
  *   help                  `admin-group-help.ts`
+ *   ask_group             one place-open ask in the players' group
+ *                         (`admin-group-ask-group.ts`)
  *   question, score,      one line: not from this group (an organiser
  *   admin_ops             clearly asked MatchTime; never silent on that)
  *   none, offer, unsure   nothing: the organisers' own conversation
@@ -52,6 +54,7 @@ import { hqLogSince, listAskRef, recordMatchTimeQuestion, teamsAskRef } from "./
 import { WHICH_ASK_REF, decideApproval, matchQuoted, type QuotedMessage } from "./admin-group-confirm-rules";
 import { organisersContext, type PendingWithLabel } from "./admin-group-context";
 import { answerPartnerAskYes, parsePartnerAskRef, partnerAskRef, partnerAsksAwaitingApproval } from "./partner-ask";
+import { askPlayersGroup } from "./admin-group-ask-group";
 
 /** How far back the router's "earlier here" lines reach, and how many. */
 const RECENT_MS = 30 * 60 * 1000;
@@ -215,6 +218,12 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
           route,
         });
         return change.handled ? said(change.outcome, change.replyText) : null;
+      }
+      case "ask_group": {
+        // One place-open ask in the players' group (`admin-group-ask-group.ts`).
+        if (!weekly) return said("hq-not-here", s.hq_not_here);
+        const r = await askPlayersGroup({ orgId: org.id, lang, messageId, now });
+        return said(r.outcome, r.replyText);
       }
       case "question":
       case "score":
