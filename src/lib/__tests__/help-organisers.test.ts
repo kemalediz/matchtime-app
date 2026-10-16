@@ -199,7 +199,7 @@ describe("organisers mode, main chat (FNF: organisers announce, organisers pick)
         `   • *@Match Time help ratings*: player ratings`,
         `   • *@Match Time help badges*: badges and how to earn them`,
         `   • *@Match Time help reminders*: reminders`,
-        `   • *@Match Time help payments*: payment tracking`,
+        `   • *@Match Time help payments*: match fees`,
         `   • *@Match Time help schedule*: schedule & bookings`,
         ``,
         `✅ Say *"In"* or *"Out"* to mark your own availability, no need to tag me.`,

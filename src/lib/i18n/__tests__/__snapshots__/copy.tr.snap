@@ -1857,7 +1857,6 @@ Type *"@Match Time help"* any time to see this again.
    • *@Match Time help ratings*: player ratings
    • *@Match Time help badges*: badges and how to earn them
    • *@Match Time help reminders*: reminders
-   • *@Match Time help payments*: payment tracking
    • *@Match Time help schedule*: schedule & bookings
 
 ✅ Say *"In"* or *"Out"* to mark your own availability, no need to tag me.
@@ -1919,10 +1918,15 @@ Want a personal nudge? Say *"@Match Time remind me Thursday"* and I'll DM you th
 It all happens automatically, so you don't need to chase anyone yourself.
 
 ### R142 buildHelpReply / payments
-💳 *Payment tracking: how it works*
-I keep track of who's paid the match fee. The organiser sets the fee, and I show who's paid and who still owes at a glance.
-I send friendly reminders to anyone outstanding. Players can pay by card, or the organiser can mark cash and bank transfers as received.
-This only runs when payment tracking is switched on. Tag *@Match Time who still owes?* to see the latest.
+ℹ️ This isn't switched on for this group yet, but here's how it works.
+
+💷 *Match fees: how it works*
+After each game I ask your money collector for the fee per player, then DM everyone who played a link to pay their share, by card or bank. The money goes straight to the money collector's bank.
+I chase anyone who hasn't paid with a daily reminder, so nobody has to chase their mates for cash.
+Paid in cash or by transfer instead? The player tells me *"paid"* and I ask the money collector to confirm it landed.
+
+🔧 To switch it on, an admin opens *Settings* on the admin page (https://matchtime.ai/admin/settings) and turns on *Collect match fees* under Bot features, picks the money collector, then connects their bank with Stripe once (about 2 minutes).
+Admins: DM me *help payments* and I'll send you a link that signs you straight in.
 
 ### R143 buildHelpReply / topic switched off
 ℹ️ This isn't switched on for this group yet, but here's how it works.
@@ -1932,7 +1936,7 @@ After each game I ask your money collector for the fee per player, then DM every
 I chase anyone who hasn't paid with a daily reminder, so nobody has to chase their mates for cash.
 Paid in cash or by transfer instead? The player tells me *"paid"* and I ask the money collector to confirm it landed.
 
-🔧 To switch it on, an admin opens *Settings* on the admin page (https://matchtime.ai/admin/settings) and turns on *Payment tracking* and *Collect match fees* under Bot features, picks the money collector, then connects their bank with Stripe once (about 2 minutes).
+🔧 To switch it on, an admin opens *Settings* on the admin page (https://matchtime.ai/admin/settings) and turns on *Collect match fees* under Bot features, picks the money collector, then connects their bank with Stripe once (about 2 minutes).
 Admins: DM me *help payments* and I'll send you a link that signs you straight in.
 
 ### R147 buildHowToUseMe / fee collection on
@@ -1974,7 +1978,7 @@ Her maçtan sonra parayı toplayan kişiye kişi başı ücreti sorarım, sonra 
 Ödemeyenlere her gün bir hatırlatma gönderirim, kimse arkadaşının peşinden para için koşmak zorunda kalmaz.
 Nakit ya da havaleyle mi ödendi? Oyuncu bana *"ödedim"* yazar, ben de parayı toplayan kişiden paranın geldiğini onaylamasını isterim.
 
-🔧 Açmak için bir yönetici, yönetici sayfasında (https://matchtime.ai/admin/settings) *Settings* bölümüne girer, *Bot features* altında *Payment tracking* ve *Collect match fees* ayarlarını açar, parayı kimin toplayacağını seçer, sonra o kişinin banka hesabını Stripe ile bir kez bağlar (yaklaşık 2 dakika).
+🔧 Açmak için bir yönetici, yönetici sayfasında (https://matchtime.ai/admin/settings) *Settings* bölümüne girer, *Bot features* altında *Collect match fees* ayarını açar, parayı kimin toplayacağını seçer, sonra o kişinin banka hesabını Stripe ile bir kez bağlar (yaklaşık 2 dakika).
 Yöneticiler: bana özelden *yardım ödeme* yazın, sizi doğrudan giriş yapmış olarak açan bir bağlantı göndereyim.
 
 ### R148 buildHelpReply / mom off / group
@@ -2015,7 +2019,7 @@ Her maçtan sonra parayı toplayan kişiye kişi başı ücreti sorarım, sonra 
 Ödemeyenlere her gün bir hatırlatma gönderirim, kimse arkadaşının peşinden para için koşmak zorunda kalmaz.
 Nakit ya da havaleyle mi ödendi? Oyuncu bana *"ödedim"* yazar, ben de parayı toplayan kişiden paranın geldiğini onaylamasını isterim.
 
-🔧 Açmak için yönetici sayfanda *Settings* bölümüne gir, *Bot features* altında *Payment tracking* ve *Collect match fees* ayarlarını aç, parayı kimin toplayacağını seç, sonra o kişinin banka hesabını Stripe ile bir kez bağla (yaklaşık 2 dakika):
+🔧 Açmak için yönetici sayfanda *Settings* bölümüne gir, *Bot features* altında *Collect match fees* ayarını aç, parayı kimin toplayacağını seç, sonra o kişinin banka hesabını Stripe ile bir kez bağla (yaklaşık 2 dakika):
 https://mt.example/r/settings
 
 ### R148 buildHelpReply / mom off / admin
@@ -2071,12 +2075,14 @@ Ayarlamanız gereken bir şey yok, oylamayı maç bitince kendim başlatırım. 
 🗓️ Maç günlerini, saatleri, iptalleri ve blok rezervasyonları organizatör yönetici sayfasından ayarlar. Bir şeyin değişmesi gerekiyorsa ona söyle.
 
 ### R148 buildHelpReply / payments on / admin
-💳 *Ödeme takibi nasıl çalışır*
-Maç ücretini kimin ödediğini takip ederim. Organizatör ücreti belirler, ben kimin ödediğini ve kimin borcu kaldığını tek bakışta gösteririm.
-Ödemeyenlere nazik hatırlatmalar gönderirim. Oyuncular kartla ödeyebilir, organizatör nakit ve havaleleri alındı olarak işaretleyebilir.
-Bu yalnızca ödeme takibi açıkken çalışır. Son durum için *@Match Time kim ödemedi?* yazın.
+ℹ️ Bu özellik bu grupta henüz açık değil, ama nasıl çalıştığı şöyle.
 
-⚙️ Ayarları yönetici sayfanda:
+💷 *Maç ücretleri nasıl çalışır*
+Her maçtan sonra parayı toplayan kişiye kişi başı ücreti sorarım, sonra oynayan herkese payını kartla veya bankadan ödemesi için özelden bir bağlantı gönderirim. Para doğrudan parayı toplayan kişinin banka hesabına gider.
+Ödemeyenlere her gün bir hatırlatma gönderirim, kimse arkadaşının peşinden para için koşmak zorunda kalmaz.
+Nakit ya da havaleyle mi ödendi? Oyuncu bana *"ödedim"* yazar, ben de parayı toplayan kişiden paranın geldiğini onaylamasını isterim.
+
+🔧 Açmak için yönetici sayfanda *Settings* bölümüne gir, *Bot features* altında *Collect match fees* ayarını aç, parayı kimin toplayacağını seç, sonra o kişinin banka hesabını Stripe ile bir kez bağla (yaklaşık 2 dakika):
 https://mt.example/r/settings
 
 ### R148 buildHelpReply / bare / admin
@@ -2087,7 +2093,6 @@ https://mt.example/r/settings
    • *@Match Time yardım puanlama*, oyuncu puanları
    • *@Match Time yardım rozetler*, rozetler ve nasıl kazanılır
    • *@Match Time yardım hatırlatma*, hatırlatmalar
-   • *@Match Time yardım ödeme*, ödeme takibi
    • *@Match Time yardım program*, program ve rezervasyonlar
 
 ✅ Kendi durumunuz için *"varım"* veya *"yokum"* yazın, beni etiketlemenize gerek yok.
@@ -3432,11 +3437,10 @@ Son adım: hangi özellikleri istiyorsunuz? Yapabildiklerimin hepsi burada:
 5. *Oyuncu puanları*: Her oyuncuya maçtan sonra kısa bir puanlama linki gönderir.
 6. *Hatırlatmalar*: İstenen gün oyuncuya özelden hatırlatma yazar.
 7. *İstatistik cevapları*: Geçmişle ilgili soruları cevaplar (en çok gelenler, eski maçın adamları, skorlar).
-8. *Ödeme takibi*: Kimin ödediğini takip eder, ödemeyenlere hatırlatır (isteğe bağlı).
-9. *Maç ücreti toplama*: Her maçtan sonra oyunculara ödeme linki gönderir. Bağlı bir banka hesabı gerekir.
-10. *Banka ile ödeme*: Linkle ödemenin en ucuz yolu: £10'luk ücrette £10.36. Önerilen varsayılan.
-11. *Kart ile ödeme*: Kart, Apple Pay ya da Google Pay: £10'luk ücrette £10.46.
-12. *Organizatöre ödeme*: Nakit ya da havale; parayı toplayan kişi alındığını onaylar. Ücret yok.
+8. *Maç ücreti toplama*: Her maçtan sonra oyunculara ödeme linki gönderir. Bağlı bir banka hesabı gerekir.
+9. *Banka ile ödeme*: Linkle ödemenin en ucuz yolu: £10'luk ücrette £10.36. Önerilen varsayılan.
+10. *Kart ile ödeme*: Kart, Apple Pay ya da Google Pay: £10'luk ücrette £10.46.
+11. *Organizatöre ödeme*: Nakit ya da havale; parayı toplayan kişi alındığını onaylar. Ücret yok.
 
 İstediklerinizi yazın, örneğin "maçın adamı ve oyuncu puanları", "hepsi" ya da "ödeme hariç hepsi". Numaralarını da yazabilirsiniz: "1, 3 ve 4".
 
@@ -3450,11 +3454,10 @@ Hangilerini seçtiğinizi anlayamadım, istediğiniz özellikleri yazın:
 5. *Oyuncu puanları*: Her oyuncuya maçtan sonra kısa bir puanlama linki gönderir.
 6. *Hatırlatmalar*: İstenen gün oyuncuya özelden hatırlatma yazar.
 7. *İstatistik cevapları*: Geçmişle ilgili soruları cevaplar (en çok gelenler, eski maçın adamları, skorlar).
-8. *Ödeme takibi*: Kimin ödediğini takip eder, ödemeyenlere hatırlatır (isteğe bağlı).
-9. *Maç ücreti toplama*: Her maçtan sonra oyunculara ödeme linki gönderir. Bağlı bir banka hesabı gerekir.
-10. *Banka ile ödeme*: Linkle ödemenin en ucuz yolu: £10'luk ücrette £10.36. Önerilen varsayılan.
-11. *Kart ile ödeme*: Kart, Apple Pay ya da Google Pay: £10'luk ücrette £10.46.
-12. *Organizatöre ödeme*: Nakit ya da havale; parayı toplayan kişi alındığını onaylar. Ücret yok.
+8. *Maç ücreti toplama*: Her maçtan sonra oyunculara ödeme linki gönderir. Bağlı bir banka hesabı gerekir.
+9. *Banka ile ödeme*: Linkle ödemenin en ucuz yolu: £10'luk ücrette £10.36. Önerilen varsayılan.
+10. *Kart ile ödeme*: Kart, Apple Pay ya da Google Pay: £10'luk ücrette £10.46.
+11. *Organizatöre ödeme*: Nakit ya da havale; parayı toplayan kişi alındığını onaylar. Ücret yok.
 
 İstediklerinizi yazın, örneğin "maçın adamı ve oyuncu puanları", "hepsi" ya da "ödeme hariç hepsi". Numaralarını da yazabilirsiniz: "1, 3 ve 4".
 

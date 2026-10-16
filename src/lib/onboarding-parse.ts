@@ -10,7 +10,7 @@
  * control". These functions ARE the deterministic control layer — the
  * LLM only ever backfills what they miss.
  */
-import { FEATURE_META, type ToggleableKey } from "./org-features-meta";
+import { FEATURE_META, OFFERED_FEATURE_META, type ToggleableKey } from "./org-features-meta";
 import { normalisePhone } from "./phone";
 import { t } from "./i18n/t";
 import type { Lang } from "./i18n/lang";
@@ -783,10 +783,13 @@ export function regexExtract(messages: Array<{ body: string }>): Extracted {
     if (/\b(reminder|remind)\b/.test(text)) picked.add("reminders");
     if (/\b(stats|history|leaderboard)\b/.test(text)) picked.add("statsQa");
     if (/\bpay(ment)?s?\b/.test(text)) picked.add("paymentTracking");
-    // numbered picks: "4 and 5", "options 1, 4", "1 & 4"
-    const nums = text.match(/\b([1-8])\b/g);
+    // numbered picks: "4 and 5", "options 1, 4", "1 & 4". The numbers are
+    // the menu's as shown (OFFERED_FEATURE_META, payment tracking hidden
+    // 2026-10-16): 1-7 are the seven bot features; the payment rows after
+    // them are never picked from the chat.
+    const nums = text.match(/\b([1-7])\b/g);
     if (nums) for (const n of nums) {
-      const meta = FEATURE_META[parseInt(n, 10) - 1];
+      const meta = OFFERED_FEATURE_META[parseInt(n, 10) - 1];
       if (meta) picked.add(meta.key);
     }
     if (picked.size > 0) featureSelection = [...picked];

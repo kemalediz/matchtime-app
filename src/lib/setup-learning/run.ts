@@ -114,6 +114,7 @@ import {
   parseDetection,
   planIsWorthTelling,
   planSetup,
+  hideUnofferedSettings,
   ORGANISER_SET_KEY,
   type OrgSettingsState,
   type SetupPlan,
@@ -424,7 +425,8 @@ export async function learnClubSetup(orgId: string, opts: LearnOptions = {}): Pr
     ...usage,
   });
   let state = orgSettings(org);
-  let plan = planSetup({ detection, org: state, weeklyGame, activities: slots, chatLanguage });
+  // Hidden settings (payment tracking, 2026-10-16) are never written.
+  let plan = hideUnofferedSettings(planSetup({ detection, org: state, weeklyGame, activities: slots, chatLanguage }));
   let res = await applyAndRecord(orgId, state, plan, held, record);
   // Why a HELD club's write was refused, when it was the club that moved:
   // suspended (no approved club to load) or gone live (no longer setting
@@ -439,7 +441,7 @@ export async function learnClubSetup(orgId: string, opts: LearnOptions = {}): Pr
     moved = movedTo(fresh);
     if (fresh && !moved) {
       state = orgSettings(fresh);
-      plan = planSetup({ detection, org: state, weeklyGame, activities: slots, chatLanguage });
+      plan = hideUnofferedSettings(planSetup({ detection, org: state, weeklyGame, activities: slots, chatLanguage }));
       res = await applyAndRecord(orgId, state, plan, held, record);
       // Still refused, and it was held: see whether it moved just now.
       if (res === "moved" && held) moved = movedTo(await loadOrg(orgId));

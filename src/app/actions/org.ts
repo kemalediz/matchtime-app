@@ -22,6 +22,7 @@ import {
 import { saveAdminChannelChoice, type SaveAdminChannelResult } from "@/lib/admin-channel";
 import { normaliseSquadMode } from "@/lib/squad-month-rules";
 import { normaliseListAnnouncer, type ListAnnouncer } from "@/lib/list-announcer";
+import { isFeatureOffered } from "@/lib/org-features-meta";
 
 /**
  * Today's club creation (/create-org with SELF_JOIN_ENABLED off).
@@ -336,6 +337,9 @@ export async function setOrgFeature(
 
   const column = FEATURE_COLUMN[feature];
   if (!column) throw new Error(`Unknown feature: ${feature}`);
+  // Hidden for now (2026-10-16, `HIDDEN_FEATURE_KEYS`): it can be switched
+  // off, never on.
+  if (enabled && !isFeatureOffered(feature)) throw new Error(`That setting is not available: ${feature}`);
 
   // Switching payment collection ON may be the second of the two
   // switches that make it live; the group is then told how it works,

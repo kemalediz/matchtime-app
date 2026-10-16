@@ -15,7 +15,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { FEATURE_META } from "../org-features-meta";
+import { FEATURE_META, OFFERED_FEATURE_META } from "../org-features-meta";
 import { totalForMethod } from "../payments";
 import { BACKGROUND_MIN_HEIGHT, BACKGROUND_MIN_WIDTH, portraitProblem } from "../graphics-background";
 import { t } from "../i18n/t";
@@ -72,7 +72,7 @@ describe("settings page copy", () => {
   });
 
   it("each Bot features popup is titled with the row's label, in both languages", () => {
-    for (const m of FEATURE_META) {
+    for (const m of OFFERED_FEATURE_META) {
       expect(m.label.replace(/^\s*↳\s*/, "").replace(/ \(Stripe\)$/, ""), m.key).toBe(settingInfo("en", m.key).title);
       expect(t("tr").onbFeatureLabel({ key: m.key, englishLabel: m.label }), m.key).toBe(settingInfo("tr", m.key).title);
     }

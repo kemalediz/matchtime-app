@@ -70,7 +70,8 @@ test("bot-added → intro → EVERYTHING → admins (@mention + name+phone) → 
   expect(chat.reply).toBeNull();
   expect((await session(db, onb.groupId))?.stage).toBe("introduced");
 
-  // 3. EVERYTHING → all features incl. payment tracking; asks for admins.
+  // 3. EVERYTHING → every offered feature (payment tracking is hidden,
+  //    2026-10-16); asks for admins.
   const yes = await onb.say("EVERYTHING", { phone: OWNER_PHONE, name: "Olive Owner" });
   expect(yes.reply?.toLowerCase()).toContain("who else helps run");
   expect((await session(db, onb.groupId))?.stage).toBe("admins");
@@ -95,7 +96,8 @@ test("bot-added → intro → EVERYTHING → admins (@mention + name+phone) → 
 
   // The completion post teaches the interaction contract, feature-aware.
   // EVERYTHING enables attendance + teamBalancing + momVoting +
-  // playerRating + paymentTracking, so every contract line is present.
+  // playerRating, so every contract line is present (payments: the
+  // "Want to collect match fees?" pointer).
   expect(done.reply).toMatch(/in.*out/i); // In/Out availability
   expect(done.reply?.toLowerCase()).toContain("tag"); // tag-to-ask rule
   expect(done.reply).toMatch(/maybe/i); // tentative path
@@ -103,9 +105,9 @@ test("bot-added → intro → EVERYTHING → admins (@mention + name+phone) → 
   expect(done.reply).toMatch(/quiet/i); // stays quiet / banter safe
   expect(done.reply).toMatch(/team/i); // teamBalancing capability
   expect(done.reply?.toLowerCase()).toMatch(/mom|man of the match/); // momVoting
-  expect(done.reply?.toLowerCase()).toMatch(/pa(id|yment)/); // paymentTracking
+  expect(done.reply?.toLowerCase()).toMatch(/pa(id|yment)/); // the match fees pointer
 
-  // Org: EVERYTHING = recommended bundle + payment tracking ON.
+  // Org: EVERYTHING = recommended bundle; payment tracking stays OFF.
   const org = await db.one<{
     id: string;
     name: string;
@@ -124,7 +126,7 @@ test("bot-added → intro → EVERYTHING → admins (@mention + name+phone) → 
   expect(org?.featureBench).toBe(true);
   expect(org?.featureMomVoting).toBe(true);
   expect(org?.featurePlayerRating).toBe(true);
-  expect(org?.paymentTrackingEnabled).toBe(true);
+  expect(org?.paymentTrackingEnabled).toBe(false); // hidden for now (2026-10-16)
   expect(org?.paymentCollectionEnabled).toBe(false); // NEVER chat-set
   expect(org?.featureSquadFromList).toBe(false); // attendance is on
 

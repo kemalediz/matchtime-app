@@ -1006,7 +1006,7 @@ export const tr: Strings = {
       mom: "maçın adamı",
       ratings: "oyuncu puanları",
       reminders: "hatırlatmalar",
-      payments: "ödeme takibi",
+      payments: "maç ücretleri",
       schedule: "program ve rezervasyonlar",
       badges: "rozetler ve nasıl kazanılır",
     })[p.topic],
@@ -1054,7 +1054,7 @@ export const tr: Strings = {
       mom: "Man of the Match (maçın adamı)",
       ratings: "Player ratings (oyuncu puanları)",
       reminders: "Personal reminders (kişisel hatırlatmalar)",
-      payments: "Payment tracking (ödeme takibi)",
+      payments: "Collect match fees (maç ücreti toplama)",
     })[p.topic],
 
   onbHelpPaymentsOff: (): string =>
@@ -1078,13 +1078,13 @@ export const tr: Strings = {
     if (p.audience === "admin") {
       const what =
         p.topic === "payments"
-          ? `*Bot features* altında *Payment tracking* ve *Collect match fees* ayarlarını aç, parayı kimin toplayacağını seç, sonra o kişinin banka hesabını Stripe ile bir kez bağla (yaklaşık 2 dakika)`
+          ? `*Bot features* altında *Collect match fees* ayarını aç, parayı kimin toplayacağını seç, sonra o kişinin banka hesabını Stripe ile bir kez bağla (yaklaşık 2 dakika)`
           : `*Bot features* altında *${p.label}* ayarını aç`;
       return `🔧 Açmak için yönetici sayfanda *Settings* bölümüne gir, ${what}:\n${p.url}`;
     }
     const what =
       p.topic === "payments"
-        ? `*Bot features* altında *Payment tracking* ve *Collect match fees* ayarlarını açar, parayı kimin toplayacağını seçer, sonra o kişinin banka hesabını Stripe ile bir kez bağlar (yaklaşık 2 dakika)`
+        ? `*Bot features* altında *Collect match fees* ayarını açar, parayı kimin toplayacağını seçer, sonra o kişinin banka hesabını Stripe ile bir kez bağlar (yaklaşık 2 dakika)`
         : `*Bot features* altında *${p.label}* ayarını açar`;
     return (
       `🔧 Açmak için bir yönetici, yönetici sayfasında (${p.url}) *Settings* bölümüne girer, ${what}.\n` +
@@ -1125,10 +1125,10 @@ export const tr: Strings = {
         `Henüz *varım* veya *yokum* demeyenleri nazikçe dürterim, sonra maçtan önce bütün kadroya hatırlatırım ki kimse unutmasın.\n` +
         `Hepsi otomatik olur, kimseyi tek tek aramanıza gerek kalmaz.`,
       payments:
-        `💳 *Ödeme takibi nasıl çalışır*\n` +
-        `Maç ücretini kimin ödediğini takip ederim. Organizatör ücreti belirler, ben kimin ödediğini ve kimin borcu kaldığını tek bakışta gösteririm.\n` +
-        `Ödemeyenlere nazik hatırlatmalar gönderirim. Oyuncular kartla ödeyebilir, organizatör nakit ve havaleleri alındı olarak işaretleyebilir.\n` +
-        `Bu yalnızca ödeme takibi açıkken çalışır. Son durum için *@Match Time kim ödemedi?* yazın.`,
+        `💷 *Maç ücretleri nasıl çalışır*\n` +
+        `Her maçtan sonra parayı toplayan kişiye kişi başı ücreti sorarım, sonra oynayan herkese payını ödemesi için özelden bir bağlantı gönderirim. Kartla ve bankadan yapılan ödemeler doğrudan parayı toplayan kişinin banka hesabına gider.\n` +
+        `Henüz ödemeyenlere, parayı toplayan kişiye doğrudan ödemeyi seçmedilerse, bağlantıyı maçtan sonra 6 güne kadar her gün yeniden gönderirim.\n` +
+        `Son durum için *@Match Time kim ödemedi?* yazın.`,
     })[p.topic],
 
   // Organizatörlerin listeyi ve takımları paylaştığı kulüp (2026-10-15).

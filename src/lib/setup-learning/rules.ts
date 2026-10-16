@@ -89,6 +89,7 @@
  */
 import type { HistoryMessage } from "../onboarding-enrichment-reconcile";
 import { formatLondon } from "../london-time";
+import { isFeatureOffered } from "../org-features-meta";
 import {
   validateWeeklyDeadlines,
   type ActivitySlot,
@@ -768,6 +769,26 @@ export function sameVenue(a: string, b: string): boolean {
   const x = normaliseForMatch(a).replace(/[^\p{L}\p{N} ]/gu, "");
   const y = normaliseForMatch(b).replace(/[^\p{L}\p{N} ]/gu, "");
   return !!x && !!y && (x.includes(y) || y.includes(x));
+}
+
+/**
+ * The plan without the settings that are hidden for now (payment tracking,
+ * 2026-10-16, `HIDDEN_FEATURE_KEYS`): nothing switches them on, nothing
+ * says one was left alone or held off. `planSetup` itself is unchanged (it
+ * is pinned against main by main-parity.test.ts); run.ts filters every
+ * plan it writes through this.
+ */
+export function hideUnofferedSettings(plan: SetupPlan): SetupPlan {
+  const hidden = (key: LearnedKey) => !isFeatureOffered(key);
+  const data = { ...plan.data };
+  if (!isFeatureOffered("paymentTracking")) delete data.paymentTrackingEnabled;
+  return {
+    ...plan,
+    applied: plan.applied.filter((a) => !hidden(a.key)),
+    kept: plan.kept.filter((k) => !hidden(k.key)),
+    noted: plan.noted.map((n) => (isFeatureOffered("paymentTracking") ? n : { ...n, heldPaymentTracking: false })),
+    data,
+  };
 }
 
 export function planSetup(args: {

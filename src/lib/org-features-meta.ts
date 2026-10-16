@@ -57,3 +57,25 @@ export const FEATURE_META: Array<{
   { key: "payCard", label: "  ↳ Card and Apple Pay", blurb: `Card, Apple Pay or Google Pay: ${totalOnTenPounds("card")} on a £10 fee.` },
   { key: "payDirect", label: "  ↳ Pay organiser directly", blurb: "Cash/transfer; the money collector confirms receipt. No fee." },
 ];
+
+/// Switches hidden for now (Kemal, 2026-10-16). Payment tracking (the old
+/// WhatsApp payment poll and the group unpaid summary) confused clubs:
+/// players get pay-link DMs from "Collect match fees" and the money
+/// collector has the payments page. It is not offered anywhere: not on
+/// /admin/settings, not in the in-group setup menu, not by any setup flow,
+/// and `setOrgFeature` refuses to switch it on. Its column and the
+/// scheduler code stay, so a club that still has it on keeps working and
+/// it can come back by emptying this set.
+export const HIDDEN_FEATURE_KEYS: ReadonlySet<ToggleableKey> = new Set<ToggleableKey>(["paymentTracking"]);
+
+export function isFeatureOffered(key: string): boolean {
+  return !HIDDEN_FEATURE_KEYS.has(key as ToggleableKey);
+}
+
+/// `FEATURE_META` without the hidden switches: what the settings page and
+/// the in-group setup menu show.
+export const OFFERED_FEATURE_META = FEATURE_META.filter((m) => isFeatureOffered(m.key)) as Array<{
+  key: Exclude<ToggleableKey, "paymentTracking">;
+  label: string;
+  blurb: string;
+}>;

@@ -1141,7 +1141,7 @@ export const en = {
       mom: "Man of the Match",
       ratings: "player ratings",
       reminders: "reminders",
-      payments: "payment tracking",
+      payments: "match fees",
     })[p.topic],
 
   /** "help <topic>" for a topic whose feature is off. Unused since
@@ -1196,7 +1196,7 @@ export const en = {
       mom: "Man of the Match",
       ratings: "Player ratings",
       reminders: "Personal reminders",
-      payments: "Payment tracking",
+      payments: "Collect match fees",
     })[p.topic],
 
   /** How fee collection works, for "help payments" while it is off. The
@@ -1226,13 +1226,13 @@ export const en = {
     if (p.audience === "admin") {
       const what =
         p.topic === "payments"
-          ? `turn on *Payment tracking* and *Collect match fees* under Bot features, pick the money collector, then connect their bank with Stripe once (about 2 minutes)`
+          ? `turn on *Collect match fees* under Bot features, pick the money collector, then connect their bank with Stripe once (about 2 minutes)`
           : `turn on *${p.label}* under Bot features`;
       return `🔧 To switch it on, open *Settings* on your admin page and ${what}:\n${p.url}`;
     }
     const what =
       p.topic === "payments"
-        ? `turns on *Payment tracking* and *Collect match fees* under Bot features, picks the money collector, then connects their bank with Stripe once (about 2 minutes)`
+        ? `turns on *Collect match fees* under Bot features, picks the money collector, then connects their bank with Stripe once (about 2 minutes)`
         : `turns on *${p.label}* under Bot features`;
     return (
       `🔧 To switch it on, an admin opens *Settings* on the admin page (${p.url}) and ${what}.\n` +
@@ -1286,11 +1286,15 @@ export const en = {
         `I gently nudge anyone who hasn't said *In* or *Out* yet, then remind the whole squad before kick-off so nobody forgets.\n` +
         `Want a personal nudge? Say *"@Match Time remind me Thursday"* and I'll DM you then.\n` +
         `It all happens automatically, so you don't need to chase anyone yourself.`,
+      // Rewritten 2026-10-16: payment tracking (the payment poll) is
+      // hidden, so "help payments" while it is on means fees are collected
+      // (onboarding-conversation.ts `topicIsOn`). Each line is what
+      // "Collect match fees" does (settings-info.ts paymentCollection).
       payments:
-        `💳 *Payment tracking: how it works*\n` +
-        `I keep track of who's paid the match fee. The organiser sets the fee, and I show who's paid and who still owes at a glance.\n` +
-        `I send friendly reminders to anyone outstanding. Players can pay by card, or the organiser can mark cash and bank transfers as received.\n` +
-        `This only runs when payment tracking is switched on. Tag *@Match Time who still owes?* to see the latest.`,
+        `💷 *Match fees: how it works*\n` +
+        `After each game I ask the money collector for the fee per player, then DM everyone who played a private link to pay their share. Card and Pay by Bank payments go straight to the money collector's bank.\n` +
+        `Anyone who hasn't paid, and hasn't chosen to pay the money collector directly, gets the link again each day, for up to 6 days after the match.\n` +
+        `Tag *@Match Time who still owes?* to see the latest.`,
     })[p.topic],
 
   // ── Help for a club whose organisers announce (2026-10-15) ───────────
