@@ -92,6 +92,13 @@ function resultEn(p: { redLabel: string; red: number; yellow: number; yellowLabe
     : `*${p.yellowLabel}* won ${p.yellow} - ${p.red} against ${p.redLabel}`;
 }
 
+/** "Yellow 7, Red 4": the winner first, a draw in the match's order. */
+function sidesEn(p: { redLabel: string; red: number; yellow: number; yellowLabel: string }): string {
+  return p.yellow > p.red
+    ? `${p.yellowLabel} ${p.yellow}, ${p.redLabel} ${p.red}`
+    : `${p.redLabel} ${p.red}, ${p.yellowLabel} ${p.yellow}`;
+}
+
 function boldNamesEn(names: string[]): string {
   const b = names.map((n) => `*${n}*`);
   return b.length <= 1 ? (b[0] ?? "") : `${b.slice(0, -1).join(", ")} and ${b[b.length - 1]}`;
@@ -893,6 +900,10 @@ export const en = {
   ask_score: (p: { activityName: string }): string =>
     `🏁 *${p.activityName}*: hope it was a good one. What was the final score? ` +
     `I'll use it to keep next week's teams balanced.`,
+  /** The same ask in the club's admin group (2026-10-16): the organisers
+   *  report the score there. */
+  ask_score_hq: (p: { activityName: string }): string =>
+    `🏁 *${p.activityName}*: what was the final score, and which team won? Reply here and I'll record it.`,
 
   // ═══════════════════════════════════════════════════════════════════
   // Phase 2, slice 3: the chase model's server-computed headers.
@@ -1384,6 +1395,27 @@ export const en = {
    *  has none on record. */
   hq_only_organisers: (p: { names: string }): string =>
     p.names ? `Only ${p.names} can change that.` : `Only the club's organisers can change that.`,
+  // ── The match score, reported in HQ (2026-10-16, admin-group-score.ts).
+  //    Winner first; a draw in the match's own order. ──
+  /** A score recorded from HQ. */
+  hq_score_saved: (p: { redLabel: string; red: number; yellow: number; yellowLabel: string }): string =>
+    `Score saved: ${sidesEn(p)}.`,
+  /** A recorded score an organiser changed from HQ. */
+  hq_score_changed: (p: {
+    redLabel: string;
+    yellowLabel: string;
+    oldRed: number;
+    oldYellow: number;
+    red: number;
+    yellow: number;
+  }): string =>
+    `Score changed: ${sidesEn(p)} (it was ${sidesEn({ ...p, red: p.oldRed, yellow: p.oldYellow })}).`,
+  /** More than one scoreline in the message ("7-4 or 7-5"). */
+  hq_score_unclear: `I can't tell the final score from that. What was it, and which team won?`,
+  /** A score in HQ with no played match waiting for one. */
+  hq_score_no_match: `There's no finished match waiting for a score.`,
+  /** The score write failed. Nothing was saved. */
+  hq_score_failed: `I couldn't save that score just now. Please send it again in a minute.`,
   // ── An organiser asks MatchTime, in HQ, to ask the players' group for a
   //    player (2026-10-16, admin-group-ask-group.ts). A first-come club's
   //    post is `slot_opened`, unchanged. ──

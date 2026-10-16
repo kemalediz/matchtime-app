@@ -15,7 +15,16 @@
  * READ-ONLY BY CONSTRUCTION: every statement in this file is a
  * `findMany`. The gate never writes.
  */
-import { SCORE_ASK_KIND, SCORE_ASK_TTL_MS, parseScoreAskKey } from "./score-ask";
+import {
+  SCORE_ASK_KIND,
+  SCORE_ASK_TTL_MS,
+  isScoreAnswer,
+  isScoreCorrectionText,
+  mayBeScoreCorrection,
+  parseScoreAskKey,
+  scoreAnswerSide,
+  scorePairAnswerSide,
+} from "./score-ask";
 import { resolveTeamLabels } from "../team-labels";
 import { SCORE_CORRECTION_WINDOW_MS } from "./score-window";
 import { db } from "../db";
@@ -214,6 +223,40 @@ export async function loadScoreCorrectionTarget(
   orgId: string,
   now: Date = new Date(),
 ): Promise<{ matchId: string; labels: [string, string] } | null> {
+  const latest = await latestPlayedMatch(orgId, now);
+  if (!latest || latest.redScore === null || latest.yellowScore === null) return null;
+  if (now.getTime() - latest.date.getTime() > SCORE_CORRECTION_WINDOW_MS) return null;
+  return { matchId: latest.matchId, labels: latest.labels };
+}
+
+/**
+ * The club's latest PLAYED match when it has NO result yet and kicked off
+ * inside the correction window: the score the organisers' group is
+ * waiting for (2026-10-16, `admin-group-score.ts`). The same selection as
+ * `loadScoreCorrectionTarget` and `load-state.ts`'s `completedMatch`.
+ */
+export async function loadUnscoredPlayedMatch(
+  orgId: string,
+  now: Date = new Date(),
+): Promise<{ matchId: string; date: Date; labels: [string, string] } | null> {
+  const latest = await latestPlayedMatch(orgId, now);
+  if (!latest || latest.redScore !== null || latest.yellowScore !== null) return null;
+  if (now.getTime() - latest.date.getTime() > SCORE_CORRECTION_WINDOW_MS) return null;
+  return { matchId: latest.matchId, date: latest.date, labels: latest.labels };
+}
+
+/** The ten most recent matches that have kicked off, the first whose
+ *  duration has passed (`load-state.ts`'s `completedMatch` selection). */
+async function latestPlayedMatch(
+  orgId: string,
+  now: Date,
+): Promise<{
+  matchId: string;
+  date: Date;
+  redScore: number | null;
+  yellowScore: number | null;
+  labels: [string, string];
+} | null> {
   const candidates = await db.match.findMany({
     where: {
       activity: { orgId },
@@ -240,10 +283,12 @@ export async function loadScoreCorrectionTarget(
   const latest = candidates.find(
     (m) => m.date.getTime() + m.activity.matchDurationMins * 60 * 1000 <= now.getTime(),
   );
-  if (!latest || latest.redScore === null || latest.yellowScore === null) return null;
-  if (now.getTime() - latest.date.getTime() > SCORE_CORRECTION_WINDOW_MS) return null;
+  if (!latest) return null;
   return {
     matchId: latest.id,
+    date: latest.date,
+    redScore: latest.redScore,
+    yellowScore: latest.yellowScore,
     labels: resolveTeamLabels(
       { teamLabels: latest.teamLabels },
       { teamLabels: latest.activity.org.teamLabels },
@@ -251,4 +296,76 @@ export async function loadScoreCorrectionTarget(
       latest.activity.org.language,
     ),
   };
+}
+
+/** One message as the score route overrides read it. */
+export interface ScoreOverrideMessage {
+  id: string;
+  body: string;
+  /** Tags MatchTime (in the organisers' group: addressed to it). */
+  tagged: boolean;
+  senderUserId: string | null;
+}
+
+/**
+ * THE MESSAGES THAT GO TO THE SCORE ROUTE WHATEVER THE ROUTER SAYS, in
+ * every group (2026-10-07; shared with the organisers' group 2026-10-16):
+ *
+ *   - the answers to MatchTime's open "which team won?": a bare team
+ *     name, or the asked-about pair restated with one team, from somebody
+ *     who may answer it (`isScoreAnswer`, `score-ask.ts`);
+ *   - a tagged correction of a recorded result, by its words
+ *     (`isScoreCorrectionText`). The one approved live run had the router
+ *     send "@Match Time other way round" to `unsure` and a Turkish
+ *     correction to `other_att`, so neither reached the score route.
+ *
+ * Decided before any model runs. One indexed read, null on almost every
+ * batch; the correction target is read only when a tagged message already
+ * looks like one. A failed read only means the override does not fire: a
+ * one-word answer is not picked up, the full result still is. Who may
+ * answer or correct, and what it says, stay in the engine.
+ */
+export async function scoreRouteOverrides(
+  orgId: string,
+  messages: readonly ScoreOverrideMessage[],
+  now: Date = new Date(),
+): Promise<{ scoreAnswerIds: Set<string>; scoreCorrectionIds: Set<string> }> {
+  const scoreAnswerIds = new Set<string>();
+  const scoreCorrectionIds = new Set<string>();
+  if (messages.length === 0) return { scoreAnswerIds, scoreCorrectionIds };
+  const openScoreAsk = await loadOpenScoreAsk(orgId, now).catch((err) => {
+    console.error("[score-overrides] open score question read failed:", err);
+    return null;
+  });
+  if (openScoreAsk) {
+    for (const m of messages) {
+      if (
+        (scoreAnswerSide(m.body, openScoreAsk.labels) !== null ||
+          scorePairAnswerSide(m.body, openScoreAsk, openScoreAsk.labels) !== null) &&
+        isScoreAnswer({
+          body: m.body,
+          tagged: m.tagged,
+          senderUserId: m.senderUserId,
+          senderIsAdmin: !!m.senderUserId && openScoreAsk.adminUserIds.includes(m.senderUserId),
+          ask: openScoreAsk,
+          now,
+        })
+      ) {
+        scoreAnswerIds.add(m.id);
+      }
+    }
+  }
+  const correctionCandidates = messages.filter((m) => m.tagged && mayBeScoreCorrection(m.body));
+  if (correctionCandidates.length > 0) {
+    const target = await loadScoreCorrectionTarget(orgId, now).catch((err) => {
+      console.error("[score-overrides] score correction target read failed:", err);
+      return null;
+    });
+    if (target) {
+      for (const m of correctionCandidates) {
+        if (isScoreCorrectionText(m.body, target.labels)) scoreCorrectionIds.add(m.id);
+      }
+    }
+  }
+  return { scoreAnswerIds, scoreCorrectionIds };
 }

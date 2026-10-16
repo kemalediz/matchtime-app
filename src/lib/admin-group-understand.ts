@@ -28,7 +28,10 @@
  *                         and for help it does not answer
  *   ask_group             one place-open ask in the players' group
  *                         (`admin-group-ask-group.ts`)
- *   score, admin_ops      one line: not from this group (an organiser
+ *   score                 the players' group's score handling, with HQ's
+ *                         context (`admin-group-score.ts`, 2026-10-16):
+ *                         anyone reports, only an organiser changes it
+ *   admin_ops             one line: not from this group (an organiser
  *                         clearly asked MatchTime; never silent on that)
  *   unsure                addressed to MatchTime (an @tag, or a reply to
  *                         its own message): the attendance engine, as in
@@ -71,6 +74,8 @@ import { answerPartnerAskYes, parsePartnerAskRef, partnerAskRef, partnerAsksAwai
 import { askPlayersGroup } from "./admin-group-ask-group";
 import { answerHqQuestion } from "./admin-group-question";
 import { joinAdminNames } from "./seed-nudge-rules";
+import { answerHqScore, hqScoreRouting } from "./admin-group-score";
+import { hasScorelineShape } from "./pipeline/score-ask";
 
 /** How far back the router's "earlier here" lines reach, and how many. */
 const RECENT_MS = 30 * 60 * 1000;
@@ -161,6 +166,20 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
     ]);
     const log = logAll.filter((r) => r.waMessageId !== messageId);
     const quotedIsMatchTime = !!input.quoted && (input.quoted.fromMatchTime === true || (!!input.quoted.text && !!matchQuoted(input.quoted.text, log)));
+    // Addressed to MatchTime: an @tag (never the bare word, which is talk
+    // ABOUT MatchTime), or a WhatsApp reply to MatchTime's own message.
+    const addressed = quotedIsMatchTime || messageMentionsBotExplicitly({ body: input.text });
+    // The score MatchTime is waiting for, and the answers and corrections
+    // that go to `score` whatever the model says (`admin-group-score.ts`).
+    const score = await hqScoreRouting({
+      orgId: org.id,
+      lang,
+      messageId,
+      body,
+      addressed,
+      senderUserId: input.organiser ? input.senderUserId : null,
+      now,
+    });
     const recent = log.filter((r) => now.getTime() - r.createdAt.getTime() <= RECENT_MS).slice(-RECENT_MAX);
     // The extractors' recent chat: MatchTime's own lines as MatchTime.
     const history = recent.map((r) => ({ author: r.fromMatchTime ? "MatchTime" : null, body: r.text }));
@@ -176,10 +195,15 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
           waMessageId: messageId,
           body,
           authorName: input.senderName,
-          organisers: { context: organisersContext({ pending, quoted: input.quoted, quotedIsMatchTime, recent }) },
+          organisers: { context: organisersContext({ pending, quoted: input.quoted, quotedIsMatchTime, recent, score: score.waiting }) },
         },
       ],
-      { capped, ...(input.deps?.routerModel ? { model: input.deps.routerModel } : {}) },
+      {
+        capped,
+        scoreAnswerIds: score.scoreAnswerIds,
+        scoreCorrectionIds: score.scoreCorrectionIds,
+        ...(input.deps?.routerModel ? { model: input.deps.routerModel } : {}),
+      },
     );
     const routed = gate.routes.find((r) => r.messageId === messageId);
     const route = routed?.route ?? null;
@@ -190,9 +214,6 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
       `[admin-group] ${messageId}: routed ${route ?? "nowhere"} by ${routed?.source ?? "nothing"} (${pending.length} waiting${input.quoted ? ", a reply" : ""})`,
     );
     for (const d of gate.degradations) console.log(`[admin-group] ${messageId}: router degradation: ${d.detail}`);
-    // Addressed to MatchTime: an @tag (never the bare word, which is talk
-    // ABOUT MatchTime), or a WhatsApp reply to MatchTime's own message.
-    const addressed = quotedIsMatchTime || messageMentionsBotExplicitly({ body: input.text });
     const said = (outcome: string, replyText: string | null): Understood => ({ route, outcome, replyText });
 
     // Someone in HQ who is not an owner or admin (2026-10-16): questions,
@@ -204,6 +225,26 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
     const notYours = async (): Promise<Understood | null> =>
       addressed ? said("hq-only-organisers", await onlyOrganisersLine(org.id, lang)) : null;
     const base = (senderUserId: string) => ({ orgId: org.id, lang, messageId, senderUserId, now });
+    // The players' group's own score handling, with HQ's context
+    // (`admin-group-score.ts`). Anyone may report; only an organiser may
+    // change a recorded result.
+    const scoreHere = async (): Promise<Understood | null> => {
+      const r = await answerHqScore({
+        orgId: org.id,
+        lang,
+        messageId,
+        body,
+        senderUserId: input.senderUserId,
+        senderName: input.senderName,
+        organiser: input.organiser,
+        addressed,
+        history,
+        now,
+        ...(input.deps?.extractorModel ? { deps: { model: input.deps.extractorModel } } : {}),
+      });
+      if (r === "organisers-only") return notYours();
+      return r ? { route: "score", outcome: r.outcome, replyText: r.replyText } : null;
+    };
 
     switch (route) {
       case "approve": {
@@ -315,9 +356,15 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
         return said(r.outcome, r.replyText);
       }
       case "score":
+        return scoreHere();
       case "admin_ops":
         return actor || addressed ? said("hq-not-here", s.hq_not_here) : null;
       case "unsure": {
+        // A scoreline ("7-4 mü 7-5 mi") while MatchTime waits for the
+        // score, that the router could not place: the score handling
+        // reads it, and records only what is clear (2026-10-16 live check:
+        // the router sent that Turkish message to `unsure`).
+        if (score.waiting && hasScorelineShape(body)) return scoreHere();
         // Not addressed to MatchTime: the organisers' own conversation.
         if (!addressed) return null;
         // Addressed, and the router could not tell what it does (or its
