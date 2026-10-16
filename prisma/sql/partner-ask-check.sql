@@ -9,6 +9,10 @@
 -- prisma/migrations/20261016180000_partner_clubs/migration.sql and to the
 -- e2e database by e2e/run.ts after `prisma db push` (db push creates
 -- columns, never CHECK constraints).
+--
+-- ONE TRANSACTION: a re-run swaps each CHECK whole or not at all.
+
+BEGIN;
 
 ALTER TABLE "Organisation" DROP CONSTRAINT IF EXISTS "Organisation_partnerAskWhen_check";
 ALTER TABLE "Organisation" ADD CONSTRAINT "Organisation_partnerAskWhen_check"
@@ -56,7 +60,10 @@ ALTER TABLE "PartnerAsk" ADD CONSTRAINT "PartnerAsk_two_clubs_check"
 
 -- One OPEN ask per (match, partner club): a second button press, the
 -- automatic timer and an organiser's words can never post twice.
-DROP INDEX IF EXISTS "PartnerAsk_one_open_per_match_partner";
-CREATE UNIQUE INDEX "PartnerAsk_one_open_per_match_partner"
+-- Created if missing and never dropped, so a re-run never leaves a window
+-- without it (review of the stack, L5).
+CREATE UNIQUE INDEX IF NOT EXISTS "PartnerAsk_one_open_per_match_partner"
   ON "PartnerAsk" ("matchId", "partnerOrgId")
   WHERE "status" IN ('awaiting-approval', 'posted');
+
+COMMIT;
