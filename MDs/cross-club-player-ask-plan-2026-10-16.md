@@ -1,6 +1,6 @@
 # Asking a partner club for a player (cross-club player ask)
 
-Plan, 2026-10-16. Planning only: no code, no PR, nothing touched in production.
+Plan, 2026-10-16. Decided by Kemal 2026-10-16 (section 0); being built slice by slice, one PR each.
 
 **The ask (Kemal):** FNF (Friday 9-a-side, organisers pick who plays) had an open place on
 match day. The organisers asked MatchTime to find a player: first FNF's own members, and if
@@ -14,32 +14,48 @@ the partner club's organisers to approve, then posts one short ask in the partne
 group. A partner player answers by **replying to that post**, so their IN can never be mistaken
 for an IN to their own club's game. They join the asking club's waiting list as a **guest for
 that one match**, the asking club's organisers pick as they do today, the guest gets a DM, plays,
-pays the asking club's fee, is rated by the asking club only, and stops being a guest the morning
-after. Nothing changes for any club that has not switched it on.
+pays the asking club's fee like any member, is rated by the asking club only (that is his club rating
+there, shown on his own profile), and becomes a past guest the morning after. Nothing changes for any club that has not switched it on.
 
 ---
 
-## 0. Open decisions for Kemal
+## 0. Decisions (Decided by Kemal 2026-10-16)
 
-Each has a recommendation. Nothing in slice 1 or later should start until D1 to D6 are settled;
-D7 onward can be settled per slice.
+Kemal: go with every recommendation below, except three, which he changed (marked **Changed**).
+The rest of this document has been updated to match. Where a section still says something
+different, this table wins.
 
-| # | Decision | Recommendation |
+| # | Decision | Decided |
 |---|---|---|
-| D1 | **Who creates a pairing?** Only the platform owner (you), or club organisers by exchanging a code? | **You only, in v1**, from the owner's clubs page. Both clubs' owners then accept on their settings page. No discovery, no club can spam another. A code handshake can come later. |
-| D2 | **One way or both ways?** Is "FNF may ask Sutton" the same agreement as "Sutton may ask FNF"? | **One way, each direction its own row.** Sutton may be happy to lend players to FNF without wanting FNF asked. A reciprocal pair is just two rows. |
-| D3 | **Partner approval: every ask, or standing permission?** | **Both offered, default "ask us each time".** The partner's organisers approve each ask (YES in their admin group, or a link in the DM). A partner can switch to "post without asking", and is then told after each post. |
-| D4 | **When is the partner asked?** | **On the asking organisers' request by default**, plus an optional automatic time ("if a place is still open at 16:00 on match day"). Never before the club's own members have had a chance: the automatic ask only fires when the club's own waiting list is empty. |
-| D5 | **How does a partner player say yes?** | **By replying (quoting) to MatchTime's ask post** with IN, or by DM after tapping the reply. A plain unquoted IN in the partner group keeps its meaning today: the player's own club's game. Optional extra (D5b): when an unquoted IN arrives within 60 minutes of the ask from someone with **no** row on their own club's game, MatchTime asks one short question ("For FNF on Friday? Reply to my FNF message"). **Recommend D5b yes**, it is a code decision on state, no model change. |
-| D6 | **Who picks among volunteers in the asking club?** | **Whatever the club does today.** An organiser-pick club (FNF) sees volunteers on its waiting list labelled "(Sutton FC)" and picks by number. A first-come club confirms the first volunteer. In the organiser-pick fallback (D5 of the Friday plan, "offer to the waiting list"), **a guest volunteer counts as having already said yes**, earliest volunteer first. |
-| D7 | **What does the asking club see about a guest?** | **Name and club only** ("Ali K (Sutton FC)"), position if he gives one. **No phone number, ever, and no rating from the partner club.** His rating in the asking club starts empty and shrinks to that club's mean, exactly as for any new member (club-scoped ratings rule: "a default is a carried-over opinion"). Option for later: the partner may consent to share its rating as a seed. |
-| D8 | **What does the partner group see afterwards?** | **One line, as a reply to the ask:** "FNF's place is filled, thanks all 🙌". Never the asking club's player names or numbers. The volunteer who got the place is told by DM, not in the partner group. |
-| D9 | **Language of the guest's DMs?** | **The guest's own club's language** (he reads Sutton's group, not FNF's). Notices to the asking club stay in its language; the ask post is in the partner's language. |
-| D10 | **When does a guest stop being a guest?** | **The morning after the match** (the complete-matches cron), or at once if not picked. The asking club's organisers can keep him as a member from the match page ("Add to FNF"), which makes him an ordinary member. |
-| D11 | **Billing.** | **No change, guests do not count.** The club fee is per game played, not per player (`club-billing-months.ts`, plan 2A.3). FNF's game is FNF's game; Sutton is not charged for it. The partner group's model calls for replies to the ask count against the partner's AI cap as today (they arrive in its group). |
-| D12 | **Caps.** | One open ask per (asking match, partner). At most **2 asks per London day into one partner group**, from all partners together. An ask closes **60 minutes before kickoff** (travel time). |
-| D13 | **Ratings and MoM for guests.** | **The guest is rated and can be MoM in the asking club only**, and gets that club's rating DM (he played with them). Nothing is written to the partner club: ratings and Elo are already club-scoped through the match's club and the membership. |
-| D14 | **Organisers asking in their own words** ("ask Sutton if anyone can play") needs one new fact on the admin extractor, which is a prompt change. The prompt is rewritten, not appended, and it needs **your approval for one live check** (section 6). Slices 1 to 5 need none. Approve the slice 6 approach now, the run later. |
+| D1 | **Who creates a pairing?** | **The platform owner only, in v1**, from the owner's clubs page. Both clubs' owners then accept on their settings page. No discovery, no club can spam another. A code handshake can come later. |
+| D2 | **One way or both ways?** | **One way, each direction its own row.** A reciprocal pair is two rows. |
+| D3 | **Partner approval: every ask, or standing permission?** | **Both offered, default "ask us each time".** The partner's organisers approve each ask (YES in their admin group, YES by DM, or a link). A partner can switch to "post without asking", and is then told after each post. |
+| D4 | **When is the partner asked?** | **On the asking organisers' request by default**, plus an optional automatic time on match day. The automatic ask only fires when the club's own waiting list is empty. |
+| D5 | **How does a partner player say yes?** | **By replying (quoting) to MatchTime's ask post** with IN. A plain unquoted IN in the partner group keeps its meaning: the player's own club's game. **D5b yes:** an unquoted IN within 60 minutes of the ask, from someone with no row on their own club's game, gets one short question ("For FNF on Friday? Reply to my FNF message"). A state rule, no model change. |
+| D6 | **Who picks among volunteers in the asking club?** | **Whatever the club does today.** An organiser-pick club sees volunteers on its waiting list labelled "(Sutton FC)" and picks by number; a first-come club confirms the first volunteer. In the organiser-pick fallback a guest volunteer counts as having already said yes, earliest first. |
+| D7 | **What does the asking club see about a guest?** | **Name and club only** ("Ali K (Sutton FC)"), position if he gives one. **No phone number, ever, and no rating from the partner club.** His rating in the asking club starts empty and shrinks to that club's mean, as for any new member. |
+| D8 | **What does the partner group see afterwards?** | **One line, as a reply to the ask:** "FNF's place is filled, thanks all". Never the asking club's player names or numbers. |
+| D9 | **Language of the guest's DMs?** | **The guest's own club's language** for the DMs about the ask (thanks, picked, not picked). The ask post is in the partner's language; notices to the asking club in the asker's. **Payment DMs are not special (D15):** they stay in the match club's language, as for every player. |
+| D10 | **When does a guest stop being a guest?** **Changed** | **He becomes a PAST GUEST, and his membership in the asking club is kept** (decision 1 below). Not picked: at once when the ask closes. Played: the morning after the match. A past guest's membership keeps the guest marker and is closed for the squad (`leftAt`), so he is on no list of the asking club's, and his profile still shows that club's row with his rating there (section 3.10). "Add to FNF" on the match page makes him an ordinary member. |
+| D11 | **Billing.** | **No change, guests do not count.** The club fee is per game played, not per player. Replies to the ask use the partner's AI allowance (they arrive in its group). |
+| D12 | **Caps and cut-off.** **Changed** | One open ask per (asking match, partner). At most **2 asks per London day into one partner group**. **Cut-off (decision 3 below): the last partner ask goes out at least 4 hours before kickoff by default**, a club setting of the asking club ("Last ask before kickoff", 1 to 24 hours). An ask waiting for the partner's approval expires at that cut-off. A posted ask stays open for volunteers until kickoff, or until the place is filled. |
+| D13 | **Ratings and MoM for guests.** **Changed** | **The guest is rated and can be MoM in the asking club only** (decision 1 below). The ratings the asking club gives him **are his club rating in the asking club** (club-scoped ratings, `Rating` rows hang off the asking club's match; Elo on his asking-club membership). He sees them on his own profile (section 3.10). Nothing is written to the partner club. |
+| D14 | **Organisers asking in their own words** | Approach approved: one new fact on the admin extractor, the prompt rewritten as a whole. The live check needs Kemal's separate approval (section 6). Not built in slices 0 to 5. |
+| D15 | **Payments.** **Changed** | **Guests pay like members, nothing special** (decision 2 below): the same pay link after the match, the same daily reminders and chase, and they appear in the collector's confirm list. The plan's "pay link in the guest's language" is dropped. |
+
+**Kemal's three changes, in his words, and what they mean in the build:**
+
+1. **Ratings.** "A guest's ratings given by the asking club count as that player's club rating in
+   the asking club, and the guest can see that club's ratings in their own profile." So the guest
+   membership is kept after the match as a past guest, never deleted. Past guests stay out of the
+   asking club's squad lists, rolling squad, recruit DMs, seed nudge, badge announcements and next
+   week's squad. What his profile shows is traced in section 3.10.
+2. **Payments.** "Guests pay like members: same pay link after the match, same daily
+   reminders and chase, appear in the collector's confirm list; nothing special."
+3. **Cut-off.** "Not 60 minutes before kickoff. Default: the last partner ask goes out at least
+   4 hours before kickoff; a club setting to change it (with an info popup entry, EN and TR)."
+   The setting is `Organisation.partnerAskCutoffHours` (default 4) with the ⓘ key
+   `partnerAskCutoff`.
 
 ---
 
@@ -169,10 +185,11 @@ New section "Partner clubs" on `/admin/settings`, OWNER and ADMIN may change it:
 | Partner clubs (list) | each partner: Accept, Pause, Remove | none |
 | Ask partner clubs for players | Off, When we ask, Automatically at a time | Off |
 | Automatic ask time | match day "HH:MM" (only with Automatically) | 16:00 |
+| Last ask before kickoff | 1 to 24 hours (`partnerAskCutoffHours`, D12) | 4 hours |
 | Asks from partner clubs | Ask our organisers each time, Post without asking | Ask each time |
 
 New keys in `SETTING_INFO_KEYS` (`src/lib/settings-info.ts`): `partnerClubs`, `partnerAskWhen`,
-`partnerAskTime`, `partnerApproval`, each with `what`, `example`, `choices`, `newClubs`, `suits`,
+`partnerAskTime`, `partnerAskCutoff`, `partnerApproval`, each with `what`, `example`, `choices`, `newClubs`, `suits`,
 `together`, in English and Turkish, no dashes, no slashes (the existing copy test covers them).
 `together` must say: the automatic ask waits for an empty waiting list; it does nothing while the
 club is paused; the partner's organisers approve unless they chose otherwise. Every sentence traced
@@ -215,7 +232,8 @@ The settings writes go through `src/app/actions/org.ts` like the others, and the
    player now, thanks for offering"); the Sutton group by one reply to the ask (D8); FNF's
    organisers by the existing pick announcement, with the club label.
 9. **Match, payment, ratings** as for any player (sections 3.8, 3.9).
-10. **Afterwards** the guest membership ends the next morning (section 3.10).
+10. **Afterwards** the guest becomes a past guest the next morning: his membership is kept, closed
+    for the squad (section 3.10).
 
 ### 3.4 The ask itself
 
@@ -225,7 +243,9 @@ New table `PartnerAsk`:
 - `status`: `awaiting-approval`, `posted`, `filled`, `declined`, `expired`, `cancelled`,
   `refused` (a gate said no; `reason` says which).
 - `requestedByUserId`, `requestedVia` (`"button" | "hq" | "dm" | "auto"`), `approvedByUserId`,
-  `approvedAt`, `postedAt`, `closesAt` (kickoff minus 60 minutes, D12), `closedAt`.
+  `approvedAt`, `postedAt`, `postBy` (kickoff minus the asking club's cut-off, default 4 hours, D12:
+  nothing is posted after it and an approval still waiting expires at it), `closesAt` (kickoff: a
+  posted ask takes volunteers until then), `closedAt`.
 - The post's `SentNotification` key `xask:<askId>:post`; its `waMessageId` (stamped by `/ack`) is
   how a quoted reply finds the ask.
 - `volunteerUserIds[]`, `pickedUserIds[]` for audit and wording.
@@ -234,14 +254,15 @@ New table `PartnerAsk`:
 
 - `canAsk`: partnership active both sides; asker setting not Off; requester is OWNER or ADMIN of the
   asker (or the automatic timer); the match is the asker's live next match
-  (`isNextUpcomingForPosting`), not cancelled, places open now; before `closesAt`; no open ask for
+  (`isNextUpcomingForPosting`), not cancelled, places open now; before `postBy`; no open ask for
   this (match, partner); partner under its daily cap (2).
 - `partnerReachable`: partner not muted, not dormant, approved, not billing-paused, not setting
   up, group postable (`group-postability-rules.ts`). If not, the ask is `refused` and the asker's
   organisers are told in plain words ("Sutton FC's group can't be asked right now"), never the
   internal state.
 - `closeReason`: filled (places now zero by any route, the club's own player included), kickoff
-  minus 60, partnership paused, match cancelled or rescheduled.
+  reached (`closesAt`), approval not given by `postBy`, partnership paused, match cancelled or
+  rescheduled.
 
 **Sweeps** run in the same due-posts poll as `sweepOrganiserPicks`: open automatic asks, expire
 approvals, close asks, queue the closing lines. Each step is claimed with a `SentNotification` key
@@ -358,39 +379,68 @@ picked player), with the guest copy chosen when the membership has a guest marke
 `OutOfBandSource` gains `"partner"`, the line names the club ("Ali K from Sutton FC is in").
 In organisers mode that line goes to the organisers, as the other squad lines already do.
 
-### 3.8 Payments
+### 3.8 Payments (D15, decided: nothing special)
 
-- The guest pays the **asking** club's fee to the **asking** club's collector. Nothing changes in
-  `releaseMatchPayments`: he is a CONFIRMED attendance with a phone, so he gets a pay link.
-- One change: the pay link and the pay chases for a guest are written in **his** club's language
-  (D9). `releaseMatchPayments` reads the language per attendance via the guest marker.
+- The guest pays the **asking** club's fee to the **asking** club's collector, exactly like a
+  member. Nothing changes in `releaseMatchPayments`: he is a CONFIRMED attendance with a phone, so
+  he gets the same pay link after the match, in the match club's language like every player.
+- The same daily reminders and chase, and he appears in the collector's confirm list, because all
+  of those read the match's attendances, not memberships. A test pins that a past guest (his
+  membership closed with `leftAt`) is still chased and still listed.
 - A monthly-squad asking club: the guest is a PAYG player at `paygPricePence`, exactly like any
   PAYG player (`monthly-week.ts`).
 - The ask post shows the fee when one is known (match fee, else the activity default) and leaves it
   out otherwise. MatchTime never shows bank details in the partner group.
 - Payment DMs have no opt-out today and stay that way: a guest who played owes the fee.
 
-### 3.9 Ratings, MoM, Elo, badges
+### 3.9 Ratings, MoM, Elo, badges (D13, decided)
 
 - **Club-scoped already.** `Rating` and `MoMVote` hang off the match, so off the asking club.
   Elo goes to the guest's membership in the asking club. The partner club's numbers never move.
-- The guest's asking-club rating starts empty (`seedRating` NULL), so the balancer shrinks him to
-  the asking club's mean (D7). The pick list shows "new".
+- **The ratings the asking club gives him are his club rating in the asking club**: the same
+  `loadClubRating(askerOrgId, userId)` every member has, built from that club's `Rating` rows only.
+  If he plays for them again, as a guest or as a member, it carries on from there.
+- His asking-club rating starts empty (`seedRating` NULL), so the balancer shrinks him to the
+  asking club's mean (D7). The pick list shows "new".
 - The guest gets the asking club's rating DM (he played) and is in the MoM options. He cannot vote
   in a MoM poll posted in a group he is not in; that is fine.
 - No badge announcements about guests (3.7 table).
 
-### 3.10 Leaving afterwards
+### 3.10 Afterwards: a past guest (D10, decided)
+
+The membership is **kept**, never deleted. A past guest is a membership with the guest marker
+(`guestFromOrgId`, `guestMatchId`) and `leftAt` set. `leftAt` is what every roster reader of the
+asking club already skips (85 files read it), so a past guest is on none of its lists: squad lists,
+rolling squad, recruit DMs, seed nudge, badge announcements, next week's squad, the admin channel,
+`getUserOrg`. The exclusions in the 3.7 table also read the marker, so a guest is left out while
+his match is still on, before `leftAt` is set.
 
 - **Not picked:** when the ask closes, the guest's waiting-list row is dropped
-  (`cause = "partner-ask-closed"`) and the guest membership gets `leftAt`. One DM: "FNF have
-  their player now, thanks for offering".
-- **Played:** the morning after the match, `complete-matches` (or the 08:00 rolling sweep, same
-  run) sets `leftAt` on every guest membership whose `guestMatchId` is finished. History stays
-  attributable (attendance, ratings, payment).
-- **Kept:** "Add to FNF" on the asker's match page clears both guest columns. He is then an
-  ordinary FNF member, still without his phone shown unless he joins FNF's group (the participant
-  sweep then sees him as any member).
+  (`cause = "partner-ask-closed"`) and he becomes a past guest (`leftAt`). One DM: "FNF have
+  their player now, thanks for offering". He never played, so his profile has nothing to show.
+- **Played:** the morning after the match, in the same 08:00 sweep, every guest membership whose
+  `guestMatchId` is finished becomes a past guest. History stays attributable (attendance,
+  ratings, payment).
+- **Kept:** "Add to FNF" on the asker's match page clears both guest columns and `leftAt`. He is
+  then an ordinary FNF member, still without his phone shown unless he joins FNF's group.
+- **Plays for them again:** a later quoted IN to another FNF ask reuses the same membership
+  (`@@unique([userId, orgId])`): `leftAt` cleared, `guestMatchId` set to the new match. His FNF
+  ratings carry on.
+
+**What the guest sees on his own profile** (traced: `src/app/profile/stats/page.tsx`, "All clubs"
+card, loaded by `loadAllClubsOverview` in `src/lib/player-stats.ts`):
+
+- Today that card lists only memberships with `leftAt: null`, so it would drop FNF. The one reader
+  change: it also lists memberships with the guest marker (current and past guests). Nothing else
+  that reads memberships changes.
+- The card shows when he has two or more clubs, which a Sutton FC player who played for FNF has.
+  It shows his totals (games, MoM, overall rating from every club) and one row per club: **"FNF:
+  1 games, his MoM count if any, and his FNF rating"** (the raw mean of the ratings FNF players gave
+  him, `ClubStat.avgRating`, "-" until someone rates him). The overall number already includes
+  those ratings (it pools every `Rating` row, no membership join).
+- He does **not** get FNF's own stats page (leaderboard, Team of the Season, FNF's other players):
+  that page is the club picked by `getUserOrg`, which takes live memberships only. A past guest
+  sees his FNF row, not FNF's squad.
 
 ### 3.11 Privacy
 
@@ -417,9 +467,9 @@ the other club. The guest's stored `User.phoneNumber` is unchanged (it is one gl
 | Case | What happens |
 |---|---|
 | Both clubs play the same evening | Overlap rule (3.6) refuses volunteers already in their own game at an overlapping time. The approval notice tells the partner's organisers how their own squad stands; an **automatic** ask is not posted into a partner whose own overlapping game is short. |
-| Partner group silent (nobody answers) | The ask closes at kickoff minus 60; the asker's organisers get "Nobody from Sutton FC took it". |
+| Partner group silent (nobody answers) | The ask closes at kickoff; the asker's organisers get "Nobody from Sutton FC took it". |
 | Partner muted, paused, dormant, setting up, not postable | Not posted; `refused` with a plain reason to the asker's organisers. A muted club's queued post would not go anyway (BotJob gate). |
-| Partner organisers don't approve | Expires at close; asker told. A partner who often ignores asks can switch to standing permission or pause the partnership. |
+| Partner organisers don't approve | Expires at the cut-off (`postBy`); asker told. A partner who often ignores asks can switch to standing permission or pause the partnership. |
 | Place filled by the club's own player after the ask | Ask closes as filled; volunteers thanked; partner group told once. |
 | Two places, three volunteers | The pick decides; the unpicked two are thanked at close. |
 | Volunteer later says OUT | Quoted OUT or DM OUT drops his asker row; if picked, the existing pick round reopens for that place. |
@@ -466,6 +516,7 @@ model PartnerAsk {
   approvedByUserId  String?
   approvedAt        DateTime?
   postedAt          DateTime?
+  postBy            DateTime
   closesAt          DateTime
   closedAt          DateTime?
   volunteerUserIds  String[]  @default([])
@@ -478,7 +529,7 @@ model PartnerAsk {
 ```
 
 `Organisation`: `partnerAskWhen String @default("off")` (off | on-request | auto),
-`partnerAskTime String?`. `Membership`: `guestFromOrgId String?`, `guestMatchId String?`.
+`partnerAskTime String?`, `partnerAskCutoffHours Int @default(4)` (1 to 24). `Membership`: `guestFromOrgId String?`, `guestMatchId String?`.
 CHECK constraints in `prisma/sql/` as the other enums-in-strings have (status values,
 `askerOrgId <> partnerOrgId`, both guest columns null or both set). Single writer per table,
 pinned by source guard tests, like `club-billing.ts` and `club-setup.ts`.
@@ -490,6 +541,12 @@ pinned by source guard tests, like `club-billing.ts` and `club-setup.ts`.
 Each slice is small, ships alone, TDD (red, green, refactor), unit tests plus Playwright where there
 is a page, English and Turkish for every string. Slices 0 to 5 change no prompt and need **no live
 model run**.
+
+**Build order (2026-10-16).** S1 and S2 first: they need nothing from S0. S0 is built on top of
+the separate work that forwards a players'-group reply's quote to the server (a reply to MatchTime
+counting as a tag), which adds `quotedBody` and `quotedFromMatchTime` to the analyze payload; S0
+only adds the quoted message's id beside them, so it waits for that PR rather than duplicating it.
+S3 needs S0.
 
 **S0. Quoted replies from the players' group.** Pi: add `quotedFields` to the players' group
 payload (`whatsapp-bot/src/smart-analysis.ts`, the analyze forwarder in `index.ts`). Server: parse
@@ -527,7 +584,8 @@ cross-club attendance writer.
 
 **S4. Guest lifecycle and exclusions.** Picked guest DM, unpicked thanks, partner "filled" line;
 `leftAt` at close and the morning after; "Add to FNF" on the match page; every exclusion in the
-3.7 table; DM OUT ambiguity question; guest-language pay links and chases; PAYG for monthly clubs.
+3.7 table; DM OUT ambiguity question; past guests on the player's own profile (3.10); payments
+unchanged for guests (D15), pinned by a test; PAYG for monthly clubs.
 Tests: unit per exclusion (recruit, rolling squad, badges, seed nudge, stats); pay link language;
 Playwright: players page shows the guest label and no phone, phones page excludes guests, match page
 "Add to FNF" clears the marker.
@@ -581,6 +639,8 @@ Tests: unit for the resolution; stubbed sim; **the live check in section 6, with
 - **Quoted ids not coming back** from the Pi or `/ack`: the S2 sweep checks the post's id and
   tells the asker; S0 tests both drivers' quote reading.
 - **A second club's player in the asker's data.** Every exclusion in 3.7 is a test, and guests end
-  the morning after, so a missed reader leaks for one day at most, not forever.
+  the morning after (a past guest's membership is closed for the squad with `leftAt`, so every
+  roster reader that already skips left members skips him), so a missed reader leaks for one day
+  at most, not forever.
 - **Organisers mode posts.** FNF's players' group receives nothing new; every new FNF-side line goes
   to its organisers, matching `listAnnouncer = "organisers"`.

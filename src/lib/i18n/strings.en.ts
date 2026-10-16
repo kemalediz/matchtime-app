@@ -4704,4 +4704,46 @@ export const en = {
   st_wa_disabled: "Disabled",
   st_wa_group_id: "WhatsApp group ID",
   st_wa_managed: "Bot configuration is managed server-side. Contact your administrator to enable or reconfigure.",
+  // ─── Partner clubs (cross-club ask, slice S1, 2026-10-16) ───────────
+  // MDs/cross-club-player-ask-plan-2026-10-16.md, sections 3.1 and 3.2.
+  // The settings section and the notice when the platform owner pairs two
+  // clubs. Read by src/components/settings/partner-clubs-section.tsx and
+  // src/lib/club-partnership.ts.
+  pc_paired_notice_asker: (p: { club: string; other: string; link: string }) =>
+    `🤝 MatchTime has paired *${p.club}* with *${p.other}*: when you are short of players, MatchTime can ask ${p.other} for one, with their organisers' OK. Nothing happens until both clubs' owners accept. Your owner can accept or decline here: ${p.link}`,
+  pc_paired_notice_partner: (p: { club: string; other: string; link: string }) =>
+    `🤝 MatchTime has paired *${p.club}* with *${p.other}*: when ${p.other} are short of players, MatchTime can ask your group if anyone can play for them. Your organisers approve each ask first, unless you choose otherwise. Nothing happens until both clubs' owners accept. Your owner can accept or decline here: ${p.link}`,
+  pc_section_title: "Partner clubs",
+  pc_section_lead:
+    "Clubs MatchTime may ask for a player when you are short, and clubs that may ask you. Only the MatchTime team pairs two clubs; each club's owner then accepts.",
+  pc_list_label: "Your partner clubs",
+  pc_row_we_ask: (p: { other: string }) => `You may ask ${p.other} for players`,
+  pc_row_they_ask: (p: { other: string }) => `${p.other} may ask you for players`,
+  pc_status_waiting_both: "Waiting for both owners to accept",
+  pc_status_waiting_us: "Waiting for your owner to accept",
+  pc_status_waiting_them: (p: { other: string }) => `Waiting for ${p.other}'s owner to accept`,
+  pc_status_active: "Active",
+  pc_status_paused_us: "Paused by you",
+  pc_status_paused_them: (p: { other: string }) => `Paused by ${p.other}`,
+  pc_accept: "Accept",
+  pc_decline: "Decline",
+  pc_pause: "Pause",
+  pc_resume: "Resume",
+  pc_remove: "Remove",
+  pc_remove_confirm: (p: { other: string }) =>
+    `Remove the partnership with ${p.other}? Only the MatchTime team can pair the two clubs again.`,
+  pc_owner_only: "Only your club's owner can accept, decline or remove a partner club.",
+  pc_when_label: "Ask partner clubs for players",
+  pc_when_off: "Off",
+  pc_when_on_request: "When we ask",
+  pc_when_auto: "Automatically at a time",
+  pc_time_label: "Automatic ask time",
+  pc_cutoff_label: "Last ask before kickoff",
+  pc_cutoff_hours: (p: { hours: number }) => (p.hours === 1 ? "1 hour" : `${p.hours} hours`),
+  pc_approval_label: "Asks from partner clubs",
+  pc_approval_each: "Ask our organisers each time",
+  pc_approval_standing: "Post without asking",
+  pc_saved: "Saved",
+  pc_save_failed: "Couldn't save",
+  pc_refused: "That can't be done now. Reload the page and try again.",
 };

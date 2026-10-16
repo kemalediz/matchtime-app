@@ -518,6 +518,22 @@ model Organisation {
   /// CHECK constraint in prisma/migrations/20261014160000_list_announcer.
   listAnnouncer            String  @default("matchtime")
 
+  /// ─── Asking a partner club for a player (2026-10-16) ──────────────
+  /// Plan: MDs/cross-club-player-ask-plan-2026-10-16.md, sections 3.2 and
+  /// 3.4. Nothing here does anything until the platform owner pairs this
+  /// club with another (`ClubPartnership`) and both owners accept.
+  /// When this club asks its partner clubs for players: "off" (default),
+  /// "on-request" (an organiser asks) or "auto" (also by itself at
+  /// `partnerAskTime` on match day, only with an empty waiting list).
+  /// CHECK constraint: prisma/sql/partner-ask-check.sql.
+  partnerAskWhen           String  @default("off")
+  /// The automatic ask's London time on match day ("HH:MM"). NULL = 16:00.
+  partnerAskTime           String?
+  /// The cut-off (Kemal, 2026-10-16): the last ask to a partner club goes
+  /// out at least this many hours before kickoff. 1 to 24, default 4. An
+  /// ask still waiting for the partner's approval expires at it.
+  partnerAskCutoffHours    Int     @default(4)
+
   memberships        Membership[]
   clubConnects       ClubConnect[]
   activities         Activity[]
@@ -536,6 +552,8 @@ model Organisation {
   squadCredits       SquadCredit[]
   graphicsTemplate   ClubGraphicsTemplate?
   graphicsChoice     ClubGraphicsChoice?
+  partnersAsked      ClubPartnership[] @relation("PartnershipAsker")
+  partnersLending    ClubPartnership[] @relation("PartnershipPartner")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -759,6 +777,20 @@ model Membership {
   /// genuine "no information" value for Elo, so unlike seedRating it
   /// keeps a default.
   matchRating Int @default(1000)
+
+  /// ─── A guest from a partner club (2026-10-16) ─────────────────────
+  /// Plan: MDs/cross-club-player-ask-plan-2026-10-16.md, sections 3.7 and
+  /// 3.10. Both NULL for every ordinary member. Both set: this person
+  /// answered a partner club's ask for this club's match `guestMatchId`
+  /// and came from `guestFromOrgId`. With `leftAt` NULL he is a guest for
+  /// that match; with `leftAt` set he is a PAST guest: the row is kept
+  /// (Kemal, 2026-10-16) so his ratings here stay his club rating here and
+  /// his profile still lists this club, while every roster reader skips
+  /// him as it skips anyone who has left. CHECK: both NULL or both set
+  /// (prisma/sql/partner-ask-check.sql). Written only by
+  /// src/lib/partner-guest.ts.
+  guestFromOrgId String?
+  guestMatchId   String?
 
   createdAt DateTime @default(now())
 
@@ -1058,6 +1090,7 @@ model Match {
   ratings                 Rating[]
   momVotes                MoMVote[]
   sentNotifications       SentNotification[]
+  partnerAsks             PartnerAsk[]
   benchConfirmations      PendingBenchConfirmation[]
   benchSlotOffers         BenchSlotOffer[]
   ratingAdjustments       RatingAdjustment[]
@@ -1211,6 +1244,85 @@ model ClubBillingMonth {
 
   @@unique([orgId, index])
   @@index([status])
+}
+
+/// ─── Partner clubs (2026-10-16) ─────────────────────────────────────
+/// Plan: MDs/cross-club-player-ask-plan-2026-10-16.md, sections 3.1 and 4.
+/// One row per direction: `askerOrgId` may ask `partnerOrgId` for players.
+/// Created by the platform owner only (D1); each club's OWNER accepts on
+/// its settings page, and it is "active" once both have. Either side may
+/// pause it; only the side that paused may resume it. Written only by
+/// src/lib/club-partnership.ts (source guard test). CHECK constraints:
+/// prisma/sql/partner-ask-check.sql.
+model ClubPartnership {
+  id                String       @id @default(cuid())
+  askerOrgId        String
+  askerOrg          Organisation @relation("PartnershipAsker", fields: [askerOrgId], references: [id], onDelete: Cascade)
+  partnerOrgId      String
+  partnerOrg        Organisation @relation("PartnershipPartner", fields: [partnerOrgId], references: [id], onDelete: Cascade)
+  /// "proposed" | "active" | "paused" | "ended".
+  status            String       @default("proposed")
+  /// Set by the PARTNER side only: "each-ask" (its organisers approve
+  /// every ask, the default) or "standing" (post without asking, and tell
+  /// them after).
+  partnerApproval   String       @default("each-ask")
+  askerAcceptedAt   DateTime?
+  askerAcceptedBy   String?
+  partnerAcceptedAt DateTime?
+  partnerAcceptedBy String?
+  /// The club that paused it, while paused. Only that side may resume.
+  pausedByOrgId     String?
+  createdByUserId   String
+  asks              PartnerAsk[]
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  @@unique([askerOrgId, partnerOrgId])
+  @@index([partnerOrgId])
+}
+
+/// One ask from a club to one partner club, for one of the asking club's
+/// matches (plan section 3.4). Written only by src/lib/partner-ask.ts and,
+/// for its volunteers, src/lib/partner-guest.ts.
+model PartnerAsk {
+  id                String          @id @default(cuid())
+  partnershipId     String
+  partnership       ClubPartnership @relation(fields: [partnershipId], references: [id], onDelete: Cascade)
+  askerOrgId        String
+  partnerOrgId      String
+  matchId           String
+  match             Match           @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  places            Int
+  /// "awaiting-approval" | "posted" | "filled" | "declined" | "expired" |
+  /// "cancelled" | "refused".
+  status            String          @default("awaiting-approval")
+  /// Why it closed or was refused, in a word the code wrote.
+  reason            String?
+  requestedByUserId String?
+  /// "button" | "hq" | "dm" | "auto" | "link".
+  requestedVia      String
+  approvedByUserId  String?
+  approvedAt        DateTime?
+  postedAt          DateTime?
+  /// The BotJob that carries the post into the partner's group.
+  postJobId         String?
+  /// The WhatsApp id of the post in the partner's group, stamped when the
+  /// Pi acknowledges it. A quoted reply finds the ask by it.
+  postWaMessageId   String?
+  /// Kickoff minus the asking club's cut-off: nothing is posted after it,
+  /// and an approval still waiting expires at it.
+  postBy            DateTime
+  /// Kickoff: a posted ask takes volunteers until then.
+  closesAt          DateTime
+  closedAt          DateTime?
+  volunteerUserIds  String[]        @default([])
+  pickedUserIds     String[]        @default([])
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@index([partnerOrgId, status])
+  @@index([matchId, status])
+  @@index([postWaMessageId])
 }
 
 model SentNotification {

@@ -3556,6 +3556,44 @@ export const tr: Strings = {
   st_wa_disabled: "Kapalı",
   st_wa_group_id: "WhatsApp grup kimliği",
   st_wa_managed: "Bot ayarlarını MatchTime yönetir. Açmak ya da yeniden ayarlamak için yöneticinizle iletişime geçin.",
+  // ─── Partner kulüpler (slice S1, 2026-10-16) ────────────────────────
+  pc_paired_notice_asker: (p: { club: string; other: string; link: string }) =>
+    `🤝 MatchTime, *${p.club}* ile *${p.other}* kulüplerini eşleştirdi: oyuncunuz eksik olduğunda MatchTime, onların organizatörlerinin onayıyla ${p.other} grubundan oyuncu isteyebilir. İki kulübün sahibi de kabul edene kadar hiçbir şey olmaz. Kulüp sahibiniz buradan kabul edebilir ya da reddedebilir: ${p.link}`,
+  pc_paired_notice_partner: (p: { club: string; other: string; link: string }) =>
+    `🤝 MatchTime, *${p.club}* ile *${p.other}* kulüplerini eşleştirdi: ${p.other} oyuncu eksik olduğunda MatchTime grubunuza onlar için oynayabilecek biri olup olmadığını sorabilir. Başka bir seçim yapmazsanız her isteği önce organizatörleriniz onaylar. İki kulübün sahibi de kabul edene kadar hiçbir şey olmaz. Kulüp sahibiniz buradan kabul edebilir ya da reddedebilir: ${p.link}`,
+  pc_section_title: "Partner kulüpler",
+  pc_section_lead:
+    "Oyuncunuz eksik olduğunda MatchTime'ın oyuncu isteyebileceği kulüpler ve sizden oyuncu isteyebilecek kulüpler. İki kulübü yalnızca MatchTime ekibi eşleştirir; sonra her kulübün sahibi kabul eder.",
+  pc_list_label: "Partner kulüpleriniz",
+  pc_row_we_ask: (p: { other: string }) => `${p.other} kulübünden oyuncu isteyebilirsiniz`,
+  pc_row_they_ask: (p: { other: string }) => `${p.other} sizden oyuncu isteyebilir`,
+  pc_status_waiting_both: "İki kulüp sahibinin de kabulü bekleniyor",
+  pc_status_waiting_us: "Kulüp sahibinizin kabulü bekleniyor",
+  pc_status_waiting_them: (p: { other: string }) => `Diğer kulübün sahibinin kabulü bekleniyor: ${p.other}`,
+  pc_status_active: "Etkin",
+  pc_status_paused_us: "Sizin tarafınızdan durduruldu",
+  pc_status_paused_them: (p: { other: string }) => `Diğer kulüp durdurdu: ${p.other}`,
+  pc_accept: "Kabul et",
+  pc_decline: "Reddet",
+  pc_pause: "Durdur",
+  pc_resume: "Devam ettir",
+  pc_remove: "Kaldır",
+  pc_remove_confirm: (p: { other: string }) =>
+    `Bu kulüple ortaklık kaldırılsın mı: ${p.other}? İki kulübü yeniden yalnızca MatchTime ekibi eşleştirebilir.`,
+  pc_owner_only: "Bir partner kulübü yalnızca kulübünüzün sahibi kabul edebilir, reddedebilir ya da kaldırabilir.",
+  pc_when_label: "Partner kulüplerden oyuncu iste",
+  pc_when_off: "Kapalı",
+  pc_when_on_request: "Biz isteyince",
+  pc_when_auto: "Belirli bir saatte kendiliğinden",
+  pc_time_label: "Otomatik istek saati",
+  pc_cutoff_label: "Başlama saatinden önce son istek",
+  pc_cutoff_hours: (p: { hours: number }) => `${p.hours} saat`,
+  pc_approval_label: "Partner kulüplerden gelen istekler",
+  pc_approval_each: "Her seferinde organizatörlerimize sor",
+  pc_approval_standing: "Sormadan paylaş",
+  pc_saved: "Kaydedildi",
+  pc_save_failed: "Kaydedilemedi",
+  pc_refused: "Bu şu an yapılamıyor. Sayfayı yenileyip tekrar deneyin.",
 };
 
 /**

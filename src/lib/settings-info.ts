@@ -19,7 +19,8 @@
  * does it (org-features.ts, the scheduler, compose.ts, list-announcer.ts,
  * organiser-pick, rolling-squad, squad-month, weekly-deadlines,
  * team-proposal, admin-channel, admin-group-graphics, payments,
- * badge-announcements, club-setup). When the behaviour changes, change
+ * badge-announcements, club-setup, club-partnership and partner-ask for
+ * the partner clubs). When the behaviour changes, change
  * the sentence here in the same PR.
  *
  * House rules for the copy (a test checks them): no em or en dashes, no
@@ -63,6 +64,12 @@ export const SETTING_INFO_KEYS = [
   "adminChannel",
   "adminGroupLink",
   "teamsReady",
+  // Partner clubs
+  "partnerClubs",
+  "partnerAskWhen",
+  "partnerAskTime",
+  "partnerAskCutoff",
+  "partnerApproval",
   // Posters
   "posters",
   "posterDesign",
@@ -1102,6 +1109,156 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
     },
   },
 
+  // ════ Partner clubs (cross-club ask, 2026-10-16) ═══════════════════
+  // MDs/cross-club-player-ask-plan-2026-10-16.md, sections 3.1 to 3.7.
+  // The behaviour is club-partnership.ts (pairings) and partner-ask.ts
+  // (the asks, their approval, the post and the cut-off).
+  partnerClubs: {
+    en: {
+      title: "Your partner clubs",
+      what: [
+        "Clubs MatchTime may ask for a player when your squad is short, and clubs that may ask yours. Each pairing works one way: your club asking another is a separate pairing from that club asking yours.",
+        "Only the MatchTime team pairs two clubs. Your club's owner then accepts or declines here, and so does the other club's owner. A pairing does nothing until both have accepted.",
+        "An owner or admin of either club can pause a pairing at any time, and only the club that paused it can resume it. Your owner can remove a pairing for good.",
+      ],
+      newClubs: "None. A club has no partner clubs until the MatchTime team pairs it with one.",
+      together: [
+        "A player from a partner club who answers an ask plays for you as a guest for that one match. Your organisers see their name and their club, never their phone number or their rating at their own club.",
+        "Your own players are never put on another club's list unless they reply to that club's ask themselves.",
+      ],
+    },
+    tr: {
+      title: "Partner kulüpleriniz",
+      what: [
+        "Kadronuz eksik olduğunda MatchTime'ın oyuncu isteyebileceği kulüpler ve sizden oyuncu isteyebilecek kulüpler. Her eşleşme tek yönlüdür: sizin başka bir kulüpten istemeniz, o kulübün sizden istemesinden ayrı bir eşleşmedir.",
+        "İki kulübü yalnızca MatchTime ekibi eşleştirir. Sonra kulübünüzün sahibi burada kabul eder ya da reddeder, diğer kulübün sahibi de öyle. İkisi de kabul edene kadar eşleşme hiçbir şey yapmaz.",
+        "İki kulüpten birinin sahibi ya da bir yöneticisi eşleşmeyi istediği an durdurabilir; yalnızca durduran kulüp devam ettirebilir. Kulüp sahibiniz eşleşmeyi tamamen kaldırabilir.",
+      ],
+      newClubs: "Yok. MatchTime ekibi eşleştirene kadar bir kulübün partner kulübü olmaz.",
+      together: [
+        "Bir isteğe yanıt veren partner kulüp oyuncusu yalnızca o maç için misafir olarak sizin için oynar. Organizatörleriniz onun adını ve kulübünü görür; telefon numarasını ya da kendi kulübündeki puanını asla görmez.",
+        "Kendi oyuncularınız, o kulübün isteğine kendileri yanıt vermedikçe başka bir kulübün listesine asla yazılmaz.",
+      ],
+    },
+  },
+  partnerAskWhen: {
+    en: {
+      title: "Ask partner clubs for players",
+      what: ["Whether MatchTime asks your partner clubs for a player when a place in your squad is still open."],
+      example: "⚽ *FNF* need 1 player: Fri 16 Oct, 20:30 at Goals Sutton (9-a-side, £8).\nFancy a game? *Reply to this message* with *IN* and their organisers will confirm by private message.",
+      choices: [
+        { name: "Off", text: "MatchTime never asks your partner clubs." },
+        { name: "When we ask", text: "MatchTime asks a partner club only when one of your owners or admins asks it to, from the match page." },
+        {
+          name: "Automatically at a time",
+          text: "As When we ask, and also by itself on match day at the Automatic ask time, if a place is still open and nobody is on your waiting list.",
+        },
+      ],
+      newClubs: "Off.",
+      suits: "Clubs that often end up a player short on the day.",
+      together: [
+        "The ask goes into the partner club's players' group once their organisers approve it, unless they chose to let asks through without asking.",
+        "No ask goes out later than Last ask before kickoff.",
+        "Players who answer join your waiting list as guests, and Who fills an open place decides who plays, as it does for your own players.",
+        "At most 2 asks a day go into any one partner club's group, and only one at a time for each of your matches.",
+        "Nothing is asked while MatchTime is switched off or paused for your club.",
+      ],
+    },
+    tr: {
+      title: "Partner kulüplerden oyuncu iste",
+      what: ["Kadronuzda hâlâ boş yer varken MatchTime'ın partner kulüplerinizden oyuncu isteyip istemeyeceği."],
+      example: "⚽ *FNF* 1 oyuncu arıyor: Cuma 16 Eki, 20:30, Goals Sutton (9'a 9, £8).\nOynamak ister misin? *Bu mesajı yanıtlayıp* *VARIM* yaz, organizatörleri sana özel mesajla dönecek.",
+      choices: [
+        { name: "Kapalı", text: "MatchTime partner kulüplerinizden hiç oyuncu istemez." },
+        { name: "Biz isteyince", text: "MatchTime bir partner kulüpten yalnızca kulübünüzün sahibi ya da bir yöneticisi maç sayfasından isteyince oyuncu ister." },
+        {
+          name: "Belirli bir saatte kendiliğinden",
+          text: "Biz isteyince gibi, ayrıca maç günü Otomatik istek saatinde, hâlâ boş yer varsa ve bekleme listenizde kimse yoksa kendiliğinden de ister.",
+        },
+      ],
+      newClubs: "Kapalı.",
+      suits: "Maç günü sık sık bir oyuncu eksik kalan kulüpler.",
+      together: [
+        "İstek, partner kulübün organizatörleri onaylayınca onların oyuncu grubuna gider; sormadan geçmesini seçtilerse hemen gider.",
+        "Hiçbir istek Başlama saatinden önce son istek ayarından daha geç gönderilmez.",
+        "Yanıt veren oyuncular bekleme listenize misafir olarak girer ve kimin oynayacağına, kendi oyuncularınızda olduğu gibi, Boşalan yeri kim doldurur ayarı karar verir.",
+        "Bir partner kulübün grubuna günde en fazla 2 istek gider ve maçlarınızın her biri için aynı anda yalnızca bir istek açık olur.",
+        "MatchTime kulübünüz için kapalıyken ya da durdurulmuşken hiçbir şey istenmez.",
+      ],
+    },
+  },
+  partnerAskTime: {
+    en: {
+      title: "Automatic ask time",
+      what: ["Only used with Automatically at a time: the London time on match day when MatchTime asks your partner clubs by itself."],
+      newClubs: "16:00.",
+      together: [
+        "MatchTime asks only if a place is still open, nobody is on your waiting list, and it is still before Last ask before kickoff. A time after that is never reached, so MatchTime then never asks by itself.",
+      ],
+    },
+    tr: {
+      title: "Otomatik istek saati",
+      what: ["Yalnızca Belirli bir saatte kendiliğinden seçiliyken kullanılır: MatchTime'ın partner kulüplerinizden maç günü kendiliğinden oyuncu istediği Londra saati."],
+      newClubs: "16:00.",
+      together: [
+        "MatchTime yalnızca hâlâ boş yer varsa, bekleme listenizde kimse yoksa ve Başlama saatinden önce son istek henüz geçmemişse ister. Bundan sonraki bir saate hiç gelinmez, yani MatchTime o zaman kendiliğinden hiç istemez.",
+      ],
+    },
+  },
+  partnerAskCutoff: {
+    en: {
+      title: "Last ask before kickoff",
+      what: [
+        "The last moment an ask can go out to a partner club, in hours before kickoff, so their players have time to get to your game. You can choose from 1 to 24 hours.",
+        "An ask still waiting for the partner club's organisers to approve it is dropped at that moment, and your organisers are told. An ask already posted stays open until kickoff or until the place is filled.",
+      ],
+      newClubs: "4 hours.",
+    },
+    tr: {
+      title: "Başlama saatinden önce son istek",
+      what: [
+        "Bir partner kulübe isteğin gidebileceği son an, başlama saatinden kaç saat önce olduğu; böylece oyuncularının maçınıza yetişecek zamanı olur. 1 ile 24 saat arasında seçebilirsiniz.",
+        "Partner kulübün organizatörlerinin onayını hâlâ bekleyen bir istek o anda düşer ve organizatörlerinize haber verilir. Zaten paylaşılmış bir istek başlama saatine ya da yer dolana kadar açık kalır.",
+      ],
+      newClubs: "4 saat.",
+    },
+  },
+  partnerApproval: {
+    en: {
+      title: "Asks from partner clubs",
+      what: ["How a partner club's ask for a player reaches your players' group. Set separately for each club that may ask you."],
+      example: "FNF ask if one of your players can play for them: Fri 16 Oct, 20:30 at Goals Sutton, 9-a-side, £8. OK to post this in your group? Reply YES, or tap the link.",
+      choices: [
+        {
+          name: "Ask our organisers each time",
+          text: "MatchTime first asks your admins, with the game's day, time, place and fee, and how your own squad stands that day. It posts the ask in your players' group only after an admin says YES or taps the link.",
+        },
+        { name: "Post without asking", text: "MatchTime posts the ask in your players' group straight away and tells your admins afterwards." },
+      ],
+      newClubs: "Ask our organisers each time.",
+      together: [
+        "Your players answer by replying to MatchTime's post with IN. A plain IN in your group still means your own game.",
+        "MatchTime never shows the other club your players' phone numbers or ratings, and a player already in your own game at an overlapping time cannot sign up for theirs.",
+      ],
+    },
+    tr: {
+      title: "Partner kulüplerden gelen istekler",
+      what: ["Bir partner kulübün oyuncu isteğinin oyuncu grubunuza nasıl ulaşacağı. Sizden oyuncu isteyebilecek her kulüp için ayrı ayarlanır."],
+      example: "FNF oyuncularınızdan birinin onlar için oynayıp oynayamayacağını soruyor: Cuma 16 Eki, 20:30, Goals Sutton, 9'a 9, £8. Bunu grubunuzda paylaşayım mı? EVET yazın ya da bağlantıya dokunun.",
+      choices: [
+        {
+          name: "Her seferinde organizatörlerimize sor",
+          text: "MatchTime önce yöneticilerinize maçın gününü, saatini, yerini ve ücretini ve o gün kendi kadronuzun durumunu yazarak sorar. İsteği oyuncu grubunuzda ancak bir yönetici EVET deyince ya da bağlantıya dokununca paylaşır.",
+        },
+        { name: "Sormadan paylaş", text: "MatchTime isteği oyuncu grubunuzda hemen paylaşır ve yöneticilerinize sonra haber verir." },
+      ],
+      newClubs: "Her seferinde organizatörlerimize sor.",
+      together: [
+        "Oyuncularınız MatchTime'ın mesajını yanıtlayıp VARIM yazarak cevap verir. Grubunuzda düz bir VARIM yine kendi maçınız anlamına gelir.",
+        "MatchTime diğer kulübe oyuncularınızın telefon numaralarını ya da puanlarını asla göstermez ve kendi maçınızda aynı saatlere denk gelen bir oyuncu onların maçına yazılamaz.",
+      ],
+    },
+  },
   // ════ Posters ═══════════════════════════════════════════════════════
   posters: {
     en: {

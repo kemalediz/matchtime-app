@@ -26,6 +26,12 @@ import { ADMIN_GROUP_CODE_TTL_MS, ADMIN_GROUP_DM_CODE_TTL_MS } from "../admin-ch
 import { LIST_OPENS_DAYS_MAX, LIST_OPENS_DAYS_MIN, MAX_PER_GAME_PENCE, PAYMENT_INSTRUCTIONS_MAX } from "../squad-month-rules";
 import { REMINDER_LEAD_MS, effectiveTeamsReadyTime } from "../team-proposal-rules";
 import { pickFallbackAt } from "../organiser-pick-rules";
+import {
+  PARTNER_ASK_CUTOFF_DEFAULT_HOURS,
+  PARTNER_ASK_CUTOFF_MAX_HOURS,
+  PARTNER_ASK_CUTOFF_MIN_HOURS,
+  PARTNER_ASK_TIME_DEFAULT,
+} from "../club-partnership-rules";
 
 const ROOT = join(__dirname, "..", "..", "..");
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
@@ -153,6 +159,11 @@ describe("settings explanations: house rules", () => {
         paymentInstructions: s.msq_instructions_label,
         badgeAnnouncements: s.badges_feature_label,
         gearReminder: s.gear_feature_label,
+        partnerClubs: s.pc_list_label,
+        partnerAskWhen: s.pc_when_label,
+        partnerAskTime: s.pc_time_label,
+        partnerAskCutoff: s.pc_cutoff_label,
+        partnerApproval: s.pc_approval_label,
       };
       for (const [k, label] of Object.entries(titles)) expect(settingInfo(lang, k as SettingInfoKey).title, `${k} ${lang}`).toBe(label);
     }
@@ -180,6 +191,8 @@ describe("settings explanations: house rules", () => {
       expect(s.msq_mode_weekly.startsWith(weekly)).toBe(true);
       expect(s.msq_mode_monthly.startsWith(monthly)).toBe(true);
       expect(names("teamsReady")[1]).toBe(s.tp_settings_off);
+      expect(names("partnerAskWhen")).toEqual([s.pc_when_off, s.pc_when_on_request, s.pc_when_auto]);
+      expect(names("partnerApproval")).toEqual([s.pc_approval_each, s.pc_approval_standing]);
     }
   });
 
@@ -238,6 +251,25 @@ describe("settings explanations: the facts match the code", () => {
     expect(newClubs("monthListOpens")).toBe("7 days.");
     expect(newClubs("monthListOpens", "tr")).toBe("7 gün.");
     expect(d.language).toBe("en");
+  });
+
+  it("partner clubs: asking is off, the cut-off is 4 hours (1 to 24), the automatic time 16:00", () => {
+    expect(d.partnerAskWhen).toBe("off");
+    expect(newClubs("partnerAskWhen")).toBe(`${t("en").pc_when_off}.`);
+    expect(newClubs("partnerAskWhen", "tr")).toBe(`${t("tr").pc_when_off}.`);
+    expect(d.partnerAskCutoffHours).toBe(String(PARTNER_ASK_CUTOFF_DEFAULT_HOURS));
+    expect(newClubs("partnerAskCutoff")).toBe(`${t("en").pc_cutoff_hours({ hours: PARTNER_ASK_CUTOFF_DEFAULT_HOURS })}.`);
+    expect(newClubs("partnerAskCutoff", "tr")).toBe(`${t("tr").pc_cutoff_hours({ hours: PARTNER_ASK_CUTOFF_DEFAULT_HOURS })}.`);
+    expect(joined(settingInfo("en", "partnerAskCutoff"))).toContain(`from ${PARTNER_ASK_CUTOFF_MIN_HOURS} to ${PARTNER_ASK_CUTOFF_MAX_HOURS} hours`);
+    expect(joined(settingInfo("tr", "partnerAskCutoff"))).toContain(`${PARTNER_ASK_CUTOFF_MIN_HOURS} ile ${PARTNER_ASK_CUTOFF_MAX_HOURS} saat`);
+    expect(newClubs("partnerAskTime")).toBe(`${PARTNER_ASK_TIME_DEFAULT}.`);
+    expect(newClubs("partnerAskTime", "tr")).toBe(`${PARTNER_ASK_TIME_DEFAULT}.`);
+    // The partner's approval default is the table's column default.
+    const schema = read("prisma/schema.prisma");
+    const block = schema.slice(schema.indexOf("model ClubPartnership {"));
+    expect(block.slice(0, block.indexOf("\n}"))).toMatch(/partnerApproval\s+String\s+@default\("each-ask"\)/);
+    expect(newClubs("partnerApproval")).toBe(`${t("en").pc_approval_each}.`);
+    expect(newClubs("partnerApproval", "tr")).toBe(`${t("tr").pc_approval_each}.`);
   });
 
   it("the pay-by-link prices are what a player is charged on a £10 fee", () => {
