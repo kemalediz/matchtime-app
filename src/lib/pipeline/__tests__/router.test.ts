@@ -17,8 +17,10 @@ import {
   routeFloor,
   routeBatch,
   renderRouterTurn,
+  replyingToLine,
   ORGANISERS_HEADER,
 } from "../router";
+import { gateBatch } from "../gate";
 import {
   MIN_CACHEABLE_TOKENS,
   ROUTER_MODEL,
@@ -643,6 +645,36 @@ describe("the organisers' group", () => {
     }
     // Code, not the model, decides who a YES was for.
     expect(ROUTER_SYSTEM_PROMPT).toMatch(/code checks who it was for/);
+  });
+
+  it("a players' group reply to MatchTime comes under the same REPLYING TO line HQ uses", () => {
+    expect(
+      renderRouterTurn([
+        { id: "r", authorName: "Can", body: "Bench? We do bench now?", quotedMatchTime: "Football 9-a-side is full at 18 of 18, but the bench is open." },
+        { id: "s", authorName: "Ali", body: "in" },
+      ]),
+    ).toBe(
+      `${replyingToLine("MatchTime", "Football 9-a-side is full at 18 of 18, but the bench is open.")}\n[r] Can: Bench? We do bench now?\n[s] Ali: in`,
+    );
+    expect(replyingToLine("MatchTime", "a\n\n  b")).toBe('REPLYING TO MatchTime: "a b"');
+  });
+
+  it("the gate hands the quoted MatchTime text to the router", async () => {
+    const m = fakeModel([JSON.stringify({ routes: [{ id: "r", route: "question" }] })]);
+    await gateBatch(
+      [{ waMessageId: "r", authorName: "Can", body: "Bench? We do bench now?", quotedMatchTime: "the bench is open" }],
+      { model: m, floor: false },
+    );
+    expect(m.calls[0].user).toBe(`REPLYING TO MatchTime: "the bench is open"\n[r] Can: Bench? We do bench now?`);
+  });
+
+  it("the prompt says a reply to MatchTime's own message is a tag, where it defines a tag", () => {
+    const q2 = ROUTER_SYSTEM_PROMPT.slice(ROUTER_SYSTEM_PROMPT.indexOf("2. Does it tag the bot?"), ROUTER_SYSTEM_PROMPT.indexOf("3. Is it for the bot"));
+    expect(q2).toContain('"REPLYING TO MatchTime"');
+    // Players' group only: in HQ a quoted reply to MatchTime's teams is
+    // what the safe-YES rule approves, and a first wording here made a
+    // quoted "thanks 👍" route approve (live check, 2026-10-16).
+    expect(q2).toMatch(/In the players' group, so is a WhatsApp reply to the bot's own message/);
   });
 
   it("the model is sent the organisers' context and the routes enum includes theirs", async () => {

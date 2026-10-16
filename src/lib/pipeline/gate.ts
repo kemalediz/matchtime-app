@@ -383,6 +383,9 @@ export interface GateMessage {
   /** A message from a club's organisers' group, with its context lines
    *  (`RouterMessage.organisers`). Absent for the players' group. */
   organisers?: { context: string[] };
+  /** A players' group WhatsApp reply to MatchTime's own message: the text
+   *  it quotes (`RouterMessage.quotedMatchTime`). Absent otherwise. */
+  quotedMatchTime?: string;
 }
 
 export interface Partitioned {
@@ -632,6 +635,7 @@ export async function gateBatch(
       authorName: m.authorName,
       body: m.body,
       ...(m.organisers ? { organisers: m.organisers } : {}),
+      ...(m.quotedMatchTime ? { quotedMatchTime: m.quotedMatchTime } : {}),
     }));
     if (opts.capped) {
       const routed = await routeBatch(NO_MODEL, routerMessages, {
