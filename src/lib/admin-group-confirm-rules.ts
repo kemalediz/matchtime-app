@@ -35,11 +35,11 @@ import type { HqLogRow } from "./admin-group-log";
 export const CONFIRM_WINDOW_MS = 15 * 60 * 1000;
 
 export interface PendingItem {
-  /** `teamsAskRef(matchId)`, `listAskRef(pasteMessageId)` or
+  /** `teamsAskRef(matchId)`, `listAskRef(pasteMessageId)`,
    *  `partnerAskRef(askId)` (a partner club's ask for a player, cross-club
-   *  ask slice S2). */
+   *  ask slice S2) or `feeAskRef(proposalId)` (a free place, 2026-10-16). */
   ref: string;
-  kind: "teams" | "list" | "partner-ask";
+  kind: "teams" | "list" | "partner-ask" | "fee";
 }
 
 export interface QuotedMessage {

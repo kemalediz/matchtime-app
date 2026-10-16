@@ -58,7 +58,7 @@ import { setAsideTeamProposal } from "./team-proposal";
 import { t } from "./i18n/t";
 import { listAskRef, recordHqMessage, recordMatchTimeQuestion } from "./admin-group-log";
 import { understandAdminMessage } from "./admin-group-understand";
-import { HQ_FEE_FREE_NOTHING_DONE } from "./fee-waiver-rules";
+import { HQ_FEE_FREE_EXPIRED, HQ_FEE_FREE_NOTHING_DONE } from "./fee-waiver-rules";
 
 export interface AdminGroupMessage {
   groupId: string;
@@ -97,6 +97,8 @@ const NO_TICK: ReadonlySet<string> = new Set([
   "hq-only-organisers",
   // A free place asked for and none given (already paid, not in the squad, no match).
   HQ_FEE_FREE_NOTHING_DONE,
+  // A YES to a free place question past its 30 minutes: nothing done.
+  HQ_FEE_FREE_EXPIRED,
 ]);
 export const HQ_TICK = "✅";
 
@@ -125,6 +127,8 @@ export async function handleAdminGroupMessage(msg: AdminGroupMessage): Promise<A
       // The HQ help's free-place line (admin-group-help.ts `hqHelpGates`).
       paymentCollectionEnabled: true,
       paymentTrackingEnabled: true,
+      // The money collector may ask for, and say YES to, a free place.
+      paymentHolderId: true,
     },
   });
   if (!org) return { handled: false, ignored: "not-an-admin-group", replyText: null };

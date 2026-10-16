@@ -20,6 +20,7 @@ import { POST_MATCH_LOOKBACK_DAYS } from "../bot-scheduler";
 const row = (userId: string, paid: boolean, name: string | null = userId) => ({
   userId,
   paidAt: paid ? new Date("2027-01-15T22:00:00.000Z") : null,
+  feeWaivedAt: null as Date | null,
   name,
 });
 

@@ -270,7 +270,7 @@ export async function confirmDirectPayment(matchId: string, userId: string): Pro
 export async function markFeeWaived(
   matchId: string,
   userId: string,
-): Promise<{ ok: true } | { ok: false; reason: "already-paid" | "monthly" | "not-in-squad" | "unchanged" }> {
+): Promise<{ ok: true } | { ok: false; reason: "already-paid" | "monthly" | "not-in-squad" | "unchanged" | "collector" }> {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Not authenticated");
   await requireMatchCollectorOrAdmin(session.user.id, matchId);

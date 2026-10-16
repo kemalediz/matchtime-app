@@ -114,6 +114,7 @@ export default async function CollectPage({
             undoFree: words.collect_undo_free,
             markedFree: words.collect_marked_free,
             unmarkedFree: words.collect_unmarked_free,
+            nothingChanged: words.collect_nothing_changed,
           }}
         />
       </div>

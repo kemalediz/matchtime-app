@@ -271,6 +271,9 @@ export async function handlePaymentClaimDm(input: {
         where: {
           userId,
           paidAt: null,
+          // A free place owes nothing (fee-waiver.ts): a "Paid" DM is about
+          // a match he DOES owe, never the free one (review of #301).
+          feeWaivedAt: null,
           // Pay links go to the CONFIRMED squad only (releaseMatchPayments).
           status: "CONFIRMED",
           // Monthly squad (slice 5): a regular's row is paid for by the

@@ -653,6 +653,11 @@ export interface AdminFacts {
   count?: number;
   /** bulk_payment: who was paid for; fee_waiver: who plays free. */
   coveredRefs?: string[];
+  /** fee_waiver: true when the message takes a free place back. */
+  undo?: boolean;
+  /** fee_waiver: the day named for the game, verbatim ("next Friday").
+   *  Resolved by code (`fee-waiver-rules.ts` `readDayHint`), never the model. */
+  matchDay?: string;
   /** reminder — the PHRASE as written ("on Monday", "tomorrow at 6").
    *  §3.2 S22: calendar arithmetic is `date-fns-tz`'s job, not the
    *  model's. The extractor hands back the words. */

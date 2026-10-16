@@ -15,6 +15,9 @@ export interface PendingWithLabel extends PendingItem {
   day: string | null;
   /** A partner club's ask: the asking club's name. */
   club?: string | null;
+  /** A free place question: who, joined, and whether it takes it away. */
+  names?: string | null;
+  undo?: boolean;
   askedAt: Date;
 }
 
@@ -35,7 +38,11 @@ export function organisersContext(p: {
         ? `WAITING: approval of the proposed teams for ${i.day}, asked at ${at}.`
         : i.kind === "partner-ask"
           ? `WAITING: YES to post ${i.club}'s ask for a player in the players' group, for ${i.day}, asked at ${at}.`
-          : `WAITING: YES to apply the squad list pasted at ${at}.`,
+          : i.kind === "fee"
+            ? i.undo
+              ? `WAITING: YES to take the free place away from ${i.names} for ${i.day}, asked at ${at}.`
+              : `WAITING: YES to give ${i.names} a free place for ${i.day}, asked at ${at}.`
+            : `WAITING: YES to apply the squad list pasted at ${at}.`,
     );
   }
   if (p.quoted?.text || p.quoted?.fromMatchTime) {

@@ -15,7 +15,10 @@
 import { db } from "./db";
 import { signMagicLinkToken, MAGIC_LINK_TTL } from "./magic-link";
 import { buildShortMagicLinkUrl } from "./short-link";
-import { parseFeeReply } from "./payments";
+import { gbp, parseFeeReply } from "./payments";
+import { sendAdminNotice } from "./admin-channel";
+import { t } from "./i18n/t";
+import { dayLabel } from "./i18n/dates";
 import {
   buildFeeCancelledAck,
   buildFeeConfirmPrompt,
@@ -192,6 +195,9 @@ export async function applyCheckoutEvent(
   });
   if (res.count > 0) {
     console.log(`[payments] marked paid: ${who} (£${amount}, x${quantity})`);
+    await noticePaidWhileFree(matchId, userId, amount).catch((err) =>
+      console.error(`[payments] paid-while-free notice failed: ${who}`, err instanceof Error ? err.message : "failed"),
+    );
     return { action: "marked-paid" };
   }
   // Nothing to update: either a duplicate delivery of this same event, or
@@ -210,6 +216,40 @@ export async function applyCheckoutEvent(
     );
   }
   return { action: "already-settled" };
+}
+
+/**
+ * Money arrived for a player on a free place (review of #301, item 6): a
+ * checkout started before the free place was given settled after it. The
+ * row is paid (money moved, paid wins); the organisers are told once, in
+ * their admin channel, so the collector can refund it if they want.
+ * MatchTime never refunds by itself. Only called on the write that marked
+ * the row paid, so a repeat delivery says nothing again.
+ */
+async function noticePaidWhileFree(matchId: string, userId: string, amount: number | null): Promise<void> {
+  const row = await db.attendance.findUnique({
+    where: { matchId_userId: { matchId, userId } },
+    select: { feeWaivedAt: true },
+  });
+  if (!row || !isFeeWaived(row)) return;
+  const [match, user] = await Promise.all([
+    db.match.findUnique({
+      where: { id: matchId },
+      select: { date: true, activity: { select: { orgId: true, org: { select: { language: true } } } } },
+    }),
+    db.user.findUnique({ where: { id: userId }, select: { name: true } }),
+  ]);
+  if (!match) return;
+  const lang = match.activity.org.language;
+  console.warn(`[payments] money arrived for a free place: match ${matchId} user ${userId}`);
+  await sendAdminNotice({
+    orgId: match.activity.orgId,
+    text: t(lang).admin_fee_paid_while_free({
+      name: user?.name ?? "A player",
+      amount: amount != null ? gbp(amount) : "",
+      day: dayLabel(lang, match.date),
+    }),
+  });
 }
 
 // ─── Collector chat fee-capture (2026-06-04) ──────────────────────────

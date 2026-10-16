@@ -88,7 +88,8 @@ export interface PayGuardInput {
 export const ALREADY_PAID_REASON = "You're already paid for this match, nothing more to do. Thanks!";
 
 /** A player on a free place opening their old pay link. */
-export const FREE_PLACE_REASON = "You're on a free place for this match, so there's nothing to pay.";
+export const FREE_PLACE_REASON =
+  "You're on a free place for this match, so there's nothing to pay. Paying for a guest? Settle it with the money collector directly.";
 
 /** A monthly club's regular opening a per-match pay link. */
 export const MONTHLY_PLACE_REASON =

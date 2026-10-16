@@ -25,6 +25,8 @@ export interface RosterWords {
   undoFree: string;
   markedFree: string;
   unmarkedFree: string;
+  /** Undo found no free place to take back (review of #301, item 10). */
+  nothingChanged: string;
 }
 
 const ENGLISH: RosterWords = {
@@ -33,6 +35,7 @@ const ENGLISH: RosterWords = {
   undoFree: "Undo free",
   markedFree: "Marked as a free place",
   unmarkedFree: "Free place removed",
+  nothingChanged: "Nothing to change",
 };
 
 function gbp(n: number): string {
@@ -67,11 +70,9 @@ export function PaymentRoster({ matchId, rows, words = ENGLISH }: { matchId: str
       if (!r.ok) throw new Error(r.reason === "already-paid" ? "Already paid" : "Couldn't update");
       return words.markedFree;
     });
+  // The real result: "removed" only when a free place was taken back.
   const undoFree = (userId: string) =>
-    run(userId, async () => {
-      await undoFeeWaived(matchId, userId);
-      return words.unmarkedFree;
-    });
+    run(userId, async () => ((await undoFeeWaived(matchId, userId)).ok ? words.unmarkedFree : words.nothingChanged));
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-slate-200 divide-y divide-slate-100">
@@ -92,6 +93,7 @@ export function PaymentRoster({ matchId, rows, words = ENGLISH }: { matchId: str
                 <>
                   <Gift className="w-3.5 h-3.5 text-sky-500" />
                   {words.free}
+                  {r.directPending ? " · Paying you directly" : ""}
                 </>
               ) : r.directPending ? (
                 <>
@@ -108,13 +110,26 @@ export function PaymentRoster({ matchId, rows, words = ENGLISH }: { matchId: str
             </p>
           </div>
           {!r.paid && r.free && (
-            <button
-              onClick={() => undoFree(r.userId)}
-              disabled={busy === r.userId}
-              className="shrink-0 inline-flex items-center gap-1.5 px-3 h-9 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 text-sm font-medium disabled:opacity-50"
-            >
-              {busy === r.userId ? "Saving…" : words.undoFree}
-            </button>
+            <div className="shrink-0 flex items-center gap-2">
+              <button
+                onClick={() => undoFree(r.userId)}
+                disabled={busy === r.userId}
+                className="inline-flex items-center gap-1.5 px-3 h-9 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 text-sm font-medium disabled:opacity-50"
+              >
+                {busy === r.userId ? "Saving…" : words.undoFree}
+              </button>
+              {/* Review of #301, item 5: they said they'd pay directly. If
+                  the cash arrives anyway, the collector can still record it. */}
+              {r.directPending && (
+                <button
+                  onClick={() => markPaid(r.userId)}
+                  disabled={busy === r.userId}
+                  className="inline-flex items-center gap-1.5 px-3 h-9 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium disabled:opacity-50"
+                >
+                  Mark received
+                </button>
+              )}
+            </div>
           )}
           {!r.paid && !r.free && (
             <div className="shrink-0 flex items-center gap-2">

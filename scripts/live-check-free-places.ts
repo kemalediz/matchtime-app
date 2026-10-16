@@ -11,9 +11,13 @@
  *
  *   A. HQ, a free place in natural words, EN and TR, tagged and not: the
  *      router must say admin_ops and the admin extractor fee_waiver with
- *      the right names. None of these is a worked example in a prompt.
- *   B. HQ, things that must NOT become a free place: a squad change that
- *      says "free" (available), organisers' chat about money.
+ *      the right names and, when one is named, the day (review of #301).
+ *   A2. Taking one back ("Bilal isn't free after all"): fee_waiver, undo.
+ *   A3. The YES to MatchTime's free place question: approve.
+ *   B. HQ, things that must NOT give a free place: a negation, a
+ *      discussion, "no, not Bilal" while the question waits (never
+ *      approve), a squad change that says "free" (available), organisers'
+ *      chat about money.
  *   C. The players' group, "free" meaning available: still attendance.
  *   D. The admin extractor's existing actions (bulk payment, reminder,
  *      recruit, stats blast, other), since its prompt was rewritten.
@@ -68,31 +72,53 @@ const lc = (xs: string[] | undefined) => (xs ?? []).map((x) => x.toLowerCase().r
 interface RouteCase {
   text: string;
   hq: boolean;
+  /** HQ with a free place question waiting ("Make Bilal Ahmed free for Fri 16 Oct? Reply YES."). */
+  waiting?: boolean;
   want: Route[];
-  /** For admin_ops in HQ: the people the extractor must name. */
-  free?: string[];
+  /** For admin_ops: the admin extractor's facts must pass this. */
+  facts?: (f: AdminFacts) => boolean;
+  /** For admin_ops: must NOT give a free place (a negation, a discussion). */
+  notGiven?: boolean;
   why: string;
 }
 
+const gives = (names: string[], day?: RegExp) => (f: AdminFacts) =>
+  f.action === "fee_waiver" && f.undo !== true && lc(f.coveredRefs).join(",") === names.join(",") && (!day || day.test(f.matchDay ?? ""));
+const takesBack = (names: string[]) => (f: AdminFacts) => f.action === "fee_waiver" && f.undo === true && lc(f.coveredRefs).join(",") === names.join(",");
+
 const ROUTES: RouteCase[] = [
-  // A. HQ, a free place.
-  { text: "Bilal washed the bibs, he's free this week", hq: true, want: ["admin_ops"], free: ["bilal"], why: "the brief's words, untagged" },
-  { text: "@Match Time Bilal washed the bibs, he's free this week", hq: true, want: ["admin_ops"], free: ["bilal"], why: "tagged" },
-  { text: "Tom doesn't pay this week, he did the bibs", hq: true, want: ["admin_ops"], free: ["tom"], why: "doesn't pay" },
-  { text: "mark Sam as free for tonight", hq: true, want: ["admin_ops"], free: ["sam"], why: "mark free" },
-  { text: "Sam and Ali both play free on Friday", hq: true, want: ["admin_ops"], free: ["ali", "sam"], why: "two names" },
-  { text: "@Match Time Bilal's on the house tonight", hq: true, want: ["admin_ops"], free: ["bilal"], why: "on the house" },
-  { text: "Ali bu hafta ücretsiz, formaları o yıkadı", hq: true, want: ["admin_ops"], free: ["ali"], why: "TR, ücretsiz" },
-  { text: "Ali bu hafta ödemesin", hq: true, want: ["admin_ops"], free: ["ali"], why: "TR, ödemesin" },
-  { text: "@Match Time Can bu hafta bedava oynuyor", hq: true, want: ["admin_ops"], free: ["can"], why: "TR, bedava" },
-  { text: "formaları Burak yıkadı, bu hafta para vermesin", hq: true, want: ["admin_ops"], free: ["burak"], why: "TR, para vermesin" },
-  // B. HQ, not a free place.
+  // A. HQ, a free place given.
+  { text: "Bilal washed the bibs, he's free this week", hq: true, want: ["admin_ops"], facts: gives(["bilal"]), why: "the brief's words, untagged" },
+  { text: "@Match Time Bilal washed the bibs, he's free this week", hq: true, want: ["admin_ops"], facts: gives(["bilal"]), why: "tagged" },
+  { text: "Tom doesn't pay this week, he did the bibs", hq: true, want: ["admin_ops"], facts: gives(["tom"]), why: "doesn't pay" },
+  { text: "mark Sam as free for tonight", hq: true, want: ["admin_ops"], facts: gives(["sam"], /tonight/i), why: "mark free, a day" },
+  { text: "Sam and Ali both play free on Friday", hq: true, want: ["admin_ops"], facts: gives(["ali", "sam"], /friday/i), why: "two names, a day" },
+  { text: "@Match Time Bilal's on the house tonight", hq: true, want: ["admin_ops"], facts: gives(["bilal"], /tonight/i), why: "on the house" },
+  { text: "Tom's free next Friday, he did the bibs", hq: true, want: ["admin_ops"], facts: gives(["tom"], /next friday/i), why: "a named day" },
+  { text: "Ali bu hafta ücretsiz, formaları o yıkadı", hq: true, want: ["admin_ops"], facts: gives(["ali"]), why: "TR, ücretsiz" },
+  { text: "Ali bu hafta ödemesin", hq: true, want: ["admin_ops"], facts: gives(["ali"]), why: "TR, ödemesin" },
+  { text: "@Match Time Can bu hafta bedava oynuyor", hq: true, want: ["admin_ops"], facts: gives(["can"]), why: "TR, bedava" },
+  { text: "formaları Burak yıkadı, dün akşamki maç için para vermesin", hq: true, want: ["admin_ops"], facts: gives(["burak"], /dün/i), why: "TR, para vermesin, a day" },
+  // A2. HQ, a free place taken back (undo).
+  { text: "Bilal isn't free after all, he pays", hq: true, want: ["admin_ops"], facts: takesBack(["bilal"]), why: "undo" },
+  { text: "@Match Time actually Tom should pay this week, not free", hq: true, want: ["admin_ops"], facts: takesBack(["tom"]), why: "undo, tagged" },
+  { text: "Ali ücretsiz değil, ödesin", hq: true, want: ["admin_ops"], facts: takesBack(["ali"]), why: "undo, TR" },
+  // A3. HQ, the YES to a waiting free place question.
+  { text: "yes", hq: true, waiting: true, want: ["approve"], why: "YES with the free place waiting" },
+  { text: "go on then", hq: true, waiting: true, want: ["approve"], why: "approval, natural" },
+  { text: "evet", hq: true, waiting: true, want: ["approve"], why: "approval, TR" },
+  // B. HQ, nothing given: a negation, a discussion, a take-back of the question, a place.
+  { text: "no, not Bilal", hq: true, waiting: true, want: ["none", "admin_ops", "unsure", "other_att"], notGiven: true, why: "take-back of the question: never approve" },
+  { text: "hold on, Bilal didn't wash them, leave it", hq: true, waiting: true, want: ["none", "admin_ops", "unsure"], notGiven: true, why: "take-back: never approve" },
+  { text: "Bilal isn't free this week", hq: true, want: ["none", "other_att", "admin_ops", "unsure"], notGiven: true, why: "negation: never a free place" },
+  { text: "should Bilal play free this week?", hq: true, want: ["none", "question", "admin_ops", "unsure"], notGiven: true, why: "a discussion: never a free place" },
+  { text: "who washed the bibs last week, are they free?", hq: true, want: ["none", "question", "admin_ops", "unsure"], notGiven: true, why: "a question: never a free place" },
   { text: "Bilal is free on Friday, put him in", hq: true, want: ["other_att"], why: "free = available, and a place: the place wins" },
   { text: "Dan's free tonight, add him to the list", hq: true, want: ["other_att"], why: "free = available, add" },
   { text: "Tom out", hq: true, want: ["other_att"], why: "squad change" },
   { text: "who's paying for the bibs this week?", hq: true, want: ["none", "question"], why: "organisers' chat about money" },
   { text: "is Bilal free this week?", hq: true, want: ["none", "question", "unsure"], why: "asking each other if he can play" },
-  { text: "@Match Time remind me on Monday to book the pitch", hq: true, want: ["admin_ops"], why: "another instruction stays admin_ops" },
+  { text: "@Match Time remind me on Monday to book the pitch", hq: true, want: ["admin_ops"], facts: (f) => f.action === "reminder", why: "another instruction stays admin_ops" },
   // C. Players' group, free meaning available.
   { text: "I'm free Tuesday if you need me", hq: false, want: ["self_att", "offer"], why: "availability" },
   { text: "I'm free this week, count me in", hq: false, want: ["self_att"], why: "free and in" },
@@ -124,29 +150,40 @@ const ADMIN: AdminCase[] = [
 ];
 
 const ORG_CONTEXT = organisersContext({ pending: [], quoted: null, quotedIsMatchTime: false, recent: [] });
+const ASKED = new Date("2026-10-16T09:00:00Z");
+const QUESTION = "Make Bilal Ahmed free for Fri 16 Oct? Reply YES.";
+const WAITING_CONTEXT = organisersContext({
+  pending: [{ ref: "fee:fp1", kind: "fee", day: "Fri 16 Oct", names: "Bilal Ahmed", undo: false, askedAt: ASKED }],
+  quoted: null,
+  quotedIsMatchTime: false,
+  recent: [{ fromMatchTime: true, text: QUESTION }],
+});
 
 async function main() {
   let pass = 0;
   let fail = 0;
-  console.log(`\n== Routes (A, B, C): ${ROUTES.length} cases, each once ==\n`);
+  console.log(`\n== Routes (A, A2, A3, B, C): ${ROUTES.length} cases, each once (HQ* = a free place question waiting) ==\n`);
   for (const [i, c] of ROUTES.entries()) {
     const id = `r${i}`;
     const r = await routeBatch(
       model,
-      [{ id, authorName: "Raihan", body: c.text, ...(c.hq ? { organisers: { context: ORG_CONTEXT } } : {}) }],
+      [{ id, authorName: "Raihan", body: c.text, ...(c.hq ? { organisers: { context: c.waiting ? WAITING_CONTEXT : ORG_CONTEXT } } : {}) }],
       { floor: true },
     );
     const route = r.routes[0]?.route;
     let ok = !!route && c.want.includes(route);
     let extra = "";
-    if (ok && c.free && route === "admin_ops") {
-      const ex = await extractForRoute(model, "admin_ops", { id, body: c.text, authorName: "Raihan", tagged: true, history: [], lastBotPost: null });
+    if (ok && route === "admin_ops" && (c.facts || c.notGiven)) {
+      const history = c.waiting ? [{ author: "MatchTime", body: QUESTION }] : [];
+      const ex = await extractForRoute(model, "admin_ops", { id, body: c.text, authorName: "Raihan", tagged: true, history, lastBotPost: c.waiting ? QUESTION : null });
       const f = ex.facts.kind === "admin" ? ex.facts : null;
-      ok = !!f && f.action === "fee_waiver" && lc(f.coveredRefs).join(",") === c.free.join(",");
-      extra = ` -> ${JSON.stringify(f && { action: f.action, coveredRefs: f.coveredRefs })}`;
+      if (c.facts) ok = !!f && c.facts(f);
+      // Never a free place GIVEN: other, or a take-back, is fine.
+      if (c.notGiven) ok = ok && !(f && f.action === "fee_waiver" && f.undo !== true);
+      extra = ` -> ${JSON.stringify(f && { action: f.action, coveredRefs: f.coveredRefs, undo: f.undo, matchDay: f.matchDay })}`;
     }
     ok ? pass++ : fail++;
-    console.log(`${ok ? "PASS" : "FAIL"}  ${c.hq ? "HQ " : "PG "} ${JSON.stringify(c.text)}  routed ${route}${extra}   (${c.why}; want ${c.want.join("|")}${c.free ? ` free ${c.free.join(",")}` : ""})`);
+    console.log(`${ok ? "PASS" : "FAIL"}  ${c.hq ? (c.waiting ? "HQ*" : "HQ ") : "PG "} ${JSON.stringify(c.text)}  routed ${route}${extra}   (${c.why}; want ${c.want.join("|")})`);
   }
 
   console.log(`\n== Admin extractor (D): ${ADMIN.length} existing behaviours, each once ==\n`);

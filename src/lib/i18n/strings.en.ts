@@ -1415,6 +1415,28 @@ export const en = {
   hq_fee_free_no_match: `There's no match to give a free place on right now.`,
   hq_fee_free_no_payments: `This club doesn't take match fees through MatchTime, so there's nothing to make free.`,
   hq_fee_free_who: `Who should play free? For example: Bilal is free this week.`,
+  /** The question before anything is written (review of #301): `notes`
+   *  are whole sentences ("Bilal said they'd pay Colin directly."), or "". */
+  hq_fee_free_ask: (p: { names: string; day: string; notes: string }): string =>
+    `Make ${p.names} free for ${p.day}?${p.notes ? ` ${p.notes}` : ""} Reply YES.`,
+  hq_fee_unfree_ask: (p: { names: string; day: string }): string =>
+    `Take the free place away from ${p.names} for ${p.day}? They'll be asked to pay. Reply YES.`,
+  /** A player who said they would pay the collector directly. */
+  hq_fee_free_direct_note: (p: { name: string; collector: string | null }): string =>
+    `${p.name} said they'd pay ${p.collector ?? "the money collector"} directly.`,
+  hq_fee_unfree_done: (p: { names: string; day: string }): string =>
+    `No longer free for ${p.day}: ${p.names}. They'll get the usual reminders to pay.`,
+  hq_fee_unfree_not_free: (p: { name: string; day: string }): string => `${p.name} isn't on a free place for ${p.day}.`,
+  hq_fee_free_collector: (p: { name: string }): string => `${p.name} collects the money, so there's nothing to make free.`,
+  /** `day` is the organiser's own words for the day ("next Friday"). */
+  hq_fee_free_no_match_day: (p: { day: string }): string => `I can't find a game for "${p.day}".`,
+  hq_fee_free_expired: `That free place question is over 30 minutes old, so I haven't changed anything. Say it again and I'll ask again.`,
+  /** A YES MatchTime cannot be sure was meant for the free place question. */
+  hq_confirm_fee: (p: { names: string; day: string }): string => `Is that YES to the free place for ${p.names} on ${p.day}?`,
+  /** To the money collector's admin channel: money arrived from a player on
+   *  a free place (a payment started before it was given). */
+  admin_fee_paid_while_free: (p: { name: string; amount: string; day: string }): string =>
+    `💷 ${p.name} paid ${p.amount} for ${p.day}, but they're on a free place. Refund it in Stripe if they should play free.`,
   /** A team change whose players MatchTime could not tell. */
   tp_which_players: `Which players? For example: swap Sam and Alex, or move Sam to the other team.`,
   /** "move Sam to Red" when Sam is already there. */
@@ -1749,6 +1771,11 @@ export const en = {
   pay_free_title: `Nothing to pay`,
   pay_free_body: (p: { firstName: string; activityName: string }): string =>
     `${p.firstName}, you're on a free place for ${p.activityName}. Nothing to pay.`,
+  /** Why a player on a free place cannot pay for a guest here (review of #301, item 4). */
+  pay_free_guests: `Paying for a guest? Settle it with the money collector directly.`,
+  /** The DM to a player made free after their pay link went out (Kemal, decision a). */
+  dm_free_place: (p: { day: string }): string => `You're on a free place for ${p.day}, no need to pay.`,
+  collect_nothing_changed: `Nothing to change`,
   collect_free: `Free place`,
   collect_mark_free: `Mark free`,
   collect_undo_free: `Undo free`,

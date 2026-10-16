@@ -667,9 +667,16 @@ export interface RouterMessage {
  * add him" from other_att (6 of 6 message ids) to admin_ops (5 of 6). Here
  * the players' group's prompt and user turn stay byte for byte what they
  * were, and the system prompt keeps its size (3,922 tokens).
+ *
+ * Its last sentence is load-bearing too (review round, 2026-10-16): with
+ * the free-place sentence alone, HQ's "we need one more, does anyone know
+ * someone?" (organisers asking each other, none) went ask_group in 1 of 5
+ * tries, and in 4 of 5 under a wording that led with "admin_ops"; with
+ * "Nothing else changes: ..." it is none 5 of 5, and "we're short, can you
+ * put a message out in the group" stays ask_group 5 of 5.
  */
 export const ORGANISERS_HEADER =
-  "ORGANISERS' GROUP. The sender is an organiser of the club. Here, saying a named player owes nothing for the match, a free place (\"he's free this week, he did the bibs\", \"no fee for him\", \"ödemesin\"), tells MatchTime to give it: admin_ops, tagged or not. Free as in able to play (\"he's free, add him\") is other_att.";
+  "ORGANISERS' GROUP. The sender is an organiser of the club. Here, saying a named player owes nothing for the match, a free place (\"he's free this week, he did the bibs\", \"no fee for him\", \"ödemesin\"), or taking one back (\"he pays after all\", \"ücretsiz değil\"), is admin_ops, tagged or not. Free as in able to play (\"he's free, add him\") is other_att. Nothing else changes: a shortage or a question put to the other organisers is still none.";
 
 /** The line shown above a message that is a WhatsApp reply: who it quotes
  *  and what they said, on one line. One wording for both groups

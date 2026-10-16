@@ -167,6 +167,12 @@ describe("A PLAYER'S CLAIM NEVER SETS paidAt", () => {
     }
   });
 
+  it("the match a 'Paid' DM lands on is one he owes: a free place is never it (review of #301, item 1)", async () => {
+    await handlePaymentClaimDm({ userId: "u-abid", userName: "Abid Kazmi", text: "Paid", waMessageId: "wa-3", replyPhone: "447700900009" });
+    const owed = calls.find((c) => c.model === "attendance" && c.method === "findMany")!;
+    expect((owed.args as { where: Record<string, unknown> }).where).toMatchObject({ paidAt: null, feeWaivedAt: null });
+  });
+
   it("in Turkish too", async () => {
     const out = await handlePaymentClaimDm({
       userId: "u-abid",

@@ -11,7 +11,6 @@ import {
   isFeeWaived,
   owesMatchFee,
   pickWaiverMatch,
-  FEE_WAIVER_RECENT_MS,
 } from "../fee-waiver-rules";
 
 const at = (iso: string) => new Date(iso);
@@ -27,7 +26,7 @@ describe("the monthly mark", () => {
   it("is the same string monthly-week.ts writes", async () => {
     const { MONTHLY_PAYMENT_METHOD } = await import("../monthly-week");
     expect(MONTHLY_PAYMENT_METHOD).toBe("monthly");
-    expect(owesMatchFee({ userId: "a", paymentMethod: MONTHLY_PAYMENT_METHOD }, null)).toBe(false);
+    expect(owesMatchFee({ userId: "a", feeWaivedAt: null, paymentMethod: MONTHLY_PAYMENT_METHOD }, null)).toBe(false);
   });
 });
 
@@ -35,7 +34,6 @@ describe("isFeeWaived / owesMatchFee", () => {
   it("a waived row owes nothing; a paid row owes nothing; a monthly regular owes nothing per match", () => {
     expect(isFeeWaived({ feeWaivedAt: at("2026-10-16T18:00:00Z") })).toBe(true);
     expect(isFeeWaived({ feeWaivedAt: null })).toBe(false);
-    expect(isFeeWaived({})).toBe(false);
     expect(owesMatchFee({ userId: "a", ...row() }, "col")).toBe(true);
     expect(owesMatchFee({ userId: "a", ...row({ feeWaivedAt: new Date() }) }, "col")).toBe(false);
     expect(owesMatchFee({ userId: "a", ...row({ paidAt: new Date() }) }, "col")).toBe(false);
@@ -66,30 +64,69 @@ describe("decideWaive", () => {
   });
 });
 
-describe("pickWaiverMatch: which match 'this week' means", () => {
-  const now = at("2026-10-17T10:00:00Z"); // Saturday morning
-  const played = { id: "fri", date: at("2026-10-16T20:00:00Z") };
-  const next = { id: "nextfri", date: at("2026-10-23T20:00:00Z") };
-  const later = { id: "later", date: at("2026-10-30T20:00:00Z") };
+describe("pickWaiverMatch: which game an organiser means", () => {
+  // London is BST (UTC+1) in October. Kickoffs 20:00 London = 19:00Z.
+  const tue = { id: "tue", date: at("2026-10-13T19:00:00Z"), status: "COMPLETED" };
+  const fri = { id: "fri", date: at("2026-10-16T19:00:00Z"), status: "COMPLETED" };
+  const tue2 = { id: "tue2", date: at("2026-10-20T19:00:00Z"), status: "UPCOMING" };
+  const fri2 = { id: "fri2", date: at("2026-10-23T19:00:00Z"), status: "UPCOMING" };
+  const all = [tue, fri, tue2, fri2];
+  const sat = at("2026-10-17T09:00:00Z"); // Saturday 10:00 London
+  const wed = at("2026-10-14T09:00:00Z"); // Wednesday, between Tuesday's and Friday's games
 
-  it("the game just played (kicked off within the last 48 hours) wins: its fee is being collected", () => {
-    expect(pickWaiverMatch([next, played, later], now)?.id).toBe("fri");
+  it("no day named: a game today wins, kicked off or not", () => {
+    expect(pickWaiverMatch(all, at("2026-10-16T21:00:00Z"), null)?.id).toBe("fri");
+    expect(pickWaiverMatch(all, at("2026-10-16T08:00:00Z"), null)?.id).toBe("fri");
   });
-  it("otherwise the next game not yet kicked off", () => {
-    const wed = at("2026-10-21T10:00:00Z");
-    expect(pickWaiverMatch([later, played, next], wed)?.id).toBe("nextfri");
+  it("no day named, no game today: the club's registration match (the next one), as every HQ squad command uses", () => {
+    // Two games a week: on Wednesday the next game is Friday, not Tuesday's.
+    const wedAll = [tue, { ...fri, status: "UPCOMING" }, tue2, fri2];
+    expect(pickWaiverMatch(wedAll, wed, null)?.id).toBe("fri");
+    expect(pickWaiverMatch(all, sat, null)?.id).toBe("tue2");
   });
-  it("the boundary: 48 hours after kickoff it is the next game", () => {
-    const edge = new Date(played.date.getTime() + FEE_WAIVER_RECENT_MS + 1);
-    expect(pickWaiverMatch([played, next], edge)?.id).toBe("nextfri");
+  it("tonight / today / bu akşam: today's game", () => {
+    const friMorning = at("2026-10-16T08:00:00Z");
+    for (const p of ["tonight", "today", "bu akşam", "bugün"]) expect(pickWaiverMatch(all, friMorning, p)?.id).toBe("fri");
   });
-  it("two games in the last 48 hours: the latest", () => {
-    const thu = { id: "thu", date: at("2026-10-15T20:00:00Z") };
-    expect(pickWaiverMatch([thu, played], at("2026-10-16T22:00:00Z"))?.id).toBe("fri");
+  it("last night / yesterday / dün: yesterday's game", () => {
+    for (const p of ["last night", "yesterday", "dün", "dün akşam"]) expect(pickWaiverMatch(all, sat, p)?.id).toBe("fri");
   });
-  it("nothing recent and nothing ahead: null", () => {
-    expect(pickWaiverMatch([], now)).toBeNull();
-    expect(pickWaiverMatch([{ id: "old", date: at("2026-10-01T20:00:00Z") }], now)).toBeNull();
+  it("tomorrow / yarın", () => {
+    const mon = at("2026-10-19T09:00:00Z");
+    for (const p of ["tomorrow", "yarın"]) expect(pickWaiverMatch(all, mon, p)?.id).toBe("tue2");
+  });
+  it("a weekday: the nearer game on that day, back or ahead", () => {
+    expect(pickWaiverMatch(all, sat, "Friday")?.id).toBe("fri"); // yesterday is nearer than next week
+    expect(pickWaiverMatch(all, sat, "on Tuesday")?.id).toBe("tue2"); // 3 days ahead beats 4 back
+    expect(pickWaiverMatch(all, sat, "cuma")?.id).toBe("fri");
+    expect(pickWaiverMatch(all, sat, "Cuma günü")?.id).toBe("fri");
+  });
+  it("next / last weekday: only that direction", () => {
+    expect(pickWaiverMatch(all, sat, "next Friday")?.id).toBe("fri2");
+    expect(pickWaiverMatch(all, sat, "last Tuesday")?.id).toBe("tue");
+    expect(pickWaiverMatch(all, sat, "gelecek cuma")?.id).toBe("fri2");
+    expect(pickWaiverMatch(all, sat, "geçen salı")?.id).toBe("tue");
+  });
+  it("next week: the first game from next Monday", () => {
+    expect(pickWaiverMatch(all, wed, "next week")?.id).toBe("tue2");
+    expect(pickWaiverMatch(all, wed, "haftaya")?.id).toBe("tue2");
+  });
+  it("a named day with no game on it: null (the reply says so), never another game", () => {
+    expect(pickWaiverMatch(all, sat, "Sunday")).toBeNull();
+    expect(pickWaiverMatch(all, sat, "tomorrow")).toBeNull();
+  });
+  it("words it does not know, or 'this week': the default, never a guess from the words", () => {
+    expect(pickWaiverMatch(all, sat, "this week")?.id).toBe("tue2");
+    expect(pickWaiverMatch(all, sat, "bu hafta")?.id).toBe("tue2");
+    expect(pickWaiverMatch(all, sat, "the derby")?.id).toBe("tue2");
+  });
+  it("cancelled games are never picked", () => {
+    expect(pickWaiverMatch([{ ...fri, status: "CANCELLED" }, fri2], sat, "last night")).toBeNull();
+  });
+  it("nothing ahead and nothing today: the latest game of the last 48 hours, else null", () => {
+    expect(pickWaiverMatch([tue, fri], sat, null)?.id).toBe("fri");
+    expect(pickWaiverMatch([tue], sat, null)).toBeNull();
+    expect(pickWaiverMatch([], sat, null)).toBeNull();
   });
 });
 

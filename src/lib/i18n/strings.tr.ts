@@ -1206,6 +1206,20 @@ export const tr: Strings = {
   hq_fee_free_no_match: `Şu anda ücretsiz yer verilecek bir maç yok.`,
   hq_fee_free_no_payments: `Bu kulüp maç ücretlerini MatchTime ile toplamıyor, ücretsiz yapılacak bir şey yok.`,
   hq_fee_free_who: `Kim ücretsiz oynasın? Örneğin: Bilal bu hafta ücretsiz.`,
+  hq_fee_free_ask: (p) => `${p.day} için ${p.names} ücretsiz olsun mu?${p.notes ? ` ${p.notes}` : ""} Onaylamak için EVET yazın.`,
+  hq_fee_unfree_ask: (p) => `${p.day} için ${p.names} ücretsiz yerini kaybetsin mi? Ödemesi istenecek. Onaylamak için EVET yazın.`,
+  hq_fee_free_direct_note: (p) =>
+    p.collector
+      ? `${p.name} doğrudan ödeyeceğini söyledi (parayı toplayan: ${p.collector}).`
+      : `${p.name} parayı toplayan kişiye doğrudan ödeyeceğini söyledi.`,
+  hq_fee_unfree_done: (p) => `${p.day} için artık ücretsiz değil: ${p.names}. Her zamanki ödeme hatırlatmaları gidecek.`,
+  hq_fee_unfree_not_free: (p) => `${p.name}, ${p.day} için ücretsiz yerde değil.`,
+  hq_fee_free_collector: (p) => `${p.name} parayı topluyor, ücretsiz yapılacak bir şey yok.`,
+  hq_fee_free_no_match_day: (p) => `"${p.day}" için bir maç bulamadım.`,
+  hq_fee_free_expired: `Bu ücretsiz yer sorusu 30 dakikadan eski, hiçbir şeyi değiştirmedim. Tekrar söylerseniz tekrar sorarım.`,
+  hq_confirm_fee: (p) => `Bu EVET, ${p.day} için ${p.names} ücretsiz yerine mi?`,
+  admin_fee_paid_while_free: (p) =>
+    `💷 ${p.name}, ${p.day} maçı için ${p.amount} ödedi ama ücretsiz yerde. Ücretsiz oynaması gerekiyorsa Stripe'tan iade edin.`,
   tp_which_players: `Hangi oyuncular? Örneğin: Sam ile Alex'i değiştir, ya da Sam'i diğer takıma al.`,
   tp_already_on: (p) => `${p.name} zaten ${p.team} takımında.`,
 
@@ -1459,6 +1473,9 @@ export const tr: Strings = {
 
   pay_free_title: `Ödenecek bir şey yok`,
   pay_free_body: (p) => `${p.firstName}, ${p.activityName} için ücretsiz yerdesin. Ödeme yapman gerekmiyor.`,
+  pay_free_guests: `Misafirin için ödeme yapacaksan parayı toplayan kişiyle doğrudan hallet.`,
+  dm_free_place: (p) => `${p.day} maçı için ücretsiz yerdesin, ödeme yapman gerekmiyor.`,
+  collect_nothing_changed: `Değişecek bir şey yok`,
   collect_free: `Ücretsiz yer`,
   collect_mark_free: `Ücretsiz yap`,
   collect_undo_free: `Ücretsizi geri al`,

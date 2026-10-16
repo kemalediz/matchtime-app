@@ -52,6 +52,7 @@ import type { TeamClearDeps } from "./team-clear";
 import { recordAttendanceEvent } from "./attendance-events";
 import { generateTeamsForMatch } from "./team-generation";
 import { guestNameAskKey, GUEST_NAME_ASK_KIND } from "./guest-name-ask";
+import { isFeeWaived } from "./fee-waiver-rules";
 
 /** The Prisma surface these deps touch. Typed as the real client by
  *  default; widened only so a unit test can hand in a stub without a
@@ -166,11 +167,15 @@ export function buildAdminOpsApplyDeps(args: {
       }
       return {
         matchName: m.activity.name,
-        confirmed: m.attendances.map((a) => ({
-          userId: a.userId,
-          name: a.user.name ?? "",
-          paid: a.paidAt != null,
-        })),
+        confirmed: m.attendances
+          // A free place owes nothing (fee-waiver.ts), so it is not in the
+          // unpaid count; one paid anyway is a paid row.
+          .filter((a) => a.paidAt != null || !isFeeWaived(a))
+          .map((a) => ({
+            userId: a.userId,
+            name: a.user.name ?? "",
+            paid: a.paidAt != null,
+          })),
         creditTotal: m.paymentCredits.reduce((s, c) => s + c.count, 0),
       };
     },

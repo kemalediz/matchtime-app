@@ -80,6 +80,10 @@ export default async function PayPage({
           <div className="text-5xl mb-3">🎁</div>
           <h1 className="text-xl font-bold text-slate-900">{w.pay_free_title}</h1>
           <p className="text-sm text-slate-500 mt-2">{w.pay_free_body({ firstName: first, activityName: match.activity.name })}</p>
+          {/* Review of #301, item 4: a guest's fee cannot ride on a free row
+              (the pay actions refuse it, `payBlockedReason`), so say where
+              to settle it instead. */}
+          <p className="text-sm text-slate-500 mt-2" data-testid="pay-free-guests">{w.pay_free_guests}</p>
         </div>
       </Shell>
     );

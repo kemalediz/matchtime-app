@@ -26,7 +26,7 @@ export interface UnpaidAttendance {
   userId: string;
   paidAt: Date | null;
   /** A free place (fee-waiver.ts): left out entirely, it owes nothing. */
-  feeWaivedAt?: Date | null;
+  feeWaivedAt: Date | null;
   name?: string | null;
 }
 

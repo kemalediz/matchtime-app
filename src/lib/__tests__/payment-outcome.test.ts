@@ -140,6 +140,11 @@ describe("payBlockedReason: a free place (2026-10-16)", () => {
   const ok = { paidAt: null, attendanceStatus: "CONFIRMED", matchStatus: "COMPLETED" } as const;
   it("a player on a free place cannot start a payment from an old pay link", () => {
     expect(payBlockedReason({ ...ok, feeWaivedAt: new Date() })).toBe(FREE_PLACE_REASON);
+    // Item 4 of the #301 review: a guest's fee cannot ride on a free row,
+    // and the sentence says where to settle it instead.
+    expect(FREE_PLACE_REASON).toBe(
+      "You're on a free place for this match, so there's nothing to pay. Paying for a guest? Settle it with the money collector directly.",
+    );
   });
   it("no free place: unchanged", () => {
     expect(payBlockedReason({ ...ok, feeWaivedAt: null })).toBeNull();
