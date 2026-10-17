@@ -23,6 +23,7 @@ import { PaymentInstructionsRow } from "@/components/settings/payment-instructio
 import { GoLiveBanner, type GoLiveSetup } from "@/components/settings/go-live-banner";
 import { PostersCard } from "@/components/settings/posters-card";
 import { PartnerClubsSection } from "@/components/settings/partner-clubs-section";
+import { QuietHoursSection } from "@/components/settings/quiet-hours-section";
 
 type FeatureKey = ToggleableKey;
 
@@ -544,6 +545,9 @@ export default function SettingsPage() {
           </select>
         </div>
       </section>
+
+      {/* Quiet hours (2026-10-16): its own card, owner and admin only. */}
+      <QuietHoursSection orgId={org.id} language={org.language} />
 
       {/* Invite */}
       <section className="bg-white rounded-xl border border-slate-200 shadow-sm">

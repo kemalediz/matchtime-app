@@ -113,6 +113,7 @@ test("/admin/settings: every section and every feature switch (EN and TR)", asyn
       "st_general",
       "setting-teamNames",
       "setting-language",
+      "setting-quietHours",
       "st_invite",
       "st_features",
       "setting-attendance",

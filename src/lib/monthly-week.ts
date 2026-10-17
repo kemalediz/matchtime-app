@@ -36,6 +36,7 @@ import { LIVE_STAGE_WHERE } from "./club-setup-rules";
 import { formatLondon, londonDateTimeToUtc } from "./london-time";
 import { isSameRecurringFixture, type RecurringFixtureKey } from "./match-slot";
 import { ROLLING_LOOKBACK_DAYS, adminNoticeSendAfter, pickSeedSource, rollingSeedDue } from "./rolling-squad-rules";
+import { loadClubQuietHours } from "./club-quiet-hours";
 import { buildSeedBumpedDm, buildWeekListPost } from "./monthly-week-copy";
 import { londonMonthStart, normaliseCreditRule, normaliseSquadMode, type MonthCreditRule } from "./squad-month-rules";
 import {
@@ -368,6 +369,8 @@ export async function seedMonthlySquad(args: {
       select: { userId: true },
     })
   ).map((m) => m.userId);
+  // The bumped players' DMs wait for the club's quiet hours to end.
+  const quiet = await loadClubQuietHours(week.orgId);
 
   return db.$transaction(async (tx) => {
     const claim = await tx.match.updateMany({
@@ -421,7 +424,7 @@ export async function seedMonthlySquad(args: {
     }
     if (bump.length > 0) {
       const users = await tx.user.findMany({ where: { id: { in: bump } }, select: { name: true, phoneNumber: true } });
-      const sendAfter = adminNoticeSendAfter(now);
+      const sendAfter = adminNoticeSendAfter(now, quiet);
       for (const u of users) {
         if (!u.phoneNumber) continue;
         await tx.botJob.create({
@@ -430,7 +433,7 @@ export async function seedMonthlySquad(args: {
             kind: "dm",
             phone: u.phoneNumber.replace(/^\+/, ""),
             text: buildSeedBumpedDm({ name: u.name, activityName: week.activityName, matchDate: week.matchDate, lang: week.language }),
-            // Never between 23:00 and 08:59 London: held until 09:00.
+            // Never in the club's quiet hours: held until they end.
             ...(sendAfter ? { sendAfter } : {}),
           },
         });

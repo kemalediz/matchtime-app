@@ -28,8 +28,9 @@
  * anyway, and a BotJob queued for a muted club would go out the moment it
  * is unmuted, about a day that is long over.
  *
- * NOT FROM 23:00 LONDON. `sendAdminNotice` holds a notice queued between
- * 23:00 and 08:59 until 09:00 (the shared message hours). Before midnight
+ * NOT WHEN IT WOULD WAIT UNTIL TOMORROW. `sendAdminNotice` holds a notice
+ * queued in the club's quiet hours until they end (by default 23:00 to
+ * 08:59, held until 09:00; with quiet hours off, never). Before midnight
  * that 09:00 is TOMORROW, by when the allowance has reset and the message
  * would be false. So from 23:00 nothing is queued or claimed; the cap is
  * under an hour from its reset. Between 00:00 and 08:59 the notice is
@@ -39,7 +40,7 @@
  */
 import { db } from "./db";
 import { formatLondon } from "./london-time";
-import { MESSAGE_HOURS_TO_HOUR } from "./message-hours";
+import { QUIET_HOURS_SELECT, messageHoursSendAfter, quietHoursOf, type QuietHours } from "./message-hours";
 import { sendAdminNotice } from "./admin-channel";
 import { isClubOperational } from "./club-approval-state";
 import { t } from "./i18n/t";
@@ -52,10 +53,13 @@ export function aiCapNoticeKey(orgId: string, now: Date): string {
   return `${orgId}:ai-cap:${formatLondon(now, "yyyy-MM-dd")}`;
 }
 
-/** True from 23:00 to 23:59 London: after the message hours close, a
- *  notice would be held for tomorrow's 09:00. */
-export function aiCapNoticeTooLate(now: Date): boolean {
-  return Number(formatLondon(now, "H")) >= MESSAGE_HOURS_TO_HOUR;
+/** True when a notice queued now would be held into tomorrow (London) by
+ *  the club's quiet hours: by default 23:00 to 23:59. Quiet hours off:
+ *  never. A notice held to later the SAME day (03:00, held to 09:00) is
+ *  not too late: it still talks about today. */
+export function aiCapNoticeTooLate(now: Date, quiet?: QuietHours | null): boolean {
+  const held = messageHoursSendAfter(now, quiet ?? undefined);
+  return held !== null && formatLondon(held, "yyyy-MM-dd") !== formatLondon(now, "yyyy-MM-dd");
 }
 
 /**
@@ -83,12 +87,12 @@ export type AiCapNoticeResult = "sent" | "already" | "skipped" | "failed";
 export async function notifyAdminsOfAiCap(orgId: string, now: Date = new Date()): Promise<AiCapNoticeResult> {
   const key = aiCapNoticeKey(orgId, now);
   try {
-    if (aiCapNoticeTooLate(now)) return "skipped";
     if (await db.sentNotification.findUnique({ where: { key }, select: { id: true } })) return "already";
 
     const org = await db.organisation.findUnique({
       where: { id: orgId },
       select: {
+        ...QUIET_HOURS_SELECT,
         name: true,
         language: true,
         approvalStatus: true,
@@ -99,6 +103,9 @@ export async function notifyAdminsOfAiCap(orgId: string, now: Date = new Date())
       },
     });
     if (!org || !isClubOperational(org) || !org.whatsappBotEnabled || !org.whatsappGroupId) return "skipped";
+    // The club's quiet hours (2026-10-16): a notice that would be held into
+    // tomorrow is not sent. Checked before the claim, so nothing is claimed.
+    if (aiCapNoticeTooLate(now, quietHoursOf(org))) return "skipped";
 
     try {
       await db.sentNotification.create({ data: { key, kind: AI_CAP_NOTICE_KIND } });

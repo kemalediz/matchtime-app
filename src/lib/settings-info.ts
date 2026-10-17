@@ -39,6 +39,7 @@ export const SETTING_INFO_KEYS = [
   "clubName",
   "teamNames",
   "language",
+  "quietHours",
   // Bot features
   "attendance",
   "bench",
@@ -228,6 +229,49 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       together: [
         "Grup sohbetiniz başka bir dildeyse MatchTime, Grup sohbetinizden kurulum bölümünde bunu değiştirmeyi önerebilir. Dili hiçbir zaman kendisi değiştirmez.",
         "Bu yönetici sayfasındaki bazı başlıklar, ne seçerseniz seçin, şimdilik İngilizcedir.",
+      ],
+    },
+  },
+  // Traced 2026-10-16: every gate that reads the club's quiet hours is
+  // listed in src/lib/message-hours.ts ("CLUB gates"); the ones that never
+  // wait are the analyze and dm-reply replies (returned to the Pi at once),
+  // the `holdOvernight: false` admin DMs, and the posts with their own
+  // time of day. The platform's setup and billing DMs keep the default.
+  quietHours: {
+    en: {
+      title: "Quiet hours",
+      what: [
+        "During quiet hours MatchTime holds the messages it sends on its own and sends them when quiet hours end. The times are London time.",
+        "These wait: admin messages, by DM or in your admin WhatsApp group (the Teams ready proposal, the organisers' pick list, the reminder to rate players before the first teams, and posters and team sheets MatchTime makes by itself); bench offers; the one follow-up DM to a player invited to fill a place; the drop-out deadline reminder and summary; the published list; and for a monthly squad, the sign-up list, the list posts, the payment reminders, the month's close and the DMs about the month.",
+        "These never wait: MatchTime's replies to a message someone has just sent it, in the group or by DM; a poster or team sheet an admin asks for; and posts that go at their own time, such as the 17:00 update and the match-day kit reminder. By DM, the admin messages about someone joining or leaving the group, a new player's IN, and partner club asks go at once too.",
+      ],
+      choices: [
+        { name: ON.en, text: "Messages wait from the From time until the To time." },
+        { name: OFF.en, text: "Nothing waits. MatchTime sends at any hour." },
+      ],
+      newClubs: "On, 23:00 to 09:00.",
+      suits: "Off suits clubs whose organisers want admin messages as they happen, at any hour.",
+      together: [
+        "If the daily AI limit notice would have to wait until the next day, it is not sent.",
+        "MatchTime's own messages to you about setting up the club and about its fee keep 23:00 to 09:00, whatever you choose here.",
+      ],
+    },
+    tr: {
+      title: "Sessiz saatler",
+      what: [
+        "Sessiz saatlerde MatchTime kendiliğinden gönderdiği mesajları bekletir ve sessiz saatler bitince gönderir. Saatler Londra saatidir.",
+        "Bunlar bekler: DM ile ya da yönetici WhatsApp grubunuzda giden yönetici mesajları (Takımlar hazır önerisi, organizatörlerin seçim listesi, ilk takımlardan önce oyuncuları puanlama hatırlatması, MatchTime'ın kendiliğinden hazırladığı afişler ve takım listeleri); yedek oyunculara yer teklifleri; bir yeri doldurmaya çağrılan oyuncuya giden tek takip DM'i; bırakma son saati hatırlatması ve özeti; yayınlanan liste; aylık kadroda kayıt listesi, liste mesajları, ödeme hatırlatmaları, ayın kapanışı ve ayla ilgili DM'ler.",
+        "Bunlar hiç beklemez: MatchTime'ın birinin az önce gönderdiği mesaja, grupta ya da DM ile verdiği yanıtlar; bir yöneticinin istediği afiş ya da takım listesi; kendi saatinde giden mesajlar, örneğin 17:00 güncellemesi ve maç günü malzeme hatırlatması. DM ile giden yönetici mesajlarından gruba katılan ya da ayrılan biri, yeni bir oyuncunun VARIM yazması ve ortak kulüp istekleri de hemen gider.",
+      ],
+      choices: [
+        { name: ON.tr, text: "Mesajlar Başlangıç saatinden Bitiş saatine kadar bekler." },
+        { name: OFF.tr, text: "Hiçbir şey beklemez. MatchTime her saatte gönderir." },
+      ],
+      newClubs: "Açık, 23:00 ile 09:00 arası.",
+      suits: "Kapalı, yönetici mesajlarını her saatte, olduğu anda almak isteyen organizatörlere uyar.",
+      together: [
+        "Günlük yapay zekâ kullanım hakkı bildirimi ertesi güne kadar beklemek zorunda kalacaksa gönderilmez.",
+        "MatchTime'ın kulübü kurmak ve ücreti hakkında size gönderdiği kendi mesajları, burada ne seçerseniz seçin, 23:00 ile 09:00 arasında bekler.",
       ],
     },
   },

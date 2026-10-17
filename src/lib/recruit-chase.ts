@@ -41,7 +41,7 @@
  * missed chase beats a duplicate one.
  */
 import { t } from "./i18n/t";
-import { inMessageHours } from "./message-hours";
+import { inMessageHours, type QuietHours } from "./message-hours";
 import type { Lang } from "./i18n/lang";
 
 /**
@@ -58,15 +58,15 @@ export const RECRUIT_CHASE_AFTER_MS = 3 * 60 * 60 * 1000;
  * bench-slot-offer DM in bot-scheduler.ts already gates personal,
  * actionable nudges on the daytime window ("never ping anyone about a
  * slot overnight"). A chase is the same class of message, so it gets the
- * same window: 09:00 to 22:59 London, the shared message hours
+ * same window: outside the club's quiet hours (by default 09:00 to 22:59 London)
  * (message-hours.ts). Missing the window is harmless: the chase is not lost, it
  * just waits for the next poll inside it (and if the match has gone by
  * then, `isMatchChaseable` correctly drops it).
  *
  * Is `at` inside the sociable window for a chase DM?
  */
-export function isSociableChaseHour(at: Date): boolean {
-  return inMessageHours(at);
+export function isSociableChaseHour(at: Date, quiet?: QuietHours | null): boolean {
+  return inMessageHours(at, quiet ?? undefined);
 }
 
 /** Match statuses the scheduler ever hands us. */
@@ -126,6 +126,8 @@ export interface ShouldChaseRecruitInput {
   subscribed: boolean;
   /** Has the one chase already been dispatched for this match+user? */
   alreadyChased: boolean;
+  /** The club's quiet hours (absent: the default). */
+  quiet?: QuietHours | null;
 }
 
 /**
@@ -166,7 +168,7 @@ export function shouldChaseRecruit(input: ShouldChaseRecruitInput): boolean {
   if (now.getTime() - invitedAt.getTime() < RECRUIT_CHASE_AFTER_MS) return false;
 
   // Not in the middle of the night.
-  return isSociableChaseHour(now);
+  return isSociableChaseHour(now, input.quiet);
 }
 
 /** The idempotency key for the one chase. Never collides with the

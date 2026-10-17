@@ -950,7 +950,7 @@ export async function computeDuePosts(
     try {
       const { signupListPosts, loadLiveMonths } = await import("./month-signup");
       liveMonths ??= await loadLiveMonths(org.id, now);
-      const signup = await signupListPosts(org.id, now, liveMonths);
+      const signup = await signupListPosts(org.id, now, liveMonths, features.quietHours);
       signupMonths = signup.months;
       for (const p of signup.posts) out.push({ kind: "group-message", key: p.key, text: p.text });
     } catch (err) {
@@ -963,7 +963,7 @@ export async function computeDuePosts(
     // here is a pay link. A club on "weekly" never reaches this.
     try {
       const { monthPaymentPosts } = await import("./month-payment");
-      out.push(...(await monthPaymentPosts(org.id, now, liveMonths)));
+      out.push(...(await monthPaymentPosts(org.id, now, liveMonths, features.quietHours)));
     } catch (err) {
       console.error(`[scheduler] org ${org.id}: the month's payment posts could not be computed on this poll:`, err);
     }
@@ -1982,7 +1982,7 @@ async function computeForMatch(
     const reminderDue =
       weekly.dropOut !== null &&
       !sentKeys.has(reminderKey) &&
-      dropOutReminderDue(now, weekly.dropOut) &&
+      dropOutReminderDue(now, weekly.dropOut, features.quietHours) &&
       !madeAfterDropOutDeadline(m.createdAt, weekly.dropOut);
     // Once the teams are out the team sheet is the announcement; a
     // fourteen-name list after it would be the roster the group was
@@ -1991,7 +1991,7 @@ async function computeForMatch(
       weekly.listPublish !== null &&
       !sentKeys.has(listKey) &&
       m.teamAssignments.length === 0 &&
-      listPublishDue(now, weekly.listPublish, m.date);
+      listPublishDue(now, weekly.listPublish, m.date, features.quietHours);
     if (isLive && (reminderDue || listDue) && isNextUpcomingForPosting(siblingMatches, m)) {
       if (reminderDue && organisers) {
         // The organisers announce: the squad and the deadline go to them.
@@ -2109,6 +2109,7 @@ async function computeForMatch(
       // the same list is not shown twice inside three hours, so a "who's
       // in?" answered at 08:30 is not followed by the same list at 09:00.
       sameListShownRecently: lastShownHash === hash && shownInQuietWindow(shown[0]?.createdAt, now),
+      quiet: features.quietHours,
     });
     if (due) {
       out.push({ kind: "group-message", key: `${prefix}${hash}:${shown.length}`, matchId, text });
@@ -2164,7 +2165,7 @@ async function computeForMatch(
     // Cheap pre-filter: the three cheap booleans and the clock gate all
     // have to hold before we spend a query. This block therefore costs
     // nothing on the overwhelmingly common tick.
-    if (matchLive && squadShort && isSociableChaseHour(now)) {
+    if (matchLive && squadShort && isSociableChaseHour(now, features.quietHours)) {
       const invites = await db.sentNotification.findMany({
         where: { matchId, kind: "recruit-dm", targetUser: { not: null } },
         select: { targetUser: true, createdAt: true },
@@ -2277,6 +2278,7 @@ async function computeForMatch(
             matchLive,
             subscribed: !optedOut.has(u.id),
             alreadyChased: sentKeys.has(key),
+            quiet: features.quietHours,
           });
           if (!decision) continue;
           out.push({
@@ -2311,9 +2313,9 @@ async function computeForMatch(
   if (m.benchSlotOffers.length > 0) {
     // Daytime gate: never ping anyone about a slot overnight. A drop
     // at 00:24 just waits — the offer stays open (no waMessageId yet)
-    // and posts when people are awake: 09:00 to 22:59 London, the shared
-    // message hours (message-hours.ts).
-    if (inMessageHours(now)) {
+    // and posts when people are awake: outside the club's quiet hours (by
+    // default 09:00 to 22:59 London; message-hours.ts). Off: at once.
+    if (inMessageHours(now, features.quietHours)) {
       // Per-category opt-out: benchers with subBenchOfferDm=false asked not
       // to be offered slots. Exclude them from BOTH the group @-tag and the
       // personal DM below (default is subscribed, so only explicit opt-outs

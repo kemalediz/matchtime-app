@@ -13,7 +13,7 @@
  * result.
  */
 import { formatLondon, londonDateTimeToUtc } from "./london-time";
-import { messageHoursSendAfter } from "./message-hours";
+import { messageHoursSendAfter, type QuietHours } from "./message-hours";
 import { isSameRecurringFixture, type RecurringFixtureKey } from "./match-slot";
 
 /** How far back "last week" may be (decision D1). A cancelled week is
@@ -336,11 +336,12 @@ export function isLateDrop(sentAt: Date, deadline: Date): boolean {
 }
 
 /**
- * When an admin notice queued `now` may go out: null for "now" (09:00 to
- * 22:59 London, the shared message hours), else the next 09:00 London
- * (plan R4). No longer tied to `ROLLING_SEED_HOUR`: the squad is still
- * carried over at 08:00, and a notice that seed queues waits for 09:00.
+ * When an admin notice queued `now` may go out: null for "now" (outside
+ * the club's quiet hours; by default 09:00 to 22:59 London), else when
+ * they end (plan R4; the club's setting since 2026-10-16). No longer tied
+ * to `ROLLING_SEED_HOUR`: the squad is still carried over at 08:00, and a
+ * notice that seed queues waits for the quiet hours to end.
  */
-export function adminNoticeSendAfter(now: Date): Date | null {
-  return messageHoursSendAfter(now);
+export function adminNoticeSendAfter(now: Date, quiet?: QuietHours | null): Date | null {
+  return messageHoursSendAfter(now, quiet ?? undefined);
 }

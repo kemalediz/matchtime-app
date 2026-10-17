@@ -26,6 +26,7 @@ import { ADMIN_GROUP_CODE_TTL_MS, ADMIN_GROUP_DM_CODE_TTL_MS } from "../admin-ch
 import { LIST_OPENS_DAYS_MAX, LIST_OPENS_DAYS_MIN, MAX_PER_GAME_PENCE, PAYMENT_INSTRUCTIONS_MAX } from "../squad-month-rules";
 import { REMINDER_LEAD_MS, effectiveTeamsReadyTime } from "../team-proposal-rules";
 import { pickFallbackAt } from "../organiser-pick-rules";
+import { DEFAULT_QUIET_HOURS } from "../message-hours";
 import {
   PARTNER_ASK_CUTOFF_DEFAULT_HOURS,
   PARTNER_ASK_CUTOFF_MAX_HOURS,
@@ -158,6 +159,7 @@ describe("settings explanations: house rules", () => {
         adminChannel: s.settings_admin_channel_heading,
         adminGroupLink: s.settings_admin_channel_link_button,
         teamsReady: s.tp_settings_label,
+        quietHours: s.qh_settings_label,
         posters: s.gp_title,
         posterDesign: s.gp_design_heading,
         posterBackground: s.gp_upload_heading,
@@ -215,6 +217,25 @@ describe("settings explanations: house rules", () => {
 describe("settings explanations: the facts match the code", () => {
   const d = orgDefaults();
   const newClubs = (k: SettingInfoKey, lang: Lang = "en") => settingInfo(lang, k).newClubs;
+
+  it("quiet hours: the default stated is the schema's and the code's (On, 23:00 to 09:00)", () => {
+    expect(d.quietHoursEnabled).toBe("true");
+    expect(d.quietHoursFrom).toBe(DEFAULT_QUIET_HOURS.from);
+    expect(d.quietHoursTo).toBe(DEFAULT_QUIET_HOURS.to);
+    expect(newClubs("quietHours")).toBe(`On, ${DEFAULT_QUIET_HOURS.from} to ${DEFAULT_QUIET_HOURS.to}.`);
+    expect(newClubs("quietHours", "tr")).toBe(`Açık, ${DEFAULT_QUIET_HOURS.from} ile ${DEFAULT_QUIET_HOURS.to} arası.`);
+    for (const lang of LANGS) {
+      const c = settingInfo(lang, "quietHours");
+      expect(c.choices!.map((x) => x.name)).toEqual(lang === "en" ? ["On", "Off"] : ["Açık", "Kapalı"]);
+      // The platform's own setup and fee DMs keep the default window.
+      expect(c.together!.join(" ")).toContain(`${DEFAULT_QUIET_HOURS.from}`);
+    }
+    // The gates named in the popup are the ones message-hours.ts lists as club gates.
+    const doc = read("src/lib/message-hours.ts");
+    for (const f of ["admin-channel.ts", "organiser-pick-rules.ts", "bot-scheduler.ts", "recruit-chase.ts", "weekly-deadlines.ts", "seed-nudge-rules.ts", "month-signup-rules.ts", "ai-cap-notice.ts"]) {
+      expect(doc).toContain(f);
+    }
+  });
 
   it("each switch's new-club default is the schema default", () => {
     const columns: Partial<Record<SettingInfoKey, string>> = {

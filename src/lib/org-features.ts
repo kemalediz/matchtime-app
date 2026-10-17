@@ -25,6 +25,7 @@ import { normaliseLang, type Lang } from "./i18n/lang";
 import { normaliseBenchPickMode, type BenchPickMode } from "./squad-capacity";
 import { normaliseSquadMode, type SquadMode } from "./squad-month-rules";
 import { normaliseListAnnouncer, type ListAnnouncer } from "./list-announcer";
+import { QUIET_HOURS_SELECT, quietHoursOf, type QuietHours, type QuietHoursRow } from "./message-hours";
 
 export { FEATURE_META } from "./org-features-meta";
 export type { FeatureKey, ToggleableKey } from "./org-features-meta";
@@ -96,6 +97,10 @@ export interface OrgFeatures {
    *  behaviour. Not in `FEATURE_META`; it has its own row on
    *  /admin/settings. */
   gearReminder?: boolean;
+  /** The club's quiet hours (2026-10-16), from `quietHoursOf`. OPTIONAL so
+   *  every hand-built fixture keeps its shape; absent means the default,
+   *  ON 23:00 to 09:00, today's behaviour. Its own row on /admin/settings. */
+  quietHours?: QuietHours;
 }
 
 
@@ -139,7 +144,7 @@ function fromRow(row: {
   squadMode?: string | null;
   listAnnouncer?: string | null;
   featureGearReminder?: boolean | null;
-}): OrgFeatures {
+} & QuietHoursRow): OrgFeatures {
   return {
     botEnabled: row.whatsappBotEnabled,
     attendance: row.featureAttendance,
@@ -164,6 +169,8 @@ function fromRow(row: {
     // Absent (an older caller's select): ON, today's behaviour. A new
     // club's row says false (the column default).
     gearReminder: row.featureGearReminder ?? true,
+    // Absent columns (an older caller's select): the default, ON 23:00 to 09:00.
+    quietHours: quietHoursOf(row),
   };
 }
 
@@ -186,6 +193,7 @@ const SELECT = {
   squadMode: true,
   listAnnouncer: true,
   featureGearReminder: true,
+  ...QUIET_HOURS_SELECT,
 } as const;
 
 export async function getOrgFeatures(orgId: string): Promise<OrgFeatures> {

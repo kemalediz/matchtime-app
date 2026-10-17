@@ -16,7 +16,7 @@
  * Once per match: claimed by the `SentNotification` key
  * `<matchId>:deadline-summary` (unique; first writer wins). If the notice
  * cannot be queued the claim is released so the next poll tries again.
- * Due 09:00 to 22:59 London, after the deadline and before kickoff, for
+ * Due outside the club's quiet hours (by default 09:00 to 22:59 London), after the deadline and before kickoff, for
  * the next live match of its fixture only, and never for a match made
  * after its own deadline (2026-10-15, `madeAfterDropOutDeadline`). The
  * first line names the deadline and the kick-off, each for what it is. A club without the setting
@@ -40,6 +40,7 @@ import { isClubOperational } from "./club-approval-state";
 import { getOrgFeatures } from "./org-features";
 import { isNextUpcomingForPosting } from "./next-upcoming-match";
 import { deadlineSummaryDue, madeAfterDropOutDeadline, weeklyDeadlinesFor } from "./weekly-deadlines";
+import { QUIET_HOURS_SELECT, quietHoursOf } from "./message-hours";
 
 const LIVE = ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] as const;
 
@@ -60,6 +61,7 @@ export async function sendDueDeadlineSummaries(orgId: string, now: Date = new Da
       dropOutDeadlineTime: true,
       listPublishDay: true,
       listPublishTime: true,
+      ...QUIET_HOURS_SELECT,
     },
   });
   if (!org || org.dropOutDeadlineDay == null || org.dropOutDeadlineTime == null) return { sent: 0 };
@@ -81,7 +83,7 @@ export async function sendDueDeadlineSummaries(orgId: string, now: Date = new Da
   let sent = 0;
   for (const m of matches) {
     const { dropOut } = weeklyDeadlinesFor(m.date, org);
-    if (!dropOut || !deadlineSummaryDue(now, dropOut, m.date)) continue;
+    if (!dropOut || !deadlineSummaryDue(now, dropOut, m.date, quietHoursOf(org))) continue;
     // A game made after its own deadline (a club that went live late in
     // the week, 2026-10-15): nobody could drop out of it, nothing to sum up.
     if (madeAfterDropOutDeadline(m.createdAt, dropOut)) continue;

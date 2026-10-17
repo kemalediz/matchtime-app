@@ -1,7 +1,7 @@
 /**
  * CLUB_LIMIT_EXEMPT_ORG_IDS (2026-10-16): one env var exempts listed clubs
- * from the new-club DM cap and the admin-group posting hours. Unset or
- * empty changes nothing.
+ * from the new-club DM cap. Unset or empty changes nothing. It no longer
+ * lifts the admin-group posting hours: those are the club's quiet hours.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CLUB_LIMIT_EXEMPT_ENV, isClubLimitExempt, parseClubLimitExemptIds } from "../club-limit-exempt";
@@ -52,15 +52,14 @@ describe("newClubDmCap with the exemption", () => {
   });
 });
 
-describe("isAdminGroupPostHour with the exemption", () => {
-  it("unexempt club waits overnight", () => {
-    vi.stubEnv(CLUB_LIMIT_EXEMPT_ENV, "org-other");
-    expect(isAdminGroupPostHour(NIGHT, "org-new")).toBe(false);
-    expect(isAdminGroupPostHour(NIGHT)).toBe(false);
-    expect(isAdminGroupPostHour(NOON, "org-new")).toBe(true);
-  });
-  it("exempt club posts at any hour", () => {
+describe("the exemption no longer touches the admin-group hours (2026-10-16)", () => {
+  it("a listed club still waits overnight with its default quiet hours: the hours are the club's setting now", () => {
     vi.stubEnv(CLUB_LIMIT_EXEMPT_ENV, "org-new");
-    expect(isAdminGroupPostHour(NIGHT, "org-new")).toBe(true);
+    expect(isAdminGroupPostHour(NIGHT)).toBe(false);
+    expect(isAdminGroupPostHour(NOON)).toBe(true);
+  });
+  it("only the club's quiet hours set to off lift the hold", () => {
+    vi.stubEnv(CLUB_LIMIT_EXEMPT_ENV, "");
+    expect(isAdminGroupPostHour(NIGHT, { enabled: false, from: "23:00", to: "09:00" })).toBe(true);
   });
 });

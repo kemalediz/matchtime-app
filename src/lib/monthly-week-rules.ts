@@ -14,7 +14,7 @@
  * included) never reaches any of it.
  */
 import { formatLondon, londonDateTimeToUtc } from "./london-time";
-import { MESSAGE_HOURS_FROM_TIME, inMessageHours } from "./message-hours";
+import { inMessageHours, messageHoursDayStart, type QuietHours } from "./message-hours";
 import { isMonthListHeader, type MonthlyList, type MonthlyListEntry } from "./monthly-list";
 import { candidatesFor, nameKey, type MonthCreditRule } from "./squad-month-rules";
 
@@ -524,7 +524,7 @@ const MORNING_UNTIL_HOUR = 12;
  *              hours are up;
  *   null       nothing to post.
  *
- * Never between 23:00 and 08:59 London, never within 30 minutes of the
+ * Never in the club's quiet hours (by default 23:00 to 08:59 London), never within 30 minutes of the
  * last list post, never once the teams are out (the team sheet is the
  * announcement then), and only for the fixture's next match.
  */
@@ -545,16 +545,21 @@ export function decideListPost(p: {
    *  hours): a post or a reply of ours, or a member's paste of it. Only
    *  the morning post reads it; a CHANGED list is posted regardless. */
   sameListShownRecently?: boolean;
+  /** The club's quiet hours (absent: the default). The morning post waits
+   *  for the club's day start (`messageHoursDayStart`). */
+  quiet?: QuietHours | null;
 }): "change" | "morning" | null {
   if (!p.live || !p.nextUpcoming || p.teamsOut) return null;
   if (p.now.getTime() >= p.matchDate.getTime()) return null;
-  if (!inMessageHours(p.now)) return null;
+  if (!inMessageHours(p.now, p.quiet ?? undefined)) return null;
   if (p.lastPostAt && p.now.getTime() - p.lastPostAt.getTime() < LIST_REPOST_FLOOR_MS) return null;
   if (p.hash !== p.lastShownHash) return "change";
 
   const matchDay = formatLondon(p.matchDate, "yyyy-MM-dd");
   if (formatLondon(p.now, "yyyy-MM-dd") !== matchDay || Number(formatLondon(p.now, "H")) >= MORNING_UNTIL_HOUR) return null;
-  const morningStart = londonDateTimeToUtc(matchDay, MESSAGE_HOURS_FROM_TIME);
+  const morningStart = londonDateTimeToUtc(matchDay, messageHoursDayStart(p.quiet ?? undefined));
+  // Not before the club's day starts: with quiet hours off, 03:00 is not the morning.
+  if (p.now.getTime() < morningStart.getTime()) return null;
   if (p.lastPostAt && p.lastPostAt.getTime() >= morningStart.getTime()) return null;
   if (p.sameListShownRecently) return null;
   return "morning";

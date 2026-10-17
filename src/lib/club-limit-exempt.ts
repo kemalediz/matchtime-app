@@ -1,13 +1,16 @@
 /**
- * Clubs exempt from two per-club limits (Kemal, 2026-10-16):
- *   - the new-club member DM cap (`newClubDmCap`, club-decision-rules.ts);
- *   - the admin-group posting hours (`isAdminGroupPostHour`,
- *     admin-channel-rules.ts): an exempt club's admin-group posts are not
- *     held overnight.
+ * Clubs exempt from the new-club member DM cap (`newClubDmCap`,
+ * club-decision-rules.ts), Kemal, 2026-10-16.
+ *
+ * Until quiet hours became a club setting (2026-10-16) this also lifted
+ * the admin-group posting hours for the listed clubs. That part is gone:
+ * a club's quiet hours are now its own choice on /admin/settings
+ * (`quietHoursOf`, message-hours.ts), and the manager sets them with
+ * `scripts/set-quiet-hours.ts`.
  *
  * Driven by ONE env var, `CLUB_LIMIT_EXEMPT_ORG_IDS`: org ids separated by
  * commas and/or whitespace. Unset or empty means no club is exempt, and
- * every limit behaves exactly as before.
+ * the cap behaves exactly as before.
  */
 
 export const CLUB_LIMIT_EXEMPT_ENV = "CLUB_LIMIT_EXEMPT_ORG_IDS";
