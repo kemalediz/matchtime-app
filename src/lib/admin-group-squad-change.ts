@@ -153,12 +153,17 @@ export async function handleAdminSquadChange(input: AdminSquadChangeInput): Prom
     const vetFacts: NonNullable<Parameters<typeof runAttendanceEngineBatch>[0]["deps"]["vetFacts"]> = ({ message, facts, state }) => {
       if (message.waMessageId !== messageId) return facts;
       kickoffLabel = state.kickoffLabel;
+      // What the floor reads: a bare IN/OUT for the sender, or names (a
+      // mention, or a list "Imti\nRafi\nAH\n\nIn"), each the instruction.
+      const floor = floorAttendanceFacts(message.body);
+      const listedNames = floor?.kind === "attendance" ? floor.claims.filter((c) => c.subject === "other").map((c) => c.personRef) : [];
       const out = vetAdminGroupFacts({
         body: message.body,
         facts,
         senderUserId: input.senderUserId,
         senderName: input.senderName,
-        bareDeclaration: floorAttendanceFacts(message.body) !== null,
+        bareDeclaration: floor !== null,
+        listedNames,
         listNotSet: notSetAt !== null,
         resolve: (ref) => refOn(state, ref),
         statusOf: (userId) => state.rows.find((r) => r.userId === userId)?.status ?? null,
@@ -193,6 +198,10 @@ export async function handleAdminSquadChange(input: AdminSquadChangeInput): Prom
       ],
       deps: {
         aiCapped: capped,
+        // An organiser's bare IN/OUT, "@Name in" or list of names with
+        // IN/OUT is structured data: read from the floor, no extractor
+        // (FNF HQ 2026-10-17, "Imti\nRafi\nAH\n\nIn").
+        floorFirst: true,
         loadState,
         vetFacts,
         // Every write is stamped as the admin group's (sourceRef

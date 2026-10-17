@@ -385,6 +385,16 @@ export interface EngineBatchDeps extends EngineApplyDeps {
    * applies per message.
    */
   aiCapped?: boolean;
+  /**
+   * A MESSAGE THE FLOOR READS IN FULL IS STRUCTURED DATA (2026-10-17). A
+   * bare IN/OUT, "@Name in", or a short list of names with IN/OUT
+   * ("Imti\nRafi\nAH\n\nIn") is decided from the floor's facts
+   * (`floorAttendanceFacts`), with no extractor call, exactly as at the
+   * cap. Anything else goes to the extractor as before. Only the admin
+   * group passes it (`admin-group-squad-change.ts`), where an organiser's
+   * list is an instruction. Absent or false, nothing changes.
+   */
+  floorFirst?: boolean;
   /** Injected so tests can load a state without a database. */
   loadState?: (orgId: string, now: Date) => Promise<SquadState>;
   /**
@@ -676,6 +686,10 @@ export async function runAttendanceEngineBatch(args: {
       };
       if (deps.aiCapped) {
         useFloor("the club is at its daily AI cap");
+        return;
+      }
+      if (deps.floorFirst && floorFacts) {
+        useFloor("the floor reads it in full (floorFirst)");
         return;
       }
       const res = await extractForRouteTraced("attendance", model, m.route as Route, {

@@ -268,3 +268,26 @@ test("a monthly club: no squad change from the admin group, and it says so in on
   expect(await statusOf(db, U.collector)).toBe("CONFIRMED");
   await db.run(`UPDATE "Organisation" SET "squadMode" = 'weekly' WHERE id = $1`, [ORG_ID]);
 });
+
+// FNF HQ 2026-10-17 09:01: an organiser's list of names with a bare IN or
+// OUT. The router (model) said `none` and nothing was written. The list is
+// structured data: the floor routes it other_att whatever the model says,
+// and the engine reads it from the floor, with no extractor (none is
+// stubbed here, so a call would read nothing).
+test("names on their own lines and a bare OUT, the router saying none: each one out, a tick", async ({ request, db }) => {
+  const text = "Ian \nNaim Newman\n\nOut";
+  engineOn({ [text]: { route: "none" } }, { floor: true });
+  const out = await say(request, text);
+  expect(out).toMatchObject({ handled: true, outcome: "squad-changed", react: "✅" });
+  expect(out.replyText).toMatch(/^Done: .*Ian Innes out.*Naim Newman out.*\d of 5\.$/);
+  expect(await statusOf(db, U.fresh)).toBe("DROPPED");
+});
+
+test("the same on one line, IN: each one back", async ({ request, db }) => {
+  const text = "Pat, Tom and Zara in";
+  engineOn({ [text]: { route: "none" } }, { floor: true });
+  const out = await say(request, text);
+  expect(out).toMatchObject({ handled: true, react: "✅" });
+  expect(out.replyText).toMatch(/^Done: /);
+  for (const id of [U.player, U.third, U.extra]) expect(["CONFIRMED", "BENCH"]).toContain(await statusOf(db, id));
+});

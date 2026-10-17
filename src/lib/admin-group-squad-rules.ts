@@ -445,6 +445,10 @@ export function adminClaimHold(p: {
   claims: Claim[];
   senderName: string | null;
   bareDeclaration: boolean;
+  /** The names the router's floor read as a list with a bare IN/OUT
+   *  ("Imti\nRafi\nAH\n\nIn", `floorAttendanceFacts`): each is the
+   *  instruction, as a bare IN/OUT is for the sender. */
+  listedNames?: readonly string[];
 }): AdminClaimHold | null {
   const c = p.claim;
   const self = c.subject === "sender";
@@ -454,6 +458,7 @@ export function adminClaimHold(p: {
   if (c.basis === "availability") return "availability";
   if (c.reported) return "reported";
   if (c.confidence < HQ_CONFIDENCE_FLOOR) return "unsure";
+  if (!self && c.personRef && (p.listedNames ?? []).some((n) => fold(n) === fold(c.personRef))) return null;
   if (self && c.polarity === "bench") return null;
 
   const names = new Set(p.claims.flatMap((x) => [...hqWords(x.personRef ?? ""), ...hqWords(x.replaces ?? "")]));
@@ -502,6 +507,8 @@ export function vetAdminGroupFacts(p: {
   senderUserId: string;
   senderName: string | null;
   bareDeclaration: boolean;
+  /** The names the floor read as a list with a bare IN/OUT (`adminClaimHold`). */
+  listedNames?: readonly string[];
   /** The game's list is not set yet (`rollingSeedPendingAt`): nothing is
    *  applied, and an instruction is held as "not-set". */
   listNotSet?: boolean;
@@ -513,7 +520,14 @@ export function vetAdminGroupFacts(p: {
     const ref: AdminClaimRef = self
       ? { kind: "member", userId: p.senderUserId, name: p.senderName ?? "?" }
       : p.resolve(claim.personRef ?? "");
-    const hold = adminClaimHold({ body: p.body, claim, claims: p.facts.claims, senderName: p.senderName, bareDeclaration: p.bareDeclaration });
+    const hold = adminClaimHold({
+      body: p.body,
+      claim,
+      claims: p.facts.claims,
+      senderName: p.senderName,
+      bareDeclaration: p.bareDeclaration,
+      listedNames: p.listedNames,
+    });
     return {
       claim,
       self,
