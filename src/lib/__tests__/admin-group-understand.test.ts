@@ -233,6 +233,30 @@ describe("the other routes reach the code the rest of MatchTime uses", () => {
     expect(requests).toHaveLength(1);
   });
 
+  // FNF HQ 2026-10-17 09:01: "Imti\nRafi\nAH\n\nIn" was routed none by the
+  // model. An organiser's list of names with IN/OUT is structured data: a
+  // squad change, and the router is not asked.
+  it.each(["Imti \nRafi \nAH\n\nIn", "Yaseen \nMo\nFeroz\nAli\n\nOut", "Imti, Rafi and AH in"])(
+    "an organiser's list %j: a squad change without the router, even when the router would say none",
+    async (text) => {
+      const r = await ask(text, "none");
+      expect(r).toMatchObject({ route: "other_att", outcome: "squad-changed" });
+      expect(squad.handleAdminSquadChange).toHaveBeenCalledWith(expect.objectContaining({ route: "other_att", text }));
+      expect(requests).toHaveLength(0);
+    },
+  );
+
+  it("the same list from someone who is not an organiser goes to the router as before", async () => {
+    await ask("Imti \nRafi \nAH\n\nIn", "none", { organiser: false });
+    expect(requests).toHaveLength(1);
+    expect(squad.handleAdminSquadChange).not.toHaveBeenCalled();
+  });
+
+  it("the same list as a reply to another organiser, untagged: their conversation, silent", async () => {
+    expect(await ask("Imti \nRafi \nAH\n\nIn", "none", { quoted: { text: "who's back?", fromMatchTime: false } })).toBeNull();
+    expect(squad.handleAdminSquadChange).not.toHaveBeenCalled();
+  });
+
   it("tells the squad change whether the message was addressed to MatchTime", async () => {
     await ask("Tom is out tonight", "other_att");
     expect(squad.handleAdminSquadChange).toHaveBeenLastCalledWith(expect.objectContaining({ addressed: false }));

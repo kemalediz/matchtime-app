@@ -541,101 +541,34 @@ interface FloorReading {
 function parseFloor(body: string): FloorReading | null {
   const t = (body ?? "").trim();
   if (!t) return null;
-  // Never the bot. `messageTagsBot` is this project's one definition of
-  // "this message tags MatchTime"; it is reused, not re-derived.
-  if (t.includes("@") && messageTagsBot({ body: t })) return null;
-  return (t.startsWith("@") ? parseMentionFloor(t) : null) ?? parseNameList(t) ?? selfFloor(t);
-}
 
-function selfFloor(t: string): FloorReading | null {
-  if (t.startsWith("@")) return null;
+  if (t.startsWith("@")) {
+    // Never the bot. `messageTagsBot` is this project's one definition
+    // of "this message tags MatchTime"; it is reused, not re-derived.
+    if (messageTagsBot({ body: t })) return null;
+    let rest = t;
+    const names: string[] = [];
+    for (;;) {
+      const m = MENTION_TOKEN.exec(rest);
+      if (!m) break;
+      const words = [m[0].slice(1)];
+      rest = rest.slice(m[0].length).trimStart();
+      // Consume the rest of the mentioned display name.
+      for (;;) {
+        const word = rest.split(/\s+/)[0] ?? "";
+        if (!word || !NAME_WORD.test(word) || isFloorToken(word)) break;
+        words.push(word);
+        rest = rest.slice(word.length).trimStart();
+      }
+      names.push(words.join(" "));
+    }
+    if (names.length === 0) return null;
+    const polarity = bareDeclaration(rest);
+    return polarity ? { route: "other_att", polarity, names } : null;
+  }
+
   const polarity = bareDeclaration(t);
   return polarity ? { route: "self_att", polarity, names: [] } : null;
-}
-
-// ── THE LIST FLOOR (FNF HQ, 2026-10-17) ──────────────────────────────────
-//
-// "Imti\nRafi\nAH\n\nIn" and "Yaseen, Mo, Feroz and Ali out": names and a
-// bare token, nothing else, the mention floor's shape without the @. The
-// router (model) routed the first `none` in production, and the HQ vetting
-// would have held it anyway (a name alone on its line is no command
-// clause). It is structured data, so it is read here, in every group.
-//
-// Deliberately narrow. Two to eight names (one name stays the router's, as
-// "Baki OUT" always was; a whole squad is a pasted list). Each name one to
-// three capitalised words of letters (or an @tag), never a word that is not
-// a name ("me", "all", "are", "the"), never the bot. Separated by new lines, commas, "and", "&",
-// "+" or "ve". The token first or last, alone. A question mark, a word
-// around the names, or both ways in one message: null, the router's.
-
-const LIST_TOKEN = "in|out|var|yok";
-const LIST_TAIL = new RegExp(`^([\\s\\S]*?)[\\s,:;.\\-–—]+(${LIST_TOKEN})[\\s!.]*$`, "iu");
-const LIST_HEAD = new RegExp(`^(${LIST_TOKEN})[\\s,:;.\\-–—]+([\\s\\S]+)$`, "iu");
-const LIST_SPLIT = /\n|,|\s+(?:and|ve|&|\+)\s+|\s*[&+]\s*/iu;
-const LIST_BULLET = /^\s*(?:\d{1,2}[.)]|[-•*·])\s*/u;
-const LIST_WORD = /^@?\p{L}[\p{L}'’.-]*$/u;
-const LIST_MAX = 8;
-const LIST_PARTICLE = new Set(["ul", "al", "el", "bin", "ibn", "de", "da", "van", "der", "von"]);
-/** Words that are never a player's name in a list. Folded. */
-const LIST_NOT_A_NAME = new Set([
-  "i", "im", "me", "myself", "we", "us", "you", "he", "she", "him", "her", "they", "them", "it",
-  "all", "everyone", "everybody", "anyone", "someone", "nobody", "both", "rest", "others",
-  "is", "are", "was", "were", "be", "am", "not", "also", "too", "the", "a", "an", "and", "or",
-  "back", "still", "now", "then", "maybe", "this", "that", "week", "today", "tonight",
-  "mt", "matchtime", "bot",
-  "ben", "biz", "sen", "siz", "o", "onlar", "herkes", "hepsi", "belki",
-]);
-
-function parseNameList(t: string): FloorReading | null {
-  const text = t.replace(EMOJI_RUN, " ").trim();
-  if (!text || text.includes("?")) return null;
-  const tail = LIST_TAIL.exec(text);
-  const head = tail ? null : LIST_HEAD.exec(text);
-  const [rest, token] = tail ? [tail[1], tail[2]] : head ? [head[2], head[1]] : [null, null];
-  if (rest === null || token === null) return null;
-  const polarity = /^(?:in|var)$/iu.test(token) ? "in" : "out";
-  const names: string[] = [];
-  for (const raw of rest.split(LIST_SPLIT)) {
-    const item = raw.replace(LIST_BULLET, "").replace(/[\s.,;:]+$/u, "").trim();
-    if (!item) continue;
-    const words = item.split(/\s+/);
-    if (words.length > 3) return null;
-    for (const [i, w] of words.entries()) {
-      if (!LIST_WORD.test(w) || isFloorToken(w)) return null;
-      // Written as a name: capitalised ("Imti", "AH", "@kojo" is a tag),
-      // bar a particle inside one ("Ehtisham ul Haq").
-      const bare = w.replace(/^@/, "");
-      if (!w.startsWith("@") && !/^\p{Lu}/u.test(bare) && !(i > 0 && LIST_PARTICLE.has(bare))) return null;
-      if (LIST_NOT_A_NAME.has(w.replace(/^@/, "").toLowerCase().replace(/['’.]/g, ""))) return null;
-    }
-    const name = words.join(" ").replace(/^@/, "");
-    if (/^match\s*time$/iu.test(name)) return null;
-    names.push(name);
-  }
-  if (names.length < 2 || names.length > LIST_MAX) return null;
-  return { route: "other_att", polarity, names };
-}
-
-function parseMentionFloor(t: string): FloorReading | null {
-  let rest = t;
-  const names: string[] = [];
-  for (;;) {
-    const m = MENTION_TOKEN.exec(rest);
-    if (!m) break;
-    const words = [m[0].slice(1)];
-    rest = rest.slice(m[0].length).trimStart();
-    // Consume the rest of the mentioned display name.
-    for (;;) {
-      const word = rest.split(/\s+/)[0] ?? "";
-      if (!word || !NAME_WORD.test(word) || isFloorToken(word)) break;
-      words.push(word);
-      rest = rest.slice(word.length).trimStart();
-    }
-    names.push(words.join(" "));
-  }
-  if (names.length === 0) return null;
-  const polarity = bareDeclaration(rest);
-  return polarity ? { route: "other_att", polarity, names } : null;
 }
 
 /**
@@ -648,9 +581,7 @@ function parseMentionFloor(t: string): FloorReading | null {
  * and the engine decides exactly as it would on the extractor's answer.
  *
  * It claims no more than the floor does: ONLY a message that is entirely
- * a bare IN/OUT token (with optional mentions, punctuation and emoji), or
- * a short list of names with one (the list floor above). The organisers'
- * group reads it before the extractor (`floorFirst`, 2026-10-17).
+ * a bare IN/OUT token (with optional mentions, punctuation and emoji).
  * "in if we get 10", "who's in?" and "in, bringing my brother" are null,
  * and at the cap they are simply not handled rather than guessed at.
  * Every field is what the words say: present tense, not contingent, a

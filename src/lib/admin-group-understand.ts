@@ -93,6 +93,7 @@ import { answerFeeProposalYes, feeProposalsAwaiting, proposeFeeFreeInHq } from "
 import { parseFeeAskRef } from "./fee-waiver-rules";
 import { answerHqScore, hqScoreRouting } from "./admin-group-score";
 import { hasScorelineShape } from "./pipeline/score-ask";
+import { readHqNameList } from "./admin-group-name-list";
 
 /** How far back the router's "earlier here" lines reach, and how many. */
 const RECENT_MS = 30 * 60 * 1000;
@@ -224,22 +225,29 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
     const lastBotPost = (quotedIsMatchTime && input.quoted?.text) || lastHqPost;
     const capped = (await getAiBudgetStatus(org.id).catch(() => null))?.capped ?? false;
 
-    const gate = await gateBatch(
-      [
-        {
-          waMessageId: messageId,
-          body,
-          authorName: input.senderName,
-          organisers: { context: organisersContext({ pending, quoted: input.quoted, quotedIsMatchTime, recent, score: score.waiting }) },
-        },
-      ],
-      {
-        capped,
-        scoreAnswerIds: score.scoreAnswerIds,
-        scoreCorrectionIds: score.scoreCorrectionIds,
-        ...(input.deps?.routerModel ? { model: input.deps.routerModel } : {}),
-      },
-    );
+    // An organiser's short list of names with IN/OUT ("Imti\nRafi\nAH\n\nIn",
+    // FNF HQ 2026-10-17) is structured data, like a pasted list: a squad
+    // change, without asking the router (which once called it `none`). HQ
+    // only (`admin-group-name-list.ts`); the players' group is unchanged.
+    const nameList = input.organiser ? readHqNameList(body) : null;
+    const gate = nameList
+      ? { routes: [{ messageId, route: "other_att" as Route, source: "name-list" }], degradations: [] as Array<{ detail: string }> }
+      : await gateBatch(
+          [
+            {
+              waMessageId: messageId,
+              body,
+              authorName: input.senderName,
+              organisers: { context: organisersContext({ pending, quoted: input.quoted, quotedIsMatchTime, recent, score: score.waiting }) },
+            },
+          ],
+          {
+            capped,
+            scoreAnswerIds: score.scoreAnswerIds,
+            scoreCorrectionIds: score.scoreCorrectionIds,
+            ...(input.deps?.routerModel ? { model: input.deps.routerModel } : {}),
+          },
+        );
     const routed = gate.routes.find((r) => r.messageId === messageId);
     const route = routed?.route ?? null;
     // The source says whether the model chose the route or a fallback did

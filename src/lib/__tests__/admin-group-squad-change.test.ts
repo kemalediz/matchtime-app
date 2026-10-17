@@ -302,11 +302,11 @@ describe("handleAdminSquadChange", () => {
   // FNF HQ 2026-10-17 09:01: an organiser's list of names and a bare
   // IN/OUT is structured data. The engine reads it from the floor (no
   // extractor), and the vetting takes the floor's names as the instruction.
-  it("the incident's list: the engine is told to read the floor first, and every listed name applies", async () => {
+  it("the incident's list: the engine is handed its facts (no extractor), and every listed name applies", async () => {
     routed("other_att");
     const text = "Yaseen \nMo\nFeroz\nAli\n\nOut";
     engineDoes(async (a) => {
-      expect(a.deps.floorFirst).toBe(true);
+      expect(a.deps.presetFacts?.(a.messages[0])).toMatchObject({ kind: "attendance", claims: [{ personRef: "Yaseen" }, { personRef: "Mo" }, { personRef: "Feroz" }, { personRef: "Ali" }] });
       const kept = vetThrough(
         a,
         ["Yaseen", "Mo", "Feroz", "Ali"].map((n) => claim({ personRef: n, polarity: "out", confidence: 1 })),
@@ -318,10 +318,11 @@ describe("handleAdminSquadChange", () => {
     await handleAdminSquadChange({ ...input, route, text });
   });
 
-  it("the same names in a sentence that is not the floor's list are vetted as before", async () => {
+  it("the same names in a sentence that is not a list are vetted as before, and read by the extractor", async () => {
     routed("other_att");
     engineDoes(
       async (a) => {
+        expect(a.deps.presetFacts?.(a.messages[0])).toBeNull();
         const kept = vetThrough(a, [claim({ personRef: "Dev" }), claim({ personRef: "Kofi" })], [], "Dev Kofi back");
         expect(kept.claims).toEqual([]);
       },
