@@ -32,6 +32,7 @@
  * answer goes out on the platform channel (go-live slice S4).
  */
 import { db } from "@/lib/db";
+import { REPLY_PRIORITY } from "@/lib/dm-reply-priority";
 import { normalisePhone } from "@/lib/phone";
 import { getOrgFeatures } from "@/lib/org-features";
 import { buildAdminLink } from "@/lib/admin-link";
@@ -159,7 +160,7 @@ export async function handleDmHelp(args: {
     await queuePlatformDm({ phone: replyTo, text: `${notStarted}\n\n${text}`, purpose: "setup-reply", refId: `${membership.orgId}:help` });
   } else {
     await db.botJob.create({
-      data: { orgId: membership.orgId, kind: "dm", phone: replyTo.replace(/^\+/, ""), text },
+      data: { orgId: membership.orgId, kind: "dm", phone: replyTo.replace(/^\+/, ""), text, ...REPLY_PRIORITY },
     });
   }
   return { handled: "dm-help", topic: req.topic, orgId: membership.orgId, audience };

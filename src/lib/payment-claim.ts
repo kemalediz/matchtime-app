@@ -95,6 +95,7 @@
  * directly", which is the button path with the right quantity.
  */
 import { db } from "./db";
+import { REPLY_PRIORITY } from "./dm-reply-priority";
 import { normaliseLang, type Lang } from "./i18n/lang";
 import { buildPaidClaimAck, buildPaidForOthersReply } from "./dm-copy";
 import { markDirectPaymentPending, type DirectPendingOutcome } from "./direct-payment";
@@ -387,7 +388,7 @@ export async function handlePaymentClaimDm(input: {
       );
     },
     reply: async ({ orgId, text: replyText }) => {
-      await db.botJob.create({ data: { orgId, kind: "dm", phone: replyPhone, text: replyText } });
+      await db.botJob.create({ data: { orgId, kind: "dm", phone: replyPhone, text: replyText, ...REPLY_PRIORITY } });
     },
     react: async (orgId) => {
       const outcome = await queuePaidClaimReaction(db, { orgId, waMessageId, reason: "paid claim" });

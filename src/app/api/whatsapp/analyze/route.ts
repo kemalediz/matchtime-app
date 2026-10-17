@@ -92,6 +92,7 @@
  */
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { REPLY_PRIORITY } from "@/lib/dm-reply-priority";
 import { uniqueByWaMessageId } from "@/lib/analyze-batch";
 import { billingQuietWhere } from "@/lib/club-billing-rules";
 import { signMagicLinkToken, MAGIC_LINK_TTL } from "@/lib/magic-link";
@@ -1064,7 +1065,7 @@ async function handleAnalyzeRequest(request: Request) {
       });
       if (result) {
         await db.botJob.create({
-          data: { orgId: org.id, kind: "dm", phone, text: result.answer },
+          data: { orgId: org.id, kind: "dm", phone, text: result.answer, ...REPLY_PRIORITY },
         });
       }
     } catch (err) {
@@ -2989,7 +2990,7 @@ async function handleAnalyzeRequest(request: Request) {
                 }),
               ),
             queueDm: async ({ phone, text }) => {
-              await db.botJob.create({ data: { orgId: org.id, kind: "dm", phone, text } });
+              await db.botJob.create({ data: { orgId: org.id, kind: "dm", phone, text, ...REPLY_PRIORITY } });
             },
           },
         });

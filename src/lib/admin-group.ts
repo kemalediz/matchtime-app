@@ -99,6 +99,12 @@ const NO_TICK: ReadonlySet<string> = new Set([
   HQ_FEE_FREE_NOTHING_DONE,
   // A YES to a free place question past its 30 minutes: nothing done.
   HQ_FEE_FREE_EXPIRED,
+  // A squad line that changed nothing (owner rule, 2026-10-17: a tick only
+  // when something was done or a real answer given): how to make a change,
+  // a list that is not set yet. ("squad-change-failed" keeps its tick: it
+  // can carry changes that did land beside one that did not.)
+  "squad-question",
+  "squad-not-set",
   // The score (2026-10-16): a tick only when it was recorded.
   "hq-score-asked",
   "hq-score-not-changed",

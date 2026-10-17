@@ -233,6 +233,15 @@ describe("the other routes reach the code the rest of MatchTime uses", () => {
     expect(requests).toHaveLength(1);
   });
 
+  it("tells the squad change whether the message was addressed to MatchTime", async () => {
+    await ask("Tom is out tonight", "other_att");
+    expect(squad.handleAdminSquadChange).toHaveBeenLastCalledWith(expect.objectContaining({ addressed: false }));
+    await ask("@Match Time Tom is out tonight", "other_att");
+    expect(squad.handleAdminSquadChange).toHaveBeenLastCalledWith(expect.objectContaining({ addressed: true }));
+    await ask("Tom is out tonight", "other_att", { quoted: { text: TEAMS_TEXT, fromMatchTime: true } });
+    expect(squad.handleAdminSquadChange).toHaveBeenLastCalledWith(expect.objectContaining({ addressed: true }));
+  });
+
   it("a monthly club: no weekly squad or team change, one line instead", async () => {
     const r = await ask("Tom is out tonight", "other_att", { org: { ...ORG, squadMode: "monthly" } });
     expect(r?.outcome).toBe("hq-not-here");
@@ -262,6 +271,50 @@ describe("the other routes reach the code the rest of MatchTime uses", () => {
 
   it.each(["none", "offer", "unsure"])("%s: the organisers' own conversation, silent", async (route) => {
     expect(await ask("who is bringing the bibs?", route)).toBeNull();
+  });
+});
+
+// FNF HQ, 2026-10-16 23:49 London: "Imti Rafi AH back", a WhatsApp reply to
+// ANOTHER organiser's message about next week, was routed other_att by the
+// model (prod log "routed other_att by model (0 waiting, a reply)"), and HQ
+// got a tick and "I don't know AH yet". A reply to another organiser, with
+// no @tag, is the organisers talking to each other: nothing MatchTime does
+// from it, whatever the route. The safe-YES rule and the score keep their
+// own rules for a quoted message.
+describe("a reply to another organiser, not tagged: the organisers' own conversation", () => {
+  const fromOrganiser = { text: "We have the below out - Yaseen Mo Feroz", fromMatchTime: false };
+
+  it.each(["other_att", "self_att", "unsure", "balancer", "ask_group", "question", "help", "admin_ops", "poster", "team_sheet"])(
+    "%s: silent, nothing asked or done",
+    async (route) => {
+      expect(await ask("Imti Rafi AH back", route, { quoted: fromOrganiser })).toBeNull();
+      expect(squad.handleAdminSquadChange).not.toHaveBeenCalled();
+      expect(teams.handleTeamCommand).not.toHaveBeenCalled();
+      expect(groupAsk.askPlayersGroup).not.toHaveBeenCalled();
+      expect(hqQuestion.answerHqQuestion).not.toHaveBeenCalled();
+      expect(graphics.answerGraphicRequest).not.toHaveBeenCalled();
+      expect(requests).toHaveLength(1);
+    },
+  );
+
+  it("an @tag in it: addressed to MatchTime after all, handled as usual", async () => {
+    const r = await ask("@Match Time put Imti in", "other_att", { quoted: fromOrganiser });
+    expect(r?.outcome).toBe("squad-changed");
+    expect(squad.handleAdminSquadChange).toHaveBeenCalledWith(expect.objectContaining({ addressed: true }));
+  });
+
+  it("a reply to MatchTime's own message is not this", async () => {
+    const r = await ask("put Imti in", "other_att", { quoted: { text: TEAMS_TEXT, fromMatchTime: true } });
+    expect(r?.outcome).toBe("squad-changed");
+  });
+
+  it("a plain instruction in HQ, quoting nobody: still applied", async () => {
+    expect((await ask("put Bilal in", "other_att"))?.outcome).toBe("squad-changed");
+    expect(squad.handleAdminSquadChange).toHaveBeenCalledWith(expect.objectContaining({ addressed: false }));
+  });
+
+  it("the score keeps its own rules: a scoreline replying to another organiser's question is still read", async () => {
+    expect((await ask("7-4", "score", { quoted: { text: "What was the final score!", fromMatchTime: false } }))?.outcome).toBe("hq-score-saved");
   });
 });
 

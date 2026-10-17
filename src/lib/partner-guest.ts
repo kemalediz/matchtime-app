@@ -24,6 +24,7 @@
  * asking club in its own. Logs carry ids only.
  */
 import { db } from "./db";
+import { REPLY_PRIORITY } from "./dm-reply-priority";
 import { registerAttendance, cancelAttendance } from "./attendance";
 import { sendAdminNotice } from "./admin-channel";
 import { dayCommaTimeLabel, timeLabel } from "./i18n/dates";
@@ -422,7 +423,7 @@ export async function withdrawGuest(args: { userId: string; matchId: string; now
     }
     if (user?.phoneNumber) {
       await db.botJob.create({
-        data: { orgId: from.id, kind: "dm", phone: user.phoneNumber.replace(/^\+/, ""), text: t(from.language).xask_vol_out({ asker: asker.name }) },
+        data: { orgId: from.id, kind: "dm", phone: user.phoneNumber.replace(/^\+/, ""), text: t(from.language).xask_vol_out({ asker: asker.name }), ...REPLY_PRIORITY },
       });
     }
   }

@@ -2239,6 +2239,8 @@ export const tr: Strings = {
   ag_sq_nothing: "Değişecek bir şey yok: kadro zaten öyle.",
   ag_sq_unknown: (p: { name: string }): string =>
     `${p.name} adında birini henüz tanımıyorum. Eklemek için "${p.name} var" yazın.`,
+  ag_sq_not_set: (p: { when: string; day: string; time: string }): string =>
+    `${p.when} listesi henüz belli değil: geçen haftanın kadrosu ${p.day} saat ${p.time} itibarıyla aktarılacak. Ondan sonra tekrar yazın.`,
   ag_sq_self_hint_out: (p: { name: string; when: string }): string =>
     `${p.when} kadrosundan çıkmak isterseniz "${p.name} yok" yazın.`,
   ag_sq_self_hint_in: (p: { name: string; when: string }): string =>
