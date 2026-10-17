@@ -54,12 +54,14 @@ export interface PasteReply {
  *  late" line rather than silence. */
 const EXPIRED_ANSWER_WINDOW_MS = 24 * 60 * 60 * 1000;
 
-async function registrationMatch(orgId: string) {
+/** The club's next match, picked against the caller's `now` (the same
+ *  instant the rest of the paste uses), never the wall clock. */
+async function registrationMatch(orgId: string, now: Date) {
   const candidates = await db.match.findMany({
     where: { activity: { orgId }, status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] } },
     orderBy: { date: "asc" },
   });
-  return selectRegistrationMatch(candidates) ?? null;
+  return selectRegistrationMatch(candidates, now) ?? null;
 }
 
 async function currentSquad(matchId: string): Promise<Array<{ userId: string; status: SquadStatus }>> {
@@ -124,7 +126,7 @@ export async function proposeSquadPaste(args: {
 }): Promise<PasteReply | null> {
   const { orgId, now } = args;
   if (!args.text.includes("\n")) return null;
-  const match = await registrationMatch(orgId);
+  const match = await registrationMatch(orgId, now);
   if (!match) return answerPasteWithoutMatch(args);
   const paste = readSquadPaste(args.text, match.maxPlayers);
   if (!paste) return null;
