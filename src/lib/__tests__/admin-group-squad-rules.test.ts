@@ -419,6 +419,64 @@ describe("vetAdminGroupFacts: only explicit claims reach the engine", () => {
   it('a bare "yes" pointing at something else is never read in HQ', () => {
     expect(vet("yeah", facts([], "yes")).facts.affirmation).toBeNull();
   });
+
+  // FNF HQ 2026-10-17 09:01: "Imti\nRafi\nAH\n\nIn". A name alone on its
+  // line is not a command clause, so every claim was held, and silence.
+  // The router's floor reads the shape as a list (`floorAttendanceFacts`),
+  // and its names are the instruction.
+  describe("a list of names with a bare IN or OUT (the floor's list)", () => {
+    const listVet = (body: string, names: string[], polarity: "in" | "out", listedNames?: string[]) =>
+      vetAdminGroupFacts({
+        body,
+        facts: facts(names.map((n) => claim({ personRef: n, polarity, confidence: 1 }))),
+        senderUserId: "u-omar",
+        senderName: "Omar Shah",
+        bareDeclaration: false,
+        ...(listedNames ? { listedNames } : {}),
+        resolve,
+        statusOf: () => null,
+      });
+
+    it("without the floor's names, every claim is held: the incident", () => {
+      expect(listVet("Imti \nRafi \nAH\n\nIn", ["Imti", "Rafi", "AH"], "in").vetted.map((v) => v.hold)).toEqual([
+        "not-a-command",
+        "not-a-command",
+        "not-a-command",
+      ]);
+    });
+
+    it.each<[string, string[], "in" | "out"]>([
+      ["Imti \nRafi \nAH\n\nIn", ["Imti", "Rafi", "AH"], "in"],
+      ["Yaseen \nMo\nFeroz\nAli\n\nOut", ["Yaseen", "Mo", "Feroz", "Ali"], "out"],
+      ["Imti, Rafi and AH in", ["Imti", "Rafi", "AH"], "in"],
+    ])("%j with the floor's names: every claim applies", (body, names, polarity) => {
+      const out = listVet(body, names, polarity, names);
+      expect(out.vetted.map((v) => v.hold)).toEqual(names.map(() => null));
+      expect(out.facts.claims.map((c) => c.personRef)).toEqual(names);
+    });
+
+    it("a name the floor did not list is still vetted as before", () => {
+      const out = listVet("Imti \nRafi\n\nIn", ["Imti", "Kai"], "in", ["Imti", "Rafi"]);
+      expect(out.vetted.map((v) => [v.claim.personRef, v.hold])).toEqual([
+        ["Imti", null],
+        ["Kai", "not-a-command"],
+      ]);
+    });
+
+    it("a listed name is still held when the claim is not definite", () => {
+      const out = vetAdminGroupFacts({
+        body: "Imti\nRafi\n\nIn",
+        facts: facts([claim({ personRef: "Imti", contingent: true, conditionOn: "self" })]),
+        senderUserId: "u-omar",
+        senderName: "Omar Shah",
+        bareDeclaration: false,
+        listedNames: ["Imti", "Rafi"],
+        resolve,
+        statusOf: () => null,
+      });
+      expect(out.vetted[0].hold).toBe("contingent");
+    });
+  });
 });
 
 describe("buildAdminSquadReply: what MatchTime says back, and when it says nothing", () => {

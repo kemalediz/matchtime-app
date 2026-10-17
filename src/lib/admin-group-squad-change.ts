@@ -46,6 +46,7 @@ import { floorAttendanceFacts } from "./pipeline/router";
 import { resolvePerson } from "./pipeline/identity";
 import { loadSquadState } from "./pipeline/load-state";
 import { rollingSeedPendingAt } from "./rolling-squad";
+import { hqNameListFacts, readHqNameList } from "./admin-group-name-list";
 import { timeLabel, weekdayLabel } from "./i18n/dates";
 import type { Route, SquadState } from "./pipeline/types";
 import {
@@ -153,12 +154,16 @@ export async function handleAdminSquadChange(input: AdminSquadChangeInput): Prom
     const vetFacts: NonNullable<Parameters<typeof runAttendanceEngineBatch>[0]["deps"]["vetFacts"]> = ({ message, facts, state }) => {
       if (message.waMessageId !== messageId) return facts;
       kickoffLabel = state.kickoffLabel;
+      // An organiser's list of names with IN/OUT ("Imti\nRafi\nAH\n\nIn",
+      // admin-group-name-list.ts): each listed name is the instruction.
+      const listedNames = readHqNameList(message.body)?.names ?? [];
       const out = vetAdminGroupFacts({
         body: message.body,
         facts,
         senderUserId: input.senderUserId,
         senderName: input.senderName,
         bareDeclaration: floorAttendanceFacts(message.body) !== null,
+        listedNames,
         listNotSet: notSetAt !== null,
         resolve: (ref) => refOn(state, ref),
         statusOf: (userId) => state.rows.find((r) => r.userId === userId)?.status ?? null,
@@ -193,6 +198,10 @@ export async function handleAdminSquadChange(input: AdminSquadChangeInput): Prom
       ],
       deps: {
         aiCapped: capped,
+        // An organiser's short list of names with IN/OUT is structured
+        // data: its facts are read in code, no extractor (FNF HQ
+        // 2026-10-17, "Imti\nRafi\nAH\n\nIn").
+        presetFacts: (message) => (message.waMessageId === messageId ? hqNameListFacts(message.body) : null),
         loadState,
         vetFacts,
         // Every write is stamped as the admin group's (sourceRef
