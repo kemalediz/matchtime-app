@@ -124,6 +124,19 @@ describe("proposeSquadPaste", () => {
     );
   });
 
+  // 2026-10-17: these tests started failing at 01:00 London because the
+  // match was picked against the wall clock, not the `now` passed in.
+  it("picks the match against the `now` it is given, not the wall clock", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(new Date("2026-10-17T00:30:00Z")); // the day after MATCH
+      const r = await proposeSquadPaste({ ...base, text: LIST });
+      expect(r?.outcome).toBe("paste-proposed");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("a Pi retry of the same paste is not proposed twice", async () => {
     dbMock.adminSquadProposal.create.mockRejectedValueOnce(Object.assign(new Error("dup"), { code: "P2002" }));
     expect(await proposeSquadPaste({ ...base, text: LIST })).toBeNull();
