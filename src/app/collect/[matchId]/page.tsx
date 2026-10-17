@@ -5,6 +5,8 @@ import { requireMatchCollectorOrAdmin } from "@/app/actions/payments";
 import { gbp } from "@/lib/payments";
 import { PaymentRoster } from "@/components/pay/payment-roster";
 import { RefreshButton } from "@/components/pay/refresh-button";
+import { collectRowState } from "@/lib/fee-waiver-rules";
+import { t } from "@/lib/i18n/t";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +34,7 @@ export default async function CollectPage({
   const match = await db.match.findUnique({
     where: { id: matchId },
     include: {
-      activity: { select: { name: true, org: { select: { name: true, paymentHolderId: true } } } },
+      activity: { select: { name: true, org: { select: { name: true, paymentHolderId: true, language: true } } } },
       attendances: {
         where: { status: "CONFIRMED" },
         include: { user: { select: { id: true, name: true } } },
@@ -52,6 +54,9 @@ export default async function CollectPage({
     userId: a.userId,
     name: a.user.name ?? "Player",
     paid: a.paidAt != null,
+    // A free place (2026-10-16): owes nothing, so it is neither in
+    // "N/M paid" nor in "collected". Paid wins (money moved).
+    free: collectRowState(a, false) === "free",
     method: a.paymentMethod,
     directPending: a.directPendingAt != null && a.paidAt == null,
     // What the collector RECEIVES (base × qty), not the gross the player
@@ -65,9 +70,12 @@ export default async function CollectPage({
     quantity: a.paymentQuantity,
   }));
 
-  const paidCount = rows.filter((r) => r.paid).length;
-  const collected = rows.reduce((s, r) => s + (r.paid ? r.amount ?? 0 : 0), 0);
+  const owing = rows.filter((r) => !r.free);
+  const freeCount = rows.length - owing.length;
+  const paidCount = owing.filter((r) => r.paid).length;
+  const collected = owing.reduce((s, r) => s + (r.paid ? r.amount ?? 0 : 0), 0);
   const base = match.feePerPlayer;
+  const words = t(match.activity.org.language);
 
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-8">
@@ -80,8 +88,9 @@ export default async function CollectPage({
           <p className="text-sm text-slate-500 mt-1">
             {base != null ? <>Fee {gbp(base)} per player · </> : null}
             <span className="font-semibold text-slate-700">
-              {paidCount}/{rows.length} paid
+              {paidCount}/{owing.length} paid
             </span>
+            {freeCount > 0 && <span data-testid="collect-free-count"> · {words.collect_free_count({ count: freeCount })}</span>}
             {collected > 0 && <> · {gbp(collected)} collected</>}
           </p>
           <div className="mt-3 flex justify-center">
@@ -96,7 +105,18 @@ export default async function CollectPage({
           </div>
         )}
 
-        <PaymentRoster matchId={matchId} rows={rows} />
+        <PaymentRoster
+          matchId={matchId}
+          rows={rows}
+          words={{
+            free: words.collect_free,
+            markFree: words.collect_mark_free,
+            undoFree: words.collect_undo_free,
+            markedFree: words.collect_marked_free,
+            unmarkedFree: words.collect_unmarked_free,
+            nothingChanged: words.collect_nothing_changed,
+          }}
+        />
       </div>
     </div>
   );

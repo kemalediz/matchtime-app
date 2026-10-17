@@ -20,6 +20,7 @@ import { POST_MATCH_LOOKBACK_DAYS } from "../bot-scheduler";
 const row = (userId: string, paid: boolean, name: string | null = userId) => ({
   userId,
   paidAt: paid ? new Date("2027-01-15T22:00:00.000Z") : null,
+  feeWaivedAt: null as Date | null,
   name,
 });
 
@@ -40,6 +41,19 @@ describe("summariseUnpaid: the group tail's rule", () => {
       creditCount: 0,
     });
     expect(s).toEqual({ n: 2, paid: 1, unpaid: 1, unpaidNames: ["Bea"] });
+  });
+
+  it("leaves a free place out (2026-10-16): it owes nothing and paid nothing", () => {
+    const s = summariseUnpaid({
+      confirmed: [row("a", true), { ...row("bibs", false, "Bilal"), feeWaivedAt: new Date() }, row("c", false, "Cem")],
+      payerId: null,
+      creditCount: 0,
+    });
+    expect(s).toEqual({ n: 2, paid: 1, unpaid: 1, unpaidNames: ["Cem"] });
+    // Everyone else paid: nothing to report, the free place is not "owing".
+    expect(
+      summariseUnpaid({ confirmed: [row("a", true), { ...row("bibs", false), feeWaivedAt: new Date() }], payerId: null, creditCount: 0 }),
+    ).toBeNull();
   });
 
   it("subtracts bulk credits from the unpaid count", () => {

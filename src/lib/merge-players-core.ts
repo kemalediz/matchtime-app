@@ -180,7 +180,16 @@ export async function mergePlayersCore(
       if (dropRank > keepRank) {
         await tx.attendance.update({
           where: { id: existing.id },
-          data: { status: a.status, position: a.position, paidAt: a.paidAt ?? existing.paidAt },
+          data: {
+            status: a.status,
+            position: a.position,
+            paidAt: a.paidAt ?? existing.paidAt,
+            // A free place travels like a payment (fee-waiver.ts): the
+            // dropped row's when it has one, else the keeper's own.
+            ...(a.feeWaivedAt
+              ? { feeWaivedAt: a.feeWaivedAt, feeWaivedReason: a.feeWaivedReason, feeWaivedByUserId: a.feeWaivedByUserId }
+              : { feeWaivedAt: existing.feeWaivedAt, feeWaivedReason: existing.feeWaivedReason, feeWaivedByUserId: existing.feeWaivedByUserId }),
+          },
         });
         await recordAttendanceEvent(
           tx,

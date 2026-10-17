@@ -58,6 +58,7 @@ import { setAsideTeamProposal } from "./team-proposal";
 import { t } from "./i18n/t";
 import { listAskRef, recordHqMessage, recordMatchTimeQuestion } from "./admin-group-log";
 import { understandAdminMessage } from "./admin-group-understand";
+import { HQ_FEE_FREE_EXPIRED, HQ_FEE_FREE_NOTHING_DONE } from "./fee-waiver-rules";
 
 export interface AdminGroupMessage {
   groupId: string;
@@ -94,6 +95,10 @@ const NO_TICK: ReadonlySet<string> = new Set([
   "hq-not-here",
   "hq-not-understood",
   "hq-only-organisers",
+  // A free place asked for and none given (already paid, not in the squad, no match).
+  HQ_FEE_FREE_NOTHING_DONE,
+  // A YES to a free place question past its 30 minutes: nothing done.
+  HQ_FEE_FREE_EXPIRED,
   // A squad line that changed nothing (owner rule, 2026-10-17: a tick only
   // when something was done or a real answer given): how to make a change,
   // a list that is not set yet. ("squad-change-failed" keeps its tick: it
@@ -123,7 +128,19 @@ export async function handleAdminGroupMessage(msg: AdminGroupMessage): Promise<A
   const now = msg.now ?? new Date();
   const org = await db.organisation.findFirst({
     where: { adminGroupId: msg.groupId },
-    select: { id: true, billingStatus: true, whatsappBotEnabled: true, squadMode: true, language: true, benchPickMode: true },
+    select: {
+      id: true,
+      billingStatus: true,
+      whatsappBotEnabled: true,
+      squadMode: true,
+      language: true,
+      benchPickMode: true,
+      // The HQ help's free-place line (admin-group-help.ts `hqHelpGates`).
+      paymentCollectionEnabled: true,
+      paymentTrackingEnabled: true,
+      // The money collector may ask for, and say YES to, a free place.
+      paymentHolderId: true,
+    },
   });
   if (!org) return { handled: false, ignored: "not-an-admin-group", replyText: null };
   // Club fee billing (B1): a club paused for the club fee answers nothing,

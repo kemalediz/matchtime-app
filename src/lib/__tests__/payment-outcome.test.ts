@@ -21,7 +21,7 @@
  * tests.
  */
 import { describe, it, expect } from "vitest";
-import { MONTHLY_PLACE_REASON, decideCheckoutEvent, payBlockedReason } from "@/lib/payment-outcome";
+import { FREE_PLACE_REASON, MONTHLY_PLACE_REASON, decideCheckoutEvent, payBlockedReason } from "@/lib/payment-outcome";
 
 describe("decideCheckoutEvent — only genuinely-settled money marks a player paid", () => {
   it("card checkout completes already paid → mark paid (the live happy path)", () => {
@@ -133,5 +133,20 @@ describe("payBlockedReason: a monthly regular (monthly squad, slice 5)", () => {
     for (const paymentMethod of [null, undefined, "card", "direct", "pay_by_bank"]) {
       expect(payBlockedReason({ ...ok, paymentMethod })).toBeNull();
     }
+  });
+});
+
+describe("payBlockedReason: a free place (2026-10-16)", () => {
+  const ok = { paidAt: null, attendanceStatus: "CONFIRMED", matchStatus: "COMPLETED" } as const;
+  it("a player on a free place cannot start a payment from an old pay link", () => {
+    expect(payBlockedReason({ ...ok, feeWaivedAt: new Date() })).toBe(FREE_PLACE_REASON);
+    // Item 4 of the #301 review: a guest's fee cannot ride on a free row,
+    // and the sentence says where to settle it instead.
+    expect(FREE_PLACE_REASON).toBe(
+      "You're on a free place for this match, so there's nothing to pay. Paying for a guest? Settle it with the money collector directly.",
+    );
+  });
+  it("no free place: unchanged", () => {
+    expect(payBlockedReason({ ...ok, feeWaivedAt: null })).toBeNull();
   });
 });

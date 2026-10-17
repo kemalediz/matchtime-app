@@ -204,6 +204,27 @@ describe("the admin-ops apply deps", () => {
     });
   });
 
+  it("a free place is not in the unpaid count; a free place that was paid anyway counts as paid (review of #301, item 7)", async () => {
+    const findUnique = vi.fn(async (_a: unknown) => ({
+      activity: { name: "Friday Night Football" },
+      attendances: [
+        { userId: "u1", paidAt: null, feeWaivedAt: new Date(), user: { name: "Bilal" } },
+        { userId: "u2", paidAt: null, feeWaivedAt: null, user: { name: "Faris" } },
+        { userId: "u3", paidAt: new Date(), feeWaivedAt: new Date(), user: { name: "Tom" } },
+      ],
+      paymentCredits: [],
+    }));
+    const deps = buildAdminOpsApplyDeps({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      db: { match: { findUnique }, attendance: {}, paymentCredit: {}, user: {}, botJob: {} } as any,
+      orgId: "org1",
+    });
+    expect((await deps.loadPaidState("m1")).confirmed).toEqual([
+      { userId: "u2", name: "Faris", paid: false },
+      { userId: "u3", name: "Tom", paid: true },
+    ]);
+  });
+
   it("never re-stamps a row that is already paid (route.ts:3867's idempotence)", async () => {
     const updateMany = vi.fn(async (_a: unknown) => ({ count: 0 }));
     const deps = buildAdminOpsApplyDeps({

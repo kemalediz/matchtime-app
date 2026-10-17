@@ -27,6 +27,9 @@
  *   PAID ALL / PAID 1 3 / PAID NONE
  *                                month-payment.ts handleCollectorPaidReply
  *                                (structured)
+ *   "Bilal is free this week"    router admin_ops, the admin extractor's
+ *                                fee_waiver, then fee-waiver.ts
+ *                                answerFeeFreeInHq (a club taking fees)
  *
  * Which lines a club gets follows the same gates admin-group.ts applies:
  * the squad and team lines for a live weekly club, the graphics for a live
@@ -47,8 +50,10 @@ export function buildHqHelp(p: {
   picks: boolean;
   /** A monthly club: the collector's PAID reply. */
   paid: boolean;
+  /** A club that takes match fees: giving a free place (fee-waiver.ts). */
+  free?: boolean;
 }): string {
-  return t(p.lang).hq_help({ squad: p.squad, graphics: p.graphics, picks: p.picks, paid: p.paid });
+  return t(p.lang).hq_help({ squad: p.squad, graphics: p.graphics, picks: p.picks, paid: p.paid, free: p.free === true });
 }
 
 /**
@@ -58,14 +63,27 @@ export function buildHqHelp(p: {
  * commands for a weekly club, the graphics for any club, the pick line for
  * organiser pick, PAID for a monthly club.
  */
-export function hqHelpGates(org: { squadMode?: string | null; benchPickMode?: string | null }): {
+export function hqHelpGates(org: {
+  squadMode?: string | null;
+  benchPickMode?: string | null;
+  paymentCollectionEnabled?: boolean | null;
+  paymentTrackingEnabled?: boolean | null;
+}): {
   squad: boolean;
   graphics: boolean;
   picks: boolean;
   paid: boolean;
+  free: boolean;
 } {
   const monthly = org.squadMode === "monthly";
-  return { squad: !monthly, graphics: true, picks: org.benchPickMode === "organiser", paid: monthly };
+  return {
+    squad: !monthly,
+    graphics: true,
+    picks: org.benchPickMode === "organiser",
+    paid: monthly,
+    // Free places (2026-10-16): only where the club takes match fees.
+    free: org.paymentCollectionEnabled === true || org.paymentTrackingEnabled === true,
+  };
 }
 
 /** What the introduction reads: Organisation columns plus the weekdays of

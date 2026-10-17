@@ -8,7 +8,7 @@
  * so those are fed here to the reader that takes them.
  */
 import { describe, expect, it } from "vitest";
-import { buildHqHelp } from "@/lib/admin-group-help";
+import { buildHqHelp, hqHelpGates } from "@/lib/admin-group-help";
 import { readCollectorReply } from "@/lib/month-payment-rules";
 import { readSquadPaste } from "@/lib/admin-group-squad-rules";
 import { parsePickReply } from "@/lib/organiser-pick-rules";
@@ -73,10 +73,26 @@ describe("buildHqHelp, Turkish", () => {
   });
 });
 
+describe("free places (2026-10-16)", () => {
+  it("a club that takes match fees gets the free-place line, EN and TR; one that does not, nothing", () => {
+    const gates = (o: Parameters<typeof hqHelpGates>[0]) => hqHelpGates(o);
+    expect(gates({ squadMode: "weekly", paymentCollectionEnabled: true }).free).toBe(true);
+    expect(gates({ squadMode: "weekly", paymentTrackingEnabled: true }).free).toBe(true);
+    expect(gates({ squadMode: "weekly" }).free).toBe(false);
+    expect(buildHqHelp({ lang: "en", ...ALL, free: true })).toContain(
+      `🎁 *"Bilal is free this week"*: a free place, so no pay link and no reminders to pay.`,
+    );
+    expect(buildHqHelp({ lang: "tr", ...ALL, free: true })).toContain(
+      `🎁 *"Bilal bu hafta ücretsiz"*: ücretsiz yer, ödeme linki ve ödeme hatırlatması gitmez.`,
+    );
+    expect(buildHqHelp({ lang: "en", ...ALL })).not.toContain("free place");
+  });
+});
+
 describe("house rules", () => {
   it("no em or en dashes, no greeting, no phone number", () => {
     for (const lang of ["en", "tr"]) {
-      const out = buildHqHelp({ lang, ...ALL });
+      const out = buildHqHelp({ lang, ...ALL, free: true });
       expect(out).not.toMatch(/[—–]/);
       expect(out).not.toMatch(/good (morning|afternoon|evening)|günaydın|iyi akşamlar/i);
       expect(out).not.toMatch(/\+?\d{10,}/);

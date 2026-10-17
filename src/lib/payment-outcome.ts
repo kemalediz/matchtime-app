@@ -75,6 +75,8 @@ export interface PayGuardInput {
   paymentMethod?: string | null;
   /** Attendance.paidAt — non-null means this player is already settled. */
   paidAt: Date | null;
+  /** Attendance.feeWaivedAt: a free place (fee-waiver.ts), nothing to pay. */
+  feeWaivedAt?: Date | null;
   /** Attendance.status — CONFIRMED | BENCH | DROPPED. */
   attendanceStatus: string;
   /** Match.status — UPCOMING | TEAMS_GENERATED | TEAMS_PUBLISHED | COMPLETED | CANCELLED. */
@@ -84,6 +86,10 @@ export interface PayGuardInput {
 /** The already-paid sentence, exported so the settle-directly write can
  *  say it when a confirmation lands between its read and its write. */
 export const ALREADY_PAID_REASON = "You're already paid for this match, nothing more to do. Thanks!";
+
+/** A player on a free place opening their old pay link. */
+export const FREE_PLACE_REASON =
+  "You're on a free place for this match, so there's nothing to pay. Paying for a guest? Settle it with the money collector directly.";
 
 /** A monthly club's regular opening a per-match pay link. */
 export const MONTHLY_PLACE_REASON =
@@ -103,6 +109,8 @@ export const MONTHLY_PLACE_REASON =
  */
 export function payBlockedReason(input: PayGuardInput): string | null {
   if (input.paidAt) return ALREADY_PAID_REASON;
+  // A free place (2026-10-16): the old pay link must not take money.
+  if (input.feeWaivedAt) return FREE_PLACE_REASON;
   // Monthly squad (slice 5): a regular's place is paid for by the month.
   // Paying for it again per match would also overwrite the "monthly" mark
   // on their row and put them back in the pay chases.

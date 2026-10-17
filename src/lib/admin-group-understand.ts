@@ -28,11 +28,18 @@
  *                         and for help it does not answer
  *   ask_group             one place-open ask in the players' group
  *                         (`admin-group-ask-group.ts`)
+ *   admin_ops             the shared admin extractor: a free place
+ *                         ("Bilal washed the bibs, he's free this week",
+ *                         action fee_waiver, or one taken back) is ASKED
+ *                         about by `fee-waiver.ts` and given on the YES
+ *                         (approve, like a pasted list). The money
+ *                         collector may do this one, admin or not. Any
+ *                         other instruction: one line, not from this group
+ *                         (an organiser clearly asked MatchTime; never
+ *                         silent on that)
  *   score                 the players' group's score handling, with HQ's
  *                         context (`admin-group-score.ts`, 2026-10-16):
  *                         anyone reports, only an organiser changes it
- *   admin_ops             one line: not from this group (an organiser
- *                         clearly asked MatchTime; never silent on that)
  *   unsure                addressed to MatchTime (an @tag, or a reply to
  *                         its own message): the attendance engine, as in
  *                         the players' group, else one line saying it did
@@ -82,6 +89,8 @@ import { answerPartnerAskYes, parsePartnerAskRef, partnerAskRef, partnerAsksAwai
 import { askPlayersGroup } from "./admin-group-ask-group";
 import { answerHqQuestion } from "./admin-group-question";
 import { joinAdminNames } from "./seed-nudge-rules";
+import { answerFeeProposalYes, feeProposalsAwaiting, proposeFeeFreeInHq } from "./fee-waiver";
+import { parseFeeAskRef } from "./fee-waiver-rules";
 import { answerHqScore, hqScoreRouting } from "./admin-group-score";
 import { hasScorelineShape } from "./pipeline/score-ask";
 
@@ -91,7 +100,17 @@ const RECENT_MAX = 5;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export interface UnderstandInput {
-  org: { id: string; language: string | null; squadMode: string | null; benchPickMode?: string | null };
+  org: {
+    id: string;
+    language: string | null;
+    squadMode: string | null;
+    benchPickMode?: string | null;
+    /** The HQ help's free-place line: a club that takes match fees. */
+    paymentCollectionEnabled?: boolean | null;
+    paymentTrackingEnabled?: boolean | null;
+    /** The money collector: may ask for and approve a free place in HQ. */
+    paymentHolderId?: string | null;
+  };
   messageId: string;
   text: string;
   mentionNames?: Array<{ jid: string; name?: string; phone?: string }>;
@@ -141,6 +160,10 @@ export async function loadPending(orgId: string, now: Date, lang: string | null)
   for (const a of asks) {
     out.push({ ref: partnerAskRef(a.askId), kind: "partner-ask", day: dayLabel(lang, a.matchDate), club: a.askerName, askedAt: a.askedAt });
   }
+  // A free place question waiting for YES (2026-10-16, fee-waiver.ts).
+  // Never fails HQ: before the migration, or on a read error, nothing waits.
+  const fees = await feeProposalsAwaiting(orgId, now, lang).catch(() => []);
+  for (const f of fees) out.push({ ref: f.ref, kind: "fee", day: f.day, names: f.names, undo: f.undo, askedAt: f.askedAt });
   return out;
 }
 
@@ -234,6 +257,10 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
     // message): one line naming who can. Otherwise it is their own chat,
     // and silent, as an organiser's is. `actor` is set only for an organiser.
     const actor = input.organiser ? input.senderUserId : null;
+    // The money collector runs the payments: a free place is theirs to ask
+    // for and to say YES to, even when they are not an admin (review of
+    // #301, item 8). Nothing else is.
+    const feeActor = actor ?? (input.senderUserId && input.senderUserId === org.paymentHolderId ? input.senderUserId : null);
     const notYours = async (): Promise<Understood | null> =>
       addressed ? said("hq-only-organisers", await onlyOrganisersLine(org.id, lang)) : null;
     const base = (senderUserId: string) => ({ orgId: org.id, lang, messageId, senderUserId, now });
@@ -269,10 +296,20 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
 
     switch (route) {
       case "approve": {
-        if (!actor) return notYours();
+        if (!feeActor) return notYours();
         const decision = decideApproval({ pending, quoted: input.quoted ? { ...input.quoted, fromMatchTime: quotedIsMatchTime } : null, log, now });
         console.log(`[admin-group] ${messageId}: approval ${decision.kind}${"why" in decision ? ` (${decision.why})` : ""}`);
-        if (decision.kind === "approve") {
+        // The collector who is not an admin: a free place question only.
+        if (!actor) {
+          const item = decision.kind === "approve" || decision.kind === "ask" ? decision.item : null;
+          if (item?.kind !== "fee") return notYours();
+        }
+        if (decision.kind === "approve" && decision.item.kind === "fee") {
+          const proposalId = parseFeeAskRef(decision.item.ref);
+          const r = proposalId ? await answerFeeProposalYes({ orgId: org.id, proposalId, userId: feeActor, lang, now }) : null;
+          return r ? said(r.outcome, r.replyText) : said("hq-nothing-waiting", s.hq_nothing_waiting);
+        }
+        if (decision.kind === "approve" && actor) {
           if (decision.item.kind === "partner-ask") {
             const askId = parsePartnerAskRef(decision.item.ref);
             const r = askId ? await answerPartnerAskYes({ orgId: org.id, askId, userId: actor, lang, now }) : null;
@@ -292,7 +329,9 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
               ? s.hq_confirm_teams({ day })
               : decision.item.kind === "partner-ask"
                 ? s.hq_confirm_partner_ask({ asker: item?.club ?? "", day: item?.day ?? "" })
-                : s.hq_confirm_list;
+                : decision.item.kind === "fee"
+                  ? s.hq_confirm_fee({ names: item?.names ?? "", day: item?.day ?? "" })
+                  : s.hq_confirm_list;
         const askRef = decision.kind === "ask-which" ? WHICH_ASK_REF : decision.item.ref;
         await recordMatchTimeQuestion({ orgId: org.id, askRef, text, now, confirm: true });
         return said("hq-confirm-asked", text);
@@ -377,10 +416,44 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
         const r = await askPlayersGroup({ orgId: org.id, lang, messageId, now });
         return said(r.outcome, r.replyText);
       }
+      case "admin_ops": {
+        // A free place (2026-10-16): "Bilal washed the bibs, he's free
+        // this week". The players' group's own admin extractor reads the
+        // instruction; only `fee_waiver` is done from HQ, by
+        // `answerFeeFreeInHq` (fee-waiver.ts). Every other admin action
+        // stays the one line. Someone who is not an organiser, untagged,
+        // is chatting: silent, and the extractor is not asked.
+        if (!feeActor && !addressed) return null;
+        const model = input.deps?.extractorModel ?? extractorStubFromEnv() ?? anthropicModel();
+        const extracted = await extractForRoute(model, "admin_ops", {
+          id: messageId,
+          body,
+          authorName: input.senderName,
+          tagged: true,
+          history,
+          lastBotPost: lastHqPost,
+        });
+        const facts = extracted.facts;
+        if (facts.kind === "admin" && facts.action === "fee_waiver") {
+          if (!feeActor) return notYours();
+          // MatchTime ASKS; the YES applies it (review of #301, item 2).
+          const r = await proposeFeeFreeInHq({
+            orgId: org.id,
+            lang,
+            refs: facts.coveredRefs ?? [],
+            undo: facts.undo === true,
+            dayPhrase: facts.matchDay ?? null,
+            senderUserId: feeActor,
+            messageId,
+            now,
+          });
+          return said(r.outcome, r.replyText);
+        }
+        console.log(`[admin-group] ${messageId}: admin_ops read as ${facts.kind === "admin" ? facts.action : facts.kind}, not done from HQ`);
+        return said("hq-not-here", s.hq_not_here);
+      }
       case "score":
         return scoreHere();
-      case "admin_ops":
-        return actor || addressed ? said("hq-not-here", s.hq_not_here) : null;
       case "unsure": {
         // A scoreline ("7-4 mü 7-5 mi") while MatchTime waits for the
         // score, that the router could not place: the score handling

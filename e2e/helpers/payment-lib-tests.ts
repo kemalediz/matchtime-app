@@ -60,6 +60,8 @@ async function main() {
 
   const { applyCheckoutEvent, handleCollectorFeeReply } = await import("@/lib/payment-flow");
   const { FEE_REPLY_STUB_FILE_ENV } = await import("@/lib/fee-confirm");
+  const { waiveMatchFee, unwaiveMatchFee } = await import("@/lib/fee-waiver");
+  const { markDirectPaymentPending } = await import("@/lib/direct-payment");
   const { db } = await import("@/lib/db");
 
   let n = 0;
@@ -342,6 +344,44 @@ async function main() {
       data: { paidAt: null, directConfirmedByUserId: null },
     });
     ok("players marked paid before the fee is confirmed get no pay link; the rest do");
+  }
+
+  // ── 15. A free place before the fee: no link, out of N and the split ──
+  //   2026-10-16: the real free state (`feeWaivedAt`), set through the
+  //   same writer "Mark free" and HQ use. "£X total" is split across the
+  //   players who pay, the confirm says how many are free, the release
+  //   sends them no link, and a second waive is a no-op.
+  {
+    await db.match.update({
+      where: { id: MATCH.rate },
+      data: { feePendingConfirm: null, feePerPlayer: null, feeSetAt: null, paymentLinksReleasedAt: null },
+    });
+    await db.botJob.deleteMany({ where: { kind: "dm", text: { contains: "match fee for" } } });
+    const now = new Date();
+    assert.equal(await waiveMatchFee({ matchId: MATCH.rate, userId: U.third, byUserId: U.admin, now }), "waived");
+    assert.equal(await waiveMatchFee({ matchId: MATCH.rate, userId: U.third, byUserId: U.admin, now }), "already-free", "idempotent");
+    const confirmed = await db.attendance.findMany({
+      where: { matchId: MATCH.rate, status: "CONFIRMED", userId: { not: U.collector } },
+      select: { userId: true, user: { select: { phoneNumber: true } } },
+    });
+    const payers = confirmed.filter((a) => a.userId !== U.third);
+    const total = payers.length * 10;
+    const staged = await handleCollectorFeeReply(U.collector, `£${total} total`);
+    assert.ok(staged, "the total is staged");
+    assert.ok(staged!.reply.includes(`${payers.length} players to charge`), `split across the ${payers.length} who pay: ${staged!.reply}`);
+    assert.ok(staged!.reply.includes("(1 player is on a free place and not counted.)"), "the confirm says one is free");
+    const m = await db.match.findUnique({ where: { id: MATCH.rate }, select: { feePendingConfirm: true } });
+    assert.equal(m?.feePendingConfirm, 10, "£10 each: the free place is not in the divisor");
+    const yes = await handleCollectorFeeReply(U.collector, "✅");
+    assert.equal(yes?.released, payers.filter((a) => a.user.phoneNumber).length, "links to the payers only");
+    const thirdPhone = confirmed.find((a) => a.userId === U.third)?.user.phoneNumber?.replace(/^\+/, "");
+    const links = await db.botJob.findMany({ where: { kind: "dm", text: { contains: "match fee for" } }, select: { phone: true } });
+    if (thirdPhone) assert.ok(!links.some((l) => l.phone === thirdPhone), "the free place got no pay link");
+    // The pay guard: the old link (if any) cannot take money from a free place.
+    const guard = await markDirectPaymentPending({ userId: U.third, matchId: MATCH.rate, via: "pay-page" });
+    assert.equal(guard.ok, false, "a free place cannot start a payment");
+    assert.ok(await unwaiveMatchFee({ matchId: MATCH.rate, userId: U.third }), "undo works");
+    ok("a free place before the fee: out of the split, no link, cannot pay, undo works");
   }
 
   // Leave the fixture world as we found it — later specs assume the seed.

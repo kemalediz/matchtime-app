@@ -49,6 +49,13 @@ const partnerAsk = vi.hoisted(() => ({
   parsePartnerAskRef: (ref: string) => (ref.startsWith("xask:") ? ref.slice(5) : null),
 }));
 vi.mock("@/lib/partner-ask", () => partnerAsk);
+// Free places (2026-10-16): the owner behind admin_ops' fee_waiver.
+const feeWaiver = vi.hoisted(() => ({
+  proposeFeeFreeInHq: vi.fn(),
+  answerFeeProposalYes: vi.fn(),
+  feeProposalsAwaiting: vi.fn().mockResolvedValue([]),
+}));
+vi.mock("@/lib/fee-waiver", () => feeWaiver);
 // The score in HQ (2026-10-16): nothing waiting and no override by default.
 const hqScore = vi.hoisted(() => ({ answerHqScore: vi.fn(), hqScoreRouting: vi.fn() }));
 vi.mock("@/lib/admin-group-score", () => hqScore);
@@ -73,6 +80,8 @@ function model(answer: (req: ModelRequest) => unknown): PipelineModel {
 const routeTo = (route: string) => model(() => ({ routes: [{ id: "wa-9", route }] }));
 const teamsFacts = (facts: Record<string, unknown>) =>
   model(() => ({ action: "swap", includeRefs: [], teamNames: [], swaps: [], moves: [], pairings: [], ...facts }));
+const adminFacts = (facts: Record<string, unknown>) =>
+  model(() => ({ action: "other", payerRef: "", count: 0, coveredRefs: [], phrase: "", note: "", lookbackMatches: 0, ...facts }));
 
 const mtRow = (at: Date, askRef: string, text = TEAMS_TEXT): HqLogRow => ({ waMessageId: `mt:${askRef}:1`, fromMatchTime: true, senderUserId: null, text, askRef, createdAt: at });
 const orgRow = (at: Date, text = "who has the bibs?"): HqLogRow => ({ waMessageId: `wa-${at.getTime()}`, fromMatchTime: false, senderUserId: "u-2", text, askRef: null, createdAt: at });
@@ -96,6 +105,7 @@ function ask(text: string, route: string, over: Partial<Parameters<typeof unders
 beforeEach(() => {
   vi.clearAllMocks();
   requests.length = 0;
+  feeWaiver.feeProposalsAwaiting.mockResolvedValue([]);
   dbMock.adminTeamProposal.findFirst.mockResolvedValue({ matchId: "m1", askedAt: ASKED, state: "proposed" });
   dbMock.match.findUnique.mockResolvedValue({ date: new Date("2026-10-16T20:00:00Z"), status: "TEAMS_GENERATED" });
   dbMock.adminSquadProposal.findFirst.mockResolvedValue(null);
@@ -239,7 +249,9 @@ describe("the other routes reach the code the rest of MatchTime uses", () => {
   });
 
   it.each(["admin_ops"])("%s: clearly for MatchTime but not done from HQ: one line, never silent", async (route) => {
-    expect((await ask("@Match Time who has paid?", route))?.replyText).toBe("I can't do that from this group. Ask *what can you do?* to see what I can do here.");
+    const deps = { routerModel: routeTo(route), extractorModel: adminFacts({ action: "other" }) };
+    expect((await ask("@Match Time who has paid?", route, { deps }))?.replyText).toBe("I can't do that from this group. Ask *what can you do?* to see what I can do here.");
+    expect(feeWaiver.proposeFeeFreeInHq).not.toHaveBeenCalled();
     expect(groupAsk.askPlayersGroup).not.toHaveBeenCalled();
     expect(hqQuestion.answerHqQuestion).not.toHaveBeenCalled();
   });
@@ -516,6 +528,123 @@ describe("a sender who is not an organiser", () => {
     const r = await ask("@Match Time can you sort it", "unsure", player());
     expect(r?.outcome).toBe("hq-not-understood");
     expect(squad.handleAdminSquadChange).not.toHaveBeenCalled();
+  });
+});
+
+// Free places (2026-10-16, review of #301): "Bilal washed the bibs, he's
+// free this week" routes admin_ops; the SHARED admin extractor reads
+// fee_waiver, who, the day and undo; MatchTime ASKS (fee-waiver.ts
+// proposeFeeFreeInHq) and an organiser's YES applies it.
+describe("a free place, asked for in HQ in the organisers' own words, given on YES", () => {
+  const free = (facts: Record<string, unknown> = {}) => ({
+    routerModel: routeTo("admin_ops"),
+    extractorModel: adminFacts({ action: "fee_waiver", coveredRefs: ["Bilal"], ...facts }),
+  });
+  const ASKED_TEXT = "Make Bilal Ahmed free for Fri 16 Oct? Reply YES.";
+  beforeEach(() => {
+    feeWaiver.proposeFeeFreeInHq.mockResolvedValue({ outcome: "fee-free-asked", replyText: ASKED_TEXT });
+    feeWaiver.answerFeeProposalYes.mockResolvedValue({
+      outcome: "fee-free",
+      replyText: "Free place for Fri 16 Oct: Bilal Ahmed. No pay link and no reminders to pay.",
+    });
+    // No teams waiting in these cases, so the only question is the free place's.
+    dbMock.adminTeamProposal.findFirst.mockResolvedValue(null);
+    hqLog.hqLogSince.mockResolvedValue([]);
+  });
+
+  it("an organiser, untagged: MatchTime ASKS (nothing written here), with the day and the undo flag read", async () => {
+    const r = await ask("Bilal washed the bibs, he's free this week", "admin_ops", { deps: free() });
+    expect(r).toEqual({ route: "admin_ops", outcome: "fee-free-asked", replyText: ASKED_TEXT });
+    expect(feeWaiver.proposeFeeFreeInHq).toHaveBeenCalledWith({
+      orgId: "org-fnf",
+      lang: "en",
+      refs: ["Bilal"],
+      undo: false,
+      dayPhrase: null,
+      senderUserId: "u-admin",
+      messageId: "wa-9",
+      now: NOW,
+    });
+    expect(feeWaiver.answerFeeProposalYes).not.toHaveBeenCalled();
+    expect(requests).toHaveLength(2);
+    expect(requests[1].system).toContain('"fee_waiver"');
+  });
+
+  it("'Bilal isn't free after all, next Friday': undo and the named day reach the proposal", async () => {
+    await ask("Bilal isn't free after all next Friday", "admin_ops", { deps: free({ undo: true, matchDay: "next Friday" }) });
+    expect(feeWaiver.proposeFeeFreeInHq).toHaveBeenCalledWith(expect.objectContaining({ undo: true, dayPhrase: "next Friday" }));
+  });
+
+  it("the money collector, not an admin, may ask in HQ (item 8)", async () => {
+    const r = await ask("Bilal is free this week", "admin_ops", {
+      deps: free(),
+      org: { ...ORG, paymentHolderId: "u-col" },
+      senderUserId: "u-col",
+      organiser: false,
+      senderName: "Colin",
+    });
+    expect(r?.outcome).toBe("fee-free-asked");
+    expect(feeWaiver.proposeFeeFreeInHq).toHaveBeenCalledWith(expect.objectContaining({ senderUserId: "u-col" }));
+  });
+
+  it("someone in HQ who is not an organiser nor the collector, tagged: the #297 line, nothing asked", async () => {
+    const r = await ask("@Match Time Bilal is free this week", "admin_ops", {
+      deps: free(),
+      senderUserId: "u-kemal",
+      organiser: false,
+      senderName: "Kemal",
+    });
+    expect(r).toEqual({ route: "admin_ops", outcome: "hq-only-organisers", replyText: "Only Hamzah or Raihan can change that." });
+    expect(feeWaiver.proposeFeeFreeInHq).not.toHaveBeenCalled();
+  });
+
+  it("not an organiser, untagged: their own chat, silent, and the extractor is never asked", async () => {
+    const r = await ask("Bilal is free this week", "admin_ops", { deps: free(), senderUserId: "u-kemal", organiser: false });
+    expect(r).toBeNull();
+    expect(requests).toHaveLength(1);
+  });
+
+  it("an organiser's other instruction on admin_ops: still the one line, never a free place", async () => {
+    const r = await ask("@Match Time remind me on Monday", "admin_ops", { deps: free({ action: "reminder", coveredRefs: [], phrase: "on Monday" }) });
+    expect(r?.outcome).toBe("hq-not-here");
+    expect(feeWaiver.proposeFeeFreeInHq).not.toHaveBeenCalled();
+  });
+
+  const WAITING = { ref: "fee:fp1", kind: "fee" as const, day: "Fri 16 Oct", names: "Bilal Ahmed", undo: false, askedAt: ASKED };
+  const asked = () => ({ waMessageId: "mt:fee:fp1:1", fromMatchTime: true, senderUserId: null, text: ASKED_TEXT, askRef: "fee:fp1", createdAt: ASKED });
+
+  it("the next message is YES: the free place is given (the safe-YES rule)", async () => {
+    feeWaiver.feeProposalsAwaiting.mockResolvedValue([WAITING]);
+    hqLog.hqLogSince.mockResolvedValue([asked()]);
+    const r = await ask("yes", "approve");
+    expect(r).toEqual({ route: "approve", outcome: "fee-free", replyText: "Free place for Fri 16 Oct: Bilal Ahmed. No pay link and no reminders to pay." });
+    expect(feeWaiver.answerFeeProposalYes).toHaveBeenCalledWith({ orgId: "org-fnf", proposalId: "fp1", userId: "u-admin", lang: "en", now: NOW });
+    // The router was told what waits.
+    expect(requests[0].user).toContain("WAITING: YES to give Bilal Ahmed a free place for Fri 16 Oct, asked at 10:00.");
+  });
+
+  it("a YES after other chat: asks once whether it is for the free place, nothing given", async () => {
+    feeWaiver.feeProposalsAwaiting.mockResolvedValue([WAITING]);
+    hqLog.hqLogSince.mockResolvedValue([asked(), orgRow(new Date("2026-10-16T09:05:00Z"))]);
+    const r = await ask("yes", "approve");
+    expect(r).toEqual({ route: "approve", outcome: "hq-confirm-asked", replyText: "Is that YES to the free place for Bilal Ahmed on Fri 16 Oct?" });
+    expect(feeWaiver.answerFeeProposalYes).not.toHaveBeenCalled();
+  });
+
+  it("the collector's YES to the free place question is taken (item 8)", async () => {
+    feeWaiver.feeProposalsAwaiting.mockResolvedValue([WAITING]);
+    hqLog.hqLogSince.mockResolvedValue([asked()]);
+    const r = await ask("yes", "approve", { org: { ...ORG, paymentHolderId: "u-col" }, senderUserId: "u-col", organiser: false, senderName: "Colin" });
+    expect(r?.outcome).toBe("fee-free");
+    expect(feeWaiver.answerFeeProposalYes).toHaveBeenCalledWith(expect.objectContaining({ userId: "u-col" }));
+  });
+
+  it("the collector's YES to the TEAMS is not theirs to give: the #297 line", async () => {
+    dbMock.adminTeamProposal.findFirst.mockResolvedValue({ matchId: "m1", askedAt: ASKED, state: "proposed" });
+    hqLog.hqLogSince.mockResolvedValue([mtRow(ASKED, "teams:m1")]);
+    const r = await ask("@Match Time yes", "approve", { org: { ...ORG, paymentHolderId: "u-col" }, senderUserId: "u-col", organiser: false, senderName: "Colin" });
+    expect(r?.outcome).toBe("hq-only-organisers");
+    expect(teams.answerTeamsYes).not.toHaveBeenCalled();
   });
 });
 

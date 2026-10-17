@@ -308,6 +308,13 @@ describe("anyone in HQ: questions for all, changes for the organisers", () => {
     });
   });
 
+  it("a free place given (2026-10-16): ticked; asked for and none given: no tick", async () => {
+    understand.understandAdminMessage.mockResolvedValue({ route: "admin_ops", outcome: "fee-free", replyText: "Free place for Fri 16 Oct: Bilal Ahmed. No pay link and no reminders to pay." });
+    expect((await handleAdminGroupMessage(msg("Bilal washed the bibs, he's free this week")))).toMatchObject({ outcome: "fee-free", react: "✅" });
+    understand.understandAdminMessage.mockResolvedValue({ route: "admin_ops", outcome: "hq-fee-free-none", replyText: "I can't find Zed in the squad for Fri 16 Oct." });
+    expect((await handleAdminGroupMessage(msg("Zed is free this week")))).toMatchObject({ outcome: "hq-fee-free-none", react: null });
+  });
+
   it("a club that is not live: a non-admin is still ignored, nothing read", async () => {
     dbMock.organisation.findFirst.mockResolvedValue({ ...LIVE_ORG, whatsappBotEnabled: false });
     dbMock.organiserPickRound.findFirst.mockResolvedValue({ id: "round" });

@@ -1841,6 +1841,34 @@ model AdminSquadProposal {
   @@index([orgId, resolvedAt])
 }
 
+/// A free place asked for in a club's admin group, waiting for an
+/// organiser's YES (2026-10-16, `fee-waiver.ts`). MatchTime asks "Make
+/// Bilal free for Fri 16 Oct? Reply YES" and writes nothing until the YES
+/// (the safe-YES rule, `admin-group-confirm-rules.ts`). `undo`: the
+/// question takes free places away. One open per club: a newer one
+/// supersedes it.
+model AdminFeeProposal {
+  id               String    @id @default(cuid())
+  orgId            String
+  matchId          String
+  /// The HQ message that asked. A Pi retry proposes nothing twice.
+  waMessageId      String    @unique
+  proposedByUserId String
+  userIds          String[]  @default([])
+  undo             Boolean   @default(false)
+  /// The question as posted, so a Pi retry of the same message gets the
+  /// same answer.
+  text             String    @default("")
+  expiresAt        DateTime
+  resolvedAt       DateTime?
+  /// "applied" | "superseded"
+  outcome          String?
+  resolvedByUserId String?
+  createdAt        DateTime  @default(now())
+
+  @@index([orgId, resolvedAt])
+}
+
 /// What was said in a club's linked admin group (HQ), kept for one day
 /// (2026-10-16). Two readers, both in src/lib/admin-group-understand.ts:
 /// the safe-YES rule (was anybody else talking between MatchTime's
@@ -1920,6 +1948,18 @@ model Attendance {
   directPendingAt         DateTime?
   /// Who confirmed the direct payment (the money collector).
   directConfirmedByUserId String?
+
+  /// ─── Free places (2026-10-16, `lib/fee-waiver.ts`) ──────────────
+  /// Set when an organiser or the money collector gives this player a
+  /// free place on this match: they owe nothing. Distinct from `paidAt`
+  /// (no money moved): no pay link, no chase, out of the fee headcount
+  /// and of "collected" and "owed". NULL on every existing row. Written
+  /// only while the row is unpaid, so a payment is never relabelled.
+  feeWaivedAt       DateTime?
+  /// Why, as a short code. Today only "organiser"; kept generic.
+  feeWaivedReason   String?
+  /// Who gave the free place (an organiser or the collector).
+  feeWaivedByUserId String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

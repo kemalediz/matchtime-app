@@ -47,7 +47,7 @@ export default async function PayPage({
 
   const attendance = await db.attendance.findUnique({
     where: { matchId_userId: { matchId, userId } },
-    select: { paidAt: true, directPendingAt: true, paymentMethod: true },
+    select: { paidAt: true, directPendingAt: true, paymentMethod: true, feeWaivedAt: true },
   });
 
   const me = await db.user.findUnique({ where: { id: userId }, select: { name: true } });
@@ -71,6 +71,26 @@ export default async function PayPage({
             {first}, your place for {match.activity.name} is paid for by the month. If that&apos;s not right, speak to the
             organiser.
           </p>
+        </div>
+      </Shell>
+    );
+  }
+
+  // A free place (2026-10-16, fee-waiver.ts): nothing to pay, no buttons
+  // (the actions refuse it too, `payBlockedReason`). Paid wins: a free
+  // place that was paid anyway shows as paid below.
+  if (attendance?.feeWaivedAt && !attendance.paidAt && paid !== "1") {
+    const w = t(org.language);
+    return (
+      <Shell>
+        <div className="text-center" data-testid="pay-free">
+          <div className="text-5xl mb-3">🎁</div>
+          <h1 className="text-xl font-bold text-slate-900">{w.pay_free_title}</h1>
+          <p className="text-sm text-slate-500 mt-2">{w.pay_free_body({ firstName: first, activityName: match.activity.name })}</p>
+          {/* Review of #301, item 4: a guest's fee cannot ride on a free row
+              (the pay actions refuse it, `payBlockedReason`), so say where
+              to settle it instead. */}
+          <p className="text-sm text-slate-500 mt-2" data-testid="pay-free-guests">{w.pay_free_guests}</p>
         </div>
       </Shell>
     );

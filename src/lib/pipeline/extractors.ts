@@ -414,30 +414,38 @@ A correction:
 Another game:
   "last week we lost 9-2" -> first 9, second 2, loser "us", otherGame true, correction false`,
 
-  admin: `You read ONE instruction to the bot and report what it says.
+  admin: `You read ONE instruction to the bot and report what it says. You report the words; code decides what happens. Messages may be in English or Turkish.
 
-  action       "bulk_payment" someone paid for several players
-               "reminder" the sender wants to be reminded, at a time
-               "recruit" the sender is asking the bot to CONTACT or INVITE players who are not registered yet — "message the lads from the last few games", "DM everyone who played recently and invite them", "ask the regulars if they can play", "we need more players, can you round some up"
-               "stats_blast" the sender is INSTRUCTING YOU to send every player their own stats or ratings link — "send everyone their stats", "DM the squad their ratings", "share the stats links with the lads"
-               "other"
-  payerRef     for bulk_payment: who paid, verbatim. "" when not applicable
-  count        for bulk_payment: how many players they paid for. 0 when not applicable
-  coveredRefs  for bulk_payment: the specific people covered, verbatim, if named
-  phrase       for reminder: the time phrase EXACTLY as written ("on Monday", "tomorrow at 6"). Do not convert it to a date. "" when not applicable
-  note         for reminder: WHAT to remind them about, in their own words ("bring the bibs"). "" when the message names nothing to remember
-  lookbackMatches  for recruit: how many recent matches the message says to draw players from ("the last 5 matches" -> 5, "the last couple of games" -> 2). 0 when the message names no number.
+THE ACTION, exactly one:
+  "bulk_payment"  someone paid for several players: "Amir paid for 4 players", "Amir paid for Faris and Adam".
+  "fee_waiver"    the sender gives named players a free place, so they owe NOTHING for a game ("Bilal washed the bibs, he's free this week", "Tom plays free tonight", "Ali bu hafta ödemesin"), or takes a free place back ("Bilal isn't free after all, he pays"). Free meaning ABLE to play ("I'm free Tuesday") is not this. Nor is a question or a discussion about it ("should Bilal play free?", "is he free?"): that is "other".
+  "reminder"      the sender wants to be reminded, at a time.
+  "recruit"       the sender asks the bot to CONTACT or INVITE players who are not registered yet: "message the lads from the last few games", "DM everyone who played recently and invite them", "ask the regulars if they can play", "we need more players, can you round some up". It is about people OUTSIDE the squad: asking to SHOW, LIST or COUNT the registered players is "other".
+  "stats_blast"   the sender tells YOU to send every player their own stats or ratings link: "send everyone their stats", "DM the squad their ratings", "share the stats links with the lads".
+  "other"         anything else.
 
-"recruit" is about reaching people OUTSIDE the current squad. A message asking to SHOW, LIST or COUNT the players already registered is not recruit — that is "other".
+THE FIELDS. Fill the ones for the action; every other field is "", 0, false or [].
+  payerRef         bulk_payment: who paid, verbatim.
+  count            bulk_payment: how many players they paid for.
+  coveredRefs      the people the action is about, verbatim, one entry each: for bulk_payment the people paid for, if named; for fee_waiver the people the free place is given to or taken from. "he" or "him" is the person the message named.
+  undo             fee_waiver: true when the message TAKES a free place back ("Bilal isn't free after all", "no, Tom pays this week", "Ali ücretsiz değil, ödesin"); false when it gives one.
+  matchDay         fee_waiver: the day the message names for the game, verbatim ("tonight", "last night", "next Friday", "cuma"); "" when it names none or only "this week".
+  phrase           reminder: the time phrase EXACTLY as written ("on Monday", "tomorrow at 6"). Never a date.
+  note             reminder: WHAT to remind them about, in their own words ("bring the bibs"); "" when it names nothing.
+  lookbackMatches  recruit: how many recent matches to draw players from ("the last 5 matches" -> 5, "the last couple of games" -> 2); 0 when no number is named.
 
-"stats_blast" is a message that tells YOU to send something to every player. Ask who is being told to do the work. If the sender is telling the PLAYERS to do something — to rate each other, to check a link, to click the one they already have, to not forget something — it is "other", however many times it says stats, ratings, players, DM or everyone. A message can be ABOUT the stats links without asking you to send them.
+WHO DOES THE WORK. "stats_blast" tells YOU to send something to every player. If the sender tells the PLAYERS to do something (rate each other, check a link, click the one they already have, not forget something), it is "other", however many times it says stats, ratings, players, DM or everyone. A message can be ABOUT the stats links without asking you to send them.
 
+EXAMPLES
   "@Match Time send everyone their stats"                                      -> stats_blast
   "@Match Time can you DM the squad their ratings links"                       -> stats_blast
   "lads don't forget to rate the players via the link MatchTime DM'ed you"     -> other, it instructs the players
   "the more accurate the ratings, the more balanced the teams"                 -> other, it is a remark
   "did everyone get their stats link?"                                         -> other, it is a question
-  "@Match Time what are my stats"                                              -> other, one person asking about themselves`,
+  "@Match Time what are my stats"                                              -> other, one person asking about themselves
+  "Bilal washed the bibs, he's free this week"                                 -> fee_waiver, coveredRefs ["Bilal"], undo false, matchDay ""
+  "Ali ve Can cuma günü ödemesin"                                              -> fee_waiver, coveredRefs ["Ali", "Can"], undo false, matchDay "cuma günü"
+  "scrap that, Tom isn't free, he pays"                                        -> fee_waiver, coveredRefs ["Tom"], undo true`,
 };
 
 // ── Schemas ────────────────────────────────────────────────────────────
@@ -613,18 +621,21 @@ const ADMIN_SCHEMA = {
   properties: {
     action: {
       type: "string",
-      enum: ["bulk_payment", "reminder", "recruit", "stats_blast", "other"],
+      enum: ["bulk_payment", "fee_waiver", "reminder", "recruit", "stats_blast", "other"],
     },
     payerRef: { type: "string" },
     count: { type: "number" },
     coveredRefs: { type: "array", items: { type: "string" } },
+    // fee_waiver (2026-10-16): taking a free place back, and the day named.
+    undo: { type: "boolean" },
+    matchDay: { type: "string" },
     phrase: { type: "string" },
     note: { type: "string" },
     // 0 is the schema's stand-in for null, the same convention
     // `statedCount` uses. A nullable number is rejected by the API.
     lookbackMatches: { type: "number" },
   },
-  required: ["action", "payerRef", "count", "coveredRefs", "phrase", "note", "lookbackMatches"],
+  required: ["action", "payerRef", "count", "coveredRefs", "undo", "matchDay", "phrase", "note", "lookbackMatches"],
   additionalProperties: false,
 } as const;
 
@@ -922,7 +933,7 @@ export function parseFacts(
 
     case "admin": {
       const action = str(raw.action).toLowerCase();
-      if (!["bulk_payment", "reminder", "recruit", "stats_blast", "other"].includes(action)) {
+      if (!["bulk_payment", "fee_waiver", "reminder", "recruit", "stats_blast", "other"].includes(action)) {
         bad(`unknown admin action "${str(raw.action)}"`);
         return { facts: { kind: "none" }, degradations };
       }
@@ -934,6 +945,8 @@ export function parseFacts(
         ...(Array.isArray(raw.coveredRefs)
           ? { coveredRefs: raw.coveredRefs.map(str).filter(Boolean) }
           : {}),
+        ...(action === "fee_waiver" && raw.undo === true ? { undo: true } : {}),
+        ...(action === "fee_waiver" && typeof raw.matchDay === "string" && raw.matchDay.trim() ? { matchDay: raw.matchDay.trim() } : {}),
         ...(typeof raw.phrase === "string" && raw.phrase ? { phrase: raw.phrase } : {}),
         ...(typeof raw.note === "string" && raw.note ? { note: raw.note } : {}),
         // 0 (the schema's stand-in for "not stated") and anything

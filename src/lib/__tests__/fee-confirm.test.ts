@@ -360,3 +360,27 @@ describe("runCollectorFeeReply — the gates that were already there stay there"
     expect(res?.reply).toContain("£10.30");
   });
 });
+
+describe("runCollectorFeeReply: free places (2026-10-16)", () => {
+  it("a total is split across the players who pay, and the confirm says how many are free", async () => {
+    const { deps, calls } = recorder({
+      pendingMatch: async () => ({ id: "m1", name: "Friday Night Football", feePendingConfirm: null }),
+      // 8 pay, 2 on a free place: £80 total is £10 each, not £8.
+      headcount: async () => 8,
+      freeCount: async () => 2,
+    });
+    const res = await runCollectorFeeReply("£80 total", deps);
+    expect(calls.staged).toEqual([{ matchId: "m1", perPlayer: 10 }]);
+    expect(res?.reply).toContain("8 players to charge");
+    expect(res?.reply).toContain("(2 players are on a free place and not counted.)");
+  });
+
+  it("no free places: the confirm is exactly what it was", async () => {
+    const { deps } = recorder({
+      pendingMatch: async () => ({ id: "m1", name: "Friday Night Football", feePendingConfirm: null }),
+      headcount: async () => 8,
+    });
+    const res = await runCollectorFeeReply("£8 each", deps);
+    expect(res?.reply).not.toContain("free place");
+  });
+});

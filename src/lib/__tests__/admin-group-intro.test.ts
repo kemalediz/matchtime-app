@@ -182,9 +182,9 @@ describe("buildAdminGroupIntro, Turkish", () => {
 
 describe("the intro and the help read the same gates", () => {
   it("hqHelpGates is what the HQ help is built from", () => {
-    expect(hqHelpGates(FNF)).toEqual({ squad: true, graphics: true, picks: true, paid: false });
-    expect(hqHelpGates(DEFAULT_CLUB)).toEqual({ squad: true, graphics: true, picks: false, paid: false });
-    expect(hqHelpGates({ squadMode: "monthly", benchPickMode: "organiser" })).toEqual({ squad: false, graphics: true, picks: true, paid: true });
+    expect(hqHelpGates(FNF)).toEqual({ squad: true, graphics: true, picks: true, paid: false, free: false });
+    expect(hqHelpGates(DEFAULT_CLUB)).toEqual({ squad: true, graphics: true, picks: false, paid: false, free: false });
+    expect(hqHelpGates({ squadMode: "monthly", benchPickMode: "organiser" })).toEqual({ squad: false, graphics: true, picks: true, paid: true, free: false });
   });
 
   it("the intro names the pick and PAID exactly when the help lists them", () => {

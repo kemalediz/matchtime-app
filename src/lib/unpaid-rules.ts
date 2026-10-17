@@ -20,10 +20,13 @@
  * Pure: no database, no clock.
  */
 import { formatLondon, londonDateTimeToUtc } from "./london-time";
+import { isFeeWaived } from "./fee-waiver-rules";
 
 export interface UnpaidAttendance {
   userId: string;
   paidAt: Date | null;
+  /** A free place (fee-waiver.ts): left out entirely, it owes nothing. */
+  feeWaivedAt: Date | null;
   name?: string | null;
 }
 
@@ -52,7 +55,9 @@ export function summariseUnpaid(args: {
   creditCount: number;
 }): UnpaidSummary | null {
   const { payerId, creditCount } = args;
-  const confirmed = payerId ? args.confirmed.filter((a) => a.userId !== payerId) : args.confirmed;
+  // A free place that was not paid owes nothing: out of every count.
+  const owing = args.confirmed.filter((a) => a.paidAt != null || !isFeeWaived(a));
+  const confirmed = payerId ? owing.filter((a) => a.userId !== payerId) : owing;
   const paidPeople = confirmed.filter((a) => a.paidAt != null).length;
   const unpaidRows = confirmed.filter((a) => a.paidAt == null);
   const unpaid = Math.max(0, unpaidRows.length - creditCount);

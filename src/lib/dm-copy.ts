@@ -116,13 +116,26 @@ export function buildFeeAskDm(
     activityName: string;
     /** Confirmed squad size. 0 omits the "(N played)" clause. */
     headcount: number;
+    /** Players on a free place, left out of `headcount` (2026-10-16). */
+    freeCount?: number;
   } & WithLang,
 ): string {
-  return t(p.lang).dm_fee_ask({
-    firstName: firstOf(p.collectorName),
-    activityName: p.activityName,
-    headcount: p.headcount,
-  });
+  return withFreeNote(
+    t(p.lang).dm_fee_ask({
+      firstName: firstOf(p.collectorName),
+      activityName: p.activityName,
+      headcount: p.headcount,
+    }),
+    p.freeCount,
+    p.lang,
+  );
+}
+
+/** Free places (2026-10-16): one line under the fee question or its
+ *  confirm saying how many players are not counted. Nothing when none,
+ *  so every message without a free place is exactly what it was. */
+function withFreeNote(text: string, freeCount: number | undefined, lang: WithLang["lang"]): string {
+  return freeCount && freeCount > 0 ? `${text}\n\n${t(lang).dm_fee_free_note({ count: freeCount })}` : text;
 }
 
 // ── row 89: the daily pay chase ────────────────────────────────────────
@@ -282,14 +295,20 @@ export function buildFeeConfirmPrompt(
     headcount: number;
     matchName: string;
     wasTotal: boolean;
+    /** Players on a free place, left out of `headcount` (2026-10-16). */
+    freeCount?: number;
   } & WithLang,
 ): string {
-  return t(p.lang).dm_fee_confirm_prompt({
-    fee: gbp(p.perPlayer),
-    headcount: p.headcount,
-    matchName: p.matchName,
-    wasTotal: p.wasTotal,
-  });
+  return withFreeNote(
+    t(p.lang).dm_fee_confirm_prompt({
+      fee: gbp(p.perPlayer),
+      headcount: p.headcount,
+      matchName: p.matchName,
+      wasTotal: p.wasTotal,
+    }),
+    p.freeCount,
+    p.lang,
+  );
 }
 
 /**

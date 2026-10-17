@@ -41,12 +41,13 @@ import { releaseMatchPayments } from "../payment-flow";
 
 const phoneOf = (i: number) => `+4477009000${i}`;
 
-function att(i: number, id: string, paidAt: Date | null = null) {
+function att(i: number, id: string, paidAt: Date | null = null, feeWaivedAt: Date | null = null) {
   return {
     userId: id,
     status: "CONFIRMED",
     paymentMethod: null,
     paidAt,
+    feeWaivedAt,
     user: { id, name: id, phoneNumber: phoneOf(i) },
   };
 }
@@ -95,5 +96,12 @@ describe("releaseMatchPayments skips a player already marked paid", () => {
     matchRow = match([att(1, "ali"), att(2, "ben"), att(3, "col")]);
     expect(await releaseMatchPayments("m1")).toBe(2);
     expect(botJobs).toHaveLength(2);
+  });
+
+  it("a free place (feeWaivedAt, not paid) gets no pay link either, so a fee set later never charges it", async () => {
+    const waived = new Date("2026-10-16T18:00:00Z");
+    matchRow = match([att(1, "bibs", null, waived), att(2, "ali"), att(3, "col")]);
+    expect(await releaseMatchPayments("m1")).toBe(1);
+    expect(botJobs.map((j) => j.phone)).toEqual([phoneOf(2).slice(1)]);
   });
 });
