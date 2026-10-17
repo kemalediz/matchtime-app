@@ -24,7 +24,7 @@
  *      club's active members (no `leftAt`);
  *   6. it is past the earlier of 09:00 London the morning after go-live
  *      (`liveAt`) and 09:00 London the day before the match, and inside
- *      the message hours (09:00 to 22:59 London).
+ *      outside the club's quiet hours (by default 09:00 to 22:59 London).
  *
  * ONCE. One club-wide claim, `org-<orgId>:seed-nudge`, with each
  * recipient's delivery keyed under it (`…:seed-nudge:admin-group` or
@@ -37,7 +37,7 @@
  * manual step.
  */
 import { formatLondon, londonDateTimeToUtc } from "./london-time";
-import { inMessageHours, MESSAGE_HOURS_FROM_TIME } from "./message-hours";
+import { inMessageHours, MESSAGE_HOURS_FROM_TIME, type QuietHours } from "./message-hours";
 import type { Lang } from "./i18n/lang";
 import { t } from "./i18n/t";
 
@@ -98,6 +98,8 @@ export interface SeedNudgeInput {
   /** The club's active members, and how many have a seed. */
   active: { total: number; seeded: number };
   clubHasPeerRatings: boolean;
+  /** The club's quiet hours (absent: the default). */
+  quiet?: QuietHours | null;
 }
 
 export type SeedNudgeDecision =
@@ -124,7 +126,7 @@ type NotDue = Extract<SeedNudgeDecision, { due: false }>;
  *  (club, features, sent keys, the loaded matches): checked first, so a
  *  club that is not due costs no query on each poll. Null = all pass. */
 export function seedNudgePrecheck(
-  i: Pick<SeedNudgeInput, "now" | "live" | "squadMode" | "teamBalancing" | "liveAt" | "alreadyNudged" | "match">,
+  i: Pick<SeedNudgeInput, "now" | "live" | "squadMode" | "teamBalancing" | "liveAt" | "alreadyNudged" | "match" | "quiet">,
 ): NotDue | null {
   if (!i.live) return { due: false, reason: "not-live" };
   if (i.squadMode !== "weekly") return { due: false, reason: "not-weekly" };
@@ -135,7 +137,7 @@ export function seedNudgePrecheck(
   if (i.now.getTime() < seedNudgeDueFrom({ liveAt: i.liveAt, matchDate: i.match.date }).getTime()) {
     return { due: false, reason: "too-early" };
   }
-  if (!inMessageHours(i.now)) return { due: false, reason: "outside-hours" };
+  if (!inMessageHours(i.now, i.quiet ?? undefined)) return { due: false, reason: "outside-hours" };
   return null;
 }
 

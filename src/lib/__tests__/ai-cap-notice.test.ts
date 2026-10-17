@@ -7,7 +7,8 @@
  *   - through `sendAdminNotice`, the admin channel's one door (one person,
  *     the admin group, or each admin), never the platform owner;
  *   - never for a club that is unapproved, dormant, muted or has no group;
- *   - never after 23:00 London: it would be held to 09:00 and arrive the
+ *   - never when it would be held into tomorrow (by default from 23:00
+ *     London; the club's quiet hours since 2026-10-16): it would arrive the
  *     next day talking about a day that is over;
  *   - a failed queue releases the claim so a later trip can try again.
  *
@@ -119,6 +120,15 @@ describe("aiCapNoticeTooLate: no notice from 23:00 London (it would arrive tomor
     expect(aiCapNoticeTooLate(new Date("2026-10-24T22:00:00Z"))).toBe(true);
   });
 
+  it("follows the club's quiet hours: off never too late; 21:00 to 10:30 too late from 21:00, not at 03:00", () => {
+    const off = { enabled: false, from: "23:00", to: "09:00" };
+    const early = { enabled: true, from: "21:00", to: "10:30" };
+    expect(aiCapNoticeTooLate(new Date("2026-12-01T23:30:00Z"), off)).toBe(false);
+    expect(aiCapNoticeTooLate(new Date("2026-12-01T20:59:00Z"), early)).toBe(false);
+    expect(aiCapNoticeTooLate(new Date("2026-12-01T21:00:00Z"), early)).toBe(true);
+    expect(aiCapNoticeTooLate(new Date("2026-12-02T03:00:00Z"), early)).toBe(false);
+  });
+
   it("is exactly the hour from which a held notice would only arrive tomorrow", () => {
     for (let i = 0; i < 96; i++) {
       const now = new Date(Date.UTC(2026, 11, 1) + i * 15 * 60_000);
@@ -185,6 +195,19 @@ describe("notifyAdminsOfAiCap", () => {
     expect(await notifyAdminsOfAiCap("org-1", new Date("2026-10-01T22:30:00Z"))).toBe("skipped"); // 23:30 BST
     expect(h.state.notices).toHaveLength(0);
     expect(h.state.claimed.size).toBe(0);
+  });
+
+  it("QUIET HOURS OFF (2026-10-16): at 23:30 London the notice goes at once", async () => {
+    h.state.org = { ...liveOrg, quietHoursEnabled: false, quietHoursFrom: "23:00", quietHoursTo: "09:00" };
+    expect(await notifyAdminsOfAiCap("org-1", new Date("2026-10-01T22:30:00Z"))).toBe("sent");
+    expect(h.state.notices).toHaveLength(1);
+  });
+
+  it("the club's own quiet hours, 21:00 to 10:30: 21:30 London is too late, 20:30 is not", async () => {
+    h.state.org = { ...liveOrg, quietHoursEnabled: true, quietHoursFrom: "21:00", quietHoursTo: "10:30" };
+    expect(await notifyAdminsOfAiCap("org-1", new Date("2026-10-01T20:30:00Z"))).toBe("skipped"); // 21:30 BST
+    expect(h.state.claimed.size).toBe(0);
+    expect(await notifyAdminsOfAiCap("org-1", new Date("2026-10-01T19:30:00Z"))).toBe("sent"); // 20:30 BST
   });
 
   it("at 22:30 London, too late under the old 22:00 cutoff, the notice goes", async () => {

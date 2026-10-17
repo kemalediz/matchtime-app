@@ -15,8 +15,7 @@
  * command ever leaves a silent group.
  */
 import { randomInt } from "node:crypto";
-import { inMessageHours } from "./message-hours";
-import { isClubLimitExempt } from "./club-limit-exempt";
+import { inMessageHours, type QuietHours } from "./message-hours";
 
 export const ADMIN_CHANNEL_MODES = ["one-person", "admin-group", "each-admin"] as const;
 export type AdminChannelMode = (typeof ADMIN_CHANNEL_MODES)[number];
@@ -204,13 +203,11 @@ export function parsePiCaps(header: string | null | undefined): PiCaps {
 }
 
 /**
- * Admin-group posts go out 09:00 to 22:59 London (the shared message
- * hours), like the bench offers; anything due overnight waits for the
- * morning. Every post is claimed once by its key, so waiting delays it
- * and never doubles it.
+ * Admin-group posts go out outside the club's quiet hours (2026-10-16;
+ * by default 09:00 to 22:59 London), like the bench offers; anything due
+ * in them waits for them to end. Quiet hours off: any hour. Every post is
+ * claimed once by its key, so waiting delays it and never doubles it.
  */
-export function isAdminGroupPostHour(now: Date, orgId?: string | null): boolean {
-  // A club listed in CLUB_LIMIT_EXEMPT_ORG_IDS posts at any hour.
-  if (isClubLimitExempt(orgId)) return true;
-  return inMessageHours(now);
+export function isAdminGroupPostHour(now: Date, quiet?: QuietHours | null): boolean {
+  return inMessageHours(now, quiet ?? undefined);
 }

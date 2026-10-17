@@ -44,6 +44,7 @@ import { isClubOperational } from "./club-approval-state";
 import { SETUP_STAGE_SELECT, isClubSettingUp } from "./club-setup-rules";
 import { planPricePence } from "./club-billing-rules";
 import { formatLondon } from "./london-time";
+import { QUIET_HOURS_SELECT, quietHoursOf, type QuietHours } from "./message-hours";
 import {
   buildClaimsDigest,
   buildCollectorReplyAnswer,
@@ -856,6 +857,7 @@ export async function sweepMonthPayments(
         billingPricePence: true,
         paymentHolderId: true,
         ...SETUP_STAGE_SELECT,
+        ...QUIET_HOURS_SELECT,
       },
     });
     // Belt and braces (PR #234 review, fix 4): this sweep is only ever
@@ -866,7 +868,7 @@ export async function sweepMonthPayments(
     const months = preloaded ?? (await loadLiveMonths(orgId, now));
     for (const month of months) {
       await priceAsk(month, org, now);
-      await claimsDigest(month, org.paymentHolderId, now);
+      await claimsDigest(month, org.paymentHolderId, now, quietHoursOf(org));
       await payBySummary(month, now);
     }
   } catch (err) {
@@ -904,16 +906,16 @@ async function priceAsk(
   });
 }
 
-async function claimsDigest(month: SignupMonth, collectorId: string | null, now: Date): Promise<void> {
+async function claimsDigest(month: SignupMonth, collectorId: string | null, now: Date, quiet: QuietHours): Promise<void> {
   // The cheap tests first: nobody says paid, or not the hour for it.
   if (!month.members.some((m) => m.paid === "claimed" && !m.out)) return;
-  if (!claimsDigestDue({ now, sentToday: false, waiting: 1 })) return;
+  if (!claimsDigestDue({ now, sentToday: false, waiting: 1, quiet })) return;
   const day = formatLondon(now, "yyyy-MM-dd");
   const key = `${digestPrefix(month.orgId, month.id)}${day}`;
   const sentToday = (await db.sentNotification.findUnique({ where: { key }, select: { id: true } })) !== null;
   if (sentToday) return;
   const claims = await waitingClaims(month);
-  if (!claimsDigestDue({ now, sentToday, waiting: claims.length })) return;
+  if (!claimsDigestDue({ now, sentToday, waiting: claims.length, quiet })) return;
   const text = await sendDigestNow(month, claims, now, day);
   if (!text) return;
   const collector = collectorId ? await db.user.findUnique({ where: { id: collectorId }, select: { phoneNumber: true } }) : null;
@@ -995,8 +997,10 @@ export async function monthPaymentPosts(
   now: Date,
   /** The club's live months, when the poll has just read them. */
   preloaded?: SignupMonth[] | null,
+  /** The club's quiet hours (the scheduler's `features.quietHours`). */
+  quiet?: QuietHours | null,
 ): Promise<PaymentInstruction[]> {
-  if (!isDaytime(now)) return [];
+  if (!isDaytime(now, quiet)) return [];
   const months = (preloaded ?? (await loadLiveMonths(orgId, now))).filter(
     (m) => m.pricedAt && m.payByAt && m.sharePerGamePence != null && now.getTime() < m.payByAt.getTime() + (3 + 1) * DAY_MS,
   );
@@ -1036,7 +1040,7 @@ export async function monthPaymentPosts(
     const unpaid = regulars.filter((m) => m.paid === "none" || declined.has(declinedKey(orgId, month.id, m.userId)));
 
     const groupKey = `${prefix}group:${month.id}:count`;
-    if (groupReminderDue({ now, payByAt, sent: sentAt.has(groupKey), unpaid: unpaid.length })) {
+    if (groupReminderDue({ now, payByAt, sent: sentAt.has(groupKey), unpaid: unpaid.length, quiet })) {
       out.push({ kind: "group-message", key: groupKey, text: buildGroupPayReminder({ count: unpaid.length, monthDate: month.firstKickoff, payByAt, lang: month.language }) });
     }
 
@@ -1054,7 +1058,7 @@ export async function monthPaymentPosts(
         r2At: sentAt.get(`${base}r2`) ?? null,
         lateDays: [...sentAt.keys()].filter((k) => k.startsWith(`${base}late:`)).map((k) => k.slice(`${base}late:`.length)),
       };
-      const kind = duePaymentReminder({ now, payByAt, sent: history });
+      const kind = duePaymentReminder({ now, payByAt, sent: history, quiet });
       if (!kind) continue;
       out.push({
         kind: "dm",

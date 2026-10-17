@@ -37,6 +37,8 @@ import { hasMatchForSlot, isSameRecurringFixture, type RecurringFixtureKey } fro
 import { parseMonthlyList } from "./monthly-list";
 import { weekListHash } from "./monthly-week-rules";
 import { adminNoticeSendAfter } from "./rolling-squad-rules";
+import { loadClubQuietHours } from "./club-quiet-hours";
+import { QUIET_HOURS_SELECT, quietHoursOf, type QuietHours } from "./message-hours";
 import {
   buildSignupListPost,
   buildSignupLockedDm,
@@ -365,10 +367,11 @@ export async function loadLiveMonths(orgId: string, now: Date = new Date()): Pro
 export async function openDueMonthLists(orgId: string, now: Date = new Date()): Promise<string[]> {
   const org = await db.organisation.findUnique({
     where: { id: orgId },
-    select: { squadMode: true, monthListOpensDaysBefore: true, approvalStatus: true, dormantAt: true, billingStatus: true },
+    select: { squadMode: true, monthListOpensDaysBefore: true, approvalStatus: true, dormantAt: true, billingStatus: true, ...QUIET_HOURS_SELECT },
   });
   if (!org || normaliseSquadMode(org.squadMode) !== "monthly" || !isClubOperational(org)) return [];
-  if (!isDaytime(now)) return [];
+  const quiet = quietHoursOf(org);
+  if (!isDaytime(now, quiet)) return [];
 
   const current = londonMonthStart(now);
   const next = nextMonthStart(current);
@@ -400,7 +403,7 @@ export async function openDueMonthLists(orgId: string, now: Date = new Date()): 
       const activity = (prior && activities.find((x) => x.id === prior.activityId)) || a;
       const first = firstKickoffOf(monthStart, activity.dayOfWeek, activity.time);
       if (!first) continue;
-      if (!listOpenDue({ now, opensAt: listOpensAt(first, org.monthListOpensDaysBefore), firstKickoff: first })) continue;
+      if (!listOpenDue({ now, opensAt: listOpensAt(first, org.monthListOpensDaysBefore), firstKickoff: first, quiet })) continue;
       try {
         const id = await openMonthList({ orgId, activity, monthStart, previousMonthId: prior?.id ?? null, now });
         if (id) opened.push(id);
@@ -721,9 +724,9 @@ export async function applySignup(args: {
   }
 
   const phone = member.user.phoneNumber?.replace(/^\+/, "") ?? null;
-  const sendAfter = adminNoticeSendAfter(now);
+  const sendAfter = adminNoticeSendAfter(now, await loadClubQuietHours(month.orgId));
   const day = formatLondon(now, "yyyy-MM-dd");
-  /** A DM to the person themselves, once per key, never 23:00 to 08:59. */
+  /** A DM to the person themselves, once per key, never in the club's quiet hours. */
   const tell = async (key: string, text: string): Promise<void> => {
     // The page says it on the page; an organiser's change is the organiser's to pass on.
     if (!phone || args.source === "page" || args.source === "admin") return;
@@ -1028,7 +1031,7 @@ export async function handleSignupPaste(args: {
     try {
       const day = formatLondon(now, "yyyy-MM-dd");
       if (phone && (await claimOnce(`${signupKeyPrefix(args.orgId)}paste-others:${month.id}:${args.sender.userId}:${day}`, "signup-dm"))) {
-        const sendAfter = adminNoticeSendAfter(now);
+        const sendAfter = adminNoticeSendAfter(now, await loadClubQuietHours(args.orgId));
         await db.botJob.create({
           data: {
             orgId: args.orgId,
@@ -1156,6 +1159,8 @@ export async function signupListPosts(
   now: Date,
   /** The club's live months, when the poll's sweep has just read them. */
   preloaded?: SignupMonth[] | null,
+  /** The club's quiet hours (the scheduler's `features.quietHours`). */
+  quiet?: QuietHours | null,
 ): Promise<{
   posts: Array<{ key: string; text: string }>;
   /** Every month of the club in sign-up, for the scheduler: a match of one
@@ -1181,6 +1186,7 @@ export async function signupListPosts(
       hash,
       lastShownHash: shown[0] ? shown[0].key.slice(prefix.length).split(":")[0] : null,
       lastPostAt: shown.find((r) => r.kind === "group-message")?.createdAt ?? null,
+      quiet,
     });
     if (due) out.push({ key: `${prefix}${hash}:${shown.length}`, text });
   }

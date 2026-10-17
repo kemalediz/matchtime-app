@@ -24,6 +24,7 @@ import {
   seedNudgePrecheck,
 } from "./seed-nudge-rules";
 import { buildSeedNudgeNotice } from "./seed-nudge-copy";
+import type { QuietHours } from "./message-hours";
 
 /** The page the nudge points at (src/app/admin/players/ratings). */
 export const SEED_RATINGS_PATH = "/admin/players/ratings";
@@ -79,7 +80,7 @@ export async function loadSeedState(
 export async function seedNudgeInstructions(args: {
   /** `live`: not setting up (`isClubSettingUp`, club-setup-rules.ts). */
   org: { id: string; live: boolean; liveAt: Date | null };
-  features: { teamBalancing: boolean; squadMode: string; playerRating: boolean; language: string };
+  features: { teamBalancing: boolean; squadMode: string; playerRating: boolean; language: string; quietHours?: QuietHours };
   /** The scheduler's loaded matches (date ascending, no cancelled ones). */
   matches: ReadonlyArray<SchedulerMatch>;
   sentKeys: ReadonlySet<string>;
@@ -101,6 +102,7 @@ export async function seedNudgeInstructions(args: {
       liveAt: org.liveAt,
       alreadyNudged: seedNudgeAlreadySent(org.id, args.sentKeys),
       match: next ? { date: next.date, status: next.status } : null,
+      quiet: features.quietHours,
     };
     if (seedNudgePrecheck(base) || !next) return [];
 
