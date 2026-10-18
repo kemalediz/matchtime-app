@@ -110,6 +110,11 @@ const NO_TICK: ReadonlySet<string> = new Set([
   "hq-score-not-changed",
   "hq-score-no-match",
   "hq-score-failed",
+  // Man of the Match picked by the organisers (2026-10-18): a tick only
+  // when it was recorded.
+  "hq-mom-asked",
+  "hq-mom-organisers-only",
+  "hq-mom-failed",
 ]);
 export const HQ_TICK = "✅";
 
@@ -140,6 +145,8 @@ export async function handleAdminGroupMessage(msg: AdminGroupMessage): Promise<A
       paymentTrackingEnabled: true,
       // The money collector may ask for, and say YES to, a free place.
       paymentHolderId: true,
+      // Who chooses Man of the Match (mom-chooser.ts): asked with the score.
+      momChosenBy: true,
     },
   });
   if (!org) return { handled: false, ignored: "not-an-admin-group", replyText: null };

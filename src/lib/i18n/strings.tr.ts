@@ -541,6 +541,7 @@ export const tr: Strings = {
   mom_votes_header: "Oylar:",
   mom_vote_row: (p) => `• ${p.name}: ${p.votes}`,
   mom_trophy_line: "Kupa gelecek maçta sahibini bekliyor.",
+  mom_picked: (p) => `Tebrikler *${p.name}* 🎉`,
 
   // ── row 46: the format-switch proposal ─────────────────────────────
 
@@ -797,6 +798,8 @@ export const tr: Strings = {
     `Gelecek haftaki takımları dengeli kurmak için kullanacağım.`,
   ask_score_hq: (p) =>
     `🏁 *${p.activityName}*: maç kaç kaç bitti, hangi takım kazandı? Buraya yazın, kaydedeyim.`,
+  ask_score_hq_mom: (p) =>
+    `🏁 *${p.activityName}*: maç kaç kaç bitti, hangi takım kazandı ve ${p.mvpLabel} kim? Buraya yazın, kaydedeyim.`,
 
   // ═══════════════════════════════════════════════════════════════════
   // Phase 2, slice 3: the chase model's server-computed headers.
@@ -1204,6 +1207,13 @@ export const tr: Strings = {
   hq_score_unclear: `Bundan son skoru çıkaramadım. Maç kaç kaç bitti ve hangi takım kazandı?`,
   hq_score_no_match: `Skoru beklenen, bitmiş bir maç yok.`,
   hq_score_failed: `Bu skoru şu an kaydedemedim. Lütfen bir dakika sonra tekrar gönderin.`,
+  hq_mom_saved: (p) => `${p.mvpLabel} kaydedildi: ${p.name}.`,
+  hq_mom_changed: (p) => `${p.mvpLabel} değiştirildi: ${p.name} (önceki: ${p.old}).`,
+  hq_mom_ask: (p) => `${p.mvpLabel} kim?`,
+  hq_mom_which: (p) => `${p.mvpLabel} hangi ${p.ref}: ${p.choices}?`,
+  hq_mom_not_in_match: (p) => `${p.ref} adını o maçın oyuncuları arasında bulamadım. ${p.mvpLabel} kim?`,
+  hq_mom_organisers_only: (p) => `${p.mvpLabel} seçimini yalnızca organizatörler yapabilir.`,
+  hq_mom_failed: (p) => `${p.mvpLabel} şu an kaydedilemedi. Lütfen bir dakika sonra tekrar gönderin.`,
   group_ask_organiser: (p) =>
     `${p.kickoffLabel} maçı için ${p.open} oyuncu daha lazım. *VARIM* yazın, kimin oynayacağını organizatörler seçer. Seçilirseniz size mesaj atarım.`,
   hq_group_asked: (p) => `Ana grupta ${p.open} oyuncu için sordum.`,
@@ -1318,7 +1328,9 @@ export const tr: Strings = {
 
   dm_rating: (p) =>
     `🏆 *${p.activityName}*, ${p.dateLabel}\n\n` +
-    `Takım arkadaşlarına puan ver, ${p.mvpLabel} için de oyunu kullan. Yaklaşık 1 dakika sürer.\n\n` +
+    (p.momVote === false
+      ? `Takım arkadaşlarına puan ver. Yaklaşık 1 dakika sürer.\n\n`
+      : `Takım arkadaşlarına puan ver, ${p.mvpLabel} için de oyunu kullan. Yaklaşık 1 dakika sürer.\n\n`) +
     `Kişisel linkin:\n${p.rateUrl}\n\n` +
     `Link 5 gün geçerli.\n\n` +
     `📊 Sezon istatistiklerin (puanlar, maçın adamı, rozetler, paylaşım kartı), istediğin zaman:\n${p.statsUrl}`,
@@ -1330,7 +1342,9 @@ export const tr: Strings = {
       case 1:
         return (
           `${n ? `${n} 👋 ` : "👋 "}Umarım dünkü *${p.activityName}* maçı iyi geçmiştir.\n\n` +
-          `Bir dakikan olunca buradan takım arkadaşlarına puan ver, ${p.mvpLabel} için de oyunu kullan. ` +
+          (p.momVote === false
+            ? `Bir dakikan olunca buradan takım arkadaşlarına puan ver. `
+            : `Bir dakikan olunca buradan takım arkadaşlarına puan ver, ${p.mvpLabel} için de oyunu kullan. `) +
           `Ne kadar çok kişi oy verirse gelecek haftaki takımlar o kadar dengeli olur 🙌${sig}`
         );
       case 2:
@@ -3571,6 +3585,10 @@ export const tr: Strings = {
   wr_announce_blurb: "MatchTime grupta paylaşır ya da organizatörleriniz paylaşır.",
   wr_announce_matchtime: "MatchTime paylaşır",
   wr_announce_organisers: "Organizatörler paylaşır",
+  mom_chooser_label: "Maçın adamını kim seçer",
+  mom_chooser_blurb: "Oyuncular puan linklerinde oy verir ya da organizatörleriniz seçip skorla birlikte MatchTime'a yazar.",
+  mom_chooser_players: "Oyuncular oy verir",
+  mom_chooser_organisers: "Organizatörler seçer",
   // /admin/settings, "Afişler" kartı (2026-10-14).
   gp_title: "Afişler",
   gp_lead: "MatchTime'ın yönetici grubunuza gönderdiği kadro afişi ve takım listesi, oyunculara iletmeye hazır.",

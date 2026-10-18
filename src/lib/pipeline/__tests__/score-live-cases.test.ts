@@ -120,6 +120,7 @@ describe("the score extractor's schema and prompt", () => {
     "secondTeam",
     "winner",
     "loser",
+    "momRef",
     "correction",
     "swapped",
     "otherGame",
@@ -134,7 +135,7 @@ describe("the score extractor's schema and prompt", () => {
     expect([...schema.required].sort()).toEqual([...FIELDS].sort());
     // Free text, never an enum of RED / YELLOW: which side is Red is
     // code's to decide, from the club's own team names.
-    for (const k of ["firstTeam", "secondTeam", "winner", "loser"]) {
+    for (const k of ["firstTeam", "secondTeam", "winner", "loser", "momRef"]) {
       expect(schema.properties[k]).toEqual({ type: "string" });
     }
     expect(JSON.stringify(schema)).not.toMatch(/RED|YELLOW/);
@@ -148,6 +149,7 @@ describe("the score extractor's schema and prompt", () => {
       "firstTeam, secondTeam\n",
       "winner\n",
       "loser\n",
+      "momRef\n",
       "correction\n",
       "swapped\n",
       "otherGame\n",

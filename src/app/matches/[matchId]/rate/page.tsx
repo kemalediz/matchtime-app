@@ -34,6 +34,9 @@ export default function RatePlayersPage() {
   const [ratings, setRatings] = useState<Record<string, number>>({});
   const [momPick, setMomPick] = useState<string | null>(null);
   const [mvpLabel, setMvpLabel] = useState<string>("Man of the Match");
+  // False when the club's organisers pick Man of the Match (mom-chooser.ts):
+  // players only rate each other here.
+  const [momVote, setMomVote] = useState<boolean>(true);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
@@ -55,6 +58,7 @@ export default function RatePlayersPage() {
       });
       setRatings(defaults);
       if (data.existingMoMVote) setMomPick(data.existingMoMVote.playerId);
+      setMomVote(data.momVote !== false);
       setLoading(false);
     }
     if (session?.user?.id) load();
@@ -66,7 +70,7 @@ export default function RatePlayersPage() {
       const res = await submitRatings(matchId, {
         ratings: Object.entries(ratings).map(([playerId, score]) => ({ playerId, score })),
       });
-      if (momPick) await submitMoMVote(matchId, { playerId: momPick });
+      if (momVote && momPick) await submitMoMVote(matchId, { playerId: momPick });
       // If a few players in this (possibly stale) tab had been
       // merged-away/removed since the page loaded, the server skips
       // them instead of failing the whole submission — still a success
@@ -103,7 +107,7 @@ export default function RatePlayersPage() {
       <div className="text-center">
         <h1 className="text-2xl font-bold text-slate-800">Rate players</h1>
         <p className="text-sm text-slate-500 mt-1">
-          Tap a score for each player, then pick {mvpLabel}.
+          {momVote ? <>Tap a score for each player, then pick {mvpLabel}.</> : <>Tap a score for each player.</>}
         </p>
       </div>
 
@@ -149,8 +153,9 @@ export default function RatePlayersPage() {
         ))}
       </div>
 
-      {/* MoM */}
-      <div className="bg-white rounded-xl border-2 border-amber-200 shadow-sm p-4">
+      {/* MoM: not offered when the organisers pick it. */}
+      {momVote && (
+      <div className="bg-white rounded-xl border-2 border-amber-200 shadow-sm p-4" data-testid="mom-vote">
         <div className="flex items-center gap-2 mb-3">
           <Trophy className="w-5 h-5 text-amber-500" />
           <h2 className="font-semibold text-slate-800">{mvpLabel}</h2>
@@ -177,6 +182,7 @@ export default function RatePlayersPage() {
           })}
         </div>
       </div>
+      )}
 
       <button
         onClick={handleSubmit}

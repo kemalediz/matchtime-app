@@ -595,6 +595,12 @@ export interface ScoreFacts {
   winner?: string;
   /** The team a word says LOST ("reds lost 6-9", "kaybettik"). */
   loser?: string;
+  /** The player the message names as Man of the Match ("MoM Naim",
+   *  "maçın adamı Naim"), verbatim (2026-10-18). A FACT only: who that is,
+   *  and whether it is recorded, are `admin-group-score.ts`'s, and only
+   *  where the organisers pick Man of the Match (mom-chooser.ts). The
+   *  engine never reads it. */
+  momRef?: string;
   /** The message says a result already given or recorded was WRONG and
    *  gives the right one ("no, it was...", "yanlış, ..."). NECESSARY to
    *  change a recorded result and NOT SUFFICIENT: the message must also
@@ -895,6 +901,10 @@ export interface SquadState {
      *  in the players' group. Optional so every fixture that predates it
      *  keeps its shape; absent means "matchtime". */
     listAnnouncer?: "matchtime" | "organisers";
+    /** Who chooses Man of the Match (2026-10-18, mom-chooser.ts). Read by
+     *  the admin group's score handling only. Optional; absent means
+     *  "players". */
+    momChosenBy?: "players" | "organisers";
   };
   /**
    * RECLAIMS (slice 2b, 2026-10-01): players whose last move on this
