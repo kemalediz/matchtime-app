@@ -355,64 +355,56 @@ Which period:
 
 If the line-ups have to be worked out again it is "generate", even when the message also asks for new names or says "again", "once more" or "instead"; a message that asks you to invent names while generating leaves teamNames empty. "rename" is only for the same line-ups under new names. Write every name as the message writes it; when the sender means themselves ("me", "I", "beni", "bana", "ben") write "me". Any field the message says nothing about is empty.`,
 
-  score: `You read ONE message from a football group's WhatsApp chat about the result of the group's own match, and you report what it SAYS. You report facts about the text. You never decide which team is which, who won, or what gets recorded: code does that, from the club's records.
+  score: `You read ONE message from a football group's WhatsApp chat about the result of the group's own match and report what it SAYS. You never decide which team is which, who won, who a player is, or what gets recorded: code does that.
 
-WHAT YOU ARE SHOWN
-RECENT CHAT and MATCHTIME'S LAST POST are context only: use them to understand THE MESSAGE, never take a number or a team from them. THE MESSAGE is the one you report on, with the name of the person who typed it: the sender.
+RECENT CHAT and MATCHTIME'S LAST POST are context only: never take a number, team or name from them. THE MESSAGE is the one you report on, with its sender.
 
 WHAT YOU RETURN
 hasScore
-true when THE MESSAGE itself states the two numbers of a result. false when it has no scoreline ("yellows won", "wrong way round", a bare "Yellow"): first and second are then 0 and mean nothing.
-
+true when THE MESSAGE states the two numbers of a result; false when it has none ("yellows won", "wrong way round", "MoM Naim"), and first and second are then 0.
 first, second
-The two numbers of the FINAL result, in the order they are written. In a story with several scorelines ("it was 6-6 then it turned to 9-6") the final one is the result.
-
-A TEAM REFERENCE is the team's name exactly as the message writes it ("yellows", "Reds", "Sarılar", "the Lions"). For the sender's own side ("we", "us", "biz", a verb like "kazandık") write "us"; for the side they played against write "them". Leave a team field "" when the message does not say. Never guess one, and never work out the other team's name yourself.
-
+the two numbers of the FINAL result, in written order. In a story ("it was 6-6 then it turned to 9-6") the final one.
+A TEAM REFERENCE is the team's name as written ("yellows", "Reds", "Sarılar"); "us" for the sender's side ("we", "biz", "kazandık"), "them" for the other. "" when not said. Never guess or work out a team.
 firstTeam, secondTeam
-A team whose name is written directly beside a number, with no word about the outcome: firstTeam beside the first number, secondTeam beside the second. Report where it is written and do not decide who won.
-
+a team written directly beside the first or second number with no word about the outcome.
 winner
-Only when a word says so: the score is "to" or "for" a team, or a team "won", "wins", "beat", "kazandı", "yendi". "" otherwise, and "" for a draw.
-
+only when a word says so: "to" or "for" a team, "won", "wins", "beat", "kazandı", "yendi". "" otherwise and for a draw.
 loser
-Only when a word says so: "lost", "got beaten", "kaybetti", "yenildi". "" otherwise.
-
+only when a word says so: "lost", "got beaten", "kaybetti", "yenildi". "" otherwise.
+momRef
+the player named Man of the Match ("MoM", "man of the match", "POTM", "maçın adamı"), as written, or a bare name answering MatchTime's question who it was. "" otherwise; praise alone ("Naim was class") is "".
 correction
-true only when the message says a result ALREADY given or recorded for this match was wrong ("no, it was...", "that is wrong", "yanlış", "hayır ... olacak"). A first report is false, however it is worded.
-
+true only when it says a result ALREADY given for this match was wrong ("no, it was...", "yanlış", "hayır ... olacak"). A first report is false.
 swapped
-true when the message says the result has the two teams the wrong way round ("wrong way round", "other way round", "tam tersi"). correction is then true as well.
-
+true when it says the teams are the wrong way round ("other way round", "tam tersi"); correction is then true too.
 otherGame
-true when the message is plainly about a different game from the one just played ("last week we lost 9-2", "geçen ay 5-0 yenmiştik"). Then correction is false.
+true when it is plainly about a different game ("last week we lost 9-2", "geçen ay 5-0 yenmiştik"); correction is then false.
 
 EXAMPLES, English and Turkish
 A word names the winner:
   "5-3 to Yellows" / "sarılar 5-3 kazandı" -> hasScore true, first 5, second 3, winner "Yellows" / "sarılar"
   "4-6 to Yellows" -> first 4, second 6, winner "Yellows"
-  "6-5 Yellow wins" -> first 6, second 5, winner "Yellow"
   "it was 6-6 then suddenly it turned to 9-6 to yellows" -> first 9, second 6, winner "yellows"
-A team beside a number and no such word:
+A team beside a number:
   "Yellow 9 - 6 Red" -> first 9, second 6, firstTeam "Yellow", secondTeam "Red"
   "kırmızı 6 sarı 9" -> first 6, second 9, firstTeam "kırmızı", secondTeam "sarı"
   "Reds 3-5" -> first 3, second 5, firstTeam "Reds", winner ""
-  "9-6 yellow" -> first 9, second 6, secondTeam "yellow", winner ""
-The sender's own side:
+  "9-6 yellow" -> first 9, second 6, secondTeam "yellow"
+The sender's side:
   "we won 5-3" / "5-3 kazandık" -> first 5, second 3, winner "us"
   "lost 3-5" / "3-5 kaybettik" -> first 3, second 5, loser "us"
   "reds beat us 7-2" -> first 7, second 2, winner "reds", loser "us"
-No team:
-  "10-7" / "final score was 8-8" / "7-7 berabere" -> hasScore true, the two numbers, every team field ""
-No scoreline:
+No team or no scoreline:
+  "10-7" / "7-7 berabere" -> hasScore true, the two numbers, every team field ""
   "yellows won" / "sarılar kazandı" -> hasScore false, winner "yellows" / "sarılar"
   "Yellow", the whole message, after MatchTime asked which team won -> hasScore false, winner "Yellow"
-A correction:
+Man of the Match:
+  "Yellow won 7-4, MoM Naim" / "sarı 7-4 kazandı, maçın adamı Naim" -> first 7, second 4, winner "Yellow" / "sarı", momRef "Naim"
+  "Naim", after MatchTime asked who was Man of the Match -> hasScore false, momRef "Naim"
+A correction or another game:
   "no Yellow 9 - 6 Red" / "yanlış, kırmızı 6 sarı 9" -> correction true, numbers and teams as above
-  "no it was 9-7" -> first 9, second 7, correction true, every team field ""
   "wrong way round, yellows won" / "tam tersi, sarılar kazandı" -> hasScore false, correction true, swapped true, winner "yellows" / "sarılar"
-Another game:
-  "last week we lost 9-2" -> first 9, second 2, loser "us", otherGame true, correction false`,
+  "last week we lost 9-2" -> first 9, second 2, loser "us", otherGame true`,
 
   admin: `You read ONE instruction to the bot and report what it says. You report the words; code decides what happens. Messages may be in English or Turkish.
 
@@ -597,6 +589,9 @@ const SCORE_SCHEMA = {
     secondTeam: { type: "string" },
     winner: { type: "string" },
     loser: { type: "string" },
+    // 2026-10-18: the Man of the Match the message names, verbatim, or "".
+    // Read only where the organisers pick it (mom-chooser.ts).
+    momRef: { type: "string" },
     correction: { type: "boolean" },
     swapped: { type: "boolean" },
     otherGame: { type: "boolean" },
@@ -609,6 +604,7 @@ const SCORE_SCHEMA = {
     "secondTeam",
     "winner",
     "loser",
+    "momRef",
     "correction",
     "swapped",
     "otherGame",
@@ -925,6 +921,8 @@ export function parseFacts(
       if (hasScore && secondTeam) facts.secondTeam = secondTeam;
       if (winner) facts.winner = winner;
       if (loser) facts.loser = loser;
+      const momRef = team(raw.momRef);
+      if (momRef) facts.momRef = momRef;
       if (raw.correction === true) facts.correction = true;
       if (raw.swapped === true) facts.swapped = true;
       if (raw.otherGame === true) facts.otherGame = true;

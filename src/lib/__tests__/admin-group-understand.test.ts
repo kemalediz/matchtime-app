@@ -844,3 +844,59 @@ describe("score: the players' group's score handling, with HQ's context (2026-10
     expect(hqScore.answerHqScore).toHaveBeenCalledWith(expect.objectContaining({ body: "Yellow" }));
   });
 });
+
+// Man of the Match picked by the organisers (2026-10-18). The live check
+// showed the router calling "MoM was Naim" approve under the WAITING line.
+describe("Man of the Match, where the organisers pick it", () => {
+  const momWaiting = () =>
+    hqScore.hqScoreRouting.mockResolvedValue({ waiting: { kind: "mom", day: "Fri 16 Oct" }, scoreAnswerIds: new Set(), scoreCorrectionIds: new Set() });
+  const nothingPending = () => {
+    dbMock.adminTeamProposal.findFirst.mockResolvedValue(null);
+    partnerAsk.partnerAsksAwaitingApproval.mockResolvedValue([]);
+    hqLog.hqLogSince.mockResolvedValue([]);
+  };
+  const PICK_ORG = { ...ORG, momChosenBy: "organisers" };
+
+  it("the routing is told the organisers pick it", async () => {
+    await ask("MoM was Naim", "score", { org: PICK_ORG });
+    expect(hqScore.hqScoreRouting).toHaveBeenCalledWith(expect.objectContaining({ momByOrganisers: true }));
+    await ask("MoM was Naim", "score");
+    expect(hqScore.hqScoreRouting).toHaveBeenLastCalledWith(expect.objectContaining({ momByOrganisers: false }));
+  });
+
+  it("approve with nothing to approve, while the result waits: the score handling reads it", async () => {
+    nothingPending();
+    momWaiting();
+    hqScore.answerHqScore.mockResolvedValue({ outcome: "hq-mom-saved", replyText: "Man of the Match: Naim Khan." });
+    expect(await ask("MoM was Naim", "approve", { org: PICK_ORG })).toEqual({ route: "score", outcome: "hq-mom-saved", replyText: "Man of the Match: Naim Khan." });
+  });
+
+  it("a real YES with nothing to approve: when the score handling owns nothing, the YES rules decide, as before (silent)", async () => {
+    nothingPending();
+    momWaiting();
+    hqScore.answerHqScore.mockResolvedValue(null);
+    expect(await ask("yes", "approve", { org: PICK_ORG })).toBeNull();
+    expect(hqScore.answerHqScore).toHaveBeenCalledTimes(1);
+  });
+
+  it("approve while the teams wait for a YES: the YES rules, never the score", async () => {
+    momWaiting();
+    expect((await ask("looks good, go", "approve", { org: PICK_ORG }))?.outcome).toBe("teams-final");
+    expect(hqScore.answerHqScore).not.toHaveBeenCalled();
+  });
+
+  it("a reply quoting MatchTime's Man of the Match question goes to the score handling, whatever the router says", async () => {
+    const asked = "Score saved: Yellow 7, Red 4. Who was Man of the Match?";
+    hqLog.hqLogSince.mockResolvedValue([mtRow(ASKED, "mom:m1", asked)]);
+    hqScore.answerHqScore.mockResolvedValue({ outcome: "hq-mom-saved", replyText: "Man of the Match: Naim Khan." });
+    const r = await ask("Naim", "other_att", { org: PICK_ORG, quoted: { text: asked, fromMatchTime: true } });
+    expect(r).toEqual({ route: "score", outcome: "hq-mom-saved", replyText: "Man of the Match: Naim Khan." });
+    expect(squad.handleAdminSquadChange).not.toHaveBeenCalled();
+  });
+
+  it("the same reply in a club whose players vote: unchanged, an attendance change", async () => {
+    const asked = "Score saved: Yellow 7, Red 4. Who was Man of the Match?";
+    hqLog.hqLogSince.mockResolvedValue([mtRow(ASKED, "mom:m1", asked)]);
+    expect((await ask("Naim", "other_att", { quoted: { text: asked, fromMatchTime: true } }))?.outcome).toBe("squad-changed");
+  });
+});

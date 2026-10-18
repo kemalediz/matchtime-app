@@ -247,7 +247,7 @@ export async function loadUnscoredPlayedMatch(
 
 /** The ten most recent matches that have kicked off, the first whose
  *  duration has passed (`load-state.ts`'s `completedMatch` selection). */
-async function latestPlayedMatch(
+export async function latestPlayedMatch(
   orgId: string,
   now: Date,
 ): Promise<{

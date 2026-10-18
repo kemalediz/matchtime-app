@@ -405,8 +405,13 @@ export function buildAskScorePost(args: { activityName: string } & WithLang): st
 
 /** Row 77, in the club's admin group (2026-10-16): asks for the score and
  *  which team won. */
-export function buildAskScoreHqPost(args: { activityName: string } & WithLang): string {
-  return t(args.lang).ask_score_hq(args);
+export function buildAskScoreHqPost(
+  args: { activityName: string; /** Set when the organisers pick Man of the Match: asked for too. */ momLabel?: string | null } & WithLang,
+): string {
+  const s = t(args.lang);
+  return args.momLabel
+    ? s.ask_score_hq_mom({ activityName: args.activityName, mvpLabel: args.momLabel })
+    : s.ask_score_hq({ activityName: args.activityName });
 }
 
 /**

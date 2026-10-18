@@ -16,6 +16,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { isMatchClubBillingPaused } from "@/lib/club-billing";
 import { normalisePhone } from "@/lib/phone";
+import { organisersPickMom } from "@/lib/mom-chooser";
 
 export async function POST(request: Request) {
   const apiKey = request.headers.get("x-api-key");
@@ -137,6 +138,16 @@ export async function POST(request: Request) {
   // while BILLING_ENABLED is off.
   if (await isMatchClubBillingPaused(matchId)) {
     return NextResponse.json({ ok: true, ignored: "club-billing-paused" });
+  }
+
+  // The organisers pick Man of the Match in this club (mom-chooser.ts): a
+  // vote on an old MoM poll must neither add to nor clear their pick.
+  const org = await db.match.findUnique({
+    where: { id: matchId },
+    select: { activity: { select: { org: { select: { momChosenBy: true } } } } },
+  });
+  if (org && organisersPickMom({ momChosenBy: org.activity.org.momChosenBy })) {
+    return NextResponse.json({ ok: true, ignored: "organisers-pick-mom" });
   }
 
   // No option means the user un-voted — delete the MoMVote.

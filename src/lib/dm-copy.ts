@@ -54,6 +54,9 @@ export function buildRatingDm(
     mvpLabel: string;
     rateUrl: string;
     statsUrl: string;
+    /** False when the organisers pick Man of the Match (mom-chooser.ts):
+     *  the DM asks for ratings only. Absent: today's words. */
+    momVote?: boolean;
   } & WithLang,
 ): string {
   return t(p.lang).dm_rating({
@@ -62,6 +65,7 @@ export function buildRatingDm(
     mvpLabel: p.mvpLabel,
     rateUrl: p.rateUrl,
     statsUrl: p.statsUrl,
+    ...(p.momVote === false ? { momVote: false } : {}),
   });
 }
 
@@ -80,6 +84,8 @@ export function buildRatingReminderDm(
     activityName: string;
     mvpLabel: string;
     url: string;
+    /** False when the organisers pick Man of the Match: ratings only. */
+    momVote?: boolean;
   } & WithLang,
 ): string {
   return t(args.lang).dm_rating_reminder({
@@ -88,6 +94,7 @@ export function buildRatingReminderDm(
     activityName: args.activityName,
     mvpLabel: args.mvpLabel,
     url: args.url,
+    ...(args.momVote === false ? { momVote: false } : {}),
   });
 }
 

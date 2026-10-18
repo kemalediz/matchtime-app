@@ -11,6 +11,7 @@ import { billingUiEnabledForRequest } from "@/lib/billing-flag";
 import { normaliseCreditRule, normaliseSquadMode } from "@/lib/squad-month-rules";
 import { loadClubSetupView } from "@/lib/club-setup";
 import { normaliseListAnnouncer } from "@/lib/list-announcer";
+import { normaliseMomChooser } from "@/lib/mom-chooser";
 import { NextResponse } from "next/server";
 
 export async function GET() {
@@ -139,6 +140,8 @@ export async function GET() {
       benchPickFallback: normaliseBenchPickFallback(org.benchPickFallback),
       // 2026-10-14: who announces the list and teams.
       listAnnouncer: normaliseListAnnouncer(org.listAnnouncer),
+      // 2026-10-18: who chooses Man of the Match.
+      momChosenBy: normaliseMomChooser(org.momChosenBy),
     },
     billing,
     // "Monthly squad" (2026-10-05, slice 2). "weekly" for every club that

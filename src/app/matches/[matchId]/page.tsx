@@ -23,6 +23,7 @@ import { buildWeekList } from "@/lib/monthly-week-rules";
 import { PartnerAskPanel } from "@/components/match/partner-ask-panel";
 import { PartnerGuestsPanel } from "@/components/match/partner-guests-panel";
 import { loadPartnerAskPanel } from "@/lib/partner-ask";
+import { organisersPickMom } from "@/lib/mom-chooser";
 
 export default async function MatchDetailPage({
   params,
@@ -36,7 +37,7 @@ export default async function MatchDetailPage({
   const match = await db.match.findUnique({
     where: { id: matchId },
     include: {
-      activity: { include: { sport: true, org: { select: { name: true, teamLabels: true, language: true } } } },
+      activity: { include: { sport: true, org: { select: { name: true, teamLabels: true, language: true, momChosenBy: true } } } },
       attendances: {
         where: { status: { in: ["CONFIRMED", "BENCH"] } },
         include: {
@@ -242,6 +243,9 @@ export default async function MatchDetailPage({
   const momOthers = momTally.filter((r) => r.votes < momTopCount);
   // Each voter casts at most one MoMVote, so vote count == voter count.
   const momConfirmedCount = match.attendances.filter((a) => a.status === "CONFIRMED").length;
+  // The organisers pick Man of the Match in this club (mom-chooser.ts): a
+  // name, never a vote count.
+  const momPicked = organisersPickMom({ momChosenBy: match.activity.org.momChosenBy });
 
   const statusLabel = match.status.replace(/_/g, " ").toLowerCase();
   const statusPill =
@@ -312,9 +316,13 @@ export default async function MatchDetailPage({
                 ) : (
                   <>
                     <span className="font-semibold text-slate-800">{momTopPlayers[0].name}</span>
-                    <span className="text-slate-400">
-                      ({momTopCount} of {momTotalVotes} vote{momTotalVotes === 1 ? "" : "s"})
-                    </span>
+                    {momPicked ? (
+                      <span className="text-slate-400">(picked by the organisers)</span>
+                    ) : (
+                      <span className="text-slate-400">
+                        ({momTopCount} of {momTotalVotes} vote{momTotalVotes === 1 ? "" : "s"})
+                      </span>
+                    )}
                   </>
                 )}
               </p>
@@ -329,7 +337,7 @@ export default async function MatchDetailPage({
                   ))}
                 </p>
               )}
-              {momConfirmedCount > 0 && (
+              {!momPicked && momConfirmedCount > 0 && (
                 <p className="text-xs text-slate-400">
                   {momTotalVotes} of {momConfirmedCount} player{momConfirmedCount === 1 ? "" : "s"} voted
                 </p>
