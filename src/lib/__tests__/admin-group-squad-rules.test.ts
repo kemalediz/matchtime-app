@@ -507,10 +507,10 @@ describe("buildAdminSquadReply: what MatchTime says back, and when it says nothi
     };
     it("organiser pick, a place free: the bench and how to bring someone in", () => {
       expect(reply({ ...base, ...out, bench: ["Uncle Najib"], benchPickMode: "organiser" })).toBe(
-        'Done: Akram out. 17 of 18, 1 on the bench (Uncle Najib). A place is free. To bring someone in from the bench, write "put Uncle Najib in".',
+        'Done: Akram out. 17 of 18, 1 on the bench (Uncle Najib). A place is free. Just tell me who should come in from the bench, in your own words (for example Uncle Najib).',
       );
       expect(reply({ ...base, ...out, lang: "tr", bench: ["Uncle Najib"], benchPickMode: "organiser" })).toBe(
-        'Tamam: Akram çıktı. 17/18, yedekte 1 kişi (Uncle Najib). Bir yer boş. Yedekten birini almak için "Uncle Najib var" yazın.',
+        'Tamam: Akram çıktı. 17/18, yedekte 1 kişi (Uncle Najib). Bir yer boş. Yedekten kimin gireceğini kendi cümlelerinizle yazmanız yeterli (örneğin Uncle Najib).',
       );
     });
     it("automatic bench (first come): the count is accurate, no instruction", () => {

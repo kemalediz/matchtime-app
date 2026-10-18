@@ -58,18 +58,18 @@ describe("buildBenchPickHint", () => {
   const base = { confirmed: 17, maxPlayers: 18, bench: ["Uncle Najib"] };
   it("organiser pick, a place free, someone on the bench: how to bring them in", () => {
     expect(buildBenchPickHint({ ...base, lang: "en", benchPickMode: "organiser" })).toBe(
-      'A place is free. To bring someone in from the bench, write "put Uncle Najib in".',
+      'A place is free. Just tell me who should come in from the bench, in your own words (for example Uncle Najib).',
     );
     expect(buildBenchPickHint({ ...base, lang: "tr", benchPickMode: "organiser" })).toBe(
-      'Bir yer boş. Yedekten birini almak için "Uncle Najib var" yazın.',
+      'Bir yer boş. Yedekten kimin gireceğini kendi cümlelerinizle yazmanız yeterli (örneğin Uncle Najib).',
     );
   });
   it("two places free, five on the bench: the first one named as the example", () => {
     expect(buildBenchPickHint({ lang: "en", confirmed: 16, maxPlayers: 18, bench: FIVE, benchPickMode: "organiser" })).toBe(
-      '2 places are free. To bring someone in from the bench, write "put Uncle Najib in".',
+      '2 places are free. Just tell me who should come in from the bench, in your own words (for example Uncle Najib).',
     );
     expect(buildBenchPickHint({ lang: "tr", confirmed: 16, maxPlayers: 18, bench: FIVE, benchPickMode: "organiser" })).toBe(
-      '2 yer boş. Yedekten birini almak için "Uncle Najib var" yazın.',
+      '2 yer boş. Yedekten kimin gireceğini kendi cümlelerinizle yazmanız yeterli (örneğin Uncle Najib).',
     );
   });
   it("automatic bench (first come): nothing, the bench offer does it", () => {

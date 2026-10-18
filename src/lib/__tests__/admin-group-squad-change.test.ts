@@ -191,7 +191,7 @@ describe("handleAdminSquadChange", () => {
       handled: true,
       outcome: "squad-changed",
       replyText:
-        'Done: Shehryar out. 17 of 18, 1 on the bench (Uncle Najib). A place is free. To bring someone in from the bench, write "put Uncle Najib in".',
+        'Done: Shehryar out. 17 of 18, 1 on the bench (Uncle Najib). A place is free. Just tell me who should come in from the bench, in your own words (for example Uncle Najib).',
     });
     expect(squadCount.loadSquadCount).toHaveBeenCalledWith(MATCH_ID);
     expect(squadCount.loadSquadCount.mock.invocationCallOrder[0]).toBeGreaterThan(att.cancelAttendance.mock.invocationCallOrder[0]);

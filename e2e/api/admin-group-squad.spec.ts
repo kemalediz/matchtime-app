@@ -316,7 +316,7 @@ test.describe("organiser pick: a place opens with someone on the bench", () => {
       handled: true,
       outcome: "squad-changed",
       replyText:
-        'Done: Tom Third out. 3 of 4, 1 on the bench (Ben Bench). A place is free. To bring someone in from the bench, write "put Ben Bench in".',
+        'Done: Tom Third out. 3 of 4, 1 on the bench (Ben Bench). A place is free. Just tell me who should come in from the bench, in your own words (for example Ben Bench).',
     });
     expect(await statusOf(db, U.third)).toBe("DROPPED");
     // Organiser pick: MatchTime does not fill the place itself.
@@ -338,7 +338,7 @@ test.describe("organiser pick: a place opens with someone on the bench", () => {
     engineOn({ "Pat çıktı": { route: "other_att", facts: otherFacts("Pat", "out") } });
     const out = await say(request, "Pat çıktı");
     expect(out.replyText).toBe(
-      'Tamam: Pat Player çıktı. 3/4, yedekte 1 kişi (Tom Third). Bir yer boş. Yedekten birini almak için "Tom Third var" yazın.',
+      'Tamam: Pat Player çıktı. 3/4, yedekte 1 kişi (Tom Third). Bir yer boş. Yedekten kimin gireceğini kendi cümlelerinizle yazmanız yeterli (örneğin Tom Third).',
     );
     await db.run(`UPDATE "Organisation" SET language = 'en' WHERE id = $1`, [ORG_ID]);
   });

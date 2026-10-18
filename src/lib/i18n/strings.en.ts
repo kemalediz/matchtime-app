@@ -3017,7 +3017,7 @@ export const en = {
   /** An organiser-pick club with a place free and someone on the bench:
    *  the admin-group command that brings one in (squad-count-line.ts). */
   sq_pick_hint: (p: { open: number; name: string }): string =>
-    `${p.open === 1 ? "A place is free" : `${p.open} places are free`}. To bring someone in from the bench, write "put ${p.name} in".`,
+    `${p.open === 1 ? "A place is free" : `${p.open} places are free`}. Just tell me who should come in from the bench, in your own words (for example ${p.name}).`,
   /** A pasted list: what it would change, then YES. */
   ag_paste_adding: (p: { names: string }): string => `Adding: ${p.names}.`,
   ag_paste_removing: (p: { names: string }): string => `Removing: ${p.names}.`,

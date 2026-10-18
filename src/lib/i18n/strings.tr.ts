@@ -2247,7 +2247,7 @@ export const tr: Strings = {
   sq_bench: (p: { count: number; names: string[] }): string =>
     `yedekte ${p.count} kişi${p.names.length > 0 ? ` (${joinList("tr", p.names)})` : ""}`,
   sq_pick_hint: (p: { open: number; name: string }): string =>
-    `${p.open === 1 ? "Bir yer" : `${p.open} yer`} boş. Yedekten birini almak için "${p.name} var" yazın.`,
+    `${p.open === 1 ? "Bir yer" : `${p.open} yer`} boş. Yedekten kimin gireceğini kendi cümlelerinizle yazmanız yeterli (örneğin ${p.name}).`,
   ag_paste_adding: (p: { names: string }): string => `Eklenecek: ${p.names}.`,
   ag_paste_removing: (p: { names: string }): string => `Çıkarılacak: ${p.names}.`,
   ag_paste_to_bench: (p: { names: string }): string => `Yedek listesine alınacak: ${p.names}.`,
