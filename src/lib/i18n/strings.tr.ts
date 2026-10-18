@@ -1338,36 +1338,20 @@ export const tr: Strings = {
   dm_rating_reminder: (p) => {
     const n = p.firstName;
     const sig = `\n${p.url}`;
-    switch (p.dayNum) {
-      case 1:
-        return (
-          `${n ? `${n} 👋 ` : "👋 "}Umarım dünkü *${p.activityName}* maçı iyi geçmiştir.\n\n` +
-          (p.momVote === false
-            ? `Bir dakikan olunca buradan takım arkadaşlarına puan ver. `
-            : `Bir dakikan olunca buradan takım arkadaşlarına puan ver, ${p.mvpLabel} için de oyunu kullan. `) +
-          `Ne kadar çok kişi oy verirse gelecek haftaki takımlar o kadar dengeli olur 🙌${sig}`
-        );
-      case 2:
-        return (
-          `${n ? `${n}, küçük` : "Küçük"} bir hatırlatma 🙂 *${p.activityName}* için puanlarını hâlâ bekliyorum.\n\n` +
-          `Söz, 30 saniye sürer. Gelecek hafta herkes için daha adil takımlar demek ⚽${sig}`
-        );
-      case 3:
-        return (
-          `Puanlama süresinin yarısı geçti${n ? `, ${n}` : ""} ⏳\n\n` +
-          `Kadronun yarısı oy verdi, senin oyun da *${p.activityName}* puanlarını epey değiştirir. Hızlıca dokun:${sig}`
-        );
-      case 4:
-        return (
-          `${n ? `${n}, ` : ""}*${p.activityName}* için puan vermeye ve ${p.mvpLabel} oylamasına son iki gün 🏆\n\n` +
-          `30 saniye, sonra işin biter:${sig}`
-        );
-      default:
-        return (
-          `Son çağrı${n ? ` ${n}` : ""} 🔔 *${p.activityName}* için puanlama yarın kapanıyor.\n\n` +
-          `Kapanmadan puanını ver, ${p.mvpLabel} için de oyunu kullan. Senin oyun da önemli:${sig}`
-        );
+    const ask =
+      p.momVote === false
+        ? `Takım arkadaşlarına puan vermek`
+        : `Takım arkadaşlarına puan vermek ve ${p.mvpLabel} için oy kullanmak`;
+    if (p.reminder === "last") {
+      return (
+        `Son hatırlatma${n ? `, ${n}` : ""} 🔔 *${p.activityName}* için puanlama yakında kapanıyor.\n\n` +
+        `${ask} istersen bağlantın burada. Bir daha hatırlatmayacağım:${sig}`
+      );
     }
+    return (
+      `${n ? `${n} 👋 ` : "👋 "}Küçük bir hatırlatma: *${p.activityName}* için henüz puan vermedin.\n\n` +
+      `${ask} 30 saniye sürer, gelecek haftaki takımların dengeli olmasına da yardım eder 🙌${sig}`
+    );
   },
 
   dm_tentative_followup: (p) =>
