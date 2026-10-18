@@ -3822,6 +3822,22 @@ export const tr: Strings = {
   pg_err_club_not_approved: "Kulübünüz onaylandıktan sonra oyuncuları düzenleyebilirsiniz.",
   pg_err_merge_keep_owned:
     "Bu oyuncu hesabını kendisi yönetiyor, bu yüzden saklanan kayıt onunki olmalı. Diğer kaydı onun kaydıyla birleştirin.",
+  own_welcome_title: "MatchTime'a hoş geldin",
+  own_welcome_intro:
+    "Birkaç bilgi yeterli. Oynadığın mevkileri daha sonra, katıldığın her spor için ayrı ayrı seçeceksin.",
+  own_name_label: "Adın",
+  own_name_placeholder: "Adını yaz",
+  own_err_name: "Lütfen adını yaz",
+  own_phone_label: "Telefon numarası",
+  own_phone_optional: "(isteğe bağlı)",
+  own_phone_help: "WhatsApp mesajlarını katılımınla eşleştirmek için kullanılır.",
+  own_phone_signin_note: "Giriş yaptığın numara bu, bu yüzden burada değiştirilemez.",
+  own_err_invalid: "Bu numara doğru görünmüyor. Uluslararası biçimde yaz, örneğin +90 532 123 45 67.",
+  own_err_locked: "Bu numara giriş yaptığın numara, bu yüzden burada değiştirilemez.",
+  own_err_taken: "Bu numara zaten MatchTime'da kayıtlı, bu yüzden hesabına eklenemez.",
+  own_err_generic: "Bir şeyler ters gitti",
+  own_welcome_submit: "Kurulumu tamamla",
+  own_saving: "Kaydediliyor…",
 };
 
 /**
