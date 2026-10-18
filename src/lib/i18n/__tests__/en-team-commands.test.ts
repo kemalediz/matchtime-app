@@ -22,6 +22,8 @@ const C = {
   generate: "generate the teams",
   regenerate: "regenerate the teams",
   swapPlayers: "swap X with Y",
+  /** The example the copy shows since 2026-10-18 (own words, one example). */
+  swapPlayersExample: "swap Sam with Alex",
 } as const;
 
 describe("the English strings quote the chosen forms, tagged", () => {
@@ -32,8 +34,8 @@ describe("the English strings quote the chosen forms, tagged", () => {
     ["swap_refused_teams_not_generated", en.swap_refused_teams_not_generated, C.generate],
     ["bench_claim_team", en.bench_claim_team({ claimer: "Erdal", dropped: "Sait", teamLabel: "Red" }), C.regenerate],
     ["intro_teams (generate)", en.intro_teams, C.generate],
-    ["intro_teams (swap)", en.intro_teams, C.swapPlayers],
-    ["teams_post_footer", en.teams_post_footer, C.swapPlayers],
+    ["intro_teams (swap)", en.intro_teams, C.swapPlayersExample],
+    ["teams_post_footer", en.teams_post_footer, C.swapPlayersExample],
     ["help: teams (generate)", en.onbHelpExplainer({ topic: "teams" }), C.generate],
   ];
   for (const [name, text, command] of cases) {
@@ -75,7 +77,9 @@ describe("the bot reads the forms the English copy quotes", () => {
       a: "david",
       b: "ali",
     });
+    expect(parseSwapNames(typed(C.swapPlayersExample))).toEqual({ a: "sam", b: "alex" });
     expect(looksLikeColourSwapPhrase(typed("swap David with Ali"))).toBe(false);
+    expect(looksLikeColourSwapPhrase(typed(C.swapPlayersExample))).toBe(false);
   });
 
   for (const command of [C.generate, C.regenerate]) {

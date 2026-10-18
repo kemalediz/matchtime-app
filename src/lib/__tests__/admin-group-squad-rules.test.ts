@@ -559,8 +559,8 @@ describe("buildAdminSquadReply: what MatchTime says back, and when it says nothi
 
   it("a name nobody in the club has, mentioned in passing to MatchTime (a tag or a reply to it): says so and how to add them", () => {
     const vetted = [v({ claim: claim({ personRef: "Zayn" }), hold: "not-a-command", ref: { kind: "unknown", name: "Zayn" } })];
-    expect(reply({ ...base, addressed: true, vetted })).toBe('I don\'t know Zayn yet. To add them, write "put Zayn in".');
-    expect(reply({ ...base, addressed: true, lang: "tr", vetted })).toBe('Zayn ad\u0131nda birini hen\u00fcz tan\u0131m\u0131yorum. Eklemek i\u00e7in "Zayn var" yaz\u0131n.');
+    expect(reply({ ...base, addressed: true, vetted })).toBe('I don\'t know Zayn yet. To add them, just ask me in your own words (for example put Zayn in).');
+    expect(reply({ ...base, addressed: true, lang: "tr", vetted })).toBe('Zayn adında birini henüz tanımıyorum. Eklemek için kendi cümlelerinizle yazmanız yeterli (örneğin Zayn var).');
     // but not for a past or contingent mention, nor a drop of a stranger
     expect(
       reply({
@@ -597,7 +597,7 @@ describe("buildAdminSquadReply: what MatchTime says back, and when it says nothi
     ];
     expect(buildAdminSquadReply({ ...base, vetted })).toBeNull();
     expect(buildAdminSquadReply({ ...base, addressed: false, vetted })).toBeNull();
-    expect(reply({ ...base, addressed: true, vetted })).toBe('I don\'t know AH yet. To add them, write "put AH in".');
+    expect(reply({ ...base, addressed: true, vetted })).toBe('I don\'t know AH yet. To add them, just ask me in your own words (for example put AH in).');
   });
 
   it("the sender's own plain line in conversation, not addressed: silence", () => {
@@ -643,9 +643,9 @@ describe("buildAdminSquadReply: what MatchTime says back, and when it says nothi
 
   it("the sender says plainly they are out (or in) to MatchTime: no write, one line saying how", () => {
     const outLine = buildAdminSquadReply({ ...base, addressed: true, vetted: [v({ claim: self({ polarity: "out" }), hold: "not-a-command", before: "CONFIRMED", ref: me })] });
-    expect(outLine).toEqual({ text: 'To take yourself out of Fri 20:30, write "Omar Shah out".', outcome: "squad-question" });
+    expect(outLine).toEqual({ text: 'If you want me to take you out of Fri 20:30, just ask me in your own words (for example Omar Shah out).', outcome: "squad-question" });
     const inLine = reply({ ...base, addressed: true, vetted: [v({ claim: self(), hold: "not-a-command", before: null, ref: me })] });
-    expect(inLine).toBe('To put yourself in for Fri 20:30, write "Omar Shah in".');
+    expect(inLine).toBe('If you want me to put you in for Fri 20:30, just ask me in your own words (for example Omar Shah in).');
     expect(
       reply({
         ...base,
@@ -654,10 +654,10 @@ describe("buildAdminSquadReply: what MatchTime says back, and when it says nothi
         kickoffLabel: "Cum 20:30",
         vetted: [v({ claim: self({ polarity: "out" }), hold: "not-a-command", before: "CONFIRMED", ref: me })],
       }),
-    ).toBe('Cum 20:30 kadrosundan \u00e7\u0131kmak isterseniz "Omar Shah yok" yaz\u0131n.');
+    ).toBe('Sizi Cum 20:30 kadrosundan çıkarmamı isterseniz kendi cümlelerinizle yazmanız yeterli (örneğin Omar Shah yok).');
     expect(
       reply({ ...base, addressed: true, lang: "tr", kickoffLabel: "Cum 20:30", vetted: [v({ claim: self(), hold: "not-a-command", before: null, ref: me })] }),
-    ).toBe('Cum 20:30 kadrosuna girmek isterseniz "Omar Shah var" yaz\u0131n.');
+    ).toBe('Sizi Cum 20:30 kadrosuna yazmamı isterseniz kendi cümlelerinizle yazmanız yeterli (örneğin Omar Shah var).');
     // already where they say: silence, not "Nothing to change"
     expect(
       reply({ ...base, addressed: true, vetted: [v({ claim: self({ polarity: "out" }), hold: "not-a-command", before: null, ref: me })] }),

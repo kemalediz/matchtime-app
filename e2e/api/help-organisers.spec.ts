@@ -119,7 +119,7 @@ test("an organiser's DM bare help points at 'help' in the admin group, and keeps
     `SELECT text FROM "BotJob" WHERE kind = 'dm' AND phone = $1 ORDER BY "createdAt" DESC LIMIT 1`,
     [ADMIN],
   );
-  expect(dm?.text).toContain("In your admin group, type *help* and I'll show the commands I take there.");
+  expect(dm?.text).toContain("In your admin group, ask me what I can do there, in your own words (for example *what can you do?*).");
   expect(dm?.text).toMatch(/Your club's settings, signed in:\nhttps?:\/\/\S+\/r\/\S+$/);
 });
 

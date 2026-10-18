@@ -119,7 +119,7 @@ Salı 21:30 için 14/14 kişiyiz, yedekte 1 kişi (Najib Ahmadi) ✅ kadro tamam
 6. Karahan Yildiz
 7. Wasim Akhtar
 
-İtirazınız mı var? `@Match Time X ile Y'yi değiştir` yazın, admin onaylar.
+İtirazınız mı var? Beni etiketleyip neyin değişeceğini kendi cümlelerinizle yazın (örneğin @Match Time Ali ile Can'ı değiştir), admin onaylar.
 
 ### R7 answer_squad / teams generated, so the line-ups
 ⚽ *Bu akşamın takımları*, Salı 21:30, Goals North Cheam
@@ -142,7 +142,7 @@ Salı 21:30 için 14/14 kişiyiz, yedekte 1 kişi (Najib Ahmadi) ✅ kadro tamam
 6. Karahan Yildiz
 7. Wasim Akhtar
 
-İtirazınız mı var? `@Match Time X ile Y'yi değiştir` yazın, admin onaylar.
+İtirazınız mı var? Beni etiketleyip neyin değişeceğini kendi cümlelerinizle yazın (örneğin @Match Time Ali ile Can'ı değiştir), admin onaylar.
 
 ### R2b replacement_teams_post / one swap, the player went out
 🔁 *Wasim yok*, yerine *Najib* geliyor ve *Sarı* takımındaki yerini alıyor.
@@ -611,10 +611,10 @@ Kemal, hangisini kastettiniz: Idris Bello ya da Idris Musa?
 6. Karahan Yildiz
 7. Wasim Akhtar
 
-İtirazınız mı var? `@Match Time X ile Y'yi değiştir` yazın, admin onaylar.
+İtirazınız mı var? Beni etiketleyip neyin değişeceğini kendi cümlelerinizle yazın (örneğin @Match Time Ali ile Can'ı değiştir), admin onaylar.
 
 ### R32 teams_not_generated
-Takımlar henüz kurulmadı, *@Match Time takımları kur* yazın, hallederim.
+Takımlar henüz kurulmadı. Beni etiketleyip kendi cümlelerinizle isteyin (örneğin *@Match Time takımları kur*), hallederim.
 
 ### R33 guest_name_ask / singular
 Süper Sait 🙌 Adı ne? Yaz, kadroya ekleyeyim.
@@ -647,10 +647,10 @@ Düzelttim 👍 Önceki kayıt Kırmızı 9 - 6 Sarı idi. Şimdi *Sarı* 9 - 6 
 Bu maçın sonucu zaten kayıtlı: *Kırmızı* 9 - 6 kazandı, rakip Sarı. Bir yönetici maç sayfasından değiştirebilir.
 
 ### R34e score_recorded_hint
-Bu maçın sonucu zaten kayıtlı: *Kırmızı* 9 - 6 kazandı, rakip Sarı. Yanlışsa "hayır" diye başlayıp doğru skoru ve kazanan takımı yazın.
+Bu maçın sonucu zaten kayıtlı: *Kırmızı* 9 - 6 kazandı, rakip Sarı. Yanlışsa doğru skoru ve kazanan takımı kendi cümlelerinizle yazın (örneğin: hayır, 5-3 bitti).
 
 ### R34e score_recorded_hint / draw
-Bu maçın sonucu zaten kayıtlı: berabere, Kırmızı 7 - 7 Sarı. Yanlışsa "hayır" diye başlayıp doğru skoru ve kazanan takımı yazın.
+Bu maçın sonucu zaten kayıtlı: berabere, Kırmızı 7 - 7 Sarı. Yanlışsa doğru skoru ve kazanan takımı kendi cümlelerinizle yazın (örneğin: hayır, 5-3 bitti).
 
 ### R34f score_which_match
 Bunun hangi maçı düzelttiğini anlayamadım. bir sonraki maç için skoru ve kazanan takımı yazmanız yeterli. Daha önceki bir sonucu bir yönetici o maçın sayfasından değiştirebilir.
@@ -814,7 +814,7 @@ Nasıl işliyor:
 • Kartla, Apple Pay, Google Pay ile ya da doğrudan bankanızdan ödeyebilirsiniz.
 • Tutar, maç ücretinin oyuncular arasında bölünmüş payı, üstüne de kart ya da banka ücreti.
 • Ödemeyenlere hatırlatma gönderiyorum.
-• Ödemeyi doğrudan Kemal ile halletmek de olur. Bana özelden *Ödedim* yazın, Kemal onaylasın.
+• Ödemeyi doğrudan Kemal ile halletmek de olur. Ödeyince bana özelden kendi cümlelerinizle yazın (örneğin *Ödedim*), Kemal onaylasın.
 
 ### R186 payments_live_announcement / card only, no collector
 💳 *Maç ücretleri artık MatchTime üzerinden toplanıyor*
@@ -1046,7 +1046,7 @@ Akşam görüşürüz 🙌
 ### R70 buildMatchDayLockedPost
 ⚽ *Bu akşam 21:30*, *Tuesday 7-a-side*, Goals North Cheam
 
-Kadro kilitlendi. Bu akşamın takımlarını belirlemek için sohbete *@Match Time takımları kur* yazın 👇
+Kadro kilitlendi. Bu akşamın takımları için beni etiketleyip kendi cümlelerinizle isteyin (örneğin *@Match Time takımları kur*) 👇
 
 *Onaylananlar (14/14):*
 1. Kemal Ediz
@@ -1151,11 +1151,11 @@ Yaptıklarım:
 
 🔁  *Yedekten kadroya*, biri çıkarsa yedekleri burada etiketlerim ve ilk *VARIM* yazan yeri alır. Süre sınırı yok, geç görene de bir şey olmaz, yedekteki yeri kalır.
 
-⚽  *Takımlar*, "@Match Time takımları kur" deyin, dengeli takımları paylaşırım. İtirazı olan `@Match Time X ile Y'yi değiştir` yazsın, admin onaylar.
+⚽  *Takımlar*, beni etiketleyip kendi cümlelerinizle isteyin (örneğin "@Match Time takımları kur"), dengeli takımları paylaşırım. İtirazı olan neyin değişeceğini aynı şekilde yazsın (örneğin "@Match Time Ali ile Can'ı değiştir"), admin onaylar.
 
 🏆  *Puanlama ve maçın adamı*, her maçtan sonra herkese puanlama linkini DM'den gönderirim (kayıt yok, tıklamanız yeterli); maçın adamını uygulamadan ya da paylaştığım anketten seçin, herkes oy verince (en geç maçtan 5 gün sonra) kazananı açıklarım.
 
-⏰  *Hatırlatmalar*, "@Match Time pazartesi hatırlat" deyin, o gün size DM atarım.
+⏰  *Hatırlatmalar*, beni etiketleyip ne zaman istediğinizi kendi cümlelerinizle yazın (örneğin "@Match Time pazartesi hatırlat"), o gün size DM atarım.
 
 📊  *İstatistikler*, "geçen hafta maçın adamı kimdi?" ya da "en istikrarlı oyuncumuz kim?" gibi sorular sorabilirsiniz.
 
@@ -1200,7 +1200,7 @@ Küçük bir hatırlatma: varsa *kaleci eldiveni*, *top* ve *yedek yelek* getiri
 ### R49 buildBenchClaimAnnouncement / team and replaced player
 🎟 *Erdal Ozkan* yeri aldı, *Kırmızı* takımında *Sait Demir* yerine oynuyor 🙌
 
-_Yeni kadroyla takımları yeniden dengelemek isterseniz "@Match Time takımları yeniden kur" yazın._
+_Yeni kadroyla takımların yeniden dengelenmesini isterseniz beni etiketleyip kendi cümlelerinizle isteyin (örneğin "@Match Time takımları yeniden kur")._
 
 ### R49 buildBenchClaimAnnouncement / replaced player, no team
 ✅ *Erdal Ozkan* kadroda, *Sait Demir* yerine geliyor, kadro *14/14* 🙌
@@ -1284,7 +1284,7 @@ Oyuncu davet edilecek yaklaşan bir maç yok.
 2. Abid Hussain
 
 ### R128 buildSwapDeferredReply
-*Kemal Ediz* ve *Sait Demir* zaten kadroda, kimse çıkarılmadı. Takımlar henüz kurulmadı; *@Match Time takımları kur* yazın, kurayım (sonra ikisini farklı takımlara koyabilirim).
+*Kemal Ediz* ve *Sait Demir* zaten kadroda, kimse çıkarılmadı. Takımlar henüz kurulmadı. Beni etiketleyip kendi cümlelerinizle isteyin (örneğin *@Match Time takımları kur*), sonra ikisini farklı takımlara koyabilirim.
 
 ### R129 buildTeamSwapReply
 🔁 *Kemal Ediz* ve *Elvin Aliyev* yer değiştirdi, kimse çıkarılmadı. Güncel takımlar:
@@ -1329,7 +1329,7 @@ Oyuncu davet edilecek yaklaşan bir maç yok.
 *Omar* ve *Sait Demir* için değişiklik yapmadım. *Omar* birden fazla oyuncu olabilir (Omar Farooq, Omar Khan). Tam ismini yazın. Hiçbir şey değişmedi, kimse çıkarılmadı.
 
 ### R131c buildSwapRefusedReply / teams not generated
-*David* ve *Elvin Aliyev* için değişiklik yapmadım. Takımlar henüz kurulmadı. Önce *@Match Time takımları kur* yazın. Hiçbir şey değişmedi, kimse çıkarılmadı.
+*David* ve *Elvin Aliyev* için değişiklik yapmadım. Takımlar henüz kurulmadı. Önce beni etiketleyip kendi cümlelerinizle isteyin (örneğin *@Match Time takımları kur*). Hiçbir şey değişmedi, kimse çıkarılmadı.
 
 ### R131d buildSwapRefusedReply / same player
 *David* ve *David* için değişiklik yapmadım. İki isim de aynı oyuncuyu gösteriyor. Hiçbir şey değişmedi, kimse çıkarılmadı.
@@ -1821,7 +1821,7 @@ I stay quiet during the banter and only reply to In, Out or a tag.
 🤐 I stay quiet the rest of the time: banter and jokes are safe, I won't butt in.
 🏆 After the game I'll run a quick *Man of the Match* vote.
 ⭐ I'll DM you a one-tap *rating* link after the match.
-⏰ Need a nudge? Say *"@Match Time remind me Thursday"* and I'll DM you then.
+⏰ Need a nudge? Tag me and say when, in your own words (for example *"@Match Time remind me Thursday"*), and I'll DM you then.
 💳 I keep track of who's *paid*.
 
 Type *"@Match Time help"* any time to see this again.
@@ -1844,7 +1844,7 @@ Type *"@Match Time help"* any time to see this again.
 🤐 I stay quiet the rest of the time: banter and jokes are safe, I won't butt in.
 🏆 After the game I'll run a quick *Man of the Match* vote.
 ⭐ I'll DM you a one-tap *rating* link after the match.
-⏰ Need a nudge? Say *"@Match Time remind me Thursday"* and I'll DM you then.
+⏰ Need a nudge? Tag me and say when, in your own words (for example *"@Match Time remind me Thursday"*), and I'll DM you then.
 💷 Want to collect match fees? Ask me: *@Match Time help payments*
 
 Type *"@Match Time help"* any time to see this again.
@@ -1868,7 +1868,7 @@ Type *"@Match Time help"* any time to see this again.
 🤐 I stay quiet the rest of the time: banter and jokes are safe, I won't butt in.
 🏆 After the game I'll run a quick *Man of the Match* vote.
 ⭐ I'll DM you a one-tap *rating* link after the match.
-⏰ Need a nudge? Say *"@Match Time remind me Thursday"* and I'll DM you then.
+⏰ Need a nudge? Tag me and say when, in your own words (for example *"@Match Time remind me Thursday"*), and I'll DM you then.
 💳 I keep track of who's *paid*.
 
 Type *"@Match Time help"* any time to see this again.
@@ -1895,26 +1895,26 @@ If you drop out, I can nudge the bench to step in so we're never short. Say *Out
 
 ### R142 buildHelpReply / teams
 🟥🟦 *Fair teams: how it works*
-Once the squad's locked in, any admin can tag *@Match Time generate the teams* and I'll split everyone into two balanced sides using their form ratings, so games stay even.
-I post the line-ups straight into the chat. Not happy with a pairing? Tag me to *swap two players* (e.g. _"@Match Time swap Sam and Alex"_), or ask me to *"@Match Time show the teams"* again any time.
-Want a bit of fun? Ask me to give the teams names and I'll sort it. Tag *@Match Time generate the teams* when you're ready.
+Once the squad's locked in, any admin can tag me and ask for the teams (for example *@Match Time generate the teams*) and I'll split everyone into two balanced sides using their form ratings, so games stay even.
+I post the line-ups straight into the chat. Not happy with a pairing? Tag me and say what to change, in your own words (e.g. _"@Match Time swap Sam and Alex"_), or ask me to show the teams again any time.
+Want a bit of fun? Ask me to give the teams names and I'll sort it. Just tag me and ask when you're ready.
 
 ### R142 buildHelpReply / mom
 🏆 *Man of the Match: how it works*
 After the final whistle I post a quick *Man of the Match* vote in the group. Everyone just taps who they thought was the standout player.
 I tally the votes, announce the winner, and it counts towards everyone's season stats, so the MoM race builds up over the year.
-Nothing to set up: I'll start the vote myself once the game's done. Type *@Match Time my stats* to see your MoM tally.
+Nothing to set up: I'll start the vote myself once the game's done. Ask me for your MoM tally any time, in your own words (for example *@Match Time my stats*).
 
 ### R142 buildHelpReply / ratings
 ⭐ *Player ratings: how it works*
 After each match I DM every player who turned out a private link. You rate the other players out of 10 (you can't rate yourself, and your scores stay private).
 I combine everyone's scores into a form rating for each player at this club, updated after every game, and that is what I use to build *balanced teams*. Ratings stay inside the club: if you also play for another group, their scores never touch this one. So the more people rate, the fairer the teams.
-You'll get the link the morning after the game. Type *@Match Time my stats* for yours anytime.
+You'll get the link the morning after the game. Ask me for yours any time, in your own words (for example *@Match Time my stats*).
 
 ### R142 buildHelpReply / reminders
 ⏰ *Reminders: how it works*
 I gently nudge anyone who hasn't said *In* or *Out* yet, then remind the whole squad before kick-off so nobody forgets.
-Want a personal nudge? Say *"@Match Time remind me Thursday"* and I'll DM you then.
+Want a personal nudge? Tag me and say when, in your own words (for example *"@Match Time remind me Thursday"*), and I'll DM you then.
 It all happens automatically, so you don't need to chase anyone yourself.
 
 ### R142 buildHelpReply / payments
@@ -1949,7 +1949,7 @@ Admins: DM me *help payments* and I'll send you a link that signs you straight i
 🤐 Diğer zamanlarda sessizim, sohbet ve şaka serbest, araya girmem.
 🏆 Maçtan sonra kısa bir *maçın adamı* oylaması yaparım.
 ⭐ Maçtan sonra tek dokunuşla *puanlama* bağlantısını özelden gönderirim.
-⏰ Hatırlatma mı lazım? *"@Match Time perşembe hatırlat"* yazın, o zaman size özelden yazarım.
+⏰ Hatırlatma mı lazım? Beni etiketleyip ne zaman istediğinizi kendi cümlelerinizle yazın (örneğin *"@Match Time perşembe hatırlat"*), o zaman size özelden yazarım.
 💷 Her maçtan sonra size özelden maç ücreti için bir ödeme bağlantısı gönderirim.
 💳 Kimin *ödediğini* takip ederim.
 
@@ -1965,7 +1965,7 @@ Bunu tekrar görmek için istediğiniz zaman *"@Match Time yardım"* yazın.
 🤐 Diğer zamanlarda sessizim, sohbet ve şaka serbest, araya girmem.
 🏆 Maçtan sonra kısa bir *maçın adamı* oylaması yaparım.
 ⭐ Maçtan sonra tek dokunuşla *puanlama* bağlantısını özelden gönderirim.
-⏰ Hatırlatma mı lazım? *"@Match Time perşembe hatırlat"* yazın, o zaman size özelden yazarım.
+⏰ Hatırlatma mı lazım? Beni etiketleyip ne zaman istediğinizi kendi cümlelerinizle yazın (örneğin *"@Match Time perşembe hatırlat"*), o zaman size özelden yazarım.
 💷 Maç ücretlerini toplamak mı istiyorsunuz? Bana sorun: *@Match Time yardım ödeme*
 
 Bunu tekrar görmek için istediğiniz zaman *"@Match Time yardım"* yazın.
@@ -1987,7 +1987,7 @@ Yöneticiler: bana özelden *yardım ödeme* yazın, sizi doğrudan giriş yapm�
 🏆 *Maçın adamı nasıl çalışır*
 Maç bitince gruba kısa bir *maçın adamı* oylaması açarım. Herkes öne çıkan oyuncuya dokunur.
 Oyları sayar, kazananı duyururum, sonuç herkesin sezon istatistiklerine işlenir.
-Ayarlamanız gereken bir şey yok, oylamayı maç bitince kendim başlatırım. Kendi sayınız için *@Match Time istatistiklerim* yazın.
+Ayarlamanız gereken bir şey yok, oylamayı maç bitince kendim başlatırım. Maçın adamı sayınızı istediğiniz zaman bana kendi cümlelerinizle sorun (örneğin *@Match Time istatistiklerim*).
 
 🔧 Açmak için bir yönetici, yönetici sayfasında (https://matchtime.ai/admin/settings) *Settings* bölümüne girer, *Bot features* altında *Man of the Match (maçın adamı)* ayarını açar.
 Yöneticiler: bana özelden *yardım maçın adamı* yazın, sizi doğrudan giriş yapmış olarak açan bir bağlantı göndereyim.
@@ -2028,7 +2028,7 @@ https://mt.example/r/settings
 🏆 *Maçın adamı nasıl çalışır*
 Maç bitince gruba kısa bir *maçın adamı* oylaması açarım. Herkes öne çıkan oyuncuya dokunur.
 Oyları sayar, kazananı duyururum, sonuç herkesin sezon istatistiklerine işlenir.
-Ayarlamanız gereken bir şey yok, oylamayı maç bitince kendim başlatırım. Kendi sayınız için *@Match Time istatistiklerim* yazın.
+Ayarlamanız gereken bir şey yok, oylamayı maç bitince kendim başlatırım. Maçın adamı sayınızı istediğiniz zaman bana kendi cümlelerinizle sorun (örneğin *@Match Time istatistiklerim*).
 
 🔧 Açmak için yönetici sayfanda *Settings* bölümüne gir, *Bot features* altında *Man of the Match (maçın adamı)* ayarını aç:
 https://mt.example/r/settings
@@ -2067,7 +2067,7 @@ Nakit ya da havaleyle mi ödendi? Oyuncu bana *"ödedim"* yazar, ben de parayı 
 🏆 *Maçın adamı nasıl çalışır*
 Maç bitince gruba kısa bir *maçın adamı* oylaması açarım. Herkes öne çıkan oyuncuya dokunur.
 Oyları sayar, kazananı duyururum, sonuç herkesin sezon istatistiklerine işlenir.
-Ayarlamanız gereken bir şey yok, oylamayı maç bitince kendim başlatırım. Kendi sayınız için *@Match Time istatistiklerim* yazın.
+Ayarlamanız gereken bir şey yok, oylamayı maç bitince kendim başlatırım. Maçın adamı sayınızı istediğiniz zaman bana kendi cümlelerinizle sorun (örneğin *@Match Time istatistiklerim*).
 
 🔧 Bunu organizatör yönetici sayfasından açabilir. İstersen ona söyle.
 
@@ -2104,7 +2104,7 @@ https://mt.example/r/settings
 🤐 Diğer zamanlarda sessizim, sohbet ve şaka serbest, araya girmem.
 🏆 Maçtan sonra kısa bir *maçın adamı* oylaması yaparım.
 ⭐ Maçtan sonra tek dokunuşla *puanlama* bağlantısını özelden gönderirim.
-⏰ Hatırlatma mı lazım? *"@Match Time perşembe hatırlat"* yazın, o zaman size özelden yazarım.
+⏰ Hatırlatma mı lazım? Beni etiketleyip ne zaman istediğinizi kendi cümlelerinizle yazın (örneğin *"@Match Time perşembe hatırlat"*), o zaman size özelden yazarım.
 💳 Kimin *ödediğini* takip ederim.
 
 Bunu tekrar görmek için istediğiniz zaman *"@Match Time yardım"* yazın.
@@ -2304,7 +2304,7 @@ Takımları maç günü kuracağım, o gün benden isteyin yeter.
 Takımları sadece maç günü, biri benden istediğinde kuruyorum.
 
 ### R170 teamOpsSayGenerateReply
-"@Match Time takımları kur" yazın, takımları kurayım.
+Beni etiketleyip takımları kendi cümlelerinizle isteyin (örneğin "@Match Time takımları kur"), kurayım.
 
 ### R170 requestNotHandledReply
 Kusura bakmayın, bunu henüz yapamıyorum.
@@ -2443,7 +2443,7 @@ Teşekkürler, grubunuza katıldım. Kulübünüz onaylanana kadar orada sessiz 
 
 ✅ *Kim var:* *VARIM* ya da *YOKUM* yazmanız yeter. Listeyi tutar, mesajınıza tik koyarım.
 🪑 *Yedekler:* kadro dolunca geç gelenler yedeğe yazılır, biri çıkarsa ilk şans yedeklerindir.
-⏰ *Hatırlatma:* *"@Match Time perşembe hatırlat"* yazın, o zaman size özelden yazarım.
+⏰ *Hatırlatma:* beni etiketleyip ne zaman istediğinizi kendi cümlelerinizle yazın (örneğin *"@Match Time perşembe hatırlat"*), o zaman size özelden yazarım.
 ⚖️ *Dengeli takımlar:* beni etiketleyin, oyuncu puanlarına göre dengeli takımlar kurarım.
 ⭐ *Maçın oyuncusu ve puanlar* her maçtan sonra.
 📊 *İstatistikler:* bana istediğinizi sorun, herkesin kendi istatistik sayfası olur.
@@ -2456,7 +2456,7 @@ Sohbet sırasında sessiz kalırım, sadece VARIM, YOKUM ya da etiketlenince yan
 
 ✅ *Kim var:* *VARIM* ya da *YOKUM* yazmanız yeter. Listeyi tutar, mesajınıza tik koyarım.
 🪑 *Yedekler:* kadro dolunca geç gelenler yedeğe yazılır, biri çıkarsa ilk şans yedeklerindir.
-⏰ *Hatırlatma:* *"@Match Time perşembe hatırlat"* yazın, o zaman size özelden yazarım.
+⏰ *Hatırlatma:* beni etiketleyip ne zaman istediğinizi kendi cümlelerinizle yazın (örneğin *"@Match Time perşembe hatırlat"*), o zaman size özelden yazarım.
 ⚖️ *Dengeli takımlar:* beni etiketleyin, oyuncu puanlarına göre dengeli takımlar kurarım.
 ⭐ *Maçın oyuncusu ve puanlar* her maçtan sonra.
 📊 *İstatistikler:* bana istediğinizi sorun, herkesin kendi istatistik sayfası olur.
@@ -2516,7 +2516,7 @@ Kadro listesi ve takımlar, oyunculara sizin paylaşmanız için burada kalır.
 Bir yer açılınca ve bekleyen biri varsa, kimin oynayacağını burada sorarım.
 Sadece organizatörlere yönelik bildirimler özel mesaj yerine buraya gelir; oyunculara iletmeniz için puanlama duyurusu da buraya gelir.
 
-Burada yazdıklarım oyunculara gitmez. Neleri kabul ettiğimi görmek için burada istediğiniz zaman *yardım* yazın.
+Burada yazdıklarım oyunculara gitmez. Neler yapabildiğimi burada istediğiniz zaman kendi cümlelerinizle sorun (örneğin *neler yapabilirsin?*).
 
 ### R186 admin group / L1a introduction, a club on the defaults
 👋 Ben MatchTime. *Friday FNF* salı maçlarını yönetmenize yardım edeceğim.
@@ -2524,7 +2524,7 @@ Ana grupta kimin *varım*, kimin *yokum* dediğini takip ederim, liste posterini
 Kadro listesini ana grupta ben paylaşırım.
 Sadece organizatörlere yönelik bildirimler özel mesaj yerine buraya gelir.
 
-Burada yazdıklarım oyunculara gitmez. Neleri kabul ettiğimi görmek için burada istediğiniz zaman *yardım* yazın.
+Burada yazdıklarım oyunculara gitmez. Neler yapabildiğimi burada istediğiniz zaman kendi cümlelerinizle sorun (örneğin *neler yapabilirsin?*).
 
 ### R186 admin group / L1a introduction, monthly, not switched on yet
 👋 Ben MatchTime. *Friday FNF* maçlarını yönetmenize yardım edeceğim. Kulüp için açıldığımda burada şunları yaparım.
@@ -2532,7 +2532,7 @@ Liste posterini ve takım listesini hazırlarım ve maçtan sonra maçın adamı
 Parayı toplayan kişi, ödeme bildirimleri listeme burada *ÖDENDİ HEPSİ*, *ÖDENDİ 1 3* ya da *ÖDENDİ YOK* diye cevap verir.
 Sadece organizatörlere yönelik bildirimler özel mesaj yerine buraya gelir.
 
-Burada yazdıklarım oyunculara gitmez. Açıldığımda, neleri kabul ettiğimi görmek için burada *yardım* yazın.
+Burada yazdıklarım oyunculara gitmez. Açıldığımda neler yapabildiğimi burada kendi cümlelerinizle sorun (örneğin *neler yapabilirsin?*).
 
 ### R186 admin group / L2 wrong or expired code
 Bu kod artık geçerli değil. Sitede Ayarlar sayfasını açıp yeni kod için *Yönetici grubunu bağla* düğmesine basın.
@@ -2769,25 +2769,25 @@ https://matchtime.ai/admin/settings
 
 📋 Cuma günkü maçın kadro listesini şimdi buraya yapıştırın. Neyin değişeceğini gösteririm, 30 dakika içinde *EVET* yazarsanız uygularım.
 
-💬 Burada beni etiketlemenize gerek yok. Bu gruptaki yöneticilerin her mesajını okurum, komutu yazmanız yeter. Normal sohbetiniz de sorun değil, yalnızca açık talimatlarla bir şey yaparım. Ana grupta oyuncular beni etiketlemeden *VARIM* ya da *YOKUM* yazar, beni yalnızca bir şey sormak için etiketler.
+💬 Burada beni etiketlemenize gerek yok. Bu gruptaki yöneticilerin her mesajını okurum, ne istediğinizi kendi cümlelerinizle yazmanız yeter. Normal sohbetiniz de sorun değil, yalnızca açık talimatlarla bir şey yaparım. Ana grupta oyuncular beni etiketlemeden *VARIM* ya da *YOKUM* yazar, beni yalnızca bir şey sormak için etiketler.
 
-Neleri kabul ettiğimi görmek için burada istediğiniz zaman *yardım* yazın.
+Neler yapabildiğimi burada istediğiniz zaman kendi cümlelerinizle sorun (örneğin *neler yapabilirsin?*).
 
 ### R194 admin onboarding / A getting ready, no game yet
 🧰 *FNF kulübünü hazırlayalım*
 
 📋 Cuma günkü maç gece ekleniyor. Yarından itibaren kadro listesini buraya yapıştırın: neyin değişeceğini gösteririm, 30 dakika içinde *EVET* yazarsanız uygularım.
 
-💬 Burada beni etiketlemenize gerek yok. Bu gruptaki yöneticilerin her mesajını okurum, komutu yazmanız yeter. Normal sohbetiniz de sorun değil, yalnızca açık talimatlarla bir şey yaparım. Ana grupta oyuncular beni etiketlemeden *VARIM* ya da *YOKUM* yazar, beni yalnızca bir şey sormak için etiketler.
+💬 Burada beni etiketlemenize gerek yok. Bu gruptaki yöneticilerin her mesajını okurum, ne istediğinizi kendi cümlelerinizle yazmanız yeter. Normal sohbetiniz de sorun değil, yalnızca açık talimatlarla bir şey yaparım. Ana grupta oyuncular beni etiketlemeden *VARIM* ya da *YOKUM* yazar, beni yalnızca bir şey sormak için etiketler.
 
-Neleri kabul ettiğimi görmek için burada istediğiniz zaman *yardım* yazın.
+Neler yapabildiğimi burada istediğiniz zaman kendi cümlelerinizle sorun (örneğin *neler yapabilirsin?*).
 
 ### R194 admin onboarding / A getting ready, a club on the defaults, admin group
 🧰 *Harbour FC kulübünü hazırlayalım*
 
-💬 Burada beni etiketlemenize gerek yok. Bu gruptaki yöneticilerin her mesajını okurum, komutu yazmanız yeter. Normal sohbetiniz de sorun değil, yalnızca açık talimatlarla bir şey yaparım. Ana grupta oyuncular beni etiketlemeden *VARIM* ya da *YOKUM* yazar, beni yalnızca bir şey sormak için etiketler.
+💬 Burada beni etiketlemenize gerek yok. Bu gruptaki yöneticilerin her mesajını okurum, ne istediğinizi kendi cümlelerinizle yazmanız yeter. Normal sohbetiniz de sorun değil, yalnızca açık talimatlarla bir şey yaparım. Ana grupta oyuncular beni etiketlemeden *VARIM* ya da *YOKUM* yazar, beni yalnızca bir şey sormak için etiketler.
 
-Neleri kabul ettiğimi görmek için burada istediğiniz zaman *yardım* yazın.
+Neler yapabildiğimi burada istediğiniz zaman kendi cümlelerinizle sorun (örneğin *neler yapabilirsin?*).
 
 ### R194 admin onboarding / A getting ready, by DM, fees with no collector
 🧰 *Harbour FC kulübünü hazırlayalım*
@@ -2862,7 +2862,7 @@ Adam Admin, I've sent you a private link to your admin page, where player names,
 🤐 I stay quiet the rest of the time: banter and jokes are safe, I won't butt in.
 🏆 After the game I'll run a quick *Man of the Match* vote.
 ⭐ I'll DM you a one-tap *rating* link after the match.
-⏰ Need a nudge? Say *"@Match Time remind me Thursday"* and I'll DM you then.
+⏰ Need a nudge? Tag me and say when, in your own words (for example *"@Match Time remind me Thursday"*), and I'll DM you then.
 💷 Want to collect match fees? Ask me: *@Match Time help payments*
 
 Type *"@Match Time help"* any time to see this again.
@@ -2888,7 +2888,7 @@ Whoever runs this group can claim the admin page any time at matchtime.ai. Every
 🤐 I stay quiet the rest of the time: banter and jokes are safe, I won't butt in.
 🏆 After the game I'll run a quick *Man of the Match* vote.
 ⭐ I'll DM you a one-tap *rating* link after the match.
-⏰ Need a nudge? Say *"@Match Time remind me Thursday"* and I'll DM you then.
+⏰ Need a nudge? Tag me and say when, in your own words (for example *"@Match Time remind me Thursday"*), and I'll DM you then.
 💷 Want to collect match fees? Ask me: *@Match Time help payments*
 
 Type *"@Match Time help"* any time to see this again.
@@ -2913,7 +2913,7 @@ Admin, I've sent you a private link to your admin page, where player names, rati
 🤐 I stay quiet the rest of the time: banter and jokes are safe, I won't butt in.
 🏆 After the game I'll run a quick *Man of the Match* vote.
 ⭐ I'll DM you a one-tap *rating* link after the match.
-⏰ Need a nudge? Say *"@Match Time remind me Thursday"* and I'll DM you then.
+⏰ Need a nudge? Tag me and say when, in your own words (for example *"@Match Time remind me Thursday"*), and I'll DM you then.
 💳 I keep track of who's *paid*.
 
 Type *"@Match Time help"* any time to see this again.
@@ -2937,7 +2937,7 @@ Whoever runs this group can claim the admin page any time at matchtime.ai. Every
 🤐 I stay quiet the rest of the time: banter and jokes are safe, I won't butt in.
 🏆 After the game I'll run a quick *Man of the Match* vote.
 ⭐ I'll DM you a one-tap *rating* link after the match.
-⏰ Need a nudge? Say *"@Match Time remind me Thursday"* and I'll DM you then.
+⏰ Need a nudge? Tag me and say when, in your own words (for example *"@Match Time remind me Thursday"*), and I'll DM you then.
 💷 Want to collect match fees? Ask me: *@Match Time help payments*
 
 Type *"@Match Time help"* any time to see this again.
@@ -2959,7 +2959,7 @@ Tip: to carry the squad over each week, to pick replacements from the bench your
 🤐 Diğer zamanlarda sessizim, sohbet ve şaka serbest, araya girmem.
 🏆 Maçtan sonra kısa bir *maçın adamı* oylaması yaparım.
 ⭐ Maçtan sonra tek dokunuşla *puanlama* bağlantısını özelden gönderirim.
-⏰ Hatırlatma mı lazım? *"@Match Time perşembe hatırlat"* yazın, o zaman size özelden yazarım.
+⏰ Hatırlatma mı lazım? Beni etiketleyip ne zaman istediğinizi kendi cümlelerinizle yazın (örneğin *"@Match Time perşembe hatırlat"*), o zaman size özelden yazarım.
 💷 Maç ücretlerini toplamak mı istiyorsunuz? Bana sorun: *@Match Time yardım ödeme*
 
 Bunu tekrar görmek için istediğiniz zaman *"@Match Time yardım"* yazın.
@@ -3614,11 +3614,11 @@ Yaptıklarım:
 
 🔁  *Yedekten kadroya*, biri çıkarsa yedekleri burada etiketlerim ve ilk *VARIM* yazan yeri alır. Süre sınırı yok, geç görene de bir şey olmaz, yedekteki yeri kalır.
 
-⚽  *Takımlar*, "@Match Time takımları kur" deyin, dengeli takımları paylaşırım. İtirazı olan `@Match Time X ile Y'yi değiştir` yazsın, admin onaylar.
+⚽  *Takımlar*, beni etiketleyip kendi cümlelerinizle isteyin (örneğin "@Match Time takımları kur"), dengeli takımları paylaşırım. İtirazı olan neyin değişeceğini aynı şekilde yazsın (örneğin "@Match Time Ali ile Can'ı değiştir"), admin onaylar.
 
 🏆  *Puanlama ve maçın adamı*, her maçtan sonra herkese puanlama linkini DM'den gönderirim (kayıt yok, tıklamanız yeterli); maçın adamını uygulamadan ya da paylaştığım anketten seçin, herkes oy verince (en geç maçtan 5 gün sonra) kazananı açıklarım.
 
-⏰  *Hatırlatmalar*, "@Match Time pazartesi hatırlat" deyin, o gün size DM atarım.
+⏰  *Hatırlatmalar*, beni etiketleyip ne zaman istediğinizi kendi cümlelerinizle yazın (örneğin "@Match Time pazartesi hatırlat"), o gün size DM atarım.
 
 📊  *İstatistikler*, "geçen hafta maçın adamı kimdi?" ya da "en istikrarlı oyuncumuz kim?" gibi sorular sorabilirsiniz.
 

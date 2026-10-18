@@ -166,7 +166,7 @@ export const tr: Strings = {
   // ── row 2: formatTeamsPost ───────────────────────────────────────
 
   teams_post_header: (p) => `⚽ *Bu akşamın takımları*, ${p.kickoff}, ${p.venue}`,
-  teams_post_footer: "İtirazınız mı var? `@Match Time X ile Y'yi değiştir` yazın, admin onaylar.",
+  teams_post_footer: "İtirazınız mı var? Beni etiketleyip neyin değişeceğini kendi cümlelerinizle yazın (örneğin @Match Time Ali ile Can'ı değiştir), admin onaylar.",
 
   // ── row 2b: replacement_teams_post ───────────────────────────────
   //   "yerine" is the word the Turkish attendance examples are written
@@ -297,7 +297,7 @@ export const tr: Strings = {
   match_day_header: (p) => `⚽ *Bu akşam ${p.timeLabel}*, *${p.activityName}*, ${p.venue}`,
   match_day_teams_signoff: "Akşam görüşürüz 🙌",
   match_day_locked_line:
-    "Kadro kilitlendi. Bu akşamın takımlarını belirlemek için sohbete *@Match Time takımları kur* yazın 👇",
+    "Kadro kilitlendi. Bu akşamın takımları için beni etiketleyip kendi cümlelerinizle isteyin (örneğin *@Match Time takımları kur*) 👇",
 
   // ── row 72: buildDailyInListFallback ─────────────────────────────
 
@@ -462,7 +462,7 @@ export const tr: Strings = {
 
   // ── rows 32 to 42: the acks ────────────────────────────────────────
 
-  teams_not_generated: "Takımlar henüz kurulmadı, *@Match Time takımları kur* yazın, hallederim.",
+  teams_not_generated: "Takımlar henüz kurulmadı. Beni etiketleyip kendi cümlelerinizle isteyin (örneğin *@Match Time takımları kur*), hallederim.",
   score_ack: (p) => `Tamam 👍 ${resultTr(p)}. Kaydettim.`,
   score_corrected: (p) =>
     `Düzelttim 👍 Önceki kayıt ${p.redLabel} ${p.oldRed} - ${p.oldYellow} ${p.yellowLabel} idi. Şimdi ${resultTr(p)}.`,
@@ -472,7 +472,7 @@ export const tr: Strings = {
     `Bu maçın sonucu zaten kayıtlı: ${resultTr(p)}. Bir yönetici maç sayfasından değiştirebilir.`,
   score_recorded_hint: (p) =>
     `Bu maçın sonucu zaten kayıtlı: ${resultTr(p)}. ` +
-    `Yanlışsa "hayır" diye başlayıp doğru skoru ve kazanan takımı yazın.`,
+    `Yanlışsa doğru skoru ve kazanan takımı kendi cümlelerinizle yazın (örneğin: hayır, 5-3 bitti).`,
   score_ask_score: "Maç kaç kaç bitti? İki sayıyı ve kazanan takımı yazın.",
   score_elo_no_teams_note:
     "Skor kaydedildi. Bu maç için takım belirlenmediğinden Elo uygulanmadı. Takımlar sonradan eklenirse Elo'nun uygulanması için skoru yeniden kaydedin.",
@@ -501,7 +501,7 @@ export const tr: Strings = {
       lines.push(`• Tutar, maç ücretinin oyuncular arasında bölünmüş payı, üstüne de ${fee}.`);
     }
     lines.push("• Ödemeyenlere hatırlatma gönderiyorum.");
-    if (p.direct) lines.push(`• Ödemeyi doğrudan ${who} ile halletmek de olur. Bana özelden *Ödedim* yazın, ${who} onaylasın.`);
+    if (p.direct) lines.push(`• Ödemeyi doğrudan ${who} ile halletmek de olur. Ödeyince bana özelden kendi cümlelerinizle yazın (örneğin *Ödedim*), ${who} onaylasın.`);
     return lines.join("\n");
   },
   payment_ack: (p) => `Not aldım 🙌 ${p.firstName} ${p.count} kişinin ödemesini yaptı.`,
@@ -584,7 +584,7 @@ export const tr: Strings = {
 
   bench_claim_team: (p) =>
     `🎟 *${p.claimer}* yeri aldı, *${p.teamLabel}* takımında *${p.dropped}* yerine oynuyor 🙌\n\n` +
-    `_Yeni kadroyla takımları yeniden dengelemek isterseniz "@Match Time takımları yeniden kur" yazın._`,
+    `_Yeni kadroyla takımların yeniden dengelenmesini isterseniz beni etiketleyip kendi cümlelerinizle isteyin (örneğin "@Match Time takımları yeniden kur")._`,
   bench_claim_replacing: (p) =>
     `✅ *${p.claimer}* kadroda, *${p.dropped}* yerine geliyor, kadro *${p.confirmed}/${p.maxPlayers}* 🙌`,
   bench_claim_open: (p) => `✅ *${p.claimer}* açık yeri aldı, kadro *${p.confirmed}/${p.maxPlayers}* 🙌`,
@@ -714,7 +714,7 @@ export const tr: Strings = {
 
   team_ops_not_match_day: "Takımları maç günü kuracağım, o gün benden isteyin yeter.",
   team_ops_not_a_build_request: "Takımları sadece maç günü, biri benden istediğinde kuruyorum.",
-  team_ops_say_generate: `"@Match Time takımları kur" yazın, takımları kurayım.`,
+  team_ops_say_generate: `Beni etiketleyip takımları kendi cümlelerinizle isteyin (örneğin "@Match Time takımları kur"), kurayım.`,
   teams_cleared: "Takımlar silindi. Maç günü istenince yenilerini kurarım.",
   teams_clear_nothing: "Silinecek takım yok.",
   teams_clear_admin_only: "Takımları sadece bir admin silebilir.",
@@ -746,7 +746,7 @@ export const tr: Strings = {
   recruit_nobody_new: (p) => `*${p.matchName}* için şu an sorulacak yeni oyuncu yok. 👍`,
   swap_deferred: (p) =>
     `*${p.a}* ve *${p.b}* zaten kadroda, kimse çıkarılmadı. ` +
-    `Takımlar henüz kurulmadı; *@Match Time takımları kur* yazın, kurayım (sonra ikisini farklı takımlara koyabilirim).`,
+    `Takımlar henüz kurulmadı. Beni etiketleyip kendi cümlelerinizle isteyin (örneğin *@Match Time takımları kur*), sonra ikisini farklı takımlara koyabilirim.`,
   team_swap_done: (p) => `🔁 *${p.a}* ve *${p.b}* yer değiştirdi, kimse çıkarılmadı. Güncel takımlar:`,
   slot_transfer_done: (p) =>
     `🔁 *${p.to}*, *${p.teamLabel}* takımında *${p.from}* yerine oynuyor; ` +
@@ -758,7 +758,7 @@ export const tr: Strings = {
     `Bu maç için *${p.name}* adında bir oyuncu bulamadım. Kayıtlı olduğu ismi yazın.`,
   swap_refused_ambiguous: (p) =>
     `*${p.name}* birden fazla oyuncu olabilir (${p.candidates.join(", ")}). Tam ismini yazın.`,
-  swap_refused_teams_not_generated: "Takımlar henüz kurulmadı. Önce *@Match Time takımları kur* yazın.",
+  swap_refused_teams_not_generated: "Takımlar henüz kurulmadı. Önce beni etiketleyip kendi cümlelerinizle isteyin (örneğin *@Match Time takımları kur*).",
   swap_refused_same_player: "İki isim de aynı oyuncuyu gösteriyor.",
   swap_refused_nobody_playing: "İkisi de kadroda değil.",
   swap_refused_not_in_squad: (p) => `*${p.name}* kadroda değil, o yüzden takımda yer veremem.`,
@@ -775,11 +775,11 @@ export const tr: Strings = {
   intro_what_i_do: "Yaptıklarım:",
   intro_attendance: `🗓  *Katılım*, buraya "VARIM" / "YOKUM" yazın (ya da uygulamadan işaretleyin), sizi kadroya ekler ya da çıkarırım. Onay için mesajınıza ✅ koyarım, ayrıca mesaj atmam.`,
   intro_daily: `🗒  *Günlük hatırlatma*, kadro dolana kadar her gün 17:00'de kadro listesini yeniden paylaşırım, kaç kişi eksik hep birlikte görürüz.`,
-  intro_teams: `⚽  *Takımlar*, "@Match Time takımları kur" deyin, dengeli takımları paylaşırım. İtirazı olan \`@Match Time X ile Y'yi değiştir\` yazsın, admin onaylar.`,
+  intro_teams: `⚽  *Takımlar*, beni etiketleyip kendi cümlelerinizle isteyin (örneğin "@Match Time takımları kur"), dengeli takımları paylaşırım. İtirazı olan neyin değişeceğini aynı şekilde yazsın (örneğin "@Match Time Ali ile Can'ı değiştir"), admin onaylar.`,
   intro_rating_bit: "her maçtan sonra herkese puanlama linkini DM'den gönderirim (kayıt yok, tıklamanız yeterli)",
   intro_mom_bit: "maçın adamını uygulamadan ya da paylaştığım anketten seçin, herkes oy verince (en geç maçtan 5 gün sonra) kazananı açıklarım",
   intro_ratings_line: (p) => `🏆  *Puanlama ve maçın adamı*, ${p.bits.join("; ")}.`,
-  intro_reminders: `⏰  *Hatırlatmalar*, "@Match Time pazartesi hatırlat" deyin, o gün size DM atarım.`,
+  intro_reminders: `⏰  *Hatırlatmalar*, beni etiketleyip ne zaman istediğinizi kendi cümlelerinizle yazın (örneğin "@Match Time pazartesi hatırlat"), o gün size DM atarım.`,
   intro_stats: `📊  *İstatistikler*, "geçen hafta maçın adamı kimdi?" ya da "en istikrarlı oyuncumuz kim?" gibi sorular sorabilirsiniz.`,
   intro_payments: `💳  *Ödemeler*, her maçtan hemen sonra "ödedin mi?" anketi paylaşırım.`,
   intro_closer: "Sorunuz varsa buradan sorun. Hadi başlayalım.",
@@ -986,7 +986,7 @@ export const tr: Strings = {
     lines.push(`🤐 Diğer zamanlarda sessizim, sohbet ve şaka serbest, araya girmem.`);
     if (f.momVoting) lines.push(`🏆 Maçtan sonra kısa bir *maçın adamı* oylaması yaparım.`);
     if (f.playerRating) lines.push(`⭐ Maçtan sonra tek dokunuşla *puanlama* bağlantısını özelden gönderirim.`);
-    if (f.reminders) lines.push(`⏰ Hatırlatma mı lazım? *"@Match Time perşembe hatırlat"* yazın, o zaman size özelden yazarım.`);
+    if (f.reminders) lines.push(`⏰ Hatırlatma mı lazım? Beni etiketleyip ne zaman istediğinizi kendi cümlelerinizle yazın (örneğin *"@Match Time perşembe hatırlat"*), o zaman size özelden yazarım.`);
     if (f.paymentCollection) lines.push(`💷 Her maçtan sonra size özelden maç ücreti için bir ödeme bağlantısı gönderirim.`);
     if (f.paymentTracking) lines.push(`💳 Kimin *ödediğini* takip ederim.`);
     if (!f.paymentTracking && !f.paymentCollection && f.feesNudge !== false) lines.push(`💷 Maç ücretlerini toplamak mı istiyorsunuz? Bana sorun: *@Match Time yardım ödeme*`);
@@ -1116,17 +1116,17 @@ export const tr: Strings = {
         `⭐ *Oyuncu puanları nasıl çalışır*\n` +
         `Her maçtan sonra oynayan herkese özelden bir bağlantı gönderirim. Diğer oyunculara 10 üzerinden puan verirsiniz (kendinize veremezsiniz, puanlarınız gizli kalır).\n` +
         `Herkesin puanlarını birleştirip bu kulüpteki her oyuncu için maçtan maça güncellenen bir form puanı çıkarırım, *dengeli takımları* bununla kurarım. Puanlar kulübün içinde kalır: başka bir grupta da oynuyorsanız oradaki puanlarınız buraya karışmaz. Ne kadar çok kişi puan verirse takımlar o kadar adil olur.\n` +
-        `Bağlantı maçın ertesi günü gelir. Kendi puanlarınız için istediğiniz zaman *@Match Time istatistiklerim* yazın.`,
+        `Bağlantı maçın ertesi günü gelir. Puanlarınızı istediğiniz zaman bana kendi cümlelerinizle sorun (örneğin *@Match Time istatistiklerim*).`,
       teams:
         `🟥🟦 *Dengeli takımlar nasıl çalışır*\n` +
-        `Kadro netleşince herhangi bir yönetici *@Match Time takımları kur* yazar, ben de form puanlarına göre herkesi iki dengeli takıma bölerim.\n` +
-        `Kadroları doğrudan gruba yazarım. Bir eşleşmeyi beğenmediniz mi? İki oyuncuyu *değiştirmemi* isteyin (örn. _"@Match Time Ali ile Can'ı değiştir"_) veya istediğiniz zaman *"@Match Time takımları göster"* yazın. Renkleri değiştirmek için *@Match Time renkleri değiştir* yazın, takımlar aynı kalır.\n` +
-        `Hazır olunca *@Match Time takımları kur* yazmanız yeter.`,
+        `Kadro netleşince herhangi bir yönetici beni etiketleyip takımları ister (örneğin *@Match Time takımları kur*), ben de form puanlarına göre herkesi iki dengeli takıma bölerim.\n` +
+        `Kadroları doğrudan gruba yazarım. Bir eşleşmeyi beğenmediniz mi? Beni etiketleyip neyin değişeceğini kendi cümlelerinizle yazın (örn. _"@Match Time Ali ile Can'ı değiştir"_). Takımları yeniden göstermemi (örn. *"@Match Time takımları göster"*) ya da takımlar aynı kalıp renkleri değiştirmemi (örn. *@Match Time renkleri değiştir*) istediğiniz zaman isteyebilirsiniz.\n` +
+        `Hazır olunca beni etiketleyip istemeniz yeter.`,
       mom:
         `🏆 *Maçın adamı nasıl çalışır*\n` +
         `Maç bitince gruba kısa bir *maçın adamı* oylaması açarım. Herkes öne çıkan oyuncuya dokunur.\n` +
         `Oyları sayar, kazananı duyururum, sonuç herkesin sezon istatistiklerine işlenir.\n` +
-        `Ayarlamanız gereken bir şey yok, oylamayı maç bitince kendim başlatırım. Kendi sayınız için *@Match Time istatistiklerim* yazın.`,
+        `Ayarlamanız gereken bir şey yok, oylamayı maç bitince kendim başlatırım. Maçın adamı sayınızı istediğiniz zaman bana kendi cümlelerinizle sorun (örneğin *@Match Time istatistiklerim*).`,
       availability:
         `⚽ *Kadro ve katılım nasıl çalışır*\n` +
         `Bir sonraki maç için grupta *varım* veya *yokum* yazmanız yeter, beni etiketlemenize gerek yok, otomatik okurum.\n` +
@@ -1140,7 +1140,7 @@ export const tr: Strings = {
         `💷 *Maç ücretleri nasıl çalışır*\n` +
         `Her maçtan sonra parayı toplayan kişiye kişi başı ücreti sorarım, sonra oynayan herkese payını ödemesi için özelden bir bağlantı gönderirim. Kartla ve bankadan yapılan ödemeler doğrudan parayı toplayan kişinin banka hesabına gider.\n` +
         `Henüz ödemeyenlere, parayı toplayan kişiye doğrudan ödemeyi seçmedilerse, bağlantıyı maçtan sonra 6 güne kadar her gün yeniden gönderirim.\n` +
-        `Son durum için *@Match Time kim ödemedi?* yazın.`,
+        `Son durumu istediğiniz zaman bana kendi cümlelerinizle sorun (örneğin *@Match Time kim ödemedi?*).`,
     })[p.topic],
 
   // Organizatörlerin listeyi ve takımları paylaştığı kulüp (2026-10-15).
@@ -1160,7 +1160,7 @@ export const tr: Strings = {
         ` Gelemeyecekseniz istediğiniz zaman *yokum* yazın.`,
       reminders:
         `⏰ *Hatırlatmalar nasıl çalışır*\n` +
-        `Kişisel bir hatırlatma mı istiyorsunuz? *"@Match Time perşembe hatırlat"* yazın, o zaman size özelden yazarım.\n` +
+        `Kişisel bir hatırlatma mı istiyorsunuz? Beni etiketleyip ne zaman istediğinizi kendi cümlelerinizle yazın (örneğin *"@Match Time perşembe hatırlat"*), o zaman size özelden yazarım.\n` +
         `Maçtan önceki kadro bilgileri organizatörlere gider, listeyi grupla onlar paylaşır.`,
     })[p.topic],
 
@@ -1170,7 +1170,7 @@ export const tr: Strings = {
     `Numaralı ve güncel bir kadro listesi tutarım. Kadro dolunca sonra yazanlar *yedek* listesine girer. Emin değil misiniz? *"belki"* yazın, maçtan yaklaşık 24 saat önce özelden kesin cevabınızı sorarım.\n` +
     `Bir yer açılınca yedeklerden kimin oynayacağını organizatörler seçer. Gelemeyecekseniz istediğiniz zaman *yokum* yazın.`,
 
-  onbHelpAdminOrganisers: `📣 Listeyi ve takımları organizatörler paylaşıyor. Yönetici grubunda *yardım* yaz, orada kabul ettiğim komutları göstereyim.`,
+  onbHelpAdminOrganisers: `📣 Listeyi ve takımları organizatörler paylaşıyor. Yönetici grubunda orada neler yapabildiğimi kendi cümlelerinle sor (örneğin *neler yapabilirsin?*).`,
 
   // Yönetici grubunda her şey kendi cümlelerinizle sorulur (paylaşılan
   // yönlendiricinin `help` rotası, 2026-10-16). Örnekler gerçekten
@@ -1894,7 +1894,7 @@ export const tr: Strings = {
     `Burada, WhatsApp'ta şunları yaparım:\n\n` +
     `✅ *Kim var:* *VARIM* ya da *YOKUM* yazmanız yeter. Listeyi tutar, mesajınıza tik koyarım.\n` +
     `🪑 *Yedekler:* kadro dolunca geç gelenler yedeğe yazılır, biri çıkarsa ilk şans yedeklerindir.\n` +
-    `⏰ *Hatırlatma:* *"@Match Time perşembe hatırlat"* yazın, o zaman size özelden yazarım.\n` +
+    `⏰ *Hatırlatma:* beni etiketleyip ne zaman istediğinizi kendi cümlelerinizle yazın (örneğin *"@Match Time perşembe hatırlat"*), o zaman size özelden yazarım.\n` +
     `⚖️ *Dengeli takımlar:* beni etiketleyin, oyuncu puanlarına göre dengeli takımlar kurarım.\n` +
     `⭐ *Maçın oyuncusu ve puanlar* her maçtan sonra.\n` +
     `📊 *İstatistikler:* bana istediğinizi sorun, herkesin kendi istatistik sayfası olur.\n` +
@@ -1942,7 +1942,7 @@ export const tr: Strings = {
   sj_hello_list: (p) => `📋 *Son liste:* ${p.day} ${p.time} saatinde buraya gönderirim.`,
   sj_hello_bench: `🪑 *Yedekler:* kadro dolunca geç gelenler yedeğe yazılır, biri çıkarsa ilk şans yedeklerindir.`,
   sj_hello_bench_organiser: `🪑 *Yedekler:* *VARIM* yazanlar yedeğe yazılır, boşalan her yere kimin gireceğini organizatörler seçer.`,
-  sj_hello_remind: `⏰ *Hatırlatma:* *"@Match Time perşembe hatırlat"* yazın, o zaman size özelden yazarım.`,
+  sj_hello_remind: `⏰ *Hatırlatma:* beni etiketleyip ne zaman istediğinizi kendi cümlelerinizle yazın (örneğin *"@Match Time perşembe hatırlat"*), o zaman size özelden yazarım.`,
   sj_hello_teams: `⚖️ *Dengeli takımlar:* beni etiketleyin, oyuncu puanlarına göre dengeli takımlar kurarım.`,
   sj_hello_mom: (p) =>
     p.mom && p.ratings
@@ -2220,8 +2220,8 @@ export const tr: Strings = {
     lines.push(
       ``,
       p.live
-        ? `Burada yazdıklarım oyunculara gitmez. Neleri kabul ettiğimi görmek için burada istediğiniz zaman *yardım* yazın.`
-        : `Burada yazdıklarım oyunculara gitmez. Açıldığımda, neleri kabul ettiğimi görmek için burada *yardım* yazın.`,
+        ? `Burada yazdıklarım oyunculara gitmez. Neler yapabildiğimi burada istediğiniz zaman kendi cümlelerinizle sorun (örneğin *neler yapabilirsin?*).`
+        : `Burada yazdıklarım oyunculara gitmez. Açıldığımda neler yapabildiğimi burada kendi cümlelerinizle sorun (örneğin *neler yapabilirsin?*).`,
     );
     return lines.join("\n");
   },
@@ -2240,13 +2240,13 @@ export const tr: Strings = {
   ag_sq_failed: (p: { names: string }): string => `${p.names} için değişiklik yapamadım. Lütfen maç sayfasını kontrol edin.`,
   ag_sq_nothing: "Değişecek bir şey yok: kadro zaten öyle.",
   ag_sq_unknown: (p: { name: string }): string =>
-    `${p.name} adında birini henüz tanımıyorum. Eklemek için "${p.name} var" yazın.`,
+    `${p.name} adında birini henüz tanımıyorum. Eklemek için kendi cümlelerinizle yazmanız yeterli (örneğin ${p.name} var).`,
   ag_sq_not_set: (p: { when: string; day: string; time: string }): string =>
     `${p.when} listesi henüz belli değil: geçen haftanın kadrosu ${p.day} saat ${p.time} itibarıyla aktarılacak. Ondan sonra tekrar yazın.`,
   ag_sq_self_hint_out: (p: { name: string; when: string }): string =>
-    `${p.when} kadrosundan çıkmak isterseniz "${p.name} yok" yazın.`,
+    `Sizi ${p.when} kadrosundan çıkarmamı isterseniz kendi cümlelerinizle yazmanız yeterli (örneğin ${p.name} yok).`,
   ag_sq_self_hint_in: (p: { name: string; when: string }): string =>
-    `${p.when} kadrosuna girmek isterseniz "${p.name} var" yazın.`,
+    `Sizi ${p.when} kadrosuna yazmamı isterseniz kendi cümlelerinizle yazmanız yeterli (örneğin ${p.name} var).`,
   ag_sq_count: (p: { confirmed: number; max: number; bench: string }): string => `${p.confirmed}/${p.max}${p.bench}.`,
   sq_bench: (p: { count: number; names: string[] }): string =>
     `yedekte ${p.count} kişi${p.names.length > 0 ? ` (${joinList("tr", p.names)})` : ""}`,
@@ -2278,18 +2278,18 @@ export const tr: Strings = {
   tp_note_out: "çıktı, yeri boş",
   tp_unseated: (p) => `Henüz takımı olmayan: ${p.names}.`,
   tp_how_to_change: (p) =>
-    `Değiştirmek için: *${p.a} ile ${p.b} değiş* iki oyuncunun yerini değiştirir, *${p.a} taşı* bir oyuncuyu diğer takıma geçirir, *yeniden* yeni takımlar kurar.`,
+    `Değiştirmek için kendi cümlelerinizle yazmanız yeterli (örneğin *${p.a} ile ${p.b} yer değiştirsin*, *${p.a} diğer takıma geçsin* ya da *takımları yeniden kur*).`,
   tp_ask_yes_quiet: "Kesinleşince *EVET* yazın. Oyuncu grubuna ben göndermeyeceğim.",
   tp_ask_yes_post: "Kesinleşince *EVET* yazın, oyuncu grubuna ben gönderirim.",
-  tp_final_footer: "Bunlar kesin. *değiş* ve *taşı* hâlâ çalışır; *yeniden* onaylanacak yeni takımlar kurar.",
+  tp_final_footer: "Bunlar kesin. Değişiklikleri hâlâ kendi cümlelerinizle isteyebilirsiniz; tamamen yeni takımlar yeniden onaylanır.",
   tp_final_reply_quiet: "Takımlar kesinleşti.",
   tp_final_reply_posted: "Takımlar kesinleşti. Oyuncu grubuna gönderdim.",
-  tp_no_teams: "Henüz takım yok. *takımlar* yazın, kurayım.",
+  tp_no_teams: "Henüz takım yok. Kendi cümlelerinizle istemeniz yeterli (örneğin *takımları göster*), kurayım.",
   tp_no_match: "Takım kurulacak yaklaşan bir maç yok.",
   tp_name_unknown: (p) => `${p.name} takımlarda yok.`,
   tp_name_ambiguous: (p) => `${p.name} şunlardan biri olabilir: ${p.names}. Tam adını yazın.`,
   tp_same_team: (p) => `${p.a} ile ${p.b} aynı takımda, değişecek bir şey yok.`,
-  tp_reminder: (p) => `⏰ ${p.kickoff} maçının takımları henüz kesinleşmedi. Görmek için *takımlar*, sonra *EVET* yazın.`,
+  tp_reminder: (p) => `⏰ ${p.kickoff} maçının takımları henüz kesinleşmedi. Görmek için kendi cümlelerinizle isteyin (örneğin *takımları göster*), sonra *EVET* yazın.`,
   tp_change_header: "🔄 *Takım değişikliği*",
   tp_change_replaced: (p) => `${p.to}, ${p.team} takımında ${p.from} yerine oynuyor`,
   tp_change_moved: (p) => `${p.name} ${p.team} takımına geçti`,
@@ -2297,14 +2297,14 @@ export const tr: Strings = {
   tp_change_back: (p) => `${p.name} yine ${p.team} takımında`,
   tp_change_added: (p) => `${p.name} ${p.team} takımına eklendi`,
   tp_change_removed: (p) => `${p.name} ${p.team} takımından çıkarıldı`,
-  tp_teams_set_aside: "Takımlar hâlâ onay bekliyor: bundan sonra *takımlar* yazın.",
+  tp_teams_set_aside: "Takımlar hâlâ onay bekliyor: bundan sonra onları kendi cümlelerinizle yeniden isteyin (örneğin *takımları göster*).",
   tp_list_superseded: "Daha önce yapıştırılan liste uygulanmadı.",
   tp_short_squad: (p) =>
-    `⚠️ ${p.kickoff} maçı için takım kuracak kadar oyuncu yok: ${p.needed} kişi gerekiyor, ${p.confirmed} kişi var. Oyuncu ekleyin, sonra *takımlar* yazın.`,
+    `⚠️ ${p.kickoff} maçı için takım kuracak kadar oyuncu yok: ${p.needed} kişi gerekiyor, ${p.confirmed} kişi var. Oyuncu ekleyin, sonra takımları yeniden isteyin.`,
   tp_uneven: (p) =>
-    `⚠️ Takımlar dengesiz: ${p.redLabel} ${p.red}, ${p.yellowLabel} ${p.yellow}. Dengelemek için bir oyuncuyu *taşı* ile geçirin ya da böyle kalsın diye iki kez *EVET* yazın.`,
+    `⚠️ Takımlar dengesiz: ${p.redLabel} ${p.red}, ${p.yellowLabel} ${p.yellow}. Dengelemek için kimin diğer takıma geçeceğini kendi cümlelerinizle yazın ya da böyle kalsın diye iki kez *EVET* yazın.`,
   tp_uneven_confirm: (p) =>
-    `Takımlar dengesiz: ${p.redLabel} ${p.red}, ${p.yellowLabel} ${p.yellow}. Böyle kesinleşsin istiyorsanız yine *EVET* yazın, ya da önce bir oyuncuyu *taşı* ile geçirin.`,
+    `Takımlar dengesiz: ${p.redLabel} ${p.red}, ${p.yellowLabel} ${p.yellow}. Böyle kesinleşsin istiyorsanız yine *EVET* yazın, ya da önce kimin diğer takıma geçeceğini kendi cümlelerinizle yazın.`,
   tp_settings_label: "Takımlar hazır",
   tp_settings_blurb: "Maç günü MatchTime'ın takımları yönetici grubunuzda ne zaman önereceği.",
   tp_settings_default: "Henüz ayarlanmadı, bu kulübünüzün varsayılanı.",
@@ -3556,11 +3556,11 @@ export const tr: Strings = {
     `📋 ${p.weekday ? `${p.weekday} günkü maç` : "Sonraki maçınız"} gece ekleniyor. Yarından itibaren kadro listesini buraya yapıştırın: neyin değişeceğini gösteririm, 30 dakika içinde *EVET* yazarsanız uygularım.`,
   ao_ready_no_tag: (p) =>
     (p.reads
-      ? `💬 Burada beni etiketlemenize gerek yok. Bu gruptaki yöneticilerin her mesajını okurum, komutu yazmanız yeter. Normal sohbetiniz de sorun değil, yalnızca açık talimatlarla bir şey yaparım.`
-      : `💬 Burada beni etiketlemenize gerek yok, komutu yazmanız yeter. Normal sohbetiniz de sorun değil, yalnızca açık komutlarla bir şey yaparım.`) +
+      ? `💬 Burada beni etiketlemenize gerek yok. Bu gruptaki yöneticilerin her mesajını okurum, ne istediğinizi kendi cümlelerinizle yazmanız yeter. Normal sohbetiniz de sorun değil, yalnızca açık talimatlarla bir şey yaparım.`
+      : `💬 Burada beni etiketlemenize gerek yok, ne istediğinizi kendi cümlelerinizle yazmanız yeter. Normal sohbetiniz de sorun değil, yalnızca açık talimatlarla bir şey yaparım.`) +
     (p.mainChat ? ` Ana grupta oyuncular beni etiketlemeden *VARIM* ya da *YOKUM* yazar, beni yalnızca bir şey sormak için etiketler.` : ``),
   ao_ready_main_chat: `💬 Ana grupta oyuncular beni etiketlemeden *VARIM* ya da *YOKUM* yazar, beni yalnızca bir şey sormak için etiketler.`,
-  ao_ready_help_group: `Neleri kabul ettiğimi görmek için burada istediğiniz zaman *yardım* yazın.`,
+  ao_ready_help_group: `Neler yapabildiğimi burada istediğiniz zaman kendi cümlelerinizle sorun (örneğin *neler yapabilirsin?*).`,
   ao_ready_help_dm: `Neler yapabildiğimi görmek için bana istediğiniz zaman *yardım* yazın.`,
   ao_teams_title: (p) => `🟥🟦 *${p.weekday} günkü takımlar*`,
   ao_teams_set: (p) =>

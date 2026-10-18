@@ -68,9 +68,10 @@ describe("compose(): a Turkish world speaks Turkish", () => {
     const text = say(turkish({ confirmed: FOURTEEN, teams }), { kind: "teams_post", messageId: "m" })[0];
     expect(text).toMatch(/^⚽ \*Bu akşamın takımları\*, Salı 21:30, Goals North Cheam\n\n\*Kırmızı\*:\n1\. Kemal Ediz/);
     expect(text).toContain("*Sarı*:\n1. Elvin Aliyev");
-    // The typed command is the Turkish form the bot parses
-    // (`TR_TEAM_COMMANDS.swapPlayers`, `parseSwapNames`), tagged.
-    expect(text).toMatch(/İtirazınız mı var\? `@Match Time X ile Y'yi değiştir` yazın, admin onaylar\.$/);
+    // The example is the Turkish form the bot parses
+    // (`TR_TEAM_COMMANDS.swapPlayersExample`, `parseSwapNames`), tagged,
+    // shown as an example of the admin's own words (2026-10-18).
+    expect(text).toMatch(/İtirazınız mı var\? Beni etiketleyip neyin değişeceğini kendi cümlelerinizle yazın \(örneğin @Match Time Ali ile Can'ı değiştir\), admin onaylar\.$/);
   });
 
   it("slot opened: names joined with 've', the count spelled out, VARIM as the token", () => {

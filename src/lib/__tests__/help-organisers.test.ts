@@ -210,7 +210,7 @@ describe("organisers mode, main chat (FNF: organisers announce, organisers pick)
         `🤐 I stay quiet the rest of the time: banter and jokes are safe, I won't butt in.`,
         `🏆 After the game I'll run a quick *Man of the Match* vote.`,
         `⭐ I'll DM you a one-tap *rating* link after the match.`,
-        `⏰ Need a nudge? Say *"@Match Time remind me Thursday"* and I'll DM you then.`,
+        `⏰ Need a nudge? Tag me and say when, in your own words (for example *"@Match Time remind me Thursday"*), and I'll DM you then.`,
         `💷 After each game I'll DM you a link to pay your match fee.`,
         `💳 I keep track of who's *paid*.`,
         ``,
@@ -277,12 +277,12 @@ describe("organisers mode, main chat (FNF: organisers announce, organisers pick)
   it("help reminders: the personal nudge stays, the squad updates go to the organisers", () => {
     expect(buildHelpReply("reminders", FNF, "en", { audience: "group" })).toBe(
       `⏰ *Reminders: how it works*\n` +
-        `Want a personal nudge? Say *"@Match Time remind me Thursday"* and I'll DM you then.\n` +
+        `Want a personal nudge? Tag me and say when, in your own words (for example *"@Match Time remind me Thursday"*), and I'll DM you then.\n` +
         `Squad updates before the game go to the organisers, and they share the list with the group.`,
     );
     expect(buildHelpReply("reminders", FNF, "tr", { audience: "group" })).toBe(
       `⏰ *Hatırlatmalar nasıl çalışır*\n` +
-        `Kişisel bir hatırlatma mı istiyorsunuz? *"@Match Time perşembe hatırlat"* yazın, o zaman size özelden yazarım.\n` +
+        `Kişisel bir hatırlatma mı istiyorsunuz? Beni etiketleyip ne zaman istediğinizi kendi cümlelerinizle yazın (örneğin *"@Match Time perşembe hatırlat"*), o zaman size özelden yazarım.\n` +
         `Maçtan önceki kadro bilgileri organizatörlere gider, listeyi grupla onlar paylaşır.`,
     );
   });
@@ -329,8 +329,8 @@ describe("organiser pick in a club MatchTime still announces for", () => {
 });
 
 describe("an organiser's DM help in organisers mode", () => {
-  const SECTION_EN = `📣 Your organisers share the list and the teams. In your admin group, type *help* and I'll show the commands I take there.`;
-  const SECTION_TR = `📣 Listeyi ve takımları organizatörler paylaşıyor. Yönetici grubunda *yardım* yaz, orada kabul ettiğim komutları göstereyim.`;
+  const SECTION_EN = `📣 Your organisers share the list and the teams. In your admin group, ask me what I can do there, in your own words (for example *what can you do?*).`;
+  const SECTION_TR = `📣 Listeyi ve takımları organizatörler paylaşıyor. Yönetici grubunda orada neler yapabildiğimi kendi cümlelerinle sor (örneğin *neler yapabilirsin?*).`;
 
   it("bare help adds the HQ pointer before the settings link (English)", () => {
     const out = buildHelpReply(null, FNF, "en", { audience: "admin", links: LINKS, adminGroupLinked: true });

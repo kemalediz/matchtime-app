@@ -53,7 +53,7 @@ describe("buildAdminGroupIntro, English", () => {
         `When a place opens and someone is waiting, I ask here who plays.`,
         `Notices meant only for the organisers come here instead of by DM, and so does the rating notice, for you to pass on to the players.`,
         ``,
-        `Nothing I say here goes to the players. Type *help* here any time to see what I take.`,
+        `Nothing I say here goes to the players. Ask me here any time what I can do, in your own words (for example *what can you do?*).`,
       ].join("\n"),
     );
   });
@@ -66,7 +66,7 @@ describe("buildAdminGroupIntro, English", () => {
         `I post the squad list in the main chat.`,
         `Notices meant only for the organisers come here instead of by DM.`,
         ``,
-        `Nothing I say here goes to the players. Type *help* here any time to see what I take.`,
+        `Nothing I say here goes to the players. Ask me here any time what I can do, in your own words (for example *what can you do?*).`,
       ].join("\n"),
     );
   });
@@ -120,7 +120,7 @@ describe("buildAdminGroupIntro, English", () => {
   it("a club not switched on yet (setting up): says so, and help only once it is on", () => {
     const text = buildAdminGroupIntro({ ...FNF, whatsappBotEnabled: false });
     expect(text.split("\n")[0]).toBe(`👋 I'm MatchTime, I'll help run *FNF*'s Fridays. Once I'm switched on for the club, this is what I do.`);
-    expect(text.split("\n").at(-1)).toBe(`Nothing I say here goes to the players. Once I'm on, type *help* here to see what I take.`);
+    expect(text.split("\n").at(-1)).toBe(`Nothing I say here goes to the players. Once I'm on, ask me here what I can do, in your own words (for example *what can you do?*).`);
     expect(text).not.toMatch(/any time/);
   });
 
@@ -150,7 +150,7 @@ describe("buildAdminGroupIntro, Turkish", () => {
         `Bir yer açılınca ve bekleyen biri varsa, kimin oynayacağını burada sorarım.`,
         `Sadece organizatörlere yönelik bildirimler özel mesaj yerine buraya gelir; oyunculara iletmeniz için puanlama duyurusu da buraya gelir.`,
         ``,
-        `Burada yazdıklarım oyunculara gitmez. Neleri kabul ettiğimi görmek için burada istediğiniz zaman *yardım* yazın.`,
+        `Burada yazdıklarım oyunculara gitmez. Neler yapabildiğimi burada istediğiniz zaman kendi cümlelerinizle sorun (örneğin *neler yapabilirsin?*).`,
       ].join("\n"),
     );
   });
@@ -163,7 +163,7 @@ describe("buildAdminGroupIntro, Turkish", () => {
         `Kadro listesini ana grupta ben paylaşırım.`,
         `Sadece organizatörlere yönelik bildirimler özel mesaj yerine buraya gelir.`,
         ``,
-        `Burada yazdıklarım oyunculara gitmez. Neleri kabul ettiğimi görmek için burada istediğiniz zaman *yardım* yazın.`,
+        `Burada yazdıklarım oyunculara gitmez. Neler yapabildiğimi burada istediğiniz zaman kendi cümlelerinizle sorun (örneğin *neler yapabilirsin?*).`,
       ].join("\n"),
     );
   });
@@ -173,7 +173,7 @@ describe("buildAdminGroupIntro, Turkish", () => {
     expect(monthly).toContain(`*ÖDENDİ HEPSİ*, *ÖDENDİ 1 3* ya da *ÖDENDİ YOK*`);
     const off = buildAdminGroupIntro({ ...FNF, language: "tr", whatsappBotEnabled: false });
     expect(off.split("\n")[0]).toBe(`👋 Ben MatchTime. *FNF* cuma maçlarını yönetmenize yardım edeceğim. Kulüp için açıldığımda burada şunları yaparım.`);
-    expect(off.split("\n").at(-1)).toBe(`Burada yazdıklarım oyunculara gitmez. Açıldığımda, neleri kabul ettiğimi görmek için burada *yardım* yazın.`);
+    expect(off.split("\n").at(-1)).toBe(`Burada yazdıklarım oyunculara gitmez. Açıldığımda neler yapabildiğimi burada kendi cümlelerinizle sorun (örneğin *neler yapabilirsin?*).`);
     const posted = buildAdminGroupIntro({ ...DEFAULT_CLUB, language: "tr", teamsReadyTime: "09:30" });
     expect(posted).toContain(`Kadro listesini ana grupta ben paylaşırım; burada *EVET* yazdığınızda takımları da orada paylaşırım.`);
     expect(posted).toContain(`maç günü saat 09:30 itibarıyla`);
