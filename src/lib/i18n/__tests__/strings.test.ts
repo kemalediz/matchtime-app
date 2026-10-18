@@ -1757,6 +1757,9 @@ const SAMPLES: SampleArgs = {
   phone_link_no: null,
   phone_link_done: null,
   phone_link_declined: null,
+  mch_kickoff: { time: "21:37" },
+  mch_status: { status: "COMPLETED" },
+  mch_back_to_match: null,
 };
 
 /** Render an entry with its sample arguments. */
