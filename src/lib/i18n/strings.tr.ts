@@ -3897,6 +3897,28 @@ export const tr: Strings = {
   phone_link_no: "Hayır, farklı bir numara",
   phone_link_done: "Mevcut hesabına bağlandı.",
   phone_link_declined: "Kaydedilmedi. Bu numara zaten başka birine ait ve iki kez kullanılamaz.",
+
+  // ── Match context header (Kemal, 2026-10-18) ──────────────────────
+  mch_kickoff: (p) => `Başlama ${p.time}`,
+  mch_status: (p) => {
+    switch (p.status) {
+      case "UPCOMING":
+        return "Yaklaşan";
+      case "TEAMS_GENERATED":
+        return "Takımlar kuruldu";
+      case "TEAMS_PUBLISHED":
+        return "Takımlar duyuruldu";
+      case "COMPLETED":
+        return "Oynandı";
+      case "CANCELLED":
+        return "İptal edildi";
+      default: {
+        const words = p.status.replace(/_/g, " ").toLocaleLowerCase("tr");
+        return words.charAt(0).toLocaleUpperCase("tr") + words.slice(1);
+      }
+    }
+  },
+  mch_back_to_match: "Maça dön",
 };
 
 /**

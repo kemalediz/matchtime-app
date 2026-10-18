@@ -5205,4 +5205,28 @@ export const en = {
   phone_link_no: "No, it's a different number",
   phone_link_done: "Linked to their existing account.",
   phone_link_declined: "Not saved. That number already belongs to someone else and can't be used twice.",
+
+  // ── Match context header (Kemal, 2026-10-18) ──────────────────────
+  // The header on the payments page and the team management page that
+  // says which match they are about (`lib/match-context.ts`).
+  mch_kickoff: (p: { time: string }): string => `Kickoff ${p.time}`,
+  mch_status: (p: { status: string }): string => {
+    switch (p.status) {
+      case "UPCOMING":
+        return "Upcoming";
+      case "TEAMS_GENERATED":
+        return "Teams made";
+      case "TEAMS_PUBLISHED":
+        return "Teams published";
+      case "COMPLETED":
+        return "Played";
+      case "CANCELLED":
+        return "Cancelled";
+      default: {
+        const words = p.status.replace(/_/g, " ").toLowerCase();
+        return words.charAt(0).toUpperCase() + words.slice(1);
+      }
+    }
+  },
+  mch_back_to_match: "Back to match",
 };

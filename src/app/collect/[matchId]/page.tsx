@@ -7,6 +7,8 @@ import { PaymentRoster } from "@/components/pay/payment-roster";
 import { RefreshButton } from "@/components/pay/refresh-button";
 import { collectRowState } from "@/lib/fee-waiver-rules";
 import { t } from "@/lib/i18n/t";
+import { MatchContextHeader } from "@/components/match/match-context-header";
+import { resolveTeamLabels } from "@/lib/team-labels";
 
 export const dynamic = "force-dynamic";
 
@@ -34,7 +36,14 @@ export default async function CollectPage({
   const match = await db.match.findUnique({
     where: { id: matchId },
     include: {
-      activity: { select: { name: true, org: { select: { name: true, paymentHolderId: true, language: true } } } },
+      activity: {
+        select: {
+          name: true,
+          venue: true,
+          sport: { select: { name: true, teamLabels: true } },
+          org: { select: { name: true, paymentHolderId: true, language: true, teamLabels: true } },
+        },
+      },
       attendances: {
         where: { status: "CONFIRMED" },
         include: { user: { select: { id: true, name: true } } },
@@ -76,15 +85,29 @@ export default async function CollectPage({
   const collected = owing.reduce((s, r) => s + (r.paid ? r.amount ?? 0 : 0), 0);
   const base = match.feePerPlayer;
   const words = t(match.activity.org.language);
+  const teamLabels = resolveTeamLabels(match, match.activity.org, match.activity.sport, match.activity.org.language);
 
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-8">
       <div className="mx-auto w-full max-w-md">
+        {/* Which match this is (Kemal, 2026-10-18): day, kickoff, venue,
+            status and score, with the way back to the match. */}
+        <div className="mb-4">
+          <MatchContextHeader
+            matchId={matchId}
+            title={match.activity.name}
+            sportName={match.activity.sport?.name}
+            clubName={match.activity.org.name}
+            venue={match.activity.venue}
+            date={match.date}
+            status={match.status}
+            redScore={match.redScore}
+            yellowScore={match.yellowScore}
+            teamLabels={teamLabels}
+            lang={match.activity.org.language}
+          />
+        </div>
         <div className="text-center mb-5">
-          <p className="text-xs uppercase tracking-wider text-slate-400">
-            {match.activity.org.name}
-          </p>
-          <h1 className="text-xl font-bold text-slate-900 mt-1">{match.activity.name}</h1>
           <p className="text-sm text-slate-500 mt-1">
             {base != null ? <>Fee {gbp(base)} per player · </> : null}
             <span className="font-semibold text-slate-700">
