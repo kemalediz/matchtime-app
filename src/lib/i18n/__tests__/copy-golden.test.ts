@@ -514,6 +514,7 @@ import { resolveReminderPhrase } from "../../reminder-time";
 import { FEE_REPLY_SYSTEM_PROMPT, buildFeeReplySystemPrompt } from "../../fee-confirm";
 import { buildPickMessage, buildPickListChanged } from "../../organiser-pick-rules";
 import { buildGroupAskPost } from "../../admin-group-ask-group-rules";
+import { benchClause } from "../../squad-count-line";
 import { clubFeeTip, type TipActivity } from "../../club-billing-rules";
 import {
   approvedTipText,
@@ -1780,6 +1781,7 @@ function cases(lang: Lang): Case[] {
       deadline: rollingBase.deadline,
       confirmed: 17,
       maxPlayers: 18,
+      bench: ["Uncle Najib"],
       lang,
     }),
   );
@@ -1922,7 +1924,7 @@ function cases(lang: Lang): Case[] {
       wr.pick_only_k({ k: 2, names: ["Wasim", "Kemal"] }),
       wr.pick_none_ack,
       wr.pick_fallback_offered({ activityName: "Friday 9-a-side" }),
-      wr.pick_fallback_left({ activityName: "Friday 9-a-side", confirmed: 17, maxPlayers: 18 }),
+      wr.pick_fallback_left({ activityName: "Friday 9-a-side", confirmed: 17, maxPlayers: 18, bench: benchClause(lang, ["Uncle Najib"]) }),
     ].join("\n"),
   );
   add(

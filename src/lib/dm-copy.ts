@@ -20,6 +20,7 @@
  */
 import { gbp, type PayMethod } from "./payments";
 import { t } from "./i18n/t";
+import { benchClause } from "./squad-count-line";
 import type { Lang } from "./i18n/lang";
 import { dayUnlessToday } from "./i18n/dates";
 
@@ -444,9 +445,11 @@ export function buildLateDropAdminNotice(
     deadline: string;
     confirmed: number;
     maxPlayers: number;
+    /** Who is on the bench now, in bench order (squad-count-line.ts). */
+    bench: readonly string[];
   } & WithLang,
 ): string {
-  return t(p.lang).late_drop_admin_notice(p);
+  return t(p.lang).late_drop_admin_notice({ ...p, bench: benchClause(p.lang, p.bench) });
 }
 
 /**
