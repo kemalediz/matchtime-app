@@ -5112,6 +5112,13 @@ export const en = {
   pg_err_club_not_approved: "You can edit players once your club is approved.",
   pg_err_merge_keep_owned:
     "This player manages their own account, so their record has to be the one you keep. Merge the other record into theirs.",
+  // ─── Entering a played match's score on the dashboard (2026-10-18) ──
+  // FNF could not find where to enter Fri 16 Oct's result. The match page,
+  // the result lists and the score action (src/lib/score-entry.ts).
+  score_entry_enter: "Enter score",
+  score_entry_edit: "Edit score",
+  score_entry_add: "Add score",
+  score_entry_err_not_played: "This match hasn't been played, so it can't have a score yet.",
   // ─── A player's own details: /welcome and /profile (2026-10-18) ─────
   // A blank phone never clears the stored one; a stored number is the
   // sign-in number and cannot be changed here (src/lib/own-phone-rules.ts).

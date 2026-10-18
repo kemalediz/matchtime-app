@@ -1,6 +1,6 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { getUserOrg } from "@/lib/org";
+import { getUserOrg, isOrgAdmin } from "@/lib/org";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { format, formatDistanceToNow, isBefore } from "date-fns";
@@ -21,6 +21,7 @@ import { setupHoldEnabledForRequest } from "@/lib/setup-hold-flag";
 import { getMomSummaries } from "@/lib/mom";
 import { loadClubRating } from "@/lib/player-stats";
 import { t } from "@/lib/i18n/t";
+import { ResultScore } from "@/components/match/result-score";
 import { connectFocusFor } from "@/lib/connect-focus-server";
 import { CONNECT_FOCUS_HOME } from "@/lib/connect-focus";
 
@@ -108,6 +109,9 @@ export default async function DashboardPage() {
     include: { activity: true },
   });
   const recentMomByMatch = await getMomSummaries(recentMatches.map((m) => m.id));
+  // An admin sees "Add score" on a played match with no result (FNF,
+  // 2026-10-18), so a missing score is obvious from the dashboard.
+  const isAdmin = await isOrgAdmin(session.user.id, orgId);
 
   const matchesPlayed = await db.attendance.count({
     where: {
@@ -363,13 +367,18 @@ export default async function DashboardPage() {
                   : `${mom.topPlayers[0].name} (${mom.topCount}/${mom.totalVotes} votes)`
                 : null;
               return (
-                <Link
+                <div
                   key={m.id}
-                  href={`/matches/${m.id}`}
-                  className="flex items-center justify-between gap-3 px-6 py-4 hover:bg-slate-50 transition-colors"
+                  data-testid="recent-result"
+                  className="relative flex items-center justify-between gap-3 px-6 py-4 hover:bg-slate-50 transition-colors"
                 >
                   <div className="min-w-0">
-                    <p className="font-medium text-slate-800 truncate">{m.activity.name}</p>
+                    <Link
+                      href={`/matches/${m.id}`}
+                      className="block font-medium text-slate-800 truncate after:absolute after:inset-0"
+                    >
+                      {m.activity.name}
+                    </Link>
                     <p className="text-xs text-slate-500 mt-0.5">
                       {format(m.date, "EEE, d MMM yyyy")}
                     </p>
@@ -380,14 +389,14 @@ export default async function DashboardPage() {
                       </p>
                     )}
                   </div>
-                  {m.redScore !== null && m.yellowScore !== null && (
-                    <div className="flex items-center gap-2 font-mono font-bold shrink-0">
-                      <span className="text-red-500">{m.redScore}</span>
-                      <span className="text-slate-300">-</span>
-                      <span className="text-amber-500">{m.yellowScore}</span>
-                    </div>
-                  )}
-                </Link>
+                  <ResultScore
+                    matchId={m.id}
+                    redScore={m.redScore}
+                    yellowScore={m.yellowScore}
+                    isAdmin={isAdmin}
+                    addLabel={s.score_entry_add}
+                  />
+                </div>
               );
             })}
           </div>

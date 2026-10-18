@@ -1,6 +1,6 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { getUserOrg } from "@/lib/org";
+import { getUserOrg, isOrgAdmin } from "@/lib/org";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { format, formatDistanceToNow, isToday, isTomorrow } from "date-fns";
@@ -8,6 +8,8 @@ import { Calendar, MapPin, Users, Star } from "lucide-react";
 import { MatchesTabs } from "@/components/match/matches-tabs";
 import { formatLondon } from "@/lib/london-time";
 import { getMomSummaries } from "@/lib/mom";
+import { t } from "@/lib/i18n/t";
+import { ResultScore } from "@/components/match/result-score";
 
 // IMPORTANT: every user-facing time on this page is rendered in London
 // wall-clock via formatLondon. Plain date-fns format() uses the runtime's
@@ -49,6 +51,10 @@ export default async function MatchesPage() {
     include: { activity: { include: { sport: true } } },
   });
   const momByMatch = await getMomSummaries(pastMatches.map((m) => m.id));
+  // An admin sees "Add score" on a played match with no result (FNF,
+  // 2026-10-18: the Past tab showed nothing, so nothing said it was missing).
+  const isAdmin = await isOrgAdmin(session.user.id, orgId);
+  const s = t(membership.org.language);
 
   const myAttendances = await db.attendance.findMany({
     where: {
@@ -138,14 +144,19 @@ export default async function MatchesPage() {
         : `${mom.topPlayers[0].name} (${mom.topCount}/${mom.totalVotes} votes)`
       : null;
     return (
-      <Link
+      <div
         key={m.id}
-        href={`/matches/${m.id}`}
-        className="block bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow transition-all"
+        data-testid="past-result"
+        className="relative block bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow transition-all"
       >
         <div className="p-5 flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <p className="font-semibold text-slate-800 truncate">{m.activity.name}</p>
+            <Link
+              href={`/matches/${m.id}`}
+              className="block font-semibold text-slate-800 truncate after:absolute after:inset-0"
+            >
+              {m.activity.name}
+            </Link>
             <p className="text-sm text-slate-500 mt-0.5">{format(m.date, "EEE, d MMM yyyy")}</p>
             {momLabel && (
               <p className="text-xs text-slate-500 mt-1.5 flex items-center gap-1.5 truncate">
@@ -154,15 +165,16 @@ export default async function MatchesPage() {
               </p>
             )}
           </div>
-          {m.redScore !== null && m.yellowScore !== null && (
-            <div className="flex items-center gap-3 text-lg font-mono font-bold shrink-0">
-              <span className="text-red-500">{m.redScore}</span>
-              <span className="text-slate-300 text-base">-</span>
-              <span className="text-amber-500">{m.yellowScore}</span>
-            </div>
-          )}
+          <ResultScore
+            matchId={m.id}
+            redScore={m.redScore}
+            yellowScore={m.yellowScore}
+            isAdmin={isAdmin}
+            addLabel={s.score_entry_add}
+            large
+          />
         </div>
-      </Link>
+      </div>
     );
   });
 

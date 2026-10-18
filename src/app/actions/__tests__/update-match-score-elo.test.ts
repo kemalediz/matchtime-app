@@ -137,6 +137,38 @@ describe("updateMatchScore and the club's Elo", () => {
     expect(state.fake!.notifications).toEqual([]);
   });
 
+  // FNF, 2026-10-18: the score box is now offered for every PLAYED match
+  // (src/lib/score-entry.ts). The action holds the same line, so a
+  // cancelled match or one still to be played cannot be marked COMPLETED
+  // by a score.
+  it("a match played with teams only generated (never published) takes a score", async () => {
+    state.fake = fakeScoreDb({ matches: [match({ status: "TEAMS_GENERATED" })], ratings: { ...START } });
+    await updateMatchScore("m1", { redScore: 2, yellowScore: 1 });
+    expect(state.fake!.matches.get("m1")).toMatchObject({ redScore: 2, yellowScore: 1, status: "COMPLETED" });
+  });
+
+  it("refuses a cancelled match, in the club's language, and writes nothing", async () => {
+    state.fake = fakeScoreDb({ matches: [match({ status: "CANCELLED" })], ratings: { ...START } });
+    await expect(updateMatchScore("m1", { redScore: 2, yellowScore: 1 })).rejects.toThrow(
+      "This match hasn't been played, so it can't have a score yet.",
+    );
+    expect(state.fake!.matches.get("m1")).toMatchObject({ redScore: null, status: "CANCELLED" });
+    expect(ratingsNow()).toEqual(START);
+  });
+
+  it("refuses a match whose kickoff is still to come", async () => {
+    const future = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+    state.fake = fakeScoreDb({
+      matches: [match({ status: "TEAMS_PUBLISHED", date: future })],
+      ratings: { ...START },
+      language: "tr",
+    });
+    await expect(updateMatchScore("m1", { redScore: 2, yellowScore: 1 })).rejects.toThrow(
+      "Bu maç henüz oynanmadı, bu yüzden skor girilemez.",
+    );
+    expect(state.fake!.matches.get("m1")).toMatchObject({ redScore: null, status: "TEAMS_PUBLISHED" });
+  });
+
   it("a match with no teams: the score is saved and the admin is told no Elo was applied", async () => {
     state.fake = fakeScoreDb({ matches: [match({ teams: [] })], ratings: { ...START } });
     const res = await updateMatchScore("m1", { redScore: 3, yellowScore: 1 });
