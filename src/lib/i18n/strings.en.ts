@@ -1591,42 +1591,24 @@ export const en = {
     `Link expires in 5 days.\n\n` +
     `📊 Your season stats (ratings, MoM, badges, share card), any time:\n${p.statsUrl}`,
 
-  /** Row 92: the daily rating reminder, five day-toned variants
-   *  (`dayNum` 1 to 5; anything above 4 is the last call). */
-  dm_rating_reminder: (p: { dayNum: number; firstName: string | null; activityName: string; mvpLabel: string; url: string; momVote?: boolean }): string => {
+  /** Row 92: the rating reminder, at most two after the first DM
+   *  (Kemal, 2026-10-18; rating-reminder-schedule.ts). "first" is a
+   *  friendly nudge, "last" says it is the last and that ratings close
+   *  soon. `momVote: false` (organisers pick Man of the Match): ratings only. */
+  dm_rating_reminder: (p: { reminder: "first" | "last"; firstName: string | null; activityName: string; mvpLabel: string; url: string; momVote?: boolean }): string => {
     const first = p.firstName ?? "mate";
     const sig = `\n${p.url}`;
-    switch (p.dayNum) {
-      case 1:
-        return (
-          `Hey ${first} 👋 Hope last night's *${p.activityName}* was a good one.\n\n` +
-          (p.momVote === false
-            ? `When you have a sec, tap here to rate your teammates. `
-            : `When you have a sec, tap here to rate your teammates and pick ${p.mvpLabel}. `) +
-          `The more of us vote, the better the teams balance next week 🙌${sig}`
-        );
-      case 2:
-        return (
-          `${first}, friendly nudge 🙂 Still waiting on your ratings for *${p.activityName}*.\n\n` +
-          `Literally 30 seconds, promise. Helps everyone get fairer teams next week ⚽${sig}`
-        );
-      case 3:
-        return (
-          `Halfway through the rating window, ${first} ⏳\n\n` +
-          `Your vote for *${p.activityName}* actually moves ratings a lot when half the squad has voted ` +
-          `and you haven't. Quick tap:${sig}`
-        );
-      case 4:
-        return (
-          `${first}, two days left to rate *${p.activityName}* and lock in ${p.mvpLabel} 🏆\n\n` +
-          `30 seconds, then you're done:${sig}`
-        );
-      default:
-        return (
-          `Last call ${first} 🔔 The rating window for *${p.activityName}* closes tomorrow.\n\n` +
-          `Drop a rating + ${p.mvpLabel} pick before it shuts. Your voice counts:${sig}`
-        );
+    const ask = p.momVote === false ? `rate your teammates` : `rate your teammates and pick ${p.mvpLabel}`;
+    if (p.reminder === "last") {
+      return (
+        `Last reminder, ${first} 🔔 Ratings for *${p.activityName}* close soon.\n\n` +
+        `If you'd like to ${ask}, here's your link. I won't remind you again:${sig}`
+      );
     }
+    return (
+      `Hey ${first} 👋 Friendly nudge, you haven't rated *${p.activityName}* yet.\n\n` +
+      `It takes 30 seconds to ${ask}, and it helps balance next week's teams 🙌${sig}`
+    );
   },
 
   /** Row 83: the tentative ("maybe") follow-up, ~24h before kickoff.

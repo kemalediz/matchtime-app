@@ -389,9 +389,9 @@ const SAMPLES: SampleArgs = {
   onbHelpBadgeDetail: { key: "reliable", emoji: "🧱", label: "Mr Reliable", n: BADGE_NUMBERS },
 
   // ── private messages (Phase 3) ──
-  //   `dayNum`, `kind`, `category` and `decision` are branched on, not printed.
+  //   `dayNum`, `reminder`, `kind`, `category` and `decision` are branched on, not printed.
   dm_rating: { activityName: "Tuesday 7-a-side", dateLabel: "DATELABEL", mvpLabel: "MVPLABEL", rateUrl: "https://mt.example/s/rate", statsUrl: "https://mt.example/s/stats" },
-  dm_rating_reminder: { dayNum: 1, firstName: "Sait", activityName: "Tuesday 7-a-side", mvpLabel: "MVPLABEL", url: "https://mt.example/s/rate" },
+  dm_rating_reminder: { reminder: "first", firstName: "Sait", activityName: "Tuesday 7-a-side", mvpLabel: "MVPLABEL", url: "https://mt.example/s/rate" },
   dm_tentative_followup: { firstName: "Sait", activityName: "Tuesday 7-a-side", whenLabel: "WHENLABEL" },
   dm_tentative_reask: null,
   dm_tentative_ack: { decision: "in", failed: false },
@@ -1960,7 +1960,7 @@ describe("string tables: hygiene", () => {
   /** Arguments that are a closed set the entry BRANCHES on rather than
    *  text it prints: the rendered sentence says "replied by DM", never
    *  the token "dm". */
-  const ENUM_ARGS = new Set(["source", "verb", "self", "status", "key", "englishLabel", "dow", "topic", "dayNum", "kind", "category", "decision", "field", "englishBlurb", "table", "audience", "mode", "outcome"]);
+  const ENUM_ARGS = new Set(["source", "verb", "self", "status", "key", "englishLabel", "dow", "topic", "dayNum", "reminder", "kind", "category", "decision", "field", "englishBlurb", "table", "audience", "mode", "outcome"]);
 
   it("every parameterised entry uses every argument it is given", () => {
     // A string or number argument must appear in the output; a boolean,

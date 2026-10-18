@@ -91,10 +91,11 @@ test("evening rating REMINDERS skip the opted-out player AND anyone who already 
   // Simulate the bot having ACK'd everyone's morning DM.
   for (const k of KEYS) {
     const uid = grp.player(k).userId;
+    // Sent this morning: the first reminder is due from tomorrow (2026-10-18).
     await grp.db.run(
-      `INSERT INTO "SentNotification" (id, key, kind, "matchId", "targetUser")
-       VALUES ($1, $2, 'rate-dm', $3, $4) ON CONFLICT (key) DO NOTHING`,
-      [`sim-sn-rate-${uid}`, `${grp.completedMatchId}:rate-dm:${uid}`, grp.completedMatchId, uid],
+      `INSERT INTO "SentNotification" (id, key, kind, "matchId", "targetUser", "createdAt")
+       VALUES ($1, $2, 'rate-dm', $3, $4, $5) ON CONFLICT (key) DO NOTHING`,
+      [`sim-sn-rate-${uid}`, `${grp.completedMatchId}:rate-dm:${uid}`, grp.completedMatchId, uid, londonAt(0, 8, 30)],
     );
   }
   // Dan already rated a teammate.
@@ -103,7 +104,7 @@ test("evening rating REMINDERS skip the opted-out player AND anyone who already 
     [`sim-rating-dan`, grp.completedMatchId, grp.player("dan").userId, grp.player("owner").userId],
   );
 
-  const instructions = await grp.duePosts(londonAt(0, 18, 30));
+  const instructions = await grp.duePosts(londonAt(1, 18, 30));
   const reminderTargets = instructions
     .filter((i) => i.key?.includes(":rate-reminder:"))
     .map((i) => i.targetUser);

@@ -1651,10 +1651,12 @@ function cases(lang: Lang): Case[] {
   //    (dm-copy.ts, 2026-09-17) and pinned HERE, in English, before any
   //    of them moved into the string table. ────────────────────────────
   add("R91 buildRatingDm", buildRatingDm({ activityName: "Tuesday 7-a-side", dateLabel: lang === "tr" ? "8 Eylül Salı" : "Tue 8 Sep", mvpLabel: "Man of the Match", rateUrl: "https://mt.example/s/rate", statsUrl: "https://mt.example/s/stats", lang }));
-  for (const dayNum of [1, 2, 3, 4, 5]) {
-    add(`R92 buildRatingReminderDm / day ${dayNum}`, buildRatingReminderDm({ dayNum, playerName: "Sait Demir", activityName: "Tuesday 7-a-side", mvpLabel: "Man of the Match", url: "https://mt.example/s/rate", lang }));
+  // Two reminders, not five (Kemal, 2026-10-18: a deliberate copy change).
+  for (const reminder of ["first", "last"] as const) {
+    add(`R92 buildRatingReminderDm / ${reminder}`, buildRatingReminderDm({ reminder, playerName: "Sait Demir", activityName: "Tuesday 7-a-side", mvpLabel: "Man of the Match", url: "https://mt.example/s/rate", lang }));
+    add(`R92 buildRatingReminderDm / ${reminder}, organisers pick`, buildRatingReminderDm({ reminder, playerName: "Sait Demir", activityName: "Tuesday 7-a-side", mvpLabel: "Man of the Match", url: "https://mt.example/s/rate", momVote: false, lang }));
   }
-  add("R92 buildRatingReminderDm / no name", buildRatingReminderDm({ dayNum: 1, playerName: null, activityName: "Tuesday 7-a-side", mvpLabel: "Man of the Match", url: "https://mt.example/s/rate", lang }));
+  add("R92 buildRatingReminderDm / no name", buildRatingReminderDm({ reminder: "first", playerName: null, activityName: "Tuesday 7-a-side", mvpLabel: "Man of the Match", url: "https://mt.example/s/rate", lang }));
   add("R83 buildTentativeFollowupDm", buildTentativeFollowupDm({ playerName: "Sait Demir", activityName: "Tuesday 7-a-side", whenLabel: lang === "tr" ? "8 Eylül Salı 21:30" : "Tue 8 Sep at 21:30", lang }));
   add("R83 buildTentativeFollowupDm / no name", buildTentativeFollowupDm({ playerName: null, activityName: "Tuesday 7-a-side", whenLabel: lang === "tr" ? "8 Eylül Salı 21:30" : "Tue 8 Sep at 21:30", lang }));
   add("R88 buildFeeAskDm / fourteen played", buildFeeAskDm({ collectorName: "Kemal Ediz", activityName: "Tuesday 7-a-side", headcount: 14, lang }));

@@ -70,17 +70,19 @@ export function buildRatingDm(
   });
 }
 
-// ── row 92: the daily rating reminder, five day-toned variants ─────────
+// ── row 92: the rating reminder, two variants (first, last) ──────────
 
 /**
- * Copy for the daily 18:00 rating-reminder DM. Varies tone by day so five
- * nudges in a row don't all read the same: a warm opener (first name if
- * we have it), the match named, why ratings matter, the personal link.
+ * Copy for the 18:00 rating-reminder DM. A player who has not rated gets
+ * at most two (Kemal, 2026-10-18; the schedule is
+ * rating-reminder-schedule.ts): "first", a friendly nudge, and "last",
+ * which says it is the last reminder and that ratings close soon. A warm
+ * opener (first name if we have it), the match named, the personal link.
  * Never guilty or whiny.
  */
 export function buildRatingReminderDm(
   args: {
-    dayNum: number;
+    reminder: "first" | "last";
     playerName: string | null;
     activityName: string;
     mvpLabel: string;
@@ -90,7 +92,7 @@ export function buildRatingReminderDm(
   } & WithLang,
 ): string {
   return t(args.lang).dm_rating_reminder({
-    dayNum: args.dayNum,
+    reminder: args.reminder,
     firstName: firstOf(args.playerName, /\s+/),
     activityName: args.activityName,
     mvpLabel: args.mvpLabel,

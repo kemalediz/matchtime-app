@@ -10,7 +10,16 @@ Use subagents (the Agent/Task tool) for **long-running or substantial work** —
 - **ALWAYS use `model: "opus"` for EVERY subagent. NEVER use `model: "fable"`** (Kemal's rule, 2026-07-26). No exceptions: features, edits, investigations, deploys, config, content, and the hard, complex, concurrency, or architecture tasks too. Fable is retired for Cressoft work. `model: "opus"` resolves to the current Opus tier (Claude Opus 5 today), so it stays correct as newer Opus releases land.
 - **The main session REVIEWS everything a subagent delivers** before it is accepted, merged, shipped, or reported to Kemal as done: read the diff, re-run the gates (`tsc`, tests, build) yourself, spot-check load-bearing claims. See parent `Cressoft/CLAUDE.md`.
 
-## RULE: live-LLM suites and dry runs need Kemal's approval, every time (Kemal, 2026-09-19)
+## RULE (2026-10-18, supersedes "ask first" below for LLM changes): every LLM change gets real paid end-to-end tests, and every prompt change needs Kemal's side-by-side approval
+
+Kemal, 2026-10-18: *"any LLM change should trigger end to end real life tests (paid)"* and *"Any change you do, show me the old prompt and the new prompt side by side so i can approve"*.
+
+- A change to a prompt or to LLM behaviour ALWAYS runs real paid tests on the dev key, without asking first: the failing case(s) once, ONE full pass of every affected live suite (existing behaviours too), and the real end-to-end path (route + live model, no stub). Report calls and cost.
+- The prompt change itself is shown to Kemal as OLD vs NEW side by side, with size before/after and what changed in meaning, and ships only after his approval.
+- Prompts stay simple: one plain task, each output defined once, a few grouped EN/TR examples, and the CONTEXT (the facts the code already has) doing the work instead of more rules.
+- Non-LLM changes (schema, UI, copy, crons, refactors) still never trigger live runs.
+
+## RULE: live-LLM suites and dry runs need Kemal's approval, every time (Kemal, 2026-09-19; "ask first" superseded for LLM changes on 2026-10-18, see above)
 
 **Never run `scripts/dryrun-pipeline.ts`, `npm run test:corpus`, `e2e/run.ts sim/`, or any other
 suite that calls the real model, without asking Kemal first and getting a yes.** Both conditions
