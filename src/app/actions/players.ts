@@ -1113,6 +1113,7 @@ export async function addPlayerToMatch(
       const statsToken = signMagicLinkToken({ userId, purpose: "sign-in", nextPath: "/profile/stats", ttlSeconds: MAGIC_LINK_TTL.bookmark });
       const { buildRatingDm } = await import("@/lib/dm-copy");
       const { dayLabel } = await import("@/lib/i18n/dates");
+      const { organisersPickMom } = await import("@/lib/mom-chooser");
       await db.botJob.create({
         data: {
           orgId,
@@ -1126,6 +1127,9 @@ export async function addPlayerToMatch(
             mvpLabel: match.activity.sport.mvpLabel,
             rateUrl: await buildShortMagicLinkUrl(token),
             statsUrl: await buildShortMagicLinkUrl(statsToken),
+            // Same option as the scheduler's rating DM (bot-scheduler.ts
+            // 6b): when the organisers pick Man of the Match, ratings only.
+            ...(organisersPickMom(features) ? { momVote: false } : {}),
           }),
         },
       });
