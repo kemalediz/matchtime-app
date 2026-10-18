@@ -14,6 +14,7 @@ import {
   clubOwnsUser,
   playerEditContext,
 } from "@/lib/player-account-guard";
+import { decideOwnPhoneWrite, type OwnPhoneRefusal } from "@/lib/own-phone-rules";
 import type { Strings } from "@/lib/i18n/t";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -31,39 +32,60 @@ import { redirect } from "next/navigation";
  * See MDs/club-scoped-ratings-design-2026-09-18.md sections 4.2 and 4.3.
  */
 
-export async function completeOnboarding(formData: { name: string; phoneNumber?: string }) {
-  const session = await auth();
-  if (!session?.user?.id) throw new Error("Not authenticated");
+export type OwnDetailsResult = { ok: true } | { ok: false; reason: OwnPhoneRefusal };
 
+/**
+ * Write a player's own name (and, at most, ADD a number) from /welcome or
+ * /profile. A blank phone never clears the stored one, and a stored one is
+ * the sign-in number, so it is never changed here (own-phone-rules.ts;
+ * FNF 2026-10-18, Feroz's number was wiped by a blank /welcome field).
+ * Refusals are reason codes; the page words them in the visitor's language.
+ */
+async function writeOwnDetails(
+  userId: string,
+  formData: { name: string; phoneNumber?: string },
+  extra: { onboarded?: true },
+): Promise<OwnDetailsResult> {
   const parsed = onboardingSchema.parse(formData);
+  const me = await db.user.findUnique({ where: { id: userId }, select: { phoneNumber: true } });
+  const decision = decideOwnPhoneWrite({ current: me?.phoneNumber ?? null, submitted: parsed.phoneNumber });
+  if (decision.kind === "refuse") return { ok: false, reason: decision.reason };
 
-  await db.user.update({
-    where: { id: session.user.id },
-    data: {
-      name: parsed.name,
-      phoneNumber: parsed.phoneNumber || null,
-      onboarded: true,
-    },
-  });
+  const data: { name: string; onboarded?: true; phoneNumber?: string } = { name: parsed.name, ...extra };
+  if (decision.kind === "set") {
+    const holder = await db.user.findUnique({ where: { phoneNumber: decision.phone }, select: { id: true } });
+    if (holder && holder.id !== userId) return { ok: false, reason: "taken" };
+    data.phoneNumber = decision.phone;
+  }
 
-  redirect("/");
+  try {
+    await db.user.update({ where: { id: userId }, data });
+  } catch (err: unknown) {
+    if (typeof err === "object" && err !== null && "code" in err && (err as { code: string }).code === "P2002") {
+      return { ok: false, reason: "taken" };
+    }
+    throw err;
+  }
+  return { ok: true };
 }
 
-export async function updateProfile(formData: { name: string; phoneNumber?: string }) {
+export async function completeOnboarding(formData: { name: string; phoneNumber?: string }): Promise<OwnDetailsResult> {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Not authenticated");
 
-  const parsed = onboardingSchema.parse(formData);
+  const res = await writeOwnDetails(session.user.id, formData, { onboarded: true });
+  if (!res.ok) return res;
+  redirect("/");
+  return res;
+}
 
-  await db.user.update({
-    where: { id: session.user.id },
-    data: {
-      name: parsed.name,
-      phoneNumber: parsed.phoneNumber || null,
-    },
-  });
+export async function updateProfile(formData: { name: string; phoneNumber?: string }): Promise<OwnDetailsResult> {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Not authenticated");
 
-  revalidatePath("/profile");
+  const res = await writeOwnDetails(session.user.id, formData, {});
+  if (res.ok) revalidatePath("/profile");
+  return res;
 }
 
 /**

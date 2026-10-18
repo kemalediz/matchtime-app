@@ -6,6 +6,9 @@ import { useSession } from "next-auth/react";
 import { toast } from "sonner";
 import { Pencil, Calendar, Star, Trophy, TrendingUp } from "lucide-react";
 import { updateProfile, setMyPositions } from "@/app/actions/players";
+import { t } from "@/lib/i18n/t";
+import { useBrowserLang } from "@/lib/i18n/browser-lang";
+import { ownPhoneError } from "@/lib/own-phone-copy";
 
 type ActivityPositions = {
   positions: string[];
@@ -29,6 +32,7 @@ type Stats = {
 
 export default function ProfilePage() {
   const { data: session } = useSession();
+  const s = t(useBrowserLang());
   const [profile, setProfile] = useState<Profile | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
   const [editing, setEditing] = useState(false);
@@ -63,11 +67,21 @@ export default function ProfilePage() {
 
   async function handleSave() {
     try {
-      await updateProfile({ name, phoneNumber: phoneNumber.trim() || undefined });
+      // A stored number is the sign-in number: never sent, never cleared
+      // (src/lib/own-phone-rules.ts). Only a player with none may add one.
+      const added = profile?.phoneNumber ? undefined : phoneNumber.trim() || undefined;
+      const res = await updateProfile({ name, phoneNumber: added });
+      if (res && !res.ok) {
+        toast.error(ownPhoneError(s, res.reason));
+        return;
+      }
       toast.success("Profile updated!");
+      // Re-read the stored number rather than guess its normalised form.
+      const fresh = await fetch(`/api/players/${session!.user!.id}`).then((r) => r.json()).catch(() => null);
       setProfile((prev) =>
-        prev ? { ...prev, name, phoneNumber: phoneNumber.trim() || null } : prev,
+        prev ? { ...prev, name, phoneNumber: fresh?.player?.phoneNumber ?? prev.phoneNumber } : prev,
       );
+      setPhoneNumber(fresh?.player?.phoneNumber ?? profile?.phoneNumber ?? "");
       setEditing(false);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed");
@@ -117,22 +131,42 @@ export default function ProfilePage() {
             {editing ? (
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Name</label>
+                  <label htmlFor="profile-name" className="block text-sm font-medium text-slate-700 mb-1.5">Name</label>
                   <input
+                    id="profile-name"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     className="w-full h-11 px-3 rounded-lg border border-slate-200 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Phone number</label>
-                  <input
-                    type="tel"
-                    value={phoneNumber}
-                    onChange={(e) => setPhoneNumber(e.target.value)}
-                    placeholder="+44 7700 900000"
-                    className="w-full h-11 px-3 rounded-lg border border-slate-200 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
+                  <label htmlFor="profile-phone" className="block text-sm font-medium text-slate-700 mb-1.5">
+                    {s.own_phone_label}
+                  </label>
+                  {profile.phoneNumber ? (
+                    <>
+                      <input
+                        id="profile-phone"
+                        type="tel"
+                        value={profile.phoneNumber}
+                        readOnly
+                        aria-readonly="true"
+                        className="w-full h-11 px-3 rounded-lg border border-slate-200 bg-slate-50 text-slate-600 cursor-not-allowed"
+                      />
+                      <p className="text-xs text-slate-500 mt-1" data-testid="phone-signin-note">
+                        {s.own_phone_signin_note}
+                      </p>
+                    </>
+                  ) : (
+                    <input
+                      id="profile-phone"
+                      type="tel"
+                      value={phoneNumber}
+                      onChange={(e) => setPhoneNumber(e.target.value)}
+                      placeholder="+44 7700 900000"
+                      className="w-full h-11 px-3 rounded-lg border border-slate-200 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  )}
                 </div>
                 <div className="flex gap-3 pt-2">
                   <button onClick={handleSave} className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium">
