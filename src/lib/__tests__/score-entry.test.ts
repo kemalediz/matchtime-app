@@ -9,7 +9,15 @@
  * and was not cancelled.
  */
 import { describe, it, expect } from "vitest";
-import { canEnterScore, hasScore, scoreEntryAction } from "../score-entry";
+import {
+  canEnterScore,
+  hasScore,
+  scoreEntryAction,
+  parseScoreInput,
+  validateScorePair,
+  scorePanelHref,
+  shouldOpenScorePanel,
+} from "../score-entry";
 
 const NOW = new Date("2026-10-18T12:00:00Z");
 const PAST = new Date("2026-10-16T19:30:00Z");
@@ -72,5 +80,52 @@ describe("scoreEntryAction", () => {
   it("nothing for a match that cannot take a score", () => {
     expect(scoreEntryAction(m("UPCOMING", FUTURE), NOW)).toBeNull();
     expect(scoreEntryAction(m("CANCELLED", PAST), NOW)).toBeNull();
+  });
+});
+
+// ── The score panel on the match page (Kemal, 2026-10-18) ──────────────
+// "Enter score" / "Edit score" open a panel on the match page itself
+// instead of sending the admin to the teams page, which shows no date.
+
+describe("parseScoreInput", () => {
+  it("reads a whole number, 0 or more, with spaces around it", () => {
+    expect(parseScoreInput("4")).toBe(4);
+    expect(parseScoreInput("0")).toBe(0);
+    expect(parseScoreInput(" 12 ")).toBe(12);
+    expect(parseScoreInput("007")).toBe(7);
+  });
+
+  it("refuses anything that is not a whole number of goals", () => {
+    for (const raw of ["", "  ", "-1", "1.5", "2,0", "abc", "4a", "+3", "1e2", "Infinity", "99999999999999999999"]) {
+      expect(parseScoreInput(raw), JSON.stringify(raw)).toBeNull();
+    }
+  });
+});
+
+describe("validateScorePair", () => {
+  it("both sides valid: the numbers updateMatchScore takes", () => {
+    expect(validateScorePair("4", "2")).toEqual({ ok: true, redScore: 4, yellowScore: 2 });
+    expect(validateScorePair("0", "0")).toEqual({ ok: true, redScore: 0, yellowScore: 0 });
+  });
+
+  it("names the first side that is wrong, so the panel can focus it", () => {
+    expect(validateScorePair("", "2")).toEqual({ ok: false, field: "red" });
+    expect(validateScorePair("3", "-1")).toEqual({ ok: false, field: "yellow" });
+    expect(validateScorePair("x", "y")).toEqual({ ok: false, field: "red" });
+  });
+});
+
+describe("scorePanelHref", () => {
+  it("opens the match page with the score panel open", () => {
+    expect(scorePanelHref("m1")).toBe("/matches/m1?score=1");
+  });
+});
+
+describe("shouldOpenScorePanel", () => {
+  it("opens on ?score=1 only", () => {
+    expect(shouldOpenScorePanel("1")).toBe(true);
+    expect(shouldOpenScorePanel(["1"])).toBe(true);
+    expect(shouldOpenScorePanel(undefined)).toBe(false);
+    expect(shouldOpenScorePanel("0")).toBe(false);
   });
 });

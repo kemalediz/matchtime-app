@@ -5144,6 +5144,16 @@ export const en = {
   score_entry_err_not_played: "This match hasn't been played, so it can't have a score yet.",
   // The result bar at the top of a played match's page (2026-10-18).
   score_entry_no_score_yet: "No score yet",
+  // The score panel on the match page itself (2026-10-18): Enter score /
+  // Edit score open it in the result bar (src/components/match/score-entry-panel.tsx).
+  score_panel_title: "Match score",
+  score_panel_input_label: (p: { team: string }): string => `${p.team} score`,
+  score_panel_save: "Save score",
+  score_panel_saving: "Saving…",
+  score_panel_cancel: "Cancel",
+  score_panel_saved: "Score saved",
+  score_panel_err_invalid: "Enter a whole number, 0 or more, for both teams.",
+  score_panel_err_failed: "The score couldn't be saved. Please try again.",
   // ─── A player's own details: /welcome and /profile (2026-10-18) ─────
   // A blank phone never clears the stored one; a stored number is the
   // sign-in number and cannot be changed here (src/lib/own-phone-rules.ts).

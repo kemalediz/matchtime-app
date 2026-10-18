@@ -7,8 +7,12 @@
  *
  *   - the Past tab marks an unscored match with "Add score" (admins only);
  *   - the match page shows "Enter score" on a COMPLETED unscored match,
- *     it opens the score box, and saving it stores the result;
- *   - with a score the button reads "Edit score";
+ *     it opens the score panel ON THE MATCH PAGE (Kemal, 2026-10-18: the
+ *     teams page it used to open shows no match date), and saving it
+ *     stores the result;
+ *   - with a score the button reads "Edit score" and the panel is prefilled;
+ *   - "Add score" on a result list opens the match page with the panel open;
+ *   - the teams page keeps its own score box;
  *   - a match played with teams only GENERATED (FNF posts its teams in
  *     WhatsApp and never publishes) still gets the score box;
  *   - a player sees none of it.
@@ -38,7 +42,7 @@ test("Past tab: an admin sees Add score on the unscored match, the score on the 
   const rows = page.getByTestId("past-result");
   await expect(rows.first()).toBeVisible({ timeout: 30_000 });
   // The PAY match is COMPLETED with no score; the RATE match is 3-2.
-  const add = page.locator(`[data-testid="result-add-score"][href="/admin/matches/${MATCH.pay}/teams#score"]`);
+  const add = page.locator(`[data-testid="result-add-score"][href="/matches/${MATCH.pay}?score=1"]`);
   await expect(add).toHaveCount(1);
   await expect(add).toHaveText("Add score");
   await expect(page.locator(`[data-testid="result-add-score"][href*="${MATCH.rate}"]`)).toHaveCount(0);
@@ -50,33 +54,134 @@ test("dashboard Recent results: the same Add score for an admin", async ({ page 
   await signInAs(page, U.admin, "/");
   await expect(page.getByTestId("recent-result").first()).toBeVisible({ timeout: 30_000 });
   await expect(
-    page.locator(`[data-testid="recent-result"] [data-testid="result-add-score"][href="/admin/matches/${MATCH.pay}/teams#score"]`),
+    page.locator(`[data-testid="recent-result"] [data-testid="result-add-score"][href="/matches/${MATCH.pay}?score=1"]`),
   ).toHaveText("Add score");
 });
 
-test("match page: Enter score on a COMPLETED unscored match opens the box, and Save stores it", async ({ page, db }) => {
+const matchPageUrl = (id: string) => new RegExp(`/matches/${id}$`);
+
+test("match page: Enter score opens the panel in place, 4-2 saves, and the bar shows it with Edit score", async ({ page, db }) => {
   expect(await score(db, MATCH.pay)).toEqual({ status: "COMPLETED", red: null, yellow: null });
 
   await signInAs(page, U.admin, `/matches/${MATCH.pay}`);
-  const link = page.getByTestId("score-entry-link");
+  const bar = page.getByTestId("match-result-bar");
+  const link = bar.getByTestId("score-entry-link");
   await expect(link).toBeVisible({ timeout: 30_000 });
   await expect(link).toHaveText("Enter score");
+  await expect(page.getByTestId("score-panel")).toHaveCount(0);
   await link.click();
 
-  await expect(page).toHaveURL(new RegExp(`/admin/matches/${MATCH.pay}/teams#score$`));
-  const box = page.getByTestId("score-section");
-  await expect(box).toBeVisible({ timeout: 30_000 });
-  await box.locator('input[type="number"]').nth(0).fill("4");
-  await box.locator('input[type="number"]').nth(1).fill("2");
-  await box.getByRole("button", { name: "Save score" }).click();
+  const panel = bar.getByTestId("score-panel");
+  await expect(panel).toBeVisible();
+  await expect(page).toHaveURL(matchPageUrl(MATCH.pay));
+  // The boxes carry the club's team labels, and the cursor is in the first.
+  const red = panel.getByRole("textbox", { name: "Red score" });
+  const yellow = panel.getByRole("textbox", { name: "Yellow score" });
+  await expect(red).toBeFocused();
+  await expect(red).toHaveValue("");
+  await expect(yellow).toHaveValue("");
+  await red.fill("4");
+  await yellow.fill("2");
+  await panel.getByRole("button", { name: "Save score" }).click();
 
   await expect.poll(() => score(db, MATCH.pay)).toEqual({ status: "COMPLETED", red: 4, yellow: 2 });
-
-  await page.goto(`/matches/${MATCH.pay}`);
-  await expect(page.getByTestId("score-entry-link")).toHaveText("Edit score", { timeout: 30_000 });
+  await expect(page.getByTestId("score-panel")).toHaveCount(0);
+  await expect(bar.getByTestId("result-red-score")).toHaveText("4", { timeout: 30_000 });
+  await expect(bar.getByTestId("result-yellow-score")).toHaveText("2");
+  await expect(bar.getByTestId("score-entry-link")).toHaveText("Edit score");
+  await expect(page.getByText("Score saved")).toBeVisible();
+  await expect(page).toHaveURL(matchPageUrl(MATCH.pay));
 });
 
-test("a played match whose teams were generated but never published still gets the score box", async ({ page, db }) => {
+test("match page: Edit score opens the panel prefilled, and a correction saves", async ({ page, db }) => {
+  await signInAs(page, U.admin, `/matches/${MATCH.pay}`);
+  const bar = page.getByTestId("match-result-bar");
+  await bar.getByTestId("score-entry-link").click();
+  const panel = bar.getByTestId("score-panel");
+  const red = panel.getByRole("textbox", { name: "Red score" });
+  const yellow = panel.getByRole("textbox", { name: "Yellow score" });
+  await expect(red).toHaveValue("4");
+  await expect(yellow).toHaveValue("2");
+  await red.fill("5");
+  await panel.getByRole("button", { name: "Save score" }).click();
+  await expect.poll(() => score(db, MATCH.pay)).toEqual({ status: "COMPLETED", red: 5, yellow: 2 });
+  await expect(bar.getByTestId("result-red-score")).toHaveText("5", { timeout: 30_000 });
+});
+
+test("match page: Cancel and Esc close the panel without saving; a bad number is refused readably", async ({ page, db }) => {
+  await signInAs(page, U.admin, `/matches/${MATCH.pay}`);
+  const bar = page.getByTestId("match-result-bar");
+  const trigger = bar.getByTestId("score-entry-link");
+  await trigger.click();
+  let panel = bar.getByTestId("score-panel");
+  await panel.getByRole("textbox", { name: "Red score" }).fill("9");
+  await panel.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByTestId("score-panel")).toHaveCount(0);
+  await expect(bar.getByTestId("score-entry-link")).toBeFocused();
+
+  // Esc closes too.
+  await bar.getByTestId("score-entry-link").click();
+  panel = bar.getByTestId("score-panel");
+  await expect(panel.getByRole("textbox", { name: "Red score" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("score-panel")).toHaveCount(0);
+
+  // Not a whole number, 0 or more: nothing is sent, the error says why.
+  await bar.getByTestId("score-entry-link").click();
+  panel = bar.getByTestId("score-panel");
+  await panel.getByRole("textbox", { name: "Yellow score" }).fill("-1");
+  await panel.getByRole("button", { name: "Save score" }).click();
+  await expect(panel.getByRole("alert")).toHaveText("Enter a whole number, 0 or more, for both teams.");
+  await expect(panel.getByRole("textbox", { name: "Yellow score" })).toBeFocused();
+  await panel.getByRole("button", { name: "Cancel" }).click();
+
+  expect(await score(db, MATCH.pay)).toEqual({ status: "COMPLETED", red: 5, yellow: 2 });
+  await expect(bar.getByTestId("result-red-score")).toHaveText("5");
+});
+
+test("Add score on the Past tab opens the match page with the panel open, and saving stays there", async ({ page, db }) => {
+  resetDb();
+  await signInAs(page, U.admin, "/matches");
+  await page.getByRole("button", { name: /^Past/ }).click();
+  const add = page.locator(`[data-testid="result-add-score"][href="/matches/${MATCH.pay}?score=1"]`);
+  await expect(add).toBeVisible({ timeout: 30_000 });
+  await add.click();
+
+  const panel = page.getByTestId("match-result-bar").getByTestId("score-panel");
+  await expect(panel).toBeVisible({ timeout: 30_000 });
+  const red = panel.getByRole("textbox", { name: "Red score" });
+  await expect(red).toBeFocused();
+  // The query is dropped once the panel is open, so a reload does not reopen it.
+  await expect(page).toHaveURL(matchPageUrl(MATCH.pay));
+  await red.fill("4");
+  await panel.getByRole("textbox", { name: "Yellow score" }).fill("2");
+  await panel.getByRole("button", { name: "Save score" }).click();
+  await expect.poll(() => score(db, MATCH.pay)).toEqual({ status: "COMPLETED", red: 4, yellow: 2 });
+  await expect(page.getByTestId("match-result-bar").getByTestId("score-entry-link")).toHaveText("Edit score", { timeout: 30_000 });
+  await expect(page).toHaveURL(matchPageUrl(MATCH.pay));
+});
+
+test("the teams page keeps its own score box", async ({ page, db }) => {
+  await signInAs(page, U.admin, `/admin/matches/${MATCH.pay}/teams#score`);
+  const box = page.getByTestId("score-section");
+  await expect(box).toBeVisible({ timeout: 30_000 });
+  // The page fills the boxes from its own fetch of the match (4-2 from the
+  // test above), and in `next dev` React runs that fetch twice, so a late
+  // reply can overwrite what was typed. Type until the values hold.
+  const [r, y] = [box.locator('input[type="number"]').nth(0), box.locator('input[type="number"]').nth(1)];
+  await expect(r).toHaveValue("4");
+  await expect(async () => {
+    await r.fill("1");
+    await y.fill("1");
+    await page.waitForTimeout(300);
+    await expect(r).toHaveValue("1", { timeout: 100 });
+    await expect(y).toHaveValue("1", { timeout: 100 });
+  }).toPass({ timeout: 15_000 });
+  await box.getByRole("button", { name: "Save score" }).click();
+  await expect.poll(() => score(db, MATCH.pay)).toEqual({ status: "COMPLETED", red: 1, yellow: 1 });
+});
+
+test("a played match whose teams were generated but never published still gets the score panel", async ({ page, db }) => {
   // The UPCOMING match, moved to an hour ago with teams generated: what a
   // WhatsApp-teams club looks like between kickoff and auto-completion.
   await db.run(
@@ -87,7 +192,7 @@ test("a played match whose teams were generated but never published still gets t
   const link = page.getByTestId("score-entry-link");
   await expect(link).toHaveText("Enter score", { timeout: 30_000 });
   await link.click();
-  await expect(page.getByTestId("score-section")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("score-panel")).toBeVisible();
 });
 
 test("a cancelled match offers no score", async ({ page, db }) => {
@@ -99,9 +204,12 @@ test("a cancelled match offers no score", async ({ page, db }) => {
 
 test("a player sees no score buttons", async ({ page }) => {
   resetDb();
-  await signInAs(page, U.player, `/matches/${MATCH.pay}`);
+  // Even with the query that opens the panel for an admin.
+  await signInAs(page, U.player, `/matches/${MATCH.pay}?score=1`);
   await expect(page.getByRole("heading").first()).toBeVisible({ timeout: 30_000 });
   await expect(page.getByTestId("score-entry-link")).toHaveCount(0);
+  await expect(page.getByTestId("score-panel")).toHaveCount(0);
+  await expect(page.getByRole("textbox", { name: /score$/ })).toHaveCount(0);
 
   await page.goto("/matches");
   await page.getByRole("button", { name: /^Past/ }).click();
@@ -204,4 +312,33 @@ test("at phone width (390px) the result bar fits, sits above the teams, and the 
   await page.goto(`/matches/${MATCH.pay}`);
   await expect(page.getByTestId("match-result-bar")).toBeVisible({ timeout: 30_000 });
   await page.screenshot({ path: `${SHOT_DIR}/match-unscored-desktop.png`, fullPage: true });
+});
+
+// ── The open score panel at phone width and on a desktop ──────────────
+const PANEL_SHOT_DIR = process.env.SCORE_PANEL_SHOTS ?? "test-results/score-panel";
+
+test("the score panel fits at 390px with no sideways scroll, and on a desktop", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await signInAs(page, U.admin, `/matches/${MATCH.rate}`);
+  const bar = page.getByTestId("match-result-bar");
+  await bar.getByTestId("score-entry-link").click({ timeout: 30_000 });
+  const panel = bar.getByTestId("score-panel");
+  await expect(panel).toBeInViewport();
+  for (const name of ["Red score", "Yellow score"]) {
+    await expect(panel.getByRole("textbox", { name })).toBeInViewport();
+  }
+  await expect(panel.getByRole("button", { name: "Save score" })).toBeInViewport();
+  await expect(panel.getByRole("button", { name: "Cancel" })).toBeInViewport();
+  const box = await panel.boundingBox();
+  expect(box!.x).toBeGreaterThanOrEqual(0);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(390);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  await page.screenshot({ path: `${PANEL_SHOT_DIR}/score-panel-390.png` });
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`/matches/${MATCH.rate}`);
+  await page.getByTestId("match-result-bar").getByTestId("score-entry-link").click({ timeout: 30_000 });
+  await expect(page.getByTestId("score-panel")).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(1280);
+  await page.screenshot({ path: `${PANEL_SHOT_DIR}/score-panel-desktop.png` });
 });
