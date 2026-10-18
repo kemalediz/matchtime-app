@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ratingSchema, momVoteSchema } from "@/lib/validations";
 import { revalidatePath } from "next/cache";
+import { organisersPickMom } from "@/lib/mom-chooser";
 
 export async function submitRatings(matchId: string, formData: { ratings: { playerId: string; score: number }[] }) {
   const session = await auth();
@@ -171,10 +172,16 @@ export async function submitMoMVote(matchId: string, formData: { playerId: strin
 
   const match = await db.match.findUnique({
     where: { id: matchId },
-    include: { activity: true },
+    include: { activity: { include: { org: { select: { momChosenBy: true } } } } },
   });
   if (!match) throw new Error("Match not found");
   if (match.status !== "COMPLETED") throw new Error("Match not completed yet");
+  // The organisers pick Man of the Match in this club (mom-chooser.ts):
+  // there is no vote, and a stale rate page must not add one beside the
+  // organisers' pick (it would read as a tie). Nothing is written.
+  if (organisersPickMom({ momChosenBy: match.activity.org.momChosenBy })) {
+    return { saved: false as const };
+  }
 
   const windowEnd = new Date(match.date.getTime() + match.activity.ratingWindowHours * 60 * 60 * 1000);
   if (new Date() > windowEnd) throw new Error("Rating window has closed");

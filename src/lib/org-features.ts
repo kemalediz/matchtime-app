@@ -25,6 +25,7 @@ import { normaliseLang, type Lang } from "./i18n/lang";
 import { normaliseBenchPickMode, type BenchPickMode } from "./squad-capacity";
 import { normaliseSquadMode, type SquadMode } from "./squad-month-rules";
 import { normaliseListAnnouncer, type ListAnnouncer } from "./list-announcer";
+import { normaliseMomChooser, type MomChooser } from "./mom-chooser";
 import { QUIET_HOURS_SELECT, quietHoursOf, type QuietHours, type QuietHoursRow } from "./message-hours";
 
 export { FEATURE_META } from "./org-features-meta";
@@ -89,6 +90,11 @@ export interface OrgFeatures {
    *  hand-built fixture keeps its shape; absent means "matchtime". Not in
    *  `FEATURE_META`; it is set on /admin/settings, "Weekly routine". */
   listAnnouncer?: ListAnnouncer;
+  /** Who chooses Man of the Match (2026-10-18, `Organisation.momChosenBy`,
+   *  mom-chooser.ts): "players" (today, every existing club) or
+   *  "organisers" (reported in the admin group with the score). Optional so
+   *  every hand-built fixture keeps its shape; absent means "players". */
+  momChosenBy?: MomChooser;
   /** The match-day gear reminder (2026-10-15,
    *  `Organisation.featureGearReminder`): "see you there, bring goalie
    *  gloves, a ball and spare bibs" before a football kickoff. OFF for a
@@ -122,6 +128,7 @@ const ALL_OFF: OrgFeatures = {
   badgeAnnouncements: false,
   squadMode: "weekly",
   listAnnouncer: "matchtime",
+  momChosenBy: "players",
   gearReminder: false,
 };
 
@@ -143,6 +150,7 @@ function fromRow(row: {
   featureBadgeAnnouncements?: boolean | null;
   squadMode?: string | null;
   listAnnouncer?: string | null;
+  momChosenBy?: string | null;
   featureGearReminder?: boolean | null;
 } & QuietHoursRow): OrgFeatures {
   return {
@@ -166,6 +174,8 @@ function fromRow(row: {
     squadMode: normaliseSquadMode(row.squadMode),
     // Absent or unrecognised: MatchTime announces, today's behaviour.
     listAnnouncer: normaliseListAnnouncer(row.listAnnouncer),
+    // Absent or unrecognised: the players vote, today's behaviour.
+    momChosenBy: normaliseMomChooser(row.momChosenBy),
     // Absent (an older caller's select): ON, today's behaviour. A new
     // club's row says false (the column default).
     gearReminder: row.featureGearReminder ?? true,
@@ -192,6 +202,7 @@ const SELECT = {
   featureBadgeAnnouncements: true,
   squadMode: true,
   listAnnouncer: true,
+  momChosenBy: true,
   featureGearReminder: true,
   ...QUIET_HOURS_SELECT,
 } as const;

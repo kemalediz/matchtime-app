@@ -531,6 +531,14 @@ model Organisation {
   /// CHECK constraint in prisma/migrations/20261014160000_list_announcer.
   listAnnouncer            String  @default("matchtime")
 
+  /// ─── Who chooses Man of the Match (2026-10-18) ────────────────────
+  /// "players" (default, today's behaviour for every club): the players
+  /// vote on their rating link. "organisers": the organisers report it in
+  /// the admin group with the score, and players are never asked to vote.
+  /// Read through `OrgFeatures.momChosenBy` (src/lib/mom-chooser.ts).
+  /// CHECK constraint in prisma/migrations/20261018120000_mom_chosen_by.
+  momChosenBy              String  @default("players")
+
   /// ─── Asking a partner club for a player (2026-10-16) ──────────────
   /// Plan: MDs/cross-club-player-ask-plan-2026-10-16.md, sections 3.2 and
   /// 3.4. Nothing here does anything until the platform owner pairs this

@@ -45,6 +45,7 @@ export const SETTING_INFO_KEYS = [
   "bench",
   "teamBalancing",
   "momVoting",
+  "momChosenBy",
   "playerRating",
   "reminders",
   "statsQa",
@@ -422,6 +423,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       together: [
         "The vote is on the rating page, so it needs Player ratings on: with ratings off nobody gets the link and there is nothing to announce.",
         "With this off, Man of the Match badges are still announced, but only once the match is more than 9 days old.",
+        "With Man of the Match chosen by the organisers there is no vote: the winner is the organisers' pick, posted in the group from 09:00 to 21:00 without a vote count.",
       ],
     },
     tr: {
@@ -440,6 +442,51 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       together: [
         "Oylama puanlama sayfasında olduğu için Oyuncu puanları açık olmalıdır: puanlar kapalıyken kimseye bağlantı gitmez ve duyurulacak bir şey olmaz.",
         "Bu kapalıyken Man of the Match rozetleri yine duyurulur, ama ancak maçın üzerinden 9 gün geçince.",
+        "Maçın adamını organizatörler seçiyorsa oylama olmaz: kazanan organizatörlerin seçtiği oyuncudur ve oy sayısı olmadan 09:00 ile 21:00 arasında grupta paylaşılır.",
+      ],
+    },
+  },
+  momChosenBy: {
+    en: {
+      title: "Man of the Match chosen by",
+      what: [
+        "Decides who picks Man of the Match after each game: the players, by voting on their rating page, or your organisers, on the pitch.",
+        "Either way the winner gets the same crown in their stats and counts the same for badges.",
+      ],
+      example: "🏁 *Tuesday 7-a-side*: what was the final score, which team won, and who was Man of the Match? Reply here and I'll record it.\nYellow won 7-4, MoM Naim\nScore saved: Yellow 7, Red 4. Man of the Match: Naim.",
+      choices: [
+        { name: "Players vote", text: "Players rate each other and vote for Man of the Match on the rating page MatchTime sends them. The player with the most votes wins." },
+        {
+          name: "Organisers pick",
+          text: "Players only rate each other: the rating page and the rating messages offer no vote. After the game MatchTime asks your admin group for the score and Man of the Match, and records the name an organiser gives. Only an owner or admin can set or change it.",
+        },
+      ],
+      newClubs: "Players vote.",
+      suits: "Organisers pick suits clubs that name Man of the Match on the pitch right after the game.",
+      together: [
+        "Organisers pick needs an admin WhatsApp group linked: that is where MatchTime asks and where the organisers answer.",
+        "If the name is unclear, or is not one of the match's players, MatchTime asks once which player was meant.",
+      ],
+    },
+    tr: {
+      title: "Maçın adamını kim seçer",
+      what: [
+        "Her maçtan sonra maçın adamını kimin seçeceğini belirler: oyuncular puanlama sayfasında oy vererek ya da organizatörleriniz sahada.",
+        "İki durumda da kazanan istatistiklerinde aynı tacı alır ve rozetlerde aynı şekilde sayılır.",
+      ],
+      example: "🏁 *Salı 7'li maç*: maç kaç kaç bitti, hangi takım kazandı ve Man of the Match kim? Buraya yazın, kaydedeyim.\nSarı 7-4 kazandı, maçın adamı Naim\nSkor kaydedildi: Sarı 7, Kırmızı 4. Man of the Match kaydedildi: Naim.",
+      choices: [
+        { name: "Oyuncular oy verir", text: "Oyuncular MatchTime'ın gönderdiği puanlama sayfasında birbirlerine puan verir ve maçın adamı için oy kullanır. En çok oyu alan kazanır." },
+        {
+          name: "Organizatörler seçer",
+          text: "Oyuncular yalnızca birbirlerine puan verir: puanlama sayfası ve puanlama mesajları oylama sunmaz. Maçtan sonra MatchTime yönetici grubunuza skoru ve maçın adamını sorar ve bir organizatörün verdiği ismi kaydeder. Bunu yalnızca bir sahip ya da yönetici belirleyebilir ya da değiştirebilir.",
+        },
+      ],
+      newClubs: "Oyuncular oy verir.",
+      suits: "Organizatörler seçer; maçın adamını maçtan hemen sonra sahada belirleyen kulüplere uygundur.",
+      together: [
+        "Organizatörler seçer için bağlı bir yönetici WhatsApp grubu gerekir: MatchTime orada sorar, organizatörler orada yanıt verir.",
+        "İsim belirsizse ya da maçın oyuncularından biri değilse MatchTime hangi oyuncunun kastedildiğini bir kez sorar.",
       ],
     },
   },

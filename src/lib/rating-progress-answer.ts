@@ -190,6 +190,8 @@ export interface RatingProgress {
   notRated?: string[];
   /** Rated teammates but skipped the MoM pick. */
   ratedNoMom?: string[];
+  /** False when the organisers pick Man of the Match: no vote to report. */
+  momVote?: boolean;
 }
 
 /**
@@ -205,7 +207,7 @@ export function formatRatingProgressReply(p: RatingProgress, lang?: Lang | strin
   const confirmed = p.confirmed ?? 0;
   const lines = [s.rating_progress_header({ matchName: p.matchName ?? "", matchWhen: p.matchWhen ?? "" })];
   lines.push(s.rating_progress_rated({ rated: p.ratedCount ?? 0, confirmed }));
-  lines.push(s.rating_progress_mom({ mom: p.momCount ?? 0, confirmed }));
+  if (p.momVote !== false) lines.push(s.rating_progress_mom({ mom: p.momCount ?? 0, confirmed }));
   lines.push(
     p.notRated && p.notRated.length > 0
       ? s.rating_progress_still_to_rate({ names: p.notRated })

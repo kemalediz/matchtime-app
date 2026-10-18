@@ -56,3 +56,22 @@ export function buildMomAnnouncement(args: BuildMomAnnouncementArgs): string {
     s.mom_trophy_line
   );
 }
+
+/**
+ * The announcement when the organisers picked Man of the Match
+ * (mom-chooser.ts): the same header and trophy line, the winner's name,
+ * and no word about votes.
+ */
+export function buildMomPickedAnnouncement(args: {
+  mvpLabel: string;
+  activityName: string;
+  name: string;
+  lang?: Lang | string | null;
+}): string {
+  const s = t(args.lang);
+  return (
+    `${s.mom_header({ mvpLabel: args.mvpLabel, activityName: args.activityName })}\n\n` +
+    `${s.mom_picked({ name: args.name })}\n\n` +
+    s.mom_trophy_line
+  );
+}

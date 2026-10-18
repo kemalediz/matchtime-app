@@ -22,6 +22,7 @@ import {
 import { saveAdminChannelChoice, type SaveAdminChannelResult } from "@/lib/admin-channel";
 import { normaliseSquadMode } from "@/lib/squad-month-rules";
 import { normaliseListAnnouncer, type ListAnnouncer } from "@/lib/list-announcer";
+import { normaliseMomChooser, type MomChooser } from "@/lib/mom-chooser";
 import { isFeatureOffered } from "@/lib/org-features-meta";
 
 /**
@@ -498,6 +499,8 @@ export interface WeeklyRoutinePatch extends WeeklyDeadlinesPatch {
   adminChannel?: { mode: string; userId: string | null };
   /** 2026-10-14: who announces the list and teams (list-announcer.ts). */
   listAnnouncer?: ListAnnouncer;
+  /** 2026-10-18: who chooses Man of the Match (mom-chooser.ts). */
+  momChosenBy?: MomChooser;
 }
 
 export async function setWeeklyRoutine(orgId: string, patch: WeeklyRoutinePatch) {
@@ -511,6 +514,7 @@ export async function setWeeklyRoutine(orgId: string, patch: WeeklyRoutinePatch)
     benchPickMode?: string;
     benchPickFallback?: string;
     listAnnouncer?: ListAnnouncer;
+    momChosenBy?: MomChooser;
   } & WeeklyDeadlinesData = {};
   if (patch && "rollingSquad" in patch) {
     if (typeof patch.rollingSquad !== "boolean") throw new Error("rollingSquad must be true or false");
@@ -544,6 +548,12 @@ export async function setWeeklyRoutine(orgId: string, patch: WeeklyRoutinePatch)
     }
     data.listAnnouncer = patch.listAnnouncer;
   }
+  if (patch && "momChosenBy" in patch) {
+    if (patch.momChosenBy !== "players" && patch.momChosenBy !== "organisers") {
+      throw new Error('momChosenBy must be "players" or "organisers"');
+    }
+    data.momChosenBy = patch.momChosenBy;
+  }
   if (hasWeeklyDeadlinesPatch(patch)) {
     const deadlines = await prepareWeeklyDeadlinesPatch(orgId, patch);
     if (deadlines.error) return { ok: false as const, error: deadlines.error };
@@ -568,6 +578,7 @@ export async function setWeeklyRoutine(orgId: string, patch: WeeklyRoutinePatch)
     listPublishDay: true,
     listPublishTime: true,
     listAnnouncer: true,
+    momChosenBy: true,
   } as const;
   // A patch with only `adminChannel` writes nothing here; the row is read
   // so the answer has the same shape either way.
@@ -592,6 +603,7 @@ export async function setWeeklyRoutine(orgId: string, patch: WeeklyRoutinePatch)
     benchPickMode: normaliseBenchPickMode(row.benchPickMode),
     benchPickFallback: normaliseBenchPickFallback(row.benchPickFallback),
     listAnnouncer: normaliseListAnnouncer(row.listAnnouncer),
+    momChosenBy: normaliseMomChooser(row.momChosenBy),
     ...weeklyDeadlinesView(row),
     ...saved,
   };

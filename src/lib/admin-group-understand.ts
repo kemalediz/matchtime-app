@@ -95,6 +95,7 @@ import { answerFeeProposalYes, feeProposalsAwaiting, proposeFeeFreeInHq } from "
 import { parseFeeAskRef } from "./fee-waiver-rules";
 import { answerHqScore, hqScoreRouting } from "./admin-group-score";
 import { hasScorelineShape } from "./pipeline/score-ask";
+import { organisersPickMom } from "./mom-chooser";
 import { readHqNameList } from "./admin-group-name-list";
 
 /** How far back the router's "earlier here" lines reach, and how many. */
@@ -113,6 +114,8 @@ export interface UnderstandInput {
     paymentTrackingEnabled?: boolean | null;
     /** The money collector: may ask for and approve a free place in HQ. */
     paymentHolderId?: string | null;
+    /** Who chooses Man of the Match (mom-chooser.ts). */
+    momChosenBy?: string | null;
   };
   messageId: string;
   text: string;
@@ -217,7 +220,14 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
       addressed,
       senderUserId: input.organiser ? input.senderUserId : null,
       now,
+      momByOrganisers: organisersPickMom(org),
     });
+    // A reply to MatchTime's own Man of the Match question ("Who was Man
+    // of the Match?", "Which Ali...?") answers it, whatever the router
+    // calls the name: the score handling reads it (2026-10-18). Decided
+    // from the quoted row's question ref, never from the words.
+    const quotedRow = quotedIsMatchTime && input.quoted?.text ? matchQuoted(input.quoted.text, log) : null;
+    const answersMomAsk = !!quotedRow?.askRef?.startsWith("mom:") && organisersPickMom(org);
     const recent = log.filter((r) => now.getTime() - r.createdAt.getTime() <= RECENT_MS).slice(-RECENT_MAX);
     // The extractors' recent chat: MatchTime's own lines as MatchTime.
     const history = recent.map((r) => ({ author: r.fromMatchTime ? "MatchTime" : null, body: r.text }));
@@ -320,6 +330,10 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
     // message (a YES quoting another organiser is already silent there; a
     // scoreline answering "what was the score?" is still the score).
     const scorelineWhileWaiting = !!score.waiting && hasScorelineShape(body);
+    if (answersMomAsk) {
+      if (route !== "score") console.log(`[admin-group] ${messageId}: a reply to the Man of the Match question; ${route ?? "nowhere"} -> score`);
+      return scoreHere();
+    }
     if (toAnotherOrganiser && route !== "approve" && route !== "score" && !(route === "unsure" && scorelineWhileWaiting)) {
       console.log(`[admin-group] ${messageId}: a reply to another organiser, not tagged: their conversation`);
       return null;
@@ -327,6 +341,19 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
 
     switch (route) {
       case "approve": {
+        // Nothing is waiting for a YES, but the result is (2026-10-18 live
+        // check: with "WAITING: ... who was Man of the Match" the router
+        // called "MoM was Naim" and "Yellow won 7-4" approve). An approve
+        // with nothing to approve, while the score or Man of the Match
+        // waits, is read by the score handling first; only what it does
+        // not own falls through to the YES rules below, unchanged.
+        if (pending.length === 0 && score.waiting) {
+          const r = await scoreHere();
+          if (r && r.outcome !== "hq-not-understood" && r.outcome !== "hq-score-not-changed") {
+            console.log(`[admin-group] ${messageId}: approve with nothing to approve, while the result waits: read as the result`);
+            return r;
+          }
+        }
         if (!feeActor) return notYours();
         const decision = decideApproval({ pending, quoted: input.quoted ? { ...input.quoted, fromMatchTime: quotedIsMatchTime } : null, log, now });
         console.log(`[admin-group] ${messageId}: approval ${decision.kind}${"why" in decision ? ` (${decision.why})` : ""}`);

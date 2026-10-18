@@ -134,6 +134,8 @@ describe("setWeeklyRoutine: weekly deadlines (slice 3)", () => {
       benchPickFallback: "bench-offer",
       // 2026-10-14: read back with every patch; unset reads as MatchTime.
       listAnnouncer: "matchtime",
+      // 2026-10-18: likewise; unset reads as the players' vote.
+      momChosenBy: "players",
     });
   });
 
@@ -265,6 +267,21 @@ describe("setWeeklyRoutine: slice 2b, who fills an open place", () => {
   it("refuses a value that is not one of the choices, nothing written", async () => {
     await expect(setWeeklyRoutine("org-fnf", { benchPickMode: "random" as "organiser" })).rejects.toThrow();
     await expect(setWeeklyRoutine("org-fnf", { benchPickFallback: "maybe" as "leave-empty" })).rejects.toThrow();
+    expect(orgUpdate).not.toHaveBeenCalled();
+  });
+});
+
+describe("setWeeklyRoutine: who chooses Man of the Match (2026-10-18)", () => {
+  it("sets it to the organisers and returns it", async () => {
+    orgUpdate.mockResolvedValueOnce({ ...UNSET_ROW, momChosenBy: "organisers" });
+    const res = await setWeeklyRoutine("org-fnf", { momChosenBy: "organisers" });
+    expect(requireOrgAdmin).toHaveBeenCalledWith("u-hamzah", "org-fnf");
+    expect(orgUpdate).toHaveBeenCalledWith(expect.objectContaining({ data: { momChosenBy: "organisers" } }));
+    expect(res).toMatchObject({ ok: true, momChosenBy: "organisers" });
+  });
+
+  it("refuses anything else, nothing written", async () => {
+    await expect(setWeeklyRoutine("org-fnf", { momChosenBy: "nobody" as "organisers" })).rejects.toThrow();
     expect(orgUpdate).not.toHaveBeenCalled();
   });
 });
