@@ -18,6 +18,7 @@ import { updateMatchScore } from "@/app/actions/matches";
 import { SectionInfo } from "@/components/info/section-info";
 import { useOrgLang } from "@/components/info/org-lang";
 import { canEnterScore } from "@/lib/score-entry";
+import { MatchContextHeader } from "@/components/match/match-context-header";
 
 interface Player {
   id: string;
@@ -45,6 +46,8 @@ export default function TeamManagementPage() {
     yellowScore: number | null;
     /** Resolved display labels from the API: [RED slot, YELLOW slot]. */
     teamLabels?: [string, string];
+    /** For the match context header: which match this is. */
+    activity?: { name: string; venue: string | null; sport?: { name: string } | null; org?: { language?: string | null } | null };
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedSwap, setSelectedSwap] = useState<string[]>([]);
@@ -202,6 +205,23 @@ export default function TeamManagementPage() {
 
   return (
     <div className="p-6 sm:p-8 max-w-6xl mx-auto space-y-6">
+      {/* Which match this is (Kemal, 2026-10-18): day, kickoff, venue,
+          status and score, with the way back to the match. */}
+      {match.activity && (
+        <MatchContextHeader
+          matchId={matchId}
+          title={match.activity.name}
+          sportName={match.activity.sport?.name}
+          venue={match.activity.venue}
+          date={match.date}
+          status={match.status}
+          redScore={match.redScore}
+          yellowScore={match.yellowScore}
+          teamLabels={[redLabel, yellowLabel]}
+          lang={match.activity.org?.language ?? lang}
+          headingLevel={2}
+        />
+      )}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <h1 className="flex items-center gap-1 text-2xl font-bold text-slate-800">
           Team management
@@ -224,9 +244,6 @@ export default function TeamManagementPage() {
             </a>
           )}
           {match.status !== "COMPLETED" && match.status !== "CANCELLED" && <SectionInfo k="cancel" lang={lang} />}
-          <span className="inline-flex px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-600 capitalize">
-            {match.status.replace(/_/g, " ").toLowerCase()}
-          </span>
         </div>
       </div>
 
