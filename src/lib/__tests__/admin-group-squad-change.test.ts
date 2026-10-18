@@ -401,7 +401,7 @@ describe("handleAdminSquadChange", () => {
       { claimCount: 0 },
     );
     const r = await handleAdminSquadChange({ ...input, route, addressed: true, senderName: "Omar", text: "@Match Time won't be around on friday" });
-    expect(r).toEqual({ handled: true, outcome: "squad-question", replyText: 'To take yourself out of Fri 20:30, write "Omar out".' });
+    expect(r).toEqual({ handled: true, outcome: "squad-question", replyText: 'If you want me to take you out of Fri 20:30, just ask me in your own words (for example Omar out).' });
     expect(att.cancelAttendance).not.toHaveBeenCalled();
   });
 
@@ -427,7 +427,7 @@ describe("handleAdminSquadChange", () => {
     routed("other_att");
     engineDoes(async (a) => void vetThrough(a, [claim({ personRef: "Zayn" })], []), { claimCount: 0 });
     const r = await handleAdminSquadChange({ ...input, route, addressed: true, text: "@Match Time Zayn is around again" });
-    expect(r).toEqual({ handled: true, outcome: "squad-question", replyText: 'I don\'t know Zayn yet. To add them, write "put Zayn in".' });
+    expect(r).toEqual({ handled: true, outcome: "squad-question", replyText: 'I don\'t know Zayn yet. To add them, just ask me in your own words (for example put Zayn in).' });
     expect(prov.resolveOrProvisionByName).not.toHaveBeenCalled();
   });
 

@@ -130,8 +130,8 @@ test("GO: the admins get 'Getting <club> ready' once, in the admin group, and th
     [
       "🧰 *Getting Fern FC ready*",
       `📋 Paste the squad list for ${WEEKDAY}'s game here now. I'll show you what it changes, and *YES* within 30 minutes applies it.`,
-      "💬 No need to tag me here. I read every message from an admin in this group, so just type the command. Your normal chat is fine too, I only act on clear instructions. In the main chat, players say IN or OUT without tagging me, and tag me only to ask me something.",
-      "Type *help* here any time to see what I take.",
+      "💬 No need to tag me here. I read every message from an admin in this group, so just say what you need in your own words. Your normal chat is fine too, I only act on clear instructions. In the main chat, players say IN or OUT without tagging me, and tag me only to ask me something.",
+      "Ask me here any time what I can do, in your own words (for example *what can you do?*).",
     ].join("\n\n"),
   );
   expect(await db.count(`SELECT COUNT(*) FROM "SentNotification" WHERE key = $1`, [`org-${FERN.id}:getting-ready`])).toBe(1);

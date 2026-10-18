@@ -135,7 +135,7 @@ export const en = {
 
   teams_post_header: (p: { kickoff: string; venue: string }): string =>
     `⚽ *Teams for tonight*: ${p.kickoff} at ${p.venue}`,
-  teams_post_footer: "Objections? Reply `@Match Time swap X with Y` and an admin will confirm.",
+  teams_post_footer: "Objections? Tag me and say what to change, in your own words (for example @Match Time swap Sam with Alex), and an admin will confirm.",
 
   // ── row 2b: replacement_teams_post (pipeline/compose.ts) ─────────
   //   NEW copy, 2026-09-15, for the Wasim/Shahrokh incident: a
@@ -314,7 +314,7 @@ export const en = {
     `⚽ *Tonight at ${p.timeLabel}*: *${p.activityName}* at ${p.venue}`,
   match_day_teams_signoff: "See you tonight 🙌",
   match_day_locked_line:
-    "Squad is locked. Say *@Match Time generate the teams* in the chat to lock in tonight's lineup 👇",
+    "Squad is locked. To lock in tonight's lineup, tag me and ask for the teams in your own words (for example *@Match Time generate the teams*) 👇",
 
   // ── row 72: buildDailyInListFallback (scheduler-copy.ts) ─────────
 
@@ -519,7 +519,7 @@ export const en = {
 
   // ── rows 32 to 42: the acks (compose.ts) ───────────────────────────
 
-  teams_not_generated: "No teams generated yet. Say '@Match Time generate the teams' and I'll sort them.",
+  teams_not_generated: "No teams generated yet. Tag me and ask for them in your own words (for example @Match Time generate the teams) and I'll sort them.",
   // THE SCORE REPLIES (rewritten 2026-10-07). The result is stated
   // WINNER FIRST, by name, so the group can check it at a glance: "Got it
   // 👍 Red 9 - 6 Yellow, recorded." was read as fine on 2026-10-06 when
@@ -546,7 +546,7 @@ export const en = {
    *  the record is wrong. Says how to correct it; names no team. */
   score_recorded_hint: (p: { redLabel: string; red: number; yellow: number; yellowLabel: string }): string =>
     `That match is already recorded: ${resultEn(p)}. ` +
-    `If that is wrong, tell me "no, it was" with the right score and the team that won.`,
+    `If that is wrong, just tell me in your own words, with the right score and the team that won (for example: no, it was 5-3).`,
   /** Told who won, not the score. Tagged messages only. */
   score_ask_score: "What was the final score? Tell me both numbers and the team that won.",
   /** A score saved on the dashboard for a match with no teams set. */
@@ -582,7 +582,7 @@ export const en = {
       lines.push(`• The amount is the match fee split between the players, with the ${fee} added on top.`);
     }
     lines.push("• If you haven't paid, I'll send you a reminder.");
-    if (p.direct) lines.push(`• Paying ${who} directly is fine too. Just DM me *Paid* and ${who} will confirm it.`);
+    if (p.direct) lines.push(`• Paying ${who} directly is fine too. Just DM me once you've paid, in your own words (for example *Paid*), and ${who} will confirm it.`);
     return lines.join("\n");
   },
   payment_ack: (p: { firstName: string; count: number }): string =>
@@ -675,7 +675,7 @@ export const en = {
 
   bench_claim_team: (p: { claimer: string; dropped: string; teamLabel: string }): string =>
     `🎟 *${p.claimer}* grabbed the slot, taking *${p.dropped}*'s place on *${p.teamLabel}* 🙌\n\n` +
-    `_Say "@Match Time regenerate the teams" if you want to rebalance with the new line-up._`,
+    `_Want the teams rebalanced with the new line-up? Tag me and ask in your own words (for example "@Match Time regenerate the teams")._`,
   bench_claim_replacing: (p: { claimer: string; dropped: string; confirmed: number; maxPlayers: number }): string =>
     `✅ *${p.claimer}* is in, replacing *${p.dropped}*. Squad *${p.confirmed}/${p.maxPlayers}* 🙌`,
   bench_claim_open: (p: { claimer: string; confirmed: number; maxPlayers: number }): string =>
@@ -811,7 +811,7 @@ export const en = {
 
   team_ops_not_match_day: "I'll build the teams on match day, just ask me then.",
   team_ops_not_a_build_request: "I only build the teams on match day, when someone asks me to generate them.",
-  team_ops_say_generate: `Say "@Match Time generate the teams" and I'll build them.`,
+  team_ops_say_generate: `Tag me and ask for the teams in your own words (for example "@Match Time generate the teams") and I'll build them.`,
   teams_cleared: "Teams cleared. I'll build new ones on match day when asked.",
   teams_clear_nothing: "There are no teams to clear.",
   teams_clear_admin_only: "Only an admin can clear the teams.",
@@ -850,7 +850,7 @@ export const en = {
     `No new players to ask for *${p.matchName}* right now. 👍`,
   swap_deferred: (p: { a: string; b: string }): string =>
     `Both *${p.a}* and *${p.b}* are already in, nobody's dropped. ` +
-    `Teams aren't generated yet; say *@Match Time generate the teams* and I'll build them (then I can put them on opposite sides).`,
+    `Teams aren't generated yet. Tag me and ask for them in your own words (for example *@Match Time generate the teams*), then I can put them on opposite sides.`,
   team_swap_done: (p: { a: string; b: string }): string =>
     `🔁 Swapped *${p.a}* and *${p.b}*, nobody dropped. Updated teams:`,
   slot_transfer_done: (p: { to: string; from: string; teamLabel: string }): string =>
@@ -866,7 +866,7 @@ export const en = {
   swap_refused_ambiguous: (p: { name: string; candidates: string[] }): string =>
     `*${p.name}* could be more than one player (${p.candidates.join(", ")}). Use their full name.`,
   swap_refused_teams_not_generated:
-    "The teams aren't generated yet. Say *@Match Time generate the teams* first.",
+    "The teams aren't generated yet. Tag me and ask for them first, in your own words (for example *@Match Time generate the teams*).",
   swap_refused_same_player: "Both names point to the same player.",
   swap_refused_nobody_playing: "Neither of them is in the squad.",
   swap_refused_not_in_squad: (p: { name: string }): string =>
@@ -882,11 +882,11 @@ export const en = {
   intro_what_i_do: "Here's what I do:",
   intro_attendance: `🗓  *Attendance*: Say "IN" / "OUT" here (or on the app) and I log you in/out. I react with ✅ to confirm, no extra messages from me.`,
   intro_daily: `🗒  *Daily reminders*: Every day at 5pm while the squad isn't full, I'll repost the IN list so we all see how many we need.`,
-  intro_teams: `⚽  *Teams*: Say "@Match Time generate the teams" and I post auto-balanced sides. Objections? Reply \`@Match Time swap X with Y\` and an admin will apply it.`,
+  intro_teams: `⚽  *Teams*: Tag me and ask for the teams in your own words (for example "@Match Time generate the teams") and I post auto-balanced sides. Objections? Tell me what to change the same way (for example "@Match Time swap Sam with Alex") and an admin will apply it.`,
   intro_rating_bit: "I DM everyone a rating link after each match (no sign-up, just tap)",
   intro_mom_bit: "vote MoM in-app or in the poll I post, winner announced once everyone's voted (or 5 days after the match at the latest)",
   intro_ratings_line: (p: { bits: string[] }): string => `🏆  *Ratings & MoM*: ${p.bits.join("; ")}.`,
-  intro_reminders: `⏰  *Reminders*: Say "@MatchTime remind me Monday" and I'll DM you then.`,
+  intro_reminders: `⏰  *Reminders*: Tag me and say when, in your own words (for example "@Match Time remind me Monday"), and I'll DM you then.`,
   intro_stats: `📊  *Stats*: Ask me things like "who got MoM last week?" or "who's our most consistent player?"`,
   intro_payments: `💳  *Payments*: I auto-post "paid?" polls right after each match.`,
   intro_closer: "Questions? Just ask here. Let's go.",
@@ -1124,7 +1124,7 @@ export const en = {
     if (f.playerRating) lines.push(`⭐ I'll DM you a one-tap *rating* link after the match.`);
     // Reworded 2026-09-30: "and I'll nudge you" left people guessing what
     // the command was for. It is a personal DM at the time you name.
-    if (f.reminders) lines.push(`⏰ Need a nudge? Say *"@Match Time remind me Thursday"* and I'll DM you then.`);
+    if (f.reminders) lines.push(`⏰ Need a nudge? Tag me and say when, in your own words (for example *"@Match Time remind me Thursday"*), and I'll DM you then.`);
     // Payments are off after setup (2026-09-30): the off state now points
     // the organiser at how fee collection works instead of saying nothing.
     // Players learn they can pay through MatchTime (2026-09-30); an
@@ -1286,17 +1286,17 @@ export const en = {
         `⭐ *Player ratings: how it works*\n` +
         `After each match I DM every player who turned out a private link. You rate the other players out of 10 (you can't rate yourself, and your scores stay private).\n` +
         `I combine everyone's scores into a form rating for each player at this club, updated after every game, and that is what I use to build *balanced teams*. Ratings stay inside the club: if you also play for another group, their scores never touch this one. So the more people rate, the fairer the teams.\n` +
-        `You'll get the link the morning after the game. Type *@Match Time my stats* for yours anytime.`,
+        `You'll get the link the morning after the game. Ask me for yours any time, in your own words (for example *@Match Time my stats*).`,
       teams:
         `🟥🟦 *Fair teams: how it works*\n` +
-        `Once the squad's locked in, any admin can tag *@Match Time generate the teams* and I'll split everyone into two balanced sides using their form ratings, so games stay even.\n` +
-        `I post the line-ups straight into the chat. Not happy with a pairing? Tag me to *swap two players* (e.g. _"@Match Time swap Sam and Alex"_), or ask me to *"@Match Time show the teams"* again any time.\n` +
-        `Want a bit of fun? Ask me to give the teams names and I'll sort it. Tag *@Match Time generate the teams* when you're ready.`,
+        `Once the squad's locked in, any admin can tag me and ask for the teams (for example *@Match Time generate the teams*) and I'll split everyone into two balanced sides using their form ratings, so games stay even.\n` +
+        `I post the line-ups straight into the chat. Not happy with a pairing? Tag me and say what to change, in your own words (e.g. _"@Match Time swap Sam and Alex"_), or ask me to show the teams again any time.\n` +
+        `Want a bit of fun? Ask me to give the teams names and I'll sort it. Just tag me and ask when you're ready.`,
       mom:
         `🏆 *Man of the Match: how it works*\n` +
         `After the final whistle I post a quick *Man of the Match* vote in the group. Everyone just taps who they thought was the standout player.\n` +
         `I tally the votes, announce the winner, and it counts towards everyone's season stats, so the MoM race builds up over the year.\n` +
-        `Nothing to set up: I'll start the vote myself once the game's done. Type *@Match Time my stats* to see your MoM tally.`,
+        `Nothing to set up: I'll start the vote myself once the game's done. Ask me for your MoM tally any time, in your own words (for example *@Match Time my stats*).`,
       availability:
         `⚽ *Squad & availability: how it works*\n` +
         `Just say *In* or *Out* in the group to mark yourself for the next game. No need to tag me, I read it automatically.\n` +
@@ -1305,7 +1305,7 @@ export const en = {
       reminders:
         `⏰ *Reminders: how it works*\n` +
         `I gently nudge anyone who hasn't said *In* or *Out* yet, then remind the whole squad before kick-off so nobody forgets.\n` +
-        `Want a personal nudge? Say *"@Match Time remind me Thursday"* and I'll DM you then.\n` +
+        `Want a personal nudge? Tag me and say when, in your own words (for example *"@Match Time remind me Thursday"*), and I'll DM you then.\n` +
         `It all happens automatically, so you don't need to chase anyone yourself.`,
       // Rewritten 2026-10-16: payment tracking (the payment poll) is
       // hidden, so "help payments" while it is on means fees are collected
@@ -1315,7 +1315,7 @@ export const en = {
         `💷 *Match fees: how it works*\n` +
         `After each game I ask the money collector for the fee per player, then DM everyone who played a private link to pay their share. Card and Pay by Bank payments go straight to the money collector's bank.\n` +
         `Anyone who hasn't paid, and hasn't chosen to pay the money collector directly, gets the link again each day, for up to 6 days after the match.\n` +
-        `Tag *@Match Time who still owes?* to see the latest.`,
+        `To see the latest, ask me in your own words (for example *@Match Time who still owes?*).`,
     })[p.topic],
 
   // ── Help for a club whose organisers announce (2026-10-15) ───────────
@@ -1345,7 +1345,7 @@ export const en = {
         ` Say *Out* any time if you can't make it.`,
       reminders:
         `⏰ *Reminders: how it works*\n` +
-        `Want a personal nudge? Say *"@Match Time remind me Thursday"* and I'll DM you then.\n` +
+        `Want a personal nudge? Tag me and say when, in your own words (for example *"@Match Time remind me Thursday"*), and I'll DM you then.\n` +
         `Squad updates before the game go to the organisers, and they share the list with the group.`,
     })[p.topic],
 
@@ -1359,7 +1359,7 @@ export const en = {
 
   /** An organiser's DM bare help, organisers mode with an admin group
    *  linked: where the HQ commands are. */
-  onbHelpAdminOrganisers: `📣 Your organisers share the list and the teams. In your admin group, type *help* and I'll show the commands I take there.`,
+  onbHelpAdminOrganisers: `📣 Your organisers share the list and the teams. In your admin group, ask me what I can do there, in your own words (for example *what can you do?*).`,
 
   /** "help" in a club's admin group (admin-group-help.ts), asked in any
    *  words (the shared router's `help` route). Every line is something the
@@ -2402,7 +2402,7 @@ export const en = {
     `Here's what I do, right here in WhatsApp:\n\n` +
     `✅ *Who's in:* just say *In* or *Out*. I keep the list and tick your message.\n` +
     `🪑 *The bench:* once we're full, anyone who says *In* late goes on the bench, and the bench gets first dibs if someone drops.\n` +
-    `⏰ *Remind me:* say *"@Match Time remind me Thursday"* and I'll DM you then.\n` +
+    `⏰ *Remind me:* tag me and say when, in your own words (for example *"@Match Time remind me Thursday"*), and I'll DM you then.\n` +
     `⚖️ *Fair teams:* tag me and I pick balanced teams from player ratings.\n` +
     `⭐ *Man of the Match and ratings* after every game.\n` +
     `📊 *Stats:* ask me anything, and everyone gets their own stats page.\n` +
@@ -2474,7 +2474,7 @@ export const en = {
   sj_hello_bench: `🪑 *The bench:* once we're full, anyone who says *In* late goes on the bench, and the bench gets first dibs if someone drops.`,
   /** The organisers pick: MatchTime never fills a place by itself. */
   sj_hello_bench_organiser: `🪑 *The bench:* say *In* to go on the bench, and the organisers pick who takes each open place.`,
-  sj_hello_remind: `⏰ *Remind me:* say *"@Match Time remind me Thursday"* and I'll DM you then.`,
+  sj_hello_remind: `⏰ *Remind me:* tag me and say when, in your own words (for example *"@Match Time remind me Thursday"*), and I'll DM you then.`,
   sj_hello_teams: `⚖️ *Fair teams:* tag me and I pick balanced teams from player ratings.`,
   /** Never called with both off: the line is left out then. */
   sj_hello_mom: (p: { mom: boolean; ratings: boolean }): string =>
@@ -2978,8 +2978,8 @@ export const en = {
     lines.push(
       ``,
       p.live
-        ? `Nothing I say here goes to the players. Type *help* here any time to see what I take.`
-        : `Nothing I say here goes to the players. Once I'm on, type *help* here to see what I take.`,
+        ? `Nothing I say here goes to the players. Ask me here any time what I can do, in your own words (for example *what can you do?*).`
+        : `Nothing I say here goes to the players. Once I'm on, ask me here what I can do, in your own words (for example *what can you do?*).`,
     );
     return lines.join("\n");
   },
@@ -3005,15 +3005,15 @@ export const en = {
   /** The admin asked for what the squad already says. */
   ag_sq_nothing: "Nothing to change: the squad already says that.",
   /** A name nobody in the club has, said in passing as coming in (2026-10-15). */
-  ag_sq_unknown: (p: { name: string }): string => `I don't know ${p.name} yet. To add them, write "put ${p.name} in".`,
+  ag_sq_unknown: (p: { name: string }): string => `I don't know ${p.name} yet. To add them, just ask me in your own words (for example put ${p.name} in).`,
   /** The game's list is not set yet: the rolling squad carries over in the morning (2026-10-17). */
   ag_sq_not_set: (p: { when: string; day: string; time: string }): string =>
     `The list for ${p.when} isn't set yet: last week's squad carries over at ${p.time} on ${p.day}. Send it again after that.`,
   /** The sender said in conversation that they are out; nothing is written (2026-10-15). */
   ag_sq_self_hint_out: (p: { name: string; when: string }): string =>
-    `To take yourself out of ${p.when}, write "${p.name} out".`,
+    `If you want me to take you out of ${p.when}, just ask me in your own words (for example ${p.name} out).`,
   /** The sender said in conversation that they are in; nothing is written (2026-10-15). */
-  ag_sq_self_hint_in: (p: { name: string; when: string }): string => `To put yourself in for ${p.when}, write "${p.name} in".`,
+  ag_sq_self_hint_in: (p: { name: string; when: string }): string => `If you want me to put you in for ${p.when}, just ask me in your own words (for example ${p.name} in).`,
   /** The count after the change. `bench` is `benchClause` (squad-count-line.ts):
    *  ", 1 on the bench (Uncle Najib)", or "" with nobody on it. */
   ag_sq_count: (p: { confirmed: number; max: number; bench: string }): string => `${p.confirmed} of ${p.max}${p.bench}.`,
@@ -3061,24 +3061,24 @@ export const en = {
   tp_unseated: (p: { names: string }): string => `Not on a team yet: ${p.names}.`,
   /** How to change them, with two real first names from the teams. */
   tp_how_to_change: (p: { a: string; b: string }): string =>
-    `To change them: *swap ${p.a} ${p.b}* swaps two players, *move ${p.a}* moves one to the other team, *reshuffle* builds new teams.`,
+    `To change them, just tell me in your own words (for example *swap ${p.a} and ${p.b}*, *move ${p.a} to the other team* or *shuffle them again*).`,
   /** The question, when the organisers announce the teams themselves. */
   tp_ask_yes_quiet: "Reply *YES* when they are final. I won't post them in the players' group.",
   /** The question, when MatchTime posts the final teams. */
   tp_ask_yes_post: "Reply *YES* when they are final and I'll post them in the players' group.",
   /** Under the final teams. */
-  tp_final_footer: "These are final. *swap* and *move* still work; *reshuffle* builds new teams to approve again.",
+  tp_final_footer: "These are final. You can still ask me for changes in your own words; brand new teams need approving again.",
   /** The answer to YES. */
   tp_final_reply_quiet: "Teams are final.",
   tp_final_reply_posted: "Teams are final. I've posted them in the players' group.",
-  tp_no_teams: "There are no teams yet. Type *teams* and I'll build them.",
+  tp_no_teams: "There are no teams yet. Just ask me for them in your own words (for example *show me the teams*) and I'll build them.",
   tp_no_match: "There's no upcoming game to build teams for.",
   tp_name_unknown: (p: { name: string }): string => `I can't find ${p.name} in the teams.`,
   tp_name_ambiguous: (p: { name: string; names: string }): string => `${p.name} could be ${p.names}; use the full name.`,
   tp_same_team: (p: { a: string; b: string }): string => `${p.a} and ${p.b} are on the same team, so there's nothing to swap.`,
   /** Kickoff minus 2 hours, teams still not approved. */
   tp_reminder: (p: { kickoff: string }): string =>
-    `⏰ The teams for ${p.kickoff} aren't final yet. Type *teams* to see them, then *YES*.`,
+    `⏰ The teams for ${p.kickoff} aren't final yet. Ask me to show them, in your own words (for example *show me the teams*), then reply *YES*.`,
   /** After approval, something changed in the teams. */
   tp_change_header: "🔄 *Team change*",
   tp_change_replaced: (p: { to: string; from: string; team: string }): string => `${p.to} replaces ${p.from} on ${p.team}`,
@@ -3088,19 +3088,19 @@ export const en = {
   tp_change_added: (p: { name: string; team: string }): string => `${p.name} added to ${p.team}`,
   tp_change_removed: (p: { name: string; team: string }): string => `${p.name} taken off ${p.team}`,
   /** Under a pasted list's question, when teams were waiting for YES. */
-  tp_teams_set_aside: "The teams still need approving: type *teams* after this.",
+  tp_teams_set_aside: "The teams still need approving: ask me for them again after this, in your own words (for example *show me the teams*).",
   /** Under a team proposal, when a pasted list was waiting for YES. */
   tp_list_superseded: "The list pasted earlier was not applied.",
   /** At "Teams ready" with a short squad (once per match), and the answer
    *  to "teams" when the squad is too short to balance. "of", no slash. */
   tp_short_squad: (p: { kickoff: string; confirmed: number; needed: number }): string =>
-    `⚠️ Not enough players to make the teams for ${p.kickoff}: ${p.confirmed} of ${p.needed} in. Add players, then type *teams*.`,
+    `⚠️ Not enough players to make the teams for ${p.kickoff}: ${p.confirmed} of ${p.needed} in. Add players, then ask me for the teams again.`,
   /** Under a proposal whose sides differ by more than an odd total needs. */
   tp_uneven: (p: { redLabel: string; red: number; yellowLabel: string; yellow: number }): string =>
-    `⚠️ The sides are uneven: ${p.redLabel} ${p.red}, ${p.yellowLabel} ${p.yellow}. *move* a player to even them, or reply *YES* twice to keep them.`,
+    `⚠️ The sides are uneven: ${p.redLabel} ${p.red}, ${p.yellowLabel} ${p.yellow}. Tell me who to move to even them, in your own words, or reply *YES* twice to keep them.`,
   /** The answer to the first YES on uneven sides. */
   tp_uneven_confirm: (p: { redLabel: string; red: number; yellowLabel: string; yellow: number }): string =>
-    `The sides are uneven: ${p.redLabel} ${p.red}, ${p.yellowLabel} ${p.yellow}. Reply *YES* again to make them final as they are, or *move* a player first.`,
+    `The sides are uneven: ${p.redLabel} ${p.red}, ${p.yellowLabel} ${p.yellow}. Reply *YES* again to make them final as they are, or first tell me who to move, in your own words.`,
   // Settings: "Teams ready".
   tp_settings_label: "Teams ready",
   tp_settings_blurb: "When MatchTime proposes the teams in your admin group on match day.",
@@ -4814,12 +4814,12 @@ export const en = {
    *  (admin-group.ts `readsSquad`). `mainChat`: attendance is on. */
   ao_ready_no_tag: (p: { reads: boolean; mainChat: boolean }): string =>
     (p.reads
-      ? `💬 No need to tag me here. I read every message from an admin in this group, so just type the command. Your normal chat is fine too, I only act on clear instructions.`
-      : `💬 No need to tag me here: just type the command. Your normal chat is fine too, I only act on clear commands.`) +
+      ? `💬 No need to tag me here. I read every message from an admin in this group, so just say what you need in your own words. Your normal chat is fine too, I only act on clear instructions.`
+      : `💬 No need to tag me here: just say what you need in your own words. Your normal chat is fine too, I only act on clear instructions.`) +
     (p.mainChat ? ` In the main chat, players say IN or OUT without tagging me, and tag me only to ask me something.` : ``),
   /** By DM (no admin group). */
   ao_ready_main_chat: `💬 In the main chat, players say IN or OUT without tagging me, and tag me only to ask me something.`,
-  ao_ready_help_group: `Type *help* here any time to see what I take.`,
+  ao_ready_help_group: `Ask me here any time what I can do, in your own words (for example *what can you do?*).`,
   ao_ready_help_dm: `Message me *help* any time to see what I can do.`,
   ao_teams_title: (p: { weekday: string }): string => `🟥🟦 *Teams for ${p.weekday}*`,
   ao_teams_set: (p: { confirmed: number; max: number; time: string; weekday: string }): string =>

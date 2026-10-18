@@ -277,7 +277,7 @@ describe("the commands", () => {
     const r = await cmd("teams", { generate: short, announce: () => true });
     expect(r).toEqual({
       outcome: "teams-not-built",
-      replyText: "⚠️ Not enough players to make the teams for 20:00: 3 of 4 in. Add players, then type *teams*.",
+      replyText: "⚠️ Not enough players to make the teams for 20:00: 3 of 4 in. Add players, then ask me for the teams again.",
     });
     expect(proposal()).toBeUndefined();
   });
@@ -295,7 +295,7 @@ describe("the commands", () => {
       deps: { generate: short, announce: () => true },
     });
     expect(r?.replyText).toBe(
-      "⚠️ 20:00 maçı için takım kuracak kadar oyuncu yok: 4 kişi gerekiyor, 3 kişi var. Oyuncu ekleyin, sonra *takımlar* yazın.",
+      "⚠️ 20:00 maçı için takım kuracak kadar oyuncu yok: 4 kişi gerekiyor, 3 kişi var. Oyuncu ekleyin, sonra takımları yeniden isteyin.",
     );
   });
 
@@ -370,7 +370,7 @@ describe("the commands", () => {
   });
 
   it("swap or move with no teams: tells them to type teams", async () => {
-    expect(await cmd("move Bilal")).toEqual({ outcome: "teams-no-teams", replyText: "There are no teams yet. Type *teams* and I'll build them." });
+    expect(await cmd("move Bilal")).toEqual({ outcome: "teams-no-teams", replyText: "There are no teams yet. Just ask me for them in your own words (for example *show me the teams*) and I'll build them." });
   });
 
   it("a change after approval keeps the teams final and updates what the group was told", async () => {
@@ -473,7 +473,7 @@ describe("YES", () => {
   it("teams cleared since they were proposed: nothing to approve", async () => {
     await cmd("teams");
     store.tables.teamAssignment = [];
-    expect(await yes()).toEqual({ outcome: "teams-no-teams", replyText: "There are no teams yet. Type *teams* and I'll build them." });
+    expect(await yes()).toEqual({ outcome: "teams-no-teams", replyText: "There are no teams yet. Just ask me for them in your own words (for example *show me the teams*) and I'll build them." });
     expect(proposal()).toMatchObject({ state: "set-aside" });
   });
 });
@@ -530,7 +530,7 @@ describe("the scheduled proposal ('Teams ready')", () => {
     expect(await tick(new Date("2026-10-16T09:00:00.000Z"))).toBe(1);
     expect(generate).not.toHaveBeenCalled();
     expect(adminJobs().map((j) => j.text)).toEqual([
-      "⚠️ Not enough players to make the teams for 20:00: 3 of 4 in. Add players, then type *teams*.",
+      "⚠️ Not enough players to make the teams for 20:00: 3 of 4 in. Add players, then ask me for the teams again.",
     ]);
     expect(groupJobs()).toEqual([]);
     // Not repeated on every tick.
@@ -606,7 +606,7 @@ describe("the reminder at kickoff minus 2 hours", () => {
     await tick(NOON);
     expect(await tick(new Date("2026-10-16T16:59:00.000Z"))).toBe(0);
     expect(await tick(new Date("2026-10-16T17:00:00.000Z"))).toBe(1);
-    expect(adminJobs()[1].text).toBe("⏰ The teams for 20:00 aren't final yet. Type *teams* to see them, then *YES*.");
+    expect(adminJobs()[1].text).toBe("⏰ The teams for 20:00 aren't final yet. Ask me to show them, in your own words (for example *show me the teams*), then reply *YES*.");
     expect(await tick(new Date("2026-10-16T17:30:00.000Z"))).toBe(0);
     expect(groupJobs()).toEqual([]);
   });
@@ -691,7 +691,7 @@ describe("uneven sides", () => {
     const first = await yes();
     expect(first).toEqual({
       outcome: "teams-uneven",
-      replyText: "The sides are uneven: Red 1, Yellow 3. Reply *YES* again to make them final as they are, or *move* a player first.",
+      replyText: "The sides are uneven: Red 1, Yellow 3. Reply *YES* again to make them final as they are, or first tell me who to move, in your own words.",
     });
     expect((store.tables.match[0] as Row).status).toBe("TEAMS_GENERATED");
     const second = await yes();
@@ -720,7 +720,7 @@ describe("uneven sides", () => {
     await handleTeamCommand({ orgId: ORG, lang: "tr", command: asCommand("Bilal taşı"), senderUserId: "u-admin", messageId: "wa-tr", now: NOON, deps: quiet });
     const r = await answerTeamsYes({ orgId: ORG, lang: "tr", senderUserId: "u-admin", messageId: "wa-yes", now: NOON, deps: quiet });
     expect(r?.replyText).toBe(
-      "Takımlar dengesiz: Kırmızı 1, Sarı 3. Böyle kesinleşsin istiyorsanız yine *EVET* yazın, ya da önce bir oyuncuyu *taşı* ile geçirin.",
+      "Takımlar dengesiz: Kırmızı 1, Sarı 3. Böyle kesinleşsin istiyorsanız yine *EVET* yazın, ya da önce kimin diğer takıma geçeceğini kendi cümlelerinizle yazın.",
     );
   });
 });

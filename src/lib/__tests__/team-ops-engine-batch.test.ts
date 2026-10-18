@@ -893,7 +893,7 @@ describe("teams are built only on a clear ask, and only on match day", () => {
     expect(out.teamsGenerated).toBe(false);
     // On match day the line must NOT say "I only build the teams on
     // match day": it is match day. It says how to ask instead.
-    expect(out.reply).toBe(`Say "@Match Time generate the teams" and I'll build them.`);
+    expect(out.reply).toBe(`Tag me and ask for the teams in your own words (for example "@Match Time generate the teams") and I'll build them.`);
     expect(out.reply).not.toMatch(/match day/i);
   });
 
@@ -958,7 +958,7 @@ describe("teams are built only on a clear ask, and only on match day", () => {
 
     const jokeOnTheDay = await runAt(TUE_MORNING, "@Match Time beni Sait ile aynı takıma koy", JOKE_FACTS, trState);
     expect(jokeOnTheDay.r.generated).toEqual([]);
-    expect(jokeOnTheDay.out.reply).toBe(`"@Match Time takımları kur" yazın, takımları kurayım.`);
+    expect(jokeOnTheDay.out.reply).toBe(`Beni etiketleyip takımları kendi cümlelerinizle isteyin (örneğin "@Match Time takımları kur"), kurayım.`);
   });
 });
 

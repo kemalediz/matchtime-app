@@ -320,6 +320,18 @@
  *     shown, the bench phrasing example, the format-switch facts block);
  *     `src/lib/__tests__/no-long-dashes.test.ts` is the guard and lists
  *     them.
+ *
+ *   - A deliberate CHANGE (2026-10-18, Kemal: replies must not make people
+ *     think they have to type an exact phrase). Every hint that told a
+ *     reader to write, say, type or reply a quoted command for something
+ *     the AI pipeline understands now invites their own words and keeps
+ *     one example ("Tag me and ask for the teams in your own words (for
+ *     example @Match Time generate the teams)"), in both languages. No
+ *     case was added or removed; every changed line in either `.snap` is
+ *     one of those hints. Fixed tokens read by code (YES, GO, a number
+ *     from a pick list, NONE, PAID ALL, help topics, opt-in words) and
+ *     the one-word IN / OUT answers are unchanged.
+ *     `own-words-hints.test.ts` is the guard.
  */
 import { composeSetupDm } from "../../setup-learning/dm";
 import { composeSetupAskDm } from "../../club-setup-dm-rules";

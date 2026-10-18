@@ -513,7 +513,7 @@ test("C: the command in the SEPARATE group links it for the setting-up club, and
   expect(out).toMatchObject({ ok: true, outcome: "linked", adminGroup: { groupId: HELD.hq, orgId: HELD.org } });
   // The introduction, for a club not switched on yet: it says so.
   expect(out.replyText).toMatch(/^👋 I'm MatchTime, I'll help run \*Harbour FC\*'s .*Once I'm switched on for the club, this is what I do\./);
-  expect(out.replyText).toContain("Once I'm on, type *help* here to see what I take.");
+  expect(out.replyText).toContain("Once I'm on, ask me here what I can do, in your own words (for example *what can you do?*).");
   expect(await orgRow(db, HELD.org)).toMatchObject({
     approvalStatus: "approved",
     setupStage: "setting-up",
@@ -600,7 +600,7 @@ test("C: Turkish club: the Turkish block and the Turkish form of the command, wh
   expect(ok).toMatchObject({ outcome: "linked" });
   // The introduction in Turkish, for a club not switched on yet.
   expect(ok.replyText).toMatch(/^👋 Ben MatchTime\. \*Moda Spor\* .*Kulüp için açıldığımda burada şunları yaparım\./);
-  expect(ok.replyText).toContain("Açıldığımda, neleri kabul ettiğimi görmek için burada *yardım* yazın.");
+  expect(ok.replyText).toContain("Açıldığımda neler yapabildiğimi burada kendi cümlelerinizle sorun (örneğin *neler yapabilirsin?*).");
   await expectPlayersGroupSilent(request, db, c);
 });
 

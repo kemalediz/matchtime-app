@@ -146,7 +146,7 @@ test("the same, tagged to MatchTime: no write, one line with the command that do
   engineOn({ "@Match Time won't be around on friday": { route: "self_att", facts: selfOut() } });
   const out = await say(request, "@Match Time won't be around on friday");
   expect(out).toMatchObject({ handled: true, outcome: "squad-question", react: null });
-  expect(out.replyText).toMatch(/^To take yourself out of .+, write "Alex Admin out"\.$/);
+  expect(out.replyText).toMatch(/^If you want me to take you out of .+, just ask me in your own words \(for example Alex Admin out\)\.$/);
   expect(await statusOf(db, U.admin)).toBe("CONFIRMED");
 });
 
@@ -159,7 +159,7 @@ test("a name nobody in the club has, said in passing: not added, no reply", asyn
 test("the same, tagged to MatchTime: not added, and it says how to add them", async ({ request, db }) => {
   engineOn({ "@Match Time Zed is around again": { route: "other_att", facts: otherFacts("Zed", "in") } });
   const out = await say(request, "@Match Time Zed is around again");
-  expect(out).toMatchObject({ handled: true, outcome: "squad-question", replyText: 'I don\'t know Zed yet. To add them, write "put Zed in".', react: null });
+  expect(out).toMatchObject({ handled: true, outcome: "squad-question", replyText: "I don't know Zed yet. To add them, just ask me in your own words (for example put Zed in).", react: null });
   expect(await db.one(`SELECT id FROM "User" WHERE name = 'Zed'`)).toBeFalsy();
 });
 
