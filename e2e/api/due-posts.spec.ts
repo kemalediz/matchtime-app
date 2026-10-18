@@ -4,7 +4,8 @@
  * Uses the test-only x-test-now header (MT_TEST_MODE=1) to pin the clock
  * inside the deterministic windows:
  *   rate-dm        from 08:00 London onward the morning/day after the match
- *   rate-reminder  18:00–19:00 London, only after the initial DM landed
+ *   rate-reminder  18:00 to 19:00 London, from the day after the initial
+ *                  DM, at most two (rating-reminder-schedule.ts)
  *
  * Asserts that members with Membership.subRatingDm=false are skipped
  * in BOTH personal-DM loops while everyone else still gets theirs.
@@ -159,12 +160,14 @@ test("evening rate REMINDERS skip the opted-out player too", async ({ request, d
   // The reminder loop requires the initial rate-dm breadcrumb — simulate
   // the bot having ACK'd everyone's morning DM (including Olivia's, so
   // the only thing excluding her tonight is the opt-out flag).
+  // The morning DM went at 08:30 London today (the morning after the
+  // match); since 2026-10-18 the first reminder is never on that same day.
   for (const uid of [U.rater, U.player, U.third, U.stale, U.opt]) {
     await db.run(
-      `INSERT INTO "SentNotification" (id, key, kind, "matchId", "targetUser")
-       VALUES ($1, $2, 'rate-dm', $3, $4)
-       ON CONFLICT (key) DO NOTHING`,
-      [`e2e-sn-rate-dm-${uid}`, rateDmKey(uid), MATCH.rate, uid],
+      `INSERT INTO "SentNotification" (id, key, kind, "matchId", "targetUser", "createdAt")
+       VALUES ($1, $2, 'rate-dm', $3, $4, $5)
+       ON CONFLICT (key) DO UPDATE SET "createdAt" = EXCLUDED."createdAt"`,
+      [`e2e-sn-rate-dm-${uid}`, rateDmKey(uid), MATCH.rate, uid, londonAt(0, 8, 30)],
     );
   }
   // Riley has already rated — reminders must skip raters as well. (Pat
@@ -177,9 +180,15 @@ test("evening rate REMINDERS skip the opted-out player too", async ({ request, d
     ["e2e-rating-riley-pat", MATCH.rate, U.rater, U.player],
   );
 
-  // 18:30 London today = 22.5h after yesterday's 20:00 kickoff — inside
-  // the 18-19 reminder window and the 5-day rating window.
-  const fakeNow = londonAt(0, 18, 30);
+  // 18:30 London today, the same day as the first DM: no reminder yet
+  // (Kemal, 2026-10-18).
+  const sameDay = await duePostsAt(request, londonAt(0, 18, 30));
+  expect(sameDay.filter((i) => i.key?.includes(":rate-reminder:"))).toHaveLength(0);
+
+  // 18:30 London tomorrow = 46.5h after yesterday's 20:00 kickoff: the
+  // day after the first DM (reminder 1), inside the 18-19 reminder hour
+  // and the 5-day rating window.
+  const fakeNow = londonAt(1, 18, 30);
 
   const instructions = await duePostsAt(request, fakeNow);
   const reminderTargets = instructions
