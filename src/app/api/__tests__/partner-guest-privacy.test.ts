@@ -27,6 +27,12 @@ vi.mock("next/server", () => ({
   NextResponse: { json: (body: unknown, init?: { status?: number }) => ({ body, status: init?.status ?? 200 }) },
 }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+// The account-safety gate has its own suite (player-account-takeover.test.ts);
+// here an approved club, so the guest rule is what answers.
+vi.mock("@/lib/player-account-guard", () => ({
+  playerEditContext: vi.fn(async () => ({ s: {}, refusal: null })),
+  isClubOwnedUser: vi.fn(async () => true),
+}));
 vi.mock("@/lib/player-stats", () => ({ loadPlayerSeasonStats: vi.fn().mockResolvedValue(null) }));
 vi.mock("@/lib/db", () => ({
   db: {

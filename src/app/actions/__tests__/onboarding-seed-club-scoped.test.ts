@@ -161,20 +161,19 @@ describe("createOrgFromWizard seeds the new club's memberships", () => {
     expect(txUserUpdateMany).not.toHaveBeenCalled();
   });
 
-  it("seeds an EXISTING player on the new club's membership only", async () => {
-    await createOrgFromWizard({
+  it("does NOT attach an existing account found by a typed number (2026-10-18)", async () => {
+    // A number is a sign-in, and typing it proves nothing about who holds
+    // it (src/lib/player-account-guard.ts). The player joins through the
+    // club's WhatsApp group instead; nothing is written for them here.
+    const res = await createOrgFromWizard({
       orgName: "Turkish Club",
       players: [{ name: "Erdal", phone: "+905321112233", seedRating: 9 }],
       activity: ACTIVITY,
     });
 
-    const upserts = txMembershipUpsert.mock.calls.map((c) => c[0] as {
-      where: { userId_orgId: { userId: string; orgId: string } };
-      create: Record<string, unknown>;
-    });
-    expect(upserts).toHaveLength(1);
-    expect(upserts[0].where.userId_orgId).toEqual({ userId: EXISTING_USER, orgId: NEW_ORG });
-    expect(upserts[0].create).toMatchObject({ seedRating: 9 });
+    expect(txMembershipUpsert).not.toHaveBeenCalled();
+    expect(txUserCreate).not.toHaveBeenCalled();
+    expect(res).toMatchObject({ playersLinkedExisting: 0, playersSkippedExisting: 1 });
   });
 
   it("seeds the admin themselves on their OWNER membership when they are in the list", async () => {

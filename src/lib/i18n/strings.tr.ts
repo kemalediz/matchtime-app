@@ -3816,6 +3816,12 @@ export const tr: Strings = {
     `Hangi maçtan çıkıyorsun? *${p.asker}* (${p.askerDay}) için *1*, *${p.own}* (${p.ownDay}) için *2* yaz.`,
   xask_moved_dm: (p) => `*${p.asker}* maçının saati değişti: artık ${p.day}. Yerin duruyor. Gelemeyeceksen grubundaki isteklerini yanıtlayıp *YOKUM* yaz.`,
   xask_guest_overlap: (p) => `O saatte *${p.asker}* için oynuyorsun, bu yüzden seni bu maça da yazamıyorum.`,
+  pg_err_player_owns_account:
+    "Bu oyuncu MatchTime'daki numarasını ve adını kendisi yönetiyor, bu yüzden bunları yalnızca kendisi değiştirebilir.",
+  pg_err_number_on_matchtime: "Bu numara zaten MatchTime'da kayıtlı, bu yüzden buraya eklenemez.",
+  pg_err_club_not_approved: "Kulübünüz onaylandıktan sonra oyuncuları düzenleyebilirsiniz.",
+  pg_err_merge_keep_owned:
+    "Bu oyuncu hesabını kendisi yönetiyor, bu yüzden saklanan kayıt onunki olmalı. Diğer kaydı onun kaydıyla birleştirin.",
 };
 
 /**

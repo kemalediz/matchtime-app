@@ -62,6 +62,9 @@ export async function applyEnrichment(
     if (!norm) continue; // skip invalid phones — non-fatal
     try {
       const ret = await updatePlayerPhone(userId, orgId, norm);
+      // Refused (the record is not this club's to change, or the number
+      // is somebody else's): skipped like a conflict, non-fatal.
+      if (ret && "ok" in ret && ret.ok === false) continue;
       phones++;
       if (ret && "redirectToUserId" in ret && ret.redirectToUserId) {
         remap.set(userId, ret.redirectToUserId);

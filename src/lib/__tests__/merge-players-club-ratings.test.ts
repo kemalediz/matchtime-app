@@ -40,6 +40,15 @@ vi.mock("@/lib/org", () => ({ requireOrgAdmin: (...a: unknown[]) => requireOrgAd
 vi.mock("@/lib/resolve-player", () => ({ findExistingOrgMember: vi.fn() }));
 vi.mock("@/lib/attendance-events", () => ({ recordAttendanceEvent: vi.fn() }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+// The account-safety gate (who may merge what) has its own suite,
+// src/app/actions/__tests__/player-account-takeover.test.ts. Here it lets
+// the merge through so these tests stay about the per-club carry.
+vi.mock("@/lib/player-account-guard", () => ({
+  playerEditContext: vi.fn(async () => ({ s: {}, refusal: null })),
+  loadOwnershipFacts: vi.fn(async () => ({})),
+  clubOwnsUser: vi.fn(() => true),
+  isClubOwnedUser: vi.fn(async () => true),
+}));
 vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
 vi.mock("@/lib/db", () => ({
   db: {

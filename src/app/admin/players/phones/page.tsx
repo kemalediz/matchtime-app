@@ -77,6 +77,11 @@ export default function BulkPhonesPage() {
     setStates((s) => ({ ...s, [userId]: "saving" }));
     try {
       const res = await updatePlayerPhone(userId, orgId, raw);
+      if ("ok" in res && res.ok === false) {
+        setStates((s) => ({ ...s, [userId]: "error" }));
+        setErrors((e) => ({ ...e, [userId]: res.error }));
+        return;
+      }
       const { phoneNumber } = res;
       // Auto-merge (wa-sync or provisional orphan) shifts the player
       // list shape — one row removed, possibly a redirect. Reload.
