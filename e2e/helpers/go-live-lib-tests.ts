@@ -23,6 +23,7 @@ async function main() {
   const { db } = await import("@/lib/db");
   const { goLiveClub, helloPreviewForClub, liveByUser, liveByOwner } = await import("@/lib/club-setup");
   const { paymentsLiveKey } = await import("@/lib/payments-live-announce");
+  const { nextLondonKickoff } = await import("@/lib/london-time");
 
   let n = 0;
   const ok = (label: string) => {
@@ -124,7 +125,13 @@ async function main() {
       db.match.create({ data: { id: `${a}-${id}`, activityId: `${a}-act`, date, maxPlayers: 10, status, attendanceDeadline: date } as never });
     await match("past-open", ago(5 * HOUR), "UPCOMING");
     await match("past-done", ago(30 * HOUR), "COMPLETED");
-    await match("future", ahead(48 * HOUR), "UPCOMING");
+    // A fixture still to come, placed one week AFTER the slot going live
+    // fills (Tue 21:00 London). It used to be NOW + 48h, which on a Sunday
+    // between 19:30 and 22:30 London lands within the generator's ±90 min
+    // slot dedupe (match-slot.ts): the generator then rightly made no game
+    // and "going live made the next game" failed (Sun 2026-10-18, 19:52).
+    const nextSlot = nextLondonKickoff(NOW, 2, "21:00");
+    await match("future", new Date(nextSlot.getTime() + 7 * 24 * HOUR), "UPCOMING");
     // The queue a setting-up club builds up: website actions and the
     // undelivered help replies.
     await db.botJob.createMany({
