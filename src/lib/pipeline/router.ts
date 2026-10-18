@@ -704,6 +704,25 @@ export interface RouterResult {
   usage?: { costUsd: number | null; ms: number; inputTokens: number; outputTokens: number };
 }
 
+/**
+ * THE MODEL NEVER SEES A WHATSAPP ID (FNF HQ, 2026-10-17/18). A WhatsApp
+ * id is ~80 characters ("false_1203...@g.us_AC59...DA1_8948...@lid"), and
+ * the model copying it back miscopied it three times in two days: the
+ * turn's square brackets kept, one character changed, "B03" written twice.
+ * Each time the route was dropped as an unknown id and the message fell
+ * back to `unsure` ("@Match Time what is squad now including bench?" got
+ * "I didn't catch that"). So each message in a batch is shown, and
+ * answered, as its position: m1, m2, ... and the code maps them back.
+ */
+export function shortRouterIds(count: number): string[] {
+  return Array.from({ length: count }, (_, i) => `m${i + 1}`);
+}
+
+/** An id as the model returned it: the turn's square brackets and spaces trimmed. */
+function cleanId(id: string): string {
+  return id.trim().replace(/^\[\s*/, "").replace(/\s*\]$/, "");
+}
+
 export function parseRouterResponse(text: string, ids: string[], organiserIds: ReadonlySet<string> = new Set()): RouterResult {
   const degradations: Degradation[] = [];
   const byId = new Map<string, Route>();
@@ -712,7 +731,7 @@ export function parseRouterResponse(text: string, ids: string[], organiserIds: R
     const parsed = extractJson(text) as { routes?: Array<{ id?: unknown; route?: unknown }> };
     const rows = Array.isArray(parsed?.routes) ? parsed.routes : [];
     for (const row of rows) {
-      const id = typeof row?.id === "string" ? row.id : null;
+      const id = typeof row?.id === "string" ? cleanId(row.id) : null;
       const route = typeof row?.route === "string" ? normaliseRoute(row.route) : null;
       if (!id) continue;
       if (!ids.includes(id)) {
@@ -927,7 +946,11 @@ async function routeBatchInner(
   }
 
   const ids = messages.map((m) => m.id);
-  const user = renderRouterTurn(messages);
+  // The model is shown, and answers with, m1, m2, ... never the WhatsApp
+  // ids (`shortRouterIds`). Mapped back to the real ids right after parsing.
+  const shortIds = shortRouterIds(messages.length);
+  const realOf = new Map(shortIds.map((s, i) => [s, ids[i]]));
+  const user = renderRouterTurn(messages.map((m, i) => ({ ...m, id: shortIds[i] })));
 
   const req: ModelRequest = {
     model: ROUTER_MODEL,
@@ -935,6 +958,7 @@ async function routeBatchInner(
     user,
     maxTokens: ROUTER_MAX_TOKENS,
     label: "router",
+    shortIds: Object.fromEntries(realOf),
     schema: {
       type: "object",
       properties: {
@@ -960,7 +984,12 @@ async function routeBatchInner(
   let usage: RouterResult["usage"];
   try {
     const resp = await model.complete(req);
-    result = parseRouterResponse(resp.text, ids, new Set(messages.filter((m) => m.organisers).map((m) => m.id)));
+    const parsed = parseRouterResponse(resp.text, shortIds, new Set(shortIds.filter((_, i) => messages[i].organisers)));
+    const real = (id: string | null) => (id === null ? null : (realOf.get(id) ?? id));
+    result = {
+      routes: parsed.routes.map((r) => ({ ...r, messageId: real(r.messageId)! })),
+      degradations: parsed.degradations.map((d) => ({ ...d, messageId: real(d.messageId) })),
+    };
     usage = {
       costUsd: resp.costUsd,
       ms: resp.ms,

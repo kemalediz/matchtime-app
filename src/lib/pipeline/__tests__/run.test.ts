@@ -13,6 +13,7 @@
  *   • every failure is visible; nothing fails quietly (§11.2, §11.4)
  */
 import { describe, it, expect } from "vitest";
+import { asShortIds } from "./router-ids";
 import { runPipeline } from "../run";
 import type { ModelRequest, ModelResponse, PipelineModel } from "../llm";
 import { NOW, world } from "./helpers";
@@ -35,7 +36,7 @@ function scriptedModels(s: Scripted) {
       }
       const text =
         req.label === "router"
-          ? (s.router ?? '{"routes":[]}')
+          ? asShortIds(s.router ?? '{"routes":[]}', req)
           : (s.extractors?.[messageIdOf(req.user)] ?? '{"claims":[],"affirmation":null,"sideRequests":[]}');
       return {
         text,

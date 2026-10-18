@@ -68,7 +68,31 @@ const HQ: HqQuestion[] = [
   { text: "MatchTime who collects the money?", topics: ["club"], why: "the collector" },
   { text: "MatchTime parayı kim topluyor?", topics: ["club"], why: "the collector, TR" },
   { text: "what can you do?", topics: ["how_it_works"], why: "a genuine help question: the HQ menu" },
+  { text: "@Match Time what is squad now including bench?", topics: ["squad", "bench"], why: "FNF 2026-10-18 13:32" },
 ];
+
+/**
+ * FNF HQ, 2026-10-18 13:32 London, as production routed it: the real
+ * WhatsApp id (which the router once echoed back miscopied, "B03" twice;
+ * it is now shown "m1" and the code maps it back), the
+ * HQ context that was shown above it, the text as the Pi forwarded it, and
+ * the raw "@<digits>" form a mention takes before the Pi names MatchTime.
+ */
+const INCIDENT_ID = "false_120363046757382958@g.us_AC5922E2E21D4093AAD157B03EDDADA1_89485761081551@lid";
+const INCIDENT_TEXTS = ["@Match Time what is squad now including bench?", "@270000000000001 what is squad now including bench?"];
+const INCIDENT_CONTEXT = organisersContext({
+  pending: [],
+  quoted: null,
+  quotedIsMatchTime: false,
+  recent: [
+    "Thought that was the quickest recovery",
+    "Ill be back on 30th or 6th the latest inshallah",
+    "Hamz dont beg it and try join same time bro",
+    "",
+    "I should be back in the first week of November, insha'Allah",
+  ].map((text) => ({ fromMatchTime: false, text })),
+  score: { kind: "result", day: "Fri 16 Oct", labels: ["Non Bibs", "Bibs"] },
+});
 
 /** Players' group (manager review of #296): the fee and the teams time, held out
  *  from the prompt's own examples, EN and TR. */
@@ -127,6 +151,25 @@ async function main() {
     const r = await routeBatch(model, [{ id: `h${i}`, authorName: "Hamzah", body: c.text, organisers: { context } }], { floor: true });
     const route = r.routes[0]?.route;
     console.log(`${mark(!!route && want.includes(route))}  ${JSON.stringify(c.text)}  routed ${route}   (${c.why}; want question|help)`);
+  }
+
+  // The incident, with its real id and context: the router's route must
+  // reach the message (no fallback) and be question|help.
+  if (!playersOnly && !routerOnly) {
+    console.log(`\n== The 2026-10-18 incident, its real id and HQ context: ${INCIDENT_TEXTS.length} cases, router once each ==\n`);
+    for (const text of INCIDENT_TEXTS) {
+      const r = await routeBatch(model, [{ id: INCIDENT_ID, authorName: "Kemal", body: text, organisers: { context: INCIDENT_CONTEXT } }], { floor: true });
+      const got = r.routes[0];
+      // The model is shown "m1", never the WhatsApp id; the route must come
+      // back on the real id, by the model, with no fallback.
+      console.log(`${mark(got?.messageId === INCIDENT_ID && got.source === "model" && want.includes(got.route))}  ${JSON.stringify(text)}  routed ${got?.route} by ${got?.source}   (want question|help by model)`);
+    }
+    // The raw form through the question extractor too (the Pi's form is in
+    // the HQ list below).
+    const raw = INCIDENT_TEXTS[1];
+    const ex = await extractForRoute(model, "question", { id: "qi", body: raw, authorName: "Kemal", tagged: true, history: [], lastBotPost: null });
+    const f = ex.facts.kind === "question" ? ex.facts : null;
+    console.log(`${mark(!!f && ["squad", "bench"].includes(f.topic))}  ${JSON.stringify(raw)}  ${f?.topic}   (want squad|bench)`);
   }
 
   // The players' group: a tagged fee or teams-time question must reach the

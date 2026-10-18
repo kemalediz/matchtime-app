@@ -110,7 +110,7 @@ describe("the players' group is unchanged: no deterministic reading of a name li
       name: "says none",
       async complete() {
         return {
-          text: JSON.stringify({ routes: [{ id: "p1", route: "none" }] }),
+          text: JSON.stringify({ routes: [{ id: "m1", route: "none" }] }),
           stopReason: "end_turn",
           usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
           costUsd: 0,

@@ -9,6 +9,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ModelRequest, PipelineModel } from "../pipeline/llm";
 import type { HqLogRow } from "../admin-group-log";
+import { asShortIds } from "../pipeline/__tests__/router-ids";
 
 const dbMock = vi.hoisted(() => ({
   adminTeamProposal: { findFirst: vi.fn() },
@@ -73,7 +74,7 @@ function model(answer: (req: ModelRequest) => unknown): PipelineModel {
     name: "stub",
     async complete(req) {
       requests.push(req);
-      return { text: JSON.stringify(answer(req)), stopReason: "end_turn", usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }, costUsd: 0, ms: 0 };
+      return { text: req.label === "router" ? asShortIds(JSON.stringify(answer(req)), req) : JSON.stringify(answer(req)), stopReason: "end_turn", usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }, costUsd: 0, ms: 0 };
     },
   };
 }
@@ -131,7 +132,9 @@ describe("the router is the players' group's router, shown the organisers' conte
     expect(user).toContain("WAITING: approval of the proposed teams for Fri 16 Oct, asked at 10:00.");
     expect(user).toContain('REPLYING TO another organiser: "shall we start at 8?"');
     expect(user).toContain("- an organiser: who has the bibs?");
-    expect(user).toContain("[wa-9] Raihan: yes");
+    // The model is shown a short id, never the WhatsApp id.
+    expect(user).toContain("[m1] Raihan: yes");
+    expect(user).not.toContain("wa-9");
     expect(requests[0].system).toContain("IN THE ORGANISERS' GROUP");
   });
 });
@@ -396,6 +399,88 @@ describe("unsure, addressed to MatchTime: never silent", () => {
     const r = await ask("@Match Time can you sort it", "unsure", { org: { ...ORG, squadMode: "monthly" } });
     expect(r?.outcome).toBe("hq-not-understood");
     expect(squad.handleAdminSquadChange).not.toHaveBeenCalled();
+  });
+
+  // FNF HQ, 2026-10-18 13:32 London: Kemal (a player of the club) asked
+  // "@Match Time what is squad now including bench?". The router's answer
+  // was dropped (its id echoed wrong), the message fell back to `unsure`,
+  // and HQ said "I didn't catch what you'd like me to do". A message
+  // addressed to MatchTime that routes `unsure`, by the model or by a
+  // fallback, is also tried as a question before that line.
+  describe("the shared question answering is tried before the one line", () => {
+    const SQUAD = "✅ *In (18/18)*: ...\n🪑 *Bench (1)*: Naim";
+    const INCIDENT = "@Match Time what is squad now including bench?";
+    const player = { senderUserId: "u-kemal", organiser: false, senderName: "Kemal" };
+    const failing: PipelineModel = {
+      name: "down",
+      complete: async () => {
+        throw new Error("529 Overloaded");
+      },
+    };
+
+    beforeEach(() => {
+      hqQuestion.answerHqQuestion.mockResolvedValue({ outcome: "hq-answered", replyText: SQUAD });
+    });
+
+    it("the incident: a player's tagged squad question the model called unsure is answered", async () => {
+      const r = await ask(INCIDENT, "unsure", player);
+      expect(r).toEqual({ route: "unsure", outcome: "hq-answered", replyText: SQUAD });
+      expect(hqQuestion.answerHqQuestion).toHaveBeenCalledWith(expect.objectContaining({ messageId: "wa-9", body: INCIDENT, senderUserId: "u-kemal" }));
+      // A player changes nothing: the attendance engine is never asked.
+      expect(squad.handleAdminSquadChange).not.toHaveBeenCalled();
+    });
+
+    it("the router call failed (fallback unsure): answered the same way", async () => {
+      const r = await ask(INCIDENT, "unsure", { ...player, deps: { routerModel: failing } });
+      expect(r).toEqual({ route: "unsure", outcome: "hq-answered", replyText: SQUAD });
+    });
+
+    it("the incident's real cause: the router is shown a short id, never the WhatsApp id, and its answer lands", async () => {
+      const waId = "false_120363046757382958@g.us_AC5922E2E21D4093AAD157B03EDDADA1_89485761081551@lid";
+      const shortAnswer: PipelineModel = {
+        name: "answers m1",
+        async complete(req) {
+          requests.push(req);
+          return { text: '{"routes":[{"id":"[m1]","route":"question"}]}', stopReason: "end_turn", usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }, costUsd: 0, ms: 0 };
+        },
+      };
+      const r = await ask(INCIDENT, "question", { ...player, messageId: waId, deps: { routerModel: shortAnswer } });
+      expect(r).toEqual({ route: "question", outcome: "hq-answered", replyText: SQUAD });
+      expect(requests[0].user).toContain("[m1] Kemal: @Match Time what is squad now including bench?");
+      expect(requests[0].user).not.toContain(waId);
+    });
+
+    it("an organiser: the attendance engine first, then the question", async () => {
+      const r = await ask(INCIDENT, "unsure");
+      expect(r?.outcome).toBe("hq-answered");
+      expect(squad.handleAdminSquadChange).toHaveBeenCalled();
+      expect(squad.handleAdminSquadChange.mock.invocationCallOrder[0]).toBeLessThan(hqQuestion.answerHqQuestion.mock.invocationCallOrder[0]);
+    });
+
+    it("an organiser's change the engine owns is not asked as a question", async () => {
+      squad.handleAdminSquadChange.mockResolvedValue({ handled: true, outcome: "squad-changed", replyText: "Done." });
+      expect((await ask("@Match Time Ali in", "unsure"))?.outcome).toBe("squad-changed");
+      expect(hqQuestion.answerHqQuestion).not.toHaveBeenCalled();
+    });
+
+    it("nothing answers it: the one line, as before", async () => {
+      hqQuestion.answerHqQuestion.mockResolvedValue(null);
+      expect((await ask(INCIDENT, "unsure", player))?.outcome).toBe("hq-not-understood");
+    });
+
+    it("not addressed to MatchTime: silent, and no question is asked", async () => {
+      expect(await ask("what is squad now including bench?", "unsure", player)).toBeNull();
+      expect(hqQuestion.answerHqQuestion).not.toHaveBeenCalled();
+    });
+
+    it("the routed line carries the router's degradations, with no message text", async () => {
+      const log = vi.spyOn(console, "log").mockImplementation(() => {});
+      await ask(INCIDENT, "unsure", { ...player, deps: { routerModel: failing } });
+      const routed = log.mock.calls.map((c) => String(c[0])).find((l) => l.includes("routed unsure by fallback"));
+      log.mockRestore();
+      expect(routed).toMatch(/router call failed \(529 Overloaded\)/);
+      expect(routed).not.toContain("squad now");
+    });
   });
 });
 

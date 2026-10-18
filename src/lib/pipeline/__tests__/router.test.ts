@@ -149,6 +149,15 @@ describe("parseRouterResponse", () => {
     expect(out.degradations.some((d) => /unknown id/i.test(d.detail))).toBe(true);
   });
 
+  it("an id returned inside the turn's square brackets, or with spaces, is still that id", () => {
+    const out = parseRouterResponse('{"routes":[{"id":"[m1]","route":"none"},{"id":" m2 ","route":"self_att"}]}', ["m1", "m2"]);
+    expect(out.routes).toEqual([
+      { messageId: "m1", route: "none", source: "model" },
+      { messageId: "m2", route: "self_att", source: "model" },
+    ]);
+    expect(out.degradations).toHaveLength(0);
+  });
+
   it("falls back to `unsure` on unparseable output, and never throws", () => {
     const out = parseRouterResponse("the model said something else entirely", ["wa-1", "wa-2"]);
     expect(out.routes.map((r) => r.route)).toEqual(["unsure", "unsure"]);
@@ -384,7 +393,7 @@ describe("routeBatch", () => {
   ];
 
   it("routes a batch in ONE call and lets the floor override the model", async () => {
-    const model = fakeModel(['{"routes":[{"id":"wa-1","route":"none"},{"id":"wa-2","route":"none"}]}']);
+    const model = fakeModel(['{"routes":[{"id":"m1","route":"none"},{"id":"m2","route":"none"}]}']);
     const out = await routeBatch(model, msgs);
     expect(model.calls).toHaveLength(1);
     expect(out.routes[0]).toMatchObject({ route: "none", source: "model" });
@@ -392,6 +401,71 @@ describe("routeBatch", () => {
     // wins, because losing that is losing a player's slot.
     expect(out.routes[1]).toMatchObject({ route: "self_att", source: "floor" });
     expect(out.degradations.some((d) => /floor overrode/i.test(d.detail))).toBe(true);
+  });
+
+  // FNF HQ, 2026-10-17/18 (Vercel request logs): three times in two days
+  // the model copied a ~80-character WhatsApp id back wrong ("B03" twice;
+  // the turn's brackets kept and one character changed; the brackets
+  // kept), the route was dropped as an unknown id, and the message fell
+  // back to `unsure`. The model now never sees a WhatsApp id.
+  describe("the model is shown short positional ids, never the WhatsApp ids", () => {
+    const INCIDENT = "false_120363046757382958@g.us_AC5922E2E21D4093AAD157B03EDDADA1_89485761081551@lid";
+    const REPLY = "false_120363046757382958@g.us_3A84686B35E9610A2A4B_156345466617992@lid";
+    const LONG = "false_120363046757382958@g.us_AC4A09768AC82AC94A71E11BC84022E4_89485761081551@lid";
+    const batch = [
+      { id: INCIDENT, authorName: "Kemal", body: "@Match Time what is squad now including bench?" },
+      { id: REPLY, authorName: "Hamzah", body: "Is it okay if we put Shehryar in first cos he's a goalkeeper" },
+      { id: LONG, authorName: "Kemal", body: "also I put limits for Matchtime" },
+    ];
+
+    it("the turn carries m1, m2, m3; no WhatsApp id reaches the model", async () => {
+      const m = fakeModel(['{"routes":[]}']);
+      await routeBatch(m, batch, { floor: false });
+      expect(m.calls[0].user).toBe(
+        "[m1] Kemal: @Match Time what is squad now including bench?\n" +
+          "[m2] Hamzah: Is it okay if we put Shehryar in first cos he's a goalkeeper\n" +
+          "[m3] Kemal: also I put limits for Matchtime",
+      );
+      for (const id of [INCIDENT, REPLY, LONG]) {
+        expect(m.calls[0].user).not.toContain(id);
+        expect(m.calls[0].system).not.toContain(id);
+      }
+    });
+
+    it("each short id maps back to its own message, in any order", async () => {
+      const m = fakeModel(['{"routes":[{"id":"m3","route":"none"},{"id":"[m1]","route":"question"},{"id":"m2","route":"other_att"}]}']);
+      const out = await routeBatch(m, batch, { floor: false });
+      expect(out.routes).toEqual([
+        { messageId: INCIDENT, route: "question", source: "model" },
+        { messageId: REPLY, route: "other_att", source: "model" },
+        { messageId: LONG, route: "none", source: "model" },
+      ]);
+      expect(out.degradations).toHaveLength(0);
+    });
+
+    it("an unknown short id is dropped, and only the message it left unrouted falls back, by its real id", async () => {
+      const m = fakeModel(['{"routes":[{"id":"m1","route":"question"},{"id":"m9","route":"self_att"},{"id":"m3","route":"none"}]}']);
+      const out = await routeBatch(m, batch, { floor: false });
+      expect(out.routes.map((r) => [r.messageId, r.route, r.source])).toEqual([
+        [INCIDENT, "question", "model"],
+        [REPLY, "unsure", "fallback"],
+        [LONG, "none", "model"],
+      ]);
+      expect(out.degradations.map((d) => d.detail)).toEqual(['router returned an unknown id "m9"; dropped', "router returned no route; defaulting to unsure"]);
+      expect(out.degradations[1].messageId).toBe(REPLY);
+    });
+
+    it("a WhatsApp id echoed back, right or wrong, is not a short id: dropped", async () => {
+      const m = fakeModel([JSON.stringify({ routes: [{ id: INCIDENT, route: "question" }] })]);
+      const out = await routeBatch(m, [batch[0]], { floor: false });
+      expect(out.routes[0]).toMatchObject({ messageId: INCIDENT, source: "fallback" });
+    });
+
+    it("an organisers' route is still allowed only on the organisers' group message", async () => {
+      const m = fakeModel(['{"routes":[{"id":"m1","route":"approve"},{"id":"m2","route":"approve"}]}']);
+      const out = await routeBatch(m, [{ ...batch[0], organisers: { context: [] } }, batch[1]], { floor: false });
+      expect(out.routes.map((r) => r.route)).toEqual(["approve", "unsure"]);
+    });
   });
 
   it("routes EVERYTHING to the attendance extractor when the model throws (§11.4)", async () => {
@@ -660,12 +734,12 @@ describe("the organisers' group", () => {
   });
 
   it("the gate hands the quoted MatchTime text to the router", async () => {
-    const m = fakeModel([JSON.stringify({ routes: [{ id: "r", route: "question" }] })]);
+    const m = fakeModel([JSON.stringify({ routes: [{ id: "m1", route: "question" }] })]);
     await gateBatch(
       [{ waMessageId: "r", authorName: "Can", body: "Bench? We do bench now?", quotedMatchTime: "the bench is open" }],
       { model: m, floor: false },
     );
-    expect(m.calls[0].user).toBe(`REPLYING TO MatchTime: "the bench is open"\n[r] Can: Bench? We do bench now?`);
+    expect(m.calls[0].user).toBe(`REPLYING TO MatchTime: "the bench is open"\n[m1] Can: Bench? We do bench now?`);
   });
 
   it("the prompt says a reply to MatchTime's own message is a tag, where it defines a tag", () => {
@@ -678,7 +752,7 @@ describe("the organisers' group", () => {
   });
 
   it("the model is sent the organisers' context and the routes enum includes theirs", async () => {
-    const m = fakeModel([JSON.stringify({ routes: [{ id: "h", route: "approve" }] })]);
+    const m = fakeModel([JSON.stringify({ routes: [{ id: "m1", route: "approve" }] })]);
     const r = await routeBatch(m, [{ id: "h", authorName: "R", body: "looks good", organisers: { context: ["WAITING: approval of the proposed teams for Fri 16 Oct, asked at 10:00."] } }], { floor: false });
     expect(r.routes[0].route).toBe("approve");
     expect(m.calls[0].user).toContain("WAITING: approval of the proposed teams");
