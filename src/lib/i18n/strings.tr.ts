@@ -3822,6 +3822,10 @@ export const tr: Strings = {
   pg_err_club_not_approved: "Kulübünüz onaylandıktan sonra oyuncuları düzenleyebilirsiniz.",
   pg_err_merge_keep_owned:
     "Bu oyuncu hesabını kendisi yönetiyor, bu yüzden saklanan kayıt onunki olmalı. Diğer kaydı onun kaydıyla birleştirin.",
+  score_entry_enter: "Skoru gir",
+  score_entry_edit: "Skoru düzenle",
+  score_entry_add: "Skor ekle",
+  score_entry_err_not_played: "Bu maç henüz oynanmadı, bu yüzden skor girilemez.",
 };
 
 /**
