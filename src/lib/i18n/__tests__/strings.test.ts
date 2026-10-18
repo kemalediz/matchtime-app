@@ -509,6 +509,7 @@ const SAMPLES: SampleArgs = {
   score_entry_edit: null,
   score_entry_add: null,
   score_entry_err_not_played: null,
+  score_entry_no_score_yet: null,
   own_welcome_title: null,
   own_welcome_intro: null,
   own_name_label: null,
