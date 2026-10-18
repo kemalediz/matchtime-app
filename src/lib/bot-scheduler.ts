@@ -29,6 +29,7 @@ import {
 } from "./admin-channel";
 import type { PiCaps } from "./admin-channel-rules";
 import { getOrgFeatures, type OrgFeatures } from "./org-features";
+import { featureForDueKey } from "./due-key-feature";
 import { formatLondon } from "./london-time";
 import { inMessageHours } from "./message-hours";
 import { evaluateFollowupGuard } from "./tentative-followup";
@@ -1069,58 +1070,13 @@ export async function computeDuePosts(
   //   capability is switched off for this org. Done as a single
   //   key-classified filter rather than threading flags through every
   //   section — zero control-flow risk to the live scheduler, one
-  //   reviewable transform. Unknown / meta / org-scoped keys
-  //   (bot-intro, admin DMs, ad-hoc BotJobs, retro-reactions) are
-  //   NOT classified → always allowed (fail-open; they're not
-  //   user-facing match features). This is how Amir's group runs
-  //   MoM + ratings only.
-  const featureForKey = (key: string): keyof typeof features | null => {
-    const seg = key.includes(":") ? key.slice(key.indexOf(":") + 1) : key;
-    if (
-      seg.startsWith("announce-match") ||
-      seg.startsWith("rolling-announce") ||
-      seg.startsWith("dropout-reminder") ||
-      seg.startsWith("list-published") ||
-      seg.startsWith("evening-update") ||
-      seg.startsWith("chase-") ||
-      seg.startsWith("pre-kickoff") ||
-      seg.startsWith("cancel-nudge") ||
-      seg.startsWith("switch-nudge") ||
-      seg.startsWith("football-gear-reminder")
-    )
-      return "attendance";
-    // The recruit chase-up says "still after N players", which is only
-    // meaningful where capacity is tracked. A ratings-only org has zero
-    // CONFIRMED rows by construction, so its squad would read as
-    // permanently short and every invited player would be chased.
-    if (seg.startsWith("recruit-chase")) return "attendance";
-    // The month's list (slice 5) is the squad, so it follows attendance.
-    if (seg.startsWith("month-list")) return "attendance";
-    // So is the month's sign-up list (slice 3).
-    if (seg.startsWith("msu:list")) return "attendance";
-    if (seg.startsWith("bench-prompt")) return "bench";
-    if (seg.startsWith("mom-")) return "momVoting";
-    if (seg.startsWith("badges")) return "badgeAnnouncements";
-    if (seg.startsWith("rate-")) return "playerRating";
-    if (seg.startsWith("payment-")) return "paymentTracking";
-    if (seg.startsWith("unpaid-")) return "paymentTracking";
-    if (seg.startsWith("fee-ask")) return "paymentCollection";
-    if (seg.startsWith("pay-chase")) return "paymentCollection";
-    // ask-score is the "what was the final score?" prompt. Its sole
-    // consumer is ELO recomputation, which only runs when teams were
-    // generated — i.e. when teamBalancing is on. For rating-only orgs
-    // (Sutton Lads 2026-05-28) the prompt's "I'll use it to update
-    // everyone's rating for next week" is literally false — peer
-    // ratings come from teammates, not from the score. Gate the
-    // prompt out unless team balancing is enabled.
-    if (seg.startsWith("ask-score")) return "teamBalancing";
-    // Everything else: infrastructure / meta → allow.
-    return null;
-  };
+  //   reviewable transform. The key → feature mapping (and which keys
+  //   are never gated) lives in `due-key-feature.ts`, shared with the
+  //   payment-claim classifier's "last message" context.
   const gated = out.filter((instr) => {
     // The bench-prompt kind is bench regardless of key shape.
     if (instr.kind === "bench-prompt" && !features.bench) return false;
-    const f = featureForKey(instr.key);
+    const f = featureForDueKey(instr.key);
     return f === null ? true : features[f];
   });
 

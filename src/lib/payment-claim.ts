@@ -88,6 +88,18 @@
  * blocked claim and "paid for my mate" get none. A failure to queue it is
  * logged and nothing is said.
  *
+ * "I'LL PAY RAIHAN DIRECTLY" (Kemal, 2026-10-18): its own intent,
+ * `will_pay_direct`, and EXACTLY the pay page's "Pay the collector
+ * directly" button: `markDirectPaymentPending` with `via: "dm-will-pay"`,
+ * so the same pending state (the daily pay chase skips it), the
+ * collector's notice in its "says they'll pay you directly" form, and a
+ * "you'll pay them" ack. A plan that does not choose the collector ("I'll
+ * pay later") stays `other`: the pay link is still the way.
+ *
+ * THE MODEL IS TOLD WHO THE COLLECTOR IS (Feroz, FNF 2026-10-18), and
+ * every verdict is logged, `other` included: "I bank transferred Raihan"
+ * was read as paying some other person and left no trace.
+ *
  * PAYING FOR SOMEONE ELSE ("paid for me and my mate"): its own intent,
  * `paid_for_others`. Nothing is written, because MatchTime does not
  * guess how many people a payment covered. The player is sent their pay
@@ -98,11 +110,17 @@ import { db } from "./db";
 import { REPLY_PRIORITY } from "./dm-reply-priority";
 import { normaliseLang, type Lang } from "./i18n/lang";
 import { buildPaidClaimAck, buildPaidForOthersReply } from "./dm-copy";
-import { markDirectPaymentPending, type DirectPendingOutcome } from "./direct-payment";
+import { markDirectPaymentPending, type DirectPaymentVia, type DirectPendingOutcome } from "./direct-payment";
 import { gbp } from "./payments";
 import { withOrgAiBudget } from "./ai-budget";
-import { classifyPaymentClaim, type PaymentClaimIntent } from "./payment-claim-classifier";
+import {
+  classifyPaymentClaimDetailed,
+  type PaymentClaimClassification,
+  type PaymentClaimContext,
+  type PaymentClaimIntent,
+} from "./payment-claim-classifier";
 import { queuePaidClaimReaction } from "./paid-claim-reaction";
+import { featureForDueKey } from "./due-key-feature";
 
 export {
   PAYMENT_CLAIM_MIN_CONFIDENCE,
@@ -164,19 +182,86 @@ export function pickClaimMatch(rows: OwedMatchRow[], userId: string): OwedMatch 
 
 // ── THE ORCHESTRATION, WITH EVERY PIECE OF I/O INJECTED ─────────────
 
+// ── WHAT THE MODEL IS TOLD ───────────────────────────────────────────
+
+/** The classifier's context for an owed match. The collector's name is
+ *  load-bearing: without it "I bank transferred Raihan" reads as paying
+ *  some other person (Feroz, FNF 2026-10-18). */
+export function paymentClaimContext(
+  owed: OwedMatch,
+  playerName: string | null,
+  lastBotDm: string | null,
+): PaymentClaimContext {
+  return {
+    playerName,
+    owes: `${gbp(owed.fee)} for ${owed.activityName}`,
+    collectorName: owed.collectorName,
+    lastBotDm,
+  };
+}
+
+/** A scheduler DM is stored as a `SentNotification` key, never with its
+ *  words, so it is described by the feature its key belongs to (the
+ *  scheduler's own mapping, `due-key-feature.ts`). Null when the key says
+ *  nothing useful. */
+function describeScheduledDm(key: string): string | null {
+  switch (featureForDueKey(key)) {
+    case "paymentCollection":
+    case "paymentTracking":
+      return "(a reminder to pay the match fee they owe, with their pay link)";
+    case "playerRating":
+      return "(a request to rate their teammates from the last match)";
+    case "momVoting":
+      return "(a Man of the Match vote)";
+    case "attendance":
+    case "bench":
+      return "(a message about who is playing in a match)";
+    default:
+      return null;
+  }
+}
+
+/**
+ * MatchTime's most recent DM to this player, from BOTH places DMs are
+ * recorded: a queued `BotJob` (its words) and a scheduler DM handed out
+ * by /due-posts (`SentNotification`, key only). Until 2026-10-18 only the
+ * BotJob was read, so Feroz's daily pay chasers and rating reminders were
+ * invisible and the model saw a two-day-old pay link as "last". The
+ * newer of the two wins; a newer scheduler DM that cannot be described is
+ * "not known", never the stale BotJob.
+ */
+export function pickLastBotDm(input: {
+  queued: { text: string; at: Date } | null;
+  scheduled: { key: string; at: Date } | null;
+}): string | null {
+  const { queued, scheduled } = input;
+  if (scheduled && (!queued || scheduled.at.getTime() > queued.at.getTime())) {
+    return describeScheduledDm(scheduled.key);
+  }
+  return queued?.text ?? null;
+}
+
+/** How far back a scheduler DM still counts as the last thing said. */
+const LAST_DM_LOOKBACK_MS = 14 * 24 * 3600 * 1000;
+
 export interface PaymentClaimDeps {
+  /** The sender, for the verdict log. */
+  userId: string;
   /** The sender's name, for the reply's greeting. */
   playerName: string | null;
   /** The match this player owes for, or null. Checked BEFORE the model. */
   owedMatch: () => Promise<OwedMatch | null>;
-  /** The model's read. A throw is `other`. */
-  classify: (owed: OwedMatch) => Promise<PaymentClaimIntent>;
+  /** The model's read, with its confidence and reasoning (logged). A throw
+   *  is `other`. */
+  classify: (owed: OwedMatch) => Promise<PaymentClaimClassification>;
   /** Records this WhatsApp message as handled. False when it already was
    *  (a replay of the same message), in which case nothing else runs. */
   firstSighting: (matchId: string) => Promise<boolean>;
   /** THE WRITE: `markDirectPaymentPending`, the settle-directly button's
-   *  own implementation. Never sets paidAt. */
-  markPending: (matchId: string) => Promise<DirectPendingOutcome>;
+   *  own implementation. Never sets paidAt. `via` picks the collector's
+   *  wording: "dm-claim" ("says they've paid you") or "dm-will-pay"
+   *  ("says they'll pay you", the button's own). */
+  markPending: (matchId: string, via: DirectPaymentVia) => Promise<DirectPendingOutcome>;
   /** The player's pay link for this match. Sends nothing. */
   payLink: (matchId: string) => Promise<string>;
   /** The ONE private reply, to the player. */
@@ -190,7 +275,9 @@ export interface PaymentClaimDeps {
 
 export type PaymentClaimResult =
   | {
-      handled: "paid-claim";
+      /** "will-pay-direct": the player said they WILL pay the collector
+       *  directly, the button said in words (Kemal, 2026-10-18). */
+      handled: "paid-claim" | "will-pay-direct";
       matchId: string;
       alreadyPending: boolean;
       collectorNotified: boolean;
@@ -212,13 +299,20 @@ export async function runPaymentClaim(deps: PaymentClaimDeps): Promise<PaymentCl
   const owed = await deps.owedMatch();
   if (!owed) return NOT_HANDLED;
 
-  let intent: PaymentClaimIntent;
+  let verdict: PaymentClaimClassification;
   try {
-    intent = await deps.classify(owed);
+    verdict = await deps.classify(owed);
   } catch (err) {
     console.error("[payment-claim] classification threw; treating the DM as `other`:", err);
     return NOT_HANDLED;
   }
+  // EVERY verdict, `other` included: Feroz's "I bank transferred Raihan"
+  // was read as `other` and left no trace at all (FNF 2026-10-18).
+  console.info(
+    `[payment-claim] verdict user=${deps.userId} match=${owed.matchId} intent=${verdict.intent} ` +
+      `confidence=${verdict.confidence.toFixed(2)} reasoning=${JSON.stringify(verdict.reasoning.slice(0, 120))}`,
+  );
+  const intent: PaymentClaimIntent = verdict.intent;
   if (intent === "other") return NOT_HANDLED;
 
   if (!(await deps.firstSighting(owed.matchId))) return { handled: "paid-claim-replay" };
@@ -238,7 +332,8 @@ export async function runPaymentClaim(deps: PaymentClaimDeps): Promise<PaymentCl
     return { handled: "paid-claim-for-others", matchId: owed.matchId };
   }
 
-  const marked = await deps.markPending(owed.matchId);
+  const willPay = intent === "will_pay_direct";
+  const marked = await deps.markPending(owed.matchId, willPay ? "dm-will-pay" : "dm-claim");
   if (!marked.ok) {
     // Paid or blocked between the gate and the write. Silent, and handled:
     // falling through would hand "Paid" to a tentative follow-up or a
@@ -254,6 +349,7 @@ export async function runPaymentClaim(deps: PaymentClaimDeps): Promise<PaymentCl
       amount: marked.amount,
       activityName: owed.activityName,
       alreadyPending: marked.alreadyPending,
+      willPay,
       lang: owed.lang,
     }),
   });
@@ -265,7 +361,7 @@ export async function runPaymentClaim(deps: PaymentClaimDeps): Promise<PaymentCl
     console.error(`[payment-claim] could not queue the ✅ for match ${owed.matchId}:`, err);
   }
   return {
-    handled: "paid-claim",
+    handled: willPay ? "will-pay-direct" : "paid-claim",
     matchId: owed.matchId,
     alreadyPending: marked.alreadyPending,
     collectorNotified: marked.collectorNotified,
@@ -292,6 +388,7 @@ export async function handlePaymentClaimDm(input: {
   if (!replyPhone) return NOT_HANDLED;
 
   return runPaymentClaim({
+    userId,
     playerName: input.userName,
     owedMatch: async () => {
       const rows = await db.attendance.findMany({
@@ -353,18 +450,25 @@ export async function handlePaymentClaimDm(input: {
       return picked;
     },
     classify: async (owed) => {
-      const last = await db.botJob.findFirst({
-        where: { kind: "dm", phone: replyPhone },
-        orderBy: { createdAt: "desc" },
-        select: { text: true },
+      const [queued, scheduled] = await Promise.all([
+        db.botJob.findFirst({
+          where: { kind: "dm", phone: replyPhone },
+          orderBy: { createdAt: "desc" },
+          select: { text: true, createdAt: true, sentAt: true },
+        }),
+        db.sentNotification.findFirst({
+          where: { kind: "dm", targetUser: userId, createdAt: { gte: new Date(Date.now() - LAST_DM_LOOKBACK_MS) } },
+          orderBy: { createdAt: "desc" },
+          select: { key: true, createdAt: true },
+        }),
+      ]);
+      const lastBotDm = pickLastBotDm({
+        queued: queued ? { text: queued.text, at: queued.sentAt ?? queued.createdAt } : null,
+        scheduled: scheduled ? { key: scheduled.key, at: scheduled.createdAt } : null,
       });
       // Spent from the club the player owes (the daily AI cap).
       return withOrgAiBudget(owed.orgId, () =>
-        classifyPaymentClaim(text, {
-          playerName: input.userName,
-          owes: `${gbp(owed.fee)} for ${owed.activityName}`,
-          lastBotDm: last?.text ?? null,
-        }),
+        classifyPaymentClaimDetailed(text, paymentClaimContext(owed, input.userName, lastBotDm)),
       );
     },
     firstSighting: async (matchId) => {
@@ -379,7 +483,7 @@ export async function handlePaymentClaimDm(input: {
         throw err;
       }
     },
-    markPending: (matchId) => markDirectPaymentPending({ userId, matchId, via: "dm-claim" }),
+    markPending: (matchId, via) => markDirectPaymentPending({ userId, matchId, via }),
     payLink: async (matchId) => {
       const { signMagicLinkToken, MAGIC_LINK_TTL } = await import("./magic-link");
       const { buildShortMagicLinkUrl } = await import("./short-link");

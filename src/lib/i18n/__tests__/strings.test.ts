@@ -430,6 +430,7 @@ const SAMPLES: SampleArgs = {
   dm_direct_pay_notice: { playerName: "Sait Demir", activityName: "Tuesday 7-a-side", amount: "£24", quantity: 3, url: "https://mt.example/s/collect", claimedPaid: true },
   dm_paid_claim_ack: { firstName: "Sait", collectorName: "Elvin", amount: "£8", activityName: "Tuesday 7-a-side" },
   dm_paid_claim_already: { firstName: "Sait", collectorName: "Elvin", amount: "£8", activityName: "Tuesday 7-a-side" },
+  dm_will_pay_direct_ack: { firstName: "Sait", collectorName: "Elvin", amount: "£8", activityName: "Tuesday 7-a-side" },
   dm_paid_for_others: { firstName: "Sait", collectorName: "Elvin", url: "https://mt.example/s/pay" },
   dm_admin_recruit_done: { invited: 5, matchName: "Tuesday 7-a-side", matchWhen: "WHENLABEL", need: 2 },
   dm_admin_recruit_nobody_new: { matchName: "Tuesday 7-a-side" },

@@ -19,62 +19,42 @@ export const PAYMENT_CLAIM_MODEL = "claude-haiku-4-5";
 export const PAYMENT_CLAIM_MIN_CONFIDENCE = 0.8;
 
 /** The closed enum. Anything else the model returns becomes `other`. */
-export type PaymentClaimIntent = "paid" | "paid_for_others" | "other";
+export type PaymentClaimIntent = "paid" | "paid_for_others" | "will_pay_direct" | "other";
 
-const VALID: ReadonlySet<string> = new Set<PaymentClaimIntent>(["paid", "paid_for_others", "other"]);
+const VALID: ReadonlySet<string> = new Set<PaymentClaimIntent>(["paid", "paid_for_others", "will_pay_direct", "other"]);
 
 /**
  * The prompt. One prompt for every org: a Sutton player writes Turkish as
- * readily as a Turkish club's player writes English, so both languages'
- * examples are always there. The NEGATIVE examples are the job: every one
- * contains a payment word and none of them is a claim.
+ * readily as a Turkish club's player writes English, so the examples are
+ * English and Turkish side by side.
+ *
+ * Rewritten whole, and shorter, on 2026-10-18 (Feroz, FNF): "I bank
+ * transferred Raihan" was read as `other` because the model was never told
+ * Raihan is the money collector. The user turn now names the collector and
+ * the context does the work; each intent is defined once. `will_pay_direct`
+ * (Kemal, same day) is the pay page's "Pay the collector directly" button
+ * said in words. The examples use a collector called Sam, so the live
+ * check's Raihan cases prove the rule rather than echo an example.
  */
 export function buildPaymentClaimSystemPrompt(): string {
-  return `You read ONE private WhatsApp message sent to MatchTime, a football club's bot, by a player who currently owes a match fee. MatchTime sent them a pay link for it. You decide whether the message is the player TELLING you they have ALREADY PAID the club's money collector. You never answer the message.
+  return `A player who owes a match fee sent MatchTime, their football club's bot, the private WhatsApp message under "THE DM". Above it you get what they owe, "Money collector:" (the club member the fees are paid to, through MatchTime's pay link or directly by cash or bank transfer) and MatchTime's last message to them (its words in quotes, or a description in brackets).
 
-Return ONE intent:
+What is the player telling us about paying? Pick one:
+- "paid": they say they have paid their own fee to the club: to the money collector (by name, even a first name or with a Turkish ending), "you", "the organiser", or nobody named. A bare "done" or "tamam" counts only if MatchTime's last message was about paying.
+- "paid_for_others": they have paid, and it covers somebody else too, or instead.
+- "will_pay_direct": they have not paid yet but say they will pay the money collector directly (by name, or "the organiser"), by cash or transfer.
+- "other": anything else. A plan that does not say they will pay the collector directly, a question, a denial, a complaint, a payment made at an earlier time, a payment to someone who is not the money collector (or to anyone, when the collector is not known), or a message about something else.
 
-- "paid": the sender says the payment is DONE, for themselves. Examples: "Paid", "paid 👍", "sent it", "done 👍", "transferred", "just paid you", "paid mate", "money sent", "bank transfer done", "sent to Kemal", "paid Kemal cash at the pitch". Turkish: "ödedim", "gönderdim", "yolladım", "tamam ödedim", "attım parayı", "havale yaptım", "gönderdim abi".
+Examples, if the money collector is Sam (English | Turkish):
+paid: "Paid" | "ödedim"; "sent it" | "gönderdim abi"; "transferred" | "havale yaptım";"bank transferred Sam" | "Sam'e havale yaptım"; "paid Sam cash" | "Sam'e elden verdim"
+paid_for_others: "paid for me and my mate" | "ikimizin parasını gönderdim"
+will_pay_direct: "will send Sam tonight" | "akşam Sam'e atarım"; "I'll give the organiser cash" | "organizatöre elden veririm"
+other: "I'll pay later" | "sonra öderim"; "haven't paid yet" | "daha ödemedim"; "how much do I owe?" | "ne kadar borcum var?"; "did you get my payment?" | "parayı aldın mı?"; "did Sam get it?" | "Sam'e geçti mi?"; "paid last week" | "geçen hafta ödedim"; "paid Ali" | "Ali'ye verdim"; "👍"; "done 👍" after a request to rate teammates
 
-- "paid_for_others": the sender says the payment is done AND that it covers somebody else too, or instead. Examples: "paid for me and my mate", "sent £16 for me and Ali", "paid for my brother as well", "ikimizin parasını gönderdim", "Ali'nin parasını da yolladım".
-
-- "other": EVERYTHING else.
-
-THE ONE DISTINCTION THAT MATTERS. Only a payment the sender states as already DONE counts. A plan, a promise, a question, a denial, a complaint, or a payment tied to some other time is "other", however many payment words it contains.
-
-  "Paid"                            -> paid
-  "sent it"                         -> paid
-  "done 👍" (after a payment reminder) -> paid
-  "ödedim"                          -> paid
-  "gönderdim abi"                   -> paid
-  "paid for me and my mate"         -> paid_for_others
-  "I'll pay later"                  -> other, it is a plan
-  "will send it tonight"            -> other, it is a plan
-  "haven't paid yet"                -> other, it says the opposite
-  "how much do I owe?"              -> other, it is a question
-  "did you get my payment?"         -> other, it is a question to you
-  "paid last week"                  -> other, it names another time; it may be another match or a dispute
-  "can I pay by bank transfer?"     -> other, it is a question
-  "why am I being asked to pay?"    -> other, it is a complaint
-  "IN"                              -> other
-  "👍"                              -> other, an acknowledgement is not a claim
-  "sonra öderim"                    -> other, it is a plan
-  "daha ödemedim"                   -> other, it says the opposite
-  "ne kadar borcum var?"            -> other, it is a question
-  "parayı aldın mı?"                -> other, it is a question
-  "geçen hafta ödedim"              -> other, it names another time
-
-A bare "done", "sent" or "tamam" only counts as a claim when MatchTime's last message to this player (shown below the context, when known) was about paying. If that last message was about something else (rating teammates, availability, a match reminder), a bare "done" answers THAT and is "other".
-
-If you are not at least 80% sure, return "other" with a low confidence. A wrong "paid" tells the money collector that this player says they have paid; the collector still has to check and confirm, but it is a false message about somebody's money. A wrong "other" means the player may have to say it again. When in doubt, choose "other".
+If you are not at least 80% sure, choose "other": a wrong "other" only means they say it again.
 
 Output STRICT JSON only, no markdown, no fences:
-
-{
-  "intent": "paid" | "paid_for_others" | "other",
-  "confidence": <number 0..1>,
-  "reasoning": "<short justification, max 100 chars>"
-}`;
+{"intent": "paid" | "paid_for_others" | "will_pay_direct" | "other", "confidence": <number 0..1>, "reasoning": "<max 100 chars>"}`;
 }
 
 /** The model, as one function, so a test can drive the real parse
@@ -86,7 +66,11 @@ export interface PaymentClaimContext {
   /** "£8 for Tuesday 7-a-side": what they owe, so the model can see
    *  what a claim would be about. */
   owes?: string | null;
-  /** MatchTime's most recent DM to this player, when known. */
+  /** Who receives this club's match fees (`Organisation.paymentHolderId`'s
+   *  name). Paying them, by name, IS a claim (Feroz, FNF 2026-10-18). */
+  collectorName?: string | null;
+  /** MatchTime's most recent DM to this player, when known: its words, or
+   *  a bracketed description when only its key was stored. */
   lastBotDm?: string | null;
 }
 
@@ -193,12 +177,22 @@ function liveCall(): PaymentClaimCall | null {
   };
 }
 
+/** A stored message goes in quotes; a bracketed description (a scheduler
+ *  DM whose words were never stored) goes in as it is, as the prompt
+ *  says. */
+function lastDmLine(lastBotDm: string | null | undefined): string {
+  if (!lastBotDm) return "(not known)";
+  if (lastBotDm.startsWith("(") && lastBotDm.endsWith(")")) return lastBotDm;
+  return JSON.stringify(lastBotDm.slice(0, 300));
+}
+
 /** The user turn: context lines, then the message under a header. */
 export function buildPaymentClaimUserTurn(text: string, ctx: PaymentClaimContext): string {
   return [
     ctx.playerName ? `Player: ${ctx.playerName}` : null,
     ctx.owes ? `They owe: ${ctx.owes}` : null,
-    `MatchTime's last message to them: ${ctx.lastBotDm ? JSON.stringify(ctx.lastBotDm.slice(0, 300)) : "(not known)"}`,
+    `Money collector: ${ctx.collectorName?.trim() || "(not known)"}`,
+    `MatchTime's last message to them: ${lastDmLine(ctx.lastBotDm)}`,
     `${MESSAGE_HEADER}\n${text.trim()}`,
   ]
     .filter(Boolean)

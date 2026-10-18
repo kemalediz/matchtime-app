@@ -1678,7 +1678,9 @@ function cases(lang: Lang): Case[] {
   add("R158 buildPaidClaimAck / no names", buildPaidClaimAck({ playerName: null, collectorName: null, amount: 8.5, activityName: "Tuesday 7-a-side", alreadyPending: false, lang }));
   add("R159 buildPaidClaimAck / already told", buildPaidClaimAck({ playerName: "Sait Demir", collectorName: "Kemal Ediz", amount: 8, activityName: "Tuesday 7-a-side", alreadyPending: true, lang }));
   add("R159 buildPaidClaimAck / already told, no names", buildPaidClaimAck({ playerName: null, collectorName: null, amount: 8, activityName: "Tuesday 7-a-side", alreadyPending: true, lang }));
-  add("R160 buildPaidForOthersReply", buildPaidForOthersReply({ playerName: "Sait Demir", collectorName: "Kemal Ediz", url: "https://mt.example/s/pay", lang }));
+  add("R195 buildPaidClaimAck / will pay directly", buildPaidClaimAck({ playerName: "Sait Demir", collectorName: "Raihan Ahmed", amount: 5, activityName: "Football 9-a-side", alreadyPending: false, willPay: true, lang }));
+  add("R195 buildPaidClaimAck / will pay directly, no names", buildPaidClaimAck({ playerName: null, collectorName: null, amount: 5, activityName: "Football 9-a-side", alreadyPending: false, willPay: true, lang }));
+  add("R160 buildPaidForOthersReply",buildPaidForOthersReply({ playerName: "Sait Demir", collectorName: "Kemal Ediz", url: "https://mt.example/s/pay", lang }));
   add("R160 buildPaidForOthersReply / no names", buildPaidForOthersReply({ playerName: null, collectorName: null, url: "https://mt.example/s/pay", lang }));
   add("R95 buildPayLinkDm", buildPayLinkDm({ playerName: "Sait Demir", activityName: "Tuesday 7-a-side", fee: 8, url: "https://mt.example/s/pay", methods: ALL_WAYS, collectorName: "Elvin Aliyev", lang }));
   add("R95 buildPayLinkDm / no name, pence", buildPayLinkDm({ playerName: null, activityName: "Tuesday 7-a-side", fee: 7.5, url: "https://mt.example/s/pay", methods: ALL_WAYS, collectorName: null, lang }));

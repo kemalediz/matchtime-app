@@ -135,7 +135,10 @@ beforeEach(() => {
   // the model's answer is stubbed, every gate and write below it is real.
   stubDir = mkdtempSync(path.join(tmpdir(), "paid-claim-"));
   const file = path.join(stubDir, "stub.json");
-  writeFileSync(file, JSON.stringify({ bodies: { Paid: "paid", ödedim: "paid" } }));
+  writeFileSync(
+    file,
+    JSON.stringify({ bodies: { Paid: "paid", ödedim: "paid", "will send Kemal tonight": "will_pay_direct" } }),
+  );
   process.env[PAYMENT_CLAIM_STUB_FILE_ENV] = file;
 });
 afterEach(() => {
@@ -193,8 +196,27 @@ describe("A PLAYER'S CLAIM NEVER SETS paidAt", () => {
     for (const d of writtenData()) expect(mentionsPaidAt(d)).toBe(false);
   });
 
-  it("the shared settle-directly function, fresh and repeat, from both callers", async () => {
-    for (const via of ["pay-page", "dm-claim"] as const) {
+  it("'will send Kemal tonight' is the button: pending set, the collector told they'll pay, paidAt never written (Kemal 2026-10-18)", async () => {
+    const out = await handlePaymentClaimDm({
+      userId: "u-abid",
+      userName: "Abid Kazmi",
+      text: "will send Kemal tonight",
+      waMessageId: "wa-5",
+      replyPhone: "447700900009",
+    });
+    expect(out.handled).toBe("will-pay-direct");
+    const data = writtenData();
+    expect(data.some((d) => d.directPendingAt instanceof Date && d.paymentMethod === "direct")).toBe(true);
+    const texts = data.filter((d) => typeof d.text === "string").map((d) => d.text as string);
+    const notice = texts.find((t) => t.startsWith("💸"));
+    expect(notice).toContain("says they'll pay you directly");
+    expect(notice).not.toContain("says they've paid you directly");
+    expect(texts.some((t) => t.includes("you'll pay them"))).toBe(true);
+    for (const d of data) expect(mentionsPaidAt(d), JSON.stringify(d)).toBe(false);
+  });
+
+  it("the shared settle-directly function, fresh and repeat, from every caller", async () => {
+    for (const via of ["pay-page", "dm-claim", "dm-will-pay"] as const) {
       for (const pending of [null, new Date()]) {
         calls.length = 0;
         returns.set("attendance.findUnique", () => ({
