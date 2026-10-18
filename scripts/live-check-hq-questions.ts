@@ -73,7 +73,8 @@ const HQ: HqQuestion[] = [
 
 /**
  * FNF HQ, 2026-10-18 13:32 London, as production routed it: the real
- * WhatsApp id (which the router echoed back miscopied, "B03" twice), the
+ * WhatsApp id (which the router once echoed back miscopied, "B03" twice;
+ * it is now shown "m1" and the code maps it back), the
  * HQ context that was shown above it, the text as the Pi forwarded it, and
  * the raw "@<digits>" form a mention takes before the Pi names MatchTime.
  */
@@ -159,8 +160,9 @@ async function main() {
     for (const text of INCIDENT_TEXTS) {
       const r = await routeBatch(model, [{ id: INCIDENT_ID, authorName: "Kemal", body: text, organisers: { context: INCIDENT_CONTEXT } }], { floor: true });
       const got = r.routes[0];
-      const echoed = r.degradations.some((d) => /echoed/.test(d.detail));
-      console.log(`${mark(got?.source === "model" && want.includes(got.route))}  ${JSON.stringify(text)}  routed ${got?.route} by ${got?.source}${echoed ? " (id echoed wrong, matched)" : ""}   (want question|help by model)`);
+      // The model is shown "m1", never the WhatsApp id; the route must come
+      // back on the real id, by the model, with no fallback.
+      console.log(`${mark(got?.messageId === INCIDENT_ID && got.source === "model" && want.includes(got.route))}  ${JSON.stringify(text)}  routed ${got?.route} by ${got?.source}   (want question|help by model)`);
     }
     // The raw form through the question extractor too (the Pi's form is in
     // the HQ list below).

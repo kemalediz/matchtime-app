@@ -784,9 +784,10 @@ function routerStubFromEnv(): PipelineModel | null {
       // The user block the router is sent is `[id] author: body`, one
       // per line — see `routeBatch`.
       const rows = [...req.user.matchAll(/^\[([^\]]+)\]\s*[^:]*:\s?(.*)$/gm)];
+      // The turn carries short ids (m1, m2, ...); a spec names real ones.
       const routes = rows.map((m) => ({
         id: m[1],
-        route: byId[m[1]] ?? byBody[m[2].trim()] ?? "unsure",
+        route: byId[req.shortIds?.[m[1]] ?? m[1]] ?? byBody[m[2].trim()] ?? "unsure",
       }));
       return {
         text: JSON.stringify({ routes }),

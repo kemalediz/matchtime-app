@@ -9,6 +9,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ModelRequest, PipelineModel } from "../pipeline/llm";
 import type { HqLogRow } from "../admin-group-log";
+import { asShortIds } from "../pipeline/__tests__/router-ids";
 
 const dbMock = vi.hoisted(() => ({
   adminTeamProposal: { findFirst: vi.fn() },
@@ -73,7 +74,7 @@ function model(answer: (req: ModelRequest) => unknown): PipelineModel {
     name: "stub",
     async complete(req) {
       requests.push(req);
-      return { text: JSON.stringify(answer(req)), stopReason: "end_turn", usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }, costUsd: 0, ms: 0 };
+      return { text: req.label === "router" ? asShortIds(JSON.stringify(answer(req)), req) : JSON.stringify(answer(req)), stopReason: "end_turn", usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }, costUsd: 0, ms: 0 };
     },
   };
 }
@@ -131,7 +132,9 @@ describe("the router is the players' group's router, shown the organisers' conte
     expect(user).toContain("WAITING: approval of the proposed teams for Fri 16 Oct, asked at 10:00.");
     expect(user).toContain('REPLYING TO another organiser: "shall we start at 8?"');
     expect(user).toContain("- an organiser: who has the bibs?");
-    expect(user).toContain("[wa-9] Raihan: yes");
+    // The model is shown a short id, never the WhatsApp id.
+    expect(user).toContain("[m1] Raihan: yes");
+    expect(user).not.toContain("wa-9");
     expect(requests[0].system).toContain("IN THE ORGANISERS' GROUP");
   });
 });
@@ -432,10 +435,19 @@ describe("unsure, addressed to MatchTime: never silent", () => {
       expect(r).toEqual({ route: "unsure", outcome: "hq-answered", replyText: SQUAD });
     });
 
-    it("the router's id echoed wrong (the incident's real cause): it is matched, and the question route answers", async () => {
-      const echoed = model(() => ({ routes: [{ id: "[wa-9]", route: "question" }] }));
-      const r = await ask(INCIDENT, "question", { ...player, deps: { routerModel: echoed } });
+    it("the incident's real cause: the router is shown a short id, never the WhatsApp id, and its answer lands", async () => {
+      const waId = "false_120363046757382958@g.us_AC5922E2E21D4093AAD157B03EDDADA1_89485761081551@lid";
+      const shortAnswer: PipelineModel = {
+        name: "answers m1",
+        async complete(req) {
+          requests.push(req);
+          return { text: '{"routes":[{"id":"[m1]","route":"question"}]}', stopReason: "end_turn", usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }, costUsd: 0, ms: 0 };
+        },
+      };
+      const r = await ask(INCIDENT, "question", { ...player, messageId: waId, deps: { routerModel: shortAnswer } });
       expect(r).toEqual({ route: "question", outcome: "hq-answered", replyText: SQUAD });
+      expect(requests[0].user).toContain("[m1] Kemal: @Match Time what is squad now including bench?");
+      expect(requests[0].user).not.toContain(waId);
     });
 
     it("an organiser: the attendance engine first, then the question", async () => {

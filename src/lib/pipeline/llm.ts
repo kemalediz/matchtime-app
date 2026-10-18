@@ -224,6 +224,10 @@ export interface ModelRequest {
   images?: Array<{ mediaType: "image/jpeg" | "image/png" | "image/webp"; data: string }>;
   /** Appears in logs and in the cost breakdown. */
   label: string;
+  /** The router only: each short id the model is shown (m1, m2, ...) and
+   *  the real message id it stands for. Never sent to the model; read by
+   *  the router's test stub, which is configured by real ids. */
+  shortIds?: Readonly<Record<string, string>>;
 }
 
 export interface ModelUsage {
