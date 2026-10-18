@@ -407,7 +407,7 @@ export default async function MatchDetailPage({
                   href={`/matches/${matchId}/rate`}
                   className="inline-flex items-center gap-1 px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium transition-colors"
                 >
-                  {existingRatings > 0 ? "Update ratings" : "Rate players & vote MoM"}
+                  {existingRatings > 0 ? "Update ratings" : momPicked ? "Rate players" : "Rate players & vote MoM"}
                   <ChevronRight className="w-4 h-4" />
                 </Link>
               )}
