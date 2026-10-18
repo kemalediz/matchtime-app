@@ -35,6 +35,14 @@ const SCHEDULE = { dayOfWeek: 4, time: "20:00", venue: "Goals Sutton", playersPe
 test.beforeAll(async () => {
   resetDb();
   const db = (await import("../helpers/test-db")).testDb();
+  // Gary is an unresolved, phone-less member: in real life a record the
+  // bot made for this club, which nobody has signed in as. The fixture
+  // seeds every user as signed in, and an admin may only set the number
+  // of a record the club owns (src/lib/player-account-guard.ts).
+  await db.run(
+    `UPDATE "User" SET email = 'manual-e2e-guest@placeholder.matchtime', onboarded = false WHERE id = $1`,
+    [U.guest],
+  );
   // The e2e seed does NOT create an OnboardingSession — insert one in the
   // "ready" enrichment state pointed at the seeded org.
   await db.run(

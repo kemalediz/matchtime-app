@@ -5103,4 +5103,13 @@ export const en = {
     `Which game are you out of? Reply *1* for *${p.asker}* (${p.askerDay}) or *2* for *${p.own}* (${p.ownDay}).`,
   xask_moved_dm: (p: { asker: string; day: string }) => `*${p.asker}*'s game has moved: it is now ${p.day}. Your place stands. Can't make it? Reply *OUT* to their ask in your group.`,
   xask_guest_overlap: (p: { asker: string }) => `You're playing for *${p.asker}* at that time, so I can't put you in this game as well.`,
+  // ─── Who may change a player's number or name (2026-10-18) ─────────
+  // Admin player editing (src/lib/player-account-guard.ts). A number is a
+  // sign-in, so a club may only edit a record it owns. Names nobody.
+  pg_err_player_owns_account:
+    "This player manages their own number and name on MatchTime, so only they can change them.",
+  pg_err_number_on_matchtime: "That number is already on MatchTime, so it can't be added here.",
+  pg_err_club_not_approved: "You can edit players once your club is approved.",
+  pg_err_merge_keep_owned:
+    "This player manages their own account, so their record has to be the one you keep. Merge the other record into theirs.",
 };

@@ -8,6 +8,13 @@ import { normalisePhone } from "@/lib/phone";
 import { mergePlayersCore } from "@/lib/merge-players-core";
 import { recordAttendanceEvent } from "@/lib/attendance-events";
 import { findExistingOrgMember } from "@/lib/resolve-player";
+import {
+  isClubOwnedUser,
+  loadOwnershipFacts,
+  clubOwnsUser,
+  playerEditContext,
+} from "@/lib/player-account-guard";
+import type { Strings } from "@/lib/i18n/t";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -218,10 +225,12 @@ export async function mergePlayers(
   orgId: string,
   keepUserId: string,
   dropUserId: string,
-) {
+): Promise<{ ok: true } | { ok: false; error: string }> {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Not authenticated");
   await requireOrgAdmin(session.user.id, orgId);
+  const { s, refusal } = await playerEditContext(session.user.id, orgId);
+  if (refusal) return { ok: false, error: refusal.error };
 
   if (keepUserId === dropUserId) throw new Error("Pick two different players");
 
@@ -233,6 +242,24 @@ export async function mergePlayers(
   ]);
   if (!keepMembership || !dropMembership) {
     throw new Error("Both players must be members of this organisation");
+  }
+
+  // Account safety (player-account-guard.ts). The dropped record is
+  // deleted and its identity (number, OAuth link, other clubs) moves to
+  // the keeper, so it must be a record this club owns. And when the keeper
+  // is somebody's own account, the merge must not hand it a number or a
+  // name from the placeholder: that is a phone change by another route.
+  const [keepFacts, dropFacts] = await Promise.all([loadOwnershipFacts(keepUserId), loadOwnershipFacts(dropUserId)]);
+  if (!keepFacts || !dropFacts) throw new Error("Player not found");
+  if (!clubOwnsUser(dropFacts, orgId)) return { ok: false, error: s.pg_err_merge_keep_owned };
+  if (!clubOwnsUser(keepFacts, orgId)) {
+    const [keepUser, dropUser] = await Promise.all([
+      db.user.findUnique({ where: { id: keepUserId }, select: { phoneNumber: true, name: true } }),
+      db.user.findUnique({ where: { id: dropUserId }, select: { phoneNumber: true, name: true } }),
+    ]);
+    const givesPhone = !keepUser?.phoneNumber && !!dropUser?.phoneNumber;
+    const givesName = !keepUser?.name && !!dropUser?.name;
+    if (givesPhone || givesName) return { ok: false, error: s.pg_err_player_owns_account };
   }
 
   // 2026-06-12: explicit 60s timeout. mergePlayersCore issues ~25+ serial
@@ -256,11 +283,18 @@ export async function mergePlayers(
 
   revalidatePath("/admin/players");
   revalidatePath("/admin");
+  return { ok: true };
 }
-export async function updatePlayerName(userId: string, orgId: string, name: string) {
+export async function updatePlayerName(
+  userId: string,
+  orgId: string,
+  name: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Not authenticated");
   await requireOrgAdmin(session.user.id, orgId);
+  const { s, refusal } = await playerEditContext(session.user.id, orgId);
+  if (refusal) return { ok: false, error: refusal.error };
 
   const trimmed = name.trim();
   if (trimmed.length < 1) throw new Error("Name can't be empty");
@@ -272,10 +306,14 @@ export async function updatePlayerName(userId: string, orgId: string, name: stri
     select: { userId: true },
   });
   if (!membership) throw new Error("Player is not a member of this organisation");
+  // `User.name` is global: a rename shows at every club they play at. Only
+  // a record this club owns (player-account-guard.ts).
+  if (!(await isClubOwnedUser(userId, orgId))) return { ok: false, error: s.pg_err_player_owns_account };
 
   await db.user.update({ where: { id: userId }, data: { name: trimmed } });
 
   revalidatePath("/admin/players");
+  return { ok: true };
 }
 
 /**
@@ -307,6 +345,8 @@ export async function createPlayer(
   const session = await auth();
   if (!session?.user?.id) throw new Error("Not authenticated");
   await requireOrgAdmin(session.user.id, orgId);
+  const { s, refusal } = await playerEditContext(session.user.id, orgId);
+  if (refusal) return { ok: false, error: refusal.error };
 
   const name = rawName.trim();
   const phoneInput = (rawPhone ?? "").trim();
@@ -321,25 +361,25 @@ export async function createPlayer(
       select: { id: true, name: true },
     });
     if (existing) {
-      // Backfill a name if the record had none.
-      if (name && !existing.name) {
-        await db.user.update({ where: { id: existing.id }, data: { name } });
-      }
       const mem = await db.membership.findUnique({
         where: { userId_orgId: { userId: existing.id, orgId } },
-        select: { id: true, leftAt: true },
+        select: { id: true, leftAt: true, guestFromOrgId: true },
       });
-      if (mem && !mem.leftAt) {
+      // The number already belongs to somebody who is not this club's
+      // member (another club, a partner club's guest, or no club yet).
+      // Never attach them silently: the answer names nobody and no club
+      // (player-account-guard.ts).
+      if (!mem || mem.guestFromOrgId) return { ok: false, error: s.pg_err_number_on_matchtime };
+      // Backfill a name if the record had none, only on a record we own.
+      if (name && !existing.name && (await isClubOwnedUser(existing.id, orgId))) {
+        await db.user.update({ where: { id: existing.id }, data: { name } });
+      }
+      if (!mem.leftAt) {
         return { ok: false, error: `That number already belongs to ${existing.name ?? "a player"} in this group.` };
       }
-      if (mem && mem.leftAt) {
-        await db.membership.update({ where: { id: mem.id }, data: { leftAt: null } });
-        revalidatePath("/admin/players");
-        return { ok: true, userId: existing.id, created: false, rejoined: true };
-      }
-      await db.membership.create({ data: { userId: existing.id, orgId, role: "PLAYER" } });
+      await db.membership.update({ where: { id: mem.id }, data: { leftAt: null } });
       revalidatePath("/admin/players");
-      return { ok: true, userId: existing.id, created: false, rejoined: false };
+      return { ok: true, userId: existing.id, created: false, rejoined: true };
     }
 
     if (!name) return { ok: false, error: "Please enter a name" };
@@ -405,10 +445,15 @@ export async function confirmProvisionalPlayer(userId: string, orgId: string) {
  * been (e.g. non-playing group member). Sets leftAt, preserving any
  * attendance/rating history.
  */
-export async function removeProvisionalPlayer(userId: string, orgId: string) {
+export async function removeProvisionalPlayer(
+  userId: string,
+  orgId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Not authenticated");
   await requireOrgAdmin(session.user.id, orgId);
+  const { refusal } = await playerEditContext(session.user.id, orgId);
+  if (refusal) return { ok: false, error: refusal.error };
 
   await db.membership.update({
     where: { userId_orgId: { userId, orgId } },
@@ -417,6 +462,7 @@ export async function removeProvisionalPlayer(userId: string, orgId: string) {
 
   revalidatePath("/admin/players");
   revalidatePath("/admin");
+  return { ok: true };
 }
 
 export async function updatePlayerPhone(userId: string, orgId: string, phone: string) {
@@ -424,6 +470,8 @@ export async function updatePlayerPhone(userId: string, orgId: string, phone: st
   if (!session?.user?.id) throw new Error("Not authenticated");
 
   await requireOrgAdmin(session.user.id, orgId);
+  const { s, refusal } = await playerEditContext(session.user.id, orgId);
+  if (refusal) return { ok: false as const, error: refusal.error };
 
   const membership = await db.membership.findUnique({
     where: { userId_orgId: { userId, orgId } },
@@ -433,6 +481,9 @@ export async function updatePlayerPhone(userId: string, orgId: string, phone: st
   // A partner club's guest (cross-club ask, review H1): his number is not
   // this club's to see or to set.
   if (membership.guestFromOrgId) throw new Error("This player is a guest from a partner club");
+  // A number is a sign-in (verifyPhoneSignIn): only a record this club
+  // owns may have it changed by an admin (player-account-guard.ts).
+  if (!(await isClubOwnedUser(userId, orgId))) return { ok: false as const, error: s.pg_err_player_owns_account };
 
   const normalised = normalisePhone(phone);
   if (!normalised) throw new Error("Phone number is not a valid international format");
@@ -461,6 +512,18 @@ export async function updatePlayerPhone(userId: string, orgId: string, phone: st
         where: { phoneNumber: normalised },
         select: { id: true, name: true, email: true },
       });
+      // Both merges below fold one record into the other. The record that
+      // holds the number must be this club's own too, or the merge would
+      // pull another club's player (or a real account) in. Otherwise the
+      // plain refusal, which names nobody outside this club.
+      if (colliding && colliding.id !== userId && !(await isClubOwnedUser(colliding.id, orgId))) {
+        const here = await db.membership.findUnique({
+          where: { userId_orgId: { userId: colliding.id, orgId } },
+          select: { guestFromOrgId: true },
+        });
+        const named = here && !here.guestFromOrgId && colliding.name ? ` (${colliding.name})` : "";
+        return { ok: false as const, error: `Phone number ${normalised} is already assigned to another player${named}` };
+      }
       const isSyncOrphan =
         !!colliding &&
         colliding.id !== userId &&
@@ -558,10 +621,12 @@ export async function updatePlayerPhone(userId: string, orgId: string, phone: st
           redirectToUserId: keepCollidingSide ? keepId : undefined,
         };
       }
-      throw new Error(
-        `Phone number ${normalised} is already assigned to another player` +
-          (colliding?.name ? ` (${colliding.name})` : ""),
-      );
+      // Only a record this club owns reaches here (the check above), so
+      // naming it names one of the club's own players.
+      return {
+        ok: false as const,
+        error: `Phone number ${normalised} is already assigned to another player` + (colliding?.name ? ` (${colliding.name})` : ""),
+      };
     }
     throw err;
   }
@@ -683,12 +748,20 @@ export async function removePlayerAlias(userId: string, orgId: string, rawAlias:
 async function ensureOrgPlayer(
   orgId: string,
   input: { userId?: string; name?: string; phone?: string },
+  s: Strings,
 ): Promise<{ ok: true; userId: string; created: boolean } | { ok: false; error: string }> {
   const name = (input.name ?? "").trim();
 
   if (input.userId) {
     const u = await db.user.findUnique({ where: { id: input.userId }, select: { id: true } });
     if (!u) return { ok: false, error: "Player not found" };
+    // Only somebody who is (or was) this club's own member: an arbitrary
+    // user id must not attach a stranger (player-account-guard.ts).
+    const mem = await db.membership.findUnique({
+      where: { userId_orgId: { userId: u.id, orgId } },
+      select: { guestFromOrgId: true, leftAt: true },
+    });
+    if (!mem || (mem.guestFromOrgId && mem.leftAt)) return { ok: false, error: s.pg_err_number_on_matchtime };
     await ensureMembership(u.id, orgId);
     return { ok: true, userId: u.id, created: false };
   }
@@ -699,7 +772,16 @@ async function ensureOrgPlayer(
     if (!phone) return { ok: false, error: "That doesn't look like a valid phone number" };
     const existing = await db.user.findUnique({ where: { phoneNumber: phone }, select: { id: true, name: true } });
     if (existing) {
-      if (name && !existing.name) await db.user.update({ where: { id: existing.id }, data: { name } });
+      // Same rule as createPlayer: a number that belongs to somebody who
+      // is not this club's member attaches nobody and names nobody.
+      const mem = await db.membership.findUnique({
+        where: { userId_orgId: { userId: existing.id, orgId } },
+        select: { guestFromOrgId: true },
+      });
+      if (!mem || mem.guestFromOrgId) return { ok: false, error: s.pg_err_number_on_matchtime };
+      if (name && !existing.name && (await isClubOwnedUser(existing.id, orgId))) {
+        await db.user.update({ where: { id: existing.id }, data: { name } });
+      }
       await ensureMembership(existing.id, orgId);
       return { ok: true, userId: existing.id, created: false };
     }
@@ -765,8 +847,10 @@ export async function addPlayerToMatch(
   if (!match) return { ok: false, error: "Match not found" };
   const orgId = match.activity.orgId;
   await requireOrgAdmin(session.user.id, orgId);
+  const { s, refusal } = await playerEditContext(session.user.id, orgId);
+  if (refusal) return { ok: false, error: refusal.error };
 
-  const resolved = await ensureOrgPlayer(orgId, input);
+  const resolved = await ensureOrgPlayer(orgId, input, s);
   if (!resolved.ok) return resolved;
   const userId = resolved.userId;
 
