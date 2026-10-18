@@ -42,3 +42,47 @@ export function scoreEntryAction(
   if (!canEnterScore(m, now)) return null;
   return hasScore(m) ? "edit" : "enter";
 }
+
+// ── The score panel on the match page (Kemal, 2026-10-18) ──────────────
+// "Enter score" / "Edit score" open a panel on the match page itself
+// (src/components/match/score-entry-panel.tsx). The teams page, where the
+// box used to live, shows no match date. The result lists' "Add score"
+// links open the match page with the panel already open.
+
+/** A score box's text as a whole number of goals, 0 or more; null when
+ *  it is anything else (empty, negative, a fraction, letters). Digits
+ *  only, so "1e2" or "+3" are not read as numbers either. */
+export function parseScoreInput(raw: string): number | null {
+  const s = raw.trim();
+  if (!/^\d+$/.test(s)) return null;
+  const n = Number(s);
+  return Number.isSafeInteger(n) ? n : null;
+}
+
+export type ScorePairResult =
+  | { ok: true; redScore: number; yellowScore: number }
+  | { ok: false; field: "red" | "yellow" };
+
+/** Both boxes of the panel, checked before anything is sent. A failure
+ *  names the first wrong side so the panel can put the cursor there. */
+export function validateScorePair(red: string, yellow: string): ScorePairResult {
+  const redScore = parseScoreInput(red);
+  if (redScore === null) return { ok: false, field: "red" };
+  const yellowScore = parseScoreInput(yellow);
+  if (yellowScore === null) return { ok: false, field: "yellow" };
+  return { ok: true, redScore, yellowScore };
+}
+
+/** The query value that opens the panel when the match page loads. */
+export const SCORE_PANEL_PARAM = "score";
+
+/** Where a result list's "Add score" goes: the match page, panel open. */
+export function scorePanelHref(matchId: string): string {
+  return `/matches/${matchId}?${SCORE_PANEL_PARAM}=1`;
+}
+
+/** Whether the match page's `?score=` value asks for the panel open. */
+export function shouldOpenScorePanel(value: string | string[] | undefined): boolean {
+  const v = Array.isArray(value) ? value[0] : value;
+  return v === "1";
+}
