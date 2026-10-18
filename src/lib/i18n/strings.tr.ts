@@ -3844,6 +3844,7 @@ export const tr: Strings = {
   score_entry_edit: "Skoru düzenle",
   score_entry_add: "Skor ekle",
   score_entry_err_not_played: "Bu maç henüz oynanmadı, bu yüzden skor girilemez.",
+  score_entry_no_score_yet: "Henüz skor yok",
   own_welcome_title: "MatchTime'a hoş geldin",
   own_welcome_intro:
     "Birkaç bilgi yeterli. Oynadığın mevkileri daha sonra, katıldığın her spor için ayrı ayrı seçeceksin.",

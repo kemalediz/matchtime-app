@@ -18,7 +18,7 @@ import { format } from "date-fns";
 import { formatLondon } from "@/lib/london-time";
 import { Calendar, MapPin, Clock, Star, ChevronRight } from "lucide-react";
 import { t } from "@/lib/i18n/t";
-import { scoreEntryAction } from "@/lib/score-entry";
+import { canEnterScore, hasScore, scoreEntryAction } from "@/lib/score-entry";
 import { buildWeekList } from "@/lib/monthly-week-rules";
 import { PartnerAskPanel } from "@/components/match/partner-ask-panel";
 import { PartnerGuestsPanel } from "@/components/match/partner-guests-panel";
@@ -257,6 +257,26 @@ export default async function MatchDetailPage({
       ? "bg-amber-100 text-amber-700"
       : "bg-slate-100 text-slate-600";
 
+  // The result bar (Kemal, 2026-10-18): on a PLAYED match that was not
+  // cancelled, the result and the admin actions (enter or edit the score,
+  // who's paid) and the rate button sit right under the header. They used
+  // to sit below the team sheets and the full attendance list, where an
+  // admin on a phone had to scroll a long way to find them. Each action
+  // appears once: what the bar shows is left out of the bottom row.
+  const scored = hasScore(match);
+  const showResultBar = canEnterScore(match) && (scored || !!scoreAction || canSeePayments || canRate);
+
+  const paymentsLink = canSeePayments && (
+    <Link
+      href={`/collect/${matchId}`}
+      data-testid="payments-link"
+      className="inline-flex items-center gap-1 px-5 py-2.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-medium"
+    >
+      Payments · who&apos;s paid
+      <ChevronRight className="w-4 h-4" />
+    </Link>
+  );
+
   return (
     <div className="p-6 sm:p-8 max-w-5xl mx-auto space-y-6">
       {/* Header */}
@@ -284,15 +304,33 @@ export default async function MatchDetailPage({
         </div>
       </div>
 
-      {/* Score */}
-      {match.status === "COMPLETED" && match.redScore !== null && match.yellowScore !== null && (
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm py-8 text-center">
-          <div className="flex items-center justify-center gap-8 text-5xl font-bold">
-            <span className="text-red-500">{match.redScore}</span>
-            <span className="text-slate-300 text-3xl">-</span>
-            <span className="text-amber-500">{match.yellowScore}</span>
-          </div>
-          {momTopCount > 0 && (
+      {/* Result bar: the score and the actions for a played match */}
+      {showResultBar && (
+        <section
+          data-testid="match-result-bar"
+          className="bg-white rounded-xl border border-slate-200 shadow-sm px-4 py-5 sm:px-6 sm:py-6 text-center space-y-4"
+        >
+          {scored ? (
+            <div
+              data-testid="match-result"
+              className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 sm:gap-6"
+            >
+              <span data-testid="result-red-label" className="text-right text-base sm:text-lg font-semibold text-slate-800 break-words">
+                {redLabel}
+              </span>
+              <span className="flex items-center gap-3 sm:gap-5 text-4xl sm:text-5xl font-bold tabular-nums whitespace-nowrap">
+                <span data-testid="result-red-score" className="text-red-500">{match.redScore}</span>
+                <span className="text-slate-300 text-2xl sm:text-3xl">-</span>
+                <span data-testid="result-yellow-score" className="text-amber-500">{match.yellowScore}</span>
+              </span>
+              <span data-testid="result-yellow-label" className="text-left text-base sm:text-lg font-semibold text-slate-800 break-words">
+                {yellowLabel}
+              </span>
+            </div>
+          ) : (
+            scoreAction && <p className="text-sm text-slate-500">{ms.score_entry_no_score_yet}</p>
+          )}
+          {scored && momTopCount > 0 && (
             <div className="mt-4 space-y-1">
               <p className="text-sm text-slate-500 flex items-center justify-center gap-1.5 flex-wrap">
                 <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
@@ -344,7 +382,38 @@ export default async function MatchDetailPage({
               )}
             </div>
           )}
-        </div>
+          {(scoreAction || canSeePayments || canRate) && (
+            <div
+              data-testid="match-admin-actions"
+              className="flex flex-col sm:flex-row sm:flex-wrap sm:justify-center gap-2 sm:gap-3 [&>a]:justify-center"
+            >
+              {scoreAction && (
+                <Link
+                  href={`/admin/matches/${matchId}/teams#score`}
+                  data-testid="score-entry-link"
+                  className={
+                    scoreAction === "enter"
+                      ? "inline-flex items-center gap-1 px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium transition-colors"
+                      : "inline-flex items-center gap-1 px-5 py-2.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-medium"
+                  }
+                >
+                  {scoreAction === "edit" ? ms.score_entry_edit : ms.score_entry_enter}
+                  <ChevronRight className="w-4 h-4" />
+                </Link>
+              )}
+              {paymentsLink}
+              {canRate && (
+                <Link
+                  href={`/matches/${matchId}/rate`}
+                  className="inline-flex items-center gap-1 px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium transition-colors"
+                >
+                  {existingRatings > 0 ? "Update ratings" : momPicked ? "Rate players" : "Rate players & vote MoM"}
+                  <ChevronRight className="w-4 h-4" />
+                </Link>
+              )}
+            </div>
+          )}
+        </section>
       )}
 
       {/* Attend button */}
@@ -368,7 +437,7 @@ export default async function MatchDetailPage({
 
       {/* Teams */}
       {hasTeams && (
-        <section>
+        <section data-testid="teams-section">
           <h2 className="text-lg font-semibold text-slate-800 mb-4">Teams</h2>
           <TeamDisplay
             redTeam={redTeam}
@@ -429,7 +498,7 @@ export default async function MatchDetailPage({
       )}
 
       {/* Attendance list */}
-      <section className="bg-white rounded-xl border border-slate-200 shadow-sm">
+      <section data-testid="attendance-section" className="bg-white rounded-xl border border-slate-200 shadow-sm">
         <div className="px-6 py-4 border-b border-slate-100">
           <h2 className="text-lg font-semibold text-slate-800">Attendance</h2>
         </div>
@@ -468,38 +537,7 @@ export default async function MatchDetailPage({
 
       {/* Actions */}
       <div className="flex flex-wrap gap-3">
-        {scoreAction && (
-          <Link
-            href={`/admin/matches/${matchId}/teams#score`}
-            data-testid="score-entry-link"
-            className={
-              scoreAction === "enter"
-                ? "inline-flex items-center gap-1 px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium transition-colors"
-                : "inline-flex items-center gap-1 px-5 py-2.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-medium"
-            }
-          >
-            {scoreAction === "edit" ? ms.score_entry_edit : ms.score_entry_enter}
-            <ChevronRight className="w-4 h-4" />
-          </Link>
-        )}
-        {canSeePayments && (
-          <Link
-            href={`/collect/${matchId}`}
-            className="inline-flex items-center gap-1 px-5 py-2.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-medium"
-          >
-            Payments · who&apos;s paid
-            <ChevronRight className="w-4 h-4" />
-          </Link>
-        )}
-        {canRate && (
-          <Link
-            href={`/matches/${matchId}/rate`}
-            className="inline-flex items-center gap-1 px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium transition-colors"
-          >
-            {existingRatings > 0 ? "Update ratings" : "Rate players & vote MoM"}
-            <ChevronRight className="w-4 h-4" />
-          </Link>
-        )}
+        {!showResultBar && paymentsLink}
         {isAdmin && match.status === "UPCOMING" && isPastDeadline && (
           <Link
             href={`/admin/matches/${matchId}/teams`}

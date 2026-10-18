@@ -5142,6 +5142,8 @@ export const en = {
   score_entry_edit: "Edit score",
   score_entry_add: "Add score",
   score_entry_err_not_played: "This match hasn't been played, so it can't have a score yet.",
+  // The result bar at the top of a played match's page (2026-10-18).
+  score_entry_no_score_yet: "No score yet",
   // ─── A player's own details: /welcome and /profile (2026-10-18) ─────
   // A blank phone never clears the stored one; a stored number is the
   // sign-in number and cannot be changed here (src/lib/own-phone-rules.ts).
