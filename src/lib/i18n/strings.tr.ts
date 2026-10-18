@@ -3860,6 +3860,34 @@ export const tr: Strings = {
   own_err_generic: "Bir şeyler ters gitti",
   own_welcome_submit: "Kurulumu tamamla",
   own_saving: "Kaydediliyor…",
+  // ─── Bir oyuncunun telefonu, /admin/players (FNF, 2026-10-18) ───────
+  phone_err_invalid: "Bu geçerli bir telefon numarası gibi görünmüyor. Uluslararası biçimi kullanın, örneğin +44 7700 900123.",
+  phone_err_not_member: "Bu oyuncu bu kulübün üyesi değil.",
+  phone_err_guest: "Bu oyuncu ortak bir kulüpten misafir, bu yüzden numarası burada girilemez.",
+  phone_err_not_allowed: "Bir oyuncunun numarasını yalnızca bu kulübün sahibi veya yöneticisi değiştirebilir.",
+  phone_err_taken: "Bu numara zaten başka birine ait ve iki kez kullanılamaz.",
+  phone_err_taken_here: (p) =>
+    p.name
+      ? `Bu numara bu kulüpte zaten ${p.name} adlı oyuncuya ait. İkisini birleştirmek için Birleştir'i kullanın.`
+      : "Bu numara bu kulüpte zaten başka bir oyuncuya ait. İkisini birleştirmek için Birleştir'i kullanın.",
+  phone_err_generic: "Numara kaydedilemedi. Lütfen tekrar deneyin.",
+  phone_link_refused_drop_other_clubs:
+    "Bu numara başka bir kulüpteki bir oyuncuya ait. Bu oyuncu da başka bir kulübe bağlı, bu yüzden ikisi buradan bağlanamaz. Birleştirmeleri için MatchTime destek ekibine yazın.",
+  phone_link_refused_drop_sign_in:
+    "Bu numara başka bir kulüpteki bir oyuncuya ait. Bu oyuncunun kendi MatchTime girişi var, bu yüzden ikisi buradan bağlanamaz. Birleştirmeleri için MatchTime destek ekibine yazın.",
+  phone_link_title: "Aynı kişi mi?",
+  phone_link_question: (p) => {
+    const clubs = p.clubs.length <= 1 ? (p.clubs[0] ?? "") : `${p.clubs.slice(0, -1).join(", ")} ve ${p.clubs[p.clubs.length - 1]}`;
+    return p.name
+      ? `Bu numara ${clubs} kulübünde oynayan ${p.name} adlı kişiye ait. Aynı kişi mi?`
+      : `Bu numara ${clubs} kulübünde oynayan birine ait. Aynı kişi mi?`;
+  },
+  phone_link_explain: (p) =>
+    `Evet derseniz bu oyuncunun ${p.club} kulübündeki maçları, puanları ve ödemeleri mevcut hesabına taşınır; hesap numarasını korur. Diğer kulübündeki hiçbir şey değişmez.`,
+  phone_link_yes: "Evet, bağla",
+  phone_link_no: "Hayır, farklı bir numara",
+  phone_link_done: "Mevcut hesabına bağlandı.",
+  phone_link_declined: "Kaydedilmedi. Bu numara zaten başka birine ait ve iki kez kullanılamaz.",
 };
 
 /**

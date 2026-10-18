@@ -2303,6 +2303,13 @@ model UserMerge {
   survivorUserId String // surviving keeper user id
   orgId          String
   createdAt      DateTime @default(now())
+  /// Who asked for the merge, when a person did (2026-10-18). Null on
+  /// every row before it, and on merges a script or the bot ran.
+  actorUserId    String?
+  /// Why, when it is not a plain duplicate merge: "cross-club-phone-link"
+  /// is an admin of this org linking their player to the existing account
+  /// of a person who plays at another club (src/lib/cross-club-link.ts).
+  reason         String?
 
   @@index([oldUserId])
 }

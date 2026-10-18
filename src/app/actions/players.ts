@@ -15,7 +15,10 @@ import {
   playerEditContext,
 } from "@/lib/player-account-guard";
 import { decideOwnPhoneWrite, type OwnPhoneRefusal } from "@/lib/own-phone-rules";
-import type { Strings } from "@/lib/i18n/t";
+import { decideCrossClubLink, firstNameOf, type CrossClubRefusal } from "@/lib/cross-club-link-rules";
+import { linkAcrossClubsCore, loadCrossClubLinkFacts } from "@/lib/cross-club-link";
+import { t, type Strings } from "@/lib/i18n/t";
+import { DEFAULT_LANG } from "@/lib/i18n/lang";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -487,33 +490,137 @@ export async function removeProvisionalPlayer(
   return { ok: true };
 }
 
-export async function updatePlayerPhone(userId: string, orgId: string, phone: string) {
-  const session = await auth();
-  if (!session?.user?.id) throw new Error("Not authenticated");
+/**
+ * Result of setting a player's phone. Errors are DATA, not thrown: Next
+ * redacts a thrown Server-Action message in production, which is how the
+ * FNF admin got "An error occurred in the Server Components render"
+ * (2026-10-18). Every `error` is a readable sentence in the club's
+ * language.
+ *
+ * `link` is set when the number belongs to a MatchTime user who is not a
+ * member of this club and the rules allow linking (cross-club-link-rules
+ * .ts). It carries the other user's FIRST name and their clubs' names,
+ * nothing else; the page then asks "same person?" and on yes calls
+ * `linkPlayerByPhone`.
+ */
+export interface PhoneLinkOffer {
+  /** The number as the admin typed it, normalised. */
+  phone: string;
+  firstName: string | null;
+  clubNames: string[];
+  /** This club's own name, for the dialog's explanation. */
+  thisClub: string;
+}
+export type UpdatePlayerPhoneResult =
+  | {
+      ok: true;
+      phoneNumber: string;
+      mergedSyncOrphan?: string;
+      mergedProvisional?: string;
+      redirectToUserId?: string;
+    }
+  | { ok: false; error: string; link?: PhoneLinkOffer };
 
-  await requireOrgAdmin(session.user.id, orgId);
+async function clubStrings(orgId: string): Promise<{ s: Strings; clubName: string }> {
+  try {
+    const org = await db.organisation.findUnique({ where: { id: orgId }, select: { name: true, language: true } });
+    return { s: t(org?.language), clubName: org?.name ?? "" };
+  } catch {
+    return { s: t(DEFAULT_LANG), clubName: "" };
+  }
+}
+
+function refusalMessage(s: Strings, reason: CrossClubRefusal): string {
+  switch (reason) {
+    case "drop_other_clubs":
+      return s.phone_link_refused_drop_other_clubs;
+    case "drop_has_sign_in":
+      return s.phone_link_refused_drop_sign_in;
+    case "drop_guest":
+      return s.phone_err_guest;
+    case "drop_not_member":
+      return s.phone_err_not_member;
+    // Superadmin, number gone, same user: say only that it is taken.
+    // No name on a refusal.
+    default:
+      return s.phone_err_taken;
+  }
+}
+
+export async function updatePlayerPhone(
+  userId: string,
+  orgId: string,
+  phone: string,
+): Promise<UpdatePlayerPhoneResult> {
+  try {
+    return await updatePlayerPhoneInner(userId, orgId, phone);
+  } catch (err) {
+    // Anything unexpected: logged in full, shown as a sentence.
+    console.error("[updatePlayerPhone] failed", { userId, orgId, err });
+    const { s } = await clubStrings(orgId);
+    return { ok: false, error: s.phone_err_generic };
+  }
+}
+
+async function updatePlayerPhoneInner(
+  userId: string,
+  orgId: string,
+  phone: string,
+): Promise<UpdatePlayerPhoneResult> {
+  const session = await auth();
+  if (!session?.user?.id) return { ok: false, error: (await clubStrings(orgId)).s.phone_err_not_allowed };
+
+  try {
+    await requireOrgAdmin(session.user.id, orgId);
+  } catch {
+    return { ok: false, error: (await clubStrings(orgId)).s.phone_err_not_allowed };
+  }
+  // #314: an approved club (or a platform superadmin) only.
   const { s, refusal } = await playerEditContext(session.user.id, orgId);
-  if (refusal) return { ok: false as const, error: refusal.error };
+  if (refusal) return { ok: false, error: refusal.error };
 
   const membership = await db.membership.findUnique({
     where: { userId_orgId: { userId, orgId } },
     select: { userId: true, guestFromOrgId: true },
   });
-  if (!membership) throw new Error("Player is not a member of this organisation");
+  if (!membership) return { ok: false, error: (await clubStrings(orgId)).s.phone_err_not_member };
   // A partner club's guest (cross-club ask, review H1): his number is not
   // this club's to see or to set.
-  if (membership.guestFromOrgId) throw new Error("This player is a guest from a partner club");
+  if (membership.guestFromOrgId) return { ok: false, error: s.phone_err_guest };
   // A number is a sign-in (verifyPhoneSignIn): only a record this club
-  // owns may have it changed by an admin (player-account-guard.ts).
-  if (!(await isClubOwnedUser(userId, orgId))) return { ok: false as const, error: s.pg_err_player_owns_account };
+  // owns may have it changed by an admin (player-account-guard.ts, #314).
+  // This runs BEFORE the cross-club link offer below, so a link can only
+  // ever be offered for a record this club owns.
+  if (!(await isClubOwnedUser(userId, orgId))) return { ok: false, error: s.pg_err_player_owns_account };
 
   const normalised = normalisePhone(phone);
-  if (!normalised) throw new Error("Phone number is not a valid international format");
+  if (!normalised) return { ok: false, error: (await clubStrings(orgId)).s.phone_err_invalid };
 
   try {
     await db.user.update({ where: { id: userId }, data: { phoneNumber: normalised } });
   } catch (err: unknown) {
     if (typeof err === "object" && err !== null && "code" in err && (err as { code: string }).code === "P2002") {
+      // ── Cross-club first (FNF incident 2026-10-18) ──
+      // The number belongs to somebody who is not a member of this club.
+      // Never merge silently across clubs: ask the admin "same person?"
+      // when the rules allow a link, otherwise say it is taken (with no
+      // name). A number whose owner IS in this club, or is in no club at
+      // all, falls through to the same-club paths below, unchanged.
+      const facts = await loadCrossClubLinkFacts(db, { orgId, dropUserId: userId, phone: normalised });
+      const verdict = decideCrossClubLink(facts);
+      if (verdict.kind === "offer") {
+        const { s, clubName } = await clubStrings(orgId);
+        return {
+          ok: false,
+          error: s.phone_err_taken,
+          link: { phone: normalised, firstName: verdict.firstName, clubNames: verdict.clubNames, thisClub: clubName },
+        };
+      }
+      if (verdict.kind === "refuse") {
+        const { s } = await clubStrings(orgId);
+        return { ok: false, error: refusalMessage(s, verdict.reason) };
+      }
+
       // P2002 = unique-constraint failure on User.phoneNumber. Two
       // scenarios collide here:
       //   (a) The phone genuinely belongs to a DIFFERENT real player
@@ -537,14 +644,16 @@ export async function updatePlayerPhone(userId: string, orgId: string, phone: st
       // Both merges below fold one record into the other. The record that
       // holds the number must be this club's own too, or the merge would
       // pull another club's player (or a real account) in. Otherwise the
-      // plain refusal, which names nobody outside this club.
+      // plain refusal, which names nobody outside this club (#314).
       if (colliding && colliding.id !== userId && !(await isClubOwnedUser(colliding.id, orgId))) {
         const here = await db.membership.findUnique({
           where: { userId_orgId: { userId: colliding.id, orgId } },
           select: { guestFromOrgId: true },
         });
-        const named = here && !here.guestFromOrgId && colliding.name ? ` (${colliding.name})` : "";
-        return { ok: false as const, error: `Phone number ${normalised} is already assigned to another player${named}` };
+        if (here && !here.guestFromOrgId) {
+          return { ok: false, error: s.phone_err_taken_here({ name: firstNameOf(colliding.name) }) };
+        }
+        return { ok: false, error: s.phone_err_taken };
       }
       const isSyncOrphan =
         !!colliding &&
@@ -595,7 +704,7 @@ export async function updatePlayerPhone(userId: string, orgId: string, phone: st
         // After the merge the phone is now on the target user.
         revalidatePath("/admin/players");
         revalidatePath("/admin/players/phones");
-        return { phoneNumber: normalised, mergedSyncOrphan: colliding!.id };
+        return { ok: true, phoneNumber: normalised, mergedSyncOrphan: colliding!.id };
       }
       if (isProvisionalOrphan) {
         // Weigh by history rows on each side. The one with MORE history
@@ -635,6 +744,7 @@ export async function updatePlayerPhone(userId: string, orgId: string, phone: st
         revalidatePath("/admin/players");
         revalidatePath("/admin/players/phones");
         return {
+          ok: true,
           phoneNumber: normalised,
           mergedProvisional: dropId,
           // When the admin's record was the one dropped, the UI needs to
@@ -643,19 +753,87 @@ export async function updatePlayerPhone(userId: string, orgId: string, phone: st
           redirectToUserId: keepCollidingSide ? keepId : undefined,
         };
       }
-      // Only a record this club owns reaches here (the check above), so
-      // naming it names one of the club's own players.
-      return {
-        ok: false as const,
-        error: `Phone number ${normalised} is already assigned to another player` + (colliding?.name ? ` (${colliding.name})` : ""),
-      };
+      // Taken, and not a placeholder we may fold in. Only a record this
+      // club owns reaches here (the #314 check above), so naming it names
+      // one of the club's own players.
+      if (facts.keep?.hasMembershipInOrg) {
+        return { ok: false, error: s.phone_err_taken_here({ name: firstNameOf(colliding?.name) }) };
+      }
+      return { ok: false, error: s.phone_err_taken };
     }
     throw err;
   }
 
   revalidatePath("/admin/players");
   revalidatePath("/admin/players/phones");
-  return { phoneNumber: normalised };
+  return { ok: true, phoneNumber: normalised };
+}
+
+/**
+ * "Yes, link them" (FNF incident 2026-10-18). Club A's player `userId`
+ * is merged INTO the existing account that holds `phone`, through the
+ * shared `mergePlayersCore`, so the person ends up a member of both
+ * clubs. The existing account keeps its id and its phone.
+ *
+ * Authorised for any OWNER or ADMIN of club A (`orgId`); the actor needs
+ * no role at the other club. Everything is re-read and re-decided inside
+ * the transaction (cross-club-link.ts), so a stale dialog cannot link
+ * anything the rules would now refuse. Only club A's rows and club A's
+ * membership are written: the rules refuse a player of A who has any
+ * other club's membership or rows. The `UserMerge` tombstone records who
+ * linked whom and when.
+ */
+export type LinkPlayerByPhoneResult = { ok: true; keptUserId: string } | { ok: false; error: string };
+
+export async function linkPlayerByPhone(
+  userId: string,
+  orgId: string,
+  phone: string,
+): Promise<LinkPlayerByPhoneResult> {
+  try {
+    const session = await auth();
+    if (!session?.user?.id) return { ok: false, error: (await clubStrings(orgId)).s.phone_err_not_allowed };
+    const actorUserId = session.user.id;
+    try {
+      await requireOrgAdmin(actorUserId, orgId);
+    } catch {
+      return { ok: false, error: (await clubStrings(orgId)).s.phone_err_not_allowed };
+    }
+    // #314: an approved club (or a platform superadmin) only. The record
+    // being merged away must also have no sign in of its own and belong
+    // to club A alone; that is re-checked inside the transaction
+    // (cross-club-link-rules.ts, `drop_has_sign_in` / `drop_other_clubs`,
+    // using player-account-guard's `hasOwnSignIn`).
+    const { refusal } = await playerEditContext(actorUserId, orgId);
+    if (refusal) return { ok: false, error: refusal.error };
+    const normalised = normalisePhone(phone);
+    if (!normalised) return { ok: false, error: (await clubStrings(orgId)).s.phone_err_invalid };
+
+    const result = await db.$transaction(
+      async (tx) => linkAcrossClubsCore(tx, { orgId, dropUserId: userId, phone: normalised, actorUserId }),
+      { timeout: 60_000 },
+    );
+    if (!result.ok) {
+      const { s } = await clubStrings(orgId);
+      return {
+        ok: false,
+        error: result.verdict.kind === "refuse" ? refusalMessage(s, result.verdict.reason) : s.phone_err_taken,
+      };
+    }
+    console.info("[linkPlayerByPhone] linked across clubs", {
+      orgId,
+      actorUserId,
+      droppedUserId: userId,
+      keptUserId: result.keptUserId,
+    });
+    revalidatePath("/admin/players");
+    revalidatePath("/admin/players/phones");
+    revalidatePath("/admin");
+    return { ok: true, keptUserId: result.keptUserId };
+  } catch (err) {
+    console.error("[linkPlayerByPhone] failed", { userId, orgId, err });
+    return { ok: false, error: (await clubStrings(orgId)).s.phone_err_generic };
+  }
 }
 
 /**

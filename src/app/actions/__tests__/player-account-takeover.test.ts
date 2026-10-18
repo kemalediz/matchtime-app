@@ -99,7 +99,11 @@ vi.mock("@/lib/db", () => {
     membership: {
       findUnique: async ({ where }: { where: { userId_orgId: { userId: string; orgId: string } } }) =>
         store.mems.find((m) => m.userId === where.userId_orgId.userId && m.orgId === where.userId_orgId.orgId) ?? null,
-      findMany: async ({ where }: { where: { userId: string } }) => store.mems.filter((m) => m.userId === where.userId),
+      findMany: async ({ where }: { where: { userId: string } }) =>
+        store.mems.filter((m) => m.userId === where.userId).map((m) => ({ ...m, org: { name: `Club ${m.orgId}` } })),
+      // The cross-club link's fact loader (cross-club-link.ts, #312).
+      count: async ({ where }: { where: { userId: string; orgId: { not: string } } }) =>
+        store.mems.filter((m) => m.userId === where.userId && m.orgId !== where.orgId.not).length,
       create: async ({ data }: { data: Omit<M, "id" | "leftAt" | "guestFromOrgId"> }) => {
         membershipCreate(data);
         const m = { id: `m-${store.mems.length}`, leftAt: null, guestFromOrgId: null, ...data } as M;
@@ -126,6 +130,16 @@ vi.mock("@/lib/db", () => {
     rating: { count: async () => 0 },
     moMVote: { count: async () => 0 },
     teamAssignment: { count: async () => 0 },
+    ratingAdjustment: { count: async () => 0 },
+    playerActivityPosition: { count: async () => 0 },
+    analyzedMessage: { count: async () => 0 },
+    userAlias: { count: async () => 0 },
+    rosterSurveyDM: { count: async () => 0 },
+    rosterSurveyResponse: { count: async () => 0 },
+    squadMonthMember: { count: async () => 0 },
+    squadCredit: { count: async () => 0 },
+    account: { count: async () => 0 },
+    session: { count: async () => 0 },
     $transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn({}),
   };
   return { db };
@@ -302,7 +316,7 @@ describe("step 2: changing the number or name of a record the club does not own"
   it("still works: the club's own placeholder gets a number and a name", async () => {
     addUser("ph", { name: "MJA swthree" });
     addMem("ph", CLUB);
-    expect(await updatePlayerPhone("ph", CLUB, "+447700900777")).toEqual({ phoneNumber: "+447700900777" });
+    expect(await updatePlayerPhone("ph", CLUB, "+447700900777")).toEqual({ ok: true, phoneNumber: "+447700900777" });
     expect(await updatePlayerName("ph", CLUB, "Michael")).toEqual({ ok: true });
     expect(store.users.get("ph")).toMatchObject({ phoneNumber: "+447700900777", name: "Michael" });
   });
@@ -332,8 +346,15 @@ describe("step 2: changing the number or name of a record the club does not own"
     addMem("ph", CLUB);
     const res = await updatePlayerPhone("ph", CLUB, VICTIM_PHONE);
     expect(res).toMatchObject({ ok: false });
-    expect(JSON.stringify(res)).not.toContain("Victim");
+    // The error sentence names nobody. The "Same person?" offer (#312,
+    // owner-approved) carries the holder's FIRST name and club name only,
+    // never their id, email or phone beyond what the admin typed.
+    expect(!res.ok && res.error).not.toContain("Victim");
+    expect(!res.ok && res.link).toEqual({ phone: VICTIM_PHONE, firstName: "Victim", clubNames: [`Club ${OTHER}`], thisClub: "" });
+    expect(JSON.stringify(res)).not.toContain("phone+victim");
+    expect(JSON.stringify(res)).not.toContain('"victim"');
     expect(mergeCore).not.toHaveBeenCalled();
+    expect(store.users.get("victim")!.phoneNumber).toBe(VICTIM_PHONE);
   });
 });
 

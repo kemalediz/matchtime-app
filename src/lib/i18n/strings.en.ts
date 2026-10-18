@@ -5161,4 +5161,36 @@ export const en = {
   own_err_generic: "Something went wrong",
   own_welcome_submit: "Complete setup",
   own_saving: "Saving…",
+  // ─── A player's phone on /admin/players (FNF incident 2026-10-18) ───
+  // Read by updatePlayerPhone / linkPlayerByPhone (actions/players.ts)
+  // and the "same person?" dialog (admin/players/phone-link-dialog.tsx).
+  // The dialog shows the other user's FIRST name and their club's name
+  // and nothing else from that club.
+  phone_err_invalid: "That doesn't look like a valid phone number. Use the international format, for example +44 7700 900123.",
+  phone_err_not_member: "This player is not a member of this club.",
+  phone_err_guest: "This player is a guest from a partner club, so their number can't be set here.",
+  phone_err_not_allowed: "Only an owner or admin of this club can change a player's number.",
+  phone_err_taken: "That number already belongs to someone else and can't be used twice.",
+  phone_err_taken_here: (p: { name: string | null }) =>
+    p.name
+      ? `That number already belongs to ${p.name} in this club. To combine the two, use Merge.`
+      : "That number already belongs to another player in this club. To combine the two, use Merge.",
+  phone_err_generic: "Couldn't save the number. Please try again.",
+  phone_link_refused_drop_other_clubs:
+    "That number belongs to a player at another club. This player is also linked to another club, so the two can't be linked from here. Ask MatchTime support to combine them.",
+  phone_link_refused_drop_sign_in:
+    "That number belongs to a player at another club. This player has their own MatchTime sign in, so the two can't be linked from here. Ask MatchTime support to combine them.",
+  phone_link_title: "Same person?",
+  phone_link_question: (p: { name: string | null; clubs: string[] }) => {
+    const clubs = p.clubs.length <= 1 ? (p.clubs[0] ?? "") : `${p.clubs.slice(0, -1).join(", ")} and ${p.clubs[p.clubs.length - 1]}`;
+    return p.name
+      ? `This number belongs to ${p.name}, who plays at ${clubs}. Same person?`
+      : `This number belongs to someone who plays at ${clubs}. Same person?`;
+  },
+  phone_link_explain: (p: { club: string }) =>
+    `Yes links them: this player's games, ratings and payments at ${p.club} move onto their existing account, which keeps its number. Nothing at their other club changes.`,
+  phone_link_yes: "Yes, link them",
+  phone_link_no: "No, it's a different number",
+  phone_link_done: "Linked to their existing account.",
+  phone_link_declined: "Not saved. That number already belongs to someone else and can't be used twice.",
 };

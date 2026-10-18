@@ -22,6 +22,8 @@ import {
   removeProvisionalPlayer,
   updatePlayerName,
   updatePlayerPhone,
+  linkPlayerByPhone,
+  type PhoneLinkOffer,
   mergePlayers,
   addPlayerAlias,
   removePlayerAlias,
@@ -30,6 +32,7 @@ import {
 import { groupSyncAdminWarning } from "@/lib/group-membership-gate";
 import { t } from "@/lib/i18n/t";
 import { DEFAULT_LANG, type Lang } from "@/lib/i18n/lang";
+import { PhoneLinkDialog } from "./phone-link-dialog";
 import { ProvisionalPlayersBanner, ClubRatingCell, DuplicateSuggestionsBanner, PlayersInfoLegend } from "./player-row-bits";
 import { SectionInfo } from "@/components/info/section-info";
 import type { DuplicateSuggestion } from "@/lib/placeholder-link-rules";
@@ -145,25 +148,72 @@ export default function PlayersPage() {
     }
   }
 
-  async function handlePhone(userId: string, phone: string, original: string | null) {
+  // "Same person?" (FNF 2026-10-18): the number belongs to somebody at
+  // another club. Held here until the admin answers.
+  const [linkAsk, setLinkAsk] = useState<
+    { userId: string; offer: PhoneLinkOffer; input: HTMLInputElement | null; original: string | null } | null
+  >(null);
+  const [linking, setLinking] = useState(false);
+
+  function resetPhoneInput(input: HTMLInputElement | null, original: string | null) {
+    if (input) input.value = original ?? "";
+  }
+
+  async function handleLinkYes() {
+    if (!orgId || !linkAsk) return;
+    setLinking(true);
+    try {
+      const res = await linkPlayerByPhone(linkAsk.userId, orgId, linkAsk.offer.phone);
+      if (!res.ok) {
+        resetPhoneInput(linkAsk.input, linkAsk.original);
+        toast.error(res.error);
+      } else {
+        toast.success(t(lang).phone_link_done);
+        await loadPlayers(includeFormer);
+      }
+    } catch {
+      resetPhoneInput(linkAsk.input, linkAsk.original);
+      toast.error(t(lang).phone_err_generic);
+    } finally {
+      setLinking(false);
+      setLinkAsk(null);
+    }
+  }
+
+  function handleLinkNo() {
+    if (!linkAsk) return;
+    resetPhoneInput(linkAsk.input, linkAsk.original);
+    toast.error(t(lang).phone_link_declined);
+    setLinkAsk(null);
+  }
+
+  async function handlePhone(
+    userId: string,
+    phone: string,
+    original: string | null,
+    input: HTMLInputElement | null = null,
+  ) {
     if (!orgId) return;
     const trimmed = phone.trim();
     if (trimmed === (original ?? "")) return; // no-op
     try {
       const res = await updatePlayerPhone(userId, orgId, trimmed);
-      if ("ok" in res && res.ok === false) {
+      if (!res.ok) {
+        if (res.link) {
+          setLinkAsk({ userId, offer: res.link, input, original });
+          return;
+        }
+        resetPhoneInput(input, original);
         toast.error(res.error);
         return;
       }
       // If the action auto-merged an orphan (wa-sync OR provisional),
       // the player list shape has changed under us — one row removed,
       // another updated. Just reload rather than trying to patch.
-      const merged =
-        ("mergedSyncOrphan" in res && res.mergedSyncOrphan) ||
-        ("mergedProvisional" in res && res.mergedProvisional);
+      const merged = res.mergedSyncOrphan || res.mergedProvisional;
       if (merged) {
         await loadPlayers(includeFormer);
-        if ("redirectToUserId" in res && res.redirectToUserId) {
+        if (res.redirectToUserId) {
           toast.success("Merged into the existing player record with that phone");
         } else {
           toast.success("Phone updated. Merged a duplicate placeholder.");
@@ -174,8 +224,10 @@ export default function PlayersPage() {
         prev.map((p) => (p.id === userId ? { ...p, phoneNumber: res.phoneNumber } : p)),
       );
       toast.success("Phone updated");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed");
+    } catch {
+      // A network failure, say. Never the redacted server error.
+      resetPhoneInput(input, original);
+      toast.error(t(lang).phone_err_generic);
     }
   }
 
@@ -325,6 +377,13 @@ export default function PlayersPage() {
 
   return (
     <div className="space-y-6">
+      <PhoneLinkDialog
+        offer={linkAsk?.offer ?? null}
+        lang={lang}
+        busy={linking}
+        onYes={handleLinkYes}
+        onNo={handleLinkNo}
+      />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <h2 className="flex items-center gap-1 text-lg font-semibold text-slate-800">
@@ -642,7 +701,7 @@ export default function PlayersPage() {
                       type="tel"
                       defaultValue={p.phoneNumber ?? ""}
                       placeholder="+44 7…"
-                      onBlur={(e) => handlePhone(p.id, e.target.value, p.phoneNumber)}
+                      onBlur={(e) => handlePhone(p.id, e.target.value, p.phoneNumber, e.target)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") (e.target as HTMLInputElement).blur();
                         if (e.key === "Escape") {

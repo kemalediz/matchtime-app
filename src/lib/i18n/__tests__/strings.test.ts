@@ -1740,6 +1740,22 @@ const SAMPLES: SampleArgs = {
   xask_vol_game_over: { asker: "FNFCLUB" },
   xask_vol_notice_asker: { name: "NAMEX", partner: "SUTTONCLUB", day: "DAYLABEL", bench: true },
   xask_vol_out_notice_asker: { name: "NAMEX", partner: "SUTTONCLUB", day: "DAYLABEL" },
+  phone_err_invalid: null,
+  phone_err_not_member: null,
+  phone_err_guest: null,
+  phone_err_not_allowed: null,
+  phone_err_taken: null,
+  phone_err_taken_here: { name: "NAMEX" },
+  phone_err_generic: null,
+  phone_link_refused_drop_other_clubs: null,
+  phone_link_refused_drop_sign_in: null,
+  phone_link_title: null,
+  phone_link_question: { name: "NAMEX", clubs: ["SUTTONCLUB", "OTHERCLUB"] },
+  phone_link_explain: { club: "FNFCLUB" },
+  phone_link_yes: null,
+  phone_link_no: null,
+  phone_link_done: null,
+  phone_link_declined: null,
 };
 
 /** Render an entry with its sample arguments. */
