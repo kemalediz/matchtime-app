@@ -161,6 +161,8 @@ export interface WizardResult {
   slug: string;
   playersCreated: number;
   playersLinkedExisting: number;
+  /** Typed numbers that already belong to another account: not attached. */
+  playersSkippedExisting: number;
 }
 
 /**
@@ -227,6 +229,7 @@ export async function createOrgFromWizard(data: WizardSubmission): Promise<Wizar
 
   let playersCreated = 0;
   let playersLinkedExisting = 0;
+  let playersSkippedExisting = 0;
 
   const result = await db.$transaction(
     async (tx) => {
@@ -279,6 +282,16 @@ export async function createOrgFromWizard(data: WizardSubmission): Promise<Wizar
         if (!p.name) continue;
 
         let player = p.phone ? existingByPhone.get(p.phone) : undefined;
+        // A typed number that already belongs to somebody else's account
+        // is NOT attached to the new club (2026-10-18, see
+        // src/lib/player-account-guard.ts): a number is a sign-in, and an
+        // organiser typing it proves nothing about who holds it. That
+        // player joins through the club's WhatsApp group instead. The
+        // organiser's own number is still theirs to list.
+        if (player && player.id !== userId) {
+          playersSkippedExisting += 1;
+          continue;
+        }
         if (!player) {
           const emailSlug = p.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "player";
           const user = await tx.user.create({
@@ -371,7 +384,7 @@ export async function createOrgFromWizard(data: WizardSubmission): Promise<Wizar
   // Venue location: looked up after the response, never part of the save.
   await scheduleVenueResolveForOrg(result.orgId);
   revalidatePath("/");
-  return { ...result, playersCreated, playersLinkedExisting };
+  return { ...result, playersCreated, playersLinkedExisting, playersSkippedExisting };
 }
 
 function slugify(s: string): string {

@@ -13,7 +13,7 @@
  */
 import { mkdirSync } from "node:fs";
 import { test, expect, signInAs, resetDb, U } from "../fixtures";
-import { NAME, ORG_ID } from "../helpers/constants";
+import { NAME, ORG_ID, PHONE } from "../helpers/constants";
 
 test.describe.configure({ mode: "serial" });
 
@@ -123,7 +123,74 @@ test("adding an ambiguous name still creates a fresh player", async ({ page, db 
   expect(await db.count(`SELECT COUNT(*) FROM "User" WHERE name = 'Omar'`)).toBe(1);
 });
 
+// ── Account safety (2026-10-18, src/lib/player-account-guard.ts) ────────
+// A number is a sign-in. The fixture seeds every user as signed in, so
+// Pat Player is somebody who manages their own account.
+
+test("an admin cannot change the name or number of a player who manages their own account", async ({ page, db }) => {
+  await signInAs(page, U.admin, "/admin/players");
+  await page.waitForURL("**/admin/players");
+  const nameInput = page.locator(`input[value="${NAME.player}"]`);
+  await expect(nameInput).toBeVisible({ timeout: 30_000 });
+
+  await nameInput.fill("Hijacked Name");
+  await nameInput.blur();
+  await expect(
+    page.getByText("This player manages their own number and name on MatchTime, so only they can change them.").first(),
+  ).toBeVisible({ timeout: 15_000 });
+
+  const phoneInput = page.locator(`input[value="${PHONE.player}"]`);
+  await phoneInput.fill("+447700900888");
+  await phoneInput.blur();
+  await expect(
+    page.getByText("This player manages their own number and name on MatchTime, so only they can change them.").first(),
+  ).toBeVisible({ timeout: 15_000 });
+
+  const row = await db.one<{ name: string; phoneNumber: string }>(
+    `SELECT name, "phoneNumber" FROM "User" WHERE id = $1`,
+    [U.player],
+  );
+  expect(row).toEqual({ name: NAME.player, phoneNumber: PHONE.player });
+});
+
+test("adding a number that is already on MatchTime attaches nobody and names nobody", async ({ page, db }) => {
+  await db.run(
+    `INSERT INTO "Organisation" (id,name,slug,"inviteCode","approvalStatus","createdAt","updatedAt")
+     VALUES ('e2e-other-club','Other Club','e2e-other-club','e2e-other-invite','approved',now(),now())`,
+  );
+  await db.run(
+    `INSERT INTO "User" (id,name,email,"phoneNumber",onboarded,"isActive","updatedAt")
+     VALUES ('e2e-outsider','Olga Outsider','outsider@e2e-test.invalid','+447700900877',true,true,now())`,
+  );
+  await db.run(
+    `INSERT INTO "Membership" (id,"userId","orgId",role,"createdAt") VALUES ('e2e-outsider-m','e2e-outsider','e2e-other-club','PLAYER',now())`,
+  );
+
+  await signInAs(page, U.admin, "/admin/players");
+  await page.waitForURL("**/admin/players");
+  await expect(page.locator(`input[value="${NAME.player}"]`)).toBeVisible({ timeout: 30_000 });
+
+  await page.getByRole("button", { name: /add player/i }).click();
+  await page.getByPlaceholder(/name \(e\.g\./i).fill("Anyone");
+  await page.getByPlaceholder(/phone \(optional/i).fill("+447700900877");
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+
+  await expect(page.getByText("That number is already on MatchTime, so it can't be added here.")).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(page.getByText("Olga Outsider")).toHaveCount(0);
+  expect(
+    await db.count(`SELECT COUNT(*) FROM "Membership" WHERE "userId" = 'e2e-outsider' AND "orgId" = $1`, [ORG_ID]),
+  ).toBe(0);
+});
+
 test("merge flow folds a duplicate into the kept player", async ({ page, db }) => {
+  // A duplicate is in real life a record the bot made for this club and
+  // nobody signed in as; only such a record may be merged away.
+  await db.run(
+    `UPDATE "User" SET email = 'wa-sync+danny@matchtime.local', onboarded = false WHERE id = $1`,
+    [U.dup],
+  );
   await signInAs(page, U.admin, "/admin/players");
   await page.waitForURL("**/admin/players");
   await expect(page.locator(`input[value="${NAME.dup}"]`)).toBeVisible({ timeout: 30_000 });

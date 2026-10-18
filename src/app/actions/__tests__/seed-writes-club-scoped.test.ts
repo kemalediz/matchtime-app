@@ -61,6 +61,8 @@ vi.mock("@/lib/db", () => ({
       updateMany: (...a: unknown[]) => membershipUpdateMany(...a),
       findUnique: (...a: unknown[]) => membershipFindUnique(...a),
     },
+    // An approved club: the player-editing gate (player-account-guard.ts).
+    organisation: { findUnique: async () => ({ approvalStatus: "approved", language: "en" }) },
   },
 }));
 

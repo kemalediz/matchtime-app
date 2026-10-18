@@ -174,7 +174,10 @@ export default function OnboardingWizard() {
         activity,
       });
       toast.success(
-        `Created ${res.slug}. ${res.playersCreated} new, ${res.playersLinkedExisting} linked.`,
+        `Created ${res.slug}. ${res.playersCreated} new, ${res.playersLinkedExisting} linked.` +
+          (res.playersSkippedExisting > 0
+            ? ` ${res.playersSkippedExisting} number(s) already on MatchTime were not added; those players can join through your WhatsApp group.`
+            : ""),
       );
       router.push("/admin");
     } catch (err) {

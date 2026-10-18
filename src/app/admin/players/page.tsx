@@ -133,7 +133,11 @@ export default function PlayersPage() {
     const trimmed = name.trim();
     if (!trimmed || trimmed === (original ?? "")) return; // no-op
     try {
-      await updatePlayerName(userId, orgId, trimmed);
+      const res = await updatePlayerName(userId, orgId, trimmed);
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
       setPlayers((prev) => prev.map((p) => (p.id === userId ? { ...p, name: trimmed } : p)));
       toast.success("Name updated");
     } catch (err) {
@@ -147,6 +151,10 @@ export default function PlayersPage() {
     if (trimmed === (original ?? "")) return; // no-op
     try {
       const res = await updatePlayerPhone(userId, orgId, trimmed);
+      if ("ok" in res && res.ok === false) {
+        toast.error(res.error);
+        return;
+      }
       // If the action auto-merged an orphan (wa-sync OR provisional),
       // the player list shape has changed under us — one row removed,
       // another updated. Just reload rather than trying to patch.
@@ -177,7 +185,11 @@ export default function PlayersPage() {
     if (!orgId) return;
     if (!confirm(`Merge into the chosen player? The duplicate row will be deleted, all attendance/ratings/messages re-attributed to the kept player. This cannot be undone.`)) return;
     try {
-      await mergePlayers(orgId, keepId, dropId);
+      const res = await mergePlayers(orgId, keepId, dropId);
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
       toast.success("Players merged");
       setMergeFrom(null);
       loadPlayers(includeFormer);
@@ -286,7 +298,11 @@ export default function PlayersPage() {
     if (!orgId) return;
     if (!confirm("Remove this player? Their attendance/rating history is preserved, but they won't appear in future matches.")) return;
     try {
-      await removeProvisionalPlayer(userId, orgId);
+      const res = await removeProvisionalPlayer(userId, orgId);
+      if (!res.ok) {
+        toast.error(res.error);
+        return;
+      }
       toast.success("Player removed");
       loadPlayers(includeFormer);
     } catch (err) {
