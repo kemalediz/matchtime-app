@@ -29,8 +29,9 @@ vi.mock("next/server", () => ({
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 // The account-safety gate has its own suite (player-account-takeover.test.ts);
 // here an approved club, so the guest rule is what answers.
-vi.mock("@/lib/player-account-guard", () => ({
-  playerEditContext: vi.fn(async () => ({ s: {}, refusal: null })),
+vi.mock("@/lib/player-account-guard", async () => ({
+  // The real English table: the guest refusal is worded from it.
+  playerEditContext: vi.fn(async () => ({ s: (await import("@/lib/i18n/strings.en")).en, refusal: null })),
   isClubOwnedUser: vi.fn(async () => true),
 }));
 vi.mock("@/lib/player-stats", () => ({ loadPlayerSeasonStats: vi.fn().mockResolvedValue(null) }));
