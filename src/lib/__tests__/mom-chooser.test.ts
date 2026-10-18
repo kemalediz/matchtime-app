@@ -42,7 +42,7 @@ describe("the words", () => {
     expect(buildRatingDm({ ...base, momVote: false })).toContain("Rate your teammates. Takes ~1 minute.");
     expect(buildRatingDm({ ...base, momVote: false })).not.toContain("pick Man of the Match");
     expect(buildRatingDm({ ...base, momVote: false, lang: "tr" })).toContain("Takım arkadaşlarına puan ver. Yaklaşık 1 dakika sürer.");
-    const r = { dayNum: 1, playerName: "Naim Khan", activityName: "FNF", mvpLabel: "Man of the Match", url: "U" };
+    const r = { reminder: "first" as const, playerName: "Naim Khan", activityName: "FNF", mvpLabel: "Man of the Match", url: "U" };
     expect(buildRatingReminderDm(r)).toContain("pick Man of the Match");
     expect(buildRatingReminderDm({ ...r, momVote: false })).not.toContain("Man of the Match");
     expect(buildRatingReminderDm({ ...r, momVote: false, lang: "tr" })).not.toContain("Man of the Match");

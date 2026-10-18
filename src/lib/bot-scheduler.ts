@@ -31,6 +31,14 @@ import type { PiCaps } from "./admin-channel-rules";
 import { getOrgFeatures, type OrgFeatures } from "./org-features";
 import { featureForDueKey } from "./due-key-feature";
 import { formatLondon } from "./london-time";
+import {
+  DEFAULT_RATING_WINDOW_HOURS,
+  RATING_REMINDER_HOUR,
+  RATING_REMINDER_MAX,
+  dueRatingReminder,
+  ratingReminderKey,
+  sentRatingReminderDays,
+} from "./rating-reminder-schedule";
 import { inMessageHours } from "./message-hours";
 import { evaluateFollowupGuard } from "./tentative-followup";
 import {
@@ -3267,37 +3275,69 @@ async function computeForMatch(
       }
     }
 
-    // 6d. Daily 18:00 rating reminder DM for any confirmed player who hasn't
-    //     voted yet (stops when they vote or after the 5-day window).
+    // 6d. Rating reminder DMs: AT MOST TWO after the first DM (Kemal,
+    //     2026-10-18). Reminder 1 at 18:00 London on a day after the
+    //     first DM's day, reminder 2 (the last, its copy says so) two
+    //     days after reminder 1 while the rating window is open, then
+    //     nothing. The schedule is `dueRatingReminder`
+    //     (rating-reminder-schedule.ts), counted from the reminder keys
+    //     actually sent, so a missed run shifts it and never doubles it.
+    //     Before this the reminder went every day of the 5-day window.
+    //     Stops as before when the player rated, opted out or has no phone.
     {
-      const hourNow = londonHour(now);
-      const isReminderHour = hourNow >= 18 && hourNow < 19;
-      const withinWindow = hoursSinceMatch <= 5 * 24;
-      if (isReminderHour && withinWindow) {
+      const windowHours = activity.ratingWindowHours ?? DEFAULT_RATING_WINDOW_HOURS;
+      const isReminderHour = londonHour(now) === RATING_REMINDER_HOUR;
+      const withinWindow = hoursSinceMatch <= windowHours;
+      // Only players who already had the first DM, have not had both
+      // reminders, and are reachable. Worked out from `sentKeys` before
+      // any query, so a match whose reminders are done costs none.
+      const candidates = !(isReminderHour && withinWindow)
+        ? []
+        : confirmed.filter(
+            (a) =>
+              a.user.phoneNumber &&
+              !optedOut.has(a.userId) &&
+              sentKeys.has(`${matchId}:rate-dm:${a.userId}`) &&
+              sentRatingReminderDays(sentKeys, matchId, a.userId).length < RATING_REMINDER_MAX,
+          );
+      if (candidates.length > 0) {
         // Who has already rated (MoMVote OR at least 1 Rating). Shared
         // with the first DM in 6b and the early trigger in 6e, so the
         // three paths cannot disagree about the same player.
         const { engaged: rated } = await loadRatingEngagement();
-        const dayKey = londonDateKey(now);
-        for (const a of confirmed) {
+        // When each first DM went: reminder 1 is never on that same day.
+        const rateDmPrefix = `${matchId}:rate-dm:`;
+        const firstDmRows = await db.sentNotification.findMany({
+          where: { matchId, key: { startsWith: rateDmPrefix } },
+          select: { key: true, createdAt: true },
+        });
+        const firstDmAt = new Map<string, Date>();
+        for (const r of firstDmRows) {
+          if (r.key.startsWith(rateDmPrefix) && r.createdAt) {
+            firstDmAt.set(r.key.slice(rateDmPrefix.length), new Date(r.createdAt));
+          }
+        }
+        for (const a of candidates) {
           if (!a.user.phoneNumber) continue;
-          if (optedOut.has(a.userId)) continue;
           if (rated.has(a.userId)) continue;
-          const key = `${matchId}:rate-reminder:${a.userId}:${dayKey}`;
+          const due = dueRatingReminder({
+            matchAt: m.date,
+            windowHours,
+            firstDmAt: firstDmAt.get(a.userId) ?? null,
+            sentReminderDays: sentRatingReminderDays(sentKeys, matchId, a.userId),
+            now,
+          });
+          if (due === null) continue;
+          const key = ratingReminderKey(matchId, a.userId, now);
           if (sentKeys.has(key)) continue;
-          // Also skip unless we've already sent the initial DM.
-          const initialKey = `${matchId}:rate-dm:${a.userId}`;
-          if (!sentKeys.has(initialKey)) continue;
           const token = signMagicLinkToken({
             userId: a.userId,
             purpose: "rate-match",
             matchId,
             ttlSeconds: MAGIC_LINK_TTL.rateMatch,
           });
-          // Vary tone by day so repeats don't feel like spam.
-          const dayNum = Math.min(5, Math.max(1, Math.ceil(hoursSinceMatch / 24)));
           const text = buildRatingReminderDm({
-            dayNum,
+            reminder: due === 1 ? "first" : "last",
             playerName: a.user.name,
             activityName: activity.name,
             mvpLabel: sport.mvpLabel,
