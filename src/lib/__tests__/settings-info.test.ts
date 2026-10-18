@@ -154,6 +154,7 @@ describe("settings explanations: house rules", () => {
         benchPickMode: s.wr_pick_label,
         benchPickFallback: s.wr_fallback_label,
         listAnnouncer: s.wr_announce_label,
+        momChosenBy: s.mom_chooser_label,
         dropOutDeadline: s.wd_dropout_label,
         listPublish: s.wd_publish_label,
         adminChannel: s.settings_admin_channel_heading,
@@ -192,6 +193,7 @@ describe("settings explanations: house rules", () => {
       expect(names("benchPickMode")).toEqual([s.wr_pick_first_come, s.wr_pick_organiser]);
       expect(names("benchPickFallback")).toEqual([s.wr_fallback_offer, s.wr_fallback_leave]);
       expect(names("listAnnouncer")).toEqual([s.wr_announce_matchtime, s.wr_announce_organisers]);
+      expect(names("momChosenBy")).toEqual([s.mom_chooser_players, s.mom_chooser_organisers]);
       expect(names("adminChannel")).toEqual([
         s.settings_admin_channel_mode_one_person,
         s.settings_admin_channel_mode_admin_group,
@@ -270,6 +272,8 @@ describe("settings explanations: the facts match the code", () => {
     expect(newClubs("benchPickFallback")).toBe(`${s.wr_fallback_offer}.`);
     expect(d.listAnnouncer).toBe("matchtime");
     expect(newClubs("listAnnouncer")).toBe("MatchTime.");
+    expect(d.momChosenBy).toBe("players");
+    expect(newClubs("momChosenBy")).toBe(`${s.mom_chooser_players}.`);
     expect(d.adminChannelMode).toBe("one-person");
     expect(newClubs("adminChannel")).toMatch(/^One person: the club's owner\./);
     expect(d.squadMode).toBe("weekly");

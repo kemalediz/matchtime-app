@@ -195,6 +195,13 @@ export interface ScoreMessageOutcome {
   recorded: { red: number; yellow: number; previous: { red: number; yellow: number } | null } | null;
   /** The engine asked which team won this message's scoreline. */
   askedWhichTeam: boolean;
+  /** The Man of the Match the message names, verbatim (the extractor's
+   *  `momRef`), or null. Nothing here acts on it: the admin group does,
+   *  for a club whose organisers pick it (`admin-group-score.ts`). */
+  momRef: string | null;
+  /** The message states something about the RESULT (a scoreline, a
+   *  winner, a loser, a swap), as opposed to a Man of the Match alone. */
+  statesResult: boolean;
 }
 
 export interface ScoreBatchResult {
@@ -620,6 +627,7 @@ export async function runScoreBatch(args: {
         ? { red: write.write.red, yellow: write.write.yellow, previous: write.write.previous ?? null }
         : null,
       askedWhichTeam: askWrites.some((a) => a.sourceMessageId === m.waMessageId),
+      ...momFacts(factsById.get(m.waMessageId)),
     });
   }
 
@@ -629,6 +637,15 @@ export async function runScoreBatch(args: {
     scoredMatchId,
     degradations,
     cost: { ...cost, ms: Date.now() - t0 },
+  };
+}
+
+/** The two Man of the Match fields of an outcome, from the message's facts. */
+function momFacts(f: Facts | undefined): { momRef: string | null; statesResult: boolean } {
+  if (!f || f.kind !== "score") return { momRef: null, statesResult: false };
+  return {
+    momRef: f.momRef ?? null,
+    statesResult: f.first !== null || f.second !== null || !!f.winner || !!f.loser || !!f.swapped,
   };
 }
 

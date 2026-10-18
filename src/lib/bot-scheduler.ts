@@ -56,7 +56,8 @@ import { PAY_METHOD_SELECT, availablePayMethods, directPayInstructions } from ".
 import { payCollectorName } from "./direct-payment";
 import { isNextUpcomingForPosting } from "./next-upcoming-match";
 import { isSameRecurringFixture } from "./match-slot";
-import { buildMomAnnouncement } from "./mom-announcement";
+import { buildMomAnnouncement, buildMomPickedAnnouncement } from "./mom-announcement";
+import { organisersPickMom } from "./mom-chooser";
 import { computeBadgeAnnouncements } from "./badge-announcement-scheduler";
 import {
   buildBenchOfferGroupPost,
@@ -1402,6 +1403,11 @@ async function computeForMatch(
   //   Each call site keeps the default branch untouched in an `else`, so
   //   a club on "matchtime" (Sutton FC) posts byte for byte as before.
   const organisers = organisersAnnounce(features);
+  // WHO CHOOSES MAN OF THE MATCH (2026-10-18, mom-chooser.ts). On
+  // "organisers" the score ask in HQ asks for it too, the rating DMs ask
+  // for ratings only, and the announcement follows the organisers' pick
+  // instead of a vote. "players" (every club before this) is unchanged.
+  const momByOrganisers = organisersPickMom(features);
   /** The partner clubs the organisers could ask for this match (slice
    *  S5), read once, and only when a short-squad notice goes to them. */
   let partnerOfferRead: Promise<string[] | null> | null = null;
@@ -2788,7 +2794,7 @@ async function computeForMatch(
         now,
         key,
         matchId,
-        text: buildAskScoreHqPost({ activityName: activity.name, lang }),
+        text: buildAskScoreHqPost({ activityName: activity.name, lang, momLabel: momByOrganisers ? sport.mvpLabel : null }),
       });
       if (hq.to === "admin-group") {
         if (hq.instruction) out.push(hq.instruction);
@@ -3152,7 +3158,12 @@ async function computeForMatch(
     const loadRatingEngagement = async () => {
       if (engagementCache) return engagementCache;
       const [momVoters, ratingVoters] = await Promise.all([
-        db.moMVote.findMany({ where: { matchId }, select: { voterId: true } }),
+        // An organisers' pick is one MoMVote cast by an organiser
+        // (mom-pick.ts): it is not that organiser rating, so it counts for
+        // nobody here.
+        momByOrganisers
+          ? Promise.resolve([] as Array<{ voterId: string }>)
+          : db.moMVote.findMany({ where: { matchId }, select: { voterId: true } }),
         db.rating.findMany({
           where: { matchId },
           select: { raterId: true },
@@ -3253,6 +3264,7 @@ async function computeForMatch(
               mvpLabel: sport.mvpLabel,
               rateUrl: await buildShortMagicLinkUrl(token),
               statsUrl: await buildShortMagicLinkUrl(statsToken),
+              ...(momByOrganisers ? { momVote: false } : {}),
             }),
           });
         }
@@ -3335,6 +3347,7 @@ async function computeForMatch(
             mvpLabel: sport.mvpLabel,
             url: await buildShortMagicLinkUrl(token),
             lang,
+            ...(momByOrganisers ? { momVote: false } : {}),
           });
           out.push({
             kind: "dm",
@@ -3405,8 +3418,30 @@ async function computeForMatch(
         lh >= MOM_BACKSTOP_FROM_HOUR &&
         lh < MOM_BACKSTOP_TO_HOUR;
 
+      // The organisers picked (mom-chooser.ts): there is no vote to wait
+      // for. Announced from the pick, in the same civil hours, under the
+      // same key and the same stops, and never as a vote count.
+      if (momByOrganisers) {
+        if (canAnnounce && lh >= MOM_EARLY_FROM_HOUR && lh < MOM_EARLY_TO_HOUR) {
+          const picks = await db.moMVote.findMany({ where: { matchId }, select: { playerId: true } });
+          const winners = [...new Set(picks.map((p) => p.playerId))];
+          // One pick, one name. Anything else is not an organisers' pick
+          // (rows left from before the switch): say nothing rather than
+          // announce a tally as if somebody chose it.
+          if (winners.length === 1) {
+            const u = await db.user.findUnique({ where: { id: winners[0] }, select: { name: true } });
+            out.push({
+              kind: "group-message",
+              key,
+              matchId,
+              text: buildMomPickedAnnouncement({ mvpLabel: sport.mvpLabel, activityName: activity.name, name: u?.name ?? "?", lang }),
+            });
+          }
+        }
+      }
+
       let earlyReady = false;
-      if (canAnnounce && !backstopWindow && lh >= MOM_EARLY_FROM_HOUR && lh < MOM_EARLY_TO_HOUR) {
+      if (!momByOrganisers && canAnnounce && !backstopWindow && lh >= MOM_EARLY_FROM_HOUR && lh < MOM_EARLY_TO_HOUR) {
         const expected = confirmed.filter((a) => a.user.phoneNumber);
         if (expected.length > 0) {
           // Same engagement set the rating DM in 6b and the reminder in
@@ -3419,7 +3454,7 @@ async function computeForMatch(
         }
       }
 
-      if (canAnnounce && (backstopWindow || earlyReady)) {
+      if (!momByOrganisers && canAnnounce && (backstopWindow || earlyReady)) {
         const votes = await db.moMVote.groupBy({
           by: ["playerId"],
           where: { matchId },

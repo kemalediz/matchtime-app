@@ -17,6 +17,7 @@
  * happens when it does.
  */
 import { db } from "./db";
+import { organisersPickMom } from "./mom-chooser";
 import { t } from "./i18n/t";
 import type { Lang } from "./i18n/lang";
 import { dayLabel } from "./i18n/dates";
@@ -82,7 +83,7 @@ export async function loadRatingProgress(orgId: string, lang?: Lang | string | n
     select: {
       id: true,
       date: true,
-      activity: { select: { name: true } },
+      activity: { select: { name: true, org: { select: { momChosenBy: true } } } },
       attendances: {
         where: { status: "CONFIRMED" },
         select: { userId: true, user: { select: { name: true } } },
@@ -95,8 +96,11 @@ export async function loadRatingProgress(orgId: string, lang?: Lang | string | n
   const ratingVoters = new Set(
     (await db.rating.findMany({ where: { matchId: match.id }, select: { raterId: true }, distinct: ["raterId"] })).map((r) => r.raterId),
   );
+  // The organisers pick Man of the Match (mom-chooser.ts): nobody is asked
+  // to vote, and the organiser's pick is not their rating.
+  const momVote = !organisersPickMom(match.activity.org);
   const momVoters = new Set(
-    (await db.moMVote.findMany({ where: { matchId: match.id }, select: { voterId: true } })).map((v) => v.voterId),
+    momVote ? (await db.moMVote.findMany({ where: { matchId: match.id }, select: { voterId: true } })).map((v) => v.voterId) : [],
   );
   const engaged = new Set<string>([...ratingVoters, ...momVoters]);
 
@@ -108,6 +112,7 @@ export async function loadRatingProgress(orgId: string, lang?: Lang | string | n
     ratedCount: conf.filter((a) => ratingVoters.has(a.userId)).length,
     momCount: conf.filter((a) => momVoters.has(a.userId)).length,
     notRated: conf.filter((a) => !engaged.has(a.userId)).map((a) => a.user.name ?? "Player"),
-    ratedNoMom: conf.filter((a) => ratingVoters.has(a.userId) && !momVoters.has(a.userId)).map((a) => a.user.name ?? "Player"),
+    ratedNoMom: momVote ? conf.filter((a) => ratingVoters.has(a.userId) && !momVoters.has(a.userId)).map((a) => a.user.name ?? "Player") : [],
+    ...(momVote ? {} : { momVote: false }),
   };
 }

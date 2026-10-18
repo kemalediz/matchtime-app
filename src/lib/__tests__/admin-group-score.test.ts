@@ -162,3 +162,141 @@ it("the write fails: no cheerful words, one line", async () => {
     replyText: "I couldn't save that score just now. Please send it again in a minute.",
   });
 });
+
+// ── Man of the Match picked by the organisers (2026-10-18, mom-chooser.ts) ──
+
+Object.assign(FACTS, {
+  "Yellow won 7-4, MoM Naim": { ...NO, hasScore: true, first: 7, second: 4, winner: "Yellow", momRef: "Naim" },
+  "sarı 7-4 kazandı, maçın adamı Naim": { ...NO, hasScore: true, first: 7, second: 4, winner: "sarı", momRef: "Naim" },
+  "MoM Naim": { ...NO, momRef: "Naim" },
+  "MoM Ali": { ...NO, momRef: "Ali" },
+  "MoM Zed": { ...NO, momRef: "Zed" },
+});
+
+const PLAYERS = [
+  { userId: "u-naim", name: "Naim Khan", isAdmin: false, hasPhone: true },
+  { userId: "u-ali1", name: "Ali Can", isAdmin: false, hasPhone: true },
+  { userId: "u-ali2", name: "Ali Veli", isAdmin: false, hasPhone: true },
+];
+const momSet: Array<{ matchId: string; playerId: string; byUserId: string }> = [];
+let momNow: Array<{ userId: string; name: string }> = [];
+const mom = {
+  players: async () => PLAYERS,
+  mvpLabel: async () => "Man of the Match",
+  current: async () => momNow,
+  set: async (a: { matchId: string; playerId: string; byUserId: string }) => {
+    momSet.push(a);
+    const previous = momNow.map((m) => m.userId);
+    momNow = [{ userId: a.playerId, name: PLAYERS.find((p) => p.userId === a.playerId)!.name }];
+    return { previous };
+  },
+};
+
+/** A played match in a club whose organisers pick Man of the Match. */
+function picked(over: Partial<NonNullable<SquadState["completedMatch"]>> = {}, lang: "en" | "tr" = "en"): SquadState {
+  const s = played(over, lang);
+  return { ...s, features: { ...s.features, momChosenBy: "organisers" } };
+}
+
+function hqMom(body: string, state: SquadState, over: Partial<Parameters<typeof answerHqScore>[0]> = {}) {
+  return hq(body, state, { deps: { model, apply, loadState: async () => state, mom }, ...over });
+}
+
+describe("organisers pick Man of the Match: reported in HQ with the score", () => {
+  beforeEach(() => {
+    momSet.length = 0;
+    momNow = [];
+  });
+
+  it('"Yellow won 7-4, MoM Naim": both recorded, one reply', async () => {
+    expect(await hqMom("Yellow won 7-4, MoM Naim", picked())).toEqual({
+      outcome: "hq-score-saved",
+      replyText: "Score saved: Yellow 7, Red 4. Man of the Match: Naim Khan.",
+    });
+    expect(recorded).toEqual([{ matchId: "done-1", red: 4, yellow: 7 }]);
+    expect(momSet).toEqual([{ matchId: "done-1", playerId: "u-naim", byUserId: "u-kemal" }]);
+  });
+
+  it("Turkish", async () => {
+    const state = picked({ teamLabels: ["Kırmızı", "Sarı"] }, "tr");
+    expect(await hqMom("sarı 7-4 kazandı, maçın adamı Naim", state)).toEqual({
+      outcome: "hq-score-saved",
+      replyText: "Skor kaydedildi: Sarı 7, Kırmızı 4. Man of the Match kaydedildi: Naim Khan.",
+    });
+    expect(momSet).toHaveLength(1);
+  });
+
+  it("the score without a name: saved, and Man of the Match asked once", async () => {
+    expect(await hqMom("Yellow won 7-4", picked())).toEqual({
+      outcome: "hq-score-saved",
+      replyText: "Score saved: Yellow 7, Red 4. Who was Man of the Match?",
+    });
+    expect(momSet).toEqual([]);
+    // Filed with the words posted, so a WhatsApp reply quoting them is its answer.
+    expect(hqLog.recordMatchTimeQuestion).toHaveBeenCalledWith(
+      expect.objectContaining({ askRef: "mom:done-1", text: "Score saved: Yellow 7, Red 4. Who was Man of the Match?" }),
+    );
+  });
+
+  it("the name on its own, after the score: recorded, a tick", async () => {
+    expect(await hqMom("MoM Naim", picked({ redScore: 4, yellowScore: 7 }))).toEqual({
+      outcome: "hq-mom-saved",
+      replyText: "Man of the Match: Naim Khan.",
+    });
+    expect(momSet).toEqual([{ matchId: "done-1", playerId: "u-naim", byUserId: "u-kemal" }]);
+    expect(recorded).toEqual([]);
+  });
+
+  it("the name on its own, before the score: recorded, the score still waits", async () => {
+    expect(await hqMom("MoM Naim", picked())).toEqual({ outcome: "hq-mom-saved", replyText: "Man of the Match: Naim Khan." });
+    expect(recorded).toEqual([]);
+  });
+
+  it("the score again with the name, once the score is in: the name is recorded and gets the tick", async () => {
+    const r = await hqMom("Yellow won 7-4, MoM Naim", picked({ redScore: 4, yellowScore: 7 }));
+    expect(r).toMatchObject({ outcome: "hq-mom-saved" });
+    expect(r && r !== "organisers-only" ? r.replyText : "").toContain("Man of the Match: Naim Khan.");
+    expect(recorded).toEqual([]);
+    expect(momSet).toHaveLength(1);
+  });
+
+  it("an organiser changes it", async () => {
+    momNow = [{ userId: "u-ali1", name: "Ali Can" }];
+    expect(await hqMom("MoM Naim", picked({ redScore: 4, yellowScore: 7 }))).toEqual({
+      outcome: "hq-mom-changed",
+      replyText: "Man of the Match changed: Naim Khan (it was Ali Can).",
+    });
+  });
+
+  it("an unclear name is asked about once, nothing written", async () => {
+    expect(await hqMom("MoM Ali", picked({ redScore: 4, yellowScore: 7 }))).toEqual({
+      outcome: "hq-mom-asked",
+      replyText: "Which Ali was Man of the Match: Ali Can or Ali Veli?",
+    });
+    expect(momSet).toEqual([]);
+    expect(hqLog.recordMatchTimeQuestion).toHaveBeenCalledWith(expect.objectContaining({ askRef: "mom:done-1" }));
+  });
+
+  it("a name not in the match is asked about, nothing written", async () => {
+    expect(await hqMom("MoM Zed", picked({ redScore: 4, yellowScore: 7 }))).toEqual({
+      outcome: "hq-mom-asked",
+      replyText: "I can't find Zed among the players of that match. Who was Man of the Match?",
+    });
+    expect(momSet).toEqual([]);
+  });
+
+  it("someone who is not an organiser: the score is theirs to report, Man of the Match is not", async () => {
+    expect(await hqMom("Yellow won 7-4, MoM Naim", picked(), { organiser: false, senderUserId: "u-hamzah" })).toEqual({
+      outcome: "hq-score-saved",
+      replyText: "Score saved: Yellow 7, Red 4. Only the organisers can set Man of the Match.",
+    });
+    expect(recorded).toHaveLength(1);
+    expect(momSet).toEqual([]);
+  });
+
+  it("a club whose players vote: the name is ignored, exactly today's reply", async () => {
+    expect(await hqMom("Yellow won 7-4, MoM Naim", played())).toEqual({ outcome: "hq-score-saved", replyText: "Score saved: Yellow 7, Red 4." });
+    expect(momSet).toEqual([]);
+    expect(hqLog.recordMatchTimeQuestion).not.toHaveBeenCalled();
+  });
+});

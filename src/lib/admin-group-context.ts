@@ -30,7 +30,11 @@ const oneLine = (s: string, n: number) => s.replace(/\s+/g, " ").trim().slice(0,
  * MatchTime asked which team won a scoreline.
  */
 export type ScoreWaiting =
-  | { kind: "result"; day: string; labels: readonly [string, string] }
+  /** `mom`: the organisers pick Man of the Match (mom-chooser.ts) and it is
+   *  not recorded yet, so it is asked for with the score. */
+  | { kind: "result"; day: string; labels: readonly [string, string]; mom?: boolean }
+  /** The score is saved; the organisers' Man of the Match is not yet. */
+  | { kind: "mom"; day: string }
   | { kind: "which-team"; first: number; second: number; labels: readonly [string, string]; askedAt: Date };
 
 export function organisersContext(p: {
@@ -43,11 +47,13 @@ export function organisersContext(p: {
   const lines: string[] = [];
   if (p.pending.length === 0 && !p.score) lines.push("WAITING: nothing.");
   if (p.score) {
-    const [a, b] = p.score.labels;
+    const w = p.score;
     lines.push(
-      p.score.kind === "result"
-        ? `WAITING: the final score of ${p.score.day}'s match, ${a} against ${b}.`
-        : `WAITING: which team won ${p.score.first}-${p.score.second}, ${a} or ${b}, asked at ${formatLondon(p.score.askedAt, "HH:mm")}.`,
+      w.kind === "mom"
+        ? `WAITING: the rest of ${w.day}'s result: who was Man of the Match.`
+        : w.kind === "result"
+          ? `WAITING: the final score of ${w.day}'s match, ${w.labels[0]} against ${w.labels[1]}${w.mom ? ", and its Man of the Match" : ""}.`
+          : `WAITING: which team won ${w.first}-${w.second}, ${w.labels[0]} or ${w.labels[1]}, asked at ${formatLondon(w.askedAt, "HH:mm")}.`,
     );
   }
   for (const i of p.pending) {

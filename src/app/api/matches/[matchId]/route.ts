@@ -4,6 +4,7 @@ import { isSuperadmin } from "@/lib/org";
 import { resolveTeamLabels } from "@/lib/team-labels";
 import { withoutVenueBookkeeping } from "@/lib/venue-location-rules";
 import { NextResponse } from "next/server";
+import { organisersPickMom } from "@/lib/mom-chooser";
 
 export async function GET(
   req: Request,
@@ -16,7 +17,7 @@ export async function GET(
   const match = await db.match.findUnique({
     where: { id: matchId },
     include: {
-      activity: { include: { sport: true, org: { select: { teamLabels: true, language: true } } } },
+      activity: { include: { sport: true, org: { select: { teamLabels: true, language: true, momChosenBy: true } } } },
       attendances: {
         where: { status: { in: ["CONFIRMED", "BENCH"] } },
         include: {
@@ -85,9 +86,14 @@ export async function GET(
   const existingRatings = await db.rating.findMany({
     where: { matchId, raterId: session.user.id },
   });
-  const existingMoMVote = await db.moMVote.findUnique({
-    where: { matchId_voterId: { matchId, voterId: session.user.id } },
-  });
+  // The organisers pick Man of the Match in this club (mom-chooser.ts):
+  // the rate page offers no vote, and their pick is not anyone's vote.
+  const momVote = !organisersPickMom({ momChosenBy: match.activity.org.momChosenBy });
+  const existingMoMVote = momVote
+    ? await db.moMVote.findUnique({
+        where: { matchId_voterId: { matchId, voterId: session.user.id } },
+      })
+    : null;
 
   return NextResponse.json({
     ...match,
@@ -98,6 +104,7 @@ export async function GET(
     teamAssignments: flatTeamAssignments,
     existingRatings,
     existingMoMVote,
+    momVote,
     // Resolved display labels for the two team slots (per-match override →
     // org override → sport labels → "Red"/"Yellow"). [0] = RED, [1] = YELLOW.
     // NOTE: this overwrites the raw `match.teamLabels` scalar spread from

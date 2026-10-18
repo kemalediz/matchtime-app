@@ -13,6 +13,7 @@ import { AdminChannelSettings } from "@/components/settings/admin-channel-sectio
 import { PickModeRows } from "@/components/settings/pick-mode-rows";
 import { TeamsReadyRow } from "@/components/settings/teams-ready-row";
 import { ListAnnouncerRow } from "@/components/settings/list-announcer-row";
+import { MomChooserRow } from "@/components/settings/mom-chooser-row";
 import { BillingSettingsCard, type BillingCardData } from "@/components/settings/billing-card";
 import { SectionInfo } from "@/components/info/section-info";
 import { SettingInfo } from "@/components/info/setting-info";
@@ -60,6 +61,8 @@ interface OrgData {
     benchPickFallback?: "bench-offer" | "leave-empty";
     /** 2026-10-14: who announces the list and teams. */
     listAnnouncer?: "matchtime" | "organisers";
+    /** 2026-10-18: who chooses Man of the Match. */
+    momChosenBy?: "players" | "organisers";
   };
   /** Club fee billing (slice B2): null or absent with billing off and for
    *  an exempt club, so nothing new shows. */
@@ -699,6 +702,11 @@ export default function SettingsPage() {
                 </div>
               );
             })()}
+            {/* Who chooses Man of the Match (2026-10-18, mom-chooser.ts).
+                Admins only: it comes with the weekly routine settings. */}
+            {org.weeklyRoutine && (
+              <MomChooserRow orgId={org.id} language={org.language} momChosenBy={org.weeklyRoutine.momChosenBy ?? "players"} />
+            )}
           </div>
         </div>
       </section>

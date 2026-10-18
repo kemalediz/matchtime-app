@@ -29,8 +29,9 @@ vi.mock("next/server", () => ({
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 // The account-safety gate has its own suite (player-account-takeover.test.ts);
 // here an approved club, so the guest rule is what answers.
-vi.mock("@/lib/player-account-guard", () => ({
-  playerEditContext: vi.fn(async () => ({ s: {}, refusal: null })),
+vi.mock("@/lib/player-account-guard", async () => ({
+  // The real English table: the guest refusal is worded from it.
+  playerEditContext: vi.fn(async () => ({ s: (await import("@/lib/i18n/strings.en")).en, refusal: null })),
   isClubOwnedUser: vi.fn(async () => true),
 }));
 vi.mock("@/lib/player-stats", () => ({ loadPlayerSeasonStats: vi.fn().mockResolvedValue(null) }));
@@ -89,7 +90,11 @@ describe("updatePlayerPhone and a guest", () => {
     authMock.mockResolvedValue({ user: { id: "fnf-admin" } });
     membershipFindUnique.mockResolvedValue({ userId: "ali", guestFromOrgId: "sutton" });
     const { updatePlayerPhone } = await import("@/app/actions/players");
-    await expect(updatePlayerPhone("ali", "fnf", "+447700900999")).rejects.toThrow(/guest/i);
+    // Refused as data, not a throw (2026-10-18: Next redacts a thrown
+    // Server-Action message, so the admin saw nothing useful).
+    const r = await updatePlayerPhone("ali", "fnf", "+447700900999");
+    expect(r.ok).toBe(false);
+    expect(!r.ok && r.error).toMatch(/guest/i);
   });
 });
 

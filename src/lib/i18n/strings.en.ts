@@ -627,6 +627,8 @@ export const en = {
   mom_votes_header: "Votes:",
   mom_vote_row: (p: { name: string; votes: number }): string => `• ${p.name} (${p.votes})`,
   mom_trophy_line: "Your trophy awaits next match.",
+  /** The organisers picked Man of the Match (mom-chooser.ts): no votes to show. */
+  mom_picked: (p: { name: string }): string => `Congrats *${p.name}* 🎉`,
 
   // ── row 46: the format-switch proposal (format-switch.ts) ──────────
   //   The model is told to paste this line VERBATIM into a chase, so
@@ -904,6 +906,9 @@ export const en = {
    *  report the score there. */
   ask_score_hq: (p: { activityName: string }): string =>
     `🏁 *${p.activityName}*: what was the final score, and which team won? Reply here and I'll record it.`,
+  /** The same ask when the organisers pick Man of the Match (2026-10-18). */
+  ask_score_hq_mom: (p: { activityName: string; mvpLabel: string }): string =>
+    `🏁 *${p.activityName}*: what was the final score, which team won, and who was ${p.mvpLabel}? Reply here and I'll record it.`,
 
   // ═══════════════════════════════════════════════════════════════════
   // Phase 2, slice 3: the chase model's server-computed headers.
@@ -1422,6 +1427,17 @@ export const en = {
   hq_score_no_match: `There's no finished match waiting for a score.`,
   /** The score write failed. Nothing was saved. */
   hq_score_failed: `I couldn't save that score just now. Please send it again in a minute.`,
+  // ── Man of the Match, picked by the organisers and reported in HQ
+  //    (2026-10-18, admin-group-score.ts). Appended to the score line. ──
+  hq_mom_saved: (p: { mvpLabel: string; name: string }): string => `${p.mvpLabel}: ${p.name}.`,
+  hq_mom_changed: (p: { mvpLabel: string; name: string; old: string }): string => `${p.mvpLabel} changed: ${p.name} (it was ${p.old}).`,
+  hq_mom_ask: (p: { mvpLabel: string }): string => `Who was ${p.mvpLabel}?`,
+  hq_mom_which: (p: { mvpLabel: string; ref: string; choices: string }): string =>
+    `Which ${p.ref} was ${p.mvpLabel}: ${p.choices}?`,
+  hq_mom_not_in_match: (p: { mvpLabel: string; ref: string }): string =>
+    `I can't find ${p.ref} among the players of that match. Who was ${p.mvpLabel}?`,
+  hq_mom_organisers_only: (p: { mvpLabel: string }): string => `Only the organisers can set ${p.mvpLabel}.`,
+  hq_mom_failed: (p: { mvpLabel: string }): string => `I couldn't save ${p.mvpLabel} just now. Please send it again in a minute.`,
   // ── An organiser asks MatchTime, in HQ, to ask the players' group for a
   //    player (2026-10-16, admin-group-ask-group.ts). A first-come club's
   //    post is `slot_opened`, unchanged. ──
@@ -1567,23 +1583,25 @@ export const en = {
   // decides what to say instead (English keeps its old "there" / "mate").
 
   /** Row 91: the rating-link DM, the morning after. */
-  dm_rating: (p: { activityName: string; dateLabel: string; mvpLabel: string; rateUrl: string; statsUrl: string }): string =>
+  dm_rating: (p: { activityName: string; dateLabel: string; mvpLabel: string; rateUrl: string; statsUrl: string; momVote?: boolean }): string =>
     `🏆 *${p.activityName}*, ${p.dateLabel}\n\n` +
-    `Rate your teammates and pick ${p.mvpLabel}. Takes ~1 minute.\n\n` +
+    (p.momVote === false ? `Rate your teammates. Takes ~1 minute.\n\n` : `Rate your teammates and pick ${p.mvpLabel}. Takes ~1 minute.\n\n`) +
     `Your personal link:\n${p.rateUrl}\n\n` +
     `Link expires in 5 days.\n\n` +
     `📊 Your season stats (ratings, MoM, badges, share card), any time:\n${p.statsUrl}`,
 
   /** Row 92: the daily rating reminder, five day-toned variants
    *  (`dayNum` 1 to 5; anything above 4 is the last call). */
-  dm_rating_reminder: (p: { dayNum: number; firstName: string | null; activityName: string; mvpLabel: string; url: string }): string => {
+  dm_rating_reminder: (p: { dayNum: number; firstName: string | null; activityName: string; mvpLabel: string; url: string; momVote?: boolean }): string => {
     const first = p.firstName ?? "mate";
     const sig = `\n${p.url}`;
     switch (p.dayNum) {
       case 1:
         return (
           `Hey ${first} 👋 Hope last night's *${p.activityName}* was a good one.\n\n` +
-          `When you have a sec, tap here to rate your teammates and pick ${p.mvpLabel}. ` +
+          (p.momVote === false
+            ? `When you have a sec, tap here to rate your teammates. `
+            : `When you have a sec, tap here to rate your teammates and pick ${p.mvpLabel}. `) +
           `The more of us vote, the better the teams balance next week 🙌${sig}`
         );
       case 2:
@@ -4825,6 +4843,11 @@ export const en = {
   wr_announce_blurb: "MatchTime posts them in the group, or your organisers do.",
   wr_announce_matchtime: "MatchTime",
   wr_announce_organisers: "The organisers",
+  // ── Who chooses Man of the Match (2026-10-18, mom-chooser.ts) ──
+  mom_chooser_label: "Man of the Match chosen by",
+  mom_chooser_blurb: "The players vote on their rating link, or your organisers pick and tell MatchTime with the score.",
+  mom_chooser_players: "Players vote",
+  mom_chooser_organisers: "Organisers pick",
   // /admin/settings, the "Posters" card (2026-10-14).
   gp_title: "Posters",
   gp_lead: "The list poster and the team sheet MatchTime sends to your admin group, ready to forward to the players.",
@@ -5140,4 +5163,36 @@ export const en = {
   own_err_generic: "Something went wrong",
   own_welcome_submit: "Complete setup",
   own_saving: "Saving…",
+  // ─── A player's phone on /admin/players (FNF incident 2026-10-18) ───
+  // Read by updatePlayerPhone / linkPlayerByPhone (actions/players.ts)
+  // and the "same person?" dialog (admin/players/phone-link-dialog.tsx).
+  // The dialog shows the other user's FIRST name and their club's name
+  // and nothing else from that club.
+  phone_err_invalid: "That doesn't look like a valid phone number. Use the international format, for example +44 7700 900123.",
+  phone_err_not_member: "This player is not a member of this club.",
+  phone_err_guest: "This player is a guest from a partner club, so their number can't be set here.",
+  phone_err_not_allowed: "Only an owner or admin of this club can change a player's number.",
+  phone_err_taken: "That number already belongs to someone else and can't be used twice.",
+  phone_err_taken_here: (p: { name: string | null }) =>
+    p.name
+      ? `That number already belongs to ${p.name} in this club. To combine the two, use Merge.`
+      : "That number already belongs to another player in this club. To combine the two, use Merge.",
+  phone_err_generic: "Couldn't save the number. Please try again.",
+  phone_link_refused_drop_other_clubs:
+    "That number belongs to a player at another club. This player is also linked to another club, so the two can't be linked from here. Ask MatchTime support to combine them.",
+  phone_link_refused_drop_sign_in:
+    "That number belongs to a player at another club. This player has their own MatchTime sign in, so the two can't be linked from here. Ask MatchTime support to combine them.",
+  phone_link_title: "Same person?",
+  phone_link_question: (p: { name: string | null; clubs: string[] }) => {
+    const clubs = p.clubs.length <= 1 ? (p.clubs[0] ?? "") : `${p.clubs.slice(0, -1).join(", ")} and ${p.clubs[p.clubs.length - 1]}`;
+    return p.name
+      ? `This number belongs to ${p.name}, who plays at ${clubs}. Same person?`
+      : `This number belongs to someone who plays at ${clubs}. Same person?`;
+  },
+  phone_link_explain: (p: { club: string }) =>
+    `Yes links them: this player's games, ratings and payments at ${p.club} move onto their existing account, which keeps its number. Nothing at their other club changes.`,
+  phone_link_yes: "Yes, link them",
+  phone_link_no: "No, it's a different number",
+  phone_link_done: "Linked to their existing account.",
+  phone_link_declined: "Not saved. That number already belongs to someone else and can't be used twice.",
 };
