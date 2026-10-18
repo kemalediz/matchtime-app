@@ -47,13 +47,13 @@ describe("resolveDmSelfAttendance", () => {
     const res = await resolveDmSelfAttendance({
       text: "yeah sure why not, coming",
       hasPendingPrompt: false,
-      context: { clubName: "Sutton FC", wasAskedToPlay: true },
+      context: { clubName: "Sutton FC", lastBotDm: "Playing Tuesday? Reply IN or OUT." },
     });
     expect(res.decision).toBe("in");
     expect(res.via).toBe("llm");
     expect(classify).toHaveBeenCalledWith("yeah sure why not, coming", {
       clubName: "Sutton FC",
-      wasAskedToPlay: true,
+      lastBotDm: "Playing Tuesday? Reply IN or OUT.",
     });
   });
 
