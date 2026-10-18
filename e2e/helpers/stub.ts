@@ -87,6 +87,8 @@ export interface RouterStub {
   /** What each stubbed router call reports it cost, in dollars (default
    *  0). Drives the daily AI cap (`src/lib/ai-budget.ts`) for real. */
   costUsd?: number;
+  /** Every router call fails, as an outage would. */
+  fail?: boolean;
 }
 
 export function setRouterStub(stub: RouterStub): void {

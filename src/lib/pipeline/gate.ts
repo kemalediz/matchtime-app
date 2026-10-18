@@ -748,6 +748,9 @@ export interface RouterStubConfig {
   /** What each stubbed router call reports it cost, in dollars. Default
    *  0. Lets the stubbed suite drive the daily AI cap for real. */
   costUsd?: number;
+  /** Every router call fails, as an outage would (the batch falls back
+   *  to `unsure`). For the specs of what a failed call leads to. */
+  fail?: boolean;
 }
 
 /** Read fresh on every call, like the extractor stub, so a spec can
@@ -775,6 +778,7 @@ function routerStubFromEnv(): PipelineModel | null {
     name: "router-stub",
     async complete(req) {
       const cfg = routerStubConfig() ?? {};
+      if (cfg.fail) throw new Error("router stub: the call failed (529 Overloaded)");
       const byId = cfg.routes ?? {};
       const byBody = cfg.bodies ?? {};
       // The user block the router is sent is `[id] author: body`, one

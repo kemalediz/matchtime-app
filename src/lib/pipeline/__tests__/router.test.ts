@@ -149,6 +149,54 @@ describe("parseRouterResponse", () => {
     expect(out.degradations.some((d) => /unknown id/i.test(d.detail))).toBe(true);
   });
 
+  // FNF HQ, 2026-10-17/18 (Vercel request logs): three router calls came
+  // back with the message id echoed wrong, so the id was dropped as unknown
+  // and the message fell back to `unsure`. These are the three echoes, as
+  // logged. A WhatsApp id is ~80 characters; the model misspelt one place.
+  describe("an id echoed slightly wrong is matched to the one message it means", () => {
+    const INCIDENT = "false_120363046757382958@g.us_AC5922E2E21D4093AAD157B03EDDADA1_89485761081551@lid";
+    const REPLY = "false_120363046757382958@g.us_3A84686B35E9610A2A4B_156345466617992@lid";
+    const LONG = "false_120363046757382958@g.us_AC4A09768AC82AC94A71E11BC84022E4_89485761081551@lid";
+    const echo = (id: string, route = "question") => JSON.stringify({ routes: [{ id, route }] });
+
+    it.each([
+      ["a repeated run of characters (13:32, the squad question)", INCIDENT, "false_120363046757382958@g.us_AC5922E2E21D4093AAD157B03B03EDDADA1_89485761081551@lid"],
+      ["the square brackets of the turn kept, and one character changed", REPLY, "[false_120363046757382958@g.us_3A83686B35E9610A2A4B_156345466617992@lid]"],
+      ["the square brackets of the turn kept", LONG, `[${LONG}]`],
+    ])("%s", (_why, id, echoed) => {
+      const out = parseRouterResponse(echo(echoed), [id]);
+      expect(out.routes).toEqual([{ messageId: id, route: "question", source: "model" }]);
+      expect(out.degradations.map((d) => d.detail).join(" ")).toMatch(/echoed/);
+      expect(out.degradations.some((d) => /no route/.test(d.detail))).toBe(false);
+    });
+
+    it("in a batch, each echo goes to the message it is nearest, never to one already routed", () => {
+      const a = "false_120363000000000001@g.us_3AAAAAAAAAAAAAAAAAAA_100000000000001@lid";
+      const b = "false_120363000000000001@g.us_3BBBBBBBBBBBBBBBBBBB_100000000000002@lid";
+      const out = parseRouterResponse(
+        JSON.stringify({ routes: [{ id: b.replace("3BBBB", "3BBB"), route: "self_att" }, { id: a, route: "none" }] }),
+        [a, b],
+      );
+      expect(out.routes).toEqual([
+        { messageId: a, route: "none", source: "model" },
+        { messageId: b, route: "self_att", source: "model" },
+      ]);
+    });
+
+    it("an id nowhere near any message is still dropped, and the message still falls back", () => {
+      const out = parseRouterResponse(echo("ghost"), [INCIDENT]);
+      expect(out.routes).toEqual([{ messageId: INCIDENT, route: "unsure", source: "fallback" }]);
+      expect(out.degradations.some((d) => /unknown id/.test(d.detail))).toBe(true);
+    });
+
+    it("an echo equally near two messages is not guessed", () => {
+      const a = "false_1@g.us_3AAAAAAAAAAAAAAAAAA1_9@lid";
+      const b = "false_1@g.us_3AAAAAAAAAAAAAAAAAA2_9@lid";
+      const out = parseRouterResponse(echo("false_1@g.us_3AAAAAAAAAAAAAAAAAA3_9@lid", "self_att"), [a, b]);
+      expect(out.routes.map((r) => r.source)).toEqual(["fallback", "fallback"]);
+    });
+  });
+
   it("falls back to `unsure` on unparseable output, and never throws", () => {
     const out = parseRouterResponse("the model said something else entirely", ["wa-1", "wa-2"]);
     expect(out.routes.map((r) => r.route)).toEqual(["unsure", "unsure"]);

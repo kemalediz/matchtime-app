@@ -15,7 +15,7 @@
 import { test, expect, postAnalyze, resetDb } from "../fixtures";
 import { ORG_ID, PHONE } from "../helpers/constants";
 import { E2E } from "../helpers/env";
-import { engineOn, clearPipelineStubs } from "../helpers/stub";
+import { engineOn, clearPipelineStubs, setRouterStub } from "../helpers/stub";
 import type { APIRequestContext } from "@playwright/test";
 
 test.describe.configure({ mode: "serial" });
@@ -108,6 +108,47 @@ test("a question nothing answers: one line, never silent", async ({ request }) =
     handled: true,
     outcome: "hq-not-here",
     replyText: "I can't do that from this group. Ask *what can you do?* to see what I can do here.",
+  });
+});
+
+// FNF HQ, 2026-10-18 13:32 London: Kemal (a player of the club) asked
+// "@Match Time what is squad now including bench?". The router's answer was
+// dropped (its id echoed wrong), the message fell back to `unsure`, and HQ
+// said "I didn't catch what you'd like me to do". Addressed to MatchTime and
+// routed `unsure`, by the model or because the router call failed, it is now
+// tried as a question first: the squad and the bench, from the real club.
+test.describe("a tagged question routed unsure is answered", () => {
+  const SQUAD_Q = "@Match Time what is squad now including bench?";
+  const PLAYER = PHONE.player.replace(/^\+/, "");
+  const sayAsPlayer = async (request: APIRequestContext, text: string) => {
+    const res = await request.post("/api/whatsapp/admin-group", {
+      headers: KEY,
+      data: { channel: "admin-group", groupId: HQ, messageId: `e2e-agq-u-${++seq}`, text, senderPhone: PLAYER, timestamp: String(Math.floor(Date.now() / 1000)) },
+    });
+    expect(res.status(), await res.text()).toBe(200);
+    return res.json();
+  };
+  const expectSquad = (out: { replyText?: string | null }) => {
+    expect(out).toMatchObject({ handled: true, outcome: "hq-answered" });
+    expect(out.replyText).toContain("Pat Player");
+    expect(out.replyText).toContain("Ben Bench");
+  };
+
+  test("the model said unsure: the squad and the bench", async ({ request }) => {
+    engineOn({ [SQUAD_Q]: { ...q("squad"), route: "unsure" } });
+    expectSquad(await sayAsPlayer(request, SQUAD_Q));
+  });
+
+  test("the router call failed: the same answer", async ({ request }) => {
+    engineOn({ [SQUAD_Q]: { ...q("squad"), route: "unsure" } });
+    setRouterStub({ floor: false, fail: true });
+    expectSquad(await sayAsPlayer(request, SQUAD_Q));
+  });
+
+  test("an organiser, the router call failed: the squad change owns nothing, then the question answers", async ({ request }) => {
+    engineOn({ [SQUAD_Q]: { ...q("squad"), route: "unsure" } });
+    setRouterStub({ floor: false, fail: true });
+    expectSquad(await say(request, SQUAD_Q));
   });
 });
 

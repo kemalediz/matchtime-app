@@ -704,6 +704,48 @@ export interface RouterResult {
   usage?: { costUsd: number | null; ms: number; inputTokens: number; outputTokens: number };
 }
 
+/** Levenshtein distance, two rows. Ids are ~80 characters and batches small. */
+function editDistance(a: string, b: string): number {
+  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    for (let j = 1; j <= b.length; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    prev = cur;
+  }
+  return prev[b.length];
+}
+
+/** How many edits an echo may carry and still name a message. */
+const ECHO_MAX_EDITS = 4;
+
+/**
+ * AN ID THE MODEL ECHOED SLIGHTLY WRONG (FNF HQ, 2026-10-17/18). The model
+ * copies each ~80-character WhatsApp id back, and three times in a day it
+ * miscopied one: the turn's square brackets kept, one character changed,
+ * "B03" written twice. The id was dropped as unknown and the message fell
+ * back to `unsure`, so a plain "@Match Time what is squad now including
+ * bench?" got "I didn't catch that". An echo is matched to the message it
+ * means when that is clear: brackets and spaces trimmed, then the one
+ * message still without a route that it is nearest to, within a few edits
+ * and nearer than any other. Anything else is still dropped.
+ */
+function matchEchoedId(echoed: string, ids: readonly string[], routed: ReadonlySet<string>): string | null {
+  const trimmed = echoed.trim().replace(/^\[\s*/, "").replace(/\s*\]$/, "");
+  const open = ids.filter((id) => !routed.has(id));
+  if (open.includes(trimmed)) return trimmed;
+  let best: string | null = null;
+  let bestD = Infinity;
+  let tie = false;
+  for (const id of open) {
+    const d = editDistance(trimmed, id);
+    if (d < bestD) [best, bestD, tie] = [id, d, false];
+    else if (d === bestD) tie = true;
+  }
+  return best && !tie && bestD <= ECHO_MAX_EDITS ? best : null;
+}
+
 export function parseRouterResponse(text: string, ids: string[], organiserIds: ReadonlySet<string> = new Set()): RouterResult {
   const degradations: Degradation[] = [];
   const byId = new Map<string, Route>();
@@ -711,15 +753,25 @@ export function parseRouterResponse(text: string, ids: string[], organiserIds: R
   try {
     const parsed = extractJson(text) as { routes?: Array<{ id?: unknown; route?: unknown }> };
     const rows = Array.isArray(parsed?.routes) ? parsed.routes : [];
+    // Exact ids first, so a miscopied one can only be matched to a message
+    // the model did not otherwise answer for.
+    const exact = new Set(rows.flatMap((r) => (typeof r?.id === "string" && ids.includes(r.id) ? [r.id] : [])));
+    const claimed = new Set<string>(exact);
     for (const row of rows) {
-      const id = typeof row?.id === "string" ? row.id : null;
+      let id = typeof row?.id === "string" ? row.id : null;
       const route = typeof row?.route === "string" ? normaliseRoute(row.route) : null;
       if (!id) continue;
       if (!ids.includes(id)) {
-        degradations.push(
-          degradation("router", null, `router returned an unknown id "${id}"; dropped`),
-        );
-        continue;
+        const meant = matchEchoedId(id, ids, claimed);
+        if (!meant) {
+          degradations.push(
+            degradation("router", null, `router returned an unknown id "${id}"; dropped`),
+          );
+          continue;
+        }
+        degradations.push(degradation("router", meant, `router echoed the id as "${id}"; matched to the message it is nearest`));
+        claimed.add(meant);
+        id = meant;
       }
       if (!route) {
         degradations.push(

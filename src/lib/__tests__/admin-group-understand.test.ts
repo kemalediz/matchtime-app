@@ -397,6 +397,79 @@ describe("unsure, addressed to MatchTime: never silent", () => {
     expect(r?.outcome).toBe("hq-not-understood");
     expect(squad.handleAdminSquadChange).not.toHaveBeenCalled();
   });
+
+  // FNF HQ, 2026-10-18 13:32 London: Kemal (a player of the club) asked
+  // "@Match Time what is squad now including bench?". The router's answer
+  // was dropped (its id echoed wrong), the message fell back to `unsure`,
+  // and HQ said "I didn't catch what you'd like me to do". A message
+  // addressed to MatchTime that routes `unsure`, by the model or by a
+  // fallback, is also tried as a question before that line.
+  describe("the shared question answering is tried before the one line", () => {
+    const SQUAD = "✅ *In (18/18)*: ...\n🪑 *Bench (1)*: Naim";
+    const INCIDENT = "@Match Time what is squad now including bench?";
+    const player = { senderUserId: "u-kemal", organiser: false, senderName: "Kemal" };
+    const failing: PipelineModel = {
+      name: "down",
+      complete: async () => {
+        throw new Error("529 Overloaded");
+      },
+    };
+
+    beforeEach(() => {
+      hqQuestion.answerHqQuestion.mockResolvedValue({ outcome: "hq-answered", replyText: SQUAD });
+    });
+
+    it("the incident: a player's tagged squad question the model called unsure is answered", async () => {
+      const r = await ask(INCIDENT, "unsure", player);
+      expect(r).toEqual({ route: "unsure", outcome: "hq-answered", replyText: SQUAD });
+      expect(hqQuestion.answerHqQuestion).toHaveBeenCalledWith(expect.objectContaining({ messageId: "wa-9", body: INCIDENT, senderUserId: "u-kemal" }));
+      // A player changes nothing: the attendance engine is never asked.
+      expect(squad.handleAdminSquadChange).not.toHaveBeenCalled();
+    });
+
+    it("the router call failed (fallback unsure): answered the same way", async () => {
+      const r = await ask(INCIDENT, "unsure", { ...player, deps: { routerModel: failing } });
+      expect(r).toEqual({ route: "unsure", outcome: "hq-answered", replyText: SQUAD });
+    });
+
+    it("the router's id echoed wrong (the incident's real cause): it is matched, and the question route answers", async () => {
+      const echoed = model(() => ({ routes: [{ id: "[wa-9]", route: "question" }] }));
+      const r = await ask(INCIDENT, "question", { ...player, deps: { routerModel: echoed } });
+      expect(r).toEqual({ route: "question", outcome: "hq-answered", replyText: SQUAD });
+    });
+
+    it("an organiser: the attendance engine first, then the question", async () => {
+      const r = await ask(INCIDENT, "unsure");
+      expect(r?.outcome).toBe("hq-answered");
+      expect(squad.handleAdminSquadChange).toHaveBeenCalled();
+      expect(squad.handleAdminSquadChange.mock.invocationCallOrder[0]).toBeLessThan(hqQuestion.answerHqQuestion.mock.invocationCallOrder[0]);
+    });
+
+    it("an organiser's change the engine owns is not asked as a question", async () => {
+      squad.handleAdminSquadChange.mockResolvedValue({ handled: true, outcome: "squad-changed", replyText: "Done." });
+      expect((await ask("@Match Time Ali in", "unsure"))?.outcome).toBe("squad-changed");
+      expect(hqQuestion.answerHqQuestion).not.toHaveBeenCalled();
+    });
+
+    it("nothing answers it: the one line, as before", async () => {
+      hqQuestion.answerHqQuestion.mockResolvedValue(null);
+      expect((await ask(INCIDENT, "unsure", player))?.outcome).toBe("hq-not-understood");
+    });
+
+    it("not addressed to MatchTime: silent, and no question is asked", async () => {
+      expect(await ask("what is squad now including bench?", "unsure", player)).toBeNull();
+      expect(hqQuestion.answerHqQuestion).not.toHaveBeenCalled();
+    });
+
+    it("the routed line carries the router's degradations, with no message text", async () => {
+      const log = vi.spyOn(console, "log").mockImplementation(() => {});
+      await ask(INCIDENT, "unsure", { ...player, deps: { routerModel: failing } });
+      const routed = log.mock.calls.map((c) => String(c[0])).find((l) => l.includes("routed unsure by fallback"));
+      log.mockRestore();
+      expect(routed).toMatch(/router call failed \(529 Overloaded\)/);
+      expect(routed).not.toContain("squad now");
+    });
+  });
 });
 
 // FNF, 2026-10-16 14:29 London: Hamzah wrote "MatchTime who are the admins?"

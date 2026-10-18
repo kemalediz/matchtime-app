@@ -42,8 +42,10 @@
  *                         anyone reports, only an organiser changes it
  *   unsure                addressed to MatchTime (an @tag, or a reply to
  *                         its own message): the attendance engine, as in
- *                         the players' group, else one line saying it did
- *                         not catch that (2026-10-16). Otherwise nothing.
+ *                         the players' group (an organiser only), then the
+ *                         question answering (2026-10-18), else one line
+ *                         saying it did not catch that (2026-10-16).
+ *                         Otherwise nothing.
  *   none, offer           nothing: the organisers' own conversation
  *
  * A WhatsApp reply to ANOTHER organiser's message, with no @tag, is the
@@ -253,10 +255,14 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
     // The source says whether the model chose the route or a fallback did
     // (a failed or unparseable router call is `unsure`, source "fallback").
     // Without it the 2026-10-16 FNF incident could not tell the two apart.
+    // The router's degradations go on the SAME line (2026-10-18): `vercel
+    // logs` shows one line per request, so the separate lines that said why
+    // a fallback happened (an id echoed wrong) were only in the dashboard.
+    // Ids, routes and errors only, never the message text.
+    const why = gate.degradations.length ? `; router: ${gate.degradations.map((d) => d.detail).join(" | ")}` : "";
     console.log(
-      `[admin-group] ${messageId}: routed ${route ?? "nowhere"} by ${routed?.source ?? "nothing"} (${pending.length} waiting${input.quoted ? ", a reply" : ""})`,
+      `[admin-group] ${messageId}: routed ${route ?? "nowhere"} by ${routed?.source ?? "nothing"} (${pending.length} waiting${input.quoted ? ", a reply" : ""})${why}`,
     );
-    for (const d of gate.degradations) console.log(`[admin-group] ${messageId}: router degradation: ${d.detail}`);
     const said = (outcome: string, replyText: string | null): Understood => ({ route, outcome, replyText });
 
     // Someone in HQ who is not an owner or admin (2026-10-16): questions,
@@ -292,6 +298,23 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
       if (r === "organisers-only") return notYours();
       return r ? { route: "score", outcome: r.outcome, replyText: r.replyText } : null;
     };
+    // The players' group's own question answering, for the organisers
+    // (`admin-group-question.ts`). Null when it answers nothing.
+    const hqHelp = buildHqHelp({ lang, ...hqHelpGates(org) });
+    const answerQuestion = () =>
+      answerHqQuestion({
+        orgId: org.id,
+        lang,
+        messageId,
+        body,
+        senderUserId: input.senderUserId,
+        senderName: input.senderName,
+        now,
+        history,
+        lastBotPost,
+        hqHelp,
+        ...(input.deps?.extractorModel ? { deps: { model: input.deps.extractorModel } } : {}),
+      });
 
     // The safe-YES rule and the score keep their own rules for a quoted
     // message (a YES quoting another organiser is already silent there; a
@@ -356,20 +379,7 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
         // question there, and anything it does not answer on the help
         // route (2026-10-16, FNF: "MatchTime who are the admins?" came back
         // `help` and got the menu instead of the admins).
-        const hqHelp = buildHqHelp({ lang, ...hqHelpGates(org) });
-        const r = await answerHqQuestion({
-          orgId: org.id,
-          lang,
-          messageId,
-          body,
-          senderUserId: input.senderUserId,
-          senderName: input.senderName,
-          now,
-          history,
-          lastBotPost,
-          hqHelp,
-          ...(input.deps?.extractorModel ? { deps: { model: input.deps.extractorModel } } : {}),
-        });
+        const r = await answerQuestion();
         if (r) return said(r.outcome, r.replyText);
         if (route === "help") return said("hq-help", hqHelp);
         // Nothing answered it. An organiser always hears the one line; anyone
@@ -487,6 +497,11 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
           });
           if (change.handled) return said(change.outcome, change.replyText);
         }
+        // Then the question answering, for anyone (FNF HQ, 2026-10-18 13:32:
+        // "@Match Time what is squad now including bench?" fell back to
+        // `unsure` and got "I didn't catch that" instead of the squad).
+        const answered = await answerQuestion();
+        if (answered) return said(answered.outcome, answered.replyText);
         return said("hq-not-understood", s.hq_not_understood);
       }
       default:
