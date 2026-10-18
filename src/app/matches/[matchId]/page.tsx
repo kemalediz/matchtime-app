@@ -18,6 +18,7 @@ import { format } from "date-fns";
 import { formatLondon } from "@/lib/london-time";
 import { Calendar, MapPin, Clock, Star, ChevronRight } from "lucide-react";
 import { t } from "@/lib/i18n/t";
+import { scoreEntryAction } from "@/lib/score-entry";
 import { buildWeekList } from "@/lib/monthly-week-rules";
 import { PartnerAskPanel } from "@/components/match/partner-ask-panel";
 import { PartnerGuestsPanel } from "@/components/match/partner-guests-panel";
@@ -167,6 +168,10 @@ export default async function MatchDetailPage({
       })()
     : [];
   const isPastDeadline = new Date() > match.attendanceDeadline;
+  // "Enter score" / "Edit score" for an admin on any PLAYED match that was
+  // not cancelled (FNF, 2026-10-18). The score box lives on the teams
+  // page; a COMPLETED match used to have no link to it at all.
+  const scoreAction = isAdmin ? scoreEntryAction(match) : null;
   const hasTeams = match.teamAssignments.length > 0;
 
   // Block "I'm in" on a future match while a previous scheduled
@@ -463,6 +468,20 @@ export default async function MatchDetailPage({
 
       {/* Actions */}
       <div className="flex flex-wrap gap-3">
+        {scoreAction && (
+          <Link
+            href={`/admin/matches/${matchId}/teams#score`}
+            data-testid="score-entry-link"
+            className={
+              scoreAction === "enter"
+                ? "inline-flex items-center gap-1 px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium transition-colors"
+                : "inline-flex items-center gap-1 px-5 py-2.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-medium"
+            }
+          >
+            {scoreAction === "edit" ? ms.score_entry_edit : ms.score_entry_enter}
+            <ChevronRight className="w-4 h-4" />
+          </Link>
+        )}
         {canSeePayments && (
           <Link
             href={`/collect/${matchId}`}

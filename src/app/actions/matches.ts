@@ -13,6 +13,7 @@ import { dayTimeLabel } from "@/lib/i18n/dates";
 import { normaliseLang } from "@/lib/i18n/lang";
 import { t } from "@/lib/i18n/t";
 import { reconcileMatchElo, setMatchScore } from "@/lib/match-elo";
+import { canEnterScore } from "@/lib/score-entry";
 import {
   planFormatSwitchSchedule,
   renderKickoffMoveLine,
@@ -251,6 +252,13 @@ export async function updateMatchScore(matchId: string, formData: { redScore: nu
   if (!match) throw new Error("Match not found");
 
   await requireOrgAdmin(session.user.id, match.activity.orgId);
+
+  // Only a PLAYED match takes a score (src/lib/score-entry.ts): the page
+  // offers the box on the same rule, and a score marks the match
+  // COMPLETED, which a cancelled match or one still to come must not be.
+  if (!canEnterScore(match)) {
+    throw new Error(t(normaliseLang(match.activity.org?.language)).score_entry_err_not_played);
+  }
 
   const parsed = matchScoreSchema.parse(formData);
   /** Set when the score was saved and the Elo could NOT be recalculated

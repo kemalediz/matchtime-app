@@ -17,6 +17,7 @@ import {
 import { updateMatchScore } from "@/app/actions/matches";
 import { SectionInfo } from "@/components/info/section-info";
 import { useOrgLang } from "@/components/info/org-lang";
+import { canEnterScore } from "@/lib/score-entry";
 
 interface Player {
   id: string;
@@ -36,6 +37,8 @@ export default function TeamManagementPage() {
   const { matchId } = useParams<{ matchId: string }>();
   const [match, setMatch] = useState<{
     status: string;
+    /** Kickoff, as JSON: the score box shows once it has passed. */
+    date: string;
     teamAssignments: TeamAssignment[];
     attendances: { status: string; user: Player }[];
     redScore: number | null;
@@ -51,6 +54,15 @@ export default function TeamManagementPage() {
   useEffect(() => {
     loadMatch();
   }, [matchId]);
+
+  // "Enter score" on the match page and "Add score" on the result lists
+  // link to #score. The section renders only after the fetch, so the
+  // browser's own jump to the anchor has nothing to land on: scroll once
+  // it is there.
+  useEffect(() => {
+    if (loading || typeof window === "undefined" || window.location.hash !== "#score") return;
+    document.getElementById("score")?.scrollIntoView({ block: "start" });
+  }, [loading]);
 
   async function loadMatch() {
     const res = await fetch(`/api/matches/${matchId}`);
@@ -349,9 +361,10 @@ export default function TeamManagementPage() {
         </>
       )}
 
-      {/* Score entry */}
-      {(match.status === "TEAMS_PUBLISHED" || match.status === "COMPLETED") && (
-        <section className="bg-white rounded-xl border border-slate-200 shadow-sm">
+      {/* Score entry: every PLAYED match that was not cancelled, teams
+          published or not (src/lib/score-entry.ts, FNF 2026-10-18). */}
+      {canEnterScore(match) && (
+        <section id="score" data-testid="score-section" className="bg-white rounded-xl border border-slate-200 shadow-sm scroll-mt-6">
           <div className="px-6 py-4 border-b border-slate-100">
             <h2 className="flex items-center gap-1 font-semibold text-slate-800">
               Match score
