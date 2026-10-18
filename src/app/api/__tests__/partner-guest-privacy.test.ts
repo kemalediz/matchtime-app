@@ -89,7 +89,11 @@ describe("updatePlayerPhone and a guest", () => {
     authMock.mockResolvedValue({ user: { id: "fnf-admin" } });
     membershipFindUnique.mockResolvedValue({ userId: "ali", guestFromOrgId: "sutton" });
     const { updatePlayerPhone } = await import("@/app/actions/players");
-    await expect(updatePlayerPhone("ali", "fnf", "+447700900999")).rejects.toThrow(/guest/i);
+    // Refused as data, not a throw (2026-10-18: Next redacts a thrown
+    // Server-Action message, so the admin saw nothing useful).
+    const r = await updatePlayerPhone("ali", "fnf", "+447700900999");
+    expect(r.ok).toBe(false);
+    expect(!r.ok && r.error).toMatch(/guest/i);
   });
 });
 

@@ -50,6 +50,12 @@ export interface MergePlayersCoreOpts {
    *  admin action this is `[adminOrgId]`; for migration it's the
    *  intersection of both users' memberships. */
   saveAliasInOrgIds: string[];
+  /** Never patch the keeper's User row (name, image, phone, email,
+   *  password, onboarded) from the dropped one. Set by the cross-club
+   *  phone link (cross-club-link.ts): the keeper is another club's
+   *  player, and `User.name` / `User.image` are global, so club A must
+   *  not fill them (the #314 rule, player-account-guard.ts). */
+  keepIdentity?: boolean;
 }
 
 export async function mergePlayersCore(
@@ -107,7 +113,7 @@ export async function mergePlayersCore(
     where: { id: dropUserId },
     data: { phoneNumber: null, email: `merged-${dropUserId}-${Date.now()}@matchtime.local` },
   });
-  if (Object.keys(patch).length > 0) {
+  if (!opts.keepIdentity && Object.keys(patch).length > 0) {
     await tx.user.update({ where: { id: keepUserId }, data: patch });
   }
 

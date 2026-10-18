@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Check, AlertCircle, Loader2, Phone } from "lucide-react";
 import { updatePlayerPhone } from "@/app/actions/players";
+import { t } from "@/lib/i18n/t";
+import { DEFAULT_LANG, type Lang } from "@/lib/i18n/lang";
 
 interface Player {
   id: string;
@@ -22,6 +24,7 @@ type RowState = "idle" | "dirty" | "saving" | "saved" | "error";
 export default function BulkPhonesPage() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [orgId, setOrgId] = useState<string | null>(null);
+  const [lang, setLang] = useState<Lang>(DEFAULT_LANG);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"all" | "missing" | "active">("active");
   const [search, setSearch] = useState("");
@@ -33,7 +36,10 @@ export default function BulkPhonesPage() {
   const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   useEffect(() => {
-    fetch("/api/org/settings").then((r) => r.json()).then((d) => setOrgId(d.id));
+    fetch("/api/org/settings").then((r) => r.json()).then((d) => {
+      setOrgId(d.id);
+      if (d.language) setLang(d.language as Lang);
+    });
     load();
   }, []);
 
@@ -77,7 +83,10 @@ export default function BulkPhonesPage() {
     setStates((s) => ({ ...s, [userId]: "saving" }));
     try {
       const res = await updatePlayerPhone(userId, orgId, raw);
-      if ("ok" in res && res.ok === false) {
+      if (!res.ok) {
+        // A readable sentence, never the redacted server error. A number
+        // held at another club is linked from the Players page, where
+        // the "same person?" question is asked; here it stays unsaved.
         setStates((s) => ({ ...s, [userId]: "error" }));
         setErrors((e) => ({ ...e, [userId]: res.error }));
         return;
@@ -85,9 +94,7 @@ export default function BulkPhonesPage() {
       const { phoneNumber } = res;
       // Auto-merge (wa-sync or provisional orphan) shifts the player
       // list shape — one row removed, possibly a redirect. Reload.
-      const merged =
-        ("mergedSyncOrphan" in res && res.mergedSyncOrphan) ||
-        ("mergedProvisional" in res && res.mergedProvisional);
+      const merged = res.mergedSyncOrphan || res.mergedProvisional;
       if (merged) {
         await load();
         setStates((s) => ({ ...s, [userId]: "saved" }));
@@ -109,7 +116,8 @@ export default function BulkPhonesPage() {
       setStates((s) => ({ ...s, [userId]: "error" }));
       setErrors((e) => ({
         ...e,
-        [userId]: err instanceof Error ? err.message : "Save failed",
+        // A network failure, say. Never a raw server message.
+        [userId]: t(lang).phone_err_generic,
       }));
     }
   }
