@@ -1575,6 +1575,10 @@ export const tr: Strings = {
     `Teşekkürler${p.firstName ? ` ${p.firstName}` : ""}! *${p.activityName}* için *${p.amount}* ödediğini ilettim. ` +
     `${p.collectorName ?? "Organizatör"} para eline geçince onaylayacak 👍`,
 
+  dm_will_pay_direct_ack: (p) =>
+    `Tamamdır${p.firstName ? ` ${p.firstName}` : ""}! *${p.activityName}* için *${p.amount}* tutarını doğrudan ödeyeceğini ilettim. ` +
+    `${p.collectorName ?? "Organizatör"} para eline geçince onaylayacak 👍`,
+
   dm_paid_claim_already: (p) =>
     `Tamamdır${p.firstName ? ` ${p.firstName}` : ""}, *${p.activityName}* için *${p.amount}* ödemeni zaten ilettim. ` +
     `${p.collectorName ?? "Organizatör"} para eline geçince onaylayacak 👍`,

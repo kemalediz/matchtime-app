@@ -27,6 +27,7 @@ import { LIST_OPENS_DAYS_MAX, LIST_OPENS_DAYS_MIN, MAX_PER_GAME_PENCE, PAYMENT_I
 import { REMINDER_LEAD_MS, effectiveTeamsReadyTime } from "../team-proposal-rules";
 import { pickFallbackAt } from "../organiser-pick-rules";
 import { DEFAULT_QUIET_HOURS } from "../message-hours";
+import { featureForDueKey } from "../due-key-feature";
 import {
   PARTNER_ASK_CUTOFF_DEFAULT_HOURS,
   PARTNER_ASK_CUTOFF_MAX_HOURS,
@@ -347,7 +348,8 @@ describe("settings explanations: the facts match the code", () => {
     expect(block).toMatch(/startsWith\("football"\)/);
     expect(block).toMatch(/hoursUntilMatch <= 2 &&\s*hoursUntilMatch >= 1\.5/);
     expect(block).toMatch(/kind: "group-message"/);
-    expect(sched).toMatch(/seg\.startsWith\("football-gear-reminder"\)\s*\)\s*return "attendance"/);
+    // The key → feature gate lives in due-key-feature.ts (2026-10-18).
+    expect(featureForDueKey("m1:football-gear-reminder")).toBe("attendance");
     const en = joined(settingInfo("en", "gearReminder"));
     expect(en).toMatch(/90 minutes and 2 hours before each football kickoff/);
     expect(en).toContain("not sent anywhere");

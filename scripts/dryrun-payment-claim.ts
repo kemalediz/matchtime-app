@@ -9,6 +9,7 @@
  *
  *   REPEAT=3 node --env-file=.env ./node_modules/.bin/tsx scripts/dryrun-payment-claim.ts
  *   SET=heldout REPEAT=3 node --env-file=.env ./node_modules/.bin/tsx scripts/dryrun-payment-claim.ts
+ *   SET=feroz REPEAT=1 node --env-file=.env ./node_modules/.bin/tsx scripts/dryrun-payment-claim.ts
  *
  * Spends ANTHROPIC_API_KEY_DEV only (refuses without it). Touches no
  * database, sends nothing, writes nothing: it imports the DB-free
@@ -16,6 +17,8 @@
  * a hard stop at MAX_USD.
  *
  * Approved by Kemal on 2026-09-23 for this change, capped at $0.30.
+ * Approved again on 2026-10-18 for the collector rewrite (Feroz, FNF):
+ * SET=feroz once, plus one pass of SET=main and SET=heldout.
  */
 import Anthropic from "@anthropic-ai/sdk";
 import { spendDevApiKeyOrExit } from "../e2e/helpers/dev-api-key.ts";
@@ -46,6 +49,8 @@ const PAY_CHASE = buildPayChaseDm({
   fee: 8,
   activityName: "Tuesday 7-a-side",
   url: "https://mt.example/s/pay",
+  methods: ["card", "direct"],
+  collectorName: "Kemal Ediz",
   lang: "en",
 });
 const RATING_DM = buildRatingDm({
@@ -57,7 +62,27 @@ const RATING_DM = buildRatingDm({
   lang: "en",
 });
 
-const CTX: PaymentClaimContext = { playerName: "Abid Kazmi", owes: "£8 for Tuesday 7-a-side", lastBotDm: PAY_CHASE };
+/** The route always names the money collector now (2026-10-18). */
+const CTX: PaymentClaimContext = {
+  playerName: "Abid Kazmi",
+  owes: "£8 for Tuesday 7-a-side",
+  collectorName: "Kemal Ediz",
+  lastBotDm: PAY_CHASE,
+};
+
+/** Feroz, FNF 2026-10-18: the exact context the route had (his last
+ *  BotJob DM, verbatim), plus the collector it now passes. */
+const FEROZ_PAY_LINK =
+  "💷 Feroz, match fee for *Football 9-a-side* is *£5*.\n\nTap to pay (bank, card, Apple or Google Pay, or pay the organiser directly): https://mt.example/s/pay\n\nYou can also pay for anyone you brought along.";
+const FEROZ: PaymentClaimContext = {
+  playerName: "Feroz",
+  owes: "£5 for Football 9-a-side",
+  collectorName: "Raihan",
+  lastBotDm: FEROZ_PAY_LINK,
+};
+/** The descriptions `pickLastBotDm` gives a scheduler DM (key only). */
+const PAY_CHASE_ABOUT = "(a reminder to pay the match fee they owe, with their pay link)";
+const RATE_ABOUT = "(a request to rate their teammates from the last match)";
 
 interface Case {
   text: string;
@@ -111,6 +136,38 @@ const HELD_OUT: Case[] = [
   { text: "why do I owe for a game I didn't play?", want: "other" },
 ];
 
+/**
+ * THE COLLECTOR (Feroz, FNF 2026-10-18). Paying the named collector is a
+ * claim; a plan, a question, or paying somebody else is not. The prompt's
+ * examples use "Sam", so these Raihan cases are held out too.
+ * `SET=feroz` runs these.
+ */
+const COLLECTOR: Case[] = [
+  { text: "I bank transferred Raihan", want: "paid", ctx: FEROZ },
+  { text: "I bank transferred Raihan", want: "paid", ctx: { ...FEROZ, lastBotDm: PAY_CHASE_ABOUT } },
+  { text: "sent it to Raihan", want: "paid", ctx: FEROZ },
+  { text: "paid Raihan cash", want: "paid", ctx: FEROZ },
+  { text: "Raihan'a havale yaptım", want: "paid", ctx: FEROZ },
+  { text: "Raihan'a gönderdim", want: "paid", ctx: FEROZ },
+  // A plan to pay the collector directly is the settle-directly button
+  // said in words (Kemal, 2026-10-18).
+  { text: "will send Raihan tonight", want: "will_pay_direct", ctx: FEROZ },
+  { text: "I'll transfer Raihan later", want: "will_pay_direct", ctx: FEROZ },
+  { text: "I'll give Raihan cash on Friday", want: "will_pay_direct", ctx: FEROZ },
+  { text: "Raihan'a akşam gönderirim", want: "will_pay_direct", ctx: FEROZ },
+  { text: "Raihan'a cuma günü elden veririm", want: "will_pay_direct", ctx: FEROZ },
+  // ...but a plan that does not choose the collector is still the pay link.
+  { text: "will pay tomorrow", want: "other", ctx: FEROZ },
+  { text: "yarın öderim", want: "other", ctx: FEROZ },
+  { text: "can I pay Raihan directly?", want: "other", ctx: FEROZ },
+  { text: "will give it to Ali", want: "other", ctx: FEROZ },
+  { text: "did Raihan get it?", want: "other", ctx: FEROZ },
+  { text: "Raihan'a ulaştı mı?", want: "other", ctx: FEROZ },
+  { text: "paid Ali", want: "other", ctx: FEROZ },
+  { text: "Ali'ye verdim", want: "other", ctx: FEROZ },
+  { text: "done 👍", want: "other", ctx: { ...FEROZ, lastBotDm: RATE_ABOUT } },
+];
+
 async function main() {
   const key = spendDevApiKeyOrExit("scripts/dryrun-payment-claim.ts");
   if (process.env[PAYMENT_CLAIM_STUB_FILE_ENV]) {
@@ -155,8 +212,10 @@ async function main() {
 
   console.log(`── payment-claim classifier, ${PAYMENT_CLAIM_MODEL}, REPEAT=${REPEAT}, cap $${MAX_USD} ──`);
   let bad = 0;
-  const set = process.env.SET === "heldout" ? HELD_OUT : CASES;
-  console.log(`set: ${process.env.SET === "heldout" ? "held out" : "main"} (${set.length} cases)`);
+  const sets: Record<string, Case[]> = { main: CASES, heldout: HELD_OUT, feroz: COLLECTOR };
+  const setName = process.env.SET && sets[process.env.SET] ? process.env.SET : "main";
+  const set = sets[setName];
+  console.log(`set: ${setName} (${set.length} cases)`);
   for (const c of set) {
     const got: string[] = [];
     for (let i = 0; i < REPEAT; i++) {
@@ -170,7 +229,12 @@ async function main() {
     const agreed = got.filter((g) => g.startsWith(`${c.want}@`)).length;
     const pass = agreed === REPEAT;
     if (!pass) bad++;
-    const note = c.ctx?.lastBotDm === RATING_DM ? " (after the rating DM)" : "";
+    const note =
+      c.ctx?.lastBotDm === RATING_DM || c.ctx?.lastBotDm === RATE_ABOUT
+        ? " (after the rating DM)"
+        : c.ctx?.lastBotDm === PAY_CHASE_ABOUT
+          ? " (after a pay chase, key only)"
+          : "";
     console.log(
       `  ${pass ? "✓" : "✗"} ${agreed}/${REPEAT}  want=${c.want.padEnd(15)} got=[${got.join(", ")}]  ${JSON.stringify(c.text)}${note}`,
     );

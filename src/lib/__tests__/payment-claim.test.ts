@@ -13,11 +13,14 @@
  * must still confirm. It never marks anybody paid; see
  * `paid-claim-never-sets-paid-at.test.ts` for that guarantee on its own.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   PAYMENT_CLAIM_MIN_CONFIDENCE,
   buildPaymentClaimSystemPrompt,
+  buildPaymentClaimUserTurn,
   classifyPaymentClaim,
+  paymentClaimContext,
+  pickLastBotDm,
   parsePaymentClaim,
   paymentClaimBodyOf,
   pickClaimMatch,
@@ -25,6 +28,7 @@ import {
   type OwedMatch,
   type OwedMatchRow,
   type PaymentClaimDeps,
+  type PaymentClaimClassification,
   type PaymentClaimIntent,
 } from "../payment-claim";
 
@@ -41,6 +45,7 @@ function recorder(over: Partial<PaymentClaimDeps> = {}) {
   const calls = {
     classified: 0,
     marked: [] as string[],
+    vias: [] as string[],
     links: [] as string[],
     replies: [] as Array<{ orgId: string; text: string }>,
     sightings: 0,
@@ -50,14 +55,15 @@ function recorder(over: Partial<PaymentClaimDeps> = {}) {
     owedMatch: async () => OWED,
     classify: async () => {
       calls.classified++;
-      return "other";
+      return { intent: "other", confidence: 0.9, reasoning: "not a claim" };
     },
     firstSighting: async () => {
       calls.sightings++;
       return true;
     },
-    markPending: async (matchId) => {
+    markPending: async (matchId, via) => {
       calls.marked.push(matchId);
+      calls.vias.push(via);
       return { ok: true, alreadyPending: false, amount: 8, quantity: 1, collectorNotified: true };
     },
     payLink: async (matchId) => {
@@ -72,12 +78,15 @@ function recorder(over: Partial<PaymentClaimDeps> = {}) {
       return true;
     },
     playerName: "Abid Kazmi",
+    userId: "u-abid",
     ...over,
   };
   return { calls, deps };
 }
 
-const says = (intent: PaymentClaimIntent) => ({ classify: async () => intent });
+const says = (intent: PaymentClaimIntent) => ({
+  classify: async (): Promise<PaymentClaimClassification> => ({ intent, confidence: 0.95, reasoning: "stub" }),
+});
 
 describe("nothing owed: the model is never asked and nothing happens", () => {
   it("no owed match (already paid, no fee yet, not in the squad, or the collector)", async () => {
@@ -313,5 +322,186 @@ describe("the classifier's contract", () => {
       expect(p, s).toContain(s);
     }
     expect(p).not.toMatch(/[—–]/);
+  });
+});
+
+// ── Feroz, FNF 2026-10-18 ─────────────────────────────────────────────
+//   "I bank transferred Raihan" was read as `other` 5/5 because the model
+//   was never told Raihan collects the money, and the `other` left no
+//   trace in the logs. The context now names the collector, the last DM
+//   includes the scheduler's chasers, and every verdict is logged.
+
+describe("the classifier is told who collects the money", () => {
+  it("the user turn names the money collector", () => {
+    const turn = buildPaymentClaimUserTurn("I bank transferred Raihan", {
+      playerName: "Feroz",
+      owes: "£5 for Football 9-a-side",
+      collectorName: "Raihan",
+      lastBotDm: null,
+    });
+    expect(turn).toContain("Money collector: Raihan");
+    expect(paymentClaimBodyOf(turn)).toBe("I bank transferred Raihan");
+  });
+
+  it("no collector known: the line says so rather than vanishing", () => {
+    const turn = buildPaymentClaimUserTurn("Paid", { playerName: "Feroz", owes: "£5 for X", collectorName: null });
+    expect(turn).toContain("Money collector: (not known)");
+  });
+
+  it("the route's context carries the owed match's collector", () => {
+    const ctx = paymentClaimContext(
+      { ...OWED, collectorName: "Raihan", fee: 5, activityName: "Football 9-a-side" },
+      "Feroz",
+      "x",
+    );
+    expect(ctx).toEqual({
+      playerName: "Feroz",
+      owes: "£5 for Football 9-a-side",
+      collectorName: "Raihan",
+      lastBotDm: "x",
+    });
+  });
+
+  it("the prompt defines the money collector and says paying someone else is not paying", () => {
+    const p = buildPaymentClaimSystemPrompt();
+    expect(p).toContain("Money collector:");
+    expect(p).toMatch(/not the money collector/i);
+  });
+});
+
+describe("MatchTime's last DM includes the scheduler's chasers", () => {
+  const at = (iso: string) => new Date(iso);
+
+  it("a newer pay chase (stored as a key, no text) beats an older queued DM", () => {
+    const got = pickLastBotDm({
+      queued: { text: "💷 Feroz, match fee for *Football 9-a-side* is *£5*.", at: at("2026-10-16T21:46:00Z") },
+      scheduled: { key: "m1:pay-chase:u1:2026-10-18", at: at("2026-10-18T17:04:00Z") },
+    });
+    expect(got).toMatch(/^\(.*pay.*\)$/i);
+  });
+
+  it("a newer rating reminder is NOT about paying, so a bare 'done' answers it", () => {
+    const got = pickLastBotDm({
+      queued: { text: "💷 pay link", at: at("2026-10-16T21:46:00Z") },
+      scheduled: { key: "m1:rate-reminder:u1:2026-10-18", at: at("2026-10-18T17:01:00Z") },
+    });
+    expect(got).toMatch(/rate/i);
+    expect(got).not.toMatch(/pay/i);
+  });
+
+  it("a newer queued DM keeps its real words", () => {
+    expect(
+      pickLastBotDm({
+        queued: { text: "real words", at: at("2026-10-18T18:00:00Z") },
+        scheduled: { key: "m1:pay-chase:u1:2026-10-18", at: at("2026-10-18T17:04:00Z") },
+      }),
+    ).toBe("real words");
+  });
+
+  it("a newer scheduler DM we cannot describe is not known, never the stale text", () => {
+    expect(
+      pickLastBotDm({
+        queued: { text: "💷 pay link", at: at("2026-10-16T21:46:00Z") },
+        scheduled: { key: "org-x:bot-intro", at: at("2026-10-18T17:04:00Z") },
+      }),
+    ).toBeNull();
+  });
+
+  it("nothing either way is null; one side alone is that side", () => {
+    expect(pickLastBotDm({ queued: null, scheduled: null })).toBeNull();
+    expect(pickLastBotDm({ queued: { text: "t", at: at("2026-10-18T00:00:00Z") }, scheduled: null })).toBe("t");
+  });
+});
+
+// ── "I'll pay Raihan directly" (Kemal, 2026-10-18) ────────────────────
+//   A stated plan to pay the MONEY COLLECTOR directly is the pay page's
+//   "Pay the collector directly" button: the same pending state (so the
+//   chasers stop), the collector's notice in its "they'll pay you" form,
+//   and the player's ack says "you'll pay", never "you've paid".
+
+describe("a plan to pay the collector directly is the settle-directly button", () => {
+  it("marks pending with the will-pay door, thanks the player in the will-pay words, reacts", async () => {
+    const r = recorder(says("will_pay_direct"));
+    const out = await runPaymentClaim(r.deps);
+    expect(out).toEqual({
+      handled: "will-pay-direct",
+      matchId: "m-tue",
+      alreadyPending: false,
+      collectorNotified: true,
+      reactionQueued: true,
+    });
+    expect(r.calls.marked).toEqual(["m-tue"]);
+    expect(r.calls.vias).toEqual(["dm-will-pay"]);
+    expect(r.calls.replies[0].text).toBe(
+      "Noted Abid, I've told Kemal you'll pay them *£8* directly for *Tuesday 7-a-side*. Kemal will confirm once it lands 👍",
+    );
+    expect(r.calls.replies[0].text).not.toMatch(/you've paid/);
+    expect(r.calls.reacted).toEqual(["org-sutton"]);
+  });
+
+  it("in Turkish", async () => {
+    const r = recorder({
+      ...says("will_pay_direct"),
+      owedMatch: async () => ({ ...OWED, lang: "tr", activityName: "Cuma Maçı" }),
+    });
+    await runPaymentClaim(r.deps);
+    expect(r.calls.replies[0].text).toBe(
+      "Tamamdır Abid! *Cuma Maçı* için *£8* tutarını doğrudan ödeyeceğini ilettim. Kemal para eline geçince onaylayacak 👍",
+    );
+  });
+
+  it("a `paid` claim still comes through the DM-claim door", async () => {
+    const r = recorder(says("paid"));
+    await runPaymentClaim(r.deps);
+    expect(r.calls.vias).toEqual(["dm-claim"]);
+  });
+
+  it("a repeat while already pending gets the existing 'already done' reply", async () => {
+    const r = recorder({
+      ...says("will_pay_direct"),
+      markPending: async () => ({ ok: true, alreadyPending: true, amount: 8, quantity: 1, collectorNotified: false }),
+    });
+    await runPaymentClaim(r.deps);
+    expect(r.calls.replies[0].text).toBe(
+      "Already done Abid: Kemal knows about your *£8* for *Tuesday 7-a-side* and will confirm once it lands 👍",
+    );
+  });
+
+  it("the intent is in the classifier's closed enum and its prompt", () => {
+    expect(parsePaymentClaim(JSON.stringify({ intent: "will_pay_direct", confidence: 0.9, reasoning: "x" })).intent).toBe(
+      "will_pay_direct",
+    );
+    expect(buildPaymentClaimSystemPrompt()).toContain('"will_pay_direct"');
+  });
+});
+
+describe("every verdict is logged, `other` included", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("logs user, match, intent, confidence and reasoning for an `other`", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    const r = recorder({
+      classify: async () => ({ intent: "other", confidence: 0.8, reasoning: "names another person (Raihan)" }),
+    });
+    await runPaymentClaim(r.deps);
+    const line = info.mock.calls.map((c) => c.join(" ")).find((l) => l.includes("[payment-claim] verdict"));
+    expect(line).toBeDefined();
+    expect(line).toContain("user=u-abid");
+    expect(line).toContain("match=m-tue");
+    expect(line).toContain("intent=other");
+    expect(line).toContain("confidence=0.80");
+    expect(line).toContain("names another person (Raihan)");
+  });
+
+  it("logs a `paid` too", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    await runPaymentClaim(recorder(says("paid")).deps);
+    expect(info.mock.calls.some((c) => c.join(" ").includes("intent=paid "))).toBe(true);
+  });
+
+  it("nothing owed: no model call, so no verdict line", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    await runPaymentClaim(recorder({ owedMatch: async () => null }).deps);
+    expect(info.mock.calls.some((c) => c.join(" ").includes("[payment-claim] verdict"))).toBe(false);
   });
 });

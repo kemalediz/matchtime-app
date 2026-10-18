@@ -6,7 +6,8 @@
  *
  *   - the pay page's "Pay the collector directly" button
  *     (`payDirect` in app/actions/payments.ts), and
- *   - a DM to MatchTime saying "Paid" (`lib/payment-claim.ts`).
+ *   - a DM to MatchTime saying "Paid", or that they will pay the
+ *     collector directly (`lib/payment-claim.ts`).
  *
  * Both call `markDirectPaymentPending` and nothing else, so the pending
  * state, the collector's notification and the repeat suppression cannot
@@ -26,9 +27,11 @@ import { ALREADY_PAID_REASON, payBlockedReason } from "./payment-outcome";
 import { buildDirectPayCollectorNotice } from "./dm-copy";
 
 /** Which door the player came through. Only the collector's wording
- *  differs: "they'll pay you" from the button, "they've paid you" from a
- *  DM. */
-export type DirectPaymentVia = "pay-page" | "dm-claim";
+ *  differs: "they've paid you" from a "Paid" DM; "they'll pay you" from
+ *  the button and from a DM saying they WILL pay the collector directly
+ *  ("will send Raihan tonight", Kemal 2026-10-18), which is the button
+ *  said in words. */
+export type DirectPaymentVia = "pay-page" | "dm-claim" | "dm-will-pay";
 
 async function loadPayRows(userId: string, matchId: string) {
   const match = await db.match.findUnique({

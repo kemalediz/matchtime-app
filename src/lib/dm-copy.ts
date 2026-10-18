@@ -223,6 +223,9 @@ export function buildPaidClaimAck(
     activityName: string;
     /** The collector already knew (a repeat): a different, shorter reply. */
     alreadyPending: boolean;
+    /** The player said they WILL pay the collector directly, not that
+     *  they have paid (Kemal, 2026-10-18). */
+    willPay?: boolean;
   } & WithLang,
 ): string {
   const args = {
@@ -231,7 +234,8 @@ export function buildPaidClaimAck(
     amount: gbp(p.amount),
     activityName: p.activityName,
   };
-  return p.alreadyPending ? t(p.lang).dm_paid_claim_already(args) : t(p.lang).dm_paid_claim_ack(args);
+  if (p.alreadyPending) return t(p.lang).dm_paid_claim_already(args);
+  return p.willPay ? t(p.lang).dm_will_pay_direct_ack(args) : t(p.lang).dm_paid_claim_ack(args);
 }
 
 export function buildPaidForOthersReply(

@@ -1951,6 +1951,13 @@ export const en = {
     `Thanks${p.firstName ? ` ${p.firstName}` : ""}, I've told ${p.collectorName ?? "the organiser"} you've paid ` +
     `*${p.amount}* for *${p.activityName}*. ${p.collectorName ?? "The organiser"} will confirm once it lands 👍`,
 
+  /** Row 195: the player's reply when their "I'll pay Raihan directly" DM
+   *  was passed to the collector: the settle-directly button said in
+   *  words (Kemal, 2026-10-18). A repeat gets `dm_paid_claim_already`. */
+  dm_will_pay_direct_ack: (p: { firstName: string | null; collectorName: string | null; amount: string; activityName: string }): string =>
+    `Noted${p.firstName ? ` ${p.firstName}` : ""}, I've told ${p.collectorName ?? "the organiser"} you'll pay them ` +
+    `*${p.amount}* directly for *${p.activityName}*. ${p.collectorName ?? "The organiser"} will confirm once it lands 👍`,
+
   /** Row 159: the same, when the collector already knew (a second "paid",
    *  or a "paid" after tapping "Pay the collector directly"). */
   dm_paid_claim_already: (p: { firstName: string | null; collectorName: string | null; amount: string; activityName: string }): string =>
