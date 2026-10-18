@@ -123,7 +123,7 @@ export interface AdminGroupIntroClub {
  *   poster, team sheet    admin-group-graphics.ts (the help's `graphics`
  *                         gate), and the team sheet on approval
  *   MoM, ratings          `featureMomVoting`, `featurePlayerRating`
- *                         (bot-scheduler.ts `featureForKey`: mom-, rate-)
+ *                         (due-key-feature.ts `featureForDueKey`: mom-, rate-)
  *   list stays here       `listAnnouncer` "organisers" (list-announcer.ts;
  *                         bot-scheduler.ts `toOrganisers`), weekly + attendance
  *   list in main chat     `listAnnouncer` "matchtime", weekly + attendance;
