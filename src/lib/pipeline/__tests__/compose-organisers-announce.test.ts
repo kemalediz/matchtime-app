@@ -61,10 +61,15 @@ describe("compose(): the organisers announce", () => {
     expect(out).toEqual([]);
   });
 
-  it("other answers are unchanged: the count", () => {
+  // The count says the bench (FNF 2026-10-18). Where the organisers
+  // announce the list, the players' group hears how many wait, not who.
+  it("the count still answers, with the bench counted but not named", () => {
     const sp: SpeechIntent = { kind: "answer_count", messageId: "c", statedCount: null };
     const before = say(world({ confirmed: FOURTEEN, bench: ["erdal"] }), sp);
-    expect(say(organisers(), sp)).toEqual(before);
+    const after = say(organisers(), sp);
+    expect(before[0].text).toMatch(/, 1 on the bench \(.+\) ✅ full squad\.$/);
+    expect(after).toEqual([{ ...before[0], text: before[0].text.replace(/ \(.+\) ✅/, " ✅") }]);
+    expect(after[0].text).toMatch(/, 1 on the bench ✅ full squad\.$/);
   });
 });
 

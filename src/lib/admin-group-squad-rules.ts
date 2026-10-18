@@ -20,6 +20,7 @@
 import { cleanName, parsePastedRoster, readListLine } from "./pasted-roster";
 import { normaliseName } from "./name-normalise";
 import { t } from "./i18n/t";
+import { buildBenchPickHint, buildSquadCountLine } from "./squad-count-line";
 import type { AttendanceFacts, Claim, Route } from "./pipeline/types";
 
 /**
@@ -231,15 +232,28 @@ export function diffPastedSquad(input: {
 
 export type SquadChangeKind = "in" | "out" | "bench" | "maybe";
 
+/**
+ * "Done: Akram out. 17 of 18, 1 on the bench (Uncle Najib)." The count
+ * says the bench whenever anyone is on it (FNF HQ 2026-10-18: "17 of 18"
+ * read as if nobody was waiting), and in an organiser-pick club with a
+ * place free it ends with the command that brings someone in
+ * (`squad-count-line.ts`).
+ */
 export function buildSquadChangeReply(p: {
   lang: string | null | undefined;
   changes: Array<{ kind: SquadChangeKind; name: string }>;
   failed: string[];
   confirmed: number;
   maxPlayers: number;
+  /** Who is on the bench after the change, in bench order. */
+  bench: readonly string[];
+  /** `Organisation.benchPickMode`. */
+  benchPickMode: string | null | undefined;
 }): string {
   const s = t(p.lang);
-  const count = s.ag_sq_count({ confirmed: p.confirmed, max: p.maxPlayers });
+  const squad = { lang: p.lang, confirmed: p.confirmed, maxPlayers: p.maxPlayers, bench: p.bench };
+  const hint = buildBenchPickHint({ ...squad, benchPickMode: p.benchPickMode });
+  const count = hint ? `${buildSquadCountLine(squad)} ${hint}` : buildSquadCountLine(squad);
   const parts: string[] = [];
   if (p.changes.length > 0) {
     const items = p.changes.map((c) =>
@@ -593,6 +607,9 @@ export function buildAdminSquadReply(p: {
   failed: string[];
   confirmed: number;
   maxPlayers: number;
+  /** Who is on the bench after the message, in bench order. */
+  bench: readonly string[];
+  benchPickMode: string | null | undefined;
   vetted: VettedClaim[];
   kickoffLabel: string;
   senderName: string | null;
@@ -624,7 +641,17 @@ export function buildAdminSquadReply(p: {
     kept.every((v) => v.ref.kind === "member" && alreadySo(v));
 
   if (p.changes.length > 0 || failed.length > 0 || literalNothing) {
-    parts.push(buildSquadChangeReply({ lang: p.lang, changes: p.changes, failed, confirmed: p.confirmed, maxPlayers: p.maxPlayers }));
+    parts.push(
+      buildSquadChangeReply({
+        lang: p.lang,
+        changes: p.changes,
+        failed,
+        confirmed: p.confirmed,
+        maxPlayers: p.maxPlayers,
+        bench: p.bench,
+        benchPickMode: p.benchPickMode,
+      }),
+    );
   }
 
   const unclear = [...new Set(kept.flatMap((v) => (v.ref.kind === "ambiguous" ? [v.ref.name] : [])))];

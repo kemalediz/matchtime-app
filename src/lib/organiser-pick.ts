@@ -47,6 +47,7 @@ import { madeAfterDropOutDeadline, weeklyDeadlinesFor } from "./weekly-deadlines
 import { QUIET_HOURS_SELECT, quietHoursOf } from "./message-hours";
 import { summariseClubDisplayRatings } from "./player-rating";
 import { normaliseBenchPickFallback } from "./squad-capacity";
+import { benchClause } from "./squad-count-line";
 import { dayCommaTimeLabel, dayTimeLabel, weekdayTimeLabel } from "./i18n/dates";
 import { t } from "./i18n/t";
 import { normalisePhone } from "./phone";
@@ -496,7 +497,12 @@ async function runFallback(
     await sendAdminNotice({
       orgId: org.id,
       now,
-      text: s.pick_fallback_left({ activityName: world.activityName, confirmed: world.confirmed.length, maxPlayers: world.maxPlayers }),
+      text: s.pick_fallback_left({
+        activityName: world.activityName,
+        confirmed: world.confirmed.length,
+        maxPlayers: world.maxPlayers,
+        bench: benchClause(org.language, world.waiting.map((w) => w.name)),
+      }),
     });
   }
 }

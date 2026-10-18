@@ -124,9 +124,9 @@ describe("helpFeaturesFrom reads the two settings", () => {
 describe("the trace the copy is written against", () => {
   it("a count answer in the players' group becomes 'the organisers will post the list'", () => {
     for (const lang of ["en", "tr"] as const) {
-      const count = t(lang).answer_count({ stated: false, confirmed: 11, maxPlayers: 18, kickoffLabel: "Fri 20:30", need: 7 });
+      const count = t(lang).answer_count({ stated: false, confirmed: 11, maxPlayers: 18, kickoffLabel: "Fri 20:30", need: 7, bench: "" });
       expect(organisersGroupReply(count, lang)).toBe(t(lang).oa_list_by_organisers);
-      const full = t(lang).answer_count({ stated: false, confirmed: 18, maxPlayers: 18, kickoffLabel: "Fri 20:30", need: 0 });
+      const full = t(lang).answer_count({ stated: false, confirmed: 18, maxPlayers: 18, kickoffLabel: "Fri 20:30", need: 0, bench: "" });
       expect(organisersGroupReply(full, lang)).toBe(t(lang).oa_list_by_organisers);
     }
   });

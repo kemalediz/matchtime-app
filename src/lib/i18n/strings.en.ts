@@ -343,10 +343,11 @@ export const en = {
 
   // ── rows 6 to 30: the batch answers (compose.ts) ───────────────────
 
-  answer_count: (p: { stated: boolean; confirmed: number; maxPlayers: number; kickoffLabel: string; need: number }): string => {
+  /** `bench` is `benchClause` (squad-count-line.ts), "" with nobody on it. */
+  answer_count: (p: { stated: boolean; confirmed: number; maxPlayers: number; kickoffLabel: string; need: number; bench: string }): string => {
     const head = p.stated
-      ? `Not quite, we're ${p.confirmed}/${p.maxPlayers} for ${p.kickoffLabel}`
-      : `We're ${p.confirmed}/${p.maxPlayers} for ${p.kickoffLabel}`;
+      ? `Not quite, we're ${p.confirmed}/${p.maxPlayers} for ${p.kickoffLabel}${p.bench}`
+      : `We're ${p.confirmed}/${p.maxPlayers} for ${p.kickoffLabel}${p.bench}`;
     const tail = p.need > 0 ? `, need ${p.need} more 🙏` : " ✅ full squad.";
     return `${head}${tail}`;
   },
@@ -2851,8 +2852,10 @@ export const en = {
     deadline: string;
     confirmed: number;
     maxPlayers: number;
+    /** `benchClause` (squad-count-line.ts), "" with nobody on the bench. */
+    bench: string;
   }): string =>
-    `Late drop-out: *${p.name}* said OUT for *${p.activityName}* (${p.whenLabel}) at ${p.time}, after the ${p.deadline} deadline. Squad is now ${p.confirmed}/${p.maxPlayers}.`,
+    `Late drop-out: *${p.name}* said OUT for *${p.activityName}* (${p.whenLabel}) at ${p.time}, after the ${p.deadline} deadline. Squad is now ${p.confirmed}/${p.maxPlayers}${p.bench}.`,
 
   // ── RSQ5: /admin/settings "Weekly routine" and the match page's
   //    "Carry over last squad" button (web). ──
@@ -3022,8 +3025,17 @@ export const en = {
     `To take yourself out of ${p.when}, write "${p.name} out".`,
   /** The sender said in conversation that they are in; nothing is written (2026-10-15). */
   ag_sq_self_hint_in: (p: { name: string; when: string }): string => `To put yourself in for ${p.when}, write "${p.name} in".`,
-  /** The count after the change. */
-  ag_sq_count: (p: { confirmed: number; max: number }): string => `${p.confirmed} of ${p.max}.`,
+  /** The count after the change. `bench` is `benchClause` (squad-count-line.ts):
+   *  ", 1 on the bench (Uncle Najib)", or "" with nobody on it. */
+  ag_sq_count: (p: { confirmed: number; max: number; bench: string }): string => `${p.confirmed} of ${p.max}${p.bench}.`,
+  /** The bench in a count line (squad-count-line.ts, FNF 2026-10-18).
+   *  `names` empty: the count alone (more than three, or not to be named). */
+  sq_bench: (p: { count: number; names: string[] }): string =>
+    `${p.count} on the bench${p.names.length > 0 ? ` (${joinList("en", p.names)})` : ""}`,
+  /** An organiser-pick club with a place free and someone on the bench:
+   *  the admin-group command that brings one in (squad-count-line.ts). */
+  sq_pick_hint: (p: { open: number; name: string }): string =>
+    `${p.open === 1 ? "A place is free" : `${p.open} places are free`}. To bring someone in from the bench, write "put ${p.name} in".`,
   /** A pasted list: what it would change, then YES. */
   ag_paste_adding: (p: { names: string }): string => `Adding: ${p.names}.`,
   ag_paste_removing: (p: { names: string }): string => `Removing: ${p.names}.`,
@@ -3233,8 +3245,9 @@ export const en = {
     );
   },
   /** P12 */
-  pick_fallback_left: (p: { activityName: string; confirmed: number; maxPlayers: number }): string =>
-    `Nobody picked for *${p.activityName}*, so the place stays open. Squad ${p.confirmed}/${p.maxPlayers}.`,
+  /** `bench` is `benchClause` (squad-count-line.ts), "" with nobody on it. */
+  pick_fallback_left: (p: { activityName: string; confirmed: number; maxPlayers: number; bench: string }): string =>
+    `Nobody picked for *${p.activityName}*, so the place stays open. Squad ${p.confirmed}/${p.maxPlayers}${p.bench}.`,
   /** D7: the line at the end of the in-group setup. */
   onb_weekly_routine_tip:
     "Tip: to carry the squad over each week, to pick replacements from the bench yourself, or to get admin messages in your admins' group, open Settings on the website.",

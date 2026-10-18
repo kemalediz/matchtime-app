@@ -324,8 +324,8 @@ export const tr: Strings = {
 
   answer_count: (p) => {
     const head = p.stated
-      ? `Tam değil, ${p.kickoffLabel} için ${p.confirmed}/${p.maxPlayers} kişiyiz`
-      : `${p.kickoffLabel} için ${p.confirmed}/${p.maxPlayers} kişiyiz`;
+      ? `Tam değil, ${p.kickoffLabel} için ${p.confirmed}/${p.maxPlayers} kişiyiz${p.bench}`
+      : `${p.kickoffLabel} için ${p.confirmed}/${p.maxPlayers} kişiyiz${p.bench}`;
     const tail = p.need > 0 ? `, ${p.need} kişi daha lazım 🙏` : " ✅ kadro tamam.";
     return `${head}${tail}`;
   },
@@ -2156,7 +2156,7 @@ export const tr: Strings = {
   intro_rolling_squad:
     "🔁 *Kadro devam eder*: geçen maçta oynadıysanız bir sonrakinde de kadrodasınız. Gelemeyecekseniz son çıkış saatinden önce *YOKUM* yazın.",
   late_drop_admin_notice: (p) =>
-    `Geç çıkış: *${p.name}*, *${p.activityName}* (${p.whenLabel}) için ${p.time} saatinde YOKUM dedi, son çıkış ${p.deadline} idi. Kadro şimdi ${p.confirmed}/${p.maxPlayers}.`,
+    `Geç çıkış: *${p.name}*, *${p.activityName}* (${p.whenLabel}) için ${p.time} saatinde YOKUM dedi, son çıkış ${p.deadline} idi. Kadro şimdi ${p.confirmed}/${p.maxPlayers}${p.bench}.`,
   wr_section_title: "Haftalık düzen",
   wr_section_lead: "Kadronun her hafta nasıl oluştuğu. Her ayar siz açana kadar kapalı kalır.",
   wr_rolling_label: "Kadro devam eder",
@@ -2259,7 +2259,11 @@ export const tr: Strings = {
     `${p.when} kadrosundan çıkmak isterseniz "${p.name} yok" yazın.`,
   ag_sq_self_hint_in: (p: { name: string; when: string }): string =>
     `${p.when} kadrosuna girmek isterseniz "${p.name} var" yazın.`,
-  ag_sq_count: (p: { confirmed: number; max: number }): string => `${p.confirmed}/${p.max}.`,
+  ag_sq_count: (p: { confirmed: number; max: number; bench: string }): string => `${p.confirmed}/${p.max}${p.bench}.`,
+  sq_bench: (p: { count: number; names: string[] }): string =>
+    `yedekte ${p.count} kişi${p.names.length > 0 ? ` (${joinList("tr", p.names)})` : ""}`,
+  sq_pick_hint: (p: { open: number; name: string }): string =>
+    `${p.open === 1 ? "Bir yer" : `${p.open} yer`} boş. Yedekten birini almak için "${p.name} var" yazın.`,
   ag_paste_adding: (p: { names: string }): string => `Eklenecek: ${p.names}.`,
   ag_paste_removing: (p: { names: string }): string => `Çıkarılacak: ${p.names}.`,
   ag_paste_to_bench: (p: { names: string }): string => `Yedek listesine alınacak: ${p.names}.`,
@@ -2394,7 +2398,7 @@ export const tr: Strings = {
       : `*${p.activityName}* için kimse seçim yapmadı, bu yüzden yedek listesine ${p.offered} yer açtım (bekleyen her kişiye bir yer): ` +
         `VARIM diyen bir yer alır. ${p.stillOpen} yer daha boş.`,
   pick_fallback_left: (p) =>
-    `*${p.activityName}* için kimse seçim yapmadı, yer boş kalıyor. Kadro ${p.confirmed}/${p.maxPlayers}.`,
+    `*${p.activityName}* için kimse seçim yapmadı, yer boş kalıyor. Kadro ${p.confirmed}/${p.maxPlayers}${p.bench}.`,
   onb_weekly_routine_tip:
     "İpucu: kadroyu her hafta devam ettirmek, yerine geçecekleri yedek listesinden kendiniz seçmek ya da yönetici mesajlarını yöneticilerin grubunda almak için sitedeki Ayarlar sayfasını açın.",
   wr_pick_label: "Boşalan yeri kim doldurur",

@@ -21,6 +21,15 @@ const dbMock = vi.hoisted(() => ({
 vi.mock("@/lib/db", () => ({ db: dbMock }));
 const att = vi.hoisted(() => ({ registerAttendance: vi.fn(), cancelAttendance: vi.fn() }));
 vi.mock("@/lib/attendance", () => att);
+// The count line's facts (squad-count.ts), read off the same rows.
+vi.mock("@/lib/squad-count", () => ({
+  loadSquadCount: async () => ({
+    confirmed: rows.filter((r) => r.status === "CONFIRMED").length,
+    maxPlayers: 6,
+    bench: [],
+    benchPickMode: null,
+  }),
+}));
 
 import { answerSquadPasteYes, proposeSquadPaste } from "../admin-group-paste";
 

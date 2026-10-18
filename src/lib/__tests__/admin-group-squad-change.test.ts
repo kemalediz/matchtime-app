@@ -39,6 +39,10 @@ const loadState = vi.hoisted(() => ({ loadSquadState: vi.fn() }));
 vi.mock("@/lib/pipeline/load-state", () => loadState);
 const rolling = vi.hoisted(() => ({ rollingSeedPendingAt: vi.fn() }));
 vi.mock("@/lib/rolling-squad", () => rolling);
+// The count line's facts (squad-count.ts): confirmed from the count double
+// below, an empty bench unless a test puts someone on it.
+const squadCount = vi.hoisted(() => ({ loadSquadCount: vi.fn() }));
+vi.mock("@/lib/squad-count", () => squadCount);
 
 import { handleAdminSquadChange } from "../admin-group-squad-change";
 import type { AttendanceFacts, Claim, Route, SquadState } from "../pipeline/types";
@@ -134,6 +138,12 @@ beforeEach(() => {
   });
   dbMock.attendance.count.mockResolvedValue(17);
   dbMock.match.findUnique.mockResolvedValue({ date: new Date("2026-10-16T19:00:00Z"), maxPlayers: 18 });
+  squadCount.loadSquadCount.mockImplementation(async () => ({
+    confirmed: await dbMock.attendance.count(),
+    maxPlayers: 18,
+    bench: [],
+    benchPickMode: "first-come",
+  }));
   dbMock.user.findMany.mockResolvedValue([
     { id: "u-shehryar", name: "Shehryar" },
     { id: "u-bilal", name: "Bilal" },
@@ -165,6 +175,26 @@ describe("handleAdminSquadChange", () => {
     expect(args.enabled).toBe(true);
     expect(args.history).toEqual([]);
     expect(att.cancelAttendance).toHaveBeenCalledTimes(1);
+  });
+
+  // FNF HQ 2026-10-18 18:16: "Akram out" was answered "17 of 18." with
+  // Uncle Najib on the bench, in a club whose organisers pick.
+  it("the incident: the count says the bench, and how to bring someone in, read after the write", async () => {
+    routed("other_att");
+    statuses.set("u-shehryar", "CONFIRMED");
+    squadCount.loadSquadCount.mockResolvedValue({ confirmed: 17, maxPlayers: 18, bench: ["Uncle Najib"], benchPickMode: "organiser" });
+    engineDoes(async (a) => {
+      await a.deps.cancelAttendance("u-shehryar", MATCH_ID, { cause: "admin-message", actorKind: "admin", actorUserId: "u-admin", sourceRef: "wa-1" });
+    });
+    const r = await handleAdminSquadChange({ ...input, route });
+    expect(r).toEqual({
+      handled: true,
+      outcome: "squad-changed",
+      replyText:
+        'Done: Shehryar out. 17 of 18, 1 on the bench (Uncle Najib). A place is free. To bring someone in from the bench, write "put Uncle Najib in".',
+    });
+    expect(squadCount.loadSquadCount).toHaveBeenCalledWith(MATCH_ID);
+    expect(squadCount.loadSquadCount.mock.invocationCallOrder[0]).toBeGreaterThan(att.cancelAttendance.mock.invocationCallOrder[0]);
   });
 
   it("a swap: one out, one in, in one line", async () => {

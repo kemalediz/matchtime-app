@@ -48,6 +48,7 @@ import { loadSquadState } from "./pipeline/load-state";
 import { rollingSeedPendingAt } from "./rolling-squad";
 import { hqNameListFacts, readHqNameList } from "./admin-group-name-list";
 import { timeLabel, weekdayLabel } from "./i18n/dates";
+import { loadSquadCount } from "./squad-count";
 import type { Route, SquadState } from "./pipeline/types";
 import {
   ADMIN_GROUP_SQUAD_ROUTES,
@@ -246,7 +247,7 @@ export async function handleAdminSquadChange(input: AdminSquadChangeInput): Prom
       return { handled: false, why: "no-match" };
     }
 
-    const match = await db.match.findUnique({ where: { id: matchId }, select: { date: true, maxPlayers: true } });
+    const match = await db.match.findUnique({ where: { id: matchId }, select: { date: true } });
     const maybeIds = outcome.recordTentativeForUserIds.filter((id) => !moved.some((m) => m.userId === id));
     if (match) {
       for (const userId of maybeIds) {
@@ -278,14 +279,17 @@ export async function handleAdminSquadChange(input: AdminSquadChangeInput): Prom
       ...maybeIds.map((userId) => ({ kind: "maybe" as const, name: nameOf.get(userId) ?? "?" })),
     ];
     const failed = [...new Set(outcome.failures.map((f) => f.who ?? input.senderName ?? "?"))];
-    const confirmed = await db.attendance.count({ where: { matchId, status: "CONFIRMED" } });
+    const squad = await loadSquadCount(matchId);
+    const confirmed = squad.confirmed;
     const reply = buildAdminSquadReply({
       lang: input.lang,
       changes,
       movedUserIds: [...last.keys()],
       failed,
       confirmed,
-      maxPlayers: match?.maxPlayers ?? confirmed,
+      maxPlayers: squad.maxPlayers ?? confirmed,
+      bench: squad.bench,
+      benchPickMode: squad.benchPickMode,
       vetted,
       kickoffLabel,
       senderName: input.senderName,

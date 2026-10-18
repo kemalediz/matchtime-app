@@ -72,7 +72,7 @@ test("an admin's 'Tom out': applied through the engine, confirmed in the admin g
   const before = { jobs: (await groupJobs(db)).length, analyzed: await analyzed(db) };
   const out = await say(request, "Tom out", ADMIN, "e2e-ags-tom-out");
   // The Pi puts a ✅ on the admin's message (2026-10-16).
-  expect(out).toMatchObject({ handled: true, outcome: "squad-changed", replyText: "Done: Tom Third out. 3 of 5.", react: "✅" });
+  expect(out).toMatchObject({ handled: true, outcome: "squad-changed", replyText: "Done: Tom Third out. 3 of 5, 1 on the bench (Ben Bench).", react: "✅" });
   expect(await statusOf(db, U.third)).toBe("DROPPED");
 
   // Recorded as an admin's instruction from that message.
@@ -93,7 +93,7 @@ test("an admin's 'Tom out': applied through the engine, confirmed in the admin g
 test("'put Ian in': in, with the new count", async ({ request, db }) => {
   engineOn({ "put Ian in": { route: "other_att", facts: otherFacts("Ian", "in") } });
   const out = await say(request, "put Ian in");
-  expect(out).toMatchObject({ handled: true, replyText: "Done: Ian Innes in. 4 of 5." });
+  expect(out).toMatchObject({ handled: true, replyText: "Done: Ian Innes in. 4 of 5, 1 on the bench (Ben Bench)." });
   expect(await statusOf(db, U.fresh)).toBe("CONFIRMED");
 });
 
@@ -209,7 +209,7 @@ test("an admin's YES as a WhatsApp reply to the list question applies it: out fi
   await say(request, "who's got the bibs?", PLAYER);
   const out = await say(request, "YES", ADMIN, undefined, { quotedText: pasteQuestion, quotedFromMatchTime: true });
   expect(out).toMatchObject({ handled: true, outcome: "paste-applied" });
-  expect(out.replyText).toBe("Done: Pat Player out, Zara Zest in, Naim Newman in. 5 of 5.");
+  expect(out.replyText).toMatch(/^Done: Pat Player out, Zara Zest in, Naim Newman in\. 5 of 5(, \d on the bench \(.+\))?\.$/);
   expect(await statusOf(db, U.player)).toBe("DROPPED");
   expect(await statusOf(db, U.extra)).toBe("CONFIRMED");
   const naim = await db.one<{ id: string }>(
@@ -253,7 +253,7 @@ test("a Turkish club gets Turkish", async ({ request, db }) => {
   await db.run(`UPDATE "Organisation" SET language = 'tr' WHERE id = $1`, [ORG_ID]);
   engineOn({ "Zara çıktı": { route: "other_att", facts: otherFacts("Zara", "out") } });
   const out = await say(request, "Zara çıktı");
-  expect(out.replyText).toMatch(/^Tamam: Zara Zest çıktı\. \d\/5\.$/);
+  expect(out.replyText).toMatch(/^Tamam: Zara Zest çıktı\. \d\/5(, yedekte \d kişi \(.+\))?\.$/);
   await db.run(`UPDATE "Organisation" SET language = 'en' WHERE id = $1`, [ORG_ID]);
 });
 
@@ -279,7 +279,7 @@ test("names on their own lines and a bare OUT, the router saying none: each one 
   engineOn({ [text]: { route: "none" } });
   const out = await say(request, text);
   expect(out).toMatchObject({ handled: true, outcome: "squad-changed", react: "✅" });
-  expect(out.replyText).toMatch(/^Done: .*Ian Innes out.*Naim Newman out.*\d of 5\.$/);
+  expect(out.replyText).toMatch(/^Done: .*Ian Innes out.*Naim Newman out.*\d of 5(, \d on the bench \(.+\))?\.$/);
   expect(await statusOf(db, U.fresh)).toBe("DROPPED");
 });
 
@@ -290,4 +290,56 @@ test("the same on one line, IN: each one back", async ({ request, db }) => {
   expect(out).toMatchObject({ handled: true, react: "✅" });
   expect(out.replyText).toMatch(/^Done: /);
   for (const id of [U.player, U.third, U.extra]) expect(["CONFIRMED", "BENCH"]).toContain(await statusOf(db, id));
+});
+
+// FNF HQ 2026-10-18 18:16. An organiser wrote "Akram out" in HQ; MatchTime
+// said "Done: Akram out. 17 of 18." with Uncle Najib on the bench, in a
+// club whose organisers pick who comes off it. The count now says the
+// bench, and the reply says how to bring someone in, by the same squad
+// change path ("put X in") that read the OUT.
+test.describe("organiser pick: a place opens with someone on the bench", () => {
+  test.beforeAll(async ({ db }) => {
+    resetDb();
+    await db.run(
+      `UPDATE "Organisation" SET "adminGroupId" = $2, "adminChannelMode" = 'admin-group', "benchPickMode" = 'organiser' WHERE id = $1`,
+      [ORG_ID, HQ],
+    );
+    // The fixture match is 4 of 5 with Ben Bench waiting; make it full, so
+    // an OUT opens a place as Akram's did.
+    await db.run(`UPDATE "Match" SET "maxPlayers" = 4 WHERE id = $1`, [MATCH.upcoming]);
+  });
+
+  test("'Tom out': the reply names the bench and the command that brings Ben in; nothing filled by itself", async ({ request, db }) => {
+    engineOn({ "Tom out": { route: "other_att", facts: otherFacts("Tom", "out") } });
+    const out = await say(request, "Tom out");
+    expect(out).toMatchObject({
+      handled: true,
+      outcome: "squad-changed",
+      replyText:
+        'Done: Tom Third out. 3 of 4, 1 on the bench (Ben Bench). A place is free. To bring someone in from the bench, write "put Ben Bench in".',
+    });
+    expect(await statusOf(db, U.third)).toBe("DROPPED");
+    // Organiser pick: MatchTime does not fill the place itself.
+    expect(await statusOf(db, U.bench)).toBe("BENCH");
+    const offers = await db.one<{ n: string }>(`SELECT count(*)::text AS n FROM "BenchSlotOffer" WHERE "matchId" = $1`, [MATCH.upcoming]);
+    expect(offers?.n).toBe("0");
+  });
+
+  test("the command it gave works: 'put Ben Bench in' brings him in, and the count is full again", async ({ request, db }) => {
+    engineOn({ "put Ben Bench in": { route: "other_att", facts: otherFacts("Ben Bench", "in") } });
+    const out = await say(request, "put Ben Bench in");
+    expect(out).toMatchObject({ handled: true, outcome: "squad-changed", replyText: "Done: Ben Bench in. 4 of 4." });
+    expect(await statusOf(db, U.bench)).toBe("CONFIRMED");
+  });
+
+  test("Turkish club: the same in Turkish, with yedek", async ({ request, db }) => {
+    await db.run(`UPDATE "Organisation" SET language = 'tr' WHERE id = $1`, [ORG_ID]);
+    await db.run(`UPDATE "Attendance" SET status = 'BENCH' WHERE "matchId" = $1 AND "userId" = $2`, [MATCH.upcoming, U.third]);
+    engineOn({ "Pat çıktı": { route: "other_att", facts: otherFacts("Pat", "out") } });
+    const out = await say(request, "Pat çıktı");
+    expect(out.replyText).toBe(
+      'Tamam: Pat Player çıktı. 3/4, yedekte 1 kişi (Tom Third). Bir yer boş. Yedekten birini almak için "Tom Third var" yazın.',
+    );
+    await db.run(`UPDATE "Organisation" SET language = 'en' WHERE id = $1`, [ORG_ID]);
+  });
 });
