@@ -7,7 +7,7 @@
  * analyser already does with a typed list or team sheet applies, and
  * nothing more.
  *
- * Model: the cheap one the setup reading uses (Haiku 4.5). It reads images,
+ * Model: the cheap one the setup reading uses (HAIKU_MODEL). It reads images,
  * and a poster is about 1,600 image tokens at most (the API scales the long
  * edge down to 1,568 px), so one reading is about half a cent.
  */

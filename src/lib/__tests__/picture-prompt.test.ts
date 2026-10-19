@@ -11,7 +11,7 @@ import { anthropicModel, costOf, PIPELINE_MAX_TOKENS_CEILING, type MessagesCreat
 describe("the picture reading prompt", () => {
   it("uses the cheap vision-capable model the setup reading already uses (Haiku 4.5), which is priced", () => {
     expect(PICTURE_READING_MODEL).toBe(SETUP_LEARNING_MODEL);
-    expect(PICTURE_READING_MODEL).toBe("claude-haiku-4-5");
+    expect(PICTURE_READING_MODEL).toBe("claude-haiku-5-5");
     expect(costOf(PICTURE_READING_MODEL, { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 })).not.toBeNull();
   });
 

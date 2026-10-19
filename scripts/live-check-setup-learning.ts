@@ -191,6 +191,8 @@ async function main() {
       user: user.text,
       maxTokens: SETUP_LEARNING_MAX_TOKENS,
       schema: SETUP_LEARNING_SCHEMA as unknown as Record<string, unknown>,
+      thinking: "off", // as production (setup-learning/run.ts)
+      cache: false,
       label: "setup-learning-live-check",
     });
     spent += resp.costUsd ?? 0;

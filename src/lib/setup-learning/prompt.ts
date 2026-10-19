@@ -44,11 +44,11 @@
  *
  * NOT CACHED, ON PURPOSE. The prompt is used once per club, and a club's
  * call is rarely within an hour of another's, so a 1-hour cache write
- * (2x input) would cost more than it saves. It also sits under Haiku
- * 4.5's 4,096-token cacheable minimum, so `anthropicModel` attaches no
- * marker (`shouldCachePrompt` is false; pinned in
- * `__tests__/setup-learning-prompt.test.ts`). If it ever grows past that
- * floor, the test fails and the choice has to be made again.
+ * (2x input) would cost more than it saves. Under Haiku 4.5 its
+ * 4,096-token cacheable minimum kept the marker off by itself; Haiku
+ * 5.5's minimum is 512, so `run.ts` now passes `cache: false` and
+ * `anthropicModel` attaches no marker (pinned in
+ * `__tests__/prompt-and-dm.test.ts`).
  *
  * Structured output (`output_config.format`): no nullable types, because
  * the API rejects them at request time (see pipeline/extractors.ts). The
@@ -62,7 +62,7 @@
  */
 import { HAIKU_MODEL } from "../models";
 
-/** Haiku 4.5: the cheap model, the router's. A one-shot read of a chat. */
+/** Haiku (HAIKU_MODEL): the cheap model, the router's. A one-shot read of a chat. */
 export const SETUP_LEARNING_MODEL = HAIKU_MODEL;
 
 /** Room for the answer (~600 tokens measured on the fixtures' shape),

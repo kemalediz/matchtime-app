@@ -110,6 +110,8 @@ export async function classifyMatchAvailability(
       anthropic.messages.create({
         model: MODEL,
         max_tokens: 200,
+        // Haiku 5.5 thinks unless told not to; Haiku 4.5 never did.
+        thinking: { type: "disabled" },
         system: [
           {
             type: "text",

@@ -191,6 +191,8 @@ async function main() {
     const r = await anthropic.messages.create({
       model: MODEL,
       max_tokens: 200,
+      // Haiku 5.5 thinks unless told not to; Haiku 4.5 never did.
+      thinking: { type: "disabled" },
       system: [{ type: "text", text: system, cache_control: { type: "ephemeral", ttl: "1h" } }],
       messages: [{ role: "user", content: user }],
     });

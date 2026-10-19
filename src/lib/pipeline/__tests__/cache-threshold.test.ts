@@ -45,6 +45,11 @@ const prose = (tokens: number) => "word ".repeat(Math.ceil((tokens * 4) / 5));
 describe("the minimum cacheable prefix is a token count, per model", () => {
   it("knows the published minimum for every model this pipeline pins", () => {
     expect(MIN_CACHEABLE_TOKENS["claude-haiku-4-5"]).toBe(4_096);
+    // Probed live on the dev key, 2026-10-19 (`count_tokens` then two
+    // back-to-back calls with a marker): a 505-token prefix wrote and
+    // read nothing, a 541-token one wrote 541 and then read 541. The
+    // published figure is 512.
+    expect(MIN_CACHEABLE_TOKENS["claude-haiku-5-5"]).toBe(512);
     expect(MIN_CACHEABLE_TOKENS["claude-sonnet-5"]).toBe(1_024);
     expect(MIN_CACHEABLE_TOKENS["claude-opus-5"]).toBe(512);
   });
@@ -52,6 +57,8 @@ describe("the minimum cacheable prefix is a token count, per model", () => {
   it.each([
     ["claude-haiku-4-5", 2_000, false],
     ["claude-haiku-4-5", 6_000, true],
+    ["claude-haiku-5-5", 300, false],
+    ["claude-haiku-5-5", 900, true],
     ["claude-sonnet-5", 500, false],
     ["claude-sonnet-5", 2_000, true],
     ["claude-opus-5", 300, false],
@@ -178,12 +185,25 @@ describe("the minimum cacheable prefix is a token count, per model", () => {
 });
 
 describe("the prompts this pipeline actually sends", () => {
-  it("does NOT claim a cache for the router prompt on Haiku — it would not get one", () => {
+  it("does NOT claim a cache for the router prompt on Haiku 4.5 — it would not get one", () => {
     // The whole point of §3.3. The router prompt after §3.1 is ~9.6k
     // characters, which is over the old 4,000-char rule and a long way
-    // under Haiku's 4,096-token minimum. Probed: caches nothing.
+    // under Haiku 4.5's 4,096-token minimum. Probed: caches nothing.
     expect(ROUTER_SYSTEM_PROMPT.length).toBeGreaterThan(4_000);
-    expect(shouldCachePrompt(ROUTER_MODEL, ROUTER_SYSTEM_PROMPT)).toBe(false);
+    expect(shouldCachePrompt("claude-haiku-4-5", ROUTER_SYSTEM_PROMPT)).toBe(false);
+  });
+
+  it("CLAIMS the cache for the router prompt on Haiku 5.5, which really does cache", () => {
+    // 2026-10-19, the Haiku 5.5 trial. The SAME prompt text is 3,962
+    // tokens on claude-haiku-4-5 and 5,202 on claude-haiku-5-5
+    // (`count_tokens`, dev key, with the same three-message user turn):
+    // the newer tokenizer counts this prompt 31% higher, 2.63 chars per
+    // token against 3.45. Against Haiku 5.5's 512-token minimum it
+    // caches; probed live with the 1-hour marker: call 1
+    // cache_creation=5418, call 2 cache_read=5418. The estimator's 3,420
+    // sits under both counts, as it must.
+    expect(ROUTER_MODEL).toBe("claude-haiku-5-5");
+    expect(shouldCachePrompt(ROUTER_MODEL, ROUTER_SYSTEM_PROMPT)).toBe(true);
   });
 
   it("KEEPS the cache on the attendance extractor, which really does cache", () => {
@@ -332,6 +352,23 @@ describe("the marker reaches the request, or does not", () => {
     expect(res.usage).toMatchObject({ cacheWriteTokens: 3_500, cacheWrite1hTokens: 3_500 });
     // Sonnet 5 at $2/$10 per MTok: 500 + 3,500 x 2 input, 100 output.
     expect(res.costUsd).toBeCloseTo(((500 + 3_500 * 2) * 2 + 100 * 10) / 1_000_000, 10);
+  });
+
+  it("attaches nothing when the caller says cache: false, even over the minimum", async () => {
+    // The setup reading runs once per club and is never read back within
+    // the hour, so a 1-hour write (2x input) is pure cost. Haiku 4.5's
+    // floor kept it uncached by accident; Haiku 5.5's 512 does not.
+    const { client, bodies } = spyClient();
+    const res = await anthropicModel({ apiKey: "test", client }).complete({
+      model: "claude-haiku-5-5",
+      system: prose(2_000),
+      user: "hi",
+      maxTokens: 64,
+      label: "probe",
+      cache: false,
+    });
+    expect(bodies[0].system[0].cache_control).toBeUndefined();
+    expect(res.cacheAttempted).toBe(false);
   });
 
   it("attaches nothing when it does not", async () => {

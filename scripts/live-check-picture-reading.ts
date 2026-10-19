@@ -119,6 +119,7 @@ async function main() {
       system: PICTURE_READING_SYSTEM_PROMPT,
       user: PICTURE_READING_USER_TEXT,
       maxTokens: PICTURE_READING_MAX_TOKENS,
+      thinking: "off", // as production (picture-reading.ts)
       label: "picture-reading-live-check",
       images: [{ mediaType, data: bytes.toString("base64") }],
     });

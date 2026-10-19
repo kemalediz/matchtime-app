@@ -14,5 +14,12 @@
  * The model-pin guard (`__tests__/no-sonnet-4-5-pins.test.ts`) reads this
  * file to resolve call sites that name `HAIKU_MODEL`, so keep it a plain
  * string literal.
+ *
+ * 2026-10-19: moved from `claude-haiku-4-5` to `claude-haiku-5-5`
+ * ($0.10 / $0.50 per MTok against $1 / $5). Haiku 5.5 thinks unless told
+ * not to, so every Haiku call site sends thinking off (Haiku 4.5 never
+ * thought unprompted), and its newer tokenizer counts the same text about
+ * 30% higher. Rolling back is this one line; `thinking: disabled` is
+ * accepted by Haiku 4.5 too.
  */
-export const HAIKU_MODEL = "claude-haiku-4-5";
+export const HAIKU_MODEL = "claude-haiku-5-5";

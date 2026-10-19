@@ -192,6 +192,7 @@ export async function readPicture(
         system: PICTURE_READING_SYSTEM_PROMPT,
         user: PICTURE_READING_USER_TEXT,
         maxTokens: PICTURE_READING_MAX_TOKENS,
+        thinking: "off",
         label: "picture-reading",
         images: [{ mediaType: image.mediaType, data: image.data }],
       }),

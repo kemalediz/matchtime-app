@@ -957,6 +957,9 @@ async function routeBatchInner(
     system: ROUTER_SYSTEM_PROMPT,
     user,
     maxTokens: ROUTER_MAX_TOKENS,
+    // Haiku 5.5 thinks unless told not to; Haiku 4.5, which this prompt
+    // was measured on, never did. See ModelRequest.thinking.
+    thinking: "off",
     label: "router",
     shortIds: Object.fromEntries(realOf),
     schema: {

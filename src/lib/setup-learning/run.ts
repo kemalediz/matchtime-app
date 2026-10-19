@@ -387,6 +387,9 @@ export async function learnClubSetup(orgId: string, opts: LearnOptions = {}): Pr
         user: user.text,
         maxTokens: SETUP_LEARNING_MAX_TOKENS,
         schema: SETUP_LEARNING_SCHEMA as unknown as Record<string, unknown>,
+        thinking: "off",
+        // Once per club, never read back within the hour: see prompt.ts.
+        cache: false,
         label: "setup-learning",
       }),
     );

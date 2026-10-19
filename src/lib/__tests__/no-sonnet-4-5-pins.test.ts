@@ -285,18 +285,25 @@ describe("claude-sonnet-5 never runs adaptive thinking by accident", () => {
     }
   });
 
-  it("leaves the Haiku sites alone: they have a different thinking contract", () => {
-    // `ModelRequest.thinking` is opt-in per model for this reason. The
-    // router and the four DM-surface classifiers run claude-haiku-4-5,
-    // which does not think unless handed `budget_tokens`, and nothing
-    // here needs to send it a parameter it may not take.
-    const haiku = SITES.filter((s) => s.model === SHARED_MODEL_CONSTS.get("HAIKU_MODEL"));
+  it("every Haiku site turns thinking off, because Haiku 5.5 thinks unless told not to", () => {
+    // Haiku 4.5 thought only when handed `budget_tokens`, so these sites
+    // never sent a thinking parameter. Haiku 5.5 (2026-10-19) runs
+    // ADAPTIVE thinking when the parameter is omitted, the same contract
+    // that made Sonnet 5 return no text (above). Measured on the dev key:
+    // the router call with the parameter omitted came back with a
+    // thinking block and 81 thinking tokens in front of the JSON. Each
+    // site below has a max_tokens sized for its OUTPUT (200 on the DM
+    // classifiers) and a fail-closed path, so the move stays a price
+    // change only with `{type: "disabled"}`, which Haiku 5.5 accepts at
+    // its default effort.
+    const haikuId = SHARED_MODEL_CONSTS.get("HAIKU_MODEL");
+    const haiku = SITES.filter((s) => s.model === haikuId);
     expect(haiku.length).toBeGreaterThan(0);
     for (const s of haiku) {
       expect(
-        /\bthinking\s*:/.test(s.body),
-        `${rel(s.file)}:${s.line} sends a thinking parameter to claude-haiku-4-5`,
-      ).toBe(false);
+        /thinking\s*:\s*\{\s*type\s*:\s*"disabled"\s*\}/.test(s.body),
+        `${rel(s.file)}:${s.line} is on ${haikuId} without thinking: { type: "disabled" }`,
+      ).toBe(true);
     }
   });
 });
