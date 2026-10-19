@@ -22,6 +22,7 @@
  * Approved by Kemal for this change: dev key only, run once.
  *
  *   ANTHROPIC_API_KEY_DEV=... npx tsx scripts/live-check-hq-chatter.ts
+ *   ONLY="@Match Time AH back" ...   one case
  *
  * Spends ANTHROPIC_API_KEY_DEV only (refuses without it). No database,
  * sends nothing. Prints each case, the calls made and the cost.
@@ -113,7 +114,7 @@ const CASES: Case[] = [
   { text: "Ali'yi kadroya ekle", want: "acts", why: "TR: imperative" },
   { text: "Mehmet bu hafta yok", want: "acts", why: "TR: a squad fact" },
   // Addressed, but not an instruction MatchTime can apply: one line, no write.
-  { text: "@Match Time AH back", want: "reply", why: "tagged, a stranger: says how to add them" },
+  { text: "@Match Time AH back", want: "reply", why: "tagged, a stranger: says it could not tell who, and how to add someone" },
 ];
 
 const SQUAD_ROUTES = new Set<Route>(["self_att", "other_att"]);
@@ -128,11 +129,19 @@ async function verdictOf(c: Case, id: string): Promise<{ verdict: Verdict; route
   // `admin-group-understand.ts`, in order.
   if (toAnotherOrganiser && route !== "approve" && route !== "score") return { verdict: "silent", route, detail: "reply to another organiser" };
   if (route === "unsure" && !addressed) return { verdict: "silent", route, detail: "" };
+  if (route === "question" || route === "help") {
+    // What the question answering would be asked (2026-10-19): its topic
+    // and who it names, so a "reply" here says which reply.
+    const q = await extractForRoute(model, "question", { id, body: c.text, authorName: "Raihan", tagged: true, history: [], lastBotPost: null });
+    const what = q.facts.kind === "question" ? `topic ${q.facts.topic}${q.facts.personRef ? `, about ${JSON.stringify(q.facts.personRef)}` : ""}` : q.facts.kind;
+    return { verdict: "reply", route, detail: `question answering: ${what}` };
+  }
   if (!SQUAD_ROUTES.has(route as Route) && route !== "unsure") {
     return { verdict: route === "none" || route === "offer" ? "silent" : "reply", route, detail: "not a squad route" };
   }
   const ex = await extractForRoute(model, route as Route, { id, body: c.text, authorName: "Raihan", tagged: true, history: [], lastBotPost: null });
   if (ex.facts.kind !== "attendance") return { verdict: addressed ? "reply" : "silent", route, detail: "no attendance facts" };
+  console.log(`      extractor: ${JSON.stringify(ex.facts.claims)}`);
   const { facts, vetted } = vetAdminGroupFacts({
     body: c.text,
     facts: ex.facts,
@@ -144,15 +153,31 @@ async function verdictOf(c: Case, id: string): Promise<{ verdict: Verdict; route
   });
   const holds = vetted.map((v) => `${v.claim.personRef || "me"}:${v.claim.polarity}:${v.hold ?? "kept"}`).join(", ");
   if (facts.claims.length > 0) return { verdict: "acts", route, detail: holds };
-  const reply = buildAdminSquadReply({ lang: "en", changes: [], failed: [], confirmed: 16, maxPlayers: 18, vetted, kickoffLabel: "Fri 19:30", senderName: "Raihan", addressed });
+  const reply = buildAdminSquadReply({
+    lang: "en",
+    changes: [],
+    failed: [],
+    confirmed: 16,
+    maxPlayers: 18,
+    bench: [],
+    benchPickMode: null,
+    vetted,
+    kickoffLabel: "Fri 19:30",
+    senderName: "Raihan",
+    addressed,
+    aboutOthers: route === "other_att",
+  });
   return { verdict: reply ? "reply" : "silent", route, detail: `${holds}${reply ? ` -> ${JSON.stringify(reply.text)}` : ""}` };
 }
 
 async function main() {
   let pass = 0;
   let fail = 0;
-  console.log(`\n== HQ: organisers' chatter and instructions, ${CASES.length} cases, each once ==\n`);
-  for (const [i, c] of CASES.entries()) {
+  // ONLY="@Match Time AH back" runs that one case.
+  const only = process.env.ONLY?.trim();
+  const cases = only ? CASES.filter((c) => c.text === only) : CASES;
+  console.log(`\n== HQ: organisers' chatter and instructions, ${cases.length} cases, each once ==\n`);
+  for (const [i, c] of cases.entries()) {
     const v = await verdictOf(c, `hc${i}`);
     const ok = v.verdict === c.want;
     ok ? pass++ : fail++;

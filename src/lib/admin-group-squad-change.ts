@@ -260,11 +260,8 @@ export async function handleAdminSquadChange(input: AdminSquadChangeInput): Prom
       await resolveTentative({ matchId, userId: m.userId }).catch(() => {});
     }
 
-    if (moved.length === 0 && maybeIds.length === 0 && outcome.failures.length === 0 && outcome.claimCount === 0 && vetted.length === 0) {
-      console.log(`[admin-group] ${messageId}: routed ${route}, no claim read`);
-      return { handled: false, why: "not-a-squad-change" };
-    }
-
+    // No claim read at all still goes to the reply: addressed and routed
+    // other_att, it says it could not tell who (`buildAdminSquadReply`).
     const ids = [...new Set([...moved.map((m) => m.userId), ...maybeIds])];
     const users = ids.length
       ? await db.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } })
@@ -294,6 +291,7 @@ export async function handleAdminSquadChange(input: AdminSquadChangeInput): Prom
       kickoffLabel,
       senderName: input.senderName,
       addressed: input.addressed === true,
+      aboutOthers: route === "other_att",
       notSet: notSetAt ? { day: weekdayLabel(input.lang, notSetAt), time: timeLabel(notSetAt) } : null,
     });
     if (reply === null) {
