@@ -125,7 +125,7 @@ describe("the marker reaches every pipeline request", () => {
     ["admin_ops", "admin"],
   ] as Array<[Route, string]>)(
     "the %s extractor's real request carries it (extractor:%s)",
-    async (route, kind) => {
+    async (route) => {
       const { client, bodies } = spyClient();
       await extractForRoute(anthropicModel({ apiKey: "test", client }), route, {
         id: "w1",

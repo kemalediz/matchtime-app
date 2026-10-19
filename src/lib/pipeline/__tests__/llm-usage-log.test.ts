@@ -51,7 +51,7 @@ describe("one usage line per model call", () => {
 
   it("the pipeline model logs through the same path, under its own label", async () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
-    const client: MessagesCreateClient = { messages: { create: async () => response as any } };
+    const client: MessagesCreateClient = { messages: { create: async () => response as never } };
     await anthropicModel({ apiKey: "test", client }).complete({
       model: "claude-haiku-5-5",
       system: "S",
@@ -66,7 +66,7 @@ describe("one usage line per model call", () => {
 
   it("a response with no usage logs nothing and does not throw", async () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
-    await guardedAnthropicCall("x", async () => ({}) as any);
+    await guardedAnthropicCall("x", async () => ({}) as never);
     expect(log).not.toHaveBeenCalled();
   });
 });
