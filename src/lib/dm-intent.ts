@@ -83,7 +83,7 @@
  */
 import Anthropic from "@anthropic-ai/sdk";
 import { readFileSync } from "node:fs";
-import { guardedAnthropicCall } from "@/lib/pipeline/llm";
+import { guardedAnthropicCall, systemBlock } from "@/lib/pipeline/llm";
 import { HAIKU_MODEL, HAIKU_SHORT_ANSWER_MAX_TOKENS, HAIKU_THINKING } from "./models";
 
 const MODEL = HAIKU_MODEL;
@@ -270,7 +270,7 @@ function liveCall(): DmIntentCall | null {
         model: MODEL,
         max_tokens: HAIKU_SHORT_ANSWER_MAX_TOKENS,
         ...HAIKU_THINKING,
-        system: [{ type: "text", text: system, cache_control: { type: "ephemeral", ttl: "1h" } }],
+        system: systemBlock(system),
         messages: [{ role: "user", content: user }],
       }),
     );

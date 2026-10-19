@@ -5,7 +5,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { estimateTokens, MIN_CACHEABLE_TOKENS, shouldCachePrompt } from "../../pipeline/llm";
+import { estimateTokens, MIN_CACHEABLE_TOKENS } from "../../pipeline/llm";
 import { SETUP_LEARNING_MODEL, SETUP_LEARNING_SCHEMA, SETUP_LEARNING_SYSTEM_PROMPT } from "../prompt";
 import { composeSetupDm } from "../dm";
 import { t } from "../../i18n/t";
@@ -21,7 +21,6 @@ describe("the prompt", () => {
     // say `cache: false` itself (run.ts), which `anthropicModel` honours
     // (pipeline/__tests__/cache-threshold.test.ts).
     expect(estimateTokens(SETUP_LEARNING_SYSTEM_PROMPT)).toBeGreaterThanOrEqual(MIN_CACHEABLE_TOKENS[SETUP_LEARNING_MODEL]);
-    expect(shouldCachePrompt(SETUP_LEARNING_MODEL, SETUP_LEARNING_SYSTEM_PROMPT)).toBe(true);
     const run = readFileSync(path.resolve(__dirname, "../run.ts"), "utf8");
     const at = run.indexOf(".complete({");
     expect(run.slice(at, run.indexOf("})", at))).toMatch(/cache:\s*false/);

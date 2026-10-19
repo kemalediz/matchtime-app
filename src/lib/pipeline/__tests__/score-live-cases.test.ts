@@ -13,7 +13,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { EXTRACTOR_PROMPTS, factsSchemaFor, parseFacts } from "../extractors";
-import { EXTRACTOR_MODEL, estimateTokens, shouldCachePrompt } from "../llm";
+import { extractorCacheKey } from "../fan-out";
 import { isScoreCorrectionText } from "../score-ask";
 import { SCORE_LIVE_CASES, runScoreCase } from "./score-live-cases";
 
@@ -166,21 +166,18 @@ describe("the score extractor's schema and prompt", () => {
     expect(p).toMatch(/"Reds 3-5" -> first 3, second 5, firstTeam "Reds", winner ""/);
   });
 
-  it("stays under Sonnet 5's cache minimum, so score extractions are not sequenced behind a warm-up", () => {
-    // 193 characters before any of this, about 4,000 now. The batch
-    // runner warms a CACHEABLE prompt with one call before fanning out
-    // (`fan-out.ts`); a prompt under the minimum carries no marker and
-    // all its calls start at once, which `score-engine-batch.test.ts`
-    // pins. A score is reported a few times a WEEK, so a cache with a
-    // one hour life would never be read: staying under is right, and
-    // this fails the day somebody grows the prompt past the line
-    // without deciding that on purpose. THERE IS LITTLE ROOM LEFT: the
-    // next field means either moving over the line deliberately (and
-    // updating the batch test) or cutting examples.
+  it("is cached and warmed like every extractor, now that the size gate is gone (2026-10-19)", () => {
+    // Until 2026-10-19 this prompt was kept "under Sonnet 5's cache
+    // minimum" by a size estimate that looked at the system prompt alone
+    // and divided by four. The real cached prefix includes the schema:
+    // MEASURED with count_tokens on the captured request, 2,000 tokens,
+    // so it was always over the 1,024 minimum and simply sent unmarked.
+    // Every extractor now carries the marker (`cache-threshold.test.ts`)
+    // and the batch runner warms it first (`score-engine-batch.test.ts`).
+    // A lone score report pays one 1-hour write, about $0.004 over an
+    // uncached call; a busy result evening reads it at 0.1x.
     expect(EXTRACTOR_PROMPTS.score.length).toBeGreaterThan(2_000);
-    expect(EXTRACTOR_PROMPTS.score.length).toBeLessThan(4_096);
-    expect(estimateTokens(EXTRACTOR_PROMPTS.score)).toBeLessThan(1_024);
-    expect(shouldCachePrompt(EXTRACTOR_MODEL, EXTRACTOR_PROMPTS.score)).toBe(false);
+    expect(extractorCacheKey("score")).toBe("score");
   });
 });
 
