@@ -84,8 +84,9 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { readFileSync } from "node:fs";
 import { guardedAnthropicCall } from "@/lib/pipeline/llm";
+import { HAIKU_MODEL, HAIKU_SHORT_ANSWER_MAX_TOKENS, HAIKU_THINKING } from "./models";
 
-const MODEL = "claude-haiku-4-5";
+const MODEL = HAIKU_MODEL;
 
 /**
  * Below this the model is not sure enough to DM 13-27 people, or to
@@ -267,7 +268,8 @@ function liveCall(): DmIntentCall | null {
     const response = await guardedAnthropicCall("dm-intent", () =>
       anthropic.messages.create({
         model: MODEL,
-        max_tokens: 200,
+        max_tokens: HAIKU_SHORT_ANSWER_MAX_TOKENS,
+        ...HAIKU_THINKING,
         system: [{ type: "text", text: system, cache_control: { type: "ephemeral", ttl: "1h" } }],
         messages: [{ role: "user", content: user }],
       }),

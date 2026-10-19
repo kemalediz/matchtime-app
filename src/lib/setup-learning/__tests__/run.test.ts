@@ -237,7 +237,7 @@ describe("learnClubSetup, fixture by fixture (one stub call each, no real model)
         expect((state.learning!.noted as Array<{ key: string }>).map((a) => a.key)).toEqual(fx.expect.noted);
         expect((state.learning!.suggestions as Array<{ key: string }>).map((a) => a.key)).toEqual(fx.expect.suggestions);
         expect(dms.length).toBe(fx.expect.dm ? 1 : 0);
-        expect(state.learning).toMatchObject({ model: "claude-haiku-4-5", costUsd: 0.011, inputTokens: 9_000, outputTokens: 400 });
+        expect(state.learning).toMatchObject({ model: "claude-haiku-5-5", costUsd: 0.011, inputTokens: 9_000, outputTokens: 400 });
       }
       // The chat is deleted once read, whatever came of it, and the group
       // description in the same statement (captured-chat.ts).

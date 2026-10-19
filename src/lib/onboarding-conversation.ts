@@ -67,8 +67,9 @@ import { normaliseLang, type Lang } from "./i18n/lang";
 import { detectGroupLang, langOfConsentReply } from "./i18n/detect";
 import { guardedAnthropicCall } from "@/lib/pipeline/llm";
 import { organisersAnnounce } from "./list-announcer";
+import { HAIKU_MODEL, HAIKU_SHORT_ANSWER_MAX_TOKENS, HAIKU_THINKING } from "./models";
 
-const MODEL = "claude-haiku-4-5";
+const MODEL = HAIKU_MODEL;
 
 type Session = {
   id: string;
@@ -734,7 +735,8 @@ async function extract(
     const res = await guardedAnthropicCall("onboarding-extract", () =>
       anthropic.messages.create({
         model: MODEL,
-        max_tokens: 400,
+        max_tokens: HAIKU_SHORT_ANSWER_MAX_TOKENS,
+        ...HAIKU_THINKING,
         system: [{ type: "text", text: EXTRACT_PROMPT, cache_control: { type: "ephemeral", ttl: "1h" } }],
         messages: [
           {

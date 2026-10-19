@@ -66,6 +66,7 @@
  * test) and this module asserts the result.
  */
 import { E2EPreflightError } from "./preflight";
+import { HAIKU_MODEL } from "../../src/lib/models";
 
 export const LIVE_ENV_FLAG = "MT_SIM_LIVE_LLM";
 export const DM_QA_STUB_ENV = "MT_TEST_DM_QA_STUB";
@@ -90,7 +91,7 @@ export const KEY_ENV = "ANTHROPIC_API_KEY";
  * one model is only sound while one model exists. §10 step 8 deleted
  * `analyzeBatch` and left the pipeline on two different families:
  *
- *   claude-haiku-4-5   the router          (`pipeline/llm.ts:54`)
+ *   HAIKU_MODEL        the router          (`src/lib/models.ts`)
  *   claude-sonnet-5    every extractor     (`pipeline/llm.ts:55`)
  *                      AND the scheduled-chase composer
  *                      (`message-analyzer.ts`'s surviving `MODEL`)
@@ -116,7 +117,7 @@ export const KEY_ENV = "ANTHROPIC_API_KEY";
  * if this list drifts from them.
  */
 export const PROBE_MODELS: readonly string[] = [
-  "claude-haiku-4-5",
+  HAIKU_MODEL,
   "claude-sonnet-5",
 ];
 

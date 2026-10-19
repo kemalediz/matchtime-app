@@ -57,6 +57,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { anthropicModel, EXTRACTOR_MODEL, ROUTER_MODEL } from "../llm";
 import { extractForRoute } from "../extractors";
+import { routeBatch } from "../router";
+import { HAIKU_EFFORT } from "../../models";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import type { PipelineModel, ModelRequest } from "../llm";
 
 function capturing(): PipelineModel & { reqs: ModelRequest[] } {
@@ -129,6 +133,38 @@ describe("the model layer turns that into the parameter the API wants", () => {
     vi.resetModules();
   });
 
+  it("sends adaptive thinking with output_config.effort, beside the schema, when the caller asks for an effort", async () => {
+    const create = vi.fn(async (_a: unknown) => ({
+      stop_reason: "end_turn",
+      content: [{ type: "thinking", thinking: "", signature: "s" }, { type: "text", text: "{}" }],
+      usage: { input_tokens: 1, output_tokens: 1 },
+    }));
+    vi.doMock("@anthropic-ai/sdk", () => ({
+      default: class {
+        messages = { create };
+      },
+    }));
+    vi.resetModules();
+    const { anthropicModel: fresh } = await import("../llm");
+    const res = await fresh({ apiKey: "k" }).complete({
+      model: ROUTER_MODEL,
+      system: "s",
+      user: "u",
+      maxTokens: 2048,
+      label: "router",
+      schema: { type: "object" },
+      thinking: { effort: "medium" },
+    });
+    expect(create.mock.calls[0][0]).toMatchObject({
+      thinking: { type: "adaptive" },
+      output_config: { effort: "medium", format: { type: "json_schema", schema: { type: "object" } } },
+    });
+    // The thinking block is skipped; only text is the answer.
+    expect(res.text).toBe("{}");
+    vi.doUnmock("@anthropic-ai/sdk");
+    vi.resetModules();
+  });
+
   it("omits the parameter entirely when the caller does not ask", async () => {
     // Not `{type: "adaptive"}` — OMITTED. The two are equivalent on
     // sonnet-5, and sending nothing keeps this layer honest about which
@@ -158,6 +194,49 @@ describe("the model layer turns that into the parameter the API wants", () => {
   });
 });
 
+describe("every Haiku pipeline caller thinks at the shared effort", () => {
+  // Haiku 5.5 (2026-10-19) runs adaptive thinking when the parameter is
+  // omitted; Haiku 4.5, which these callers were written for, did not.
+  // Measured on the dev key: the router prompt with the parameter
+  // omitted came back thinking (81 thinking tokens) before its JSON.
+  // Turning it off keeps the model change a model change.
+  it("the router", async () => {
+    const reqs: ModelRequest[] = [];
+    const model: PipelineModel = {
+      name: "capture",
+      async complete(req) {
+        reqs.push(req);
+        return {
+          text: '{"routes":[{"id":"m1","route":"none"}]}',
+          stopReason: "end_turn",
+          usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
+          costUsd: 0,
+          ms: 1,
+        };
+      },
+    };
+    await routeBatch(model, [{ id: "wa-1", authorName: "Ali", body: "anyone watching the game tonight?" }], { floor: false });
+    expect(reqs).toHaveLength(1);
+    expect(reqs[0].model).toBe(ROUTER_MODEL);
+    expect(reqs[0].thinking).toEqual({ effort: HAIKU_EFFORT });
+    // Room for thinking on top of the routes (measured: up to 520 output
+    // tokens at medium effort on one message).
+    expect(reqs[0].maxTokens).toBeGreaterThanOrEqual(2_048);
+  });
+
+  it.each(["src/lib/picture-reading.ts", "src/lib/setup-learning/run.ts"])("%s", (file) => {
+    // Both build their request inline around a DB-backed flow, so the
+    // request object is read from source: the one `complete({` call names
+    // the Haiku pin and says `thinking: "off"`.
+    const src = readFileSync(path.resolve(__dirname, "../../../..", file), "utf8");
+    const at = src.indexOf(".complete({");
+    expect(at, `${file} has no .complete({ call`).toBeGreaterThan(-1);
+    const body = src.slice(at, src.indexOf("})", at));
+    expect(body).toMatch(/model:\s*(PICTURE_READING_MODEL|SETUP_LEARNING_MODEL)/);
+    expect(body).toMatch(/thinking:\s*\{\s*effort:\s*HAIKU_EFFORT\s*\}/);
+  });
+});
+
 describe("the models this rests on are still the ones that were measured", () => {
   it("pins the extractor and router model ids", () => {
     // §11.3: "model ids are pinned… the corpus runs against any
@@ -166,7 +245,7 @@ describe("the models this rests on are still the ones that were measured", () =>
     // different model id needs the T5 probe re-run before this file's
     // reasoning transfers.
     expect(EXTRACTOR_MODEL).toBe("claude-sonnet-5");
-    expect(ROUTER_MODEL).toBe("claude-haiku-4-5");
+    expect(ROUTER_MODEL).toBe("claude-haiku-5-5");
     expect(typeof anthropicModel).toBe("function");
   });
 });

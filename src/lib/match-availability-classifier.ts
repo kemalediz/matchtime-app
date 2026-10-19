@@ -43,9 +43,10 @@
  * imports the exact production prompt without importing Prisma.
  */
 import { lastBotDmLine } from "./last-bot-dm";
+import { HAIKU_MODEL, HAIKU_SHORT_ANSWER_MAX_TOKENS, HAIKU_THINKING } from "./models";
 
 /** The model, pinned. Exported so the live dry run measures this one. */
-export const MATCH_AVAILABILITY_MODEL = "claude-haiku-4-5";
+export const MATCH_AVAILABILITY_MODEL = HAIKU_MODEL;
 
 /**
  * Below this the model is not sure enough to write to the squad. 0.8, the
@@ -163,7 +164,8 @@ function liveCall(): MatchAvailabilityCall | null {
     const response = await guardedAnthropicCall("match-availability", () =>
       anthropic.messages.create({
         model: MATCH_AVAILABILITY_MODEL,
-        max_tokens: 200,
+        max_tokens: HAIKU_SHORT_ANSWER_MAX_TOKENS,
+        ...HAIKU_THINKING,
         system: [{ type: "text", text: system, cache_control: { type: "ephemeral", ttl: "1h" } }],
         messages: [{ role: "user", content: user }],
       }),

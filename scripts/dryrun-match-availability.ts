@@ -35,15 +35,15 @@ import {
 } from "../src/lib/match-availability-classifier.ts";
 import { buildRatingDm, buildTentativeFollowupDm } from "../src/lib/dm-copy.ts";
 import { t } from "../src/lib/i18n/t.ts";
+import { costOf } from "../src/lib/pipeline/llm.ts";
+import { HAIKU_MODEL, HAIKU_SHORT_ANSWER_MAX_TOKENS, HAIKU_THINKING } from "../src/lib/models.ts";
 
 const REPEAT = Number(process.env.REPEAT ?? "1") || 1;
-/** A literal, so the model-pin guard can read it; `main` refuses to run
- *  if it drifts from production's pin. */
-const MODEL = "claude-haiku-4-5";
+/** The shared Haiku id, so the model-pin guard can resolve it; `main`
+ *  refuses to run if it drifts from production's pin. */
+const MODEL = HAIKU_MODEL;
 /** Hard cap for this run, in US dollars. */
 const MAX_USD = 0.3;
-/** Haiku 4.5, USD per million tokens. The 1h cache write is 2x input. */
-const PRICE = { input: 1, output: 5, cacheWrite1h: 2, cacheRead: 0.1 };
 
 // ── What the player was last sent: the real composers, the words players get ──
 const invite = (lang: "en" | "tr", matchWhen: string) =>
@@ -254,7 +254,8 @@ async function main() {
     if (usd >= MAX_USD) throw new Error(`cost cap $${MAX_USD} reached`);
     const r = await anthropic.messages.create({
       model: MODEL,
-      max_tokens: 200,
+      max_tokens: HAIKU_SHORT_ANSWER_MAX_TOKENS,
+      ...HAIKU_THINKING,
       system: [{ type: "text", text: system, cache_control: { type: "ephemeral", ttl: "1h" } }],
       messages: [{ role: "user", content: user }],
     });
@@ -264,12 +265,16 @@ async function main() {
     tokens.output += u.output_tokens;
     tokens.cacheWrite += u.cache_creation_input_tokens ?? 0;
     tokens.cacheRead += u.cache_read_input_tokens ?? 0;
+    // The production rate table, so the cap follows the model. Every
+    // write here is a 1-hour one (the system block above asks for it).
     usd =
-      (tokens.input * PRICE.input +
-        tokens.output * PRICE.output +
-        tokens.cacheWrite * PRICE.cacheWrite1h +
-        tokens.cacheRead * PRICE.cacheRead) /
-      1_000_000;
+      costOf(MODEL, {
+        inputTokens: tokens.input,
+        outputTokens: tokens.output,
+        cacheReadTokens: tokens.cacheRead,
+        cacheWriteTokens: tokens.cacheWrite,
+        cacheWrite1hTokens: tokens.cacheWrite,
+      }) ?? Infinity;
     const block = r.content.find((b) => b.type === "text");
     return block && block.type === "text" ? block.text : "";
   };
@@ -292,6 +297,7 @@ async function main() {
   let bad = 0;
   for (const c of set) {
     const got: string[] = [];
+    const reasons: string[] = [];
     for (let i = 0; i < REPEAT; i++) {
       if (usd >= MAX_USD) {
         console.error(`\nSTOPPED: cost cap $${MAX_USD} reached after ${calls} calls.`);
@@ -299,6 +305,7 @@ async function main() {
       }
       const r = await classify(c);
       got.push(`${r.decision}@${r.confidence.toFixed(2)}`);
+      reasons.push(r.reasoning);
     }
     const agreed = got.filter((g) => g.startsWith(`${c.want}@`)).length;
     const pass = agreed === REPEAT;
@@ -306,6 +313,8 @@ async function main() {
     console.log(
       `  ${pass ? "✓" : "✗"} ${agreed}/${REPEAT}  want=${c.want.padEnd(7)} got=[${got.join(", ")}]  ${JSON.stringify(c.text)} (${c.ctx.label})`,
     );
+    // A miss shows the model's own reasoning, the raw output to report.
+    if (!pass) for (const why of reasons) console.log(`      reasoning: ${JSON.stringify(why)}`);
   }
   console.log(
     `\n${set.length - bad}/${set.length} cases agreed. ${calls} live calls. ` +

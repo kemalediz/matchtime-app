@@ -113,6 +113,7 @@
 import { readFileSync } from "node:fs";
 import { feeConfirmQuestionForPrompt } from "./dm-copy";
 import { normaliseLang, type Lang } from "./i18n/lang";
+import { HAIKU_MODEL, HAIKU_SHORT_ANSWER_MAX_TOKENS, HAIKU_THINKING } from "./models";
 
 /**
  * ⚠️ THE ARGUED DESIGN, IN ONE FLAG. The deterministic allowlist decides
@@ -362,7 +363,7 @@ export function anchoredFeeReply(text: string, lang: Lang | string | null = "en"
 
 // ── THE MODEL HALF ───────────────────────────────────────────────────
 
-const MODEL = "claude-haiku-4-5";
+const MODEL = HAIKU_MODEL;
 
 /**
  * The prompt. The NEGATIVE examples are the point, and they are not
@@ -608,7 +609,8 @@ function liveCall(): FeeReplyCall | null {
     const response = await guardedAnthropicCall("fee-confirm", () =>
       anthropic.messages.create({
         model: MODEL,
-        max_tokens: 200,
+        max_tokens: HAIKU_SHORT_ANSWER_MAX_TOKENS,
+        ...HAIKU_THINKING,
         system: [{ type: "text", text: system, cache_control: { type: "ephemeral", ttl: "1h" } }],
         messages: [{ role: "user", content: user }],
       }),

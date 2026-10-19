@@ -10,9 +10,10 @@
  */
 import { readFileSync } from "node:fs";
 import { lastBotDmLine } from "./last-bot-dm";
+import { HAIKU_MODEL, HAIKU_SHORT_ANSWER_MAX_TOKENS, HAIKU_THINKING } from "./models";
 
 /** The model, pinned. Exported so the live dry run measures this one. */
-export const PAYMENT_CLAIM_MODEL = "claude-haiku-4-5";
+export const PAYMENT_CLAIM_MODEL = HAIKU_MODEL;
 
 /** Below this the model is not sure enough to tell a collector a player
  *  says they have paid. The same bar as `dm-intent.ts` and
@@ -168,7 +169,8 @@ function liveCall(): PaymentClaimCall | null {
     const response = await guardedAnthropicCall("payment-claim", () =>
       anthropic.messages.create({
         model: PAYMENT_CLAIM_MODEL,
-        max_tokens: 200,
+        max_tokens: HAIKU_SHORT_ANSWER_MAX_TOKENS,
+        ...HAIKU_THINKING,
         system: [{ type: "text", text: system, cache_control: { type: "ephemeral", ttl: "1h" } }],
         messages: [{ role: "user", content: user }],
       }),

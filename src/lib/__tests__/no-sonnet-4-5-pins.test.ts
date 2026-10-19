@@ -150,12 +150,35 @@ interface CallSite {
   model: string | null;
 }
 
-/** `const NAME = "literal";` within one file. */
-function stringConsts(src: string): Map<string, string> {
+/** `const NAME = "literal";` in a source file. */
+function literalConsts(src: string): Map<string, string> {
   const map = new Map<string, string>();
   const re = /(?:export\s+)?const\s+([A-Za-z_$][\w$]*)\s*(?::\s*string\s*)?=\s*"([^"]+)";/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(src)) !== null) map.set(m[1], m[2]);
+  return map;
+}
+
+/**
+ * The shared model ids (`src/lib/models.ts`). A site that names
+ * `HAIKU_MODEL`, directly or through a file-local alias, resolves
+ * through here; the shared module is how the Haiku tier moves in one line.
+ */
+const SHARED_MODEL_CONSTS = literalConsts(
+  fs.readFileSync(path.join(REPO, "src/lib/models.ts"), "utf8"),
+);
+
+/** `const NAME = "literal";` within one file, plus `const NAME = SHARED;`
+ *  aliases of a shared model id. */
+function stringConsts(src: string): Map<string, string> {
+  const map = new Map<string, string>(SHARED_MODEL_CONSTS);
+  for (const [k, v] of literalConsts(src)) map.set(k, v);
+  const alias = /(?:export\s+)?const\s+([A-Za-z_$][\w$]*)\s*(?::\s*string\s*)?=\s*([A-Za-z_$][\w$]*);/g;
+  let m: RegExpExecArray | null;
+  while ((m = alias.exec(src)) !== null) {
+    const v = SHARED_MODEL_CONSTS.get(m[2]);
+    if (v) map.set(m[1], v);
+  }
   return map;
 }
 
@@ -262,18 +285,23 @@ describe("claude-sonnet-5 never runs adaptive thinking by accident", () => {
     }
   });
 
-  it("leaves the Haiku sites alone: they have a different thinking contract", () => {
-    // `ModelRequest.thinking` is opt-in per model for this reason. The
-    // router and the four DM-surface classifiers run claude-haiku-4-5,
-    // which does not think unless handed `budget_tokens`, and nothing
-    // here needs to send it a parameter it may not take.
-    const haiku = SITES.filter((s) => s.model === "claude-haiku-4-5");
+  it("every Haiku site thinks through HAIKU_THINKING, with room for it in max_tokens", () => {
+    // Haiku 4.5 thought only when handed `budget_tokens`, so these sites
+    // never sent a thinking parameter. Haiku 5.5 thinks adaptively, and on
+    // 2026-10-19 three paid reruns (3 runs per case, 5 arms) showed that
+    // it is MORE accurate than 4.5 on these prompts with thinking ON at
+    // its default effort, and LESS accurate with it off. So every Haiku
+    // site states the shared posture (`...HAIKU_THINKING`, src/lib/models.ts)
+    // and the shared answer budget, which has room for thinking: the 200
+    // tokens these sites used to send is less than one thinking pass
+    // (measured: up to 194 thinking tokens on one DM classification).
+    const haikuId = SHARED_MODEL_CONSTS.get("HAIKU_MODEL");
+    const haiku = SITES.filter((s) => s.model === haikuId);
     expect(haiku.length).toBeGreaterThan(0);
     for (const s of haiku) {
-      expect(
-        /\bthinking\s*:/.test(s.body),
-        `${rel(s.file)}:${s.line} sends a thinking parameter to claude-haiku-4-5`,
-      ).toBe(false);
+      expect(s.body, `${rel(s.file)}:${s.line} does not spread HAIKU_THINKING`).toMatch(/\.\.\.HAIKU_THINKING\b/);
+      expect(s.body, `${rel(s.file)}:${s.line} does not use HAIKU_SHORT_ANSWER_MAX_TOKENS`).toMatch(/max_tokens:\s*HAIKU_SHORT_ANSWER_MAX_TOKENS\b/);
+      expect(/thinking\s*:\s*\{\s*type\s*:\s*"disabled"/.test(s.body), `${rel(s.file)}:${s.line} still disables thinking`).toBe(false);
     }
   });
 });

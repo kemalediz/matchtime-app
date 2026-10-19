@@ -124,6 +124,7 @@ import { composeSetupDm } from "./dm";
 import { weeklyGameOf } from "./suggestion-state";
 import { isSetupLearningEnabled } from "./flag";
 import { FEE_PATH } from "./suggestion-action";
+import { HAIKU_EFFORT } from "../models";
 
 export const SWEEP_WINDOW_DAYS = 3;
 export const MAX_PER_SWEEP = 5;
@@ -387,6 +388,9 @@ export async function learnClubSetup(orgId: string, opts: LearnOptions = {}): Pr
         user: user.text,
         maxTokens: SETUP_LEARNING_MAX_TOKENS,
         schema: SETUP_LEARNING_SCHEMA as unknown as Record<string, unknown>,
+        thinking: { effort: HAIKU_EFFORT },
+        // Once per club, never read back within the hour: see prompt.ts.
+        cache: false,
         label: "setup-learning",
       }),
     );
