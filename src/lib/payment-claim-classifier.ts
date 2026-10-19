@@ -9,9 +9,10 @@
  * `lib/payment-claim.ts` for the design and the decisions.
  */
 import { readFileSync } from "node:fs";
+import { HAIKU_MODEL } from "./models";
 
 /** The model, pinned. Exported so the live dry run measures this one. */
-export const PAYMENT_CLAIM_MODEL = "claude-haiku-4-5";
+export const PAYMENT_CLAIM_MODEL = HAIKU_MODEL;
 
 /** Below this the model is not sure enough to tell a collector a player
  *  says they have paid. The same bar as `dm-intent.ts` and

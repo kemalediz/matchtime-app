@@ -14,8 +14,9 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { normaliseLang } from "./i18n/lang";
 import { guardedAnthropicCall } from "@/lib/pipeline/llm";
+import { HAIKU_MODEL } from "./models";
 
-const MODEL = "claude-haiku-4-5";
+const MODEL = HAIKU_MODEL;
 
 const SYSTEM_PROMPT = `You are classifying a player's WhatsApp DM reply to a "roster check-in" survey from their football club. The bot has DM'd them: "Are you still up for Tuesday football going forward? Reply yes / maybe / not for now."
 

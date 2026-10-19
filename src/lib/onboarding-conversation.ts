@@ -67,8 +67,9 @@ import { normaliseLang, type Lang } from "./i18n/lang";
 import { detectGroupLang, langOfConsentReply } from "./i18n/detect";
 import { guardedAnthropicCall } from "@/lib/pipeline/llm";
 import { organisersAnnounce } from "./list-announcer";
+import { HAIKU_MODEL } from "./models";
 
-const MODEL = "claude-haiku-4-5";
+const MODEL = HAIKU_MODEL;
 
 type Session = {
   id: string;

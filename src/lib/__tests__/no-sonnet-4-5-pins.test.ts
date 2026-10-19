@@ -150,12 +150,35 @@ interface CallSite {
   model: string | null;
 }
 
-/** `const NAME = "literal";` within one file. */
-function stringConsts(src: string): Map<string, string> {
+/** `const NAME = "literal";` in a source file. */
+function literalConsts(src: string): Map<string, string> {
   const map = new Map<string, string>();
   const re = /(?:export\s+)?const\s+([A-Za-z_$][\w$]*)\s*(?::\s*string\s*)?=\s*"([^"]+)";/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(src)) !== null) map.set(m[1], m[2]);
+  return map;
+}
+
+/**
+ * The shared model ids (`src/lib/models.ts`). A site that names
+ * `HAIKU_MODEL`, directly or through a file-local alias, resolves
+ * through here; the shared module is how the Haiku tier moves in one line.
+ */
+const SHARED_MODEL_CONSTS = literalConsts(
+  fs.readFileSync(path.join(REPO, "src/lib/models.ts"), "utf8"),
+);
+
+/** `const NAME = "literal";` within one file, plus `const NAME = SHARED;`
+ *  aliases of a shared model id. */
+function stringConsts(src: string): Map<string, string> {
+  const map = new Map<string, string>(SHARED_MODEL_CONSTS);
+  for (const [k, v] of literalConsts(src)) map.set(k, v);
+  const alias = /(?:export\s+)?const\s+([A-Za-z_$][\w$]*)\s*(?::\s*string\s*)?=\s*([A-Za-z_$][\w$]*);/g;
+  let m: RegExpExecArray | null;
+  while ((m = alias.exec(src)) !== null) {
+    const v = SHARED_MODEL_CONSTS.get(m[2]);
+    if (v) map.set(m[1], v);
+  }
   return map;
 }
 
@@ -267,7 +290,7 @@ describe("claude-sonnet-5 never runs adaptive thinking by accident", () => {
     // router and the four DM-surface classifiers run claude-haiku-4-5,
     // which does not think unless handed `budget_tokens`, and nothing
     // here needs to send it a parameter it may not take.
-    const haiku = SITES.filter((s) => s.model === "claude-haiku-4-5");
+    const haiku = SITES.filter((s) => s.model === SHARED_MODEL_CONSTS.get("HAIKU_MODEL"));
     expect(haiku.length).toBeGreaterThan(0);
     for (const s of haiku) {
       expect(

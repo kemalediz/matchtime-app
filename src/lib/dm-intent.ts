@@ -84,8 +84,9 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { readFileSync } from "node:fs";
 import { guardedAnthropicCall } from "@/lib/pipeline/llm";
+import { HAIKU_MODEL } from "./models";
 
-const MODEL = "claude-haiku-4-5";
+const MODEL = HAIKU_MODEL;
 
 /**
  * Below this the model is not sure enough to DM 13-27 people, or to

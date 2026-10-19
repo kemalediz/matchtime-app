@@ -30,16 +30,16 @@ import {
   type PaymentClaimIntent,
 } from "../src/lib/payment-claim-classifier.ts";
 import { buildPayChaseDm, buildRatingDm } from "../src/lib/dm-copy.ts";
+import { costOf } from "../src/lib/pipeline/llm.ts";
+import { HAIKU_MODEL } from "../src/lib/models.ts";
 
 const REPEAT = Number(process.env.REPEAT ?? "3") || 3;
-/** A literal, so the model-pin guard (`no-sonnet-4-5-pins.test.ts`) can
- *  read it; `main` refuses to run if it drifts from production's pin. */
-const MODEL = "claude-haiku-4-5";
+/** The shared Haiku id, so the model-pin guard (`no-sonnet-4-5-pins.test.ts`)
+ *  can resolve it; `main` refuses to run if it drifts from production's pin. */
+const MODEL = HAIKU_MODEL;
 /** Hard cap for this run, in US dollars. */
 const MAX_USD = 0.3;
 
-/** Haiku 4.5, USD per million tokens. The 1h cache write is 2x input. */
-const PRICE = { input: 1, output: 5, cacheWrite1h: 2, cacheRead: 0.1 };
 
 /** What the player was last sent, the context the route supplies: the
  *  real composers, so the model sees the words players actually get. */
@@ -200,12 +200,16 @@ async function main() {
     tokens.output += u.output_tokens;
     tokens.cacheWrite += u.cache_creation_input_tokens ?? 0;
     tokens.cacheRead += u.cache_read_input_tokens ?? 0;
+    // The production rate table, so the cap follows the model. Every
+    // write here is a 1-hour one (the system block above asks for it).
     usd =
-      (tokens.input * PRICE.input +
-        tokens.output * PRICE.output +
-        tokens.cacheWrite * PRICE.cacheWrite1h +
-        tokens.cacheRead * PRICE.cacheRead) /
-      1_000_000;
+      costOf(MODEL, {
+        inputTokens: tokens.input,
+        outputTokens: tokens.output,
+        cacheReadTokens: tokens.cacheRead,
+        cacheWriteTokens: tokens.cacheWrite,
+        cacheWrite1hTokens: tokens.cacheWrite,
+      }) ?? Infinity;
     const block = r.content.find((b) => b.type === "text");
     return block && block.type === "text" ? block.text : "";
   };

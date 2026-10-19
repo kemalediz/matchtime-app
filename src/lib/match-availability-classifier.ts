@@ -29,8 +29,9 @@
  */
 import Anthropic from "@anthropic-ai/sdk";
 import { guardedAnthropicCall } from "@/lib/pipeline/llm";
+import { HAIKU_MODEL } from "./models";
 
-const MODEL = "claude-haiku-4-5";
+const MODEL = HAIKU_MODEL;
 
 /** Below this the model is not sure enough to write to the squad. */
 const MIN_CONFIDENCE = 0.75;

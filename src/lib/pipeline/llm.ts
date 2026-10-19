@@ -24,6 +24,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { Degradation } from "./types";
 import { guardedModelCall } from "../ai-budget-context";
+import { HAIKU_MODEL } from "../models";
 
 /**
  * The project ceiling, MIRRORED rather than imported.
@@ -52,7 +53,7 @@ export const PIPELINE_MAX_TOKENS_CEILING = 4_096;
  * a model upgrade can change how a schema field is populated without
  * changing its shape, and the corpus is what clears a new id.
  */
-export const ROUTER_MODEL = "claude-haiku-4-5";
+export const ROUTER_MODEL = HAIKU_MODEL;
 export const EXTRACTOR_MODEL = "claude-sonnet-5";
 
 /** USD per million tokens. anthropic.com/pricing, 2026-09-01. */

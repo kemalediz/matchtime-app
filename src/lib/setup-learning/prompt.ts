@@ -60,9 +60,10 @@
  * field on purpose: the server finds each quote itself and so knows
  * where it came from (`verifyEvidenceTagged`, rules.ts).
  */
+import { HAIKU_MODEL } from "../models";
 
 /** Haiku 4.5: the cheap model, the router's. A one-shot read of a chat. */
-export const SETUP_LEARNING_MODEL = "claude-haiku-4-5";
+export const SETUP_LEARNING_MODEL = HAIKU_MODEL;
 
 /** Room for the answer (~600 tokens measured on the fixtures' shape),
  *  with headroom; well under the pipeline's 4,096 ceiling. */
