@@ -129,7 +129,7 @@ test.describe("teams are built only on a clear ask, only on match day", () => {
     expect(await teamRows(db)).toBe(0);
     expect(await matchStatus(db)).toBe("UPCOMING");
     // It IS match day, so the line says how to ask, never "on match day".
-    expect(resultFor(res, id).reply).toBe(`Say "@Match Time generate the teams" and I'll build them.`);
+    expect(resultFor(res, id).reply).toBe(`Tag me and ask for the teams in your own words (for example "@Match Time generate the teams") and I'll build them.`);
   });
 
   test("'generate the teams' before match day gets the polite reply and builds nothing", async ({

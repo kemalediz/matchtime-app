@@ -68,6 +68,15 @@ vi.mock("../bot-scheduler", () => ({
   queueSlotEmojiRefresh: async () => {},
 }));
 vi.mock("../squad-announce", () => ({ announceSquadFullIfJustFilled: async () => {} }));
+// The count line's facts (squad-count.ts), read off the same rows.
+vi.mock("../squad-count", () => ({
+  loadSquadCount: async () => ({
+    confirmed: h.state.rows.filter((r) => r.status === "CONFIRMED").length,
+    maxPlayers: 18,
+    bench: h.state.rows.filter((r) => r.status === "BENCH").map((r) => r.userId),
+    benchPickMode: null,
+  }),
+}));
 vi.mock("../admin-channel", () => ({
   sendAdminNotice: async (a: { orgId: string; text: string }) => {
     h.state.notices.push(a);

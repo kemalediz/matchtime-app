@@ -65,6 +65,7 @@ import {
 import { t } from "../i18n/t";
 import { joinList } from "../i18n/text";
 import { activityFeeText } from "../activity-fee";
+import { benchClause } from "../squad-count-line";
 import type { EngineResult, SquadState } from "./types";
 
 export interface Utterance {
@@ -311,6 +312,9 @@ export function compose(result: EngineResult): ComposedOutput {
             maxPlayers: state.maxPlayers,
             kickoffLabel: state.kickoffLabel,
             need,
+            // Who is waiting, with the count (FNF 2026-10-18). Not named
+            // in a players' group whose organisers announce the list.
+            bench: benchClause(lang, bench, { names: !organisersAnnounce }),
           }),
         });
         break;

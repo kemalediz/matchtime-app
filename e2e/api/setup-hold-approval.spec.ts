@@ -245,7 +245,7 @@ const FLAG_OFF_HELLO = [
   "\n",
   "✅ *Who's in:* just say *In* or *Out*. I keep the list and tick your message.\n",
   "🪑 *The bench:* once we're full, anyone who says *In* late goes on the bench, and the bench gets first dibs if someone drops.\n",
-  "⏰ *Remind me:* say *\"@Match Time remind me Thursday\"* and I'll DM you then.\n",
+  "⏰ *Remind me:* tag me and say when, in your own words (for example *\"@Match Time remind me Thursday\"*), and I'll DM you then.\n",
   "⚖️ *Fair teams:* tag me and I pick balanced teams from player ratings.\n",
   "⭐ *Man of the Match and ratings* after every game.\n",
   "📊 *Stats:* ask me anything, and everyone gets their own stats page.\n",

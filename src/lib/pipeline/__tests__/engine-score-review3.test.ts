@@ -62,7 +62,7 @@ function run(state: SquadState, ...messages: Array<Omit<MsgOpts, "route">>) {
   };
 }
 const HINT_9_6 =
-  'That match is already recorded: *Red* won 9 - 6 against Yellow. If that is wrong, tell me "no, it was" with the right score and the team that won.';
+  'That match is already recorded: *Red* won 9 - 6 against Yellow. If that is wrong, just tell me in your own words, with the right score and the team that won (for example: no, it was 5-3).';
 
 describe("1. the extractor's two numbers must BE in the text, each as its own number", () => {
   it('M1a: "good game lads, same time next week 21:30" with zeros is not 0-0', () => {
@@ -233,7 +233,7 @@ describe('3. a bare "wrong way round" is honoured ONCE per match', () => {
     expect(r.nextState.completedMatch).toMatchObject({ redScore: 6, yellowScore: 9, swapUsed: true });
     expect(replies).toEqual([
       "Corrected 👍 It was Red 9 - 6 Yellow. Now *Yellow* won 9 - 6 against Red.",
-      'That match is already recorded: *Yellow* won 9 - 6 against Red. If that is wrong, tell me "no, it was" with the right score and the team that won.',
+      'That match is already recorded: *Yellow* won 9 - 6 against Red. If that is wrong, just tell me in your own words, with the right score and the team that won (for example: no, it was 5-3).',
     ]);
   });
 
@@ -242,7 +242,7 @@ describe('3. a bare "wrong way round" is honoured ONCE per match', () => {
     const { scores, replies } = run(swappedAlready, swap("mustafa"));
     expect(scores).toEqual([]);
     expect(replies).toEqual([
-      'That match is already recorded: *Yellow* won 9 - 6 against Red. If that is wrong, tell me "no, it was" with the right score and the team that won.',
+      'That match is already recorded: *Yellow* won 9 - 6 against Red. If that is wrong, just tell me in your own words, with the right score and the team that won (for example: no, it was 5-3).',
     ]);
   });
 
@@ -272,7 +272,7 @@ describe('3. a bare "wrong way round" is honoured ONCE per match', () => {
     expect(scores).toEqual([expect.objectContaining({ red: 9, yellow: 7, previous: { red: 9, yellow: 6 } })]);
     expect(replies).toEqual([
       "Corrected 👍 It was Red 9 - 6 Yellow. Now *Red* won 9 - 7 against Yellow.",
-      'That match is already recorded: *Red* won 9 - 7 against Yellow. If that is wrong, tell me "no, it was" with the right score and the team that won.',
+      'That match is already recorded: *Red* won 9 - 7 against Yellow. If that is wrong, just tell me in your own words, with the right score and the team that won (for example: no, it was 5-3).',
     ]);
   });
 

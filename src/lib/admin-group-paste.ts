@@ -30,6 +30,7 @@ import { isDeliberateNameProvisionable } from "./resolve-sender";
 import { adminGroupSourceRef } from "./admin-added";
 import { formatLondon } from "./london-time";
 import { nextNightlyFixtureRun } from "./nightly-fixture-run";
+import { loadSquadCount } from "./squad-count";
 import {
   PASTE_PROPOSAL_TTL_MS,
   buildPasteExpiredReply,
@@ -311,10 +312,8 @@ export async function answerSquadPasteYes(args: {
   );
   const display = (c: { userId: string | null; name: string | null }) =>
     c.name ?? (c.userId ? nameOf.get(c.userId) : null) ?? "?";
-  const [confirmed, match] = await Promise.all([
-    db.attendance.count({ where: { matchId, status: "CONFIRMED" } }),
-    db.match.findUnique({ where: { id: matchId }, select: { maxPlayers: true } }),
-  ]);
+  const squad = await loadSquadCount(matchId);
+  const confirmed = squad.confirmed;
   console.log(
     `[admin-group] ${args.messageId}: list ${proposal.id} applied on match ${matchId}: ` +
       `${changes.length} change(s), ${failed.length} failure(s), ${confirmed} confirmed`,
@@ -326,7 +325,9 @@ export async function answerSquadPasteYes(args: {
       changes: changes.map((c) => ({ kind: c.kind, name: display(c) })),
       failed: failed.map(display),
       confirmed,
-      maxPlayers: match?.maxPlayers ?? confirmed,
+      maxPlayers: squad.maxPlayers ?? confirmed,
+      bench: squad.bench,
+      benchPickMode: squad.benchPickMode,
     }),
   };
 }

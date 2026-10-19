@@ -139,8 +139,8 @@ describe("buildHowToUseMe — feature awareness", () => {
 
   it("the reminders line says what it is for: a personal DM at the time you ask (2026-09-30)", () => {
     const block = buildHowToUseMe(ALL_ON);
-    expect(block).toContain(`⏰ Need a nudge? Say *"@Match Time remind me Thursday"* and I'll DM you then.`);
-    expect(buildHowToUseMe(ALL_ON, "tr")).toContain(`⏰ Hatırlatma mı lazım? *"@Match Time perşembe hatırlat"* yazın, o zaman size özelden yazarım.`);
+    expect(block).toContain(`⏰ Need a nudge? Tag me and say when, in your own words (for example *"@Match Time remind me Thursday"*), and I'll DM you then.`);
+    expect(buildHowToUseMe(ALL_ON, "tr")).toContain(`⏰ Hatırlatma mı lazım? Beni etiketleyip ne zaman istediğinizi kendi cümlelerinizle yazın (örneğin *"@Match Time perşembe hatırlat"*), o zaman size özelden yazarım.`);
   });
 
   it("carries no em or en dash, in either language, in any shape", () => {

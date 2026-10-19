@@ -136,10 +136,10 @@ describe("copy, English and Turkish", () => {
       { kind: "out" as const, name: "Shehryar" },
       { kind: "in" as const, name: "Bilal" },
     ];
-    expect(buildSquadChangeReply({ lang: "en", changes, failed: [], confirmed: 18, maxPlayers: 18 })).toBe(
+    expect(buildSquadChangeReply({ lang: "en", changes, failed: [], confirmed: 18, maxPlayers: 18, bench: [], benchPickMode: null })).toBe(
       "Done: Shehryar out, Bilal in. 18 of 18.",
     );
-    expect(buildSquadChangeReply({ lang: "tr", changes, failed: [], confirmed: 18, maxPlayers: 18 })).toBe(
+    expect(buildSquadChangeReply({ lang: "tr", changes, failed: [], confirmed: 18, maxPlayers: 18, bench: [], benchPickMode: null })).toBe(
       "Tamam: Shehryar çıktı, Bilal kadroya girdi. 18/18.",
     );
   });
@@ -148,26 +148,26 @@ describe("copy, English and Turkish", () => {
       { kind: "bench" as const, name: "Tom" },
       { kind: "maybe" as const, name: "Sait" },
     ];
-    expect(buildSquadChangeReply({ lang: "en", changes, failed: [], confirmed: 17, maxPlayers: 18 })).toBe(
+    expect(buildSquadChangeReply({ lang: "en", changes, failed: [], confirmed: 17, maxPlayers: 18, bench: [], benchPickMode: null })).toBe(
       "Done: Tom on the bench, Sait a maybe. 17 of 18.",
     );
-    expect(buildSquadChangeReply({ lang: "tr", changes, failed: [], confirmed: 17, maxPlayers: 18 })).toBe(
+    expect(buildSquadChangeReply({ lang: "tr", changes, failed: [], confirmed: 17, maxPlayers: 18, bench: [], benchPickMode: null })).toBe(
       "Tamam: Tom yedek listesinde, Sait belki. 17/18.",
     );
   });
   it("a change that did not land is said plainly", () => {
     expect(
-      buildSquadChangeReply({ lang: "en", changes: [], failed: ["Shehryar"], confirmed: 18, maxPlayers: 18 }),
+      buildSquadChangeReply({ lang: "en", changes: [], failed: ["Shehryar"], confirmed: 18, maxPlayers: 18, bench: [], benchPickMode: null }),
     ).toBe("I couldn't change Shehryar. Please check the match page. 18 of 18.");
     expect(
-      buildSquadChangeReply({ lang: "tr", changes: [], failed: ["Shehryar"], confirmed: 18, maxPlayers: 18 }),
+      buildSquadChangeReply({ lang: "tr", changes: [], failed: ["Shehryar"], confirmed: 18, maxPlayers: 18, bench: [], benchPickMode: null }),
     ).toBe("Shehryar için değişiklik yapamadım. Lütfen maç sayfasını kontrol edin. 18/18.");
   });
   it("nothing to change", () => {
-    expect(buildSquadChangeReply({ lang: "en", changes: [], failed: [], confirmed: 18, maxPlayers: 18 })).toBe(
+    expect(buildSquadChangeReply({ lang: "en", changes: [], failed: [], confirmed: 18, maxPlayers: 18, bench: [], benchPickMode: null })).toBe(
       "Nothing to change: the squad already says that. 18 of 18.",
     );
-    expect(buildSquadChangeReply({ lang: "tr", changes: [], failed: [], confirmed: 18, maxPlayers: 18 })).toBe(
+    expect(buildSquadChangeReply({ lang: "tr", changes: [], failed: [], confirmed: 18, maxPlayers: 18, bench: [], benchPickMode: null })).toBe(
       "Değişecek bir şey yok: kadro zaten öyle. 18/18.",
     );
   });
@@ -232,8 +232,8 @@ describe("copy, English and Turkish", () => {
     const all = [
       buildPasteExpiredReply("en"),
       buildPasteExpiredReply("tr"),
-      buildSquadChangeReply({ lang: "en", changes: [{ kind: "in", name: "A" }], failed: ["B"], confirmed: 1, maxPlayers: 2 }),
-      buildSquadChangeReply({ lang: "tr", changes: [{ kind: "in", name: "A" }], failed: ["B"], confirmed: 1, maxPlayers: 2 }),
+      buildSquadChangeReply({ lang: "en", changes: [{ kind: "in", name: "A" }], failed: ["B"], confirmed: 1, maxPlayers: 2, bench: ["C"], benchPickMode: "organiser" }),
+      buildSquadChangeReply({ lang: "tr", changes: [{ kind: "in", name: "A" }], failed: ["B"], confirmed: 1, maxPlayers: 2, bench: ["C"], benchPickMode: "organiser" }),
     ].join(" ");
     expect(all).not.toMatch(/[\u2013\u2014]/);
   });
@@ -489,12 +489,43 @@ describe("buildAdminSquadReply: what MatchTime says back, and when it says nothi
   });
   const me: AdminClaimRef = { kind: "member", userId: "u-omar", name: "Omar Shah" };
   const reply = (p: Parameters<typeof buildAdminSquadReply>[0]) => buildAdminSquadReply(p)?.text ?? null;
-  const base = { lang: "en", changes: [], failed: [], confirmed: 17, maxPlayers: 18, kickoffLabel: "Fri 20:30", senderName: "Omar Shah" };
+  const base = { lang: "en", changes: [], failed: [], confirmed: 17, maxPlayers: 18, kickoffLabel: "Fri 20:30", senderName: "Omar Shah", bench: [] as string[], benchPickMode: null };
 
   it("a change is reported as before", () => {
     expect(
       reply({ ...base, changes: [{ kind: "out", name: "Kai Patel" }], vetted: [v({ claim: claim({ polarity: "out" }), before: "CONFIRMED" })] }),
     ).toBe("Done: Kai Patel out. 17 of 18.");
+  });
+
+  // FNF HQ 2026-10-18 18:16: "Akram out" answered "17 of 18." with Uncle
+  // Najib on the bench, in a club whose organisers pick from the bench.
+  describe("the bench in the count (FNF HQ 2026-10-18)", () => {
+    const out = {
+      changes: [{ kind: "out" as const, name: "Akram" }],
+      movedUserIds: ["u-akram"],
+      vetted: [v({ claim: claim({ polarity: "out" }), before: "CONFIRMED", ref: { kind: "member", userId: "u-akram", name: "Akram" } })],
+    };
+    it("organiser pick, a place free: the bench and how to bring someone in", () => {
+      expect(reply({ ...base, ...out, bench: ["Uncle Najib"], benchPickMode: "organiser" })).toBe(
+        'Done: Akram out. 17 of 18, 1 on the bench (Uncle Najib). A place is free. Just tell me who should come in from the bench, in your own words (for example Uncle Najib).',
+      );
+      expect(reply({ ...base, ...out, lang: "tr", bench: ["Uncle Najib"], benchPickMode: "organiser" })).toBe(
+        'Tamam: Akram çıktı. 17/18, yedekte 1 kişi (Uncle Najib). Bir yer boş. Yedekten kimin gireceğini kendi cümlelerinizle yazmanız yeterli (örneğin Uncle Najib).',
+      );
+    });
+    it("automatic bench (first come): the count is accurate, no instruction", () => {
+      expect(reply({ ...base, ...out, bench: ["Uncle Najib"], benchPickMode: "first-come" })).toBe(
+        "Done: Akram out. 17 of 18, 1 on the bench (Uncle Najib).",
+      );
+    });
+    it("a full squad with five waiting: the count alone, no instruction", () => {
+      expect(
+        reply({ ...base, ...out, confirmed: 18, bench: ["A", "B", "C", "D", "E"], benchPickMode: "organiser" }),
+      ).toBe("Done: Akram out. 18 of 18, 5 on the bench.");
+    });
+    it("nobody on the bench: as before", () => {
+      expect(reply({ ...base, ...out, bench: [], benchPickMode: "organiser" })).toBe("Done: Akram out. 17 of 18.");
+    });
   });
 
   it('"Nothing to change" only when it is literally true', () => {
@@ -528,8 +559,8 @@ describe("buildAdminSquadReply: what MatchTime says back, and when it says nothi
 
   it("a name nobody in the club has, mentioned in passing to MatchTime (a tag or a reply to it): says so and how to add them", () => {
     const vetted = [v({ claim: claim({ personRef: "Zayn" }), hold: "not-a-command", ref: { kind: "unknown", name: "Zayn" } })];
-    expect(reply({ ...base, addressed: true, vetted })).toBe('I don\'t know Zayn yet. To add them, write "put Zayn in".');
-    expect(reply({ ...base, addressed: true, lang: "tr", vetted })).toBe('Zayn ad\u0131nda birini hen\u00fcz tan\u0131m\u0131yorum. Eklemek i\u00e7in "Zayn var" yaz\u0131n.');
+    expect(reply({ ...base, addressed: true, vetted })).toBe('I don\'t know Zayn yet. To add them, just ask me in your own words (for example put Zayn in).');
+    expect(reply({ ...base, addressed: true, lang: "tr", vetted })).toBe('Zayn adında birini henüz tanımıyorum. Eklemek için kendi cümlelerinizle yazmanız yeterli (örneğin Zayn var).');
     // but not for a past or contingent mention, nor a drop of a stranger
     expect(
       reply({
@@ -566,7 +597,7 @@ describe("buildAdminSquadReply: what MatchTime says back, and when it says nothi
     ];
     expect(buildAdminSquadReply({ ...base, vetted })).toBeNull();
     expect(buildAdminSquadReply({ ...base, addressed: false, vetted })).toBeNull();
-    expect(reply({ ...base, addressed: true, vetted })).toBe('I don\'t know AH yet. To add them, write "put AH in".');
+    expect(reply({ ...base, addressed: true, vetted })).toBe('I don\'t know AH yet. To add them, just ask me in your own words (for example put AH in).');
   });
 
   it("the sender's own plain line in conversation, not addressed: silence", () => {
@@ -612,9 +643,9 @@ describe("buildAdminSquadReply: what MatchTime says back, and when it says nothi
 
   it("the sender says plainly they are out (or in) to MatchTime: no write, one line saying how", () => {
     const outLine = buildAdminSquadReply({ ...base, addressed: true, vetted: [v({ claim: self({ polarity: "out" }), hold: "not-a-command", before: "CONFIRMED", ref: me })] });
-    expect(outLine).toEqual({ text: 'To take yourself out of Fri 20:30, write "Omar Shah out".', outcome: "squad-question" });
+    expect(outLine).toEqual({ text: 'If you want me to take you out of Fri 20:30, just ask me in your own words (for example Omar Shah out).', outcome: "squad-question" });
     const inLine = reply({ ...base, addressed: true, vetted: [v({ claim: self(), hold: "not-a-command", before: null, ref: me })] });
-    expect(inLine).toBe('To put yourself in for Fri 20:30, write "Omar Shah in".');
+    expect(inLine).toBe('If you want me to put you in for Fri 20:30, just ask me in your own words (for example Omar Shah in).');
     expect(
       reply({
         ...base,
@@ -623,10 +654,10 @@ describe("buildAdminSquadReply: what MatchTime says back, and when it says nothi
         kickoffLabel: "Cum 20:30",
         vetted: [v({ claim: self({ polarity: "out" }), hold: "not-a-command", before: "CONFIRMED", ref: me })],
       }),
-    ).toBe('Cum 20:30 kadrosundan \u00e7\u0131kmak isterseniz "Omar Shah yok" yaz\u0131n.');
+    ).toBe('Sizi Cum 20:30 kadrosundan çıkarmamı isterseniz kendi cümlelerinizle yazmanız yeterli (örneğin Omar Shah yok).');
     expect(
       reply({ ...base, addressed: true, lang: "tr", kickoffLabel: "Cum 20:30", vetted: [v({ claim: self(), hold: "not-a-command", before: null, ref: me })] }),
-    ).toBe('Cum 20:30 kadrosuna girmek isterseniz "Omar Shah var" yaz\u0131n.');
+    ).toBe('Sizi Cum 20:30 kadrosuna yazmamı isterseniz kendi cümlelerinizle yazmanız yeterli (örneğin Omar Shah var).');
     // already where they say: silence, not "Nothing to change"
     expect(
       reply({ ...base, addressed: true, vetted: [v({ claim: self({ polarity: "out" }), hold: "not-a-command", before: null, ref: me })] }),

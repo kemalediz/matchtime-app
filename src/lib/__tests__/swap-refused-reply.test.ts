@@ -38,7 +38,7 @@ describe("buildSwapRefusedReply", () => {
       buildSwapRefusedReply({ a: "David", b: "Sait Demir", why: { reason: "teams-not-generated" }, lang: "tr" }),
     ).toBe(
       "*David* ve *Sait Demir* için değişiklik yapmadım. Takımlar henüz kurulmadı. " +
-        "Önce *@Match Time takımları kur* yazın. Hiçbir şey değişmedi, kimse çıkarılmadı.",
+        "Önce beni etiketleyip kendi cümlelerinizle isteyin (örneğin *@Match Time takımları kur*). Hiçbir şey değişmedi, kimse çıkarılmadı.",
     );
   });
 

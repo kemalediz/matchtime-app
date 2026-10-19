@@ -225,7 +225,7 @@ describe("structured data first, deterministically", () => {
     expect(teams.setAsideTeamProposal).toHaveBeenCalledWith("org-fnf");
     expect(r).toMatchObject({
       outcome: "paste-proposed",
-      replyText: "Adding: Bilal. Reply YES to apply. The teams still need approving: type *teams* after this.",
+      replyText: "Adding: Bilal. Reply YES to apply. The teams still need approving: ask me for them again after this, in your own words (for example *show me the teams*).",
     });
   });
 

@@ -39,13 +39,13 @@ describe("unevenSides: an even total splits exactly, an odd one may be one apart
     const base = { lang: "en", announce: true, redLabel: "Red", yellowLabel: "Yellow", unseated: [], kickoff: "20:30", venue: "Powerleague" };
     const n = (k: number) => Array.from({ length: k }, (_, i) => ({ name: `P${i}` }));
     expect(buildTeamsText({ ...base, final: false, red: n(8), yellow: n(10) })).toContain(
-      "⚠️ The sides are uneven: Red 8, Yellow 10. *move* a player to even them, or reply *YES* twice to keep them.",
+      "⚠️ The sides are uneven: Red 8, Yellow 10. Tell me who to move to even them, in your own words, or reply *YES* twice to keep them.",
     );
     // A player who is out does not count on his side.
     expect(buildTeamsText({ ...base, final: false, red: [...n(9), { name: "X", out: true }], yellow: n(9) })).not.toContain("uneven");
     expect(buildTeamsText({ ...base, final: true, red: n(8), yellow: n(10) })).not.toContain("uneven");
     expect(buildTeamsText({ ...base, lang: "tr", final: false, red: n(8), yellow: n(10) })).toContain(
-      "⚠️ Takımlar dengesiz: Red 8, Yellow 10. Dengelemek için bir oyuncuyu *taşı* ile geçirin ya da böyle kalsın diye iki kez *EVET* yazın.",
+      "⚠️ Takımlar dengesiz: Red 8, Yellow 10. Dengelemek için kimin diğer takıma geçeceğini kendi cümlelerinizle yazın ya da böyle kalsın diye iki kez *EVET* yazın.",
     );
   });
 });
@@ -262,7 +262,7 @@ describe("the words", () => {
         "1. Tom Third",
         "2. Shehryar Malik",
         "",
-        "To change them: *swap Ali Tom* swaps two players, *move Ali* moves one to the other team, *reshuffle* builds new teams.",
+        "To change them, just tell me in your own words (for example *swap Ali and Tom*, *move Ali to the other team* or *shuffle them again*).",
         "Reply *YES* when they are final. I won't post them in the players' group.",
       ].join("\n"),
     );
@@ -273,9 +273,9 @@ describe("the words", () => {
     expect(text).toContain("📝 *Önerilen takımlar*: 20:00, Goals Sutton");
     expect(text).toContain("2. Bilal Ahmed  (çıktı, yeri boş)");
     expect(text).toContain("Henüz takımı olmayan: Zara Zest.");
-    expect(text).toContain("*Ali ile Tom değiş*");
-    expect(text).toContain("*Ali taşı*");
-    expect(text).toContain("*yeniden*");
+    expect(text).toContain("*Ali ile Tom yer değiştirsin*");
+    expect(text).toContain("*Ali diğer takıma geçsin*");
+    expect(text).toContain("kendi cümlelerinizle");
     expect(text).toContain("Kesinleşince *EVET* yazın. Oyuncu grubuna ben göndermeyeceğim.");
   });
 

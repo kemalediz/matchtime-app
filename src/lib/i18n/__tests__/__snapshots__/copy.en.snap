@@ -66,13 +66,13 @@
 14. 🥁
 
 ### R6 answer_count / short, no stated count
-We're 11/14 for Tue 21:30, need 3 more 🙏
+We're 11/14 for Tue 21:30, 2 on the bench (Erdal Ozkan and Amir Ahmadi), need 3 more 🙏
 
 ### R6 answer_count / short, stated count wrong
-Not quite, we're 11/14 for Tue 21:30, need 3 more 🙏
+Not quite, we're 11/14 for Tue 21:30, 2 on the bench (Erdal Ozkan and Amir Ahmadi), need 3 more 🙏
 
 ### R6 answer_count / full
-We're 14/14 for Tue 21:30 ✅ full squad.
+We're 14/14 for Tue 21:30, 1 on the bench (Najib Ahmadi) ✅ full squad.
 
 ### R7 answer_squad / short
 📋 Based on all the messages I've picked up, here's the latest squad and bench: *11/14*, need *3 more* 🙏
@@ -118,7 +118,7 @@ We're 14/14 for Tue 21:30 ✅ full squad.
 6. Karahan Yildiz
 7. Wasim Akhtar
 
-Objections? Reply `@Match Time swap X with Y` and an admin will confirm.
+Objections? Tag me and say what to change, in your own words (for example @Match Time swap Sam with Alex), and an admin will confirm.
 
 ### R7 answer_squad / teams generated, so the line-ups
 ⚽ *Teams for tonight*: Tue 21:30 at Goals North Cheam
@@ -141,7 +141,7 @@ Objections? Reply `@Match Time swap X with Y` and an admin will confirm.
 6. Karahan Yildiz
 7. Wasim Akhtar
 
-Objections? Reply `@Match Time swap X with Y` and an admin will confirm.
+Objections? Tag me and say what to change, in your own words (for example @Match Time swap Sam with Alex), and an admin will confirm.
 
 ### R2b replacement_teams_post / one swap, the player went out
 🔁 *Wasim is out*. *Najib* takes his place and his spot in *Yellow*.
@@ -610,10 +610,10 @@ We're 11 of 14, need 3 more 🙏 If we don't find 3 more, we could switch to Fut
 6. Karahan Yildiz
 7. Wasim Akhtar
 
-Objections? Reply `@Match Time swap X with Y` and an admin will confirm.
+Objections? Tag me and say what to change, in your own words (for example @Match Time swap Sam with Alex), and an admin will confirm.
 
 ### R32 teams_not_generated
-No teams generated yet. Say '@Match Time generate the teams' and I'll sort them.
+No teams generated yet. Tag me and ask for them in your own words (for example @Match Time generate the teams) and I'll sort them.
 
 ### R33 guest_name_ask / singular
 Nice one Sait 🙌 What's their name? Reply with it and I'll add them to the squad.
@@ -646,10 +646,10 @@ Corrected 👍 It was Red 9 - 6 Yellow. Now *Yellow* won 9 - 6 against Red.
 That match is already recorded: *Red* won 9 - 6 against Yellow. An admin can change it on the match page.
 
 ### R34e score_recorded_hint
-That match is already recorded: *Red* won 9 - 6 against Yellow. If that is wrong, tell me "no, it was" with the right score and the team that won.
+That match is already recorded: *Red* won 9 - 6 against Yellow. If that is wrong, just tell me in your own words, with the right score and the team that won (for example: no, it was 5-3).
 
 ### R34e score_recorded_hint / draw
-That match is already recorded: a draw, Red 7 - 7 Yellow. If that is wrong, tell me "no, it was" with the right score and the team that won.
+That match is already recorded: a draw, Red 7 - 7 Yellow. If that is wrong, just tell me in your own words, with the right score and the team that won (for example: no, it was 5-3).
 
 ### R34f score_which_match
 I can't tell which match that corrects. For the next match, just tell me the score and the team that won. An admin can change an earlier result on its match page.
@@ -813,7 +813,7 @@ Here's how it works:
 • You can pay by card, Apple Pay, Google Pay or straight from your bank.
 • The amount is the match fee split between the players, with the card or bank fee added on top.
 • If you haven't paid, I'll send you a reminder.
-• Paying Kemal directly is fine too. Just DM me *Paid* and Kemal will confirm it.
+• Paying Kemal directly is fine too. Just DM me once you've paid, in your own words (for example *Paid*), and Kemal will confirm it.
 
 ### R186 payments_live_announcement / card only, no collector
 💳 *Match fees now go through MatchTime*
@@ -1045,7 +1045,7 @@ See you tonight 🙌
 ### R70 buildMatchDayLockedPost
 ⚽ *Tonight at 21:30*: *Tuesday 7-a-side* at Goals North Cheam
 
-Squad is locked. Say *@Match Time generate the teams* in the chat to lock in tonight's lineup 👇
+Squad is locked. To lock in tonight's lineup, tag me and ask for the teams in your own words (for example *@Match Time generate the teams*) 👇
 
 *Confirmed (14/14):*
 1. Kemal Ediz
@@ -1150,11 +1150,11 @@ Here's what I do:
 
 🔁  *Bench promotion*: If someone drops, I tag the bench here and the first to reply *IN* takes the slot. No timeout, and nobody loses their place for missing it.
 
-⚽  *Teams*: Say "@Match Time generate the teams" and I post auto-balanced sides. Objections? Reply `@Match Time swap X with Y` and an admin will apply it.
+⚽  *Teams*: Tag me and ask for the teams in your own words (for example "@Match Time generate the teams") and I post auto-balanced sides. Objections? Tell me what to change the same way (for example "@Match Time swap Sam with Alex") and an admin will apply it.
 
 🏆  *Ratings & MoM*: I DM everyone a rating link after each match (no sign-up, just tap); vote MoM in-app or in the poll I post, winner announced once everyone's voted (or 5 days after the match at the latest).
 
-⏰  *Reminders*: Say "@MatchTime remind me Monday" and I'll DM you then.
+⏰  *Reminders*: Tag me and say when, in your own words (for example "@Match Time remind me Monday"), and I'll DM you then.
 
 📊  *Stats*: Ask me things like "who got MoM last week?" or "who's our most consistent player?"
 
@@ -1199,7 +1199,7 @@ Quick reminder: if you've got them, please bring your *goalie gloves*, a *ball*,
 ### R49 buildBenchClaimAnnouncement / team and replaced player
 🎟 *Erdal Ozkan* grabbed the slot, taking *Sait Demir*'s place on *Red* 🙌
 
-_Say "@Match Time regenerate the teams" if you want to rebalance with the new line-up._
+_Want the teams rebalanced with the new line-up? Tag me and ask in your own words (for example "@Match Time regenerate the teams")._
 
 ### R49 buildBenchClaimAnnouncement / replaced player, no team
 ✅ *Erdal Ozkan* is in, replacing *Sait Demir*. Squad *14/14* 🙌
@@ -1283,7 +1283,7 @@ No new players to ask for *Tuesday 7-a-side* right now. 👍
 2. Abid Hussain
 
 ### R128 buildSwapDeferredReply
-Both *Kemal Ediz* and *Sait Demir* are already in, nobody's dropped. Teams aren't generated yet; say *@Match Time generate the teams* and I'll build them (then I can put them on opposite sides).
+Both *Kemal Ediz* and *Sait Demir* are already in, nobody's dropped. Teams aren't generated yet. Tag me and ask for them in your own words (for example *@Match Time generate the teams*), then I can put them on opposite sides.
 
 ### R129 buildTeamSwapReply
 🔁 Swapped *Kemal Ediz* and *Elvin Aliyev*, nobody dropped. Updated teams:
@@ -1328,7 +1328,7 @@ I haven't swapped *David* and *Zork*. I can't find a player called *Zork* for th
 I haven't swapped *Omar* and *Sait Demir*. *Omar* could be more than one player (Omar Farooq, Omar Khan). Use their full name. Nothing changed and nobody was dropped.
 
 ### R131c buildSwapRefusedReply / teams not generated
-I haven't swapped *David* and *Elvin Aliyev*. The teams aren't generated yet. Say *@Match Time generate the teams* first. Nothing changed and nobody was dropped.
+I haven't swapped *David* and *Elvin Aliyev*. The teams aren't generated yet. Tag me and ask for them first, in your own words (for example *@Match Time generate the teams*). Nothing changed and nobody was dropped.
 
 ### R131d buildSwapRefusedReply / same player
 I haven't swapped *David* and *David*. Both names point to the same player. Nothing changed and nobody was dropped.
@@ -1820,7 +1820,7 @@ I stay quiet during the banter and only reply to In, Out or a tag.
 🤐 I stay quiet the rest of the time: banter and jokes are safe, I won't butt in.
 🏆 After the game I'll run a quick *Man of the Match* vote.
 ⭐ I'll DM you a one-tap *rating* link after the match.
-⏰ Need a nudge? Say *"@Match Time remind me Thursday"* and I'll DM you then.
+⏰ Need a nudge? Tag me and say when, in your own words (for example *"@Match Time remind me Thursday"*), and I'll DM you then.
 💳 I keep track of who's *paid*.
 
 Type *"@Match Time help"* any time to see this again.
@@ -1843,7 +1843,7 @@ Type *"@Match Time help"* any time to see this again.
 🤐 I stay quiet the rest of the time: banter and jokes are safe, I won't butt in.
 🏆 After the game I'll run a quick *Man of the Match* vote.
 ⭐ I'll DM you a one-tap *rating* link after the match.
-⏰ Need a nudge? Say *"@Match Time remind me Thursday"* and I'll DM you then.
+⏰ Need a nudge? Tag me and say when, in your own words (for example *"@Match Time remind me Thursday"*), and I'll DM you then.
 💷 Want to collect match fees? Ask me: *@Match Time help payments*
 
 Type *"@Match Time help"* any time to see this again.
@@ -1867,7 +1867,7 @@ Type *"@Match Time help"* any time to see this again.
 🤐 I stay quiet the rest of the time: banter and jokes are safe, I won't butt in.
 🏆 After the game I'll run a quick *Man of the Match* vote.
 ⭐ I'll DM you a one-tap *rating* link after the match.
-⏰ Need a nudge? Say *"@Match Time remind me Thursday"* and I'll DM you then.
+⏰ Need a nudge? Tag me and say when, in your own words (for example *"@Match Time remind me Thursday"*), and I'll DM you then.
 💳 I keep track of who's *paid*.
 
 Type *"@Match Time help"* any time to see this again.
@@ -1894,26 +1894,26 @@ If you drop out, I can nudge the bench to step in so we're never short. Say *Out
 
 ### R142 buildHelpReply / teams
 🟥🟦 *Fair teams: how it works*
-Once the squad's locked in, any admin can tag *@Match Time generate the teams* and I'll split everyone into two balanced sides using their form ratings, so games stay even.
-I post the line-ups straight into the chat. Not happy with a pairing? Tag me to *swap two players* (e.g. _"@Match Time swap Sam and Alex"_), or ask me to *"@Match Time show the teams"* again any time.
-Want a bit of fun? Ask me to give the teams names and I'll sort it. Tag *@Match Time generate the teams* when you're ready.
+Once the squad's locked in, any admin can tag me and ask for the teams (for example *@Match Time generate the teams*) and I'll split everyone into two balanced sides using their form ratings, so games stay even.
+I post the line-ups straight into the chat. Not happy with a pairing? Tag me and say what to change, in your own words (e.g. _"@Match Time swap Sam and Alex"_), or ask me to show the teams again any time.
+Want a bit of fun? Ask me to give the teams names and I'll sort it. Just tag me and ask when you're ready.
 
 ### R142 buildHelpReply / mom
 🏆 *Man of the Match: how it works*
 After the final whistle I post a quick *Man of the Match* vote in the group. Everyone just taps who they thought was the standout player.
 I tally the votes, announce the winner, and it counts towards everyone's season stats, so the MoM race builds up over the year.
-Nothing to set up: I'll start the vote myself once the game's done. Type *@Match Time my stats* to see your MoM tally.
+Nothing to set up: I'll start the vote myself once the game's done. Ask me for your MoM tally any time, in your own words (for example *@Match Time my stats*).
 
 ### R142 buildHelpReply / ratings
 ⭐ *Player ratings: how it works*
 After each match I DM every player who turned out a private link. You rate the other players out of 10 (you can't rate yourself, and your scores stay private).
 I combine everyone's scores into a form rating for each player at this club, updated after every game, and that is what I use to build *balanced teams*. Ratings stay inside the club: if you also play for another group, their scores never touch this one. So the more people rate, the fairer the teams.
-You'll get the link the morning after the game. Type *@Match Time my stats* for yours anytime.
+You'll get the link the morning after the game. Ask me for yours any time, in your own words (for example *@Match Time my stats*).
 
 ### R142 buildHelpReply / reminders
 ⏰ *Reminders: how it works*
 I gently nudge anyone who hasn't said *In* or *Out* yet, then remind the whole squad before kick-off so nobody forgets.
-Want a personal nudge? Say *"@Match Time remind me Thursday"* and I'll DM you then.
+Want a personal nudge? Tag me and say when, in your own words (for example *"@Match Time remind me Thursday"*), and I'll DM you then.
 It all happens automatically, so you don't need to chase anyone yourself.
 
 ### R142 buildHelpReply / payments
@@ -1948,7 +1948,7 @@ Admins: DM me *help payments* and I'll send you a link that signs you straight i
 🤐 I stay quiet the rest of the time: banter and jokes are safe, I won't butt in.
 🏆 After the game I'll run a quick *Man of the Match* vote.
 ⭐ I'll DM you a one-tap *rating* link after the match.
-⏰ Need a nudge? Say *"@Match Time remind me Thursday"* and I'll DM you then.
+⏰ Need a nudge? Tag me and say when, in your own words (for example *"@Match Time remind me Thursday"*), and I'll DM you then.
 💷 After each game I'll DM you a link to pay your match fee.
 💳 I keep track of who's *paid*.
 
@@ -1964,7 +1964,7 @@ Type *"@Match Time help"* any time to see this again.
 🤐 I stay quiet the rest of the time: banter and jokes are safe, I won't butt in.
 🏆 After the game I'll run a quick *Man of the Match* vote.
 ⭐ I'll DM you a one-tap *rating* link after the match.
-⏰ Need a nudge? Say *"@Match Time remind me Thursday"* and I'll DM you then.
+⏰ Need a nudge? Tag me and say when, in your own words (for example *"@Match Time remind me Thursday"*), and I'll DM you then.
 💷 Want to collect match fees? Ask me: *@Match Time help payments*
 
 Type *"@Match Time help"* any time to see this again.
@@ -1986,7 +1986,7 @@ Admins: DM me *help payments* and I'll send you a link that signs you straight i
 🏆 *Man of the Match: how it works*
 After the final whistle I post a quick *Man of the Match* vote in the group. Everyone just taps who they thought was the standout player.
 I tally the votes, announce the winner, and it counts towards everyone's season stats, so the MoM race builds up over the year.
-Nothing to set up: I'll start the vote myself once the game's done. Type *@Match Time my stats* to see your MoM tally.
+Nothing to set up: I'll start the vote myself once the game's done. Ask me for your MoM tally any time, in your own words (for example *@Match Time my stats*).
 
 🔧 To switch it on, an admin opens *Settings* on the admin page (https://matchtime.ai/admin/settings) and turns on *Man of the Match* under Bot features.
 Admins: DM me *help mom* and I'll send you a link that signs you straight in.
@@ -2027,7 +2027,7 @@ https://mt.example/r/settings
 🏆 *Man of the Match: how it works*
 After the final whistle I post a quick *Man of the Match* vote in the group. Everyone just taps who they thought was the standout player.
 I tally the votes, announce the winner, and it counts towards everyone's season stats, so the MoM race builds up over the year.
-Nothing to set up: I'll start the vote myself once the game's done. Type *@Match Time my stats* to see your MoM tally.
+Nothing to set up: I'll start the vote myself once the game's done. Ask me for your MoM tally any time, in your own words (for example *@Match Time my stats*).
 
 🔧 To switch it on, open *Settings* on your admin page and turn on *Man of the Match* under Bot features:
 https://mt.example/r/settings
@@ -2066,7 +2066,7 @@ Paid in cash or by transfer instead? The player tells me *"paid"* and I ask the 
 🏆 *Man of the Match: how it works*
 After the final whistle I post a quick *Man of the Match* vote in the group. Everyone just taps who they thought was the standout player.
 I tally the votes, announce the winner, and it counts towards everyone's season stats, so the MoM race builds up over the year.
-Nothing to set up: I'll start the vote myself once the game's done. Type *@Match Time my stats* to see your MoM tally.
+Nothing to set up: I'll start the vote myself once the game's done. Ask me for your MoM tally any time, in your own words (for example *@Match Time my stats*).
 
 🔧 Your organiser can switch this on from the admin page. Ask them if you'd like it.
 
@@ -2103,7 +2103,7 @@ https://mt.example/r/settings
 🤐 I stay quiet the rest of the time: banter and jokes are safe, I won't butt in.
 🏆 After the game I'll run a quick *Man of the Match* vote.
 ⭐ I'll DM you a one-tap *rating* link after the match.
-⏰ Need a nudge? Say *"@Match Time remind me Thursday"* and I'll DM you then.
+⏰ Need a nudge? Tag me and say when, in your own words (for example *"@Match Time remind me Thursday"*), and I'll DM you then.
 💳 I keep track of who's *paid*.
 
 Type *"@Match Time help"* any time to see this again.
@@ -2303,7 +2303,7 @@ I'll build the teams on match day, just ask me then.
 I only build the teams on match day, when someone asks me to generate them.
 
 ### R170 teamOpsSayGenerateReply
-Say "@Match Time generate the teams" and I'll build them.
+Tag me and ask for the teams in your own words (for example "@Match Time generate the teams") and I'll build them.
 
 ### R170 requestNotHandledReply
 Sorry, I can't do that one yet.
@@ -2442,7 +2442,7 @@ Thanks, I'm in your group. I'll stay quiet there until your club is approved, us
 
 ✅ *Who's in:* just say *In* or *Out*. I keep the list and tick your message.
 🪑 *The bench:* once we're full, anyone who says *In* late goes on the bench, and the bench gets first dibs if someone drops.
-⏰ *Remind me:* say *"@Match Time remind me Thursday"* and I'll DM you then.
+⏰ *Remind me:* tag me and say when, in your own words (for example *"@Match Time remind me Thursday"*), and I'll DM you then.
 ⚖️ *Fair teams:* tag me and I pick balanced teams from player ratings.
 ⭐ *Man of the Match and ratings* after every game.
 📊 *Stats:* ask me anything, and everyone gets their own stats page.
@@ -2455,7 +2455,7 @@ I stay quiet during the banter and only reply to In, Out or a tag. Anything else
 
 ✅ *Who's in:* just say *In* or *Out*. I keep the list and tick your message.
 🪑 *The bench:* once we're full, anyone who says *In* late goes on the bench, and the bench gets first dibs if someone drops.
-⏰ *Remind me:* say *"@Match Time remind me Thursday"* and I'll DM you then.
+⏰ *Remind me:* tag me and say when, in your own words (for example *"@Match Time remind me Thursday"*), and I'll DM you then.
 ⚖️ *Fair teams:* tag me and I pick balanced teams from player ratings.
 ⭐ *Man of the Match and ratings* after every game.
 📊 *Stats:* ask me anything, and everyone gets their own stats page.
@@ -2515,7 +2515,7 @@ The squad list and the teams stay here for you to share with the players.
 When a place opens and someone is waiting, I ask here who plays.
 Notices meant only for the organisers come here instead of by DM, and so does the rating notice, for you to pass on to the players.
 
-Nothing I say here goes to the players. Type *help* here any time to see what I take.
+Nothing I say here goes to the players. Ask me here any time what I can do, in your own words (for example *what can you do?*).
 
 ### R186 admin group / L1a introduction, a club on the defaults
 👋 I'm MatchTime, I'll help run *Friday FNF*'s Tuesdays.
@@ -2523,7 +2523,7 @@ I keep track of who's *IN* and *OUT* in the main chat, make the poster and team 
 I post the squad list in the main chat.
 Notices meant only for the organisers come here instead of by DM.
 
-Nothing I say here goes to the players. Type *help* here any time to see what I take.
+Nothing I say here goes to the players. Ask me here any time what I can do, in your own words (for example *what can you do?*).
 
 ### R186 admin group / L1a introduction, monthly, not switched on yet
 👋 I'm MatchTime, I'll help run *Friday FNF*'s games. Once I'm switched on for the club, this is what I do.
@@ -2531,7 +2531,7 @@ I make the poster and team sheet and run Man of the Match and ratings after the 
 Money collector: answer my list of payment claims here with *PAID ALL*, *PAID 1 3* or *PAID NONE*.
 Notices meant only for the organisers come here instead of by DM.
 
-Nothing I say here goes to the players. Once I'm on, type *help* here to see what I take.
+Nothing I say here goes to the players. Once I'm on, ask me here what I can do, in your own words (for example *what can you do?*).
 
 ### R186 admin group / L2 wrong or expired code
 That code isn't valid any more. Open Settings on the website and press *Link admin group* for a new one.
@@ -2768,25 +2768,25 @@ https://matchtime.ai/admin/settings
 
 📋 Paste the squad list for Friday's game here now. I'll show you what it changes, and *YES* within 30 minutes applies it.
 
-💬 No need to tag me here. I read every message from an admin in this group, so just type the command. Your normal chat is fine too, I only act on clear instructions. In the main chat, players say IN or OUT without tagging me, and tag me only to ask me something.
+💬 No need to tag me here. I read every message from an admin in this group, so just say what you need in your own words. Your normal chat is fine too, I only act on clear instructions. In the main chat, players say IN or OUT without tagging me, and tag me only to ask me something.
 
-Type *help* here any time to see what I take.
+Ask me here any time what I can do, in your own words (for example *what can you do?*).
 
 ### R194 admin onboarding / A getting ready, no game yet
 🧰 *Getting FNF ready*
 
 📋 Friday's game is added overnight. From tomorrow, paste its squad list here: I'll show you what it changes, and *YES* within 30 minutes applies it.
 
-💬 No need to tag me here. I read every message from an admin in this group, so just type the command. Your normal chat is fine too, I only act on clear instructions. In the main chat, players say IN or OUT without tagging me, and tag me only to ask me something.
+💬 No need to tag me here. I read every message from an admin in this group, so just say what you need in your own words. Your normal chat is fine too, I only act on clear instructions. In the main chat, players say IN or OUT without tagging me, and tag me only to ask me something.
 
-Type *help* here any time to see what I take.
+Ask me here any time what I can do, in your own words (for example *what can you do?*).
 
 ### R194 admin onboarding / A getting ready, a club on the defaults, admin group
 🧰 *Getting Harbour FC ready*
 
-💬 No need to tag me here. I read every message from an admin in this group, so just type the command. Your normal chat is fine too, I only act on clear instructions. In the main chat, players say IN or OUT without tagging me, and tag me only to ask me something.
+💬 No need to tag me here. I read every message from an admin in this group, so just say what you need in your own words. Your normal chat is fine too, I only act on clear instructions. In the main chat, players say IN or OUT without tagging me, and tag me only to ask me something.
 
-Type *help* here any time to see what I take.
+Ask me here any time what I can do, in your own words (for example *what can you do?*).
 
 ### R194 admin onboarding / A getting ready, by DM, fees with no collector
 🧰 *Getting Harbour FC ready*
@@ -2861,7 +2861,7 @@ Adam Admin, I've sent you a private link to your admin page, where player names,
 🤐 I stay quiet the rest of the time: banter and jokes are safe, I won't butt in.
 🏆 After the game I'll run a quick *Man of the Match* vote.
 ⭐ I'll DM you a one-tap *rating* link after the match.
-⏰ Need a nudge? Say *"@Match Time remind me Thursday"* and I'll DM you then.
+⏰ Need a nudge? Tag me and say when, in your own words (for example *"@Match Time remind me Thursday"*), and I'll DM you then.
 💷 Want to collect match fees? Ask me: *@Match Time help payments*
 
 Type *"@Match Time help"* any time to see this again.
@@ -2887,7 +2887,7 @@ Whoever runs this group can claim the admin page any time at matchtime.ai. Every
 🤐 I stay quiet the rest of the time: banter and jokes are safe, I won't butt in.
 🏆 After the game I'll run a quick *Man of the Match* vote.
 ⭐ I'll DM you a one-tap *rating* link after the match.
-⏰ Need a nudge? Say *"@Match Time remind me Thursday"* and I'll DM you then.
+⏰ Need a nudge? Tag me and say when, in your own words (for example *"@Match Time remind me Thursday"*), and I'll DM you then.
 💷 Want to collect match fees? Ask me: *@Match Time help payments*
 
 Type *"@Match Time help"* any time to see this again.
@@ -2912,7 +2912,7 @@ Admin, I've sent you a private link to your admin page, where player names, rati
 🤐 I stay quiet the rest of the time: banter and jokes are safe, I won't butt in.
 🏆 After the game I'll run a quick *Man of the Match* vote.
 ⭐ I'll DM you a one-tap *rating* link after the match.
-⏰ Need a nudge? Say *"@Match Time remind me Thursday"* and I'll DM you then.
+⏰ Need a nudge? Tag me and say when, in your own words (for example *"@Match Time remind me Thursday"*), and I'll DM you then.
 💳 I keep track of who's *paid*.
 
 Type *"@Match Time help"* any time to see this again.
@@ -2936,7 +2936,7 @@ Whoever runs this group can claim the admin page any time at matchtime.ai. Every
 🤐 I stay quiet the rest of the time: banter and jokes are safe, I won't butt in.
 🏆 After the game I'll run a quick *Man of the Match* vote.
 ⭐ I'll DM you a one-tap *rating* link after the match.
-⏰ Need a nudge? Say *"@Match Time remind me Thursday"* and I'll DM you then.
+⏰ Need a nudge? Tag me and say when, in your own words (for example *"@Match Time remind me Thursday"*), and I'll DM you then.
 💷 Want to collect match fees? Ask me: *@Match Time help payments*
 
 Type *"@Match Time help"* any time to see this again.
@@ -2958,7 +2958,7 @@ First match: *Tuesday 21:00* at *Goals Wembley* (every week).
 🤐 I stay quiet the rest of the time: banter and jokes are safe, I won't butt in.
 🏆 After the game I'll run a quick *Man of the Match* vote.
 ⭐ I'll DM you a one-tap *rating* link after the match.
-⏰ Need a nudge? Say *"@Match Time remind me Thursday"* and I'll DM you then.
+⏰ Need a nudge? Tag me and say when, in your own words (for example *"@Match Time remind me Thursday"*), and I'll DM you then.
 💷 Want to collect match fees? Ask me: *@Match Time help payments*
 
 Type *"@Match Time help"* any time to see this again.
@@ -3599,11 +3599,11 @@ Here's what I do:
 
 🔁  *Bench promotion*: If someone drops, I tag the bench here and the first to reply *IN* takes the slot. No timeout, and nobody loses their place for missing it.
 
-⚽  *Teams*: Say "@Match Time generate the teams" and I post auto-balanced sides. Objections? Reply `@Match Time swap X with Y` and an admin will apply it.
+⚽  *Teams*: Tag me and ask for the teams in your own words (for example "@Match Time generate the teams") and I post auto-balanced sides. Objections? Tell me what to change the same way (for example "@Match Time swap Sam with Alex") and an admin will apply it.
 
 🏆  *Ratings & MoM*: I DM everyone a rating link after each match (no sign-up, just tap); vote MoM in-app or in the poll I post, winner announced once everyone's voted (or 5 days after the match at the latest).
 
-⏰  *Reminders*: Say "@MatchTime remind me Monday" and I'll DM you then.
+⏰  *Reminders*: Tag me and say when, in your own words (for example "@Match Time remind me Monday"), and I'll DM you then.
 
 📊  *Stats*: Ask me things like "who got MoM last week?" or "who's our most consistent player?"
 
@@ -3612,7 +3612,7 @@ Here's what I do:
 Questions? Just ask here. Let's go.
 
 ### RSQ4 buildLateDropAdminNotice
-Late drop-out: *Wasim Ali* said OUT for *Friday 9-a-side* (Fri 9 Oct at 20:30) at 16:05, after the Thursday 15:30 deadline. Squad is now 17/18.
+Late drop-out: *Wasim Ali* said OUT for *Friday 9-a-side* (Fri 9 Oct at 20:30) at 16:05, after the Thursday 15:30 deadline. Squad is now 17/18, 1 on the bench (Uncle Najib).
 
 ### RSQ5 weekly routine settings
 Weekly routine
@@ -3831,7 +3831,7 @@ Only 1 place was open, so I brought in your first pick: *Wasim*.
 Only 2 places were open, so I brought in your first picks: *Wasim* and *Kemal*.
 OK, I'll leave the place open. You can still pick from the bench on the match page.
 Nobody picked for *Friday 9-a-side*, so I've offered the place to the bench: the first to say IN gets it.
-Nobody picked for *Friday 9-a-side*, so the place stays open. Squad 17/18.
+Nobody picked for *Friday 9-a-side*, so the place stays open. Squad 17/18, 1 on the bench (Uncle Najib).
 
 ### OPK5b pick_fallback_offered_many (P11, several places)
 Nobody picked for *Friday 9-a-side*, so I've offered the 3 open places to the bench: whoever says IN gets one.

@@ -73,7 +73,7 @@ function run(state: SquadState, ...messages: Parameters<typeof msg>[0][]) {
 
 const ASK_10_7 = "10 - 7: which team won? Reply with the winning team: Red or Yellow.";
 const RECORDED_9_6_HINT =
-  'That match is already recorded: *Red* won 9 - 6 against Yellow. If that is wrong, tell me "no, it was" with the right score and the team that won.';
+  'That match is already recorded: *Red* won 9 - 6 against Yellow. If that is wrong, just tell me in your own words, with the right score and the team that won (for example: no, it was 5-3).';
 const RECORDED_9_6_ADMIN =
   "That match is already recorded: *Red* won 9 - 6 against Yellow. An admin can change it on the match page.";
 
@@ -772,7 +772,7 @@ describe("Turkish", () => {
     const state = tr({ redScore: 9, yellowScore: 6 });
     const hint = run(state, { from: "kemal", tagged: true, body: "@Match Time 9-2 sarı", route: "score", facts: score(9, 2, { winner: "sarı" }) });
     expect(hint.replies).toEqual([
-      'Bu maçın sonucu zaten kayıtlı: *Kırmızı* 9 - 6 kazandı, rakip Sarı. Yanlışsa "hayır" diye başlayıp doğru skoru ve kazanan takımı yazın.',
+      'Bu maçın sonucu zaten kayıtlı: *Kırmızı* 9 - 6 kazandı, rakip Sarı. Yanlışsa doğru skoru ve kazanan takımı kendi cümlelerinizle yazın (örneğin: hayır, 5-3 bitti).',
     ]);
     const admin = run(state, { from: "zair", tagged: true, body: "@Match Time hayır 9-6 sarı", route: "score", facts: score(9, 6, { winner: "sarı", correction: true }) });
     expect(admin.replies).toEqual([

@@ -20,6 +20,15 @@ const att = vi.hoisted(() => ({ registerAttendance: vi.fn(), cancelAttendance: v
 vi.mock("@/lib/attendance", () => att);
 const prov = vi.hoisted(() => ({ resolveOrProvisionByName: vi.fn() }));
 vi.mock("@/lib/resolve-or-provision-name", () => prov);
+// The count line's facts (squad-count.ts), read off the same rows.
+vi.mock("@/lib/squad-count", () => ({
+  loadSquadCount: async () => ({
+    confirmed: rows.filter((r) => r.status === "CONFIRMED").length,
+    maxPlayers: 6,
+    bench: rows.filter((r) => r.status === "BENCH").map((r) => people.find(([id]) => id === r.userId)?.[1] ?? r.userId),
+    benchPickMode: null,
+  }),
+}));
 
 import { answerSquadPasteYes, proposeSquadPaste } from "../admin-group-paste";
 
@@ -225,7 +234,7 @@ describe("answerSquadPasteYes", () => {
     const r = await answerSquadPasteYes(yes);
     expect(r).toEqual({
       outcome: "paste-applied",
-      replyText: "Done: Shehryar Khan out, Clarence Obi out, Bilal Ahmed in, Naim in. 5 of 6.",
+      replyText: "Done: Shehryar Khan out, Clarence Obi out, Bilal Ahmed in, Naim in. 5 of 6, 1 on the bench (Ben Bench).",
     });
     // Claimed once, atomically, before any write.
     expect(dbMock.adminSquadProposal.updateMany).toHaveBeenCalledWith({
@@ -255,7 +264,7 @@ describe("answerSquadPasteYes", () => {
     dbMock.adminSquadProposal.findFirst.mockResolvedValue(open);
     rows.find((r) => r.userId === "u-shehryar")!.status = "DROPPED";
     const r = await answerSquadPasteYes(yes);
-    expect(r?.replyText).toBe("Done: Clarence Obi out, Bilal Ahmed in, Naim in. 5 of 6.");
+    expect(r?.replyText).toBe("Done: Clarence Obi out, Bilal Ahmed in, Naim in. 5 of 6, 1 on the bench (Ben Bench).");
   });
 
   it("another admin got there first: the claim fails, nothing is written, silent", async () => {
@@ -286,7 +295,7 @@ describe("answerSquadPasteYes", () => {
     const r = await answerSquadPasteYes(yes);
     expect(att.registerAttendance).toHaveBeenCalledWith("u-clarence", "m1", expect.objectContaining({ benchIntent: "explicit" }));
     expect(att.cancelAttendance).not.toHaveBeenCalled();
-    expect(r?.replyText).toBe("Done: Clarence Obi on the bench. 4 of 6.");
+    expect(r?.replyText).toBe("Done: Clarence Obi on the bench. 4 of 6, 2 on the bench (Clarence Obi and Ben Bench).");
   });
 
   it("a write that throws is reported, the rest still applied", async () => {

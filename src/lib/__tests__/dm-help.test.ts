@@ -185,7 +185,7 @@ describe("handleDmHelp", () => {
   // 2026-10-15: a club whose organisers announce the list and teams.
   describe("an organisers-mode club (listAnnouncer 'organisers', organiser pick)", () => {
     const FNF = { ...FEATS_PAY_OFF, listAnnouncer: "organisers", benchPickMode: "organiser" };
-    const POINTER = "In your admin group, type *help* and I'll show the commands I take there.";
+    const POINTER = "In your admin group, ask me what I can do there, in your own words (for example *what can you do?*).";
 
     it("an organiser's bare help points at the admin group's commands, and keeps the settings link", async () => {
       getOrgFeatures.mockResolvedValue(FNF);

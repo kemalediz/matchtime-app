@@ -179,7 +179,7 @@ test("one question at a time: a pasted list sets the teams aside; 'teams' asks a
   const list = ["1. Alex Admin", "2. Colin Collector", "3. Pat Player", "4. Ben Bench"].join("\n");
   const pasted = await say(request, list);
   expect(pasted).toMatchObject({ handled: true, outcome: "paste-proposed" });
-  expect(pasted.replyText).toMatch(/Reply YES to apply\. The teams still need approving: type \*teams\* after this\.$/);
+  expect(pasted.replyText).toMatch(/Reply YES to apply\. The teams still need approving: ask me for them again after this, in your own words \(for example \*show me the teams\*\)\.$/);
 
   const again = await say(request, "teams");
   expect(again.replyText.startsWith("The list pasted earlier was not applied.")).toBe(true);
@@ -194,7 +194,7 @@ test("kickoff minus 2 hours with nobody approving: one reminder in the admin gro
   expect(reminder).toHaveLength(1);
   expect(reminder[0]).toMatchObject({
     kind: "admin-group-message",
-    text: "⏰ The teams for 22:00 aren't final yet. Type *teams* to see them, then *YES*.",
+    text: "⏰ The teams for 22:00 aren't final yet. Ask me to show them, in your own words (for example *show me the teams*), then reply *YES*.",
   });
   expect(teamText(await poll(request, londonAt(0, 20, 30)), /aren't final yet/)).toEqual([]);
 });
@@ -203,7 +203,7 @@ test("YES on uneven sides ('move Pat' left 3 v 1): asked again, nothing final ye
   const out = await say(request, "YES");
   expect(out).toMatchObject({ handled: true, outcome: "teams-uneven" });
   expect(out.replyText).toMatch(
-    /^The sides are uneven: Red [13], Yellow [13]\. Reply \*YES\* again to make them final as they are, or \*move\* a player first\.$/,
+    /^The sides are uneven: Red [13], Yellow [13]\. Reply \*YES\* again to make them final as they are, or first tell me who to move, in your own words\.$/,
   );
   expect(await status(db)).not.toBe("TEAMS_PUBLISHED");
 });

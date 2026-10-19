@@ -85,8 +85,8 @@ describe("A: Getting <club> ready", () => {
       [
         "🧰 *Getting FNF ready*",
         "📋 Paste the squad list for Friday's game here now. I'll show you what it changes, and *YES* within 30 minutes applies it.",
-        "💬 No need to tag me here. I read every message from an admin in this group, so just type the command. Your normal chat is fine too, I only act on clear instructions. In the main chat, players say IN or OUT without tagging me, and tag me only to ask me something.",
-        "Type *help* here any time to see what I take.",
+        "💬 No need to tag me here. I read every message from an admin in this group, so just say what you need in your own words. Your normal chat is fine too, I only act on clear instructions. In the main chat, players say IN or OUT without tagging me, and tag me only to ask me something.",
+        "Ask me here any time what I can do, in your own words (for example *what can you do?*).",
       ].join("\n\n"),
     );
   });
@@ -116,7 +116,7 @@ describe("A: Getting <club> ready", () => {
   it("a monthly club: no paste line, and the no-tag line does not claim every message is read", () => {
     const text = ready({ ...FNF, squadMode: "monthly" })!;
     expect(text).not.toContain("📋");
-    expect(text).toContain("💬 No need to tag me here: just type the command. Your normal chat is fine too, I only act on clear commands.");
+    expect(text).toContain("💬 No need to tag me here: just say what you need in your own words. Your normal chat is fine too, I only act on clear instructions.");
     expect(text).not.toContain("I read every message");
   });
 
@@ -149,7 +149,7 @@ describe("A: Getting <club> ready", () => {
     expect(text).toContain("Cuma");
     expect(text).toContain("*EVET*");
     expect(text).toContain("*VARIM* ya da *YOKUM*");
-    expect(text).toContain("*yardım*");
+    expect(text).toContain("*neler yapabilirsin?*");
     expect(text).not.toMatch(/\bYES\b|\bhelp\b/);
   });
 

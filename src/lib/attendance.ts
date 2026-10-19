@@ -11,6 +11,7 @@ import { dropOutDeadlineFor } from "./weekly-deadlines";
 import { isLateDrop } from "./rolling-squad-rules";
 import { sendAdminNotice } from "./admin-channel";
 import { buildLateDropAdminNotice } from "./dm-copy";
+import { loadSquadCount } from "./squad-count";
 import { dayTimeLabel, timeLabel, weekdayTimeLabel } from "./i18n/dates";
 import { canTakeFreePlace, normaliseBenchPickMode, ORGANISER_PICK_BENCH_NOTE } from "./squad-capacity";
 import { loadReclaimUserIds } from "./squad-reclaim";
@@ -622,9 +623,9 @@ async function notifyLateDrop(p: {
   sentAt: Date;
   lang: string | null | undefined;
 }): Promise<void> {
-  const [user, confirmed] = await Promise.all([
+  const [user, squad] = await Promise.all([
     db.user.findUnique({ where: { id: p.userId }, select: { name: true } }),
-    db.attendance.count({ where: { matchId: p.matchId, status: "CONFIRMED" } }),
+    loadSquadCount(p.matchId),
   ]);
   await sendAdminNotice({
     orgId: p.orgId,
@@ -634,8 +635,9 @@ async function notifyLateDrop(p: {
       whenLabel: dayTimeLabel(p.lang, p.matchDate),
       time: timeLabel(p.sentAt),
       deadline: weekdayTimeLabel(p.lang, p.deadline),
-      confirmed,
+      confirmed: squad.confirmed,
       maxPlayers: p.maxPlayers,
+      bench: squad.bench,
       lang: p.lang,
     }),
     now: new Date(),

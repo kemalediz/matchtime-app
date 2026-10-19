@@ -78,7 +78,7 @@ describe("the announcement text", () => {
         "• You can pay by card, Apple Pay, Google Pay or straight from your bank.\n" +
         "• The amount is the match fee split between the players, with the card or bank fee added on top.\n" +
         "• If you haven't paid, I'll send you a reminder.\n" +
-        "• Paying Kemal directly is fine too. Just DM me *Paid* and Kemal will confirm it.",
+        "• Paying Kemal directly is fine too. Just DM me once you've paid, in your own words (for example *Paid*), and Kemal will confirm it.",
     );
   });
 
@@ -90,7 +90,7 @@ describe("the announcement text", () => {
         "• Kartla, Apple Pay, Google Pay ile ya da doğrudan bankanızdan ödeyebilirsiniz.\n" +
         "• Tutar, maç ücretinin oyuncular arasında bölünmüş payı, üstüne de kart ya da banka ücreti.\n" +
         "• Ödemeyenlere hatırlatma gönderiyorum.\n" +
-        "• Ödemeyi doğrudan Kemal ile halletmek de olur. Bana özelden *Ödedim* yazın, Kemal onaylasın.",
+        "• Ödemeyi doğrudan Kemal ile halletmek de olur. Ödeyince bana özelden kendi cümlelerinizle yazın (örneğin *Ödedim*), Kemal onaylasın.",
     );
   });
 
@@ -106,7 +106,7 @@ describe("the announcement text", () => {
     const text = buildPaymentsLiveAnnouncement({ lang: "en", collector: null, card: false, bank: true, direct: true });
     expect(text).toContain("• You can pay straight from your bank.\n");
     expect(text).toContain("with the bank fee added on top.");
-    expect(text).toContain("Paying the organiser directly is fine too. Just DM me *Paid* and the organiser will confirm it.");
+    expect(text).toContain("Paying the organiser directly is fine too. Just DM me once you've paid, in your own words (for example *Paid*), and the organiser will confirm it.");
   });
 
   it("has no em or en dash in any variant", () => {

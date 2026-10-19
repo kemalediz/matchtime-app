@@ -319,7 +319,7 @@ test.describe("OUT before and after the drop-out deadline", () => {
     const notices = await lateNotices(db);
     expect(notices).toHaveLength(1);
     expect(notices[0].phone).toBe(PHONE.admin.replace(/^\+/, ""));
-    expect(notices[0].text).toMatch(/^Late drop-out: \*Pat Player\* said OUT for \*.+\* \(.+\) at \d\d:\d\d, after the .+ deadline\. Squad is now 3\/5\.$/);
+    expect(notices[0].text).toMatch(/^Late drop-out: \*Pat Player\* said OUT for \*.+\* \(.+\) at \d\d:\d\d, after the .+ deadline\. Squad is now 3\/5, 1 on the bench \(Ben Bench\)\.$/);
     const note = await db.one<{ note: string }>(
       `SELECT note FROM "AttendanceEvent" WHERE "matchId" = $1 AND "userId" = $2 AND "toStatus" = 'DROPPED'`,
       [MATCH.upcoming, U.player],
