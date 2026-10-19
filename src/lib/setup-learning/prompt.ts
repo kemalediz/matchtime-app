@@ -65,9 +65,11 @@ import { HAIKU_MODEL } from "../models";
 /** Haiku (HAIKU_MODEL): the cheap model, the router's. A one-shot read of a chat. */
 export const SETUP_LEARNING_MODEL = HAIKU_MODEL;
 
-/** Room for the answer (~600 tokens measured on the fixtures' shape),
- *  with headroom; well under the pipeline's 4,096 ceiling. */
-export const SETUP_LEARNING_MAX_TOKENS = 2_000;
+/** Room for the answer (~460 tokens on Haiku 5.5) AND adaptive thinking at
+ *  HAIKU_EFFORT: the largest of 24 measured calls used 3,019 tokens in all
+ *  (2026-10-19). That is the pipeline's whole 4,096 ceiling, and a reading
+ *  that runs past it fails as model-error (no setting is written). */
+export const SETUP_LEARNING_MAX_TOKENS = 4_096;
 
 export const DAY_NAMES = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"] as const;
 export type DayName = (typeof DAY_NAMES)[number];

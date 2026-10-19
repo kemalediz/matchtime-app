@@ -88,6 +88,7 @@ import {
   type ModelRequest,
   type PipelineModel,
 } from "./llm";
+import { HAIKU_EFFORT } from "../models";
 import type { AttendanceFacts, Claim, Degradation, Route, RoutedMessage } from "./types";
 import { ORGANISER_ONLY_ROUTES } from "./types";
 import { isAiBudgetExceeded } from "../ai-budget-context";
@@ -411,7 +412,10 @@ In the organisers' group, teams waiting for approval:
 
 Return JSON only: {"routes":[{"id":"<id>","route":"<route>"}]}`;
 
-const ROUTER_MAX_TOKENS = 1_024;
+// Room for adaptive thinking on top of the routes: one message at medium
+// effort used up to 520 output tokens (2026-10-19); a batch of eight needs
+// more. Clamped to PIPELINE_MAX_TOKENS_CEILING in llm.ts regardless.
+const ROUTER_MAX_TOKENS = 2_048;
 
 const VALID: Record<string, Route> = {
   none: "none",
@@ -957,9 +961,8 @@ async function routeBatchInner(
     system: ROUTER_SYSTEM_PROMPT,
     user,
     maxTokens: ROUTER_MAX_TOKENS,
-    // Haiku 5.5 thinks unless told not to; Haiku 4.5, which this prompt
-    // was measured on, never did. See ModelRequest.thinking.
-    thinking: "off",
+    // Haiku 5.5 is more accurate here thinking than not (HAIKU_EFFORT).
+    thinking: { effort: HAIKU_EFFORT },
     label: "router",
     shortIds: Object.fromEntries(realOf),
     schema: {

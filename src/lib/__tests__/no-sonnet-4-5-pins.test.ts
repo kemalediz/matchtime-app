@@ -285,25 +285,23 @@ describe("claude-sonnet-5 never runs adaptive thinking by accident", () => {
     }
   });
 
-  it("every Haiku site turns thinking off, because Haiku 5.5 thinks unless told not to", () => {
+  it("every Haiku site thinks through HAIKU_THINKING, with room for it in max_tokens", () => {
     // Haiku 4.5 thought only when handed `budget_tokens`, so these sites
-    // never sent a thinking parameter. Haiku 5.5 (2026-10-19) runs
-    // ADAPTIVE thinking when the parameter is omitted, the same contract
-    // that made Sonnet 5 return no text (above). Measured on the dev key:
-    // the router call with the parameter omitted came back with a
-    // thinking block and 81 thinking tokens in front of the JSON. Each
-    // site below has a max_tokens sized for its OUTPUT (200 on the DM
-    // classifiers) and a fail-closed path, so the move stays a price
-    // change only with `{type: "disabled"}`, which Haiku 5.5 accepts at
-    // its default effort.
+    // never sent a thinking parameter. Haiku 5.5 thinks adaptively, and on
+    // 2026-10-19 three paid reruns (3 runs per case, 5 arms) showed that
+    // it is MORE accurate than 4.5 on these prompts with thinking ON at
+    // its default effort, and LESS accurate with it off. So every Haiku
+    // site states the shared posture (`...HAIKU_THINKING`, src/lib/models.ts)
+    // and the shared answer budget, which has room for thinking: the 200
+    // tokens these sites used to send is less than one thinking pass
+    // (measured: up to 194 thinking tokens on one DM classification).
     const haikuId = SHARED_MODEL_CONSTS.get("HAIKU_MODEL");
     const haiku = SITES.filter((s) => s.model === haikuId);
     expect(haiku.length).toBeGreaterThan(0);
     for (const s of haiku) {
-      expect(
-        /thinking\s*:\s*\{\s*type\s*:\s*"disabled"\s*\}/.test(s.body),
-        `${rel(s.file)}:${s.line} is on ${haikuId} without thinking: { type: "disabled" }`,
-      ).toBe(true);
+      expect(s.body, `${rel(s.file)}:${s.line} does not spread HAIKU_THINKING`).toMatch(/\.\.\.HAIKU_THINKING\b/);
+      expect(s.body, `${rel(s.file)}:${s.line} does not use HAIKU_SHORT_ANSWER_MAX_TOKENS`).toMatch(/max_tokens:\s*HAIKU_SHORT_ANSWER_MAX_TOKENS\b/);
+      expect(/thinking\s*:\s*\{\s*type\s*:\s*"disabled"/.test(s.body), `${rel(s.file)}:${s.line} still disables thinking`).toBe(false);
     }
   });
 });

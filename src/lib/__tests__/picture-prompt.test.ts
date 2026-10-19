@@ -15,9 +15,11 @@ describe("the picture reading prompt", () => {
     expect(costOf(PICTURE_READING_MODEL, { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 })).not.toBeNull();
   });
 
-  it("is short output, well under the pipeline ceiling", () => {
+  it("has room for thinking plus a short answer, under the pipeline ceiling", () => {
     expect(PICTURE_READING_MAX_TOKENS).toBeLessThanOrEqual(PIPELINE_MAX_TOKENS_CEILING);
-    expect(PICTURE_READING_MAX_TOKENS).toBeLessThanOrEqual(800);
+    // The answer is short (a poster of 18 names is ~180 tokens on Haiku
+    // 5.5), but thinking shares the budget: room for both.
+    expect(PICTURE_READING_MAX_TOKENS).toBeGreaterThanOrEqual(2_048);
   });
 
   it("names the three kinds of answer and the refusal phrase the parser keys on", () => {

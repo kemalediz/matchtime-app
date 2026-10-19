@@ -67,7 +67,7 @@ import { normaliseLang, type Lang } from "./i18n/lang";
 import { detectGroupLang, langOfConsentReply } from "./i18n/detect";
 import { guardedAnthropicCall } from "@/lib/pipeline/llm";
 import { organisersAnnounce } from "./list-announcer";
-import { HAIKU_MODEL } from "./models";
+import { HAIKU_MODEL, HAIKU_SHORT_ANSWER_MAX_TOKENS, HAIKU_THINKING } from "./models";
 
 const MODEL = HAIKU_MODEL;
 
@@ -735,9 +735,8 @@ async function extract(
     const res = await guardedAnthropicCall("onboarding-extract", () =>
       anthropic.messages.create({
         model: MODEL,
-        max_tokens: 400,
-        // Haiku 5.5 thinks unless told not to; Haiku 4.5 never did.
-        thinking: { type: "disabled" },
+        max_tokens: HAIKU_SHORT_ANSWER_MAX_TOKENS,
+        ...HAIKU_THINKING,
         system: [{ type: "text", text: EXTRACT_PROMPT, cache_control: { type: "ephemeral", ttl: "1h" } }],
         messages: [
           {

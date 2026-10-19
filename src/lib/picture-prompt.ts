@@ -15,8 +15,9 @@ import { SETUP_LEARNING_MODEL } from "./setup-learning/prompt";
 
 export const PICTURE_READING_MODEL = SETUP_LEARNING_MODEL;
 
-/** A poster of 18 names and a venue is about 150 tokens of text. */
-export const PICTURE_READING_MAX_TOKENS = 600;
+/** A poster of 18 names and a venue is about 180 tokens of text on Haiku
+ *  5.5; the rest is room for adaptive thinking, which shares the budget. */
+export const PICTURE_READING_MAX_TOKENS = 2_048;
 
 export const PICTURE_READING_SYSTEM_PROMPT = `You read one picture posted in a WhatsApp group that organises a weekly amateur football (soccer) game, and write down what it says about the game as short plain text. Your text is shown to another system as if the person who posted the picture had typed it, so copy what is on the picture faithfully and add nothing of your own.
 

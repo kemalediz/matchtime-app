@@ -31,7 +31,7 @@ import {
 } from "../src/lib/payment-claim-classifier.ts";
 import { buildPayChaseDm, buildRatingDm } from "../src/lib/dm-copy.ts";
 import { costOf } from "../src/lib/pipeline/llm.ts";
-import { HAIKU_MODEL } from "../src/lib/models.ts";
+import { HAIKU_MODEL, HAIKU_SHORT_ANSWER_MAX_TOKENS, HAIKU_THINKING } from "../src/lib/models.ts";
 
 const REPEAT = Number(process.env.REPEAT ?? "3") || 3;
 /** The shared Haiku id, so the model-pin guard (`no-sonnet-4-5-pins.test.ts`)
@@ -190,9 +190,8 @@ async function main() {
     if (usd >= MAX_USD) throw new Error(`cost cap $${MAX_USD} reached`);
     const r = await anthropic.messages.create({
       model: MODEL,
-      max_tokens: 200,
-      // Haiku 5.5 thinks unless told not to; Haiku 4.5 never did.
-      thinking: { type: "disabled" },
+      max_tokens: HAIKU_SHORT_ANSWER_MAX_TOKENS,
+      ...HAIKU_THINKING,
       system: [{ type: "text", text: system, cache_control: { type: "ephemeral", ttl: "1h" } }],
       messages: [{ role: "user", content: user }],
     });

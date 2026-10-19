@@ -14,7 +14,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { normaliseLang } from "./i18n/lang";
 import { guardedAnthropicCall } from "@/lib/pipeline/llm";
-import { HAIKU_MODEL } from "./models";
+import { HAIKU_MODEL, HAIKU_SHORT_ANSWER_MAX_TOKENS, HAIKU_THINKING } from "./models";
 
 const MODEL = HAIKU_MODEL;
 
@@ -98,9 +98,8 @@ export async function classifyRosterReply(
     const response = await guardedAnthropicCall("roster-survey", () =>
       anthropic.messages.create({
         model: MODEL,
-        max_tokens: 200,
-        // Haiku 5.5 thinks unless told not to; Haiku 4.5 never did.
-        thinking: { type: "disabled" },
+        max_tokens: HAIKU_SHORT_ANSWER_MAX_TOKENS,
+        ...HAIKU_THINKING,
         system: [
           {
             type: "text",

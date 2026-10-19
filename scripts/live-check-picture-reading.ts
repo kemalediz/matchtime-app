@@ -31,6 +31,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { spendDevApiKeyOrExit } from "../e2e/helpers/dev-api-key.ts";
+import { HAIKU_EFFORT } from "../src/lib/models.ts";
 import { anthropicModel, costOf } from "../src/lib/pipeline/llm.ts";
 import {
   PICTURE_READING_MAX_TOKENS,
@@ -119,7 +120,7 @@ async function main() {
       system: PICTURE_READING_SYSTEM_PROMPT,
       user: PICTURE_READING_USER_TEXT,
       maxTokens: PICTURE_READING_MAX_TOKENS,
-      thinking: "off", // as production (picture-reading.ts)
+      thinking: { effort: HAIKU_EFFORT }, // as production (picture-reading.ts)
       label: "picture-reading-live-check",
       images: [{ mediaType, data: bytes.toString("base64") }],
     });

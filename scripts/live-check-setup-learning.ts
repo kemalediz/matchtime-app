@@ -59,6 +59,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spendDevApiKeyOrExit } from "../e2e/helpers/dev-api-key.ts";
+import { HAIKU_EFFORT } from "../src/lib/models.ts";
 import { anthropicModel, costOf, estimateTokens, extractJson } from "../src/lib/pipeline/llm.ts";
 import {
   SETUP_LEARNING_MAX_TOKENS,
@@ -191,7 +192,7 @@ async function main() {
       user: user.text,
       maxTokens: SETUP_LEARNING_MAX_TOKENS,
       schema: SETUP_LEARNING_SCHEMA as unknown as Record<string, unknown>,
-      thinking: "off", // as production (setup-learning/run.ts)
+      thinking: { effort: HAIKU_EFFORT }, // as production (setup-learning/run.ts)
       cache: false,
       label: "setup-learning-live-check",
     });

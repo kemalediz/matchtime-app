@@ -113,7 +113,7 @@
 import { readFileSync } from "node:fs";
 import { feeConfirmQuestionForPrompt } from "./dm-copy";
 import { normaliseLang, type Lang } from "./i18n/lang";
-import { HAIKU_MODEL } from "./models";
+import { HAIKU_MODEL, HAIKU_SHORT_ANSWER_MAX_TOKENS, HAIKU_THINKING } from "./models";
 
 /**
  * ⚠️ THE ARGUED DESIGN, IN ONE FLAG. The deterministic allowlist decides
@@ -609,9 +609,8 @@ function liveCall(): FeeReplyCall | null {
     const response = await guardedAnthropicCall("fee-confirm", () =>
       anthropic.messages.create({
         model: MODEL,
-        max_tokens: 200,
-        // Haiku 5.5 thinks unless told not to; Haiku 4.5 never did.
-        thinking: { type: "disabled" },
+        max_tokens: HAIKU_SHORT_ANSWER_MAX_TOKENS,
+        ...HAIKU_THINKING,
         system: [{ type: "text", text: system, cache_control: { type: "ephemeral", ttl: "1h" } }],
         messages: [{ role: "user", content: user }],
       }),

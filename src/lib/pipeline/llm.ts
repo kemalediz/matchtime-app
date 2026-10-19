@@ -231,12 +231,13 @@ export interface ModelRequest {
    *
    * OPT-IN rather than default-off, and per model rather than global:
    * on `claude-haiku-4-5` the router never thought unprompted, so it sent
-   * nothing. `claude-haiku-5-5` (2026-10-19) thinks adaptively when the
-   * parameter is omitted, exactly like sonnet-5 (measured: 81 thinking
-   * tokens in front of a router answer), so every Haiku caller now asks
-   * for "off" too. The decision stays visible at each call site.
+   * nothing. `claude-haiku-5-5` (2026-10-19) thinks adaptively, and is
+   * more accurate on these prompts WITH thinking (measured, see
+   * `HAIKU_EFFORT` in src/lib/models.ts), so the Haiku callers pass
+   * `{ effort }`: adaptive thinking at that effort, sent as
+   * `output_config.effort` beside any schema. The extractors keep "off".
    */
-  thinking?: "off";
+  thinking?: "off" | { effort: "low" | "medium" | "high" };
   /**
    * Pictures sent before `user` in the one user turn (picture reading,
    * 2026-10-14). Base64, in memory only. Omitted: the request is exactly
@@ -465,14 +466,23 @@ export function anthropicModel(opts?: {
               : req.user,
           },
         ],
-        ...(req.schema
-          ? { output_config: { format: { type: "json_schema" as const, schema: req.schema } } }
+        ...(req.schema || (req.thinking && req.thinking !== "off")
+          ? {
+              output_config: {
+                ...(req.schema ? { format: { type: "json_schema" as const, schema: req.schema } } : {}),
+                ...(req.thinking && req.thinking !== "off" ? { effort: req.thinking.effort } : {}),
+              },
+            }
           : {}),
         // See `ModelRequest.thinking`. Sent ONLY when the caller asked;
         // an omitted parameter and `{type: "adaptive"}` mean the same
         // thing on sonnet-5, and sending nothing keeps this layer honest
         // about which callers made a decision and which did not.
-        ...(req.thinking === "off" ? { thinking: { type: "disabled" as const } } : {}),
+        ...(req.thinking === "off"
+          ? { thinking: { type: "disabled" as const } }
+          : req.thinking
+            ? { thinking: { type: "adaptive" as const } }
+            : {}),
       }));
       const ms = Date.now() - t0;
 
