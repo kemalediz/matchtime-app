@@ -26,7 +26,7 @@ import { detectGroupLang } from "../../i18n/detect";
 import { extractJson } from "../../pipeline/llm";
 import { SETUP_LEARNING_MODEL } from "../prompt";
 import { parseDetection, planSetup, type OrgSettingsState } from "../rules";
-import { gradeFixture } from "./grade";
+import { expectAsOfHaiku45, gradeFixture } from "./grade";
 import { FIXTURE_NAMES, loadFixture } from "./stubs";
 
 interface SavedRun {
@@ -82,7 +82,7 @@ describe("the third live check (2026-10-12), replayed through today's rules", ()
   for (const name of EIGHT) {
     it(`${name}: the fixture passes, with the same checked answers and the same plan as the run`, () => {
       const { saved, fx, detection, plan } = replay(name);
-      expect(gradeFixture(fx.expect, detection, plan), name).toEqual([]);
+      expect(gradeFixture(expectAsOfHaiku45(name, fx.expect), detection, plan), name).toEqual([]);
       expect(
         {
           squad: detection.squad,

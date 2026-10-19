@@ -214,3 +214,27 @@ export const OBSERVED_ANSWERS: Record<"turkish" | "monthly-list" | "rolling", Re
     open_places: { answer: "organisers_pick", confidence: "high", evidence: ["anyone got a mate who can cover?"] },
   },
 };
+
+/**
+ * What the model answers for each fixture as a whole, for the tests that
+ * run a fixture end to end and grade it against its `expect`. The same as
+ * STUB_ANSWERS (each built to teach one rule) except where the fixture's
+ * expectation follows a reading those stubs leave out on purpose.
+ *
+ * organiser-picks (Kemal, 2026-10-19): the organiser posts "Team for
+ * Wednesday" every Monday at 19:00 London for four weeks. Haiku 5.5
+ * quotes two of those posts, so the list going out Monday 19:00 is
+ * applied. Haiku 4.5 quoted one, and nothing was.
+ */
+export const FIXTURE_ANSWERS: Record<string, Record<string, unknown>> = {
+  ...STUB_ANSWERS,
+  "organiser-picks": {
+    ...STUB_ANSWERS["organiser-picks"],
+    list_published: {
+      day: "monday",
+      time: "19:00",
+      confidence: "high",
+      evidence: ["Team for Wednesday: Tariq, Nathan, Ollie, Jamal, Rhys, Ben, Sami and me", "Team for Wednesday: Tariq, Nathan, Ollie, Jamal, Rhys"],
+    },
+  },
+};

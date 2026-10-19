@@ -129,7 +129,7 @@ vi.mock("@/lib/platform-jobs", async (orig) => ({
 
 import { learnClubSetup, runSetupLearningSweep, MAX_ATTEMPTS } from "../run";
 import type { PipelineModel } from "../../pipeline/llm";
-import { FIXTURE_NAMES, loadFixture, STUB_ANSWERS } from "./stubs";
+import { FIXTURE_ANSWERS, FIXTURE_NAMES, loadFixture, STUB_ANSWERS } from "./stubs";
 import { isFeatureOffered } from "../../org-features-meta";
 
 const ORG = "org-riverside";
@@ -218,7 +218,7 @@ describe("learnClubSetup, fixture by fixture (one stub call each, no real model)
   for (const name of FIXTURE_NAMES) {
     it(`${name}: does what the fixture expects`, async () => {
       const fx = setup(name);
-      const model = stub(STUB_ANSWERS[name] ?? {});
+      const model = stub(FIXTURE_ANSWERS[name] ?? {});
       const out = await learnClubSetup(ORG, { now: DAYTIME, model });
 
       if (fx.expect.skipped) {

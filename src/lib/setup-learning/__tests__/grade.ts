@@ -72,3 +72,16 @@ export function gradeFixture(e: FixtureExpect, d: Detection, plan: SetupPlan): s
   check("dm", e.dm, planIsWorthTelling(plan));
   return misses;
 }
+
+/**
+ * A fixture's expectation as it stood when a saved Haiku 4.5 run was
+ * recorded, for the offline replays of those runs. organiser-picks has
+ * expected the list published Monday 19:00 since 2026-10-19 (Kemal: Haiku
+ * 5.5 quotes two of the organiser's weekly "Team for Wednesday" posts and
+ * applies it). Haiku 4.5 quoted one, so its saved answers applied nothing,
+ * which is what they are still graded against. Every other fixture is
+ * unchanged.
+ */
+export function expectAsOfHaiku45(name: string, e: FixtureExpect): FixtureExpect {
+  return name === "organiser-picks" ? { ...e, applied: [], listPublished: undefined } : e;
+}
