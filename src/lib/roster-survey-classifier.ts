@@ -1,73 +1,51 @@
 /**
- * Classify a player's WhatsApp DM reply to a roster check-in.
+ * Classify a player's WhatsApp DM reply to a roster check-in: one of
+ * {in, maybe, out, unclear}. Anything the model is not sure of becomes
+ * "unclear", and the route asks the player once more instead of saving a
+ * dubious answer. One Haiku call per reply; the volume is one per player
+ * per check-in.
  *
- * Deliberately tight prompt: we want one of {in, maybe, out, unclear}
- * with conservative defaults. If the message could plausibly be off-
- * topic (random question, photo, joke), Claude is told to return
- * "unclear" and we route to a clarification DM instead of saving a
- * dubious classification. Better to ask twice than to misclassify.
+ * No database: the route (`api/whatsapp/dm-reply`) owns the write and the
+ * reply, so the live dry run (`scripts/dryrun-roster-survey.ts`) can
+ * import the exact production prompt.
  *
- * One-shot Haiku call per reply. Cheap (~£0.001 each) and the volume
- * is low (one per player per survey, plus a clarification round at
- * worst).
+ * REWRITTEN WHOLE on 2026-10-19 (Haiku 5.5 trial): "Evet bu ay varım"
+ * (yes, I'm in this month) and "yes I'm in this month" came back `maybe`.
+ * The old prompt defined "in" as committing to play every week "going
+ * forward", and told the model that any time word ("for now",
+ * "currently") means `maybe`; that rule was written to keep a hedge away
+ * from `out`, and it also pulled a yes for a stated stretch away from
+ * `in`. The new prompt defines each answer once by what it does to the
+ * player (stay on the roster, play only the weeks they say IN, step
+ * back), and gives English and Turkish examples side by side, so the
+ * Turkish language line the user turn used to carry is gone: one prompt
+ * for every club. 2,610 characters before, 2,103 after (995 and 880
+ * Haiku 5.5 tokens, over its 512-token cache floor).
  */
 import Anthropic from "@anthropic-ai/sdk";
-import { normaliseLang } from "./i18n/lang";
 import { guardedAnthropicCall } from "@/lib/pipeline/llm";
 import { HAIKU_MODEL, HAIKU_SHORT_ANSWER_MAX_TOKENS, HAIKU_THINKING } from "./models";
 
 const MODEL = HAIKU_MODEL;
 
-const SYSTEM_PROMPT = `You are classifying a player's WhatsApp DM reply to a "roster check-in" survey from their football club. The bot has DM'd them: "Are you still up for Tuesday football going forward? Reply yes / maybe / not for now."
+export const ROSTER_SURVEY_SYSTEM_PROMPT = `A player replied, in a private WhatsApp message, to a roster check-in from MatchTime, their football club's bot. The check-in asked whether they still want to play with the club in the coming weeks, and offered three answers: stay on the roster, play only in the weeks they say IN, or step back.
 
-Classify their reply into ONE of:
+Which answer is the reply? Pick one:
+- "in": they say yes, they want to stay on the roster. A yes for a stated stretch ("this month", "till Christmas") is still "in": it is a yes, and the club checks in again later.
+- "maybe": they will play some weeks but not every week, it depends on something, or they are taking a break and may come back.
+- "out": they clearly stop, with no way back mentioned. Taking a player off the roster is the harshest answer, so any hint of coming back ("for now", "later", "maybe") is "maybe", never "out".
+- "unclear": a question, chat, an emoji, a bare "ok" or "tamam", or anything else that does not answer the check-in.
 
-- "in": clearly committing to keep playing every (or almost every) week. Examples: "yes", "I'm in", "definitely", "still keen", "of course", "yeah why not", "100%", "always", "always in mate".
+Examples (English | Turkish):
+in: "yes" | "evet"; "I'm in" | "varım"; "of course, still keen" | "tabii ki, devam"; "100%" | "kesinlikle"; "always in mate" | "her zaman varım"; "yes, till Christmas" | "evet, yılbaşına kadar varım"
+maybe: "depends" | "duruma göre"; "sometimes" | "ara sıra"; "if I'm free" | "boş olursam"; "when I can" | "fırsat buldukça"; "not every week" | "her hafta değil"; "maybe" | "belki"; "not for now, maybe later" | "şimdilik yok, belki sonra"; "taking a break for a bit" | "bir süre ara vereceğim"; "we'll see" | "sonra bakarız"
+out: "I'm done, take me off" | "bırakıyorum, beni çıkarın"; "won't be playing anymore" | "artık oynamayacağım"; "stopping football completely" | "futbolu tamamen bıraktım"; "moving away" | "taşınıyorum"
+unclear: "what is this?" | "bu ne?"; "who is this?" | "kimsin?"; "ok" | "tamam"; "thanks for letting me know" | "haber verdiğin için sağ ol"; "🙂"
 
-- "maybe": tentative, conditional, ad-hoc, OR ANY reply that hedges with future-positive intent (the player isn't committing now but isn't fully closing the door either). Examples:
-  • Pure tentative: "depends", "sometimes", "if I'm free", "not every week", "ad hoc", "maybe", "occasionally", "when I can", "depends on knee", "I'll play if there's room".
-  • Future-positive hedges (these are MAYBE, NOT out): "not for now but maybe later", "may come in the future", "I'll let you know", "not sure yet, possibly", "taking a break for a bit", "step me back for now but I might come back", "we'll see how it goes".
+If you are not at least 80% sure, choose "unclear": the player is simply asked again.
 
-- "out": ONLY when the player clearly and PERMANENTLY says no — no hedge, no future window. They're done. Examples: "I'm done", "won't be playing anymore", "stepping back permanently", "I'm out for good", "moving away", "no thanks, please take me off", "stopping football completely".
-
-- "unclear": questions, off-topic chatter, just emojis, ambiguous phrasing, replies that don't address the survey question at all. When in doubt, return "unclear" — we'd rather ask the player to clarify than misclassify them.
-
-CRITICAL RULES:
-1. If the reply contains ANY positive future-leaning word ("maybe", "later", "future", "might", "possibly", "we'll see", "for now", "at the moment", "currently"), default to "maybe" — NOT "out". The player is hedging, not leaving.
-2. "not for now" ALONE (with no further context) is ambiguous. It LEANS toward "maybe" because "for now" implies there's a future. Lean conservative — prefer "maybe" over "out" when there's any doubt. Removing a member is harsher than keeping them as casual.
-3. If you're not 80%+ certain, return "unclear". Examples of things that should be "unclear":
-   - "what is this?", "who is this?"
-   - just "🙂"
-   - "ok"  (ambiguous; could mean "ok I'm in" or "ok received your message")
-   - "thanks for letting me know"
-   - jokes, banter, follow-up questions to the bot
-   - empty or near-empty replies
-
-Output STRICT JSON only — no markdown, no fences:
-
-{
-  "category": "in" | "maybe" | "out" | "unclear",
-  "confidence": <number 0..1>,
-  "reasoning": "<short justification, max 100 chars>"
-}`;
-
-/**
- * The language line for a Turkish org's reply (Phase 3), or null. It
- * rides in the uncached user turn, so the English system prompt, and
- * therefore the English club's classification, is unchanged. It maps the
- * Turkish check-in menu (`dm_survey_invite`) onto the same categories.
- */
-export function rosterReplyLanguageLine(lang: string | null | undefined): string | null {
-  if (normaliseLang(lang) !== "tr") return null;
-  return (
-    `Language: the club speaks TURKISH, and the check-in was sent in Turkish with the menu ` +
-    `"evet / varım" (in), "belki / duruma göre" (maybe), "şimdilik yok / bırakıyorum" (out). ` +
-    `Apply the same rules to a Turkish reply: "evet", "varım", "devam", "tabii ki" are in; ` +
-    `"belki", "ara sıra", "duruma göre", "şimdilik yok", "bir süre ara vereceğim", "sonra bakarız" are maybe ` +
-    `(a future window or a hedge is never out); only a clear, permanent stop ("bırakıyorum", ` +
-    `"artık oynamayacağım", "beni çıkarın", "taşındım") is out; questions, "tamam" alone, emoji and chat are unclear.`
-  );
-}
+Output STRICT JSON only, no markdown, no fences:
+{"category": "in" | "maybe" | "out" | "unclear", "confidence": <number 0..1>, "reasoning": "<max 100 chars>"}`;
 
 export interface RosterClassification {
   category: "in" | "maybe" | "out" | "unclear";
@@ -75,46 +53,64 @@ export interface RosterClassification {
   reasoning: string;
 }
 
+export interface RosterReplyContext {
+  playerName?: string | null;
+  clubName?: string;
+}
+
+/** The model, as one function, so a test can drive the real parse
+ *  without a key and the live dry run can meter what it spends. */
+export type RosterSurveyCall = (system: string, user: string) => Promise<string>;
+
+export function buildRosterSurveyUserTurn(replyBody: string, context: RosterReplyContext = {}): string {
+  return [
+    context.clubName ? `Club: ${context.clubName}` : null,
+    context.playerName ? `Player: ${context.playerName}` : null,
+    `Reply: ${JSON.stringify(replyBody)}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+/** The real call. Null when there is no key, which is `unclear`. */
+function liveCall(): RosterSurveyCall | null {
+  const key = process.env.ANTHROPIC_API_KEY;
+  if (!key) return null;
+  return async (system, user) => {
+    const anthropic = new Anthropic({ apiKey: key });
+    const response = await guardedAnthropicCall("roster-survey", () =>
+      anthropic.messages.create({
+        model: MODEL,
+        max_tokens: HAIKU_SHORT_ANSWER_MAX_TOKENS,
+        ...HAIKU_THINKING,
+        system: [{ type: "text", text: system, cache_control: { type: "ephemeral", ttl: "1h" } }],
+        messages: [{ role: "user", content: user }],
+      }),
+    );
+    const textBlock = response.content.find((b): b is Anthropic.TextBlock => b.type === "text");
+    return textBlock ? textBlock.text : "";
+  };
+}
+
+/**
+ * Classify one reply. EVERY failure is `unclear`, which saves nothing and
+ * asks the player again. `call` is `undefined` for the real model and
+ * `null` to assert there is none.
+ */
 export async function classifyRosterReply(
   replyBody: string,
-  context?: { playerName?: string | null; clubName?: string; lang?: string | null },
+  context: RosterReplyContext = {},
+  call?: RosterSurveyCall | null,
 ): Promise<RosterClassification> {
   const fallback: RosterClassification = {
     category: "unclear",
     confidence: 0,
     reasoning: "classifier unavailable",
   };
-  if (!process.env.ANTHROPIC_API_KEY) return fallback;
+  const fn = call === undefined ? liveCall() : call;
+  if (!fn) return fallback;
   try {
-    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    const userText = [
-      context?.clubName ? `Club: ${context.clubName}` : null,
-      context?.playerName ? `Player: ${context.playerName}` : null,
-      rosterReplyLanguageLine(context?.lang),
-      `Reply: ${JSON.stringify(replyBody)}`,
-    ]
-      .filter(Boolean)
-      .join("\n");
-    const response = await guardedAnthropicCall("roster-survey", () =>
-      anthropic.messages.create({
-        model: MODEL,
-        max_tokens: HAIKU_SHORT_ANSWER_MAX_TOKENS,
-        ...HAIKU_THINKING,
-        system: [
-          {
-            type: "text",
-            text: SYSTEM_PROMPT,
-            cache_control: { type: "ephemeral", ttl: "1h" },
-          },
-        ],
-        messages: [{ role: "user", content: userText }],
-      }),
-    );
-    const textBlock = response.content.find(
-      (b): b is Anthropic.TextBlock => b.type === "text",
-    );
-    if (!textBlock) return fallback;
-    return parse(textBlock.text);
+    return parse(await fn(ROSTER_SURVEY_SYSTEM_PROMPT, buildRosterSurveyUserTurn(replyBody, context)));
   } catch (err) {
     console.error("[roster-classifier] Claude call failed:", err);
     return fallback;

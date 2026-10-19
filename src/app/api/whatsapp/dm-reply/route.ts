@@ -1247,7 +1247,6 @@ export async function POST(request: Request) {
     classifyRosterReply(text, {
       playerName: user.name,
       clubName: dm.survey.org.name,
-      lang: dm.survey.org.language,
     }),
   );
 
