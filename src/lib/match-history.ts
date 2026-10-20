@@ -5,8 +5,8 @@
  * NEXT upcoming match — so questions like "who got MoM last week?"
  * or "who's been the most consistent attender?" got an honest
  * "I don't know" reply. This module computes per-org historical
- * stats from the DB and exposes them as a structured object that
- * `buildMatchContextBlock` formats into the prompt.
+ * stats from the DB and exposes them as a structured object, read by
+ * the DM answers (dm-qa.ts) and the pipeline's stats load.
  *
  * Performance:
  *   - One groupBy + one findMany per stat (MoM votes, attendance

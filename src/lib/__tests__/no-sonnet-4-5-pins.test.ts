@@ -263,12 +263,13 @@ describe("claude-sonnet-5 never runs adaptive thinking by accident", () => {
     ).toEqual([]);
   });
 
-  it("the four migrated sites still on Sonnet turn it off, because none of them was ever asked to reason", () => {
+  it("the migrated sites still on Sonnet turn it off, because none of them was ever asked to reason", () => {
     // Each of these has a max_tokens sized for its OUTPUT and a
     // fail-closed path. Disabling thinking is what keeps the move a
     // price change: on Sonnet 4.5 these calls never thought either.
+    // The chase composer left this list on 2026-10-20: it goes through
+    // pipeline/llm.ts with a call pair (CHASE_COMPOSER_CALL).
     for (const f of [
-      "src/lib/message-analyzer.ts",
       "src/lib/dm-qa.ts",
       "src/lib/squad-from-list.ts",
       "src/lib/onboarding-analyzer.ts",

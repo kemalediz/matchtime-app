@@ -17,6 +17,11 @@
  *      is skipped, and comes back when the need changes;
  *   3. a post that does carry the roster says so (`rosterShown`), so the
  *      next one can stay quiet.
+ *
+ * Since 2026-10-20 the composer renders the roster itself, from the rows,
+ * so the scheduler ASKS for the post without it (`withRoster: false`)
+ * instead of cutting it back out; the mock below honours the flag the
+ * way the composer does.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -188,16 +193,21 @@ async function posts(now: Date): Promise<Post[]> {
 }
 const find = (out: Post[], part: string) => out.find((i) => i.key.includes(part));
 
-const ROSTER = [...NAMES.map((n, i) => `${i + 1}. ${n}`), "14. 🥁"].join("\n");
+const ROSTER = NAMES.map((n, i) => `${i + 1}. ${n}`).join("\n");
 const LEAD =
-  "☀️ Squad update — 1 more and Tuesday 7-a-side is full. Kicking off 21:30 at Goals North Cheam. Who's in?\n\n" +
+  "☀️ 1 more and Tuesday 7-a-side is full. Kicking off 21:30 at Goals North Cheam, say *IN* 🙏\n\n" +
   "If we don't find 1 more, we could switch to 5-a-side (10 players): Player 11 + Player 12 + Player 13 go on the bench. Admins can rebook and flip it in the portal.";
-/** What the composer writes: the lead, then the roster it is told to end on. */
-const MODEL_TEXT = `${LEAD}\n\n*Playing tonight:*\n${ROSTER}`;
+/** What the composer builds: the lead, then the roster rendered from the rows. */
+const MODEL_TEXT = `${LEAD}\n\n*Confirmed (13/14):*\n${ROSTER}`;
+
+/** What the scheduler asked the composer for, last call. */
+const lastAsk = () => composeChaseText.mock.calls.at(-1)?.[0] as { withRoster?: boolean; matchId?: string; now?: Date } | undefined;
 
 beforeEach(() => {
   composeChaseText.mockReset();
-  composeChaseText.mockResolvedValue(MODEL_TEXT);
+  composeChaseText.mockImplementation(async (...a: unknown[]) =>
+    (a[0] as { withRoster?: boolean }).withRoster === false ? LEAD : MODEL_TEXT,
+  );
 });
 
 describe("the match-day morning chase after a roster was just posted", () => {
@@ -207,6 +217,8 @@ describe("the match-day morning chase after a roster was just posted", () => {
     const chase = find(await posts(TUE_8AM), ":chase-match-day-morning:");
     expect(chase?.text).toBe(MODEL_TEXT);
     expect(chase?.rosterShown).toEqual({ fingerprint: fingerprintOf(m) });
+    // The composer reads the match being chased, on the scheduler's clock.
+    expect(lastAsk()).toMatchObject({ matchId: MATCH_ID, now: TUE_8AM, withRoster: true });
   });
 
   it("THE INCIDENT, roster only: the same squad 32 minutes ago, so no roster block", async () => {
@@ -214,9 +226,10 @@ describe("the match-day morning chase after a roster was just posted", () => {
     setWorld(m, [rosterMarker(m, REPLY_AT)]);
     const chase = find(await posts(TUE_8AM), ":chase-match-day-morning:");
     expect(chase, "the chase still goes out").toBeDefined();
+    expect(lastAsk()?.withRoster, "the composer is asked for the post without the roster").toBe(false);
     expect(chase!.text).toBe(LEAD);
     expect(chase!.text).not.toMatch(/^\s*\d+\.\s/m);
-    expect(chase!.text).not.toContain("Playing tonight");
+    expect(chase!.text).not.toContain("*Confirmed (");
     // Its useful lines: the need, the kickoff, the 5-a-side fallback.
     expect(chase!.text).toContain("1 more");
     expect(chase!.text).toContain("21:30");

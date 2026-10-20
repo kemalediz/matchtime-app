@@ -22,6 +22,9 @@
  *
  * These tests assert on the REQUEST that goes on the wire (system +
  * user prompt), not on model output — the prompt is the thing we own.
+ * REWRITTEN 2026-10-20 with the prompt (`chase-lead.ts`): the user turn
+ * is now the facts alone, so "no opener to copy" is asserted over it,
+ * and the rules are asserted over the one system prompt.
  * The regression half is the important half: three chase kinds REQUIRE
  * the kickoff time, and a ban written too broadly would silently strip
  * it.
@@ -103,24 +106,21 @@ vi.mock("@/lib/org-features", () => ({
 
 import { composeChaseText, type ChaseKind } from "@/lib/message-analyzer";
 
-/** The system prompt actually sent (CHASE_SYSTEM_PROMPT is module-private). */
+/** The system prompt actually sent. */
 function systemText(args: CreateArgs): string {
   return args.system.map((b) => b.text).join("\n");
 }
 
-/** The per-kind compose instruction: the LAST uncached user text block. */
+/** The user turn: the facts of this chase. */
 function composePrompt(args: CreateArgs): string {
-  const blocks: Block[] = [];
-  for (const m of args.messages) {
-    if (typeof m.content === "string") continue;
-    for (const c of m.content) if (!c.cache_control) blocks.push(c);
-  }
-  return blocks[blocks.length - 1]?.text ?? "";
+  const c = args.messages[0]?.content;
+  return typeof c === "string" ? c : (c ?? []).map((b) => b.text).join("\n");
 }
 
 /** Fire one chase and return what went on the wire. */
 async function request(kind: ChaseKind): Promise<CreateArgs> {
   captured.length = 0;
+  vi.spyOn(console, "error").mockImplementation(() => {});
   await composeChaseText({ groupId: "g1", kind });
   expect(create, `composeChaseText(${kind}) issued no request`).toHaveBeenCalled();
   return captured[0];
@@ -135,156 +135,53 @@ beforeEach(() => {
 });
 afterEach(() => vi.useRealTimers());
 
-describe("daily-in-list no longer suggests a clock-time opener", () => {
-  it("does not hand the model the '🗓 Quick 5pm update' example", async () => {
-    const prompt = composePrompt(await request("daily-in-list"));
-    expect(prompt).not.toContain("Quick 5pm update");
-    expect(prompt).not.toContain("5pm");
-  });
+const KINDS: ChaseKind[] = ["daily-in-list", "match-day-morning", "chase-pre-kickoff", "pre-kickoff-short"];
 
-  it("suggests no am/pm opener at all", async () => {
-    const prompt = composePrompt(await request("daily-in-list"));
-    // The whole instruction, label included, must be free of a wall-clock
-    // opener the model can copy. ("17:00 London" on the type line is the
-    // schedule slot, not an opener — see the send-time rule test below.)
-    expect(
-      prompt,
-      "any am/pm time in the daily chase instruction is an opener the model will copy",
-    ).not.toMatch(/\d{1,2}\s*(?:am|pm)\b/i);
-  });
-
-  it("carries no wall-clock schedule slot the model can lift", async () => {
-    const prompt = composePrompt(await request("daily-in-list"));
-    // The type label used to read "daily-in-list (17:00 London)". The model
-    // has no use for the slot it fired in, and a label sitting two lines
-    // above the opener instruction is exactly the kind of thing it copies.
-    expect(prompt).not.toContain("17:00 London");
-    // Same reason: "so the group sees numbers in the evening" seeds the
-    // banned "Evening update" opener.
-    expect(prompt).not.toContain("in the evening");
-  });
-
-  it("keeps the rest of the instruction intact", async () => {
-    const prompt = composePrompt(await request("daily-in-list"));
-    // Substance that must survive the edit: an opening one-liner, the
-    // lead (who's out / count vs needed) and the closing roster block.
-    expect(prompt).toContain("one-liner");
-    expect(prompt).toContain("who's out");
-    expect(prompt).toContain("count vs needed");
-    expect(prompt).toContain("End with the roster block.");
-  });
+describe("no chase hands the model a clock-time opener", () => {
+  for (const kind of KINDS) {
+    it(`${kind}: no am/pm time, no schedule slot, no time-of-day word in the facts`, async () => {
+      const prompt = composePrompt(await request(kind));
+      expect(prompt).not.toContain("5pm");
+      expect(prompt).not.toMatch(/\d{1,2}\s*(?:am|pm)\b/i);
+      expect(prompt).not.toContain("17:00 London");
+      expect(prompt).not.toContain("8-9am");
+      expect(prompt, `${kind}'s facts suggest a greeting the scheduler cannot guarantee`).not.toMatch(
+        /\b(morning|afternoon|evening)\b/i,
+      );
+    });
+  }
 });
 
-describe("the chase system prompt bans a send-time stamp", () => {
+describe("the chase system prompt bans a send-time stamp and a greeting", () => {
   it("forbids stamping the message with the time it was sent", async () => {
-    const system = systemText(await request("daily-in-list"));
-    expect(
-      system,
-      "CHASE_SYSTEM_PROMPT must carry an explicit no-send-time-stamp rule",
-    ).toMatch(/never .{0,80}time of day .{0,40}sent/i);
+    expect(systemText(await request("daily-in-list"))).toMatch(/never the time the post is sent/i);
   });
 
   it("names the shapes the model actually produced", async () => {
     const system = systemText(await request("daily-in-list"));
-    for (const banned of ["Quick 5pm update", "17:00 update", "Evening update", "Morning update"]) {
+    for (const banned of ["Morning all", "Evening update"]) {
       expect(system, `the rule should name "${banned}" as banned`).toContain(banned);
     }
+    expect(system).toMatch(/no greeting and no time of day/i);
   });
 
-  it("carves out the KICKOFF time as explicitly allowed", async () => {
-    const system = systemText(await request("daily-in-list"));
-    // The ban and the carve-out have to sit together, or the model
-    // generalises the ban onto the kickoff time three kinds require.
-    const rule = system
-      .split("\n")
-      .find((l) => /time of day .{0,40}sent/i.test(l));
-    expect(rule, "no send-time rule found in the system prompt").toBeTruthy();
-    expect(
-      rule,
-      "the send-time ban must say, in the same breath, that the KICKOFF time is fine",
-    ).toMatch(/kickoff/i);
-  });
-
-  it("leaves the separate proximity rule untouched", async () => {
-    const system = systemText(await request("daily-in-list"));
-    expect(system).toContain(
-      'NEVER write "tonight", "this evening", "tomorrow" or similar temporal references in the LEAD text unless "proximity=" in the Match Context confirms it.',
+  it("the day words follow the kickoff line, never the clock", async () => {
+    expect(systemText(await request("daily-in-list"))).toContain(
+      'Say "tonight", "today" or "tomorrow" only when the kickoff line says today or tomorrow',
     );
   });
 });
 
-describe("REGRESSION: the pre-kickoff kinds still demand the kickoff time", () => {
-  it("chase-pre-kickoff still says to mention kickoff time", async () => {
-    const prompt = composePrompt(await request("chase-pre-kickoff"));
-    expect(prompt).toContain("Mention kickoff time.");
+describe("REGRESSION: the pre-kickoff kinds still ask for the kickoff time", () => {
+  it("before-kickoff: the kickoff time", async () => {
+    expect(systemText(await request("chase-pre-kickoff"))).toMatch(/before-kickoff: [^\n]*Give the kickoff time\./);
   });
 
-  it("pre-kickoff-full still leads with kickoff time + venue", async () => {
-    const prompt = composePrompt(await request("pre-kickoff-full"));
-    expect(prompt).toContain("Lead with kickoff time + venue");
+  it("last-call: the kickoff time and the venue", async () => {
+    expect(systemText(await request("pre-kickoff-short"))).toMatch(/last-call: [^\n]*Give the kickoff time and the venue\./);
   });
 
-  it("pre-kickoff-short still leads with kickoff time + venue", async () => {
-    const prompt = composePrompt(await request("pre-kickoff-short"));
-    expect(prompt).toContain("Lead with kickoff time + venue");
-  });
-
-  it("match-day-morning still asks for the shortfall and the roster", async () => {
-    // UPDATED 2026-09-16. This test used to assert the opposite: that
-    // match-day-morning KEPT "☀️ Morning all —", on the reasoning that a
-    // greeting is not a clock stamp. That reasoning died the same day the
-    // rating promo said "Morning all" at 16:05 London (see
-    // no-time-of-day-greeting.test.ts). A greeting IS a clock stamp, just
-    // a coarse one, and this chase fires from a scheduler that can slip.
-    // What must survive the edit is the substance, asserted here; the ban
-    // itself is asserted in the block below.
-    const prompt = composePrompt(await request("match-day-morning"));
-    expect(prompt).toContain("how many we still need");
-    expect(prompt).toContain("End with the roster block.");
-  });
-});
-
-describe("no chase kind suggests a time-of-day greeting", () => {
-  /** The instruction minus its type-label line. The label names the
-   *  scheduler slot (`match-day-morning`) and is not copy the model is
-   *  being shown as an example — but everything below it is. */
-  function instructionBody(prompt: string): string {
-    return prompt
-      .split("\n")
-      .filter((l) => !/^match-day-morning\b/.test(l.trim()))
-      .join("\n");
-  }
-
-  const KINDS: ChaseKind[] = [
-    "daily-in-list",
-    "match-day-morning",
-    "chase-pre-kickoff",
-    "pre-kickoff-full",
-    "pre-kickoff-short",
-  ];
-
-  for (const kind of KINDS) {
-    it(`${kind} hands the model no morning/afternoon/evening opener`, async () => {
-      const body = instructionBody(composePrompt(await request(kind)));
-      expect(
-        body,
-        `${kind}'s instruction suggests a greeting the scheduler cannot guarantee`,
-      ).not.toMatch(/\b(morning|afternoon|evening)\b/i);
-    });
-  }
-
-  it("match-day-morning no longer carries its 8-9am schedule slot either", async () => {
-    // Same reason the daily chase lost "17:00 London": a wall-clock slot
-    // sitting two lines above the opener instruction is exactly what the
-    // model reaches for when it writes the first line.
-    const prompt = composePrompt(await request("match-day-morning"));
-    expect(prompt).not.toContain("8-9am");
-  });
-
-  it("the system prompt bans the greeting outright", async () => {
-    const system = systemText(await request("match-day-morning"));
-    for (const banned of ["Morning all", "Evening all", "Afternoon all"]) {
-      expect(system, `the rule should name "${banned}" as banned`).toContain(banned);
-    }
+  it("every kind is handed the kickoff time to give", async () => {
+    for (const kind of KINDS) expect(composePrompt(await request(kind))).toMatch(/^Kickoff: .*\b\d{2}:\d{2}\b/m);
   });
 });

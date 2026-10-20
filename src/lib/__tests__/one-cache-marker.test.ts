@@ -41,7 +41,8 @@ describe("one cache marker, one place", () => {
 
   it("every raw messages.create site builds its system prompt with systemBlock", () => {
     const sites = FILES.filter((f) => f.rel !== LLM && /messages\.create\(/.test(code(f.text)));
-    expect(sites.length).toBeGreaterThanOrEqual(10);
+    // Nine since 2026-10-20: the chase composer moved onto pipeline/llm.ts.
+    expect(sites.length).toBeGreaterThanOrEqual(9);
     const missing = sites.filter((f) => !/system:\s*systemBlock\(/.test(code(f.text))).map((f) => f.rel);
     expect(missing).toEqual([]);
   });

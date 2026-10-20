@@ -66,11 +66,11 @@
  *   LANG=tr        (with CHASES=1; CHASE_LANG=tr is the same and does not
  *                  shadow the shell locale) compose the chases in Turkish against
  *                  the same live state, without touching the org's row,
- *                  and check them with the Turkish check set: the roster
- *                  header equals the server's, no English token from a
+ *                  and check them with the Turkish check set: the list
+ *                  header is the Turkish one, no English token from a
  *                  short blocklist, no greeting, no send-time stamp.
  *                  REPEAT=N runs each kind N times and reports counts.
- *   CHASES=1       compose all five scheduled-chase kinds instead of
+ *   CHASES=1       compose all four scheduled-chase kinds instead of
  *                  running the case table (also read-only)
  *   DMS=1          run the DM-INTENT table (N*) through `lib/dm-intent.ts`
  *                  — the 1:1 DM surface's only classifier since
@@ -139,7 +139,9 @@ import { messageTagsBot } from "../src/lib/interaction-contract.ts";
 import { anthropicModel } from "../src/lib/pipeline/llm.ts";
 import { getOrgFeatures } from "../src/lib/org-features.ts";
 import { buildFullSquadBenchInvite } from "../src/lib/bench-offer-copy.ts";
-import { composeChaseText, rosterHeaderFor, type ChaseKind } from "../src/lib/message-analyzer.ts";
+import { composeChaseText, type ChaseKind } from "../src/lib/message-analyzer.ts";
+import { stripRosterBlock } from "../src/lib/roster-shown.ts";
+import { t as strings } from "../src/lib/i18n/t.ts";
 import { normaliseLang } from "../src/lib/i18n/lang.ts";
 import { contradictsSquadState, type SquadTruth } from "../src/lib/group-copy.ts";
 import { db } from "../src/lib/db.ts";
@@ -1410,14 +1412,10 @@ function describeSquad(state: SquadState): string {
 
 /** Kinds whose whole purpose is the countdown — they MUST name the
  *  kickoff time. PR #47 pins the same three in the prompt. */
-const KICKOFF_TIME_REQUIRED: ChaseKind[] = [
-  "chase-pre-kickoff",
-  "pre-kickoff-full",
-  "pre-kickoff-short",
-];
+const KICKOFF_TIME_REQUIRED: ChaseKind[] = ["chase-pre-kickoff", "pre-kickoff-short"];
 
 /**
- * Compose all five scheduled chases and check the copy reads as English.
+ * Compose all four scheduled chases and check the copy reads as English.
  *
  * The checks are the shapes the 2026-09-05 dry run actually produced:
  * "for on Tue 8 Sept 21:30's 7-a-side" (a preposition doubled by
@@ -1433,7 +1431,6 @@ async function runChases(groupId: string): Promise<void> {
     "daily-in-list",
     "match-day-morning",
     "chase-pre-kickoff",
-    "pre-kickoff-full",
     "pre-kickoff-short",
   ];
   // CHASE_KINDS=chase-pre-kickoff,pre-kickoff-short narrows the run.
@@ -1510,10 +1507,10 @@ async function runChases(groupId: string): Promise<void> {
         const doubled = text.match(DOUBLED_PREPOSITION);
         if (doubled) problems.push(`doubled preposition: ${JSON.stringify(doubled[0].trim())}`);
       }
-      // Only the LEAD is checked for a repeated time — the roster block
-      // below it never contains one. The lead ends at the roster header.
-      const header = match ? rosterHeaderFor(match.date, lang) : null;
-      const lead = header && text.includes(header) ? text.split(header)[0] : text.split(/\n\s*\*?Playing/)[0];
+      // Only the LEAD is checked for a repeated time: the squad list below
+      // it (rendered from the rows since 2026-10-20) never contains one.
+      const header = truth ? strings(lang).roster_confirmed_header({ confirmed: truth.confirmed.length, maxPlayers: truth.maxPlayers }) : null;
+      const lead = stripRosterBlock(text);
       for (const [time, hits] of Object.entries(
         [...lead.matchAll(/\b\d{1,2}:\d{2}\b/g)].reduce<Record<string, number>>(
           (acc, m) => ({ ...acc, [m[0]]: (acc[m[0]] ?? 0) + 1 }),
@@ -1530,7 +1527,7 @@ async function runChases(groupId: string): Promise<void> {
       }
       if (lang !== "en") {
         if (header && !text.includes(header)) {
-          problems.push(`roster header is not the server's ${JSON.stringify(header)}`);
+          problems.push(`list header is not the table's ${JSON.stringify(header)}`);
         }
         const english = text.match(TR_ENGLISH_TOKENS);
         if (english) problems.push(`English token: ${JSON.stringify(english[0])}`);
