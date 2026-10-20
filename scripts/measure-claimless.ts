@@ -72,6 +72,7 @@ import { spendDevApiKeyOrExit } from "../e2e/helpers/dev-api-key.ts";
 import { extractForRoute } from "../src/lib/pipeline/extractors.ts";
 import { routeBatch } from "../src/lib/pipeline/router.ts";
 import { anthropicModel } from "../src/lib/pipeline/llm.ts";
+import { extractorCacheKey, fanOutWarmFirst, ROUTER_CACHE_KEY } from "../src/lib/pipeline/fan-out.ts";
 import type { AttendanceFacts } from "../src/lib/pipeline/types.ts";
 
 /**
@@ -183,20 +184,14 @@ async function once(
   };
 }
 
-/** Run `tasks` with at most `limit` in flight. */
-async function pool<T>(tasks: Array<() => Promise<T>>, limit: number): Promise<T[]> {
-  const out: T[] = new Array(tasks.length);
-  let next = 0;
-  await Promise.all(
-    Array.from({ length: Math.min(limit, tasks.length) }, async () => {
-      for (;;) {
-        const i = next++;
-        if (i >= tasks.length) return;
-        out[i] = await tasks[i]();
-      }
-    }),
-  );
-  return out;
+/**
+ * Run `tasks` with at most `limit` in flight. Every task in one pool is
+ * the same call on the same prompt (`cacheKey`), so the first runs alone
+ * and writes the cache, and the rest read it: `limit` parallel starts used
+ * to pay `limit` cache writes (`fanOutWarmFirst`, pipeline/fan-out.ts).
+ */
+function pool<T>(tasks: Array<() => Promise<T>>, limit: number, cacheKey: string | null): Promise<T[]> {
+  return fanOutWarmFirst(tasks, () => cacheKey, (t) => t(), { concurrency: limit });
 }
 
 /**
@@ -232,6 +227,7 @@ async function measureRoutes(runs: number, concurrency: number) {
           return r.routes[0]?.route ?? "?";
         }),
         concurrency,
+        ROUTER_CACHE_KEY,
       );
       const spread = [...new Set(results)]
         .map((rt) => ({ rt, n: results.filter((x) => x === rt).length }))
@@ -288,6 +284,7 @@ async function measureRoutes(runs: number, concurrency: number) {
         return r.routes[r.routes.length - 1]?.route ?? "?";
       }),
       concurrency,
+      ROUTER_CACHE_KEY,
     );
     const spread = [...new Set(results)]
       .map((rt) => ({ rt, n: results.filter((x) => x === rt).length }))
@@ -349,6 +346,7 @@ async function main() {
         const results = await pool(
           Array.from({ length: runs }, (_, n) => () => once(model, body, history, `m-${n}`)),
           concurrency,
+          extractorCacheKey("self_att"),
         );
         for (const r of results) totalUsd += r.costUsd;
         const claimless = results.filter((r) => r.claimless).length;

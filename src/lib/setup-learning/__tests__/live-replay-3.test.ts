@@ -26,7 +26,7 @@ import { detectGroupLang } from "../../i18n/detect";
 import { extractJson } from "../../pipeline/llm";
 import { SETUP_LEARNING_MODEL } from "../prompt";
 import { parseDetection, planSetup, type OrgSettingsState } from "../rules";
-import { gradeFixture } from "./grade";
+import { expectAsOfHaiku45, gradeFixture } from "./grade";
 import { FIXTURE_NAMES, loadFixture } from "./stubs";
 
 interface SavedRun {
@@ -68,7 +68,11 @@ const EIGHT = ["rolling", "organiser-picks", "deadlines", "first-come", "turkish
 
 describe("the third live check (2026-10-12), replayed through today's rules", () => {
   it("the saved run is the eight fixtures that make a call, one answer each, and holds no secret", () => {
-    expect(RUN.model).toBe(SETUP_LEARNING_MODEL);
+    // Recorded on Haiku 4.5, before the 2026-10-19 move to Haiku 5.5
+    // (SETUP_LEARNING_MODEL). The saved answers stay a fixed record of
+    // what that model said; the rules are what this file replays.
+    expect(RUN.model).toBe("claude-haiku-4-5");
+    expect(SETUP_LEARNING_MODEL).toBe("claude-haiku-5-5");
     expect(RUN.calls).toBe(8);
     expect(RUN.spent).toBeCloseTo(0.0711, 3);
     expect(RUN.answers.map((a) => a.fixture)).toEqual([...EIGHT]);
@@ -78,7 +82,7 @@ describe("the third live check (2026-10-12), replayed through today's rules", ()
   for (const name of EIGHT) {
     it(`${name}: the fixture passes, with the same checked answers and the same plan as the run`, () => {
       const { saved, fx, detection, plan } = replay(name);
-      expect(gradeFixture(fx.expect, detection, plan), name).toEqual([]);
+      expect(gradeFixture(expectAsOfHaiku45(name, fx.expect), detection, plan), name).toEqual([]);
       expect(
         {
           squad: detection.squad,

@@ -30,7 +30,7 @@ import { detectGroupLang } from "../../i18n/detect";
 import { extractJson } from "../../pipeline/llm";
 import { composeSetupDm } from "../dm";
 import { parseDetection, planIsWorthTelling, planSetup, type OrgSettingsState, type SetupPlan } from "../rules";
-import { gradeFixture, type FixtureExpect } from "./grade";
+import { expectAsOfHaiku45, gradeFixture, type FixtureExpect } from "./grade";
 import { FIXTURE_NAMES, loadFixture } from "./stubs";
 
 interface SavedRun {
@@ -112,7 +112,7 @@ describe("the second live check (2026-10-06), replayed through today's rules", (
         },
         name,
       ).toEqual(saved.checked);
-      expect(gradeFixture(withoutFee(fx.expect), detection, plan), name).toEqual([]);
+      expect(gradeFixture(withoutFee(expectAsOfHaiku45(name, fx.expect)), detection, plan), name).toEqual([]);
     });
   }
 

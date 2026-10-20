@@ -184,8 +184,12 @@ describe("the router prompt", () => {
   // per-batch cost stops being a rounding error, and the honest fix is
   // to pass ~15,500 characters so it genuinely caches rather than to
   // creep up to it.
-  it("stays under the minimum cacheable prefix, so every token is one we pay knowingly", () => {
-    expect(estimateTokens(ROUTER_SYSTEM_PROMPT)).toBeLessThan(
+  it("clears Haiku 5.5's minimum cacheable prefix, so it is cached rather than paid in full each call", () => {
+    // On Haiku 4.5 (4,096-token minimum) this prompt was under the floor
+    // and every token was paid on every call. Haiku 5.5's floor is 512
+    // (probed, 2026-10-19), and the prompt is 5,202 of its tokens, so it
+    // carries the 1-hour marker and later calls read it at 0.1x.
+    expect(estimateTokens(ROUTER_SYSTEM_PROMPT)).toBeGreaterThanOrEqual(
       MIN_CACHEABLE_TOKENS[ROUTER_MODEL]!,
     );
   });

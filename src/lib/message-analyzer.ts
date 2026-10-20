@@ -79,7 +79,7 @@ import {
   renderFormatSwitchContext,
 } from "./format-switch";
 import { computeChaseRisk } from "./chase-risk";
-import { guardedAnthropicCall } from "@/lib/pipeline/llm";
+import { guardedAnthropicCall, systemBlock, PIPELINE_CACHE_CONTROL } from "@/lib/pipeline/llm";
 import { withOrgAiBudget } from "./ai-budget";
 
 // Sonnet (2026-05-19, Kemal): the per-message analyzer makes nuanced
@@ -655,13 +655,7 @@ export async function composeChaseFromMatch(input: {
         // header says the model "keeps exactly one job: tone", and tone
         // is not a thing to deliberate about.
         thinking: { type: "disabled" },
-        system: [
-          {
-            type: "text",
-            text: CHASE_SYSTEM_PROMPT,
-            cache_control: { type: "ephemeral", ttl: "1h" },
-          },
-        ],
+        system: systemBlock(CHASE_SYSTEM_PROMPT),
         messages: [
           {
             role: "user",
@@ -669,7 +663,7 @@ export async function composeChaseFromMatch(input: {
               {
                 type: "text",
                 text: matchContext,
-                cache_control: { type: "ephemeral", ttl: "1h" },
+                cache_control: PIPELINE_CACHE_CONTROL,
               },
               {
                 type: "text",

@@ -431,6 +431,60 @@ describe("handleAdminSquadChange", () => {
     expect(prov.resolveOrProvisionByName).not.toHaveBeenCalled();
   });
 
+  // "@Match Time AH back" (2026-10-19, Haiku 5.5): routed other_att, and the
+  // attendance extractor (live, once) read no name in it: one claim about the
+  // SENDER, confidence 0.3. Held, nothing said: the organiser who asked
+  // MatchTime heard nothing.
+  describe("'@Match Time AH back': read as about someone else, but no one named", () => {
+    const WHO = "I couldn't tell who that's about, so I haven't changed anything. To add someone or take them out, just ask me in your own words with their name (for example put Bilal in).";
+
+    it("the extractor's reading as the sender's own: no write, one line saying it could not tell who, and how to add someone", async () => {
+      routed("other_att");
+      statuses.set("u-admin", "CONFIRMED");
+      engineDoes(
+        async (a) => {
+          const kept = vetThrough(
+            a,
+            [self({ personNamed: false, confidence: 0.3, tense: "future" })],
+            [{ userId: "u-admin", status: "CONFIRMED", position: 1 }],
+            "@Match Time AH back",
+          );
+          expect(kept.claims).toEqual([]);
+        },
+        { claimCount: 0 },
+      );
+      const r = await handleAdminSquadChange({ ...input, route, addressed: true, text: "@Match Time AH back" });
+      expect(r).toEqual({ handled: true, outcome: "squad-question", replyText: WHO });
+      expect(att.registerAttendance).not.toHaveBeenCalled();
+      expect(prov.resolveOrProvisionByName).not.toHaveBeenCalled();
+    });
+
+    it("no claim read at all: the same line", async () => {
+      routed("other_att");
+      engineDoes(async (a) => void vetThrough(a, [], [], "@Match Time AH back"), { claimCount: 0 });
+      expect(await handleAdminSquadChange({ ...input, route, addressed: true, text: "@Match Time AH back" })).toEqual({
+        handled: true,
+        outcome: "squad-question",
+        replyText: WHO,
+      });
+    });
+
+    it("the same words in the organisers' own conversation (not addressed): silence, as before", async () => {
+      routed("other_att");
+      engineDoes(async (a) => void vetThrough(a, [], [], "AH back"), { claimCount: 0 });
+      expect(await handleAdminSquadChange({ ...input, route, text: "AH back" })).toEqual({ handled: false, why: "not-a-squad-change" });
+    });
+
+    it("read as the sender's own (self_att), addressed: silence, as before", async () => {
+      routed("self_att");
+      engineDoes(async (a) => void vetThrough(a, [self({ contingent: true, conditionOn: "self" })], [], "@Match Time might be late"), { claimCount: 0 });
+      expect(await handleAdminSquadChange({ ...input, route, addressed: true, text: "@Match Time might be late" })).toEqual({
+        handled: false,
+        why: "not-a-squad-change",
+      });
+    });
+  });
+
   // FNF HQ, 2026-10-16 23:49 London (prod logs: "routed other_att by model
   // (0 waiting, a reply)", "3 of 3 claim(s) held", "0 change(s) ...
   // squad-question" on next week's match): organisers talking about next

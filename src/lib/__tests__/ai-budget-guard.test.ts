@@ -259,6 +259,19 @@ describe("anthropicMessageCost: pricing a raw SDK response", () => {
     expect(costOf("claude-haiku-4-5-20251001", usage)).toBe(costOf("claude-haiku-4-5", usage));
   });
 
+  // Haiku 5.5, platform.claude.com/docs/en/about-claude/pricing read on
+  // 2026-10-19: $0.10 / $0.50 per MTok for prompts up to 100,000 tokens
+  // (every prompt this app sends is under 15,000). The figures are one
+  // real router call on the dev key: 5,479 input and 53 output tokens.
+  it("prices Haiku 5.5 at $0.10 / $0.50 per MTok", () => {
+    const usage = { inputTokens: 5_479, outputTokens: 53, cacheReadTokens: 0, cacheWriteTokens: 0 };
+    expect(costOf("claude-haiku-5-5", usage)).toBeCloseTo((5_479 * 0.1 + 53 * 0.5) / 1_000_000, 12);
+    // The same call with the router prompt read from a 1-hour cache:
+    // 61 uncached + 5,418 read at 0.1x.
+    const cached = { inputTokens: 61, outputTokens: 53, cacheReadTokens: 5_418, cacheWriteTokens: 0 };
+    expect(costOf("claude-haiku-5-5", cached)).toBeCloseTo(((61 + 541.8) * 0.1 + 53 * 0.5) / 1_000_000, 12);
+  });
+
   it("a dated snapshot of a model nobody priced is still unpriced", () => {
     const usage = { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 };
     expect(costOf("claude-new-thing-20251001", usage)).toBeNull();

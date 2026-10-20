@@ -25,6 +25,8 @@ vi.mock("../out-of-band-self-attendance", () => oob);
 const guest = vi.hoisted(() => ({ withdrawGuest: vi.fn() }));
 vi.mock("../partner-guest", () => guest);
 vi.mock("../ai-budget", () => ({ withOrgAiBudget: (_o: string, f: () => unknown) => f() }));
+const facts = vi.hoisted(() => ({ loadMatchAvailabilityFacts: vi.fn() }));
+vi.mock("../match-availability-context", () => facts);
 
 import { handleGuestDmOut, parseWhichAnswer } from "../partner-guest-dm";
 
@@ -43,6 +45,7 @@ beforeEach(() => {
   resolver.resolveDmSelfAttendance.mockResolvedValue({ decision: "out", via: "fast-path" });
   target.findDmRegistrationTarget.mockResolvedValue(OWN);
   guest.withdrawGuest.mockResolvedValue(true);
+  facts.loadMatchAvailabilityFacts.mockResolvedValue({ userId: "ali", matchId: "m-fnf", currentStatus: "in the squad", lastBotDm: null });
 });
 
 const call = (text: string) => handleGuestDmOut({ userId: "ali", userName: "Ali", text, replyPhone: "447700900111", now: NOW });
@@ -68,6 +71,17 @@ describe("handleGuestDmOut", () => {
     expect(dm.text).toContain("1");
     expect(dm.text).toContain("FNF");
     expect(dm.text).toContain("Sutton FC");
+  });
+
+  it("the classifier is told what MatchTime last said to him and where he stands in the guest game", async () => {
+    await call("out");
+    expect(facts.loadMatchAvailabilityFacts).toHaveBeenCalledWith({ userId: "ali", matchId: "m-fnf", phone: "447700900111" });
+    expect(resolver.resolveDmSelfAttendance.mock.calls[0][0].context).toMatchObject({
+      userId: "ali",
+      matchId: "m-fnf",
+      currentStatus: "in the squad",
+      lastBotDm: null,
+    });
   });
 
   it("answer 1: out of the asking club's game only", async () => {

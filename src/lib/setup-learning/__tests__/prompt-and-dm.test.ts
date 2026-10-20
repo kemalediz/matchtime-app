@@ -5,7 +5,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { estimateTokens, MIN_CACHEABLE_TOKENS, shouldCachePrompt } from "../../pipeline/llm";
+import { estimateTokens, MIN_CACHEABLE_TOKENS } from "../../pipeline/llm";
 import { SETUP_LEARNING_MODEL, SETUP_LEARNING_SCHEMA, SETUP_LEARNING_SYSTEM_PROMPT } from "../prompt";
 import { composeSetupDm } from "../dm";
 import { t } from "../../i18n/t";
@@ -14,10 +14,16 @@ import { EMAIL_REMOVED, LINK_REMOVED, NUMBER_REMOVED } from "../../group-descrip
 import { blankAnswer, FIXTURE_NAMES, loadFixture, OBSERVED_ANSWERS, STUB_ANSWERS } from "./stubs";
 
 describe("the prompt", () => {
-  it("is Haiku, and is deliberately NOT cached: under Haiku's cacheable minimum, so no 2x cache write for a once-per-club call", () => {
-    expect(SETUP_LEARNING_MODEL).toBe("claude-haiku-4-5");
-    expect(shouldCachePrompt(SETUP_LEARNING_MODEL, SETUP_LEARNING_SYSTEM_PROMPT)).toBe(false);
-    expect(estimateTokens(SETUP_LEARNING_SYSTEM_PROMPT)).toBeLessThan(MIN_CACHEABLE_TOKENS[SETUP_LEARNING_MODEL]);
+  it("is Haiku, and is deliberately NOT cached: no 2x cache write for a once-per-club call", () => {
+    expect(SETUP_LEARNING_MODEL).toBe("claude-haiku-5-5");
+    // Haiku 4.5's 4,096-token floor used to make this automatic. Haiku
+    // 5.5's floor is 512, so the prompt now clears it and the call has to
+    // say `cache: false` itself (run.ts), which `anthropicModel` honours
+    // (pipeline/__tests__/cache-threshold.test.ts).
+    expect(estimateTokens(SETUP_LEARNING_SYSTEM_PROMPT)).toBeGreaterThanOrEqual(MIN_CACHEABLE_TOKENS[SETUP_LEARNING_MODEL]);
+    const run = readFileSync(path.resolve(__dirname, "../run.ts"), "utf8");
+    const at = run.indexOf(".complete({");
+    expect(run.slice(at, run.indexOf("})", at))).toMatch(/cache:\s*false/);
   });
 
   it("carries no em or en dash", () => {

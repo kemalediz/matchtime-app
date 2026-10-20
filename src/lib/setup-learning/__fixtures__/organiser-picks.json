@@ -1,6 +1,6 @@
 {
  "name": "organiser-picks",
- "teaches": "Organisers decide who plays: players ask the organiser for a spot, the organiser announces the team and picks replacements from the reserves. Who fills an open place is never switched from the chat: it is suggested to the organiser, with the messages behind it.",
+ "teaches": "Organisers decide who plays: players ask the organiser for a spot, the organiser announces the team and picks replacements from the reserves. Who fills an open place is never switched from the chat: it is suggested to the organiser, with the messages behind it. The organiser posts \"Team for Wednesday\" every Monday at 19:00 London for four weeks, so the list goes out Monday 19:00 (applied, Kemal 2026-10-19: Haiku 4.5 quoted one of those posts and applied nothing; Haiku 5.5 quotes two).",
  "groupSubject": "Wednesday 7s",
  "language": "en",
  "weeklyGame": {
@@ -12,7 +12,13 @@
  "expect": {
   "regularGame": true,
   "openPlaces": "organisers_pick",
-  "applied": [],
+  "listPublished": {
+   "day": 1,
+   "time": "19:00"
+  },
+  "applied": [
+   "listPublish"
+  ],
   "noted": [],
   "suggestions": [
    "organiserPicks"

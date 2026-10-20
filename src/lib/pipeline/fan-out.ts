@@ -12,31 +12,37 @@
  * extractions and zero cache reads. Each call paid ~$0.0088 to write the
  * 3,522-token prompt, most of its ~$0.011.
  *
- * So: for each distinct cacheable prompt in the batch, the FIRST call
- * runs on its own (warm calls for different prompts run together), and
+ * So: for each distinct cached prompt in the batch, the FIRST call runs
+ * on its own (warm calls for different prompts run together), and
  * everything else fans out once they are done. The cost is one call's
  * latency (~2.5 to 3s) on a batch that has two or more calls for the
- * same cacheable prompt. A batch of one, and any call whose prompt is
- * too short to cache, runs exactly as before.
+ * same prompt. A batch of one, and any item that makes no model call,
+ * runs exactly as before.
+ *
+ * The dev harnesses use the same function for parallel router sweeps
+ * (`ROUTER_CACHE_KEY`, with a concurrency limit), so N parallel starts
+ * pay one write instead of N.
  */
-import { EXTRACTOR_PROMPTS, extractorFor } from "./extractors";
-import { EXTRACTOR_MODEL, shouldCachePrompt } from "./llm";
+import { extractorFor } from "./extractors";
 import type { Route } from "./types";
 
+/** The router's one prompt, as a cache key for `fanOutWarmFirst`. */
+export const ROUTER_CACHE_KEY = "router";
+
 /**
- * The cache a route's extraction would read or write: its extractor's
- * name when that prompt clears the model's cache minimum, else null.
- * The four attendance routes share one extractor, so one key.
+ * The cache a route's extraction reads or writes: its extractor's name,
+ * or null for `none`, which makes no call. The four attendance routes
+ * share one extractor, so one key.
  *
- * Derived from `shouldCachePrompt`, the same predicate that decides
- * whether the marker goes on the request, so the two cannot disagree: a
- * prompt that grows past the minimum starts being warmed the day it
- * starts being cached.
+ * Every extractor request carries the cache marker (`systemBlock` in
+ * llm.ts), and every extractor prompt clears Sonnet 5's 1,024-token
+ * minimum once its schema is counted (MEASURED 2026-10-19, count_tokens
+ * on the captured bodies: teams 1,175, score 2,000, admin 1,880), so
+ * every one is worth warming.
  */
 export function extractorCacheKey(route: Route): string | null {
   const kind = extractorFor(route);
-  if (kind === "none") return null;
-  return shouldCachePrompt(EXTRACTOR_MODEL, EXTRACTOR_PROMPTS[kind]) ? kind : null;
+  return kind === "none" ? null : kind;
 }
 
 /**
@@ -49,11 +55,15 @@ export function extractorCacheKey(route: Route): string | null {
  * Rejects like `Promise.all` does: if a first-wave item throws, the
  * second wave does not start. The batch runners' `run` functions do not
  * throw (extraction failures come back as degradations).
+ *
+ * `concurrency` caps how many items of each wave are in flight at once
+ * (a harness sweep); omitted, each wave is fully parallel.
  */
 export async function fanOutWarmFirst<T, R>(
   items: readonly T[],
   cacheKey: (item: T) => string | null,
   run: (item: T) => Promise<R>,
+  opts?: { concurrency?: number },
 ): Promise<R[]> {
   const warmed = new Set<string>();
   const first: number[] = [];
@@ -68,12 +78,18 @@ export async function fanOutWarmFirst<T, R>(
     }
   });
   const results = new Array<R>(items.length);
-  const wave = (idx: number[]) =>
-    Promise.all(
-      idx.map(async (i) => {
-        results[i] = await run(items[i]);
+  const limit = Math.max(1, opts?.concurrency ?? Infinity);
+  const wave = async (idx: number[]) => {
+    let next = 0;
+    await Promise.all(
+      Array.from({ length: Math.min(limit, idx.length) }, async () => {
+        while (next < idx.length) {
+          const i = idx[next++];
+          results[i] = await run(items[i]);
+        }
       }),
     );
+  };
   await wave(first);
   await wave(rest);
   return results;

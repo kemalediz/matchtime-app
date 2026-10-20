@@ -39,6 +39,7 @@ import {
 import { isAiBudgetExceeded } from "./ai-budget-context";
 import { formatLondon } from "./london-time";
 import type { ModelRequest, PipelineModel } from "./pipeline/llm";
+import { HAIKU_EFFORT } from "./models";
 
 /** Pictures read per club per London day (Kemal's brief: "a small N, e.g. 10"). */
 export const PICTURE_DAILY_CAP = 10;
@@ -192,6 +193,7 @@ export async function readPicture(
         system: PICTURE_READING_SYSTEM_PROMPT,
         user: PICTURE_READING_USER_TEXT,
         maxTokens: PICTURE_READING_MAX_TOKENS,
+        thinking: { effort: HAIKU_EFFORT },
         label: "picture-reading",
         images: [{ mediaType: image.mediaType, data: image.data }],
       }),

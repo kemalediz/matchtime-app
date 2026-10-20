@@ -45,7 +45,7 @@ import { db } from "./db";
 import { recordAttendanceEvent } from "./attendance-events";
 import { normalisePhone } from "./phone";
 import { normaliseName } from "./name-normalise";
-import { guardedAnthropicCall } from "@/lib/pipeline/llm";
+import { guardedAnthropicCall, systemBlock } from "@/lib/pipeline/llm";
 import { withOrgAiBudget } from "./ai-budget";
 export { normaliseName };
 
@@ -293,13 +293,7 @@ export async function extractSquadListsFromWindow(
         // cap sized for its OUTPUT, so leaving it adaptive would turn a
         // price change into a silent degradation.
         thinking: { type: "disabled" },
-        system: [
-          {
-            type: "text",
-            text: SYSTEM_PROMPT,
-            cache_control: { type: "ephemeral", ttl: "1h" },
-          },
-        ],
+        system: systemBlock(SYSTEM_PROMPT),
         messages: [
           {
             role: "user",

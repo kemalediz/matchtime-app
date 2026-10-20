@@ -88,6 +88,7 @@ import {
   type ModelRequest,
   type PipelineModel,
 } from "./llm";
+import { HAIKU_EFFORT } from "../models";
 import type { AttendanceFacts, Claim, Degradation, Route, RoutedMessage } from "./types";
 import { ORGANISER_ONLY_ROUTES } from "./types";
 import { isAiBudgetExceeded } from "../ai-budget-context";
@@ -183,8 +184,11 @@ import { isAiBudgetExceeded } from "../ai-budget-context";
  * cacheable minimum, so every token is paid on every call, and it is
  * deliberately not padded over it: the Pi buffers about ten minutes and
  * a five-minute cache entry would expire first
- * (`MDs/llm-spend-september-2026.md`). `__tests__/cache-threshold.test.ts`
- * pins the size.
+ * (`MDs/llm-spend-september-2026.md`). CORRECTED 2026-10-19: that count
+ * was the system prompt alone. The cached prefix includes the schema, and
+ * with it the real request was over 4,096 (about 4,246, measured); only a
+ * size gate in llm.ts kept the marker off. Every call carries the marker
+ * now (`__tests__/cache-threshold.test.ts`).
  *
  * Comments elsewhere that cite "router rule 8" or "rule 15" mean the
  * numbered prompt before this rewrite (3781d2b). Both rulings survive,
@@ -411,7 +415,10 @@ In the organisers' group, teams waiting for approval:
 
 Return JSON only: {"routes":[{"id":"<id>","route":"<route>"}]}`;
 
-const ROUTER_MAX_TOKENS = 1_024;
+// Room for adaptive thinking on top of the routes: one message at medium
+// effort used up to 520 output tokens (2026-10-19); a batch of eight needs
+// more. Clamped to PIPELINE_MAX_TOKENS_CEILING in llm.ts regardless.
+const ROUTER_MAX_TOKENS = 2_048;
 
 const VALID: Record<string, Route> = {
   none: "none",
@@ -957,6 +964,8 @@ async function routeBatchInner(
     system: ROUTER_SYSTEM_PROMPT,
     user,
     maxTokens: ROUTER_MAX_TOKENS,
+    // Haiku 5.5 is more accurate here thinking than not (HAIKU_EFFORT).
+    thinking: { effort: HAIKU_EFFORT },
     label: "router",
     shortIds: Object.fromEntries(realOf),
     schema: {

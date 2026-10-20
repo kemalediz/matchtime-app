@@ -6,11 +6,11 @@
  *
  *   - the scheduler's per-org feature gate, which drops any instruction
  *     whose capability is switched off for the org;
- *   - the payment-claim classifier's "MatchTime's last message to them",
- *     which needs to know what a scheduler DM was about. Those DMs (the
- *     daily pay chase, the rating reminder) are recorded only as a
- *     `SentNotification` key, never with their text (Feroz, FNF
- *     2026-10-18).
+ *   - "MatchTime's last message to them" (`last-bot-dm.ts`, read by the
+ *     payment-claim and match-availability classifiers), which needs to
+ *     know what a scheduler DM was about. Those DMs (the daily pay chase,
+ *     the rating reminder) are recorded only as a `SentNotification` key,
+ *     never with their text (Feroz, FNF 2026-10-18).
  *
  * Unknown, meta and org-scoped keys (bot-intro, admin DMs, ad-hoc BotJobs,
  * retro-reactions) are NOT classified, so the gate always allows them

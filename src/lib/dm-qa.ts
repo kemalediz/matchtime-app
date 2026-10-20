@@ -28,7 +28,7 @@ import { buildDmQaApology } from "./dm-copy";
 import { dayOfMonthLabel, dayTimeLabel, timeLabel, weekdayLabel } from "./i18n/dates";
 import { normaliseLang, type Lang } from "./i18n/lang";
 import { applyHouseStyle } from "./house-style";
-import { guardedAnthropicCall } from "@/lib/pipeline/llm";
+import { guardedAnthropicCall, systemBlock } from "@/lib/pipeline/llm";
 import { isAiBudgetExceeded, withOrgAiBudget } from "@/lib/ai-budget";
 
 const SYSTEM_PROMPT = `You are MatchTime, a friendly assistant for a 5/7-a-side football group. You're answering ONE player's private message.
@@ -343,7 +343,7 @@ export async function answerScopedQuestion(args: {
               // a player asking a real question gets "I can only help with
               // match stuff" and nothing logs a model problem.
               thinking: { type: "disabled" },
-              system,
+              system: systemBlock(system),
               messages: [{ role: "user", content: user }],
             }),
           );

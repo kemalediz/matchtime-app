@@ -19,7 +19,7 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { MAX_TOKENS_CEILING } from "./message-analyzer";
-import { guardedAnthropicCall } from "@/lib/pipeline/llm";
+import { guardedAnthropicCall, systemBlock } from "@/lib/pipeline/llm";
 import { stripLongDashes } from "./house-style";
 
 // `claude-sonnet-4-5` here was inherited from the deleted
@@ -173,13 +173,7 @@ export async function adjustRatings(
         // cap sized for its OUTPUT, so leaving it adaptive would turn a
         // price change into a silent degradation.
         thinking: { type: "disabled" },
-        system: [
-          {
-            type: "text",
-            text: SYSTEM_PROMPT,
-            cache_control: { type: "ephemeral", ttl: "1h" },
-          },
-        ],
+        system: systemBlock(SYSTEM_PROMPT),
         messages: [{ role: "user", content: userContent }],
       }),
     );

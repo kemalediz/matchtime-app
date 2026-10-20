@@ -591,10 +591,18 @@ function alreadySo(v: VettedClaim): boolean {
  *
  *   - A name nobody in the club has, said in passing as coming in: "I
  *     don't know X yet", with the command that adds them.
+ *   - A name two members could mean: "use the full name", as for an
+ *     instruction.
  *   - The sender saying plainly that they are out (or in), when that would
  *     change the squad: one line with the command that does it. Never a
  *     write, and never a YES question: a YES in HQ answers whatever list or
  *     teams are waiting.
+ *
+ * And when the router read it as about someone else's place (`aboutOthers`,
+ * route other_att) but nothing in it named anyone ("@Match Time AH back",
+ * 2026-10-19: the extractor read it as the sender's own, at 0.3): one line
+ * saying MatchTime could not tell who, and how to add someone. Never silence
+ * for an organiser who asked.
  *
  * Anything else held (tentative, contingent, availability, past, relayed,
  * unsure, or any held claim not addressed to MatchTime): silence.
@@ -615,6 +623,8 @@ export function buildAdminSquadReply(p: {
   senderName: string | null;
   /** An @tag, or a reply to MatchTime's own message. Absent: not addressed. */
   addressed?: boolean;
+  /** The router read the message as about someone else's place (other_att). */
+  aboutOthers?: boolean;
   /** The game's list is not set yet: when the squad carries over, labelled. */
   notSet?: { day: string; time: string } | null;
 }): { text: string; outcome: AdminSquadReplyOutcome } | null {
@@ -654,24 +664,18 @@ export function buildAdminSquadReply(p: {
     );
   }
 
-  const unclear = [...new Set(kept.flatMap((v) => (v.ref.kind === "ambiguous" ? [v.ref.name] : [])))];
+  // A held claim naming someone else, in a message addressed to MatchTime,
+  // said as happening (not contingent, not past): its name gets a line.
+  const heldNamedAddressed = (v: VettedClaim) =>
+    p.addressed === true && v.hold !== null && v.hold !== "contingent" && v.hold !== "not-now" && !v.self && v.claim.personNamed;
+
+  const unclear = [
+    ...new Set(p.vetted.flatMap((v) => (v.ref.kind === "ambiguous" && (v.hold === null || heldNamedAddressed(v)) ? [v.ref.name] : []))),
+  ];
   if (unclear.length > 0) parts.push(s.ag_paste_unclear({ names: unclear.join(", ") }));
 
   const strangers = [
-    ...new Set(
-      p.vetted.flatMap((v) =>
-        p.addressed === true &&
-        v.hold !== null &&
-        v.hold !== "contingent" &&
-        v.hold !== "not-now" &&
-        !v.self &&
-        v.claim.polarity === "in" &&
-        v.claim.personNamed &&
-        v.ref.kind === "unknown"
-          ? [v.ref.name]
-          : [],
-      ),
-    ),
+    ...new Set(p.vetted.flatMap((v) => (heldNamedAddressed(v) && v.claim.polarity === "in" && v.ref.kind === "unknown" ? [v.ref.name] : []))),
   ];
   for (const name of strangers) parts.push(s.ag_sq_unknown({ name }));
 
@@ -689,6 +693,10 @@ export function buildAdminSquadReply(p: {
         ? s.ag_sq_self_hint_out({ name, when: p.kickoffLabel })
         : s.ag_sq_self_hint_in({ name, when: p.kickoffLabel }),
     );
+  }
+
+  if (parts.length === 0 && p.addressed === true && p.aboutOthers === true && !p.vetted.some((v) => !v.self && v.ref.kind !== "none")) {
+    parts.push(s.ag_sq_who);
   }
 
   if (parts.length === 0) return null;

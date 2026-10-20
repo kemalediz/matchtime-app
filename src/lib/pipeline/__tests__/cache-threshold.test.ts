@@ -1,306 +1,174 @@
 /**
- * §3.3 of `MDs/router-accuracy-2026-09-11.md` — THE MINIMUM CACHEABLE
- * PREFIX IS A TOKEN COUNT, AND IT IS PER MODEL.
+ * EVERY CALL CARRIES THE CACHE MARKER ON ITS STATIC PREFIX (2026-10-19).
  *
- * `MIN_CACHEABLE_CHARS = 4_000` was one number, in the wrong unit,
- * derived from Sonnet. Two things follow from that and both are
- * measured, not argued:
+ * What stood here was a size gate, `shouldCachePrompt`: attach the marker
+ * only when `floor(system.length / 4)` cleared the model's minimum
+ * cacheable prefix. It was wrong twice over, and the audit of 2026-10-19
+ * MEASURED both with `count_tokens` on the exact captured request bodies:
  *
- *   - **Haiku 4.5's minimum is 4,096 TOKENS**, roughly 15,500 characters
- *     of this pipeline's English. Probed live on 2026-09-11 with the
- *     candidate router prompt (9,608 chars / 2,554 tokens) and a marker
- *     attached: `cache_creation=0 cache_read=0` on both of two
- *     back-to-back calls. Under the character rule that prompt reports
- *     `cacheAttempted: true` and caches nothing — `cacheAttempted` would
- *     mean "we asked", never "it happened", which is §8.5's audit note
- *     re-armed.
- *   - **Sonnet 5's is 1,024 tokens**, and `EXTRACTOR_PROMPTS.attendance`
- *     (5,261 chars / 1,778 Sonnet tokens) is comfortably over it. Probed
- *     the same day: `cache_creation=1773` then `cache_read=1773`. It
- *     caches today and it must keep caching after this change — the
- *     session brief believed this prompt was a silent no-op and the
- *     probe says it is not, so the regression to guard against here is
- *     LOSING a real cache, not removing a fake one.
+ *   - the cached prefix is the system prompt PLUS the structured-output
+ *     schema, and the gate looked at the system prompt alone;
+ *   - four characters per token is not what these prompts run at (the
+ *     router is about 3.5 on Haiku 4.5, the extractors about 2.8 on
+ *     Sonnet 5).
  *
- * Official minimums (anthropic.com, prompt-caching): Opus 5 512, Sonnet
- * 5 / Sonnet 4.5 1,024, Haiku 4.5 4,096. They are NOT monotone across
- * generations, which is exactly why one constant cannot serve.
+ * So on Haiku 4.5 the router (system plus schema about 4,246 tokens,
+ * minimum 4,096) and the teams, score and admin extractors on Sonnet 5
+ * (1,175, 2,000 and 1,880 tokens, minimum 1,024) all cleared the minimum
+ * and were sent with no marker at all, uncached on every call.
+ *
+ * The API ignores a marker on a prefix below the model's minimum, with no
+ * error and no write charge (platform.claude.com, prompt caching). So the
+ * robust gate is no gate: every call carries the shared marker, and the
+ * API decides. The truth of whether a call cached is what it reports in
+ * `usage` (cache_creation_input_tokens, cache_read_input_tokens), which
+ * `guardedAnthropicCall` now logs per label (see `llm-usage-log.test.ts`).
+ *
+ * The one exception is a caller with a measured reason: `cache: false`.
+ * The setup reading runs once per club and is never read back within the
+ * hour, so a 1-hour write (2x input) would be pure cost.
  */
 import { describe, it, expect, vi } from "vitest";
+import * as llm from "../llm";
 import {
-  EXTRACTOR_MODEL,
   MIN_CACHEABLE_TOKENS,
-  ROUTER_MODEL,
+  PIPELINE_CACHE_CONTROL,
   anthropicModel,
-  estimateTokens,
-  shouldCachePrompt,
+  systemBlock,
   type MessagesCreateClient,
 } from "../llm";
-import { ROUTER_SYSTEM_PROMPT } from "../router";
-import { EXTRACTOR_PROMPTS } from "../extractors";
+import { routeBatch } from "../router";
+import { extractForRoute } from "../extractors";
+import type { Route } from "../types";
 
-/** `n` tokens' worth of prose by the estimator's own reckoning. */
-const prose = (tokens: number) => "word ".repeat(Math.ceil((tokens * 4) / 5));
+function spyClient() {
+  const bodies: any[] = [];
+  const client: MessagesCreateClient = {
+    messages: {
+      async create(body: any) {
+        bodies.push(body);
+        return {
+          content: [{ type: "text", text: '{"routes":[]}' }],
+          stop_reason: "end_turn",
+          usage: { input_tokens: 1, output_tokens: 1 },
+        } as any;
+      },
+    },
+  };
+  return { client, bodies };
+}
 
-describe("the minimum cacheable prefix is a token count, per model", () => {
-  it("knows the published minimum for every model this pipeline pins", () => {
+describe("the shared marker", () => {
+  it("documents the published minimums, for reading a usage log (not a gate)", () => {
+    // A marker below these is ignored by the API: no write, no read, no
+    // charge. Haiku 5.5 probed on the dev key 2026-10-19: a 505-token
+    // prefix wrote nothing, a 541-token one wrote 541 then read 541.
     expect(MIN_CACHEABLE_TOKENS["claude-haiku-4-5"]).toBe(4_096);
+    expect(MIN_CACHEABLE_TOKENS["claude-haiku-5-5"]).toBe(512);
     expect(MIN_CACHEABLE_TOKENS["claude-sonnet-5"]).toBe(1_024);
     expect(MIN_CACHEABLE_TOKENS["claude-opus-5"]).toBe(512);
   });
 
-  it.each([
-    ["claude-haiku-4-5", 2_000, false],
-    ["claude-haiku-4-5", 6_000, true],
-    ["claude-sonnet-5", 500, false],
-    ["claude-sonnet-5", 2_000, true],
-    ["claude-opus-5", 300, false],
-    ["claude-opus-5", 900, true],
-  ])("%s · ~%i estimated tokens → marker %s", (model, tokens, expected) => {
-    expect(shouldCachePrompt(model, prose(tokens))).toBe(expected);
+  it("is one hour, not five minutes", () => {
+    // The Pi flushes every ten minutes, so a five-minute entry had always
+    // expired before the next batch: Sutton's 13 extractions on the
+    // morning of 2026-09-29 each paid a fresh write and read nothing.
+    expect(PIPELINE_CACHE_CONTROL).toEqual({ type: "ephemeral", ttl: "1h" });
   });
 
-  it("treats an unpinned model as the most demanding one it knows", () => {
-    // A model id nobody has measured must never be told "we cached" on
-    // the strength of a guess. 2,000 tokens clears Sonnet and Opus and
-    // does not clear Haiku; the unknown gets Haiku's answer.
-    //
-    // THE ID BELOW IS FICTIONAL ON PURPOSE and must stay that way: the
-    // test is only meaningful while the id is absent from
-    // `MIN_CACHEABLE_TOKENS`. It used to read `claude-something-7`,
-    // which `MDs/llm-spend-september-2026.md` §1 had to stop and
-    // investigate because it reads like a real model id somebody
-    // mistyped. Named so nobody spends that time again.
-    const UNMEASURED = "not-a-real-model-id";
-    expect(MIN_CACHEABLE_TOKENS[UNMEASURED]).toBeUndefined();
-    expect(shouldCachePrompt(UNMEASURED, prose(2_000))).toBe(false);
-    expect(shouldCachePrompt(UNMEASURED, prose(6_000))).toBe(true);
+  it("systemBlock wraps a system prompt as one text block carrying it, or not with cache: false", () => {
+    expect(systemBlock("STATIC")).toEqual([
+      { type: "text", text: "STATIC", cache_control: { type: "ephemeral", ttl: "1h" } },
+    ]);
+    expect(systemBlock("STATIC", { cache: false })).toEqual([{ type: "text", text: "STATIC" }]);
   });
 
-  it("under-counts rather than over-counts, so a marker is never a fiction", () => {
-    // Measured 2026-09-11 with `messages.count_tokens`: this pipeline's
-    // prompts run 3.78–5.08 chars/token on Haiku and 2.78–2.98 on
-    // Sonnet. Dividing by 4 is at or below the real count on Haiku and
-    // well below it on Sonnet — both in the direction that declines a
-    // marker it is not sure of.
-    // `count_tokens`, claude-haiku-4-5, 2026-09-11: the router prompt was
-    // 2,554 tokens and the attendance extractor prompt 1,366.
-    // Re-measured 2026-09-16 after the Turkish rule and examples went in
-    // (`count_tokens`, same model): router 2,962 (11,233 chars, 3.79
-    // chars/token), attendance 1,820 (6,846 chars, 3.76 chars/token). On
-    // claude-sonnet-5 the attendance prompt is 2,381. Turkish letters
-    // tokenise DENSER than English, so the under-count widens.
-    // Re-measured 2026-09-17 after the three personal-stats worked
-    // examples (`count_tokens`, claude-haiku-4-5): router 3,003 tokens,
-    // 11,455 chars. Still well under Haiku's 4,096, so still no marker.
-    //
-    // ⚠️ 2026-09-22, THE REPLACEMENT RULES: these two bounds are DERIVED
-    // and NOT measured, and that is said out loud rather than dressed up
-    // as another `count_tokens` reading. The repo-root `.env` carried no
-    // development API key when this shipped, every harness refuses
-    // without one, and the production key is not a substitute
-    // (`MDs/dev-vs-production-api-keys.md`).
-    //
-    // The DERIVATION, and why it keeps the property this test is for.
-    // Every measurement in the history of these two prompts has run
-    // 3.76 to 3.82 chars/token on Haiku, the last pair exactly: router
-    // 11,455/3,003 = 3.814 and attendance 6,846/1,820 = 3.762. The
-    // estimator divides by 4. While the real ratio stays under 4 the
-    // estimate is BELOW the real count by construction, whatever the
-    // prompt says, and Turkish letters (which both additions carry)
-    // tokenise denser, pushing the ratio further down rather than up.
-    // So each bound below is chars / (that prompt's own last measured
-    // ratio): a conservative floor for the real count, not a guess at
-    // it. Router 12,412 chars -> >= 3,254 real against a 3,103 estimate;
-    // attendance 8,562 -> >= 2,275 real against a 2,141 estimate.
-    //
-    // RE-MEASURE THESE with `count_tokens` on the next change that has a
-    // dev key to hand, and put the real figures back.
-    //
-    // 2026-09-23, THE ROUTER REWRITE: re-measured, not derived
-    // (`count_tokens`, claude-haiku-4-5, dev key). The prompt on main
-    // before the rewrite was 12,416 characters / 3,289 tokens (so the
-    // derived 3,254 above was 35 short: the floor it claimed was not
-    // quite a floor). The rewrite is 11,443 characters / 3,311 tokens,
-    // 3.45 chars/token, denser because the Turkish now sits beside the
-    // English and the alignment padding is gone. The bound is the real
-    // count; the estimator's 2,860 sits under it, as it must. Still under
-    // Haiku's 4,096, and deliberately NOT padded over it: the Pi buffers
-    // about ten minutes and a five-minute cache entry expires first
-    // (`MDs/llm-spend-september-2026.md`). The attendance bound is
-    // untouched by this change.
-    //
-    // 2026-09-24, the "@Jordan IN" fix: the name-plus-in/out rule moved
-    // into the first decision question and gained its Turkish examples.
-    // Measured (`count_tokens`, claude-haiku-4-5, dev key): 11,734
-    // characters / 3,386 tokens, from 11,443 / 3,311. The estimator's
-    // 2,933 sits under it. Still under Haiku's 4,096, for the reason
-    // above.
-    //
-    // 2026-09-24, THE ATTENDANCE PROMPT REWRITE (the Sutton FC 14/14
-    // "in" that came back "bench"): the prompt now says what the model is
-    // shown, and that polarity is the message's, never the squad's
-    // capacity. Rewritten as one document, not appended to. Measured
-    // (`count_tokens`, dev key; the free counting endpoint, no model
-    // call). Before: 8,561 characters / 2,340 tokens on claude-haiku-4-5,
-    // 3,101 on claude-sonnet-5. After: 9,719 characters / 2,699 on Haiku,
-    // 3,522 on Sonnet. The bound is the real Haiku count, which is itself
-    // under the Sonnet count the extractor actually runs on; the
-    // estimator's 2,429 sits under both, as it must. More than three
-    // times Sonnet 5's 1,024, so the cache stands.
-    //
-    // 2026-10-16, ONE ROUTER FOR EVERY GROUP: the prompt now also reads a
-    // club's organisers' group (the routes approve, poster, team_sheet and
-    // help, and what differs there), rewritten as one document. Measured
-    // (`count_tokens`, claude-haiku-4-5, dev key, the free counting
-    // endpoint): 13,710 characters / 3,920 tokens, from 11,734 / 3,386.
-    // The estimator's 3,427 sits under it. Still under Haiku's 4,096 (a
-    // first cut at 4,186 was trimmed to stay there), so still no marker.
-    //
-    // 2026-10-16, A REPLY TO MATCHTIME IS A TAG: the tag definition, the
-    // question route and one ruling now cover a WhatsApp reply to the bot's
-    // own message ("REPLYING TO MatchTime", players' group only) and asking
-    // how the bench works. Measured (`count_tokens`, claude-haiku-4-5, dev
-    // key, the free endpoint): 13,709 characters / 3,912 tokens before,
-    // 14,326 / 4,090 after. The estimator's 3,582 sits under it. Still under
-    // Haiku's 4,096, by six: the next addition to this prompt has to take
-    // something out.
-    //
-    // 2026-10-16, REWRITTEN AS ONE DOCUMENT for the organisers' fifth route
-    // (ask_group) together with the reply-is-a-tag rules above, shorter
-    // than before: duplicated rulings and examples merged. Measured
-    // (`count_tokens`, claude-haiku-4-5, dev key, with a one-token user
-    // message, the same way both sides): 14,326 characters / 4,098 tokens
-    // before, 13,683 / 3,922 after. The estimator's 3,420 sits under it.
-    expect(estimateTokens(ROUTER_SYSTEM_PROMPT)).toBeLessThanOrEqual(3_922);
-    expect(estimateTokens(EXTRACTOR_PROMPTS.attendance)).toBeLessThanOrEqual(2_699);
+  it("the size gate is gone: no predicate second-guesses the API", () => {
+    expect((llm as Record<string, unknown>).shouldCachePrompt).toBeUndefined();
+    expect((llm as Record<string, unknown>).DEFAULT_MIN_CACHEABLE_TOKENS).toBeUndefined();
   });
 });
 
-describe("the prompts this pipeline actually sends", () => {
-  it("does NOT claim a cache for the router prompt on Haiku — it would not get one", () => {
-    // The whole point of §3.3. The router prompt after §3.1 is ~9.6k
-    // characters, which is over the old 4,000-char rule and a long way
-    // under Haiku's 4,096-token minimum. Probed: caches nothing.
-    expect(ROUTER_SYSTEM_PROMPT.length).toBeGreaterThan(4_000);
-    expect(shouldCachePrompt(ROUTER_MODEL, ROUTER_SYSTEM_PROMPT)).toBe(false);
-  });
-
-  it("KEEPS the cache on the attendance extractor, which really does cache", () => {
-    expect(shouldCachePrompt(EXTRACTOR_MODEL, EXTRACTOR_PROMPTS.attendance)).toBe(true);
-  });
-
-  it("CLAIMS the cache on the question extractor, which crossed the minimum on 2026-09-17", () => {
-    // The `my_stats` topic and its examples took the prompt from ~3,900
-    // to 4,872 characters. `count_tokens`, claude-sonnet-5, 2026-09-17:
-    // 1,598 tokens, over Sonnet 5's 1,024. Probed the same day, two
-    // back-to-back live extractions: the first paid a cache write
-    // (37 uncached input tokens, $0.0051), the second read it
-    // (1,966 input tokens including the cache read, $0.00075). A real
-    // cache, so the marker is not a fiction.
-    //
-    // 2026-09-23: the stats `table` / `listSize` / `listEnd` fields and
-    // their English and Turkish examples took it to 9,839 characters.
-    // The bound follows the convention the router and attendance bounds
-    // above use: chars / this prompt's own last measured ratio
-    // (4,872 / 1,598 = 3.049), a conservative floor for the real count:
-    // 9,839 -> >= 3,227 real, against a 2,459 estimate. Still cached,
-    // and further over Sonnet 5's minimum than before.
-    //
-    // 2026-09-23, later: the prompt was REWRITTEN as one document rather
-    // than extended (Kemal: "redo the entire prompt and make it clearer"),
-    // adding the `period` fields: each field defined once, the rulings
-    // stated once, examples grouped with English and Turkish side by side
-    // and no alignment padding. MEASURED this time (`count_tokens`,
-    // claude-sonnet-5, dev key, 2026-09-23): the old prompt was 9,839
-    // characters / 3,231 tokens, the new one 9,077 characters / 3,468
-    // tokens. Fewer characters, MORE tokens: every example group now has
-    // its Turkish beside it, and Turkish tokenises denser (2.62 chars per
-    // token here against the old prompt's 3.05). The bound is the real
-    // count; the estimator's 2,269 sits under it, as it must. More than
-    // three times Sonnet 5's 1,024, so the cache stands.
-    //
-    // 2026-09-29: rewritten again for RESULTS questions ("the scores of
-    // the last 5 matches"): `listSize` and `period` now serve `score` as
-    // well as `stats`, and results got their own English and Turkish
-    // example group. MEASURED (`count_tokens`, claude-sonnet-5, dev key,
-    // 2026-09-29): 9,077 characters / 3,468 tokens before, 10,688
-    // characters / 4,071 tokens after. The estimator's 2,672 sits under it.
-    //
-    // 2026-10-16: the `how_it_works` topic and its `feature` field ("Bench?
-    // We do bench now?"), folded into the topic list, the fields, the close
-    // calls and one example group. MEASURED (`count_tokens`,
-    // claude-sonnet-5, dev key, the free endpoint): 10,688 characters /
-    // 4,064 tokens before, 11,770 / 4,447 after. The estimator's 2,943 sits
-    // under it, and the cache stands.
-    //
-    // 2026-10-16, later: the `club` topic (FNF HQ, "MatchTime who are the
-    // admins?"), folded into the topic list, two close calls and one
-    // example group the same way. MEASURED (`count_tokens`,
-    // claude-sonnet-5, dev key, the free endpoint, system prompt alone):
-    // 12,463 characters / 4,725 tokens. The estimator's 3,115 sits under it.
-    expect(estimateTokens(EXTRACTOR_PROMPTS.question)).toBeLessThanOrEqual(4_725);
-    expect(shouldCachePrompt(EXTRACTOR_MODEL, EXTRACTOR_PROMPTS.question)).toBe(true);
-  });
-
-  it.each(["teams", "score", "admin"] as const)(
-    "does not claim a cache for the %s extractor",
-    (kind) => {
-      expect(shouldCachePrompt(EXTRACTOR_MODEL, EXTRACTOR_PROMPTS[kind])).toBe(false);
-    },
-  );
-});
-
-describe("the marker reaches the request, or does not", () => {
-  function spyClient() {
-    const bodies: any[] = [];
-    const client: MessagesCreateClient = {
-      messages: {
-        async create(body: any) {
-          bodies.push(body);
-          return {
-            content: [{ type: "text", text: "{}" }],
-            stop_reason: "end_turn",
-            usage: { input_tokens: 1, output_tokens: 1 },
-          } as any;
-        },
-      },
-    };
-    return { client, bodies };
-  }
-
-  it("attaches cache_control when the prompt clears the model's minimum", async () => {
+describe("the marker reaches every pipeline request", () => {
+  it("on a short prompt too: a marker under the minimum is ignored by the API at no cost", async () => {
     const { client, bodies } = spyClient();
-    const model = anthropicModel({ apiKey: "test", client });
-    const res = await model.complete({
-      model: "claude-sonnet-5",
-      system: prose(2_000),
+    await anthropicModel({ apiKey: "test", client }).complete({
+      model: "claude-haiku-5-5",
+      system: "short",
       user: "hi",
       maxTokens: 64,
       label: "probe",
     });
-    // ONE HOUR, not the default five minutes (2026-09-29). The Pi
-    // flushes every ten minutes, so a five-minute entry had always
-    // expired before the next batch: Sutton's 13 extractions on the
-    // morning of 2026-09-29 each paid a fresh write and read nothing.
-    expect(bodies[0].system[0].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
-    expect(res.cacheAttempted).toBe(true);
+    expect(bodies[0].system).toEqual(systemBlock("short"));
   });
 
+  it("the router's real request carries it, on the system prompt before the schema and the turn", async () => {
+    // MEASURED 2026-10-19 (`count_tokens`, dev key, the captured body):
+    // about 4,246 tokens on Haiku 4.5 with the schema, 5,148 on Haiku 5.5;
+    // the router was uncached on Haiku 4.5 only because of the size gate.
+    const { client, bodies } = spyClient();
+    await routeBatch(anthropicModel({ apiKey: "test", client }), [
+      { id: "w1", authorName: "Ali", body: "anyone for padel later?" },
+    ], { floor: false });
+    expect(bodies).toHaveLength(1);
+    expect(bodies[0].system).toHaveLength(1);
+    expect(bodies[0].system[0].cache_control).toEqual(PIPELINE_CACHE_CONTROL);
+    // Nothing variable sits in the cached block: the turn is the user message.
+    expect(bodies[0].system[0].text).not.toContain("padel");
+  });
+
+  it.each([
+    ["self_att", "attendance"],
+    ["question", "question"],
+    ["balancer", "teams"],
+    ["score", "score"],
+    ["admin_ops", "admin"],
+  ] as Array<[Route, string]>)(
+    "the %s extractor's real request carries it (extractor:%s)",
+    async (route) => {
+      const { client, bodies } = spyClient();
+      await extractForRoute(anthropicModel({ apiKey: "test", client }), route, {
+        id: "w1",
+        body: "Reds won 3-2",
+        authorName: "Ali",
+        tagged: true,
+        history: [],
+        lastBotPost: null,
+      });
+      expect(bodies.length).toBeGreaterThanOrEqual(1);
+      expect(bodies[0].system[0].cache_control).toEqual(PIPELINE_CACHE_CONTROL);
+      expect(bodies[0].system[0].text).not.toContain("Reds won 3-2");
+      expect(bodies[0].output_config.format.schema).toBeTruthy();
+    },
+  );
+
   it("needs no beta header for the 1-hour TTL: the body is the whole request", async () => {
-    // `ttl` is GA in @anthropic-ai/sdk 0.90 (`CacheControlEphemeral.ttl`),
-    // so nothing but the body is sent: no `betas`, no extra headers.
+    // `ttl` is GA in @anthropic-ai/sdk 0.90 (`CacheControlEphemeral.ttl`).
     const { client, bodies } = spyClient();
     const create = vi.spyOn(client.messages, "create");
     await anthropicModel({ apiKey: "test", client }).complete({
       model: "claude-sonnet-5",
-      system: prose(2_000),
+      system: "S",
       user: "hi",
       maxTokens: 64,
       label: "probe",
     });
     expect(create.mock.calls[0]).toHaveLength(1);
     expect(bodies[0]).not.toHaveProperty("betas");
+  });
+
+  it("attaches nothing when the caller says cache: false", async () => {
+    // The setup reading: once per club, never read back within the hour.
+    const { client, bodies } = spyClient();
+    await anthropicModel({ apiKey: "test", client }).complete({
+      model: "claude-haiku-5-5",
+      system: "S",
+      user: "hi",
+      maxTokens: 64,
+      label: "probe",
+      cache: false,
+    });
+    expect(bodies[0].system).toEqual([{ type: "text", text: "S" }]);
   });
 
   it("reports the 1-hour write it was billed for, and prices it at 2x", async () => {
@@ -324,7 +192,7 @@ describe("the marker reaches the request, or does not", () => {
     };
     const res = await anthropicModel({ apiKey: "test", client }).complete({
       model: "claude-sonnet-5",
-      system: prose(2_000),
+      system: "S",
       user: "hi",
       maxTokens: 64,
       label: "probe",
@@ -332,19 +200,5 @@ describe("the marker reaches the request, or does not", () => {
     expect(res.usage).toMatchObject({ cacheWriteTokens: 3_500, cacheWrite1hTokens: 3_500 });
     // Sonnet 5 at $2/$10 per MTok: 500 + 3,500 x 2 input, 100 output.
     expect(res.costUsd).toBeCloseTo(((500 + 3_500 * 2) * 2 + 100 * 10) / 1_000_000, 10);
-  });
-
-  it("attaches nothing when it does not", async () => {
-    const { client, bodies } = spyClient();
-    const model = anthropicModel({ apiKey: "test", client });
-    const res = await model.complete({
-      model: "claude-haiku-4-5",
-      system: prose(2_000),
-      user: "hi",
-      maxTokens: 64,
-      label: "probe",
-    });
-    expect(bodies[0].system[0].cache_control).toBeUndefined();
-    expect(res.cacheAttempted).toBe(false);
   });
 });

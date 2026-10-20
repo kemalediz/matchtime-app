@@ -274,25 +274,33 @@ describe("PROBE_MODELS", () => {
   });
 
   it("covers the router's and the extractors' models", () => {
+    // The router's id lives in `src/lib/models.ts` (HAIKU_MODEL), which
+    // llm.ts re-exports as ROUTER_MODEL; the extractors' is a literal.
     const src = readFileSync(path.join(REPO_ROOT, "src", "lib", "pipeline", "llm.ts"), "utf8");
-    for (const name of ["ROUTER_MODEL", "EXTRACTOR_MODEL"]) {
-      const m = new RegExp(`^export const ${name} = "([^"]+)";$`, "m").exec(src);
-      expect(m, `could not find \`export const ${name} = …\` in src/lib/pipeline/llm.ts`).not.toBeNull();
+    const models = readFileSync(path.join(REPO_ROOT, "src", "lib", "models.ts"), "utf8");
+    const haiku = /^export const HAIKU_MODEL = "([^"]+)";$/m.exec(models);
+    expect(haiku, "could not find `export const HAIKU_MODEL = …` in src/lib/models.ts").not.toBeNull();
+    expect(src).toMatch(/^export const ROUTER_MODEL = HAIKU_MODEL;$/m);
+    const extractor = /^export const EXTRACTOR_MODEL = "([^"]+)";$/m.exec(src);
+    expect(extractor, "could not find `export const EXTRACTOR_MODEL = …` in src/lib/pipeline/llm.ts").not.toBeNull();
+    for (const [name, id] of [["ROUTER_MODEL", haiku![1]], ["EXTRACTOR_MODEL", extractor![1]]]) {
       expect(
         PROBE_MODELS,
-        `${name} is ${m![1]}, which the live pre-flight never probes — a key without ` +
+        `${name} is ${id}, which the live pre-flight never probes — a key without ` +
           `access to it would pass the probe and then fail every call that uses it`,
-      ).toContain(m![1]);
+      ).toContain(id);
     }
   });
 
   it("probes nothing the pipeline does not call", () => {
-    const pipeline = readFileSync(path.join(REPO_ROOT, "src", "lib", "pipeline", "llm.ts"), "utf8");
+    const pipeline =
+      readFileSync(path.join(REPO_ROOT, "src", "lib", "pipeline", "llm.ts"), "utf8") +
+      readFileSync(path.join(REPO_ROOT, "src", "lib", "models.ts"), "utf8");
     const analyzer = readFileSync(path.join(REPO_ROOT, "src", "lib", "message-analyzer.ts"), "utf8");
     for (const model of PROBE_MODELS) {
       expect(
         pipeline.includes(`"${model}"`) || analyzer.includes(`"${model}"`),
-        `${model} is probed but named nowhere in pipeline/llm.ts or message-analyzer.ts — ` +
+        `${model} is probed but named nowhere in pipeline/llm.ts, models.ts or message-analyzer.ts — ` +
           `either it was retired and this list was not, or the probe is spending on a model ` +
           `no sweep uses`,
       ).toBe(true);

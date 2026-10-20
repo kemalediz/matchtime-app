@@ -24,6 +24,7 @@ import { db } from "./db";
 import { REPLY_PRIORITY } from "./dm-reply-priority";
 import { withOrgAiBudget } from "./ai-budget";
 import { resolveDmSelfAttendance } from "./dm-self-attendance";
+import { loadMatchAvailabilityFacts } from "./match-availability-context";
 import { findDmRegistrationTarget } from "./dm-registration-target";
 import { applyOutOfBandSelfAttendance } from "./out-of-band-self-attendance";
 import { withdrawGuest } from "./partner-guest";
@@ -127,16 +128,18 @@ export async function handleGuestDmOut(args: {
   // 2. A live guest place, and an OUT.
   const place = await findLiveGuestPlace(args.userId);
   if (!place) return null;
+  // What MatchTime last said to him and where he stands for the guest game.
+  const facts = await loadMatchAvailabilityFacts({ userId: args.userId, matchId: place.matchId, phone: args.replyPhone });
   const resolution = await withOrgAiBudget(place.fromOrgId, () =>
     resolveDmSelfAttendance({
       text: args.text,
       hasPendingPrompt: false,
       context: {
+        ...facts,
         playerName: args.userName,
         clubName: place.askerName,
         matchName: place.askerName,
         matchWhen: dayCommaTimeLabel(place.lang, place.date),
-        wasAskedToPlay: true,
       },
     }),
   );

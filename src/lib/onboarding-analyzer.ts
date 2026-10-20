@@ -14,14 +14,15 @@
  * the wizard before anything is committed. We intentionally ask for an
  * evidence quote per player so the admin can sanity-check the LLM.
  *
- * Uses Haiku (fast, cheap) with a 1h ephemeral prompt cache on the
- * system prompt. A year of 14-person chat (~15k messages) fits in one
- * call well under Haiku's context window.
+ * One call per org, so the system prompt is NOT cached (2026-10-19): a
+ * 1-hour cache write bills 2x input and nothing reads it back within the
+ * hour. A year of 14-person chat (~15k messages) fits in one call well
+ * under the model's context window.
  */
 
 import Anthropic from "@anthropic-ai/sdk";
 import type { ParsedChat } from "./whatsapp-parser";
-import { guardedAnthropicCall } from "@/lib/pipeline/llm";
+import { guardedAnthropicCall, systemBlock } from "@/lib/pipeline/llm";
 import { stripLongDashes } from "./house-style";
 
 // Onboarding is a one-shot per org — a few cents vs pennies difference
@@ -153,13 +154,7 @@ export async function analyzeForOnboarding(args: AnalyzeArgs): Promise<Onboardin
         // cap sized for its OUTPUT, so leaving it adaptive would turn a
         // price change into a silent degradation.
         thinking: { type: "disabled" },
-        system: [
-          {
-            type: "text",
-            text: SYSTEM_PROMPT,
-            cache_control: { type: "ephemeral", ttl: "1h" },
-          },
-        ],
+        system: systemBlock(SYSTEM_PROMPT, { cache: false }),
         messages: [{ role: "user", content: userContent }],
       }),
     );
