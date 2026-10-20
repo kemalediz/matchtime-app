@@ -45,10 +45,15 @@ describe("withoutServerBookkeeping", () => {
 describe("claimBadgePost", () => {
   it("records the DM's recipient on the claim, with the ledger rows", async () => {
     await claimBadgePost("org1", { key: "m1:badges:a1", kind: "dm", matchId: "m1", targetUser: "a1" }, LEDGER);
-    expect(calls.sent.at(-1)).toEqual({ data: { key: "m1:badges:a1", kind: "dm", matchId: "m1", targetUser: "a1" } });
+    expect(calls.sent.at(-1)).toEqual({ data: { key: "m1:badges:a1", kind: "dm", matchId: "m1", targetUser: "a1", text: null } });
     expect(calls.ledger.at(-1)).toEqual({
       data: [{ orgId: "org1", userId: "u0", badgeKey: "first-game", matchId: "m1" }],
       skipDuplicates: true,
     });
+  });
+
+  it("keeps the post's words on the claim, as every claim does (quoted-reply context, S0)", async () => {
+    await claimBadgePost("org1", { key: "m1:badges", kind: "group-message", matchId: "m1", text: "🏅 First game: Ali" }, LEDGER);
+    expect(calls.sent.at(-1)).toMatchObject({ data: { key: "m1:badges", text: "🏅 First game: Ali" } });
   });
 });

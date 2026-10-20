@@ -290,6 +290,13 @@ export async function postDmReply(params: {
    *  (dm-identity.ts). Absent when unknown; an older server ignores them. */
   senderLid?: string;
   senderAltPhone?: string;
+  /** Quoted-reply context (slice S1, 2026-10-20): what a swipe-reply
+   *  quotes, read by `readQuotedFields` (wa-read.ts), the reader the group
+   *  doors use. Absent for a DM that is not a reply; an older server
+   *  ignores them. */
+  quotedMessageId?: string;
+  quotedText?: string;
+  quotedFromMatchTime?: boolean;
 }): Promise<void> {
   const res = await apiFetch(`${config.apiUrl}/api/whatsapp/dm-reply`, {
     method: "POST",

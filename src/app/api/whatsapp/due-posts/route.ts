@@ -84,6 +84,7 @@ import {
   MAX_IDENTICAL_GROUP_MESSAGES,
   OUTBOUND_TEXT_LOG_KIND,
   REPETITION_WINDOW_MS,
+  claimTextOf,
   outboundTextLogKey,
   outboundTextLogPrefix,
   parseOutboundTextLogKey,
@@ -450,6 +451,10 @@ export async function GET(request: Request) {
           kind: instr.kind,
           matchId: instr.matchId,
           targetUser: instr.targetUser,
+          // The words handed to the Pi (quoted-reply context, slice S0), so
+          // a player's swipe-reply to a scheduler DM resolves to what it
+          // said. Same row, same write: the P2002 claim is unchanged.
+          text: claimTextOf(instr),
         },
       });
       await recordRosterShown(instr, now);

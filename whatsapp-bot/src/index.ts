@@ -20,7 +20,7 @@ import {
 } from "./handlers.js";
 import { reactionChatId, routeAdminGroupInbound } from "./admin-group.js";
 import { degradedMessage } from "./degraded.js";
-import { asString, readInboundHeadline, safePath, safeRead } from "./wa-read.js";
+import { asString, readInboundHeadline, readQuotedFields, safePath, safeRead } from "./wa-read.js";
 import { createHistoryCollector } from "./history-capture.js";
 import {
   handleGroupJoinForSelfAdd,
@@ -501,6 +501,8 @@ async function main() {
               authorName,
               body: text,
               waMessageId: lm.id?._serialized ?? "",
+              // A caught-up swipe-reply keeps what it quoted, as a live one does.
+              ...readQuotedFields(driver, lm),
             });
             replayed += 1;
             console.log(
@@ -652,6 +654,9 @@ async function main() {
             body: text,
             waMessageId: resolveWaMessageId(msg).waMessageId,
             ...extras,
+            // What a swipe-reply quotes (quoted-reply context, S1): the same
+            // reader as the group doors. Empty for a DM that is not a reply.
+            ...readQuotedFields(driver, msg),
           });
           console.log(
             `[dm] forwarded reply from=${head.from} authorName=${authorName ?? "?"}` +

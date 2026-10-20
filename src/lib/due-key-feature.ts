@@ -74,3 +74,20 @@ export function featureForDueKey(key: string): DueKeyFeature | null {
   // Everything else: infrastructure / meta → allow.
   return null;
 }
+
+/**
+ * What a MatchTime message was about, from its key: its feature, or the
+ * tentative follow-up ("can you play?"), whose key the feature gate
+ * deliberately leaves unclassified (it is never gated off). Null for an
+ * ad-hoc BotJob or an infrastructure key.
+ *
+ * One definition (quoted-reply context, slice S0, 2026-10-20), read by
+ * `last-bot-dm.ts` ("MatchTime's last message") and by the quoted-reply
+ * resolver (`reply-context.ts`, "the message they swipe-replied to").
+ */
+export type DueKeyTopic = DueKeyFeature | "tentativeFollowup";
+
+export function topicOfDueKey(key: string): DueKeyTopic | null {
+  if (key.includes(":tentative-followup:")) return "tentativeFollowup";
+  return featureForDueKey(key);
+}

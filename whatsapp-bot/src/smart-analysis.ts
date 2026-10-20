@@ -38,7 +38,7 @@ import {
   type MentionName,
   type RawMentionContact,
 } from "./mentions.js";
-import { firstUsableName, jidDigits, readMessageBody, readNotifyName, readQuoted, safeRead } from "./wa-read.js";
+import { firstUsableName, readMessageBody, readNotifyName, readQuotedFields, safeRead } from "./wa-read.js";
 import { degradedMessage } from "./degraded.js";
 import {
   missingMessageIdMessage,
@@ -142,8 +142,8 @@ interface Pending {
    *  the server's @Match Time interaction-contract gate. */
   botMentioned?: boolean;
   /** A WhatsApp reply (2026-10-16): the quoted message's text, and whether
-   *  it was this bot's own. Read by `quotedFields`, the same reader the
-   *  admin group uses. Absent when the message is not a reply. */
+   *  it was this bot's own. Read by `readQuotedFields` (wa-read.ts), the same reader the
+   *  admin group and DMs use. Absent when the message is not a reply. */
   quotedBody?: string;
   quotedFromMatchTime?: boolean;
   /** The quoted message's WhatsApp id (its stanza id), so the server can
@@ -548,18 +548,6 @@ export interface GroupMessageForServer {
   quotedFromMatchTime?: boolean;
 }
 
-/** Was a quoted message sent by this bot? Compared on digits against every
- *  form of the bot's own id. False when the driver cannot say. */
-function quotedFromBot(driver: WaDriver, participant: string | null): boolean {
-  const digits = jidDigits(participant);
-  if (!digits) return false;
-  try {
-    return driver.selfIdentities().some((id) => jidDigits(id) === digits);
-  } catch {
-    return false;
-  }
-}
-
 export async function readGroupMessageForServer(
   driver: WaDriver,
   msg: InboundMessage,
@@ -597,25 +585,15 @@ export async function readGroupMessageForServer(
     ...(lid ? { senderLid: lid } : {}),
     timestamp: new Date(safeTimestampSec(msg) * 1000).toISOString(),
     ...(enriched.mentionNames.length > 0 ? { mentionNames: enriched.mentionNames } : {}),
-    ...quotedFields(driver, msg),
+    ...readQuotedFields(driver, msg),
   };
 }
 
-function quotedFields(driver: WaDriver, msg: InboundMessage): Pick<GroupMessageForServer, "quotedMessageId" | "quotedText" | "quotedFromMatchTime"> {
-  const q = readQuoted(msg);
-  if (!q) return {};
-  return {
-    ...(q.id ? { quotedMessageId: q.id } : {}),
-    ...(q.text ? { quotedText: q.text.slice(0, 2000) } : {}),
-    quotedFromMatchTime: quotedFromBot(driver, q.participant),
-  };
-}
-
-/** `quotedFields` in the analyze route's names (`quotedBody` is the field
+/** `readQuotedFields` (wa-read.ts) in the analyze route's names (`quotedBody` is the field
  *  the server has read since the monthly squad, slice 3). One reader for
  *  both doors; only the name of the text differs. */
 function analyzeQuotedFields(driver: WaDriver, msg: InboundMessage): Pick<Pending, "quotedBody" | "quotedFromMatchTime" | "quotedMessageId"> {
-  const { quotedText, quotedFromMatchTime, quotedMessageId } = quotedFields(driver, msg);
+  const { quotedText, quotedFromMatchTime, quotedMessageId } = readQuotedFields(driver, msg);
   if (quotedFromMatchTime === undefined) return {};
   return {
     ...(quotedText ? { quotedBody: quotedText } : {}),
