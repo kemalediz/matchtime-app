@@ -1,30 +1,41 @@
 /**
  * The facts the match-availability classifier is given, loaded once for
  * every caller (the tentative follow-up, the cold DM IN/OUT, a guest's
- * DM OUT): where the player stands for the match, and MatchTime's last DM
- * to them (2026-10-18). Kept out of the classifier so that module stays
- * DB-free for its live dry run.
+ * DM OUT): where the player stands for the match, and the chat context
+ * (`reply-context.ts`: the time now, and the message they swipe-replied to
+ * or MatchTime's recent DMs to them). Kept out of the classifier so that
+ * module stays DB-free for its live dry run.
  */
 import { db } from "./db";
-import { loadLastBotDm } from "./last-bot-dm";
 import { availabilityStatusLabel, type MatchAvailabilityContext } from "./match-availability-classifier";
+import { loadDmReplyContext, type QuotedBotMessage } from "./reply-context";
 
 export async function loadMatchAvailabilityFacts(input: {
   userId: string;
   matchId: string;
   /** Where DMs to this player are queued (digits, no "+"), or null. */
   phone: string | null;
-}): Promise<Pick<MatchAvailabilityContext, "userId" | "matchId" | "currentStatus" | "lastBotDm">> {
+  /** The MatchTime message this DM swipe-replies to, resolved once by the
+   *  route, or null. */
+  quoted: QuotedBotMessage | null;
+}): Promise<Pick<MatchAvailabilityContext, "userId" | "matchId" | "currentStatus" | "replyContext">> {
   const { userId, matchId } = input;
-  const [row, tentative, lastBotDm] = await Promise.all([
-    db.attendance.findUnique({ where: { matchId_userId: { matchId, userId } }, select: { status: true } }),
-    db.tentativeAvailability.findFirst({ where: { matchId, userId, resolvedAt: null }, select: { id: true } }),
-    loadLastBotDm(db, { phone: input.phone, userId }),
+  // TOTAL (review of #336): a failed read never drops the reply. Each half
+  // degrades on its own; `loadDmReplyContext` is total by itself.
+  const [status, replyContext] = await Promise.all([
+    Promise.all([
+      db.attendance.findUnique({ where: { matchId_userId: { matchId, userId } }, select: { status: true } }),
+      db.tentativeAvailability.findFirst({ where: { matchId, userId, resolvedAt: null }, select: { id: true } }),
+    ])
+      .then(([row, tentative]) => availabilityStatusLabel({ status: row?.status ?? null, tentative: !!tentative }))
+      .catch((err: unknown) => {
+        console.error(
+          `[match-availability] status for user=${userId} match=${matchId} could not be read: ` +
+            (err instanceof Error ? err.message : String(err)),
+        );
+        return null;
+      }),
+    loadDmReplyContext(db, { userId, phone: input.phone, quoted: input.quoted }),
   ]);
-  return {
-    userId,
-    matchId,
-    currentStatus: availabilityStatusLabel({ status: row?.status ?? null, tentative: !!tentative }),
-    lastBotDm,
-  };
+  return { userId, matchId, currentStatus: status, replyContext };
 }

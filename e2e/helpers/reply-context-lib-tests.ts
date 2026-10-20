@@ -14,7 +14,10 @@
  *   - a BotJob DM's words, a scheduler DM's stored words, and the
  *     recipient check against the real `User.phoneNumber` / `BotJob.phone`;
  *   - the migration's backfill UPDATE agrees with `bareWhatsAppId` row for
- *     row (the statement is read out of the migration file itself).
+ *     row (the statement is read out of the migration file itself);
+ *   - slice S2's chat context (`loadDmReplyContext`): the real client
+ *     satisfies `DmReplyContextDb`, and a non-reply is shown this person's
+ *     scheduler DMs and queued DMs merged oldest first, with their matches.
  *
  * Requires the fixture world to be seeded (the spec reseeds first) and
  * MT_E2E_DATABASE_URL to point at the embedded test DB.
@@ -35,7 +38,9 @@ async function main() {
   assertSafeTestDbUrl(url);
   process.env.DATABASE_URL = url;
 
-  const { resolveQuotedBotMessage, logDmQuote } = await import("@/lib/reply-context");
+  const { resolveQuotedBotMessage, logDmQuote, loadDmReplyContext, contextMatchLabel, renderReplyContext } = await import(
+    "@/lib/reply-context"
+  );
   const { bareWhatsAppId } = await import("@/lib/quoted-message");
   const { db } = await import("@/lib/db");
 
@@ -132,9 +137,10 @@ async function main() {
     {
       const got = await resolveQuotedBotMessage(db, { quote: q("3EB0RCRATER", false), phones, now });
       assert.equal(got, null);
+      // Even when the Pi says it was MatchTime's: it is somebody else's DM.
       const quoteOnly = await resolveQuotedBotMessage(db, { quote: q("3EB0RCRATER"), phones, now });
-      assert.equal(quoteOnly?.key, null);
-      ok("another person's DM is not this person's quote");
+      assert.equal(quoteOnly, null);
+      ok("another person's DM is not this person's quote, whatever the Pi says");
     }
     {
       const lines: string[] = [];
@@ -150,6 +156,35 @@ async function main() {
       assert.match(lines[0], /resolved=yes/);
       assert.doesNotMatch(lines[0], /Hi Pat|owe/);
       ok("the route's log line: resolved, no text");
+    }
+
+    // ── Slice S2: the chat context a DM classifier reads ─────────────
+    {
+      const pay = await db.match.findUnique({ where: { id: MATCH.pay }, select: { date: true, activity: { select: { name: true } } } });
+      assert.ok(pay, "the seeded pay match");
+      const payLabel = contextMatchLabel(pay.activity.name, pay.date);
+      const recent = await loadDmReplyContext(db, { userId: U.player, phone: playerDigits, quoted: null, now });
+      assert.equal(recent.quoted, null);
+      const idx = (pred: (m: (typeof recent.recent)[number]) => boolean) => recent.recent.findIndex(pred);
+      const iPay = idx((m) => m.text === "Hi Pat, you owe £8. Pay here: https://mt.example/p/x");
+      const iRate = idx((m) => m.topic === "playerRating" && m.text === null);
+      const iJob = idx((m) => m.text === "💷 Pat, the match fee is £8.");
+      assert.ok(iPay >= 0 && iRate > iPay && iJob > iRate, `oldest first: ${JSON.stringify(recent.recent)}`);
+      assert.equal(recent.recent[iPay].topic, "paymentCollection");
+      assert.equal(recent.recent[iPay].match, payLabel);
+      assert.equal(recent.recent[iJob].topic, null, "a queued DM has no key topic");
+      assert.ok(recent.recent.length <= 3);
+      assert.ok(!recent.recent.some((m) => m.text === "Hi Riley"), "never another person's DM");
+      assert.match(renderReplyContext(recent), /MATCHTIME'S RECENT MESSAGES TO THEM \(oldest first/);
+      ok("a non-reply: scheduler and queued DMs merged oldest first, with matches, theirs only");
+
+      const quoted = await resolveQuotedBotMessage(db, { quote: q("3EB0RCPAY"), phones, now });
+      const ctx = await loadDmReplyContext(db, { userId: U.player, phone: playerDigits, quoted, now });
+      assert.deepEqual(ctx.recent, []);
+      assert.equal(ctx.quoted?.match, payLabel);
+      assert.equal(ctx.quoted?.topic, "paymentCollection");
+      assert.match(renderReplyContext(ctx), /^NOW: .*\nTHEY ARE REPLYING TO MatchTime's message of .*\(about: paying the match fee for /);
+      ok("a swipe-reply: only the quoted message, with its match");
     }
 
     // ── The migration's backfill, statement for statement ────────────

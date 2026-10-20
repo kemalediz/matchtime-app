@@ -129,7 +129,11 @@ beforeEach(() => {
   returns.set("attendance.updateMany", () => ({ count: 1 }));
   returns.set("sentNotification.create", () => ({ id: "sn1" }));
   returns.set("botJob.create", () => ({}));
-  returns.set("botJob.findFirst", () => ({ text: "💷 Quick one Abid, your *£8* is still outstanding" }));
+  // The chat context (`loadDmReplyContext`): the pay chase, queued.
+  returns.set("botJob.findMany", () => [
+    { text: "💷 Quick one Abid, your *£8* is still outstanding", sentAt: new Date(), createdAt: new Date() },
+  ]);
+  returns.set("sentNotification.findMany", () => []);
 
   // The classifier says "paid" for these bodies, through its test seam:
   // the model's answer is stubbed, every gate and write below it is real.

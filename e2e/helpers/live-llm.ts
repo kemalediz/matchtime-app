@@ -82,6 +82,9 @@ export const DM_INTENT_STUB_FILE_ENV = "MT_TEST_DM_INTENT_STUB_FILE";
 /** The player payment-claim classifier (2026-09-23). Mirrors
  *  `PAYMENT_CLAIM_STUB_FILE_ENV` in `src/lib/payment-claim.ts`. */
 export const PAYMENT_CLAIM_STUB_FILE_ENV = "MT_TEST_PAYMENT_CLAIM_STUB_FILE";
+/** The match-availability classifier (review of #336). Mirrors
+ *  `MATCH_AVAILABILITY_STUB_FILE_ENV` in `src/lib/match-availability-classifier.ts`. */
+export const MATCH_AVAILABILITY_STUB_FILE_ENV = "MT_TEST_MATCH_AVAILABILITY_STUB_FILE";
 export const KEY_ENV = "ANTHROPIC_API_KEY";
 
 /**
@@ -240,6 +243,17 @@ export function assertSeamMatchesMode(
           `tells the money collector they have paid. A "live" sweep reading a canned intent ` +
           `out of it would be grading its own answer key.\n` +
           `  Fix:  unset ${PAYMENT_CLAIM_STUB_FILE_ENV} in your shell; the suite sets it itself ` +
+          `for stubbed runs and pins it empty for live ones.`,
+      );
+    }
+    if (!blank(childEnv[MATCH_AVAILABILITY_STUB_FILE_ENV])) {
+      throw new E2EPreflightError(
+        `e2e: REFUSING to run: ${LIVE_ENV_FLAG}=1 asks for a LIVE model run, but the ` +
+          `server under test would still see ${MATCH_AVAILABILITY_STUB_FILE_ENV}=${childEnv[MATCH_AVAILABILITY_STUB_FILE_ENV]}.\n` +
+          `  That file answers for lib/match-availability-classifier.ts, which puts a player in ` +
+          `or out of a squad from a DM. A "live" sweep reading a canned decision out of it would ` +
+          `be grading its own answer key.\n` +
+          `  Fix:  unset ${MATCH_AVAILABILITY_STUB_FILE_ENV} in your shell; the suite sets it itself ` +
           `for stubbed runs and pins it empty for live ones.`,
       );
     }

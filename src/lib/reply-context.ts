@@ -21,9 +21,26 @@
  *      with time, topic and match unknown (an inline reply is never acked,
  *      so it has no row).
  *
- * S0/S1 change no behaviour: the dm-reply route only LOGS what this
- * resolves (ids, topic, match, resolved yes/no, never text). Slice S2 adds
- * the renderer and hands the result to the DM classifiers.
+ * The dm-reply route resolves the quote ONCE (and logs ids, topic, match,
+ * resolved yes/no; never text) and hands it to every DM classifier.
+ *
+ * WHAT A DM CLASSIFIER IS TOLD (slice S2, 2026-10-20; replaces
+ * `last-bot-dm.ts`, which showed only "MatchTime's last message"):
+ *
+ *   - always the time now, in the club's time (London: every club plays
+ *     there and `london-time.ts` is hardcoded to it; Organisation has no
+ *     timezone setting). "can't tomorrow sorry" was read as unclear because
+ *     the model did not know which day "tomorrow" was;
+ *   - a swipe-reply to a MatchTime message: ONLY that message. The quote is
+ *     a fact WhatsApp gives us; listing other asks beside it invites the
+ *     model to override it;
+ *   - otherwise MatchTime's last 3 DMs to them from the last 72 hours,
+ *     oldest first, or, with none, the latest within 14 days, dated.
+ *
+ * Each message carries its time, what it was about (from its key, in code
+ * made words, with its match) and its words, capped. `renderReplyContext`
+ * is the one block every caller shows, in the same wording; the group and
+ * HQ slices reuse it.
  *
  * DB-free: the client is an argument (a structural type Prisma satisfies),
  * so the classifier modules and their dry runs can import it without
@@ -31,12 +48,25 @@
  */
 import { topicOfDueKey, type DueKeyTopic } from "./due-key-feature";
 import { botJobIdOfKey } from "./dispatch-claim";
-import { LAST_DM_LOOKBACK_MS } from "./last-bot-dm";
+import { dayCommaTimeLabel } from "./i18n/dates";
+import { formatLondon } from "./london-time";
 import { e164Digits } from "./phone";
 import { bareWhatsAppId, sameWhatsAppMessage } from "./quoted-message";
 
+/** How far back a MatchTime DM still counts: quoted, or as the last one. */
+export const DM_LOOKBACK_MS = 14 * 24 * 3600 * 1000;
+
 /** How far back a quoted MatchTime message is still looked up. */
-export const QUOTE_LOOKBACK_MS = LAST_DM_LOOKBACK_MS;
+export const QUOTE_LOOKBACK_MS = DM_LOOKBACK_MS;
+
+/** A non-reply is shown MatchTime's DMs from this window... */
+export const RECENT_WINDOW_MS = 72 * 3600 * 1000;
+
+/** ...at most this many of them. */
+export const RECENT_MAX = 3;
+
+/** The most of one message's words the model is shown. */
+export const MESSAGE_WORDS_MAX = 300;
 
 /** The most of the Pi's quoted text the server keeps (the Pi caps at the same). */
 export const QUOTED_TEXT_MAX = 2000;
@@ -168,6 +198,11 @@ export async function resolveQuotedBotMessage(
       take: CANDIDATES,
       select: { key: true, matchId: true, targetUser: true, waMessageId: true, waStanzaId: true, text: true, createdAt: true },
     });
+    // A stored message that is NOT a DM to this person (a group post they
+    // replied to privately, somebody else's DM) is never their quote, and
+    // the Pi's "it was MatchTime's" does not make it one: its match may be
+    // another club's (review of #336).
+    let foundNotTheirs = false;
     for (const row of rows) {
       if (!sameWhatsAppMessage(bare, row.waStanzaId ?? row.waMessageId)) continue;
       const jobId = botJobIdOfKey(row.key);
@@ -176,7 +211,10 @@ export async function resolveQuotedBotMessage(
           where: { id: jobId },
           select: { kind: true, phone: true, text: true, sentAt: true, createdAt: true },
         });
-        if (!job || job.kind !== "dm" || !isTheirs(job.phone, theirs)) continue;
+        if (!job || job.kind !== "dm" || !isTheirs(job.phone, theirs)) {
+          foundNotTheirs = true;
+          continue;
+        }
         return {
           key: row.key,
           sentAt: job.sentAt ?? row.createdAt,
@@ -185,9 +223,13 @@ export async function resolveQuotedBotMessage(
           matchId: row.matchId,
         };
       }
-      if (!row.targetUser) continue;
-      const user = await db.user.findUnique({ where: { id: row.targetUser }, select: { phoneNumber: true } });
-      if (!isTheirs(user?.phoneNumber, theirs)) continue;
+      const user = row.targetUser
+        ? await db.user.findUnique({ where: { id: row.targetUser }, select: { phoneNumber: true } })
+        : null;
+      if (!isTheirs(user?.phoneNumber, theirs)) {
+        foundNotTheirs = true;
+        continue;
+      }
       return {
         key: row.key,
         sentAt: row.createdAt,
@@ -196,6 +238,7 @@ export async function resolveQuotedBotMessage(
         matchId: row.matchId,
       };
     }
+    if (foundNotTheirs) return null;
   }
 
   if (!quote.fromMatchTime) return null;
@@ -245,4 +288,257 @@ export async function logDmQuote(
     );
     return null;
   }
+}
+
+// ── Slice S2: the chat context every DM classifier reads ──────────────
+
+/** One MatchTime message as the model is told about it. `match` is the
+ *  match it was about, already written ("Tuesday 7-a-side, Tue 20 Oct,
+ *  20:00"); `at` is null only for a quote the Pi alone knew. */
+export interface ContextMessage {
+  at: Date | null;
+  text: string | null;
+  topic: DueKeyTopic | null;
+  match: string | null;
+}
+
+/** What a reply is read against. `quoted` set: that message alone, and
+ *  `recent`/`earlier` are not shown. Else `recent` (oldest first), or with
+ *  none, `earlier`. */
+export interface ReplyContext {
+  now: Date;
+  quoted: ContextMessage | null;
+  recent: ContextMessage[];
+  earlier: ContextMessage | null;
+  /** The Pi says they quoted a MatchTime message, but it is not one we can
+   *  name (an inline reply, or a send with no stored id). Shown flagged,
+   *  BESIDE the recent messages, never as "they are replying to". */
+  unidentifiedQuote?: { text: string | null } | null;
+}
+
+/**
+ * The quote a path may read when it acts on `matchId`: kept when it names
+ * that match or none, dropped when it names another. A reply is never read
+ * against one match's message while acting on a different match (review of
+ * #336: "paid" to match A's chase landed on match B).
+ */
+export function quoteForMatch(quoted: QuotedBotMessage | null | undefined, matchId: string): QuotedBotMessage | null {
+  if (!quoted) return null;
+  if (quoted.matchId && quoted.matchId !== matchId) return null;
+  return quoted;
+}
+
+/** Nothing known but the time. */
+export function noReplyContext(now: Date = new Date()): ReplyContext {
+  return { now, quoted: null, recent: [], earlier: null };
+}
+
+/** The match a message was about, as the model reads it. */
+export function contextMatchLabel(name: string, date: Date): string {
+  return `${name}, ${dayCommaTimeLabel("en", date)}`;
+}
+
+/** Which of MatchTime's DMs a non-reply is shown: the last `RECENT_MAX`
+ *  from the last 72 hours, oldest first; with none, the latest within
+ *  14 days as `earlier`. */
+export function pickRecentBotMessages(
+  all: ContextMessage[],
+  now: Date,
+): { recent: ContextMessage[]; earlier: ContextMessage | null } {
+  const t = now.getTime();
+  const dated = all
+    .filter((m): m is ContextMessage & { at: Date } => m.at !== null && t - m.at.getTime() <= DM_LOOKBACK_MS)
+    .sort((a, b) => a.at.getTime() - b.at.getTime());
+  const recent = dated.filter((m) => t - m.at.getTime() <= RECENT_WINDOW_MS).slice(-RECENT_MAX);
+  if (recent.length > 0) return { recent, earlier: null };
+  return { recent: [], earlier: dated.at(-1) ?? null };
+}
+
+/** What a message was about, in plain words, from its key's topic. */
+function aboutOf(topic: DueKeyTopic | null, match: string | null): string | null {
+  switch (topic) {
+    case "tentativeFollowup":
+      return `asking whether they can play in ${match ?? "a match"}`;
+    case "paymentCollection":
+    case "paymentTracking":
+      return match ? `paying the match fee for ${match}` : "paying the match fee they owe";
+    case "playerRating":
+      return `rating their teammates after ${match ?? "the last match"}`;
+    case "momVoting":
+      return `the Man of the Match vote for ${match ?? "the last match"}`;
+    case "attendance":
+    case "bench":
+      return `who is playing in ${match ?? "a match"}`;
+    case "teamBalancing":
+      return `the final score of ${match ?? "the last match"}`;
+    case "badgeAnnouncements":
+      return "badges players have earned";
+    default:
+      return null;
+  }
+}
+
+const words = (text: string | null): string =>
+  text && text.trim() ? JSON.stringify(text.trim().slice(0, MESSAGE_WORDS_MAX)) : "(its words are not known)";
+
+/** "Mon 19 Oct, 17:30 (about: ...)", the head of a message line. */
+function headOf(m: ContextMessage & { at: Date }): string {
+  const about = aboutOf(m.topic, m.match);
+  return `${dayCommaTimeLabel("en", m.at)}${about ? ` (about: ${about})` : ""}`;
+}
+
+const RECENT_HEADER = "MATCHTIME'S RECENT MESSAGES TO THEM";
+const days = (ms: number) => Math.round(ms / (24 * 3600 * 1000));
+
+/**
+ * THE block: one plain piece of the user turn, the same wording for every
+ * caller. Model-facing, so English whatever the club's language (the
+ * prompts are English); the words of each message are as sent.
+ */
+export function renderReplyContext(ctx: ReplyContext): string {
+  const lines = [`NOW: ${formatLondon(ctx.now, "EEEE d MMMM yyyy, HH:mm")} (club time, London)`];
+  const { quoted } = ctx;
+  const unidentified = !quoted ? ctx.unidentifiedQuote : null;
+  if (unidentified) {
+    lines.push(
+      unidentified.text && unidentified.text.trim()
+        ? `THEY QUOTED a MatchTime message that could not be identified as one of its DMs to them (it may be a group post): ${words(unidentified.text)}`
+        : "THEY QUOTED a MatchTime message that could not be identified, and its words are not known.",
+    );
+  }
+  if (quoted) {
+    lines.push(
+      quoted.at
+        ? `THEY ARE REPLYING TO MatchTime's message of ${headOf({ ...quoted, at: quoted.at })}:`
+        : "THEY ARE REPLYING TO a MatchTime message (when it was sent is not known):",
+      words(quoted.text),
+    );
+  } else if (ctx.recent.length > 0) {
+    lines.push(`${RECENT_HEADER} (oldest first${unidentified ? "" : "; their DM is not a reply to one"}):`);
+    for (const m of ctx.recent) lines.push(`- ${m.at ? headOf({ ...m, at: m.at }) : "(time not known)"}: ${words(m.text)}`);
+  } else if (ctx.earlier?.at) {
+    lines.push(
+      `${RECENT_HEADER}: none in the last ${days(RECENT_WINDOW_MS)} days. ` +
+        `The last was on ${headOf({ ...ctx.earlier, at: ctx.earlier.at })}: ${words(ctx.earlier.text)}`,
+    );
+  } else {
+    lines.push(`${RECENT_HEADER}: none in the last ${days(DM_LOOKBACK_MS)} days.`);
+  }
+  return lines.join("\n");
+}
+
+/** The reads `loadDmReplyContext` makes, as a structural type so a test
+ *  can hand in a fake. Prisma's client satisfies it. */
+export interface DmReplyContextDb {
+  sentNotification: {
+    findMany(args: {
+      where: { kind: "dm"; targetUser: string; createdAt: { gte: Date }; waMessageId: { not: null } };
+      orderBy: { createdAt: "desc" };
+      take: number;
+      select: { key: true; matchId: true; text: true; createdAt: true };
+    }): Promise<Array<{ key: string; matchId: string | null; text: string | null; createdAt: Date }>>;
+  };
+  botJob: {
+    findMany(args: {
+      where: { kind: "dm"; phone: string; createdAt: { gte: Date }; sentAt: { not: null } };
+      orderBy: { createdAt: "desc" };
+      take: number;
+      select: { text: true; sentAt: true; createdAt: true };
+    }): Promise<Array<{ text: string; sentAt: Date | null; createdAt: Date }>>;
+  };
+  match: {
+    findMany(args: {
+      where: { id: { in: string[] } };
+      select: { id: true; date: true; activity: { select: { name: true } } };
+    }): Promise<Array<{ id: string; date: Date; activity: { name: string } }>>;
+  };
+}
+
+/** Enough rows from each side to fill the recent list after merging. */
+const RECENT_READ = 10;
+
+/**
+ * The chat context for a DM, loaded once. `quoted` is what the route
+ * resolved (`resolveQuotedBotMessage`): when set it is the whole context.
+ * Otherwise MatchTime's DMs to this person from both places they are
+ * recorded: a queued `BotJob` (its words, by `phone`, the BotJob's form
+ * with no "+"; null skips that side) and a scheduler DM handed out by
+ * /due-posts (a `SentNotification` by `targetUser`: its key's topic, its
+ * match, and since S0 its words).
+ */
+export async function loadDmReplyContext(
+  db: DmReplyContextDb,
+  input: { userId: string; phone: string | null; quoted: QuotedBotMessage | null; now?: Date },
+): Promise<ReplyContext> {
+  const now = input.now ?? new Date();
+  try {
+    return await readDmReplyContext(db, { ...input, now });
+  } catch (err) {
+    // TOTAL: a failed read never drops the reply. The classifier still
+    // runs, told the time now and that nothing is known.
+    console.error(
+      `[reply-context] chat context for user=${input.userId} could not be read: ` +
+        (err instanceof Error ? err.message : String(err)),
+    );
+    return noReplyContext(now);
+  }
+}
+
+async function readDmReplyContext(
+  db: DmReplyContextDb,
+  input: { userId: string; phone: string | null; quoted: QuotedBotMessage | null; now: Date },
+): Promise<ReplyContext> {
+  const { now } = input;
+  const labels = async (ids: Array<string | null>): Promise<Map<string, string>> => {
+    const want = [...new Set(ids.filter((id): id is string => !!id))];
+    if (want.length === 0) return new Map();
+    const rows = await db.match.findMany({
+      where: { id: { in: want } },
+      select: { id: true, date: true, activity: { select: { name: true } } },
+    });
+    return new Map(rows.map((r) => [r.id, contextMatchLabel(r.activity.name, r.date)]));
+  };
+
+  // A quote we found among our DMs to them is the whole context.
+  if (input.quoted?.key) {
+    const q = input.quoted;
+    const match = q.matchId ? ((await labels([q.matchId])).get(q.matchId) ?? null) : null;
+    return { now, quoted: { at: q.sentAt, text: q.text, topic: q.topic, match }, recent: [], earlier: null };
+  }
+
+  // Only messages actually SENT: a scheduler claim the Pi acked with an id,
+  // a BotJob the Pi marked sent. A queued or failed one never reached them.
+  const since = new Date(now.getTime() - DM_LOOKBACK_MS);
+  const [scheduled, queued] = await Promise.all([
+    db.sentNotification.findMany({
+      where: { kind: "dm", targetUser: input.userId, createdAt: { gte: since }, waMessageId: { not: null } },
+      orderBy: { createdAt: "desc" },
+      take: RECENT_READ,
+      select: { key: true, matchId: true, text: true, createdAt: true },
+    }),
+    input.phone
+      ? db.botJob.findMany({
+          where: { kind: "dm", phone: input.phone, createdAt: { gte: since }, sentAt: { not: null } },
+          orderBy: { createdAt: "desc" },
+          take: RECENT_READ,
+          select: { text: true, sentAt: true, createdAt: true },
+        })
+      : Promise.resolve([]),
+  ]);
+  // A BotJob's own ack row is that job, already read from the job.
+  const sched = scheduled.filter((r) => !botJobIdOfKey(r.key));
+  const names = await labels(sched.map((r) => r.matchId));
+  const all: ContextMessage[] = [
+    ...sched.map((r) => ({
+      at: r.createdAt,
+      text: r.text,
+      topic: topicOfDueKey(r.key),
+      match: r.matchId ? (names.get(r.matchId) ?? null) : null,
+    })),
+    ...queued.map((j) => ({ at: j.sentAt ?? j.createdAt, text: j.text, topic: null, match: null })),
+  ];
+  const picked = pickRecentBotMessages(all, now);
+  // The Pi's word that they quoted MatchTime, with nothing we can name:
+  // flagged beside the recent messages, never instead of them.
+  return input.quoted ? { now, quoted: null, ...picked, unidentifiedQuote: { text: input.quoted.text } } : { now, quoted: null, ...picked };
 }

@@ -21,6 +21,11 @@ import {
   parse,
   type MatchAvailabilityContext,
 } from "../match-availability-classifier";
+import { renderReplyContext } from "../reply-context";
+
+// Mon 19 Oct 2026, 18:00 London: the day before the match.
+const NOW = new Date("2026-10-19T17:00:00Z");
+const INVITE = "Hi Ian, we're 2 short for Tuesday 7-a-side (Tue 20 Oct, 20:00). Playing? Reply IN or OUT.";
 
 const CTX: MatchAvailabilityContext = {
   userId: "u-ian",
@@ -30,12 +35,17 @@ const CTX: MatchAvailabilityContext = {
   matchName: "Tuesday 7-a-side",
   matchWhen: "Tue 20 Oct, 20:00",
   currentStatus: "not signed up",
-  lastBotDm: "Hi Ian, we're 2 short for Tuesday 7-a-side (Tue 20 Oct, 20:00). Playing? Reply IN or OUT.",
+  replyContext: {
+    now: NOW,
+    quoted: null,
+    recent: [{ at: new Date("2026-10-19T16:30:00Z"), text: INVITE, topic: null, match: null }],
+    earlier: null,
+  },
 };
 
 const answer = (o: object) => async () => JSON.stringify(o);
 
-describe("the user turn carries what MatchTime said, the match and the player's status", () => {
+describe("the user turn carries the chat context, the match and the player's status", () => {
   it("names the match with its day and time, and the player's current status", () => {
     const u = buildMatchAvailabilityUserTurn("go on then", CTX);
     expect(u).toContain("Tuesday 7-a-side");
@@ -43,22 +53,26 @@ describe("the user turn carries what MatchTime said, the match and the player's 
     expect(u).toMatch(/status for it: not signed up/i);
   });
 
-  it("quotes MatchTime's last message to the player, word for word", () => {
+  it("carries the shared chat-context block, word for word (the time now and MatchTime's messages)", () => {
     const u = buildMatchAvailabilityUserTurn("go on then", CTX);
-    expect(u).toContain(`MatchTime's last message to them: ${JSON.stringify(CTX.lastBotDm)}`);
+    expect(u).toContain(renderReplyContext(CTX.replyContext!));
+    expect(u).toContain("NOW: Monday 19 October 2026, 18:00");
+    expect(u).toContain(JSON.stringify(INVITE));
   });
 
-  it("a scheduler DM's bracketed description goes in as it is", () => {
+  it("a swipe-reply shows only the quoted message", () => {
     const u = buildMatchAvailabilityUserTurn("yes", {
       ...CTX,
-      lastBotDm: "(a question asking whether they can play in the match: in or out)",
+      replyContext: { ...CTX.replyContext!, quoted: { at: NOW, text: "Rate your teammates", topic: "playerRating", match: null } },
     });
-    expect(u).toContain("MatchTime's last message to them: (a question asking whether they can play in the match: in or out)");
+    expect(u).toContain("THEY ARE REPLYING TO MatchTime's message");
+    expect(u).not.toContain(INVITE);
   });
 
-  it("an unknown last message says so rather than inventing one", () => {
-    const u = buildMatchAvailabilityUserTurn("yes", { ...CTX, lastBotDm: null });
-    expect(u).toContain("MatchTime's last message to them: (not known)");
+  it("no context handed in still tells the model the time now, and that nothing is known", () => {
+    const u = buildMatchAvailabilityUserTurn("yes", { ...CTX, replyContext: undefined });
+    expect(u).toMatch(/^NOW: |\nNOW: /m);
+    expect(u).toContain("MATCHTIME'S RECENT MESSAGES TO THEM: none in the last 14 days.");
   });
 
   it("the message itself comes last, under its own header, read whole", () => {
@@ -66,20 +80,27 @@ describe("the user turn carries what MatchTime said, the match and the player's 
     expect(u.endsWith("THE DM:\nyes\nsee you there")).toBe(true);
   });
 
-  it("never hands the model ids, and the old yes/no flag is gone", () => {
+  it("never hands the model ids, and the old lines are gone", () => {
     const u = buildMatchAvailabilityUserTurn("go on then", CTX);
     expect(u).not.toContain("u-ian");
     expect(u).not.toContain("m-tue");
     expect(u).not.toMatch(/Bot asked this player/i);
+    expect(u).not.toContain("MatchTime's last message to them");
   });
 });
 
 describe("the prompt", () => {
   const p = buildMatchAvailabilitySystemPrompt();
 
-  it("reads MatchTime's last message instead of a flag", () => {
-    expect(p).toContain("MatchTime's last message");
-    expect(p).not.toMatch(/context line says the bot asked/i);
+  it("reads the swipe-replied message, else the newest recent one, and the time now", () => {
+    expect(p).toMatch(/swipe-replied to/);
+    expect(p).toMatch(/newest/);
+    expect(p).toMatch(/time now/);
+    expect(p).not.toContain("MatchTime's last message");
+  });
+
+  it("reads 'tomorrow' against the time now", () => {
+    expect(p).toMatch(/tomorrow/);
   });
 
   it("is one bilingual definition: no Turkish rule bolted on as 1a", () => {
@@ -91,8 +112,9 @@ describe("the prompt", () => {
     expect(p).toContain(`${Math.round(MATCH_AVAILABILITY_MIN_CONFIDENCE * 100)}% sure`);
   });
 
-  it("keeps the closed JSON contract", () => {
+  it("keeps the closed JSON contract, and no dashes", () => {
     expect(p).toContain('"decision": "in" | "out" | "unclear"');
+    expect(p).not.toMatch(/[—–]/);
   });
 });
 

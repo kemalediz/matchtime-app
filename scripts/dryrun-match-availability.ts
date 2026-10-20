@@ -9,6 +9,7 @@
  *
  *   REPEAT=1 node --env-file=.env ./node_modules/.bin/tsx scripts/dryrun-match-availability.ts
  *   SET=heldout REPEAT=1 node --env-file=.env ./node_modules/.bin/tsx scripts/dryrun-match-availability.ts
+ *   SET=s2 REPEAT=1 node --env-file=.env ./node_modules/.bin/tsx scripts/dryrun-match-availability.ts
  *
  * PROMPT=old measures a previous prompt for a before/after table: point
  * OLD_PROMPT_MODULE at a module exporting { SYSTEM_PROMPT, userTurn(text,
@@ -33,6 +34,12 @@ import {
   type MatchAvailability,
   type MatchAvailabilityContext,
 } from "../src/lib/match-availability-classifier.ts";
+import {
+  contextMatchLabel,
+  pickRecentBotMessages,
+  type ContextMessage,
+  type ReplyContext,
+} from "../src/lib/reply-context.ts";
 import { buildRatingDm, buildTentativeFollowupDm } from "../src/lib/dm-copy.ts";
 import { t } from "../src/lib/i18n/t.ts";
 import { costOf, systemBlock } from "../src/lib/pipeline/llm.ts";
@@ -62,32 +69,40 @@ interface Ctx extends MatchAvailabilityContext {
   label: string;
 }
 
+// ── The chat context, as `loadDmReplyContext` builds it ──
+/** Mon 19 Oct 2026, 18:00 London: the evening before the match. */
+const NOW = new Date("2026-10-19T17:00:00Z");
 const EN_MATCH = { clubName: "Sutton FC", playerName: "Ian Innes", matchName: "Tuesday 7-a-side", matchWhen: "Tue 20 Oct, 20:00" };
 const TR_MATCH = { clubName: "Erdal FC", playerName: "Emre Yılmaz", matchName: "Salı Halısaha", matchWhen: "20 Eki Sal, 20:00" };
+const TUE = contextMatchLabel("Tuesday 7-a-side", new Date("2026-10-20T19:00:00Z"));
+const SALI = contextMatchLabel("Salı Halısaha", new Date("2026-10-20T19:00:00Z"));
 
-/** The recruit invite for this match, nothing since. */
-const INVITE_EN: Ctx = { ...EN_MATCH, currentStatus: "not signed up", lastBotDm: invite("en", EN_MATCH.matchWhen), oldAsked: true, label: "invite" };
-const INVITE_TR: Ctx = { ...TR_MATCH, currentStatus: "not signed up", lastBotDm: invite("tr", TR_MATCH.matchWhen), oldAsked: true, label: "invite" };
-/** The tentative follow-up ("you were a maybe: in or out?"). */
-const TENT_EN: Ctx = {
-  ...EN_MATCH,
-  currentStatus: "said maybe, not signed up",
-  lastBotDm: buildTentativeFollowupDm({ playerName: "Ian Innes", activityName: "Tuesday 7-a-side", whenLabel: "Tue 20 Oct at 20:00", lang: "en" }),
-  oldAsked: true,
-  label: "tentative follow-up",
-};
-const TENT_TR: Ctx = {
-  ...TR_MATCH,
-  currentStatus: "said maybe, not signed up",
-  lastBotDm: buildTentativeFollowupDm({ playerName: "Emre Yılmaz", activityName: "Salı Halısaha", whenLabel: "20 Eki Sal 20:00", lang: "tr" }),
-  oldAsked: true,
-  label: "tentative follow-up",
-};
-/** A cold DM: the last thing MatchTime sent was the rating request. */
-const RATED_EN: Ctx = {
-  ...EN_MATCH,
-  currentStatus: "not signed up",
-  lastBotDm: buildRatingDm({
+/** Not a swipe-reply: MatchTime's recent DMs, picked as production picks them. */
+const sent = (...msgs: ContextMessage[]): ReplyContext => ({ now: NOW, quoted: null, ...pickRecentBotMessages(msgs, NOW) });
+/** A swipe-reply: that message alone. */
+const quoting = (m: ContextMessage, now: Date = NOW): ReplyContext => ({ now, quoted: m, recent: [], earlier: null });
+
+/** The recruit invite, a queued BotJob: its words, no key topic. */
+const inviteMsg = (lang: "en" | "tr"): ContextMessage => ({
+  at: new Date("2026-10-19T16:30:00Z"),
+  text: invite(lang, lang === "en" ? EN_MATCH.matchWhen : TR_MATCH.matchWhen),
+  topic: null,
+  match: null,
+});
+/** The tentative follow-up, a scheduler DM: its words since S0, its topic and match. */
+const tentMsg = (lang: "en" | "tr"): ContextMessage => ({
+  at: new Date("2026-10-19T16:00:00Z"),
+  text:
+    lang === "en"
+      ? buildTentativeFollowupDm({ playerName: "Ian Innes", activityName: "Tuesday 7-a-side", whenLabel: "Tue 20 Oct at 20:00", lang: "en" })
+      : buildTentativeFollowupDm({ playerName: "Emre Yılmaz", activityName: "Salı Halısaha", whenLabel: "20 Eki Sal 20:00", lang: "tr" }),
+  topic: "tentativeFollowup",
+  match: lang === "en" ? TUE : SALI,
+});
+/** The rating request after last week's match, a scheduler DM. */
+const ratingMsg = (at = "2026-10-18T09:00:00Z"): ContextMessage => ({
+  at: new Date(at),
+  text: buildRatingDm({
     activityName: "Tuesday 7-a-side",
     dateLabel: "Tue 13 Oct",
     mvpLabel: "Man of the Match",
@@ -95,16 +110,25 @@ const RATED_EN: Ctx = {
     statsUrl: "https://mt.example/s/stats",
     lang: "en",
   }),
-  oldAsked: false,
-  label: "after the rating DM",
-};
+  topic: "playerRating",
+  match: contextMatchLabel("Tuesday 7-a-side", new Date("2026-10-13T19:00:00Z")),
+});
+
+/** The recruit invite for this match, nothing since. */
+const INVITE_EN: Ctx = { ...EN_MATCH, currentStatus: "not signed up", replyContext: sent(inviteMsg("en")), oldAsked: true, label: "invite" };
+const INVITE_TR: Ctx = { ...TR_MATCH, currentStatus: "not signed up", replyContext: sent(inviteMsg("tr")), oldAsked: true, label: "invite" };
+/** The tentative follow-up ("you were a maybe: in or out?"). */
+const TENT_EN: Ctx = { ...EN_MATCH, currentStatus: "said maybe, not signed up", replyContext: sent(tentMsg("en")), oldAsked: true, label: "tentative follow-up" };
+const TENT_TR: Ctx = { ...TR_MATCH, currentStatus: "said maybe, not signed up", replyContext: sent(tentMsg("tr")), oldAsked: true, label: "tentative follow-up" };
+/** A cold DM: the last thing MatchTime sent was the rating request. */
+const RATED_EN: Ctx = { ...EN_MATCH, currentStatus: "not signed up", replyContext: sent(ratingMsg()), oldAsked: false, label: "after the rating DM" };
 /** A cold DM with nothing known. */
-const COLD_TR: Ctx = { ...TR_MATCH, currentStatus: "not signed up", lastBotDm: null, oldAsked: false, label: "cold, nothing known" };
-/** Already in the squad, the scheduler's squad update was last (key only). */
+const COLD_TR: Ctx = { ...TR_MATCH, currentStatus: "not signed up", replyContext: sent(), oldAsked: false, label: "cold, nothing known" };
+/** Already in the squad, the scheduler's squad update was last (key only, no words). */
 const IN_SQUAD_EN: Ctx = {
   ...EN_MATCH,
   currentStatus: "in the squad",
-  lastBotDm: "(a message about who is playing in a match)",
+  replyContext: sent({ at: new Date("2026-10-19T08:00:00Z"), text: null, topic: "attendance", match: TUE }),
   oldAsked: false,
   label: "in the squad",
 };
@@ -220,6 +244,40 @@ const HELD_OUT: Case[] = [
   { text: "sure", want: "unclear", ctx: RATED_EN },
 ];
 
+/**
+ * SLICE S2 (2026-10-20): the time now, and the swipe-reply. "can't
+ * tomorrow sorry" the evening before the match came back unclear because
+ * the model did not know today's date. A swipe-reply shows only the quoted
+ * message, so a "yes" to an OLDER invite is an answer even when a rating DM
+ * came after it, and a "yes" to the rating DM is not.
+ */
+const SLICE_S2: Case[] = [
+  { text: "can't tomorrow sorry", want: "out", ctx: INVITE_EN },
+  {
+    text: "can't tomorrow sorry",
+    want: "unclear",
+    ctx: {
+      ...INVITE_EN,
+      // Sat 17 Oct: "tomorrow" is Sunday, not the Tuesday match.
+      replyContext: { ...sent(), now: new Date("2026-10-17T10:00:00Z"), recent: [{ ...inviteMsg("en"), at: new Date("2026-10-17T09:00:00Z") }] },
+      label: "invite, sent on Saturday",
+    },
+  },
+  { text: "yes", want: "in", ctx: { ...INVITE_EN, replyContext: quoting(inviteMsg("en")), label: "swipe-reply to the invite, a rating DM came after" } },
+  { text: "evet", want: "in", ctx: { ...TENT_TR, replyContext: quoting(tentMsg("tr")), label: "swipe-reply to the follow-up" } },
+  { text: "yes", want: "unclear", ctx: { ...INVITE_EN, replyContext: quoting(ratingMsg("2026-10-19T16:45:00Z")), label: "swipe-reply to the rating DM" } },
+  {
+    text: "yes",
+    want: "unclear",
+    ctx: { ...INVITE_EN, replyContext: sent(inviteMsg("en"), ratingMsg("2026-10-19T16:45:00Z")), label: "not a reply: invite, then the rating DM" },
+  },
+  {
+    text: "yes",
+    want: "in",
+    ctx: { ...INVITE_EN, replyContext: sent(ratingMsg(), inviteMsg("en")), label: "not a reply: rating DM, then the invite" },
+  },
+];
+
 interface OldModule {
   SYSTEM_PROMPT: string;
   userTurn: (text: string, ctx: Record<string, unknown>) => string;
@@ -290,7 +348,7 @@ async function main() {
 
   // The verdict log is the production line; the table below is the read.
   console.info = () => {};
-  const sets: Record<string, Case[]> = { main: CASES, heldout: HELD_OUT };
+  const sets: Record<string, Case[]> = { main: CASES, heldout: HELD_OUT, s2: SLICE_S2 };
   const setName = process.env.SET && sets[process.env.SET] ? process.env.SET : "main";
   const set = sets[setName];
   console.log(`── match-availability, ${which} prompt, ${MODEL}, set ${setName} (${set.length}), REPEAT=${REPEAT}, cap $${MAX_USD} ──`);

@@ -30,9 +30,20 @@ import {
   type PaymentClaimClassification,
   type PaymentClaimIntent,
 } from "../payment-claim";
+import { noReplyContext, renderReplyContext, type ReplyContext } from "../reply-context";
+
+// Mon 19 Oct 2026, 18:00 London.
+const NOW = new Date("2026-10-19T17:00:00Z");
+const PAY_CHASE_CTX: ReplyContext = {
+  now: NOW,
+  quoted: null,
+  recent: [{ at: new Date("2026-10-19T16:00:00Z"), text: "💷 Quick one Abid, your £8 is still outstanding", topic: "paymentCollection", match: null }],
+  earlier: null,
+};
 
 const OWED: OwedMatch = {
   matchId: "m-tue",
+  date: new Date("2026-10-20T19:00:00Z"),
   orgId: "org-sutton",
   activityName: "Tuesday 7-a-side",
   fee: 8,
@@ -252,6 +263,33 @@ describe("which match: the most recent one still owed", () => {
   it("nothing owed is null", () => {
     expect(pickClaimMatch([], "u-abid")).toBeNull();
   });
+
+  // Adversarial review of #336: a swipe-reply to match A's pay chase must
+  // never land on match B because B is more recent.
+  it("a swipe-reply naming an owed match acts on THAT match, not the most recent", () => {
+    const got = pickClaimMatch(
+      [row("a", "2026-10-13T19:00:00Z"), row("b", "2026-10-20T19:00:00Z")],
+      "u-abid",
+      "a",
+    );
+    expect(got?.matchId).toBe("a");
+    expect(got?.date).toEqual(new Date("2026-10-13T19:00:00Z"));
+  });
+
+  it("a quoted match that is not owed is ignored: the most recent owed one", () => {
+    expect(pickClaimMatch([row("a", "2026-10-13T19:00:00Z"), row("b", "2026-10-20T19:00:00Z")], "u-abid", "paid-already")?.matchId).toBe("b");
+  });
+
+  it("the collector's own match is never picked, even when quoted", () => {
+    expect(pickClaimMatch([row("a", "2026-10-13T19:00:00Z", { collectorId: "u-abid" }), row("b", "2026-10-20T19:00:00Z")], "u-abid", "a")?.matchId).toBe("b");
+  });
+});
+
+describe("the model sees WHICH match is owed: its date is on the owes line", () => {
+  it("'They owe: £8 for Tuesday 7-a-side, Tue 13 Oct, 20:00'", () => {
+    const ctx = paymentClaimContext({ ...OWED, date: new Date("2026-10-13T19:00:00Z") }, "Abid", noReplyContext(NOW));
+    expect(ctx.owes).toBe("£8 for Tuesday 7-a-side, Tue 13 Oct, 20:00");
+  });
 });
 
 describe("the classifier's contract", () => {
@@ -287,7 +325,7 @@ describe("the classifier's contract", () => {
     expect(await classifyPaymentClaim("Paid", { playerName: "Abid" }, call)).toBe("other");
   });
 
-  it("sends the whole message under a header, with the owed match and the last DM as context", async () => {
+  it("sends the whole message under a header, with the owed match and the chat context", async () => {
     let seen = "";
     const call = async (_s: string, user: string) => {
       seen = user;
@@ -295,13 +333,34 @@ describe("the classifier's contract", () => {
     };
     const got = await classifyPaymentClaim(
       "Paid\nsent it to Kemal",
-      { playerName: "Abid", owes: "£8 for Tuesday 7-a-side", lastBotDm: "💷 Quick one Abid, your £8 is still outstanding" },
+      { playerName: "Abid", owes: "£8 for Tuesday 7-a-side", replyContext: PAY_CHASE_CTX },
       call,
     );
     expect(got).toBe("paid");
     expect(paymentClaimBodyOf(seen)).toBe("Paid\nsent it to Kemal");
     expect(seen).toContain("£8 for Tuesday 7-a-side");
     expect(seen).toContain("still outstanding");
+    expect(seen).toContain(renderReplyContext(PAY_CHASE_CTX));
+  });
+
+  it("the user turn carries the shared block, never the old last-message line", () => {
+    const turn = buildPaymentClaimUserTurn("done", { playerName: "Abid", replyContext: PAY_CHASE_CTX });
+    expect(turn).toContain("NOW: Monday 19 October 2026, 18:00 (club time, London)");
+    expect(turn).toContain("MATCHTIME'S RECENT MESSAGES TO THEM");
+    expect(turn).not.toContain("MatchTime's last message to them");
+  });
+
+  it("no context handed in still says the time now and that nothing is known", () => {
+    const turn = buildPaymentClaimUserTurn("done", { playerName: "Abid" });
+    expect(turn).toMatch(/NOW: /);
+    expect(turn).toContain("none in the last 14 days");
+  });
+
+  it("the prompt reads the swipe-replied message, else the newest recent one", () => {
+    const p = buildPaymentClaimSystemPrompt();
+    expect(p).toMatch(/swipe-replied to/);
+    expect(p).toMatch(/newest/);
+    expect(p).not.toContain("MatchTime's last message");
   });
 
   it("the prompt names the not-a-claim shapes, in both languages", () => {
@@ -336,7 +395,6 @@ describe("the classifier is told who collects the money", () => {
       playerName: "Feroz",
       owes: "£5 for Football 9-a-side",
       collectorName: "Raihan",
-      lastBotDm: null,
     });
     expect(turn).toContain("Money collector: Raihan");
     expect(paymentClaimBodyOf(turn)).toBe("I bank transferred Raihan");
@@ -351,13 +409,13 @@ describe("the classifier is told who collects the money", () => {
     const ctx = paymentClaimContext(
       { ...OWED, collectorName: "Raihan", fee: 5, activityName: "Football 9-a-side" },
       "Feroz",
-      "x",
+      noReplyContext(NOW),
     );
     expect(ctx).toEqual({
       playerName: "Feroz",
-      owes: "£5 for Football 9-a-side",
+      owes: "£5 for Football 9-a-side, Tue 20 Oct, 20:00",
       collectorName: "Raihan",
-      lastBotDm: "x",
+      replyContext: noReplyContext(NOW),
     });
   });
 

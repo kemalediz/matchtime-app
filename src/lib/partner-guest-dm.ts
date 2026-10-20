@@ -25,6 +25,7 @@ import { REPLY_PRIORITY } from "./dm-reply-priority";
 import { withOrgAiBudget } from "./ai-budget";
 import { resolveDmSelfAttendance } from "./dm-self-attendance";
 import { loadMatchAvailabilityFacts } from "./match-availability-context";
+import { quoteForMatch, type QuotedBotMessage } from "./reply-context";
 import { findDmRegistrationTarget } from "./dm-registration-target";
 import { applyOutOfBandSelfAttendance } from "./out-of-band-self-attendance";
 import { withdrawGuest } from "./partner-guest";
@@ -89,6 +90,9 @@ export async function handleGuestDmOut(args: {
   /** His phone without "+", for the reply. */
   replyPhone: string | null;
   now?: Date;
+  /** The MatchTime message this DM swipe-replies to, resolved once by the
+   *  route, or null. */
+  quoted?: QuotedBotMessage | null;
 }): Promise<GuestDmResult> {
   const now = args.now ?? new Date();
 
@@ -129,7 +133,13 @@ export async function handleGuestDmOut(args: {
   const place = await findLiveGuestPlace(args.userId);
   if (!place) return null;
   // What MatchTime last said to him and where he stands for the guest game.
-  const facts = await loadMatchAvailabilityFacts({ userId: args.userId, matchId: place.matchId, phone: args.replyPhone });
+  const facts = await loadMatchAvailabilityFacts({
+    userId: args.userId,
+    matchId: place.matchId,
+    phone: args.replyPhone,
+    // A quote about another match never steers his guest game.
+    quoted: quoteForMatch(args.quoted, place.matchId),
+  });
   const resolution = await withOrgAiBudget(place.fromOrgId, () =>
     resolveDmSelfAttendance({
       text: args.text,

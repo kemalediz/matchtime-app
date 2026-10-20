@@ -13,6 +13,9 @@
  *   - "sorry mate, away" after the invite, already in: dropped.
  *   - a bare "yes" whose last DM was the rating request: nothing written.
  *     A wrong "in" puts somebody in a squad they never joined.
+ *   - quoted-reply context (slice S2): "yes" swipe-replying to the OLDER
+ *     invite, the rating DM newer: registered (the quote is what it
+ *     answers); "yes" swipe-replying to the rating DM: nothing written.
  *
  * Once each (Kemal's cheap test plan). Opt-in: only runs when
  * MT_SIM_LIVE_LLM=1, on the developer key.
@@ -49,25 +52,38 @@ const RATING =
   test.describe.configure({ mode: "serial" });
   test.beforeEach(resetDb);
 
-  async function postDm(request: APIRequestContext, body: string) {
+  async function postDm(request: APIRequestContext, body: string, extra: Record<string, unknown> = {}) {
     const res = await request.post("/api/whatsapp/dm-reply", {
       headers: { "x-api-key": E2E.WHATSAPP_API_KEY },
-      data: { phone: PHONE.fresh, body, waMessageId: `false_447700900009@c.us_LIVEAVAIL${Date.now()}`, authorName: null },
+      data: { phone: PHONE.fresh, body, waMessageId: `false_447700900009@c.us_LIVEAVAIL${Date.now()}`, authorName: null, ...extra },
     });
     expect(res.status(), await res.text()).toBe(200);
     return res.json();
   }
 
-  /** MatchTime's DMs to Ian, oldest first, a minute apart. */
-  async function lastDms(db: TestDb, texts: string[]) {
+  /** MatchTime's DMs to Ian, oldest first, a minute apart, each acked
+   *  (its `botjob-<id>` row with the bare stanza id a quote carries).
+   *  Returns those stanza ids, in the same order. */
+  async function lastDms(db: TestDb, texts: string[]): Promise<string[]> {
+    const stanzas: string[] = [];
     let i = 0;
     for (const text of texts) {
+      const id = `live-avail-${Date.now()}-${i}`;
+      const mins = String(10 - i++);
       await db.run(
         `INSERT INTO "BotJob" (id, "orgId", kind, phone, text, "createdAt", "sentAt")
          VALUES ($1, $2, 'dm', $3, $4, NOW() - ($5 || ' minutes')::interval, NOW() - ($5 || ' minutes')::interval)`,
-        [`live-avail-${Date.now()}-${i}`, ORG_ID, DM_PHONE, text, String(10 - i++)],
+        [id, ORG_ID, DM_PHONE, text, mins],
       );
+      const stanza = `3EB0${id}`;
+      await db.run(
+        `INSERT INTO "SentNotification" (id, key, kind, "waMessageId", "waStanzaId", "createdAt")
+         VALUES ($1, $2, 'dm', $3, $4, NOW() - ($5 || ' minutes')::interval)`,
+        [`sn-${id}`, `botjob-${id}`, `true_${DM_PHONE}@s.whatsapp.net_${stanza}`, stanza, mins],
+      );
+      stanzas.push(stanza);
     }
+    return stanzas;
   }
   async function preRegister(db: TestDb) {
     await db.run(
@@ -107,6 +123,25 @@ const RATING =
     await lastDms(db, [await invite(db), RATING]);
     const r = await postDm(request, "yes");
     console.log(`[match-availability-live] NEGATIVE: ${JSON.stringify(r)}`);
+    expect(r.handled).not.toBe("dm-self-attendance");
+    expect(await statusOf(db)).toBeNull();
+  });
+
+  test("SWIPE: 'yes' quoting the older invite, the rating DM newer, registers him", async ({ request, db }) => {
+    const inv = await invite(db);
+    const [inviteId] = await lastDms(db, [inv, RATING]);
+    const r = await postDm(request, "yes", { quotedMessageId: inviteId, quotedText: inv, quotedFromMatchTime: true });
+    console.log(`[match-availability-live] SWIPE IN: ${JSON.stringify(r)}`);
+    expect(r.handled).toBe("dm-self-attendance");
+    expect(r.via).toBe("llm");
+    expect(r.decision).toBe("in");
+    expect((await statusOf(db))?.status).toBe("CONFIRMED");
+  });
+
+  test("SWIPE NEGATIVE: 'yes' quoting the rating DM, the invite newer, writes nothing", async ({ request, db }) => {
+    const [ratingId] = await lastDms(db, [RATING, await invite(db)]);
+    const r = await postDm(request, "yes", { quotedMessageId: ratingId, quotedText: RATING, quotedFromMatchTime: true });
+    console.log(`[match-availability-live] SWIPE NEGATIVE: ${JSON.stringify(r)}`);
     expect(r.handled).not.toBe("dm-self-attendance");
     expect(await statusOf(db)).toBeNull();
   });
