@@ -83,15 +83,17 @@ vi.mock("@/lib/db", () => ({
 
 import { composeChaseText, composeChaseFromMatch, CHASE_COMPOSER_CALL } from "@/lib/message-analyzer";
 import { CHASE_LEAD_SYSTEM, chaseLeadUserTurn, chaseFallbackLead } from "@/lib/chase-lead";
-import { buildSquadRosterBlock } from "@/lib/scheduler-copy";
 import { t } from "@/lib/i18n/t";
 
-const ROSTER_EN = buildSquadRosterBlock({
-  confirmed: NAMES.slice(0, 6).map((name) => ({ name })),
-  bench: [{ name: NAMES[6] }],
-  maxPlayers: 14,
-  lang: "en",
-});
+/** The squad list of the post: 6 of 14 in, so rows 7 to 14 are drums. */
+const ROSTER_EN = [
+  "*Playing Tue 8 Sept:*",
+  ...NAMES.slice(0, 6).map((n, i) => `${i + 1}. ${n}`),
+  ...Array.from({ length: 8 }, (_, i) => `${i + 7}. 🥁`),
+  "",
+  "*Bench (1):*",
+  `1. ${NAMES[6]}`,
+].join("\n");
 
 function userText(a: CreateArgs): string {
   const c = a.messages[0].content;
@@ -110,7 +112,7 @@ beforeEach(() => {
 });
 
 describe("the post: the model's line over the squad list code renders", () => {
-  it("is the lead, a blank line, then buildSquadRosterBlock", async () => {
+  it("is the lead, a blank line, then every place: the names, a 🥁 per open one, the bench", async () => {
     const text = await composeChaseText({ groupId: "g1", kind: "daily-in-list", matchId: "m1", now: NOW });
     expect(text).toBe(`🗓 *Tuesday 7-a-side* needs *8 more*. Say *IN* ⚽\n\n${ROSTER_EN}`);
   });
@@ -118,6 +120,7 @@ describe("the post: the model's line over the squad list code renders", () => {
   it("leaves the list out when the group has just seen it", async () => {
     const text = await composeChaseText({ groupId: "g1", kind: "daily-in-list", matchId: "m1", now: NOW, withRoster: false });
     expect(text).toBe("🗓 *Tuesday 7-a-side* needs *8 more*. Say *IN* ⚽");
+    expect(text).not.toContain("🥁");
   });
 
   it("reads the match the scheduler is chasing, by id", async () => {
@@ -129,8 +132,10 @@ describe("the post: the model's line over the squad list code renders", () => {
     ORG.language = "tr";
     reply = () => ({ lead: "🗓 *Tuesday 7-a-side* için *8 kişi* daha lazım, *VARIM* yazın ⚽" });
     const text = await composeChaseText({ groupId: "g1", kind: "daily-in-list", matchId: "m1", now: NOW });
-    expect(text).toContain(t("tr").roster_confirmed_header({ confirmed: 6, maxPlayers: 14 }));
-    expect(text).toContain(t("tr").bench_header({ count: 1 }));
+    expect(text).toContain("*8 Eylül Salı oynayanlar:*\n1. Ali Kaya");
+    expect(text).toContain("6. Ben Cole\n7. 🥁");
+    expect(text).toContain("14. 🥁\n\n" + t("tr").bench_header({ count: 1 }));
+    expect(text).not.toContain("*Playing");
   });
 
   it("adds the server's format-switch line when it applies", async () => {
@@ -139,7 +144,7 @@ describe("the post: the model's line over the squad list code renders", () => {
     const now = new Date(KICKOFF.getTime() - 20 * 3600_000);
     reply = () => ({ lead: "Need *4 more* for Tue 8 Sept, say *IN*." });
     const text = await composeChaseText({ groupId: "g1", kind: "daily-in-list", matchId: "m1", now });
-    expect(text).toMatch(/\n\nIf we don't find 4 more, we could switch to 5-a-side \(10 players\)[^\n]*\n\n\*Confirmed \(10\/14\):\*/);
+    expect(text).toMatch(/\n\nIf we don't find 4 more, we could switch to 5-a-side \(10 players\)[^\n]*\n\n\*Playing tonight:\*\n1\. Ali Kaya[\s\S]*\n11\. 🥁\n12\. 🥁\n13\. 🥁\n14\. 🥁$/);
   });
 });
 
