@@ -40,7 +40,8 @@
  * Each message carries its time, what it was about (from its key, in code
  * made words, with its match) and its words, capped. `renderReplyContext`
  * is the one block every caller shows, in the same wording; the group and
- * HQ slices reuse it.
+ * HQ slices reuse it. Slice S3 (2026-10-20) gave it to the other four DM
+ * classifiers: fee-confirm, roster-survey, dm-intent and dm-qa.
  *
  * DB-free: the client is an argument (a structural type Prisma satisfies),
  * so the classifier modules and their dry runs can import it without
@@ -326,6 +327,26 @@ export function quoteForMatch(quoted: QuotedBotMessage | null | undefined, match
   if (!quoted) return null;
   if (quoted.matchId && quoted.matchId !== matchId) return null;
   return quoted;
+}
+
+/**
+ * The same rule for a path that acts on a CLUB rather than on one match
+ * (the admin's DM commands, the scoped Q&A; slice S3). `quotedOrgId` is the
+ * club of the quote's match. The quote is kept when it names no match, or
+ * a match of one of `orgIds` (the clubs this path may act on), and then
+ * that club is the one to act on (`orgId`). A quote whose match is another
+ * club's is dropped, and `orgId` is null: the path picks its club as it
+ * always did.
+ */
+export function quoteForClubs(
+  quoted: QuotedBotMessage | null | undefined,
+  quotedOrgId: string | null | undefined,
+  orgIds: readonly string[],
+): { quoted: QuotedBotMessage | null; orgId: string | null } {
+  if (!quoted) return { quoted: null, orgId: null };
+  if (!quoted.matchId) return { quoted, orgId: null };
+  if (quotedOrgId && orgIds.includes(quotedOrgId)) return { quoted, orgId: quotedOrgId };
+  return { quoted: null, orgId: null };
 }
 
 /** Nothing known but the time. */

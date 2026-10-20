@@ -9,26 +9,28 @@
  *
  *   REPEAT=1 node --env-file=.env ./node_modules/.bin/tsx scripts/dryrun-roster-survey.ts
  *   SET=month REPEAT=1 node --env-file=.env ./node_modules/.bin/tsx scripts/dryrun-roster-survey.ts
+ *   SET=s3 REPEAT=1 node --env-file=.env ./node_modules/.bin/tsx scripts/dryrun-roster-survey.ts
  *
  * `SET=month` runs only the time-bounded yes cases (the 2026-10-19 bug);
- * the default runs every case, English and Turkish.
+ * `SET=s3` the swipe-reply and recent-messages cases (quoted-reply context,
+ * 2026-10-20); the default runs every other case, English and Turkish,
+ * each read against the check-in as MatchTime's newest message to them.
  *
  * Spends ANTHROPIC_API_KEY_DEV only (refuses without it). Touches no
  * database and sends nothing: it imports the DB-free classifier and prints
  * what came back, with a running cost and a hard stop at MAX_USD.
  */
-import Anthropic from "@anthropic-ai/sdk";
 import { spendDevApiKeyOrExit } from "../e2e/helpers/dev-api-key.ts";
 import {
   classifyRosterReply,
   type RosterClassification,
   type RosterReplyContext,
 } from "../src/lib/roster-survey-classifier.ts";
-import { costOf, systemBlock } from "../src/lib/pipeline/llm.ts";
-import { HAIKU_MODEL, HAIKU_SHORT_ANSWER_MAX_TOKENS, HAIKU_THINKING } from "../src/lib/models.ts";
+import { buildPayChaseDm, buildRatingDm, buildRosterSurveyInviteDm } from "../src/lib/dm-copy.ts";
+import { pickRecentBotMessages, type ContextMessage, type ReplyContext } from "../src/lib/reply-context.ts";
+import { HAIKU_CLASSIFIER_ARM, meter } from "./dm-dryrun-meter.ts";
 
 const REPEAT = Number(process.env.REPEAT ?? "1") || 1;
-const MODEL = HAIKU_MODEL;
 /** Hard cap for this run, in US dollars. */
 const MAX_USD = 0.2;
 
@@ -37,10 +39,41 @@ interface Case {
   text: string;
   want: Category;
   lang: "en" | "tr";
+  /** The chat context; absent: the check-in, as the newest message. */
+  ctx?: ReplyContext;
+  note?: string;
 }
 
-const en = (text: string, want: Category): Case => ({ text, want, lang: "en" });
-const tr = (text: string, want: Category): Case => ({ text, want, lang: "tr" });
+const en = (text: string, want: Category, ctx?: ReplyContext, note?: string): Case => ({ text, want, lang: "en", ctx, note });
+const tr = (text: string, want: Category, ctx?: ReplyContext, note?: string): Case => ({ text, want, lang: "tr", ctx, note });
+
+// ── The chat context, as `loadDmReplyContext` builds it ──
+/** Mon 19 Oct 2026, 18:00 London. */
+const NOW = new Date("2026-10-19T17:00:00Z");
+/** The check-in went out Sunday evening. */
+const CHECK_IN_AT = new Date("2026-10-18T17:00:00Z");
+const sent = (...msgs: ContextMessage[]): ReplyContext => ({ now: NOW, quoted: null, ...pickRecentBotMessages(msgs, NOW) });
+const quoting = (m: ContextMessage): ReplyContext => ({ now: NOW, quoted: m, recent: [], earlier: null });
+/** The check-in itself, from the real composer: a queued BotJob (words, no topic). */
+const checkIn = (lang: "en" | "tr"): ContextMessage => ({
+  at: CHECK_IN_AT,
+  text: buildRosterSurveyInviteDm({ firstName: "Ali", orgName: "Sutton FC", lang }),
+  topic: null,
+  match: null,
+});
+const MATCH = "Tuesday 7-a-side, Tue 13 Oct, 20:00";
+const payChase = (lang: "en" | "tr"): ContextMessage => ({
+  at: new Date("2026-10-19T16:00:00Z"),
+  text: buildPayChaseDm({ playerName: "Ali", dayNum: 2, fee: 8, activityName: "Tuesday 7-a-side", url: "https://mt.example/s/pay", methods: ["card", "direct"], collectorName: "Kemal Ediz", lang }),
+  topic: "paymentCollection",
+  match: MATCH,
+});
+const ratingDm = (lang: "en" | "tr"): ContextMessage => ({
+  at: new Date("2026-10-19T09:00:00Z"),
+  text: buildRatingDm({ activityName: "Tuesday 7-a-side", dateLabel: lang === "tr" ? "13 Ekim Salı" : "Tue 13 Oct", mvpLabel: lang === "tr" ? "Maçın Adamı" : "Man of the Match", rateUrl: "https://mt.example/s/rate", statsUrl: "https://mt.example/s/stats", lang }),
+  topic: "playerRating",
+  match: MATCH,
+});
 
 /** A yes for a stated stretch (the 2026-10-19 bug). None of these is an
  *  example in the prompt, so a pass is the rule, not an echo. */
@@ -111,66 +144,58 @@ const CASES: Case[] = [
   tr("kimsin sen?", "unclear"),
 ];
 
+/**
+ * SLICE S3 (quoted-reply context): which message the reply answers. A
+ * bare "yes" swipe-replied to another message, or after a newer message
+ * about something else, is not an answer to the check-in; words that
+ * plainly answer it are, whatever came after.
+ */
+const SLICE_S3: Case[] = [
+  en("yes", "in", quoting(checkIn("en")), "swipe-reply to the check-in, a pay chase came after"),
+  en("yes", "unclear", quoting(payChase("en")), "swipe-reply to a pay chase"),
+  en("yes", "unclear", sent(checkIn("en"), ratingDm("en")), "not a reply: the check-in, then a rating request"),
+  en("still keen, count me in going forward", "in", sent(checkIn("en"), ratingDm("en")), "not a reply: the words answer the check-in"),
+  en("I'm done with football, take me off", "out", sent(checkIn("en"), payChase("en")), "not a reply: the words answer the check-in"),
+  tr("evet", "in", quoting(checkIn("tr")), "swipe-reply to the check-in"),
+  tr("evet", "unclear", quoting(payChase("tr")), "swipe-reply to a pay chase"),
+  tr("bu ay varım", "in", sent(checkIn("tr"), ratingDm("tr")), "not a reply: the words answer the check-in"),
+];
+
 async function main() {
-  const key = spendDevApiKeyOrExit("scripts/dryrun-roster-survey.ts");
-  const anthropic = new Anthropic({ apiKey: key });
-  let calls = 0;
-  let usd = 0;
-  const tokens = { input: 0, output: 0, cacheWrite: 0, cacheRead: 0 };
+  spendDevApiKeyOrExit("scripts/dryrun-roster-survey.ts");
+  const m = meter("scripts/dryrun-roster-survey.ts", HAIKU_CLASSIFIER_ARM, MAX_USD);
+  const MODEL = HAIKU_CLASSIFIER_ARM.model;
+  const usd = () => m.usd();
+  const call = m.call;
 
-  /** The production call's exact shape, with the usage recorded so the
-   *  cap is enforced on real cost. */
-  const call = async (system: string, user: string): Promise<string> => {
-    if (usd >= MAX_USD) throw new Error(`cost cap $${MAX_USD} reached`);
-    const r = await anthropic.messages.create({
-      model: MODEL,
-      max_tokens: HAIKU_SHORT_ANSWER_MAX_TOKENS,
-      ...HAIKU_THINKING,
-      system: systemBlock(system),
-      messages: [{ role: "user", content: user }],
-    });
-    calls++;
-    const u = r.usage;
-    tokens.input += u.input_tokens;
-    tokens.output += u.output_tokens;
-    tokens.cacheWrite += u.cache_creation_input_tokens ?? 0;
-    tokens.cacheRead += u.cache_read_input_tokens ?? 0;
-    usd =
-      costOf(MODEL, {
-        inputTokens: tokens.input,
-        outputTokens: tokens.output,
-        cacheReadTokens: tokens.cacheRead,
-        cacheWriteTokens: tokens.cacheWrite,
-        cacheWrite1hTokens: tokens.cacheWrite,
-      }) ?? Infinity;
-    const block = r.content.find((b) => b.type === "text");
-    return block && block.type === "text" ? block.text : "";
-  };
-
-  const set = process.env.SET === "month" ? MONTH : CASES;
+  const set = process.env.SET === "month" ? MONTH : process.env.SET === "s3" ? SLICE_S3 : CASES;
   console.log(`── roster check-in classifier, ${MODEL}, set ${process.env.SET ?? "all"} (${set.length} cases), REPEAT=${REPEAT}, cap $${MAX_USD} ──`);
   let bad = 0;
   for (const c of set) {
-    const ctx: RosterReplyContext = { clubName: "Sutton FC", playerName: "Ali" };
+    const ctx: RosterReplyContext = {
+      clubName: "Sutton FC",
+      playerName: "Ali",
+      checkInSentAt: CHECK_IN_AT,
+      replyContext: c.ctx ?? sent(checkIn(c.lang)),
+    };
     const got: string[] = [];
+    const reasons: string[] = [];
     for (let i = 0; i < REPEAT; i++) {
-      if (usd >= MAX_USD) {
-        console.error(`\nSTOPPED: cost cap $${MAX_USD} reached after ${calls} calls.`);
+      if (usd() >= MAX_USD) {
+        console.error(`\nSTOPPED: cost cap $${MAX_USD} reached after ${m.calls()} calls.`);
         process.exit(2);
       }
       const r = await classifyRosterReply(c.text, ctx, call);
       got.push(`${r.category}@${r.confidence.toFixed(2)}`);
+      reasons.push(r.reasoning);
     }
     const agreed = got.filter((g) => g.startsWith(`${c.want}@`)).length;
     const pass = agreed === REPEAT;
     if (!pass) bad++;
-    console.log(`  ${pass ? "✓" : "✗"} ${agreed}/${REPEAT}  ${c.lang} want=${c.want.padEnd(7)} got=[${got.join(", ")}]  ${JSON.stringify(c.text)}`);
+    console.log(`  ${pass ? "✓" : "✗"} ${agreed}/${REPEAT}  ${c.lang} want=${c.want.padEnd(7)} got=[${got.join(", ")}]  ${JSON.stringify(c.text)}${c.note ? ` (${c.note})` : ""}`);
+    if (!pass) for (const why of reasons) console.log(`      reasoning: ${JSON.stringify(why)}`);
   }
-  console.log(
-    `\n${set.length - bad}/${set.length} cases fully agreed. ${calls} live calls. ` +
-      `tokens: in ${tokens.input}, out ${tokens.output}, cache write ${tokens.cacheWrite}, cache read ${tokens.cacheRead}. ` +
-      `cost ≈ $${usd.toFixed(4)}`,
-  );
+  console.log(`\n${set.length - bad}/${set.length} cases fully agreed. ${m.summary()}`);
   process.exit(bad > 0 ? 1 : 0);
 }
 

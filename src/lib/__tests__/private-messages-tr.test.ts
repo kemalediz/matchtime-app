@@ -23,7 +23,6 @@ import { parseFeeReply } from "../payments";
 import {
   buildFeeConfirmPrompt,
   buildRosterSurveyClarification,
-  feeConfirmQuestionForPrompt,
   rosterSurveyClarificationProbe,
 } from "../dm-copy";
 import { readBenchDmReply, readTentativeFastPath } from "../dm-reply-words";
@@ -200,25 +199,18 @@ describe("parseFeeReply, Turkish totals", () => {
   });
 });
 
-describe("the fee prompt the model reads is built from the message the collector got", () => {
-  it("English: byte for byte the line the prompt always quoted", () => {
-    expect(feeConfirmQuestionForPrompt("en")).toBe(
-      'Got it — £X per player for <match>, N players to charge. Reply ✅ (or \\"yes\\") to send everyone their pay link, or send a different amount to change it.',
-    );
-    expect(FEE_REPLY_SYSTEM_PROMPT).toBe(buildFeeReplySystemPrompt("en"));
-    expect(FEE_REPLY_SYSTEM_PROMPT).toContain(feeConfirmQuestionForPrompt("en"));
+describe("the fee prompt the model reads (rewritten whole, quoted-reply context S3, 2026-10-20)", () => {
+  it("is one prompt for every club, with the Turkish examples beside the English", () => {
+    expect(FEE_REPLY_SYSTEM_PROMPT).toBe(buildFeeReplySystemPrompt());
+    expect(FEE_REPLY_SYSTEM_PROMPT).toContain('"harika maç 👍"');
+    expect(FEE_REPLY_SYSTEM_PROMPT).toContain('"great game 👍"');
   });
-  it("Turkish: quotes the Turkish question and names the Turkish banter case", () => {
-    const tr = buildFeeReplySystemPrompt("tr");
-    expect(tr).toContain(feeConfirmQuestionForPrompt("tr"));
-    expect(feeConfirmQuestionForPrompt("tr")).toContain("£X");
-    expect(tr).toContain('"harika maç 👍"');
-    expect(tr).not.toContain("Got it — £X");
-    // The question the model is shown is the one the collector was sent.
+  it("the question's own words now reach the model in the user turn (the chat context), not as a template", () => {
+    // The collector is sent this; the classifier is shown it among
+    // MatchTime's recent messages (reply-context-s3.test.ts).
     const sent = buildFeeConfirmPrompt({ perPlayer: 8, headcount: 13, matchName: "Cuma Maçı", wasTotal: false, lang: "tr" });
-    expect(sent.replace(/\*/g, "").replace(/\n\n/g, " ")).toBe(
-      feeConfirmQuestionForPrompt("tr").replace(/\\"/g, '"').replace("£X", "£8").replace("<match>", "Cuma Maçı").replace("N kişiden", "13 kişiden"),
-    );
+    expect(sent).toContain("£8");
+    expect(FEE_REPLY_SYSTEM_PROMPT).not.toContain("£X");
   });
 });
 

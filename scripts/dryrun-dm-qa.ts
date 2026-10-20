@@ -10,17 +10,30 @@
  *
  *   REPEAT=5 npx tsx --env-file=.env scripts/dryrun-dm-qa.ts   # needs ANTHROPIC_API_KEY_DEV
  *   LANG_UNDER_TEST=en REPEAT=2 npx tsx ... scripts/dryrun-dm-qa.ts   # English control
+ *   SET=s3 REPEAT=1 npx tsx ... scripts/dryrun-dm-qa.ts               # swipe-reply questions
+ *   ARM=haiku REPEAT=1 npx tsx ... scripts/dryrun-dm-qa.ts            # Haiku 5.5, for its later move
+ *
+ * `SET=s3` (quoted-reply context, 2026-10-20) asks short questions
+ * swipe-replied to a MatchTime DM ("what time?" to the invite), with the
+ * chat-context block the route now sends. `ARM=haiku` runs the same prompt
+ * on Haiku 5.5 instead of production's Sonnet 5 (an extra arm; dm-qa stays
+ * on Sonnet until its own model move).
  *
  * No database, no DM, no BotJob: the CONTEXT is built by the real
  * `formatScopedContext` from fixture rows, and the answers are printed.
+ * Every call is metered, with a hard stop at MAX_USD.
  */
 import { spendDevApiKeyOrExit } from "../e2e/helpers/dev-api-key.ts";
-import Anthropic from "@anthropic-ai/sdk";
 import { composeScopedAnswer, formatScopedContext, type ScopedContextInput } from "../src/lib/dm-qa.ts";
-import { SONNET_MODEL } from "../src/lib/models.ts";
+import { buildPayChaseDm, buildRatingDm } from "../src/lib/dm-copy.ts";
+import { noReplyContext, type ContextMessage, type ReplyContext } from "../src/lib/reply-context.ts";
+import { HAIKU_DM_QA_ARM, SONNET_DM_QA_ARM, meter } from "./dm-dryrun-meter.ts";
 
 const LANG = process.env.LANG_UNDER_TEST === "en" ? "en" : "tr";
 const REPEAT = Number(process.env.REPEAT ?? "5") || 5;
+/** Production's arm (Sonnet 5, thinking off, 600 tokens), or Haiku 5.5. */
+const ARM = process.env.ARM === "haiku" ? HAIKU_DM_QA_ARM : SONNET_DM_QA_ARM;
+const MAX_USD = 0.5;
 
 /**
  * The CONTEXT, built by the REAL formatter (`formatScopedContext`) from
@@ -66,14 +79,46 @@ const FIXTURE: ScopedContextInput = {
     attendanceLeaderboard: [],
     eloTop: [],
     eloBottom: [],
+    inactivePlayersHidden: 0,
   },
 };
 
 const CONTEXT_TR = formatScopedContext(FIXTURE, "tr");
 const CONTEXT_EN = formatScopedContext(FIXTURE, "en");
 
+// ── The chat context, as `loadDmReplyContext` builds it (slice S3) ──
+/** Thu 17 Sep 2026, 12:00 London: the day before the Friday match. */
+const NOW = new Date("2026-09-17T11:00:00Z");
+const quoting = (m: ContextMessage): ReplyContext => ({ now: NOW, quoted: m, recent: [], earlier: null });
+const MATCH_LABEL = "Cuma Maçı, Fri 18 Sep, 21:00";
+/** The recruit chase for the upcoming match, a scheduler DM. */
+const invite = (lang: "en" | "tr"): ContextMessage => ({
+  at: new Date("2026-09-17T08:00:00Z"),
+  text:
+    lang === "tr"
+      ? "👋 Mehmet, *Cuma Maçı* için kadroyu kuruyoruz: 18 Eylül Cuma, 21:00. 3 yer kaldı.\n\nGeliyor musun? *VARIM* yaz ya da bu mesaja 👍 bırak."
+      : "👋 Mehmet, we're putting the squad together for *Cuma Maçı* on Fri 18 Sep, 21:00. 3 spots left.\n\nPlaying? Reply *IN* or tap 👍 on this message.",
+  topic: "attendance",
+  match: MATCH_LABEL,
+});
+/** The rating request after the 11 Sep match (2 - 2). */
+const ratingDm = (lang: "en" | "tr"): ContextMessage => ({
+  at: new Date("2026-09-11T21:30:00Z"),
+  text: buildRatingDm({ activityName: "Cuma Maçı", dateLabel: lang === "tr" ? "11 Eylül Cuma" : "Fri 11 Sep", mvpLabel: lang === "tr" ? "Maçın Adamı" : "Man of the Match", rateUrl: "https://mt.example/s/rate", statsUrl: "https://mt.example/s/stats", lang }),
+  topic: "playerRating",
+  match: "Cuma Maçı, Fri 11 Sep, 21:00",
+});
+const payChase = (lang: "en" | "tr"): ContextMessage => ({
+  at: new Date("2026-09-16T17:00:00Z"),
+  text: buildPayChaseDm({ playerName: "Mehmet Yılmaz", dayNum: 2, fee: 6, activityName: "Cuma Maçı", url: "https://mt.example/s/pay", methods: ["card", "direct"], collectorName: "Erdal Özkan", lang }),
+  topic: "paymentCollection",
+  match: "Cuma Maçı, Fri 11 Sep, 21:00",
+});
+
 interface Q {
   q: string;
+  /** The chat context; absent: nothing known (the time now). */
+  ctx?: ReplyContext;
   /** What a correct answer must contain (any of). */
   mustContainAny?: string[];
   /** What it must never contain. */
@@ -108,6 +153,21 @@ const QUESTIONS_EN: Q[] = [
   { q: "tell me a joke", mustContainAny: ["Cuma Futbol"] },
 ];
 
+/** SLICE S3: short questions whose subject is the message they quote. */
+const S3_EN: Q[] = [
+  { q: "what time?", ctx: quoting(invite("en")), mustContainAny: ["21:00", "9pm", "9 pm"] },
+  { q: "where is it?", ctx: quoting(invite("en")), mustContainAny: ["Sim Arena"] },
+  { q: "who won?", ctx: quoting(ratingDm("en")), mustContainAny: ["2 - 2", "2-2", "draw"] },
+  // Money stays declined in a DM (Kemal has not ruled): no amount, no link.
+  { q: "how much do I owe?", ctx: quoting(payChase("en")), mustNot: /£\s?\d|https?:\/\// },
+];
+const S3_TR: Q[] = [
+  { q: "saat kaçta?", ctx: quoting(invite("tr")), mustContainAny: ["21:00"] },
+  { q: "nerede?", ctx: quoting(invite("tr")), mustContainAny: ["Sim Arena"] },
+  { q: "kim kazandı?", ctx: quoting(ratingDm("tr")), mustContainAny: ["2 - 2", "2-2", "berabere"] },
+  { q: "ne kadar borcum var?", ctx: quoting(payChase("tr")), mustNot: /£\s?\d|https?:\/\// },
+];
+
 /** Anything that looks like markup or a tool call the model invented. */
 const FAKE_MARKUP = /<\/?[a-z_]+[\s>:]|\bUser\s*:/i;
 
@@ -135,13 +195,14 @@ async function main() {
   // It refuses rather than falling back: a run that cannot reach the
   // model proves nothing, and a run on the production key hides what
   // MatchTime actually costs (MDs/llm-spend-september-2026.md).
-  const key = spendDevApiKeyOrExit("scripts/dryrun-dm-qa.ts");
-  const anthropic = new Anthropic({ apiKey: key });
-  const questions = LANG === "tr" ? QUESTIONS_TR : QUESTIONS_EN;
+  spendDevApiKeyOrExit("scripts/dryrun-dm-qa.ts");
+  const m = meter("scripts/dryrun-dm-qa.ts", ARM, MAX_USD);
+  const s3 = process.env.SET === "s3";
+  const questions = s3 ? (LANG === "tr" ? S3_TR : S3_EN) : LANG === "tr" ? QUESTIONS_TR : QUESTIONS_EN;
   const context = LANG === "tr" ? CONTEXT_TR : CONTEXT_EN;
 
   const counts = { calls: 0, turkish: 0, englishTells: 0, dashes: 0, formal: 0, abi: 0, gluedSuffix: 0, pluralYou: 0, fakeMarkup: 0, rawFakeMarkup: 0, capsStatus: 0, wrongDay: 0, englishPhrase: 0, facts: 0, factChecks: 0, leak: 0, apology: 0 };
-  console.log(`── DM Q&A dry run, language=${LANG}, REPEAT=${REPEAT} ──`);
+  console.log(`── DM Q&A dry run, ${ARM.model}, set ${s3 ? "s3" : "main"}, language=${LANG}, REPEAT=${REPEAT}, cap $${MAX_USD} ──`);
   console.log(`CONTEXT:\n${context}`);
   for (const item of questions) {
     console.log(`\nQ: ${item.q}`);
@@ -152,24 +213,16 @@ async function main() {
         askerName: "Mehmet Yılmaz",
         orgName: "Cuma Futbol",
         lang: LANG,
+        replyContext: item.ctx ?? noReplyContext(NOW),
         call: async (system, user) => {
-          const resp = await anthropic.messages.create({
-            // MIRRORS `src/lib/dm-qa.ts` EXACTLY, and has to: this
-            // harness exists to measure the real call, so a model or
-            // a thinking posture that differs from production makes
-            // every flag count below a measurement of something the
-            // players never see.
-            model: SONNET_MODEL,
-            max_tokens: 600,
-            thinking: { type: "disabled" },
-            system,
-            messages: [{ role: "user", content: user }],
-          });
-          const block = resp.content.find((c) => c.type === "text");
-          const text = block && block.type === "text" ? block.text : null;
+          // MIRRORS `src/lib/dm-qa.ts` EXACTLY on the Sonnet arm (model,
+          // 600 tokens, thinking off, the cached system block), and has
+          // to: a call that differs from production makes every flag
+          // count below a measurement of something players never see.
+          const r = await m.callFull(system, user);
           // Counted on the RAW model text, before the clean-up strips it.
-          if (text && FAKE_MARKUP.test(text)) counts.rawFakeMarkup++;
-          return { text, truncated: resp.stop_reason === "max_tokens" };
+          if (r.text && FAKE_MARKUP.test(r.text)) counts.rawFakeMarkup++;
+          return r;
         },
       });
       counts.calls++;
@@ -234,6 +287,7 @@ async function main() {
   }
   console.log(`\n── counts ──`);
   console.log(JSON.stringify(counts, null, 2));
+  console.log(m.summary());
 }
 
 main().catch((e) => {

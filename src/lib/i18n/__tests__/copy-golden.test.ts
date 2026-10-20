@@ -523,7 +523,7 @@ import { composeJoinDm } from "../../join-dm";
 import { detailsFollowUpQuestion } from "../../onboarding-parse";
 import { buildBenchUpgradeReply } from "../../bench-upgrade-ack";
 import { resolveReminderPhrase } from "../../reminder-time";
-import { FEE_REPLY_SYSTEM_PROMPT, buildFeeReplySystemPrompt } from "../../fee-confirm";
+import { FEE_REPLY_SYSTEM_PROMPT } from "../../fee-confirm";
 import { buildPickMessage, buildPickListChanged } from "../../organiser-pick-rules";
 import { buildGroupAskPost } from "../../admin-group-ask-group-rules";
 import { benchClause } from "../../squad-count-line";
@@ -1657,7 +1657,7 @@ function cases(lang: Lang): Case[] {
   }
 
   // ── R98 fee-confirm.ts: the prompt that embeds the collector prompt ─
-  add("R98 FEE_REPLY_SYSTEM_PROMPT", lang === "en" ? FEE_REPLY_SYSTEM_PROMPT : buildFeeReplySystemPrompt(lang));
+  add("R98 FEE_REPLY_SYSTEM_PROMPT", FEE_REPLY_SYSTEM_PROMPT);
 
   // ── Phase 3: the private messages, extracted as pure builders
   //    (dm-copy.ts, 2026-09-17) and pinned HERE, in English, before any
@@ -2445,6 +2445,10 @@ function render(lang: Lang): string {
 /** Cases under a migrated row whose text is the SAME in every language by
  *  design, each with its reason. */
 const LANGUAGE_FREE_CASES = new Set([
+  // The fee-reply model's prompt is one prompt for every club since the
+  // quoted-reply context S3 rewrite (2026-10-20): English and Turkish
+  // examples side by side, the question's own words in the user turn.
+  "R98 FEE_REPLY_SYSTEM_PROMPT",
   // The model's own reply, passed through untouched: it neither shows
   // nor contradicts squad state, so the composer has nothing to say.
   "R1 composeSquadStateReply / plain reply kept",

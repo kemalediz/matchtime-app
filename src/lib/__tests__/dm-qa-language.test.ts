@@ -29,10 +29,16 @@ describe("composeScopedAnswer", () => {
   it("English: the user turn is the shipped shape, with no language line", async () => {
     const { call, seen } = recording({ text: "  Tuesday at 21:30 — see you there  ", truncated: false });
     const out = await composeScopedAnswer({ ...BASE, question: "when is the match?", askerName: "Sait Demir", lang: "en", call });
-    expect(seen[0].user).toBe(
+    // Rewritten with the chat-context block (quoted-reply context S3):
+    // with none known it says the time now and that nothing was sent.
+    expect(seen[0].user.replace(/^NOW: .*$/m, "NOW: <now>")).toBe(
       [
-        "CONTEXT (everything you're allowed to use — nothing else exists for you):",
+        "CONTEXT (everything you may use; nothing else exists for you):",
         "GROUP: Cuma Futbol",
+        "",
+        "WHAT MATCHTIME SAID TO THEM:",
+        "NOW: <now>",
+        "MATCHTIME'S RECENT MESSAGES TO THEM: none in the last 14 days.",
         "",
         "The player (Sait) asks:",
         "when is the match?",

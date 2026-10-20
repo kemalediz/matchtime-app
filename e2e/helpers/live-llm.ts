@@ -85,6 +85,12 @@ export const PAYMENT_CLAIM_STUB_FILE_ENV = "MT_TEST_PAYMENT_CLAIM_STUB_FILE";
 /** The match-availability classifier (review of #336). Mirrors
  *  `MATCH_AVAILABILITY_STUB_FILE_ENV` in `src/lib/match-availability-classifier.ts`. */
 export const MATCH_AVAILABILITY_STUB_FILE_ENV = "MT_TEST_MATCH_AVAILABILITY_STUB_FILE";
+/** The money collector's fee-reply classifier (quoted-reply context S3).
+ *  Mirrors `FEE_REPLY_STUB_FILE_ENV` in `src/lib/fee-confirm.ts`. */
+export const FEE_REPLY_STUB_FILE_ENV = "MT_TEST_FEE_REPLY_STUB_FILE";
+/** The roster check-in classifier (quoted-reply context S3). Mirrors
+ *  `ROSTER_SURVEY_STUB_FILE_ENV` in `src/lib/roster-survey-classifier.ts`. */
+export const ROSTER_SURVEY_STUB_FILE_ENV = "MT_TEST_ROSTER_SURVEY_STUB_FILE";
 export const KEY_ENV = "ANTHROPIC_API_KEY";
 
 /**
@@ -256,6 +262,21 @@ export function assertSeamMatchesMode(
           `  Fix:  unset ${MATCH_AVAILABILITY_STUB_FILE_ENV} in your shell; the suite sets it itself ` +
           `for stubbed runs and pins it empty for live ones.`,
       );
+    }
+    for (const [env, what] of [
+      [FEE_REPLY_STUB_FILE_ENV, "lib/fee-confirm.ts, which releases the whole squad's pay links on a collector's yes"],
+      [ROSTER_SURVEY_STUB_FILE_ENV, "lib/roster-survey-classifier.ts, which saves a player's roster check-in answer"],
+    ] as const) {
+      if (!blank(childEnv[env])) {
+        throw new E2EPreflightError(
+          `e2e: REFUSING to run: ${LIVE_ENV_FLAG}=1 asks for a LIVE model run, but the ` +
+            `server under test would still see ${env}=${childEnv[env]}.\n` +
+            `  That file answers for ${what}. A "live" sweep reading a canned answer out of it ` +
+            `would be grading its own answer key.\n` +
+            `  Fix:  unset ${env} in your shell; the suite sets it itself for stubbed runs and ` +
+            `pins it empty for live ones.`,
+        );
+      }
     }
     return;
   }

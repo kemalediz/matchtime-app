@@ -28,6 +28,7 @@ import {
 } from "./dm-copy";
 import { decideCheckoutEvent } from "./payment-outcome";
 import { anchoredFeeReply, classifyFeeReply, type FeeReply } from "./fee-confirm";
+import { contextMatchLabel, loadDmReplyContext, quoteForMatch, type QuotedBotMessage } from "./reply-context";
 import { normaliseLang, type Lang } from "./i18n/lang";
 import { withOrgAiBudget } from "./ai-budget";
 import { MONTHLY_PAYMENT_METHOD, isMonthlyRow, recordPaygFeeDeclined, stagePaygFeeForReply } from "./monthly-week";
@@ -312,7 +313,7 @@ function looksLikeFeeAmount(text: string, lang: Lang = "en"): boolean {
  *  collector) might be setting/confirming a fee: a recently-played match
  *  in a payment-collecting org they collect for, not yet released.
  *  Prefers one already awaiting confirmation. */
-async function findCollectorPendingMatch(userId: string) {
+async function findCollectorPendingMatch(userId: string, quotedMatchId?: string | null) {
   const orgs = await db.organisation.findMany({
     where: { paymentHolderId: userId, paymentCollectionEnabled: true },
     select: { id: true },
@@ -320,21 +321,31 @@ async function findCollectorPendingMatch(userId: string) {
   if (orgs.length === 0) return null;
   const orgIds = orgs.map((o) => o.id);
 
+  const where = {
+    activity: { orgId: { in: orgIds } },
+    isHistorical: false,
+    status: { not: "CANCELLED" as const },
+    paymentLinksReleasedAt: null,
+    date: { gte: new Date(Date.now() - FEE_CAPTURE_WINDOW_MS), lte: new Date() },
+    OR: [{ feePendingConfirm: { not: null } }, { feePerPlayer: null }],
+  };
+  const include = {
+    activity: { select: { name: true, orgId: true, org: { select: { language: true, ...PAY_METHOD_SELECT } } } },
+  };
+  // A swipe-reply to one match's fee question acts on THAT match, when it
+  // is still one this collector may set or confirm a fee for (quoted-reply
+  // context S3; the rule payment-claim and the tentative follow-up follow,
+  // review of #336). A quoted match that is not one changes nothing.
+  if (quotedMatchId) {
+    const quotedMatch = await db.match.findFirst({ where: { ...where, id: quotedMatchId }, include });
+    if (quotedMatch) return quotedMatch;
+  }
   const match = await db.match.findFirst({
-    where: {
-      activity: { orgId: { in: orgIds } },
-      isHistorical: false,
-      status: { not: "CANCELLED" },
-      paymentLinksReleasedAt: null,
-      date: { gte: new Date(Date.now() - FEE_CAPTURE_WINDOW_MS), lte: new Date() },
-      OR: [{ feePendingConfirm: { not: null } }, { feePerPlayer: null }],
-    },
+    where,
     // Prefer a match already awaiting confirmation (feePendingConfirm set);
     // nulls last so an amount-pending match wins over a fee-less one.
     orderBy: [{ feePendingConfirm: { sort: "desc", nulls: "last" } }, { date: "desc" }],
-    include: {
-      activity: { select: { name: true, orgId: true, org: { select: { language: true, ...PAY_METHOD_SELECT } } } },
-    },
+    include,
   });
   return match;
 }
@@ -500,15 +511,26 @@ export async function runCollectorFeeReply(
 export async function handleCollectorFeeReply(
   userId: string,
   text: string,
+  opts: {
+    /** The MatchTime message this DM swipe-replies to, resolved once by
+     *  the route (`resolveQuotedBotMessage`), or null. */
+    quoted?: QuotedBotMessage | null;
+    /** Where DMs to the collector are queued (digits, no "+"): the chat
+     *  context's recent messages are read by it. */
+    phone?: string | null;
+  } = {},
 ): Promise<CollectorReplyResult | null> {
   // The club the fee is for pays for reading the reply (the daily AI cap,
   // lib/ai-budget.ts). Known once the pending match is found, which
   // `runCollectorFeeReply` does before it ever asks the model.
   let feeOrgId: string | null = null;
+  // The match the reply is about, for the model's chat context.
+  let feeMatch: { id: string; date: Date } | null = null;
   return runCollectorFeeReply(text, {
     pendingMatch: async () => {
-      const m = await findCollectorPendingMatch(userId);
+      const m = await findCollectorPendingMatch(userId, opts.quoted?.matchId);
       feeOrgId = m?.activity.orgId ?? null;
+      feeMatch = m ? { id: m.id, date: m.date } : null;
       // Monthly squad (slice 5): the collector was asked "£8 each, yes?"
       // but the amount was never staged (the Pi's ack was lost, or carried
       // no message id). Their reply is to that question, so the PAYG price
@@ -566,10 +588,17 @@ export async function handleCollectorFeeReply(
           OR: [{ paymentMethod: null }, { paymentMethod: { not: MONTHLY_PAYMENT_METHOD } }],
         },
       }),
-    judge: (reply, amount, matchName, lang) =>
-      feeOrgId
-        ? withOrgAiBudget(feeOrgId, () => classifyFeeReply(reply, { amount, matchName, lang }))
-        : classifyFeeReply(reply, { amount, matchName, lang }),
+    judge: async (reply, amount, matchName, lang) => {
+      // What MatchTime said to them: the quote, read only when it is about
+      // this match (`quoteForMatch`), or else the recent messages, among
+      // which the fee question itself normally is the newest.
+      const fm = feeMatch as { id: string; date: Date } | null;
+      const replyContext = fm
+        ? await loadDmReplyContext(db, { userId, phone: opts.phone ?? null, quoted: quoteForMatch(opts.quoted, fm.id) })
+        : null;
+      const ctx = { amount, matchName: fm ? contextMatchLabel(matchName, fm.date) : matchName, lang, replyContext };
+      return feeOrgId ? withOrgAiBudget(feeOrgId, () => classifyFeeReply(reply, ctx)) : classifyFeeReply(reply, ctx);
+    },
     release: async (matchId, amount) => {
       await db.match.update({
         where: { id: matchId },
