@@ -807,3 +807,60 @@ describe("the organisers' group", () => {
     expect(m.calls[0].user).toContain("WAITING: approval of the proposed teams");
   });
 });
+
+// ── 2026-10-20: ASKING WHEN THE TEAMS COME OUT IS A QUESTION ────────────
+//
+// Measured on main (dev key, Haiku 5.5): "@Match Time when will the teams be
+// out?" routed balancer 4 of 10, "@Match Time takımlar ne zaman?" 2 of 3. A
+// teams question routed balancer reaches the extractor that can GENERATE.
+// The boundary, stated once: SEE or MAKE the teams is balancer; WHEN they
+// come out or HOW they are picked is question.
+describe("the two teams: seeing or making them is balancer, asking when is question", () => {
+  const lines = ROUTER_SYSTEM_PROMPT.split("\n");
+  const taught = new Map(
+    [...ROUTER_SYSTEM_PROMPT.matchAll(/^\s*"([^"]+)"\s+->\s*([a-z_]+)\s*$/gm)].map((m) => [m[1]!, m[2]!]),
+  );
+
+  it("defines balancer as seeing or making the line-ups, and question as holding when the teams come out", () => {
+    const balancer = lines.find((l) => l.startsWith("balancer "))!;
+    expect(balancer).toMatch(/SEE or MAKE/);
+    const question = lines.find((l) => l.startsWith("question "))!;
+    expect(question).toMatch(/when the teams come out/);
+    expect(question).toMatch(/how the teams are picked/);
+  });
+
+  it("states the boundary in one ruling, not on every route", () => {
+    const rulings = lines.filter((l) => l.startsWith("- ") && /WHEN they come out/.test(l));
+    expect(rulings).toHaveLength(1);
+    expect(rulings[0]).toMatch(/balancer/);
+    expect(rulings[0]).toMatch(/question/);
+  });
+
+  it("teaches both sides in one teams group, English and Turkish", () => {
+    const start = lines.findIndex((l) => l.startsWith("The two teams"));
+    const end = lines.findIndex((l, i) => i > start && l.trim() === "");
+    const group = lines.slice(start + 1, end).map((l) => l.trim());
+    expect(group).toContain('"Teams?" -> balancer');
+    expect(group).toContain('"@Match Time takımları göster" -> balancer');
+    expect(group).toContain('"@Match Time what time do the teams come out?" -> question');
+    expect(group).toContain('"@Match Time takımlar saat kaçta açıklanıyor?" -> question');
+  });
+
+  it("keeps the measured incidents OUT of the prompt, so the live check is held out", () => {
+    for (const body of ["when will the teams be out", "takımlar ne zaman?", "yöneticiler kim"]) {
+      expect(ROUTER_SYSTEM_PROMPT, body).not.toContain(body);
+    }
+  });
+
+  it("counts the bot's name used to speak to it as a tag, and talk ABOUT it as none", () => {
+    const step = lines.find((l) => l.startsWith("2. "))!;
+    expect(step).toMatch(/the bot's name used to speak to it/);
+    expect(step).toMatch(/without the @ while talking ABOUT the bot/);
+    expect(taught.get("MatchTime who runs this club?")).toBe("question");
+  });
+
+  it("in the organisers' group, asking the bot something is for the bot", () => {
+    const hq = ROUTER_SYSTEM_PROMPT.slice(ROUTER_SYSTEM_PROMPT.indexOf("IN THE ORGANISERS' GROUP."));
+    expect(hq.split("\n")[0]).toMatch(/only when it asks the bot for something it holds, tells the bot to do something, or answers/);
+  });
+});
