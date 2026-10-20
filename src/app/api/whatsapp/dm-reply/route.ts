@@ -915,13 +915,29 @@ export async function POST(request: Request) {
         select: { phoneNumber: true },
       });
       const replyPhone = phoneNoPlus ?? u?.phoneNumber?.replace(/^\+/, "") ?? null;
-      const orgId = await db.organisation.findFirst({
-        where: { paymentHolderId: user.id, paymentCollectionEnabled: true },
-        select: { id: true },
-      });
+      // Queued under the MATCH's club (review of #339): a collector of two
+      // clubs used to get every ack under whichever club came first.
+      const orgId =
+        feeResult.orgId ??
+        (await db.organisation.findFirst({
+          where: { paymentHolderId: user.id, paymentCollectionEnabled: true },
+          select: { id: true },
+        }))?.id ??
+        null;
       if (replyPhone && orgId) {
         await db.botJob.create({
-          data: { orgId: orgId.id, kind: "dm", phone: replyPhone, text: feeResult.reply, ...REPLY_PRIORITY },
+          data: {
+            orgId,
+            kind: "dm",
+            phone: replyPhone,
+            text: feeResult.reply,
+            // The confirm question names its match, so a swipe-reply to it
+            // ("✅") resolves to that match and reads as the fee question
+            // (review of #339, H2 and H3).
+            ...(feeResult.matchId ? { matchId: feeResult.matchId } : {}),
+            ...(feeResult.asked && feeResult.matchId ? { aboutKey: `${feeResult.matchId}:fee-confirm` } : {}),
+            ...REPLY_PRIORITY,
+          },
         });
       }
       return NextResponse.json({ ok: true, handled: "collector-fee", released: feeResult.released });
@@ -1016,7 +1032,14 @@ export async function POST(request: Request) {
               ?.activity.orgId ?? null)
           : null;
         adminQuote = quoteForClubs(quoted, quotedOrgId, dmAdminOrgIds);
-        const replyContext = await loadDmReplyContext(db, { userId: user.id, phone: await dmPhone(), quoted: adminQuote.quoted });
+        // Only this admin's clubs' DMs (review of #339, M1): the quoted
+        // club's when the quote picked one.
+        const replyContext = await loadDmReplyContext(db, {
+          userId: user.id,
+          phone: await dmPhone(),
+          quoted: adminQuote.quoted,
+          orgIds: adminQuote.orgId ? [adminQuote.orgId] : dmAdminOrgIds,
+        });
         const ctx = { senderName: authorName ?? null, replyContext };
         const payer = adminQuote.orgId ?? dmAdminOrgIds[0];
         return payer

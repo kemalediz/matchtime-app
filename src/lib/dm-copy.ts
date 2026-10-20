@@ -287,6 +287,8 @@ export function buildFeeReleasedAck(
     released: number;
     fee: number;
     matchName: string;
+    /** The match's day (`dayLabel(lang, date)`), or null. */
+    matchWhen?: string | null;
     /** `availablePayMethods(org)`: the ack names only these. */
     methods: readonly PayMethod[];
   } & WithLang,
@@ -295,6 +297,7 @@ export function buildFeeReleasedAck(
     released: p.released,
     fee: gbp(p.fee),
     matchName: p.matchName,
+    matchWhen: p.matchWhen ?? null,
     ...payWays(p.methods),
   });
 }

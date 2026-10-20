@@ -43,6 +43,9 @@ interface Case {
   /** The chat context; absent: the lang's default (the fee question, newest). */
   ctx?: ReplyContext;
   note?: string;
+  /** The route skips the allowlist (a swipe-reply to a message that is not
+   *  the fee question, review of #339 H2), so the model decides even "✅". */
+  skipsAllowlist?: boolean;
 }
 
 // ── The chat context, as `loadDmReplyContext` builds it ──
@@ -194,6 +197,10 @@ const SLICE_S3: Case[] = [
   },
   { text: "tamam, yolla gitsin", want: "yes", lang: "tr", ctx: quoting(feeAsk("tr")), note: "swipe-reply to the fee question" },
   { text: "süper 👍", want: "neither", lang: "tr", ctx: quoting(ratingDm("tr", "2026-10-14T09:00:00Z")), note: "swipe-reply to his own rating request" },
+  // Review of #339 (H2): a bare ✅ or 👍 swipe-replied to another message.
+  { text: "✅", want: "neither", ctx: quoting(ratingDm("en", "2026-10-14T09:00:00Z")), note: "✅ swipe-replied to his own rating request", skipsAllowlist: true },
+  { text: "👍", want: "neither", ctx: quoting(PAY_CHASE), note: "👍 swipe-replied to his own pay chase", skipsAllowlist: true },
+  { text: "evet", want: "neither", lang: "tr", ctx: quoting(ratingDm("tr", "2026-10-14T09:00:00Z")), note: "evet swipe-replied to his own rating request", skipsAllowlist: true },
 ];
 
 const LANG: "en" | "tr" = process.env.LANG_UNDER_TEST === "tr" ? "tr" : "en";
@@ -234,7 +241,7 @@ async function main() {
   let modelBad = 0;
   const cases = only ? model.filter((c) => c.text === only) : model;
   for (const c of cases) {
-    if (anchoredFeeReply(c.text, c.lang ?? LANG) !== null) {
+    if (!c.skipsAllowlist && anchoredFeeReply(c.text, c.lang ?? LANG) !== null) {
       console.log(`  ! ${JSON.stringify(c.text)} was decided by the allowlist; it should not have been`);
       modelBad++;
       continue;

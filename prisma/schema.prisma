@@ -1640,6 +1640,13 @@ model BotJob {
   /// DMs take the first of the Pi's one-a-minute DM slots
   /// (src/lib/dm-reply-priority.ts). Additive; default 0.
   priority     Int       @default(0)
+  /// What this DM is about, when the code that queued it knows (quoted-reply
+  /// context, review of #339): the match, and a scheduler-style key whose
+  /// topic `topicOfDueKey` reads ("<matchId>:fee-confirm" for the collector's
+  /// fee question). A swipe-reply quoting the DM then resolves to its match
+  /// and topic, as a scheduler DM's SentNotification row does. Additive.
+  matchId      String?
+  aboutKey     String?
 
   @@index([orgId, sentAt])
   @@index([orgId, sendAfter])

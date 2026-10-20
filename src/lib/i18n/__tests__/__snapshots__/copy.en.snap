@@ -3298,22 +3298,22 @@ https://mt.example/s/pay
 No problem, cancelled. Just tell me the amount per player when you're ready.
 
 ### R98 buildFeeConfirmPrompt / per player
-Got it — *£8* per player for *Tuesday 7-a-side*, 13 players to charge.
+Got it: *£8* per player for *Tuesday 7-a-side*, 13 players to charge.
 
 Reply *✅* (or "yes") to send everyone their pay link, or send a different amount to change it.
 
 ### R98 buildFeeConfirmPrompt / total split
-Got it — *£7.69* per player (split across 13 players) for *Tuesday 7-a-side*, 13 players to charge.
+Got it: *£7.69* per player (split across 13 players) for *Tuesday 7-a-side*, 13 players to charge.
 
 Reply *✅* (or "yes") to send everyone their pay link, or send a different amount to change it.
 
 ### R98 buildFeeConfirmPrompt / one player
-Got it — *£8* per player (split across 1 player) for *Tuesday 7-a-side*, 1 player to charge.
+Got it: *£8* per player (split across 1 player) for *Tuesday 7-a-side*, 1 player to charge.
 
 Reply *✅* (or "yes") to send everyone their pay link, or send a different amount to change it.
 
 ### R98 buildFeeConfirmPrompt / nobody to charge
-Got it — *£8* per player for *Tuesday 7-a-side*.
+Got it: *£8* per player for *Tuesday 7-a-side*.
 
 Reply *✅* (or "yes") to send everyone their pay link, or send a different amount to change it.
 

@@ -168,7 +168,9 @@ async function main() {
   const usd = () => m.usd();
   const call = m.call;
 
-  const set = process.env.SET === "month" ? MONTH : process.env.SET === "s3" ? SLICE_S3 : CASES;
+  const all = process.env.SET === "month" ? MONTH : process.env.SET === "s3" ? SLICE_S3 : CASES;
+  const only = process.env.ONLY?.split("|");
+  const set = only ? all.filter((c) => only.includes(c.text)) : all;
   console.log(`── roster check-in classifier, ${MODEL}, set ${process.env.SET ?? "all"} (${set.length} cases), REPEAT=${REPEAT}, cap $${MAX_USD} ──`);
   let bad = 0;
   for (const c of set) {

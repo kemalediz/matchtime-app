@@ -306,3 +306,54 @@ describe("quoteForClubs: a quote steers a club-scoped path only within its clubs
     expect(quoteForClubs(null, "org-a", ["org-a"])).toEqual({ quoted: null, orgId: null });
   });
 });
+
+// ── review of #339 ────────────────────────────────────────────────────
+
+import { topicOfDueKey } from "../due-key-feature";
+import { buildFeeConfirmPrompt, buildFeeReleasedAck } from "../dm-copy";
+
+describe("review of #339: the fee question is a topic of its own (H2, H3)", () => {
+  it("the scheduler's fee ask and the queued confirm question are both the fee question", () => {
+    expect(topicOfDueKey("m1:fee-ask")).toBe("feeQuestion");
+    expect(topicOfDueKey("m1:fee-ask:again")).toBe("feeQuestion");
+    expect(topicOfDueKey("m1:fee-confirm")).toBe("feeQuestion");
+  });
+
+  it("is told to the model as the fee to charge, never as a fee they owe", () => {
+    const block = renderReplyContext({
+      now: NOW,
+      quoted: { at: NOW, text: "Got it", topic: "feeQuestion", match: "Tuesday 7-a-side, Tue 13 Oct, 20:00" },
+      recent: [],
+      earlier: null,
+    });
+    expect(block).toContain("(about: the match fee to charge for Tuesday 7-a-side, Tue 13 Oct, 20:00)");
+  });
+});
+
+describe("review of #339: the collector's acks", () => {
+  for (const lang of ["en", "tr"] as const) {
+    it(`${lang}: the confirm question carries no em or en dash`, () => {
+      expect(buildFeeConfirmPrompt({ perPlayer: 8, headcount: 9, matchName: "Tuesday 7-a-side", wasTotal: false, lang })).not.toMatch(/[—–]/);
+    });
+    it(`${lang}: the release ack names the match's date, so two of the same activity can be told apart`, () => {
+      const ack = buildFeeReleasedAck({ released: 9, fee: 8, matchName: "Tuesday 7-a-side", matchWhen: lang === "tr" ? "13 Ekim Salı" : "Tue 13 Oct", methods: ["card"], lang });
+      expect(ack).toContain(lang === "tr" ? "13 Ekim Salı" : "Tue 13 Oct");
+      expect(ack).not.toMatch(/[—–]/);
+    });
+  }
+});
+
+describe("review of #339 (M2): the roster check-in saves an answer only at the prompt's 80%", () => {
+  it("in at 0.75 is unclear (it was saved at 0.7 and above)", async () => {
+    const r = await classifyRosterReply("yes", {}, async () => json({ category: "in", confidence: 0.75 }));
+    expect(r.category).toBe("unclear");
+  });
+  it("out at 0.79 is unclear", async () => {
+    const r = await classifyRosterReply("I'm done", {}, async () => json({ category: "out", confidence: 0.79 }));
+    expect(r.category).toBe("unclear");
+  });
+  it("in at 0.8 is in", async () => {
+    const r = await classifyRosterReply("yes", {}, async () => json({ category: "in", confidence: 0.8 }));
+    expect(r.category).toBe("in");
+  });
+});

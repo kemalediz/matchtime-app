@@ -38,6 +38,7 @@ import {
   stubCalls,
 } from "../helpers/stub";
 import { contextMatchLabel } from "../../src/lib/reply-context";
+import { dayLabel } from "../../src/lib/i18n/dates";
 
 test.describe.configure({ mode: "serial" });
 
@@ -187,7 +188,7 @@ test("fee: a swipe-reply to the OLDER match's fee question releases THAT match, 
   expect(turn.endsWith("THEIR REPLY:\nyeah go on then")).toBe(true);
 });
 
-test("fee: a quote naming a match with no fee pending is dropped; the default match, read against the recent messages", async ({ request, db }) => {
+test("fee (H1): a swipe-reply to a KNOWN message about a match with nothing to release releases NOTHING, no fallback", async ({ request, db }) => {
   await twoPendingFees(db);
   // The PAY match's links went out long ago: not a match a yes can release.
   const stanza = await sentSchedulerDm(db, {
@@ -198,17 +199,125 @@ test("fee: a quote naming a match with no fee pending is dropped; the default ma
     text: "💷 QC3 an old message about the pay match",
     minsAgo: 60,
   });
-  await botJobDm(db, { phone: PHONE.collector, text: "QC3 the newest fee question: reply yes to send the links", minsAgo: 3 });
-  setFeeReplyStub({ bodies: { "yeah go on then": "yes" } });
-  const json = await postDm(request, PHONE.collector, "yeah go on then", { quotedMessageId: stanza, quotedText: "💷 QC3...", quotedFromMatchTime: true });
-  expect(json.handled).toBe("collector-fee");
-  // The default: the newest match awaiting confirmation.
-  expect((await released(db, MATCH.rate))?.paymentLinksReleasedAt).not.toBeNull();
+  setFeeReplyStub({ bodies: { "yeah go on then": "yes", "✅": "yes" } });
+  for (const body of ["yeah go on then", "✅"]) {
+    const json = await postDm(request, PHONE.collector, body, { quotedMessageId: stanza, quotedText: "💷 QC3...", quotedFromMatchTime: true });
+    expect(json.handled).not.toBe("collector-fee");
+  }
+  expect((await released(db, MATCH.rate))?.paymentLinksReleasedAt).toBeNull();
   expect((await released(db, OLDER_FEE))?.paymentLinksReleasedAt).toBeNull();
+  expect(turns(E2E.FEE_REPLY_STUB_FILE, "fee-confirm")).toHaveLength(0);
+});
+
+test("fee (H2): '✅' swipe-replied to a rating DM about the pending match is NOT the allowlist's yes: the model reads it, nothing released", async ({ request, db }) => {
+  await db.run(`UPDATE "Match" SET "feePendingConfirm" = 8, "feeSetByUserId" = $2 WHERE id = $1`, [MATCH.rate, U.collector]);
+  const stanza = await sentSchedulerDm(db, {
+    key: `${MATCH.rate}:rate-dm:${U.collector}`,
+    userId: U.collector,
+    phone: PHONE.collector,
+    matchId: MATCH.rate,
+    text: "⭐ QC3 how did last night go? Rate your teammates",
+    minsAgo: 20,
+  });
+  setFeeReplyStub({ bodies: {} });
+  const json = await postDm(request, PHONE.collector, "✅", { quotedMessageId: stanza, quotedText: "⭐ QC3...", quotedFromMatchTime: true });
+  expect(json.handled).not.toBe("collector-fee");
+  expect(await released(db, MATCH.rate)).toMatchObject({ paymentLinksReleasedAt: null, feePendingConfirm: 8 });
   const [turn] = turns(E2E.FEE_REPLY_STUB_FILE, "fee-confirm");
-  expect(turn).not.toContain("THEY ARE REPLYING TO");
-  expect(turn).toContain("MATCHTIME'S RECENT MESSAGES TO THEM (oldest first");
-  expect(turn).toContain("QC3 the newest fee question");
+  expect(turn).toContain("THEY ARE REPLYING TO MatchTime's message of");
+  expect(turn).toContain("QC3 how did last night go?");
+  expect(turn.endsWith("THEIR REPLY:\n✅")).toBe(true);
+});
+
+/** The collector types an amount: the route stages it and queues the
+ *  confirm question. The Pi then sends and acks that DM (its stanza id). */
+async function stageViaRoute(request: APIRequestContext, db: TestDb, amount: string): Promise<{ id: string; stanza: string }> {
+  const json = await postDm(request, PHONE.collector, amount);
+  expect(json.handled).toBe("collector-fee");
+  const job = await db.one<{ id: string; matchId: string | null; aboutKey: string | null }>(
+    `SELECT id, "matchId", "aboutKey" FROM "BotJob" WHERE phone = $1 AND text LIKE 'Got it%' ORDER BY "createdAt" DESC LIMIT 1`,
+    [digits(PHONE.collector)],
+  );
+  expect(job).not.toBeNull();
+  const stanza = `3EB0${job!.id}`;
+  await db.run(`UPDATE "BotJob" SET "sentAt" = NOW() WHERE id = $1`, [job!.id]);
+  await db.run(
+    `INSERT INTO "SentNotification" (id, key, kind, "waMessageId", "waStanzaId", "createdAt") VALUES ($1, $2, 'dm', $3, $4, NOW())`,
+    [`sn-${job!.id}`, `botjob-${job!.id}`, `true_${digits(PHONE.collector)}@s.whatsapp.net_${stanza}`, stanza],
+  );
+  return { id: job!.id, stanza };
+}
+
+test("fee (H3): the queued confirm question carries its match, so '✅' swiped to it releases THAT match, not a newer pending one", async ({ request, db }) => {
+  // Only the RATE match (yesterday) has no fee yet: the amount stages there.
+  const asked = await stageViaRoute(request, db, "£8");
+  const job = await db.one<{ matchId: string | null; aboutKey: string | null }>(`SELECT "matchId", "aboutKey" FROM "BotJob" WHERE id = $1`, [asked.id]);
+  expect(job).toEqual({ matchId: MATCH.rate, aboutKey: `${MATCH.rate}:fee-confirm` });
+  // A NEWER match then also waits for the collector's yes.
+  const newer = "e2e-qc3-fee-newer";
+  await db.run(
+    `INSERT INTO "Match" (id, "activityId", date, "maxPlayers", status, "attendanceDeadline", "updatedAt", "feePendingConfirm", "feeSetByUserId")
+     VALUES ($1, $2, NOW() - interval '2 hours', 10, 'COMPLETED', NOW() - interval '3 hours', NOW(), 10, $3)`,
+    [newer, ACTIVITY_ID, U.collector],
+  );
+  const json = await postDm(request, PHONE.collector, "✅", { quotedMessageId: asked.stanza, quotedText: "Got it...", quotedFromMatchTime: true });
+  expect(json.handled).toBe("collector-fee");
+  expect((await released(db, MATCH.rate))?.paymentLinksReleasedAt).not.toBeNull();
+  expect((await released(db, newer))?.paymentLinksReleasedAt).toBeNull();
+  // The allowlist decided: the confirm question IS the fee question.
+  expect(turns(E2E.FEE_REPLY_STUB_FILE, "fee-confirm")).toHaveLength(0);
+});
+
+test("fee (H3): with no quote, the NEWEST pending match wins, not the highest amount (£10 older vs £8 newer)", async ({ request, db }) => {
+  const older = "e2e-qc3-fee-10";
+  await db.run(
+    `INSERT INTO "Match" (id, "activityId", date, "maxPlayers", status, "attendanceDeadline", "updatedAt", "feePendingConfirm", "feeSetByUserId")
+     VALUES ($1, $2, NOW() - interval '3 days', 10, 'COMPLETED', NOW() - interval '3 days', NOW(), 10, $3)`,
+    [older, ACTIVITY_ID, U.collector],
+  );
+  await db.run(`UPDATE "Match" SET "feePendingConfirm" = 8, "feeSetByUserId" = $2 WHERE id = $1`, [MATCH.rate, U.collector]);
+  const json = await postDm(request, PHONE.collector, "✅");
+  expect(json.handled).toBe("collector-fee");
+  expect((await released(db, MATCH.rate))?.paymentLinksReleasedAt).not.toBeNull();
+  expect((await released(db, older))?.paymentLinksReleasedAt).toBeNull();
+});
+
+test("fee (idempotent): two '✅' at once, or a Pi redelivery, release the links ONCE", async ({ request, db }) => {
+  await db.run(`UPDATE "Match" SET "feePendingConfirm" = 8, "feeSetByUserId" = $2 WHERE id = $1`, [MATCH.rate, U.collector]);
+  const before = await db.one<{ n: number }>(`SELECT COUNT(*)::int AS n FROM "BotJob" WHERE phone = $1`, [digits(PHONE.player)]);
+  const send = (id: string) =>
+    request.post("/api/whatsapp/dm-reply", {
+      headers: { "x-api-key": E2E.WHATSAPP_API_KEY },
+      data: { phone: PHONE.collector, body: "✅", waMessageId: id, authorName: null },
+    });
+  const id = `e2e-qc3-twice-${Date.now()}`;
+  const rs = await Promise.all([send(id), send(`${id}-b`), send(id)]);
+  for (const r of rs) expect(r.status()).toBe(200);
+  const after = await db.one<{ n: number }>(`SELECT COUNT(*)::int AS n FROM "BotJob" WHERE phone = $1`, [digits(PHONE.player)]);
+  expect((after?.n ?? 0) - (before?.n ?? 0)).toBe(1);
+  const acks = await db.all(`SELECT id FROM "BotJob" WHERE phone = $1 AND text LIKE '✅ Done, sent%'`, [digits(PHONE.collector)]);
+  expect(acks).toHaveLength(1);
+});
+
+test("fee: the collector's ack is queued under the MATCH's club and names the match's date", async ({ request, db }) => {
+  // A second club Colin also collects for, whose match is the newest pending.
+  await otherClub(db, U.collector);
+  await db.run(`UPDATE "Organisation" SET "paymentCollectionEnabled" = true, "paymentHolderId" = $2 WHERE id = $1`, [OTHER.org, U.collector]);
+  await db.run(
+    `UPDATE "Match" SET date = NOW() - interval '2 hours', status = 'COMPLETED', "feePendingConfirm" = 6, "feeSetByUserId" = $2 WHERE id = $1`,
+    [OTHER.match, U.collector],
+  );
+  await db.run(`UPDATE "Match" SET "feePendingConfirm" = 8, "feeSetByUserId" = $2 WHERE id = $1`, [MATCH.rate, U.collector]);
+  const json = await postDm(request, PHONE.collector, "✅");
+  expect(json.handled).toBe("collector-fee");
+  expect((await released(db, OTHER.match))?.paymentLinksReleasedAt).not.toBeNull();
+  const ack = await db.one<{ orgId: string; text: string }>(
+    `SELECT "orgId", text FROM "BotJob" WHERE phone = $1 AND text LIKE '✅ Done, sent%' ORDER BY "createdAt" DESC LIMIT 1`,
+    [digits(PHONE.collector)],
+  );
+  expect(ack?.orgId).toBe(OTHER.org);
+  const date = await db.one<{ date: Date }>(`SELECT date FROM "Match" WHERE id = $1`, [OTHER.match]);
+  expect(ack?.text).toContain(dayLabel("en", date!.date));
 });
 
 test("fee: the model says neither, nothing is released and the pending amount stays", async ({ request, db }) => {
@@ -284,10 +393,15 @@ test("dm-intent: a quote naming another club's match is dropped; the recent mess
     minsAgo: 30,
   });
   setDmIntentStub({ bodies: {} });
+  // One DM from his own club, so the recent list has something in it.
+  await sentSchedulerDm(db, { key: `${MATCH.rate}:rate-dm:${U.admin}`, userId: U.admin, phone: PHONE.admin, matchId: MATCH.rate, text: "QC3 own-club rating DM", minsAgo: 40 });
   await postDm(request, PHONE.admin, "who's left?", { quotedMessageId: stanza, quotedText: "QC3...", quotedFromMatchTime: true });
   const [turn] = turns(E2E.DM_INTENT_STUB_FILE, "dm-intent");
   expect(turn).not.toContain("THEY ARE REPLYING TO");
   expect(turn).toContain("MATCHTIME'S RECENT MESSAGES TO THEM (oldest first");
+  expect(turn).toContain("QC3 own-club rating DM");
+  // M1: the other club's DM is not in the recent list either.
+  expect(turn).not.toContain("QC3 Other FC is playing Thursday");
 });
 
 // ── dm-qa ─────────────────────────────────────────────────────────────
@@ -333,4 +447,6 @@ test("dm-qa: a quote about a club he is not in is dropped; his own club, the rec
   expect(answer?.text).toContain("GROUP: E2E Test FC");
   expect(answer?.text).not.toContain("THEY ARE REPLYING TO");
   expect(answer?.text).toContain("MATCHTIME'S RECENT MESSAGES TO THEM");
+  // M1: the other club's DM is not in the recent list either.
+  expect(answer?.text).not.toContain("QC3 a stray message about Other FC");
 });

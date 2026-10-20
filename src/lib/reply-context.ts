@@ -143,8 +143,16 @@ export interface ReplyContextDb {
   botJob: {
     findUnique(args: {
       where: { id: string };
-      select: { kind: true; phone: true; text: true; sentAt: true; createdAt: true };
-    }): Promise<{ kind: string; phone: string | null; text: string; sentAt: Date | null; createdAt: Date } | null>;
+      select: { kind: true; phone: true; text: true; sentAt: true; createdAt: true; matchId: true; aboutKey: true };
+    }): Promise<{
+      kind: string;
+      phone: string | null;
+      text: string;
+      sentAt: Date | null;
+      createdAt: Date;
+      matchId: string | null;
+      aboutKey: string | null;
+    } | null>;
   };
   user: {
     findUnique(args: { where: { id: string }; select: { phoneNumber: true } }): Promise<{ phoneNumber: string | null } | null>;
@@ -210,18 +218,21 @@ export async function resolveQuotedBotMessage(
       if (jobId) {
         const job = await db.botJob.findUnique({
           where: { id: jobId },
-          select: { kind: true, phone: true, text: true, sentAt: true, createdAt: true },
+          select: { kind: true, phone: true, text: true, sentAt: true, createdAt: true, matchId: true, aboutKey: true },
         });
         if (!job || job.kind !== "dm" || !isTheirs(job.phone, theirs)) {
           foundNotTheirs = true;
           continue;
         }
+        // What the job is about, when the code that queued it said so
+        // (`BotJob.aboutKey`, `matchId`; review of #339): the collector's
+        // fee question resolves to its match and topic like a scheduler DM.
         return {
           key: row.key,
           sentAt: job.sentAt ?? row.createdAt,
           text: row.text ?? job.text ?? quote.text,
-          topic: topicOfDueKey(row.key),
-          matchId: row.matchId,
+          topic: job.aboutKey ? topicOfDueKey(job.aboutKey) : topicOfDueKey(row.key),
+          matchId: row.matchId ?? job.matchId,
         };
       }
       const user = row.targetUser
@@ -380,6 +391,8 @@ function aboutOf(topic: DueKeyTopic | null, match: string | null): string | null
   switch (topic) {
     case "tentativeFollowup":
       return `asking whether they can play in ${match ?? "a match"}`;
+    case "feeQuestion":
+      return `the match fee to charge for ${match ?? "a match"}`;
     case "paymentCollection":
     case "paymentTracking":
       return match ? `paying the match fee for ${match}` : "paying the match fee they owe";
@@ -453,7 +466,13 @@ export function renderReplyContext(ctx: ReplyContext): string {
 export interface DmReplyContextDb {
   sentNotification: {
     findMany(args: {
-      where: { kind: "dm"; targetUser: string; createdAt: { gte: Date }; waMessageId: { not: null } };
+      where: {
+        kind: "dm";
+        targetUser: string;
+        createdAt: { gte: Date };
+        waMessageId: { not: null };
+        match?: { activity: { orgId: { in: string[] } } };
+      };
       orderBy: { createdAt: "desc" };
       take: number;
       select: { key: true; matchId: true; text: true; createdAt: true };
@@ -461,11 +480,11 @@ export interface DmReplyContextDb {
   };
   botJob: {
     findMany(args: {
-      where: { kind: "dm"; phone: string; createdAt: { gte: Date }; sentAt: { not: null } };
+      where: { kind: "dm"; phone: string; createdAt: { gte: Date }; sentAt: { not: null }; orgId?: { in: string[] } };
       orderBy: { createdAt: "desc" };
       take: number;
-      select: { text: true; sentAt: true; createdAt: true };
-    }): Promise<Array<{ text: string; sentAt: Date | null; createdAt: Date }>>;
+      select: { text: true; sentAt: true; createdAt: true; matchId: true; aboutKey: true };
+    }): Promise<Array<{ text: string; sentAt: Date | null; createdAt: Date; matchId: string | null; aboutKey: string | null }>>;
   };
   match: {
     findMany(args: {
@@ -489,7 +508,17 @@ const RECENT_READ = 10;
  */
 export async function loadDmReplyContext(
   db: DmReplyContextDb,
-  input: { userId: string; phone: string | null; quoted: QuotedBotMessage | null; now?: Date },
+  input: {
+    userId: string;
+    phone: string | null;
+    quoted: QuotedBotMessage | null;
+    now?: Date;
+    /** Only MatchTime's DMs about these clubs (review of #339, M1): a path
+     *  that acts on a club (dm-intent, dm-qa) never shows the model another
+     *  club's messages. A scheduler DM counts by its match's club, a queued
+     *  one by its own. Absent: every club, as before. */
+    orgIds?: readonly string[];
+  },
 ): Promise<ReplyContext> {
   const now = input.now ?? new Date();
   try {
@@ -507,9 +536,10 @@ export async function loadDmReplyContext(
 
 async function readDmReplyContext(
   db: DmReplyContextDb,
-  input: { userId: string; phone: string | null; quoted: QuotedBotMessage | null; now: Date },
+  input: { userId: string; phone: string | null; quoted: QuotedBotMessage | null; now: Date; orgIds?: readonly string[] },
 ): Promise<ReplyContext> {
   const { now } = input;
+  const inClubs = input.orgIds ? { in: [...input.orgIds] } : null;
   const labels = async (ids: Array<string | null>): Promise<Map<string, string>> => {
     const want = [...new Set(ids.filter((id): id is string => !!id))];
     if (want.length === 0) return new Map();
@@ -532,23 +562,35 @@ async function readDmReplyContext(
   const since = new Date(now.getTime() - DM_LOOKBACK_MS);
   const [scheduled, queued] = await Promise.all([
     db.sentNotification.findMany({
-      where: { kind: "dm", targetUser: input.userId, createdAt: { gte: since }, waMessageId: { not: null } },
+      where: {
+        kind: "dm",
+        targetUser: input.userId,
+        createdAt: { gte: since },
+        waMessageId: { not: null },
+        ...(inClubs ? { match: { activity: { orgId: inClubs } } } : {}),
+      },
       orderBy: { createdAt: "desc" },
       take: RECENT_READ,
       select: { key: true, matchId: true, text: true, createdAt: true },
     }),
     input.phone
       ? db.botJob.findMany({
-          where: { kind: "dm", phone: input.phone, createdAt: { gte: since }, sentAt: { not: null } },
+          where: {
+            kind: "dm",
+            phone: input.phone,
+            createdAt: { gte: since },
+            sentAt: { not: null },
+            ...(inClubs ? { orgId: inClubs } : {}),
+          },
           orderBy: { createdAt: "desc" },
           take: RECENT_READ,
-          select: { text: true, sentAt: true, createdAt: true },
+          select: { text: true, sentAt: true, createdAt: true, matchId: true, aboutKey: true },
         })
       : Promise.resolve([]),
   ]);
   // A BotJob's own ack row is that job, already read from the job.
   const sched = scheduled.filter((r) => !botJobIdOfKey(r.key));
-  const names = await labels(sched.map((r) => r.matchId));
+  const names = await labels([...sched.map((r) => r.matchId), ...queued.map((j) => j.matchId)]);
   const all: ContextMessage[] = [
     ...sched.map((r) => ({
       at: r.createdAt,
@@ -556,7 +598,12 @@ async function readDmReplyContext(
       topic: topicOfDueKey(r.key),
       match: r.matchId ? (names.get(r.matchId) ?? null) : null,
     })),
-    ...queued.map((j) => ({ at: j.sentAt ?? j.createdAt, text: j.text, topic: null, match: null })),
+    ...queued.map((j) => ({
+      at: j.sentAt ?? j.createdAt,
+      text: j.text,
+      topic: j.aboutKey ? topicOfDueKey(j.aboutKey) : null,
+      match: j.matchId ? (names.get(j.matchId) ?? null) : null,
+    })),
   ];
   const picked = pickRecentBotMessages(all, now);
   // The Pi's word that they quoted MatchTime, with nothing we can name:

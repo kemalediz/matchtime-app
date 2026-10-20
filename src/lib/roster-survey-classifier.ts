@@ -47,7 +47,7 @@ Which answer to the check-in is the message? Pick one:
 - "in": yes, they want to stay on the roster. A yes for a stated stretch ("this month", "till Christmas") is still "in": it is a yes, and the club checks in again later.
 - "maybe": they will play some weeks but not every week, it depends on something, or they are taking a break and may come back.
 - "out": they clearly stop, with no way back mentioned. Taking a player off the roster is the harshest answer, so any hint of coming back ("for now", "later", "maybe") is "maybe", never "out".
-- "unclear": anything that does not answer the check-in. A question, chat, an emoji, a bare "ok" or "tamam", or an answer to a different message.
+- "unclear": anything that does not answer the check-in. A question, chat, an emoji, an acknowledgement on its own ("ok", "tamam", "👍"), or an answer to a different message. A short yes to carrying on ("still in", "devam ediyorum") is not an acknowledgement: it is "in".
 
 Whether it answers the check-in: a message they swipe-replied to the check-in answers it. A message they swipe-replied to any other message (a pay link, a rating request, a match invite) answers that one, so a bare "yes" or "no" there is "unclear". With no swipe-reply, a bare "yes" or "no" answers the newest of MatchTime's recent messages, so it is "unclear" when the newest is about something else. Words that plainly answer the check-in ("still keen", "count me in going forward", "I'm done, take me off") answer it whatever came after.
 
@@ -61,6 +61,9 @@ If you are not at least 80% sure, choose "unclear": the player is simply asked a
 
 Output STRICT JSON only, no markdown, no fences:
 {"category": "in" | "maybe" | "out" | "unclear", "confidence": <number 0..1>, "reasoning": "<max 100 chars>"}`;
+
+/** Below this an answer is not saved: the player is asked once more. */
+export const ROSTER_SURVEY_MIN_CONFIDENCE = 0.8;
 
 export interface RosterClassification {
   category: "in" | "maybe" | "out" | "unclear";
@@ -196,9 +199,11 @@ function parse(rawText: string): RosterClassification {
       ? Math.max(0, Math.min(1, obj.confidence))
       : 0;
   const reasoning = typeof obj.reasoning === "string" ? obj.reasoning.slice(0, 200) : "";
-  // Confidence threshold: ANYTHING below 0.7 forces "unclear" so the
-  // bot routes to clarification rather than saving a wobbly call.
-  if (confidence < 0.7 && category !== "unclear") {
+  // Confidence threshold: ANYTHING below the prompt's 80% forces "unclear"
+  // so the bot routes to clarification rather than saving a wobbly call.
+  // It was 0.7 while the prompt said 80%; aligned on 2026-10-20 (review of
+  // #339, M2), the same move match-availability made in S2.
+  if (confidence < ROSTER_SURVEY_MIN_CONFIDENCE && category !== "unclear") {
     return {
       category: "unclear",
       confidence,

@@ -364,7 +364,14 @@ export async function answerScopedQuestion(args: {
 
   const context = await buildScopedContext(args.orgId, args.userId, args.includePhoneFlags ?? false, lang);
   // What MatchTime said to them (quoted-reply context S3), loaded once.
-  const replyContext = await loadDmReplyContext(db, { userId: args.userId, phone: args.phone ?? null, quoted: args.quoted ?? null });
+  // Only this club's DMs (review of #339, M1): the answer is about this
+  // club, and another club's messages must never reach its context.
+  const replyContext = await loadDmReplyContext(db, {
+    userId: args.userId,
+    phone: args.phone ?? null,
+    quoted: args.quoted ?? null,
+    orgIds: [args.orgId],
+  });
   if (stubMode) {
     // The stub's "answer" is what the model would have been shown: the
     // scoped context and, since S3, the chat-context block.
