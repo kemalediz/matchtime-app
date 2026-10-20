@@ -17,6 +17,7 @@
 import { spendDevApiKeyOrExit } from "../e2e/helpers/dev-api-key.ts";
 import Anthropic from "@anthropic-ai/sdk";
 import { composeScopedAnswer, formatScopedContext, type ScopedContextInput } from "../src/lib/dm-qa.ts";
+import { SONNET_MODEL } from "../src/lib/models.ts";
 
 const LANG = process.env.LANG_UNDER_TEST === "en" ? "en" : "tr";
 const REPEAT = Number(process.env.REPEAT ?? "5") || 5;
@@ -158,7 +159,7 @@ async function main() {
             // a thinking posture that differs from production makes
             // every flag count below a measurement of something the
             // players never see.
-            model: "claude-sonnet-5",
+            model: SONNET_MODEL,
             max_tokens: 600,
             thinking: { type: "disabled" },
             system,

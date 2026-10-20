@@ -1,75 +1,102 @@
 /**
- * Phase 4 — hybrid LLM team-balancer.
+ * THE RATING ADJUSTER: a margin on each player's rating for ONE match,
+ * read from the week of group chat before it (Phase 4, 2026-04-21;
+ * prompt rewritten 2026-10-20).
  *
- * Reads the last ~7 days of group chat and proposes per-player rating
- * deltas for tonight's match. Output is fed into the deterministic
- * balancer (snake-draft + hill-climb) so the LLM only contributes
- * "what's the situation tonight" nuance — sick, tentative, rusty, hot
- * streak — while team selection itself stays deterministic and
- * predictable.
+ * The balancer (snake draft + hill climb) picks the teams from ratings.
+ * This adds what the ratings cannot know: who is ill, injured or rusty
+ * for this match, or on a run of good games. Its output is a delta per
+ * player, and team selection itself stays deterministic.
  *
  * Design principles (agreed with Kemal 2026-04-21):
- *   - Delta is clamped to [-2, +2]. A hallucination can't dominate.
- *   - LLM never picks teams. It only suggests rating tweaks.
- *   - Every decision is persisted to RatingAdjustment with an evidence
- *     line, so admins can audit "why was Wasim on Yellow tonight?".
- *   - Sonnet-class, on purpose: this is a judgement call, and it is one
- *     shot per match. Sonnet 5 since 2026-09-19 (see MODEL below).
+ *   - Delta is clamped to [-2, +2] here, whatever the model says.
+ *   - The model never picks teams. It only suggests rating tweaks.
+ *   - Every decision is persisted to RatingAdjustment with its reason,
+ *     so an admin can see why a player's rating moved for a match.
+ *   - It never blocks team generation: any failure returns no
+ *     adjustments and the balancer runs on the base ratings.
+ *
+ * 2026-10-20 rewrite: the model returns ONLY the players the chat gives
+ * a reason about (code fills everyone else with zero, so the audit table
+ * still has one row per player), through structured output on the
+ * pipeline's model (`PipelineModel`), rather than JSON asked for in
+ * prose and echoed back for every player. The prompt is given the match's
+ * own day and time, and each chat line's, instead of assuming "tonight",
+ * and states the rating scale. The paid check is
+ * `scripts/live-check-rating-adjuster.ts`.
  */
 
-import Anthropic from "@anthropic-ai/sdk";
-import { MAX_TOKENS_CEILING } from "./message-analyzer";
-import { guardedAnthropicCall, systemBlock } from "@/lib/pipeline/llm";
+import { anthropicModel, extractJson, HAIKU_CALL, type ModelCall, type PipelineModel } from "@/lib/pipeline/llm";
+import { formatLondon } from "./london-time";
 import { stripLongDashes } from "./house-style";
 
-// `claude-sonnet-4-5` here was inherited from the deleted
-// `analyzeBatch`, not chosen (`MDs/llm-spend-september-2026.md` §4).
-// Sonnet 5 is newer, 1M context, $2/$10 per MTok against $3/$15.
-// The call site sends `thinking: { type: "disabled" }`, which is
-// required: Sonnet 5 thinks adaptively when the parameter is omitted
-// and Sonnet 4.5 did not.
-const MODEL = "claude-sonnet-5";
+/**
+ * THE SHIPPED MODEL: Haiku 5.5, adaptive thinking at medium (2026-10-20).
+ * Paid check, `scripts/live-check-rating-adjuster.ts`, five fixture weeks
+ * (46 players) once each: the live prompt on Sonnet 5 44/46 (two players
+ * marked down for a wife's illness and a healed toe), the new prompt on
+ * Sonnet 5 and on Haiku 5.5 46/46 each, Haiku with no empty answer at
+ * about a sixteenth of the live cost per call.
+ */
+export const RATING_ADJUSTER_CALL: ModelCall = HAIKU_CALL;
 const MAX_DELTA = 2;
+const MIN_CONFIDENCE = 0.3;
 const HISTORY_DAYS = 7;
 const MAX_HISTORY_MESSAGES = 300;
+/** The answer is a handful of short entries; the rest is room for Haiku's
+ *  thinking, which shares the budget. Fixed: it no longer grows with the
+ *  roster, because players with nothing to say are not echoed back. */
+const MAX_TOKENS = 2_048;
 
-const SYSTEM_PROMPT = `You are a sports-team-balance assistant. Your job is to read the last week of WhatsApp group chat and propose small per-player rating adjustments for TONIGHT'S match only.
+/** The reason stored for a player the chat gave no reason about. */
+export const NO_SIGNAL_REASON = "No reason in the chat for this match";
 
-The base rating is the player's medium-term form (their seed rating blended with recent peer ratings). You DO NOT replace it. You suggest a delta in the range [-2, +2] that reflects ONLY temporary conditions for tonight:
+export const RATING_ADJUSTER_SYSTEM = `You help balance the teams for one match. MatchTime splits the confirmed players into two even teams by their ratings (1 to 10, from the ratings team-mates gave them over many matches), which already say how good each player is. Your job is what the ratings cannot know: whether the week's chat means a player will play better or worse than usual in THIS match.
 
-  - Player said they're sick / injured / tired but still playing → negative delta
-  - Player hasn't played in weeks / mentioned rust → small negative delta
-  - Player is on a hot streak / scored multiple goals last match / called "on fire" → small positive delta
-  - Player is playing out of position tonight (e.g. usually GK but no GK available) → could go either way
-  - Player explicitly said they'll "give it 100%" / "feeling sharp" → small positive delta
+You are given the match's day and time, the confirmed players with their ratings, and the group's chat from the week before the match, oldest first, each line with its day and time.
 
-Think small. The base rating already captures most of what matters. You're adjusting on the margin for tonight's conditions only.
+Return "adjustments": one entry for each player the chat gives you a reason about, and nobody else. Players you leave out keep their rating.
+- playerId: the player's id, exactly as listed.
+- reason: one short line on why, quoting the chat where you can. Under 120 characters, no dashes.
+- delta: what to add to their rating for this match only, from -2 to 2: negative if they will probably play worse than usual, positive if better. Most reasons are worth 0.5 or 1 either way; keep 1.5 and 2 for something that clearly changes how they will play, such as playing with a fever or an injury.
+- confidence: from 0 to 1, how sure you are the chat means this for this match. If it is under 0.3, leave the player out instead.
 
-DO NOT:
-  - Adjust based on the player's overall ability — that's in the base rating
-  - Adjust based on opinions about long-term form ("Wasim is better than Sait")
-  - Adjust by more than ±2 even if you feel strongly
-  - Propose deltas for players you have no specific signal about — return delta: 0 with reason "No tonight-specific signal"
-  - Invent quotes — every reason must be grounded in the chat you were given
+What counts, read against the match's day and time:
+- Worse (negative delta): ill, injured, exhausted or hungover for the match, or back after weeks without playing.
+- Better (positive delta): standout games just before this one (goals, Man of the Match, team-mates saying they were the best player).
+- Not a reason: a problem they later say has cleared up, an opinion about who is better in general (the ratings already hold that), banter, idioms, someone else's illness, and simply saying they are in.
+- "Tonight" or "tomorrow" in a message means the day it was written, which is not always the match day.
+- The chat may be in English or Turkish. Never give a reason the chat does not.
 
-Return STRICT JSON — nothing else, no prose, no markdown fences:
+Examples:
+- "my back's killing me but I'll play" / "belim tutuldu ama gelirim": delta -1
+- "haven't kicked a ball since the summer" / "yazdan beri top oynamadım": delta -0.5
+- "Jack got four last week, unstoppable" / "Kerem geçen hafta 4 attı, durdurulamazdı": Jack / Kerem delta +1
+- "knee's fine now" after a knee injury / "dizim düzeldi": not a reason
+- "Jack is the best player here" / "buradaki en iyi oyuncu Kerem": not a reason
+- "in" / "varım": not a reason`;
 
-{
-  "adjustments": [
-    {
-      "playerId": "<the exact id from the player list>",
-      "delta": <number in [-2, 2]>,
-      "reason": "<one short sentence; quote a snippet of chat where possible>",
-      "confidence": <0..1>
-    }
-  ]
-}
-
-Rules:
-  - Return EVERY player from the input list. Use delta=0, confidence=0, reason="No tonight-specific signal" when the chat says nothing about them.
-  - Confidence below 0.3 means "wild guess" — set delta=0 in that case.
-  - Reason must be under 120 characters.
-  - Never invent a playerId not in the input list.`;
+const SCHEMA = {
+  type: "object",
+  properties: {
+    adjustments: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          playerId: { type: "string" },
+          reason: { type: "string" },
+          delta: { type: "number" },
+          confidence: { type: "number" },
+        },
+        required: ["playerId", "reason", "delta", "confidence"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["adjustments"],
+  additionalProperties: false,
+} as const;
 
 export interface AdjusterPlayer {
   id: string;
@@ -98,160 +125,89 @@ export interface RatingAdjustment {
 }
 
 /**
- * Run the LLM rating adjuster. Returns a Map keyed by playerId.
+ * PURE. The user turn: the match, the players and the chat, every time in
+ * London wall-clock with its weekday, so the model can tell the match day
+ * from the day a message was written.
+ */
+export function adjusterUserTurn(input: AdjusterInput, messages: AdjusterMessage[]): string {
+  return [
+    `SPORT: ${input.sportName}`,
+    `THE MATCH: ${formatLondon(input.matchDate, "EEEE d MMMM yyyy, HH:mm")}`,
+    "",
+    "CONFIRMED PLAYERS (rating out of 10):",
+    ...input.players.map((p) => `- ${p.name} (id ${p.id}): rating ${p.baseRating.toFixed(1)}`),
+    "",
+    `CHAT, the ${HISTORY_DAYS} days before the match, oldest first:`,
+    ...messages.map(
+      (m) => `[${formatLondon(m.timestamp, "EEE d MMM HH:mm")}] ${m.authorName ?? "?"}: ${m.body.replace(/\s+/g, " ").slice(0, 250)}`,
+    ),
+  ].join("\n");
+}
+
+/**
+ * Run the rating adjuster. Returns a Map keyed by playerId, one entry per
+ * player.
  *
- * On any failure (no API key, malformed JSON, network error), returns
- * an empty map — caller falls through to base ratings unchanged. The
- * hybrid balancer must never block team generation; if the LLM is
- * unavailable, the deterministic balancer runs as before.
+ * On any failure (no API key, a failed call, an unreadable body), returns
+ * an empty map: the caller falls through to base ratings unchanged. Team
+ * generation must never block on the model.
  */
 export async function adjustRatings(
   input: AdjusterInput,
+  deps?: { model?: PipelineModel },
 ): Promise<Map<string, RatingAdjustment>> {
   const empty = new Map<string, RatingAdjustment>();
-  if (!process.env.ANTHROPIC_API_KEY) {
+  if (!deps?.model && !process.env.ANTHROPIC_API_KEY) {
     console.error("[rating-adjuster] ANTHROPIC_API_KEY not set");
     return empty;
   }
   if (input.players.length === 0) return empty;
 
   const cutoff = new Date(input.matchDate.getTime() - HISTORY_DAYS * 24 * 60 * 60 * 1000);
-  const recentMessages = input.messages
-    .filter((m) => m.timestamp >= cutoff)
-    .slice(-MAX_HISTORY_MESSAGES);
-
-  if (recentMessages.length === 0) {
-    // No chat history → nothing to adjust on. Return zero-deltas for
-    // every player so callers can still persist an audit row.
-    for (const p of input.players) {
-      empty.set(p.id, {
-        playerId: p.id,
-        delta: 0,
-        reason: "No recent chat history",
-        confidence: 0,
-      });
-    }
-    return empty;
-  }
-
-  const playersBlock = input.players
-    .map(
-      (p) =>
-        `  - id: ${p.id} | name: ${p.name} | baseRating: ${p.baseRating.toFixed(2)}`,
-    )
-    .join("\n");
-
-  const messagesBlock = recentMessages
-    .map((m) => {
-      const ts = m.timestamp.toISOString().slice(0, 16).replace("T", " ");
-      const body = m.body.replace(/\s+/g, " ").slice(0, 250);
-      return `[${ts}] ${m.authorName ?? "?"}: ${body}`;
-    })
-    .join("\n");
-
-  const userContent = [
-    `## Sport\n${input.sportName}`,
-    `## Match kickoff\n${input.matchDate.toISOString()}`,
-    `## Confirmed players for tonight\n${playersBlock}`,
-    `## Recent chat (last ${HISTORY_DAYS} days, oldest first)\n${messagesBlock}`,
-  ].join("\n\n");
+  const recent = input.messages.filter((m) => m.timestamp >= cutoff).slice(-MAX_HISTORY_MESSAGES);
+  // No chat, nothing to read: zero for everyone, still one audit row each.
+  if (recent.length === 0) return fillZeros(new Map(), input.players, "No recent chat history");
 
   try {
-    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    const response = await guardedAnthropicCall("rating-adjuster", () =>
-      anthropic.messages.create({
-        model: MODEL,
-        // Clamped: an unbounded expression can drift past the SDK's
-        // non-streaming limit with no warning (see MAX_TOKENS_CEILING in
-        // message-analyzer.ts). No realistic roster gets near this, but
-        // "no call site picks its own unbounded number" is the rule.
-        max_tokens: Math.min(MAX_TOKENS_CEILING, 200 + 80 * input.players.length),
-        // Sonnet 5 runs adaptive thinking unless told not to, and can
-        // spend the whole max_tokens budget on it and return no text
-        // block at all (measured 2026-09-06, 5 runs of 5; see
-        // `ModelRequest.thinking` in pipeline/llm.ts). This call has a
-        // cap sized for its OUTPUT, so leaving it adaptive would turn a
-        // price change into a silent degradation.
-        thinking: { type: "disabled" },
-        system: systemBlock(SYSTEM_PROMPT),
-        messages: [{ role: "user", content: userContent }],
-      }),
-    );
-    const textBlock = response.content.find(
-      (b): b is Anthropic.TextBlock => b.type === "text",
-    );
-    const raw = textBlock?.text?.trim();
-    if (!raw) return empty;
-    return normaliseAdjustments(raw, input.players);
+    const model = deps?.model ?? anthropicModel();
+    const resp = await model.complete({
+      ...RATING_ADJUSTER_CALL,
+      system: RATING_ADJUSTER_SYSTEM,
+      user: adjusterUserTurn(input, recent),
+      maxTokens: MAX_TOKENS,
+      schema: SCHEMA as unknown as Record<string, unknown>,
+      label: "rating-adjuster",
+    });
+    return normaliseAdjustments(extractJson(resp.text), input.players);
   } catch (err) {
-    console.error("[rating-adjuster] Claude call failed:", err);
+    console.error("[rating-adjuster] model call failed:", err);
     return empty;
   }
 }
 
-function normaliseAdjustments(
-  rawText: string,
-  players: AdjusterPlayer[],
-): Map<string, RatingAdjustment> {
+/** PURE. The model's entries, clamped and checked, plus a zero for every
+ *  player it left out. */
+function normaliseAdjustments(parsed: unknown, players: AdjusterPlayer[]): Map<string, RatingAdjustment> {
   const out = new Map<string, RatingAdjustment>();
-  const playerIds = new Set(players.map((p) => p.id));
-
-  const cleaned = rawText
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```$/i, "")
-    .trim();
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(cleaned);
-  } catch {
-    const m = cleaned.match(/\{[\s\S]*\}/);
-    if (!m) return out;
-    try {
-      parsed = JSON.parse(m[0]);
-    } catch {
-      return out;
-    }
-  }
-
-  if (!parsed || typeof parsed !== "object") return out;
-  const obj = parsed as Record<string, unknown>;
-  const arr = Array.isArray(obj.adjustments) ? obj.adjustments : [];
-
-  for (const item of arr) {
-    if (!item || typeof item !== "object") continue;
-    const r = item as Record<string, unknown>;
+  const ids = new Set(players.map((p) => p.id));
+  const arr = (parsed as { adjustments?: unknown })?.adjustments;
+  for (const item of Array.isArray(arr) ? arr : []) {
+    const r = (item ?? {}) as Record<string, unknown>;
     const playerId = typeof r.playerId === "string" ? r.playerId : null;
-    if (!playerId || !playerIds.has(playerId)) continue;
-
-    let delta = typeof r.delta === "number" ? r.delta : 0;
-    delta = Math.max(-MAX_DELTA, Math.min(MAX_DELTA, delta));
-
-    const confidence =
-      typeof r.confidence === "number" ? Math.max(0, Math.min(1, r.confidence)) : 0;
-
-    if (confidence < 0.3) delta = 0;
-
+    if (!playerId || !ids.has(playerId)) continue;
+    const confidence = typeof r.confidence === "number" ? Math.max(0, Math.min(1, r.confidence)) : 0;
+    const raw = typeof r.delta === "number" ? Math.max(-MAX_DELTA, Math.min(MAX_DELTA, r.delta)) : 0;
+    const delta = confidence < MIN_CONFIDENCE ? 0 : raw;
     const reason =
-      typeof r.reason === "string" && r.reason.trim()
-        ? stripLongDashes(r.reason.trim().slice(0, 200))
-        : "No tonight-specific signal";
-
+      typeof r.reason === "string" && r.reason.trim() ? stripLongDashes(r.reason.trim().slice(0, 200)) : NO_SIGNAL_REASON;
     out.set(playerId, { playerId, delta, reason, confidence });
   }
+  return fillZeros(out, players, NO_SIGNAL_REASON);
+}
 
-  // Fill any player the LLM dropped with a zero-delta row so the audit
-  // table has a complete picture per match.
+function fillZeros(out: Map<string, RatingAdjustment>, players: AdjusterPlayer[], reason: string): Map<string, RatingAdjustment> {
   for (const p of players) {
-    if (!out.has(p.id)) {
-      out.set(p.id, {
-        playerId: p.id,
-        delta: 0,
-        reason: "No tonight-specific signal",
-        confidence: 0,
-      });
-    }
+    if (!out.has(p.id)) out.set(p.id, { playerId: p.id, delta: 0, reason, confidence: 0 });
   }
-
   return out;
 }

@@ -21,12 +21,15 @@
  *      failed check is MatchTime's error and the group is never asked
  *      about it.
  *
- * The model call goes through the pipeline's `PipelineModel`, on the
- * extractor model with thinking off (see `ModelRequest.thinking` for why
- * that matters on Sonnet 5), so tests drive it with a stub and the cost
- * lands in the batch's cost line.
+ * The model call goes through the pipeline's `PipelineModel` on
+ * `STATS_GENERIC_CALL`, so tests drive it with a stub and the cost lands
+ * in the batch's cost line. Prompt rewritten whole on 2026-10-20 (one
+ * task, the answer and NO_ANSWER defined once, EN and TR examples side by
+ * side, no "football club"); the paid check is
+ * `scripts/live-check-stats-generic.ts`.
  */
-import { EXTRACTOR_MODEL, extractJson, type PipelineModel } from "./llm";
+import { extractJson, HAIKU_CALL, type ModelCall, type PipelineModel } from "./llm";
+import { HAIKU_SHORT_ANSWER_MAX_TOKENS } from "../models";
 import { ELO_TOP_MIN_MATCHES_SHOWN, GROUP_LIST_CAP, GROUP_RATINGS_MIN_GAMES, TEAM_OF_SEASON_MIN_GAMES } from "./stats-answer";
 import { groundingCheck, type GroundingContext } from "./stats-grounding";
 import { MR_RELIABLE_MIN_AVG, MR_RELIABLE_MIN_GAMES } from "../mr-reliable";
@@ -35,17 +38,34 @@ import { monthYearLabel } from "../i18n/dates";
 import { stripLongDashes } from "../house-style";
 import type { Member, StatsSnapshot } from "./types";
 
-export const STATS_GENERIC_SYSTEM = `You answer ONE question about a football club's stats, asked in the club's WhatsApp group. You are given TABLES that have already been computed. They are everything you know.
+export const STATS_GENERIC_SYSTEM = `You answer one question about a club's stats, asked in the club's WhatsApp group. The message gives you the club's stats tables, already computed by MatchTime, then the question. The tables hold only the top of each list, and they are everything you know.
 
-Rules:
-- Use only the TABLES. Copy every player name exactly as the TABLES spell it, and every number exactly as the TABLES print it.
-- Write every number in digits, never as a word.
-- Never calculate a new number: no sums, differences, averages, ratios or percentages that the TABLES do not print.
-- Never call anyone the worst, the lowest or the bottom of anything. The TABLES only hold the top of each list.
-- If the TABLES do not answer the question, reply with exactly: NO_ANSWER
-- At most 4 short lines, WhatsApp style. No greeting. Never write an em dash or an en dash.
+Return "answer": the reply MatchTime posts in the group, or exactly NO_ANSWER when the tables do not answer the question.
 
-Return JSON: {"answer": "<your reply>"}.`;
+The reply:
+- uses only what the tables print: every name spelt as they spell it, every number in digits exactly as printed. Never work out a new number (a sum, difference, average, ratio or percentage the tables do not print).
+- never calls anyone the worst, the lowest or the bottom of anything, because the tables do not show the bottom.
+- is at most 4 short lines of plain WhatsApp text: no greeting, no dashes as punctuation, and no mention of "the tables".
+- is in English, unless the message says the group speaks another language.
+
+Examples, English and Turkish:
+- "who has won Man of the Match most?" / "en çok maçın adamı seçilen kim?": "Jack Reed leads with 5 wins." / "En çok maçın adamı seçilen: Jack Reed (5)."
+- "what's Jack's rating?" / "Jack'in puanı kaç?": "Jack Reed: 7.8 from 9 rated matches." / "Jack Reed: 7,8 (9 maç)."
+- "who's the worst player?" / "en kötü oyuncu kim?": NO_ANSWER
+- "who scored the most goals?" with no goals table / "en çok gol atan kim?": NO_ANSWER
+- "what's the club's average rating?" / "kulübün ortalama puanı ne?": NO_ANSWER, because that is a new number`;
+
+/**
+ * THE SHIPPED MODEL: Haiku 5.5, adaptive thinking at medium (2026-10-20).
+ * Paid check, `scripts/live-check-stats-generic.ts`, 19 cases once each:
+ * the live prompt on Sonnet 5 18/19 (one misspelt name), the new prompt
+ * on Sonnet 5 19/19, on Haiku 5.5 19/19 with no empty answer, about 19x
+ * cheaper per call, median latency the same (1.3 s against 1.4 s) and the
+ * 90th percentile slower (3.3 s against 1.9 s, its thinking). `MAX_TOKENS` is sized for Haiku, whose
+ * thinking shares the budget; the answer itself is a few short lines.
+ */
+export const STATS_GENERIC_CALL: ModelCall = HAIKU_CALL;
+const MAX_TOKENS = HAIKU_SHORT_ANSWER_MAX_TOKENS;
 
 const SCHEMA = {
   type: "object",
@@ -83,7 +103,7 @@ export function buildGenericStatsContext(args: {
   const top = s.ratings.slice(0, GROUP_LIST_CAP);
   L.push(`CLUB RATINGS (top ${GROUP_LIST_CAP}, players with ${GROUP_RATINGS_MIN_GAMES}+ rated matches; the average of the ratings team-mates gave them):`);
   for (const r of top) {
-    const move = r.delta === null ? "new since the last match" : r.delta > 0 ? `up ${r.delta} since the last match` : r.delta < 0 ? "down since the last match" : "no change since the last match";
+    const move = r.delta === null ? "new since the last match" : r.delta > 0 ? `up ${r.delta} ${r.delta === 1 ? "place" : "places"} in the table since the last match` : r.delta < 0 ? "down since the last match" : "no change since the last match";
     L.push(`${r.rank}. ${r.name}: ${d(r.avg)} from ${r.games} rated matches (${move})`);
   }
   if (s.appearances.length) {
@@ -176,7 +196,7 @@ export async function answerGenericStats(args: {
 }): Promise<{ result: GenericStatsResult; costUsd: number; ms: number; called: boolean }> {
   const ctx = buildGenericStatsContext(args);
   const user = [
-    "TABLES (everything you may use; nothing else exists for you):",
+    "TABLES:",
     ctx.text,
     "",
     ...(args.lang === "tr" ? [LANGUAGE_TR, ""] : []),
@@ -187,12 +207,11 @@ export async function answerGenericStats(args: {
   let ms = 0;
   try {
     const resp = await args.model.complete({
-      model: EXTRACTOR_MODEL,
+      ...STATS_GENERIC_CALL,
       system: STATS_GENERIC_SYSTEM,
       user,
-      maxTokens: 400,
+      maxTokens: MAX_TOKENS,
       schema: SCHEMA as unknown as Record<string, unknown>,
-      thinking: "off",
       label: "stats-generic",
     });
     costUsd = resp.costUsd ?? 0;
