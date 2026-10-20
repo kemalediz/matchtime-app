@@ -377,6 +377,7 @@ import { loadGroupReplyContexts, parseGroupQuote, type QuotedGroupMessage } from
 import { rosterMemberByPhone } from "@/lib/roster-name-by-phone";
 import { claimGroupReplies } from "@/lib/group-reply-claims";
 import { handlePartnerVolunteer } from "@/lib/partner-guest";
+import { alignHistoryWithBatch } from "@/lib/history-own-lines";
 
 interface InboundMessage {
   waMessageId: string;
@@ -2069,7 +2070,11 @@ async function handleAnalyzeRequest(request: Request) {
     fresh.sort((a, b) => (arrival.get(a.waMessageId) ?? 0) - (arrival.get(b.waMessageId) ?? 0));
   }
 
-  const history = (body.history ?? []).map((h) => ({
+  // A history line that IS a message in this request takes the body the
+  // pipeline reads for it (the Pi records the raw "@<digits>" mention into
+  // its history and rewrites only the forwarded copy), so every extractor's
+  // own-line filter recognises it. FNF, 2026-10-20: `history-own-lines.ts`.
+  const history = alignHistoryWithBatch(body.history ?? [], body.messages).map((h) => ({
     authorName: h.authorName,
     body: h.body,
     timestamp: new Date(h.timestamp),
