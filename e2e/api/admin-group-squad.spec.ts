@@ -60,9 +60,11 @@ test.afterAll(() => {
   resetDb();
 });
 
-test("a non-admin's 'Tom out' in the admin group is ignored: no reply, no write", async ({ request, db }) => {
+// A PLAYER of the club changes who plays in HQ too since 2026-10-20
+// (admin-group-attendance-anyone.spec.ts); someone not in the club does not.
+test("'Tom out' from someone not in the club is ignored: no reply, no write", async ({ request, db }) => {
   engineOn({ "Tom out": { route: "other_att", facts: otherFacts("Tom", "out") } });
-  const out = await say(request, "Tom out", PLAYER);
+  const out = await say(request, "Tom out", "447700900997");
   expect(out).toMatchObject({ handled: false, ignored: "no-open-pick", replyText: null });
   expect(await statusOf(db, U.third)).toBe("CONFIRMED");
 });
