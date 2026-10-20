@@ -1599,6 +1599,22 @@ export function decide(input: EngineInput): EngineResult {
           if (statusBefore === "BENCH" && c.polarity === "in" && openOffer && self) {
             speech.push({ kind: "bench_claim_too_late", messageId: msg.id, userId: t.userId! });
             out.disposition = out.disposition === "degraded" ? "degraded" : "acted";
+          } else if (self && !fromAffirmation && t.userId) {
+            // ── A REPEATED CLAIM GETS THE SAME ACKNOWLEDGEMENT (FNF,
+            // 2026-10-20). Naim, already taken out by an organiser,
+            // typed "@Match Time out" and saw nothing at all, where a
+            // fresh OUT gets 👋. The sender is told where he stands with
+            // the reaction a fresh claim would have earned, and nothing
+            // else: no write (there is nothing to change) and no message.
+            // Only for the sender's own place, and only when the claim
+            // matches where he already is; a pending-set confirmation has
+            // its own spoken ack below.
+            const already = alreadyWhereClaimed(c.polarity, statusBefore);
+            if (already) {
+              out.react = out.react ?? reactFor(already, true);
+              out.reasons.push(`${t.name} is already ${already.toLowerCase()}: acknowledged, no change`);
+              continue;
+            }
           }
           out.reasons.push(`no change for ${t.name}`);
           continue;
@@ -3677,6 +3693,22 @@ function clampScore(n: number): number | null {
   const v = Math.round(n);
   if (v < 0 || v > MAX_SCORE) return null;
   return v;
+}
+
+/**
+ * Where a sender's own claim that changed nothing says he already is, or
+ * null when the claim did not land for some other reason (a refusal, a
+ * place he could not take). OUT with no row counts as out: he was never
+ * down, and 👋 is the truthful answer.
+ */
+function alreadyWhereClaimed(
+  polarity: Claim["polarity"],
+  status: AttendanceRow["status"] | undefined,
+): AttendanceRow["status"] | null {
+  if (polarity === "out") return !status || status === "DROPPED" ? "DROPPED" : null;
+  if (polarity === "in") return status === "CONFIRMED" || status === "BENCH" ? status : null;
+  if (polarity === "bench") return status === "BENCH" ? "BENCH" : null;
+  return null;
 }
 
 function reactFor(status: AttendanceRow["status"], self: boolean): string {
