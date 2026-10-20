@@ -171,11 +171,11 @@ Return one claim for each person the message speaks about as a player in the mat
   personNamed  true when the words identify a particular person: a name, a nickname or an @mention, including a word that may only be a nickname (code checks every name against the squad). false only for a relationship, a quantity or an indefinite: "my brother", "2 of my guys", "someone", "a mate", "another keeper"
   polarity     what the message says that person is doing in the match:
                  "in"     joining, or staying in
-                 "out"    leaving or not coming: the person gives up their place, or says they will not or cannot play ("out", "can't make it", "I can drop out"). An injury, a knock or tiredness on its own is not "out": someone "taking it easy" is still playing
+                 "out"    leaving or not coming: the person gives up their place, asks for someone to take it, or says they will not or cannot play ("out", "can't make it", "anyone replace me?", "I can drop out"). An injury, a knock or tiredness on its own is not "out": someone "taking it easy" is still playing
                  "bench"  asking for the bench, which the message must name explicitly: bench, reserve, sub, backup, spare, standby, waiting list, "yedek" in any form, or 🪑. An offer to play if needed ("put me down if you're short") is "in" with contingent true, never "bench"
   contingent   true when the claim depends on something the message states that has not happened yet: "in if my back holds up", "happy to drop if you find someone". An OFFER to give up a place is contingent with no "if" in it ("I can drop out", "happy to pull out", "I'll make room"): the test is whether the person IS doing it or only COULD. false for a decision already taken ("I'm out", "can't make it"), and for a note beside the claim: asking for cover ("I'm out, anyone able to replace me?" is leaving either way) or a position
   conditionOn  "squad" when the condition is the squad or the team's needs, which includes every offer to give up a place; "self" when it is about the person themselves; otherwise "none"
-  tense        "present" now; "future" a commitment about an upcoming match, including a standing one ("count me in whenever you are short") and one with a condition; "past" something that already happened ("I was in last week"); "hypothetical" a counterfactual about something that is not the case ("if I WAS in the team it would not be ruined")
+  tense        "present" now; "future" a commitment about an upcoming match, including a standing one ("count me in whenever you are short") and one with a condition; "past" something that already happened ("I was in last week"); "hypothetical" a counterfactual about something that is not the case ("if I WAS in the team it would not be ruined"). Relayed words keep the tense of what was said, not of the saying: "Najib said he's in" is present
   basis        what the message does about the place, read from the VERB used about the person:
                  "decision"      the verb acts on the place: it asks for, claims or gives up one ("I'm in", "put me down", "count me in", "add me", "I'll take a spot", "I'll be the 14th", "happy to fill in", "I'll be there", "I'm out", "can't make it"). A hedge is a decision about the place that has not been made yet, so it is "decision" too
                  "availability"  the verb describes the person's state, whereabouts or ability and leaves the place unanswered ("I'm free", "I'm around", "I'm available", "I land Monday", "I will be back Tuesday week")
@@ -184,7 +184,7 @@ Return one claim for each person the message speaks about as a player in the mat
                  "I'm around if you're short"            -> availability
                  "put me down if you're short"           -> decision
                  "count me as the 14th if you need one"  -> decision
-  reported     true when relaying what someone else said ("Najib said he's in")
+  reported     true when relaying what someone else SAID ("Najib said he's in", "Ali geliyorum dedi"). A plain statement about someone ("Kai can't make it tonight") is not reported
   replaces     ONLY on an "in" claim, and only when the message says this person takes somebody else's place: the words used for that other person, VERBATIM ("Najib", "@Najib", "me"). "" everywhere else
   confidence   0 to 1, how sure you are that the message says this
 
@@ -209,6 +209,7 @@ Fitness and injuries: out only when the person says they will not or cannot play
   "I've got a bad hamstring so taking it easy", "knee's a bit dodgy tonight" | "dizim ağrıyor, yavaş oynarım" -> no claim: they are still playing
   "bit sore from Sunday but I'll be there" | "dizim ağrıyor ama gelirim" -> the sender in
   "hamstring's gone, can't make it tonight" | "sakatım, gelemiyorum" -> the sender out
+  "got a nasty cold, can someone take my spot?" | "gripim, yerime biri gelebilir mi?" -> the sender out, plus "recruit"
 
 Talk about players that is not about anyone's place: no claim.
   "Mojib, Habib and Kieran on the same side" | "Mojib ile Habib aynı takımda" -> no claim

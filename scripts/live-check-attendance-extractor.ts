@@ -140,10 +140,10 @@ const corpus = readFileSync(new URL("../e2e/corpus/incidents.jsonl", import.meta
   .split("\n")
   .filter((l) => l.trim().startsWith("{"))
   .map((l) => JSON.parse(l) as CorpusCase & { world: { players: Array<{ key: string; name: string }> } });
-function fromCorpus(id: string): Pick<Case, "body" | "author" | "tagged" | "history" | "lastBotPost"> {
+function fromCorpus(id: string, index = 0): Pick<Case, "body" | "author" | "tagged" | "history" | "lastBotPost"> {
   const c = corpus.find((x) => x.id === id);
   if (!c) throw new Error(`corpus case ${id} not found`);
-  const m = c.messages[0];
+  const m = c.messages[index];
   const author = c.world.players.find((p) => p.key === m.from)?.name ?? m.from;
   const last = c.world.lastBotPost ?? [...c.history].reverse().find((h) => h.author === "MatchTime")?.body ?? null;
   return { body: m.body, author, tagged: !!m.tag || /@Match Time/.test(m.body), history: c.history, lastBotPost: last };
@@ -183,6 +183,31 @@ const CASES: Case[] = [
     repeat: true,
     check: (f) => f.affirmation === "yes" && noSelfOut(f),
     want: 'affirmation "yes"',
+  },
+
+  {
+    id: "S1a",
+    ...fromCorpus("S1-ibrahim-baki-verdict-coverage", 0),
+    route: "self_att",
+    repeat: true,
+    check: selfOutDecided,
+    want: "the sender out: a flu AND asking to be replaced",
+  },
+  {
+    id: "S1b",
+    ...fromCorpus("S1-ibrahim-baki-verdict-coverage", 1),
+    route: "self_att",
+    repeat: true,
+    check: selfOutDecided,
+    want: "the sender out",
+  },
+  {
+    id: "S16b",
+    ...fromCorpus("S16b-wasim-relays-najib"),
+    route: "other_att",
+    repeat: true,
+    check: (f) => other(f, /najib/i).some((c) => c.polarity === "in" && !c.contingent && c.tense !== "past" && c.tense !== "hypothetical" && c.basis === "decision"),
+    want: "Najib in, reported, a decision",
   },
 
   // ── 2026-09-09 echo (once each) ────────────────────────────────────
