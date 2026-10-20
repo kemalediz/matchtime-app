@@ -75,3 +75,41 @@ const usage = (db: TestDb) =>
     });
   }
 });
+
+// The same question in the SAME batch as an IN that fills the last place
+// (2026-10-20 follow-up): the IN gets its tick and the question is answered
+// from the squad AFTER the write, "full", still without names. First come,
+// first served, so the IN really changes the squad.
+(LIVE ? test.describe : test.describe.skip)("'Is there still space?' beside an IN, organisers announce, LIVE (real model)", () => {
+  test.beforeEach(async ({ db }) => {
+    resetDb();
+    await db.run(`UPDATE "Organisation" SET "listAnnouncer" = 'organisers', language = 'en' WHERE id = $1`, [ORG_ID]);
+  });
+  test.afterAll(() => resetDb());
+
+  test("en: IN from one player and the space question from another, one batch", async ({ request, db }) => {
+    test.setTimeout(180_000);
+    const callOut = "We need 1 more player for Fri 20:30. Say *IN* if you can make it.";
+    const inId = `e2e-live-oa-batch-in-${Date.now()}`;
+    const askId = `e2e-live-oa-batch-ask-${Date.now()}`;
+    const before = await usage(db);
+    const res = await postAnalyze(request, [
+      { waMessageId: inId, body: "IN", authorPhone: "447700900009", authorName: "Ian Innes" },
+      { waMessageId: askId, body: "Is there still space?", authorPhone: "447700900003", authorName: "Pat Player", quotedBody: callOut, quotedFromMatchTime: true },
+    ]);
+    const results = res.results as Result[];
+    const inR = results.find((x) => x.waMessageId === inId)!;
+    const askR = results.find((x) => x.waMessageId === askId)!;
+    const after = await usage(db);
+    // eslint-disable-next-line no-console
+    console.log(`[live] batch: ${JSON.stringify(results.map((r) => ({ intent: r.intent, react: r.react, reply: r.reply })))}`);
+    // eslint-disable-next-line no-console
+    console.log(
+      `[live] batch model calls: ${(after?.calls ?? 0) - (before?.calls ?? 0)}, cost: $${((after?.cost ?? 0) - (before?.cost ?? 0)).toFixed(5)}`,
+    );
+    expect(inR.react).toBe("✅");
+    expect(askR.intent).toBe("organisers_space");
+    expect(askR.reply).toMatch(/^The squad is full for \S.*\. Say \*IN\* to go on the bench\.$/);
+    for (const r of results) expect(r.reply ?? "").not.toContain("Ben");
+  });
+});
