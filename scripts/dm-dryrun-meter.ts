@@ -29,17 +29,11 @@ export const HAIKU_CLASSIFIER_ARM: DryRunArm = {
   thinking: "haiku",
 };
 
-/** dm-qa's production call (Sonnet 5, thinking off, 600 tokens). */
+/** dm-qa's call until 2026-10-20 (Sonnet 5, thinking off, 600 tokens): the
+ *  "old" and "sonnet" arms of scripts/dryrun-dm-qa.ts. Its production arm
+ *  now is built there from `DM_QA_CALL` and `DM_QA_MAX_TOKENS`. */
 export const SONNET_DM_QA_ARM: DryRunArm = { name: "sonnet", model: SONNET_MODEL, maxTokens: 600, thinking: "off" };
 
-/** dm-qa on Haiku 5.5, the extra arm for its later model move. Thinking
- *  shares the budget on Haiku 5.5, so it gets the classifiers' 1,024. */
-export const HAIKU_DM_QA_ARM: DryRunArm = {
-  name: "haiku",
-  model: HAIKU_MODEL,
-  maxTokens: HAIKU_SHORT_ANSWER_MAX_TOKENS,
-  thinking: "haiku",
-};
 
 export interface Meter {
   /** The model, as the classifiers' `call` seam takes it. */
