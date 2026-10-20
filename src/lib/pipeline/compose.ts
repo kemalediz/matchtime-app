@@ -195,6 +195,14 @@ export function compose(result: EngineResult): ComposedOutput {
     });
   };
 
+  /** `answer_squad` for the organisers: the post, then the bench line
+   *  when the post does not list the bench itself. */
+  const organisersList = (): string => {
+    const post = squadStatePost();
+    if (bench.length > 0 && !sheet()) return post;
+    return `${post}\n\n${bench.length === 0 ? s.answer_bench_empty : s.answer_bench_list({ names: bench })}`;
+  };
+
   // WHO ANNOUNCES THE LIST AND TEAMS (2026-10-14, list-announcer.ts). When
   // the club's organisers do, the players' group never gets the squad or a
   // team sheet from MatchTime: an IN or OUT gets its reaction and nothing
@@ -332,7 +340,14 @@ export function compose(result: EngineResult): ComposedOutput {
         // Since 2026-09-15 "who's playing?" with a sheet on the table is
         // answered with the LINE-UPS, which name the same fourteen people
         // and also say which side each is on. See `squadStatePost`.
-        utterances.push({ messageId: sp.messageId, text: squadStatePost() });
+        //
+        // THE ORGANISERS' LIST ALWAYS SAYS THE BENCH (FNF HQ 2026-10-20:
+        // "Anyone on the bench? Can you show me the list please" at 17 of
+        // 18). The roster lists a bench only when someone is on it, and the
+        // line-ups never do, so in HQ the bench line goes under either
+        // when the post does not already carry it. The players' group's
+        // answer is unchanged.
+        utterances.push({ messageId: sp.messageId, text: state.forOrganisers ? organisersList() : squadStatePost() });
         break;
 
       case "answer_fixture": {
