@@ -166,6 +166,20 @@ describe("the score extractor's schema and prompt", () => {
     expect(p).toMatch(/"Reds 3-5" -> first 3, second 5, firstTeam "Reds", winner ""/);
   });
 
+  it("says 'last night' and 'yesterday' are the group's latest match, not another game (corpus S17b, 2026-10-20)", () => {
+    // "Red won 4-2 last night" came back otherGame: true on Sonnet 5 and
+    // the engine recorded nothing (engine.ts, "ABOUT ANOTHER GAME").
+    const p = EXTRACTOR_PROMPTS.score;
+    expect(p).toMatch(/"last night"[^\n]*"yesterday"[^\n]*latest/);
+    expect(p).toMatch(/"Red won 4-2 last night"[^\n]*-> [^\n]*otherGame false/);
+    expect(p).toMatch(/"last week we lost 9-2"[^\n]*-> [^\n]*otherGame true/);
+  });
+
+  it("a quoted 'which team won?' keeps a team beside its number, not the winner (#341)", () => {
+    const p = EXTRACTOR_PROMPTS.score;
+    expect(p).toMatch(/"7-4 yellows"[^\n]*secondTeam "yellows", winner ""/);
+  });
+
   it("is cached and warmed like every extractor, now that the size gate is gone (2026-10-19)", () => {
     // Until 2026-10-19 this prompt was kept "under Sonnet 5's cache
     // minimum" by a size estimate that looked at the system prompt alone
