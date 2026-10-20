@@ -80,6 +80,7 @@ import {
 } from "./format-switch";
 import { computeChaseRisk } from "./chase-risk";
 import { guardedAnthropicCall, systemBlock, PIPELINE_CACHE_CONTROL } from "@/lib/pipeline/llm";
+import { SONNET_MODEL } from "./models";
 import { withOrgAiBudget } from "./ai-budget";
 
 // Sonnet (2026-05-19, Kemal): the per-message analyzer makes nuanced
@@ -109,7 +110,7 @@ import { withOrgAiBudget } from "./ai-budget";
 // optional: Sonnet 5 runs ADAPTIVE THINKING when the parameter is
 // omitted, Sonnet 4.5 never did, and this call has 1,024 tokens to
 // spend. See the call site for the measurement.
-const MODEL = "claude-sonnet-5";
+const MODEL = SONNET_MODEL;
 
 // ─── max_tokens — READ BEFORE ADDING ANY messages.create CALL ────────
 //

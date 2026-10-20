@@ -29,6 +29,7 @@ import { dayOfMonthLabel, dayTimeLabel, timeLabel, weekdayLabel } from "./i18n/d
 import { normaliseLang, type Lang } from "./i18n/lang";
 import { applyHouseStyle } from "./house-style";
 import { guardedAnthropicCall, systemBlock } from "@/lib/pipeline/llm";
+import { SONNET_MODEL } from "./models";
 import { isAiBudgetExceeded, withOrgAiBudget } from "@/lib/ai-budget";
 
 const SYSTEM_PROMPT = `You are MatchTime, a friendly assistant for a 5/7-a-side football group. You're answering ONE player's private message.
@@ -330,7 +331,7 @@ export async function answerScopedQuestion(args: {
               // and, for a Turkish club, in Turkish, with a long list of
               // regressions already caught (GLUED_SUFFIX, WRONG_DAY_TR,
               // FORMAL).
-              model: "claude-sonnet-5",
+              model: SONNET_MODEL,
               max_tokens: 600,
               // REQUIRED, not tidiness. Sonnet 5 thinks adaptively when
               // `thinking` is omitted and Sonnet 4.5 did not, and 600

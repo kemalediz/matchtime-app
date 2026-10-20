@@ -66,7 +66,7 @@
  * test) and this module asserts the result.
  */
 import { E2EPreflightError } from "./preflight";
-import { HAIKU_MODEL } from "../../src/lib/models";
+import { HAIKU_MODEL, SONNET_MODEL } from "../../src/lib/models";
 
 export const LIVE_ENV_FLAG = "MT_SIM_LIVE_LLM";
 export const DM_QA_STUB_ENV = "MT_TEST_DM_QA_STUB";
@@ -118,7 +118,7 @@ export const KEY_ENV = "ANTHROPIC_API_KEY";
  */
 export const PROBE_MODELS: readonly string[] = [
   HAIKU_MODEL,
-  "claude-sonnet-5",
+  SONNET_MODEL,
 ];
 
 /**
@@ -129,7 +129,7 @@ export const PROBE_MODELS: readonly string[] = [
  * and the drift test still reads from there. Callers that care about
  * the whole surface use `PROBE_MODELS`.
  */
-export const PROBE_MODEL = "claude-sonnet-5";
+export const PROBE_MODEL = SONNET_MODEL;
 
 const DEFAULT_BASE_URL = "https://api.anthropic.com";
 const ANTHROPIC_VERSION = "2023-06-01";

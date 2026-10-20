@@ -23,6 +23,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { ParsedChat } from "./whatsapp-parser";
 import { guardedAnthropicCall, systemBlock } from "@/lib/pipeline/llm";
+import { SONNET_MODEL } from "./models";
 import { stripLongDashes } from "./house-style";
 
 // Onboarding is a one-shot per org — a few cents vs pennies difference
@@ -34,7 +35,7 @@ import { stripLongDashes } from "./house-style";
 // The call site sends `thinking: { type: "disabled" }`, which is
 // required: Sonnet 5 thinks adaptively when the parameter is omitted
 // and Sonnet 4.5 did not.
-const MODEL = "claude-sonnet-5";
+const MODEL = SONNET_MODEL;
 
 const SYSTEM_PROMPT = `You are analysing a WhatsApp chat export from a recurring sports group to help the admin onboard to MatchTime.
 

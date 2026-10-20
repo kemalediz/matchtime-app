@@ -24,7 +24,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { Degradation } from "./types";
 import { guardedModelCall } from "../ai-budget-context";
-import { HAIKU_MODEL } from "../models";
+import { HAIKU_MODEL, SONNET_MODEL } from "../models";
 
 /**
  * The project ceiling, MIRRORED rather than imported.
@@ -54,7 +54,7 @@ export const PIPELINE_MAX_TOKENS_CEILING = 4_096;
  * changing its shape, and the corpus is what clears a new id.
  */
 export const ROUTER_MODEL = HAIKU_MODEL;
-export const EXTRACTOR_MODEL = "claude-sonnet-5";
+export const EXTRACTOR_MODEL = SONNET_MODEL;
 
 /** USD per million tokens. anthropic.com/pricing, 2026-09-01; Haiku 5.5
  *  from platform.claude.com/docs/en/about-claude/pricing, 2026-10-19,

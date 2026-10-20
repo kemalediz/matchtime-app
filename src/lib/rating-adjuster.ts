@@ -20,6 +20,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { MAX_TOKENS_CEILING } from "./message-analyzer";
 import { guardedAnthropicCall, systemBlock } from "@/lib/pipeline/llm";
+import { SONNET_MODEL } from "./models";
 import { stripLongDashes } from "./house-style";
 
 // `claude-sonnet-4-5` here was inherited from the deleted
@@ -28,7 +29,7 @@ import { stripLongDashes } from "./house-style";
 // The call site sends `thinking: { type: "disabled" }`, which is
 // required: Sonnet 5 thinks adaptively when the parameter is omitted
 // and Sonnet 4.5 did not.
-const MODEL = "claude-sonnet-5";
+const MODEL = SONNET_MODEL;
 const MAX_DELTA = 2;
 const HISTORY_DAYS = 7;
 const MAX_HISTORY_MESSAGES = 300;
