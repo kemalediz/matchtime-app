@@ -1215,7 +1215,7 @@ export const tr: Strings = {
   hq_mom_organisers_only: (p) => `${p.mvpLabel} seçimini yalnızca organizatörler yapabilir.`,
   hq_mom_failed: (p) => `${p.mvpLabel} şu an kaydedilemedi. Lütfen bir dakika sonra tekrar gönderin.`,
   group_ask_organiser: (p) =>
-    `${p.kickoffLabel} maçı için ${p.open} oyuncu daha lazım. *VARIM* yazın, kimin oynayacağını organizatörler seçer. Seçilirseniz size mesaj atarım.`,
+    `${p.kickoffLabel} maçı için ${p.open} oyuncu daha lazım. Gelebiliyorsanız *VARIM* yazın, yeri kimin alacağını organizatörler onaylayacak.`,
   hq_group_asked: (p) => `Ana grupta ${p.open} oyuncu için sordum.`,
   hq_group_ask_full: (p) =>
     `${p.kickoffLabel} kadrosu dolu: ${p.maxPlayers} kişilik kadroda ${p.confirmed} kişi var. Ana grupta sorulacak bir şey yok.`,
@@ -2419,12 +2419,12 @@ export const tr: Strings = {
     `👋 ${p.firstName ? `${p.firstName}, ` : ""}*${p.activityName}* (${p.matchWhen}) için hâlâ ${p.count} oyuncu arıyoruz. ` +
     `Varsan *VARIM* yaz, yedek listesine ekleyeyim (kimin oynayacağını organizatörler seçer); yoksan *YOKUM* yaz, bir daha sormam 🙏`,
   dm_self_ack_waiting_organiser: (p) =>
-    `📋 *${p.matchName}* (${p.matchWhen}) için seni yedek listesine yazdım. Kimin oynayacağını organizatörler seçer; seçilirsen sana haber veririm 🙏`,
+    `📋 *${p.matchName}* (${p.matchWhen}) için seni yedek listesine yazdım. Kimin oynayacağını organizatörler seçer 🙏`,
   web_attend_toast: (p) =>
     p.status === "CONFIRMED"
       ? "Kadrodasın! Maçta görüşürüz 🎉"
       : p.organiser
-        ? "Seni yedek listesine yazdım. Kimin oynayacağını organizatörler seçer; seçilirsen sana haber veririm 🙏"
+        ? "Seni yedek listesine yazdım. Kimin oynayacağını organizatörler seçer 🙏"
         : "Kadro dolu, o yüzden seni yedeğe yazdım. Bir yer açılınca sana haber veririm 🙏",
 
   // ── UNP1 (2026-10-01): yöneticilere ödemeyenler listesi ──

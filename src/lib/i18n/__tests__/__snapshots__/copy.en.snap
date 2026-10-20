@@ -1766,7 +1766,7 @@ Sorry, I couldn't update the squad just now. An admin will sort it, try again in
 📋 Squad's full for *Friday 9-a-side* on Fri 16 Oct, 20:30, so I've put you first on the bench. I'll message you the moment a spot opens 🙏
 
 ### R102 buildTentativeFollowupAck / in, landed on the bench (organisers pick)
-📋 I've put you on the bench for *Friday 9-a-side* on Fri 16 Oct, 20:30. The organisers pick who plays, and I'll message you if you're picked 🙏
+📋 I've put you on the bench for *Friday 9-a-side* on Fri 16 Oct, 20:30. The organisers pick who plays 🙏
 
 ### R101 buildSelfAttendanceAck / CONFIRMED
 ✅ You're in for *Tuesday 7-a-side* on Tue 8 Sep, 21:30. See you there ⚽
@@ -3845,10 +3845,10 @@ A place just opened for Fri 20:30. Say *IN* to go on the bench, and the organise
 Tip: to carry the squad over each week, to pick replacements from the bench yourself, or to get admin messages in your admins' group, open Settings on the website.
 
 ### GAK1 buildGroupAskPost / organisers pick, one place
-We need 1 more player for Fri 19:15. Say *IN* and the organisers will pick who takes the place. I'll message you if it's you.
+We need 1 more player for Fri 19:15. Say *IN* if you can make it and the organisers will confirm who gets the place.
 
 ### GAK1 buildGroupAskPost / organisers pick, two places
-We need 2 more players for Fri 19:15. Say *IN* and the organisers will pick who takes the places. I'll message you if it's you.
+We need 2 more players for Fri 19:15. Say *IN* if you can make it and the organisers will confirm who gets the places.
 
 ### GAK1 buildGroupAskPost / first come, two places
 That's 12 of 14 for Fri 19:15. 2 slots open, say *IN* to take one.
@@ -3893,7 +3893,7 @@ Can't make it? Reply *OUT* and I'll stop asking 🙌
 ---
 👋 Ali, still after 1 player for *Friday 9-a-side* on Fri 9 Oct at 20:30. Reply *IN* to go on the bench and the organisers will pick who plays, or *OUT* and I'll stop asking 🙏
 ---
-📋 I've put you on the bench for *Friday 9-a-side* on Fri 9 Oct at 20:30. The organisers pick who plays, and I'll message you if you're picked 🙏
+📋 I've put you on the bench for *Friday 9-a-side* on Fri 9 Oct at 20:30. The organisers pick who plays 🙏
 
 ### UNP1 buildUnpaidListAdminNotice / several unpaid
 💷 Unpaid for *Friday 9-a-side* (Fri 9 Oct at 20:30): Wasim Ali, Raihan Ahmed, Ali Demir. 13 of 16 paid.

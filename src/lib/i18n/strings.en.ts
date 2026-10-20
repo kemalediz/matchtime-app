@@ -1443,11 +1443,12 @@ export const en = {
   //    player (2026-10-16, admin-group-ask-group.ts). A first-come club's
   //    post is `slot_opened`, unchanged. ──
   /** The players' group post in an organiser-pick club: an IN goes on the
-   *  bench, the organisers pick, the picked player gets a DM. */
+   *  bench and the organisers confirm who plays. The organisers announce
+   *  it, so the post promises no message from MatchTime (FNF 2026-10-18). */
   group_ask_organiser: (p: { open: number; kickoffLabel: string }): string =>
     p.open === 1
-      ? `We need 1 more player for ${p.kickoffLabel}. Say *IN* and the organisers will pick who takes the place. I'll message you if it's you.`
-      : `We need ${p.open} more players for ${p.kickoffLabel}. Say *IN* and the organisers will pick who takes the places. I'll message you if it's you.`,
+      ? `We need 1 more player for ${p.kickoffLabel}. Say *IN* if you can make it and the organisers will confirm who gets the place.`
+      : `We need ${p.open} more players for ${p.kickoffLabel}. Say *IN* if you can make it and the organisers will confirm who gets the places.`,
   /** Back in HQ, once the post is queued. */
   hq_group_asked: (p: { open: number }): string =>
     `Asked in the main chat for ${p.open} ${p.open === 1 ? "player" : "players"}.`,
@@ -3283,7 +3284,7 @@ export const en = {
     `Reply *IN* to go on the bench and the organisers will pick who plays, or *OUT* and I'll stop asking 🙏`,
   /** The private ack of an IN that went on the waiting list. */
   dm_self_ack_waiting_organiser: (p: { matchName: string; matchWhen: string }): string =>
-    `📋 I've put you on the bench for *${p.matchName}* on ${p.matchWhen}. The organisers pick who plays, and I'll message you if you're picked 🙏`,
+    `📋 I've put you on the bench for *${p.matchName}* on ${p.matchWhen}. The organisers pick who plays 🙏`,
   /** The web app's "I'm in" toast, from the status the write left
    *  (2026-10-16): "You're in" only for a CONFIRMED row. `organiser`:
    *  `benchPickMode = "organiser"`, so a BENCH is the waiting list. */
@@ -3291,7 +3292,7 @@ export const en = {
     p.status === "CONFIRMED"
       ? "You're in! See you at the match 🎉"
       : p.organiser
-        ? "You're on the bench. The organisers pick who plays, and I'll message you if you're picked 🙏"
+        ? "You're on the bench. The organisers pick who plays 🙏"
         : "The squad's full, so you're on the bench. I'll message you if a spot opens 🙏",
 
   // ── UNP1 (2026-10-01): U1 of MDs/friday-group-features-plan-2026-09-30.md
