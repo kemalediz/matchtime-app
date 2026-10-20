@@ -13,6 +13,7 @@
  * owner's or admin's message is read by the same pipeline as the players'
  * group, with the organisers' group context (`src/lib/admin-group.ts`).
  */
+import { claimGroupReplies } from "@/lib/group-reply-claims";
 import { NextResponse } from "next/server";
 import { handleAdminGroupMessage } from "@/lib/admin-group";
 
@@ -58,5 +59,19 @@ export async function POST(request: Request) {
           }
         : null,
   });
-  return NextResponse.json({ ok: true, ...result });
+  // MatchTime's HQ reply is claimed like its other posts (review of #341,
+  // finding 3): the Pi acks it with `replyKey`, the ack stamps the stanza
+  // id on the claim and on the HQ log line with the same words, and a YES
+  // quoting it is then decided by its id.
+  const orgId = (result as { orgId?: string }).orgId;
+  const replyText = (result as { replyText?: string | null }).replyText;
+  const messageId = str(body.messageId);
+  let replyKey: string | undefined;
+  if (orgId && messageId && typeof replyText === "string" && replyText.trim()) {
+    const keys = await claimGroupReplies({ orgId, door: "hq", replies: [{ inboundId: messageId, text: replyText, matchId: null }] }).catch(
+      () => new Map<string, string>(),
+    );
+    replyKey = keys.get(messageId);
+  }
+  return NextResponse.json({ ok: true, ...result, ...(replyKey ? { replyKey } : {}) });
 }

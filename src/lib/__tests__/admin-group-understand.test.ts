@@ -14,11 +14,11 @@ import { asShortIds } from "../pipeline/__tests__/router-ids";
 const dbMock = vi.hoisted(() => ({
   adminTeamProposal: { findFirst: vi.fn() },
   adminSquadProposal: { findFirst: vi.fn() },
-  match: { findUnique: vi.fn() },
+  match: { findUnique: vi.fn(), findMany: vi.fn() },
   membership: { findMany: vi.fn(), findFirst: vi.fn() },
   // What an HQ reply quotes, by its WhatsApp id (slice S4).
   sentNotification: { findMany: vi.fn() },
-  botJob: { findUnique: vi.fn() },
+  botJob: { findMany: vi.fn() },
   adminGroupMessage: { findMany: vi.fn() },
   user: { findMany: vi.fn() },
 }));
@@ -127,7 +127,7 @@ beforeEach(() => {
   hqScore.hqScoreRouting.mockResolvedValue({ waiting: null, scoreAnswerIds: new Set(), scoreCorrectionIds: new Set() });
   hqScore.answerHqScore.mockResolvedValue({ outcome: "hq-score-saved", replyText: "Score saved: Yellow 7, Red 4." });
   dbMock.sentNotification.findMany.mockResolvedValue([]);
-  dbMock.botJob.findUnique.mockResolvedValue(null);
+  dbMock.botJob.findMany.mockResolvedValue([]);
   dbMock.adminGroupMessage.findMany.mockResolvedValue([]);
   dbMock.user.findMany.mockResolvedValue([]);
   dbMock.membership.findFirst.mockResolvedValue(null);
@@ -140,7 +140,7 @@ describe("the router is the players' group's router, shown the organisers' conte
     const user = requests[0].user;
     expect(user).toContain("ORGANISERS' GROUP. The sender is an organiser of the club.");
     expect(user).toContain("WAITING: approval of the proposed teams for Fri 16 Oct, asked at 10:00.");
-    expect(user).toContain('THEY ARE REPLYING TO another member\'s message (when it was sent is not known):\n"shall we start at 8?"\n[m1] Raihan: yes');
+    expect(user).toContain('THEY ARE REPLYING TO a message from a member (not identified) (when it was sent is not known):\n"shall we start at 8?"\n[m1] Raihan: yes');
     expect(user).toMatch(/^NOW: /);
     expect(user).toContain("- an organiser: who has the bibs?");
     // The model is shown a short id, never the WhatsApp id.
@@ -150,28 +150,59 @@ describe("the router is the players' group's router, shown the organisers' conte
   });
 });
 
-describe("an HQ reply is resolved by the quoted message's id first (quoted-reply context, slice S4)", () => {
+describe("an HQ reply is decided by the quoted message's id (quoted-reply context, slice S4, and review of #341, findings 4 and 5)", () => {
   const teamsPost = { key: "botjob-j1", kind: "admin-group-message", matchId: null, waMessageId: "true_hq@g.us_3EB0TEAMS", waStanzaId: "3EB0TEAMS", text: null, createdAt: ASKED };
+  const stamped = (at: Date, stanza: string, text = TEAMS_TEXT) => ({ ...mtRow(at, "teams:m1", text), waMessageId: `mt:teams:m1:${stanza}`, waStanzaId: stanza });
 
   it("a YES quoting MatchTime's teams post by id approves those teams, though the Pi's copy of the words is cut and its flag missing", async () => {
     // Other chat in between: without the quote this YES would be asked about.
-    hqLog.hqLogSince.mockResolvedValue([mtRow(ASKED, "teams:m1"), orgRow(new Date("2026-10-16T09:05:00Z"))]);
+    hqLog.hqLogSince.mockResolvedValue([stamped(ASKED, "3EB0TEAMS"), orgRow(new Date("2026-10-16T09:05:00Z"))]);
     dbMock.sentNotification.findMany.mockResolvedValue([teamsPost]);
-    dbMock.botJob.findUnique.mockResolvedValue({ orgId: "org-fnf", kind: "admin-group", text: TEAMS_TEXT, sentAt: ASKED, createdAt: ASKED });
+    dbMock.botJob.findMany.mockResolvedValue([{ id: "j1", orgId: "org-fnf", kind: "admin-group", text: TEAMS_TEXT, sentAt: ASKED, createdAt: ASKED, matchId: "m1", aboutKey: null }]);
+    dbMock.match.findMany.mockResolvedValue([{ id: "m1", date: new Date("2026-10-16T20:00:00Z"), activity: { name: "Friday 7s", orgId: "org-fnf" } }]);
     const r = await ask("YES", "approve", { quoted: { messageId: "3EB0TEAMS", text: "📝 Proposed", fromMatchTime: false } });
     expect(r?.outcome).toBe("teams-final");
-    expect(requests[0].user).toContain("THEY ARE REPLYING TO MatchTime's message of Fri 16 Oct, 10:00:");
+    expect(requests[0].user).toContain("THEY ARE REPLYING TO MatchTime's message of Fri 16 Oct, 10:00");
+  });
+
+  it("a YES quoting an OLDER proposal (the teams changed and were proposed again) asks, and does not approve the new line-up", async () => {
+    const OLD = new Date("2026-10-16T08:30:00Z");
+    // The proposal was re-asked at 10:00 (ASKED); the YES quotes the 09:30 one.
+    hqLog.hqLogSince.mockResolvedValue([stamped(OLD, "3EB0OLDTEAMS", `${TEAMS_TEXT}\n2. Old Line-up`), stamped(ASKED, "3EB0TEAMS")]);
+    const r = await ask("YES", "approve", { quoted: { messageId: "3EB0OLDTEAMS", text: `${TEAMS_TEXT}\n2. Old Line-up`, fromMatchTime: true } });
+    expect(r?.outcome).toBe("hq-confirm-asked");
+    expect(teams.answerTeamsYes).not.toHaveBeenCalled();
+  });
+
+  it("the same, with no id the log knows (text fallback): the whole line must agree, so the older proposal is not mistaken for the new one", async () => {
+    const OLD = new Date("2026-10-16T08:30:00Z");
+    hqLog.hqLogSince.mockResolvedValue([mtRow(OLD, "teams:m1", `${TEAMS_TEXT}\n2. Old Line-up`), mtRow(ASKED, "teams:m1", `${TEAMS_TEXT}\n2. New Line-up`)]);
+    const r = await ask("YES", "approve", { quoted: { text: `${TEAMS_TEXT}\n2. Old Line-up`, fromMatchTime: true } });
+    expect(r?.outcome).toBe("hq-confirm-asked");
+    expect(teams.answerTeamsYes).not.toHaveBeenCalled();
   });
 
   it("another organiser's message, found by id, is named, and an untagged reply to it is their conversation", async () => {
     dbMock.adminGroupMessage.findMany.mockResolvedValue([
-      { waMessageId: "false_hq@g.us_3EB0ORG_4478@s.whatsapp.net", senderUserId: "u-2", text: "Imti is back next week", createdAt: new Date("2026-10-16T09:05:00Z") },
+      { waMessageId: "false_hq@g.us_3EB0ORG_4478@s.whatsapp.net", waStanzaId: null, fromMatchTime: false, senderUserId: "u-2", text: "Imti is back next week", createdAt: new Date("2026-10-16T09:05:00Z") },
     ]);
     dbMock.user.findMany.mockResolvedValue([{ id: "u-2", name: "Hamzah Ali" }]);
     const r = await ask("Rafi too", "other_att", { quoted: { messageId: "3EB0ORG", text: "Imti is back", fromMatchTime: false } });
-    expect(requests[0].user).toContain("THEY ARE REPLYING TO Hamzah Ali's message of Fri 16 Oct, 10:05:\n\"Imti is back next week\"");
+    expect(requests[0].user).toContain('THEY ARE REPLYING TO Hamzah Ali\'s message of Fri 16 Oct, 10:05:\n"Imti is back next week"');
     expect(r).toBeNull();
     expect(squad.handleAdminSquadChange).not.toHaveBeenCalled();
+  });
+
+  it("an organiser's message, found by id, whose words copy MatchTime's proposal is NOT relabelled MatchTime's: a YES to it is their conversation", async () => {
+    // Hamzah pasted the proposal's text himself; Raihan replies YES to Hamzah.
+    dbMock.adminGroupMessage.findMany.mockResolvedValue([
+      { waMessageId: "false_hq@g.us_3EB0COPY_4478@s.whatsapp.net", waStanzaId: null, fromMatchTime: false, senderUserId: "u-2", text: TEAMS_TEXT, createdAt: new Date("2026-10-16T09:05:00Z") },
+    ]);
+    dbMock.user.findMany.mockResolvedValue([{ id: "u-2", name: "Hamzah Ali" }]);
+    hqLog.hqLogSince.mockResolvedValue([mtRow(ASKED, "teams:m1"), { ...orgRow(new Date("2026-10-16T09:05:00Z"), TEAMS_TEXT), waMessageId: "false_hq@g.us_3EB0COPY_4478@s.whatsapp.net" }]);
+    const r = await ask("YES", "approve", { quoted: { messageId: "3EB0COPY", text: TEAMS_TEXT, fromMatchTime: false } });
+    expect(teams.answerTeamsYes).not.toHaveBeenCalled();
+    expect(r).toBeNull();
   });
 
   it("a failed read keeps the Pi's quote", async () => {

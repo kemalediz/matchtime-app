@@ -538,6 +538,8 @@ export interface AdminGroupForward {
 
 export interface AdminGroupAnswer {
   replyText?: string | null;
+  /** The key the server claimed `replyText` under: ack the sent reply with it. */
+  replyKey?: string;
   adminGroup?: { groupId?: unknown; orgId?: unknown } | null;
   outcome?: string;
   /** The emoji to place on the admin's message: "✅" when MatchTime acted
@@ -661,6 +663,9 @@ export interface AnalyzeResult {
   react: string | null;
   reply: string | null;
   reasoning?: string;
+  /** The key the server claimed `reply` under (slice S4 review): ack the
+   *  sent reply with it, so a reply quoting it resolves by its id. */
+  replyKey?: string;
 }
 
 export async function postAnalyze(params: {

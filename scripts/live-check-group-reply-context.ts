@@ -66,7 +66,7 @@ const RECORDED =
 const TEAMS_TEXT = "📝 *Proposed teams*: 21:00 at Goals\n\n*Red*:\n1. Ali Khan\n2. Bilal Ahmed\n\n*Yellow*:\n1. Tom Third\n2. Can Demir\n\nReply YES to make them final.";
 
 interface Quote {
-  /** null: MatchTime's. */
+  /** null: MatchTime's. "": a member not identified (review of #341). */
   author: string | null;
   text: string;
   minsAgo?: number;
@@ -78,7 +78,7 @@ interface Quote {
 function replyOf(q: Quote | undefined) {
   if (!q) return null;
   return {
-    author: q.author === null ? null : { name: q.author },
+    author: q.author === null ? null : { name: q.author || null },
     at: q.minsAgo !== undefined ? new Date(NOW.getTime() - q.minsAgo * 60_000) : null,
     text: q.text,
     topic: q.topic ?? null,
@@ -159,6 +159,19 @@ const EXTRACT: ExtractCase[] = [
       return c.length === 1 && c[0].subject === "other" && /ali/i.test(String(c[0].personRef)) && c[0].polarity === "out";
     },
     why: "'he's out' replying to Ali: Ali out",
+  },
+  {
+    route: "other_att",
+    author: "Bo",
+    text: "@Match Time he's out",
+    quote: { author: "", text: "stuck at work, not going to make it", minsAgo: 10 },
+    check: (f) => {
+      const c = (f.claims as Array<Record<string, unknown>> | undefined) ?? [];
+      // Nobody may be named from an unidentified author: "he" stays "he"
+      // (code then resolves it to no one and writes nothing).
+      return c.every((x) => !/ali/i.test(String(x.personRef)) && (x.subject !== "other" || x.personNamed === false || /^(he|him)$/i.test(String(x.personRef))));
+    },
+    why: "'he's out' replying to a member NOT identified: names nobody",
   },
   {
     route: "self_att",

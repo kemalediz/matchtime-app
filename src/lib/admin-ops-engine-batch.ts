@@ -185,7 +185,7 @@
  * so there is ONE place in the codebase where a bulk DM is performed,
  * and one shape to review when the next one arrives.
  */
-import { quoteForMatch, type QuotedGroupMessage } from "./reply-context";
+import { type QuotedGroupMessage } from "./reply-context";
 import { requestNotHandledAdminReply, requestNotHandledReply } from "./team-ops-engine";
 import { messageMentionsBotExplicitly } from "./interaction-contract";
 import {
@@ -386,7 +386,7 @@ export async function runAdminOpsBatch(args: {
         tagged: m.tagged,
         history,
         lastBotPost,
-        reply: quoteForMatch(m.reply, state.matchId ?? ""),
+        reply: m.reply ?? null,
         now,
       });
       for (const d of res.degradations) {

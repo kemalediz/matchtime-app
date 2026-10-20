@@ -32,6 +32,7 @@
  *                           FAILED exactly like this, so "sent" would lie.
  *   release                 back to queued (the Pi's DM pacing)
  */
+import { stampHqLogStanza } from "@/lib/hq-log-stanza";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { planAckSideEffects } from "@/lib/dispatch-claim";
@@ -104,6 +105,9 @@ export async function POST(request: Request) {
     create: { key, kind, matchId, targetUser, waMessageId, waStanzaId },
     update: { waMessageId: waMessageId ?? undefined, waStanzaId: waStanzaId ?? undefined },
   });
+  // MatchTime's line in the HQ log learns the stanza id of its send, so an
+  // HQ reply quoting it is decided by the id (`hq-log-stanza.ts`).
+  if (key.startsWith("hqreply:") || key.startsWith("botjob-")) await stampHqLogStanza(key, waStanzaId);
 
   // Per-key-class side effects — identical set to pre-claim behaviour,
   // just derived by a unit-tested pure mapper. Each is itself idempotent

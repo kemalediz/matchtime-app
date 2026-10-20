@@ -70,7 +70,7 @@
  * nothing. Logs carry ids and counts only.
  */
 import { loadGroupReplyContexts, parseGroupQuote, type QuotedGroupMessage } from "./reply-context";
-import { rosterNameByPhone } from "./roster-name-by-phone";
+import { rosterMemberByPhone } from "./roster-name-by-phone";
 import { db } from "./db";
 import { withOrgAiBudget, getAiBudgetStatus } from "./ai-budget";
 import { gateBatch } from "./pipeline/gate";
@@ -87,7 +87,7 @@ import { answerSquadPasteYes } from "./admin-group-paste";
 import { answerGraphicRequest } from "./admin-group-graphics";
 import { buildHqHelp, hqHelpGates } from "./admin-group-help";
 import { hqLogSince, listAskRef, recordMatchTimeQuestion, teamsAskRef } from "./admin-group-log";
-import { WHICH_ASK_REF, decideApproval, matchQuoted, type QuotedMessage } from "./admin-group-confirm-rules";
+import { WHICH_ASK_REF, decideApproval, quotedLogRow, type QuotedMessage } from "./admin-group-confirm-rules";
 import { hqAddressing, organisersContext, type PendingWithLabel } from "./admin-group-context";
 import { answerPartnerAskYes, parsePartnerAskRef, partnerAskRef, partnerAsksAwaitingApproval } from "./partner-ask";
 import { askPlayersGroup } from "./admin-group-ask-group";
@@ -217,7 +217,7 @@ async function quotedHqMessage(
     now,
     messages: [{ id: messageId, quote }],
     batch: [],
-    authorByPhone: (phone) => rosterNameByPhone(orgId, phone),
+    memberByPhone: (phone) => rosterMemberByPhone(orgId, phone),
   });
   return out.get(messageId) ?? null;
 }
@@ -243,10 +243,17 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
     // Pi's copy of its text. Total: a failed read keeps the Pi's.
     const reply = await quotedHqMessage(org.id, messageId, input.quoted, now);
     const quotedWords = reply?.text ?? input.quoted?.text ?? null;
+    // The logged line it quotes, BY ITS ID first; by its words only when
+    // the club knows nothing of the id (review of #341, findings 4 and 5).
+    // An id that resolved to an organiser's message is never relabelled
+    // MatchTime's by a text match.
+    const found = reply?.found === true;
+    const hit = input.quoted ? quotedLogRow({ ...input.quoted, text: quotedWords, found }, log) : { row: null, by: null };
     const quotedIsMatchTime =
-      !!input.quoted && (input.quoted.fromMatchTime === true || reply?.author === null || (!!quotedWords && !!matchQuoted(quotedWords, log)));
+      !!input.quoted &&
+      (input.quoted.fromMatchTime === true || reply?.author === null || (hit.by === "text" && hit.row?.fromMatchTime === true));
     // What the safe-YES rule, the addressing and the router read.
-    const quoted: QuotedMessage | null = input.quoted ? { ...input.quoted, text: quotedWords, fromMatchTime: quotedIsMatchTime } : null;
+    const quoted: QuotedMessage | null = input.quoted ? { ...input.quoted, text: quotedWords, fromMatchTime: quotedIsMatchTime, found } : null;
     const replyShown: QuotedGroupMessage | null = reply && quotedIsMatchTime && reply.author ? { ...reply, author: null } : reply;
     // Addressed to MatchTime: an @tag (never the bare word, which is talk
     // ABOUT MatchTime), or a WhatsApp reply to MatchTime's own message.
@@ -271,7 +278,7 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
     // of the Match?", "Which Ali...?") answers it, whatever the router
     // calls the name: the score handling reads it (2026-10-18). Decided
     // from the quoted row's question ref, never from the words.
-    const quotedRow = quotedIsMatchTime && quotedWords ? matchQuoted(quotedWords, log) : null;
+    const quotedRow = quotedIsMatchTime && hit.row?.fromMatchTime ? hit.row : null;
     const answersMomAsk = !!quotedRow?.askRef?.startsWith("mom:") && organisersPickMom(org);
     const recent = log.filter((r) => now.getTime() - r.createdAt.getTime() <= RECENT_MS).slice(-RECENT_MAX);
     // The extractors' recent chat: MatchTime's own lines as MatchTime.

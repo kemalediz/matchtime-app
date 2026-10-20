@@ -291,6 +291,7 @@ describe("a balancer reply shares one extraction too", () => {
     topic: "teamBalancing",
     matchId,
     match: null,
+    found: true,
   });
 
   it("replying to MatchTime's post on this match: one call, and the quote is in it", async () => {
@@ -302,13 +303,13 @@ describe("a balancer reply shares one extraction too", () => {
     expect(seen[0]).toContain("THEY ARE REPLYING TO MatchTime's message");
   });
 
-  it("replying to another match's post: both owners leave it out alike, still one call", async () => {
+  it("replying to another match's post: both owners show it alike, still one call", async () => {
     const seen: string[] = [];
     const { model, calls } = countingModel({ [GEN]: GEN_FACTS });
     const watched: PipelineModel = { name: model.name, complete: async (r) => (seen.push(r.user), model.complete(r)) };
     await analyzeRequest(watched, [GEN], () => post("an-older-match"));
     expect(calls).toEqual([`extractor:teams|${GEN}`]);
-    expect(seen[0]).not.toContain("THEY ARE REPLYING TO");
+    expect(seen[0]).toContain("THEY ARE REPLYING TO");
   });
 
   it("the quote is part of the key: the same words with a different quote are asked again", async () => {

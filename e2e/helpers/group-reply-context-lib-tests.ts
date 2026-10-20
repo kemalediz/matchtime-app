@@ -19,7 +19,9 @@ async function main() {
   assertSafeTestDbUrl(url);
   process.env.DATABASE_URL = url;
   const { loadGroupReplyContexts, renderGroupReplyContext, contextMatchLabel } = await import("@/lib/reply-context");
-  const { rosterNameByPhone } = await import("@/lib/roster-name-by-phone");
+  const { rosterMemberByPhone } = await import("@/lib/roster-name-by-phone");
+  const { stampHqLogStanza } = await import("@/lib/hq-log-stanza");
+  const { claimGroupReplies } = await import("@/lib/group-reply-claims");
   const { db } = await import("@/lib/db");
 
   let n = 0;
@@ -78,7 +80,7 @@ async function main() {
       channel: "group",
       now,
       batch: [],
-      authorByPhone: (p) => rosterNameByPhone(ORG_ID, p),
+      memberByPhone: (p: string) => rosterMemberByPhone(ORG_ID, p),
       messages: [
         { id: "squad", quote: { id: "3EB0GSQUAD", text: "Squad", fromMatchTime: true } },
         { id: "job", quote: { id: "3EB0GJOB", text: "Pay", fromMatchTime: true } },
@@ -95,18 +97,21 @@ async function main() {
       topic: "attendance",
       matchId: MATCH.upcoming,
       match: contextMatchLabel(up.activity.name, up.date),
+      found: true,
     });
     ok("MatchTime's scheduler post by its stanza id, with its words, topic and match");
     assert.equal(out.get("job")?.text, "Pay links are live");
     assert.equal(out.get("theirs")?.text, "pi words");
     assert.equal(out.get("theirs")?.at, null);
     ok("this club's group BotJob by id; another club's never");
-    assert.equal(out.get("legacy")?.topic, "attendance");
-    ok("a row with no stanza column, on its serialised id");
-    assert.deepEqual(out.get("pat")?.author, { name: pat?.name ?? null });
+    // Rows acked before the column existed were backfilled by the S0
+    // migration; the group resolver reads the indexed column only.
+    assert.equal(out.get("legacy")?.found, false);
+    ok("a row with no stanza column is not read (backfilled by S0; the indexed lookup only)");
+    assert.deepEqual(out.get("pat")?.author, { name: pat?.name ?? null, userId: U.player });
     assert.equal(out.get("pat")?.text, "I'm out tonight lads");
     ok("a member's analysed message, with their roster name");
-    assert.deepEqual(out.get("byphone")?.author, { name: pat?.name ?? null });
+    assert.deepEqual(out.get("byphone")?.author, { name: pat?.name ?? null, userId: U.player });
     ok("the Pi's phone, read-only, finds the roster name");
     assert.match(renderGroupReplyContext({ now, quoted: out.get("pat")! }), new RegExp(`THEY ARE REPLYING TO ${pat?.name}'s message of `));
 
@@ -129,9 +134,36 @@ async function main() {
       batch: [],
       messages: [{ id: "h", quote: { id: "3EB0GHQ", text: null, fromMatchTime: false } }],
     });
-    assert.deepEqual(hq.get("h")?.author, { name: alex?.name ?? null });
+    assert.deepEqual(hq.get("h")?.author, { name: alex?.name ?? null, userId: U.admin });
     assert.equal(hq.get("h")?.text, "Bilal is out");
     ok("HQ: another organiser's message from the HQ log");
+
+    // MatchTime's in-group reply: claimed, acked, then quoted (finding 3).
+    {
+      const keys = await claimGroupReplies({ orgId: ORG_ID, door: "group", replies: [{ inboundId: `${P}in1`, text: "That match is already recorded: Red 7 - 5 Yellow.", matchId: MATCH.upcoming }] });
+      const key = keys.get(`${P}in1`)!;
+      await db.sentNotification.update({ where: { key }, data: { waMessageId: `true_${GROUP}_3EB0GREPLY`, waStanzaId: "3EB0GREPLY" } });
+      const r = await loadGroupReplyContexts(db, { orgId: ORG_ID, channel: "group", now, batch: [], messages: [{ id: "q", quote: { id: "3EB0GREPLY", text: null, fromMatchTime: true } }] });
+      assert.equal(r.get("q")?.matchId, MATCH.upcoming);
+      assert.equal(r.get("q")?.text, "That match is already recorded: Red 7 - 5 Yellow.");
+      await db.sentNotification.deleteMany({ where: { key } });
+      ok("MatchTime's claimed in-group reply resolves to its words and match");
+    }
+
+    // The HQ log line learns its send's stanza id (findings 4 and 5).
+    {
+      const text = `${P} Is that YES to the proposed teams?`;
+      const keys = await claimGroupReplies({ orgId: ORG_ID, door: "hq", replies: [{ inboundId: `${P}hq1`, text, matchId: null }] });
+      const key = keys.get(`${P}hq1`)!;
+      await db.adminGroupMessage.create({ data: { orgId: ORG_ID, waMessageId: `mt:ask:${P}:1`, fromMatchTime: true, text, askRef: "which", createdAt: now } });
+      const stamped = await stampHqLogStanza(key, "3EB0GHQASK");
+      assert.equal(stamped, 1);
+      const row = await db.adminGroupMessage.findUnique({ where: { waMessageId: `mt:ask:${P}:1` }, select: { waStanzaId: true } });
+      assert.equal(row?.waStanzaId, "3EB0GHQASK");
+      await db.adminGroupMessage.deleteMany({ where: { waMessageId: `mt:ask:${P}:1` } });
+      await db.sentNotification.deleteMany({ where: { key } });
+      ok("the ack of an HQ reply stamps the logged line with the same words");
+    }
 
     console.log(`OK: ${n} group reply-context checks against Postgres`);
   } finally {

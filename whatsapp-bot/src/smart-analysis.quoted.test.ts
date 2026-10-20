@@ -17,9 +17,11 @@ import { buildInboundView } from "./baileys/inbound-view.js";
 import type { InboundMessage, WaDriver } from "./driver.js";
 
 const postAnalyzeFull = vi.fn();
+const ackInstruction = vi.fn();
 
 vi.mock("./api.js", () => ({
   postAnalyzeFull: (...args: unknown[]) => postAnalyzeFull(...args),
+  ackInstruction: (...args: unknown[]) => ackInstruction(...args),
 }));
 
 const { enqueueForAnalysis, _test_flushNow, _test_reset } = await import("./smart-analysis.js");
@@ -110,6 +112,16 @@ describe("a players' group reply on the wire to /api/whatsapp/analyze", () => {
     expect(m).not.toHaveProperty("quotedAuthorPhone");
   });
 
+  it("a LID author the Pi has no phone for forwards no phone (the server cannot resolve them, so they stay 'not identified')", async () => {
+    const lidDriver = { ...driver, getContact: async () => ({ pushname: "Ali Khan" }) } as unknown as WaDriver;
+    await enqueueForAnalysis(lidDriver, viewOf(reply("same", "158055467500001@lid", "IN")));
+    await _test_flushNow(GROUP);
+    const m = posted();
+    expect(m).not.toHaveProperty("quotedAuthorPhone");
+    // The name rides along unverified; the server never shows it.
+    expect(m).toMatchObject({ quotedAuthorName: "Ali Khan", quotedFromMatchTime: false });
+  });
+
   it("not a reply: no quoted fields at all", async () => {
     await enqueueForAnalysis(driver, viewOf(wa({ conversation: "in" })));
     await _test_flushNow(GROUP);
@@ -127,3 +139,30 @@ describe("the Pi says it forwards quoted ids (review M3)", () => {
     expect(api.PI_CAPS.split(",")).toEqual(expect.arrayContaining(["admin-group", "quoted-id"]));
   });
 });
+
+describe("MatchTime's in-group reply is acked when the server claimed it (slice S4 review)", () => {
+  it("the reply is sent, then acked with its key and the sent id", async () => {
+    ackInstruction.mockReset();
+    postAnalyzeFull.mockImplementation(async (p: { messages: Array<{ waMessageId: string }> }) => ({
+      results: [{ waMessageId: p.messages[0].waMessageId, handledBy: "llm", intent: "q", react: null, reply: "That match is already recorded.", replyKey: "greply:org-1:x" }],
+      nextKickoffMs: null,
+    }));
+    const sending = { ...driver, sendText: vi.fn(async () => ({ id: { _serialized: `true_${GROUP}_3EB0REPLY` } })) } as unknown as WaDriver;
+    await enqueueForAnalysis(sending, viewOf(wa({ conversation: "@Match Time what was the score?" })));
+    await _test_flushNow(GROUP);
+    expect(ackInstruction).toHaveBeenCalledWith({ key: "greply:org-1:x", kind: "group-reply", waMessageId: `true_${GROUP}_3EB0REPLY` });
+  });
+
+  it("a reply the server did not claim is not acked", async () => {
+    ackInstruction.mockReset();
+    postAnalyzeFull.mockImplementation(async (p: { messages: Array<{ waMessageId: string }> }) => ({
+      results: [{ waMessageId: p.messages[0].waMessageId, handledBy: "llm", intent: "q", react: null, reply: "hi" }],
+      nextKickoffMs: null,
+    }));
+    const sending = { ...driver, sendText: vi.fn(async () => ({})) } as unknown as WaDriver;
+    await enqueueForAnalysis(sending, viewOf(wa({ conversation: "@Match Time hi" })));
+    await _test_flushNow(GROUP);
+    expect(ackInstruction).not.toHaveBeenCalled();
+  });
+});
+

@@ -29,6 +29,9 @@ export interface HqLogRow {
   senderUserId: string | null;
   text: string;
   askRef: string | null;
+  /** MatchTime's own line: the stanza id of the send, once the Pi acked it
+   *  (slice S4 review). Absent on rows from before, and on tests' rows. */
+  waStanzaId?: string | null;
   createdAt: Date;
 }
 
@@ -98,6 +101,6 @@ export async function hqLogSince(orgId: string, since: Date): Promise<HqLogRow[]
   return (await db.adminGroupMessage.findMany({
     where: { orgId, createdAt: { gte: since } },
     orderBy: { createdAt: "asc" },
-    select: { waMessageId: true, fromMatchTime: true, senderUserId: true, text: true, askRef: true, createdAt: true },
+    select: { waMessageId: true, waStanzaId: true, fromMatchTime: true, senderUserId: true, text: true, askRef: true, createdAt: true },
   })) as HqLogRow[];
 }

@@ -18,6 +18,7 @@
  */
 import type { InboundMessage, WaDriver } from "./driver.js";
 import {
+  ackInstruction,
   postAnalyzeFull,
   postHeartbeat,
   type AnalyzeFullResponse,
@@ -40,6 +41,7 @@ import {
 } from "./mentions.js";
 import { firstUsableName, jidDigits, quotedFromBot, readMessageBody, readNotifyName, readQuoted, readQuotedFields, safeRead } from "./wa-read.js";
 import { degradedMessage } from "./degraded.js";
+import { waMessageIdFrom } from "./send-result.js";
 import {
   missingMessageIdMessage,
   resolveWaMessageId,
@@ -598,6 +600,16 @@ export async function readGroupMessageForServer(
   };
 }
 
+/** Ack one of MatchTime's in-group replies with its sent id. Never throws. */
+export async function ackReply(key: string, kind: string, sent: unknown): Promise<void> {
+  try {
+    const waMessageId = waMessageIdFrom(sent);
+    await ackInstruction({ key, kind, ...(waMessageId ? { waMessageId } : {}) });
+  } catch (err) {
+    console.error(`[smart] reply ack ${key} failed:`, err instanceof Error ? err.message : err);
+  }
+}
+
 /**
  * WHO WROTE THE MESSAGE A REPLY QUOTES (quoted-reply context, slice S4,
  * 2026-10-20), for every group door: the server shows the router and the
@@ -968,16 +980,24 @@ async function flushGroup(driver: WaDriver, groupId: string): Promise<void> {
         // injected call that started throwing `r: r` on 2026-08-28 while
         // sends still worked. Keep the chat path as a fallback so nothing
         // regresses if the plain send is the one that breaks next time.
+        let sent: unknown;
+        let delivered = false;
         try {
-          await driver.sendText(groupId, r.reply);
+          sent = await driver.sendText(groupId, r.reply);
+          delivered = true;
         } catch (err) {
           console.error("[smart] reply via client.sendMessage failed, trying chat:", err);
           try {
-            await driver.sendTextViaChat(groupId, r.reply);
+            sent = await driver.sendTextViaChat(groupId, r.reply);
+            delivered = true;
           } catch (err2) {
             console.error("[smart] reply failed:", err2);
           }
         }
+        // The server claimed this reply (slice S4 review): ack it with its
+        // sent id, as every scheduled post is acked, so a WhatsApp reply
+        // quoting MatchTime's reply resolves to its words and match.
+        if (delivered && r.replyKey) await ackReply(r.replyKey, "group-reply", sent);
       }
     }
 

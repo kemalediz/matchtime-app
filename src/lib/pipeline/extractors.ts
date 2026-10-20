@@ -111,7 +111,7 @@ Report on THE MESSAGE only. Everything above it is context, for working out who 
 EACH CLAIM
 Return one claim for each person whose attendance the message speaks about:
   subject      "sender" if the claim is about the person who typed it, "other" for anyone else
-  personRef    the words used for that person, VERBATIM. Never invent or expand a name. "" for the sender. One exception: a "he", "him" or "o" that points at the author of the message replied to is written as that author's name, as the THEY ARE REPLYING TO line gives it.
+  personRef    the words used for that person, VERBATIM. Never invent or expand a name. "" for the sender. One exception: a "he", "him" or "o" that points at the author of the message replied to is written as that author's name, as the THEY ARE REPLYING TO line gives it. When the line names no one ("a member (not identified)"), write the words as they are.
   personNamed  true when the words IDENTIFY A PARTICULAR PERSON: a name, a nickname, or an @mention. false ONLY for a relationship, a quantity or an indefinite: "my brother", "2 of my guys", "someone", "a mate", "another keeper"
   polarity     what the MESSAGE says that person is doing, read from its own words:
                  "in"     joining or staying in
@@ -423,7 +423,7 @@ THE ACTION, exactly one:
 THE FIELDS. Fill the ones for the action; every other field is "", 0, false or [].
   payerRef         bulk_payment: who paid, verbatim.
   count            bulk_payment: how many players they paid for.
-  coveredRefs      the people the action is about, verbatim, one entry each: for bulk_payment the people paid for, if named; for fee_waiver the people the free place is given to or taken from. "he" or "him" is the person the message named, else the author of the message it replies to.
+  coveredRefs      the people the action is about, verbatim, one entry each: for bulk_payment the people paid for, if named; for fee_waiver the people the free place is given to or taken from. "he" or "him" is the person the message named, else the author of the message it replies to when the reply line names them; otherwise the words as written.
   undo             fee_waiver: true when the message TAKES a free place back ("Bilal isn't free after all", "no, Tom pays this week", "Ali ücretsiz değil, ödesin"); false when it gives one.
   matchDay         fee_waiver: the day the message names for the game, verbatim ("tonight", "last night", "next Friday", "cuma"); "" when it names none or only "this week".
   phrase           reminder: the time phrase EXACTLY as written ("on Monday", "tomorrow at 6"). Never a date.

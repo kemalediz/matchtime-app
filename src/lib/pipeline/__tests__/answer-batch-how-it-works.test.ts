@@ -67,7 +67,7 @@ const message = (over: Partial<AnswerBatchMessage> = {}): AnswerBatchMessage => 
   tagged: true,
   route: "question" as Route,
   gated: false,
-  reply: { author: null, at: null, text: BENCH_POST, topic: null, matchId: null, match: null },
+  reply: { author: null, at: null, text: BENCH_POST, topic: null, matchId: null, match: null, found: false },
   ...over,
 });
 
@@ -117,7 +117,7 @@ describe("a how-it-works question through the whole batch", () => {
 
   it("a reply to a member's question is shown as theirs", async () => {
     const calls: ModelRequest[] = [];
-    await run(message({ body: "@Match Time same question", reply: { author: { name: "Kemal" }, at: null, text: "how does the bench work?", topic: null, matchId: null, match: null } }), calls);
+    await run(message({ body: "@Match Time same question", reply: { author: { name: "Kemal", userId: "u-kemal" }, at: null, text: "how does the bench work?", topic: null, matchId: null, match: null, found: true } }), calls);
     expect(calls[0].user).toContain(`THEY ARE REPLYING TO Kemal's message (when it was sent is not known):\n"how does the bench work?"`);
   });
 

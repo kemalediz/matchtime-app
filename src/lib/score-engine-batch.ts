@@ -122,7 +122,7 @@
  * where the bot announced a change the database never made and the group
  * believed it.
  */
-import { quoteForMatch, type QuotedGroupMessage } from "./reply-context";
+import { quotesAnotherMatch, type QuotedGroupMessage } from "./reply-context";
 import { compose } from "./pipeline/compose";
 import { decide as decideDefault } from "./pipeline/engine";
 // Traced: the extractor's facts are kept on the message's AnalyzedMessage
@@ -330,6 +330,13 @@ export async function runScoreBatch(args: {
   const askLabels = playedMatch?.teamLabels ?? state.teamLabels;
   const toExtract: ScoreBatchMessage[] = [];
   for (const m of candidates) {
+    // A REPLY TO MATCHTIME'S POST ABOUT ANOTHER MATCH (review of #341,
+    // finding 8): "no, it was 7-5" under LAST week's result never changes
+    // the match just played. Not extracted, not owned: nothing is written.
+    if (playedMatch && quotesAnotherMatch(m.reply, playedMatch.id)) {
+      degradations.push(`${m.waMessageId}: replies to MatchTime's post about another match (${m.reply!.matchId}); nothing written to ${playedMatch.id}`);
+      continue;
+    }
     const ref =
       openAsk &&
       isScoreAnswer({
@@ -360,8 +367,7 @@ export async function runScoreBatch(args: {
         tagged: m.tagged,
         history,
         lastBotPost,
-        // The played match is the one a result lands on.
-        reply: quoteForMatch(m.reply, playedMatch?.id ?? ""),
+        reply: m.reply ?? null,
         now,
       });
       for (const d of res.degradations) {

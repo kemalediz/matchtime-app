@@ -123,7 +123,7 @@ describe("the extractor prompts ask for facts, not outcomes", () => {
       // writes. So the reply-context vocabulary is set aside first.
       const ownReply = prompt
         .toLowerCase()
-        .replace(/whatsapp reply|they are replying to|replying to|replied to|replies to|a reply (?:that|about)/g, "");
+        .replace(/whatsapp reply|they are replying to|replying to|replied to|replies to|reply line|a reply (?:that|about)/g, "");
       expect(ownReply, route).not.toContain("reply");
     }
   });

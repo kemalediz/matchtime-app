@@ -112,9 +112,10 @@ const engineMsg = (over: Partial<EngineBatchMessage> = {}): EngineBatchMessage =
   ...over,
 });
 
-async function attendanceTurn(reply: EngineBatchMessage["reply"]): Promise<string> {
-  const model = recording(NO_CLAIMS);
-  await runAttendanceEngineBatch({
+async function attendanceRun(reply: EngineBatchMessage["reply"]) {
+  const model = recording(SELF_IN);
+  const registered: string[] = [];
+  const res = await runAttendanceEngineBatch({
     orgId: "org-1",
     now: NOW,
     messages: [engineMsg({ reply })],
@@ -126,37 +127,54 @@ async function attendanceTurn(reply: EngineBatchMessage["reply"]): Promise<strin
       loadState: async () => squadState(),
       openBenchPromptUserIds: async () => [],
       claimGuestNameAsk: async () => true,
-      registerAttendance: async () => ({ status: "CONFIRMED" as const, position: 1, slot: 1, confirmedCount: 1, maxPlayers: 14 }),
+      registerAttendance: async (userId: string) => {
+        registered.push(userId);
+        return { status: "CONFIRMED" as const, position: 1, slot: 1, confirmedCount: 1, maxPlayers: 14 };
+      },
       cancelAttendance: async () => ({ status: "DROPPED" as const }),
       resolveOrProvision: async (name: string) => ({ userId: `new:${name}` }),
     } as never,
   });
-  return model.reqs[0]?.user ?? "";
+  return { turn: model.reqs[0]?.user ?? "", calls: model.reqs.length, registered, owned: res.ownedIds.has("wa-1"), degradations: res.degradations };
 }
 
-describe("an owner acting on a match is shown a quoted MatchTime post only for that match", () => {
-  const post = (matchId: string | null) => ({ author: null, at: null, text: "Squad list", topic: "attendance" as const, matchId, match: null });
+const SELF_IN = JSON.stringify({
+  claims: [{ subject: "sender", personRef: "", personNamed: false, polarity: "in", contingent: false, conditionOn: "none", tense: "present", basis: "decision", reported: false, replaces: "", confidence: 0.95 }],
+  affirmation: "none",
+  sideRequests: [],
+});
 
-  it("this match's post, or one naming no match: shown", async () => {
-    expect(await attendanceTurn(post("m-tue"))).toContain("THEY ARE REPLYING TO");
-    expect(await attendanceTurn(post(null))).toContain("THEY ARE REPLYING TO");
+// REVIEW OF #341, FINDING 8: a reply to MatchTime's post about ANOTHER match
+// keeps its evidence; the owner acting on THIS match writes nothing to it.
+describe("a reply quoting MatchTime's post about another match is never written to this one", () => {
+  const post = (matchId: string | null) => ({ author: null, at: null, text: "Squad list", topic: "attendance" as const, matchId, match: null, found: true });
+
+  it("this match's post, or one naming no match: shown, and the IN is registered", async () => {
+    for (const q of [post("m-tue"), post(null)]) {
+      const r = await attendanceRun(q);
+      expect(r.turn).toContain("THEY ARE REPLYING TO");
+      expect(r.registered).toEqual(["u-bo"]);
+    }
   });
 
-  it("an older match's post (last week's squad list): not shown, the IN is read as it always was", async () => {
-    const turn = await attendanceTurn(post("m-last-week"));
-    expect(turn).not.toContain("THEY ARE REPLYING TO");
-    expect(turn).toContain("NOW: ");
+  it("an older match's post (last week's squad list): not owned, nothing written, the reason kept", async () => {
+    const r = await attendanceRun(post("m-last-week"));
+    expect(r.owned).toBe(false);
+    expect(r.registered).toEqual([]);
+    expect(r.calls).toBe(0);
+    expect(r.degradations.join(" ")).toMatch(/another match \(m-last-week\); nothing written to m-tue/);
   });
 
-  it("a member's message is always shown: it names no match", async () => {
-    expect(await attendanceTurn({ author: { name: "Ali" }, at: null, text: "IN", topic: null, matchId: null, match: null })).toContain(
-      "THEY ARE REPLYING TO Ali's message",
-    );
+  it("a member's message names no match: shown and registered", async () => {
+    const r = await attendanceRun({ author: { name: "Ali", userId: "u-ali" }, at: null, text: "IN", topic: null, matchId: null, match: null, found: true });
+    expect(r.turn).toContain("THEY ARE REPLYING TO Ali's message");
+    expect(r.registered).toEqual(["u-bo"]);
   });
 
-  it("the score owner narrows to the PLAYED match", async () => {
+  it("the score owner: a correction quoting LAST week's result never touches the match just played", async () => {
     const model = recording(JSON.stringify({ hasScore: true, first: 7, second: 5, firstTeam: "", secondTeam: "", winner: "yellow", loser: "", momRef: "", correction: true, swapped: false, otherGame: false }));
-    const played = { id: "m-last", date: new Date("2026-10-13T19:00:00Z"), redScore: 5, yellowScore: 7, teamLabels: ["Red", "Yellow"] };
+    const played = { id: "m-tue-played", date: new Date("2026-10-20T19:00:00Z"), redScore: 5, yellowScore: 7, teamLabels: ["Red", "Yellow"] };
+    const decided: unknown[] = [];
     const run = (matchId: string) =>
       runScoreBatch({
         orgId: "org-1",
@@ -171,16 +189,24 @@ describe("an owner acting on a match is shown a quoted MatchTime post only for t
             tagged: true,
             route: "score",
             gated: false,
-            reply: { author: null, at: null, text: "Result saved: Red 7, Yellow 5", topic: null, matchId, match: null },
+            reply: { author: null, at: null, text: "That match is already recorded: Red 7 - 5 Yellow.", topic: null, matchId, match: null, found: true },
           },
         ],
         history: [],
         enabled: new Set<Route>(["score"]),
-        deps: { model, loadState: async () => squadState({ completedMatch: played as never }), decide: () => ({ outcomes: [], writes: [] }) as never } as never,
-      }).catch(() => null);
-    await run("m-last");
-    await run("m-tue");
+        deps: {
+          model,
+          loadState: async () => squadState({ completedMatch: played as never }),
+          decide: (input: { messages: unknown[] }) => (decided.push(input.messages), { outcomes: [], writes: [] }) as never,
+        } as never,
+      });
+    const last = await run("m-last-week");
+    expect(model.reqs).toHaveLength(0);
+    expect(last.ownedIds.size).toBe(0);
+    expect(last.scoredMatchId).toBeNull();
+    expect(last.degradations.join(" ")).toMatch(/another match \(m-last-week\); nothing written to m-tue-played/);
+    await run("m-tue-played").catch(() => null);
+    expect(model.reqs).toHaveLength(1);
     expect(model.reqs[0].user).toContain("THEY ARE REPLYING TO");
-    expect(model.reqs[1].user).not.toContain("THEY ARE REPLYING TO");
   });
 });

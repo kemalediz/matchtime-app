@@ -245,7 +245,7 @@
  *     the shipped "couldn't find … — ignored" wording rather than
  *     silently guessed.
  */
-import { quoteForMatch, type QuotedGroupMessage } from "./reply-context";
+import { type QuotedGroupMessage } from "./reply-context";
 import type { OrgFeatures } from "./org-features";
 import { compose } from "./pipeline/compose";
 import { decide as decideDefault } from "./pipeline/engine";
@@ -505,7 +505,7 @@ export async function runTeamOpsBatch(args: {
         tagged: m.tagged,
         history,
         lastBotPost,
-        reply: quoteForMatch(m.reply, state.matchId ?? ""),
+        reply: m.reply ?? null,
         now,
       });
       for (const d of res.degradations) {

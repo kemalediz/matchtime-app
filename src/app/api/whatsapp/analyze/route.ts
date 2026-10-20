@@ -374,7 +374,8 @@ import { planUnresolvedNudge } from "@/lib/unresolved-nudge";
 import { recordGroupSightings, sightedUserIds } from "@/lib/group-sighting";
 import { quotedRefOf } from "@/lib/quoted-message";
 import { loadGroupReplyContexts, parseGroupQuote, type QuotedGroupMessage } from "@/lib/reply-context";
-import { rosterNameByPhone } from "@/lib/roster-name-by-phone";
+import { rosterMemberByPhone } from "@/lib/roster-name-by-phone";
+import { claimGroupReplies } from "@/lib/group-reply-claims";
 import { handlePartnerVolunteer } from "@/lib/partner-guest";
 
 interface InboundMessage {
@@ -463,6 +464,10 @@ type ActionForBot = {
   react: string | null;
   reply: string | null;
   reasoning?: string;
+  /** The key MatchTime's `reply` was claimed under (review of #341,
+   *  finding 3): the Pi acks the sent reply with it, so a reply quoting
+   *  MatchTime's reply resolves to its words and match. */
+  replyKey?: string;
 };
 
 /**
@@ -766,15 +771,25 @@ async function handleAnalyzeRequest(request: Request) {
         channel: "group",
         now: new Date(),
         messages: fresh.map((m) => ({ id: m.waMessageId, quote: parseGroupQuote(m) })),
-        batch: fresh.map((m) => ({
-          waMessageId: m.waMessageId,
-          authorName: senderById.get(m.waMessageId)?.name ?? m.authorName,
-          body: m.body,
-          sentAt: parseTimestamp(m.timestamp),
-        })),
-        authorByPhone: (phone) => rosterNameByPhone(org.id, phone),
+        // A batch message's author is named only when the route resolved
+        // them to a member, by their roster name (never their pushname).
+        batch: fresh.map((m) => {
+          const s = senderById.get(m.waMessageId);
+          return { waMessageId: m.waMessageId, userId: s?.userId ?? null, rosterName: s?.userId ? s.name : null, body: m.body, sentAt: parseTimestamp(m.timestamp) };
+        }),
+        memberByPhone: (phone) => rosterMemberByPhone(org.id, phone),
       })
     : new Map<string, QuotedGroupMessage>();
+  // THE MODEL'S VIEW AND THE TAG AGREE (review of #341, finding 2). A
+  // quote shown as MatchTime's is a reply to MatchTime, which the
+  // interaction contract reads as a tag (`messageTagsBot`, from the Pi's
+  // flag). A quote the Pi did not flag, but whose id is one of MatchTime's
+  // own sends on this club, is MatchTime's: the flag is set to match, here,
+  // before any tag is read.
+  for (const m of fresh) {
+    const r = replyById.get(m.waMessageId);
+    if (r && r.found && r.author === null && m.quotedFromMatchTime !== true) m.quotedFromMatchTime = true;
+  }
 
   // ── SIGNAL 1: THESE PEOPLE ARE IN THE GROUP ────────────────────────
   //
@@ -4052,6 +4067,25 @@ async function handleAnalyzeRequest(request: Request) {
   //       detector the current architecture has never had". That one
   //       matters MORE after this change, not less: it is now the only
   //       thing watching for a real IN routed `none`.
+
+  // MatchTime's replies are claimed like its other posts, with their match
+  // (the result's match for a score, else the match being registered), so
+  // a reply quoting one resolves by its id (`group-reply-claims.ts`).
+  const replyKeys = await claimGroupReplies({
+    orgId: org.id,
+    door: "group",
+    replies: results
+      .filter((r) => !!r.reply)
+      .map((r) => ({
+        inboundId: r.waMessageId,
+        text: r.reply!,
+        matchId: scoreBatch?.outcomes.get(r.waMessageId)?.matchId ?? activeMatchForReply?.id ?? null,
+      })),
+  }).catch(() => new Map<string, string>());
+  for (const r of results) {
+    const key = replyKeys.get(r.waMessageId);
+    if (key && r.reply) r.replyKey = key;
+  }
 
   return NextResponse.json({
     ok: true,
