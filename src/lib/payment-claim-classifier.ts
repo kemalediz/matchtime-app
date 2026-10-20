@@ -9,6 +9,7 @@
  * `lib/payment-claim.ts` for the design and the decisions.
  */
 import { readFileSync } from "node:fs";
+import { lastBotDmLine } from "./last-bot-dm";
 import { HAIKU_MODEL, HAIKU_SHORT_ANSWER_MAX_TOKENS, HAIKU_THINKING } from "./models";
 
 /** The model, pinned. Exported so the live dry run measures this one. */
@@ -179,22 +180,13 @@ function liveCall(): PaymentClaimCall | null {
   };
 }
 
-/** A stored message goes in quotes; a bracketed description (a scheduler
- *  DM whose words were never stored) goes in as it is, as the prompt
- *  says. */
-function lastDmLine(lastBotDm: string | null | undefined): string {
-  if (!lastBotDm) return "(not known)";
-  if (lastBotDm.startsWith("(") && lastBotDm.endsWith(")")) return lastBotDm;
-  return JSON.stringify(lastBotDm.slice(0, 300));
-}
-
 /** The user turn: context lines, then the message under a header. */
 export function buildPaymentClaimUserTurn(text: string, ctx: PaymentClaimContext): string {
   return [
     ctx.playerName ? `Player: ${ctx.playerName}` : null,
     ctx.owes ? `They owe: ${ctx.owes}` : null,
     `Money collector: ${ctx.collectorName?.trim() || "(not known)"}`,
-    `MatchTime's last message to them: ${lastDmLine(ctx.lastBotDm)}`,
+    `MatchTime's last message to them: ${lastBotDmLine(ctx.lastBotDm)}`,
     `${MESSAGE_HEADER}\n${text.trim()}`,
   ]
     .filter(Boolean)

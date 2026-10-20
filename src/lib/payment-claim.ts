@@ -120,7 +120,7 @@ import {
   type PaymentClaimIntent,
 } from "./payment-claim-classifier";
 import { queuePaidClaimReaction } from "./paid-claim-reaction";
-import { featureForDueKey } from "./due-key-feature";
+import { loadLastBotDm } from "./last-bot-dm";
 
 export {
   PAYMENT_CLAIM_MIN_CONFIDENCE,
@@ -199,50 +199,6 @@ export function paymentClaimContext(
     lastBotDm,
   };
 }
-
-/** A scheduler DM is stored as a `SentNotification` key, never with its
- *  words, so it is described by the feature its key belongs to (the
- *  scheduler's own mapping, `due-key-feature.ts`). Null when the key says
- *  nothing useful. */
-function describeScheduledDm(key: string): string | null {
-  switch (featureForDueKey(key)) {
-    case "paymentCollection":
-    case "paymentTracking":
-      return "(a reminder to pay the match fee they owe, with their pay link)";
-    case "playerRating":
-      return "(a request to rate their teammates from the last match)";
-    case "momVoting":
-      return "(a Man of the Match vote)";
-    case "attendance":
-    case "bench":
-      return "(a message about who is playing in a match)";
-    default:
-      return null;
-  }
-}
-
-/**
- * MatchTime's most recent DM to this player, from BOTH places DMs are
- * recorded: a queued `BotJob` (its words) and a scheduler DM handed out
- * by /due-posts (`SentNotification`, key only). Until 2026-10-18 only the
- * BotJob was read, so Feroz's daily pay chasers and rating reminders were
- * invisible and the model saw a two-day-old pay link as "last". The
- * newer of the two wins; a newer scheduler DM that cannot be described is
- * "not known", never the stale BotJob.
- */
-export function pickLastBotDm(input: {
-  queued: { text: string; at: Date } | null;
-  scheduled: { key: string; at: Date } | null;
-}): string | null {
-  const { queued, scheduled } = input;
-  if (scheduled && (!queued || scheduled.at.getTime() > queued.at.getTime())) {
-    return describeScheduledDm(scheduled.key);
-  }
-  return queued?.text ?? null;
-}
-
-/** How far back a scheduler DM still counts as the last thing said. */
-const LAST_DM_LOOKBACK_MS = 14 * 24 * 3600 * 1000;
 
 export interface PaymentClaimDeps {
   /** The sender, for the verdict log. */
@@ -450,22 +406,7 @@ export async function handlePaymentClaimDm(input: {
       return picked;
     },
     classify: async (owed) => {
-      const [queued, scheduled] = await Promise.all([
-        db.botJob.findFirst({
-          where: { kind: "dm", phone: replyPhone },
-          orderBy: { createdAt: "desc" },
-          select: { text: true, createdAt: true, sentAt: true },
-        }),
-        db.sentNotification.findFirst({
-          where: { kind: "dm", targetUser: userId, createdAt: { gte: new Date(Date.now() - LAST_DM_LOOKBACK_MS) } },
-          orderBy: { createdAt: "desc" },
-          select: { key: true, createdAt: true },
-        }),
-      ]);
-      const lastBotDm = pickLastBotDm({
-        queued: queued ? { text: queued.text, at: queued.sentAt ?? queued.createdAt } : null,
-        scheduled: scheduled ? { key: scheduled.key, at: scheduled.createdAt } : null,
-      });
+      const lastBotDm = await loadLastBotDm(db, { phone: replyPhone, userId });
       // Spent from the club the player owes (the daily AI cap).
       return withOrgAiBudget(owed.orgId, () =>
         classifyPaymentClaimDetailed(text, paymentClaimContext(owed, input.userName, lastBotDm)),

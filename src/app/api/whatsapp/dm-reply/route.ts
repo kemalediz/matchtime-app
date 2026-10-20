@@ -95,6 +95,7 @@ import { registerAttendance, cancelAttendance } from "@/lib/attendance";
 import { resolveTentative } from "@/lib/tentative-store";
 import { buildTentativeFollowupAck } from "@/lib/tentative-followup";
 import { classifyMatchAvailability } from "@/lib/match-availability-classifier";
+import { loadMatchAvailabilityFacts } from "@/lib/match-availability-context";
 import { resolveDmSelfAttendance } from "@/lib/dm-self-attendance";
 import { findDmRegistrationTarget } from "@/lib/dm-registration-target";
 import { handleGuestDmOut } from "@/lib/partner-guest-dm";
@@ -675,6 +676,15 @@ export async function POST(request: Request) {
     }
   }
 
+  // Where DMs to this player are queued (digits, no "+"): the sender's
+  // phone, or the stored one for an @lid sender. For the classifier's
+  // "MatchTime's last message to them".
+  const sender = user;
+  const dmPhone = async (): Promise<string | null> =>
+    (phone ? normalisePhone(phone)?.replace(/^\+/, "") ?? null : null) ??
+    (await db.user.findUnique({ where: { id: sender.id }, select: { phoneNumber: true } }))?.phoneNumber?.replace(/^\+/, "") ??
+    null;
+
   // ── Tentative-availability follow-up reply (IN/OUT) ─────────────────
   //   The bot DMs a player who was a MAYBE ~24h before kickoff asking for
   //   a firm IN/OUT. Their reply lands here. If they have an OPEN
@@ -731,14 +741,21 @@ export async function POST(request: Request) {
           where: { id: row0.match.activity.orgId },
           select: { name: true },
         });
+        // What MatchTime last said to them (normally the follow-up asking
+        // for a firm IN/OUT, so a bare "yes"/"👍" IS an answer) and where
+        // they stand for the match.
+        const facts = await loadMatchAvailabilityFacts({
+          userId: user.id,
+          matchId: row0.match.id,
+          phone: await dmPhone(),
+        });
         // Spent from the match's club (the daily AI cap, lib/ai-budget.ts).
         const verdict = await withOrgAiBudget(row0.match.activity.orgId, () => classifyMatchAvailability(text ?? "", {
+          ...facts,
           playerName: user.name,
           clubName: org0?.name ?? null,
+          matchName: row0.match.activity.name,
           matchWhen: dayCommaTimeLabel(tentLang, row0.match.date),
-          // The bot DM'd this player asking for a firm IN/OUT, so a bare
-          // "yes"/"👍" here genuinely IS an answer.
-          wasAskedToPlay: true,
         }));
         if (verdict.decision === "in") isIn = true;
         else if (verdict.decision === "out") isOut = true;
@@ -1115,11 +1132,12 @@ export async function POST(request: Request) {
     }
     const target = !dm ? await findDmRegistrationTarget(user.id) : null;
     if (target) {
-      // Did we DM this player about this very match? Unlocks bare
-      // affirmatives ("yes", "👍") for the classifier — see rule 5 there.
-      const invited = await db.sentNotification.findUnique({
-        where: { key: `${target.matchId}:recruit-dm:${user.id}` },
-        select: { id: true },
+      // What MatchTime last said to them (an invite to this match unlocks a
+      // bare "yes"/"👍"; a rating DM does not) and where they stand for it.
+      const facts = await loadMatchAvailabilityFacts({
+        userId: user.id,
+        matchId: target.matchId,
+        phone: await dmPhone(),
       });
       // Spent from the match's club (the daily AI cap). At the cap the
       // regex fast path still registers a plain IN/OUT; only the model
@@ -1128,11 +1146,11 @@ export async function POST(request: Request) {
         text,
         hasPendingPrompt: !!dm,
         context: {
+          ...facts,
           playerName: user.name,
           clubName: target.clubName,
           matchName: target.matchName,
           matchWhen: target.matchWhen,
-          wasAskedToPlay: !!invited,
         },
       }));
 

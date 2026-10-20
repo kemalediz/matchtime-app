@@ -20,7 +20,6 @@ import {
   buildPaymentClaimUserTurn,
   classifyPaymentClaim,
   paymentClaimContext,
-  pickLastBotDm,
   parsePaymentClaim,
   paymentClaimBodyOf,
   pickClaimMatch,
@@ -366,50 +365,6 @@ describe("the classifier is told who collects the money", () => {
     const p = buildPaymentClaimSystemPrompt();
     expect(p).toContain("Money collector:");
     expect(p).toMatch(/not the money collector/i);
-  });
-});
-
-describe("MatchTime's last DM includes the scheduler's chasers", () => {
-  const at = (iso: string) => new Date(iso);
-
-  it("a newer pay chase (stored as a key, no text) beats an older queued DM", () => {
-    const got = pickLastBotDm({
-      queued: { text: "💷 Feroz, match fee for *Football 9-a-side* is *£5*.", at: at("2026-10-16T21:46:00Z") },
-      scheduled: { key: "m1:pay-chase:u1:2026-10-18", at: at("2026-10-18T17:04:00Z") },
-    });
-    expect(got).toMatch(/^\(.*pay.*\)$/i);
-  });
-
-  it("a newer rating reminder is NOT about paying, so a bare 'done' answers it", () => {
-    const got = pickLastBotDm({
-      queued: { text: "💷 pay link", at: at("2026-10-16T21:46:00Z") },
-      scheduled: { key: "m1:rate-reminder:u1:2026-10-18", at: at("2026-10-18T17:01:00Z") },
-    });
-    expect(got).toMatch(/rate/i);
-    expect(got).not.toMatch(/pay/i);
-  });
-
-  it("a newer queued DM keeps its real words", () => {
-    expect(
-      pickLastBotDm({
-        queued: { text: "real words", at: at("2026-10-18T18:00:00Z") },
-        scheduled: { key: "m1:pay-chase:u1:2026-10-18", at: at("2026-10-18T17:04:00Z") },
-      }),
-    ).toBe("real words");
-  });
-
-  it("a newer scheduler DM we cannot describe is not known, never the stale text", () => {
-    expect(
-      pickLastBotDm({
-        queued: { text: "💷 pay link", at: at("2026-10-16T21:46:00Z") },
-        scheduled: { key: "org-x:bot-intro", at: at("2026-10-18T17:04:00Z") },
-      }),
-    ).toBeNull();
-  });
-
-  it("nothing either way is null; one side alone is that side", () => {
-    expect(pickLastBotDm({ queued: null, scheduled: null })).toBeNull();
-    expect(pickLastBotDm({ queued: { text: "t", at: at("2026-10-18T00:00:00Z") }, scheduled: null })).toBe("t");
   });
 });
 
