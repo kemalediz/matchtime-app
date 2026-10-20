@@ -9,7 +9,7 @@
  *
  * The history the Pi sends carries the sender's own line in its RAW
  * spelling ("@158055467598020 out"), exactly as it did for Naim, so the
- * route's alignment (`lib/history-own-lines.ts`) runs on the path too.
+ * route's history build (`lib/group-chat-history.ts`) runs on the path too.
  * The extractor is stubbed with the facts the live model returns for the
  * corrected input; the unit test `redundant-attendance-claim.test.ts`
  * pins what the extractor is shown.

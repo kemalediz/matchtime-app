@@ -23,7 +23,7 @@
  * list and was removed with the analyzer in §10 step 8; the refusal
  * itself is unchanged and still covers this one and the router's.
  */
-import { readFileSync } from "node:fs";
+import { appendFileSync, readFileSync } from "node:fs";
 import { budgetedModel, type PipelineModel } from "./llm";
 
 export const EXTRACTOR_STUB_FILE_ENV = "MT_TEST_EXTRACTOR_STUB_FILE";
@@ -102,6 +102,14 @@ export function extractorStubFromEnv(env: NodeJS.ProcessEnv = process.env): Pipe
     name: "extractor-stub",
     async complete(req) {
       const cfg = config(env) ?? {};
+      // Every user turn, one JSON line, to `<file>.calls`: a route-level
+      // spec reads what the extractor WOULD have been shown (its recent
+      // chat included). Never fails the call.
+      try {
+        appendFileSync(`${env[EXTRACTOR_STUB_FILE_ENV]}.calls`, `${JSON.stringify({ label: req.label, user: req.user })}\n`);
+      } catch {
+        /* recording is for the spec */
+      }
       const body = messageBodyOf(req.user);
       if (cfg.failAll || (cfg.fail ?? []).includes(body)) {
         throw new Error(OVERLOADED_MESSAGE);

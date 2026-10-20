@@ -136,6 +136,7 @@ export function setExtractorStub(stub: ExtractorStub): void {
 
 export function clearExtractorStub(): void {
   setExtractorStub({});
+  rmSync(`${E2E.EXTRACTOR_STUB_FILE}.calls`, { force: true });
 }
 
 /**

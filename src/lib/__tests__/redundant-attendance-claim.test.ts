@@ -35,7 +35,7 @@ import {
   type EngineBatchDeps,
   type EngineBatchMessage,
 } from "../attendance-engine-batch";
-import { alignHistoryWithBatch } from "../history-own-lines";
+import { mergeGroupChatHistory } from "../group-chat-history";
 import type { SquadState } from "../pipeline/types";
 import type { PipelineModel, ModelRequest } from "../pipeline/llm";
 
@@ -164,44 +164,49 @@ async function run(messages: EngineBatchMessage[], d: EngineBatchDeps, history: 
 }
 
 describe("defect 1: the sender's own message is never shown back to him as recent chat", () => {
+  // Since 2026-10-20 the route builds the recent chat itself
+  // (`group-chat-history.ts`): the Pi's line for a message in the batch is
+  // replaced by the batch's own line, shown under the sender's ROSTER name,
+  // and the route hands the extractor that same name as the sender. So the
+  // extractor's own-line filter (author AND body) matches, whatever the
+  // Pi recorded and whatever pushname Naim uses.
   const T_KIERAN = "2026-10-20T10:30:41.000Z";
   const T_NAIM = "2026-10-20T10:36:37.000Z";
   const piHistory = [
-    { authorName: "Kieran", body: BOT_RAW, timestamp: T_KIERAN },
-    { authorName: "Naim", body: BOT_RAW, timestamp: T_NAIM },
+    { authorName: "Kiz", body: BOT_RAW, timestamp: T_KIERAN },
+    { authorName: "Naimy", body: BOT_RAW, timestamp: T_NAIM },
   ];
-  const batch = [{ authorName: "Naim", body: BOT_REWRITTEN, timestamp: T_NAIM }];
-
-  it("takes the batch message's body for the history line that IS that message (same author, same second)", () => {
-    const aligned = alignHistoryWithBatch(piHistory, batch);
-    expect(aligned.map((h) => h.body)).toEqual([BOT_RAW, BOT_REWRITTEN]);
-  });
-
-  it("leaves another member's line alone, even with the same words and the same second", () => {
-    const aligned = alignHistoryWithBatch(
-      [{ authorName: "Kieran", body: BOT_RAW, timestamp: T_NAIM }],
-      batch,
-    );
-    expect(aligned[0].body).toBe(BOT_RAW);
-  });
-
-  it("leaves a line alone when two batch messages from the sender share the second (ambiguous)", () => {
-    const aligned = alignHistoryWithBatch(
-      [{ authorName: "Naim", body: BOT_RAW, timestamp: T_NAIM }],
-      [...batch, { authorName: "Naim", body: "and my brother", timestamp: T_NAIM }],
-    );
-    expect(aligned[0].body).toBe(BOT_RAW);
-  });
+  const batch = [{ authorName: "Naimy", timestamp: T_NAIM, author: "Naim", body: BOT_REWRITTEN, stored: false }];
 
   it("the Naim input: the extractor sees Kieran's line and not Naim's own", async () => {
     const seen: ModelRequest[] = [];
     const s = state([{ userId: "u-naim", status: "DROPPED", position: 7 }]);
     const { d } = deps(capturingModel(CAPTURED_SELF_OUT, seen), s);
-    const history = alignHistoryWithBatch(piHistory, batch).map((h) => ({ author: h.authorName, body: h.body }));
+    const history = mergeGroupChatHistory({
+      pi: piHistory,
+      stored: [{ authorName: "Kiz", author: "Kieran", body: BOT_REWRITTEN, at: new Date("2026-10-20T10:30:45.000Z") }],
+      batch,
+    });
     await run([naimMsg()], d, history);
     expect(seen).toHaveLength(1);
-    expect(seen[0].user).toContain(`Kieran: ${BOT_RAW}`);
-    expect(seen[0].user).not.toContain(`Naim: ${BOT_RAW}`);
+    expect(seen[0].user).toContain(`Kieran: ${BOT_REWRITTEN}`);
+    expect(seen[0].user).not.toContain(`Naim: ${BOT_REWRITTEN}`);
+    expect(seen[0].user).not.toContain(`Naimy`);
+    expect(seen[0].user).not.toContain(BOT_RAW);
+  });
+
+  it("after a Pi restart (no Pi history at all) the stored line is still there, and still not his own", async () => {
+    const seen: ModelRequest[] = [];
+    const s = state([{ userId: "u-naim", status: "DROPPED", position: 7 }]);
+    const { d } = deps(capturingModel(CAPTURED_SELF_OUT, seen), s);
+    const history = mergeGroupChatHistory({
+      pi: [],
+      stored: [{ authorName: "Kiz", author: "Kieran", body: "who's out tonight?", at: new Date(T_KIERAN) }],
+      batch,
+    });
+    await run([naimMsg()], d, history);
+    expect(seen[0].user).toContain("RECENT CHAT");
+    expect(seen[0].user).toContain("Kieran: who's out tonight?");
     expect(seen[0].user).not.toContain(`Naim: ${BOT_REWRITTEN}`);
   });
 });

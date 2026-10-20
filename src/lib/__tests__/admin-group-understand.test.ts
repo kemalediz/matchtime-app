@@ -641,6 +641,18 @@ describe("questions in HQ: the shared question answering, with the organisers' c
     ]);
   });
 
+  it("an organiser's line in the recent HQ chat carries his roster name (Kemal, 2026-10-20)", async () => {
+    hqLog.hqLogSince.mockResolvedValue([mtRow(ASKED, "teams:m1"), orgRow(new Date("2026-10-16T09:05:00Z"))]);
+    dbMock.user.findMany.mockImplementation(async (args: { where?: { id?: { in?: string[] } } }) =>
+      args.where?.id?.in?.includes("u-2") ? [{ id: "u-2", name: "Hamzah Ali" }] : [],
+    );
+    await ask("how many are in?", "question");
+    expect(hqQuestion.answerHqQuestion.mock.calls[0][0].history).toEqual([
+      { author: "MatchTime", body: TEAMS_TEXT },
+      { author: "Hamzah Ali", body: "who has the bibs?" },
+    ]);
+  });
+
   it("a question nothing answers: one line, never silent", async () => {
     const r = await ask("what's the weather like?", "question");
     expect(r).toEqual({ route: "question", outcome: "hq-not-here", replyText: "I can't do that from this group. Ask *what can you do?* to see what I can do here." });
