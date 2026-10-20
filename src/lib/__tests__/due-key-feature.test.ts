@@ -6,7 +6,7 @@
  * message"). One mapping, two readers.
  */
 import { describe, it, expect } from "vitest";
-import { featureForDueKey } from "../due-key-feature";
+import { featureForDueKey, topicOfDueKey } from "../due-key-feature";
 
 describe("featureForDueKey", () => {
   it.each([
@@ -28,5 +28,28 @@ describe("featureForDueKey", () => {
   it("an infrastructure key is not classified (always allowed)", () => {
     expect(featureForDueKey("org-x:bot-intro")).toBeNull();
     expect(featureForDueKey("retro-reaction:abc")).toBeNull();
+  });
+});
+
+/**
+ * What a MatchTime DM was about, from its key (quoted-reply context, slice
+ * S0, 2026-10-20). The feature map plus the tentative follow-up, whose key
+ * the gate deliberately leaves unclassified. One definition, read by
+ * `last-bot-dm.ts` and by the quoted-reply resolver (`reply-context.ts`).
+ */
+describe("topicOfDueKey", () => {
+  it("is the key's feature when it has one", () => {
+    expect(topicOfDueKey("m1:pay-chase:u1:2026-10-18")).toBe("paymentCollection");
+    expect(topicOfDueKey("m1:rate-reminder:u1:2026-10-18")).toBe("playerRating");
+  });
+
+  it("the tentative follow-up is its own topic, though the gate leaves it unclassified", () => {
+    expect(featureForDueKey("m1:tentative-followup:u1")).toBeNull();
+    expect(topicOfDueKey("m1:tentative-followup:u1")).toBe("tentativeFollowup");
+  });
+
+  it("an ad-hoc or infrastructure key has no topic", () => {
+    expect(topicOfDueKey("botjob-abc")).toBeNull();
+    expect(topicOfDueKey("org-x:bot-intro")).toBeNull();
   });
 });

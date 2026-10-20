@@ -176,3 +176,51 @@ export function readQuoted(msg: unknown): { id: string | null; participant: stri
 export function jidDigits(jid: string | null | undefined): string {
   return typeof jid === "string" ? jid.replace(/@.*$/, "").replace(/:\d+$/, "").replace(/\D/g, "") : "";
 }
+
+/** The one thing the quote reader needs from the driver: every form of
+ *  the bot's own id. `WaDriver` satisfies it. */
+export interface SelfIdentities {
+  selfIdentities(): Array<string | null | undefined>;
+}
+
+/** Was a quoted message sent by this bot? Compared on digits against every
+ *  form of the bot's own id. False when the driver cannot say. (Moved here
+ *  from smart-analysis.ts on 2026-10-20 so the DM door and the group doors
+ *  share it.) */
+export function quotedFromBot(self: SelfIdentities, participant: string | null): boolean {
+  const digits = jidDigits(participant);
+  if (!digits) return false;
+  try {
+    return self.selfIdentities().some((id) => jidDigits(id) === digits);
+  } catch {
+    return false;
+  }
+}
+
+/** The most of a quoted message's text forwarded to the server. */
+export const QUOTED_TEXT_MAX = 2000;
+
+/** What a reply quotes, in the server's names. Every key absent when the
+ *  message is not a reply. */
+export interface QuotedFields {
+  quotedMessageId?: string;
+  quotedText?: string;
+  quotedFromMatchTime?: boolean;
+}
+
+/**
+ * What a reply quotes, for the server: the quoted message's bare id, its
+ * text (capped), and whether it was MatchTime's own. ONE reader for every
+ * door: the players' group (/analyze, as `quotedBody`), the admin group,
+ * and DMs (/dm-reply, quoted-reply context slice S1, 2026-10-20). Empty
+ * for a message that is not a reply. Total.
+ */
+export function readQuotedFields(self: SelfIdentities, msg: unknown): QuotedFields {
+  const q = readQuoted(msg);
+  if (!q) return {};
+  return {
+    ...(q.id ? { quotedMessageId: q.id } : {}),
+    ...(q.text ? { quotedText: q.text.slice(0, QUOTED_TEXT_MAX) } : {}),
+    quotedFromMatchTime: quotedFromBot(self, q.participant),
+  };
+}

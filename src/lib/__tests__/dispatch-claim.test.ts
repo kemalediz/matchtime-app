@@ -28,6 +28,9 @@ import {
   normaliseOutboundText,
   hashOutboundText,
   outboundTextOf,
+  claimTextOf,
+  CLAIM_TEXT_MAX,
+  botJobIdOfKey,
   outboundTextLogKey,
   parseOutboundTextLogKey,
   classifyClaimError,
@@ -623,5 +626,42 @@ describe("planAckSideEffects — every existing ack behaviour is preserved", () 
 
   it("has no side effects for an outbound text-log ledger row", () => {
     expect(planAckSideEffects(outboundTextLogKey("o1", "abcd", "m1:k"))).toEqual([]);
+  });
+});
+
+/**
+ * THE WORDS A CLAIM STORES (quoted-reply context, slice S0, 2026-10-20).
+ * A scheduler DM used to be only a key, so a reply quoting it could not
+ * be read against what it said. The claim row now keeps the words handed
+ * to the Pi, the same body the repetition guard compares.
+ */
+describe("claimTextOf", () => {
+  it("is the instruction's text", () => {
+    expect(claimTextOf({ kind: "dm", key: "m1:pay-chase:u1:2026-10-18", text: "Hi Ali, you owe £6." })).toBe("Hi Ali, you owe £6.");
+  });
+
+  it("is a poll's question and options", () => {
+    expect(claimTextOf({ kind: "group-poll", key: "k", question: "MoM?", options: ["Ali", "Bo"] })).toBe("MoM?\nAli\nBo");
+  });
+
+  it("is capped", () => {
+    expect(claimTextOf({ kind: "dm", key: "k", text: "x".repeat(CLAIM_TEXT_MAX + 50) })).toHaveLength(CLAIM_TEXT_MAX);
+  });
+
+  it("is null when there are no words (a reaction, an empty body)", () => {
+    expect(claimTextOf({ kind: "react", key: "k" })).toBeNull();
+    expect(claimTextOf({ kind: "dm", key: "k", text: "   " })).toBeNull();
+  });
+});
+
+describe("botJobIdOfKey", () => {
+  it("reads a BotJob's id off its key, and nothing else", () => {
+    expect(botJobIdOfKey("botjob-ck123")).toBe("ck123");
+    expect(botJobIdOfKey("m1:pay-chase:u1")).toBeNull();
+    expect(botJobIdOfKey("botjob-")).toBeNull();
+  });
+
+  it("is the id the ack closes out", () => {
+    expect(planAckSideEffects("botjob-ck123")).toContainEqual({ type: "botjob-sent", botJobId: "ck123" });
   });
 });

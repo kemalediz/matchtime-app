@@ -11,15 +11,15 @@
  * DMs are recorded in two places. A queued `BotJob` keeps its words. A
  * scheduler DM handed out by /due-posts (the pay chase, the rating
  * reminder, the tentative follow-up) is only a `SentNotification` key, so
- * it is described by what its key is about: the scheduler's own key ->
- * feature map (`due-key-feature.ts`), plus the tentative follow-up, whose
- * key the feature gate deliberately leaves unclassified.
+ * it is described by what its key is about: `topicOfDueKey`
+ * (`due-key-feature.ts`), the scheduler's own key -> feature map plus the
+ * tentative follow-up.
  *
  * DB-free except `loadLastBotDm`, which takes the client as an argument,
  * so the DB-free classifier modules (and their live dry runs) can import
  * `lastBotDmLine` without importing Prisma.
  */
-import { featureForDueKey } from "./due-key-feature";
+import { topicOfDueKey } from "./due-key-feature";
 
 /** How far back a scheduler DM still counts as the last thing said. */
 export const LAST_DM_LOOKBACK_MS = 14 * 24 * 3600 * 1000;
@@ -27,10 +27,9 @@ export const LAST_DM_LOOKBACK_MS = 14 * 24 * 3600 * 1000;
 /** What a scheduler DM was about, from its key. Null when the key says
  *  nothing useful. */
 function describeScheduledDm(key: string): string | null {
-  if (key.includes(":tentative-followup:")) {
-    return "(a question asking whether they can play in the match: in or out)";
-  }
-  switch (featureForDueKey(key)) {
+  switch (topicOfDueKey(key)) {
+    case "tentativeFollowup":
+      return "(a question asking whether they can play in the match: in or out)";
     case "paymentCollection":
     case "paymentTracking":
       return "(a reminder to pay the match fee they owe, with their pay link)";

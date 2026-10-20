@@ -231,6 +231,21 @@ export function outboundTextOf(instr: Claimable): string | null {
   return normaliseOutboundText(joined) ? joined : null;
 }
 
+/** The most of an instruction's words its claim row keeps. */
+export const CLAIM_TEXT_MAX = 1000;
+
+/**
+ * The words the claim row keeps (`SentNotification.text`; quoted-reply
+ * context, slice S0, 2026-10-20): the body handed to the Pi, the same one
+ * the repetition guard compares, capped. A scheduler DM was only a key
+ * before, so a player's swipe-reply to it could not be read against what
+ * it said. Null when there are no words.
+ */
+export function claimTextOf(instr: Claimable): string | null {
+  const text = outboundTextOf(instr);
+  return text ? text.slice(0, CLAIM_TEXT_MAX) : null;
+}
+
 /** One previously-dispatched group post, as the guard sees it. */
 export interface RecentOutboundText {
   hash: string;
@@ -443,6 +458,11 @@ export type AckSideEffect =
   | { type: "retro-reaction-sent"; retroReactionId: string }
   | { type: "tentative-followup-notified"; matchId: string; userId: string };
 
+/** The BotJob a `botjob-<id>` key names, or null for any other key. */
+export function botJobIdOfKey(key: string): string | null {
+  return key.startsWith("botjob-") && key.length > "botjob-".length ? key.slice("botjob-".length) : null;
+}
+
 /**
  * Derive the per-key-class side effects an ACK must perform. Extracted
  * from the ack route purely so the mapping is unit-testable; the route
@@ -462,8 +482,9 @@ export function planAckSideEffects(key: string): AckSideEffect[] {
     effects.push({ type: "offer-wa-message-id", offerId: key.slice("offer-".length) });
   }
 
-  if (key.startsWith("botjob-")) {
-    effects.push({ type: "botjob-sent", botJobId: key.slice("botjob-".length) });
+  const botJobId = botJobIdOfKey(key);
+  if (botJobId) {
+    effects.push({ type: "botjob-sent", botJobId });
   }
 
   if (key.startsWith("retro-react-")) {

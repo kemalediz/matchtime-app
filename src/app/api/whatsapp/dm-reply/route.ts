@@ -80,6 +80,7 @@ import { selfJoinEnabledForApiRequest } from "@/lib/self-join-flag";
 import { NextResponse } from "next/server";
 import { REPLY_PRIORITY } from "@/lib/dm-reply-priority";
 import { db } from "@/lib/db";
+import { logDmQuote } from "@/lib/reply-context";
 import { normalisePhone } from "@/lib/phone";
 import { classifyRosterReply } from "@/lib/roster-survey-classifier";
 import { resolveBenchConfirmation } from "@/lib/bench-confirmation";
@@ -139,6 +140,15 @@ export async function POST(request: Request) {
   if (!text || !waMessageId) {
     return NextResponse.json({ error: "body, waMessageId required" }, { status: 400 });
   }
+
+  // ── Quoted-reply context (slice S1, 2026-10-20): LOG ONLY ──────────────
+  //   A swipe-reply carries the quoted message's id, text, and whether it
+  //   was MatchTime's (`quotedMessageId`, `quotedText`, `quotedFromMatchTime`;
+  //   an older Pi sends none). Resolved to the MatchTime DM it answers and
+  //   logged (ids, topic, match, resolved yes/no; never text). No handler
+  //   or classifier below reads it yet, so every DM is answered exactly as
+  //   before. Total: a failed read is logged and the DM carries on.
+  await logDmQuote(db, { body, waMessageId, phones: [phone, senderAltPhone] });
 
   // ── Self-join: the owner's decision (slice 7), then the connect DM (slice 5) ──
   //   The organiser's prefilled "Connect Riverside FC, code 7KQ2" (Turkish:
