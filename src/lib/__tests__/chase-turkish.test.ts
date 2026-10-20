@@ -7,7 +7,7 @@
  *      an English club's prompt cache is never invalidated by a Turkish
  *      club existing.
  *   2. The squad list is the table's: a Turkish post carries the Turkish
- *      headers of `buildSquadRosterBlock`, whatever the model wrote.
+ *      headers of `buildChaseRosterBlock`, whatever the model wrote.
  *   3. `enforceProximity` for Turkish rewrites an English-habit header
  *      to the Turkish one and fixes a UTC time, and does NOT run the
  *      English relative-day grammar over Turkish prose.
@@ -38,7 +38,6 @@ vi.mock("@anthropic-ai/sdk", () => {
 });
 
 import { applyHouseStyle, composeChaseFromMatch, enforceProximity, type ChaseComposeMatch } from "@/lib/message-analyzer";
-import { t } from "@/lib/i18n/t";
 
 /** Tue 8 Sept 2026, 21:30 London (BST, 20:30Z). */
 const KICKOFF = new Date("2026-09-08T20:30:00.000Z");
@@ -119,9 +118,9 @@ describe("seam 1: the language is a fact in the uncached user turn", () => {
 describe("seam 2: the squad list is the table's", () => {
   it("a Turkish post carries the Turkish list headers", async () => {
     const post = await composeChaseFromMatch({ kind: "daily-in-list", match: MATCH, lang: "tr" });
-    expect(post.text).toContain(t("tr").roster_confirmed_header({ confirmed: 3, maxPlayers: 14 }));
-    expect(post.text).not.toContain("*Confirmed (");
-    expect(post.text).toContain("1. Kemal Ediz\n2. Elvin Aliyev\n3. Çağrı Yılmaz");
+    expect(post.text).toContain("*8 Eylül Salı oynayanlar:*\n1. Kemal Ediz\n2. Elvin Aliyev\n3. Çağrı Yılmaz\n4. 🥁");
+    expect(post.text).toMatch(/\n14\. 🥁$/);
+    expect(post.text).not.toContain("*Playing");
   });
 });
 
