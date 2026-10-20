@@ -229,11 +229,11 @@ describe("defect 2: a redundant self claim is acknowledged like a fresh one, wit
     expect(cancelled).toEqual([]);
   });
 
-  it("OUT with no row at all (never signed up): 👋, nothing written", async () => {
+  it("OUT with no row at all (never down for this match) stays the silent no-op it was", async () => {
     const s = state([]);
     const { d, cancelled } = deps(capturingModel(CAPTURED_SELF_OUT), s);
     const r = await run([naimMsg()], d);
-    expect(r.outcomes.get("wa-naim")?.react).toBe("👋");
+    expect(r.outcomes.get("wa-naim")?.react).toBeNull();
     expect(cancelled).toEqual([]);
   });
 

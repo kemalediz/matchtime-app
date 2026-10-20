@@ -3698,14 +3698,15 @@ function clampScore(n: number): number | null {
 /**
  * Where a sender's own claim that changed nothing says he already is, or
  * null when the claim did not land for some other reason (a refusal, a
- * place he could not take). OUT with no row counts as out: he was never
- * down, and 👋 is the truthful answer.
+ * place he could not take). An OUT from somebody with no row at all is
+ * NOT "already out": he was never down for this match, and that no-op
+ * stays silent as it always has (`e2e/api/analyze-honest-ack.spec.ts`).
  */
 function alreadyWhereClaimed(
   polarity: Claim["polarity"],
   status: AttendanceRow["status"] | undefined,
 ): AttendanceRow["status"] | null {
-  if (polarity === "out") return !status || status === "DROPPED" ? "DROPPED" : null;
+  if (polarity === "out") return status === "DROPPED" ? "DROPPED" : null;
   if (polarity === "in") return status === "CONFIRMED" || status === "BENCH" ? status : null;
   if (polarity === "bench") return status === "BENCH" ? "BENCH" : null;
   return null;

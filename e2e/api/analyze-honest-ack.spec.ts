@@ -198,11 +198,14 @@ test("a repeat IN from an already-confirmed player is idempotent, not a failure"
   const r = res.results.find((x: { waMessageId: string }) => x.waMessageId === id);
 
   expect(r.handledBy).toBe("llm");
-  // NO react, where the old path gave ✅. `pipeline/engine.ts:reactFor`
-  // is reached only when a write LANDS, and a repeat IN from a confirmed
-  // player moves nothing. The property this test is named for is the one
-  // below it: the second IN is not a duplicate and not a failure.
-  expect(r.react).toBeNull();
+  // ✅ AGAIN (FNF, 2026-10-20). Until then a repeat IN from a confirmed
+  // player got no react at all, because the engine reacted only after a
+  // write landed; Naim's repeated OUT got the same silence and could not
+  // tell he had been heard. A repeated claim now gets the reaction a fresh
+  // one earns, and still writes nothing. The property this test is named
+  // for is the one below it: the second IN is not a duplicate and not a
+  // failure.
+  expect(r.react).toBe("✅");
   expect(r.reply ?? "").not.toContain("Sorry");
   expect(await confirmedCount(db)).toBe(before); // no duplicate
   expect(
