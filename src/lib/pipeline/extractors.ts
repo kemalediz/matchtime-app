@@ -226,28 +226,29 @@ Banter still contains claims. "Zeeshan is out lol vote him out" DOES claim Zeesh
 
 Return an empty claims array only when the message genuinely says nothing about anyone's attendance.`,
 
-  question: `You classify ONE question from a football club's WhatsApp group: the players' group, or the organisers' own group. You never answer it. Code reads the club's records and writes every name, date and number the group sees; your fields only tell it which question was asked. A field the message does not state gets its empty value. Never fill one in from a guess.
+  question: `You read ONE question from a football club's WhatsApp group (the players' group or the organisers' own group) and say which question it is. You never answer it: code reads the club's records and writes every name, date and number the group sees. Fill a field only from what the message says. A field the message does not state gets its empty value; never fill one in from a guess.
 
-Classify THE MESSAGE only. The recent chat, MatchTime's last post and, for a WhatsApp reply, the message it quotes (the THEY ARE REPLYING TO line: MatchTime's or a member's, with its words) are context for what it refers to; the topic is what THIS message asks for, not what an earlier message asked. NOW is the time at the club. A message that asks two things gets the topic whose answer covers both. Messages come in English and Turkish, often mixed, misspelt or unpunctuated.
+WHAT YOU ARE SHOWN
+THE MESSAGE is the question, with the name of who sent it. Above it, as context only: RECENT CHAT, MATCHTIME'S LAST POST, NOW (the time at the club) and, when the message is a WhatsApp reply, a THEY ARE REPLYING TO line with the message it quotes and whose it is. Use the context to understand what the message refers to: "list?" under a question about the bench, "still space?" under MatchTime's call for one more player. The topic is what THE MESSAGE asks, never what an earlier message asked. Messages come in English and Turkish, often mixed, misspelt or unpunctuated.
 
 FIELDS
 
 topic
-What the asker wants back. Exactly one of:
-  squad            the names of who is playing the upcoming match, as the list. "The list" is this list.
-  count            HOW MANY are in or still needed, whether that is enough, or a number to check
-  bench            who is on the bench, when that is all the message asks
-  person_status    whether one named person is playing
-  phones           who has no phone number on record
-  fixture          the upcoming match itself: whether it is on, kick-off time, venue
-  score            RESULTS of matches already played: the score, who won, for one match or for several
-  payments         who has or has not paid the match fee, or how many still owe
-  rating_progress  who has or has not SUBMITTED ratings or Man of the Match votes for the last match, or how many have
-  my_stats         the asker's OWN stats, ratings, form or season summary, which they are sent privately
-  stats            a table or record about PLAYERS across matches (ratings, appearances, Man of the Match, Elo and the rest), about the club or about anyone but the asker's own numbers
+What the asker wants back. Exactly one. A message that asks two things gets the topic whose answer covers both.
+  squad            who is playing the upcoming match, as names. "The list" and "the squad" are this list, and it shows the bench too: asking for the list is squad even beside a question about the bench.
+  count            how many are in, how many places are left or still needed, whether there is still space or enough players, or a number to check. In Turkish "yer" here is a place in the squad: "yer var mı?" and "hâlâ boş yer var mı?" ask for space, never for the venue.
+  bench            who is on the bench, or whether anyone is, when that is all the message asks. "The bench list" and "yedek listesi" are the bench's own list: bench.
+  person_status    whether one named person is playing, on the bench or out, including whether MatchTime should put them in the squad or on the bench
+  phones           who in the squad has no phone number on record
+  fixture          the upcoming match itself: whether it is on, the kick-off time, the venue
+  score            results of matches already played: the score or who won, for one match or several
+  payments         WHO has or has not paid the match fee, or how many still owe
+  rating_progress  who has or has not SUBMITTED ratings or Man of the Match votes for the last match. Telling people to rate, reminding or thanking them asks for nothing: other.
+  my_stats         the asker's OWN stats, ratings, form or season summary, asked to see (they are sent privately)
+  stats            numbers about players across matches (ratings, appearances, Man of the Match, Elo and the rest): a table, a ranking, another player's numbers, or the asker's own pairings
   options          what to do about being short of players: a smaller format, alternatives
-  how_it_works     how MatchTime itself works here: what the bench is, how signing in works, how the teams are made, and the rest
-  club             how the club itself is run: who the admins or organisers are, who collects the money, the match fee, what time the teams are made
+  how_it_works     how MatchTime itself works here: what the bench is or whether there is one, signing in and out, HOW the teams are made, HOW to pay
+  club             how the club itself is run: who the admins or organisers are, who collects the money, what the fee is, WHEN the teams come out
   other            anything else
 
 personRef
@@ -258,7 +259,7 @@ A number the message ASSERTS about the squad, for checking: "we're 9/14 right?" 
 
 feature
 For how_it_works only, the part of MatchTime it asks about:
-  availability     signing in and out, the squad list, the bench or waiting list, saying maybe
+  availability     signing in and out, the squad list, the bench, saying maybe
   teams            how the two teams are made
   mom              Man of the Match
   ratings          player ratings
@@ -266,10 +267,10 @@ For how_it_works only, the part of MatchTime it asks about:
   payments         the match fee and paying it
   none             MatchTime as a whole or none of these, and every other topic
 
-The remaining fields describe a LIST. table and listEnd belong to stats only; listSize and period belong to stats and score. Every other topic leaves them all empty: table "none", listSize -1, listEnd "top", period "none", periodCount -1, periodUnit "none".
+The remaining fields describe a LIST. table and listEnd belong to stats only; listSize and period belong to stats and score. Every other topic leaves them empty: table "none", listSize -1, listEnd "top", period "none", periodCount -1, periodUnit "none".
 
 table
-Which stats table:
+The one stats table that answers the question:
   ratings          players' ratings. A bare "leaderboard", "the table", "rankings", "standings", "best players" or "top N" with no other measure named is ratings.
   appearances      who plays, turns up or attends the most. "Most consistent" on its own means turning up.
   mom              Man of the Match awards
@@ -278,7 +279,7 @@ Which stats table:
   movers           whose rating or position is improving, climbing or in form
   chemistry        who a player plays best with, their best team-mates, their nemesis or toughest opponent
   mr_reliable      "Mr Reliable" or the most reliable player: the stats page badge for steady, strong ratings, never appearances
-  other            a stats question no single table above answers, such as win rate or a comparison
+  other            a question no single table answers: a win rate, or two or more tables together ("is anyone in both the Elo top ten and the Man of the Match table?")
   none             the question names no measure at all
 
 listSize
@@ -288,107 +289,72 @@ listEnd
 "bottom" when the question asks for the worst, the lowest or the foot of a table; otherwise "top".
 
 period
-A stretch of time the question asks about, on stats or score, with periodCount and periodUnit:
-  last             a rolling span back from today: "in the last year", "past 3 months", "last month", "son 1 yılda", "geçen ay". periodCount is the number written, 1 when none is ("last month" is 1). periodUnit is day, week, month or year.
-  this             the current calendar week, month or year: "this month", "this year", "bu ay", "bu yıl". periodUnit is week, month or year; periodCount -1.
+A stretch of time asked about, on stats or score, with periodCount and periodUnit:
+  last             a rolling span back from today: "in the last year", "past 3 months", "last month", "son 1 yılda", "geçen ay". periodCount is the number written, 1 when none is. periodUnit is day, week, month or year.
+  this             the current calendar week, month or year: "this month", "bu ay", "bu yıl". periodCount -1.
   season           "this season", "the season", "bu sezon". periodCount -1, periodUnit "none".
-  all_time         "ever", "all-time", "of all time", "tüm zamanlar", "bugüne kadar". periodCount -1, periodUnit "none".
-  none             no stretch of time stated
-"Last" and "this" never swap: "last month", "last year", "geçen ay", "geçen yıl" are last, periodCount 1; "this month", "bu ay" are this.
-"The last 3 matches" counts matches, not time: period "none" (on score it is listSize 3).
-A score question that points at ONE match ("last night", "on Tuesday", "last week", "geçen hafta") names that match, not a stretch: period "none", listSize -1.
-
-CLOSE CALLS
-- squad or count: WHO is playing is squad, a list of names. HOW MANY is count, a number. Choose on what the asker wants back.
-- squad or bench: a message that asks for the list, the squad or who is playing is squad, even beside a question about the bench, because the list shows the bench too. A message that asks only who is on the bench, or whether anyone is, is bench, however it says it.
-- score or stats: scores, results and who won are score, for one match or several. Anything counted about players across matches is stats.
-- one table or other: a question that needs two or more tables together ("is anyone in both the Elo top ten and the Man of the Match table?", a comparison across tables) is other, even when it names a table. Name a table only when that table alone answers it.
-- my_stats or stats: my_stats only when the numbers are the asker's own and they ask to see them. Anyone else's numbers, a ranking of the group, and the asker's own pairings are stats.
-- rating_progress or other: rating_progress asks who has submitted ratings. A message that tells the players to rate, thanks them, or remarks on ratings asks for nothing: other.
-- payments, how_it_works or club: WHO owes is payments. HOW to pay is how_it_works, payments. WHO collects the money, and what the fee is, is club.
-- bench or how_it_works: WHO is on the bench is bench. What the bench is, or whether there is one now, is how_it_works, availability.
-- how_it_works or club: HOW the teams are made is how_it_works, teams. WHEN they are made, as a time, is club, and so is WHO runs the club.
+  all_time         "ever", "all-time", "tüm zamanlar", "bugüne kadar". periodCount -1, periodUnit "none".
+  none             no stretch of time stated. "The last 3 matches" counts matches, not time (on score it is listSize 3). A score question about ONE match ("last night", "on Tuesday", "last week", "geçen hafta") is period "none", listSize -1.
 
 EXAMPLES
-Each line is a message, then the fields that are not empty.
+Each line is a message, English | Turkish, then the fields that are not empty.
 
 The upcoming match:
-  "@Match Time who's in?" / "@Match Time kimler var?" -> squad
-  "@Match Time list the players" / "@Match Time show me the squad" -> squad
-  "@Match Time how many spots left?" / "@Match Time kaç kişiyiz?" -> count
-  "@Match Time do we have enough?" -> count
-  "@Match Time we're 9/14 right?" -> count, statedCount 9
-  "@Match Time what's the list?" / "@Match Time liste ne?" -> squad
-  "@Match Time who's on the bench?" / "@Match Time yedekte kim var?" -> bench
-  "@Match Time anyone on the bench? show me the list" / "@Match Time yedekte kimse var mı? listeyi atar mısın" -> squad: the list shows the bench
-  "@Match Time is Zair in?" / "@Match Time Zair geliyor mu?" -> person_status, personRef "Zair"
-  "@Match Time anyone in the squad without a number?" -> phones
-  "@Match Time what time is kickoff?" / "@Match Time maç kaçta?" -> fixture
-  "@Match Time where are we playing?" / "@Match Time is the game still on?" -> fixture
-  "@Match Time we're short, what are our options?" / "@Match Time eksiğiz, ne yapabiliriz?" -> options
+  "@Match Time who's in?" | "@Match Time kimler var?" -> squad
+  "@Match Time what's the list?" | "@Match Time liste ne?" -> squad
+  "@Match Time anyone on the bench? show me the list" | "@Match Time yedekte kimse var mı? listeyi atar mısın" -> squad
+  "@Match Time who's on the bench?" | "@Match Time yedekte kim var?" -> bench
+  "@Match Time how many spots left?" | "@Match Time kaç kişiyiz?" -> count
+  "@Match Time any space left?" | "@Match Time boş yer kaldı mı?" -> count
+  "@Match Time we're 9/14 right?" | "@Match Time 9/14 değil mi?" -> count, statedCount 9
+  "@Match Time is Zair in?" | "@Match Time Zair geliyor mu?" -> person_status, personRef "Zair"
+  "@Match Time anyone in the squad without a number?" | "@Match Time kadroda numarası olmayan var mı?" -> phones
+  "@Match Time what time is kickoff?" | "@Match Time maç kaçta?" -> fixture
+  "@Match Time where are we playing?" | "@Match Time maç nerede?" -> fixture
+  "@Match Time we're short, what are our options?" | "@Match Time eksiğiz, ne yapabiliriz?" -> options
 
-How MatchTime works:
-  "Bench? We do bench now?" / "yedek ne demek?" -> how_it_works, feature availability
-  "@Match Time how are the teams picked?" / "@Match Time takımları nasıl kuruyorsun?" -> how_it_works, feature teams
-  "@Match Time what can you do?" / "@Match Time neler yapabiliyorsun?" -> how_it_works
-
-The club itself:
-  "@Match Time who runs this group?" / "@Match Time grubun yöneticisi kim?" -> club
-  "@Match Time who do we pay?" / "@Match Time ücreti kime ödüyoruz?" -> club
-  "@Match Time how much do we pay each?" / "@Match Time kişi başı ne kadar?" -> club
-  "@Match Time what time do the teams come out?" / "@Match Time takımlar saat kaçta çıkıyor?" -> club
+How MatchTime works and how the club is run:
+  "Bench? We do bench now?" | "yedek ne demek?" -> how_it_works, feature availability
+  "@Match Time how are the teams picked?" | "@Match Time takımları nasıl kuruyorsun?" -> how_it_works, feature teams
+  "@Match Time what can you do?" | "@Match Time neler yapabiliyorsun?" -> how_it_works
+  "@Match Time who runs this group?" | "@Match Time grubun yöneticisi kim?" -> club
+  "@Match Time who do we pay?" | "@Match Time ücreti kime ödüyoruz?" -> club
+  "@Match Time how much do we pay each?" | "@Match Time kişi başı ne kadar?" -> club
+  "@Match Time what time do the teams come out?" | "@Match Time takımlar saat kaçta çıkıyor?" -> club
 
 Results:
-  "@Match Time did we win on tuesday?" / "@Match Time salı kim kazandı?" -> score
-  "@Match Time how did we get on last night" / "@Match Time skor ne oldu?" -> score
-  "@Match Time what was the score last week" / "@Match Time geçen hafta skor kaç kaçtı?" -> score: one match
-  "@Match Time give us the scores of the last 5 matches" / "@Match Time son 5 maçın skorları" -> score, listSize 5
-  "@Match Time last 3 results" / "@Match Time son 3 maçın sonuçları" -> score, listSize 3
-  "@Match Time results this season" / "@Match Time bu sezonun sonuçları" -> score, period season
-  "@Match Time scores this month" / "@Match Time bu ayki skorlar" -> score, period this, periodUnit month
-  "@Match Time results from the last 2 months" / "@Match Time son 2 ayın sonuçları" -> score, period last, periodCount 2, periodUnit month
+  "@Match Time did we win on tuesday?" | "@Match Time salı kim kazandı?" -> score
+  "@Match Time what was the score last week" | "@Match Time geçen hafta skor kaç kaçtı?" -> score
+  "@Match Time give us the scores of the last 5 matches" | "@Match Time son 5 maçın skorları" -> score, listSize 5
+  "@Match Time results this season" | "@Match Time bu sezonun sonuçları" -> score, period season
+  "@Match Time results from the last 2 months" | "@Match Time son 2 ayın sonuçları" -> score, period last, periodCount 2, periodUnit month
 
 After a match:
-  "@Match Time who hasn't paid?" / "@Match Time kim ödemedi?" -> payments
-  "@Match Time has everyone paid for last week?" -> payments
-  "@Match Time who hasn't rated yet?" / "@Match Time kimler puan vermedi?" -> rating_progress
-  "@Match Time who still needs to pick a MoM?" -> rating_progress
-  "please do not forget to rate the players via the link from Matchtime DM'ed to you" -> other: it tells the players to rate
-  "@Match Time can you remind everyone to rate" -> other: a reminder, not the tally
+  "@Match Time who hasn't paid?" | "@Match Time kim ödemedi?" -> payments
+  "@Match Time who hasn't rated yet?" | "@Match Time kimler puan vermedi?" -> rating_progress
+  "please don't forget to rate the players" | "oyuncuları puanlamayı unutmayın" -> other
 
-The asker's own numbers:
-  "@Match Time my stats" / "@Match Time istatistiklerim" -> my_stats
-  "@Match Time can I see my ratings" / "@Match Time puanlarımı görebilir miyim" -> my_stats
-  "@Match Time wrapped" / "@Match Time how am I doing this season?" -> my_stats
-  "@Match Time what are Wasim's stats" / "@Match Time Ali'nin istatistikleri ne" -> stats, personRef "Wasim" / "Ali"
+Stats:
+  "@Match Time my stats" | "@Match Time istatistiklerim" -> my_stats
+  "@Match Time what are Wasim's stats" | "@Match Time Ali'nin istatistikleri ne" -> stats, personRef "Wasim" | "Ali"
+  "@Match Time leaderboard" | "@Match Time sıralama" -> stats, ratings
+  "@Match Time please share the leaderboard of ratings, top 10" | "@Match Time en iyi 10" -> stats, ratings, listSize 10
+  "@Match Time who's the worst player" | "@Match Time en kötü oyuncu kim" -> stats, ratings, listEnd bottom
+  "@Match Time bottom 5 on elo" | "@Match Time elo'da son 5" -> stats, elo, listSize 5, listEnd bottom
+  "@Match Time who's got the most MoMs" | "@Match Time en çok maçın adamı kim" -> stats, mom
+  "@Match Time what is the team of the season?" | "@Match Time sezonun takımı ne" -> stats, team_of_season
+  "@Match Time who's climbing the most lately?" | "@Match Time son maçlarda en çok kim yükseldi" -> stats, movers
+  "@Match Time who is the most Mr. Reliable?" | "@Match Time en güvenilir oyuncu kim?" -> stats, mr_reliable
+  "@Match Time who does Wasim play best with" | "@Match Time Idris'in kimyası nasıl" -> stats, chemistry, personRef "Wasim" | "Idris"
+  "@Match Time who's my nemesis" | "@Match Time en zorlandığım rakip kim" -> stats, chemistry, personRef "me"
+  "@Match Time who has the best win rate" | "@Match Time en yüksek galibiyet oranı kimde" -> stats, other
 
-Which table:
-  "@Match Time please share the leaderboard of ratings, top 10" -> stats, ratings, listSize 10
-  "@Match Time leaderboard" / "@Match Time sıralama" -> stats, ratings
-  "@Match Time top 5 players" / "@Match Time en iyi 10" -> stats, ratings, listSize 5 / 10
-  "@Match Time top 20" -> stats, ratings, listSize 20
-  "@Match Time what's Sait's rating" -> stats, ratings, personRef "Sait"
-  "@Match Time who's the worst player" / "@Match Time en kötü oyuncu kim" -> stats, ratings, listEnd bottom
-  "@Match Time bottom 5 on elo" -> stats, elo, listSize 5, listEnd bottom
-  "@Match Time most appearances" / "@Match Time en çok maça gelen kim" -> stats, appearances
-  "@Match Time who's been most consistent" -> stats, appearances
-  "@Match Time who's got the most MoMs" / "@Match Time en çok maçın adamı kim" -> stats, mom
-  "@Match Time what's the elo table" -> stats, elo
-  "@Match Time what is the team of the season?" / "@Match Time sezonun takımı ne" -> stats, team_of_season
-  "@Match Time whose performance is improving most based on the last 3 matches?" -> stats, movers
-  "@Match Time son maçlarda en çok kim yükseldi" -> stats, movers
-  "@Match Time who is the most Mr. Reliable?" / "@Match Time en güvenilir oyuncu kim?" -> stats, mr_reliable
-  "@Match Time who does Wasim play best with" / "@Match Time Idris'in kimyası nasıl" -> stats, chemistry, personRef "Wasim" / "Idris"
-  "@Match Time who's my nemesis" -> stats, chemistry, personRef "me"
-  "@Match Time who has the best win rate" -> stats, other
-
-Which period:
-  "@Match Time who has played most matches in the last 1 year?" / "@Match Time son 1 yılda en çok maç oynayan kim?" -> stats, appearances, period last, periodCount 1, periodUnit year
-  "@Match Time top 5 ratings in the last month" / "@Match Time geçen ay en iyi 5" -> stats, ratings, listSize 5, period last, periodCount 1, periodUnit month
-  "@Match Time most appearances this season" / "@Match Time bu sezon en çok maç oynayanlar" -> stats, appearances, period season
-  "@Match Time who has the best rating this season" -> stats, ratings, period season
-  "@Match Time all-time most MoMs" / "@Match Time tüm zamanların en çok maçın adamı kim" -> stats, mom, period all_time
-  "@Match Time who played most this month" / "@Match Time bu ay en çok kim oynadı" -> stats, appearances, period this, periodUnit month`,
+Periods:
+  "@Match Time who has played most matches in the last 1 year?" | "@Match Time son 1 yılda en çok maç oynayan kim?" -> stats, appearances, period last, periodCount 1, periodUnit year
+  "@Match Time top 5 ratings in the last month" | "@Match Time geçen ay en iyi 5" -> stats, ratings, listSize 5, period last, periodCount 1, periodUnit month
+  "@Match Time most appearances this season" | "@Match Time bu sezon en çok maç oynayanlar" -> stats, appearances, period season
+  "@Match Time who played most this month" | "@Match Time bu ay en çok kim oynadı" -> stats, appearances, period this, periodUnit month
+  "@Match Time all-time most MoMs" | "@Match Time tüm zamanların en çok maçın adamı kim" -> stats, mom, period all_time`,
 
   teams: `You read ONE message about the club's two team line-ups and report what it asks for. You never pick the players: code builds and changes the line-ups.
 

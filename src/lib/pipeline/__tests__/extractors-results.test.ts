@@ -72,7 +72,7 @@ describe("the prompt teaches results questions", () => {
   it("defines listSize and period for score as well as stats", () => {
     const listSize = p.slice(p.search(/^listSize\b/m), p.search(/^listEnd\b/m));
     expect(listSize).toMatch(/score/);
-    const period = p.slice(p.search(/^period\b/m), p.search(/^CLOSE CALLS/m));
+    const period = p.slice(p.search(/^period\b/m), p.search(/^EXAMPLES/m));
     expect(period).toMatch(/score/);
   });
 });
