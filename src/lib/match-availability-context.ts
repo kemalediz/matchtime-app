@@ -20,15 +20,22 @@ export async function loadMatchAvailabilityFacts(input: {
   quoted: QuotedBotMessage | null;
 }): Promise<Pick<MatchAvailabilityContext, "userId" | "matchId" | "currentStatus" | "replyContext">> {
   const { userId, matchId } = input;
-  const [row, tentative, replyContext] = await Promise.all([
-    db.attendance.findUnique({ where: { matchId_userId: { matchId, userId } }, select: { status: true } }),
-    db.tentativeAvailability.findFirst({ where: { matchId, userId, resolvedAt: null }, select: { id: true } }),
+  // TOTAL (review of #336): a failed read never drops the reply. Each half
+  // degrades on its own; `loadDmReplyContext` is total by itself.
+  const [status, replyContext] = await Promise.all([
+    Promise.all([
+      db.attendance.findUnique({ where: { matchId_userId: { matchId, userId } }, select: { status: true } }),
+      db.tentativeAvailability.findFirst({ where: { matchId, userId, resolvedAt: null }, select: { id: true } }),
+    ])
+      .then(([row, tentative]) => availabilityStatusLabel({ status: row?.status ?? null, tentative: !!tentative }))
+      .catch((err: unknown) => {
+        console.error(
+          `[match-availability] status for user=${userId} match=${matchId} could not be read: ` +
+            (err instanceof Error ? err.message : String(err)),
+        );
+        return null;
+      }),
     loadDmReplyContext(db, { userId, phone: input.phone, quoted: input.quoted }),
   ]);
-  return {
-    userId,
-    matchId,
-    currentStatus: availabilityStatusLabel({ status: row?.status ?? null, tentative: !!tentative }),
-    replyContext,
-  };
+  return { userId, matchId, currentStatus: status, replyContext };
 }

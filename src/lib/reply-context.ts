@@ -198,6 +198,11 @@ export async function resolveQuotedBotMessage(
       take: CANDIDATES,
       select: { key: true, matchId: true, targetUser: true, waMessageId: true, waStanzaId: true, text: true, createdAt: true },
     });
+    // A stored message that is NOT a DM to this person (a group post they
+    // replied to privately, somebody else's DM) is never their quote, and
+    // the Pi's "it was MatchTime's" does not make it one: its match may be
+    // another club's (review of #336).
+    let foundNotTheirs = false;
     for (const row of rows) {
       if (!sameWhatsAppMessage(bare, row.waStanzaId ?? row.waMessageId)) continue;
       const jobId = botJobIdOfKey(row.key);
@@ -206,7 +211,10 @@ export async function resolveQuotedBotMessage(
           where: { id: jobId },
           select: { kind: true, phone: true, text: true, sentAt: true, createdAt: true },
         });
-        if (!job || job.kind !== "dm" || !isTheirs(job.phone, theirs)) continue;
+        if (!job || job.kind !== "dm" || !isTheirs(job.phone, theirs)) {
+          foundNotTheirs = true;
+          continue;
+        }
         return {
           key: row.key,
           sentAt: job.sentAt ?? row.createdAt,
@@ -215,9 +223,13 @@ export async function resolveQuotedBotMessage(
           matchId: row.matchId,
         };
       }
-      if (!row.targetUser) continue;
-      const user = await db.user.findUnique({ where: { id: row.targetUser }, select: { phoneNumber: true } });
-      if (!isTheirs(user?.phoneNumber, theirs)) continue;
+      const user = row.targetUser
+        ? await db.user.findUnique({ where: { id: row.targetUser }, select: { phoneNumber: true } })
+        : null;
+      if (!isTheirs(user?.phoneNumber, theirs)) {
+        foundNotTheirs = true;
+        continue;
+      }
       return {
         key: row.key,
         sentAt: row.createdAt,
@@ -226,6 +238,7 @@ export async function resolveQuotedBotMessage(
         matchId: row.matchId,
       };
     }
+    if (foundNotTheirs) return null;
   }
 
   if (!quote.fromMatchTime) return null;
@@ -297,6 +310,22 @@ export interface ReplyContext {
   quoted: ContextMessage | null;
   recent: ContextMessage[];
   earlier: ContextMessage | null;
+  /** The Pi says they quoted a MatchTime message, but it is not one we can
+   *  name (an inline reply, or a send with no stored id). Shown flagged,
+   *  BESIDE the recent messages, never as "they are replying to". */
+  unidentifiedQuote?: { text: string | null } | null;
+}
+
+/**
+ * The quote a path may read when it acts on `matchId`: kept when it names
+ * that match or none, dropped when it names another. A reply is never read
+ * against one match's message while acting on a different match (review of
+ * #336: "paid" to match A's chase landed on match B).
+ */
+export function quoteForMatch(quoted: QuotedBotMessage | null | undefined, matchId: string): QuotedBotMessage | null {
+  if (!quoted) return null;
+  if (quoted.matchId && quoted.matchId !== matchId) return null;
+  return quoted;
 }
 
 /** Nothing known but the time. */
@@ -369,6 +398,14 @@ const days = (ms: number) => Math.round(ms / (24 * 3600 * 1000));
 export function renderReplyContext(ctx: ReplyContext): string {
   const lines = [`NOW: ${formatLondon(ctx.now, "EEEE d MMMM yyyy, HH:mm")} (club time, London)`];
   const { quoted } = ctx;
+  const unidentified = !quoted ? ctx.unidentifiedQuote : null;
+  if (unidentified) {
+    lines.push(
+      unidentified.text && unidentified.text.trim()
+        ? `THEY QUOTED a MatchTime message that could not be identified as one of its DMs to them (it may be a group post): ${words(unidentified.text)}`
+        : "THEY QUOTED a MatchTime message that could not be identified, and its words are not known.",
+    );
+  }
   if (quoted) {
     lines.push(
       quoted.at
@@ -377,7 +414,7 @@ export function renderReplyContext(ctx: ReplyContext): string {
       words(quoted.text),
     );
   } else if (ctx.recent.length > 0) {
-    lines.push(`${RECENT_HEADER} (oldest first; their DM is not a reply to one):`);
+    lines.push(`${RECENT_HEADER} (oldest first${unidentified ? "" : "; their DM is not a reply to one"}):`);
     for (const m of ctx.recent) lines.push(`- ${m.at ? headOf({ ...m, at: m.at }) : "(time not known)"}: ${words(m.text)}`);
   } else if (ctx.earlier?.at) {
     lines.push(
@@ -395,7 +432,7 @@ export function renderReplyContext(ctx: ReplyContext): string {
 export interface DmReplyContextDb {
   sentNotification: {
     findMany(args: {
-      where: { kind: "dm"; targetUser: string; createdAt: { gte: Date } };
+      where: { kind: "dm"; targetUser: string; createdAt: { gte: Date }; waMessageId: { not: null } };
       orderBy: { createdAt: "desc" };
       take: number;
       select: { key: true; matchId: true; text: true; createdAt: true };
@@ -403,7 +440,7 @@ export interface DmReplyContextDb {
   };
   botJob: {
     findMany(args: {
-      where: { kind: "dm"; phone: string; createdAt: { gte: Date } };
+      where: { kind: "dm"; phone: string; createdAt: { gte: Date }; sentAt: { not: null } };
       orderBy: { createdAt: "desc" };
       take: number;
       select: { text: true; sentAt: true; createdAt: true };
@@ -434,6 +471,24 @@ export async function loadDmReplyContext(
   input: { userId: string; phone: string | null; quoted: QuotedBotMessage | null; now?: Date },
 ): Promise<ReplyContext> {
   const now = input.now ?? new Date();
+  try {
+    return await readDmReplyContext(db, { ...input, now });
+  } catch (err) {
+    // TOTAL: a failed read never drops the reply. The classifier still
+    // runs, told the time now and that nothing is known.
+    console.error(
+      `[reply-context] chat context for user=${input.userId} could not be read: ` +
+        (err instanceof Error ? err.message : String(err)),
+    );
+    return noReplyContext(now);
+  }
+}
+
+async function readDmReplyContext(
+  db: DmReplyContextDb,
+  input: { userId: string; phone: string | null; quoted: QuotedBotMessage | null; now: Date },
+): Promise<ReplyContext> {
+  const { now } = input;
   const labels = async (ids: Array<string | null>): Promise<Map<string, string>> => {
     const want = [...new Set(ids.filter((id): id is string => !!id))];
     if (want.length === 0) return new Map();
@@ -444,23 +499,26 @@ export async function loadDmReplyContext(
     return new Map(rows.map((r) => [r.id, contextMatchLabel(r.activity.name, r.date)]));
   };
 
-  if (input.quoted) {
+  // A quote we found among our DMs to them is the whole context.
+  if (input.quoted?.key) {
     const q = input.quoted;
     const match = q.matchId ? ((await labels([q.matchId])).get(q.matchId) ?? null) : null;
     return { now, quoted: { at: q.sentAt, text: q.text, topic: q.topic, match }, recent: [], earlier: null };
   }
 
+  // Only messages actually SENT: a scheduler claim the Pi acked with an id,
+  // a BotJob the Pi marked sent. A queued or failed one never reached them.
   const since = new Date(now.getTime() - DM_LOOKBACK_MS);
   const [scheduled, queued] = await Promise.all([
     db.sentNotification.findMany({
-      where: { kind: "dm", targetUser: input.userId, createdAt: { gte: since } },
+      where: { kind: "dm", targetUser: input.userId, createdAt: { gte: since }, waMessageId: { not: null } },
       orderBy: { createdAt: "desc" },
       take: RECENT_READ,
       select: { key: true, matchId: true, text: true, createdAt: true },
     }),
     input.phone
       ? db.botJob.findMany({
-          where: { kind: "dm", phone: input.phone, createdAt: { gte: since } },
+          where: { kind: "dm", phone: input.phone, createdAt: { gte: since }, sentAt: { not: null } },
           orderBy: { createdAt: "desc" },
           take: RECENT_READ,
           select: { text: true, sentAt: true, createdAt: true },
@@ -479,5 +537,8 @@ export async function loadDmReplyContext(
     })),
     ...queued.map((j) => ({ at: j.sentAt ?? j.createdAt, text: j.text, topic: null, match: null })),
   ];
-  return { now, quoted: null, ...pickRecentBotMessages(all, now) };
+  const picked = pickRecentBotMessages(all, now);
+  // The Pi's word that they quoted MatchTime, with nothing we can name:
+  // flagged beside the recent messages, never instead of them.
+  return input.quoted ? { now, quoted: null, ...picked, unidentifiedQuote: { text: input.quoted.text } } : { now, quoted: null, ...picked };
 }

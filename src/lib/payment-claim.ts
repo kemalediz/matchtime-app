@@ -120,7 +120,13 @@ import {
   type PaymentClaimIntent,
 } from "./payment-claim-classifier";
 import { queuePaidClaimReaction } from "./paid-claim-reaction";
-import { loadDmReplyContext, type QuotedBotMessage, type ReplyContext } from "./reply-context";
+import {
+  contextMatchLabel,
+  loadDmReplyContext,
+  quoteForMatch,
+  type QuotedBotMessage,
+  type ReplyContext,
+} from "./reply-context";
 
 export {
   PAYMENT_CLAIM_MIN_CONFIDENCE,
@@ -155,6 +161,8 @@ export interface OwedMatchRow {
 
 export interface OwedMatch {
   matchId: string;
+  /** Kickoff, so the model is told WHICH match is owed. */
+  date: Date;
   orgId: string;
   activityName: string;
   fee: number;
@@ -163,15 +171,19 @@ export interface OwedMatch {
 }
 
 /** The most recent match still owed; the collector never owes their own
- *  org. See "WHICH MATCH" at the top of this file. */
-export function pickClaimMatch(rows: OwedMatchRow[], userId: string): OwedMatch | null {
+ *  org. See "WHICH MATCH" at the top of this file. A swipe-reply's quote
+ *  that names one of the owed matches picks THAT one (review of #336: a
+ *  "paid" to match A's chase must never land on the newer match B); a
+ *  quoted match that is not owed changes nothing. */
+export function pickClaimMatch(rows: OwedMatchRow[], userId: string, quotedMatchId?: string | null): OwedMatch | null {
   const owed = rows
     .filter((r) => r.collectorId !== userId)
     .sort((a, b) => b.date.getTime() - a.date.getTime());
-  const r = owed[0];
+  const r = (quotedMatchId ? owed.find((x) => x.matchId === quotedMatchId) : undefined) ?? owed[0];
   if (!r) return null;
   return {
     matchId: r.matchId,
+    date: r.date,
     orgId: r.orgId,
     activityName: r.activityName,
     fee: r.fee,
@@ -194,7 +206,8 @@ export function paymentClaimContext(
 ): PaymentClaimContext {
   return {
     playerName,
-    owes: `${gbp(owed.fee)} for ${owed.activityName}`,
+    // The match's day and time too: with two owed, the model sees which.
+    owes: `${gbp(owed.fee)} for ${contextMatchLabel(owed.activityName, owed.date)}`,
     collectorName: owed.collectorName,
     replyContext,
   };
@@ -399,6 +412,7 @@ export async function handlePaymentClaimDm(input: {
           collectorName: null,
         })),
         userId,
+        input.quoted?.matchId,
       );
       if (!picked) return null;
       const collectorId = rows.find((r) => r.match.id === picked.matchId)?.match.activity.org.paymentHolderId;
@@ -409,7 +423,12 @@ export async function handlePaymentClaimDm(input: {
       return picked;
     },
     classify: async (owed) => {
-      const replyContext = await loadDmReplyContext(db, { userId, phone: replyPhone, quoted: input.quoted ?? null });
+      // The quote is read only when it is about the match being claimed.
+      const replyContext = await loadDmReplyContext(db, {
+        userId,
+        phone: replyPhone,
+        quoted: quoteForMatch(input.quoted, owed.matchId),
+      });
       // Spent from the club the player owes (the daily AI cap).
       return withOrgAiBudget(owed.orgId, () =>
         classifyPaymentClaimDetailed(text, paymentClaimContext(owed, input.userName, replyContext)),

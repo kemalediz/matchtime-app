@@ -15,6 +15,7 @@
  */
 import { describe, it, expect } from "vitest";
 import {
+  eligibleRegistrationMatch,
   selectRegistrationMatch,
   type SelectableMatch,
 } from "@/lib/registration-match-select";
@@ -103,5 +104,33 @@ describe("selectRegistrationMatch", () => {
       { id: "next-week", date: at("2026-06-25T19:00:00Z"), status: "UPCOMING" },
     ];
     expect(selectRegistrationMatch(matches, now)?.id).toBe("tonight");
+  });
+});
+
+// A DM swipe-replying to an invite names its match (quoted-reply context,
+// review of #336): that match is registered only if the selector's own
+// rules would allow a DM to register for it at all.
+describe("eligibleRegistrationMatch", () => {
+  const NOW = new Date("2026-10-19T12:00:00Z");
+  const m = (id: string, date: string, status = "UPCOMING") => ({ id, date: new Date(date), status });
+
+  it("an active match dated today or later is eligible, even when it is not the soonest", () => {
+    const ms = [m("tue", "2026-10-20T19:00:00Z"), m("thu", "2026-10-22T19:00:00Z")];
+    expect(eligibleRegistrationMatch(ms, "thu", NOW)?.id).toBe("thu");
+  });
+
+  it("a completed, cancelled or past match is not", () => {
+    expect(eligibleRegistrationMatch([m("x", "2026-10-22T19:00:00Z", "CANCELLED")], "x", NOW)).toBeNull();
+    expect(eligibleRegistrationMatch([m("x", "2026-10-22T19:00:00Z", "COMPLETED")], "x", NOW)).toBeNull();
+    expect(eligibleRegistrationMatch([m("x", "2026-10-18T19:00:00Z")], "x", NOW)).toBeNull();
+  });
+
+  it("nothing while a previous cycle is still in flight (the selector's own block)", () => {
+    const ms = [m("old", "2026-10-13T19:00:00Z"), m("thu", "2026-10-22T19:00:00Z")];
+    expect(eligibleRegistrationMatch(ms, "thu", NOW)).toBeNull();
+  });
+
+  it("a match not among the candidates is null", () => {
+    expect(eligibleRegistrationMatch([m("tue", "2026-10-20T19:00:00Z")], "other", NOW)).toBeNull();
   });
 });

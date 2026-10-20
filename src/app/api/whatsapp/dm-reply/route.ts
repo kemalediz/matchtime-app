@@ -80,7 +80,7 @@ import { selfJoinEnabledForApiRequest } from "@/lib/self-join-flag";
 import { NextResponse } from "next/server";
 import { REPLY_PRIORITY } from "@/lib/dm-reply-priority";
 import { db } from "@/lib/db";
-import { logDmQuote } from "@/lib/reply-context";
+import { logDmQuote, quoteForMatch } from "@/lib/reply-context";
 import { normalisePhone } from "@/lib/phone";
 import { classifyRosterReply } from "@/lib/roster-survey-classifier";
 import { resolveBenchConfirmation } from "@/lib/bench-confirmation";
@@ -737,7 +737,13 @@ export async function POST(request: Request) {
     if (active.length > 0) {
       // The soonest match's org decides the language of the fast path and
       // of every DM below (the follow-up was written in it).
-      const tentLang = active[0].match.activity.org.language;
+      // The match this reply is about: the one whose follow-up (or other
+      // DM) it swipe-replies to, when that is one of his open maybes;
+      // otherwise the soonest, as before. Every read and write below uses
+      // THIS row, so a reply is never applied to a different match than
+      // the one it answers (review of #336).
+      const chosen = (quoted?.matchId ? active.find((t) => t.match.id === quoted.matchId) : undefined) ?? active[0];
+      const tentLang = chosen.match.activity.org.language;
       // Cheap, instant FAST-PATH for the unambiguous replies. Free, so we
       // use it — but it is NOT the decision (2026-08-31). A player who
       // answers "yeah go on then" or "can't tomorrow sorry" is not
@@ -748,7 +754,7 @@ export async function POST(request: Request) {
       let isOut = fast === "out";
 
       if (!isIn && !isOut) {
-        const row0 = active[0];
+        const row0 = chosen;
         const org0 = await db.organisation.findUnique({
           where: { id: row0.match.activity.orgId },
           select: { name: true },
@@ -760,7 +766,7 @@ export async function POST(request: Request) {
           userId: user.id,
           matchId: row0.match.id,
           phone: await dmPhone(),
-          quoted,
+          quoted: quoteForMatch(quoted, row0.match.id),
         });
         // Spent from the match's club (the daily AI cap, lib/ai-budget.ts).
         const verdict = await withOrgAiBudget(row0.match.activity.orgId, () => classifyMatchAvailability(text ?? "", {
@@ -774,9 +780,9 @@ export async function POST(request: Request) {
         else if (verdict.decision === "out") isOut = true;
       }
 
-      // Genuinely unclear reply → one gentle re-ask, scoped to the soonest match.
+      // Genuinely unclear reply → one gentle re-ask, scoped to the chosen match.
       if (!isIn && !isOut) {
-        const row = active[0];
+        const row = chosen;
         const replyPhone = (await db.user.findUnique({
           where: { id: user.id },
           select: { phoneNumber: true },
@@ -795,7 +801,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ ok: true, handled: "tentative-followup-unclear" });
       }
 
-      const row = active[0];
+      const row = chosen;
       // Capture the PRIOR state so the group announcement below can tell a
       // real change from an idempotent repeat.
       const priorRow = await db.attendance.findUnique({
@@ -1144,7 +1150,8 @@ export async function POST(request: Request) {
       });
       if (guestOut) return NextResponse.json({ ok: true, ...guestOut });
     }
-    const target = !dm ? await findDmRegistrationTarget(user.id) : null;
+    // A swipe-reply naming an eligible match registers for THAT match.
+    const target = !dm ? await findDmRegistrationTarget(user.id, { quotedMatchId: quoted?.matchId }) : null;
     if (target) {
       // What MatchTime last said to them (an invite to this match unlocks a
       // bare "yes"/"👍"; a rating DM does not) and where they stand for it.
@@ -1152,7 +1159,8 @@ export async function POST(request: Request) {
         userId: user.id,
         matchId: target.matchId,
         phone: await dmPhone(),
-        quoted,
+        // A quote about another match never steers this one.
+        quoted: quoteForMatch(quoted, target.matchId),
       });
       // Spent from the match's club (the daily AI cap). At the cap the
       // regex fast path still registers a plain IN/OUT; only the model

@@ -39,7 +39,7 @@
  * guarantee, a name that says what it does. That rename is the only
  * change under `src/` in this PR and it is one line of logic.
  */
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { E2E } from "./env";
 
@@ -188,6 +188,31 @@ export function setPaymentClaimStub(stub: PaymentClaimStub): void {
 
 export function clearPaymentClaimStub(): void {
   setPaymentClaimStub({});
+  rmSync(`${E2E.PAYMENT_CLAIM_STUB_FILE}.calls`, { force: true });
+}
+
+/** The MATCH-AVAILABILITY stub (review of #336): DM body → "in" | "out" |
+ *  "unclear". `{}` means every body is "unclear", which writes nothing. */
+export function setMatchAvailabilityStub(stub: { bodies?: Record<string, "in" | "out" | "unclear">; fail?: string[] }): void {
+  mkdirSync(path.dirname(E2E.MATCH_AVAILABILITY_STUB_FILE), { recursive: true });
+  writeFileSync(E2E.MATCH_AVAILABILITY_STUB_FILE, JSON.stringify(stub, null, 2));
+}
+
+export function clearMatchAvailabilityStub(): void {
+  setMatchAvailabilityStub({});
+  rmSync(`${E2E.MATCH_AVAILABILITY_STUB_FILE}.calls`, { force: true });
+}
+
+/** The user turns a DM classifier stub was asked about, oldest first. */
+export function stubCalls(file: string): Array<{ label: string; user: string }> {
+  try {
+    return readFileSync(`${file}.calls`, "utf8")
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as { label: string; user: string });
+  } catch {
+    return [];
+  }
 }
 
 /** Every seam back to its empty state. `resetDb()` calls it, so a spec
@@ -199,6 +224,7 @@ export function clearPipelineStubs(): void {
   clearExtractorStub();
   clearDmIntentStub();
   clearPaymentClaimStub();
+  clearMatchAvailabilityStub();
 }
 
 // ── Fact builders ─────────────────────────────────────────────────────

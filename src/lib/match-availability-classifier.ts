@@ -47,6 +47,7 @@
  * context.ts`), so the live dry run (`scripts/dryrun-match-availability.ts`)
  * imports the exact production prompt without importing Prisma.
  */
+import { dmClassifierStubCall } from "./dm-classifier-stub";
 import { HAIKU_MODEL, HAIKU_SHORT_ANSWER_MAX_TOKENS, HAIKU_THINKING } from "./models";
 import { noReplyContext, renderReplyContext, type ReplyContext } from "./reply-context";
 
@@ -160,6 +161,23 @@ const UNCLEAR = (reasoning: string): MatchAvailabilityClassification => ({
   reasoning,
 });
 
+/**
+ * TEST-ONLY seam (review of #336), mirroring the payment-claim one: the
+ * decision the model would have returned for a DM body, so a route-level
+ * spec can drive every availability path for free and read what the model
+ * would have been told (`<file>.calls`). `e2e/helpers/live-llm.ts` refuses
+ * a "live" run that can still see it.
+ */
+export const MATCH_AVAILABILITY_STUB_FILE_ENV = "MT_TEST_MATCH_AVAILABILITY_STUB_FILE";
+
+function stubCall(env: NodeJS.ProcessEnv): MatchAvailabilityCall | null {
+  return dmClassifierStubCall(env[MATCH_AVAILABILITY_STUB_FILE_ENV], {
+    label: "match-availability",
+    header: MESSAGE_HEADER,
+    answer: (decision) => JSON.stringify({ decision: decision ?? "unclear", confidence: 1, reasoning: "match-availability stub" }),
+  });
+}
+
 /** The real call. Null when there is no key, which is "unclear". */
 function liveCall(): MatchAvailabilityCall | null {
   const key = process.env.ANTHROPIC_API_KEY;
@@ -195,7 +213,7 @@ export async function classifyMatchAvailability(
   call?: MatchAvailabilityCall | null,
 ): Promise<MatchAvailabilityClassification> {
   if (!replyBody || !replyBody.trim()) return UNCLEAR("empty reply");
-  const fn = call === undefined ? liveCall() : call;
+  const fn = call === undefined ? (stubCall(process.env) ?? liveCall()) : call;
   if (!fn) return UNCLEAR("classifier unavailable");
   let verdict: MatchAvailabilityClassification;
   try {

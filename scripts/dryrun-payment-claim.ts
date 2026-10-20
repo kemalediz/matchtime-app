@@ -85,7 +85,8 @@ const ratingMsg = (at: string): ContextMessage => ({ at: new Date(at), text: RAT
 /** The route always names the money collector now (2026-10-18). */
 const CTX: PaymentClaimContext = {
   playerName: "Abid Kazmi",
-  owes: "£8 for Tuesday 7-a-side",
+  // The route's owes line carries the match's day and time (review of #336).
+  owes: `£8 for ${TUE}`,
   collectorName: "Kemal Ediz",
   replyContext: sent(payChaseMsg),
 };
@@ -98,7 +99,7 @@ const FEROZ_PAY_LINK =
 const ferozPayLinkMsg: ContextMessage = { at: new Date("2026-10-18T20:46:00Z"), text: FEROZ_PAY_LINK, topic: null, match: null };
 const FEROZ: PaymentClaimContext = {
   playerName: "Feroz",
-  owes: "£5 for Football 9-a-side",
+  owes: `£5 for ${contextMatchLabel("Football 9-a-side", new Date("2026-10-16T20:00:00Z"))}`,
   collectorName: "Raihan",
   replyContext: sent(ferozPayLinkMsg),
 };
@@ -198,7 +199,18 @@ const COLLECTOR: Case[] = [
  * DM came after it, and a "done" to the rating DM is not. Not a reply, a
  * bare "done" answers the newest message. `SET=s2` runs these.
  */
+/** Owes two matches (review of #336): the route acts on the one the quote
+ *  names and tells the model its date; the older one here. */
+const OLDER = contextMatchLabel("Tuesday 7-a-side", new Date("2026-10-06T19:00:00Z"));
+const olderChaseMsg: ContextMessage = {
+  at: new Date("2026-10-12T17:00:00Z"),
+  text: buildPayChaseDm({ playerName: "Abid Kazmi", dayNum: 6, fee: 8, activityName: "Tuesday 7-a-side", url: "https://mt.example/s/pay", methods: ["card", "direct"], collectorName: "Kemal Ediz", lang: "en" }),
+  topic: "paymentCollection",
+  match: OLDER,
+};
+
 const SLICE_S2: Case[] = [
+  { text: "paid", want: "paid", ctx: { ...CTX, owes: `£8 for ${OLDER}`, replyContext: quoting(olderChaseMsg) }, note: "owes two, swipe-reply to the OLDER match's chase" },
   { text: "paid", want: "paid", ctx: { ...CTX, replyContext: quoting(payChaseMsg) }, note: "swipe-reply to the pay link, a rating DM came after" },
   { text: "done 👍", want: "paid", ctx: { ...CTX, replyContext: quoting(payChaseMsg) }, note: "swipe-reply to the pay link, a rating DM came after" },
   { text: "tamam", want: "paid", ctx: { ...FEROZ, replyContext: quoting(ferozPayLinkMsg) }, note: "swipe-reply to a queued pay link" },

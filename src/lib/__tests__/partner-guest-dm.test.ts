@@ -91,6 +91,12 @@ describe("handleGuestDmOut", () => {
     expect(facts.loadMatchAvailabilityFacts).toHaveBeenCalledWith({ userId: "ali", matchId: "m-fnf", phone: "447700900111", quoted });
   });
 
+  it("a quote about a DIFFERENT match never steers his guest game: dropped, the recent messages instead", async () => {
+    const quoted = { key: "m-own:recruit-chase:ali:x", sentAt: NOW, text: "Playing Tuesday?", topic: "attendance" as const, matchId: "m-own" };
+    await handleGuestDmOut({ userId: "ali", userName: "Ali", text: "out", replyPhone: "447700900111", now: NOW, quoted });
+    expect(facts.loadMatchAvailabilityFacts).toHaveBeenCalledWith({ userId: "ali", matchId: "m-fnf", phone: "447700900111", quoted: null });
+  });
+
   it("answer 1: out of the asking club's game only", async () => {
     dbMock.sentNotification.findFirst.mockResolvedValue({ key: `xask:dmout:ali:m-fnf:m-own:${NOW.getTime() - 60_000}`, createdAt: new Date(NOW.getTime() - 60_000) });
     const r = await call("1");

@@ -8,7 +8,7 @@
  * exact production prompt without importing Prisma. See
  * `lib/payment-claim.ts` for the design and the decisions.
  */
-import { readFileSync } from "node:fs";
+import { bodyUnderHeader, dmClassifierStubCall } from "./dm-classifier-stub";
 import { HAIKU_MODEL, HAIKU_SHORT_ANSWER_MAX_TOKENS, HAIKU_THINKING } from "./models";
 import { noReplyContext, renderReplyContext, type ReplyContext } from "./reply-context";
 
@@ -130,38 +130,21 @@ export function parsePaymentClaim(rawText: string): PaymentClaimClassification {
  */
 export const PAYMENT_CLAIM_STUB_FILE_ENV = "MT_TEST_PAYMENT_CLAIM_STUB_FILE";
 
-interface PaymentClaimStub {
-  /** Trimmed message body → the intent the model would have returned. */
-  bodies?: Record<string, PaymentClaimIntent>;
-  /** Bodies whose model CALL throws, the way an overloaded API does. */
-  fail?: string[];
-}
-
 /** What separates the context lines from the message itself. */
 const MESSAGE_HEADER = "THE DM:";
 
 /** Everything after the header, trimmed, so a multi-line message is
  *  read whole. */
 export function paymentClaimBodyOf(user: string): string {
-  const i = user.indexOf(`${MESSAGE_HEADER}\n`);
-  return (i === -1 ? user : user.slice(i + MESSAGE_HEADER.length + 1)).trim();
+  return bodyUnderHeader(user, MESSAGE_HEADER);
 }
 
 function stubCall(env: NodeJS.ProcessEnv): PaymentClaimCall | null {
-  const file = env[PAYMENT_CLAIM_STUB_FILE_ENV];
-  if (!file) return null;
-  return async (_system, user) => {
-    let cfg: PaymentClaimStub = {};
-    try {
-      cfg = JSON.parse(readFileSync(file, "utf8")) as PaymentClaimStub;
-    } catch {
-      // Missing or garbled → no mapping at all, which is `other`.
-      cfg = {};
-    }
-    const body = paymentClaimBodyOf(user);
-    if ((cfg.fail ?? []).includes(body)) throw new Error("payment-claim stub: forced failure");
-    return JSON.stringify({ intent: cfg.bodies?.[body] ?? "other", confidence: 1, reasoning: "payment-claim stub" });
-  };
+  return dmClassifierStubCall(env[PAYMENT_CLAIM_STUB_FILE_ENV], {
+    label: "payment-claim",
+    header: MESSAGE_HEADER,
+    answer: (intent) => JSON.stringify({ intent: intent ?? "other", confidence: 1, reasoning: "payment-claim stub" }),
+  });
 }
 
 /** The real call. Null when there is no key, which is `other`. */

@@ -137,9 +137,10 @@ async function main() {
     {
       const got = await resolveQuotedBotMessage(db, { quote: q("3EB0RCRATER", false), phones, now });
       assert.equal(got, null);
+      // Even when the Pi says it was MatchTime's: it is somebody else's DM.
       const quoteOnly = await resolveQuotedBotMessage(db, { quote: q("3EB0RCRATER"), phones, now });
-      assert.equal(quoteOnly?.key, null);
-      ok("another person's DM is not this person's quote");
+      assert.equal(quoteOnly, null);
+      ok("another person's DM is not this person's quote, whatever the Pi says");
     }
     {
       const lines: string[] = [];

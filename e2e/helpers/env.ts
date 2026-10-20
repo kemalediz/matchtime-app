@@ -106,6 +106,13 @@ export const E2E = {
    *  which writes nothing. */
   PAYMENT_CLAIM_STUB_FILE: path.join(REPO_ROOT, ".e2e", "payment-claim-stub.json"),
 
+  /** The MATCH-AVAILABILITY stub file (review of #336): DM body → the
+   *  decision `lib/match-availability-classifier.ts` would have returned
+   *  ("in" | "out" | "unclear"). Absent or `{}` → "unclear", which writes
+   *  nothing. Both DM classifier stubs append each user turn they were
+   *  asked about to `<file>.calls`. */
+  MATCH_AVAILABILITY_STUB_FILE: path.join(REPO_ROOT, ".e2e", "match-availability-stub.json"),
+
   /** The FAKE Stripe's world for club fee billing (slice B3,
    *  src/lib/stripe-billing-fake.ts): the calls the dev server made and the
    *  subscriptions and setup intents a spec says Stripe holds. Shared by
@@ -213,6 +220,7 @@ export function buildTestEnv(): Record<string, string> {
     MT_TEST_EXTRACTOR_STUB_FILE: E2E.EXTRACTOR_STUB_FILE,
     MT_TEST_DM_INTENT_STUB_FILE: E2E.DM_INTENT_STUB_FILE,
     MT_TEST_PAYMENT_CLAIM_STUB_FILE: E2E.PAYMENT_CLAIM_STUB_FILE,
+    MT_TEST_MATCH_AVAILABILITY_STUB_FILE: E2E.MATCH_AVAILABILITY_STUB_FILE,
     // Phase 1 autonomous onboarding (bot-added → intro → YES → org).
     // ON for the suite so the flow is exercisable; prod keeps it OFF
     // until deliberately flipped (the route no-ops without it).
@@ -305,6 +313,8 @@ export function buildTestEnv(): Record<string, string> {
     // sits in front of a DM to the money collector. Pinned empty, not
     // deleted, for the same reason.
     env.MT_TEST_PAYMENT_CLAIM_STUB_FILE = "";
+    // And for the match-availability classifier, which writes to a squad.
+    env.MT_TEST_MATCH_AVAILABILITY_STUB_FILE = "";
     // THE KEY A LIVE SWEEP SPENDS IS THE DEVELOPER'S, NOT PRODUCTION'S.
     //
     // This line used to forward the orchestrator's own production key,

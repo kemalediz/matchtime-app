@@ -43,6 +43,7 @@ const PAY_CHASE_CTX: ReplyContext = {
 
 const OWED: OwedMatch = {
   matchId: "m-tue",
+  date: new Date("2026-10-20T19:00:00Z"),
   orgId: "org-sutton",
   activityName: "Tuesday 7-a-side",
   fee: 8,
@@ -262,6 +263,33 @@ describe("which match: the most recent one still owed", () => {
   it("nothing owed is null", () => {
     expect(pickClaimMatch([], "u-abid")).toBeNull();
   });
+
+  // Adversarial review of #336: a swipe-reply to match A's pay chase must
+  // never land on match B because B is more recent.
+  it("a swipe-reply naming an owed match acts on THAT match, not the most recent", () => {
+    const got = pickClaimMatch(
+      [row("a", "2026-10-13T19:00:00Z"), row("b", "2026-10-20T19:00:00Z")],
+      "u-abid",
+      "a",
+    );
+    expect(got?.matchId).toBe("a");
+    expect(got?.date).toEqual(new Date("2026-10-13T19:00:00Z"));
+  });
+
+  it("a quoted match that is not owed is ignored: the most recent owed one", () => {
+    expect(pickClaimMatch([row("a", "2026-10-13T19:00:00Z"), row("b", "2026-10-20T19:00:00Z")], "u-abid", "paid-already")?.matchId).toBe("b");
+  });
+
+  it("the collector's own match is never picked, even when quoted", () => {
+    expect(pickClaimMatch([row("a", "2026-10-13T19:00:00Z", { collectorId: "u-abid" }), row("b", "2026-10-20T19:00:00Z")], "u-abid", "a")?.matchId).toBe("b");
+  });
+});
+
+describe("the model sees WHICH match is owed: its date is on the owes line", () => {
+  it("'They owe: £8 for Tuesday 7-a-side, Tue 13 Oct, 20:00'", () => {
+    const ctx = paymentClaimContext({ ...OWED, date: new Date("2026-10-13T19:00:00Z") }, "Abid", noReplyContext(NOW));
+    expect(ctx.owes).toBe("£8 for Tuesday 7-a-side, Tue 13 Oct, 20:00");
+  });
 });
 
 describe("the classifier's contract", () => {
@@ -385,7 +413,7 @@ describe("the classifier is told who collects the money", () => {
     );
     expect(ctx).toEqual({
       playerName: "Feroz",
-      owes: "£5 for Football 9-a-side",
+      owes: "£5 for Football 9-a-side, Tue 20 Oct, 20:00",
       collectorName: "Raihan",
       replyContext: noReplyContext(NOW),
     });

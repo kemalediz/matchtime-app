@@ -25,7 +25,7 @@ import { REPLY_PRIORITY } from "./dm-reply-priority";
 import { withOrgAiBudget } from "./ai-budget";
 import { resolveDmSelfAttendance } from "./dm-self-attendance";
 import { loadMatchAvailabilityFacts } from "./match-availability-context";
-import type { QuotedBotMessage } from "./reply-context";
+import { quoteForMatch, type QuotedBotMessage } from "./reply-context";
 import { findDmRegistrationTarget } from "./dm-registration-target";
 import { applyOutOfBandSelfAttendance } from "./out-of-band-self-attendance";
 import { withdrawGuest } from "./partner-guest";
@@ -137,7 +137,8 @@ export async function handleGuestDmOut(args: {
     userId: args.userId,
     matchId: place.matchId,
     phone: args.replyPhone,
-    quoted: args.quoted ?? null,
+    // A quote about another match never steers his guest game.
+    quoted: quoteForMatch(args.quoted, place.matchId),
   });
   const resolution = await withOrgAiBudget(place.fromOrgId, () =>
     resolveDmSelfAttendance({

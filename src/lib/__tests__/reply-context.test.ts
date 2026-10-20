@@ -22,6 +22,7 @@ import {
   loadDmReplyContext,
   noReplyContext,
   pickRecentBotMessages,
+  quoteForMatch,
   renderReplyContext,
   type DmReplyContextDb,
   logDmQuote,
@@ -197,16 +198,26 @@ describe("resolveQuotedBotMessage", () => {
   });
 
   describe("only this person's chat", () => {
-    it("a scheduler DM to somebody else is not theirs: quote-only when the Pi says it was MatchTime's", async () => {
+    it("a scheduler DM to somebody else is not theirs, whatever the Pi says", async () => {
       const { db } = fakeDb({ rows: [payChase({ targetUser: BO.id })] });
       const got = await resolveQuotedBotMessage(db, { quote: quote(), phones: ["447700900003"], now: NOW });
-      expect(got).toEqual({ key: null, sentAt: null, text: "Hi Ali, you owe £6 for Tuesday...", topic: null, matchId: null });
+      expect(got).toBeNull();
     });
 
-    it("a group post (no recipient) is never a DM's quote", async () => {
+    it("a group post (no recipient) is never a DM's quote, even when the Pi says it was MatchTime's", async () => {
+      // "Reply privately" to MatchTime's post in a group: the quote is ours,
+      // but it is not a DM to them, and its match may be another club's.
       const { db } = fakeDb({ rows: [payChase({ kind: "group-message", targetUser: null })] });
-      const got = await resolveQuotedBotMessage(db, { quote: quote({ fromMatchTime: false }), phones: ["447700900003"], now: NOW });
-      expect(got).toBeNull();
+      expect(await resolveQuotedBotMessage(db, { quote: quote({ fromMatchTime: false }), phones: ["447700900003"], now: NOW })).toBeNull();
+      expect(await resolveQuotedBotMessage(db, { quote: quote(), phones: ["447700900003"], now: NOW })).toBeNull();
+    });
+
+    it("a group BotJob post is never a DM's quote", async () => {
+      const { db } = fakeDb({
+        rows: [payChase({ key: "botjob-g1", targetUser: null, waStanzaId: "3EB0JOB" })],
+        botJobs: [{ id: "g1", kind: "group", phone: null, text: "Playing Tuesday? Reply IN", sentAt: hoursAgo(5), createdAt: hoursAgo(5) }],
+      });
+      expect(await resolveQuotedBotMessage(db, { quote: quote({ id: "3EB0JOB" }), phones: ["447700900003"], now: NOW })).toBeNull();
     });
 
     it("a BotJob to another phone is not theirs", async () => {
@@ -214,8 +225,8 @@ describe("resolveQuotedBotMessage", () => {
         rows: [payChase({ key: "botjob-j2", targetUser: null, waStanzaId: "3EB0JOB" })],
         botJobs: [{ id: "j2", kind: "dm", phone: "447700900004", text: "Bo's", sentAt: null, createdAt: hoursAgo(5) }],
       });
-      const got = await resolveQuotedBotMessage(db, { quote: quote({ id: "3EB0JOB", fromMatchTime: false }), phones: ["447700900003"], now: NOW });
-      expect(got).toBeNull();
+      expect(await resolveQuotedBotMessage(db, { quote: quote({ id: "3EB0JOB", fromMatchTime: false }), phones: ["447700900003"], now: NOW })).toBeNull();
+      expect(await resolveQuotedBotMessage(db, { quote: quote({ id: "3EB0JOB" }), phones: ["447700900003"], now: NOW })).toBeNull();
     });
 
     it("the alt phone counts, in either written form", async () => {
@@ -426,6 +437,32 @@ describe("renderReplyContext: one plain block, the same wording for every caller
     );
   });
 
+  it("a quote we could not identify (no stored row): its words, flagged, AND the recent messages", () => {
+    const block = renderReplyContext({
+      now: MON_6PM,
+      quoted: null,
+      unidentifiedQuote: { text: "Playing Tuesday? Reply IN" },
+      recent: [{ at: new Date("2026-10-19T16:30:00Z"), text: "pay link", topic: "paymentCollection", match: TUE }],
+      earlier: null,
+    });
+    expect(block).toBe(
+      "NOW: Monday 19 October 2026, 18:00 (club time, London)\n" +
+        'THEY QUOTED a MatchTime message that could not be identified as one of its DMs to them (it may be a group post): "Playing Tuesday? Reply IN"\n' +
+        "MATCHTIME'S RECENT MESSAGES TO THEM (oldest first):\n" +
+        '- Mon 19 Oct, 17:30 (about: paying the match fee for Tuesday 7-a-side, Tue 20 Oct, 20:00): "pay link"',
+    );
+    expect(block).not.toContain("THEY ARE REPLYING TO");
+  });
+
+  it("an unidentified quote with no words says so, and still shows the recent messages", () => {
+    const block = renderReplyContext({ ...noReplyContext(MON_6PM), unidentifiedQuote: { text: null } });
+    expect(block).toBe(
+      "NOW: Monday 19 October 2026, 18:00 (club time, London)\n" +
+        "THEY QUOTED a MatchTime message that could not be identified, and its words are not known.\n" +
+        "MATCHTIME'S RECENT MESSAGES TO THEM: none in the last 14 days.",
+    );
+  });
+
   it("nothing at all says so", () => {
     expect(renderReplyContext(noReplyContext(MON_6PM))).toBe(
       "NOW: Monday 19 October 2026, 18:00 (club time, London)\nMATCHTIME'S RECENT MESSAGES TO THEM: none in the last 14 days.",
@@ -473,13 +510,27 @@ describe("renderReplyContext: one plain block, the same wording for every caller
   });
 });
 
+describe("quoteForMatch: a quote steers only the match it names", () => {
+  const q = (matchId: string | null) => ({ key: "k", sentAt: NOW, text: "t", topic: null, matchId });
+  it("kept when it names the match acted on, or names none", () => {
+    expect(quoteForMatch(q("a"), "a")).toEqual(q("a"));
+    expect(quoteForMatch(q(null), "a")).toEqual(q(null));
+  });
+  it("dropped when it names a different match: the reply is never read against another match's message", () => {
+    expect(quoteForMatch(q("b"), "a")).toBeNull();
+  });
+  it("null stays null", () => {
+    expect(quoteForMatch(null, "a")).toBeNull();
+  });
+});
+
 describe("loadDmReplyContext: one load per DM, for every DM classifier", () => {
   const MON_6PM = new Date("2026-10-19T17:00:00Z");
   const before = (h: number) => new Date(MON_6PM.getTime() - h * 3600 * 1000);
   const TUE_KICKOFF = new Date("2026-10-20T19:00:00Z");
 
   function recentDb(input: {
-    scheduled?: Array<{ key: string; matchId: string | null; text: string | null; createdAt: Date }>;
+    scheduled?: Array<{ key: string; matchId: string | null; text: string | null; createdAt: Date; waMessageId?: string | null }>;
     jobs?: Array<{ text: string; sentAt: Date | null; createdAt: Date }>;
   }) {
     const seen: { sent: unknown[]; jobs: unknown[]; matches: unknown[] } = { sent: [], jobs: [], matches: [] };
@@ -487,13 +538,15 @@ describe("loadDmReplyContext: one load per DM, for every DM classifier", () => {
       sentNotification: {
         findMany: async (args) => {
           seen.sent.push(args);
-          return (input.scheduled ?? []).filter((r) => r.createdAt >= args.where.createdAt.gte);
+          return (input.scheduled ?? [])
+            .map((r) => ({ waMessageId: "true_x_3EB0", ...r }))
+            .filter((r) => r.createdAt >= args.where.createdAt.gte && r.waMessageId !== null);
         },
       },
       botJob: {
         findMany: async (args) => {
           seen.jobs.push(args);
-          return (input.jobs ?? []).filter((r) => r.createdAt >= args.where.createdAt.gte);
+          return (input.jobs ?? []).filter((r) => r.createdAt >= args.where.createdAt.gte && r.sentAt !== null);
         },
       },
       match: {
@@ -533,21 +586,55 @@ describe("loadDmReplyContext: one load per DM, for every DM classifier", () => {
         // A BotJob's own ack row is the job, never a second message.
         { key: "botjob-j1", matchId: null, text: null, createdAt: before(3) },
       ],
-      jobs: [
-        { text: "invite words", sentAt: before(3), createdAt: before(3.2) },
-        { text: "queued, not sent yet", sentAt: null, createdAt: before(0.5) },
-      ],
+      jobs: [{ text: "invite words", sentAt: before(3), createdAt: before(3.2) }],
     });
     const ctx = await loadDmReplyContext(db, { userId: "u-ali", phone: "447700900003", quoted: null, now: MON_6PM });
     expect(ctx.quoted).toBeNull();
     expect(ctx.recent).toEqual([
       { at: before(5), text: "Pay here", topic: "paymentCollection", match: "Tuesday 7-a-side, Tue 20 Oct, 20:00" },
       { at: before(3), text: "invite words", topic: null, match: null },
-      { at: before(0.5), text: "queued, not sent yet", topic: null, match: null },
     ]);
     expect(JSON.stringify(seen.sent[0])).toContain('"targetUser":"u-ali"');
     expect(JSON.stringify(seen.sent[0])).toContain('"kind":"dm"');
     expect(JSON.stringify(seen.jobs[0])).toContain('"phone":"447700900003"');
+  });
+
+  it("only messages actually SENT: a queued BotJob (no sentAt) and an unacked claim (no waMessageId) are not shown", async () => {
+    const { db, seen } = recentDb({
+      scheduled: [{ key: "m-tue:pay-chase:u-ali:d1", matchId: "m-tue", text: "claimed, never sent", createdAt: before(1), waMessageId: null }],
+      jobs: [{ text: "queued, not sent yet", sentAt: null, createdAt: before(0.5) }],
+    });
+    const ctx = await loadDmReplyContext(db, { userId: "u-ali", phone: "447700900003", quoted: null, now: MON_6PM });
+    expect(ctx.recent).toEqual([]);
+    expect(ctx.earlier).toBeNull();
+    // The real query asks for it; the fake above only honours what it asks.
+    expect(JSON.stringify(seen.jobs[0])).toContain('"sentAt":{"not":null}');
+    expect(JSON.stringify(seen.sent[0])).toContain('"waMessageId":{"not":null}');
+  });
+
+  it("a quote of MatchTime's that could not be identified: flagged, plus the recent messages", async () => {
+    const { db } = recentDb({ jobs: [{ text: "invite words", sentAt: before(3), createdAt: before(3) }] });
+    const ctx = await loadDmReplyContext(db, {
+      userId: "u-ali",
+      phone: "447700900003",
+      quoted: { key: null, sentAt: null, text: null, topic: null, matchId: null },
+      now: MON_6PM,
+    });
+    expect(ctx.quoted).toBeNull();
+    expect(ctx.unidentifiedQuote).toEqual({ text: null });
+    expect(ctx.recent.map((m) => m.text)).toEqual(["invite words"]);
+  });
+
+  it("never throws: a failed read degrades to the time now and nothing known", async () => {
+    const { db } = recentDb({});
+    db.botJob.findMany = async () => {
+      throw new Error("db down");
+    };
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    const ctx = await loadDmReplyContext(db, { userId: "u-ali", phone: "447700900003", quoted: null, now: MON_6PM });
+    expect(ctx).toEqual(noReplyContext(MON_6PM));
+    expect(err).toHaveBeenCalled();
+    err.mockRestore();
   });
 
   it("only the last 14 days are read", async () => {
