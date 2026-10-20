@@ -27,6 +27,7 @@
  * Spends ANTHROPIC_API_KEY_DEV only (refuses without it). No database,
  * sends nothing. Prints each case, the calls made and the cost.
  */
+import { quoteFromPi } from "../src/lib/reply-context.ts";
 import { spendDevApiKeyOrExit } from "../e2e/helpers/dev-api-key.ts";
 import { anthropicModel, type PipelineModel } from "../src/lib/pipeline/llm.ts";
 import { floorAttendanceFacts, routeBatch } from "../src/lib/pipeline/router.ts";
@@ -123,8 +124,9 @@ async function verdictOf(c: Case, id: string): Promise<{ verdict: Verdict; route
   const quoted = c.quoted ?? null;
   const quotedIsMatchTime = quoted?.fromMatchTime === true;
   const { addressed, toAnotherOrganiser } = hqAddressing({ text: c.text, quoted, quotedIsMatchTime });
-  const context = organisersContext({ pending: [], quoted, quotedIsMatchTime, recent: (c.recent ?? []).slice(-5) });
-  const r = await routeBatch(model, [{ id, authorName: "Raihan", body: c.text, organisers: { context } }], { floor: true });
+  const context = organisersContext({ pending: [], recent: (c.recent ?? []).slice(-5) });
+  const quotedReply = quoted ? quoteFromPi({ id: null, ...quoted }) : null;
+  const r = await routeBatch(model, [{ id, authorName: "Raihan", body: c.text, organisers: { context }, reply: quotedReply }], { floor: true });
   const route = r.routes[0]?.route ?? "nowhere";
   // `admin-group-understand.ts`, in order.
   if (toAnotherOrganiser && route !== "approve" && route !== "score") return { verdict: "silent", route, detail: "reply to another organiser" };
@@ -132,7 +134,7 @@ async function verdictOf(c: Case, id: string): Promise<{ verdict: Verdict; route
   if (route === "question" || route === "help") {
     // What the question answering would be asked (2026-10-19): its topic
     // and who it names, so a "reply" here says which reply.
-    const q = await extractForRoute(model, "question", { id, body: c.text, authorName: "Raihan", tagged: true, history: [], lastBotPost: null });
+    const q = await extractForRoute(model, "question", { id, body: c.text, authorName: "Raihan", tagged: true, history: [], lastBotPost: null, reply: quotedReply });
     const what = q.facts.kind === "question" ? `topic ${q.facts.topic}${q.facts.personRef ? `, about ${JSON.stringify(q.facts.personRef)}` : ""}` : q.facts.kind;
     return { verdict: "reply", route, detail: `question answering: ${what}` };
   }

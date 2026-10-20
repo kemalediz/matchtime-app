@@ -197,6 +197,10 @@ function extractionKey(model: PipelineModel, route: Route, msg: ExtractorMessage
     msg.tagged,
     msg.lastBotPost,
     msg.history,
+    // The shared group block (quoted-reply context, slice S4): the message
+    // replied to and the time now are part of what the model is shown.
+    msg.reply ?? null,
+    msg.now?.toISOString() ?? null,
   ]);
 }
 

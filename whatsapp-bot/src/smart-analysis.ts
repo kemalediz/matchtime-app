@@ -18,6 +18,7 @@
  */
 import type { InboundMessage, WaDriver } from "./driver.js";
 import {
+  ackInstruction,
   postAnalyzeFull,
   postHeartbeat,
   type AnalyzeFullResponse,
@@ -38,8 +39,9 @@ import {
   type MentionName,
   type RawMentionContact,
 } from "./mentions.js";
-import { firstUsableName, readMessageBody, readNotifyName, readQuotedFields, safeRead } from "./wa-read.js";
+import { firstUsableName, jidDigits, quotedFromBot, readMessageBody, readNotifyName, readQuoted, readQuotedFields, safeRead } from "./wa-read.js";
 import { degradedMessage } from "./degraded.js";
+import { waMessageIdFrom } from "./send-result.js";
 import {
   missingMessageIdMessage,
   resolveWaMessageId,
@@ -149,6 +151,10 @@ interface Pending {
   /** The quoted message's WhatsApp id (its stanza id), so the server can
    *  tell WHICH MatchTime post a reply answers (cross-club ask, S0). */
   quotedMessageId?: string;
+  /** Who wrote the quoted message, when it was not this bot (slice S4):
+   *  their WhatsApp name (UNVERIFIED) and phone. See `quotedAuthorFields`. */
+  quotedAuthorName?: string;
+  quotedAuthorPhone?: string;
   // Deliberately NO `msg: Message` here any more.
   //
   // It existed so the flush could call `target.react(emoji)` later. That is
@@ -487,6 +493,7 @@ export async function enqueueForAnalysis(driver: WaDriver, msg: InboundMessage):
     // A reply (2026-10-16). The server reads a reply to MatchTime's own
     // message as addressed to it, like a tag (`messageTagsBot`).
     ...analyzeQuotedFields(driver, msg),
+    ...(await quotedAuthorFields(driver, msg)),
     attempts: 0,
   };
 
@@ -546,6 +553,9 @@ export interface GroupMessageForServer {
   quotedMessageId?: string;
   quotedText?: string;
   quotedFromMatchTime?: boolean;
+  /** Who wrote the quoted message (slice S4). See `quotedAuthorFields`. */
+  quotedAuthorName?: string;
+  quotedAuthorPhone?: string;
 }
 
 export async function readGroupMessageForServer(
@@ -586,6 +596,40 @@ export async function readGroupMessageForServer(
     timestamp: new Date(safeTimestampSec(msg) * 1000).toISOString(),
     ...(enriched.mentionNames.length > 0 ? { mentionNames: enriched.mentionNames } : {}),
     ...readQuotedFields(driver, msg),
+    ...(await quotedAuthorFields(driver, msg)),
+  };
+}
+
+/** Ack one of MatchTime's in-group replies with its sent id. Never throws. */
+export async function ackReply(key: string, kind: string, sent: unknown): Promise<void> {
+  try {
+    const waMessageId = waMessageIdFrom(sent);
+    await ackInstruction({ key, kind, ...(waMessageId ? { waMessageId } : {}) });
+  } catch (err) {
+    console.error(`[smart] reply ack ${key} failed:`, err instanceof Error ? err.message : err);
+  }
+}
+
+/**
+ * WHO WROTE THE MESSAGE A REPLY QUOTES (quoted-reply context, slice S4,
+ * 2026-10-20), for every group door: the server shows the router and the
+ * extractors "Ali's message" so "same" or "he's out" has a referent. The
+ * phone from a phone JID, else the contact's; the name is the contact's
+ * own WhatsApp name, UNVERIFIED (the server prefers its roster name for
+ * that phone, or for the stored message). Nothing for a reply to this bot
+ * or a message that is not a reply. Total: a failed lookup gives what the
+ * JID alone says.
+ */
+async function quotedAuthorFields(driver: WaDriver, msg: InboundMessage): Promise<{ quotedAuthorName?: string; quotedAuthorPhone?: string }> {
+  const q = readQuoted(msg);
+  if (!q?.participant || quotedFromBot(driver, q.participant)) return {};
+  const contact = await readMentionContact(driver, q.participant);
+  const contactPhone = typeof contact.phone === "string" ? contact.phone : "";
+  const name = typeof contact.name === "string" ? contact.name.trim() : "";
+  const phone = /@(s\.whatsapp\.net|c\.us)$/.test(q.participant) ? jidDigits(q.participant) : contactPhone.replace(/\D/g, "");
+  return {
+    ...(name ? { quotedAuthorName: name.slice(0, 100) } : {}),
+    ...(phone ? { quotedAuthorPhone: phone } : {}),
   };
 }
 
@@ -796,6 +840,8 @@ async function flushGroup(driver: WaDriver, groupId: string): Promise<void> {
       ...(p.quotedBody !== undefined ? { quotedBody: p.quotedBody } : {}),
       ...(p.quotedFromMatchTime !== undefined ? { quotedFromMatchTime: p.quotedFromMatchTime } : {}),
       ...(p.quotedMessageId !== undefined ? { quotedMessageId: p.quotedMessageId } : {}),
+      ...(p.quotedAuthorName !== undefined ? { quotedAuthorName: p.quotedAuthorName } : {}),
+      ...(p.quotedAuthorPhone !== undefined ? { quotedAuthorPhone: p.quotedAuthorPhone } : {}),
     }));
     const history = getHistory(groupId);
 
@@ -934,16 +980,24 @@ async function flushGroup(driver: WaDriver, groupId: string): Promise<void> {
         // injected call that started throwing `r: r` on 2026-08-28 while
         // sends still worked. Keep the chat path as a fallback so nothing
         // regresses if the plain send is the one that breaks next time.
+        let sent: unknown;
+        let delivered = false;
         try {
-          await driver.sendText(groupId, r.reply);
+          sent = await driver.sendText(groupId, r.reply);
+          delivered = true;
         } catch (err) {
           console.error("[smart] reply via client.sendMessage failed, trying chat:", err);
           try {
-            await driver.sendTextViaChat(groupId, r.reply);
+            sent = await driver.sendTextViaChat(groupId, r.reply);
+            delivered = true;
           } catch (err2) {
             console.error("[smart] reply failed:", err2);
           }
         }
+        // The server claimed this reply (slice S4 review): ack it with its
+        // sent id, as every scheduled post is acked, so a WhatsApp reply
+        // quoting MatchTime's reply resolves to its words and match.
+        if (delivered && r.replyKey) await ackReply(r.replyKey, "group-reply", sent);
       }
     }
 

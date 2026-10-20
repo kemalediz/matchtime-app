@@ -135,6 +135,7 @@
  * `assertCoverage` requires and what keeps "exactly one outcome per
  * message" true across the split.
  */
+import { quotesAnotherMatch, type QuotedGroupMessage } from "./reply-context";
 import type { QuotedRef } from "./quoted-message";
 import type { ProposedWrite } from "./pipeline/types";
 import { quotedPartnerAsk } from "./pipeline/engine";
@@ -187,6 +188,9 @@ export interface EngineBatchMessage {
   gated: boolean;
   /** The quoted message, for a WhatsApp reply (cross-club ask, S0). */
   quoted?: QuotedRef | null;
+  /** The message this one is a WhatsApp reply to, whoever wrote it
+   *  (quoted-reply context, slice S4). Absent when it is not a reply. */
+  reply?: QuotedGroupMessage | null;
 }
 
 /** What the route needs in order to turn one owned message into exactly
@@ -564,6 +568,15 @@ export async function runAttendanceEngineBatch(args: {
     // Review M1: an open bench prompt is about this club's match.
     if (isPartnerReply(m)) return true;
     if (m.senderUserId && promptedUserIds.has(m.senderUserId)) return false;
+    // A REPLY TO MATCHTIME'S POST ABOUT ANOTHER MATCH (review of #341,
+    // finding 8). "IN" under last week's squad list could be for that
+    // match or this one; nothing is written to this one on a guess. The
+    // message is left unowned (silent, on the operator note) for the
+    // player to restate.
+    if (quotesAnotherMatch(m.reply, matchId)) {
+      degradations.push(`${m.waMessageId}: replies to MatchTime's post about another match (${m.reply!.matchId}); nothing written to ${matchId}`);
+      return false;
+    }
     // ── A PASTED ROSTER IS OWNED FOR ONE THING ONLY: THE SENDER'S OUT ─
     //
     // WHAT THIS USED TO BE, and why it changed on 2026-09-07. It was
@@ -631,7 +644,7 @@ export async function runAttendanceEngineBatch(args: {
     if (/^BEGIN:VCARD/im.test(m.body)) return false;
     return true;
   });
-  if (owned.length === 0) return empty();
+  if (owned.length === 0) return empty(degradations);
   const ownedIds = new Set(owned.map((m) => m.waMessageId));
 
   // ── Stage 2: extractors: the cache warmed first, then in parallel ──
@@ -702,6 +715,10 @@ export async function runAttendanceEngineBatch(args: {
         tagged: m.tagged,
         history,
         lastBotPost,
+        // The message it quotes, shown as it is (a reply to another
+        // match's post was not owned above).
+        reply: m.reply ?? null,
+        now,
       });
       if (res.budgetRefused) {
         useFloor("the extractor was refused by the daily AI cap");

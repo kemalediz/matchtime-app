@@ -19,6 +19,7 @@
  * answer, a failed call, the asker's own stats link, which is a DM): the
  * caller says its one line. Logs carry ids and counts only.
  */
+import type { QuotedGroupMessage } from "./reply-context";
 import { runAnswerBatch, type AnswerBatchDeps } from "./pipeline/answer-batch";
 import { enabledStepSevenRoutes } from "./pipeline/route-flags";
 import type { SquadState } from "./pipeline/types";
@@ -35,9 +36,11 @@ export interface HqQuestionInput {
   now: Date;
   /** The recent HQ chat, oldest first; MatchTime's own lines as "MatchTime". */
   history: Array<{ author: string | null; body: string }>;
-  /** MatchTime's post in HQ the question is about (the one it replies to,
-   *  else its last line there), never the players' group's. */
+  /** MatchTime's last line in HQ, never the players' group's. */
   lastBotPost: string | null;
+  /** The message the question is a WhatsApp reply to (slice S4), whoever
+   *  wrote it, as `admin-group-understand.ts` resolved it. */
+  reply?: QuotedGroupMessage | null;
   /** The HQ menu, the answer to a how-it-works question here. */
   hqHelp: string;
   deps?: Pick<AnswerBatchDeps, "model" | "loadFeatures" | "loadClub"> & {
@@ -73,7 +76,7 @@ export async function answerHqQuestion(input: HqQuestionInput): Promise<{ outcom
         tagged: true,
         route: "question",
         gated: false,
-        ...(input.lastBotPost ? { quotedMatchTime: input.lastBotPost } : {}),
+        ...(input.reply ? { reply: input.reply } : {}),
       },
     ],
     history: input.history,

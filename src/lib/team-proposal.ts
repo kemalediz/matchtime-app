@@ -470,6 +470,8 @@ export async function answerTeamsYes(args: {
     data: {
       orgId,
       kind: "group",
+      // The match, so a reply quoting the teams post resolves to it.
+      matchId: match.id,
       text: formatTeamsPost({
         redLabel: sheet.labels[0],
         yellowLabel: sheet.labels[1],
@@ -508,10 +510,11 @@ async function matchDayMatch(orgId: string, now: Date): Promise<MatchRow | null>
   );
 }
 
-async function queueAdminGroup(orgId: string, text: string): Promise<void> {
+async function queueAdminGroup(orgId: string, text: string, matchId?: string): Promise<void> {
   // The admin channel decides at emit time: the admin group when the Pi
-  // can post there (09:00 to 22:59 London), else the owner by DM.
-  await db.botJob.create({ data: { orgId, kind: "admin-group", text } });
+  // can post there (09:00 to 22:59 London), else the owner by DM. Its
+  // match, so an HQ reply quoting it resolves to it (slice S4 review).
+  await db.botJob.create({ data: { orgId, kind: "admin-group", text, ...(matchId ? { matchId } : {}) } });
 }
 
 /**
@@ -544,7 +547,7 @@ export async function teamProposalJobs(args: { org: TeamProposalOrg; now: Date; 
       } catch {
         return 0;
       }
-      await queueAdminGroup(org.id, shortSquadText(sheet, lang));
+      await queueAdminGroup(org.id, shortSquadText(sheet, lang), match.id);
       console.log(`[team-proposal] org ${org.id}: squad short for teams on match ${match.id} (${sheet.confirmed} of ${neededFor(sheet)})`);
       return 1;
     }
@@ -565,7 +568,7 @@ export async function teamProposalJobs(args: { org: TeamProposalOrg; now: Date; 
       }
       ready = await loadSheet(match, lang);
     }
-    await queueAdminGroup(org.id, await propose(ready, lang, now, announce));
+    await queueAdminGroup(org.id, await propose(ready, lang, now, announce), match.id);
     console.log(`[team-proposal] org ${org.id}: proposed teams on match ${match.id} (${ready.slots.length} on the teams)`);
     return 1;
   }
@@ -576,7 +579,7 @@ export async function teamProposalJobs(args: { org: TeamProposalOrg; now: Date; 
     const claimed = await db.adminTeamProposal.updateMany({ where: { id: row.id, remindedAt: null }, data: { remindedAt: now } });
     if (claimed.count === 0) return 0;
     const reminder = buildReminderText(lang, match.date);
-    await queueAdminGroup(org.id, reminder);
+    await queueAdminGroup(org.id, reminder, match.id);
     await recordMatchTimeQuestion({ orgId: org.id, askRef: teamsAskRef(match.id), text: reminder, now });
     console.log(`[team-proposal] org ${org.id}: reminder on match ${match.id}`);
     return 1;
@@ -600,7 +603,7 @@ export async function teamProposalJobs(args: { org: TeamProposalOrg; now: Date; 
       ? { kind: "replaced", team: label(c.team), from: name(c.fromUserId), to: name(c.toUserId) }
       : { kind: c.kind, team: label(c.team), name: name(c.userId) },
   );
-  await queueAdminGroup(org.id, buildChangeNotice({ lang, items, teamsText: teamsText(sheet, lang, true, announce) }));
+  await queueAdminGroup(org.id, buildChangeNotice({ lang, items, teamsText: teamsText(sheet, lang, true, announce) }), match.id);
   console.log(`[team-proposal] org ${org.id}: ${changes.length} team change(s) told on match ${match.id}`);
   await redrawAfterChange(org.id, match.id, now);
   return 1;

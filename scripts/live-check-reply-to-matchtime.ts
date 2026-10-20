@@ -29,6 +29,7 @@
  * MAX_USD. WHAT ONE PASS CANNOT PROVE: an occasional miss can pass once
  * and fail live.
  */
+import { quoteFromPi } from "../src/lib/reply-context.ts";
 import { spendDevApiKeyOrExit } from "../e2e/helpers/dev-api-key.ts";
 import { anthropicModel, type PipelineModel } from "../src/lib/pipeline/llm.ts";
 import { routeBatch } from "../src/lib/pipeline/router.ts";
@@ -145,7 +146,8 @@ async function main() {
 
   console.log(`\n== Router, players' group: ${PLAYERS.length} cases, each once, floor OFF ==\n`);
   for (const [i, c] of PLAYERS.entries()) {
-    const r = await routeBatch(model, [{ id: `p${i}`, authorName: "Can", body: c.text, ...(c.quoted ? { quotedMatchTime: c.quoted } : {}) }], { floor: false, awaiting: null });
+    const reply = c.quoted ? quoteFromPi({ id: null, text: c.quoted, fromMatchTime: true }) : null;
+    const r = await routeBatch(model, [{ id: `p${i}`, authorName: "Can", body: c.text, reply }], { floor: false, awaiting: null });
     const route = r.routes[0]?.route;
     console.log(`${mark(!!route && c.want.includes(route))}  ${JSON.stringify(c.text)}${c.quoted ? " (reply to MatchTime)" : ""}  routed ${route}   (${c.why}; want ${c.want.join("|")})`);
   }
@@ -154,18 +156,20 @@ async function main() {
   for (const [i, c] of HQ.entries()) {
     const context = organisersContext({
       pending: c.waiting ? [{ ref: "teams:m1", kind: "teams", day: "Fri 16 Oct", askedAt: new Date("2026-10-16T09:00:00Z") }] : [],
-      quoted: c.quoted ?? null,
-      quotedIsMatchTime: c.quoted?.fromMatchTime ?? false,
       recent: c.waiting ? [{ fromMatchTime: true, text: TEAMS_TEXT }] : [],
     });
-    const r = await routeBatch(model, [{ id: `h${i}`, authorName: "Raihan", body: c.text, organisers: { context } }], { floor: true });
+    const reply = c.quoted ? quoteFromPi({ id: null, ...c.quoted }) : null;
+    const r = await routeBatch(model, [{ id: `h${i}`, authorName: "Raihan", body: c.text, organisers: { context }, reply }], { floor: true });
     const route = r.routes[0]?.route;
     console.log(`${mark(!!route && c.want.includes(route))}  ${JSON.stringify(c.text)}  routed ${route}   (${c.why}; want ${c.want.join("|")})`);
   }
 
   if (process.env.ONLY !== "router") console.log(`\n== Question extractor: ${Q.length} cases, each once ==\n`);
   for (const [i, c] of process.env.ONLY === "router" ? [] : Q.entries()) {
-    const ex = await extractForRoute(model, "question", { id: `q${i}`, body: c.text, authorName: "Can", tagged: true, history: [], lastBotPost: c.lastBotPost ?? null });
+    // Production since slice S4: the quoted post is shown as the message
+    // replied to (it used to stand in for MatchTime's last post).
+    const reply = c.lastBotPost ? quoteFromPi({ id: null, text: c.lastBotPost, fromMatchTime: true }) : null;
+    const ex = await extractForRoute(model, "question", { id: `q${i}`, body: c.text, authorName: "Can", tagged: true, history: [], lastBotPost: null, reply });
     const f = ex.facts.kind === "question" ? ex.facts : null;
     console.log(`${mark(!!f && c.check(f))}  ${JSON.stringify(c.text)}  ${JSON.stringify(f && { topic: f.topic, feature: f.feature, personRef: f.personRef, statedCount: f.statedCount, table: f.table, listSize: f.listSize, period: f.period })}   (${c.why})`);
   }

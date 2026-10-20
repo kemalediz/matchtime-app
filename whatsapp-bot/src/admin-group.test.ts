@@ -72,6 +72,27 @@ describe("routeAdminGroupInbound", () => {
     expect(replies).toEqual(["✅ Done"]);
   });
 
+  it("a reply the server claimed is acked with its sent id (slice S4 review), so an HQ YES quoting it is decided by the id", async () => {
+    const acked: unknown[] = [];
+    const { d } = deps(
+      {
+        postAdminGroupMessage: async () => ({ replyText: "Is that YES to the proposed teams?", replyKey: "hqreply:org-fnf:m1" }),
+        reply: vi.fn(async () => ({ id: { _serialized: "true_hq@g.us_3EB0ASK" } })),
+        ackReply: vi.fn(async (key: string, kind: string, sent: unknown) => void acked.push([key, kind, sent])),
+      },
+      [HQ],
+    );
+    await routeAdminGroupInbound(d, { from: HQ, body: "yes" });
+    expect(acked).toEqual([["hqreply:org-fnf:m1", "admin-group-reply", { id: { _serialized: "true_hq@g.us_3EB0ASK" } }]]);
+  });
+
+  it("an unclaimed reply is not acked", async () => {
+    const ackReply = vi.fn(async () => {});
+    const { d } = deps({ postAdminGroupMessage: async () => ({ replyText: "✅ Done" }), ackReply }, [HQ]);
+    await routeAdminGroupInbound(d, { from: HQ, body: "2" });
+    expect(ackReply).not.toHaveBeenCalled();
+  });
+
   it("in a silent group, only a link-shaped message leaves the Pi; the answer links it here at once and is posted", async () => {
     const { d, linkForwarded, replies, added } = deps();
     expect(await routeAdminGroupInbound(d, { from: SILENT, body: "in for friday" })).toBe("not-handled");

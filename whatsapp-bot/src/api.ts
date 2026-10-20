@@ -530,10 +530,16 @@ export interface AdminGroupForward {
   quotedMessageId?: string;
   quotedText?: string;
   quotedFromMatchTime?: boolean;
+  /** Who wrote the quoted message (slice S4): their WhatsApp name
+   *  (unverified) and phone. Absent for a reply to MatchTime. */
+  quotedAuthorName?: string;
+  quotedAuthorPhone?: string;
 }
 
 export interface AdminGroupAnswer {
   replyText?: string | null;
+  /** The key the server claimed `replyText` under: ack the sent reply with it. */
+  replyKey?: string;
   adminGroup?: { groupId?: unknown; orgId?: unknown } | null;
   outcome?: string;
   /** The emoji to place on the admin's message: "✅" when MatchTime acted
@@ -638,6 +644,10 @@ export interface AnalyzeInboundMessage {
   quotedFromMatchTime?: boolean;
   /** The quoted message's WhatsApp id (cross-club ask, S0). */
   quotedMessageId?: string;
+  /** Who wrote the quoted message (slice S4): their WhatsApp name
+   *  (unverified) and phone. Absent for a reply to MatchTime. */
+  quotedAuthorName?: string;
+  quotedAuthorPhone?: string;
 }
 
 export interface AnalyzeInboundHistory {
@@ -653,6 +663,9 @@ export interface AnalyzeResult {
   react: string | null;
   reply: string | null;
   reasoning?: string;
+  /** The key the server claimed `reply` under (slice S4 review): ack the
+   *  sent reply with it, so a reply quoting it resolves by its id. */
+  replyKey?: string;
 }
 
 export async function postAnalyze(params: {

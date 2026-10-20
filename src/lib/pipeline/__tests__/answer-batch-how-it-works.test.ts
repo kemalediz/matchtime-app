@@ -67,7 +67,7 @@ const message = (over: Partial<AnswerBatchMessage> = {}): AnswerBatchMessage => 
   tagged: true,
   route: "question" as Route,
   gated: false,
-  quotedMatchTime: BENCH_POST,
+  reply: { author: null, at: null, text: BENCH_POST, topic: null, matchId: null, match: null, found: false },
   ...over,
 });
 
@@ -107,17 +107,26 @@ describe("a how-it-works question through the whole batch", () => {
     expect(res.writes).toEqual([]);
   });
 
-  it("the extractor is shown the MatchTime post the message replies to", async () => {
+  it("the extractor is shown the MatchTime post the message replies to, beside MatchTime's last post (slice S4)", async () => {
     const calls: ModelRequest[] = [];
     await run(message(), calls);
-    expect(calls[0].user).toContain(`MATCHTIME'S LAST POST: ${BENCH_POST}`);
+    expect(calls[0].user).toContain(`THEY ARE REPLYING TO a MatchTime message (when it was sent is not known):\n${JSON.stringify(BENCH_POST)}`);
+    expect(calls[0].user).toContain("MATCHTIME'S LAST POST: an older post");
     expect(calls[0].user).toContain("who tagged the bot");
+  });
+
+  it("a reply to a member's question is shown as theirs", async () => {
+    const calls: ModelRequest[] = [];
+    await run(message({ body: "@Match Time same question", reply: { author: { name: "Kemal", userId: "u-kemal" }, at: null, text: "how does the bench work?", topic: null, matchId: null, match: null, found: true } }), calls);
+    expect(calls[0].user).toContain(`THEY ARE REPLYING TO Kemal's message (when it was sent is not known):\n"how does the bench work?"`);
   });
 
   it("not a reply: the extractor sees MatchTime's last post, as before", async () => {
     const calls: ModelRequest[] = [];
-    await run(message({ quotedMatchTime: undefined }), calls);
+    await run(message({ reply: undefined }), calls);
     expect(calls[0].user).toContain("MATCHTIME'S LAST POST: an older post");
+    expect(calls[0].user).not.toContain("THEY ARE REPLYING TO");
+    expect(calls[0].user).toContain("NOW: ");
   });
 
   it("no part named: the help menu", async () => {

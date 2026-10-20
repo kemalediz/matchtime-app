@@ -26,6 +26,7 @@ import type { ModelRequest, ModelResponse, PipelineModel } from "../llm";
 import { extractForRouteTraced, persistPipelineTraces, withPipelineTrace, type PipelineTrace } from "../trace";
 import type { Route } from "../types";
 import { NOW, fullName, world } from "./helpers";
+import type { QuotedGroupMessage } from "../../reply-context";
 
 const SQUAD = ["kemal", "elvin", "sait", "mustafa", "abid", "idris", "faris", "shaz", "adam", "efat"];
 const GEN = "@Match Time generate the teams";
@@ -80,8 +81,9 @@ function countingModel(table: Record<string, unknown>, opts: { failFirst?: boole
   return { model, calls };
 }
 
-function message(body: string) {
+function message(body: string, reply?: QuotedGroupMessage) {
   return {
+    ...(reply ? { reply } : {}),
     waMessageId: `wa-${body.slice(-9).replace(/\s/g, "-")}`,
     body,
     authorName: fullName("kemal"),
@@ -95,11 +97,11 @@ function message(body: string) {
 
 /** One analyze request: the answer owner, then the team-ops owner, the
  *  order `route.ts` runs them in, and the traces it would save. */
-async function analyzeRequest(model: PipelineModel, bodies: string[]) {
+async function analyzeRequest(model: PipelineModel, bodies: string[], reply?: (state: { matchId: string | null }) => QuotedGroupMessage) {
   const state = world({ confirmed: SQUAD });
   const generated: string[] = [];
   const saved = new Map<string, PipelineTrace>();
-  const messages = bodies.map(message);
+  const messages = bodies.map((b) => message(b, reply?.(state)));
   const result = await withAnalyzeBatch(() =>
     withPipelineTrace(async () => {
       const answer = await runAnswerBatch({
@@ -275,3 +277,52 @@ describe("the per-request memo", () => {
     expect(count()).toBe(2);
   });
 });
+
+// QUOTED-REPLY CONTEXT, SLICE S4 (2026-10-20). A balancer message that is a
+// WhatsApp reply: both owners show the extractor the SAME shared group block
+// (the quote, narrowed to the match both act on, and the time now), so the
+// two still share one call. The quote is part of the memo key: a different
+// quote is a different input.
+describe("a balancer reply shares one extraction too", () => {
+  const post = (matchId: string | null): QuotedGroupMessage => ({
+    author: null,
+    at: NOW,
+    text: "📝 Teams for tonight: Red 1. Kemal ... Yellow 1. Elvin",
+    topic: "teamBalancing",
+    matchId,
+    match: null,
+    found: true,
+  });
+
+  it("replying to MatchTime's post on this match: one call, and the quote is in it", async () => {
+    const seen: string[] = [];
+    const { model, calls } = countingModel({ [GEN]: GEN_FACTS });
+    const watched: PipelineModel = { name: model.name, complete: async (r) => (seen.push(r.user), model.complete(r)) };
+    await analyzeRequest(watched, [GEN], (st) => post(st.matchId));
+    expect(calls).toEqual([`extractor:teams|${GEN}`]);
+    expect(seen[0]).toContain("THEY ARE REPLYING TO MatchTime's message");
+  });
+
+  it("replying to another match's post: both owners show it alike, still one call", async () => {
+    const seen: string[] = [];
+    const { model, calls } = countingModel({ [GEN]: GEN_FACTS });
+    const watched: PipelineModel = { name: model.name, complete: async (r) => (seen.push(r.user), model.complete(r)) };
+    await analyzeRequest(watched, [GEN], () => post("an-older-match"));
+    expect(calls).toEqual([`extractor:teams|${GEN}`]);
+    expect(seen[0]).toContain("THEY ARE REPLYING TO");
+  });
+
+  it("the quote is part of the key: the same words with a different quote are asked again", async () => {
+    const { model, calls } = countingModel({ [GEN]: GEN_FACTS });
+    await withAnalyzeBatch(() =>
+      withPipelineTrace(async () => {
+        const base = { id: "wa-x", body: GEN, authorName: "K", tagged: true, history: [], lastBotPost: null, now: NOW };
+        await extractForRouteTraced("answer", model, "balancer", { ...base, reply: post(null) });
+        await extractForRouteTraced("team_ops", model, "balancer", { ...base, reply: post(null) });
+        await extractForRouteTraced("team_ops", model, "balancer", { ...base, reply: { ...post(null), text: "another post" } });
+      }),
+    );
+    expect(calls).toHaveLength(2);
+  });
+});
+

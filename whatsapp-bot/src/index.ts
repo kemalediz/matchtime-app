@@ -58,6 +58,7 @@ import {
   postAdminGroupLink,
 } from "./api.js";
 import {
+  ackReply,
   enqueueForAnalysis,
   recordDegradedCapability,
   recordHistory,
@@ -683,6 +684,7 @@ async function main() {
           postAdminGroupMessage,
           postAdminGroupLink,
           reply: (text) => driver.sendText(head.from, text),
+          ackReply,
           sendReaction: (id, emoji) => driver.sendReaction(id, emoji),
         },
         { from: head.from, body: effectiveBody },

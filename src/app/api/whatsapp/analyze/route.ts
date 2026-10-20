@@ -373,6 +373,9 @@ import { resolveOrProvisionByName } from "@/lib/resolve-or-provision-name";
 import { planUnresolvedNudge } from "@/lib/unresolved-nudge";
 import { recordGroupSightings, sightedUserIds } from "@/lib/group-sighting";
 import { quotedRefOf } from "@/lib/quoted-message";
+import { loadGroupReplyContexts, parseGroupQuote, type QuotedGroupMessage } from "@/lib/reply-context";
+import { rosterMemberByPhone } from "@/lib/roster-name-by-phone";
+import { claimGroupReplies } from "@/lib/group-reply-claims";
 import { handlePartnerVolunteer } from "@/lib/partner-guest";
 
 interface InboundMessage {
@@ -409,6 +412,12 @@ interface InboundMessage {
   /** The quoted message's WhatsApp id (cross-club ask, S0, 2026-10-16):
    *  which post a reply answers. Absent from older Pi builds. */
   quotedMessageId?: string;
+  /** Who wrote the quoted message, from the Pi's contact lookup (slice S4,
+   *  2026-10-20): UNVERIFIED (their own WhatsApp name) and their phone,
+   *  checked against the roster before the name is used. Absent from older
+   *  Pi builds, and for a reply to MatchTime. */
+  quotedAuthorName?: string;
+  quotedAuthorPhone?: string;
   /** Did this message @-mention the bot's own JID? Computed on the Pi
    *  (only it knows the bot's selfId) and forwarded as a structured
    *  signal. PRIMARY input to the @Match Time interaction-contract gate;
@@ -416,13 +425,11 @@ interface InboundMessage {
   botMentioned?: boolean;
 }
 
-/** The text of the MatchTime post a message replies to, as the field the
- *  router and the answer owner read; nothing for any other message (a
- *  reply to a player is ordinary chat and is shown no quote). */
-function quotedMatchTimeField(m: InboundMessage): { quotedMatchTime?: string } {
-  return m.quotedFromMatchTime === true && typeof m.quotedBody === "string" && m.quotedBody.trim()
-    ? { quotedMatchTime: m.quotedBody }
-    : {};
+/** The message `m` is a WhatsApp reply to, as `loadGroupReplyContexts`
+ *  resolved it, as the optional field the router and every owner read. */
+function replyField(replies: ReadonlyMap<string, QuotedGroupMessage>, m: InboundMessage): { reply?: QuotedGroupMessage } {
+  const reply = replies.get(m.waMessageId);
+  return reply ? { reply } : {};
 }
 
 interface InboundHistory {
@@ -457,6 +464,10 @@ type ActionForBot = {
   react: string | null;
   reply: string | null;
   reasoning?: string;
+  /** The key MatchTime's `reply` was claimed under (review of #341,
+   *  finding 3): the Pi acks the sent reply with it, so a reply quoting
+   *  MatchTime's reply resolves to its words and match. */
+  replyKey?: string;
 };
 
 /**
@@ -744,6 +755,40 @@ async function handleAnalyzeRequest(request: Request) {
   const senderById = new Map<string, ResolvedSender>();
   for (const m of fresh) {
     senderById.set(m.waMessageId, await resolveSender(org.id, m));
+  }
+
+  // ── WHAT EACH REPLY QUOTES (quoted-reply context, slice S4) ────────
+  //
+  // A WhatsApp reply carries the message it quotes, whoever wrote it.
+  // Resolved ONCE per batch, by the quoted stanza id first (this batch,
+  // MatchTime's own sends, the club's analysed messages), then the Pi's
+  // text and author; the router and every owner below read the same
+  // answer. Total: a failed read keeps what the Pi said. One indexed read
+  // per reply, and nothing at all for a batch with no reply in it.
+  const replyById = fresh.some((m) => parseGroupQuote(m))
+    ? await loadGroupReplyContexts(db, {
+        orgId: org.id,
+        channel: "group",
+        now: new Date(),
+        messages: fresh.map((m) => ({ id: m.waMessageId, quote: parseGroupQuote(m) })),
+        // A batch message's author is named only when the route resolved
+        // them to a member, by their roster name (never their pushname).
+        batch: fresh.map((m) => {
+          const s = senderById.get(m.waMessageId);
+          return { waMessageId: m.waMessageId, userId: s?.userId ?? null, rosterName: s?.userId ? s.name : null, body: m.body, sentAt: parseTimestamp(m.timestamp) };
+        }),
+        memberByPhone: (phone) => rosterMemberByPhone(org.id, phone),
+      })
+    : new Map<string, QuotedGroupMessage>();
+  // THE MODEL'S VIEW AND THE TAG AGREE (review of #341, finding 2). A
+  // quote shown as MatchTime's is a reply to MatchTime, which the
+  // interaction contract reads as a tag (`messageTagsBot`, from the Pi's
+  // flag). A quote the Pi did not flag, but whose id is one of MatchTime's
+  // own sends on this club, is MatchTime's: the flag is set to match, here,
+  // before any tag is read.
+  for (const m of fresh) {
+    const r = replyById.get(m.waMessageId);
+    if (r && r.found && r.author === null && m.quotedFromMatchTime !== true) m.quotedFromMatchTime = true;
   }
 
   // ── SIGNAL 1: THESE PEOPLE ARE IN THE GROUP ────────────────────────
@@ -2118,8 +2163,8 @@ async function handleAnalyzeRequest(request: Request) {
             // routes `balancer`, and the drop is never seen.
             body: pipelineBody(m),
             authorName: m.authorName,
-            // A reply to MatchTime: the post it quotes, shown above it.
-            ...quotedMatchTimeField(m),
+            // A reply: the message it quotes, whoever wrote it, shown above it.
+            ...replyField(replyById, m),
           })),
           // The ONE thing the router was missing, and the reason PR #42
           // would not turn this flag on: a bare `👍` answering a slot
@@ -2141,6 +2186,7 @@ async function handleAnalyzeRequest(request: Request) {
             scoreCorrectionIds,
             // At the daily AI cap: floor only, no router call.
             capped: aiCapped,
+            now: new Date(),
           },
         )
       : null;
@@ -2271,6 +2317,8 @@ async function handleAnalyzeRequest(request: Request) {
                 const quoted = quotedRefOf(m);
                 return quoted ? { quoted } : {};
               })(),
+              // The message it quotes, for the extractor (slice S4).
+              ...replyField(replyById, m),
             };
           }),
           deps: {
@@ -2463,9 +2511,9 @@ async function handleAnalyzeRequest(request: Request) {
         taggedExplicitly: messageMentionsBotExplicitly(m),
         route: gateRouteById.get(m.waMessageId),
         gated: gatedIds.has(m.waMessageId),
-        // A reply to MatchTime: the question extractor reads the post it
-        // quotes as MatchTime's post (`answer-batch.ts`).
-        ...quotedMatchTimeField(m),
+        // A reply: the message it quotes, whoever wrote it, for every
+        // owner's extractor (slice S4).
+        ...replyField(replyById, m),
       };
     });
   const ownerHistory = history.map((h) => ({ author: h.authorName, body: h.body }));
@@ -4019,6 +4067,25 @@ async function handleAnalyzeRequest(request: Request) {
   //       detector the current architecture has never had". That one
   //       matters MORE after this change, not less: it is now the only
   //       thing watching for a real IN routed `none`.
+
+  // MatchTime's replies are claimed like its other posts, with their match
+  // (the result's match for a score, else the match being registered), so
+  // a reply quoting one resolves by its id (`group-reply-claims.ts`).
+  const replyKeys = await claimGroupReplies({
+    orgId: org.id,
+    door: "group",
+    replies: results
+      .filter((r) => !!r.reply)
+      .map((r) => ({
+        inboundId: r.waMessageId,
+        text: r.reply!,
+        matchId: scoreBatch?.outcomes.get(r.waMessageId)?.matchId ?? activeMatchForReply?.id ?? null,
+      })),
+  }).catch(() => new Map<string, string>());
+  for (const r of results) {
+    const key = replyKeys.get(r.waMessageId);
+    if (key && r.reply) r.replyKey = key;
+  }
 
   return NextResponse.json({
     ok: true,

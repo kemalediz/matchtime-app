@@ -185,6 +185,7 @@
  * so there is ONE place in the codebase where a bulk DM is performed,
  * and one shape to review when the next one arrives.
  */
+import { type QuotedGroupMessage } from "./reply-context";
 import { requestNotHandledAdminReply, requestNotHandledReply } from "./team-ops-engine";
 import { messageMentionsBotExplicitly } from "./interaction-contract";
 import {
@@ -237,6 +238,9 @@ export interface AdminOpsBatchMessage {
   route: Route | undefined;
   /** Did step 5's gate skip this message? Then this never sees it. */
   gated: boolean;
+  /** The message this one is a WhatsApp reply to, whoever wrote it
+   *  (quoted-reply context, slice S4). Absent when it is not a reply. */
+  reply?: QuotedGroupMessage | null;
 }
 
 export interface AdminOpsMessageOutcome {
@@ -382,6 +386,8 @@ export async function runAdminOpsBatch(args: {
         tagged: m.tagged,
         history,
         lastBotPost,
+        reply: m.reply ?? null,
+        now,
       });
       for (const d of res.degradations) {
         degradations.push(`extractor ${m.waMessageId}: ${d.detail}`);

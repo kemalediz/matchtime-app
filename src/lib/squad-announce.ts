@@ -130,6 +130,8 @@ export async function announceSquadFullIfJustFilled(
     data: {
       orgId: m.activity.orgId,
       kind: "group",
+      // The match, so a reply quoting the squad post resolves to it.
+      matchId: m.id,
       text: buildSquadCompletePost({
         maxPlayers: m.maxPlayers,
         activityName: m.activity.name,

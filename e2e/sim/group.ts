@@ -462,6 +462,13 @@ export interface BatchItem {
    *  reads. Default false/undefined = untagged. `tag` is an alias. */
   botMentioned?: boolean;
   tag?: boolean;
+  /**
+   * A WhatsApp reply (quoted-reply context, slice S4): what it quotes, as
+   * the Pi forwards it. `of` quotes an EARLIER item of the same batch (its
+   * id, words and author); otherwise give the quoted message's own `id`,
+   * `text` and whether it was MatchTime's.
+   */
+  quote?: { of?: number; id?: string; text?: string; fromMatchTime?: boolean };
 }
 
 /** One line of the "Recent chat history" block the Pi keeps in memory
@@ -580,8 +587,22 @@ export class SimGroup {
     // why two identical bodies necessarily extract the same facts.
     const routes: Record<string, string> = {};
     const factBodies: Record<string, Record<string, unknown>> = {};
+    const ids: string[] = [];
+    const quoteFields = (it: BatchItem): Record<string, unknown> => {
+      const q = it.quote;
+      if (!q) return {};
+      const of = q.of !== undefined ? items[q.of] : undefined;
+      const ofPlayer = of?.player ? this.player(of.player) : undefined;
+      return {
+        quotedMessageId: of ? ids[q.of!] : q.id,
+        quotedBody: of ? of.body : q.text,
+        quotedFromMatchTime: of ? false : q.fromMatchTime === true,
+        ...(ofPlayer ? { quotedAuthorName: ofPlayer.name, ...(ofPlayer.phone ? { quotedAuthorPhone: ofPlayer.phone.replace(/^\+/, "") } : {}) } : {}),
+      };
+    };
     const messages = items.map((it) => {
       const id = nextMsgId();
+      ids.push(id);
       if (it.route) routes[id] = it.route;
       if (it.facts) factBodies[it.body.trim()] = it.facts;
       let authorPhone = "";
@@ -597,6 +618,7 @@ export class SimGroup {
       const tagged = it.botMentioned ?? it.tag;
       return {
         waMessageId: id,
+        ...quoteFields(it),
         body: it.body,
         authorPhone,
         authorName,

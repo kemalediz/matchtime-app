@@ -245,6 +245,7 @@
  *     the shipped "couldn't find … — ignored" wording rather than
  *     silently guessed.
  */
+import { type QuotedGroupMessage } from "./reply-context";
 import type { OrgFeatures } from "./org-features";
 import { compose } from "./pipeline/compose";
 import { decide as decideDefault } from "./pipeline/engine";
@@ -311,6 +312,9 @@ export interface TeamOpsBatchMessage {
   route: Route | undefined;
   /** Did step 5's gate skip this message? Then this never sees it. */
   gated: boolean;
+  /** The message this one is a WhatsApp reply to, whoever wrote it
+   *  (quoted-reply context, slice S4). Absent when it is not a reply. */
+  reply?: QuotedGroupMessage | null;
 }
 
 export interface TeamOpsMessageOutcome {
@@ -501,6 +505,8 @@ export async function runTeamOpsBatch(args: {
         tagged: m.tagged,
         history,
         lastBotPost,
+        reply: m.reply ?? null,
+        now,
       });
       for (const d of res.degradations) {
         degradations.push(`extractor ${m.waMessageId}: ${d.detail}`);

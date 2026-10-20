@@ -28,6 +28,7 @@
  * sends nothing. Prints each case, pass or fail, the calls made and the
  * cost. Stops at MAX_USD.
  */
+import { quoteFromPi } from "../src/lib/reply-context.ts";
 import { spendDevApiKeyOrExit } from "../e2e/helpers/dev-api-key.ts";
 import { anthropicModel, type PipelineModel } from "../src/lib/pipeline/llm.ts";
 import { routeBatch } from "../src/lib/pipeline/router.ts";
@@ -173,11 +174,11 @@ async function main() {
     const id = `hq${i}`;
     const context = organisersContext({
       pending: c.ctx.pending ?? [],
-      quoted: c.ctx.quoted ?? null,
-      quotedIsMatchTime: c.ctx.quoted?.fromMatchTime ?? false,
       recent: c.ctx.recent ?? [],
     });
-    const r = await routeBatch(model, [{ id, authorName: "Raihan", body: c.text, organisers: { context } }], { floor: true });
+    // The quote as production shows it (`RouterMessage.reply`, slice S4).
+    const reply = c.ctx.quoted ? quoteFromPi({ id: null, ...c.ctx.quoted }) : null;
+    const r = await routeBatch(model, [{ id, authorName: "Raihan", body: c.text, organisers: { context }, reply }], { floor: true });
     const route = r.routes[0]?.route;
     let ok = !!route && c.want.includes(route);
     let extra = "";

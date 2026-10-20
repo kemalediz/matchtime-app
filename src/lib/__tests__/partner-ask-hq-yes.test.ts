@@ -60,8 +60,6 @@ describe("the safe YES and a partner club's ask", () => {
   it("the router is told what is waiting, in a line of its own", () => {
     const lines = organisersContext({
       pending: [{ ...ASK, day: "Fri 16 Oct", club: "FNF", askedAt: at(5) }],
-      quoted: null,
-      quotedIsMatchTime: false,
       recent: [],
     });
     expect(lines[0]).toMatch(/^WAITING: YES to post FNF's ask for a player in the players' group, for Fri 16 Oct, asked at \d\d:\d\d\.$/);

@@ -77,7 +77,7 @@ describe("everything that is not structured data goes through the shared pipelin
       messageId: "wa-1",
       text: "can you do the poster for this week",
       mentionNames: [{ jid: "1@lid" }],
-      quoted: { text: "Teams?", fromMatchTime: true },
+      quoted: { messageId: null, text: "Teams?", fromMatchTime: true, authorName: null, authorPhone: null },
       senderUserId: "u-admin",
       organiser: true,
       senderName: "Raihan",

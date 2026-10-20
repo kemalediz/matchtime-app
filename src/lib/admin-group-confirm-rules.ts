@@ -31,6 +31,7 @@
  * Pure. No database, no model.
  */
 import type { HqLogRow } from "./admin-group-log";
+import { sameWhatsAppMessage } from "./quoted-message";
 
 export const CONFIRM_WINDOW_MS = 15 * 60 * 1000;
 
@@ -40,12 +41,23 @@ export interface PendingItem {
    *  ask slice S2) or `feeAskRef(proposalId)` (a free place, 2026-10-16). */
   ref: string;
   kind: "teams" | "list" | "partner-ask" | "fee";
+  /** When it was (last) asked: a quote of an older post about it is stale. */
+  askedAt?: Date;
 }
 
 export interface QuotedMessage {
   /** The Pi saw the quoted message was MatchTime's own. */
   fromMatchTime?: boolean;
   text?: string | null;
+  /** The quoted message's WhatsApp id (kept since slice S4). */
+  messageId?: string | null;
+  /** Who wrote it, from the Pi's contact lookup: unverified. */
+  authorName?: string | null;
+  authorPhone?: string | null;
+  /** The quoted id was found in the club's own records (a send, a logged
+   *  line, an organiser's message). Then its WORDS are never matched
+   *  against the log: the id decides (review of #341, finding 5). */
+  found?: boolean;
 }
 
 export type ApprovalDecision =
@@ -55,13 +67,20 @@ export type ApprovalDecision =
   | { kind: "nothing-waiting" }
   | { kind: "silent"; why: "nothing-waiting" | "reply-to-organiser" | "asked-already" };
 
+/** A logged question is recorded a moment before or after the proposal
+ *  row it is about; older than that by this much, it is an earlier post. */
+const STALE_SLACK_MS = 60 * 1000;
+
 /** Whitespace-folded, for comparing a quote with what MatchTime posted. */
 const flat = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase();
 
 /**
  * Did MatchTime post this quoted text? WhatsApp quotes the whole message
- * and the log holds its first 500 characters, so either may be the
- * shorter: compared on the first 120 characters of the shorter.
+ * and the log holds its first 500 characters. The quote must agree with
+ * the WHOLE logged line (up to the shorter of the two), not its opening
+ * words: a reposted proposal begins with the same header as the one it
+ * replaced (review of #341, finding 4). The text fallback, for a quote
+ * with no id the log knows.
  */
 export function matchQuoted(quoted: string, rows: HqLogRow[]): HqLogRow | null {
   const q = flat(quoted);
@@ -69,10 +88,28 @@ export function matchQuoted(quoted: string, rows: HqLogRow[]): HqLogRow | null {
   const hits = rows.filter((r) => {
     if (!r.fromMatchTime) return false;
     const t = flat(r.text);
-    const n = Math.min(120, q.length, t.length);
+    const n = Math.min(q.length, t.length);
     return n >= 8 && q.slice(0, n) === t.slice(0, n);
   });
   return hits.length ? hits[hits.length - 1] : null;
+}
+
+/**
+ * The logged line an HQ reply quotes: BY ITS ID first (MatchTime's line
+ * carries its send's stanza id once acked; an organiser's carries its own
+ * WhatsApp id), and only for a quote whose id the club does not know, by
+ * its words. `by` says which.
+ */
+export function quotedLogRow(quoted: QuotedMessage | null, log: HqLogRow[]): { row: HqLogRow | null; by: "id" | "text" | null } {
+  if (!quoted) return { row: null, by: null };
+  const id = quoted.messageId ?? null;
+  if (id) {
+    const row = [...log].reverse().find((r) => (!!r.waStanzaId && sameWhatsAppMessage(id, r.waStanzaId)) || sameWhatsAppMessage(id, r.waMessageId));
+    if (row) return { row, by: "id" };
+  }
+  if (quoted.found) return { row: null, by: "id" };
+  const row = quoted.text ? matchQuoted(quoted.text, log) : null;
+  return { row, by: row ? "text" : null };
 }
 
 /**
@@ -89,13 +126,17 @@ export function decideApproval(p: {
   const windowMs = p.windowMs ?? CONFIRM_WINDOW_MS;
   const byRef = new Map(p.pending.map((i) => [i.ref, i]));
 
-  // 1. A WhatsApp reply.
-  if (p.quoted && (p.quoted.text || p.quoted.fromMatchTime)) {
-    const asked = p.quoted.text ? matchQuoted(p.quoted.text, p.log) : null;
+  // 1. A WhatsApp reply, decided by the line it quotes.
+  if (p.quoted && (p.quoted.text || p.quoted.fromMatchTime || p.quoted.messageId)) {
+    const { row: asked } = quotedLogRow(p.quoted, p.log);
+    if (asked && !asked.fromMatchTime) return { kind: "silent", why: "reply-to-organiser" };
     if (!asked && !p.quoted.fromMatchTime) return { kind: "silent", why: "reply-to-organiser" };
     if (p.pending.length === 0) return { kind: "nothing-waiting" };
     const item = asked?.askRef ? byRef.get(asked.askRef) : undefined;
-    if (item) return { kind: "approve", item, why: "quoted" };
+    // An OLDER post about the same thing (the teams proposed, then changed
+    // and proposed again) is not a YES to what is waiting now: ask.
+    const stale = !!item?.askedAt && !!asked && asked.createdAt.getTime() < item.askedAt.getTime() - STALE_SLACK_MS;
+    if (item && !stale) return { kind: "approve", item, why: "quoted" };
     // MatchTime's, but not a question about anything still waiting.
     return ask(p.pending, p.log, p.now, windowMs);
   }

@@ -54,8 +54,10 @@ export interface AdminGroupInboundDeps {
   read(): Promise<AdminGroupForward | null>;
   postAdminGroupMessage(msg: AdminGroupForward): Promise<AdminGroupAnswer | null>;
   postAdminGroupLink(msg: AdminGroupForward): Promise<AdminGroupAnswer | null>;
-  /** Post a reply in the same group. */
+  /** Post a reply in the same group; resolves to the driver's send result. */
   reply(text: string): Promise<unknown>;
+  /** Ack a sent reply the server claimed (`answer.replyKey`, slice S4 review). */
+  ackReply?(key: string, kind: string, sent: unknown): Promise<void>;
   /** Place an emoji on a message by its id: the driver's `sendReaction`,
    *  the same path the players' group reacts through. Never throws. */
   sendReaction?(waMessageId: string, emoji: string): Promise<ReactionOutcome>;
@@ -89,7 +91,10 @@ async function postReply(deps: AdminGroupInboundDeps, answer: AdminGroupAnswer |
   const text = typeof answer?.replyText === "string" ? answer.replyText.trim() : "";
   if (!text) return;
   try {
-    await deps.reply(text);
+    const sent = await deps.reply(text);
+    // Claimed by the server: ack it with its sent id, so an HQ reply quoting
+    // it (a YES to the teams) is decided by that id.
+    if (answer?.replyKey && deps.ackReply) await deps.ackReply(answer.replyKey, "admin-group-reply", sent);
   } catch (err) {
     (deps.log ?? console.error)(`[admin-group] reply failed: ${err instanceof Error ? err.message : String(err)}`);
   }

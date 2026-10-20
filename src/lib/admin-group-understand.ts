@@ -69,6 +69,8 @@
  * owners and admins ("Only Hamzah or Raihan can change that."), otherwise
  * nothing. Logs carry ids and counts only.
  */
+import { loadGroupReplyContexts, parseGroupQuote, type QuotedGroupMessage } from "./reply-context";
+import { rosterMemberByPhone } from "./roster-name-by-phone";
 import { db } from "./db";
 import { withOrgAiBudget, getAiBudgetStatus } from "./ai-budget";
 import { gateBatch } from "./pipeline/gate";
@@ -85,7 +87,7 @@ import { answerSquadPasteYes } from "./admin-group-paste";
 import { answerGraphicRequest } from "./admin-group-graphics";
 import { buildHqHelp, hqHelpGates } from "./admin-group-help";
 import { hqLogSince, listAskRef, recordMatchTimeQuestion, teamsAskRef } from "./admin-group-log";
-import { WHICH_ASK_REF, decideApproval, matchQuoted, type QuotedMessage } from "./admin-group-confirm-rules";
+import { WHICH_ASK_REF, decideApproval, quotedLogRow, type QuotedMessage } from "./admin-group-confirm-rules";
 import { hqAddressing, organisersContext, type PendingWithLabel } from "./admin-group-context";
 import { answerPartnerAskYes, parsePartnerAskRef, partnerAskRef, partnerAsksAwaitingApproval } from "./partner-ask";
 import { askPlayersGroup } from "./admin-group-ask-group";
@@ -189,6 +191,37 @@ export async function onlyOrganisersLine(orgId: string, lang: string | null): Pr
   return t(lang).hq_only_organisers({ names: joinAdminNames(rows.map((r) => r.user?.name ?? null), lang) });
 }
 
+/**
+ * The message an HQ reply quotes, resolved (`loadGroupReplyContexts`), or
+ * null when it is not a reply. Never throws.
+ */
+async function quotedHqMessage(
+  orgId: string,
+  messageId: string,
+  quoted: QuotedMessage | null,
+  now: Date,
+): Promise<QuotedGroupMessage | null> {
+  const quote = quoted
+    ? parseGroupQuote({
+        quotedMessageId: quoted.messageId,
+        quotedText: quoted.text,
+        quotedFromMatchTime: quoted.fromMatchTime,
+        quotedAuthorName: quoted.authorName,
+        quotedAuthorPhone: quoted.authorPhone,
+      })
+    : null;
+  if (!quote) return null;
+  const out = await loadGroupReplyContexts(db, {
+    orgId,
+    channel: "hq",
+    now,
+    messages: [{ id: messageId, quote }],
+    batch: [],
+    memberByPhone: (phone) => rosterMemberByPhone(orgId, phone),
+  });
+  return out.get(messageId) ?? null;
+}
+
 export async function understandAdminMessage(input: UnderstandInput): Promise<Understood | null> {
   const { org, messageId, now } = input;
   const lang = org.language;
@@ -202,14 +235,33 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
       nameMentions(org.id, input.text, input.mentionNames),
     ]);
     const log = logAll.filter((r) => r.waMessageId !== messageId);
-    const quotedIsMatchTime = !!input.quoted && (input.quoted.fromMatchTime === true || (!!input.quoted.text && !!matchQuoted(input.quoted.text, log)));
+    // THE MESSAGE A REPLY QUOTES (quoted-reply context, slice S4), by its
+    // WhatsApp id first: MatchTime's own post (its exact words, from the
+    // send) or another organiser's message (who, from HQ's log), else what
+    // the Pi saw. Its words then find MatchTime's question in the log, so
+    // a YES quoting the teams is known by the post's own id, not by the
+    // Pi's copy of its text. Total: a failed read keeps the Pi's.
+    const reply = await quotedHqMessage(org.id, messageId, input.quoted, now);
+    const quotedWords = reply?.text ?? input.quoted?.text ?? null;
+    // The logged line it quotes, BY ITS ID first; by its words only when
+    // the club knows nothing of the id (review of #341, findings 4 and 5).
+    // An id that resolved to an organiser's message is never relabelled
+    // MatchTime's by a text match.
+    const found = reply?.found === true;
+    const hit = input.quoted ? quotedLogRow({ ...input.quoted, text: quotedWords, found }, log) : { row: null, by: null };
+    const quotedIsMatchTime =
+      !!input.quoted &&
+      (input.quoted.fromMatchTime === true || reply?.author === null || (hit.by === "text" && hit.row?.fromMatchTime === true));
+    // What the safe-YES rule, the addressing and the router read.
+    const quoted: QuotedMessage | null = input.quoted ? { ...input.quoted, text: quotedWords, fromMatchTime: quotedIsMatchTime, found } : null;
+    const replyShown: QuotedGroupMessage | null = reply && quotedIsMatchTime && reply.author ? { ...reply, author: null } : reply;
     // Addressed to MatchTime: an @tag (never the bare word, which is talk
     // ABOUT MatchTime), or a WhatsApp reply to MatchTime's own message.
     // A WhatsApp reply to ANOTHER organiser's message, with no @tag, is the
     // organisers talking to each other (FNF HQ 2026-10-16 23:49, "Imti Rafi
     // AH back" quoting an organiser about next week, routed other_att, got
     // a tick and "I don't know AH yet"). Nothing MatchTime does from it.
-    const { addressed, toAnotherOrganiser } = hqAddressing({ text: input.text, quoted: input.quoted, quotedIsMatchTime });
+    const { addressed, toAnotherOrganiser } = hqAddressing({ text: input.text, quoted, quotedIsMatchTime });
     // The score MatchTime is waiting for, and the answers and corrections
     // that go to `score` whatever the model says (`admin-group-score.ts`).
     const score = await hqScoreRouting({
@@ -226,15 +278,14 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
     // of the Match?", "Which Ali...?") answers it, whatever the router
     // calls the name: the score handling reads it (2026-10-18). Decided
     // from the quoted row's question ref, never from the words.
-    const quotedRow = quotedIsMatchTime && input.quoted?.text ? matchQuoted(input.quoted.text, log) : null;
+    const quotedRow = quotedIsMatchTime && hit.row?.fromMatchTime ? hit.row : null;
     const answersMomAsk = !!quotedRow?.askRef?.startsWith("mom:") && organisersPickMom(org);
     const recent = log.filter((r) => now.getTime() - r.createdAt.getTime() <= RECENT_MS).slice(-RECENT_MAX);
     // The extractors' recent chat: MatchTime's own lines as MatchTime.
     const history = recent.map((r) => ({ author: r.fromMatchTime ? "MatchTime" : null, body: r.text }));
-    // MatchTime's last line in HQ, and the post a question is about: the
-    // MatchTime message it replies to, else that last line.
+    // MatchTime's last line in HQ. A reply's quoted message is shown to
+    // every extractor beside it (`replyShown`), whoever wrote it.
     const lastHqPost = [...log].reverse().find((r) => r.fromMatchTime)?.text ?? null;
-    const lastBotPost = (quotedIsMatchTime && input.quoted?.text) || lastHqPost;
     const capped = (await getAiBudgetStatus(org.id).catch(() => null))?.capped ?? false;
 
     // An organiser's short list of names with IN/OUT ("Imti\nRafi\nAH\n\nIn",
@@ -250,10 +301,12 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
               waMessageId: messageId,
               body,
               authorName: input.senderName,
-              organisers: { context: organisersContext({ pending, quoted: input.quoted, quotedIsMatchTime, recent, score: score.waiting }) },
+              organisers: { context: organisersContext({ pending, recent, score: score.waiting }) },
+              ...(replyShown ? { reply: replyShown } : {}),
             },
           ],
           {
+            now,
             capped,
             scoreAnswerIds: score.scoreAnswerIds,
             scoreCorrectionIds: score.scoreCorrectionIds,
@@ -302,6 +355,7 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
         organiser: input.organiser,
         addressed,
         history,
+        reply: replyShown,
         now,
         ...(input.deps?.extractorModel ? { deps: { model: input.deps.extractorModel } } : {}),
       });
@@ -321,7 +375,8 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
         senderName: input.senderName,
         now,
         history,
-        lastBotPost,
+        lastBotPost: lastHqPost,
+        reply: replyShown,
         hqHelp,
         ...(input.deps?.extractorModel ? { deps: { model: input.deps.extractorModel } } : {}),
       });
@@ -355,7 +410,7 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
           }
         }
         if (!feeActor) return notYours();
-        const decision = decideApproval({ pending, quoted: input.quoted ? { ...input.quoted, fromMatchTime: quotedIsMatchTime } : null, log, now });
+        const decision = decideApproval({ pending, quoted, log, now });
         console.log(`[admin-group] ${messageId}: approval ${decision.kind}${"why" in decision ? ` (${decision.why})` : ""}`);
         // The collector who is not an admin: a free place question only.
         if (!actor) {
@@ -424,6 +479,8 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
           tagged: true,
           history,
           lastBotPost: lastHqPost,
+          reply: replyShown,
+          now,
         });
         if (extracted.facts.kind !== "teams") {
           console.log(`[admin-group] ${messageId}: the teams extractor gave nothing (${extracted.degradations.length} degradation(s))`);
@@ -451,6 +508,7 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
           sentAt: input.sentAt,
           route,
           addressed,
+          reply: replyShown,
         });
         return change.handled ? said(change.outcome, change.replyText) : null;
       }
@@ -477,6 +535,8 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
           tagged: true,
           history,
           lastBotPost: lastHqPost,
+          reply: replyShown,
+          now,
         });
         const facts = extracted.facts;
         if (facts.kind === "admin" && facts.action === "fee_waiver") {

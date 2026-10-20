@@ -1915,9 +1915,13 @@ model AdminGroupMessage {
   text          String
   /// What a MatchTime question asked about. Null for everything else.
   askRef        String?
+  /// MatchTime's own line: the WhatsApp stanza id of the send, stamped on
+  /// the Pi's ack, so an HQ reply is decided by the quoted id (slice S4).
+  waStanzaId    String?
   createdAt     DateTime @default(now())
 
   @@index([orgId, createdAt])
+  @@index([orgId, waStanzaId])
 }
 
 model BenchSlotOffer {

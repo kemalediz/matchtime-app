@@ -89,6 +89,7 @@ import {
   type PipelineModel,
 } from "./llm";
 import { HAIKU_EFFORT } from "../models";
+import { nowLine, quotedLines, type ContextMessage } from "../reply-context";
 import type { AttendanceFacts, Claim, Degradation, Route, RoutedMessage } from "./types";
 import { ORGANISER_ONLY_ROUTES } from "./types";
 import { isAiBudgetExceeded } from "../ai-budget-context";
@@ -245,9 +246,25 @@ import { isAiBudgetExceeded } from "../ai-budget-context";
  * HQ, "how do I get you to ...?" is help, said on the help line. The live
  * checks covering every existing behaviour are in the PR.
  */
+/*
+ * ── 2026-10-20: A REPLY TO ANYONE CARRIES WHAT IT QUOTES (slice S4) ────
+ *
+ * A WhatsApp reply in either group now comes under the DM block's
+ * "THEY ARE REPLYING TO" lines (`quotedLines`, `reply-context.ts`), WHOEVER
+ * wrote the quoted message: "same" replying to Ali's "IN" had no referent
+ * when only MatchTime's own posts were shown. The turn opens with NOW. The
+ * prompt's reply parts were rewritten as one REPLIES paragraph (what the
+ * lines are, read the reply against them, route the reply itself), the tag
+ * definition now says a reply to a member is not a tag, the organisers'
+ * header no longer lists "the message it replies to" (it is shown under
+ * the shared lines), and the reply examples are one group. Nothing else
+ * changed. Live checks before and after are in the PR.
+ */
 export const ROUTER_SYSTEM_PROMPT = `You are the front door of MatchTime, the bot that runs a football club's WhatsApp groups: the weekly squad, the two teams, results, payments, reminders and the players' stats. For EVERY message id you are given, return exactly one route: the part of MatchTime that handles the message, or none when it is chat between people and not for the bot.
 
-TWO KINDS OF GROUP. A message is from the PLAYERS' GROUP unless it comes under an "ORGANISERS' GROUP" header, with what MatchTime is waiting to hear, the message it replies to and recent messages there. Everything applies to both; "IN THE ORGANISERS' GROUP" adds what differs there.
+TWO KINDS OF GROUP. A message is from the PLAYERS' GROUP unless it comes under an "ORGANISERS' GROUP" header, with what MatchTime is waiting to hear and recent messages there. Everything applies to both; "IN THE ORGANISERS' GROUP" adds what differs there.
+
+REPLIES. The turn opens with NOW, the time at the club. A message that is a WhatsApp reply comes under a "THEY ARE REPLYING TO" line: whose message it quotes (MatchTime's or a member's), when, what it was about, and its words. Read the reply in the light of what it quotes, then route the reply itself: the quoted message is context, never a message to route. "same", "me too", "ben de", "he", "that" and a bare "no" take their meaning from it, so "same" under a member's "IN" is the sender joining, "he's out" under Ali's message drops Ali, and a scoreline under MatchTime's result corrects our result.
 
 WHAT IS AT STAKE. A message routed none is gone: nothing is written, nobody replies, and a player who said they are playing loses their place without knowing. Any other wrong route costs a few pence and is caught later. So when in doubt between none and anything else, choose the other route.
 
@@ -255,7 +272,7 @@ HOW TO DECIDE. Route on what a message DOES, not on what it is about. Ask three 
 
 1. Does it settle a place in THIS squad? A message that states, promises, withdraws, offers, swaps, corrects or asks for a place for anybody at all (the sender, a named player, an @mention, a relative, a guest, a phone number) is attendance: self_att, other_att, offer or unsure. The plainest case is a name or an @mention followed by in or out (var or yok in Turkish), even as two bare words: that is other_att, always, whoever sends it. It is a real sign-in and never a demonstration of how to write one, even beside a telling-off, instructions on how to say IN, or a pasted copy of the list. An attendance message is never none, however casually it is worded, whoever it is addressed to, and whatever chat, apology, joke or question mark surrounds it. Nothing below overrides this.
 
-2. Does it tag the bot? A tag is "@Match Time", "@MatchTime" or "@MT" anywhere in the message. In the players' group, so is a WhatsApp reply to the bot's own message, shown under a "REPLYING TO MatchTime" line with the words it quotes: read the reply in the light of those words. A tagged message is spoken TO the bot, so it is never none because it is short, has no question mark, or is only a name and a word; send it to the owner of what it asks for. A tagged name, stat or table alone is a question. Only a tagged message that asks for nothing at all (thanks, a laugh, an emoji, a greeting) is none. "Match Time" written without the @, while talking about the bot, is not a tag.
+2. Does it tag the bot? A tag is "@Match Time", "@MatchTime" or "@MT" anywhere in the message. In the players' group, so is a reply to MatchTime's own message; a reply to a member's message is not. A tagged message is spoken TO the bot, so it is never none because it is short, has no question mark, or is only a name and a word; send it to the owner of what it asks for. A tagged name, stat or table alone is a question. Only a tagged message that asks for nothing at all (thanks, a laugh, an emoji, a greeting) is none. "Match Time" written without the @, while talking about the bot, is not a tag.
 
 3. Is it for the bot at all? An untagged message can still be a question the bot answers, an instruction, a team request or our result. Otherwise it is none: banter, jokes, links, emoji, greetings, football chat, and members talking to each other in a way that settles no place and asks the bot for nothing.
 
@@ -365,10 +382,15 @@ A tagged message asks the bot, however short:
   "@Match Time Ali'nin kimyası" -> question
   "@Match Time istatistiklerim" -> question
   "@Match Time cheers 👍" -> none
+
+Replies, read against the message they quote:
   "Bench? We do bench now?" replying to MatchTime's "the bench is open, say IN to go on the bench" -> question
   "yedek ne demek?" replying to that post -> question
-  "IN" replying to that post -> self_att
-  "😂" replying to MatchTime -> none
+  "IN" replying to that post, or to an older squad list of MatchTime's -> self_att
+  "same" / "ben de" replying to a member's "IN" -> self_att
+  "he's out" replying to Ali's message -> other_att
+  "no, it was 7-5 to yellow" / "hayır, 7-5 sarılar" replying to MatchTime's result -> score
+  "😂" replying to MatchTime, or "haha same" replying to a member's joke -> none
 
 Questions about the squad and the matches:
   "@Match Time how many players so far?" -> question
@@ -653,13 +675,17 @@ export interface RouterMessage {
    */
   organisers?: { context: string[] };
   /**
-   * A players' group message that is a WhatsApp reply to MatchTime's OWN
-   * message (2026-10-16): the text it quotes. Shown above it as the same
-   * `REPLYING TO MatchTime` line the organisers' group uses, and the prompt
-   * reads that line as a tag. Absent for every other message, whose line is
-   * unchanged.
+   * The message this one is a WhatsApp reply to, WHOEVER wrote it
+   * (quoted-reply context, slice S4, 2026-10-20; replaces the 2026-10-16
+   * `quotedMatchTime`, which only ever showed MatchTime's own posts).
+   * Resolved by `loadGroupReplyContexts` (`reply-context.ts`) and shown
+   * above the message in the DM block's wording (`quotedLines`), in both
+   * groups. A reply to MatchTime is still a tag in CODE
+   * (`messageTagsBot`, from the Pi's `quotedFromMatchTime`); the lines
+   * let the model read the reply against what it quotes. Absent for a
+   * message that is not a reply.
    */
-  quotedMatchTime?: string;
+  reply?: ContextMessage | null;
 }
 
 /**
@@ -685,24 +711,22 @@ export interface RouterMessage {
 export const ORGANISERS_HEADER =
   "ORGANISERS' GROUP. The sender is an organiser of the club. Here, saying a named player owes nothing for the match, a free place (\"he's free this week, he did the bibs\", \"no fee for him\", \"ödemesin\"), or taking one back (\"he pays after all\", \"ücretsiz değil\"), is admin_ops, tagged or not. Free as in able to play (\"he's free, add him\") is other_att. Nothing else changes: a shortage or a question put to the other organisers is still none.";
 
-/** The line shown above a message that is a WhatsApp reply: who it quotes
- *  and what they said, on one line. One wording for both groups
- *  (`admin-group-context.ts` builds the organisers' one with it). */
-export function replyingToLine(who: string, text: string): string {
-  return `REPLYING TO ${who}: "${text.replace(/\s+/g, " ").trim().slice(0, 300)}"`;
-}
+/** How much of a quoted message the router is shown: enough to know what
+ *  it was, as the 2026-10-16 line showed. The extractors see more. */
+export const ROUTER_QUOTE_WORDS_MAX = 300;
 
-/** The user turn: each message on its own line; an organisers' group
- *  message under its header and context lines; a players' group reply to
- *  MatchTime under the line saying so. */
-export function renderRouterTurn(messages: RouterMessage[]): string {
-  return messages
-    .map((m) => {
-      const line = `[${m.id}] ${m.authorName ?? "(unknown)"}: ${m.body}`;
-      if (m.organisers) return [ORGANISERS_HEADER, ...m.organisers.context, line].join("\n");
-      return m.quotedMatchTime ? `${replyingToLine("MatchTime", m.quotedMatchTime)}\n${line}` : line;
-    })
-    .join("\n");
+/** The user turn: the time now (club time), then each message on its own
+ *  line; an organisers' group message under its header and context lines;
+ *  a reply under the lines naming the message it quotes (`quotedLines`,
+ *  the one wording the DM classifiers and the extractors read too). */
+export function renderRouterTurn(messages: RouterMessage[], now: Date = new Date()): string {
+  const body = messages.map((m) => {
+    const line = `[${m.id}] ${m.authorName ?? "(unknown)"}: ${m.body}`;
+    const reply = m.reply ? quotedLines(m.reply, ROUTER_QUOTE_WORDS_MAX) : [];
+    if (m.organisers) return [ORGANISERS_HEADER, ...m.organisers.context, ...reply, line].join("\n");
+    return [...reply, line].join("\n");
+  });
+  return [nowLine(now), ...body].join("\n");
 }
 
 export interface RouterResult {
@@ -846,6 +870,8 @@ export interface RouteBatchOptions {
    * no model call. See `ai-budget.ts`.
    */
   capped?: boolean;
+  /** The time the turn's NOW line states (club time). Defaults to now. */
+  now?: Date;
 }
 
 /**
@@ -957,7 +983,10 @@ async function routeBatchInner(
   // ids (`shortRouterIds`). Mapped back to the real ids right after parsing.
   const shortIds = shortRouterIds(messages.length);
   const realOf = new Map(shortIds.map((s, i) => [s, ids[i]]));
-  const user = renderRouterTurn(messages.map((m, i) => ({ ...m, id: shortIds[i] })));
+  const user = renderRouterTurn(
+    messages.map((m, i) => ({ ...m, id: shortIds[i] })),
+    opts.now ?? new Date(),
+  );
 
   const req: ModelRequest = {
     model: ROUTER_MODEL,
