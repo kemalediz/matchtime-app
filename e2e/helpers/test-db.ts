@@ -6,8 +6,25 @@
  * the tsx world: run.ts / seed-cli.ts). Every connection is gated by
  * assertSafeTestDbUrl so specs can never touch a non-local DB.
  */
-import { Pool } from "pg";
+import { Pool, types } from "pg";
 import { assertSafeTestDbUrl, E2E_DB_URL } from "./env";
+
+/**
+ * Prisma stores a DateTime in a `timestamp(3)` column (no zone) as the UTC
+ * wall time. Plain `pg` reads and writes those as the MACHINE's local time,
+ * which in British Summer Time put every instant a spec read an hour early
+ * (monthly-squad.spec.ts, Tue 2026-10-20). These two keep the spec side
+ * reading and writing the same instants Prisma does.
+ */
+export function parseUtcTimestamp(value: string): Date {
+  return new Date(`${value.replace(" ", "T")}Z`);
+}
+
+export function toPgParam(value: unknown): unknown {
+  return value instanceof Date ? value.toISOString() : value;
+}
+
+const TIMESTAMP_OID = types.builtins.TIMESTAMP;
 
 let _pool: Pool | null = null;
 
@@ -15,14 +32,21 @@ function pool(): Pool {
   if (!_pool) {
     const url = process.env.MT_E2E_DATABASE_URL ?? E2E_DB_URL;
     assertSafeTestDbUrl(url);
-    _pool = new Pool({ connectionString: url, max: 3 });
+    _pool = new Pool({
+      connectionString: url,
+      max: 3,
+      types: {
+        getTypeParser: ((oid: number, format?: "text" | "binary") =>
+          oid === TIMESTAMP_OID && format !== "binary" ? parseUtcTimestamp : types.getTypeParser(oid, format as "text")) as typeof types.getTypeParser,
+      },
+    });
   }
   return _pool;
 }
 
 export class TestDb {
   async all<T = Record<string, unknown>>(sql: string, params: unknown[] = []): Promise<T[]> {
-    const res = await pool().query(sql, params);
+    const res = await pool().query(sql, params.map(toPgParam));
     return res.rows as T[];
   }
 
@@ -32,7 +56,7 @@ export class TestDb {
   }
 
   async run(sql: string, params: unknown[] = []): Promise<void> {
-    await pool().query(sql, params);
+    await pool().query(sql, params.map(toPgParam));
   }
 
   /** SELECT COUNT(*) helper — `sql` must select a single count column. */
