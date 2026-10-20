@@ -287,6 +287,8 @@ export function buildFeeReleasedAck(
     released: number;
     fee: number;
     matchName: string;
+    /** The match's day (`dayLabel(lang, date)`), or null. */
+    matchWhen?: string | null;
     /** `availablePayMethods(org)`: the ack names only these. */
     methods: readonly PayMethod[];
   } & WithLang,
@@ -295,6 +297,7 @@ export function buildFeeReleasedAck(
     released: p.released,
     fee: gbp(p.fee),
     matchName: p.matchName,
+    matchWhen: p.matchWhen ?? null,
     ...payWays(p.methods),
   });
 }
@@ -323,22 +326,6 @@ export function buildFeeConfirmPrompt(
     p.freeCount,
     p.lang,
   );
-}
-
-/**
- * The confirm question as the fee-reply MODEL is shown it: the same
- * table entry, rendered with placeholders, WhatsApp bold stripped, the
- * paragraph break flattened and the double quotes escaped. Built from
- * the entry rather than copied, so a change to the question can never
- * leave the model reading an older one (design section 7, point 5). For
- * English this is, byte for byte, the line the prompt always quoted.
- */
-export function feeConfirmQuestionForPrompt(lang?: Lang | string | null): string {
-  return t(lang)
-    .dm_fee_confirm_prompt({ fee: "£X", headcount: "N", matchName: "<match>", wasTotal: false })
-    .replace(/\*/g, "")
-    .replace(/\n\n/g, " ")
-    .replace(/"/g, '\\"');
 }
 
 // ── rows 103, 104: the bench-offer DM's replies (dm-reply route) ───────

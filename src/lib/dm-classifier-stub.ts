@@ -1,6 +1,7 @@
 /**
  * TEST-ONLY seam shared by the DM classifiers that read the chat-context
- * block (payment-claim, match-availability). It stubs what ENTERS the
+ * block (payment-claim, match-availability; since slice S3 fee-confirm,
+ * roster-survey and dm-intent too). It stubs what ENTERS the
  * system (what the model said, keyed by the DM body), never what the
  * system concludes: the gates, the writes and the replies all run for real
  * behind it. `e2e/helpers/live-llm.ts` refuses a "live" run that can still

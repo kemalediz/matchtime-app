@@ -21,8 +21,8 @@
  * WHAT IS ALLOWED TO KEEP ONE, AND WHY. A prompt is not a message: the
  * text sent TO a model is out of this rule's reach, because changing a
  * prompt needs a paid live check (CLAUDE.md, "live-LLM suites need
- * Kemal's approval"). Two strings in the guarded files are prompt text
- * and are listed in `PROMPT_BOUND` below, each with its reason. Adding
+ * Kemal's approval"). One string in the guarded files is prompt text
+ * and is listed in `PROMPT_BOUND` below, with its reason. Adding
  * to that list is a decision, not a way to make this test pass: a new
  * user-facing sentence with a dash in it is fixed by rewriting it.
  *
@@ -45,15 +45,9 @@ const LONG_DASH = /[—–]|&mdash;|&ndash;|&#8212;|&#8211;|&#x2014;|&#x2013;/i;
  * its string pieces carry a dash.
  */
 const PROMPT_BOUND: { file: string; owner: string; count: number; why: string }[] = [
-  {
-    file: "src/lib/i18n/strings.en.ts",
-    owner: "dm_fee_confirm_prompt",
-    count: 1,
-    why:
-      "fee-confirm.ts quotes this very question inside the fee-reply model's prompt " +
-      "(feeConfirmQuestionForPrompt in dm-copy.ts), built from this entry so the two cannot drift. " +
-      "Changing it changes that prompt.",
-  },
+  // `dm_fee_confirm_prompt` left this list on 2026-10-20 (review of #339):
+  // the fee-reply prompt no longer quotes it, and "Got it — £X" became
+  // "Got it: £X".
   {
     file: "src/lib/bench-offer-copy.ts",
     owner: "benchClaimPhrasingExample",
@@ -208,9 +202,11 @@ describe("no long dash in the string tables", () => {
     expect(unexpected(longDashStrings(file))).toEqual([]);
   });
 
-  it("the scan really reads the tables (it finds the one prompt-bound entry)", () => {
-    const hits = longDashStrings("src/lib/i18n/strings.en.ts");
-    expect(hits.map((h) => h.owner)).toEqual(["dm_fee_confirm_prompt"]);
+  it("the scan really reads the tables, and the English table has no long dash left", () => {
+    // Read for real: the scanner finds the one prompt-bound entry elsewhere,
+    // and nothing in the English table (its last one went 2026-10-20).
+    expect(longDashStrings("src/lib/bench-offer-copy.ts").map((h) => h.owner)).toEqual(["benchClaimPhrasingExample"]);
+    expect(longDashStrings("src/lib/i18n/strings.en.ts")).toEqual([]);
   });
 });
 
