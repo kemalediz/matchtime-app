@@ -26,13 +26,18 @@
  * --------------------------------------------------------------------
  * A wrong "in" puts somebody in a squad from a DM. The model used to get
  * only a yes/no "the bot asked this player to play" flag; it now gets what
- * MatchTime actually said to the player last (`last-bot-dm.ts`, the same
- * reader the payment-claim classifier uses: its words, or what a scheduler
- * DM was about), the match with its day and time, and where the player
- * stands for it. A bare "yes" is an answer only to a question about
- * playing, and the model can now see whether there was one. Turkish is part
- * of the one definition rather than a rule bolted on, and every verdict is
- * logged.
+ * MatchTime actually said to the player, the match with its day and time,
+ * and where the player stands for it. A bare "yes" is an answer only to a
+ * question about playing, and the model can now see whether there was one.
+ * Turkish is part of the one definition rather than a rule bolted on, and
+ * every verdict is logged.
+ *
+ * Rewritten whole again on 2026-10-20 (quoted-reply context, slice S2):
+ * "what MatchTime said" is the shared block (`reply-context.ts`, the same
+ * one the payment-claim classifier reads): the time now, and the message
+ * they swipe-replied to, or else MatchTime's recent messages to them. A
+ * bare "yes" answers the quoted message, or else the newest one, and
+ * "can't tomorrow" is read against today's date.
  *
  * Conservative by construction: "unclear" is the safe default and the
  * caller must treat it as "do nothing", never as a guess.
@@ -42,8 +47,9 @@
  * context.ts`), so the live dry run (`scripts/dryrun-match-availability.ts`)
  * imports the exact production prompt without importing Prisma.
  */
-import { lastBotDmLine } from "./last-bot-dm";
+import { dmClassifierStubCall } from "./dm-classifier-stub";
 import { HAIKU_MODEL, HAIKU_SHORT_ANSWER_MAX_TOKENS, HAIKU_THINKING } from "./models";
+import { noReplyContext, renderReplyContext, type ReplyContext } from "./reply-context";
 
 /** The model, pinned. Exported so the live dry run measures this one. */
 export const MATCH_AVAILABILITY_MODEL = HAIKU_MODEL;
@@ -67,18 +73,19 @@ const MESSAGE_HEADER = "THE DM:";
  * writes English.
  */
 export function buildMatchAvailabilitySystemPrompt(): string {
-  return `A football player sent MatchTime, their club's WhatsApp bot, the private message under "THE DM". Above it you get the match it is about (its day and time), the player's current status for that match, and MatchTime's last message to them (its words in quotes, or a description in brackets).
+  return `A football player sent MatchTime, their club's WhatsApp bot, the private message under "THE DM". Above it you get the match it is about (its day and time), the player's current status for that match, the time now, and what MatchTime said to them: the message they swipe-replied to, or else MatchTime's recent messages to them, each with when it was sent and what it was about.
 
 Is the player telling us whether THEY will play in THAT match? Pick one:
 - "in": they say they will play, in any words, however casual. A yes that also asks something ("go on then, what time?") is still "in"; a question with no yes in it is not.
 - "out": they say they will not play in that match, in any words: a no, or a reason they cannot come.
-- "unclear": anything else. A maybe, "I'll try" or a promise to confirm later; a question on its own; a message about somebody other than the sender; a past or hypothetical game; or a message about something else.
-A bare "yes", "ok" or "👍" is "in", and a bare "no" or "👎" is "out", only when MatchTime's last message asked them whether they can play. When it was about something else, or is not known, a bare reply is "unclear".
+- "unclear": anything else. A maybe, "I'll try" or a promise to confirm later; a question on its own; a message about somebody other than the sender; a past or hypothetical game; a day that is not the match's day; or a message about something else.
+Read "tonight", "tomorrow" or a weekday against the time now and the match's day: when the match is tomorrow, "can't tomorrow" is "out".
+A bare "yes", "ok" or "👍" is "in", and a bare "no" or "👎" is "out", only when it answers a MatchTime message asking whether they can play: the one they swipe-replied to, or else the newest recent one. A reply to any other message, or with none known, is "unclear".
 
 Examples (English | Turkish):
 in: "yeah sure count me in" | "varım"; "why not, coming" | "geliyorum"; "put me down" | "sayın beni"; "go on then, what time?" | "tamam gelirim, saat kaçta?"
 out: "can't tomorrow sorry" | "gelemiyorum"; "not this week" | "bu hafta yokum"; "sorry mate, working" | "işteyim abi"
-unclear: "maybe, I'll let you know" | "belki, haber veririm"; "I'll try" | "bakarız"; "what time is it again?" | "saat kaçta?"; "Kieran is in" | "Ahmet geliyor"; "I was in last week" | "geçen hafta vardım"; "yes" | "evet" when the last message was a request to rate teammates, or is not known
+unclear: "maybe, I'll let you know" | "belki, haber veririm"; "I'll try" | "bakarız"; "what time is it again?" | "saat kaçta?"; "Kieran is in" | "Ahmet geliyor"; "I was in last week" | "geçen hafta vardım"; "yes" | "evet" answering a request to rate teammates, or with no message known
 
 If you are not at least 80% sure, choose "unclear": a wrong "in" puts them in a squad they never joined and a wrong "out" drops someone who wanted to play, while "unclear" changes nothing.
 
@@ -106,10 +113,11 @@ export interface MatchAvailabilityContext {
   matchWhen?: string | null;
   /** `availabilityStatusLabel(...)`: where the player stands for it. */
   currentStatus?: string | null;
-  /** MatchTime's most recent DM to this player (`last-bot-dm.ts`): its
-   *  words, or a bracketed description of a scheduler DM. A bare "yes" is
-   *  an answer only when this asked about playing. */
-  lastBotDm?: string | null;
+  /** The chat context (`loadDmReplyContext`): the time now, and the
+   *  message they swipe-replied to or MatchTime's recent DMs to them. A
+   *  bare "yes" is an answer only when that asked about playing. Absent:
+   *  the time now, nothing known. */
+  replyContext?: ReplyContext | null;
 }
 
 /** Where the player stands for the match, in the words the model reads. */
@@ -136,7 +144,7 @@ export function buildMatchAvailabilityUserTurn(text: string, ctx: MatchAvailabil
     ctx.playerName ? `Player: ${ctx.playerName}` : null,
     match ? `Match: ${match}` : null,
     `Their status for it: ${ctx.currentStatus?.trim() || "(not known)"}`,
-    `MatchTime's last message to them: ${lastBotDmLine(ctx.lastBotDm)}`,
+    renderReplyContext(ctx.replyContext ?? noReplyContext()),
     `${MESSAGE_HEADER}\n${text.trim()}`,
   ]
     .filter(Boolean)
@@ -152,6 +160,23 @@ const UNCLEAR = (reasoning: string): MatchAvailabilityClassification => ({
   confidence: 0,
   reasoning,
 });
+
+/**
+ * TEST-ONLY seam (review of #336), mirroring the payment-claim one: the
+ * decision the model would have returned for a DM body, so a route-level
+ * spec can drive every availability path for free and read what the model
+ * would have been told (`<file>.calls`). `e2e/helpers/live-llm.ts` refuses
+ * a "live" run that can still see it.
+ */
+export const MATCH_AVAILABILITY_STUB_FILE_ENV = "MT_TEST_MATCH_AVAILABILITY_STUB_FILE";
+
+function stubCall(env: NodeJS.ProcessEnv): MatchAvailabilityCall | null {
+  return dmClassifierStubCall(env[MATCH_AVAILABILITY_STUB_FILE_ENV], {
+    label: "match-availability",
+    header: MESSAGE_HEADER,
+    answer: (decision) => JSON.stringify({ decision: decision ?? "unclear", confidence: 1, reasoning: "match-availability stub" }),
+  });
+}
 
 /** The real call. Null when there is no key, which is "unclear". */
 function liveCall(): MatchAvailabilityCall | null {
@@ -188,7 +213,7 @@ export async function classifyMatchAvailability(
   call?: MatchAvailabilityCall | null,
 ): Promise<MatchAvailabilityClassification> {
   if (!replyBody || !replyBody.trim()) return UNCLEAR("empty reply");
-  const fn = call === undefined ? liveCall() : call;
+  const fn = call === undefined ? (stubCall(process.env) ?? liveCall()) : call;
   if (!fn) return UNCLEAR("classifier unavailable");
   let verdict: MatchAvailabilityClassification;
   try {

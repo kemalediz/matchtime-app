@@ -641,6 +641,15 @@ describe("a live run cannot be secretly gated", () => {
       }),
     ).toThrow(/MT_TEST_PAYMENT_CLAIM_STUB_FILE/);
   });
+
+  it("refuses a live run that can still see the match-availability stub file", () => {
+    expect(() =>
+      assertSeamMatchesMode("live", {
+        ...liveOkNoRouterStub,
+        MT_TEST_MATCH_AVAILABILITY_STUB_FILE: "/tmp/match-availability-stub.json",
+      }),
+    ).toThrow(/MT_TEST_MATCH_AVAILABILITY_STUB_FILE/);
+  });
 });
 
 describe("the router gate is visible to the reach guard", () => {

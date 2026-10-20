@@ -14,7 +14,7 @@
 import { db } from "./db";
 import { IN_LIVE_STAGE_CLUB_WHERE } from "./club-setup-rules";
 import { getOrgFeatures } from "./org-features";
-import { selectRegistrationMatch } from "./registration-match-select";
+import { eligibleRegistrationMatch, selectRegistrationMatch } from "./registration-match-select";
 import { dayCommaTimeLabel } from "./i18n/dates";
 import type { Lang } from "./i18n/lang";
 
@@ -39,6 +39,10 @@ export interface DmRegistrationTarget {
  */
 export async function findDmRegistrationTarget(
   userId: string,
+  /** The match a swipe-reply's quote names. Taken when a DM may register
+   *  for it (`eligibleRegistrationMatch`), in a club he is a full member
+   *  of; otherwise ignored and the soonest is picked as before. */
+  opts: { quotedMatchId?: string | null } = {},
 ): Promise<DmRegistrationTarget | null> {
   // Never a club that is still setting up (club-setup.ts): its generated
   // fixture is not a match anybody can sign up for yet.
@@ -73,6 +77,18 @@ export async function findDmRegistrationTarget(
         activity: { select: { name: true } },
       },
     });
+    const quotedPick = opts.quotedMatchId ? eligibleRegistrationMatch(candidates, opts.quotedMatchId) : null;
+    if (quotedPick) {
+      return {
+        matchId: quotedPick.id,
+        orgId: mem.orgId,
+        clubName: mem.org.name,
+        matchName: quotedPick.activity.name,
+        matchWhen: dayCommaTimeLabel(features.language, quotedPick.date),
+        maxPlayers: quotedPick.maxPlayers,
+        lang: features.language,
+      };
+    }
     const picked = selectRegistrationMatch(candidates);
     if (!picked) continue;
 

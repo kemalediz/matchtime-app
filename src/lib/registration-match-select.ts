@@ -82,3 +82,20 @@ export function selectRegistrationMatch<T extends SelectableMatch>(
 
   return candidates[0] ?? null;
 }
+
+/**
+ * The match a DM's quote names (a swipe-reply to its invite), if a DM may
+ * register for it: active, dated today or later, and not blocked by an
+ * earlier cycle still in flight (the selector's own rules). Unlike the
+ * selector it need not be the soonest: the player said which one.
+ */
+export function eligibleRegistrationMatch<T extends SelectableMatch>(
+  matches: T[],
+  matchId: string,
+  now: Date = new Date(),
+): T | null {
+  const todayStart = utcDayStart(now);
+  if (matches.some((m) => ACTIVE_STATUSES.has(m.status) && m.date < todayStart)) return null;
+  const m = matches.find((x) => x.id === matchId);
+  return m && ACTIVE_STATUSES.has(m.status) && m.date >= todayStart ? m : null;
+}
