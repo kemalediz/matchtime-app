@@ -16,7 +16,7 @@
  *      record or save is logged and swallowed.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { extractForRoute } from "../extractors";
+import { EXTRACTOR_CALLS, extractForRoute } from "../extractors";
 import { EXTRACTOR_MODEL, ROUTER_MODEL, type ModelResponse, type PipelineModel } from "../llm";
 import {
   buildPipelineTrace,
@@ -101,7 +101,7 @@ describe("what is recorded", () => {
     expect(t.router).toMatchObject({ route: "self_att", source: "model", model: ROUTER_MODEL, floor: false });
     expect(t.extractions).toHaveLength(1);
     const x = t.extractions[0];
-    expect(x).toMatchObject({ owner: "attendance", route: "self_att", extractor: "attendance", model: EXTRACTOR_MODEL });
+    expect(x).toMatchObject({ owner: "attendance", route: "self_att", extractor: "attendance", model: EXTRACTOR_CALLS.attendance.model });
     expect(x.facts).toMatchObject({
       kind: "attendance",
       claims: [{ polarity: "bench", subject: "sender", contingent: false, confidence: 0.62 }],

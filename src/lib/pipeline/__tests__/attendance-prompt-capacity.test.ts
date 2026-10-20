@@ -55,21 +55,24 @@ describe("the attendance prompt is truthful about what the model is shown", () =
 });
 
 describe("polarity describes the message, never the squad's capacity", () => {
-  it("says so in the polarity field itself", () => {
-    const s = fieldSection("polarity");
-    expect(s).toMatch(/NEVER the squad's capacity/);
-    expect(s).toMatch(/full/i);
+  /** The context section: from WHAT YOU ARE SHOWN to THE CLAIMS. */
+  const shown = () => P.slice(P.indexOf("WHAT YOU ARE SHOWN"), P.indexOf("THE CLAIMS"));
+
+  it("says so once, where the prompt says what the model is shown (rewrite of 2026-10-20)", () => {
+    // It used to be said three times (context, polarity, the bench
+    // examples). One statement, beside the squad it is about.
+    expect(shown()).toMatch(/The squad shown is never a reason for any field/);
+    expect(P.match(/never a reason/g)).toHaveLength(1);
   });
 
-  it("rules that a plain in is in, even at 14/14 and even for someone already on the list", () => {
-    const s = fieldSection("polarity");
-    expect(s).toMatch(/plain "in" is "in"/);
-    expect(s).toMatch(/14\/14/);
-    expect(s).toMatch(/already on (it|the list)/i);
+  it("rules that a plain in is in, even when the list looks full and for someone already on it", () => {
+    expect(shown()).toMatch(/plain "in" is "in"/);
+    expect(shown()).toMatch(/full/i);
+    expect(shown()).toMatch(/already on (it|the list)/i);
   });
 
-  it("leaves bench-or-confirmed to code", () => {
-    expect(fieldSection("polarity")).toMatch(/Code decides/);
+  it("leaves placing every player to code", () => {
+    expect(shown()).toMatch(/Code holds the real squad and places every player/);
   });
 
   it("allows bench only when the message names it, in both languages", () => {
@@ -89,8 +92,24 @@ describe("polarity describes the message, never the squad's capacity", () => {
   it("works the Sutton FC case as an example, with its Turkish twin", () => {
     // The worked example: the chat shows 14/14 with the sender on the
     // list, the sender types "in", and the answer is polarity in.
-    expect(P).toMatch(/14\/14[^\n]*"in"[^\n]*polarity in/);
-    expect(P).toMatch(/"varım"[^\n]*14\/14|14\/14[^\n]*"varım"/);
+    expect(P).toMatch(/14\/14[^\n]*"in"[^\n]*"varım"[^\n]*polarity in/);
+  });
+});
+
+describe("an injury is not an out (Sutton FC, 2026-10-20)", () => {
+  it("defines out as saying they will not or cannot play, and says an injury alone is not", () => {
+    const s = fieldSection("polarity");
+    expect(s).toMatch(/"out"[^\n]*will not or cannot play/);
+    expect(s).toMatch(/injury[^\n]*not "out"/i);
+    expect(s).toMatch(/taking it easy/);
+  });
+
+  it("teaches it with grouped English and Turkish examples, both ways round", () => {
+    const g = P.slice(P.indexOf("Fitness and injuries"), P.indexOf("Talk about players"));
+    expect(g).toContain("I've got a bad hamstring so taking it easy");
+    expect(g).toMatch(/dizim ağrıyor[^\n]*no claim/);
+    expect(g).toMatch(/bit sore from Sunday but I'll be there" \| "dizim ağrıyor ama gelirim" -> the sender in/);
+    expect(g).toMatch(/can't make it tonight" \| "sakatım, gelemiyorum" -> the sender out/);
   });
 });
 
@@ -105,7 +124,7 @@ describe("the rewrite keeps every behaviour the prompt already handled", () => {
     ["personNamed false for a relationship or quantity", /"my brother", "2 of my guys", "someone", "a mate", "another keeper"/],
     ["standing future commitment", /count me in whenever you are short/],
     ["counterfactual is hypothetical", /if I WAS in the team/],
-    ["a condition on a real commitment is future, not hypothetical", /NOT hypothetical/],
+    ["a condition on a real commitment is future, not hypothetical", /"future"[^\n]*one with a condition/],
     ["reported speech", /Najib said he's in/],
     ["affirmation to MatchTime's post", /"Confirmed"/],
     ["recruit side request", /"recruit"/],
@@ -113,7 +132,7 @@ describe("the rewrite keeps every behaviour the prompt already handled", () => {
     ["several claims in one message", /my brother can play too/],
     ["asking for cover is not a condition", /anyone able to replace me/],
     ["offer to give up a place is contingent", /I can drop out/],
-    ["offer vs decision test", /IS leaving[^\n]*COULD/],
+    ["offer vs decision test", /IS doing it[^\n]*COULD/],
     ["guest +1 is not the sender", /"\+1"/],
     ["replacement chatter", /Hi guys, Mojib is replacing Najib on the list/],
     ["two separate statements are not a replacement", /Ali is coming, Mehmet can't make it/],
