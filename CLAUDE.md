@@ -15,7 +15,7 @@ Use subagents (the Agent/Task tool) for **long-running or substantial work** —
 Kemal, 2026-10-18: *"any LLM change should trigger end to end real life tests (paid)"* and *"Any change you do, show me the old prompt and the new prompt side by side so i can approve"*.
 
 - A change to a prompt or to LLM behaviour ALWAYS runs real paid tests on the dev key, without asking first: the failing case(s) once, ONE full pass of every affected live suite (existing behaviours too), and the real end-to-end path (route + live model, no stub). Report calls and cost.
-- The prompt change itself is shown to Kemal as OLD vs NEW side by side, with size before/after and what changed in meaning, and ships only after his approval.
+- The prompt change itself is shown to Kemal as OLD vs NEW side by side, with size before/after and what changed in meaning. **Since 2026-10-20 a rewrite we recommend ships after the main session's review without waiting for his approval** (Kemal: *"you don't need approval if you are recommending something"*), provided its paid tests show no regression against what is live; the page is still published so he can look afterwards. Ask him first only for a genuine product decision or a trade-off the tests expose.
 - Prompts stay simple: one plain task, each output defined once, a few grouped EN/TR examples, and the CONTEXT (the facts the code already has) doing the work instead of more rules.
 - Non-LLM changes (schema, UI, copy, crons, refactors) still never trigger live runs.
 
