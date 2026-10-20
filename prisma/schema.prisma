@@ -2337,6 +2337,29 @@ model UserMerge {
   @@index([oldUserId])
 }
 
+/// Every change to a member's role at a club (2026-10-20, FNF). Hamzah
+/// created FNF through self-join as OWNER and was later found as ADMIN
+/// with nothing recording who changed it. One row per change that
+/// actually happened; a refused or no-op request writes nothing.
+/// Written only by src/lib/role-change.ts. Plain ids, no foreign keys,
+/// like UserMerge: the record outlives a merged-away user.
+model RoleChange {
+  id          String     @id @default(cuid())
+  orgId       String
+  /// Whose role changed.
+  userId      String
+  /// Who changed it, when a person did. Null for an automated path.
+  actorUserId String?
+  fromRole    MemberRole
+  toRole      MemberRole
+  /// Where: "admin-players-page", "onboarding-owner", "onboarding-admin",
+  /// "merge", "ownership-transfer" (role-change-rules.ts RoleChangeSource).
+  source      String
+  createdAt   DateTime   @default(now())
+
+  @@index([orgId, userId])
+}
+
 /**
  * Phase 4 hybrid LLM team-balancer audit trail.
  * Before the deterministic balancer runs, an LLM reads the last ~7 days

@@ -2369,6 +2369,19 @@ export const en = {
   admin_players_not_rated_yet: "Not rated yet",
   admin_players_rated_games: (p: { count: number }): string =>
     `${p.count} rated ${p.count === 1 ? "game" : "games"}`,
+  /** The owner's row on /admin/players: a label, never a picker. Changing
+   *  who owns the club is not a role edit (2026-10-20, FNF). */
+  admin_players_role_owner: "Owner",
+  admin_players_role_updated: "Role updated",
+  admin_players_role_owner_locked: "The club owner's role can't be changed here.",
+  admin_players_role_refused: "That role change didn't go through. Reload the page and try again.",
+  /** Only the owner sees this, on another member's row. One owner per club:
+   *  the owner becomes an admin. */
+  admin_players_make_owner: "Make owner",
+  admin_players_make_owner_confirm: (p: { name: string }): string =>
+    `Make ${p.name} the club owner? You will become an admin, and only ${p.name} will be able to change the owner after this.`,
+  admin_players_make_owner_done: (p: { name: string }): string => `${p.name} is now the club owner.`,
+  admin_players_make_owner_refused: "Only the club owner can choose a new owner.",
   /** Cap 6 (plan section 7): new groups linked across the whole site. The
    *  same line on the card and, once, in WhatsApp. */
   sj_site_cap_groups: "We're taking on a few new groups each day. Please try again tomorrow.",

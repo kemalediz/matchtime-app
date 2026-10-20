@@ -1870,6 +1870,15 @@ export const tr: Strings = {
     "Bu kulübün oyuncularının verdiği puanların ortalaması, oyuncunun kendi sayfasında gördüğü sayının aynısı. Takım dengeleyici, daha fazla puan gelene kadar başlangıç puanını da hesaba katar.",
   admin_players_not_rated_yet: "Henüz puan yok",
   admin_players_rated_games: (p: { count: number }): string => `${p.count} puanlanmış maç`,
+  admin_players_role_owner: "Sahibi",
+  admin_players_role_updated: "Rol güncellendi",
+  admin_players_role_owner_locked: "Kulüp sahibinin rolü buradan değiştirilemez.",
+  admin_players_role_refused: "Rol değişikliği yapılamadı. Sayfayı yenileyip tekrar deneyin.",
+  admin_players_make_owner: "Sahip yap",
+  admin_players_make_owner_confirm: (p: { name: string }): string =>
+    `${p.name} kulübün sahibi olsun mu? Siz yönetici olacaksınız ve bundan sonra sahibi yalnızca ${p.name} değiştirebilecek.`,
+  admin_players_make_owner_done: (p: { name: string }): string => `${p.name} artık kulübün sahibi.`,
+  admin_players_make_owner_refused: "Yeni sahibi yalnızca kulüp sahibi seçebilir.",
 
   // ── Self-join slice 5: the connect DM replies ──
   sj_site_cap_groups: "Her gün birkaç yeni grup alıyoruz. Lütfen yarın tekrar deneyin.",

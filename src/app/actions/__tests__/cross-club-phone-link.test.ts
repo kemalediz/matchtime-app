@@ -145,7 +145,7 @@ describe("authorisation", () => {
     const r = await linkPlayerByPhone("habibA", A, PHONE);
     expect(r).toEqual({ ok: true, keptUserId: "habibB" });
     expect(mergePlayersCore).toHaveBeenCalledTimes(1);
-    expect(mergePlayersCore).toHaveBeenCalledWith(expect.anything(), "habibB", "habibA", { saveAliasInOrgIds: [A], keepIdentity: true });
+    expect(mergePlayersCore).toHaveBeenCalledWith(expect.anything(), "habibB", "habibA", { saveAliasInOrgIds: [A], keepIdentity: true, actorUserId: "adminA" });
     expect(userMergeUpdateMany).toHaveBeenCalledWith({
       where: { oldUserId: "habibA", survivorUserId: "habibB", orgId: A },
       data: { actorUserId: "adminA", reason: "cross-club-phone-link" },
