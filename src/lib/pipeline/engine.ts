@@ -188,6 +188,39 @@ export function isFloorExempt(
   return roster.some((m) => m.userId === senderUserId);
 }
 
+/**
+ * AN UNSURE OUT NEVER TAKES A PLAYER OFF A PUBLISHED TEAM SHEET
+ * (Sutton FC, 2026-10-20).
+ *
+ * Kieran, confirmed and on Yellow with the teams out, replied untagged "I've
+ * got a bad hamstring so taking it easy". The extractor read a sender OUT at
+ * 0.75, over the floor; he was dropped, the bench was tagged and a recruit
+ * DM queued. The prompt now says an injury alone is not an out. This is the
+ * net under it, read from the model's own `confidence` and the club's state,
+ * never from the words: once the teams are out, dropping a player costs the
+ * line-up, the bench call and a DM, so the sender's own UNTAGGED OUT needs a
+ * surer reading. Measured 2026-10-20 (dev key, both prompts, Sonnet 5 and
+ * Haiku 5.5, `scripts/live-check-attendance-extractor.ts`): every untagged
+ * out that said so ("can't make it", "gelemiyorum", "anyone replace me?")
+ * came back at 0.9 or more, the incident at 0.75 three times of three. The
+ * bar sits between the two, with room on each side.
+ *
+ * A tagged OUT, an OUT before the teams are out, an OUT about someone else
+ * and the leaving half of a stated replacement keep `CONFIDENCE_FLOOR`.
+ */
+export const TEAM_SHEET_OUT_CONFIDENCE = 0.85;
+
+function holdsAsUnsureTeamSheetOut(
+  c: Claim,
+  msg: EngineMessage,
+  state: SquadState,
+  replacementOut: Claim | null,
+): boolean {
+  if (c.subject !== "sender" || c.polarity !== "out" || msg.tagged) return false;
+  if (c === replacementOut || c.confidence >= TEAM_SHEET_OUT_CONFIDENCE) return false;
+  return !!msg.senderUserId && state.teams.some((t) => t.userId === msg.senderUserId);
+}
+
 /** Scores are clamped, never trusted (§9 "value clamps" — survives). */
 const MAX_SCORE = 99;
 
@@ -1224,6 +1257,13 @@ export function decide(input: EngineInput): EngineResult {
         }
         if (c.tense === "past" || c.tense === "hypothetical") {
           out.reasons.push(`claim is ${c.tense}, never a registration`);
+          continue;
+        }
+        if (holdsAsUnsureTeamSheetOut(c, msg, state, replacement?.outClaim ?? null)) {
+          out.reasons.push(
+            `untagged OUT from a player on the published team sheet below ${TEAM_SHEET_OUT_CONFIDENCE} ` +
+              `(${c.confidence}): holding, no write`,
+          );
           continue;
         }
 
