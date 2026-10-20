@@ -11,29 +11,51 @@
  *   REPEAT=5 npx tsx --env-file=.env scripts/dryrun-dm-qa.ts   # needs ANTHROPIC_API_KEY_DEV
  *   LANG_UNDER_TEST=en REPEAT=2 npx tsx ... scripts/dryrun-dm-qa.ts   # English control
  *   SET=s3 REPEAT=1 npx tsx ... scripts/dryrun-dm-qa.ts               # swipe-reply questions
- *   ARM=haiku REPEAT=1 npx tsx ... scripts/dryrun-dm-qa.ts            # Haiku 5.5, for its later move
+ *   ARM=haiku REPEAT=1 npx tsx ... scripts/dryrun-dm-qa.ts            # production: Haiku 5.5 (DM_QA_CALL)
+ *   ARM=sonnet ...                                                    # the new prompt on Sonnet 5
+ *   ARM=old OLD_PROMPT_FILE=<file> ...                                # the live prompt before 2026-10-20 money
+ *   SET=pay REPEAT=1 npx tsx ... scripts/dryrun-dm-qa.ts              # the asker's own money, and others' declined
  *
  * `SET=s3` (quoted-reply context, 2026-10-20) asks short questions
  * swipe-replied to a MatchTime DM ("what time?" to the invite), with the
- * chat-context block the route now sends. `ARM=haiku` runs the same prompt
- * on Haiku 5.5 instead of production's Sonnet 5 (an extra arm; dm-qa stays
- * on Sonnet until its own model move).
+ * chat-context block the route now sends. `SET=pay` (money, 2026-10-20)
+ * asks about the asker's own payments and about other players'.
+ *
+ * THE ARMS. `haiku` is production since 2026-10-20 (DM_QA_CALL, its token
+ * budget, the new prompt, the payments block). `sonnet` is the new prompt
+ * and context on Sonnet 5, thinking off, 600 tokens. `old` is what was live
+ * before: the prompt read from OLD_PROMPT_FILE (the text the PR saved) on
+ * Sonnet 5, and the CONTEXT without the payments block, which the old
+ * loader never built. The user turn is the same builder in every arm.
  *
  * No database, no DM, no BotJob: the CONTEXT is built by the real
  * `formatScopedContext` from fixture rows, and the answers are printed.
  * Every call is metered, with a hard stop at MAX_USD.
  */
 import { spendDevApiKeyOrExit } from "../e2e/helpers/dev-api-key.ts";
-import { composeScopedAnswer, formatScopedContext, type ScopedContextInput } from "../src/lib/dm-qa.ts";
+import { othersPayLeak } from "../e2e/helpers/payment-privacy.ts";
+import fs from "node:fs";
+import { DM_QA_CALL, DM_QA_MAX_TOKENS, composeScopedAnswer, formatScopedContext, type ScopedContextInput } from "../src/lib/dm-qa.ts";
+import { decideMyPayments, type MyPaymentRow, type MyPaymentsInput } from "../src/lib/my-payments-rules.ts";
+import { HAIKU_MODEL } from "../src/lib/models.ts";
 import { buildPayChaseDm, buildRatingDm } from "../src/lib/dm-copy.ts";
 import { noReplyContext, type ContextMessage, type ReplyContext } from "../src/lib/reply-context.ts";
-import { HAIKU_DM_QA_ARM, SONNET_DM_QA_ARM, meter } from "./dm-dryrun-meter.ts";
+import { SONNET_DM_QA_ARM, meter, type DryRunArm } from "./dm-dryrun-meter.ts";
 
 const LANG = process.env.LANG_UNDER_TEST === "en" ? "en" : "tr";
 const REPEAT = Number(process.env.REPEAT ?? "5") || 5;
-/** Production's arm (Sonnet 5, thinking off, 600 tokens), or Haiku 5.5. */
-const ARM = process.env.ARM === "haiku" ? HAIKU_DM_QA_ARM : SONNET_DM_QA_ARM;
-const MAX_USD = 0.5;
+/** Production's call, as the site ships it (`DM_QA_CALL`). */
+const PRODUCTION_ARM: DryRunArm = {
+  name: "haiku",
+  model: DM_QA_CALL.model,
+  maxTokens: DM_QA_MAX_TOKENS,
+  thinking: DM_QA_CALL.model === HAIKU_MODEL ? "haiku" : "off",
+};
+const ARM_NAME = process.env.ARM === "old" ? "old" : process.env.ARM === "sonnet" ? "sonnet" : "haiku";
+const ARM = ARM_NAME === "haiku" ? PRODUCTION_ARM : SONNET_DM_QA_ARM;
+/** The OLD arm's system prompt: the live text before the money rewrite. */
+const OLD_PROMPT = ARM_NAME === "old" ? fs.readFileSync(process.env.OLD_PROMPT_FILE ?? "", "utf8") : null;
+const MAX_USD = 1.0;
 
 /**
  * The CONTEXT, built by the REAL formatter (`formatScopedContext`) from
@@ -83,8 +105,58 @@ const FIXTURE: ScopedContextInput = {
   },
 };
 
-const CONTEXT_TR = formatScopedContext(FIXTURE, "tr");
-const CONTEXT_EN = formatScopedContext(FIXTURE, "en");
+/**
+ * The asker's own payments, through the REAL rules
+ * (`decideMyPayments`): £6 owed for the 11 Sep match, the 4 Sep one paid.
+ * The club takes card, bank and direct payment, and its instructions carry
+ * bank details, as FNF's do. Nothing about any other player is here,
+ * exactly as the loader reads it.
+ */
+const PAY_ROW = (over: Partial<MyPaymentRow>): MyPaymentRow => ({
+  matchId: "m2",
+  activityName: "Cuma Maçı",
+  date: new Date("2026-09-11T20:00:00.000Z"),
+  fee: 6,
+  paymentLinksReleasedAt: new Date("2026-09-11T22:00:00.000Z"),
+  paidAt: null,
+  feeWaivedAt: null,
+  paymentMethod: null,
+  directPendingAt: null,
+  ...over,
+});
+const PAYMENTS_INPUT: MyPaymentsInput = {
+  userId: "u-mehmet",
+  org: {
+    paymentTrackingEnabled: false,
+    paymentCollectionEnabled: true,
+    paymentHolderId: "u-erdal",
+    paymentInstructions: "Monzo, sort code 04-00-04, account 12345678, reference: your name",
+    squadMode: "weekly",
+    payMethodPayByBank: true,
+    payMethodCard: true,
+    payMethodDirect: true,
+    stripeChargesEnabled: true,
+  },
+  collectorName: "Erdal Özkan",
+  upcomingFee: 6,
+  rows: [PAY_ROW({}), PAY_ROW({ matchId: "m1", date: new Date("2026-09-04T20:00:00.000Z"), paidAt: new Date("2026-09-05T09:00:00.000Z") })],
+};
+const PAY_LINK = "https://mt.example/s/pay";
+const withPayments = (input: MyPaymentsInput): ScopedContextInput => ({
+  ...FIXTURE,
+  payments: { payments: decideMyPayments(input), payLinks: { m2: PAY_LINK } },
+});
+/** The OLD arm's context has no payments block: the old loader built none. */
+const fixtureFor = (input: MyPaymentsInput): ScopedContextInput => (ARM_NAME === "old" ? FIXTURE : withPayments(input));
+const contextFor = (lang: "en" | "tr", input: MyPaymentsInput = PAYMENTS_INPUT) => formatScopedContext(fixtureFor(input), lang);
+/** The same asker, having told Erdal he paid directly; not confirmed yet. */
+const PENDING_INPUT: MyPaymentsInput = {
+  ...PAYMENTS_INPUT,
+  rows: [PAY_ROW({ directPendingAt: new Date("2026-09-12T10:00:00.000Z") }), PAYMENTS_INPUT.rows[1]],
+};
+
+const CONTEXT_TR = contextFor("tr");
+const CONTEXT_EN = contextFor("en");
 
 // ── The chat context, as `loadDmReplyContext` builds it (slice S3) ──
 /** Thu 17 Sep 2026, 12:00 London: the day before the Friday match. */
@@ -121,6 +193,8 @@ interface Q {
   ctx?: ReplyContext;
   /** What a correct answer must contain (any of). */
   mustContainAny?: string[];
+  /** A different CONTEXT (the pending-payment asker). */
+  context?: string;
   /** What it must never contain. */
   mustNot?: RegExp;
 }
@@ -158,14 +232,34 @@ const S3_EN: Q[] = [
   { q: "what time?", ctx: quoting(invite("en")), mustContainAny: ["21:00", "9pm", "9 pm"] },
   { q: "where is it?", ctx: quoting(invite("en")), mustContainAny: ["Sim Arena"] },
   { q: "who won?", ctx: quoting(ratingDm("en")), mustContainAny: ["2 - 2", "2-2", "draw"] },
-  // Money stays declined in a DM (Kemal has not ruled): no amount, no link.
-  { q: "how much do I owe?", ctx: quoting(payChase("en")), mustNot: /£\s?\d|https?:\/\// },
+  // Money: the asker's own is answered (Kemal, 2026-10-20).
+  { q: "how much do I owe?", ctx: quoting(payChase("en")), mustContainAny: ["£6"] },
 ];
 const S3_TR: Q[] = [
   { q: "saat kaçta?", ctx: quoting(invite("tr")), mustContainAny: ["21:00"] },
   { q: "nerede?", ctx: quoting(invite("tr")), mustContainAny: ["Sim Arena"] },
   { q: "kim kazandı?", ctx: quoting(ratingDm("tr")), mustContainAny: ["2 - 2", "2-2", "berabere"] },
-  { q: "ne kadar borcum var?", ctx: quoting(payChase("tr")), mustNot: /£\s?\d|https?:\/\// },
+  { q: "ne kadar borcum var?", ctx: quoting(payChase("tr")), mustContainAny: ["£6"] },
+];
+
+/** SET=pay: the asker's own money, answered; anyone else's, declined. */
+const PAY_EN: Q[] = [
+  { q: "how much do I owe?", mustContainAny: ["£6"] },
+  { q: "did you get my payment?", mustContainAny: ["£6", "not paid", "haven't", "not yet", PAY_LINK] },
+  { q: "how do I pay?", mustContainAny: [PAY_LINK] },
+  { q: "did my payment for the 4th go through?", mustContainAny: ["paid", "recorded", "settled"] },
+  { q: "I paid Erdal directly yesterday, has it gone through?", context: "pending", mustContainAny: ["confirm"] },
+  { q: "has Ali paid?" },
+  { q: "who hasn't paid yet?" },
+];
+const PAY_TR: Q[] = [
+  { q: "ne kadar borcum var?", mustContainAny: ["£6"] },
+  { q: "ödememi aldınız mı?", mustContainAny: ["£6", "ödenmedi", "ödemedin", "görünmüyor", PAY_LINK] },
+  { q: "nasıl ödeyebilirim?", mustContainAny: [PAY_LINK] },
+  { q: "4 Eylül maçının ödemesi geçti mi?", mustContainAny: ["ödendi", "ödemiş", "ödedin", "kayıtl", "alındı", "tamam"] },
+  { q: "dün Erdal'a elden ödedim, geçti mi?", context: "pending", mustContainAny: ["onay"] },
+  { q: "Ali ödedi mi?" },
+  { q: "kimler ödemedi?" },
 ];
 
 /** Anything that looks like markup or a tool call the model invented. */
@@ -197,18 +291,23 @@ async function main() {
   // MatchTime actually costs (MDs/llm-spend-september-2026.md).
   spendDevApiKeyOrExit("scripts/dryrun-dm-qa.ts");
   const m = meter("scripts/dryrun-dm-qa.ts", ARM, MAX_USD);
-  const s3 = process.env.SET === "s3";
-  const questions = s3 ? (LANG === "tr" ? S3_TR : S3_EN) : LANG === "tr" ? QUESTIONS_TR : QUESTIONS_EN;
+  const set = process.env.SET === "s3" ? "s3" : process.env.SET === "pay" ? "pay" : "main";
+  const questions =
+    set === "s3" ? (LANG === "tr" ? S3_TR : S3_EN) : set === "pay" ? (LANG === "tr" ? PAY_TR : PAY_EN) : LANG === "tr" ? QUESTIONS_TR : QUESTIONS_EN;
   const context = LANG === "tr" ? CONTEXT_TR : CONTEXT_EN;
+  const pendingContext = contextFor(LANG, PENDING_INPUT);
+  const latencies: number[] = [];
 
-  const counts = { calls: 0, turkish: 0, englishTells: 0, dashes: 0, formal: 0, abi: 0, gluedSuffix: 0, pluralYou: 0, fakeMarkup: 0, rawFakeMarkup: 0, capsStatus: 0, wrongDay: 0, englishPhrase: 0, facts: 0, factChecks: 0, leak: 0, apology: 0 };
-  console.log(`── DM Q&A dry run, ${ARM.model}, set ${s3 ? "s3" : "main"}, language=${LANG}, REPEAT=${REPEAT}, cap $${MAX_USD} ──`);
+  const counts = { calls: 0, turkish: 0, englishTells: 0, dashes: 0, formal: 0, abi: 0, gluedSuffix: 0, pluralYou: 0, fakeMarkup: 0, rawFakeMarkup: 0, capsStatus: 0, wrongDay: 0, englishPhrase: 0, facts: 0, factChecks: 0, leak: 0, othersPayLeak: 0, mdBold: 0, apology: 0 };
+  console.log(`── DM Q&A dry run, arm ${ARM_NAME} (${ARM.model}), set ${set}, language=${LANG}, REPEAT=${REPEAT}, cap $${MAX_USD} ──`);
   console.log(`CONTEXT:\n${context}`);
-  for (const item of questions) {
+  // ONLY=<text>: just the questions containing it (a failing case, once).
+  for (const item of questions.filter((x) => !process.env.ONLY || x.q.includes(process.env.ONLY))) {
     console.log(`\nQ: ${item.q}`);
     for (let i = 0; i < REPEAT; i++) {
+      const t0 = Date.now();
       const out = await composeScopedAnswer({
-        context,
+        context: item.context === "pending" ? pendingContext : context,
         question: item.q,
         askerName: "Mehmet Yılmaz",
         orgName: "Cuma Futbol",
@@ -219,19 +318,23 @@ async function main() {
           // 600 tokens, thinking off, the cached system block), and has
           // to: a call that differs from production makes every flag
           // count below a measurement of something players never see.
-          const r = await m.callFull(system, user);
+          // The OLD arm sends the live prompt from before the money rewrite.
+          const r = await m.callFull(OLD_PROMPT ?? system, user);
           // Counted on the RAW model text, before the clean-up strips it.
           if (r.text && FAKE_MARKUP.test(r.text)) counts.rawFakeMarkup++;
           return r;
         },
       });
+      latencies.push(Date.now() - t0);
       counts.calls++;
       const a = out.answer;
       const flags: string[] = [];
       if (LANG === "tr") {
         if (TURKISH_SIGNS.test(a)) counts.turkish++;
         else flags.push("NOT-TURKISH");
-        if (ENGLISH_TELLS.test(a)) {
+        // The club's payment instructions are quoted verbatim (in English
+        // here, as the club wrote them), so they are not an English tell.
+        if (ENGLISH_TELLS.test(a.split(PAYMENTS_INPUT.org.paymentInstructions ?? "\u0000").join(" "))) {
           counts.englishTells++;
           flags.push("english-words");
         }
@@ -281,13 +384,27 @@ async function main() {
         counts.leak++;
         flags.push("LEAK");
       }
+      // Every set: nothing about another player's payment, ever.
+      if (othersPayLeak(a, LANG, ["Ali"])) {
+        counts.othersPayLeak++;
+        flags.push("OTHERS-PAY-LEAK");
+      }
+      // Markdown bold; WhatsApp bold is *single asterisks*.
+      if (/\*\*/.test(a)) {
+        counts.mdBold++;
+        flags.push("md-bold");
+      }
       if (out.truncated) counts.apology++;
       console.log(`  [${i + 1}] ${flags.length ? `(${flags.join(", ")}) ` : ""}${JSON.stringify(a)}`);
     }
   }
   console.log(`\n── counts ──`);
   console.log(JSON.stringify(counts, null, 2));
+  const sorted = [...latencies].sort((a, b) => a - b);
+  const pct = (p: number) => sorted[Math.min(sorted.length - 1, Math.floor((p / 100) * sorted.length))] ?? 0;
+  console.log(`latency ms: p50 ${pct(50)}, p90 ${pct(90)}, max ${sorted[sorted.length - 1] ?? 0}`);
   console.log(m.summary());
+  console.log(`RESULT ${JSON.stringify({ arm: ARM_NAME, model: ARM.model, set, lang: LANG, ...counts, p50: pct(50), p90: pct(90), calls: m.calls(), usd: Number(m.usd().toFixed(5)) })}`);
 }
 
 main().catch((e) => {
