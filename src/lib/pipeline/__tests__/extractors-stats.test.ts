@@ -161,6 +161,30 @@ describe("the question prompt's structure", () => {
     }
   });
 
+  // The 2026-10-20 rewrite: each topic's close calls live in that topic's
+  // own definition, so there is no second list ruling them again.
+  it("defines each topic once: no CLOSE CALLS section restating them", () => {
+    expect(p).not.toMatch(/CLOSE CALLS/);
+    const topics = p.slice(p.search(/^topic\b/m), p.search(/^personRef\b/m));
+    for (const t of ["squad", "bench", "count", "person_status", "how_it_works", "club", "payments"]) {
+      expect([...topics.matchAll(new RegExp(`^  ${t}\\b`, "gm"))], t).toHaveLength(1);
+    }
+  });
+
+  it("carries the 2026-10-20 rulings in the topic list", () => {
+    const line = (t: string) => p.match(new RegExp(`^  ${t}\\b[^\\n]*`, "m"))?.[0] ?? "";
+    // "yer" is a place in the squad: "hâlâ yer var mı?" asks for space, not the venue.
+    expect(line("count")).toMatch(/yer/);
+    // "yedek listesi" is the bench's own list.
+    expect(line("bench")).toMatch(/yedek listesi/);
+    // The list is the squad, and it shows the bench too (#342).
+    expect(line("squad")).toMatch(/the list/i);
+    // Asking whether to put a named player on the bench is about that player (corpus S7).
+    expect(line("person_status")).toMatch(/bench/);
+    // A two-part question gets the topic whose answer covers both (#342), said once.
+    expect((p.match(/covers both/g) ?? []).length).toBe(1);
+  });
+
   it("has Turkish beside English for every group of examples", () => {
     const examples = p.slice(p.indexOf("EXAMPLES"));
     const groups = examples.split(/\n(?=[A-Z][^\n]*:\n)/).slice(1);

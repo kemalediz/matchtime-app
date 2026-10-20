@@ -149,7 +149,7 @@ export async function linkAcrossClubsCore(
   // row. Alias and tombstone scoped to club A only.
   // keepIdentity: the existing account's global name and image are never
   // filled from club A's row (the #314 rule).
-  await mergePlayersCore(tx, keptUserId, input.dropUserId, { saveAliasInOrgIds: [input.orgId], keepIdentity: true });
+  await mergePlayersCore(tx, keptUserId, input.dropUserId, { saveAliasInOrgIds: [input.orgId], keepIdentity: true, actorUserId: input.actorUserId });
 
   // The audit row: `mergePlayersCore` wrote one tombstone for club A
   // (who-was-merged-into-whom, when). Add who did it and why.

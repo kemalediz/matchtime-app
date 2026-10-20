@@ -42,14 +42,16 @@ describe("one cache marker, one place", () => {
   it("every raw messages.create site builds its system prompt with systemBlock", () => {
     const sites = FILES.filter((f) => f.rel !== LLM && /messages\.create\(/.test(code(f.text)));
     // Nine since 2026-10-20: the chase composer moved onto pipeline/llm.ts.
-    expect(sites.length).toBeGreaterThanOrEqual(9);
+    // Eight later that day: so did the DM Q&A (DM_QA_CALL, on Haiku 5.5).
+    expect(sites.length).toBeGreaterThanOrEqual(8);
     const missing = sites.filter((f) => !/system:\s*systemBlock\(/.test(code(f.text))).map((f) => f.rel);
     expect(missing).toEqual([]);
   });
 
-  it("dm-qa carries the marker now (it had none)", () => {
+  it("dm-qa carries the marker: it goes through pipeline/llm.ts, which always sends it", () => {
     const dmQa = FILES.find((f) => f.rel === path.join("lib", "dm-qa.ts"))!;
-    expect(code(dmQa.text)).toMatch(/system:\s*systemBlock\(system\)/);
+    expect(code(dmQa.text)).not.toMatch(/messages\.create\(/);
+    expect(code(dmQa.text)).toMatch(/anthropicModel\(/);
   });
 
   it("the once-per-club onboarding analysis opts out, like the setup reading", () => {

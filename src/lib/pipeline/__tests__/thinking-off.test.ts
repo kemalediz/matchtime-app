@@ -55,7 +55,7 @@
  * has nowhere to put a deliberation.
  */
 import { describe, expect, it, vi } from "vitest";
-import { anthropicModel, EXTRACTOR_MODEL, ROUTER_MODEL } from "../llm";
+import { anthropicModel, EXTRACTOR_MODEL, HAIKU_CALL, ROUTER_MODEL } from "../llm";
 import { EXTRACTOR_CALLS, extractForRoute, extractorFor, type ExtractorKind } from "../extractors";
 import { routeBatch } from "../router";
 import { HAIKU_EFFORT, SONNET_MODEL } from "../../models";
@@ -118,9 +118,14 @@ describe("every extractor sends its model's thinking posture, never an unstated 
     },
   );
 
-  it("the attendance and question extractors stay on Sonnet 5 (not part of this move)", () => {
+  it("the attendance extractor stays on Sonnet 5 (not part of these moves)", () => {
     expect(EXTRACTOR_CALLS.attendance).toEqual({ model: SONNET_MODEL, thinking: "off" });
-    expect(EXTRACTOR_CALLS.question).toEqual({ model: SONNET_MODEL, thinking: "off" });
+  });
+
+  // 2026-10-20: the question extractor was rewritten whole and moved after
+  // the paid before/after arms (scripts/live-check-question-extractor.ts).
+  it("the question extractor runs on Haiku 5.5", () => {
+    expect(EXTRACTOR_CALLS.question).toEqual(HAIKU_CALL);
   });
 });
 

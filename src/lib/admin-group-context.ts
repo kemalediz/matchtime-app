@@ -18,6 +18,8 @@ export interface PendingWithLabel extends PendingItem {
   /** A free place question: who, joined, and whether it takes it away. */
   names?: string | null;
   undo?: boolean;
+  /** A pasted list: who pasted it (they may say YES to it). */
+  by?: string | null;
   askedAt: Date;
 }
 

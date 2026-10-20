@@ -13,8 +13,7 @@
  */
 
 import { db } from "./db";
-import { signMagicLinkToken, MAGIC_LINK_TTL } from "./magic-link";
-import { buildShortMagicLinkUrl } from "./short-link";
+import { buildPayLinkUrl } from "./pay-link";
 import { PAY_METHOD_SELECT, availablePayMethods, directPayInstructions, gbp, parseFeeReply, type PayMethod } from "./payments";
 import { payCollectorName } from "./direct-payment";
 import { sendAdminNotice } from "./admin-channel";
@@ -92,12 +91,6 @@ export async function releaseMatchPayments(matchId: string): Promise<number> {
     // set. The chase and the fee headcount skip it on the same column.
     if (isFeeWaived(a)) continue;
     if (!a.user.phoneNumber) continue;
-    const token = signMagicLinkToken({
-      userId: a.user.id,
-      purpose: "sign-in",
-      nextPath: `/pay/${matchId}`,
-      ttlSeconds: MAGIC_LINK_TTL.bookmark,
-    });
     await db.botJob.create({
       data: {
         orgId,
@@ -107,7 +100,7 @@ export async function releaseMatchPayments(matchId: string): Promise<number> {
           playerName: a.user.name,
           activityName: match.activity.name,
           fee: match.feePerPlayer,
-          url: await buildShortMagicLinkUrl(token),
+          url: await buildPayLinkUrl(a.user.id, matchId),
           methods,
           collectorName,
           instructions,

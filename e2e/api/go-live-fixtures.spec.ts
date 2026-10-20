@@ -178,8 +178,9 @@ test.describe("a squad pasted when there is no game to put it on", () => {
     expect(await hq(request, LIVE.hq, SQUAD, LIVE.ownerPhone, id)).toMatchObject({ ignored: "duplicate", replyText: null });
   });
 
-  test("a plain player's paste: nothing, as before", async ({ request }) => {
-    expect(await hq(request, LIVE.hq, SQUAD, PLAYER.phone)).toMatchObject({ handled: false, replyText: null });
+  test("a plain player's paste: the same line, as an owner's (any member may paste a list since 2026-10-20); nothing stored", async ({ request, db }) => {
+    expect(await hq(request, LIVE.hq, SQUAD, PLAYER.phone)).toMatchObject({ handled: true, outcome: "paste-no-match" });
+    expect(await db.count(`SELECT COUNT(*) FROM "AdminSquadProposal" WHERE "orgId" = $1`, [LIVE.id])).toBe(0);
   });
 
   test("a Turkish club gets Turkish", async ({ request, db }) => {

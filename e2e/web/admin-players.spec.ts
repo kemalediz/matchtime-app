@@ -10,6 +10,9 @@
  *   - the banner keeps the space after the name ("Hamzahposted", 2026-09-29)
  *   - each row shows the club rating beside the seed: the raw club mean
  *     the player sees, "Not rated yet" when nobody has rated them
+ *   - the owner's role is read-only ("Owner", disabled) for everybody; a
+ *     role change on another row is logged in RoleChange; only the owner
+ *     sees "Make owner", which hands the club on (2026-10-20)
  */
 import { mkdirSync } from "node:fs";
 import { test, expect, signInAs, resetDb, U } from "../fixtures";
@@ -182,6 +185,100 @@ test("adding a number that is already on MatchTime attaches nobody and names nob
   expect(
     await db.count(`SELECT COUNT(*) FROM "Membership" WHERE "userId" = 'e2e-outsider' AND "orgId" = $1`, [ORG_ID]),
   ).toBe(0);
+});
+
+// ── Role guard (2026-10-20, FNF: the club's creator found as ADMIN) ──
+// The owner's row shows "Owner" and no picker; a role change on another
+// row is written and recorded in RoleChange.
+test("the owner's role is read-only, and a role change on another row is logged", async ({ page, db }) => {
+  await db.run(`DELETE FROM "RoleChange" WHERE "orgId" = $1`, [ORG_ID]);
+  await signInAs(page, U.admin, "/admin/players");
+  await page.waitForURL("**/admin/players");
+  await expect(page.locator(`input[value="${NAME.rater}"]`)).toBeVisible({ timeout: 30_000 });
+
+  const rowOf = (name: string) =>
+    page
+      .locator("div")
+      .filter({ has: page.locator(`input[value="${name}"]`) })
+      .filter({ has: page.getByTestId("club-rating") })
+      .last();
+
+  const ownerRow = rowOf(NAME.admin);
+  await expect(ownerRow.getByTestId("role-owner")).toHaveText("Owner");
+  await expect(ownerRow.getByTestId("role-owner")).toBeDisabled();
+  // The owner sees "Make owner" on other rows, never on his own.
+  await expect(ownerRow.getByRole("button", { name: "Make owner" })).toHaveCount(0);
+  await expect(rowOf(NAME.rater).getByRole("button", { name: "Make owner" })).toBeVisible();
+
+  await rowOf(NAME.rater).locator("select:not([disabled])").selectOption("ADMIN");
+  await expect(page.getByText("Role updated")).toBeVisible({ timeout: 15_000 });
+  await expect
+    .poll(async () =>
+      db.count(
+        `SELECT COUNT(*) FROM "RoleChange" WHERE "orgId" = $1 AND "userId" = $2 AND "actorUserId" = $3
+           AND "fromRole" = 'PLAYER' AND "toRole" = 'ADMIN' AND source = 'admin-players-page'`,
+        [ORG_ID, U.rater, U.admin],
+      ),
+    )
+    .toBe(1);
+  expect(
+    await db.count(`SELECT COUNT(*) FROM "Membership" WHERE "orgId" = $1 AND "userId" = $2 AND role = 'OWNER'`, [
+      ORG_ID,
+      U.admin,
+    ]),
+  ).toBe(1);
+  expect(await db.count(`SELECT COUNT(*) FROM "RoleChange" WHERE "userId" = $1`, [U.admin])).toBe(0);
+
+  await db.run(`UPDATE "Membership" SET role = 'PLAYER' WHERE "orgId" = $1 AND "userId" = $2`, [ORG_ID, U.rater]);
+  await db.run(`DELETE FROM "RoleChange" WHERE "orgId" = $1`, [ORG_ID]);
+});
+
+test("a non-owner admin sees the owner read-only and no Make owner; the owner can hand ownership on", async ({
+  page,
+  db,
+}) => {
+  await db.run(`DELETE FROM "RoleChange" WHERE "orgId" = $1`, [ORG_ID]);
+  await db.run(`UPDATE "Membership" SET role = 'ADMIN' WHERE "orgId" = $1 AND "userId" = $2`, [ORG_ID, U.rater]);
+  const rowOf = (name: string) =>
+    page
+      .locator("div")
+      .filter({ has: page.locator(`input[value="${name}"]`) })
+      .filter({ has: page.getByTestId("club-rating") })
+      .last();
+
+  // Riley is an ADMIN, not the owner.
+  await signInAs(page, U.rater, "/admin/players");
+  await page.waitForURL("**/admin/players");
+  await expect(page.locator(`input[value="${NAME.admin}"]`)).toBeVisible({ timeout: 30_000 });
+  await expect(rowOf(NAME.admin).getByTestId("role-owner")).toHaveText("Owner");
+  await expect(rowOf(NAME.admin).getByTestId("role-owner")).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Make owner" })).toHaveCount(0);
+
+  // The owner hands the club to Riley: Riley OWNER, Alex ADMIN, both logged.
+  await page.context().clearCookies();
+  await signInAs(page, U.admin, "/admin/players");
+  await page.waitForURL("**/admin/players");
+  await expect(rowOf(NAME.rater).getByRole("button", { name: "Make owner" })).toBeVisible({ timeout: 30_000 });
+  page.once("dialog", (d) => d.accept());
+  await rowOf(NAME.rater).getByRole("button", { name: "Make owner" }).click();
+  await expect(page.getByText(`${NAME.rater} is now the club owner.`)).toBeVisible({ timeout: 15_000 });
+  await expect
+    .poll(async () => db.count(`SELECT COUNT(*) FROM "RoleChange" WHERE "orgId" = $1 AND source = 'ownership-transfer'`, [ORG_ID]))
+    .toBe(2);
+  expect(
+    await db.count(`SELECT COUNT(*) FROM "Membership" WHERE "orgId" = $1 AND role = 'OWNER' AND "userId" = $2`, [
+      ORG_ID,
+      U.rater,
+    ]),
+  ).toBe(1);
+  expect(await db.count(`SELECT COUNT(*) FROM "Membership" WHERE "orgId" = $1 AND role = 'OWNER'`, [ORG_ID])).toBe(1);
+  // Alex is now an ADMIN: his own row is a picker again, Riley's is read-only.
+  await expect(rowOf(NAME.rater).getByTestId("role-owner")).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Make owner" })).toHaveCount(0);
+
+  await db.run(`UPDATE "Membership" SET role = 'OWNER' WHERE "orgId" = $1 AND "userId" = $2`, [ORG_ID, U.admin]);
+  await db.run(`UPDATE "Membership" SET role = 'PLAYER' WHERE "orgId" = $1 AND "userId" = $2`, [ORG_ID, U.rater]);
+  await db.run(`DELETE FROM "RoleChange" WHERE "orgId" = $1`, [ORG_ID]);
 });
 
 test("merge flow folds a duplicate into the kept player", async ({ page, db }) => {

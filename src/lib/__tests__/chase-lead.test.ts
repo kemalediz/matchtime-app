@@ -6,8 +6,9 @@
  * with drum rows, the bench block, the format-switch line copied
  * verbatim, a tentative line it had to guess) and the scheduler then cut
  * the roster back out when the group had just seen it. Now the roster is
- * `buildSquadRosterBlock`, the same block every other scheduled post
- * carries, the format-switch line is the server's own, and the model is
+ * `buildChaseRosterBlock`, rendered from the rows (one row per place,
+ * a 🥁 for each open one, Kemal 2026-10-20), the format-switch line is
+ * the server's own, and the model is
  * asked only for the lead. A lead that breaks a fact is replaced by the
  * fixed one, so a number in the post can only come from the database.
  */
@@ -19,9 +20,10 @@ import {
   chaseFallbackLead,
   chaseLeadUserTurn,
   chaseSwitchLine,
+  buildChaseRosterBlock,
   type ChaseFacts,
 } from "@/lib/chase-lead";
-import { buildSquadRosterBlock } from "@/lib/scheduler-copy";
+import { composeSquadStatusPost } from "@/lib/group-copy";
 import { t } from "@/lib/i18n/t";
 
 /** Tue 8 Sept 2026, 21:30 London (20:30Z); "now" is Sat 5 Sept 17:00. */
@@ -196,8 +198,81 @@ describe("the format-switch line is the server's, and only when it applies", () 
   });
 });
 
+describe("buildChaseRosterBlock: every place a row, an open one a drum (Kemal 2026-10-20)", () => {
+  const confirmed = [{ name: "Ali Kaya" }, { name: "Dan Moore" }, { name: null }];
+  const bench = [{ name: "Sam Price" }];
+  const MATCH_DAY = new Date("2026-09-08T11:00:00.000Z"); // Tue 12:00 London
+  const DAY_BEFORE = new Date("2026-09-07T16:00:00.000Z"); // Mon 17:00 London
+
+  it("English, three days out: the day header, the names, a drum per open place, the bench", () => {
+    expect(buildChaseRosterBlock({ confirmed, bench, maxPlayers: 6, kickoff: KICKOFF, now: NOW, lang: "en" })).toBe(
+      [
+        "*Playing Tue 8 Sept:*",
+        "1. Ali Kaya",
+        "2. Dan Moore",
+        "3. (unnamed)",
+        "4. 🥁",
+        "5. 🥁",
+        "6. 🥁",
+        "",
+        "*Bench (1):*",
+        "1. Sam Price",
+      ].join("\n"),
+    );
+  });
+
+  it("English: tonight on match day, tomorrow the day before", () => {
+    expect(buildChaseRosterBlock({ confirmed, bench: [], maxPlayers: 4, kickoff: KICKOFF, now: MATCH_DAY, lang: "en" })).toBe(
+      "*Playing tonight:*\n1. Ali Kaya\n2. Dan Moore\n3. (unnamed)\n4. 🥁",
+    );
+    expect(buildChaseRosterBlock({ confirmed, bench: [], maxPlayers: 4, kickoff: KICKOFF, now: DAY_BEFORE, lang: "en" })).toMatch(
+      /^\*Playing tomorrow:\*\n/,
+    );
+  });
+
+  it("Turkish: the Turkish headers and bench, the same drums", () => {
+    expect(buildChaseRosterBlock({ confirmed, bench, maxPlayers: 5, kickoff: KICKOFF, now: MATCH_DAY, lang: "tr" })).toBe(
+      [
+        "*Bu akşam oynayanlar:*",
+        "1. Ali Kaya",
+        "2. Dan Moore",
+        "3. (isimsiz)",
+        "4. 🥁",
+        "5. 🥁",
+        "",
+        "*Yedekler (1):*",
+        "1. Sam Price",
+      ].join("\n"),
+    );
+    expect(buildChaseRosterBlock({ confirmed, bench: [], maxPlayers: 4, kickoff: KICKOFF, now: NOW, lang: "tr" })).toMatch(
+      /^\*8 Eylül Salı oynayanlar:\*\n/,
+    );
+  });
+
+  it("nobody in yet: every row a drum", () => {
+    expect(buildChaseRosterBlock({ confirmed: [], bench: [], maxPlayers: 3, kickoff: KICKOFF, now: MATCH_DAY, lang: "en" })).toBe(
+      "*Playing tonight:*\n1. 🥁\n2. 🥁\n3. 🥁",
+    );
+  });
+
+  it("the rows are the reply path's rows (one renderer, not two)", () => {
+    const names = { confirmed: ["Ali Kaya", "Dan Moore"], bench: ["Sam Price"] };
+    const reply = composeSquadStatusPost({ ...names, maxPlayers: 5, lang: "en" });
+    const chase = buildChaseRosterBlock({
+      confirmed: names.confirmed.map((name) => ({ name })),
+      bench: names.bench.map((name) => ({ name })),
+      maxPlayers: 5,
+      kickoff: KICKOFF,
+      now: MATCH_DAY,
+      lang: "en",
+    });
+    const body = (s: string) => s.slice(s.indexOf("1. Ali Kaya"));
+    expect(body(chase)).toBe(body(reply));
+  });
+});
+
 describe("assembleChasePost", () => {
-  const roster = buildSquadRosterBlock({ confirmed: [{ name: "Ali" }, { name: "Dan" }], bench: [{ name: "Sam" }], maxPlayers: 14, lang: "en" });
+  const roster = buildChaseRosterBlock({ confirmed: [{ name: "Ali" }, { name: "Dan" }], bench: [{ name: "Sam" }], maxPlayers: 14, kickoff: KICKOFF, now: NOW, lang: "en" });
 
   it("lead, then the switch line, then the roster, a blank line apart", () => {
     expect(assembleChasePost({ lead: "L", switchLine: "S", rosterBlock: roster })).toBe(`L\n\nS\n\n${roster}`);

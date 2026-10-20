@@ -158,7 +158,8 @@ test("a scheduled post leaves out the roster the group has just seen, and keeps 
   const post = eveningPost(await grp.duePosts(DAY_BEFORE_1705));
   expect(post, "the 17:00 post still goes out").toBeDefined();
   expect(post!.text).toContain("need *1 more*");
-  expect(post!.text).not.toContain("*Confirmed (");
+  expect(post!.text).not.toContain("*Playing tomorrow:*");
+  expect(post!.text).not.toContain("🥁");
   expect(post!.text).not.toMatch(/^\s*\d+\.\s/m);
 });
 
@@ -177,7 +178,9 @@ test("a different squad is a different roster: it is listed, recorded when hande
     | undefined;
   expect(post).toBeDefined();
   expect(post!.text).toContain("need *2 more*");
-  expect(post!.text).toContain("*Confirmed (4/6):*\n1. Oscar Owner");
+  // Every place a row, the open ones a drum (Kemal 2026-10-20).
+  expect(post!.text).toContain("*Playing tomorrow:*\n1. Oscar Owner");
+  expect(post!.text).toMatch(/\n4\. [^\n🥁]+\n5\. 🥁\n6\. 🥁$/);
   expect(post!.rosterShown, "server-side only").toBeUndefined();
 
   const after = (await markers(grp)).filter((r) => r.kind === "roster-shown").map((r) => r.key);
