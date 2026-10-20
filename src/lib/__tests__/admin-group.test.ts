@@ -80,6 +80,7 @@ describe("everything that is not structured data goes through the shared pipelin
       quoted: { messageId: null, text: "Teams?", fromMatchTime: true, authorName: null, authorPhone: null },
       senderUserId: "u-admin",
       organiser: true,
+      member: true,
       senderName: "Raihan",
       sentAt: new Date(1760443200 * 1000),
       now: NOW,
@@ -255,7 +256,7 @@ describe("anyone in HQ: questions for all, changes for the organisers", () => {
     expect(r).toEqual({ handled: true, orgId: "org-fnf", outcome: "hq-answered", replyText: "👥 Admins: Hamzah and Raihan", react: "✅" });
     expect(hqLog.recordHqMessage).toHaveBeenCalledWith({ orgId: "org-fnf", waMessageId: "wa-1", senderUserId: "u-kemal", text: "Who are are admins?", now: NOW });
     expect(understand.understandAdminMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ senderUserId: "u-kemal", organiser: false, senderName: "Kemal", text: "Who are are admins?" }),
+      expect.objectContaining({ senderUserId: "u-kemal", organiser: false, member: true, senderName: "Kemal", text: "Who are are admins?" }),
     );
     // Claimed, so a Pi retry never answers twice.
     expect(dbMock.sentNotification.create).toHaveBeenCalledWith({ data: { key: "admin-group-msg:wa-1", kind: "admin-notice" } });
@@ -266,7 +267,7 @@ describe("anyone in HQ: questions for all, changes for the organisers", () => {
     understand.understandAdminMessage.mockResolvedValue({ route: "question", outcome: "hq-answered", replyText: "On the bench: Tom." });
     expect(await handleAdminGroupMessage(msg("who's on the bench?"))).toMatchObject({ handled: true, outcome: "hq-answered", react: "✅" });
     expect(hqLog.recordHqMessage).toHaveBeenCalledWith(expect.objectContaining({ senderUserId: null }));
-    expect(understand.understandAdminMessage).toHaveBeenCalledWith(expect.objectContaining({ senderUserId: null, organiser: false, senderName: null }));
+    expect(understand.understandAdminMessage).toHaveBeenCalledWith(expect.objectContaining({ senderUserId: null, organiser: false, member: false, senderName: null }));
   });
 
   it("a known user who is not in this club: recorded as who they are, not an organiser", async () => {
@@ -275,7 +276,7 @@ describe("anyone in HQ: questions for all, changes for the organisers", () => {
     dbMock.user.findUnique.mockResolvedValue({ name: "Ali" });
     await handleAdminGroupMessage(msg("who's playing tonight?"));
     expect(hqLog.recordHqMessage).toHaveBeenCalledWith(expect.objectContaining({ senderUserId: "u-other" }));
-    expect(understand.understandAdminMessage).toHaveBeenCalledWith(expect.objectContaining({ senderUserId: "u-other", organiser: false, senderName: "Ali" }));
+    expect(understand.understandAdminMessage).toHaveBeenCalledWith(expect.objectContaining({ senderUserId: "u-other", organiser: false, member: false, senderName: "Ali" }));
   });
 
   it("two identities, one of them an owner: the owner one acts", async () => {

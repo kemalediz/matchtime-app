@@ -17,7 +17,8 @@
  *
  * The route decides who acts, with the code the rest of MatchTime uses:
  *
- *   self_att, other_att   the attendance engine (`admin-group-squad-change.ts`)
+ *   self_att, other_att   the attendance engine (`admin-group-squad-change.ts`),
+ *                         for any member of the club (2026-10-20)
  *   balancer              the teams extractor, then `team-proposal.ts`
  *   approve               the safe-YES rule (`admin-group-confirm-rules.ts`),
  *                         then `answerTeamsYes` / `answerSquadPasteYes`
@@ -42,7 +43,7 @@
  *                         anyone reports, only an organiser changes it
  *   unsure                addressed to MatchTime (an @tag, or a reply to
  *                         its own message): the attendance engine, as in
- *                         the players' group (an organiser only), then the
+ *                         the players' group (a member of the club), then the
  *                         question answering (2026-10-18), else one line
  *                         saying it did not catch that (2026-10-16).
  *                         Otherwise nothing.
@@ -61,13 +62,18 @@
  * message id, and, for an owner or admin, tried the readers of STRUCTURED
  * data first (a PAID digest answer, a pick from MatchTime's numbered list,
  * a pasted multi-line squad list). It says whether the sender is an
- * organiser (an owner or admin). Anyone else in HQ (2026-10-16, Kemal:
- * "Anyone in that group should be able to ask questions") gets question,
- * help, poster and team_sheet exactly as an organiser does; approve,
- * balancer, self_att, other_att and ask_group change the club and are an
- * organiser's alone: addressed to MatchTime, one line naming the club's
- * owners and admins ("Only Hamzah or Raihan can change that."), otherwise
- * nothing. Logs carry ids and counts only.
+ * organiser (an owner or admin) and whether they are a member of the club.
+ * Anyone else in HQ (2026-10-16, Kemal: "Anyone in that group should be
+ * able to ask questions") gets question, help, poster and team_sheet
+ * exactly as an organiser does. WHO PLAYS is open to every member of the
+ * club there (2026-10-20, Kemal and FNF's Raihan, after a player's "Naim is
+ * out" did nothing): self_att, other_att, an HQ name list and the unsure
+ * attendance try, with an organiser's standing, recorded as the sender.
+ * approve, balancer and ask_group still change the club and are an
+ * organiser's alone (a free place: also the money collector's):
+ * addressed to MatchTime, one line naming the club's owners and admins
+ * ("Only Hamzah or Raihan can change that."), otherwise nothing. Logs carry
+ * ids and counts only.
  */
 import { loadGroupReplyContexts, parseGroupQuote, type QuotedGroupMessage } from "./reply-context";
 import { rosterMemberByPhone } from "./roster-name-by-phone";
@@ -125,8 +131,11 @@ export interface UnderstandInput {
   quoted: QuotedMessage | null;
   /** Who sent it, when MatchTime knows them; null for someone it does not. */
   senderUserId: string | null;
-  /** An owner or admin of the club. Only an organiser changes anything. */
+  /** An owner or admin of the club. Only an organiser changes the club. */
   organiser: boolean;
+  /** A current member of the club, whatever their role. In HQ anyone in
+   *  the club changes who plays (2026-10-20); an organiser is one too. */
+  member?: boolean;
   senderName: string | null;
   sentAt: Date | null;
   now: Date;
@@ -222,6 +231,11 @@ async function quotedHqMessage(
   return out.get(messageId) ?? null;
 }
 
+/** Who may change who plays from HQ: anyone in the club (2026-10-20). */
+function squadActorOf(input: Pick<UnderstandInput, "organiser" | "member" | "senderUserId">): string | null {
+  return input.organiser || input.member === true ? input.senderUserId : null;
+}
+
 export async function understandAdminMessage(input: UnderstandInput): Promise<Understood | null> {
   const { org, messageId, now } = input;
   const lang = org.language;
@@ -292,7 +306,7 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
     // FNF HQ 2026-10-17) is structured data, like a pasted list: a squad
     // change, without asking the router (which once called it `none`). HQ
     // only (`admin-group-name-list.ts`); the players' group is unchanged.
-    const nameList = input.organiser ? readHqNameList(body) : null;
+    const nameList = squadActorOf(input) ? readHqNameList(body) : null;
     const gate = nameList
       ? { routes: [{ messageId, route: "other_att" as Route, source: "name-list" }], degradations: [] as Array<{ detail: string }> }
       : await gateBatch(
@@ -334,6 +348,10 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
     // message): one line naming who can. Otherwise it is their own chat,
     // and silent, as an organiser's is. `actor` is set only for an organiser.
     const actor = input.organiser ? input.senderUserId : null;
+    // Who plays is open to everyone in the club here (2026-10-20, Kemal and
+    // FNF's Raihan, after a player's "Naim is out" did nothing): putting
+    // someone in, taking them out, the bench. Recorded as the sender's own.
+    const squadActor = squadActorOf(input);
     // The money collector runs the payments: a free place is theirs to ask
     // for and to say YES to, even when they are not an admin (review of
     // #301, item 8). Nothing else is.
@@ -497,10 +515,10 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
       }
       case "self_att":
       case "other_att": {
-        if (!actor) return notYours();
+        if (!squadActor) return notYours();
         if (!weekly) return said("hq-not-here", s.hq_not_here);
         const change = await handleAdminSquadChange({
-          ...base(actor),
+          ...base(squadActor),
           text: input.text,
           namedBody: body,
           mentionNames: input.mentionNames,
@@ -570,10 +588,10 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
         // Addressed, and the router could not tell what it does (or its
         // call failed): the attendance engine, as in the players' group,
         // then one line rather than silence (FNF, 2026-10-16). The engine
-        // changes the squad, so it is tried for an organiser only.
-        if (weekly && actor) {
+        // changes the squad, so it is tried for a member of the club only.
+        if (weekly && squadActor) {
           const change = await handleAdminSquadChange({
-            ...base(actor),
+            ...base(squadActor),
             text: input.text,
             namedBody: body,
             mentionNames: input.mentionNames,

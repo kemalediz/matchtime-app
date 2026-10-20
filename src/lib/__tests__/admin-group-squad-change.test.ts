@@ -506,7 +506,7 @@ describe("handleAdminSquadChange", () => {
   describe("the next game's list is not set yet (rolling squad still to carry over)", () => {
     const DUE = new Date("2026-10-17T07:00:00Z"); // 08:00 London, Saturday
     beforeEach(() => {
-      loadState.loadSquadState.mockResolvedValue({ matchId: MATCH_ID });
+      loadState.loadSquadState.mockResolvedValue({ matchId: MATCH_ID, roster: [] });
       rolling.rollingSeedPendingAt.mockResolvedValue(DUE);
     });
 
@@ -555,6 +555,33 @@ describe("handleAdminSquadChange", () => {
       });
       expect((await handleAdminSquadChange({ ...input, route }))?.handled).toBe(true);
     });
+  });
+
+  // 2026-10-20 (Kemal and FNF's Raihan): anyone in the club changes who
+  // plays in HQ, with an organiser's standing. The engine reads that off the
+  // roster, so the sender, and only the sender, is an organiser there.
+  it("the sender acts with an organiser's standing in the engine, whatever their role; nobody else is changed", async () => {
+    loadState.loadSquadState.mockResolvedValue({
+      matchId: MATCH_ID,
+      roster: [
+        { userId: "u-admin", name: "Omar", isAdmin: true, hasPhone: true },
+        { userId: "u-ah", name: "Abdul-Hafeez", isAdmin: false, hasPhone: true },
+        { userId: "u-dev", name: "Dev", isAdmin: false, hasPhone: true },
+      ],
+    });
+    rolling.rollingSeedPendingAt.mockResolvedValue(null);
+    routed("other_att");
+    let roster: Array<{ userId: string; isAdmin: boolean }> = [];
+    engineDoes(async (a) => {
+      roster = (await a.deps.loadState!("org-fnf", input.now)).roster;
+      expect(a.messages[0]).toMatchObject({ senderUserId: "u-ah", senderIsAdmin: true });
+    });
+    await handleAdminSquadChange({ ...input, route, senderUserId: "u-ah", senderName: "Abdul-Hafeez", text: "Naim is out" });
+    expect(roster.map((m) => [m.userId, m.isAdmin])).toEqual([
+      ["u-admin", true],
+      ["u-ah", true],
+      ["u-dev", false],
+    ]);
   });
 
   it("a member mentioned in passing: silence", async () => {

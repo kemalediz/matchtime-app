@@ -622,6 +622,8 @@ describe("questions in HQ: the shared question answering, with the organisers' c
 // silent, as an organiser's does.
 describe("a sender who is not an organiser", () => {
   const ONLY = "Only Hamzah or Raihan can change that.";
+  // Not a member of the club either (`member` unset): who plays is open to
+  // the club's members only (2026-10-20, see the next describe).
   const player = (over: Partial<Parameters<typeof understandAdminMessage>[0]> = {}) => ({
     senderUserId: "u-kemal",
     organiser: false,
@@ -709,6 +711,63 @@ describe("a sender who is not an organiser", () => {
   it("tagged, and the router cannot tell what it is: the one line, never the attendance engine", async () => {
     const r = await ask("@Match Time can you sort it", "unsure", player());
     expect(r?.outcome).toBe("hq-not-understood");
+    expect(squad.handleAdminSquadChange).not.toHaveBeenCalled();
+  });
+});
+
+// WHO PLAYS IS OPEN TO EVERYONE IN THE CLUB IN HQ (2026-10-20, Kemal and
+// FNF's admin Raihan). FNF HQ: Abdul-Hafeez, a PLAYER, wrote "Naim is out"
+// and nothing happened. A member of the club, whatever their role, now
+// changes attendance there exactly as an organiser does, as themselves;
+// everything else that changes the club stays the organisers'.
+describe("a member of the club who is not an organiser", () => {
+  const ONLY = "Only Hamzah or Raihan can change that.";
+  const member = (over: Partial<Parameters<typeof understandAdminMessage>[0]> = {}) => ({
+    senderUserId: "u-ah",
+    organiser: false,
+    member: true,
+    senderName: "Abdul-Hafeez",
+    ...over,
+  });
+
+  it.each([
+    ["Naim is out", "other_att"],
+    ["@Match Time Naim IN", "other_att"],
+    ["put Bilal on the bench", "other_att"],
+    ["I'm in", "self_att"],
+  ])("the incident and its kin (%s, %s): the attendance engine, as the sender", async (text, route) => {
+    const r = await ask(text, route, member());
+    expect(r?.outcome).toBe("squad-changed");
+    expect(squad.handleAdminSquadChange).toHaveBeenCalledWith(expect.objectContaining({ route, text, senderUserId: "u-ah", senderName: "Abdul-Hafeez" }));
+  });
+
+  it("a list of names with IN: read as structured data, as an organiser's is", async () => {
+    await ask("Imti \nRafi \nAH\n\nIn", "none", member());
+    expect(requests).toHaveLength(0);
+    expect(squad.handleAdminSquadChange).toHaveBeenCalledWith(expect.objectContaining({ route: "other_att", senderUserId: "u-ah" }));
+  });
+
+  it("tagged, and the router cannot tell what it is: the attendance engine is tried, as for an organiser", async () => {
+    await ask("@Match Time Naim not coming", "unsure", member());
+    expect(squad.handleAdminSquadChange).toHaveBeenCalledWith(expect.objectContaining({ route: "unsure", senderUserId: "u-ah" }));
+  });
+
+  it("a monthly club: the one line, as for an organiser", async () => {
+    const r = await ask("Naim is out", "other_att", member({ org: { ...ORG, squadMode: "monthly" } }));
+    expect(r?.outcome).toBe("hq-not-here");
+    expect(squad.handleAdminSquadChange).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["@Match Time swap Maj and Kieran", "balancer"],
+    ["@Match Time ask the group for a player", "ask_group"],
+    ["@Match Time yes", "approve"],
+  ])("%s (%s): still the organisers', one line naming who can", async (text, route) => {
+    const r = await ask(text, route, member());
+    expect(r).toEqual({ route, outcome: "hq-only-organisers", replyText: ONLY });
+    expect(teams.handleTeamCommand).not.toHaveBeenCalled();
+    expect(teams.answerTeamsYes).not.toHaveBeenCalled();
+    expect(groupAsk.askPlayersGroup).not.toHaveBeenCalled();
     expect(squad.handleAdminSquadChange).not.toHaveBeenCalled();
   });
 });

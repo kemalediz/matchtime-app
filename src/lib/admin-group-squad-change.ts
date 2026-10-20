@@ -2,9 +2,11 @@
  * ONE SQUAD CHANGE TYPED IN A CLUB'S ADMIN GROUP (2026-10-14).
  *
  * "Shehryar out", "put Bilal in", "Abdul-Hafeez dropping out", "Tom to the
- * bench", from an owner or admin of the club, in the club's linked admin
- * group. The caller (`admin-group-understand.ts`) has already proven the
- * sender is an owner or admin, claimed the message id, ruled out a pick
+ * bench", from anyone in the club, in the club's linked admin group (an
+ * owner or admin only until 2026-10-20; Kemal and FNF's Raihan opened who
+ * plays to everyone there, and the sender acts with an organiser's
+ * standing). The caller (`admin-group-understand.ts`) has already proven the
+ * sender is a member of the club, claimed the message id, ruled out a pick
  * reply and a pasted list, and routed the message through the SHARED
  * router (`gateBatch`, with the organisers' group context) to `self_att`
  * or `other_att`. It hands that route here.
@@ -151,7 +153,16 @@ export async function handleAdminSquadChange(input: AdminSquadChangeInput): Prom
     // engine itself picks, as it loads the squad.
     let notSetAt = null as Date | null;
     const loadState: NonNullable<Parameters<typeof runAttendanceEngineBatch>[0]["deps"]["loadState"]> = async (o, n) => {
-      const state = await loadSquadState(o, n);
+      const loaded = await loadSquadState(o, n);
+      // HQ GIVES THE SENDER AN ORGANISER'S STANDING FOR WHO PLAYS
+      // (2026-10-20, Kemal and FNF's Raihan): anyone in the club may put
+      // someone in, take them out, bench them or bring them off the bench
+      // there, exactly as an owner or admin may. The engine reads that
+      // standing off the roster, so it is set there, for this sender only.
+      const state = {
+        ...loaded,
+        roster: loaded.roster.map((m) => (m.userId === input.senderUserId && !m.isAdmin ? { ...m, isAdmin: true } : m)),
+      };
       notSetAt = state.matchId ? await rollingSeedPendingAt(state.matchId, n) : null;
       return state;
     };
