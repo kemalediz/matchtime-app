@@ -46,6 +46,28 @@
  * `extractForRoute` and nothing else.
  *
  * ─────────────────────────────────────────────────────────────────────
+ * ONE EXTRACTION PER MESSAGE PER REQUEST (2026-10-20)
+ * ─────────────────────────────────────────────────────────────────────
+ * The route hands every message to every owner in turn, and `balancer`
+ * has TWO owners split on a fact the extractor returns (`show` is
+ * `answer-batch.ts`'s, `generate` is `team-ops-engine-batch.ts`'s), so
+ * each one extracted it for itself. Sutton FC, 2026-10-20 08:01 UTC,
+ * "@Match Time generate the teams": the teams extractor ran twice on
+ * the same 1,529-token input and returned the same facts, double the
+ * cost and ~2 s more.
+ *
+ * So inside a request this wrapper is also the request's memo: the
+ * first owner to ask for a (message, extractor, input) pays for the
+ * call, and every later owner reads the same facts (a copy, so one
+ * owner's adjustments never reach another) with no `usage`, because it
+ * made no call. Keyed on the WHOLE input, so an owner that shows the
+ * extractor something different (a clarification's original question,
+ * a quoted post) gets its own extraction. A FAILED extraction is not
+ * shared, and neither is a budget refusal: the next owner tries afresh,
+ * which is what happened before. The trace keeps one extraction, with
+ * the owners that read it in `sharedWith`.
+ *
+ * ─────────────────────────────────────────────────────────────────────
  * THE TWO RULES
  * ─────────────────────────────────────────────────────────────────────
  *   1. TRACING NEVER BREAKS ANALYSIS. Every recording step and the save
@@ -130,6 +152,9 @@ export interface ExtractionTrace {
   degradations: string[];
   /** One per attempt; the attendance routes retry once. */
   calls: ExtractionCall[];
+  /** The later owners in the same request that read these facts
+   *  instead of extracting the message again. */
+  sharedWith?: string[];
 }
 
 export interface PipelineTrace {
@@ -147,6 +172,45 @@ export interface TraceEntry {
 }
 
 const storage = new AsyncLocalStorage<Map<string, TraceEntry>>();
+
+/** A finished extraction, kept for the rest of its request. */
+interface SharedExtraction {
+  res: ExtractionResult;
+  /** Its trace record, so later readers can be named on it. */
+  trace: ExtractionTrace | null;
+}
+
+/** Each request's extractions, keyed by `extractionKey`. Hung off the
+ *  request's own collector, so it lives and dies with the request and
+ *  no other request can see it. */
+const memos = new WeakMap<Map<string, TraceEntry>, Map<string, Promise<SharedExtraction>>>();
+
+/** Everything the extractor is shown, so two asks share a call only
+ *  when the model would have been asked the same thing. */
+function extractionKey(model: PipelineModel, route: Route, msg: ExtractorMessage): string {
+  return JSON.stringify([
+    model.name,
+    extractorFor(route),
+    msg.id,
+    msg.body,
+    msg.authorName,
+    msg.tagged,
+    msg.lastBotPost,
+    msg.history,
+  ]);
+}
+
+/** A result worth sharing: the call was made and answered. A failure
+ *  (no `usage`) or a budget refusal is left for the next owner to retry. */
+function shareable(res: ExtractionResult): boolean {
+  return res.usage !== undefined && !res.budgetRefused;
+}
+
+/** A later owner's copy: the same facts, nothing it can change in
+ *  anyone else's, and no `usage`, because it made no call. */
+function readersCopy(res: ExtractionResult): ExtractionResult {
+  return { facts: structuredClone(res.facts), degradations: res.degradations.map((d) => ({ ...d })) };
+}
 
 function safely(what: string, fn: () => void): void {
   try {
@@ -216,7 +280,42 @@ export async function extractForRouteTraced(
 ): Promise<ExtractionResult> {
   const c = storage.getStore();
   if (!c) return extractForRoute(model, route, msg);
+  if (extractorFor(route) === "none") return extractForRoute(model, route, msg);
 
+  let memo = memos.get(c);
+  if (!memo) {
+    memo = new Map();
+    memos.set(c, memo);
+  }
+  const key = extractionKey(model, route, msg);
+  const earlier = memo.get(key);
+  if (earlier) {
+    const shared = await earlier;
+    if (shareable(shared.res)) {
+      safely("recording a shared read", () => {
+        if (shared.trace) (shared.trace.sharedWith ??= []).push(owner);
+      });
+      return readersCopy(shared.res);
+    }
+  }
+  // Kept even when it fails: the next owner finds it unshareable, asks
+  // afresh, and its own attempt replaces this one.
+  const pending = extractTraced(c, owner, model, route, msg);
+  memo.set(key, pending);
+  const { res } = await pending;
+  // The first owner's own copy of the facts, so what it changes stays
+  // its own and the memo keeps what the model said.
+  return { ...res, facts: structuredClone(res.facts) };
+}
+
+/** The call itself, recorded against the message. */
+async function extractTraced(
+  c: Map<string, TraceEntry>,
+  owner: string,
+  model: PipelineModel,
+  route: Route,
+  msg: ExtractorMessage,
+): Promise<SharedExtraction> {
   const calls: ExtractionCall[] = [];
   let requested: string | null = null;
   const watched: PipelineModel = {
@@ -252,12 +351,13 @@ export async function extractForRouteTraced(
 
   const res = await extractForRoute(watched, route, msg);
 
+  let trace: ExtractionTrace | null = null;
   safely("recording the extraction", () => {
     // A clean parse means the facts ARE the output; the raw text would
     // only double the row. Anything less than clean keeps it, because
     // then the facts may not say what the model said.
     const clean = res.degradations.length === 0;
-    entryFor(c, msg.id).extractions.push({
+    trace = {
       owner,
       route,
       extractor: extractorFor(route),
@@ -269,10 +369,11 @@ export async function extractForRouteTraced(
       facts: structuredClone(res.facts),
       degradations: res.degradations.map((d) => d.detail),
       calls: clean ? calls.map(({ raw: _raw, ...rest }) => rest) : calls,
-    });
+    };
+    entryFor(c, msg.id).extractions.push(trace);
   });
 
-  return res;
+  return { res, trace };
 }
 
 // ── Bounding ───────────────────────────────────────────────────────────
@@ -354,6 +455,7 @@ export function buildPipelineTrace(entry: TraceEntry): PipelineTrace {
       facts: bound(x.facts),
       degradations: boundDegradations(x.degradations),
       calls: x.calls.slice(0, TRACE_LIMITS.degradations).map(boundCall),
+      ...(x.sharedWith?.length ? { sharedWith: x.sharedWith.map((o) => clip(o, TRACE_LIMITS.string)) } : {}),
     })),
   };
   if (entry.extractions.length > TRACE_LIMITS.extractions) trace.truncated = true;

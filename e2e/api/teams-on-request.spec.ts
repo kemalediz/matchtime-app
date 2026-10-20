@@ -160,6 +160,42 @@ test.describe("teams are built only on a clear ask, only on match day", () => {
     expect(r.reply).toContain(NAME.admin);
   });
 
+  test("on match day, 'generate the teams' costs ONE teams extractor call (Sutton FC, 2026-10-20)", async ({
+    request,
+    db,
+  }) => {
+    // Production, batch f3898ab5: the teams extractor ran twice on this
+    // message, once for the answer owner and once for team-ops, with the
+    // same input and the same facts. Distinct prices make the ledger say
+    // how many of each call were billed.
+    await makeItMatchDay(db);
+    await db.run(`DELETE FROM "OrgAiUsage"`);
+    engineOn({ [GEN]: GEN_ROUTING }, { routerCostUsd: 0.01, extractorCostUsd: 0.001 });
+    const id = msgId();
+    await postAnalyze(request, [
+      { waMessageId: id, body: GEN, authorPhone: PHONE.admin, authorName: NAME.admin, botMentioned: true },
+    ]);
+    expect(await teamRows(db)).toBe(4);
+
+    const usage = await db.one<{ calls: number; costUsd: number }>(
+      `SELECT SUM(calls)::int AS calls, SUM("costUsd") AS "costUsd" FROM "OrgAiUsage"`,
+    );
+    expect(Number(usage?.costUsd), "one router call and ONE extractor call").toBeCloseTo(0.011, 6);
+    expect(usage?.calls).toBe(2);
+
+    const row = await db.one<{ pipelineTrace: { extractions: Array<Record<string, unknown>> } }>(
+      `SELECT "pipelineTrace" FROM "AnalyzedMessage" WHERE "waMessageId" = $1`,
+      [id],
+    );
+    expect(row!.pipelineTrace.extractions).toHaveLength(1);
+    expect(row!.pipelineTrace.extractions[0]).toMatchObject({
+      owner: "answer",
+      extractor: "teams",
+      sharedWith: ["team_ops"],
+      facts: { kind: "teams", action: "generate" },
+    });
+  });
+
   test("on match day, asking again REPLACES an existing sheet", async ({ request, db }) => {
     await makeItMatchDay(db);
     await seedPublishedSheet(db);
