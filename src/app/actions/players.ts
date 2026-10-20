@@ -17,6 +17,7 @@ import {
 import { decideOwnPhoneWrite, type OwnPhoneRefusal } from "@/lib/own-phone-rules";
 import { decideCrossClubLink, firstNameOf, type CrossClubRefusal } from "@/lib/cross-club-link-rules";
 import { linkAcrossClubsCore, loadCrossClubLinkFacts } from "@/lib/cross-club-link";
+import { changeMemberRole, transferOwnership, type RoleChangeOutcome, type TransferOutcome } from "@/lib/role-change";
 import { t, type Strings } from "@/lib/i18n/t";
 import { DEFAULT_LANG } from "@/lib/i18n/lang";
 import { revalidatePath } from "next/cache";
@@ -185,18 +186,49 @@ export async function setPlayerPositions(
   return { positions: cleaned };
 }
 
-export async function updatePlayerRole(userId: string, orgId: string, role: "ADMIN" | "PLAYER") {
+/**
+ * Admin: make a member an Admin or a Player. An OWNER is refused and left
+ * untouched (2026-10-20, FNF: Hamzah, the club's creator, was found as
+ * ADMIN with no record of who changed it), and every change is logged
+ * in RoleChange. See src/lib/role-change.ts.
+ */
+export async function updatePlayerRole(
+  userId: string,
+  orgId: string,
+  role: "ADMIN" | "PLAYER",
+): Promise<RoleChangeOutcome> {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Not authenticated");
 
   await requireOrgAdmin(session.user.id, orgId);
 
-  await db.membership.update({
-    where: { userId_orgId: { userId, orgId } },
-    data: { role },
+  const res = await changeMemberRole(db, {
+    orgId,
+    userId,
+    to: role,
+    actorUserId: session.user.id,
+    source: "admin-players-page",
   });
 
-  revalidatePath("/admin/players");
+  if (res.ok && res.changed) revalidatePath("/admin/players");
+  return res;
+}
+
+/**
+ * The owner hands the club to another member: they become OWNER and the
+ * owner becomes ADMIN, both logged in RoleChange. Refused for anybody
+ * who is not the club's OWNER, a superadmin without an OWNER membership
+ * included (src/lib/role-change-rules.ts).
+ */
+export async function makeOwner(userId: string, orgId: string): Promise<TransferOutcome> {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Not authenticated");
+
+  await requireOrgAdmin(session.user.id, orgId);
+
+  const res = await transferOwnership(db, { orgId, actorUserId: session.user.id, targetUserId: userId });
+  if (res.ok) revalidatePath("/admin/players");
+  return res;
 }
 
 export async function seedPlayerRating(userId: string, orgId: string, rating: number) {
@@ -301,7 +333,7 @@ export async function mergePlayers(
   // { timeout: 60_000 }.
   await db.$transaction(
     async (tx) => {
-      await mergePlayersCore(tx, keepUserId, dropUserId, { saveAliasInOrgIds: [orgId] });
+      await mergePlayersCore(tx, keepUserId, dropUserId, { saveAliasInOrgIds: [orgId], actorUserId: session.user.id });
     },
     { timeout: 60_000 },
   );
