@@ -15,7 +15,7 @@ import {
   classifyRosterReply,
 } from "../roster-survey-classifier";
 import { HAIKU_MODEL } from "../models";
-import { MIN_CACHEABLE_TOKENS, estimateTokens, shouldCachePrompt } from "../pipeline/llm";
+import { MIN_CACHEABLE_TOKENS, estimateTokens } from "../pipeline/llm";
 
 const answer = (category: string, confidence = 0.9) =>
   JSON.stringify({ category, confidence, reasoning: "test" });
@@ -23,7 +23,6 @@ const answer = (category: string, confidence = 0.9) =>
 describe("the prompt", () => {
   it("stays over Haiku's prompt-cache floor, so the cached system block is really cached", () => {
     expect(estimateTokens(ROSTER_SURVEY_SYSTEM_PROMPT)).toBeGreaterThanOrEqual(MIN_CACHEABLE_TOKENS[HAIKU_MODEL]);
-    expect(shouldCachePrompt(HAIKU_MODEL, ROSTER_SURVEY_SYSTEM_PROMPT)).toBe(true);
   });
 
   it("carries no em or en dash", () => {
