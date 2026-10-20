@@ -24,6 +24,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { Degradation } from "./types";
 import { guardedModelCall } from "../ai-budget-context";
+import { HAIKU_MODEL } from "../models";
 
 /**
  * The project ceiling, MIRRORED rather than imported.
@@ -52,11 +53,15 @@ export const PIPELINE_MAX_TOKENS_CEILING = 4_096;
  * a model upgrade can change how a schema field is populated without
  * changing its shape, and the corpus is what clears a new id.
  */
-export const ROUTER_MODEL = "claude-haiku-4-5";
+export const ROUTER_MODEL = HAIKU_MODEL;
 export const EXTRACTOR_MODEL = "claude-sonnet-5";
 
-/** USD per million tokens. anthropic.com/pricing, 2026-09-01. */
+/** USD per million tokens. anthropic.com/pricing, 2026-09-01; Haiku 5.5
+ *  from platform.claude.com/docs/en/about-claude/pricing, 2026-10-19,
+ *  the rate for prompts up to 100,000 tokens (over that it is $0.50 /
+ *  $2.50; nothing this app sends comes near). */
 const RATES: Record<string, { input: number; output: number }> = {
+  "claude-haiku-5-5": { input: 0.1, output: 0.5 },
   "claude-haiku-4-5": { input: 1.0, output: 5.0 },
   "claude-sonnet-5": { input: 2.0, output: 10.0 },
   "claude-sonnet-4-5": { input: 3.0, output: 15.0 },
@@ -117,9 +122,15 @@ const RATES: Record<string, { input: number; output: number }> = {
  * minimum and Haiku 4.5 has the highest. Published figures
  * (anthropic.com, prompt caching), all confirmed against this
  * pipeline's own prompts.
+ *
+ * Haiku 5.5 (2026-10-19) is 512, probed on the dev key: a 505-token
+ * prefix with a marker wrote and read nothing, a 541-token one wrote 541
+ * and then read 541. So the router prompt (5,202 Haiku 5.5 tokens) now
+ * caches: call 1 cache_creation=5418, call 2 cache_read=5418.
  */
 export const MIN_CACHEABLE_TOKENS: Record<string, number> = {
   "claude-opus-5": 512,
+  "claude-haiku-5-5": 512,
   "claude-sonnet-5": 1_024,
   "claude-sonnet-4-5": 1_024,
   "claude-haiku-4-5": 4_096,
@@ -139,6 +150,7 @@ export const DEFAULT_MIN_CACHEABLE_TOKENS = 4_096;
  *
  *     claude-haiku-4-5   3.78 – 5.08 characters per token
  *     claude-sonnet-5    2.78 – 2.98 characters per token
+ *     claude-haiku-5-5   2.63 on the router prompt (2026-10-19)
  *
  * Dividing by four sits at or below the real Haiku count and a long way
  * below the Sonnet one, so the estimate errs towards NOT attaching a
@@ -173,9 +185,10 @@ export function shouldCachePrompt(model: string, system: string): boolean {
  * an hour: 0.75x the prompt, about $0.005 on the attendance extractor.
  *
  * `ttl` is GA in @anthropic-ai/sdk 0.90 (`CacheControlEphemeral.ttl`), no
- * beta header. The router is unaffected: its prompt is under Haiku 4.5's
- * 4,096-token minimum, so it carries no marker at all
- * (`__tests__/cache-threshold.test.ts`), and it is not padded to reach it.
+ * beta header. On Haiku 4.5 the router carried no marker: its prompt was
+ * under the 4,096-token minimum and was never padded to reach it. On
+ * Haiku 5.5 (512-token minimum) it is over, so it carries this marker
+ * like any other long prompt (`__tests__/cache-threshold.test.ts`).
  */
 export const PIPELINE_CACHE_CONTROL = { type: "ephemeral", ttl: "1h" } as const;
 
@@ -189,6 +202,13 @@ export interface ModelRequest {
   maxTokens: number;
   /** Structured output. `output_config.format`, not a tool. */
   schema?: Record<string, unknown>;
+  /**
+   * `false`: never attach a cache marker, even over the model's minimum.
+   * For a prompt used once and not again within the hour (the setup
+   * reading, once per club), where a 1-hour write is 2x input for
+   * nothing. Omitted: cache when long enough, as always.
+   */
+  cache?: false;
   /**
    * `"off"` sends `thinking: {type: "disabled"}`. Omitted sends nothing.
    *
@@ -210,12 +230,14 @@ export interface ModelRequest {
    * deliberation anyway.
    *
    * OPT-IN rather than default-off, and per model rather than global:
-   * `{type: "disabled"}` is accepted on `claude-sonnet-5` but the router
-   * runs `claude-haiku-4-5`, an older model with a different thinking
-   * contract, and nothing here needs to send it a parameter it may not
-   * take. The extractors ask; the router does not.
+   * on `claude-haiku-4-5` the router never thought unprompted, so it sent
+   * nothing. `claude-haiku-5-5` (2026-10-19) thinks adaptively, and is
+   * more accurate on these prompts WITH thinking (measured, see
+   * `HAIKU_EFFORT` in src/lib/models.ts), so the Haiku callers pass
+   * `{ effort }`: adaptive thinking at that effort, sent as
+   * `output_config.effort` beside any schema. The extractors keep "off".
    */
-  thinking?: "off";
+  thinking?: "off" | { effort: "low" | "medium" | "high" };
   /**
    * Pictures sent before `user` in the one user turn (picture reading,
    * 2026-10-14). Base64, in memory only. Omitted: the request is exactly
@@ -409,7 +431,7 @@ export function anthropicModel(opts?: {
       // successful call. Neither subsumes the other.
       const client: MessagesCreateClient =
         opts?.client ?? new Anthropic({ apiKey, maxRetries: 4 });
-      const cacheAttempted = shouldCachePrompt(req.model, req.system);
+      const cacheAttempted = req.cache !== false && shouldCachePrompt(req.model, req.system);
       const t0 = Date.now();
       // THE DAILY CAP (2026-09-29). Inside a club's budget scope this
       // reserves before the request and books the priced usage after it,
@@ -444,14 +466,23 @@ export function anthropicModel(opts?: {
               : req.user,
           },
         ],
-        ...(req.schema
-          ? { output_config: { format: { type: "json_schema" as const, schema: req.schema } } }
+        ...(req.schema || (req.thinking && req.thinking !== "off")
+          ? {
+              output_config: {
+                ...(req.schema ? { format: { type: "json_schema" as const, schema: req.schema } } : {}),
+                ...(req.thinking && req.thinking !== "off" ? { effort: req.thinking.effort } : {}),
+              },
+            }
           : {}),
         // See `ModelRequest.thinking`. Sent ONLY when the caller asked;
         // an omitted parameter and `{type: "adaptive"}` mean the same
         // thing on sonnet-5, and sending nothing keeps this layer honest
         // about which callers made a decision and which did not.
-        ...(req.thinking === "off" ? { thinking: { type: "disabled" as const } } : {}),
+        ...(req.thinking === "off"
+          ? { thinking: { type: "disabled" as const } }
+          : req.thinking
+            ? { thinking: { type: "adaptive" as const } }
+            : {}),
       }));
       const ms = Date.now() - t0;
 

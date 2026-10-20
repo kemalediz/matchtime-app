@@ -600,6 +600,56 @@ describe("buildAdminSquadReply: what MatchTime says back, and when it says nothi
     expect(reply({ ...base, addressed: true, vetted })).toBe('I don\'t know AH yet. To add them, just ask me in your own words (for example put AH in).');
   });
 
+  // "@Match Time AH back" in HQ, Haiku 5.5 (2026-10-19): the router reads
+  // it as about someone else (other_att), but the attendance extractor
+  // finds no name in it (live: a claim about the SENDER, confidence 0.3,
+  // held "unsure"). Nothing applied and nothing said; the organiser asked
+  // MatchTime and heard nothing. Now: one line saying it could not tell who,
+  // and how to add someone.
+  describe("addressed, read as about someone else, and no one named (FNF HQ, 2026-10-19)", () => {
+    const misread = [v({ claim: self({ personNamed: true, confidence: 0.3, tense: "future" }), hold: "unsure", ref: me })];
+    const WHO_EN = "I couldn't tell who that's about, so I haven't changed anything. To add someone or take them out, just ask me in your own words with their name (for example put Bilal in).";
+    const WHO_TR =
+      "Bunun kimle ilgili olduğunu anlayamadım, bu yüzden hiçbir şeyi değiştirmedim. Birini eklemek ya da çıkarmak için adıyla birlikte kendi cümlelerinizle yazmanız yeterli (örneğin Bilal var).";
+
+    it("the extractor read it as the sender's own: one line saying who it could not tell, and how to add someone", () => {
+      expect(buildAdminSquadReply({ ...base, addressed: true, aboutOthers: true, vetted: misread })).toEqual({ text: WHO_EN, outcome: "squad-question" });
+      expect(reply({ ...base, lang: "tr", addressed: true, aboutOthers: true, vetted: misread })).toBe(WHO_TR);
+      expect(`${WHO_EN} ${WHO_TR}`).not.toMatch(/[\u2013\u2014]/);
+    });
+
+    it("no claim read at all: the same line", () => {
+      expect(reply({ ...base, addressed: true, aboutOthers: true, vetted: [] })).toBe(WHO_EN);
+    });
+
+    it("not addressed, or read as the sender's own (self_att): silence, as before", () => {
+      expect(reply({ ...base, aboutOthers: true, vetted: misread })).toBeNull();
+      expect(reply({ ...base, addressed: false, aboutOthers: true, vetted: [] })).toBeNull();
+      expect(reply({ ...base, addressed: true, vetted: misread })).toBeNull();
+    });
+
+    it("someone WAS named: that person's own rules, never this line", () => {
+      // a member, held (availability): silence, as before
+      expect(reply({ ...base, addressed: true, aboutOthers: true, vetted: [v({ claim: claim({ basis: "availability" }), hold: "availability" })] })).toBeNull();
+      // a stranger: the stranger line
+      expect(
+        reply({ ...base, addressed: true, aboutOthers: true, vetted: [v({ claim: claim({ personRef: "AH" }), hold: "not-a-command", ref: { kind: "unknown", name: "AH" } })] }),
+      ).toBe("I don't know AH yet. To add them, just ask me in your own words (for example put AH in).");
+    });
+  });
+
+  it("a name two members could mean, held, said to MatchTime: asks for the full name; in conversation: silence", () => {
+    const vetted = [v({ claim: claim({ personRef: "Ali" }), hold: "not-a-command", ref: { kind: "ambiguous", name: "Ali" } })];
+    expect(buildAdminSquadReply({ ...base, addressed: true, vetted })).toEqual({
+      text: "Not sure who Ali is, so I'll leave them out; use the full name.",
+      outcome: "squad-question",
+    });
+    expect(reply({ ...base, addressed: true, lang: "tr", vetted })).toBe("Ali kim, emin değilim; dışarıda bırakıyorum, tam adını yazın.");
+    expect(reply({ ...base, vetted })).toBeNull();
+    // a past or contingent mention stays silent, as for a stranger
+    expect(reply({ ...base, addressed: true, vetted: [v({ claim: claim({ personRef: "Ali", contingent: true }), hold: "contingent", ref: { kind: "ambiguous", name: "Ali" } })] })).toBeNull();
+  });
+
   it("the sender's own plain line in conversation, not addressed: silence", () => {
     expect(
       buildAdminSquadReply({ ...base, vetted: [v({ claim: self({ polarity: "out" }), hold: "not-a-command", before: "CONFIRMED", ref: me })] }),

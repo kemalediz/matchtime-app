@@ -14,8 +14,9 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { normaliseLang } from "./i18n/lang";
 import { guardedAnthropicCall } from "@/lib/pipeline/llm";
+import { HAIKU_MODEL, HAIKU_SHORT_ANSWER_MAX_TOKENS, HAIKU_THINKING } from "./models";
 
-const MODEL = "claude-haiku-4-5";
+const MODEL = HAIKU_MODEL;
 
 const SYSTEM_PROMPT = `You are classifying a player's WhatsApp DM reply to a "roster check-in" survey from their football club. The bot has DM'd them: "Are you still up for Tuesday football going forward? Reply yes / maybe / not for now."
 
@@ -97,7 +98,8 @@ export async function classifyRosterReply(
     const response = await guardedAnthropicCall("roster-survey", () =>
       anthropic.messages.create({
         model: MODEL,
-        max_tokens: 200,
+        max_tokens: HAIKU_SHORT_ANSWER_MAX_TOKENS,
+        ...HAIKU_THINKING,
         system: [
           {
             type: "text",

@@ -129,7 +129,7 @@ vi.mock("@/lib/platform-jobs", async (orig) => ({
 
 import { learnClubSetup, runSetupLearningSweep, MAX_ATTEMPTS } from "../run";
 import type { PipelineModel } from "../../pipeline/llm";
-import { FIXTURE_NAMES, loadFixture, STUB_ANSWERS } from "./stubs";
+import { FIXTURE_ANSWERS, FIXTURE_NAMES, loadFixture, STUB_ANSWERS } from "./stubs";
 import { isFeatureOffered } from "../../org-features-meta";
 
 const ORG = "org-riverside";
@@ -218,7 +218,7 @@ describe("learnClubSetup, fixture by fixture (one stub call each, no real model)
   for (const name of FIXTURE_NAMES) {
     it(`${name}: does what the fixture expects`, async () => {
       const fx = setup(name);
-      const model = stub(STUB_ANSWERS[name] ?? {});
+      const model = stub(FIXTURE_ANSWERS[name] ?? {});
       const out = await learnClubSetup(ORG, { now: DAYTIME, model });
 
       if (fx.expect.skipped) {
@@ -237,7 +237,7 @@ describe("learnClubSetup, fixture by fixture (one stub call each, no real model)
         expect((state.learning!.noted as Array<{ key: string }>).map((a) => a.key)).toEqual(fx.expect.noted);
         expect((state.learning!.suggestions as Array<{ key: string }>).map((a) => a.key)).toEqual(fx.expect.suggestions);
         expect(dms.length).toBe(fx.expect.dm ? 1 : 0);
-        expect(state.learning).toMatchObject({ model: "claude-haiku-4-5", costUsd: 0.011, inputTokens: 9_000, outputTokens: 400 });
+        expect(state.learning).toMatchObject({ model: "claude-haiku-5-5", costUsd: 0.011, inputTokens: 9_000, outputTokens: 400 });
       }
       // The chat is deleted once read, whatever came of it, and the group
       // description in the same statement (captured-chat.ts).

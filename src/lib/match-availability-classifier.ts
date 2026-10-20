@@ -29,8 +29,9 @@
  */
 import Anthropic from "@anthropic-ai/sdk";
 import { guardedAnthropicCall } from "@/lib/pipeline/llm";
+import { HAIKU_MODEL, HAIKU_SHORT_ANSWER_MAX_TOKENS, HAIKU_THINKING } from "./models";
 
-const MODEL = "claude-haiku-4-5";
+const MODEL = HAIKU_MODEL;
 
 /** Below this the model is not sure enough to write to the squad. */
 const MIN_CONFIDENCE = 0.75;
@@ -108,7 +109,8 @@ export async function classifyMatchAvailability(
     const response = await guardedAnthropicCall("match-availability", () =>
       anthropic.messages.create({
         model: MODEL,
-        max_tokens: 200,
+        max_tokens: HAIKU_SHORT_ANSWER_MAX_TOKENS,
+        ...HAIKU_THINKING,
         system: [
           {
             type: "text",

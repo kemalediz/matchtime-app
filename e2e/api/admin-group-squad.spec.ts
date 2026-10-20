@@ -12,7 +12,7 @@
 import { test, expect, resetDb } from "../fixtures";
 import { MATCH, ORG_ID, PHONE, U } from "../helpers/constants";
 import { E2E } from "../helpers/env";
-import { engineOn, clearPipelineStubs, otherFacts, selfOut } from "../helpers/stub";
+import { engineOn, clearPipelineStubs, otherFacts, selfIn, selfOut } from "../helpers/stub";
 import type { TestDb } from "../helpers/test-db";
 import type { APIRequestContext } from "@playwright/test";
 
@@ -161,6 +161,42 @@ test("the same, tagged to MatchTime: not added, and it says how to add them", as
   const out = await say(request, "@Match Time Zed is around again");
   expect(out).toMatchObject({ handled: true, outcome: "squad-question", replyText: "I don't know Zed yet. To add them, just ask me in your own words (for example put Zed in).", react: null });
   expect(await db.one(`SELECT id FROM "User" WHERE name = 'Zed'`)).toBeFalsy();
+});
+
+// 2026-10-19 (Haiku 5.5): "@Match Time AH back". The router reads it as
+// about someone else (other_att); the attendance extractor, run live once,
+// read no name in it: a claim about the SENDER at confidence 0.3. Haiku 4.5
+// routed it `question`, where the question extractor (live, once) read
+// topic "other": "I can't do that from this group". Neither ever said how to
+// add AH, because no model read AH as a name.
+const WHO = "I couldn't tell who that's about, so I haven't changed anything. To add someone or take them out, just ask me in your own words with their name (for example put Bilal in).";
+
+test("'@Match Time AH back' routed other_att, read as the sender's own: nothing written, one line on how to add someone, no tick", async ({ request, db }) => {
+  engineOn({ "@Match Time AH back": { route: "other_att", facts: selfIn({ confidence: 0.3, tense: "future" }) } });
+  const before = await statusOf(db, U.admin);
+  const out = await say(request, "@Match Time AH back");
+  expect(out).toMatchObject({ handled: true, outcome: "squad-question", replyText: WHO, react: null });
+  expect(await statusOf(db, U.admin)).toBe(before);
+  expect(await db.one(`SELECT id FROM "User" WHERE name = 'AH'`)).toBeFalsy();
+});
+
+test("the same with no claim read at all: the same line", async ({ request }) => {
+  engineOn({ "@Match Time AH back": { route: "other_att", facts: { claims: [], affirmation: "none", sideRequests: [] } } });
+  expect(await say(request, "@Match Time AH back")).toMatchObject({ handled: true, outcome: "squad-question", replyText: WHO, react: null });
+});
+
+test("the same words between organisers, not tagged: silent", async ({ request }) => {
+  engineOn({ "AH back": { route: "other_att", facts: selfIn({ confidence: 0.3, tense: "future" }) } });
+  expect(await say(request, "AH back")).toMatchObject({ handled: false, replyText: null });
+});
+
+test("'@Match Time AH back' routed question (Haiku 4.5's route), topic other: the not-from-this-group line, as before", async ({ request }) => {
+  engineOn({ "@Match Time AH back": { route: "question", facts: { topic: "other", personRef: "", statedCount: -1 } } });
+  expect(await say(request, "@Match Time AH back")).toMatchObject({
+    handled: true,
+    outcome: "hq-not-here",
+    replyText: "I can't do that from this group. Ask *what can you do?* to see what I can do here.",
+  });
 });
 
 test("the incident: a reply to another organiser naming players for next week: silent, nothing written, no tick", async ({ request, db }) => {
