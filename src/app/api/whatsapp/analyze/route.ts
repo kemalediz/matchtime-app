@@ -377,7 +377,7 @@ import { loadGroupReplyContexts, parseGroupQuote, type QuotedGroupMessage } from
 import { rosterMemberByPhone } from "@/lib/roster-name-by-phone";
 import { claimGroupReplies } from "@/lib/group-reply-claims";
 import { handlePartnerVolunteer } from "@/lib/partner-guest";
-import { alignHistoryWithBatch } from "@/lib/history-own-lines";
+import { chatAuthorOf, groupChatHistory } from "@/lib/group-chat-history";
 
 interface InboundMessage {
   waMessageId: string;
@@ -2070,15 +2070,27 @@ async function handleAnalyzeRequest(request: Request) {
     fresh.sort((a, b) => (arrival.get(a.waMessageId) ?? 0) - (arrival.get(b.waMessageId) ?? 0));
   }
 
-  // A history line that IS a message in this request takes the body the
-  // pipeline reads for it (the Pi records the raw "@<digits>" mention into
-  // its history and rewrites only the forwarded copy), so every extractor's
-  // own-line filter recognises it. FNF, 2026-10-20: `history-own-lines.ts`.
-  const history = alignHistoryWithBatch(body.history ?? [], body.messages).map((h) => ({
-    authorName: h.authorName,
-    body: h.body,
-    timestamp: new Date(h.timestamp),
-  }));
+  // THE RECENT CHAT, FROM WHAT THE SERVER STORED (Kemal, 2026-10-20). The
+  // group's newest stored lines, then this request's own messages, each
+  // under the member's roster name; the Pi's buffer (empty after a
+  // restart) only fills lines the server never stored. A batch message's
+  // line carries the same author label and words the extractor is handed
+  // as THE MESSAGE (`chatAuthorOf` below), so every extractor's own-line
+  // filter drops it for its sender. `lib/group-chat-history.ts`.
+  const senderLabel = (waMessageId: string) => chatAuthorOf(senderById.get(waMessageId));
+  const history = await groupChatHistory({
+    orgId: org.id,
+    groupId: body.groupId,
+    pi: body.history ?? [],
+    batch: all.map((m) => ({
+      waMessageId: m.waMessageId,
+      authorName: m.authorName,
+      timestamp: m.timestamp,
+      author: senderLabel(m.waMessageId),
+      body: m.body,
+      stored: seenMap.has(m.waMessageId),
+    })),
+  });
 
   // ── §10 STEP 5 — THE ROUTER GATE, NO LONGER BEHIND A FLAG ──────────
   //
@@ -2289,7 +2301,7 @@ async function handleAnalyzeRequest(request: Request) {
           now: new Date(),
           expectedMatchId: activeMatchForReply?.id ?? null,
           enabled: true,
-          history: history.map((h) => ({ author: h.authorName, body: h.body })),
+          history,
           messages: fresh.map((m) => {
             const s = senderById.get(m.waMessageId)!;
             return {
@@ -2297,7 +2309,8 @@ async function handleAnalyzeRequest(request: Request) {
               // The RESIDUAL for a clause-peeled message. This is the
               // line that rescues "and I'm out" from a swap message.
               body: pipelineBody(m),
-              authorName: m.authorName,
+              // The roster name, as on this message's RECENT CHAT line.
+              authorName: senderLabel(m.waMessageId),
               senderUserId: s.userId,
               senderName: s.name,
               senderIsAdmin: !!s.userId && engineAdminIds.has(s.userId),
@@ -2506,7 +2519,7 @@ async function handleAnalyzeRequest(request: Request) {
       return {
         waMessageId: m.waMessageId,
         body: m.body,
-        authorName: m.authorName,
+        authorName: senderLabel(m.waMessageId),
         senderUserId: s.userId,
         senderName: s.name,
         tagged: messageTagsBot(m),
@@ -2521,7 +2534,7 @@ async function handleAnalyzeRequest(request: Request) {
         ...replyField(replyById, m),
       };
     });
-  const ownerHistory = history.map((h) => ({ author: h.authorName, body: h.body }));
+  const ownerHistory = history;
   const now = new Date();
 
   // The step-7 routes live for this request. The test-only per-request

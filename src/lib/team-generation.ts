@@ -287,16 +287,22 @@ async function runRatingAdjuster(args: {
   basePlayers: PlayerWithRating[];
 }) {
   const cutoff = new Date(args.matchDate.getTime() - 7 * 24 * 60 * 60 * 1000);
-  const recent = await db.analyzedMessage.findMany({
-    where: {
-      orgId: args.orgId,
-      createdAt: { gte: cutoff },
-      body: { not: null },
-    },
-    orderBy: { createdAt: "asc" },
-    take: 300,
-    select: { authorUserId: true, body: true, createdAt: true },
-  });
+  // The NEWEST 300 of the week, then oldest first for the prompt (Kemal,
+  // 2026-10-20). Ascending with `take` kept the week's first 300 and, in a
+  // busy group, dropped the match-day lines that matter (an injury that
+  // morning). `adjustRatings` keeps the newest too (`slice(-300)`).
+  const recent = (
+    await db.analyzedMessage.findMany({
+      where: {
+        orgId: args.orgId,
+        createdAt: { gte: cutoff },
+        body: { not: null },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 300,
+      select: { authorUserId: true, body: true, createdAt: true },
+    })
+  ).reverse();
 
   const userIds = recent
     .map((r) => r.authorUserId)
