@@ -87,7 +87,8 @@ function fakeDb(input: {
     botJob: {
       findUnique: async (args) => {
         calls.botJob += 1;
-        return input.botJobs?.find((j) => j.id === args.where.id) ?? null;
+        const j = input.botJobs?.find((x) => x.id === args.where.id);
+        return j ? { matchId: null, aboutKey: null, ...j } : null;
       },
     },
     user: {
@@ -546,7 +547,9 @@ describe("loadDmReplyContext: one load per DM, for every DM classifier", () => {
       botJob: {
         findMany: async (args) => {
           seen.jobs.push(args);
-          return (input.jobs ?? []).filter((r) => r.createdAt >= args.where.createdAt.gte && r.sentAt !== null);
+          return (input.jobs ?? [])
+            .map((r) => ({ matchId: null, aboutKey: null, ...r }))
+            .filter((r) => r.createdAt >= args.where.createdAt.gte && r.sentAt !== null);
         },
       },
       match: {

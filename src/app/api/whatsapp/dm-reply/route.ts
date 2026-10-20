@@ -80,11 +80,11 @@ import { selfJoinEnabledForApiRequest } from "@/lib/self-join-flag";
 import { NextResponse } from "next/server";
 import { REPLY_PRIORITY } from "@/lib/dm-reply-priority";
 import { db } from "@/lib/db";
-import { logDmQuote, quoteForMatch } from "@/lib/reply-context";
+import { loadDmReplyContext, logDmQuote, quoteForClubs, quoteForMatch, type QuotedBotMessage } from "@/lib/reply-context";
 import { normalisePhone } from "@/lib/phone";
 import { classifyRosterReply } from "@/lib/roster-survey-classifier";
 import { resolveBenchConfirmation } from "@/lib/bench-confirmation";
-import { answerScopedQuestion, pickRelevantOrgForUser, looksLikeQuestion } from "@/lib/dm-qa";
+import { answerScopedQuestion, pickQaOrgAndQuote, looksLikeQuestion } from "@/lib/dm-qa";
 import { handleCollectorFeeReply } from "@/lib/payment-flow";
 import { setDmSubscriptions } from "@/lib/notification-prefs";
 import {
@@ -905,7 +905,9 @@ export async function POST(request: Request) {
   //   check-in answer or a question. Returns null when it's not a fee
   //   interaction → falls through unchanged.
   {
-    const feeResult = await handleCollectorFeeReply(user.id, text);
+    // A swipe-reply to one match's fee question acts on that match; the
+    // model reads the chat context (quoted-reply context S3).
+    const feeResult = await handleCollectorFeeReply(user.id, text, { quoted, phone: await dmPhone() });
     if (feeResult) {
       const phoneNoPlus = phone ? normalisePhone(phone)?.replace(/^\+/, "") ?? null : null;
       const u = await db.user.findUnique({
@@ -913,13 +915,29 @@ export async function POST(request: Request) {
         select: { phoneNumber: true },
       });
       const replyPhone = phoneNoPlus ?? u?.phoneNumber?.replace(/^\+/, "") ?? null;
-      const orgId = await db.organisation.findFirst({
-        where: { paymentHolderId: user.id, paymentCollectionEnabled: true },
-        select: { id: true },
-      });
+      // Queued under the MATCH's club (review of #339): a collector of two
+      // clubs used to get every ack under whichever club came first.
+      const orgId =
+        feeResult.orgId ??
+        (await db.organisation.findFirst({
+          where: { paymentHolderId: user.id, paymentCollectionEnabled: true },
+          select: { id: true },
+        }))?.id ??
+        null;
       if (replyPhone && orgId) {
         await db.botJob.create({
-          data: { orgId: orgId.id, kind: "dm", phone: replyPhone, text: feeResult.reply, ...REPLY_PRIORITY },
+          data: {
+            orgId,
+            kind: "dm",
+            phone: replyPhone,
+            text: feeResult.reply,
+            // The confirm question names its match, so a swipe-reply to it
+            // ("✅") resolves to that match and reads as the fee question
+            // (review of #339, H2 and H3).
+            ...(feeResult.matchId ? { matchId: feeResult.matchId } : {}),
+            ...(feeResult.asked && feeResult.matchId ? { aboutKey: `${feeResult.matchId}:fee-confirm` } : {}),
+            ...REPLY_PRIORITY,
+          },
         });
       }
       return NextResponse.json({ ok: true, handled: "collector-fee", released: feeResult.released });
@@ -980,6 +998,11 @@ export async function POST(request: Request) {
     const { classifyDmIntent, runDmAdminIntent } = await import("@/lib/dm-intent");
     const phoneNoPlus = phone ? normalisePhone(phone)?.replace(/^\+/, "") ?? null : null;
     let dmAdminOrgIds: string[] = [];
+    // The club the quoted message's match belongs to (quoted-reply context
+    // S3): a swipe-reply about one of this admin's clubs acts on that club;
+    // a quote about another club's match is dropped (`quoteForClubs`).
+    // Read only once the sender is known to be an admin.
+    let adminQuote: { quoted: QuotedBotMessage | null; orgId: string | null } = { quoted: null, orgId: null };
     const outcome = await runDmAdminIntent({
       adminOrgIds: async () => {
         const { isSuperadmin } = await import("@/lib/org");
@@ -1003,34 +1026,57 @@ export async function POST(request: Request) {
       // lib/ai-budget.ts): which club the DM is about is only known
       // after it is classified. `runDmAdminIntent` reads the org ids
       // first, so the list is filled by the time this runs.
-      classify: async () =>
-        dmAdminOrgIds[0]
-          ? (await withOrgAiBudget(dmAdminOrgIds[0], () => classifyDmIntent(text, { senderName: authorName ?? null })))
-              .intent
-          : (await classifyDmIntent(text, { senderName: authorName ?? null })).intent,
+      classify: async () => {
+        const quotedOrgId = quoted?.matchId
+          ? ((await db.match.findUnique({ where: { id: quoted.matchId }, select: { activity: { select: { orgId: true } } } }))
+              ?.activity.orgId ?? null)
+          : null;
+        adminQuote = quoteForClubs(quoted, quotedOrgId, dmAdminOrgIds);
+        // Only this admin's clubs' DMs (review of #339, M1): the quoted
+        // club's when the quote picked one.
+        const replyContext = await loadDmReplyContext(db, {
+          userId: user.id,
+          phone: await dmPhone(),
+          quoted: adminQuote.quoted,
+          orgIds: adminQuote.orgId ? [adminQuote.orgId] : dmAdminOrgIds,
+        });
+        const ctx = { senderName: authorName ?? null, replyContext };
+        const payer = adminQuote.orgId ?? dmAdminOrgIds[0];
+        return payer
+          ? (await withOrgAiBudget(payer, () => classifyDmIntent(text, ctx))).intent
+          : (await classifyDmIntent(text, ctx)).intent;
+      },
+      // The quoted club first, when the quote named one of this admin's.
       orgWithUpcomingMatch: async (orgIds) => {
         const startToday = new Date();
         startToday.setUTCHours(0, 0, 0, 0);
-        const cand = await db.match.findFirst({
-          where: {
-            activity: { orgId: { in: orgIds } },
-            isHistorical: false,
-            status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] },
-            date: { gte: startToday },
-          },
-          orderBy: { date: "asc" },
-          select: { activity: { select: { orgId: true } } },
-        });
-        return cand?.activity.orgId ?? null;
+        const upcoming = async (ids: string[]) =>
+          (
+            await db.match.findFirst({
+              where: {
+                activity: { orgId: { in: ids } },
+                isHistorical: false,
+                status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] },
+                date: { gte: startToday },
+              },
+              orderBy: { date: "asc" },
+              select: { activity: { select: { orgId: true } } },
+            })
+          )?.activity.orgId ?? null;
+        return (adminQuote.orgId ? await upcoming([adminQuote.orgId]) : null) ?? upcoming(orgIds);
       },
-      // The org whose most-recently-played match is the freshest.
+      // The org whose most-recently-played match is the freshest; the
+      // quoted club first.
       orgWithCompletedMatch: async (orgIds) => {
-        const cand = await db.match.findFirst({
-          where: { activity: { orgId: { in: orgIds } }, isHistorical: false, status: "COMPLETED" },
-          orderBy: { date: "desc" },
-          select: { activity: { select: { orgId: true } } },
-        });
-        return cand?.activity.orgId ?? null;
+        const completed = async (ids: string[]) =>
+          (
+            await db.match.findFirst({
+              where: { activity: { orgId: { in: ids } }, isHistorical: false, status: "COMPLETED" },
+              orderBy: { date: "desc" },
+              select: { activity: { select: { orgId: true } } },
+            })
+          )?.activity.orgId ?? null;
+        return (adminQuote.orgId ? await completed([adminQuote.orgId]) : null) ?? completed(orgIds);
       },
       invite: async (orgId) => {
         const { inviteRecentPlayers } = await import("@/lib/recruit");
@@ -1227,7 +1273,11 @@ export async function POST(request: Request) {
     //   details or other groups). Reply via a DM BotJob the Pi sends.
     // The org the question is about decides the language the gate reads
     // (a Turkish question has no "?" often enough to matter).
-    const qaOrgId = await pickRelevantOrgForUser(user.id);
+    // A swipe-reply about one of his clubs' matches is a question about
+    // that club, and is read against the quoted message; a quote about
+    // another club's match is dropped (quoted-reply context S3).
+    const qa = await pickQaOrgAndQuote(user.id, quoted);
+    const qaOrgId = qa.orgId;
     const qaLang = qaOrgId
       ? (await db.organisation.findUnique({ where: { id: qaOrgId }, select: { language: true } }))?.language
       : null;
@@ -1273,6 +1323,8 @@ export async function POST(request: Request) {
         question: text,
         askerName: user.name,
         includePhoneFlags,
+        quoted: qa.quoted,
+        phone: replyPhone,
       });
       if (result) {
         await db.botJob.create({
@@ -1284,10 +1336,18 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, ignored: "no-open-survey" });
   }
 
+  // What MatchTime said to them (quoted-reply context S3): the message
+  // they swipe-replied to, or else its recent DMs to them. The check-in is
+  // about no match, so a quote is never dropped here: a swipe-reply to a
+  // pay link or an invite is exactly what tells the model a bare "yes" is
+  // not an answer to the check-in.
+  const surveyReplyContext = await loadDmReplyContext(db, { userId: user.id, phone: await dmPhone(), quoted });
   const classification = await withOrgAiBudget(dm.survey.org.id, () =>
     classifyRosterReply(text, {
       playerName: user.name,
       clubName: dm.survey.org.name,
+      checkInSentAt: dm.sentAt ?? dm.createdAt,
+      replyContext: surveyReplyContext,
     }),
   );
 

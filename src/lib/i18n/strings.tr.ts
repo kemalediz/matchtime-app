@@ -1508,7 +1508,7 @@ export const tr: Strings = {
             ? `Oyuncular doğrudan sana ödeyecek, ödediğini söyleyen olursa sana haber veririm. `
             : "";
     return (
-      `✅ Tamam, *${p.matchName}* için kişi başı *${p.fee}* üzerinden ${p.released} ödeme linki gönderdim. ` +
+      `✅ Tamam, *${p.matchName}*${p.matchWhen ? ` (${p.matchWhen})` : ""} için kişi başı *${p.fee}* üzerinden ${p.released} ödeme linki gönderdim. ` +
       `${how}Ödemeyenlere ben hatırlatırım.`
     );
   },

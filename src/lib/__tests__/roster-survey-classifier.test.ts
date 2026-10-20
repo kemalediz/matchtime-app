@@ -43,14 +43,17 @@ describe("the prompt", () => {
 });
 
 describe("the user turn", () => {
-  it("is the club, the player and the reply, in that order", () => {
-    expect(buildRosterSurveyUserTurn("Evet bu ay varım", { clubName: "Sutton FC", playerName: "Ali" })).toBe(
-      'Club: Sutton FC\nPlayer: Ali\nReply: "Evet bu ay varım"',
-    );
+  // The whole shape, with the chat context, is pinned in
+  // reply-context-s3.test.ts (quoted-reply context S3).
+  it("is the club, the player, when the check-in went out, the chat context, then the reply under its header", () => {
+    const u = buildRosterSurveyUserTurn("Evet bu ay varım", { clubName: "Sutton FC", playerName: "Ali" });
+    expect(u.startsWith("Club: Sutton FC\nPlayer: Ali\nThe check-in was sent: (not known)\nNOW: ")).toBe(true);
+    expect(u.endsWith("\nTHE DM:\nEvet bu ay varım")).toBe(true);
   });
 
   it("drops a missing name rather than printing it empty", () => {
-    expect(buildRosterSurveyUserTurn("yes", {})).toBe('Reply: "yes"');
+    const u = buildRosterSurveyUserTurn("yes", {});
+    expect(u).not.toMatch(/Club:|Player:/);
   });
 });
 

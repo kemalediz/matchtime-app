@@ -72,7 +72,13 @@ const SONNET_5 = "claude-sonnet-5";
  * and by `__tests__/thinking-off.test.ts`, which asserts the extractors
  * ask for `thinking: "off"` and the router does not.
  */
-const UNRESOLVED_BY_DESIGN = new Set(["src/lib/pipeline/llm.ts"]);
+const UNRESOLVED_BY_DESIGN = new Set([
+  "src/lib/pipeline/llm.ts",
+  // The DM dry runs' metered model (quoted-reply context S3): the model is
+  // the arm passed in (`HAIKU_CLASSIFIER_ARM`, `SONNET_DM_QA_ARM`), each
+  // built from `models.ts` with its thinking posture stated beside it.
+  "scripts/dm-dryrun-meter.ts",
+]);
 
 function walk(dir: string, out: string[] = []): string[] {
   if (!fs.existsSync(dir)) return out;

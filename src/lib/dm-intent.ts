@@ -82,9 +82,10 @@
  * `__tests__/dm-intent.test.ts` asserts that twice over.
  */
 import Anthropic from "@anthropic-ai/sdk";
-import { readFileSync } from "node:fs";
 import { guardedAnthropicCall, systemBlock } from "@/lib/pipeline/llm";
+import { bodyUnderHeader, dmClassifierStubCall } from "./dm-classifier-stub";
 import { HAIKU_MODEL, HAIKU_SHORT_ANSWER_MAX_TOKENS, HAIKU_THINKING } from "./models";
+import { noReplyContext, renderReplyContext, type ReplyContext } from "./reply-context";
 
 const MODEL = HAIKU_MODEL;
 
@@ -119,42 +120,36 @@ export interface DmIntentClassification {
  * That distinction is the whole job, and it is the one a conjunction of
  * keywords structurally cannot make — every negative example below
  * satisfies the regex that used to sit here.
+ *
+ * REWRITTEN WHOLE on 2026-10-20 (quoted-reply context, slice S3). The
+ * model was shown the admin's name and the message only, so a follow-up
+ * ("who's left?" after MatchTime's rating update) had nothing to be read
+ * against, and an admin's "done 👍" to the rating request he got as a
+ * player had no request beside it. The user turn now carries the shared
+ * chat-context block (`reply-context.ts`). English and Turkish examples
+ * side by side; each intent defined once; the "who does the work" rule
+ * stated once.
  */
-export const DM_INTENT_SYSTEM_PROMPT = `You read ONE private WhatsApp message sent directly to a football club's bot, MatchTime, by a club admin. You decide whether it is one of exactly two INSTRUCTIONS the bot can carry out. You never carry it out and you never answer it.
+export const DM_INTENT_SYSTEM_PROMPT = `A club admin sent MatchTime, their football club's WhatsApp bot, the private message under "THE DM". Above it you get the club, the admin, the time now, and what MatchTime said to them: the message they swipe-replied to, or else MatchTime's recent messages to them, each with when it was sent and what it was about.
 
-Return ONE intent:
+Is the message one of the two instructions MatchTime can carry out? You never carry it out and never answer it. Pick one:
+- "recruit_blast": they tell MatchTime to CONTACT players who are not signed up for the next match and invite them.
+- "rating_progress": they ask HOW MANY have sent their ratings or Man of the Match votes for the match just played, or WHO has not.
+- "other": everything else.
 
-- "recruit_blast": the sender is telling you to CONTACT players who are not yet signed up for the next match, and invite them. Examples: "DM the lads from the last few games", "message everyone who played recently and invite them", "can you invite the regulars for tuesday", "we're short, round some players up", "ask the last few weeks' players if they can play".
+Who is told to do the work decides it. Telling the PLAYERS to do something, describing what players said or did, reporting a fact (a drop-out, a shortage), thanking, complaining or chatting is "other", however often the message says players, ratings, DM, message, everyone or squad. Asking MatchTime to REMIND players is not asking for the rating tally.
 
-- "rating_progress": the sender is asking HOW MANY people have submitted their ratings or Man-of-the-Match votes for the match just played, or WHO has not. Examples: "who hasn't rated yet?", "how many have rated so far?", "who still needs to pick a MoM?", "any ratings outstanding from tuesday?", "is everyone done rating".
+Read the message against what MatchTime said to them: the message they swipe-replied to, or else the newest recent one. A short follow-up such as "who's left?" or "and the MoM?" answering MatchTime's rating update is "rating_progress". An admin plays too, so a bare answer ("done", "ok", "👍") to a message MatchTime sent them as a player (a pay link, a request to rate teammates, a match invite) is about themselves: "other". A message that is itself one of the two instructions stays one, whatever it replies to.
 
-- "other": EVERYTHING else.
+Examples (English | Turkish):
+recruit_blast: "DM everyone who played in the last 5 matches and invite them" | "son 5 maçta oynayan herkese yaz, davet et"; "we need a couple more for tuesday, can you message the recent lads" | "salıya iki kişi eksik, son gelenlere mesaj atar mısın"; "we're short, round some players up" | "eksiğimiz var, birkaç oyuncu topla"; "ask the last few weeks' players if they can play" | "son haftalarda oynayanlara gelebilirler mi diye sor"
+rating_progress: "who hasn't rated yet?" | "kim daha puan vermedi?"; "how many have picked a MoM so far" | "kaç kişi maçın adamını seçti"; "is everyone done rating" | "herkes puanladı mı"; "any ratings outstanding from tuesday?" | "salı maçından eksik puan var mı?"
+other: "please do not forget to rate the players via the link from Matchtime DM'ed to you. the more accurate ratings, the more balanced teams next time" (it tells the players); "Najib is out. We need one more player." | "Ahmet yok. Bir kişi lazım." (it reports a drop); "the lads keep asking me to DM them the ratings link" (it describes a situation); "cheers for sorting the players out last week" | "geçen hafta oyuncuları ayarladığın için sağ ol"; "I haven't rated yet, I'll do it tonight" | "ben daha puanlamadım, akşam yaparım"; "who's playing tuesday?" | "salı kimler var?" (the squad, not the ratings); "can you remind everyone to rate the players" | "herkese puan vermeyi hatırlat" (a reminder); "IN" | "varım"; "sorry can't make tuesday" | "salı gelemiyorum"; "done 👍" answering a request to rate teammates
 
-THE ONE DISTINCTION THAT MATTERS. Ask who is being told to do the work. If the sender is telling the PLAYERS to do something, describing what players have said or done, reporting a fact, thanking you, complaining, or chatting, it is "other" — however many times the message says players, ratings, DM, message, everyone or squad. A message can be ABOUT DMs and ratings without being an instruction to you.
+If you are not at least 80% sure, choose "other". A wrong "recruit_blast" sends an unwanted private message to up to 27 real people; a wrong "other" costs the admin one re-typed message.
 
-  "DM everyone who played in the last 5 matches and invite them"          -> recruit_blast
-  "we need a couple more for tuesday, can you message the recent lads"    -> recruit_blast
-  "who hasn't rated yet?"                                                 -> rating_progress
-  "how many have picked a MoM so far"                                     -> rating_progress
-  "please do not forget to rate the players via the link from Matchtime DM'ed to you. the more accurate ratings, the more balanced teams next time" -> other, it instructs the PLAYERS
-  "Najib is out. We need one more player."                                -> other, it reports a drop; it does not tell you to message anybody
-  "the lads keep asking me to DM them the ratings link"                   -> other, it describes a situation
-  "cheers for sorting the players out last week"                          -> other, it is thanks
-  "I haven't rated yet, I'll do it tonight"                               -> other, it is about the sender
-  "who's playing tuesday?"                                                -> other, that is the squad list, not the ratings
-  "can you remind everyone to rate the players"                           -> other, that asks for a REMINDER, not for the rating tally
-  "IN"                                                                    -> other
-  "sorry can't make tuesday"                                              -> other
-
-If you are not at least 80% sure, return "other" with a low confidence. A wrong "recruit_blast" sends an unwanted private message to up to 27 real people; a wrong "other" costs the admin one re-typed message.
-
-Output STRICT JSON only — no markdown, no fences:
-
-{
-  "intent": "recruit_blast" | "rating_progress" | "other",
-  "confidence": <number 0..1>,
-  "reasoning": "<short justification, max 100 chars>"
-}`;
+Output STRICT JSON only, no markdown, no fences:
+{"intent": "recruit_blast" | "rating_progress" | "other", "confidence": <number 0..1>, "reasoning": "<max 100 chars>"}`;
 
 /** The model, as one function, so a test can drive the real parse
  *  without a key and the e2e suite can drive the real route without one
@@ -164,6 +159,10 @@ export type DmIntentCall = (system: string, user: string) => Promise<string>;
 export interface DmIntentContext {
   senderName?: string | null;
   clubName?: string | null;
+  /** The chat context (`loadDmReplyContext`): the time now, and the
+   *  message they swipe-replied to or MatchTime's recent DMs to them.
+   *  Absent: the time now, nothing known. */
+  replyContext?: ReplyContext | null;
 }
 
 const OTHER = (reasoning: string): DmIntentClassification => ({
@@ -181,8 +180,10 @@ const OTHER = (reasoning: string): DmIntentClassification => ({
  *
  * It stubs what ENTERS the system (what the model said), never what the
  * system concludes: every gate, the match lookup and the action all run
- * for real behind it. `e2e/helpers/live-llm.ts` refuses a "live" run
- * that can still see this seam.
+ * for real behind it. Since S3 it is the shared DM-classifier seam
+ * (`dm-classifier-stub.ts`), which also records each user turn it is
+ * asked about in `<file>.calls`. `e2e/helpers/live-llm.ts` refuses a
+ * "live" run that can still see this seam.
  */
 export const DM_INTENT_STUB_FILE_ENV = "MT_TEST_DM_INTENT_STUB_FILE";
 
@@ -192,34 +193,33 @@ const MESSAGE_HEADER = "THE DM:";
 /** Everything after the header, trimmed — so a multi-line message is
  *  matched whole rather than by its last line. */
 export function dmBodyOf(user: string): string {
-  const i = user.indexOf(`${MESSAGE_HEADER}\n`);
-  return (i === -1 ? user : user.slice(i + MESSAGE_HEADER.length + 1)).trim();
-}
-
-interface DmIntentStub {
-  /** Trimmed message body → the intent the model would have returned. */
-  bodies?: Record<string, string>;
-  /** Bodies whose model CALL throws, the way an overloaded API does. */
-  fail?: string[];
+  return bodyUnderHeader(user, MESSAGE_HEADER);
 }
 
 function stubCall(env: NodeJS.ProcessEnv): DmIntentCall | null {
-  const file = env[DM_INTENT_STUB_FILE_ENV];
-  if (!file) return null;
-  return async (_system, user) => {
-    let cfg: DmIntentStub = {};
-    try {
-      cfg = JSON.parse(readFileSync(file, "utf8")) as DmIntentStub;
-    } catch {
-      // Missing or garbled → behave as if there were no mapping at all,
-      // which is the direction that cannot invent a mass DM.
-      cfg = {};
-    }
-    const body = dmBodyOf(user);
-    if ((cfg.fail ?? []).includes(body)) throw new Error("dm-intent stub: forced failure");
-    const intent = cfg.bodies?.[body] ?? "other";
-    return JSON.stringify({ intent, confidence: 1, reasoning: "dm-intent stub" });
-  };
+  // Missing or garbled file, or a body it does not map: `other`, the
+  // direction that cannot invent a mass DM.
+  return dmClassifierStubCall(env[DM_INTENT_STUB_FILE_ENV], {
+    label: "dm-intent",
+    header: MESSAGE_HEADER,
+    answer: (intent) => JSON.stringify({ intent: intent ?? "other", confidence: 1, reasoning: "dm-intent stub" }),
+  });
+}
+
+/** The user turn: club, admin, the chat context, then the message under a
+ *  HEADER, not a last line, and `extractors.ts` does the same for the same
+ *  reason: a real WhatsApp message is routinely several lines long (the
+ *  2026-09-01 incident message is), so a stub seam that read only the last
+ *  line would silently classify a fragment. */
+export function buildDmIntentUserTurn(text: string, context: DmIntentContext = {}): string {
+  return [
+    context.clubName ? `Club: ${context.clubName}` : null,
+    context.senderName ? `Admin: ${context.senderName}` : null,
+    renderReplyContext(context.replyContext ?? noReplyContext()),
+    `${MESSAGE_HEADER}\n${text.trim()}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 /**
@@ -236,19 +236,8 @@ export async function classifyDmIntent(
   if (!text || !text.trim()) return OTHER("empty message");
   const fn = call ?? stubCall(process.env) ?? liveCall();
   if (!fn) return OTHER("classifier unavailable");
-  const user = [
-    context.clubName ? `Club: ${context.clubName}` : null,
-    context.senderName ? `Admin: ${context.senderName}` : null,
-    // A HEADER, not a last line, and `extractors.ts` does the same for
-    // the same reason: a real WhatsApp message is routinely several
-    // lines long — the 2026-09-01 incident message is — so a stub seam
-    // that read only the last line would silently classify a fragment.
-    `${MESSAGE_HEADER}\n${text.trim()}`,
-  ]
-    .filter(Boolean)
-    .join("\n");
   try {
-    return parseDmIntent(await fn(DM_INTENT_SYSTEM_PROMPT, user));
+    return parseDmIntent(await fn(DM_INTENT_SYSTEM_PROMPT, buildDmIntentUserTurn(text, context)));
   } catch (err) {
     // FAIL CLOSED. An overloaded API, a network blip, a revoked key —
     // all of them are "we did not understand this message", and the

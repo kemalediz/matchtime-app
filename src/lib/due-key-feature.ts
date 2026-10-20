@@ -85,9 +85,17 @@ export function featureForDueKey(key: string): DueKeyFeature | null {
  * the quoted-reply resolver and the chat context (`reply-context.ts`:
  * "the message they swipe-replied to", "MatchTime's recent messages").
  */
-export type DueKeyTopic = DueKeyFeature | "tentativeFollowup";
+export type DueKeyTopic = DueKeyFeature | "tentativeFollowup" | "feeQuestion";
 
 export function topicOfDueKey(key: string): DueKeyTopic | null {
   if (key.includes(":tentative-followup:")) return "tentativeFollowup";
+  // The money collector's fee question: the scheduler's ask ("how much?",
+  // or a monthly club's "£8 each, yes?") and the confirm question queued
+  // when he types an amount (`<matchId>:fee-confirm`, a BotJob's
+  // `aboutKey`). Its own topic, not "paymentCollection" (paying a fee one
+  // owes): a ✅ answers it, and only it (review of #339). The feature gate
+  // (`featureForDueKey`) still classifies the ask as paymentCollection.
+  const seg = key.includes(":") ? key.slice(key.indexOf(":") + 1) : key;
+  if (seg.startsWith("fee-ask") || seg.startsWith("fee-confirm")) return "feeQuestion";
   return featureForDueKey(key);
 }

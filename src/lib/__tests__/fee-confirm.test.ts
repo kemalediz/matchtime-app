@@ -384,3 +384,27 @@ describe("runCollectorFeeReply: free places (2026-10-16)", () => {
     expect(res?.reply).not.toContain("free place");
   });
 });
+
+describe("review of #339: a quote that is not the fee question, and a release someone else already made", () => {
+  it('allowlist off (a swipe-reply to a non-fee message): "✅" is NOT released by the allowlist, the model decides', async () => {
+    const { deps, calls } = recorder({ allowlist: false });
+    const res = await runCollectorFeeReply("✅", deps);
+    expect(calls.released).toEqual([]);
+    expect(calls.judged).toEqual(["✅"]);
+    expect(res).toBeNull();
+  });
+
+  it("a release that lost the race (null) sends no ack", async () => {
+    const { deps } = recorder({ release: async () => null });
+    expect(await runCollectorFeeReply("✅", deps)).toBeNull();
+  });
+
+  it("the release ack names the match's club and date when known", async () => {
+    const { deps } = recorder({
+      pendingMatch: async () => ({ id: "m1", name: "Tuesday 5-a-side", feePendingConfirm: AMOUNT, orgId: "org-b", date: new Date("2026-10-13T19:00:00Z") }),
+    });
+    const res = await runCollectorFeeReply("✅", deps);
+    expect(res).toMatchObject({ orgId: "org-b", matchId: "m1" });
+    expect(res?.reply).toContain("on Tue 13 Oct");
+  });
+});
