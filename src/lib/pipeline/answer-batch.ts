@@ -168,6 +168,7 @@
 // function, and only when the caller did not inject them. The analyze
 // route (which has Prisma) gets the real loaders; the corpus injects
 // its SQL ones and never touches Prisma at all.
+import type { QuotedGroupMessage } from "../reply-context";
 import type { OrgFeatures } from "../org-features";
 import { compose } from "./compose";
 import { decide as decideDefault } from "./engine";
@@ -605,10 +606,11 @@ export interface AnswerBatchMessage {
   route: Route | undefined;
   /** Did step 5's gate skip this message? Then step 7 never sees it. */
   gated: boolean;
-  /** A WhatsApp reply to MatchTime's own message (2026-10-16): the text it
-   *  quotes. The extractor is shown it as MatchTime's post, because it is
-   *  the post this message is about. Absent otherwise. */
-  quotedMatchTime?: string;
+  /** The message this one is a WhatsApp reply to, whoever wrote it
+   *  (quoted-reply context, slice S4; replaces the 2026-10-16
+   *  `quotedMatchTime`): shown to the extractor above the question,
+   *  beside MatchTime's last post. Absent when it is not a reply. */
+  reply?: QuotedGroupMessage | null;
 }
 
 /** What the analyze route needs in order to turn one owned message into
@@ -990,9 +992,11 @@ export async function runAnswerBatch(args: {
         authorName: m.authorName,
         tagged: clar ? true : m.tagged,
         history,
-        // A reply to MatchTime is about the post it quotes, not whatever
-        // MatchTime said last.
-        lastBotPost: m.quotedMatchTime ?? lastBotPost,
+        lastBotPost,
+        // A reply is about the message it quotes, whoever wrote it. Not
+        // narrowed to a match: a question names no match for code to act on.
+        reply: m.reply ?? null,
+        now,
       });
       if (clar && res.facts.kind === "question" && res.facts.topic === "stats") {
         res.facts.personRef = clar.subject;

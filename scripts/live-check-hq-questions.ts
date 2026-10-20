@@ -82,8 +82,6 @@ const INCIDENT_ID = "false_120363046757382958@g.us_AC5922E2E21D4093AAD157B03EDDA
 const INCIDENT_TEXTS = ["@Match Time what is squad now including bench?", "@270000000000001 what is squad now including bench?"];
 const INCIDENT_CONTEXT = organisersContext({
   pending: [],
-  quoted: null,
-  quotedIsMatchTime: false,
   recent: [
     "Thought that was the quickest recovery",
     "Ill be back on 30th or 6th the latest inshallah",
@@ -136,7 +134,7 @@ async function main() {
   let pass = 0;
   let fail = 0;
   const mark = (ok: boolean) => (ok ? (pass++, "PASS") : (fail++, "FAIL"));
-  const context = organisersContext({ pending: [], quoted: null, quotedIsMatchTime: false, recent: [] });
+  const context = organisersContext({ pending: [], recent: [] });
 
   // ONLY=players: the players' group section and the regressions only (a
   // rerun after `club` became answerable there; no prompt changed).

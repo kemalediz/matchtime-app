@@ -300,6 +300,9 @@ export interface ContextMessage {
   text: string | null;
   topic: DueKeyTopic | null;
   match: string | null;
+  /** Who wrote it, for a group reply (slice S4): absent or null when it
+   *  was MatchTime; `{ name: null }` for a member whose name is not known. */
+  author?: { name: string | null } | null;
 }
 
 /** What a reply is read against. `quoted` set: that message alone, and
@@ -322,7 +325,7 @@ export interface ReplyContext {
  * against one match's message while acting on a different match (review of
  * #336: "paid" to match A's chase landed on match B).
  */
-export function quoteForMatch(quoted: QuotedBotMessage | null | undefined, matchId: string): QuotedBotMessage | null {
+export function quoteForMatch<Q extends { matchId: string | null }>(quoted: Q | null | undefined, matchId: string): Q | null {
   if (!quoted) return null;
   if (quoted.matchId && quoted.matchId !== matchId) return null;
   return quoted;
@@ -378,13 +381,34 @@ function aboutOf(topic: DueKeyTopic | null, match: string | null): string | null
   }
 }
 
-const words = (text: string | null): string =>
-  text && text.trim() ? JSON.stringify(text.trim().slice(0, MESSAGE_WORDS_MAX)) : "(its words are not known)";
+const words = (text: string | null, max: number = MESSAGE_WORDS_MAX): string =>
+  text && text.trim() ? JSON.stringify(text.trim().slice(0, max)) : "(its words are not known)";
 
 /** "Mon 19 Oct, 17:30 (about: ...)", the head of a message line. */
 function headOf(m: ContextMessage & { at: Date }): string {
   const about = aboutOf(m.topic, m.match);
   return `${dayCommaTimeLabel("en", m.at)}${about ? ` (about: ${about})` : ""}`;
+}
+
+/** The block's first line: the time now, in the club's time. */
+export function nowLine(now: Date): string {
+  return `NOW: ${formatLondon(now, "EEEE d MMMM yyyy, HH:mm")} (club time, London)`;
+}
+
+/**
+ * The two lines naming the message a reply quotes: whose it is, when, what
+ * it was about, then its words (capped at `max`). MatchTime's or, in a
+ * group (slice S4), a member's. The one wording every caller shows.
+ */
+export function quotedLines(quoted: ContextMessage, max: number = MESSAGE_WORDS_MAX): string[] {
+  const member = quoted.author ?? null;
+  const whose = member ? (member.name ? `${member.name}'s message` : "another member's message") : "MatchTime's message";
+  const head = quoted.at
+    ? `THEY ARE REPLYING TO ${whose} of ${headOf({ ...quoted, at: quoted.at })}:`
+    : member
+      ? `THEY ARE REPLYING TO ${whose} (when it was sent is not known):`
+      : "THEY ARE REPLYING TO a MatchTime message (when it was sent is not known):";
+  return [head, words(quoted.text, max)];
 }
 
 const RECENT_HEADER = "MATCHTIME'S RECENT MESSAGES TO THEM";
@@ -396,7 +420,7 @@ const days = (ms: number) => Math.round(ms / (24 * 3600 * 1000));
  * prompts are English); the words of each message are as sent.
  */
 export function renderReplyContext(ctx: ReplyContext): string {
-  const lines = [`NOW: ${formatLondon(ctx.now, "EEEE d MMMM yyyy, HH:mm")} (club time, London)`];
+  const lines = [nowLine(ctx.now)];
   const { quoted } = ctx;
   const unidentified = !quoted ? ctx.unidentifiedQuote : null;
   if (unidentified) {
@@ -407,12 +431,7 @@ export function renderReplyContext(ctx: ReplyContext): string {
     );
   }
   if (quoted) {
-    lines.push(
-      quoted.at
-        ? `THEY ARE REPLYING TO MatchTime's message of ${headOf({ ...quoted, at: quoted.at })}:`
-        : "THEY ARE REPLYING TO a MatchTime message (when it was sent is not known):",
-      words(quoted.text),
-    );
+    lines.push(...quotedLines(quoted));
   } else if (ctx.recent.length > 0) {
     lines.push(`${RECENT_HEADER} (oldest first${unidentified ? "" : "; their DM is not a reply to one"}):`);
     for (const m of ctx.recent) lines.push(`- ${m.at ? headOf({ ...m, at: m.at }) : "(time not known)"}: ${words(m.text)}`);
@@ -541,4 +560,289 @@ async function readDmReplyContext(
   // The Pi's word that they quoted MatchTime, with nothing we can name:
   // flagged beside the recent messages, never instead of them.
   return input.quoted ? { now, quoted: null, ...picked, unidentifiedQuote: { text: input.quoted.text } } : { now, quoted: null, ...picked };
+}
+
+// ── Slice S4: a reply in a group (the players' group or HQ) ───────────
+//
+// A WhatsApp reply in a group carries the message it quotes, WHOEVER
+// wrote it: MatchTime's own post, or a member's message ("same" to Ali's
+// "IN"). The router and every group extractor are shown it in the DM
+// block's wording (`renderGroupReplyContext`), with no recent-DM list: a
+// group extractor already has RECENT CHAT and MATCHTIME'S LAST POST.
+//
+// Resolution, by the quoted stanza id first (a structured fact, never
+// a reading of words), then what the Pi saw:
+//   1. a message in THIS batch (the commonest case: "IN", then "same"
+//      seconds later): its sender and words;
+//   2. MatchTime's own send: a SentNotification of a group post with that
+//      stanza id, from the last 14 days, on THIS club (a BotJob's own
+//      `orgId`; a scheduler post's match): its stored words (else the
+//      BotJob's, else the Pi's), time, topic and match;
+//   3. a member's earlier message: `AnalyzedMessage` (players' group) or
+//      `AdminGroupMessage` (HQ) of this club, with their roster name;
+//   4. nothing found: the Pi's text, MatchTime's when the Pi says so,
+//      else the member the Pi's contact lookup names (their phone on the
+//      roster first, then their WhatsApp name), time not known.
+
+/** How much of a quoted group message an extractor is shown. More than a
+ *  DM's: a squad post with its names is the thing a reply is about. */
+export const GROUP_QUOTE_WORDS_MAX = 1000;
+
+/** A group reply's quote as the Pi forwards it. The author fields are
+ *  UNVERIFIED (the quoted author's own WhatsApp name and phone, from the
+ *  Pi's contact lookup) and absent from Pi builds before slice S4. */
+export interface GroupQuote {
+  id: string | null;
+  text: string | null;
+  fromMatchTime: boolean;
+  authorName?: string | null;
+  authorPhone?: string | null;
+}
+
+/** The message a group reply quotes, resolved. `author` null: MatchTime. */
+export interface QuotedGroupMessage extends ContextMessage {
+  author: { name: string | null } | null;
+  matchId: string | null;
+}
+
+const strOrNull = (v: unknown, max = QUOTED_TEXT_MAX): string | null =>
+  typeof v === "string" && v.trim() ? v.trim().slice(0, max) : null;
+
+/** The quote fields of a group message, in either door's names (the
+ *  analyze route's `quotedBody`, HQ's `quotedText`), or null when it is
+ *  not a reply. */
+export function parseGroupQuote(m: {
+  quotedMessageId?: unknown;
+  quotedBody?: unknown;
+  quotedText?: unknown;
+  quotedFromMatchTime?: unknown;
+  quotedAuthorName?: unknown;
+  quotedAuthorPhone?: unknown;
+}): GroupQuote | null {
+  const id = strOrNull(m.quotedMessageId, 200);
+  const text = strOrNull(m.quotedBody) ?? strOrNull(m.quotedText);
+  if (!id && !text) return null;
+  return {
+    id,
+    text,
+    fromMatchTime: m.quotedFromMatchTime === true,
+    authorName: strOrNull(m.quotedAuthorName, 100),
+    authorPhone: strOrNull(m.quotedAuthorPhone, 40),
+  };
+}
+
+/** The reads `loadGroupReplyContexts` makes, as a structural type so a
+ *  test can hand in a fake. Prisma's client satisfies it. */
+export interface GroupReplyContextDb {
+  sentNotification: {
+    findMany(args: {
+      where: {
+        createdAt: { gte: Date };
+        OR: Array<
+          | { waStanzaId: string }
+          | { waStanzaId: null; waMessageId: string }
+          | { waStanzaId: null; waMessageId: { contains: string } }
+        >;
+      };
+      orderBy: { createdAt: "desc" };
+      take: number;
+      select: { key: true; kind: true; matchId: true; waMessageId: true; waStanzaId: true; text: true; createdAt: true };
+    }): Promise<
+      Array<{ key: string; kind: string; matchId: string | null; waMessageId: string | null; waStanzaId: string | null; text: string | null; createdAt: Date }>
+    >;
+  };
+  botJob: {
+    findUnique(args: {
+      where: { id: string };
+      select: { orgId: true; kind: true; text: true; sentAt: true; createdAt: true };
+    }): Promise<{ orgId: string; kind: string; text: string; sentAt: Date | null; createdAt: Date } | null>;
+  };
+  match: {
+    findMany(args: {
+      where: { id: { in: string[] } };
+      select: { id: true; date: true; activity: { select: { name: true; orgId: true } } };
+    }): Promise<Array<{ id: string; date: Date; activity: { name: string; orgId: string } }>>;
+  };
+  analyzedMessage: {
+    findMany(args: {
+      where: { orgId: string; createdAt: { gte: Date }; waMessageId: { contains: string } };
+      orderBy: { createdAt: "desc" };
+      take: number;
+      select: { waMessageId: true; authorUserId: true; authorName: true; body: true; createdAt: true };
+    }): Promise<Array<{ waMessageId: string; authorUserId: string | null; authorName: string | null; body: string | null; createdAt: Date }>>;
+  };
+  adminGroupMessage: {
+    findMany(args: {
+      where: { orgId: string; createdAt: { gte: Date }; waMessageId: { contains: string } };
+      orderBy: { createdAt: "desc" };
+      take: number;
+      select: { waMessageId: true; senderUserId: true; text: true; createdAt: true };
+    }): Promise<Array<{ waMessageId: string; senderUserId: string | null; text: string; createdAt: Date }>>;
+  };
+  user: {
+    findMany(args: { where: { id: { in: string[] } }; select: { id: true; name: true } }): Promise<Array<{ id: string; name: string | null }>>;
+  };
+}
+
+/** One message of the batch being read, for a reply to it in the same batch. */
+export interface GroupBatchMessage {
+  waMessageId: string;
+  /** Its sender's name as the route resolved it (the roster's, else WhatsApp's). */
+  authorName: string | null;
+  body: string;
+  sentAt: Date | null;
+}
+
+/** A quote known only from what the Pi saw (nothing found by its id).
+ *  Exported for the live checks, which build production's turns. */
+export const quoteFromPi = (quote: GroupQuote, name: string | null = null): QuotedGroupMessage => piOnly(quote, name);
+
+const piOnly = (quote: GroupQuote, name: string | null): QuotedGroupMessage => ({
+  author: quote.fromMatchTime ? null : { name: name ?? quote.authorName ?? null },
+  at: null,
+  text: quote.text,
+  topic: null,
+  matchId: null,
+  match: null,
+});
+
+/**
+ * The message each group reply quotes, keyed by the reply's id. A message
+ * that is not a reply has no entry. TOTAL: a failed read keeps what the
+ * Pi said, so a reply is never dropped for want of a lookup.
+ *
+ * `authorByPhone`: the roster name behind the Pi's quoted-author phone,
+ * when the caller can resolve one (the analyze route's sender resolution).
+ */
+export async function loadGroupReplyContexts(
+  db: GroupReplyContextDb,
+  input: {
+    orgId: string;
+    channel: "group" | "hq";
+    now: Date;
+    messages: Array<{ id: string; quote: GroupQuote | null }>;
+    batch: GroupBatchMessage[];
+    authorByPhone?: (phone: string) => Promise<string | null>;
+  },
+): Promise<Map<string, QuotedGroupMessage>> {
+  const out = new Map<string, QuotedGroupMessage>();
+  for (const m of input.messages) {
+    if (!m.quote) continue;
+    try {
+      out.set(m.id, await resolveGroupQuote(db, { ...input, quote: m.quote }));
+    } catch (err) {
+      console.error(
+        `[reply-context] group quote msg=${m.id} quoted=${m.quote.id ?? "-"} could not be resolved: ` +
+          (err instanceof Error ? err.message : String(err)),
+      );
+      out.set(m.id, piOnly(m.quote, null));
+    }
+  }
+  return out;
+}
+
+async function resolveGroupQuote(
+  db: GroupReplyContextDb,
+  input: {
+    orgId: string;
+    channel: "group" | "hq";
+    now: Date;
+    quote: GroupQuote;
+    batch: GroupBatchMessage[];
+    authorByPhone?: (phone: string) => Promise<string | null>;
+  },
+): Promise<QuotedGroupMessage> {
+  const { quote, orgId } = input;
+  const bare = bareWhatsAppId(quote.id);
+  const since = new Date(input.now.getTime() - QUOTE_LOOKBACK_MS);
+  const member = (name: string | null, at: Date | null, text: string | null): QuotedGroupMessage => ({
+    author: { name },
+    at,
+    text: text ?? quote.text,
+    topic: null,
+    matchId: null,
+    match: null,
+  });
+
+  if (bare) {
+    // 1. A message in this same batch.
+    const inBatch = input.batch.find((b) => sameWhatsAppMessage(bare, b.waMessageId));
+    if (inBatch) return member(inBatch.authorName, inBatch.sentAt, inBatch.body);
+
+    // 2. MatchTime's own post in this club's group.
+    const rows = await db.sentNotification.findMany({
+      where: {
+        createdAt: { gte: since },
+        OR: [{ waStanzaId: bare }, { waStanzaId: null, waMessageId: bare }, { waStanzaId: null, waMessageId: { contains: `_${bare}` } }],
+      },
+      orderBy: { createdAt: "desc" },
+      take: CANDIDATES,
+      select: { key: true, kind: true, matchId: true, waMessageId: true, waStanzaId: true, text: true, createdAt: true },
+    });
+    for (const row of rows) {
+      if (!sameWhatsAppMessage(bare, row.waStanzaId ?? row.waMessageId)) continue;
+      const jobId = botJobIdOfKey(row.key);
+      if (jobId) {
+        const job = await db.botJob.findUnique({
+          where: { id: jobId },
+          select: { orgId: true, kind: true, text: true, sentAt: true, createdAt: true },
+        });
+        if (!job || job.orgId !== orgId || job.kind === "dm") continue;
+        return { author: null, at: job.sentAt ?? row.createdAt, text: row.text ?? job.text ?? quote.text, topic: null, matchId: null, match: null };
+      }
+      if (row.kind === "dm") continue;
+      let match: string | null = null;
+      if (row.matchId) {
+        const [m] = await db.match.findMany({
+          where: { id: { in: [row.matchId] } },
+          select: { id: true, date: true, activity: { select: { name: true, orgId: true } } },
+        });
+        if (!m || m.activity.orgId !== orgId) continue;
+        match = contextMatchLabel(m.activity.name, m.date);
+      }
+      return { author: null, at: row.createdAt, text: row.text ?? quote.text, topic: topicOfDueKey(row.key), matchId: row.matchId, match };
+    }
+
+    // 3. A member's earlier message, from this club's own record of them.
+    const said =
+      input.channel === "group"
+        ? (
+            await db.analyzedMessage.findMany({
+              where: { orgId, createdAt: { gte: since }, waMessageId: { contains: `_${bare}` } },
+              orderBy: { createdAt: "desc" },
+              take: CANDIDATES,
+              select: { waMessageId: true, authorUserId: true, authorName: true, body: true, createdAt: true },
+            })
+          ).map((r) => ({ id: r.waMessageId, userId: r.authorUserId, name: r.authorName, text: r.body, at: r.createdAt }))
+        : (
+            await db.adminGroupMessage.findMany({
+              where: { orgId, createdAt: { gte: since }, waMessageId: { contains: `_${bare}` } },
+              orderBy: { createdAt: "desc" },
+              take: CANDIDATES,
+              select: { waMessageId: true, senderUserId: true, text: true, createdAt: true },
+            })
+          ).map((r) => ({ id: r.waMessageId, userId: r.senderUserId, name: null as string | null, text: r.text as string | null, at: r.createdAt }));
+    const hit = said.find((r) => sameWhatsAppMessage(bare, r.id));
+    if (hit) {
+      const [user] = hit.userId
+        ? await db.user.findMany({ where: { id: { in: [hit.userId] } }, select: { id: true, name: true } })
+        : [];
+      return member(user?.name ?? hit.name ?? quote.authorName ?? null, hit.at, hit.text);
+    }
+  }
+
+  // 4. Only what the Pi saw.
+  const rosterName =
+    !quote.fromMatchTime && quote.authorPhone && input.authorByPhone ? await input.authorByPhone(quote.authorPhone) : null;
+  return piOnly(quote, rosterName);
+}
+
+/** The group block: the time now, then the message the reply quotes. */
+export function renderGroupReplyContext(
+  ctx: { now: Date; quoted: ContextMessage | null },
+  opts: { wordsMax?: number } = {},
+): string {
+  const lines = [nowLine(ctx.now)];
+  if (ctx.quoted) lines.push(...quotedLines(ctx.quoted, opts.wordsMax ?? GROUP_QUOTE_WORDS_MAX));
+  return lines.join("\n");
 }

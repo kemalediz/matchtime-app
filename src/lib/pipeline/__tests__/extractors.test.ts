@@ -118,7 +118,13 @@ describe("the extractor prompts ask for facts, not outcomes", () => {
     for (const [route, prompt] of Object.entries(EXTRACTOR_PROMPTS)) {
       expect(prompt.toLowerCase(), route).not.toContain("registerattendance");
       expect(prompt.toLowerCase(), route).not.toContain("you decide");
-      expect(prompt.toLowerCase(), route).not.toContain("reply");
+      // A WhatsApp reply the MESSAGE is (quoted-reply context, slice S4) is
+      // context; what is guarded here is MatchTime's own reply, which code
+      // writes. So the reply-context vocabulary is set aside first.
+      const ownReply = prompt
+        .toLowerCase()
+        .replace(/whatsapp reply|they are replying to|replying to|replied to|replies to|a reply (?:that|about)/g, "");
+      expect(ownReply, route).not.toContain("reply");
     }
   });
 

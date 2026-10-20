@@ -52,6 +52,9 @@ export async function POST(request: Request) {
             messageId: str(body.quotedMessageId),
             text: typeof body.quotedText === "string" ? body.quotedText.slice(0, 2000) : null,
             fromMatchTime: body.quotedFromMatchTime === true,
+            // Who wrote it, from the Pi's contact lookup (slice S4): unverified.
+            authorName: str(body.quotedAuthorName),
+            authorPhone: str(body.quotedAuthorPhone),
           }
         : null,
   });

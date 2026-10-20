@@ -32,6 +32,7 @@
  *
  * Logs carry ids and counts only: never text, names or phone numbers.
  */
+import type { QuotedGroupMessage } from "./reply-context";
 import { db } from "./db";
 import { cancelAttendance, registerAttendance } from "./attendance";
 import { runAttendanceEngineBatch } from "./attendance-engine-batch";
@@ -76,6 +77,8 @@ export interface AdminSquadChangeInput {
   /** Addressed to MatchTime: an @tag, or a reply to its own message. Only
    *  then does a held claim get a line back (2026-10-17). Absent: not. */
   addressed?: boolean;
+  /** The message it is a WhatsApp reply to (slice S4), as resolved. */
+  reply?: QuotedGroupMessage | null;
 }
 
 export type AdminSquadChangeResult =
@@ -195,6 +198,7 @@ export async function handleAdminSquadChange(input: AdminSquadChangeInput): Prom
           tagged: true,
           route,
           gated: false,
+          ...(input.reply ? { reply: input.reply } : {}),
         },
       ],
       deps: {

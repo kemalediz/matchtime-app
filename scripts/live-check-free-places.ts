@@ -149,13 +149,11 @@ const ADMIN: AdminCase[] = [
   { text: "@Match Time what are my stats", check: (f) => f.action === "other", why: "one person, themselves" },
 ];
 
-const ORG_CONTEXT = organisersContext({ pending: [], quoted: null, quotedIsMatchTime: false, recent: [] });
+const ORG_CONTEXT = organisersContext({ pending: [], recent: [] });
 const ASKED = new Date("2026-10-16T09:00:00Z");
 const QUESTION = "Make Bilal Ahmed free for Fri 16 Oct? Reply YES.";
 const WAITING_CONTEXT = organisersContext({
   pending: [{ ref: "fee:fp1", kind: "fee", day: "Fri 16 Oct", names: "Bilal Ahmed", undo: false, askedAt: ASKED }],
-  quoted: null,
-  quotedIsMatchTime: false,
   recent: [{ fromMatchTime: true, text: QUESTION }],
 });
 

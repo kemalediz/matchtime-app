@@ -46,6 +46,11 @@ export interface QuotedMessage {
   /** The Pi saw the quoted message was MatchTime's own. */
   fromMatchTime?: boolean;
   text?: string | null;
+  /** The quoted message's WhatsApp id (kept since slice S4). */
+  messageId?: string | null;
+  /** Who wrote it, from the Pi's contact lookup: unverified. */
+  authorName?: string | null;
+  authorPhone?: string | null;
 }
 
 export type ApprovalDecision =

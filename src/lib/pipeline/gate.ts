@@ -123,6 +123,7 @@
  *     `none`-bucket sweep's only input and the reason "did the gate eat
  *     an IN?" is a query rather than a shrug.
  */
+import type { ContextMessage } from "../reply-context";
 import { readFileSync } from "node:fs";
 // ── THE TYPE-ONLY IMPORT OF `AnalysisVerdict` IS DELETED (§10 step 8) ─
 //   It existed so `gatedVerdict` could return the mega-call's exact
@@ -383,9 +384,9 @@ export interface GateMessage {
   /** A message from a club's organisers' group, with its context lines
    *  (`RouterMessage.organisers`). Absent for the players' group. */
   organisers?: { context: string[] };
-  /** A players' group WhatsApp reply to MatchTime's own message: the text
-   *  it quotes (`RouterMessage.quotedMatchTime`). Absent otherwise. */
-  quotedMatchTime?: string;
+  /** The message this one is a WhatsApp reply to, whoever wrote it
+   *  (`RouterMessage.reply`, slice S4). Absent when it is not a reply. */
+  reply?: ContextMessage | null;
 }
 
 export interface Partitioned {
@@ -527,6 +528,8 @@ export interface GateOutcome extends Partitioned {
 
 export interface GateOptions {
   floor?: boolean;
+  /** The time the router's NOW line states. Defaults to now. */
+  now?: Date;
   /** The messages that answer MatchTime's open "which team won?",
    *  decided by the caller and passed straight to the router. See
    *  `RouteBatchOptions.scoreAnswerIds`. */
@@ -635,7 +638,7 @@ export async function gateBatch(
       authorName: m.authorName,
       body: m.body,
       ...(m.organisers ? { organisers: m.organisers } : {}),
-      ...(m.quotedMatchTime ? { quotedMatchTime: m.quotedMatchTime } : {}),
+      ...(m.reply ? { reply: m.reply } : {}),
     }));
     if (opts.capped) {
       const routed = await routeBatch(NO_MODEL, routerMessages, {
@@ -665,6 +668,7 @@ export async function gateBatch(
       clarifications: opts.clarifications ?? [],
       scoreAnswerIds: opts.scoreAnswerIds,
       scoreCorrectionIds: opts.scoreCorrectionIds,
+      ...(opts.now ? { now: opts.now } : {}),
     });
     const p = partition(messages, routed.routes, { floor });
     return {

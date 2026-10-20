@@ -8,7 +8,6 @@
 import { formatLondon } from "./london-time";
 import type { HqLogRow } from "./admin-group-log";
 import type { PendingItem, QuotedMessage } from "./admin-group-confirm-rules";
-import { replyingToLine } from "./pipeline/router";
 import { messageMentionsBotExplicitly } from "./interaction-contract";
 
 export interface PendingWithLabel extends PendingItem {
@@ -37,10 +36,15 @@ export type ScoreWaiting =
   | { kind: "mom"; day: string }
   | { kind: "which-team"; first: number; second: number; labels: readonly [string, string]; askedAt: Date };
 
+/**
+ * What MatchTime is waiting for and what was said here lately. The message
+ * an HQ reply quotes is NOT here: the router shows it right above the
+ * message, in the one wording every reply reader shares
+ * (`RouterMessage.reply`, slice S4; it replaced this file's
+ * `REPLYING TO MatchTime | another organiser` line).
+ */
 export function organisersContext(p: {
   pending: PendingWithLabel[];
-  quoted: QuotedMessage | null;
-  quotedIsMatchTime: boolean;
   recent: Array<Pick<HqLogRow, "fromMatchTime" | "text">>;
   score?: ScoreWaiting | null;
 }): string[] {
@@ -69,9 +73,6 @@ export function organisersContext(p: {
               : `WAITING: YES to give ${i.names} a free place for ${i.day}, asked at ${at}.`
             : `WAITING: YES to apply the squad list pasted at ${at}.`,
     );
-  }
-  if (p.quoted?.text || p.quoted?.fromMatchTime) {
-    lines.push(replyingToLine(p.quotedIsMatchTime ? "MatchTime" : "another organiser", p.quoted.text ?? ""));
   }
   if (p.recent.length > 0) {
     lines.push("EARLIER HERE, oldest first:");

@@ -122,6 +122,7 @@
  * where the bot announced a change the database never made and the group
  * believed it.
  */
+import { quoteForMatch, type QuotedGroupMessage } from "./reply-context";
 import { compose } from "./pipeline/compose";
 import { decide as decideDefault } from "./pipeline/engine";
 // Traced: the extractor's facts are kept on the message's AnalyzedMessage
@@ -168,6 +169,9 @@ export interface ScoreBatchMessage {
   route: Route | undefined;
   /** Did step 5's gate skip this message? Then this never sees it. */
   gated: boolean;
+  /** The message this one is a WhatsApp reply to, whoever wrote it
+   *  (quoted-reply context, slice S4). Absent when it is not a reply. */
+  reply?: QuotedGroupMessage | null;
 }
 
 export interface ScoreMessageOutcome {
@@ -356,6 +360,9 @@ export async function runScoreBatch(args: {
         tagged: m.tagged,
         history,
         lastBotPost,
+        // The played match is the one a result lands on.
+        reply: quoteForMatch(m.reply, playedMatch?.id ?? ""),
+        now,
       });
       for (const d of res.degradations) {
         degradations.push(`extractor ${m.waMessageId}: ${d.detail}`);

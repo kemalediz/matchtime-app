@@ -70,7 +70,14 @@ export interface AdminGroupMessage {
   timestamp?: string | null;
   mentionNames?: Array<{ jid: string; name?: string; phone?: string }>;
   /** The message this one replies to (a WhatsApp reply), as the Pi saw it. */
-  quoted?: { messageId?: string | null; text?: string | null; fromMatchTime?: boolean } | null;
+  quoted?: {
+    messageId?: string | null;
+    text?: string | null;
+    fromMatchTime?: boolean;
+    /** Who wrote it, from the Pi's contact lookup (slice S4): unverified. */
+    authorName?: string | null;
+    authorPhone?: string | null;
+  } | null;
   now?: Date;
 }
 
@@ -221,7 +228,17 @@ export async function handleAdminGroupMessage(msg: AdminGroupMessage): Promise<A
       messageId,
       text: msg.text,
       mentionNames: msg.mentionNames,
-      quoted: msg.quoted ? { text: msg.quoted.text ?? null, fromMatchTime: msg.quoted.fromMatchTime === true } : null,
+      // The quoted id is kept (slice S4): it names MatchTime's own post, or
+      // another organiser's message, before any reading of its words.
+      quoted: msg.quoted
+        ? {
+            messageId: msg.quoted.messageId ?? null,
+            text: msg.quoted.text ?? null,
+            fromMatchTime: msg.quoted.fromMatchTime === true,
+            authorName: msg.quoted.authorName ?? null,
+            authorPhone: msg.quoted.authorPhone ?? null,
+          }
+        : null,
       senderUserId,
       organiser,
       senderName: sender?.name ?? null,

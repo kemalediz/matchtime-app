@@ -17,6 +17,7 @@
  * the state is built here, the writer and HQ's log are recorders. Prints
  * each case, the calls made and the cost. Stops at MAX_USD.
  */
+import { quoteFromPi } from "../src/lib/reply-context.ts";
 import { spendDevApiKeyOrExit } from "../e2e/helpers/dev-api-key.ts";
 import { anthropicModel, type PipelineModel } from "../src/lib/pipeline/llm.ts";
 import { routeBatch } from "../src/lib/pipeline/router.ts";
@@ -107,12 +108,11 @@ async function main() {
     const waiting: ScoreWaiting | null = c.recorded ? null : { kind: "result", day: c.lang === "tr" ? "Sal 1 Eyl" : "Tue 1 Sep", labels };
     const context = organisersContext({
       pending: [],
-      quoted: c.quoted ? { text: c.quoted, fromMatchTime: true } : null,
-      quotedIsMatchTime: !!c.quoted,
       recent: c.quoted ? [{ fromMatchTime: true, text: c.quoted }] : [],
       score: waiting,
     });
-    const routed = await routeBatch(model, [{ id, authorName: "Raihan", body: c.text, organisers: { context } }], { floor: true });
+    const quotedReply = c.quoted ? quoteFromPi({ id: null, text: c.quoted, fromMatchTime: true }) : null;
+    const routed = await routeBatch(model, [{ id, authorName: "Raihan", body: c.text, organisers: { context }, reply: quotedReply }], { floor: true });
     const route = routed.routes.find((r) => r.messageId === id)?.route ?? "none";
     if (process.env.DEBUG) console.log(JSON.stringify(routed.routes), routed.degradations.map((d) => d.detail));
 
@@ -136,6 +136,7 @@ async function main() {
             organiser: true,
             addressed: !!c.addressed,
             history: c.quoted ? [{ author: "MatchTime", body: c.quoted }] : [],
+            reply: quotedReply,
             now: NOW,
             deps: { model, apply, loadState: async () => state, recordQuestion: async () => {} },
           })

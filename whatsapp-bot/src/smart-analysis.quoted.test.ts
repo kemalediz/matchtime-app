@@ -88,6 +88,28 @@ describe("a players' group reply on the wire to /api/whatsapp/analyze", () => {
     expect(posted()).toMatchObject({ quotedBody: "who's bringing the bibs?", quotedFromMatchTime: false });
   });
 
+  it("a reply to another player names its author for the server (slice S4): their phone and WhatsApp name", async () => {
+    const named = { ...driver, getContact: async () => ({ pushname: "Ali K", number: "447700900555" }) } as unknown as WaDriver;
+    await enqueueForAnalysis(named, viewOf(reply("same", PLAYER, "IN")));
+    await _test_flushNow(GROUP);
+    expect(posted()).toMatchObject({ quotedBody: "IN", quotedFromMatchTime: false, quotedAuthorName: "Ali K", quotedAuthorPhone: "447700900555" });
+  });
+
+  it("the author's phone comes from the JID when the contact lookup fails", async () => {
+    await enqueueForAnalysis(driver, viewOf(reply("same", PLAYER, "IN")));
+    await _test_flushNow(GROUP);
+    const m = posted();
+    expect(m).toMatchObject({ quotedAuthorPhone: "447700900555" });
+    expect(m).not.toHaveProperty("quotedAuthorName");
+  });
+
+  it("a reply to MatchTime names no author", async () => {
+    await enqueueForAnalysis(driver, viewOf(reply("IN", BOT_LID, BENCH_POST)));
+    const m = posted();
+    expect(m).not.toHaveProperty("quotedAuthorName");
+    expect(m).not.toHaveProperty("quotedAuthorPhone");
+  });
+
   it("not a reply: no quoted fields at all", async () => {
     await enqueueForAnalysis(driver, viewOf(wa({ conversation: "in" })));
     await _test_flushNow(GROUP);
@@ -95,6 +117,7 @@ describe("a players' group reply on the wire to /api/whatsapp/analyze", () => {
     expect(m).not.toHaveProperty("quotedBody");
     expect(m).not.toHaveProperty("quotedFromMatchTime");
     expect(m).not.toHaveProperty("quotedMessageId");
+    expect(m).not.toHaveProperty("quotedAuthorPhone");
   });
 });
 

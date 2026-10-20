@@ -17,7 +17,6 @@ import {
   routeFloor,
   routeBatch,
   renderRouterTurn,
-  replyingToLine,
   ORGANISERS_HEADER,
 } from "../router";
 import { gateBatch } from "../gate";
@@ -424,9 +423,10 @@ describe("routeBatch", () => {
 
     it("the turn carries m1, m2, m3; no WhatsApp id reaches the model", async () => {
       const m = fakeModel(['{"routes":[]}']);
-      await routeBatch(m, batch, { floor: false });
+      await routeBatch(m, batch, { floor: false, now: new Date("2026-10-20T18:00:00Z") });
       expect(m.calls[0].user).toBe(
-        "[m1] Kemal: @Match Time what is squad now including bench?\n" +
+        "NOW: Tuesday 20 October 2026, 19:00 (club time, London)\n" +
+          "[m1] Kemal: @Match Time what is squad now including bench?\n" +
           "[m2] Hamzah: Is it okay if we put Shehryar in first cos he's a goalkeeper\n" +
           "[m3] Kemal: also I put limits for Matchtime",
       );
@@ -694,15 +694,19 @@ describe("the router prompt reads Turkish", () => {
 // its user turn is byte-for-byte what it was, and the organisers' routes
 // can never land on a players' message.
 describe("the organisers' group", () => {
-  it("a players' group turn is exactly the old one-line-per-message shape", () => {
-    expect(renderRouterTurn([{ id: "a", authorName: "Ali", body: "in" }, { id: "b", authorName: null, body: "out" }])).toBe(
-      "[a] Ali: in\n[b] (unknown): out",
+  // Tue 20 Oct 2026, 19:00 London.
+  const NOW = new Date("2026-10-20T18:00:00Z");
+  const NOW_LINE = "NOW: Tuesday 20 October 2026, 19:00 (club time, London)";
+
+  it("a players' group turn: the time now, then one line per message", () => {
+    expect(renderRouterTurn([{ id: "a", authorName: "Ali", body: "in" }, { id: "b", authorName: null, body: "out" }], NOW)).toBe(
+      `${NOW_LINE}\n[a] Ali: in\n[b] (unknown): out`,
     );
   });
 
   it("an organisers' message comes under its header and context lines", () => {
-    expect(renderRouterTurn([{ id: "h", authorName: "Raihan", body: "yes", organisers: { context: ["WAITING: nothing."] } }])).toBe(
-      `${ORGANISERS_HEADER}\nWAITING: nothing.\n[h] Raihan: yes`,
+    expect(renderRouterTurn([{ id: "h", authorName: "Raihan", body: "yes", organisers: { context: ["WAITING: nothing."] } }], NOW)).toBe(
+      `${NOW_LINE}\n${ORGANISERS_HEADER}\nWAITING: nothing.\n[h] Raihan: yes`,
     );
   });
 
@@ -725,34 +729,75 @@ describe("the organisers' group", () => {
     expect(ROUTER_SYSTEM_PROMPT).toMatch(/code checks who it was for/);
   });
 
-  it("a players' group reply to MatchTime comes under the same REPLYING TO line HQ uses", () => {
+  // QUOTED-REPLY CONTEXT, SLICE S4 (2026-10-20): a reply to ANYONE comes
+  // under the DM block's "THEY ARE REPLYING TO" lines (`quotedLines`), in
+  // both groups; it replaced the MatchTime-only "REPLYING TO" line.
+  const BENCH = { author: null, at: null, text: "Football 9-a-side is full at 18 of 18, but the bench is open.", topic: null, match: null };
+
+  it("a players' group reply to MatchTime comes under the shared reply lines", () => {
     expect(
-      renderRouterTurn([
-        { id: "r", authorName: "Can", body: "Bench? We do bench now?", quotedMatchTime: "Football 9-a-side is full at 18 of 18, but the bench is open." },
-        { id: "s", authorName: "Ali", body: "in" },
-      ]),
+      renderRouterTurn(
+        [
+          { id: "r", authorName: "Can", body: "Bench? We do bench now?", reply: BENCH },
+          { id: "s", authorName: "Ali", body: "in" },
+        ],
+        NOW,
+      ),
     ).toBe(
-      `${replyingToLine("MatchTime", "Football 9-a-side is full at 18 of 18, but the bench is open.")}\n[r] Can: Bench? We do bench now?\n[s] Ali: in`,
+      `${NOW_LINE}\n` +
+        "THEY ARE REPLYING TO a MatchTime message (when it was sent is not known):\n" +
+        '"Football 9-a-side is full at 18 of 18, but the bench is open."\n' +
+        "[r] Can: Bench? We do bench now?\n[s] Ali: in",
     );
-    expect(replyingToLine("MatchTime", "a\n\n  b")).toBe('REPLYING TO MatchTime: "a b"');
   });
 
-  it("the gate hands the quoted MatchTime text to the router", async () => {
+  it("a reply to a member's message names them, and its time", () => {
+    const turn = renderRouterTurn(
+      [{ id: "r", authorName: "Bo", body: "same", reply: { author: { name: "Ali Khan" }, at: new Date("2026-10-20T17:58:00Z"), text: "IN", topic: null, match: null } }],
+      NOW,
+    );
+    expect(turn).toBe(`${NOW_LINE}\nTHEY ARE REPLYING TO Ali Khan's message of Tue 20 Oct, 18:58:\n"IN"\n[r] Bo: same`);
+  });
+
+  it("an organisers' reply: header, context, then the reply lines right above the message", () => {
+    const turn = renderRouterTurn(
+      [{ id: "h", authorName: "Raihan", body: "yes", organisers: { context: ["WAITING: nothing."] }, reply: { ...BENCH, text: "Teams ready" } }],
+      NOW,
+    );
+    expect(turn).toBe(
+      `${NOW_LINE}\n${ORGANISERS_HEADER}\nWAITING: nothing.\nTHEY ARE REPLYING TO a MatchTime message (when it was sent is not known):\n"Teams ready"\n[h] Raihan: yes`,
+    );
+  });
+
+  it("the router is shown at most 300 characters of the quoted words", () => {
+    const turn = renderRouterTurn([{ id: "r", authorName: "Can", body: "?", reply: { ...BENCH, text: "y".repeat(400) } }], NOW);
+    expect(turn).toContain(`"${"y".repeat(300)}"`);
+    expect(turn).not.toContain("y".repeat(301));
+  });
+
+  it("the gate hands the quoted message to the router, and the time now", async () => {
     const m = fakeModel([JSON.stringify({ routes: [{ id: "m1", route: "question" }] })]);
-    await gateBatch(
-      [{ waMessageId: "r", authorName: "Can", body: "Bench? We do bench now?", quotedMatchTime: "the bench is open" }],
-      { model: m, floor: false },
+    await gateBatch([{ waMessageId: "r", authorName: "Can", body: "Bench? We do bench now?", reply: { ...BENCH, text: "the bench is open" } }], {
+      model: m,
+      floor: false,
+      now: NOW,
+    });
+    expect(m.calls[0].user).toBe(
+      `${NOW_LINE}\nTHEY ARE REPLYING TO a MatchTime message (when it was sent is not known):\n"the bench is open"\n[m1] Can: Bench? We do bench now?`,
     );
-    expect(m.calls[0].user).toBe(`REPLYING TO MatchTime: "the bench is open"\n[m1] Can: Bench? We do bench now?`);
   });
 
-  it("the prompt says a reply to MatchTime's own message is a tag, where it defines a tag", () => {
+  it("the prompt defines replies once, and says a reply to MatchTime's own message is a tag where it defines a tag", () => {
+    const replies = ROUTER_SYSTEM_PROMPT.slice(ROUTER_SYSTEM_PROMPT.indexOf("REPLIES."), ROUTER_SYSTEM_PROMPT.indexOf("WHAT IS AT STAKE."));
+    expect(replies).toContain('"THEY ARE REPLYING TO"');
+    expect(replies).toContain("NOW");
+    expect(ROUTER_SYSTEM_PROMPT.split("THEY ARE REPLYING TO").length).toBe(2);
+    expect(ROUTER_SYSTEM_PROMPT).not.toContain("REPLYING TO MatchTime");
     const q2 = ROUTER_SYSTEM_PROMPT.slice(ROUTER_SYSTEM_PROMPT.indexOf("2. Does it tag the bot?"), ROUTER_SYSTEM_PROMPT.indexOf("3. Is it for the bot"));
-    expect(q2).toContain('"REPLYING TO MatchTime"');
     // Players' group only: in HQ a quoted reply to MatchTime's teams is
     // what the safe-YES rule approves, and a first wording here made a
     // quoted "thanks 👍" route approve (live check, 2026-10-16).
-    expect(q2).toMatch(/In the players' group, so is a WhatsApp reply to the bot's own message/);
+    expect(q2).toMatch(/In the players' group, so is a reply to MatchTime's own message; a reply to a member's message is not/);
   });
 
   it("the model is sent the organisers' context and the routes enum includes theirs", async () => {

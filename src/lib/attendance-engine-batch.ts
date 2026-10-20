@@ -135,6 +135,7 @@
  * `assertCoverage` requires and what keeps "exactly one outcome per
  * message" true across the split.
  */
+import { quoteForMatch, type QuotedGroupMessage } from "./reply-context";
 import type { QuotedRef } from "./quoted-message";
 import type { ProposedWrite } from "./pipeline/types";
 import { quotedPartnerAsk } from "./pipeline/engine";
@@ -187,6 +188,9 @@ export interface EngineBatchMessage {
   gated: boolean;
   /** The quoted message, for a WhatsApp reply (cross-club ask, S0). */
   quoted?: QuotedRef | null;
+  /** The message this one is a WhatsApp reply to, whoever wrote it
+   *  (quoted-reply context, slice S4). Absent when it is not a reply. */
+  reply?: QuotedGroupMessage | null;
 }
 
 /** What the route needs in order to turn one owned message into exactly
@@ -702,6 +706,10 @@ export async function runAttendanceEngineBatch(args: {
         tagged: m.tagged,
         history,
         lastBotPost,
+        // Narrowed to this match: a reply to another match's post is read
+        // as it always was, never against that match (`quoteForMatch`).
+        reply: quoteForMatch(m.reply, matchId ?? ""),
+        now,
       });
       if (res.budgetRefused) {
         useFloor("the extractor was refused by the daily AI cap");

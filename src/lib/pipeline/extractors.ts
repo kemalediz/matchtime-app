@@ -25,6 +25,7 @@
  * PR #27's invariant, "a BENCH row means FULL or ASKED, never inferred").
  * Capacity is arithmetic; arithmetic is the engine's job.
  */
+import { renderGroupReplyContext, type ContextMessage } from "../reply-context";
 import { anthropicModel, degradation, extractJson, EXTRACTOR_MODEL, type ModelRequest, type PipelineModel } from "./llm";
 import { isAiBudgetExceeded } from "../ai-budget-context";
 import { parsePeriodFields } from "./stats-period";
@@ -104,13 +105,13 @@ export const EXTRACTOR_PROMPTS: Record<Exclude<ExtractorKind, "none">, string> =
   attendance: `You read ONE message from a football club's WhatsApp group and report what it SAYS about who is playing. You report facts about the text. You never decide what happens next: code does that, from the club's records.
 
 WHAT YOU ARE SHOWN
-Up to three blocks. RECENT CHAT is the last few messages before this one. MATCHTIME'S LAST POST is the bot's most recent post in the group. THE MESSAGE is the one message you report on, with the name of the person who typed it: the sender.
-Report on THE MESSAGE only. The other two blocks are context, for working out who and what the message refers to: who "he" is, which line a "ben de" answers, what a bare "yes" agrees to. They often show the squad too: a count such as "13/14" or "14/14", a list of names, a bench. The squad they show is never a reason for any field: code holds the real squad and places every player.
+RECENT CHAT is the last few messages before this one. MATCHTIME'S LAST POST is the bot's most recent post in the group. NOW is the time at the club. When the message is a WhatsApp reply, a THEY ARE REPLYING TO line names the message it quotes: whose it is (MatchTime's or a member's), when, and its words. THE MESSAGE is the one message you report on, with the name of the person who typed it: the sender.
+Report on THE MESSAGE only. Everything above it is context, for working out who and what the message refers to: who "he" is, which line a "same" or "ben de" answers (the quoted message, when there is one), what a bare "yes" agrees to. A claim made in the quoted message or the recent chat is never reported again: "same" under Ali's "IN" is one claim, the sender's. The context often shows the squad too: a count such as "13/14" or "14/14", a list of names, a bench. The squad they show is never a reason for any field: code holds the real squad and places every player.
 
 EACH CLAIM
 Return one claim for each person whose attendance the message speaks about:
   subject      "sender" if the claim is about the person who typed it, "other" for anyone else
-  personRef    the words used for that person, VERBATIM. Never invent or expand a name. "" for the sender.
+  personRef    the words used for that person, VERBATIM. Never invent or expand a name. "" for the sender. One exception: a "he", "him" or "o" that points at the author of the message replied to is written as that author's name, as the THEY ARE REPLYING TO line gives it.
   personNamed  true when the words IDENTIFY A PARTICULAR PERSON: a name, a nickname, or an @mention. false ONLY for a relationship, a quantity or an indefinite: "my brother", "2 of my guys", "someone", "a mate", "another keeper"
   polarity     what the MESSAGE says that person is doing, read from its own words:
                  "in"     joining or staying in
@@ -141,7 +142,7 @@ Return one claim for each person whose attendance the message speaks about:
 
 THE WHOLE MESSAGE
 Also return, once:
-  affirmation  "yes" or "no" when the message is a bare answer to MATCHTIME'S LAST POST ("Confirmed", "yes", "no"), otherwise "none"
+  affirmation  "yes" or "no" when the message is a bare answer to MatchTime ("Confirmed", "yes", "no"): to the MatchTime message it replies to, else to MATCHTIME'S LAST POST. Otherwise "none"
   sideRequests any of: "recruit" (asks for a replacement or more players for a specific gap), "chase" (a general nudge for more players that says nothing about the sender's own place)
 
 READING THE MESSAGE
@@ -150,7 +151,10 @@ It may be in English or Turkish, often mixed or misspelt. Report the same facts 
 The sender's own place: subject sender, decision, contingent false.
   "I'm in", "count me in" / "varım", "ben varım", "geliyorum", "sayın beni", "var" -> in
   "I'm out", "can't make it" / "yokum", "ben yokum", "gelemiyorum", "yok", "bu hafta yokum" -> out
-  "me too" / "ben de" after a neighbour's "I'm in" / "ben varım" -> the sender's own claim, same polarity as the line it answers
+  "me too" / "ben de" after a neighbour's "I'm in" / "ben varım", or "same" replying to it -> the sender's own claim, same polarity as the line it answers
+
+A reply about the person it quotes: subject other.
+  "he's out" / "o yok" replying to Ali Khan's message -> personRef "Ali Khan", out
 
 The bench comes only from the message's own words.
   "in, for bench", "In as a reserve", "put me on standby" / "yedekte kalayım", "yedeğe yaz beni" -> bench
@@ -181,7 +185,7 @@ Return an empty claims array only when the message genuinely says nothing about 
 
   question: `You classify ONE question from a football club's WhatsApp group: the players' group, or the organisers' own group. You never answer it. Code reads the club's records and writes every name, date and number the group sees; your fields only tell it which question was asked. A field the message does not state gets its empty value. Never fill one in from a guess.
 
-Classify THE MESSAGE only. The recent chat and MatchTime's last post are context for what it refers to; when the message quotes a MatchTime post, that post is the one shown. Messages come in English and Turkish, often mixed, misspelt or unpunctuated.
+Classify THE MESSAGE only. The recent chat, MatchTime's last post and, for a WhatsApp reply, the message it quotes (the THEY ARE REPLYING TO line: MatchTime's or a member's, with its words) are context for what it refers to; NOW is the time at the club. Messages come in English and Turkish, often mixed, misspelt or unpunctuated.
 
 FIELDS
 
@@ -340,7 +344,7 @@ Which period:
   "@Match Time all-time most MoMs" / "@Match Time tüm zamanların en çok maçın adamı kim" -> stats, mom, period all_time
   "@Match Time who played most this month" / "@Match Time bu ay en çok kim oynadı" -> stats, appearances, period this, periodUnit month`,
 
-  teams: `You read ONE message about the two team line-ups (red and yellow) and report what it asks for. You never pick the teams.
+  teams: `You read ONE message about the two team line-ups (red and yellow) and report what it asks for. You never pick the teams. Above THE MESSAGE you may see recent chat, MatchTime's last post, NOW (the time at the club) and, for a WhatsApp reply, the message it quotes: context for who "him" or "them" are, never a field of their own.
 
   action       what has to change:
                "show" re-post the teams that exist, unchanged ("teams?", "show me the teams", "takımları göster")
@@ -357,7 +361,7 @@ If the line-ups have to be worked out again it is "generate", even when the mess
 
   score: `You read ONE message from a football group's WhatsApp chat about the result of the group's own match and report what it SAYS. You never decide which team is which, who won, who a player is, or what gets recorded: code does that.
 
-RECENT CHAT and MATCHTIME'S LAST POST are context only: never take a number, team or name from them. THE MESSAGE is the one you report on, with its sender.
+RECENT CHAT, MATCHTIME'S LAST POST, NOW (the time at the club) and, for a WhatsApp reply, the message it quotes (the THEY ARE REPLYING TO line) are context only: never take a number, team or name from them. THE MESSAGE is the one you report on, with its sender. A reply that disputes the result it quotes ("no, it was 7-5 to yellow" under MatchTime's result) is a correction.
 
 WHAT YOU RETURN
 hasScore
@@ -406,7 +410,7 @@ A correction or another game:
   "wrong way round, yellows won" / "tam tersi, sarılar kazandı" -> hasScore false, correction true, swapped true, winner "yellows" / "sarılar"
   "last week we lost 9-2" -> first 9, second 2, loser "us", otherGame true`,
 
-  admin: `You read ONE instruction to the bot and report what it says. You report the words; code decides what happens. Messages may be in English or Turkish.
+  admin: `You read ONE instruction to the bot and report what it says. You report the words; code decides what happens. Messages may be in English or Turkish. Above THE MESSAGE you may see recent chat, MatchTime's last post, NOW (the time at the club) and, for a WhatsApp reply, the message it quotes (the THEY ARE REPLYING TO line): context only.
 
 THE ACTION, exactly one:
   "bulk_payment"  someone paid for several players: "Amir paid for 4 players", "Amir paid for Faris and Adam".
@@ -419,7 +423,7 @@ THE ACTION, exactly one:
 THE FIELDS. Fill the ones for the action; every other field is "", 0, false or [].
   payerRef         bulk_payment: who paid, verbatim.
   count            bulk_payment: how many players they paid for.
-  coveredRefs      the people the action is about, verbatim, one entry each: for bulk_payment the people paid for, if named; for fee_waiver the people the free place is given to or taken from. "he" or "him" is the person the message named.
+  coveredRefs      the people the action is about, verbatim, one entry each: for bulk_payment the people paid for, if named; for fee_waiver the people the free place is given to or taken from. "he" or "him" is the person the message named, else the author of the message it replies to.
   undo             fee_waiver: true when the message TAKES a free place back ("Bilal isn't free after all", "no, Tom pays this week", "Ali ücretsiz değil, ödesin"); false when it gives one.
   matchDay         fee_waiver: the day the message names for the game, verbatim ("tonight", "last night", "next Friday", "cuma"); "" when it names none or only "this week".
   phrase           reminder: the time phrase EXACTLY as written ("on Monday", "tomorrow at 6"). Never a date.
@@ -973,6 +977,16 @@ export interface ExtractorMessage {
   history: Array<{ author: string | null; body: string }>;
   /** MatchTime's own last post, so a bare "Confirmed" has a referent. */
   lastBotPost: string | null;
+  /**
+   * The message this one is a WhatsApp reply to, whoever wrote it
+   * (quoted-reply context, slice S4, 2026-10-20), already narrowed by the
+   * caller to the match it acts on (`quoteForMatch`). Shown, with the
+   * time now, in the block every reply reader shares
+   * (`renderGroupReplyContext`). Absent: the NOW line alone.
+   */
+  reply?: ContextMessage | null;
+  /** The time the NOW line states (club time). Defaults to now. */
+  now?: Date;
 }
 
 export interface ExtractionResult {
@@ -1033,9 +1047,13 @@ export async function extractForRoute(
       context.push(`  ${h.author ?? "(unknown)"}: ${h.body}`);
     }
   }
-  if (msg.lastBotPost) {
+  // A reply to MatchTime's last post shows it once, as the post replied to.
+  const quotesLastPost =
+    !!msg.reply && !msg.reply.author && !!msg.lastBotPost && (msg.reply.text ?? "").trim() === msg.lastBotPost.trim();
+  if (msg.lastBotPost && !quotesLastPost) {
     context.push(`MATCHTIME'S LAST POST: ${msg.lastBotPost}`);
   }
+  context.push(renderGroupReplyContext({ now: msg.now ?? new Date(), quoted: msg.reply ?? null }));
   context.push("");
   context.push(
     `THE MESSAGE (from ${msg.authorName ?? "(unknown)"}${msg.tagged ? ", who tagged the bot" : ""}):`,

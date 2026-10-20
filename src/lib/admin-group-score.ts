@@ -41,6 +41,7 @@
  * no name asks "Who was Man of the Match?" once. A club whose players
  * vote never reads `momRef`: its replies are unchanged.
  */
+import type { QuotedGroupMessage } from "./reply-context";
 import { t } from "./i18n/t";
 import { dayLabel } from "./i18n/dates";
 import { buildScoreApplyDeps } from "./owner-deps";
@@ -74,6 +75,8 @@ export interface HqScoreInput {
   /** An @tag, or a reply to MatchTime's own message. */
   addressed: boolean;
   history: Array<{ author: string | null; body: string }>;
+  /** The message it is a WhatsApp reply to (slice S4), as resolved. */
+  reply?: QuotedGroupMessage | null;
   now: Date;
   /** Injected in tests only. */
   deps?: {
@@ -130,6 +133,7 @@ export async function answerHqScore(input: HqScoreInput): Promise<HqScoreResult>
         tagged: speaks,
         route: "score",
         gated: false,
+        ...(input.reply ? { reply: input.reply } : {}),
       },
     ],
     history: input.history,

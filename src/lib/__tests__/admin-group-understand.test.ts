@@ -15,7 +15,12 @@ const dbMock = vi.hoisted(() => ({
   adminTeamProposal: { findFirst: vi.fn() },
   adminSquadProposal: { findFirst: vi.fn() },
   match: { findUnique: vi.fn() },
-  membership: { findMany: vi.fn() },
+  membership: { findMany: vi.fn(), findFirst: vi.fn() },
+  // What an HQ reply quotes, by its WhatsApp id (slice S4).
+  sentNotification: { findMany: vi.fn() },
+  botJob: { findUnique: vi.fn() },
+  adminGroupMessage: { findMany: vi.fn() },
+  user: { findMany: vi.fn() },
 }));
 vi.mock("@/lib/db", () => ({ db: dbMock }));
 const hqLog = vi.hoisted(() => ({
@@ -121,6 +126,11 @@ beforeEach(() => {
   dbMock.membership.findMany.mockResolvedValue([{ user: { name: "Hamzah Ali" } }, { user: { name: "Raihan" } }]);
   hqScore.hqScoreRouting.mockResolvedValue({ waiting: null, scoreAnswerIds: new Set(), scoreCorrectionIds: new Set() });
   hqScore.answerHqScore.mockResolvedValue({ outcome: "hq-score-saved", replyText: "Score saved: Yellow 7, Red 4." });
+  dbMock.sentNotification.findMany.mockResolvedValue([]);
+  dbMock.botJob.findUnique.mockResolvedValue(null);
+  dbMock.adminGroupMessage.findMany.mockResolvedValue([]);
+  dbMock.user.findMany.mockResolvedValue([]);
+  dbMock.membership.findFirst.mockResolvedValue(null);
 });
 
 describe("the router is the players' group's router, shown the organisers' context", () => {
@@ -130,12 +140,44 @@ describe("the router is the players' group's router, shown the organisers' conte
     const user = requests[0].user;
     expect(user).toContain("ORGANISERS' GROUP. The sender is an organiser of the club.");
     expect(user).toContain("WAITING: approval of the proposed teams for Fri 16 Oct, asked at 10:00.");
-    expect(user).toContain('REPLYING TO another organiser: "shall we start at 8?"');
+    expect(user).toContain('THEY ARE REPLYING TO another member\'s message (when it was sent is not known):\n"shall we start at 8?"\n[m1] Raihan: yes');
+    expect(user).toMatch(/^NOW: /);
     expect(user).toContain("- an organiser: who has the bibs?");
     // The model is shown a short id, never the WhatsApp id.
     expect(user).toContain("[m1] Raihan: yes");
     expect(user).not.toContain("wa-9");
     expect(requests[0].system).toContain("IN THE ORGANISERS' GROUP");
+  });
+});
+
+describe("an HQ reply is resolved by the quoted message's id first (quoted-reply context, slice S4)", () => {
+  const teamsPost = { key: "botjob-j1", kind: "admin-group-message", matchId: null, waMessageId: "true_hq@g.us_3EB0TEAMS", waStanzaId: "3EB0TEAMS", text: null, createdAt: ASKED };
+
+  it("a YES quoting MatchTime's teams post by id approves those teams, though the Pi's copy of the words is cut and its flag missing", async () => {
+    // Other chat in between: without the quote this YES would be asked about.
+    hqLog.hqLogSince.mockResolvedValue([mtRow(ASKED, "teams:m1"), orgRow(new Date("2026-10-16T09:05:00Z"))]);
+    dbMock.sentNotification.findMany.mockResolvedValue([teamsPost]);
+    dbMock.botJob.findUnique.mockResolvedValue({ orgId: "org-fnf", kind: "admin-group", text: TEAMS_TEXT, sentAt: ASKED, createdAt: ASKED });
+    const r = await ask("YES", "approve", { quoted: { messageId: "3EB0TEAMS", text: "📝 Proposed", fromMatchTime: false } });
+    expect(r?.outcome).toBe("teams-final");
+    expect(requests[0].user).toContain("THEY ARE REPLYING TO MatchTime's message of Fri 16 Oct, 10:00:");
+  });
+
+  it("another organiser's message, found by id, is named, and an untagged reply to it is their conversation", async () => {
+    dbMock.adminGroupMessage.findMany.mockResolvedValue([
+      { waMessageId: "false_hq@g.us_3EB0ORG_4478@s.whatsapp.net", senderUserId: "u-2", text: "Imti is back next week", createdAt: new Date("2026-10-16T09:05:00Z") },
+    ]);
+    dbMock.user.findMany.mockResolvedValue([{ id: "u-2", name: "Hamzah Ali" }]);
+    const r = await ask("Rafi too", "other_att", { quoted: { messageId: "3EB0ORG", text: "Imti is back", fromMatchTime: false } });
+    expect(requests[0].user).toContain("THEY ARE REPLYING TO Hamzah Ali's message of Fri 16 Oct, 10:05:\n\"Imti is back next week\"");
+    expect(r).toBeNull();
+    expect(squad.handleAdminSquadChange).not.toHaveBeenCalled();
+  });
+
+  it("a failed read keeps the Pi's quote", async () => {
+    dbMock.sentNotification.findMany.mockRejectedValue(new Error("db down"));
+    const r = await ask("YES", "approve", { quoted: { messageId: "3EB0TEAMS", text: TEAMS_TEXT, fromMatchTime: true } });
+    expect(r?.outcome).toBe("teams-final");
   });
 });
 
