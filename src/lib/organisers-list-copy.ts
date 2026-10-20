@@ -18,7 +18,7 @@
  *   MatchTime has not posted this in the players' group: ...
  */
 import { buildSquadRosterBlock } from "./scheduler-copy";
-import { displaysSquadState, stripSquadPostMarker, wantsSquadPost } from "./group-copy";
+import { ORGANISERS_SPACE_INTENT, displaysSquadState, stripSquadPostMarker, wantsSquadPost } from "./group-copy";
 import { t } from "./i18n/t";
 import type { Lang } from "./i18n/lang";
 
@@ -109,4 +109,22 @@ export function organisersGroupReply(reply: string | null, lang: Lang | string |
   if (!lead) return null;
   if (displaysSquadState(lead, lang)) return t(lang).oa_list_by_organisers;
   return lead;
+}
+
+/**
+ * PURE. Does the analyze route's organisers-mode pass leave a reply with
+ * this intent alone? Decided by what composed the reply, never by reading
+ * its words:
+ *
+ *   `help`                    the explainer, already written for this mode,
+ *                             whose "Squad & availability" heading reads
+ *                             like a squad post (2026-10-15);
+ *   `ORGANISERS_SPACE_INTENT` "is there still space?": the open places and
+ *                             how to ask for one, no names (2026-10-20).
+ *
+ * Everything else, the list answers included, still goes through
+ * `organisersGroupReply`.
+ */
+export function passesOrganisersNet(intent: string | null | undefined): boolean {
+  return intent === "help" || intent === ORGANISERS_SPACE_INTENT;
 }

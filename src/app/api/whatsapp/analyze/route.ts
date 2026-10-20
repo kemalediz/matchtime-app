@@ -179,7 +179,7 @@ import { resolveBenchConfirmation } from "@/lib/bench-confirmation";
 import { moveNamedSlot } from "@/lib/team-slot-fill";
 import { getOrgFeatures } from "@/lib/org-features";
 import { organisersAnnounce } from "@/lib/list-announcer";
-import { organisersGroupReply } from "@/lib/organisers-list-copy";
+import { organisersGroupReply, passesOrganisersNet } from "@/lib/organisers-list-copy";
 import { sendAdminNotice } from "@/lib/admin-channel";
 import {
   bindAiBudgetKey,
@@ -3942,9 +3942,15 @@ async function handleAnalyzeRequest(request: Request) {
   //   katılım ...*") matches `displaysSquadState`'s header rule, so "@Match
   //   Time help availability" used to come back as "The organisers will
   //   post the list."
+  //
+  //   AND THE SPACE ANSWER (FNF 2026-10-20). "Is there still space?" is
+  //   answered with the open places and how to ask for one, no names
+  //   (`oa_space_answer`); it used to carry the squad count and so came
+  //   back as "The organisers will post the list." Both by intent
+  //   (`passesOrganisersNet`), never by the reply's words.
   if (organisersMode) {
     for (const r of results) {
-      if (r.intent === "help") continue;
+      if (passesOrganisersNet(r.intent)) continue;
       r.reply = organisersGroupReply(r.reply, org.language);
     }
   }

@@ -72,6 +72,13 @@ export interface Utterance {
   /** The message this answers, or null for the batch-level squad post. */
   messageId: string | null;
   text: string;
+  /**
+   * Set only on the organisers-mode space answer (`oa_space_answer`): it
+   * names nobody and shows no list, so the players' group may hear it
+   * where the organisers announce the list. `answer-batch.ts` turns it
+   * into `ORGANISERS_SPACE_INTENT`, which the analyze route's nets skip.
+   */
+  organisersSafe?: true;
 }
 
 export interface ComposedOutput {
@@ -208,7 +215,11 @@ export function compose(result: EngineResult): ComposedOutput {
   // team sheet from MatchTime: an IN or OUT gets its reaction and nothing
   // else, a question about who is playing gets one line saying the
   // organisers will post the list, and one about the teams the same for
-  // the teams. Every other answer (counts, stats, scores) is unchanged.
+  // the teams. A question about SPACE ("is there still space?", "how many
+  // are we?") is answered with the open places and how to ask for one,
+  // never a name (FNF 2026-10-20: the organisers keep the list, not
+  // whether there is room). Every other answer (stats, scores) is
+  // unchanged.
   //
   // A SLOT OPENING is not said in the players' group either (2026-10-14,
   // the FNF rehearsal: "X is out, 17 of 18. One slot open, say IN" went
@@ -225,6 +236,18 @@ export function compose(result: EngineResult): ComposedOutput {
       }
       if (sp.kind === "teams_post" || sp.kind === "teams_not_generated") {
         utterances.push({ messageId: sp.messageId, text: s.oa_teams_by_organisers });
+        continue;
+      }
+      if (sp.kind === "answer_count") {
+        utterances.push({
+          messageId: sp.messageId,
+          text: s.oa_space_answer({
+            open: Math.max(0, state.maxPlayers - confirmed.length),
+            kickoffLabel: state.kickoffLabel,
+            organisersPick: state.features.benchPickMode === "organiser",
+          }),
+          organisersSafe: true,
+        });
         continue;
       }
     }
@@ -320,9 +343,10 @@ export function compose(result: EngineResult): ComposedOutput {
             maxPlayers: state.maxPlayers,
             kickoffLabel: state.kickoffLabel,
             need,
-            // Who is waiting, with the count (FNF 2026-10-18). Not named
-            // in a players' group whose organisers announce the list.
-            bench: benchClause(lang, bench, { names: !organisersAnnounce }),
+            // Who is waiting, with the count (FNF 2026-10-18). A players'
+            // group whose organisers announce the list never reaches here:
+            // it gets `oa_space_answer` above, which names nobody.
+            bench: benchClause(lang, bench),
           }),
         });
         break;
