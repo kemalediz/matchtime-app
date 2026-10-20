@@ -6,111 +6,67 @@
  * ─────────────────────────────────────────────────────────────────────
  *
  * It was "smart WhatsApp message analysis — the LLM pass that classifies
- * EVERY message from a monitored group", and until today that is what it
- * was: `SYSTEM_PROMPT`, 444 lines and 19,850 measured tokens, plus
- * `analyzeBatch` around one `messages.create`, plus `AnalysisVerdict`
- * and 175 lines coercing the model's JSON into it. 2,245 lines.
- *
- * All of that is deleted. Reactive per-message analysis is now
- * `src/lib/pipeline/` (router → extractors → engine → composer) and its
- * owners; the markers left in place below say which section went where,
- * and `MDs/analyzer-redesign-2026-08-31.md` §3.2 is the full map.
+ * EVERY message from a monitored group". All of that is deleted.
+ * Reactive per-message analysis is now `src/lib/pipeline/` (router →
+ * extractors → engine → composer) and its owners; the markers left in
+ * place below say which section went where, and
+ * `MDs/analyzer-redesign-2026-08-31.md` §3.2 is the full map.
  *
  * ─────────────────────────────────────────────────────────────────────
  * WHAT IS LEFT, AND WHY IT IS STILL HERE
  * ─────────────────────────────────────────────────────────────────────
  *
- * ONE live feature and three shared helpers:
- *
  *   composeChaseText / composeChaseFromMatch
- *     The SCHEDULED chase. The bot scheduler decides WHEN (17:00 daily
- *     roll-call, match-day morning, 3-4h before kickoff, 2h pre-kickoff)
- *     and this composes the text. §13 lists it under "what must not
- *     change", so it did not: same `CHASE_SYSTEM_PROMPT`, same
- *     `MODEL`, same 1,024-token cap, same fallback to static copy when
- *     the call fails.
+ *     The SCHEDULED chase. The bot scheduler decides WHEN (the 17:00
+ *     squad update, the match-day morning, 3 to 4 hours before kickoff,
+ *     about 2 hours before) and this reads the squad and builds the post.
  *
- *     It is a genuinely different problem from the reactive path, which
- *     is why it survived a change that deleted everything around it.
- *     Nothing has HAPPENED. There is no message to understand and no
- *     write to decide — the state is known and the only job is saying it
- *     in a way a group will read. §6.4 reserves exactly that for a
- *     model: "The model keeps exactly one job: tone."
- *
- *   buildMatchContextBlock / buildMatchClockBlock
- *     The cached / uncached halves of the chase's context. The split is
- *     §8.1's bug 1: `kickoffHint` changed every six minutes inside a
- *     1-hour-TTL cache block and cost ~$0.0121 per call in cache writes.
- *     Anything clock-derived belongs in the clock block. If you add a
- *     field here, ask: does it change when the clock moves but the
- *     database does not?
+ *     REWRITTEN 2026-10-20 (MDs plan "Sonnet 5 prompts: rewrite, then
+ *     move to Haiku 5.5", item 6). Code renders the post: the squad list
+ *     is `buildSquadRosterBlock`, the format-switch line is the server's
+ *     own, and the model writes only the opening line, from facts code
+ *     states (`chase-lead.ts`). A line the model gets wrong, or no line
+ *     at all, is replaced by the fixed copy of that chase, so the post
+ *     always goes out and every number and name in it comes from the
+ *     rows. Before this, the model was asked for the whole post (drum
+ *     rows, bench block, a verbatim switch line, a guessed "tentative"
+ *     line) and the scheduler cut its roster back out when the group had
+ *     just seen one.
  *
  *   enforceProximity
  *     Rewrites "tonight" when the match is days away, and the
- *     20:30-vs-21:30 BST/UTC slips. Applied to EVERY outgoing reply in
- *     `analyze/route.ts`, whatever composed it — it was never about the
- *     model, only about relative dates being wrong in text.
+ *     20:30-vs-21:30 BST/UTC slips. MOVED to `./proximity` (pure) and
+ *     re-exported here: `analyze/route.ts` applies it to every outgoing
+ *     reply, whatever composed it.
  *
  *   sanitiseTeamNames
  *     Pure, and `team-generation.ts`'s, not the analyzer's. It clamps a
  *     proposed `[red, yellow]` pair before it reaches `Match.teamLabels`.
  *
- * A rename to `chase-composer.ts` is the obvious follow-up and is
- * deliberately NOT done here: it would touch ~20 import sites in a
- * change that is already deleting the largest artefact in the codebase,
- * and a diff nobody can read is how a deletion hides a mistake.
+ * A rename to `chase-composer.ts` is still the obvious follow-up; it
+ * would touch ~20 import sites, so it is not done in the same change as
+ * a prompt rewrite.
  */
-import { applyHouseStyle } from "./house-style";
-import Anthropic from "@anthropic-ai/sdk";
-import { appendFileSync, readFileSync } from "node:fs";
 import { db } from "./db";
-import { loadRecentHistory, formatRecentHistoryBlock } from "./match-history";
-import { getOrgFeatures } from "./org-features";
-import { resolveTeamLabels } from "./team-labels";
-import { t } from "./i18n/t";
 import { normaliseLang, type Lang } from "./i18n/lang";
-import { dayLabel as i18nDayLabel, longDayTimeLabel } from "./i18n/dates";
-import {
-  BENCH_PROMPT_MENTION_REACTIONS,
-  benchClaimPhrasingExample,
-} from "./bench-offer-copy";
-import {
-  buildFormatSwitchFacts,
-  renderFormatSwitchContext,
-} from "./format-switch";
 import { computeChaseRisk } from "./chase-risk";
-import { guardedAnthropicCall, systemBlock, PIPELINE_CACHE_CONTROL } from "@/lib/pipeline/llm";
-import { SONNET_MODEL } from "./models";
+import { anthropicModel, extractJson, HAIKU_CALL, type ModelCall, type PipelineModel } from "@/lib/pipeline/llm";
 import { withOrgAiBudget } from "./ai-budget";
+import { buildSquadRosterBlock } from "./scheduler-copy";
+import {
+  CHASE_LEAD_SCHEMA,
+  CHASE_LEAD_SYSTEM,
+  acceptChaseLead,
+  assembleChasePost,
+  chaseFallbackLead,
+  chaseLeadUserTurn,
+  chaseSwitchLine,
+  type ChaseFacts,
+  type ChaseKind,
+} from "./chase-lead";
+import type { SmallerFormat } from "./format-switch";
 
-// Sonnet (2026-05-19, Kemal): the per-message analyzer makes nuanced
-// calls (team-swap vs drop, conditional vs standing, "is X
-// confirmed", stats vs roster) that Haiku kept getting wrong. Sonnet
-// lifts the floor. Cost is contained: the big system prompt + match
-// context are 1h-cached (cheap reads), and MoM/rating-only groups
-// short-circuit BEFORE this call (analyze route), so only
-// message-scanning groups (Sutton-like) bill Sonnet.
-// One-constant change — instantly revertible if spend isn't worth it.
-// The "~£10/mo each" that used to end that sentence was struck out on
-// 2026-09-01 for the same reason as smart-analysis.ts's "~£2/month":
-// it predates the shadow analyzer and the prompt-cache buster. See
-// analyzer-redesign-2026-08-31.md §8.2/§8.4 for the modelled numbers,
-// and read `WindowVerdict.costUsd` for real ones.
-//
-// ── SONNET 5 SINCE 2026-09-19, AND THE PIN IS NOW A CHOICE ──────────
-//
-// This said `claude-sonnet-4-5` because that is what `analyzeBatch`
-// called; the composer inherited the id rather than picking it, and
-// `analyzeBatch` was deleted on 2026-09-06 (`8dc64fb`).
-// `MDs/llm-spend-september-2026.md` §4 found the whole $65 Sonnet 4.5
-// line sitting behind that fossil. Sonnet 5 is newer, has a 1M context
-// window and costs $2/$10 per MTok against $3/$15.
-//
-// The call below sends `thinking: { type: "disabled" }` and that is not
-// optional: Sonnet 5 runs ADAPTIVE THINKING when the parameter is
-// omitted, Sonnet 4.5 never did, and this call has 1,024 tokens to
-// spend. See the call site for the measurement.
-const MODEL = SONNET_MODEL;
+export type { ChaseKind } from "./chase-lead";
 
 // ─── max_tokens — READ BEFORE ADDING ANY messages.create CALL ────────
 //
@@ -146,21 +102,10 @@ export const MAX_TOKENS_CEILING = 16_384;
 // `ANALYSIS_MAX_TOKENS` and `ANALYSIS_RETRY_MAX_TOKENS` are deleted
 // with `analyzeBatch`. `MAX_TOKENS_CEILING` above stays: it is the
 // project-wide bound that `max-tokens-ceiling.test.ts` scans the source
-// against, `pipeline/llm.ts` derives its own 4,096 cap from it, and the
-// chase composer below is still a `messages.create` that needs it.
-// The chase composer emits ONE short WhatsApp message — a roster post
-// with a nudge line, ~100-200 output tokens in practice. 1024 is ~5x
-// the realistic worst case (a full 14-player roster plus tentative and
-// dropped sections) while keeping the SDK's implied timeout at ~29s.
-const CHASE_COMPOSE_MAX_TOKENS = 1_024;
+// against, and `pipeline/llm.ts` derives its own 4,096 cap from it. The
+// chase composer no longer calls `messages.create` itself (2026-10-20):
+// it goes through `anthropicModel`, which clamps to that cap.
 
-let _anthropic: Anthropic | null = null;
-function getAnthropic(): Anthropic | null {
-  const key = process.env.ANTHROPIC_API_KEY?.trim();
-  if (!key) return null;
-  if (!_anthropic) _anthropic = new Anthropic({ apiKey: key });
-  return _anthropic;
-}
 
 // ─── THE VERDICT TYPES ARE DELETED (§10 step 8) ──────────────────────
 //
@@ -212,216 +157,6 @@ function getAnthropic(): Anthropic | null {
 //   should not be one: a switch whose off position is "nobody handles
 //   attendance" is not a revert, and `pipeline/gate.ts` says so at
 //   more length.
-export function buildMatchContextBlock(args: {
-  orgName: string;
-  match: {
-    activity: { name: string; venue: string };
-    date: Date;
-    status: string;
-    maxPlayers: number;
-    attendances: Array<{ status: string; user: { id: string; name: string | null; phoneNumber?: string | null } }>;
-  } | null;
-  /** Resolved display labels for the two team slots —
-   *  `[redLabel, yellowLabel]`. Injected into the context so the LLM
-   *  can map custom team names ("Lions"/"Tigers") onto the canonical
-   *  RED/YELLOW enum for teamOverrides and score order. */
-  teamLabels?: [string, string];
-  /** Every smaller-format activity configured for this org. The LLM
-   *  may propose a switch to any of them — admins handle the venue
-   *  rebooking the venue and flip the match in the app. */
-  alternatives?: Array<{ sportName: string; totalPlayers: number }>;
-  /** Open bench-confirmation prompts. The bot tagged these users in
-   *  the group with a 👍/👎 prompt when someone dropped, and is
-   *  waiting on their decision (NO DM is sent — it's an in-group
-   *  @mention). The LLM uses this to interpret subsequent group
-   *  messages from those users (an in-group 👍, "yes", "I can do it"
-   *  etc.) as a bench-confirmation rather than a generic IN. */
-  /** Bench redesign 2026-05-19: open slot(s) offered to the WHOLE
-   *  bench. Any current bench player accepting (👍 / IN / yes) claims
-   *  it — first wins, nobody eliminated. */
-  openBenchSlot?: {
-    count: number;
-    benchNames: string[];
-    replacingNames: string[];
-  } | null;
-  /** The group's language. Only the format-switch proposal line (which
-   *  the model pastes verbatim) is language-dependent in this block;
-   *  the block is byte-identical for English with or without it. */
-  lang?: Lang | string | null;
-}): string {
-  if (!args.match) {
-    return `## Organisation\n${args.orgName}\n\n## Current Match\nNo upcoming match within the attendance window.`;
-  }
-  const m = args.match;
-  const confirmed = m.attendances.filter((a) => a.status === "CONFIRMED");
-  const bench = m.attendances.filter((a) => a.status === "BENCH");
-  const dropped = m.attendances.filter((a) => a.status === "DROPPED");
-  const need = Math.max(0, m.maxPlayers - confirmed.length);
-  // Derive a BOOLEAN "no number on record" flag from phoneNumber. The
-  // raw digits are NEVER emitted — only this boolean ever reaches the
-  // LLM context (PII rule, see line ~472). A player counts as "no
-  // number" when phoneNumber is null/undefined/empty/whitespace.
-  const noPhone = (a: { user: { phoneNumber?: string | null } }): boolean =>
-    !a.user.phoneNumber || a.user.phoneNumber.trim() === "";
-  const phoneFlag = (a: { user: { phoneNumber?: string | null } }): string =>
-    noPhone(a) ? "  📵 no number on record" : "";
-  const lines = [
-    `## Organisation`,
-    args.orgName,
-    ``,
-    `## Current Match`,
-    `Activity: ${m.activity.name}`,
-    // Kickoff time, countdown, proximity and roster header are NOT
-    // here — they live in buildMatchClockBlock, which callers append
-    // to the UNCACHED half of the request. See that function's header.
-    `Venue: ${m.activity.venue}`,
-    `Status: ${m.status}`,
-    ...(args.teamLabels
-      ? [
-          `Team labels: first team = "${args.teamLabels[0]}" (canonical RED), second team = "${args.teamLabels[1]}" (canonical YELLOW)`,
-        ]
-      : []),
-    `Confirmed: ${confirmed.length}/${m.maxPlayers}${need > 0 ? ` (need ${need} more)` : " ✅ full squad"}`,
-    `Bench: ${bench.length}`,
-    ``,
-    `Confirmed list:`,
-    ...confirmed.map((a, i) => `  ${i + 1}. ${a.user.name ?? "(unnamed)"}${phoneFlag(a)}`),
-  ];
-  if (bench.length) {
-    lines.push("", "Bench list:");
-    bench.forEach((a, i) => lines.push(`  ${i + 1}. ${a.user.name ?? "(unnamed)"}${phoneFlag(a)}`));
-  }
-  if (dropped.length) {
-    lines.push("", `Dropped: ${dropped.map((a) => a.user.name ?? "(unnamed)").join(", ")}`);
-  }
-  if (args.openBenchSlot && args.openBenchSlot.count > 0) {
-    const o = args.openBenchSlot;
-    const repl = o.replacingNames.length
-      ? ` (covering for: ${o.replacingNames.join(", ")})`
-      : "";
-    lines.push(
-      "",
-      `OPEN BENCH SLOT: ${o.count} slot${o.count === 1 ? "" : "s"} open for this match${repl}.`,
-      `Bench (any ONE of these can claim it — first to reply IN or yes wins; nobody is eliminated): ${
-        o.benchNames.length ? o.benchNames.join(", ") : "(bench empty)"
-      }`,
-    );
-  }
-  // FORMAT SWITCH — every number and every name in this block is
-  // computed HERE, in code (src/lib/format-switch.ts). The model used to
-  // be asked to do the arithmetic itself and got it catastrophically
-  // wrong in production on 2026-08-30 (8 confirmed, "5-a-side (10
-  // players) — Najib + Mojib + Mustafa go on the bench" — it subtracted
-  // players-per-TEAM instead of the format TOTAL). It now only copies.
-  if (args.alternatives && args.alternatives.length > 0) {
-    const facts = buildFormatSwitchFacts({
-      confirmedNames: confirmed.map((a) => a.user.name ?? "(unnamed)"),
-      currentMaxPlayers: m.maxPlayers,
-      alternatives: args.alternatives,
-      lang: args.lang,
-    });
-    lines.push("", ...renderFormatSwitchContext(facts));
-  }
-  return lines.join("\n");
-}
-
-/**
- * The kickoff DAY in London — "Tue 8 Sept". No time, ever.
- *
- * This used to be `kickoffLocal.split(" at ")[0]` over a single
- * date-AND-time formatter, and that split never fired: en-GB renders
- * weekday+day+month+hour+minute as "Tue 8 Sept, 21:30", the caller
- * stripped the comma, and the ` at ` the split looked for had never
- * existed. `[0]` was therefore the whole string, so every "day label" in
- * this file silently carried the kickoff time — into the roster header
- * ("*Playing Tue 8 Sept 21:30:*") and into `enforceProximity`'s
- * `friendlyDay`, which is how a chase came to read "see you all on Tue 8
- * Sept 21:30 at 21:30". Formatting the two halves separately is the only
- * way this cannot come back.
- */
-function londonDayLabel(date: Date): string {
-  return new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Europe/London",
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-  }).format(date);
-}
-
-/** The kickoff wall-clock in London — "21:30". */
-function londonTimeLabel(date: Date): string {
-  return new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Europe/London",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(date);
-}
-
-/**
- * The VOLATILE half of the Match Context — kickoff wall-clock time, the
- * countdown, the proximity bucket and the roster header derived from it.
- *
- * Split out of `buildMatchContextBlock` on 2026-08-31. Callers MUST put
- * this in an uncached content block, immediately after the cached Match
- * Context, so the system prompt's references to "proximity=" and
- * "Use roster header:" in the Match Context still resolve.
- *
- * That split promised the values were "byte-for-byte" what the old
- * function emitted, and they were — including its bug. The roster header
- * carried the kickoff time ("*Playing Tue 8 Sept 21:30:*") until
- * 2026-09-06; see `londonDayLabel`. It is a DAY label now.
- *
- * Everything here is recomputed from `Date.now()` on every call, which
- * is precisely why it cannot live in the cached prefix.
- */
-export function buildMatchClockBlock(
-  matchDate: Date | null | undefined,
-  lang?: Lang | string | null,
-): string {
-  if (!matchDate) return "";
-  const l = normaliseLang(lang);
-  const s = t(l);
-  const hoursToKickoff = (matchDate.getTime() - Date.now()) / (1000 * 60 * 60);
-  const daysToKickoff = Math.floor(hoursToKickoff / 24);
-  const kickoffHint =
-    hoursToKickoff > 0
-      ? `${hoursToKickoff.toFixed(1)}h until kickoff`
-      : `${Math.abs(hoursToKickoff).toFixed(1)}h since kickoff`;
-  // Pre-format the kickoff in London time so the LLM doesn't have to
-  // do TZ math and guess at BST/GMT. Format: "Tue 28 Apr at 21:30".
-  // The day label the ROSTER HEADER carries is the group's language's
-  // ("Tue 8 Sept" / "8 Eylül Salı"); the "Kickoff (London)" line stays
-  // English because the prompt's rules refer to it by that shape.
-  const dayLabel = l === "en" ? londonDayLabel(matchDate) : i18nDayLabel(l, matchDate);
-  const kickoffLocal = `${londonDayLabel(matchDate)} at ${londonTimeLabel(matchDate)}`;
-  // Proximity token drives how the LLM should title the roster block.
-  const proximity =
-    hoursToKickoff < 0
-      ? "past"
-      : hoursToKickoff <= 6
-      ? "tonight"
-      : hoursToKickoff <= 24
-      ? "tomorrow"
-      : daysToKickoff <= 7
-      ? "this-week"
-      : "future";
-  const rosterHeader = {
-    past: s.roster_header_past,
-    tonight: s.roster_header_tonight,
-    tomorrow: s.roster_header_tomorrow,
-    "this-week": s.roster_header_day({ dayLabel }),
-    future: s.roster_header_day({ dayLabel }),
-  }[proximity];
-  return [
-    `## Current Match — timing (live, part of the Match Context above)`,
-    `Kickoff (London): ${kickoffLocal}  (${kickoffHint}, proximity=${proximity})`,
-    // A non-English group gets the kickoff written the way its
-    // language writes it, so the model copies a date it can use.
-    ...(l === "en" ? [] : [`Kickoff (${l}): ${longDayTimeLabel(l, matchDate)}`]),
-    `Use roster header: ${rosterHeader}`,
-  ].join("\n");
-}
 
 // ═══════════════════════════════════════════════════════════════════
 // `analyzeBatch` AND `ATTENDANCE_OFF_OVERRIDE` ARE DELETED
@@ -445,113 +180,26 @@ export function buildMatchClockBlock(
 //   becomes a router/engine capability filter instead of a 12-line
 //   prompt appendix."
 
-// ─── LLM-composed scheduled chase messages ──────────────────────────
-//
-// The bot scheduler decides WHEN to chase (17:00 daily roll-call,
-// match-day morning 8-9am, 3-4h before kickoff, 2h pre-kickoff). This
-// function composes the TEXT for a chase using the same Match Context
-// + squad-state reply rules the reactive analyser uses — so the
-// scheduled posts get the same rich roster / tentative / dropped
-// summary as the reactive ones.
-//
-// Returns the message text ready to send to WhatsApp. If Claude fails
-// for any reason, returns `null` and the scheduler falls back to the
-// static text it used to emit.
+// ─── The scheduled chase ────────────────────────────────────────────
 
-export type ChaseKind =
-  | "daily-in-list" // 17:00, roster + need-X-more
-  | "match-day-morning" // match day 8-9am, upbeat nudge
-  | "chase-pre-kickoff" // 3-4h before kickoff, sharper call
-  | "pre-kickoff-full" // 2h before, final line-up post (may or may not be short)
-  | "pre-kickoff-short"; // 2h before, short-squad variant (last-chance plea)
+/**
+ * THE SHIPPED MODEL: Haiku 5.5, adaptive thinking at medium (2026-10-20).
+ * Paid check, `scripts/chase-at-risk-live.ts`, 12 fixture posts (English
+ * and Turkish, every kind) once each: the live prompt on Sonnet 5 9/12
+ * ("Yarın" for a match that evening, hours to kickoff worked out by the
+ * model), the new prompt on Sonnet 5 and on Haiku 5.5 12/12 each, Haiku
+ * at about a fiftieth of the live cost per call and a faster p50.
+ */
+export const CHASE_COMPOSER_CALL: ModelCall = HAIKU_CALL;
 
-export async function composeChaseText(input: {
-  groupId: string;
-  kind: ChaseKind;
-  /** HARNESS ONLY (`scripts/dryrun-pipeline.ts LANG=tr`): compose in this
-   *  language instead of the org's column, so a Turkish chase can be
-   *  dry-run against an English club's live state without touching
-   *  the row. Production never passes it. */
-  langOverride?: Lang | string | null;
-}): Promise<string | null> {
-  const anthropic = getAnthropic();
-  if (!anthropic) return null;
-
-  const org = await db.organisation.findFirst({
-    where: { whatsappGroupId: input.groupId },
-    select: { id: true, name: true, teamLabels: true, language: true },
-  });
-  if (!org) return null;
-
-  const match = await db.match.findFirst({
-    where: {
-      activity: { orgId: org.id },
-      status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] },
-      attendanceDeadline: { gt: new Date() },
-    },
-    include: {
-      activity: {
-        select: {
-          name: true,
-          venue: true,
-          sport: { select: { name: true, playersPerTeam: true, teamLabels: true } },
-        },
-      },
-      attendances: {
-        // phoneNumber is selected ONLY to derive a boolean "has a number
-        // on record" flag (see buildMatchContextBlock). The raw value is
-        // never passed into LLM context or any reply — only the noPhone
-        // boolean is. PII rule (line ~472) stays intact.
-        include: { user: { select: { id: true, name: true, phoneNumber: true } } },
-        orderBy: { position: "asc" },
-      },
-    },
-    orderBy: { date: "asc" },
-  });
-  if (!match) return null;
-
-  // Reuse the alternatives query from analyzeBatch.
-  const alternatives: Array<{ sportName: string; totalPlayers: number }> = [];
-  const family = match.activity.sport.name.split(" ")[0];
-  const currentPpt = match.activity.sport.playersPerTeam;
-  const siblingActivities = await db.activity.findMany({
-    where: { orgId: org.id },
-    include: { sport: { select: { name: true, playersPerTeam: true } } },
-  });
-  const seen = new Set<string>();
-  for (const a of siblingActivities) {
-    if (a.sport.name.split(" ")[0] !== family) continue;
-    if (a.sport.playersPerTeam >= currentPpt) continue;
-    if (seen.has(a.sport.name)) continue;
-    seen.add(a.sport.name);
-    alternatives.push({
-      sportName: a.sport.name,
-      totalPlayers: a.sport.playersPerTeam * 2,
-    });
-  }
-  alternatives.sort((x, y) => y.totalPlayers - x.totalPlayers);
-
-  const lang = normaliseLang(input.langOverride ?? org.language);
-  // Spent from this club (the daily AI cap, lib/ai-budget.ts). At the cap
-  // the composer's call is refused, it returns null like any other
-  // failure, and the scheduler sends its static chase copy instead.
-  return withOrgAiBudget(org.id, () =>
-    composeChaseFromMatch({
-      kind: input.kind,
-      orgName: org.name,
-      match,
-      teamLabels: resolveTeamLabels(match, org, match.activity.sport, lang),
-      alternatives,
-      logLabel: `group=${input.groupId}`,
-      lang,
-    }),
-  );
-}
+/** The lead is one short line; the rest is room for Haiku's thinking,
+ *  which shares the budget. */
+const CHASE_LEAD_MAX_TOKENS = 2_048;
 
 /** The squad state one chase is composed against. Structural on purpose:
- *  `composeChaseText` passes a Prisma row, the live at-risk harness
- *  (`scripts/chase-at-risk-live.ts`) passes an in-memory object, and
- *  both take the identical path from here on. */
+ *  `composeChaseText` passes a Prisma row, the live harness
+ *  (`scripts/chase-at-risk-live.ts`) an in-memory object, and both take
+ *  the identical path from here on. */
 export interface ChaseComposeMatch {
   date: Date;
   status: string;
@@ -563,535 +211,201 @@ export interface ChaseComposeMatch {
   }>;
 }
 
+export interface ChasePost {
+  /** The post, ready to send. */
+  text: string;
+  /** The opening line as posted. */
+  lead: string;
+  /** False when the model's line was missing or could not be posted and
+   *  the fixed line of this chase went out instead. */
+  fromModel: boolean;
+}
+
 /**
- * Everything `composeChaseText` does EXCEPT read the database: build the
- * prompt, call the model, clean and proximity-correct the result.
+ * The chase post for the match the scheduler is chasing.
  *
- * Split out on 2026-09-06 so the at-risk cancellation warning could be
- * validated against the real model in a state production is not
- * currently in (6/14 at ~57h out is deliberately NOT at risk) without
- * writing a single row to a customer's database.
+ * Null only when there is nothing to chase (no org, no such match); the
+ * scheduler then sends its own static copy. A model that fails, is over
+ * the club's daily AI cap, or writes a line that breaks a fact still
+ * yields a post: the fixed line over the same squad list.
  */
-export async function composeChaseFromMatch(input: {
+export async function composeChaseText(input: {
+  groupId: string;
   kind: ChaseKind;
-  orgName: string;
-  match: ChaseComposeMatch;
-  teamLabels?: [string, string];
-  alternatives?: Array<{ sportName: string; totalPlayers: number }>;
-  /** Identifies the caller in the two BROKEN log lines. */
-  logLabel?: string;
-  /** The group's language (`Organisation.language`); English when absent.
-   *  Decides the roster header the server hands the model, the language
-   *  line in the uncached tail, and whether the English proximity
-   *  rewrite runs on the result. */
-  lang?: Lang | string | null;
+  /** The match being chased. The scheduler always passes it; without it
+   *  (the production dry run) the next match with an open deadline. */
+  matchId?: string;
+  /** The scheduler's clock (the e2e suite pins it); the wall clock when absent. */
+  now?: Date;
+  /** False when the group was shown this exact squad in the last three
+   *  hours (`roster-shown.ts`): the post is the line alone. */
+  withRoster?: boolean;
+  /** HARNESS ONLY (`scripts/dryrun-pipeline.ts LANG=tr`): compose in this
+   *  language instead of the org's column. Production never passes it. */
+  langOverride?: Lang | string | null;
 }): Promise<string | null> {
-  const anthropic = getAnthropic();
-  if (!anthropic) return null;
+  const now = input.now ?? new Date();
+  const org = await db.organisation.findFirst({
+    where: { whatsappGroupId: input.groupId },
+    select: { id: true, language: true },
+  });
+  if (!org) return null;
+
+  const match = await db.match.findFirst({
+    where: input.matchId
+      ? { id: input.matchId, activity: { orgId: org.id } }
+      : {
+          activity: { orgId: org.id },
+          status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] },
+          attendanceDeadline: { gt: now },
+        },
+    include: {
+      activity: {
+        select: { name: true, venue: true, sport: { select: { name: true, playersPerTeam: true } } },
+      },
+      attendances: {
+        where: { status: { in: ["CONFIRMED", "BENCH"] } },
+        include: { user: { select: { id: true, name: true } } },
+        orderBy: { position: "asc" },
+      },
+    },
+    orderBy: { date: "asc" },
+  });
+  if (!match) return null;
+
+  // The smaller formats this club has set up, largest first (the
+  // format-switch line proposes the first one the squad would fill).
+  const family = match.activity.sport.name.split(" ")[0];
+  const currentPpt = match.activity.sport.playersPerTeam;
+  const siblings = await db.activity.findMany({
+    where: { orgId: org.id },
+    include: { sport: { select: { name: true, playersPerTeam: true } } },
+  });
+  const seen = new Set<string>();
+  const alternatives: SmallerFormat[] = [];
+  for (const a of siblings) {
+    if (a.sport.name.split(" ")[0] !== family || a.sport.playersPerTeam >= currentPpt || seen.has(a.sport.name)) continue;
+    seen.add(a.sport.name);
+    alternatives.push({ sportName: a.sport.name, totalPlayers: a.sport.playersPerTeam * 2 });
+  }
+  alternatives.sort((x, y) => y.totalPlayers - x.totalPlayers);
+
+  // Spent from this club (the daily AI cap, lib/ai-budget.ts). At the cap
+  // the call is refused and the fixed line goes out instead.
+  const post = await withOrgAiBudget(org.id, () =>
+    composeChaseFromMatch({
+      kind: input.kind,
+      match,
+      alternatives,
+      lang: normaliseLang(input.langOverride ?? org.language),
+      now,
+      withRoster: input.withRoster,
+      logLabel: `group=${input.groupId}`,
+    }),
+  );
+  return post.text;
+}
+
+/**
+ * Everything `composeChaseText` does EXCEPT read the database: state the
+ * facts, ask the model for the opening line, check it, and build the post.
+ * `deps.model` is for the paid harness's arms; production passes nothing.
+ */
+export async function composeChaseFromMatch(
+  input: {
+    kind: ChaseKind;
+    match: ChaseComposeMatch;
+    alternatives?: SmallerFormat[];
+    /** The group's language (`Organisation.language`); English when absent. */
+    lang?: Lang | string | null;
+    now?: Date;
+    /** Default true. */
+    withRoster?: boolean;
+    /** Identifies the caller in the log lines. */
+    logLabel?: string;
+  },
+  deps?: { model?: PipelineModel },
+): Promise<ChasePost> {
   const { match } = input;
-  const label = input.logLabel ?? input.orgName;
+  const now = input.now ?? new Date();
   const lang = normaliseLang(input.lang);
+  const confirmed = match.attendances.filter((a) => a.status === "CONFIRMED").map((a) => a.user);
+  const bench = match.attendances.filter((a) => a.status === "BENCH").map((a) => a.user);
+  const risk = computeChaseRisk({ kickoff: match.date, confirmedCount: confirmed.length, maxPlayers: match.maxPlayers, now });
 
-  const matchContext = buildMatchContextBlock({
-    orgName: input.orgName,
-    match,
-    teamLabels: input.teamLabels,
-    alternatives: input.alternatives,
+  const facts: ChaseFacts = {
+    kind: input.kind,
     lang,
-  });
-
-  // AT RISK — decided HERE, in code, and only ever handed to the model
-  // as a finished verdict (src/lib/chase-risk.ts). "Close" and "many
-  // missing" are not things a prompt may be left to judge: the answer
-  // would flip run to run, and a cancellation warning that appears half
-  // the time is worse than one that never appears. Same discipline as
-  // the format-switch block above it.
-  const risk = computeChaseRisk({
+    activityName: match.activity.name,
+    venue: match.activity.venue,
     kickoff: match.date,
-    confirmedCount: match.attendances.filter((a) => a.status === "CONFIRMED").length,
+    now,
+    confirmed: confirmed.length,
     maxPlayers: match.maxPlayers,
-  });
-  // The 17:00 recap is the only kind that escalates. The pre-kickoff
-  // kinds already carry their own urgency in the prompt; stacking a
-  // second warning on top would read as panic.
-  const atRisk = input.kind === "daily-in-list" && risk.atRisk;
+    bench: bench.length,
+    // The 17:00 update is the only post that escalates: the pre-kickoff
+    // posts carry their own urgency, and a second warning reads as panic.
+    // The server decides (chase-risk.ts); the model is told.
+    atRisk: input.kind === "daily-in-list" && risk.atRisk,
+  };
 
-  // Same cache split as analyzeBatch: matchContext is the 1h-cached
-  // prefix, the clock block rides with the uncached compose prompt.
-  // This call site had the identical cache-buster (it caches the very
-  // same matchContext string), so every scheduled chase was paying a
-  // cache WRITE for the whole block.
-  //
-  // The at-risk block goes in the SAME uncached tail, for exactly that
-  // reason: it appears and disappears as the clock crosses 48h, so it is
-  // volatile content by definition and may never sit in a cached prefix.
-  // THE LANGUAGE LINE RIDES IN THE UNCACHED TAIL (design section 4.3,
-  // seam 1): the system prompt and the Match Context are cached for an
-  // hour and are byte-identical for every language, so an English
-  // club's cache is untouched by a Turkish club existing.
-  const matchClock = buildMatchClockBlock(match.date, lang);
-  const chasePrompt = buildChaseComposePrompt(input.kind, { atRisk, lang, matchDate: match.date });
-  const composePrompt = matchClock ? `${matchClock}\n\n${chasePrompt}` : chasePrompt;
-
-  try {
-    const response = await guardedAnthropicCall("chase-composer", () =>
-      anthropic.messages.create({
-        model: MODEL,
-        // See MAX_TOKENS_CEILING at the top of this file. This site
-        // shipped 64000 and therefore threw on EVERY invocation since it
-        // was written — every scheduled chase used the static fallback.
-        max_tokens: CHASE_COMPOSE_MAX_TOKENS,
-        // NOT OPTIONAL ON SONNET 5. Omitting `thinking` gets adaptive
-        // thinking, and `ModelRequest.thinking` in pipeline/llm.ts
-        // records what that does: measured 2026-09-06, 5 runs of 5, the
-        // model can spend the ENTIRE max_tokens budget deliberating and
-        // return `stop_reason: max_tokens` with thinking blocks and no
-        // text block at all, probed at 1,024, 2,048 and 4,096 tokens.
-        // This call has 1,024. Its failure mode is not a crash: the
-        // truncation guard below discards the post and every scheduled
-        // chase in Kemal's one real group quietly reverts to static copy.
-        //
-        // Sonnet 4.5 thought only when handed `budget_tokens`, so sending
-        // this is what keeps the model move a PRICE change. The file
-        // header says the model "keeps exactly one job: tone", and tone
-        // is not a thing to deliberate about.
-        thinking: { type: "disabled" },
-        system: systemBlock(CHASE_SYSTEM_PROMPT),
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: matchContext,
-                cache_control: PIPELINE_CACHE_CONTROL,
-              },
-              {
-                type: "text",
-                text: composePrompt,
-              },
-            ],
-          },
-        ],
-      }),
-    );
-    // Truncation guard. This text is posted VERBATIM to a customer's
-    // WhatsApp group, and it is the only call site here whose output is
-    // not JSON (a truncated JSON site fails closed when the parse
-    // throws; free text has no such protection). `stop_reason` is the
-    // only signal that what we got is a sentence cut off mid-word, so
-    // treat it as a failure: the static fallback is strictly better
-    // than half a roster post.
-    if (response.stop_reason === "max_tokens") {
-      console.error(
-        `[analyzer] BROKEN: composeChaseText hit the ${CHASE_COMPOSE_MAX_TOKENS}-token ` +
-          `cap for kind=${input.kind} ${label} — the composed text was ` +
-          `TRUNCATED mid-sentence and has been discarded. The chase will fall back to ` +
-          `STATIC text. If this recurs, the cap is too low for this group's roster.`,
-      );
-      return null;
+  let lead: string | null = null;
+  const model = deps?.model ?? (process.env.ANTHROPIC_API_KEY ? anthropicModel() : null);
+  if (model) {
+    try {
+      const resp = await model.complete({
+        ...CHASE_COMPOSER_CALL,
+        system: CHASE_LEAD_SYSTEM,
+        user: chaseLeadUserTurn(facts),
+        maxTokens: CHASE_LEAD_MAX_TOKENS,
+        schema: CHASE_LEAD_SCHEMA as unknown as Record<string, unknown>,
+        label: "chase-composer",
+      });
+      const raw = (extractJson(resp.text) as { lead?: unknown } | null)?.lead;
+      lead = typeof raw === "string" ? acceptChaseLead(raw, facts) : null;
+      if (!lead) {
+        console.error(
+          `[chase] the model's line for kind=${input.kind} ${input.logLabel ?? ""} broke a fact or was empty; ` +
+            `posting the fixed line instead.`,
+        );
+      }
+    } catch (err) {
+      // Degrade LOUDLY: the post still goes out, with the fixed line.
+      console.error(`[chase] the model call failed for kind=${input.kind} ${input.logLabel ?? ""}; posting the fixed line.`, err);
     }
-    const textBlock = response.content.find(
-      (b): b is Anthropic.TextBlock => b.type === "text",
-    );
-    const raw = textBlock?.text?.trim();
-    if (!raw) return null;
-    // Strip any accidental fences / leading labels.
-    const cleaned = raw
-      .replace(/^```(?:text|markdown)?\s*/i, "")
-      .replace(/\s*```$/i, "")
-      .trim();
-    // Defence-in-depth: even with "Use roster header: ..." in the Match
-    // Context, the LLM sometimes still writes "*Playing tonight:*" out
-    // of habit. Rewrite any "*Playing <anything>:*" header AND any loose
-    // "tonight"/"this evening" in the lead text to match the actual
-    // proximity. Regex is narrow: it only fires when we're confident
-    // the LLM got it wrong.
-    return applyHouseStyle(enforceProximity(cleaned, match.date, lang), lang);
-  } catch (err) {
-    // Degrade LOUDLY. This threw on every invocation for months
-    // (max_tokens was 64000, which the SDK refuses) and nobody noticed,
-    // because the chase still fired — just with the plain static text
-    // instead of the composed roster / tentative / dropped summary.
-    console.error(
-      `[analyzer] BROKEN: composeChaseText threw for kind=${input.kind} ` +
-        `${label} — the chase will fall back to STATIC text, ` +
-        `losing the roster/tentative/dropped summary.`,
-      err,
-    );
-    return null;
   }
-}
-
-/** YYYY-MM-DD key in London time. Used for calendar-day proximity. */
-function londonDateKey(at: Date): string {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/London",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(at);
-  return parts; // en-CA formats as YYYY-MM-DD
-}
-
-function computeProximity(
-  date: Date,
-  lang: Lang = "en",
-): {
-  proximity: "past" | "tonight" | "tomorrow" | "this-week" | "future";
-  rosterHeader: string;
-  friendlyDay: string; // "tonight" | "tomorrow" | "on Tue 28 Apr"
-  /** The same day with no leading preposition — "Tue 28 Apr". What goes
-   *  in after a preposition the sentence already has, or before a
-   *  possessive. See `replaceRelativeDay`. */
-  dayLabel: string;
-} {
-  const s = t(lang);
-  const hoursToKickoff = (date.getTime() - Date.now()) / (1000 * 60 * 60);
-  // See `londonDayLabel`: the day and the time are formatted separately
-  // because the old single-formatter-plus-split produced a "day part"
-  // that still had the kickoff time glued to it.
-  const dayPart = lang === "en" ? londonDayLabel(date) : i18nDayLabel(lang, date);
-
-  // Proximity bucket is calendar-day based, not raw hours: "tonight"
-  // means the match is later today (London), "tomorrow" means
-  // calendar-tomorrow, etc. Hours-only thresholds got it wrong at
-  // 14:26 BST on match day (>6h to 21:30 → bucketed as "tomorrow"
-  // even though the match was that same evening).
-  const todayKey = londonDateKey(new Date());
-  const matchDayKey = londonDateKey(date);
-  const oneDayLaterKey = londonDateKey(
-    new Date(Date.now() + 24 * 60 * 60 * 1000),
-  );
-  const sevenDaysLaterKey = londonDateKey(
-    new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-  );
-  let proximity: "past" | "tonight" | "tomorrow" | "this-week" | "future";
-  if (hoursToKickoff < 0) {
-    proximity = "past";
-  } else if (matchDayKey === todayKey) {
-    proximity = "tonight";
-  } else if (matchDayKey === oneDayLaterKey) {
-    proximity = "tomorrow";
-  } else if (matchDayKey <= sevenDaysLaterKey) {
-    proximity = "this-week";
-  } else {
-    proximity = "future";
-  }
-  const rosterHeader = {
-    past: s.roster_header_past,
-    tonight: s.roster_header_tonight,
-    tomorrow: s.roster_header_tomorrow,
-    "this-week": s.roster_header_day({ dayLabel: dayPart }),
-    future: s.roster_header_day({ dayLabel: dayPart }),
-  }[proximity];
-  const friendlyDay = {
-    past: `on ${dayPart}`,
-    tonight: "tonight",
-    tomorrow: "tomorrow",
-    "this-week": `on ${dayPart}`,
-    future: `on ${dayPart}`,
-  }[proximity];
-  return { proximity, rosterHeader, friendlyDay, dayLabel: dayPart };
-}
-
-/** Prepositions that already supply the "on" in "on Tue 8 Sept". */
-const DAY_PREPOSITION = "on|for|at|by|before|after|until|till|from";
-
-/**
- * Swap a relative day word ("tonight", "tomorrow", "this evening") for
- * the real day, WITHOUT breaking the sentence it sits in.
- *
- * The naive `text.replace(/\btonight\b/g, "on Tue 8 Sept")` this
- * replaces produced, in production copy, "we still need 8 players for on
- * Tue 8 Sept's 7-a-side". Two grammatical facts have to be respected:
- *
- *   • a preposition already in the sentence supplies the "on"
- *     — "for tonight" → "for Tue 8 Sept", never "for on Tue 8 Sept";
- *   • a possessive attaches to the day, not to a preposition
- *     — "tonight's game" → "Tue 8 Sept's game".
- *
- * With neither, the day needs its own preposition: "kickoff is tonight"
- * → "kickoff is on Tue 8 Sept".
- */
-function replaceRelativeDay(
-  text: string,
-  word: string,
-  dayLabel: string,
-  friendlyDay: string,
-): string {
-  const re = new RegExp(
-    `(\\b(?:${DAY_PREPOSITION})\\s+)?\\b${word}\\b(['’]s)?`,
-    "gi",
-  );
-  return text.replace(re, (_m, prep?: string, possessive?: string) => {
-    if (possessive) return `${prep ?? ""}${dayLabel}${possessive}`;
-    if (prep) return `${prep}${dayLabel}`;
-    return friendlyDay;
+  const fromModel = lead !== null;
+  const finalLead = lead ?? chaseFallbackLead(facts);
+  const switchLine = chaseSwitchLine({
+    confirmedNames: confirmed.map((u) => u.name ?? "?"),
+    maxPlayers: match.maxPlayers,
+    alternatives: input.alternatives ?? [],
+    lang,
+    hoursToKickoff: risk.hoursToKickoff,
   });
+  const rosterBlock =
+    input.withRoster === false ? null : buildSquadRosterBlock({ confirmed, bench, maxPlayers: match.maxPlayers, lang });
+  return { text: assembleChasePost({ lead: finalLead, switchLine, rosterBlock }), lead: finalLead, fromModel };
 }
 
-/**
- * Post-process an LLM-composed chase message to guarantee it doesn't
- * say "tonight" when the match is days away (or vice versa).
- *
- *   - Replaces any "*Playing <word>:*" header with the correct one.
- *   - Rewrites loose "tonight"/"this evening" in the lead text to the
- *     friendly day form when proximity isn't tonight. Leaves "tomorrow"
- *     alone unless proximity is further out.
- */
-export function enforceProximity(
-  text: string,
-  matchDate: Date,
-  lang?: Lang | string | null,
-): string {
-  const l = normaliseLang(lang);
-  const { proximity, rosterHeader, friendlyDay, dayLabel } = computeProximity(matchDate, l);
-
-  // Swap any "*Playing …:*" roster header to the correct one. In any
-  // language: a Turkish model that writes the English header out of
-  // habit gets the Turkish one the server chose, and a Turkish header
-  // with the wrong day is corrected the same way.
-  let out = text.replace(/\*(?:Playing [^*\n]+?|[^*\n]*?oynayanlar|Kadro):\*/giu, rosterHeader);
-  // If that didn't match, also try a variant without asterisks (in case
-  // the LLM returned plain-text header).
-  if (!out.includes(rosterHeader)) {
-    out = out.replace(/Playing (tonight|tomorrow|this (?:evening|week))\s*:/i, rosterHeader);
-  }
-
-  // THE RELATIVE-DAY REWRITE IS ENGLISH GRAMMAR (`DAY_PREPOSITION`,
-  // possessives) and cannot be translated, only bypassed: for any other
-  // language the model is told the day label and the header up front
-  // (design section 4.3, seam 3) and nothing below rewrites its prose.
-  if (l !== "en") return fixUtcTime(out, matchDate);
-
-  if (proximity !== "tonight") {
-    // Replace "tonight" / "this evening" with friendly-day phrasing
-    // ONLY in the lead text (not inside the roster itself, which
-    // shouldn't contain either word at this point). `replaceRelativeDay`
-    // rather than a bare `String.replace`: the bare version produced
-    // "for on Tue 8 Sept's 7-a-side" in production copy.
-    out = replaceRelativeDay(out, "tonight", dayLabel, friendlyDay);
-    out = replaceRelativeDay(out, "this evening", dayLabel, friendlyDay);
-  }
-  if (proximity !== "tomorrow" && proximity !== "tonight") {
-    out = replaceRelativeDay(out, "tomorrow", dayLabel, friendlyDay);
-  }
-
-  return fixUtcTime(out, matchDate);
-}
-
-/**
- * Catch "off-by-1h" mistakes in HH:MM times. The LLM occasionally outputs
- * the UTC offset (20:30) when it should output the London wall-clock
- * (21:30), usually because it "helpfully" applied the timezone offset
- * itself. Replace the UTC HH:MM with the London one. Language-free: a
- * time is a time.
- */
-function fixUtcTime(text: string, matchDate: Date): string {
-  const londonHm = londonTimeLabel(matchDate);
-  const utcHm = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "UTC",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(matchDate);
-  if (londonHm === utcHm) return text;
-  // Replace bare "20:30" instances (only when followed by non-digit
-  // boundary so we don't mangle other numbers).
-  return text.replace(new RegExp(`\\b${utcHm.replace(":", ":")}\\b`, "g"), londonHm);
-}
+/** MOVED to `./proximity` (2026-10-20), pure; re-exported for every
+ *  existing import. */
+export { enforceProximity } from "./proximity";
 
 /**
  * The house style for a model-composed message: no em or en dashes in
  * any language, and (Turkish) markdown `**bold**` turned into WhatsApp
  * `*bold*`. MOVED to `./house-style` (2026-10-06), which is pure, and
- * re-exported here so every existing import keeps working. Until that
- * date English output was left untouched; Kemal: "remove long dashes".
+ * re-exported here so every existing import keeps working.
  */
 export { applyHouseStyle } from "./house-style";
 
-/** The roster header the server would hand the model for this kickoff,
- *  right now, in this language. Exported for the dry-run harness, which
- *  checks a composed chase copied it. */
-export function rosterHeaderFor(matchDate: Date, lang?: Lang | string | null): string {
-  return computeProximity(matchDate, normaliseLang(lang)).rosterHeader;
-}
-
 /**
- * Deterministic, server-composed squad+bench status post.
- *
- * MOVED to `./group-copy` (2026-09-01) and re-exported here so every
- * existing import keeps working. It is pure, and this file is not: it
- * imports the Prisma client, which makes the function unreachable from
- * the Playwright worker process and from the new pipeline's composer.
- * §13 lists it under "what must not change" — so it did not change; it
- * moved somewhere it can actually be reused.
+ * Deterministic, server-composed squad+bench status post. MOVED to
+ * `./group-copy` (2026-09-01) and re-exported here so every existing
+ * import keeps working.
  */
 export { composeSquadStatusPost } from "./group-copy";
-
-const CHASE_SYSTEM_PROMPT = `You are MatchTime, composing a SCHEDULED group message — not a reply to anyone. The bot's scheduler is firing a chase/announcement at a fixed time because the squad is in a certain state.
-
-Output is PLAIN WhatsApp-ready text (no JSON, no markdown fences). Return only the message body — no preamble like "Here's the message:" and no closing commentary.
-
-Use the same style as the reactive replies: WhatsApp-friendly formatting with *bold* via single asterisks, real line breaks, one or two emoji at most. Ground every name in the Match Context — never invent. Use "Kemal" / "Elvin" first names fine; for ambiguous repeats in the group, use fuller names ("Ibrahim Sahin" when needed to disambiguate).
-
-Every chase message MUST end with a numbered roster block. Use the EXACT header from "Use roster header:" in the Match Context — do NOT invent your own. It'll be one of: "*Playing tonight:*" (same-day / within 6h), "*Playing tomorrow:*", or "*Playing <Weekday DD Mon>:*" for anything further out. Getting this wrong (e.g. saying "tonight" 6 days before the match) confuses the group — always use the pre-computed header. The roster has exactly maxPlayers rows; filled slots use names from the Confirmed list in order; any row above confirmedCount is 🥁 (single drum per row).
-
-BENCH (mandatory, every org): when the Bench list in the Match Context is non-empty, ALWAYS append a bench block straight after the roster: "*Bench (N):*" followed by the bench names as a numbered list, in Match Context order. Never omit the bench when it has players — a benched player scanning the post must see their name. Omit the block entirely when the bench is empty.
-
-NEVER write "tonight", "this evening", "tomorrow" or similar temporal references in the LEAD text unless "proximity=" in the Match Context confirms it. For any proximity other than "tonight"/"tomorrow", refer to the match by its day-and-date (e.g. "Tuesday 7-a-side on Tue 28 Apr at 21:30") rather than a vague relative time.
-
-NEVER stamp the message with the time of day it was sent. No "Quick 5pm update", no "17:00 update", no "Evening update" or "Morning update" as a send-time label. Nobody needs to be told what time the scheduler fired, and the schedule can slip, so a stamp is often simply wrong. This bans the SEND time only. The KICKOFF time is a different thing and several chase types REQUIRE it: keep writing it (e.g. "kickoff 21:30", "21:30 at Sim Arena") whenever the chase type asks for it.
-
-NEVER greet the group with a part of the day either. No "Morning all", no "Afternoon all", no "Evening all", no "Good morning everyone". A greeting is a coarse clock: you are told what state the squad is in, not what hour the post will reach anyone's phone, and a post held up by an outage or a busy DM queue arrives saying "Morning" in the afternoon. Open with the substance instead.
-
-If any player appears in the Dropped list AND the history or chat context suggests they'll still play if nobody replaces them, add a separate line *below* the roster: "Tentative: <Name> (will play if nobody steps in)". Do not put tentative players in a numbered slot.
-
-If an "Alternative formats available" block is in the context AND the squad is short AND kickoff is within 24h AND that format is marked "✅ VIABLE", you MAY append ONE line proposing the switch — and it must be the line the context gives you under "use this EXACT line VERBATIM", copied character-for-character. The server already did the arithmetic: NEVER count the squad, NEVER subtract anything, NEVER choose who goes on the bench. The only names you may describe as benched are the ones after "Bench on switch:" for that format; if it says NOBODY, write no bench clause at all and name nobody. Never propose a format marked "❌ NOT VIABLE".
-
-Tone: the group's tone — casual, terse, no corporate fluff. No emoji soup.`;
-
-/**
- * The at-risk escalation for the 17:00 daily chase.
- *
- * Present ONLY when `computeChaseRisk` says so, and absent BYTE FOR BYTE
- * otherwise — the healthy prompt is 51 weeks of the year and must not
- * change at all. The model is handed the verdict; it never reaches it.
- * See `src/lib/chase-risk.ts` for why that is not negotiable.
- *
- * Lives in the UNCACHED tail of the request (the per-kind compose
- * instruction), never in the 1h-cached Match Context or system prompt —
- * this string appears and disappears as the clock crosses 48h, and a
- * conditional inside a cached prefix would turn every scheduled chase
- * from a $0.30/MTok cache read into a $6/MTok cache write.
- */
-const AT_RISK_BLOCK: string[] = [
-  "",
-  "⚠️ THIS MATCH IS AT RISK. The server decided that — you did not, and you",
-  "cannot. Never count the squad yourself, and never write any of what",
-  "follows when these lines are absent.",
-  "Two extra things belong in the lead, in this order:",
-  "1. Push harder than usual. Say how many are still needed (the figure is",
-  "   in the Match Context, do not derive your own) and make it easy to say",
-  "   yes. Warm and direct, the group's own voice: no corporate",
-  "   cheerleading, and no guilt-tripping anyone who has already said",
-  "   they're out.",
-  "2. Say plainly that the match will have to be called off if we can't find",
-  "   the numbers in time. Once, as a fact, not a threat, and never blame a",
-  "   person for it.",
-  "Whose call that is: the group's, never yours. Write it as",
-  "\"we'll have to call it off\", or \"the game's off\". NEVER \"I will cancel",
-  "the match\", never \"I'm cancelling this\", and never imply MatchTime is the",
-  "one calling it off — MatchTime reports the position, the organiser decides.",
-  "If the Match Context also gives you a format-switch line to copy",
-  "VERBATIM, put it straight after the call-off line: a switch is the",
-  "alternative to calling it off, so the two must read as one thought and",
-  "not as a contradiction. Being at risk changes NOTHING about the verbatim",
-  "rule — paste that line whole, opening words included. Do not replace its",
-  "opening clause with \"Alternatively\" or any other connective, do not fold",
-  "it into a sentence of your own, and do not reword it to flow better.",
-];
-
-function buildChaseComposePrompt(
-  kind: ChaseKind,
-  opts?: {
-    /** Server-computed verdict from `computeChaseRisk`. `daily-in-list`
-     *  only; every other kind ignores it. */
-    atRisk?: boolean;
-    /** The group's language. English adds NOTHING to the prompt (the
-     *  bytes are the ones every English chase has always been sent);
-     *  any other language appends `buildLanguageTail`. */
-    lang?: Lang | string | null;
-    /** For the tail's worked date example. */
-    matchDate?: Date;
-  },
-): string {
-  const body = chaseKindInstruction(kind, opts);
-  const l = normaliseLang(opts?.lang);
-  return l === "en" ? body : `${body}\n\n${buildLanguageTail(l, opts?.matchDate)}`;
-}
-
-/**
- * THE LANGUAGE LINE, in the uncached tail (design section 4.3, seam 1).
- *
- * The system prompt's rules stay English and stay cached; this block
- * tells the model which language the GROUP reads, hands it the exact
- * headers the server chose (the bench header, the tentative line, the
- * opener example), and restates the two style rules the group's own
- * table follows so a model-written lead cannot drift from the
- * deterministic posts around it. Names are never translated.
- */
-function buildLanguageTail(lang: Lang, matchDate?: Date): string {
-  const s = t(lang);
-  const languageName = lang === "tr" ? "TURKISH" : lang;
-  const lines = [
-    "## Language",
-    `Write the WHOLE message in ${languageName}: the group reads ${languageName}, not English. Do not translate any player name; copy every name exactly as the Match Context spells it.`,
-    `Copy the roster header from "Use roster header:" exactly. For the bench block use the header "${s.bench_header({ count: 0 }).replace("(0)", "(N)")}" (N = bench size), not "*Bench (N):*".`,
-    `If you write a tentative line, its shape is "${s.chase_tentative_line({ name: "<Name>" })}".`,
-    `The scene-setting opener, where the chase type asks for one, is e.g. '${s.chase_opener_example}'.`,
-    ...(matchDate ? [`Write the kickoff date and time the way the "Kickoff (${lang})" line does: "${longDayTimeLabel(lang, matchDate)}".`] : []),
-    `Every number comes from the Match Context and nowhere else: say the squad is short ONLY if its "Confirmed:" line says "need N more", with that N; if it says "full squad", nobody is missing and you ask for nobody. Never propose a format switch unless the Match Context hands you a line marked ✅ VIABLE to copy.`,
-    lang === "tr"
-      ? `Register: address the group in the plural ("yazın", "haber verin"), warm and informal. No "abi", no "beyler". The ONLY two words the group types are "VARIM" (to join) and "YOKUM" (to drop out); ask for them in bold, *VARIM* or *YOKUM*, and never invent another command. No greeting, no time-of-day, no send-time stamp. NEVER write an em dash (—) or an en dash (–): use a comma, a colon or a full stop instead.`
-      : "",
-  ].filter((l) => l.length > 0);
-  return lines.join("\n");
-}
-
-function chaseKindInstruction(
-  kind: ChaseKind,
-  opts?: { atRisk?: boolean },
-): string {
-  const header = "## Chase type";
-  switch (kind) {
-    case "daily-in-list":
-      return [
-        header,
-        "daily-in-list",
-        "",
-        "Purpose: quick squad-state recap so the group sees where the numbers are.",
-        "Open with a one-liner that sets the scene (e.g. '🗓 Squad update') followed by the lead (who's out / count vs needed). End with the roster block.",
-        ...(opts?.atRisk ? AT_RISK_BLOCK : []),
-      ].join("\n");
-    case "match-day-morning":
-      // The wall-clock slot ("8-9am London") and the "☀️ Morning all —"
-      // example are both gone, for the same reason daily-in-list lost
-      // "17:00 London": whatever sits above the opener instruction is
-      // what the model puts in the first line, and the scheduler cannot
-      // promise the hour a post actually goes out in. See the
-      // no-send-time-stamp rule in CHASE_SYSTEM_PROMPT.
-      return [
-        header,
-        "match-day-morning (match day, while there's still time to fill spots)",
-        "",
-        "Purpose: upbeat nudge on the day of the match.",
-        "Open with a short scene-setting one-liner (e.g. '☀️ Squad update') and lead with how many we still need. End with the roster block.",
-      ].join("\n");
-    case "chase-pre-kickoff":
-      return [
-        header,
-        "chase-pre-kickoff (3-4 hours before kickoff)",
-        "",
-        "Purpose: sharper call — the window is closing. Lead should convey urgency without panic. Mention kickoff time. End with the roster block.",
-      ].join("\n");
-    case "pre-kickoff-full":
-      return [
-        header,
-        "pre-kickoff-full (2 hours before kickoff, squad is FULL)",
-        "",
-        "Purpose: final check-in — see-you-there vibe. Lead with kickoff time + venue + 'X/Y confirmed' (should be X = maxPlayers). End with the roster block.",
-      ].join("\n");
-    case "pre-kickoff-short":
-      return [
-        header,
-        "pre-kickoff-short (2 hours before kickoff, squad is SHORT)",
-        "",
-        "Purpose: last-chance plea — squad still not full and we're 2h out. Lead with kickoff time + venue + count. Explicit 'last chance to jump in' line. If a format switch is viable, propose it. End with the roster block.",
-      ].join("\n");
-  }
-}
 
 // `stubbedVerdictsForTest` is deleted with `analyzeBatch` (§10 step
 // 8). The e2e suite's stub seam is now `MT_TEST_ROUTER_STUB_FILE` and

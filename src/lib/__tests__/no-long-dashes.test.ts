@@ -295,7 +295,7 @@ describe("no long dash survives the model-output pass", () => {
   // Every place a model's words are handed on to a person calls the pass.
   // Listed by file so a new composer has to be added here on purpose.
   it.each([
-    ["src/lib/message-analyzer.ts", /applyHouseStyle\(enforceProximity\(/],
+    ["src/lib/chase-lead.ts", /applyHouseStyle\(enforceProximity\(/],
     ["src/lib/dm-qa.ts", /if \(lang === "en"\) return applyHouseStyle\(text, lang\);/],
     ["src/lib/dm-qa.ts", /return applyHouseStyle\(cut \|\| text, lang\);/],
     ["src/lib/pipeline/stats-generic.ts", /stripLongDashes\(text, args\.lang\)/],

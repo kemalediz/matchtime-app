@@ -170,13 +170,14 @@ describe("composeChaseText cache breakpoints", () => {
     for (const v of VOLATILE) expect(cached, `cached block must not contain "${v}"`).not.toContain(v);
   });
 
-  it("still hands the model the countdown, proximity and roster header", async () => {
+  it("still hands the model the kickoff and how far away it is, uncached", async () => {
+    // Since 2026-10-20 the facts are the whole user turn (chase-lead.ts),
+    // which is never cached; the system prompt is the only cached block.
     RESPONSE_TEXT = "Need 10 more for Tuesday.";
     await composeChaseText({ groupId: "g1", kind: "daily-in-list" });
     const fresh = freshTexts(captured[0]).join("\n");
-    expect(fresh).toMatch(/\d+\.\dh until kickoff/);
-    expect(fresh).toContain("proximity=");
-    expect(fresh).toContain("Use roster header:");
+    expect(fresh).toMatch(/^Kickoff: .* \((?:today|tomorrow|in \d+ days)\)$/m);
+    expect(cachedTexts(captured[0])).toHaveLength(1);
   });
 
   it("sends a byte-identical cached prefix 20 minutes later", async () => {

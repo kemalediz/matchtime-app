@@ -802,15 +802,13 @@ export const tr: Strings = {
     `🏁 *${p.activityName}*: maç kaç kaç bitti, hangi takım kazandı ve ${p.mvpLabel} kim? Buraya yazın, kaydedeyim.`,
 
   // ═══════════════════════════════════════════════════════════════════
-  // Phase 2, slice 3: the chase model's server-computed headers.
+  // Phase 2, slice 3: the server-computed day headers (proximity.ts).
   // ═══════════════════════════════════════════════════════════════════
 
   roster_header_past: "*Kadro:*",
   roster_header_tonight: "*Bu akşam oynayanlar:*",
   roster_header_tomorrow: "*Yarın oynayanlar:*",
   roster_header_day: (p) => `*${p.dayLabel} oynayanlar:*`,
-  chase_tentative_line: (p) => `Belki: ${p.name} (kimse çıkmazsa oynar)`,
-  chase_opener_example: "🗓 Kadro durumu",
 
   // ── onboarding (self-setup) ──────────────────────────────────────────
   // Written 2026-09-17 for the first Turkish group. Register: the intro

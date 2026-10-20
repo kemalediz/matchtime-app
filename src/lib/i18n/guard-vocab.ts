@@ -67,7 +67,9 @@ const en: GuardVocab = {
   need: /\bneed\s+\*?\s*(\d+|one|two|three|four|five)\s*\*?\s+more\b/gi,
   numberWords: { one: 1, two: 2, three: 3, four: 4, five: 5 },
   oneWords: ["a", "an"],
-  full: /\b(?:full\s+squad|squad\s+(?:is\s+)?(?:now\s+)?(?:complete|full|locked)|we'?re\s+(?:now\s+)?full)\b/i,
+  // "short of / away from / for a full squad" measures a gap against a
+  // full squad, it does not claim one (a chase lead, 2026-10-20).
+  full: /\b(?:(?<!\b(?:of|from|for)\s+a\s+)full\s+squad|squad\s+(?:is\s+)?(?:now\s+)?(?:complete|full|locked)|we'?re\s+(?:now\s+)?full)\b/i,
   slots: /\b(one|a|an|two|three|\d+)\s+(?:more\s+)?slots?\s+(?:still\s+)?open\b/gi,
   totalContext: /\b(?:squad|playing|turnout|confirmed|bench|lineup)\b/i,
   total: /\b(\d+)\s+(?:players?|total)\b/gi,

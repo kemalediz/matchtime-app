@@ -102,8 +102,9 @@ export const KEY_ENV = "ANTHROPIC_API_KEY";
  *
  *   HAIKU_MODEL        the router          (`src/lib/models.ts`)
  *   claude-sonnet-5    every extractor     (`pipeline/llm.ts:55`)
- *                      AND the scheduled-chase composer
- *                      (`message-analyzer.ts`'s surviving `MODEL`)
+ *
+ * and the scheduled-chase composer on one of them
+ * (`message-analyzer.ts`'s `CHASE_COMPOSER_CALL`, since 2026-10-20).
  *
  * A key entitled to one family and not the other would have sailed
  * through the old single probe and then failed EVERY extractor call —
@@ -133,10 +134,8 @@ export const PROBE_MODELS: readonly string[] = [
 /**
  * The single model `probeAnthropic` uses when the caller names none.
  *
- * Kept as a named export, and kept pointing at the CHASE composer's
- * model, because that is the one `message-analyzer.ts` still declares
- * and the drift test still reads from there. Callers that care about
- * the whole surface use `PROBE_MODELS`.
+ * Kept as a named export for the harness's own callers. Callers that
+ * care about the whole surface use `PROBE_MODELS`.
  */
 export const PROBE_MODEL = SONNET_MODEL;
 
@@ -395,7 +394,7 @@ export async function probeAnthropic(opts: {
     if (res.status === 404) {
       return refuse(
         `the API does not offer "${model}" to this key (HTTP 404). ${firstLine(text)}`,
-        `The analyzer calls "${model}" (src/lib/message-analyzer.ts). A key without access ` +
+        `The pipeline calls "${model}" (src/lib/pipeline/llm.ts, src/lib/models.ts). A key without access ` +
           `to it produces a sweep of Claude-API-error verdicts, not a measurement.`,
       );
     }

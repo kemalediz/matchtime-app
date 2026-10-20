@@ -135,6 +135,21 @@ describe("stale counts and slot prose cannot survive (RC3 of Sutton Lads 2026-06
     expect(r.text).toContain("need *1 more*");
   });
 
+  it("a shortfall measured against a full squad is not a full-squad claim (chase, 2026-10-20)", () => {
+    // Haiku 5.5 wrote this lead for a 12/14 match-day chase, and the
+    // guard read "full squad" in it as the squad being full.
+    for (const line of [
+      "We're *1 short* of a full squad, say *IN* ⚽",
+      "1 more away from a full squad.",
+      "Need 1 more for a full squad.",
+    ]) {
+      expect(contradictsSquadState(line, truth), line).toBe(false);
+    }
+    // The claim itself is still caught.
+    expect(contradictsSquadState("Full squad ✅ see you there", truth)).toBe(true);
+    expect(contradictsSquadState("We have a full squad now.", truth)).toBe(true);
+  });
+
   it("replaces an impossible total (never '9 players' on a 5-player match)", () => {
     const r = composeSquadStateReply("We've got 9 players for Tuesday — squad looks strong.", truth);
     expect(r.composed).toBe(true);

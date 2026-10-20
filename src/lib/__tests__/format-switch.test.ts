@@ -20,7 +20,6 @@ import {
   totalPlayersFor,
   benchedOnFormatSwitch,
   buildFormatSwitchFacts,
-  renderFormatSwitchContext,
 } from "@/lib/format-switch";
 
 const NAMES = (n: number) =>
@@ -182,46 +181,3 @@ describe("buildFormatSwitchFacts", () => {
   });
 });
 
-describe("renderFormatSwitchContext (what the model is handed)", () => {
-  it("marks a non-viable format NOT VIABLE and never names a bench player", () => {
-    const block = renderFormatSwitchContext(
-      buildFormatSwitchFacts({
-        confirmedNames: ["Elvin", "Mustafa Y", "Idris", "Sait", "Najib", "Mojib", "Mustafa", "Wasim"],
-        currentMaxPlayers: 14,
-        alternatives: [{ sportName: "Football 5-a-side", totalPlayers: 10 }],
-      }),
-    ).join("\n");
-    expect(block).toContain("NOT VIABLE");
-    expect(block).toContain("Do NOT propose");
-    expect(block).toMatch(/bench on switch: NOBODY/i);
-    expect(block).not.toContain("Najib");
-    expect(block).not.toContain("Mojib");
-    // The model must be told, in the block itself, not to redo the maths.
-    expect(block).toMatch(/never recompute/i);
-  });
-
-  it("hands over the verbatim sentence and the exact bench names when viable", () => {
-    const block = renderFormatSwitchContext(
-      buildFormatSwitchFacts({
-        confirmedNames: [
-          "Elvin", "Mustafa", "Idris", "Sait", "Kemal", "Elnur",
-          "Najib", "Wasim", "Aydın", "Habib", "Mauricio", "Ersin",
-        ],
-        currentMaxPlayers: 14,
-        alternatives: [{ sportName: "Football 5-a-side", totalPlayers: 10 }],
-      }),
-    ).join("\n");
-    expect(block).toContain("Mauricio, Ersin");
-    expect(block).toContain("VERBATIM");
-    expect(block).toContain(
-      "If we don't find 2 more, we could switch to 5-a-side (10 players): " +
-        "Mauricio + Ersin go on the bench. Admins can rebook and flip it in the portal.",
-    );
-    // Nobody else from the squad is offered up as bench material.
-    expect(block).not.toContain("Habib,");
-  });
-
-  it("is empty when there is nothing to say", () => {
-    expect(renderFormatSwitchContext([])).toEqual([]);
-  });
-});

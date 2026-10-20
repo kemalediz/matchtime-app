@@ -448,7 +448,7 @@ import {
 import { formatRatingProgressReply } from "../../rating-progress-answer";
 import { buildMomAnnouncement } from "../../mom-announcement";
 import { buildBadgeAnnouncementPost } from "../../badge-announcements";
-import { buildFormatSwitchFacts, renderFormatSwitchContext } from "../../format-switch";
+import { buildFormatSwitchFacts } from "../../format-switch";
 import { renderKickoffMoveLine } from "../../format-switch-time";
 import { buildOutOfBandAttendanceLine } from "../../out-of-band-attendance";
 import { planUnresolvedNudge } from "../../unresolved-nudge";
@@ -1122,7 +1122,6 @@ function cases(lang: Lang): Case[] {
     lang,
   });
   facts.forEach((f) => add(`R46 format-switch proposal / ${f.sportName}`, f.proposal));
-  add("R46 renderFormatSwitchContext (prompt lines)", renderFormatSwitchContext(facts).join("\n"));
 
   // ── 1.1 format-switch-time.ts ───────────────────────────────────────
   add("R47 renderKickoffMoveLine / moved", renderKickoffMoveLine({ move: true, reason: "moved", previousKickoff: new Date("2026-09-08T20:30:00.000Z"), kickoff: new Date("2026-09-08T20:15:00.000Z"), attendanceDeadline: new Date("2026-09-08T20:15:00.000Z") }, lang));
@@ -2456,10 +2455,6 @@ const LANGUAGE_FREE_CASES = new Set([
   "R47 renderKickoffMoveLine / not moved",
   // A team sheet is names and labels only (the labels are the org's).
   "R127 buildTeamSheet",
-  // The prompt lines the chase model copies stay English until slice 3
-  // gives the chase its language line; the proposal inside them is in
-  // the group's language already (`format_switch_proposal`).
-  "R46 renderFormatSwitchContext (prompt lines)",
   // A generate-teams reply with no notes is the balancer's sheet alone,
   // which is names and the org's labels.
   "R134 composeGenerateTeamsReply / plain",

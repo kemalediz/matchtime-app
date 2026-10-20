@@ -28,7 +28,7 @@
  *   atRisk = hoursToKickoff <= 48 && need >= 4
  *
  * `need` is the shortfall to `Match.maxPlayers` — the TOTAL across both
- * teams, the same unit `buildMatchContextBlock` prints as "need N more".
+ * teams, the "places open" the chase's facts state (chase-lead.ts).
  * Never players-per-team. (`format-switch.ts` has the full note on why
  * that distinction has bitten us in production.)
  *
