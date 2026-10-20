@@ -876,6 +876,10 @@ export interface SquadState {
   /** MatchTime's own most recent post in the group, verbatim. A known
    *  object, not a guess: it is how a bare "Confirmed" resolves. */
   lastBotPost: string | null;
+  /** Answering the organisers in their admin group (HQ), not the players
+   *  (`answer-batch.ts`'s `AnswerAudience`). Their list always says who is
+   *  on the bench, even nobody (FNF HQ 2026-10-20). Absent: the players. */
+  forOrganisers?: boolean;
   features: {
     attendance: boolean;
     paymentTracking: boolean;

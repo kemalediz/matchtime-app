@@ -92,6 +92,44 @@ const INCIDENT_CONTEXT = organisersContext({
   score: { kind: "result", day: "Fri 16 Oct", labels: ["Non Bibs", "Bibs"] },
 });
 
+/**
+ * FNF HQ, 2026-10-20 10:23 UTC (Raihan), squad 17 of 18, bench empty:
+ * "Anyone on the bench? Can you show me the list please" (a reply to
+ * MatchTime's "Done: Naim out. 17 of 18.") and then "What's the list"
+ * both came back `bench` and got "Nobody's on the bench right now." The
+ * two messages exactly as production built them (HQ's log holds only the
+ * people's lines), then held-out wordings, EN and TR, and the bench
+ * questions that must stay `bench`.
+ */
+const DONE_POST = "Done: Naim out. 17 of 18.";
+const LIST_M2 = "Anyone on the bench? Can you show me the list please";
+const LIST_HISTORY = [
+  { author: null, body: "Naim is out" },
+  { author: null, body: "Naim out" },
+];
+const LIST_REPLY = { at: new Date("2026-10-20T10:23:05Z"), text: DONE_POST, topic: null, match: null, author: null, matchId: "m-fri", found: true };
+interface ListCase {
+  text: string;
+  history?: Array<{ author: string | null; body: string }>;
+  reply?: typeof LIST_REPLY;
+  want: QuestionTopic;
+  why: string;
+}
+const LIST: ListCase[] = [
+  { text: LIST_M2, history: LIST_HISTORY, reply: LIST_REPLY, want: "squad", why: "the incident, 10:23:38, a reply to MatchTime" },
+  { text: "What\u2019s the list", history: [...LIST_HISTORY, { author: null, body: LIST_M2 }], want: "squad", why: "the incident, 10:23:59, the bench question above it" },
+  { text: "is there anyone on the bench? send the list pls", want: "squad", why: "held out" },
+  { text: "Bench anyone? And the list", want: "squad", why: "held out" },
+  { text: "list?", history: [{ author: null, body: "who's on the bench?" }], want: "squad", why: "held out, bench asked above" },
+  { text: "Yedek var mı? Listeyi paylaşır mısın", want: "squad", why: "held out, TR" },
+  { text: "liste nedir", history: [{ author: null, body: "yedekte kim var?" }], want: "squad", why: "held out, TR, bench asked above" },
+  { text: "Listeyi gönder", want: "squad", why: "held out, TR" },
+  { text: "anyone on the bench?", want: "bench", why: "the bench alone stays bench" },
+  { text: "what's the bench list?", want: "bench", why: "the bench's own list stays bench" },
+  { text: "yedekte kimse var mı?", want: "bench", why: "the bench alone, TR" },
+  { text: "yedek listesi ne?", want: "bench", why: "the bench's own list, TR" },
+];
+
 /** Players' group (manager review of #296): the fee and the teams time, held out
  *  from the prompt's own examples, EN and TR. */
 const PLAYERS = [
@@ -135,6 +173,13 @@ async function main() {
   let fail = 0;
   const mark = (ok: boolean) => (ok ? (pass++, "PASS") : (fail++, "FAIL"));
   const context = organisersContext({ pending: [], recent: [] });
+
+  // ONLY=list: the 2026-10-20 list incident section alone.
+  if (process.env.ONLY === "list") {
+    await listSection(mark);
+    console.log(`\n${pass} passed, ${fail} failed. Model calls: ${calls}. Cost: $${usd.toFixed(4)} (dev key).`);
+    process.exit(fail > 0 ? 1 : 0);
+  }
 
   // ONLY=players: the players' group section and the regressions only (a
   // rerun after `club` became answerable there; no prompt changed).
@@ -197,8 +242,39 @@ async function main() {
     console.log(`${mark(!!f && c.check(f))}  ${JSON.stringify(c.text)}  ${JSON.stringify(f && { topic: f.topic, feature: f.feature, personRef: f.personRef, statedCount: f.statedCount, table: f.table, listSize: f.listSize, period: f.period })}   (${c.why})`);
   }
 
+  if (!playersOnly && !routerOnly) await listSection(mark);
+
   console.log(`\n${pass} passed, ${fail} failed. Model calls: ${calls}. Cost: $${usd.toFixed(4)} (dev key).`);
   process.exit(fail > 0 ? 1 : 0);
+}
+
+async function listSection(mark: (ok: boolean) => string) {
+  console.log(`\n== The 2026-10-20 list incident: router on the two incident messages, extractor on ${LIST.length} cases, each once ==\n`);
+  const now = new Date("2026-10-20T10:24:00Z");
+  for (const c of LIST.slice(0, 2)) {
+    const recent = (c.history ?? []).map((h) => ({ fromMatchTime: false, text: h.body }));
+    const r = await routeBatch(
+      model,
+      [{ id: "l1", authorName: "Raihan", body: c.text, organisers: { context: organisersContext({ pending: [], recent }) }, ...(c.reply ? { reply: c.reply } : {}) }],
+      { floor: true, now },
+    );
+    const route = r.routes[0]?.route;
+    console.log(`${mark(route === "question" || route === "help")}  ${JSON.stringify(c.text)}  routed ${route}   (want question|help)`);
+  }
+  for (const [i, c] of LIST.entries()) {
+    const ex = await extractForRoute(model, "question", {
+      id: `l${i}`,
+      body: c.text,
+      authorName: "Raihan",
+      tagged: true,
+      history: c.history ?? [],
+      lastBotPost: null,
+      reply: c.reply ?? null,
+      now,
+    });
+    const f = ex.facts.kind === "question" ? ex.facts : null;
+    console.log(`${mark(f?.topic === c.want)}  ${JSON.stringify(c.text)}  ${f?.topic}   (${c.why}; want ${c.want})`);
+  }
 }
 
 main().catch((err) => {
