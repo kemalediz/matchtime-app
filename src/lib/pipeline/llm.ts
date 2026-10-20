@@ -54,6 +54,9 @@ export const PIPELINE_MAX_TOKENS_CEILING = 4_096;
  * changing its shape, and the corpus is what clears a new id.
  */
 export const ROUTER_MODEL = HAIKU_MODEL;
+// The Sonnet extractors' model. Each extractor's own call (model and
+// thinking) is `EXTRACTOR_CALLS` in extractors.ts: teams, score and admin
+// run on Haiku 5.5 since 2026-10-20.
 export const EXTRACTOR_MODEL = SONNET_MODEL;
 
 /**

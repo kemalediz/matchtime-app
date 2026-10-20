@@ -2325,10 +2325,10 @@ export function decide(input: EngineInput): EngineResult {
           unmatchedIncludes,
           pinned,
           unmatchedPins,
-          // Only when the message SUPPLIED both names. "come up with fun
-          // team names" supplies none, and the extractor is told not to
-          // invent any — `team-ops-engine-batch.ts` records what that
-          // loses relative to the mega-prompt.
+          // The two names the message gave, or, when it asked MatchTime
+          // to pick them ("come up with fun team names"), two the teams
+          // extractor made up (2026-10-20). `sanitiseTeamNames` cleans and
+          // caps them before they are stored.
           teamNames: facts.teamNames,
           sourceMessageId: msg.id,
           reason: "team generation requested",
