@@ -210,6 +210,18 @@ const CASES: Case[] = [
     want: "Najib in, reported, a decision",
   },
 
+  // A third party offered: the sender is not a claim (corpus A5, third-party-offer and guest-name-ask live specs).
+  {
+    id: "P5",
+    ...fromCorpus("A5-amir-brother-ghost-user"),
+    route: "offer",
+    repeat: true,
+    check: (f) => self(f).length === 0 && f.claims.some((c) => c.subject === "other" && !c.personNamed && c.polarity === "in"),
+    want: "the brother in, unnamed; no claim for the sender",
+  },
+  { id: "G1", body: "I can bring someone if you're short", route: "offer", repeat: true, check: (f) => self(f).length === 0 && f.claims.some((c) => c.subject === "other" && !c.personNamed), want: "someone in, unnamed; no claim for the sender" },
+  { id: "G2", body: "my mate could fill in if you're short", route: "offer", repeat: true, check: (f) => self(f).length === 0 && f.claims.some((c) => c.subject === "other" && !c.personNamed), want: "the mate, unnamed; no claim for the sender" },
+
   // ── 2026-09-09 echo (once each) ────────────────────────────────────
   ...["In", "in", "IN", "I'm in", "im in", "In for Tuesday", "count me in", "count me", "add me", "put me down", "I'll play", "I'm there", "yes im in"].map((b, i) =>
     echoCase(`E${i + 1}`, b, false),

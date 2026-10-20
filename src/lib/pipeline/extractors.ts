@@ -228,6 +228,9 @@ Other people: subject other, personRef as written.
   "he's out" replying to Ali Khan's message | "o yok" -> personRef "Ali Khan", out
   "+1", "+2" or "plus one", alone or after the sender's own claim, is a GUEST the sender brings, never the sender: subject other, personRef the token verbatim ("+1"), personNamed false, in. "ben de" is the sender; "+1" is not.
 
+Offering someone else: one claim, for that person only. The sender offers them and says nothing about their own place, so there is no claim for the sender.
+  "my cousin can play if you need one", "I could bring a mate if we're short" | "gerekirse kardeşim gelir", "bir arkadaşımı getirebilirim" -> the cousin, or the mate: subject other, in, contingent true, conditionOn "squad"
+
 An offer to give up a place: out, contingent true, conditionOn "squad".
   "I can drop out", "happy to drop if you find someone", "happy to pull out" | "gerekirse çıkarım", "yerimi verebilirim" -> the sender out, contingent
 
