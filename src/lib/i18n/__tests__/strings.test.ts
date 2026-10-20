@@ -281,8 +281,6 @@ const SAMPLES: SampleArgs = {
   roster_header_tonight: null,
   roster_header_tomorrow: null,
   roster_header_day: { dayLabel: "Tue 8 Sept" },
-  chase_tentative_line: { name: "Erdal Ozkan" },
-  chase_opener_example: null,
 
   // ── onboarding (self-setup), merged from main (#94) ──
   //   Zero-argument entries take `null`; the enum-like arguments

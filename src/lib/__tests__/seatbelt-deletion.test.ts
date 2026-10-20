@@ -134,15 +134,15 @@ describe("the mega-prompt itself is gone", () => {
     expect(ANALYZER).not.toContain("export type AnalysisIntent");
   });
 
-  it("the scheduled-chase composer is UNTOUCHED — §13 lists it under what must not change", () => {
-    // The deletion's blast radius has to stop somewhere, and this is the
-    // line. `composeChaseText` is a separate live feature on the
-    // scheduler, and `buildMatchContextBlock` is the block it caches.
+  it("the scheduled-chase composer survives the deletion", () => {
+    // The deletion's blast radius stopped here: `composeChaseText` is a
+    // separate live feature on the scheduler. Its prompt was rewritten
+    // on its own on 2026-10-20 (`chase-lead.ts`), and `enforceProximity`
+    // moved to `proximity.ts` and is re-exported.
     expect(ANALYZER).toContain("export async function composeChaseText");
     expect(ANALYZER).toContain("export async function composeChaseFromMatch");
-    expect(ANALYZER).toContain("export function buildMatchContextBlock");
-    expect(ANALYZER).toContain("export function enforceProximity");
-    expect(ANALYZER).toContain("CHASE_SYSTEM_PROMPT");
+    expect(ANALYZER).toContain('export { enforceProximity } from "./proximity"');
+    expect(ANALYZER).toContain("CHASE_LEAD_SYSTEM");
   });
 });
 

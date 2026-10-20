@@ -19,8 +19,12 @@
  * warning that shows up in 3 runs out of 6 is worse than one that never
  * shows up at all, and a spurious one on a healthy squad would be
  * alarming in a customer's group. So both directions are pinned here:
- * present when the arithmetic says so, and ABSENT byte-for-byte when it
- * doesn't.
+ * present when the arithmetic says so, and absent when it doesn't.
+ *
+ * Since the 2026-10-20 rewrite the verdict is one line of the facts the
+ * model is handed ("At risk: yes" / "At risk: no", `chase-lead.ts`), and
+ * the system prompt says once what to do with it. The live behaviour is
+ * `scripts/chase-at-risk-live.ts`.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { computeChaseRisk } from "@/lib/chase-risk";
@@ -105,18 +109,15 @@ vi.mock("@/lib/org-features", () => ({
 }));
 
 import { composeChaseText, type ChaseKind } from "@/lib/message-analyzer";
+import { CHASE_LEAD_SYSTEM } from "@/lib/chase-lead";
 
-/** The per-kind compose instruction: the LAST uncached user text block. */
+/** The user turn: the facts, never cached. */
 function composePrompt(args: CreateArgs): string {
-  const blocks: Block[] = [];
-  for (const m of args.messages) {
-    if (typeof m.content === "string") continue;
-    for (const c of m.content) if (!c.cache_control) blocks.push(c);
-  }
-  return blocks[blocks.length - 1]?.text ?? "";
+  const c = args.messages[0]?.content;
+  return typeof c === "string" ? c : (c ?? []).map((b) => b.text).join("\n");
 }
 
-/** Every content block carrying a cache_control marker, in order. */
+/** Every block carrying a cache_control marker, in order. */
 function cachedTexts(args: CreateArgs): string[] {
   const out: string[] = [];
   for (const s of args.system) if (s.cache_control) out.push(s.text);
@@ -135,6 +136,7 @@ async function request(
   MATCH.attendances = squad(world.confirmed);
   vi.setSystemTime(new Date(KICKOFF.getTime() - world.hoursOut * 3600_000));
   captured.length = 0;
+  vi.spyOn(console, "error").mockImplementation(() => {});
   await composeChaseText({ groupId: "g1", kind });
   expect(create, `composeChaseText(${kind}) issued no request`).toHaveBeenCalled();
   return captured[0];
@@ -231,39 +233,25 @@ describe("computeChaseRisk — the server, not the model, decides", () => {
 // ───────────────────────────────────────────────────────────────────
 // 2. What actually goes on the wire.
 // ───────────────────────────────────────────────────────────────────
-/** Markers of the at-risk block. None may leak into a healthy post. */
-const AT_RISK_MARKERS = ["AT RISK", "call it off", "called off"];
-
-describe("daily-in-list carries the at-risk block when the squad is short and the match is close", () => {
-  it("tells the model the match is at risk — and that the SERVER decided", async () => {
-    const prompt = composePrompt(await request("daily-in-list", AT_RISK));
-    expect(prompt).toContain("AT RISK");
-    expect(prompt.toLowerCase()).toMatch(/server (decided|worked)/);
-    expect(
-      prompt,
-      "the model must be told never to do the counting itself",
-    ).toMatch(/never count the squad/i);
+describe("daily-in-list is told the match is at risk when the squad is short and the match is close", () => {
+  it("hands the model the server's verdict as a fact", async () => {
+    expect(composePrompt(await request("daily-in-list", AT_RISK))).toContain("At risk: yes");
   });
 
-  it("asks for a harder push and a plain call-off warning", async () => {
-    const prompt = composePrompt(await request("daily-in-list", AT_RISK));
-    expect(prompt).toMatch(/called off/i);
-    expect(prompt, "no guilt-tripping the people already out").toMatch(/guilt/i);
+  it("the system prompt asks for a harder push and one plain call-off line", async () => {
+    const sys = (await request("daily-in-list", AT_RISK)).system.map((b) => b.text).join("\n");
+    expect(sys).toMatch(/push a bit harder/i);
+    expect(sys).toMatch(/called off/i);
+    expect(sys).toMatch(/blame nobody/i);
   });
 
   it("forbids MatchTime claiming it is the one cancelling", async () => {
-    const prompt = composePrompt(await request("daily-in-list", AT_RISK));
     // Kemal cancels; MatchTime reports. Precedent from the real group,
     // 18 July: "if we can't find 3 more by end of tomorrow, i will
     // cancel the match" — that is a human speaking, not the bot.
-    expect(prompt).toContain("we'll have to call it off");
-    expect(prompt).toMatch(/never .{0,60}"?I will cancel/i);
-  });
-
-  it("keeps the format-switch line verbatim and coherent with the warning", async () => {
-    const prompt = composePrompt(await request("daily-in-list", AT_RISK));
-    expect(prompt).toMatch(/VERBATIM/);
-    expect(prompt).toMatch(/alternative to calling it off/i);
+    const sys = (await request("daily-in-list", AT_RISK)).system.map((b) => b.text).join("\n");
+    expect(sys).toContain("we'll have to call it off");
+    expect(sys).toMatch(/never "I will cancel"/);
   });
 
   it("does not reintroduce a send-time stamp (PR #47)", async () => {
@@ -271,105 +259,57 @@ describe("daily-in-list carries the at-risk block when the squad is short and th
     expect(prompt).not.toContain("5pm");
     expect(prompt).not.toMatch(/\d{1,2}\s*(?:am|pm)\b/i);
   });
-
-  it("still asks for the one-liner, the lead and the roster block", async () => {
-    const prompt = composePrompt(await request("daily-in-list", AT_RISK));
-    expect(prompt).toContain("one-liner");
-    expect(prompt).toContain("who's out");
-    expect(prompt).toContain("count vs needed");
-    expect(prompt).toContain("End with the roster block.");
-  });
 });
 
-describe("a healthy squad gets the ORIGINAL prompt, byte for byte", () => {
-  it("says nothing about cancellation when the match is still far off", async () => {
+describe("a healthy squad is told it is not at risk", () => {
+  it("when the match is still far off", async () => {
     const prompt = composePrompt(await request("daily-in-list", HEALTHY));
-    for (const marker of AT_RISK_MARKERS) {
-      expect(prompt, `"${marker}" must not reach a healthy post`).not.toContain(marker);
-    }
+    expect(prompt).toContain("At risk: no");
     expect(prompt.toLowerCase()).not.toContain("cancel");
   });
 
-  it("says nothing about cancellation when only 3 are missing", async () => {
+  it("when only 3 are missing", async () => {
     const prompt = composePrompt(await request("daily-in-list", NEARLY_FULL));
-    for (const marker of AT_RISK_MARKERS) {
-      expect(prompt, `"${marker}" must not reach a nearly-full post`).not.toContain(marker);
-    }
+    expect(prompt).toContain("At risk: no");
     expect(prompt.toLowerCase()).not.toContain("cancel");
   });
 
-  it("is byte-identical to the prompt the daily chase sent before this feature", async () => {
-    // The block is additive or it is nothing. Anything else means the
-    // healthy path changed, and the healthy path is 51 weeks of the year.
-    const BASELINE = [
-      "## Chase type",
-      "daily-in-list",
-      "",
-      "Purpose: quick squad-state recap so the group sees where the numbers are.",
-      "Open with a one-liner that sets the scene (e.g. '🗓 Squad update') followed by the lead (who's out / count vs needed). End with the roster block.",
-    ].join("\n");
-    const prompt = composePrompt(await request("daily-in-list", HEALTHY));
-    // The clock block is prepended by composeChaseText; the chase-type
-    // instruction is everything from its header on.
-    expect(prompt.slice(prompt.indexOf("## Chase type"))).toBe(BASELINE);
-  });
-
-  it("adds the block, and only the block, when the state flips", async () => {
-    const healthy = composePrompt(await request("daily-in-list", HEALTHY));
-    const risky = composePrompt(await request("daily-in-list", AT_RISK));
-    const healthyInstruction = healthy.slice(healthy.indexOf("## Chase type"));
-    const riskyInstruction = risky.slice(risky.indexOf("## Chase type"));
-    expect(riskyInstruction.startsWith(healthyInstruction)).toBe(true);
-    expect(riskyInstruction.length).toBeGreaterThan(healthyInstruction.length);
+  it("the verdict is the only line that changes when the state flips", async () => {
+    const healthy = composePrompt(await request("daily-in-list", { confirmed: 6, hoursOut: 49 })).split("\n");
+    const risky = composePrompt(await request("daily-in-list", { confirmed: 6, hoursOut: 47 })).split("\n");
+    const changed = healthy.filter((l, i) => l !== risky[i]);
+    // The kickoff line's "(in N days)" may move a day across the 48h line;
+    // the verdict must be the only other difference.
+    expect(changed.filter((l) => !l.startsWith("Kickoff:"))).toEqual(["At risk: no"]);
   });
 });
 
-describe("the other four chase kinds are untouched", () => {
-  const OTHERS: ChaseKind[] = [
-    "match-day-morning",
-    "chase-pre-kickoff",
-    "pre-kickoff-full",
-    "pre-kickoff-short",
-  ];
-
+describe("the other chase kinds never escalate", () => {
+  const OTHERS: ChaseKind[] = ["match-day-morning", "chase-pre-kickoff", "pre-kickoff-short"];
   for (const kind of OTHERS) {
-    it(`${kind} carries no at-risk block even in the at-risk state`, async () => {
-      const prompt = composePrompt(await request(kind, AT_RISK));
-      for (const marker of AT_RISK_MARKERS) {
-        expect(prompt, `${kind} must not gain "${marker}"`).not.toContain(marker);
-      }
+    it(`${kind} is told "At risk: no" even in the at-risk state`, async () => {
+      expect(composePrompt(await request(kind, AT_RISK))).toContain("At risk: no");
     });
   }
-
-  it("pre-kickoff-short keeps its own last-chance wording", async () => {
-    const prompt = composePrompt(await request("pre-kickoff-short", AT_RISK));
-    expect(prompt).toContain("last chance to jump in");
-    expect(prompt).toContain("Lead with kickoff time + venue");
-  });
 });
 
 // ───────────────────────────────────────────────────────────────────
-// 3. Prompt caching. The block rides in the UNCACHED tail.
+// 3. Prompt caching. The verdict rides in the UNCACHED user turn.
 // ───────────────────────────────────────────────────────────────────
-describe("the at-risk block does not move a cache prefix", () => {
+describe("the at-risk verdict does not move a cache prefix", () => {
   it("sends a byte-identical cached prefix either side of the 48h line", async () => {
-    // Same squad, same everything — only the clock moves, from 49h out
-    // (healthy) to 47h out (at risk). If the block had landed in a
-    // cached block, this flip would turn a $0.30/MTok cache READ into a
-    // $6/MTok cache WRITE on every scheduled chase. See
-    // prompt-cache-request-shape.test.ts for the original incident.
+    // Same squad, same everything; only the clock moves, from 49h out
+    // (healthy) to 47h out (at risk). A verdict in a cached block would
+    // turn every scheduled chase's cache read into a cache write.
     const before = await request("daily-in-list", { confirmed: 6, hoursOut: 49 });
     const after = await request("daily-in-list", { confirmed: 6, hoursOut: 47 });
     expect(cachedTexts(after)).toEqual(cachedTexts(before));
-    // …and the block really did flip, so the assertion above has teeth.
-    expect(composePrompt(before)).not.toContain("AT RISK");
-    expect(composePrompt(after)).toContain("AT RISK");
+    // …and the verdict really did flip, so the assertion above has teeth.
+    expect(composePrompt(before)).toContain("At risk: no");
+    expect(composePrompt(after)).toContain("At risk: yes");
   });
 
-  it("keeps the at-risk block out of every cached block", async () => {
-    const args = await request("daily-in-list", AT_RISK);
-    const cached = cachedTexts(args).join("\n");
-    expect(cached).not.toContain("AT RISK");
-    expect(cached).not.toContain("call it off");
+  it("caches the system prompt alone: no fact of this match is in a cached block", async () => {
+    expect(cachedTexts(await request("daily-in-list", AT_RISK))).toEqual([CHASE_LEAD_SYSTEM]);
   });
 });

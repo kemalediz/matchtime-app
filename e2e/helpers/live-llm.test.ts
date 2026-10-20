@@ -276,12 +276,13 @@ describe("PROBE_MODELS", () => {
   }
 
   it("covers the model the surviving chase composer calls", () => {
+    // Since 2026-10-20 the composer names its model through a call pair
+    // (`CHASE_COMPOSER_CALL = HAIKU_CALL | SONNET_CALL`, pipeline/llm.ts).
     const src = readFileSync(path.join(REPO_ROOT, "src", "lib", "message-analyzer.ts"), "utf8");
-    const m = /^const MODEL = ([^;]+);$/m.exec(src);
-    expect(m, "could not find `const MODEL = …` in src/lib/message-analyzer.ts").not.toBeNull();
-    const id = resolveModel(m![1].trim());
-    expect(id, `could not resolve the chase composer's model (${m![1]})`).not.toBeNull();
-    expect(id).toBe(PROBE_MODEL);
+    const m = /^export const CHASE_COMPOSER_CALL: ModelCall = (HAIKU|SONNET)_CALL;$/m.exec(src);
+    expect(m, "could not find `export const CHASE_COMPOSER_CALL: ModelCall = …_CALL;` in src/lib/message-analyzer.ts").not.toBeNull();
+    const id = resolveModel(`${m![1]}_MODEL`);
+    expect(id, `could not resolve the chase composer's model (${m![1]}_CALL)`).not.toBeNull();
     expect(PROBE_MODELS).toContain(id);
   });
 

@@ -1236,47 +1236,36 @@ async function computeForMatch(
   cancelledHolds: MatchWithIncludes[] = [],
 ) {
   /**
-   * LLM compose with a static fallback. If Claude is unavailable
-   * (missing API key, network hiccup, rate-limited, etc.) we fall
-   * back to whatever static text the call site provided — so the
-   * chase always fires with *something*, just less rich.
+   * The composed chase, or null for the static copy: a rolling-squad or
+   * monthly match, or nothing the composer could find to chase.
+   *
+   * The composer (message-analyzer.ts) builds the whole post from the
+   * rows, with the model writing only the opening line, and falls back to
+   * the fixed line itself when the model fails, so the post it returns is
+   * always the full post. Null from it means there was nothing to read.
    */
-  async function composeOrFallback(
-    kind: ChaseKind,
-    staticFallback: () => string,
-  ): Promise<string> {
+  async function composeChase(kind: ChaseKind, withRoster: boolean): Promise<string | null> {
     // ROLLING SQUAD (2026-09-30): fixed text, never the composer. Its
     // prompt knows nothing about a carried-over squad and would tell
-    // players who are already in to "say IN". Using the static copy is
-    // how slice 1 avoids a prompt change, and it removes up to four
-    // model calls a week for the club. Clubs without the setting (Sutton
-    // FC) keep the composer exactly as before.
-    if (features.rollingSquad) return staticFallback();
-    // MONTHLY SQUAD (slice 5): the same argument. The composer's prompt
-    // knows nothing about a month's regulars, and no prompt is changed for
-    // them, so a monthly match's scheduled chases use the fixed text.
-    if (monthly) return staticFallback();
+    // players who are already in to "say IN". Clubs without the setting
+    // (Sutton FC) keep the composer.
+    if (features.rollingSquad) return null;
+    // MONTHLY SQUAD (slice 5): the same argument for a month's regulars.
+    if (monthly) return null;
     try {
-      const llm = await composeChaseText({ groupId, kind });
-      if (llm && llm.trim().length > 0) return llm;
-      // Degrade LOUDLY. composeChaseText swallows its own failures and
-      // returns null, so for months this branch was the ONLY trace of a
-      // permanently-dead composer — and it logged nothing at all. Every
-      // scheduled chase quietly went out as plain static text.
+      const text = await composeChaseText({ groupId, kind, matchId: m.id, now, withRoster });
+      if (text && text.trim().length > 0) return text;
       console.error(
-        `[scheduler] DEGRADED: composeChaseText returned no text for ` +
-          `kind=${kind} group=${groupId} — sending the STATIC chase copy ` +
-          `instead of the composed roster/tentative/dropped summary.`,
+        `[scheduler] DEGRADED: composeChaseText found nothing to chase for ` +
+          `kind=${kind} group=${groupId} match=${m.id}; sending the STATIC chase copy.`,
       );
     } catch (err) {
       console.error(
-        `[scheduler] DEGRADED: compose ${kind} threw for group=${groupId} — ` +
-          `sending the STATIC chase copy instead of the composed ` +
-          `roster/tentative/dropped summary.`,
+        `[scheduler] DEGRADED: compose ${kind} threw for group=${groupId}; sending the STATIC chase copy.`,
         err,
       );
     }
-    return staticFallback();
+    return null;
   }
   const matchId = m.id;
   const activity = m.activity;
@@ -1334,20 +1323,22 @@ async function computeForMatch(
   const rosterJustShown = async (): Promise<boolean> =>
     rosterShownRecently(await loadQuietRows(), { matchId: m.id, fingerprint: squadKey, now });
   /**
-   * A composed chase, minus its roster when the group has just seen it.
-   * The composer always ends on the roster (its prompt says so, and no
-   * prompt is changed for this), so the block is cut from the text it
-   * returns: the need, the kickoff and the format-switch line stay.
+   * A chase post, with the squad list unless the group has just seen this
+   * exact squad. The composed post is built with or without the list
+   * (the composer renders it from the rows); the static copy, which may
+   * carry one, has it cut out.
    */
   async function chaseText(
     kind: ChaseKind,
     staticFallback: () => string,
   ): Promise<{ text: string; rosterShown?: { fingerprint: string } }> {
-    const text = await composeOrFallback(kind, staticFallback);
+    const withRoster = !(await rosterJustShown());
+    const composed = await composeChase(kind, withRoster);
+    if (composed) return withRoster ? { text: composed, rosterShown: rosterMark } : { text: composed };
+    const text = staticFallback();
     if (!hasRosterBlock(text)) return { text };
-    if (!(await rosterJustShown())) return { text, rosterShown: rosterMark };
-    // A text that was nothing but a roster: the fixed copy's lead instead.
-    return { text: stripRosterBlock(text) || stripRosterBlock(staticFallback()) };
+    if (withRoster) return { text, rosterShown: rosterMark };
+    return { text: stripRosterBlock(text) };
   }
 
   // ── WHO ANNOUNCES THE LIST AND TEAMS (2026-10-14) ────────────────────
@@ -1800,14 +1791,11 @@ async function computeForMatch(
         // for. Replacing it with a line-up would show seven against six
         // and say nothing about the slot that needs filling.
         //
-        // 2a. Short squad — chase + unpaid tail. Chase template (LLM
-        // or fallback) produces its own numbered list, so we leave it
-        // untouched here rather than appending a duplicate roster
-        // block. NB this is the SCHEDULED path: it composes its own
-        // text and never went through the analyze route's
-        // post-processors, whatever the note that used to be here
-        // claimed. The reply path composes its roster from the rows
-        // (§10 step 4); this one still asks the model for it.
+        // 2a. Short squad: chase + unpaid tail. The chase (composed or
+        // the fixed copy) carries its own squad list, so no second
+        // roster block is appended here. Since 2026-10-20 the composed
+        // list is rendered from the rows like the reply path's (§10 step
+        // 4); the model writes only the opening line.
         const chase = await chaseText("daily-in-list", () => {
           // Static fallback mirrors the LLM template — count + roster
           // INCLUDING the bench (bench shows in every squad display,

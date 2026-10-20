@@ -28,9 +28,9 @@
  * benched.
  *
  * So: the model no longer does this arithmetic and no longer picks the
- * names. Code computes both and hands the model a finished sentence to
- * reproduce verbatim (see renderFormatSwitchContext + the FORMAT SWITCH
- * section of the analyzer prompt). "LLM extracts, code decides."
+ * names. Code computes both and writes the sentence. Since 2026-10-20 the
+ * scheduled chase posts it itself (`chaseSwitchLine` in chase-lead.ts)
+ * instead of asking a model to copy it. "LLM extracts, code decides."
  *
  * CAPACITY UNITS — read this before touching anything here
  * --------------------------------------------------------
@@ -121,8 +121,7 @@ export function buildFormatSwitchFacts(args: {
   currentMaxPlayers: number;
   alternatives: readonly SmallerFormat[];
   /** The group's language; English when absent. The proposal line is
-   *  pasted verbatim by the chase model, so it is composed here in the
-   *  group's language for both the answer path and the prompt path. */
+   *  posted as written by the answer path and the scheduled chase. */
   lang?: Lang | string | null;
 }): FormatSwitchFact[] {
   const s = t(args.lang);
@@ -156,52 +155,4 @@ export function buildFormatSwitchFacts(args: {
       proposal,
     };
   });
-}
-
-/**
- * Render the facts as Match-Context lines for the LLM.
- *
- * The wording is deliberately blunt: the model's ONLY job here is to
- * copy. It must not add, subtract, or choose a name.
- */
-export function renderFormatSwitchContext(
-  facts: readonly FormatSwitchFact[],
-): string[] {
-  if (facts.length === 0) return [];
-
-  const lines: string[] = [
-    "Alternative formats available for this sport:",
-    "  (SERVER-COMPUTED — the arithmetic and the bench names below were worked out in code.",
-    "   NEVER recompute them, NEVER count players yourself, NEVER choose who goes on the bench.)",
-  ];
-
-  for (const f of facts) {
-    lines.push(`  - ${f.sportName} (${f.totalPlayers} players total)`);
-    if (!f.fills) {
-      lines.push(
-        `      ❌ NOT VIABLE — only ${f.confirmedCount} confirmed and this format needs ` +
-          `${f.totalPlayers} to field a match. Do NOT propose this switch.`,
-        `      Bench on switch: NOBODY.`,
-      );
-      continue;
-    }
-    lines.push(
-      `      ✅ VIABLE — ${f.confirmedCount} confirmed fills ${f.totalPlayers}.`,
-      f.benched.length === 0
-        ? `      Bench on switch: NOBODY — all ${f.confirmedCount} still play. Do NOT write a "goes on the bench" clause for this format.`
-        : `      Bench on switch (${f.benched.length}, this exact list, this exact order): ${f.benched.join(", ")}`,
-    );
-    if (f.proposal) {
-      lines.push(
-        `      If you propose this switch, use this EXACT line VERBATIM:`,
-        `      "${f.proposal}"`,
-      );
-    }
-  }
-
-  lines.push(
-    "Admins switch by rebooking the venue and flipping the match in the portal; " +
-      "a switch converts everyone above the new cap from confirmed to bench, keeping their order.",
-  );
-  return lines;
 }

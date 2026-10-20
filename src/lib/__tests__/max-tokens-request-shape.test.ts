@@ -111,6 +111,7 @@ vi.mock("@/lib/match-history", () => ({
 }));
 
 import { composeChaseText } from "@/lib/message-analyzer";
+import { t } from "@/lib/i18n/t";
 import { answerScopedQuestion } from "@/lib/dm-qa";
 
 beforeEach(() => {
@@ -125,7 +126,7 @@ afterEach(() => vi.useRealTimers());
 
 describe("composeChaseText max_tokens", () => {
   it("issues a request the SDK actually accepts", async () => {
-    RESPONSES = ["Need 10 more for Tuesday."];
+    RESPONSES = [JSON.stringify({ lead: "Need 12 more for tomorrow." })];
     const out = await composeChaseText({ groupId: "g1", kind: "daily-in-list" });
 
     expect(create).toHaveBeenCalledTimes(1);
@@ -135,8 +136,8 @@ describe("composeChaseText max_tokens", () => {
         `refuses anything above ${SDK_NONSTREAMING_LIMIT} on a non-streaming call`,
     ).toBeLessThanOrEqual(SDK_NONSTREAMING_LIMIT);
 
-    // The real symptom: the composed text must actually come back.
-    expect(out).toBe("Need 10 more for Tuesday.");
+    // The real symptom: the composed line must actually come back.
+    expect(out?.split("\n")[0]).toBe("Need 12 more for tomorrow.");
   });
 });
 
@@ -175,31 +176,26 @@ describe("composeChaseText max_tokens", () => {
  * Sites that JSON.parse their output are protected for free (truncated
  * JSON never parses, so they fail closed). Sites that hand the model's
  * raw text to a human are not — those are the two below, and both have
- * an existing fallback that is strictly better than partial text.
+ * an existing fallback that is strictly better than partial text. (The
+ * chase goes through `anthropicModel` since 2026-10-20, which throws on
+ * `max_tokens`; the composer then posts the fixed line.)
  */
 describe("truncated responses never reach a human", () => {
-  it("composeChaseText returns null so the scheduler sends static copy", async () => {
-    RESPONSES = [
-      {
-        text: "*Playing Tuesday:*\n1. Elvin\n2. Mustafa\n3. Idr",
-        stop_reason: "max_tokens",
-      },
-    ];
+  it("composeChaseText posts the fixed line, never the cut-off one", async () => {
+    RESPONSES = [{ text: '{"lead": "Need 12 more for tomor', stop_reason: "max_tokens" }];
+    vi.spyOn(console, "error").mockImplementation(() => {});
 
     const out = await composeChaseText({ groupId: "g1", kind: "daily-in-list" });
 
-    expect(
-      out,
-      "a chase truncated mid-word is worse than the plain static copy — " +
-        "composeChaseText must return null so composeOrFallback falls back",
-    ).toBeNull();
+    expect(out, "a chase line truncated mid-word must not be posted").not.toContain("tomor\n");
+    expect(out?.split("\n")[0]).toBe(t("en").daily_in_list_fallback_lead({ activityName: "Tuesday 7-a-side", need: 12 }));
   });
 
-  it("composeChaseText still returns a complete response", async () => {
+  it("composeChaseText still posts a complete line", async () => {
     // Guard against over-correcting into "never return anything".
-    RESPONSES = [{ text: "Need 10 more for Tuesday.", stop_reason: "end_turn" }];
+    RESPONSES = [{ text: JSON.stringify({ lead: "Need 12 more for tomorrow." }), stop_reason: "end_turn" }];
     const out = await composeChaseText({ groupId: "g1", kind: "daily-in-list" });
-    expect(out).toBe("Need 10 more for Tuesday.");
+    expect(out?.split("\n")[0]).toBe("Need 12 more for tomorrow.");
   });
 
   it("answerScopedQuestion does not DM a half-finished sentence", async () => {

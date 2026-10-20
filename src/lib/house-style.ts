@@ -13,7 +13,7 @@
  * `applyHouseStyle` for the callers that always imported it from there.
  *
  * WHO CALLS IT (every path where a model's words reach a person):
- *   - the scheduled chase        `message-analyzer.ts` composeChaseFromMatch
+ *   - the scheduled chase        `chase-lead.ts` acceptChaseLead
  *   - the scoped DM answer       `dm-qa.ts` composeScopedAnswer
  *   - the generic stats answer   `pipeline/stats-generic.ts`
  *   - the onboarding analyser's evidence notes and the rating adjuster's

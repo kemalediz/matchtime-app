@@ -172,7 +172,7 @@ function upperBound(
  * forces a deliberate choice instead of a default of "nothing".
  *
  * As of 2026-09-06 that is nine files: three check `stop_reason`
- * (`lib/dm-qa.ts`, `lib/message-analyzer.ts`, `lib/pipeline/llm.ts` —
+ * (`lib/dm-qa.ts`, `lib/message-analyzer.ts` until 2026-10-20, `lib/pipeline/llm.ts` —
  * every one of them hands raw model text to a human) and six are listed
  * below as fail-closed.
  *
@@ -304,13 +304,15 @@ describe("max_tokens ceiling (recurrence guard)", () => {
     // has rotted and the guard below is vacuously passing — which is
     // exactly how a guard stops guarding.
     expect(sites.length).toBeGreaterThanOrEqual(8);
-    // `message-analyzer.ts` still has one, and this pins it: §10 step 8
-    // deleted `analyzeBatch` and the dropped-verdict re-prompt from that
-    // file, leaving the scheduled-chase composer — the site of the
-    // 2026-08-31 incident, where `max_tokens: 64000` meant every chase
-    // had ALWAYS silently used the static fallback text. It is the last
-    // place anyone would expect a regression, which is why it is named.
-    expect(sites.some((s) => s.file === ANALYZER)).toBe(true);
+    // `message-analyzer.ts` held the scheduled-chase composer's own
+    // `messages.create`, the site of the 2026-08-31 incident (`max_tokens:
+    // 64000`, so every chase had ALWAYS silently used the static fallback).
+    // Since 2026-10-20 it goes through `anthropicModel`, which clamps every
+    // request to PIPELINE_MAX_TOKENS_CEILING; pinned so it stays that way.
+    const analyzer = fs.readFileSync(ANALYZER, "utf8");
+    expect(sites.some((s) => s.file === ANALYZER)).toBe(false);
+    expect(analyzer).toMatch(/maxTokens: CHASE_LEAD_MAX_TOKENS/);
+    expect(Number(/const CHASE_LEAD_MAX_TOKENS = ([\d_]+);/.exec(analyzer)![1].replace(/_/g, ""))).toBeLessThanOrEqual(4_096);
   });
 
   it("no messages.create call site in src/ exceeds the ceiling", () => {

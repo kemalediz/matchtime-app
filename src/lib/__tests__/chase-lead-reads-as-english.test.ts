@@ -44,7 +44,8 @@
  * `scripts/dryrun-pipeline.ts --chases`.
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { buildMatchClockBlock, enforceProximity } from "@/lib/message-analyzer";
+import { enforceProximity } from "@/lib/message-analyzer";
+import { chaseLeadUserTurn } from "@/lib/chase-lead";
 
 /** Tue 8 Sept 2026, 21:30 London (BST → 20:30Z). */
 const KICKOFF = new Date("2026-09-08T20:30:00.000Z");
@@ -63,39 +64,33 @@ function at(nowIso: string, fn: () => string): string {
 
 afterEach(() => vi.useRealTimers());
 
-describe("the day label handed to the model carries no kickoff time", () => {
-  it("headers the roster with the day alone", () => {
-    const block = at(TWO_DAYS_BEFORE.toISOString(), () => buildMatchClockBlock(KICKOFF));
-    expect(block).toContain("proximity=this-week");
-    expect(block).toContain("Use roster header: *Playing Tue 8 Sept:*");
-    // The regression in one line: the header must not smuggle the time.
-    expect(
-      block.split("\n").find((l) => l.startsWith("Use roster header:")),
-      "the roster header is a DAY label; the kickoff time belongs on the Kickoff line",
-    ).not.toMatch(/\d{1,2}:\d{2}/);
+describe("the kickoff handed to the model is written once, day and time apart", () => {
+  // Since 2026-10-20 the model is handed the facts (`chaseLeadUserTurn`)
+  // instead of the old clock block; the shape that taught it to glue the
+  // date to the time ("Tue 8 Sept 21:30") must not come back.
+  const turn = (nowIso: string) =>
+    chaseLeadUserTurn({
+      kind: "daily-in-list",
+      lang: "en",
+      activityName: "Tuesday 7-a-side",
+      venue: "Goals North Cheam",
+      kickoff: KICKOFF,
+      now: new Date(nowIso),
+      confirmed: 6,
+      maxPlayers: 14,
+      bench: 0,
+      atRisk: false,
+    });
+
+  it("states the kickoff time once, separated from the date by ' at '", () => {
+    const line = turn(TWO_DAYS_BEFORE.toISOString()).split("\n").find((l) => l.startsWith("Kickoff:"));
+    expect(line).toBe("Kickoff: Tuesday 8 September at 21:30 (in 2 days)");
+    expect(line!.match(/\d{1,2}:\d{2}/g)).toHaveLength(1);
   });
 
-  it("still states the kickoff time, separated from the date by ' at '", () => {
-    const block = at(TWO_DAYS_BEFORE.toISOString(), () => buildMatchClockBlock(KICKOFF));
-    // The prompt's own worked example is "Tue 28 Apr at 21:30", and the
-    // model copies the shape it is shown. Gluing them ("Tue 8 Sept
-    // 21:30") is what taught it to write a date where a date-and-time
-    // belongs.
-    expect(block).toContain("Kickoff (London): Tue 8 Sept at 21:30");
-  });
-
-  it("keeps the relative headers for tonight and tomorrow", () => {
-    // Not a new behaviour — pinned so the date-format fix cannot
-    // accidentally push a date into the two relative buckets.
-    // (NB `buildMatchClockBlock` buckets on raw HOURS to kickoff, not on
-    // calendar days as `computeProximity` does. Pre-existing, untouched
-    // here, which is why "tomorrow" needs a `now` inside 24h.)
-    expect(at("2026-09-08T18:00:00.000Z", () => buildMatchClockBlock(KICKOFF))).toContain(
-      "Use roster header: *Playing tonight:*",
-    );
-    expect(at("2026-09-08T06:00:00.000Z", () => buildMatchClockBlock(KICKOFF))).toContain(
-      "Use roster header: *Playing tomorrow:*",
-    );
+  it("says today and tomorrow by calendar day", () => {
+    expect(turn("2026-09-08T06:00:00.000Z")).toContain("(today)");
+    expect(turn("2026-09-07T18:00:00.000Z")).toContain("(tomorrow)");
   });
 });
 

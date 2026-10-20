@@ -912,23 +912,17 @@ export const en = {
     `🏁 *${p.activityName}*: what was the final score, which team won, and who was ${p.mvpLabel}? Reply here and I'll record it.`,
 
   // ═══════════════════════════════════════════════════════════════════
-  // Phase 2, slice 3: the chase model's server-computed headers.
+  // Phase 2, slice 3: the server-computed day headers.
   // ═══════════════════════════════════════════════════════════════════
-  //   The chase system prompt orders the model to copy these verbatim
-  //   ("Use roster header:"), so a Turkish chase copies a Turkish header
-  //   the server chose. `buildMatchClockBlock` and `computeProximity`
-  //   (message-analyzer.ts) read them. English is byte for byte what
-  //   those functions carried inline.
+  //   `enforceProximity` (proximity.ts) puts the right one in place of a
+  //   "*Playing …:*" header with the wrong day in any reply. The
+  //   scheduled chase stopped writing its own roster on 2026-10-20, and
+  //   with it the tentative line and the opener example went.
 
   roster_header_past: "*Squad:*",
   roster_header_tonight: "*Playing tonight:*",
   roster_header_tomorrow: "*Playing tomorrow:*",
   roster_header_day: (p: { dayLabel: string }): string => `*Playing ${p.dayLabel}:*`,
-  /** The line the model writes below the roster for a dropped player who
-   *  may still turn up; the system prompt quotes the English one. */
-  chase_tentative_line: (p: { name: string }): string => `Tentative: ${p.name} (will play if nobody steps in)`,
-  /** The scene-setting opener the daily chase is shown as an example. */
-  chase_opener_example: "🗓 Squad update",
 
   // ── onboarding (self-setup) ──────────────────────────────────────────
   // The group-add flow (bot added to a group → intro → consent → admins →
