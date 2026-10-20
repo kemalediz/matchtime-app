@@ -195,9 +195,10 @@ test("an OUT opens one pick round, posted in the admin group; no bench offer", a
   expect(await rounds(db)).toHaveLength(1);
 });
 
-test("a chat message and a non-admin's number are ignored while the round is open", async ({ request }) => {
+test("a chat message and the number of someone not in the club are ignored while the round is open", async ({ request }) => {
   expect(await reply(request, P.hamzah, "Wasim played well last week")).toMatchObject({ ignored: "not-a-pick", replyText: null });
-  expect(await reply(request, P.kemal, "2")).toMatchObject({ ignored: "not-an-admin", replyText: null });
+  // A member of the club picks too since 2026-10-20 (admin-group-open-list-and-picks.spec.ts).
+  expect(await reply(request, { phone: "+447700940099" }, "2")).toMatchObject({ ignored: "not-an-admin", replyText: null });
 });
 
 test("'2' picks the second on the list: A1 here, A2 in the group, A3 to the player", async ({ request, db }) => {

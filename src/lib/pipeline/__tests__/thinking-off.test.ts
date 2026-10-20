@@ -118,9 +118,16 @@ describe("every extractor sends its model's thinking posture, never an unstated 
     },
   );
 
-  it("the attendance extractor moved to Haiku 5.5 (2026-10-20); the question extractor stays on Sonnet 5", () => {
+  // 2026-10-20: the attendance extractor was rewritten whole and moved after
+  // the paid before/after arms (scripts/live-check-attendance-extractor.ts).
+  it("the attendance extractor runs on Haiku 5.5", () => {
     expect(EXTRACTOR_CALLS.attendance).toEqual(HAIKU_CALL);
-    expect(EXTRACTOR_CALLS.question).toEqual({ model: SONNET_MODEL, thinking: "off" });
+  });
+
+  // 2026-10-20: the question extractor was rewritten whole and moved after
+  // the paid before/after arms (scripts/live-check-question-extractor.ts).
+  it("the question extractor runs on Haiku 5.5", () => {
+    expect(EXTRACTOR_CALLS.question).toEqual(HAIKU_CALL);
   });
 });
 

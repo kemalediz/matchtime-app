@@ -323,11 +323,11 @@ describe("every model call site in src/ is behind the guard", () => {
     expect(unguarded).toEqual([]);
     // The inventory, so a new site is noticed in review: pipeline/llm.ts
     // (router, extractors, composer, generic stats answer, rating
-    // adjuster, none-shadow, scheduled chase) plus the nine raw sites.
+    // adjuster, none-shadow, scheduled chase, DM Q&A) plus the eight raw
+    // sites.
     expect(sites.sort()).toEqual(
       [
         "lib/dm-intent.ts",
-        "lib/dm-qa.ts",
         "lib/fee-confirm.ts",
         "lib/match-availability-classifier.ts",
         "lib/onboarding-analyzer.ts",

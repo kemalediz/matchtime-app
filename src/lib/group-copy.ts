@@ -50,13 +50,30 @@ export function composeSquadStatusPost(args: {
     maxPlayers,
     need,
   });
-  const rows: string[] = [];
+  return [lead, "", buildSlotRosterBlock({ header: s.playing_header, confirmed, bench, maxPlayers, lang: args.lang })].join("\n");
+}
+
+/**
+ * The squad as one row per PLACE: the header, the confirmed names in
+ * order, a 🥁 for every place still open, then the numbered bench. The
+ * reply path's squad post (`composeSquadStatusPost`) and the scheduled
+ * chase (`buildChaseRosterBlock`, chase-lead.ts) both render it here, so
+ * the two lists cannot drift apart. The header is the caller's.
+ */
+export function buildSlotRosterBlock(args: {
+  header: string;
+  confirmed: readonly string[];
+  bench: readonly string[];
+  maxPlayers: number;
+  lang?: Lang | string | null;
+}): string {
+  const { confirmed, bench, maxPlayers } = args;
+  const lines = [args.header];
   for (let i = 0; i < maxPlayers; i++) {
-    rows.push(i < confirmed.length ? `${i + 1}. ${confirmed[i]}` : `${i + 1}. 🥁`);
+    lines.push(i < confirmed.length ? `${i + 1}. ${confirmed[i]}` : `${i + 1}. 🥁`);
   }
-  const lines = [lead, "", s.playing_header, ...rows];
   if (bench.length > 0) {
-    lines.push("", s.bench_header({ count: bench.length }));
+    lines.push("", t(args.lang).bench_header({ count: bench.length }));
     bench.forEach((n, i) => lines.push(`${i + 1}. ${n}`));
   }
   return lines.join("\n");

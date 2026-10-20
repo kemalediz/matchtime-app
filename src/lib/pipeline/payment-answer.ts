@@ -130,6 +130,21 @@ export type PaymentSnapshot =
       kickoffLabel: string;
     };
 
+/**
+ * Does MatchTime have a source of truth for `paidAt` on this match? The
+ * poll path (tracking) writes it for any match; Stripe collection only
+ * once the fee is set and the pay links are out. Shared with the DM
+ * Q&A's "did you get my payment?" (`my-payments-rules.ts`), so a player
+ * and the group are told the same thing about the same match.
+ */
+export function matchHasPaymentSource(input: {
+  paymentTracking: boolean;
+  paymentCollection: boolean;
+  paymentLinksReleasedAt: Date | null;
+}): boolean {
+  return input.paymentTracking || (input.paymentCollection && input.paymentLinksReleasedAt !== null);
+}
+
 export function decidePaymentSnapshot(input: PaymentTruthInput): PaymentSnapshot {
   // (1) ORG LEVEL. Neither path exists, so there is no `paidAt` to read
   // and an empty unpaid list would be a claim rather than an absence.
@@ -154,7 +169,11 @@ export function decidePaymentSnapshot(input: PaymentTruthInput): PaymentSnapshot
   // the poll for any match; collection writes it only once the fee is
   // set and the links are out. Sutton's 2026-09-01 match is COMPLETED
   // with no fee, no links and nothing paid — there is nothing to read.
-  const hasSource = input.paymentTracking || (input.paymentCollection && m.paymentLinksReleasedAt !== null);
+  const hasSource = matchHasPaymentSource({
+    paymentTracking: input.paymentTracking,
+    paymentCollection: input.paymentCollection,
+    paymentLinksReleasedAt: m.paymentLinksReleasedAt,
+  });
 
   const chargeableRows = input.paymentHolderId
     ? m.confirmed.filter((c) => c.userId !== input.paymentHolderId)

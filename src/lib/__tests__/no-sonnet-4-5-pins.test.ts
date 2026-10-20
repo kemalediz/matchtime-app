@@ -274,9 +274,9 @@ describe("claude-sonnet-5 never runs adaptive thinking by accident", () => {
     // fail-closed path. Disabling thinking is what keeps the move a
     // price change: on Sonnet 4.5 these calls never thought either.
     // The chase composer left this list on 2026-10-20: it goes through
-    // pipeline/llm.ts with a call pair (CHASE_COMPOSER_CALL).
+    // pipeline/llm.ts with a call pair (CHASE_COMPOSER_CALL). The DM Q&A
+    // left it the same day, the same way (DM_QA_CALL, on Haiku 5.5).
     for (const f of [
-      "src/lib/dm-qa.ts",
       "src/lib/squad-from-list.ts",
       "src/lib/onboarding-analyzer.ts",
     ]) {

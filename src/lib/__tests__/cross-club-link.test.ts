@@ -162,7 +162,7 @@ describe("linkAcrossClubsCore", () => {
     expect(mergePlayersCore).toHaveBeenCalledTimes(1);
     // keepIdentity: the existing account belongs to another club, so its
     // global name and image are never filled from club A's row (#314).
-    expect(mergePlayersCore).toHaveBeenCalledWith(tx, "keep", "drop", { saveAliasInOrgIds: [A], keepIdentity: true });
+    expect(mergePlayersCore).toHaveBeenCalledWith(tx, "keep", "drop", { saveAliasInOrgIds: [A], keepIdentity: true, actorUserId: "admin-a" });
     expect(tx.userMerge.updateMany).toHaveBeenCalledWith({
       where: { oldUserId: "drop", survivorUserId: "keep", orgId: A },
       data: { actorUserId: "admin-a", reason: "cross-club-phone-link" },

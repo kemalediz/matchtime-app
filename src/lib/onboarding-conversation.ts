@@ -68,6 +68,7 @@ import { detectGroupLang, langOfConsentReply } from "./i18n/detect";
 import { guardedAnthropicCall, systemBlock } from "@/lib/pipeline/llm";
 import { organisersAnnounce } from "./list-announcer";
 import { HAIKU_MODEL, HAIKU_SHORT_ANSWER_MAX_TOKENS, HAIKU_THINKING } from "./models";
+import { changeMemberRole } from "./role-change";
 
 const MODEL = HAIKU_MODEL;
 
@@ -1460,13 +1461,20 @@ async function completeOnboarding(
             data: { userId: adminUserId, orgId, role },
           });
         } else if (existing.role === "PLAYER" || existing.leftAt) {
-          await db.membership.update({
-            where: { id: existing.id },
-            data: {
-              leftAt: null,
-              ...(existing.role === "PLAYER" ? { role } : {}),
-            },
-          });
+          if (existing.leftAt) {
+            await db.membership.update({ where: { id: existing.id }, data: { leftAt: null } });
+          }
+          if (existing.role === "PLAYER") {
+            // Logged in RoleChange; never lowers an OWNER (role-change.ts).
+            await changeMemberRole(db, {
+              orgId,
+              userId: adminUserId,
+              to: role,
+              actorUserId: adminUserId,
+              source: "onboarding-owner",
+              mayGrantOwner: role === "OWNER",
+            });
+          }
         }
       }
     } catch (err) {
@@ -1515,13 +1523,19 @@ async function completeOnboarding(
           });
           madeAdmin = true;
         } else if (existing.role === "PLAYER" || existing.leftAt) {
-          await db.membership.update({
-            where: { id: existing.id },
-            data: {
-              leftAt: null,
-              ...(existing.role === "PLAYER" ? { role: "ADMIN" as const } : {}),
-            },
-          });
+          if (existing.leftAt) {
+            await db.membership.update({ where: { id: existing.id }, data: { leftAt: null } });
+          }
+          if (existing.role === "PLAYER") {
+            // Logged in RoleChange (role-change.ts).
+            await changeMemberRole(db, {
+              orgId,
+              userId,
+              to: "ADMIN",
+              actorUserId: adminUserId ?? null,
+              source: "onboarding-admin",
+            });
+          }
           madeAdmin = true;
         }
         // else already OWNER/ADMIN → leave as-is (don't downgrade).

@@ -23,7 +23,8 @@
  *
  *     REWRITTEN 2026-10-20 (MDs plan "Sonnet 5 prompts: rewrite, then
  *     move to Haiku 5.5", item 6). Code renders the post: the squad list
- *     is `buildSquadRosterBlock`, the format-switch line is the server's
+ *     is `buildChaseRosterBlock` (a row per place, 🥁 for an open one),
+ *     the format-switch line is the server's
  *     own, and the model writes only the opening line, from facts code
  *     states (`chase-lead.ts`). A line the model gets wrong, or no line
  *     at all, is replaced by the fixed copy of that chase, so the post
@@ -52,12 +53,12 @@ import { normaliseLang, type Lang } from "./i18n/lang";
 import { computeChaseRisk } from "./chase-risk";
 import { anthropicModel, extractJson, HAIKU_CALL, type ModelCall, type PipelineModel } from "@/lib/pipeline/llm";
 import { withOrgAiBudget } from "./ai-budget";
-import { buildSquadRosterBlock } from "./scheduler-copy";
 import {
   CHASE_LEAD_SCHEMA,
   CHASE_LEAD_SYSTEM,
   acceptChaseLead,
   assembleChasePost,
+  buildChaseRosterBlock,
   chaseFallbackLead,
   chaseLeadUserTurn,
   chaseSwitchLine,
@@ -384,7 +385,9 @@ export async function composeChaseFromMatch(
     hoursToKickoff: risk.hoursToKickoff,
   });
   const rosterBlock =
-    input.withRoster === false ? null : buildSquadRosterBlock({ confirmed, bench, maxPlayers: match.maxPlayers, lang });
+    input.withRoster === false
+      ? null
+      : buildChaseRosterBlock({ confirmed, bench, maxPlayers: match.maxPlayers, kickoff: match.date, now, lang });
   return { text: assembleChasePost({ lead: finalLead, switchLine, rosterBlock }), lead: finalLead, fromModel };
 }
 

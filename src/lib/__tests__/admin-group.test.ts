@@ -194,9 +194,17 @@ describe("structured data first, deterministically", () => {
     expect(understand.understandAdminMessage).toHaveBeenCalled();
   });
 
-  it("a non-admin while a round is open: never a pick; their chat is still not-an-admin", async () => {
+  it("a member who is not an admin, while a round is open: their pick is read as theirs (2026-10-20); their chat is still not-an-admin", async () => {
     dbMock.organiserPickRound.findFirst.mockResolvedValue({ id: "round" });
     dbMock.membership.findMany.mockResolvedValue([{ userId: "u-player", role: "PLAYER" }]);
+    pick.handlePickReply.mockResolvedValue({ handled: false });
+    expect(await handleAdminGroupMessage(msg("2"))).toMatchObject({ handled: false, ignored: "not-an-admin" });
+    expect(pick.handlePickReply).toHaveBeenCalledWith(expect.objectContaining({ door: "admin-group", senderUserId: "u-player", text: "2" }));
+  });
+
+  it("someone not in the club, while a round is open: never a pick", async () => {
+    dbMock.organiserPickRound.findFirst.mockResolvedValue({ id: "round" });
+    dbMock.membership.findMany.mockResolvedValue([]);
     expect(await handleAdminGroupMessage(msg("2"))).toMatchObject({ handled: false, ignored: "not-an-admin" });
     expect(pick.handlePickReply).not.toHaveBeenCalled();
   });
@@ -291,8 +299,17 @@ describe("anyone in HQ: questions for all, changes for the organisers", () => {
     expect(await handleAdminGroupMessage(msg("yes"))).toEqual({ handled: false, ignored: "no-open-pick", orgId: "org-fnf", replyText: null });
   });
 
-  it("a non-admin never reaches the structured readers that change things (a pasted list)", async () => {
+  it("a member who is not an admin pastes a list: proposed as theirs (2026-10-20)", async () => {
     dbMock.membership.findMany.mockResolvedValue(PLAYER);
+    paste.proposeSquadPaste.mockResolvedValue({ outcome: "paste-proposed", replyText: "Adding: Bilal. Reply YES to apply." });
+    const r = await handleAdminGroupMessage(msg("1. Bilal\n2. Ali\n3. Tom\n4. Sam\n5. Naim"));
+    expect(r).toMatchObject({ handled: true, outcome: "paste-proposed" });
+    expect(paste.proposeSquadPaste).toHaveBeenCalledWith(expect.objectContaining({ senderUserId: "u-kemal" }));
+    expect(understand.understandAdminMessage).not.toHaveBeenCalled();
+  });
+
+  it("someone not in the club never reaches the structured readers that change things (a pasted list)", async () => {
+    dbMock.membership.findMany.mockResolvedValue([]);
     await handleAdminGroupMessage(msg("1. Bilal\n2. Ali\n3. Tom\n4. Sam\n5. Naim"));
     expect(paste.proposeSquadPaste).not.toHaveBeenCalled();
   });

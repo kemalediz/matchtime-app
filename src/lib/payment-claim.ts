@@ -447,13 +447,7 @@ export async function handlePaymentClaimDm(input: {
       }
     },
     markPending: (matchId, via) => markDirectPaymentPending({ userId, matchId, via }),
-    payLink: async (matchId) => {
-      const { signMagicLinkToken, MAGIC_LINK_TTL } = await import("./magic-link");
-      const { buildShortMagicLinkUrl } = await import("./short-link");
-      return buildShortMagicLinkUrl(
-        signMagicLinkToken({ userId, purpose: "sign-in", nextPath: `/pay/${matchId}`, ttlSeconds: MAGIC_LINK_TTL.bookmark }),
-      );
-    },
+    payLink: async (matchId) => (await import("./pay-link")).buildPayLinkUrl(userId, matchId),
     reply: async ({ orgId, text: replyText }) => {
       await db.botJob.create({ data: { orgId, kind: "dm", phone: replyPhone, text: replyText, ...REPLY_PRIORITY } });
     },

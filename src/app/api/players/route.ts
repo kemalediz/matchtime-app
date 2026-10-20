@@ -195,5 +195,8 @@ export async function GET(request: Request) {
     activityId: targetActivityId,
     groupSync: { lastSyncAt: lastSyncAt ? lastSyncAt.toISOString() : null },
     duplicateSuggestions,
+    // Only the club's owner sees "Make owner" (src/lib/role-change-rules.ts).
+    // A superadmin's synthesised membership is ADMIN, so false for him.
+    viewerIsOwner: membership.role === "OWNER",
   });
 }

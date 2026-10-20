@@ -16,7 +16,8 @@
  * seed's upcoming match is 4 of 5 with Ben Bench on the bench.
  */
 import { test, expect, postAnalyze, resetDb } from "../fixtures";
-import { ORG_ID } from "../helpers/constants";
+import { MATCH, ORG_ID } from "../helpers/constants";
+import { kickoffLabel } from "@/lib/i18n/dates";
 import type { TestDb } from "../helpers/test-db";
 
 const LIVE = process.env.MT_SIM_LIVE_LLM === "1";
@@ -29,6 +30,9 @@ const usage = (db: TestDb) =>
     [ORG_ID],
   );
 
+const upcomingDate = async (db: TestDb) =>
+  new Date((await db.one<{ date: string }>(`SELECT date FROM "Match" WHERE id = $1`, [MATCH.upcoming]))!.date);
+
 (LIVE ? test.describe : test.describe.skip)("'Is there still space?' where the organisers announce, LIVE (real model)", () => {
   test.describe.configure({ mode: "serial" });
   test.beforeEach(async ({ db }) => {
@@ -37,16 +41,19 @@ const usage = (db: TestDb) =>
   });
   test.afterAll(() => resetDb());
 
+  // The call-out names the seed's own upcoming match, in the club's language
+  // (2026-10-20: it used to say "Fri 20:30" whatever day the match was, so a
+  // Turkish "Hala yer var mı?" was read against a match that did not exist).
   const cases = [
     {
       lang: "en",
-      callOut: "We need 1 more player for Fri 20:30. Say *IN* if you can make it and the organisers will confirm who gets the place.",
+      callOut: (k: string) => `We need 1 more player for ${k}. Say *IN* if you can make it and the organisers will confirm who gets the place.`,
       body: "Is there still space?",
       expected: /^There's 1 place left for \S.*\. Say \*IN\* if you can make it and the organisers will confirm who gets the place\.$/,
     },
     {
       lang: "tr",
-      callOut: "Fri 20:30 maçı için 1 oyuncu daha lazım. Gelebiliyorsanız *VARIM* yazın, yeri kimin alacağını organizatörler onaylayacak.",
+      callOut: (k: string) => `${k} maçı için 1 oyuncu daha lazım. Gelebiliyorsanız *VARIM* yazın, yeri kimin alacağını organizatörler onaylayacak.`,
       body: "Hala yer var mı?",
       expected: /^\S.* maçı için 1 yer boş\. Gelebiliyorsanız \*VARIM\* yazın, yeri kimin alacağını organizatörler onaylayacak\.$/,
     },
@@ -57,9 +64,10 @@ const usage = (db: TestDb) =>
       test.setTimeout(180_000);
       await db.run(`UPDATE "Organisation" SET language = $2 WHERE id = $1`, [ORG_ID, c.lang]);
       const id = `e2e-live-oa-space-${c.lang}-${Date.now()}`;
+      const callOut = c.callOut(kickoffLabel(c.lang, await upcomingDate(db)));
       const before = await usage(db);
       const res = await postAnalyze(request, [
-        { waMessageId: id, body: c.body, authorPhone: "447700900009", authorName: "Clarence Cole", quotedBody: c.callOut, quotedFromMatchTime: true },
+        { waMessageId: id, body: c.body, authorPhone: "447700900009", authorName: "Clarence Cole", quotedBody: callOut, quotedFromMatchTime: true },
       ]);
       const r = (res.results as Result[]).find((x) => x.waMessageId === id)!;
       const after = await usage(db);
@@ -89,7 +97,7 @@ const usage = (db: TestDb) =>
 
   test("en: IN from one player and the space question from another, one batch", async ({ request, db }) => {
     test.setTimeout(180_000);
-    const callOut = "We need 1 more player for Fri 20:30. Say *IN* if you can make it.";
+    const callOut = `We need 1 more player for ${kickoffLabel("en", await upcomingDate(db))}. Say *IN* if you can make it.`;
     const inId = `e2e-live-oa-batch-in-${Date.now()}`;
     const askId = `e2e-live-oa-batch-ask-${Date.now()}`;
     const before = await usage(db);

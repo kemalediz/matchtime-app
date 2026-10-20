@@ -268,10 +268,15 @@ describe("dm-qa: a question is read against what MatchTime said", () => {
       expect(DM_QA_SYSTEM_PROMPT).not.toMatch(/\d\s*-a-side|5\/7/);
     });
 
-    it("declines money questions on ONE line, so changing that later is one line", () => {
-      const lines = DM_QA_SYSTEM_PROMPT.split("\n").filter((l) => /\b(money|pay\w*|fees?|owes?)\b/i.test(l));
-      expect(lines).toHaveLength(1);
-      expect(lines[0].startsWith("- ")).toBe(true);
+    it("answers the asker's OWN money and declines anyone else's, each said once (Kemal, 2026-10-20)", () => {
+      const own = DM_QA_SYSTEM_PROMPT.split("\n").filter((l) => /their own money/i.test(l));
+      expect(own).toHaveLength(1);
+      expect(own[0]).toMatch(/YOUR PAYMENTS/);
+      const others = DM_QA_SYSTEM_PROMPT.split("\n").filter((l) => /anyone else's payments/i.test(l));
+      expect(others).toHaveLength(1);
+      expect(others[0].startsWith("- ")).toBe(true);
+      // The old blanket refusal is gone.
+      expect(DM_QA_SYSTEM_PROMPT).not.toMatch(/money: fees, who owes/);
     });
 
     it("tells the model a short question refers to the message they replied to", () => {

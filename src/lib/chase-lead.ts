@@ -17,9 +17,12 @@
  *                                           not posted;
  *   chaseFallbackLead                       the fixed line of each kind,
  *                                           used when the model is not;
+ *   buildChaseRosterBlock                   the squad list: one row per
+ *                                           place, a 🥁 for each open
+ *                                           one, then the bench;
  *   chaseSwitchLine / assembleChasePost     the format-switch line and
  *                                           the post: lead, switch line,
- *                                           `buildSquadRosterBlock`.
+ *                                           squad list.
  *
  * Before this the model wrote the whole post: a numbered roster with drum
  * rows, the bench block, the format-switch line copied verbatim and a
@@ -33,7 +36,8 @@ import { longDayTimeLabel } from "./i18n/dates";
 import { applyHouseStyle } from "./house-style";
 import { computeProximity, enforceProximity, londonTimeLabel } from "./proximity";
 import { buildFormatSwitchFacts, type SmallerFormat } from "./format-switch";
-import { contradictsSquadState, displaysSquadState } from "./group-copy";
+import { buildSlotRosterBlock, contradictsSquadState, displaysSquadState } from "./group-copy";
+import type { NamedRow } from "./scheduler-copy";
 
 export type ChaseKind =
   | "daily-in-list" // the 17:00 squad update while the squad is short
@@ -199,6 +203,34 @@ export function chaseSwitchLine(args: {
     lang: normaliseLang(args.lang ?? null),
   });
   return facts.find((x) => x.proposal)?.proposal ?? null;
+}
+
+/**
+ * The chase's squad list: the day header ("*Playing tonight:*", "*Playing
+ * tomorrow:*", "*Playing Tue 8 Sept:*", the Turkish ones in Turkish),
+ * the confirmed names, a 🥁 for every place still open, then the bench.
+ * The open places are what a chase asks the group to fill, so each one is
+ * shown (Kemal, 2026-10-20: the drum rows the old chase post had).
+ * Only the chase: the other scheduled posts keep `buildSquadRosterBlock`.
+ */
+export function buildChaseRosterBlock(args: {
+  confirmed: readonly NamedRow[];
+  bench: readonly NamedRow[];
+  maxPlayers: number;
+  kickoff: Date;
+  now: Date;
+  lang: Lang | string | null | undefined;
+}): string {
+  const lang = normaliseLang(args.lang ?? null);
+  const unnamed = t(lang).unnamed;
+  const name = (r: NamedRow) => r.name ?? unnamed;
+  return buildSlotRosterBlock({
+    header: computeProximity(args.kickoff, lang, args.now).rosterHeader,
+    confirmed: args.confirmed.map(name),
+    bench: args.bench.map(name),
+    maxPlayers: args.maxPlayers,
+    lang,
+  });
 }
 
 /** The post: the lead, the switch line, the squad list, a blank line apart. */

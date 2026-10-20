@@ -24,6 +24,8 @@ type TxClient = any;
 
 import { recordAttendanceEvent } from "./attendance-events";
 import { repointSquadMonthRows } from "./squad-month";
+import { higherRole, isMemberRole } from "./role-change-rules";
+import { recordRoleChange } from "./role-change";
 
 /**
  * `Membership.matchRating`'s schema default, and Elo's genuine "no
@@ -37,7 +39,6 @@ import { repointSquadMonthRows } from "./squad-month";
 const MEMBERSHIP_ELO_DEFAULT = 1000;
 
 const ATT_RANK = { CONFIRMED: 3, BENCH: 2, DROPPED: 1 } as const;
-const ROLE_RANK = { OWNER: 3, ADMIN: 2, PLAYER: 1 } as const;
 
 function aliasNorm(s: string): string {
   return s.trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
@@ -56,6 +57,9 @@ export interface MergePlayersCoreOpts {
    *  player, and `User.name` / `User.image` are global, so club A must
    *  not fill them (the #314 rule, player-account-guard.ts). */
   keepIdentity?: boolean;
+  /** Who asked for the merge, when a person did. Goes on the RoleChange
+   *  row when the kept membership takes the dropped one's higher role. */
+  actorUserId?: string | null;
 }
 
 export async function mergePlayersCore(
@@ -444,11 +448,9 @@ export async function mergePlayersCore(
       await tx.membership.update({ where: { id: dm.id }, data: { userId: keepUserId } });
       continue;
     }
-    const newRole =
-      (ROLE_RANK[dm.role as keyof typeof ROLE_RANK] ?? 0) >
-      (ROLE_RANK[km.role as keyof typeof ROLE_RANK] ?? 0)
-        ? dm.role
-        : km.role;
+    // The higher role wins, so a merge can never lower an OWNER
+    // (role-change-rules.ts). A raise is logged in RoleChange below.
+    const newRole = isMemberRole(km.role) && isMemberRole(dm.role) ? higherRole(km.role, dm.role) : km.role;
     const newLeftAt =
       km.leftAt === null || dm.leftAt === null
         ? null
@@ -483,6 +485,16 @@ export async function mergePlayersCore(
         matchRating: newMatchRating,
       },
     });
+    if (newRole !== km.role) {
+      await recordRoleChange(tx, {
+        orgId: km.orgId,
+        userId: keepUserId,
+        actorUserId: opts.actorUserId ?? null,
+        fromRole: km.role,
+        toRole: newRole,
+        source: "merge",
+      });
+    }
     await tx.membership.delete({ where: { id: dm.id } });
   }
 
