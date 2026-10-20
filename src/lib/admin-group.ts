@@ -9,7 +9,8 @@
  * the server stored itself; never the pushname. ANYONE in a live club's HQ
  * is read by the shared pipeline (2026-10-16, Kemal: "Anyone in that group
  * should be able to ask questions"): a question, help and the graphics are
- * answered for them; what changes the club stays an owner's or admin's
+ * answered for them, and a member of the club changes who plays there
+ * (2026-10-20); what else changes the club stays an owner's or admin's
  * (`admin-group-understand.ts` says who can). For an owner or admin, in
  * this order:
  *
@@ -241,6 +242,7 @@ export async function handleAdminGroupMessage(msg: AdminGroupMessage): Promise<A
         : null,
       senderUserId,
       organiser,
+      member: memberships.length > 0,
       senderName: sender?.name ?? null,
       sentAt: parseTimestamp(msg.timestamp),
       now,
