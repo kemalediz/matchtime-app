@@ -480,6 +480,17 @@ describe("the month's games: the calendar, minus the weeks that are cancelled", 
     expect(monthStarted({ firstKickoff: games[0], startedMidMonthAt: null, now })).toBe(true);
   });
 
+  it("a week whose game has already been played that day is not left, even before the fixture's usual hour (Tue 2026-10-20, 03:50 London)", () => {
+    const calendar = monthKickoffs("2026-10-01", 2, "20:00"); // Tuesdays 6, 13, 20, 27 October
+    const now = new Date("2026-10-20T02:50:00.000Z"); // 03:50 London
+    // Today's game was played at 00:50 London; next Tuesday's is the only one left.
+    const playedToday = monthGames({ calendar, matches: [{ date: new Date("2026-10-19T23:50:00.000Z"), cancelled: false }] });
+    expect(playedToday.filter((k) => k.getTime() > now.getTime())).toHaveLength(1);
+    // A game late on Monday the 19th (London) is not Tuesday's: tonight's 20:00 and the 27th are left.
+    const playedMonday = monthGames({ calendar, matches: [{ date: new Date("2026-10-19T21:50:00.000Z"), cancelled: false }] });
+    expect(playedMonday.filter((k) => k.getTime() > now.getTime())).toHaveLength(2);
+  });
+
   it("a cancelled week is not a game; a week with no row yet is", () => {
     const calendar = cal("2026-11-01");
     const games = monthGames({
