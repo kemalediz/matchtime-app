@@ -128,8 +128,10 @@ test("at 10:00 London: teams built and proposed in the admin group, once, nothin
   expect(teamText(await poll(request, londonAt(0, 10, 10)), /Proposed teams/)).toEqual([]);
 });
 
-test("a non-admin's 'teams' in the admin group is ignored", async ({ request }) => {
-  expect(await say(request, "teams", PLAYER)).toMatchObject({ handled: false, replyText: null });
+test("a non-admin's 'teams' in the admin group changes nothing: one line naming who can (2026-10-20)", async ({ request, db }) => {
+  const before = await sheet(db);
+  expect(await say(request, "teams", PLAYER)).toMatchObject({ handled: true, outcome: "hq-only-organisers", replyText: "Only Alex can change that.", react: null });
+  expect(await sheet(db)).toEqual(before);
 });
 
 test("'teams' shows the teams already built, without rebuilding them", async ({ request, db }) => {

@@ -6,8 +6,9 @@
  * group with the exact changes it would make against the squad of the
  * club's next match ("Adding: Bilal. Removing: Shehryar, Clarence. Unknown
  * names: Naim (...). Reply YES to apply.") and stores the list as an
- * `AdminSquadProposal`. Any owner or admin's whole-message YES within 30
- * minutes applies it; after that, YES gets "That list is more than 30
+ * `AdminSquadProposal`. Any owner or admin's YES within 30 minutes applies
+ * it, and so does the YES of the member who pasted it (any member of the
+ * club may paste one since 2026-10-20, and confirms their own); after that, YES gets "That list is more than 30
  * minutes old". A list identical to the squad gets "That matches the
  * squad, nothing to change." and nothing is stored.
  *
@@ -219,8 +220,10 @@ export async function proposeSquadPaste(args: {
 }
 
 /**
- * An admin's YES. Null when there is no list waiting for one (the caller
- * then stays silent), or another admin's YES got there first.
+ * A YES to the list. Null when there is no list waiting for one (the caller
+ * then stays silent), or another YES got there first. `proposedBy`: only a
+ * list that member pasted (a member who is not an organiser confirms their
+ * own list only, 2026-10-20).
  */
 export async function answerSquadPasteYes(args: {
   orgId: string;
@@ -228,10 +231,16 @@ export async function answerSquadPasteYes(args: {
   messageId: string;
   senderUserId: string;
   now: Date;
+  proposedBy?: string;
 }): Promise<PasteReply | null> {
   const { orgId, now } = args;
   const proposal = await db.adminSquadProposal.findFirst({
-    where: { orgId, resolvedAt: null, expiresAt: { gte: new Date(now.getTime() - EXPIRED_ANSWER_WINDOW_MS) } },
+    where: {
+      orgId,
+      resolvedAt: null,
+      expiresAt: { gte: new Date(now.getTime() - EXPIRED_ANSWER_WINDOW_MS) },
+      ...(args.proposedBy ? { proposedByUserId: args.proposedBy } : {}),
+    },
     orderBy: { createdAt: "desc" },
   });
   if (!proposal) return null;
