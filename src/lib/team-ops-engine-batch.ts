@@ -229,14 +229,13 @@
  * ─────────────────────────────────────────────────────────────────────
  * WHAT DID NOT COME ACROSS FROM `route.ts:3546-3691`
  * ─────────────────────────────────────────────────────────────────────
- *   • MODEL-INVENTED TEAM NAMES. "come up with fun team names" reached
- *     `generateTeamsForMatch` as `verdict.teamNames`, which the
- *     mega-prompt authored and `sanitiseTeamNames` cleaned. The teams
- *     extractor is told it never picks anything, so it returns the names
- *     the message SUPPLIES and no others. The request is still owned and
- *     the teams are still generated — under the standard Red/Yellow
- *     labels. Restoring the invented names needs a generator of its own,
- *     not a facts field, and that is a separate change.
+ *   • MODEL-INVENTED TEAM NAMES came back on 2026-10-20. "come up with
+ *     fun team names" reached `generateTeamsForMatch` as
+ *     `verdict.teamNames`, which the mega-prompt authored; until the
+ *     teams prompt was rewritten the extractor returned only the names a
+ *     message SUPPLIED, so those teams went out as Red and Yellow. It now
+ *     makes up two names when the message asks it to, and
+ *     `sanitiseTeamNames` still cleans them (teams-live Scenario 1).
  *   • FUZZY-MATCH TIE-BREAKING. The shipped path takes the FIRST roster
  *     row whose normalised name matches; `engine.ts` uses
  *     `resolvePerson`, which refuses an ambiguous first name instead of

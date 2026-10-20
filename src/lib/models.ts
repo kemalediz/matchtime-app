@@ -25,8 +25,9 @@ export const HAIKU_MODEL = "claude-haiku-5-5";
  * THE SONNET MODEL ID, IN ONE PLACE (2026-10-20).
  *
  * Every Sonnet call site names it through this constant, the way the
- * Haiku sites name `HAIKU_MODEL`: the five pipeline extractors
- * (`EXTRACTOR_MODEL` in pipeline/llm.ts), the DM answers (dm-qa.ts), the
+ * Haiku sites name `HAIKU_MODEL`: the attendance and question
+ * extractors (`EXTRACTOR_CALLS` in pipeline/extractors.ts; teams, score
+ * and admin moved to Haiku 5.5 on 2026-10-20), the DM answers (dm-qa.ts), the
  * onboarding reading and the squad-list reading, plus the DM dry run and
  * the live probe list. The generic stats answer, the rating adjuster and
  * the scheduled-chase composer moved to Haiku 5.5 on 2026-10-20

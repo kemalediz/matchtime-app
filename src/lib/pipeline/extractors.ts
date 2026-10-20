@@ -26,7 +26,16 @@
  * Capacity is arithmetic; arithmetic is the engine's job.
  */
 import { renderGroupReplyContext, type ContextMessage } from "../reply-context";
-import { anthropicModel, degradation, extractJson, EXTRACTOR_MODEL, type ModelRequest, type PipelineModel } from "./llm";
+import {
+  anthropicModel,
+  degradation,
+  extractJson,
+  HAIKU_CALL,
+  SONNET_CALL,
+  type ModelCall,
+  type ModelRequest,
+  type PipelineModel,
+} from "./llm";
 import { isAiBudgetExceeded } from "../ai-budget-context";
 import { parsePeriodFields } from "./stats-period";
 import { HELP_FEATURES } from "./types";
@@ -50,6 +59,40 @@ import type {
 } from "./types";
 
 const EXTRACTOR_MAX_TOKENS = 1_024;
+
+/**
+ * THE MODEL EACH EXTRACTOR RUNS ON, with its thinking posture (2026-10-20).
+ *
+ * Attendance and question stay on Sonnet 5 with thinking off (see
+ * `ModelRequest.thinking` and `__tests__/thinking-off.test.ts`). Teams,
+ * score and admin were rewritten whole on 2026-10-20 and moved to Haiku
+ * 5.5 after a paid before/after check on the dev key: the live prompt on
+ * Sonnet 5, the new prompt on Sonnet 5 and the new prompt on Haiku 5.5,
+ * one pass of every suite that covers them (teams-live, show-teams-live,
+ * extract-once-live, live-check-teams-extractor including T5,
+ * live-check-score-extractor, hq-score, hq-mom, hq-chatter, admin-group,
+ * free-places, corpus writes). Haiku matched or beat the live arm on
+ * every case, never returned an empty answer, and costs about a
+ * fifteenth per call. Moving one back is one line here.
+ */
+export const EXTRACTOR_CALLS: Record<Exclude<ExtractorKind, "none">, ModelCall> = {
+  attendance: SONNET_CALL,
+  question: SONNET_CALL,
+  teams: HAIKU_CALL,
+  score: HAIKU_CALL,
+  admin: HAIKU_CALL,
+};
+
+/**
+ * Haiku 5.5 thinks adaptively and its thinking shares `max_tokens`. An
+ * extractor's answer is under 250 tokens; measured on the 2026-10-20 arms,
+ * the largest thinking-plus-answer was well inside this.
+ */
+const HAIKU_EXTRACTOR_MAX_TOKENS = 2_048;
+
+function maxTokensFor(call: ModelCall): number {
+  return call.model === HAIKU_CALL.model ? HAIKU_EXTRACTOR_MAX_TOKENS : EXTRACTOR_MAX_TOKENS;
+}
 
 /**
  * The routes whose extraction is retried once. See the essay in
@@ -347,45 +390,67 @@ Which period:
   "@Match Time all-time most MoMs" / "@Match Time tüm zamanların en çok maçın adamı kim" -> stats, mom, period all_time
   "@Match Time who played most this month" / "@Match Time bu ay en çok kim oynadı" -> stats, appearances, period this, periodUnit month`,
 
-  teams: `You read ONE message about the two team line-ups (red and yellow) and report what it asks for. You never pick the teams. Above THE MESSAGE you may see recent chat, MatchTime's last post, NOW (the time at the club) and, for a WhatsApp reply, the message it quotes: context for who "him" or "them" are, never a field of their own.
+  teams: `You read ONE message about the club's two team line-ups and report what it asks for. You never pick the players: code builds and changes the line-ups.
 
-  action       what has to change:
-               "show" re-post the teams that exist, unchanged ("teams?", "show me the teams", "takımları göster")
-               "generate" work the line-ups out again ("generate the teams", "regenerate", "make the teams", "shuffle them again", "come up with an alternative", "takımları kur", "yeniden kur")
-               "rename" keep the SAME two line-ups under different names
-               "swap" move named players between the existing teams and leave everyone else where they are
-  includeRefs  people the message says to include ("generate the teams, Ibrahim is playing"), verbatim
-  teamNames    the two names the message SUPPLIES, in order, or an empty array
-  swaps        people the message puts on a NAMED side, with that side: "put David in Red" -> {"personRef":"David","team":"RED"}
-  moves        people to move to the OTHER team from wherever they are now, when no side is named: "swap Ali and Can" -> ["Ali","Can"], "move Tom to the other team" -> ["Tom"], "Ali ile Can'ı değiştir" -> ["Ali","Can"], "Tom'u diğer takıma al" -> ["Tom"]
-  pairings     people who must be on the SAME team as each other, one array per group ("put me and David on the same team" -> [["me","David"]])
+THE MESSAGE is the one you report on, with its sender. Above it you may see RECENT CHAT, MATCHTIME'S LAST POST, NOW (the time at the club) and, for a WhatsApp reply, the message it quotes (the THEY ARE REPLYING TO line). They tell you who "him", "them" or "the teams" are; every field comes from THE MESSAGE.
 
-If the line-ups have to be worked out again it is "generate", even when the message also asks for new names or says "again", "once more" or "instead"; a message that asks you to invent names while generating leaves teamNames empty. "rename" is only for the same line-ups under new names. Write every name as the message writes it; when the sender means themselves ("me", "I", "beni", "bana", "ben") write "me". Any field the message says nothing about is empty.`,
+WHAT YOU RETURN
+action, exactly one:
+  "show" post the teams that already exist, unchanged.
+  "generate" work the line-ups out again. This holds even when the same message also asks for new names, or says "again", "once more" or "instead".
+  "rename" keep the same two line-ups and change only their names.
+  "swap" move named players between the existing teams and leave everyone else where they are.
+includeRefs
+  people the message says must play.
+teamNames
+  the two team names, in order: the ones the message gives or, when it asks you to pick the names, make up two short names (different, at most 24 characters each, not Red or Yellow, in the language THE MESSAGE is written in). An empty array when the message is not about names.
+swaps
+  people the message puts on a NAMED side, with that side, RED or YELLOW.
+moves
+  people who go to the OTHER team from wherever they are now, when the message names no side.
+pairings
+  people who must end up on the same team as each other, one array per group.
+
+Write every person as the message writes them. When the sender means themselves ("me", "I", "beni", "bana", "ben") write "me". Every field the message says nothing about is empty.
+
+EXAMPLES, English and Turkish
+  "teams?" / "show me the teams" / "takımları göster" -> show
+  "show us the teams again without regenerating" -> show
+  "generate the teams" / "make the teams" / "shuffle them again" / "takımları kur" / "yeniden kur" -> generate
+  "generate the teams, Ibrahim is playing" -> generate, includeRefs ["Ibrahim"]
+  "make the teams and put me and David on the same team" -> generate, pairings [["me","David"]]
+  "generate the teams, you pick some fun names" / "takımları kur, isimleri sen seç" -> generate, teamNames two names you make up
+  "generate the teams, call them Lions and Tigers" -> generate, teamNames ["Lions","Tigers"]
+  "call the teams Lions and Tigers" / "takımların adı Aslanlar ve Kaplanlar olsun" -> rename, teamNames ["Lions","Tigers"] / ["Aslanlar","Kaplanlar"]
+  "put David in Red" -> swap, swaps [{"personRef":"David","team":"RED"}]
+  "swap Ali and Can" / "Ali ile Can'ı değiştir" -> swap, moves ["Ali","Can"]
+  "move Tom to the other team" / "Tom'u diğer takıma al" -> swap, moves ["Tom"]`,
 
   score: `You read ONE message from a football group's WhatsApp chat about the result of the group's own match and report what it SAYS. You never decide which team is which, who won, who a player is, or what gets recorded: code does that.
 
-RECENT CHAT, MATCHTIME'S LAST POST, NOW (the time at the club) and, for a WhatsApp reply, the message it quotes (the THEY ARE REPLYING TO line) are context only: never take a number, team or name from them. THE MESSAGE is the one you report on, with its sender. A reply that disputes the result it quotes ("no, it was 7-5 to yellow" under MatchTime's result) is a correction. The message replied to never supplies a word about the outcome: "7-4 yellows" replying to "which team won?" is still a team beside a number (secondTeam), not a winner.
+THE MESSAGE is the one you report on, with its sender. Above it you may see RECENT CHAT, MATCHTIME'S LAST POST, NOW (the time at the club) and, for a WhatsApp reply, the message it quotes (the THEY ARE REPLYING TO line). They tell you what THE MESSAGE answers or disputes; never take a number, team or name from them. The group's own match is its latest game: "tonight", "today", "last night", "yesterday", "dün akşam" and "earlier" all mean that latest game.
+
+A TEAM REFERENCE below is the team's name as written ("yellows", "Reds", "Sarılar"), "us" for the sender's own side ("we", "biz", "kazandık"), "them" for the other side, or "" when not said. Never work a team out.
 
 WHAT YOU RETURN
 hasScore
 true when THE MESSAGE states the two numbers of a result; false when it has none ("yellows won", "wrong way round", "MoM Naim"), and first and second are then 0.
 first, second
-the two numbers of the FINAL result, in written order. In a story ("it was 6-6 then it turned to 9-6") the final one.
-A TEAM REFERENCE is the team's name as written ("yellows", "Reds", "Sarılar"); "us" for the sender's side ("we", "biz", "kazandık"), "them" for the other. "" when not said. Never guess or work out a team.
+the two numbers of the final result, in the order written. In a story ("it was 6-6 then it turned to 9-6") the last one.
 firstTeam, secondTeam
-a team written directly beside the first or second number with no word about the outcome.
+the team written directly beside the first or the second number, with no word about who won or lost. It stays there when THE MESSAGE answers MatchTime's "which team won?" with a scoreline.
 winner
-only when a word says so: "to" or "for" a team, "won", "wins", "beat", "kazandı", "yendi". "" otherwise and for a draw.
+the team a word names as the winner: "to" or "for" a team, "won", "wins", "beat", "kazandı", "yendi". A bare team name, the whole message, answering MatchTime's "which team won?" is the winner too. "" otherwise, and for a draw.
 loser
-only when a word says so: "lost", "got beaten", "kaybetti", "yenildi". "" otherwise.
+the team a word names as the loser: "lost", "got beaten", "kaybetti", "yenildi". "" otherwise.
 momRef
 the player named Man of the Match ("MoM", "man of the match", "POTM", "maçın adamı"), as written, or a bare name answering MatchTime's question who it was. "" otherwise; praise alone ("Naim was class") is "".
 correction
-true only when it says a result ALREADY given for this match was wrong ("no, it was...", "yanlış", "hayır ... olacak"). A first report is false.
+true only when THE MESSAGE says a result already given for this match was wrong ("no, it was...", "yanlış", "hayır ... olacak"), as when it disputes the result it quotes. A first report is false, even straight after MatchTime asked for the score.
 swapped
 true when it says the teams are the wrong way round ("other way round", "tam tersi"); correction is then true too.
 otherGame
-true when it is plainly about a different game ("last week we lost 9-2", "geçen ay 5-0 yenmiştik"); correction is then false.
+true only when THE MESSAGE is plainly about a game before the latest one ("last week", "geçen ay"); correction is then false.
 
 EXAMPLES, English and Turkish
 A word names the winner:
@@ -396,55 +461,62 @@ A team beside a number:
   "Yellow 9 - 6 Red" -> first 9, second 6, firstTeam "Yellow", secondTeam "Red"
   "kırmızı 6 sarı 9" -> first 6, second 9, firstTeam "kırmızı", secondTeam "sarı"
   "Reds 3-5" -> first 3, second 5, firstTeam "Reds", winner ""
-  "9-6 yellow" -> first 9, second 6, secondTeam "yellow"
+  "7-4 yellows", answering MatchTime's "which team won?" -> first 7, second 4, secondTeam "yellows", winner ""
 The sender's side:
   "we won 5-3" / "5-3 kazandık" -> first 5, second 3, winner "us"
   "lost 3-5" / "3-5 kaybettik" -> first 3, second 5, loser "us"
   "reds beat us 7-2" -> first 7, second 2, winner "reds", loser "us"
-No team or no scoreline:
+No team, or no numbers:
   "10-7" / "7-7 berabere" -> hasScore true, the two numbers, every team field ""
   "yellows won" / "sarılar kazandı" -> hasScore false, winner "yellows" / "sarılar"
-  "Yellow", the whole message, after MatchTime asked which team won -> hasScore false, winner "Yellow"
+  "Yellow", the whole message, answering MatchTime's "which team won?" -> hasScore false, winner "Yellow"
 Man of the Match:
   "Yellow won 7-4, MoM Naim" / "sarı 7-4 kazandı, maçın adamı Naim" -> first 7, second 4, winner "Yellow" / "sarı", momRef "Naim"
-  "Naim", after MatchTime asked who was Man of the Match -> hasScore false, momRef "Naim"
-A correction or another game:
+  "Naim", answering MatchTime's question who was Man of the Match -> hasScore false, momRef "Naim"
+A correction:
   "no Yellow 9 - 6 Red" / "yanlış, kırmızı 6 sarı 9" -> correction true, numbers and teams as above
   "wrong way round, yellows won" / "tam tersi, sarılar kazandı" -> hasScore false, correction true, swapped true, winner "yellows" / "sarılar"
-  "last week we lost 9-2" -> first 9, second 2, loser "us", otherGame true`,
+The latest game or an earlier one:
+  "Red won 4-2 last night" / "dün akşam kırmızı 4-2 kazandı" -> first 4, second 2, winner "Red" / "kırmızı", otherGame false
+  "last week we lost 9-2" / "geçen ay 5-0 yenmiştik" -> loser "us" / winner "us", otherGame true`,
 
-  admin: `You read ONE instruction to the bot and report what it says. You report the words; code decides what happens. Messages may be in English or Turkish. Above THE MESSAGE you may see recent chat, MatchTime's last post, NOW (the time at the club) and, for a WhatsApp reply, the message it quotes (the THEY ARE REPLYING TO line): context only.
+  admin: `You read ONE instruction to MatchTime, the club's bot, and report what it says. You report the words; code decides what happens. Messages may be in English or Turkish.
+
+THE MESSAGE is the one you report on, with its sender. Above it you may see RECENT CHAT, MATCHTIME'S LAST POST, NOW (the time at the club) and, for a WhatsApp reply, the message it quotes (the THEY ARE REPLYING TO line). They tell you who "he" or "them" is; the action and every field come from THE MESSAGE.
 
 THE ACTION, exactly one:
-  "bulk_payment"  someone paid for several players: "Amir paid for 4 players", "Amir paid for Faris and Adam".
-  "fee_waiver"    the sender gives named players a free place, so they owe NOTHING for a game ("Bilal washed the bibs, he's free this week", "Tom plays free tonight", "Ali bu hafta ödemesin"), or takes a free place back ("Bilal isn't free after all, he pays"). Free meaning ABLE to play ("I'm free Tuesday") is not this. Nor is a question or a discussion about it ("should Bilal play free?", "is he free?"): that is "other".
-  "reminder"      the sender wants to be reminded, at a time.
-  "recruit"       the sender asks the bot to CONTACT or INVITE players who are not registered yet: "message the lads from the last few games", "DM everyone who played recently and invite them", "ask the regulars if they can play", "we need more players, can you round some up". It is about people OUTSIDE the squad: asking to SHOW, LIST or COUNT the registered players is "other".
-  "stats_blast"   the sender tells YOU to send every player their own stats or ratings link: "send everyone their stats", "DM the squad their ratings", "share the stats links with the lads".
-  "other"         anything else.
+  "bulk_payment" someone paid for several players.
+  "fee_waiver" the sender gives named players a free place, so they owe nothing for a game, or takes a free place back. "Free" meaning able to play ("I'm free Tuesday") is not this, and neither is a question or a discussion about it ("should Bilal play free?").
+  "reminder" the sender wants MatchTime to remind them, at a time.
+  "recruit" the sender asks MatchTime to contact or invite players who are not in the squad yet. Asking to show, list or count the squad is "other".
+  "stats_blast" the sender tells MatchTime itself to send every player their own stats or ratings link. Telling the PLAYERS to do something (rate each other, open the link they already have), or only talking or asking about the links, is "other".
+  "other" anything else.
 
 THE FIELDS. Fill the ones for the action; every other field is "", 0, false or [].
-  payerRef         bulk_payment: who paid, verbatim.
-  count            bulk_payment: how many players they paid for.
-  coveredRefs      the people the action is about, verbatim, one entry each: for bulk_payment the people paid for, if named; for fee_waiver the people the free place is given to or taken from. "he" or "him" is the person the message named, else the author of the message it replies to when the reply line names them; otherwise the words as written.
-  undo             fee_waiver: true when the message TAKES a free place back ("Bilal isn't free after all", "no, Tom pays this week", "Ali ücretsiz değil, ödesin"); false when it gives one.
-  matchDay         fee_waiver: the day the message names for the game, verbatim ("tonight", "last night", "next Friday", "cuma"); "" when it names none or only "this week".
-  phrase           reminder: the time phrase EXACTLY as written ("on Monday", "tomorrow at 6"). Never a date.
-  note             reminder: WHAT to remind them about, in their own words ("bring the bibs"); "" when it names nothing.
-  lookbackMatches  recruit: how many recent matches to draw players from ("the last 5 matches" -> 5, "the last couple of games" -> 2); 0 when no number is named.
+  payerRef bulk_payment: who paid, as written.
+  count bulk_payment: how many players they paid for.
+  coveredRefs the people the action is about, one entry each, as written: for bulk_payment the people paid for, if named; for fee_waiver the people given the free place or losing it. "he" or "him" is the person the message named, else the author of the quoted message when the THEY ARE REPLYING TO line names one.
+  undo fee_waiver: true when the message takes a free place back, false when it gives one.
+  matchDay fee_waiver: the day the message names for the game, as written ("tonight", "last night", "next Friday", "cuma"); "" when it names none or only "this week".
+  phrase reminder: the time phrase exactly as written ("on Monday", "tomorrow at 6"), never a date.
+  note reminder: what to remind them about, in their own words ("bring the bibs"); "" when it names nothing.
+  lookbackMatches recruit: how many recent matches to draw players from ("the last 5 matches" -> 5, "the last couple of games" -> 2); 0 when no number is named.
 
-WHO DOES THE WORK. "stats_blast" tells YOU to send something to every player. If the sender tells the PLAYERS to do something (rate each other, check a link, click the one they already have, not forget something), it is "other", however many times it says stats, ratings, players, DM or everyone. A message can be ABOUT the stats links without asking you to send them.
-
-EXAMPLES
-  "@Match Time send everyone their stats"                                      -> stats_blast
-  "@Match Time can you DM the squad their ratings links"                       -> stats_blast
-  "lads don't forget to rate the players via the link MatchTime DM'ed you"     -> other, it instructs the players
-  "the more accurate the ratings, the more balanced the teams"                 -> other, it is a remark
-  "did everyone get their stats link?"                                         -> other, it is a question
-  "@Match Time what are my stats"                                              -> other, one person asking about themselves
-  "Bilal washed the bibs, he's free this week"                                 -> fee_waiver, coveredRefs ["Bilal"], undo false, matchDay ""
-  "Ali ve Can cuma günü ödemesin"                                              -> fee_waiver, coveredRefs ["Ali", "Can"], undo false, matchDay "cuma günü"
-  "scrap that, Tom isn't free, he pays"                                        -> fee_waiver, coveredRefs ["Tom"], undo true`,
+EXAMPLES, English and Turkish
+  "Amir paid for 4 players" -> bulk_payment, payerRef "Amir", count 4
+  "Amir paid for Faris and Adam" -> bulk_payment, payerRef "Amir", count 2, coveredRefs ["Faris","Adam"]
+  "Bilal washed the bibs, he's free this week" -> fee_waiver, coveredRefs ["Bilal"], undo false, matchDay ""
+  "Ali ve Can cuma günü ödemesin" -> fee_waiver, coveredRefs ["Ali","Can"], undo false, matchDay "cuma günü"
+  "put Bilal down as free on Friday" / "Bilal bu akşam ücretsiz oynasın" -> fee_waiver, coveredRefs ["Bilal"], undo false, matchDay "on Friday" / "bu akşam"
+  "scrap that, Tom isn't free, he pays" / "Ali ücretsiz değil, ödesin" -> fee_waiver, coveredRefs ["Tom"] / ["Ali"], undo true
+  "remind me tomorrow at 6 to bring the bibs" -> reminder, phrase "tomorrow at 6", note "bring the bibs"
+  "message the lads from the last 5 matches and invite them" -> recruit, lookbackMatches 5
+  "we need more players, can you round some up" / "ask the regulars if they can play" -> recruit, lookbackMatches 0
+  "@Match Time send everyone their stats" / "@Match Time DM the squad their ratings links" -> stats_blast
+  "lads don't forget to rate the players via the link MatchTime DM'ed you" -> other: it tells the players
+  "did everyone get their stats link?" -> other: a question
+  "@Match Time what are my stats" -> other: one person asking about themselves
+  "should Bilal play free?" -> other`,
 };
 
 // ── Schemas ────────────────────────────────────────────────────────────
@@ -1063,22 +1135,21 @@ export async function extractForRoute(
   );
   context.push(msg.body);
 
+  const call = EXTRACTOR_CALLS[kind];
   const req: ModelRequest = {
-    model: EXTRACTOR_MODEL,
+    // The model and its thinking posture, as one value (`EXTRACTOR_CALLS`).
+    // On Sonnet 5 that is THINKING OFF. Measured, not assumed — see
+    // `llm.ts`'s `ModelRequest.thinking` and `__tests__/thinking-off.test.ts`.
+    // On a self-contradictory message, Sonnet's adaptive thinking spent the
+    // whole token budget and returned no JSON at all, 5 runs of 5, against
+    // the live club. On Haiku 5.5 it is adaptive at `HAIKU_EFFORT`, which
+    // answered that same message with text on every arm (2026-10-20).
+    ...call,
     system: EXTRACTOR_PROMPTS[kind],
     user: context.join("\n"),
-    maxTokens: EXTRACTOR_MAX_TOKENS,
+    maxTokens: maxTokensFor(call),
     schema: SCHEMAS[kind],
     label: `extractor:${kind}`,
-    // THINKING OFF. Measured, not assumed — see `llm.ts`'s
-    // `ModelRequest.thinking` and `__tests__/thinking-off.test.ts`. On a
-    // self-contradictory message, adaptive thinking spent the whole
-    // token budget and returned no JSON at all, 5 runs of 5, against the
-    // live club. An extractor that deliberates would be the
-    // mega-prompt's failure mode reappearing one layer down — the prompt
-    // is deleted (§10 step 8), the failure mode is not — and §6.2's
-    // contract is "FACTS about the text only".
-    thinking: "off",
   };
 
   // ── ONE RETRY, AND ONLY WHERE SILENCE COSTS A SLOT (§10 step 8) ────

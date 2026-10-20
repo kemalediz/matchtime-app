@@ -128,6 +128,7 @@ export const SCORE_LIVE_CASES: ScoreLiveCase[] = [
   { id: "G1", why: "a tagged score that is not a correction never replaces the record", body: "@Match Time it was 9-2 to yellow", tagged: true, sender: "yellow", recorded: R96, facts: n(9, 2, { winner: "yellow" }), expect: "told" },
   { id: "G2", why: "a tagged score about ANOTHER game changes nothing", body: "@Match Time last week we lost 9-2", tagged: true, sender: "yellow", recorded: R96, facts: n(9, 2, { loser: "us", otherGame: true }), expect: "silent", anyRoute: true },
   { id: "G3", why: "...and is not recorded against an unscored match either", body: "@Match Time last week we lost 9-2", tagged: true, sender: "yellow", facts: n(9, 2, { loser: "us", otherGame: true }), expect: "silent", anyRoute: true },
+  { id: "G4", why: "corpus S17b, 2026-10-20: 'last night' is the group's own latest match, not another game (it came back otherGame and nothing was recorded)", body: "Red won 4-2 last night", facts: n(4, 2, { winner: "Red" }), expect: { red: 4, yellow: 2 } },
 
   // ── The one-word answer to the bot's question (item 4) ─────────────
   { id: "A1", why: "a bare team name answering 'which team won?'", body: "Yellow", pending: { first: 10, second: 7 }, lastBotPost: WHICH_TEAM, facts: none({ winner: "Yellow" }), expect: { red: 7, yellow: 10 }, noModelInProduction: true },
@@ -147,6 +148,7 @@ export const SCORE_LIVE_CASES: ScoreLiveCase[] = [
   { id: "T6", why: "Turkish: a correction", body: "@Match Time yanlış, kırmızı 6 sarı 9", tagged: true, labels: TR, recorded: R96, lastBotPost: "Tamam 👍 *Kırmızı* 9 - 6 kazandı, rakip Sarı. Kaydettim.", facts: n(6, 9, { firstTeam: "kırmızı", secondTeam: "sarı", correction: true }), expect: { red: 6, yellow: 9 } },
   { id: "T7", why: "Turkish: a numberless correction", body: "@Match Time tam tersi, sarılar kazandı", tagged: true, labels: TR, recorded: R96, lastBotPost: "Tamam 👍 *Kırmızı* 9 - 6 kazandı, rakip Sarı. Kaydettim.", facts: none({ correction: true, swapped: true, winner: "sarılar" }), expect: { red: 6, yellow: 9 } },
   { id: "T8", why: "Turkish: a case ending on the team word", body: "9-6 sarıların lehine bitti", labels: TR, facts: n(9, 6, { winner: "sarıların" }), expect: { red: 6, yellow: 9 } },
+  { id: "T9", why: "Turkish: 'dün akşam' (last night) is the latest match too", body: "dün akşam sarılar 5-2 kazandı", labels: TR, facts: n(5, 2, { winner: "sarılar" }), expect: { red: 2, yellow: 5 } },
 ];
 
 const RED_SIDE = ["kemal", "elvin", "sait"];

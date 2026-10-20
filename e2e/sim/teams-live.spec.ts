@@ -57,16 +57,25 @@ async function matchLabels(grp: SimGroup): Promise<string[]> {
       const grp = (
         await createGroup(request, db, {
           maxPlayers: 8,
+          // Today: teams are built only on match day (2026-09-29 gate,
+          // team-ops-engine-batch.ts). The +2 days default got "I'll build
+          // the teams on match day" and wrote no names.
+          upcomingMatch: { daysFromNow: 0 },
           attendance: FULL_ATTENDANCE,
         })
       ).attach(request);
 
       expect(await matchLabels(grp)).toEqual([]);
 
-      // No verdict — the live model must populate teamNames itself.
+      // No verdict: the live model must populate teamNames itself.
+      // Tagged, like Scenario 2: team ops require an @Match Time tag
+      // (interaction contract, 2026-06-18). Untagged, the engine refused
+      // it before the names were ever read ("team ops require an @Match
+      // Time tag"), which is half of why this scenario failed on main.
       const r = await grp.post(
         "alice",
         "@Match Time generate the teams — you pick some fun team names for us this week",
+        { tag: true },
       );
 
       const labels = await matchLabels(grp);
@@ -98,6 +107,10 @@ async function matchLabels(grp: SimGroup): Promise<string[]> {
       const grp = (
         await createGroup(request, db, {
           maxPlayers: 8,
+          // Today: teams are built only on match day (2026-09-29 gate,
+          // team-ops-engine-batch.ts). The +2 days default got "I'll build
+          // the teams on match day" and wrote no names.
+          upcomingMatch: { daysFromNow: 0 },
           attendance: FULL_ATTENDANCE,
         })
       ).attach(request);
