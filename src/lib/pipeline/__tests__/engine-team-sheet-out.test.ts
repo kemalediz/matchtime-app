@@ -13,10 +13,10 @@
  * The prompt is the fix (an injury is not an out). This is the net under it,
  * and it reads only the model's own field and the club's state, never the
  * words: an UNTAGGED OUT from the SENDER, about a place on a PUBLISHED team
- * sheet, needs confidence of at least 0.9. Measured on 2026-10-20 (dev key,
+ * sheet, needs confidence of at least 0.85. Measured on 2026-10-20 (dev key,
  * old and new prompts, Sonnet 5 and Haiku 5.5): every untagged out that
- * said "can't make it" / "gelemiyorum" came back at 0.9 or more; the
- * incident came back at 0.75 three times of three. A tagged OUT, an OUT
+ * said so came back at 0.9 or more; the incident came back at 0.75 three
+ * times of three. A tagged OUT, an OUT
  * before the teams are out, and the leaving half of a stated replacement
  * keep the 0.7 floor.
  */
@@ -59,8 +59,8 @@ function run(claims: Claim[], o: { tagged?: boolean; teams?: boolean; body?: str
 const theIncidentOut = (confidence = 0.75) => claim({ polarity: "out", basis: "decision", confidence });
 
 describe("the incident: an untagged, unsure OUT from a player on the team sheet holds", () => {
-  it("the bar is 0.9", () => {
-    expect(TEAM_SHEET_OUT_CONFIDENCE).toBe(0.9);
+  it("the bar is 0.85", () => {
+    expect(TEAM_SHEET_OUT_CONFIDENCE).toBe(0.85);
   });
 
   it("the 0.75 OUT writes nothing, keeps him CONFIRMED, says nothing and reacts nothing", () => {
@@ -74,21 +74,21 @@ describe("the incident: an untagged, unsure OUT from a player on the team sheet 
   });
 
   it("just under the bar holds too", () => {
-    const r = run([theIncidentOut(0.89)]);
+    const r = run([theIncidentOut(0.84)]);
     expect(attWrites(r.writes)).toHaveLength(0);
     expect(statusOf(r.nextState, "habib")).toBe("CONFIRMED");
   });
 });
 
 describe("what the net leaves alone", () => {
-  it("a sure untagged OUT (0.9 and up) still drops him and opens the slot", () => {
+  it("a sure untagged OUT still drops him and opens the slot", () => {
     const r = run([theIncidentOut(0.95)], { body: "hamstring's gone, can't make it tonight" });
     expect(statusOf(r.nextState, "habib")).toBe("DROPPED");
     expect(r.outcomes[0].react).toBe("👋");
   });
 
   it("at exactly the bar it drops", () => {
-    const r = run([theIncidentOut(0.9)], { body: "can't make it" });
+    const r = run([theIncidentOut(0.85)], { body: "can't make it" });
     expect(statusOf(r.nextState, "habib")).toBe("DROPPED");
   });
 

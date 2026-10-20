@@ -200,13 +200,15 @@ export function isFloorExempt(
  * never from the words: once the teams are out, dropping a player costs the
  * line-up, the bench call and a DM, so the sender's own UNTAGGED OUT needs a
  * surer reading. Measured 2026-10-20 (dev key, both prompts, Sonnet 5 and
- * Haiku 5.5): every untagged "can't make it" / "gelemiyorum" came back at
- * 0.9 or more, the incident at 0.75 three times of three.
+ * Haiku 5.5, `scripts/live-check-attendance-extractor.ts`): every untagged
+ * out that said so ("can't make it", "gelemiyorum", "anyone replace me?")
+ * came back at 0.9 or more, the incident at 0.75 three times of three. The
+ * bar sits between the two, with room on each side.
  *
  * A tagged OUT, an OUT before the teams are out, an OUT about someone else
  * and the leaving half of a stated replacement keep `CONFIDENCE_FLOOR`.
  */
-export const TEAM_SHEET_OUT_CONFIDENCE = 0.9;
+export const TEAM_SHEET_OUT_CONFIDENCE = 0.85;
 
 function holdsAsUnsureTeamSheetOut(
   c: Claim,
