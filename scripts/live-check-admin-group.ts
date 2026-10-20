@@ -152,7 +152,7 @@ const lc = (xs: string[] | undefined) => (xs ?? []).map((x) => x.toLowerCase());
 const TEAMS: TeamsCase[] = [
   { text: "@Match Time generate the teams", check: (f) => f.action === "generate", why: "generate" },
   { text: "@Match Time regenerate the teams once more with Erdal's rating updated", check: (f) => f.action === "generate", why: "generate, again" },
-  { text: "@Match Time generate the teams now, come up with fun team names", check: (f) => f.action === "generate" && f.teamNames === null, why: "generate wins over rename" },
+  { text: "@Match Time generate the teams now, come up with fun team names", check: (f) => f.action === "generate" && f.teamNames !== null && f.teamNames[0].toLowerCase() !== f.teamNames[1].toLowerCase(), why: "generate wins over rename, and MatchTime makes up the two names (2026-10-20)" },
   { text: "@Match Time show me the teams", check: (f) => f.action === "show", why: "show" },
   { text: "@Match Time generate the teams, put me and David together", check: (f) => f.action === "generate" && JSON.stringify(f.pairings.map(lc)) === JSON.stringify([["me", "david"]]), why: "pairing" },
   { text: "@Match Time generate the teams, Ibrahim is playing", check: (f) => f.action === "generate" && lc(f.includeRefs).includes("ibrahim"), why: "include" },

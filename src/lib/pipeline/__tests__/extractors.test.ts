@@ -395,25 +395,39 @@ describe("parseFacts (other routes)", () => {
     // The measured shape: "@Match Time generate the teams now, come up
     // with fun team names" must extract as `generate`, not `rename` —
     // `rename` is handed back, and handing that message back would lose
-    // the club's most-used command to a wording detail.
+    // the club's most-used command to a wording detail. Since the
+    // 2026-10-20 rewrite each action is defined once, under `action`.
     const p = EXTRACTOR_PROMPTS.teams;
-    expect(p).toMatch(/If the line-ups have to be worked out again it is "generate"/);
-    expect(p).toMatch(/"rename" is only for the same line-ups under new names/);
-    // …and it still never picks anything itself, or guesses the sender.
-    expect(p).toMatch(/You never pick the teams/);
-    expect(p).toMatch(/when the sender means themselves[^\n]*write "me"/);
+    expect(p).toMatch(/"generate"\s+work the line-ups out again[^\n]*even when the same message also asks for new names/);
+    expect(p).toMatch(/"rename"\s+keep the same two line-ups/);
+    // …and it still never picks the players itself, or guesses the sender.
+    expect(p).toMatch(/You never pick the players/);
+    expect(p).toMatch(/When the sender means themselves[^\n]*write "me"/);
+    // Each action is defined in one place only.
+    for (const action of ['"show"', '"generate"', '"rename"', '"swap"']) {
+      expect(p.split(`\n  ${action} `).length, action).toBe(2);
+    }
+  });
+
+  it("the teams prompt makes up two names when the message asks MatchTime to pick them (teams-live Scenario 1)", () => {
+    // "@Match Time generate the teams, you pick some fun team names" came
+    // back with teamNames [] since the mega-prompt was deleted, so the
+    // group got Red and Yellow. Team names are words for the group, not
+    // a decision about the club's records: `sanitiseTeamNames` cleans and
+    // caps whatever arrives.
+    const p = EXTRACTOR_PROMPTS.teams;
+    expect(p).toMatch(/teamNames[\s\S]*asks you to pick the names[^\n]*make up two short names/);
+    expect(p).not.toMatch(/leaves teamNames empty/);
   });
 
   it("the teams prompt reads the Turkish commands the Turkish copy tells a group to type", () => {
     // `strings.tr.ts` quotes these forms; the teams extractor is the one
-    // that has to read them. One language line and one example per
-    // action, the Phase 1 way (#90).
+    // that has to read them. The Turkish forms sit beside the English
+    // ones in the examples, grouped by the action they teach.
     const p = EXTRACTOR_PROMPTS.teams;
-    // Since the 2026-10-16 rewrite the Turkish forms sit beside the English
-    // ones under the action they teach.
-    expect(p).toMatch(/"generate"[^\n]*"takımları kur"[^\n]*"yeniden kur"/);
-    expect(p).toMatch(/"show"[^\n]*"takımları göster"/);
-    expect(p).toMatch(/moves[^\n]*"Ali ile Can'ı değiştir" -> \["Ali","Can"\]/);
+    expect(p).toMatch(/"takımları kur"[^\n]*"yeniden kur"[^\n]*-> generate/);
+    expect(p).toMatch(/"takımları göster"[^\n]*-> show/);
+    expect(p).toMatch(/"Ali ile Can'ı değiştir"[^\n]*moves \["Ali","Can"\]/);
     // The Turkish first person is written "me" so the engine's closed
     // list rebinds it; "ben" is also an English name, so it is not on it.
     expect(p).toMatch(/"beni"[^\n]*"me"/);

@@ -26,7 +26,16 @@
  * Capacity is arithmetic; arithmetic is the engine's job.
  */
 import { renderGroupReplyContext, type ContextMessage } from "../reply-context";
-import { anthropicModel, degradation, extractJson, EXTRACTOR_MODEL, type ModelRequest, type PipelineModel } from "./llm";
+import {
+  anthropicModel,
+  degradation,
+  extractJson,
+  HAIKU_CALL,
+  SONNET_CALL,
+  type ModelCall,
+  type ModelRequest,
+  type PipelineModel,
+} from "./llm";
 import { isAiBudgetExceeded } from "../ai-budget-context";
 import { parsePeriodFields } from "./stats-period";
 import { HELP_FEATURES } from "./types";
@@ -50,6 +59,40 @@ import type {
 } from "./types";
 
 const EXTRACTOR_MAX_TOKENS = 1_024;
+
+/**
+ * THE MODEL EACH EXTRACTOR RUNS ON, with its thinking posture (2026-10-20).
+ *
+ * Attendance and question stay on Sonnet 5 with thinking off (see
+ * `ModelRequest.thinking` and `__tests__/thinking-off.test.ts`). Teams
+ * was rewritten whole on 2026-10-20 and moved to Haiku
+ * 5.5 after a paid before/after check on the dev key: the live prompt on
+ * Sonnet 5, the new prompt on Sonnet 5 and the new prompt on Haiku 5.5,
+ * one pass of every suite that covers them (teams-live, show-teams-live,
+ * extract-once-live, live-check-teams-extractor including T5,
+ * live-check-score-extractor, hq-score, hq-mom, hq-chatter, admin-group,
+ * free-places, corpus writes). Haiku matched or beat the live arm on
+ * every case, never returned an empty answer, and costs about a
+ * fifteenth per call. Moving one back is one line here.
+ */
+export const EXTRACTOR_CALLS: Record<Exclude<ExtractorKind, "none">, ModelCall> = {
+  attendance: SONNET_CALL,
+  question: SONNET_CALL,
+  teams: HAIKU_CALL,
+  score: SONNET_CALL,
+  admin: SONNET_CALL,
+};
+
+/**
+ * Haiku 5.5 thinks adaptively and its thinking shares `max_tokens`. An
+ * extractor's answer is under 250 tokens; measured on the 2026-10-20 arms,
+ * the largest thinking-plus-answer was well inside this.
+ */
+const HAIKU_EXTRACTOR_MAX_TOKENS = 2_048;
+
+function maxTokensFor(call: ModelCall): number {
+  return call.model === HAIKU_CALL.model ? HAIKU_EXTRACTOR_MAX_TOKENS : EXTRACTOR_MAX_TOKENS;
+}
 
 /**
  * The routes whose extraction is retried once. See the essay in
@@ -347,20 +390,41 @@ Which period:
   "@Match Time all-time most MoMs" / "@Match Time tüm zamanların en çok maçın adamı kim" -> stats, mom, period all_time
   "@Match Time who played most this month" / "@Match Time bu ay en çok kim oynadı" -> stats, appearances, period this, periodUnit month`,
 
-  teams: `You read ONE message about the two team line-ups (red and yellow) and report what it asks for. You never pick the teams. Above THE MESSAGE you may see recent chat, MatchTime's last post, NOW (the time at the club) and, for a WhatsApp reply, the message it quotes: context for who "him" or "them" are, never a field of their own.
+  teams: `You read ONE message about the club's two team line-ups and report what it asks for. You never pick the players: code builds and changes the line-ups.
 
-  action       what has to change:
-               "show" re-post the teams that exist, unchanged ("teams?", "show me the teams", "takımları göster")
-               "generate" work the line-ups out again ("generate the teams", "regenerate", "make the teams", "shuffle them again", "come up with an alternative", "takımları kur", "yeniden kur")
-               "rename" keep the SAME two line-ups under different names
-               "swap" move named players between the existing teams and leave everyone else where they are
-  includeRefs  people the message says to include ("generate the teams, Ibrahim is playing"), verbatim
-  teamNames    the two names the message SUPPLIES, in order, or an empty array
-  swaps        people the message puts on a NAMED side, with that side: "put David in Red" -> {"personRef":"David","team":"RED"}
-  moves        people to move to the OTHER team from wherever they are now, when no side is named: "swap Ali and Can" -> ["Ali","Can"], "move Tom to the other team" -> ["Tom"], "Ali ile Can'ı değiştir" -> ["Ali","Can"], "Tom'u diğer takıma al" -> ["Tom"]
-  pairings     people who must be on the SAME team as each other, one array per group ("put me and David on the same team" -> [["me","David"]])
+THE MESSAGE is the one you report on, with its sender. Above it you may see RECENT CHAT, MATCHTIME'S LAST POST, NOW (the time at the club) and, for a WhatsApp reply, the message it quotes (the THEY ARE REPLYING TO line). They tell you who "him", "them" or "the teams" are; every field comes from THE MESSAGE.
 
-If the line-ups have to be worked out again it is "generate", even when the message also asks for new names or says "again", "once more" or "instead"; a message that asks you to invent names while generating leaves teamNames empty. "rename" is only for the same line-ups under new names. Write every name as the message writes it; when the sender means themselves ("me", "I", "beni", "bana", "ben") write "me". Any field the message says nothing about is empty.`,
+WHAT YOU RETURN
+action, exactly one:
+  "show" post the teams that already exist, unchanged.
+  "generate" work the line-ups out again. This holds even when the same message also asks for new names, or says "again", "once more" or "instead".
+  "rename" keep the same two line-ups and change only their names.
+  "swap" move named players between the existing teams and leave everyone else where they are.
+includeRefs
+  people the message says must play.
+teamNames
+  the two team names, in order: the ones the message gives or, when it asks you to pick the names, make up two short names (different, at most 24 characters each, not Red or Yellow, in the language THE MESSAGE is written in). An empty array when the message is not about names.
+swaps
+  people the message puts on a NAMED side, with that side, RED or YELLOW.
+moves
+  people who go to the OTHER team from wherever they are now, when the message names no side.
+pairings
+  people who must end up on the same team as each other, one array per group.
+
+Write every person as the message writes them. When the sender means themselves ("me", "I", "beni", "bana", "ben") write "me". Every field the message says nothing about is empty.
+
+EXAMPLES, English and Turkish
+  "teams?" / "show me the teams" / "takımları göster" -> show
+  "show us the teams again without regenerating" -> show
+  "generate the teams" / "make the teams" / "shuffle them again" / "takımları kur" / "yeniden kur" -> generate
+  "generate the teams, Ibrahim is playing" -> generate, includeRefs ["Ibrahim"]
+  "make the teams and put me and David on the same team" -> generate, pairings [["me","David"]]
+  "generate the teams, you pick some fun names" / "takımları kur, isimleri sen seç" -> generate, teamNames two names you make up
+  "generate the teams, call them Lions and Tigers" -> generate, teamNames ["Lions","Tigers"]
+  "call the teams Lions and Tigers" / "takımların adı Aslanlar ve Kaplanlar olsun" -> rename, teamNames ["Lions","Tigers"] / ["Aslanlar","Kaplanlar"]
+  "put David in Red" -> swap, swaps [{"personRef":"David","team":"RED"}]
+  "swap Ali and Can" / "Ali ile Can'ı değiştir" -> swap, moves ["Ali","Can"]
+  "move Tom to the other team" / "Tom'u diğer takıma al" -> swap, moves ["Tom"]`,
 
   score: `You read ONE message from a football group's WhatsApp chat about the result of the group's own match and report what it SAYS. You never decide which team is which, who won, who a player is, or what gets recorded: code does that.
 
@@ -1063,22 +1127,21 @@ export async function extractForRoute(
   );
   context.push(msg.body);
 
+  const call = EXTRACTOR_CALLS[kind];
   const req: ModelRequest = {
-    model: EXTRACTOR_MODEL,
+    // The model and its thinking posture, as one value (`EXTRACTOR_CALLS`).
+    // On Sonnet 5 that is THINKING OFF. Measured, not assumed — see
+    // `llm.ts`'s `ModelRequest.thinking` and `__tests__/thinking-off.test.ts`.
+    // On a self-contradictory message, Sonnet's adaptive thinking spent the
+    // whole token budget and returned no JSON at all, 5 runs of 5, against
+    // the live club. On Haiku 5.5 it is adaptive at `HAIKU_EFFORT`, which
+    // answered that same message with text on every arm (2026-10-20).
+    ...call,
     system: EXTRACTOR_PROMPTS[kind],
     user: context.join("\n"),
-    maxTokens: EXTRACTOR_MAX_TOKENS,
+    maxTokens: maxTokensFor(call),
     schema: SCHEMAS[kind],
     label: `extractor:${kind}`,
-    // THINKING OFF. Measured, not assumed — see `llm.ts`'s
-    // `ModelRequest.thinking` and `__tests__/thinking-off.test.ts`. On a
-    // self-contradictory message, adaptive thinking spent the whole
-    // token budget and returned no JSON at all, 5 runs of 5, against the
-    // live club. An extractor that deliberates would be the
-    // mega-prompt's failure mode reappearing one layer down — the prompt
-    // is deleted (§10 step 8), the failure mode is not — and §6.2's
-    // contract is "FACTS about the text only".
-    thinking: "off",
   };
 
   // ── ONE RETRY, AND ONLY WHERE SILENCE COSTS A SLOT (§10 step 8) ────

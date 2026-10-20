@@ -56,9 +56,9 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { anthropicModel, EXTRACTOR_MODEL, ROUTER_MODEL } from "../llm";
-import { extractForRoute } from "../extractors";
+import { EXTRACTOR_CALLS, extractForRoute, extractorFor, type ExtractorKind } from "../extractors";
 import { routeBatch } from "../router";
-import { HAIKU_EFFORT } from "../../models";
+import { HAIKU_EFFORT, SONNET_MODEL } from "../../models";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import type { PipelineModel, ModelRequest } from "../llm";
@@ -90,20 +90,38 @@ const MSG = {
   lastBotPost: null,
 };
 
-describe("every extractor asks for thinking to be OFF", () => {
+describe("every extractor sends its model's thinking posture, never an unstated one", () => {
+  // 2026-10-20: the teams, score and admin extractors may run on Haiku 5.5
+  // (`EXTRACTOR_CALLS`), which thinks adaptively at `HAIKU_EFFORT` and has
+  // answered every schema call with text so far, the T5 runaway included
+  // (scripts/live-check-teams-extractor.ts). A Sonnet extractor still
+  // turns thinking OFF, for the reason above.
   it.each(["self_att", "other_att", "offer", "unsure", "question", "balancer", "score", "admin_ops"] as const)(
     "%s",
     async (route) => {
       const model = capturing();
       await extractForRoute(model, route, MSG);
       expect(model.reqs).toHaveLength(1);
-      expect(
-        model.reqs[0].thinking,
-        `the ${route} extractor left thinking adaptive; on sonnet-5 that can spend ` +
-          `the whole max_tokens budget and return no text at all`,
-      ).toBe("off");
+      const call = EXTRACTOR_CALLS[extractorFor(route) as Exclude<ExtractorKind, "none">];
+      expect(model.reqs[0].model).toBe(call.model);
+      if (call.model === SONNET_MODEL) {
+        expect(
+          model.reqs[0].thinking,
+          `the ${route} extractor left thinking adaptive; on sonnet-5 that can spend ` +
+            `the whole max_tokens budget and return no text at all`,
+        ).toBe("off");
+      } else {
+        expect(model.reqs[0].thinking).toEqual({ effort: HAIKU_EFFORT });
+        // Thinking shares max_tokens on Haiku 5.5: leave room for it.
+        expect(model.reqs[0].maxTokens).toBeGreaterThanOrEqual(2_048);
+      }
     },
   );
+
+  it("the attendance and question extractors stay on Sonnet 5 (not part of this move)", () => {
+    expect(EXTRACTOR_CALLS.attendance).toEqual({ model: SONNET_MODEL, thinking: "off" });
+    expect(EXTRACTOR_CALLS.question).toEqual({ model: SONNET_MODEL, thinking: "off" });
+  });
 });
 
 describe("the model layer turns that into the parameter the API wants", () => {
