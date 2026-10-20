@@ -61,6 +61,40 @@ const LIVE = process.env.MT_SIM_LIVE_LLM === "1";
     });
   });
 
+  test("a score is extracted once, by its one owner", async ({ request, db }) => {
+    const g = await createGroup(request, db, {
+      upcomingMatch: false,
+      completedMatch: {
+        daysAgo: 1,
+        status: "TEAMS_PUBLISHED",
+        redScore: null,
+        yellowScore: null,
+        confirmedKeys: ["owner", "alice", "pete", "dan"],
+        teams: { owner: "RED", pete: "RED", alice: "YELLOW", dan: "YELLOW" },
+      },
+    });
+    const body = "@Match Time 5-3 to red";
+    setRouterStub({ floor: false, bodies: { [body]: "score" } });
+    setExtractorStub({
+      bodies: {
+        [body]: { hasScore: true, first: 5, second: 3, firstTeam: "red", secondTeam: "", winner: "", loser: "" },
+      },
+    });
+
+    await g.postBatch([{ player: "owner", body, tag: true }]);
+
+    const row = await db.one<{ pipelineTrace: Record<string, any> | null }>(
+      `SELECT "pipelineTrace" FROM "AnalyzedMessage" WHERE "orgId" = $1 AND body = $2`,
+      [g.orgId, body],
+    );
+    const t = row!.pipelineTrace!;
+    expect(t.router).toMatchObject({ route: "score" });
+    expect(t.extractions).toHaveLength(1);
+    expect(t.extractions[0]).toMatchObject({ owner: "score", extractor: "score", facts: { kind: "score", first: 5, second: 3 } });
+    expect(t.extractions[0].calls).toHaveLength(1);
+    expect(t.extractions[0]).not.toHaveProperty("sharedWith");
+  });
+
   test("a message routed to banter still records its route, and no extraction", async ({ request, db }) => {
     const g = await createGroup(request, db, { attendance: [] });
     setRouterStub({ floor: false, bodies: { "😂😂": "none" } });
