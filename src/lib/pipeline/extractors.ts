@@ -63,7 +63,7 @@ const EXTRACTOR_MAX_TOKENS = 1_024;
 /**
  * THE MODEL EACH EXTRACTOR RUNS ON, with its thinking posture (2026-10-20).
  *
- * Attendance and question stay on Sonnet 5 with thinking off (see
+ * Attendance stays on Sonnet 5 with thinking off (see
  * `ModelRequest.thinking` and `__tests__/thinking-off.test.ts`). Teams,
  * score and admin were rewritten whole on 2026-10-20 and moved to Haiku
  * 5.5 after a paid before/after check on the dev key: the live prompt on
@@ -74,10 +74,17 @@ const EXTRACTOR_MAX_TOKENS = 1_024;
  * free-places, corpus writes). Haiku matched or beat the live arm on
  * every case, never returned an empty answer, and costs about a
  * fifteenth per call. Moving one back is one line here.
+ *
+ * Question followed the same way the same day: rewritten whole, then the
+ * live prompt on Sonnet 5, the new prompt on Sonnet 5 and the new prompt
+ * on Haiku 5.5 through live-check-question-extractor, hq-questions,
+ * reply-to-matchtime, free-places, hq-chatter, corpus answers and the
+ * organisers-space spec. Haiku matched or beat the live arm on every
+ * question case, at about a twentieth of the cost per call.
  */
 export const EXTRACTOR_CALLS: Record<Exclude<ExtractorKind, "none">, ModelCall> = {
   attendance: SONNET_CALL,
-  question: SONNET_CALL,
+  question: HAIKU_CALL,
   teams: HAIKU_CALL,
   score: HAIKU_CALL,
   admin: HAIKU_CALL,
@@ -247,8 +254,8 @@ What the asker wants back. Exactly one. A message that asks two things gets the 
   my_stats         the asker's OWN stats, ratings, form or season summary, asked to see (they are sent privately)
   stats            numbers about players across matches (ratings, appearances, Man of the Match, Elo and the rest): a table, a ranking, another player's numbers, or the asker's own pairings
   options          what to do about being short of players: a smaller format, alternatives
-  how_it_works     how MatchTime itself works here: what the bench is or whether there is one, signing in and out, HOW the teams are made, HOW to pay
-  club             how the club itself is run: who the admins or organisers are, who collects the money, what the fee is, WHEN the teams come out
+  how_it_works     how MatchTime itself works here: what the bench is or whether there is one, signing in and out, HOW the teams are picked or balanced, HOW to pay
+  club             how the club itself is run: who the admins or organisers are, who collects the money, what the fee is, WHEN (what time or day) the teams are made or come out
   other            anything else
 
 personRef
