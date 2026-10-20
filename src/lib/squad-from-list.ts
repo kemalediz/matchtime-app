@@ -46,6 +46,7 @@ import { recordAttendanceEvent } from "./attendance-events";
 import { normalisePhone } from "./phone";
 import { normaliseName } from "./name-normalise";
 import { guardedAnthropicCall, systemBlock } from "@/lib/pipeline/llm";
+import { SONNET_MODEL } from "./models";
 import { withOrgAiBudget } from "./ai-budget";
 export { normaliseName };
 
@@ -55,7 +56,7 @@ export { normaliseName };
 // The call site sends `thinking: { type: "disabled" }`, which is
 // required: Sonnet 5 thinks adaptively when the parameter is omitted
 // and Sonnet 4.5 did not.
-const MODEL = "claude-sonnet-5";
+const MODEL = SONNET_MODEL;
 
 /** Hard CAP on how far back the squad-extraction window can stretch,
  *  regardless of when the previous match ended. The window normally

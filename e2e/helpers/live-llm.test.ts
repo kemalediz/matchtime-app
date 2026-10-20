@@ -265,25 +265,39 @@ describe("PROBE_MODELS", () => {
   // step 8 there was one model to check; now there are three, on two
   // families, and a key entitled to only one of them would pass a
   // single-model probe and then fail every extractor call.
+  // A model is named either as a literal or through one of the shared
+  // ids in `src/lib/models.ts` (HAIKU_MODEL, SONNET_MODEL); resolve both.
+  const MODELS_SRC = readFileSync(path.join(REPO_ROOT, "src", "lib", "models.ts"), "utf8");
+  function resolveModel(expr: string): string | null {
+    const literal = /^"([^"]+)"$/.exec(expr);
+    if (literal) return literal[1];
+    const shared = new RegExp(`^export const ${expr} = "([^"]+)";$`, "m").exec(MODELS_SRC);
+    return shared ? shared[1] : null;
+  }
+
   it("covers the model the surviving chase composer calls", () => {
     const src = readFileSync(path.join(REPO_ROOT, "src", "lib", "message-analyzer.ts"), "utf8");
-    const m = /^const MODEL = "([^"]+)";$/m.exec(src);
+    const m = /^const MODEL = ([^;]+);$/m.exec(src);
     expect(m, "could not find `const MODEL = …` in src/lib/message-analyzer.ts").not.toBeNull();
-    expect(m![1]).toBe(PROBE_MODEL);
-    expect(PROBE_MODELS).toContain(m![1]);
+    const id = resolveModel(m![1].trim());
+    expect(id, `could not resolve the chase composer's model (${m![1]})`).not.toBeNull();
+    expect(id).toBe(PROBE_MODEL);
+    expect(PROBE_MODELS).toContain(id);
   });
 
   it("covers the router's and the extractors' models", () => {
-    // The router's id lives in `src/lib/models.ts` (HAIKU_MODEL), which
-    // llm.ts re-exports as ROUTER_MODEL; the extractors' is a literal.
+    // Both ids live in `src/lib/models.ts` (HAIKU_MODEL, SONNET_MODEL),
+    // which llm.ts re-exports as ROUTER_MODEL and EXTRACTOR_MODEL.
     const src = readFileSync(path.join(REPO_ROOT, "src", "lib", "pipeline", "llm.ts"), "utf8");
-    const models = readFileSync(path.join(REPO_ROOT, "src", "lib", "models.ts"), "utf8");
-    const haiku = /^export const HAIKU_MODEL = "([^"]+)";$/m.exec(models);
-    expect(haiku, "could not find `export const HAIKU_MODEL = …` in src/lib/models.ts").not.toBeNull();
-    expect(src).toMatch(/^export const ROUTER_MODEL = HAIKU_MODEL;$/m);
-    const extractor = /^export const EXTRACTOR_MODEL = "([^"]+)";$/m.exec(src);
-    expect(extractor, "could not find `export const EXTRACTOR_MODEL = …` in src/lib/pipeline/llm.ts").not.toBeNull();
-    for (const [name, id] of [["ROUTER_MODEL", haiku![1]], ["EXTRACTOR_MODEL", extractor![1]]]) {
+    const ids: Array<[string, string]> = [];
+    for (const name of ["ROUTER_MODEL", "EXTRACTOR_MODEL"]) {
+      const m = new RegExp(`^export const ${name} = ([^;]+);$`, "m").exec(src);
+      expect(m, `could not find \`export const ${name} = …\` in src/lib/pipeline/llm.ts`).not.toBeNull();
+      const id = resolveModel(m![1].trim());
+      expect(id, `could not resolve ${name} (${m![1]})`).not.toBeNull();
+      ids.push([name, id!]);
+    }
+    for (const [name, id] of ids) {
       expect(
         PROBE_MODELS,
         `${name} is ${id}, which the live pre-flight never probes — a key without ` +

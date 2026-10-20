@@ -193,8 +193,6 @@ const TRUNCATION_FAILS_CLOSED: Record<string, string> = {
     "normaliseAnalysis JSON.parses twice, both fail on truncation → returns null.",
   "lib/onboarding-conversation.ts":
     "JSON.parse throws → falls back to regexExtract, which is the designed fallback.",
-  "lib/rating-adjuster.ts":
-    "normaliseAdjustments JSON.parse fails → empty map → no rating changes applied.",
   "lib/match-availability-classifier.ts":
     "parse() fails → UNCLEAR verdict, which is the safe default.",
   "lib/roster-survey-classifier.ts": "parse() fails → the caller's fallback classification.",

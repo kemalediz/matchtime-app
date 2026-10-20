@@ -24,7 +24,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { Degradation } from "./types";
 import { guardedModelCall } from "../ai-budget-context";
-import { HAIKU_MODEL } from "../models";
+import { HAIKU_EFFORT, HAIKU_MODEL, SONNET_MODEL } from "../models";
 
 /**
  * The project ceiling, MIRRORED rather than imported.
@@ -54,7 +54,23 @@ export const PIPELINE_MAX_TOKENS_CEILING = 4_096;
  * changing its shape, and the corpus is what clears a new id.
  */
 export const ROUTER_MODEL = HAIKU_MODEL;
-export const EXTRACTOR_MODEL = "claude-sonnet-5";
+export const EXTRACTOR_MODEL = SONNET_MODEL;
+
+/**
+ * HOW EACH MODEL FAMILY IS CALLED THROUGH THIS PIPELINE (2026-10-20): the
+ * model id and the thinking posture that goes with it, as one value, so a
+ * site that moves family moves both and a live check runs exactly what the
+ * site ships. Sonnet 5 with thinking off (see `ModelRequest.thinking`);
+ * Haiku 5.5 adaptive at `HAIKU_EFFORT` (src/lib/models.ts). A site spreads
+ * one into its request and sizes `maxTokens` for the Haiku one, whose
+ * thinking shares the budget.
+ */
+export const SONNET_CALL = { model: SONNET_MODEL, thinking: "off" } as const satisfies Pick<ModelRequest, "model" | "thinking">;
+export const HAIKU_CALL = {
+  model: HAIKU_MODEL,
+  thinking: { effort: HAIKU_EFFORT },
+} as const satisfies Pick<ModelRequest, "model" | "thinking">;
+export type ModelCall = typeof SONNET_CALL | typeof HAIKU_CALL;
 
 /** USD per million tokens. anthropic.com/pricing, 2026-09-01; Haiku 5.5
  *  from platform.claude.com/docs/en/about-claude/pricing, 2026-10-19,
