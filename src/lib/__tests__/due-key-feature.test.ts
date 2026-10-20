@@ -35,7 +35,7 @@ describe("featureForDueKey", () => {
  * What a MatchTime DM was about, from its key (quoted-reply context, slice
  * S0, 2026-10-20). The feature map plus the tentative follow-up, whose key
  * the gate deliberately leaves unclassified. One definition, read by
- * `last-bot-dm.ts` and by the quoted-reply resolver (`reply-context.ts`).
+ * the quoted-reply resolver and chat context (`reply-context.ts`).
  */
 describe("topicOfDueKey", () => {
   it("is the key's feature when it has one", () => {

@@ -6,11 +6,11 @@
  *
  *   - the scheduler's per-org feature gate, which drops any instruction
  *     whose capability is switched off for the org;
- *   - "MatchTime's last message to them" (`last-bot-dm.ts`, read by the
- *     payment-claim and match-availability classifiers), which needs to
+ *   - the chat context a DM classifier reads (`reply-context.ts`, read by
+ *     the payment-claim and match-availability classifiers), which needs to
  *     know what a scheduler DM was about. Those DMs (the daily pay chase,
- *     the rating reminder) are recorded only as a `SentNotification` key,
- *     never with their text (Feroz, FNF 2026-10-18).
+ *     the rating reminder) are recorded as a `SentNotification` key; until
+ *     2026-10-20 (slice S0) never with their text (Feroz, FNF 2026-10-18).
  *
  * Unknown, meta and org-scoped keys (bot-intro, admin DMs, ad-hoc BotJobs,
  * retro-reactions) are NOT classified, so the gate always allows them
@@ -82,8 +82,8 @@ export function featureForDueKey(key: string): DueKeyFeature | null {
  * ad-hoc BotJob or an infrastructure key.
  *
  * One definition (quoted-reply context, slice S0, 2026-10-20), read by
- * `last-bot-dm.ts` ("MatchTime's last message") and by the quoted-reply
- * resolver (`reply-context.ts`, "the message they swipe-replied to").
+ * the quoted-reply resolver and the chat context (`reply-context.ts`:
+ * "the message they swipe-replied to", "MatchTime's recent messages").
  */
 export type DueKeyTopic = DueKeyFeature | "tentativeFollowup";
 

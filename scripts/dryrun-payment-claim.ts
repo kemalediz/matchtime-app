@@ -10,6 +10,7 @@
  *   REPEAT=3 node --env-file=.env ./node_modules/.bin/tsx scripts/dryrun-payment-claim.ts
  *   SET=heldout REPEAT=3 node --env-file=.env ./node_modules/.bin/tsx scripts/dryrun-payment-claim.ts
  *   SET=feroz REPEAT=1 node --env-file=.env ./node_modules/.bin/tsx scripts/dryrun-payment-claim.ts
+ *   SET=s2 REPEAT=1 node --env-file=.env ./node_modules/.bin/tsx scripts/dryrun-payment-claim.ts
  *
  * Spends ANTHROPIC_API_KEY_DEV only (refuses without it). Touches no
  * database, sends nothing, writes nothing: it imports the DB-free
@@ -30,6 +31,12 @@ import {
   type PaymentClaimIntent,
 } from "../src/lib/payment-claim-classifier.ts";
 import { buildPayChaseDm, buildRatingDm } from "../src/lib/dm-copy.ts";
+import {
+  contextMatchLabel,
+  pickRecentBotMessages,
+  type ContextMessage,
+  type ReplyContext,
+} from "../src/lib/reply-context.ts";
 import { costOf, systemBlock } from "../src/lib/pipeline/llm.ts";
 import { HAIKU_MODEL, HAIKU_SHORT_ANSWER_MAX_TOKENS, HAIKU_THINKING } from "../src/lib/models.ts";
 
@@ -62,32 +69,49 @@ const RATING_DM = buildRatingDm({
   lang: "en",
 });
 
+// ── The chat context, as `loadDmReplyContext` builds it ──
+/** Mon 19 Oct 2026, 18:00 London. */
+const NOW = new Date("2026-10-19T17:00:00Z");
+const TUE = contextMatchLabel("Tuesday 7-a-side", new Date("2026-10-13T19:00:00Z"));
+/** Not a swipe-reply: MatchTime's recent DMs, picked as production picks them. */
+const sent = (...msgs: ContextMessage[]): ReplyContext => ({ now: NOW, quoted: null, ...pickRecentBotMessages(msgs, NOW) });
+/** A swipe-reply: that message alone. */
+const quoting = (m: ContextMessage): ReplyContext => ({ now: NOW, quoted: m, recent: [], earlier: null });
+/** The scheduler's pay chase: its words since S0, its topic and match. */
+const payChaseMsg: ContextMessage = { at: new Date("2026-10-19T16:00:00Z"), text: PAY_CHASE, topic: "paymentCollection", match: TUE };
+/** The rating request, a scheduler DM. */
+const ratingMsg = (at: string): ContextMessage => ({ at: new Date(at), text: RATING_DM, topic: "playerRating", match: TUE });
+
 /** The route always names the money collector now (2026-10-18). */
 const CTX: PaymentClaimContext = {
   playerName: "Abid Kazmi",
   owes: "£8 for Tuesday 7-a-side",
   collectorName: "Kemal Ediz",
-  lastBotDm: PAY_CHASE,
+  replyContext: sent(payChaseMsg),
 };
 
 /** Feroz, FNF 2026-10-18: the exact context the route had (his last
  *  BotJob DM, verbatim), plus the collector it now passes. */
 const FEROZ_PAY_LINK =
   "💷 Feroz, match fee for *Football 9-a-side* is *£5*.\n\nTap to pay (bank, card, Apple or Google Pay, or pay the organiser directly): https://mt.example/s/pay\n\nYou can also pay for anyone you brought along.";
+/** A queued BotJob: its words, no key topic. */
+const ferozPayLinkMsg: ContextMessage = { at: new Date("2026-10-18T20:46:00Z"), text: FEROZ_PAY_LINK, topic: null, match: null };
 const FEROZ: PaymentClaimContext = {
   playerName: "Feroz",
   owes: "£5 for Football 9-a-side",
   collectorName: "Raihan",
-  lastBotDm: FEROZ_PAY_LINK,
+  replyContext: sent(ferozPayLinkMsg),
 };
-/** The descriptions `pickLastBotDm` gives a scheduler DM (key only). */
-const PAY_CHASE_ABOUT = "(a reminder to pay the match fee they owe, with their pay link)";
-const RATE_ABOUT = "(a request to rate their teammates from the last match)";
+/** Scheduler DMs from before S0 stored their words: key topic only. */
+const PAY_CHASE_ABOUT = sent({ at: new Date("2026-10-19T16:04:00Z"), text: null, topic: "paymentCollection", match: null });
+const RATE_ABOUT = sent({ at: new Date("2026-10-19T16:01:00Z"), text: null, topic: "playerRating", match: null });
 
 interface Case {
   text: string;
   want: PaymentClaimIntent;
   ctx?: PaymentClaimContext;
+  /** What the context is, for the table. */
+  note?: string;
 }
 
 const CASES: Case[] = [
@@ -115,7 +139,7 @@ const CASES: Case[] = [
   { text: "ne kadar borcum var?", want: "other" },
   { text: "parayı aldın mı?", want: "other" },
   // a bare "done" that answers the RATING DM, not the pay chase
-  { text: "done 👍", want: "other", ctx: { ...CTX, lastBotDm: RATING_DM } },
+  { text: "done 👍", want: "other", ctx: { ...CTX, replyContext: sent(ratingMsg("2026-10-19T16:30:00Z")) }, note: "after the rating DM" },
 ];
 
 /**
@@ -144,7 +168,7 @@ const HELD_OUT: Case[] = [
  */
 const COLLECTOR: Case[] = [
   { text: "I bank transferred Raihan", want: "paid", ctx: FEROZ },
-  { text: "I bank transferred Raihan", want: "paid", ctx: { ...FEROZ, lastBotDm: PAY_CHASE_ABOUT } },
+  { text: "I bank transferred Raihan", want: "paid", ctx: { ...FEROZ, replyContext: PAY_CHASE_ABOUT }, note: "after a pay chase, key only" },
   { text: "sent it to Raihan", want: "paid", ctx: FEROZ },
   { text: "paid Raihan cash", want: "paid", ctx: FEROZ },
   { text: "Raihan'a havale yaptım", want: "paid", ctx: FEROZ },
@@ -165,7 +189,32 @@ const COLLECTOR: Case[] = [
   { text: "Raihan'a ulaştı mı?", want: "other", ctx: FEROZ },
   { text: "paid Ali", want: "other", ctx: FEROZ },
   { text: "Ali'ye verdim", want: "other", ctx: FEROZ },
-  { text: "done 👍", want: "other", ctx: { ...FEROZ, lastBotDm: RATE_ABOUT } },
+  { text: "done 👍", want: "other", ctx: { ...FEROZ, replyContext: RATE_ABOUT }, note: "after the rating DM, key only" },
+];
+
+/**
+ * SLICE S2 (2026-10-20): the swipe-reply. It shows only the quoted message,
+ * so a "paid" or "done" to an OLDER pay link is a claim even when a rating
+ * DM came after it, and a "done" to the rating DM is not. Not a reply, a
+ * bare "done" answers the newest message. `SET=s2` runs these.
+ */
+const SLICE_S2: Case[] = [
+  { text: "paid", want: "paid", ctx: { ...CTX, replyContext: quoting(payChaseMsg) }, note: "swipe-reply to the pay link, a rating DM came after" },
+  { text: "done 👍", want: "paid", ctx: { ...CTX, replyContext: quoting(payChaseMsg) }, note: "swipe-reply to the pay link, a rating DM came after" },
+  { text: "tamam", want: "paid", ctx: { ...FEROZ, replyContext: quoting(ferozPayLinkMsg) }, note: "swipe-reply to a queued pay link" },
+  { text: "done 👍", want: "other", ctx: { ...CTX, replyContext: quoting(ratingMsg("2026-10-19T16:30:00Z")) }, note: "swipe-reply to the rating DM" },
+  {
+    text: "done 👍",
+    want: "other",
+    ctx: { ...CTX, replyContext: sent(payChaseMsg, ratingMsg("2026-10-19T16:30:00Z")) },
+    note: "not a reply: pay link, then the rating DM",
+  },
+  {
+    text: "done 👍",
+    want: "paid",
+    ctx: { ...CTX, replyContext: sent(ratingMsg("2026-10-18T09:00:00Z"), payChaseMsg) },
+    note: "not a reply: rating DM, then the pay link",
+  },
 ];
 
 async function main() {
@@ -217,12 +266,14 @@ async function main() {
 
   console.log(`── payment-claim classifier, ${PAYMENT_CLAIM_MODEL}, REPEAT=${REPEAT}, cap $${MAX_USD} ──`);
   let bad = 0;
-  const sets: Record<string, Case[]> = { main: CASES, heldout: HELD_OUT, feroz: COLLECTOR };
+  const sets: Record<string, Case[]> = { main: CASES, heldout: HELD_OUT, feroz: COLLECTOR, s2: SLICE_S2 };
+  const only = process.env.ONLY;
   const setName = process.env.SET && sets[process.env.SET] ? process.env.SET : "main";
-  const set = sets[setName];
+  const set = only ? sets[setName].filter((c) => c.text === only) : sets[setName];
   console.log(`set: ${setName} (${set.length} cases)`);
   for (const c of set) {
     const got: string[] = [];
+    const reasons: string[] = [];
     for (let i = 0; i < REPEAT; i++) {
       if (usd >= MAX_USD) {
         console.error(`\nSTOPPED: cost cap $${MAX_USD} reached after ${calls} calls.`);
@@ -230,19 +281,17 @@ async function main() {
       }
       const r = await classifyPaymentClaimDetailed(c.text, c.ctx ?? CTX, call);
       got.push(`${r.intent}@${r.confidence.toFixed(2)}`);
+      reasons.push(r.reasoning);
     }
     const agreed = got.filter((g) => g.startsWith(`${c.want}@`)).length;
     const pass = agreed === REPEAT;
     if (!pass) bad++;
-    const note =
-      c.ctx?.lastBotDm === RATING_DM || c.ctx?.lastBotDm === RATE_ABOUT
-        ? " (after the rating DM)"
-        : c.ctx?.lastBotDm === PAY_CHASE_ABOUT
-          ? " (after a pay chase, key only)"
-          : "";
+    const note = c.note ? ` (${c.note})` : "";
     console.log(
       `  ${pass ? "✓" : "✗"} ${agreed}/${REPEAT}  want=${c.want.padEnd(15)} got=[${got.join(", ")}]  ${JSON.stringify(c.text)}${note}`,
     );
+    // A miss shows the model's own reasoning, the raw output to report.
+    if (!pass) for (const why of reasons) console.log(`      reasoning: ${JSON.stringify(why)}`);
   }
 
   console.log(

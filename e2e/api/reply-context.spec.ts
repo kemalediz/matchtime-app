@@ -1,12 +1,13 @@
 /**
- * Quoted-reply context, slices S0 and S1 (2026-10-20): which MatchTime
- * message a player's WhatsApp swipe-reply quotes. No behaviour change and
- * no model: the dm-reply route only logs what the quote resolves to.
+ * Quoted-reply context, slices S0 to S2 (2026-10-20): which MatchTime
+ * message a player's WhatsApp swipe-reply quotes. S0/S1 only logged it; S2
+ * hands it (or MatchTime's recent DMs) to the payment-claim and
+ * match-availability classifiers, whose live checks are in e2e/sim/*-live.
  *
  *   - the dispatch claim keeps the words it hands the Pi;
  *   - the ack stamps the bare stanza id beside the serialised id;
- *   - a DM carrying the quote fields is answered exactly as one without;
- *   - the resolver and the migration's backfill against real Postgres
+ *   - a handler that reads no chat context answers a quoted DM as before;
+ *   - the resolver, the chat context and the migration's backfill against real Postgres
  *     (tsx, e2e/helpers/reply-context-lib-tests.ts);
  *   - the migration file itself, run whole on a table without the columns,
  *     then again (idempotent).
@@ -81,7 +82,7 @@ test("a claimed DM keeps its words, and its ack stamps the bare stanza id", asyn
   expect(acked?.text, "the ack leaves the claim's words alone").toBe(claimed?.text);
 });
 
-test("a DM carrying the quote fields is answered exactly as one without", async ({ request }) => {
+test("a handler that reads no chat context answers a quoted DM exactly as one without", async ({ request }) => {
   const quote = { quotedMessageId: "3EB0NOPE", quotedText: "Rate your teammates", quotedFromMatchTime: true };
   const plain = await postDm(request, { phone: PHONE.opt, body: "stop messaging me about ratings please" });
   const quoted = await postDm(request, { phone: PHONE.opt, body: "stop messaging me about ratings please", ...quote });

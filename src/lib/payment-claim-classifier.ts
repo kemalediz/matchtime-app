@@ -9,8 +9,8 @@
  * `lib/payment-claim.ts` for the design and the decisions.
  */
 import { readFileSync } from "node:fs";
-import { lastBotDmLine } from "./last-bot-dm";
 import { HAIKU_MODEL, HAIKU_SHORT_ANSWER_MAX_TOKENS, HAIKU_THINKING } from "./models";
+import { noReplyContext, renderReplyContext, type ReplyContext } from "./reply-context";
 
 /** The model, pinned. Exported so the live dry run measures this one. */
 export const PAYMENT_CLAIM_MODEL = HAIKU_MODEL;
@@ -37,21 +37,26 @@ const VALID: ReadonlySet<string> = new Set<PaymentClaimIntent>(["paid", "paid_fo
  * (Kemal, same day) is the pay page's "Pay the collector directly" button
  * said in words. The examples use a collector called Sam, so the live
  * check's Raihan cases prove the rule rather than echo an example.
+ *
+ * Rewritten whole again on 2026-10-20 (quoted-reply context, slice S2): the
+ * context is now the shared block (`reply-context.ts`): the time now, and
+ * the message they swipe-replied to, or else MatchTime's recent messages to
+ * them. A bare "done" answers the quoted message, or else the newest one.
  */
 export function buildPaymentClaimSystemPrompt(): string {
-  return `A player who owes a match fee sent MatchTime, their football club's bot, the private WhatsApp message under "THE DM". Above it you get what they owe, "Money collector:" (the club member the fees are paid to, through MatchTime's pay link or directly by cash or bank transfer) and MatchTime's last message to them (its words in quotes, or a description in brackets).
+  return `A player who owes a match fee sent MatchTime, their football club's bot, the private WhatsApp message under "THE DM". Above it you get what they owe, "Money collector:" (the club member the fees are paid to, through MatchTime's pay link or directly by cash or bank transfer), the time now, and what MatchTime said to them: the message they swipe-replied to, or else MatchTime's recent messages to them, each with when it was sent and what it was about.
 
 What is the player telling us about paying? Pick one:
-- "paid": they say they have paid their own fee to the club: to the money collector (by name, even a first name or with a Turkish ending), "you", "the organiser", or nobody named. A bare "done" or "tamam" counts only if MatchTime's last message was about paying.
+- "paid": they say they have paid their own fee to the club: to the money collector (by name, even a first name or with a Turkish ending), "you", "the organiser", or nobody named. A bare "done" or "tamam" counts only if it answers a MatchTime message about paying: the one they swipe-replied to, or else the newest recent one.
 - "paid_for_others": they have paid, and it covers somebody else too, or instead.
 - "will_pay_direct": they have not paid yet but say they will pay the money collector directly (by name, or "the organiser"), by cash or transfer.
 - "other": anything else. A plan that does not say they will pay the collector directly, a question, a denial, a complaint, a payment made at an earlier time, a payment to someone who is not the money collector (or to anyone, when the collector is not known), or a message about something else.
 
 Examples, if the money collector is Sam (English | Turkish):
-paid: "Paid" | "ödedim"; "sent it" | "gönderdim abi"; "transferred" | "havale yaptım";"bank transferred Sam" | "Sam'e havale yaptım"; "paid Sam cash" | "Sam'e elden verdim"
+paid: "Paid" | "ödedim"; "sent it" | "gönderdim abi"; "transferred" | "havale yaptım"; "bank transferred Sam" | "Sam'e havale yaptım"; "paid Sam cash" | "Sam'e elden verdim"
 paid_for_others: "paid for me and my mate" | "ikimizin parasını gönderdim"
 will_pay_direct: "will send Sam tonight" | "akşam Sam'e atarım"; "I'll give the organiser cash" | "organizatöre elden veririm"
-other: "I'll pay later" | "sonra öderim"; "haven't paid yet" | "daha ödemedim"; "how much do I owe?" | "ne kadar borcum var?"; "did you get my payment?" | "parayı aldın mı?"; "did Sam get it?" | "Sam'e geçti mi?"; "paid last week" | "geçen hafta ödedim"; "paid Ali" | "Ali'ye verdim"; "👍"; "done 👍" after a request to rate teammates
+other: "I'll pay later" | "sonra öderim"; "haven't paid yet" | "daha ödemedim"; "how much do I owe?" | "ne kadar borcum var?"; "did you get my payment?" | "parayı aldın mı?"; "did Sam get it?" | "Sam'e geçti mi?"; "paid last week" | "geçen hafta ödedim"; "paid Ali" | "Ali'ye verdim"; "👍"; "done 👍" answering a request to rate teammates
 
 If you are not at least 80% sure, choose "other": a wrong "other" only means they say it again.
 
@@ -71,9 +76,10 @@ export interface PaymentClaimContext {
   /** Who receives this club's match fees (`Organisation.paymentHolderId`'s
    *  name). Paying them, by name, IS a claim (Feroz, FNF 2026-10-18). */
   collectorName?: string | null;
-  /** MatchTime's most recent DM to this player, when known: its words, or
-   *  a bracketed description when only its key was stored. */
-  lastBotDm?: string | null;
+  /** The chat context (`loadDmReplyContext`): the time now, and the
+   *  message they swipe-replied to or MatchTime's recent DMs to them.
+   *  Absent: the time now, nothing known. */
+  replyContext?: ReplyContext | null;
 }
 
 export interface PaymentClaimClassification {
@@ -186,7 +192,7 @@ export function buildPaymentClaimUserTurn(text: string, ctx: PaymentClaimContext
     ctx.playerName ? `Player: ${ctx.playerName}` : null,
     ctx.owes ? `They owe: ${ctx.owes}` : null,
     `Money collector: ${ctx.collectorName?.trim() || "(not known)"}`,
-    `MatchTime's last message to them: ${lastBotDmLine(ctx.lastBotDm)}`,
+    renderReplyContext(ctx.replyContext ?? noReplyContext()),
     `${MESSAGE_HEADER}\n${text.trim()}`,
   ]
     .filter(Boolean)

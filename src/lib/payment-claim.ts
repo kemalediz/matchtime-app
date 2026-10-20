@@ -120,7 +120,7 @@ import {
   type PaymentClaimIntent,
 } from "./payment-claim-classifier";
 import { queuePaidClaimReaction } from "./paid-claim-reaction";
-import { loadLastBotDm } from "./last-bot-dm";
+import { loadDmReplyContext, type QuotedBotMessage, type ReplyContext } from "./reply-context";
 
 export {
   PAYMENT_CLAIM_MIN_CONFIDENCE,
@@ -190,13 +190,13 @@ export function pickClaimMatch(rows: OwedMatchRow[], userId: string): OwedMatch 
 export function paymentClaimContext(
   owed: OwedMatch,
   playerName: string | null,
-  lastBotDm: string | null,
+  replyContext: ReplyContext,
 ): PaymentClaimContext {
   return {
     playerName,
     owes: `${gbp(owed.fee)} for ${owed.activityName}`,
     collectorName: owed.collectorName,
-    lastBotDm,
+    replyContext,
   };
 }
 
@@ -339,6 +339,9 @@ export async function handlePaymentClaimDm(input: {
   text: string;
   waMessageId: string;
   replyPhone: string | null;
+  /** The MatchTime message this DM swipe-replies to, as the route resolved
+   *  it once (`resolveQuotedBotMessage`), or null. */
+  quoted?: QuotedBotMessage | null;
 }): Promise<PaymentClaimResult> {
   const { userId, text, waMessageId, replyPhone } = input;
   if (!replyPhone) return NOT_HANDLED;
@@ -406,10 +409,10 @@ export async function handlePaymentClaimDm(input: {
       return picked;
     },
     classify: async (owed) => {
-      const lastBotDm = await loadLastBotDm(db, { phone: replyPhone, userId });
+      const replyContext = await loadDmReplyContext(db, { userId, phone: replyPhone, quoted: input.quoted ?? null });
       // Spent from the club the player owes (the daily AI cap).
       return withOrgAiBudget(owed.orgId, () =>
-        classifyPaymentClaimDetailed(text, paymentClaimContext(owed, input.userName, lastBotDm)),
+        classifyPaymentClaimDetailed(text, paymentClaimContext(owed, input.userName, replyContext)),
       );
     },
     firstSighting: async (matchId) => {

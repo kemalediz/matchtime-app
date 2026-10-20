@@ -141,14 +141,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "body, waMessageId required" }, { status: 400 });
   }
 
-  // ── Quoted-reply context (slice S1, 2026-10-20): LOG ONLY ──────────────
+  // ── Quoted-reply context (slices S1 and S2, 2026-10-20) ────────────────
   //   A swipe-reply carries the quoted message's id, text, and whether it
   //   was MatchTime's (`quotedMessageId`, `quotedText`, `quotedFromMatchTime`;
-  //   an older Pi sends none). Resolved to the MatchTime DM it answers and
-  //   logged (ids, topic, match, resolved yes/no; never text). No handler
-  //   or classifier below reads it yet, so every DM is answered exactly as
-  //   before. Total: a failed read is logged and the DM carries on.
-  await logDmQuote(db, { body, waMessageId, phones: [phone, senderAltPhone] });
+  //   an older Pi sends none). Resolved ONCE to the MatchTime DM it answers
+  //   and logged (ids, topic, match, resolved yes/no; never text). The
+  //   payment-claim and match-availability classifiers below read it as
+  //   their whole chat context (`loadDmReplyContext`). Total: a failed read
+  //   is logged and the DM carries on as a non-reply.
+  const quoted = await logDmQuote(db, { body, waMessageId, phones: [phone, senderAltPhone] });
 
   // ── Self-join: the owner's decision (slice 7), then the connect DM (slice 5) ──
   //   The organiser's prefilled "Connect Riverside FC, code 7KQ2" (Turkish:
@@ -680,6 +681,7 @@ export async function POST(request: Request) {
       text,
       waMessageId,
       replyPhone,
+      quoted,
     });
     if (claim.handled) {
       return NextResponse.json({ ok: true, ...claim });
@@ -688,7 +690,7 @@ export async function POST(request: Request) {
 
   // Where DMs to this player are queued (digits, no "+"): the sender's
   // phone, or the stored one for an @lid sender. For the classifier's
-  // "MatchTime's last message to them".
+  // chat context (MatchTime's recent DMs to them).
   const sender = user;
   const dmPhone = async (): Promise<string | null> =>
     (phone ? normalisePhone(phone)?.replace(/^\+/, "") ?? null : null) ??
@@ -758,6 +760,7 @@ export async function POST(request: Request) {
           userId: user.id,
           matchId: row0.match.id,
           phone: await dmPhone(),
+          quoted,
         });
         // Spent from the match's club (the daily AI cap, lib/ai-budget.ts).
         const verdict = await withOrgAiBudget(row0.match.activity.orgId, () => classifyMatchAvailability(text ?? "", {
@@ -1134,6 +1137,7 @@ export async function POST(request: Request) {
           (phone ? normalisePhone(phone)?.replace(/^\+/, "") ?? null : null) ??
           (await db.user.findUnique({ where: { id: user.id }, select: { phoneNumber: true } }))?.phoneNumber?.replace(/^\+/, "") ??
           null,
+        quoted,
       }).catch((err: unknown) => {
         console.error("[dm-reply] guest DM OUT failed:", err instanceof Error ? err.message : "failed");
         return null;
@@ -1148,6 +1152,7 @@ export async function POST(request: Request) {
         userId: user.id,
         matchId: target.matchId,
         phone: await dmPhone(),
+        quoted,
       });
       // Spent from the match's club (the daily AI cap). At the cap the
       // regex fast path still registers a plain IN/OUT; only the model

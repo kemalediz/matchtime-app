@@ -6,7 +6,8 @@
  * the quoted message's bare stanza id ("3EB0..."), its text, and whether
  * it was MatchTime's own. The resolver turns that into the message we sent:
  * when, its words, what it was about (its key's topic) and its match.
- * Nothing reads it yet but a log line: no classifier sees it in S0/S1.
+ * Slice S2 turns it, or MatchTime's recent DMs to them, into the one
+ * chat-context block the DM classifiers read (`renderReplyContext`).
  *
  * The resolver is DB-free; the client is handed in, so this suite uses an
  * in-memory fake. The real queries run against Postgres in
@@ -14,6 +15,15 @@
  */
 import { describe, it, expect, vi } from "vitest";
 import {
+  DM_LOOKBACK_MS,
+  MESSAGE_WORDS_MAX,
+  RECENT_MAX,
+  RECENT_WINDOW_MS,
+  loadDmReplyContext,
+  noReplyContext,
+  pickRecentBotMessages,
+  renderReplyContext,
+  type DmReplyContextDb,
   logDmQuote,
   parseDmQuote,
   quoteLogLine,
@@ -319,5 +329,240 @@ describe("logDmQuote: the dm-reply route's one call", () => {
     expect(out).toBeNull();
     expect(error).toHaveBeenCalledTimes(1);
     expect(String(error.mock.calls[0][0])).not.toMatch(/Hi Ali/);
+  });
+});
+
+// ── Slice S2: the one chat-context block every DM classifier reads ──────
+//   A swipe-reply shows ONLY the message it quotes. Otherwise MatchTime's
+//   last 3 messages to them from the last 72 hours, oldest first, or the
+//   latest within 14 days with its date. Always the time now, in London.
+
+describe("pickRecentBotMessages: which of MatchTime's DMs a non-reply is shown", () => {
+  const msg = (h: number, text: string) => ({ at: hoursAgo(h), text, topic: null, match: null });
+
+  it("the last 3 from the last 72 hours, oldest first", () => {
+    const got = pickRecentBotMessages([msg(1, "d"), msg(50, "b"), msg(80, "old"), msg(10, "c"), msg(70, "a")], NOW);
+    expect(got.recent.map((m) => m.text)).toEqual(["b", "c", "d"]);
+    expect(got.earlier).toBeNull();
+  });
+
+  it("none in 72 hours: the single latest within 14 days, as the earlier one", () => {
+    const got = pickRecentBotMessages([msg(200, "older"), msg(100, "latest")], NOW);
+    expect(got.recent).toEqual([]);
+    expect(got.earlier?.text).toBe("latest");
+  });
+
+  it("nothing within 14 days is nothing", () => {
+    const got = pickRecentBotMessages([msg(RECENT_LOOKBACK_HOURS + 1, "stale")], NOW);
+    expect(got).toEqual({ recent: [], earlier: null });
+  });
+
+  it("the window and the cap are the design's", () => {
+    expect(RECENT_WINDOW_MS).toBe(72 * 3600 * 1000);
+    expect(RECENT_MAX).toBe(3);
+    expect(DM_LOOKBACK_MS).toBe(14 * 24 * 3600 * 1000);
+  });
+});
+
+const RECENT_LOOKBACK_HOURS = 14 * 24;
+
+describe("renderReplyContext: one plain block, the same wording for every caller", () => {
+  // Mon 19 Oct 2026, 18:00 London (BST, UTC+1).
+  const MON_6PM = new Date("2026-10-19T17:00:00Z");
+  const TUE = "Tuesday 7-a-side, Tue 20 Oct, 20:00";
+
+  it("a swipe-reply: the time now, then only the quoted message, with its time, topic, match and words", () => {
+    const block = renderReplyContext({
+      now: MON_6PM,
+      quoted: { at: new Date("2026-10-19T16:30:00Z"), text: "Can you play Tuesday?", topic: "tentativeFollowup", match: TUE },
+      recent: [{ at: new Date("2026-10-19T16:50:00Z"), text: "pay link", topic: "paymentCollection", match: TUE }],
+      earlier: null,
+    });
+    expect(block).toBe(
+      "NOW: Monday 19 October 2026, 18:00 (club time, London)\n" +
+        "THEY ARE REPLYING TO MatchTime's message of Mon 19 Oct, 17:30 (about: asking whether they can play in Tuesday 7-a-side, Tue 20 Oct, 20:00):\n" +
+        '"Can you play Tuesday?"',
+    );
+    expect(block).not.toContain("pay link");
+  });
+
+  it("a quote known only from the Pi: its words, its time not known", () => {
+    expect(
+      renderReplyContext({ now: MON_6PM, quoted: { at: null, text: "hi", topic: null, match: null }, recent: [], earlier: null }),
+    ).toBe('NOW: Monday 19 October 2026, 18:00 (club time, London)\nTHEY ARE REPLYING TO a MatchTime message (when it was sent is not known):\n"hi"');
+  });
+
+  it("not a reply: the recent messages, oldest first, each with its time and topic", () => {
+    const block = renderReplyContext({
+      now: MON_6PM,
+      quoted: null,
+      recent: [
+        { at: new Date("2026-10-18T09:00:00Z"), text: "Rate your teammates", topic: "playerRating", match: "Tuesday 7-a-side, Tue 13 Oct, 20:00" },
+        { at: new Date("2026-10-19T16:30:00Z"), text: "Playing Tuesday?", topic: null, match: null },
+        { at: new Date("2026-10-19T16:50:00Z"), text: null, topic: "paymentCollection", match: TUE },
+      ],
+      earlier: null,
+    });
+    expect(block).toBe(
+      "NOW: Monday 19 October 2026, 18:00 (club time, London)\n" +
+        "MATCHTIME'S RECENT MESSAGES TO THEM (oldest first; their DM is not a reply to one):\n" +
+        '- Sun 18 Oct, 10:00 (about: rating their teammates after Tuesday 7-a-side, Tue 13 Oct, 20:00): "Rate your teammates"\n' +
+        '- Mon 19 Oct, 17:30: "Playing Tuesday?"\n' +
+        "- Mon 19 Oct, 17:50 (about: paying the match fee for Tuesday 7-a-side, Tue 20 Oct, 20:00): (its words are not known)",
+    );
+  });
+
+  it("none in the last 3 days: the last one, dated", () => {
+    expect(
+      renderReplyContext({
+        now: MON_6PM,
+        quoted: null,
+        recent: [],
+        earlier: { at: new Date("2026-10-12T17:00:00Z"), text: "pay link", topic: "paymentCollection", match: null },
+      }),
+    ).toBe(
+      "NOW: Monday 19 October 2026, 18:00 (club time, London)\n" +
+        "MATCHTIME'S RECENT MESSAGES TO THEM: none in the last 3 days. The last was on Mon 12 Oct, 18:00 (about: paying the match fee they owe): \"pay link\"",
+    );
+  });
+
+  it("nothing at all says so", () => {
+    expect(renderReplyContext(noReplyContext(MON_6PM))).toBe(
+      "NOW: Monday 19 October 2026, 18:00 (club time, London)\nMATCHTIME'S RECENT MESSAGES TO THEM: none in the last 14 days.",
+    );
+  });
+
+  it("the time now is London's in winter too (GMT)", () => {
+    expect(renderReplyContext(noReplyContext(new Date("2026-11-03T19:05:00Z")))).toMatch(/^NOW: Tuesday 3 November 2026, 19:05 \(club time, London\)/);
+  });
+
+  it("caps each message's words", () => {
+    const block = renderReplyContext({
+      now: MON_6PM,
+      quoted: { at: MON_6PM, text: "x".repeat(400), topic: null, match: null },
+      recent: [],
+      earlier: null,
+    });
+    expect(block).toContain(JSON.stringify("x".repeat(MESSAGE_WORDS_MAX)));
+    expect(block).not.toContain("x".repeat(MESSAGE_WORDS_MAX + 1));
+    expect(MESSAGE_WORDS_MAX).toBe(300);
+  });
+
+  it.each([
+    ["tentativeFollowup", TUE, "asking whether they can play in Tuesday 7-a-side, Tue 20 Oct, 20:00"],
+    ["tentativeFollowup", null, "asking whether they can play in a match"],
+    ["paymentCollection", TUE, "paying the match fee for Tuesday 7-a-side, Tue 20 Oct, 20:00"],
+    ["paymentTracking", null, "paying the match fee they owe"],
+    ["playerRating", null, "rating their teammates after the last match"],
+    ["momVoting", TUE, "the Man of the Match vote for Tuesday 7-a-side, Tue 20 Oct, 20:00"],
+    ["attendance", TUE, "who is playing in Tuesday 7-a-side, Tue 20 Oct, 20:00"],
+    ["bench", null, "who is playing in a match"],
+  ] as const)("topic %s (match %s) reads %s", (topic, match, want) => {
+    const block = renderReplyContext({ now: MON_6PM, quoted: { at: MON_6PM, text: "w", topic, match }, recent: [], earlier: null });
+    expect(block).toContain(`(about: ${want})`);
+  });
+
+  it("has no em or en dashes", () => {
+    const block = renderReplyContext({
+      now: MON_6PM,
+      quoted: null,
+      recent: [{ at: MON_6PM, text: "w", topic: "playerRating", match: TUE }],
+      earlier: null,
+    });
+    expect(block).not.toMatch(/[—–]/);
+  });
+});
+
+describe("loadDmReplyContext: one load per DM, for every DM classifier", () => {
+  const MON_6PM = new Date("2026-10-19T17:00:00Z");
+  const before = (h: number) => new Date(MON_6PM.getTime() - h * 3600 * 1000);
+  const TUE_KICKOFF = new Date("2026-10-20T19:00:00Z");
+
+  function recentDb(input: {
+    scheduled?: Array<{ key: string; matchId: string | null; text: string | null; createdAt: Date }>;
+    jobs?: Array<{ text: string; sentAt: Date | null; createdAt: Date }>;
+  }) {
+    const seen: { sent: unknown[]; jobs: unknown[]; matches: unknown[] } = { sent: [], jobs: [], matches: [] };
+    const db: DmReplyContextDb = {
+      sentNotification: {
+        findMany: async (args) => {
+          seen.sent.push(args);
+          return (input.scheduled ?? []).filter((r) => r.createdAt >= args.where.createdAt.gte);
+        },
+      },
+      botJob: {
+        findMany: async (args) => {
+          seen.jobs.push(args);
+          return (input.jobs ?? []).filter((r) => r.createdAt >= args.where.createdAt.gte);
+        },
+      },
+      match: {
+        findMany: async (args) => {
+          seen.matches.push(args);
+          return args.where.id.in.includes("m-tue")
+            ? [{ id: "m-tue", date: TUE_KICKOFF, activity: { name: "Tuesday 7-a-side" } }]
+            : [];
+        },
+      },
+    };
+    return { db, seen };
+  }
+
+  it("a resolved quote is the whole context: nothing else is read but its match", async () => {
+    const { db, seen } = recentDb({ jobs: [{ text: "later DM", sentAt: before(1), createdAt: before(1) }] });
+    const ctx = await loadDmReplyContext(db, {
+      userId: "u-ali",
+      phone: "447700900003",
+      quoted: { key: "m-tue:pay-chase:u-ali:d1", sentAt: before(2), text: "Pay here", topic: "paymentCollection", matchId: "m-tue" },
+      now: MON_6PM,
+    });
+    expect(ctx).toEqual({
+      now: MON_6PM,
+      quoted: { at: before(2), text: "Pay here", topic: "paymentCollection", match: "Tuesday 7-a-side, Tue 20 Oct, 20:00" },
+      recent: [],
+      earlier: null,
+    });
+    expect(seen.sent).toHaveLength(0);
+    expect(seen.jobs).toHaveLength(0);
+  });
+
+  it("not a reply: queued DMs (by phone) and scheduler DMs (by user) merged, oldest first, with their matches", async () => {
+    const { db, seen } = recentDb({
+      scheduled: [
+        { key: "m-tue:pay-chase:u-ali:d1", matchId: "m-tue", text: "Pay here", createdAt: before(5) },
+        // A BotJob's own ack row is the job, never a second message.
+        { key: "botjob-j1", matchId: null, text: null, createdAt: before(3) },
+      ],
+      jobs: [
+        { text: "invite words", sentAt: before(3), createdAt: before(3.2) },
+        { text: "queued, not sent yet", sentAt: null, createdAt: before(0.5) },
+      ],
+    });
+    const ctx = await loadDmReplyContext(db, { userId: "u-ali", phone: "447700900003", quoted: null, now: MON_6PM });
+    expect(ctx.quoted).toBeNull();
+    expect(ctx.recent).toEqual([
+      { at: before(5), text: "Pay here", topic: "paymentCollection", match: "Tuesday 7-a-side, Tue 20 Oct, 20:00" },
+      { at: before(3), text: "invite words", topic: null, match: null },
+      { at: before(0.5), text: "queued, not sent yet", topic: null, match: null },
+    ]);
+    expect(JSON.stringify(seen.sent[0])).toContain('"targetUser":"u-ali"');
+    expect(JSON.stringify(seen.sent[0])).toContain('"kind":"dm"');
+    expect(JSON.stringify(seen.jobs[0])).toContain('"phone":"447700900003"');
+  });
+
+  it("only the last 14 days are read", async () => {
+    const { db, seen } = recentDb({});
+    await loadDmReplyContext(db, { userId: "u-ali", phone: "447700900003", quoted: null, now: MON_6PM });
+    const gte = (seen.sent[0] as { where: { createdAt: { gte: Date } } }).where.createdAt.gte;
+    expect(gte.getTime()).toBe(MON_6PM.getTime() - DM_LOOKBACK_MS);
+    expect((seen.jobs[0] as { where: { createdAt: { gte: Date } } }).where.createdAt.gte.getTime()).toBe(gte.getTime());
+  });
+
+  it("no phone: only the scheduler side is read", async () => {
+    const { db, seen } = recentDb({ scheduled: [{ key: "m-tue:tentative-followup:u-ali", matchId: "m-tue", text: "In or out?", createdAt: before(80) }] });
+    const ctx = await loadDmReplyContext(db, { userId: "u-ali", phone: null, quoted: null, now: MON_6PM });
+    expect(seen.jobs).toHaveLength(0);
+    expect(ctx.recent).toEqual([]);
+    expect(ctx.earlier).toMatchObject({ text: "In or out?", topic: "tentativeFollowup" });
   });
 });

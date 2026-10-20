@@ -31,6 +31,7 @@ vi.mock("../match-availability-context", () => facts);
 import { handleGuestDmOut, parseWhichAnswer } from "../partner-guest-dm";
 
 const NOW = new Date("2026-10-30T12:00:00Z");
+const REPLY_CTX = { now: NOW, quoted: null, recent: [], earlier: null };
 const OWN = { matchId: "m-own", orgId: "sutton", clubName: "Sutton FC", matchName: "Tuesday", matchWhen: "Tue 3 Nov, 20:00", maxPlayers: 14, lang: "en" };
 
 beforeEach(() => {
@@ -45,7 +46,7 @@ beforeEach(() => {
   resolver.resolveDmSelfAttendance.mockResolvedValue({ decision: "out", via: "fast-path" });
   target.findDmRegistrationTarget.mockResolvedValue(OWN);
   guest.withdrawGuest.mockResolvedValue(true);
-  facts.loadMatchAvailabilityFacts.mockResolvedValue({ userId: "ali", matchId: "m-fnf", currentStatus: "in the squad", lastBotDm: null });
+  facts.loadMatchAvailabilityFacts.mockResolvedValue({ userId: "ali", matchId: "m-fnf", currentStatus: "in the squad", replyContext: REPLY_CTX });
 });
 
 const call = (text: string) => handleGuestDmOut({ userId: "ali", userName: "Ali", text, replyPhone: "447700900111", now: NOW });
@@ -75,13 +76,19 @@ describe("handleGuestDmOut", () => {
 
   it("the classifier is told what MatchTime last said to him and where he stands in the guest game", async () => {
     await call("out");
-    expect(facts.loadMatchAvailabilityFacts).toHaveBeenCalledWith({ userId: "ali", matchId: "m-fnf", phone: "447700900111" });
+    expect(facts.loadMatchAvailabilityFacts).toHaveBeenCalledWith({ userId: "ali", matchId: "m-fnf", phone: "447700900111", quoted: null });
     expect(resolver.resolveDmSelfAttendance.mock.calls[0][0].context).toMatchObject({
       userId: "ali",
       matchId: "m-fnf",
       currentStatus: "in the squad",
-      lastBotDm: null,
+      replyContext: REPLY_CTX,
     });
+  });
+
+  it("a swipe-reply's resolved quote reaches the context loader", async () => {
+    const quoted = { key: "botjob-j1", sentAt: NOW, text: "Can you play for FNF?", topic: null, matchId: null };
+    await handleGuestDmOut({ userId: "ali", userName: "Ali", text: "out", replyPhone: "447700900111", now: NOW, quoted });
+    expect(facts.loadMatchAvailabilityFacts).toHaveBeenCalledWith({ userId: "ali", matchId: "m-fnf", phone: "447700900111", quoted });
   });
 
   it("answer 1: out of the asking club's game only", async () => {
