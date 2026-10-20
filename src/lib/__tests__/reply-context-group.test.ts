@@ -80,7 +80,10 @@ function fakeDb(input: {
         calls.push("analyzedMessage");
         takes.push(args.take);
         return (input.analyzed ?? []).filter(
-          (r) => r.orgId === args.where.orgId && r.createdAt >= args.where.createdAt.gte && args.where.OR.some((c) => r.waMessageId.includes(c.waMessageId.contains)),
+          (r) =>
+            r.orgId === args.where.orgId &&
+            r.createdAt >= args.where.createdAt.gte &&
+            args.where.OR.some((c) => ("in" in c.waMessageId ? c.waMessageId.in.includes(r.waMessageId) : r.waMessageId.includes(c.waMessageId.contains))),
         );
       },
     },
@@ -246,6 +249,12 @@ describe("who wrote a member's message: named only when resolved to a club membe
     });
     const out = await loadGroupReplyContexts(db, { ...base, messages: [{ id: "w3", quote: { id: "3EB0OLD", text: "I'm out", fromMatchTime: false } }] });
     expect(out.get("w3")).toEqual({ author: { name: "Ali Khan", userId: "u-ali" }, at: minsAgo(40), text: "I'm out tonight lads", topic: null, matchId: null, match: null, found: true });
+  });
+
+  it("an analysed message whose id is the bare id itself is found too", async () => {
+    const { db } = fakeDb({ analyzed: [{ waMessageId: "3EB0BARE", orgId: ORG, authorUserId: "u-ali", body: "IN", createdAt: minsAgo(5) }], users: [{ id: "u-ali", name: "Ali Khan" }] });
+    const out = await loadGroupReplyContexts(db, { ...base, messages: [{ id: "w", quote: { id: "3EB0BARE", text: "IN", fromMatchTime: false } }] });
+    expect(out.get("w")?.author).toEqual({ name: "Ali Khan", userId: "u-ali" });
   });
 
   it("an earlier analysed message from an unresolved sender: not identified (their stored pushname is never read)", async () => {

@@ -783,7 +783,7 @@ export interface GroupReplyContextDb {
   };
   analyzedMessage: {
     findMany(args: {
-      where: { orgId: string; createdAt: { gte: Date }; OR: Array<{ waMessageId: { contains: string } }> };
+      where: { orgId: string; createdAt: { gte: Date }; OR: Array<{ waMessageId: { in: string[] } } | { waMessageId: { contains: string } }> };
       take: number;
       select: { waMessageId: true; authorUserId: true; body: true; createdAt: true };
     }): Promise<GAnalyzedRow[]>;
@@ -963,7 +963,10 @@ async function findByIds(
     input.channel === "group"
       ? (
           await db.analyzedMessage.findMany({
-            where: { orgId, createdAt: { gte: since }, OR: left.map((b) => ({ waMessageId: { contains: `_${b}` } })) },
+            // The unique id itself (a bare id) or the serialised form
+            // `false_<group>_<stanza>_<participant>`, bounded by the
+            // (orgId, createdAt) index to this club's last 14 days.
+            where: { orgId, createdAt: { gte: since }, OR: [{ waMessageId: { in: left } }, ...left.map((b) => ({ waMessageId: { contains: `_${b}` } }))] },
             take: left.length * PER_ID,
             select: { waMessageId: true, authorUserId: true, body: true, createdAt: true },
           })
