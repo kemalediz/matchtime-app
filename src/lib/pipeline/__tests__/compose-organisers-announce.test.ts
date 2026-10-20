@@ -61,15 +61,73 @@ describe("compose(): the organisers announce", () => {
     expect(out).toEqual([]);
   });
 
-  // The count says the bench (FNF 2026-10-18). Where the organisers
-  // announce the list, the players' group hears how many wait, not who.
-  it("the count still answers, with the bench counted but not named", () => {
+  // "Is there still space?" (FNF players' group, 2026-10-20): the
+  // organisers keep the LIST, not whether there is room. The answer says
+  // how many places are open and how to ask for one, never a name, and is
+  // marked so the analyze route's organisers-mode net lets it through.
+  describe("a space or count question: the open places, never names", () => {
     const sp: SpeechIntent = { kind: "answer_count", messageId: "c", statedCount: null };
-    const before = say(world({ confirmed: FOURTEEN, bench: ["erdal"] }), sp);
-    const after = say(organisers(), sp);
-    expect(before[0].text).toMatch(/, 1 on the bench \(.+\) ✅ full squad\.$/);
-    expect(after).toEqual([{ ...before[0], text: before[0].text.replace(/ \(.+\) ✅/, " ✅") }]);
-    expect(after[0].text).toMatch(/, 1 on the bench ✅ full squad\.$/);
+    const pick = (lang: "en" | "tr", confirmed: string[], benchPickMode: "organiser" | "first-come") =>
+      world({ confirmed, bench: ["erdal"], features: { language: lang, listAnnouncer: "organisers", benchPickMode } });
+
+    it("places open, the organisers pick (EN, TR)", () => {
+      expect(say(pick("en", FOURTEEN.slice(0, 11), "organiser"), sp)).toEqual([
+        {
+          messageId: "c",
+          text: "There are 3 places left for Tue 21:30. Say *IN* if you can make it and the organisers will confirm who gets the places.",
+          organisersSafe: true,
+        },
+      ]);
+      expect(say(pick("en", THIRTEEN, "organiser"), sp)[0].text).toBe(
+        "There's 1 place left for Tue 21:30. Say *IN* if you can make it and the organisers will confirm who gets the place.",
+      );
+      expect(say(pick("tr", FOURTEEN.slice(0, 11), "organiser"), sp)[0].text).toBe(
+        "Tue 21:30 maçı için 3 yer boş. Gelebiliyorsanız *VARIM* yazın, yeri kimin alacağını organizatörler onaylayacak.",
+      );
+      expect(say(pick("tr", THIRTEEN, "organiser"), sp)[0].text).toBe(
+        "Tue 21:30 maçı için 1 yer boş. Gelebiliyorsanız *VARIM* yazın, yeri kimin alacağını organizatörler onaylayacak.",
+      );
+    });
+
+    it("places open, first come (EN, TR)", () => {
+      expect(say(pick("en", FOURTEEN.slice(0, 11), "first-come"), sp)[0].text).toBe(
+        "There are 3 places left for Tue 21:30. Say *IN* to take one.",
+      );
+      expect(say(pick("tr", FOURTEEN.slice(0, 11), "first-come"), sp)[0].text).toBe(
+        "Tue 21:30 maçı için 3 yer boş. Almak için *VARIM* yazın.",
+      );
+    });
+
+    it("full: how to go on the bench (EN, TR)", () => {
+      expect(say(pick("en", FOURTEEN, "organiser"), sp)).toEqual([
+        {
+          messageId: "c",
+          text: "The squad is full for Tue 21:30. Say *IN* to go on the bench and the organisers will pick who plays.",
+          organisersSafe: true,
+        },
+      ]);
+      expect(say(pick("en", FOURTEEN, "first-come"), sp)[0].text).toBe(
+        "The squad is full for Tue 21:30. Say *IN* to go on the bench.",
+      );
+      expect(say(pick("tr", FOURTEEN, "organiser"), sp)[0].text).toBe(
+        "Tue 21:30 maçı için kadro dolu. Yedeğe girmek için *VARIM* yazın, kimin oynayacağını organizatörler seçer.",
+      );
+      expect(say(pick("tr", FOURTEEN, "first-come"), sp)[0].text).toBe(
+        "Tue 21:30 maçı için kadro dolu. Yedeğe girmek için *VARIM* yazın.",
+      );
+    });
+
+    it("a stated count ('are we 12?') gets the same answer: no names, no roster", () => {
+      const stated: SpeechIntent = { kind: "answer_count", messageId: "c", statedCount: 12 };
+      expect(say(pick("en", FOURTEEN.slice(0, 11), "organiser"), stated)[0].text).toBe(
+        "There are 3 places left for Tue 21:30. Say *IN* if you can make it and the organisers will confirm who gets the places.",
+      );
+    });
+
+    it("only the space answer is marked safe: the list answers are not", () => {
+      const out = say(organisers(), { kind: "answer_squad", messageId: "q1" });
+      expect(out[0]).not.toHaveProperty("organisersSafe");
+    });
   });
 });
 

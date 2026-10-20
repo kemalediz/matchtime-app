@@ -1501,6 +1501,7 @@ const SAMPLES: SampleArgs = {
   oa_relay_lead: null,
   oa_list_by_organisers: null,
   oa_teams_by_organisers: null,
+  oa_space_answer: { open: 3, kickoffLabel: "Fri 20:30", organisersPick: true },
   oa_slot_opened: { outFirstNames: ["Wasim"], confirmed: 17, maxPlayers: 18, kickoffLabel: "Fri 20:30", open: 1 },
   oa_bench_claim_too_late: { firstName: "Erdal" },
   pr_header: { count: 2 },
