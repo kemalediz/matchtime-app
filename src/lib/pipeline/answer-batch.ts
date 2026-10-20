@@ -168,7 +168,7 @@
 // function, and only when the caller did not inject them. The analyze
 // route (which has Prisma) gets the real loaders; the corpus injects
 // its SQL ones and never touches Prisma at all.
-import type { QuotedGroupMessage } from "../reply-context";
+import { quoteForMatch, type QuotedGroupMessage } from "../reply-context";
 import type { OrgFeatures } from "../org-features";
 import { compose } from "./compose";
 import { decide as decideDefault } from "./engine";
@@ -993,9 +993,12 @@ export async function runAnswerBatch(args: {
         tagged: clar ? true : m.tagged,
         history,
         lastBotPost,
-        // A reply is about the message it quotes, whoever wrote it. Not
-        // narrowed to a match: a question names no match for code to act on.
-        reply: m.reply ?? null,
+        // A reply is about the message it quotes, whoever wrote it. A
+        // question is not narrowed to a match (it names none for code to
+        // act on). A balancer message is, exactly as team-ops narrows it,
+        // so the two owners show the extractor the same input and share
+        // one call (`trace.ts`, #340).
+        reply: m.route === "balancer" ? quoteForMatch(m.reply, state.matchId ?? "") : (m.reply ?? null),
         now,
       });
       if (clar && res.facts.kind === "question" && res.facts.topic === "stats") {
