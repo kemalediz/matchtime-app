@@ -604,14 +604,14 @@ function liveCall(): FeeReplyCall | null {
     // Imported lazily so a unit test that never reaches the live path
     // does not pay for loading the SDK.
     const { default: Anthropic } = await import("@anthropic-ai/sdk");
-    const { guardedAnthropicCall } = await import("./pipeline/llm");
+    const { guardedAnthropicCall, systemBlock } = await import("./pipeline/llm");
     const anthropic = new Anthropic({ apiKey: key });
     const response = await guardedAnthropicCall("fee-confirm", () =>
       anthropic.messages.create({
         model: MODEL,
         max_tokens: HAIKU_SHORT_ANSWER_MAX_TOKENS,
         ...HAIKU_THINKING,
-        system: [{ type: "text", text: system, cache_control: { type: "ephemeral", ttl: "1h" } }],
+        system: systemBlock(system),
         messages: [{ role: "user", content: user }],
       }),
     );

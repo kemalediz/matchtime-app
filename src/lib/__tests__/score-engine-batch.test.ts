@@ -855,10 +855,16 @@ describe("the apply layer's dependencies are injected, asserted by scanning it",
   });
 });
 
-// ── A prompt too short to cache is not sequenced (2026-09-29) ──────────
+// ── The score prompt caches, so the first call warms it (2026-10-19) ───
+//
+// Until 2026-10-19 the score prompt carried no marker: a size estimate
+// (system prompt only, four characters per token) put it under Sonnet 5's
+// 1,024-token minimum. With its schema it is 2,000 tokens (MEASURED,
+// count_tokens), so it caches like every other extractor, and two scores
+// in one batch should not both pay the write.
 
-describe("the score prompt is under Sonnet's cache minimum, so its calls stay fully parallel", () => {
-  it("starts both extractions before either ends", async () => {
+describe("the score prompt caches, so the first extraction warms it before the rest", () => {
+  it("finishes the first extraction before the second starts", async () => {
     const LOST = "Yellow won 4-2";
     const { model: inner } = stubModel({ [WON]: WON_FACTS, [LOST]: { first: 4, second: 2, winner: "Yellow" } });
     const log: string[] = [];
@@ -881,6 +887,6 @@ describe("the score prompt is under Sonnet's cache minimum, so its calls stay fu
       model,
       deps: r.deps,
     });
-    expect(log.slice(0, 2).sort()).toEqual([`start:${WON}`, `start:${LOST}`]);
+    expect(log).toEqual([`start:${WON}`, `end:${WON}`, `start:${LOST}`, `end:${LOST}`]);
   });
 });

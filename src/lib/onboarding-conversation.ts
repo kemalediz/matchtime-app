@@ -65,7 +65,7 @@ import { t } from "./i18n/t";
 import { buildBadgeHelp } from "./badge-help";
 import { normaliseLang, type Lang } from "./i18n/lang";
 import { detectGroupLang, langOfConsentReply } from "./i18n/detect";
-import { guardedAnthropicCall } from "@/lib/pipeline/llm";
+import { guardedAnthropicCall, systemBlock } from "@/lib/pipeline/llm";
 import { organisersAnnounce } from "./list-announcer";
 import { HAIKU_MODEL, HAIKU_SHORT_ANSWER_MAX_TOKENS, HAIKU_THINKING } from "./models";
 
@@ -737,7 +737,7 @@ async function extract(
         model: MODEL,
         max_tokens: HAIKU_SHORT_ANSWER_MAX_TOKENS,
         ...HAIKU_THINKING,
-        system: [{ type: "text", text: EXTRACT_PROMPT, cache_control: { type: "ephemeral", ttl: "1h" } }],
+        system: systemBlock(EXTRACT_PROMPT),
         messages: [
           {
             role: "user",

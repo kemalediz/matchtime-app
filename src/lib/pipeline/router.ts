@@ -184,8 +184,11 @@ import { isAiBudgetExceeded } from "../ai-budget-context";
  * cacheable minimum, so every token is paid on every call, and it is
  * deliberately not padded over it: the Pi buffers about ten minutes and
  * a five-minute cache entry would expire first
- * (`MDs/llm-spend-september-2026.md`). `__tests__/cache-threshold.test.ts`
- * pins the size.
+ * (`MDs/llm-spend-september-2026.md`). CORRECTED 2026-10-19: that count
+ * was the system prompt alone. The cached prefix includes the schema, and
+ * with it the real request was over 4,096 (about 4,246, measured); only a
+ * size gate in llm.ts kept the marker off. Every call carries the marker
+ * now (`__tests__/cache-threshold.test.ts`).
  *
  * Comments elsewhere that cite "router rule 8" or "rule 15" mean the
  * numbered prompt before this rewrite (3781d2b). Both rulings survive,

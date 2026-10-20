@@ -8,14 +8,13 @@
  * READING it (0.1x). The system prompt write was ~$0.0088 of each
  * ~$0.011 call.
  *
- * `fanOutWarmFirst` runs one call per cacheable prompt first, then the
+ * `fanOutWarmFirst` runs one call per cached prompt first, then the
  * rest in parallel. These pin the ordering, and that nothing changes for
- * a batch of one or for a prompt too short to cache.
+ * a batch of one or for a call that makes no cached request.
  */
 import { describe, expect, it } from "vitest";
-import { EXTRACTOR_PROMPTS, extractorFor } from "../extractors";
-import { EXTRACTOR_MODEL, shouldCachePrompt } from "../llm";
-import { extractorCacheKey, fanOutWarmFirst } from "../fan-out";
+import { extractorFor } from "../extractors";
+import { extractorCacheKey, fanOutWarmFirst, ROUTER_CACHE_KEY } from "../fan-out";
 import type { Route } from "../types";
 
 /** Runs each item as a fake call that takes `ms`, logging start and end. */
@@ -55,7 +54,7 @@ describe("fanOutWarmFirst", () => {
     expect(log.slice(4, 6).sort()).toEqual(["start:a2", "start:q2"]);
   });
 
-  it("does not sequence calls whose prompt cannot cache: they stay fully parallel", async () => {
+  it("does not sequence calls that make no cached request: they stay fully parallel", async () => {
     const { log, run } = recorder();
     await fanOutWarmFirst(["a", "b", "c"], () => null, run);
     expect(log.slice(0, 3).sort()).toEqual(["start:a", "start:b", "start:c"]);
@@ -83,15 +82,19 @@ describe("fanOutWarmFirst", () => {
   });
 });
 
-describe("extractorCacheKey: which routes share a cacheable prompt", () => {
+describe("extractorCacheKey: which routes share a cached prompt", () => {
+  // Since 2026-10-19 every extractor request carries the marker (the size
+  // gate is gone, `cache-threshold.test.ts`), and every extractor prompt
+  // clears Sonnet 5's 1,024-token minimum once its schema is counted
+  // (MEASURED with count_tokens on the captured bodies: teams 1,175,
+  // score 2,000, admin 1,880, attendance 4,306, question 5,480). So every
+  // route that makes an extraction is warmed; only `none` makes no call.
   const ROUTES: Route[] = ["self_att", "other_att", "offer", "unsure", "question", "balancer", "score", "admin_ops", "none"];
 
-  it("keys a route by its extractor exactly when that prompt clears the model's cache minimum", () => {
+  it("keys every extracting route by its extractor, and none by nothing", () => {
     for (const route of ROUTES) {
       const kind = extractorFor(route);
-      const expected =
-        kind !== "none" && shouldCachePrompt(EXTRACTOR_MODEL, EXTRACTOR_PROMPTS[kind]) ? kind : null;
-      expect(extractorCacheKey(route), route).toBe(expected);
+      expect(extractorCacheKey(route), route).toBe(kind === "none" ? null : kind);
     }
   });
 
@@ -100,11 +103,49 @@ describe("extractorCacheKey: which routes share a cacheable prompt", () => {
     expect([...keys]).toEqual(["attendance"]);
   });
 
-  it("the question extractor caches too; score, teams and admin do not (today)", () => {
+  it("score, teams and admin are warmed too now", () => {
     expect(extractorCacheKey("question")).toBe("question");
-    expect(extractorCacheKey("score")).toBeNull();
-    expect(extractorCacheKey("balancer")).toBeNull();
-    expect(extractorCacheKey("admin_ops")).toBeNull();
+    expect(extractorCacheKey("score")).toBe("score");
+    expect(extractorCacheKey("balancer")).toBe("teams");
+    expect(extractorCacheKey("admin_ops")).toBe("admin");
     expect(extractorCacheKey("none")).toBeNull();
+  });
+});
+
+describe("fanOutWarmFirst with a concurrency limit (the dev harnesses' router sweeps)", () => {
+  it("warms the router once, then never runs more than the limit at a time", async () => {
+    let inFlight = 0;
+    let peak = 0;
+    const log: string[] = [];
+    const ids = ["a", "b", "c", "d", "e", "f"];
+    const out = await fanOutWarmFirst(
+      ids,
+      () => ROUTER_CACHE_KEY,
+      async (id) => {
+        inFlight++;
+        peak = Math.max(peak, inFlight);
+        log.push(`start:${id}`);
+        await new Promise((r) => setTimeout(r, 3));
+        log.push(`end:${id}`);
+        inFlight--;
+        return id.toUpperCase();
+      },
+      { concurrency: 2 },
+    );
+    expect(log.slice(0, 2)).toEqual(["start:a", "end:a"]);
+    expect(peak).toBe(2);
+    expect(out).toEqual(["A", "B", "C", "D", "E", "F"]);
+  });
+
+  it("without a limit the second wave is fully parallel, as before", async () => {
+    let inFlight = 0;
+    let peak = 0;
+    await fanOutWarmFirst(["a", "b", "c", "d"], () => ROUTER_CACHE_KEY, async () => {
+      inFlight++;
+      peak = Math.max(peak, inFlight);
+      await new Promise((r) => setTimeout(r, 3));
+      inFlight--;
+    });
+    expect(peak).toBe(3);
   });
 });
