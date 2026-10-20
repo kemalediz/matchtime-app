@@ -26,6 +26,9 @@ describe("web_attend_toast", () => {
     const tr = t("tr").web_attend_toast({ status: "BENCH", organiser: true });
     expect(tr).not.toContain("kadrodasın");
     expect(tr).toContain("organizatörler");
+    // The organisers announce the pick, so MatchTime promises no message.
+    expect(en).toBe("You're on the bench. The organisers pick who plays 🙏");
+    expect(tr).toBe("Seni yedek listesine yazdım. Kimin oynayacağını organizatörler seçer 🙏");
   });
 
   it("BENCH in a first-come club: the squad is full, on the bench", () => {

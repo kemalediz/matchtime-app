@@ -113,7 +113,7 @@ test("an organiser-pick club, after a drop (a new opening): the post says the or
   const jobs = await groupJobs(db);
   expect(jobs).toHaveLength(3);
   expect(jobs[2].text).toMatch(
-    /^We need 2 more players for \w{3} \d{2}:\d{2}\. Say \*IN\* and the organisers will pick who takes the places\. I'll message you if it's you\.$/,
+    /^We need 2 more players for \w{3} \d{2}:\d{2}\. Say \*IN\* if you can make it and the organisers will confirm who gets the places\.$/,
   );
   await db.run(`UPDATE "Attendance" SET status = 'CONFIRMED' WHERE "matchId" = $1 AND "userId" = $2`, [MATCH.upcoming, U.third]);
   await db.run(`UPDATE "Organisation" SET "benchPickMode" = 'first-come' WHERE id = $1`, [ORG_ID]);

@@ -67,18 +67,18 @@ describe("buildGroupAskPost", () => {
     expect(text).toBe("That's 13 of 14 for Fri 19:15. One slot open, say *IN* to take it.");
   });
 
-  it("organisers pick: say IN, the organisers pick, a message to whoever is picked", () => {
+  it("organisers pick: say IN if you can make it, the organisers confirm, no promise that MatchTime messages anyone", () => {
     expect(buildGroupAskPost({ ...base, lang: "en", pickMode: "organiser" })).toBe(
-      "We need 1 more player for Fri 19:15. Say *IN* and the organisers will pick who takes the place. I'll message you if it's you.",
+      "We need 1 more player for Fri 19:15. Say *IN* if you can make it and the organisers will confirm who gets the place.",
     );
     expect(buildGroupAskPost({ ...base, open: 2, confirmed: 12, lang: "en", pickMode: "organiser" })).toBe(
-      "We need 2 more players for Fri 19:15. Say *IN* and the organisers will pick who takes the places. I'll message you if it's you.",
+      "We need 2 more players for Fri 19:15. Say *IN* if you can make it and the organisers will confirm who gets the places.",
     );
   });
 
   it("in Turkish, both modes", () => {
     expect(buildGroupAskPost({ ...base, kickoffLabel: "Cuma 19:15", lang: "tr", pickMode: "organiser" })).toBe(
-      "Cuma 19:15 maçı için 1 oyuncu daha lazım. *VARIM* yazın, kimin oynayacağını organizatörler seçer. Seçilirseniz size mesaj atarım.",
+      "Cuma 19:15 maçı için 1 oyuncu daha lazım. Gelebiliyorsanız *VARIM* yazın, yeri kimin alacağını organizatörler onaylayacak.",
     );
     expect(buildGroupAskPost({ ...base, kickoffLabel: "Cuma 19:15", lang: "tr", pickMode: "first-come" })).toBe(
       "Cuma 19:15 için 13 kişiyiz, kadro 14 kişilik. Bir yer açıldı, almak için *VARIM* yazın.",

@@ -1767,7 +1767,7 @@ Kusura bakma, kadroyu şu an güncelleyemedim. Bir yönetici halleder, istersen 
 📋 *Friday 9-a-side* (Fri 16 Oct, 20:30) için kadro dolu, o yüzden seni yedeğe yazdım. Bir yer açılınca sana haber veririm 🙏
 
 ### R102 buildTentativeFollowupAck / in, landed on the bench (organisers pick)
-📋 *Friday 9-a-side* (Fri 16 Oct, 20:30) için seni yedek listesine yazdım. Kimin oynayacağını organizatörler seçer; seçilirsen sana haber veririm 🙏
+📋 *Friday 9-a-side* (Fri 16 Oct, 20:30) için seni yedek listesine yazdım. Kimin oynayacağını organizatörler seçer 🙏
 
 ### R101 buildSelfAttendanceAck / CONFIRMED
 ✅ *Tuesday 7-a-side* (8 Eylül Salı 21:30) için kadrodasın. Maçta görüşürüz ⚽
@@ -3860,10 +3860,10 @@ Cum 20:30 maçında bir yer açıldı. *VARIM* yazın, yedek listesine ekleyeyim
 İpucu: kadroyu her hafta devam ettirmek, yerine geçecekleri yedek listesinden kendiniz seçmek ya da yönetici mesajlarını yöneticilerin grubunda almak için sitedeki Ayarlar sayfasını açın.
 
 ### GAK1 buildGroupAskPost / organisers pick, one place
-Cuma 19:15 maçı için 1 oyuncu daha lazım. *VARIM* yazın, kimin oynayacağını organizatörler seçer. Seçilirseniz size mesaj atarım.
+Cuma 19:15 maçı için 1 oyuncu daha lazım. Gelebiliyorsanız *VARIM* yazın, yeri kimin alacağını organizatörler onaylayacak.
 
 ### GAK1 buildGroupAskPost / organisers pick, two places
-Cuma 19:15 maçı için 2 oyuncu daha lazım. *VARIM* yazın, kimin oynayacağını organizatörler seçer. Seçilirseniz size mesaj atarım.
+Cuma 19:15 maçı için 2 oyuncu daha lazım. Gelebiliyorsanız *VARIM* yazın, yeri kimin alacağını organizatörler onaylayacak.
 
 ### GAK1 buildGroupAskPost / first come, two places
 Cuma 19:15 için 12 kişiyiz, kadro 14 kişilik. 2 yer açıldı, almak için *VARIM* yazın.
@@ -3908,7 +3908,7 @@ Gelemiyor musun? *YOKUM* yaz, bir daha sormam 🙌
 ---
 👋 Ali, *Friday 9-a-side* (9 Ekim Cuma 20:30) için hâlâ 1 oyuncu arıyoruz. Varsan *VARIM* yaz, yedek listesine ekleyeyim (kimin oynayacağını organizatörler seçer); yoksan *YOKUM* yaz, bir daha sormam 🙏
 ---
-📋 *Friday 9-a-side* (9 Ekim Cuma 20:30) için seni yedek listesine yazdım. Kimin oynayacağını organizatörler seçer; seçilirsen sana haber veririm 🙏
+📋 *Friday 9-a-side* (9 Ekim Cuma 20:30) için seni yedek listesine yazdım. Kimin oynayacağını organizatörler seçer 🙏
 
 ### UNP1 buildUnpaidListAdminNotice / several unpaid
 💷 *Friday 9-a-side* (9 Ekim Cuma 20:30) için ödemeyenler: Wasim Ali, Raihan Ahmed, Ali Demir. 16 kişiden 13 kişi ödedi.

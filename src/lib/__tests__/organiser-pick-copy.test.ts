@@ -59,7 +59,10 @@ describe("organiser-pick clubs never promise first come", () => {
   it("the private ack of an IN that went on the waiting list", () => {
     const ack = { failed: false, status: "BENCH" as const, matchName: "Friday 9-a-side", matchWhen: "Fri 9 Oct, 20:30", organiser: true };
     expect(buildSelfAttendanceAck(ack)).toBe(
-      "📋 I've put you on the bench for *Friday 9-a-side* on Fri 9 Oct, 20:30. The organisers pick who plays, and I'll message you if you're picked 🙏",
+      "📋 I've put you on the bench for *Friday 9-a-side* on Fri 9 Oct, 20:30. The organisers pick who plays 🙏",
+    );
+    expect(buildSelfAttendanceAck({ ...ack, lang: "tr" })).toBe(
+      "📋 *Friday 9-a-side* (Fri 9 Oct, 20:30) için seni yedek listesine yazdım. Kimin oynayacağını organizatörler seçer 🙏",
     );
     expect(buildSelfAttendanceAck({ ...ack, lang: "tr" })).not.toMatch(FIRST_COME_PROMISE);
   });
