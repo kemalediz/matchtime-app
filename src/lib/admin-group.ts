@@ -11,8 +11,7 @@
  * should be able to ask questions"): a question, help and the graphics are
  * answered for them, and a member of the club changes who plays there
  * (2026-10-20); what else changes the club stays an owner's or admin's
- * (`admin-group-understand.ts` says who can). For an owner or admin, in
- * this order:
+ * (`admin-group-understand.ts` says who can). In this order:
  *
  *   1. STRUCTURED DATA, read deterministically, because it is data and not
  *      language:
@@ -22,7 +21,11 @@
  *         MatchTime's own numbered list, ALL, NONE;
  *      c. a pasted multi-line squad list (a live weekly club): proposed,
  *         applied only on YES.
- *   2. EVERYTHING ELSE from an owner or admin of a live club goes through
+ *      Both b and c are WHO PLAYS, so since 2026-10-20 (Kemal) any member
+ *      of the club may send them, as an owner or admin may; someone not in
+ *      the club may not. A member says YES to the list they pasted; an
+ *      owner or admin to anyone's (`admin-group-understand.ts`).
+ *   2. EVERYTHING ELSE from anyone in a live club's HQ goes through
  *      the SAME pipeline as the players' group: the shared router with the
  *      organisers' group context, then the shared extractors and owners
  *      (`admin-group-understand.ts`). That is where a team swap, a squad
@@ -209,9 +212,14 @@ export async function handleAdminGroupMessage(msg: AdminGroupMessage): Promise<A
     await recordHqMessage({ orgId: org.id, waMessageId: msg.messageId, senderUserId, text: msg.text, now });
   }
 
+  // Who may change who plays here: an owner or admin, or any other member
+  // of the club (2026-10-20). Their pick and their pasted list are read
+  // below; someone not in the club gets neither.
+  const squadActor = admin?.userId ?? (memberships.length > 0 ? senderUserId : null);
+
   // A club that is not live: only its own pick round is read, and only
-  // from an organiser.
-  if (!admin && !live) return { handled: false, ignored: round ? "not-an-admin" : "no-open-pick", orgId: org.id, replyText: null };
+  // from a member of the club.
+  if (!squadActor && !live) return { handled: false, ignored: round ? "not-an-admin" : "no-open-pick", orgId: org.id, replyText: null };
 
   if (msg.messageId) {
     try {
@@ -249,24 +257,21 @@ export async function handleAdminGroupMessage(msg: AdminGroupMessage): Promise<A
     });
   };
 
-  // Anyone else in a live club's HQ (2026-10-16, Kemal: "Anyone in that
-  // group should be able to ask questions"): the shared pipeline, told they
-  // are not an organiser. It answers questions, help and the graphics for
-  // them, and says who can for anything that changes the club. The
-  // structured readers below (a pick, a pasted list) change the club, and
-  // stay the organisers'.
-  if (!admin) {
-    const understood = await understand(false);
-    if (understood) return acted(org.id, understood.outcome, understood.replyText);
-    return { handled: false, ignored: round ? "not-an-admin" : "no-open-pick", orgId: org.id, replyText: null };
-  }
+  // What the message was not read as. Someone who is not an organiser
+  // keeps the label this route always gave them.
+  const notRead = (): AdminGroupMessageResult => ({
+    handled: false,
+    ignored: round ? (admin ? "not-a-pick" : "not-an-admin") : "no-open-pick",
+    orgId: org.id,
+    replyText: null,
+  });
 
-  // 1b. A pick from MatchTime's numbered list.
-  if (round) {
+  // 1b. A pick from MatchTime's numbered list, by any member of the club.
+  if (round && squadActor) {
     const outcome = await handlePickReply({
       orgId: org.id,
       door: "admin-group",
-      senderUserId: admin.userId,
+      senderUserId: squadActor,
       text: msg.text,
       mentionNames: msg.mentionNames,
       sentAt: parseTimestamp(msg.timestamp),
@@ -274,11 +279,11 @@ export async function handleAdminGroupMessage(msg: AdminGroupMessage): Promise<A
     });
     if (outcome.handled) return acted(org.id, outcome.outcome ?? null, outcome.replyText);
   }
-  if (!live) return { handled: false, ignored: round ? "not-a-pick" : "no-open-pick", orgId: org.id, replyText: null };
+  if (!live) return notRead();
 
-  // 1c. A pasted squad list (a live weekly club).
-  if (weekly) {
-    const pasted = await proposeSquadPaste({ orgId: org.id, lang: org.language, messageId, senderUserId: admin.userId, now, text: msg.text });
+  // 1c. A pasted squad list (a live weekly club), by any member of the club.
+  if (weekly && squadActor) {
+    const pasted = await proposeSquadPaste({ orgId: org.id, lang: org.language, messageId, senderUserId: squadActor, now, text: msg.text });
     if (pasted) {
       let replyText = pasted.replyText;
       if (pasted.outcome === "paste-proposed") {
@@ -291,8 +296,11 @@ export async function handleAdminGroupMessage(msg: AdminGroupMessage): Promise<A
     }
   }
 
-  // 2. Everything else, through the shared pipeline.
-  const understood = await understand(true);
+  // 2. Everything else, through the shared pipeline, told whether the
+  // sender is an organiser. Anyone in HQ (2026-10-16, Kemal: "Anyone in
+  // that group should be able to ask questions") gets questions, help and
+  // the graphics; what changes the club beyond who plays, they hear who can.
+  const understood = await understand(!!admin);
   if (understood) return acted(org.id, understood.outcome, understood.replyText);
-  return { handled: false, ignored: round ? "not-a-pick" : "no-open-pick", orgId: org.id, replyText: null };
+  return notRead();
 }

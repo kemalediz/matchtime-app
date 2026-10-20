@@ -17,7 +17,8 @@
  * Bench in" do exactly what an organiser's do, with the organiser's reply
  * and tick, and are recorded as Pat's; the same in Turkish; someone who is
  * not in the club changes nothing; Pat asking to change the fee or the
- * teams is not done, as before.
+ * teams is not done, and gets the one line naming who can, tagged or not
+ * (2026-10-20, `admin-group-open-list-and-picks.spec.ts`).
  */
 import { test, expect, resetDb } from "../fixtures";
 import { MATCH, ORG_ID, PHONE, U } from "../helpers/constants";
@@ -125,7 +126,7 @@ test("someone who is not in the club: nothing changed; tagged, one line naming w
 
 const ADMIN_FACTS = { payerRef: "", count: 0, coveredRefs: [], undo: false, matchDay: "", phrase: "", note: "", lookbackMatches: 0 };
 
-test("a player asking to change the fee: not done, as before", async ({ request, db }) => {
+test("a player asking to change the fee: not done; one line naming who can, tagged or not (2026-10-20)", async ({ request, db }) => {
   const fee = async () =>
     (await db.one<{ f: number | null }>(`SELECT "feePerPlayer" AS f FROM "Match" WHERE id = $1`, [MATCH.upcoming]))?.f ?? null;
   const before = await fee();
@@ -133,8 +134,9 @@ test("a player asking to change the fee: not done, as before", async ({ request,
     "make the fee 6 pounds": { route: "admin_ops", facts: { action: "other", ...ADMIN_FACTS } },
     "@Match Time make the fee 6 pounds": { route: "admin_ops", facts: { action: "other", ...ADMIN_FACTS } },
   });
-  expect(await say(request, "make the fee 6 pounds")).toMatchObject({ handled: false, replyText: null });
-  expect(await say(request, "@Match Time make the fee 6 pounds")).toMatchObject({ handled: true, outcome: "hq-not-here", react: null });
+  const line = { handled: true, outcome: "hq-only-organisers", replyText: "Only Alex can change that.", react: null };
+  expect(await say(request, "make the fee 6 pounds")).toMatchObject(line);
+  expect(await say(request, "@Match Time make the fee 6 pounds")).toMatchObject(line);
   expect(await fee()).toBe(before);
 });
 

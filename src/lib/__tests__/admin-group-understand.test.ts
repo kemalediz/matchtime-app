@@ -262,6 +262,46 @@ describe("approve: the safe-YES rule", () => {
     expect((await ask("go ahead", "approve"))?.outcome).toBe("paste-applied");
   });
 
+  // 2026-10-20 (Kemal): anyone who may paste a list may say YES to their own.
+  describe("a member who is not an organiser and the pasted list", () => {
+    const member = { senderUserId: "u-kemal", organiser: false, member: true, senderName: "Kemal" };
+    const ONLY = "Only Hamzah or Raihan can change that.";
+    const listWaiting = (by: string) => {
+      dbMock.adminTeamProposal.findFirst.mockResolvedValue(null);
+      dbMock.adminSquadProposal.findFirst.mockResolvedValue({ waMessageId: "wa-paste", createdAt: ASKED, proposedByUserId: by });
+      hqLog.hqLogSince.mockResolvedValue([mtRow(ASKED, "list:wa-paste", "Adding: Bilal. Reply YES to apply.")]);
+    };
+
+    it("their YES to the list they pasted: applied, that list only", async () => {
+      listWaiting("u-kemal");
+      expect((await ask("yes", "approve", member))?.outcome).toBe("paste-applied");
+      expect(paste.answerSquadPasteYes).toHaveBeenCalledWith(expect.objectContaining({ senderUserId: "u-kemal", proposedBy: "u-kemal" }));
+    });
+
+    it("their YES to a list someone else pasted: the line naming who can, nothing applied", async () => {
+      listWaiting("u-admin");
+      expect(await ask("yes", "approve", member)).toEqual({ route: "approve", outcome: "hq-only-organisers", replyText: ONLY });
+      expect(paste.answerSquadPasteYes).not.toHaveBeenCalled();
+    });
+
+    it("their YES while the teams wait: the line, the teams untouched", async () => {
+      expect(await ask("yes", "approve", member)).toEqual({ route: "approve", outcome: "hq-only-organisers", replyText: ONLY });
+      expect(teams.answerTeamsYes).not.toHaveBeenCalled();
+    });
+
+    it("someone not in the club, their YES to any list: the line", async () => {
+      listWaiting("u-kemal");
+      expect((await ask("yes", "approve", { ...member, member: false }))?.outcome).toBe("hq-only-organisers");
+      expect(paste.answerSquadPasteYes).not.toHaveBeenCalled();
+    });
+
+    it("an organiser's YES to a member's list: applied, any list", async () => {
+      listWaiting("u-kemal");
+      expect((await ask("yes", "approve"))?.outcome).toBe("paste-applied");
+      expect(paste.answerSquadPasteYes).toHaveBeenCalledWith(expect.not.objectContaining({ proposedBy: expect.anything() }));
+    });
+  });
+
   it("teams for a game long over are not waiting", async () => {
     dbMock.match.findUnique.mockResolvedValue({ date: new Date("2026-10-15T20:00:00Z"), status: "TEAMS_GENERATED" });
     expect(await ask("yes", "approve")).toBeNull();
@@ -699,13 +739,25 @@ describe("a sender who is not an organiser", () => {
 
   it.each([
     ["If you dont have anyone by later today ill play", "self_att"],
-    ["I beg you ask it to swap Maj and Kieran", "balancer"],
-    ["yes", "approve"],
-    ["let MatchTime ask in the group", "ask_group"],
+    ["shall we swap Maj and Kieran?", "none"],
     ["Matchtime has done it according to ratings", "unsure"],
   ])("their chat, not addressed to MatchTime (%s): silent", async (text, route) => {
     expect(await ask(text, route, player())).toBeNull();
     expect(dbMock.membership.findMany).not.toHaveBeenCalled();
+  });
+
+  // 2026-10-20 (Kemal): a request the router reads as one only an organiser
+  // may make gets the line whether or not MatchTime was tagged.
+  it.each([
+    ["swap Maj and Kieran", "balancer"],
+    ["ask the group for a player", "ask_group"],
+    ["make the fee 6 pounds", "admin_ops"],
+  ])("untagged %s (%s): not done, the same one line", async (text, route) => {
+    const r = await ask(text, route, player());
+    expect(r).toEqual({ route, outcome: "hq-only-organisers", replyText: ONLY });
+    expect(teams.handleTeamCommand).not.toHaveBeenCalled();
+    expect(groupAsk.askPlayersGroup).not.toHaveBeenCalled();
+    expect(requests.length).toBe(1); // the router only
   });
 
   it("tagged, and the router cannot tell what it is: the one line, never the attendance engine", async () => {
@@ -839,9 +891,10 @@ describe("a free place, asked for in HQ in the organisers' own words, given on Y
     expect(feeWaiver.proposeFeeFreeInHq).not.toHaveBeenCalled();
   });
 
-  it("not an organiser, untagged: their own chat, silent, and the extractor is never asked", async () => {
+  it("not an organiser, untagged: the line naming who can (2026-10-20), and the extractor is never asked", async () => {
     const r = await ask("Bilal is free this week", "admin_ops", { deps: free(), senderUserId: "u-kemal", organiser: false });
-    expect(r).toBeNull();
+    expect(r?.outcome).toBe("hq-only-organisers");
+    expect(feeWaiver.proposeFeeFreeInHq).not.toHaveBeenCalled();
     expect(requests).toHaveLength(1);
   });
 
