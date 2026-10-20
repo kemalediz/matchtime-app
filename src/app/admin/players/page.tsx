@@ -17,6 +17,7 @@ import {
 import { toast } from "sonner";
 import {
   updatePlayerRole,
+  makeOwner,
   seedPlayerRating,
   confirmProvisionalPlayer,
   removeProvisionalPlayer,
@@ -77,6 +78,7 @@ export default function PlayersPage() {
   const [lastGroupSyncAt, setLastGroupSyncAt] = useState<string | null | undefined>(undefined);
   // Placeholders that may be a phone member under another row (2026-09-29).
   const [duplicates, setDuplicates] = useState<DuplicateSuggestion[]>([]);
+  const [viewerIsOwner, setViewerIsOwner] = useState(false);
 
   useEffect(() => {
     fetch("/api/org/settings").then((r) => r.json()).then((d) => {
@@ -98,6 +100,7 @@ export default function PlayersPage() {
       setPlayers(Array.isArray(data) ? data : data.players ?? []);
       setLastGroupSyncAt(Array.isArray(data) ? undefined : (data.groupSync?.lastSyncAt ?? null));
       setDuplicates(Array.isArray(data) ? [] : (data.duplicateSuggestions ?? []));
+      setViewerIsOwner(!Array.isArray(data) && data.viewerIsOwner === true);
     }
     setLoading(false);
   }
@@ -105,8 +108,28 @@ export default function PlayersPage() {
   async function handleRoleChange(userId: string, role: string) {
     if (!orgId) return;
     try {
-      await updatePlayerRole(userId, orgId, role as "ADMIN" | "PLAYER");
-      toast.success("Role updated");
+      const res = await updatePlayerRole(userId, orgId, role as "ADMIN" | "PLAYER");
+      if (!res.ok) {
+        toast.error(
+          res.reason === "owner-locked" ? t(lang).admin_players_role_owner_locked : t(lang).admin_players_role_refused,
+        );
+      } else if (res.changed) {
+        toast.success(t(lang).admin_players_role_updated);
+      }
+      loadPlayers(includeFormer);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    }
+  }
+
+  async function handleMakeOwner(userId: string, name: string) {
+    if (!orgId) return;
+    if (!confirm(t(lang).admin_players_make_owner_confirm({ name }))) return;
+    try {
+      const res = await makeOwner(userId, orgId);
+      if (res.ok) toast.success(t(lang).admin_players_make_owner_done({ name }));
+      else if (res.reason === "not-owner") toast.error(t(lang).admin_players_make_owner_refused);
+      else toast.error(t(lang).admin_players_role_refused);
       loadPlayers(includeFormer);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed");
@@ -752,14 +775,40 @@ export default function PlayersPage() {
                   <label className="sm:hidden text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-0.5">
                     Role
                   </label>
-                  <select
-                    value={p.role}
-                    onChange={(e) => handleRoleChange(p.id, e.target.value)}
-                    className="w-28 h-10 px-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="PLAYER">Player</option>
-                    <option value="ADMIN">Admin</option>
-                  </select>
+                  {/* The owner's role is read-only for everybody, the owner
+                      included: it changes only through "Make owner", which
+                      only the owner sees. The old picker had no Owner option,
+                      so it showed the owner as "Player" and any pick wrote
+                      ADMIN or PLAYER over OWNER (2026-10-20, FNF). */}
+                  {p.role === "OWNER" ? (
+                    <select
+                      value="OWNER"
+                      disabled
+                      data-testid="role-owner"
+                      aria-label={t(lang).admin_players_role_owner}
+                      className="w-28 h-10 px-2 rounded-lg border border-slate-200 bg-slate-50 text-sm font-semibold text-slate-700"
+                    >
+                      <option value="OWNER">{t(lang).admin_players_role_owner}</option>
+                    </select>
+                  ) : (
+                    <select
+                      value={p.role}
+                      onChange={(e) => handleRoleChange(p.id, e.target.value)}
+                      className="w-28 h-10 px-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="PLAYER">Player</option>
+                      <option value="ADMIN">Admin</option>
+                    </select>
+                  )}
+                  {viewerIsOwner && p.role !== "OWNER" && !p.leftAt && !p.guestFrom && (
+                    <button
+                      type="button"
+                      onClick={() => handleMakeOwner(p.id, p.name ?? "")}
+                      className="mt-1 text-xs text-blue-600 hover:underline"
+                    >
+                      {t(lang).admin_players_make_owner}
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
