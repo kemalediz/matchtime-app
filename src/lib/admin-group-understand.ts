@@ -21,7 +21,9 @@
  *                         for any member of the club (2026-10-20)
  *   balancer              the teams extractor, then `team-proposal.ts`
  *   approve               the safe-YES rule (`admin-group-confirm-rules.ts`),
- *                         then `answerTeamsYes` / `answerSquadPasteYes`
+ *                         then `answerTeamsYes` / `answerSquadPasteYes`; a
+ *                         member who is not an organiser says YES to the
+ *                         list they pasted only (2026-10-20)
  *   poster, team_sheet    `admin-group-graphics.ts`
  *   question, help        the players' group's question answering, for the
  *                         organisers (`admin-group-question.ts`); the HQ
@@ -69,11 +71,16 @@
  * club there (2026-10-20, Kemal and FNF's Raihan, after a player's "Naim is
  * out" did nothing): self_att, other_att, an HQ name list and the unsure
  * attendance try, with an organiser's standing, recorded as the sender.
- * approve, balancer and ask_group still change the club and are an
- * organiser's alone (a free place: also the money collector's):
- * addressed to MatchTime, one line naming the club's owners and admins
- * ("Only Hamzah or Raihan can change that."), otherwise nothing. Logs carry
- * ids and counts only.
+ * A member pastes a whole squad list and answers the bench pick too
+ * (`admin-group.ts`), and says YES to the list they pasted. approve (of
+ * anything else), balancer, ask_group and admin_ops still change the club
+ * and are an organiser's alone (a free place: also the money collector's).
+ * Asked of MatchTime by anyone else, one line naming the club's owners and
+ * admins ("Only Hamzah or Raihan can change that."), TAGGED OR NOT
+ * (2026-10-20, Kemal): the route itself says the router read a request to
+ * MatchTime for that, as an organiser's untagged "make the teams" is one;
+ * the organisers' own chat routes none and stays silent. Logs carry ids
+ * and counts only.
  */
 import { loadGroupReplyContexts, parseGroupQuote, type QuotedGroupMessage } from "./reply-context";
 import { rosterMemberByPhone } from "./roster-name-by-phone";
@@ -169,7 +176,7 @@ export async function loadPending(orgId: string, now: Date, lang: string | null)
     where: { orgId, resolvedAt: null, expiresAt: { gte: new Date(now.getTime() - DAY_MS) } },
     orderBy: { createdAt: "desc" },
   });
-  if (list) out.push({ ref: listAskRef(list.waMessageId), kind: "list", day: null, askedAt: list.createdAt });
+  if (list) out.push({ ref: listAskRef(list.waMessageId), kind: "list", day: null, by: list.proposedByUserId, askedAt: list.createdAt });
   // A partner club's ask for a player, waiting for this club's YES
   // (cross-club ask, slice S2). Before its cut-off only.
   // Never fails HQ: before the migration, or on a read error, nothing waits.
@@ -344,9 +351,10 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
 
     // Someone in HQ who is not an owner or admin (2026-10-16): questions,
     // help and the graphics are theirs too; anything that changes the club
-    // is not. Clearly asked of MatchTime (an @tag, or a reply to its own
-    // message): one line naming who can. Otherwise it is their own chat,
-    // and silent, as an organiser's is. `actor` is set only for an organiser.
+    // beyond who plays is not. A route that asks MatchTime for such a
+    // change (approve, balancer, ask_group, admin_ops) gets one line naming
+    // who can, tagged or not (2026-10-20, Kemal: untagged it was silent).
+    // `actor` is set only for an organiser.
     const actor = input.organiser ? input.senderUserId : null;
     // Who plays is open to everyone in the club here (2026-10-20, Kemal and
     // FNF's Raihan, after a player's "Naim is out" did nothing): putting
@@ -356,8 +364,15 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
     // for and to say YES to, even when they are not an admin (review of
     // #301, item 8). Nothing else is.
     const feeActor = actor ?? (input.senderUserId && input.senderUserId === org.paymentHolderId ? input.senderUserId : null);
-    const notYours = async (): Promise<Understood | null> =>
-      addressed ? said("hq-only-organisers", await onlyOrganisersLine(org.id, lang)) : null;
+    const onlyOrganisers = async (): Promise<Understood> => said("hq-only-organisers", await onlyOrganisersLine(org.id, lang));
+    // The same line where the route alone is not a request to MatchTime (a
+    // claim about who plays, a score): only when addressed to it.
+    const notYours = async (): Promise<Understood | null> => (addressed ? onlyOrganisers() : null);
+    // Who may say YES to what is waiting: an organiser to anything; the
+    // collector to a free place; the member who pasted a list to that list
+    // (2026-10-20: anyone who may paste confirms their own paste).
+    const mayApprove = (i: PendingWithLabel): boolean =>
+      !!actor || (i.kind === "fee" ? !!feeActor : i.kind === "list" && !!squadActor && i.by === squadActor);
     const base = (senderUserId: string) => ({ orgId: org.id, lang, messageId, senderUserId, now });
     // The players' group's own score handling, with HQ's context
     // (`admin-group-score.ts`). Anyone may report; only an organiser may
@@ -427,27 +442,37 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
             return r;
           }
         }
-        if (!feeActor) return notYours();
         const decision = decideApproval({ pending, quoted, log, now });
         console.log(`[admin-group] ${messageId}: approval ${decision.kind}${"why" in decision ? ` (${decision.why})` : ""}`);
-        // The collector who is not an admin: a free place question only.
+        // Not an organiser: a YES that is about nothing stays theirs, and
+        // one about something they may not approve gets the one line.
         if (!actor) {
-          const item = decision.kind === "approve" || decision.kind === "ask" ? decision.item : null;
-          if (item?.kind !== "fee") return notYours();
+          if (decision.kind === "silent") return null;
+          const about = decision.kind === "approve" || decision.kind === "ask" ? [decision.item] : decision.kind === "ask-which" ? decision.items : [];
+          if (!about.some((i) => mayApprove(i as PendingWithLabel))) return onlyOrganisers();
         }
-        if (decision.kind === "approve" && decision.item.kind === "fee") {
-          const proposalId = parseFeeAskRef(decision.item.ref);
-          const r = proposalId ? await answerFeeProposalYes({ orgId: org.id, proposalId, userId: feeActor, lang, now }) : null;
-          return r ? said(r.outcome, r.replyText) : said("hq-nothing-waiting", s.hq_nothing_waiting);
-        }
-        if (decision.kind === "approve" && actor) {
-          if (decision.item.kind === "partner-ask") {
-            const askId = parsePartnerAskRef(decision.item.ref);
+        if (decision.kind === "approve") {
+          const item = decision.item;
+          if (item.kind === "fee") {
+            const proposalId = parseFeeAskRef(item.ref);
+            const r = proposalId && feeActor ? await answerFeeProposalYes({ orgId: org.id, proposalId, userId: feeActor, lang, now }) : null;
+            return r ? said(r.outcome, r.replyText) : said("hq-nothing-waiting", s.hq_nothing_waiting);
+          }
+          if (item.kind === "partner-ask" && actor) {
+            const askId = parsePartnerAskRef(item.ref);
             const r = askId ? await answerPartnerAskYes({ orgId: org.id, askId, userId: actor, lang, now }) : null;
             return r ? said(r.outcome, r.replyText) : said("hq-nothing-waiting", s.hq_nothing_waiting);
           }
-          const r = decision.item.kind === "teams" ? await answerTeamsYes(base(actor)) : await answerSquadPasteYes(base(actor));
-          return r ? said(r.outcome, r.replyText) : said("hq-nothing-waiting", s.hq_nothing_waiting);
+          if (item.kind === "teams" && actor) {
+            const r = await answerTeamsYes(base(actor));
+            return r ? said(r.outcome, r.replyText) : said("hq-nothing-waiting", s.hq_nothing_waiting);
+          }
+          if (item.kind === "list" && squadActor) {
+            // A member's YES applies the list they pasted, and no other.
+            const r = await answerSquadPasteYes({ ...base(squadActor), ...(actor ? {} : { proposedBy: squadActor }) });
+            return r ? said(r.outcome, r.replyText) : said("hq-nothing-waiting", s.hq_nothing_waiting);
+          }
+          return onlyOrganisers();
         }
         if (decision.kind === "nothing-waiting") return said("hq-nothing-waiting", s.hq_nothing_waiting);
         if (decision.kind === "silent") return null;
@@ -487,7 +512,7 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
         return actor || addressed ? said("hq-not-here", s.hq_not_here) : null;
       }
       case "balancer": {
-        if (!actor) return notYours();
+        if (!actor) return onlyOrganisers();
         if (!weekly) return said("hq-not-here", s.hq_not_here);
         const model = input.deps?.extractorModel ?? extractorStubFromEnv() ?? anthropicModel();
         const extracted = await extractForRoute(model, "balancer", {
@@ -532,7 +557,7 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
       }
       case "ask_group": {
         // One place-open ask in the players' group (`admin-group-ask-group.ts`).
-        if (!actor) return notYours();
+        if (!actor) return onlyOrganisers();
         if (!weekly) return said("hq-not-here", s.hq_not_here);
         const r = await askPlayersGroup({ orgId: org.id, lang, messageId, now });
         return said(r.outcome, r.replyText);
@@ -542,9 +567,10 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
         // this week". The players' group's own admin extractor reads the
         // instruction; only `fee_waiver` is done from HQ, by
         // `answerFeeFreeInHq` (fee-waiver.ts). Every other admin action
-        // stays the one line. Someone who is not an organiser, untagged,
-        // is chatting: silent, and the extractor is not asked.
-        if (!feeActor && !addressed) return null;
+        // stays the one line. Someone who is neither an organiser nor the
+        // collector may do none of it: the line naming who can, tagged or
+        // not (2026-10-20), and the extractor is not asked.
+        if (!feeActor) return onlyOrganisers();
         const model = input.deps?.extractorModel ?? extractorStubFromEnv() ?? anthropicModel();
         const extracted = await extractForRoute(model, "admin_ops", {
           id: messageId,
@@ -558,7 +584,6 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
         });
         const facts = extracted.facts;
         if (facts.kind === "admin" && facts.action === "fee_waiver") {
-          if (!feeActor) return notYours();
           // MatchTime ASKS; the YES applies it (review of #301, item 2).
           const r = await proposeFeeFreeInHq({
             orgId: org.id,
