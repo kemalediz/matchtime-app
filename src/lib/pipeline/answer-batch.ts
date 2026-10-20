@@ -838,7 +838,8 @@ export async function runAnswerBatch(args: {
   }
   // The organisers are who the list is FOR when they announce it: they see
   // it as a club whose list MatchTime announces would. See `AnswerAudience`.
-  if (organisers) state = { ...state, features: { ...state.features, listAnnouncer: "matchtime" } };
+  // Their list also always says who is on the bench (`forOrganisers`).
+  if (organisers) state = { ...state, forOrganisers: true, features: { ...state.features, listAnnouncer: "matchtime" } };
 
   let features: OrgFeatures;
   try {
