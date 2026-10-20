@@ -30,7 +30,7 @@ import {
   type PaymentClaimIntent,
 } from "../src/lib/payment-claim-classifier.ts";
 import { buildPayChaseDm, buildRatingDm } from "../src/lib/dm-copy.ts";
-import { costOf } from "../src/lib/pipeline/llm.ts";
+import { costOf, systemBlock } from "../src/lib/pipeline/llm.ts";
 import { HAIKU_MODEL, HAIKU_SHORT_ANSWER_MAX_TOKENS, HAIKU_THINKING } from "../src/lib/models.ts";
 
 const REPEAT = Number(process.env.REPEAT ?? "3") || 3;
@@ -192,7 +192,7 @@ async function main() {
       model: MODEL,
       max_tokens: HAIKU_SHORT_ANSWER_MAX_TOKENS,
       ...HAIKU_THINKING,
-      system: [{ type: "text", text: system, cache_control: { type: "ephemeral", ttl: "1h" } }],
+      system: systemBlock(system),
       messages: [{ role: "user", content: user }],
     });
     calls++;
