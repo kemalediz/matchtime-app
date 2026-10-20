@@ -13,7 +13,8 @@
  * Semantics (unchanged from the route):
  *   - Phone-keyed upsert of User; pushname-dedupe against phone-less
  *     provisional members BEFORE creating; NEVER overwrites existing
- *     User.name/phoneNumber.
+ *     User.name/phoneNumber (a name match holding a different number is
+ *     treated as a different person, see adoptPhoneIfUnset).
  *   - Membership upsert as PLAYER; restores soft-removed (leftAt) rows;
  *     always stamps lastSeenInGroupAt.
  *   - Stamps `Organisation.lastParticipantSweepAt` when the roster was
@@ -42,6 +43,33 @@ export interface ImportResult {
   /** Phoneless placeholders merged into a participant known by phone. */
   linkedPlaceholders: number;
   total: number;
+}
+
+/**
+ * Give a name-matched member the participant's phone, ONLY if they have
+ * none. A saved number is never replaced here (2026-10-20, follow-up to
+ * #315): the name dedupe is alias, exact or first-token fuzzy, so its match
+ * can be someone else entirely. The write is conditional on the number
+ * still being NULL, so a sign-in or admin edit in between is never
+ * overwritten. True when the member now holds `phone`.
+ */
+async function adoptPhoneIfUnset(userId: string, phone: string): Promise<boolean> {
+  const current = await db.user.findUnique({
+    where: { id: userId },
+    select: { phoneNumber: true },
+  });
+  if (!current) return false;
+  if (current.phoneNumber) return current.phoneNumber === phone;
+  try {
+    const { count } = await db.user.updateMany({
+      where: { id: userId, phoneNumber: null },
+      data: { phoneNumber: phone },
+    });
+    return count === 1;
+  } catch {
+    // Unique clash: another row claimed this number in a race. Not ours.
+    return false;
+  }
 }
 
 /** Upsert Users + Memberships for a participant list into an org. */
@@ -79,22 +107,14 @@ export async function importParticipants(
       // signal only (alias / unique exact-or-fuzzy name). Ambiguous names fall
       // through to a fresh create so two distinct people are never merged.
       const match = await findExistingOrgMember(orgId, { name: pushname });
-      if (match) {
-        // Backfill the phone we now know onto the matched record (it was
-        // created phone-less). Guard against a unique-constraint race in case
-        // another row already claimed this number.
-        try {
-          await db.user.update({
-            where: { id: match.userId },
-            data: { phoneNumber: phone },
-          });
-        } catch {
-          // Phone already taken by another row — leave the matched record's
-          // existing identity untouched; membership upsert below still runs.
-        }
+      if (match && (await adoptPhoneIfUnset(match.userId, phone))) {
         // Counted as alreadyKnown by the else-branch below (user is now set).
         user = { id: match.userId, name: match.name };
       }
+      // A match that already holds a DIFFERENT number is a different
+      // WhatsApp account (a namesake, or the same person on a new number):
+      // it is not this participant. Fall through and create them; the
+      // saved user keeps their number, and no write touches them.
     }
     if (!user) {
       // New User — synthetic email keeps the unique index happy.
