@@ -14,6 +14,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { decide } from "../engine";
+import { parseFacts } from "../extractors";
 import type { TeamFacts } from "../types";
 import { NOW, msg, world } from "./helpers";
 
@@ -761,5 +762,68 @@ describe("the stats blast is DECIDED by the engine and RUN by the route", () => 
         (x) => x.kind === "stats_blast",
       ),
     ).toHaveLength(0);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// A QUESTION ABOUT THE TEAMS THAT REACHES `balancer` CANNOT GENERATE THEM
+// (2026-10-20)
+// ═══════════════════════════════════════════════════════════════════════
+//
+// The router sent "@Match Time when will the teams be out?" to `balancer`
+// 4 of 10 on main. The prompt is fixed; this is the code's half. The only
+// path that rewrites the line-ups is the teams extractor's action
+// "generate": the parser accepts no action outside show, generate, rename
+// and swap, and the extractor read every when-question as "show" (15 of 15,
+// dev key), which is a read. Pinned here end to end on the engine side.
+describe("a when-question routed to balancer only ever reads", () => {
+  const SQUAD = ["kemal", "elvin", "sait", "mustafa"];
+  const asked = (action: string, state: Parameters<typeof world>[0] = { confirmed: SQUAD }) => {
+    const parsed = parseFacts(
+      "teams",
+      JSON.stringify({ action, includeRefs: [], teamNames: [], swaps: [], moves: [], pairings: [] }),
+      "wa-1",
+    );
+    return {
+      parsed,
+      r: decide({
+        now: NOW,
+        state: world(state),
+        messages: [
+          msg({
+            from: "elvin",
+            body: "@Match Time when will the teams be out?",
+            tagged: true,
+            route: "balancer",
+            facts: parsed.facts,
+          }),
+        ],
+      }),
+    };
+  };
+
+  it("read as show with no teams yet: says they are not out, writes nothing", () => {
+    const { r } = asked("show");
+    expect(r.writes).toHaveLength(0);
+    expect(r.speech.map((s) => s.kind)).toEqual(["teams_not_generated"]);
+  });
+
+  it("read as show with teams made: re-posts them, writes nothing", () => {
+    const { r } = asked("show", { confirmed: SQUAD, teams: { kemal: "RED", sait: "YELLOW" } });
+    expect(r.writes).toHaveLength(0);
+    expect(r.speech.map((s) => s.kind)).toEqual(["teams_post"]);
+  });
+
+  it("an action outside the four (\"question\", \"when\", empty) is no facts at all, never a generate", () => {
+    for (const action of ["question", "when", "", "GENERATE?"]) {
+      const { parsed, r } = asked(action);
+      expect(parsed.facts.kind, action).toBe("none");
+      expect(r.writes, action).toHaveLength(0);
+    }
+  });
+
+  it("only the extractor's own \"generate\" proposes the write", () => {
+    const { r } = asked("generate");
+    expect(r.writes.map((w) => w.kind)).toEqual(["generate_teams"]);
   });
 });

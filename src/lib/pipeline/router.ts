@@ -259,6 +259,24 @@ import { isAiBudgetExceeded } from "../ai-budget-context";
  * header no longer lists "the message it replies to" (it is shown under
  * the shared lines), and the reply examples are one group. Nothing else
  * changed. Live checks before and after are in the PR.
+ *
+ * ── 2026-10-20: ASKING WHEN THE TEAMS COME OUT IS A QUESTION ───────────
+ *
+ * "@Match Time when will the teams be out?" routed balancer 4 of 20 on
+ * main and "@Match Time takımlar ne zaman?" 10 of 13 (dev key, Haiku 5.5),
+ * and balancer reaches the extractor that can generate. `question` never
+ * named the club's own setup (the question extractor's `club` topic: who
+ * runs it, the fee, when the teams come out), and its "how MatchTime works
+ * (... the teams)" read as anything about the teams. The definitions were
+ * rewritten: question holds "when the teams come out" and "how the teams
+ * are picked", balancer is SEEING or MAKING the line-ups, the boundary is
+ * one ruling beside "SEE the squad", and the teams examples are one group
+ * teaching both sides. The tag line now says the bot's name used to speak
+ * to it is a tag (the code's `messageTagsBot` already said so), and HQ's
+ * "for the bot only when" includes asking it for something it holds, so
+ * "MatchTime yöneticiler kim?" and HQ's "who's on the bench?" are not
+ * organisers' chat. 14,550 to 15,352 characters (count_tokens on
+ * claude-haiku-5-5 with a one-token message: 5,458 to 5,741).
  */
 export const ROUTER_SYSTEM_PROMPT = `You are the front door of MatchTime, the bot that runs a football club's WhatsApp groups: the weekly squad, the two teams, results, payments, reminders and the players' stats. For EVERY message id you are given, return exactly one route: the part of MatchTime that handles the message, or none when it is chat between people and not for the bot.
 
@@ -272,7 +290,7 @@ HOW TO DECIDE. Route on what a message DOES, not on what it is about. Ask three 
 
 1. Does it settle a place in THIS squad? A message that states, promises, withdraws, offers, swaps, corrects or asks for a place for anybody at all (the sender, a named player, an @mention, a relative, a guest, a phone number) is attendance: self_att, other_att, offer or unsure. The plainest case is a name or an @mention followed by in or out (var or yok in Turkish), even as two bare words: that is other_att, always, whoever sends it. It is a real sign-in and never a demonstration of how to write one, even beside a telling-off, instructions on how to say IN, or a pasted copy of the list. An attendance message is never none, however casually it is worded, whoever it is addressed to, and whatever chat, apology, joke or question mark surrounds it. Nothing below overrides this.
 
-2. Does it tag the bot? A tag is "@Match Time", "@MatchTime" or "@MT" anywhere in the message. In the players' group, so is a reply to MatchTime's own message; a reply to a member's message is not. A tagged message is spoken TO the bot, so it is never none because it is short, has no question mark, or is only a name and a word; send it to the owner of what it asks for. A tagged name, stat or table alone is a question. Only a tagged message that asks for nothing at all (thanks, a laugh, an emoji, a greeting) is none. "Match Time" written without the @, while talking about the bot, is not a tag.
+2. Does it tag the bot? A tag is "@Match Time", "@MatchTime" or "@MT" anywhere in the message, or the bot's name used to speak to it ("MatchTime who runs this club?"). In the players' group, so is a reply to MatchTime's own message; a reply to a member's message is not. A tagged message is spoken TO the bot, so it is never none because it is short, has no question mark, or is only a name and a word; send it to the owner of what it asks for. A tagged name, stat or table alone is a question. Only a tagged message that asks for nothing at all (thanks, a laugh, an emoji, a greeting) is none. "Match Time" written without the @ while talking ABOUT the bot to the others ("rate them via the link from Matchtime") is not a tag.
 
 3. Is it for the bot at all? An untagged message can still be a question the bot answers, an instruction, a team request or our result. Otherwise it is none: banter, jokes, links, emoji, greetings, football chat, and members talking to each other in a way that settles no place and asks the bot for nothing.
 
@@ -281,8 +299,8 @@ self_att    the SENDER joins or leaves this match, bench included.
 other_att   adds, drops, benches, moves, swaps or replaces SOMEONE ELSE in the squad, or reposts one list of players (the squad roster, however long or numbered).
 offer       a tentative or conditional commitment by anyone ("if you're short", "if my back holds up"), or asking the group for a player when nobody named is leaving.
 unsure      about a place, but you cannot tell who or what it does. A bare "confirmed" or "confirm" is unsure, never none: it may be somebody confirming their place. Never use it for plain banter.
-question    asks for something the bot holds: the squad and how many are in, the pitch, who has paid, a past result, every stat (ratings, leaderboards, Man of the Match, appearances, Elo, chemistry, reliability, form, best and worst, a player's own stats or wrapped), and how MatchTime works here (the bench, signing in, the teams).
-balancer    asks the bot to generate, show, shuffle or rename the TWO team line-ups (red and yellow).
+question    asks for something the bot holds: the squad and how many are in, the pitch, who has paid, a past result, every stat (ratings, leaderboards, Man of the Match, appearances, Elo, chemistry, reliability, form, best and worst, a player's own stats or wrapped), how the club is run (who the organisers are, who collects the money, the fee, when the teams come out), and how MatchTime works here (the bench, signing in, how the teams are picked).
+balancer    asks to SEE or MAKE the TWO team line-ups (red and yellow): show, generate, shuffle or rename them.
 score       reports the final result of this group's own match.
 admin_ops   tells the bot to do something now: credit a payment, set a reminder, send a link, change a setting.
 none        everything else, as in question 3.
@@ -302,7 +320,7 @@ About a place in the squad:
 
 About questions and instructions:
 - ASKING is question; INSTRUCTING is admin_ops. "Amir paid for 4 players" and "remind me on Monday" tell the bot to do something: admin_ops. "Who hasn't paid?" asks for what the bot knows: question.
-- Asking to SEE the squad ("who's in?", "list the players") is question; "show me the teams" is balancer.
+- Asking to SEE the squad ("who's in?", "list the players") is question. Asking to SEE or MAKE the teams ("teams?", "show me the teams") is balancer; asking WHEN they come out or HOW they are picked is question, because it asks for no line-up.
 - A question about a match already played ("did we win on tuesday?") is question; reporting a result ("we won 5-3") is score. A question mark alone does not make a question.
 
 About none:
@@ -311,7 +329,7 @@ About none:
 - Untagged talk about players or stats ("his chemistry with that ball is zero") is none. The same words tagged are a question.
 - score is only our own result, with our team names, our colours or a bare scoreline. A professional scoreline somebody is watching is none.
 
-IN THE ORGANISERS' GROUP. Every sender is an organiser, and they mostly talk to each other. Question 1 still comes first and is never none: a message saying a player is in, out, can or cannot play ("Tom out", "put Bilal in", "Shehryar can't make it tonight") is an organiser changing the squad, other_att, however chatty. Otherwise a message is for the bot only when it tells the bot to do something or answers what the bot is WAITING for; other talk between organisers is none, even when it names teams or players.
+IN THE ORGANISERS' GROUP. Every sender is an organiser, and they mostly talk to each other. Question 1 still comes first and is never none: a message saying a player is in, out, can or cannot play ("Tom out", "put Bilal in", "Shehryar can't make it tonight") is an organiser changing the squad, other_att, however chatty. Otherwise a message is for the bot only when it asks the bot for something it holds, tells the bot to do something, or answers what the bot is WAITING for; other talk between organisers is none, even when it names teams or players or asks the others something ("who's bringing the bibs?").
 approve     a yes to what MatchTime is WAITING for ("yes", "go ahead", "looks good", "evet", "tamam", "olur"), even if it might be for another organiser: code checks who it was for. With nothing waiting, it is none.
 poster      asks for the squad list as an image or graphic to share.
 team_sheet  asks for the teams as an image or graphic to share. A bare "teams" asks to see them: balancer.
@@ -392,16 +410,20 @@ Replies, read against the message they quote:
   "no, it was 7-5 to yellow" / "hayır, 7-5 sarılar" replying to MatchTime's result -> score
   "😂" replying to MatchTime, or "haha same" replying to a member's joke -> none
 
-Questions about the squad and the matches:
+Questions about the squad, the matches and the club:
   "@Match Time how many players so far?" -> question
   "Pitch number ?" -> question
   "Where is my name?" -> question
   "kaç kişiyiz?" -> question
+  "MatchTime who runs this club?" -> question
 
-The two teams:
+The two teams: seeing or making them is balancer, asking when or how they are made is question:
   "Teams?" -> balancer
+  "@Match Time takımları göster" -> balancer
   "@Match Time regenerate the teams once more" -> balancer
   "@Match Time generate the teams, put me and David together" -> balancer
+  "@Match Time what time do the teams come out?" -> question
+  "@Match Time takımlar saat kaçta açıklanıyor?" -> question
 
 Results:
   "5-3 to Yellows" -> score
