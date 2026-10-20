@@ -110,10 +110,10 @@
  * on the analyze route.
  */
 
-import { readFileSync } from "node:fs";
-import { feeConfirmQuestionForPrompt } from "./dm-copy";
+import { bodyUnderHeader, dmClassifierStubCall } from "./dm-classifier-stub";
 import { normaliseLang, type Lang } from "./i18n/lang";
 import { HAIKU_MODEL, HAIKU_SHORT_ANSWER_MAX_TOKENS, HAIKU_THINKING } from "./models";
+import { noReplyContext, renderReplyContext, type ReplyContext } from "./reply-context";
 
 /**
  * ⚠️ THE ARGUED DESIGN, IN ONE FLAG. The deterministic allowlist decides
@@ -374,89 +374,58 @@ const MODEL = HAIKU_MODEL;
  * Note what it is NOT asked. It never sees the squad, never proposes an
  * amount and never decides whether the sender is allowed to do this.
  * It answers one closed question about one reply.
+ *
+ * REWRITTEN WHOLE on 2026-10-20 (quoted-reply context, slice S3). The
+ * model used to be shown the fee question as a template quoted into the
+ * system prompt, one prompt per language, and nothing of what MatchTime
+ * had actually said. It now reads the shared chat-context block
+ * (`reply-context.ts`) in the user turn: the time now, and the message
+ * they swipe-replied to, or else MatchTime's recent messages to them, so
+ * "yes" is a yes to the fee only when it answers the fee question. One
+ * prompt for every club, English and Turkish examples side by side.
  */
-export function buildFeeReplySystemPrompt(lang?: Lang | string | null): string {
-  const l = normaliseLang(lang);
-  return `You read ONE short private WhatsApp reply from the person who collects match fees for a football club. A moment ago the bot asked them, in writing:
+export function buildFeeReplySystemPrompt(): string {
+  return `The person who collects the match fees for a football club sent MatchTime, the club's WhatsApp bot, the private reply under "THEIR REPLY". MatchTime had told them the fee per player for a match and how many players it will charge, and asked them to reply yes (or ✅) to send everyone their pay link now, or to send a different amount to change it. Above the reply you get that match, the amount waiting for their yes, the time now, and what MatchTime said to them: the message they swipe-replied to, or else MatchTime's recent messages to them, each with when it was sent.
 
-  "${feeConfirmQuestionForPrompt(l)}"
+Is the reply a direct answer to that fee question? Pick one:
+- "yes": send the pay links now, at the amount waiting.
+- "no": do not send them, or not yet.
+- "neither": anything else. Chat, thanks, banter, a question of their own, news about a player, a plan to deal with it later, or an answer to a different message. A 👍, ✅, "ok" or "yes" inside a sentence about something else is not an answer, and the "no" in "no worries" is not a refusal.
 
-You decide whether their reply is a DIRECT ANSWER to that question.
+Which message the reply answers: the one they swipe-replied to; otherwise the newest of MatchTime's recent messages, unless their words plainly answer an earlier one (such as "send the links"). A reply to any message other than the fee question is "neither". A plain go-ahead ("perfect 👍", "all good, go") swipe-replied to the fee question is "yes". If none of MatchTime's messages is known, read the reply against the fee question.
 
-Return ONE intent:
+Examples (English | Turkish):
+yes: "yeah go on then" | "tamam, yolla gitsin"; "go ahead and send them" | "evet evet at hepsine"; "that's right, fire them out" | "doğru, gönderebilirsin"; "correct, send the links" | "evet gönder"
+no: "hold off for now" | "şimdilik bekle"; "not yet, let me count the cash first" | "bekle, parayı bir sayayım"; "leave it till tomorrow" | "yarına kadar gönderme"; "don't send them" | "daha gönderme"
+neither: "great game 👍" | "harika maç 👍"; "cheers lads, great game 👍" | "eline sağlık beyler 👍"; "ok so I'll sort it tomorrow" | "tamam yarın hallederim"; "yes, Elvin still collects it" | "evet, parayı Elvin topluyor"; "how many are paying?" | "kaç kişi ödüyor?"; "no worries mate, great game" | "sorun yok kardeşim, güzel maçtı"; "sure will do"; "yes pls, can you share the name?"; "✅ means that player has been accepted"; "did Wasim turn up in the end?"; "make it £12" | "£12 yap" (an amount is handled elsewhere); "yes" answering a request to rate teammates
 
-- "yes": they are telling you to send the pay links now, at the amount you just quoted. Examples: "yeah go on then", "go ahead and send them", "that's right, fire them out", "sounds right, send em", "correct, send the links".
+If you are not at least 80% sure, choose "neither". A wrong "yes" asks up to 13 real people for money at a moment the collector did not choose, and cannot be undone. A wrong "no" throws away the amount they typed. A wrong "neither" costs them one re-typed message, the cheapest of the three.
 
-- "no": they are telling you NOT to send them, or not yet. Examples: "hold off for now", "not yet, let me count the cash first", "leave it till tomorrow", "don't send them", "scrap that".
-
-- "neither": EVERYTHING else.
-
-THE ONE DISTINCTION THAT MATTERS. A reply is only "yes" or "no" if it ANSWERS the question. Chat, thanks, banter, a question of their own, a statement about a player, or a plan to deal with it later are all "neither" — however many thumbs-up, ticks, "ok"s or "yes"es they contain. A message can contain 👍 without being an answer, and "ok" can open a sentence about something else entirely.
-
-  "👍"                                          -> yes
-  "yes send them"                               -> yes
-  "great game 👍"                               -> neither, it is banter and the 👍 is not an answer
-  "cheers lads, great game 👍"                  -> neither
-  "ok so I'll sort it tomorrow"                 -> neither, that is a plan, not a go-ahead
-  "yes, Elvin still collects it"                -> neither, it answers a different question
-  "sure will do"                                -> neither, they are agreeing to do something themselves
-  "yes pls, can you share the name?"            -> neither, it is a question
-  "ok i will call goals and switch to 7aside"   -> neither
-  "✅ means that player has been accepted"      -> neither, it is explaining an emoji
-  "no worries mate, great game"                 -> neither, "no" is not a refusal here
-  "how many are paying?"                        -> neither
-  "did Wasim turn up in the end?"               -> neither
-  "make it £12"                                 -> neither, an amount is handled elsewhere
-
-${l === "tr" ? FEE_REPLY_TURKISH_BLOCK : ""}If you are not at least 80% sure, return "neither" with a low confidence. A wrong "yes" asks up to 13 real people for money at a moment the collector did not choose, and cannot be undone. A wrong "no" throws away an amount they already typed. A wrong "neither" costs them one re-typed message, which is the cheapest of the three by a wide margin — when in doubt, choose it.
-
-Output STRICT JSON only — no markdown, no fences:
-
-{
-  "intent": "yes" | "no" | "neither",
-  "confidence": <number 0..1>,
-  "reasoning": "<short justification, max 100 chars>"
-}`;
+Output STRICT JSON only, no markdown, no fences:
+{"intent": "yes" | "no" | "neither", "confidence": <number 0..1>, "reasoning": "<max 100 chars>"}`;
 }
 
-/**
- * For a Turkish org the question above is the Turkish one (built from the
- * same table entry the collector was sent), and the reply is Turkish.
- * Same rules, Turkish examples, the "great game 👍" case named again.
- */
-const FEE_REPLY_TURKISH_BLOCK = `THE REPLY WILL USUALLY BE IN TURKISH. The rules above apply unchanged:
-
-  "evet gönder"                                 -> yes
-  "tamam, yolla gitsin"                         -> yes
-  "doğru, gönderebilirsin"                      -> yes
-  "şimdilik bekle, parayı sayayım"              -> no
-  "yarına kadar gönderme"                       -> no
-  "harika maç 👍"                               -> neither, it is banter and the 👍 is not an answer
-  "eline sağlık beyler 👍"                      -> neither
-  "tamam yarın hallederim"                      -> neither, that is a plan, not a go-ahead
-  "evet, parayı Elvin topluyor"                 -> neither, it answers a different question
-  "kaç kişi ödüyor?"                            -> neither
-  "£12 yap"                                     -> neither, an amount is handled elsewhere
-
-`;
-
-/** The English prompt, byte for byte what it always was (pinned by
- *  `copy.en.snap`, case "R98 FEE_REPLY_SYSTEM_PROMPT"). */
-export const FEE_REPLY_SYSTEM_PROMPT = buildFeeReplySystemPrompt("en");
+/** The prompt, the same for every club (pinned by `copy.en.snap` and
+ *  `copy.tr.snap`, case "R98 FEE_REPLY_SYSTEM_PROMPT"). */
+export const FEE_REPLY_SYSTEM_PROMPT = buildFeeReplySystemPrompt();
 
 /** The model, as one function, so a test can drive the real parse
  *  without a key. */
 export type FeeReplyCall = (system: string, user: string) => Promise<string>;
 
 export interface FeeReplyContext {
-  /** The amount awaiting confirmation — what a "yes" would charge. */
+  /** The amount awaiting confirmation: what a "yes" would charge. */
   amount: number;
-  /** The match it belongs to, so the model can see it is answering
-   *  about a specific game. */
+  /** The match it belongs to, with its day and time
+   *  (`contextMatchLabel`), so the model sees which game it is about. */
   matchName: string;
-  /** The match's org language: which question the collector was asked,
-   *  and in which language the reply is likely to be. */
+  /** The match's org language. Not sent to the model (one prompt for
+   *  every club); kept for the callers and the verdict log. */
   lang?: Lang | string | null;
+  /** The chat context (`loadDmReplyContext`): the time now, and the
+   *  message they swipe-replied to or MatchTime's recent DMs to them.
+   *  Absent: the time now, nothing known. */
+  replyContext?: ReplyContext | null;
 }
 
 export interface FeeReplyClassification {
@@ -510,37 +479,22 @@ export function parseFeeReplyIntent(rawText: string): FeeReplyClassification {
  * exercises — and this one is the write path that charges a real club.
  *
  * It stubs what ENTERS the system (what the model said), never what the
- * system concludes.
+ * system concludes. Shared with the other DM classifiers
+ * (`dm-classifier-stub.ts`): each user turn it is asked about is appended
+ * to `<file>.calls`, so a route-level spec can read what the model would
+ * have been told. `e2e/helpers/live-llm.ts` refuses a "live" run that can
+ * still see it.
  */
 export const FEE_REPLY_STUB_FILE_ENV = "MT_TEST_FEE_REPLY_STUB_FILE";
 
-interface FeeReplyStub {
-  /** Trimmed reply → the intent the model would have returned. */
-  bodies?: Record<string, FeeReply>;
-  /** Replies whose model CALL throws, the way an overloaded API does. */
-  fail?: string[];
-}
-
 function stubCall(env: NodeJS.ProcessEnv): FeeReplyCall | null {
-  const file = env[FEE_REPLY_STUB_FILE_ENV];
-  if (!file) return null;
-  return async (_system, user) => {
-    let cfg: FeeReplyStub = {};
-    try {
-      cfg = JSON.parse(readFileSync(file, "utf8")) as FeeReplyStub;
-    } catch {
-      // Missing or garbled → behave as if there were no mapping at all,
-      // which is the direction that cannot release anybody's pay links.
-      cfg = {};
-    }
-    const body = feeReplyBodyOf(user);
-    if ((cfg.fail ?? []).includes(body)) throw new Error("fee-reply stub: forced failure");
-    return JSON.stringify({
-      intent: cfg.bodies?.[body] ?? "neither",
-      confidence: 1,
-      reasoning: "fee-reply stub",
-    });
-  };
+  // Missing or garbled file, or a body it does not map: `neither`, the
+  // direction that cannot release anybody's pay links.
+  return dmClassifierStubCall(env[FEE_REPLY_STUB_FILE_ENV], {
+    label: "fee-confirm",
+    header: REPLY_HEADER,
+    answer: (intent) => JSON.stringify({ intent: intent ?? "neither", confidence: 1, reasoning: "fee-reply stub" }),
+  });
 }
 
 /** What separates the context lines from the reply itself. */
@@ -549,8 +503,20 @@ const REPLY_HEADER = "THEIR REPLY:";
 /** Everything after the header, trimmed — so a multi-line reply is read
  *  whole rather than by its last line. */
 export function feeReplyBodyOf(user: string): string {
-  const i = user.indexOf(`${REPLY_HEADER}\n`);
-  return (i === -1 ? user : user.slice(i + REPLY_HEADER.length + 1)).trim();
+  return bodyUnderHeader(user, REPLY_HEADER);
+}
+
+/** The user turn: the match, the amount, the chat context, then the reply
+ *  under a HEADER, not as a last line: a real WhatsApp reply can be several
+ *  lines long, and a seam that read only the last line would classify a
+ *  fragment, which is the bug this file replaces. */
+export function buildFeeReplyUserTurn(text: string, ctx: FeeReplyContext): string {
+  return [
+    `Match: ${ctx.matchName}`,
+    `Amount waiting for their yes: ${gbpish(ctx.amount)} per player`,
+    renderReplyContext(ctx.replyContext ?? noReplyContext()),
+    `${REPLY_HEADER}\n${text.trim()}`,
+  ].join("\n");
 }
 
 /**
@@ -567,25 +533,26 @@ export async function classifyFeeReply(
   ctx: FeeReplyContext,
   call?: FeeReplyCall | null,
 ): Promise<FeeReply> {
-  if (!text || !text.trim()) return "neither";
+  return (await classifyFeeReplyDetailed(text, ctx, call)).intent;
+}
+
+/** The same, with confidence and reasoning (the live dry run prints them). */
+export async function classifyFeeReplyDetailed(
+  text: string,
+  ctx: FeeReplyContext,
+  call?: FeeReplyCall | null,
+): Promise<FeeReplyClassification> {
+  if (!text || !text.trim()) return NEITHER("empty reply");
   const fn = call === undefined ? (stubCall(process.env) ?? liveCall()) : call;
-  if (!fn) return "neither";
-  const user = [
-    `The bot asked about: ${ctx.matchName}`,
-    `The amount awaiting confirmation: ${gbpish(ctx.amount)}`,
-    // A HEADER, not a last line: a real WhatsApp reply can be several
-    // lines long, and a seam that read only the last line would
-    // classify a fragment — which is the bug this file replaces.
-    `${REPLY_HEADER}\n${text.trim()}`,
-  ].join("\n");
+  if (!fn) return NEITHER("classifier unavailable");
   try {
-    return parseFeeReplyIntent(await fn(buildFeeReplySystemPrompt(ctx.lang), user)).intent;
+    return parseFeeReplyIntent(await fn(FEE_REPLY_SYSTEM_PROMPT, buildFeeReplyUserTurn(text, ctx)));
   } catch (err) {
     // FAIL CLOSED. An overloaded API, a network blip, a revoked key —
     // all of them are "we did not understand this reply", and the thing
     // MatchTime does with a reply it did not understand is nothing.
     console.error("[fee-confirm] classifier call failed:", err);
-    return "neither";
+    return NEITHER("classifier error");
   }
 }
 

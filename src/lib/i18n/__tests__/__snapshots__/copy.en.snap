@@ -3028,46 +3028,24 @@ Fri 11 Sep at 18:00
 Tue 15 Sep at 11:00
 
 ### R98 FEE_REPLY_SYSTEM_PROMPT
-You read ONE short private WhatsApp reply from the person who collects match fees for a football club. A moment ago the bot asked them, in writing:
+The person who collects the match fees for a football club sent MatchTime, the club's WhatsApp bot, the private reply under "THEIR REPLY". MatchTime had told them the fee per player for a match and how many players it will charge, and asked them to reply yes (or ✅) to send everyone their pay link now, or to send a different amount to change it. Above the reply you get that match, the amount waiting for their yes, the time now, and what MatchTime said to them: the message they swipe-replied to, or else MatchTime's recent messages to them, each with when it was sent.
 
-  "Got it — £X per player for <match>, N players to charge. Reply ✅ (or \"yes\") to send everyone their pay link, or send a different amount to change it."
+Is the reply a direct answer to that fee question? Pick one:
+- "yes": send the pay links now, at the amount waiting.
+- "no": do not send them, or not yet.
+- "neither": anything else. Chat, thanks, banter, a question of their own, news about a player, a plan to deal with it later, or an answer to a different message. A 👍, ✅, "ok" or "yes" inside a sentence about something else is not an answer, and the "no" in "no worries" is not a refusal.
 
-You decide whether their reply is a DIRECT ANSWER to that question.
+Which message the reply answers: the one they swipe-replied to; otherwise the newest of MatchTime's recent messages, unless their words plainly answer an earlier one (such as "send the links"). A reply to any message other than the fee question is "neither". A plain go-ahead ("perfect 👍", "all good, go") swipe-replied to the fee question is "yes". If none of MatchTime's messages is known, read the reply against the fee question.
 
-Return ONE intent:
+Examples (English | Turkish):
+yes: "yeah go on then" | "tamam, yolla gitsin"; "go ahead and send them" | "evet evet at hepsine"; "that's right, fire them out" | "doğru, gönderebilirsin"; "correct, send the links" | "evet gönder"
+no: "hold off for now" | "şimdilik bekle"; "not yet, let me count the cash first" | "bekle, parayı bir sayayım"; "leave it till tomorrow" | "yarına kadar gönderme"; "don't send them" | "daha gönderme"
+neither: "great game 👍" | "harika maç 👍"; "cheers lads, great game 👍" | "eline sağlık beyler 👍"; "ok so I'll sort it tomorrow" | "tamam yarın hallederim"; "yes, Elvin still collects it" | "evet, parayı Elvin topluyor"; "how many are paying?" | "kaç kişi ödüyor?"; "no worries mate, great game" | "sorun yok kardeşim, güzel maçtı"; "sure will do"; "yes pls, can you share the name?"; "✅ means that player has been accepted"; "did Wasim turn up in the end?"; "make it £12" | "£12 yap" (an amount is handled elsewhere); "yes" answering a request to rate teammates
 
-- "yes": they are telling you to send the pay links now, at the amount you just quoted. Examples: "yeah go on then", "go ahead and send them", "that's right, fire them out", "sounds right, send em", "correct, send the links".
+If you are not at least 80% sure, choose "neither". A wrong "yes" asks up to 13 real people for money at a moment the collector did not choose, and cannot be undone. A wrong "no" throws away the amount they typed. A wrong "neither" costs them one re-typed message, the cheapest of the three.
 
-- "no": they are telling you NOT to send them, or not yet. Examples: "hold off for now", "not yet, let me count the cash first", "leave it till tomorrow", "don't send them", "scrap that".
-
-- "neither": EVERYTHING else.
-
-THE ONE DISTINCTION THAT MATTERS. A reply is only "yes" or "no" if it ANSWERS the question. Chat, thanks, banter, a question of their own, a statement about a player, or a plan to deal with it later are all "neither" — however many thumbs-up, ticks, "ok"s or "yes"es they contain. A message can contain 👍 without being an answer, and "ok" can open a sentence about something else entirely.
-
-  "👍"                                          -> yes
-  "yes send them"                               -> yes
-  "great game 👍"                               -> neither, it is banter and the 👍 is not an answer
-  "cheers lads, great game 👍"                  -> neither
-  "ok so I'll sort it tomorrow"                 -> neither, that is a plan, not a go-ahead
-  "yes, Elvin still collects it"                -> neither, it answers a different question
-  "sure will do"                                -> neither, they are agreeing to do something themselves
-  "yes pls, can you share the name?"            -> neither, it is a question
-  "ok i will call goals and switch to 7aside"   -> neither
-  "✅ means that player has been accepted"      -> neither, it is explaining an emoji
-  "no worries mate, great game"                 -> neither, "no" is not a refusal here
-  "how many are paying?"                        -> neither
-  "did Wasim turn up in the end?"               -> neither
-  "make it £12"                                 -> neither, an amount is handled elsewhere
-
-If you are not at least 80% sure, return "neither" with a low confidence. A wrong "yes" asks up to 13 real people for money at a moment the collector did not choose, and cannot be undone. A wrong "no" throws away an amount they already typed. A wrong "neither" costs them one re-typed message, which is the cheapest of the three by a wide margin — when in doubt, choose it.
-
-Output STRICT JSON only — no markdown, no fences:
-
-{
-  "intent": "yes" | "no" | "neither",
-  "confidence": <number 0..1>,
-  "reasoning": "<short justification, max 100 chars>"
-}
+Output STRICT JSON only, no markdown, no fences:
+{"intent": "yes" | "no" | "neither", "confidence": <number 0..1>, "reasoning": "<max 100 chars>"}
 
 ### R91 buildRatingDm
 🏆 *Tuesday 7-a-side*, Tue 8 Sep
@@ -3320,22 +3298,22 @@ https://mt.example/s/pay
 No problem, cancelled. Just tell me the amount per player when you're ready.
 
 ### R98 buildFeeConfirmPrompt / per player
-Got it — *£8* per player for *Tuesday 7-a-side*, 13 players to charge.
+Got it: *£8* per player for *Tuesday 7-a-side*, 13 players to charge.
 
 Reply *✅* (or "yes") to send everyone their pay link, or send a different amount to change it.
 
 ### R98 buildFeeConfirmPrompt / total split
-Got it — *£7.69* per player (split across 13 players) for *Tuesday 7-a-side*, 13 players to charge.
+Got it: *£7.69* per player (split across 13 players) for *Tuesday 7-a-side*, 13 players to charge.
 
 Reply *✅* (or "yes") to send everyone their pay link, or send a different amount to change it.
 
 ### R98 buildFeeConfirmPrompt / one player
-Got it — *£8* per player (split across 1 player) for *Tuesday 7-a-side*, 1 player to charge.
+Got it: *£8* per player (split across 1 player) for *Tuesday 7-a-side*, 1 player to charge.
 
 Reply *✅* (or "yes") to send everyone their pay link, or send a different amount to change it.
 
 ### R98 buildFeeConfirmPrompt / nobody to charge
-Got it — *£8* per player for *Tuesday 7-a-side*.
+Got it: *£8* per player for *Tuesday 7-a-side*.
 
 Reply *✅* (or "yes") to send everyone their pay link, or send a different amount to change it.
 

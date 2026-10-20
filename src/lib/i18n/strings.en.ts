@@ -1792,7 +1792,7 @@ export const en = {
     const split = p.wasTotal ? ` (split across ${players(p.headcount)})` : "";
     const charge = p.headcount === "N" || p.headcount > 0;
     return (
-      `Got it — *${p.fee}* per player${split} for *${p.matchName}*` +
+      `Got it: *${p.fee}* per player${split} for *${p.matchName}*` +
       (charge ? `, ${players(p.headcount)} to charge` : "") +
       `.\n\nReply *✅* (or "yes") to send everyone their pay link, or send a different amount to change it.`
     );
@@ -1826,6 +1826,9 @@ export const en = {
     released: number;
     fee: string;
     matchName: string;
+    /** The match's day ("Tue 13 Oct"), so a collector with two matches of
+     *  the same activity can tell which went out (review of #339). */
+    matchWhen?: string | null;
     bank: boolean;
     card: boolean;
     direct: boolean;
@@ -1840,7 +1843,7 @@ export const en = {
             ? `Players pay you directly, and I'll let you know when someone says they have. `
             : "";
     return (
-      `✅ Done, sent ${p.released} pay link${p.released === 1 ? "" : "s"} at *${p.fee}* each for *${p.matchName}*. ` +
+      `✅ Done, sent ${p.released} pay link${p.released === 1 ? "" : "s"} at *${p.fee}* each for *${p.matchName}*${p.matchWhen ? ` on ${p.matchWhen}` : ""}. ` +
       `${how}I'll chase anyone who hasn't paid.`
     );
   },

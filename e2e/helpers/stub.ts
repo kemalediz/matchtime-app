@@ -167,6 +167,7 @@ export function setDmIntentStub(stub: DmIntentStub): void {
 
 export function clearDmIntentStub(): void {
   setDmIntentStub({});
+  rmSync(`${E2E.DM_INTENT_STUB_FILE}.calls`, { force: true });
 }
 
 /**
@@ -203,6 +204,31 @@ export function clearMatchAvailabilityStub(): void {
   rmSync(`${E2E.MATCH_AVAILABILITY_STUB_FILE}.calls`, { force: true });
 }
 
+/** The FEE-REPLY stub (quoted-reply context S3): the collector's reply →
+ *  "yes" | "no" | "neither". `{}` means "neither", which moves no money. */
+export function setFeeReplyStub(stub: { bodies?: Record<string, "yes" | "no" | "neither">; fail?: string[] }): void {
+  mkdirSync(path.dirname(E2E.FEE_REPLY_STUB_FILE), { recursive: true });
+  writeFileSync(E2E.FEE_REPLY_STUB_FILE, JSON.stringify(stub, null, 2));
+}
+
+export function clearFeeReplyStub(): void {
+  setFeeReplyStub({});
+  rmSync(`${E2E.FEE_REPLY_STUB_FILE}.calls`, { force: true });
+}
+
+/** The ROSTER-SURVEY stub (quoted-reply context S3): a check-in reply →
+ *  "in" | "maybe" | "out" | "unclear". `{}` means "unclear", which saves
+ *  nothing. */
+export function setRosterSurveyStub(stub: { bodies?: Record<string, "in" | "maybe" | "out" | "unclear">; fail?: string[] }): void {
+  mkdirSync(path.dirname(E2E.ROSTER_SURVEY_STUB_FILE), { recursive: true });
+  writeFileSync(E2E.ROSTER_SURVEY_STUB_FILE, JSON.stringify(stub, null, 2));
+}
+
+export function clearRosterSurveyStub(): void {
+  setRosterSurveyStub({});
+  rmSync(`${E2E.ROSTER_SURVEY_STUB_FILE}.calls`, { force: true });
+}
+
 /** The user turns a DM classifier stub was asked about, oldest first. */
 export function stubCalls(file: string): Array<{ label: string; user: string }> {
   try {
@@ -225,6 +251,8 @@ export function clearPipelineStubs(): void {
   clearDmIntentStub();
   clearPaymentClaimStub();
   clearMatchAvailabilityStub();
+  clearFeeReplyStub();
+  clearRosterSurveyStub();
 }
 
 // ── Fact builders ─────────────────────────────────────────────────────

@@ -650,6 +650,18 @@ describe("a live run cannot be secretly gated", () => {
       }),
     ).toThrow(/MT_TEST_MATCH_AVAILABILITY_STUB_FILE/);
   });
+
+  it("refuses a live run that can still see the fee-reply stub file (quoted-reply context S3)", () => {
+    expect(() =>
+      assertSeamMatchesMode("live", { ...liveOkNoRouterStub, MT_TEST_FEE_REPLY_STUB_FILE: "/tmp/fee-reply-stub.json" }),
+    ).toThrow(/MT_TEST_FEE_REPLY_STUB_FILE/);
+  });
+
+  it("refuses a live run that can still see the roster-survey stub file (quoted-reply context S3)", () => {
+    expect(() =>
+      assertSeamMatchesMode("live", { ...liveOkNoRouterStub, MT_TEST_ROSTER_SURVEY_STUB_FILE: "/tmp/roster-survey-stub.json" }),
+    ).toThrow(/MT_TEST_ROSTER_SURVEY_STUB_FILE/);
+  });
 });
 
 describe("the router gate is visible to the reach guard", () => {
