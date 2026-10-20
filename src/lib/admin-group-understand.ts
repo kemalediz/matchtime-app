@@ -78,6 +78,7 @@
 import { loadGroupReplyContexts, parseGroupQuote, type QuotedGroupMessage } from "./reply-context";
 import { rosterMemberByPhone } from "./roster-name-by-phone";
 import { db } from "./db";
+import { rosterLabels } from "./group-chat-history";
 import { withOrgAiBudget, getAiBudgetStatus } from "./ai-budget";
 import { gateBatch } from "./pipeline/gate";
 import { extractForRoute } from "./pipeline/extractors";
@@ -295,8 +296,16 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
     const quotedRow = quotedIsMatchTime && hit.row?.fromMatchTime ? hit.row : null;
     const answersMomAsk = !!quotedRow?.askRef?.startsWith("mom:") && organisersPickMom(org);
     const recent = log.filter((r) => now.getTime() - r.createdAt.getTime() <= RECENT_MS).slice(-RECENT_MAX);
-    // The extractors' recent chat: MatchTime's own lines as MatchTime.
-    const history = recent.map((r) => ({ author: r.fromMatchTime ? "MatchTime" : null, body: r.text }));
+    // The extractors' recent chat: MatchTime's own lines as MatchTime, an
+    // organiser's under his roster name (never a pushname), the way the
+    // players' group's lines are named (`group-chat-history.ts`).
+    const names = await rosterLabels(recent.filter((r) => !r.fromMatchTime).map((r) => r.senderUserId)).catch(
+      () => new Map<string, string | null>(),
+    );
+    const history = recent.map((r) => ({
+      author: r.fromMatchTime ? "MatchTime" : r.senderUserId ? (names.get(r.senderUserId) ?? null) : null,
+      body: r.text,
+    }));
     // MatchTime's last line in HQ. A reply's quoted message is shown to
     // every extractor beside it (`replyShown`), whoever wrote it.
     const lastHqPost = [...log].reverse().find((r) => r.fromMatchTime)?.text ?? null;
