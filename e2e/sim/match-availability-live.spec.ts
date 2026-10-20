@@ -24,14 +24,24 @@ import { test, expect, resetDb } from "../fixtures";
 import type { TestDb } from "../helpers/test-db";
 import { U, ORG_ID, PHONE, MATCH } from "../helpers/constants";
 import { E2E } from "../helpers/env";
+import { dayCommaTimeLabel } from "../../src/lib/i18n/dates";
 
 const LIVE = process.env.MT_SIM_LIVE_LLM === "1";
 const DM_PHONE = PHONE.fresh.replace(/^\+/, "");
 
-const INVITE =
-  "👋 Ian, we're putting the squad together for *E2E 5-a-side* on Tue 20 Oct, 20:00. 2 spots left.\n\n" +
-  "Playing? Reply *IN* or tap 👍 on this message.\n" +
-  "Can't make it? Reply *OUT* or tap 👎 and I'll stop asking 🙌";
+/** The invite for the SEEDED upcoming match, dated from the row (the seed
+ *  puts it two days out). A hardcoded date goes stale: on Tue 20 Oct the
+ *  match was Thu 22 Oct, and the model rightly read "why not, coming" to a
+ *  Tue 20 Oct invite as an answer about another match (unclear). */
+async function invite(db: TestDb): Promise<string> {
+  const row = await db.one<{ date: Date }>(`SELECT date FROM "Match" WHERE id = $1`, [MATCH.upcoming]);
+  if (!row) throw new Error("seeded upcoming match missing");
+  return (
+    `👋 Ian, we're putting the squad together for *E2E 5-a-side* on ${dayCommaTimeLabel("en", row.date)}. 2 spots left.\n\n` +
+    "Playing? Reply *IN* or tap 👍 on this message.\n" +
+    "Can't make it? Reply *OUT* or tap 👎 and I'll stop asking 🙌"
+  );
+}
 const RATING =
   "⭐ How did *E2E 5-a-side* go on Tue 13 Oct? Rate your teammates and vote for Man of the Match: https://mt.example/s/rate";
 
@@ -73,7 +83,7 @@ const RATING =
     ]);
 
   test("IN: 'why not, coming' after the invite registers him", async ({ request, db }) => {
-    await lastDms(db, [INVITE]);
+    await lastDms(db, [await invite(db)]);
     const r = await postDm(request, "why not, coming");
     console.log(`[match-availability-live] IN: ${JSON.stringify(r)}`);
     expect(r.handled).toBe("dm-self-attendance");
@@ -83,7 +93,7 @@ const RATING =
   });
 
   test("OUT: 'sorry mate, away' after the invite drops him", async ({ request, db }) => {
-    await lastDms(db, [INVITE]);
+    await lastDms(db, [await invite(db)]);
     await preRegister(db);
     const r = await postDm(request, "sorry mate, away");
     console.log(`[match-availability-live] OUT: ${JSON.stringify(r)}`);
@@ -94,7 +104,7 @@ const RATING =
   });
 
   test("NEGATIVE: a bare 'yes' to the rating DM writes nothing", async ({ request, db }) => {
-    await lastDms(db, [INVITE, RATING]);
+    await lastDms(db, [await invite(db), RATING]);
     const r = await postDm(request, "yes");
     console.log(`[match-availability-live] NEGATIVE: ${JSON.stringify(r)}`);
     expect(r.handled).not.toBe("dm-self-attendance");
