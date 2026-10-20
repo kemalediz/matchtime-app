@@ -171,6 +171,7 @@
 import type { QuotedGroupMessage } from "../reply-context";
 import type { OrgFeatures } from "../org-features";
 import { compose } from "./compose";
+import { ORGANISERS_SPACE_INTENT } from "../group-copy";
 import { decide as decideDefault } from "./engine";
 // Traced: the extractor's facts are kept on the message's AnalyzedMessage
 // row (`pipelineTrace`). Identical to `extractForRoute` outside a request.
@@ -1588,6 +1589,12 @@ export async function runAnswerBatch(args: {
   // ── Stage 4: composition ───────────────────────────────────────────
   const composed = compose(result);
   const utteranceByMessageId = new Map<string, string[]>();
+  // The organisers-mode space answer (`Utterance.organisersSafe`). A
+  // message is labelled `ORGANISERS_SPACE_INTENT` only when EVERY part of
+  // its reply is safe: anything else joined to it keeps the reply under
+  // the analyze route's organisers-mode net.
+  const organisersSafeIds = new Set<string>();
+  const notOrganisersSafeIds = new Set<string>();
   for (const u of composed.utterances) {
     // A batch-level post (`messageId: null`) is the squad post, which
     // only a squad CHANGE produces — and this path makes none. If one
@@ -1606,6 +1613,8 @@ export async function runAnswerBatch(args: {
     const list = utteranceByMessageId.get(u.messageId) ?? [];
     list.push(u.text);
     utteranceByMessageId.set(u.messageId, list);
+    if (u.organisersSafe) organisersSafeIds.add(u.messageId);
+    else notOrganisersSafeIds.add(u.messageId);
   }
   const reactByMessageId = new Map(composed.reacts.map((r) => [r.messageId, r.emoji]));
   // De-duplicated: `compose()` re-emits `result.degradations` verbatim
@@ -1731,7 +1740,9 @@ export async function runAnswerBatch(args: {
             ? "stats_link"
             : helpIds.has(m.waMessageId)
               ? "help"
-              : isRatingProgress(factsById.get(m.waMessageId))
+              : organisersSafeIds.has(m.waMessageId) && !notOrganisersSafeIds.has(m.waMessageId)
+                ? ORGANISERS_SPACE_INTENT
+                : isRatingProgress(factsById.get(m.waMessageId))
                 ? "rating_progress"
                 : statsIntent(m.waMessageId, engineOutcome?.statsClarificationAsked === true),
       // `AnalyzedMessage.action`, derived exactly as `route.ts:2197-2200`

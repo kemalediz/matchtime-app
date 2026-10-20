@@ -144,6 +144,9 @@ function boldNamesTr(names: string[]): string {
   return b.length <= 1 ? (b[0] ?? "") : `${b.slice(0, -1).join(", ")} ve ${b[b.length - 1]}`;
 }
 
+/** The call-out's ask, shared by `group_ask_organiser` and `oa_space_answer`. */
+const ORGANISER_ASK_TAIL_TR = "Gelebiliyorsanız *VARIM* yazın, yeri kimin alacağını organizatörler onaylayacak.";
+
 export const tr: Strings = {
   // ── shared fragments ─────────────────────────────────────────────
 
@@ -1212,8 +1215,7 @@ export const tr: Strings = {
   hq_mom_not_in_match: (p) => `${p.ref} adını o maçın oyuncuları arasında bulamadım. ${p.mvpLabel} kim?`,
   hq_mom_organisers_only: (p) => `${p.mvpLabel} seçimini yalnızca organizatörler yapabilir.`,
   hq_mom_failed: (p) => `${p.mvpLabel} şu an kaydedilemedi. Lütfen bir dakika sonra tekrar gönderin.`,
-  group_ask_organiser: (p) =>
-    `${p.kickoffLabel} maçı için ${p.open} oyuncu daha lazım. Gelebiliyorsanız *VARIM* yazın, yeri kimin alacağını organizatörler onaylayacak.`,
+  group_ask_organiser: (p) => `${p.kickoffLabel} maçı için ${p.open} oyuncu daha lazım. ${ORGANISER_ASK_TAIL_TR}`,
   hq_group_asked: (p) => `Ana grupta ${p.open} oyuncu için sordum.`,
   hq_group_ask_full: (p) =>
     `${p.kickoffLabel} kadrosu dolu: ${p.maxPlayers} kişilik kadroda ${p.confirmed} kişi var. Ana grupta sorulacak bir şey yok.`,
@@ -3520,6 +3522,14 @@ export const tr: Strings = {
   oa_relay_lead: "📋 Organizatörler için, oyuncu grubuna gönderilmedi:",
   oa_list_by_organisers: "Listeyi organizatörler paylaşacak.",
   oa_teams_by_organisers: "Takımları organizatörler paylaşacak.",
+  oa_space_answer: (p) => {
+    if (p.open <= 0) {
+      return p.organisersPick
+        ? `${p.kickoffLabel} maçı için kadro dolu. Yedeğe girmek için *VARIM* yazın, kimin oynayacağını organizatörler seçer.`
+        : `${p.kickoffLabel} maçı için kadro dolu. Yedeğe girmek için *VARIM* yazın.`;
+    }
+    return `${p.kickoffLabel} maçı için ${p.open} yer boş. ${p.organisersPick ? ORGANISER_ASK_TAIL_TR : "Almak için *VARIM* yazın."}`;
+  },
   oa_slot_opened: (p) => {
     const names = p.outFirstNames;
     const lead =

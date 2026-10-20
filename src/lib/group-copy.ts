@@ -287,13 +287,30 @@ export const STATS_ANSWER_INTENTS: ReadonlySet<string> = new Set([
 
 const TEAM_POST_INTENTS: ReadonlySet<string> = new Set(["generate_teams_request", "show_teams_request"]);
 
+/**
+ * The intent of the answer to "is there still space?" in a players' group
+ * whose organisers announce the list (FNF 2026-10-20, `oa_space_answer`):
+ * how many places are open and how to ask for one, composed from the
+ * database with no name in it. It is not a squad post, so neither the
+ * squad-composition pass nor the organisers-mode net (`passesOrganisersNet`)
+ * replaces it.
+ */
+export const ORGANISERS_SPACE_INTENT = "organisers_space";
+
 /** PURE. Does the squad-composition pass skip a reply with this intent?
  *  `help` (2026-10-16): the help explainer, which a how-it-works question
  *  now reaches through the pipeline; its "Squad & availability" heading
- *  would otherwise be read as a squad post and replaced by the roster. */
+ *  would otherwise be read as a squad post and replaced by the roster.
+ *  `ORGANISERS_SPACE_INTENT` (2026-10-20): the organisers-mode space
+ *  answer, which must not become the roster it exists instead of. */
 export function skipsSquadComposition(intent: string | null | undefined): boolean {
   if (!intent) return false;
-  return TEAM_POST_INTENTS.has(intent) || STATS_ANSWER_INTENTS.has(intent) || intent === "help";
+  return (
+    TEAM_POST_INTENTS.has(intent) ||
+    STATS_ANSWER_INTENTS.has(intent) ||
+    intent === "help" ||
+    intent === ORGANISERS_SPACE_INTENT
+  );
 }
 
 /**

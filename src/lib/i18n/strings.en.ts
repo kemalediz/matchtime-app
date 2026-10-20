@@ -104,6 +104,12 @@ function boldNamesEn(names: string[]): string {
   return b.length <= 1 ? (b[0] ?? "") : `${b.slice(0, -1).join(", ")} and ${b[b.length - 1]}`;
 }
 
+/** The call-out's ask, shared by the post itself (`group_ask_organiser`)
+ *  and the answer to "is there still space?" (`oa_space_answer`). */
+function organiserAskTail(open: number): string {
+  return `Say *IN* if you can make it and the organisers will confirm who gets ${open === 1 ? "the place" : "the places"}.`;
+}
+
 export const en = {
   // ── shared fragments ─────────────────────────────────────────────
 
@@ -1440,9 +1446,7 @@ export const en = {
    *  bench and the organisers confirm who plays. The organisers announce
    *  it, so the post promises no message from MatchTime (FNF 2026-10-18). */
   group_ask_organiser: (p: { open: number; kickoffLabel: string }): string =>
-    p.open === 1
-      ? `We need 1 more player for ${p.kickoffLabel}. Say *IN* if you can make it and the organisers will confirm who gets the place.`
-      : `We need ${p.open} more players for ${p.kickoffLabel}. Say *IN* if you can make it and the organisers will confirm who gets the places.`,
+    `${p.open === 1 ? "We need 1 more player" : `We need ${p.open} more players`} for ${p.kickoffLabel}. ${organiserAskTail(p.open)}`,
   /** Back in HQ, once the post is queued. */
   hq_group_asked: (p: { open: number }): string =>
     `Asked in the main chat for ${p.open} ${p.open === 1 ? "player" : "players"}.`,
@@ -4757,6 +4761,19 @@ export const en = {
   oa_list_by_organisers: "The organisers will post the list.",
   /** In the players' group, to "show the teams" when the organisers announce. */
   oa_teams_by_organisers: "The organisers will post the teams.",
+  /** In the players' group, to "is there still space?" / "how many are we?"
+   *  when the organisers announce (FNF 2026-10-20): how many places are
+   *  open and how to ask for one, never a name. `organisersPick`: the
+   *  club's organisers pick who plays (benchPickMode "organiser"). */
+  oa_space_answer: (p: { open: number; kickoffLabel: string; organisersPick: boolean }): string => {
+    if (p.open <= 0) {
+      return p.organisersPick
+        ? `The squad is full for ${p.kickoffLabel}. Say *IN* to go on the bench and the organisers will pick who plays.`
+        : `The squad is full for ${p.kickoffLabel}. Say *IN* to go on the bench.`;
+    }
+    const head = p.open === 1 ? `There's 1 place left for ${p.kickoffLabel}.` : `There are ${p.open} places left for ${p.kickoffLabel}.`;
+    return `${head} ${p.organisersPick ? organiserAskTail(p.open) : "Say *IN* to take one."}`;
+  },
   /** To the organisers when a slot opens (compose.ts, `slot_opened`):
    *  the players' group hears nothing. "of", never a slash. */
   oa_slot_opened: (p: { outFirstNames: string[]; confirmed: number; maxPlayers: number; kickoffLabel: string; open: number }): string => {

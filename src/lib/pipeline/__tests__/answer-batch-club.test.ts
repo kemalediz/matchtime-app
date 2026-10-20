@@ -221,3 +221,31 @@ describe("the organisers see the squad even when they announce it to the players
     expect(reply).toContain("Sait Demir");
   });
 });
+
+// "Is there still space?" (FNF players' group, 2026-10-20). The space answer
+// carries its own intent, which is what lets the analyze route's
+// organisers-mode net and squad-composition pass leave it alone. A list
+// answer keeps "question", so the net still covers it.
+describe("a space question where the organisers announce the list", () => {
+  const organisersAnnounce = () => {
+    const st = world({ confirmed: ["kemal", "sait"], bench: ["erdal"] });
+    return { ...st, features: { ...st.features, listAnnouncer: "organisers" as const, benchPickMode: "organiser" as const } };
+  };
+
+  it("players' group: the open places, labelled organisers_space", async () => {
+    const { res, reply } = await ask("count", { state: organisersAnnounce() });
+    expect(reply).toMatch(/^There are \d+ places left for .+\. Say \*IN\* if you can make it and the organisers will confirm who gets the places\.$/);
+    expect(res.outcomes.get("wa-1")?.intent).toBe("organisers_space");
+  });
+
+  it("a list question keeps the 'question' label, so the net still covers it", async () => {
+    const { res } = await ask("squad", { state: organisersAnnounce() });
+    expect(res.outcomes.get("wa-1")?.intent).toBe("question");
+  });
+
+  it("the organisers (HQ): the ordinary count, labelled question", async () => {
+    const { res, reply } = await ask("count", { audience: "organisers", state: organisersAnnounce() });
+    expect(reply).not.toMatch(/^There are/);
+    expect(res.outcomes.get("wa-1")?.intent).toBe("question");
+  });
+});
