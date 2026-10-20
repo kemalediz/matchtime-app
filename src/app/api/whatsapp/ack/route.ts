@@ -38,6 +38,7 @@ import { planAckSideEffects } from "@/lib/dispatch-claim";
 import { parsePlatformJobKey, recordPlatformJobOutcome } from "@/lib/platform-jobs";
 import { stagePaygFeeOnAck } from "@/lib/monthly-week";
 import { stampPartnerAskPost } from "@/lib/partner-ask";
+import { bareWhatsAppId } from "@/lib/quoted-message";
 
 export async function POST(request: Request) {
   const apiKey = request.headers.get("x-api-key");
@@ -95,10 +96,13 @@ export async function POST(request: Request) {
 
   // Idempotent: stamps waMessageId on the claim row. The create branch is
   // a defensive fallback for keys that were never claimed here.
+  // `waStanzaId` is the bare id inside it, the form a WhatsApp reply quotes
+  // (quoted-reply context, slice S0): indexed, so a quote finds the send.
+  const waStanzaId = bareWhatsAppId(waMessageId);
   await db.sentNotification.upsert({
     where: { key },
-    create: { key, kind, matchId, targetUser, waMessageId },
-    update: { waMessageId: waMessageId ?? undefined },
+    create: { key, kind, matchId, targetUser, waMessageId, waStanzaId },
+    update: { waMessageId: waMessageId ?? undefined, waStanzaId: waStanzaId ?? undefined },
   });
 
   // Per-key-class side effects — identical set to pre-claim behaviour,

@@ -1354,10 +1354,22 @@ model SentNotification {
   match       Match?   @relation(fields: [matchId], references: [id], onDelete: Cascade)
   targetUser  String? // userId when it's a per-user DM
   waMessageId String? // WhatsApp message id for reaction tracking
+  /// The bare stanza id inside `waMessageId` ("3EB0..."), the form a
+  /// WhatsApp reply quotes (`bareWhatsAppId`, src/lib/quoted-message.ts).
+  /// Stamped by the ack; backfilled by migration
+  /// 20261020120000_sent_notification_reply_context. Read by the
+  /// quoted-reply resolver (src/lib/reply-context.ts), which still finds a
+  /// row whose column is empty on its `waMessageId`.
+  waStanzaId  String?
+  /// The words handed to the Pi at claim time (/api/whatsapp/due-posts),
+  /// capped at 1000 (`claimTextOf`). Null for rows written before
+  /// 2026-10-20, for markers and ledgers, and for sends with no words.
+  text        String?  @db.Text
   createdAt   DateTime @default(now())
 
   @@index([matchId])
   @@index([kind])
+  @@index([waStanzaId])
 }
 
 /**

@@ -18,6 +18,7 @@
  */
 import { db } from "./db";
 import { isClubOperational } from "./club-approval-state";
+import { claimTextOf, type Claimable } from "./dispatch-claim";
 import type { Lang } from "./i18n/lang";
 import {
   announcedKey,
@@ -174,7 +175,7 @@ export function withoutServerBookkeeping<T extends object>(instr: T): T {
  */
 export async function claimBadgePost(
   orgId: string,
-  instr: { key: string; kind: string; matchId?: string; targetUser?: string },
+  instr: Claimable,
   rows: BadgeAward[],
 ): Promise<void> {
   await db.$transaction([
@@ -184,6 +185,8 @@ export async function claimBadgePost(
         kind: instr.kind,
         matchId: instr.matchId,
         ...(instr.targetUser ? { targetUser: instr.targetUser } : {}),
+        // Its words, as every claim keeps them (quoted-reply context, S0).
+        text: claimTextOf(instr),
       },
     }),
     db.badgeAnnouncement.createMany({
