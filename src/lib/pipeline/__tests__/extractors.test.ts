@@ -433,6 +433,24 @@ describe("parseFacts (other routes)", () => {
     expect(p).toMatch(/"beni"[^\n]*"me"/);
   });
 
+  it("the admin prompt defines each action and each field once (2026-10-20 rewrite)", () => {
+    // Before the rewrite the `stats_blast` rule ("YOU send it, not the
+    // players") was stated in its definition, in a WHO DOES THE WORK
+    // paragraph and again in four examples.
+    const p = EXTRACTOR_PROMPTS.admin;
+    for (const action of ["bulk_payment", "fee_waiver", "reminder", "recruit", "stats_blast", "other"]) {
+      expect(p.split(`\n  "${action}" `).length, action).toBe(2);
+    }
+    for (const field of ["payerRef", "count", "coveredRefs", "undo", "matchDay", "phrase", "note", "lookbackMatches"]) {
+      expect(p.split(`\n  ${field} `).length, field).toBe(2);
+    }
+    expect(p).not.toMatch(/WHO DOES THE WORK/);
+    expect(p).not.toMatch(/[–—]/);
+    // English and Turkish side by side in the examples.
+    expect(p).toMatch(/"Ali ve Can cuma günü ödemesin"/);
+    expect(p).toMatch(/"Ali ücretsiz değil, ödesin"[^\n]*undo true/);
+  });
+
   it("admin", () => {
     const { facts } = parseFacts(
       "admin",
