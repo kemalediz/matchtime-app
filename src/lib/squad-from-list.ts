@@ -16,7 +16,7 @@
  * Pipeline (no regex on user-typed in/out anywhere; LLM extracts, code
  * attributes):
  *
- *   1. One LLM call (Sonnet, ≤1×/30min/match) over the stored
+ *   1. One LLM call (Haiku 5.5, ≤1×/30min/match) over the stored
  *      `GroupMessage` rows for the org SINCE the previous match
  *      ended → returns which messages are squad-list-shaped + the
  *      parsed numbered names + reserves. The "since previous match end"
@@ -40,23 +40,26 @@
  * Falls open: any LLM failure short-circuits the extraction (no
  * Attendance writes, no alias damage). Re-run on the next cron tick.
  */
-import Anthropic from "@anthropic-ai/sdk";
 import { db } from "./db";
 import { recordAttendanceEvent } from "./attendance-events";
 import { normalisePhone } from "./phone";
 import { normaliseName } from "./name-normalise";
-import { guardedAnthropicCall, systemBlock } from "@/lib/pipeline/llm";
-import { SONNET_MODEL } from "./models";
+import { anthropicModel, extractJson, HAIKU_CALL, type ModelCall, type PipelineModel } from "@/lib/pipeline/llm";
 import { withOrgAiBudget } from "./ai-budget";
 export { normaliseName };
 
-// `claude-sonnet-4-5` here was inherited from the deleted
-// `analyzeBatch`, not chosen (`MDs/llm-spend-september-2026.md` §4).
-// Sonnet 5 is newer, 1M context, $2/$10 per MTok against $3/$15.
-// The call site sends `thinking: { type: "disabled" }`, which is
-// required: Sonnet 5 thinks adaptively when the parameter is omitted
-// and Sonnet 4.5 did not.
-const MODEL = SONNET_MODEL;
+/**
+ * THE MODEL: Haiku 5.5 through `pipeline/llm.ts`, adaptive thinking at
+ * medium (2026-10-21; `HAIKU_CALL`), after a whole rewrite of the prompt.
+ * It was Sonnet 5 with thinking off. Paid check:
+ * `scripts/live-check-squad-from-list.ts`.
+ */
+export const SQUAD_LIST_CALL: ModelCall = HAIKU_CALL;
+/** The pipeline's ceiling. A fortnight of re-pastes (20 lists up to 16
+ *  names) used about 2,200 tokens, thinking included, on the live check; the rest is
+ *  room for Haiku's thinking, which shares the budget. A cut-off answer
+ *  throws and the reading returns no lists, as on any failure. */
+const MAX_TOKENS = 4_096;
 
 /** Hard CAP on how far back the squad-extraction window can stretch,
  *  regardless of when the previous match ended. The window normally
@@ -96,64 +99,67 @@ export interface Attribution {
   guestAdditions: string[];
 }
 
-const SYSTEM_PROMPT = `You parse WhatsApp group messages from amateur sports groups that maintain their squad by re-pasting a numbered list with each new sign-in.
+export const SQUAD_LIST_SYSTEM = `Some sports groups keep their squad by re-posting a numbered list: each player copies the latest list, adds their name (or a friend's) on the next line and posts the whole list again. You read those lists out of the group's messages so MatchTime knows who is playing.
 
-For EACH message you are given, decide whether it is a squad list. A squad list:
-  - has multiple lines that LOOK numbered ("1. Name", "1) Name", "1.⁠ ⁠Name", "1️⃣ Name"). The numbers may be plain digits or emoji digits; the separator may be ".", ")", or unusual unicode spacing/word-joiners (U+2060) common when copied from WhatsApp.
-  - names a roster of people for a single upcoming game.
+You are given the group's MESSAGES, oldest first, each under a short id (m1, m2, ...). They may be in English or Turkish.
 
-A message is NOT a squad list when:
-  - it is a leaderboard / stats answer (percentages, "wins", "votes", "MoM").
-  - it is generic numbered prose ("1. yes 2. no").
-  - it is a two-team breakdown (e.g. "Red vs Yellow", "Home vs Away", or two parallel named lists for the same match).
-  - it is short freeform chatter mentioning a number.
+Return "lists": one entry for each message that is a squad list, and none for any other message.
+- id: the message's id, exactly as given.
+- names: the playing squad, in list order, one entry per numbered line that has a name on it.
+- reserves: the names under a "Reserves", "Subs", "Standby" or "Yedekler" heading in the same message, in order. [] when there is no such heading.
 
-RESERVES / SUBS / STANDBY HANDLING — IMPORTANT:
-A message may contain a main playing-squad list AND a separate "Reserves:" / "Subs:" / "Standby:" block (typically below the main list, headed by that label, with its own numbered names). Treat it as ONE list entry: "names" is the playing squad, "reserves" is the entries from the Reserves/Subs/Standby section. Do NOT emit the Reserves block as a separate "lists" entry. If a Reserves section exists, you MUST populate "reserves" — never silently drop it.
+A squad list is several numbered lines naming the people playing one upcoming game, often under a heading with the day, time or place. The numbers may be "1.", "1)", "1-" or emoji digits ("1️⃣"), and WhatsApp often leaves invisible spacing characters between the number and the name.
 
-For each squad list, extract the playing names IN ORDER (one per slot) and the reserves IN ORDER. Strip the leading number, any unusual unicode spacing, and surrounding decoration. Keep the name as written by the user (don't normalise case — we want "youssef" preserved if that's what they typed).
+Not a squad list: stats or a leaderboard (votes, percentages, wins, man of the match); two teams for one match ("Reds" and "Yellows", "Beyaz" and "Siyah"); numbered questions or answers ("1. yes 2. no"); chat that mentions a number.
 
-Return JSON ONLY in this exact schema:
+Reading a line:
+- Drop the number, the invisible characters and any emoji, and keep the name as typed, spelling and case included ("youssef" stays "youssef", "NABEEL" stays "NABEEL").
+- A note after the name is not part of it: "Rob (GK)" is "Rob", "Dev - 10 mins late" is "Dev", "Ash ✅" is "Ash".
+- A guest stays as written: "Liam's mate Craig", "Ali'nin arkadaşı".
+- A numbered line with no name on it is an empty place: leave it out.
 
-{
-  "lists": [
-    { "waMessageId": "<id>", "isList": true, "names": ["Ehtisham", "Amir", ...], "reserves": ["Martin"] }
-  ]
-}
+Every re-post is its own entry, even when it differs from the one before by a single line; the comparison is done afterwards. A Reserves block belongs to the list above it in the same message, never to an entry of its own.
 
-- Omit non-list messages from "lists".
-- "names" must contain ONLY the playing-squad entries (positions 1..N), not reserves.
-- "reserves" is [] when there is genuinely no Reserves/Subs/Standby block; never [] when the message clearly contains one.
-- If you see the same list pasted twice (re-paste with one new line) emit BOTH as separate list entries; the diff is computed downstream.
+Examples (English / Turkish):
+- "Thursday 9pm Goals\\n1. Ehtisham\\n2. Amir\\n\\nReserves:\\n1. Martin" / "Cuma 21:00 Halısaha\\n1. Erdal\\n2. Mehmet\\n\\nYedekler:\\n1. Volkan": names ["Ehtisham","Amir"], reserves ["Martin"] / names ["Erdal","Mehmet"], reserves ["Volkan"]
+- "1️⃣ Kev\\n2️⃣ Jono (GK)\\n3️⃣" / "1) Burak ✅\\n2) Emre - geç gelir": names ["Kev","Jono"] / ["Burak","Emre"]
+- "MoM votes:\\n1. Pete 4 (40%)\\n2. Dan 3" / "Takımlar:\\nBeyaz: Erdal, Mehmet\\nSiyah: Emre, Can": not a squad list`;
 
-CONCRETE EXAMPLE — a single message body of:
 
-  In sha Allah 9pm Thursday 21 May Wimbledon Goals 7 a side football:
-
-   1.⁠ ⁠Ehtisham
-   2.⁠ ⁠Amir
-   3.⁠ ⁠⁠Atul
-  …
-  14.⁠ ⁠⁠Usama
-
-  Reserves:
-   1.⁠ ⁠Martin
-
-…must produce EXACTLY ONE list entry: { "waMessageId": "<the-one-id>", "isList": true, "names": ["Ehtisham","Amir","Atul",…,"Usama"], "reserves": ["Martin"] }. NOT two entries. The Reserves block belongs to the same list as the main squad above it.`;
+const SCHEMA = {
+  type: "object",
+  properties: {
+    lists: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          id: { type: "string" },
+          names: { type: "array", items: { type: "string" } },
+          reserves: { type: "array", items: { type: "string" } },
+        },
+        required: ["id", "names", "reserves"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["lists"],
+  additionalProperties: false,
+} as const;
 
 interface LLMResponse {
   lists: Array<{
-    waMessageId: string;
-    isList: boolean;
+    /** The short id the model was shown (m1, m2, ...). */
+    id: string;
     names?: string[];
     reserves?: string[];
   }>;
 }
 
-function getAnthropic(): Anthropic | null {
-  const key = process.env.ANTHROPIC_API_KEY?.trim();
-  return key ? new Anthropic({ apiKey: key }) : null;
-}
+/** The short id the model sees for the i-th message (0-based). The
+ *  WhatsApp id is long and was echoed back on every list, which is
+ *  output tokens for nothing; the code maps the short id back. */
+const shortId = (i: number) => `m${i + 1}`;
 
 // `normaliseName` MOVED to `lib/name-normalise.ts` (2026-09-07) and is
 // re-exported at the top of this file so every existing importer is
@@ -254,6 +260,24 @@ export async function computeSinceForOrg(
   return since < minSince ? minSince : since;
 }
 
+/** One stored group message, as the reading needs it. */
+export interface SourceMessage {
+  waMessageId: string;
+  body: string;
+  senderPhone: string | null;
+  senderPushname: string | null;
+  timestamp: Date;
+}
+
+/** PURE. The user turn: every message in the window, oldest first,
+ *  under its short id, with its lines intact. */
+export function squadListUserTurn(messages: SourceMessage[]): string {
+  return [
+    `MESSAGES (${messages.length}, oldest first):`,
+    ...messages.map((m, i) => `\n[${shortId(i)}]\n${m.body.slice(0, 4000)}`),
+  ].join("\n");
+}
+
 /** Run the one-shot LLM extraction over a window of stored
  *  GroupMessage rows. Falls open (returns []) on any error so a single
  *  flaky run doesn't poison the queue — the next cron tick will retry. */
@@ -266,49 +290,37 @@ export async function extractSquadListsFromWindow(
     orderBy: { timestamp: "asc" },
   });
   if (messages.length === 0) return [];
-
-  const anthropic = getAnthropic();
-  if (!anthropic) {
+  if (!process.env.ANTHROPIC_API_KEY?.trim()) {
     console.warn("[squad-from-list] ANTHROPIC_API_KEY missing — skipping extraction");
     return [];
   }
+  // Spent from this club (the daily AI cap, lib/ai-budget.ts). At the
+  // cap the call is refused and the reading returns no lists, like any
+  // other failure; the next run tries again.
+  return withOrgAiBudget(orgId, () => readSquadLists(messages));
+}
 
-  const input = messages.map((m) => ({
-    waMessageId: m.waMessageId,
-    body: m.body.slice(0, 4000),
-  }));
-
+/**
+ * The reading itself, with no database: one model call over the
+ * messages, joined back onto them. Falls open to [] on any failure.
+ */
+export async function readSquadLists(
+  messages: SourceMessage[],
+  deps?: { model?: PipelineModel },
+): Promise<ParsedList[]> {
+  if (messages.length === 0) return [];
   let parsed: LLMResponse | null = null;
   try {
-    // Spent from this club (the daily AI cap, lib/ai-budget.ts). At the
-    // cap the call is refused and the extraction returns no lists, like
-    // any other failure; the next run tries again.
-    const res = await withOrgAiBudget(orgId, () => guardedAnthropicCall("squad-from-list", () =>
-      anthropic.messages.create({
-        model: MODEL,
-        max_tokens: 4000,
-        // Sonnet 5 runs adaptive thinking unless told not to, and can
-        // spend the whole max_tokens budget on it and return no text
-        // block at all (measured 2026-09-06, 5 runs of 5; see
-        // `ModelRequest.thinking` in pipeline/llm.ts). This call has a
-        // cap sized for its OUTPUT, so leaving it adaptive would turn a
-        // price change into a silent degradation.
-        thinking: { type: "disabled" },
-        system: systemBlock(SYSTEM_PROMPT),
-        messages: [
-          {
-            role: "user",
-            content:
-              `Inspect these ${input.length} WhatsApp messages and return the squad lists in the JSON shape above.\n\n` +
-              JSON.stringify(input),
-          },
-        ],
-      }),
-    ));
-    const block = res.content.find((b): b is Anthropic.TextBlock => b.type === "text");
-    if (!block) return [];
-    const json = block.text.slice(block.text.indexOf("{"), block.text.lastIndexOf("}") + 1);
-    parsed = JSON.parse(json) as LLMResponse;
+    const model = deps?.model ?? anthropicModel();
+    const resp = await model.complete({
+      ...SQUAD_LIST_CALL,
+      system: SQUAD_LIST_SYSTEM,
+      user: squadListUserTurn(messages),
+      maxTokens: MAX_TOKENS,
+      schema: SCHEMA as unknown as Record<string, unknown>,
+      label: "squad-from-list",
+    });
+    parsed = extractJson(resp.text) as LLMResponse;
   } catch (err) {
     console.error("[squad-from-list] LLM extraction failed:", err);
     return [];
@@ -326,17 +338,18 @@ export async function extractSquadListsFromWindow(
   // despite the prompt — flagged 2026-05-20 during the harness build),
   // merge them by waMessageId: the longest "names" wins as the playing
   // squad; everything else from that message becomes additional reserves.
+  const byShortId = new Map(messages.map((m, i) => [shortId(i), m]));
   const byId = new Map(messages.map((m) => [m.waMessageId, m]));
   const groupedByWaId = new Map<string, Array<{ names: string[]; reserves: string[] }>>();
   for (const l of parsed.lists) {
-    if (!l.isList) continue;
-    if (!byId.has(l.waMessageId)) continue;
+    const src = typeof l.id === "string" ? byShortId.get(l.id.trim()) : undefined;
+    if (!src) continue;
     const names = (l.names ?? []).map((s) => s.trim()).filter(Boolean);
     const reserves = (l.reserves ?? []).map((s) => s.trim()).filter(Boolean);
     if (names.length === 0 && reserves.length === 0) continue;
-    const arr = groupedByWaId.get(l.waMessageId) ?? [];
+    const arr = groupedByWaId.get(src.waMessageId) ?? [];
     arr.push({ names, reserves });
-    groupedByWaId.set(l.waMessageId, arr);
+    groupedByWaId.set(src.waMessageId, arr);
   }
 
   const out: ParsedList[] = [];

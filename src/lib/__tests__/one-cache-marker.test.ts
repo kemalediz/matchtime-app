@@ -43,7 +43,8 @@ describe("one cache marker, one place", () => {
     const sites = FILES.filter((f) => f.rel !== LLM && /messages\.create\(/.test(code(f.text)));
     // Nine since 2026-10-20: the chase composer moved onto pipeline/llm.ts.
     // Eight later that day: so did the DM Q&A (DM_QA_CALL, on Haiku 5.5).
-    expect(sites.length).toBeGreaterThanOrEqual(8);
+    // Six on 2026-10-21: the squad-list and onboarding readings too.
+    expect(sites.length).toBeGreaterThanOrEqual(6);
     const missing = sites.filter((f) => !/system:\s*systemBlock\(/.test(code(f.text))).map((f) => f.rel);
     expect(missing).toEqual([]);
   });
@@ -56,7 +57,10 @@ describe("one cache marker, one place", () => {
 
   it("the once-per-club onboarding analysis opts out, like the setup reading", () => {
     // One call per org at onboarding: a 1-hour write (2x input) is never read back.
+    // Through pipeline/llm.ts since 2026-10-21, which passes `cache` to
+    // systemBlock (`ModelRequest.cache`).
     const f = FILES.find((x) => x.rel === path.join("lib", "onboarding-analyzer.ts"))!;
-    expect(code(f.text)).toMatch(/systemBlock\(SYSTEM_PROMPT, \{ cache: false \}\)/);
+    expect(code(f.text)).not.toMatch(/messages\.create\(/);
+    expect(code(f.text)).toMatch(/cache: false,/);
   });
 });
