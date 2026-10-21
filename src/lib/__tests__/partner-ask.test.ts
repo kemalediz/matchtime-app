@@ -140,13 +140,45 @@ describe("requestPartnerAsk", () => {
     dbMock.partnerAsk.findUnique.mockResolvedValue({ id: "ask1", status: "awaiting-approval", askerOrgId: "fnf", partnerOrgId: "sutton", matchId: "m1" });
     const r = await request();
     expect(r).toMatchObject({ ok: true, status: "posted" });
-    expect(dbMock.botJob.create).toHaveBeenCalledWith({ data: { orgId: "sutton", kind: "group", text: expect.stringContaining("*Reply to this message* with *IN*") }, select: { id: true } });
+    expect(dbMock.botJob.create).toHaveBeenCalledWith({ data: { orgId: "sutton", kind: "group", text: expect.any(String) }, select: { id: true } });
     expect(dbMock.partnerAsk.updateMany).toHaveBeenCalledWith({
       where: { id: "ask1", status: "awaiting-approval" },
       data: expect.objectContaining({ status: "posted", postJobId: "job1", postedAt: NOW }),
     });
     const told = noticeMock.sendAdminNotice.mock.calls.map((c) => c[0].orgId).sort();
     expect(told).toEqual(["fnf", "sutton"]);
+  });
+
+  it("2026-10-21 (Kemal): the post asks for a PRIVATE message to MatchTime, with a tap-to-DM link carrying the ask's code; his number is not shared", async () => {
+    vi.stubEnv("MATCHTIME_WA_NUMBER", "447700900555");
+    try {
+      dbMock.clubPartnership.findUnique.mockResolvedValue({ ...PARTNERSHIP, partnerApproval: "standing" });
+      dbMock.partnerAsk.findUnique.mockResolvedValue({ id: "ask1", status: "awaiting-approval", askerOrgId: "fnf", partnerOrgId: "sutton", matchId: "m1" });
+      await request();
+      const text: string = dbMock.botJob.create.mock.calls[0][0].data.text;
+      const { askRefCode } = await import("../partner-ask-ref");
+      expect(text).toContain(`https://wa.me/447700900555?text=${encodeURIComponent(`IN (ref ${askRefCode("ask1")})`)}`);
+      expect(text).toContain("MatchTime will confirm with you by private message. Your number is not shared with FNF.");
+      // Never the old wording: no reply in the group, no organiser messaging him.
+      expect(text).not.toMatch(/Reply to this message|their organisers will confirm/);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("without MatchTime's number configured, the post says what to send privately instead", async () => {
+    vi.stubEnv("MATCHTIME_WA_NUMBER", "");
+    try {
+      dbMock.clubPartnership.findUnique.mockResolvedValue({ ...PARTNERSHIP, partnerApproval: "standing" });
+      dbMock.partnerAsk.findUnique.mockResolvedValue({ id: "ask1", status: "awaiting-approval", askerOrgId: "fnf", partnerOrgId: "sutton", matchId: "m1" });
+      await request();
+      const text: string = dbMock.botJob.create.mock.calls[0][0].data.text;
+      const { askRefCode } = await import("../partner-ask-ref");
+      expect(text).toContain(`Send MatchTime a private message: *IN (ref ${askRefCode("ask1")})*`);
+      expect(text).not.toContain("wa.me");
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("after the cut-off: refused, nothing written, nobody told", async () => {

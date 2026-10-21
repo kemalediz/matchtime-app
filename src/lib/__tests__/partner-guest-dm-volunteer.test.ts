@@ -1,0 +1,212 @@
+/**
+ * VOLUNTEERING BY DM (cross-club ask, Kemal 2026-10-21).
+ *
+ * The ask in the partner group carries a tap-to-DM link with the ask's
+ * code. Here, the DM side of it in `partner-guest-dm.ts`:
+ *
+ *   - `findAskByRef`: the code is a lookup among recently posted asks,
+ *     never a guess (two asks sharing a code: no ask);
+ *   - `handleCodedPartnerAskDm`: IN or OUT is the DM resolver's decision on
+ *     his text with the code taken out; the volunteer writer does the rest
+ *     and answers him by DM; an unreadable DM gets the link again;
+ *   - `askAboutOpenPartnerAsk`: a private IN WITHOUT a code while an ask to
+ *     his club is open gets ONE plain question with the link, and nothing
+ *     is written, on the same state rule as D5b in the group;
+ *   - `askPartnerWhichByDm`: D5b's question, by DM instead of in the group.
+ */
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const dbMock = vi.hoisted(() => ({
+  membership: { findMany: vi.fn() },
+  attendance: { findUnique: vi.fn(), findFirst: vi.fn() },
+  match: { findUnique: vi.fn() },
+  organisation: { findUnique: vi.fn() },
+  partnerAsk: { findMany: vi.fn(), findUnique: vi.fn() },
+  user: { findUnique: vi.fn() },
+  sentNotification: { create: vi.fn(), findFirst: vi.fn(), deleteMany: vi.fn() },
+  botJob: { create: vi.fn() },
+}));
+vi.mock("../db", () => ({ db: dbMock }));
+const resolver = vi.hoisted(() => ({ resolveDmSelfAttendance: vi.fn() }));
+vi.mock("../dm-self-attendance", () => resolver);
+vi.mock("../dm-registration-target", () => ({ findDmRegistrationTarget: vi.fn() }));
+vi.mock("../out-of-band-self-attendance", () => ({ applyOutOfBandSelfAttendance: vi.fn() }));
+const guest = vi.hoisted(() => ({ withdrawGuest: vi.fn(), handlePartnerVolunteer: vi.fn() }));
+vi.mock("../partner-guest", () => guest);
+vi.mock("../ai-budget", () => ({ withOrgAiBudget: (_o: string, f: () => unknown) => f() }));
+vi.mock("../match-availability-context", () => ({ loadMatchAvailabilityFacts: vi.fn() }));
+vi.mock("../club-connect", () => ({ matchtimeWaNumber: () => "447700900555" }));
+
+import { askAboutOpenPartnerAsk, askPartnerWhichByDm, findAskByRef, handleCodedPartnerAskDm } from "../partner-guest-dm";
+import { askRefCode } from "../partner-ask-ref";
+
+const NOW = new Date("2026-10-30T15:00:00Z");
+const KICKOFF = new Date("2026-10-30T20:30:00Z");
+const ASK = {
+  id: "ask1",
+  askerOrgId: "fnf",
+  partnerOrgId: "sutton",
+  matchId: "m-fnf",
+  postedAt: new Date(NOW.getTime() - 20 * 60_000),
+  match: { date: KICKOFF },
+};
+const REF = askRefCode("ask1");
+const LINK = `https://wa.me/447700900555?text=${encodeURIComponent(`IN (ref ${REF})`)}`;
+
+const dms = () => dbMock.botJob.create.mock.calls.map((c) => c[0].data).filter((d) => d.kind === "dm");
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  dbMock.partnerAsk.findMany.mockResolvedValue([ASK]);
+  dbMock.partnerAsk.findUnique.mockResolvedValue(ASK);
+  dbMock.organisation.findUnique.mockImplementation(({ where }: { where: { id: string } }) =>
+    Promise.resolve(where.id === "fnf" ? { id: "fnf", name: "FNF", language: "en" } : { id: "sutton", name: "Sutton FC", language: "en" }),
+  );
+  dbMock.membership.findMany.mockResolvedValue([{ orgId: "sutton" }]);
+  dbMock.attendance.findFirst.mockResolvedValue(null);
+  dbMock.user.findUnique.mockResolvedValue({ phoneNumber: "+447700900111" });
+  dbMock.sentNotification.create.mockResolvedValue({});
+  dbMock.botJob.create.mockResolvedValue({ id: "j" });
+  resolver.resolveDmSelfAttendance.mockResolvedValue({ decision: "in", via: "fast-path" });
+  guest.handlePartnerVolunteer.mockResolvedValue({ ok: true, outcome: "registered-bench", dmText: "Thanks", dmQueued: true });
+});
+
+describe("findAskByRef", () => {
+  it("the code of an ask posted in the last fortnight finds it", async () => {
+    expect(await findAskByRef(`IN (ref ${REF})`, NOW)).toEqual({ askId: "ask1" });
+    expect(dbMock.partnerAsk.findMany).toHaveBeenCalledWith({
+      where: { postedAt: { gte: new Date(NOW.getTime() - 14 * 24 * 3600_000) } },
+      select: { id: true },
+    });
+  });
+
+  it("no code: no query at all", async () => {
+    expect(await findAskByRef("IN", NOW)).toBeNull();
+    expect(dbMock.partnerAsk.findMany).not.toHaveBeenCalled();
+  });
+
+  it("a code nobody issued, or two asks sharing it: no ask, never a guess", async () => {
+    const other = REF === "ABCD" ? "BCDE" : "ABCD";
+    expect(await findAskByRef(`IN (ref ${other})`, NOW)).toBeNull();
+    dbMock.partnerAsk.findMany.mockResolvedValue([ASK, { ...ASK, id: "ask1" }]);
+    expect(await findAskByRef(`IN (ref ${REF})`, NOW)).toBeNull();
+  });
+});
+
+describe("handleCodedPartnerAskDm", () => {
+  const call = (text: string) =>
+    handleCodedPartnerAskDm({ askId: "ask1", userId: "ali", userName: "Ali Kaya", text, replyPhone: "447700900111", waMessageId: "wa-dm-1", now: NOW });
+
+  it("IN with the code: the resolver reads his words WITHOUT the code, then the volunteer writer, answering him on this number", async () => {
+    const r = await call(`IN (ref ${REF})`);
+    expect(resolver.resolveDmSelfAttendance).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "IN", hasPendingPrompt: false, context: expect.objectContaining({ clubName: "FNF", playerName: "Ali Kaya" }) }),
+    );
+    expect(guest.handlePartnerVolunteer).toHaveBeenCalledWith(
+      { askId: "ask1", userId: "ali", name: "Ali Kaya", polarity: "in", sourceMessageId: "wa-dm-1", replyPhone: "447700900111" },
+      NOW,
+    );
+    expect(r).toEqual({ handled: "xask-dm-volunteer", outcome: "registered-bench" });
+  });
+
+  it("OUT is whatever the resolver says, never a word match here", async () => {
+    resolver.resolveDmSelfAttendance.mockResolvedValue({ decision: "out", via: "llm" });
+    await call(`sorry can't make it now (ref ${REF})`);
+    expect(resolver.resolveDmSelfAttendance).toHaveBeenCalledWith(expect.objectContaining({ text: "sorry can't make it now" }));
+    expect(guest.handlePartnerVolunteer).toHaveBeenCalledWith(expect.objectContaining({ polarity: "out" }), NOW);
+  });
+
+  it("unreadable: nothing written, one DM with the link again, in his club's language", async () => {
+    resolver.resolveDmSelfAttendance.mockResolvedValue({ decision: null, via: "llm" });
+    const r = await call(`hmm (ref ${REF})`);
+    expect(guest.handlePartnerVolunteer).not.toHaveBeenCalled();
+    expect(r).toEqual({ handled: "xask-dm-unclear", outcome: "unclear" });
+    expect(dms()).toEqual([expect.objectContaining({ orgId: "sutton", phone: "447700900111", text: expect.stringContaining(LINK), priority: 1 })]);
+  });
+});
+
+describe("askAboutOpenPartnerAsk (a private IN with no code)", () => {
+  const OWN = { matchId: "m-own", clubName: "Sutton FC" };
+
+  it("an open ask to his club and no place in his own game: ONE question with the link, claimed once, nothing written", async () => {
+    const asked = await askAboutOpenPartnerAsk({ userId: "ali", replyPhone: "447700900111", own: OWN, decision: "in", now: NOW });
+    expect(asked).toBe(true);
+    expect(dbMock.sentNotification.create).toHaveBeenCalledWith({ data: { key: "xask:ask1:which:ali", kind: "xask-which" } });
+    const [dm] = dms();
+    expect(dm).toMatchObject({ orgId: "sutton", phone: "447700900111", priority: 1 });
+    expect(dm.text).toContain("FNF");
+    expect(dm.text).toContain(LINK);
+    expect(dm.text).toContain("If it's for Sutton FC's game, send IN again.");
+    expect(guest.handlePartnerVolunteer).not.toHaveBeenCalled();
+  });
+
+  it("only asks about asks to clubs he is a live, ordinary member of, still open, that he has not answered", async () => {
+    await askAboutOpenPartnerAsk({ userId: "ali", replyPhone: "447700900111", own: OWN, decision: "in", now: NOW });
+    expect(dbMock.membership.findMany).toHaveBeenCalledWith({ where: { userId: "ali", leftAt: null, guestFromOrgId: null }, select: { orgId: true } });
+    expect(dbMock.partnerAsk.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { partnerOrgId: { in: ["sutton"] }, status: "posted", closesAt: { gt: NOW }, NOT: { volunteerUserIds: { has: "ali" } } },
+      }),
+    );
+  });
+
+  it("asked once already (the claim is taken): his next IN is his own game's, as D5b", async () => {
+    dbMock.sentNotification.create.mockRejectedValue(Object.assign(new Error("dup"), { code: "P2002" }));
+    expect(await askAboutOpenPartnerAsk({ userId: "ali", replyPhone: "447700900111", own: OWN, decision: "in", now: NOW })).toBe(false);
+    expect(dms()).toEqual([]);
+  });
+
+  it("a place in his own game already: his IN is about that game, no question", async () => {
+    dbMock.attendance.findFirst.mockResolvedValue({ id: "row" });
+    expect(await askAboutOpenPartnerAsk({ userId: "ali", replyPhone: "447700900111", own: OWN, decision: "in", now: NOW })).toBe(false);
+  });
+
+  it("an ask posted over an hour ago, with a game of his own: his IN is his own game's (D5b's window)", async () => {
+    dbMock.partnerAsk.findMany.mockResolvedValue([{ ...ASK, postedAt: new Date(NOW.getTime() - 2 * 3600_000) }]);
+    expect(await askAboutOpenPartnerAsk({ userId: "ali", replyPhone: "447700900111", own: OWN, decision: "in", now: NOW })).toBe(false);
+  });
+
+  it("an OUT, or no ask open: nothing", async () => {
+    expect(await askAboutOpenPartnerAsk({ userId: "ali", replyPhone: "447700900111", own: OWN, decision: "out", now: NOW })).toBe(false);
+    dbMock.partnerAsk.findMany.mockResolvedValue([]);
+    expect(await askAboutOpenPartnerAsk({ userId: "ali", replyPhone: "447700900111", own: OWN, decision: "in", now: NOW })).toBe(false);
+    expect(dms()).toEqual([]);
+  });
+
+  it("no game of his own: the resolver reads his DM against the ask's game; an IN gets the question, without 'send IN again'", async () => {
+    dbMock.partnerAsk.findMany.mockResolvedValue([{ ...ASK, postedAt: new Date(NOW.getTime() - 3 * 3600_000) }]);
+    const asked = await askAboutOpenPartnerAsk({ userId: "ali", userName: "Ali", text: "I'm in", replyPhone: "447700900111", own: null, now: NOW });
+    expect(asked).toBe(true);
+    expect(resolver.resolveDmSelfAttendance).toHaveBeenCalledWith(expect.objectContaining({ text: "I'm in", context: expect.objectContaining({ clubName: "FNF" }) }));
+    expect(dms()[0].text).not.toContain("send IN again");
+  });
+
+  it("no game of his own and the resolver says it is not an IN: nothing, no question", async () => {
+    resolver.resolveDmSelfAttendance.mockResolvedValue({ decision: null, via: "llm" });
+    expect(await askAboutOpenPartnerAsk({ userId: "ali", userName: "Ali", text: "what time?", replyPhone: "447700900111", own: null, now: NOW })).toBe(false);
+    expect(dbMock.sentNotification.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("askPartnerWhichByDm (D5b's question, by DM)", () => {
+  it("claims the one question and sends it to him privately, in his club's language, with the link", async () => {
+    expect(await askPartnerWhichByDm({ askId: "ask1", userId: "ali" })).toBe("dm");
+    expect(dbMock.sentNotification.create).toHaveBeenCalledWith({ data: { key: "xask:ask1:which:ali", kind: "xask-which" } });
+    const [dm] = dms();
+    expect(dm).toMatchObject({ orgId: "sutton", phone: "447700900111" });
+    expect(dm.text).toContain(LINK);
+    expect(dm.text).toContain("just say IN in the group again");
+  });
+
+  it("asked already: false, nothing sent", async () => {
+    dbMock.sentNotification.create.mockRejectedValue(new Error("dup"));
+    expect(await askPartnerWhichByDm({ askId: "ask1", userId: "ali" })).toBe(false);
+    expect(dms()).toEqual([]);
+  });
+
+  it("no number on file: 'group', so the batch asks in the group as before", async () => {
+    dbMock.user.findUnique.mockResolvedValue({ phoneNumber: null });
+    expect(await askPartnerWhichByDm({ askId: "ask1", userId: "ali" })).toBe("group");
+    expect(dms()).toEqual([]);
+  });
+});

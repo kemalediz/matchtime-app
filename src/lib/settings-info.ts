@@ -1188,7 +1188,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
     en: {
       title: "Ask partner clubs for players",
       what: ["Whether MatchTime asks your partner clubs for a player when a place in your squad is still open."],
-      example: "⚽ *FNF* need 1 player: Fri 16 Oct, 20:30 at Goals Sutton (9-a-side, £8).\nFancy a game? *Reply to this message* with *IN* and their organisers will confirm by private message.",
+      example: "⚽ *FNF* need 1 player: Fri 16 Oct, 20:30 at Goals Sutton (9-a-side, £8).\nFancy a game? Tap here to tell MatchTime privately: <link>\nMatchTime will confirm with you by private message. Your number is not shared with FNF.",
       choices: [
         { name: "Off", text: "MatchTime never asks your partner clubs." },
         { name: "When we ask", text: "MatchTime asks a partner club only when one of your owners or admins asks it to, from the match page." },
@@ -1210,7 +1210,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
     tr: {
       title: "Partner kulüplerden oyuncu iste",
       what: ["Kadronuzda hâlâ boş yer varken MatchTime'ın partner kulüplerinizden oyuncu isteyip istemeyeceği."],
-      example: "⚽ *FNF* 1 oyuncu arıyor: Cuma 16 Eki, 20:30, Goals Sutton (9'a 9, £8).\nOynamak ister misin? *Bu mesajı yanıtlayıp* *VARIM* yaz, organizatörleri sana özel mesajla dönecek.",
+      example: "⚽ *FNF* 1 oyuncu arıyor: Cuma 16 Eki, 20:30, Goals Sutton (9'a 9, £8).\nOynamak ister misin? MatchTime'a özelden haber vermek için dokun: <bağlantı>\nMatchTime sana özel mesajla dönecek. Numaran FNF ile paylaşılmaz.",
       choices: [
         { name: "Kapalı", text: "MatchTime partner kulüplerinizden hiç oyuncu istemez." },
         { name: "Biz isteyince", text: "MatchTime bir partner kulüpten yalnızca kulübünüzün sahibi ya da bir yöneticisi maç sayfasından isteyince oyuncu ister." },
@@ -1280,7 +1280,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       ],
       newClubs: "Ask our organisers each time.",
       together: [
-        "Your players answer by replying to MatchTime's post with IN. A plain IN in your group still means your own game.",
+        "Your players answer MatchTime by private message, from the link in its post, so your group stays quiet. A plain IN in your group still means your own game.",
         "MatchTime never shows the other club your players' phone numbers or ratings, and a player already in your own game at an overlapping time cannot sign up for theirs.",
       ],
     },
@@ -1297,7 +1297,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       ],
       newClubs: "Her seferinde organizatörlerimize sor.",
       together: [
-        "Oyuncularınız MatchTime'ın mesajını yanıtlayıp VARIM yazarak cevap verir. Grubunuzda düz bir VARIM yine kendi maçınız anlamına gelir.",
+        "Oyuncularınız MatchTime'a, paylaşımdaki bağlantıdan özel mesajla cevap verir, böylece grubunuz sessiz kalır. Grubunuzda düz bir VARIM yine kendi maçınız anlamına gelir.",
         "MatchTime diğer kulübe oyuncularınızın telefon numaralarını ya da puanlarını asla göstermez ve kendi maçınızda aynı saatlere denk gelen bir oyuncu onların maçına yazılamaz.",
       ],
     },

@@ -12,7 +12,7 @@
  *              for someone already its member), `registerAttendance` on
  *              the ASKING club's match with cause "partner-ask", the
  *              volunteer recorded on the ask, the asking club's
- *              organisers told, and a reply to him in his own group;
+ *              organisers told, and a DM to him;
  *   withdraw   his row on the asking club's match dropped, same cause;
  *   refuse     one plain reply (closed, unknown, an overlapping game of
  *              his own, not on the list) and nothing written.
@@ -22,6 +22,13 @@
  * club confirms while there is room (`registerAttendance` decides, as for
  * any player). Replies are in HIS club's language (D9); the notice to the
  * asking club in its own. Logs carry ids only.
+ *
+ * EVERY ANSWER TO HIM IS A DM (Kemal, 2026-10-21): volunteering adds no
+ * noise to the partner club's group, whichever way he volunteered (the
+ * post's tap-to-DM link, or a swipe-reply in the group). The DM goes out
+ * as a reply-priority BotJob of HIS club, to the number he messaged from
+ * or the one on file. With no number at all nothing is sent anywhere and
+ * the caller is told (`dmQueued: false`).
  */
 import { db } from "./db";
 import { REPLY_PRIORITY } from "./dm-reply-priority";
@@ -40,14 +47,45 @@ export interface VolunteerWrite {
   name: string;
   polarity: "in" | "out";
   sourceMessageId: string;
+  /** The number he messaged MatchTime from, without "+", when he came by
+   *  DM. Otherwise the number on file is used. */
+  replyPhone?: string | null;
 }
 
 export interface VolunteerResult {
   ok: boolean;
   /** What happened, for the message's log line. */
   outcome: "registered-bench" | "registered-in" | "withdrawn" | "closed" | "unknown-sender" | "overlap" | "not-on-list" | "game-over" | "failed";
-  /** The reply to the volunteer, in his own group. */
-  replyText: string | null;
+  /** What he was told by DM (in his club's language), or null. */
+  dmText: string | null;
+  /** The DM was queued. False when there was nothing to say or no number. */
+  dmQueued: boolean;
+}
+
+/** The answer to a volunteer, by DM only (2026-10-21). Never throws. */
+async function dmVolunteer(args: { partnerOrgId: string; userId: string | null; replyPhone?: string | null; text: string | null }): Promise<boolean> {
+  if (!args.text) return false;
+  try {
+    const phone =
+      args.replyPhone ??
+      (args.userId ? (await db.user.findUnique({ where: { id: args.userId }, select: { phoneNumber: true } }))?.phoneNumber?.replace(/^\+/, "") : null) ??
+      null;
+    if (!phone) {
+      console.log(`[partner-guest] ${args.userId ?? "unknown sender"}: no number to answer by DM`);
+      return false;
+    }
+    await db.botJob.create({ data: { orgId: args.partnerOrgId, kind: "dm", phone, text: args.text, ...REPLY_PRIORITY } });
+    return true;
+  } catch (err) {
+    console.error(`[partner-guest] ${args.userId ?? "unknown sender"}: the DM was not queued:`, err instanceof Error ? err.message : "failed");
+    return false;
+  }
+}
+
+export async function handlePartnerVolunteer(w: VolunteerWrite, now: Date = new Date()): Promise<VolunteerResult> {
+  const r = await decideAndWriteVolunteer(w, now);
+  const dmQueued = r.partnerOrgId ? await dmVolunteer({ partnerOrgId: r.partnerOrgId, userId: w.userId, replyPhone: w.replyPhone, text: r.dmText }) : false;
+  return { ok: r.ok, outcome: r.outcome, dmText: r.dmText, dmQueued };
 }
 
 /** His own club's live game overlapping the asking club's, with him in it. */
@@ -73,7 +111,9 @@ async function inOverlappingOwnGame(userId: string, partnerOrgId: string, kickof
   return { yes: false, time: null };
 }
 
-export async function handlePartnerVolunteer(w: VolunteerWrite, now: Date = new Date()): Promise<VolunteerResult> {
+type Decided = { ok: boolean; outcome: VolunteerResult["outcome"]; dmText: string | null; partnerOrgId: string | null };
+
+async function decideAndWriteVolunteer(w: VolunteerWrite, now: Date): Promise<Decided> {
   const ask = await db.partnerAsk.findUnique({
     where: { id: w.askId },
     select: {
@@ -87,12 +127,12 @@ export async function handlePartnerVolunteer(w: VolunteerWrite, now: Date = new 
       match: { select: { date: true, status: true, activity: { select: { matchDurationMins: true } } } },
     },
   });
-  if (!ask) return { ok: false, outcome: "failed", replyText: null };
+  if (!ask) return { ok: false, outcome: "failed", dmText: null, partnerOrgId: null };
   const [asker, partner] = await Promise.all([
     db.organisation.findUnique({ where: { id: ask.askerOrgId }, select: { id: true, name: true, language: true } }),
     db.organisation.findUnique({ where: { id: ask.partnerOrgId }, select: { id: true, name: true, language: true } }),
   ]);
-  if (!asker || !partner) return { ok: false, outcome: "failed", replyText: null };
+  if (!asker || !partner) return { ok: false, outcome: "failed", dmText: null, partnerOrgId: null };
   const ps = t(partner.language);
   const name = w.name.trim().split(/\s+/)[0] || w.name;
 
@@ -133,7 +173,7 @@ export async function handlePartnerVolunteer(w: VolunteerWrite, now: Date = new 
               ? ps.xask_vol_game_over({ asker: asker.name })
               : ps.xask_vol_not_on({ asker: asker.name });
     console.log(`[partner-guest] ask ${ask.id}: ${w.userId ?? "unknown sender"} refused (${decision.why})`);
-    return { ok: true, outcome: decision.why, replyText };
+    return { ok: true, outcome: decision.why, dmText: replyText, partnerOrgId: partner.id };
   }
 
   const userId = w.userId!;
@@ -164,7 +204,7 @@ export async function handlePartnerVolunteer(w: VolunteerWrite, now: Date = new 
       await db.$executeRaw`UPDATE "PartnerAsk" SET "volunteerUserIds" = array_remove("volunteerUserIds", ${userId}) WHERE id = ${ask.id}`;
       await tellAskerOnce("out", t(askerLang).xask_vol_out_notice_asker({ name: w.name, partner: partner.name, day }));
       console.log(`[partner-guest] ask ${ask.id}: ${userId} withdrew`);
-      return { ok: true, outcome: "withdrawn", replyText: ps.xask_vol_out({ asker: asker.name }) };
+      return { ok: true, outcome: "withdrawn", dmText: ps.xask_vol_out({ asker: asker.name }), partnerOrgId: partner.id };
     }
 
     // Review M7: claim the volunteer on the ask FIRST, and only while it is
@@ -176,7 +216,7 @@ export async function handlePartnerVolunteer(w: VolunteerWrite, now: Date = new 
     if (claimed.count === 0) {
       const again = await db.partnerAsk.findUnique({ where: { id: ask.id }, select: { status: true, volunteerUserIds: true } });
       if (!again || again.status !== "posted" || !again.volunteerUserIds.includes(userId)) {
-        return { ok: true, outcome: "closed", replyText: ps.xask_vol_closed({ asker: asker.name }) };
+        return { ok: true, outcome: "closed", dmText: ps.xask_vol_closed({ asker: asker.name }), partnerOrgId: partner.id };
       }
     }
 
@@ -202,7 +242,7 @@ export async function handlePartnerVolunteer(w: VolunteerWrite, now: Date = new 
     const after = await db.partnerAsk.findUnique({ where: { id: ask.id }, select: { status: true } });
     if (after?.status !== "posted" && result.status !== "CONFIRMED") {
       await cancelAttendance(userId, ask.matchId, { ...event, actorKind: "system", note: "the ask closed while he was written" });
-      return { ok: true, outcome: "closed", replyText: ps.xask_vol_closed({ asker: asker.name }) };
+      return { ok: true, outcome: "closed", dmText: ps.xask_vol_closed({ asker: asker.name }), partnerOrgId: partner.id };
     }
     const bench = result.status === "BENCH";
     await tellAskerOnce("in", t(askerLang).xask_vol_notice_asker({ name: w.name, partner: partner.name, day, bench }));
@@ -210,13 +250,14 @@ export async function handlePartnerVolunteer(w: VolunteerWrite, now: Date = new 
     return {
       ok: true,
       outcome: bench ? "registered-bench" : "registered-in",
-      replyText: bench
+      dmText: bench
         ? ps.xask_vol_bench({ name, asker: asker.name })
         : ps.xask_vol_in({ name, asker: asker.name, day: dayCommaTimeLabel(partner.language, ask.match.date) }),
+      partnerOrgId: partner.id,
     };
   } catch (err) {
     console.error(`[partner-guest] ask ${ask.id}: ${userId} not written:`, err instanceof Error ? err.message : "failed");
-    return { ok: false, outcome: "failed", replyText: ps.xask_vol_failed };
+    return { ok: false, outcome: "failed", dmText: ps.xask_vol_failed, partnerOrgId: partner.id };
   }
 }
 

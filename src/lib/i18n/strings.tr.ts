@@ -3768,11 +3768,14 @@ export const tr: Strings = {
   // ─── Partner kulüpten oyuncu isteme (slice S2, 2026-10-16) ──────────
   xask_post: (p) => {
     const extras = [p.format, p.fee].filter(Boolean).join(", ");
+    const how = p.link ? `MatchTime'a özelden haber vermek için dokun: ${p.link}` : `MatchTime'a özelden yaz: *${p.prefill}*`;
     return (
       `⚽ *${p.asker}* ${p.places} oyuncu arıyor: ${p.day}, ${p.venue}${extras ? ` (${extras})` : ""}.\n` +
-      `Oynamak ister misin? *Bu mesajı yanıtlayıp* *VARIM* yaz, organizatörleri sana özel mesajla dönecek.`
+      `Oynamak ister misin? ${how}\n` +
+      `MatchTime sana özel mesajla dönecek. Numaran ${p.asker} ile paylaşılmaz.`
     );
   },
+  xask_dm_prefill: (p) => `VARIM (ref ${p.ref})`,
   xask_approval_notice: (p) => {
     const extras = [p.format, p.fee].filter(Boolean).join(", ");
     const who = p.places === 1 ? "oyuncularınızdan birinin" : `oyuncularınızdan ${p.places} kişinin`;
@@ -3785,7 +3788,7 @@ export const tr: Strings = {
   xask_posted_notice_partner: (p) =>
     `🤝 *${p.asker}* kulübünün oyuncu isteğini oyuncu grubunuzda paylaştım: ${p.day}, ${p.venue}. Kulübünüz ${p.asker} kulübünden gelen istekleri önce sormadan geçiriyor.`,
   xask_approved_notice_asker: (p) =>
-    `✅ *${p.partner}* evet dedi: ${p.day} için onların oyuncu grubundan oyuncu istedim. VARIM yazan herkes yedek listenize (${p.partner}) notuyla girer.`,
+    `✅ *${p.partner}* evet dedi: ${p.day} için onların oyuncu grubundan oyuncu istedim. VARIM diyen herkes yedek listenize (${p.partner}) notuyla girer.`,
   xask_declined_notice_asker: (p) => `*${p.partner}* organizatörleri, ${p.day} için gruplarına sorulmasına hayır dedi.`,
   xask_expired_notice_asker: (p) => `*${p.partner}* organizatörleri zamanında yanıt vermedi, bu yüzden ${p.day} için gruplarına sormadım.`,
   xask_nobody_notice_asker: (p) => `${p.day} için *${p.partner}* kulübünden kimse yeri almadı.`,
@@ -3806,7 +3809,7 @@ export const tr: Strings = {
   xask_refused_unreachable: (p) => `${p.partner} grubuna şu an sorulamıyor.`,
   xask_refused_generic: "Bu şu an istenemiyor. Sayfayı yenileyip tekrar deneyin.",
   xask_panel_title: "Partner kulüpten iste",
-  xask_panel_lead: "Oyuncunuz mu eksik? MatchTime bir partner kulübün oyuncu grubuna sorabilir. VARIM yazan herkes yedek listenize girer.",
+  xask_panel_lead: "Oyuncunuz mu eksik? MatchTime bir partner kulübün oyuncu grubuna sorabilir. VARIM diyen herkes yedek listenize girer.",
   xask_ask_button: (p) => `${p.partner} kulübünden oyuncu iste`,
   xask_status_awaiting: (p) => `${p.partner} organizatörlerinin onayı bekleniyor`,
   xask_status_posted: (p) => `${p.partner} grubuna soruldu${p.volunteers > 0 ? `: ${p.volunteers} oyuncu yanıt verdi` : ""}`,
@@ -3818,7 +3821,7 @@ export const tr: Strings = {
     return `${p.asker}, ${p.places === 1 ? "oyuncularınızdan birinin" : `oyuncularınızdan ${p.places} kişinin`} onlar için oynayıp oynayamayacağını soruyor: ${p.day}, ${p.venue}${extras ? ` (${extras})` : ""}.`;
   },
   xask_page_own: (p) => `O gün kendi maçınızda ${p.max} kişilik kadroda ${p.confirmed} kişi var.`,
-  xask_page_how: "Evet derseniz MatchTime isteği oyuncu grubunuzda paylaşır. Oyuncular mesajı yanıtlayıp VARIM yazarak cevap verir; düz bir VARIM yine kendi maçınız anlamına gelir.",
+  xask_page_how: "Evet derseniz MatchTime isteği oyuncu grubunuzda paylaşır. Oyuncular MatchTime'a özel mesajla cevap verir, böylece grubunuz sessiz kalır; grubunuzda düz bir VARIM yine kendi maçınız anlamına gelir.",
   xask_page_approve: "Evet, grubumuzda paylaş",
   xask_page_decline: "Hayır, teşekkürler",
   xask_page_posted: "Oyuncu grubunuzda paylaşıldı.",
@@ -3832,7 +3835,7 @@ export const tr: Strings = {
       : `🤝 Otomatik isteğiniz: ${p.day} için hâlâ boş yer var ve yedek listenizde kimse yok, bu yüzden *${p.partner}* organizatörlerine oyuncularından birinin oynayıp oynayamayacağını sordum.`,
   xask_offer_line: (p) => `🤝 ${p.partners} kulübünden oyuncu isteyeyim mi? Maç sayfasını açın: ${p.link}`,
   // ─── Partner kulüp isteğine gönüllüler (slice S3) ───────────────────
-  xask_vol_bench: (p) => `Teşekkürler ${p.name}, *${p.asker}* yedek listesindesin. Organizatörleri seçecek ve sana haber verecekler.`,
+  xask_vol_bench: (p) => `Teşekkürler ${p.name}, *${p.asker}* yedek listesindesin. Organizatörleri seçecek, ben de sana her durumda yazacağım.`,
   xask_vol_in: (p) => `✅ Teşekkürler ${p.name}, *${p.asker}* için kadrodasın: ${p.day}.`,
   xask_vol_out: (p) => `Tamam, seni *${p.asker}* listesinden çıkardım.`,
   xask_vol_not_on: (p) => `*${p.asker}* listesinde değildin, değiştirecek bir şey yok.`,
@@ -3848,7 +3851,7 @@ export const tr: Strings = {
   xask_thanks_dm: (p) => `*${p.asker}* oyuncusunu buldu. Teklifin için teşekkürler 🙏`,
   xask_game_off_dm: (p) => `*${p.asker}* kulübünün ${p.day} maçı iptal oldu, yani artık gerek kalmadı. Teklifin için teşekkürler 🙏`,
   xask_picked_dm: (p) =>
-    `✅ *${p.asker}* için oynuyorsun: ${p.day}, ${p.venue}. Gelemeyeceksen grubundaki isteklerini yanıtlayıp *YOKUM* yaz.`,
+    `✅ *${p.asker}* için oynuyorsun: ${p.day}, ${p.venue}. Gelemeyeceksen buraya *YOKUM* yaz.`,
   xask_guests_title: "Partner kulüplerden misafirler",
   xask_guest_row: (p) => `${p.name}, misafir: ${p.club}`,
   xask_keep_button: (p) => `${p.club} kulübüne ekle`,
@@ -3857,10 +3860,16 @@ export const tr: Strings = {
   // ─── D5b, tek soru (slice S5b) ──────────────────────────────────────
   xask_which: (p) =>
     `Bu VARIM *${p.asker}* maçı için mi, bizim maç için mi? ${p.asker} için ${p.asker} mesajımı yanıtlayıp VARIM yaz. Bizim maç için tekrar VARIM yazman yeterli.`,
+  xask_which_dm: (p) =>
+    `*${p.own}* grubundaki VARIM'ın *${p.asker}* maçı için miydi (${p.day})? Öyleyse ${p.link ? `bana söylemek için dokun: ${p.link}` : `bana *${p.prefill}* yaz`}. ${p.own} kulübünün kendi maçı içinse grupta tekrar VARIM yazman yeterli.`,
+  xask_dm_which_in: (p) =>
+    `Bu VARIM *${p.asker}* maçı için mi (${p.day})? Öyleyse ${p.link ? `bana söylemek için dokun: ${p.link}` : `bana *${p.prefill}* yaz`}.${p.own ? ` ${p.own} maçı içinse tekrar VARIM yaz.` : ""}`,
+  xask_dm_unclear: (p) =>
+    `Kusura bakma, anlayamadım. *${p.asker}* için oynamak istiyorsan ${p.link ? `buraya dokun: ${p.link}` : `bana *${p.prefill}* yaz`}.`,
   xask_vol_game_over: (p) => `*${p.asker}* maçı artık bitti, değiştirecek bir şey yok.`,
   xask_dm_which: (p) =>
     `Hangi maçtan çıkıyorsun? *${p.asker}* (${p.askerDay}) için *1*, *${p.own}* (${p.ownDay}) için *2* yaz.`,
-  xask_moved_dm: (p) => `*${p.asker}* maçının saati değişti: artık ${p.day}. Yerin duruyor. Gelemeyeceksen grubundaki isteklerini yanıtlayıp *YOKUM* yaz.`,
+  xask_moved_dm: (p) => `*${p.asker}* maçının saati değişti: artık ${p.day}. Yerin duruyor. Gelemeyeceksen buraya *YOKUM* yaz.`,
   xask_guest_overlap: (p) => `O saatte *${p.asker}* için oynuyorsun, bu yüzden seni bu maça da yazamıyorum.`,
   pg_err_player_owns_account:
     "Bu oyuncu MatchTime'daki numarasını ve adını kendisi yönetiyor, bu yüzden bunları yalnızca kendisi değiştirebilir.",

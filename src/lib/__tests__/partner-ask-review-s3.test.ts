@@ -93,7 +93,7 @@ function deps(s: SquadState, over: Partial<EngineBatchDeps> = {}) {
     resolveOrProvision: async (name: string) => ({ userId: `new:${name}` }),
     partnerVolunteer: async (w: { askId: string }) => {
       volunteers.push(w.askId);
-      return { ok: true, outcome: "registered-bench", replyText: "Thanks, you're on FNF's bench." };
+      return { ok: true, outcome: "registered-bench", dmText: "Thanks, you're on FNF's bench.", dmQueued: true };
     },
     ...over,
   } as unknown as EngineBatchDeps;
@@ -115,9 +115,62 @@ describe("M1: a reply to an ask is never lost to the partner club's own match st
       const r = await run(s, [quoted], d, expected);
       expect(volunteers).toEqual(["ask-1"]);
       expect(registered).toEqual([]);
-      expect(r.outcomes.get("wa-q")?.reply).toContain("FNF's bench");
+      // 2026-10-21 (Kemal): he is answered by DM; the group hears nothing.
+      expect(r.outcomes.get("wa-q")?.reply).toBeNull();
+      expect(r.outcomes.get("wa-q")?.intent).toBe("partner_volunteer");
     });
   }
+});
+
+describe("2026-10-21 (Kemal): a swipe-reply to the ask adds no noise to the partner group", () => {
+  it("answered by DM: no reply and no reaction in the group", async () => {
+    const s = state();
+    const { d } = deps(s);
+    const r = await run(s, [quoted], d);
+    expect(r.outcomes.get("wa-q")?.reply).toBeNull();
+    expect(r.outcomes.get("wa-q")?.react).toBeNull();
+    expect(r.outcomes.get("wa-q")?.action).toBe("partner-volunteer:registered-bench");
+  });
+
+  it("registered but no number to DM him: a 👍 reaction on his message, still no message", async () => {
+    const s = state();
+    const { d } = deps(s, { partnerVolunteer: async () => ({ ok: true, outcome: "registered-bench", dmText: "x", dmQueued: false }) } as Partial<EngineBatchDeps>);
+    const r = await run(s, [quoted], d);
+    expect(r.outcomes.get("wa-q")?.reply).toBeNull();
+    expect(r.outcomes.get("wa-q")?.react).toBe("👍");
+  });
+
+  it("a refusal with no number to DM him: silent in the group", async () => {
+    const s = state();
+    const { d } = deps(s, { partnerVolunteer: async () => ({ ok: true, outcome: "closed", dmText: "x", dmQueued: false }) } as Partial<EngineBatchDeps>);
+    const r = await run(s, [quoted], d);
+    expect(r.outcomes.get("wa-q")?.reply).toBeNull();
+    expect(r.outcomes.get("wa-q")?.react).toBeNull();
+  });
+
+  it("D5b's question goes to him by DM: the group hears nothing, nothing is written", async () => {
+    const s = state({ partnerAsks: [{ ...ASK, postedAt: new Date("2026-09-03T11:40:00Z").toISOString() }] });
+    const plain: EngineBatchMessage = { ...quoted, waMessageId: "wa-plain", quoted: undefined };
+    const asked: string[] = [];
+    const { d, registered } = deps(s, {
+      claimPartnerAskWhich: async ({ userId }: { askId: string; userId: string }) => {
+        asked.push(userId);
+        return "dm";
+      },
+    } as Partial<EngineBatchDeps>);
+    const r = await run(s, [plain], d);
+    expect(asked).toEqual(["u-pete"]);
+    expect(registered).toEqual([]);
+    expect(r.outcomes.get("wa-plain")?.reply).toBeNull();
+  });
+
+  it("D5b with no number to DM him: the one question in the group, as before", async () => {
+    const s = state({ partnerAsks: [{ ...ASK, postedAt: new Date("2026-09-03T11:40:00Z").toISOString() }] });
+    const plain: EngineBatchMessage = { ...quoted, waMessageId: "wa-plain", quoted: undefined };
+    const { d } = deps(s, { claimPartnerAskWhich: async () => "group" } as Partial<EngineBatchDeps>);
+    const r = await run(s, [plain], d);
+    expect(r.outcomes.get("wa-plain")?.reply).toContain("FNF");
+  });
 });
 
 describe("M2: own-club IN and a quoted ask IN from the same person, one batch", () => {

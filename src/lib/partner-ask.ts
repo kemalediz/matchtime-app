@@ -39,6 +39,8 @@ import { londonMidnight } from "./club-connect-rules";
 import { isNextUpcomingForPosting } from "./next-upcoming-match";
 import { loadPartnerAskSettings } from "./club-partnership";
 import { retirePastGuests, standDownVolunteers, tellGuestsMoved } from "./partner-guest";
+import { matchtimeWaNumber } from "./club-connect";
+import { askDmLink, askDmPrefill, askRefCode } from "./partner-ask-ref";
 import { dayCommaTimeLabel } from "./i18n/dates";
 import { t } from "./i18n/t";
 import {
@@ -362,7 +364,13 @@ async function postAsk(askId: string, approverUserId: string | null, now: Date):
   ]);
   if (!asker || !partner || !match) return false;
   const places = await placesOpen(match.id, match.maxPlayers);
-  const text = t(partner.language).xask_post(factsFor(match, asker.name, Math.max(1, places), partner.language));
+  // Volunteers answer MatchTime by DM (2026-10-21): the post carries the
+  // tap-to-DM link with this ask's code, and nothing else reaches the group.
+  const text = t(partner.language).xask_post({
+    ...factsFor(match, asker.name, Math.max(1, places), partner.language),
+    link: askDmLink({ number: matchtimeWaNumber(), lang: partner.language, askId }),
+    prefill: askDmPrefill(partner.language, askRefCode(askId)),
+  });
   return db.$transaction(async (tx) => {
     const job = await tx.botJob.create({ data: { orgId: partner.id, kind: "group", text }, select: { id: true } });
     const done = await tx.partnerAsk.updateMany({

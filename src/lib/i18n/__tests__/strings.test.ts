@@ -1695,7 +1695,11 @@ const SAMPLES: SampleArgs = {
   pc_save_failed: null,
   pc_refused: null,
   // Asking a partner club (cross-club ask, slice S2).
-  xask_post: { asker: "FNFCLUB", places: 7, day: "DAYLABEL", venue: "VENUEX", format: "FORMATX", fee: "£9" },
+  // `link` null so the sample shows `prefill` (one or the other is shown);
+  // the link branch is pinned in partner-ask.test.ts and
+  // partner-guest-dm-volunteer.test.ts.
+  xask_post: { asker: "FNFCLUB", places: 7, day: "DAYLABEL", venue: "VENUEX", format: "FORMATX", fee: "£9", link: null, prefill: "PREFILLX" },
+  xask_dm_prefill: { ref: "REFX" },
   xask_approval_notice: {
     asker: "FNFCLUB",
     places: 7,
@@ -1744,6 +1748,9 @@ const SAMPLES: SampleArgs = {
   xask_page_closed: null,
   xask_page_not_allowed: null,
   xask_which: { asker: "FNFCLUB" },
+  xask_which_dm: { asker: "FNFCLUB", day: "DAYLABEL", own: "SUTTONCLUB", link: null, prefill: "PREFILLX" },
+  xask_dm_which_in: { asker: "FNFCLUB", day: "DAYLABEL", own: "SUTTONCLUB", link: null, prefill: "PREFILLX" },
+  xask_dm_unclear: { asker: "FNFCLUB", link: null, prefill: "PREFILLX" },
   xask_thanks_dm: { asker: "FNFCLUB" },
   xask_game_off_dm: { asker: "FNFCLUB", day: "DAYLABEL" },
   xask_picked_dm: { asker: "FNFCLUB", day: "DAYLABEL", venue: "VENUEX" },

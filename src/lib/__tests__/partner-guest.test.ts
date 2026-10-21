@@ -11,6 +11,8 @@ const dbMock = vi.hoisted(() => ({
   organisation: { findUnique: vi.fn() },
   membership: { findUnique: vi.fn(), upsert: vi.fn() },
   attendance: { findUnique: vi.fn(), findMany: vi.fn() },
+  user: { findUnique: vi.fn() },
+  botJob: { create: vi.fn() },
 }));
 vi.mock("../db", () => ({ db: dbMock }));
 const att = vi.hoisted(() => ({ registerAttendance: vi.fn(), cancelAttendance: vi.fn() }));
@@ -56,7 +58,12 @@ beforeEach(() => {
   dbMock.partnerAsk.updateMany.mockResolvedValue({ count: 1 });
   notice.sendAdminNotice.mockResolvedValue({ channel: "dm", queued: 1 });
   dbMock.sentNotification.create.mockResolvedValue({});
+  dbMock.user.findUnique.mockResolvedValue({ phoneNumber: "+447700900111" });
+  dbMock.botJob.create.mockResolvedValue({ id: "dm1" });
 });
+
+/** The one DM he was sent, or undefined. */
+const dmTo = () => dbMock.botJob.create.mock.calls.map((c) => c[0].data).find((d) => d.kind === "dm");
 
 describe("handlePartnerVolunteer", () => {
   it("IN: a guest membership in the asking club, a row on ITS match with cause partner-ask, recorded on the ask, both sides told", async () => {
@@ -78,7 +85,7 @@ describe("handlePartnerVolunteer", () => {
     });
     expect(dbMock.partnerAsk.updateMany.mock.invocationCallOrder[0]).toBeLessThan(att.registerAttendance.mock.invocationCallOrder[0]);
     // His reply is in HIS club's language (Turkish here); the asking club's notice in its own.
-    expect(r.replyText).toContain("FNF* yedek listesindesin");
+    expect(r.dmText).toContain("FNF* yedek listesindesin");
     expect(notice.sendAdminNotice).toHaveBeenCalledWith(expect.objectContaining({ orgId: "fnf", text: expect.stringContaining("Ali Kaya (Sutton FC) answered your ask") }));
   });
 
@@ -113,7 +120,7 @@ describe("handlePartnerVolunteer", () => {
     dbMock.attendance.findMany.mockResolvedValue([{ match: { date: new Date("2026-10-30T20:00:00Z"), activity: { matchDurationMins: 60 } } }]);
     const r = await handlePartnerVolunteer(write(), NOW);
     expect(r.outcome).toBe("overlap");
-    expect(r.replyText).toContain("20:00");
+    expect(r.dmText).toContain("20:00");
     expect(att.registerAttendance).not.toHaveBeenCalled();
   });
 
@@ -178,6 +185,50 @@ describe("handlePartnerVolunteer", () => {
     att.registerAttendance.mockRejectedValue(new Error("db"));
     const r = await handlePartnerVolunteer(write(), NOW);
     expect(r).toMatchObject({ ok: false, outcome: "failed" });
-    expect(r.replyText).toBeTruthy();
+    expect(r.dmText).toBeTruthy();
+    expect(dmTo()?.text).toBe(r.dmText);
+  });
+
+  // ── 2026-10-21 (Kemal): volunteering adds no noise to the partner group ──
+  it("every answer goes to HIM by DM, as a reply-priority BotJob of HIS club, in his club's language; nothing for the group", async () => {
+    const r = await handlePartnerVolunteer(write(), NOW);
+    expect(r).not.toHaveProperty("replyText");
+    expect(r.dmQueued).toBe(true);
+    expect(dmTo()).toEqual({ orgId: "sutton", kind: "dm", phone: "447700900111", text: r.dmText, priority: 1 });
+    expect(dmTo()?.text).toContain("yedek listesindesin");
+    // No group post of any kind.
+    expect(dbMock.botJob.create.mock.calls.some((c) => c[0].data.kind === "group")).toBe(false);
+  });
+
+  it("the refusals (closed, overlap, not on the list) are DMs too", async () => {
+    dbMock.partnerAsk.findUnique.mockResolvedValue({ ...ASK, status: "filled" });
+    const closed = await handlePartnerVolunteer(write(), NOW);
+    expect(closed.outcome).toBe("closed");
+    expect(dmTo()?.text).toBe(closed.dmText);
+    dbMock.botJob.create.mockClear();
+    dbMock.partnerAsk.findUnique.mockResolvedValue(ASK);
+    const notOn = await handlePartnerVolunteer(write({ polarity: "out" }), NOW);
+    expect(notOn.outcome).toBe("not-on-list");
+    expect(dmTo()?.text).toBe(notOn.dmText);
+  });
+
+  it("a withdrawal is answered by DM", async () => {
+    dbMock.attendance.findUnique.mockResolvedValue({ status: "BENCH" });
+    const r = await handlePartnerVolunteer(write({ polarity: "out" }), NOW);
+    expect(r.outcome).toBe("withdrawn");
+    expect(dmTo()?.text).toContain("FNF");
+  });
+
+  it("the DM goes to the number he messaged from when the caller has it (the DM path)", async () => {
+    await handlePartnerVolunteer(write({ replyPhone: "447700900222" }), NOW);
+    expect(dmTo()?.phone).toBe("447700900222");
+  });
+
+  it("no number on file: nothing is sent anywhere, and the caller is told", async () => {
+    dbMock.user.findUnique.mockResolvedValue({ phoneNumber: null });
+    const r = await handlePartnerVolunteer(write(), NOW);
+    expect(r.outcome).toBe("registered-bench");
+    expect(r.dmQueued).toBe(false);
+    expect(dmTo()).toBeUndefined();
   });
 });

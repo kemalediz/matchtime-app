@@ -5070,13 +5070,31 @@ export const en = {
   // Read by src/lib/partner-ask.ts, the match page's partner panel and
   // the approve page. The post and the partner's notices are in the
   // PARTNER club's language; the asking club's notices in its own.
-  xask_post: (p: { asker: string; places: number; day: string; venue: string; format: string | null; fee: string | null }) => {
+  // Volunteering is by DM (Kemal, 2026-10-21): the post is the only thing
+  // the partner group sees. `link` is the tap-to-DM link to MatchTime
+  // (partner-ask-ref.ts), null when MatchTime's number is not configured;
+  // `prefill` is what to send then. His number never goes to the asking
+  // club (D7).
+  xask_post: (p: {
+    asker: string;
+    places: number;
+    day: string;
+    venue: string;
+    format: string | null;
+    fee: string | null;
+    link: string | null;
+    prefill: string;
+  }) => {
     const extras = [p.format, p.fee].filter(Boolean).join(", ");
+    const how = p.link ? `Tap here to tell MatchTime privately: ${p.link}` : `Send MatchTime a private message: *${p.prefill}*`;
     return (
       `⚽ *${p.asker}* need ${p.places === 1 ? "1 player" : `${p.places} players`}: ${p.day} at ${p.venue}${extras ? ` (${extras})` : ""}.\n` +
-      `Fancy a game? *Reply to this message* with *IN* and their organisers will confirm by private message.`
+      `Fancy a game? ${how}\n` +
+      `MatchTime will confirm with you by private message. Your number is not shared with ${p.asker}.`
     );
   },
+  /** The DM the post's link opens with: the IN word and the ask's code. */
+  xask_dm_prefill: (p: { ref: string }) => `IN (ref ${p.ref})`,
   xask_approval_notice: (p: {
     asker: string;
     places: number;
@@ -5099,7 +5117,7 @@ export const en = {
   xask_posted_notice_partner: (p: { asker: string; day: string; venue: string }) =>
     `🤝 I've posted *${p.asker}*'s ask for a player in your players' group: ${p.day} at ${p.venue}. Your club lets asks from ${p.asker} through without asking first.`,
   xask_approved_notice_asker: (p: { partner: string; day: string }) =>
-    `✅ *${p.partner}* said yes: I've asked their players' group for a player for ${p.day}. Anyone who replies IN goes on your bench marked (${p.partner}).`,
+    `✅ *${p.partner}* said yes: I've asked their players' group for a player for ${p.day}. Anyone who says IN goes on your bench marked (${p.partner}).`,
   xask_declined_notice_asker: (p: { partner: string; day: string }) =>
     `*${p.partner}*'s organisers said no to asking their group for ${p.day}.`,
   xask_expired_notice_asker: (p: { partner: string; day: string }) =>
@@ -5125,7 +5143,7 @@ export const en = {
   xask_refused_unreachable: (p: { partner: string }) => `${p.partner}'s group can't be asked right now.`,
   xask_refused_generic: "That can't be asked now. Reload the page and try again.",
   xask_panel_title: "Ask a partner club",
-  xask_panel_lead: "Short of players? MatchTime can ask a partner club's players' group. Anyone who replies IN goes on your bench.",
+  xask_panel_lead: "Short of players? MatchTime can ask a partner club's players' group. Anyone who says IN goes on your bench.",
   xask_ask_button: (p: { partner: string }) => `Ask ${p.partner} for a player`,
   xask_status_awaiting: (p: { partner: string }) => `Waiting for ${p.partner}'s organisers to say yes`,
   xask_status_posted: (p: { partner: string; volunteers: number }) =>
@@ -5138,7 +5156,7 @@ export const en = {
     return `${p.asker} ask if ${p.places === 1 ? "one of your players" : `${p.places} of your players`} can play for them: ${p.day} at ${p.venue}${extras ? ` (${extras})` : ""}.`;
   },
   xask_page_own: (p: { confirmed: number; max: number }) => `Your own game that day is ${p.confirmed} of ${p.max}.`,
-  xask_page_how: "If you say yes, MatchTime posts the ask in your players' group. Players answer by replying to it with IN; a plain IN still means your own game.",
+  xask_page_how: "If you say yes, MatchTime posts the ask in your players' group. Players answer MatchTime by private message, so your group stays quiet, and a plain IN in your group still means your own game.",
   xask_page_approve: "Yes, post it in our group",
   xask_page_decline: "No thanks",
   xask_page_posted: "Posted in your players' group.",
@@ -5155,7 +5173,7 @@ export const en = {
   // The replies are in the VOLUNTEER's club's language (D9); the notices
   // to the asking club in its own. Read by src/lib/partner-guest.ts.
   xask_vol_bench: (p: { name: string; asker: string }) =>
-    `Thanks ${p.name}, you're on *${p.asker}*'s bench. Their organisers pick, and they'll let you know.`,
+    `Thanks ${p.name}, you're on *${p.asker}*'s bench. Their organisers pick, and I'll message you either way.`,
   xask_vol_in: (p: { name: string; asker: string; day: string }) => `✅ Thanks ${p.name}, you're in for *${p.asker}*: ${p.day}.`,
   xask_vol_out: (p: { asker: string }) => `OK, I've taken you off *${p.asker}*'s list.`,
   xask_vol_not_on: (p: { asker: string }) => `You weren't on *${p.asker}*'s list, so there's nothing to change.`,
@@ -5176,19 +5194,33 @@ export const en = {
   xask_thanks_dm: (p: { asker: string }) => `*${p.asker}* have their player now. Thanks for offering 🙏`,
   xask_game_off_dm: (p: { asker: string; day: string }) => `*${p.asker}*'s game on ${p.day} is off now, so you're not needed after all. Thanks for offering 🙏`,
   xask_picked_dm: (p: { asker: string; day: string; venue: string }) =>
-    `✅ You're playing for *${p.asker}*: ${p.day} at ${p.venue}. Can't make it after all? Reply *OUT* to their ask in your group.`,
+    `✅ You're playing for *${p.asker}*: ${p.day} at ${p.venue}. Can't make it after all? Reply *OUT* here.`,
   xask_guests_title: "Guests from partner clubs",
   xask_guest_row: (p: { name: string; club: string }) => `${p.name}, guest from ${p.club}`,
   xask_keep_button: (p: { club: string }) => `Add to ${p.club}`,
   xask_keep_done: "Added as a member.",
   xask_guest_badge: (p: { club: string }) => `Guest from ${p.club}`,
   // ─── D5b, the one question (slice S5b, 2026-10-16) ──────────────────
+  /** D5b in the group, used only when he cannot be messaged privately (no
+   *  number on file). Otherwise `xask_which_dm` goes to him by DM. */
   xask_which: (p: { asker: string }) =>
     `Is that IN for *${p.asker}*'s game or for ours? For ${p.asker}, reply to my ${p.asker} message with IN. For ours, just say IN again.`,
+  /** D5b by DM (2026-10-21): a plain IN in his group soon after an ask, and
+   *  no place in his own game. Nothing was written. */
+  xask_which_dm: (p: { asker: string; day: string; own: string; link: string | null; prefill: string }) =>
+    `Was your IN in the *${p.own}* group for *${p.asker}*'s game, ${p.day}? Then ${p.link ? `tap here to tell me: ${p.link}` : `send me *${p.prefill}*`}. If it was for ${p.own}'s own game, just say IN in the group again.`,
+  /** A private IN with no ask code while an ask to his club is open
+   *  (2026-10-21). `own` is his own club when he has a game there. */
+  xask_dm_which_in: (p: { asker: string; day: string; own: string | null; link: string | null; prefill: string }) =>
+    `Is that IN for *${p.asker}*'s game, ${p.day}? Then ${p.link ? `tap here to tell me: ${p.link}` : `send me *${p.prefill}*`}.${p.own ? ` If it's for ${p.own}'s game, send IN again.` : ""}`,
+  /** A DM carrying an ask's code that the resolver could not read as IN or
+   *  OUT. */
+  xask_dm_unclear: (p: { asker: string; link: string | null; prefill: string }) =>
+    `Sorry, I didn't catch that. To play for *${p.asker}*, ${p.link ? `tap here: ${p.link}` : `send me *${p.prefill}*`}.`,
   xask_vol_game_over: (p: { asker: string }) => `*${p.asker}*'s game is over now, so there's nothing to change.`,
   xask_dm_which: (p: { asker: string; askerDay: string; own: string; ownDay: string }) =>
     `Which game are you out of? Reply *1* for *${p.asker}* (${p.askerDay}) or *2* for *${p.own}* (${p.ownDay}).`,
-  xask_moved_dm: (p: { asker: string; day: string }) => `*${p.asker}*'s game has moved: it is now ${p.day}. Your place stands. Can't make it? Reply *OUT* to their ask in your group.`,
+  xask_moved_dm: (p: { asker: string; day: string }) => `*${p.asker}*'s game has moved: it is now ${p.day}. Your place stands. Can't make it? Reply *OUT* here.`,
   xask_guest_overlap: (p: { asker: string }) => `You're playing for *${p.asker}* at that time, so I can't put you in this game as well.`,
   // ─── Who may change a player's number or name (2026-10-18) ─────────
   // Admin player editing (src/lib/player-account-guard.ts). A number is a

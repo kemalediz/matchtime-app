@@ -13,6 +13,10 @@
  *   3. a player in his own club's game at an overlapping time: refused,
  *      nothing written on the asking club's match;
  *   4. "OUT" replying to the ask: off the asking club's match again.
+ *
+ * 2026-10-21 (Kemal): volunteering adds no noise to the partner group.
+ * Every answer to him goes by DM (a BotJob of HIS club to his number);
+ * his group gets no reply at all.
  */
 import { test, expect, postAnalyze, resetDb } from "../fixtures";
 import { MATCH, ORG_ID, U } from "../helpers/constants";
@@ -30,6 +34,11 @@ const POST = `true_${E2E.GROUP_ID}_3EB0XVOLASK`;
 type Result = { waMessageId: string; reply?: string | null; intent?: string | null };
 let n = 0;
 const id = () => `e2e-xvol-${Date.now()}-${++n}`;
+/** The DMs queued to this number are cleared before a case, so this reads
+ *  what that case sent. */
+const clearDms = (db: TestDb, phone: string) => db.run(`DELETE FROM "BotJob" WHERE kind = 'dm' AND phone = $1`, [phone]);
+const dmTo = async (db: TestDb, phone: string) =>
+  (await db.one<{ text: string }>(`SELECT text FROM "BotJob" WHERE kind = 'dm' AND phone = $1 ORDER BY "createdAt" DESC LIMIT 1`, [phone]))?.text ?? null;
 const rowOf = async (db: TestDb, matchId: string, userId: string) =>
   (await db.one<{ status: string }>(`SELECT status FROM "Attendance" WHERE "matchId" = $1 AND "userId" = $2`, [matchId, userId]))?.status;
 
@@ -81,6 +90,7 @@ test.afterAll(() => {
 
 test("IN replying to the ask: a guest on the asking club's bench, labelled; nothing on his own match", async ({ request, db }) => {
   engineOn({ IN: { route: "self_att", facts: selfIn() } });
+  await clearDms(db, "447700900009");
   const m = id();
   const res = await postAnalyze(request, [
     { waMessageId: m, body: "IN", authorPhone: "447700900009", authorName: "Ian Innes", quotedBody: "⚽ *FNF Guests* need 1 player", quotedFromMatchTime: true, quotedMessageId: "3EB0XVOLASK" },
@@ -88,7 +98,9 @@ test("IN replying to the ask: a guest on the asking club's bench, labelled; noth
   const r = (res.results as Result[]).find((x) => x.waMessageId === m)!;
   expect(await rowOf(db, ASKER_MATCH, U.fresh)).toBe("BENCH");
   expect(await rowOf(db, MATCH.upcoming, U.fresh)).toBeUndefined();
-  expect(r.reply).toContain("FNF Guests*'s bench");
+  // Silent in his group; told by DM.
+  expect(r.reply ?? null).toBeNull();
+  expect(await dmTo(db, "447700900009")).toContain("FNF Guests*'s bench");
   const mem = await db.one<{ guestFromOrgId: string | null; guestMatchId: string | null; leftAt: Date | null }>(
     `SELECT "guestFromOrgId","guestMatchId","leftAt" FROM "Membership" WHERE "userId" = $1 AND "orgId" = $2`,
     [U.fresh, ASKER],
@@ -112,12 +124,14 @@ test("the same IN with no reply is an IN for his own club's match, as ever", asy
 
 test("a player in his own club's game at an overlapping time is refused, nothing written there", async ({ request, db }) => {
   engineOn({ IN: { route: "self_att", facts: selfIn() } });
+  await clearDms(db, "447700900003");
   const m = id();
   const res = await postAnalyze(request, [
     { waMessageId: m, body: "IN", authorPhone: "447700900003", authorName: "Pat Player", quotedFromMatchTime: true, quotedMessageId: "3EB0XVOLASK" },
   ]);
   const r = (res.results as Result[]).find((x) => x.waMessageId === m)!;
-  expect(r.reply ?? "").toContain("so I can't put you on");
+  expect(r.reply ?? null).toBeNull();
+  expect(await dmTo(db, "447700900003")).toContain("so I can't put you on");
   expect(await rowOf(db, ASKER_MATCH, U.player)).toBeUndefined();
   expect(await rowOf(db, MATCH.upcoming, U.player)).toBe("CONFIRMED");
 });
@@ -135,11 +149,13 @@ test("OUT replying to the ask takes him off the asking club's match", async ({ r
 test("M1 (review, Kemal): a partner club with NO upcoming game of its own still lends: the reply registers", async ({ request, db }) => {
   await db.run(`UPDATE "Match" SET status = 'CANCELLED' WHERE id = $1`, [MATCH.upcoming]);
   engineOn({ IN: { route: "self_att", facts: selfIn() } });
+  await clearDms(db, "447700900010");
   const m = id();
   const res = await postAnalyze(request, [
     { waMessageId: m, body: "IN", authorPhone: "447700900010", authorName: "Zara Zest", quotedFromMatchTime: true, quotedMessageId: "3EB0XVOLASK" },
   ]);
   const r = (res.results as Result[]).find((x) => x.waMessageId === m)!;
   expect(await rowOf(db, ASKER_MATCH, U.extra)).toBe("BENCH");
-  expect(r.reply ?? "").toContain("bench");
+  expect(r.reply ?? null).toBeNull();
+  expect(await dmTo(db, "447700900010")).toContain("bench");
 });
