@@ -293,6 +293,12 @@ const RUNS = Number(process.env.MT_SIM_RUNS ?? 5);
     // the state that caused the incident (see BenchIntent in
     // src/lib/attendance.ts). Full-squad → BENCH is covered deterministically
     // in e2e/sim/bench-capacity.spec.ts.
+    //
+    // Kemal's ruling (2026-10-21): an offer to fill a gap puts the sender on
+    // the bench, contingent on the squad, and the extractor now reports it
+    // that way (scripts/live-check-attendance-extractor.ts O1-O8). Neither
+    // message names the bench, so the engine reads it as the standing offer
+    // it is and capacity places it: CONFIRMED at this 8/14 fixture.
 
     const BENCH_CASES: Array<{ label: string; sender: string; body: string }> = [
       { label: "I'll be the 14th if you're short", sender: "noah", body: "I'll be the 14th if you're short" },

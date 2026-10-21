@@ -178,25 +178,28 @@ Return one claim for each person the message speaks about as a player in the mat
   polarity     what the message says that person is doing in the match:
                  "in"     joining, or staying in
                  "out"    leaving or not coming: the person gives up their place, asks for someone to take it, or says they will not or cannot play ("out", "can't make it", "anyone replace me?", "I can drop out"). An injury, a knock or tiredness on its own is not "out": someone "taking it easy" is still playing
-                 "bench"  asking for the bench, which the message must name explicitly: bench, reserve, sub, backup, spare, standby, waiting list, "yedek" in any form, or 🪑. An offer to play if needed ("put me down if you're short") is "in" with contingent true, never "bench"
-  contingent   true when the claim depends on something the message states that has not happened yet: "in if my back holds up", "happy to drop if you find someone". An OFFER to give up a place is contingent with no "if" in it ("I can drop out", "happy to pull out", "I'll make room"): the test is whether the person IS doing it or only COULD. false for a decision already taken ("I'm out", "can't make it"), and for asking for cover: "anyone able to replace me?" says they are leaving, whether or not someone is found. A position is a note, not a condition, so it is false too
-  conditionOn  "squad" when the condition is the squad or the team's needs, which includes every offer to give up a place; "self" when it is about the person themselves; otherwise "none"
+                 "bench"  the bench, in one of two ways. The message names it explicitly: bench, reserve, sub, backup, spare, standby, waiting list, "yedek" in any form, or 🪑. Or the sender offers themselves to fill a gap, to play only if the squad is short or someone drops ("ping me if you need one more", "I can play if you're short"): that is "bench" with contingent true and conditionOn "squad", never "in" and never a maybe. Nothing else is the bench
+  contingent   true when the claim depends on something the message states that has not happened yet: "in if my back holds up", "count me in if someone drops", "happy to drop if you find someone". An OFFER to give up a place is contingent with no "if" in it ("I can drop out", "happy to pull out", "I'll make room"): the test is whether the person IS doing it or only COULD. false for a decision already taken ("I'm out", "can't make it"), and for asking for cover: "anyone able to replace me?" says they are leaving, whether or not someone is found. A position is a note, not a condition, so it is false too
+  conditionOn  "squad" when the condition is the squad or the team's needs, which includes every offer to fill a gap or to give up a place; "self" when it is about the person themselves; otherwise "none"
   tense        "present" now; "future" a commitment about an upcoming match, including a standing one ("count me in whenever you are short") and one with a condition; "past" something that already happened ("I was in last week"); "hypothetical" a counterfactual about something that is not the case ("if I WAS in the team it would not be ruined"). Relayed words keep the tense of what was said, not of the saying: "Najib said he's in" is present
   basis        what the message does about the place, read from the VERB used about the person:
-                 "decision"      the verb acts on the place: it asks for, claims or gives up one ("I'm in", "put me down", "count me in", "add me", "I'll take a spot", "I'll be the 14th", "happy to fill in", "I'll be there", "I'm out", "can't make it"). A hedge is a decision about the place that has not been made yet, so it is "decision" too
+                 "decision"      the verb acts on the place: it asks for, claims, offers to fill or gives up one ("I'm in", "put me down", "count me in", "add me", "I'll take a spot", "I'll be the 14th", "happy to fill in", "ping me if you need one more", "I'll be there", "I'm out", "can't make it"). A hedge is a decision about the place that has not been made yet, so it is "decision" too
                  "availability"  the verb describes the person's state, whereabouts or ability and leaves the place unanswered ("I'm free", "I'm around", "I'm available", "I land Monday", "I will be back Tuesday week")
-               A courtesy at the end never promotes availability into a decision: "if you need me", "if you're short", "let me know" are goodwill, not an ask for a place. When a message has both, the place verb wins ("I'm free Tuesday, put me down" is a decision). Naming a day settles nothing either way: "I'm in for next Tuesday" is a decision, "I will be back Tuesday week" is not.
+               A courtesy after a state verb never promotes availability into a decision: in "I'm free if you need me" or "I'm around if you're short, let me know", the courtesy is goodwill, not an ask for a place. A message with no state verb, only the offer, is a decision. When a message has both, the place verb wins ("I'm free Tuesday, put me down" is a decision). Naming a day settles nothing either way: "I'm in for next Tuesday" is a decision, "I will be back Tuesday week" is not.
                  "I'm free Tuesday if you need me"       -> availability
                  "I'm around if you're short"            -> availability
                  "put me down if you're short"           -> decision
                  "count me as the 14th if you need one"  -> decision
+                 "ping me if you need one more"          -> decision
   reported     true when relaying what someone else SAID ("Najib said he's in", "Ali geliyorum dedi"). A plain statement about someone ("Kai can't make it tonight") is not reported
   replaces     ONLY on an "in" claim, and only when the message says this person takes somebody else's place: the words used for that other person, VERBATIM ("Najib", "@Najib", "me"). "" everywhere else
   confidence   0 to 1, how sure you are that the message says this
 
 THE WHOLE MESSAGE
   affirmation  "yes" or "no" when the message is a bare answer to MatchTime ("Confirmed", "yes", "no"): to the MatchTime message it replies to, else to MATCHTIME'S LAST POST. Otherwise "none". Words that state the sender's own place ("in", "varım", "out") are a claim, whatever they answer
-  sideRequests any of: "recruit" (asks for a replacement or more players for a specific gap), "chase" (a general nudge for more players that says nothing about the sender's own place)
+  sideRequests any of, for a message that asks for players:
+                 "recruit"  it says how many players are needed or whose place needs taking ("we're 4 short, anyone free?", "can someone take my spot?")
+                 "chase"    it nudges for more players without saying how many or for whom ("@all we need more players pls")
 
 EXAMPLES
 Messages come in English or Turkish, often mixed or misspelt, and carry the same facts either way. Each group teaches one thing, English | Turkish.
@@ -228,11 +231,14 @@ Other people: subject other, personRef as written.
   "he's out" replying to Ali Khan's message | "o yok" -> personRef "Ali Khan", out
   "+1", "+2" or "plus one", alone or after the sender's own claim, is a GUEST the sender brings, never the sender: subject other, personRef the token verbatim ("+1"), personNamed false, in. "ben de" is the sender; "+1" is not.
 
-Offering someone else: one claim, for that person only. The sender offers them and says nothing about their own place, so there is no claim for the sender.
-  "my cousin can play if you need one", "I could bring a mate if we're short" | "gerekirse kardeşim gelir", "bir arkadaşımı getirebilirim" -> the cousin, or the mate: subject other, in, contingent true, conditionOn "squad"
+The sender's own offers: they COULD and have not yet. Contingent true, conditionOn "squad", decision.
+  To fill a gap, playing themselves: "ping me if you need one more", "I can play if you're short", "count me in if someone drops", "I'll be the 14th if you're short" | "eksik olursa ben gelirim", "biri çıkarsa beni yazın" -> the sender bench
+  To give up a place: "I can drop out", "happy to drop if you find someone", "happy to pull out" | "gerekirse çıkarım", "yerimi verebilirim" -> the sender out
 
-An offer to give up a place: out, contingent true, conditionOn "squad".
-  "I can drop out", "happy to drop if you find someone", "happy to pull out" | "gerekirse çıkarım", "yerimi verebilirim" -> the sender out, contingent
+Offering someone else: the one who would play is another person, even when the sender brings them. One claim, for that person only: subject other, in, never bench: the bench is only ever the sender's own offer. The sender says nothing about their own place, so there is no claim for the sender. contingent is true only when the message states a condition, as for every claim.
+  The player is whoever would be on the pitch. "I can play if you're short" is the sender. When the sender would bring, get or ask someone ("I can bring someone if you're short", "I'll get a mate if you need", "I can ask my brother"), the player is that someone, never the sender
+  "my cousin can come if needed", "I could bring a mate if we're short" | "gerekirse kardeşim gelir", "bir arkadaşımı getirebilirim" -> the cousin, or the mate, in (not bench), contingent true, conditionOn "squad"
+  "my cousin Ali can play" | "kuzenim Ali de oynar" -> Ali in, contingent false
 
 Several people in one message: one claim each, with any side request.
   "I'm in, and my brother can play too" -> two claims

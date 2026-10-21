@@ -83,16 +83,50 @@ describe("polarity describes the message, never the squad's capacity", () => {
     expect(s).toMatch(/explicit/i);
   });
 
-  it("keeps a conditional offer to play off the bench", () => {
-    // "put me down if you're short" is a standing offer: an IN with
-    // contingent true, which the engine reads. It is not a bench ask.
-    expect(fieldSection("polarity")).toMatch(/if you're short[^\n]*"in"[^\n]*contingent/);
+  it("puts the sender's offer to fill a gap on the bench, contingent on the squad (Kemal's ruling, 2026-10-21)", () => {
+    // "ping me if you need one more", "I can play if you're short": the
+    // sender offers to fill a gap. That is the bench, contingent true,
+    // conditionOn squad: neither an in nor a maybe. The engine still
+    // decides the place: without a bench word `namesTheBench` reads it as
+    // the standing offer it is, so capacity places it (squad full: BENCH,
+    // a place open: CONFIRMED).
+    const s = fieldSection("polarity");
+    expect(s).toMatch(/sender offers themselves to fill a gap[^\n]*"bench" with contingent true and conditionOn "squad"/);
+    expect(s).toContain("ping me if you need one more");
+    const g = P.slice(P.indexOf("The sender's own offers"), P.indexOf("Offering someone else"));
+    expect(g).toMatch(/To fill a gap, playing themselves: "ping me if you need one more"[^\n]*\| "eksik olursa ben gelirim"[^\n]*-> the sender bench/);
+  });
+
+  it("keeps an offer of someone else an in for that person, with no claim for the sender", () => {
+    // 2026-10-21: under a 7/14 call the first draft of the bench ruling
+    // benched the SENDER of "I can bring someone if you're short" and read
+    // "my brother Shahrokh can play" as contingent, which holds it.
+    const g = P.slice(P.indexOf("Offering someone else"), P.indexOf("Several people in one message"));
+    expect(g).toMatch(/even when the sender brings them/);
+    expect(g).toMatch(/subject other, in, never bench/);
+    expect(g).toMatch(/no claim for the sender/);
+    expect(g).toMatch(/contingent is true only when the message states a condition/);
+    expect(g).toMatch(/"I can play if you're short" is the sender\. When the sender would bring, get or ask someone[^\n]*the player is that someone, never the sender/);
+
   });
 
   it("works the Sutton FC case as an example, with its Turkish twin", () => {
     // The worked example: the chat shows 14/14 with the sender on the
     // list, the sender types "in", and the answer is polarity in.
     expect(P).toMatch(/14\/14[^\n]*"in"[^\n]*"varım"[^\n]*polarity in/);
+  });
+});
+
+describe("side requests: a named gap is recruit, a general nudge is chase (2026-10-21)", () => {
+  // recruit-live "a plain shortage ask from an admin fires the blast": an
+  // admin's untagged ask fires the recruit DMs only on "recruit"
+  // (attendance-engine-batch.ts `recruitRequest`). Under MatchTime's own
+  // call for players the first draft read "we're 4 short, anyone free?" as
+  // a chase.
+  it("defines each value once, by whether the message says how many or for whom", () => {
+    const s = P.slice(P.indexOf("  sideRequests"), P.indexOf("EXAMPLES"));
+    expect(s).toMatch(/"recruit"\s+it says how many players are needed or whose place needs taking[^\n]*"we're 4 short, anyone free\?"/);
+    expect(s).toMatch(/"chase"\s+it nudges for more players without saying how many or for whom[^\n]*"@all we need more players pls"/);
   });
 });
 

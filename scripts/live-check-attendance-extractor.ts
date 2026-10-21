@@ -77,6 +77,24 @@ const selfOutDecided = (f: AttendanceFacts) => self(f).some(isOut) && !self(f).s
 const hedge = (f: AttendanceFacts) =>
   self(f).some((c) => c.polarity === "in" && c.contingent && c.conditionOn === "self") && noSelfOut(f);
 const noClaims = (f: AttendanceFacts) => f.claims.length === 0;
+/** The call for players the third-party-offer and guest-name-ask live specs replay (PROD_HISTORY). */
+const SHORT_HISTORY: Line[] = [
+  {
+    author: "MatchTime",
+    body:
+      "🗓 *Tuesday 7-a-side* — Tue 1 Sept, 21:30 at Goals North Cheam.\n\n" +
+      "*Confirmed (7/14):*\n1. Oscar Owner\n2. Alice Admin\n3. Pete Power\n4. Dan Drummer\n" +
+      "5. Felix Fox\n6. Greg Gale\n7. Henry Hill\n\n" +
+      "We need *7 more*. Reply *IN* to grab a spot.",
+  },
+  { author: "Ivan Ice", body: "IN" },
+  { author: "Quinn Quick", body: "https://www.instagram.com/reel/DaClAuzs1eQ/" },
+  { author: "Ryan Reef", body: "Happy Holiday" },
+];
+/** An offer to fill a gap is the bench, conditional on the squad (Kemal's ruling, 2026-10-21). */
+const gapOffer = (f: AttendanceFacts) =>
+  self(f).some((c) => c.polarity === "bench" && c.contingent && c.conditionOn === "squad" && c.basis === "decision") &&
+  !self(f).some((c) => c.polarity !== "bench");
 
 // ── The Sutton FC incident, rebuilt from production rows ──────────────
 // AnalyzedMessage cmvgsuqu2002108l07n6x7pf4 and the eight lines before it
@@ -222,6 +240,43 @@ const CASES: Case[] = [
   { id: "G1", body: "I can bring someone if you're short", route: "offer", repeat: true, check: (f) => self(f).length === 0 && f.claims.some((c) => c.subject === "other" && !c.personNamed), want: "someone in, unnamed; no claim for the sender" },
   { id: "G2", body: "my mate could fill in if you're short", route: "offer", repeat: true, check: (f) => self(f).length === 0 && f.claims.some((c) => c.subject === "other" && !c.personNamed), want: "the mate, unnamed; no claim for the sender" },
 
+  // Corpus S20, and S9's "Aydin can take my spot". The corpus harness shows the wall clock as NOW, so
+  // on 2026-10-21 (Wednesday) S20's "Tue 21:30" post sat a day behind it; the bench-ruling draft then
+  // read "two of my guys can play" at 0.6, under the 0.7 floor, and the guest name ask never ran.
+  { id: "S20a", ...fromCorpus("S20-amir-two-of-my-guys"), route: "other_att", repeat: true, check: (f) => self(f).length === 0 && f.claims.some((c) => c.subject === "other" && !c.personNamed && c.polarity === "in" && c.confidence >= 0.7), want: "two guys in, unnamed, at the floor or above (the guest name ask runs before any contingency hold)" },
+  { id: "S20b", ...fromCorpus("S20-amir-two-of-my-guys"), now: new Date("2026-10-21T04:02:00Z"), route: "other_att", repeat: true, check: (f) => self(f).length === 0 && f.claims.some((c) => c.subject === "other" && !c.personNamed && c.polarity === "in" && c.confidence >= 0.7), want: "the same, with NOW the day after the posted match day" },
+  { id: "S9", ...fromCorpus("S9-aydin-promote-from-bench-no-hedge"), route: "other_att", repeat: true, check: (f) => selfOutDecided(f) && other(f, /aydin/i).some((c) => c.polarity === "in" && !c.contingent && c.confidence >= 0.7), want: "the sender out, Aydin in, not contingent" },
+
+  // The same offers under the 7/14 call for players the third-party-offer and guest-name-ask live
+  // specs show (2026-10-21: with this context the bench ruling's first draft benched the SENDER of
+  // "I can bring someone", and read "my brother Shahrokh can play" as contingent, which holds it).
+  { id: "G3", body: "I can bring someone if you need", history: SHORT_HISTORY, lastBotPost: SHORT_HISTORY[0].body, author: "Noah North", route: "offer", repeat: true, check: (f) => self(f).length === 0 && f.claims.some((c) => c.subject === "other" && !c.personNamed && c.polarity === "in"), want: "someone in, unnamed; no claim for the sender" },
+  { id: "G4", body: "I can bring someone if you're short", history: SHORT_HISTORY, lastBotPost: SHORT_HISTORY[0].body, author: "Quinn Quick", route: "offer", repeat: true, check: (f) => self(f).length === 0 && f.claims.some((c) => c.subject === "other" && !c.personNamed && c.polarity === "in"), want: "someone in, unnamed; no claim for the sender" },
+  { id: "G5", body: "my brother Shahrokh can play", history: SHORT_HISTORY, lastBotPost: SHORT_HISTORY[0].body, author: "Noah North", route: "other_att", repeat: true, check: (f) => self(f).length === 0 && other(f, /shahrokh/i).some((c) => c.polarity === "in" && !c.contingent && c.confidence >= 0.7), want: "Shahrokh in, not contingent, at the floor or above" },
+  { id: "G6", body: "two of my guys can play", history: SHORT_HISTORY, lastBotPost: SHORT_HISTORY[0].body, author: "Amir Ahmadi", route: "other_att", repeat: true, check: (f) => self(f).length === 0 && f.claims.some((c) => c.subject === "other" && !c.personNamed && c.polarity === "in" && c.confidence >= 0.7), want: "two guys in, unnamed, at the floor or above (corpus S20)" },
+  { id: "O9", body: "ping me if you need one more", history: SHORT_HISTORY, lastBotPost: SHORT_HISTORY[0].body, author: "Quinn Quick", route: "offer", repeat: true, check: gapOffer, want: "bench, contingent, squad, decision, under a 7/14 call" },
+
+  // An offer to fill a gap puts the sender on the bench, contingent on the squad (Kemal's ruling,
+  // 2026-10-21; third-party-offer live spec "ping me if you need one more"). Neither an in nor a maybe.
+  { id: "O1", body: "ping me if you need one more", route: "offer", repeat: true, check: gapOffer, want: "bench, contingent, squad, decision" },
+  { id: "O2", body: "I can play if you're short", route: "offer", repeat: true, check: gapOffer, want: "bench, contingent, squad, decision" },
+  { id: "O3", body: "count me in if someone drops", route: "offer", repeat: true, check: gapOffer, want: "bench, contingent, squad, decision" },
+  { id: "O4", body: "I'll be the 14th if you're short", route: "offer", repeat: true, check: gapOffer, want: "bench, contingent, squad, decision" },
+  { id: "O5", body: "eksik olursa ben gelirim", route: "offer", repeat: true, check: gapOffer, want: "bench, contingent, squad, decision" },
+  { id: "O6", body: "biri çıkarsa beni yazın", route: "offer", repeat: true, check: gapOffer, want: "bench, contingent, squad, decision" },
+  { id: "O7", body: "happy to fill in if anyone drops out", route: "offer", repeat: true, check: gapOffer, want: "bench, contingent, squad, decision (held out)" },
+  { id: "O8", body: "bir kişi lazım olursa söyleyin, oynarım", route: "offer", repeat: true, check: gapOffer, want: "bench, contingent, squad, decision (held out)" },
+
+  // Side requests: a named gap is "recruit", a general nudge is "chase" (recruit-live "a plain shortage
+  // ask from an admin fires the blast" and corpus S12b / PR33). The first draft of the rewrite read
+  // "we're 4 short, anyone free?" as a chase on both models; the old prompt read it as recruit.
+  { id: "SR1", body: "lads we're 4 short for tuesday, anyone free?", author: "Oscar Owner", route: "offer", repeat: true, check: (f) => self(f).length === 0 && f.sideRequests.includes("recruit"), want: "recruit, no claim for the sender" },
+  { id: "SR1h", body: "lads we're 4 short for tuesday, anyone free?", history: SHORT_HISTORY, lastBotPost: SHORT_HISTORY[0].body, author: "Oscar Owner", route: "offer", repeat: true, check: (f) => self(f).length === 0 && f.sideRequests.includes("recruit"), want: "recruit, under MatchTime's own call for players" },
+  { id: "SR2", body: "@all we need more players pls", author: "Kemal Ediz", route: "offer", repeat: true, check: (f) => self(f).length === 0 && f.sideRequests.includes("chase") && !f.sideRequests.includes("recruit"), want: "chase only, no claim for the sender" },
+  { id: "SR3", body: "2 short for Friday, who can play?", author: "Oscar Owner", route: "offer", repeat: true, check: (f) => self(f).length === 0 && f.sideRequests.includes("recruit"), want: "recruit (held out)" },
+  { id: "SR4", body: "salı için 3 kişi eksiğiz, gelebilecek var mı?", author: "Oscar Owner", route: "offer", repeat: true, check: (f) => self(f).length === 0 && f.sideRequests.includes("recruit"), want: "recruit (held out, Turkish)" },
+  { id: "SR5", body: "come on lads, more players needed", author: "Oscar Owner", route: "offer", repeat: true, check: (f) => self(f).length === 0 && f.sideRequests.includes("chase") && !f.sideRequests.includes("recruit"), want: "chase only (held out)" },
+
   // ── 2026-09-09 echo (once each) ────────────────────────────────────
   ...["In", "in", "IN", "I'm in", "im in", "In for Tuesday", "count me in", "count me", "add me", "put me down", "I'll play", "I'm there", "yes im in"].map((b, i) =>
     echoCase(`E${i + 1}`, b, false),
@@ -241,8 +296,8 @@ const CASES: Case[] = [
   { id: "A10", body: "varım", lastBotPost: SUTTON_LAST_POST, author: "Habib", check: (f) => self(f).some((c) => c.polarity === "in") && !self(f).some((c) => c.polarity === "bench"), want: "in, not bench, at 14/14" },
   { id: "B10", body: "I'm free Tuesday if you need me", check: (f) => self(f).length > 0 && self(f).every((c) => c.basis === "availability" || c.polarity === "out"), want: "availability" },
   { id: "B11", body: "I'm around if you're short", check: (f) => self(f).length > 0 && self(f).every((c) => c.basis === "availability"), want: "availability" },
-  { id: "B12", body: "put me down if you're short", check: (f) => self(f).some((c) => c.polarity === "in" && c.basis === "decision" && c.contingent), want: "in, decision, contingent" },
-  { id: "B13", body: "count me as the 14th if you need one", check: (f) => self(f).some((c) => c.polarity === "in" && c.basis === "decision"), want: "in, decision" },
+  { id: "B12", body: "put me down if you're short", check: gapOffer, want: "bench, contingent, squad, decision" },
+  { id: "B13", body: "count me as the 14th if you need one", check: gapOffer, want: "bench, contingent, squad, decision" },
   { id: "B14", body: "I'm free Tuesday, put me down", check: (f) => self(f).some((c) => c.polarity === "in" && c.basis === "decision"), want: "in, decision" },
   { id: "B15", body: "I will be back Tuesday week", check: (f) => !self(f).some((c) => c.polarity === "in" && c.basis === "decision"), want: "no decided in" },
   { id: "B16", body: "I'm in for next Tuesday", check: (f) => self(f).some((c) => c.polarity === "in" && c.basis === "decision"), want: "in, decision" },
@@ -274,7 +329,7 @@ const CASES: Case[] = [
   { id: "T1", body: "Zeeshan is out lol vote him out", check: (f) => other(f, /zeeshan/i).some((c) => c.polarity === "out"), want: "Zeeshan out" },
   { id: "T2", body: "I was in last week", check: (f) => !self(f).some((c) => c.tense !== "past" && c.tense !== "hypothetical"), want: "past only" },
   { id: "T3", body: "if I WAS in the team it would not be ruined", check: (f) => !self(f).some((c) => c.tense !== "past" && c.tense !== "hypothetical"), want: "hypothetical only" },
-  { id: "T4", body: "count me in whenever you are short", check: (f) => self(f).some((c) => c.polarity === "in" && c.tense === "future"), want: "in, future" },
+  { id: "T4", body: "count me in whenever you are short", check: (f) => gapOffer(f) && self(f).some((c) => c.tense === "future"), want: "bench, contingent, squad, future" },
   { id: "T5", body: "what time is kickoff?", check: noClaims, want: "no claims" },
   { id: "T6", body: "Mojib Habib and Kieran on same side", author: "Abid Kazmi", history: SUTTON_HISTORY.slice(0, 2), lastBotPost: SUTTON_LAST_POST, check: noClaims, want: "no claims" },
   { id: "T7", body: "we need one more for tuesday, anyone?", check: (f) => noSelfOut(f) && f.sideRequests.length > 0, want: "a side request, no claim for the sender" },
