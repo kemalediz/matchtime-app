@@ -27,6 +27,7 @@ const m = vi.hoisted(() => ({
   benchFindFirst: vi.fn(),
   sentFindFirst: vi.fn(),
   sentFindUnique: vi.fn(),
+  sentFindMany: vi.fn(),
   jobFindUnique: vi.fn(),
   jobFindFirst: vi.fn(),
   jobCreate: vi.fn(),
@@ -41,6 +42,7 @@ vi.mock("@/lib/db", () => ({
     sentNotification: {
       findFirst: (...a: unknown[]) => m.sentFindFirst(...a),
       findUnique: (...a: unknown[]) => m.sentFindUnique(...a),
+      findMany: (...a: unknown[]) => m.sentFindMany(...a),
     },
     botJob: {
       findUnique: (...a: unknown[]) => m.jobFindUnique(...a),
@@ -93,6 +95,8 @@ beforeEach(() => {
   );
   // Not a recruit invite: no `recruit-dm-job:` link row.
   m.sentFindUnique.mockResolvedValue(null);
+  // No scheduler fee question was sent for this (weekly) match.
+  m.sentFindMany.mockResolvedValue([]);
   m.jobFindUnique.mockImplementation(async (args: { where: { id: string } }) =>
     args.where.id === JOB ? PROMPT_JOB : null,
   );
@@ -117,7 +121,7 @@ describe("the 2026-10-21 Sutton ✅ reaction on the fee confirm prompt", () => {
     const body = await res.json();
     expect(body).toMatchObject({ ok: true, handled: "fee-confirm-reaction", released: 13, matchId: MATCH });
     expect(m.confirm).toHaveBeenCalledTimes(1);
-    expect(m.confirm).toHaveBeenCalledWith(KEMAL, MATCH);
+    expect(m.confirm).toHaveBeenCalledWith(KEMAL, MATCH, `${MATCH}:fee-confirm`);
     // The ack goes to the collector, under the match's club, at reply priority.
     expect(m.jobCreate).toHaveBeenCalledTimes(1);
     expect(m.jobCreate.mock.calls[0][0].data).toMatchObject({

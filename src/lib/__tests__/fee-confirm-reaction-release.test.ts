@@ -28,6 +28,13 @@ vi.mock("../db", () => ({
     },
   },
 }));
+// The monthly staging rules (monthly-week.ts) are their own tests; here
+// only WHETHER the typed yes's staging step is asked, and with what.
+const stagePaygFeeForReply = vi.fn();
+vi.mock("../monthly-week", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../monthly-week")>()),
+  stagePaygFeeForReply: (...a: unknown[]) => stagePaygFeeForReply(...a),
+}));
 vi.mock("../short-link", () => ({ buildShortMagicLinkUrl: async () => "https://mt.test/l/pay" }));
 vi.mock("../magic-link", () => ({ signMagicLinkToken: () => "token", MAGIC_LINK_TTL: { bookmark: 1, actionNudge: 1 } }));
 
@@ -51,6 +58,7 @@ beforeEach(() => {
   orgFindMany.mockResolvedValue([{ id: "org" }]);
   matchFindFirst.mockResolvedValue(PENDING);
   matchUpdateMany.mockResolvedValue({ count: 1 });
+  stagePaygFeeForReply.mockResolvedValue(null);
   matchFindUnique.mockResolvedValue({
     id: "m1",
     feePerPlayer: 10.15,
@@ -63,7 +71,7 @@ beforeEach(() => {
 
 describe("confirmCollectorFeeByReaction", () => {
   it("claims the match with the typed yes's compare-and-set, releases, and returns the typed yes's ack", async () => {
-    const res = await confirmCollectorFeeByReaction("kemal", "m1");
+    const res = await confirmCollectorFeeByReaction("kemal", "m1", "m1:fee-confirm");
     // Scoped to the clubs this user collects for, and to THIS match.
     expect(orgFindMany.mock.calls[0][0].where).toEqual({ paymentHolderId: "kemal", paymentCollectionEnabled: true });
     expect(matchFindFirst.mock.calls[0][0].where).toMatchObject({ id: "m1", paymentLinksReleasedAt: null });
@@ -93,26 +101,67 @@ describe("confirmCollectorFeeByReaction", () => {
 
   it("nothing pending: null, nothing claimed", async () => {
     matchFindFirst.mockResolvedValue({ ...PENDING, feePendingConfirm: null });
-    expect(await confirmCollectorFeeByReaction("kemal", "m1")).toBeNull();
+    expect(await confirmCollectorFeeByReaction("kemal", "m1", "m1:fee-confirm")).toBeNull();
     expect(matchUpdateMany).not.toHaveBeenCalled();
     expect(botJobs).toHaveLength(0);
   });
 
   it("already released by another yes (claim lost): null, no links, no ack", async () => {
     matchUpdateMany.mockResolvedValue({ count: 0 });
-    expect(await confirmCollectorFeeByReaction("kemal", "m1")).toBeNull();
+    expect(await confirmCollectorFeeByReaction("kemal", "m1", "m1:fee-confirm")).toBeNull();
     expect(botJobs).toHaveLength(0);
   });
 
   it("not a match this user collects for: null", async () => {
     orgFindMany.mockResolvedValue([]);
-    expect(await confirmCollectorFeeByReaction("someone", "m1")).toBeNull();
+    expect(await confirmCollectorFeeByReaction("someone", "m1", "m1:fee-confirm")).toBeNull();
     expect(matchUpdateMany).not.toHaveBeenCalled();
   });
 
   it("the match is not open for a fee (released, outside the window): null", async () => {
     matchFindFirst.mockResolvedValue(null);
-    expect(await confirmCollectorFeeByReaction("kemal", "m1")).toBeNull();
+    expect(await confirmCollectorFeeByReaction("kemal", "m1", "m1:fee-confirm")).toBeNull();
+    expect(matchUpdateMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("confirmCollectorFeeByReaction on the monthly PAYG fee question (`<matchId>:fee-ask`)", () => {
+  it("scopes the match by the question's own key, like a typed swipe-reply to it", async () => {
+    await confirmCollectorFeeByReaction("kemal", "m1", "m1:fee-ask");
+    expect(matchFindFirst.mock.calls[0][0].where).toMatchObject({ id: "m1", paymentLinksReleasedAt: null });
+  });
+
+  it("an amount already staged (the ack staged the PAYG price): released at it, staging not asked", async () => {
+    matchFindFirst.mockResolvedValue({ ...PENDING, feePendingConfirm: 8 });
+    const res = await confirmCollectorFeeByReaction("kemal", "m1", "m1:fee-ask");
+    expect(stagePaygFeeForReply).not.toHaveBeenCalled();
+    expect(matchUpdateMany.mock.calls[0][0].data).toMatchObject({ feePerPlayer: 8, feePendingConfirm: null });
+    expect(res?.released).toBe(1);
+  });
+
+  it("nothing staged yet: the typed yes's staging step is asked with an explicit yes, and its amount is released", async () => {
+    matchFindFirst.mockResolvedValue({ ...PENDING, feePendingConfirm: null, feePerPlayer: null });
+    stagePaygFeeForReply.mockResolvedValue(8);
+    const res = await confirmCollectorFeeByReaction("kemal", "m1", "m1:fee-ask:again");
+    expect(stagePaygFeeForReply).toHaveBeenCalledTimes(1);
+    expect(stagePaygFeeForReply).toHaveBeenCalledWith({ matchId: "m1", collectorUserId: "kemal", reply: "yes" });
+    expect(matchUpdateMany).toHaveBeenCalledTimes(1);
+    expect(matchUpdateMany.mock.calls[0][0].data).toMatchObject({ feePerPlayer: 8, feePendingConfirm: null, feeSetByUserId: "kemal" });
+    expect(res?.released).toBe(1);
+  });
+
+  it("the staging rules refuse (declined, unsent, too late, another DM since): null, nothing released", async () => {
+    matchFindFirst.mockResolvedValue({ ...PENDING, feePendingConfirm: null, feePerPlayer: null });
+    stagePaygFeeForReply.mockResolvedValue(null);
+    expect(await confirmCollectorFeeByReaction("kemal", "m1", "m1:fee-ask")).toBeNull();
+    expect(matchUpdateMany).not.toHaveBeenCalled();
+    expect(botJobs).toHaveLength(0);
+  });
+
+  it("staging that throws is nothing staged", async () => {
+    matchFindFirst.mockResolvedValue({ ...PENDING, feePendingConfirm: null, feePerPlayer: null });
+    stagePaygFeeForReply.mockRejectedValue(new Error("db down"));
+    expect(await confirmCollectorFeeByReaction("kemal", "m1", "m1:fee-ask")).toBeNull();
     expect(matchUpdateMany).not.toHaveBeenCalled();
   });
 });

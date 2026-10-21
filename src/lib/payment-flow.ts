@@ -671,32 +671,44 @@ async function claimAndReleaseFee(userId: string, matchId: string, amount: numbe
 }
 
 /**
- * The collector's ✅ or 👍 REACTION on the fee confirm prompt for
- * `matchId` (Sutton FC, 2026-10-21): the same as typing "yes" to it.
+ * The collector's ✅ or 👍 REACTION on a fee question for `matchId`
+ * (Sutton FC, 2026-10-21): the same as typing "yes" to it. `askKey` is the
+ * key of the message reacted to: `<matchId>:fee-confirm` for the prompt a
+ * typed amount queued, `<matchId>:fee-ask[:again]` for the monthly-squad
+ * PAYG question the scheduler sent.
  *
  * `src/lib/fee-confirm-reaction.ts` has already joined the reaction to
- * that prompt by its message id and checked it is the latest prompt, sent
+ * that message by its id and checked it is the latest fee question, sent
  * to this collector. Here the match must still be one this user collects
  * for, unreleased and inside the fee window (the scope a typed swipe-reply
- * to the prompt gets), with an amount awaiting his yes. Then the typed
- * yes's own release and ack. Null when there is nothing to confirm, or
- * another yes already released it: nothing is sent.
+ * to the question gets). Then the typed yes's own steps: the monthly
+ * staging rules (`stagePaygFeeForReply`, exactly as `handleCollectorFeeReply`
+ * runs them for an explicit yes) may stage the PAYG price when nothing is
+ * pending yet; an amount must then await his yes; then the typed yes's
+ * release and ack. Null when there is nothing to confirm, or another yes
+ * already released it: nothing is sent.
  */
 export async function confirmCollectorFeeByReaction(
   userId: string,
   matchId: string,
+  askKey: string,
 ): Promise<CollectorReplyResult | null> {
   // A known message about this match (key set): no fallback to another
   // match when this one is not open.
   const m = await findCollectorPendingMatch(userId, {
-    key: `${matchId}:fee-confirm`,
+    key: askKey,
     sentAt: null,
     text: null,
     topic: "feeQuestion",
     matchId,
   });
-  if (!m || m.id !== matchId || m.feePendingConfirm == null) return null;
-  const amount = m.feePendingConfirm;
+  if (!m || m.id !== matchId) return null;
+  let pending = m.feePendingConfirm;
+  if (pending == null && m.feePerPlayer == null) {
+    pending = await stagePaygFeeForReply({ matchId: m.id, collectorUserId: userId, reply: "yes" }).catch(() => null);
+  }
+  if (pending == null) return null;
+  const amount = pending;
   const released = await claimAndReleaseFee(userId, m.id, amount);
   if (released === null) return null;
   const lang = normaliseLang(m.activity.org.language);

@@ -16,9 +16,11 @@
  *      handling stays live so an unprompted 👍 still counts. See
  *      src/lib/recruit-reaction.ts for how a reaction finds its player
  *      and its match.
- *   3. The money collector's FEE CONFIRM PROMPT DM (2026-10-21) — a ✅ or
- *      👍 is his "yes": the pay links go out through the typed yes's own
- *      compare-and-set release. See src/lib/fee-confirm-reaction.ts.
+ *   3. The money collector's FEE CONFIRM PROMPT DM (2026-10-21), both the
+ *      one a typed amount queues and the monthly-squad PAYG fee question
+ *      the scheduler sends: a ✅ or 👍 is his "yes", and the pay links go
+ *      out through the typed yes's own path (staging, then compare-and-set
+ *      release). See src/lib/fee-confirm-reaction.ts.
  *
  * The bench branch runs first and is unchanged. Its reactor resolution is
  * scoped to the bench of the offer's match (phone first, then @lid
