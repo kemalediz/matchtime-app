@@ -4820,10 +4820,12 @@ export const en = {
     `${p.names}: give each player a rough rating from 1 to 10 here:\n${p.link}`,
   sn_ask: (p: { link: string }): string => `Give each player a rough rating from 1 to 10 here:\n${p.link}`,
   sn_never_seen: "Players never see these, they only help me balance the sides.",
-  sn_size_week: (p: { count: number; minutes: number }): string =>
-    `This week's ${p.count} is enough, about ${p.minutes} minutes.`,
+  //    sn_size_*: name the players and the match day; "This week's 1 is
+  //    enough" read as a riddle (Kemal, 2026-10-21).
+  sn_size_week: (p: { count: number; minutes: number; weekday: string }): string =>
+    `Rating just the ${p.count} ${p.count === 1 ? "player" : "players"} in ${p.weekday}'s squad is enough, about ${p.minutes} minutes.`,
   sn_size_club: (p: { count: number; minutes: number }): string =>
-    `That's ${p.count} players without one, about ${p.minutes} minutes.`,
+    `Rating the ${p.count} ${p.count === 1 ? "player" : "players"} with no rating yet takes about ${p.minutes} minutes.`,
   sn_learn: "After that I learn from the ratings players give each other after every game, so this is only needed once.",
   sn_change_any_time: "You can change them any time on the same page.",
   // ── The standard welcome notices to a club's admins (2026-10-15,

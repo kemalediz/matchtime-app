@@ -219,7 +219,7 @@ describe("the text", () => {
         "Hamzah or Raihan: give each player a rough rating from 1 to 10 here:\n" +
         LINK +
         "\n\n" +
-        "Players never see these, they only help me balance the sides. This week's 18 is enough, about 5 minutes.\n\n" +
+        "Players never see these, they only help me balance the sides. Rating just the 18 players in Friday's squad is enough, about 5 minutes.\n\n" +
         "After that I learn from the ratings players give each other after every game, so this is only needed once.",
     );
   });
@@ -243,7 +243,7 @@ describe("the text", () => {
         "Hamzah ya da Raihan: her oyuncuya 1 ile 10 arasında kabaca bir puan verin:\n" +
         LINK +
         "\n\n" +
-        "Oyuncular bu puanları hiç görmez, yalnızca takımları dengelememe yardım ederler. Bu haftaki 18 oyuncu yeterli, yaklaşık 5 dakika sürer.\n\n" +
+        "Oyuncular bu puanları hiç görmez, yalnızca takımları dengelememe yardım ederler. Yalnızca Cuma günkü kadrodaki 18 oyuncuyu puanlamanız yeterli, yaklaşık 5 dakika sürer.\n\n" +
         "Sonrasında her maçtan sonra oyuncuların birbirine verdiği puanlardan öğrenirim, yani bu yalnızca bir kez gerekir.",
     );
   });
@@ -262,9 +262,31 @@ describe("the text", () => {
     });
     expect(out).toContain("I don't know most players' level yet");
     expect(out).toContain("\n\nGive each player a rough rating from 1 to 10 here:\n");
-    expect(out).toContain("That's 21 players without one, about 6 minutes.");
+    expect(out).toContain("Rating the 21 players with no rating yet takes about 6 minutes.");
     expect(out).toContain("You can change them any time on the same page.");
     expect(out).not.toContain("After that I learn");
+  });
+
+  it("names the players and the match day, one player or many (Kemal, 2026-10-21)", () => {
+    const base = {
+      matchDate: MATCH,
+      adminNames: [],
+      anySeeded: false,
+      peerRatingsOn: true,
+      link: LINK,
+    };
+    const week = (lang: string, n: number) =>
+      buildSeedNudgeNotice({ ...base, lang, pool: "confirmed", total: n, unseeded: n });
+    const club = (lang: string, n: number) =>
+      buildSeedNudgeNotice({ ...base, lang, pool: "members", total: n + 3, unseeded: n });
+    expect(week("en", 1)).toContain("Rating just the 1 player in Friday's squad is enough, about 2 minutes.");
+    expect(week("en", 8)).toContain("Rating just the 8 players in Friday's squad is enough, about 2 minutes.");
+    expect(club("en", 1)).toContain("Rating the 1 player with no rating yet takes about 2 minutes.");
+    expect(club("en", 8)).toContain("Rating the 8 players with no rating yet takes about 2 minutes.");
+    expect(week("tr", 1)).toContain("Yalnızca Cuma günkü kadrodaki 1 oyuncuyu puanlamanız yeterli, yaklaşık 2 dakika sürer.");
+    expect(week("tr", 8)).toContain("Yalnızca Cuma günkü kadrodaki 8 oyuncuyu puanlamanız yeterli, yaklaşık 2 dakika sürer.");
+    expect(club("tr", 1)).toContain("Henüz puanı olmayan 1 oyuncuyu puanlamak yaklaşık 2 dakika sürer.");
+    expect(club("tr", 8)).toContain("Henüz puanı olmayan 8 oyuncuyu puanlamak yaklaşık 2 dakika sürer.");
   });
 
   it("never a dash or a greeting", () => {

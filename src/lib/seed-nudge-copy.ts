@@ -26,12 +26,13 @@ export function buildSeedNudgeNotice(args: {
   const s = t(args.lang);
   const names = joinAdminNames(args.adminNames, args.lang);
   const minutes = ratingMinutes(args.unseeded);
+  const weekday = weekdayLabel(args.lang, args.matchDate);
   const size =
     args.pool === "confirmed"
-      ? s.sn_size_week({ count: args.total, minutes })
+      ? s.sn_size_week({ count: args.total, minutes, weekday })
       : s.sn_size_club({ count: args.unseeded, minutes });
   return [
-    s.sn_title({ weekday: weekdayLabel(args.lang, args.matchDate) }),
+    s.sn_title({ weekday }),
     args.anySeeded ? s.sn_unknown_most : s.sn_unknown_all,
     names ? s.sn_ask_named({ names, link: args.link }) : s.sn_ask({ link: args.link }),
     `${s.sn_never_seen} ${size}`,
