@@ -383,7 +383,7 @@ export interface GateMessage {
   authorName: string | null;
   /** A message from a club's organisers' group, with its context lines
    *  (`RouterMessage.organisers`). Absent for the players' group. */
-  organisers?: { context: string[] };
+  organisers?: { context: string[]; senderIsOrganiser?: boolean };
   /** The club's partner clubs, for an organiser's message
    *  (`RouterMessage.partnerClubs`, slice S6). Absent otherwise. */
   partnerClubs?: string[];

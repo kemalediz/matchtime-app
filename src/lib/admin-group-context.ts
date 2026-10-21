@@ -3,7 +3,7 @@
  * (2026-10-16). Pure, so the live check (`scripts/live-check-admin-group.ts`)
  * renders exactly what production sends without importing the database.
  * Built by `admin-group-understand.ts`; shown under the router's
- * `ORGANISERS_HEADER` (`pipeline/router.ts`).
+ * `organisersHeader` (`pipeline/router.ts`).
  */
 import { formatLondon } from "./london-time";
 import type { HqLogRow } from "./admin-group-log";
@@ -83,7 +83,7 @@ export function organisersContext(p: {
   }
   if (p.recent.length > 0) {
     lines.push("EARLIER HERE, oldest first:");
-    for (const r of p.recent) lines.push(`- ${r.fromMatchTime ? "MatchTime" : "an organiser"}: ${oneLine(r.text, 200)}`);
+    for (const r of p.recent) lines.push(`- ${r.fromMatchTime ? "MatchTime" : "a member"}: ${oneLine(r.text, 200)}`);
   }
   return lines;
 }

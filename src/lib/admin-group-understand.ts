@@ -364,7 +364,7 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
               waMessageId: messageId,
               body,
               authorName: input.senderName,
-              organisers: { context: organisersContext({ pending, recent, score: score.waiting }) },
+              organisers: { context: organisersContext({ pending, recent, score: score.waiting }), senderIsOrganiser: input.organiser },
               ...(replyShown ? { reply: replyShown } : {}),
             },
           ],

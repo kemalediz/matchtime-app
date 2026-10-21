@@ -17,7 +17,7 @@ import {
   routeFloor,
   routeBatch,
   renderRouterTurn,
-  ORGANISERS_HEADER,
+  organisersHeader,
   partnerClubsLine,
 } from "../router";
 import { gateBatch } from "../gate";
@@ -707,13 +707,34 @@ describe("the organisers' group", () => {
 
   it("an organisers' message comes under its header and context lines", () => {
     expect(renderRouterTurn([{ id: "h", authorName: "Raihan", body: "yes", organisers: { context: ["WAITING: nothing."] } }], NOW)).toBe(
-      `${NOW_LINE}\n${ORGANISERS_HEADER}\nWAITING: nothing.\n[h] Raihan: yes`,
+      `${NOW_LINE}\n${organisersHeader()}\nWAITING: nothing.\n[h] Raihan: yes`,
     );
   });
 
   // Slice S6 (2026-10-21): partner clubs. The organisers' header says that
   // asking another club is admin_ops; a players' group organiser in a club
   // with partners is shown the partners above the message.
+  // 2026-10-21: players can be in the organisers' group too (2026-10-20), so
+  // the header says whether THIS sender is an organiser, from what code
+  // knows, and the prompt never assumes it.
+  it("the header states whether the sender is an organiser, as code knows it, and assumes nothing without it", () => {
+    expect(organisersHeader(true)).toMatch(/^ORGANISERS' GROUP\. The sender is an organiser of the club\. /);
+    expect(organisersHeader(false)).toMatch(/^ORGANISERS' GROUP\. The sender is a member of the club, not an organiser\. /);
+    expect(organisersHeader()).toMatch(/^ORGANISERS' GROUP\. Here, /);
+    const turn = (senderIsOrganiser?: boolean) =>
+      renderRouterTurn([{ id: "h", authorName: "Pat", body: "Naim is out", organisers: { context: ["WAITING: nothing."], senderIsOrganiser } }], NOW);
+    expect(turn(false)).toBe(`${NOW_LINE}\n${organisersHeader(false)}\nWAITING: nothing.\n[h] Pat: Naim is out`);
+    expect(turn(true)).toContain("The sender is an organiser of the club.");
+    expect(turn()).not.toMatch(/The sender is/);
+  });
+
+  it("the prompt never says every sender in the organisers' group is an organiser", () => {
+    expect(ROUTER_SYSTEM_PROMPT).not.toMatch(/every sender is an organiser/i);
+    const hq = ROUTER_SYSTEM_PROMPT.slice(ROUTER_SYSTEM_PROMPT.indexOf("IN THE ORGANISERS' GROUP."));
+    expect(hq.split("\n")[0]).toMatch(/the header says whether this sender is one of them/);
+    expect(hq.split("\n")[0]).toMatch(/code decides what each sender may do/);
+  });
+
   it("a players' group organiser, in a club with partners: the partner line above the message", () => {
     const turn = renderRouterTurn([{ id: "a", authorName: "Raihan", body: "@Match Time ask Sutton", partnerClubs: ["Sutton FC", "MT Vets"] }], NOW);
     expect(turn).toBe(`${NOW_LINE}\n${partnerClubsLine(["Sutton FC", "MT Vets"])}\n[a] Raihan: @Match Time ask Sutton`);
@@ -725,7 +746,7 @@ describe("the organisers' group", () => {
     const withPartners = renderRouterTurn([{ id: "h", authorName: "Raihan", body: "x", organisers: { context: ["WAITING: nothing."] }, partnerClubs: ["Sutton FC"] }], NOW);
     const without = renderRouterTurn([{ id: "h", authorName: "Raihan", body: "x", organisers: { context: ["WAITING: nothing."] } }], NOW);
     expect(withPartners).toBe(without);
-    expect(ORGANISERS_HEADER).not.toMatch(/another club/);
+    expect(organisersHeader()).not.toMatch(/another club/);
   });
 
   it("no partner line without partners, and never in the organisers' group", () => {
@@ -749,7 +770,8 @@ describe("the organisers' group", () => {
 
   it("the prompt defines the organisers' routes once, in their own section, after every players' rule", () => {
     const section = ROUTER_SYSTEM_PROMPT.indexOf("IN THE ORGANISERS' GROUP.");
-    expect(section).toBeGreaterThan(ROUTER_SYSTEM_PROMPT.indexOf("About none:"));
+    expect(section).toBeGreaterThan(ROUTER_SYSTEM_PROMPT.indexOf("RULINGS."));
+    expect(ROUTER_SYSTEM_PROMPT.indexOf("RULINGS.")).toBeGreaterThan(0);
     for (const r of ["approve", "poster", "team_sheet", "help", "ask_group"]) {
       expect(ROUTER_SYSTEM_PROMPT.indexOf(`\n${r} `)).toBeGreaterThan(section);
     }
@@ -793,7 +815,7 @@ describe("the organisers' group", () => {
       NOW,
     );
     expect(turn).toBe(
-      `${NOW_LINE}\n${ORGANISERS_HEADER}\nWAITING: nothing.\nTHEY ARE REPLYING TO a MatchTime message (when it was sent is not known):\n"Teams ready"\n[h] Raihan: yes`,
+      `${NOW_LINE}\n${organisersHeader()}\nWAITING: nothing.\nTHEY ARE REPLYING TO a MatchTime message (when it was sent is not known):\n"Teams ready"\n[h] Raihan: yes`,
     );
   });
 
