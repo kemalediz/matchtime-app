@@ -295,7 +295,7 @@ test("fee (idempotent): two '✅' at once, or a Pi redelivery, release the links
   for (const r of rs) expect(r.status()).toBe(200);
   const after = await db.one<{ n: number }>(`SELECT COUNT(*)::int AS n FROM "BotJob" WHERE phone = $1`, [digits(PHONE.player)]);
   expect((after?.n ?? 0) - (before?.n ?? 0)).toBe(1);
-  const acks = await db.all(`SELECT id FROM "BotJob" WHERE phone = $1 AND text LIKE '✅ Done, sent%'`, [digits(PHONE.collector)]);
+  const acks = await db.all(`SELECT id FROM "BotJob" WHERE phone = $1 AND text LIKE '✅ Done,%'`, [digits(PHONE.collector)]);
   expect(acks).toHaveLength(1);
 });
 
@@ -312,7 +312,7 @@ test("fee: the collector's ack is queued under the MATCH's club and names the ma
   expect(json.handled).toBe("collector-fee");
   expect((await released(db, OTHER.match))?.paymentLinksReleasedAt).not.toBeNull();
   const ack = await db.one<{ orgId: string; text: string }>(
-    `SELECT "orgId", text FROM "BotJob" WHERE phone = $1 AND text LIKE '✅ Done, sent%' ORDER BY "createdAt" DESC LIMIT 1`,
+    `SELECT "orgId", text FROM "BotJob" WHERE phone = $1 AND text LIKE '✅ Done,%' ORDER BY "createdAt" DESC LIMIT 1`,
     [digits(PHONE.collector)],
   );
   expect(ack?.orgId).toBe(OTHER.org);

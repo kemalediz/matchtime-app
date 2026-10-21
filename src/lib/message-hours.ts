@@ -31,7 +31,13 @@
  *   - the weekly deadline posts (weekly-deadlines.ts);
  *   - organiser picks, bench offers and recruit chases
  *     (organiser-pick-rules.ts, bot-scheduler.ts, recruit-chase.ts);
- *   - the seed nudge (seed-nudge-rules.ts).
+ *   - the seed nudge (seed-nudge-rules.ts);
+ *   - the weekly per-match payment DMs (2026-10-21): the pay links
+ *     (payment-flow.ts, whose ack to the collector goes at once and says
+ *     when they go out), the collector's fee question and the daily pay
+ *     chase with its collector nudge (bot-scheduler.ts), the free place DM
+ *     (fee-waiver.ts) and the collector's notice that a player is paying
+ *     directly (direct-payment.ts).
  *
  * PLATFORM gates, MatchTime's own messages, not the club's: the default
  * window, whatever a club chose:
@@ -48,7 +54,8 @@
  * the 18:00 chases, the unpaid list, badges, Man of the Match). Those are
  * schedules and keep their own hours in their own files.
  * `__tests__/message-hours-source-guard.test.ts` fails when a second
- * definition of the window appears.
+ * definition of the window appears, and when a file named in the CLUB gates
+ * above stops reading the club's quiet hours.
  */
 import { formatLondon, londonDateTimeToUtc } from "./london-time";
 

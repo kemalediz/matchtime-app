@@ -1509,10 +1509,17 @@ export const tr: Strings = {
           : p.direct
             ? `Oyuncular doğrudan sana ödeyecek, ödediğini söyleyen olursa sana haber veririm. `
             : "";
-    return (
-      `✅ Tamam, *${p.matchName}*${p.matchWhen ? ` (${p.matchWhen})` : ""} için kişi başı *${p.fee}* üzerinden ${p.released} ödeme linki gönderdim. ` +
-      `${how}Ödemeyenlere ben hatırlatırım.`
-    );
+    const links = `*${p.matchName}*${p.matchWhen ? ` (${p.matchWhen})` : ""} için kişi başı *${p.fee}* üzerinden ${p.released} ödeme linki`;
+    // Quiet hours hold the links (2026-10-21). "saat 09:00 olunca" takes no
+    // case suffix, so no time needs Turkish vowel harmony.
+    if (p.heldUntil) {
+      return (
+        `✅ Tamam, ${links} hazır. ` +
+        `Sessiz saatler bitince, Londra saatiyle saat ${p.heldUntil} olunca gönderilecek. ` +
+        `${how}Ödemeyenlere ben hatırlatırım.`
+      );
+    }
+    return `✅ Tamam, ${links} gönderdim. ${how}Ödemeyenlere ben hatırlatırım.`;
   },
 
   dm_fee_cancelled: "Sorun değil, iptal ettim. Hazır olunca kişi başı tutarı yazman yeterli.",

@@ -263,3 +263,33 @@ test("collector confirm-receipt nudge goes silent once the direct-pending player
   const after = await duePostsAt(request, now);
   expect(after.map((i) => i.key)).not.toContain(collectorKey(dayKey));
 });
+
+// ── Quiet hours (Kemal, 2026-10-21) ─────────────────────────────────────
+//   The per-match payment DMs MatchTime sends on its own respect the club's
+//   quiet hours. The daily chase keeps its 18:00 hour; a club whose quiet
+//   hours cover it gets no chase that day. The collector's fee question
+//   waits for the end of quiet hours (the scheduler asks on a later tick).
+
+test("quiet hours covering 18:00: no pay chase and no collector nudge; off: both as before", async ({ request, db }) => {
+  const now = londonAt(0, 18, 30);
+  const dayKey = londonDateKey(now);
+  await db.run(`UPDATE "Organisation" SET "quietHoursFrom" = '18:00', "quietHoursTo" = '09:00' WHERE id = $1`, [ORG_ID]);
+  const held = (await duePostsAt(request, now)).map((i) => i.key);
+  expect(held).not.toContain(payChaseKey(U.player, dayKey));
+  expect(held).not.toContain(collectorKey(dayKey));
+
+  await db.run(`UPDATE "Organisation" SET "quietHoursEnabled" = false WHERE id = $1`, [ORG_ID]);
+  const off = (await duePostsAt(request, now)).map((i) => i.key);
+  expect(off).toContain(payChaseKey(U.player, dayKey));
+  expect(off).toContain(collectorKey(dayKey));
+});
+
+test("the collector's fee question waits for the end of quiet hours (23:30 no, 12:00 yes, off: at once)", async ({ request, db }) => {
+  const feeAsk = `${MATCH.rate}:fee-ask`;
+  const at = async (now: Date) => (await duePostsAt(request, now)).map((i) => i.key);
+  // Yesterday's game has ended, so at both times the question is due.
+  expect(await at(londonAt(0, 23, 30))).not.toContain(feeAsk);
+  expect(await at(londonAt(0, 12, 0))).toContain(feeAsk);
+  await db.run(`UPDATE "Organisation" SET "quietHoursEnabled" = false WHERE id = $1`, [ORG_ID]);
+  expect(await at(londonAt(0, 23, 30))).toContain(feeAsk);
+});

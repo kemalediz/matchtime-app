@@ -87,7 +87,9 @@ test("✅ on the latest prompt releases the links once and acks like a typed yes
   expect(after?.feePerPlayer).toBe(8);
   const ack = await acks(db);
   expect(ack).toHaveLength(1);
-  expect(ack[0].text).toContain("Done, sent");
+  // "sent ..." by day, "... ready. They go out at 09:00 London" inside the
+  // club's quiet hours (2026-10-21): this spec runs on the real clock.
+  expect(ack[0].text).toMatch(/^✅ Done, (sent \d+ pay links? |\d+ pay links? .* (is|are) ready\. (It goes|They go) out at \d\d:\d\d London)/);
 
   const again = await react(request, { waMessageId: wa, emoji: "👍", fromPhone: digits(PHONE.collector) });
   expect(again.ignored).toBe("nothing-pending");

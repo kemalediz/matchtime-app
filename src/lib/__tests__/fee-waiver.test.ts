@@ -184,6 +184,20 @@ describe("waiveMatchFee", () => {
     expect(dms()).toHaveLength(1);
   });
 
+  it("inside the club's quiet hours the DM waits for them to end (2026-10-21); with them off it goes at once", async () => {
+    rows = [att("fri", "u1", "Bilal Ahmed")];
+    // Fri 16 Oct, 23:30 London (BST): held until Sat 09:00.
+    await waiveMatchFee({ matchId: "fri", userId: "u1", byUserId: "org1", now: new Date("2026-10-16T22:30:00Z") });
+    expect(dms()).toMatchObject([{ phone: "447700900001", sendAfter: new Date("2026-10-17T08:00:00Z") }]);
+
+    botJobs.length = 0;
+    rows = [att("fri", "u2", "Ali Kaya")];
+    (org as Record<string, unknown>).quietHoursEnabled = false;
+    await waiveMatchFee({ matchId: "fri", userId: "u2", byUserId: "org1", now: new Date("2026-10-16T22:30:00Z") });
+    expect(dms()).toHaveLength(1);
+    expect(dms()[0]).not.toHaveProperty("sendAfter");
+  });
+
   it("the DM in Turkish for a Turkish club", async () => {
     org.language = "tr";
     rows = [att("fri", "u1", "Ali Kaya")];

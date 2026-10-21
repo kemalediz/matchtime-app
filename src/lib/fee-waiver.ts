@@ -33,6 +33,7 @@
  * once (`resolvedAt` NULL in the WHERE), and a Pi retry of the same HQ
  * message finds its proposal by message id.
  */
+import { QUIET_HOURS_SELECT, messageHoursSendAfter, quietHoursOf, type QuietHoursRow } from "./message-hours";
 import { db } from "./db";
 import { t } from "./i18n/t";
 import { dayLabel } from "./i18n/dates";
@@ -71,7 +72,7 @@ export async function waiveMatchFee(input: {
     select: {
       date: true,
       paymentLinksReleasedAt: true,
-      activity: { select: { orgId: true, org: { select: { paymentHolderId: true, language: true } } } },
+      activity: { select: { orgId: true, org: { select: { paymentHolderId: true, language: true, ...QUIET_HOURS_SELECT } } } },
     },
   });
   if (!match) return "not-in-squad";
@@ -101,6 +102,8 @@ export async function waiveMatchFee(input: {
             kind: "dm",
             phone: user.phoneNumber.replace(/^\+/, ""),
             text: t(match.activity.org.language).dm_free_place({ day: dayLabel(match.activity.org.language, match.date) }),
+            // Inside the club's quiet hours it waits for them to end (2026-10-21).
+            ...quietHoldOf(input.now, match.activity.org),
           },
         });
       }
@@ -352,4 +355,10 @@ export async function answerFeeProposalYes(args: {
     : [];
   console.log(`[fee-waiver] proposal ${p.id}: ${done.length} applied${p.undo ? " (undo)" : ""}, ${lines.length} other line(s)`);
   return { outcome: done.length ? "fee-free" : HQ_FEE_FREE_NOTHING_DONE, replyText: [...head, ...lines].join("\n") };
+}
+
+/** `{ sendAfter }` when `now` is inside the club's quiet hours, else nothing. */
+function quietHoldOf(now: Date, org: QuietHoursRow): { sendAfter?: Date } {
+  const sendAfter = messageHoursSendAfter(now, quietHoursOf(org));
+  return sendAfter ? { sendAfter } : {};
 }

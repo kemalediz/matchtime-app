@@ -908,7 +908,13 @@ export async function POST(request: Request) {
   {
     // A swipe-reply to one match's fee question acts on that match; the
     // model reads the chat context (quoted-reply context S3).
-    const feeResult = await handleCollectorFeeReply(user.id, text, { quoted, phone: await dmPhone() });
+    // `now`: the quiet hours hold of the pay links. Only the e2e suite's
+    // `x-test-now` (MT_TEST_MODE=1) sets it; in production it is the real clock.
+    const feeResult = await handleCollectorFeeReply(user.id, text, {
+      quoted,
+      phone: await dmPhone(),
+      now: setupLearningTestSeam(request).now,
+    });
     if (feeResult) {
       const phoneNoPlus = phone ? normalisePhone(phone)?.replace(/^\+/, "") ?? null : null;
       const u = await db.user.findUnique({

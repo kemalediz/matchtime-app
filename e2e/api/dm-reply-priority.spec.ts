@@ -87,6 +87,10 @@ test("a 'Paid' after a fee release: the reply and the collector notice are marke
   request,
   db,
 }) => {
+  // Quiet hours off: this spec is about send ORDER and runs on the real
+  // clock; inside quiet hours the collector's notice waits for them to end
+  // (2026-10-21), which pay-links-quiet-hours.spec.ts and the unit tests pin.
+  await db.run(`UPDATE "Organisation" SET "quietHoursEnabled" = false WHERE id = $1`, [ORG_ID]);
   payKeys = await queuePayLinks(db);
   setPaymentClaimStub({ bodies: { "I've transferred already": "paid" } });
   const json = await postDm(request, PHONE.player, "I've transferred already");
