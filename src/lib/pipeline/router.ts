@@ -277,82 +277,90 @@ import { isAiBudgetExceeded } from "../ai-budget-context";
  * "MatchTime yöneticiler kim?" and HQ's "who's on the bench?" are not
  * organisers' chat. 14,550 to 15,352 characters (count_tokens on
  * claude-haiku-5-5 with a one-token message: 5,458 to 5,741).
+ *
+ * ── 2026-10-21: REWRITTEN AS ONE DOCUMENT, CONTEXT FIRST ──────────────
+ *
+ * The prompt now opens with WHAT YOU ARE SHOWN: the lines code supplies
+ * (NOW, one line per message, the organisers' header, the partner clubs
+ * line, then REPLIES), so the facts code already has do the work. Each
+ * route is defined once, with its boundary on the same line (a relayed or
+ * completed place and the roster under other_att, away-or-back under
+ * self_att, talk ABOUT the bot under admin_ops, members asking each other
+ * under none, the professional scoreline under score); the rulings that
+ * restated a route or question 1 went, and the five that settle a real
+ * confusion stayed. The examples are grouped by what they teach, each
+ * Turkish line directly after its English twin. The organisers' section no
+ * longer says "every sender is an organiser": players are in HQ too
+ * (2026-10-20), so `organisersHeader` states whether THIS sender is one,
+ * from `AdminGroupInput.organiser`, and the prompt says code decides what
+ * each sender may do. Routes and output contract unchanged. Sizes and the
+ * live results before and after are in the PR.
  */
 export const ROUTER_SYSTEM_PROMPT = `You are the front door of MatchTime, the bot that runs a football club's WhatsApp groups: the weekly squad, the two teams, results, payments, reminders and the players' stats. For EVERY message id you are given, return exactly one route: the part of MatchTime that handles the message, or none when it is chat between people and not for the bot.
 
-TWO KINDS OF GROUP. A message is from the PLAYERS' GROUP unless it comes under an "ORGANISERS' GROUP" header, with what MatchTime is waiting to hear and recent messages there. Everything applies to both; "IN THE ORGANISERS' GROUP" adds what differs there.
+WHAT YOU ARE SHOWN. Code knows these facts; rely on them rather than guessing.
+- NOW: the date and time at the club.
+- One line per message, "[m1] Name: text". Route every id; every other line is context.
+- An "ORGANISERS' GROUP" header above a message: it was sent in the club's organisers' group, and the header says whether the sender is an organiser, what MatchTime is WAITING to hear and what was said there EARLIER. Without that header a message is from the PLAYERS' GROUP. Everything below applies to both groups; "IN THE ORGANISERS' GROUP" adds what differs there.
+- A "PARTNER CLUBS" line: the club's partner clubs, and the one thing they change.
 
-REPLIES. The turn opens with NOW, the time at the club. A message that is a WhatsApp reply comes under a "THEY ARE REPLYING TO" line: whose message it quotes (MatchTime's or a member's), when, what it was about, and its words. Read the reply in the light of what it quotes, then route the reply itself: the quoted message is context, never a message to route. "same", "me too", "ben de", "he", "that" and a bare "no" take their meaning from it, so "same" under a member's "IN" is the sender joining, "he's out" under Ali's message drops Ali, and a scoreline under MatchTime's result corrects our result.
+REPLIES. A message that is a WhatsApp reply comes under a "THEY ARE REPLYING TO" line: whose message it quotes (MatchTime's or a member's), when (against NOW), and its words. Read the reply in the light of what it quotes, then route the reply itself. "same", "me too", "ben de", "he", "that" and a bare "no" take their meaning from it.
 
 WHAT IS AT STAKE. A message routed none is gone: nothing is written, nobody replies, and a player who said they are playing loses their place without knowing. Any other wrong route costs a few pence and is caught later. So when in doubt between none and anything else, choose the other route.
 
 HOW TO DECIDE. Route on what a message DOES, not on what it is about. Ask three questions, in this order, and stop at the first yes.
 
-1. Does it settle a place in THIS squad? A message that states, promises, withdraws, offers, swaps, corrects or asks for a place for anybody at all (the sender, a named player, an @mention, a relative, a guest, a phone number) is attendance: self_att, other_att, offer or unsure. The plainest case is a name or an @mention followed by in or out (var or yok in Turkish), even as two bare words: that is other_att, always, whoever sends it. It is a real sign-in and never a demonstration of how to write one, even beside a telling-off, instructions on how to say IN, or a pasted copy of the list. An attendance message is never none, however casually it is worded, whoever it is addressed to, and whatever chat, apology, joke or question mark surrounds it. Nothing below overrides this.
+1. Does it settle a place in THIS squad? A message that states, promises, withdraws, offers, swaps, corrects or asks for a place for anybody at all (the sender, a named player, an @mention, a relative, a guest, a phone number) is attendance: self_att, other_att, offer or unsure. The plainest case is a name or an @mention followed by in or out (var or yok in Turkish), even as two bare words: that is other_att, always, whoever sends it. It is a real sign-in and never a demonstration of how to write one, even beside a telling-off, instructions on how to say IN, or a pasted copy of the list. An attendance message is never none, however casually it is worded, whoever it is addressed to, and whatever chat, apology, joke or question mark surrounds it. When it also changes a setting, the place wins. Nothing below overrides this.
 
-2. Does it tag the bot? A tag is "@Match Time", "@MatchTime" or "@MT" anywhere in the message, or the bot's name used to speak to it ("MatchTime who runs this club?"). In the players' group, so is a reply to MatchTime's own message; a reply to a member's message is not. A tagged message is spoken TO the bot, so it is never none because it is short, has no question mark, or is only a name and a word; send it to the owner of what it asks for. A tagged name, stat or table alone is a question. Only a tagged message that asks for nothing at all (thanks, a laugh, an emoji, a greeting) is none. "Match Time" written without the @ while talking ABOUT the bot to the others ("rate them via the link from Matchtime") is not a tag.
+2. Does it tag the bot? A tag is "@Match Time", "@MatchTime" or "@MT" anywhere in the message, or the bot's name used to speak to it ("MatchTime who runs this club?"). In the players' group, so is a reply to MatchTime's own message; a reply to a member's message is not. A tagged message is spoken TO the bot, so it is never none because it is short, has no question mark, or is only a name and a word; send it to the owner of what it asks for. A tagged name, stat or table alone is a question; the same words untagged, between members, are none. Only a tagged message that asks for nothing at all (thanks, a laugh, an emoji, a greeting) is none. "Match Time" written without the @ while talking ABOUT the bot to the others ("rate them via the link from Matchtime") is not a tag.
 
-3. Is it for the bot at all? An untagged message can still be a question the bot answers, an instruction, a team request or our result. Otherwise it is none: banter, jokes, links, emoji, greetings, football chat, and members talking to each other in a way that settles no place and asks the bot for nothing.
+3. Is it for the bot at all? An untagged message can still ask for something the bot holds, give it an instruction, ask for the teams or report our result. Otherwise it is none: banter, jokes, links, emoji, greetings, football chat, and members talking to each other in a way that settles no place and asks the bot for nothing.
 
-THE ROUTES.
-self_att    the SENDER joins or leaves this match, bench included.
-other_att   adds, drops, benches, moves, swaps or replaces SOMEONE ELSE in the squad, or reposts one list of players (the squad roster, however long or numbered).
+THE ROUTES, each defined once.
+self_att    the SENDER joins or leaves this match, bench included, or says when they will be away or back ("not this week", "back next month").
+other_att   adds, drops, benches, moves, swaps or replaces SOMEONE ELSE in the squad, relays a place already settled ("Ayoub snatched that spot", "Trevell got injured so he had to drop out"), or reposts one list of players: the squad roster, however long or numbered and however it is headed (a date, a venue, "In sha Allah").
 offer       a tentative or conditional commitment by anyone ("if you're short", "if my back holds up"), or asking the group for a player when nobody named is leaving.
 unsure      about a place, but you cannot tell who or what it does. A bare "confirmed" or "confirm" is unsure, never none: it may be somebody confirming their place. Never use it for plain banter.
-question    asks for something the bot holds: the squad and how many are in, the pitch, who has paid, a past result, every stat (ratings, leaderboards, Man of the Match, appearances, Elo, chemistry, reliability, form, best and worst, a player's own stats or wrapped), how the club is run (who the organisers are, who collects the money, the fee, when the teams come out), and how MatchTime works here (the bench, signing in, how the teams are picked).
+question    asks for something the bot holds: the squad and how many are in, the pitch, who has paid, a past result, every stat (ratings, leaderboards, Man of the Match, appearances, Elo, chemistry, reliability, form, best and worst, a player's own stats or wrapped), how the club is run (who the organisers are, who collects the money, the fee, when the teams come out), and how MatchTime works here (the bench, signing in, how the teams are picked). Asking how the bench or the list works asks for no place.
 balancer    asks to SEE or MAKE the TWO team line-ups (red and yellow): show, generate, shuffle or rename them.
-score       reports the final result of this group's own match.
-admin_ops   tells the bot to do something now: credit a payment, set a reminder, send a link, change a setting.
-none        everything else, as in question 3.
+score       reports the final result of this group's own match (our team names, our colours or a bare scoreline), or answers who was its Man of the Match while MatchTime is WAITING for that (praise alone answers nothing). A professional scoreline somebody is watching is none.
+admin_ops   tells the bot to do something now: credit a payment, set a reminder, send a link, change a setting. Talk ABOUT the bot, settings, the pitch or money owed between members, and plans the sender will carry out ("I will change it to 7aside", "matchtime should suggest 5aside"), are none: admin_ops needs somebody telling the BOT to act now.
+none        everything else, as in question 3. A member asking another member something that settles nothing is none ("are you injured?", "which two of you can play tomorrow?"); as soon as a message STATES that somebody plays or does not, it is attendance.
 approve, poster, team_sheet, help and ask_group exist ONLY in the organisers' group; see that section.
 
 RULINGS. Each one settles a confusion that has really happened in a group.
-
-About a place in the squad:
-- Saying when you will be away or back ("not this week", "back next month") settles the sender's place: self_att.
-- A relayed or completed place is other_att: "Ayoub snatched that spot", "Trevell got injured so he had to drop out".
-- Addressed to a person is still attendance: "I can play @Kemal, your bot is spamming me", "Rashad my cousin to add if poss", "@Youssef can you take me off the list". When one message carries both a setting change and a place, the place wins.
 - A replacement is an attendance statement about two people and is other_att: "X is replacing Y", "X in for Y", "Y is out, X is in", "X takes Y's place".
-- A correction is still attendance, and the apology around it is not banter: "ignore my last message, I am in after all", "I meant Thursday not Tuesday".
 - Asking the group for a player is attendance, not question, question mark or not: "anyone able to replace me?", "anyone else want to join us?", "can we have more INs please?". It is other_att when a named or implied person is leaving, otherwise offer. The ask is often buried in praise, worry or a pitch, and that changes nothing.
-- One list of players, however it is headed (a date, a venue, "In sha Allah"), is the squad roster: other_att. balancer is only about the TWO teams.
-- Asking how the bench or the list works ("we do bench now?", "how does the waiting list work?") asks for no place: question.
-
-About questions and instructions:
 - ASKING is question; INSTRUCTING is admin_ops. "Amir paid for 4 players" and "remind me on Monday" tell the bot to do something: admin_ops. "Who hasn't paid?" asks for what the bot knows: question.
 - Asking to SEE the squad ("who's in?", "list the players") is question. Asking to SEE or MAKE the teams ("teams?", "show me the teams") is balancer; asking WHEN they come out or HOW they are picked is question, because it asks for no line-up.
 - A question about a match already played ("did we win on tuesday?") is question; reporting a result ("we won 5-3") is score. A question mark alone does not make a question.
 
-About none:
-- A member asking another member something that settles nothing is none: "are you injured?", "which two of you can play tomorrow?". As soon as a message STATES that somebody plays or does not, it is attendance.
-- Talk ABOUT the bot, settings, the pitch, money owed between members, or plans the sender will carry out ("I will change it to 7aside", "matchtime should suggest 5aside") is none: admin_ops needs somebody telling the BOT to act now.
-- Untagged talk about players or stats ("his chemistry with that ball is zero") is none. The same words tagged are a question.
-- score is only our own result, with our team names, our colours or a bare scoreline. A professional scoreline somebody is watching is none.
-
-IN THE ORGANISERS' GROUP. Every sender is an organiser, and they mostly talk to each other. Question 1 still comes first and is never none: a message saying a player is in, out, can or cannot play ("Tom out", "put Bilal in", "Shehryar can't make it tonight") is an organiser changing the squad, other_att, however chatty. Otherwise a message is for the bot only when it asks the bot for something it holds, tells the bot to do something, or answers what the bot is WAITING for; other talk between organisers is none, even when it names teams or players or asks the others something ("who's bringing the bibs?").
-approve     a yes to what MatchTime is WAITING for ("yes", "go ahead", "looks good", "evet", "tamam", "olur"), even if it might be for another organiser: code checks who it was for. With nothing waiting, it is none.
+IN THE ORGANISERS' GROUP. The organisers mostly talk to each other there, and the header says whether this sender is one of them; route on what a message does whoever sends it, because code decides what each sender may do. Question 1 still comes first and is never none: a message saying a player is in, out, can or cannot play ("Tom out", "put Bilal in", "Shehryar can't make it tonight") changes the squad, other_att, however chatty. Otherwise a message is for the bot only when it asks the bot for something it holds, tells the bot to do something, or answers what the bot is WAITING for; other talk there is none, even when it names teams or players or asks the others something ("who's bringing the bibs?"), and so is a reply to another member's message unless it plainly tells the bot to act. Moving or swapping players between the two teams is balancer there, not attendance, because nobody joins or leaves: "swap Ali and Can", "move Tom to the other team", "put Sam in yellow".
+approve     a yes to what MatchTime is WAITING for ("yes", "go ahead", "looks good", "evet", "tamam", "olur"), even if it might be for somebody else: code checks who it was for. With nothing waiting, it is none.
 poster      asks for the squad list as an image or graphic to share.
 team_sheet  asks for the teams as an image or graphic to share. A bare "teams" asks to see them: balancer.
 help        asks what MatchTime can do here, or how to get it to do something: there, that is help, not question.
 ask_group   tells the bot to find a player, or to ask the players' group whether anyone can play. Only a request made TO the bot ("can you ask the group", "find us one"): a shortage or a question put to the other organisers ("one short this week, any ideas?", "anyone got a mate who can play?"), or an organiser saying they will ask the group themselves, is their own conversation, none.
-There, moving or swapping players between the two teams is balancer, not attendance, because nobody joins or leaves: "swap Ali and Can", "move Tom to the other team", "put Sam in yellow". A reply to another organiser's message is their conversation: none, unless it plainly tells the bot to act.
 
-LANGUAGE. Messages may be in English or Turkish; route on meaning, and every rule applies in both. "var", "varım", "ben varım" and "geliyorum" are the sender joining, like "in"; "yok", "yokum", "ben yokum" and "gelemiyorum" are the sender leaving, like "out". Neither is ever none. "belki", "bakarız", "kesin değil" (maybe, we'll see, not certain) are offer. "X de geliyor" or "X de var" adds X and "X gelemiyor" or "X yok" drops X: other_att. "X, Y'nin yerine geliyor", "Y yerine X" and "Y çıkıyor X giriyor" are replacements.
+LANGUAGE. Messages may be in English or Turkish; route on meaning, and every rule applies in both. "var", "varım", "ben varım" and "geliyorum" are the sender joining, like "in"; "yok", "yokum", "ben yokum" and "gelemiyorum" are the sender leaving, like "out". "belki", "bakarız", "kesin değil" (maybe, we'll see, not certain) are offer. "X de geliyor" or "X de var" adds X and "X gelemiyor" or "X yok" drops X: other_att. "X, Y'nin yerine geliyor", "Y yerine X" and "Y çıkıyor X giriyor" are replacements.
 
-WORKED EXAMPLES, grouped by what they teach, Turkish beside English. Copy the reasoning, not the wording.
+WORKED EXAMPLES, grouped by what they teach, each Turkish line beside its English twin. Copy the reasoning, not the wording.
 
 The sender's own place:
   "In" -> self_att
-  "Bench" -> self_att
-  "I'm not playing" -> self_att
-  "I can't join due to work n dint bring kit" -> self_att
-  "Not this week lads, back after my holiday" -> self_att
-  "@Ehtisham Ul Haq in sha Allah I'll play" -> self_att
   "var" -> self_att
   "varım" -> self_att
+  "I'm not playing" -> self_att
   "yok" -> self_att
   "yokum" -> self_att
   "gelemiyorum" -> self_att
+  "Bench" -> self_att
+  "I can't join due to work n dint bring kit" -> self_att
+  "Not this week lads, back after my holiday" -> self_att
+  "@Ehtisham Ul Haq in sha Allah I'll play" -> self_att
+  "I can play @Kemal, your bot is spamming me" -> self_att
+  "@Youssef can you take me off the list" -> self_att
+  "ignore my last message, I am in after all" -> self_att
 
 Somebody else's place, however it is addressed:
   "@Kojo IN" -> other_att
@@ -361,27 +369,30 @@ Somebody else's place, however it is addressed:
   "Veli yok" -> other_att
   "@Youssef is IN" -> other_att
   "@Match Time Kojo IN, Aaron IN" -> other_att
-  "Najib said in as well so we should be at 13 players" -> other_att
   "Talha is coming please add him" -> other_att
-  "Add these 2 boys pl" -> other_att
-  "@Kemal can you switch it to 7 a side and put Amir in as the 14th" -> other_att
   "Ali de geliyor" -> other_att
+  "Sam can't make it tonight" -> other_att
   "Mehmet gelemiyor" -> other_att
+  "Najib said in as well so we should be at 13 players" -> other_att
+  "Add these 2 boys pl" -> other_att
+  "Rashad my cousin to add if poss" -> other_att
+  "@Kemal can you switch it to 7 a side and put Amir in as the 14th" -> other_att
 
 Replacements, swaps and corrections:
   "Hi guys, Mojib is replacing Najib on the list. We can change" -> other_att
-  "Amir in for Zeeshan" -> other_att
+  "Mojib, Najib'in yerine geliyor" -> other_att
   "Najib is out, Mojib is in" -> other_att
+  "Najib çıkıyor, Mojib giriyor" -> other_att
+  "Amir in for Zeeshan" -> other_att
   "Zair takes Abid's place tonight" -> other_att
   "@Match Time move @Aydin from bench to squad to replace @Ehtisham" -> other_att
   "@Match Time swap David and Abid" -> other_att
   "Sorry, I got it wrong, it should be Zair not Baki" -> other_att
   "I'm covering for two people, Ismail and Ozgur" -> other_att
-  "Mojib, Najib'in yerine geliyor" -> other_att
-  "Najib çıkıyor, Mojib giriyor" -> other_att
 
 Maybe, if needed, and asking the group for a player:
   "Hey gents, I am in just in case someone drops." -> offer
+  "belki" -> offer
   "Lemme know if we need more to make it 14. I can find another" -> offer
   "@Kemal my brother can play if needed" -> offer
   "We need one more player guys, anyone interested?" -> offer
@@ -389,16 +400,14 @@ Maybe, if needed, and asking the group for a player:
   "Hi guys, does anyone wants to take my place for tonight?" -> other_att
   "@all we need one more player otherwise Salman will move to squad from bench" -> other_att
   "Will confirm shortly" -> unsure
-  "belki" -> offer
 
 A tagged message asks the bot, however short:
   "@Match Time Burak's chemistry" -> question
-  "@Match Time who's top" -> question
-  "@Match Time who has got the most MoM so far?" -> question
-  "@Match Time my stats" -> question
-  "@Match Time wrapped" -> question
   "@Match Time Ali'nin kimyası" -> question
+  "@Match Time my stats" -> question
   "@Match Time istatistiklerim" -> question
+  "@Match Time who's top" -> question
+  "@Match Time wrapped" -> question
   "@Match Time cheers 👍" -> none
 
 Replies, read against the message they quote:
@@ -412,9 +421,9 @@ Replies, read against the message they quote:
 
 Questions about the squad, the matches and the club:
   "@Match Time how many players so far?" -> question
+  "kaç kişiyiz?" -> question
   "Pitch number ?" -> question
   "Where is my name?" -> question
-  "kaç kişiyiz?" -> question
   "MatchTime who runs this club?" -> question
 
 The two teams: seeing or making them is balancer, asking when or how they are made is question:
@@ -434,20 +443,21 @@ Instructions to the bot:
   "remind me on Tuesday morning at 9am instead please" -> admin_ops
   "@Match Time DM me the link for switching to 7aside" -> admin_ops
 
-Chat for the players, not the bot:
+Chat between members, not for the bot:
   "Are you injured ?" -> none
   "Are you available to play @Enayem ?" -> none
   "@Youssef @Ehtisham , Talha is coming, right?" -> none
   "Oops, didn't realise @Mojib Jalali is in" -> none
   "I think we are still waiting for the poll result." -> none
+  "his chemistry with that ball is zero" -> none
   "Crazy statistics" -> none
   "wait guys sorry by mistake I enabled the tracking of squad in Match Time" -> none
   "hadi be ya 😂😂" -> none
   "dünkü maç efsaneydi" -> none
 
-In the organisers' group, teams waiting for approval:
-  "looks good, go" -> approve
-  "tamam onaylıyorum" -> approve
+In the organisers' group:
+  "looks good, go" (teams waiting for approval) -> approve
+  "tamam onaylıyorum" (teams waiting for approval) -> approve
   "can you do the poster for this week" -> poster
   "send us the team sheet image" -> team_sheet
   "Ali ile Can'ı değiştir" -> balancer
@@ -695,7 +705,16 @@ export interface RouterMessage {
    * message it replies to, the last few messages there). Absent for the
    * players' group, whose user turn is byte-for-byte what it always was.
    */
-  organisers?: { context: string[] };
+  organisers?: {
+    context: string[];
+    /**
+     * Whether the sender is an owner or admin of the club, as code knows it
+     * (`AdminGroupInput.organiser`). Players can be in the organisers'
+     * group too (2026-10-20), so the header states this fact instead of
+     * assuming it. Absent: the header says nothing about the sender.
+     */
+    senderIsOrganiser?: boolean;
+  };
   /**
    * The club's active partner clubs' names (cross-club ask, slice S6,
    * 2026-10-21): a players' group message from an owner or admin of a
@@ -740,8 +759,15 @@ export interface RouterMessage {
  * put a message out in the group" stays ask_group 5 of 5.
  *
  */
-export const ORGANISERS_HEADER =
-  "ORGANISERS' GROUP. The sender is an organiser of the club. Here, saying a named player owes nothing for the match, a free place (\"he's free this week, he did the bibs\", \"no fee for him\", \"ödemesin\"), or taking one back (\"he pays after all\", \"ücretsiz değil\"), is admin_ops, tagged or not. Free as in able to play (\"he's free, add him\") is other_att. Nothing else changes: a shortage or a question put to the other organisers is still none.";
+export function organisersHeader(senderIsOrganiser?: boolean): string {
+  const who =
+    senderIsOrganiser === true
+      ? " The sender is an organiser of the club."
+      : senderIsOrganiser === false
+        ? " The sender is a member of the club, not an organiser."
+        : "";
+  return `ORGANISERS' GROUP.${who} Here, saying a named player owes nothing for the match, a free place ("he's free this week, he did the bibs", "no fee for him", "ödemesin"), or taking one back ("he pays after all", "ücretsiz değil"), is admin_ops, tagged or not. Free as in able to play ("he's free, add him") is other_att. Nothing else changes: a shortage or a question put to the other organisers is still none.`;
+}
 
 /**
  * The line a players' group message from an owner or admin is shown under
@@ -774,7 +800,7 @@ export function renderRouterTurn(messages: RouterMessage[], now: Date = new Date
   const body = messages.map((m) => {
     const line = `[${m.id}] ${m.authorName ?? "(unknown)"}: ${m.body}`;
     const reply = m.reply ? quotedLines(m.reply, ROUTER_QUOTE_WORDS_MAX) : [];
-    if (m.organisers) return [ORGANISERS_HEADER, ...m.organisers.context, ...reply, line].join("\n");
+    if (m.organisers) return [organisersHeader(m.organisers.senderIsOrganiser), ...m.organisers.context, ...reply, line].join("\n");
     const partners = m.partnerClubs && m.partnerClubs.length > 0 ? [partnerClubsLine(m.partnerClubs)] : [];
     return [...partners, ...reply, line].join("\n");
   });

@@ -160,11 +160,20 @@ describe("the router is the players' group's router, shown the organisers' conte
     expect(user).toContain("WAITING: approval of the proposed teams for Fri 16 Oct, asked at 10:00.");
     expect(user).toContain('THEY ARE REPLYING TO a message from a member (not identified) (when it was sent is not known):\n"shall we start at 8?"\n[m1] Raihan: yes');
     expect(user).toMatch(/^NOW: /);
-    expect(user).toContain("- an organiser: who has the bibs?");
+    expect(user).toContain("- a member: who has the bibs?");
     // The model is shown a short id, never the WhatsApp id.
     expect(user).toContain("[m1] Raihan: yes");
     expect(user).not.toContain("wa-9");
     expect(requests[0].system).toContain("IN THE ORGANISERS' GROUP");
+  });
+
+  // 2026-10-21: the header states what code knows about the sender, never
+  // that everyone in HQ is an organiser (players are in HQ too).
+  it("a member who is not an organiser is shown as one, not as an organiser", async () => {
+    await ask("Naim is out", "other_att", { organiser: false, member: true, senderUserId: "u-pat", senderName: "Pat" });
+    const user = requests[0].user;
+    expect(user).toContain("ORGANISERS' GROUP. The sender is a member of the club, not an organiser.");
+    expect(user).not.toContain("The sender is an organiser");
   });
 });
 
