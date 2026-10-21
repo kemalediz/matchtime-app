@@ -14,10 +14,12 @@
  */
 import { db } from "./db";
 import { sendAdminNotice } from "./admin-channel";
+import { recordMatchTimeQuestion } from "./admin-group-log";
 import { t } from "./i18n/t";
 import {
   PARTNER_ASK_CUTOFF_DEFAULT_HOURS,
   normalisePartnerAskWhen,
+  pairingNoticeKey,
   parseAskTime,
   parseCutoffHours,
   parsePartnerApproval,
@@ -137,20 +139,29 @@ export async function createPartnership(args: {
   }
   console.log(`[partner-clubs] pairing ${id}: ${asker.id} may ask ${partner.id} (${plan.mode})`);
 
-  await Promise.all([
-    sendAdminNotice({
-      orgId: asker.id,
+  // Each club's notice asks its owner to reply 1 or 2 (or to open the
+  // link), and is tagged with this pairing and club, so a reply or a
+  // reaction on it finds exactly this one (`pairing-reply.ts`). In an
+  // admin group it is logged as MatchTime's question, as a partner ask's
+  // approval notice is, so a reply quoting it is known to be about it.
+  const tell = async (club: { id: string; name: string; language: string }, other: string, side: "asker" | "partner") => {
+    const s = t(club.language);
+    const aboutKey = pairingNoticeKey(id, club.id);
+    const notice = side === "asker" ? s.pc_paired_notice_asker : s.pc_paired_notice_partner;
+    const sent = await sendAdminNotice({
+      orgId: club.id,
       now,
       nextPath: PARTNER_SETTINGS_PATH,
-      text: (link) => t(asker.language).pc_paired_notice_asker({ club: asker.name, other: partner.name, link }),
-    }),
-    sendAdminNotice({
-      orgId: partner.id,
-      now,
-      nextPath: PARTNER_SETTINGS_PATH,
-      text: (link) => t(partner.language).pc_paired_notice_partner({ club: partner.name, other: asker.name, link }),
-    }),
-  ]).catch((err) => console.error(`[partner-clubs] pairing ${id}: notices not queued:`, err instanceof Error ? err.message : "failed"));
+      aboutKey,
+      text: (link, audience) => notice({ club: club.name, other, link, inGroup: audience === "group" }),
+    });
+    if (sent.channel === "admin-group" && sent.groupText) {
+      await recordMatchTimeQuestion({ orgId: club.id, askRef: aboutKey, text: sent.groupText, now });
+    }
+  };
+  await Promise.all([tell(asker, partner.name, "asker"), tell(partner, asker.name, "partner")]).catch((err) =>
+    console.error(`[partner-clubs] pairing ${id}: notices not queued:`, err instanceof Error ? err.message : "failed"),
+  );
 
   return { ok: true, id, reopened: plan.mode === "reopen" };
 }

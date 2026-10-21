@@ -62,6 +62,13 @@ const feeWaiver = vi.hoisted(() => ({
   feeProposalsAwaiting: vi.fn().mockResolvedValue([]),
 }));
 vi.mock("@/lib/fee-waiver", () => feeWaiver);
+// A partner-club pairing waiting for this club's owner (2026-10-21). None
+// by default; the pairing cases below set one.
+const pairing = vi.hoisted(() => ({
+  pairingsAwaitingOwner: vi.fn().mockResolvedValue([]),
+  answerPairingInHq: vi.fn(),
+}));
+vi.mock("@/lib/pairing-reply", () => pairing);
 // The score in HQ (2026-10-16): nothing waiting and no override by default.
 const hqScore = vi.hoisted(() => ({ answerHqScore: vi.fn(), hqScoreRouting: vi.fn() }));
 vi.mock("@/lib/admin-group-score", () => hqScore);
@@ -112,6 +119,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   requests.length = 0;
   feeWaiver.feeProposalsAwaiting.mockResolvedValue([]);
+  pairing.pairingsAwaitingOwner.mockResolvedValue([]);
+  pairing.answerPairingInHq.mockResolvedValue({ outcome: "pairing-accepted", replyText: "✅ Accepted." });
   dbMock.adminTeamProposal.findFirst.mockResolvedValue({ matchId: "m1", askedAt: ASKED, state: "proposed" });
   dbMock.match.findUnique.mockResolvedValue({ date: new Date("2026-10-16T20:00:00Z"), status: "TEAMS_GENERATED" });
   dbMock.adminSquadProposal.findFirst.mockResolvedValue(null);
@@ -209,6 +218,47 @@ describe("an HQ reply is decided by the quoted message's id (quoted-reply contex
     dbMock.sentNotification.findMany.mockRejectedValue(new Error("db down"));
     const r = await ask("YES", "approve", { quoted: { messageId: "3EB0TEAMS", text: TEAMS_TEXT, fromMatchTime: true } });
     expect(r?.outcome).toBe("teams-final");
+  });
+});
+
+describe("a partner-club pairing waiting for the owner (2026-10-21)", () => {
+  const REF = "pairing:p1:org-fnf";
+  const NOTICE = "🤝 MatchTime has paired *FNF* with *MT Test*: ... Club owner: reply to this message with *1* to accept or *2* to decline, or open https://x";
+  const noticeRow = (at: Date) => ({ ...mtRow(at, REF, NOTICE), waMessageId: "mt:pairing:1", waStanzaId: "3EB0PAIR" });
+  beforeEach(() => {
+    dbMock.adminTeamProposal.findFirst.mockResolvedValue(null);
+    pairing.pairingsAwaitingOwner.mockResolvedValue([{ ref: REF, club: "FNF", other: "MT Test", askedAt: ASKED }]);
+    hqLog.hqLogSince.mockResolvedValue([noticeRow(ASKED)]);
+  });
+
+  it("the router is told what is waiting, and how the owner answers it", async () => {
+    await ask("1", "approve");
+    expect(requests[0].user).toContain("WAITING: the club owner's answer to pairing FNF with MT Test as partner clubs (1 or yes accepts, 2 or no declines), asked at 10:00.");
+  });
+
+  it("a reply quoting the notice is read by the pairing reader, whatever the router would say, and no router call is paid", async () => {
+    const r = await ask("2", "none", { quoted: { messageId: "3EB0PAIR", text: NOTICE, fromMatchTime: true } });
+    expect(pairing.answerPairingInHq).toHaveBeenCalledWith({ ref: REF, orgId: "org-fnf", text: "2", senderUserId: "u-admin", noticeText: NOTICE, noticeAt: ASKED, quoted: true, now: NOW });
+    expect(r).toEqual({ route: null, outcome: "pairing-accepted", replyText: "✅ Accepted." });
+    expect(requests.filter((q) => q.label === "router")).toHaveLength(0);
+  });
+
+  it("a quoted reply the reader says is not an answer: silent", async () => {
+    pairing.answerPairingInHq.mockResolvedValue(null);
+    expect(await ask("who are they?", "question", { quoted: { messageId: "3EB0PAIR", text: NOTICE, fromMatchTime: true } })).toBeNull();
+  });
+
+  it("an unquoted YES as the next message after the notice: the safe-YES rule hands it to the pairing reader", async () => {
+    const r = await ask("yes", "approve");
+    expect(pairing.answerPairingInHq).toHaveBeenCalledWith(expect.objectContaining({ ref: REF, text: "yes", quoted: false, noticeText: NOTICE }));
+    expect(r?.outcome).toBe("pairing-accepted");
+  });
+
+  it("an unquoted YES after other chat: asks, naming the pairing, and nothing is accepted", async () => {
+    hqLog.hqLogSince.mockResolvedValue([noticeRow(ASKED), orgRow(new Date("2026-10-16T09:05:00Z"))]);
+    const r = await ask("yes", "approve");
+    expect(r?.replyText).toBe("Is that about pairing *FNF* with *MT Test*? Club owner: reply to the pairing message with *1* to accept or *2* to decline.");
+    expect(pairing.answerPairingInHq).not.toHaveBeenCalled();
   });
 });
 

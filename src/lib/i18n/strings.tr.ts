@@ -3721,10 +3721,17 @@ export const tr: Strings = {
   st_wa_group_id: "WhatsApp grup kimliği",
   st_wa_managed: "Bot ayarlarını MatchTime yönetir. Açmak ya da yeniden ayarlamak için yöneticinizle iletişime geçin.",
   // ─── Partner kulüpler (slice S1, 2026-10-16) ────────────────────────
-  pc_paired_notice_asker: (p: { club: string; other: string; link: string }) =>
-    `🤝 MatchTime, *${p.club}* ile *${p.other}* kulüplerini eşleştirdi: oyuncunuz eksik olduğunda MatchTime, onların organizatörlerinin onayıyla ${p.other} grubundan oyuncu isteyebilir. İki kulübün sahibi de kabul edene kadar hiçbir şey olmaz. Kulüp sahibiniz buradan kabul edebilir ya da reddedebilir: ${p.link}`,
-  pc_paired_notice_partner: (p: { club: string; other: string; link: string }) =>
-    `🤝 MatchTime, *${p.club}* ile *${p.other}* kulüplerini eşleştirdi: ${p.other} oyuncu eksik olduğunda MatchTime grubunuza onlar için oynayabilecek biri olup olmadığını sorabilir. Başka bir seçim yapmazsanız her isteği önce organizatörleriniz onaylar. İki kulübün sahibi de kabul edene kadar hiçbir şey olmaz. Kulüp sahibiniz buradan kabul edebilir ya da reddedebilir: ${p.link}`,
+  pc_paired_notice_asker: (p) =>
+    `🤝 MatchTime, *${p.club}* ile *${p.other}* kulüplerini eşleştirdi: oyuncunuz eksik olduğunda MatchTime, onların organizatörlerinin onayıyla ${p.other} grubundan oyuncu isteyebilir. İki kulübün sahibi de kabul edene kadar hiçbir şey olmaz. Kulüp sahibi: kabul etmek için ${p.inGroup ? "bu mesajı yanıtlayıp " : ""}*1*, reddetmek için *2* yazın ya da şunu açın: ${p.link}`,
+  pc_paired_notice_partner: (p) =>
+    `🤝 MatchTime, *${p.club}* ile *${p.other}* kulüplerini eşleştirdi: ${p.other} oyuncu eksik olduğunda MatchTime grubunuza onlar için oynayabilecek biri olup olmadığını sorabilir. Başka bir seçim yapmazsanız her isteği önce organizatörleriniz onaylar. İki kulübün sahibi de kabul edene kadar hiçbir şey olmaz. Kulüp sahibi: kabul etmek için ${p.inGroup ? "bu mesajı yanıtlayıp " : ""}*1*, reddetmek için *2* yazın ya da şunu açın: ${p.link}`,
+  pc_reply_accepted_waiting: (p) => `✅ *${p.club}* için kabul edildi. ${p.other} kulübünün sahibinin de kabul etmesi bekleniyor.`,
+  pc_reply_accepted_active: (p) => `✅ Kabul edildi. *${p.club}* ve *${p.other}* artık partner kulüp.`,
+  pc_reply_declined: (p) => `Reddedildi. *${p.club}*, *${p.other}* ile eşleştirilmeyecek.`,
+  pc_reply_already_accepted: (p) => `*${p.club}* için zaten kabul ettiniz. ${p.other} kulübünün sahibi bekleniyor.`,
+  pc_reply_not_waiting: (p) => `*${p.club}* ile *${p.other}* eşleştirmesi artık yanıt beklemiyor.`,
+  pc_reply_which_item: (p) => `*${p.club}* ile *${p.other}*`,
+  pc_reply_which: (p) => `Bu hangi eşleştirme için? ${p.pairings}. Yanıtınızı o eşleştirmenin mesajını yanıtlayarak yazın.`,
   pc_section_title: "Partner kulüpler",
   pc_section_lead:
     "Oyuncunuz eksik olduğunda MatchTime'ın oyuncu isteyebileceği kulüpler ve sizden oyuncu isteyebilecek kulüpler. İki kulübü yalnızca MatchTime ekibi eşleştirir; sonra her kulübün sahibi kabul eder.",
@@ -3786,6 +3793,8 @@ export const tr: Strings = {
     `⚠️ İsteğinizin *${p.partner}* grubuna ulaştığını doğrulayamıyorum, bu yüzden yanıtlar size ulaşmayabilir. Hâlâ oyuncuya ihtiyacınız varsa onların organizatörlerine sorun.`,
   xask_filled_line: (p) => `✅ *${p.asker}* için yer doldu, herkese teşekkürler 🙌`,
   xask_off_line: (p) => `*${p.asker}* kulübünün ${p.day} isteği artık kapandı, herkese teşekkürler.`,
+  hq_confirm_pairing: (p) =>
+    `Bu, *${p.club}* ile *${p.other}* eşleştirmesi için mi? Kulüp sahibi: kabul etmek için eşleştirme mesajını yanıtlayıp *1*, reddetmek için *2* yazın.`,
   hq_confirm_partner_ask: (p) => `Bu EVET, *${p.asker}* kulübünün ${p.day} isteğini oyuncu grubunuzda paylaşmak için mi?`,
   xask_hq_approved: (p) => `Tamam: *${p.asker}* kulübünün isteği artık oyuncu grubunuzda.`,
   xask_hq_not_posted: (p) => `*${p.asker}* kulübünün isteğini paylaşmadım: istek kapandı, yer doldu ya da artık çok geç.`,

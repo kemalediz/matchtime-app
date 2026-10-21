@@ -42,8 +42,9 @@ const MARKED: Record<string, number> = {
   // and ack, the collector's fee-reply answer, the admin-command answer,
   // the scoped Q&A answer, the roster-survey clarification and
   // confirmation. (The recruit BLAST the admin command triggers is
-  // queued by recruit.ts, unmarked.)
-  "app/api/whatsapp/dm-reply/route.ts": 10,
+  // queued by recruit.ts, unmarked.) And the owner's answer to the
+  // partner-club pairing notice (2026-10-21).
+  "app/api/whatsapp/dm-reply/route.ts": 11,
   // "DM me <question>" answered privately, and the stats link a player
   // asked for. (The stats BLAST to every member stays unmarked.)
   "app/api/whatsapp/analyze/route.ts": 2,
@@ -55,6 +56,8 @@ const MARKED: Record<string, number> = {
   // The collector's "links sent" ack to his ✅ REACTION on the fee
   // confirm prompt (the same ack the dm-reply route queues for a typed yes).
   "lib/fee-confirm-reaction.ts": 1,
+  // The owner's ack to a ✅/👍 REACTION on the pairing notice (2026-10-21).
+  "lib/pairing-reply.ts": 1,
   // Monthly squad: the player's claim ack, and the collector's answer
   // to their own "PAID ..." reply. (The daily claims digest is unmarked.)
   "lib/month-payment.ts": 2,

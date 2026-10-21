@@ -113,6 +113,8 @@ import { answerHqScore, hqScoreRouting } from "./admin-group-score";
 import { hasScorelineShape } from "./pipeline/score-ask";
 import { organisersPickMom } from "./mom-chooser";
 import { readHqNameList } from "./admin-group-name-list";
+import { answerPairingInHq, pairingsAwaitingOwner } from "./pairing-reply";
+import { parsePairingNoticeKey } from "./club-partnership-rules";
 
 /** How far back the router's "earlier here" lines reach, and how many. */
 const RECENT_MS = 30 * 60 * 1000;
@@ -189,6 +191,10 @@ export async function loadPending(orgId: string, now: Date, lang: string | null)
   // Never fails HQ: before the migration, or on a read error, nothing waits.
   const fees = await feeProposalsAwaiting(orgId, now, lang).catch(() => []);
   for (const f of fees) out.push({ ref: f.ref, kind: "fee", day: f.day, names: f.names, undo: f.undo, askedAt: f.askedAt });
+  // A partner-club pairing waiting for this club's owner to answer
+  // (2026-10-21, `pairing-reply.ts`). Never fails HQ.
+  const pairings = await pairingsAwaitingOwner(orgId).catch(() => []);
+  for (const p of pairings) out.push({ ref: p.ref, kind: "pairing", day: null, club: p.other, ownClub: p.club, askedAt: p.askedAt });
   return out;
 }
 
@@ -302,6 +308,26 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
     // from the quoted row's question ref, never from the words.
     const quotedRow = quotedIsMatchTime && hit.row?.fromMatchTime ? hit.row : null;
     const answersMomAsk = !!quotedRow?.askRef?.startsWith("mom:") && organisersPickMom(org);
+    // A reply to MatchTime's own pairing notice answers it ("1", "2",
+    // "evet", "no thanks"), whatever the router would call it: decided from
+    // the quoted row's question ref, as the Man of the Match answer is, and
+    // read by the pairing reader against the notice (2026-10-21). No router
+    // call: the ref already says what the message is about.
+    const pairingRef = quotedRow?.askRef && parsePairingNoticeKey(quotedRow.askRef) ? quotedRow.askRef : null;
+    if (pairingRef && quotedRow) {
+      const r = await answerPairingInHq({
+        ref: pairingRef,
+        orgId: org.id,
+        text: input.text,
+        senderUserId: input.senderUserId,
+        noticeText: quotedRow.text,
+        noticeAt: quotedRow.createdAt,
+        quoted: true,
+        now,
+      });
+      console.log(`[admin-group] ${messageId}: a reply to the pairing notice: ${r?.outcome ?? "not an answer"}`);
+      return r ? { route: null, outcome: r.outcome, replyText: r.replyText } : null;
+    }
     const recent = log.filter((r) => now.getTime() - r.createdAt.getTime() <= RECENT_MS).slice(-RECENT_MAX);
     // The extractors' recent chat: MatchTime's own lines as MatchTime, an
     // organiser's under his roster name (never a pushname), the way the
@@ -467,6 +493,23 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
             const r = proposalId && feeActor ? await answerFeeProposalYes({ orgId: org.id, proposalId, userId: feeActor, lang, now }) : null;
             return r ? said(r.outcome, r.replyText) : said("hq-nothing-waiting", s.hq_nothing_waiting);
           }
+          if (item.kind === "pairing") {
+            // The router heard a yes to what is waiting; the pairing reader
+            // says which way, against the notice, and the writer decides
+            // whether this person may (owner only).
+            const row = [...log].reverse().find((r) => r.fromMatchTime && r.askRef === item.ref) ?? null;
+            const r = await answerPairingInHq({
+              ref: item.ref,
+              orgId: org.id,
+              text: input.text,
+              senderUserId: input.senderUserId,
+              noticeText: row?.text ?? null,
+              noticeAt: row?.createdAt ?? null,
+              quoted: decision.why === "quoted",
+              now,
+            });
+            return r ? said(r.outcome, r.replyText) : null;
+          }
           if (item.kind === "partner-ask" && actor) {
             const askId = parsePartnerAskRef(item.ref);
             const r = askId ? await answerPartnerAskYes({ orgId: org.id, askId, userId: actor, lang, now }) : null;
@@ -494,6 +537,8 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
               ? s.hq_confirm_teams({ day })
               : decision.item.kind === "partner-ask"
                 ? s.hq_confirm_partner_ask({ asker: item?.club ?? "", day: item?.day ?? "" })
+                : decision.item.kind === "pairing"
+                  ? s.hq_confirm_pairing({ club: item?.ownClub ?? "", other: item?.club ?? "" })
                 : decision.item.kind === "fee"
                   ? s.hq_confirm_fee({ names: item?.names ?? "", day: item?.day ?? "" })
                   : s.hq_confirm_list;

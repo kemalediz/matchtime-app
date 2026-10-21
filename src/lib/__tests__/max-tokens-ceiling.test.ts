@@ -198,6 +198,8 @@ const TRUNCATION_FAILS_CLOSED: Record<string, string> = {
   "lib/roster-survey-classifier.ts": "parse() fails → the caller's fallback classification.",
   "lib/dm-intent.ts":
     "parseDmIntent JSON.parse fails on a truncated body → `other`, which DMs nobody.",
+  "lib/pairing-reply.ts":
+    "JSON-parsed; a cut-off answer fails to parse and is `neither`, which changes no pairing",
   "lib/fee-confirm.ts":
     "parseFeeReplyIntent JSON.parse fails on a truncated body → `neither`, which releases no pay links and cancels no fee.",
   "lib/payment-claim-classifier.ts":

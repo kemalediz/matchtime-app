@@ -14,6 +14,8 @@ const dbMock = vi.hoisted(() => ({
 vi.mock("../db", () => ({ db: dbMock }));
 const noticeMock = vi.hoisted(() => ({ sendAdminNotice: vi.fn() }));
 vi.mock("../admin-channel", () => noticeMock);
+const hqLogMock = vi.hoisted(() => ({ recordMatchTimeQuestion: vi.fn() }));
+vi.mock("../admin-group-log", () => hqLogMock);
 
 import {
   actOnPartnership,
@@ -55,6 +57,29 @@ describe("createPartnership", () => {
     expect(fnf.text("https://L")).toContain("https://L");
     // Sutton FC is Turkish in this test: its notice is in Turkish.
     expect(sutton.text("https://L")).toContain("eşleştirdi");
+  });
+
+  it("each notice tells the owner to reply 1 or 2, and is tagged with its pairing and club so the reply finds it", async () => {
+    await createPartnership({ creatorUserId: "kemal", askerOrgId: "fnf", partnerOrgId: "sutton", now: NOW });
+    const calls = noticeMock.sendAdminNotice.mock.calls.map((c) => c[0]);
+    const fnf = calls.find((c) => c.orgId === "fnf");
+    const sutton = calls.find((c) => c.orgId === "sutton");
+    expect(fnf.aboutKey).toBe("pairing:p1:fnf");
+    expect(sutton.aboutKey).toBe("pairing:p1:sutton");
+    expect(fnf.text("https://L", "dm")).toContain("Club owner: reply *1* to accept or *2* to decline, or open https://L");
+    expect(fnf.text("https://L", "group")).toContain("Club owner: reply to this message with *1* to accept or *2* to decline");
+    expect(sutton.text("https://L", "dm")).toContain("kabul etmek için *1*, reddetmek için *2* yazın");
+    // Sent by DM: nothing logged in an admin group.
+    expect(hqLogMock.recordMatchTimeQuestion).not.toHaveBeenCalled();
+  });
+
+  it("a notice posted in a club's admin group is logged there as MatchTime's question, by its exact words", async () => {
+    noticeMock.sendAdminNotice.mockImplementation(async (req: { orgId: string }) =>
+      req.orgId === "fnf" ? { channel: "admin-group", queued: 1, groupText: "THE POSTED WORDS" } : { channel: "dm", queued: 1 },
+    );
+    await createPartnership({ creatorUserId: "kemal", askerOrgId: "fnf", partnerOrgId: "sutton", now: NOW });
+    expect(hqLogMock.recordMatchTimeQuestion).toHaveBeenCalledTimes(1);
+    expect(hqLogMock.recordMatchTimeQuestion).toHaveBeenCalledWith({ orgId: "fnf", askRef: "pairing:p1:fnf", text: "THE POSTED WORDS", now: NOW });
   });
 
   it("refuses a club paired with itself, and a pair that exists, writing nothing", async () => {

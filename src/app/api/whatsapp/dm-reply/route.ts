@@ -898,6 +898,29 @@ export async function POST(request: Request) {
     }
   }
 
+  // ── A club owner answers the partner-club pairing notice (2026-10-21) ──
+  //   "Club owner: reply *1* to accept or *2* to decline" (Kemal: "whatsapp
+  //   reply like pressing 1 or 2 should also do the same job"). The fee
+  //   confirm's pattern (lib/pairing-reply.ts): a swipe-reply finds the
+  //   notice by its id and acts on that pairing and club only; an unquoted
+  //   reply is read against MatchTime's recent DMs, and with two pairings
+  //   waiting it asks which. The model reads the reply; the write is
+  //   `actOnPartnership` (owner only). Ahead of the fee capture so a "1"
+  //   quoting the notice is never read as a £1 fee. Engages only for a
+  //   sender whose phone was sent a pairing notice (one read otherwise, no
+  //   model); null means the DM carries on exactly as before.
+  {
+    const { handlePairingReplyDm } = await import("@/lib/pairing-reply");
+    const replyPhone = await dmPhone();
+    const pairing = await handlePairingReplyDm({ userId: user.id, text, quoted, phone: replyPhone });
+    if (pairing) {
+      if (replyPhone) {
+        await db.botJob.create({ data: { orgId: pairing.orgId, kind: "dm", phone: replyPhone, text: pairing.reply, ...REPLY_PRIORITY } });
+      }
+      return NextResponse.json({ ok: true, handled: pairing.handled, outcome: pairing.outcome });
+    }
+  }
+
   // ── Money-collector fee capture (2026-06-04) ────────────────────────
   //   If this sender is a money collector for a payment-collecting org
   //   with a just-played match awaiting its fee, their DM ("£8 each" /

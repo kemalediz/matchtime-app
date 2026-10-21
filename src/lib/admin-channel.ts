@@ -78,6 +78,12 @@ export interface AdminNoticeRequest extends AdminNotice {
    * club on "each-admin" (Sutton FC) must see no change.
    */
   holdOvernight?: boolean;
+  /**
+   * What the notice is about, on every DM copy (`BotJob.aboutKey`), when
+   * the caller will want a WhatsApp reply or reaction to find it: the
+   * partner-club pairing notice (`pairing-reply.ts`). Absent: unchanged.
+   */
+  aboutKey?: string | null;
 }
 
 /** A club's channel, loaded once per notice (or once per scheduler poll). */
@@ -186,7 +192,9 @@ function groupText(notice: AdminNotice): string {
  * Not `owner-dm.ts`: that module DMs the PLATFORM owner about club
  * approvals. This is the club's own organisers.
  */
-export async function sendAdminNotice(req: AdminNoticeRequest): Promise<{ channel: "dm" | "admin-group" | "none"; queued: number }> {
+export async function sendAdminNotice(
+  req: AdminNoticeRequest,
+): Promise<{ channel: "dm" | "admin-group" | "none"; queued: number; groupText?: string }> {
   const { orgId } = req;
   const now = req.now ?? new Date();
   const ch = await loadAdminChannel(orgId);
@@ -195,10 +203,13 @@ export async function sendAdminNotice(req: AdminNoticeRequest): Promise<{ channe
   const sendAfter = req.holdOvernight === false ? null : adminNoticeSendAfter(now, ch.quietHours);
 
   if (ch.cfg.mode === "admin-group" && ch.cfg.adminGroupId && ch.adminGroupPostable !== false) {
+    const text = groupText(req);
     await db.botJob.create({
-      data: { orgId, kind: "admin-group", text: groupText(req), ...(sendAfter ? { sendAfter } : {}) },
+      data: { orgId, kind: "admin-group", text, ...(sendAfter ? { sendAfter } : {}) },
     });
-    return { channel: "admin-group", queued: 1 };
+    // The exact words posted, so a caller can log them as MatchTime's
+    // question in the group and a reply quoting them is found by them.
+    return { channel: "admin-group", queued: 1, groupText: text };
   }
 
   // No Pi capability at queue time: the group case was handled above, so
@@ -216,6 +227,7 @@ export async function sendAdminNotice(req: AdminNoticeRequest): Promise<{ channe
         phone: bare(user.phoneNumber),
         text: await dmText(ch, req, user.id),
         ...(sendAfter ? { sendAfter } : {}),
+        ...(req.aboutKey ? { aboutKey: req.aboutKey } : {}),
       },
     });
     queued++;

@@ -91,6 +91,14 @@ export async function POST(request: Request) {
       console.log(`[fee-confirm-reaction] ${emoji} on ${waMessageId} from=${fromPhone || "?"}: ${JSON.stringify(fee)}`);
       return NextResponse.json(fee);
     }
+    // Or a club owner's ✅/👍 on the partner-club pairing notice: their
+    // acceptance (2026-10-21). See src/lib/pairing-reply.ts.
+    const { handlePairingReaction } = await import("@/lib/pairing-reply");
+    const pairing = await handlePairingReaction({ waMessageId, emoji, fromPhone });
+    if (pairing) {
+      console.log(`[pairing-reply] ${emoji} on ${waMessageId} from=${fromPhone || "?"}: ${JSON.stringify(pairing)}`);
+      return NextResponse.json(pairing);
+    }
     return NextResponse.json({ ok: true, ignored: "no-open-offer" });
   }
 

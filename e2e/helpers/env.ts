@@ -119,6 +119,12 @@ export const E2E = {
    *  squad's pay links. Absent or `{}` → "neither", which moves no money. */
   FEE_REPLY_STUB_FILE: path.join(REPO_ROOT, ".e2e", "fee-reply-stub.json"),
 
+  /** The PAIRING-REPLY stub file (2026-10-21): a club owner's reply to the
+   *  partner-club pairing notice → "accept" | "decline" | "neither" from
+   *  `lib/pairing-reply.ts`'s model. Absent or `{}` → "neither", which
+   *  changes nothing. */
+  PAIRING_REPLY_STUB_FILE: path.join(REPO_ROOT, ".e2e", "pairing-reply-stub.json"),
+
   /** The ROSTER-SURVEY stub file (quoted-reply context S3): a check-in
    *  reply → "in" | "maybe" | "out" | "unclear". Absent or `{}` →
    *  "unclear", which saves nothing. Both record each user turn in
@@ -234,6 +240,7 @@ export function buildTestEnv(): Record<string, string> {
     MT_TEST_PAYMENT_CLAIM_STUB_FILE: E2E.PAYMENT_CLAIM_STUB_FILE,
     MT_TEST_MATCH_AVAILABILITY_STUB_FILE: E2E.MATCH_AVAILABILITY_STUB_FILE,
     MT_TEST_FEE_REPLY_STUB_FILE: E2E.FEE_REPLY_STUB_FILE,
+    MT_TEST_PAIRING_REPLY_STUB_FILE: E2E.PAIRING_REPLY_STUB_FILE,
     MT_TEST_ROSTER_SURVEY_STUB_FILE: E2E.ROSTER_SURVEY_STUB_FILE,
     // Phase 1 autonomous onboarding (bot-added → intro → YES → org).
     // ON for the suite so the flow is exercisable; prod keeps it OFF
@@ -332,6 +339,7 @@ export function buildTestEnv(): Record<string, string> {
     // And for the fee-reply (pay links) and roster check-in classifiers
     // (quoted-reply context S3).
     env.MT_TEST_FEE_REPLY_STUB_FILE = "";
+    env.MT_TEST_PAIRING_REPLY_STUB_FILE = "";
     env.MT_TEST_ROSTER_SURVEY_STUB_FILE = "";
     // THE KEY A LIVE SWEEP SPENDS IS THE DEVELOPER'S, NOT PRODUCTION'S.
     //

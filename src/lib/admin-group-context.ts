@@ -13,8 +13,11 @@ import { messageMentionsBotExplicitly } from "./interaction-contract";
 export interface PendingWithLabel extends PendingItem {
   /** The game's day, in the club's language, for teams and a partner ask. */
   day: string | null;
-  /** A partner club's ask: the asking club's name. */
+  /** A partner club's ask: the asking club's name. A pairing: the other
+   *  club's name. */
   club?: string | null;
+  /** A pairing: this club's own name. */
+  ownClub?: string | null;
   /** A free place question: who, joined, and whether it takes it away. */
   names?: string | null;
   undo?: boolean;
@@ -69,6 +72,8 @@ export function organisersContext(p: {
         ? `WAITING: approval of the proposed teams for ${i.day}, asked at ${at}.`
         : i.kind === "partner-ask"
           ? `WAITING: YES to post ${i.club}'s ask for a player in the players' group, for ${i.day}, asked at ${at}.`
+          : i.kind === "pairing"
+            ? `WAITING: the club owner's answer to pairing ${i.ownClub} with ${i.club} as partner clubs (1 or yes accepts, 2 or no declines), asked at ${at}.`
           : i.kind === "fee"
             ? i.undo
               ? `WAITING: YES to take the free place away from ${i.names} for ${i.day}, asked at ${at}.`
