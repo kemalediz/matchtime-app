@@ -1220,7 +1220,9 @@ test.describe("a ✅ reaction on the PAYG fee question is the collector's yes", 
     await club(db, { org, group, act: `e2e-mw${n}-act`, sport: `e2e-mw${n}-sport`, name: `React ${tag}`, collector: T.col.id });
     await person(db, org, T.col, "OWNER");
     for (const p of [T.reg, T.pay]) await person(db, org, p);
-    await db.run(`UPDATE "Organisation" SET "paymentHolderId" = $2, "payMethodDirect" = true WHERE id = $1`, [org, T.col.id]);
+    // Quiet hours off: these tests run on the real clock, and the fee
+    // question and pay links wait out quiet hours (2026-10-21).
+    await db.run(`UPDATE "Organisation" SET "paymentHolderId" = $2, "payMethodDirect" = true, "quietHoursEnabled" = false WHERE id = $1`, [org, T.col.id]);
     await fixture(db, matchId, `e2e-mw${n}-act`, PLAYED, "COMPLETED");
     await attend(db, org, matchId, T.reg.id, "CONFIRMED", 1);
     await attend(db, org, matchId, T.pay.id, "CONFIRMED", 2);
