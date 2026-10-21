@@ -73,6 +73,13 @@ vi.mock("@/lib/pairing-reply", () => pairing);
 const hqScore = vi.hoisted(() => ({ answerHqScore: vi.fn(), hqScoreRouting: vi.fn() }));
 vi.mock("@/lib/admin-group-score", () => hqScore);
 
+// Partner clubs asked in an organiser's words (slice S6): none by default.
+const partnerWords = vi.hoisted(() => ({
+  activePartnerChoices: vi.fn().mockResolvedValue([]),
+  askPartnersFromWords: vi.fn(),
+}));
+vi.mock("@/lib/partner-ask-words", () => partnerWords);
+
 import { understandAdminMessage } from "../admin-group-understand";
 
 const NOW = new Date("2026-10-16T09:10:00Z");
@@ -140,6 +147,8 @@ beforeEach(() => {
   dbMock.adminGroupMessage.findMany.mockResolvedValue([]);
   dbMock.user.findMany.mockResolvedValue([]);
   dbMock.membership.findFirst.mockResolvedValue(null);
+  partnerWords.activePartnerChoices.mockResolvedValue([]);
+  partnerWords.askPartnersFromWords.mockResolvedValue({ outcome: "xask-words-asked", replyText: "I've asked *Sutton FC*'s organisers.", asked: 1 });
 });
 
 describe("the router is the players' group's router, shown the organisers' context", () => {
@@ -1145,5 +1154,67 @@ describe("Man of the Match, where the organisers pick it", () => {
     const asked = "Score saved: Yellow 7, Red 4. Who was Man of the Match?";
     hqLog.hqLogSince.mockResolvedValue([mtRow(ASKED, "mom:m1", asked)]);
     expect((await ask("Naim", "other_att", { quoted: { text: asked, fromMatchTime: true } }))?.outcome).toBe("squad-changed");
+  });
+});
+
+describe("slice S6: an organiser asks MatchTime to ask the partner clubs", () => {
+  const recruitFromPartners = (clubRef: string) =>
+    adminFacts({ action: "recruit", undo: false, matchDay: "", partnerClubs: true, clubRef });
+
+  it("a club with no partner: the router's header is unchanged", async () => {
+    await ask("ask Sutton if anyone can play", "none");
+    expect(requests[0].user).not.toContain("another club");
+  });
+
+  it("a club with partners: the header names them", async () => {
+    partnerWords.activePartnerChoices.mockResolvedValue([
+      { partnershipId: "p1", partnerOrgId: "sutton", name: "Sutton FC" },
+      { partnershipId: "p2", partnerOrgId: "vets", name: "MT Vets" },
+    ]);
+    await ask("ask Sutton if anyone can play", "none");
+    expect(requests[0].user).toContain("by its name (this club's partner clubs are Sutton FC and MT Vets) or as the partner clubs");
+  });
+
+  it("a partner read that fails never fails HQ: the header names none", async () => {
+    partnerWords.activePartnerChoices.mockRejectedValue(new Error("db down"));
+    const r = await ask("ask Sutton if anyone can play", "none");
+    expect(r).toBeNull();
+    expect(requests[0].user).not.toContain("partner clubs are");
+  });
+
+  it("admin_ops, recruit from a partner club: the shared door, via hq, one reply", async () => {
+    const deps = { routerModel: routeTo("admin_ops"), extractorModel: recruitFromPartners("Sutton") };
+    const r = await ask("ask Sutton if anyone can play tonight", "admin_ops", { deps });
+    expect(partnerWords.askPartnersFromWords).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: "org-fnf", requestedByUserId: "u-admin", via: "hq", clubRef: "Sutton", lang: "en", now: NOW }),
+    );
+    expect(r).toEqual({ route: "admin_ops", outcome: "xask-words-asked", replyText: "I've asked *Sutton FC*'s organisers." });
+    expect(groupAsk.askPlayersGroup).not.toHaveBeenCalled();
+  });
+
+  it("no club named: clubRef null, every partner", async () => {
+    const deps = { routerModel: routeTo("admin_ops"), extractorModel: recruitFromPartners("") };
+    await ask("search for players from our partner groups", "admin_ops", { deps });
+    expect(partnerWords.askPartnersFromWords.mock.calls[0][0].clubRef).toBeNull();
+  });
+
+  it("the money collector who is not an organiser may not ask: the one line naming who can", async () => {
+    const deps = { routerModel: routeTo("admin_ops"), extractorModel: recruitFromPartners("Sutton") };
+    const r = await ask("ask Sutton if anyone can play", "admin_ops", {
+      deps,
+      organiser: false,
+      member: true,
+      senderUserId: "u-collector",
+      org: { ...ORG, paymentHolderId: "u-collector" },
+    });
+    expect(r?.outcome).toBe("hq-only-organisers");
+    expect(partnerWords.askPartnersFromWords).not.toHaveBeenCalled();
+  });
+
+  it("a recruit of the club's own players is still not done from HQ, unchanged", async () => {
+    const deps = { routerModel: routeTo("admin_ops"), extractorModel: adminFacts({ action: "recruit", lookbackMatches: 5 }) };
+    const r = await ask("message the lads from the last 5 games", "admin_ops", { deps });
+    expect(r?.outcome).toBe("hq-not-here");
+    expect(partnerWords.askPartnersFromWords).not.toHaveBeenCalled();
   });
 });

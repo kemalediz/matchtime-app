@@ -378,6 +378,7 @@ import { rosterMemberByPhone } from "@/lib/roster-name-by-phone";
 import { claimGroupReplies } from "@/lib/group-reply-claims";
 import { handlePartnerVolunteer } from "@/lib/partner-guest";
 import { askPartnerWhichByDm } from "@/lib/partner-guest-dm";
+import { askPartnersFromWords, partnerClubsForRouter } from "@/lib/partner-ask-words";
 import { chatAuthorOf, groupChatHistory } from "@/lib/group-chat-history";
 
 interface InboundMessage {
@@ -2169,11 +2170,29 @@ async function handleAnalyzeRequest(request: Request) {
     })),
     new Date(),
   );
+  // THE CLUB'S PARTNER CLUBS, for an owner's or admin's message (cross-club
+  // ask, slice S6, 2026-10-21): shown to the router above it, so "@Match
+  // Time ask Sutton if anyone can play" reads as an instruction to
+  // MatchTime (admin_ops) and reaches the admin extractor. Null, and the
+  // turn byte for byte as before, for a club with no active partner.
+  const partnerRouter =
+    fresh.length > 0
+      ? await partnerClubsForRouter(
+          org.id,
+          fresh.map((m) => senderById.get(m.waMessageId)?.userId ?? null),
+        ).catch((err) => {
+          console.error("[analyze] partner clubs read failed:", err instanceof Error ? err.message : "failed");
+          return null;
+        })
+      : null;
   const gate =
     fresh.length > 0 && routerIsNeeded()
       ? await gateBatch(
           fresh.map((m) => ({
             waMessageId: m.waMessageId,
+            ...(partnerRouter && partnerRouter.organiserIds.has(senderById.get(m.waMessageId)?.userId ?? "")
+              ? { partnerClubs: partnerRouter.names }
+              : {}),
             // `pipelineBody`, not `m.body`: a message a fast path peeled
             // a clause off is routed on WHAT IS LEFT. Routing the whole
             // body would label the message by the half that has already
@@ -2740,6 +2759,14 @@ async function handleAnalyzeRequest(request: Request) {
   //   `lib/stats-blast.ts`.
   const statsBlastRequests: Array<{ msg: InboundMessage }> = [];
 
+  // ── AND AN ASK TO THE PARTNER CLUBS (slice S6, 2026-10-21) ──────────
+  //   "@Match Time ask Sutton if anyone can play": decided by the engine
+  //   (an admin, tagged), performed in the same batch-final pass after
+  //   every write, so the places it asks for count this batch's drops.
+  //   It DMs nobody: `askPartnersFromWords` asks each partner through
+  //   `requestPartnerAsk`, the match page button's own door.
+  const partnerAskRequests: Array<{ msg: InboundMessage; sender: ResolvedSender; clubRef: string | null; matchId: string | null }> = [];
+
   // ── EVERY MESSAGE NOBODY OWNED ─────────────────────────────────────
   //   The input to `lib/operator-note.ts`, which is what replaces "fall
   //   back to the analyzer". A `none`-routed message lands here too and
@@ -3023,6 +3050,9 @@ async function handleAnalyzeRequest(request: Request) {
       // nothing here re-decides, it only defers.
       if (adminOutcome?.statsBlastRequest) {
         statsBlastRequests.push({ msg });
+      }
+      if (adminOutcome?.partnerAskRequest) {
+        partnerAskRequests.push({ msg, sender, ...adminOutcome.partnerAskRequest });
       }
       // The asker's own stats link (2026-09-17, `QuestionTopic.my_stats`).
       // The engine has applied the tag and resolved-sender gates; this
@@ -3795,6 +3825,44 @@ async function handleAnalyzeRequest(request: Request) {
       });
     } catch (err) {
       console.error("[analyze] verdict-driven recruit failed:", err);
+    }
+  }
+
+  // ── ASK THE PARTNER CLUBS (slice S6, 2026-10-21) ───────────────────
+  //   After every write, like the recruit blast above. The last request in
+  //   the batch only: two organisers asking at once ask each partner once
+  //   (and `requestPartnerAsk` refuses a second open ask per pair anyway).
+  //   ONE reply, merged into the message's single result.
+  if (partnerAskRequests.length > 0) {
+    const ask = partnerAskRequests[partnerAskRequests.length - 1];
+    try {
+      const r = await askPartnersFromWords({
+        orgId: org.id,
+        requestedByUserId: ask.sender.userId,
+        via: "group",
+        clubRef: ask.clubRef,
+        matchId: ask.matchId,
+        lang: org.language,
+        now: new Date(),
+      });
+      const idx = results.findIndex((x) => x.waMessageId === ask.msg.waMessageId);
+      if (idx >= 0) {
+        results[idx].reply = mergeRecruitReply(results[idx].reply, r.replyText);
+        results[idx].react = results[idx].react ?? (r.asked > 0 ? "✅" : null);
+        if (results[idx].handledBy === "ignored" || results[idx].intent === "noise" || results[idx].intent === "unclear") {
+          results[idx].handledBy = "fast-path";
+          results[idx].intent = "partner_ask";
+        }
+      } else {
+        results.push({ waMessageId: ask.msg.waMessageId, handledBy: "fast-path", intent: "partner_ask", react: r.asked > 0 ? "✅" : null, reply: r.replyText });
+      }
+      await augmentAnalysis({
+        waMessageId: ask.msg.waMessageId,
+        action: `partner-ask:${r.asked}`,
+        reasoningSuffix: `admin asked the partner clubs (${r.outcome})`,
+      });
+    } catch (err) {
+      console.error("[analyze] partner ask failed:", err instanceof Error ? err.message : "failed");
     }
   }
 

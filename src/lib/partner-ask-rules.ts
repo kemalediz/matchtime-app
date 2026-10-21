@@ -28,7 +28,7 @@ export const PARTNER_ASKS_PER_DAY = 2;
  *  a partial unique index holds it (prisma/sql/partner-ask-check.sql). */
 export const OPEN_ASK_STATUSES = ["awaiting-approval", "posted"] as const;
 export type PartnerAskStatus = "awaiting-approval" | "posted" | "filled" | "declined" | "expired" | "cancelled" | "refused";
-export type PartnerAskVia = "button" | "hq" | "dm" | "auto" | "link";
+export type PartnerAskVia = "button" | "hq" | "dm" | "group" | "auto" | "link";
 
 /** Plan 3.13: a post whose WhatsApp id never came back is reported to the
  *  asking club's organisers after this long, never silently. */

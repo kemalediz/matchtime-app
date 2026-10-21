@@ -3094,6 +3094,23 @@ export function decide(input: EngineInput): EngineResult {
           );
           return;
         }
+        // ── ANOTHER CLUB'S PLAYERS (slice S6, 2026-10-21) ────────────
+        //
+        // "@Match Time ask Sutton if anyone can play": the same two gates
+        // (an admin, tagged), then the partner clubs are asked instead of
+        // the club's own past players being DM'd. Never both. Which
+        // partners the club name means is code's, after the batch
+        // (`partner-ask-words.ts`); the engine only carries the words.
+        if (facts.partnerClubs) {
+          emit({
+            kind: "partner_ask",
+            clubRef: facts.clubRef?.trim() || null,
+            matchId: state.matchId,
+            sourceMessageId: msg.id,
+            reason: "admin asked MatchTime to ask the partner clubs for a player",
+          });
+          return;
+        }
         // "the last 5 matches" is a fact about the TEXT. The number the
         // model reports is untrusted and clamped to [1, 12] here, by
         // `recruit.ts`'s own clamp, because the ceiling exists for a

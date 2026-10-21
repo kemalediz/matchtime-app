@@ -18,6 +18,8 @@ import {
   routeBatch,
   renderRouterTurn,
   ORGANISERS_HEADER,
+  partnerClubsLine,
+  organisersHeader,
 } from "../router";
 import { gateBatch } from "../gate";
 import {
@@ -708,6 +710,39 @@ describe("the organisers' group", () => {
     expect(renderRouterTurn([{ id: "h", authorName: "Raihan", body: "yes", organisers: { context: ["WAITING: nothing."] } }], NOW)).toBe(
       `${NOW_LINE}\n${ORGANISERS_HEADER}\nWAITING: nothing.\n[h] Raihan: yes`,
     );
+  });
+
+  // Slice S6 (2026-10-21): partner clubs. The organisers' header says that
+  // asking another club is admin_ops; a players' group organiser in a club
+  // with partners is shown the partners above the message.
+  it("a players' group organiser, in a club with partners: the partner line above the message", () => {
+    const turn = renderRouterTurn([{ id: "a", authorName: "Raihan", body: "@Match Time ask Sutton", partnerClubs: ["Sutton FC", "MT Vets"] }], NOW);
+    expect(turn).toBe(`${NOW_LINE}\n${partnerClubsLine(["Sutton FC", "MT Vets"])}\n[a] Raihan: @Match Time ask Sutton`);
+    expect(partnerClubsLine(["Sutton FC", "MT Vets"])).toMatch(/^PARTNER CLUBS of this club: Sutton FC, MT Vets\. /);
+    expect(partnerClubsLine(["Sutton FC"])).toMatch(/routed as if this line were not here\.$/);
+  });
+
+  it("the organisers' header: unchanged without partners; with them, one sentence naming them before the last", () => {
+    expect(ORGANISERS_HEADER).toBe(organisersHeader([]));
+    expect(ORGANISERS_HEADER).not.toMatch(/another club/);
+    expect(ORGANISERS_HEADER).toMatch(/is other_att\. Nothing else changes: a shortage or a question put to the other organisers is still none\.$/);
+    expect(organisersHeader(["Sutton FC"])).toContain(
+      "is other_att. Asking the bot to ask another club for a player, by its name (this club's partner club is Sutton FC) or as the partner clubs, other clubs or other groups, is admin_ops too; the club's own group is still ask_group. Nothing else changes:",
+    );
+    expect(organisersHeader(["A", "B", "C"])).toContain("(this club's partner clubs are A, B and C)");
+    const turn = renderRouterTurn([{ id: "h", authorName: "Raihan", body: "x", organisers: { context: ["WAITING: nothing."] }, partnerClubs: ["Sutton FC"] }], NOW);
+    expect(turn).toBe(`${NOW_LINE}\n${organisersHeader(["Sutton FC"])}\nWAITING: nothing.\n[h] Raihan: x`);
+  });
+
+  it("no partner line without partners, and never in the organisers' group", () => {
+    expect(renderRouterTurn([{ id: "a", authorName: "Ali", body: "in" }], NOW)).not.toContain("PARTNER CLUBS");
+    expect(renderRouterTurn([{ id: "a", authorName: "Ali", body: "in", partnerClubs: [] }], NOW)).toBe(`${NOW_LINE}\n[a] Ali: in`);
+    expect(renderRouterTurn([{ id: "h", authorName: "Raihan", body: "x", organisers: { context: [] }, partnerClubs: ["Sutton FC"] }], NOW)).not.toContain("PARTNER CLUBS of this club");
+  });
+
+  it("the partner line never carries a dash", () => {
+    expect(partnerClubsLine(["A"])).not.toMatch(/[–—]/);
+    expect(ORGANISERS_HEADER).not.toMatch(/[–—]/);
   });
 
   it("an organisers' route on a players' group message reads as unsure, never none", () => {

@@ -31,7 +31,10 @@
  *                         and for help it does not answer
  *   ask_group             one place-open ask in the players' group
  *                         (`admin-group-ask-group.ts`)
- *   admin_ops             the shared admin extractor: a free place
+ *   admin_ops             the shared admin extractor: players from a
+ *                         partner club ("ask Sutton if anyone can play",
+ *                         slice S6) are asked for by `partner-ask-words.ts`,
+ *                         an organiser's alone; a free place
  *                         ("Bilal washed the bibs, he's free this week",
  *                         action fee_waiver, or one taken back) is ASKED
  *                         about by `fee-waiver.ts` and given on the YES
@@ -115,6 +118,7 @@ import { organisersPickMom } from "./mom-chooser";
 import { readHqNameList } from "./admin-group-name-list";
 import { answerPairingInHq, pairingsAwaitingOwner } from "./pairing-reply";
 import { parsePairingNoticeKey } from "./club-partnership-rules";
+import { activePartnerChoices, askPartnersFromWords } from "./partner-ask-words";
 
 /** How far back the router's "earlier here" lines reach, and how many. */
 const RECENT_MS = 30 * 60 * 1000;
@@ -257,10 +261,13 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
   const weekly = org.squadMode !== "monthly";
 
   return withOrgAiBudget(org.id, async () => {
-    const [pending, logAll, body] = await Promise.all([
+    const [pending, logAll, body, partners] = await Promise.all([
       loadPending(org.id, now, lang),
       hqLogSince(org.id, new Date(now.getTime() - DAY_MS)),
       nameMentions(org.id, input.text, input.mentionNames),
+      // The club's partner clubs, named in the router's header (slice S6).
+      // Never fails HQ: on a read error the header names none.
+      activePartnerChoices(org.id).catch(() => []),
     ]);
     const log = logAll.filter((r) => r.waMessageId !== messageId);
     // THE MESSAGE A REPLY QUOTES (quoted-reply context, slice S4), by its
@@ -358,6 +365,9 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
               body,
               authorName: input.senderName,
               organisers: { context: organisersContext({ pending, recent, score: score.waiting }) },
+              // "ask Friday MT if anyone can play" is an instruction to
+              // MatchTime (admin_ops), not the players' group's own ask.
+              ...(partners.length > 0 ? { partnerClubs: partners.map((p) => p.name) } : {}),
               ...(replyShown ? { reply: replyShown } : {}),
             },
           ],
@@ -637,6 +647,22 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
           now,
         });
         const facts = extracted.facts;
+        // Another club's players (slice S6, 2026-10-21): "ask Sutton if
+        // anyone can play", "search for players from our partner groups".
+        // The shared door every surface uses (`partner-ask-words.ts`);
+        // an organiser's alone, like ask_group (the collector may not).
+        if (facts.kind === "admin" && facts.action === "recruit" && facts.partnerClubs) {
+          if (!actor) return onlyOrganisers();
+          const r = await askPartnersFromWords({
+            orgId: org.id,
+            requestedByUserId: actor,
+            via: "hq",
+            clubRef: facts.clubRef ?? null,
+            lang,
+            now,
+          });
+          return said(r.outcome, r.replyText);
+        }
         if (facts.kind === "admin" && facts.action === "fee_waiver") {
           // MatchTime ASKS; the YES applies it (review of #301, item 2).
           const r = await proposeFeeFreeInHq({

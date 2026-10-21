@@ -3850,6 +3850,28 @@ export const tr: Strings = {
   // ─── İstekten sonra misafirler (slice S4) ───────────────────────────
   xask_thanks_dm: (p) => `*${p.asker}* oyuncusunu buldu. Teklifin için teşekkürler 🙏`,
   xask_game_off_dm: (p) => `*${p.asker}* kulübünün ${p.day} maçı iptal oldu, yani artık gerek kalmadı. Teklifin için teşekkürler 🙏`,
+  xaskw_posted_one: (p) => `*${p.partner}* grubunda paylaştım. VARIM diye yanıtlayan herkes yedek listenize girer.`,
+  xaskw_awaiting_one: (p) =>
+    `*${p.partner}* organizatörlerine sordum. Evet derlerse gruplarında paylaşırım ve VARIM diye yanıtlayan herkes yedek listenize girer.`,
+  xaskw_refused_generic: (p) => `Bu maç için şu an *${p.partner}* kulübüne soramıyorum.`,
+  xaskw_header_asked: "Partner kulüplerinize sordum:",
+  xaskw_header_not_asked: "Partner kulüplerinize soramadım:",
+  xaskw_line_posted: (p) => `• *${p.partner}*: gruplarında paylaşıldı.`,
+  xaskw_line_awaiting: (p) => `• *${p.partner}*: organizatörlerinin onayı bekleniyor.`,
+  xaskw_bench_line: "VARIM diye yanıtlayan herkes yedek listenize girer.",
+  xaskw_line_too_late: (p) => `• *${p.partner}*: artık çok geç, son istek başlama saatinden ${p.hours} saat önce gider.`,
+  xaskw_line_daily_cap: (p) => `• *${p.partner}*: bugün zaten iki istek aldılar.`,
+  xaskw_line_already_open: (p) => `• *${p.partner}*: bu maç için onlara açık bir istek zaten var.`,
+  xaskw_line_no_places: (p) => `• *${p.partner}*: bu maçta boş yer yok.`,
+  xaskw_line_off: (p) => `• *${p.partner}*: ayarlarınızda partner kulüplerden oyuncu isteme kapalı.`,
+  xaskw_line_unreachable: (p) => `• *${p.partner}*: gruplarına şu an sorulamıyor.`,
+  xaskw_line_generic: (p) => `• *${p.partner}*: bu maç için şu an onlara sorulamıyor.`,
+  xaskw_no_partner:
+    "Henüz partner kulübünüz yok, bu yüzden başka bir kulübe soramıyorum. MatchTime sizi bir kulüple eşleştirdiğinde iki kulüp de bunu Ayarlar, Partner kulüpler bölümünde kabul eder.",
+  xaskw_off: "Partner kulüplerden oyuncu isteme kapalı. Bir sahip ya da yönetici bunu Ayarlar, Partner kulüpler bölümünden açabilir.",
+  xaskw_no_match: (p) => `"${p.ref}" adında bir partner kulübünüz yok. Partner kulüpleriniz: ${p.partners}.`,
+  xaskw_not_sure: "Partner kulüplerinize sormamı isteyip istemediğinizden emin olamadım. Hangi kulüp olduğunu yazın ya da hepsine sor deyin.",
+  xaskw_ambiguous: (p) => `"${p.ref}" ${p.choice} olabilir. Hangisi olduğunu yazın ya da tüm partner kulüplerinize sorun.`,
   xask_picked_dm: (p) =>
     `✅ *${p.asker}* için oynuyorsun: ${p.day}, ${p.venue}. Gelemeyeceksen buraya *YOKUM* yaz.`,
   xask_guests_title: "Partner kulüplerden misafirler",

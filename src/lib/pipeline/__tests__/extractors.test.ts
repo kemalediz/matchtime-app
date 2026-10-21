@@ -441,7 +441,7 @@ describe("parseFacts (other routes)", () => {
     for (const action of ["bulk_payment", "fee_waiver", "reminder", "recruit", "stats_blast", "other"]) {
       expect(p.split(`\n  "${action}" `).length, action).toBe(2);
     }
-    for (const field of ["payerRef", "count", "coveredRefs", "undo", "matchDay", "phrase", "note", "lookbackMatches"]) {
+    for (const field of ["payerRef", "count", "coveredRefs", "undo", "matchDay", "phrase", "note", "lookbackMatches", "partnerClubs", "clubRef"]) {
       expect(p.split(`\n  ${field} `).length, field).toBe(2);
     }
     expect(p).not.toMatch(/WHO DOES THE WORK/);
@@ -504,6 +504,61 @@ describe("parseFacts (other routes)", () => {
       phrase: "tomorrow at 6",
       note: "bring the bibs",
     });
+  });
+
+  // ── Slice S6 (2026-10-21): partner clubs asked in the organiser's words.
+  // Two facts about the TEXT: the sender wants players from ANOTHER club,
+  // and that club's name as written. Code looks the name up against the
+  // club's active partners (`partner-ask-words-rules.ts`).
+
+  it("admin · the S6 rewrite: partner clubs defined once, EN and TR examples, near misses", () => {
+    const p = EXTRACTOR_PROMPTS.admin;
+    expect(p).toMatch(/"Sutton'a sor bakalım oynayan var mı"[^\n]*clubRef "Sutton"/);
+    expect(p).toMatch(/"search for players from our partner groups"[^\n]*partnerClubs true, clubRef ""/);
+    expect(p).toMatch(/"Sutton were great last week"[^\n]*other/);
+    expect(p).not.toMatch(/[–—]/);
+  });
+
+  it("admin · the schema requires the two S6 facts", () => {
+    const schema = factsSchemaFor("admin_ops") as { required: string[]; properties: Record<string, unknown> };
+    expect(schema.required).toEqual(expect.arrayContaining(["partnerClubs", "clubRef"]));
+    expect(schema.properties.partnerClubs).toEqual({ type: "boolean" });
+    expect(schema.properties.clubRef).toEqual({ type: "string" });
+  });
+
+  it("admin · recruit from partner clubs: partnerClubs and the name as written", () => {
+    const { facts } = parseFacts(
+      "admin",
+      '{"action":"recruit","payerRef":"","count":0,"coveredRefs":[],"undo":false,"matchDay":"","phrase":"","note":"","lookbackMatches":0,"partnerClubs":true,"clubRef":" Sutton "}',
+      "wa-1",
+    );
+    expect(facts).toMatchObject({ kind: "admin", action: "recruit", partnerClubs: true, clubRef: "Sutton" });
+  });
+
+  it("admin · a club name implies another club even when partnerClubs came back false", () => {
+    const { facts } = parseFacts(
+      "admin",
+      '{"action":"recruit","payerRef":"","count":0,"coveredRefs":[],"undo":false,"matchDay":"","phrase":"","note":"","lookbackMatches":0,"partnerClubs":false,"clubRef":"Friday MT Community"}',
+      "wa-1",
+    );
+    expect(facts).toMatchObject({ partnerClubs: true, clubRef: "Friday MT Community" });
+  });
+
+  it("admin · the S6 facts are dropped on any action but recruit, and when empty", () => {
+    const other = parseFacts(
+      "admin",
+      '{"action":"other","payerRef":"","count":0,"coveredRefs":[],"undo":false,"matchDay":"","phrase":"","note":"","lookbackMatches":0,"partnerClubs":true,"clubRef":"Sutton"}',
+      "wa-1",
+    ).facts;
+    expect("partnerClubs" in other).toBe(false);
+    expect("clubRef" in other).toBe(false);
+    const own = parseFacts(
+      "admin",
+      '{"action":"recruit","payerRef":"","count":0,"coveredRefs":[],"undo":false,"matchDay":"","phrase":"","note":"","lookbackMatches":5,"partnerClubs":false,"clubRef":""}',
+      "wa-1",
+    ).facts;
+    expect("partnerClubs" in own).toBe(false);
+    expect("clubRef" in own).toBe(false);
   });
 
   it("admin · an unknown action still drops the whole shape rather than guessing", () => {
