@@ -1191,3 +1191,126 @@ test.describe("round 3: the collector's answer to the PAYG fee question", () => 
     expect(await state(db)).toEqual({ fee: null, pending: 7, released: false });
   });
 });
+
+/**
+ * A ✅ or 👍 REACTION on the PAYG fee question (2026-10-21). That question
+ * is a scheduler DM (`<matchId>:fee-ask`), not the BotJob prompt #359
+ * joined, so the reaction route answered `no-open-offer` and dropped it.
+ * Here it goes through the real due-posts claim, the real /ack (which
+ * stamps the sent id and stages the PAYG price) and the real reaction
+ * route. Free: no model is called.
+ */
+test.describe("a ✅ reaction on the PAYG fee question is the collector's yes", () => {
+  const PLAYED = new Date(Date.now() - 2 * 60 * 60 * 1000);
+  const people = (tag: string, n: number) => ({
+    col: { id: `e2e-mw${n}-col`, name: `Col ${tag}`, phone: `+4477009${n}5001` },
+    reg: { id: `e2e-mw${n}-reg`, name: `Reg ${tag}`, phone: `+4477009${n}5002` },
+    pay: { id: `e2e-mw${n}-pay`, name: `Pay ${tag}`, phone: `+4477009${n}5003` },
+  });
+  const setUp = async (n: number, tag: string) => {
+    const org = `e2e-mw${n}-org`;
+    const group = `e2e-monthly-react${n}@g.us`;
+    const matchId = `e2e-mw${n}-match`;
+    const T = people(tag, n);
+    const db = testDb();
+    await club(db, { org, group, act: `e2e-mw${n}-act`, sport: `e2e-mw${n}-sport`, name: `React ${tag}`, collector: T.col.id });
+    await person(db, org, T.col, "OWNER");
+    for (const p of [T.reg, T.pay]) await person(db, org, p);
+    await db.run(`UPDATE "Organisation" SET "paymentHolderId" = $2, "payMethodDirect" = true WHERE id = $1`, [org, T.col.id]);
+    await fixture(db, matchId, `e2e-mw${n}-act`, PLAYED, "COMPLETED");
+    await attend(db, org, matchId, T.reg.id, "CONFIRMED", 1);
+    await attend(db, org, matchId, T.pay.id, "CONFIRMED", 2);
+    await month(db, { id: `e2e-mw${n}-month`, org, act: `e2e-mw${n}-act` }, [{ p: T.reg, slot: 1, paid: true }], `${formatInTimeZone(PLAYED, LONDON, "yyyy-MM")}-01`);
+    return { org, group, matchId, T };
+  };
+  const state = (db: TestDb, matchId: string) =>
+    db.one<{ fee: number | null; pending: number | null; released: boolean }>(
+      `SELECT "feePerPlayer" AS fee, "feePendingConfirm" AS pending, ("paymentLinksReleasedAt" IS NOT NULL) AS released FROM "Match" WHERE id = $1`,
+      [matchId],
+    );
+  /** The scheduler sends the question and the Pi acks it as sent, with
+   *  the serialised id a reaction on it then carries. */
+  const askSent = async (request: APIRequestContext, s: { group: string; matchId: string; T: ReturnType<typeof people> }) => {
+    const ask = (await poll(request, new Date(), s.group)).filter((i) => i.key === `${s.matchId}:fee-ask`);
+    expect(ask).toHaveLength(1);
+    expect(ask[0].targetUser).toBe(s.T.col.id);
+    const wa = `true_${digits(s.T.col.phone)}@c.us_3EB0FA${Date.now()}${++seq}`;
+    const res = await request.post("/api/whatsapp/ack", {
+      headers: KEY,
+      data: { key: `${s.matchId}:fee-ask`, kind: "dm", matchId: s.matchId, targetUser: s.T.col.id, waMessageId: wa },
+    });
+    expect(res.status(), await res.text()).toBe(200);
+    return wa;
+  };
+  const react = async (request: APIRequestContext, waMessageId: string, emoji: string, fromPhone: string) => {
+    const res = await request.post("/api/whatsapp/reaction", {
+      headers: KEY,
+      data: { waMessageId, emoji, fromPhone: digits(fromPhone), fromAuthorName: null },
+    });
+    expect(res.status(), await res.text()).toBe(200);
+    return res.json();
+  };
+  const dmsTo = (db: TestDb, org: string, who: { phone: string }) =>
+    db.all<{ text: string }>(`SELECT text FROM "BotJob" WHERE "orgId" = $1 AND kind = 'dm' AND phone = $2 ORDER BY "createdAt"`, [org, digits(who.phone)]);
+
+  test("✅ releases the PAYG price once, to the PAYG player only, with the typed yes's ack; ❤️, a stranger and a second 👍 do nothing", async ({
+    request,
+    db,
+  }) => {
+    const s = await setUp(6, "Six");
+    const wa = await askSent(request, s);
+    // The ack staged the PAYG price: "£8 each?" is the amount awaiting his yes.
+    expect(await state(db, s.matchId)).toEqual({ fee: null, pending: 8, released: false });
+
+    expect((await react(request, wa, "❤️", s.T.col.phone)).ignored).toBe("not-yes");
+    expect((await react(request, wa, "✅", s.T.pay.phone)).ignored).toBe("reactor-not-the-recipient");
+    expect(await state(db, s.matchId)).toEqual({ fee: null, pending: 8, released: false });
+
+    const json = await react(request, wa, "✅", s.T.col.phone);
+    expect(json.handled, JSON.stringify(json)).toBe("fee-confirm-reaction");
+    expect(await state(db, s.matchId)).toEqual({ fee: 8, pending: null, released: true });
+    expect(await dmsTo(db, s.org, s.T.pay)).toHaveLength(1);
+    expect(await dmsTo(db, s.org, s.T.reg)).toHaveLength(0);
+    const acks = await dmsTo(db, s.org, s.T.col);
+    expect(acks).toHaveLength(1);
+    expect(acks[0].text).toContain("Done, sent");
+
+    // A second yes (or a redelivery) releases nothing more.
+    expect((await react(request, wa, "👍", s.T.col.phone)).ignored).toBe("nothing-pending");
+    expect(await dmsTo(db, s.org, s.T.pay)).toHaveLength(1);
+    expect(await dmsTo(db, s.org, s.T.col)).toHaveLength(1);
+  });
+
+  test("a ✅ on the question after he typed a different amount does nothing: the newer confirm prompt is the one out", async ({
+    request,
+    db,
+  }) => {
+    const s = await setUp(7, "Seven");
+    const wa = await askSent(request, s);
+    const res = await request.post("/api/whatsapp/dm-reply", {
+      headers: KEY,
+      data: { phone: s.T.col.phone, body: "£7", waMessageId: msgId(), authorName: null },
+    });
+    expect(res.status(), await res.text()).toBe(200);
+    expect(await state(db, s.matchId)).toEqual({ fee: null, pending: 7, released: false });
+
+    expect((await react(request, wa, "✅", s.T.col.phone)).ignored).toBe("superseded-prompt");
+    expect(await state(db, s.matchId)).toEqual({ fee: null, pending: 7, released: false });
+    expect(await dmsTo(db, s.org, s.T.pay)).toHaveLength(0);
+  });
+
+  test("a ✅ after a 'no' does nothing: the decline is final", async ({ request, db }) => {
+    const s = await setUp(8, "Eight");
+    const wa = await askSent(request, s);
+    const res = await request.post("/api/whatsapp/dm-reply", {
+      headers: KEY,
+      data: { phone: s.T.col.phone, body: "no", waMessageId: msgId(), authorName: null },
+    });
+    expect(res.status(), await res.text()).toBe(200);
+    expect(await state(db, s.matchId)).toEqual({ fee: null, pending: null, released: false });
+
+    expect((await react(request, wa, "✅", s.T.col.phone)).ignored).toBe("nothing-pending");
+    expect(await state(db, s.matchId)).toEqual({ fee: null, pending: null, released: false });
+    expect(await dmsTo(db, s.org, s.T.pay)).toHaveLength(0);
+  });
+});
