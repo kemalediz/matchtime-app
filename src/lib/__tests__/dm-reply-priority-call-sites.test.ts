@@ -66,10 +66,12 @@ const MARKED: Record<string, number> = {
   "lib/organiser-pick.ts": 2,
   // "help" by DM.
   "lib/dm-help.ts": 1,
-  // The guest's "which game?" question after his OUT by DM.
+  // The guest's "which game?" question after his OUT by DM; the same one
+  // helper sends the volunteer's questions by DM (2026-10-21).
   "lib/partner-guest-dm.ts": 1,
-  // The guest's ack after he withdrew by DM.
-  "lib/partner-guest.ts": 1,
+  // The guest's ack after he withdrew by DM, and every answer to a
+  // partner club's volunteer (2026-10-21: by DM, never in his group).
+  "lib/partner-guest.ts": 2,
   // The ack to a player's own IN/OUT by DM or reaction.
   "lib/out-of-band-self-attendance.ts": 1,
 };

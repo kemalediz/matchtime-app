@@ -416,14 +416,21 @@ export interface EngineBatchDeps extends EngineApplyDeps {
    * are about ANOTHER club's match. `partner-guest.ts`'s
    * `handlePartnerVolunteer` in production. Absent (the admin group, tests
    * that never meet one): such a write is refused and reported.
+   *
+   * It answers HIM by DM itself (Kemal, 2026-10-21): the partner group
+   * hears nothing. Only when he could not be messaged (`dmQueued` false)
+   * and he was registered does his message get a 👍 reaction, never text.
    */
-  partnerVolunteer?: (w: Extract<ProposedWrite, { kind: "partner_volunteer" }>) => Promise<{ ok: boolean; outcome: string; replyText: string | null }>;
+  partnerVolunteer?: (w: Extract<ProposedWrite, { kind: "partner_volunteer" }>) => Promise<{ ok: boolean; outcome: string; dmText: string | null; dmQueued: boolean }>;
   /**
    * D5b (slice S5b): claim the one "FNF or ours?" question per sender per
-   * ask BEFORE it is said. `true` when this batch got it. Absent: the
-   * question is not asked (and nothing is written for the message).
+   * ask BEFORE it is said. "dm" when this batch got it and the question went
+   * to him privately (2026-10-21: the group hears nothing); "group" when it
+   * got it but he has no number, so the question is said in the group as
+   * before; false when lost. Absent: the question is not asked (and nothing
+   * is written for the message).
    */
-  claimPartnerAskWhich?: (args: { askId: string; userId: string }) => Promise<boolean>;
+  claimPartnerAskWhich?: (args: { askId: string; userId: string }) => Promise<"dm" | "group" | false>;
 }
 
 export async function runAttendanceEngineBatch(args: {
@@ -994,16 +1001,19 @@ export async function runAttendanceEngineBatch(args: {
   // ── Stage 3a': CLAIM THE D5b QUESTION (slice S5b), like the name ask ──
   const whichSpeech = result.speech.filter((sp) => sp.kind === "partner_ask_which");
   if (whichSpeech.length > 0) {
+    // Not said in the group: lost, or already sent to him by DM.
     const lostWhich = new Set<string>();
     for (const sp of whichSpeech) {
       if (sp.kind !== "partner_ask_which") continue;
-      let claimed = false;
+      let claimed: "dm" | "group" | false = false;
       try {
-        claimed = ownedIds.has(sp.messageId) && !!deps.claimPartnerAskWhich && (await deps.claimPartnerAskWhich({ askId: sp.askId, userId: sp.userId }));
+        claimed = ownedIds.has(sp.messageId) && !!deps.claimPartnerAskWhich ? await deps.claimPartnerAskWhich({ askId: sp.askId, userId: sp.userId }) : false;
       } catch (err) {
         console.error(`[attendance-engine] partner-ask-which claim threw for ${sp.userId}:`, err);
       }
-      if (!claimed) {
+      if (claimed === "dm") {
+        lostWhich.add(sp.messageId);
+      } else if (!claimed) {
         lostWhich.add(sp.messageId);
         degradations.push(`D5b question for ${sp.userId} on ask ${sp.askId} not claimed; not asked`);
       }
@@ -1060,18 +1070,18 @@ export async function runAttendanceEngineBatch(args: {
     );
   }
 
-  const partnerByMessage = new Map<string, { ok: boolean; outcome: string; replyText: string | null }>();
+  const partnerByMessage = new Map<string, { ok: boolean; outcome: string; dmQueued: boolean }>();
   for (const w of partnerWrites) {
     if (!deps.partnerVolunteer) {
       degradations.push(`partner_volunteer for ask ${w.askId} with no executor; refused`);
-      partnerByMessage.set(w.sourceMessageId, { ok: false, outcome: "no-executor", replyText: null });
+      partnerByMessage.set(w.sourceMessageId, { ok: false, outcome: "no-executor", dmQueued: false });
       continue;
     }
     try {
       partnerByMessage.set(w.sourceMessageId, await deps.partnerVolunteer(w));
     } catch (err) {
       degradations.push(`partner_volunteer for ask ${w.askId} threw: ${err instanceof Error ? err.message : "failed"}`);
-      partnerByMessage.set(w.sourceMessageId, { ok: false, outcome: "failed", replyText: null });
+      partnerByMessage.set(w.sourceMessageId, { ok: false, outcome: "failed", dmQueued: false });
     }
   }
 
@@ -1148,9 +1158,11 @@ export async function runAttendanceEngineBatch(args: {
     // ONE reply per message. Several speech intents for the same
     // message join into one send; they never become two results.
     let reply: string | null = utterances.length > 0 ? utterances.join("\n\n") : null;
-    // A reply to a partner club's ask (slice S3): its one answer.
+    // A reply to a partner club's ask (slice S3): answered by DM inside the
+    // executor (2026-10-21), so it adds nothing to the group's reply. Only a
+    // registration that could not be DMed gets a 👍 on his message.
     const partner = partnerByMessage.get(m.waMessageId);
-    if (partner?.replyText) reply = reply ? `${reply}\n\n${partner.replyText}` : partner.replyText;
+    const partnerReact = partner && !partner.dmQueued && partner.outcome.startsWith("registered-") ? "👍" : null;
     if (landed.length > 0) lastActed = m.waMessageId;
 
     // An extractor failure must surface to an admin, not vanish. §9
@@ -1177,7 +1189,7 @@ export async function runAttendanceEngineBatch(args: {
       waMessageId: m.waMessageId,
       route: m.route as Route,
       reply,
-      react: reactByMessageId.get(m.waMessageId) ?? null,
+      react: reactByMessageId.get(m.waMessageId) ?? partnerReact,
       intent: partner ? "partner_volunteer" : intentFor(landed, m.senderUserId, attendanceFacts, reply),
       action: partner ? `partner-volunteer:${partner.outcome}` : analyzedActionFor(landed, m.senderUserId),
       reasoning,

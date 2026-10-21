@@ -100,7 +100,7 @@ import { classifyMatchAvailability } from "@/lib/match-availability-classifier";
 import { loadMatchAvailabilityFacts } from "@/lib/match-availability-context";
 import { resolveDmSelfAttendance } from "@/lib/dm-self-attendance";
 import { findDmRegistrationTarget } from "@/lib/dm-registration-target";
-import { handleGuestDmOut } from "@/lib/partner-guest-dm";
+import { askAboutOpenPartnerAsk, findAskByRef, handleCodedPartnerAskDm, handleGuestDmOut } from "@/lib/partner-guest-dm";
 import { announceOutOfBandAttendance } from "@/lib/out-of-band-announce";
 import { applyOutOfBandSelfAttendance } from "@/lib/out-of-band-self-attendance";
 import { dayCommaTimeLabel } from "@/lib/i18n/dates";
@@ -207,12 +207,24 @@ export async function POST(request: Request) {
     if (go) return NextResponse.json({ ok: true, ...go });
   }
 
+  // ── A partner club's ask, answered by DM (2026-10-21) ───────────────────
+  //   The ask posted in a partner group carries a tap-to-DM link prefilled
+  //   "IN (ref K7Q2)": the code MatchTime issued for that ask. Looked up
+  //   ONCE here (one query, only when the text has a code after "ref"), so
+  //   nothing below can mistake the volunteer's DM for something else: an
+  //   organiser's pick, a bench-offer YES, or an IN for his own club's game.
+  //   It is handled after the silence rails, below.
+  const codedAsk = await findAskByRef(text).catch((err: unknown) => {
+    console.error("[dm-reply] ask code lookup failed:", err instanceof Error ? err.message : "failed");
+    return null;
+  });
+
   // ── Organiser pick (slice 2b): an admin answering a pick round ─────────
   //   Before the bench reply and every model call (the admin-commands
   //   classifier, Q&A), so a pick costs nothing. Engages only for a sender
   //   who, by phone, was asked on an open round; returns null otherwise and
   //   the DM carries on exactly as before.
-  {
+  if (!codedAsk) {
     const pick = await handleOrganiserPickDm({
       phone,
       senderAltPhone,
@@ -259,7 +271,7 @@ export async function POST(request: Request) {
       where: { resolvedAt: null, ...billingQuietMatchWhere() },
       select: { matchId: true },
     });
-    if (openOffers.length > 0 && !isHelpRequest) {
+    if (openOffers.length > 0 && !isHelpRequest && !codedAsk) {
       const matchIds = [...new Set(openOffers.map((o) => o.matchId))];
       const benchAtt = await db.attendance.findMany({
         where: { matchId: { in: matchIds }, status: "BENCH" },
@@ -578,6 +590,22 @@ export async function POST(request: Request) {
       console.log(`[dm-reply] sender ${user.id} belongs only to clubs that are still setting up; ignoring`);
     }
     return NextResponse.json({ ok: true, ...out });
+  }
+
+  // ── The partner club's ask by DM (2026-10-21), found by its code above ──
+  //   IN or OUT is the DM resolver's call on his words with the code taken
+  //   out; `handlePartnerVolunteer` (the one writer onto another club's
+  //   match) does the rest and answers him by DM. See partner-guest-dm.ts.
+  if (codedAsk) {
+    const coded = await handleCodedPartnerAskDm({
+      askId: codedAsk.askId,
+      userId: user.id,
+      userName: user.name,
+      text,
+      replyPhone: phone ? normalisePhone(phone)?.replace(/^\+/, "") ?? null : null,
+      waMessageId,
+    });
+    return NextResponse.json({ ok: true, ...coded });
   }
 
   // ── DM subscription-preference fast-path (2026-06-11; per-category
@@ -1253,6 +1281,23 @@ export async function POST(request: Request) {
         },
       }));
 
+      // A private IN with no ask code while a partner club's ask to his club
+      // is open (2026-10-21): one plain question with the ask's link and
+      // nothing written, on D5b's state rule. Asked once; then his IN is
+      // his own game's.
+      if (resolution.decision === "in") {
+        const asked = await askAboutOpenPartnerAsk({
+          userId: user.id,
+          replyPhone: await dmPhone(),
+          own: { matchId: target.matchId, clubName: target.clubName },
+          decision: resolution.decision,
+        }).catch((err: unknown) => {
+          console.error("[dm-reply] partner ask question failed:", err instanceof Error ? err.message : "failed");
+          return false;
+        });
+        if (asked) return NextResponse.json({ ok: true, handled: "xask-dm-which-in" });
+      }
+
       if (resolution.decision) {
         // The write + personal ack + group announcement all live in
         // lib/out-of-band-self-attendance.ts, shared verbatim with the
@@ -1291,6 +1336,22 @@ export async function POST(request: Request) {
           matchId: target.matchId,
         });
       }
+    }
+    // No game of his own to register for, but a partner club's ask to his
+    // club is open: the resolver reads his DM against the ask's game, and an
+    // IN gets the one plain question with the link (2026-10-21).
+    if (!dm && !target) {
+      const asked = await askAboutOpenPartnerAsk({
+        userId: user.id,
+        userName: user.name,
+        text,
+        replyPhone: phone ? normalisePhone(phone)?.replace(/^\+/, "") ?? null : null,
+        own: null,
+      }).catch((err: unknown) => {
+        console.error("[dm-reply] partner ask question failed:", err instanceof Error ? err.message : "failed");
+        return false;
+      });
+      if (asked) return NextResponse.json({ ok: true, handled: "xask-dm-which-in" });
     }
   }
 

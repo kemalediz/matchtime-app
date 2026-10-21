@@ -28,7 +28,10 @@ import { loadMatchAvailabilityFacts } from "./match-availability-context";
 import { quoteForMatch, type QuotedBotMessage } from "./reply-context";
 import { findDmRegistrationTarget } from "./dm-registration-target";
 import { applyOutOfBandSelfAttendance } from "./out-of-band-self-attendance";
-import { withdrawGuest } from "./partner-guest";
+import { handlePartnerVolunteer, withdrawGuest } from "./partner-guest";
+import { matchtimeWaNumber } from "./club-connect";
+import { askDmLink, askDmPrefill, askRefCandidates, askRefCode, stripAskRef } from "./partner-ask-ref";
+import { partnerAskToQuestion } from "./partner-volunteer-rules";
 import { dayCommaTimeLabel } from "./i18n/dates";
 import { t } from "./i18n/t";
 
@@ -171,4 +174,210 @@ export async function handleGuestDmOut(args: {
   );
   console.log(`[partner-guest-dm] ${args.userId}: asked which game (${place.matchId} or ${own.matchId})`);
   return { handled: "guest-dm-which" };
+}
+
+// ── Volunteering by DM (Kemal, 2026-10-21) ─────────────────────────────────
+//
+// The partner group sees only the ask itself. Its tap-to-DM link opens a
+// DM to MatchTime prefilled with "IN (ref K7Q2)", K7Q2 being the ask's code
+// (partner-ask-ref.ts). The code says WHICH ask; IN or OUT is the DM
+// resolver's call on his words with the code taken out; the volunteer
+// writer (`handlePartnerVolunteer`, the one writer onto another club's
+// match) does everything else and answers him by DM. The same writer serves
+// a swipe-reply in the group, so there is one path, whichever door he used.
+
+/** How far back a code is looked up: asks posted in the last fortnight. */
+export const ASK_REF_LOOKBACK_MS = 14 * 24 * 3600_000;
+
+/**
+ * The ask a DM's code names, or null. Only codes MatchTime issued count:
+ * one query over the asks posted lately, each id hashed to its code. Two
+ * asks sharing a code are no ask (never a guess). No code in the text: no
+ * query.
+ */
+export async function findAskByRef(text: string, now: Date = new Date()): Promise<{ askId: string } | null> {
+  const candidates = askRefCandidates(text);
+  if (candidates.length === 0) return null;
+  const asks = await db.partnerAsk.findMany({
+    where: { postedAt: { gte: new Date(now.getTime() - ASK_REF_LOOKBACK_MS) } },
+    select: { id: true },
+  });
+  for (const c of candidates) {
+    const hits = asks.filter((a) => askRefCode(a.id) === c);
+    if (hits.length === 1) return { askId: hits[0].id };
+  }
+  return null;
+}
+
+interface AskForDm {
+  askId: string;
+  askerName: string;
+  partnerOrgId: string;
+  partnerName: string;
+  lang: string;
+  day: string;
+  link: string | null;
+  prefill: string;
+}
+
+async function loadAskForDm(askId: string): Promise<AskForDm | null> {
+  const ask = await db.partnerAsk.findUnique({
+    where: { id: askId },
+    select: { id: true, askerOrgId: true, partnerOrgId: true, match: { select: { date: true } } },
+  });
+  if (!ask) return null;
+  const [asker, partner] = await Promise.all([
+    db.organisation.findUnique({ where: { id: ask.askerOrgId }, select: { name: true } }),
+    db.organisation.findUnique({ where: { id: ask.partnerOrgId }, select: { name: true, language: true } }),
+  ]);
+  if (!asker || !partner) return null;
+  return {
+    askId: ask.id,
+    askerName: asker.name,
+    partnerOrgId: ask.partnerOrgId,
+    partnerName: partner.name,
+    lang: partner.language,
+    day: dayCommaTimeLabel(partner.language, ask.match.date),
+    link: askDmLink({ number: matchtimeWaNumber(), lang: partner.language, askId: ask.id }),
+    prefill: askDmPrefill(partner.language, askRefCode(ask.id)),
+  };
+}
+
+/** His phone on file, without "+". */
+async function phoneOnFile(userId: string): Promise<string | null> {
+  return (await db.user.findUnique({ where: { id: userId }, select: { phoneNumber: true } }))?.phoneNumber?.replace(/^\+/, "") ?? null;
+}
+
+/** The one "which game?" per person per ask, shared by the group's D5b and
+ *  the DM's. True when this caller got it. */
+async function claimWhich(askId: string, userId: string): Promise<boolean> {
+  try {
+    await db.sentNotification.create({ data: { key: `xask:${askId}:which:${userId}`, kind: "xask-which" } });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export type CodedAskDmResult = { handled: "xask-dm-volunteer" | "xask-dm-unclear"; outcome: string };
+
+/**
+ * A DM carrying an ask's code. The resolver decides IN or OUT on his words
+ * without the code (the untouched prefill is a plain IN on its free fast
+ * path); unreadable, he gets the link again and nothing is written.
+ */
+export async function handleCodedPartnerAskDm(args: {
+  askId: string;
+  userId: string;
+  userName: string | null;
+  text: string;
+  replyPhone: string | null;
+  waMessageId: string;
+  now?: Date;
+}): Promise<CodedAskDmResult> {
+  const now = args.now ?? new Date();
+  const ask = await loadAskForDm(args.askId);
+  if (!ask) return { handled: "xask-dm-volunteer", outcome: "failed" };
+  const resolution = await withOrgAiBudget(ask.partnerOrgId, () =>
+    resolveDmSelfAttendance({
+      text: stripAskRef(args.text),
+      hasPendingPrompt: false,
+      context: { playerName: args.userName, clubName: ask.askerName, matchName: ask.askerName, matchWhen: ask.day },
+    }),
+  );
+  if (!resolution.decision) {
+    await dm(ask.partnerOrgId, args.replyPhone ?? (await phoneOnFile(args.userId)), t(ask.lang).xask_dm_unclear({ asker: ask.askerName, link: ask.link, prefill: ask.prefill }));
+    console.log(`[partner-guest-dm] ${args.userId}: a DM with ask ${ask.askId}'s code, not read as IN or OUT`);
+    return { handled: "xask-dm-unclear", outcome: "unclear" };
+  }
+  const r = await handlePartnerVolunteer(
+    { askId: ask.askId, userId: args.userId, name: args.userName ?? "", polarity: resolution.decision, sourceMessageId: args.waMessageId, replyPhone: args.replyPhone },
+    now,
+  );
+  console.log(`[partner-guest-dm] ${args.userId}: ${resolution.decision} for ask ${ask.askId} by DM (${r.outcome}, via ${resolution.via})`);
+  return { handled: "xask-dm-volunteer", outcome: r.outcome };
+}
+
+/**
+ * A private IN WITHOUT a code while an ask to his club is open: is it for
+ * the other club's game? Never guessed. ONE plain question with the ask's
+ * link, nothing written; asked once per person per ask (the same claim as
+ * the group's D5b), so his next IN is his own game's.
+ *
+ * The same state rule as D5b: with a game of his own (`own`, the caller
+ * already resolved his DM as IN against it), only an ask posted in the last
+ * hour and only while he has no place in his own game. With no game of his
+ * own, any open ask, and the resolver reads his DM against the ask's game.
+ */
+export async function askAboutOpenPartnerAsk(args: {
+  userId: string;
+  userName?: string | null;
+  text?: string;
+  replyPhone: string | null;
+  own: { matchId: string; clubName: string } | null;
+  decision?: "in" | "out" | null;
+  now?: Date;
+}): Promise<boolean> {
+  const now = args.now ?? new Date();
+  if (args.own && args.decision !== "in") return false;
+  const mems = await db.membership.findMany({ where: { userId: args.userId, leftAt: null, guestFromOrgId: null }, select: { orgId: true } });
+  if (mems.length === 0) return false;
+  const open = await db.partnerAsk.findMany({
+    where: { partnerOrgId: { in: mems.map((m) => m.orgId) }, status: "posted", closesAt: { gt: now }, NOT: { volunteerUserIds: { has: args.userId } } },
+    select: { id: true, postedAt: true },
+    orderBy: { postedAt: "desc" },
+  });
+  if (open.length === 0) return false;
+
+  let askId: string | null;
+  if (args.own) {
+    const ownRow = await db.attendance.findFirst({ where: { matchId: args.own.matchId, userId: args.userId }, select: { id: true } });
+    askId =
+      partnerAskToQuestion({
+        now,
+        asks: open.map((a) => ({ askId: a.id, askerName: "", open: true, postedAt: a.postedAt?.toISOString() ?? null })),
+        senderUserId: args.userId,
+        senderHasOwnRow: !!ownRow,
+      })?.askId ?? null;
+  } else {
+    askId = open[0].id;
+  }
+  if (!askId) return false;
+  const ask = await loadAskForDm(askId);
+  if (!ask) return false;
+
+  if (!args.own) {
+    const resolution = await withOrgAiBudget(ask.partnerOrgId, () =>
+      resolveDmSelfAttendance({
+        text: args.text ?? "",
+        hasPendingPrompt: false,
+        context: { playerName: args.userName ?? null, clubName: ask.askerName, matchName: ask.askerName, matchWhen: ask.day },
+      }),
+    );
+    if (resolution.decision !== "in") return false;
+  }
+  if (!(await claimWhich(ask.askId, args.userId))) return false;
+  await dm(
+    ask.partnerOrgId,
+    args.replyPhone ?? (await phoneOnFile(args.userId)),
+    t(ask.lang).xask_dm_which_in({ asker: ask.askerName, day: ask.day, own: args.own?.clubName ?? null, link: ask.link, prefill: ask.prefill }),
+  );
+  console.log(`[partner-guest-dm] ${args.userId}: a private IN with no code while ask ${ask.askId} is open; asked which`);
+  return true;
+}
+
+/**
+ * D5b's question by DM (2026-10-21): a plain IN in his group soon after an
+ * ask, with no place in his own game. Claimed once per person per ask.
+ * "dm" sent privately; "group" claimed but he has no number, so the batch
+ * says it in the group as before; false when asked already.
+ */
+export async function askPartnerWhichByDm(args: { askId: string; userId: string }): Promise<"dm" | "group" | false> {
+  if (!(await claimWhich(args.askId, args.userId))) return false;
+  const ask = await loadAskForDm(args.askId);
+  const phone = await phoneOnFile(args.userId);
+  if (!ask || !phone) return "group";
+  await dm(ask.partnerOrgId, phone, t(ask.lang).xask_which_dm({ asker: ask.askerName, day: ask.day, own: ask.partnerName, link: ask.link, prefill: ask.prefill }));
+  console.log(`[partner-guest-dm] ${args.userId}: D5b question for ask ${ask.askId} sent by DM`);
+  return "dm";
 }

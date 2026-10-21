@@ -377,6 +377,7 @@ import { loadGroupReplyContexts, parseGroupQuote, type QuotedGroupMessage } from
 import { rosterMemberByPhone } from "@/lib/roster-name-by-phone";
 import { claimGroupReplies } from "@/lib/group-reply-claims";
 import { handlePartnerVolunteer } from "@/lib/partner-guest";
+import { askPartnerWhichByDm } from "@/lib/partner-guest-dm";
 import { chatAuthorOf, groupChatHistory } from "@/lib/group-chat-history";
 
 interface InboundMessage {
@@ -2348,15 +2349,9 @@ async function handleAnalyzeRequest(request: Request) {
             // A reply to a partner club's ask (cross-club ask, S3): the one
             // writer onto another club's match.
             partnerVolunteer: (w) => handlePartnerVolunteer(w),
-            // D5b (S5b): the one "FNF or ours?" per sender per ask.
-            claimPartnerAskWhich: async ({ askId, userId }) => {
-              try {
-                await db.sentNotification.create({ data: { key: `xask:${askId}:which:${userId}`, kind: "xask-which" } });
-                return true;
-              } catch {
-                return false;
-              }
-            },
+            // D5b (S5b): the one "FNF or ours?" per sender per ask, sent to
+            // him by DM (2026-10-21) so the partner group hears nothing.
+            claimPartnerAskWhich: ({ askId, userId }) => askPartnerWhichByDm({ askId, userId }),
             resolveOrProvision: (name) => resolveOrProvisionByName(org.id, name),
             // THE SLOT A REPLACEMENT INHERITS (2026-09-15). ONE row
             // updated IN PLACE — `load-state.ts` reads the sheet in
