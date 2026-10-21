@@ -13,11 +13,12 @@
  * this one. Words from the club's language table, each row with its ⓘ.
  * Loads and saves through its own server actions (`app/actions/partners.ts`).
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Handshake } from "lucide-react";
 import { SettingInfo } from "@/components/info/setting-info";
 import { t } from "@/lib/i18n/t";
+import { scrollToHashTarget } from "@/lib/scroll-to-hash";
 import {
   actOnPartnershipAction,
   getPartnerClubs,
@@ -45,6 +46,7 @@ export function PartnerClubsSection(props: { orgId: string; language: string | n
   const [data, setData] = useState<PartnerClubsData | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [time, setTime] = useState(PARTNER_ASK_TIME_DEFAULT);
+  const scrolled = useRef(false);
 
   async function load() {
     try {
@@ -60,6 +62,15 @@ export function PartnerClubsSection(props: { orgId: string; language: string | n
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.orgId]);
+
+  // The notice DMs link to #partner-clubs, and the section is not in the
+  // page when the browser looks for it. Once: the reload after an action
+  // must not pull the page back up here.
+  useEffect(() => {
+    if (!data || scrolled.current) return;
+    scrolled.current = true;
+    scrollToHashTarget("partner-clubs");
+  }, [data]);
 
   if (!data) return null;
   const asks = data.partnerships.some((p) => p.side === "asker");
