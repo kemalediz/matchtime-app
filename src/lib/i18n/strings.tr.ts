@@ -3560,8 +3560,9 @@ export const tr: Strings = {
   sn_ask_named: (p) => `${p.names}: her oyuncuya 1 ile 10 arasında kabaca bir puan verin:\n${p.link}`,
   sn_ask: (p) => `Her oyuncuya 1 ile 10 arasında kabaca bir puan verin:\n${p.link}`,
   sn_never_seen: "Oyuncular bu puanları hiç görmez, yalnızca takımları dengelememe yardım ederler.",
-  sn_size_week: (p) => `Bu haftaki ${p.count} oyuncu yeterli, yaklaşık ${p.minutes} dakika sürer.`,
-  sn_size_club: (p) => `Puanı olmayan ${p.count} oyuncu var, yaklaşık ${p.minutes} dakika sürer.`,
+  sn_size_week: (p) =>
+    `Yalnızca ${p.weekday} günkü kadrodaki ${p.count} oyuncuyu puanlamanız yeterli, yaklaşık ${p.minutes} dakika sürer.`,
+  sn_size_club: (p) => `Henüz puanı olmayan ${p.count} oyuncuyu puanlamak yaklaşık ${p.minutes} dakika sürer.`,
   sn_learn: "Sonrasında her maçtan sonra oyuncuların birbirine verdiği puanlardan öğrenirim, yani bu yalnızca bir kez gerekir.",
   sn_change_any_time: "Puanları istediğiniz zaman aynı sayfadan değiştirebilirsiniz.",
   sn_names: (p) =>

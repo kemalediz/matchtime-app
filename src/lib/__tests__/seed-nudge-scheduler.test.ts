@@ -220,7 +220,7 @@ describe("the seed-rating nudge in computeDuePosts", () => {
     expect(text).toContain("⭐ *One thing before Friday's teams*");
     expect(text).toContain("Hamzah or Raihan: give each player a rough rating from 1 to 10 here:");
     expect(text).toContain(appUrl("/admin/players/ratings"));
-    expect(text).toContain("This week's 18 is enough, about 5 minutes.");
+    expect(text).toContain("Rating just the 18 players in Friday's squad is enough, about 5 minutes.");
   });
 
   it("in Turkish for a Turkish club", async () => {

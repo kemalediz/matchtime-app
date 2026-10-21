@@ -1525,7 +1525,7 @@ const SAMPLES: SampleArgs = {
   sn_ask_named: { names: "Hamzah or Raihan", link: "https://matchtime.example/admin/players/ratings" },
   sn_ask: { link: "https://matchtime.example/admin/players/ratings" },
   sn_never_seen: null,
-  sn_size_week: { count: 18, minutes: 5 },
+  sn_size_week: { count: 18, minutes: 5, weekday: "Friday" },
   sn_size_club: { count: 21, minutes: 6 },
   sn_learn: null,
   sn_change_any_time: null,
