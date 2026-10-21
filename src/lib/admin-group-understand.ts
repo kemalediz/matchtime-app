@@ -30,7 +30,10 @@
  *                         menu (`admin-group-help.ts`) for how-it-works,
  *                         and for help it does not answer
  *   ask_group             one place-open ask in the players' group
- *                         (`admin-group-ask-group.ts`)
+ *                         (`admin-group-ask-group.ts`); for a club with
+ *                         partner clubs, the admin extractor first says
+ *                         whether another club is meant, and then the
+ *                         partners are asked (`partner-ask-words.ts`, S6)
  *   admin_ops             the shared admin extractor: players from a
  *                         partner club ("ask Sutton if anyone can play",
  *                         slice S6) are asked for by `partner-ask-words.ts`,
@@ -261,13 +264,10 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
   const weekly = org.squadMode !== "monthly";
 
   return withOrgAiBudget(org.id, async () => {
-    const [pending, logAll, body, partners] = await Promise.all([
+    const [pending, logAll, body] = await Promise.all([
       loadPending(org.id, now, lang),
       hqLogSince(org.id, new Date(now.getTime() - DAY_MS)),
       nameMentions(org.id, input.text, input.mentionNames),
-      // The club's partner clubs, named in the router's header (slice S6).
-      // Never fails HQ: on a read error the header names none.
-      activePartnerChoices(org.id).catch(() => []),
     ]);
     const log = logAll.filter((r) => r.waMessageId !== messageId);
     // THE MESSAGE A REPLY QUOTES (quoted-reply context, slice S4), by its
@@ -365,9 +365,6 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
               body,
               authorName: input.senderName,
               organisers: { context: organisersContext({ pending, recent, score: score.waiting }) },
-              // "ask Friday MT if anyone can play" is an instruction to
-              // MatchTime (admin_ops), not the players' group's own ask.
-              ...(partners.length > 0 ? { partnerClubs: partners.map((p) => p.name) } : {}),
               ...(replyShown ? { reply: replyShown } : {}),
             },
           ],
@@ -623,6 +620,32 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
         // One place-open ask in the players' group (`admin-group-ask-group.ts`).
         if (!actor) return onlyOrganisers();
         if (!weekly) return said("hq-not-here", s.hq_not_here);
+        // A club with partner clubs (slice S6, 2026-10-21): "ask Sutton if
+        // anyone can play", "diğer gruplara sor" route here, as finding a
+        // player does. The shared admin extractor says whether ANOTHER club
+        // is meant, and which; then the partners are asked instead. The
+        // router's turn is unchanged (a sentence for it there cost the free
+        // places and Man of the Match answers, measured), and a club with no
+        // partner pays no extra call and gets exactly what it got before.
+        const partners = await activePartnerChoices(org.id).catch(() => []);
+        if (partners.length > 0) {
+          const model = input.deps?.extractorModel ?? extractorStubFromEnv() ?? anthropicModel();
+          const extracted = await extractForRoute(model, "admin_ops", {
+            id: messageId,
+            body,
+            authorName: input.senderName,
+            tagged: true,
+            history,
+            lastBotPost: lastHqPost,
+            reply: replyShown,
+            now,
+          }).catch(() => null);
+          const facts = extracted?.facts;
+          if (facts?.kind === "admin" && facts.action === "recruit" && facts.partnerClubs) {
+            const r = await askPartnersFromWords({ orgId: org.id, requestedByUserId: actor, via: "hq", clubRef: facts.clubRef ?? null, lang, now });
+            return said(r.outcome, r.replyText);
+          }
+        }
         const r = await askPlayersGroup({ orgId: org.id, lang, messageId, now });
         return said(r.outcome, r.replyText);
       }

@@ -19,7 +19,6 @@ import {
   renderRouterTurn,
   ORGANISERS_HEADER,
   partnerClubsLine,
-  organisersHeader,
 } from "../router";
 import { gateBatch } from "../gate";
 import {
@@ -722,16 +721,11 @@ describe("the organisers' group", () => {
     expect(partnerClubsLine(["Sutton FC"])).toMatch(/routed as if this line were not here\.$/);
   });
 
-  it("the organisers' header: unchanged without partners; with them, one sentence naming them before the last", () => {
-    expect(ORGANISERS_HEADER).toBe(organisersHeader([]));
+  it("the organisers' group turn is unchanged by partner clubs (slice S6)", () => {
+    const withPartners = renderRouterTurn([{ id: "h", authorName: "Raihan", body: "x", organisers: { context: ["WAITING: nothing."] }, partnerClubs: ["Sutton FC"] }], NOW);
+    const without = renderRouterTurn([{ id: "h", authorName: "Raihan", body: "x", organisers: { context: ["WAITING: nothing."] } }], NOW);
+    expect(withPartners).toBe(without);
     expect(ORGANISERS_HEADER).not.toMatch(/another club/);
-    expect(ORGANISERS_HEADER).toMatch(/is other_att\. Nothing else changes: a shortage or a question put to the other organisers is still none\.$/);
-    expect(organisersHeader(["Sutton FC"])).toContain(
-      "is other_att. Asking the bot to ask another club for a player, by its name (this club's partner club is Sutton FC) or as the partner clubs, other clubs or other groups, is admin_ops too; the club's own group is still ask_group. Nothing else changes:",
-    );
-    expect(organisersHeader(["A", "B", "C"])).toContain("(this club's partner clubs are A, B and C)");
-    const turn = renderRouterTurn([{ id: "h", authorName: "Raihan", body: "x", organisers: { context: ["WAITING: nothing."] }, partnerClubs: ["Sutton FC"] }], NOW);
-    expect(turn).toBe(`${NOW_LINE}\n${organisersHeader(["Sutton FC"])}\nWAITING: nothing.\n[h] Raihan: x`);
   });
 
   it("no partner line without partners, and never in the organisers' group", () => {
@@ -742,7 +736,6 @@ describe("the organisers' group", () => {
 
   it("the partner line never carries a dash", () => {
     expect(partnerClubsLine(["A"])).not.toMatch(/[–—]/);
-    expect(ORGANISERS_HEADER).not.toMatch(/[–—]/);
   });
 
   it("an organisers' route on a players' group message reads as unsure, never none", () => {

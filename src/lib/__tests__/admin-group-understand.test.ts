@@ -1161,25 +1161,45 @@ describe("slice S6: an organiser asks MatchTime to ask the partner clubs", () =>
   const recruitFromPartners = (clubRef: string) =>
     adminFacts({ action: "recruit", undo: false, matchDay: "", partnerClubs: true, clubRef });
 
-  it("a club with no partner: the router's header is unchanged", async () => {
+  const SUTTON = { partnershipId: "p1", partnerOrgId: "sutton", name: "Sutton FC" };
+
+  it("the router's turn is the same with or without partner clubs", async () => {
     await ask("ask Sutton if anyone can play", "none");
-    expect(requests[0].user).not.toContain("another club");
+    partnerWords.activePartnerChoices.mockResolvedValue([SUTTON]);
+    await ask("ask Sutton if anyone can play", "none");
+    expect(requests[1].user).toBe(requests[0].user);
   });
 
-  it("a club with partners: the header names them", async () => {
-    partnerWords.activePartnerChoices.mockResolvedValue([
-      { partnershipId: "p1", partnerOrgId: "sutton", name: "Sutton FC" },
-      { partnershipId: "p2", partnerOrgId: "vets", name: "MT Vets" },
-    ]);
-    await ask("ask Sutton if anyone can play", "none");
-    expect(requests[0].user).toContain("by its name (this club's partner clubs are Sutton FC and MT Vets) or as the partner clubs");
+  it("ask_group, a club with no partner: the players' group ask, no extractor call (unchanged)", async () => {
+    const r = await ask("ask Sutton if anyone can play tonight", "ask_group");
+    expect(r?.outcome).toBe("group-asked");
+    expect(requests.length).toBe(1);
+    expect(partnerWords.askPartnersFromWords).not.toHaveBeenCalled();
   });
 
-  it("a partner read that fails never fails HQ: the header names none", async () => {
-    partnerWords.activePartnerChoices.mockRejectedValue(new Error("db down"));
-    const r = await ask("ask Sutton if anyone can play", "none");
-    expect(r).toBeNull();
-    expect(requests[0].user).not.toContain("partner clubs are");
+  it("ask_group, a partnered club, another club meant: the partner ask, not the players' group", async () => {
+    partnerWords.activePartnerChoices.mockResolvedValue([SUTTON]);
+    const deps = { routerModel: routeTo("ask_group"), extractorModel: recruitFromPartners("Sutton") };
+    const r = await ask("ask Sutton if anyone can play tonight", "ask_group", { deps });
+    expect(partnerWords.askPartnersFromWords).toHaveBeenCalledWith(expect.objectContaining({ via: "hq", clubRef: "Sutton", requestedByUserId: "u-admin" }));
+    expect(r).toEqual({ route: "ask_group", outcome: "xask-words-asked", replyText: "I've asked *Sutton FC*'s organisers." });
+    expect(groupAsk.askPlayersGroup).not.toHaveBeenCalled();
+  });
+
+  it("ask_group, a partnered club, the club's own group meant: the players' group ask as before", async () => {
+    partnerWords.activePartnerChoices.mockResolvedValue([SUTTON]);
+    const deps = { routerModel: routeTo("ask_group"), extractorModel: adminFacts({ action: "recruit" }) };
+    const r = await ask("gruba sor, oynayabilecek var mı", "ask_group", { deps });
+    expect(r?.outcome).toBe("group-asked");
+    expect(partnerWords.askPartnersFromWords).not.toHaveBeenCalled();
+  });
+
+  it("ask_group, a partnered club, the extractor failing: the players' group ask as before", async () => {
+    partnerWords.activePartnerChoices.mockResolvedValue([SUTTON]);
+    const router = routeTo("ask_group");
+    const broken: PipelineModel = { name: "broken", async complete() { throw new Error("529"); } };
+    const r = await ask("ask in the group if anyone is free", "ask_group", { deps: { routerModel: router, extractorModel: broken } });
+    expect(r?.outcome).toBe("group-asked");
   });
 
   it("admin_ops, recruit from a partner club: the shared door, via hq, one reply", async () => {

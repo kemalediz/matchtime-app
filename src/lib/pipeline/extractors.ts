@@ -497,7 +497,7 @@ THE FIELDS. Fill the ones for the action; every other field is "", 0, false or [
   phrase reminder: the time phrase exactly as written ("on Monday", "tomorrow at 6"), never a date.
   note reminder: what to remind them about, in their own words ("bring the bibs"); "" when it names nothing.
   lookbackMatches recruit: how many of the club's recent matches to draw its own players from ("the last 5 matches" -> 5, "the last couple of games" -> 2); 0 when no number is named.
-  partnerClubs recruit: true when the players are to come from another club, a partner club or another group, named or not; false when they are the club's own players.
+  partnerClubs recruit: true when the players are to come from another club, a partner club or the other groups, named or not; false when they are the club's own players, and "the group" or "the main group" is the club's own players' group.
   clubRef recruit: the other club's name as written, without a Turkish case ending ("Sutton'a" -> "Sutton"); "" when the message names no club ("the partner clubs", "the other groups", "another club").
 
 EXAMPLES, English and Turkish, grouped by what they teach

@@ -4,8 +4,9 @@
  * section 6. Dev key only, each case once (the cheap plan).
  *
  *   A. The players' group (an admin's message shown the club's partner
- *      clubs, `partnerClubsLine`) and HQ (the partners named in
- *      `organisersHeader`), exactly as production builds each turn: the
+ *      clubs, `partnerClubsLine`) and HQ (its turn unchanged; for a
+ *      partnered club, ask_group is read by the admin extractor too),
+ *      exactly as production does: the
  *      real router must say admin_ops,
  *      the rewritten admin extractor `recruit` with `partnerClubs` and the
  *      club as written (`clubRef`), and the code's lookup
@@ -90,6 +91,12 @@ const CASES: Case[] = [
   { text: "Sutton geçen hafta çok iyi oynadı", hq: true, routes: ["none", "question"], want: "none", why: "TR, talk about another club" },
   { text: "did Sutton ever get back to us?", hq: true, routes: ["none", "question", "unsure"], want: "none", why: "a question about an ask" },
   { text: "we're one short, can you find us a player", hq: true, routes: ["ask_group"], want: "none", why: "the club's own group: still ask_group" },
+  // The club's OWN players' group, in HQ, for a partnered club: still the
+  // players' group ask (the admin_ops ask_group cases of admin-group).
+  { text: "@Match Time ask in the group if anyone is available", hq: true, routes: ["ask_group"], want: "none", why: "own group" },
+  { text: "we're short, can you put a message out in the group", hq: true, routes: ["ask_group"], want: "none", why: "own group" },
+  { text: "gruba sor, oynayabilecek var mı", hq: true, routes: ["ask_group"], want: "none", why: "own group, TR" },
+  { text: "bir oyuncu eksiğimiz var, ana gruba yazar mısın", hq: true, routes: ["ask_group"], want: "none", why: "own group, TR, the main group" },
   { text: "@Match Time we need one more, anyone?", hq: false, routes: ["offer", "other_att", "unsure"], want: "none", why: "the players' group asked: still attendance" },
 ];
 
@@ -153,17 +160,22 @@ async function main() {
     const id = `s${i}`;
     const r = await routeBatch(
       model,
-      [{ id, authorName: "Raihan", body: c.text, partnerClubs: NAMES, ...(c.hq ? { organisers: { context: ctx } } : {}) }],
+      [{ id, authorName: "Raihan", body: c.text, ...(c.hq ? { organisers: { context: ctx } } : { partnerClubs: NAMES }) }],
       { floor: true },
     );
     const route = r.routes[0]?.route;
     let facts: AdminFacts | null = null;
-    if (route === "admin_ops") {
+    // As production: admin_ops anywhere; in HQ, ask_group too, for a club
+    // with partner clubs (`admin-group-understand.ts`).
+    if (route === "admin_ops" || (c.hq && route === "ask_group")) {
       const ex = await extractForRoute(model, "admin_ops", { id, body: c.text, authorName: "Raihan", tagged: true, history: [], lastBotPost: null });
       facts = ex.facts.kind === "admin" ? ex.facts : null;
     }
     const got = asksFor(facts);
-    const ok = c.want === "none" ? got === "nobody" && (!c.routes || (!!route && c.routes.includes(route))) : route === "admin_ops" && got === c.want;
+    const ok =
+      c.want === "none"
+        ? got === "nobody" && (!c.routes || (!!route && c.routes.includes(route)))
+        : (route === "admin_ops" || (c.hq && route === "ask_group")) && got === c.want;
     ok ? pass++ : fail++;
     console.log(
       `${ok ? "PASS" : "FAIL"}  ${c.hq ? "HQ" : "PG"} ${JSON.stringify(c.text)}  routed ${route}  facts ${JSON.stringify(facts && { action: facts.action, partnerClubs: facts.partnerClubs, clubRef: facts.clubRef })}  asks ${got}   (${c.why}; want ${c.want})`,

@@ -698,10 +698,11 @@ export interface RouterMessage {
   organisers?: { context: string[] };
   /**
    * The club's active partner clubs' names (cross-club ask, slice S6,
-   * 2026-10-21). In the organisers' group they go inside its header
-   * (`organisersHeader`); in the players' group a message from an owner or
-   * admin of a club with an active partner is shown `partnerClubsLine`.
-   * Absent everywhere else, so those turns are byte for byte what they were.
+   * 2026-10-21): a players' group message from an owner or admin of a
+   * club with an active partner is shown `partnerClubsLine`. Ignored for
+   * the organisers' group, whose turn is unchanged: there the ask_group
+   * route reads the club named (`admin-group-understand.ts`). Absent
+   * everywhere else, so those turns are byte for byte what they were.
    */
   partnerClubs?: string[];
   /**
@@ -738,43 +739,9 @@ export interface RouterMessage {
  * "Nothing else changes: ..." it is none 5 of 5, and "we're short, can you
  * put a message out in the group" stays ask_group 5 of 5.
  *
- * PARTNER CLUBS (slice S6, 2026-10-21). For a club with active partner
- * clubs, one more sentence, before "Nothing else changes", with their names
- * in it: asking another club for a player is admin_ops. A club with no
- * partner gets the header exactly as it was (`ORGANISERS_HEADER`).
- * Measured on the dev key, 20 runs each unless said:
- *   - without it, "ask Sutton if anyone can play tonight", "can you try the
- *     other clubs for a player", "diğer gruplara sor" and "Friday MT'ye
- *     sorar mısın" routed ask_group 20 of 20; with it, admin_ops 20 of 20;
- *   - every ask_group case of `live-check-admin-group.ts` ("ask in the
- *     group if anyone is available", "gruba sor", "ana gruba yazar mısın",
- *     "we're one short, can you find us a player") stays ask_group 20 of
- *     20, and "Sutton were great last week" none 20 of 20;
- *   - "mark Sam as free for tonight", admin_ops 16 of 20 without it, is
- *     13 of 20 with it; "MoM was Naim" while the MoM waits, score 12 of 12
- *     without, 10 of 12 with (the same 2 of 12 as without for "man of the
- *     match tonight was Imtiaz"). Partnered clubs only.
- * Rejected on the numbers: a separate line after the context (even the
- * names alone) took "mark Sam as free" to 9 of 20 and 3 of 20; "another
- * club or group" sent "ask in the group" and "gruba sor" to admin_ops; the
- * sentence in every club's header, partners or not, took "man of the
- * match tonight was Imtiaz" to admin_ops 4 of 8.
  */
-export function organisersHeader(partnerClubs: string[] = []): string {
-  const base =
-    "ORGANISERS' GROUP. The sender is an organiser of the club. Here, saying a named player owes nothing for the match, a free place (\"he's free this week, he did the bibs\", \"no fee for him\", \"ödemesin\"), or taking one back (\"he pays after all\", \"ücretsiz değil\"), is admin_ops, tagged or not. Free as in able to play (\"he's free, add him\") is other_att. Nothing else changes: a shortage or a question put to the other organisers is still none.";
-  if (partnerClubs.length === 0) return base;
-  const names = partnerClubs.length === 1 ? partnerClubs[0] : `${partnerClubs.slice(0, -1).join(", ")} and ${partnerClubs[partnerClubs.length - 1]}`;
-  // Inside the sentence list, before "Nothing else changes", with the names
-  // in it: see the measurements above.
-  return base.replace(
-    " Nothing else changes:",
-    ` Asking the bot to ask another club for a player, by its name (this club's partner ${partnerClubs.length === 1 ? "club is" : "clubs are"} ${names}) or as the partner clubs, other clubs or other groups, is admin_ops too; the club's own group is still ask_group. Nothing else changes:`,
-  );
-}
-
-/** The header for a club with no partner club: unchanged by slice S6. */
-export const ORGANISERS_HEADER = organisersHeader();
+export const ORGANISERS_HEADER =
+  "ORGANISERS' GROUP. The sender is an organiser of the club. Here, saying a named player owes nothing for the match, a free place (\"he's free this week, he did the bibs\", \"no fee for him\", \"ödemesin\"), or taking one back (\"he pays after all\", \"ücretsiz değil\"), is admin_ops, tagged or not. Free as in able to play (\"he's free, add him\") is other_att. Nothing else changes: a shortage or a question put to the other organisers is still none.";
 
 /**
  * The line a players' group message from an owner or admin is shown under
@@ -788,7 +755,8 @@ export const ORGANISERS_HEADER = organisersHeader();
  * more, anyone?" from offer 10 of 10 to 6 of 10 and "@Match Time we're
  * short, find us a player" to admin_ops 8 of 10; with it, offer 10 of 10
  * for both, and the asks to another club admin_ops 10 of 10. (The
- * organisers' group says the same in `organisersHeader`.)
+ * organisers' group's turn is unchanged: its ask_group route reads the
+ * club named with the admin extractor, `admin-group-understand.ts`.)
  */
 export function partnerClubsLine(names: string[]): string {
   return `PARTNER CLUBS of this club: ${names.join(", ")}. A message naming one of them, or the partner clubs, other clubs or other groups, and telling the bot to ask them for a player, is admin_ops. Any other message, asking this group for a player included, is routed as if this line were not here.`;
@@ -806,7 +774,7 @@ export function renderRouterTurn(messages: RouterMessage[], now: Date = new Date
   const body = messages.map((m) => {
     const line = `[${m.id}] ${m.authorName ?? "(unknown)"}: ${m.body}`;
     const reply = m.reply ? quotedLines(m.reply, ROUTER_QUOTE_WORDS_MAX) : [];
-    if (m.organisers) return [organisersHeader(m.partnerClubs ?? []), ...m.organisers.context, ...reply, line].join("\n");
+    if (m.organisers) return [ORGANISERS_HEADER, ...m.organisers.context, ...reply, line].join("\n");
     const partners = m.partnerClubs && m.partnerClubs.length > 0 ? [partnerClubsLine(m.partnerClubs)] : [];
     return [...partners, ...reply, line].join("\n");
   });
