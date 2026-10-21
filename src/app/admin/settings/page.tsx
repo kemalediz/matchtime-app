@@ -24,6 +24,7 @@ import { PaymentInstructionsRow } from "@/components/settings/payment-instructio
 import { GoLiveBanner, type GoLiveSetup } from "@/components/settings/go-live-banner";
 import { PostersCard } from "@/components/settings/posters-card";
 import { PartnerClubsSection } from "@/components/settings/partner-clubs-section";
+import { scrollToHashTarget } from "@/lib/scroll-to-hash";
 import { QuietHoursSection } from "@/components/settings/quiet-hours-section";
 
 type FeatureKey = ToggleableKey;
@@ -151,6 +152,14 @@ export default function SettingsPage() {
       })
       .finally(() => setLoading(false));
   }, []);
+
+  // The billing DMs and banner link to #billing and #payments, which are
+  // drawn only once the settings have loaded: the browser looked for them
+  // too early. Once, as the page first shows.
+  useEffect(() => {
+    if (loading) return;
+    if (!scrollToHashTarget("billing")) scrollToHashTarget("payments");
+  }, [loading]);
 
   async function copyInviteLink() {
     if (!org) return;
