@@ -25,16 +25,16 @@ export const HAIKU_MODEL = "claude-haiku-5-5";
  * THE SONNET MODEL ID, IN ONE PLACE (2026-10-20).
  *
  * Every Sonnet call site names it through this constant, the way the
- * Haiku sites name `HAIKU_MODEL`: the attendance and question
- * extractors (`EXTRACTOR_CALLS` in pipeline/extractors.ts; teams, score
- * and admin moved to Haiku 5.5 on 2026-10-20), the DM answers (dm-qa.ts), the
- * onboarding reading and the squad-list reading, plus the DM dry run and
- * the live probe list. The generic stats answer, the rating adjuster and
- * the scheduled-chase composer moved to Haiku 5.5 on 2026-10-20
- * (`HAIKU_CALL` in pipeline/llm.ts, after their rewrites). A
- * site that moves to another model changes its own reference; the
- * family moves here in one line. Guarded by
- * `__tests__/model-single-source.test.ts`.
+ * Haiku sites name `HAIKU_MODEL`. Since 2026-10-21 NO product call
+ * site runs on it: the extractors, the DM answers (dm-qa.ts), the
+ * generic stats answer, the rating adjuster and the scheduled-chase
+ * composer moved to Haiku 5.5 on 2026-10-20, and the onboarding reading
+ * and the squad-list reading, the last two, on 2026-10-21 (`HAIKU_CALL`
+ * in pipeline/llm.ts, each after a whole rewrite of its prompt). It is
+ * kept because the paid checks still run the Sonnet arm as a baseline
+ * (`SONNET_CALL`, e2e/helpers/arm-model.ts), as do the DM dry run and
+ * the live probe list, and a site that has to go back moves in one line.
+ * Guarded by `__tests__/model-single-source.test.ts`.
  *
  * Every Sonnet site sends `thinking: { type: "disabled" }` (the
  * pipeline's `thinking: "off"`): Sonnet 5 thinks adaptively when the

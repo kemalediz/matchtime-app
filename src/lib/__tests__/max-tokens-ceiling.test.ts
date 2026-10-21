@@ -187,10 +187,10 @@ function upperBound(
  * people learn to silence is worse than one they trust.
  */
 const TRUNCATION_FAILS_CLOSED: Record<string, string> = {
-  "lib/squad-from-list.ts":
-    "JSON.parse of a truncated body throws → caught → returns [] → no DB writes.",
-  "lib/onboarding-analyzer.ts":
-    "normaliseAnalysis JSON.parses twice, both fail on truncation → returns null.",
+  // `lib/squad-from-list.ts` and `lib/onboarding-analyzer.ts` LEFT THIS
+  // LIST on 2026-10-21: both go through pipeline/llm.ts now, which
+  // checks `stop_reason` itself (TruncatedResponseError, caught by each
+  // into "no lists" and null).
   "lib/onboarding-conversation.ts":
     "JSON.parse throws → falls back to regexExtract, which is the designed fallback.",
   "lib/match-availability-classifier.ts":
@@ -229,7 +229,9 @@ describe("truncation coverage (companion guard)", () => {
     // was deleted (in which case its exemption above must go too, and
     // the stale-exemption case will say so) or the scanner regex has
     // rotted and every check in this file is vacuously passing.
-    expect(callSites.length).toBeGreaterThanOrEqual(9);
+    // Seven since 2026-10-21: the squad-list and onboarding readings
+    // moved onto pipeline/llm.ts.
+    expect(callSites.length).toBeGreaterThanOrEqual(7);
   });
 
   it("has no stale exemptions", () => {

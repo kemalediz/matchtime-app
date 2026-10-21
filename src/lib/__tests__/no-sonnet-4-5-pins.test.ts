@@ -252,8 +252,12 @@ describe("every messages.create site is legible to the guard", () => {
 
 describe("claude-sonnet-5 never runs adaptive thinking by accident", () => {
   it("every Sonnet 5 call site passes thinking explicitly", () => {
+    // None is left since 2026-10-21: the onboarding reading and the
+    // squad-list reading, the last two, moved to Haiku 5.5 through
+    // pipeline/llm.ts. The check stays for the next raw Sonnet 5 site;
+    // "finds the call sites at all" above keeps it from passing because
+    // the scanner broke.
     const sonnetSites = SITES.filter((s) => s.model === SONNET_5);
-    expect(sonnetSites.length).toBeGreaterThan(0);
     const silent = sonnetSites
       .filter((s) => !/\bthinking\s*:/.test(s.body))
       .map((s) => `${rel(s.file)}:${s.line}`);
@@ -269,25 +273,15 @@ describe("claude-sonnet-5 never runs adaptive thinking by accident", () => {
     ).toEqual([]);
   });
 
-  it("the migrated sites still on Sonnet turn it off, because none of them was ever asked to reason", () => {
-    // Each of these has a max_tokens sized for its OUTPUT and a
-    // fail-closed path. Disabling thinking is what keeps the move a
-    // price change: on Sonnet 4.5 these calls never thought either.
-    // The chase composer left this list on 2026-10-20: it goes through
-    // pipeline/llm.ts with a call pair (CHASE_COMPOSER_CALL). The DM Q&A
-    // left it the same day, the same way (DM_QA_CALL, on Haiku 5.5).
-    for (const f of [
-      "src/lib/squad-from-list.ts",
-      "src/lib/onboarding-analyzer.ts",
-    ]) {
-      const sites = callSites(path.join(REPO, f)).filter((s) => s.model === SONNET_5);
-      expect(sites.length, `${f} has no claude-sonnet-5 call site`).toBeGreaterThan(0);
-      for (const s of sites) {
-        expect(
-          /thinking\s*:\s*\{\s*type\s*:\s*"disabled"\s*\}/.test(s.body),
-          `${f}:${s.line} is on claude-sonnet-5 without thinking: { type: "disabled" }`,
-        ).toBe(true);
-      }
+  it("the last raw Sonnet sites left on 2026-10-21, for the pipeline on Haiku 5.5", () => {
+    // squad-from-list.ts and onboarding-analyzer.ts were the last two
+    // raw claude-sonnet-5 calls (thinking disabled). Both now spread a
+    // call pair (SQUAD_LIST_CALL, ONBOARDING_ANALYZER_CALL = HAIKU_CALL)
+    // into pipeline/llm.ts, which states the thinking posture with the
+    // model, so neither has a messages.create of its own to check.
+    for (const f of ["src/lib/squad-from-list.ts", "src/lib/onboarding-analyzer.ts"]) {
+      expect(callSites(path.join(REPO, f)), `${f} calls messages.create again`).toEqual([]);
+      expect(fs.readFileSync(path.join(REPO, f), "utf8")).toMatch(/_CALL: ModelCall = HAIKU_CALL;/);
     }
   });
 
