@@ -71,7 +71,8 @@ beforeEach(() => {
 
 describe("confirmCollectorFeeByReaction", () => {
   it("claims the match with the typed yes's compare-and-set, releases, and returns the typed yes's ack", async () => {
-    const res = await confirmCollectorFeeByReaction("kemal", "m1", "m1:fee-confirm");
+    // Midday London: outside the club's quiet hours, so nothing is held.
+    const res = await confirmCollectorFeeByReaction("kemal", "m1", "m1:fee-confirm", { now: new Date("2026-10-21T11:00:00Z") });
     // Scoped to the clubs this user collects for, and to THIS match.
     expect(orgFindMany.mock.calls[0][0].where).toEqual({ paymentHolderId: "kemal", paymentCollectionEnabled: true });
     expect(matchFindFirst.mock.calls[0][0].where).toMatchObject({ id: "m1", paymentLinksReleasedAt: null });
@@ -97,6 +98,40 @@ describe("confirmCollectorFeeByReaction", () => {
         lang: "en",
       }),
     });
+  });
+
+  it("inside quiet hours (08:10 London): the links wait for 09:00 and the reaction's ack says so, EN and TR (2026-10-21)", async () => {
+    const at = new Date("2026-10-21T07:10:00Z");
+    const res = await confirmCollectorFeeByReaction("kemal", "m1", "m1:fee-confirm", { now: at });
+    expect(botJobs).toHaveLength(1);
+    expect((botJobs[0] as { sendAfter?: Date }).sendAfter).toEqual(new Date("2026-10-21T08:00:00Z"));
+    expect(res?.reply).toBe(
+      buildFeeReleasedAck({
+        released: 1,
+        fee: 10.15,
+        matchName: "Tuesday 7-a-side",
+        matchWhen: dayLabel("en", DATE),
+        methods: ["card", "direct"],
+        heldUntil: "09:00",
+        lang: "en",
+      }),
+    );
+    expect(res?.reply).toContain("It goes out at 09:00 London, when quiet hours end.");
+
+    botJobs.length = 0;
+    matchFindFirst.mockResolvedValue({ ...PENDING, activity: { ...PENDING.activity, org: { ...PENDING.activity.org, language: "tr" } } });
+    const tr = await confirmCollectorFeeByReaction("kemal", "m1", "m1:fee-confirm", { now: at });
+    expect(tr?.reply).toContain("Sessiz saatler bitince, Londra saatiyle saat 09:00 olunca gönderilecek.");
+  });
+
+  it("quiet hours off: nothing waits and the ack says the link was sent", async () => {
+    const off = { quietHoursEnabled: false };
+    matchFindFirst.mockResolvedValue({ ...PENDING, activity: { ...PENDING.activity, org: { ...PENDING.activity.org, ...off } } });
+    const row = await matchFindUnique();
+    matchFindUnique.mockResolvedValue({ ...row, activity: { ...row.activity, org: { ...row.activity.org, ...off } } });
+    const res = await confirmCollectorFeeByReaction("kemal", "m1", "m1:fee-confirm", { now: new Date("2026-10-21T07:10:00Z") });
+    expect((botJobs[0] as { sendAfter?: Date }).sendAfter).toBeUndefined();
+    expect(res?.reply).toMatch(/^✅ Done, sent 1 pay link /);
   });
 
   it("nothing pending: null, nothing claimed", async () => {
