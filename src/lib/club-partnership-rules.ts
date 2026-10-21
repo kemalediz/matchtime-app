@@ -170,3 +170,33 @@ export function planPartnershipAction(
     }
   }
 }
+
+/**
+ * What MatchTime's pairing notice to one club is about (2026-10-21): the
+ * `BotJob.aboutKey` of each DM copy, and the HQ log's `askRef` when it went
+ * to the club's admin group. A WhatsApp reply or reaction on the notice
+ * finds its pairing AND its club by this key, never by the notice's words,
+ * so one person who owns both clubs (two notices) answers each one alone.
+ */
+const PAIRING_KEY_PREFIX = "pairing:";
+
+export function pairingNoticeKey(partnershipId: string, orgId: string): string {
+  return `${PAIRING_KEY_PREFIX}${partnershipId}:${orgId}`;
+}
+
+export function parsePairingNoticeKey(key: string | null | undefined): { partnershipId: string; orgId: string } | null {
+  if (!key || !key.startsWith(PAIRING_KEY_PREFIX)) return null;
+  const [partnershipId, orgId, ...rest] = key.slice(PAIRING_KEY_PREFIX.length).split(":");
+  if (!partnershipId || !orgId || rest.length > 0) return null;
+  return { partnershipId, orgId };
+}
+
+/** This club's side has not accepted a pairing that is still proposed. */
+export function waitingForSide(
+  p: Pick<PartnershipRow, "askerOrgId" | "partnerOrgId" | "status" | "askerAcceptedAt" | "partnerAcceptedAt">,
+  orgId: string,
+): boolean {
+  const side = sideOf(p, orgId);
+  if (!side || p.status !== "proposed") return false;
+  return !(side === "asker" ? p.askerAcceptedAt : p.partnerAcceptedAt);
+}

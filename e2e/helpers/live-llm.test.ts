@@ -657,6 +657,12 @@ describe("a live run cannot be secretly gated", () => {
     ).toThrow(/MT_TEST_FEE_REPLY_STUB_FILE/);
   });
 
+  it("refuses a live run that can still see the pairing-reply stub file (2026-10-21)", () => {
+    expect(() =>
+      assertSeamMatchesMode("live", { ...liveOkNoRouterStub, MT_TEST_PAIRING_REPLY_STUB_FILE: "/tmp/pairing-reply-stub.json" }),
+    ).toThrow(/MT_TEST_PAIRING_REPLY_STUB_FILE/);
+  });
+
   it("refuses a live run that can still see the roster-survey stub file (quoted-reply context S3)", () => {
     expect(() =>
       assertSeamMatchesMode("live", { ...liveOkNoRouterStub, MT_TEST_ROSTER_SURVEY_STUB_FILE: "/tmp/roster-survey-stub.json" }),

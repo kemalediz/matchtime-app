@@ -120,7 +120,7 @@ describe("sendAdminNotice: the other two channels", () => {
     expect(jobs()[0]).toMatchObject({ orgId: ORG, kind: "admin-group" });
     expect(jobs()[0].text).toMatch(/\/admin\/players\/phones$/);
     expect(jobs()[0].text).not.toContain("/s/");
-    expect(r).toEqual({ channel: "admin-group", queued: 1 });
+    expect(r).toEqual({ channel: "admin-group", queued: 1, groupText: jobs()[0].text });
   });
 
   it("admin-group with no group linked yet: the owner by DM", async () => {
@@ -138,6 +138,21 @@ describe("sendAdminNotice: the other two channels", () => {
     expect(jobs()[1].sendAfter).toBeUndefined();
     await sendAdminNotice({ orgId: ORG, text: "Late drop-out: *Ali*", now: NOON });
     expect(jobs()[2].sendAfter).toBeUndefined();
+  });
+
+  it("aboutKey: every DM copy carries it, so a reply or reaction finds the notice; the group post returns its exact words", async () => {
+    dbMock.organisation.findUnique.mockResolvedValue(org());
+    await sendAdminNotice({ orgId: ORG, holdOvernight: false, aboutKey: "pairing:p1:org-fnf", ...NOTICE });
+    expect(jobs().map((j) => j.aboutKey)).toEqual(["pairing:p1:org-fnf", "pairing:p1:org-fnf", "pairing:p1:org-fnf"]);
+    dbMock.botJob.create.mockClear();
+    dbMock.organisation.findUnique.mockResolvedValue(org({ adminChannelMode: "admin-group", adminGroupId: GROUP }));
+    const r = await sendAdminNotice({ orgId: ORG, holdOvernight: false, aboutKey: "pairing:p1:org-fnf", ...NOTICE });
+    expect(r.groupText).toBe(jobs()[0].text);
+    // A notice without one is unchanged.
+    dbMock.botJob.create.mockClear();
+    dbMock.organisation.findUnique.mockResolvedValue(org());
+    await sendAdminNotice({ orgId: ORG, holdOvernight: false, ...NOTICE });
+    expect(jobs().every((j) => !("aboutKey" in j))).toBe(true);
   });
 
   it("an unknown club queues nothing", async () => {

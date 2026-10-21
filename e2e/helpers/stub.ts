@@ -217,6 +217,18 @@ export function clearFeeReplyStub(): void {
   rmSync(`${E2E.FEE_REPLY_STUB_FILE}.calls`, { force: true });
 }
 
+/** The PAIRING-REPLY stub (2026-10-21): an owner's reply to the pairing
+ *  notice → "accept" | "decline" | "neither". `{}` means "neither". */
+export function setPairingReplyStub(stub: { bodies?: Record<string, "accept" | "decline" | "neither">; fail?: string[] }): void {
+  mkdirSync(path.dirname(E2E.PAIRING_REPLY_STUB_FILE), { recursive: true });
+  writeFileSync(E2E.PAIRING_REPLY_STUB_FILE, JSON.stringify(stub, null, 2));
+}
+
+export function clearPairingReplyStub(): void {
+  setPairingReplyStub({});
+  rmSync(`${E2E.PAIRING_REPLY_STUB_FILE}.calls`, { force: true });
+}
+
 /** The ROSTER-SURVEY stub (quoted-reply context S3): a check-in reply →
  *  "in" | "maybe" | "out" | "unclear". `{}` means "unclear", which saves
  *  nothing. */

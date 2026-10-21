@@ -5009,10 +5009,29 @@ export const en = {
   // The settings section and the notice when the platform owner pairs two
   // clubs. Read by src/components/settings/partner-clubs-section.tsx and
   // src/lib/club-partnership.ts.
-  pc_paired_notice_asker: (p: { club: string; other: string; link: string }) =>
-    `🤝 MatchTime has paired *${p.club}* with *${p.other}*: when you are short of players, MatchTime can ask ${p.other} for one, with their organisers' OK. Nothing happens until both clubs' owners accept. Your owner can accept or decline here: ${p.link}`,
-  pc_paired_notice_partner: (p: { club: string; other: string; link: string }) =>
-    `🤝 MatchTime has paired *${p.club}* with *${p.other}*: when ${p.other} are short of players, MatchTime can ask your group if anyone can play for them. Your organisers approve each ask first, unless you choose otherwise. Nothing happens until both clubs' owners accept. Your owner can accept or decline here: ${p.link}`,
+  // The notice tells the owner they can answer it in WhatsApp (Kemal,
+  // 2026-10-21: "whatsapp reply like pressing 1 or 2 should also do the
+  // same job"). The reply is read by `pairing-reply.ts` through the model,
+  // with this message as its context, never by matching "1" or "2". In the
+  // admin group (`inGroup`) the owner is asked to reply TO this message, so
+  // the answer is known to be about it.
+  pc_paired_notice_asker: (p: { club: string; other: string; link: string; inGroup?: boolean }) =>
+    `🤝 MatchTime has paired *${p.club}* with *${p.other}*: when you are short of players, MatchTime can ask ${p.other} for one, with their organisers' OK. Nothing happens until both clubs' owners accept. Club owner: ${p.inGroup ? "reply to this message with" : "reply"} *1* to accept or *2* to decline, or open ${p.link}`,
+  pc_paired_notice_partner: (p: { club: string; other: string; link: string; inGroup?: boolean }) =>
+    `🤝 MatchTime has paired *${p.club}* with *${p.other}*: when ${p.other} are short of players, MatchTime can ask your group if anyone can play for them. Your organisers approve each ask first, unless you choose otherwise. Nothing happens until both clubs' owners accept. Club owner: ${p.inGroup ? "reply to this message with" : "reply"} *1* to accept or *2* to decline, or open ${p.link}`,
+  // The answer to a WhatsApp reply (or a ✅/👍 reaction) on that notice.
+  pc_reply_accepted_waiting: (p: { club: string; other: string }) =>
+    `✅ Accepted for *${p.club}*. Waiting for ${p.other}'s owner to accept too.`,
+  pc_reply_accepted_active: (p: { club: string; other: string }) =>
+    `✅ Accepted. *${p.club}* and *${p.other}* are partner clubs now.`,
+  pc_reply_declined: (p: { club: string; other: string }) => `Declined. *${p.club}* won't be paired with *${p.other}*.`,
+  pc_reply_already_accepted: (p: { club: string; other: string }) =>
+    `You've already accepted for *${p.club}*. Waiting for ${p.other}'s owner.`,
+  pc_reply_not_waiting: (p: { club: string; other: string }) =>
+    `The pairing of *${p.club}* with *${p.other}* isn't waiting for an answer any more.`,
+  pc_reply_which_item: (p: { club: string; other: string }) => `*${p.club}* with *${p.other}*`,
+  pc_reply_which: (p: { pairings: string }) =>
+    `Which pairing is that for? ${p.pairings}. Reply to that pairing's message with your answer.`,
   pc_section_title: "Partner clubs",
   pc_section_lead:
     "Clubs MatchTime may ask for a player when you are short, and clubs that may ask you. Only the MatchTime team pairs two clubs; each club's owner then accepts.",
@@ -5090,6 +5109,8 @@ export const en = {
     `⚠️ I can't confirm your ask reached *${p.partner}*'s group, so replies to it may not reach you. Check with their organisers if you still need a player.`,
   xask_filled_line: (p: { asker: string }) => `✅ *${p.asker}*'s place is filled, thanks all 🙌`,
   xask_off_line: (p: { asker: string; day: string }) => `*${p.asker}*'s ask for ${p.day} is closed now, thanks all.`,
+  hq_confirm_pairing: (p: { club: string; other: string }) =>
+    `Is that about pairing *${p.club}* with *${p.other}*? Club owner: reply to the pairing message with *1* to accept or *2* to decline.`,
   hq_confirm_partner_ask: (p: { asker: string; day: string }) =>
     `Is that YES to posting *${p.asker}*'s ask for ${p.day} in your players' group?`,
   xask_hq_approved: (p: { asker: string }) => `Done: *${p.asker}*'s ask is in your players' group now.`,

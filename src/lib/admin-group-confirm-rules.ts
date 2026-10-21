@@ -38,9 +38,11 @@ export const CONFIRM_WINDOW_MS = 15 * 60 * 1000;
 export interface PendingItem {
   /** `teamsAskRef(matchId)`, `listAskRef(pasteMessageId)`,
    *  `partnerAskRef(askId)` (a partner club's ask for a player, cross-club
-   *  ask slice S2) or `feeAskRef(proposalId)` (a free place, 2026-10-16). */
+   *  ask slice S2), `feeAskRef(proposalId)` (a free place, 2026-10-16) or
+   *  `pairingNoticeKey(pairing, club)` (a partner-club pairing waiting for
+   *  the owner's answer, 2026-10-21). */
   ref: string;
-  kind: "teams" | "list" | "partner-ask" | "fee";
+  kind: "teams" | "list" | "partner-ask" | "fee" | "pairing";
   /** When it was (last) asked: a quote of an older post about it is stale. */
   askedAt?: Date;
 }

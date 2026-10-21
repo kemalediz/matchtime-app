@@ -88,6 +88,9 @@ export const MATCH_AVAILABILITY_STUB_FILE_ENV = "MT_TEST_MATCH_AVAILABILITY_STUB
 /** The money collector's fee-reply classifier (quoted-reply context S3).
  *  Mirrors `FEE_REPLY_STUB_FILE_ENV` in `src/lib/fee-confirm.ts`. */
 export const FEE_REPLY_STUB_FILE_ENV = "MT_TEST_FEE_REPLY_STUB_FILE";
+/** The club owner's pairing-reply classifier (2026-10-21). Mirrors
+ *  `PAIRING_REPLY_STUB_FILE_ENV` in `src/lib/pairing-reply.ts`. */
+export const PAIRING_REPLY_STUB_FILE_ENV = "MT_TEST_PAIRING_REPLY_STUB_FILE";
 /** The roster check-in classifier (quoted-reply context S3). Mirrors
  *  `ROSTER_SURVEY_STUB_FILE_ENV` in `src/lib/roster-survey-classifier.ts`. */
 export const ROSTER_SURVEY_STUB_FILE_ENV = "MT_TEST_ROSTER_SURVEY_STUB_FILE";
@@ -264,6 +267,7 @@ export function assertSeamMatchesMode(
     }
     for (const [env, what] of [
       [FEE_REPLY_STUB_FILE_ENV, "lib/fee-confirm.ts, which releases the whole squad's pay links on a collector's yes"],
+      [PAIRING_REPLY_STUB_FILE_ENV, "lib/pairing-reply.ts, which accepts or declines a partner-club pairing on an owner's reply"],
       [ROSTER_SURVEY_STUB_FILE_ENV, "lib/roster-survey-classifier.ts, which saves a player's roster check-in answer"],
     ] as const) {
       if (!blank(childEnv[env])) {
