@@ -484,7 +484,7 @@ THE ACTION, exactly one:
   "bulk_payment" someone paid for several players.
   "fee_waiver" the sender gives named players a free place, so they owe nothing for a game, or takes a free place back. "Free" meaning able to play ("I'm free Tuesday") is not this, and neither is a question or a discussion about it ("should Bilal play free?").
   "reminder" the sender wants MatchTime to remind them, at a time.
-  "recruit" the sender asks MatchTime to contact or invite players who are not in the squad yet. Asking to show, list or count the squad is "other".
+  "recruit" the sender asks MatchTime to find players who are not in the squad yet, either by inviting the club's own past players or by asking another club or group whether anyone can play. Asking to show, list or count the squad is "other", and so is talking or asking about another club.
   "stats_blast" the sender tells MatchTime itself to send every player their own stats or ratings link. Telling the PLAYERS to do something (rate each other, open the link they already have), or only talking or asking about the links, is "other".
   "other" anything else.
 
@@ -496,23 +496,37 @@ THE FIELDS. Fill the ones for the action; every other field is "", 0, false or [
   matchDay fee_waiver: the day the message names for the game, as written ("tonight", "last night", "next Friday", "cuma"); "" when it names none or only "this week".
   phrase reminder: the time phrase exactly as written ("on Monday", "tomorrow at 6"), never a date.
   note reminder: what to remind them about, in their own words ("bring the bibs"); "" when it names nothing.
-  lookbackMatches recruit: how many recent matches to draw players from ("the last 5 matches" -> 5, "the last couple of games" -> 2); 0 when no number is named.
+  lookbackMatches recruit: how many of the club's recent matches to draw its own players from ("the last 5 matches" -> 5, "the last couple of games" -> 2); 0 when no number is named.
+  partnerClubs recruit: true when the players are to come from another club, a partner club or the other groups, named or not; false when they are the club's own players, and "the group" or "the main group" is the club's own players' group.
+  clubRef recruit: the other club's name as written, without a Turkish case ending ("Sutton'a" -> "Sutton"); "" when the message names no club ("the partner clubs", "the other groups", "another club").
 
-EXAMPLES, English and Turkish
+EXAMPLES, English and Turkish, grouped by what they teach
+Payments and free places:
   "Amir paid for 4 players" -> bulk_payment, payerRef "Amir", count 4
   "Amir paid for Faris and Adam" -> bulk_payment, payerRef "Amir", count 2, coveredRefs ["Faris","Adam"]
   "Bilal washed the bibs, he's free this week" -> fee_waiver, coveredRefs ["Bilal"], undo false, matchDay ""
   "Ali ve Can cuma günü ödemesin" -> fee_waiver, coveredRefs ["Ali","Can"], undo false, matchDay "cuma günü"
   "put Bilal down as free on Friday" / "Bilal bu akşam ücretsiz oynasın" -> fee_waiver, coveredRefs ["Bilal"], undo false, matchDay "on Friday" / "bu akşam"
   "scrap that, Tom isn't free, he pays" / "Ali ücretsiz değil, ödesin" -> fee_waiver, coveredRefs ["Tom"] / ["Ali"], undo true
+  "should Bilal play free?" -> other: a discussion
+Reminders:
   "remind me tomorrow at 6 to bring the bibs" -> reminder, phrase "tomorrow at 6", note "bring the bibs"
-  "message the lads from the last 5 matches and invite them" -> recruit, lookbackMatches 5
-  "we need more players, can you round some up" / "ask the regulars if they can play" -> recruit, lookbackMatches 0
+Players from the club's own past games:
+  "message the lads from the last 5 matches and invite them" / "son 5 maçta oynayanlara yaz, davet et" -> recruit, lookbackMatches 5, partnerClubs false
+  "we need more players, can you round some up" / "ask the regulars if they can play" -> recruit, lookbackMatches 0, partnerClubs false
+Players from another club:
+  "ask Sutton if anyone can play" / "Sutton'a sor bakalım oynayan var mı" -> recruit, partnerClubs true, clubRef "Sutton"
+  "@Match Time ask Friday MT Community if anyone can play tonight" -> recruit, partnerClubs true, clubRef "Friday MT Community"
+  "search for players from our partner groups" / "diğer gruplara sor, oynayacak biri var mı" -> recruit, partnerClubs true, clubRef ""
+  "try another club for one more" / "başka bir kulübe sorar mısın" -> recruit, partnerClubs true, clubRef ""
+  "Sutton were great last week" / "Sutton geçen hafta çok iyi oynadı" -> other: talk about another club
+  "did Sutton ever get back to us?" -> other: a question
+Stats links:
   "@Match Time send everyone their stats" / "@Match Time DM the squad their ratings links" -> stats_blast
   "lads don't forget to rate the players via the link MatchTime DM'ed you" -> other: it tells the players
   "did everyone get their stats link?" -> other: a question
   "@Match Time what are my stats" -> other: one person asking about themselves
-  "should Bilal play free?" -> other`,
+`,
 };
 
 // ── Schemas ────────────────────────────────────────────────────────────
@@ -705,8 +719,12 @@ const ADMIN_SCHEMA = {
     // 0 is the schema's stand-in for null, the same convention
     // `statedCount` uses. A nullable number is rejected by the API.
     lookbackMatches: { type: "number" },
+    // recruit from another club (slice S6, 2026-10-21): the players are to
+    // come from a partner club or group, and that club's name as written.
+    partnerClubs: { type: "boolean" },
+    clubRef: { type: "string" },
   },
-  required: ["action", "payerRef", "count", "coveredRefs", "undo", "matchDay", "phrase", "note", "lookbackMatches"],
+  required: ["action", "payerRef", "count", "coveredRefs", "undo", "matchDay", "phrase", "note", "lookbackMatches", "partnerClubs", "clubRef"],
   additionalProperties: false,
 } as const;
 
@@ -1010,6 +1028,7 @@ export function parseFacts(
         bad(`unknown admin action "${str(raw.action)}"`);
         return { facts: { kind: "none" }, degradations };
       }
+      const clubRef = typeof raw.clubRef === "string" ? raw.clubRef.trim() : "";
       const facts: AdminFacts = {
         kind: "admin",
         action: action as AdminFacts["action"],
@@ -1031,6 +1050,10 @@ export function parseFacts(
         raw.lookbackMatches > 0
           ? { lookbackMatches: raw.lookbackMatches }
           : {}),
+        // Slice S6: another club's players. A club name as written is
+        // another club, whatever the boolean said; both are recruit only.
+        ...(action === "recruit" && (raw.partnerClubs === true || clubRef) ? { partnerClubs: true } : {}),
+        ...(action === "recruit" && clubRef ? { clubRef } : {}),
       };
       return { facts, degradations };
     }

@@ -460,6 +460,41 @@ describe("S22 · a personal reminder", () => {
 
 // ── 4. The recruit blast ───────────────────────────────────────────────
 
+// ── 4b. Partner clubs asked in the organiser's words (slice S6) ─────────
+
+describe("a partner ask is reported, never performed here", () => {
+  const ASK = "@Match Time ask Sutton if anyone can play";
+  const ASK_FACTS = { ...BLAST_FACTS, lookbackMatches: 0, partnerClubs: true, clubRef: "Sutton" };
+
+  it("an admin's ask is owned, carries the club as written, and is not a blast", async () => {
+    const { model } = stubModel({ [ASK]: ASK_FACTS });
+    const r = recorder(model, paidWorld());
+    const res = await run({ messages: [msg({ body: ASK, senderUserId: "u-kemal" })], deps: r.deps });
+    expect(res.ownedIds.size).toBe(1);
+    expect(res.degradations.join(" ")).not.toMatch(/cannot apply/);
+    const out = [...res.outcomes.values()][0];
+    expect(out.partnerAskRequest).toEqual({ clubRef: "Sutton", matchId: expect.any(String) });
+    expect(out.recruitRequest).toBe(false);
+    expect(out.intent).toBe("partner_ask");
+    expect(r.dms).toEqual([]);
+    expect(out.reply).toBeNull();
+  });
+
+  it("no club named: clubRef null", async () => {
+    const { model } = stubModel({ [ASK]: { ...ASK_FACTS, clubRef: "" } });
+    const r = recorder(model, paidWorld());
+    const res = await run({ messages: [msg({ body: ASK, senderUserId: "u-kemal" })], deps: r.deps });
+    expect([...res.outcomes.values()][0].partnerAskRequest).toMatchObject({ clubRef: null });
+  });
+
+  it("a non-admin's ask is not reported", async () => {
+    const { model } = stubModel({ [ASK]: ASK_FACTS });
+    const r = recorder(model, paidWorld());
+    const res = await run({ messages: [msg({ body: ASK, senderUserId: "u-zair", senderName: fullName("zair") })], deps: r.deps });
+    expect([...res.outcomes.values()][0].partnerAskRequest).toBeNull();
+  });
+});
+
 describe("the recruit blast is reported, never fired here", () => {
   it("an admin's ask is owned and carries the clamped lookback", async () => {
     const { model } = stubModel({ [BLAST]: BLAST_FACTS });

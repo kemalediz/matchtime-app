@@ -277,6 +277,14 @@ export interface AdminOpsMessageOutcome {
    * an explicit @-mention); this field is what it decided.
    */
   statsBlastRequest: boolean;
+  /**
+   * An admin asked, with a tag, for the club's partner clubs to be asked
+   * for a player (slice S6, 2026-10-21). Same shape and same batch-final
+   * pass as `recruitRequest`: this path asks nobody, the route calls
+   * `askPartnersFromWords` after every write in the batch has landed.
+   * `clubRef` is the club named, as written, or null for every partner.
+   */
+  partnerAskRequest: { clubRef: string | null; matchId: string | null } | null;
   /** A write threw. The caller must not say anything cheerful. */
   writeFailed: boolean;
 }
@@ -589,6 +597,7 @@ export async function runAdminOpsBatch(args: {
         recruitRequest: false,
         recruitLookbackMatches: null,
         statsBlastRequest: false,
+        partnerAskRequest: null,
         writeFailed: false,
       });
     }
@@ -640,6 +649,7 @@ export async function runAdminOpsBatch(args: {
   const reminders: EngineReminderWrite[] = [];
   const recruitByMessage = new Map<string, number | null>();
   const statsBlastIds = new Set<string>();
+  const partnerAskByMessage = new Map<string, { clubRef: string | null; matchId: string | null }>();
   const foreign: string[] = [];
   for (const w of result.writes) {
     if (!ownedIds.has(w.sourceMessageId)) {
@@ -653,6 +663,9 @@ export async function runAdminOpsBatch(args: {
     // `recruit_blast` and for the same reason — see the header, and
     // `lib/stats-blast.ts` for why the classification moved here at all.
     else if (w.kind === "stats_blast") statsBlastIds.add(w.sourceMessageId);
+    // Deferred the same way (slice S6): the partner clubs are asked after
+    // the batch's writes, so the places asked for count this batch's drops.
+    else if (w.kind === "partner_ask") partnerAskByMessage.set(w.sourceMessageId, { clubRef: w.clubRef, matchId: w.matchId });
     else foreign.push(w.kind);
   }
   if (foreign.length > 0) {
@@ -768,6 +781,7 @@ export async function runAdminOpsBatch(args: {
     const machineReasons = (engineOutcome?.reasons ?? []).join("; ");
     const isRecruit = recruitByMessage.has(m.waMessageId);
     const isStatsBlast = statsBlastIds.has(m.waMessageId);
+    const partnerAsk = partnerAskByMessage.get(m.waMessageId) ?? null;
 
     // §3.2 S7: a write that threw says nothing at all.
     const reply = failed ? null : (replyByMessage.get(m.waMessageId) ?? null);
@@ -803,7 +817,9 @@ export async function runAdminOpsBatch(args: {
                 // unchanged by the move from regex to model.
                 isStatsBlast
                 ? "stats_blast"
-                : "noise",
+                : partnerAsk
+                  ? "partner_ask"
+                  : "noise",
       action: failed ? "none" : actedIds.has(m.waMessageId) ? action : react ? "react" : reply ? "reply" : "none",
       reasoning:
         `${ADMIN_OPS_HANDLED_BY} (${m.route}): ${machineReasons || "no rule fired"}` +
@@ -811,6 +827,7 @@ export async function runAdminOpsBatch(args: {
       recruitRequest: isRecruit,
       recruitLookbackMatches: recruitByMessage.get(m.waMessageId) ?? null,
       statsBlastRequest: isStatsBlast,
+      partnerAskRequest: partnerAsk,
       writeFailed: failed,
     });
   }

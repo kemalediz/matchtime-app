@@ -103,9 +103,9 @@ const MODEL = HAIKU_MODEL;
 export const DM_INTENT_MIN_CONFIDENCE = 0.8;
 
 /** The closed enum. Anything else the model returns becomes `other`. */
-export type DmIntent = "recruit_blast" | "rating_progress" | "other";
+export type DmIntent = "recruit_blast" | "partner_ask" | "rating_progress" | "other";
 
-const VALID: ReadonlySet<string> = new Set<DmIntent>(["recruit_blast", "rating_progress", "other"]);
+const VALID: ReadonlySet<string> = new Set<DmIntent>(["recruit_blast", "partner_ask", "rating_progress", "other"]);
 
 export interface DmIntentClassification {
   intent: DmIntent;
@@ -130,26 +130,28 @@ export interface DmIntentClassification {
  * side by side; each intent defined once; the "who does the work" rule
  * stated once.
  */
-export const DM_INTENT_SYSTEM_PROMPT = `A club admin sent MatchTime, their football club's WhatsApp bot, the private message under "THE DM". Above it you get the club, the admin, the time now, and what MatchTime said to them: the message they swipe-replied to, or else MatchTime's recent messages to them, each with when it was sent and what it was about.
+export const DM_INTENT_SYSTEM_PROMPT = `A club admin sent MatchTime, their football club's WhatsApp bot, the private message under "THE DM". Above it you get the club, its partner clubs when it has any, the admin, the time now, and what MatchTime said to them: the message they swipe-replied to, or else MatchTime's recent messages to them, each with when it was sent and what it was about.
 
-Is the message one of the two instructions MatchTime can carry out? You never carry it out and never answer it. Pick one:
-- "recruit_blast": they tell MatchTime to CONTACT players who are not signed up for the next match and invite them.
+Is the message one of the three instructions MatchTime can carry out? You never carry it out and never answer it. Pick one:
+- "recruit_blast": they tell MatchTime to CONTACT the club's own players who are not signed up for the next match and invite them.
+- "partner_ask": they tell MatchTime to ask ANOTHER club, a partner club or the other groups whether anyone can play, whether a club is named or not.
 - "rating_progress": they ask HOW MANY have sent their ratings or Man of the Match votes for the match just played, or WHO has not.
 - "other": everything else.
 
-Who is told to do the work decides it. Telling the PLAYERS to do something, describing what players said or did, reporting a fact (a drop-out, a shortage), thanking, complaining or chatting is "other", however often the message says players, ratings, DM, message, everyone or squad. Asking MatchTime to REMIND players is not asking for the rating tally.
+Who is told to do the work decides it. Telling the PLAYERS to do something, describing what players said or did, reporting a fact (a drop-out, a shortage), talking about another club, thanking, complaining or chatting is "other", however often the message says players, ratings, DM, message, everyone, squad or a club's name. Asking MatchTime to REMIND players is not asking for the rating tally.
 
-Read the message against what MatchTime said to them: the message they swipe-replied to, or else the newest recent one. A short follow-up such as "who's left?" or "and the MoM?" answering MatchTime's rating update is "rating_progress". An admin plays too, so a bare answer ("done", "ok", "👍") to a message MatchTime sent them as a player (a pay link, a request to rate teammates, a match invite) is about themselves: "other". A message that is itself one of the two instructions stays one, whatever it replies to.
+Read the message against what MatchTime said to them: the message they swipe-replied to, or else the newest recent one. A short follow-up such as "who's left?" or "and the MoM?" answering MatchTime's rating update is "rating_progress". An admin plays too, so a bare answer ("done", "ok", "👍") to a message MatchTime sent them as a player (a pay link, a request to rate teammates, a match invite) is about themselves: "other". A message that is itself one of the three instructions stays one, whatever it replies to.
 
 Examples (English | Turkish):
 recruit_blast: "DM everyone who played in the last 5 matches and invite them" | "son 5 maçta oynayan herkese yaz, davet et"; "we need a couple more for tuesday, can you message the recent lads" | "salıya iki kişi eksik, son gelenlere mesaj atar mısın"; "we're short, round some players up" | "eksiğimiz var, birkaç oyuncu topla"; "ask the last few weeks' players if they can play" | "son haftalarda oynayanlara gelebilirler mi diye sor"
+partner_ask: "ask Sutton if anyone can play tonight" | "Sutton'a sor bakalım oynayan var mı"; "can you ask the partner clubs for a player" | "partner kulüplere sorar mısın, bir oyuncu lazım"; "try the other groups for one more" | "diğer gruplara sor, oynayacak biri var mı"
 rating_progress: "who hasn't rated yet?" | "kim daha puan vermedi?"; "how many have picked a MoM so far" | "kaç kişi maçın adamını seçti"; "is everyone done rating" | "herkes puanladı mı"; "any ratings outstanding from tuesday?" | "salı maçından eksik puan var mı?"
-other: "please do not forget to rate the players via the link from Matchtime DM'ed to you. the more accurate ratings, the more balanced teams next time" (it tells the players); "Najib is out. We need one more player." | "Ahmet yok. Bir kişi lazım." (it reports a drop); "the lads keep asking me to DM them the ratings link" (it describes a situation); "cheers for sorting the players out last week" | "geçen hafta oyuncuları ayarladığın için sağ ol"; "I haven't rated yet, I'll do it tonight" | "ben daha puanlamadım, akşam yaparım"; "who's playing tuesday?" | "salı kimler var?" (the squad, not the ratings); "can you remind everyone to rate the players" | "herkese puan vermeyi hatırlat" (a reminder); "IN" | "varım"; "sorry can't make tuesday" | "salı gelemiyorum"; "done 👍" answering a request to rate teammates
+other: "please do not forget to rate the players via the link from Matchtime DM'ed to you. the more accurate ratings, the more balanced teams next time" (it tells the players); "Najib is out. We need one more player." | "Ahmet yok. Bir kişi lazım." (it reports a drop); "the lads keep asking me to DM them the ratings link" (it describes a situation); "Sutton were great last week" | "Sutton geçen hafta çok iyi oynadı" (talk about another club); "cheers for sorting the players out last week" | "geçen hafta oyuncuları ayarladığın için sağ ol"; "I haven't rated yet, I'll do it tonight" | "ben daha puanlamadım, akşam yaparım"; "who's playing tuesday?" | "salı kimler var?" (the squad, not the ratings); "can you remind everyone to rate the players" | "herkese puan vermeyi hatırlat" (a reminder); "IN" | "varım"; "sorry can't make tuesday" | "salı gelemiyorum"; "done 👍" answering a request to rate teammates
 
-If you are not at least 80% sure, choose "other". A wrong "recruit_blast" sends an unwanted private message to up to 27 real people; a wrong "other" costs the admin one re-typed message.
+If you are not at least 80% sure, choose "other". A wrong "recruit_blast" sends an unwanted private message to up to 27 real people; a wrong "partner_ask" troubles another club's organisers; a wrong "other" costs the admin one re-typed message.
 
 Output STRICT JSON only, no markdown, no fences:
-{"intent": "recruit_blast" | "rating_progress" | "other", "confidence": <number 0..1>, "reasoning": "<max 100 chars>"}`;
+{"intent": "recruit_blast" | "partner_ask" | "rating_progress" | "other", "confidence": <number 0..1>, "reasoning": "<max 100 chars>"}`;
 
 /** The model, as one function, so a test can drive the real parse
  *  without a key and the e2e suite can drive the real route without one
@@ -159,6 +161,9 @@ export type DmIntentCall = (system: string, user: string) => Promise<string>;
 export interface DmIntentContext {
   senderName?: string | null;
   clubName?: string | null;
+  /** The club's active partner clubs (slice S6), shown so "ask Sutton" is
+   *  read against them. Absent or empty: no line, as before. */
+  partnerClubs?: string[] | null;
   /** The chat context (`loadDmReplyContext`): the time now, and the
    *  message they swipe-replied to or MatchTime's recent DMs to them.
    *  Absent: the time now, nothing known. */
@@ -214,6 +219,7 @@ function stubCall(env: NodeJS.ProcessEnv): DmIntentCall | null {
 export function buildDmIntentUserTurn(text: string, context: DmIntentContext = {}): string {
   return [
     context.clubName ? `Club: ${context.clubName}` : null,
+    context.partnerClubs && context.partnerClubs.length > 0 ? `Partner clubs: ${context.partnerClubs.join(", ")}` : null,
     context.senderName ? `Admin: ${context.senderName}` : null,
     renderReplyContext(context.replyContext ?? noReplyContext()),
     `${MESSAGE_HEADER}\n${text.trim()}`,
@@ -326,6 +332,9 @@ export interface DmAdminIntentDeps {
   invite: (orgId: string) => Promise<{ reply: string; invited: number }>;
   /** The grounded read. Sends nothing to anybody. */
   ratingProgress: (orgId: string) => Promise<string>;
+  /** Ask the club's partner clubs for a player (slice S6): the shared
+   *  door, `askPartnersFromWords`. DMs nobody; returns the ONE reply. */
+  askPartners: (orgId: string) => Promise<string>;
   /** The ONE private reply, to the admin who asked. */
   reply: (args: { orgId: string; text: string }) => Promise<void>;
 }
@@ -333,6 +342,7 @@ export interface DmAdminIntentDeps {
 export type DmAdminIntentResult =
   | { handled: "recruit-dm"; orgId: string; invited: number }
   | { handled: "rating-progress-dm"; orgId: string }
+  | { handled: "partner-ask-dm"; orgId: string }
   | { handled: null };
 
 const NOT_HANDLED: DmAdminIntentResult = { handled: null };
@@ -380,6 +390,15 @@ export async function runDmAdminIntent(deps: DmAdminIntentDeps): Promise<DmAdmin
     const r = await deps.invite(orgId);
     await deps.reply({ orgId, text: r.reply });
     return { handled: "recruit-dm", orgId, invited: r.invited };
+  }
+
+  if (intent === "partner_ask") {
+    // The club with the soonest match, else the admin's first club: with
+    // no game to ask for, the shared door says so in one plain reply
+    // rather than the DM going unanswered (slice S6).
+    const orgId = (await deps.orgWithUpcomingMatch(orgIds)) ?? orgIds[0];
+    await deps.reply({ orgId, text: await deps.askPartners(orgId) });
+    return { handled: "partner-ask-dm", orgId };
   }
 
   if (intent === "rating_progress") {

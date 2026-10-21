@@ -1098,8 +1098,12 @@ export async function POST(request: Request) {
           quoted: adminQuote.quoted,
           orgIds: adminQuote.orgId ? [adminQuote.orgId] : dmAdminOrgIds,
         });
-        const ctx = { senderName: authorName ?? null, replyContext };
         const payer = adminQuote.orgId ?? dmAdminOrgIds[0];
+        // The club's partner clubs (slice S6), so "ask Sutton" is read
+        // against them. Never fails the DM: on a read error, no line.
+        const { activePartnerChoices } = await import("@/lib/partner-ask-words");
+        const partnerClubs = payer ? (await activePartnerChoices(payer).catch(() => [])).map((p) => p.name) : [];
+        const ctx = { senderName: authorName ?? null, replyContext, partnerClubs };
         return payer
           ? (await withOrgAiBudget(payer, () => classifyDmIntent(text, ctx))).intent
           : (await classifyDmIntent(text, ctx)).intent;
@@ -1156,6 +1160,22 @@ export async function POST(request: Request) {
         );
         return formatRatingProgressReply(await loadRatingProgress(orgId));
       },
+      // Ask the club's partner clubs for a player (slice S6): the shared
+      // admin extractor reads the club named, then the shared door asks.
+      askPartners: async (orgId) => {
+        const { askPartnersFromDmText } = await import("@/lib/partner-ask-words");
+        const { getOrgFeatures } = await import("@/lib/org-features");
+        return withOrgAiBudget(orgId, async () =>
+          askPartnersFromDmText({
+            orgId,
+            userId: user.id,
+            text,
+            senderName: authorName ?? null,
+            lang: (await getOrgFeatures(orgId)).language,
+            now: new Date(),
+          }),
+        );
+      },
       reply: async ({ orgId, text: replyText }) => {
         const u = await db.user.findUnique({
           where: { id: user.id },
@@ -1173,6 +1193,9 @@ export async function POST(request: Request) {
     }
     if (outcome.handled === "rating-progress-dm") {
       return NextResponse.json({ ok: true, handled: "rating-progress-dm" });
+    }
+    if (outcome.handled === "partner-ask-dm") {
+      return NextResponse.json({ ok: true, handled: "partner-ask-dm" });
     }
     // Not an admin, not one of the two asks, or nothing to act on →
     // fall through, exactly as an unmatched regex did.

@@ -376,6 +376,53 @@ describe("the recruit blast is DECIDED by the engine and RUN by the route", () =
   });
 });
 
+describe("slice S6: an admin asks MatchTime to ask the partner clubs", () => {
+  // "@Match Time ask Sutton if anyone can play" / "search for players
+  // from our partner groups": the admin extractor's `recruit` with
+  // `partnerClubs`. The engine decides WHO may ask (an admin, tagged, the
+  // recruit blast's own gates); `partner-ask-words.ts` asks, after the
+  // batch's writes have landed. Never a recruit blast to the club's own.
+  const ask = (from: string, facts: { partnerClubs?: boolean; clubRef?: string }, tagged = true) =>
+    decide({
+      now: NOW,
+      state: world({ confirmed: ["kemal", "elvin", "sait"] }),
+      messages: [
+        msg({ from, tagged, body: "@Match Time ask Sutton if anyone can play", route: "admin_ops", facts: { kind: "admin", action: "recruit", ...facts } }),
+      ],
+    });
+
+  it("a named club: one partner_ask write with the club as written and the next match, no blast", () => {
+    const r = ask("kemal", { partnerClubs: true, clubRef: "Sutton" });
+    expect(r.writes.filter((w) => w.kind === "recruit_blast")).toHaveLength(0);
+    expect(r.writes.filter((w) => w.kind === "partner_ask")).toEqual([
+      expect.objectContaining({ kind: "partner_ask", clubRef: "Sutton", matchId: "match-1" }),
+    ]);
+    expect(r.speech).toHaveLength(0);
+  });
+
+  it("no club named: clubRef null (every active partner)", () => {
+    const w = ask("kemal", { partnerClubs: true }).writes.find((x) => x.kind === "partner_ask");
+    expect(w).toMatchObject({ clubRef: null });
+  });
+
+  it("only an admin may ask, silently refused otherwise", () => {
+    const r = ask("sait", { partnerClubs: true, clubRef: "Sutton" });
+    expect(r.writes).toHaveLength(0);
+    expect(r.speech).toHaveLength(0);
+  });
+
+  it("untagged: refused, the tag rules are unchanged", () => {
+    const r = ask("kemal", { partnerClubs: true, clubRef: "Sutton" }, false);
+    expect(r.writes).toHaveLength(0);
+    expect(r.outcomes[0].reasons.join(" ")).toMatch(/@Match Time tag/i);
+  });
+
+  it("the club's own players (no partnerClubs) stay the recruit blast, unchanged", () => {
+    const r = ask("kemal", {});
+    expect(r.writes.map((w) => w.kind)).toEqual(["recruit_blast"]);
+  });
+});
+
 describe("S19 · `generate` is owned; `rename` and `swap` are not", () => {
   // §10 step 8. `generate_teams_request` is the club's most-used
   // command — 23 in 120 days on Sutton FC, more than every question

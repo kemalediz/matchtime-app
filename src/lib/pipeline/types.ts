@@ -678,6 +678,18 @@ export interface AdminFacts {
    * by the engine before it can reach a mass DM.
    */
   lookbackMatches?: number;
+  /**
+   * recruit, slice S6 (2026-10-21): the players are to come from ANOTHER
+   * club (a partner club or group), not from the club's own past players.
+   * Then no recruit blast is sent: the partner clubs are asked
+   * (`partner-ask-words.ts`). Absent means the club's own players.
+   */
+  partnerClubs?: boolean;
+  /** recruit, with `partnerClubs`: the other club's name as written
+   *  ("Sutton"). Absent when none was named: every active partner is
+   *  asked. Looked up against the club's partners by code
+   *  (`partner-ask-words-rules.ts`), never trusted as a club. */
+  clubRef?: string;
 }
 
 export interface NoFacts {
@@ -1364,6 +1376,25 @@ export type ProposedWrite =
        * DM.
        */
       kind: "stats_blast";
+      sourceMessageId: string;
+      reason: string;
+    }
+  | {
+      /**
+       * Ask the club's partner clubs for a player (cross-club ask, slice
+       * S6, 2026-10-21): an admin's tagged "ask Sutton if anyone can play".
+       * Decided like `recruit_blast` (an admin, tagged) and performed the
+       * same way, by the route's batch-final pass after every write in the
+       * batch (`partner-ask-words.ts`), so the places it asks for count
+       * this batch's own drops. It DMs nobody: each partner's organisers
+       * are asked through `requestPartnerAsk`, or its group is posted to.
+       */
+      kind: "partner_ask";
+      /** The other club's name as written; null when none was named, and
+       *  then every active partner is asked. Looked up by code. */
+      clubRef: string | null;
+      /** The match the state was loaded for (`SquadState.matchId`). */
+      matchId: string | null;
       sourceMessageId: string;
       reason: string;
     };

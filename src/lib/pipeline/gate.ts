@@ -384,6 +384,9 @@ export interface GateMessage {
   /** A message from a club's organisers' group, with its context lines
    *  (`RouterMessage.organisers`). Absent for the players' group. */
   organisers?: { context: string[] };
+  /** The club's partner clubs, for an organiser's message
+   *  (`RouterMessage.partnerClubs`, slice S6). Absent otherwise. */
+  partnerClubs?: string[];
   /** The message this one is a WhatsApp reply to, whoever wrote it
    *  (`RouterMessage.reply`, slice S4). Absent when it is not a reply. */
   reply?: ContextMessage | null;
@@ -638,6 +641,7 @@ export async function gateBatch(
       authorName: m.authorName,
       body: m.body,
       ...(m.organisers ? { organisers: m.organisers } : {}),
+      ...(m.partnerClubs ? { partnerClubs: m.partnerClubs } : {}),
       ...(m.reply ? { reply: m.reply } : {}),
     }));
     if (opts.capped) {

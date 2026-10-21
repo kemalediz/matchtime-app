@@ -697,6 +697,15 @@ export interface RouterMessage {
    */
   organisers?: { context: string[] };
   /**
+   * The club's active partner clubs' names (cross-club ask, slice S6,
+   * 2026-10-21): a players' group message from an owner or admin of a
+   * club with an active partner is shown `partnerClubsLine`. Ignored for
+   * the organisers' group, whose turn is unchanged: there the ask_group
+   * route reads the club named (`admin-group-understand.ts`). Absent
+   * everywhere else, so those turns are byte for byte what they were.
+   */
+  partnerClubs?: string[];
+  /**
    * The message this one is a WhatsApp reply to, WHOEVER wrote it
    * (quoted-reply context, slice S4, 2026-10-20; replaces the 2026-10-16
    * `quotedMatchTime`, which only ever showed MatchTime's own posts).
@@ -729,9 +738,29 @@ export interface RouterMessage {
  * tries, and in 4 of 5 under a wording that led with "admin_ops"; with
  * "Nothing else changes: ..." it is none 5 of 5, and "we're short, can you
  * put a message out in the group" stays ask_group 5 of 5.
+ *
  */
 export const ORGANISERS_HEADER =
   "ORGANISERS' GROUP. The sender is an organiser of the club. Here, saying a named player owes nothing for the match, a free place (\"he's free this week, he did the bibs\", \"no fee for him\", \"ödemesin\"), or taking one back (\"he pays after all\", \"ücretsiz değil\"), is admin_ops, tagged or not. Free as in able to play (\"he's free, add him\") is other_att. Nothing else changes: a shortage or a question put to the other organisers is still none.";
+
+/**
+ * The line a players' group message from an owner or admin is shown under
+ * when the club has active partner clubs (slice S6, 2026-10-21). CONTEXT,
+ * the facts the code has, in the user turn: the router's system prompt is
+ * unchanged, and every other players' group turn is byte for byte what it
+ * was. Measured on the dev key before it: "@Match Time ask Friday MT
+ * Community if anyone can play" routed offer, so it never reached the admin
+ * extractor that reads the club's name. Its last sentence is load-bearing
+ * (10 runs each, dev key): a shorter line pulled "@Match Time we need one
+ * more, anyone?" from offer 10 of 10 to 6 of 10 and "@Match Time we're
+ * short, find us a player" to admin_ops 8 of 10; with it, offer 10 of 10
+ * for both, and the asks to another club admin_ops 10 of 10. (The
+ * organisers' group's turn is unchanged: its ask_group route reads the
+ * club named with the admin extractor, `admin-group-understand.ts`.)
+ */
+export function partnerClubsLine(names: string[]): string {
+  return `PARTNER CLUBS of this club: ${names.join(", ")}. A message naming one of them, or the partner clubs, other clubs or other groups, and telling the bot to ask them for a player, is admin_ops. Any other message, asking this group for a player included, is routed as if this line were not here.`;
+}
 
 /** How much of a quoted message the router is shown: enough to know what
  *  it was, as the 2026-10-16 line showed. The extractors see more. */
@@ -746,7 +775,8 @@ export function renderRouterTurn(messages: RouterMessage[], now: Date = new Date
     const line = `[${m.id}] ${m.authorName ?? "(unknown)"}: ${m.body}`;
     const reply = m.reply ? quotedLines(m.reply, ROUTER_QUOTE_WORDS_MAX) : [];
     if (m.organisers) return [ORGANISERS_HEADER, ...m.organisers.context, ...reply, line].join("\n");
-    return [...reply, line].join("\n");
+    const partners = m.partnerClubs && m.partnerClubs.length > 0 ? [partnerClubsLine(m.partnerClubs)] : [];
+    return [...partners, ...reply, line].join("\n");
   });
   return [nowLine(now), ...body].join("\n");
 }

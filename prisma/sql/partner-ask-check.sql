@@ -48,7 +48,7 @@ ALTER TABLE "PartnerAsk" ADD CONSTRAINT "PartnerAsk_status_check"
 
 ALTER TABLE "PartnerAsk" DROP CONSTRAINT IF EXISTS "PartnerAsk_requestedVia_check";
 ALTER TABLE "PartnerAsk" ADD CONSTRAINT "PartnerAsk_requestedVia_check"
-  CHECK ("requestedVia" IN ('button', 'hq', 'dm', 'auto', 'link'));
+  CHECK ("requestedVia" IN ('button', 'hq', 'dm', 'group', 'auto', 'link'));
 
 ALTER TABLE "PartnerAsk" DROP CONSTRAINT IF EXISTS "PartnerAsk_places_check";
 ALTER TABLE "PartnerAsk" ADD CONSTRAINT "PartnerAsk_places_check"

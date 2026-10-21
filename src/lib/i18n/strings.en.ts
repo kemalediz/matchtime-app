@@ -5193,6 +5193,34 @@ export const en = {
   // match page's guests panel.
   xask_thanks_dm: (p: { asker: string }) => `*${p.asker}* have their player now. Thanks for offering 🙏`,
   xask_game_off_dm: (p: { asker: string; day: string }) => `*${p.asker}*'s game on ${p.day} is off now, so you're not needed after all. Thanks for offering 🙏`,
+  // ─── Partner clubs asked in an organiser's own words (slice S6, 2026-10-21) ──
+  // Read by src/lib/partner-ask-words-rules.ts: the ONE reply in the
+  // players' group, the organisers' group or a DM, in the asking club's
+  // language, for one partner or several.
+  xaskw_posted_one: (p: { partner: string }) => `I've posted in *${p.partner}*'s group. Anyone who replies IN goes on your bench.`,
+  xaskw_awaiting_one: (p: { partner: string }) =>
+    `I've asked *${p.partner}*'s organisers. Once they say yes, I'll post in their group, and anyone who replies IN goes on your bench.`,
+  xaskw_refused_generic: (p: { partner: string }) => `I can't ask ${p.partner} for this game right now.`,
+  xaskw_header_asked: "I've asked your partner clubs:",
+  xaskw_header_not_asked: "I couldn't ask your partner clubs:",
+  xaskw_line_posted: (p: { partner: string }) => `• *${p.partner}*: posted in their group.`,
+  xaskw_line_awaiting: (p: { partner: string }) => `• *${p.partner}*: waiting for their organisers to say yes.`,
+  xaskw_bench_line: "Anyone who replies IN goes on your bench.",
+  xaskw_line_too_late: (p: { partner: string; hours: number }) =>
+    `• *${p.partner}*: too late now, the last ask goes out ${p.hours === 1 ? "1 hour" : `${p.hours} hours`} before kickoff.`,
+  xaskw_line_daily_cap: (p: { partner: string }) => `• *${p.partner}*: they've had two asks today already.`,
+  xaskw_line_already_open: (p: { partner: string }) => `• *${p.partner}*: an ask to them is already open for this game.`,
+  xaskw_line_no_places: (p: { partner: string }) => `• *${p.partner}*: no place is open in this game.`,
+  xaskw_line_off: (p: { partner: string }) => `• *${p.partner}*: asking partner clubs is off in your settings.`,
+  xaskw_line_unreachable: (p: { partner: string }) => `• *${p.partner}*: their group can't be asked right now.`,
+  xaskw_line_generic: (p: { partner: string }) => `• *${p.partner}*: they can't be asked for this game right now.`,
+  xaskw_no_partner:
+    "You have no partner clubs yet, so I can't ask another club. When MatchTime pairs you with one, both clubs accept it in Settings, under Partner clubs.",
+  xaskw_off: "Asking partner clubs for players is off. An owner or admin can turn it on in Settings, under Partner clubs.",
+  xaskw_no_match: (p: { ref: string; partners: string }) => `I don't know a partner club called "${p.ref}". Your partner clubs: ${p.partners}.`,
+  xaskw_not_sure: "I wasn't sure you wanted me to ask your partner clubs. Tell me which club, or say all of them.",
+  xaskw_ambiguous: (p: { ref: string; choice: string }) =>
+    `"${p.ref}" could be ${p.choice}. Tell me which one, or ask all your partner clubs.`,
   xask_picked_dm: (p: { asker: string; day: string; venue: string }) =>
     `✅ You're playing for *${p.asker}*: ${p.day} at ${p.venue}. Can't make it after all? Reply *OUT* here.`,
   xask_guests_title: "Guests from partner clubs",

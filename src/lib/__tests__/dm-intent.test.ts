@@ -25,6 +25,7 @@ import {
   dmBodyOf,
   parseDmIntent,
   runDmAdminIntent,
+  buildDmIntentUserTurn,
   type DmAdminIntentDeps,
   type DmIntent,
 } from "../dm-intent";
@@ -36,6 +37,7 @@ function recorder(over: Partial<DmAdminIntentDeps> = {}) {
     invited: [] as string[],
     progressed: [] as string[],
     replies: [] as Array<{ orgId: string; text: string }>,
+    partnerAsks: [] as string[],
   };
   const deps: DmAdminIntentDeps = {
     classify: async () => {
@@ -52,6 +54,10 @@ function recorder(over: Partial<DmAdminIntentDeps> = {}) {
     ratingProgress: async (orgId) => {
       calls.progressed.push(orgId);
       return "📋 rating progress";
+    },
+    askPartners: async (orgId) => {
+      calls.partnerAsks.push(orgId);
+      return "I've asked *Sutton FC*'s organisers.";
     },
     reply: async (args) => {
       calls.replies.push(args);
@@ -247,4 +253,46 @@ describe("a message the model calls `other` is inert whatever it says", () => {
       expect(r.calls.replies).toEqual([]);
     });
   }
+});
+
+// ── SLICE S6 (2026-10-21): ASKING THE PARTNER CLUBS BY DM ─────────────
+describe("partner_ask: the partner clubs are asked, nobody is DM'd", () => {
+  it("an admin's ask goes to the shared door once and replies once", async () => {
+    const r = recorder(says("partner_ask"));
+    const out = await runDmAdminIntent(r.deps);
+    expect(out).toEqual({ handled: "partner-ask-dm", orgId: "org-sutton" });
+    expect(r.calls.partnerAsks).toEqual(["org-sutton"]);
+    expect(r.calls.replies).toEqual([{ orgId: "org-sutton", text: "I've asked *Sutton FC*'s organisers." }]);
+    // Never the club's own recruit blast.
+    expect(r.calls.invited).toEqual([]);
+  });
+
+  it("no upcoming match anywhere: still one plain reply from the admin's first club", async () => {
+    const r = recorder({ ...says("partner_ask"), orgWithUpcomingMatch: async () => null });
+    const out = await runDmAdminIntent(r.deps);
+    expect(out).toEqual({ handled: "partner-ask-dm", orgId: "org-sutton" });
+    expect(r.calls.partnerAsks).toEqual(["org-sutton"]);
+  });
+
+  it("a non-admin is never asked about it", async () => {
+    const r = recorder({ ...says("partner_ask"), adminOrgIds: async () => [] });
+    expect((await runDmAdminIntent(r.deps)).handled).toBeNull();
+    expect(r.calls.partnerAsks).toEqual([]);
+  });
+
+  it("the classifier reads partner_ask, under the same confidence floor", async () => {
+    expect((await classifyDmIntent("ask Sutton if anyone can play", {}, answer("partner_ask"))).intent).toBe("partner_ask");
+    expect((await classifyDmIntent("x", {}, answer("partner_ask", DM_INTENT_MIN_CONFIDENCE - 0.01))).intent).toBe("other");
+  });
+
+  it("the prompt defines partner_ask once, with English and Turkish beside each other", () => {
+    expect(DM_INTENT_SYSTEM_PROMPT.split('- "partner_ask"').length).toBe(2);
+    expect(DM_INTENT_SYSTEM_PROMPT).toMatch(/partner_ask: [^\n]*"Sutton'a sor bakalım oynayan var mı"/);
+    expect(DM_INTENT_SYSTEM_PROMPT).not.toMatch(/[–—]/);
+  });
+
+  it("the user turn names the club's partner clubs when it has any", () => {
+    expect(buildDmIntentUserTurn("ask Sutton", { clubName: "FNF", partnerClubs: ["Sutton FC", "MT Vets"] })).toContain("Partner clubs: Sutton FC, MT Vets");
+    expect(buildDmIntentUserTurn("ask Sutton", { clubName: "FNF" })).not.toContain("Partner clubs");
+  });
 });
