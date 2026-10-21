@@ -86,6 +86,7 @@ import { classifyRosterReply } from "@/lib/roster-survey-classifier";
 import { resolveBenchConfirmation } from "@/lib/bench-confirmation";
 import { answerScopedQuestion, pickQaOrgAndQuote, looksLikeQuestion } from "@/lib/dm-qa";
 import { handleCollectorFeeReply } from "@/lib/payment-flow";
+import { feeConfirmAboutKey } from "@/lib/fee-confirm-reaction";
 import { setDmSubscriptions } from "@/lib/notification-prefs";
 import {
   parseDmSubscriptionCommand,
@@ -935,7 +936,7 @@ export async function POST(request: Request) {
             // ("✅") resolves to that match and reads as the fee question
             // (review of #339, H2 and H3).
             ...(feeResult.matchId ? { matchId: feeResult.matchId } : {}),
-            ...(feeResult.asked && feeResult.matchId ? { aboutKey: `${feeResult.matchId}:fee-confirm` } : {}),
+            ...(feeResult.asked && feeResult.matchId ? { aboutKey: feeConfirmAboutKey(feeResult.matchId) } : {}),
             ...REPLY_PRIORITY,
           },
         });

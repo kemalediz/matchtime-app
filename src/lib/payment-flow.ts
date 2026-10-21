@@ -630,24 +630,7 @@ export async function handleCollectorFeeReply(
       const ctx = { amount, matchName: fm ? contextMatchLabel(matchName, fm.date) : matchName, lang, replyContext };
       return feeOrgId ? withOrgAiBudget(feeOrgId, () => classifyFeeReply(reply, ctx)) : classifyFeeReply(reply, ctx);
     },
-    release: async (matchId, amount) => {
-      // COMPARE-AND-SET (review of #339): the fee and the release stamp are
-      // written together, and only while the links have not gone out. Two
-      // quick "yes"es, or a Pi redelivery of one, both pass the pending
-      // check; only the first claims the match and DMs the squad.
-      const claimed = await db.match.updateMany({
-        where: { id: matchId, paymentLinksReleasedAt: null },
-        data: {
-          feePerPlayer: amount,
-          feePendingConfirm: null,
-          feeSetByUserId: userId,
-          feeSetAt: new Date(),
-          paymentLinksReleasedAt: new Date(),
-        },
-      });
-      if (claimed.count === 0) return null;
-      return releaseMatchPayments(matchId);
-    },
+    release: (matchId, amount) => claimAndReleaseFee(userId, matchId, amount),
     cancel: async (matchId) => {
       await db.match.update({ where: { id: matchId }, data: { feePendingConfirm: null } });
       // Monthly squad: the "no" is remembered, so the PAYG price is never
@@ -661,4 +644,73 @@ export async function handleCollectorFeeReply(
       });
     },
   });
+}
+
+/**
+ * ⚠️ THE MONEY: set the fee and DM the squad their pay links, once.
+ *
+ * COMPARE-AND-SET (review of #339): the fee and the release stamp are
+ * written together, and only while the links have not gone out. Two quick
+ * "yes"es, a typed yes and a ✅ reaction, or a Pi redelivery of either,
+ * all pass the pending check; only the first claims the match and DMs the
+ * squad. Null when another one got there first.
+ */
+async function claimAndReleaseFee(userId: string, matchId: string, amount: number): Promise<number | null> {
+  const claimed = await db.match.updateMany({
+    where: { id: matchId, paymentLinksReleasedAt: null },
+    data: {
+      feePerPlayer: amount,
+      feePendingConfirm: null,
+      feeSetByUserId: userId,
+      feeSetAt: new Date(),
+      paymentLinksReleasedAt: new Date(),
+    },
+  });
+  if (claimed.count === 0) return null;
+  return releaseMatchPayments(matchId);
+}
+
+/**
+ * The collector's ✅ or 👍 REACTION on the fee confirm prompt for
+ * `matchId` (Sutton FC, 2026-10-21): the same as typing "yes" to it.
+ *
+ * `src/lib/fee-confirm-reaction.ts` has already joined the reaction to
+ * that prompt by its message id and checked it is the latest prompt, sent
+ * to this collector. Here the match must still be one this user collects
+ * for, unreleased and inside the fee window (the scope a typed swipe-reply
+ * to the prompt gets), with an amount awaiting his yes. Then the typed
+ * yes's own release and ack. Null when there is nothing to confirm, or
+ * another yes already released it: nothing is sent.
+ */
+export async function confirmCollectorFeeByReaction(
+  userId: string,
+  matchId: string,
+): Promise<CollectorReplyResult | null> {
+  // A known message about this match (key set): no fallback to another
+  // match when this one is not open.
+  const m = await findCollectorPendingMatch(userId, {
+    key: `${matchId}:fee-confirm`,
+    sentAt: null,
+    text: null,
+    topic: "feeQuestion",
+    matchId,
+  });
+  if (!m || m.id !== matchId || m.feePendingConfirm == null) return null;
+  const amount = m.feePendingConfirm;
+  const released = await claimAndReleaseFee(userId, m.id, amount);
+  if (released === null) return null;
+  const lang = normaliseLang(m.activity.org.language);
+  return {
+    matchId: m.id,
+    orgId: m.activity.orgId,
+    released,
+    reply: buildFeeReleasedAck({
+      released,
+      fee: amount,
+      matchName: m.activity.name,
+      matchWhen: dayLabel(lang, m.date),
+      methods: availablePayMethods(m.activity.org),
+      lang,
+    }),
+  };
 }

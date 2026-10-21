@@ -1,7 +1,7 @@
 /**
  * Reactions on messages the bot sent.
  *
- * Two things can be reacted to:
+ * Three things can be reacted to:
  *
  *   1. The GROUP bench-slot-offer post (2026-05-19) — a 👍 from any
  *      current bench player claims the slot, first one wins; 👎 is a
@@ -16,6 +16,9 @@
  *      handling stays live so an unprompted 👍 still counts. See
  *      src/lib/recruit-reaction.ts for how a reaction finds its player
  *      and its match.
+ *   3. The money collector's FEE CONFIRM PROMPT DM (2026-10-21) — a ✅ or
+ *      👍 is his "yes": the pay links go out through the typed yes's own
+ *      compare-and-set release. See src/lib/fee-confirm-reaction.ts.
  *
  * The bench branch runs first and is unchanged. Its reactor resolution is
  * scoped to the bench of the offer's match (phone first, then @lid
@@ -32,6 +35,7 @@ import { applyOutOfBandSelfAttendance } from "@/lib/out-of-band-self-attendance"
 import { dayCommaTimeLabel } from "@/lib/i18n/dates";
 import { billingQuietMatchWhere } from "@/lib/club-billing-rules";
 import { isMatchClubBillingPaused } from "@/lib/club-billing";
+import { handleFeeConfirmReaction } from "@/lib/fee-confirm-reaction";
 
 const norm = (s: string) =>
   s.trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
@@ -78,6 +82,13 @@ export async function POST(request: Request) {
       fromPhone,
     });
     if (recruit) return NextResponse.json(recruit);
+    // Or the money collector's fee confirm prompt? A ✅/👍 there is his
+    // "yes" (Sutton FC, 2026-10-21). See src/lib/fee-confirm-reaction.ts.
+    const fee = await handleFeeConfirmReaction({ waMessageId, emoji, fromPhone });
+    if (fee) {
+      console.log(`[fee-confirm-reaction] ${emoji} on ${waMessageId} from=${fromPhone || "?"}: ${JSON.stringify(fee)}`);
+      return NextResponse.json(fee);
+    }
     return NextResponse.json({ ok: true, ignored: "no-open-offer" });
   }
 
