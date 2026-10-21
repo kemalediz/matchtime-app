@@ -1227,6 +1227,16 @@ test.describe("a ✅ reaction on the PAYG fee question is the collector's yes", 
     await attend(db, org, matchId, T.reg.id, "CONFIRMED", 1);
     await attend(db, org, matchId, T.pay.id, "CONFIRMED", 2);
     await month(db, { id: `e2e-mw${n}-month`, org, act: `e2e-mw${n}-act` }, [{ p: T.reg, slot: 1, paid: true }], `${formatInTimeZone(PLAYED, LONDON, "yyyy-MM")}-01`);
+    // The regular's month is CONFIRMED paid, not just claimed. A claim
+    // waiting for the collector's word earns him the daily claims digest
+    // ("1 says they've paid for October") from 10:00 London on the same
+    // due-posts poll that sends the fee question, so on the real clock the
+    // collector's DM count changed with the time of day.
+    await db.run(`UPDATE "SquadMonthMember" SET "paidAt" = now(), "paidConfirmedByUserId" = $2 WHERE "monthId" = $1 AND "userId" = $3`, [
+      `e2e-mw${n}-month`,
+      T.col.id,
+      T.reg.id,
+    ]);
     return { org, group, matchId, T };
   };
   const state = (db: TestDb, matchId: string) =>
