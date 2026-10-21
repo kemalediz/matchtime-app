@@ -55,21 +55,24 @@ describe("the attendance prompt is truthful about what the model is shown", () =
 });
 
 describe("polarity describes the message, never the squad's capacity", () => {
-  it("says so in the polarity field itself", () => {
-    const s = fieldSection("polarity");
-    expect(s).toMatch(/NEVER the squad's capacity/);
-    expect(s).toMatch(/full/i);
+  /** The context section: from WHAT YOU ARE SHOWN to THE CLAIMS. */
+  const shown = () => P.slice(P.indexOf("WHAT YOU ARE SHOWN"), P.indexOf("THE CLAIMS"));
+
+  it("says so once, where the prompt says what the model is shown (rewrite of 2026-10-20)", () => {
+    // It used to be said three times (context, polarity, the bench
+    // examples). One statement, beside the squad it is about.
+    expect(shown()).toMatch(/The squad shown is never a reason for any field/);
+    expect(P.match(/never a reason/g)).toHaveLength(1);
   });
 
-  it("rules that a plain in is in, even at 14/14 and even for someone already on the list", () => {
-    const s = fieldSection("polarity");
-    expect(s).toMatch(/plain "in" is "in"/);
-    expect(s).toMatch(/14\/14/);
-    expect(s).toMatch(/already on (it|the list)/i);
+  it("rules that a plain in is in, even when the list looks full and for someone already on it", () => {
+    expect(shown()).toMatch(/plain "in" is "in"/);
+    expect(shown()).toMatch(/full/i);
+    expect(shown()).toMatch(/already on (it|the list)/i);
   });
 
-  it("leaves bench-or-confirmed to code", () => {
-    expect(fieldSection("polarity")).toMatch(/Code decides/);
+  it("leaves placing every player to code", () => {
+    expect(shown()).toMatch(/Code holds the real squad and places every player/);
   });
 
   it("allows bench only when the message names it, in both languages", () => {
@@ -80,17 +83,67 @@ describe("polarity describes the message, never the squad's capacity", () => {
     expect(s).toMatch(/explicit/i);
   });
 
-  it("keeps a conditional offer to play off the bench", () => {
-    // "put me down if you're short" is a standing offer: an IN with
-    // contingent true, which the engine reads. It is not a bench ask.
-    expect(fieldSection("polarity")).toMatch(/if you're short[^\n]*"in"[^\n]*contingent/);
+  it("puts the sender's offer to fill a gap on the bench, contingent on the squad (Kemal's ruling, 2026-10-21)", () => {
+    // "ping me if you need one more", "I can play if you're short": the
+    // sender offers to fill a gap. That is the bench, contingent true,
+    // conditionOn squad: neither an in nor a maybe. The engine still
+    // decides the place: without a bench word `namesTheBench` reads it as
+    // the standing offer it is, so capacity places it (squad full: BENCH,
+    // a place open: CONFIRMED).
+    const s = fieldSection("polarity");
+    expect(s).toMatch(/sender offers themselves to fill a gap[^\n]*"bench" with contingent true and conditionOn "squad"/);
+    expect(s).toContain("ping me if you need one more");
+    const g = P.slice(P.indexOf("The sender's own offers"), P.indexOf("Offering someone else"));
+    expect(g).toMatch(/To fill a gap, playing themselves: "ping me if you need one more"[^\n]*\| "eksik olursa ben gelirim"[^\n]*-> the sender bench/);
+  });
+
+  it("keeps an offer of someone else an in for that person, with no claim for the sender", () => {
+    // 2026-10-21: under a 7/14 call the first draft of the bench ruling
+    // benched the SENDER of "I can bring someone if you're short" and read
+    // "my brother Shahrokh can play" as contingent, which holds it.
+    const g = P.slice(P.indexOf("Offering someone else"), P.indexOf("Several people in one message"));
+    expect(g).toMatch(/even when the sender brings them/);
+    expect(g).toMatch(/subject other, in, never bench/);
+    expect(g).toMatch(/no claim for the sender/);
+    expect(g).toMatch(/contingent is true only when the message states a condition/);
+    expect(g).toMatch(/"I can play if you're short" is the sender\. When the sender would bring, get or ask someone[^\n]*the player is that someone, never the sender/);
+
   });
 
   it("works the Sutton FC case as an example, with its Turkish twin", () => {
     // The worked example: the chat shows 14/14 with the sender on the
     // list, the sender types "in", and the answer is polarity in.
-    expect(P).toMatch(/14\/14[^\n]*"in"[^\n]*polarity in/);
-    expect(P).toMatch(/"varım"[^\n]*14\/14|14\/14[^\n]*"varım"/);
+    expect(P).toMatch(/14\/14[^\n]*"in"[^\n]*"varım"[^\n]*polarity in/);
+  });
+});
+
+describe("side requests: a named gap is recruit, a general nudge is chase (2026-10-21)", () => {
+  // recruit-live "a plain shortage ask from an admin fires the blast": an
+  // admin's untagged ask fires the recruit DMs only on "recruit"
+  // (attendance-engine-batch.ts `recruitRequest`). Under MatchTime's own
+  // call for players the first draft read "we're 4 short, anyone free?" as
+  // a chase.
+  it("defines each value once, by whether the message says how many or for whom", () => {
+    const s = P.slice(P.indexOf("  sideRequests"), P.indexOf("EXAMPLES"));
+    expect(s).toMatch(/"recruit"\s+it says how many players are needed or whose place needs taking[^\n]*"we're 4 short, anyone free\?"/);
+    expect(s).toMatch(/"chase"\s+it nudges for more players without saying how many or for whom[^\n]*"@all we need more players pls"/);
+  });
+});
+
+describe("an injury is not an out (Sutton FC, 2026-10-20)", () => {
+  it("defines out as saying they will not or cannot play, and says an injury alone is not", () => {
+    const s = fieldSection("polarity");
+    expect(s).toMatch(/"out"[^\n]*will not or cannot play/);
+    expect(s).toMatch(/injury[^\n]*not "out"/i);
+    expect(s).toMatch(/taking it easy/);
+  });
+
+  it("teaches it with grouped English and Turkish examples, both ways round", () => {
+    const g = P.slice(P.indexOf("Fitness and injuries"), P.indexOf("Talk about players"));
+    expect(g).toContain("I've got a bad hamstring so taking it easy");
+    expect(g).toMatch(/dizim ağrıyor[^\n]*no claim/);
+    expect(g).toMatch(/bit sore from Sunday but I'll be there" \| "dizim ağrıyor ama gelirim" -> the sender in/);
+    expect(g).toMatch(/can't make it tonight" \| "sakatım, gelemiyorum" -> the sender out/);
   });
 });
 
@@ -105,7 +158,7 @@ describe("the rewrite keeps every behaviour the prompt already handled", () => {
     ["personNamed false for a relationship or quantity", /"my brother", "2 of my guys", "someone", "a mate", "another keeper"/],
     ["standing future commitment", /count me in whenever you are short/],
     ["counterfactual is hypothetical", /if I WAS in the team/],
-    ["a condition on a real commitment is future, not hypothetical", /NOT hypothetical/],
+    ["a condition on a real commitment is future, not hypothetical", /"future"[^\n]*one with a condition/],
     ["reported speech", /Najib said he's in/],
     ["affirmation to MatchTime's post", /"Confirmed"/],
     ["recruit side request", /"recruit"/],
@@ -113,7 +166,7 @@ describe("the rewrite keeps every behaviour the prompt already handled", () => {
     ["several claims in one message", /my brother can play too/],
     ["asking for cover is not a condition", /anyone able to replace me/],
     ["offer to give up a place is contingent", /I can drop out/],
-    ["offer vs decision test", /IS leaving[^\n]*COULD/],
+    ["offer vs decision test", /IS doing it[^\n]*COULD/],
     ["guest +1 is not the sender", /"\+1"/],
     ["replacement chatter", /Hi guys, Mojib is replacing Najib on the list/],
     ["two separate statements are not a replacement", /Ali is coming, Mehmet can't make it/],

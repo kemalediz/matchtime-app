@@ -819,6 +819,8 @@ describe("the attendance extractor reads Turkish", () => {
     // claims array is a maybe the 24h follow-up DM never chases.
     const p = EXTRACTOR_PROMPTS.attendance;
     expect(p).toMatch(/"maybe"/);
-    expect(p).toMatch(/maybe[^\n]*belki[^\n]*contingent/i);
+    const hedges = p.slice(p.indexOf("Hedges:"));
+    expect(hedges).toMatch(/^Hedges:[^\n]*in, contingent true, conditionOn "self"/);
+    expect(hedges).toMatch(/"maybe"[^\n]*\| "belki"/);
   });
 });
