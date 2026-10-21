@@ -1567,3 +1567,61 @@ describe("two questions in one batch: the first warms the cache, the second read
     expect(log).toEqual([`start:${COUNT_Q}`, `end:${COUNT_Q}`, `start:${Q2}`, `end:${Q2}`]);
   });
 });
+
+// ── INCIDENT, SUTTON FC, 2026-10-21 ──────────────────────────────────
+//
+// Elvin, untagged, the morning after Tuesday's match: "Who do we pay for
+// yesterday?". Production row `cmvhr3y5a000708lesizbc15i`: router route
+// `question` (Haiku 5.5, source model), `extractions: []`, recorded by
+// `analyze/route.ts` as `no owner: route=question`. Kemal answered by hand.
+//
+// The cause is the interaction contract, on purpose: a question in the
+// players' group needs an @Match Time tag (`interaction-contract.ts`,
+// `ACTIONY_INTENTS` has "question"; decided 2026-06-18 after the Sutton
+// Lads banter incident). This module enforces it before any model call,
+// so no extractor runs and nothing owns the message. These tests pin that
+// path with the real sender, the real words and a completed match, and
+// pin that the same words WITH a tag are owned and read the payments.
+describe("incident 2026-10-21: an untagged payment question the day after a match", () => {
+  const ELVIN_Q = "Who do we pay for yesterday?";
+  const STATE = { confirmed: ELEVEN, completedMatch: { id: "m-tue" } };
+  const elvin = { authorName: fullName("elvin"), senderUserId: "u-elvin", senderName: fullName("elvin") };
+
+  function paymentSpy() {
+    const calls: string[] = [];
+    const loadPayments: AnswerBatchDeps["loadPayments"] = async (orgId) => {
+      calls.push(orgId);
+      return { kind: "no_signal", kickoffLabel: "Tue 21:30" };
+    };
+    return { calls, loadPayments };
+  }
+
+  it("untagged: owned by nobody, no extractor call, no payment read (the shipped tag rule)", async () => {
+    const { model, calls } = stubModel({});
+    const pay = paymentSpy();
+    const res = await run({
+      messages: [msg({ ...elvin, body: ELVIN_Q, route: "question", tagged: false })],
+      model,
+      worldOpts: STATE,
+      loadPayments: pay.loadPayments,
+    });
+    expect([...res.ownedIds]).toEqual([]);
+    expect(calls).toEqual([]);
+    expect(pay.calls).toEqual([]);
+  });
+
+  it("tagged: the same words are owned and answered from the payment read", async () => {
+    const tagged = `@Match Time ${ELVIN_Q}`;
+    const { model } = stubModel({ [tagged]: { topic: "payments", personRef: "", statedCount: -1 } });
+    const pay = paymentSpy();
+    const res = await run({
+      messages: [msg({ ...elvin, body: tagged, route: "question", tagged: true })],
+      model,
+      worldOpts: STATE,
+      loadPayments: pay.loadPayments,
+    });
+    expect([...res.ownedIds]).toHaveLength(1);
+    expect(pay.calls).toEqual(["org-1"]);
+    expect([...res.outcomes.values()][0]?.reply ?? "").toMatch(/No payments have reached me/);
+  });
+});
