@@ -52,6 +52,9 @@ const MARKED: Record<string, number> = {
   // The collector's notice about a claim ("says they've paid you
   // directly"), from a "Paid" DM or the pay page's button.
   "lib/direct-payment.ts": 1,
+  // The collector's "links sent" ack to his ✅ REACTION on the fee
+  // confirm prompt (the same ack the dm-reply route queues for a typed yes).
+  "lib/fee-confirm-reaction.ts": 1,
   // Monthly squad: the player's claim ack, and the collector's answer
   // to their own "PAID ..." reply. (The daily claims digest is unmarked.)
   "lib/month-payment.ts": 2,
