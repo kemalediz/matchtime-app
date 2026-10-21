@@ -25,6 +25,7 @@ import { db } from "./db";
 import { REPLY_PRIORITY } from "./dm-reply-priority";
 import { ALREADY_PAID_REASON, payBlockedReason } from "./payment-outcome";
 import { buildDirectPayCollectorNotice } from "./dm-copy";
+import { QUIET_HOURS_SELECT, messageHoursSendAfter, quietHoursOf } from "./message-hours";
 
 /** Which door the player came through. Only the collector's wording
  *  differs: "they've paid you" from a "Paid" DM; "they'll pay you" from
@@ -52,6 +53,7 @@ async function loadPayRows(userId: string, matchId: string) {
               payMethodCard: true,
               payMethodDirect: true,
               paymentHolderId: true,
+              ...QUIET_HOURS_SELECT,
             },
           },
         },
@@ -188,6 +190,9 @@ export async function markDirectPaymentPending(input: {
         nextPath: `/collect/${matchId}`,
         ttlSeconds: MAGIC_LINK_TTL.actionNudge,
       });
+      // To the collector, not a reply to them: inside the club's quiet
+      // hours it waits for them to end (2026-10-21).
+      const sendAfter = messageHoursSendAfter(new Date(), quietHoursOf(org));
       await db.botJob.create({
         data: {
           orgId: org.id,
@@ -205,6 +210,7 @@ export async function markDirectPaymentPending(input: {
           // About a claim the player has just made (a "Paid" DM or the pay
           // page's button): a conversational send (dm-reply-priority.ts).
           ...REPLY_PRIORITY,
+          ...(sendAfter ? { sendAfter } : {}),
         },
       });
       collectorNotified = true;

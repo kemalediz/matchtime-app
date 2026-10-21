@@ -2896,10 +2896,14 @@ async function computeForMatch(
     // The age bound is the same explicit deadline the payment poll now
     // carries: asking a collector for a fee is only useful while the
     // match is recent (POST_MATCH_END_FLOW_MAX_AGE_DAYS).
+    // QUIET HOURS (2026-10-21): the question waits for the end of the
+    // club's quiet hours, like every per-match payment DM MatchTime sends on
+    // its own; a later tick asks it.
     if (
       !sentKeys.has(key) &&
       now >= endedAt &&
-      hoursSinceMatch <= POST_MATCH_END_FLOW_MAX_AGE_DAYS * 24
+      hoursSinceMatch <= POST_MATCH_END_FLOW_MAX_AGE_DAYS * 24 &&
+      inMessageHours(now, features.quietHours)
     ) {
       const collectorId = activity.org.paymentHolderId;
       // Prefer a phone already loaded on the squad; else look it up.
@@ -2967,11 +2971,15 @@ async function computeForMatch(
     // of being a side effect of the lookback, so widening the lookback
     // for the MoM announcement does not quietly add four more days of
     // chasing people for money.
+    // QUIET HOURS (2026-10-21): the chase keeps its own hour, and a club
+    // whose quiet hours cover it gets no chase (player DMs or collector
+    // nudge) that day.
     if (
       daysSinceRelease <= 10 &&
       hoursSinceMatch <= POST_MATCH_END_FLOW_MAX_AGE_DAYS * 24 &&
       hourNow >= 18 &&
-      hourNow < 19
+      hourNow < 19 &&
+      inMessageHours(now, features.quietHours)
     ) {
       const dayKey = londonDateKey(now);
       const dayNum = Math.max(1, Math.ceil(daysSinceRelease));

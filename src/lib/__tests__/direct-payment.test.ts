@@ -201,3 +201,30 @@ describe("blocked: nothing is written and nobody is DM'd", () => {
     expect(botJobCreate).not.toHaveBeenCalled();
   });
 });
+
+describe("the collector's notice respects the club's quiet hours (2026-10-21)", () => {
+  it("23:30 London: waits for 09:00; 12:00: goes at once; quiet hours off: goes at once", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-10-21T22:30:00Z"));
+      await markDirectPaymentPending({ userId: "u-abid", matchId: "m1", via: "dm-claim" });
+      expect(collectorDms()[0]).toMatchObject({ sendAfter: new Date("2026-10-22T08:00:00Z") });
+
+      botJobCreate.mockClear();
+      vi.setSystemTime(new Date("2026-10-21T11:00:00Z"));
+      await markDirectPaymentPending({ userId: "u-abid", matchId: "m1", via: "dm-claim" });
+      expect(collectorDms()[0]).not.toHaveProperty("sendAfter");
+
+      botJobCreate.mockClear();
+      matchFindUnique.mockResolvedValue({
+        ...MATCH,
+        activity: { ...MATCH.activity, org: { ...MATCH.activity.org, quietHoursEnabled: false } },
+      });
+      vi.setSystemTime(new Date("2026-10-21T22:30:00Z"));
+      await markDirectPaymentPending({ userId: "u-abid", matchId: "m1", via: "dm-claim" });
+      expect(collectorDms()[0]).not.toHaveProperty("sendAfter");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

@@ -143,6 +143,24 @@ describe("message-hours.ts is the one definition of the daytime window", () => {
     expect(Object.keys(ALLOWED_CLOCK_STRINGS).filter((k) => !seen.has(k))).toEqual([]);
   });
 
+  it("every file named in message-hours.ts's CLUB gates reads the club's quiet hours", () => {
+    // The header's list is the record of which messages wait. A file on it
+    // that no longer passes the club's quiet hours anywhere has silently
+    // stopped waiting (2026-10-21: the pay links were never on it, and went
+    // out at 08:14).
+    const header = readFileSync(path.join(SRC, OWNER), "utf8");
+    const block = header.slice(header.indexOf("CLUB gates"), header.indexOf("PLATFORM gates"));
+    const named = [...new Set([...block.matchAll(/\b([a-z0-9-]+(?:\/[a-z0-9-]+)?\.ts)\b/g)].map((m) => m[1]))];
+    // The 2026-10-21 per-match payment files must be on the list.
+    for (const f of ["payment-flow.ts", "fee-waiver.ts", "direct-payment.ts", "bot-scheduler.ts"]) expect(named).toContain(f);
+    const READS = /\b(?:quietHoursOf|loadClubQuietHours|quietHours|QuietHours|messageHoursSendAfter|adminNoticeSendAfter)\b/;
+    const missing = named.filter((f) => {
+      const file = FILES.find((x) => x.rel === `lib/${f}`);
+      return !file || !READS.test(file.text);
+    });
+    expect(missing).toEqual([]);
+  });
+
   it("the guard's own patterns catch the shapes that were removed", () => {
     const inside = /(?:>=\s*(?:8|9)|>\s*(?:7|8))\s*&&[^;\n]{0,60}?(?:<\s*(?:22|23)|<=\s*(?:21|22))\b/;
     expect(inside.test("if (lh >= 8 && lh < 22) {")).toBe(true);

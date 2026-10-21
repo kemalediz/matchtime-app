@@ -291,6 +291,9 @@ export function buildFeeReleasedAck(
     matchWhen?: string | null;
     /** `availablePayMethods(org)`: the ack names only these. */
     methods: readonly PayMethod[];
+    /** The links are held by the club's quiet hours: the London "HH:MM"
+     *  they go out at (2026-10-21). Null or absent: they went at once. */
+    heldUntil?: string | null;
   } & WithLang,
 ): string {
   return t(p.lang).dm_fee_released({
@@ -298,6 +301,7 @@ export function buildFeeReleasedAck(
     fee: gbp(p.fee),
     matchName: p.matchName,
     matchWhen: p.matchWhen ?? null,
+    heldUntil: p.heldUntil ?? null,
     ...payWays(p.methods),
   });
 }

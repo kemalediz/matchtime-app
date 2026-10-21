@@ -1042,7 +1042,9 @@ test.describe("after a game: the collector's reply, and the hourly sweep", () =>
     await club(db, { org: ORG4, group: GROUP4, act: "e2e-mw4-act", sport: "e2e-mw4-sport", name: "Played", collector: S.cal.id });
     await person(db, ORG4, S.cal, "OWNER");
     for (const p of [S.rae, S.sid, S.pip]) await person(db, ORG4, p);
-    await db.run(`UPDATE "Organisation" SET "paymentHolderId" = $2, "payMethodDirect" = true WHERE id = $1`, [ORG4, S.cal.id]);
+    // Quiet hours off: these tests run on the real clock, and the fee
+    // question and pay links wait out quiet hours (2026-10-21).
+    await db.run(`UPDATE "Organisation" SET "paymentHolderId" = $2, "payMethodDirect" = true, "quietHoursEnabled" = false WHERE id = $1`, [ORG4, S.cal.id]);
     await fixture(db, MATCH4, "e2e-mw4-act", PLAYED, "COMPLETED");
     await attend(db, ORG4, MATCH4, S.rae.id, "CONFIRMED", 1);
     await attend(db, ORG4, MATCH4, S.sid.id, "CONFIRMED", 2);
@@ -1132,7 +1134,9 @@ test.describe("round 3: the collector's answer to the PAYG fee question", () => 
     await club(db, { org: ORG5, group: GROUP5, act: "e2e-mw5-act", sport: "e2e-mw5-sport", name: "Fee Club", collector: T.cal.id });
     await person(db, ORG5, T.cal, "OWNER");
     for (const p of [T.rae, T.pip]) await person(db, ORG5, p);
-    await db.run(`UPDATE "Organisation" SET "paymentHolderId" = $2, "payMethodDirect" = true WHERE id = $1`, [ORG5, T.cal.id]);
+    // Quiet hours off: these tests run on the real clock, and the fee
+    // question and pay links wait out quiet hours (2026-10-21).
+    await db.run(`UPDATE "Organisation" SET "paymentHolderId" = $2, "payMethodDirect" = true, "quietHoursEnabled" = false WHERE id = $1`, [ORG5, T.cal.id]);
     await fixture(db, MATCH5, "e2e-mw5-act", PLAYED, "COMPLETED");
     await attend(db, ORG5, MATCH5, T.rae.id, "CONFIRMED", 1);
     await attend(db, ORG5, MATCH5, T.pip.id, "CONFIRMED", 2);

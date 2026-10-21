@@ -1708,6 +1708,8 @@ function cases(lang: Lang): Case[] {
   add("R96 buildFeeReleasedAck / thirteen", buildFeeReleasedAck({ released: 13, fee: 8.5, matchName: "Tuesday 7-a-side", methods: ALL_WAYS, lang }));
   add("R96 buildFeeReleasedAck / direct only", buildFeeReleasedAck({ released: 12, fee: 8, matchName: "Tuesday 7-a-side", methods: ["direct"], lang }));
   add("R96 buildFeeReleasedAck / card only", buildFeeReleasedAck({ released: 12, fee: 8, matchName: "Tuesday 7-a-side", methods: ["card"], lang }));
+  add("R96 buildFeeReleasedAck / held by quiet hours", buildFeeReleasedAck({ released: 12, fee: 8, matchName: "Tuesday 7-a-side", methods: ALL_WAYS, heldUntil: "09:00", lang }));
+  add("R96 buildFeeReleasedAck / held by quiet hours, one", buildFeeReleasedAck({ released: 1, fee: 8, matchName: "Tuesday 7-a-side", methods: ["direct"], heldUntil: "09:00", lang }));
   add("R97 buildFeeCancelledAck", buildFeeCancelledAck(lang));
   add("R98 buildFeeConfirmPrompt / per player", buildFeeConfirmPrompt({ perPlayer: 8, headcount: 13, matchName: "Tuesday 7-a-side", wasTotal: false, lang }));
   add("R98 buildFeeConfirmPrompt / total split", buildFeeConfirmPrompt({ perPlayer: 7.69, headcount: 13, matchName: "Tuesday 7-a-side", wasTotal: true, lang }));

@@ -1836,6 +1836,9 @@ export const en = {
     bank: boolean;
     card: boolean;
     direct: boolean;
+    /** The club's quiet hours are holding the links (2026-10-21): the
+     *  London "HH:MM" they go out at. Null or absent: they went at once. */
+    heldUntil?: string | null;
   }): string => {
     const online = [p.bank && "bank", p.card && "card, Apple or Google Pay"].filter(Boolean).join(", ");
     const how =
@@ -1846,10 +1849,16 @@ export const en = {
           : p.direct
             ? `Players pay you directly, and I'll let you know when someone says they have. `
             : "";
-    return (
-      `✅ Done, sent ${p.released} pay link${p.released === 1 ? "" : "s"} at *${p.fee}* each for *${p.matchName}*${p.matchWhen ? ` on ${p.matchWhen}` : ""}. ` +
-      `${how}I'll chase anyone who hasn't paid.`
-    );
+    const one = p.released === 1;
+    const links = `${p.released} pay link${one ? "" : "s"} at *${p.fee}* each for *${p.matchName}*${p.matchWhen ? ` on ${p.matchWhen}` : ""}`;
+    if (p.heldUntil) {
+      return (
+        `✅ Done, ${links} ${one ? "is" : "are"} ready. ` +
+        `${one ? "It goes" : "They go"} out at ${p.heldUntil} London, when quiet hours end. ` +
+        `${how}I'll chase anyone who hasn't paid.`
+      );
+    }
+    return `✅ Done, sent ${links}. ${how}I'll chase anyone who hasn't paid.`;
   },
 
   /** Row 97: the collector's ack to a cancel. */

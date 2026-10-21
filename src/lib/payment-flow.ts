@@ -32,13 +32,22 @@ import { normaliseLang, type Lang } from "./i18n/lang";
 import { withOrgAiBudget } from "./ai-budget";
 import { MONTHLY_PAYMENT_METHOD, isMonthlyRow, recordPaygFeeDeclined, stagePaygFeeForReply } from "./monthly-week";
 import { isFeeWaived } from "./fee-waiver-rules";
+import { QUIET_HOURS_SELECT, messageHoursSendAfter, quietHoursOf, type QuietHours } from "./message-hours";
+import { formatLondon } from "./london-time";
 import type Stripe from "stripe";
 
 /** DM each confirmed player (with a phone) a pay link, once. Idempotent
  *  via per-player BotJob dedupe on a stable text marker isn't reliable,
  *  so we gate on paymentLinksReleasedAt: callers set the fee + call this
- *  exactly once. Returns how many links were queued. */
-export async function releaseMatchPayments(matchId: string): Promise<number> {
+ *  exactly once. Returns how many links were queued.
+ *
+ *  QUIET HOURS (Kemal, 2026-10-21): released inside the club's quiet hours,
+ *  every link is queued with `sendAfter` = when they end
+ *  (`messageHoursSendAfter`), as the monthly payment DMs are. Outside them,
+ *  or with them off, `sendAfter` stays null and the links go at once.
+ *  `opts.now` is the clock (the collector's ack reads the same one). */
+export async function releaseMatchPayments(matchId: string, opts: { now?: Date } = {}): Promise<number> {
+  const now = opts.now ?? new Date();
   const match = await db.match.findUnique({
     where: { id: matchId },
     include: {
@@ -53,7 +62,14 @@ export async function releaseMatchPayments(matchId: string): Promise<number> {
           // collector directly, one line when direct is offered (2026-10-16);
           // `squadMode`: a monthly club's PAYG link stays as it was.
           org: {
-            select: { paymentHolderId: true, language: true, paymentInstructions: true, squadMode: true, ...PAY_METHOD_SELECT },
+            select: {
+              paymentHolderId: true,
+              language: true,
+              paymentInstructions: true,
+              squadMode: true,
+              ...PAY_METHOD_SELECT,
+              ...QUIET_HOURS_SELECT,
+            },
           },
         },
       },
@@ -70,6 +86,8 @@ export async function releaseMatchPayments(matchId: string): Promise<number> {
   const collectorId = match.activity.org.paymentHolderId;
   const methods = availablePayMethods(match.activity.org);
   const instructions = directPayInstructions(match.activity.org);
+  // Null outside the club's quiet hours: send at once.
+  const sendAfter = messageHoursSendAfter(now, quietHoursOf(match.activity.org));
   // The collector's name, from the squad when they played, else looked
   // up. A failed lookup only costs the name ("the organiser"), never the
   // pay links.
@@ -106,13 +124,14 @@ export async function releaseMatchPayments(matchId: string): Promise<number> {
           instructions,
           lang: match.activity.org.language,
         }),
+        ...(sendAfter ? { sendAfter } : {}),
       },
     });
     queued++;
   }
   await db.match.update({
     where: { id: matchId },
-    data: { paymentLinksReleasedAt: new Date() },
+    data: { paymentLinksReleasedAt: now },
   });
   return queued;
 }
@@ -326,7 +345,9 @@ async function findCollectorPendingMatch(
     OR: [{ feePendingConfirm: { not: null } }, { feePerPlayer: null }],
   };
   const include = {
-    activity: { select: { name: true, orgId: true, org: { select: { language: true, ...PAY_METHOD_SELECT } } } },
+    activity: {
+      select: { name: true, orgId: true, org: { select: { language: true, ...PAY_METHOD_SELECT, ...QUIET_HOURS_SELECT } } },
+    },
   };
   // A swipe-reply to a message about one match acts on THAT match, when it
   // is still one this collector may set or confirm a fee for (quoted-reply
@@ -384,6 +405,10 @@ export interface CollectorPendingMatch {
    *  The database wiring always sets it; absent (a test double) reads as
    *  all three, the ack as it was before 2026-10-16. */
   payMethods?: PayMethod[];
+  /** The club's quiet hours (`quietHoursOf(org)`): when the links are
+   *  released inside them, they are held and the ack says until when
+   *  (2026-10-21). Absent (a test double): never held, the ack as before. */
+  quietHours?: QuietHours;
 }
 
 /**
@@ -420,6 +445,9 @@ export interface CollectorFeeDeps {
   cancel: (matchId: string) => Promise<void>;
   /** Stages an amount for confirmation. Sends nothing to anybody. */
   stage: (matchId: string, perPlayer: number) => Promise<void>;
+  /** The clock `release` uses, so the ack names the hold the links got.
+   *  Absent: the real one. */
+  now?: () => Date;
 }
 
 /**
@@ -460,7 +488,14 @@ export async function runCollectorFeeReply(
     if (released === null) return null;
     const methods = match.payMethods ?? ["pay_by_bank", "card", "direct"];
     const matchWhen = match.date ? dayLabel(lang, match.date) : null;
-    return { ...about, released, reply: buildFeeReleasedAck({ released, fee: amount, matchName: match.name, matchWhen, methods, lang }) };
+    // The links wait for the end of the club's quiet hours
+    // (releaseMatchPayments); the ack goes now and says until when.
+    const heldUntil = payLinksHeldUntil(deps.now?.() ?? new Date(), match.quietHours);
+    return {
+      ...about,
+      released,
+      reply: buildFeeReleasedAck({ released, fee: amount, matchName: match.name, matchWhen, methods, heldUntil, lang }),
+    };
   };
   const cancelNow = async (): Promise<CollectorReplyResult> => {
     await deps.cancel(match.id);
@@ -542,6 +577,9 @@ export async function handleCollectorFeeReply(
     /** Where DMs to the collector are queued (digits, no "+"): the chat
      *  context's recent messages are read by it. */
     phone?: string | null;
+    /** The clock for the quiet hours hold (the e2e suite's `x-test-now`
+     *  under MT_TEST_MODE). Absent: the real one. */
+    now?: Date;
   } = {},
 ): Promise<CollectorReplyResult | null> {
   // The club the fee is for pays for reading the reply (the daily AI cap,
@@ -554,8 +592,12 @@ export async function handleCollectorFeeReply(
   // or swipe-replies to the fee question itself (review of #339, H2). Any
   // other quote, known or not, goes to the model with the quote in view.
   const allowlist = !opts.quoted || opts.quoted.topic === "feeQuestion";
+  // One clock for the release and its ack, so the ack names the hold the
+  // links actually got.
+  const now = opts.now ?? new Date();
   return runCollectorFeeReply(text, {
     allowlist,
+    now: () => now,
     pendingMatch: async () => {
       const m = await findCollectorPendingMatch(userId, opts.quoted);
       feeOrgId = m?.activity.orgId ?? null;
@@ -587,6 +629,7 @@ export async function handleCollectorFeeReply(
             date: m.date,
             lang: normaliseLang(m.activity.org.language),
             payMethods: availablePayMethods(m.activity.org),
+            quietHours: quietHoursOf(m.activity.org),
           }
         : null;
     },
@@ -630,7 +673,7 @@ export async function handleCollectorFeeReply(
       const ctx = { amount, matchName: fm ? contextMatchLabel(matchName, fm.date) : matchName, lang, replyContext };
       return feeOrgId ? withOrgAiBudget(feeOrgId, () => classifyFeeReply(reply, ctx)) : classifyFeeReply(reply, ctx);
     },
-    release: (matchId, amount) => claimAndReleaseFee(userId, matchId, amount),
+    release: (matchId, amount) => claimAndReleaseFee(userId, matchId, amount, now),
     cancel: async (matchId) => {
       await db.match.update({ where: { id: matchId }, data: { feePendingConfirm: null } });
       // Monthly squad: the "no" is remembered, so the PAYG price is never
@@ -655,7 +698,7 @@ export async function handleCollectorFeeReply(
  * all pass the pending check; only the first claims the match and DMs the
  * squad. Null when another one got there first.
  */
-async function claimAndReleaseFee(userId: string, matchId: string, amount: number): Promise<number | null> {
+async function claimAndReleaseFee(userId: string, matchId: string, amount: number, now: Date = new Date()): Promise<number | null> {
   const claimed = await db.match.updateMany({
     where: { id: matchId, paymentLinksReleasedAt: null },
     data: {
@@ -667,7 +710,15 @@ async function claimAndReleaseFee(userId: string, matchId: string, amount: numbe
     },
   });
   if (claimed.count === 0) return null;
-  return releaseMatchPayments(matchId);
+  // `now`: the clock of the quiet hours hold, the one the ack reads too.
+  return releaseMatchPayments(matchId, { now });
+}
+
+/** The London "HH:MM" the pay links released at `now` are held until by
+ *  the club's quiet hours, or null when they go at once (2026-10-21). */
+function payLinksHeldUntil(now: Date, quiet: QuietHours | undefined): string | null {
+  const held = quiet ? messageHoursSendAfter(now, quiet) : null;
+  return held ? formatLondon(held, "HH:mm") : null;
 }
 
 /**
@@ -692,7 +743,10 @@ export async function confirmCollectorFeeByReaction(
   userId: string,
   matchId: string,
   askKey: string,
+  /** `now`: the clock of the quiet hours hold (tests). Absent: the real one. */
+  opts: { now?: Date } = {},
 ): Promise<CollectorReplyResult | null> {
+  const now = opts.now ?? new Date();
   // A known message about this match (key set): no fallback to another
   // match when this one is not open.
   const m = await findCollectorPendingMatch(userId, {
@@ -709,7 +763,7 @@ export async function confirmCollectorFeeByReaction(
   }
   if (pending == null) return null;
   const amount = pending;
-  const released = await claimAndReleaseFee(userId, m.id, amount);
+  const released = await claimAndReleaseFee(userId, m.id, amount, now);
   if (released === null) return null;
   const lang = normaliseLang(m.activity.org.language);
   return {
@@ -722,6 +776,9 @@ export async function confirmCollectorFeeByReaction(
       matchName: m.activity.name,
       matchWhen: dayLabel(lang, m.date),
       methods: availablePayMethods(m.activity.org),
+      // Held by the club's quiet hours: the ack says until when, as the
+      // typed yes's does.
+      heldUntil: payLinksHeldUntil(now, quietHoursOf(m.activity.org)),
       lang,
     }),
   };
