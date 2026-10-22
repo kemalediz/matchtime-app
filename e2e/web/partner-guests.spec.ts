@@ -60,6 +60,8 @@ test("the match page lists the guest and 'Add to' makes him a member", async ({ 
   const panel = page.getByTestId("partner-guests-panel");
   await expect(panel).toBeVisible({ timeout: 30_000 });
   await expect(panel.getByTestId("partner-guest-row")).toContainText("Ali Guestman, guest from Sutton Lenders");
+  // His standing at HIS club (2026-10-22): no rating there yet.
+  await expect(panel.getByTestId("partner-guest-standing")).toHaveText("Sutton Lenders, not rated yet there");
   await panel.getByTestId("partner-guest-keep").click();
   await expect.poll(async () => (await db.one<{ g: string | null }>(`SELECT "guestFromOrgId" AS g FROM "Membership" WHERE id = 'e2e-xg-m2'`))?.g, { timeout: 15_000 }).toBeNull();
 });

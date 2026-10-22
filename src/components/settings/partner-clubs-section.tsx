@@ -201,7 +201,7 @@ export function PartnerClubsSection(props: { orgId: string; language: string | n
     }
   }
 
-  async function saveDiscovery(patch: { discoverable?: boolean; autoAccept?: boolean }) {
+  async function saveDiscovery(patch: { discoverable?: boolean; autoAccept?: boolean; shareRatings?: boolean }) {
     setBusy("discovery");
     try {
       const r = await saveDiscoverySettingsAction(props.orgId, patch);
@@ -349,6 +349,17 @@ export function PartnerClubsSection(props: { orgId: string; language: string | n
             </div>
             {toggle(data.discovery.autoAccept, s.pd_auto_accept_label, "partner-auto-accept", () =>
               saveDiscovery({ autoAccept: !data.discovery.autoAccept }),
+            )}
+          </div>
+          {/* 2026-10-22 (option C): a lent player's club rating, shown to the
+              club he plays for. His band there is always shown. */}
+          <div className="py-3 flex items-center justify-between gap-4" data-setting="partnerShareRatings">
+            <div className="flex items-center gap-1 text-sm font-medium text-slate-800">
+              {s.pd_share_ratings_label}
+              <SettingInfo k="partnerShareRatings" lang={props.language} />
+            </div>
+            {toggle(data.discovery.shareRatings, s.pd_share_ratings_label, "partner-share-ratings", () =>
+              saveDiscovery({ shareRatings: !data.discovery.shareRatings }),
             )}
           </div>
 

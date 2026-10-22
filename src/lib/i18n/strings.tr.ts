@@ -3769,6 +3769,7 @@ export const tr: Strings = {
   // Same block as strings.en.ts. Added as one block; nothing above moved.
   pd_discoverable_label: "Yakındaki kulüpler bizi bulsun ve istek göndersin",
   pd_auto_accept_label: "Partner isteklerini otomatik kabul et",
+  pd_share_ratings_label: "Oyuncularımızın puanlarını partner kulüplerle paylaş",
   pd_none: "Henüz partner kulübünüz yok.",
   pd_status_paused_platform: "MatchTime tarafından durduruldu",
   pd_venue_label: "Kulüp sahası",
@@ -3973,7 +3974,21 @@ export const tr: Strings = {
     `Başka bir kulübün listesine yalnızca ${p.club} oyuncularını yazabilirim ve seni burada henüz tanımıyorum. ${p.club} organizatörlerinden birine yaz.`,
   xask_vol_failed: "Seni şu an ekleyemedim. Lütfen bir dakika sonra tekrar dene.",
   xask_vol_notice_asker: (p) =>
-    `🤝 ${p.name} (${p.partner}) ${p.day} isteğinize yanıt verdi: ${p.bench ? "seçmeniz için yedek listenizde" : "kadroda"}.`,
+    `🤝 ${p.name} (${p.from}) ${p.day} isteğinize yanıt verdi: ${p.bench ? "seçmeniz için yedek listenizde" : "kadroda"}.`,
+  xask_guest_standing: (p) => {
+    const band =
+      p.band === "top"
+        ? "orada üst üçte birde"
+        : p.band === "middle"
+          ? "orada orta üçte birde"
+          : p.band === "bottom"
+            ? "orada alt üçte birde"
+            : p.band === "too-few"
+              ? "orada sıralamak için yeterli puanlı oyuncu yok"
+              : "orada henüz puanı yok";
+    return `${p.club}, ${band}${p.rating !== null ? `, puanı ${p.rating}` : ""}`;
+  },
+  xask_taken_off_dm: (p) => `*${p.asker}* organizatörleri seni ${p.day} maçından çıkardı. Teklifin için teşekkürler 🙏`,
   xask_vol_out_notice_asker: (p) => `${p.name} (${p.partner}) ${p.day} maçına gelemiyor, bu yüzden listeden çıkardım.`,
   // ─── İstekten sonra misafirler (slice S4) ───────────────────────────
   xask_thanks_dm: (p) => `*${p.asker}* oyuncusunu buldu. Teklifin için teşekkürler 🙏`,

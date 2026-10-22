@@ -42,6 +42,8 @@ import { gamesOverlap } from "./partner-ask-rules";
 import { decideVolunteer, isPastGuestDue } from "./partner-volunteer-rules";
 import { loadRoundFill } from "./partner-ask-round";
 import { normaliseBenchPickMode } from "./squad-capacity";
+import { loadGuestStandings } from "./partner-guest-standing";
+import { standingPhrase } from "./partner-guest-standing-rules";
 
 const LIVE = ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] as const;
 
@@ -305,7 +307,12 @@ async function decideAndWriteVolunteer(w: VolunteerWrite, now: Date): Promise<De
       return { ok: true, outcome: "closed", dmText: ps.xask_vol_closed({ asker: asker.name }), partnerOrgId: partner.id };
     }
     const bench = result.status === "BENCH";
-    await tellAskerOnce("in", t(askerLang).xask_vol_notice_asker({ name: w.name, partner: partner.name, day, bench }));
+    // His standing at HIS club (2026-10-22, option C): his band there, and
+    // his number there only when his club shares it. Unreadable: his
+    // club's name alone, as before.
+    const standing = (await loadGuestStandings([{ userId, homeOrgId: partner.id }])).get(userId);
+    const from = standing ? standingPhrase(askerLang, standing) : partner.name;
+    await tellAskerOnce("in", t(askerLang).xask_vol_notice_asker({ name: w.name, from, day, bench }));
     // His place filled the round: every ask in it closes now, each partner
     // group hears its one "filled" line (the sweep would, at its next poll).
     if (roundNowFull) {
@@ -538,6 +545,61 @@ export async function withdrawGuest(args: { userId: string; matchId: string; now
   }
   console.log(`[partner-guest] ${args.userId}: out of match ${args.matchId} by DM`);
   return true;
+}
+
+/**
+ * THE ASKING CLUB'S ORGANISERS TOOK A GUEST OFF THEIR GAME (Kemal,
+ * 2026-10-22). Called by `cancelAttendance` for every drop an ADMIN made
+ * (a group message such as "C1 OUT", the admin group, HQ, a pasted list),
+ * and by the match page's "Remove" (`removePlayerFromMatch`, the one admin
+ * removal that deletes the row instead), always AFTER the write and only
+ * when the row was live (CONFIRMED or BENCH), so a replay never DMs twice.
+ *
+ * Only a CURRENT guest of that club for that match counts: an ordinary
+ * member gets nothing, as ever. He is taken off every ask of the match
+ * (so he is not picked again; in SQL, never a stale rewrite) and gets one
+ * DM from his own club, in its language. His place is freed as any place
+ * is (`cancelAttendance` already did that: the bench offer, the round's
+ * count). His own OUT never comes here (actor "player"), so he keeps the
+ * one reply he gets today. Never throws.
+ */
+export async function tellGuestTakenOffByAdmin(args: { userId: string; matchId: string }): Promise<boolean> {
+  try {
+    const match = await db.match.findUnique({
+      where: { id: args.matchId },
+      select: { id: true, date: true, status: true, activity: { select: { orgId: true } } },
+    });
+    if (!match || !LIVE.includes(match.status as (typeof LIVE)[number])) return false;
+    const orgId = match.activity.orgId;
+    const mem = await db.membership.findUnique({
+      where: { userId_orgId: { userId: args.userId, orgId } },
+      select: { guestFromOrgId: true, guestMatchId: true, leftAt: true },
+    });
+    if (!mem?.guestFromOrgId || mem.leftAt || mem.guestMatchId !== args.matchId) return false;
+    await db.$executeRaw`UPDATE "PartnerAsk" SET "volunteerUserIds" = array_remove("volunteerUserIds", ${args.userId}) WHERE "matchId" = ${args.matchId}`;
+    const [asker, from, user] = await Promise.all([
+      db.organisation.findUnique({ where: { id: orgId }, select: { id: true, name: true, language: true } }),
+      db.organisation.findUnique({ where: { id: mem.guestFromOrgId }, select: { id: true, name: true, language: true } }),
+      db.user.findUnique({ where: { id: args.userId }, select: { phoneNumber: true } }),
+    ]);
+    if (asker && from && user?.phoneNumber) {
+      await db.botJob.create({
+        data: {
+          orgId: from.id,
+          kind: "dm",
+          phone: user.phoneNumber.replace(/^\+/, ""),
+          text: t(from.language).xask_taken_off_dm({ asker: asker.name, day: dayCommaTimeLabel(from.language, match.date) }),
+        },
+      });
+    } else {
+      console.log(`[partner-guest] ${args.userId}: taken off match ${args.matchId}, no number to tell`);
+    }
+    console.log(`[partner-guest] ${args.userId}: taken off match ${args.matchId} by its organisers`);
+    return true;
+  } catch (err) {
+    console.error(`[partner-guest] ${args.userId}: taken off match ${args.matchId}, not told:`, err instanceof Error ? err.message : "failed");
+    return false;
+  }
 }
 
 /**

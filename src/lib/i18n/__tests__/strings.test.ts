@@ -1697,6 +1697,7 @@ const SAMPLES: SampleArgs = {
   // Partner discovery (slice P1).
   pd_discoverable_label: null,
   pd_auto_accept_label: null,
+  pd_share_ratings_label: null,
   pd_none: null,
   pd_status_paused_platform: null,
   pd_venue_label: null,
@@ -1908,7 +1909,9 @@ const SAMPLES: SampleArgs = {
   xask_guest_overlap: { asker: "FNFCLUB" },
   xask_dm_which: { asker: "FNFCLUB", askerDay: "DAYLABEL", own: "SUTTONCLUB", ownDay: "OWNDAY" },
   xask_vol_game_over: { asker: "FNFCLUB" },
-  xask_vol_notice_asker: { name: "NAMEX", partner: "SUTTONCLUB", day: "DAYLABEL", bench: true },
+  xask_vol_notice_asker: { name: "NAMEX", from: "SUTTONCLUB, top third there", day: "DAYLABEL", bench: true },
+  xask_guest_standing: { club: "SUTTONCLUB", band: "top", rating: "7.4" },
+  xask_taken_off_dm: { asker: "FNFCLUB", day: "DAYLABEL" },
   xask_vol_out_notice_asker: { name: "NAMEX", partner: "SUTTONCLUB", day: "DAYLABEL" },
   phone_err_invalid: null,
   phone_err_not_member: null,
@@ -2119,7 +2122,7 @@ describe("string tables: hygiene", () => {
   /** Arguments that are a closed set the entry BRANCHES on rather than
    *  text it prints: the rendered sentence says "replied by DM", never
    *  the token "dm". */
-  const ENUM_ARGS = new Set(["source", "verb", "self", "status", "key", "englishLabel", "dow", "topic", "dayNum", "reminder", "kind", "category", "decision", "field", "englishBlurb", "table", "audience", "mode", "outcome"]);
+  const ENUM_ARGS = new Set(["source", "verb", "self", "status", "key", "englishLabel", "dow", "topic", "dayNum", "reminder", "kind", "category", "decision", "field", "englishBlurb", "table", "audience", "mode", "outcome", "band"]);
 
   it("every parameterised entry uses every argument it is given", () => {
     // A string or number argument must appear in the output; a boolean,

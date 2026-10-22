@@ -21,6 +21,9 @@ const att = vi.hoisted(() => ({ registerAttendance: vi.fn(), cancelAttendance: v
 vi.mock("../attendance", () => att);
 const notice = vi.hoisted(() => ({ sendAdminNotice: vi.fn() }));
 vi.mock("../admin-channel", () => notice);
+// His standing at his own club (2026-10-22): read by partner-guest-standing.ts.
+const standing = vi.hoisted(() => ({ loadGuestStandings: vi.fn() }));
+vi.mock("../partner-guest-standing", () => standing);
 
 import { handlePartnerVolunteer } from "../partner-guest";
 
@@ -62,6 +65,7 @@ beforeEach(() => {
   dbMock.sentNotification.create.mockResolvedValue({});
   dbMock.user.findUnique.mockResolvedValue({ phoneNumber: "+447700900111" });
   dbMock.botJob.create.mockResolvedValue({ id: "dm1" });
+  standing.loadGuestStandings.mockResolvedValue(new Map([["ali", { club: "Sutton FC", band: "top", rating: null }]]));
 });
 
 /** The one DM he was sent, or undefined. */
@@ -88,7 +92,21 @@ describe("handlePartnerVolunteer", () => {
     expect(dbMock.partnerAsk.updateMany.mock.invocationCallOrder[0]).toBeLessThan(att.registerAttendance.mock.invocationCallOrder[0]);
     // His reply is in HIS club's language (Turkish here); the asking club's notice in its own.
     expect(r.dmText).toContain("FNF* yedek listesindesin");
-    expect(notice.sendAdminNotice).toHaveBeenCalledWith(expect.objectContaining({ orgId: "fnf", text: expect.stringContaining("Ali Kaya (Sutton FC) answered your ask") }));
+    expect(notice.sendAdminNotice).toHaveBeenCalledWith(expect.objectContaining({ orgId: "fnf", text: expect.stringContaining("Ali Kaya (Sutton FC, top third there) answered your ask") }));
+    // His standing is read at HIS club (the partner), never the asking club.
+    expect(standing.loadGuestStandings).toHaveBeenCalledWith([{ userId: "ali", homeOrgId: "sutton" }]);
+  });
+
+  it("2026-10-22: his club shares its ratings: the notice carries his number there too", async () => {
+    standing.loadGuestStandings.mockResolvedValue(new Map([["ali", { club: "Sutton FC", band: "middle", rating: 7.4 }]]));
+    await handlePartnerVolunteer(write(), NOW);
+    expect(notice.sendAdminNotice).toHaveBeenCalledWith(expect.objectContaining({ text: expect.stringContaining("Ali Kaya (Sutton FC, middle third there, rated 7.4) answered") }));
+  });
+
+  it("2026-10-22: his standing cannot be read: the notice still goes, with his club alone", async () => {
+    standing.loadGuestStandings.mockResolvedValue(new Map());
+    await handlePartnerVolunteer(write(), NOW);
+    expect(notice.sendAdminNotice).toHaveBeenCalledWith(expect.objectContaining({ text: expect.stringContaining("Ali Kaya (Sutton FC) answered") }));
   });
 
   it("an ordinary member of the asking club already: an ordinary IN, no guest mark", async () => {

@@ -8,6 +8,8 @@ import { AddPlayerToMatch } from "@/components/match/add-player-to-match";
 import { CarryOverSquadButton } from "@/components/match/carry-over-squad-button";
 import { WaitingListControls } from "@/components/match/waiting-list-controls";
 import { summariseClubDisplayRatings } from "@/lib/player-rating";
+import { loadGuestStandings } from "@/lib/partner-guest-standing";
+import { standingPhrase } from "@/lib/partner-guest-standing-rules";
 import { positionLabel } from "@/lib/organiser-pick-rules";
 import { findCarryOverSource } from "@/lib/rolling-squad";
 import { dayLabel } from "@/lib/i18n/dates";
@@ -165,11 +167,17 @@ export default async function MatchDetailPage({
         if (guests.length === 0) return [];
         const clubs = await db.organisation.findMany({ where: { id: { in: guests.map((g) => g.guestFromOrgId!) } }, select: { id: true, name: true } });
         const nameOf = new Map(clubs.map((c) => [c.id, c.name]));
-        return guests.map((g) => ({
-          userId: g.userId,
-          name: match.attendances.find((a) => a.userId === g.userId)?.user.name ?? "?",
-          club: nameOf.get(g.guestFromOrgId!) ?? "",
-        }));
+        // His standing at HIS club (2026-10-22, option C), in this club's words.
+        const standings = await loadGuestStandings(guests.map((g) => ({ userId: g.userId, homeOrgId: g.guestFromOrgId! })));
+        return guests.map((g) => {
+          const st = standings.get(g.userId);
+          return {
+            userId: g.userId,
+            name: match.attendances.find((a) => a.userId === g.userId)?.user.name ?? "?",
+            club: nameOf.get(g.guestFromOrgId!) ?? "",
+            standing: st ? standingPhrase(match.activity.org.language, st) : null,
+          };
+        });
       })()
     : [];
   const isPastDeadline = new Date() > match.attendanceDeadline;

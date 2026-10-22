@@ -1225,6 +1225,17 @@ export async function removePlayerFromMatch(matchId: string, userId: string): Pr
       );
     }
   });
+  // The one admin removal that does not go through `cancelAttendance` (it
+  // deletes the row): a partner guest taken off here is told exactly as
+  // there, by the same check (2026-10-22). Never fails the removal.
+  if (priorRow && (priorRow.status === "CONFIRMED" || priorRow.status === "BENCH")) {
+    try {
+      const { tellGuestTakenOffByAdmin } = await import("@/lib/partner-guest");
+      await tellGuestTakenOffByAdmin({ userId, matchId });
+    } catch (err) {
+      console.error("[players] partner guest check failed:", err instanceof Error ? err.message : "failed");
+    }
+  }
   revalidatePath(`/matches/${matchId}`);
   return { ok: true };
 }

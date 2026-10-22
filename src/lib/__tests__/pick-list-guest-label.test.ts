@@ -17,3 +17,19 @@ describe("pick list guest label", () => {
     expect(block).toContain("2. Bilal (no position, 6.8)");
   });
 });
+
+describe("pick list guest standing at his own club (2026-10-22)", () => {
+  it("the band beside his club, and his club's number only when it shares", () => {
+    const block = buildPickListBlock("en", [
+      { name: "Ali K", position: "MID", rating: null, fromClub: "Sutton FC", fromStanding: { band: "top", rating: null } },
+      { name: "Cem", position: null, rating: null, fromClub: "FMC", fromStanding: { band: "middle", rating: 6.84 } },
+    ]);
+    expect(block).toContain("1. Ali K (Sutton FC, top third there) (MID, new)");
+    expect(block).toContain("2. Cem (FMC, middle third there, rated 6.8) (no position, new)");
+  });
+
+  it("in Turkish", () => {
+    const block = buildPickListBlock("tr", [{ name: "Ali K", position: "MID", rating: null, fromClub: "Sutton FC", fromStanding: { band: "unrated", rating: null } }]);
+    expect(block).toContain("1. Ali K (Sutton FC, orada henüz puanı yok) (MID, yeni)");
+  });
+});

@@ -5073,6 +5073,8 @@ export const en = {
   // src/lib/club-partnership.ts. Added as one block; nothing above moved.
   pd_discoverable_label: "Let nearby clubs find us and send requests",
   pd_auto_accept_label: "Accept partner requests automatically",
+  // "Share our players' ratings with partner clubs" (2026-10-22, option C).
+  pd_share_ratings_label: "Share our players' ratings with partner clubs",
   pd_none: "No partner clubs yet.",
   pd_status_paused_platform: "Paused by MatchTime",
   pd_venue_label: "Club venue",
@@ -5338,8 +5340,31 @@ export const en = {
   xask_vol_unknown: (p: { club: string }) =>
     `I can only put ${p.club} players on another club's list, and I don't know you here yet. Message one of ${p.club}'s organisers.`,
   xask_vol_failed: "I couldn't add you just now. Please try again in a minute.",
-  xask_vol_notice_asker: (p: { name: string; partner: string; day: string; bench: boolean }) =>
-    `🤝 ${p.name} (${p.partner}) answered your ask for ${p.day}: ${p.bench ? "on your bench for you to pick" : "in the squad"}.`,
+  /** `from` is his club and his standing there (`standingPhrase`), e.g.
+   *  "Friday MT Community, top third there" (2026-10-22). */
+  xask_vol_notice_asker: (p: { name: string; from: string; day: string; bench: boolean }) =>
+    `🤝 ${p.name} (${p.from}) answered your ask for ${p.day}: ${p.bench ? "on your bench for you to pick" : "in the squad"}.`,
+  /** A guest's standing at HIS OWN club (Kemal, 2026-10-22, option C), for
+   *  the asking club's organisers: his band in thirds of that club's rated
+   *  players, and his club rating there only when his club shares it. Read
+   *  by src/lib/partner-guest-standing-rules.ts. */
+  xask_guest_standing: (p: { club: string; band: "top" | "middle" | "bottom" | "too-few" | "unrated"; rating: string | null }) => {
+    const band =
+      p.band === "top"
+        ? "top third there"
+        : p.band === "middle"
+          ? "middle third there"
+          : p.band === "bottom"
+            ? "bottom third there"
+            : p.band === "too-few"
+              ? "too few rated players there to rank"
+              : "not rated yet there";
+    return `${p.club}, ${band}${p.rating !== null ? `, rated ${p.rating}` : ""}`;
+  },
+  /** One DM to a partner guest the asking club's organisers took off their
+   *  game (2026-10-22). In HIS club's language. */
+  xask_taken_off_dm: (p: { asker: string; day: string }) =>
+    `*${p.asker}*'s organisers have taken you off their game on ${p.day}. Thanks for offering 🙏`,
   xask_vol_out_notice_asker: (p: { name: string; partner: string; day: string }) =>
     `${p.name} (${p.partner}) can't play ${p.day} after all, so I've taken them off.`,
   // ─── Guests after the ask (slice S4, 2026-10-16) ────────────────────

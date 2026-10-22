@@ -140,12 +140,13 @@ export async function savePartnerAskSettingsAction(
 
 /**
  * "Let nearby clubs find us and send requests" and "Accept partner
- * requests automatically" (P1). An owner or an admin; the writer checks the
+ * requests automatically" (P1), and "Share our players' ratings with
+ * partner clubs" (2026-10-22). An owner or an admin; the writer checks the
  * role again and refuses anything that is not a real on or off.
  */
 export async function saveDiscoverySettingsAction(
   orgId: string,
-  patch: { discoverable?: boolean; autoAccept?: boolean },
+  patch: { discoverable?: boolean; autoAccept?: boolean; shareRatings?: boolean },
 ): Promise<{ ok: true; settings: DiscoverySettings } | { ok: false; refusal: string }> {
   const userId = await sessionUserId();
   const role = await roleIn(userId, orgId);

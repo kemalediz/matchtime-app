@@ -570,6 +570,13 @@ model Organisation {
   discoverableById          String?
   /// "Accept partner requests automatically". OFF by default.
   autoAcceptPartnerRequests Boolean   @default(false)
+  /// "Share our players' ratings with partner clubs" (Kemal, 2026-10-22,
+  /// option C). OFF by default. When one of this club's players volunteers
+  /// for a partner club's ask, that club's organisers always see his band
+  /// here (top, middle or bottom third); with this ON they also see his
+  /// club rating here (the raw number he sees). Read by
+  /// src/lib/partner-guest-standing.ts; written by club-partnership.ts.
+  sharePlayerRatingsWithPartners Boolean @default(false)
   /// Where a club with no game is measured from. Set ONLY through the
   /// venue lookup (a place picked from Google's suggestions), so it is
   /// always a geocoded `Venue`. No postcode or town entry.
