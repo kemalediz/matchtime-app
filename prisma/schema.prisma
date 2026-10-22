@@ -555,6 +555,31 @@ model Organisation {
   /// ask still waiting for the partner's approval expires at it.
   partnerAskCutoffHours    Int     @default(4)
 
+  /// ─── Partner discovery (2026-10-21, slice P1) ─────────────────────
+  /// Plan: MDs/partner-discovery-plan-2026-10-21.md, sections 2.1 and 6.
+  /// Written only by src/lib/club-partnership.ts (settings) and
+  /// src/lib/venue-location.ts (the home venue).
+  /// "Let nearby clubs find us and send requests". ON by default, and
+  /// every existing club reads as on the moment the column is added
+  /// (Kemal, 2026-10-22: no notice, no DM). An owner or admin switches
+  /// it off on the settings page.
+  discoverable              Boolean   @default(true)
+  /// When an owner or admin last changed `discoverable`, and who. NULL on
+  /// every club that never changed it.
+  discoverableAt            DateTime?
+  discoverableById          String?
+  /// "Accept partner requests automatically". OFF by default.
+  autoAcceptPartnerRequests Boolean   @default(false)
+  /// Where a club with no game is measured from. Set ONLY through the
+  /// venue lookup (a place picked from Google's suggestions), so it is
+  /// always a geocoded `Venue`. No postcode or town entry.
+  homeVenueId               String?
+  homeVenue                 Venue?    @relation("ClubHomeVenue", fields: [homeVenueId], references: [id], onDelete: SetNull)
+  /// The weekly "confirm your venue" DM to the owners and admins of a
+  /// live club with no geocoded venue: when it was last sent. The claim
+  /// is a compare-and-set on this column, so two runs never both send.
+  venueReminderSentAt       DateTime?
+
   memberships        Membership[]
   clubConnects       ClubConnect[]
   activities         Activity[]
@@ -575,9 +600,13 @@ model Organisation {
   graphicsChoice     ClubGraphicsChoice?
   partnersAsked      ClubPartnership[] @relation("PartnershipAsker")
   partnersLending    ClubPartnership[] @relation("PartnershipPartner")
+  clubBlocksMade     ClubBlock[]       @relation("ClubBlocker")
+  clubBlocksAgainst  ClubBlock[]       @relation("ClubBlocked")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([homeVenueId])
 }
 
 /**
@@ -834,8 +863,13 @@ model Venue {
   source           String?
   activities       Activity[]
   queries          VenueQuery[]
+  /// Clubs whose home venue this is (partner discovery, 2026-10-21).
+  homeOfClubs      Organisation[] @relation("ClubHomeVenue")
   createdAt        DateTime   @default(now())
   updatedAt        DateTime   @updatedAt
+
+  /// The nearby-clubs search's bounding box (partner discovery, P2).
+  @@index([lat, lng])
 }
 
 model Activity {
@@ -1294,12 +1328,40 @@ model ClubPartnership {
   /// The club that paused it, while paused. Only that side may resume.
   pausedByOrgId     String?
   createdByUserId   String
+  /// Partner discovery (2026-10-21): "owner" (made by the platform owner,
+  /// every row before this) or "request" (one club asked another; the
+  /// request is the asking club's consent). CHECK: partner-ask-check.sql.
+  origin            String       @default("owner")
+  /// A pending request's expiry (14 days after it was sent).
+  expiresAt         DateTime?
+  /// When and by which club it ended, and why: "declined" | "withdrawn" |
+  /// "ended" | "expired" | "blocked". NULL by the platform owner's hand.
+  endedAt           DateTime?
+  endedByOrgId      String?
+  endReason         String?
   asks              PartnerAsk[]
   createdAt         DateTime     @default(now())
   updatedAt         DateTime     @updatedAt
 
   @@unique([askerOrgId, partnerOrgId])
   @@index([partnerOrgId])
+  @@index([askerOrgId, status])
+}
+
+/// One club blocking another (partner discovery, 2026-10-21): the blocked
+/// club can never send it a request, and it disappears from the blocked
+/// club's nearby list. Written only by src/lib/club-partnership.ts.
+model ClubBlock {
+  id              String       @id @default(cuid())
+  blockerOrgId    String
+  blockerOrg      Organisation @relation("ClubBlocker", fields: [blockerOrgId], references: [id], onDelete: Cascade)
+  blockedOrgId    String
+  blockedOrg      Organisation @relation("ClubBlocked", fields: [blockedOrgId], references: [id], onDelete: Cascade)
+  createdByUserId String
+  createdAt       DateTime     @default(now())
+
+  @@unique([blockerOrgId, blockedOrgId])
+  @@index([blockedOrgId])
 }
 
 /// One ask from a club to one partner club, for one of the asking club's

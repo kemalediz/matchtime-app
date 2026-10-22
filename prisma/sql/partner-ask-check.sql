@@ -58,6 +58,24 @@ ALTER TABLE "PartnerAsk" DROP CONSTRAINT IF EXISTS "PartnerAsk_two_clubs_check";
 ALTER TABLE "PartnerAsk" ADD CONSTRAINT "PartnerAsk_two_clubs_check"
   CHECK ("askerOrgId" <> "partnerOrgId");
 
+-- Partner discovery (slice P1, 2026-10-22). Plan:
+-- MDs/partner-discovery-plan-2026-10-21.md, section 6. Applied to
+-- production by prisma/migrations/20261022100000_partner_discovery.
+-- Values: ClubPartnership "origin" and "endReason" are
+-- PARTNERSHIP_ORIGINS and PARTNERSHIP_END_REASONS in
+-- src/lib/club-partnership-rules.ts.
+ALTER TABLE "ClubPartnership" DROP CONSTRAINT IF EXISTS "ClubPartnership_origin_check";
+ALTER TABLE "ClubPartnership" ADD CONSTRAINT "ClubPartnership_origin_check"
+  CHECK ("origin" IN ('owner', 'request'));
+
+ALTER TABLE "ClubPartnership" DROP CONSTRAINT IF EXISTS "ClubPartnership_endReason_check";
+ALTER TABLE "ClubPartnership" ADD CONSTRAINT "ClubPartnership_endReason_check"
+  CHECK ("endReason" IS NULL OR "endReason" IN ('declined', 'withdrawn', 'ended', 'expired', 'blocked'));
+
+ALTER TABLE "ClubBlock" DROP CONSTRAINT IF EXISTS "ClubBlock_two_clubs_check";
+ALTER TABLE "ClubBlock" ADD CONSTRAINT "ClubBlock_two_clubs_check"
+  CHECK ("blockerOrgId" <> "blockedOrgId");
+
 -- One OPEN ask per (match, partner club): a second button press, the
 -- automatic timer and an organiser's words can never post twice.
 -- Created if missing and never dropped, so a re-run never leaves a window

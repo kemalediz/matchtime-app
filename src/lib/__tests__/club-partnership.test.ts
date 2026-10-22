@@ -1,7 +1,6 @@
 /**
  * Partner clubs, the writer (cross-club ask, slice S1).
- * `src/lib/club-partnership.ts`: the platform owner pairs two clubs and
- * both are told; a club's organiser accepts, pauses, resumes or removes
+ * `src/lib/club-partnership.ts`: a club's organiser accepts, pauses, resumes or removes
  * with a compare-and-set; the partner side alone sets its approval; the
  * asking side's settings are checked and saved together.
  */
@@ -19,7 +18,6 @@ vi.mock("../admin-group-log", () => hqLogMock);
 
 import {
   actOnPartnership,
-  createPartnership,
   loadPartnershipsForOrg,
   savePartnerAskSettings,
   setPartnerApproval,
@@ -38,71 +36,6 @@ beforeEach(() => {
   dbMock.clubPartnership.create.mockResolvedValue({ id: "p1" });
   dbMock.clubPartnership.updateMany.mockResolvedValue({ count: 1 });
   noticeMock.sendAdminNotice.mockResolvedValue({ channel: "dm", queued: 1 });
-});
-
-describe("createPartnership", () => {
-  it("creates one direction and tells both clubs, each in its own language, pointing at the settings page", async () => {
-    const r = await createPartnership({ creatorUserId: "kemal", askerOrgId: "fnf", partnerOrgId: "sutton", now: NOW });
-    expect(r).toEqual({ ok: true, id: "p1", reopened: false });
-    expect(dbMock.clubPartnership.create).toHaveBeenCalledWith({
-      data: { askerOrgId: "fnf", partnerOrgId: "sutton", createdByUserId: "kemal" },
-      select: { id: true },
-    });
-    expect(noticeMock.sendAdminNotice).toHaveBeenCalledTimes(2);
-    const calls = noticeMock.sendAdminNotice.mock.calls.map((c) => c[0]);
-    const fnf = calls.find((c) => c.orgId === "fnf");
-    const sutton = calls.find((c) => c.orgId === "sutton");
-    expect(fnf.nextPath).toBe("/admin/settings#partner-clubs");
-    expect(fnf.text("https://L")).toContain("Sutton FC");
-    expect(fnf.text("https://L")).toContain("https://L");
-    // Sutton FC is Turkish in this test: its notice is in Turkish.
-    expect(sutton.text("https://L")).toContain("eşleştirdi");
-  });
-
-  it("each notice tells the owner to reply 1 or 2, and is tagged with its pairing and club so the reply finds it", async () => {
-    await createPartnership({ creatorUserId: "kemal", askerOrgId: "fnf", partnerOrgId: "sutton", now: NOW });
-    const calls = noticeMock.sendAdminNotice.mock.calls.map((c) => c[0]);
-    const fnf = calls.find((c) => c.orgId === "fnf");
-    const sutton = calls.find((c) => c.orgId === "sutton");
-    expect(fnf.aboutKey).toBe("pairing:p1:fnf");
-    expect(sutton.aboutKey).toBe("pairing:p1:sutton");
-    expect(fnf.text("https://L", "dm")).toContain("Club owner: reply *1* to accept or *2* to decline, or open https://L");
-    expect(fnf.text("https://L", "group")).toContain("Club owner: reply to this message with *1* to accept or *2* to decline");
-    expect(sutton.text("https://L", "dm")).toContain("kabul etmek için *1*, reddetmek için *2* yazın");
-    // Sent by DM: nothing logged in an admin group.
-    expect(hqLogMock.recordMatchTimeQuestion).not.toHaveBeenCalled();
-  });
-
-  it("a notice posted in a club's admin group is logged there as MatchTime's question, by its exact words", async () => {
-    noticeMock.sendAdminNotice.mockImplementation(async (req: { orgId: string }) =>
-      req.orgId === "fnf" ? { channel: "admin-group", queued: 1, groupText: "THE POSTED WORDS" } : { channel: "dm", queued: 1 },
-    );
-    await createPartnership({ creatorUserId: "kemal", askerOrgId: "fnf", partnerOrgId: "sutton", now: NOW });
-    expect(hqLogMock.recordMatchTimeQuestion).toHaveBeenCalledTimes(1);
-    expect(hqLogMock.recordMatchTimeQuestion).toHaveBeenCalledWith({ orgId: "fnf", askRef: "pairing:p1:fnf", text: "THE POSTED WORDS", now: NOW });
-  });
-
-  it("refuses a club paired with itself, and a pair that exists, writing nothing", async () => {
-    expect(await createPartnership({ creatorUserId: "k", askerOrgId: "fnf", partnerOrgId: "fnf", now: NOW })).toEqual({ ok: false, refusal: "same-club" });
-    dbMock.clubPartnership.findUnique.mockResolvedValue({ id: "p1", askerOrgId: "fnf", partnerOrgId: "sutton", status: "active" });
-    expect(await createPartnership({ creatorUserId: "k", askerOrgId: "fnf", partnerOrgId: "sutton", now: NOW })).toEqual({ ok: false, refusal: "exists" });
-    expect(dbMock.clubPartnership.create).not.toHaveBeenCalled();
-    expect(noticeMock.sendAdminNotice).not.toHaveBeenCalled();
-  });
-
-  it("an ended pair is proposed again with both acceptances cleared", async () => {
-    dbMock.clubPartnership.findUnique.mockResolvedValue({ id: "p1", askerOrgId: "fnf", partnerOrgId: "sutton", status: "ended" });
-    const r = await createPartnership({ creatorUserId: "k", askerOrgId: "fnf", partnerOrgId: "sutton", now: NOW });
-    expect(r).toEqual({ ok: true, id: "p1", reopened: true });
-    expect(dbMock.clubPartnership.updateMany).toHaveBeenCalledWith({
-      where: { id: "p1", status: "ended" },
-      data: expect.objectContaining({ status: "proposed", askerAcceptedAt: null, partnerAcceptedAt: null, partnerApproval: "each-ask" }),
-    });
-  });
-
-  it("a club that does not exist is refused", async () => {
-    expect(await createPartnership({ creatorUserId: "k", askerOrgId: "fnf", partnerOrgId: "gone", now: NOW })).toEqual({ ok: false, refusal: "no-club" });
-  });
 });
 
 describe("actOnPartnership", () => {

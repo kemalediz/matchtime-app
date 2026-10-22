@@ -2,7 +2,7 @@
  * Partner clubs, the pure rules (cross-club ask, slice S1).
  * Plan: MDs/cross-club-player-ask-plan-2026-10-16.md, sections 3.1 and 3.2.
  *
- * One row per direction; the platform owner creates it; each club's OWNER
+ * One row per direction; each club's OWNER
  * accepts; active once both have; either side pauses, only the pauser
  * resumes; the partner side alone sets how its organisers approve.
  */
@@ -18,7 +18,6 @@ import {
   parseCutoffHours,
   parsePartnerApproval,
   parsePartnerAskWhen,
-  planCreate,
   planPartnershipAction,
   sideOf,
   type PartnershipRow,
@@ -83,22 +82,6 @@ describe("sides", () => {
   });
 });
 
-describe("creating a pairing (the platform owner)", () => {
-  it("one row per direction: a new pair is created", () => {
-    expect(planCreate(null, "fnf", "sutton")).toEqual({ ok: true, mode: "create" });
-  });
-  it("a club is never its own partner", () => {
-    expect(planCreate(null, "fnf", "fnf")).toEqual({ ok: false, refusal: "same-club" });
-  });
-  it("a pair that exists and has not ended is not created twice", () => {
-    expect(planCreate(row({ status: "active" }), "fnf", "sutton")).toEqual({ ok: false, refusal: "exists" });
-    expect(planCreate(row({ status: "paused" }), "fnf", "sutton")).toEqual({ ok: false, refusal: "exists" });
-  });
-  it("an ended pair is proposed again, both acceptances needed afresh", () => {
-    expect(planCreate(row({ status: "ended" }), "fnf", "sutton")).toEqual({ ok: true, mode: "reopen" });
-  });
-});
-
 describe("accepting", () => {
   it("an OWNER accepts for its own side; still proposed until the other side accepts", () => {
     const r = planPartnershipAction(row(), { orgId: "fnf", role: "OWNER", action: "accept", userId: "u1", now: NOW });
@@ -126,7 +109,11 @@ describe("accepting", () => {
 
 describe("declining, pausing, resuming, removing", () => {
   it("an owner of either side declines a proposed pair: it ends", () => {
-    expect(planPartnershipAction(row(), { orgId: "sutton", role: "OWNER", action: "decline", userId: "u", now: NOW })).toEqual({ ok: true, patch: { status: "ended", pausedByOrgId: null } });
+    expect(planPartnershipAction(row(), { orgId: "sutton", role: "OWNER", action: "decline", userId: "u", now: NOW })).toEqual({
+      ok: true,
+      // Partner discovery (P1): who ended it, when and why, for the 30-day wait.
+      patch: { status: "ended", pausedByOrgId: null, endedAt: NOW, endedByOrgId: "sutton", endReason: "declined" },
+    });
     expect(planPartnershipAction(row(), { orgId: "sutton", role: "ADMIN", action: "decline", userId: "u", now: NOW })).toEqual({ ok: false, refusal: "owner-only" });
   });
   it("either side's owner or admin pauses an active pair", () => {
@@ -142,7 +129,10 @@ describe("declining, pausing, resuming, removing", () => {
     expect(planPartnershipAction(row({ status: "active" }), { orgId: "sutton", role: "OWNER", action: "resume", userId: "u", now: NOW })).toEqual({ ok: false, refusal: "not-paused" });
   });
   it("an owner of either side removes it at any stage; an ended pair cannot be removed again", () => {
-    expect(planPartnershipAction(row({ status: "paused", pausedByOrgId: "fnf" }), { orgId: "sutton", role: "OWNER", action: "end", userId: "u", now: NOW })).toEqual({ ok: true, patch: { status: "ended", pausedByOrgId: null } });
+    expect(planPartnershipAction(row({ status: "paused", pausedByOrgId: "fnf" }), { orgId: "sutton", role: "OWNER", action: "end", userId: "u", now: NOW })).toEqual({
+      ok: true,
+      patch: { status: "ended", pausedByOrgId: null, endedAt: NOW, endedByOrgId: "sutton", endReason: "ended" },
+    });
     expect(planPartnershipAction(row({ status: "active" }), { orgId: "sutton", role: "ADMIN", action: "end", userId: "u", now: NOW })).toEqual({ ok: false, refusal: "owner-only" });
     expect(planPartnershipAction(row({ status: "ended" }), { orgId: "sutton", role: "OWNER", action: "end", userId: "u", now: NOW })).toEqual({ ok: false, refusal: "ended" });
   });

@@ -72,6 +72,10 @@ export const SETTING_INFO_KEYS = [
   "partnerAskTime",
   "partnerAskCutoff",
   "partnerApproval",
+  // Partner discovery (slice P1, 2026-10-22)
+  "partnerDiscoverable",
+  "partnerAutoAccept",
+  "clubHomeVenue",
   // Posters
   "posters",
   "posterDesign",
@@ -1299,6 +1303,100 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       together: [
         "Oyuncularınız MatchTime'a, paylaşımdaki bağlantıdan özel mesajla cevap verir, böylece grubunuz sessiz kalır. Grubunuzda düz bir VARIM yine kendi maçınız anlamına gelir.",
         "MatchTime diğer kulübe oyuncularınızın telefon numaralarını ya da puanlarını asla göstermez ve kendi maçınızda aynı saatlere denk gelen bir oyuncu onların maçına yazılamaz.",
+      ],
+    },
+  },
+  // ════ Partner discovery (slice P1, 2026-10-22) ═════════════════════
+  // MDs/partner-discovery-plan-2026-10-21.md, sections 2.1 to 2.3 and 3.2.
+  // The settings are club-partnership.ts; the home venue venue-location.ts.
+  // What another club sees is exactly the card of plan 2.3.
+  partnerDiscoverable: {
+    en: {
+      title: "Let nearby clubs find us and send requests",
+      what: [
+        "Lets the organisers of clubs that play near you find your club when they search, and send you a request to become partner clubs, so they can ask you for players when they are short.",
+        "Other clubs see only: your club's name, your venue's name and town, how far it is from them, the day, kickoff time and format of each of your active games (or No regular game yet), how many members you have, and how many of them played at least 2 of your last 8 games.",
+        "They never see your members' names or phone numbers, your WhatsApp groups or invite links, who your organisers are, your fees, any ratings or your match history.",
+      ],
+      choices: [
+        { name: ON.en, text: "Nearby clubs can find your club and send it requests, and your organisers can search for clubs near you." },
+        { name: OFF.en, text: "Your club is hidden from every search and no club can send it a request. Your organisers cannot search for other clubs either." },
+      ],
+      newClubs: "On.",
+      together: [
+        "Your club is listed only once it has a venue: an active game's venue, or the Club venue below for a club with no game.",
+        "A request changes nothing until one of your owners or admins accepts it, unless Accept partner requests automatically is on.",
+      ],
+    },
+    tr: {
+      title: "Yakındaki kulüpler bizi bulsun ve istek göndersin",
+      what: [
+        "Yakınınızda oynayan kulüplerin organizatörleri arama yaptığında kulübünüzü bulabilir ve partner kulüp olmak için size istek gönderebilir; böylece oyuncuları eksik olduğunda sizden oyuncu isteyebilirler.",
+        "Diğer kulüpler yalnızca şunları görür: kulübünüzün adı, sahanızın adı ve bulunduğu yer, onlara uzaklığı, etkin maçlarınızın her birinin günü, başlama saati ve formatı (ya da Henüz düzenli maç yok), kaç üyeniz olduğu ve bunlardan kaçının son 8 maçınızın en az 2'sinde oynadığı.",
+        "Üyelerinizin adlarını ya da telefon numaralarını, WhatsApp gruplarınızı ya da davet bağlantılarınızı, organizatörlerinizin kim olduğunu, ücretlerinizi, hiçbir puanı ve maç geçmişinizi asla görmezler.",
+      ],
+      choices: [
+        { name: ON.tr, text: "Yakındaki kulüpler kulübünüzü bulabilir ve istek gönderebilir; organizatörleriniz de yakınınızdaki kulüpleri arayabilir." },
+        { name: OFF.tr, text: "Kulübünüz hiçbir aramada görünmez ve hiçbir kulüp size istek gönderemez. Organizatörleriniz de başka kulüpleri arayamaz." },
+      ],
+      newClubs: "Açık.",
+      together: [
+        "Kulübünüz ancak bir sahası olunca listelenir: etkin bir maçın sahası ya da maçı olmayan bir kulüp için aşağıdaki Kulüp sahası.",
+        "Bir istek, kulübünüzün sahiplerinden ya da yöneticilerinden biri kabul edene kadar hiçbir şeyi değiştirmez; Partner isteklerini otomatik kabul et açıksa hemen kabul edilir.",
+      ],
+    },
+  },
+  partnerAutoAccept: {
+    en: {
+      title: "Accept partner requests automatically",
+      what: [
+        "When a nearby club sends your club a request to become partner clubs, MatchTime accepts it straight away instead of waiting for one of your owners or admins to accept it.",
+        "Once accepted, that club can ask your club for players when it is short, as Asks from partner clubs says. Your owners and admins are told which club joined, and can pause, end or block it at any time.",
+      ],
+      choices: [
+        { name: ON.en, text: "Every request is accepted at once." },
+        { name: OFF.en, text: "Each request waits until one of your owners or admins accepts or declines it." },
+      ],
+      newClubs: "Off.",
+      suits: "Clubs happy to lend players to any club nearby.",
+      together: ["Works only while Let nearby clubs find us and send requests is on: with it off, no club can send you a request."],
+    },
+    tr: {
+      title: "Partner isteklerini otomatik kabul et",
+      what: [
+        "Yakındaki bir kulüp partner kulüp olmak için kulübünüze istek gönderdiğinde MatchTime, sahiplerinizden ya da yöneticilerinizden birinin kabul etmesini beklemeden isteği hemen kabul eder.",
+        "Kabul edilince o kulüp, oyuncusu eksik olduğunda Partner kulüplerden gelen istekler ayarına göre kulübünüzden oyuncu isteyebilir. Sahipleriniz ve yöneticileriniz hangi kulübün katıldığını öğrenir ve onu istedikleri an durdurabilir, sonlandırabilir ya da engelleyebilir.",
+      ],
+      choices: [
+        { name: ON.tr, text: "Her istek hemen kabul edilir." },
+        { name: OFF.tr, text: "Her istek, sahiplerinizden ya da yöneticilerinizden biri kabul edene ya da reddedene kadar bekler." },
+      ],
+      newClubs: "Kapalı.",
+      suits: "Yakındaki her kulübe oyuncu vermekten memnun olan kulüpler.",
+      together: ["Yalnızca Yakındaki kulüpler bizi bulsun ve istek göndersin açıkken çalışır: o kapalıyken hiçbir kulüp size istek gönderemez."],
+    },
+  },
+  clubHomeVenue: {
+    en: {
+      title: "Club venue",
+      what: [
+        "Where nearby clubs measure the distance to your club from when you have no active game. Pick your pitch from the list of real places that appears as you type.",
+        "With an active game, that game's venue is used instead, so most clubs do not need to set this.",
+      ],
+      newClubs: "None.",
+      together: [
+        "Until your club has a venue (an active game's venue or this one) it is not shown to nearby clubs, and your owners and admins get a reminder once a week. The reminder stops for good once a venue is set.",
+      ],
+    },
+    tr: {
+      title: "Kulüp sahası",
+      what: [
+        "Etkin bir maçınız yokken yakındaki kulüplerin kulübünüze uzaklığı buradan ölçülür. Sahanızı, yazarken çıkan gerçek yerler listesinden seçin.",
+        "Etkin bir maçınız varsa onun sahası kullanılır, bu yüzden çoğu kulübün bunu ayarlaması gerekmez.",
+      ],
+      newClubs: "Yok.",
+      together: [
+        "Kulübünüzün bir sahası olana kadar (etkin bir maçın sahası ya da bu) kulübünüz yakındaki kulüplere gösterilmez ve sahipleriniz ile yöneticileriniz haftada bir hatırlatma alır. Bir saha seçilince hatırlatma tamamen durur.",
       ],
     },
   },

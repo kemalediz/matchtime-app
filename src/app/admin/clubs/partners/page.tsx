@@ -1,24 +1,25 @@
 import { auth } from "@/lib/auth";
-import { db } from "@/lib/db";
 import { isSuperadmin } from "@/lib/org";
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { formatLondon } from "@/lib/london-time";
-import { APPROVED_CLUB_WHERE } from "@/lib/club-approval";
 import { loadAllPartnerships } from "@/lib/club-partnership";
-import { PartnerPairingForm } from "../partner-controls";
+import { PLATFORM_PAUSE } from "@/lib/club-partnership-rules";
+import { PartnerOverrideButtons } from "../partner-controls";
 
 /**
- * /admin/clubs/partners: the platform owner pairs two clubs so one may ask
- * the other for a player (cross-club ask, slice S1, 2026-10-16; plan 3.1,
- * D1 and D2). One direction per pairing. Each club's owner then accepts on
- * its own settings page; nothing is asked until both have.
+ * /admin/clubs/partners: every pairing on the platform, for the platform
+ * owner (cross-club ask, slice S1, 2026-10-16).
+ *
+ * PARTNER DISCOVERY, slice P5 (2026-10-22; plan
+ * MDs/partner-discovery-plan-2026-10-21.md, section 3.5, D-6): the create
+ * form is gone. Clubs find each other and send requests themselves, and a
+ * club's request is its consent; pairing two clubs here would skip that.
+ * What stays is the list, with pause, resume (of the platform's own
+ * pause) and end as an override for abuse or support.
  *
  * Its own page, not a section of /admin/clubs: that page lists only clubs
- * that came in through self-join, and no button there can reach a club
- * that predates it. Pairing needs every approved, live club, Sutton FC
- * included, so it lives here. Pairing changes nothing for a club until
- * both owners accept.
+ * that came in through self-join.
  *
  * OWNER ONLY. 404 to anybody who is not `User.isSuperadmin`, like
  * /admin/clubs: it names every club.
@@ -33,17 +34,10 @@ export default async function PartnerClubsOwnerPage() {
   if (!(await isSuperadmin(session.user.id))) notFound();
 
   // Empty, not an error, before the 20261016180000 migration.
-  const [partnerships, clubs] = await Promise.all([
-    loadAllPartnerships().catch((err: unknown) => {
-      console.error(`[partner-clubs] /admin/clubs/partners read failed: ${err instanceof Error ? err.message.slice(0, 120) : "unknown"}`);
-      return [];
-    }),
-    db.organisation.findMany({
-      where: { ...APPROVED_CLUB_WHERE, dormantAt: null },
-      orderBy: { name: "asc" },
-      select: { id: true, name: true },
-    }),
-  ]);
+  const partnerships = await loadAllPartnerships().catch((err: unknown) => {
+    console.error(`[partner-clubs] /admin/clubs/partners read failed: ${err instanceof Error ? err.message.slice(0, 120) : "unknown"}`);
+    return [];
+  });
 
   return (
     <div className="space-y-6" data-testid="partner-clubs-page">
@@ -53,27 +47,34 @@ export default async function PartnerClubsOwnerPage() {
         </Link>
         <h2 className="mt-1 text-lg font-semibold text-slate-800">Partner clubs</h2>
         <p className="text-sm text-slate-500 mt-1">
-          Let one club ask another for a player when it is short. One direction per pairing: pair both ways for both. Each
-          club&apos;s owner then accepts on its settings page; nothing is asked until both have.
+          Every pairing between two clubs, one direction each. Clubs pair themselves: one sends a request and the other
+          accepts. You can pause or end any pairing here; a pairing you paused can only be resumed here.
         </p>
       </div>
-      <PartnerPairingForm clubs={clubs} />
       {partnerships.length === 0 ? (
         <p className="text-sm text-slate-500">No clubs are paired.</p>
       ) : (
-        <ul className="space-y-1 text-sm text-slate-700">
-          {partnerships.map((p) => (
-            <li key={p.id} data-testid="partnership" data-status={p.status}>
-              {p.askerOrg.name} may ask {p.partnerOrg.name}{" "}
-              <span className="text-slate-500">
-                {p.status}
-                {p.status === "proposed"
-                  ? `, accepted by ${[p.askerAcceptedAt ? p.askerOrg.name : null, p.partnerAcceptedAt ? p.partnerOrg.name : null].filter(Boolean).join(" and ") || "neither yet"}`
-                  : ""}
-                {p.partnerApproval === "standing" ? ", posts without asking" : ""}, since {when(p.createdAt)}
-              </span>
-            </li>
-          ))}
+        <ul className="space-y-2 text-sm text-slate-700">
+          {partnerships.map((p) => {
+            const label = `${p.askerOrg.name} may ask ${p.partnerOrg.name}`;
+            const pausedByPlatform = p.status === "paused" && p.pausedByOrgId === PLATFORM_PAUSE;
+            return (
+              <li key={p.id} data-testid="partnership" data-status={p.status} className="flex flex-wrap items-center justify-between gap-2">
+                <span>
+                  {label}{" "}
+                  <span className="text-slate-500">
+                    {p.status}
+                    {pausedByPlatform ? " by MatchTime" : ""}
+                    {p.status === "proposed"
+                      ? `, accepted by ${[p.askerAcceptedAt ? p.askerOrg.name : null, p.partnerAcceptedAt ? p.partnerOrg.name : null].filter(Boolean).join(" and ") || "neither yet"}`
+                      : ""}
+                    {p.partnerApproval === "standing" ? ", posts without asking" : ""}, since {when(p.createdAt)}
+                  </span>
+                </span>
+                <PartnerOverrideButtons id={p.id} status={p.status} pausedByPlatform={pausedByPlatform} label={label} />
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>

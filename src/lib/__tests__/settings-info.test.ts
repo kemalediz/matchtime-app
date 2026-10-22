@@ -177,6 +177,10 @@ describe("settings explanations: house rules", () => {
         partnerAskTime: s.pc_time_label,
         partnerAskCutoff: s.pc_cutoff_label,
         partnerApproval: s.pc_approval_label,
+        // Partner discovery (slice P1, 2026-10-22).
+        partnerDiscoverable: s.pd_discoverable_label,
+        partnerAutoAccept: s.pd_auto_accept_label,
+        clubHomeVenue: s.pd_venue_label,
       };
       for (const [k, label] of Object.entries(titles)) expect(settingInfo(lang, k as SettingInfoKey).title, `${k} ${lang}`).toBe(label);
     }
@@ -207,6 +211,8 @@ describe("settings explanations: house rules", () => {
       expect(names("teamsReady")[1]).toBe(s.tp_settings_off);
       expect(names("partnerAskWhen")).toEqual([s.pc_when_off, s.pc_when_on_request, s.pc_when_auto]);
       expect(names("partnerApproval")).toEqual([s.pc_approval_each, s.pc_approval_standing]);
+      // Partner discovery (slice P1): a switch's choices are On and Off.
+      for (const k of ["partnerDiscoverable", "partnerAutoAccept"] as const) expect(names(k)).toEqual(lang === "tr" ? ["Açık", "Kapalı"] : ["On", "Off"]);
     }
   });
 

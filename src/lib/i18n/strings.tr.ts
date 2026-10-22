@@ -3765,6 +3765,26 @@ export const tr: Strings = {
   pc_saved: "Kaydedildi",
   pc_save_failed: "Kaydedilemedi",
   pc_refused: "Bu şu an yapılamıyor. Sayfayı yenileyip tekrar deneyin.",
+  // ─── Partner discovery (slice P1, 2026-10-22) ───────────────────────
+  // Same block as strings.en.ts. Added as one block; nothing above moved.
+  pd_discoverable_label: "Yakındaki kulüpler bizi bulsun ve istek göndersin",
+  pd_auto_accept_label: "Partner isteklerini otomatik kabul et",
+  pd_none: "Henüz partner kulübünüz yok.",
+  pd_status_paused_platform: "MatchTime tarafından durduruldu",
+  pd_venue_label: "Kulüp sahası",
+  pd_venue_prompt_title: "Yakınınızdaki kulüpleri bulmak için sahanızı onaylayın",
+  pd_venue_prompt_body: "Yakındaki kulüpler kulübünüzü ancak bir sahası olunca bulabilir. Sahanızı aşağıdaki listeden seçin.",
+  pd_venue_game: (p: { venue: string }) =>
+    `Yakındaki kulüplere uzaklık, maçınızın sahasından ölçülür: ${p.venue}. Kulüp sahası yalnızca etkin bir maçınız yokken kullanılır.`,
+  pd_venue_home: (p: { venue: string }) => `Kulüp sahası: ${p.venue}`,
+  pd_venue_placeholder: "Sahanızın adını yazmaya başlayın",
+  pd_venue_save: "Sahayı kaydet",
+  pd_venue_pick_first: "Kaydetmek için sahanızı listeden seçin.",
+  pd_venue_saved: "Saha kaydedildi",
+  pd_venue_unresolved: "Bu yer bulunamadı. Listeden yeniden seçin.",
+  pd_venue_capped: "Bugün çok fazla saha araması yapıldı. Yarın tekrar deneyin.",
+  pd_venue_reminder_dm: (p: { club: string; link: string }) =>
+    `📍 Yakındaki kulüplerin sizi bulabilmesi için *${p.club}* kulübünün sahasını onaylayın: MatchTime'da henüz bir sahanız yok. Sahanızı buradaki listeden seçin: ${p.link}\nSaha seçilene kadar MatchTime haftada bir hatırlatır.`,
   // ─── Partner kulüpten oyuncu isteme (slice S2, 2026-10-16) ──────────
   xask_post: (p) => {
     const extras = [p.format, p.fee].filter(Boolean).join(", ");

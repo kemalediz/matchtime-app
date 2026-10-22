@@ -1694,6 +1694,23 @@ const SAMPLES: SampleArgs = {
   pc_saved: null,
   pc_save_failed: null,
   pc_refused: null,
+  // Partner discovery (slice P1).
+  pd_discoverable_label: null,
+  pd_auto_accept_label: null,
+  pd_none: null,
+  pd_status_paused_platform: null,
+  pd_venue_label: null,
+  pd_venue_prompt_title: null,
+  pd_venue_prompt_body: null,
+  pd_venue_game: { venue: "VENUENAME" },
+  pd_venue_home: { venue: "VENUENAME" },
+  pd_venue_placeholder: null,
+  pd_venue_save: null,
+  pd_venue_pick_first: null,
+  pd_venue_saved: null,
+  pd_venue_unresolved: null,
+  pd_venue_capped: null,
+  pd_venue_reminder_dm: { club: "MTCLUB", link: "https://x/LINK" },
   // Asking a partner club (cross-club ask, slice S2).
   // `link` null so the sample shows `prefill` (one or the other is shown);
   // the link branch is pinned in partner-ask.test.ts and
