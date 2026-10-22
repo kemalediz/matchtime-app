@@ -74,7 +74,9 @@ export const PARTNER_WHICH_WINDOW_MS = 60 * 60 * 1000;
  * D5b (slice S5b): should MatchTime ask a sender "FNF or ours?" about a
  * plain IN? A state rule, never a reading of words: an open ask posted in
  * the last hour, a sender with NO row at all on his own club's game, and
- * not asked about this ask before. The newest such ask, or null.
+ * not asked about this ask before. The newest such ask, or null. Since
+ * 2026-10-22 (Kemal) the group's IN is counted for his own game either
+ * way and this only decides whether he is asked afterwards, by DM.
  */
 export function partnerAskToQuestion(p: {
   now: Date;

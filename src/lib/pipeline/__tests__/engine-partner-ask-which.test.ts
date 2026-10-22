@@ -1,12 +1,18 @@
 /**
- * D5b (cross-club ask, slice S5b): ONE question for an unquoted IN.
+ * D5b (cross-club ask, slice S5b), REVISED 2026-10-22 (Kemal).
  *
- * FNF's ask was posted in Sutton FC's group under an hour ago. A Sutton
+ * FNF's ask was posted in MT Test's group under an hour ago. An MT Test
  * player who says a plain "IN", NOT replying to it, and who has no row at
- * all on Sutton's own game, may mean either. A state rule, no reading of
- * words: MatchTime asks him once which he means, and writes nothing. A
- * player who already has a row is clearly talking about his own game and
- * hears nothing new; once asked, his next IN is an IN for his own game.
+ * all on his own club's game, may mean either. It used to write nothing
+ * and ask him which by DM; Sait never answered (MT Test, 2026-10-22 08:40
+ * UTC) and his IN for his own game was lost.
+ *
+ * Now the own game is the default: a plain IN in his OWN players' group is
+ * a normal self IN for this club's match, and the engine also asks for ONE
+ * private question ("I've put you IN for MT Test's game. Did you mean
+ * FNF's instead? Tap here"), sent by the batch only once the IN has
+ * landed. The group hears what any IN gets, nothing more. A state rule, no
+ * reading of words.
  */
 import { describe, it, expect } from "vitest";
 import { decide } from "../engine";
@@ -32,46 +38,76 @@ const plainIn = (over: Partial<EngineMessage> = {}): EngineMessage => ({
   ...msg({ id: "wa-in", from: "sait", body: "IN", route: "self_att", facts: attendanceFacts([claim()]) }),
   ...over,
 });
+const ownInAsk = { kind: "partner_ask_own_in", messageId: "wa-in", askId: "ask-1", userId: "u-sait", askerName: "FNF" };
+const ownWrite = (r: ReturnType<typeof decide>) => r.writes.find((w) => w.kind === "attendance" && w.userId === "u-sait");
+const asksAnything = (r: ReturnType<typeof decide>) => r.speech.some((sp) => sp.kind === "partner_ask_own_in" || sp.kind === "partner_ask_which");
 
-describe("D5b: an unquoted IN soon after an ask, from someone with no row on his own game", () => {
-  it("asks once which game he means, and writes nothing", () => {
+describe("D5b: a plain IN soon after an ask, from someone with no row on his own game", () => {
+  it("counts for his own club's game, and asks once by DM whether he meant FNF's", () => {
     const r = decide({ now: NOW, state: state(), messages: [plainIn()] });
-    expect(r.writes).toEqual([]);
-    expect(r.speech).toEqual([{ kind: "partner_ask_which", messageId: "wa-in", askId: "ask-1", userId: "u-sait", askerName: "FNF" }]);
-    const text = compose(r).utterances.find((u) => u.messageId === "wa-in")?.text ?? "";
-    expect(text).toContain("FNF");
-    expect(text).toMatch(/reply to my FNF message/i);
+    expect(ownWrite(r)).toMatchObject({ kind: "attendance", userId: "u-sait", status: "CONFIRMED", sourceMessageId: "wa-in" });
+    expect(r.writes.some((w) => w.kind === "partner_volunteer")).toBe(false);
+    expect(r.speech).toContainEqual(ownInAsk);
+    expect(r.speech.some((sp) => sp.kind === "partner_ask_which")).toBe(false);
+    expect(r.outcomes[0].reasons.join(" ")).toMatch(/D5b/);
   });
 
-  it("in Turkish", () => {
+  it("the group hears nothing about FNF: the question goes by DM only", () => {
+    const r = decide({ now: NOW, state: state(), messages: [plainIn()] });
+    const text = compose(r).utterances.map((u) => u.text).join("\n");
+    expect(text).not.toContain("FNF");
+  });
+
+  it('in Turkish: "var" is the same self IN, with the same one question', () => {
     const s = state();
     s.features.language = "tr";
-    const r = decide({ now: NOW, state: s, messages: [plainIn()] });
-    expect(compose(r).utterances[0].text).toContain("FNF");
-    expect(compose(r).utterances[0].text).not.toMatch(/reply to my/i);
+    const r = decide({ now: NOW, state: s, messages: [plainIn({ body: "var" })] });
+    expect(ownWrite(r)).toMatchObject({ status: "CONFIRMED" });
+    expect(r.speech).toContainEqual(ownInAsk);
+    expect(compose(r).utterances.map((u) => u.text).join("\n")).not.toContain("FNF");
+  });
+
+  it("a known member's IN is never floor-dropped, even a low-confidence one", () => {
+    const r = decide({ now: NOW, state: state(), messages: [plainIn({ facts: attendanceFacts([claim({ confidence: 0.2 })]) })] });
+    expect(ownWrite(r)).toMatchObject({ status: "CONFIRMED" });
+    expect(r.speech).toContainEqual(ownInAsk);
   });
 
   it("someone with a row on his own game is talking about it: today's behaviour, no question", () => {
     const r = decide({ now: NOW, state: state({ confirmed: ["kemal", "sait"] }), messages: [plainIn({ body: "IN" })] });
-    expect(r.speech.some((sp) => sp.kind === "partner_ask_which")).toBe(false);
+    expect(asksAnything(r)).toBe(false);
   });
 
-  it("asked once already for this ask: his IN is an IN for his own game", () => {
+  it("asked once already for this ask: his IN is his own game's, and no second question", () => {
     const r = decide({ now: NOW, state: state({ asks: [ask({ whichAskedUserIds: ["u-sait"] })] }), messages: [plainIn()] });
-    expect(r.speech.some((sp) => sp.kind === "partner_ask_which")).toBe(false);
-    expect(r.writes[0]).toMatchObject({ kind: "attendance", userId: "u-sait", status: "CONFIRMED" });
+    expect(asksAnything(r)).toBe(false);
+    expect(ownWrite(r)).toMatchObject({ status: "CONFIRMED" });
   });
 
-  it("an ask posted over an hour ago, or closed: no question", () => {
+  it("an ask posted over an hour ago, or closed: his own IN, no question", () => {
     const old = decide({ now: NOW, state: state({ asks: [ask({ postedAt: new Date(NOW.getTime() - 61 * MIN).toISOString() })] }), messages: [plainIn()] });
-    expect(old.writes[0]).toMatchObject({ kind: "attendance", userId: "u-sait" });
+    expect(ownWrite(old)).toMatchObject({ status: "CONFIRMED" });
+    expect(asksAnything(old)).toBe(false);
     const closed = decide({ now: NOW, state: state({ asks: [ask({ open: false })] }), messages: [plainIn()] });
-    expect(closed.writes[0]).toMatchObject({ kind: "attendance", userId: "u-sait" });
+    expect(ownWrite(closed)).toMatchObject({ status: "CONFIRMED" });
+    expect(asksAnything(closed)).toBe(false);
+  });
+
+  it("a swipe-reply to the ask is unchanged: FNF's game, nothing on his own", () => {
+    const r = decide({ now: NOW, state: state(), messages: [plainIn({ quoted: { id: "3EB0ASK1", fromMatchTime: true } })] });
+    expect(r.writes).toEqual([expect.objectContaining({ kind: "partner_volunteer", askId: "ask-1", userId: "u-sait", polarity: "in" })]);
+    expect(asksAnything(r)).toBe(false);
   });
 
   it("OUT is never questioned (an OUT can only be about his own game)", () => {
     const r = decide({ now: NOW, state: state({ confirmed: ["kemal"] }), messages: [plainIn({ body: "OUT", facts: attendanceFacts([claim({ polarity: "out" })]) })] });
-    expect(r.speech.some((sp) => sp.kind === "partner_ask_which")).toBe(false);
+    expect(asksAnything(r)).toBe(false);
+  });
+
+  it("the write is byte for byte the IN he would get with no ask at all", () => {
+    const withAsk = decide({ now: NOW, state: state(), messages: [plainIn()] });
+    const without = decide({ now: NOW, state: world({ confirmed: ["kemal"] }), messages: [plainIn()] });
+    expect(withAsk.writes).toEqual(without.writes);
   });
 
   it("no partner ask (every club today): byte for byte today's", () => {

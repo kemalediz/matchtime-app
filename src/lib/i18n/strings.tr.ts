@@ -4036,6 +4036,8 @@ export const tr: Strings = {
     `Bu VARIM *${p.asker}* maçı için mi, bizim maç için mi? ${p.asker} için ${p.asker} mesajımı yanıtlayıp VARIM yaz. Bizim maç için tekrar VARIM yazman yeterli.`,
   xask_which_dm: (p) =>
     `*${p.own}* grubundaki VARIM'ın *${p.asker}* maçı için miydi (${p.day})? Öyleyse ${p.link ? `bana söylemek için dokun: ${p.link}` : `bana *${p.prefill}* yaz`}. ${p.own} kulübünün kendi maçı içinse grupta tekrar VARIM yazman yeterli.`,
+  xask_which_after_in: (p) =>
+    `${p.bench ? `Seni *${p.own}* maçının yedeğine yazdım (${p.ownDay}).` : `Seni *${p.own}* maçının kadrosuna yazdım (${p.ownDay}).`} Yoksa *${p.asker}* maçını mı demek istedin (${p.day})? Öyleyse ${p.link ? `buraya dokun, seni o maça geçireyim: ${p.link}` : `bana *${p.prefill}* yaz, seni o maça geçireyim`}.`,
   xask_dm_which_in: (p) =>
     `Bu VARIM *${p.asker}* maçı için mi (${p.day})? Öyleyse ${p.link ? `bana söylemek için dokun: ${p.link}` : `bana *${p.prefill}* yaz`}.${p.own ? ` ${p.own} maçı içinse tekrar VARIM yaz.` : ""}`,
   xask_dm_unclear: (p) =>

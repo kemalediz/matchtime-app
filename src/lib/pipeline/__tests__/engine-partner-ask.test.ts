@@ -113,6 +113,8 @@ describe("a recruit side request on a reply to a partner club's ask", () => {
   // The same message routed `admin_ops` instead (the router is sampled): a
   // swipe-reply to a MatchTime post counts as a tag (`messageTagsBot`), and
   // the sender is the owner, so both of the blast's gates would pass.
+  // Since 2026-10-22 the blast needs an EXPLICIT @ tag, so the owner here
+  // also @-mentions MatchTime: the partner-ask refusal is what stops it.
   const adminRecruit = (quoted: EngineMessage["quoted"], partnerClubs?: boolean) =>
     decide({
       now: NOW,
@@ -121,6 +123,7 @@ describe("a recruit side request on a reply to a partner club's ask", () => {
         promote({
           route: "admin_ops",
           tagged: true,
+          taggedExplicitly: true,
           quoted,
           facts: { kind: "admin", action: "recruit", ...(partnerClubs ? { partnerClubs: true } : {}) },
         }),

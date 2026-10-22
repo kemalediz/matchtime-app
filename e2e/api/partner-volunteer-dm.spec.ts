@@ -14,8 +14,10 @@
  *   4. a private "IN" with NO code while the ask is open and he has no place
  *      in his own game: ONE question with the link, nothing written; his
  *      next "IN" is his own game's;
- *   5. a plain "IN" in his GROUP soon after the ask, no own place (D5b): the
- *      question goes to him by DM, the group hears nothing.
+ *   5. a plain "IN" in his GROUP soon after the ask, no own place (D5b,
+ *      revised 2026-10-22): it counts for his own game, then one DM asks
+ *      whether he meant the asking club's; tapping its link moves him over
+ *      (on the asking club's list, off his own game automatically).
  *
  * IN and OUT here are the DM resolver's free fast path and the stubbed
  * router/extractor: no model is called.
@@ -171,18 +173,39 @@ test("a private IN with no code while the ask is open and no own place: one ques
   expect(await rowOf(db, ASKER_MATCH, U.extra)).toBeUndefined();
 });
 
-test("D5b: a plain IN in his group soon after the ask, no own place: the question goes by DM, the group hears nothing", async ({ request, db }) => {
+test("D5b (2026-10-22): a plain IN in his group counts for his own game, one DM asks about FNF's; tapping it moves him over", async ({ request, db }) => {
   await clearJobs(db);
   engineOn({ IN: { route: "self_att", facts: selfIn() } });
   const m = id();
   const res = await postAnalyze(request, [{ waMessageId: m, body: "IN", authorPhone: OMAR, authorName: "Omar One" }]);
   const r = (res.results as Array<{ waMessageId: string; reply?: string | null }>).find((x) => x.waMessageId === m)!;
-  expect(r.reply ?? null).toBeNull();
-  expect(await rowOf(db, MATCH.upcoming, U.omar1)).toBeUndefined();
+  // The own game is the default: his IN is on his own club's sheet (its
+  // bench here: the seeded squad is full by now).
+  expect(["CONFIRMED", "BENCH"]).toContain(await rowOf(db, MATCH.upcoming, U.omar1));
   expect(await rowOf(db, ASKER_MATCH, U.omar1)).toBeUndefined();
-  const [q] = await dmsTo(db, OMAR);
+  expect(r.reply ?? "").not.toContain("FNF");
+  const [q, ...rest] = await dmsTo(db, OMAR);
+  expect(rest).toEqual([]);
+  expect(q?.orgId).toBe(ORG_ID);
+  expect(q?.text).toMatch(/I've put you (IN|on the bench) for \*/);
+  expect(q?.text).toContain("Did you mean *FNF Guests*'s game");
   expect(q?.text).toContain(LINK);
-  expect(q?.text).toContain("just say IN in the group again");
+
+  // Asked once per ask: another IN in the group asks nothing new.
+  const again = id();
+  await postAnalyze(request, [{ waMessageId: again, body: "IN", authorPhone: OMAR, authorName: "Omar One" }]);
+  expect(await dmsTo(db, OMAR)).toHaveLength(1);
+
+  // He taps the link: on FNF's list (its bench, an organiser-pick club),
+  // and his own IN undone automatically. FNF's game overlaps his own; the
+  // own IN he is leaving never counts as the overlap.
+  const tap = await postDm(request, OMAR, `IN (ref ${REF})`);
+  expect(tap).toMatchObject({ ok: true, handled: "xask-dm-volunteer", outcome: "registered-bench" });
+  expect(await rowOf(db, ASKER_MATCH, U.omar1)).toBe("BENCH");
+  expect(await rowOf(db, MATCH.upcoming, U.omar1)).toBe("DROPPED");
+  const after = (await dmsTo(db, OMAR)).map((d) => d.text);
+  expect(after.some((t) => t.includes("FNF Guests*'s bench"))).toBe(true);
+  expect(after.some((t) => /out/i.test(t) && !t.includes("FNF Guests"))).toBe(true);
 });
 
 // 2026-10-22, MT Test: a volunteer with an EMPTY User.name was listed as

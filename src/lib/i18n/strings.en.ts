@@ -5420,6 +5420,12 @@ export const en = {
    *  no place in his own game. Nothing was written. */
   xask_which_dm: (p: { asker: string; day: string; own: string; link: string | null; prefill: string }) =>
     `Was your IN in the *${p.own}* group for *${p.asker}*'s game, ${p.day}? Then ${p.link ? `tap here to tell me: ${p.link}` : `send me *${p.prefill}*`}. If it was for ${p.own}'s own game, just say IN in the group again.`,
+  /** D5b, revised 2026-10-22 (Kemal): a plain IN in his group soon after an
+   *  ask was COUNTED for his own club's game; this asks once whether he
+   *  meant the partner club's game instead. Tapping moves him over: in
+   *  for the partner's game, out of his own. */
+  xask_which_after_in: (p: { own: string; ownDay: string; bench: boolean; asker: string; day: string; link: string | null; prefill: string }) =>
+    `${p.bench ? `I've put you on the bench for *${p.own}*'s game, ${p.ownDay}.` : `I've put you IN for *${p.own}*'s game, ${p.ownDay}.`} Did you mean *${p.asker}*'s game, ${p.day}, instead? Then ${p.link ? `tap here and I'll move you over: ${p.link}` : `send me *${p.prefill}* and I'll move you over`}.`,
   /** A private IN with no ask code while an ask to his club is open
    *  (2026-10-21). `own` is his own club when he has a game there. */
   xask_dm_which_in: (p: { asker: string; day: string; own: string | null; link: string | null; prefill: string }) =>

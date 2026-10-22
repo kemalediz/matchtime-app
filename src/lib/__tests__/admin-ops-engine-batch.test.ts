@@ -120,6 +120,7 @@ function msg(o: Partial<AdminOpsBatchMessage> & { body: string }): AdminOpsBatch
     senderUserId: o.senderUserId === undefined ? "u-elvin" : o.senderUserId,
     senderName: o.senderName ?? fullName("elvin"),
     tagged: o.tagged ?? true,
+    ...(o.taggedExplicitly === undefined ? {} : { taggedExplicitly: o.taggedExplicitly }),
     // `"route" in o` and not `?? "admin_ops"`: an EXPLICIT `undefined` is
     // the shape of a message the router never mentioned, and it has to
     // survive the builder or the "never owned" test tests nothing.
@@ -544,6 +545,35 @@ describe("the recruit blast is reported, never fired here", () => {
     expect(out.reasoning).toMatch(/partner club's ask/);
   });
 
+  // 2026-10-22 (Kemal): a mass DM needs an EXPLICIT @ tag. A swipe-reply
+  // to a MatchTime post counts as a tag for an answer (`messageTagsBot`),
+  // never for a recruit blast.
+  const UNTAGGED_BLAST = "message all players who played in the last 5 matches and invite them";
+  it("a swipe-reply to a MatchTime post is not the tag a recruit blast needs", async () => {
+    const { model } = stubModel({ [UNTAGGED_BLAST]: BLAST_FACTS });
+    const r = recorder(model, paidWorld());
+    const replying = {
+      ...msg({ body: UNTAGGED_BLAST, senderUserId: "u-kemal", tagged: true, taggedExplicitly: false }),
+      quoted: { id: "3EB0SQUAD", fromMatchTime: true },
+    };
+    const res = await run({ messages: [replying], deps: r.deps });
+    const out = [...res.outcomes.values()][0];
+    expect(out.recruitRequest).toBe(false);
+    expect(out.reply).toBeNull();
+    expect(r.dms).toEqual([]);
+    expect(out.reasoning).toMatch(/@Match Time tag/i);
+  });
+
+  it("the Pi's mention signal is the explicit tag: the blast is reported", async () => {
+    const { model } = stubModel({ [UNTAGGED_BLAST]: BLAST_FACTS });
+    const r = recorder(model, paidWorld());
+    const res = await run({
+      messages: [msg({ body: UNTAGGED_BLAST, senderUserId: "u-kemal", tagged: true, taggedExplicitly: true })],
+      deps: r.deps,
+    });
+    expect([...res.outcomes.values()][0].recruitRequest).toBe(true);
+  });
+
   it("a non-admin's ask fires nothing and is not reported as a request", async () => {
     const { model } = stubModel({ [BLAST]: BLAST_FACTS });
     const r = recorder(model, paidWorld());
@@ -576,10 +606,13 @@ describe("the recruit blast is reported, never fired here", () => {
   //
   // Full argument on `RECRUIT_BLAST_REQUIRES_TAG` in `recruit-request.ts`.
   it("an admin STILL needs a tag for it — the route is not a gate (2026-09-06)", async () => {
-    const { model } = stubModel({ [BLAST]: BLAST_FACTS });
+    // No "@Match Time" in the body: with it, the message IS explicitly
+    // tagged (the Pi writes that text for a real mention), whatever
+    // `tagged` says.
+    const { model } = stubModel({ [UNTAGGED_BLAST]: BLAST_FACTS });
     const r = recorder(model, paidWorld());
     const res = await run({
-      messages: [msg({ body: BLAST, senderUserId: "u-kemal", tagged: false })],
+      messages: [msg({ body: UNTAGGED_BLAST, senderUserId: "u-kemal", tagged: false })],
       deps: r.deps,
     });
     const out = [...res.outcomes.values()][0];

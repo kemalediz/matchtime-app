@@ -744,6 +744,10 @@ export function compose(result: EngineResult): ComposedOutput {
         utterances.push({ messageId: sp.messageId, text: s.xask_which({ asker: sp.askerName }) });
         break;
 
+      // D5b, revised (2026-10-22): a DM the batch sends, never group text.
+      case "partner_ask_own_in":
+        break;
+
       case "partner_guest_overlap":
         utterances.push({ messageId: sp.messageId, text: s.xask_guest_overlap({ asker: sp.askerName }) });
         break;

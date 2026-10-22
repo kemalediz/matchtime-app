@@ -1,12 +1,10 @@
 /**
- * D5b end to end (cross-club ask, slice S5b): a plain "IN" (no reply) under
- * an hour after a partner club's ask, from a player with no row on his own
- * club's game, gets ONE question and no write; his next plain IN is an IN
- * for his own game. A player with a row hears nothing new.
- *
- * 2026-10-21 (Kemal): the question goes to him by DM, with the ask's
- * tap-to-DM link; the partner group hears nothing. (With no number on
- * file it is still said in the group: partner-ask-review-s3.test.ts.)
+ * D5b end to end (cross-club ask, slice S5b), REVISED 2026-10-22 (Kemal): a
+ * plain "IN" (no reply) under an hour after a partner club's ask, from a
+ * player with no row on his own club's game, counts for his OWN game; then
+ * ONE DM asks whether he meant the partner club's game, with the ask's
+ * tap-to-DM link. The group hears nothing about it. A player with a row
+ * hears nothing new.
  */
 import { test, expect, postAnalyze, resetDb } from "../fixtures";
 import { MATCH, ORG_ID, U } from "../helpers/constants";
@@ -51,26 +49,26 @@ test.afterAll(() => {
 
 const dmsTo = (db: TestDb, phone: string) => db.all<{ text: string }>(`SELECT text FROM "BotJob" WHERE kind = 'dm' AND phone = $1`, [phone]);
 
-test("no row on his own game: one question by DM, nothing in the group, nothing written; his next IN is for his own game", async ({ request, db }) => {
+test("no row on his own game (2026-10-22): his IN counts for his own game, then ONE DM about FNF's; asked once", async ({ request, db }) => {
   engineOn({ IN: { route: "self_att", facts: selfIn() } });
   await db.run(`DELETE FROM "BotJob" WHERE kind = 'dm' AND phone = '447700900009'`);
   const first = id();
   const res = await postAnalyze(request, [{ waMessageId: first, body: "IN", authorPhone: "447700900009", authorName: "Ian Innes" }]);
   const r = (res.results as Result[]).find((x) => x.waMessageId === first)!;
-  expect(r.reply ?? null).toBeNull();
+  expect(r.reply ?? "").not.toContain("FNF Which");
+  expect(await rowOf(db, MATCH.upcoming, U.fresh)).toBe("CONFIRMED");
+  expect(await rowOf(db, ASKER_MATCH, U.fresh)).toBeUndefined();
   const dms = await dmsTo(db, "447700900009");
   expect(dms).toHaveLength(1);
-  expect(dms[0].text).toContain("for *FNF Which*'s game");
+  expect(dms[0].text).toContain("I've put you IN for *");
+  expect(dms[0].text).toContain("Did you mean *FNF Which*'s game");
   expect(dms[0].text).toContain(`https://wa.me/${E2E.MATCHTIME_WA_NUMBER}?text=`);
-  expect(await rowOf(db, MATCH.upcoming, U.fresh)).toBeUndefined();
-  expect(await rowOf(db, ASKER_MATCH, U.fresh)).toBeUndefined();
+  expect(dms[0].text).not.toMatch(/—|–/);
 
   const second = id();
-  const res2 = await postAnalyze(request, [{ waMessageId: second, body: "IN", authorPhone: "447700900009", authorName: "Ian Innes" }]);
-  const r2 = (res2.results as Result[]).find((x) => x.waMessageId === second)!;
-  expect(r2.reply ?? "").not.toContain("Is that IN for");
+  await postAnalyze(request, [{ waMessageId: second, body: "IN", authorPhone: "447700900009", authorName: "Ian Innes" }]);
   expect(await dmsTo(db, "447700900009")).toHaveLength(1);
-  expect(await rowOf(db, MATCH.upcoming, U.fresh)).toBeTruthy();
+  expect(await rowOf(db, MATCH.upcoming, U.fresh)).toBe("CONFIRMED");
   expect(await rowOf(db, ASKER_MATCH, U.fresh)).toBeUndefined();
 });
 

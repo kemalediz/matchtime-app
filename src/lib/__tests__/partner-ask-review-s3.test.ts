@@ -148,28 +148,65 @@ describe("2026-10-21 (Kemal): a swipe-reply to the ask adds no noise to the part
     expect(r.outcomes.get("wa-q")?.react).toBeNull();
   });
 
-  it("D5b's question goes to him by DM: the group hears nothing, nothing is written", async () => {
-    const s = state({ partnerAsks: [{ ...ASK, postedAt: new Date("2026-09-03T11:40:00Z").toISOString() }] });
-    const plain: EngineBatchMessage = { ...quoted, waMessageId: "wa-plain", quoted: undefined };
-    const asked: string[] = [];
+  // D5b, revised 2026-10-22 (Kemal): the own game is the default.
+  const withFreshAsk = () => state({ partnerAsks: [{ ...ASK, postedAt: new Date("2026-09-03T11:40:00Z").toISOString() }] });
+  const plain: EngineBatchMessage = { ...quoted, waMessageId: "wa-plain", quoted: undefined, tagged: false };
+
+  it("D5b: a plain IN counts for his own game, THEN he is asked by DM about FNF's", async () => {
+    const s = withFreshAsk();
+    const order: string[] = [];
+    const asked: Array<{ askId: string; userId: string; matchId: string }> = [];
     const { d, registered } = deps(s, {
-      claimPartnerAskWhich: async ({ userId }: { askId: string; userId: string }) => {
-        asked.push(userId);
-        return "dm";
+      registerAttendance: async (userId: string) => {
+        order.push(`register:${userId}`);
+        registered.push(userId);
+        return { status: "CONFIRMED" as const, position: 1, slot: 1, confirmedCount: 1, maxPlayers: 4 };
+      },
+      askPartnerAfterOwnIn: async (a: { askId: string; userId: string; matchId: string }) => {
+        order.push(`ask:${a.userId}`);
+        asked.push(a);
+        return true;
+      },
+      claimPartnerAskWhich: async () => {
+        throw new Error("the old question must not be asked");
       },
     } as Partial<EngineBatchDeps>);
     const r = await run(s, [plain], d);
-    expect(asked).toEqual(["u-pete"]);
-    expect(registered).toEqual([]);
-    expect(r.outcomes.get("wa-plain")?.reply).toBeNull();
+    expect(registered).toEqual(["u-pete"]);
+    expect(asked).toEqual([{ askId: "ask-1", userId: "u-pete", matchId: "match-1" }]);
+    expect(order).toEqual(["register:u-pete", "ask:u-pete"]);
+    // The group hears what any IN gets: nothing about FNF.
+    expect(r.outcomes.get("wa-plain")?.reply ?? "").not.toContain("FNF");
+    expect(r.outcomes.get("wa-plain")?.intent).toBe("in");
   });
 
-  it("D5b with no number to DM him: the one question in the group, as before", async () => {
-    const s = state({ partnerAsks: [{ ...ASK, postedAt: new Date("2026-09-03T11:40:00Z").toISOString() }] });
-    const plain: EngineBatchMessage = { ...quoted, waMessageId: "wa-plain", quoted: undefined };
-    const { d } = deps(s, { claimPartnerAskWhich: async () => "group" } as Partial<EngineBatchDeps>);
+  it("D5b: his own IN did not land, so he is not told he was put IN", async () => {
+    const s = withFreshAsk();
+    const asked: string[] = [];
+    const { d } = deps(s, {
+      registerAttendance: async () => {
+        throw new Error("pg is down");
+      },
+      askPartnerAfterOwnIn: async (a: { userId: string }) => {
+        asked.push(a.userId);
+        return true;
+      },
+    } as Partial<EngineBatchDeps>);
+    await run(s, [plain], d);
+    expect(asked).toEqual([]);
+  });
+
+  it("D5b: the DM failing never undoes or hides his own IN", async () => {
+    const s = withFreshAsk();
+    const { d, registered } = deps(s, {
+      askPartnerAfterOwnIn: async () => {
+        throw new Error("queue down");
+      },
+    } as Partial<EngineBatchDeps>);
     const r = await run(s, [plain], d);
-    expect(r.outcomes.get("wa-plain")?.reply).toContain("FNF");
+    expect(registered).toEqual(["u-pete"]);
+    expect(r.outcomes.get("wa-plain")?.action).toBe("IN");
+    expect(r.degradations.join(" ")).toMatch(/D5b/);
   });
 });
 

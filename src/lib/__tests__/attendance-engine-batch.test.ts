@@ -1497,15 +1497,91 @@ describe("a recruit side request on a reply to a partner club's ask (2026-10-22)
     expect(d.registered).toEqual([]);
   });
 
-  it("the same message NOT replying to the ask still recruits, as it always did", async () => {
+  it("the same message NOT replying to the ask, tagged @Match Time, still recruits", async () => {
     const d = deps({ model: modelReturning(RECRUIT_FACTS), loadState: async () => withAsk() });
-    const r = await run([ownerMsg({ quoted: null })], d);
+    const r = await run([ownerMsg({ quoted: null, body: `@Match Time ${PROMOTE}`, tagged: true, taggedExplicitly: true })], d);
     expect(r.outcomes.get("wa-1")?.recruitRequest).toBe(true);
   });
 
   it("a non-admin's recruit side request never fires", async () => {
     const d = deps({ model: modelReturning(RECRUIT_FACTS), loadState: async () => withAsk() });
-    const r = await run([ownerMsg({ quoted: null, senderIsAdmin: false })], d);
+    const r = await run([ownerMsg({ quoted: null, senderIsAdmin: false, body: `@Match Time ${PROMOTE}`, tagged: true, taggedExplicitly: true })], d);
+    expect(r.outcomes.get("wa-1")?.recruitRequest).toBe(false);
+  });
+});
+
+// ── 2026-10-22 (Kemal): A RECRUIT NEEDS AN @ TAG OR AN ATTENDANCE CHANGE ──
+//
+// An admin's message with the `recruit` side request DMs players from up to
+// five recent matches. Untagged and changing nobody's attendance ("we need
+// players"), it fired anyway: "otherwise it DMs people unnecessarily and can
+// create noise". Now it fires only when the message EITHER @-mentions
+// MatchTime explicitly (`taggedExplicitly`: the Pi's mention list, or the
+// literal "@Match Time" the Pi writes for one) OR changed somebody's
+// attendance in the same message ("Dan is out, we need one more"). A
+// swipe-reply to a MatchTime post is a tag for answering, never for a mass
+// DM. When it does not fire the group hears nothing.
+describe("a recruit side request needs an explicit tag or an attendance change (2026-10-22)", () => {
+  const NEED = { claims: [], affirmation: "none", sideRequests: ["recruit"] };
+  const DAN_OUT_NEED = {
+    claims: [
+      { subject: "other", personRef: "Dan", personNamed: true, polarity: "out", contingent: false, conditionOn: "none", tense: "present", reported: true, confidence: 0.95 },
+    ],
+    affirmation: "none",
+    sideRequests: ["recruit"],
+  };
+  const withDan = () => state({ rows: [{ userId: "u-dan", status: "CONFIRMED" as const, position: 1 }] });
+  const alice = (over: Partial<EngineBatchMessage> = {}) =>
+    msg({ authorName: "Alice Admin", senderUserId: "u-alice", senderName: "Alice Admin", senderIsAdmin: true, route: "offer", ...over });
+
+  it("untagged, nobody's attendance changed: no recruit, and the group hears nothing", async () => {
+    const d = deps({ model: modelReturning(NEED), loadState: async () => withDan() });
+    const r = await run([alice({ body: "we need players" })], d);
+    const out = r.outcomes.get("wa-1");
+    expect(out?.recruitRequest).toBe(false);
+    expect(out?.reply ?? null).toBeNull();
+    expect(d.registered).toEqual([]);
+    expect(d.cancelled).toEqual([]);
+  });
+
+  it("untagged, with a drop in the same message: Dan is out AND the recruit fires", async () => {
+    const d = deps({ model: modelReturning(DAN_OUT_NEED), loadState: async () => withDan() });
+    const r = await run([alice({ body: "Dan is out, we need one more", route: "other_att" })], d);
+    expect(d.cancelled).toEqual(["u-dan"]);
+    expect(r.outcomes.get("wa-1")?.recruitRequest).toBe(true);
+  });
+
+  it("an explicit @Match Time tag: the recruit fires with no attendance change", async () => {
+    const d = deps({ model: modelReturning(NEED), loadState: async () => withDan() });
+    const r = await run([alice({ body: "@Match Time we need players", tagged: true, taggedExplicitly: true })], d);
+    expect(r.outcomes.get("wa-1")?.recruitRequest).toBe(true);
+  });
+
+  it("the Pi's mention signal alone is the explicit tag, whatever the text says", async () => {
+    const d = deps({ model: modelReturning(NEED), loadState: async () => withDan() });
+    const r = await run([alice({ body: "we need players", tagged: true, taggedExplicitly: true })], d);
+    expect(r.outcomes.get("wa-1")?.recruitRequest).toBe(true);
+  });
+
+  it("a swipe-reply to a MatchTime post is not the tag a mass DM needs: no recruit", async () => {
+    const d = deps({ model: modelReturning(NEED), loadState: async () => withDan() });
+    const r = await run(
+      [alice({ body: "we need players", tagged: true, taggedExplicitly: false, quoted: { id: "3EB0SQUAD", fromMatchTime: true } })],
+      d,
+    );
+    expect(r.outcomes.get("wa-1")?.recruitRequest).toBe(false);
+    expect(r.outcomes.get("wa-1")?.reply ?? null).toBeNull();
+  });
+
+  it("a drop that did not land is no attendance change: no recruit", async () => {
+    const d = deps({
+      model: modelReturning(DAN_OUT_NEED),
+      loadState: async () => withDan(),
+      async cancelAttendance() {
+        throw new Error("pg is down");
+      },
+    });
+    const r = await run([alice({ body: "Dan is out, we need one more", route: "other_att" })], d);
     expect(r.outcomes.get("wa-1")?.recruitRequest).toBe(false);
   });
 });
