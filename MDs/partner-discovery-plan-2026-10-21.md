@@ -174,7 +174,7 @@ the pairing reply reader keeps its closed answer (accept, decline, neither) unch
 | Rule | Value (recommended) |
 |---|---|
 | New requests a club may send per London day | 20 (D-4). "Select all" beyond that sends the nearest 20 and says so. |
-| Pending requests a club may have out at once | 50 |
+| Pending requests a club may have out at once | 50 (decided, Kemal 2026-10-22) |
 | An unanswered request | Expires after 14 days; A is told once. |
 | After B declines | A cannot re-request B for 30 days. B is not listed for A until then. |
 | Block | B can **block A** from the request or the settings page: A can never request B, and B disappears from A's list. Unblock from settings. |
