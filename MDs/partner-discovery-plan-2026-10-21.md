@@ -211,6 +211,12 @@ pairing on a club's behalf would skip that club's consent, which is the point of
   - An **organiser-pick** club (FNF): unchanged. Volunteers go on the **bench** labelled with their
     club, the organisers pick by number. Once they have picked the wanted number of guests, the
     round closes and the rest are stood down.
+  - **Only the asking club's mode counts** (Kemal, 2026-10-22). Organiser-pick decides what happens
+    to guests arriving at the asking club's own match. A partner club being organiser-pick has no
+    effect on an ask it receives: MatchTime posts the ask straight into its players' group, not
+    its admin group. Today's code already works this way (`partner-guest.ts` reads only the asking
+    club's rule). The only thing that sends an ask to the partner's admins first is the partner's
+    own choice "Check each ask with us first" (D3), which is no longer the default.
   - Important code fact: today a guest volunteer gets a place straight away whenever the match has
     one open (`registerAttendance` in `handlePartnerVolunteer`). With a number smaller than the open
     places this must stop at the number, or a request for 1 would take 4. That is the new rule.
