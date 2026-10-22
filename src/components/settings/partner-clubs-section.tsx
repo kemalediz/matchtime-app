@@ -11,7 +11,9 @@
  * changes; then the club venue, set ONLY with the venue lookup (a picked
  * place, so always geocoded), with "Confirm your venue to find clubs near
  * you" while the club has neither an active game with a geocoded venue nor
- * a club venue. Then each pairing with its state and buttons (accept, decline and remove for the owner; pause
+ * a club venue. A venue in use shows as a card ("Set from your game" or
+ * "Club venue") with the lookup closed behind "Change" or "Set a club
+ * venue" (2026-10-22); with no venue the lookup is open. Then each pairing with its state and buttons (accept, decline and remove for the owner; pause
  * and resume for an owner or admin); then the asking side's settings when
  * this club may ask another (when to ask, the automatic time, the
  * cut-off), and the partner side's approval choice per club that may ask
@@ -25,7 +27,7 @@
  * players too" on a pairing that lets another club ask this one (D-1); and
  * the block list with unblock.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import Link from "next/link";
 import { Handshake, MapPin, Search } from "lucide-react";
@@ -71,6 +73,10 @@ export function PartnerClubsSection(props: { orgId: string; language: string | n
   const [venueText, setVenueText] = useState("");
   const [venuePick, setVenuePick] = useState<VenuePickState | null>(null);
   const [venueError, setVenueError] = useState<string | null>(null);
+  // The venue lookup stays closed under a venue already in use, and opens
+  // on "Change" / "Set a club venue" (2026-10-22: an empty input under the
+  // current venue read as "no venue set").
+  const [venueEditing, setVenueEditing] = useState(false);
   // An accepted request's per-ask choice, per request (P3; default "post
   // their asks straight away").
   const [choice, setChoice] = useState<Record<string, PartnerApproval>>({});
@@ -225,6 +231,7 @@ export function PartnerClubsSection(props: { orgId: string; language: string | n
         toast.success(s.pd_venue_saved);
         setVenueText("");
         setVenuePick(null);
+        setVenueEditing(false);
         await load();
       } else setVenueError(r.status === "capped" ? s.pd_venue_capped : r.status === "no-pick" ? s.pd_venue_pick_first : s.pd_venue_unresolved);
     } catch {
@@ -264,6 +271,42 @@ export function PartnerClubsSection(props: { orgId: string; language: string | n
   const control =
     "h-10 px-3 rounded-lg border border-slate-200 bg-white text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50";
   const suggestLabels = venueSuggestLabels(s);
+
+  // A venue in use (an active game's geocoded venue, or the club venue)
+  // is the current state; with none, the lookup is shown open, as before.
+  const venueCurrent = !!(data.venue.gameVenue || data.venue.homeVenue);
+  const venueLookupOpen = venueEditing || !venueCurrent;
+  const closeVenueLookup = () => {
+    setVenueEditing(false);
+    setVenueText("");
+    setVenuePick(null);
+    setVenueError(null);
+  };
+  const openVenueButton = (label: string) => (
+    <button type="button" className={`${button} shrink-0`} disabled={!!busy} onClick={() => setVenueEditing(true)} data-testid="club-venue-change">
+      {label}
+    </button>
+  );
+  const venueCard = (c: { testId: string; label: string; name: string; address?: string | null; note?: string; action?: ReactNode }) => (
+    <div className="mt-2 flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3" data-testid={c.testId}>
+      <MapPin className="mt-0.5 w-4 h-4 shrink-0 text-green-600" aria-hidden="true" />
+      <div className="min-w-0 flex-1">
+        <p className="text-xs font-medium text-slate-500" data-testid="club-venue-current-label">
+          {c.label}
+        </p>
+        <p className="text-sm text-slate-800 break-words" data-testid="club-venue-current-name">
+          {c.name}
+        </p>
+        {c.address && (
+          <p className="text-xs text-slate-500 break-words" data-testid="club-venue-current-address">
+            {c.address}
+          </p>
+        )}
+        {c.note && <p className="mt-1 text-xs text-slate-500">{c.note}</p>}
+      </div>
+      {c.action}
+    </div>
+  );
 
   const toggle = (on: boolean, label: string, testId: string, onClick: () => void) => (
     <button
@@ -324,52 +367,77 @@ export function PartnerClubsSection(props: { orgId: string; language: string | n
                 <p className="mt-1 text-xs text-amber-800">{s.pd_venue_prompt_body}</p>
               </div>
             )}
-            {data.venue.gameVenue && (
-              <p className="mt-2 text-xs text-slate-500" data-testid="club-venue-game">
-                {s.pd_venue_game({ venue: data.venue.gameVenue.name })}
-              </p>
+            {/* The venue in use, as a card: the game's venue first (it is
+                the one measured from), then the club venue. */}
+            {data.venue.gameVenue &&
+              venueCard({
+                testId: "club-venue-game",
+                label: s.pd_venue_from_game,
+                name: data.venue.gameVenue.name,
+                note: s.pd_venue_game,
+              })}
+            {data.venue.homeVenue &&
+              venueCard({
+                testId: "club-venue-home",
+                label: s.pd_venue_from_home,
+                name: data.venue.homeVenue.name,
+                address: data.venue.homeVenue.address,
+                action: !venueEditing && openVenueButton(s.pd_venue_change),
+              })}
+            {data.venue.gameVenue && !data.venue.homeVenue && !venueEditing && (
+              <div className="mt-2">{openVenueButton(s.pd_venue_set_club)}</div>
             )}
-            {data.venue.homeVenue && (
-              <p className="mt-2 text-sm text-slate-700" data-testid="club-venue-home">
-                {s.pd_venue_home({ venue: data.venue.homeVenue.address ? `${data.venue.homeVenue.name}, ${data.venue.homeVenue.address}` : data.venue.homeVenue.name })}
-              </p>
-            )}
-            <div className="mt-2 flex flex-wrap items-start gap-2">
-              <div className="min-w-0 flex-1 basis-60">
-                <VenueSuggestInput
-                  value={venueText}
-                  onChange={(text, pick) => {
-                    setVenueText(text);
-                    setVenuePick(pick);
-                    setVenueError(null);
-                  }}
-                  lang={props.language}
-                  labels={suggestLabels}
-                  describedBy="club-venue-hint"
-                  testId="club-venue-input"
-                  placeholder={s.pd_venue_placeholder}
-                  maxLength={120}
-                  disabled={busy === "venue"}
-                  className={`w-full ${control}`}
-                />
-              </div>
-              <button
-                type="button"
-                className={`${button} h-10`}
-                disabled={!!busy || !venueToSave}
-                onClick={saveVenue}
-                data-testid="club-venue-save"
-              >
-                {s.pd_venue_save}
-              </button>
-            </div>
-            <p id="club-venue-hint" className="mt-1 text-xs text-slate-400">
-              {s.pd_venue_pick_first} {suggestLabels.privacy}
-            </p>
-            {venueError && (
-              <p className="mt-1 text-xs text-red-600" role="alert" data-testid="club-venue-error">
-                {venueError}
-              </p>
+            {venueLookupOpen && (
+              <>
+                <div className="mt-2 flex flex-wrap items-start gap-2">
+                  <div className="min-w-0 flex-1 basis-60">
+                    <VenueSuggestInput
+                      value={venueText}
+                      onChange={(text, pick) => {
+                        setVenueText(text);
+                        setVenuePick(pick);
+                        setVenueError(null);
+                      }}
+                      lang={props.language}
+                      labels={suggestLabels}
+                      describedBy="club-venue-hint"
+                      testId="club-venue-input"
+                      placeholder={s.pd_venue_placeholder}
+                      maxLength={120}
+                      disabled={busy === "venue"}
+                      className={`w-full ${control}`}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    className={`${button} h-10`}
+                    disabled={!!busy || !venueToSave}
+                    onClick={saveVenue}
+                    data-testid="club-venue-save"
+                  >
+                    {s.pd_venue_save}
+                  </button>
+                  {venueCurrent && (
+                    <button
+                      type="button"
+                      className={`${button} h-10`}
+                      disabled={busy === "venue"}
+                      onClick={closeVenueLookup}
+                      data-testid="club-venue-cancel"
+                    >
+                      {s.pd_venue_cancel}
+                    </button>
+                  )}
+                </div>
+                <p id="club-venue-hint" className="mt-1 text-xs text-slate-400">
+                  {s.pd_venue_pick_first} {suggestLabels.privacy}
+                </p>
+                {venueError && (
+                  <p className="mt-1 text-xs text-red-600" role="alert" data-testid="club-venue-error">
+                    {venueError}
+                  </p>
+                )}
+              </>
             )}
           </div>
 

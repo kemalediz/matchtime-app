@@ -10,6 +10,10 @@
  *     neither an active game with a geocoded venue nor a club venue, and
  *     goes once either exists;
  *   - the reminder's link (#club-venue) lands on the venue row;
+ *   - a venue in use is shown as the current state, a card with its name
+ *     ("Set from your game" or "Club venue"), and the lookup stays hidden
+ *     behind "Change" or "Set a club venue" until tapped (2026-10-22: an
+ *     admin read the empty input under a grey line as "no venue set");
  *   - in Turkish.
  *
  * GOOGLE IS A STUB (e2e/helpers/geocode-stub.ts). No model anywhere.
@@ -78,15 +82,49 @@ test("no venue: the prompt; typing alone saves nothing; a picked place becomes t
   await expect(save).toBeEnabled();
   await save.click();
 
-  await expect(row.getByTestId("club-venue-home")).toContainText("Club venue: Powerleague Croydon, Purley Way, Croydon CR0 4RQ, UK", { timeout: 15_000 });
+  // Saved: the club venue is the current state, and the lookup closes.
+  const card = row.getByTestId("club-venue-home");
+  await expect(card).toBeVisible({ timeout: 15_000 });
+  await expect(card.getByTestId("club-venue-current-label")).toHaveText("Club venue");
+  await expect(card.getByTestId("club-venue-current-name")).toHaveText("Powerleague Croydon");
+  await expect(card.getByTestId("club-venue-current-address")).toHaveText("Purley Way, Croydon CR0 4RQ, UK");
   await expect(row.getByTestId("club-venue-prompt")).toHaveCount(0);
+  await expect(row.getByTestId("club-venue-input")).toHaveCount(0);
+  await expect(row.getByTestId("club-venue-save")).toHaveCount(0);
   // The SERVER asked Google for the picked place, and stored Google's answer.
   expect(placesCalls().some((c) => c.kind === "place-details" && c.placeId === CROYDON.placeId)).toBe(true);
   expect(await home(db)).toEqual({ placeId: CROYDON.placeId, name: CROYDON.name, lat: CROYDON.lat, lng: CROYDON.lng });
 
-  // Editing the text after the pick drops it: Save is off again.
+  // "Change" opens the lookup, empty; editing the text after a pick drops it.
+  const change = row.getByTestId("club-venue-change");
+  await expect(change).toHaveText("Change");
+  await change.click();
+  await expect(input).toBeVisible();
+  await expect(input).toHaveValue("");
+  await input.fill("Powerleague Croy");
+  await page.getByTestId("venue-suggest-popup").getByRole("option").first().click();
+  await expect(save).toBeEnabled();
   await input.fill("Powerleague Croydonx");
   await expect(save).toBeDisabled();
+  // "Cancel" closes it again; the current venue stays.
+  await row.getByTestId("club-venue-cancel").click();
+  await expect(row.getByTestId("club-venue-input")).toHaveCount(0);
+  await expect(card.getByTestId("club-venue-current-name")).toHaveText("Powerleague Croydon");
+});
+
+test("a club venue already set shows as the current venue on load, with Change and no open input", async ({ page }) => {
+  // The previous test saved Powerleague Croydon as the home venue.
+  await signInAs(page, U.admin, "/admin/settings");
+  const row = venueRow(page);
+  await expect(row).toBeVisible({ timeout: 30_000 });
+  await expect(row.getByTestId("club-venue-home").getByTestId("club-venue-current-name")).toHaveText("Powerleague Croydon");
+  await expect(row.getByTestId("club-venue-game")).toHaveCount(0);
+  await expect(row.getByTestId("club-venue-prompt")).toHaveCount(0);
+  await expect(row.getByTestId("club-venue-input")).toHaveCount(0);
+  await expect(row.getByTestId("club-venue-change")).toHaveText("Change");
+  await row.getByTestId("club-venue-change").click();
+  await expect(row.getByTestId("club-venue-input")).toBeVisible();
+  await expect(row.getByTestId("club-venue-save")).toBeDisabled();
 });
 
 test("a club whose active game has a geocoded venue sees no prompt, and is told where it is measured from", async ({ page, db }) => {
@@ -98,13 +136,42 @@ test("a club whose active game has a geocoded venue sees no prompt, and is told 
   await signInAs(page, U.admin, "/admin/settings");
   const row = venueRow(page);
   await expect(row).toBeVisible({ timeout: 30_000 });
-  await expect(row.getByTestId("club-venue-game")).toContainText("Nearby clubs are measured from your game's venue, E2E Arena Pitches.");
+  const card = row.getByTestId("club-venue-game");
+  await expect(card.getByTestId("club-venue-current-label")).toHaveText("Set from your game");
+  await expect(card.getByTestId("club-venue-current-name")).toHaveText("E2E Arena Pitches");
+  await expect(card).toContainText("The club venue is used only while you have no active game.");
   await expect(row.getByTestId("club-venue-prompt")).toHaveCount(0);
+  // No empty input under the current venue until the admin asks for one.
+  await expect(row.getByTestId("club-venue-input")).toHaveCount(0);
+  await expect(row.getByTestId("club-venue-save")).toHaveCount(0);
+  const set = row.getByTestId("club-venue-change");
+  await expect(set).toHaveText("Set a club venue");
+  await set.click();
+  await expect(row.getByTestId("club-venue-input")).toBeVisible();
+  await expect(row.getByTestId("club-venue-save")).toBeDisabled();
+
+  // With a club venue as well, the game's venue stays the one in use, and
+  // the club venue is listed under it with "Change".
+  await db.run(
+    `INSERT INTO "Venue" (id, "placeId", name, "formattedAddress", lat, lng, source, "createdAt", "updatedAt") VALUES ('e2e-cv-home', 'ChIJ_e2e_cv_home01', 'E2E Home Ground', 'Sutton SM1 1AA, UK', 51.37, -0.19, 'google', now(), now())`,
+  );
+  await db.run(`UPDATE "Organisation" SET "homeVenueId" = 'e2e-cv-home' WHERE id = $1`, [ORG_ID]);
+  await page.reload();
+  await expect(venueRow(page).getByTestId("club-venue-game").getByTestId("club-venue-current-name")).toHaveText("E2E Arena Pitches", { timeout: 30_000 });
+  await expect(venueRow(page).getByTestId("club-venue-home").getByTestId("club-venue-current-name")).toHaveText("E2E Home Ground");
+  await expect(venueRow(page).getByTestId("club-venue-home").getByTestId("club-venue-current-address")).toHaveText("Sutton SM1 1AA, UK");
+  await expect(venueRow(page).getByTestId("club-venue-change")).toHaveText("Change");
+  await expect(venueRow(page).getByTestId("club-venue-input")).toHaveCount(0);
+  await db.run(`UPDATE "Organisation" SET "homeVenueId" = NULL WHERE id = $1`, [ORG_ID]);
 
   // A game that is not active does not count.
   await db.run(`UPDATE "Activity" SET "isActive" = false WHERE id = $1`, [ACTIVITY_ID]);
   await page.reload();
   await expect(venueRow(page).getByTestId("club-venue-prompt")).toBeVisible({ timeout: 30_000 });
+  // No venue at all: the lookup is open, with no card and no Change button.
+  await expect(venueRow(page).getByTestId("club-venue-input")).toBeVisible();
+  await expect(venueRow(page).getByTestId("club-venue-game")).toHaveCount(0);
+  await expect(venueRow(page).getByTestId("club-venue-change")).toHaveCount(0);
   await db.run(`UPDATE "Activity" SET "isActive" = true, "venueId" = NULL WHERE id = $1`, [ACTIVITY_ID]);
 });
 
@@ -120,5 +187,28 @@ test("in Turkish", async ({ page, db }) => {
   await row.getByRole("button", { name: /Kulüp sahası/ }).click();
   await expect(page.getByRole("dialog")).toContainText("Sahanızı, yazarken çıkan gerçek yerler listesinden seçin.");
   await page.getByRole("button", { name: "Kapat" }).click();
-  await db.run(`UPDATE "Organisation" SET language = 'en' WHERE id = $1`, [ORG_ID]);
+
+  // The game's venue in use.
+  await db.run(`UPDATE "Activity" SET "venueId" = 'e2e-cv-game' WHERE id = $1`, [ACTIVITY_ID]);
+  await page.reload();
+  const game = venueRow(page).getByTestId("club-venue-game");
+  await expect(game.getByTestId("club-venue-current-label")).toHaveText("Maçınızdan alındı", { timeout: 30_000 });
+  await expect(game.getByTestId("club-venue-current-name")).toHaveText("E2E Arena Pitches");
+  await expect(game).toContainText("Kulüp sahası yalnızca etkin bir maçınız yokken kullanılır.");
+  await expect(venueRow(page).getByTestId("club-venue-change")).toHaveText("Kulüp sahası belirle");
+  await expect(venueRow(page).getByTestId("club-venue-input")).toHaveCount(0);
+
+  // A club venue, with no game venue.
+  await db.run(`UPDATE "Activity" SET "venueId" = NULL WHERE id = $1`, [ACTIVITY_ID]);
+  await db.run(`UPDATE "Organisation" SET "homeVenueId" = 'e2e-cv-home' WHERE id = $1`, [ORG_ID]);
+  await page.reload();
+  const homeCard = venueRow(page).getByTestId("club-venue-home");
+  await expect(homeCard.getByTestId("club-venue-current-label")).toHaveText("Kulüp sahası", { timeout: 30_000 });
+  await expect(homeCard.getByTestId("club-venue-current-name")).toHaveText("E2E Home Ground");
+  await expect(venueRow(page).getByTestId("club-venue-change")).toHaveText("Değiştir");
+  await venueRow(page).getByTestId("club-venue-change").click();
+  await expect(venueRow(page).getByTestId("club-venue-cancel")).toHaveText("Vazgeç");
+  await expect(venueRow(page).getByTestId("club-venue-input")).toHaveAttribute("placeholder", "Sahanızın adını yazmaya başlayın");
+
+  await db.run(`UPDATE "Organisation" SET language = 'en', "homeVenueId" = NULL WHERE id = $1`, [ORG_ID]);
 });
