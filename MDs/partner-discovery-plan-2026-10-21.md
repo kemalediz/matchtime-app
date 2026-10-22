@@ -61,9 +61,12 @@ setting is on by default.** Its owner or admin can switch it off at any time:
   with no confirmed venue it sees the "Confirm your venue" prompt instead, and a dormant or
   billing-paused club cannot search (recommended; Kemal can overrule).
 - A club is listed only if it is approved, not dormant, not billing-paused, has a players' group,
-  and has at least one active game with a **geocoded venue** (`Activity.venueId` pointing at a
-  `Venue` with `lat`/`lng`). A club with no geocoded venue sees "Confirm your venue to find clubs
-  near you" with a link to the venue box, which already does the lookup.
+  and has a **geocoded venue** (a `Venue` with `lat`/`lng`). **It does not need a game set up**
+  (Kemal, 2026-10-22): a group of players with no match scheduled yet can be found. The venue is
+  either an active game's venue (`Activity.venueId`) or, for a club with no game, a new optional
+  **club home venue** (`Organisation.homeVenueId`, recommended; picked with the same venue lookup;
+  Kemal may prefer something looser such as a postcode or town). A club with neither sees "Confirm
+  your venue to find clubs near you" with a link to the venue lookup.
 
 Checked in prod (read-only, 2026-10-21): 6 clubs, 5 live; all 5 `Venue` rows are geocoded;
 **MT Test's active game has no linked venue**, so MT Test would not be listed until its venue is
@@ -76,8 +79,10 @@ Page: **Partner clubs > Find clubs near you** (owners and admins).
 - **Distance:** presets **1, 3, 5, 10 and 25 miles**, default **3**. Miles for every club (UK
   users); Turkish copy shows "mil". Kilometres can come later with a club setting if a non-UK club
   joins (D-9).
-- **Measured from:** each of our active games' venues to each of theirs; a club is in range if any
-  pair is, and the list shows the **nearest** distance, rounded to 0.1 mile.
+- **Measured from:** each of our active games' venues to each of theirs; a club with no active
+  game uses its home venue instead. A club is in range if any pair is, and the list shows the
+  **nearest** distance, rounded to 0.1 mile. A club with no game is never excluded by the "same
+  day" filter.
 - **Order:** nearest first. **Filter:** "Plays on the same day as us" toggle, off by default (a club
   that plays the same evening cannot usually lend players, but one that plays at another time can).
 - **Scale:** a bounding-box query on `Venue.lat`/`lng` (new index), then the exact distance in code
@@ -92,7 +97,7 @@ Page: **Partner clubs > Find clubs near you** (owners and admins).
 |---|---|
 | Club name | Chosen by the club for MatchTime; it is the name on its requests. |
 | Venue name and town (from `Venue.name` and the town part of `formattedAddress`), distance | A public pitch, not a person. No coordinates are sent to the browser. |
-| Each active game: day, kickoff time, format (for example "7-a-side", from `Sport.playersPerTeam`) | What the requester needs to judge whether players could cross over. |
+| Each active game: day, kickoff time, format (for example "7-a-side", from `Sport.playersPerTeam`); "No regular game yet" for a club with none | What the requester needs to judge whether players could cross over. |
 | Members: exact count of live, non-guest members | Kemal asked for it; a count names nobody. |
 | Regular players: how many played at least 2 of the club's last 8 games | Tells a requester how big the pool really is. |
 | Level, **only if the club set one** (section 2.4) | Self-declared, so it is the club's own claim. |
@@ -230,6 +235,7 @@ model Organisation {
   discoverableAt    DateTime?
   discoverableById  String?
   clubLevel         String?                     // "casual" | "mixed" | "competitive", CHECK constraint
+  homeVenueId       String?                     // optional; where a club with no game is measured from
 }
 
 model ClubPartnership {
