@@ -86,7 +86,7 @@ confirmed. Its existing pairings are unaffected (section 5).
 
 Page: **Partner clubs > Find clubs near you** (owners and admins).
 
-- **Distance:** presets **1, 3, 5, 10 and 25 miles**, default **3**. Miles for every club (UK
+- **Distance:** presets **1, 3, 5 and 10 miles**, default **3**, never more than 10 (Kemal, 2026-10-22: players will not travel further). Miles for every club (UK
   users); Turkish copy shows "mil". Kilometres can come later with a club setting if a non-UK club
   joins (D-9).
 - **Measured from:** each of our active games' venues to each of theirs; a club with no active
@@ -96,8 +96,8 @@ Page: **Partner clubs > Find clubs near you** (owners and admins).
 - **Order:** nearest first. **Filter:** "Plays on the same day as us" toggle, off by default (a club
   that plays the same evening cannot usually lend players, but one that plays at another time can).
 - **Scale:** a bounding-box query on `Venue.lat`/`lng` (new index), then the exact distance in code
-  with the existing `distanceKm` (`src/lib/geo.ts`). Thousands of clubs in a 25-mile box is still a
-  few hundred rows; pages of 50. No PostGIS needed.
+  with the existing `distanceKm` (`src/lib/geo.ts`). Even with thousands of clubs, a 10-mile box returns
+  a few hundred rows at most; pages of 50. No PostGIS needed.
 - Clubs we are already paired with, or have a pending request to, show their status instead of a
   checkbox. Clubs that blocked us, or that declined us in the last 30 days, are simply not listed.
 
