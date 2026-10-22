@@ -31,11 +31,10 @@
  *   snapshot into the roster, and DMs the admin a magic link into
  *   /admin.
  */
-import Anthropic from "@anthropic-ai/sdk";
 import { db } from "./db";
 import { SPORT_PRESETS } from "./sport-presets";
 import { FEATURE_META, OFFERED_FEATURE_META, isFeatureOffered, type ToggleableKey } from "./org-features-meta";
-import { londonWallClockToUtc, londonDateTimeToUtc } from "./london-time";
+import { formatLondon, londonWallClockToUtc, londonDateTimeToUtc } from "./london-time";
 import { normalisePhone } from "./phone";
 import { appUrl } from "./app-url";
 import { scheduleVenueResolve } from "./venue-location-schedule";
@@ -65,12 +64,14 @@ import { t } from "./i18n/t";
 import { buildBadgeHelp } from "./badge-help";
 import { normaliseLang, type Lang } from "./i18n/lang";
 import { detectGroupLang, langOfConsentReply } from "./i18n/detect";
-import { guardedAnthropicCall, systemBlock } from "@/lib/pipeline/llm";
+import { anthropicModel, extractJson, HAIKU_CALL, type ModelCall, type PipelineModel } from "@/lib/pipeline/llm";
 import { organisersAnnounce } from "./list-announcer";
-import { HAIKU_MODEL, HAIKU_SHORT_ANSWER_MAX_TOKENS, HAIKU_THINKING } from "./models";
+import { HAIKU_SHORT_ANSWER_MAX_TOKENS } from "./models";
 import { changeMemberRole } from "./role-change";
 
-const MODEL = HAIKU_MODEL;
+/** How the setup-answer reading is called: Haiku 5.5, adaptive thinking at
+ *  medium effort, through the shared pipeline caller (2026-10-22). */
+export const ONBOARDING_EXTRACT_CALL: ModelCall = HAIKU_CALL;
 
 type Session = {
   id: string;
@@ -673,87 +674,153 @@ function coercePendingAdmins(raw: unknown): ParsedAdmin[] {
   return out;
 }
 
-function getAnthropic(): Anthropic | null {
-  const key = process.env.ANTHROPIC_API_KEY?.trim();
-  return key ? new Anthropic({ apiKey: key }) : null;
+/**
+ * THE SETUP-ANSWER READING'S PROMPT. REWRITTEN AS A WHOLE 2026-10-22.
+ *
+ * One task (pull out what people stated, never guess), every output field
+ * defined once with when it is null, the feature words once, examples
+ * grouped by what they teach with English and Turkish side by side. The
+ * context now does work the rules used to: the user turn gives today's
+ * date (a relative one-off date had nothing to be worked out from, and
+ * the paid check showed both "this Saturday" cases returning null) and
+ * says, from the stage, what MatchTime is asking, so "only answer the
+ * feature menu when it is asked" is a fact rather than a guess.
+ * Output contract unchanged: the same nine keys, null for unknown.
+ * Size: 2,516 characters before, 3,478 after (count_tokens on
+ * claude-haiku-5-5: 1,100 before, 1,462 after), above Haiku 5.5's 512-token
+ * cacheable minimum, so the shared marker still caches it. Longer, not
+ * shorter: the day numbers and the feature words are now each listed
+ * once in full instead of by a few samples, and clarity wins.
+ * Paid check: scripts/live-check-onboarding-extract.ts (28 cases, each
+ * once): main's prompt 26/28 (both relative one-off dates null), this
+ * one 28/28.
+ */
+export const EXTRACT_PROMPT = `You read the newest messages in a WhatsApp group that is setting up MatchTime, a WhatsApp assistant for a regular amateur game, and pull out the setup answers people have stated. You do not run the conversation and you never guess: a field the messages do not state is null.
+
+WHAT YOU ARE SHOWN
+- Today: today's date in London.
+- MatchTime is asking: the question the group is answering now.
+- Collected so far: what earlier answers gave, under the same field names as your answer. A collected value stays as it is: give it again only when a new message corrects it ("actually Fridays", "pardon, cuma olsun").
+- New messages, oldest first, as "author: text". Several messages may each answer a different field; combine them. They may be in English or Turkish.
+
+WHAT YOU ANSWER
+One JSON object with exactly these keys, each null when the messages do not state it:
+- groupName: the club or group's name, when someone gives one.
+- venue: where they play, as written, without a Turkish case ending ("Sim Arena'da" is "Sim Arena").
+- dayOfWeek: the regular match day as a number: 0 Sunday, 1 Monday, 2 Tuesday, 3 Wednesday, 4 Thursday, 5 Friday, 6 Saturday.
+- kickoffTime: the kickoff in 24 hour London time, "HH:MM".
+- playersPerSide: the number of players in each team.
+- recurrence: "weekly" for a game played every week, "oneoff" for a single game.
+- oneOffDate: the date of a oneoff game, "YYYY-MM-DD", worked out from today's date when it is relative ("this Saturday"); null for a weekly game.
+- featureSelection: only when MatchTime is asking which features the group wants and a message answers it: a list of these keys, spelled exactly so: attendance, bench, teamBalancing, momVoting, playerRating, reminders, statsQa, paymentTracking. Null at any other question.
+- confidence: from 0 to 1, how sure you are of what you returned; below 0.5 when the messages are chat with no concrete answer.
+
+FEATURE WORDS, ENGLISH / TURKISH
+- everything, all / hepsi, her şey: all eight keys
+- everything except payments / ödeme hariç hepsi: all but paymentTracking
+- attendance / katılım, yoklama, kadro: attendance
+- bench / yedek: bench
+- teams / takım, takımlar: teamBalancing
+- MoM, man of the match / maçın adamı: momVoting
+- ratings, player ratings / puan, puanlama, oyuncu puanları: playerRating
+- reminders / hatırlatma: reminders
+- stats / istatistik: statsQa
+- payments / ödeme: paymentTracking
+
+EXAMPLES, ENGLISH / TURKISH
+When and where in one answer:
+  "thursdays 8:30pm at PowerLeague Shoreditch, 6 a side" / "perşembe akşam 8 buçukta Yıldız Halı Saha'da, 6'ya 6": dayOfWeek 4, kickoffTime "20:30", venue "PowerLeague Shoreditch" / "Yıldız Halı Saha", playersPerSide 6
+  "Fridays, kick off 21:00" / "cumaları saat 21:00": dayOfWeek 5, kickoffTime "21:00", venue null
+A name:
+  "we're the Sunday Strikers" / "biz Salı Aslanlarıyız": groupName "Sunday Strikers" / "Salı Aslanları"
+How often:
+  "every week" / "her hafta": recurrence "weekly"
+  "a one-off, Saturday the 31st" / "tek seferlik, 31'i cumartesi", on Thursday 22 October 2026: recurrence "oneoff", oneOffDate "2026-10-31"
+A correction, with Tuesday collected:
+  "no wait, Mondays" / "pardon, pazartesi olsun": dayOfWeek 1
+A feature pick, while MatchTime is asking which features:
+  "MoM and the reminders" / "maçın adamı ve hatırlatma": featureSelection ["momVoting", "reminders"]
+Chat that answers nothing:
+  "lol classic" / "kolay gelsin": every field null, confidence below 0.5
+
+Answer with the JSON object only.`;
+
+/** What the reading is told is already known: the session's fields and stage. */
+export type KnownSetup = Pick<
+  Session,
+  "groupName" | "venue" | "dayOfWeek" | "kickoffTime" | "playersPerSide" | "recurrence" | "oneOffDate" | "stage"
+>;
+
+const WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+/** What MatchTime is asking at each stage the reading runs in. Only the
+ *  feature menu is a feature question (`featureSelection` is read there
+ *  and nowhere else). */
+function askingAt(stage: string): string {
+  if (stage === "features") return "which features the group wants (the feature menu)";
+  if (stage === "details") return "when and where the group plays";
+  return "the club's setup details (name, players a side, day, kickoff, venue, how often)";
 }
 
-const EXTRACT_PROMPT = `You extract structured setup answers from a WhatsApp group that is configuring the MatchTime bot. You DO NOT drive the conversation — you only pull values the humans have already stated. Output JSON only.
-
-Schema:
-{
-  "groupName": <string|null>,        // a name for the club/group if stated ("we're Thursday Ballers")
-  "venue": <string|null>,            // where they play ("Goals Star City", "PowerLeague Shoreditch")
-  "dayOfWeek": <0-6|null>,           // 0=Sunday .. 6=Saturday, the regular match day
-  "kickoffTime": <"HH:MM"|null>,     // 24h London local, e.g. "21:30" (convert "9:30pm")
-  "playersPerSide": <int|null>,      // 7 for 7-a-side, 5 for 5-a-side, 11 for 11-a-side
-  "recurrence": <"weekly"|"oneoff"|null>,
-  "oneOffDate": <"YYYY-MM-DD"|null>, // only if recurrence is oneoff and a date was given
-  "featureSelection": <string[]|null>, // ONLY when they're answering the feature menu; canonical keys below
-  "confidence": 0..1
+/**
+ * The user turn: the facts code already has (today's date, the question
+ * being asked, what is collected), then the new messages. Each part is
+ * labelled the way EXTRACT_PROMPT names it.
+ */
+export function buildExtractUserTurn(
+  session: KnownSetup,
+  messages: Array<{ authorName: string | null; body: string }>,
+  now: Date = new Date(),
+): string {
+  const show = (v: unknown) => (v == null || v === "" ? "not yet" : String(v));
+  const day =
+    session.dayOfWeek == null ? "not yet" : `${session.dayOfWeek} (${WEEKDAY_NAMES[session.dayOfWeek] ?? "?"})`;
+  const collected = [
+    `- groupName: ${show(session.groupName)}`,
+    `- venue: ${show(session.venue)}`,
+    `- dayOfWeek: ${day}`,
+    `- kickoffTime: ${show(session.kickoffTime)}`,
+    `- playersPerSide: ${show(session.playersPerSide)}`,
+    `- recurrence: ${show(session.recurrence)}`,
+    `- oneOffDate: ${show(session.oneOffDate)}`,
+  ];
+  const convo = messages.map((m) => `${m.authorName ?? "?"}: ${m.body.slice(0, 400)}`);
+  return [
+    `Today: ${formatLondon(now, "EEEE d MMMM yyyy")}`,
+    `MatchTime is asking: ${askingAt(session.stage)}`,
+    `Collected so far:\n${collected.join("\n")}`,
+    `New messages, oldest first:\n${convo.join("\n")}`,
+  ].join("\n\n");
 }
 
-Canonical feature keys (use EXACTLY these in featureSelection): attendance, bench, teamBalancing, momVoting, playerRating, reminders, statsQa, paymentTracking.
-- "MoM" / "man of the match" → momVoting
-- "ratings" / "player ratings" → playerRating
-- "everything" / "all" → all eight keys
-- "everything except payments" → all except paymentTracking
-Only set featureSelection when the latest messages are clearly answering "which features?". Otherwise null.
-
-Rules:
-- Extract only what is EXPLICITLY stated across the messages. Unknown → null. Never guess a venue or time.
-- Multiple messages may each contribute different fields; merge them.
-- "tuesdays" → dayOfWeek 2. "every week" → recurrence "weekly". "just this once" / a single date → "oneoff".
-- A Turkish feature pick maps the same way: "hepsi" / "her şey" → all eight keys; "ödeme hariç hepsi" → all except paymentTracking; "maçın adamı" → momVoting; "puan" / "puanlama" / "oyuncu puanları" → playerRating; "katılım" / "yoklama" / "kadro" → attendance; "yedek" → bench; "takım" / "takımlar" → teamBalancing; "hatırlatma" → reminders; "istatistik" → statsQa; "ödeme" → paymentTracking.
-- Messages may be in TURKISH. Read them the same way: "cuma" / "cumaları" → dayOfWeek 5, "salı" → 2, "akşam 9 buçukta" → "21:30", "saat 21:30" → "21:30", "7'ye 7" → playersPerSide 7, "her hafta" → "weekly", "tek seferlik" → "oneoff", "Sim Arena'da" → venue "Sim Arena" (drop the case suffix). The JSON keys and values stay exactly as specified.
-- Be conservative: confidence < 0.5 if it's chit-chat with no concrete answer.`;
-
-async function extract(
-  session: Session,
-  messages: OnboardingTurnInput["messages"],
-): Promise<Extracted | null> {
-  const anthropic = getAnthropic();
-  // Deterministic fallback when the LLM is unavailable (no key /
-  // outage / error) so onboarding still progresses instead of looping
-  // the first question forever. Event answers are formulaic enough to
-  // regex; venue is handled by the "sole missing field" heuristic in
-  // the collecting branch.
-  if (!anthropic) return regexExtract(messages);
-  const known = {
-    groupName: session.groupName,
-    venue: session.venue,
-    dayOfWeek: session.dayOfWeek,
-    kickoffTime: session.kickoffTime,
-    playersPerSide: session.playersPerSide,
-    recurrence: session.recurrence,
-    oneOffDate: session.oneOffDate,
-    stage: session.stage,
-  };
-  const convo = messages
-    .map((m) => `${m.authorName ?? "?"}: ${m.body.slice(0, 400)}`)
-    .join("\n");
+/**
+ * THE SETUP-ANSWER READING: one Haiku call per onboarding turn, through
+ * the shared caller (`pipeline/llm.ts`) since 2026-10-22. That caller
+ * retries transport errors, books the club's daily budget under the same
+ * label, carries the shared cache marker and throws on a truncated answer.
+ *
+ * Falls back to `regexExtract` whenever the model cannot help, so
+ * onboarding still progresses instead of looping the first question: no
+ * key (no call is made at all), a failed call, a truncated or unparseable
+ * answer. A field the model left null is backfilled by the regex pass,
+ * which covers misses on terse answers.
+ */
+export async function extractSetupAnswers(
+  session: KnownSetup,
+  messages: Array<{ authorName: string | null; body: string }>,
+  deps?: { model?: PipelineModel; now?: Date },
+): Promise<Extracted> {
+  if (!deps?.model && !process.env.ANTHROPIC_API_KEY?.trim()) return regexExtract(messages);
+  const model = deps?.model ?? anthropicModel();
   try {
-    const res = await guardedAnthropicCall("onboarding-extract", () =>
-      anthropic.messages.create({
-        model: MODEL,
-        max_tokens: HAIKU_SHORT_ANSWER_MAX_TOKENS,
-        ...HAIKU_THINKING,
-        system: systemBlock(EXTRACT_PROMPT),
-        messages: [
-          {
-            role: "user",
-            content: `Already collected (do not re-ask, but you may overwrite if they correct it):\n${JSON.stringify(known)}\n\nNew messages:\n${convo}\n\nReturn the JSON.`,
-          },
-        ],
-      }),
-    );
-    const block = res.content.find((b): b is Anthropic.TextBlock => b.type === "text");
-    if (!block) return regexExtract(messages);
-    const json = block.text.slice(block.text.indexOf("{"), block.text.lastIndexOf("}") + 1);
-    const parsed = JSON.parse(json) as Extracted;
-    // Backfill anything the LLM left null with a regex pass — makes
-    // extraction stickier (covers LLM misses on terse answers) and
-    // means a partial LLM failure still advances the flow.
+    const resp = await model.complete({
+      ...ONBOARDING_EXTRACT_CALL,
+      system: EXTRACT_PROMPT,
+      user: buildExtractUserTurn(session, messages, deps?.now ?? new Date()),
+      maxTokens: HAIKU_SHORT_ANSWER_MAX_TOKENS,
+      label: "onboarding-extract",
+    });
+    const parsed = extractJson(resp.text) as Partial<Extracted>;
     const rx = regexExtract(messages);
     return {
       groupName: parsed.groupName ?? rx.groupName,
@@ -892,7 +959,7 @@ export async function handleOnboardingTurn(
     };
   }
 
-  const ex = await extract(session, messages);
+  const ex = await extractSetupAnswers(session, messages);
 
   // ── Stage: details (group-add flow) ──────────────────────────────
   // One combined "when & where do you play?" answer. Multi-field

@@ -55,7 +55,35 @@ describe("the prompt", () => {
     }
     // The label the user turn gives the description is the word the prompt uses for it.
     expect(buildUserContent({ groupSubject: null, weeklyGame: null, history: [], description: "x" }).text).toContain("Group description (");
-    expect(SETUP_LEARNING_SYSTEM_PROMPT).toContain("- The group description:");
+    expect(SETUP_LEARNING_SYSTEM_PROMPT).toContain("- Group description:");
+  });
+
+  it("names every part of the user turn the way the user turn labels it (rewrite of 2026-10-22)", () => {
+    const turn = buildUserContent({
+      groupSubject: "Tuesday Lads",
+      weeklyGame: { dayOfWeek: 2, time: "20:00", venue: "Goals", playersPerSide: 7 },
+      history: [],
+      description: null,
+    }).text;
+    for (const label of ["Group name:", "Weekly game the organiser entered:", "Group description:", "Messages ("]) {
+      expect(turn, label).toContain(label);
+    }
+    for (const label of ["- Group name:", "- Weekly game the organiser entered:", "- Group description:", "- Messages:"]) {
+      expect(SETUP_LEARNING_SYSTEM_PROMPT, label).toContain(label);
+    }
+    // The "none" stand-ins the user turn writes are the ones the prompt names.
+    expect(SETUP_LEARNING_SYSTEM_PROMPT).toContain('"none entered"');
+    expect(SETUP_LEARNING_SYSTEM_PROMPT).toContain('"(none)"');
+  });
+
+  it("is one document: each section once, and what two sources are defined in one place", () => {
+    const once = (re: RegExp) => expect(SETUP_LEARNING_SYSTEM_PROMPT.match(re) ?? [], String(re)).toHaveLength(1);
+    for (const h of ["WHAT YOU ARE SHOWN", "WHAT SHOWS A HABIT", "EVIDENCE", "CONFIDENCE", "THE QUESTIONS", "EXAMPLES, GROUPED BY WHAT THEY TEACH, ENGLISH / TURKISH"]) {
+      once(new RegExp(`^${h}$`, "gm"));
+    }
+    once(/Two sources are two different messages/);
+    once(/MatchTime changes a setting only on "high"/);
+    once(/however many of its sentences you quote/);
   });
 
   it("counts SOURCES for \"high\", and says the description alone is \"medium\"", () => {

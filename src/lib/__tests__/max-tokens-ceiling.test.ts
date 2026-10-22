@@ -190,9 +190,9 @@ const TRUNCATION_FAILS_CLOSED: Record<string, string> = {
   // `lib/squad-from-list.ts` and `lib/onboarding-analyzer.ts` LEFT THIS
   // LIST on 2026-10-21: both go through pipeline/llm.ts now, which
   // checks `stop_reason` itself (TruncatedResponseError, caught by each
-  // into "no lists" and null).
-  "lib/onboarding-conversation.ts":
-    "JSON.parse throws → falls back to regexExtract, which is the designed fallback.",
+  // into "no lists" and null). `lib/onboarding-conversation.ts` followed
+  // on 2026-10-22 (the setup-answer reading; a truncated answer throws
+  // and falls back to regexExtract, as a failed parse did before).
   "lib/match-availability-classifier.ts":
     "parse() fails → UNCLEAR verdict, which is the safe default.",
   "lib/roster-survey-classifier.ts": "parse() fails → the caller's fallback classification.",
@@ -307,7 +307,9 @@ describe("max_tokens ceiling (recurrence guard)", () => {
     // `max_tokens: 4096` went with it). If this drops to ~0 the regex
     // has rotted and the guard below is vacuously passing — which is
     // exactly how a guard stops guarding.
-    expect(sites.length).toBeGreaterThanOrEqual(8);
+    // Seven since 2026-10-22: the onboarding setup-answer reading moved
+    // onto pipeline/llm.ts (`extractSetupAnswers`).
+    expect(sites.length).toBeGreaterThanOrEqual(7);
     // `message-analyzer.ts` held the scheduled-chase composer's own
     // `messages.create`, the site of the 2026-08-31 incident (`max_tokens:
     // 64000`, so every chase had ALWAYS silently used the static fallback).
