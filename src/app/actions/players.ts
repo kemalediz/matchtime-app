@@ -309,6 +309,12 @@ export async function mergePlayers(
   const [keepFacts, dropFacts] = await Promise.all([loadOwnershipFacts(keepUserId), loadOwnershipFacts(dropUserId)]);
   if (!keepFacts || !dropFacts) throw new Error("Player not found");
   if (!clubOwnsUser(dropFacts, orgId)) return { ok: false, error: s.pg_err_merge_keep_owned };
+  // A dropped record lent out to a partner club carries rows there (its
+  // guest membership, attendance, ratings), and the merge moves them all.
+  // Only onto a record this club owns too, never onto someone's own
+  // account (adversarial review, 2026-10-22).
+  const dropReachesOtherClubs = (dropFacts.memberships ?? []).some((m) => m.orgId !== orgId);
+  if (dropReachesOtherClubs && !clubOwnsUser(keepFacts, orgId)) return { ok: false, error: s.pg_err_player_owns_account };
   if (!clubOwnsUser(keepFacts, orgId)) {
     const [keepUser, dropUser] = await Promise.all([
       db.user.findUnique({ where: { id: keepUserId }, select: { phoneNumber: true, name: true } }),

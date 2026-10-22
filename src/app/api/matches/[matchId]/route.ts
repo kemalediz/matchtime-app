@@ -5,6 +5,7 @@ import { resolveTeamLabels } from "@/lib/team-labels";
 import { withoutVenueBookkeeping } from "@/lib/venue-location-rules";
 import { NextResponse } from "next/server";
 import { organisersPickMom } from "@/lib/mom-chooser";
+import { loadPlayerNames } from "@/lib/player-display-name";
 
 export async function GET(
   req: Request,
@@ -57,6 +58,13 @@ export async function GET(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
+  // The printed name (player-display-name.ts): an alias for an empty
+  // User.name, and a partner guest's club (D7). Never a phone number.
+  const shown = await loadPlayerNames(
+    match.activity.orgId,
+    [...match.attendances.map((a) => a.userId), ...match.teamAssignments.map((t) => t.userId)],
+    match.activity.org.language,
+  );
   // Flatten: project each user's positions for THIS match's activity.
   const flatten = (u: {
     id: string; name: string | null; image: string | null;
@@ -64,7 +72,7 @@ export async function GET(
   }) => {
     const pap = u.activityPositions.find((p) => p.activityId === match.activityId);
     return {
-      id: u.id, name: u.name, image: u.image,
+      id: u.id, name: shown.get(u.id)?.display ?? u.name, image: u.image,
       positions: pap?.positions ?? [],
     };
   };

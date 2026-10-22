@@ -22,6 +22,7 @@ import { organisersAnnounce } from "./list-announcer";
 import { buildOrganiserListUpdate } from "./organisers-list-copy";
 import { sendAdminNotice } from "./admin-channel";
 import { normaliseLang } from "./i18n/lang";
+import { loadPlayerNames } from "./player-display-name";
 
 export async function announceSquadFullIfJustFilled(
   matchId: string,
@@ -124,6 +125,8 @@ export async function announceSquadFullIfJustFilled(
   // An organiser-pick club (slice 2b): the waiting list, never "first to
   // reply IN takes the slot".
   const organiser = features?.benchPickMode === "organiser";
+  // A partner guest prints by name and club (player-display-name.ts).
+  const shown = await loadPlayerNames(m.activity.orgId, m.attendances.map((a) => a.userId), lang);
   // The words live in `group-copy.ts` (pure) so the golden snapshot can
   // pin them; this module owns the claim and the job.
   await db.botJob.create({
@@ -136,8 +139,8 @@ export async function announceSquadFullIfJustFilled(
         maxPlayers: m.maxPlayers,
         activityName: m.activity.name,
         kickoffLabel: kickoffLondon,
-        confirmed: confirmed.map((a) => a.user.name),
-        bench: bench.map((a) => a.user.name),
+        confirmed: confirmed.map((a) => shown.get(a.userId)?.display ?? a.user.name),
+        bench: bench.map((a) => shown.get(a.userId)?.display ?? a.user.name),
         benchInvite: benchOn ? buildSquadCompleteBenchInvite({ lang, organiser }) : null,
         lang,
       }),

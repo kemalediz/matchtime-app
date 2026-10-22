@@ -46,6 +46,11 @@ const SQUAD = [
 let ratingFindManyArgs: Record<string, unknown>[] = [];
 let ratingAggregateArgs: Record<string, unknown>[] = [];
 let membershipFindManyArgs: Record<string, unknown>[] = [];
+/** The printed-name lookup selects names and guest rows, never a rating. */
+const isNameLookup = (args: Record<string, unknown>): boolean => {
+  const sel = (args.select ?? {}) as Record<string, unknown>;
+  return ("guestFromOrgId" in sel || "name" in sel) && !("seedRating" in sel);
+};
 let userFindArgs: Record<string, unknown>[] = [];
 
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
@@ -75,6 +80,10 @@ vi.mock("@/lib/db", () => ({
     },
     membership: {
       findMany: (args: Record<string, unknown>) => {
+        // Only the SEED reads count here. The printed-name lookup
+        // (player-display-name.ts, 2026-10-22) also reads this club's
+        // memberships, for `guestFromOrgId`, after the balancer has run.
+        if (isNameLookup(args)) return Promise.resolve([]);
         membershipFindManyArgs.push(args);
         return Promise.resolve(
           SQUAD.map((p) => ({ userId: p.id, seedRating: p.seed })),
@@ -88,6 +97,7 @@ vi.mock("@/lib/db", () => ({
     // GLOBAL reads that must NOT be how the seed arrives any more.
     user: {
       findMany: (args: Record<string, unknown>) => {
+        if (isNameLookup(args)) return Promise.resolve([]);
         userFindArgs.push(args);
         return Promise.resolve([]);
       },

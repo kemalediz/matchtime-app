@@ -710,7 +710,13 @@ export type AttStatus = "CONFIRMED" | "BENCH" | "DROPPED";
 
 export interface Member {
   userId: string;
+  /** `User.name` ("" when empty). What the pipeline MATCHES people on. */
   name: string;
+  /** PRINT-ONLY: the squad-list line for this player
+   *  (`loadPlayerNames().display`, player-display-name.ts), e.g. "C1
+   *  (Friday MT Community)" for a partner guest. Absent in fixtures that
+   *  predate it: printers then fall back to `name`. */
+  displayName?: string;
   isAdmin: boolean;
   hasPhone: boolean;
 }

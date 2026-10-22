@@ -4040,6 +4040,8 @@ export const tr: Strings = {
     `Bu VARIM *${p.asker}* maçı için mi (${p.day})? Öyleyse ${p.link ? `bana söylemek için dokun: ${p.link}` : `bana *${p.prefill}* yaz`}.${p.own ? ` ${p.own} maçı içinse tekrar VARIM yaz.` : ""}`,
   xask_dm_unclear: (p) =>
     `Kusura bakma, anlayamadım. *${p.asker}* için oynamak istiyorsan ${p.link ? `buraya dokun: ${p.link}` : `bana *${p.prefill}* yaz`}.`,
+  xask_dm_name_ask: (p) =>
+    `Teşekkürler! Seni *${p.asker}* maçına (${p.day}) yazmadan önce: listede hangi isimle görünmek istersin? Sadece adını yaz.`,
   xask_vol_game_over: (p) => `*${p.asker}* maçı artık bitti, değiştirecek bir şey yok.`,
   xask_dm_which: (p) =>
     `Hangi maçtan çıkıyorsun? *${p.asker}* (${p.askerDay}) için *1*, *${p.own}* (${p.ownDay}) için *2* yaz.`,

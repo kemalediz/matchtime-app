@@ -40,7 +40,12 @@ type U = {
 type M = { id: string; userId: string; orgId: string; role: string; leftAt: Date | null; guestFromOrgId: string | null };
 type O = { id: string; approvalStatus: string; language: string };
 
-const store = { users: new Map<string, U>(), mems: [] as M[], orgs: new Map<string, O>() };
+const store = {
+  users: new Map<string, U>(),
+  mems: [] as M[],
+  orgs: new Map<string, O>(),
+  events: [] as Array<{ userId: string; orgId: string; cause: string }>,
+};
 const authMock = vi.fn();
 const requireOrgAdmin = vi.fn();
 const mergeCore = vi.fn();
@@ -118,6 +123,12 @@ vi.mock("@/lib/db", () => {
     organisation: {
       findUnique: async ({ where }: { where: { id: string } }) => store.orgs.get(where.id) ?? null,
     },
+    attendanceEvent: {
+      findMany: async ({ where }: { where: { userId: string; orgId: { in: string[] }; cause: { notIn: string[] } } }) =>
+        store.events
+          .filter((e) => e.userId === where.userId && where.orgId.in.includes(e.orgId) && !where.cause.notIn.includes(e.cause))
+          .map((e) => ({ orgId: e.orgId })),
+    },
     match: {
       findUnique: async () => ({
         id: "match-1",
@@ -185,6 +196,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   store.users.clear();
   store.mems.length = 0;
+  store.events.length = 0;
   store.orgs.clear();
   store.orgs.set(CLUB, { id: CLUB, approvalStatus: "approved", language: "en" });
   store.orgs.set(OTHER, { id: OTHER, approvalStatus: "approved", language: "en" });
@@ -418,5 +430,152 @@ describe("step 4: an unapproved club cannot edit players", () => {
   it("a platform superadmin still can", async () => {
     store.users.get(ADMIN)!.isSuperadmin = true;
     expect(await updatePlayerName("ph", CLUB, "Fixed")).toEqual({ ok: true });
+  });
+});
+
+// ── A home club keeps its own player while he guests elsewhere (2026-10-22) ──
+//
+// Prod, MT Test / Friday MT Community: C2 is a never-signed-in placeholder
+// at Friday MT Community. When he volunteered for a partner ask, MatchTime
+// gave him a guest membership at MT Test (`guestFromOrgId` = Friday). From
+// that moment `clubOwnsUser` said Friday no longer owned him, so Kemal's
+// rename at Friday was refused and the squad list kept printing "(unnamed)".
+// A guest row FROM the home club is that club's own player lent out; it
+// must not take him away. Every other protection stays.
+describe("a guest membership from the home club does not take the player away from it", () => {
+  const HOME = CLUB;
+  const PARTNER = "org-partner";
+  const THIRD = "org-third";
+  const base = {
+    email: "wa-sync+player-x@matchtime.local",
+    onboarded: false,
+    password: null,
+    emailVerified: null,
+    isSuperadmin: false,
+    accountCount: 0,
+    guestOrgsWithOtherHistory: [] as string[],
+  };
+  const home = { orgId: HOME, guestFromOrgId: null };
+  const lent = { orgId: PARTNER, guestFromOrgId: HOME };
+
+  describe("pure rule", () => {
+    it("owned by the home club when his only other row is a guest row from the home club", () => {
+      expect(clubOwnsUser({ ...base, memberships: [home, lent] }, HOME)).toBe(true);
+    });
+    it("still owned with guest rows at several partners, all from the home club", () => {
+      expect(clubOwnsUser({ ...base, memberships: [home, lent, { orgId: THIRD, guestFromOrgId: HOME }] }, HOME)).toBe(true);
+    });
+    it("never owned by the partner club he guests at", () => {
+      expect(clubOwnsUser({ ...base, memberships: [home, lent] }, PARTNER)).toBe(false);
+    });
+    it("a guest row from a DIFFERENT club still blocks the home club", () => {
+      expect(clubOwnsUser({ ...base, memberships: [home, { orgId: PARTNER, guestFromOrgId: THIRD }] }, HOME)).toBe(false);
+    });
+    it("an ordinary membership at any other club still blocks", () => {
+      expect(clubOwnsUser({ ...base, memberships: [home, lent, { orgId: THIRD, guestFromOrgId: null }] }, HOME)).toBe(false);
+    });
+    it("a guest row alone, with no ordinary home membership, owns nothing", () => {
+      expect(clubOwnsUser({ ...base, memberships: [lent] }, HOME)).toBe(false);
+      expect(clubOwnsUser({ ...base, memberships: [lent] }, PARTNER)).toBe(false);
+    });
+    // Adversarial review, finding 1: a FORMER ordinary member of the
+    // partner club who volunteers has his old row relabelled as a guest row
+    // (partner-guest.ts writePlace). His history there is not the home
+    // club's to take over.
+    it("a lent-out row at a club where he has history of his own does not count", () => {
+      expect(clubOwnsUser({ ...base, memberships: [home, lent], guestOrgsWithOtherHistory: [PARTNER] }, HOME)).toBe(false);
+    });
+    it("unknown history fails closed", () => {
+      const { guestOrgsWithOtherHistory: _drop, ...noFacts } = base;
+      expect(clubOwnsUser({ ...noFacts, memberships: [home, lent] }, HOME)).toBe(false);
+      // A record with no lent-out rows never needs the fact.
+      expect(clubOwnsUser({ ...noFacts, memberships: [home] }, HOME)).toBe(true);
+    });
+    it.each([
+      ["signed in by phone", { onboarded: true }],
+      ["has an OAuth account", { accountCount: 1 }],
+      ["has a password", { password: "x" }],
+      ["verified an email", { emailVerified: new Date() }],
+      ["has a real email", { email: "someone@gmail.com" }],
+      ["is a superadmin", { isSuperadmin: true }],
+    ])("a player who %s is still never club-owned", (_l, over) => {
+      expect(clubOwnsUser({ ...base, ...over, memberships: [home, lent] }, HOME)).toBe(false);
+    });
+  });
+
+  describe("the actions", () => {
+    beforeEach(() => {
+      store.orgs.set(PARTNER, { id: PARTNER, approvalStatus: "approved", language: "en" });
+      store.orgs.set(THIRD, { id: THIRD, approvalStatus: "approved", language: "en" });
+      addUser("c2", { name: null, phoneNumber: "+447700900321" });
+      addMem("c2", HOME);
+      addMem("c2", PARTNER, { guestFromOrgId: HOME });
+    });
+
+    it("the home club can rename its lent-out player (the C2 incident)", async () => {
+      expect(await updatePlayerName("c2", HOME, "C2")).toEqual({ ok: true });
+      expect(store.users.get("c2")!.name).toBe("C2");
+    });
+
+    it("the home club can change his number", async () => {
+      expect(await updatePlayerPhone("c2", HOME, "+447700900654")).toEqual({ ok: true, phoneNumber: "+447700900654" });
+      expect(store.users.get("c2")!.phoneNumber).toBe("+447700900654");
+    });
+
+    it("the partner club he guests at can rename him or change his number: no", async () => {
+      // An admin of the partner club acting on its own club.
+      addMem(ADMIN, PARTNER, { role: "OWNER" });
+      expect(await updatePlayerName("c2", PARTNER, "Hijack")).toEqual({ ok: false, error: en.pg_err_player_owns_account });
+      const phone = await updatePlayerPhone("c2", PARTNER, ATTACKER_PHONE);
+      expect(phone).toEqual({ ok: false, error: en.phone_err_guest });
+      expect(store.users.get("c2")).toMatchObject({ name: null, phoneNumber: "+447700900321" });
+    });
+
+    it("a guest row from a different club still blocks the home club", async () => {
+      store.mems.find((m) => m.userId === "c2" && m.orgId === PARTNER)!.guestFromOrgId = THIRD;
+      expect(await updatePlayerName("c2", HOME, "C2")).toEqual({ ok: false, error: en.pg_err_player_owns_account });
+      expect(await updatePlayerPhone("c2", HOME, ATTACKER_PHONE)).toEqual({ ok: false, error: en.pg_err_player_owns_account });
+      expect(userUpdate).not.toHaveBeenCalled();
+    });
+
+    it("an ordinary membership at another club still blocks the home club", async () => {
+      addMem("c2", THIRD);
+      expect(await updatePlayerName("c2", HOME, "C2")).toEqual({ ok: false, error: en.pg_err_player_owns_account });
+      expect(await updatePlayerPhone("c2", HOME, ATTACKER_PHONE)).toEqual({ ok: false, error: en.pg_err_player_owns_account });
+      expect(userUpdate).not.toHaveBeenCalled();
+    });
+
+    it("a former member of the partner club, relabelled a guest when he volunteered, stays out of reach (review finding 1)", async () => {
+      store.events.push({ userId: "c2", orgId: PARTNER, cause: "self-attendance" });
+      expect(await updatePlayerName("c2", HOME, "C2")).toEqual({ ok: false, error: en.pg_err_player_owns_account });
+      expect(await updatePlayerPhone("c2", HOME, ATTACKER_PHONE)).toEqual({ ok: false, error: en.pg_err_player_owns_account });
+      expect(userUpdate).not.toHaveBeenCalled();
+    });
+
+    it("guest-place moves at the partner club (an organiser pick) do not take him away", async () => {
+      store.events.push({ userId: "c2", orgId: PARTNER, cause: "partner-ask" }, { userId: "c2", orgId: PARTNER, cause: "organiser-pick" });
+      expect(await updatePlayerName("c2", HOME, "C2")).toEqual({ ok: true });
+    });
+
+    it("a merge cannot push a lent-out placeholder's partner-club rows onto a record the club does not own (review finding 2)", async () => {
+      addMem("victim", HOME); // a real account that is also at this club
+      const res = await mergePlayers(HOME, "victim", "c2");
+      expect(res).toEqual({ ok: false, error: en.pg_err_player_owns_account });
+      expect(mergeCore).not.toHaveBeenCalled();
+    });
+
+    it("still works: a lent-out placeholder merged into another of the club's own placeholders", async () => {
+      addUser("keep", { name: "Keeper" });
+      addMem("keep", HOME);
+      expect(await mergePlayers(HOME, "keep", "c2")).toEqual({ ok: true });
+      expect(mergeCore).toHaveBeenCalledWith(expect.anything(), "keep", "c2", expect.anything());
+    });
+
+    it("once he has signed in himself, the home club cannot rename him or change his number", async () => {
+      store.users.get("c2")!.onboarded = true;
+      expect(await updatePlayerName("c2", HOME, "C2")).toEqual({ ok: false, error: en.pg_err_player_owns_account });
+      expect(await updatePlayerPhone("c2", HOME, ATTACKER_PHONE)).toEqual({ ok: false, error: en.pg_err_player_owns_account });
+      expect(userUpdate).not.toHaveBeenCalled();
+    });
   });
 });

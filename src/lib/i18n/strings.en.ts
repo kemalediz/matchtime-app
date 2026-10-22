@@ -5428,6 +5428,10 @@ export const en = {
    *  OUT. */
   xask_dm_unclear: (p: { asker: string; link: string | null; prefill: string }) =>
     `Sorry, I didn't catch that. To play for *${p.asker}*, ${p.link ? `tap here: ${p.link}` : `send me *${p.prefill}*`}.`,
+  /** A volunteer MatchTime holds no name for, asked once before his place
+   *  is written (2026-10-22). His next DM is taken as the name. */
+  xask_dm_name_ask: (p: { asker: string; day: string }) =>
+    `Thanks! Before I put you down for *${p.asker}*'s game, ${p.day}, what name should I list you under? Just reply with your name.`,
   xask_vol_game_over: (p: { asker: string }) => `*${p.asker}*'s game is over now, so there's nothing to change.`,
   xask_dm_which: (p: { asker: string; askerDay: string; own: string; ownDay: string }) =>
     `Which game are you out of? Reply *1* for *${p.asker}* (${p.askerDay}) or *2* for *${p.own}* (${p.ownDay}).`,

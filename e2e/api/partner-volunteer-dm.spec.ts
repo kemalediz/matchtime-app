@@ -184,3 +184,28 @@ test("D5b: a plain IN in his group soon after the ask, no own place: the questio
   expect(q?.text).toContain(LINK);
   expect(q?.text).toContain("just say IN in the group again");
 });
+
+// 2026-10-22, MT Test: a volunteer with an EMPTY User.name was listed as
+// "(unnamed)". Now he is asked for a name before his place is written, and
+// his next DM is that name.
+test("a nameless volunteer: asked for a name first, nothing written; his reply names him and puts him in", async ({ request, db }) => {
+  await clearJobs(db);
+  const OMAR2 = "447700900012"; // U.omar2
+  await db.run(`UPDATE "User" SET name = NULL WHERE id = $1`, [U.omar2]);
+  const first = await postDm(request, OMAR2, `IN (ref ${REF})`);
+  expect(first).toMatchObject({ handled: "xask-dm-name-ask", outcome: "asked-name" });
+  expect(await rowOf(db, ASKER_MATCH, U.omar2)).toBeUndefined();
+  const [q] = await dmsTo(db, OMAR2);
+  expect(q).toMatchObject({ orgId: ORG_ID });
+  expect(q.text).toContain("what name should I list you under?");
+  expect(q.text).toContain("FNF Guests");
+
+  const second = await postDm(request, OMAR2, "  Omar  Second ");
+  expect(second).toMatchObject({ handled: "xask-dm-volunteer", outcome: "registered-bench" });
+  expect((await db.one<{ name: string | null }>(`SELECT name FROM "User" WHERE id = $1`, [U.omar2]))?.name).toBe("Omar Second");
+  expect(await rowOf(db, ASKER_MATCH, U.omar2)).toBe("BENCH");
+  expect(await groupPostsOf(db, ORG_ID)).toEqual([]);
+
+  // The question is answered: his next DM is an ordinary one again.
+  expect(await db.one(`SELECT 1 FROM "SentNotification" WHERE kind = 'xask-dm-name' AND key LIKE $1`, [`xask:name:${U.omar2}:%`])).toBeFalsy();
+});

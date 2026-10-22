@@ -1844,6 +1844,7 @@ const SAMPLES: SampleArgs = {
   xask_which_dm: { asker: "FNFCLUB", day: "DAYLABEL", own: "SUTTONCLUB", link: null, prefill: "PREFILLX" },
   xask_dm_which_in: { asker: "FNFCLUB", day: "DAYLABEL", own: "SUTTONCLUB", link: null, prefill: "PREFILLX" },
   xask_dm_unclear: { asker: "FNFCLUB", link: null, prefill: "PREFILLX" },
+  xask_dm_name_ask: { asker: "FNFCLUB", day: "DAYX" },
   xask_thanks_dm: { asker: "FNFCLUB" },
   xask_game_off_dm: { asker: "FNFCLUB", day: "DAYLABEL" },
   // Partner discovery P4 (2026-10-22).

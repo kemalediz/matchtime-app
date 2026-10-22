@@ -14,6 +14,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { compose } from "../compose";
+import { en } from "@/lib/i18n/strings.en";
 import { decide } from "../engine";
 import {
   composeSquadStatusPost,
@@ -1249,5 +1250,44 @@ describe("a squad post with a team sheet on the table is the TEAMS", () => {
         maxPlayers: 14,
       }),
     );
+  });
+});
+
+// 2026-10-22, MT Test: partner guests print by name and club (D7), and an
+// empty User.name prints the group's own word for "unnamed". Both come in
+// on `Member.displayName` from load-state (player-display-name.ts).
+describe("partner guests on the squad post and the team sheet", () => {
+  const withGuests = (): SquadState => {
+    const state = world({ confirmed: [...TEN.slice(0, 5), "usama", "karahan"], bench: ["zair"] });
+    const set = (k: string, name: string, displayName: string) => {
+      const m = state.roster.find((r) => r.userId === `u-${k}`)!;
+      m.name = name;
+      m.displayName = displayName;
+    };
+    set("usama", "C1", "C1 (Friday MT Community)");
+    set("karahan", "", "(unnamed) (Friday MT Community)");
+    set("zair", "Zair", "Zair (Friday MT Community)");
+    return state;
+  };
+
+  it("the roster prints each guest with his club, bench included", () => {
+    const { out } = composeFor(withGuests(), [rosterAsk("adam")]);
+    const text = out.utterances.map((u) => u.text).join("\n");
+    expect(text).toContain("6. C1 (Friday MT Community)");
+    expect(text).toContain("7. (unnamed) (Friday MT Community)");
+    expect(text).toContain("1. Zair (Friday MT Community)");
+    expect(text).not.toContain(en.fallback_player);
+  });
+
+  it("the team sheet prints the same lines", () => {
+    const state = withGuests();
+    state.teams = [
+      { userId: "u-usama", team: "RED" },
+      { userId: "u-karahan", team: "YELLOW" },
+    ];
+    const { out } = composeFor(state, [rosterAsk("adam")]);
+    const text = out.utterances.map((u) => u.text).join("\n");
+    expect(text).toContain("C1 (Friday MT Community)");
+    expect(text).toContain("(unnamed) (Friday MT Community)");
   });
 });

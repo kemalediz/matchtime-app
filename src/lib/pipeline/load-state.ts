@@ -27,6 +27,7 @@ import { decidePaymentSnapshot, type PaymentSnapshot } from "./payment-answer";
 import type { RatingProgress } from "../rating-progress-answer";
 import type { ClubSnapshot, PartnerAskView, SquadState } from "./types";
 import { gamesOverlap } from "../partner-ask-rules";
+import { loadPlayerNames } from "../player-display-name";
 
 /** Statuses `selectRegistrationMatch` considers, plus COMPLETED so the
  *  "previous match still in flight" guard can see the whole picture. */
@@ -81,9 +82,18 @@ export async function loadSquadState(
     },
   });
 
+  // The printed line per member (player-display-name.ts, 2026-10-22): a
+  // partner guest's club, an alias when User.name is empty. `name` stays
+  // the plain User.name, which is what the pipeline matches people on.
+  const shownNames = await loadPlayerNames(
+    orgId,
+    memberships.map((m) => m.user.id),
+    features.language,
+  );
   const roster = memberships.map((m) => ({
     userId: m.user.id,
     name: m.user.name ?? "",
+    displayName: shownNames.get(m.user.id)?.display,
     isAdmin: m.role === "OWNER" || m.role === "ADMIN",
     hasPhone: !!m.user.phoneNumber,
   }));
