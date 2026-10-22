@@ -118,7 +118,7 @@ receiving club about the requester when a request arrives.
 
 ### 2.4 "Average club rating": why not, and what instead
 
-**We should not show it.** Ratings are club-scoped since 2026-09-20: a player's 7.5 at one club
+**We will not show it** (decided by Kemal, 2026-10-22). Ratings are club-scoped since 2026-09-20: a player's 7.5 at one club
 means "good compared with this group", not good on any shared scale. A casual club and a
 competitive club can both average 6.5. Worse, the balancer's shrunk ratings pull every club towards
 its own mean, so averages across clubs converge and would look meaningful while meaning nothing.
@@ -337,4 +337,4 @@ P1 to P5 touch no prompt; the only model-facing change is the notice wording in 
 | D-7 | Asking in words (#367): number now or later? | **Later (P6)**, with its own prompt page and paid tests; until then words asks ask for every open place and say how many. |
 | D-8 | Member count: exact, or a band? | **Exact total plus "regular players"**, as he asked. Names never. |
 | D-9 | Miles only? | **Miles for now**, kilometres when a non-UK club joins. |
-| D-10 | Show a level? | **Self-set Casual, Mixed or Competitive, optional.** No rating of any kind across clubs. |
+| D-10 | Show a level? | **No rating of any kind across clubs: decided (Kemal, 2026-10-22).** Still open: an optional self-set Casual, Mixed or Competitive level (recommended). |
