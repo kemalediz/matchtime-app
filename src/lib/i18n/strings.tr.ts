@@ -3870,6 +3870,30 @@ export const tr: Strings = {
   // ─── İstekten sonra misafirler (slice S4) ───────────────────────────
   xask_thanks_dm: (p) => `*${p.asker}* oyuncusunu buldu. Teklifin için teşekkürler 🙏`,
   xask_game_off_dm: (p) => `*${p.asker}* kulübünün ${p.day} maçı iptal oldu, yani artık gerek kalmadı. Teklifin için teşekkürler 🙏`,
+  // ─── Partner discovery P4 (2026-10-22): seçilen sayıda oyuncu ─────────
+  // Plan: MDs/partner-discovery-plan-2026-10-21.md, bölüm 4. Maç sayfasının
+  // sayı seçicisi ve partner kutucukları, elle iptal edilen istek ve
+  // duraklatılmış partner.
+  xask_player_count: (p) => `${p.n} oyuncu`,
+  xask_round_number_label: "Kaç oyuncu?",
+  xask_round_partners_label: "Hangi partner kulüpler?",
+  xask_round_count_hint: "Bu sayı seçtiğiniz tüm kulüpler için toplamdır, her kulüp için ayrı değil.",
+  xask_round_button: (p) => `${p.places} oyuncu iste`,
+  xask_round_none_ticked: "En az bir partner kulüp seçin.",
+  xask_round_status: (p) => `${p.wanted} oyuncu isteniyor: şu ana kadar ${p.placed} bulundu`,
+  xask_round_cancel: "Bu isteği iptal et",
+  xask_round_cancelled_toast: "İstek iptal edildi. Partner kulüplere haber verildi.",
+  xask_round_cancel_failed: "Bu istek zaten kapandı. Sayfayı yenileyin.",
+  xask_round_asked_toast: (p) => `${p.partners} kulübünden ${p.places} oyuncu istendi.`,
+  xask_round_skipped_paused: (p) => `Duraklatıldıkları için sorulmadı: ${p.partners}.`,
+  xask_partner_paused: (p) => `${p.partner}: MatchTime'da duraklatıldı, şu an sorulamaz`,
+  xask_refused_paused: (p) => `${p.partner} MatchTime'da duraklatıldı, bu yüzden şu an soramıyorum.`,
+  xask_refused_bad_number: (p) => (p.max === 1 ? "Yalnızca 1 yer açık, 1 oyuncu isteyebilirsiniz." : `1 ile ${p.max} arasında bir oyuncu sayısı seçin.`),
+  xask_not_needed_line: (p) => `*${p.asker}* için artık oyuncuya gerek yok, herkese teşekkürler.`,
+  xask_not_needed_dm: (p) => `*${p.asker}* için artık oyuncuya gerek kalmadı. Teklifin için teşekkürler 🙏`,
+  xaskw_line_paused: (p) => `• *${p.partner}*: MatchTime'da duraklatıldı, bu yüzden sormadım.`,
+  xaskw_places_line: (p) => `${p.places} oyuncu istedim.`,
+  // ─── Partner discovery P4 sonu ───────────────────────────────────────
   xaskw_posted_one: (p) => `*${p.partner}* grubunda paylaştım. VARIM diye yanıtlayan herkes yedek listenize girer.`,
   xaskw_awaiting_one: (p) =>
     `*${p.partner}* organizatörlerine sordum. Evet derlerse gruplarında paylaşırım ve VARIM diye yanıtlayan herkes yedek listenize girer.`,

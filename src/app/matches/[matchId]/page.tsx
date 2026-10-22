@@ -149,7 +149,7 @@ export default async function MatchDetailPage({
     : [];
   // Ask a partner club (cross-club ask, slice S2): admins of a club with an
   // active partner and asking switched on, for a match still to play.
-  const partnerAskRows =
+  const partnerAskPanel =
     isAdmin && ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"].includes(match.status)
       ? await loadPartnerAskPanel(matchId, match.activity.orgId).catch(() => null)
       : null;
@@ -536,8 +536,14 @@ export default async function MatchDetailPage({
         <PartnerGuestsPanel matchId={matchId} clubName={match.activity.org.name} language={match.activity.org.language} rows={partnerGuestRows} />
       )}
 
-      {partnerAskRows && partnerAskRows.length > 0 && (
-        <PartnerAskPanel matchId={matchId} language={match.activity.org.language} rows={partnerAskRows} />
+      {partnerAskPanel && partnerAskPanel.rows.length > 0 && (
+        <PartnerAskPanel
+          matchId={matchId}
+          language={match.activity.org.language}
+          placesOpen={partnerAskPanel.placesOpen}
+          rows={partnerAskPanel.rows}
+          rounds={partnerAskPanel.rounds}
+        />
       )}
 
       {/* Actions */}

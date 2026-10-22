@@ -56,6 +56,7 @@ export type AskRefusal =
   | "too-late"
   | "already-open"
   | "daily-cap"
+  | "bad-number"
   | PartnerGateRefusal;
 
 export interface CanAskInput {
@@ -69,6 +70,10 @@ export interface CanAskInput {
   matchStatus: string;
   matchHistorical: boolean;
   placesOpen: number;
+  /** The number asked for (P4, D-5): the organiser's choice, 1 up to the
+   *  open places, for the whole round. The automatic ask and asking in
+   *  words pass `placesOpen`. */
+  places: number;
   now: Date;
   postBy: Date;
   /** An ask to this partner for this match is already open. */
@@ -93,6 +98,7 @@ export function canAsk(i: CanAskInput): CanAskResult {
   if (i.matchHistorical || !LIVE_MATCH.has(i.matchStatus)) return no("match-not-open");
   if (!i.isNextMatch) return no("not-next-match");
   if (i.placesOpen <= 0) return no("no-places");
+  if (!Number.isInteger(i.places) || i.places < 1 || i.places > i.placesOpen) return no("bad-number");
   if (i.now.getTime() >= i.postBy.getTime()) return no("too-late");
   if (i.openAskForPair) return no("already-open");
   if (i.partnerAsksToday >= PARTNER_ASKS_PER_DAY) return no("daily-cap");
@@ -133,12 +139,43 @@ export function partnerReachable(p: PartnerGateInput): PartnerGateRefusal | null
   return null;
 }
 
+/**
+ * A PAUSED partner (plan 2.1, P4): dormant, or billing-paused (already
+ * read through `isBillingPaused`). It stays a partner, but MatchTime is
+ * switched off in its groups, so an ask is HELD for it: the panel shows it
+ * as paused and does not offer it, and "all partners" skips it.
+ */
+export function isPartnerPaused(p: { dormantAt: Date | null | undefined; billingPaused: boolean }): boolean {
+  return (p.dormantAt !== null && p.dormantAt !== undefined) || p.billingPaused;
+}
+
+/** The refusals that mean the partner is paused (`isPartnerPaused`). */
+export const PAUSED_REFUSALS: ReadonlySet<string> = new Set(["partner-dormant", "partner-paused"]);
+
+/** A round's key (P4): asks sent together share `roundId`; an ask with
+ *  none (the automatic ask, an older row) is a round of its own. */
+export function roundKey(ask: { id: string; roundId: string | null }): string {
+  return ask.roundId ?? ask.id;
+}
+
+/** Which partners a round asks (P4): the ticked ones, or every active one
+ *  for "all"; a paused partner is never asked, and is named. */
+export function roundPartners<P extends { partnershipId: string; paused: boolean }>(
+  partners: P[],
+  ticked: string[] | "all",
+): { ask: P[]; skippedPaused: P[] } {
+  const chosen = ticked === "all" ? partners : partners.filter((p) => ticked.includes(p.partnershipId));
+  return { ask: chosen.filter((p) => !p.paused), skippedPaused: chosen.filter((p) => p.paused) };
+}
+
 export type CloseReason =
   | "match-cancelled"
   | "partnership-inactive"
   | "approval-expired"
   | "filled"
-  | "kickoff";
+  | "kickoff"
+  /** An owner or admin of the asking club cancelled the round (P4). */
+  | "organiser-cancelled";
 
 export interface CloseInput {
   status: string;
@@ -150,14 +187,20 @@ export interface CloseInput {
   matchStatus: string;
   partnershipStatus: string;
   placesOpen: number;
+  /** P4: the guests of this ask's ROUND who have a place (CONFIRMED), from
+   *  any of its asks, and the number the round asked for. */
+  roundPlaced: number;
+  roundWanted: number;
 }
 
-/** Should this open ask close now, and why? Null: it stays open. */
+/** Should this open ask close now, and why? Null: it stays open. Filled:
+ *  the round has its number, or the match has no open place left however
+ *  it went (a guest, a home IN, an organiser's add). */
 export function closeReason(i: CloseInput): CloseReason | null {
   if (!isOpenAskStatus(i.status)) return null;
   if (i.matchStatus === "CANCELLED") return "match-cancelled";
   if (i.partnershipStatus !== "active") return "partnership-inactive";
-  if (i.placesOpen <= 0) return "filled";
+  if (i.placesOpen <= 0 || i.roundPlaced >= i.roundWanted) return "filled";
   if (i.status === "awaiting-approval" && i.now.getTime() >= i.postBy.getTime()) return "approval-expired";
   if (i.now.getTime() >= i.closesAt.getTime()) return "kickoff";
   return null;
@@ -184,10 +227,22 @@ export function closedStatus(reason: CloseReason, status: string): PartnerAskSta
 
 /** Who hears about a close (D8): the partner group only about an ask it
  *  saw; the asking organisers when nobody came or it never got posted. */
-export function closeTells(reason: CloseReason, status: string, volunteers: number): { partnerGroup: "filled" | "off" | null; asker: "expired-approval" | "nobody" | null } {
+export function closeTells(
+  reason: CloseReason,
+  status: string,
+  volunteers: number,
+): { partnerGroup: "filled" | "off" | "not-needed" | null; asker: "expired-approval" | "nobody" | null } {
   const posted = status === "posted";
   return {
-    partnerGroup: !posted ? null : reason === "filled" ? "filled" : reason === "kickoff" ? null : "off",
+    partnerGroup: !posted
+      ? null
+      : reason === "filled"
+        ? "filled"
+        : reason === "organiser-cancelled"
+          ? "not-needed"
+          : reason === "kickoff"
+            ? null
+            : "off",
     asker: reason === "approval-expired" ? "expired-approval" : reason === "kickoff" && posted && volunteers === 0 ? "nobody" : null,
   };
 }

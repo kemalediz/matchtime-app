@@ -94,7 +94,7 @@ const request = (over: Partial<Parameters<typeof requestPartnerAsk>[0]> = {}) =>
 describe("requestPartnerAsk", () => {
   it("each ask: one row waiting for approval, and the partner's organisers are asked with a link to the approve page", async () => {
     const r = await request();
-    expect(r).toEqual({ ok: true, askId: "ask1", status: "awaiting-approval", partnerName: "Sutton FC" });
+    expect(r).toEqual({ ok: true, askId: "ask1", status: "awaiting-approval", partnerName: "Sutton FC", places: 1 });
     expect(dbMock.partnerAsk.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         partnershipId: "p1",

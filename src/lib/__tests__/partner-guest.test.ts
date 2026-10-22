@@ -8,6 +8,8 @@ const dbMock = vi.hoisted(() => ({
   partnerAsk: { findUnique: vi.fn(), updateMany: vi.fn() },
   sentNotification: { create: vi.fn() },
   $executeRaw: vi.fn(),
+  // P4: a first-come club's place is written under the match's lock.
+  $transaction: vi.fn((cb: (tx: unknown) => unknown) => cb(dbMock)),
   organisation: { findUnique: vi.fn() },
   membership: { findUnique: vi.fn(), upsert: vi.fn() },
   attendance: { findUnique: vi.fn(), findMany: vi.fn() },
@@ -165,6 +167,8 @@ describe("handlePartnerVolunteer", () => {
 
   it("M7 (review): the ask closed while he was being written: his bench row is undone", async () => {
     dbMock.partnerAsk.findUnique
+      .mockResolvedValueOnce(ASK)
+      // P4: the round's fresh read under the match's lock.
       .mockResolvedValueOnce(ASK)
       .mockResolvedValueOnce({ ...ASK, status: "filled" });
     const r = await handlePartnerVolunteer(write(), NOW);

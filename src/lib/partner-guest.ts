@@ -20,7 +20,9 @@
  * Whether he plays is the asking club's own rule: an organiser-pick club
  * puts every IN on the bench for its organisers to pick, a first-come
  * club confirms while there is room (`registerAttendance` decides, as for
- * any player). Replies are in HIS club's language (D9); the notice to the
+ * any player) AND while the ask's round is below the number its organiser
+ * chose (partner discovery P4, 2026-10-22: checked and written under one
+ * lock per match). Replies are in HIS club's language (D9); the notice to the
  * asking club in its own. Logs carry ids only.
  *
  * EVERY ANSWER TO HIM IS A DM (Kemal, 2026-10-21): volunteering adds no
@@ -38,6 +40,8 @@ import { dayCommaTimeLabel, timeLabel } from "./i18n/dates";
 import { t } from "./i18n/t";
 import { gamesOverlap } from "./partner-ask-rules";
 import { decideVolunteer, isPastGuestDue } from "./partner-volunteer-rules";
+import { loadRoundFill } from "./partner-ask-round";
+import { normaliseBenchPickMode } from "./squad-capacity";
 
 const LIVE = ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] as const;
 
@@ -123,13 +127,16 @@ async function decideAndWriteVolunteer(w: VolunteerWrite, now: Date): Promise<De
       askerOrgId: true,
       partnerOrgId: true,
       matchId: true,
+      roundId: true,
+      places: true,
       volunteerUserIds: true,
+      pickedUserIds: true,
       match: { select: { date: true, status: true, activity: { select: { matchDurationMins: true } } } },
     },
   });
   if (!ask) return { ok: false, outcome: "failed", dmText: null, partnerOrgId: null };
   const [asker, partner] = await Promise.all([
-    db.organisation.findUnique({ where: { id: ask.askerOrgId }, select: { id: true, name: true, language: true } }),
+    db.organisation.findUnique({ where: { id: ask.askerOrgId }, select: { id: true, name: true, language: true, benchPickMode: true } }),
     db.organisation.findUnique({ where: { id: ask.partnerOrgId }, select: { id: true, name: true, language: true } }),
   ]);
   if (!asker || !partner) return { ok: false, outcome: "failed", dmText: null, partnerOrgId: null };
@@ -220,22 +227,64 @@ async function decideAndWriteVolunteer(w: VolunteerWrite, now: Date): Promise<De
       }
     }
 
-    if (decision.asGuest) {
-      // A guest for this one match (plan 3.7). One membership per club and
-      // person: a past guest of this club plays for it again on the same
-      // row, so his rating here carries on.
-      await db.membership.upsert({
-        where: { userId_orgId: { userId, orgId: asker.id } },
-        create: { userId, orgId: asker.id, role: "PLAYER", guestFromOrgId: partner.id, guestMatchId: ask.matchId },
-        // Review L4: a live guest mark for this match (from another partner
-        // club's ask) is kept, never overwritten.
-        update:
-          askerMember && !askerMember.leftAt && askerMember.guestFromOrgId && askerMember.guestMatchId === ask.matchId
-            ? {}
-            : { leftAt: null, guestFromOrgId: partner.id, guestMatchId: ask.matchId },
-      });
+    const writePlace = async () => {
+      if (decision.asGuest) {
+        // A guest for this one match (plan 3.7). One membership per club and
+        // person: a past guest of this club plays for it again on the same
+        // row, so his rating here carries on.
+        await db.membership.upsert({
+          where: { userId_orgId: { userId, orgId: asker.id } },
+          create: { userId, orgId: asker.id, role: "PLAYER", guestFromOrgId: partner.id, guestMatchId: ask.matchId },
+          // Review L4: a live guest mark for this match (from another partner
+          // club's ask) is kept, never overwritten.
+          update:
+            askerMember && !askerMember.leftAt && askerMember.guestFromOrgId && askerMember.guestMatchId === ask.matchId
+              ? {}
+              : { leftAt: null, guestFromOrgId: partner.id, guestMatchId: ask.matchId },
+        });
+      }
+      return registerAttendance(userId, ask.matchId, { event, actorIsAdmin: false });
+    };
+
+    // THE ROUND'S NUMBER (partner discovery P4, 2026-10-22). Only the
+    // ASKING club's mode counts (plan 4). An organiser-pick club puts every
+    // volunteer on its bench, unchanged. A first-come club gives a place
+    // only while the round is below the number the organiser chose: the
+    // fill check and the place are written under ONE lock per match, so
+    // two volunteers at once can never both take the last wanted place.
+    // The lock is held by this transaction while the place is written;
+    // `registerAttendance` commits its own write before the lock is let go,
+    // so the next volunteer's check sees it.
+    let result: Awaited<ReturnType<typeof registerAttendance>>;
+    let roundNowFull = false;
+    if (normaliseBenchPickMode(asker.benchPickMode) === "organiser") {
+      result = await writePlace();
+    } else {
+      const locked = await db.$transaction(
+        async (tx) => {
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`xask-fill:${ask.matchId}`}))`;
+          const fresh = await db.partnerAsk.findUnique({
+            where: { id: ask.id },
+            select: { id: true, roundId: true, matchId: true, places: true, volunteerUserIds: true, pickedUserIds: true },
+          });
+          if (!fresh) return null;
+          const fill = await loadRoundFill(fresh);
+          if (fill.placed >= fill.wanted) return null;
+          const r = await writePlace();
+          return { r, full: r.status === "CONFIRMED" && fill.placed + 1 >= fill.wanted };
+        },
+        { maxWait: 20_000, timeout: 30_000 },
+      );
+      if (!locked) {
+        // The round has its number: he is taken off the ask again, nothing
+        // else was written for him, and he hears the place has gone.
+        await db.$executeRaw`UPDATE "PartnerAsk" SET "volunteerUserIds" = array_remove("volunteerUserIds", ${userId}) WHERE id = ${ask.id}`;
+        console.log(`[partner-guest] ask ${ask.id}: ${userId} too late, the round has its number`);
+        return { ok: true, outcome: "closed", dmText: ps.xask_vol_closed({ asker: asker.name }), partnerOrgId: partner.id };
+      }
+      result = locked.r;
+      roundNowFull = locked.full;
     }
-    const result = await registerAttendance(userId, ask.matchId, { event, actorIsAdmin: false });
     // Review M7: the ask may have closed (and stood its volunteers down)
     // while he was written. Re-checked after the write: a bench row it no
     // longer covers is undone, and he is told the place has gone.
@@ -246,6 +295,12 @@ async function decideAndWriteVolunteer(w: VolunteerWrite, now: Date): Promise<De
     }
     const bench = result.status === "BENCH";
     await tellAskerOnce("in", t(askerLang).xask_vol_notice_asker({ name: w.name, partner: partner.name, day, bench }));
+    // His place filled the round: every ask in it closes now, each partner
+    // group hears its one "filled" line (the sweep would, at its next poll).
+    if (roundNowFull) {
+      const { closeRoundIfDue } = await import("./partner-ask");
+      await closeRoundIfDue(ask.id, now);
+    }
     console.log(`[partner-guest] ask ${ask.id}: ${userId} on match ${ask.matchId} as ${result.status}${decision.asGuest ? " (guest)" : ""}`);
     return {
       ok: true,
@@ -340,7 +395,9 @@ export async function standDownVolunteers(askId: string, reason: string, now: Da
             phone: phone.replace(/^\+/, ""),
             text: gameOff
               ? ps.xask_game_off_dm({ asker: asker.name, day: dayCommaTimeLabel(partner.language, ask.match.date) })
-              : ps.xask_thanks_dm({ asker: asker.name }),
+              : reason === "organiser-cancelled"
+                ? ps.xask_not_needed_dm({ asker: asker.name })
+                : ps.xask_thanks_dm({ asker: asker.name }),
           },
         });
       }

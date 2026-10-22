@@ -32,6 +32,7 @@ const base = (over: Partial<CanAskInput> = {}): CanAskInput => ({
   matchStatus: "UPCOMING",
   matchHistorical: false,
   placesOpen: 1,
+  places: 1,
   now: new Date(KICKOFF.getTime() - 6 * H),
   postBy,
   openAskForPair: false,
@@ -121,6 +122,8 @@ describe("closing an ask", () => {
     matchStatus: "UPCOMING",
     partnershipStatus: "active",
     placesOpen: 1,
+    roundPlaced: 0,
+    roundWanted: 1,
     ...over,
   });
 
