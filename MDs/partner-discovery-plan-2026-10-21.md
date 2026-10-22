@@ -341,7 +341,7 @@ P1 to P5 touch no prompt; the only model-facing change is the notice wording in 
 | D-4 | Request limits? | **20 new requests a day, 50 pending (decided), an unanswered pairing request expires after 14 days (an ask for players ends with its match), 30-day wait after a decline or an end by the other club, block available.** |
 | D-5 | Default number on the ask picker? | **Decided (Kemal, 2026-10-22): 1**, up to the open places. Most asks are for one player and over-asking floods partner groups. |
 | D-6 | Keep the platform owner's create form? | **Decided (Kemal, 2026-10-22): no.** Keep the list with pause and end as an override. |
-| D-7 | Asking in words (#367): number now or later? | **Later (P6)**, with its own prompt page and paid tests; until then words asks ask for every open place and say how many. |
-| D-8 | Member count: exact, or a band? | **Exact total plus "regular players"**, as he asked. Names never. |
-| D-9 | Miles only? | **Miles for now**, kilometres when a non-UK club joins. |
+| D-7 | Asking in words (#367): number now or later? | **Decided (Kemal, 2026-10-22):** **Later (P6)**, with its own prompt page and paid tests; until then words asks ask for every open place and say how many. |
+| D-8 | Member count: exact, or a band? | **Decided (Kemal, 2026-10-22):** **Exact total plus "regular players"**, as he asked. Names never. |
+| D-9 | Miles only? | **Decided (Kemal, 2026-10-22):** **Miles for now**, kilometres when a non-UK club joins. |
 | D-10 | Show a level? | **No rating of any kind across clubs: decided (Kemal, 2026-10-22).** Still open: an optional self-set Casual, Mixed or Competitive level (recommended). |
