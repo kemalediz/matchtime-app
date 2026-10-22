@@ -181,6 +181,7 @@ the pairing reply reader keeps its closed answer (accept, decline, neither) unch
 | Withdraw | A can withdraw a pending request at any time (row ends, no notice to B beyond the notice disappearing from its list). |
 | Pause | Unchanged: either side pauses, only the side that paused resumes. |
 | End | Either side's owner or admin ends an active pairing at any time. If B ended it, A waits 30 days to re-request. |
+| Squad full | Every open ask for the match closes automatically, however the last place went (a guest, a home player saying IN, an organiser adding someone): each partner group gets its one "place is filled" line and remaining volunteers are thanked and stood down (Kemal, 2026-10-22). This is today's behaviour: `sweepPartnerAsks` runs on every due-posts poll and closes an ask once the match has no open place (`closeReason`, `placesOpen`). Recommended addition: an organiser can also cancel an open ask by hand, with the same line to each partner group. |
 | Existing ask caps | Unchanged: 2 asks per London day into one partner group, one open ask per match and partner, the cut-off. |
 
 ### 3.5 What the platform owner keeps
