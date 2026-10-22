@@ -55,8 +55,10 @@ test("an active partner and asking on: the admin asks, the partner's organisers 
     PARTNER,
   ]);
   await db.run(
-    `INSERT INTO "ClubPartnership" (id,"askerOrgId","partnerOrgId",status,"askerAcceptedAt","partnerAcceptedAt","createdByUserId","createdAt","updatedAt")
-     VALUES ($1,$2,$3,'active',now(),now(),$4,now(),now())`,
+    // "each-ask" spelled out: this spec is about the partner's organisers
+    // approving, and new rows default to "post without asking" since P3.
+    `INSERT INTO "ClubPartnership" (id,"askerOrgId","partnerOrgId",status,"partnerApproval","askerAcceptedAt","partnerAcceptedAt","createdByUserId","createdAt","updatedAt")
+     VALUES ($1,$2,$3,'active','each-ask',now(),now(),$4,now(),now())`,
     [PAIR, ORG_ID, PARTNER, U.admin],
   );
   // Asking is Off by default: still no panel.

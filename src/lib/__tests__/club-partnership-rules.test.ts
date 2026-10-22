@@ -91,9 +91,9 @@ describe("accepting", () => {
     const r = planPartnershipAction(row({ askerAcceptedAt: NOW }), { orgId: "sutton", role: "OWNER", action: "accept", userId: "u2", now: NOW });
     expect(r).toEqual({ ok: true, patch: { partnerAcceptedAt: NOW, partnerAcceptedBy: "u2", status: "active" } });
   });
-  it("an ADMIN or PLAYER cannot accept: owners only", () => {
-    expect(planPartnershipAction(row(), { orgId: "fnf", role: "ADMIN", action: "accept", userId: "u", now: NOW })).toEqual({ ok: false, refusal: "owner-only" });
-    expect(planPartnershipAction(row(), { orgId: "fnf", role: "PLAYER", action: "accept", userId: "u", now: NOW })).toEqual({ ok: false, refusal: "owner-only" });
+  it("an ADMIN accepts too (D-2, Kemal 2026-10-22); a PLAYER cannot", () => {
+    expect(planPartnershipAction(row(), { orgId: "fnf", role: "ADMIN", action: "accept", userId: "u", now: NOW })).toEqual({ ok: true, patch: { askerAcceptedAt: NOW, askerAcceptedBy: "u" } });
+    expect(planPartnershipAction(row(), { orgId: "fnf", role: "PLAYER", action: "accept", userId: "u", now: NOW })).toEqual({ ok: false, refusal: "admin-only" });
   });
   it("a club that is neither side can do nothing", () => {
     expect(planPartnershipAction(row(), { orgId: "x", role: "OWNER", action: "accept", userId: "u", now: NOW })).toEqual({ ok: false, refusal: "not-a-side" });
@@ -108,13 +108,14 @@ describe("accepting", () => {
 });
 
 describe("declining, pausing, resuming, removing", () => {
-  it("an owner of either side declines a proposed pair: it ends", () => {
+  it("an owner or admin of either side declines a proposed pair: it ends", () => {
     expect(planPartnershipAction(row(), { orgId: "sutton", role: "OWNER", action: "decline", userId: "u", now: NOW })).toEqual({
       ok: true,
       // Partner discovery (P1): who ended it, when and why, for the 30-day wait.
       patch: { status: "ended", pausedByOrgId: null, endedAt: NOW, endedByOrgId: "sutton", endReason: "declined" },
     });
-    expect(planPartnershipAction(row(), { orgId: "sutton", role: "ADMIN", action: "decline", userId: "u", now: NOW })).toEqual({ ok: false, refusal: "owner-only" });
+    expect(planPartnershipAction(row(), { orgId: "sutton", role: "ADMIN", action: "decline", userId: "u", now: NOW })).toMatchObject({ ok: true });
+    expect(planPartnershipAction(row(), { orgId: "sutton", role: "PLAYER", action: "decline", userId: "u", now: NOW })).toEqual({ ok: false, refusal: "admin-only" });
   });
   it("either side's owner or admin pauses an active pair", () => {
     const active = row({ status: "active", askerAcceptedAt: NOW, partnerAcceptedAt: NOW });
@@ -128,12 +129,13 @@ describe("declining, pausing, resuming, removing", () => {
     expect(planPartnershipAction(paused, { orgId: "sutton", role: "ADMIN", action: "resume", userId: "u", now: NOW })).toEqual({ ok: true, patch: { status: "active", pausedByOrgId: null } });
     expect(planPartnershipAction(row({ status: "active" }), { orgId: "sutton", role: "OWNER", action: "resume", userId: "u", now: NOW })).toEqual({ ok: false, refusal: "not-paused" });
   });
-  it("an owner of either side removes it at any stage; an ended pair cannot be removed again", () => {
+  it("an owner or admin of either side removes it at any stage; an ended pair cannot be removed again", () => {
     expect(planPartnershipAction(row({ status: "paused", pausedByOrgId: "fnf" }), { orgId: "sutton", role: "OWNER", action: "end", userId: "u", now: NOW })).toEqual({
       ok: true,
       patch: { status: "ended", pausedByOrgId: null, endedAt: NOW, endedByOrgId: "sutton", endReason: "ended" },
     });
-    expect(planPartnershipAction(row({ status: "active" }), { orgId: "sutton", role: "ADMIN", action: "end", userId: "u", now: NOW })).toEqual({ ok: false, refusal: "owner-only" });
+    expect(planPartnershipAction(row({ status: "active" }), { orgId: "sutton", role: "ADMIN", action: "end", userId: "u", now: NOW })).toMatchObject({ ok: true });
+    expect(planPartnershipAction(row({ status: "active" }), { orgId: "sutton", role: "PLAYER", action: "end", userId: "u", now: NOW })).toEqual({ ok: false, refusal: "admin-only" });
     expect(planPartnershipAction(row({ status: "ended" }), { orgId: "sutton", role: "OWNER", action: "end", userId: "u", now: NOW })).toEqual({ ok: false, refusal: "ended" });
   });
 });

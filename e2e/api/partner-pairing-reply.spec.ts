@@ -12,8 +12,11 @@
  *   - an unquoted "yes" with both waiting asks which, and changes nothing;
  *   - a ✅ reaction on the other notice accepts that side: the pairing is
  *     active;
- *   - a "2" quoting a notice declines; somebody who is not the owner gets
- *     the owner-only line; a reply that is not an answer falls through.
+ *   - a "2" quoting a notice declines; somebody who is neither an owner
+ *     nor an admin is refused (owners and admins answer since partner
+ *     discovery D-2); a reply that is not an answer falls through;
+ *   - a REQUEST (P3): an admin's "1" makes it active at once, the asking
+ *     club is told, and the reply carries the "ask them too" link.
  *
  * Free: no model is called.
  */
@@ -152,14 +155,47 @@ test("'2' quoting a notice declines it", async ({ request, db }) => {
   expect((await acks(db, PHONE.admin)).at(-1)?.text).toMatch(/^Declined\. \*Two FC\* won't be paired with \*.+\*\.$/);
 });
 
-test("somebody who is not the club's owner: the owner-only line, nothing changes", async ({ request, db }) => {
+test("somebody who is neither an owner nor an admin of the club: owners and admins only (D-2), nothing changes", async ({ request, db }) => {
   await pairing(db);
   const theirs = await notice(db, ORG_ID, PHONE.collector, 5);
   setPairingReplyStub({ bodies: { "1": "accept" } });
   const r = await postDm(request, PHONE.collector, "1", { quotedMessageId: theirs.stanza, quotedFromMatchTime: true });
-  expect(r).toMatchObject({ handled: "pairing-reply", outcome: "pairing-owner-only" });
+  expect(r).toMatchObject({ handled: "pairing-reply", outcome: "pairing-admin-only" });
   expect((await row(db))?.askerAcceptedAt).toBeNull();
-  expect((await acks(db, PHONE.collector)).at(-1)?.text).toBe("Only your club's owner can accept, decline or remove a partner club.");
+  expect((await acks(db, PHONE.collector)).at(-1)?.text).toBe("Only your club's owners and admins can accept, decline or end a partner club.");
+});
+
+test("a REQUEST (P3): an ADMIN of the club replies '1': active at once, the asking club told, and the reply offers 'ask them too'", async ({ request, db }) => {
+  // Two FC asked this club; its request carries its own acceptance.
+  await db.run(
+    `INSERT INTO "Organisation" (id, name, slug, "inviteCode", "approvalStatus", "setupStage", "createdAt", "updatedAt")
+     VALUES ($1, 'Two FC', $1, $2, 'approved', 'live', now(), now())`,
+    [TWO, `${TWO}-invite`],
+  );
+  await db.run(`INSERT INTO "Membership" (id, "userId", "orgId", role, "createdAt") VALUES ('e2e-pair-m', $1, $2, 'OWNER', now())`, [U.rater, TWO]);
+  await db.run(
+    `INSERT INTO "ClubPartnership" (id, "askerOrgId", "partnerOrgId", status, origin, "partnerApproval", "askerAcceptedAt", "askerAcceptedBy", "expiresAt", "createdByUserId", "createdAt", "updatedAt")
+     VALUES ($1, $2, $3, 'proposed', 'request', 'standing', now(), $4, now() + interval '14 days', $4, now(), now())`,
+    [PAIR, TWO, ORG_ID, U.rater],
+  );
+  await db.run(`UPDATE "Membership" SET role = 'ADMIN' WHERE "userId" = $1 AND "orgId" = $2`, [U.collector, ORG_ID]);
+  const theirs = await notice(db, ORG_ID, PHONE.collector, 5);
+  setPairingReplyStub({ bodies: { "1": "accept" } });
+  const r = await postDm(request, PHONE.collector, "1", { quotedMessageId: theirs.stanza, quotedFromMatchTime: true });
+  expect(r).toMatchObject({ handled: "pairing-reply", outcome: "pairing-accepted" });
+  const p = await db.one<{ status: string; partnerApproval: string; partnerAcceptedBy: string | null }>(
+    `SELECT status, "partnerApproval", "partnerAcceptedBy" FROM "ClubPartnership" WHERE id = $1`,
+    [PAIR],
+  );
+  // Accepting by reply keeps the default: their asks are posted straight away.
+  expect(p).toEqual({ status: "active", partnerApproval: "standing", partnerAcceptedBy: U.collector });
+  const reply = (await acks(db, PHONE.collector)).at(-1)?.text ?? "";
+  expect(reply).toMatch(/^✅ Accepted\. \*Two FC\* can now ask \*.+\* for players\. Want to ask Two FC for players too\? Tap here: https?:\/\/\S+$/);
+  // The asking club is told; this club's owner is told an admin accepted.
+  const toTwo = await db.all<{ text: string }>(`SELECT text FROM "BotJob" WHERE "orgId" = $1`, [TWO]);
+  expect(toTwo.some((j) => /^✅ \*.+\* accepted \*Two FC\*'s request\./.test(j.text))).toBe(true);
+  const toOwner = await db.all<{ text: string }>(`SELECT text FROM "BotJob" WHERE "orgId" = $1 AND phone = $2`, [ORG_ID, PHONE.admin.replace(/^\+/, "")]);
+  expect(toOwner.some((j) => j.text.includes("accepted *Two FC*'s request"))).toBe(true);
 });
 
 test("a reply that is not an answer falls through: nothing changes, not handled as a pairing", async ({ request, db }) => {

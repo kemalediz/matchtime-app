@@ -6,15 +6,17 @@
  * sections 3.1 and 3.2.
  *
  * Every action proves who is asking here, for real (a server action is a
- * public endpoint): the club's OWNER or ADMIN for the settings page (the
- * pure rules then allow accept, decline and remove to OWNERS only), the
+ * public endpoint): the club's OWNER or ADMIN for the settings page (both
+ * accept, decline and remove since partner discovery D-2), the
  * platform owner (superadmin) for its pause, resume and end override
  * (partner discovery P5: it no longer pairs clubs). The writes are
  * `src/lib/club-partnership.ts`, and the home venue
  * `src/lib/venue-location.ts`.
  *
  * Partner discovery (slice P1, 2026-10-22): the section is shown to every
- * club, with the two discovery switches and the club venue.
+ * club, with the two discovery switches and the club venue. Slice P3:
+ * requests in and out, block and unblock, and "ask them too". Sending
+ * from the search page is `app/actions/partner-requests.ts`.
  */
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
@@ -22,6 +24,10 @@ import { db } from "@/lib/db";
 import { isSuperadmin, requireOrgAdmin } from "@/lib/org";
 import {
   actOnPartnership,
+  blockClub,
+  loadBlockedClubs,
+  requestPartnerships,
+  unblockClub,
   loadClubVenueStatus,
   loadDiscoverySettings,
   loadPartnerAskSettings,
@@ -35,7 +41,14 @@ import {
   type PartnerAskSettings,
   type PartnershipView,
 } from "@/lib/club-partnership";
-import { parsePlatformAction, type ClubRole, type PartnerApproval, type PartnershipAction, type PlatformAction } from "@/lib/club-partnership-rules";
+import {
+  parsePartnerApproval,
+  parsePlatformAction,
+  type ClubRole,
+  type PartnerApproval,
+  type PartnershipAction,
+  type PlatformAction,
+} from "@/lib/club-partnership-rules";
 import { setClubHomeVenueToPick } from "@/lib/venue-location";
 import { parseVenuePick } from "@/lib/venue-suggest-rules";
 
@@ -54,7 +67,7 @@ async function roleIn(userId: string, orgId: string): Promise<ClubRole> {
 }
 
 export interface PartnerClubsData {
-  /** Accept, decline and remove are the owner's. */
+  /** The caller is the club's owner (an admin may do the same since D-2). */
   isOwner: boolean;
   partnerships: PartnershipView[];
   settings: PartnerAskSettings;
@@ -62,6 +75,8 @@ export interface PartnerClubsData {
   discovery: DiscoverySettings;
   /** Partner discovery (P1): the club's venue, for the prompt and the lookup. */
   venue: ClubVenueStatus;
+  /** Partner requests (P3): the clubs this club blocked. */
+  blocked: Array<{ orgId: string; name: string }>;
 }
 
 /** The section's data, for every club (partner discovery, P1); null only
@@ -69,24 +84,33 @@ export interface PartnerClubsData {
 export async function getPartnerClubs(orgId: string): Promise<PartnerClubsData | null> {
   const userId = await sessionUserId();
   const role = await roleIn(userId, orgId);
-  const [partnerships, settings, discovery, venue] = await Promise.all([
+  const [partnerships, settings, discovery, venue, blocked] = await Promise.all([
     loadPartnershipsForOrg(orgId),
     loadPartnerAskSettings(orgId),
     loadDiscoverySettings(orgId),
     loadClubVenueStatus(orgId),
+    loadBlockedClubs(orgId),
   ]);
   if (!settings || !discovery || !venue) return null;
-  return { isOwner: role === "OWNER", partnerships, settings, discovery, venue };
+  return { isOwner: role === "OWNER", partnerships, settings, discovery, venue, blocked };
 }
 
+/**
+ * Accept, decline, withdraw, pause, resume or end, by an owner or an admin
+ * (D-2). Accepting a request also takes the club's per-ask choice
+ * (`approval`, P3); anything that is not one of the two is ignored and the
+ * request's default ("post without asking") stands.
+ */
 export async function actOnPartnershipAction(
   orgId: string,
   partnershipId: string,
   action: PartnershipAction,
+  approval?: PartnerApproval,
 ): Promise<{ ok: boolean; refusal?: string }> {
   const userId = await sessionUserId();
   const role = await roleIn(userId, orgId);
-  const r = await actOnPartnership({ partnershipId, orgId, userId, role, action });
+  const chosen = parsePartnerApproval(approval) ?? undefined;
+  const r = await actOnPartnership({ partnershipId, orgId, userId, role, action, approval: chosen });
   revalidatePath("/admin/settings");
   return r.ok ? { ok: true } : { ok: false, refusal: r.refusal };
 }
@@ -153,6 +177,42 @@ export async function setClubHomeVenueAction(
     console.error(`[geocode] org=${orgId} home venue failed (${(err as Error)?.name ?? "error"})`);
     return { status: "error" };
   }
+}
+
+/** Block another club, from its request or the settings page (P3). */
+export async function blockClubAction(orgId: string, otherOrgId: string): Promise<{ ok: boolean; refusal?: string }> {
+  const userId = await sessionUserId();
+  const role = await roleIn(userId, orgId);
+  if (typeof otherOrgId !== "string") return { ok: false, refusal: "bad-club" };
+  const r = await blockClub({ blockerOrgId: orgId, blockedOrgId: otherOrgId, userId, role });
+  revalidatePath("/admin/settings");
+  return r.ok ? { ok: true } : { ok: false, refusal: r.refusal };
+}
+
+/** Unblock, from the settings page's block list (P3). */
+export async function unblockClubAction(orgId: string, otherOrgId: string): Promise<{ ok: boolean; refusal?: string }> {
+  const userId = await sessionUserId();
+  const role = await roleIn(userId, orgId);
+  if (typeof otherOrgId !== "string") return { ok: false, refusal: "bad-club" };
+  const r = await unblockClub({ blockerOrgId: orgId, blockedOrgId: otherOrgId, role });
+  revalidatePath("/admin/settings");
+  return r.ok ? { ok: true } : { ok: false, refusal: r.refusal };
+}
+
+/**
+ * The one-tap "Ask them for players too" (D-1): a request from this club
+ * to a club that may already ask it, with this club's consent on it. The
+ * other club then accepts once. The same writer and caps as any request.
+ */
+export async function askTooAction(orgId: string, otherOrgId: string): Promise<{ ok: boolean; outcome?: string; refusal?: string }> {
+  const userId = await sessionUserId();
+  const role = await roleIn(userId, orgId);
+  if (typeof otherOrgId !== "string") return { ok: false, refusal: "bad-club" };
+  const r = await requestPartnerships({ askerOrgId: orgId, userId, role, partnerOrgIds: [otherOrgId] });
+  revalidatePath("/admin/settings");
+  const one = r.results[0];
+  if (!one) return { ok: false, refusal: "bad-club" };
+  return one.outcome === "refused" ? { ok: false, refusal: one.refusal } : { ok: true, outcome: one.outcome };
 }
 
 /** The platform owner's override on /admin/clubs/partners (P5): pause,

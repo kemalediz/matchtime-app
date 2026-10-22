@@ -10,7 +10,7 @@
  *   - an unquoted reply with two pairings waiting does not guess: it asks
  *     which;
  *   - the action is `actOnPartnership`, and its refusals are what the
- *     person hears (owner-only for an admin).
+ *     person hears (owners and admins only, D-2, 2026-10-22).
  */
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -177,8 +177,16 @@ describe("what the person hears, from actOnPartnership's result", () => {
     expect(pairingReplyText(FRIDAY, "decline", { ok: true, status: "ended" })).toBe("Declined. *Friday MT Community* won't be paired with *MT Test*.");
   });
 
-  it("an admin who is not the owner: the settings page's owner-only line", () => {
-    expect(pairingReplyText(FRIDAY, "accept", { ok: false, refusal: "owner-only" })).toBe("Only your club's owner can accept, decline or remove a partner club.");
+  it("someone who is neither an owner nor an admin: owners and admins only (D-2)", () => {
+    expect(pairingReplyText(FRIDAY, "accept", { ok: false, refusal: "admin-only" })).toBe("Only your club's owners and admins can accept, decline or end a partner club.");
+    expect(pairingReplyText(FRIDAY, "accept", { ok: false, refusal: "owner-only" })).toBe("Only your club's owners and admins can accept, decline or end a partner club.");
+  });
+
+  it("a request accepted (P3): with the one-tap 'ask them too' link when they cannot be asked yet (D-1)", () => {
+    expect(pairingReplyText(FRIDAY, "accept", { ok: true, status: "active" }, "https://x/ASKTOO")).toBe(
+      "✅ Accepted. *MT Test* can now ask *Friday MT Community* for players. Want to ask MT Test for players too? Tap here: https://x/ASKTOO",
+    );
+    expect(pairingReplyText({ ...FRIDAY, lang: "tr" }, "accept", { ok: true, status: "active" }, "https://x/ASKTOO")).toContain("Buraya dokunun: https://x/ASKTOO");
   });
 
   it("already accepted, or no longer waiting", () => {
@@ -191,7 +199,7 @@ describe("what the person hears, from actOnPartnership's result", () => {
     const tr = { ...FRIDAY, lang: "tr" };
     expect(pairingReplyText(tr, "accept", { ok: true, status: "active" })).toBe("✅ Kabul edildi. *Friday MT Community* ve *MT Test* artık partner kulüp.");
     expect(pairingReplyText(tr, "decline", { ok: true, status: "ended" })).toBe("Reddedildi. *Friday MT Community*, *MT Test* ile eşleştirilmeyecek.");
-    expect(pairingReplyText(tr, "accept", { ok: false, refusal: "owner-only" })).toContain("yalnızca kulübünüzün sahibi");
+    expect(pairingReplyText(tr, "accept", { ok: false, refusal: "admin-only" })).toContain("yalnızca kulübünüzün sahipleri ve yöneticileri");
   });
 });
 

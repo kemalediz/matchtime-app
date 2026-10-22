@@ -307,9 +307,10 @@ describe("settings explanations: the facts match the code", () => {
     // The partner's approval default is the table's column default.
     const schema = read("prisma/schema.prisma");
     const block = schema.slice(schema.indexOf("model ClubPartnership {"));
-    expect(block.slice(0, block.indexOf("\n}"))).toMatch(/partnerApproval\s+String\s+@default\("each-ask"\)/);
-    expect(newClubs("partnerApproval")).toBe(`${t("en").pc_approval_each}.`);
-    expect(newClubs("partnerApproval", "tr")).toBe(`${t("tr").pc_approval_each}.`);
+    // Since partner discovery P3 (Kemal, 2026-10-22): "post without asking".
+    expect(block.slice(0, block.indexOf("\n}"))).toMatch(/partnerApproval\s+String\s+@default\("standing"\)/);
+    expect(newClubs("partnerApproval").startsWith(t("en").pc_approval_standing)).toBe(true);
+    expect(newClubs("partnerApproval", "tr").startsWith(t("tr").pc_approval_standing)).toBe(true);
   });
 
   it("the pay-by-link prices are what a player is charged on a £10 fee", () => {

@@ -5034,7 +5034,7 @@ export const en = {
     `Which pairing is that for? ${p.pairings}. Reply to that pairing's message with your answer.`,
   pc_section_title: "Partner clubs",
   pc_section_lead:
-    "Clubs MatchTime may ask for a player when you are short, and clubs that may ask you. Only the MatchTime team pairs two clubs; each club's owner then accepts.",
+    "Clubs MatchTime may ask for a player when you are short, and clubs that may ask you. Find clubs near you and send them a request: once one of their owners or admins accepts, you can ask them for players.",
   pc_list_label: "Your partner clubs",
   pc_row_we_ask: (p: { other: string }) => `You may ask ${p.other} for players`,
   pc_row_they_ask: (p: { other: string }) => `${p.other} may ask you for players`,
@@ -5050,7 +5050,7 @@ export const en = {
   pc_resume: "Resume",
   pc_remove: "Remove",
   pc_remove_confirm: (p: { other: string }) =>
-    `Remove the partnership with ${p.other}? Only the MatchTime team can pair the two clubs again.`,
+    `Remove the partnership with ${p.other}? To pair again, one club sends the other a new request. A club you remove from asking you can't send you a request for 30 days.`,
   pc_owner_only: "Only your club's owner can accept, decline or remove a partner club.",
   pc_when_label: "Ask partner clubs for players",
   pc_when_off: "Off",
@@ -5089,6 +5089,64 @@ export const en = {
   pd_venue_capped: "Too many venue lookups today. Try again tomorrow.",
   pd_venue_reminder_dm: (p: { club: string; link: string }) =>
     `📍 Confirm *${p.club}*'s venue so nearby clubs can find you: MatchTime has no venue for your club yet. Pick your pitch from the list here: ${p.link}\nMatchTime reminds you once a week until a venue is set.`,
+  // ─── Partner requests (slice P3, 2026-10-22) ────────────────────────
+  // MDs/partner-discovery-plan-2026-10-21.md, sections 3.1 to 3.5. One
+  // club asks another; the other club's owner or admin accepts (1), or
+  // declines (2), by WhatsApp reply or on the settings page. Read by
+  // src/lib/club-partnership.ts, src/lib/pairing-reply.ts and
+  // src/components/settings/partner-clubs-section.tsx. Added as one block.
+  // The request notice. The model behind `pairing-reply.ts` is shown this
+  // message as the context of a reply: the ending "Reply *1* to accept or
+  // *2* to decline, or open <link>" is kept word for word from the old
+  // pairing notice. In the admin group (`inGroup`) they are asked to reply
+  // TO this message, so the answer is known to be about it.
+  pr_request_notice: (p: { asker: string; club: string; card: string; link: string; inGroup?: boolean }) =>
+    `🤝 *${p.asker}* (${p.card}) would like to ask *${p.club}* for players when they are short. If you accept, their asks go straight into your players' group; you can change that, pause or end it at any time. ${p.inGroup ? "Answer by replying to this message. " : ""}Reply *1* to accept or *2* to decline, or open ${p.link}`,
+  // The card in the notice: what one club sees about another (plan 2.3).
+  pr_card_miles: (p: { miles: number }) => `${p.miles.toFixed(1)} miles away`,
+  pr_card_game: (p: { dow: number; time: string; format: string | null }) =>
+    `${["Sundays", "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays"][p.dow] ?? ""} ${p.time}${p.format ? `, ${p.format}` : ""}`,
+  pr_card_no_game: "no regular game yet",
+  pr_card_members: (p: { count: number }) => (p.count === 1 ? "1 member" : `${p.count} members`),
+  // Auto-accept on: the club's organisers are told who joined.
+  pr_auto_joined_notice: (p: { asker: string; club: string; link: string }) =>
+    `🤝 *${p.asker}* is now a partner club of *${p.club}*: you accept partner requests automatically, so they can ask your players' group for players when they are short. You can pause, end or block them here: ${p.link}`,
+  // To the asking club.
+  pr_accepted_notice: (p: { partner: string; club: string }) =>
+    `✅ *${p.partner}* accepted *${p.club}*'s request. You can ask them for players from the match page or by asking MatchTime.`,
+  pr_declined_notice: (p: { partner: string }) => `*${p.partner}* is not taking requests right now.`,
+  pr_expired_notice: (p: { partner: string; link: string }) =>
+    `⌛ Your request to *${p.partner}* had no answer in 14 days, so it has ended. You can send it again from Find clubs near you: ${p.link}`,
+  // To the partner club's owners when one of its admins accepted (D-2).
+  pr_admin_accepted_notice: (p: { name: string; asker: string; club: string; link: string }) =>
+    `🤝 ${p.name} accepted *${p.asker}*'s request: they can now ask *${p.club}* for players. You can pause, end or block them here: ${p.link}`,
+  pr_an_admin: "An admin",
+  // The answer to a "1" on the request notice, with the one-tap reverse
+  // request (D-1) when the other club cannot be asked yet.
+  pr_reply_accepted: (p: { club: string; other: string; link: string }) =>
+    `✅ Accepted. *${p.other}* can now ask *${p.club}* for players. Want to ask ${p.other} for players too? Tap here: ${p.link}`,
+  pr_admin_only: "Only your club's owners and admins can accept, decline or end a partner club.",
+  // The settings section.
+  pr_find_link: "Find clubs near you",
+  pr_in_label: "Requests to your club",
+  pr_out_label: "Requests you sent",
+  pr_in_row: (p: { other: string }) => `${p.other} would like to ask you for players`,
+  pr_out_row: (p: { other: string }) => `You asked ${p.other} for players`,
+  pr_out_waiting: (p: { other: string }) => `Waiting for ${p.other} to answer`,
+  pr_choice_label: "Their asks",
+  pr_choice_standing: "Post their asks straight away",
+  pr_choice_each: "Check each ask with us first",
+  pr_withdraw: "Withdraw",
+  pr_block: "Block",
+  pr_block_confirm: (p: { other: string }) =>
+    `Block ${p.other}? They can never send you a request again, and any pairing that lets them ask you ends. You can unblock them in this section.`,
+  pr_blocks_label: "Blocked clubs",
+  pr_unblock: "Unblock",
+  pr_ask_too: (p: { other: string }) => `Ask ${p.other} for players too`,
+  pr_request_sent: "Request sent",
+  // The search page's "select all" beyond the day's 20 (D-4).
+  pr_capped_note: (p: { sent: number }) =>
+    `Sent to the nearest ${p.sent}. A club can send 20 requests a day, so send the rest tomorrow.`,
   // ─── Asking a partner club for a player (slice S2, 2026-10-16) ──────
   // MDs/cross-club-player-ask-plan-2026-10-16.md, sections 3.3 to 3.5.
   // Read by src/lib/partner-ask.ts, the match page's partner panel and

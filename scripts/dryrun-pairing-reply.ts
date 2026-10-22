@@ -34,8 +34,25 @@ const MAX_USD = 0.6;
 const NOW = new Date("2026-10-21T15:10:00Z");
 const SENT = new Date("2026-10-21T15:00:00Z");
 
+/**
+ * Which notice the model is shown (partner discovery P3, 2026-10-22). The
+ * default is the request notice B now gets ("Friday MT Community would
+ * like to ask MT Test for players ..."), the one this PR introduces.
+ * `NOTICE=main` runs the same cases against the notice on main before P3
+ * (the platform owner's pairing notice), so the two passes compare like
+ * for like. The classifier's prompt is the same in both.
+ */
+const NOTICE_KIND = process.env.NOTICE === "main" ? "main" : "request";
 const notice = (lang: "en" | "tr", inGroup = false) =>
-  t(lang).pc_paired_notice_asker({ club: "Friday MT Community", other: "MT Test", link: "https://matchtime.example/s/abc", inGroup });
+  NOTICE_KIND === "main"
+    ? t(lang).pc_paired_notice_asker({ club: "Friday MT Community", other: "MT Test", link: "https://matchtime.example/s/abc", inGroup })
+    : t(lang).pr_request_notice({
+        asker: "MT Test",
+        club: "Friday MT Community",
+        card: lang === "tr" ? "2,1 mil uzakta, Salı günleri 20:00, 7'ye 7, 24 üye" : "2.1 miles away, Tuesdays 20:00, 7-a-side, 24 members",
+        link: "https://matchtime.example/s/abc",
+        inGroup,
+      });
 const msg = (text: string, at = SENT): ContextMessage => ({ at, text, topic: null, match: null });
 const quoting = (m: ContextMessage): ReplyContext => ({ now: NOW, quoted: m, recent: [], earlier: null });
 const recent = (...m: ContextMessage[]): ReplyContext => ({ now: NOW, quoted: null, ...pickRecentBotMessages(m, NOW) });
@@ -91,6 +108,7 @@ async function main() {
   const m = meter("the pairing-reply dry run", HAIKU_CLASSIFIER_ARM, MAX_USD);
   let pass = 0;
   let fail = 0;
+  console.log(`\nNotice shown to the model: ${NOTICE_KIND === "main" ? "main's pairing notice (NOTICE=main)" : "the P3 request notice"}`);
   console.log(`\n== Pairing classifier: ${CASES.length} cases, each once ==\n`);
   for (const c of CASES) {
     const r = await classifyPairingReplyDetailed(c.text, { pairings: [{ club: "Friday MT Community", other: "MT Test" }], replyContext: c.ctx }, m.call);

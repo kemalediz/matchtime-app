@@ -1318,9 +1318,11 @@ model ClubPartnership {
   /// "proposed" | "active" | "paused" | "ended".
   status            String       @default("proposed")
   /// Set by the PARTNER side only: "each-ask" (its organisers approve
-  /// every ask, the default) or "standing" (post without asking, and tell
-  /// them after).
-  partnerApproval   String       @default("each-ask")
+  /// every ask) or "standing" (post without asking, and tell them after).
+  /// "standing" is the default for new rows since partner discovery P3
+  /// (Kemal, 2026-10-22): every new row is a request, and the club picks
+  /// as it accepts. Rows made before keep what they have.
+  partnerApproval   String       @default("standing")
   askerAcceptedAt   DateTime?
   askerAcceptedBy   String?
   partnerAcceptedAt DateTime?

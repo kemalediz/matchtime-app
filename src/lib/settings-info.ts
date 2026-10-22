@@ -1165,10 +1165,10 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       title: "Your partner clubs",
       what: [
         "Clubs MatchTime may ask for a player when your squad is short, and clubs that may ask yours. Each pairing works one way: your club asking another is a separate pairing from that club asking yours.",
-        "Only the MatchTime team pairs two clubs. Your club's owner then accepts or declines here, and so does the other club's owner. A pairing does nothing until both have accepted.",
-        "An owner or admin of either club can pause a pairing at any time, and only the club that paused it can resume it. Your owner can remove a pairing for good.",
+        "A pairing starts with a request: your owners or admins find clubs near you and send them one, and a club near you can send yours one. Sending a request is your club's yes. The pairing starts once an owner or admin of the other club accepts it, here or by replying 1 in WhatsApp. A request with no answer ends after 14 days.",
+        "An owner or admin of either club can pause a pairing at any time, and only the club that paused it can resume it. An owner or admin of either club can also end it for good. A club that declines your request, or ends a pairing that lets you ask it, cannot be asked again for 30 days, and a club can block yours so you can never ask it.",
       ],
-      newClubs: "None. A club has no partner clubs until the MatchTime team pairs it with one.",
+      newClubs: "None. A club has no partner clubs until it sends a request that is accepted, or accepts one.",
       together: [
         "A player from a partner club who answers an ask plays for you as a guest for that one match. Your organisers see their name and their club, never their phone number or their rating at their own club.",
         "Your own players are never put on another club's list unless they reply to that club's ask themselves.",
@@ -1178,10 +1178,10 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       title: "Partner kulüpleriniz",
       what: [
         "Kadronuz eksik olduğunda MatchTime'ın oyuncu isteyebileceği kulüpler ve sizden oyuncu isteyebilecek kulüpler. Her eşleşme tek yönlüdür: sizin başka bir kulüpten istemeniz, o kulübün sizden istemesinden ayrı bir eşleşmedir.",
-        "İki kulübü yalnızca MatchTime ekibi eşleştirir. Sonra kulübünüzün sahibi burada kabul eder ya da reddeder, diğer kulübün sahibi de öyle. İkisi de kabul edene kadar eşleşme hiçbir şey yapmaz.",
-        "İki kulüpten birinin sahibi ya da bir yöneticisi eşleşmeyi istediği an durdurabilir; yalnızca durduran kulüp devam ettirebilir. Kulüp sahibiniz eşleşmeyi tamamen kaldırabilir.",
+        "Bir eşleşme bir istekle başlar: sahipleriniz ya da yöneticileriniz yakınınızdaki kulüpleri bulup onlara istek gönderir, yakındaki bir kulüp de size gönderebilir. İstek göndermek kulübünüzün onayıdır. Eşleşme, diğer kulübün bir sahibi ya da yöneticisi isteği burada ya da WhatsApp'ta 1 yazarak kabul edince başlar. Yanıtlanmayan bir istek 14 gün sonra sona erer.",
+        "İki kulüpten birinin sahibi ya da bir yöneticisi eşleşmeyi istediği an durdurabilir; yalnızca durduran kulüp devam ettirebilir. İki kulübün sahipleri ya da yöneticileri eşleşmeyi tamamen de sonlandırabilir. İsteğinizi reddeden ya da sizin ondan oyuncu istemenizi sonlandıran bir kulübe 30 gün boyunca yeniden istek gönderilemez; bir kulüp sizi engelleyebilir, o zaman ona hiç istek gönderemezsiniz.",
       ],
-      newClubs: "Yok. MatchTime ekibi eşleştirene kadar bir kulübün partner kulübü olmaz.",
+      newClubs: "Yok. Bir kulübün, kabul edilen bir istek göndermeden ya da bir isteği kabul etmeden partner kulübü olmaz.",
       together: [
         "Bir isteğe yanıt veren partner kulüp oyuncusu yalnızca o maç için misafir olarak sizin için oynar. Organizatörleriniz onun adını ve kulübünü görür; telefon numarasını ya da kendi kulübündeki puanını asla görmez.",
         "Kendi oyuncularınız, o kulübün isteğine kendileri yanıt vermedikçe başka bir kulübün listesine asla yazılmaz.",
@@ -1282,7 +1282,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
         },
         { name: "Post without asking", text: "MatchTime posts the ask in your players' group straight away and tells your admins afterwards." },
       ],
-      newClubs: "Ask our organisers each time.",
+      newClubs: "Post without asking, for every pairing that starts from a request. A club picks this when it accepts a request, and can change it here at any time.",
       together: [
         "Your players answer MatchTime by private message, from the link in its post, so your group stays quiet. A plain IN in your group still means your own game.",
         "MatchTime never shows the other club your players' phone numbers or ratings, and a player already in your own game at an overlapping time cannot sign up for theirs.",
@@ -1299,7 +1299,7 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
         },
         { name: "Sormadan paylaş", text: "MatchTime isteği oyuncu grubunuzda hemen paylaşır ve yöneticilerinize sonra haber verir." },
       ],
-      newClubs: "Her seferinde organizatörlerimize sor.",
+      newClubs: "Sormadan paylaş (bir istekle başlayan her eşleşmede). Kulüp bunu isteği kabul ederken seçer ve burada istediği an değiştirebilir.",
       together: [
         "Oyuncularınız MatchTime'a, paylaşımdaki bağlantıdan özel mesajla cevap verir, böylece grubunuz sessiz kalır. Grubunuzda düz bir VARIM yine kendi maçınız anlamına gelir.",
         "MatchTime diğer kulübe oyuncularınızın telefon numaralarını ya da puanlarını asla göstermez ve kendi maçınızda aynı saatlere denk gelen bir oyuncu onların maçına yazılamaz.",

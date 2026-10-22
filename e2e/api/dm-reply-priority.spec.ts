@@ -169,6 +169,19 @@ test("flag ON, claimed poll (what the Pi gets): the first DM it is handed is a r
 // Flag on: replies are never held by the cap and do not count toward it;
 // bulk DMs stay held. Flag off: held, as today.
 
+/**
+ * Quiet hours off for a setup that resets the database. `resetDb()` turns
+ * the seeded club's quiet hours back on, and inside them (23:00 to 09:00
+ * London) the collector's notice is held until they end (2026-10-21), so on
+ * the real clock these tests failed overnight. This spec is about send
+ * ORDER and the new-club cap, not quiet hours, which
+ * pay-links-quiet-hours.spec.ts and the unit tests pin. The same fix as the
+ * first test above, and as #366 made in monthly-week.spec.ts.
+ */
+async function quietHoursOff(db: TestDb): Promise<void> {
+  await db.run(`UPDATE "Organisation" SET "quietHoursEnabled" = false WHERE id = $1`, [ORG_ID]);
+}
+
 /** Make the seeded club a new self-join club with `spent` DMs claimed today. */
 async function newClubWithSpent(db: TestDb, spent: number): Promise<void> {
   await db.run(
@@ -222,6 +235,7 @@ test.describe("the new-club DM cap, reached (20 spent)", () => {
     db,
   }) => {
     resetDb();
+    await quietHoursOff(db);
     await newClubWithSpent(db, 20);
     capPay = await queuePayLinks(db);
     k = await paidClaim(request, db);
@@ -245,6 +259,7 @@ test.describe("the new-club DM cap: replies do not count toward it (19 spent)", 
 
   test("setup: 19 of 20 spent, 16 pay links, then a 'Paid'", async ({ request, db }) => {
     resetDb();
+    await quietHoursOff(db);
     await newClubWithSpent(db, 19);
     capPay = await queuePayLinks(db);
     k = await paidClaim(request, db);

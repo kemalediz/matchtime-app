@@ -3734,7 +3734,7 @@ export const tr: Strings = {
   pc_reply_which: (p) => `Bu hangi eşleştirme için? ${p.pairings}. Yanıtınızı o eşleştirmenin mesajını yanıtlayarak yazın.`,
   pc_section_title: "Partner kulüpler",
   pc_section_lead:
-    "Oyuncunuz eksik olduğunda MatchTime'ın oyuncu isteyebileceği kulüpler ve sizden oyuncu isteyebilecek kulüpler. İki kulübü yalnızca MatchTime ekibi eşleştirir; sonra her kulübün sahibi kabul eder.",
+    "Oyuncunuz eksik olduğunda MatchTime'ın oyuncu isteyebileceği kulüpler ve sizden oyuncu isteyebilecek kulüpler. Yakınınızdaki kulüpleri bulun ve onlara istek gönderin: sahiplerinden ya da yöneticilerinden biri kabul edince onlardan oyuncu isteyebilirsiniz.",
   pc_list_label: "Partner kulüpleriniz",
   pc_row_we_ask: (p: { other: string }) => `${p.other} kulübünden oyuncu isteyebilirsiniz`,
   pc_row_they_ask: (p: { other: string }) => `${p.other} sizden oyuncu isteyebilir`,
@@ -3750,7 +3750,7 @@ export const tr: Strings = {
   pc_resume: "Devam ettir",
   pc_remove: "Kaldır",
   pc_remove_confirm: (p: { other: string }) =>
-    `Bu kulüple ortaklık kaldırılsın mı: ${p.other}? İki kulübü yeniden yalnızca MatchTime ekibi eşleştirebilir.`,
+    `Bu kulüple ortaklık kaldırılsın mı: ${p.other}? Yeniden eşleşmek için kulüplerden biri diğerine yeni bir istek gönderir. Sizden oyuncu istemesini kaldırdığınız bir kulüp 30 gün boyunca size istek gönderemez.`,
   pc_owner_only: "Bir partner kulübü yalnızca kulübünüzün sahibi kabul edebilir, reddedebilir ya da kaldırabilir.",
   pc_when_label: "Partner kulüplerden oyuncu iste",
   pc_when_off: "Kapalı",
@@ -3785,6 +3785,46 @@ export const tr: Strings = {
   pd_venue_capped: "Bugün çok fazla saha araması yapıldı. Yarın tekrar deneyin.",
   pd_venue_reminder_dm: (p: { club: string; link: string }) =>
     `📍 Yakındaki kulüplerin sizi bulabilmesi için *${p.club}* kulübünün sahasını onaylayın: MatchTime'da henüz bir sahanız yok. Sahanızı buradaki listeden seçin: ${p.link}\nSaha seçilene kadar MatchTime haftada bir hatırlatır.`,
+  // ─── Partner istekleri (slice P3, 2026-10-22) ───────────────────────
+  // Same block as strings.en.ts. Added as one block; nothing above moved.
+  pr_request_notice: (p) =>
+    `🤝 *${p.asker}* (${p.card}), oyuncusu eksik olduğunda *${p.club}* kulübünden oyuncu istemek istiyor. Kabul ederseniz istekleri doğrudan oyuncu grubunuzda paylaşılır; bunu istediğiniz an değiştirebilir, durdurabilir ya da sonlandırabilirsiniz. ${p.inGroup ? "Bu mesajı yanıtlayarak cevap verin. " : ""}Kabul etmek için *1*, reddetmek için *2* yazın ya da şunu açın: ${p.link}`,
+  pr_card_miles: (p) => `${p.miles.toFixed(1).replace(".", ",")} mil uzakta`,
+  pr_card_game: (p) =>
+    `${["Pazar", "Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi"][p.dow] ?? ""} günleri ${p.time}${p.format ? `, ${p.format}` : ""}`,
+  pr_card_no_game: "henüz düzenli maçı yok",
+  pr_card_members: (p) => `${p.count} üye`,
+  pr_auto_joined_notice: (p) =>
+    `🤝 *${p.asker}* artık *${p.club}* kulübünün partner kulübü: partner isteklerini otomatik kabul ediyorsunuz, bu yüzden oyuncusu eksik olduğunda oyuncu grubunuzdan oyuncu isteyebilir. Onu buradan durdurabilir, sonlandırabilir ya da engelleyebilirsiniz: ${p.link}`,
+  pr_accepted_notice: (p) =>
+    `✅ *${p.partner}*, *${p.club}* kulübünün isteğini kabul etti. Maç sayfasından ya da MatchTime'a sorarak onlardan oyuncu isteyebilirsiniz.`,
+  pr_declined_notice: (p) => `*${p.partner}* şu an istek kabul etmiyor.`,
+  pr_expired_notice: (p) =>
+    `⌛ *${p.partner}* kulübüne gönderdiğiniz istek 14 gün içinde yanıtlanmadığı için sona erdi. Yakınınızdaki kulüpleri bulun sayfasından yeniden gönderebilirsiniz: ${p.link}`,
+  pr_admin_accepted_notice: (p) =>
+    `🤝 ${p.name}, *${p.asker}* kulübünün isteğini kabul etti: artık *${p.club}* kulübünden oyuncu isteyebilirler. Onları buradan durdurabilir, sonlandırabilir ya da engelleyebilirsiniz: ${p.link}`,
+  pr_an_admin: "Bir yönetici",
+  pr_reply_accepted: (p) =>
+    `✅ Kabul edildi. *${p.other}* artık *${p.club}* kulübünden oyuncu isteyebilir. Siz de ${p.other} kulübünden oyuncu istemek ister misiniz? Buraya dokunun: ${p.link}`,
+  pr_admin_only: "Bir partner kulübü yalnızca kulübünüzün sahipleri ve yöneticileri kabul edebilir, reddedebilir ya da sonlandırabilir.",
+  pr_find_link: "Yakınınızdaki kulüpleri bulun",
+  pr_in_label: "Kulübünüze gelen istekler",
+  pr_out_label: "Gönderdiğiniz istekler",
+  pr_in_row: (p) => `${p.other} sizden oyuncu istemek istiyor`,
+  pr_out_row: (p) => `${p.other} kulübünden oyuncu istediniz`,
+  pr_out_waiting: (p) => `Yanıt bekleniyor: ${p.other}`,
+  pr_choice_label: "Onların istekleri",
+  pr_choice_standing: "İsteklerini hemen paylaş",
+  pr_choice_each: "Her isteği önce bize sor",
+  pr_withdraw: "Geri çek",
+  pr_block: "Engelle",
+  pr_block_confirm: (p) =>
+    `${p.other} engellensin mi? Size bir daha asla istek gönderemez ve sizden oyuncu istemesine izin veren eşleşme sona erer. Engeli bu bölümden kaldırabilirsiniz.`,
+  pr_blocks_label: "Engellenen kulüpler",
+  pr_unblock: "Engeli kaldır",
+  pr_ask_too: (p) => `Siz de ${p.other} kulübünden oyuncu isteyin`,
+  pr_request_sent: "İstek gönderildi",
+  pr_capped_note: (p) => `En yakın ${p.sent} kulübe gönderildi. Bir kulüp günde 20 istek gönderebilir; kalanları yarın gönderin.`,
   // ─── Partner kulüpten oyuncu isteme (slice S2, 2026-10-16) ──────────
   xask_post: (p) => {
     const extras = [p.format, p.fee].filter(Boolean).join(", ");

@@ -72,8 +72,10 @@ async function world(request: APIRequestContext, db: TestDb) {
 
 async function pair(db: TestDb, partner: SimGroup, id: string) {
   await db.run(
-    `INSERT INTO "ClubPartnership" (id,"askerOrgId","partnerOrgId",status,"askerAcceptedAt","partnerAcceptedAt","createdByUserId","createdAt","updatedAt")
-     VALUES ($1,$2,$3,'active',now(),now(),$4,now(),now())`,
+    // "each-ask" spelled out: this spec expects the partner's organisers to
+    // be asked first, and new rows default to "post without asking" since P3.
+    `INSERT INTO "ClubPartnership" (id,"askerOrgId","partnerOrgId",status,"partnerApproval","askerAcceptedAt","partnerAcceptedAt","createdByUserId","createdAt","updatedAt")
+     VALUES ($1,$2,$3,'active','each-ask',now(),now(),$4,now(),now())`,
     [id, asker.orgId, partner.orgId, asker.player("owner").userId],
   );
 }

@@ -8,7 +8,7 @@
  *   - "2" swipe-replied to the notice declines it, with no router call;
  *   - an unquoted "yes" as the next message after the notice accepts this
  *     club's side;
- *   - a player of the club who replies "1" to it gets the owner-only line.
+ *   - a player of the club who replies "1" to it is refused: owners and admins only (D-2).
  */
 import type { APIRequestContext } from "@playwright/test";
 import { test, expect, resetDb } from "../fixtures";
@@ -86,9 +86,9 @@ test("an unquoted 'yes' as the next message after the notice accepts this club's
   expect(p?.askerAcceptedAt).not.toBeNull();
 });
 
-test("a player of the club replying '1' to it: the owner-only line, nothing changes", async ({ request, db }) => {
+test("a player of the club replying '1' to it: owners and admins only, nothing changes", async ({ request, db }) => {
   setPairingReplyStub({ bodies: { "1": "accept" } });
   const out = await say(request, "1", digits(PHONE.player), { quotedMessageId: STANZA, quotedText: NOTICE, quotedFromMatchTime: true });
-  expect(out.replyText).toBe("Only your club's owner can accept, decline or remove a partner club.");
+  expect(out.replyText).toBe("Only your club's owners and admins can accept, decline or end a partner club.");
   expect((await row(db))?.askerAcceptedAt).toBeNull();
 });

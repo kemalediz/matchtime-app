@@ -17,10 +17,18 @@
  * cut-off), and the partner side's approval choice per club that may ask
  * this one. Words from the club's language table, each row with its ⓘ.
  * Loads and saves through its own server actions (`app/actions/partners.ts`).
+ *
+ * Partner requests (slice P3, 2026-10-22): a "Find clubs near you" link;
+ * requests to this club (accept, with its per-ask choice, "Post their asks
+ * straight away" by default; decline; block) and requests it sent
+ * (withdraw); every button for an owner OR an admin (D-2); "Ask them for
+ * players too" on a pairing that lets another club ask this one (D-1); and
+ * the block list with unblock.
  */
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Handshake, MapPin } from "lucide-react";
+import Link from "next/link";
+import { Handshake, MapPin, Search } from "lucide-react";
 import { SettingInfo } from "@/components/info/setting-info";
 import { VenueSuggestInput } from "@/components/venue/venue-suggest-input";
 import { t } from "@/lib/i18n/t";
@@ -29,6 +37,9 @@ import { venueSuggestLabels } from "@/lib/venue-suggest-labels";
 import { pickForSubmit, type VenuePickState } from "@/lib/venue-suggest-rules";
 import {
   actOnPartnershipAction,
+  askTooAction,
+  blockClubAction,
+  unblockClubAction,
   getPartnerClubs,
   saveDiscoverySettingsAction,
   savePartnerAskSettingsAction,
@@ -41,6 +52,7 @@ import {
   PARTNER_ASK_CUTOFF_MAX_HOURS,
   PARTNER_ASK_CUTOFF_MIN_HOURS,
   PARTNER_ASK_TIME_DEFAULT,
+  REQUEST_DEFAULT_APPROVAL,
   type PartnerApproval,
   type PartnerAskWhen,
   type PartnershipAction,
@@ -59,7 +71,21 @@ export function PartnerClubsSection(props: { orgId: string; language: string | n
   const [venueText, setVenueText] = useState("");
   const [venuePick, setVenuePick] = useState<VenuePickState | null>(null);
   const [venueError, setVenueError] = useState<string | null>(null);
+  // An accepted request's per-ask choice, per request (P3; default "post
+  // their asks straight away").
+  const [choice, setChoice] = useState<Record<string, PartnerApproval>>({});
+  // The "ask them too" link opens this page with `?askToo=<pairing>` (D-1):
+  // that pairing's button is highlighted; the tap on it is the request.
+  const [askTooId, setAskTooId] = useState<string | null>(null);
   const scrolled = useRef(false);
+
+  useEffect(() => {
+    try {
+      setAskTooId(new URLSearchParams(window.location.search).get("askToo"));
+    } catch {
+      setAskTooId(null);
+    }
+  }, []);
 
   async function load() {
     try {
@@ -87,15 +113,64 @@ export function PartnerClubsSection(props: { orgId: string; language: string | n
   }, [data]);
 
   if (!data) return null;
+  // Partner requests (P3): a request to us waiting for our answer, and
+  // one we sent waiting for theirs, are listed on their own; the list
+  // below keeps the rest (active, paused, and an older two-sided proposal).
+  const requestsIn = data.partnerships.filter((p) => p.origin === "request" && p.status === "proposed" && p.side === "partner" && !p.weAccepted);
+  const requestsOut = data.partnerships.filter((p) => p.origin === "request" && p.status === "proposed" && p.side === "asker" && p.weAccepted);
+  const listed = data.partnerships.filter((p) => !requestsIn.includes(p) && !requestsOut.includes(p));
   const asks = data.partnerships.some((p) => p.side === "asker");
-  const lends = data.partnerships.filter((p) => p.side === "partner");
+  const lends = data.partnerships.filter((p) => p.side === "partner" && p.status !== "proposed");
 
-  async function act(p: PartnershipView, action: PartnershipAction) {
+  async function act(p: PartnershipView, action: PartnershipAction, approval?: PartnerApproval) {
     if (action === "end" && !window.confirm(s.pc_remove_confirm({ other: p.otherOrgName }))) return;
     setBusy(`${p.id}:${action}`);
     try {
-      const r = await actOnPartnershipAction(props.orgId, p.id, action);
+      const r = await actOnPartnershipAction(props.orgId, p.id, action, approval);
       if (r.ok) toast.success(s.pc_saved);
+      else toast.error(s.pc_refused);
+      await load();
+    } catch {
+      toast.error(s.pc_save_failed);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function block(otherOrgId: string, otherName: string) {
+    if (!window.confirm(s.pr_block_confirm({ other: otherName }))) return;
+    setBusy(`block:${otherOrgId}`);
+    try {
+      const r = await blockClubAction(props.orgId, otherOrgId);
+      if (r.ok) toast.success(s.pc_saved);
+      else toast.error(s.pc_refused);
+      await load();
+    } catch {
+      toast.error(s.pc_save_failed);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function unblock(otherOrgId: string) {
+    setBusy(`unblock:${otherOrgId}`);
+    try {
+      const r = await unblockClubAction(props.orgId, otherOrgId);
+      if (r.ok) toast.success(s.pc_saved);
+      else toast.error(s.pc_refused);
+      await load();
+    } catch {
+      toast.error(s.pc_save_failed);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function askToo(p: PartnershipView) {
+    setBusy(`${p.id}:ask-too`);
+    try {
+      const r = await askTooAction(props.orgId, p.otherOrgId);
+      if (r.ok) toast.success(s.pr_request_sent);
       else toast.error(s.pc_refused);
       await load();
     } catch {
@@ -298,18 +373,95 @@ export function PartnerClubsSection(props: { orgId: string; language: string | n
             )}
           </div>
 
+          {/* Partner requests (P3): find clubs, then the requests each way. */}
+          <div className="py-3">
+            <Link
+              href="/admin/partners/find"
+              className={`${button} inline-flex items-center gap-1.5`}
+              data-testid="partner-find-link"
+            >
+              <Search className="w-4 h-4" aria-hidden="true" />
+              {s.pr_find_link}
+            </Link>
+          </div>
+
+          {requestsIn.length > 0 && (
+            <div className="py-3" data-testid="partner-requests-in">
+              <p className="text-sm font-medium text-slate-800">{s.pr_in_label}</p>
+              <ul className="mt-2 space-y-2">
+                {requestsIn.map((p) => {
+                  const chosen = choice[p.id] ?? REQUEST_DEFAULT_APPROVAL;
+                  return (
+                    <li key={p.id} data-testid="partner-request-in" data-other={p.otherOrgName} className="rounded-lg border border-slate-200 p-3">
+                      <p className="text-sm text-slate-800">{s.pr_in_row({ other: p.otherOrgName })}</p>
+                      <label className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-600">
+                        {s.pr_choice_label}
+                        <select
+                          aria-label={`${s.pr_choice_label}: ${p.otherOrgName}`}
+                          data-testid="request-choice"
+                          value={chosen}
+                          disabled={!!busy}
+                          onChange={(e) => setChoice((prev) => ({ ...prev, [p.id]: e.target.value as PartnerApproval }))}
+                          className={control}
+                        >
+                          <option value="standing">{s.pr_choice_standing}</option>
+                          <option value="each-ask">{s.pr_choice_each}</option>
+                        </select>
+                      </label>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <button type="button" className={button} disabled={!!busy} onClick={() => act(p, "accept", chosen)} data-testid="request-accept">
+                          {s.pc_accept}
+                        </button>
+                        <button type="button" className={button} disabled={!!busy} onClick={() => act(p, "decline")} data-testid="request-decline">
+                          {s.pc_decline}
+                        </button>
+                        <button type="button" className={button} disabled={!!busy} onClick={() => block(p.otherOrgId, p.otherOrgName)} data-testid="request-block">
+                          {s.pr_block}
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
+
+          {requestsOut.length > 0 && (
+            <div className="py-3" data-testid="partner-requests-out">
+              <p className="text-sm font-medium text-slate-800">{s.pr_out_label}</p>
+              <ul className="mt-2 space-y-2">
+                {requestsOut.map((p) => (
+                  <li
+                    key={p.id}
+                    data-testid="partner-request-out"
+                    data-other={p.otherOrgName}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 p-3"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm text-slate-800">{s.pr_out_row({ other: p.otherOrgName })}</p>
+                      <p className="text-xs text-slate-500">{s.pr_out_waiting({ other: p.otherOrgName })}</p>
+                    </div>
+                    <button type="button" className={button} disabled={!!busy} onClick={() => act(p, "withdraw")} data-testid="request-withdraw">
+                      {s.pr_withdraw}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           <div className="py-3" data-setting="partnerClubs">
             <div className="flex items-center gap-1 text-sm font-medium text-slate-800">
               {s.pc_list_label}
               <SettingInfo k="partnerClubs" lang={props.language} />
             </div>
-            {data.partnerships.length === 0 && (
+            {listed.length === 0 && (
               <p className="mt-2 text-sm text-slate-500" data-testid="partner-clubs-none">
                 {s.pd_none}
               </p>
             )}
             <ul className="mt-2 space-y-2">
-              {data.partnerships.map((p) => (
+              {listed.map((p) => (
                 <li
                   key={p.id}
                   data-testid="partner-club"
@@ -325,12 +477,23 @@ export function PartnerClubsSection(props: { orgId: string; language: string | n
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {p.status === "proposed" && !p.weAccepted && data.isOwner && (
+                    {p.side === "partner" && p.status !== "proposed" && !p.reverseOpen && (
+                      <button
+                        type="button"
+                        className={`${button} ${askTooId === p.id ? "ring-2 ring-blue-500 border-blue-300" : ""}`}
+                        disabled={!!busy}
+                        onClick={() => askToo(p)}
+                        data-testid="partner-ask-too"
+                      >
+                        {s.pr_ask_too({ other: p.otherOrgName })}
+                      </button>
+                    )}
+                    {p.status === "proposed" && !p.weAccepted && (
                       <button type="button" className={button} disabled={!!busy} onClick={() => act(p, "accept")} data-testid="partner-accept">
                         {s.pc_accept}
                       </button>
                     )}
-                    {p.status === "proposed" && data.isOwner && (
+                    {p.status === "proposed" && (
                       <button type="button" className={button} disabled={!!busy} onClick={() => act(p, "decline")} data-testid="partner-decline">
                         {s.pc_decline}
                       </button>
@@ -345,17 +508,42 @@ export function PartnerClubsSection(props: { orgId: string; language: string | n
                         {s.pc_resume}
                       </button>
                     )}
-                    {p.status !== "proposed" && data.isOwner && (
+                    {p.status !== "proposed" && (
                       <button type="button" className={button} disabled={!!busy} onClick={() => act(p, "end")} data-testid="partner-remove">
                         {s.pc_remove}
+                      </button>
+                    )}
+                    {p.side === "partner" && (
+                      <button type="button" className={button} disabled={!!busy} onClick={() => block(p.otherOrgId, p.otherOrgName)} data-testid="partner-block">
+                        {s.pr_block}
                       </button>
                     )}
                   </div>
                 </li>
               ))}
             </ul>
-            {!data.isOwner && data.partnerships.length > 0 && <p className="mt-2 text-xs text-slate-500">{s.pc_owner_only}</p>}
           </div>
+
+          {data.blocked.length > 0 && (
+            <div className="py-3" data-testid="partner-blocked">
+              <p className="text-sm font-medium text-slate-800">{s.pr_blocks_label}</p>
+              <ul className="mt-2 space-y-2">
+                {data.blocked.map((b) => (
+                  <li
+                    key={b.orgId}
+                    data-testid="blocked-club"
+                    data-other={b.name}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 p-3"
+                  >
+                    <span className="text-sm text-slate-800">{b.name}</span>
+                    <button type="button" className={button} disabled={!!busy} onClick={() => unblock(b.orgId)} data-testid="blocked-unblock">
+                      {s.pr_unblock}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {asks && (
             <>
