@@ -21,6 +21,7 @@ import { normaliseLang, type Lang } from "./i18n/lang";
 import { resolveTeamLabels } from "./team-labels";
 import { selectRegistrationMatch } from "./registration-match-select";
 import { displayNames } from "./match-graphics-layout";
+import { loadPlayerNames } from "./player-display-name";
 import type { GraphicTarget } from "./graphic-token";
 
 export interface GraphicBase {
@@ -94,11 +95,16 @@ export async function loadGraphicData(target: GraphicTarget): Promise<GraphicDat
   };
 
   const confirmed = match.attendances.filter((a) => a.status === "CONFIRMED");
+  // The best name MatchTime holds (player-display-name.ts): an alias when
+  // User.name is empty. The plain name, not the club suffix: the image
+  // prints first names only and has no room for a club.
+  const held = await loadPlayerNames(target.orgId, match.attendances.map((a) => a.userId), lang);
+  const nameOf = (a: { userId: string; user: { name: string | null } }) => held.get(a.userId)?.name ?? a.user.name;
 
   if (target.kind === "list") {
     const bench = match.attendances.filter((a) => a.status === "BENCH");
     const names = displayNames(
-      [...confirmed, ...bench].map((a) => ({ id: a.userId, name: a.user.name })),
+      [...confirmed, ...bench].map((a) => ({ id: a.userId, name: nameOf(a) })),
       lang,
     );
     return {
@@ -113,7 +119,7 @@ export async function loadGraphicData(target: GraphicTarget): Promise<GraphicDat
   const onTeams = confirmed.filter((a) => teamOf.has(a.userId));
   if (onTeams.length === 0) return null;
   const names = displayNames(
-    onTeams.map((a) => ({ id: a.userId, name: a.user.name })),
+    onTeams.map((a) => ({ id: a.userId, name: nameOf(a) })),
     lang,
   );
   const [red, yellow] = resolveTeamLabels(match, org, match.activity.sport, lang);

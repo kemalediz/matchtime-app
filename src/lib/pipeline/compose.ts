@@ -120,8 +120,15 @@ function firstName(name: string, fallback: string): string {
   return safeName(name, fallback).split(/\s+/)[0];
 }
 
+/** The PRINTED line per member: `displayName` (a partner guest's club, an
+ *  alias for an empty name; player-display-name.ts) when load-state set
+ *  it, else the plain name. Matching never reads this. */
+function printedNames(state: SquadState): Map<string, string> {
+  return new Map(state.roster.map((m) => [m.userId, m.displayName ?? m.name]));
+}
+
 function namesByStatus(state: SquadState, status: "CONFIRMED" | "BENCH", fallback: string): string[] {
-  const byId = new Map(state.roster.map((m) => [m.userId, m.name]));
+  const byId = printedNames(state);
   return state.rows
     .filter((r) => r.status === status)
     .sort((a, b) => a.position - b.position)
@@ -156,7 +163,7 @@ export function compose(result: EngineResult): ComposedOutput {
    * name on it is not.
    */
   const playingIds = new Set(state.rows.filter((r) => r.status === "CONFIRMED").map((r) => r.userId));
-  const rosterName = new Map(state.roster.map((m) => [m.userId, m.name]));
+  const rosterName = printedNames(state);
   const sheetName = (userId: string) =>
     playingIds.has(userId) ? name(rosterName.get(userId) ?? "") : s.team_sheet_open_slot;
 

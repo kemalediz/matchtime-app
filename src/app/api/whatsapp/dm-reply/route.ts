@@ -100,7 +100,13 @@ import { classifyMatchAvailability } from "@/lib/match-availability-classifier";
 import { loadMatchAvailabilityFacts } from "@/lib/match-availability-context";
 import { resolveDmSelfAttendance } from "@/lib/dm-self-attendance";
 import { findDmRegistrationTarget } from "@/lib/dm-registration-target";
-import { askAboutOpenPartnerAsk, findAskByRef, handleCodedPartnerAskDm, handleGuestDmOut } from "@/lib/partner-guest-dm";
+import {
+  askAboutOpenPartnerAsk,
+  findAskByRef,
+  handleCodedPartnerAskDm,
+  handleGuestDmOut,
+  handleVolunteerNameReply,
+} from "@/lib/partner-guest-dm";
 import { announceOutOfBandAttendance } from "@/lib/out-of-band-announce";
 import { applyOutOfBandSelfAttendance } from "@/lib/out-of-band-self-attendance";
 import { dayCommaTimeLabel } from "@/lib/i18n/dates";
@@ -606,6 +612,24 @@ export async function POST(request: Request) {
       waMessageId,
     });
     return NextResponse.json({ ok: true, ...coded });
+  }
+
+  // ── A nameless volunteer's reply to "what name should I list you
+  //    under?" (2026-10-22) ─────────────────────────────────────────────
+  //   One read, and only a person asked in the last 12 hours is caught:
+  //   his DM is the name, then the volunteer writer runs. Everyone else
+  //   carries on exactly as before. See partner-guest-dm.ts.
+  {
+    const named = await handleVolunteerNameReply({
+      userId: user.id,
+      text,
+      replyPhone: phone ? normalisePhone(phone)?.replace(/^\+/, "") ?? null : null,
+      waMessageId,
+    }).catch((err: unknown) => {
+      console.error("[dm-reply] volunteer name reply failed:", err instanceof Error ? err.message : "failed");
+      return null;
+    });
+    if (named) return NextResponse.json({ ok: true, ...named });
   }
 
   // ── DM subscription-preference fast-path (2026-06-11; per-category

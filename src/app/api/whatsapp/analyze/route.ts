@@ -310,6 +310,7 @@ import {
 } from "@/lib/onboarding-parse";
 import { inGroupSetupRefusal } from "@/lib/club-approval";
 import { t as strings } from "@/lib/i18n/t";
+import { loadPlayerNames } from "@/lib/player-display-name";
 import { registerAttendance, cancelAttendance } from "@/lib/attendance";
 import { currentAnalyzeBatchId, withAnalyzeBatch } from "@/lib/analyze-batch-context";
 import {
@@ -3629,13 +3630,26 @@ async function handleAnalyzeRequest(request: Request) {
               sheetMatch.activity.sport,
             )
           : ["Red", "Yellow"];
+        // The printed line per player (player-display-name.ts): the best
+        // name MatchTime holds, the group's own word for "unnamed", and a
+        // partner guest's club (MT Test, 2026-10-22). `confirmed`/`bench`
+        // stay the plain names: the claim checks match on those.
+        const shownNames = await loadPlayerNames(
+          org.id,
+          [...finalAtt.map((a) => a.userId), ...(sheetMatch?.teamAssignments ?? []).map((t) => t.userId)],
+          org.language,
+        );
+        const plainName = (userId: string, raw: string | null) =>
+          shownNames.get(userId)?.name ?? raw ?? strings(org.language).unnamed;
+        const shownName = (userId: string, raw: string | null) =>
+          shownNames.get(userId)?.display ?? raw ?? strings(org.language).unnamed;
+        const confirmedAtt = finalAtt.filter((a) => a.status === "CONFIRMED");
+        const benchAtt = finalAtt.filter((a) => a.status === "BENCH");
         const truth: SquadTruth = {
-          confirmed: finalAtt
-            .filter((a) => a.status === "CONFIRMED")
-            .map((a) => a.user.name ?? "(unnamed)"),
-          bench: finalAtt
-            .filter((a) => a.status === "BENCH")
-            .map((a) => a.user.name ?? "(unnamed)"),
+          confirmed: confirmedAtt.map((a) => plainName(a.userId, a.user.name)),
+          bench: benchAtt.map((a) => plainName(a.userId, a.user.name)),
+          confirmedDisplay: confirmedAtt.map((a) => shownName(a.userId, a.user.name)),
+          benchDisplay: benchAtt.map((a) => shownName(a.userId, a.user.name)),
           maxPlayers: nextMatchForReply.maxPlayers,
           knownNames: memberships
             .map((m) => m.user.name)
@@ -3646,7 +3660,7 @@ async function handleAnalyzeRequest(request: Request) {
                   // A holder who is out is an open slot, never a name
                   // (2026-09-29). See `teamSheetNames`.
                   ...teamSheetNames(
-                    sheetRows.map((t) => ({ userId: t.userId, team: t.team, name: t.user.name })),
+                    sheetRows.map((r) => ({ userId: r.userId, team: r.team, name: shownName(r.userId, r.user.name) })),
                     new Set(finalAtt.filter((a) => a.status === "CONFIRMED").map((a) => a.userId)),
                     org.language,
                   ),

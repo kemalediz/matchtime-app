@@ -66,15 +66,24 @@ const TRANSLITERATE: Record<string, string> = {
   "\u00f8": "o", // \u00f8
 };
 
+// Digits are KEPT (2026-10-22): "C1" and "C2" used to both normalise to
+// "c", so "C1, C2 OUT" dropped C1 twice and left C2 in (MT Test). A
+// reference still needs a letter to be a person (`resolvePerson`).
 function norm(s: string): string {
   return s
     .toLowerCase()
     .replace(/./gu, (ch) => TRANSLITERATE[ch] ?? ch)
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z\s'-]/g, "")
+    .replace(/[^a-z0-9\s'-]/g, "")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+/** `norm` without spaces, for a reference carrying a digit only: "Ali2"
+ *  is "Ali 2". Digit-free names never use it, so they match as before. */
+function compact(s: string): string {
+  return norm(s).replace(/\s+/g, "");
 }
 
 function firstToken(s: string): string {
@@ -133,10 +142,11 @@ export function resolvePerson(ref: string, roster: Member[]): ResolutionOutcome 
   }
 
   const target = norm(raw);
-  if (!target) return { kind: "not-a-person", why: `no letters in "${raw}"` };
+  if (!/[a-z]/.test(target)) return { kind: "not-a-person", why: `no letters in "${raw}"` };
 
-  // 1. Exact full-name match.
-  const exact = roster.filter((m) => norm(m.name) === target);
+  // 1. Exact full-name match ("Ali2" is "Ali 2" when there is a digit).
+  const hasDigit = /[0-9]/.test(target);
+  const exact = roster.filter((m) => norm(m.name) === target || (hasDigit && compact(m.name) === compact(target)));
   if (exact.length === 1) return { kind: "resolved", member: exact[0] };
   if (exact.length > 1) return { kind: "ambiguous", candidates: exact };
 

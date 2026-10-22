@@ -54,6 +54,7 @@ import { adjustRatings, type AdjusterMessage } from "./rating-adjuster";
 import { withOrgAiBudget } from "./ai-budget";
 import { computeClubRating } from "./player-rating";
 import { resolveTeamLabels } from "./team-labels";
+import { loadPlayerNames } from "./player-display-name";
 import { sanitiseTeamNames } from "./message-analyzer";
 
 export type GenerateTeamsResult =
@@ -266,11 +267,16 @@ export async function generateTeamsForMatch(
     lang,
   );
   const kickoff = formatLondon(match.date, "HH:mm");
+  // PRINT-ONLY names (player-display-name.ts): a partner guest's club, an
+  // alias for an empty name. The balancer and the adjuster above still saw
+  // the plain names.
+  const shown = await loadPlayerNames(orgId, [...result.red, ...result.yellow].map((p) => p.id), lang);
+  const printed = (side: typeof result.red) => side.map((p) => ({ ...p, name: shown.get(p.id)?.display ?? p.name }));
   const groupPost = formatTeamsPost({
     redLabel,
     yellowLabel,
-    red: result.red,
-    yellow: result.yellow,
+    red: printed(result.red),
+    yellow: printed(result.yellow),
     kickoff,
     venue: match.activity.venue,
     lang,

@@ -34,6 +34,7 @@ import { askDmLink, askDmPrefill, askRefCandidates, askRefCode, stripAskRef } fr
 import { partnerAskToQuestion } from "./partner-volunteer-rules";
 import { dayCommaTimeLabel } from "./i18n/dates";
 import { t } from "./i18n/t";
+import { usableName } from "./player-display-name";
 
 const LIVE = ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"];
 /** How long the "which game?" question waits for its answer. */
@@ -259,7 +260,7 @@ async function claimWhich(askId: string, userId: string): Promise<boolean> {
   }
 }
 
-export type CodedAskDmResult = { handled: "xask-dm-volunteer" | "xask-dm-unclear"; outcome: string };
+export type CodedAskDmResult = { handled: "xask-dm-volunteer" | "xask-dm-unclear" | "xask-dm-name-ask"; outcome: string };
 
 /**
  * A DM carrying an ask's code. The resolver decides IN or OUT on his words
@@ -290,11 +291,87 @@ export async function handleCodedPartnerAskDm(args: {
     console.log(`[partner-guest-dm] ${args.userId}: a DM with ask ${ask.askId}'s code, not read as IN or OUT`);
     return { handled: "xask-dm-unclear", outcome: "unclear" };
   }
+  // No name on file (C2, MT Test, 2026-10-22): ask for one before his
+  // place is written, so the asking club never lists him as "(unnamed)".
+  // An OUT needs no name and is not held up.
+  if (resolution.decision === "in" && !usableName(args.userName)) {
+    await askVolunteerName(ask, args.userId, args.replyPhone);
+    return { handled: "xask-dm-name-ask", outcome: "asked-name" };
+  }
   const r = await handlePartnerVolunteer(
     { askId: ask.askId, userId: args.userId, name: args.userName ?? "", polarity: resolution.decision, sourceMessageId: args.waMessageId, replyPhone: args.replyPhone },
     now,
   );
   console.log(`[partner-guest-dm] ${args.userId}: ${resolution.decision} for ask ${ask.askId} by DM (${r.outcome}, via ${resolution.via})`);
+  return { handled: "xask-dm-volunteer", outcome: r.outcome };
+}
+
+// ── A volunteer with no name (2026-10-22) ──────────────────────────────────
+//
+// Prod, MT Test: C2 volunteered by the DM code with an empty User.name, and
+// the asking club's squad listed him as "(unnamed)". So an IN from a
+// volunteer MatchTime holds no name for gets ONE question first, and his
+// NEXT DM within the window is the name: taken as typed (trimmed, spaces
+// collapsed, capped), never parsed for phrases. It fills an EMPTY
+// User.name only, never overwrites one, and then the volunteer writer runs
+// exactly as for a named volunteer. A reply that cannot be a name (no
+// letter, a phone number) gets the question once more and writes nothing.
+
+/** How long the name question waits for his reply. */
+export const VOLUNTEER_NAME_TTL_MS = 12 * 3600_000;
+/** The longest name kept from his reply. */
+const VOLUNTEER_NAME_MAX = 40;
+
+/** His reply as a name, or null when it cannot be one. (pure) */
+export function volunteerNameFromReply(text: string): string | null {
+  const v = usableName(text);
+  return v ? v.slice(0, VOLUNTEER_NAME_MAX).trim() : null;
+}
+
+const nameKeyPrefix = (userId: string) => `xask:name:${userId}:`;
+
+async function askVolunteerName(ask: AskForDm, userId: string, replyPhone: string | null): Promise<void> {
+  // One open question per person: the newest ask he said IN to.
+  await db.sentNotification.deleteMany({ where: { key: { startsWith: nameKeyPrefix(userId) } } });
+  await db.sentNotification.create({ data: { key: `${nameKeyPrefix(userId)}${ask.askId}`, kind: "xask-dm-name", targetUser: userId } });
+  await dm(ask.partnerOrgId, replyPhone ?? (await phoneOnFile(userId)), t(ask.lang).xask_dm_name_ask({ asker: ask.askerName, day: ask.day }));
+  console.log(`[partner-guest-dm] ${userId}: no name on file, asked for one before ask ${ask.askId}`);
+}
+
+/**
+ * His reply to the name question, or null when no question is open for
+ * him (the DM is then nobody's business here).
+ */
+export async function handleVolunteerNameReply(args: {
+  userId: string;
+  text: string;
+  replyPhone: string | null;
+  waMessageId: string;
+  now?: Date;
+}): Promise<CodedAskDmResult | null> {
+  const now = args.now ?? new Date();
+  const asked = await db.sentNotification.findFirst({
+    where: { kind: "xask-dm-name", key: { startsWith: nameKeyPrefix(args.userId) }, createdAt: { gte: new Date(now.getTime() - VOLUNTEER_NAME_TTL_MS) } },
+    orderBy: { createdAt: "desc" },
+    select: { key: true },
+  });
+  if (!asked) return null;
+  const askId = asked.key.slice(nameKeyPrefix(args.userId).length);
+  const name = volunteerNameFromReply(args.text);
+  if (!name) {
+    const ask = await loadAskForDm(askId);
+    if (!ask) return null;
+    await dm(ask.partnerOrgId, args.replyPhone ?? (await phoneOnFile(args.userId)), t(ask.lang).xask_dm_name_ask({ asker: ask.askerName, day: ask.day }));
+    console.log(`[partner-guest-dm] ${args.userId}: reply to the name question was not a name, asked again`);
+    return { handled: "xask-dm-name-ask", outcome: "asked-name-again" };
+  }
+  await db.user.updateMany({ where: { id: args.userId, OR: [{ name: null }, { name: "" }] }, data: { name } });
+  await db.sentNotification.deleteMany({ where: { key: asked.key } });
+  const r = await handlePartnerVolunteer(
+    { askId, userId: args.userId, name, polarity: "in", sourceMessageId: args.waMessageId, replyPhone: args.replyPhone },
+    now,
+  );
+  console.log(`[partner-guest-dm] ${args.userId}: named, then in for ask ${askId} by DM (${r.outcome})`);
   return { handled: "xask-dm-volunteer", outcome: r.outcome };
 }
 

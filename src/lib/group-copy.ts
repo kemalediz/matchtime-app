@@ -203,6 +203,12 @@ export interface SquadTruth {
   confirmed: string[];
   /** BENCH rows, in position order. */
   bench: string[];
+  /** PRINT-ONLY lines for `confirmed` and `bench`, same order and length
+   *  (`loadPlayerNames().display`: a partner guest is "C1 (Friday MT
+   *  Community)", 2026-10-22). Only the composed post reads them; every
+   *  check above matches the plain names. Absent: the plain names print. */
+  confirmedDisplay?: string[];
+  benchDisplay?: string[];
   maxPlayers: number;
   /** Every name the group knows — active members plus anyone on this
    *  match. Used ONLY to decide whether a capitalised word in the reply
@@ -519,8 +525,8 @@ function composeSquadTruthPost(truth: SquadTruth, lang?: Lang | string | null): 
     });
   }
   return composeSquadStatusPost({
-    confirmed: truth.confirmed,
-    bench: truth.bench,
+    confirmed: truth.confirmedDisplay ?? truth.confirmed,
+    bench: truth.benchDisplay ?? truth.bench,
     maxPlayers: truth.maxPlayers,
     lang,
   });
