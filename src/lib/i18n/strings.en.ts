@@ -5078,9 +5078,14 @@ export const en = {
   pd_venue_label: "Club venue",
   pd_venue_prompt_title: "Confirm your venue to find clubs near you",
   pd_venue_prompt_body: "Nearby clubs can only find your club once it has a venue. Pick your pitch from the list below.",
-  pd_venue_game: (p: { venue: string }) =>
-    `Nearby clubs are measured from your game's venue, ${p.venue}. The club venue is used only while you have no active game.`,
-  pd_venue_home: (p: { venue: string }) => `Club venue: ${p.venue}`,
+  // The venue in use, shown as a card (2026-10-22): its label, then the
+  // line under a game's venue, then the buttons that open the lookup.
+  pd_venue_from_game: "Set from your game",
+  pd_venue_from_home: "Club venue",
+  pd_venue_game: "Nearby clubs are measured from this venue. The club venue is used only while you have no active game.",
+  pd_venue_change: "Change",
+  pd_venue_set_club: "Set a club venue",
+  pd_venue_cancel: "Cancel",
   pd_venue_placeholder: "Start typing your pitch's name",
   pd_venue_save: "Save venue",
   pd_venue_pick_first: "Pick your pitch from the list to save it.",
