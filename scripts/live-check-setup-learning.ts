@@ -24,6 +24,13 @@
  *     each proves the prompt can read them, not that it always does: an
  *     occasional miss can slip through a single pass.
  *
+ *   REWRITTEN AS A WHOLE AGAIN 2026-10-22 (one document, no new rulings).
+ *     Main's prompt: 8 calls, $0.0142, 8 of 8 pass. The first draft: 8
+ *     calls, $0.0139, 5 of 8 (organiser-picks, deadlines and
+ *     description-supports each lost a second quote and so a setting or
+ *     a suggestion). The shipped text asks for a second source on every
+ *     answer: 8 calls, $0.0145, 8 of 8.
+ *
  * A new or rewritten prompt needs ONE approved live check before
  * SETUP_LEARNING_ENABLED is switched on. The unit tests stub the model;
  * they prove the wiring and the rules, not that Haiku reads a real chat

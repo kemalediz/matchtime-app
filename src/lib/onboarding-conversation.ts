@@ -686,9 +686,14 @@ function coercePendingAdmins(raw: unknown): ParsedAdmin[] {
  * says, from the stage, what MatchTime is asking, so "only answer the
  * feature menu when it is asked" is a fact rather than a guess.
  * Output contract unchanged: the same nine keys, null for unknown.
- * Size: 2,553 characters before, 3,412 after (count_tokens on
- * claude-haiku-5-5: 963 before, 1,253 after), above Haiku 5.5's 512-token
- * cacheable minimum, so the shared marker still caches it.
+ * Size: 2,516 characters before, 3,478 after (count_tokens on
+ * claude-haiku-5-5: 1,100 before, 1,462 after), above Haiku 5.5's 512-token
+ * cacheable minimum, so the shared marker still caches it. Longer, not
+ * shorter: the day numbers and the feature words are now each listed
+ * once in full instead of by a few samples, and clarity wins.
+ * Paid check: scripts/live-check-onboarding-extract.ts (28 cases, each
+ * once): main's prompt 26/28 (both relative one-off dates null), this
+ * one 28/28.
  */
 export const EXTRACT_PROMPT = `You read the newest messages in a WhatsApp group that is setting up MatchTime, a WhatsApp assistant for a regular amateur game, and pull out the setup answers people have stated. You do not run the conversation and you never guess: a field the messages do not state is null.
 
