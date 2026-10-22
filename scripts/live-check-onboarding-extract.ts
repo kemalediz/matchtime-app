@@ -107,7 +107,7 @@ const CASES: Case[] = [
   { name: "en-correction", teaches: "a corrected value replaces the collected one", known: { ...NAMED, playersPerSide: 7, dayOfWeek: 2 },
     msgs: [["Olive", "actually make it Thursdays"]], want: { dayOfWeek: 4 } },
   { name: "tr-correction", teaches: "a correction in Turkish", known: { ...NAMED, playersPerSide: 7, dayOfWeek: 2 },
-    msgs: [["Erdal", "pardon, salı değil çarşamba"]], want: { dayOfWeek: 3 } },
+    msgs: [["Erdal", "pardon, salı değil perşembe"]], want: { dayOfWeek: 4 } },
   // ── the feature pick ──
   { name: "en-everything", teaches: "everything is all eight keys", known: { ...ALL_EVENT, recurrence: "weekly", stage: "features" },
     msgs: [["Olive", "everything please"]], want: { featureSelection: ALL8 } },

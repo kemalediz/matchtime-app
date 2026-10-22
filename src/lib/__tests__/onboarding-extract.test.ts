@@ -130,7 +130,34 @@ describe("what the code does with the answer", () => {
   });
 });
 
-describe("the user turn", () => {
+describe("the user turn (the context does the work, 2026-10-22)", () => {
+  it("gives today's date in London, so a relative one-off date can be worked out", () => {
+    expect(buildExtractUserTurn(KNOWN, [{ authorName: "Ali", body: "x" }], NOW)).toContain("Today: Thursday 22 October 2026");
+    // 23:30 UTC on the 22nd is already the 23rd in London (BST).
+    expect(buildExtractUserTurn(KNOWN, [], new Date("2026-10-22T23:30:00Z"))).toContain("Today: Friday 23 October 2026");
+  });
+
+  it("says what MatchTime is asking, from the stage", () => {
+    const asking = (stage: string) =>
+      buildExtractUserTurn({ ...KNOWN, stage }, [], NOW).split("\n").find((l) => l.startsWith("MatchTime is asking:"));
+    expect(asking("features")).toMatch(/which features/);
+    expect(asking("details")).toMatch(/when and where/);
+    expect(asking("collecting")).toMatch(/setup details/);
+    // Only the feature menu is a feature question.
+    expect(asking("details")).not.toMatch(/feature/);
+    expect(asking("collecting")).not.toMatch(/feature/);
+  });
+
+  it("lists what is collected under the answer's own field names, a missing one as not yet", () => {
+    const turn = buildExtractUserTurn(KNOWN, [], NOW);
+    expect(turn).toContain("- groupName: Thursday Ballers");
+    expect(turn).toContain("- playersPerSide: 7");
+    expect(turn).toContain("- venue: not yet");
+    expect(turn).toContain("- dayOfWeek: not yet");
+    expect(buildExtractUserTurn({ ...KNOWN, dayOfWeek: 0 }, [], NOW)).toContain("- dayOfWeek: 0 (Sunday)");
+  });
+
+
   it("shows each message as author: text, cut at 400 characters", () => {
     const turn = buildExtractUserTurn(KNOWN, [
       { authorName: "Ali", body: "thursdays" },
@@ -149,6 +176,25 @@ describe("the prompt", () => {
 
   it("is long enough for its cache marker to do something on Haiku 5.5", () => {
     expect(estimateTokens(EXTRACT_PROMPT)).toBeGreaterThanOrEqual(MIN_CACHEABLE_TOKENS["claude-haiku-5-5"]);
+  });
+
+  it("defines every output field once, in one place", () => {
+    for (const k of ["groupName", "venue", "dayOfWeek", "kickoffTime", "playersPerSide", "recurrence", "oneOffDate", "featureSelection", "confidence"]) {
+      expect(EXTRACT_PROMPT.match(new RegExp(`^- ${k}:`, "gm")) ?? [], k).toHaveLength(1);
+    }
+  });
+
+  it("names each part of the user turn the way the user turn writes it", () => {
+    const turn = buildExtractUserTurn(KNOWN, [{ authorName: "Ali", body: "x" }], NOW);
+    for (const label of ["Today:", "MatchTime is asking:", "Collected so far:", "New messages"]) {
+      expect(turn, label).toContain(label);
+      expect(EXTRACT_PROMPT, label).toContain(label);
+    }
+  });
+
+  it("works a relative date out from today's date, and pairs every Turkish example with an English one", () => {
+    expect(EXTRACT_PROMPT).toMatch(/today's date/);
+    expect(EXTRACT_PROMPT).toContain("EXAMPLES, ENGLISH / TURKISH");
   });
 
   it("names every canonical feature key", () => {
