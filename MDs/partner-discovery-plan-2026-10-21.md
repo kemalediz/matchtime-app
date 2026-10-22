@@ -55,8 +55,11 @@ setting is on by default.** Its owner or admin can switch it off at any time:
   at signup.
 - **Existing clubs are switched on at once, like new ones** (Kemal, 2026-10-22: no 7-day notice
   and no owner DM). Owners can switch it off any time in the Partner clubs section.
-- **Only a listed club can search** (recommended, D-3). It stops a club quietly browsing everybody
-  while showing nothing of itself, and it means every club in a list has agreed to the same terms.
+- **A club can search only while its own "Let nearby clubs find us and send requests" is on**
+  (decided by Kemal, 2026-10-22, D-3). Switching it off hides the club and removes its search, so
+  no club browses others while showing nothing of itself. It must also be listable (next bullet):
+  with no confirmed venue it sees the "Confirm your venue" prompt instead, and a dormant or
+  billing-paused club cannot search (recommended; Kemal can overrule).
 - A club is listed only if it is approved, not dormant, not billing-paused, has a players' group,
   and has at least one active game with a **geocoded venue** (`Activity.venueId` pointing at a
   `Venue` with `lat`/`lng`). A club with no geocoded venue sees "Confirm your venue to find clubs
@@ -311,7 +314,7 @@ P1 to P5 touch no prompt; the only model-facing change is the notice wording in 
 |---|---|---|
 | D-1 | Does accepting let only the requester ask, or both ways? | **Only the requester.** Offer a one-tap "ask them too" reverse request that the other club accepts. |
 | D-2 | Who may send and accept requests? | **Owners and admins**, both. Owners are told when an admin accepts. |
-| D-3 | Must a club be listed itself to search? | **Yes.** No lurking; everyone in the list agreed to the same terms. |
+| D-3 | Must a club be listed itself to search? | **Decided (Kemal, 2026-10-22): yes**, search needs the club's own toggle on. |
 | D-4 | Request limits? | **20 new requests a day, 50 pending, 14-day expiry, 30-day wait after a decline or an end by the other club, block available.** |
 | D-5 | Default number on the ask picker? | **1**, up to the open places. Most asks are for one player and over-asking floods partner groups. |
 | D-6 | Keep the platform owner's create form? | **No.** Keep the list with pause and end as an override. |
