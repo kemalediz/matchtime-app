@@ -24,9 +24,10 @@ const HQ = "120363777000000061@g.us";
 const ADMIN = PHONE.admin.replace(/^\+/, "");
 const PLAYER = PHONE.player.replace(/^\+/, "");
 
-const CANCEL = "Cancel the session";
-const CANCEL_TR = "maçı iptal et";
-const BACK_ON = "it's back on, uncancel it";
+const CANCEL = "@Match Time cancel the session";
+const CANCEL_TR = "@Match Time maçı iptal et";
+const BACK_ON = "@Match Time it's back on, uncancel it";
+const UNTAGGED = "storm, no game Friday";
 const KIT = "@Match Time change the kit colour";
 
 const admin = (action: string) => ({
@@ -58,6 +59,7 @@ test.beforeEach(async ({ db }) => {
     [CANCEL_TR]: admin("cancel_match"),
     [BACK_ON]: admin("restore_match"),
     [KIT]: admin("other"),
+    [UNTAGGED]: admin("cancel_match"),
   });
 });
 
@@ -66,7 +68,7 @@ test.afterAll(() => {
   resetDb();
 });
 
-test("an organiser's 'Cancel the session': the next match is cancelled, the players' group told, HQ answered", async ({ request, db }) => {
+test("an organiser tags MatchTime to cancel: the next match is cancelled, the players' group told, HQ answered", async ({ request, db }) => {
   const out = await say(request, CANCEL);
   expect(out).toMatchObject({ handled: true, outcome: "hq-match-cancelled", react: "✅" });
   expect(out.replyText).toMatch(/^Done: .+, \w{3} \d{1,2} \w{3} at \d{2}:\d{2} is cancelled\. I've told the players' group\.$/);
@@ -79,6 +81,13 @@ test("an organiser's 'Cancel the session': the next match is cancelled, the play
   expect(back.replyText).toMatch(/is back on\. I've told the players' group\.$/);
   expect(await status(db)).toBe("UPCOMING");
   expect((await groupPosts(db)).map((p) => p.text)[1]).toMatch(/^✅ \*Match back on\*/);
+});
+
+test("untagged, from an organiser (only a tag acts): nothing cancelled, nothing posted, nothing said", async ({ request, db }) => {
+  const out = await say(request, UNTAGGED);
+  expect(out.replyText ?? null).toBeNull();
+  expect(await status(db)).toBe("UPCOMING");
+  expect(await groupPosts(db)).toHaveLength(0);
 });
 
 test("Turkish club: cancelled and answered in Turkish", async ({ request, db }) => {

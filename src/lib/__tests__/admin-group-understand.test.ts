@@ -1263,10 +1263,18 @@ describe("cancelling a match from HQ, and putting it back on (2026-10-22)", () =
     hqLog.hqLogSince.mockResolvedValue([]);
   });
 
-  it("an organiser's 'Cancel the session' (FNF HQ, 2026-10-22): the next match is cancelled and HQ is told", async () => {
-    const r = await ask("Cancel the session", "admin_ops", { deps: deps({ action: "cancel_match", matchDay: "" }) });
+  it("an organiser tags MatchTime to cancel: the next match is cancelled and HQ is told", async () => {
+    const r = await ask("@Match Time cancel the session", "admin_ops", { deps: deps({ action: "cancel_match", matchDay: "" }) });
     expect(r).toEqual({ route: "admin_ops", outcome: "hq-match-cancelled", replyText: DONE });
-    expect(matchCancel.hqCancelOrRestore).toHaveBeenCalledWith({ orgId: "org-fnf", lang: "en", mode: "cancel", dayPhrase: null, addressed: false, now: NOW });
+    expect(matchCancel.hqCancelOrRestore).toHaveBeenCalledWith({ orgId: "org-fnf", lang: "en", mode: "cancel", dayPhrase: null, addressed: true, now: NOW });
+  });
+
+  it("untagged (Kemal: it only acts when an admin tags it): nothing written, nothing said", async () => {
+    for (const [text, action] of [["Cancel the session", "cancel_match"], ["storm, no game Friday", "cancel_match"], ["it's back on", "restore_match"]]) {
+      expect(await ask(text, "admin_ops", { deps: deps({ action }) })).toBeNull();
+    }
+    expect(matchCancel.hqCancelOrRestore).not.toHaveBeenCalled();
+    expect(hqLog.recordMatchTimeLine).not.toHaveBeenCalled();
   });
 
   it("in Turkish, with the day named", async () => {
@@ -1275,7 +1283,7 @@ describe("cancelling a match from HQ, and putting it back on (2026-10-22)", () =
   });
 
   it("'it's back on': the cancelled match is put back on", async () => {
-    await ask("it's back on, uncancel Friday", "admin_ops", { deps: deps({ action: "restore_match", matchDay: "Friday" }) });
+    await ask("@Match Time it's back on, uncancel Friday", "admin_ops", { deps: deps({ action: "restore_match", matchDay: "Friday" }) });
     expect(matchCancel.hqCancelOrRestore).toHaveBeenCalledWith(expect.objectContaining({ mode: "restore", dayPhrase: "Friday" }));
   });
 
@@ -1287,7 +1295,7 @@ describe("cancelling a match from HQ, and putting it back on (2026-10-22)", () =
   });
 
   it("the money collector who is not an admin: may give a free place, may not cancel", async () => {
-    const r = await ask("cancel the session", "admin_ops", {
+    const r = await ask("@Match Time cancel the session", "admin_ops", {
       org: { ...ORG, paymentHolderId: "u-col" },
       organiser: false,
       member: true,
@@ -1299,7 +1307,7 @@ describe("cancelling a match from HQ, and putting it back on (2026-10-22)", () =
   });
 
   it("a monthly club: nothing is cancelled; use the website", async () => {
-    const r = await ask("Cancel the session", "admin_ops", { org: { ...ORG, squadMode: "monthly" }, deps: deps({ action: "cancel_match" }) });
+    const r = await ask("@Match Time cancel the session", "admin_ops", { org: { ...ORG, squadMode: "monthly" }, deps: deps({ action: "cancel_match" }) });
     expect(r).toEqual({
       route: "admin_ops",
       outcome: "hq-cancel-monthly",
@@ -1308,9 +1316,9 @@ describe("cancelling a match from HQ, and putting it back on (2026-10-22)", () =
     expect(matchCancel.hqCancelOrRestore).not.toHaveBeenCalled();
   });
 
-  it("an organiser saying the game is on, with nothing cancelled: silent", async () => {
+  it("put back on with nothing cancelled, when the owner says nothing: silent", async () => {
     matchCancel.hqCancelOrRestore.mockResolvedValue(null);
-    expect(await ask("game's on lads", "admin_ops", { deps: deps({ action: "restore_match" }) })).toBeNull();
+    expect(await ask("@Match Time game's on lads", "admin_ops", { deps: deps({ action: "restore_match" }) })).toBeNull();
   });
 });
 

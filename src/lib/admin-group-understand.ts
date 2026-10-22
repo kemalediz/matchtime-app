@@ -300,7 +300,7 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
     // organisers talking to each other (FNF HQ 2026-10-16 23:49, "Imti Rafi
     // AH back" quoting an organiser about next week, routed other_att, got
     // a tick and "I don't know AH yet"). Nothing MatchTime does from it.
-    const { addressed, toAnotherOrganiser } = hqAddressing({ text: input.text, quoted, quotedIsMatchTime });
+    const { tagged, addressed, toAnotherOrganiser } = hqAddressing({ text: input.text, quoted, quotedIsMatchTime });
     // The score MatchTime is waiting for, and the answers and corrections
     // that go to `score` whatever the model says (`admin-group-score.ts`).
     const score = await hqScoreRouting({
@@ -708,6 +708,13 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
         // (monthly squads are not live: the website does it). The one path
         // the web page uses (`match-cancel.ts`).
         if (facts.kind === "admin" && (facts.action === "cancel_match" || facts.action === "restore_match")) {
+          // Only when an organiser TAGS MatchTime (Kemal, 2026-10-22: "it only
+          // acts when an admin tags it"). Untagged, "storm, no game Friday" is
+          // the organisers telling each other: nothing written, nothing said.
+          if (!tagged) {
+            console.log(`[admin-group] ${messageId}: ${facts.action} not tagged: their conversation`);
+            return null;
+          }
           if (!actor) return onlyOrganisers();
           if (!weekly) return said("hq-cancel-monthly", s.hq_cancel_monthly);
           const r = await hqCancelOrRestore({

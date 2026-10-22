@@ -791,8 +791,7 @@ export const en = {
     `*Playing (${p.confirmed}/${p.maxPlayers}):*`,
   format_switch_bench_header: "*Bench:*",
   match_cancelled: (p: { activityName: string; whenLabel: string }): string =>
-    `❌ *Match cancelled*: ${p.activityName} on ${p.whenLabel}.\n\n` +
-    `Not enough players this week. See you next week!`,
+    `❌ *Match cancelled*: ${p.activityName}, ${p.whenLabel} is off this week. See you next time!`,
   /** The players' group: a cancelled match put back on (match-cancel.ts). */
   match_back_on: (p: { activityName: string; whenLabel: string }): string =>
     `✅ *Match back on*: ${p.activityName} on ${p.whenLabel}. It goes ahead as planned.`,
@@ -1379,6 +1378,7 @@ export const en = {
       lines.push(`🔁 *"swap Sam and Alex"*, *"move Sam to the other team"*: changes to the teams.`);
       lines.push(`✅ *YES* (or reply YES to my message): make the proposed teams final.`);
       lines.push(`📣 *"ask the group if anyone can play"*: when a place is open, I ask in the main chat.`);
+      lines.push(`❌ *"@Match Time cancel Friday"*, *"@Match Time it's back on"*: call the next match off or back on, and I tell the players' group.`);
     }
     if (p.graphics) lines.push(`🖼️ *"send the poster"*, *"team sheet please"*: the list or the teams as a graphic, ready to forward.`);
     if (p.picks) lines.push(`🙋 When I ask you to pick who plays, reply with the numbers or names from my list, or *ALL* or *NONE*.`);
