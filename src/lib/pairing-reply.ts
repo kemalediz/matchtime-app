@@ -3,9 +3,11 @@
  * 2026-10-21: "whatsapp reply like pressing 1 or 2 should also do the
  * same job").
  *
- * When the platform owner pairs two clubs (`createPartnership`), each
- * club's organisers get a notice ending "Club owner: reply *1* to accept
- * or *2* to decline, or open <link>". Until now only the link worked.
+ * When one club sends another a partner request (`requestPartnerships`,
+ * partner discovery P3, 2026-10-22), the other club's organisers get a
+ * notice ending "Reply *1* to accept or *2* to decline, or open <link>"
+ * (the platform owner's older pairing notice ended the same way). An owner
+ * or an admin answers it (D-2).
  *
  * THE PATTERN REUSED: the money collector's fee confirm, which is how
  * MatchTime already understands a reply to one of its own closed
@@ -29,7 +31,7 @@
  *      phrases);
  *   4. a ✅ or 👍 REACTION on the notice is the owner's yes, found by the
  *      reacted-to message's id, exactly as `fee-confirm-reaction.ts` does;
- *   5. the action is `actOnPartnership`, the one writer (owner-only,
+ *   5. the action is `actOnPartnership`, the one writer (owners and admins,
  *      compare-and-set), and its refusal is what the person hears.
  *
  * In an admin group the shared router and the safe-YES rule run first
@@ -49,7 +51,9 @@ import { REPLY_PRIORITY } from "./dm-reply-priority";
 import { withOrgAiBudget } from "./ai-budget";
 import { isFeeConfirmYesEmoji } from "./fee-confirm-reaction";
 import { DM_LOOKBACK_MS, loadDmReplyContext, noReplyContext, renderReplyContext, type QuotedBotMessage, type ReplyContext } from "./reply-context";
-import { actOnPartnership, type ActResult } from "./club-partnership";
+import { actOnPartnership, askTooPath, type ActResult } from "./club-partnership";
+import { buildAdminLink } from "./admin-link";
+import { appUrl } from "./app-url";
 import { pairingNoticeKey, parsePairingNoticeKey, waitingForSide, type ClubRole } from "./club-partnership-rules";
 
 // ── The reading ──────────────────────────────────────────────────────
@@ -221,18 +225,21 @@ export interface PairingAnswer {
   reply: string;
 }
 
-/** The line for `actOnPartnership`'s result, in the club's language. */
-export function pairingReplyText(notice: PairingNotice, action: "accept" | "decline", result: ActResult): string {
+/** The line for `actOnPartnership`'s result, in the club's language.
+ *  `askTooLink`: a request this club just accepted, whose asking club it
+ *  cannot ask yet, gets the one-tap "ask them too" (D-1, P3). */
+export function pairingReplyText(notice: PairingNotice, action: "accept" | "decline", result: ActResult, askTooLink?: string | null): string {
   const s = t(notice.lang);
   const names = { club: notice.club, other: notice.other };
   if (result.ok) {
     if (action === "decline") return s.pc_reply_declined(names);
+    if (result.status === "active" && askTooLink) return s.pr_reply_accepted({ ...names, link: askTooLink });
     return result.status === "active" ? s.pc_reply_accepted_active(names) : s.pc_reply_accepted_waiting(names);
   }
   switch (result.refusal) {
     case "owner-only":
     case "admin-only":
-      return s.pc_owner_only;
+      return s.pr_admin_only;
     case "already-accepted":
       return s.pc_reply_already_accepted(names);
     default:
@@ -251,17 +258,52 @@ async function roleIn(userId: string, orgId: string): Promise<ClubRole> {
 
 /**
  * Accept or decline through the one writer. The role is the person's own
- * in that club, so an admin is refused owner-only there. A compare-and-set
- * that lost to a concurrent acceptance is tried once more on what it now
- * reads.
+ * in that club: an owner or an admin answers (D-2), anyone else is
+ * refused. A compare-and-set that lost to a concurrent acceptance is tried
+ * once more on what it now reads. Accepting by reply keeps the request's
+ * default per-ask choice, "post without asking" (plan 3.2).
+ *
+ * A request this club just accepted, whose asking club it cannot ask yet,
+ * gets the one-tap "ask them too" link (D-1): the person's own signed-in
+ * link in a DM, the plain page in the admin group (`audience`).
  */
-export async function answerPairing(notice: PairingNotice, userId: string, action: "accept" | "decline", now: Date = new Date()): Promise<PairingAnswer> {
+export async function answerPairing(
+  notice: PairingNotice,
+  userId: string,
+  action: "accept" | "decline",
+  now: Date = new Date(),
+  audience: "dm" | "group" = "dm",
+): Promise<PairingAnswer> {
   const role = await roleIn(userId, notice.orgId);
   const act = () => actOnPartnership({ partnershipId: notice.partnershipId, orgId: notice.orgId, userId, role, action, now });
   let result = await act();
   if (!result.ok && result.refusal === "changed") result = await act();
   console.log(`[pairing-reply] pairing ${notice.partnershipId} for ${notice.orgId}: ${action} by ${userId}: ${outcomeOf(action, result)}`);
-  return { outcome: outcomeOf(action, result), reply: pairingReplyText(notice, action, result) };
+  const askToo = action === "accept" && result.ok && result.status === "active" ? await askTooLinkFor(notice, userId, audience) : null;
+  return { outcome: outcomeOf(action, result), reply: pairingReplyText(notice, action, result, askToo) };
+}
+
+/** The "ask them too" link, or null when this club is not the partner side
+ *  of a request, or already may ask (or has asked) the other club. Never
+ *  throws: the answer goes out without the link instead. */
+async function askTooLinkFor(notice: PairingNotice, userId: string, audience: "dm" | "group"): Promise<string | null> {
+  try {
+    const p = await db.clubPartnership.findUnique({
+      where: { id: notice.partnershipId },
+      select: { askerOrgId: true, partnerOrgId: true, origin: true },
+    });
+    if (!p || p.origin !== "request" || p.partnerOrgId !== notice.orgId) return null;
+    const reverse = await db.clubPartnership.findFirst({
+      where: { askerOrgId: notice.orgId, partnerOrgId: p.askerOrgId, status: { not: "ended" } },
+      select: { id: true },
+    });
+    if (reverse) return null;
+    const path = askTooPath(notice.partnershipId);
+    return audience === "group" ? appUrl(path) : await buildAdminLink({ userId, orgId: notice.orgId, nextPath: path });
+  } catch (err) {
+    console.error(`[pairing-reply] pairing ${notice.partnershipId}: no ask-too link: ${(err as Error)?.name ?? "error"}`);
+    return null;
+  }
 }
 
 function whichText(notices: PairingNotice[]): string {
@@ -530,7 +572,7 @@ export async function answerPairingInHq(args: {
     : { now: args.now, quoted: null, recent: args.noticeAt ? [message] : [], earlier: null };
   const intent = await classifyPairingReply(args.text, { pairings: [{ club: notice.club, other: notice.other }], replyContext });
   if (intent === "neither") return null;
-  if (!args.senderUserId) return { outcome: "pairing-owner-only", replyText: t(notice.lang).pc_owner_only };
-  const r = await answerPairing(notice, args.senderUserId, intent, args.now);
+  if (!args.senderUserId) return { outcome: "pairing-admin-only", replyText: t(notice.lang).pr_admin_only };
+  const r = await answerPairing(notice, args.senderUserId, intent, args.now, "group");
   return { outcome: r.outcome, replyText: r.reply };
 }

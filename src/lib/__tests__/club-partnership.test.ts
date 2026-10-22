@@ -63,9 +63,10 @@ describe("actOnPartnership", () => {
     expect(dbMock.clubPartnership.updateMany).not.toHaveBeenCalled();
   });
 
-  it("an admin cannot accept", async () => {
+  it("an admin accepts too (D-2); a player cannot", async () => {
     dbMock.clubPartnership.findUnique.mockResolvedValue({ ...row, askerAcceptedAt: null });
-    expect(await actOnPartnership({ partnershipId: "p1", orgId: "fnf", userId: "u", role: "ADMIN", action: "accept", now: NOW })).toEqual({ ok: false, refusal: "owner-only" });
+    expect(await actOnPartnership({ partnershipId: "p1", orgId: "fnf", userId: "u", role: "ADMIN", action: "accept", now: NOW })).toEqual({ ok: true, status: "proposed" });
+    expect(await actOnPartnership({ partnershipId: "p1", orgId: "fnf", userId: "u", role: "PLAYER", action: "accept", now: NOW })).toEqual({ ok: false, refusal: "admin-only" });
   });
 });
 

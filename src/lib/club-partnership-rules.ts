@@ -9,17 +9,21 @@
  *     longer creates one: clubs send each other requests (P3). The
  *     platform owner keeps pause and end as an override
  *     (`planPlatformAction`).
- *   - An OWNER of each club accepts it for that club; it is "active" once
- *     both have. An owner of either side declines a proposal or removes a
- *     pairing ("ended"). An owner or admin of either side pauses it, and
- *     only the side that paused resumes it, so one club can never undo the
- *     other's pause.
+ *   - An OWNER or ADMIN of each club accepts it for that club (D-2, Kemal
+ *     2026-10-22); it is "active" once both have. A request (P3) carries
+ *     the asking club's acceptance from the start, so the other club's one
+ *     acceptance makes it active. An owner or admin of either side declines
+ *     a proposal or removes a pairing ("ended"), the asking side withdraws
+ *     its own pending request, and either side pauses it; only the side
+ *     that paused resumes it, so one club can never undo the other's pause.
  *   - The partner side alone chooses how its organisers approve an ask
  *     ("each-ask" or "standing", D3); the asking side alone chooses when it
  *     asks and its cut-off (D4, D12).
  *
  * Pure. No database, no model. The writer is `club-partnership.ts`.
  */
+
+import { distanceKm } from "./geo";
 
 export type PartnershipStatus = "proposed" | "active" | "paused" | "ended";
 export type PartnerApproval = "each-ask" | "standing";
@@ -92,10 +96,12 @@ export function sideOf(p: Pick<PartnershipRow, "askerOrgId" | "partnerOrgId">, o
   return null;
 }
 
-export type PartnershipAction = "accept" | "decline" | "pause" | "resume" | "end";
+export type PartnershipAction = "accept" | "decline" | "withdraw" | "pause" | "resume" | "end";
 
 export type ActionRefusal =
   | "not-a-side"
+  /** No longer returned since D-2 (owners and admins alike); kept so an
+   *  older caller's switch still compiles. */
   | "owner-only"
   | "admin-only"
   | "ended"
@@ -103,7 +109,8 @@ export type ActionRefusal =
   | "already-accepted"
   | "not-active"
   | "not-paused"
-  | "paused-by-other";
+  | "paused-by-other"
+  | "not-asker";
 
 export interface PartnershipPatch {
   status?: PartnershipStatus;
@@ -112,6 +119,8 @@ export interface PartnershipPatch {
   partnerAcceptedAt?: Date;
   partnerAcceptedBy?: string;
   pausedByOrgId?: string | null;
+  /** The partner side's per-ask choice, set as it accepts (P3). */
+  partnerApproval?: PartnerApproval;
   /** Partner discovery (2026-10-22): when, by which club and why it ended,
    *  so the 30-day wait after a decline or an end can be read (P3). */
   endedAt?: Date;
@@ -124,16 +133,24 @@ export type ActionPlan = { ok: true; patch: PartnershipPatch } | { ok: false; re
 /** What one club's organiser may do to a pairing, and the row change. */
 export function planPartnershipAction(
   p: PartnershipRow,
-  a: { orgId: string; role: ClubRole; action: PartnershipAction; userId: string; now: Date },
+  a: {
+    orgId: string;
+    role: ClubRole;
+    action: PartnershipAction;
+    userId: string;
+    now: Date;
+    /** Accepting as the partner side: its per-ask choice (P3). Omitted, the
+     *  row keeps what it has ("post without asking" for a request). */
+    approval?: PartnerApproval;
+  },
 ): ActionPlan {
   const side = sideOf(p, a.orgId);
   if (!side) return { ok: false, refusal: "not-a-side" };
-  const owner = a.role === "OWNER";
-  const admin = owner || a.role === "ADMIN";
+  const admin = a.role === "OWNER" || a.role === "ADMIN";
 
   switch (a.action) {
     case "accept": {
-      if (!owner) return { ok: false, refusal: "owner-only" };
+      if (!admin) return { ok: false, refusal: "admin-only" };
       if (p.status === "ended") return { ok: false, refusal: "ended" };
       if (p.status !== "proposed") return { ok: false, refusal: "not-proposed" };
       const mine = side === "asker" ? p.askerAcceptedAt : p.partnerAcceptedAt;
@@ -142,13 +159,22 @@ export function planPartnershipAction(
       const patch: PartnershipPatch =
         side === "asker" ? { askerAcceptedAt: a.now, askerAcceptedBy: a.userId } : { partnerAcceptedAt: a.now, partnerAcceptedBy: a.userId };
       if (theirs) patch.status = "active";
+      if (side === "partner" && a.approval) patch.partnerApproval = a.approval;
       return { ok: true, patch };
     }
     case "decline": {
-      if (!owner) return { ok: false, refusal: "owner-only" };
+      if (!admin) return { ok: false, refusal: "admin-only" };
       if (p.status === "ended") return { ok: false, refusal: "ended" };
       if (p.status !== "proposed") return { ok: false, refusal: "not-proposed" };
       return { ok: true, patch: { status: "ended", pausedByOrgId: null, endedAt: a.now, endedByOrgId: a.orgId, endReason: "declined" } };
+    }
+    case "withdraw": {
+      // The asking club takes back its own pending request (plan 3.4).
+      if (!admin) return { ok: false, refusal: "admin-only" };
+      if (side !== "asker") return { ok: false, refusal: "not-asker" };
+      if (p.status === "ended") return { ok: false, refusal: "ended" };
+      if (p.status !== "proposed") return { ok: false, refusal: "not-proposed" };
+      return { ok: true, patch: { status: "ended", pausedByOrgId: null, endedAt: a.now, endedByOrgId: a.orgId, endReason: "withdrawn" } };
     }
     case "pause": {
       if (!admin) return { ok: false, refusal: "admin-only" };
@@ -162,7 +188,7 @@ export function planPartnershipAction(
       return { ok: true, patch: { status: "active", pausedByOrgId: null } };
     }
     case "end": {
-      if (!owner) return { ok: false, refusal: "owner-only" };
+      if (!admin) return { ok: false, refusal: "admin-only" };
       if (p.status === "ended") return { ok: false, refusal: "ended" };
       return { ok: true, patch: { status: "ended", pausedByOrgId: null, endedAt: a.now, endedByOrgId: a.orgId, endReason: "ended" } };
     }
@@ -311,4 +337,148 @@ export function waitingForSide(
   const side = sideOf(p, orgId);
   if (!side || p.status !== "proposed") return false;
   return !(side === "asker" ? p.askerAcceptedAt : p.partnerAcceptedAt);
+}
+
+// ─── Partner requests (slice P3, 2026-10-22) ──────────────────────────────
+// Plan: MDs/partner-discovery-plan-2026-10-21.md, sections 3.1 to 3.5;
+// decisions D-1 to D-4 (section 9).
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** New requests one club may send per London day (D-4). */
+export const PARTNER_REQUESTS_PER_DAY = 20;
+/** Requests one club may have waiting at once (D-4). */
+export const PARTNER_REQUESTS_PENDING_MAX = 50;
+/** An unanswered pairing request ends after this (D-4). An ask for
+ *  players has no such limit: it ends with its match. */
+export const PARTNER_REQUEST_EXPIRES_MS = 14 * DAY_MS;
+/** After the other club declined or ended it, the wait before asking again. */
+export const PARTNER_REQUEST_COOLDOWN_MS = 30 * DAY_MS;
+/** A pairing made by a request: the partner's asks go straight into its
+ *  players' group unless it chooses otherwise (Kemal, 2026-10-22). */
+export const REQUEST_DEFAULT_APPROVAL: PartnerApproval = "standing";
+
+/** The pairing row A to B as it stands, if one exists (one per direction). */
+export interface ExistingPairing {
+  status: string;
+  endReason: string | null;
+  endedAt: Date | null;
+  endedByOrgId: string | null;
+}
+
+/**
+ * When A may ask B again, or null for no wait: only after B declined or
+ * ended it (D-4). Withdrawn and expired requests, A's own end, a block
+ * (lifted by B's own unblock) and the platform owner's end carry no wait.
+ */
+export function cooldownUntil(existing: ExistingPairing | null, partnerOrgId: string, now: Date): Date | null {
+  if (!existing || existing.status !== "ended" || !existing.endedAt) return null;
+  if (existing.endedByOrgId !== partnerOrgId) return null;
+  if (existing.endReason !== "declined" && existing.endReason !== "ended") return null;
+  const until = new Date(existing.endedAt.getTime() + PARTNER_REQUEST_COOLDOWN_MS);
+  return until.getTime() > now.getTime() ? until : null;
+}
+
+export interface RequestFacts {
+  askerOrgId: string;
+  partnerOrgId: string;
+  /** The sender's role in the asking club. */
+  role: ClubRole;
+  /** The asking club's "Let nearby clubs find us" (D-3). */
+  askerDiscoverable: boolean;
+  /** The other club, or null when it does not exist. */
+  partner: { approved: boolean; discoverable: boolean } | null;
+  /** The other club may already ask us (active or paused): the one-tap
+   *  "ask them too" (D-1), which needs neither switch. */
+  theyMayAskUs: boolean;
+  existing: ExistingPairing | null;
+  /** Either club blocked the other. */
+  blocked: boolean;
+  /** Requests this club sent since London midnight. */
+  sentToday: number;
+  /** Requests this club has waiting. */
+  pending: number;
+  now: Date;
+}
+
+export type RequestRefusal =
+  | "not-admin"
+  | "same-club"
+  | "no-club"
+  | "blocked"
+  | "hidden"
+  | "not-listed"
+  | "already-pending"
+  | "already-paired"
+  | "cooldown"
+  | "pending-cap"
+  | "daily-cap";
+
+export type RequestPlan = { ok: true; mode: "create" | "reopen" } | { ok: false; refusal: RequestRefusal };
+
+/**
+ * May club A send club B a request now, and is it a new row or an ended
+ * one reopened (one row per direction)? Checked in this order, so the
+ * reason given is the most lasting one.
+ */
+export function planRequest(f: RequestFacts): RequestPlan {
+  if (f.role !== "OWNER" && f.role !== "ADMIN") return { ok: false, refusal: "not-admin" };
+  if (f.askerOrgId === f.partnerOrgId) return { ok: false, refusal: "same-club" };
+  if (!f.partner || !f.partner.approved) return { ok: false, refusal: "no-club" };
+  if (f.blocked) return { ok: false, refusal: "blocked" };
+  if (!f.theyMayAskUs) {
+    if (!f.askerDiscoverable) return { ok: false, refusal: "hidden" };
+    if (!f.partner.discoverable) return { ok: false, refusal: "not-listed" };
+  }
+  if (f.existing) {
+    if (f.existing.status === "proposed") return { ok: false, refusal: "already-pending" };
+    if (f.existing.status !== "ended") return { ok: false, refusal: "already-paired" };
+    if (cooldownUntil(f.existing, f.partnerOrgId, f.now)) return { ok: false, refusal: "cooldown" };
+  }
+  if (f.pending >= PARTNER_REQUESTS_PENDING_MAX) return { ok: false, refusal: "pending-cap" };
+  if (f.sentToday >= PARTNER_REQUESTS_PER_DAY) return { ok: false, refusal: "daily-cap" };
+  return { ok: true, mode: f.existing ? "reopen" : "create" };
+}
+
+/** A pending request past its 14 days. Only requests expire; a pairing the
+ *  platform owner proposed (none left in prod) waits as it always did. */
+export function requestExpired(r: { status: string; origin: string; expiresAt: Date | null }, now: Date): boolean {
+  return r.status === "proposed" && r.origin === "request" && !!r.expiresAt && r.expiresAt.getTime() <= now.getTime();
+}
+
+/** Owners and admins block another club (plan 3.4), never their own. */
+export function canBlock(a: {
+  role: ClubRole;
+  blockerOrgId: string;
+  blockedOrgId: string;
+}): { ok: true } | { ok: false; refusal: "not-admin" | "same-club" } {
+  if (a.role !== "OWNER" && a.role !== "ADMIN") return { ok: false, refusal: "not-admin" };
+  if (a.blockerOrgId === a.blockedOrgId) return { ok: false, refusal: "same-club" };
+  return { ok: true };
+}
+
+// ── The card in the request notice (plan 2.3) ──
+
+const KM_PER_MILE = 1.609344;
+
+/** Where a club is measured from (plan 2.2): its active games' geocoded
+ *  venues, or, with no active game, its home venue. */
+export function clubPositions(club: {
+  homeVenue: Position | null;
+  games: Array<{ isActive: boolean; venue: Position | null }>;
+}): Array<{ lat: number; lng: number }> {
+  const active = club.games.filter((g) => g.isActive);
+  const from = active.length > 0 ? active.map((g) => g.venue) : [club.homeVenue];
+  return from.filter((v): v is { lat: number; lng: number } => geocoded(v));
+}
+
+/** The nearest distance between two clubs, in miles to 0.1, or null when
+ *  either has no geocoded venue. */
+export function nearestMiles(a: Array<{ lat: number; lng: number }>, b: Array<{ lat: number; lng: number }>): number | null {
+  let best: number | null = null;
+  for (const x of a) for (const y of b) {
+    const km = distanceKm(x.lat, x.lng, y.lat, y.lng);
+    if (best === null || km < best) best = km;
+  }
+  return best === null ? null : Math.round((best / KM_PER_MILE) * 10) / 10;
 }

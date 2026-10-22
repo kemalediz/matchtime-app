@@ -18,9 +18,19 @@
  */
 import { db } from "./db";
 import { sendAdminNotice } from "./admin-channel";
+import { recordMatchTimeQuestion } from "./admin-group-log";
 import { servingClubWhere } from "./club-approval-state";
+import { londonMidnight } from "./club-connect-rules";
 import { t } from "./i18n/t";
 import {
+  PARTNER_REQUEST_EXPIRES_MS,
+  REQUEST_DEFAULT_APPROVAL,
+  canBlock,
+  clubPositions,
+  nearestMiles,
+  pairingNoticeKey,
+  planRequest,
+  type RequestRefusal,
   PARTNER_ASK_CUTOFF_DEFAULT_HOURS,
   normalisePartnerAskWhen,
   parseAskTime,
@@ -66,6 +76,12 @@ export interface PartnershipView {
   theyAccepted: boolean;
   /** Paused, and by which side, or by the MatchTime team (P5). */
   pausedBy: "us" | "them" | "platform" | null;
+  /** P3: "request" when one club asked the other, "owner" for the
+   *  platform owner's older pairings. */
+  origin: "owner" | "request";
+  /** P3: for a pairing that lets the other club ask us, whether we may
+   *  already ask them (or have asked): the "ask them too" button hides. */
+  reverseOpen: boolean;
 }
 
 /** A club's pairings in either direction, except ended ones. */
@@ -75,9 +91,13 @@ export async function loadPartnershipsForOrg(orgId: string): Promise<Partnership
     orderBy: { createdAt: "asc" },
     include: { askerOrg: { select: { name: true } }, partnerOrg: { select: { name: true } } },
   });
+  // The clubs we may ask, or have asked (any pairing not ended).
+  const weAsk = new Set(rows.filter((r) => r.askerOrgId === orgId).map((r) => r.partnerOrgId));
   return rows.map((r) => {
     const side = r.askerOrgId === orgId ? "asker" : "partner";
     return {
+      origin: r.origin === "request" ? "request" : "owner",
+      reverseOpen: side === "partner" ? weAsk.has(r.askerOrgId) : true,
       id: r.id,
       side,
       otherOrgId: side === "asker" ? r.partnerOrgId : r.askerOrgId,
@@ -120,12 +140,15 @@ export async function actOnPartnership(args: {
   userId: string;
   role: ClubRole;
   action: PartnershipAction;
+  /** Accepting as the partner side: its per-ask choice (P3). */
+  approval?: PartnerApproval;
   now?: Date;
 }): Promise<ActResult> {
   const now = args.now ?? new Date();
   const row = await db.clubPartnership.findUnique({ where: { id: args.partnershipId } });
   if (!row || !sideOf(row, args.orgId)) return { ok: false, refusal: "not-found" };
-  const plan = planPartnershipAction(row, { orgId: args.orgId, role: args.role, action: args.action, userId: args.userId, now });
+  const approval = args.approval === undefined ? undefined : (parsePartnerApproval(args.approval) ?? undefined);
+  const plan = planPartnershipAction(row, { orgId: args.orgId, role: args.role, action: args.action, userId: args.userId, now, approval });
   if (!plan.ok) return plan;
   const done = await db.clubPartnership.updateMany({
     where: {
@@ -141,6 +164,14 @@ export async function actOnPartnership(args: {
   if (done.count === 0) return { ok: false, refusal: "changed" };
   const status = (plan.patch.status ?? row.status) as PartnershipStatus;
   console.log(`[partner-clubs] pairing ${row.id}: ${args.action} by ${args.orgId}, now ${status}`);
+  // A request answered by the club it went to (P3): the asking club is
+  // told either way, and the owners when an admin accepted (D-2). A
+  // failure to queue a notice never undoes the answer.
+  if (row.origin === "request" && row.partnerOrgId === args.orgId && (args.action === "accept" || args.action === "decline")) {
+    await tellRequestAnswered({ row, action: args.action, status, userId: args.userId, role: args.role, now }).catch((err) =>
+      console.error(`[partner-clubs] pairing ${row.id}: answer notices not queued: ${(err as Error)?.name ?? "error"}`),
+    );
+  }
   return { ok: true, status };
 }
 
@@ -439,4 +470,393 @@ export async function runVenueReminderSweep(now: Date = new Date()): Promise<{ c
     }
   }
   return { considered: candidates.length, sent };
+}
+
+// ─── Partner requests (slice P3, 2026-10-22) ──────────────────────────────
+// Plan: MDs/partner-discovery-plan-2026-10-21.md, sections 3.1 to 3.5.
+
+/** Where the asking club finds clubs near it (P2's page). */
+export const FIND_CLUBS_PATH = "/admin/partners/find";
+
+/** The settings page with the one-tap "ask them too" for one pairing
+ *  highlighted (D-1). The link only opens the page: the organiser's tap on
+ *  the button is the request, never the link itself (a link preview or a
+ *  forwarded message must not send a request). */
+export function askTooPath(partnershipId: string): string {
+  return `/admin/settings?askToo=${encodeURIComponent(partnershipId)}#partner-clubs`;
+}
+
+export type RequestOutcome =
+  | { partnerOrgId: string; partnerName: string | null; outcome: "sent" | "active" }
+  | { partnerOrgId: string; partnerName: string | null; outcome: "refused"; refusal: RequestRefusal };
+
+export interface RequestResult {
+  results: RequestOutcome[];
+  /** How many went (sent, or accepted at once). */
+  sent: number;
+  /** The day's 20 stopped part of the selection: "sent the nearest N". */
+  capped: boolean;
+}
+
+/** At most this many clubs in one send (a select-all on the 10-mile page). */
+const MAX_IDS_PER_SEND = 500;
+
+const POSITION = { lat: true, lng: true } as const;
+const CARD_CLUB_SELECT = {
+  id: true,
+  name: true,
+  language: true,
+  discoverable: true,
+  autoAcceptPartnerRequests: true,
+  approvalStatus: true,
+  homeVenue: { select: POSITION },
+  activities: {
+    where: { isActive: true },
+    orderBy: { createdAt: "asc" },
+    select: { isActive: true, dayOfWeek: true, time: true, venueRef: { select: POSITION }, sport: { select: { playersPerTeam: true } } },
+  },
+} as const;
+
+interface CardClub {
+  id: string;
+  name: string;
+  language: string;
+  discoverable: boolean;
+  autoAcceptPartnerRequests: boolean;
+  approvalStatus: string;
+  homeVenue: { lat: number | null; lng: number | null } | null;
+  activities: Array<{
+    isActive: boolean;
+    dayOfWeek: number;
+    time: string;
+    venueRef: { lat: number | null; lng: number | null } | null;
+    sport: { playersPerTeam: number } | null;
+  }>;
+}
+
+const positionsOf = (c: CardClub) =>
+  clubPositions({ homeVenue: c.homeVenue, games: c.activities.map((a) => ({ isActive: a.isActive, venue: a.venueRef })) });
+
+/**
+ * What B is told about A (plan 2.3), in B's language: the distance, each
+ * active game (day, kickoff, format) and the member count. Never a
+ * person's name, a phone number, a group or a rating.
+ */
+function requestCard(asker: CardClub, members: number, partner: CardClub): string {
+  const s = t(partner.language);
+  const parts: string[] = [];
+  const miles = nearestMiles(positionsOf(asker), positionsOf(partner));
+  if (miles !== null) parts.push(s.pr_card_miles({ miles }));
+  const games = asker.activities.filter((a) => a.isActive);
+  if (games.length === 0) parts.push(s.pr_card_no_game);
+  for (const g of games) {
+    const perSide = g.sport?.playersPerTeam;
+    parts.push(s.pr_card_game({ dow: g.dayOfWeek, time: g.time, format: perSide ? s.sj_per_side_option({ perSide }) : null }));
+  }
+  parts.push(s.pr_card_members({ count: members }));
+  return parts.join(", ");
+}
+
+/** Live, non-guest members: what the card counts (plan 2.3). */
+function memberCount(orgId: string): Promise<number> {
+  return db.membership.count({ where: { orgId, leftAt: null, guestFromOrgId: null } });
+}
+
+/**
+ * CLUB A ASKS ONE OR MORE CLUBS TO BECOME PARTNER CLUBS (plan 3.1). One
+ * `ClubPartnership` row per club, A asking B, with A's acceptance on it
+ * from the start: A's request is A's consent. The caller has proven the
+ * user's role in A; the pure `planRequest` decides each club.
+ *
+ * `partnerOrgIds` come in the order the search page lists them, nearest
+ * first, so a "select all" past the day's 20 sends the nearest 20 and the
+ * rest are refused "daily-cap" (`capped`).
+ *
+ * THE CAPS, ATOMICALLY: the day's count and the pending count are read
+ * again, and every row written, inside ONE transaction holding a
+ * transaction-scoped advisory lock per asking club. Two organisers of A
+ * pressing Send at once run one after the other, so 19 sent plus two at
+ * once is exactly 20.
+ *
+ * A club with "Accept partner requests automatically" on becomes active at
+ * once. The notices go after the commit: B's organisers get the request
+ * (tagged for a WhatsApp reply 1 or 2), or are told who joined.
+ */
+export async function requestPartnerships(args: {
+  askerOrgId: string;
+  userId: string;
+  role: ClubRole;
+  partnerOrgIds: string[];
+  now?: Date;
+}): Promise<RequestResult> {
+  const now = args.now ?? new Date();
+  const ids = [...new Set(args.partnerOrgIds.filter((x): x is string => typeof x === "string" && x.length > 0))].slice(0, MAX_IDS_PER_SEND);
+  const refuseAll = (refusal: RequestRefusal): RequestResult => ({
+    results: ids.map((partnerOrgId) => ({ partnerOrgId, partnerName: null, outcome: "refused", refusal })),
+    sent: 0,
+    capped: false,
+  });
+  if (ids.length === 0) return { results: [], sent: 0, capped: false };
+  if (args.role !== "OWNER" && args.role !== "ADMIN") return refuseAll("not-admin");
+
+  const asker = (await db.organisation.findUnique({ where: { id: args.askerOrgId }, select: CARD_CLUB_SELECT })) as CardClub | null;
+  if (!asker) return refuseAll("no-club");
+  const others = ids.filter((id) => id !== asker.id);
+  const [partners, theirRows, blocks] = await Promise.all([
+    db.organisation.findMany({ where: { id: { in: others } }, select: CARD_CLUB_SELECT }) as Promise<CardClub[]>,
+    db.clubPartnership.findMany({
+      where: { askerOrgId: { in: others }, partnerOrgId: asker.id, status: { in: ["active", "paused"] } },
+      select: { askerOrgId: true },
+    }),
+    db.clubBlock.findMany({
+      where: { OR: [{ blockerOrgId: asker.id, blockedOrgId: { in: others } }, { blockerOrgId: { in: others }, blockedOrgId: asker.id }] },
+      select: { blockerOrgId: true, blockedOrgId: true },
+    }),
+  ]);
+  const byId = new Map(partners.map((p) => [p.id, p]));
+  const theyMayAskUs = new Set(theirRows.map((r) => r.askerOrgId));
+  const blocked = new Set(blocks.map((b) => (b.blockerOrgId === asker.id ? b.blockedOrgId : b.blockerOrgId)));
+  const since = londonMidnight(now);
+  const expiresAt = new Date(now.getTime() + PARTNER_REQUEST_EXPIRES_MS);
+
+  const written = await db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`club-request:${asker.id}`}))`;
+    let sentToday = await tx.clubPartnership.count({ where: { askerOrgId: asker.id, origin: "request", askerAcceptedAt: { gte: since } } });
+    let pending = await tx.clubPartnership.count({ where: { askerOrgId: asker.id, origin: "request", status: "proposed" } });
+    const mine = await tx.clubPartnership.findMany({
+      where: { askerOrgId: asker.id, partnerOrgId: { in: others } },
+      select: { id: true, partnerOrgId: true, status: true, endReason: true, endedAt: true, endedByOrgId: true },
+    });
+    const existingFor = new Map(mine.map((r) => [r.partnerOrgId, r]));
+    const out: Array<RequestOutcome & { id?: string }> = [];
+    for (const partnerOrgId of ids) {
+      const partner = byId.get(partnerOrgId) ?? null;
+      const existing = existingFor.get(partnerOrgId) ?? null;
+      const plan = planRequest({
+        askerOrgId: asker.id,
+        partnerOrgId,
+        role: args.role,
+        askerDiscoverable: isDiscoverable(asker),
+        partner: partner ? { approved: partner.approvalStatus === "approved", discoverable: isDiscoverable(partner) } : null,
+        theyMayAskUs: theyMayAskUs.has(partnerOrgId),
+        existing,
+        blocked: blocked.has(partnerOrgId),
+        sentToday,
+        pending,
+        now,
+      });
+      const partnerName = partner?.name ?? null;
+      if (!plan.ok) {
+        out.push({ partnerOrgId, partnerName, outcome: "refused", refusal: plan.refusal });
+        continue;
+      }
+      const auto = autoAcceptOf(partner!);
+      const data = {
+        status: auto ? "active" : "proposed",
+        origin: "request",
+        partnerApproval: REQUEST_DEFAULT_APPROVAL,
+        askerAcceptedAt: now,
+        askerAcceptedBy: args.userId,
+        partnerAcceptedAt: auto ? now : null,
+        partnerAcceptedBy: null,
+        pausedByOrgId: null,
+        createdByUserId: args.userId,
+        expiresAt: auto ? null : expiresAt,
+        endedAt: null,
+        endedByOrgId: null,
+        endReason: null,
+      };
+      let id: string;
+      if (plan.mode === "create") {
+        id = (await tx.clubPartnership.create({ data: { askerOrgId: asker.id, partnerOrgId, ...data }, select: { id: true } })).id;
+      } else {
+        const reopened = await tx.clubPartnership.updateMany({ where: { id: existing!.id, status: "ended" }, data });
+        if (reopened.count === 0) {
+          out.push({ partnerOrgId, partnerName, outcome: "refused", refusal: "already-pending" });
+          continue;
+        }
+        id = existing!.id;
+      }
+      sentToday++;
+      if (!auto) pending++;
+      out.push({ partnerOrgId, partnerName, outcome: auto ? "active" : "sent", id });
+    }
+    return out;
+  });
+
+  const members = written.some((w) => w.outcome !== "refused") ? await memberCount(asker.id) : 0;
+  for (const w of written) {
+    if (w.outcome === "refused" || !w.id) continue;
+    console.log(`[partner-clubs] pairing ${w.id}: ${asker.id} asks ${w.partnerOrgId} (${w.outcome})`);
+    const partner = byId.get(w.partnerOrgId)!;
+    try {
+      if (w.outcome === "sent") await tellRequest({ id: w.id, asker, members, partner, now });
+      else await tellAutoAccepted({ asker, partner, now });
+    } catch (err) {
+      console.error(`[partner-clubs] pairing ${w.id}: request notices not queued: ${(err as Error)?.name ?? "error"}`);
+    }
+  }
+  const results: RequestOutcome[] = written.map((w) =>
+    w.outcome === "refused"
+      ? { partnerOrgId: w.partnerOrgId, partnerName: w.partnerName, outcome: "refused", refusal: w.refusal }
+      : { partnerOrgId: w.partnerOrgId, partnerName: w.partnerName, outcome: w.outcome },
+  );
+  const sent = results.filter((r) => r.outcome !== "refused").length;
+  return { results, sent, capped: results.some((r) => r.outcome === "refused" && r.refusal === "daily-cap") };
+}
+
+/** B's organisers are asked (plan 3.1), tagged so a WhatsApp reply 1 or 2
+ *  or a ✅ on it finds this pairing and this club (`pairing-reply.ts`). */
+async function tellRequest(a: { id: string; asker: CardClub; members: number; partner: CardClub; now: Date }) {
+  const s = t(a.partner.language);
+  const aboutKey = pairingNoticeKey(a.id, a.partner.id);
+  const card = requestCard(a.asker, a.members, a.partner);
+  const sent = await sendAdminNotice({
+    orgId: a.partner.id,
+    now: a.now,
+    nextPath: PARTNER_SETTINGS_PATH,
+    aboutKey,
+    text: (link, audience) => s.pr_request_notice({ asker: a.asker.name, club: a.partner.name, card, link, inGroup: audience === "group" }),
+  });
+  if (sent.channel === "admin-group" && sent.groupText) {
+    await recordMatchTimeQuestion({ orgId: a.partner.id, askRef: aboutKey, text: sent.groupText, now: a.now });
+  }
+}
+
+/** Auto-accept on: B's organisers are told who joined, A that it was accepted. */
+async function tellAutoAccepted(a: { asker: CardClub; partner: CardClub; now: Date }) {
+  const sp = t(a.partner.language);
+  await sendAdminNotice({
+    orgId: a.partner.id,
+    now: a.now,
+    nextPath: PARTNER_SETTINGS_PATH,
+    text: (link) => sp.pr_auto_joined_notice({ asker: a.asker.name, club: a.partner.name, link }),
+  });
+  await sendAdminNotice({
+    orgId: a.asker.id,
+    now: a.now,
+    text: t(a.asker.language).pr_accepted_notice({ partner: a.partner.name, club: a.asker.name }),
+  });
+}
+
+/** B answered A's request (plan 3.2): A is told, and B's owners when one
+ *  of its admins accepted (D-2), the accepter excepted. */
+async function tellRequestAnswered(a: {
+  row: { askerOrgId: string; partnerOrgId: string };
+  action: "accept" | "decline";
+  status: PartnershipStatus;
+  userId: string;
+  role: ClubRole;
+  now: Date;
+}) {
+  const [asker, partner] = await Promise.all([
+    db.organisation.findUnique({ where: { id: a.row.askerOrgId }, select: { id: true, name: true, language: true } }),
+    db.organisation.findUnique({ where: { id: a.row.partnerOrgId }, select: { id: true, name: true, language: true } }),
+  ]);
+  if (!asker || !partner) return;
+  const sa = t(asker.language);
+  if (a.action === "decline") {
+    await sendAdminNotice({ orgId: asker.id, now: a.now, text: sa.pr_declined_notice({ partner: partner.name }) });
+    return;
+  }
+  if (a.status !== "active") return;
+  await sendAdminNotice({ orgId: asker.id, now: a.now, text: sa.pr_accepted_notice({ partner: partner.name, club: asker.name }) });
+  if (a.role === "ADMIN") {
+    const sp = t(partner.language);
+    const user = await db.user.findUnique({ where: { id: a.userId }, select: { name: true } });
+    await sendAdminNotice({
+      orgId: partner.id,
+      now: a.now,
+      nextPath: PARTNER_SETTINGS_PATH,
+      excludeUserId: a.userId,
+      text: (link) => sp.pr_admin_accepted_notice({ name: user?.name?.trim() || sp.pr_an_admin, asker: asker.name, club: partner.name, link }),
+    });
+  }
+}
+
+/** The asking club takes back a pending request (plan 3.4). B hears
+ *  nothing; the request simply leaves its list. */
+export function withdrawRequest(args: { partnershipId: string; orgId: string; userId: string; role: ClubRole; now?: Date }): Promise<ActResult> {
+  return actOnPartnership({ ...args, action: "withdraw" });
+}
+
+export type BlockResult = { ok: true } | { ok: false; refusal: "not-admin" | "same-club" | "no-club" };
+
+/**
+ * Club B blocks club A (plan 3.4): A can never send B a request, B
+ * disappears from A's nearby list (P2 reads `ClubBlock`), and any pairing
+ * that lets A ask B ends as "blocked". Blocking twice is the same as once.
+ * Nobody is messaged.
+ */
+export async function blockClub(args: { blockerOrgId: string; blockedOrgId: string; userId: string; role: ClubRole; now?: Date }): Promise<BlockResult> {
+  const can = canBlock(args);
+  if (!can.ok) return can;
+  const now = args.now ?? new Date();
+  const other = await db.organisation.findUnique({ where: { id: args.blockedOrgId }, select: { id: true } });
+  if (!other) return { ok: false, refusal: "no-club" };
+  try {
+    await db.clubBlock.create({ data: { blockerOrgId: args.blockerOrgId, blockedOrgId: args.blockedOrgId, createdByUserId: args.userId } });
+  } catch (err) {
+    if ((err as { code?: string })?.code !== "P2002") throw err;
+  }
+  const ended = await db.clubPartnership.updateMany({
+    where: { askerOrgId: args.blockedOrgId, partnerOrgId: args.blockerOrgId, status: { not: "ended" } },
+    data: { status: "ended", pausedByOrgId: null, endedAt: now, endedByOrgId: args.blockerOrgId, endReason: "blocked" },
+  });
+  console.log(`[partner-clubs] org ${args.blockerOrgId} blocked ${args.blockedOrgId} (${ended.count} pairing ended) by ${args.userId}`);
+  return { ok: true };
+}
+
+export async function unblockClub(args: { blockerOrgId: string; blockedOrgId: string; role: ClubRole }): Promise<{ ok: true } | { ok: false; refusal: "not-admin" }> {
+  if (args.role !== "OWNER" && args.role !== "ADMIN") return { ok: false, refusal: "not-admin" };
+  await db.clubBlock.deleteMany({ where: { blockerOrgId: args.blockerOrgId, blockedOrgId: args.blockedOrgId } });
+  console.log(`[partner-clubs] org ${args.blockerOrgId} unblocked ${args.blockedOrgId}`);
+  return { ok: true };
+}
+
+/** The clubs this club blocked, for the settings page's block list. */
+export async function loadBlockedClubs(orgId: string): Promise<Array<{ orgId: string; name: string }>> {
+  const rows = await db.clubBlock.findMany({
+    where: { blockerOrgId: orgId },
+    orderBy: { createdAt: "asc" },
+    select: { blockedOrgId: true, blockedOrg: { select: { name: true } } },
+  });
+  return rows.map((r) => ({ orgId: r.blockedOrgId, name: r.blockedOrg.name }));
+}
+
+/**
+ * THE DAILY EXPIRY SWEEP (`/api/cron/partner-requests`): every request
+ * still pending 14 days after it was sent ends as "expired", and the
+ * asking club is told ONCE. The claim is a compare-and-set on the row as
+ * read (still proposed, same expiry), so two sweeps at once, or a sweep
+ * racing an acceptance, end it at most once and tell A at most once.
+ */
+export async function runPartnerRequestExpirySweep(now: Date = new Date()): Promise<{ considered: number; expired: number }> {
+  const due = await db.clubPartnership.findMany({
+    where: { status: "proposed", origin: "request", expiresAt: { lte: now } },
+    orderBy: { createdAt: "asc" },
+    include: { askerOrg: { select: { name: true, language: true } }, partnerOrg: { select: { name: true } } },
+  });
+  let expired = 0;
+  for (const r of due) {
+    try {
+      const claim = await db.clubPartnership.updateMany({
+        where: { id: r.id, status: "proposed", expiresAt: r.expiresAt },
+        data: { status: "ended", pausedByOrgId: null, endedAt: now, endedByOrgId: null, endReason: "expired" },
+      });
+      if (claim.count !== 1) continue;
+      expired++;
+      console.log(`[partner-clubs] pairing ${r.id}: request expired`);
+      const s = t(r.askerOrg.language);
+      await sendAdminNotice({
+        orgId: r.askerOrgId,
+        now,
+        nextPath: FIND_CLUBS_PATH,
+        text: (link) => s.pr_expired_notice({ partner: r.partnerOrg.name, link }),
+      });
+    } catch (err) {
+      console.error(`[partner-clubs] pairing ${r.id}: expiry failed; the next run retries: ${(err as Error)?.name ?? "error"}`);
+    }
+  }
+  return { considered: due.length, expired };
 }

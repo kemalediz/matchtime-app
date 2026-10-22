@@ -25,6 +25,10 @@ const writer = vi.hoisted(() => ({
   saveDiscoverySettings: vi.fn(),
   loadClubVenueStatus: vi.fn(),
   platformActOnPartnership: vi.fn(),
+  loadBlockedClubs: vi.fn(),
+  blockClub: vi.fn(),
+  unblockClub: vi.fn(),
+  requestPartnerships: vi.fn(),
 }));
 vi.mock("@/lib/club-partnership", () => writer);
 const venueWriter = vi.hoisted(() => ({ setClubHomeVenueToPick: vi.fn() }));
@@ -32,6 +36,9 @@ vi.mock("@/lib/venue-location", () => venueWriter);
 
 import {
   actOnPartnershipAction,
+  askTooAction,
+  blockClubAction,
+  unblockClubAction,
   getPartnerClubs,
   platformPartnershipAction,
   saveDiscoverySettingsAction,
@@ -57,6 +64,10 @@ beforeEach(() => {
   writer.saveDiscoverySettings.mockResolvedValue({ ok: true, settings: { discoverable: false, autoAccept: false } });
   writer.platformActOnPartnership.mockResolvedValue({ ok: true, status: "paused" });
   venueWriter.setClubHomeVenueToPick.mockResolvedValue({ status: "found" });
+  writer.loadBlockedClubs.mockResolvedValue([]);
+  writer.blockClub.mockResolvedValue({ ok: true });
+  writer.unblockClub.mockResolvedValue({ ok: true });
+  writer.requestPartnerships.mockResolvedValue({ results: [{ partnerOrgId: "sutton", partnerName: "Sutton FC", outcome: "sent" }], sent: 1, capped: false });
 });
 
 describe("the settings page", () => {
@@ -67,6 +78,7 @@ describe("the settings page", () => {
       settings: { when: "off", time: null, cutoffHours: 4 },
       discovery: DISCOVERY,
       venue: VENUE,
+      blocked: [],
     });
     expect(orgMock.requireOrgAdmin).toHaveBeenCalledWith("u1", "fnf");
   });
@@ -90,11 +102,34 @@ describe("the settings page", () => {
     expect(writer.actOnPartnership).not.toHaveBeenCalled();
   });
 
-  it("an admin acts as ADMIN, so the writer can refuse what is an owner's", async () => {
+  it("an admin acts as ADMIN; the writer decides (owners and admins accept since D-2)", async () => {
     dbMock.membership.findUnique.mockResolvedValue({ role: "ADMIN", leftAt: null });
-    writer.actOnPartnership.mockResolvedValue({ ok: false, refusal: "owner-only" });
-    expect(await actOnPartnershipAction("fnf", "p1", "accept")).toEqual({ ok: false, refusal: "owner-only" });
-    expect(writer.actOnPartnership).toHaveBeenCalledWith({ partnershipId: "p1", orgId: "fnf", userId: "u1", role: "ADMIN", action: "accept" });
+    expect(await actOnPartnershipAction("fnf", "p1", "accept")).toEqual({ ok: true });
+    expect(writer.actOnPartnership).toHaveBeenCalledWith({ partnershipId: "p1", orgId: "fnf", userId: "u1", role: "ADMIN", action: "accept", approval: undefined });
+  });
+
+  it("accepting a request passes the per-ask choice; anything else is dropped (P3)", async () => {
+    await actOnPartnershipAction("fnf", "p1", "accept", "each-ask");
+    expect(writer.actOnPartnership).toHaveBeenLastCalledWith(expect.objectContaining({ action: "accept", approval: "each-ask" }));
+    await actOnPartnershipAction("fnf", "p1", "accept", "always" as never);
+    expect(writer.actOnPartnership).toHaveBeenLastCalledWith(expect.objectContaining({ action: "accept", approval: undefined }));
+  });
+
+  it("block, unblock and ask-them-too (P3): owners and admins only, the club from the argument", async () => {
+    dbMock.membership.findUnique.mockResolvedValue({ role: "ADMIN", leftAt: null });
+    expect(await blockClubAction("sutton", "fnf")).toEqual({ ok: true });
+    expect(writer.blockClub).toHaveBeenCalledWith({ blockerOrgId: "sutton", blockedOrgId: "fnf", userId: "u1", role: "ADMIN" });
+    expect(await unblockClubAction("sutton", "fnf")).toEqual({ ok: true });
+    expect(writer.unblockClub).toHaveBeenCalledWith({ blockerOrgId: "sutton", blockedOrgId: "fnf", role: "ADMIN" });
+    expect(await askTooAction("fnf", "sutton")).toEqual({ ok: true, outcome: "sent" });
+    expect(writer.requestPartnerships).toHaveBeenCalledWith({ askerOrgId: "fnf", userId: "u1", role: "ADMIN", partnerOrgIds: ["sutton"] });
+    writer.requestPartnerships.mockResolvedValue({ results: [{ partnerOrgId: "sutton", partnerName: "Sutton FC", outcome: "refused", refusal: "cooldown" }], sent: 0, capped: false });
+    expect(await askTooAction("fnf", "sutton")).toEqual({ ok: false, refusal: "cooldown" });
+
+    orgMock.requireOrgAdmin.mockRejectedValue(new Error("Admin access required"));
+    await expect(blockClubAction("sutton", "fnf")).rejects.toThrow("Admin access required");
+    await expect(unblockClubAction("sutton", "fnf")).rejects.toThrow("Admin access required");
+    await expect(askTooAction("fnf", "sutton")).rejects.toThrow("Admin access required");
   });
 
   it("signed out: refused", async () => {
