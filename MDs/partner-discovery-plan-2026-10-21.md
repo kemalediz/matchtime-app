@@ -53,9 +53,8 @@ setting is on by default.** Its owner or admin can switch it off at any time:
   send requests"** (`Organisation.discoverable`, default **on**), with an info popup in English
   and Turkish saying exactly what other clubs will see. A new club sees the setting, already on,
   at signup.
-- **Existing clubs: open question to Kemal.** Recommended: each live club's owner gets one DM (or
-  HQ message) saying the club will be listed in 7 days unless they switch it off, with a link to
-  the setting. Alternative: existing clubs are switched on at once like new ones.
+- **Existing clubs are switched on at once, like new ones** (Kemal, 2026-10-22: no 7-day notice
+  and no owner DM). Owners can switch it off any time in the Partner clubs section.
 - **Only a listed club can search** (recommended, D-3). It stops a club quietly browsing everybody
   while showing nothing of itself, and it means every club in a list has agreed to the same terms.
 - A club is listed only if it is approved, not dormant, not billing-paused, has a players' group,
@@ -211,7 +210,8 @@ pairing on a club's behalf would skip that club's consent, which is the point of
   Community asks MT Test (active, standing) and MT Test asks Friday MT Community (active, each-ask).
   Both acceptances are already present, so the new rules read them as active pairings with
   nothing to migrate. No asks have been made yet (0 `PartnerAsk` rows).
-- Being paired does not change being listed; both clubs follow the existing-club rule in 2.1.
+- Being paired does not change being listed; both clubs are listed under 2.1 once they have a
+  geocoded venue (MT Test has none yet, so it is not listed until its venue is confirmed).
 - Existing `proposed` rows made by the platform owner (none in prod today) would keep needing both
   sides, which the current rule already does; only new requests start with the asker's consent.
 - The superadmin create form is removed (section 3.5). `planCreate` stays only if D-6 keeps it.
@@ -294,7 +294,7 @@ One migration, additive only, applied before the deploy. The daily request cap c
 
 | # | Slice | Tests |
 |---|---|---|
-| P1 | Schema, discoverable setting (default on), level, owner DM explaining it. | Unit: setting writers, CHECKs, DM sent once per club. Playwright: toggle and level on settings, EN and TR. |
+| P1 | Schema, discoverable setting (default on, existing clubs included), level. | Unit: setting writers, CHECKs, existing clubs read as on. Playwright: toggle and level on settings, EN and TR. |
 | P2 | Nearby search (rules, loader, page). | Unit: distance, presets, listable and searcher rules, card has no names or numbers (a guard test on the loader's select), regular-player count. Playwright: seeded clubs at known distances appear and disappear as the radius changes; same-day filter; club without a venue sees the prompt. |
 | P3 | Requests: send, accept (owner or admin), decline, withdraw, block, caps, cooldown, expiry; new notice wording; reverse-request link. | Unit: `planRequest` and every refusal; accept turns active in one step; 20-a-day cap under concurrency. Playwright: A sends to two clubs, B accepts one and declines one, A sees both outcomes. **One live pass of the existing pairing-reply cases on the dev key** (the notice the model reads has new words; 2026-10-18 rule), reporting calls and cost. |
 | P4 | Choosing the number; rounds across several partners. | Unit: `canAsk` bounds, round fill across asks, first-come lock (two volunteers, one wanted), organiser-pick close after N picks, auto ask still asks for all. Playwright: panel picker and partner ticks. |
