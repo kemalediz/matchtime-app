@@ -64,9 +64,14 @@ setting is on by default.** Its owner or admin can switch it off at any time:
   and has a **geocoded venue** (a `Venue` with `lat`/`lng`). **It does not need a game set up**
   (Kemal, 2026-10-22): a group of players with no match scheduled yet can be found. The venue is
   either an active game's venue (`Activity.venueId`) or, for a club with no game, a new optional
-  **club home venue** (`Organisation.homeVenueId`, recommended; picked with the same venue lookup;
-  Kemal may prefer something looser such as a postcode or town). A club with neither sees "Confirm
-  your venue to find clubs near you" with a link to the venue lookup.
+  **club home venue** (`Organisation.homeVenueId`), set **only with the venue lookup**, so it is
+  always a geocoded `Venue`; no postcode or town entry (Kemal, 2026-10-22). A club with neither
+  sees "Confirm your venue to find clubs near you" with a link to the venue lookup.
+- **Live clubs with no geocoded venue get a DM** (Kemal, 2026-10-22: the location is a core club
+  setting, added recently, so some clubs lack it). One message to the club's owners and admins,
+  English and Turkish, linking straight to the venue lookup in settings and saying that being
+  found by nearby clubs depends on it. Sent once at deploy (recommended); the settings prompt stays
+  until the venue is set. In prod on 2026-10-21 that is MT Test only.
 - **A club in its free trial is listed and can search** like any paying club (Kemal, 2026-10-22).
   "Billing-paused" means `ClubBilling.pausedAt` is set. A trial that ends with no card first runs
   the existing 7-day grace (`graceEndsAt`), so the club stays listed through the trial and the
@@ -308,7 +313,7 @@ One migration, additive only, applied before the deploy. The daily request cap c
 
 | # | Slice | Tests |
 |---|---|---|
-| P1 | Schema, discoverable setting (default on, existing clubs included), level. | Unit: setting writers, CHECKs, existing clubs read as on. Playwright: toggle and level on settings, EN and TR. |
+| P1 | Schema, discoverable setting (default on, existing clubs included), level, home venue via the venue lookup, one-off DM to live clubs with no geocoded venue. | Unit: setting writers, CHECKs, existing clubs read as on, DM sent once per club without a venue and never to one with a venue. Playwright: toggle and level on settings, EN and TR. |
 | P2 | Nearby search (rules, loader, page). | Unit: distance, presets, listable and searcher rules, card has no names or numbers (a guard test on the loader's select), regular-player count. Playwright: seeded clubs at known distances appear and disappear as the radius changes; same-day filter; club without a venue sees the prompt. |
 | P3 | Requests: send, accept (owner or admin), decline, withdraw, block, caps, cooldown, expiry; new notice wording; reverse-request link. | Unit: `planRequest` and every refusal; accept turns active in one step; 20-a-day cap under concurrency. Playwright: A sends to two clubs, B accepts one and declines one, A sees both outcomes. **One live pass of the existing pairing-reply cases on the dev key** (the notice the model reads has new words; 2026-10-18 rule), reporting calls and cost. |
 | P4 | Choosing the number; rounds across several partners. | Unit: `canAsk` bounds, round fill across asks, first-come lock (two volunteers, one wanted), organiser-pick close after N picks, auto ask still asks for all. Playwright: panel picker and partner ticks. |
