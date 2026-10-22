@@ -148,8 +148,8 @@ platform can measure honestly (for example "plays every week since March") can s
 
 ### 3.2 Accepting
 
-- **Who:** an owner or an admin of B (recommended, D-2). Today only owners accept; Kemal's
-  wording is "their admins", and admins already approve each ask.
+- **Who:** an owner or an admin of B (decided by Kemal, 2026-10-22, D-2). Today only owners
+  accept; admins already approve each ask.
 - Accepting makes the row `active`. **That acceptance is B's consent.** On the settings page the
   accept step also asks B's per-ask choice ("Post their asks straight away", default, or "Check
   each ask with us first"). Accepting by WhatsApp reply keeps the default, so the requester's asks
@@ -329,7 +329,7 @@ P1 to P5 touch no prompt; the only model-facing change is the notice wording in 
 | # | Question | Recommended |
 |---|---|---|
 | D-1 | Does accepting let only the requester ask, or both ways? | **Only the requester.** Offer a one-tap "ask them too" reverse request that the other club accepts. |
-| D-2 | Who may send and accept requests? | **Owners and admins**, both. Owners are told when an admin accepts. |
+| D-2 | Who may send and accept requests? | **Decided (Kemal, 2026-10-22): owners and admins**, both. Owners are told when an admin accepts. |
 | D-3 | Must a club be listed itself to search? | **Decided (Kemal, 2026-10-22): yes**, search needs the club's own toggle on. |
 | D-4 | Request limits? | **20 new requests a day, 50 pending, 14-day expiry, 30-day wait after a decline or an end by the other club, block available.** |
 | D-5 | Default number on the ask picker? | **1**, up to the open places. Most asks are for one player and over-asking floods partner groups. |
