@@ -186,6 +186,7 @@
  * and one shape to review when the next one arrives.
  */
 import { type QuotedGroupMessage } from "./reply-context";
+import type { QuotedRef } from "./quoted-message";
 import { requestNotHandledAdminReply, requestNotHandledReply } from "./team-ops-engine";
 import { messageMentionsBotExplicitly } from "./interaction-contract";
 import {
@@ -241,6 +242,9 @@ export interface AdminOpsBatchMessage {
   /** The message this one is a WhatsApp reply to, whoever wrote it
    *  (quoted-reply context, slice S4). Absent when it is not a reply. */
   reply?: QuotedGroupMessage | null;
+  /** The quoted post's id (a fact from WhatsApp): a reply to a partner
+   *  club's ask never recruits for this club's own match (2026-10-22). */
+  quoted?: QuotedRef | null;
 }
 
 export interface AdminOpsMessageOutcome {
@@ -613,6 +617,7 @@ export async function runAdminOpsBatch(args: {
     senderName: m.senderName ?? m.authorName,
     tagged: m.tagged,
     ...(m.taggedExplicitly === undefined ? {} : { taggedExplicitly: m.taggedExplicitly }),
+    ...(m.quoted ? { quoted: m.quoted } : {}),
     route: m.route ?? "none",
     facts: ownedIds.has(m.waMessageId)
       ? (factsById.get(m.waMessageId) ?? { kind: "none" })

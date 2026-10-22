@@ -2546,6 +2546,12 @@ async function handleAnalyzeRequest(request: Request) {
         // A reply: the message it quotes, whoever wrote it, for every
         // owner's extractor (slice S4).
         ...replyField(replyById, m),
+        // The quoted post's id, for the engine: a reply to a partner
+        // club's ask never recruits for this club's own match (2026-10-22).
+        ...(() => {
+          const quoted = quotedRefOf(m);
+          return quoted ? { quoted } : {};
+        })(),
       };
     });
   const ownerHistory = history;
