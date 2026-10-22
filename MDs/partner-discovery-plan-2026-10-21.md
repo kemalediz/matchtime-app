@@ -187,7 +187,7 @@ the pairing reply reader keeps its closed answer (accept, decline, neither) unch
 ### 3.5 What the platform owner keeps
 
 The superadmin page (`/admin/clubs/partners`) loses the two "create" dropdowns and keeps the list
-of every pairing with **pause** and **end** as an override for abuse or support (D-6). Creating a
+of every pairing with **pause** and **end** as an override for abuse or support (D-6, decided by Kemal, 2026-10-22). Creating a
 pairing on a club's behalf would skip that club's consent, which is the point of the new design.
 
 ---
@@ -239,7 +239,7 @@ pairing on a club's behalf would skip that club's consent, which is the point of
   geocoded venue (MT Test has none yet, so it is not listed until its venue is confirmed).
 - Existing `proposed` rows made by the platform owner (none in prod today) would keep needing both
   sides, which the current rule already does; only new requests start with the asker's consent.
-- The superadmin create form is removed (section 3.5). `planCreate` stays only if D-6 keeps it.
+- The superadmin create form is removed (section 3.5), and `planCreate` goes with it (D-6 decided).
 
 ---
 
@@ -340,7 +340,7 @@ P1 to P5 touch no prompt; the only model-facing change is the notice wording in 
 | D-3 | Must a club be listed itself to search? | **Decided (Kemal, 2026-10-22): yes**, search needs the club's own toggle on. |
 | D-4 | Request limits? | **20 new requests a day, 50 pending (decided), an unanswered pairing request expires after 14 days (an ask for players ends with its match), 30-day wait after a decline or an end by the other club, block available.** |
 | D-5 | Default number on the ask picker? | **Decided (Kemal, 2026-10-22): 1**, up to the open places. Most asks are for one player and over-asking floods partner groups. |
-| D-6 | Keep the platform owner's create form? | **No.** Keep the list with pause and end as an override. |
+| D-6 | Keep the platform owner's create form? | **Decided (Kemal, 2026-10-22): no.** Keep the list with pause and end as an override. |
 | D-7 | Asking in words (#367): number now or later? | **Later (P6)**, with its own prompt page and paid tests; until then words asks ask for every open place and say how many. |
 | D-8 | Member count: exact, or a band? | **Exact total plus "regular players"**, as he asked. Names never. |
 | D-9 | Miles only? | **Miles for now**, kilometres when a non-UK club joins. |
