@@ -161,7 +161,7 @@ platform can measure honestly (for example "plays every week since March") can s
 
 ### 3.3 One way or both ways
 
-**Recommended: one way (D-1).** B accepting lets A ask B, nothing more. B agreed to lend players,
+**One way (D-1, decided by Kemal, 2026-10-22).** B accepting lets A ask B, nothing more. B agreed to lend players,
 not to borrow them, and A never agreed to lend. Making it two-way would need A's consent anyway.
 
 To keep it one tap, B's confirmation (settings page and the reply to its "1") includes
@@ -335,7 +335,7 @@ P1 to P5 touch no prompt; the only model-facing change is the notice wording in 
 
 | # | Question | Recommended |
 |---|---|---|
-| D-1 | Does accepting let only the requester ask, or both ways? | **Only the requester.** Offer a one-tap "ask them too" reverse request that the other club accepts. |
+| D-1 | Does accepting let only the requester ask, or both ways? | **Decided (Kemal, 2026-10-22): only the requester.** Offer a one-tap "ask them too" reverse request that the other club accepts. |
 | D-2 | Who may send and accept requests? | **Decided (Kemal, 2026-10-22): owners and admins**, both. Owners are told when an admin accepts. |
 | D-3 | Must a club be listed itself to search? | **Decided (Kemal, 2026-10-22): yes**, search needs the club's own toggle on. |
 | D-4 | Request limits? | **20 new requests a day, 50 pending, 14-day expiry, 30-day wait after a decline or an end by the other club, block available.** |
