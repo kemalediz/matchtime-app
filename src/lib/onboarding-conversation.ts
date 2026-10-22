@@ -700,7 +700,7 @@ export const EXTRACT_PROMPT = `You read the newest messages in a WhatsApp group 
 WHAT YOU ARE SHOWN
 - Today: today's date in London.
 - MatchTime is asking: the question the group is answering now.
-- Collected so far: what earlier answers gave, under the same field names as your answer. A collected value stays as it is: give it again only when a new message corrects it ("actually Thursdays", "pardon, çarşamba").
+- Collected so far: what earlier answers gave, under the same field names as your answer. A collected value stays as it is: give it again only when a new message corrects it ("actually Fridays", "pardon, cuma olsun").
 - New messages, oldest first, as "author: text". Several messages may each answer a different field; combine them. They may be in English or Turkish.
 
 WHAT YOU ANSWER
