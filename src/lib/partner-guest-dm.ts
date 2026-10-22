@@ -389,6 +389,8 @@ export async function handleVolunteerNameReply(args: {
   );
   console.log(`[partner-guest-dm] ${args.userId}: named, then in for ask ${askId} by DM (${r.outcome})`);
   return { handled: "xask-dm-volunteer", outcome: r.outcome };
+}
+
 // ── D5b, revised (Kemal, 2026-10-22): the own game is the default ───────
 //
 // A plain IN in his OWN players' group, soon after a partner club's ask, is
