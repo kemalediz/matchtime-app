@@ -252,8 +252,11 @@ test("tick, select all, the confirm says what they see and what accepting means,
   await expect(confirm).toHaveCount(0);
   await send.click();
   await page.getByTestId("find-clubs-confirm").getByRole("button", { name: "Send" }).click();
-  // Slice P3 builds the action; until then the placeholder refuses.
-  await expect(page.getByTestId("find-clubs-error")).toHaveText("Couldn't send the requests. Try again.", { timeout: 15_000 });
+  // The real action (slice P3): each ticked club shows its outcome, and a
+  // listed, approved club gets the request.
+  await expect(card(page, NEAR).getByTestId("nearby-club-outcome")).toHaveAttribute("data-outcome", "sent", { timeout: 15_000 });
+  await expect(card(page, NEAR).getByTestId("nearby-club-outcome")).toHaveText("Request sent");
+  await expect(page.getByTestId("find-clubs-error")).toHaveCount(0);
 });
 
 test("in Turkish", async ({ page, db }) => {
