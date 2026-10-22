@@ -17,20 +17,30 @@ const dbMock = vi.hoisted(() => ({ membership: { findUnique: vi.fn() } }));
 vi.mock("@/lib/db", () => ({ db: dbMock }));
 const writer = vi.hoisted(() => ({
   actOnPartnership: vi.fn(),
-  createPartnership: vi.fn(),
   loadPartnerAskSettings: vi.fn(),
   loadPartnershipsForOrg: vi.fn(),
   savePartnerAskSettings: vi.fn(),
   setPartnerApproval: vi.fn(),
+  loadDiscoverySettings: vi.fn(),
+  saveDiscoverySettings: vi.fn(),
+  loadClubVenueStatus: vi.fn(),
+  platformActOnPartnership: vi.fn(),
 }));
 vi.mock("@/lib/club-partnership", () => writer);
+const venueWriter = vi.hoisted(() => ({ setClubHomeVenueToPick: vi.fn() }));
+vi.mock("@/lib/venue-location", () => venueWriter);
 
 import {
   actOnPartnershipAction,
-  createPartnershipAction,
   getPartnerClubs,
+  platformPartnershipAction,
+  saveDiscoverySettingsAction,
   savePartnerAskSettingsAction,
+  setClubHomeVenueAction,
 } from "../partners";
+
+const DISCOVERY = { discoverable: true, autoAccept: false };
+const VENUE = { hasVenue: false, homeVenue: null, gameVenue: null };
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -42,18 +52,28 @@ beforeEach(() => {
   writer.loadPartnerAskSettings.mockResolvedValue({ when: "off", time: null, cutoffHours: 4 });
   writer.actOnPartnership.mockResolvedValue({ ok: true, status: "active" });
   writer.savePartnerAskSettings.mockResolvedValue({ ok: true, settings: { when: "on-request", time: null, cutoffHours: 4 } });
-  writer.createPartnership.mockResolvedValue({ ok: true, id: "p1", reopened: false });
+  writer.loadDiscoverySettings.mockResolvedValue(DISCOVERY);
+  writer.loadClubVenueStatus.mockResolvedValue(VENUE);
+  writer.saveDiscoverySettings.mockResolvedValue({ ok: true, settings: { discoverable: false, autoAccept: false } });
+  writer.platformActOnPartnership.mockResolvedValue({ ok: true, status: "paused" });
+  venueWriter.setClubHomeVenueToPick.mockResolvedValue({ status: "found" });
 });
 
 describe("the settings page", () => {
   it("an owner reads the section", async () => {
-    expect(await getPartnerClubs("fnf")).toEqual({ isOwner: true, partnerships: [{ id: "p1" }], settings: { when: "off", time: null, cutoffHours: 4 } });
+    expect(await getPartnerClubs("fnf")).toEqual({
+      isOwner: true,
+      partnerships: [{ id: "p1" }],
+      settings: { when: "off", time: null, cutoffHours: 4 },
+      discovery: DISCOVERY,
+      venue: VENUE,
+    });
     expect(orgMock.requireOrgAdmin).toHaveBeenCalledWith("u1", "fnf");
   });
 
-  it("no partner clubs: nothing to show", async () => {
+  it("no partner clubs: the section still shows, to every club (partner discovery, P1)", async () => {
     writer.loadPartnershipsForOrg.mockResolvedValue([]);
-    expect(await getPartnerClubs("fnf")).toBeNull();
+    expect(await getPartnerClubs("fnf")).toMatchObject({ partnerships: [], discovery: DISCOVERY, venue: VENUE });
   });
 
   it("a PLAYER is refused before anything is read or written", async () => {
@@ -61,6 +81,10 @@ describe("the settings page", () => {
     await expect(getPartnerClubs("fnf")).rejects.toThrow("Admin access required");
     await expect(savePartnerAskSettingsAction("fnf", { when: "auto" })).rejects.toThrow("Admin access required");
     await expect(actOnPartnershipAction("fnf", "p1", "pause")).rejects.toThrow("Admin access required");
+    await expect(saveDiscoverySettingsAction("fnf", { discoverable: false })).rejects.toThrow("Admin access required");
+    await expect(setClubHomeVenueAction("fnf", { placeId: "ChIJ_e2e_croydon_01", sessionToken: "t" })).rejects.toThrow("Admin access required");
+    expect(writer.saveDiscoverySettings).not.toHaveBeenCalled();
+    expect(venueWriter.setClubHomeVenueToPick).not.toHaveBeenCalled();
     expect(writer.loadPartnershipsForOrg).not.toHaveBeenCalled();
     expect(writer.savePartnerAskSettings).not.toHaveBeenCalled();
     expect(writer.actOnPartnership).not.toHaveBeenCalled();
@@ -79,21 +103,40 @@ describe("the settings page", () => {
   });
 });
 
-describe("pairing two clubs", () => {
-  it("the platform owner pairs them", async () => {
+describe("partner discovery settings (P1)", () => {
+  it("an admin saves them as ADMIN; the writer keeps them to owners and admins", async () => {
+    dbMock.membership.findUnique.mockResolvedValue({ role: "ADMIN", leftAt: null });
+    expect(await saveDiscoverySettingsAction("fnf", { discoverable: false })).toEqual({ ok: true, settings: { discoverable: false, autoAccept: false } });
+    expect(writer.saveDiscoverySettings).toHaveBeenCalledWith({ orgId: "fnf", userId: "u1", role: "ADMIN", patch: { discoverable: false } });
+  });
+
+  it("the home venue is set only from a picked place: Google's id and the session token, nothing else", async () => {
+    expect(await setClubHomeVenueAction("fnf", { placeId: "ChIJ_e2e_croydon_01", sessionToken: "tok", name: "ignored" } as never)).toEqual({ status: "found" });
+    expect(venueWriter.setClubHomeVenueToPick).toHaveBeenCalledWith("fnf", "u1", { placeId: "ChIJ_e2e_croydon_01", sessionToken: "tok" });
+  });
+
+  it("no usable pick (typed text only): refused, nothing looked up", async () => {
+    expect(await setClubHomeVenueAction("fnf", null)).toEqual({ status: "no-pick" });
+    expect(await setClubHomeVenueAction("fnf", { placeId: "x" } as never)).toEqual({ status: "no-pick" });
+    expect(venueWriter.setClubHomeVenueToPick).not.toHaveBeenCalled();
+  });
+});
+
+describe("the platform owner's override (P5)", () => {
+  it("the platform owner pauses or ends any pairing", async () => {
     orgMock.isSuperadmin.mockResolvedValue(true);
-    expect(await createPartnershipAction("fnf", "sutton")).toEqual({ ok: true, message: "Paired. Both owners have been asked to accept." });
-    expect(writer.createPartnership).toHaveBeenCalledWith({ creatorUserId: "u1", askerOrgId: "fnf", partnerOrgId: "sutton" });
+    expect(await platformPartnershipAction("p1", "pause")).toEqual({ ok: true });
+    expect(writer.platformActOnPartnership).toHaveBeenCalledWith({ partnershipId: "p1", action: "pause" });
   });
 
   it("anybody else, a club owner included, is refused", async () => {
-    await expect(createPartnershipAction("fnf", "sutton")).rejects.toThrow("Not allowed");
-    expect(writer.createPartnership).not.toHaveBeenCalled();
+    await expect(platformPartnershipAction("p1", "end")).rejects.toThrow("Not allowed");
+    expect(writer.platformActOnPartnership).not.toHaveBeenCalled();
   });
 
-  it("a refusal is said in plain words", async () => {
+  it("an action that is not pause, resume or end is refused", async () => {
     orgMock.isSuperadmin.mockResolvedValue(true);
-    writer.createPartnership.mockResolvedValue({ ok: false, refusal: "exists" });
-    expect(await createPartnershipAction("fnf", "sutton")).toEqual({ ok: false, message: "Those two clubs are already paired in that direction." });
+    expect(await platformPartnershipAction("p1", "accept" as never)).toEqual({ ok: false, refusal: "bad-action" });
+    expect(writer.platformActOnPartnership).not.toHaveBeenCalled();
   });
 });

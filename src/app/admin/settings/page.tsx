@@ -798,8 +798,9 @@ export default function SettingsPage() {
         );
       })()}
 
-      {/* Partner clubs (cross-club ask, 2026-10-16): only for a club the
-          platform owner has paired with another; nothing shows otherwise. */}
+      {/* Partner clubs (cross-club ask, 2026-10-16). Shown to every club
+          since partner discovery (P1, 2026-10-22): the discovery switches
+          and the club venue are every club's. */}
       <PartnerClubsSection orgId={org.id} language={org.language} />
 
       {!goLiveSetup && <PostersCard club={org.name} language={org.language} />}

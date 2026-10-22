@@ -35,7 +35,7 @@ interface VenueRow {
 
 const world = vi.hoisted(() => ({
   activities: new Map<string, Record<string, unknown>>(),
-  orgs: new Map<string, { language: string; ownerPhone: string | null; name: string }>(),
+  orgs: new Map<string, { language: string; ownerPhone: string | null; name: string; homeVenueId?: string | null }>(),
   venues: [] as Record<string, unknown>[],
   queries: new Map<string, { key: string; venueId: string; confidence: string }>(),
   lookups: [] as { id: string; orgId: string; kind: string; createdAt: Date }[],
@@ -120,6 +120,25 @@ vi.mock("@/lib/db", () => {
         return world.queries.get(where.key);
       },
     },
+    // The club's home venue (partner discovery, P1, 2026-10-22).
+    organisation: {
+      findUnique: async ({ where }: { where: { id: string } }) => {
+        const org = world.orgs.get(where.id);
+        if (!org) return null;
+        return {
+          id: where.id,
+          language: org.language,
+          homeVenueId: org.homeVenueId ?? null,
+          memberships: org.ownerPhone ? [{ user: { phoneNumber: org.ownerPhone } }] : [],
+        };
+      },
+      updateMany: async ({ where, data }: { where: { id: string }; data: { homeVenueId: string } }) => {
+        const org = world.orgs.get(where.id);
+        if (!org) return { count: 0 };
+        org.homeVenueId = data.homeVenueId;
+        return { count: 1 };
+      },
+    },
     venueLookup: {
       create: async ({ data }: { data: { orgId: string; kind: string; createdAt: Date } }) => {
         const row = { id: `lookup-${++world.seq}`, ...data };
@@ -141,6 +160,7 @@ import {
   markVenueLookupPending,
   resolveActivityVenue,
   resolveActivityVenuePick,
+  setClubHomeVenueToPick,
   sweepOrphanPins,
 } from "../venue-location";
 import { VENUE_LOOKUPS_PER_CLUB_PER_DAY } from "../venue-location-rules";
@@ -867,6 +887,50 @@ describe("Change: a place picked from the suggestions", () => {
     for (let i = 0; i < VENUE_LOOKUPS_PER_CLUB_PER_DAY; i++) world.lookups.push({ id: `l${i}`, orgId: "org-a", kind: "geocode", createdAt: NOW });
     const f = googleBoth();
     expect(await changeActivityVenueToPick("act-a", "user-a", PICK, { now: NOW, fetchImpl: asFetch(f) })).toEqual({ status: "capped" });
+    expect(f).not.toHaveBeenCalled();
+  });
+});
+
+// ── The club's home venue (partner discovery, slice P1, 2026-10-22) ──────
+// Set ONLY from a place picked from the suggestions, so it is always a
+// geocoded Venue: no postcode or town is ever looked up as text.
+
+describe("the club's home venue, from a picked place", () => {
+  it("the SERVER asks Google for the place, stores it and makes it the club's home venue", async () => {
+    const f = googleBoth();
+    const got = await setClubHomeVenueToPick("org-a", "user-a", PICK, { now: NOW, fetchImpl: asFetch(f) });
+    expect(got).toEqual({ status: "found", venueId: venues()[0].id });
+    expect(hosts(f)).toEqual(["places.googleapis.com"]);
+    expect(venues()[0]).toMatchObject({ placeId: "ChIJ_croydon_0001", name: "Powerleague Croydon", lat: 51.3562, lng: -0.1167 });
+    expect(world.orgs.get("org-a")!.homeVenueId).toBe(venues()[0].id);
+    // Charged to the club's daily lookups like any other, with no game.
+    expect(world.lookups).toMatchObject([{ orgId: "org-a", kind: "place-details", activityId: null }]);
+  });
+
+  it("Google not resolving the place: nothing is set, and NO text lookup is made", async () => {
+    const f = googleBoth({ details: () => json({ error: {} }, 404) });
+    expect(await setClubHomeVenueToPick("org-a", "user-a", PICK, { now: NOW, fetchImpl: asFetch(f) })).toEqual({ status: "unresolved" });
+    expect(hosts(f)).toEqual(["places.googleapis.com"]);
+    expect(world.orgs.get("org-a")!.homeVenueId ?? null).toBeNull();
+  });
+
+  it("an unusable place id never reaches Google", async () => {
+    const f = googleBoth();
+    const bad = { placeId: "not a place id!", sessionToken: null };
+    expect(await setClubHomeVenueToPick("org-a", "user-a", bad, { now: NOW, fetchImpl: asFetch(f) })).toEqual({ status: "unresolved" });
+    expect(f).not.toHaveBeenCalled();
+  });
+
+  it("with the club's daily lookups used up, nothing is sent", async () => {
+    for (let i = 0; i < VENUE_LOOKUPS_PER_CLUB_PER_DAY; i++) world.lookups.push({ id: `l${i}`, orgId: "org-a", kind: "geocode", createdAt: NOW });
+    const f = googleBoth();
+    expect(await setClubHomeVenueToPick("org-a", "user-a", PICK, { now: NOW, fetchImpl: asFetch(f) })).toEqual({ status: "capped" });
+    expect(f).not.toHaveBeenCalled();
+  });
+
+  it("a club that does not exist is unresolved, with nothing sent", async () => {
+    const f = googleBoth();
+    expect(await setClubHomeVenueToPick("nope", "user-a", PICK, { now: NOW, fetchImpl: asFetch(f) })).toEqual({ status: "unresolved" });
     expect(f).not.toHaveBeenCalled();
   });
 });

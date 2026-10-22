@@ -5,7 +5,10 @@
  *
  *   - One `ClubPartnership` row per direction: "FNF may ask Sutton FC" is
  *     not "Sutton FC may ask FNF" (D2).
- *   - Only the platform owner creates one (D1, `planCreate`).
+ *   - Since partner discovery (2026-10-22, P5) the platform owner no
+ *     longer creates one: clubs send each other requests (P3). The
+ *     platform owner keeps pause and end as an override
+ *     (`planPlatformAction`).
  *   - An OWNER of each club accepts it for that club; it is "active" once
  *     both have. An owner of either side declines a proposal or removes a
  *     pairing ("ended"). An owner or admin of either side pauses it, and
@@ -89,16 +92,6 @@ export function sideOf(p: Pick<PartnershipRow, "askerOrgId" | "partnerOrgId">, o
   return null;
 }
 
-export type CreatePlan = { ok: true; mode: "create" | "reopen" } | { ok: false; refusal: "same-club" | "exists" };
-
-/** The platform owner pairs two clubs, one direction. */
-export function planCreate(existing: PartnershipRow | null, askerOrgId: string, partnerOrgId: string): CreatePlan {
-  if (askerOrgId === partnerOrgId) return { ok: false, refusal: "same-club" };
-  if (!existing) return { ok: true, mode: "create" };
-  if (existing.status === "ended") return { ok: true, mode: "reopen" };
-  return { ok: false, refusal: "exists" };
-}
-
 export type PartnershipAction = "accept" | "decline" | "pause" | "resume" | "end";
 
 export type ActionRefusal =
@@ -119,6 +112,11 @@ export interface PartnershipPatch {
   partnerAcceptedAt?: Date;
   partnerAcceptedBy?: string;
   pausedByOrgId?: string | null;
+  /** Partner discovery (2026-10-22): when, by which club and why it ended,
+   *  so the 30-day wait after a decline or an end can be read (P3). */
+  endedAt?: Date;
+  endedByOrgId?: string | null;
+  endReason?: PartnershipEndReason;
 }
 
 export type ActionPlan = { ok: true; patch: PartnershipPatch } | { ok: false; refusal: ActionRefusal };
@@ -150,7 +148,7 @@ export function planPartnershipAction(
       if (!owner) return { ok: false, refusal: "owner-only" };
       if (p.status === "ended") return { ok: false, refusal: "ended" };
       if (p.status !== "proposed") return { ok: false, refusal: "not-proposed" };
-      return { ok: true, patch: { status: "ended", pausedByOrgId: null } };
+      return { ok: true, patch: { status: "ended", pausedByOrgId: null, endedAt: a.now, endedByOrgId: a.orgId, endReason: "declined" } };
     }
     case "pause": {
       if (!admin) return { ok: false, refusal: "admin-only" };
@@ -166,9 +164,123 @@ export function planPartnershipAction(
     case "end": {
       if (!owner) return { ok: false, refusal: "owner-only" };
       if (p.status === "ended") return { ok: false, refusal: "ended" };
-      return { ok: true, patch: { status: "ended", pausedByOrgId: null } };
+      return { ok: true, patch: { status: "ended", pausedByOrgId: null, endedAt: a.now, endedByOrgId: a.orgId, endReason: "ended" } };
     }
   }
+}
+
+/**
+ * The platform owner's override on /admin/clubs/partners (partner
+ * discovery P5, D-6, Kemal 2026-10-22): pause, resume or end any pairing,
+ * for abuse or support. Creating one on a club's behalf is gone, since
+ * that would skip the club's consent.
+ *
+ * A platform pause is marked `PLATFORM_PAUSE` in `pausedByOrgId`, so
+ * neither club can resume it (`planPartnershipAction` refuses
+ * "paused-by-other"), and the platform resumes only its own pause, never a
+ * club's.
+ */
+export type PlatformAction = "pause" | "resume" | "end";
+export const PLATFORM_ACTIONS: readonly PlatformAction[] = ["pause", "resume", "end"];
+export const PLATFORM_PAUSE = "platform";
+
+export function planPlatformAction(p: PartnershipRow, a: { action: PlatformAction; now: Date }): ActionPlan {
+  switch (a.action) {
+    case "pause":
+      if (p.status !== "active") return { ok: false, refusal: "not-active" };
+      return { ok: true, patch: { status: "paused", pausedByOrgId: PLATFORM_PAUSE } };
+    case "resume":
+      if (p.status !== "paused") return { ok: false, refusal: "not-paused" };
+      if (p.pausedByOrgId !== PLATFORM_PAUSE) return { ok: false, refusal: "paused-by-other" };
+      return { ok: true, patch: { status: "active", pausedByOrgId: null } };
+    case "end":
+      if (p.status === "ended") return { ok: false, refusal: "ended" };
+      return { ok: true, patch: { status: "ended", pausedByOrgId: null, endedAt: a.now, endedByOrgId: null, endReason: "ended" } };
+  }
+}
+
+export function parsePlatformAction(value: unknown): PlatformAction | null {
+  return typeof value === "string" && (PLATFORM_ACTIONS as readonly string[]).includes(value) ? (value as PlatformAction) : null;
+}
+
+// ─── Partner discovery (slice P1, 2026-10-22) ─────────────────────────────
+// Plan: MDs/partner-discovery-plan-2026-10-21.md, sections 2.1 and 6.
+
+/** `ClubPartnership.origin`. The CHECK in prisma/sql/partner-ask-check.sql
+ *  carries exactly these. */
+export const PARTNERSHIP_ORIGINS = ["owner", "request"] as const;
+export type PartnershipOrigin = (typeof PARTNERSHIP_ORIGINS)[number];
+
+/** `ClubPartnership.endReason`. Same CHECK file. */
+export const PARTNERSHIP_END_REASONS = ["declined", "withdrawn", "ended", "expired", "blocked"] as const;
+export type PartnershipEndReason = (typeof PARTNERSHIP_END_REASONS)[number];
+
+/**
+ * "Let nearby clubs find us and send requests". ON unless a club switched
+ * it off: the column defaults to true, so every existing club reads as on
+ * (Kemal, 2026-10-22), and a missing value reads on too.
+ */
+export function isDiscoverable(org: { discoverable?: boolean | null }): boolean {
+  return org.discoverable !== false;
+}
+
+/** "Accept partner requests automatically". OFF unless switched on. */
+export function autoAcceptOf(org: { autoAcceptPartnerRequests?: boolean | null }): boolean {
+  return org.autoAcceptPartnerRequests === true;
+}
+
+/** A switch's value to save: a real boolean, or refused. */
+export function parseSwitch(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
+}
+
+/** Only a club's owners and admins change either setting. */
+export function canChangeDiscoverySettings(role: ClubRole): boolean {
+  return role === "OWNER" || role === "ADMIN";
+}
+
+interface Position {
+  lat: number | null;
+  lng: number | null;
+}
+const geocoded = (v: Position | null | undefined): boolean => !!v && v.lat !== null && v.lng !== null;
+
+/**
+ * A club has a geocoded venue when one of its ACTIVE games is linked to a
+ * venue with a position, or its home venue has one (plan 2.1). The same
+ * test drives the settings prompt and the weekly reminder.
+ */
+export function hasGeocodedVenue(club: { homeVenue: Position | null; games: Array<{ isActive: boolean; venue: Position | null }> }): boolean {
+  return geocoded(club.homeVenue) || club.games.some((g) => g.isActive && geocoded(g.venue));
+}
+
+/** The weekly venue reminder: once a week at most (Kemal, 2026-10-22). */
+export const VENUE_REMINDER_EVERY_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** A game's venue lookup reported "pending" this recently is still running. */
+export const VENUE_LOOKUP_RUNNING_MS = 60 * 60 * 1000;
+
+/** A game's lookup is still running: a club created a moment ago is not
+ *  told it has no venue while Google is answering. */
+export function venueLookupRunning(
+  games: Array<{ isActive: boolean; venueLookupStatus: string | null; venueResolvedAt: Date | null }>,
+  now: Date,
+): boolean {
+  return games.some(
+    (g) => g.isActive && g.venueLookupStatus === "pending" && !!g.venueResolvedAt && now.getTime() - g.venueResolvedAt.getTime() < VENUE_LOOKUP_RUNNING_MS,
+  );
+}
+
+/**
+ * Is the weekly "confirm your venue" reminder due? Never for a club with a
+ * venue (so it stops for good once one is set), never while a lookup is
+ * running, and at most once in any 7 days.
+ */
+export function venueReminderDue(a: { hasVenue: boolean; lastSentAt: Date | null; lookupRunning: boolean; now: Date }): boolean {
+  if (a.hasVenue || a.lookupRunning) return false;
+  if (!a.lastSentAt) return true;
+  const since = a.now.getTime() - a.lastSentAt.getTime();
+  return since >= VENUE_REMINDER_EVERY_MS;
 }
 
 /**

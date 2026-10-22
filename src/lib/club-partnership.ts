@@ -8,25 +8,38 @@
  * pure rules in `club-partnership-rules.ts`; this file loads, applies them
  * with a compare-and-set, and tells the clubs.
  *
- * Off by default: no club has a partner until the platform owner pairs two
- * clubs (D1), so nothing here runs for Sutton FC or anyone else until then.
+ * Partner discovery (slice P1, 2026-10-22,
+ * MDs/partner-discovery-plan-2026-10-21.md): the two discovery settings
+ * ("Let nearby clubs find us and send requests", "Accept partner requests
+ * automatically"), the club's venue status for the settings prompt, and
+ * the weekly venue reminder. Slice P5: the platform owner no longer pairs
+ * clubs; it pauses, resumes and ends any pairing (`platformActOnPartnership`).
  * Logs carry ids only.
  */
 import { db } from "./db";
 import { sendAdminNotice } from "./admin-channel";
-import { recordMatchTimeQuestion } from "./admin-group-log";
+import { servingClubWhere } from "./club-approval-state";
 import { t } from "./i18n/t";
 import {
   PARTNER_ASK_CUTOFF_DEFAULT_HOURS,
   normalisePartnerAskWhen,
-  pairingNoticeKey,
   parseAskTime,
   parseCutoffHours,
   parsePartnerApproval,
   parsePartnerAskWhen,
-  planCreate,
+  PLATFORM_PAUSE,
+  VENUE_REMINDER_EVERY_MS,
+  autoAcceptOf,
+  canChangeDiscoverySettings,
+  hasGeocodedVenue,
+  isDiscoverable,
+  parseSwitch,
   planPartnershipAction,
+  planPlatformAction,
   sideOf,
+  venueLookupRunning,
+  venueReminderDue,
+  type PlatformAction,
   type ActionRefusal,
   type ClubRole,
   type PartnerApproval,
@@ -51,8 +64,8 @@ export interface PartnershipView {
   weAccepted: boolean;
   /** The other club's owner has accepted. */
   theyAccepted: boolean;
-  /** Paused, and by which side. */
-  pausedBy: "us" | "them" | null;
+  /** Paused, and by which side, or by the MatchTime team (P5). */
+  pausedBy: "us" | "them" | "platform" | null;
 }
 
 /** A club's pairings in either direction, except ended ones. */
@@ -73,7 +86,14 @@ export async function loadPartnershipsForOrg(orgId: string): Promise<Partnership
       partnerApproval: parsePartnerApproval(r.partnerApproval) ?? "each-ask",
       weAccepted: !!(side === "asker" ? r.askerAcceptedAt : r.partnerAcceptedAt),
       theyAccepted: !!(side === "asker" ? r.partnerAcceptedAt : r.askerAcceptedAt),
-      pausedBy: r.status === "paused" && r.pausedByOrgId ? (r.pausedByOrgId === orgId ? "us" : "them") : null,
+      pausedBy:
+        r.status === "paused" && r.pausedByOrgId
+          ? r.pausedByOrgId === PLATFORM_PAUSE
+            ? "platform"
+            : r.pausedByOrgId === orgId
+              ? "us"
+              : "them"
+          : null,
     };
   });
 }
@@ -84,86 +104,6 @@ export async function loadAllPartnerships() {
     orderBy: { createdAt: "desc" },
     include: { askerOrg: { select: { name: true } }, partnerOrg: { select: { name: true } } },
   });
-}
-
-export type CreateResult = { ok: true; id: string; reopened: boolean } | { ok: false; refusal: "same-club" | "exists" | "no-club" };
-
-/**
- * The platform owner pairs two clubs, one direction (D1, D2). The caller
- * has proven the user is a superadmin. Both clubs' organisers are told,
- * each in its own language, and each club's owner then accepts or
- * declines on its settings page.
- */
-export async function createPartnership(args: {
-  creatorUserId: string;
-  askerOrgId: string;
-  partnerOrgId: string;
-  now?: Date;
-}): Promise<CreateResult> {
-  const now = args.now ?? new Date();
-  const [asker, partner, existing] = await Promise.all([
-    db.organisation.findUnique({ where: { id: args.askerOrgId }, select: { id: true, name: true, language: true } }),
-    db.organisation.findUnique({ where: { id: args.partnerOrgId }, select: { id: true, name: true, language: true } }),
-    db.clubPartnership.findUnique({ where: { askerOrgId_partnerOrgId: { askerOrgId: args.askerOrgId, partnerOrgId: args.partnerOrgId } } }),
-  ]);
-  const plan = planCreate(existing, args.askerOrgId, args.partnerOrgId);
-  if (!plan.ok) return plan;
-  if (!asker || !partner) return { ok: false, refusal: "no-club" };
-
-  let id: string;
-  if (plan.mode === "create") {
-    id = (
-      await db.clubPartnership.create({
-        data: { askerOrgId: asker.id, partnerOrgId: partner.id, createdByUserId: args.creatorUserId },
-        select: { id: true },
-      })
-    ).id;
-  } else {
-    // An ended pair, proposed again: both acceptances needed afresh, and
-    // the partner's approval back to its default.
-    const reopened = await db.clubPartnership.updateMany({
-      where: { id: existing!.id, status: "ended" },
-      data: {
-        status: "proposed",
-        partnerApproval: "each-ask",
-        askerAcceptedAt: null,
-        askerAcceptedBy: null,
-        partnerAcceptedAt: null,
-        partnerAcceptedBy: null,
-        pausedByOrgId: null,
-        createdByUserId: args.creatorUserId,
-      },
-    });
-    if (reopened.count === 0) return { ok: false, refusal: "exists" };
-    id = existing!.id;
-  }
-  console.log(`[partner-clubs] pairing ${id}: ${asker.id} may ask ${partner.id} (${plan.mode})`);
-
-  // Each club's notice asks its owner to reply 1 or 2 (or to open the
-  // link), and is tagged with this pairing and club, so a reply or a
-  // reaction on it finds exactly this one (`pairing-reply.ts`). In an
-  // admin group it is logged as MatchTime's question, as a partner ask's
-  // approval notice is, so a reply quoting it is known to be about it.
-  const tell = async (club: { id: string; name: string; language: string }, other: string, side: "asker" | "partner") => {
-    const s = t(club.language);
-    const aboutKey = pairingNoticeKey(id, club.id);
-    const notice = side === "asker" ? s.pc_paired_notice_asker : s.pc_paired_notice_partner;
-    const sent = await sendAdminNotice({
-      orgId: club.id,
-      now,
-      nextPath: PARTNER_SETTINGS_PATH,
-      aboutKey,
-      text: (link, audience) => notice({ club: club.name, other, link, inGroup: audience === "group" }),
-    });
-    if (sent.channel === "admin-group" && sent.groupText) {
-      await recordMatchTimeQuestion({ orgId: club.id, askRef: aboutKey, text: sent.groupText, now });
-    }
-  };
-  await Promise.all([tell(asker, partner.name, "asker"), tell(partner, asker.name, "partner")]).catch((err) =>
-    console.error(`[partner-clubs] pairing ${id}: notices not queued:`, err instanceof Error ? err.message : "failed"),
-  );
-
-  return { ok: true, id, reopened: plan.mode === "reopen" };
 }
 
 export type ActResult = { ok: true; status: PartnershipStatus } | { ok: false; refusal: ActionRefusal | "not-found" | "changed" };
@@ -274,4 +214,229 @@ export async function savePartnerAskSettings(
   }
   const settings = await loadPartnerAskSettings(orgId);
   return settings ? { ok: true, settings } : { ok: false, refusal: "no-club" };
+}
+
+/**
+ * The platform owner pauses, resumes or ends a pairing (P5, D-6). The
+ * caller has proven the user is a superadmin. A compare-and-set on the
+ * status read, like a club's own action. Nobody is messaged: an override
+ * for abuse or support.
+ */
+export async function platformActOnPartnership(args: {
+  partnershipId: string;
+  action: PlatformAction;
+  now?: Date;
+}): Promise<ActResult> {
+  const now = args.now ?? new Date();
+  const row = await db.clubPartnership.findUnique({ where: { id: args.partnershipId } });
+  if (!row) return { ok: false, refusal: "not-found" };
+  const plan = planPlatformAction(row, { action: args.action, now });
+  if (!plan.ok) return plan;
+  const done = await db.clubPartnership.updateMany({ where: { id: row.id, status: row.status }, data: plan.patch });
+  if (done.count === 0) return { ok: false, refusal: "changed" };
+  const status = (plan.patch.status ?? row.status) as PartnershipStatus;
+  console.log(`[partner-clubs] pairing ${row.id}: ${args.action} by the platform owner, now ${status}`);
+  return { ok: true, status };
+}
+
+// ─── Partner discovery (slice P1, 2026-10-22) ─────────────────────────────
+
+export interface DiscoverySettings {
+  /** "Let nearby clubs find us and send requests". */
+  discoverable: boolean;
+  /** "Accept partner requests automatically". */
+  autoAccept: boolean;
+}
+
+const DISCOVERY_SELECT = { discoverable: true, autoAcceptPartnerRequests: true } as const;
+
+export async function loadDiscoverySettings(orgId: string): Promise<DiscoverySettings | null> {
+  const org = await db.organisation.findUnique({ where: { id: orgId }, select: DISCOVERY_SELECT });
+  if (!org) return null;
+  return { discoverable: isDiscoverable(org), autoAccept: autoAcceptOf(org) };
+}
+
+/**
+ * An owner or admin changes either setting. The role is checked here too
+ * (the action has proven it), a value that is not a real on or off refuses
+ * the whole save, and a change to `discoverable` records who and when.
+ */
+export async function saveDiscoverySettings(args: {
+  orgId: string;
+  userId: string;
+  role: ClubRole;
+  patch: { discoverable?: unknown; autoAccept?: unknown };
+  now?: Date;
+}): Promise<{ ok: true; settings: DiscoverySettings } | { ok: false; refusal: "not-admin" | "bad-value" | "no-club" }> {
+  if (!canChangeDiscoverySettings(args.role)) return { ok: false, refusal: "not-admin" };
+  const now = args.now ?? new Date();
+  const data: { discoverable?: boolean; discoverableAt?: Date; discoverableById?: string; autoAcceptPartnerRequests?: boolean } = {};
+  const keys: string[] = [];
+  if (args.patch.discoverable !== undefined) {
+    const on = parseSwitch(args.patch.discoverable);
+    if (on === null) return { ok: false, refusal: "bad-value" };
+    Object.assign(data, { discoverable: on, discoverableAt: now, discoverableById: args.userId });
+    keys.push("discoverable");
+  }
+  if (args.patch.autoAccept !== undefined) {
+    const on = parseSwitch(args.patch.autoAccept);
+    if (on === null) return { ok: false, refusal: "bad-value" };
+    data.autoAcceptPartnerRequests = on;
+    keys.push("autoAcceptPartnerRequests");
+  }
+  if (keys.length > 0) {
+    await db.organisation.update({ where: { id: args.orgId }, data: { ...data, settingsSetByOrganiser: { push: keys } } });
+    console.log(`[partner-clubs] org ${args.orgId}: discovery settings saved (${keys.join(", ")}) by ${args.userId}`);
+  }
+  const settings = await loadDiscoverySettings(args.orgId);
+  return settings ? { ok: true, settings } : { ok: false, refusal: "no-club" };
+}
+
+/** Where the venue lookup sits on the settings page (the reminder's link). */
+export const CLUB_VENUE_SETTINGS_PATH = "/admin/settings#club-venue";
+
+/** What a club's venue status needs, read in one query. */
+const VENUE_STATUS_SELECT = {
+  id: true,
+  name: true,
+  language: true,
+  venueReminderSentAt: true,
+  homeVenue: { select: { name: true, formattedAddress: true, lat: true, lng: true } },
+  activities: {
+    where: { isActive: true },
+    orderBy: { createdAt: "asc" },
+    select: {
+      isActive: true,
+      venueLookupStatus: true,
+      venueResolvedAt: true,
+      venueRef: { select: { name: true, lat: true, lng: true } },
+    },
+  },
+} as const;
+
+interface VenueStatusRow {
+  id: string;
+  name: string;
+  language: string;
+  venueReminderSentAt: Date | null;
+  homeVenue: { name: string; formattedAddress: string | null; lat: number | null; lng: number | null } | null;
+  activities: Array<{
+    isActive: boolean;
+    venueLookupStatus: string | null;
+    venueResolvedAt: Date | null;
+    venueRef: { name: string; lat: number | null; lng: number | null } | null;
+  }>;
+}
+
+const hasVenueOf = (o: VenueStatusRow) =>
+  hasGeocodedVenue({ homeVenue: o.homeVenue, games: o.activities.map((a) => ({ isActive: a.isActive, venue: a.venueRef })) });
+
+export interface ClubVenueStatus {
+  /** An active game's venue or the home venue has a position. */
+  hasVenue: boolean;
+  homeVenue: { name: string; address: string | null } | null;
+  /** The first active game's geocoded venue, if any. */
+  gameVenue: { name: string } | null;
+}
+
+/** For the settings page: does the club have a venue nearby clubs can find? */
+export async function loadClubVenueStatus(orgId: string): Promise<ClubVenueStatus | null> {
+  const org: VenueStatusRow | null = await db.organisation.findUnique({ where: { id: orgId }, select: VENUE_STATUS_SELECT });
+  if (!org) return null;
+  const game = org.activities.find((a) => a.isActive && a.venueRef && a.venueRef.lat !== null && a.venueRef.lng !== null);
+  const home = org.homeVenue && org.homeVenue.lat !== null && org.homeVenue.lng !== null ? org.homeVenue : null;
+  return {
+    hasVenue: hasVenueOf(org),
+    homeVenue: home ? { name: home.name, address: home.formattedAddress } : null,
+    gameVenue: game?.venueRef ? { name: game.venueRef.name } : null,
+  };
+}
+
+/**
+ * The clubs the reminder is for: live (approved, not dormant, served, in
+ * its players' group with MatchTime switched on). A muted or billing-paused
+ * club is not reminded: its notices would not go out until it is back, and
+ * then all at once.
+ */
+function remindableClubWhere() {
+  return { ...servingClubWhere(), dormantAt: null, whatsappGroupId: { not: null }, whatsappBotEnabled: true };
+}
+
+export type VenueReminderOutcome = "sent" | "not-due" | "already";
+
+/**
+ * THE WEEKLY VENUE REMINDER (plan 2.1, Kemal 2026-10-22). One notice to a
+ * live club's owners and admins, through the club's admin channel
+ * (`sendAdminNotice`, which holds it through the club's quiet hours), with
+ * each admin's own signed-in link straight to the venue lookup on the
+ * settings page. At most once a week, never to a club with a venue, so it
+ * stops for good once one is set.
+ *
+ * EXACTLY ONCE A WEEK, whoever races whom: the claim is a compare-and-set
+ * of `venueReminderSentAt` against the value this run read. Of two runs
+ * that read the same stamp, Postgres lets one UPDATE match; the other
+ * matches nothing (its WHERE is re-checked after the first commits) and
+ * sends nothing. The stamp is durable, so a restart changes nothing. If
+ * the notice cannot be queued, the claim is put back for the next run.
+ */
+export async function sendVenueReminder(orgId: string, now: Date = new Date()): Promise<VenueReminderOutcome> {
+  const org: VenueStatusRow | null = await db.organisation.findFirst({ where: { id: orgId, ...remindableClubWhere() }, select: VENUE_STATUS_SELECT });
+  if (!org) return "not-due";
+  const due = venueReminderDue({
+    hasVenue: hasVenueOf(org),
+    lastSentAt: org.venueReminderSentAt,
+    lookupRunning: venueLookupRunning(org.activities, now),
+    now,
+  });
+  if (!due) return "not-due";
+
+  const claim = await db.organisation.updateMany({
+    where: { id: orgId, venueReminderSentAt: org.venueReminderSentAt },
+    data: { venueReminderSentAt: now },
+  });
+  if (claim.count !== 1) return "already";
+
+  const s = t(org.language);
+  try {
+    const sent = await sendAdminNotice({
+      orgId,
+      now,
+      nextPath: CLUB_VENUE_SETTINGS_PATH,
+      text: (link) => s.pd_venue_reminder_dm({ club: org.name, link }),
+    });
+    console.log(`[partner-clubs] org ${orgId}: venue reminder queued (${sent.channel}, ${sent.queued})`);
+  } catch (err) {
+    // Put the claim back, so the next run sends it.
+    await db.organisation
+      .updateMany({ where: { id: orgId, venueReminderSentAt: now }, data: { venueReminderSentAt: org.venueReminderSentAt } })
+      .catch(() => undefined);
+    throw err;
+  }
+  return "sent";
+}
+
+/**
+ * The daily cron's half (`/api/cron/venue-reminder`): every live club not
+ * reminded in the last week. Each club is decided, claimed and sent by
+ * `sendVenueReminder`; a failure on one never stops the others.
+ */
+export async function runVenueReminderSweep(now: Date = new Date()): Promise<{ considered: number; sent: number }> {
+  const weekAgo = new Date(now.getTime() - VENUE_REMINDER_EVERY_MS);
+  const candidates = await db.organisation.findMany({
+    where: {
+      ...remindableClubWhere(),
+      OR: [{ venueReminderSentAt: null }, { venueReminderSentAt: { lte: weekAgo } }],
+    },
+    select: { id: true },
+    orderBy: { createdAt: "asc" },
+  });
+  let sent = 0;
+  for (const c of candidates) {
+    try {
+      if ((await sendVenueReminder(c.id, now)) === "sent") sent++;
+    } catch (err) {
+      console.error(`[partner-clubs] org ${c.id}: venue reminder failed; the next run retries: ${(err as Error)?.name ?? "error"}`);
+    }
+  }
+  return { considered: candidates.length, sent };
 }

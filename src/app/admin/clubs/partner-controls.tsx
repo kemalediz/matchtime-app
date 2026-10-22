@@ -1,65 +1,58 @@
 "use client";
 
 /**
- * Pair two clubs, one direction (cross-club ask, slice S1, 2026-10-16;
- * plan section 3.1, D1 and D2). The server action authorises
- * (superadmin) and refuses a club paired with itself or a pair that
- * exists; this only asks, shows the answer and refreshes. Each club's
- * owner then accepts on its own settings page.
+ * The platform owner's override on one pairing (partner discovery, slice
+ * P5, 2026-10-22; plan section 3.5, D-6): pause, resume or end it, for
+ * abuse or support. The create form is gone: clubs now send each other
+ * requests, and pairing two clubs on their behalf would skip their
+ * consent. The server action authorises (superadmin) and the pure rules
+ * decide (`planPlatformAction`): the platform resumes only its own pause,
+ * and neither club can resume it. This only asks, shows the answer and
+ * refreshes.
  */
-import { useState, useTransition } from "react";
+import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { createPartnershipAction } from "@/app/actions/partners";
+import { platformPartnershipAction } from "@/app/actions/partners";
+import type { PlatformAction } from "@/lib/club-partnership-rules";
 
-export function PartnerPairingForm(props: { clubs: { id: string; name: string }[] }) {
+const DONE: Record<PlatformAction, string> = { pause: "Paused.", resume: "Resumed.", end: "Ended." };
+
+export function PartnerOverrideButtons(props: { id: string; status: string; pausedByPlatform: boolean; label: string }) {
   const router = useRouter();
   const [pending, start] = useTransition();
-  const [asker, setAsker] = useState("");
-  const [partner, setPartner] = useState("");
 
-  const pair = () =>
+  const act = (action: PlatformAction) =>
     start(async () => {
+      if (action === "end" && !window.confirm(`End this pairing (${props.label})? The two clubs cannot ask each other for players until they are paired again.`)) return;
       try {
-        const r = await createPartnershipAction(asker, partner);
-        if (r.ok) toast.success(r.message);
-        else toast.error(r.message);
+        const r = await platformPartnershipAction(props.id, action);
+        if (r.ok) toast.success(DONE[action]);
+        else toast.error("That can't be done now. Reload the page and try again.");
         router.refresh();
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Something went wrong");
       }
     });
 
-  const control = "h-9 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-700";
+  const button = "h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-50";
   return (
-    <div className="flex flex-wrap items-center gap-2 text-sm text-slate-600" role="group" aria-label="Pair two clubs">
-      <select aria-label="Club that asks" data-testid="pair-asker" value={asker} onChange={(e) => setAsker(e.target.value)} disabled={pending} className={control}>
-        <option value="">Club that asks</option>
-        {props.clubs.map((c) => (
-          <option key={c.id} value={c.id}>
-            {c.name}
-          </option>
-        ))}
-      </select>
-      <span>may ask</span>
-      <select aria-label="Partner club" data-testid="pair-partner" value={partner} onChange={(e) => setPartner(e.target.value)} disabled={pending} className={control}>
-        <option value="">Partner club</option>
-        {props.clubs.map((c) => (
-          <option key={c.id} value={c.id}>
-            {c.name}
-          </option>
-        ))}
-      </select>
-      <span>for players</span>
-      <button
-        type="button"
-        data-testid="pair-clubs"
-        disabled={pending || !asker || !partner || asker === partner}
-        onClick={pair}
-        className="h-9 rounded-lg bg-blue-600 px-3 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-      >
-        Pair
-      </button>
-    </div>
+    <span className="inline-flex flex-wrap gap-1">
+      {props.status === "active" && (
+        <button type="button" className={button} disabled={pending} onClick={() => act("pause")} data-testid="partnership-pause">
+          Pause
+        </button>
+      )}
+      {props.status === "paused" && props.pausedByPlatform && (
+        <button type="button" className={button} disabled={pending} onClick={() => act("resume")} data-testid="partnership-resume">
+          Resume
+        </button>
+      )}
+      {props.status !== "ended" && (
+        <button type="button" className={button} disabled={pending} onClick={() => act("end")} data-testid="partnership-end">
+          End
+        </button>
+      )}
+    </span>
   );
 }

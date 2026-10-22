@@ -5065,6 +5065,30 @@ export const en = {
   pc_saved: "Saved",
   pc_save_failed: "Couldn't save",
   pc_refused: "That can't be done now. Reload the page and try again.",
+  // ─── Partner discovery (slice P1, 2026-10-22) ───────────────────────
+  // MDs/partner-discovery-plan-2026-10-21.md, section 2.1. The Partner
+  // clubs section's two switches, the club venue and its prompt, and the
+  // weekly venue reminder DM. Read by
+  // src/components/settings/partner-clubs-section.tsx and
+  // src/lib/club-partnership.ts. Added as one block; nothing above moved.
+  pd_discoverable_label: "Let nearby clubs find us and send requests",
+  pd_auto_accept_label: "Accept partner requests automatically",
+  pd_none: "No partner clubs yet.",
+  pd_status_paused_platform: "Paused by MatchTime",
+  pd_venue_label: "Club venue",
+  pd_venue_prompt_title: "Confirm your venue to find clubs near you",
+  pd_venue_prompt_body: "Nearby clubs can only find your club once it has a venue. Pick your pitch from the list below.",
+  pd_venue_game: (p: { venue: string }) =>
+    `Nearby clubs are measured from your game's venue, ${p.venue}. The club venue is used only while you have no active game.`,
+  pd_venue_home: (p: { venue: string }) => `Club venue: ${p.venue}`,
+  pd_venue_placeholder: "Start typing your pitch's name",
+  pd_venue_save: "Save venue",
+  pd_venue_pick_first: "Pick your pitch from the list to save it.",
+  pd_venue_saved: "Venue saved",
+  pd_venue_unresolved: "Couldn't find that place. Pick it from the list again.",
+  pd_venue_capped: "Too many venue lookups today. Try again tomorrow.",
+  pd_venue_reminder_dm: (p: { club: string; link: string }) =>
+    `📍 Confirm *${p.club}*'s venue so nearby clubs can find you: MatchTime has no venue for your club yet. Pick your pitch from the list here: ${p.link}\nMatchTime reminds you once a week until a venue is set.`,
   // ─── Asking a partner club for a player (slice S2, 2026-10-16) ──────
   // MDs/cross-club-player-ask-plan-2026-10-16.md, sections 3.3 to 3.5.
   // Read by src/lib/partner-ask.ts, the match page's partner panel and

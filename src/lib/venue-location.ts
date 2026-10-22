@@ -113,7 +113,7 @@ type LookupKind = "geocode" | "reuse" | "short-link" | "pin" | "place-details";
  * transaction (nothing is left on the session, so it is safe through a
  * transaction pooler) and touches no table row anybody else writes.
  */
-async function claimLookup(orgId: string, activityId: string, kind: LookupKind, now: Date): Promise<boolean> {
+async function claimLookup(orgId: string, activityId: string | null, kind: LookupKind, now: Date): Promise<boolean> {
   return db.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`venue-lookup:${orgId}`}))`;
     const used = await tx.venueLookup.count({ where: { orgId, createdAt: { gte: londonMidnight(now) } } });
@@ -463,21 +463,41 @@ type PickedPlace =
    *  back to looking the venue text up. */
   | { status: "unresolved" };
 
-async function lookupPick(a: LoadedActivity, pick: VenuePick, now: Date, fetchImpl: typeof fetch | undefined): Promise<PickedPlace> {
+/** What a pick is looked up for: a weekly game, or (partner discovery,
+ *  2026-10-22) a club's home venue, which has no game. */
+interface PickTarget {
+  orgId: string;
+  activityId: string | null;
+  language: string | null | undefined;
+  /** The name to store if Google's answer has none. */
+  fallbackName: string;
+  /** For the log line. */
+  logRef: string;
+}
+
+const pickTargetOf = (a: LoadedActivity): PickTarget => ({
+  orgId: a.orgId,
+  activityId: a.id,
+  language: a.org.language,
+  fallbackName: a.venue,
+  logRef: `activity=${a.id}`,
+});
+
+async function lookupPick(target: PickTarget, pick: VenuePick, now: Date, fetchImpl: typeof fetch | undefined): Promise<PickedPlace> {
   // Nothing is counted, or sent, for an id that is not one.
   if (!placesConfigured() || !validPlaceId(pick.placeId)) return { status: "unresolved" };
-  if (!(await claimLookup(a.orgId, a.id, "place-details", now))) return { status: "capped" };
+  if (!(await claimLookup(target.orgId, target.activityId, "place-details", now))) return { status: "capped" };
   const got = await placeDetails(
-    { placeId: pick.placeId, sessionToken: pick.sessionToken ?? null, languageCode: suggestLanguage(a.org.language) },
+    { placeId: pick.placeId, sessionToken: pick.sessionToken ?? null, languageCode: suggestLanguage(target.language) },
     { fetchImpl },
   );
   if (got.status !== "ok") {
     // A reason code only: never the place id.
-    console.debug(`[geocode] activity=${a.id} pick=unresolved reason=${got.status === "error" ? got.code : got.status}`);
+    console.debug(`[geocode] ${target.logRef} pick=unresolved reason=${got.status === "error" ? got.code : got.status}`);
     return { status: "unresolved" };
   }
   const place: PlaceDetails = got.place;
-  return { status: "found", venueId: await upsertGooglePlace(store, place, place.name || a.venue) };
+  return { status: "found", venueId: await upsertGooglePlace(store, place, place.name || target.fallbackName) };
 }
 
 /**
@@ -505,7 +525,7 @@ export async function resolveActivityVenuePick(
   const a = await loadActivity(activityId);
   if (!a || a.venueId) return { status: "skipped" };
 
-  const got = await lookupPick(a, pick, now, opts.fetchImpl);
+  const got = await lookupPick(pickTargetOf(a), pick, now, opts.fetchImpl);
 
   if (got.status === "capped") {
     const written = await writeIfSameVenue(a.id, a.venue, { venueLookupStatus: "capped" satisfies VenueLookupStatus, venueResolvedAt: now });
@@ -560,7 +580,7 @@ export async function changeActivityVenueToPick(
   const now = opts.now ?? new Date();
   const a = await loadActivity(activityId);
   if (!a) return { status: "unresolved" };
-  const got = await lookupPick(a, pick, now, opts.fetchImpl);
+  const got = await lookupPick(pickTargetOf(a), pick, now, opts.fetchImpl);
   if (got.status !== "found") return { status: got.status };
   await link(a, { venueId: got.venueId, confidence: "high", source: "pick", confirmedBy: userId }, now);
   console.debug(`[geocode] activity=${a.id} outcome=found source=pick confidence=high`);
@@ -576,4 +596,47 @@ export async function confirmActivityVenue(activityId: string, userId: string, n
     data: { venueConfirmedAt: now, venueConfirmedById: userId },
   });
   return count > 0;
+}
+
+// ── A club's home venue (partner discovery, slice P1, 2026-10-22) ───────
+
+/**
+ * THE CLUB'S HOME VENUE, from a place picked from the suggestions. Plan:
+ * MDs/partner-discovery-plan-2026-10-21.md, section 2.1 (Kemal,
+ * 2026-10-22: set ONLY with the venue lookup, so it is always a geocoded
+ * `Venue`; no postcode or town entry). It is where nearby clubs measure
+ * the distance from for a club with no active game.
+ *
+ * The browser hands over Google's place id and the session token, nothing
+ * else; the server asks Google what the place is and upserts the shared
+ * place from Google's answer, charged to the club's daily lookups.
+ *
+ * UNLIKE A GAME'S VENUE THERE IS NO TEXT FALLBACK. A place Google does
+ * not resolve sets nothing ("unresolved"): a typed word looked up as text
+ * could land on the wrong town, and that would be the club's position.
+ * The caller asks the organiser to pick from the list again.
+ *
+ * Who may call it is proven by the caller (an owner or admin). The user
+ * id is for the log only.
+ */
+export async function setClubHomeVenueToPick(
+  orgId: string,
+  userId: string,
+  pick: VenuePick,
+  opts: VenueLookupOptions = {},
+): Promise<{ status: "found"; venueId: string } | { status: "capped" | "unresolved" }> {
+  const now = opts.now ?? new Date();
+  const org = await db.organisation.findUnique({ where: { id: orgId }, select: { id: true, language: true } });
+  if (!org) return { status: "unresolved" };
+  const got = await lookupPick(
+    { orgId, activityId: null, language: org.language, fallbackName: "Venue", logRef: `org=${orgId} home-venue` },
+    pick,
+    now,
+    opts.fetchImpl,
+  );
+  if (got.status !== "found") return { status: got.status };
+  const { count } = await db.organisation.updateMany({ where: { id: orgId }, data: { homeVenueId: got.venueId } });
+  if (count === 0) return { status: "unresolved" };
+  console.log(`[geocode] org=${orgId} home venue set from a pick by ${userId}`);
+  return { status: "found", venueId: got.venueId };
 }
