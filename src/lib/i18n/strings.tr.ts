@@ -1177,7 +1177,13 @@ export const tr: Strings = {
   // yönlendiricinin `help` rotası, 2026-10-16). Örnekler gerçekten
   // yapılanlardır.
   hq_help: (p) => {
-    const lines = [`🛠️ *Yönetici grubunda MatchTime*`, `Burada kendi cümlelerinizle sorun. Beni etiketlemenize gerek yok. Örneğin:`, ``];
+    const lines = [
+      `🛠️ *Yönetici grubunda MatchTime*`,
+      p.squad
+        ? `Burada kendi cümlelerinizle sorun. Beni etiketlemenize gerek yok, yalnızca maçı iptal etmek ya da yeniden açmak için etiketleyin. Örneğin:`
+        : `Burada kendi cümlelerinizle sorun. Beni etiketlemenize gerek yok. Örneğin:`,
+      ``,
+    ];
     if (p.squad) {
       lines.push(`📋 *Kadro listesinin tamamını yapıştırın*: neyin değişeceğini gösteririm, 30 dakika içinde *EVET* yazarsanız uygularım.`);
       lines.push(`✏️ *"Bilal'i ekle"*, *"Sam gelemiyor"*, *"Tom yedek"*: kadroda değişiklik.`);

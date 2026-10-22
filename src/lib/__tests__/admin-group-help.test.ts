@@ -20,7 +20,7 @@ describe("buildHqHelp, English", () => {
     expect(buildHqHelp({ lang: "en", squad: true, graphics: true, picks: true, paid: false })).toBe(
       [
         `🛠️ *MatchTime in your admin group*`,
-        `Just ask here in your own words. No need to tag me. For example:`,
+        `Just ask here in your own words. No need to tag me, except to cancel a match or put it back on. For example:`,
         ``,
         `📋 *Paste the whole squad list*: I show you what would change, and *YES* within 30 minutes applies it.`,
         `✏️ *"put Bilal in"*, *"Sam can't make it"*, *"Tom to the bench"*: changes to the squad.`,
@@ -44,6 +44,7 @@ describe("buildHqHelp, English", () => {
     expect(out).not.toContain("shuffle them again");
     expect(out).not.toContain("pick who plays");
     expect(out).toContain("send the poster");
+    expect(out).toContain("Just ask here in your own words. No need to tag me. For example:");
   });
 
   it("first-come club: no pick line", () => {
@@ -56,7 +57,7 @@ describe("buildHqHelp, Turkish", () => {
     expect(buildHqHelp({ lang: "tr", ...ALL })).toBe(
       [
         `🛠️ *Yönetici grubunda MatchTime*`,
-        `Burada kendi cümlelerinizle sorun. Beni etiketlemenize gerek yok. Örneğin:`,
+        `Burada kendi cümlelerinizle sorun. Beni etiketlemenize gerek yok, yalnızca maçı iptal etmek ya da yeniden açmak için etiketleyin. Örneğin:`,
         ``,
         `📋 *Kadro listesinin tamamını yapıştırın*: neyin değişeceğini gösteririm, 30 dakika içinde *EVET* yazarsanız uygularım.`,
         `✏️ *"Bilal'i ekle"*, *"Sam gelemiyor"*, *"Tom yedek"*: kadroda değişiklik.`,

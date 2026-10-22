@@ -1370,7 +1370,13 @@ export const en = {
    *  organiser pick. `paid`: a monthly club's collector. `free`: a club
    *  that takes match fees (free places, 2026-10-16). */
   hq_help: (p: { squad: boolean; graphics: boolean; picks: boolean; paid: boolean; free?: boolean }): string => {
-    const lines = [`🛠️ *MatchTime in your admin group*`, `Just ask here in your own words. No need to tag me. For example:`, ``];
+    const lines = [
+      `🛠️ *MatchTime in your admin group*`,
+      p.squad
+        ? `Just ask here in your own words. No need to tag me, except to cancel a match or put it back on. For example:`
+        : `Just ask here in your own words. No need to tag me. For example:`,
+      ``,
+    ];
     if (p.squad) {
       lines.push(`📋 *Paste the whole squad list*: I show you what would change, and *YES* within 30 minutes applies it.`);
       lines.push(`✏️ *"put Bilal in"*, *"Sam can't make it"*, *"Tom to the bench"*: changes to the squad.`);
