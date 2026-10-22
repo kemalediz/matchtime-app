@@ -653,7 +653,13 @@ export interface AdminFacts {
    * `fee-waiver.ts`); in the players' group it is answered like `other`
    * (`admin-ops-engine-batch.ts`).
    */
-  action: "bulk_payment" | "fee_waiver" | "reminder" | "recruit" | "stats_blast" | "other";
+  /**
+   * `cancel_match` / `restore_match` (2026-10-22): cancel a match, or put a
+   * cancelled one back on. Done from the organisers' group only, by an
+   * owner or admin (`admin-group-understand.ts` -> `match-cancel.ts`); in
+   * the players' group they are answered exactly as `other` is.
+   */
+  action: "bulk_payment" | "fee_waiver" | "reminder" | "recruit" | "stats_blast" | "cancel_match" | "restore_match" | "other";
   /** bulk_payment */
   payerRef?: string;
   count?: number;
@@ -661,7 +667,7 @@ export interface AdminFacts {
   coveredRefs?: string[];
   /** fee_waiver: true when the message takes a free place back. */
   undo?: boolean;
-  /** fee_waiver: the day named for the game, verbatim ("next Friday").
+  /** fee_waiver, cancel_match, restore_match: the day named for the game, verbatim ("next Friday").
    *  Resolved by code (`fee-waiver-rules.ts` `readDayHint`), never the model. */
   matchDay?: string;
   /** reminder — the PHRASE as written ("on Monday", "tomorrow at 6").

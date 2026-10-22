@@ -106,7 +106,8 @@ import { teamCommandFromFacts } from "./team-proposal-rules";
 import { answerSquadPasteYes } from "./admin-group-paste";
 import { answerGraphicRequest } from "./admin-group-graphics";
 import { buildHqHelp, hqHelpGates } from "./admin-group-help";
-import { hqLogSince, listAskRef, recordMatchTimeQuestion, teamsAskRef } from "./admin-group-log";
+import { NOT_HERE_ID_PREFIX, hqLogSince, listAskRef, recordMatchTimeLine, recordMatchTimeQuestion, teamsAskRef } from "./admin-group-log";
+import { hqCancelOrRestore } from "./match-cancel";
 import { WHICH_ASK_REF, decideApproval, quotedLogRow, type QuotedMessage } from "./admin-group-confirm-rules";
 import { hqAddressing, organisersContext, type PendingWithLabel } from "./admin-group-context";
 import { answerPartnerAskYes, parsePartnerAskRef, partnerAskRef, partnerAsksAwaitingApproval } from "./partner-ask";
@@ -127,6 +128,9 @@ import { activePartnerChoices, askPartnersFromWords } from "./partner-ask-words"
 const RECENT_MS = 30 * 60 * 1000;
 const RECENT_MAX = 5;
 const DAY_MS = 24 * 60 * 60 * 1000;
+/** "I can't do that from this group" is said once in this long, per group
+ *  (2026-10-22, Kemal: the repeated help advert was noise). */
+export const NOT_HERE_QUIET_MS = 6 * 60 * 60 * 1000;
 
 export interface UnderstandInput {
   org: {
@@ -390,6 +394,19 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
       `[admin-group] ${messageId}: routed ${route ?? "nowhere"} by ${routed?.source ?? "nothing"} (${pending.length} waiting${input.quoted ? ", a reply" : ""})${why}`,
     );
     const said = (outcome: string, replyText: string | null): Understood => ({ route, outcome, replyText });
+    // "I can't do that from this group": one short line, and not again while
+    // it was said here in the last few hours (the log keeps a day).
+    const notHere = async (): Promise<Understood> => {
+      const saidLately = log.some(
+        (r) => r.fromMatchTime && r.waMessageId.startsWith(NOT_HERE_ID_PREFIX) && now.getTime() - r.createdAt.getTime() <= NOT_HERE_QUIET_MS,
+      );
+      if (saidLately) {
+        console.log(`[admin-group] ${messageId}: not done here, said lately: silent`);
+        return said("hq-not-here", null);
+      }
+      await recordMatchTimeLine({ orgId: org.id, idPrefix: NOT_HERE_ID_PREFIX, text: s.hq_not_here, now });
+      return said("hq-not-here", s.hq_not_here);
+    };
 
     // Someone in HQ who is not an owner or admin (2026-10-16): questions,
     // help and the graphics are theirs too; anything that changes the club
@@ -570,11 +587,11 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
         if (route === "help") return said("hq-help", hqHelp);
         // Nothing answered it. An organiser always hears the one line; anyone
         // else only when they asked MatchTime, else it is their own chat.
-        return actor || addressed ? said("hq-not-here", s.hq_not_here) : null;
+        return actor || addressed ? notHere() : null;
       }
       case "balancer": {
         if (!actor) return onlyOrganisers();
-        if (!weekly) return said("hq-not-here", s.hq_not_here);
+        if (!weekly) return notHere();
         const model = input.deps?.extractorModel ?? extractorStubFromEnv() ?? anthropicModel();
         const extracted = await extractForRoute(model, "balancer", {
           id: messageId,
@@ -593,7 +610,7 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
         const command = teamCommandFromFacts(extracted.facts);
         if (command.kind === "unclear") {
           return extracted.facts.action === "rename"
-            ? said("hq-not-here", s.hq_not_here)
+            ? notHere()
             : said("teams-which-players", s.tp_which_players);
         }
         const r = await handleTeamCommand({ ...base(actor), command });
@@ -602,7 +619,7 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
       case "self_att":
       case "other_att": {
         if (!squadActor) return notYours();
-        if (!weekly) return said("hq-not-here", s.hq_not_here);
+        if (!weekly) return notHere();
         const change = await handleAdminSquadChange({
           ...base(squadActor),
           text: input.text,
@@ -619,7 +636,7 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
       case "ask_group": {
         // One place-open ask in the players' group (`admin-group-ask-group.ts`).
         if (!actor) return onlyOrganisers();
-        if (!weekly) return said("hq-not-here", s.hq_not_here);
+        if (!weekly) return notHere();
         // A club with partner clubs (slice S6, 2026-10-21): "ask Sutton if
         // anyone can play", "diğer gruplara sor" route here, as finding a
         // player does. The shared admin extractor says whether ANOTHER club
@@ -686,6 +703,23 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
           });
           return said(r.outcome, r.replyText);
         }
+        // Calling a match off, or putting it back on (2026-10-22): an owner's
+        // or admin's alone (the collector may not), a weekly club only
+        // (monthly squads are not live: the website does it). The one path
+        // the web page uses (`match-cancel.ts`).
+        if (facts.kind === "admin" && (facts.action === "cancel_match" || facts.action === "restore_match")) {
+          if (!actor) return onlyOrganisers();
+          if (!weekly) return said("hq-cancel-monthly", s.hq_cancel_monthly);
+          const r = await hqCancelOrRestore({
+            orgId: org.id,
+            lang,
+            mode: facts.action === "cancel_match" ? "cancel" : "restore",
+            dayPhrase: facts.matchDay ?? null,
+            addressed,
+            now,
+          });
+          return r ? said(r.outcome, r.replyText) : null;
+        }
         if (facts.kind === "admin" && facts.action === "fee_waiver") {
           // MatchTime ASKS; the YES applies it (review of #301, item 2).
           const r = await proposeFeeFreeInHq({
@@ -701,7 +735,7 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
           return said(r.outcome, r.replyText);
         }
         console.log(`[admin-group] ${messageId}: admin_ops read as ${facts.kind === "admin" ? facts.action : facts.kind}, not done from HQ`);
-        return said("hq-not-here", s.hq_not_here);
+        return notHere();
       }
       case "score":
         return scoreHere();

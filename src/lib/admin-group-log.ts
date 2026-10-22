@@ -96,6 +96,30 @@ export async function recordMatchTimeQuestion(args: {
   }
 }
 
+/** The id prefix of MatchTime's "I can't do that from this group" line. */
+export const NOT_HERE_ID_PREFIX = "mt:said:not-here:";
+
+/**
+ * A line MatchTime said in HQ that asks nothing (2026-10-22: "I can't do
+ * that from this group"), recorded so it is not said again soon. No
+ * `askRef`: the safe-YES rule reads only MatchTime's questions. Never throws.
+ */
+export async function recordMatchTimeLine(args: { orgId: string; idPrefix: string; text: string; now: Date }): Promise<void> {
+  try {
+    await db.adminGroupMessage.create({
+      data: {
+        orgId: args.orgId,
+        waMessageId: `${args.idPrefix}${args.now.getTime()}:${Math.random().toString(36).slice(2, 8)}`,
+        fromMatchTime: true,
+        text: (args.text ?? "").slice(0, MAX_TEXT),
+        createdAt: args.now,
+      },
+    });
+  } catch (err) {
+    console.error(`[admin-group] line ${args.idPrefix} not recorded:`, err instanceof Error ? err.message : "failed");
+  }
+}
+
 /** HQ rows of a club since `since`, oldest first. */
 export async function hqLogSince(orgId: string, since: Date): Promise<HqLogRow[]> {
   return (await db.adminGroupMessage.findMany({

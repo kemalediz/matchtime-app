@@ -793,6 +793,9 @@ export const en = {
   match_cancelled: (p: { activityName: string; whenLabel: string }): string =>
     `❌ *Match cancelled*: ${p.activityName} on ${p.whenLabel}.\n\n` +
     `Not enough players this week. See you next week!`,
+  /** The players' group: a cancelled match put back on (match-cancel.ts). */
+  match_back_on: (p: { activityName: string; whenLabel: string }): string =>
+    `✅ *Match back on*: ${p.activityName} on ${p.whenLabel}. It goes ahead as planned.`,
 
   // ── rows 66, 134: team-ops-engine.ts and the balancer's reasons ────
 
@@ -1397,10 +1400,19 @@ export const en = {
   /** YES quoting MatchTime with nothing waiting. */
   hq_nothing_waiting: `There's nothing waiting for a YES right now.`,
   /** An admin asked MatchTime for something the admin group cannot do. */
-  hq_not_here: `I can't do that from this group. Ask *what can you do?* to see what I can do here.`,
+  hq_not_here: `I can't do that from this group.`,
+  /** HQ cancel and put back on (match-cancel.ts, 2026-10-22). */
+  hq_match_cancelled: (p: { activityName: string; when: string }): string =>
+    `Done: ${p.activityName}, ${p.when} is cancelled. I've told the players' group.`,
+  hq_match_restored: (p: { activityName: string; when: string }): string =>
+    `Done: ${p.activityName}, ${p.when} is back on. I've told the players' group.`,
+  hq_cancel_no_match: `There's no upcoming match to cancel.`,
+  hq_cancel_no_match_day: (p: { day: string }): string => `I can't find an upcoming match for "${p.day}".`,
+  hq_restore_no_match: `There's no cancelled match still to come to put back on.`,
+  hq_cancel_monthly: `Cancelling a match from here isn't available for monthly squads yet. Please use the website.`,
   /** A message addressed to MatchTime in the admin group (an @tag, or a
    *  reply to its own message) that it could not read as anything it does. */
-  hq_not_understood: `I didn't catch what you'd like me to do. Ask *what can you do?* to see what I can do here.`,
+  hq_not_understood: `I didn't catch what you'd like me to do.`,
   /** Someone in the admin group who is not an owner or admin of the club
    *  asked MatchTime to change something (2026-10-16). `names` is the
    *  club's owners and admins, joined ("Hamzah or Raihan"); empty when it

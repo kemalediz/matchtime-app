@@ -63,6 +63,7 @@ import { t } from "./i18n/t";
 import { listAskRef, recordHqMessage, recordMatchTimeQuestion } from "./admin-group-log";
 import { understandAdminMessage } from "./admin-group-understand";
 import { HQ_FEE_FREE_EXPIRED, HQ_FEE_FREE_NOTHING_DONE } from "./fee-waiver-rules";
+import { HQ_CANCEL_NOTHING_DONE } from "./match-cancel";
 
 export interface AdminGroupMessage {
   groupId: string;
@@ -126,6 +127,10 @@ const NO_TICK: ReadonlySet<string> = new Set([
   "hq-mom-asked",
   "hq-mom-organisers-only",
   "hq-mom-failed",
+  // A cancel or "back on" that changed nothing (no such match), and a
+  // monthly club told to use the website (2026-10-22, match-cancel.ts).
+  HQ_CANCEL_NOTHING_DONE,
+  "hq-cancel-monthly",
 ]);
 export const HQ_TICK = "✅";
 

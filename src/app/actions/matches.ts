@@ -8,8 +8,7 @@ import { recordAttendanceEvent } from "@/lib/attendance-events";
 import { revalidatePath } from "next/cache";
 import { sendRatingEmails } from "@/lib/email";
 import { formatLondon } from "@/lib/london-time";
-import { buildFormatSwitchAnnouncement, buildMatchCancelledAnnouncement } from "@/lib/group-copy";
-import { dayTimeLabel } from "@/lib/i18n/dates";
+import { buildFormatSwitchAnnouncement } from "@/lib/group-copy";
 import { normaliseLang } from "@/lib/i18n/lang";
 import { t } from "@/lib/i18n/t";
 import { reconcileMatchElo, setMatchScore } from "@/lib/match-elo";
@@ -194,7 +193,7 @@ export async function cancelMatch(matchId: string) {
 
   const match = await db.match.findUnique({
     where: { id: matchId },
-    include: { activity: { select: { orgId: true, name: true, org: { select: { language: true, squadMode: true } } } } },
+    select: { status: true, activity: { select: { orgId: true } } },
   });
   if (!match) throw new Error("Match not found");
   if (match.status === "CANCELLED") return; // idempotent
@@ -202,39 +201,10 @@ export async function cancelMatch(matchId: string) {
 
   await requireOrgAdmin(session.user.id, match.activity.orgId);
 
-  await db.match.update({
-    where: { id: matchId },
-    data: { status: "CANCELLED" },
-  });
-
-  // MONTHLY SQUAD (slice 6, plan section 7 "A cancelled week"): for a club
-  // on "monthly" whose month this game is in, every regular charged for it
-  // gets one game of credit, and the announcement says so in the SAME
-  // message (one post per event). A club on "weekly" (Sutton FC and every
-  // club before this) makes no query here and its announcement is byte for
-  // byte what it was: `creditLine` stays empty.
-  let creditLine = "";
-  if (match.activity.org?.squadMode === "monthly") {
-    const { afterMatchesCancelled } = await import("@/lib/month-close");
-    const { creditedGames } = await afterMatchesCancelled(match.activity.orgId, [matchId]);
-    if (creditedGames > 0) {
-      const { buildCancelCreditLine } = await import("@/lib/month-close-copy");
-      creditLine = `\n${buildCancelCreditLine({ count: 1, lang: normaliseLang(match.activity.org?.language) })}`;
-    }
-  }
-
-  await db.botJob.create({
-    data: {
-      orgId: match.activity.orgId,
-      kind: "group",
-      text:
-        buildMatchCancelledAnnouncement({
-          activityName: match.activity.name,
-          whenLabel: dayTimeLabel(normaliseLang(match.activity.org?.language), match.date),
-          lang: normaliseLang(match.activity.org?.language),
-        }) + creditLine,
-    },
-  });
+  // The status, a monthly club's credits and the players' group
+  // announcement: the ONE path HQ's cancel uses too (lib/match-cancel.ts).
+  const { cancelMatchById } = await import("@/lib/match-cancel");
+  await cancelMatchById(matchId);
 
   revalidatePath(`/matches/${matchId}`);
   revalidatePath(`/admin/matches/${matchId}/teams`);
