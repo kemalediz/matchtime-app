@@ -19,13 +19,17 @@
  *      whether he meant the asking club's; tapping its link moves him over
  *      (on the asking club's list, off his own game automatically).
  *
+ *   6. a nameless volunteer is asked for a name; his reply is READ (the
+ *      stubbed name-reply model): a name puts him in, a withdrawal saves
+ *      nothing and puts him nowhere, a question gets the question again.
+ *
  * IN and OUT here are the DM resolver's free fast path and the stubbed
- * router/extractor: no model is called.
+ * router/extractor/name-reply models: no model is called.
  */
 import { test, expect, postAnalyze, resetDb, signInAs } from "../fixtures";
 import { MATCH, ORG_ID, U } from "../helpers/constants";
 import { E2E } from "../helpers/env";
-import { clearPipelineStubs, engineOn, selfIn } from "../helpers/stub";
+import { clearPipelineStubs, engineOn, selfIn, setVolunteerNameStub, clearVolunteerNameStub } from "../helpers/stub";
 import type { TestDb } from "../helpers/test-db";
 import { askRefCode } from "../../src/lib/partner-ask-ref";
 import type { APIRequestContext } from "@playwright/test";
@@ -223,6 +227,7 @@ test("a nameless volunteer: asked for a name first, nothing written; his reply n
   expect(q.text).toContain("what name should I list you under?");
   expect(q.text).toContain("FNF Guests");
 
+  setVolunteerNameStub({ bodies: { "Omar  Second": "name:Omar  Second" } });
   const second = await postDm(request, OMAR2, "  Omar  Second ");
   expect(second).toMatchObject({ handled: "xask-dm-volunteer", outcome: "registered-bench" });
   expect((await db.one<{ name: string | null }>(`SELECT name FROM "User" WHERE id = $1`, [U.omar2]))?.name).toBe("Omar Second");
@@ -231,4 +236,35 @@ test("a nameless volunteer: asked for a name first, nothing written; his reply n
 
   // The question is answered: his next DM is an ordinary one again.
   expect(await db.one(`SELECT 1 FROM "SentNotification" WHERE kind = 'xask-dm-name' AND key LIKE $1`, [`xask:name:${U.omar2}:%`])).toBeFalsy();
+});
+
+// 2026-10-22: his reply to the name question used to be taken as his name
+// whatever it said, so "actually can't make it" became User.name and he was
+// put IN. Now it is read: a question gets the question again, a withdrawal
+// saves nothing and puts him nowhere.
+test("a nameless volunteer who withdraws at the name question: no name saved, not on the list, a short ack", async ({ request, db }) => {
+  await clearJobs(db);
+  clearVolunteerNameStub();
+  const DANNY = "447700900013"; // U.dup
+  await db.run(`UPDATE "User" SET name = NULL WHERE id = $1`, [U.dup]);
+  const first = await postDm(request, DANNY, `IN (ref ${REF})`);
+  expect(first).toMatchObject({ handled: "xask-dm-name-ask", outcome: "asked-name" });
+
+  // A question is not a name: asked again, nothing written, still open.
+  const q = await postDm(request, DANNY, "which match?");
+  expect(q).toMatchObject({ handled: "xask-dm-name-ask", outcome: "asked-name-again" });
+  expect((await db.one<{ name: string | null }>(`SELECT name FROM "User" WHERE id = $1`, [U.dup]))?.name).toBeNull();
+  expect(await rowOf(db, ASKER_MATCH, U.dup)).toBeUndefined();
+
+  setVolunteerNameStub({ bodies: { "actually can't make it": "out" } });
+  const out = await postDm(request, DANNY, "actually can't make it");
+  expect(out).toMatchObject({ handled: "xask-dm-name-withdrawn", outcome: "withdrew" });
+  expect((await db.one<{ name: string | null }>(`SELECT name FROM "User" WHERE id = $1`, [U.dup]))?.name).toBeNull();
+  expect(await rowOf(db, ASKER_MATCH, U.dup)).toBeUndefined();
+  expect(await db.one(`SELECT 1 FROM "SentNotification" WHERE kind = 'xask-dm-name' AND key LIKE $1`, [`xask:name:${U.dup}:%`])).toBeFalsy();
+  const texts = (await dmsTo(db, DANNY)).map((d) => d.text);
+  expect(texts).toHaveLength(3);
+  expect(texts[1]).toContain("what name should I list you under?");
+  expect(texts[2]).toContain("I haven't put you down for *FNF Guests*'s game");
+  expect(await groupPostsOf(db, ORG_ID)).toEqual([]);
 });

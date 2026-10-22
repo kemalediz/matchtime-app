@@ -94,6 +94,9 @@ export const PAIRING_REPLY_STUB_FILE_ENV = "MT_TEST_PAIRING_REPLY_STUB_FILE";
 /** The roster check-in classifier (quoted-reply context S3). Mirrors
  *  `ROSTER_SURVEY_STUB_FILE_ENV` in `src/lib/roster-survey-classifier.ts`. */
 export const ROSTER_SURVEY_STUB_FILE_ENV = "MT_TEST_ROSTER_SURVEY_STUB_FILE";
+/** The nameless volunteer's name-reply seam (2026-10-22). Mirrors
+ *  `VOLUNTEER_NAME_STUB_FILE_ENV` in `src/lib/volunteer-name-reply.ts`. */
+export const VOLUNTEER_NAME_STUB_FILE_ENV = "MT_TEST_VOLUNTEER_NAME_STUB_FILE";
 export const KEY_ENV = "ANTHROPIC_API_KEY";
 
 /**
@@ -269,6 +272,7 @@ export function assertSeamMatchesMode(
       [FEE_REPLY_STUB_FILE_ENV, "lib/fee-confirm.ts, which releases the whole squad's pay links on a collector's yes"],
       [PAIRING_REPLY_STUB_FILE_ENV, "lib/pairing-reply.ts, which accepts or declines a partner-club pairing on an owner's reply"],
       [ROSTER_SURVEY_STUB_FILE_ENV, "lib/roster-survey-classifier.ts, which saves a player's roster check-in answer"],
+      [VOLUNTEER_NAME_STUB_FILE_ENV, "lib/volunteer-name-reply.ts, which saves a volunteer's name and puts him in a squad"],
     ] as const) {
       if (!blank(childEnv[env])) {
         throw new E2EPreflightError(
