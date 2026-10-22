@@ -796,7 +796,16 @@ export function decide(input: EngineInput): EngineResult {
       // owner replied to FNF's ask with "they need 3 players" and 19 Sutton
       // players were queued DMs for Sutton's own Tuesday game). The batch
       // reads this decision, never the raw facts.
-      if (facts.sideRequests.includes("recruit")) out.recruitRequested = true;
+      //
+      // 2026-10-22 (Kemal): whether it may DM anyone also needs an EXPLICIT
+      // @ tag or an attendance change in the same message; the batch
+      // decides the second from the writes that landed. This is the first.
+      // The STRICT tag, never `tagged`: a swipe-reply to a MatchTime post
+      // may ask a question, not open a mass DM.
+      if (facts.sideRequests.includes("recruit")) {
+        out.recruitRequested = true;
+        out.recruitTaggedExplicitly = msg.taggedExplicitly ?? messageMentionsBotExplicitly({ body: msg.body });
+      }
 
       // Review L1: a member picked as a partner club's guest for a game that
       // overlaps this one cannot also say IN here. One reply, no write. His
@@ -834,11 +843,19 @@ export function decide(input: EngineInput): EngineResult {
         }
       }
 
-      // D5b (slice S5b): a PLAIN IN soon after a partner club's ask, from a
-      // sender with no row at all on this club's game, may mean either. A
-      // state rule: MatchTime asks him once which, and writes nothing. A
-      // sender with a row is clearly talking about his own game; once
-      // asked, his next IN is his own game's. Only the sender's own IN.
+      // D5b (slice S5b, REVISED 2026-10-22 by Kemal): a PLAIN IN soon after
+      // a partner club's ask, from a sender with no row at all on this
+      // club's game, may mean either. It used to write nothing and ask him
+      // which; Sait never answered (MT Test, 2026-10-22) and his IN for his
+      // own game was lost. Now the OWN game is the default: said in his own
+      // players' group, it is an ordinary self IN, decided by every rule
+      // below exactly as with no ask at all (the self-IN floor bypass
+      // included). The engine only adds ONE private question, "did you
+      // mean FNF's game instead?", which the batch sends once the IN has
+      // landed (`askPartnerAfterOwnIn`), never in the group. A state rule:
+      // a sender with a row is clearly talking about his own game, and once
+      // asked, he is not asked again for that ask. No return: the message
+      // carries on as the IN it is.
       if (
         msg.route === "self_att" &&
         // A reply quoting a post is about that post; D5b is for a PLAIN IN.
@@ -853,10 +870,10 @@ export function decide(input: EngineInput): EngineResult {
           senderHasOwnRow: !!msg.senderUserId && state.rows.some((r) => r.userId === msg.senderUserId),
         });
         if (which && msg.senderUserId) {
-          speech.push({ kind: "partner_ask_which", messageId: msg.id, askId: which.askId, userId: msg.senderUserId, askerName: which.askerName });
-          out.reasons.push(`D5b: a plain IN under an hour after ${which.askerName}'s ask, with no row on this club's game: asked which`);
-          out.disposition = out.disposition === "degraded" ? "degraded" : "acted";
-          return;
+          speech.push({ kind: "partner_ask_own_in", messageId: msg.id, askId: which.askId, userId: msg.senderUserId, askerName: which.askerName });
+          out.reasons.push(
+            `D5b: a plain IN under an hour after ${which.askerName}'s ask, with no row on this club's game: counted for this club's game, asked by DM whether he meant ${which.askerName}'s`,
+          );
         }
       }
 
@@ -3095,7 +3112,14 @@ export function decide(input: EngineInput): EngineResult {
         // same shape as `bulk_payment`'s tag gate 200 lines up, and it
         // adds no sentence to the group — untagged silence is what the
         // interaction contract already promises.
-        if (RECRUIT_BLAST_REQUIRES_TAG && !msg.tagged) {
+        //
+        // 2026-10-22 (Kemal): the EXPLICIT tag (`taggedExplicitly`: the
+        // Pi's mention list, or the literal "@Match Time" it writes for
+        // one), never `tagged`, which a swipe-reply to any MatchTime post
+        // also sets. "Otherwise it DMs people unnecessarily and can create
+        // noise." An admin_ops message changes nobody's attendance, so the
+        // tag is its only way through.
+        if (RECRUIT_BLAST_REQUIRES_TAG && !(msg.taggedExplicitly ?? messageMentionsBotExplicitly({ body: msg.body }))) {
           out.reasons.push(
             "a recruit blast requires an @Match Time tag: a mass DM is not fired off an untagged message",
           );

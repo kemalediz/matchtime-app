@@ -298,11 +298,27 @@ export async function handleCodedPartnerAskDm(args: {
     await askVolunteerName(ask, args.userId, args.replyPhone);
     return { handled: "xask-dm-name-ask", outcome: "asked-name" };
   }
+  // D5b, revised 2026-10-22: was his plain IN in the group counted for his
+  // own game while this ask was fresh? Then this IN MOVES him: his own IN
+  // never blocks the partner's game as an overlap, and once he is on the
+  // partner's list it is undone.
+  const ownIn = resolution.decision === "in" ? await findOwnInMarker(ask.askId, args.userId) : null;
   const r = await handlePartnerVolunteer(
-    { askId: ask.askId, userId: args.userId, name: args.userName ?? "", polarity: resolution.decision, sourceMessageId: args.waMessageId, replyPhone: args.replyPhone },
+    {
+      askId: ask.askId,
+      userId: args.userId,
+      name: args.userName ?? "",
+      polarity: resolution.decision,
+      sourceMessageId: args.waMessageId,
+      replyPhone: args.replyPhone,
+      ...(ownIn ? { exceptOwnMatchId: ownIn.matchId } : {}),
+    },
     now,
   );
   console.log(`[partner-guest-dm] ${args.userId}: ${resolution.decision} for ask ${ask.askId} by DM (${r.outcome}, via ${resolution.via})`);
+  if (ownIn && r.outcome.startsWith("registered-")) {
+    await undoOwnIn({ ask, userId: args.userId, ownIn, replyPhone: args.replyPhone ?? (await phoneOnFile(args.userId)) });
+  }
   return { handled: "xask-dm-volunteer", outcome: r.outcome };
 }
 
@@ -373,6 +389,87 @@ export async function handleVolunteerNameReply(args: {
   );
   console.log(`[partner-guest-dm] ${args.userId}: named, then in for ask ${askId} by DM (${r.outcome})`);
   return { handled: "xask-dm-volunteer", outcome: r.outcome };
+}
+
+// ── D5b, revised (Kemal, 2026-10-22): the own game is the default ───────
+//
+// A plain IN in his OWN players' group, soon after a partner club's ask, is
+// his own game's (the engine writes it like any IN). Then, once it landed,
+// ONE DM asks whether he meant the partner's game instead, with the ask's
+// tap-to-DM link. The marker names the own match the IN went to, so a tap
+// moves him over: in for the partner's game (`handleCodedPartnerAskDm`),
+// then out of his own through the shared out-of-band path (his ack and the
+// group's line, exactly as a DM "OUT" would). Sait, MT Test, 2026-10-22:
+// asked first with nothing written, he never answered and lost his place.
+
+const ownInKey = (askId: string, userId: string) => `xask:${askId}:ownin:${userId}`;
+
+async function findOwnInMarker(askId: string, userId: string): Promise<{ key: string; matchId: string } | null> {
+  const m = await db.sentNotification.findFirst({ where: { key: ownInKey(askId, userId), kind: "xask-ownin" }, select: { key: true, matchId: true } });
+  return m?.matchId ? { key: m.key, matchId: m.matchId } : null;
+}
+
+async function undoOwnIn(args: { ask: AskForDm; userId: string; ownIn: { key: string; matchId: string }; replyPhone: string | null }): Promise<void> {
+  try {
+    const [row, match] = await Promise.all([
+      db.attendance.findUnique({ where: { matchId_userId: { matchId: args.ownIn.matchId, userId: args.userId } }, select: { status: true } }),
+      db.match.findUnique({ where: { id: args.ownIn.matchId }, select: { date: true, activity: { select: { name: true, orgId: true } } } }),
+    ]);
+    if (row && (row.status === "CONFIRMED" || row.status === "BENCH") && match) {
+      await applyOutOfBandSelfAttendance({
+        userId: args.userId,
+        matchId: args.ownIn.matchId,
+        orgId: match.activity.orgId,
+        decision: "out",
+        matchName: match.activity.name,
+        matchWhen: dayCommaTimeLabel(args.ask.lang, match.date),
+        lang: args.ask.lang,
+        source: "dm",
+        replyPhone: args.replyPhone,
+      });
+      console.log(`[partner-guest-dm] ${args.userId}: moved to ask ${args.ask.askId}'s game; own IN on ${args.ownIn.matchId} undone`);
+    }
+    await db.sentNotification.deleteMany({ where: { key: args.ownIn.key } });
+  } catch (err) {
+    console.error(`[partner-guest-dm] ${args.userId}: own IN on ${args.ownIn.matchId} not undone:`, err instanceof Error ? err.message : "failed");
+  }
+}
+
+/**
+ * After his own IN landed on `matchId`: the one DM asking whether he meant
+ * the partner club's game. Claimed once per person per ask (the claim every
+ * "which game?" shares, which also tells the engine not to ask again). True
+ * when it was queued; false when asked already, with no number to DM, or
+ * when he is no longer on his own game (never tell him he is IN when he is
+ * not).
+ */
+export async function askPartnerAfterOwnInByDm(args: { askId: string; userId: string; matchId: string }): Promise<boolean> {
+  const phone = await phoneOnFile(args.userId);
+  if (!phone) return false;
+  const [row, match] = await Promise.all([
+    db.attendance.findUnique({ where: { matchId_userId: { matchId: args.matchId, userId: args.userId } }, select: { status: true } }),
+    db.match.findUnique({ where: { id: args.matchId }, select: { date: true } }),
+  ]);
+  if (!row || (row.status !== "CONFIRMED" && row.status !== "BENCH") || !match) return false;
+  if (!(await claimWhich(args.askId, args.userId))) return false;
+  const ask = await loadAskForDm(args.askId);
+  if (!ask) return false;
+  await db.sentNotification.create({ data: { key: ownInKey(args.askId, args.userId), kind: "xask-ownin", matchId: args.matchId, targetUser: args.userId } });
+  await dm(
+    ask.partnerOrgId,
+    phone,
+    t(ask.lang).xask_which_after_in({
+      own: ask.partnerName,
+      ownDay: dayCommaTimeLabel(ask.lang, match.date),
+      bench: row.status === "BENCH",
+      asker: ask.askerName,
+      day: ask.day,
+      link: ask.link,
+      prefill: ask.prefill,
+    }),
+  );
+  console.log(`[partner-guest-dm] ${args.userId}: own IN on ${args.matchId} counted; asked by DM about ask ${ask.askId}`);
+  return true;
 }
 
 /**

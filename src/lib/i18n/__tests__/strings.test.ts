@@ -1843,6 +1843,7 @@ const SAMPLES: SampleArgs = {
   xask_which: { asker: "FNFCLUB" },
   xask_which_dm: { asker: "FNFCLUB", day: "DAYLABEL", own: "SUTTONCLUB", link: null, prefill: "PREFILLX" },
   xask_dm_which_in: { asker: "FNFCLUB", day: "DAYLABEL", own: "SUTTONCLUB", link: null, prefill: "PREFILLX" },
+  xask_which_after_in: { own: "SUTTONCLUB", ownDay: "OWNDAY", bench: false, asker: "FNFCLUB", day: "DAYLABEL", link: null, prefill: "PREFILLX" },
   xask_dm_unclear: { asker: "FNFCLUB", link: null, prefill: "PREFILLX" },
   xask_dm_name_ask: { asker: "FNFCLUB", day: "DAYX" },
   xask_thanks_dm: { asker: "FNFCLUB" },

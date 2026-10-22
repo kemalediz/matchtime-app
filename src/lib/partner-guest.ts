@@ -54,6 +54,10 @@ export interface VolunteerWrite {
   /** The number he messaged MatchTime from, without "+", when he came by
    *  DM. Otherwise the number on file is used. */
   replyPhone?: string | null;
+  /** His own club's match an IN of his was just defaulted to (D5b, revised
+   *  2026-10-22): it is being swapped for this game, so it never counts as
+   *  an overlap. The caller undoes it once he is registered here. */
+  exceptOwnMatchId?: string;
 }
 
 export interface VolunteerResult {
@@ -93,10 +97,17 @@ export async function handlePartnerVolunteer(w: VolunteerWrite, now: Date = new 
 }
 
 /** His own club's live game overlapping the asking club's, with him in it. */
-async function inOverlappingOwnGame(userId: string, partnerOrgId: string, kickoff: Date, durationMins: number): Promise<{ yes: boolean; time: string | null }> {
+async function inOverlappingOwnGame(
+  userId: string,
+  partnerOrgId: string,
+  kickoff: Date,
+  durationMins: number,
+  exceptMatchId?: string,
+): Promise<{ yes: boolean; time: string | null }> {
   const rows = await db.attendance.findMany({
     where: {
       userId,
+      ...(exceptMatchId ? { matchId: { not: exceptMatchId } } : {}),
       status: { in: ["CONFIRMED", "BENCH"] },
       match: {
         activity: { orgId: partnerOrgId },
@@ -151,7 +162,7 @@ async function decideAndWriteVolunteer(w: VolunteerWrite, now: Date): Promise<De
       ])
     : [null, null, null];
   const overlap = w.userId
-    ? await inOverlappingOwnGame(w.userId, partner.id, ask.match.date, ask.match.activity.matchDurationMins)
+    ? await inOverlappingOwnGame(w.userId, partner.id, ask.match.date, ask.match.activity.matchDurationMins, w.exceptOwnMatchId)
     : { yes: false, time: null };
 
   const decision = decideVolunteer({

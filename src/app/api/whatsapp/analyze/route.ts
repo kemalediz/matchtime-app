@@ -378,7 +378,7 @@ import { loadGroupReplyContexts, parseGroupQuote, type QuotedGroupMessage } from
 import { rosterMemberByPhone } from "@/lib/roster-name-by-phone";
 import { claimGroupReplies } from "@/lib/group-reply-claims";
 import { handlePartnerVolunteer } from "@/lib/partner-guest";
-import { askPartnerWhichByDm } from "@/lib/partner-guest-dm";
+import { askPartnerAfterOwnInByDm, askPartnerWhichByDm } from "@/lib/partner-guest-dm";
 import { askPartnersFromWords, partnerClubsForRouter } from "@/lib/partner-ask-words";
 import { chatAuthorOf, groupChatHistory } from "@/lib/group-chat-history";
 
@@ -2348,6 +2348,11 @@ async function handleAnalyzeRequest(request: Request) {
               // "@Match Time" must not be able to change what the
               // interaction contract permits — in either direction.
               tagged: messageTagsBot(m),
+              // The STRICT tag (the Pi's mention list, or the "@Match Time"
+              // it writes for one; never a swipe-reply): a recruit side
+              // request DMs players only with it or an attendance change
+              // in the same message (2026-10-22).
+              taggedExplicitly: messageMentionsBotExplicitly(m),
               route: gateRouteById.get(m.waMessageId),
               gated: gatedIds.has(m.waMessageId),
               // A WhatsApp reply: which message it quotes (S0). Read by
@@ -2372,6 +2377,9 @@ async function handleAnalyzeRequest(request: Request) {
             // D5b (S5b): the one "FNF or ours?" per sender per ask, sent to
             // him by DM (2026-10-21) so the partner group hears nothing.
             claimPartnerAskWhich: ({ askId, userId }) => askPartnerWhichByDm({ askId, userId }),
+            // D5b, revised 2026-10-22: his plain IN counted for his own
+            // game; then one DM asking whether he meant the partner's.
+            askPartnerAfterOwnIn: (a) => askPartnerAfterOwnInByDm(a),
             resolveOrProvision: (name) => resolveOrProvisionByName(org.id, name),
             // THE SLOT A REPLACEMENT INHERITS (2026-09-15). ONE row
             // updated IN PLACE — `load-state.ts` reads the sheet in

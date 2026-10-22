@@ -34,8 +34,10 @@
  * attendance-SHAPED, the router cannot settle it, and since step 8
  * `unsure` is an engine route, so the extractor is asked and the
  * `sideRequests` entry is what it finds. `admin_ops`'s own `recruit`
- * action is the OTHER recogniser and it requires an @Match Time tag;
- * every ask in this file is untagged, exactly as production was.
+ * action is the OTHER recogniser and it requires an @Match Time tag.
+ * Since 2026-10-22 a bare side-request ask needs the tag too (or an
+ * attendance change in the same message), so the bare asks here are
+ * tagged; the drop-and-recruit block below stays untagged on purpose.
  *
  * The behaviour these tests pin is otherwise unchanged: same action, same
  * copy, same admin gate, same idempotency. The last block is the one that
@@ -48,8 +50,11 @@ import type { TestDb } from "../helpers/test-db";
 import { createGroup, SimGroup } from "./group";
 import { facts, otherClaim } from "../helpers/stub";
 
-/** A bare recruit ask: no claims, one side request. */
-const RECRUIT = { route: "unsure", facts: facts([], { sideRequests: ["recruit"] }) };
+/** A bare recruit ask: no claims, one side request. @-TAGGED since
+ *  2026-10-22 (Kemal): a recruit that changes nobody's attendance DMs
+ *  players only with an explicit @Match Time tag (the Pi's mention signal
+ *  here). The untagged case is `e2e/api/recruit-tag-gate.spec.ts`. */
+const RECRUIT = { route: "unsure", facts: facts([], { sideRequests: ["recruit"] }), botMentioned: true };
 
 /** A named third-party drop that ALSO asks for cover — the 2026-09-01
  *  shape, as one set of facts rather than two competing intents. */

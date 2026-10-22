@@ -169,10 +169,13 @@ test("the owner's reply to the ask saying 'they need 3 players' recruits nobody 
   expect(row?.action ?? "").not.toContain("recruit");
 });
 
-test("the same words with no reply are still the owner's recruit ask for his own club", async ({ request, db }) => {
-  engineOn({ [PROMOTE]: { route: "offer", facts: facts([], { sideRequests: ["recruit"] }) } });
+test("the same words with no reply, @-tagged, are still the owner's recruit ask for his own club", async ({ request, db }) => {
+  // Tagged since 2026-10-22: an untagged recruit that changes nobody's
+  // attendance DMs nobody (e2e/api/recruit-tag-gate.spec.ts).
+  const TAGGED = `@Match Time ${PROMOTE}`;
+  engineOn({ [TAGGED]: { route: "offer", facts: facts([], { sideRequests: ["recruit"] }) } });
   const m = id();
-  await postAnalyze(request, [{ waMessageId: m, body: PROMOTE, authorPhone: "447700900001", authorName: "Alex Admin" }]);
+  await postAnalyze(request, [{ waMessageId: m, body: TAGGED, authorPhone: "447700900001", authorName: "Alex Admin", botMentioned: true }]);
   const row = await db.one<{ action: string | null }>(`SELECT action FROM "AnalyzedMessage" WHERE "waMessageId" = $1`, [m]);
   expect(row?.action ?? "").toContain("recruit");
 });

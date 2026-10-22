@@ -1425,6 +1425,14 @@ export type SpeechIntent =
    */
   | { kind: "partner_ask_which"; messageId: string; askId: string; userId: string; askerName: string }
   /**
+   * D5b, revised 2026-10-22 (Kemal): a plain IN soon after a partner club's
+   * ask, from someone with no row on his own game, is counted for his own
+   * game, and he is asked ONCE by DM whether he meant the partner club's
+   * game instead. Never said in the group: the batch sends it
+   * (`askPartnerAfterOwnIn`) only when his own IN landed.
+   */
+  | { kind: "partner_ask_own_in"; messageId: string; askId: string; userId: string; askerName: string }
+  /**
    * A third-party claim named nobody but raw digits: a WhatsApp mention
    * neither the Pi nor the server could put a name to (2026-09-30). Asks
    * the sender who they meant. At most one per batch.
@@ -1694,6 +1702,13 @@ export interface MessageOutcome {
    * and `route.ts`. Absent means no.
    */
   recruitRequested?: boolean;
+  /**
+   * With `recruitRequested`: the message @-mentioned MatchTime EXPLICITLY
+   * (`taggedExplicitly`; a swipe-reply to a MatchTime post is not enough).
+   * A recruit DMs players only when this is true OR the same message's
+   * attendance write landed (Kemal, 2026-10-22); the batch decides.
+   */
+  recruitTaggedExplicitly?: boolean;
   /**
    * Members an ADMIN reported as a maybe (2026-09-30): "@Sait is a maybe,
    * remind him". The route records each as `TentativeAvailability`, the

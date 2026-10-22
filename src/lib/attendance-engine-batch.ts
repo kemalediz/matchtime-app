@@ -182,6 +182,10 @@ export interface EngineBatchMessage {
    *  readable one. Judges a rolling-squad late drop-out (2026-09-30). */
   sentAt?: Date;
   tagged: boolean;
+  /** `messageMentionsBotExplicitly`: the Pi's mention list, or the literal
+   *  "@Match Time" it writes for one. Never a swipe-reply. Read only by the
+   *  recruit side request (2026-10-22). Omitted: derived from the body. */
+  taggedExplicitly?: boolean;
   /** From the router. `undefined` when it never mentioned this id. */
   route: Route | undefined;
   /** Did step 5's gate skip this message? Then step 6 never sees it. */
@@ -423,14 +427,25 @@ export interface EngineBatchDeps extends EngineApplyDeps {
    */
   partnerVolunteer?: (w: Extract<ProposedWrite, { kind: "partner_volunteer" }>) => Promise<{ ok: boolean; outcome: string; dmText: string | null; dmQueued: boolean }>;
   /**
-   * D5b (slice S5b): claim the one "FNF or ours?" question per sender per
-   * ask BEFORE it is said. "dm" when this batch got it and the question went
+   * The one "FNF or ours?" question per sender per ask, claimed BEFORE it
+   * is said, for a held reply (review M3: a reply quoting a MatchTime post
+   * while an ask's post id is not known yet; nothing is written). A plain
+   * IN (D5b) no longer uses it since 2026-10-22: see `askPartnerAfterOwnIn`. "dm" when this batch got it and the question went
    * to him privately (2026-10-21: the group hears nothing); "group" when it
    * got it but he has no number, so the question is said in the group as
    * before; false when lost. Absent: the question is not asked (and nothing
    * is written for the message).
    */
   claimPartnerAskWhich?: (args: { askId: string; userId: string }) => Promise<"dm" | "group" | false>;
+  /**
+   * D5b, revised 2026-10-22 (Kemal): a plain IN soon after a partner club's
+   * ask was counted for his own game (`matchId`) and LANDED; now ask him
+   * once by DM whether he meant the partner club's game instead. Called
+   * only after his own write landed, so he is never told he was put IN
+   * when he was not. True when the DM was queued. Absent: no question.
+   * `partner-guest-dm.ts`'s `askPartnerAfterOwnInByDm` in production.
+   */
+  askPartnerAfterOwnIn?: (args: { askId: string; userId: string; matchId: string }) => Promise<boolean>;
 }
 
 export async function runAttendanceEngineBatch(args: {
@@ -889,6 +904,7 @@ export async function runAttendanceEngineBatch(args: {
       senderUserId: m.senderUserId,
       senderName: m.senderName ?? m.authorName,
       tagged: m.tagged,
+      ...(m.taggedExplicitly === undefined ? {} : { taggedExplicitly: m.taggedExplicitly }),
       // A message the engine does not own still carries its real route
       // so the outcome says why nothing happened. `none` is honest for
       // an id the router never mentioned.
@@ -1085,6 +1101,31 @@ export async function runAttendanceEngineBatch(args: {
     }
   }
 
+  // ── Stage 3c: D5b's one private question, AFTER his own IN landed ────
+  //
+  // Revised 2026-10-22 (Kemal): a plain IN soon after a partner club's ask
+  // is his own game's; he is then asked once, by DM, whether he meant the
+  // partner club's game instead. Only for an IN that is really on the
+  // sheet (CONFIRMED or BENCH): the golden rule, never say it landed when
+  // it did not. A failure here never touches his IN.
+  for (const sp of result.speech) {
+    if (sp.kind !== "partner_ask_own_in" || !ownedIds.has(sp.messageId) || !matchId || !deps.askPartnerAfterOwnIn) continue;
+    const ownLanded = applied.some(
+      (a) =>
+        a.ok &&
+        a.write.kind === "attendance" &&
+        a.write.sourceMessageId === sp.messageId &&
+        a.write.userId === sp.userId &&
+        a.write.status !== "DROPPED",
+    );
+    if (!ownLanded) continue;
+    try {
+      await deps.askPartnerAfterOwnIn({ askId: sp.askId, userId: sp.userId, matchId });
+    } catch (err) {
+      degradations.push(`D5b question for ${sp.userId} on ask ${sp.askId} not sent: ${err instanceof Error ? err.message : "failed"}`);
+    }
+  }
+
   // ── Stage 4: composition ───────────────────────────────────────────
   const composed = compose(result);
   const utteranceByMessageId = new Map<string, string[]>();
@@ -1210,7 +1251,16 @@ export async function runAttendanceEngineBatch(args: {
       // reading the facts here skipped the engine's return for it: Kemal's
       // reply to FNF's ask ("they need 3 players") DMed 19 Sutton players
       // for Sutton's own Tuesday.
-      recruitRequest: !!engineOutcome?.recruitRequested && m.senderIsAdmin,
+      //
+      // 2026-10-22 (Kemal): and only when the message EITHER @-mentions
+      // MatchTime explicitly OR changed somebody's attendance (a write that
+      // LANDED: "Najib is out, we need one more"). An untagged "we need
+      // players" that changed nothing DMs nobody and says nothing:
+      // "otherwise it DMs people unnecessarily and can create noise".
+      recruitRequest:
+        !!engineOutcome?.recruitRequested &&
+        m.senderIsAdmin &&
+        (!!engineOutcome.recruitTaggedExplicitly || landed.length > 0),
       recordTentativeForUserIds: [
         ...new Set(
           [

@@ -269,17 +269,21 @@ describe("the recruit blast is DECIDED by the engine and RUN by the route", () =
       now: NOW,
       state: world({ confirmed: ["kemal", "elvin", "sait"] }),
       messages: [
-        msg({
-          from,
-          tagged,
-          body: "@Match Time message everyone from the last 5 games and invite them",
-          route: "admin_ops",
-          facts: {
-            kind: "admin",
-            action: "recruit",
-            ...(lookbackMatches === undefined ? {} : { lookbackMatches }),
-          },
-        }),
+        {
+          ...msg({
+            from,
+            tagged,
+            body: "@Match Time message everyone from the last 5 games and invite them",
+            route: "admin_ops",
+            facts: {
+              kind: "admin",
+              action: "recruit",
+              ...(lookbackMatches === undefined ? {} : { lookbackMatches }),
+            },
+          }),
+          // Since 2026-10-22 a recruit blast reads the EXPLICIT tag.
+          taggedExplicitly: tagged,
+        },
       ],
     });
 
@@ -387,7 +391,10 @@ describe("slice S6: an admin asks MatchTime to ask the partner clubs", () => {
       now: NOW,
       state: world({ confirmed: ["kemal", "elvin", "sait"] }),
       messages: [
-        msg({ from, tagged, body: "@Match Time ask Sutton if anyone can play", route: "admin_ops", facts: { kind: "admin", action: "recruit", ...facts } }),
+        {
+          ...msg({ from, tagged, body: "@Match Time ask Sutton if anyone can play", route: "admin_ops", facts: { kind: "admin", action: "recruit", ...facts } }),
+          taggedExplicitly: tagged,
+        },
       ],
     });
 
