@@ -6,8 +6,8 @@ changes how the number of places in an ask is chosen. Everything else in that pl
 
 **Kemal's ask (2026-10-21), short version:** picking partners from a dropdown of every club
 breaks once there are thousands of clubs. Instead an organiser picks a distance ("up to 3 miles
-from our venue"), MatchTime lists the clubs that play near them (name, members, where, when,
-level), the organiser selects some or all and sends a request. If the other club's organiser
+from our venue"), MatchTime lists the clubs that play near them (name, members, where,
+when), the organiser selects some or all and sends a request. If the other club's organiser
 accepts, that acceptance is their consent and the pairing is live. Later, when the organiser needs
 players, he asks and says how many (1 player, even if 4 places are open). No two-sided approval.
 
@@ -58,10 +58,13 @@ setting is on by default.** Its owner or admin can switch it off at any time:
 - **A club can search only while its own "Let nearby clubs find us and send requests" is on**
   (decided by Kemal, 2026-10-22, D-3). Switching it off hides the club and removes its search, so
   no club browses others while showing nothing of itself. It must also be listable (next bullet):
-  with no confirmed venue it sees the "Confirm your venue" prompt instead, and a dormant or
-  billing-paused club cannot search (recommended; Kemal can overrule).
-- A club is listed only if it is approved, not dormant, not billing-paused, has a players' group,
-  and has a **geocoded venue** (a `Venue` with `lat`/`lng`). **It does not need a game set up**
+  with no confirmed venue it sees the "Confirm your venue" prompt instead.
+- A club is listed only if it is approved, has a players' group and has a **geocoded venue**. **A
+  dormant or billing-paused club is NOT excluded** from the list or from searching (Kemal,
+  2026-10-22: "the more we show in the search results, the better"). MatchTime is switched off in
+  such a club's groups (`club-approval-state.ts`), so the build must not post an ask into a paused
+  club's players' group: a pairing request to it is allowed, but an ask waits until the club is
+  active again, and the requester sees "paused" on that partner. The venue is (a `Venue` with `lat`/`lng`). **It does not need a game set up**
   (Kemal, 2026-10-22): a group of players with no match scheduled yet can be found. The venue is
   either an active game's venue (`Activity.venueId`) or, for a club with no game, a new optional
   **club home venue** (`Organisation.homeVenueId`), set **only with the venue lookup**, so it is
@@ -70,13 +73,12 @@ setting is on by default.** Its owner or admin can switch it off at any time:
 - **Live clubs with no geocoded venue get a DM** (Kemal, 2026-10-22: the location is a core club
   setting, added recently, so some clubs lack it). One message to the club's owners and admins,
   English and Turkish, linking straight to the venue lookup in settings and saying that being
-  found by nearby clubs depends on it. Sent once at deploy (recommended); the settings prompt stays
-  until the venue is set. In prod on 2026-10-21 that is MT Test only.
+  found by nearby clubs depends on it. **Repeated weekly until a geocoded venue is set, then it
+  stops for good** (Kemal, 2026-10-22); the settings prompt also stays until then. In prod on 2026-10-21 that is MT Test only.
 - **A club in its free trial is listed and can search** like any paying club (Kemal, 2026-10-22).
   "Billing-paused" means `ClubBilling.pausedAt` is set. A trial that ends with no card first runs
-  the existing 7-day grace (`graceEndsAt`), so the club stays listed through the trial and the
-  grace, and drops out only once billing actually pauses it. Exempt clubs have no `ClubBilling`
-  row and are never paused.
+  the existing 7-day grace (`graceEndsAt`). Since paused clubs are listed too, billing state never
+  changes whether a club is listed; it only holds asks into a paused club (bullet above).
 
 Checked in prod (read-only, 2026-10-21): 6 clubs, 5 live; all 5 `Venue` rows are geocoded;
 **MT Test's active game has no linked venue**, so MT Test would not be listed until its venue is
@@ -110,13 +112,12 @@ Page: **Partner clubs > Find clubs near you** (owners and admins).
 | Each active game: day, kickoff time, format (for example "7-a-side", from `Sport.playersPerTeam`); "No regular game yet" for a club with none | What the requester needs to judge whether players could cross over. |
 | Members: exact count of live, non-guest members | Kemal asked for it; a count names nobody. |
 | Regular players: how many played at least 2 of the club's last 8 games | Tells a requester how big the pool really is. |
-| Level, **only if the club set one** (section 2.4) | Self-declared, so it is the club's own claim. |
 
 **Never shown:** member names, phone numbers, WhatsApp group names or invite links, organiser
 names or numbers, fees, ratings of any kind, match history. The same card is shown to the
 receiving club about the requester when a request arrives.
 
-### 2.4 "Average club rating": why not, and what instead
+### 2.4 "Average club rating": why not
 
 **We will not show it** (decided by Kemal, 2026-10-22). Ratings are club-scoped since 2026-09-20: a player's 7.5 at one club
 means "good compared with this group", not good on any shared scale. A casual club and a
@@ -124,10 +125,8 @@ competitive club can both average 6.5. Worse, the balancer's shrunk ratings pull
 its own mean, so averages across clubs converge and would look meaningful while meaning nothing.
 Showing it would invite exactly the wrong decision.
 
-**Instead:** an optional **level the club sets itself**: Casual, Mixed or Competitive
-(`Organisation.clubLevel`, null by default, Turkish: Rahat, Karışık, Rekabetçi). Shown as
-"Level: Competitive (set by the club)". If unset, nothing is shown. Later, if wanted, a fact the
-platform can measure honestly (for example "plays every week since March") can sit next to it.
+**And no self-set level either** (Kemal, 2026-10-22: no need). The card shows only name, venue,
+distance, games and member counts.
 
 ---
 
@@ -155,6 +154,10 @@ platform can measure honestly (for example "plays every week since March") can s
   each ask with us first"). Accepting by WhatsApp reply keeps the default, so the requester's asks
   go straight into B's players' group with no admin check. B's owner or admin can switch to "Check
   each ask with us first" at any time.
+- **The acceptance step stays** (Kemal, 2026-10-22). A club that wants to be open to everyone can
+  switch on **"Accept partner requests automatically"** (`Organisation.autoAcceptPartnerRequests`,
+  off by default, English and Turkish info popup): a request to it becomes active at once, its
+  owners and admins are told who joined, and they can pause, end or block that club as usual.
 - A is told: "Sutton FC accepted. You can ask them for players from the match page or by asking
   MatchTime."
 - Decline: A is told "Sutton FC is not taking requests right now." A cannot ask B again for 30 days.
@@ -171,7 +174,7 @@ the pairing reply reader keeps its closed answer (accept, decline, neither) unch
 
 ### 3.4 Limits and anti-spam
 
-| Rule | Value (recommended) |
+| Rule | Value (decided) |
 |---|---|
 | New requests a club may send per London day | 20 (D-4). "Select all" beyond that sends the nearest 20 and says so. |
 | Pending requests a club may have out at once | 50 (decided, Kemal 2026-10-22) |
@@ -181,7 +184,7 @@ the pairing reply reader keeps its closed answer (accept, decline, neither) unch
 | Withdraw | A can withdraw a pending request at any time (row ends, no notice to B beyond the notice disappearing from its list). |
 | Pause | Unchanged: either side pauses, only the side that paused resumes. |
 | End | Either side's owner or admin ends an active pairing at any time. If B ended it, A waits 30 days to re-request. |
-| Squad full | Every open ask for the match closes automatically, however the last place went (a guest, a home player saying IN, an organiser adding someone): each partner group gets its one "place is filled" line and remaining volunteers are thanked and stood down (Kemal, 2026-10-22). This is today's behaviour: `sweepPartnerAsks` runs on every due-posts poll and closes an ask once the match has no open place (`closeReason`, `placesOpen`). Recommended addition: an organiser can also cancel an open ask by hand, with the same line to each partner group. |
+| Squad full | Every open ask for the match closes automatically, however the last place went (a guest, a home player saying IN, an organiser adding someone): each partner group gets its one "place is filled" line and remaining volunteers are thanked and stood down (Kemal, 2026-10-22). This is today's behaviour: `sweepPartnerAsks` runs on every due-posts poll and closes an ask once the match has no open place (`closeReason`, `placesOpen`). **An organiser can also cancel an open ask by hand** (Kemal, 2026-10-22), with a "no longer needed" line to each partner group and volunteers stood down. |
 | Existing ask caps | Unchanged: 2 asks per London day into one partner group, one open ask per match and partner, the cut-off. |
 
 ### 3.5 What the platform owner keeps
@@ -251,7 +254,7 @@ model Organisation {
   discoverable      Boolean   @default(true)    // "Let nearby clubs find us and send requests"
   discoverableAt    DateTime?
   discoverableById  String?
-  clubLevel         String?                     // "casual" | "mixed" | "competitive", CHECK constraint
+  autoAcceptPartnerRequests Boolean @default(false) // "Accept partner requests automatically"
   homeVenueId       String?                     // optional; where a club with no game is measured from
 }
 
@@ -296,23 +299,23 @@ One migration, additive only, applied before the deploy. The daily request cap c
 
 | File | Change |
 |---|---|
-| `src/lib/club-discovery-rules.ts` (new) | Pure: radius presets, bounding box, who is listable, who may search, the card fields, regular-player count, level parsing. |
+| `src/lib/club-discovery-rules.ts` (new) | Pure: radius presets, bounding box, who is listable, who may search, the card fields, regular-player count. |
 | `src/lib/club-discovery.ts` (new) | Loads the nearby list for one club (one query plus `distanceKm`). |
 | `src/lib/club-partnership-rules.ts` | New `planRequest` (caps, cooldown, block, already paired), `withdraw` and `block` actions, accept and end by owner or admin. |
-| `src/lib/club-partnership.ts` | `requestPartnerships`, `withdrawRequest`, `blockClub`, discoverable and level settings, request expiry; new notice copy. Remains the one writer. |
+| `src/lib/club-partnership.ts` | `requestPartnerships`, `withdrawRequest`, `blockClub`, discoverable and auto-accept settings, request expiry, weekly venue reminder; new notice copy. Remains the one writer. |
 | `src/lib/pairing-reply.ts` | No logic change; the notice it reads has new wording before the unchanged "reply 1 or 2" line. |
 | `src/lib/partner-ask-rules.ts` | `canAsk` takes the chosen number (1 to open places); `closeReason` closes a round at its number. |
 | `src/lib/partner-ask.ts` | `requestPartnerAsk` takes `places` and `roundId`; a new `requestPartnerRound` for several partners. |
 | `src/lib/partner-guest.ts` | A guest takes a place only while the round is below its number (lock per match); round close stands the rest down. |
 | `src/lib/bot-scheduler.ts` | Daily sweep: expire old requests. |
-| `src/app/actions/partners.ts` | Actions: search, request, withdraw, block, unblock, discoverable, level. |
+| `src/app/actions/partners.ts` | Actions: search, request, withdraw, block, unblock, discoverable, auto-accept. |
 | `src/app/actions/partner-asks.ts` | Takes the number and the ticked partners. |
 | `src/app/admin/partners/find/page.tsx` + `src/components/partners/find-clubs.tsx` (new) | The search page: radius presets, same-day filter, cards, select and send. |
-| `src/components/settings/partner-clubs-section.tsx` | Discoverable toggle, level, "Find clubs near you", requests in and out, block list. Shown to every club, not only paired ones. |
+| `src/components/settings/partner-clubs-section.tsx` | Discoverable and auto-accept toggles, "Find clubs near you", requests in and out, block list. Shown to every club, not only paired ones. |
 | `src/components/match/partner-ask-panel.tsx` | Number picker and partner ticks. |
 | `src/app/admin/clubs/partners/page.tsx` | Create form removed; list with pause and end. |
 | `src/lib/i18n/strings.en.ts`, `strings.tr.ts`, settings info keys | Every new string in English and Turkish. |
-| `prisma/schema.prisma`, one migration, `prisma/sql/partner-ask-check.sql` | Section 6, CHECKs for `clubLevel`, `origin`, `endReason`. |
+| `prisma/schema.prisma`, one migration, `prisma/sql/partner-ask-check.sql` | Section 6, CHECKs for `origin`, `endReason`. |
 
 ---
 
@@ -320,10 +323,10 @@ One migration, additive only, applied before the deploy. The daily request cap c
 
 | # | Slice | Tests |
 |---|---|---|
-| P1 | Schema, discoverable setting (default on, existing clubs included), level, home venue via the venue lookup, one-off DM to live clubs with no geocoded venue. | Unit: setting writers, CHECKs, existing clubs read as on, DM sent once per club without a venue and never to one with a venue. Playwright: toggle and level on settings, EN and TR. |
+| P1 | Schema, discoverable setting (default on, existing clubs included), auto-accept setting (off), home venue via the venue lookup, weekly venue reminder DM to live clubs with no geocoded venue. | Unit: setting writers, CHECKs, existing clubs read as on, reminder sent at most once a week per club without a venue, never to one with a venue, and stopping once the venue is set. Playwright: both toggles on settings, EN and TR. |
 | P2 | Nearby search (rules, loader, page). | Unit: distance, presets, listable and searcher rules, card has no names or numbers (a guard test on the loader's select), regular-player count. Playwright: seeded clubs at known distances appear and disappear as the radius changes; same-day filter; club without a venue sees the prompt. |
-| P3 | Requests: send, accept (owner or admin), decline, withdraw, block, caps, cooldown, expiry; new notice wording; reverse-request link. | Unit: `planRequest` and every refusal; accept turns active in one step; 20-a-day cap under concurrency. Playwright: A sends to two clubs, B accepts one and declines one, A sees both outcomes. **One live pass of the existing pairing-reply cases on the dev key** (the notice the model reads has new words; 2026-10-18 rule), reporting calls and cost. |
-| P4 | Choosing the number; rounds across several partners. | Unit: `canAsk` bounds, round fill across asks, first-come lock (two volunteers, one wanted), organiser-pick close after N picks, auto ask still asks for all. Playwright: panel picker and partner ticks. |
+| P3 | Requests: send, accept (owner or admin, or automatically when the club switched that on), decline, withdraw, block, caps, cooldown, expiry; new notice wording; reverse-request link. | Unit: `planRequest` and every refusal; accept turns active in one step; 20-a-day cap under concurrency. Playwright: A sends to two clubs, B accepts one and declines one, A sees both outcomes. **One live pass of the existing pairing-reply cases on the dev key** (the notice the model reads has new words; 2026-10-18 rule), reporting calls and cost. |
+| P4 | Choosing the number; rounds across several partners; an organiser cancels an open ask by hand; asks held for a paused partner. | Unit: `canAsk` bounds, round fill across asks, first-come lock (two volunteers, one wanted), organiser-pick close after N picks, auto ask still asks for all. Playwright: panel picker and partner ticks. |
 | P5 | Superadmin page: remove create, keep pause and end. | Playwright: page shows pairings, no create form. |
 | P6 (later, optional) | Admin extractor reads a number ("ask Sutton for 1 player"). | Prompt rewritten whole, old/new page, paid tests on the dev key per the 2026-10-18 rule. |
 
@@ -333,15 +336,15 @@ P1 to P5 touch no prompt; the only model-facing change is the notice wording in 
 
 ## 9. Decisions for Kemal
 
-| # | Question | Recommended |
+| # | Question | Decision |
 |---|---|---|
 | D-1 | Does accepting let only the requester ask, or both ways? | **Decided (Kemal, 2026-10-22): only the requester.** Offer a one-tap "ask them too" reverse request that the other club accepts. |
 | D-2 | Who may send and accept requests? | **Decided (Kemal, 2026-10-22): owners and admins**, both. Owners are told when an admin accepts. |
 | D-3 | Must a club be listed itself to search? | **Decided (Kemal, 2026-10-22): yes**, search needs the club's own toggle on. |
-| D-4 | Request limits? | **20 new requests a day, 50 pending (decided), an unanswered pairing request expires after 14 days (an ask for players ends with its match), 30-day wait after a decline or an end by the other club, block available.** |
+| D-4 | Request limits? | **Decided (Kemal, 2026-10-22): 20 new requests a day, 50 pending, an unanswered pairing request expires after 14 days (an ask for players ends with its match), 30-day wait after a decline or an end by the other club, block available.** |
 | D-5 | Default number on the ask picker? | **Decided (Kemal, 2026-10-22): 1**, up to the open places. Most asks are for one player and over-asking floods partner groups. |
 | D-6 | Keep the platform owner's create form? | **Decided (Kemal, 2026-10-22): no.** Keep the list with pause and end as an override. |
 | D-7 | Asking in words (#367): number now or later? | **Decided (Kemal, 2026-10-22):** **Later (P6)**, with its own prompt page and paid tests; until then words asks ask for every open place and say how many. |
 | D-8 | Member count: exact, or a band? | **Decided (Kemal, 2026-10-22):** **Exact total plus "regular players"**, as he asked. Names never. |
 | D-9 | Miles only? | **Decided (Kemal, 2026-10-22):** **Miles for now**, kilometres when a non-UK club joins. |
-| D-10 | Show a level? | **No rating of any kind across clubs: decided (Kemal, 2026-10-22).** Still open: an optional self-set Casual, Mixed or Competitive level (recommended). |
+| D-10 | Show a level? | **Decided (Kemal, 2026-10-22): no rating of any kind across clubs, and no self-set level.** |
