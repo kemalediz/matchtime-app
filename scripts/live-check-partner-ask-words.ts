@@ -36,6 +36,7 @@ import { HAIKU_CALL, anthropicModel, type PipelineModel } from "../src/lib/pipel
 import { HAIKU_SHORT_ANSWER_MAX_TOKENS } from "../src/lib/models.ts";
 import { routeBatch } from "../src/lib/pipeline/router.ts";
 import { extractForRoute } from "../src/lib/pipeline/extractors.ts";
+import { messageMentionsBotExplicitly } from "../src/lib/interaction-contract.ts";
 import { organisersContext } from "../src/lib/admin-group-context.ts";
 import { resolvePartnerRef, type PartnerChoice } from "../src/lib/partner-ask-words-rules.ts";
 import { DM_INTENT_SYSTEM_PROMPT, buildDmIntentUserTurn, parseDmIntent, type DmIntent } from "../src/lib/dm-intent.ts";
@@ -73,6 +74,9 @@ interface Case {
   /** Routes that are fine for a "none" case (nobody asked). */
   routes?: Route[];
   want: Want;
+  /** 2026-10-22: an untagged "can you...?" in HQ may be spoken to a person;
+   *  the model judges, so nobody asked is also a pass (never a wrong club). */
+  either?: true;
   why: string;
 }
 
@@ -82,10 +86,12 @@ const CASES: Case[] = [
   { text: "@Match Time ask Friday MT Community if anyone can play", hq: false, want: "Friday MT Community", why: "a named partner, players' group" },
   { text: "@Match Time Sutton'a sor bakalım oynayan var mı", hq: false, want: "Sutton FC", why: "TR, a case ending on the name" },
   { text: "ask Sutton if anyone can play tonight", hq: true, want: "Sutton FC", why: "HQ, untagged, named" },
-  { text: "can you try the other clubs for a player", hq: true, want: "all", why: "HQ, the other clubs: every partner" },
+  { text: "can you try the other clubs for a player", hq: true, want: "all", either: true, why: "HQ, untagged 'can you', the other clubs" },
+  { text: "@Match Time can you try the other clubs for a player", hq: true, want: "all", why: "HQ, tagged, the other clubs: every partner" },
   { text: "diğer gruplara sor, oynayacak biri var mı", hq: true, want: "all", why: "HQ, TR, other groups" },
   { text: "@Match Time ask the partner clubs, we need one more", hq: false, want: "all", why: "the multi-partner case" },
-  { text: "Friday MT'ye sorar mısın, bir kişi eksik", hq: true, want: "Friday MT Community", why: "HQ, TR, a shortened name" },
+  { text: "Friday MT'ye sorar mısın, bir kişi eksik", hq: true, want: "Friday MT Community", either: true, why: "HQ, TR, untagged 'sorar mısın', a shortened name" },
+  { text: "@Match Time Friday MT'ye sorar mısın, bir kişi eksik", hq: true, want: "Friday MT Community", why: "HQ, TR, tagged, a shortened name" },
   // Near misses: nobody asked.
   { text: "Sutton were great last week", hq: true, routes: ["none", "question"], want: "none", why: "talk about another club" },
   { text: "Sutton geçen hafta çok iyi oynadı", hq: true, routes: ["none", "question"], want: "none", why: "TR, talk about another club" },
@@ -168,14 +174,17 @@ async function main() {
     // As production: admin_ops anywhere; in HQ, ask_group too, for a club
     // with partner clubs (`admin-group-understand.ts`).
     if (route === "admin_ops" || (c.hq && route === "ask_group")) {
-      const ex = await extractForRoute(model, "admin_ops", { id, body: c.text, authorName: "Raihan", tagged: true, history: [], lastBotPost: null });
-      facts = ex.facts.kind === "admin" ? ex.facts : null;
+      // Told truly whether the bot was tagged; in HQ an untagged ask leaves
+      // HQ only when the extractor says it is spoken to MatchTime (2026-10-22).
+      const tagged = messageMentionsBotExplicitly({ body: c.text });
+      const ex = await extractForRoute(model, "admin_ops", { id, body: c.text, authorName: "Raihan", tagged, history: [], lastBotPost: null });
+      facts = ex.facts.kind === "admin" && (!c.hq || tagged || ex.facts.toMatchTime === true) ? ex.facts : null;
     }
     const got = asksFor(facts);
     const ok =
       c.want === "none"
         ? got === "nobody" && (!c.routes || (!!route && c.routes.includes(route)))
-        : (route === "admin_ops" || (c.hq && route === "ask_group")) && got === c.want;
+        : ((route === "admin_ops" || (c.hq && route === "ask_group")) && got === c.want) || (!!c.either && got === "nobody");
     ok ? pass++ : fail++;
     console.log(
       `${ok ? "PASS" : "FAIL"}  ${c.hq ? "HQ" : "PG"} ${JSON.stringify(c.text)}  routed ${route}  facts ${JSON.stringify(facts && { action: facts.action, partnerClubs: facts.partnerClubs, clubRef: facts.clubRef })}  asks ${got}   (${c.why}; want ${c.want})`,

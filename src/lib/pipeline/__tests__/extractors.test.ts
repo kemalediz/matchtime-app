@@ -519,6 +519,32 @@ describe("parseFacts (other routes)", () => {
     expect(p).not.toMatch(/[–—]/);
   });
 
+  // ── HQ outward actions (2026-10-22): FNF HQ, "@Kemal can we ask Sutton
+  // group?" was a question to a person, read as an ask and posted in the
+  // players' group. The extractor says who the message is spoken to; code
+  // lets nothing leave HQ untagged unless it is spoken to MatchTime.
+
+  it("admin · toMatchTime is defined once, with the incident and EN/TR near misses", () => {
+    const p = EXTRACTOR_PROMPTS.admin;
+    expect(p.split("\n  toMatchTime ").length).toBe(2);
+    expect(p).toMatch(/"@Kemal can we ask Sutton group\?"[^\n]*toMatchTime false/);
+    expect(p).toMatch(/"gruba soralım mı\?"[^\n]*toMatchTime false/);
+    expect(p).toMatch(/"ask the group if anyone can play"[^\n]*toMatchTime true/);
+  });
+
+  it("admin · the schema requires toMatchTime", () => {
+    const schema = factsSchemaFor("admin_ops") as { required: string[]; properties: Record<string, unknown> };
+    expect(schema.required).toContain("toMatchTime");
+    expect(schema.properties.toMatchTime).toEqual({ type: "boolean" });
+  });
+
+  it("admin · toMatchTime true is carried; false or missing is not (fails closed)", () => {
+    const base = '"payerRef":"","count":0,"coveredRefs":[],"undo":false,"matchDay":"","phrase":"","note":"","lookbackMatches":0,"partnerClubs":false,"clubRef":""';
+    expect(parseFacts("admin", `{"action":"recruit",${base},"toMatchTime":true}`, "wa-1").facts).toMatchObject({ toMatchTime: true });
+    expect("toMatchTime" in parseFacts("admin", `{"action":"recruit",${base},"toMatchTime":false}`, "wa-1").facts).toBe(false);
+    expect("toMatchTime" in parseFacts("admin", `{"action":"recruit",${base}}`, "wa-1").facts).toBe(false);
+  });
+
   it("admin · the schema requires the two S6 facts", () => {
     const schema = factsSchemaFor("admin_ops") as { required: string[]; properties: Record<string, unknown> };
     expect(schema.required).toEqual(expect.arrayContaining(["partnerClubs", "clubRef"]));

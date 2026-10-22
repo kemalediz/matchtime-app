@@ -696,6 +696,13 @@ export interface AdminFacts {
    *  asked. Looked up against the club's partners by code
    *  (`partner-ask-words-rules.ts`), never trusted as a club. */
   clubRef?: string;
+  /**
+   * The message is spoken to MatchTime itself, not to a person or the
+   * others in the chat (2026-10-22, FNF HQ: "@Kemal can we ask Sutton
+   * group?" was posted in the players' group). Absent means no. From HQ an
+   * untagged action that leaves HQ needs it (`admin-group-understand.ts`).
+   */
+  toMatchTime?: boolean;
 }
 
 export interface NoFacts {

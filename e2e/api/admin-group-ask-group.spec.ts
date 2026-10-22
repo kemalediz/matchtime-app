@@ -27,6 +27,10 @@ const PLAYER = PHONE.player.replace(/^\+/, "");
 const ASK = "@Match Time ask in the group if anyone is available";
 const ASK_TR = "gruba sor, oynayabilecek var mı";
 const REMIND = "@Match Time remind me on Monday";
+// FNF HQ 2026-10-22 07:22 UTC: the tag is a person (Kemal), not MatchTime.
+const INCIDENT = "@89485761081551 can we ask Sutton group?";
+const UNTAGGED = "ask the group if anyone can play";
+const ADMIN_FACTS = { payerRef: "", count: 0, coveredRefs: [], undo: false, matchDay: "", phrase: "", note: "", lookbackMatches: 0, partnerClubs: false, clubRef: "" };
 
 let seq = 0;
 async function say(request: APIRequestContext, text: string, senderPhone = ADMIN) {
@@ -47,8 +51,11 @@ test.beforeAll(async ({ db }) => {
   await db.run(`UPDATE "Organisation" SET "adminGroupId" = $2, "adminChannelMode" = 'admin-group' WHERE id = $1`, [ORG_ID, HQ]);
   engineOn({
     [ASK]: { route: "ask_group" },
-    [ASK_TR]: { route: "ask_group" },
+    // Untagged: the admin extractor says it is spoken to MatchTime.
+    [ASK_TR]: { route: "ask_group", facts: { action: "recruit", ...ADMIN_FACTS, toMatchTime: true } },
     [REMIND]: { route: "admin_ops" },
+    [INCIDENT]: { route: "ask_group", facts: { action: "recruit", ...ADMIN_FACTS, partnerClubs: true, clubRef: "Sutton", toMatchTime: false } },
+    [UNTAGGED]: { route: "ask_group", facts: { action: "recruit", ...ADMIN_FACTS, toMatchTime: true } },
   });
 });
 
@@ -133,4 +140,18 @@ test("a full squad: nothing posted, HQ hears the count, in the club's language",
 
   await db.run(`UPDATE "Organisation" SET language = 'en' WHERE id = $1`, [ORG_ID]);
   await db.run(`UPDATE "Match" SET "maxPlayers" = 5 WHERE id = $1`, [MATCH.upcoming]);
+});
+
+// 2026-10-22 (Kemal): nothing leaves HQ unless it is asked of MatchTime.
+test("the incident: an admin's question to a person, routed ask_group, posts nothing and says nothing", async ({ request, db }) => {
+  const before = (await groupJobs(db)).length;
+  expect(await say(request, INCIDENT)).toMatchObject({ handled: false, replyText: null });
+  expect(await groupJobs(db)).toHaveLength(before);
+  expect(await dms(db)).toHaveLength(0);
+});
+
+test("untagged, spoken to MatchTime: the players' group ask is still done", async ({ request }) => {
+  const out = await say(request, UNTAGGED);
+  expect(out).toMatchObject({ handled: true });
+  expect(out.outcome).toMatch(/^group-ask/);
 });

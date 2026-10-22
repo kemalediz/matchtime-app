@@ -57,6 +57,13 @@
  *                         Otherwise nothing.
  *   none, offer           nothing: the organisers' own conversation
  *
+ * WHAT LEAVES HQ (2026-10-22, Kemal): a post in the players' group
+ * (ask_group), an ask to the partner clubs (ask_group, admin_ops recruit)
+ * and a DM to every player (admin_ops recruit, stats_blast) are done only
+ * when the message tags MatchTime, or the admin extractor says it is spoken
+ * to MatchTime (`toMatchTime`). Otherwise nothing happens and nothing is
+ * said (`leavesHqUnasked`). Calling a match off or on needs the tag itself.
+ *
  * A WhatsApp reply to ANOTHER organiser's message, with no @tag, is the
  * organisers' own conversation whatever the route (FNF HQ, 2026-10-16
  * 23:49: "Imti Rafi AH back" between organisers was routed other_att and got
@@ -97,7 +104,7 @@ import { gateBatch } from "./pipeline/gate";
 import { extractForRoute } from "./pipeline/extractors";
 import { extractorStubFromEnv } from "./pipeline/extractor-stub";
 import { anthropicModel, type PipelineModel } from "./pipeline/llm";
-import type { Route } from "./pipeline/types";
+import type { AdminFacts, Route } from "./pipeline/types";
 import { dayLabel } from "./i18n/dates";
 import { t } from "./i18n/t";
 import { handleAdminSquadChange, nameMentions } from "./admin-group-squad-change";
@@ -473,6 +480,36 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
         ...(input.deps?.extractorModel ? { deps: { model: input.deps.extractorModel } } : {}),
       });
 
+    // The shared admin extractor on this message, told truly whether the bot
+    // was tagged. Null when its call fails or it reads nothing.
+    const readAdminFacts = async (): Promise<AdminFacts | null> => {
+      const model = input.deps?.extractorModel ?? extractorStubFromEnv() ?? anthropicModel();
+      const extracted = await extractForRoute(model, "admin_ops", {
+        id: messageId,
+        body,
+        authorName: input.senderName,
+        tagged,
+        history,
+        lastBotPost: lastHqPost,
+        reply: replyShown,
+        now,
+      }).catch(() => null);
+      return extracted?.facts.kind === "admin" ? extracted.facts : null;
+    };
+    // AN ACTION THAT LEAVES HQ (a post in the players' group, an ask to the
+    // partner clubs, a DM to every player) is done only when it is asked of
+    // MatchTime (Kemal, 2026-10-22). FNF HQ 07:22 UTC: "@Kemal can we ask
+    // Sutton group?", a question to a person, was routed ask_group and
+    // posted "We need 3 more players" in the players' group. A tag on
+    // MatchTime asks it; untagged, the model says whether the message is
+    // spoken to MatchTime (`toMatchTime`), never the words read by code. A
+    // failed read leaves nothing done. Logs carry ids only.
+    const leavesHqUnasked = (facts: AdminFacts | null): boolean => {
+      if (tagged || facts?.toMatchTime === true) return false;
+      console.log(`[admin-group] ${messageId}: ${route} not asked of MatchTime (${facts ? "spoken to others" : "not read"}): nothing leaves HQ`);
+      return true;
+    };
+
     // The safe-YES rule and the score keep their own rules for a quoted
     // message (a YES quoting another organiser is already silent there; a
     // scoreline answering "what was the score?" is still the score).
@@ -642,23 +679,18 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
         // player does. The shared admin extractor says whether ANOTHER club
         // is meant, and which; then the partners are asked instead. The
         // router's turn is unchanged (a sentence for it there cost the free
-        // places and Man of the Match answers, measured), and a club with no
-        // partner pays no extra call and gets exactly what it got before.
+        // places and Man of the Match answers, measured).
+        //
+        // Untagged, the same extractor also says whether the message is
+        // spoken to MatchTime at all (2026-10-22, FNF HQ: "@Kemal can we ask
+        // Sutton group?" was posted in the players' group): see
+        // `leavesHqUnasked`. A tagged ask from a club with no partner pays no
+        // extra call and gets exactly what it got before.
         const partners = await activePartnerChoices(org.id).catch(() => []);
+        const facts = !tagged || partners.length > 0 ? await readAdminFacts() : null;
+        if (leavesHqUnasked(facts)) return null;
         if (partners.length > 0) {
-          const model = input.deps?.extractorModel ?? extractorStubFromEnv() ?? anthropicModel();
-          const extracted = await extractForRoute(model, "admin_ops", {
-            id: messageId,
-            body,
-            authorName: input.senderName,
-            tagged: true,
-            history,
-            lastBotPost: lastHqPost,
-            reply: replyShown,
-            now,
-          }).catch(() => null);
-          const facts = extracted?.facts;
-          if (facts?.kind === "admin" && facts.action === "recruit" && facts.partnerClubs) {
+          if (facts?.action === "recruit" && facts.partnerClubs) {
             const r = await askPartnersFromWords({ orgId: org.id, requestedByUserId: actor, via: "hq", clubRef: facts.clubRef ?? null, lang, now });
             return said(r.outcome, r.replyText);
           }
@@ -675,18 +707,11 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
         // collector may do none of it: the line naming who can, tagged or
         // not (2026-10-20), and the extractor is not asked.
         if (!feeActor) return onlyOrganisers();
-        const model = input.deps?.extractorModel ?? extractorStubFromEnv() ?? anthropicModel();
-        const extracted = await extractForRoute(model, "admin_ops", {
-          id: messageId,
-          body,
-          authorName: input.senderName,
-          tagged: true,
-          history,
-          lastBotPost: lastHqPost,
-          reply: replyShown,
-          now,
-        });
-        const facts = extracted.facts;
+        const facts = (await readAdminFacts()) ?? { kind: "none" as const };
+        // Asking other clubs, or DMing every player, reaches people outside
+        // HQ: only when asked of MatchTime (2026-10-22). Untagged and spoken
+        // to someone else, not even the "not from this group" line.
+        if (facts.kind === "admin" && (facts.action === "recruit" || facts.action === "stats_blast") && leavesHqUnasked(facts)) return null;
         // Another club's players (slice S6, 2026-10-21): "ask Sutton if
         // anyone can play", "search for players from our partner groups".
         // The shared door every surface uses (`partner-ask-words.ts`);
