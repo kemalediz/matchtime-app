@@ -44,6 +44,8 @@ describe("one cache marker, one place", () => {
     // Nine since 2026-10-20: the chase composer moved onto pipeline/llm.ts.
     // Eight later that day: so did the DM Q&A (DM_QA_CALL, on Haiku 5.5).
     // Six on 2026-10-21: the squad-list and onboarding readings too.
+    // Still six on 2026-10-22, when the setup-answer reading moved too
+    // (the count had one to spare).
     expect(sites.length).toBeGreaterThanOrEqual(6);
     const missing = sites.filter((f) => !/system:\s*systemBlock\(/.test(code(f.text))).map((f) => f.rel);
     expect(missing).toEqual([]);

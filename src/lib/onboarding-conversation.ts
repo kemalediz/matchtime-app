@@ -31,7 +31,6 @@
  *   snapshot into the roster, and DMs the admin a magic link into
  *   /admin.
  */
-import Anthropic from "@anthropic-ai/sdk";
 import { db } from "./db";
 import { SPORT_PRESETS } from "./sport-presets";
 import { FEATURE_META, OFFERED_FEATURE_META, isFeatureOffered, type ToggleableKey } from "./org-features-meta";
@@ -65,12 +64,14 @@ import { t } from "./i18n/t";
 import { buildBadgeHelp } from "./badge-help";
 import { normaliseLang, type Lang } from "./i18n/lang";
 import { detectGroupLang, langOfConsentReply } from "./i18n/detect";
-import { guardedAnthropicCall, systemBlock } from "@/lib/pipeline/llm";
+import { anthropicModel, extractJson, HAIKU_CALL, type ModelCall, type PipelineModel } from "@/lib/pipeline/llm";
 import { organisersAnnounce } from "./list-announcer";
-import { HAIKU_MODEL, HAIKU_SHORT_ANSWER_MAX_TOKENS, HAIKU_THINKING } from "./models";
+import { HAIKU_SHORT_ANSWER_MAX_TOKENS } from "./models";
 import { changeMemberRole } from "./role-change";
 
-const MODEL = HAIKU_MODEL;
+/** How the setup-answer reading is called: Haiku 5.5, adaptive thinking at
+ *  medium effort, through the shared pipeline caller (2026-10-22). */
+export const ONBOARDING_EXTRACT_CALL: ModelCall = HAIKU_CALL;
 
 type Session = {
   id: string;
@@ -673,12 +674,7 @@ function coercePendingAdmins(raw: unknown): ParsedAdmin[] {
   return out;
 }
 
-function getAnthropic(): Anthropic | null {
-  const key = process.env.ANTHROPIC_API_KEY?.trim();
-  return key ? new Anthropic({ apiKey: key }) : null;
-}
-
-const EXTRACT_PROMPT = `You extract structured setup answers from a WhatsApp group that is configuring the MatchTime bot. You DO NOT drive the conversation — you only pull values the humans have already stated. Output JSON only.
+export const EXTRACT_PROMPT = `You extract structured setup answers from a WhatsApp group that is configuring the MatchTime bot. You DO NOT drive the conversation — you only pull values the humans have already stated. Output JSON only.
 
 Schema:
 {
@@ -708,17 +704,18 @@ Rules:
 - Messages may be in TURKISH. Read them the same way: "cuma" / "cumaları" → dayOfWeek 5, "salı" → 2, "akşam 9 buçukta" → "21:30", "saat 21:30" → "21:30", "7'ye 7" → playersPerSide 7, "her hafta" → "weekly", "tek seferlik" → "oneoff", "Sim Arena'da" → venue "Sim Arena" (drop the case suffix). The JSON keys and values stay exactly as specified.
 - Be conservative: confidence < 0.5 if it's chit-chat with no concrete answer.`;
 
-async function extract(
-  session: Session,
-  messages: OnboardingTurnInput["messages"],
-): Promise<Extracted | null> {
-  const anthropic = getAnthropic();
-  // Deterministic fallback when the LLM is unavailable (no key /
-  // outage / error) so onboarding still progresses instead of looping
-  // the first question forever. Event answers are formulaic enough to
-  // regex; venue is handled by the "sole missing field" heuristic in
-  // the collecting branch.
-  if (!anthropic) return regexExtract(messages);
+/** What the reading is told is already known: the session's fields and stage. */
+export type KnownSetup = Pick<
+  Session,
+  "groupName" | "venue" | "dayOfWeek" | "kickoffTime" | "playersPerSide" | "recurrence" | "oneOffDate" | "stage"
+>;
+
+/** The user turn: what is already collected, and the new messages. */
+export function buildExtractUserTurn(
+  session: KnownSetup,
+  messages: Array<{ authorName: string | null; body: string }>,
+  _now: Date = new Date(),
+): string {
   const known = {
     groupName: session.groupName,
     venue: session.venue,
@@ -732,28 +729,37 @@ async function extract(
   const convo = messages
     .map((m) => `${m.authorName ?? "?"}: ${m.body.slice(0, 400)}`)
     .join("\n");
+  return `Already collected (do not re-ask, but you may overwrite if they correct it):\n${JSON.stringify(known)}\n\nNew messages:\n${convo}\n\nReturn the JSON.`;
+}
+
+/**
+ * THE SETUP-ANSWER READING: one Haiku call per onboarding turn, through
+ * the shared caller (`pipeline/llm.ts`) since 2026-10-22. That caller
+ * retries transport errors, books the club's daily budget under the same
+ * label, carries the shared cache marker and throws on a truncated answer.
+ *
+ * Falls back to `regexExtract` whenever the model cannot help, so
+ * onboarding still progresses instead of looping the first question: no
+ * key (no call is made at all), a failed call, a truncated or unparseable
+ * answer. A field the model left null is backfilled by the regex pass,
+ * which covers misses on terse answers.
+ */
+export async function extractSetupAnswers(
+  session: KnownSetup,
+  messages: Array<{ authorName: string | null; body: string }>,
+  deps?: { model?: PipelineModel; now?: Date },
+): Promise<Extracted> {
+  if (!deps?.model && !process.env.ANTHROPIC_API_KEY?.trim()) return regexExtract(messages);
+  const model = deps?.model ?? anthropicModel();
   try {
-    const res = await guardedAnthropicCall("onboarding-extract", () =>
-      anthropic.messages.create({
-        model: MODEL,
-        max_tokens: HAIKU_SHORT_ANSWER_MAX_TOKENS,
-        ...HAIKU_THINKING,
-        system: systemBlock(EXTRACT_PROMPT),
-        messages: [
-          {
-            role: "user",
-            content: `Already collected (do not re-ask, but you may overwrite if they correct it):\n${JSON.stringify(known)}\n\nNew messages:\n${convo}\n\nReturn the JSON.`,
-          },
-        ],
-      }),
-    );
-    const block = res.content.find((b): b is Anthropic.TextBlock => b.type === "text");
-    if (!block) return regexExtract(messages);
-    const json = block.text.slice(block.text.indexOf("{"), block.text.lastIndexOf("}") + 1);
-    const parsed = JSON.parse(json) as Extracted;
-    // Backfill anything the LLM left null with a regex pass — makes
-    // extraction stickier (covers LLM misses on terse answers) and
-    // means a partial LLM failure still advances the flow.
+    const resp = await model.complete({
+      ...ONBOARDING_EXTRACT_CALL,
+      system: EXTRACT_PROMPT,
+      user: buildExtractUserTurn(session, messages, deps?.now ?? new Date()),
+      maxTokens: HAIKU_SHORT_ANSWER_MAX_TOKENS,
+      label: "onboarding-extract",
+    });
+    const parsed = extractJson(resp.text) as Partial<Extracted>;
     const rx = regexExtract(messages);
     return {
       groupName: parsed.groupName ?? rx.groupName,
@@ -892,7 +898,7 @@ export async function handleOnboardingTurn(
     };
   }
 
-  const ex = await extract(session, messages);
+  const ex = await extractSetupAnswers(session, messages);
 
   // ── Stage: details (group-add flow) ──────────────────────────────
   // One combined "when & where do you play?" answer. Multi-field

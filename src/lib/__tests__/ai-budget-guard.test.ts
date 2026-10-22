@@ -324,14 +324,13 @@ describe("every model call site in src/ is behind the guard", () => {
     // The inventory, so a new site is noticed in review: pipeline/llm.ts
     // (router, extractors, composer, generic stats answer, rating
     // adjuster, none-shadow, scheduled chase, DM Q&A, the onboarding and
-    // squad-list readings since 2026-10-21) plus the seven raw
-    // sites.
+    // squad-list readings since 2026-10-21, the onboarding setup-answer
+    // reading since 2026-10-22) plus the six raw sites.
     expect(sites.sort()).toEqual(
       [
         "lib/dm-intent.ts",
         "lib/fee-confirm.ts",
         "lib/match-availability-classifier.ts",
-        "lib/onboarding-conversation.ts",
         "lib/pairing-reply.ts",
         "lib/payment-claim-classifier.ts",
         "lib/pipeline/llm.ts",
