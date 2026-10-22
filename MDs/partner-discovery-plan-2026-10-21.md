@@ -67,6 +67,11 @@ setting is on by default.** Its owner or admin can switch it off at any time:
   **club home venue** (`Organisation.homeVenueId`, recommended; picked with the same venue lookup;
   Kemal may prefer something looser such as a postcode or town). A club with neither sees "Confirm
   your venue to find clubs near you" with a link to the venue lookup.
+- **A club in its free trial is listed and can search** like any paying club (Kemal, 2026-10-22).
+  "Billing-paused" means `ClubBilling.pausedAt` is set. A trial that ends with no card first runs
+  the existing 7-day grace (`graceEndsAt`), so the club stays listed through the trial and the
+  grace, and drops out only once billing actually pauses it. Exempt clubs have no `ClubBilling`
+  row and are never paused.
 
 Checked in prod (read-only, 2026-10-21): 6 clubs, 5 live; all 5 `Venue` rows are geocoded;
 **MT Test's active game has no linked venue**, so MT Test would not be listed until its venue is
