@@ -1375,6 +1375,9 @@ model PartnerAsk {
   partnerOrgId      String
   matchId           String
   match             Match           @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  /// The number of players asked for. Since P4 (2026-10-22) the number the
+  /// organiser chose (1 up to the open places), for the whole round; the
+  /// automatic ask and asking in words ask for every open place.
   places            Int
   /// "awaiting-approval" | "posted" | "filled" | "declined" | "expired" |
   /// "cancelled" | "refused".
@@ -1400,12 +1403,17 @@ model PartnerAsk {
   closedAt          DateTime?
   volunteerUserIds  String[]        @default([])
   pickedUserIds     String[]        @default([])
+  /// Partner discovery P4 (2026-10-22): asks sent together share it, and
+  /// `places` (the organiser's number) covers the whole round, not each
+  /// partner. Null: a round of its own (the automatic ask, older rows).
+  roundId           String?
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
 
   @@index([partnerOrgId, status])
   @@index([matchId, status])
   @@index([postWaMessageId])
+  @@index([roundId])
 }
 
 model SentNotification {

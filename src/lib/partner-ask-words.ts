@@ -24,6 +24,7 @@
  * approval), and composes ONE reply from what each call said. It never
  * writes a `PartnerAsk` row itself.
  */
+import { randomUUID } from "node:crypto";
 import { db } from "./db";
 import { loadPartnerAskSettings } from "./club-partnership";
 import { requestPartnerAsk } from "./partner-ask";
@@ -109,6 +110,11 @@ export async function askPartnersFromWords(args: {
   const matchId = args.matchId !== undefined ? args.matchId : (await loadSquadState(orgId, now)).matchId;
   if (!matchId) return { outcome: "xask-words-no-game", replyText: t(lang).recruit_no_match, asked: 0 };
 
+  // P4 (2026-10-22): the asks of one request are one round. Asking in
+  // words names no number yet (D-7, slice P6), so each asks for every open
+  // place, and the reply says how many.
+  const roundId = randomUUID();
+  let places = 0;
   const results: Array<{ partnerName: string; result: PartnerAskOutcome }> = [];
   for (const p of resolved.partners) {
     let result: PartnerAskOutcome;
@@ -119,8 +125,10 @@ export async function askPartnersFromWords(args: {
         partnershipId: p.partnershipId,
         requestedByUserId: args.requestedByUserId,
         via: args.via,
+        roundId,
         now,
       });
+      if (r.ok) places = Math.max(places, r.places);
       result = r.ok ? (r.status === "posted" ? "posted" : "awaiting") : r.refusal;
     } catch (err) {
       // One partner failing never loses what the others said.
@@ -133,7 +141,7 @@ export async function askPartnersFromWords(args: {
   console.log(`[partner-ask-words] ${orgId}: ${args.via} asked ${asked} of ${results.length} partner(s) for match ${matchId}`);
   return {
     outcome: asked > 0 ? "xask-words-asked" : "xask-words-not-asked",
-    replyText: composePartnerAskReply(lang, results, { cutoffHours: settings?.cutoffHours ?? PARTNER_ASK_CUTOFF_DEFAULT_HOURS }),
+    replyText: composePartnerAskReply(lang, results, { cutoffHours: settings?.cutoffHours ?? PARTNER_ASK_CUTOFF_DEFAULT_HOURS, places }),
     asked,
   };
 }

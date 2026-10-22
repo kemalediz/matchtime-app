@@ -5217,6 +5217,34 @@ export const en = {
   // match page's guests panel.
   xask_thanks_dm: (p: { asker: string }) => `*${p.asker}* have their player now. Thanks for offering 🙏`,
   xask_game_off_dm: (p: { asker: string; day: string }) => `*${p.asker}*'s game on ${p.day} is off now, so you're not needed after all. Thanks for offering 🙏`,
+  // ─── Partner discovery P4 (2026-10-22): a chosen number of players ────
+  // Plan: MDs/partner-discovery-plan-2026-10-21.md, section 4. The match
+  // page's picker and partner ticks, a round cancelled by hand, and a
+  // paused partner held. Read by partner-ask-panel.tsx, partner-ask.ts and
+  // partner-ask-words-rules.ts.
+  xask_player_count: (p: { n: number }) => (p.n === 1 ? "1 player" : `${p.n} players`),
+  xask_round_number_label: "How many players?",
+  xask_round_partners_label: "Which partner clubs?",
+  xask_round_count_hint: "The number is for all the clubs you tick together, not for each club.",
+  xask_round_button: (p: { places: number }) => `Ask for ${p.places === 1 ? "1 player" : `${p.places} players`}`,
+  xask_round_none_ticked: "Tick at least one partner club.",
+  xask_round_status: (p: { wanted: number; placed: number }) =>
+    `Asking for ${p.wanted === 1 ? "1 player" : `${p.wanted} players`}: ${p.placed} found so far`,
+  xask_round_cancel: "Cancel this ask",
+  xask_round_cancelled_toast: "Ask cancelled. The partner clubs have been told.",
+  xask_round_cancel_failed: "That ask is already closed. Reload the page.",
+  xask_round_asked_toast: (p: { partners: string; places: number }) =>
+    `Asked ${p.partners} for ${p.places === 1 ? "1 player" : `${p.places} players`}.`,
+  xask_round_skipped_paused: (p: { partners: string }) => `Not asked, paused on MatchTime: ${p.partners}.`,
+  xask_partner_paused: (p: { partner: string }) => `${p.partner}: paused on MatchTime, so it can't be asked now`,
+  xask_refused_paused: (p: { partner: string }) => `${p.partner} is paused on MatchTime, so I can't ask them now.`,
+  xask_refused_bad_number: (p: { max: number }) =>
+    p.max === 1 ? "Only 1 place is open, so ask for 1 player." : `Choose between 1 and ${p.max} players.`,
+  xask_not_needed_line: (p: { asker: string }) => `*${p.asker}* no longer need a player, thanks all.`,
+  xask_not_needed_dm: (p: { asker: string }) => `*${p.asker}* no longer need a player, so you're not needed after all. Thanks for offering 🙏`,
+  xaskw_line_paused: (p: { partner: string }) => `• *${p.partner}*: paused on MatchTime, so I didn't ask them.`,
+  xaskw_places_line: (p: { places: number }) => `I asked for ${p.places === 1 ? "1 player" : `${p.places} players`}.`,
+  // ─── End of partner discovery P4 ─────────────────────────────────────
   // ─── Partner clubs asked in an organiser's own words (slice S6, 2026-10-21) ──
   // Read by src/lib/partner-ask-words-rules.ts: the ONE reply in the
   // players' group, the organisers' group or a DM, in the asking club's

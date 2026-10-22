@@ -18,7 +18,7 @@
  * database holds. Pure: no database, no model.
  */
 import type { PartnerAskWhen } from "./club-partnership-rules";
-import type { AskRefusal } from "./partner-ask-rules";
+import { PAUSED_REFUSALS, type AskRefusal } from "./partner-ask-rules";
 import { joinChoice, joinList } from "./i18n/text";
 import { t } from "./i18n/t";
 
@@ -112,6 +112,7 @@ function refusalSentence(lang: string | null, partner: string, r: AskRefusal | "
   if (r === "already-open") return s.xask_refused_already_open({ partner });
   if (r === "no-places") return s.xask_refused_no_places;
   if (r === "asking-off") return s.xaskw_off;
+  if (PAUSED_REFUSALS.has(r)) return s.xask_refused_paused({ partner });
   if (UNREACHABLE.has(r)) return s.xask_refused_unreachable({ partner });
   return s.xaskw_refused_generic({ partner });
 }
@@ -124,6 +125,7 @@ function refusalLine(lang: string | null, partner: string, r: AskRefusal | "not-
   if (r === "already-open") return s.xaskw_line_already_open({ partner });
   if (r === "no-places") return s.xaskw_line_no_places({ partner });
   if (r === "asking-off") return s.xaskw_line_off({ partner });
+  if (PAUSED_REFUSALS.has(r)) return s.xaskw_line_paused({ partner });
   if (UNREACHABLE.has(r)) return s.xaskw_line_unreachable({ partner });
   return s.xaskw_line_generic({ partner });
 }
@@ -138,13 +140,16 @@ const asked = (r: PartnerAskOutcome) => r === "posted" || r === "awaiting";
 export function composePartnerAskReply(
   lang: string | null,
   results: Array<{ partnerName: string; result: PartnerAskOutcome }>,
-  opts: { cutoffHours: number },
+  /** `places`: how many players were asked for (P4: a words ask asks for
+   *  every open place, and says how many). Absent: no number line. */
+  opts: { cutoffHours: number; places?: number },
 ): string {
   const s = t(lang);
+  const placesLine = opts.places && opts.places > 0 ? [s.xaskw_places_line({ places: opts.places })] : [];
   if (results.length === 1) {
     const { partnerName: partner, result } = results[0];
-    if (result === "posted") return s.xaskw_posted_one({ partner });
-    if (result === "awaiting") return s.xaskw_awaiting_one({ partner });
+    if (result === "posted") return [s.xaskw_posted_one({ partner }), ...placesLine].join("\n");
+    if (result === "awaiting") return [s.xaskw_awaiting_one({ partner }), ...placesLine].join("\n");
     return refusalSentence(lang, partner, result, opts.cutoffHours);
   }
   const any = results.some((r) => asked(r.result));
@@ -155,7 +160,7 @@ export function composePartnerAskReply(
         ? s.xaskw_line_awaiting({ partner })
         : refusalLine(lang, partner, result, opts.cutoffHours),
   );
-  return [any ? s.xaskw_header_asked : s.xaskw_header_not_asked, ...lines, ...(any ? [s.xaskw_bench_line] : [])].join("\n");
+  return [any ? s.xaskw_header_asked : s.xaskw_header_not_asked, ...lines, ...(any ? [s.xaskw_bench_line, ...placesLine] : [])].join("\n");
 }
 
 /** The one plain reply when nothing could be asked at all. */

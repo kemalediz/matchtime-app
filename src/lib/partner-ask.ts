@@ -28,6 +28,7 @@
  * and partner, so a second poll, a second press or a second organiser can
  * never act twice. Logs carry ids only.
  */
+import { randomUUID } from "node:crypto";
 import { db } from "./db";
 import { sendAdminNotice } from "./admin-channel";
 import { recordMatchTimeQuestion } from "./admin-group-log";
@@ -41,6 +42,7 @@ import { loadPartnerAskSettings } from "./club-partnership";
 import { retirePastGuests, standDownVolunteers, tellGuestsMoved } from "./partner-guest";
 import { matchtimeWaNumber } from "./club-connect";
 import { askDmLink, askDmPrefill, askRefCode } from "./partner-ask-ref";
+import { loadRoundFill, type RoundFill } from "./partner-ask-round";
 import { dayCommaTimeLabel } from "./i18n/dates";
 import { t } from "./i18n/t";
 import {
@@ -55,11 +57,16 @@ import {
   closeTells,
   closedStatus,
   gamesOverlap,
+  isPartnerPaused,
   movedWindows,
   partnerReachable,
+  roundKey,
+  roundPartners,
   type AskRefusal,
+  type CloseReason,
   type PartnerAskVia,
 } from "./partner-ask-rules";
+import type { PartnerAskOutcome } from "./partner-ask-words-rules";
 import { effectiveAskTime, type ClubRole } from "./club-partnership-rules";
 
 /** The ask ref of the approval question in the partner's admin group. */
@@ -138,7 +145,7 @@ function factsFor(match: AskMatch, askerName: string, places: number, lang: stri
   };
 }
 
-async function placesOpen(matchId: string, maxPlayers: number): Promise<number> {
+export async function placesOpen(matchId: string, maxPlayers: number): Promise<number> {
   const confirmed = await db.attendance.count({ where: { matchId, status: "CONFIRMED" } });
   return Math.max(0, maxPlayers - confirmed);
 }
@@ -197,13 +204,17 @@ async function roleIn(userId: string | null, orgId: string): Promise<ClubRole | 
 }
 
 export type RequestResult =
-  | { ok: true; askId: string; status: "awaiting-approval" | "posted"; partnerName: string }
+  | { ok: true; askId: string; status: "awaiting-approval" | "posted"; partnerName: string; places: number }
   | { ok: false; refusal: AskRefusal | "not-found"; partnerName: string | null };
 
 /**
  * Ask one partner club for this match. Every check is the pure `canAsk`
  * and `partnerReachable`; a refusal writes nothing and is returned for the
  * caller to say in plain words (`askRefusalText`).
+ *
+ * `places` (P4, D-5): the number the organiser chose, 1 up to the open
+ * places, for the whole round `roundId` (asks sent together). Absent: the
+ * automatic ask and asking in words, which ask for every open place.
  */
 export async function requestPartnerAsk(args: {
   askerOrgId: string;
@@ -211,6 +222,8 @@ export async function requestPartnerAsk(args: {
   partnershipId: string;
   requestedByUserId: string | null;
   via: PartnerAskVia;
+  places?: number;
+  roundId?: string | null;
   now?: Date;
 }): Promise<RequestResult> {
   const now = args.now ?? new Date();
@@ -233,6 +246,7 @@ export async function requestPartnerAsk(args: {
     partnerAsksToday(partnership.partnerOrgId, now),
     roleIn(args.requestedByUserId, args.askerOrgId),
   ]);
+  const wanted = args.places ?? places;
   const verdict0 = canAsk({
     partnershipStatus: partnership.status,
     askWhen: settings.when,
@@ -242,6 +256,7 @@ export async function requestPartnerAsk(args: {
     matchStatus: match.status,
     matchHistorical: match.isHistorical,
     placesOpen: places,
+    places: wanted,
     now,
     postBy,
     openAskForPair: open > 0,
@@ -269,7 +284,8 @@ export async function requestPartnerAsk(args: {
           askerOrgId: asker.id,
           partnerOrgId: partner.id,
           matchId: match.id,
-          places,
+          places: wanted,
+          roundId: args.roundId ?? null,
           requestedByUserId: args.requestedByUserId,
           requestedVia: args.via,
           postBy,
@@ -285,7 +301,9 @@ export async function requestPartnerAsk(args: {
     if ((err as { code?: string })?.code === "P2002") return { ok: false, refusal: "already-open", partnerName };
     throw err;
   }
-  console.log(`[partner-ask] ${askId}: ${asker.id} asks ${partner.id} for match ${match.id} (${args.via}, ${places} place(s))`);
+  console.log(
+    `[partner-ask] ${askId}: ${asker.id} asks ${partner.id} for match ${match.id} (${args.via}, ${wanted} of ${places} open place(s)${args.roundId ? `, round ${args.roundId}` : ""})`,
+  );
 
   if (partnership.partnerApproval === "standing") {
     const posted = await postAsk(askId, null, now);
@@ -293,15 +311,92 @@ export async function requestPartnerAsk(args: {
       await sendAdminNotice({
         orgId: partner.id,
         now,
-        text: t(partner.language).xask_posted_notice_partner(factsFor(match, asker.name, places, partner.language)),
+        text: t(partner.language).xask_posted_notice_partner(factsFor(match, asker.name, wanted, partner.language)),
       });
       await tellAskerApproved(askId, now);
     }
-    return { ok: true, askId, status: "posted", partnerName: partner.name };
+    return { ok: true, askId, status: "posted", partnerName: partner.name, places: wanted };
   }
 
-  await askPartnerToApprove(askId, match, asker.name, places, partner, now);
-  return { ok: true, askId, status: "awaiting-approval", partnerName: partner.name };
+  await askPartnerToApprove(askId, match, asker.name, wanted, partner, now);
+  return { ok: true, askId, status: "awaiting-approval", partnerName: partner.name, places: wanted };
+}
+
+export interface RoundResult {
+  roundId: string;
+  /** What `requestPartnerAsk` said for each partner asked. */
+  results: Array<{ partnershipId: string; partnerName: string; result: PartnerAskOutcome }>;
+  /** Paused partners (dormant or billing-paused), not asked (plan 2.1). */
+  skippedPaused: string[];
+  /** How many were asked (posted, or waiting for their organisers). */
+  asked: number;
+  /** The match's open places now, for a refusal of the number. */
+  placesOpen: number;
+}
+
+/**
+ * Ask several partners at once (P4): one ROUND, one number for all of
+ * them (D-5), each ask through `requestPartnerAsk`, so every rule of a
+ * single ask holds. `partnershipIds` is the ticked partners, or "all"
+ * (every active partner). A paused partner is never asked: no row, no
+ * notice, no post; it is named in `skippedPaused`.
+ */
+export async function requestPartnerRound(args: {
+  askerOrgId: string;
+  matchId: string;
+  partnershipIds: string[] | "all";
+  places: number;
+  requestedByUserId: string | null;
+  via: PartnerAskVia;
+  now?: Date;
+}): Promise<RoundResult> {
+  const now = args.now ?? new Date();
+  const [partnerships, match] = await Promise.all([
+    db.clubPartnership.findMany({
+      where: { askerOrgId: args.askerOrgId, status: "active" },
+      orderBy: { createdAt: "asc" },
+      select: { id: true, partnerOrgId: true, partnerOrg: { select: { name: true, dormantAt: true, billingStatus: true } } },
+    }),
+    db.match.findUnique({ where: { id: args.matchId }, select: { id: true, maxPlayers: true } }),
+  ]);
+  const choices = partnerships.map((p) => ({
+    partnershipId: p.id,
+    name: p.partnerOrg.name,
+    paused: isPartnerPaused({ dormantAt: p.partnerOrg.dormantAt, billingPaused: isBillingPaused(p.partnerOrg) }),
+  }));
+  const { ask, skippedPaused } = roundPartners(choices, args.partnershipIds);
+  const roundId = randomUUID();
+  const results: RoundResult["results"] = [];
+  for (const p of ask) {
+    let result: PartnerAskOutcome;
+    try {
+      const r = await requestPartnerAsk({
+        askerOrgId: args.askerOrgId,
+        matchId: args.matchId,
+        partnershipId: p.partnershipId,
+        requestedByUserId: args.requestedByUserId,
+        via: args.via,
+        places: args.places,
+        roundId,
+        now,
+      });
+      result = r.ok ? (r.status === "posted" ? "posted" : "awaiting") : r.refusal;
+    } catch (err) {
+      // One partner failing never loses what the others said.
+      console.error(`[partner-ask] round ${roundId}: asking ${p.partnershipId} failed:`, err instanceof Error ? err.message : "failed");
+      result = "not-found";
+    }
+    results.push({ partnershipId: p.partnershipId, partnerName: p.name, result });
+  }
+  const asked = results.filter((r) => r.result === "posted" || r.result === "awaiting").length;
+  if (skippedPaused.length > 0) console.log(`[partner-ask] round ${roundId}: ${skippedPaused.length} paused partner(s) not asked`);
+  return {
+    roundId,
+    results,
+    skippedPaused: skippedPaused.map((p) => p.name),
+    asked,
+    placesOpen: match ? await placesOpen(match.id, match.maxPlayers) : 0,
+  };
 }
 
 /** The approval notice to the partner's organisers (plan 3.3 step 4),
@@ -363,11 +458,14 @@ async function postAsk(askId: string, approverUserId: string | null, now: Date):
     db.match.findUnique({ where: { id: ask.matchId }, select: MATCH_SELECT }) as Promise<AskMatch | null>,
   ]);
   if (!asker || !partner || !match) return false;
-  const places = await placesOpen(match.id, match.maxPlayers);
+  const open = await placesOpen(match.id, match.maxPlayers);
+  // P4: the post asks for the organiser's number (the round's), never more
+  // than the places still open. The ask's own `places` is never rewritten.
+  const places = Math.max(1, Math.min(ask.places, open));
   // Volunteers answer MatchTime by DM (2026-10-21): the post carries the
   // tap-to-DM link with this ask's code, and nothing else reaches the group.
   const text = t(partner.language).xask_post({
-    ...factsFor(match, asker.name, Math.max(1, places), partner.language),
+    ...factsFor(match, asker.name, places, partner.language),
     link: askDmLink({ number: matchtimeWaNumber(), lang: partner.language, askId }),
     prefill: askDmPrefill(partner.language, askRefCode(askId)),
   });
@@ -379,7 +477,6 @@ async function postAsk(askId: string, approverUserId: string | null, now: Date):
         status: "posted",
         postedAt: now,
         postJobId: job.id,
-        places: Math.max(1, places),
         ...(approverUserId ? { approvedByUserId: approverUserId, approvedAt: now } : {}),
       },
     });
@@ -397,7 +494,10 @@ async function askAndMatch(askId: string) {
   if (!ask) return null;
   const [asker, partner, match] = await Promise.all([
     db.organisation.findUnique({ where: { id: ask.askerOrgId }, select: { id: true, name: true, language: true } }),
-    db.organisation.findUnique({ where: { id: ask.partnerOrgId }, select: { id: true, name: true, language: true } }),
+    db.organisation.findUnique({
+      where: { id: ask.partnerOrgId },
+      select: { id: true, name: true, language: true, dormantAt: true, billingStatus: true },
+    }),
     db.match.findUnique({ where: { id: ask.matchId }, select: MATCH_SELECT }) as Promise<AskMatch | null>,
   ]);
   if (!asker || !partner || !match) return null;
@@ -435,6 +535,9 @@ export async function approvePartnerAsk(args: { askId: string; userId: string; n
   const partnership = await db.clubPartnership.findUnique({ where: { id: a.ask.partnershipId }, select: { status: true } });
   if (partnership?.status !== "active") return { ok: false, outcome: "closed" };
   if ((await placesOpen(a.match.id, a.match.maxPlayers)) <= 0) return { ok: false, outcome: "no-places" };
+  // P4: the round already has its number (from another of its asks).
+  const fill = await loadRoundFill(a.ask);
+  if (fill.placed >= fill.wanted) return { ok: false, outcome: "no-places" };
   if ((await partnerGate(a.ask.partnerOrgId)).refusal) return { ok: false, outcome: "unreachable" };
   const posted = await postAsk(a.ask.id, args.userId, now);
   if (!posted) return { ok: false, outcome: "closed" };
@@ -484,24 +587,68 @@ export async function loadPartnerAskForApprover(askId: string, userId: string) {
   };
 }
 
-/** The asks of this club's next match, one line per partner, for the match
- *  page: what an organiser can ask, and what is already open. */
-export async function loadPartnerAskPanel(matchId: string, askerOrgId: string) {
-  const [settings, partnerships, asks] = await Promise.all([
+export interface PartnerAskPanelData {
+  /** The match's open places now: the picker offers 1 up to this. */
+  placesOpen: number;
+  /** One line per active partner. */
+  rows: Array<{
+    partnershipId: string;
+    partnerName: string;
+    /** Its latest ask's status for this match, or null. */
+    status: string | null;
+    volunteers: number;
+    /** Dormant or billing-paused (plan 2.1): shown, never offered. */
+    paused: boolean;
+    /** The round of its OPEN ask, or null. */
+    roundKey: string | null;
+  }>;
+  /** Each round still open: its number, how many have a place, who. */
+  rounds: Array<{ roundKey: string; wanted: number; placed: number; partners: string[] }>;
+}
+
+/** The asks of this club's next match, for the match page (P4): the open
+ *  places, a line per partner (what an organiser can tick, a paused one,
+ *  or what is already open), and each open round with its number. */
+export async function loadPartnerAskPanel(matchId: string, askerOrgId: string): Promise<PartnerAskPanelData | null> {
+  const [settings, partnerships, asks, match] = await Promise.all([
     loadPartnerAskSettings(askerOrgId),
     db.clubPartnership.findMany({
       where: { askerOrgId, status: "active" },
       orderBy: { createdAt: "asc" },
-      select: { id: true, partnerOrgId: true, partnerOrg: { select: { name: true } } },
+      select: { id: true, partnerOrgId: true, partnerOrg: { select: { name: true, dormantAt: true, billingStatus: true } } },
     }),
-    db.partnerAsk.findMany({ where: { matchId, askerOrgId }, orderBy: { createdAt: "desc" }, select: { partnerOrgId: true, status: true, volunteerUserIds: true } }),
+    db.partnerAsk.findMany({
+      where: { matchId, askerOrgId },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, roundId: true, places: true, partnerOrgId: true, status: true, volunteerUserIds: true, pickedUserIds: true },
+    }),
+    db.match.findUnique({ where: { id: matchId }, select: { maxPlayers: true } }),
   ]);
-  if (!settings || settings.when === "off" || partnerships.length === 0) return null;
-  return partnerships.map((p) => {
+  if (!settings || settings.when === "off" || partnerships.length === 0 || !match) return null;
+  const nameOf = new Map(partnerships.map((p) => [p.partnerOrgId, p.partnerOrg.name]));
+  const rows = partnerships.map((p) => {
     const latest = asks.find((a) => a.partnerOrgId === p.partnerOrgId) ?? null;
-    return { partnershipId: p.id, partnerName: p.partnerOrg.name, status: latest?.status ?? null, volunteers: latest?.volunteerUserIds.length ?? 0 };
+    const open = latest && isOpenAsk(latest.status);
+    return {
+      partnershipId: p.id,
+      partnerName: p.partnerOrg.name,
+      status: latest?.status ?? null,
+      volunteers: latest?.volunteerUserIds.length ?? 0,
+      paused: isPartnerPaused({ dormantAt: p.partnerOrg.dormantAt, billingPaused: isBillingPaused(p.partnerOrg) }),
+      roundKey: open ? roundKey(latest) : null,
+    };
   });
+  const openAsks = asks.filter((a) => isOpenAsk(a.status));
+  const rounds: PartnerAskPanelData["rounds"] = [];
+  for (const key of [...new Set(openAsks.map((a) => roundKey(a)))]) {
+    const inRound = openAsks.filter((a) => roundKey(a) === key);
+    const fill = await loadRoundFill({ ...inRound[0], matchId });
+    rounds.push({ roundKey: key, wanted: fill.wanted, placed: fill.placed, partners: inRound.map((a) => nameOf.get(a.partnerOrgId) ?? "") });
+  }
+  return { placesOpen: await placesOpen(matchId, match.maxPlayers), rows, rounds };
 }
+
+const isOpenAsk = (status: string): boolean => (OPEN_ASK_STATUSES as readonly string[]).includes(status);
 
 /**
  * Every due-posts poll, for asks this club made OR received: close the ones
@@ -512,6 +659,8 @@ export async function sweepPartnerAsks(orgId: string, now: Date = new Date()): P
   let closed = 0;
   // Guests whose match is over become past guests (S4). Never throws.
   await retirePastGuests(orgId, now);
+  // P4: one read of each round's fill per sweep.
+  const fills = new Map<string, RoundFill>();
   try {
     const asks = await db.partnerAsk.findMany({
       where: { OR: [{ askerOrgId: orgId }, { partnerOrgId: orgId }], status: { in: [...OPEN_ASK_STATUSES] } },
@@ -536,37 +685,143 @@ export async function sweepPartnerAsks(orgId: string, now: Date = new Date()): P
           continue;
         }
       }
-      const places = await placesOpen(match.id, match.maxPlayers);
-      const reason = closeReason({
-        status: ask.status,
-        now,
-        postBy: ask.postBy,
-        closesAt: ask.closesAt,
-        matchDate: match.date,
-        matchStatus: match.status,
-        partnershipStatus: ask.partnership.status,
-        placesOpen: places,
-      });
-      if (!reason) {
-        await reportMissingPostId(ask, now);
-        continue;
-      }
-      const status = closedStatus(reason, ask.status);
-      const done = await db.partnerAsk.updateMany({
-        where: { id: ask.id, status: ask.status },
-        data: { status, reason, closedAt: now },
-      });
-      if (done.count === 0) continue;
-      closed++;
-      console.log(`[partner-ask] ${ask.id}: closed ${status} (${reason})`);
-      await tellClose(ask.id, reason, ask.status, ask.volunteerUserIds.length, now);
-      // Its volunteers without a place are thanked and stood down (S4).
-      await standDownVolunteers(ask.id, reason, now);
+      if (await closeIfDue(ask, match, ask.partnership.status, fills, now)) closed++;
     }
   } catch (err) {
     console.error(`[partner-ask] org ${orgId}: sweep failed:`, err instanceof Error ? err.message : "failed");
   }
   return { closed };
+}
+
+type OpenAskRow = {
+  id: string;
+  roundId: string | null;
+  matchId: string;
+  places: number;
+  status: string;
+  postBy: Date;
+  closesAt: Date;
+  postedAt: Date | null;
+  postWaMessageId: string | null;
+  postJobId: string | null;
+  askerOrgId: string;
+  volunteerUserIds: string[];
+  pickedUserIds: string[];
+};
+
+/**
+ * One open ask, the sweep's rule (`closeReason`): close it if it should,
+ * with the one line each side should hear. Filled is the ROUND's number
+ * reached (P4, counted across its asks; `fills` caches one read per round
+ * per sweep) or no open place left. Otherwise a post whose WhatsApp id
+ * never came back is reported. True when it closed.
+ */
+async function closeIfDue(ask: OpenAskRow, match: AskMatch, partnershipStatus: string, fills: Map<string, RoundFill>, now: Date): Promise<boolean> {
+  const places = await placesOpen(match.id, match.maxPlayers);
+  const key = roundKey(ask);
+  let fill = fills.get(key);
+  if (!fill) {
+    fill = await loadRoundFill(ask);
+    fills.set(key, fill);
+  }
+  const reason = closeReason({
+    status: ask.status,
+    now,
+    postBy: ask.postBy,
+    closesAt: ask.closesAt,
+    matchDate: match.date,
+    matchStatus: match.status,
+    partnershipStatus,
+    placesOpen: places,
+    roundPlaced: fill.placed,
+    roundWanted: fill.wanted,
+  });
+  if (!reason) {
+    await reportMissingPostId(ask, now);
+    return false;
+  }
+  return closeAsk(ask, reason, now);
+}
+
+/** Close one open ask for `reason`: a compare-and-set on the status read,
+ *  then the one line each side should hear (D8), then its volunteers
+ *  without a place are thanked and stood down (S4). True when it closed. */
+async function closeAsk(ask: { id: string; status: string; volunteerUserIds: string[] }, reason: CloseReason, now: Date): Promise<boolean> {
+  const status = closedStatus(reason, ask.status);
+  const done = await db.partnerAsk.updateMany({
+    where: { id: ask.id, status: ask.status },
+    data: { status, reason, closedAt: now },
+  });
+  if (done.count === 0) return false;
+  console.log(`[partner-ask] ${ask.id}: closed ${status} (${reason})`);
+  await tellClose(ask.id, reason, ask.status, ask.volunteerUserIds.length, now);
+  await standDownVolunteers(ask.id, reason, now);
+  return true;
+}
+
+/** The open asks of one round (P4): the asks sharing `roundId`, or the
+ *  one ask that is a round of its own. */
+function openRoundWhere(args: { matchId: string; key: string; askerOrgId?: string }) {
+  return {
+    matchId: args.matchId,
+    ...(args.askerOrgId ? { askerOrgId: args.askerOrgId } : {}),
+    status: { in: [...OPEN_ASK_STATUSES] },
+    OR: [{ roundId: args.key }, { id: args.key }],
+  };
+}
+
+/**
+ * Close this ask's round NOW if it should close (P4): called when a
+ * first-come volunteer took the round's last wanted place, so every
+ * partner group hears "filled" at once rather than at the next poll. The
+ * same rule as the sweep (`closeIfDue`). Never throws.
+ */
+export async function closeRoundIfDue(askId: string, now: Date = new Date()): Promise<number> {
+  let closed = 0;
+  try {
+    const one = await db.partnerAsk.findUnique({ where: { id: askId }, select: { id: true, roundId: true, matchId: true } });
+    if (!one) return 0;
+    const asks = await db.partnerAsk.findMany({
+      where: openRoundWhere({ matchId: one.matchId, key: roundKey(one) }),
+      include: { partnership: { select: { status: true } }, match: { select: MATCH_SELECT } },
+    });
+    const fills = new Map<string, RoundFill>();
+    for (const ask of asks) {
+      if (await closeIfDue(ask, ask.match as unknown as AskMatch, ask.partnership.status, fills, now)) closed++;
+    }
+  } catch (err) {
+    console.error(`[partner-ask] ${askId}: closing the round failed:`, err instanceof Error ? err.message : "failed");
+  }
+  return closed;
+}
+
+/**
+ * An organiser CANCELS an open round by hand (Kemal, 2026-10-22): every
+ * open ask in the round closes as cancelled. Each partner group that saw
+ * the ask hears one "no longer needed" line, an ask still waiting for the
+ * partner's approval simply closes, and the volunteers without a place are
+ * thanked and stood down. Owners and admins of the asking club only.
+ */
+export async function cancelPartnerRound(args: {
+  askerOrgId: string;
+  matchId: string;
+  roundKey: string;
+  userId: string;
+  now?: Date;
+}): Promise<{ ok: boolean; cancelled: number }> {
+  const now = args.now ?? new Date();
+  const role = await roleIn(args.userId, args.askerOrgId);
+  if (role !== "OWNER" && role !== "ADMIN") return { ok: false, cancelled: 0 };
+  const asks = await db.partnerAsk.findMany({
+    where: openRoundWhere({ matchId: args.matchId, key: args.roundKey, askerOrgId: args.askerOrgId }),
+    select: { id: true, status: true, volunteerUserIds: true },
+  });
+  let cancelled = 0;
+  for (const ask of asks) {
+    if (await closeAsk(ask, "organiser-cancelled", now)) cancelled++;
+  }
+  console.log(`[partner-ask] round ${args.roundKey} of match ${args.matchId}: ${cancelled} ask(s) cancelled by ${args.userId}`);
+  return { ok: cancelled > 0, cancelled };
 }
 
 /** After a moved game: the hook S4 fills in (guests told the new time). */
@@ -580,11 +835,17 @@ async function tellClose(askId: string, reason: Parameters<typeof closeTells>[0]
   if (!a) return;
   const tells = closeTells(reason, wasStatus, volunteers);
   const ps = t(a.partner.language);
-  if (tells.partnerGroup) {
+  // A partner that is paused now (dormant or billing-paused, plan 2.1):
+  // MatchTime is off in its groups, so nothing is queued there, not even
+  // the closing line (it would go out late, whenever the club is back).
+  const partnerPaused = isPartnerPaused({ dormantAt: a.partner.dormantAt, billingPaused: isBillingPaused(a.partner) });
+  if (tells.partnerGroup && !partnerPaused) {
     const text =
       tells.partnerGroup === "filled"
         ? ps.xask_filled_line({ asker: a.asker.name })
-        : ps.xask_off_line({ asker: a.asker.name, day: dayCommaTimeLabel(a.partner.language, a.match.date) });
+        : tells.partnerGroup === "not-needed"
+          ? ps.xask_not_needed_line({ asker: a.asker.name })
+          : ps.xask_off_line({ asker: a.asker.name, day: dayCommaTimeLabel(a.partner.language, a.match.date) });
     await db.botJob.create({ data: { orgId: a.partner.id, kind: "group", text } });
   }
   const as = t(a.asker.language);
@@ -640,10 +901,21 @@ export async function answerPartnerAskYes(args: { orgId: string; askId: string; 
 }
 
 /** A refusal, in the asking club's words, for the button and the notices. */
-export function askRefusalText(lang: string | null, refusal: AskRefusal | "not-found", partnerName: string | null, cutoffHours: number): string {
+export function askRefusalText(
+  lang: string | null,
+  refusal: AskRefusal | "not-found",
+  partnerName: string | null,
+  cutoffHours: number,
+  placesOpenNow = 1,
+): string {
   const s = t(lang);
   const partner = partnerName ?? "";
   switch (refusal) {
+    case "bad-number":
+      return placesOpenNow > 0 ? s.xask_refused_bad_number({ max: placesOpenNow }) : s.xask_refused_no_places;
+    case "partner-dormant":
+    case "partner-paused":
+      return s.xask_refused_paused({ partner });
     case "too-late":
       return s.xask_refused_too_late({ hours: cutoffHours });
     case "daily-cap":
@@ -655,9 +927,7 @@ export function askRefusalText(lang: string | null, refusal: AskRefusal | "not-f
     case "asking-off":
       return s.xask_refused_off;
     case "partner-muted":
-    case "partner-dormant":
     case "partner-not-approved":
-    case "partner-paused":
     case "partner-setting-up":
     case "partner-no-group":
     case "partner-not-postable":
