@@ -107,7 +107,7 @@ test("a question nothing answers: one line, never silent", async ({ request }) =
   expect(await say(request, WEATHER)).toMatchObject({
     handled: true,
     outcome: "hq-not-here",
-    replyText: "I can't do that from this group. Ask *what can you do?* to see what I can do here.",
+    replyText: "I can't do that from this group.",
   });
 });
 

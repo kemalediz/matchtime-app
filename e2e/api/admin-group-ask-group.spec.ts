@@ -68,7 +68,7 @@ test("an admin instruction HQ has no handler for: one line, nothing posted", asy
   expect(await say(request, REMIND)).toMatchObject({
     handled: true,
     outcome: "hq-not-here",
-    replyText: "I can't do that from this group. Ask *what can you do?* to see what I can do here.",
+    replyText: "I can't do that from this group.",
   });
   expect(await groupJobs(db)).toHaveLength(0);
 });

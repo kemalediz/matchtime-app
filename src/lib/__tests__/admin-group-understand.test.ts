@@ -26,6 +26,8 @@ vi.mock("@/lib/db", () => ({ db: dbMock }));
 const hqLog = vi.hoisted(() => ({
   hqLogSince: vi.fn(),
   recordMatchTimeQuestion: vi.fn(),
+  recordMatchTimeLine: vi.fn(),
+  NOT_HERE_ID_PREFIX: "mt:said:not-here:",
   teamsAskRef: (id: string) => `teams:${id}`,
   listAskRef: (id: string) => `list:${id}`,
 }));
@@ -79,6 +81,10 @@ const partnerWords = vi.hoisted(() => ({
   askPartnersFromWords: vi.fn(),
 }));
 vi.mock("@/lib/partner-ask-words", () => partnerWords);
+
+// Cancelling a match, or putting it back on, from HQ (2026-10-22).
+const matchCancel = vi.hoisted(() => ({ hqCancelOrRestore: vi.fn() }));
+vi.mock("@/lib/match-cancel", () => matchCancel);
 
 import { understandAdminMessage } from "../admin-group-understand";
 
@@ -458,7 +464,7 @@ describe("the other routes reach the code the rest of MatchTime uses", () => {
 
   it.each(["admin_ops"])("%s: clearly for MatchTime but not done from HQ: one line, never silent", async (route) => {
     const deps = { routerModel: routeTo(route), extractorModel: adminFacts({ action: "other" }) };
-    expect((await ask("@Match Time who has paid?", route, { deps }))?.replyText).toBe("I can't do that from this group. Ask *what can you do?* to see what I can do here.");
+    expect((await ask("@Match Time who has paid?", route, { deps }))?.replyText).toBe("I can't do that from this group.");
     expect(feeWaiver.proposeFeeFreeInHq).not.toHaveBeenCalled();
     expect(groupAsk.askPlayersGroup).not.toHaveBeenCalled();
     expect(hqQuestion.answerHqQuestion).not.toHaveBeenCalled();
@@ -534,7 +540,7 @@ describe("a reply to another organiser, not tagged: the organisers' own conversa
 // with silence. `unsure` goes to the attendance engine, as in the players'
 // group; when that owns nothing, one line says so.
 describe("unsure, addressed to MatchTime: never silent", () => {
-  const NOT_UNDERSTOOD = "I didn't catch what you'd like me to do. Ask *what can you do?* to see what I can do here.";
+  const NOT_UNDERSTOOD = "I didn't catch what you'd like me to do.";
   const changeMsg = { text: "🔄 *Team change*: Naim replaces Uncle Najib on Red.\n\n✅ *Final teams*: 20:30 at Harris Merton", fromMatchTime: true };
 
   beforeEach(() => {
@@ -564,7 +570,7 @@ describe("unsure, addressed to MatchTime: never silent", () => {
 
   it("in Turkish", async () => {
     const r = await ask("@Match Time şunu hallet", "unsure", { org: { ...ORG, language: "tr" } });
-    expect(r?.replyText).toBe("Ne yapmamı istediğinizi anlayamadım. Burada neler yapabildiğimi görmek için *neler yapabilirsin?* diye sorun.");
+    expect(r?.replyText).toBe("Ne yapmamı istediğinizi anlayamadım.");
   });
 
   it("the bare word matchtime, no @ and no reply, is talk ABOUT MatchTime: silent, nothing asked", async () => {
@@ -723,7 +729,7 @@ describe("questions in HQ: the shared question answering, with the organisers' c
 
   it("a question nothing answers: one line, never silent", async () => {
     const r = await ask("what's the weather like?", "question");
-    expect(r).toEqual({ route: "question", outcome: "hq-not-here", replyText: "I can't do that from this group. Ask *what can you do?* to see what I can do here." });
+    expect(r).toEqual({ route: "question", outcome: "hq-not-here", replyText: "I can't do that from this group." });
   });
 
   it("in Turkish: the club's language reaches the answering code", async () => {
@@ -1245,5 +1251,98 @@ describe("slice S6: an organiser asks MatchTime to ask the partner clubs", () =>
     const r = await ask("message the lads from the last 5 games", "admin_ops", { deps });
     expect(r?.outcome).toBe("hq-not-here");
     expect(partnerWords.askPartnersFromWords).not.toHaveBeenCalled();
+  });
+});
+
+describe("cancelling a match from HQ, and putting it back on (2026-10-22)", () => {
+  const deps = (facts: Record<string, unknown>) => ({ routerModel: routeTo("admin_ops"), extractorModel: adminFacts(facts) });
+  const DONE = "Done: Friday Night Football, Fri 23 Oct at 20:30 is cancelled. I've told the players' group.";
+  beforeEach(() => {
+    matchCancel.hqCancelOrRestore.mockResolvedValue({ outcome: "hq-match-cancelled", replyText: DONE });
+    dbMock.adminTeamProposal.findFirst.mockResolvedValue(null);
+    hqLog.hqLogSince.mockResolvedValue([]);
+  });
+
+  it("an organiser tags MatchTime to cancel: the next match is cancelled and HQ is told", async () => {
+    const r = await ask("@Match Time cancel the session", "admin_ops", { deps: deps({ action: "cancel_match", matchDay: "" }) });
+    expect(r).toEqual({ route: "admin_ops", outcome: "hq-match-cancelled", replyText: DONE });
+    expect(matchCancel.hqCancelOrRestore).toHaveBeenCalledWith({ orgId: "org-fnf", lang: "en", mode: "cancel", dayPhrase: null, addressed: true, now: NOW });
+  });
+
+  it("untagged (Kemal: it only acts when an admin tags it): nothing written, nothing said", async () => {
+    for (const [text, action] of [["Cancel the session", "cancel_match"], ["storm, no game Friday", "cancel_match"], ["it's back on", "restore_match"]]) {
+      expect(await ask(text, "admin_ops", { deps: deps({ action }) })).toBeNull();
+    }
+    expect(matchCancel.hqCancelOrRestore).not.toHaveBeenCalled();
+    expect(hqLog.recordMatchTimeLine).not.toHaveBeenCalled();
+  });
+
+  it("in Turkish, with the day named", async () => {
+    await ask("@Match Time cuma maçı iptal et", "admin_ops", { org: { ...ORG, language: "tr" }, deps: deps({ action: "cancel_match", matchDay: "cuma" }) });
+    expect(matchCancel.hqCancelOrRestore).toHaveBeenCalledWith(expect.objectContaining({ lang: "tr", mode: "cancel", dayPhrase: "cuma", addressed: true }));
+  });
+
+  it("'it's back on': the cancelled match is put back on", async () => {
+    await ask("@Match Time it's back on, uncancel Friday", "admin_ops", { deps: deps({ action: "restore_match", matchDay: "Friday" }) });
+    expect(matchCancel.hqCancelOrRestore).toHaveBeenCalledWith(expect.objectContaining({ mode: "restore", dayPhrase: "Friday" }));
+  });
+
+  it("a member who is not an organiser: nothing is cancelled, and the model is not asked", async () => {
+    const r = await ask("@Match Time cancel the session", "admin_ops", { organiser: false, member: true, senderUserId: "u-player", deps: deps({ action: "cancel_match" }) });
+    expect(r?.outcome).toBe("hq-only-organisers");
+    expect(matchCancel.hqCancelOrRestore).not.toHaveBeenCalled();
+    expect(requests).toHaveLength(1);
+  });
+
+  it("the money collector who is not an admin: may give a free place, may not cancel", async () => {
+    const r = await ask("@Match Time cancel the session", "admin_ops", {
+      org: { ...ORG, paymentHolderId: "u-col" },
+      organiser: false,
+      member: true,
+      senderUserId: "u-col",
+      deps: deps({ action: "cancel_match" }),
+    });
+    expect(r?.outcome).toBe("hq-only-organisers");
+    expect(matchCancel.hqCancelOrRestore).not.toHaveBeenCalled();
+  });
+
+  it("a monthly club: nothing is cancelled; use the website", async () => {
+    const r = await ask("@Match Time cancel the session", "admin_ops", { org: { ...ORG, squadMode: "monthly" }, deps: deps({ action: "cancel_match" }) });
+    expect(r).toEqual({
+      route: "admin_ops",
+      outcome: "hq-cancel-monthly",
+      replyText: "Cancelling a match from here isn't available for monthly squads yet. Please use the website.",
+    });
+    expect(matchCancel.hqCancelOrRestore).not.toHaveBeenCalled();
+  });
+
+  it("put back on with nothing cancelled, when the owner says nothing: silent", async () => {
+    matchCancel.hqCancelOrRestore.mockResolvedValue(null);
+    expect(await ask("@Match Time game's on lads", "admin_ops", { deps: deps({ action: "restore_match" }) })).toBeNull();
+  });
+});
+
+describe("'I can't do that from this group' is one line, and not repeated (2026-10-22)", () => {
+  const other = { routerModel: routeTo("admin_ops"), extractorModel: adminFacts({ action: "other" }) };
+  const notHereRow = (at: Date): HqLogRow => ({ waMessageId: `mt:said:not-here:${at.getTime()}:x`, fromMatchTime: true, senderUserId: null, text: "I can't do that from this group.", askRef: null, createdAt: at });
+  beforeEach(() => dbMock.adminTeamProposal.findFirst.mockResolvedValue(null));
+
+  it("the first time: the short line, with no help advert, and it is recorded", async () => {
+    hqLog.hqLogSince.mockResolvedValue([]);
+    const r = await ask("@Match Time change the kit colour", "admin_ops", { deps: other });
+    expect(r?.replyText).toBe("I can't do that from this group.");
+    expect(hqLog.recordMatchTimeLine).toHaveBeenCalledWith(expect.objectContaining({ orgId: "org-fnf", idPrefix: "mt:said:not-here:" }));
+  });
+
+  it("said an hour ago: silent, and nothing recorded", async () => {
+    hqLog.hqLogSince.mockResolvedValue([notHereRow(new Date(NOW.getTime() - 60 * 60 * 1000))]);
+    const r = await ask("@Match Time change the kit colour", "admin_ops", { deps: other });
+    expect(r).toEqual({ route: "admin_ops", outcome: "hq-not-here", replyText: null });
+    expect(hqLog.recordMatchTimeLine).not.toHaveBeenCalled();
+  });
+
+  it("said seven hours ago: said again", async () => {
+    hqLog.hqLogSince.mockResolvedValue([notHereRow(new Date(NOW.getTime() - 7 * 60 * 60 * 1000))]);
+    expect((await ask("@Match Time change the kit colour", "admin_ops", { deps: other }))?.replyText).toBe("I can't do that from this group.");
   });
 });

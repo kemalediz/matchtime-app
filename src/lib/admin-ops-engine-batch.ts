@@ -495,7 +495,10 @@ export async function runAdminOpsBatch(args: {
     // A free place (2026-10-16, `fee_waiver`) is given in the organisers'
     // group only (`admin-group-understand.ts` → `fee-waiver.ts`); in the
     // players' group it is answered exactly as `other` is.
-    if (facts.action === "other" || facts.action === "fee_waiver") {
+    // So is cancelling a match or putting it back on (2026-10-22): an
+    // organiser does that in HQ (`match-cancel.ts`); a player's "cancel the
+    // session" here never cancels anything.
+    if (facts.action === "other" || facts.action === "fee_waiver" || facts.action === "cancel_match" || facts.action === "restore_match") {
       // This used to read: "The mega-prompt still models admin intents
       // this route does not: `show_teams_request` phrasings that land
       // here, stats asks, and anything §14.3 calls 'the least designed

@@ -114,7 +114,7 @@ test("a tagged message the router calls unsure: one line, never silence, and no 
   expect(out).toMatchObject({
     handled: true,
     outcome: "hq-not-understood",
-    replyText: "I didn't catch what you'd like me to do. Ask *what can you do?* to see what I can do here.",
+    replyText: "I didn't catch what you'd like me to do.",
     react: null,
   });
 });
@@ -197,7 +197,7 @@ test("'@Match Time AH back' routed question (Haiku 4.5's route), topic other: th
   expect(await say(request, "@Match Time AH back")).toMatchObject({
     handled: true,
     outcome: "hq-not-here",
-    replyText: "I can't do that from this group. Ask *what can you do?* to see what I can do here.",
+    replyText: "I can't do that from this group.",
   });
 });
 
@@ -297,11 +297,14 @@ test("a Turkish club gets Turkish", async ({ request, db }) => {
 
 test("a monthly club: no squad change from the admin group, and it says so in one line", async ({ request, db }) => {
   await db.run(`UPDATE "Organisation" SET "squadMode" = 'monthly' WHERE id = $1`, [ORG_ID]);
+  // An earlier test here said the line already; it is not repeated within
+  // hours (2026-10-22), which admin-group-cancel.spec.ts covers.
+  await db.run(`DELETE FROM "AdminGroupMessage" WHERE "waMessageId" LIKE 'mt:said:not-here:%'`);
   engineOn({ "Colin out": { route: "other_att", facts: otherFacts("Colin", "out") } });
   expect(await say(request, "Colin out")).toMatchObject({
     handled: true,
     outcome: "hq-not-here",
-    replyText: "I can't do that from this group. Ask *what can you do?* to see what I can do here.",
+    replyText: "I can't do that from this group.",
   });
   expect(await statusOf(db, U.collector)).toBe("CONFIRMED");
   await db.run(`UPDATE "Organisation" SET "squadMode" = 'weekly' WHERE id = $1`, [ORG_ID]);

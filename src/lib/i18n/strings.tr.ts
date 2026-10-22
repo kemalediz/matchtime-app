@@ -697,8 +697,8 @@ export const tr: Strings = {
   format_switch_playing_header: (p) => `*Oynayanlar (${p.confirmed}/${p.maxPlayers}):*`,
   format_switch_bench_header: "*Yedekler:*",
   match_cancelled: (p) =>
-    `❌ *Maç iptal*, ${p.activityName}, ${p.whenLabel}.\n\n` +
-    `Bu hafta yeterli oyuncu yok. Haftaya görüşürüz!`,
+    `❌ *Maç iptal*: ${p.activityName}, ${p.whenLabel} bu hafta yapılmayacak. Bir dahaki sefere görüşürüz!`,
+  match_back_on: (p) => `✅ *Maç yeniden yapılıyor*: ${p.activityName}, ${p.whenLabel}. Plan aynen devam ediyor.`,
 
   // ── rows 66, 134: team-ops-engine.ts and the balancer's reasons ────
 
@@ -1185,6 +1185,7 @@ export const tr: Strings = {
       lines.push(`🔁 *"Sam ile Alex'i değiştir"*, *"Sam'i diğer takıma al"*: takımlarda değişiklik.`);
       lines.push(`✅ *EVET* (ya da mesajıma EVET diye cevap verin): önerilen takımları kesinleştiririm.`);
       lines.push(`📣 *"gruba sor, oynayabilecek var mı"*: boş yer varsa ana grupta sorarım.`);
+      lines.push(`❌ *"@Match Time cuma maçını iptal et"*, *"@Match Time maç yapılıyor"*: sıradaki maçı iptal ederim ya da yeniden açarım, oyuncu grubuna da haber veririm.`);
     }
     if (p.graphics) lines.push(`🖼️ *"posteri gönder"*, *"takım listesi görseli"*: listeyi ya da takımları görsel olarak, iletmeye hazır.`);
     if (p.picks) lines.push(`🙋 Kimin oynayacağını seçmenizi istediğimde listemdeki numaraları ya da isimleri, veya *HEPSİ* ya da *HİÇBİRİ* yazın.`);
@@ -1199,8 +1200,14 @@ export const tr: Strings = {
   hq_confirm_which: (p) =>
     `Bu EVET hangisi için: ${p.day} için önerilen takımlar mı, yapıştırılan kadro listesi mi? O mesaja EVET diye cevap verin.`,
   hq_nothing_waiting: `Şu anda EVET bekleyen bir şey yok.`,
-  hq_not_here: `Bunu bu gruptan yapamam. Burada neler yapabildiğimi görmek için *neler yapabilirsin?* diye sorun.`,
-  hq_not_understood: `Ne yapmamı istediğinizi anlayamadım. Burada neler yapabildiğimi görmek için *neler yapabilirsin?* diye sorun.`,
+  hq_not_here: `Bunu bu gruptan yapamam.`,
+  hq_match_cancelled: (p) => `Tamam: ${p.activityName}, ${p.when} iptal edildi. Oyuncu grubuna haber verdim.`,
+  hq_match_restored: (p) => `Tamam: ${p.activityName}, ${p.when} yeniden yapılıyor. Oyuncu grubuna haber verdim.`,
+  hq_cancel_no_match: `İptal edilecek yaklaşan bir maç yok.`,
+  hq_cancel_no_match_day: (p) => `"${p.day}" için yaklaşan bir maç bulamadım.`,
+  hq_restore_no_match: `Yeniden açılacak, iptal edilmiş yaklaşan bir maç yok.`,
+  hq_cancel_monthly: `Aylık kadrolarda maçı buradan iptal etmek henüz mümkün değil. Lütfen web sitesini kullanın.`,
+  hq_not_understood: `Ne yapmamı istediğinizi anlayamadım.`,
   hq_only_organisers: (p) => (p.names ? `Bunu yalnızca ${p.names} değiştirebilir.` : `Bunu yalnızca kulübün organizatörleri değiştirebilir.`),
   hq_score_saved: (p) => `Skor kaydedildi: ${sidesTr(p)}.`,
   hq_score_changed: (p) =>

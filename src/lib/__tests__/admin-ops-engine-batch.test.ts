@@ -928,3 +928,29 @@ describe("the stats blast is reported, never fired here", () => {
     expect(out.reasoning).toMatch(/@Match Time tag/i);
   });
 });
+
+describe("cancelling a match is never done from the players' group (2026-10-22)", () => {
+  const CANCEL = "@Match Time cancel the session";
+  const CANCEL_FACTS = { ...BLAST_FACTS, action: "cancel_match", lookbackMatches: 0, matchDay: "" };
+
+  it("an admin's 'cancel the session' there is answered as 'other': nothing written, nothing sent", async () => {
+    for (const action of ["cancel_match", "restore_match"]) {
+      const { model } = stubModel({ [CANCEL]: { ...CANCEL_FACTS, action } });
+      const r = recorder(model, paidWorld());
+      const res = await run({ messages: [msg({ body: CANCEL, senderUserId: "u-kemal" })], deps: r.deps });
+      const out = [...res.outcomes.values()][0];
+      expect(r.marked).toEqual([]);
+      expect(r.credits).toEqual([]);
+      expect(r.dms).toEqual([]);
+      expect(out.recruitRequest).toBe(false);
+      expect(out.partnerAskRequest).toBeNull();
+    }
+  });
+
+  it("the players' group's code never reaches the cancel path", async () => {
+    const { readFileSync } = await import("node:fs");
+    for (const f of ["src/lib/admin-ops-engine-batch.ts", "src/lib/pipeline/engine.ts", "src/app/api/whatsapp/analyze/route.ts"]) {
+      expect(readFileSync(f, "utf8")).not.toMatch(/from ["'][^"']*match-cancel["']/);
+    }
+  });
+});

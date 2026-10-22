@@ -480,12 +480,14 @@ The latest game or an earlier one:
 
 THE MESSAGE is the one you report on, with its sender. Above it you may see RECENT CHAT, MATCHTIME'S LAST POST, NOW (the time at the club) and, for a WhatsApp reply, the message it quotes (the THEY ARE REPLYING TO line). They tell you who "he" or "them" is; the action and every field come from THE MESSAGE.
 
-THE ACTION, exactly one:
+THE ACTION, exactly one. An action is reported only when the sender tells MatchTime to do it; a question, an opinion or a discussion about it ("should we cancel?", "should Bilal play free?") is "other".
   "bulk_payment" someone paid for several players.
-  "fee_waiver" the sender gives named players a free place, so they owe nothing for a game, or takes a free place back. "Free" meaning able to play ("I'm free Tuesday") is not this, and neither is a question or a discussion about it ("should Bilal play free?").
+  "fee_waiver" the sender gives named players a free place, so they owe nothing for a game, or takes a free place back. "Free" meaning able to play ("I'm free Tuesday") is not this.
+  "cancel_match" the sender calls off the club's game: cancel it, it is not happening, no game.
+  "restore_match" the sender puts a called-off game back on: it is back on, uncancel it, it goes ahead after all.
   "reminder" the sender wants MatchTime to remind them, at a time.
   "recruit" the sender asks MatchTime to find players who are not in the squad yet, either by inviting the club's own past players or by asking another club or group whether anyone can play. Asking to show, list or count the squad is "other", and so is talking or asking about another club.
-  "stats_blast" the sender tells MatchTime itself to send every player their own stats or ratings link. Telling the PLAYERS to do something (rate each other, open the link they already have), or only talking or asking about the links, is "other".
+  "stats_blast" the sender tells MatchTime itself to send every player their own stats or ratings link. Telling the PLAYERS to do something (rate each other, open the link they already have) is "other".
   "other" anything else.
 
 THE FIELDS. Fill the ones for the action; every other field is "", 0, false or [].
@@ -493,7 +495,7 @@ THE FIELDS. Fill the ones for the action; every other field is "", 0, false or [
   count bulk_payment: how many players they paid for.
   coveredRefs the people the action is about, one entry each, as written: for bulk_payment the people paid for, if named; for fee_waiver the people given the free place or losing it. "he" or "him" is the person the message named, else the author of the quoted message when the THEY ARE REPLYING TO line names one.
   undo fee_waiver: true when the message takes a free place back, false when it gives one.
-  matchDay fee_waiver: the day the message names for the game, as written ("tonight", "last night", "next Friday", "cuma"); "" when it names none or only "this week".
+  matchDay fee_waiver, cancel_match, restore_match: the day the message names for the game, as written ("tonight", "next Friday", "cuma"); "" when it names none or only "this week".
   phrase reminder: the time phrase exactly as written ("on Monday", "tomorrow at 6"), never a date.
   note reminder: what to remind them about, in their own words ("bring the bibs"); "" when it names nothing.
   lookbackMatches recruit: how many of the club's recent matches to draw its own players from ("the last 5 matches" -> 5, "the last couple of games" -> 2); 0 when no number is named.
@@ -509,6 +511,11 @@ Payments and free places:
   "put Bilal down as free on Friday" / "Bilal bu akşam ücretsiz oynasın" -> fee_waiver, coveredRefs ["Bilal"], undo false, matchDay "on Friday" / "bu akşam"
   "scrap that, Tom isn't free, he pays" / "Ali ücretsiz değil, ödesin" -> fee_waiver, coveredRefs ["Tom"] / ["Ali"], undo true
   "should Bilal play free?" -> other: a discussion
+Calling a game off, and putting it back on:
+  "Cancel the session" / "maçı iptal et" -> cancel_match, matchDay ""
+  "storm, no game Friday" / "bu hafta maç yok" -> cancel_match, matchDay "Friday" / ""
+  "it's back on, uncancel Friday" / "maç yapılıyor, iptali geri al" -> restore_match, matchDay "Friday" / ""
+  "should we cancel Friday?" / "the session should be cancelled anyway" -> other: a question, an opinion
 Reminders:
   "remind me tomorrow at 6 to bring the bibs" -> reminder, phrase "tomorrow at 6", note "bring the bibs"
 Players from the club's own past games:
@@ -706,7 +713,7 @@ const ADMIN_SCHEMA = {
   properties: {
     action: {
       type: "string",
-      enum: ["bulk_payment", "fee_waiver", "reminder", "recruit", "stats_blast", "other"],
+      enum: ["bulk_payment", "fee_waiver", "reminder", "recruit", "stats_blast", "cancel_match", "restore_match", "other"],
     },
     payerRef: { type: "string" },
     count: { type: "number" },
@@ -1024,7 +1031,7 @@ export function parseFacts(
 
     case "admin": {
       const action = str(raw.action).toLowerCase();
-      if (!["bulk_payment", "fee_waiver", "reminder", "recruit", "stats_blast", "other"].includes(action)) {
+      if (!["bulk_payment", "fee_waiver", "reminder", "recruit", "stats_blast", "cancel_match", "restore_match", "other"].includes(action)) {
         bad(`unknown admin action "${str(raw.action)}"`);
         return { facts: { kind: "none" }, degradations };
       }
@@ -1038,7 +1045,9 @@ export function parseFacts(
           ? { coveredRefs: raw.coveredRefs.map(str).filter(Boolean) }
           : {}),
         ...(action === "fee_waiver" && raw.undo === true ? { undo: true } : {}),
-        ...(action === "fee_waiver" && typeof raw.matchDay === "string" && raw.matchDay.trim() ? { matchDay: raw.matchDay.trim() } : {}),
+        ...(["fee_waiver", "cancel_match", "restore_match"].includes(action) && typeof raw.matchDay === "string" && raw.matchDay.trim()
+          ? { matchDay: raw.matchDay.trim() }
+          : {}),
         ...(typeof raw.phrase === "string" && raw.phrase ? { phrase: raw.phrase } : {}),
         ...(typeof raw.note === "string" && raw.note ? { note: raw.note } : {}),
         // 0 (the schema's stand-in for "not stated") and anything
