@@ -1204,7 +1204,13 @@ export async function runAttendanceEngineBatch(args: {
       // with a clamped lookback) rather than the analyzer, and the two
       // still share `route.ts`'s one list, one implementation and one
       // dedupe — "only the last one fires" holds across both.
-      recruitRequest: !!attendanceFacts?.sideRequests.includes("recruit") && m.senderIsAdmin,
+      //
+      // 2026-10-22: the ENGINE's decision, not the raw `sideRequests`. A
+      // reply quoting a partner club's ask is about that club's game, and
+      // reading the facts here skipped the engine's return for it: Kemal's
+      // reply to FNF's ask ("they need 3 players") DMed 19 Sutton players
+      // for Sutton's own Tuesday.
+      recruitRequest: !!engineOutcome?.recruitRequested && m.senderIsAdmin,
       recordTentativeForUserIds: [
         ...new Set(
           [

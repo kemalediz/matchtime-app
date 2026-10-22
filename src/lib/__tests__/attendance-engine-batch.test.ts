@@ -1461,3 +1461,51 @@ describe("deps.vetFacts: the caller narrows the facts before the engine decides"
     expect(d.registered).toEqual(["u-pete"]);
   });
 });
+
+// ── 2026-10-22, SUTTON FC: A REPLY TO A PARTNER CLUB'S ASK NEVER RECRUITS ──
+//
+// Kemal (owner) swipe-replied to FNF's ask post: "used this feature for the
+// first time. Wasim, Kieran, Hamzah, Raihan play on Fridays and they need 3
+// players, venue is Harris, Merton, very close to Wimbledon." Router `offer`,
+// extractor `{claims: [], sideRequests: ["recruit"]}` (prod trace on
+// AnalyzedMessage cmvjajm24002k07l6bq596783). The engine had already said the
+// reply was about FNF's game, but `recruitRequest` was read straight off the
+// raw facts, so `route.ts` DMed 19 Sutton players for Sutton's own Tuesday.
+describe("a recruit side request on a reply to a partner club's ask (2026-10-22)", () => {
+  const ASK_POST = "true_120363000000009200@g.us_3EB0FNFASK";
+  const PROMOTE =
+    "used this feature for the first time. Wasim, Kieran, Hamzah, Raihan play on Fridays and they need 3 players, venue is Harris, Merton, very close to Wimbledon.";
+  const RECRUIT_FACTS = { claims: [], affirmation: "none", sideRequests: ["recruit"] };
+  const withAsk = () =>
+    state({ partnerAsks: [{ askId: "ask-fnf", postWaMessageId: ASK_POST, askerName: "FNF", open: true }] });
+  const ownerMsg = (over: Partial<EngineBatchMessage> = {}) =>
+    msg({
+      body: PROMOTE,
+      authorName: "Alice Admin",
+      senderUserId: "u-alice",
+      senderName: "Alice Admin",
+      senderIsAdmin: true,
+      route: "offer",
+      quoted: { id: "3EB0FNFASK", fromMatchTime: true },
+      ...over,
+    });
+
+  it("the owner promoting FNF's ask to his players: no recruit for the club's own match", async () => {
+    const d = deps({ model: modelReturning(RECRUIT_FACTS), loadState: async () => withAsk() });
+    const r = await run([ownerMsg()], d);
+    expect(r.outcomes.get("wa-1")?.recruitRequest).toBe(false);
+    expect(d.registered).toEqual([]);
+  });
+
+  it("the same message NOT replying to the ask still recruits, as it always did", async () => {
+    const d = deps({ model: modelReturning(RECRUIT_FACTS), loadState: async () => withAsk() });
+    const r = await run([ownerMsg({ quoted: null })], d);
+    expect(r.outcomes.get("wa-1")?.recruitRequest).toBe(true);
+  });
+
+  it("a non-admin's recruit side request never fires", async () => {
+    const d = deps({ model: modelReturning(RECRUIT_FACTS), loadState: async () => withAsk() });
+    const r = await run([ownerMsg({ quoted: null, senderIsAdmin: false })], d);
+    expect(r.outcomes.get("wa-1")?.recruitRequest).toBe(false);
+  });
+});

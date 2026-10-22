@@ -21,7 +21,7 @@
 import { test, expect, postAnalyze, resetDb } from "../fixtures";
 import { MATCH, ORG_ID, U } from "../helpers/constants";
 import { E2E } from "../helpers/env";
-import { clearPipelineStubs, engineOn, selfIn, selfOut } from "../helpers/stub";
+import { clearPipelineStubs, engineOn, facts, selfIn, selfOut } from "../helpers/stub";
 import type { TestDb } from "../helpers/test-db";
 
 test.describe.configure({ mode: "serial" });
@@ -144,6 +144,37 @@ test("OUT replying to the ask takes him off the asking club's match", async ({ r
   ]);
   expect(await rowOf(db, ASKER_MATCH, U.fresh)).toBe("DROPPED");
   expect(await rowOf(db, MATCH.upcoming, U.fresh)).toBeUndefined();
+});
+
+// 2026-10-22, Sutton FC: Kemal (the owner) swipe-replied to FNF's ask to
+// promote it to his own players. The extractor read "they need 3 players"
+// as a recruit side request, and MatchTime queued 19 DMs for SUTTON's own
+// Tuesday game. A reply to a partner club's ask is about that club's game.
+const PROMOTE =
+  "used this feature for the first time. Wasim, Kieran, Hamzah, Raihan play on Fridays and they need 3 players, venue is Harris, Merton, very close to Wimbledon.";
+const recruitDmCount = async (db: TestDb) =>
+  Number((await db.one<{ n: string }>(`SELECT count(*)::text AS n FROM "BotJob" WHERE kind = 'dm' AND "orgId" = $1`, [ORG_ID]))?.n ?? 0);
+
+test("the owner's reply to the ask saying 'they need 3 players' recruits nobody for his own club", async ({ request, db }) => {
+  engineOn({ [PROMOTE]: { route: "offer", facts: facts([], { sideRequests: ["recruit"] }) } });
+  const before = await recruitDmCount(db);
+  const m = id();
+  const res = await postAnalyze(request, [
+    { waMessageId: m, body: PROMOTE, authorPhone: "447700900001", authorName: "Alex Admin", quotedBody: "⚽ *FNF Guests* need 1 player", quotedFromMatchTime: true, quotedMessageId: "3EB0XVOLASK" },
+  ]);
+  const r = (res.results as Result[]).find((x) => x.waMessageId === m)!;
+  expect(r.reply ?? "").not.toMatch(/DM'd|pinged|No new players/);
+  expect(await recruitDmCount(db)).toBe(before);
+  const row = await db.one<{ action: string | null }>(`SELECT action FROM "AnalyzedMessage" WHERE "waMessageId" = $1`, [m]);
+  expect(row?.action ?? "").not.toContain("recruit");
+});
+
+test("the same words with no reply are still the owner's recruit ask for his own club", async ({ request, db }) => {
+  engineOn({ [PROMOTE]: { route: "offer", facts: facts([], { sideRequests: ["recruit"] }) } });
+  const m = id();
+  await postAnalyze(request, [{ waMessageId: m, body: PROMOTE, authorPhone: "447700900001", authorName: "Alex Admin" }]);
+  const row = await db.one<{ action: string | null }>(`SELECT action FROM "AnalyzedMessage" WHERE "waMessageId" = $1`, [m]);
+  expect(row?.action ?? "").toContain("recruit");
 });
 
 test("M1 (review, Kemal): a partner club with NO upcoming game of its own still lends: the reply registers", async ({ request, db }) => {

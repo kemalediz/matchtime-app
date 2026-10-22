@@ -1680,6 +1680,15 @@ export interface MessageOutcome {
    */
   statsClarificationAsked?: boolean;
   /**
+   * The message asks for players for THIS club's own match (the extractor's
+   * `recruit` side request), and the engine decided it is about that match
+   * (2026-10-22). False for a reply quoting a partner club's ask: that is
+   * about the other club's game, so it never recruits for this one. The
+   * admin gate and the blast itself stay in `attendance-engine-batch.ts`
+   * and `route.ts`. Absent means no.
+   */
+  recruitRequested?: boolean;
+  /**
    * Members an ADMIN reported as a maybe (2026-09-30): "@Sait is a maybe,
    * remind him". The route records each as `TentativeAvailability`, the
    * same row a member's own maybe creates, so the follow-up DM chases

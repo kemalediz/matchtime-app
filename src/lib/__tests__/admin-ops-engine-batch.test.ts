@@ -527,6 +527,23 @@ describe("the recruit blast is reported, never fired here", () => {
     expect([...res.outcomes.values()][0].recruitLookbackMatches).toBeNull();
   });
 
+  // 2026-10-22, Sutton FC: a swipe-reply to MatchTime's post counts as a
+  // tag, so the owner's reply to FNF's ask passed the admin and tag gates.
+  // The quoted post's id must reach the engine, which refuses it.
+  it("an admin's swipe-reply to a partner club's ask is never a recruit for this club", async () => {
+    const { model } = stubModel({ [BLAST]: BLAST_FACTS });
+    const r = recorder(model, {
+      ...paidWorld(),
+      partnerAsks: [{ askId: "ask-fnf", postWaMessageId: "true_g@g.us_3EB0FNFASK", askerName: "FNF", open: true }],
+    });
+    const replying = { ...msg({ body: BLAST, senderUserId: "u-kemal" }), quoted: { id: "3EB0FNFASK", fromMatchTime: true } };
+    const res = await run({ messages: [replying], deps: r.deps });
+    const out = [...res.outcomes.values()][0];
+    expect(out.recruitRequest).toBe(false);
+    expect(out.partnerAskRequest ?? null).toBeNull();
+    expect(out.reasoning).toMatch(/partner club's ask/);
+  });
+
   it("a non-admin's ask fires nothing and is not reported as a request", async () => {
     const { model } = stubModel({ [BLAST]: BLAST_FACTS });
     const r = recorder(model, paidWorld());

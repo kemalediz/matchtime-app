@@ -791,6 +791,13 @@ export function decide(input: EngineInput): EngineResult {
         return;
       }
 
+      // A recruit side request is about THIS club's match only once the
+      // partner-ask return above has not fired (2026-10-22, Sutton FC: the
+      // owner replied to FNF's ask with "they need 3 players" and 19 Sutton
+      // players were queued DMs for Sutton's own Tuesday game). The batch
+      // reads this decision, never the raw facts.
+      if (facts.sideRequests.includes("recruit")) out.recruitRequested = true;
+
       // Review L1: a member picked as a partner club's guest for a game that
       // overlaps this one cannot also say IN here. One reply, no write. His
       // OUT is never refused.
@@ -3091,6 +3098,19 @@ export function decide(input: EngineInput): EngineResult {
         if (RECRUIT_BLAST_REQUIRES_TAG && !msg.tagged) {
           out.reasons.push(
             "a recruit blast requires an @Match Time tag: a mass DM is not fired off an untagged message",
+          );
+          return;
+        }
+        // ── A REPLY TO A PARTNER CLUB'S ASK (2026-10-22) ─────────────
+        //
+        // A swipe-reply to MatchTime's post counts as a tag, so an owner
+        // replying to FNF's ask with "they need 3 players" passes both
+        // gates above. That reply is about FNF's game; it never asks for
+        // players for this club's own match, by blast or by partner ask.
+        const repliedAsk = quotedPartnerAsk(msg, state);
+        if (repliedAsk) {
+          out.reasons.push(
+            `a reply to ${repliedAsk.askerName}'s partner club's ask: no recruit for this club's match`,
           );
           return;
         }
