@@ -242,6 +242,19 @@ export function clearRosterSurveyStub(): void {
   rmSync(`${E2E.ROSTER_SURVEY_STUB_FILE}.calls`, { force: true });
 }
 
+/** The VOLUNTEER-NAME stub (2026-10-22): a nameless volunteer's reply →
+ *  "name:<the name>" | "out". `{}` means "other", which saves no name and
+ *  asks again. */
+export function setVolunteerNameStub(stub: { bodies?: Record<string, string>; fail?: string[] }): void {
+  mkdirSync(path.dirname(E2E.VOLUNTEER_NAME_STUB_FILE), { recursive: true });
+  writeFileSync(E2E.VOLUNTEER_NAME_STUB_FILE, JSON.stringify(stub, null, 2));
+}
+
+export function clearVolunteerNameStub(): void {
+  setVolunteerNameStub({});
+  rmSync(`${E2E.VOLUNTEER_NAME_STUB_FILE}.calls`, { force: true });
+}
+
 /** The user turns a DM classifier stub was asked about, oldest first. */
 export function stubCalls(file: string): Array<{ label: string; user: string }> {
   try {
@@ -266,6 +279,7 @@ export function clearPipelineStubs(): void {
   clearMatchAvailabilityStub();
   clearFeeReplyStub();
   clearRosterSurveyStub();
+  clearVolunteerNameStub();
 }
 
 // ── Fact builders ─────────────────────────────────────────────────────

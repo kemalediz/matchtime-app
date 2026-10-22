@@ -5463,6 +5463,9 @@ export const en = {
    *  is written (2026-10-22). His next DM is taken as the name. */
   xask_dm_name_ask: (p: { asker: string; day: string }) =>
     `Thanks! Before I put you down for *${p.asker}*'s game, ${p.day}, what name should I list you under? Just reply with your name.`,
+  /** He withdrew when asked for his name (2026-10-22): nothing was written. */
+  xask_dm_name_withdrawn: (p: { asker: string; day: string }) =>
+    `No problem, I haven't put you down for *${p.asker}*'s game, ${p.day}.`,
   xask_vol_game_over: (p: { asker: string }) => `*${p.asker}*'s game is over now, so there's nothing to change.`,
   xask_dm_which: (p: { asker: string; askerDay: string; own: string; ownDay: string }) =>
     `Which game are you out of? Reply *1* for *${p.asker}* (${p.askerDay}) or *2* for *${p.own}* (${p.ownDay}).`,

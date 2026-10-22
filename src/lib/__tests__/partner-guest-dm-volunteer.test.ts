@@ -36,6 +36,8 @@ vi.mock("../partner-guest", () => guest);
 vi.mock("../ai-budget", () => ({ withOrgAiBudget: (_o: string, f: () => unknown) => f() }));
 vi.mock("../match-availability-context", () => ({ loadMatchAvailabilityFacts: vi.fn() }));
 vi.mock("../club-connect", () => ({ matchtimeWaNumber: () => "447700900555" }));
+const nameReader = vi.hoisted(() => ({ readVolunteerNameReply: vi.fn() }));
+vi.mock("../volunteer-name-reply", async (orig) => ({ ...(await orig<typeof import("../volunteer-name-reply")>()), ...nameReader }));
 
 import {
   askAboutOpenPartnerAsk,
@@ -80,6 +82,8 @@ beforeEach(() => {
   dbMock.botJob.create.mockResolvedValue({ id: "j" });
   resolver.resolveDmSelfAttendance.mockResolvedValue({ decision: "in", via: "fast-path" });
   guest.handlePartnerVolunteer.mockResolvedValue({ ok: true, outcome: "registered-bench", dmText: "Thanks", dmQueued: true });
+  dbMock.attendance.findUnique.mockResolvedValue(null);
+  nameReader.readVolunteerNameReply.mockResolvedValue({ kind: "other", why: "default" });
 });
 
 describe("findAskByRef", () => {
@@ -227,9 +231,10 @@ describe("askPartnerWhichByDm (D5b's question, by DM)", () => {
 // Prod, MT Test: C2 (Friday MT Community) volunteered by the DM code with an
 // EMPTY User.name, and MT Test's squad listed him as "(unnamed)". Now an IN
 // from a nameless volunteer gets ONE question first ("what name should I
-// list you under?") and nothing is written; his next DM IS the name (taken
-// as typed, trimmed and capped, never parsed), saved to an empty User.name
-// only, and then the ordinary volunteer writer runs.
+// list you under?") and nothing is written. His next DM is READ by the model
+// (lib/volunteer-name-reply.ts), never taken as typed: a name fills an empty
+// User.name only and the ordinary volunteer writer runs; a withdrawal saves
+// nothing and puts him nowhere; anything else asks the question again.
 describe("a nameless volunteer is asked for his name first", () => {
   const coded = (userName: string | null, text = `IN (ref ${REF})`) =>
     handleCodedPartnerAskDm({ askId: "ask1", userId: "c2", userName, text, replyPhone: "447700900111", waMessageId: "wa-dm-1", now: NOW });
@@ -274,9 +279,23 @@ describe("a nameless volunteer is asked for his name first", () => {
     expect(guest.handlePartnerVolunteer).toHaveBeenCalledWith(expect.objectContaining({ polarity: "out" }), NOW);
   });
 
-  it("his reply is the name: saved to an EMPTY User.name only, then he is volunteered IN under it", async () => {
+  it("his reply is read by the model, with the question we asked, the club and the day as context", async () => {
     dbMock.sentNotification.findFirst.mockResolvedValue(pending);
-    const r = await reply("  Cem   Yilmaz ");
+    nameReader.readVolunteerNameReply.mockResolvedValue({ kind: "name", name: "Ben" });
+    await reply("Ben here, still in");
+    const day = dayCommaTimeLabel("en", KICKOFF);
+    expect(nameReader.readVolunteerNameReply).toHaveBeenCalledWith("Ben here, still in", {
+      askerName: "FNF",
+      day,
+      question: en.xask_dm_name_ask({ asker: "FNF", day }),
+      userId: "c2",
+    });
+  });
+
+  it("his reply gives his name: saved to an EMPTY User.name only, then he is volunteered IN under it", async () => {
+    dbMock.sentNotification.findFirst.mockResolvedValue(pending);
+    nameReader.readVolunteerNameReply.mockResolvedValue({ kind: "name", name: "Cem  Yilmaz" });
+    const r = await reply("it's Cem Yilmaz");
     expect(dbMock.user.updateMany).toHaveBeenCalledWith({
       where: { id: "c2", OR: [{ name: null }, { name: "" }] },
       data: { name: "Cem Yilmaz" },
@@ -299,10 +318,80 @@ describe("a nameless volunteer is asked for his name first", () => {
     });
     expect(dbMock.user.updateMany).not.toHaveBeenCalled();
     expect(guest.handlePartnerVolunteer).not.toHaveBeenCalled();
+    expect(nameReader.readVolunteerNameReply).not.toHaveBeenCalled();
   });
 
-  it("a reply that cannot be a name (a number, emoji only): asked once more, nothing written", async () => {
+  // The bug (2026-10-22): "OUT", "actually can't make it", "yok gelemiyorum"
+  // were saved as his name and he was put IN.
+  it("he withdraws instead: no name saved, the question closed, nothing IN, a short ack in his club's language", async () => {
     dbMock.sentNotification.findFirst.mockResolvedValue(pending);
+    dbMock.attendance.findUnique.mockResolvedValue(null);
+    nameReader.readVolunteerNameReply.mockResolvedValue({ kind: "out" });
+    const r = await reply("actually can't make it");
+    expect(r).toEqual({ handled: "xask-dm-name-withdrawn", outcome: "withdrew" });
+    expect(dbMock.user.updateMany).not.toHaveBeenCalled();
+    expect(guest.handlePartnerVolunteer).not.toHaveBeenCalled();
+    expect(dbMock.sentNotification.deleteMany).toHaveBeenCalledWith({ where: { key: "xask:name:c2:ask1" } });
+    expect(dbMock.attendance.findUnique).toHaveBeenCalledWith({ where: { matchId_userId: { matchId: "m-fnf", userId: "c2" } }, select: { status: true } });
+    expect(dms()).toEqual([
+      expect.objectContaining({ orgId: "sutton", phone: "447700900111", text: en.xask_dm_name_withdrawn({ asker: "FNF", day: dayCommaTimeLabel("en", KICKOFF) }) }),
+    ]);
+  });
+
+  it("he withdraws in a Turkish club: the ack is Turkish", async () => {
+    dbMock.organisation.findUnique.mockImplementation(({ where }: { where: { id: string } }) =>
+      Promise.resolve(where.id === "fnf" ? { id: "fnf", name: "FNF", language: "en" } : { id: "sutton", name: "Sutton FC", language: "tr" }),
+    );
+    dbMock.sentNotification.findFirst.mockResolvedValue(pending);
+    dbMock.attendance.findUnique.mockResolvedValue(null);
+    nameReader.readVolunteerNameReply.mockResolvedValue({ kind: "out" });
+    await reply("yok gelemiyorum");
+    expect(dms()[0].text).toBe(tr.xask_dm_name_withdrawn({ asker: "FNF", day: dayCommaTimeLabel("tr", KICKOFF) }));
+  });
+
+  it("he withdraws but is somehow on the asking club's list already: the volunteer writer's own OUT path takes him off", async () => {
+    dbMock.sentNotification.findFirst.mockResolvedValue(pending);
+    dbMock.attendance.findUnique.mockResolvedValue({ status: "BENCH" });
+    dbMock.user.findUnique.mockResolvedValue({ phoneNumber: "+447700900111", name: null });
+    guest.handlePartnerVolunteer.mockResolvedValue({ ok: true, outcome: "withdrawn", dmText: "OK", dmQueued: true });
+    nameReader.readVolunteerNameReply.mockResolvedValue({ kind: "out" });
+    const r = await reply("OUT");
+    expect(guest.handlePartnerVolunteer).toHaveBeenCalledWith(
+      { askId: "ask1", userId: "c2", name: "", polarity: "out", sourceMessageId: "wa-dm-2", replyPhone: "447700900111" },
+      NOW,
+    );
+    expect(r).toEqual({ handled: "xask-dm-volunteer", outcome: "withdrawn" });
+    expect(dbMock.user.updateMany).not.toHaveBeenCalled();
+    // The writer answers him itself; no second ack from here.
+    expect(dms()).toEqual([]);
+  });
+
+  it("a question or anything unclear: nothing written, the question asked once more, still open", async () => {
+    dbMock.sentNotification.findFirst.mockResolvedValue(pending);
+    nameReader.readVolunteerNameReply.mockResolvedValue({ kind: "other", why: "a question" });
+    const r = await reply("which match?");
+    expect(r).toEqual({ handled: "xask-dm-name-ask", outcome: "asked-name-again" });
+    expect(dbMock.user.updateMany).not.toHaveBeenCalled();
+    expect(guest.handlePartnerVolunteer).not.toHaveBeenCalled();
+    expect(dbMock.sentNotification.deleteMany).not.toHaveBeenCalled();
+    expect(dms()).toEqual([expect.objectContaining({ text: en.xask_dm_name_ask({ asker: "FNF", day: dayCommaTimeLabel("en", KICKOFF) }) })]);
+  });
+
+  it("the model call fails: fail safe, no name, nothing IN, asked again", async () => {
+    dbMock.sentNotification.findFirst.mockResolvedValue(pending);
+    nameReader.readVolunteerNameReply.mockRejectedValue(new Error("AI budget reached"));
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    const r = await reply("Ali");
+    err.mockRestore();
+    expect(r).toEqual({ handled: "xask-dm-name-ask", outcome: "asked-name-again" });
+    expect(dbMock.user.updateMany).not.toHaveBeenCalled();
+    expect(guest.handlePartnerVolunteer).not.toHaveBeenCalled();
+    expect(dms()).toHaveLength(1);
+  });
+
+  it("a 'name' that cannot be one (a number) never becomes User.name, whatever the model said", async () => {
+    dbMock.sentNotification.findFirst.mockResolvedValue(pending);
+    nameReader.readVolunteerNameReply.mockResolvedValue({ kind: "name", name: "07893 944985" });
     const r = await reply("07893 944985");
     expect(r).toEqual({ handled: "xask-dm-name-ask", outcome: "asked-name-again" });
     expect(dbMock.user.updateMany).not.toHaveBeenCalled();
@@ -310,12 +399,8 @@ describe("a nameless volunteer is asked for his name first", () => {
     expect(dms()).toHaveLength(1);
   });
 
-  it("volunteerNameFromReply: trimmed, spaces collapsed, capped at 40, never a number", () => {
+  it("volunteerNameFromReply is still exported from here: trimmed, capped, never a number", () => {
     expect(volunteerNameFromReply("  Cem\n Yilmaz ")).toBe("Cem Yilmaz");
-    expect(volunteerNameFromReply("x".repeat(60))).toHaveLength(40);
-    expect(volunteerNameFromReply("👍")).toBeNull();
     expect(volunteerNameFromReply("+447893944985")).toBeNull();
-    expect(volunteerNameFromReply("")).toBeNull();
-    expect(volunteerNameFromReply("İlker")).toBe("İlker");
   });
 });

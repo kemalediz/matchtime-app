@@ -35,6 +35,9 @@ import { partnerAskToQuestion } from "./partner-volunteer-rules";
 import { dayCommaTimeLabel } from "./i18n/dates";
 import { t } from "./i18n/t";
 import { usableName } from "./player-display-name";
+import { readVolunteerNameReply, volunteerNameFromReply, type VolunteerNameReply } from "./volunteer-name-reply";
+
+export { volunteerNameFromReply };
 
 const LIVE = ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"];
 /** How long the "which game?" question waits for its answer. */
@@ -212,6 +215,8 @@ export async function findAskByRef(text: string, now: Date = new Date()): Promis
 
 interface AskForDm {
   askId: string;
+  /** The asking club's match. */
+  matchId: string;
   askerName: string;
   partnerOrgId: string;
   partnerName: string;
@@ -224,7 +229,7 @@ interface AskForDm {
 async function loadAskForDm(askId: string): Promise<AskForDm | null> {
   const ask = await db.partnerAsk.findUnique({
     where: { id: askId },
-    select: { id: true, askerOrgId: true, partnerOrgId: true, match: { select: { date: true } } },
+    select: { id: true, askerOrgId: true, partnerOrgId: true, matchId: true, match: { select: { date: true } } },
   });
   if (!ask) return null;
   const [asker, partner] = await Promise.all([
@@ -234,6 +239,7 @@ async function loadAskForDm(askId: string): Promise<AskForDm | null> {
   if (!asker || !partner) return null;
   return {
     askId: ask.id,
+    matchId: ask.matchId,
     askerName: asker.name,
     partnerOrgId: ask.partnerOrgId,
     partnerName: partner.name,
@@ -260,7 +266,7 @@ async function claimWhich(askId: string, userId: string): Promise<boolean> {
   }
 }
 
-export type CodedAskDmResult = { handled: "xask-dm-volunteer" | "xask-dm-unclear" | "xask-dm-name-ask"; outcome: string };
+export type CodedAskDmResult = { handled: "xask-dm-volunteer" | "xask-dm-unclear" | "xask-dm-name-ask" | "xask-dm-name-withdrawn"; outcome: string };
 
 /**
  * A DM carrying an ask's code. The resolver decides IN or OUT on his words
@@ -327,30 +333,31 @@ export async function handleCodedPartnerAskDm(args: {
 // Prod, MT Test: C2 volunteered by the DM code with an empty User.name, and
 // the asking club's squad listed him as "(unnamed)". So an IN from a
 // volunteer MatchTime holds no name for gets ONE question first, and his
-// NEXT DM within the window is the name: taken as typed (trimmed, spaces
-// collapsed, capped), never parsed for phrases. It fills an EMPTY
-// User.name only, never overwrites one, and then the volunteer writer runs
-// exactly as for a named volunteer. A reply that cannot be a name (no
-// letter, a phone number) gets the question once more and writes nothing.
+// next DM within the window is READ by the model (volunteer-name-reply.ts),
+// never taken as typed. It used to be: "OUT", "actually can't make it" or
+// "which match?" became his name and he was put IN.
+//
+//   - a name: fills an EMPTY User.name only (never overwrites one), then
+//     the volunteer writer runs exactly as for a named volunteer;
+//   - a withdrawal: no name, the question closed, nothing IN; if he is on
+//     the asking club's list after all, the writer's own OUT path;
+//   - anything else, or a failed call: nothing written, the question asked
+//     once more. Not handed to the DM handlers below: inside this window a
+//     bare "IN" or "yes" is about this ask, and the cold handlers would
+//     read it against his OWN club's game.
 
 /** How long the name question waits for his reply. */
 export const VOLUNTEER_NAME_TTL_MS = 12 * 3600_000;
-/** The longest name kept from his reply. */
-const VOLUNTEER_NAME_MAX = 40;
-
-/** His reply as a name, or null when it cannot be one. (pure) */
-export function volunteerNameFromReply(text: string): string | null {
-  const v = usableName(text);
-  return v ? v.slice(0, VOLUNTEER_NAME_MAX).trim() : null;
-}
 
 const nameKeyPrefix = (userId: string) => `xask:name:${userId}:`;
+
+const nameQuestion = (ask: AskForDm) => t(ask.lang).xask_dm_name_ask({ asker: ask.askerName, day: ask.day });
 
 async function askVolunteerName(ask: AskForDm, userId: string, replyPhone: string | null): Promise<void> {
   // One open question per person: the newest ask he said IN to.
   await db.sentNotification.deleteMany({ where: { key: { startsWith: nameKeyPrefix(userId) } } });
   await db.sentNotification.create({ data: { key: `${nameKeyPrefix(userId)}${ask.askId}`, kind: "xask-dm-name", targetUser: userId } });
-  await dm(ask.partnerOrgId, replyPhone ?? (await phoneOnFile(userId)), t(ask.lang).xask_dm_name_ask({ asker: ask.askerName, day: ask.day }));
+  await dm(ask.partnerOrgId, replyPhone ?? (await phoneOnFile(userId)), nameQuestion(ask));
   console.log(`[partner-guest-dm] ${userId}: no name on file, asked for one before ask ${ask.askId}`);
 }
 
@@ -373,12 +380,40 @@ export async function handleVolunteerNameReply(args: {
   });
   if (!asked) return null;
   const askId = asked.key.slice(nameKeyPrefix(args.userId).length);
-  const name = volunteerNameFromReply(args.text);
+  const ask = await loadAskForDm(askId);
+  if (!ask) return null;
+  const replyPhone = async () => args.replyPhone ?? (await phoneOnFile(args.userId));
+
+  const reply: VolunteerNameReply = await withOrgAiBudget(ask.partnerOrgId, () =>
+    readVolunteerNameReply(args.text, { askerName: ask.askerName, day: ask.day, question: nameQuestion(ask), userId: args.userId }),
+  ).catch((err: unknown) => {
+    console.error(`[partner-guest-dm] ${args.userId}: the name reply was not read:`, err instanceof Error ? err.message : "failed");
+    return { kind: "other", why: "classifier error" } as const;
+  });
+
+  // Withdrawn: nothing saved, nothing IN.
+  if (reply.kind === "out") {
+    await db.sentNotification.deleteMany({ where: { key: asked.key } });
+    const row = await db.attendance.findUnique({ where: { matchId_userId: { matchId: ask.matchId, userId: args.userId } }, select: { status: true } });
+    if (row && (row.status === "CONFIRMED" || row.status === "BENCH")) {
+      const held = (await db.user.findUnique({ where: { id: args.userId }, select: { name: true } }))?.name ?? "";
+      const r = await handlePartnerVolunteer(
+        { askId, userId: args.userId, name: held, polarity: "out", sourceMessageId: args.waMessageId, replyPhone: args.replyPhone },
+        now,
+      );
+      console.log(`[partner-guest-dm] ${args.userId}: withdrew at the name question, off ask ${askId}'s list (${r.outcome})`);
+      return { handled: "xask-dm-volunteer", outcome: r.outcome };
+    }
+    await dm(ask.partnerOrgId, await replyPhone(), t(ask.lang).xask_dm_name_withdrawn({ asker: ask.askerName, day: ask.day }));
+    console.log(`[partner-guest-dm] ${args.userId}: withdrew at the name question for ask ${askId}, nothing written`);
+    return { handled: "xask-dm-name-withdrawn", outcome: "withdrew" };
+  }
+
+  // The deterministic guard holds whatever the model said.
+  const name = reply.kind === "name" ? volunteerNameFromReply(reply.name) : null;
   if (!name) {
-    const ask = await loadAskForDm(askId);
-    if (!ask) return null;
-    await dm(ask.partnerOrgId, args.replyPhone ?? (await phoneOnFile(args.userId)), t(ask.lang).xask_dm_name_ask({ asker: ask.askerName, day: ask.day }));
-    console.log(`[partner-guest-dm] ${args.userId}: reply to the name question was not a name, asked again`);
+    await dm(ask.partnerOrgId, await replyPhone(), nameQuestion(ask));
+    console.log(`[partner-guest-dm] ${args.userId}: reply to the name question gave no name (${reply.kind === "other" ? reply.why : "unusable"}), asked again`);
     return { handled: "xask-dm-name-ask", outcome: "asked-name-again" };
   }
   await db.user.updateMany({ where: { id: args.userId, OR: [{ name: null }, { name: "" }] }, data: { name } });

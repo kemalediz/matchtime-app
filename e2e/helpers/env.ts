@@ -131,6 +131,12 @@ export const E2E = {
    *  `<file>.calls`, like the other DM classifier stubs. */
   ROSTER_SURVEY_STUB_FILE: path.join(REPO_ROOT, ".e2e", "roster-survey-stub.json"),
 
+  /** The VOLUNTEER-NAME stub file (2026-10-22): a nameless volunteer's
+   *  reply to "what name should I list you under?" → "name:<name>" |
+   *  "out" from `lib/volunteer-name-reply.ts`. Absent or `{}` → "other",
+   *  which saves no name and asks again. */
+  VOLUNTEER_NAME_STUB_FILE: path.join(REPO_ROOT, ".e2e", "volunteer-name-stub.json"),
+
   /** The FAKE Stripe's world for club fee billing (slice B3,
    *  src/lib/stripe-billing-fake.ts): the calls the dev server made and the
    *  subscriptions and setup intents a spec says Stripe holds. Shared by
@@ -242,6 +248,7 @@ export function buildTestEnv(): Record<string, string> {
     MT_TEST_FEE_REPLY_STUB_FILE: E2E.FEE_REPLY_STUB_FILE,
     MT_TEST_PAIRING_REPLY_STUB_FILE: E2E.PAIRING_REPLY_STUB_FILE,
     MT_TEST_ROSTER_SURVEY_STUB_FILE: E2E.ROSTER_SURVEY_STUB_FILE,
+    MT_TEST_VOLUNTEER_NAME_STUB_FILE: E2E.VOLUNTEER_NAME_STUB_FILE,
     // Phase 1 autonomous onboarding (bot-added → intro → YES → org).
     // ON for the suite so the flow is exercisable; prod keeps it OFF
     // until deliberately flipped (the route no-ops without it).
@@ -341,6 +348,9 @@ export function buildTestEnv(): Record<string, string> {
     env.MT_TEST_FEE_REPLY_STUB_FILE = "";
     env.MT_TEST_PAIRING_REPLY_STUB_FILE = "";
     env.MT_TEST_ROSTER_SURVEY_STUB_FILE = "";
+    // And for the nameless volunteer's name reply (2026-10-22), which
+    // saves a name and puts him in a squad.
+    env.MT_TEST_VOLUNTEER_NAME_STUB_FILE = "";
     // THE KEY A LIVE SWEEP SPENDS IS THE DEVELOPER'S, NOT PRODUCTION'S.
     //
     // This line used to forward the orchestrator's own production key,
