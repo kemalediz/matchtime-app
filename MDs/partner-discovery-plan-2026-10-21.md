@@ -26,14 +26,15 @@ receiving club has anything left to agree to. One step disappears.
 |---|---|
 | Only the platform owner pairs clubs, from two dropdowns of every club (`src/app/admin/clubs/partners/page.tsx`). | An organiser of any club searches by distance from its own venue and sends requests to one, some or all of the clubs listed. |
 | Both owners must accept (`planPartnershipAction`, "accept" sets `askerAcceptedAt` and `partnerAcceptedAt`). | The request sets the asking side's acceptance. The receiving club accepts once and the pairing is active. |
-| Every club could, in principle, be paired by the platform owner. | Only clubs that switched on **"Let nearby clubs find us"** are listed or can receive requests. |
+| Every club could, in principle, be paired by the platform owner. | Only clubs with **"Let nearby clubs find us"** on (the default) are listed or can receive requests. |
 | An ask always requests every open place (`placesOpen`, `src/lib/partner-ask.ts`). | The organiser chooses 1 up to the open places. The ask closes once that many guests have a place. |
 
 **What stays exactly as it is**
 
 - One pairing row per direction (D2). "FNF may ask Sutton FC" is not "Sutton FC may ask FNF".
-- The partner club's per-ask choice (D3): "check each ask with us" (default) or "post without
-  asking". The partner now picks it at the moment it accepts.
+- The partner club's per-ask choice (D3): "post without asking" or "check each ask with us". The
+  partner now picks it at the moment it accepts. **Kemal, 2026-10-22: "post without asking" is
+  the default** (it was "check each ask with us").
 - When and how an ask goes out (D4, D12 cut-off and caps), volunteering by DM (PR #365), asking
   in words (PR #367), accepting a pairing notice by replying 1 or 2 (PR #364).
 - Guest privacy (D7): name and club only, never a phone number, never the partner club's rating.
@@ -45,14 +46,16 @@ receiving club has anything left to agree to. One step disappears.
 
 ### 2.1 Who can be found, and who can look
 
-Being listed shows another club where and when your group plays. That is information about a
-private group of people, so **a club is listed only after its owner or admin switches it on**:
+Being listed shows another club where and when your group plays. **Kemal, 2026-10-22: the
+setting is on by default.** Its owner or admin can switch it off at any time:
 
 - New setting on the club settings page, Partner clubs section: **"Let nearby clubs find us and
-  send requests"** (`Organisation.discoverable`, default **off**), with an info popup in English
-  and Turkish saying exactly what other clubs will see.
-- **Existing clubs start off.** Each live club's owner gets one DM (or HQ message) explaining the
-  feature with a link to the setting. Nobody is listed without saying yes.
+  send requests"** (`Organisation.discoverable`, default **on**), with an info popup in English
+  and Turkish saying exactly what other clubs will see. A new club sees the setting, already on,
+  at signup.
+- **Existing clubs: open question to Kemal.** Recommended: each live club's owner gets one DM (or
+  HQ message) saying the club will be listed in 7 days unless they switch it off, with a link to
+  the setting. Alternative: existing clubs are switched on at once like new ones.
 - **Only a listed club can search** (recommended, D-3). It stops a club quietly browsing everybody
   while showing nothing of itself, and it means every club in a list has agreed to the same terms.
 - A club is listed only if it is approved, not dormant, not billing-paused, has a players' group,
@@ -131,8 +134,10 @@ platform can measure honestly (for example "plays every week since March") can s
 - **Who:** an owner or an admin of B (recommended, D-2). Today only owners accept; Kemal's
   wording is "their admins", and admins already approve each ask.
 - Accepting makes the row `active`. **That acceptance is B's consent.** On the settings page the
-  accept step also asks B's per-ask choice ("Check each ask with us first", default, or "Post their
-  asks straight away"). Accepting by WhatsApp reply keeps the default; it can be changed any time.
+  accept step also asks B's per-ask choice ("Post their asks straight away", default, or "Check
+  each ask with us first"). Accepting by WhatsApp reply keeps the default, so the requester's asks
+  go straight into B's players' group with no admin check. B's owner or admin can switch to "Check
+  each ask with us first" at any time.
 - A is told: "Sutton FC accepted. You can ask them for players from the match page or by asking
   MatchTime."
 - Decline: A is told "Sutton FC is not taking requests right now." A cannot ask B again for 30 days.
@@ -206,7 +211,7 @@ pairing on a club's behalf would skip that club's consent, which is the point of
   Community asks MT Test (active, standing) and MT Test asks Friday MT Community (active, each-ask).
   Both acceptances are already present, so the new rules read them as active pairings with
   nothing to migrate. No asks have been made yet (0 `PartnerAsk` rows).
-- Neither club becomes discoverable automatically; being paired does not mean being listed.
+- Being paired does not change being listed; both clubs follow the existing-club rule in 2.1.
 - Existing `proposed` rows made by the platform owner (none in prod today) would keep needing both
   sides, which the current rule already does; only new requests start with the asker's consent.
 - The superadmin create form is removed (section 3.5). `planCreate` stays only if D-6 keeps it.
@@ -218,7 +223,7 @@ pairing on a club's behalf would skip that club's consent, which is the point of
 ```prisma
 model Organisation {
   // Partner discovery (2026-10-21)
-  discoverable      Boolean   @default(false)   // "Let nearby clubs find us and send requests"
+  discoverable      Boolean   @default(true)    // "Let nearby clubs find us and send requests"
   discoverableAt    DateTime?
   discoverableById  String?
   clubLevel         String?                     // "casual" | "mixed" | "competitive", CHECK constraint
@@ -289,7 +294,7 @@ One migration, additive only, applied before the deploy. The daily request cap c
 
 | # | Slice | Tests |
 |---|---|---|
-| P1 | Schema, discoverable setting, level, owner DM explaining it. | Unit: setting writers, CHECKs, DM sent once per club. Playwright: toggle and level on settings, EN and TR. |
+| P1 | Schema, discoverable setting (default on), level, owner DM explaining it. | Unit: setting writers, CHECKs, DM sent once per club. Playwright: toggle and level on settings, EN and TR. |
 | P2 | Nearby search (rules, loader, page). | Unit: distance, presets, listable and searcher rules, card has no names or numbers (a guard test on the loader's select), regular-player count. Playwright: seeded clubs at known distances appear and disappear as the radius changes; same-day filter; club without a venue sees the prompt. |
 | P3 | Requests: send, accept (owner or admin), decline, withdraw, block, caps, cooldown, expiry; new notice wording; reverse-request link. | Unit: `planRequest` and every refusal; accept turns active in one step; 20-a-day cap under concurrency. Playwright: A sends to two clubs, B accepts one and declines one, A sees both outcomes. **One live pass of the existing pairing-reply cases on the dev key** (the notice the model reads has new words; 2026-10-18 rule), reporting calls and cost. |
 | P4 | Choosing the number; rounds across several partners. | Unit: `canAsk` bounds, round fill across asks, first-come lock (two volunteers, one wanted), organiser-pick close after N picks, auto ask still asks for all. Playwright: panel picker and partner ticks. |
