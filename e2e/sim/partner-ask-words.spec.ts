@@ -101,7 +101,8 @@ test("a named partner: that partner only, its organisers asked, one reply in the
   await pair(db, vets, "sim-xw-vets");
   const r = await g.post("owner", ASK_SUTTON, { ...recruitFromPartners("Sutton"), tag: true });
   expect(r.reply).toBe(
-    "I've asked *Sutton FC*'s organisers. Once they say yes, I'll post in their group, and anyone who replies IN goes on your bench.",
+    // P4 (2026-10-22): a words ask asks for every open place, and says how many.
+    "I've asked *Sutton FC*'s organisers. Once they say yes, I'll post in their group, and anyone who replies IN goes on your bench.\nI asked for 6 players.",
   );
   const rows = await asks(db);
   expect(rows).toEqual([
@@ -137,6 +138,7 @@ test("no club named: EVERY active partner is asked, and one reply says what happ
       "• *Sutton FC*: an ask to them is already open for this game.",
       "• *MT Vets*: waiting for their organisers to say yes.",
       "Anyone who replies IN goes on your bench.",
+      "I asked for 6 players.",
     ].join("\n"),
   );
   const rows = await asks(db);
