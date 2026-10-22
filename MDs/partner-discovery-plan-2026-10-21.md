@@ -175,7 +175,7 @@ the pairing reply reader keeps its closed answer (accept, decline, neither) unch
 |---|---|
 | New requests a club may send per London day | 20 (D-4). "Select all" beyond that sends the nearest 20 and says so. |
 | Pending requests a club may have out at once | 50 (decided, Kemal 2026-10-22) |
-| An unanswered request | Expires after 14 days; A is told once. |
+| An unanswered **pairing** request | Expires after 14 days; A is told once. This is only the request to become partners. **An ask for players never has a 14-day limit: it ends with its match** (filled, no open place, the D12 cut-off before kickoff, or cancelled), as Kemal asked on 2026-10-22. |
 | After B declines | A cannot re-request B for 30 days. B is not listed for A until then. |
 | Block | B can **block A** from the request or the settings page: A can never request B, and B disappears from A's list. Unblock from settings. |
 | Withdraw | A can withdraw a pending request at any time (row ends, no notice to B beyond the notice disappearing from its list). |
@@ -338,7 +338,7 @@ P1 to P5 touch no prompt; the only model-facing change is the notice wording in 
 | D-1 | Does accepting let only the requester ask, or both ways? | **Decided (Kemal, 2026-10-22): only the requester.** Offer a one-tap "ask them too" reverse request that the other club accepts. |
 | D-2 | Who may send and accept requests? | **Decided (Kemal, 2026-10-22): owners and admins**, both. Owners are told when an admin accepts. |
 | D-3 | Must a club be listed itself to search? | **Decided (Kemal, 2026-10-22): yes**, search needs the club's own toggle on. |
-| D-4 | Request limits? | **20 new requests a day, 50 pending, 14-day expiry, 30-day wait after a decline or an end by the other club, block available.** |
+| D-4 | Request limits? | **20 new requests a day, 50 pending (decided), an unanswered pairing request expires after 14 days (an ask for players ends with its match), 30-day wait after a decline or an end by the other club, block available.** |
 | D-5 | Default number on the ask picker? | **1**, up to the open places. Most asks are for one player and over-asking floods partner groups. |
 | D-6 | Keep the platform owner's create form? | **No.** Keep the list with pause and end as an override. |
 | D-7 | Asking in words (#367): number now or later? | **Later (P6)**, with its own prompt page and paid tests; until then words asks ask for every open place and say how many. |
