@@ -3785,6 +3785,71 @@ export const tr: Strings = {
   pd_venue_capped: "Bugün çok fazla saha araması yapıldı. Yarın tekrar deneyin.",
   pd_venue_reminder_dm: (p: { club: string; link: string }) =>
     `📍 Yakındaki kulüplerin sizi bulabilmesi için *${p.club}* kulübünün sahasını onaylayın: MatchTime'da henüz bir sahanız yok. Sahanızı buradaki listeden seçin: ${p.link}\nSaha seçilene kadar MatchTime haftada bir hatırlatır.`,
+  // ─── Yakındaki kulüpleri bulma (partner discovery, slice P2, 2026-10-22) ──
+  // /admin/partners/find sayfası. Mesafeler her kulüp için mil (D-9).
+  fc_title: "Yakınınızdaki kulüpleri bulun",
+  fc_lead:
+    "Sahanızın yakınında oynayan ve yakındaki kulüplerin kendilerini bulmasına izin veren kulüpler. Eksik kaldığınızda oyuncu istemek istediklerinizi işaretleyin ve istek gönderin.",
+  fc_back: "Partner kulüplere dön",
+  fc_radius_label: "Sahanıza uzaklık",
+  fc_radius_option: (p) => `En fazla ${p.miles} mil`,
+  fc_same_day_label: "Bizimle aynı gün oynuyor",
+  fc_count: (p) => `${p.count} kulüp bulundu`,
+  fc_none: (p) => `${p.miles} mil içinde kulüp bulunamadı.`,
+  fc_distance: (p) => `${p.miles.toFixed(1).replace(".", ",")} mil uzakta`,
+  fc_game: (p) =>
+    `${["Pazar", "Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi"][p.dow] ?? ""} günleri ${p.time}, ${perSideTr(p.perSide)}`,
+  fc_no_game: "Henüz düzenli maçı yok",
+  fc_members: (p) => `${p.count} üye`,
+  fc_regulars: (p) => `${p.count} düzenli oyuncu`,
+  fc_regulars_hint: "Kulübün son 8 maçının en az 2'sinde oynayan oyuncular",
+  fc_status_paired: "Zaten partneriz",
+  fc_status_paused: "Partnerlik duraklatıldı",
+  fc_status_pending: "İstek gönderildi, yanıt bekleniyor",
+  fc_select: (p) => `Seç: ${p.club}`,
+  fc_select_all: "Tümünü seç",
+  fc_selected: (p) => `${p.count} seçili`,
+  fc_send: "İstek gönder",
+  fc_confirm_title: (p) => `${p.count} kulübe istek gönderilsin mi?`,
+  fc_confirm_sees:
+    "Kulübünüzün adını, sahanızın adını ve semtini, ne kadar uzakta olduğunuzu, maç günlerinizi, başlama saatlerinizi ve formatınızı, kaç üyeniz ve düzenli oyuncunuz olduğunu görürler. İsimleri ve telefon numaralarını asla görmezler.",
+  fc_confirm_means:
+    "Bir kulüp kabul ederse, eksik kaldığınızda ondan oyuncu isteyebilirsiniz. Kabul etmesi, onun sizden oyuncu istemesine izin vermez.",
+  fc_confirm_send: "Gönder",
+  fc_cancel: "Vazgeç",
+  fc_outcome_sent: "İstek gönderildi",
+  fc_outcome_refused: "Gönderilmedi",
+  fc_refusal: (p) => {
+    switch (p.kind) {
+      case "daily-cap":
+        return "Bugün 20 istek gönderdiniz. Yarın tekrar deneyin.";
+      case "pending-cap":
+        return "Yanıt bekleyen 50 isteğiniz var.";
+      case "cooldown":
+        return "Yakın zamanda yanıt verdiler. 30 gün sonra tekrar isteyebilirsiniz.";
+      case "blocked":
+        return "Bu kulüp sizden istek almıyor.";
+      case "already-paired":
+      case "pending":
+        return "Bu kulüple zaten bir isteğiniz ya da partnerliğiniz var.";
+      case "not-discoverable":
+        return "Bu kulüp şu anda istek almıyor.";
+      default:
+        return "MatchTime bunu gönderemedi.";
+    }
+  },
+  fc_capped: "Günde en fazla 20 yeni istek gönderebilirsiniz, bu yüzden MatchTime en yakın 20 kulübe gönderdi.",
+  fc_send_failed: "İstekler gönderilemedi. Tekrar deneyin.",
+  fc_prev: "Önceki",
+  fc_next: "Sonraki",
+  fc_page: (p) => `Sayfa ${p.page}/${p.pages}`,
+  fc_venue_prompt_body: "Yakındaki kulüpler sahanıza olan uzaklıklarına göre bulunur. Sahanızı Partner kulüpler ayarlarından seçin.",
+  fc_venue_prompt_link: "Sahanızı onaylayın",
+  fc_off_title: "Kulübünüz bulunamıyor, bu yüzden arama yapamaz",
+  fc_off_body:
+    "Yalnızca yakındaki kulüplerin kendilerini bulmasına izin veren kulüpler arama yapabilir. Partner kulüpler ayarlarında \"Yakındaki kulüpler bizi bulsun ve istek göndersin\" seçeneğini açın.",
+  fc_open_settings: "Partner kulüp ayarlarını aç",
+  fc_not_live: "Yakındaki kulüpleri bulma, kulübünüz onaylandığında ve MatchTime oyuncu grubunuza eklendiğinde açılır.",
   // ─── Partner kulüpten oyuncu isteme (slice S2, 2026-10-16) ──────────
   xask_post: (p) => {
     const extras = [p.format, p.fee].filter(Boolean).join(", ");

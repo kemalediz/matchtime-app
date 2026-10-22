@@ -5089,6 +5089,74 @@ export const en = {
   pd_venue_capped: "Too many venue lookups today. Try again tomorrow.",
   pd_venue_reminder_dm: (p: { club: string; link: string }) =>
     `📍 Confirm *${p.club}*'s venue so nearby clubs can find you: MatchTime has no venue for your club yet. Pick your pitch from the list here: ${p.link}\nMatchTime reminds you once a week until a venue is set.`,
+  // ─── Finding clubs nearby (partner discovery, slice P2, 2026-10-22) ──
+  // MDs/partner-discovery-plan-2026-10-21.md, sections 2.2 and 2.3. The
+  // page /admin/partners/find (src/components/partners/find-clubs.tsx).
+  // Distances in miles for every club (D-9). Added as one block.
+  fc_title: "Find clubs near you",
+  fc_lead:
+    "Clubs that play near your venue and let nearby clubs find them. Tick the ones you'd like to ask for players when you're short, and send them a request.",
+  fc_back: "Back to Partner clubs",
+  fc_radius_label: "Distance from your venue",
+  fc_radius_option: (p: { miles: number }) => (p.miles === 1 ? "Up to 1 mile" : `Up to ${p.miles} miles`),
+  fc_same_day_label: "Plays on the same day as us",
+  fc_count: (p: { count: number }) => (p.count === 1 ? "1 club found" : `${p.count} clubs found`),
+  fc_none: (p: { miles: number }) => `No clubs found within ${p.miles === 1 ? "1 mile" : `${p.miles} miles`}.`,
+  fc_distance: (p: { miles: number }) => `${p.miles.toFixed(1)} ${p.miles === 1 ? "mile" : "miles"} away`,
+  fc_game: (p: { dow: number; time: string; perSide: number }) =>
+    `${["Sundays", "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays"][p.dow] ?? ""} at ${p.time}, ${p.perSide}-a-side`,
+  fc_no_game: "No regular game yet",
+  fc_members: (p: { count: number }) => (p.count === 1 ? "1 member" : `${p.count} members`),
+  fc_regulars: (p: { count: number }) => (p.count === 1 ? "1 regular player" : `${p.count} regular players`),
+  fc_regulars_hint: "Players who played at least 2 of the club's last 8 games",
+  fc_status_paired: "Already partners",
+  fc_status_paused: "Partnership paused",
+  fc_status_pending: "Request sent, waiting for them",
+  fc_select: (p: { club: string }) => `Select ${p.club}`,
+  fc_select_all: "Select all",
+  fc_selected: (p: { count: number }) => `${p.count} selected`,
+  fc_send: "Send request",
+  fc_confirm_title: (p: { count: number }) => (p.count === 1 ? "Send a request to 1 club?" : `Send a request to ${p.count} clubs?`),
+  fc_confirm_sees:
+    "They will see your club's name, your venue's name and town, how far away you are, your game days, kickoff times and format, and how many members and regular players you have. Never names or phone numbers.",
+  fc_confirm_means:
+    "If a club accepts, you can ask it for players when you're short. Accepting does not let them ask you for players.",
+  fc_confirm_send: "Send",
+  fc_cancel: "Cancel",
+  fc_outcome_sent: "Request sent",
+  fc_outcome_refused: "Not sent",
+  /** Why a request was not sent. `kind` is slice P3's refusal code. */
+  fc_refusal: (p: { kind: string }): string => {
+    switch (p.kind) {
+      case "daily-cap":
+        return "You've sent 20 requests today. Try again tomorrow.";
+      case "pending-cap":
+        return "You have 50 requests waiting for an answer.";
+      case "cooldown":
+        return "They answered recently. You can ask again 30 days after.";
+      case "blocked":
+        return "This club isn't taking requests from you.";
+      case "already-paired":
+      case "pending":
+        return "You already have a request or a pairing with this club.";
+      case "not-discoverable":
+        return "This club isn't taking requests right now.";
+      default:
+        return "MatchTime couldn't send it.";
+    }
+  },
+  fc_capped: "You can send 20 new requests a day, so MatchTime sent the nearest 20.",
+  fc_send_failed: "Couldn't send the requests. Try again.",
+  fc_prev: "Previous",
+  fc_next: "Next",
+  fc_page: (p: { page: number; pages: number }) => `Page ${p.page} of ${p.pages}`,
+  fc_venue_prompt_body: "Nearby clubs are found by their distance from your venue. Set it in the Partner clubs settings.",
+  fc_venue_prompt_link: "Confirm your venue",
+  fc_off_title: "Your club can't be found, so it can't search",
+  fc_off_body:
+    "Only clubs that let nearby clubs find them can search. Switch on \"Let nearby clubs find us and send requests\" in the Partner clubs settings.",
+  fc_open_settings: "Open Partner clubs settings",
+  fc_not_live: "Finding nearby clubs opens once your club is approved and MatchTime is in your players' group.",
   // ─── Asking a partner club for a player (slice S2, 2026-10-16) ──────
   // MDs/cross-club-player-ask-plan-2026-10-16.md, sections 3.3 to 3.5.
   // Read by src/lib/partner-ask.ts, the match page's partner panel and
