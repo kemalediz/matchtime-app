@@ -587,6 +587,22 @@ export async function cancelAttendance(
     await afterMonthlyAttendanceChange(matchId, userId, false);
   }
 
+  // A PARTNER GUEST TAKEN OFF BY THE ASKING CLUB'S ORGANISERS (2026-10-22).
+  // Every admin drop comes through here (a group message, the admin group,
+  // HQ, a pasted list), with its actor known, so this is the one hook:
+  // `tellGuestTakenOffByAdmin` decides whether he is a guest, tells him once
+  // and takes him off the ask. Only a live row (a replay drops nothing new).
+  // Imported when needed: partner-guest.ts imports this file. Never fails
+  // the drop.
+  if (eventContext.actorKind === "admin" && (attendance.status === "CONFIRMED" || attendance.status === "BENCH")) {
+    try {
+      const { tellGuestTakenOffByAdmin } = await import("./partner-guest");
+      await tellGuestTakenOffByAdmin({ userId, matchId });
+    } catch (err) {
+      console.error("[attendance] partner guest check failed:", err instanceof Error ? err.message : "failed");
+    }
+  }
+
   // With organiser pick on (slice 2b) and somebody waiting, the late drop
   // is folded into the pick message the admins get next ("Ali dropped out
   // after the deadline."), so they get one message, not two.

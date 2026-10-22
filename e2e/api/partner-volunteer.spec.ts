@@ -113,6 +113,9 @@ test("IN replying to the ask: a guest on the asking club's bench, labelled; noth
   // The asking club's organisers are told, by name and club.
   const told = await db.one<{ text: string }>(`SELECT text FROM "BotJob" WHERE "orgId" = $1 ORDER BY "createdAt" DESC LIMIT 1`, [ASKER]);
   expect(told?.text ?? "").toContain("answered your ask");
+  // 2026-10-22: with his standing at HIS club, read from that club's ratings.
+  // Ian has no rating at E2E Test FC in the fixture world.
+  expect(told?.text ?? "").toContain("🤝 Ian Innes (E2E Test FC, not rated yet there) answered your ask");
 });
 
 test("the same IN with no reply is an IN for his own club's match, as ever", async ({ request, db }) => {

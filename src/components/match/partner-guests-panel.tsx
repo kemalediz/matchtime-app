@@ -3,7 +3,9 @@
 /**
  * "Guests from partner clubs" on the match page (cross-club ask, slice S4,
  * plan 3.10). Owners and admins of the asking club only. Each guest on
- * this match by name and club (never a phone), with "Add to <club>",
+ * this match by name and club (never a phone), his standing at his own club
+ * (a band, and his number there only when his club shares it; 2026-10-22),
+ * with "Add to <club>",
  * which keeps him as an ordinary member (`keepGuestAsMember`). The server
  * checks the role again.
  */
@@ -17,6 +19,9 @@ export interface PartnerGuestRow {
   userId: string;
   name: string;
   club: string;
+  /** His standing at HIS club, already in this club's words
+   *  (`standingPhrase`, 2026-10-22), or null when it could not be read. */
+  standing?: string | null;
 }
 
 export function PartnerGuestsPanel(props: { matchId: string; clubName: string; language: string | null; rows: PartnerGuestRow[] }) {
@@ -45,7 +50,14 @@ export function PartnerGuestsPanel(props: { matchId: string; clubName: string; l
       <ul className="mt-3 space-y-2">
         {props.rows.map((g) => (
           <li key={g.userId} data-testid="partner-guest-row" className="flex flex-wrap items-center justify-between gap-2 text-sm text-slate-700">
-            <span>{s.xask_guest_row({ name: g.name, club: g.club })}</span>
+            <span>
+              {s.xask_guest_row({ name: g.name, club: g.club })}
+              {g.standing && (
+                <span className="block text-xs text-slate-500" data-testid="partner-guest-standing">
+                  {g.standing}
+                </span>
+              )}
+            </span>
             {kept.has(g.userId) ? (
               <span className="text-xs text-emerald-700">{s.xask_keep_done}</span>
             ) : (

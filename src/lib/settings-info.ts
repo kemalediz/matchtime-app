@@ -75,6 +75,7 @@ export const SETTING_INFO_KEYS = [
   // Partner discovery (slice P1, 2026-10-22)
   "partnerDiscoverable",
   "partnerAutoAccept",
+  "partnerShareRatings",
   "clubHomeVenue",
   // Posters
   "posters",
@@ -1374,6 +1375,40 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       newClubs: "Kapalı.",
       suits: "Yakındaki her kulübe oyuncu vermekten memnun olan kulüpler.",
       together: ["Yalnızca Yakındaki kulüpler bizi bulsun ve istek göndersin açıkken çalışır: o kapalıyken hiçbir kulüp size istek gönderemez."],
+    },
+  },
+  // Kemal, 2026-10-22, option C. Read by src/lib/partner-guest-standing.ts;
+  // the band rule is src/lib/partner-guest-standing-rules.ts.
+  partnerShareRatings: {
+    en: {
+      title: "Share our players' ratings with partner clubs",
+      what: [
+        "When one of your players offers to play for a partner club, that club's organisers are told who he is, so they can decide whether to take him.",
+        "They always see his name, your club's name, and where he stands among your rated players: top third, middle third or bottom third (or not rated yet). This is worked out from your club's ratings only, and needs at least 5 rated players.",
+        "With this on, they also see his rating at your club, the same number he sees on his own page, for example rated 7.4.",
+        "They never see your other players, their names or ratings, any phone number, or the seeds your organisers set.",
+      ],
+      choices: [
+        { name: ON.en, text: "Partner clubs see the player's band and his rating at your club." },
+        { name: OFF.en, text: "Partner clubs see only the player's band, never his rating." },
+      ],
+      newClubs: "Off.",
+      together: ["It only matters once you have partner clubs whose asks your players answer."],
+    },
+    tr: {
+      title: "Oyuncularımızın puanlarını partner kulüplerle paylaş",
+      what: [
+        "Oyuncularınızdan biri bir partner kulüpte oynamayı teklif ettiğinde, o kulübün organizatörlerine kim olduğu söylenir; böylece onu alıp almayacaklarına karar verebilirler.",
+        "Her zaman adını, kulübünüzün adını ve puanlı oyuncularınız arasındaki yerini görürler: üst üçte bir, orta üçte bir ya da alt üçte bir (ya da henüz puanı yok). Bu yalnızca kulübünüzün puanlarından hesaplanır ve en az 5 puanlı oyuncu gerekir.",
+        "Bu açıkken kulübünüzdeki puanını da görürler; oyuncunun kendi sayfasında gördüğü sayının aynısı, örneğin puanı 7.4.",
+        "Diğer oyuncularınızı, adlarını ya da puanlarını, hiçbir telefon numarasını ve organizatörlerinizin girdiği başlangıç puanlarını asla görmezler.",
+      ],
+      choices: [
+        { name: ON.tr, text: "Partner kulüpler oyuncunun yerini ve kulübünüzdeki puanını görür." },
+        { name: OFF.tr, text: "Partner kulüpler yalnızca oyuncunun yerini görür, puanını asla görmez." },
+      ],
+      newClubs: "Kapalı.",
+      together: ["Yalnızca, oyuncularınızın isteklerine yanıt verdiği partner kulüpleriniz olduğunda önem taşır."],
     },
   },
   clubHomeVenue: {

@@ -277,14 +277,16 @@ export interface DiscoverySettings {
   discoverable: boolean;
   /** "Accept partner requests automatically". */
   autoAccept: boolean;
+  /** "Share our players' ratings with partner clubs" (2026-10-22). */
+  shareRatings: boolean;
 }
 
-const DISCOVERY_SELECT = { discoverable: true, autoAcceptPartnerRequests: true } as const;
+const DISCOVERY_SELECT = { discoverable: true, autoAcceptPartnerRequests: true, sharePlayerRatingsWithPartners: true } as const;
 
 export async function loadDiscoverySettings(orgId: string): Promise<DiscoverySettings | null> {
   const org = await db.organisation.findUnique({ where: { id: orgId }, select: DISCOVERY_SELECT });
   if (!org) return null;
-  return { discoverable: isDiscoverable(org), autoAccept: autoAcceptOf(org) };
+  return { discoverable: isDiscoverable(org), autoAccept: autoAcceptOf(org), shareRatings: org.sharePlayerRatingsWithPartners === true };
 }
 
 /**
@@ -296,12 +298,18 @@ export async function saveDiscoverySettings(args: {
   orgId: string;
   userId: string;
   role: ClubRole;
-  patch: { discoverable?: unknown; autoAccept?: unknown };
+  patch: { discoverable?: unknown; autoAccept?: unknown; shareRatings?: unknown };
   now?: Date;
 }): Promise<{ ok: true; settings: DiscoverySettings } | { ok: false; refusal: "not-admin" | "bad-value" | "no-club" }> {
   if (!canChangeDiscoverySettings(args.role)) return { ok: false, refusal: "not-admin" };
   const now = args.now ?? new Date();
-  const data: { discoverable?: boolean; discoverableAt?: Date; discoverableById?: string; autoAcceptPartnerRequests?: boolean } = {};
+  const data: {
+    discoverable?: boolean;
+    discoverableAt?: Date;
+    discoverableById?: string;
+    autoAcceptPartnerRequests?: boolean;
+    sharePlayerRatingsWithPartners?: boolean;
+  } = {};
   const keys: string[] = [];
   if (args.patch.discoverable !== undefined) {
     const on = parseSwitch(args.patch.discoverable);
@@ -314,6 +322,12 @@ export async function saveDiscoverySettings(args: {
     if (on === null) return { ok: false, refusal: "bad-value" };
     data.autoAcceptPartnerRequests = on;
     keys.push("autoAcceptPartnerRequests");
+  }
+  if (args.patch.shareRatings !== undefined) {
+    const on = parseSwitch(args.patch.shareRatings);
+    if (on === null) return { ok: false, refusal: "bad-value" };
+    data.sharePlayerRatingsWithPartners = on;
+    keys.push("sharePlayerRatingsWithPartners");
   }
   if (keys.length > 0) {
     await db.organisation.update({ where: { id: args.orgId }, data: { ...data, settingsSetByOrganiser: { push: keys } } });

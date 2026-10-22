@@ -46,6 +46,7 @@ import { isNextUpcomingForPosting } from "./next-upcoming-match";
 import { madeAfterDropOutDeadline, weeklyDeadlinesFor } from "./weekly-deadlines";
 import { QUIET_HOURS_SELECT, quietHoursOf } from "./message-hours";
 import { summariseClubDisplayRatings } from "./player-rating";
+import { loadGuestStandings } from "./partner-guest-standing";
 import { normaliseBenchPickFallback } from "./squad-capacity";
 import { benchClause } from "./squad-count-line";
 import { dayCommaTimeLabel, dayTimeLabel, weekdayTimeLabel } from "./i18n/dates";
@@ -151,12 +152,20 @@ export async function loadPickListRows(
   const clubs = clubIds.length ? await db.organisation.findMany({ where: { id: { in: clubIds } }, select: { id: true, name: true } }) : [];
   const clubName = new Map(clubs.map((c) => [c.id, c.name]));
   const fromOf = new Map((guests ?? []).map((g) => [g.userId, g.guestFromOrgId ? clubName.get(g.guestFromOrgId) ?? null : null]));
-  return users.map((u) => ({
-    name: u.name,
-    position: posOf.get(u.userId) ?? null,
-    rating: summary[u.userId]?.rating ?? null,
-    ...(fromOf.get(u.userId) ? { fromClub: fromOf.get(u.userId)! } : {}),
-  }));
+  // His standing at HIS club (2026-10-22, option C), for every guest here.
+  const standings = await loadGuestStandings(
+    (guests ?? []).filter((g): g is { userId: string; guestFromOrgId: string } => !!g.guestFromOrgId).map((g) => ({ userId: g.userId, homeOrgId: g.guestFromOrgId })),
+  );
+  return users.map((u) => {
+    const st = standings.get(u.userId);
+    return {
+      name: u.name,
+      position: posOf.get(u.userId) ?? null,
+      rating: summary[u.userId]?.rating ?? null,
+      ...(fromOf.get(u.userId) ? { fromClub: fromOf.get(u.userId)! } : {}),
+      ...(st ? { fromStanding: { band: st.band, rating: st.rating } } : {}),
+    };
+  });
 }
 
 interface MatchWorld {

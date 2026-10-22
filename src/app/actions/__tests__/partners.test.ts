@@ -94,6 +94,7 @@ describe("the settings page", () => {
     await expect(savePartnerAskSettingsAction("fnf", { when: "auto" })).rejects.toThrow("Admin access required");
     await expect(actOnPartnershipAction("fnf", "p1", "pause")).rejects.toThrow("Admin access required");
     await expect(saveDiscoverySettingsAction("fnf", { discoverable: false })).rejects.toThrow("Admin access required");
+    await expect(saveDiscoverySettingsAction("fnf", { shareRatings: true })).rejects.toThrow("Admin access required");
     await expect(setClubHomeVenueAction("fnf", { placeId: "ChIJ_e2e_croydon_01", sessionToken: "t" })).rejects.toThrow("Admin access required");
     expect(writer.saveDiscoverySettings).not.toHaveBeenCalled();
     expect(venueWriter.setClubHomeVenueToPick).not.toHaveBeenCalled();

@@ -22,6 +22,7 @@ type Org = {
   language: string;
   discoverable?: boolean | null;
   autoAcceptPartnerRequests?: boolean | null;
+  sharePlayerRatingsWithPartners?: boolean | null;
   venueReminderSentAt: Date | null;
   homeVenue: { name: string; formattedAddress: string | null; lat: number | null; lng: number | null } | null;
   activities: Array<{
@@ -103,11 +104,11 @@ beforeEach(() => {
 describe("loading the settings", () => {
   it("an existing club (default on, never changed) reads as discoverable, auto-accept off", async () => {
     state.org = club({ discoverable: true, autoAcceptPartnerRequests: false });
-    expect(await loadDiscoverySettings("mt")).toEqual({ discoverable: true, autoAccept: false });
+    expect(await loadDiscoverySettings("mt")).toEqual({ discoverable: true, autoAccept: false, shareRatings: false });
   });
   it("a club that switched it off reads off", async () => {
     state.org = club({ discoverable: false, autoAcceptPartnerRequests: true });
-    expect(await loadDiscoverySettings("mt")).toEqual({ discoverable: false, autoAccept: true });
+    expect(await loadDiscoverySettings("mt")).toEqual({ discoverable: false, autoAccept: true, shareRatings: false });
   });
   it("no club: null", async () => {
     state.org = null;
@@ -128,7 +129,7 @@ describe("saving the settings: owners and admins only", () => {
       where: { id: "mt" },
       data: { discoverable: false, discoverableAt: NOW, discoverableById: "a1", settingsSetByOrganiser: { push: ["discoverable"] } },
     });
-    expect(r).toEqual({ ok: true, settings: { discoverable: false, autoAccept: false } });
+    expect(r).toEqual({ ok: true, settings: { discoverable: false, autoAccept: false, shareRatings: false } });
   });
   it("an OWNER switches auto-accept on", async () => {
     state.org = club({ discoverable: true, autoAcceptPartnerRequests: false });
@@ -137,7 +138,22 @@ describe("saving the settings: owners and admins only", () => {
       where: { id: "mt" },
       data: { autoAcceptPartnerRequests: true, settingsSetByOrganiser: { push: ["autoAcceptPartnerRequests"] } },
     });
-    expect(r).toEqual({ ok: true, settings: { discoverable: true, autoAccept: true } });
+    expect(r).toEqual({ ok: true, settings: { discoverable: true, autoAccept: true, shareRatings: false } });
+  });
+  it("2026-10-22: an ADMIN switches on sharing his players' ratings with partner clubs (off by default)", async () => {
+    state.org = club({ discoverable: true, autoAcceptPartnerRequests: false, sharePlayerRatingsWithPartners: false });
+    expect(await loadDiscoverySettings("mt")).toEqual({ discoverable: true, autoAccept: false, shareRatings: false });
+    const r = await saveDiscoverySettings({ orgId: "mt", userId: "a1", role: "ADMIN", patch: { shareRatings: true }, now: NOW });
+    expect(dbMock.organisation.update).toHaveBeenCalledWith({
+      where: { id: "mt" },
+      data: { sharePlayerRatingsWithPartners: true, settingsSetByOrganiser: { push: ["sharePlayerRatingsWithPartners"] } },
+    });
+    expect(r).toEqual({ ok: true, settings: { discoverable: true, autoAccept: false, shareRatings: true } });
+  });
+  it("2026-10-22: a PLAYER cannot switch on sharing ratings; a non-boolean is refused", async () => {
+    expect(await saveDiscoverySettings({ orgId: "mt", userId: "p", role: "PLAYER", patch: { shareRatings: true }, now: NOW })).toEqual({ ok: false, refusal: "not-admin" });
+    expect(await saveDiscoverySettings({ orgId: "mt", userId: "o1", role: "OWNER", patch: { shareRatings: "yes" }, now: NOW })).toEqual({ ok: false, refusal: "bad-value" });
+    expect(dbMock.organisation.update).not.toHaveBeenCalled();
   });
   it("a value that is not a real on or off is refused, nothing written", async () => {
     expect(await saveDiscoverySettings({ orgId: "mt", userId: "o1", role: "OWNER", patch: { discoverable: "no" }, now: NOW })).toEqual({

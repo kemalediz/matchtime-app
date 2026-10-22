@@ -21,6 +21,7 @@
 import { t } from "./i18n/t";
 import { inMessageHours, type QuietHours } from "./message-hours";
 import { normaliseName } from "./name-normalise";
+import { standingPhrase, type StandingBand } from "./partner-guest-standing-rules";
 
 const MINUTE_MS = 60 * 1000;
 const HOUR_MS = 60 * MINUTE_MS;
@@ -404,9 +405,14 @@ export interface PickListRow {
   /** The club rating players see, e.g. 7.4; null for "new". */
   rating: number | null;
   /** A guest from a partner club (cross-club ask, slice S3): that club's
-   *  name, shown beside his ("Ali K (Sutton FC)"). Never his phone, never
-   *  his rating there: `rating` above is THIS club's. */
+   *  name, shown beside his ("Ali K (Sutton FC)"). Never his phone.
+   *  `rating` above is THIS club's; his standing at his own club is
+   *  `fromStanding` (D7 changed by Kemal, 2026-10-22, option C). */
   fromClub?: string | null;
+  /** His standing at HIS club (2026-10-22, option C): the band there, and
+   *  his number there only when his club shares ratings. Shown beside his
+   *  club: "Ali K (Sutton FC, top third there)". */
+  fromStanding?: { band: StandingBand; rating: number | null } | null;
 }
 
 /** "GK/DEF" from a player's positions for the activity, or null. */
@@ -422,7 +428,9 @@ export function buildPickListBlock(lang: string | null | undefined, rows: PickLi
     ...rows.map((r, i) =>
       s.pick_list_row({
         n: i + 1,
-        name: r.fromClub ? `${r.name} (${r.fromClub})` : r.name,
+        name: r.fromClub
+          ? `${r.name} (${r.fromStanding ? standingPhrase(lang, { club: r.fromClub, ...r.fromStanding }) : r.fromClub})`
+          : r.name,
         position: r.position,
         rating: r.rating === null ? null : r.rating.toFixed(1),
       }),
