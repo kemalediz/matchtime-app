@@ -929,28 +929,101 @@ describe("the stats blast is reported, never fired here", () => {
   });
 });
 
-describe("cancelling a match is never done from the players' group (2026-10-22)", () => {
-  const CANCEL = "@Match Time cancel the session";
+// CHANGED 2026-10-23 (Kemal). Friday MT Community, 23 Oct: "@Match Time
+// cancel the match" from Kemal, an owner, routed admin_ops, extracted
+// `cancel_match`, and was answered as `other` ("I can't change that by
+// message..."). A club with no admin group now cancels here through the one
+// core (`match-cancel.ts`); a club with one is pointed there (that decision
+// is `playersGroupCancelOrRestore`'s, tested in match-cancel.test.ts).
+describe("cancelling a match from the players' group (2026-10-23)", () => {
+  const CANCEL = "@Match Time cancel the match";
   const CANCEL_FACTS = { ...BLAST_FACTS, action: "cancel_match", lookbackMatches: 0, matchDay: "" };
+  type CancelCall = { orgId: string; lang: string | null; mode: string; dayPhrase: string | null; organiser: boolean; now: Date };
 
-  it("an admin's 'cancel the session' there is answered as 'other': nothing written, nothing sent", async () => {
-    for (const action of ["cancel_match", "restore_match"]) {
-      const { model } = stubModel({ [CANCEL]: { ...CANCEL_FACTS, action } });
-      const r = recorder(model, paidWorld());
-      const res = await run({ messages: [msg({ body: CANCEL, senderUserId: "u-kemal" })], deps: r.deps });
-      const out = [...res.outcomes.values()][0];
-      expect(r.marked).toEqual([]);
-      expect(r.credits).toEqual([]);
-      expect(r.dms).toEqual([]);
-      expect(out.recruitRequest).toBe(false);
-      expect(out.partnerAskRequest).toBeNull();
+  function cancelRecorder(answer = { outcome: "match_cancelled", replyText: null as string | null, react: "✅" as string | null }) {
+    const calls: CancelCall[] = [];
+    return {
+      calls,
+      dep: async (a: CancelCall) => {
+        calls.push(a);
+        return answer;
+      },
+    };
+  }
+
+  it("the incident: an owner's tagged cancel reaches the one cancel core, not the admin-page dead end", async () => {
+    const { model } = stubModel({ [CANCEL]: CANCEL_FACTS });
+    const c = cancelRecorder();
+    const r = recorder(model, paidWorld(), { cancelOrRestore: c.dep });
+    const res = await run({ messages: [msg({ body: CANCEL, senderUserId: "u-kemal" })], deps: r.deps });
+    expect(c.calls).toEqual([{ orgId: "org-1", lang: "en", mode: "cancel", dayPhrase: null, organiser: true, now: NOW }]);
+    const out = res.outcomes.get(`wa-${CANCEL.slice(0, 14)}`)!;
+    expect(res.ownedIds.has(out.waMessageId)).toBe(true);
+    expect(out.reply).toBeNull();
+    expect(out.react).toBe("✅");
+    expect(out.intent).toBe("match_cancelled");
+    expect(out.action).toBe("cancel_match");
+    expect(r.marked).toEqual([]);
+    expect(r.credits).toEqual([]);
+    expect(r.dms).toEqual([]);
+  });
+
+  it("an owner's undo is a restore, with the day as the extractor wrote it", async () => {
+    const BACK = "@Match Time Friday is back on";
+    const { model } = stubModel({ [BACK]: { ...CANCEL_FACTS, action: "restore_match", matchDay: "Friday" } });
+    const c = cancelRecorder({ outcome: "match_restored", replyText: null, react: "✅" });
+    const r = recorder(model, paidWorld(), { cancelOrRestore: c.dep });
+    const res = await run({ messages: [msg({ body: BACK, senderUserId: "u-kemal" })], deps: r.deps });
+    expect(c.calls[0]).toMatchObject({ mode: "restore", dayPhrase: "Friday", organiser: true });
+    expect([...res.outcomes.values()][0].react).toBe("✅");
+  });
+
+  it("a player who is not an owner or admin: the core is told so, and its line is the reply", async () => {
+    const { model } = stubModel({ [CANCEL]: CANCEL_FACTS });
+    const c = cancelRecorder({ outcome: "match_cancel_organisers_only", replyText: "Only Kemal can change that.", react: null });
+    const r = recorder(model, paidWorld(), { cancelOrRestore: c.dep });
+    const res = await run({ messages: [msg({ body: CANCEL, senderUserId: "u-sait", senderName: fullName("sait") })], deps: r.deps });
+    expect(c.calls[0].organiser).toBe(false);
+    const out = [...res.outcomes.values()][0];
+    expect(out.reply).toBe("Only Kemal can change that.");
+    expect(out.react).toBeNull();
+  });
+
+  it("untagged, or only NAMING MatchTime: nothing new, the core is never reached", async () => {
+    for (const m of [
+      msg({ body: CANCEL, senderUserId: "u-kemal", tagged: false }),
+      msg({ body: CANCEL, senderUserId: "u-kemal", tagged: true, taggedExplicitly: false }),
+    ]) {
+      const { model } = stubModel({ [CANCEL]: CANCEL_FACTS });
+      const c = cancelRecorder();
+      const r = recorder(model, paidWorld(), { cancelOrRestore: c.dep });
+      const res = await run({ messages: [m], deps: r.deps });
+      expect(c.calls).toEqual([]);
+      expect(res.outcomes.size).toBe(0);
     }
   });
 
-  it("the players' group's code never reaches the cancel path", async () => {
+  it("the core threw: owned, silent, reported", async () => {
+    const { model } = stubModel({ [CANCEL]: CANCEL_FACTS });
+    const r = recorder(model, paidWorld(), {
+      cancelOrRestore: async () => {
+        throw new Error("db down");
+      },
+    });
+    const res = await run({ messages: [msg({ body: CANCEL, senderUserId: "u-kemal" })], deps: r.deps });
+    const out = [...res.outcomes.values()][0];
+    expect(out.reply).toBeNull();
+    expect(out.react).toBeNull();
+    expect(out.writeFailed).toBe(true);
+    expect(res.degradations.join(" ")).toMatch(/db down/);
+  });
+
+  it("the engine and the analyze route never reach the cancel code; this batch only through the one door", async () => {
     const { readFileSync } = await import("node:fs");
-    for (const f of ["src/lib/admin-ops-engine-batch.ts", "src/lib/pipeline/engine.ts", "src/app/api/whatsapp/analyze/route.ts"]) {
-      expect(readFileSync(f, "utf8")).not.toMatch(/from ["'][^"']*match-cancel["']/);
+    for (const f of ["src/lib/pipeline/engine.ts", "src/app/api/whatsapp/analyze/route.ts"]) {
+      expect(readFileSync(f, "utf8")).not.toMatch(/match-cancel["']/);
     }
+    const batch = readFileSync("src/lib/admin-ops-engine-batch.ts", "utf8");
+    expect(batch).not.toMatch(/cancelMatchById|restoreMatchById/);
   });
 });

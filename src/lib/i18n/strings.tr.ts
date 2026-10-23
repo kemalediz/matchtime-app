@@ -1213,6 +1213,7 @@ export const tr: Strings = {
   hq_cancel_no_match_day: (p) => `"${p.day}" için yaklaşan bir maç bulamadım.`,
   hq_restore_no_match: `Yeniden açılacak, iptal edilmiş yaklaşan bir maç yok.`,
   hq_cancel_monthly: `Aylık kadrolarda maçı buradan iptal etmek henüz mümkün değil. Lütfen web sitesini kullanın.`,
+  match_cancel_use_admin_group: `Maçı iptal etmek ya da yeniden açmak yönetici grubunuzdan yapılıyor. Orada beni etiketleyin, ben yaparım.`,
   hq_not_understood: `Ne yapmamı istediğinizi anlayamadım.`,
   hq_only_organisers: (p) => (p.names ? `Bunu yalnızca ${p.names} değiştirebilir.` : `Bunu yalnızca kulübün organizatörleri değiştirebilir.`),
   hq_score_saved: (p) => `Skor kaydedildi: ${sidesTr(p)}.`,

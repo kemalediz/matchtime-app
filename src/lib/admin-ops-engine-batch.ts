@@ -311,6 +311,17 @@ export interface AdminOpsBatchDeps extends AdminOpsApplyDeps {
   /** Injected so a test can prove the write assertion and the
    *  throw-safety without a fabricated rule in the real engine. */
   decide?: (input: EngineInput) => EngineResult;
+  /** A tagged cancel or "back on" (2026-10-23). Defaults to
+   *  `match-cancel.ts`'s `playersGroupCancelOrRestore`, the one core HQ and
+   *  the web page use; injected so tests need no database. */
+  cancelOrRestore?: (a: {
+    orgId: string;
+    lang: string | null;
+    mode: "cancel" | "restore";
+    dayPhrase: string | null;
+    organiser: boolean;
+    now: Date;
+  }) => Promise<{ outcome: string; replyText: string | null; react: string | null }>;
 }
 
 function empty(degradations: string[] = []): AdminOpsBatchResult {
@@ -472,6 +483,8 @@ export async function runAdminOpsBatch(args: {
   const ownedIds = new Set<string>();
   /** Tagged `other`: answered in one line, outside the engine. */
   const unhandled = new Set<string>();
+  /** Tagged cancel / back on: done outside the engine, after this loop. */
+  const cancelAsks = new Map<string, { mode: "cancel" | "restore"; dayPhrase: string | null }>();
   for (const m of candidates) {
     const facts = factsById.get(m.waMessageId);
     if (!facts) continue; // extraction failed; already reported above.
@@ -492,13 +505,24 @@ export async function runAdminOpsBatch(args: {
       continue;
     }
 
+    // Cancelling a match, or putting it back on (2026-10-23, Kemal): only
+    // with an explicit tag, and then `playersGroupCancelOrRestore` decides
+    // (an owner or admin of a club with no admin group does it here; a club
+    // with one is pointed there). Outside the engine, like `unhandled`.
+    // Untagged, it is the players talking: nothing done, nothing said.
+    if (facts.action === "cancel_match" || facts.action === "restore_match") {
+      if (m.tagged && (m.taggedExplicitly ?? messageMentionsBotExplicitly({ body: m.body }))) {
+        cancelAsks.set(m.waMessageId, { mode: facts.action === "cancel_match" ? "cancel" : "restore", dayPhrase: facts.matchDay?.trim() || null });
+      } else {
+        hand(`${facts.action} without an explicit MatchTime tag`);
+      }
+      continue;
+    }
+
     // A free place (2026-10-16, `fee_waiver`) is given in the organisers'
     // group only (`admin-group-understand.ts` → `fee-waiver.ts`); in the
     // players' group it is answered exactly as `other` is.
-    // So is cancelling a match or putting it back on (2026-10-22): an
-    // organiser does that in HQ (`match-cancel.ts`); a player's "cancel the
-    // session" here never cancels anything.
-    if (facts.action === "other" || facts.action === "fee_waiver" || facts.action === "cancel_match" || facts.action === "restore_match") {
+    if (facts.action === "other" || facts.action === "fee_waiver") {
       // This used to read: "The mega-prompt still models admin intents
       // this route does not: `show_teams_request` phrasings that land
       // here, stats asks, and anything §14.3 calls 'the least designed
@@ -580,10 +604,60 @@ export async function runAdminOpsBatch(args: {
     ownedIds.add(m.waMessageId);
   }
 
-  /** Adds the one-line answers for tagged `other`s to whatever the rest
-   *  of this function returns, on EVERY path below: they depend on
-   *  nothing the engine or the apply layer does. */
+  // ── Cancel / back on, through the one core (2026-10-23) ────────────
+  // Independent of the engine and of every other write in the batch, so
+  // done here and reported on EVERY path below (see `finish`).
+  const cancelOutcomes: AdminOpsMessageOutcome[] = [];
+  for (const [id, ask] of cancelAsks) {
+    const m = messages.find((x) => x.waMessageId === id)!;
+    const organiser = state.roster.some((r) => r.userId === m.senderUserId && r.isAdmin);
+    const doCancel =
+      deps.cancelOrRestore ?? (async (a) => (await import("./match-cancel")).playersGroupCancelOrRestore(a));
+    const base = {
+      waMessageId: id,
+      route: m.route as Route,
+      recruitRequest: false,
+      recruitLookbackMatches: null,
+      statsBlastRequest: false,
+      partnerAskRequest: null,
+    };
+    const action = ask.mode === "cancel" ? "cancel_match" : "restore_match";
+    try {
+      const r = await doCancel({ orgId, lang: state.features.language, mode: ask.mode, dayPhrase: ask.dayPhrase, organiser, now });
+      const done = r.react !== null && r.replyText === null;
+      cancelOutcomes.push({
+        ...base,
+        reply: r.replyText,
+        react: r.react,
+        intent: r.outcome,
+        action: done ? action : r.replyText ? "reply" : "none",
+        reasoning: `${ADMIN_OPS_HANDLED_BY} (${m.route}): ${action} (${organiser ? "organiser" : "not an organiser"}): ${r.outcome}`,
+        writeFailed: false,
+      });
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      console.error(`[admin-ops-engine] ${id}: ${action} threw:`, err);
+      degradations.push(`${ADMIN_OPS_APPLY_DEGRADED_PREFIX} ${id}: ${action} threw (${detail}); nothing was said`);
+      cancelOutcomes.push({
+        ...base,
+        reply: null,
+        react: null,
+        intent: "noise",
+        action: "none",
+        reasoning: `${ADMIN_OPS_HANDLED_BY} (${m.route}): ${action} threw (${detail}); the write FAILED and nothing was said`,
+        writeFailed: true,
+      });
+    }
+  }
+
+  /** Adds the one-line answers for tagged `other`s, and the cancels, to
+   *  whatever the rest of this function returns, on EVERY path below:
+   *  they depend on nothing the engine or the apply layer does. */
   const finish = (r: AdminOpsBatchResult): AdminOpsBatchResult => {
+    for (const o of cancelOutcomes) {
+      r.ownedIds.add(o.waMessageId);
+      r.outcomes.set(o.waMessageId, o);
+    }
     for (const id of unhandled) {
       const m = messages.find((x) => x.waMessageId === id)!;
       r.ownedIds.add(id);

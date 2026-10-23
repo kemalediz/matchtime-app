@@ -655,9 +655,10 @@ export interface AdminFacts {
    */
   /**
    * `cancel_match` / `restore_match` (2026-10-22): cancel a match, or put a
-   * cancelled one back on. Done from the organisers' group only, by an
-   * owner or admin (`admin-group-understand.ts` -> `match-cancel.ts`); in
-   * the players' group they are answered exactly as `other` is.
+   * cancelled one back on, by an owner or admin with a tag. In the
+   * organisers' group (`admin-group-understand.ts`) and, for a club with
+   * no admin group, the players' group (`admin-ops-engine-batch.ts`,
+   * 2026-10-23); both through `match-cancel.ts`.
    */
   action: "bulk_payment" | "fee_waiver" | "reminder" | "recruit" | "stats_blast" | "cancel_match" | "restore_match" | "other";
   /** bulk_payment */
