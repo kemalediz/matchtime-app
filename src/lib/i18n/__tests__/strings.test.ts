@@ -347,6 +347,7 @@ const SAMPLES: SampleArgs = {
   hq_cancel_no_match_day: { day: "Friday" },
   hq_restore_no_match: null,
   hq_cancel_monthly: null,
+  match_cancel_use_admin_group: null,
   hq_not_understood: null,
   hq_only_organisers: { names: "Hamzah or Raihan" },
   hq_score_saved: { redLabel: "Red", red: 4, yellow: 7, yellowLabel: "Yellow" },

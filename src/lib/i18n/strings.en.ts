@@ -1416,6 +1416,9 @@ export const en = {
   hq_cancel_no_match_day: (p: { day: string }): string => `I can't find an upcoming match for "${p.day}".`,
   hq_restore_no_match: `There's no cancelled match still to come to put back on.`,
   hq_cancel_monthly: `Cancelling a match from here isn't available for monthly squads yet. Please use the website.`,
+  /** An organiser's tagged cancel or "back on" in the PLAYERS' group of a
+   *  club that has an admin group (2026-10-23): HQ is where it is done. */
+  match_cancel_use_admin_group: `Cancelling a match or putting it back on is done in your admin group. Tag me there and I'll do it.`,
   /** A message addressed to MatchTime in the admin group (an @tag, or a
    *  reply to its own message) that it could not read as anything it does. */
   hq_not_understood: `I didn't catch what you'd like me to do.`,

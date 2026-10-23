@@ -7,9 +7,11 @@
  *   - the web page's server action `cancelMatch` (app/actions/matches.ts),
  *     after `requireOrgAdmin` on the signed-in user;
  *   - the organisers' group, HQ (`admin-group-understand.ts`), after code
- *     has found the sender an owner or admin of the club. Never the
- *     players' group: its admin extractor's cancel is answered like
- *     `other` (`admin-ops-engine-batch.ts`).
+ *     has found the sender an owner or admin of the club;
+ *   - the players' group (`admin-ops-engine-batch.ts` ->
+ *     `playersGroupCancelOrRestore`, 2026-10-23), for a club with NO admin
+ *     group only, by its owners and admins with an explicit tag. A club
+ *     with HQ is pointed there.
  *
  * `cancelMatchById` sets the status, works out a monthly club's credits
  * (unchanged from the web action) and queues the players' group
@@ -114,6 +116,34 @@ export async function hqCancelOrRestore(input: {
   addressed: boolean;
   now: Date;
 }): Promise<{ outcome: string; replyText: string } | null> {
+  const s = t(input.lang);
+  const r = await pickAndApply({ ...input, where: "HQ" });
+  if (r.kind === "nothing-done") {
+    if (r.replyText === null && !input.addressed) return null;
+    return { outcome: HQ_CANCEL_NOTHING_DONE, replyText: r.replyText ?? s.hq_restore_no_match };
+  }
+  const when = dayTimeLabel(input.lang, r.date);
+  return r.kind === "cancelled"
+    ? { outcome: "hq-match-cancelled", replyText: s.hq_match_cancelled({ activityName: r.activityName, when }) }
+    : { outcome: "hq-match-restored", replyText: s.hq_match_restored({ activityName: r.activityName, when }) };
+}
+
+/**
+ * The match chosen and the one core applied, for both groups. A
+ * `nothing-done` carries the line saying why, or null for a restore with no
+ * cancelled match to come (HQ stays quiet then unless it was asked).
+ */
+async function pickAndApply(input: {
+  orgId: string;
+  lang: string | null;
+  mode: HqMatchMode;
+  dayPhrase: string | null;
+  now: Date;
+  where: string;
+}): Promise<
+  | { kind: "cancelled" | "restored"; activityName: string; date: Date }
+  | { kind: "nothing-done"; replyText: string | null }
+> {
   const { orgId, mode, now } = input;
   const s = t(input.lang);
   const matches = await db.match.findMany({
@@ -123,17 +153,61 @@ export async function hqCancelOrRestore(input: {
   const match = pickHqMatch(matches, now, mode, input.dayPhrase);
   const day = input.dayPhrase?.trim() ?? "";
   if (!match) {
-    if (mode === "restore") return input.addressed ? { outcome: HQ_CANCEL_NOTHING_DONE, replyText: s.hq_restore_no_match } : null;
-    return { outcome: HQ_CANCEL_NOTHING_DONE, replyText: day ? s.hq_cancel_no_match_day({ day }) : s.hq_cancel_no_match };
+    if (mode === "restore") return { kind: "nothing-done", replyText: null };
+    return { kind: "nothing-done", replyText: day ? s.hq_cancel_no_match_day({ day }) : s.hq_cancel_no_match };
   }
   const r = mode === "cancel" ? await cancelMatchById(match.id) : await restoreMatchById(match.id, now);
   if (r.kind !== "cancelled" && r.kind !== "restored") {
-    console.log(`[admin-group] ${mode} of ${match.id}: ${r.kind}`);
-    return { outcome: HQ_CANCEL_NOTHING_DONE, replyText: mode === "cancel" ? s.hq_cancel_no_match : s.hq_restore_no_match };
+    console.log(`[match-cancel] ${mode} of ${match.id} from ${input.where}: ${r.kind}`);
+    return { kind: "nothing-done", replyText: mode === "cancel" ? s.hq_cancel_no_match : s.hq_restore_no_match };
   }
-  const when = dayTimeLabel(input.lang, r.date);
-  console.log(`[admin-group] ${match.id}: ${r.kind} from HQ`);
-  return r.kind === "cancelled"
-    ? { outcome: "hq-match-cancelled", replyText: s.hq_match_cancelled({ activityName: r.activityName, when }) }
-    : { outcome: "hq-match-restored", replyText: s.hq_match_restored({ activityName: r.activityName, when }) };
+  console.log(`[match-cancel] ${match.id}: ${r.kind} from ${input.where}`);
+  return r;
+}
+
+/** Players'-group outcomes (`AnalyzedMessage.intent`). */
+export const PLAYERS_CANCEL_OUTCOMES = {
+  cancelled: "match_cancelled",
+  restored: "match_restored",
+  nothingDone: "match_cancel_none",
+  organisersOnly: "match_cancel_organisers_only",
+  useAdminGroup: "match_cancel_use_admin_group",
+  monthly: "match_cancel_monthly",
+} as const;
+
+/**
+ * A TAGGED cancel or "it's back on" in the PLAYERS' group (2026-10-23,
+ * Kemal). The caller has checked the explicit MatchTime tag; this decides
+ * the rest, in this order:
+ *
+ *   not an owner or admin   the organisers-only line HQ uses
+ *   the club has HQ         pointed at the admin group (HQ is where the
+ *                           organisers do it; nothing is cancelled here)
+ *   monthly squads          the website, as in HQ
+ *   otherwise               the one core above. Done: no reply, a ✅. The
+ *                           "Match cancelled" (or back on) post the core
+ *                           queues IS the announcement in this group, so a
+ *                           second line would say it twice.
+ */
+export async function playersGroupCancelOrRestore(input: {
+  orgId: string;
+  lang: string | null;
+  mode: HqMatchMode;
+  dayPhrase: string | null;
+  organiser: boolean;
+  now: Date;
+}): Promise<{ outcome: string; replyText: string | null; react: string | null }> {
+  const s = t(input.lang);
+  const O = PLAYERS_CANCEL_OUTCOMES;
+  if (!input.organiser) {
+    // Imported here: admin-group-understand imports this module.
+    const { onlyOrganisersLine } = await import("./admin-group-understand");
+    return { outcome: O.organisersOnly, replyText: await onlyOrganisersLine(input.orgId, input.lang), react: null };
+  }
+  const org = await db.organisation.findUnique({ where: { id: input.orgId }, select: { adminGroupId: true, squadMode: true } });
+  if (org?.adminGroupId) return { outcome: O.useAdminGroup, replyText: s.match_cancel_use_admin_group, react: null };
+  if (org?.squadMode === "monthly") return { outcome: O.monthly, replyText: s.hq_cancel_monthly, react: null };
+  const r = await pickAndApply({ ...input, where: "the players' group" });
+  if (r.kind === "nothing-done") return { outcome: O.nothingDone, replyText: r.replyText ?? s.hq_restore_no_match, react: null };
+  return { outcome: r.kind === "cancelled" ? O.cancelled : O.restored, replyText: null, react: "✅" };
 }
