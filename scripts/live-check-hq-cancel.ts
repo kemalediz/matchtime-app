@@ -23,6 +23,7 @@ import { spendDevApiKeyOrExit } from "../e2e/helpers/dev-api-key.ts";
 import { anthropicModel, type PipelineModel } from "../src/lib/pipeline/llm.ts";
 import { routeBatch } from "../src/lib/pipeline/router.ts";
 import { extractForRoute } from "../src/lib/pipeline/extractors.ts";
+import { messageMentionsBotExplicitly } from "../src/lib/interaction-contract.ts";
 import { organisersContext } from "../src/lib/admin-group-context.ts";
 
 const MAX_USD = 0.5;
@@ -85,7 +86,7 @@ async function main() {
     let got: Want = route === "help" ? "help" : "not-cancel";
     let detail = "";
     if (route === "admin_ops") {
-      const ex = await extractForRoute(model, "admin_ops", { id, body: c.text, authorName: "Hamzah", tagged: true, history: [], lastBotPost: null });
+      const ex = await extractForRoute(model, "admin_ops", { id, body: c.text, authorName: "Hamzah", tagged: messageMentionsBotExplicitly({ body: c.text }), history: [], lastBotPost: null });
       const f = ex.facts.kind === "admin" ? ex.facts : null;
       detail = ` -> ${f?.action ?? ex.facts.kind}${f?.matchDay ? ` "${f.matchDay}"` : ""}`;
       if (f?.action === "cancel_match") got = "cancel";

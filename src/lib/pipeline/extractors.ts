@@ -476,21 +476,22 @@ The latest game or an earlier one:
   "Red won 4-2 last night" / "dün akşam kırmızı 4-2 kazandı" -> first 4, second 2, winner "Red" / "kırmızı", otherGame false
   "last week we lost 9-2" / "geçen ay 5-0 yenmiştik" -> loser "us" / winner "us", otherGame true`,
 
-  admin: `You read ONE instruction to MatchTime, the club's bot, and report what it says. You report the words; code decides what happens. Messages may be in English or Turkish.
+  admin: `You read ONE message from a club's organisers' chat and report two things: what it asks MatchTime, the club's bot, to do, and whether it is spoken to MatchTime at all. You report the words; code decides what happens. Messages may be in English or Turkish.
 
-THE MESSAGE is the one you report on, with its sender. Above it you may see RECENT CHAT, MATCHTIME'S LAST POST, NOW (the time at the club) and, for a WhatsApp reply, the message it quotes (the THEY ARE REPLYING TO line). They tell you who "he" or "them" is; the action and every field come from THE MESSAGE.
+THE MESSAGE is the one you report on, with its sender and whether they tagged the bot. Above it you may see RECENT CHAT, MATCHTIME'S LAST POST, NOW (the time at the club) and, for a WhatsApp reply, the message it quotes (the THEY ARE REPLYING TO line). They tell you who "he" or "them" is and who is being spoken to; the action and every field come from THE MESSAGE.
 
-THE ACTION, exactly one. An action is reported only when the sender tells MatchTime to do it; a question, an opinion or a discussion about it ("should we cancel?", "should Bilal play free?") is "other".
+THE ACTION, exactly one: what the message asks to be done. A question, an opinion or a discussion about whether to do it ("should we cancel?", "should Bilal play free?") is "other".
   "bulk_payment" someone paid for several players.
   "fee_waiver" the sender gives named players a free place, so they owe nothing for a game, or takes a free place back. "Free" meaning able to play ("I'm free Tuesday") is not this.
   "cancel_match" the sender calls off the club's game: cancel it, it is not happening, no game.
   "restore_match" the sender puts a called-off game back on: it is back on, uncancel it, it goes ahead after all.
   "reminder" the sender wants MatchTime to remind them, at a time.
-  "recruit" the sender asks MatchTime to find players who are not in the squad yet, either by inviting the club's own past players or by asking another club or group whether anyone can play. Asking to show, list or count the squad is "other", and so is talking or asking about another club.
-  "stats_blast" the sender tells MatchTime itself to send every player their own stats or ratings link. Telling the PLAYERS to do something (rate each other, open the link they already have) is "other".
+  "recruit" find players who are not in the squad yet, either by inviting the club's own past players or by asking the club's group, another club or another group whether anyone can play. Asking to show, list or count the squad is "other", and so is talking or asking about another club.
+  "stats_blast" MatchTime itself is to send every player their own stats or ratings link. Telling the PLAYERS to do something (rate each other, open the link they already have) is "other".
   "other" anything else.
 
-THE FIELDS. Fill the ones for the action; every other field is "", 0, false or [].
+THE FIELDS. toMatchTime is always filled; fill the others for the action, and every other field is "", 0, false or [].
+  toMatchTime true when the message tells or asks MatchTime itself to do something: it tags the bot, it replies to MatchTime's own post, or it is an instruction that names and tags nobody else ("ask the group if anyone can play"). False when it speaks to a person or to the others in the chat: it tags or names a person to ask them, or the sender asks the others whether to do it or whether they can ("can we ask...?", "should we...?", "you able to find players?").
   payerRef bulk_payment: who paid, as written.
   count bulk_payment: how many players they paid for.
   coveredRefs the people the action is about, one entry each, as written: for bulk_payment the people paid for, if named; for fee_waiver the people given the free place or losing it. "he" or "him" is the person the message named, else the author of the quoted message when the THEY ARE REPLYING TO line names one.
@@ -502,7 +503,13 @@ THE FIELDS. Fill the ones for the action; every other field is "", 0, false or [
   partnerClubs recruit: true when the players are to come from another club, a partner club or the other groups, named or not; false when they are the club's own players, and "the group" or "the main group" is the club's own players' group.
   clubRef recruit: the other club's name as written, without a Turkish case ending ("Sutton'a" -> "Sutton"); "" when the message names no club ("the partner clubs", "the other groups", "another club").
 
-EXAMPLES, English and Turkish, grouped by what they teach
+EXAMPLES, English and Turkish, grouped by what they teach. toMatchTime is true in each unless shown.
+Who it is spoken to:
+  "ask the group if anyone can play" / "MatchTime oyuncu grubuna sor" -> recruit, partnerClubs false, toMatchTime true
+  "@Match Time ask the group" / "@Match Time gruba sor" -> recruit, partnerClubs false, toMatchTime true
+  "@Kemal can we ask Sutton group?" -> recruit, partnerClubs true, clubRef "Sutton", toMatchTime false: a question to Kemal
+  "should we ask the group?" / "gruba soralım mı?" -> other, toMatchTime false: the sender asks the others
+  "you able to find players?" / "oyuncu bulabilir misin?" (to another organiser) -> other, toMatchTime false
 Payments and free places:
   "Amir paid for 4 players" -> bulk_payment, payerRef "Amir", count 4
   "Amir paid for Faris and Adam" -> bulk_payment, payerRef "Amir", count 2, coveredRefs ["Faris","Adam"]
@@ -510,12 +517,12 @@ Payments and free places:
   "Ali ve Can cuma günü ödemesin" -> fee_waiver, coveredRefs ["Ali","Can"], undo false, matchDay "cuma günü"
   "put Bilal down as free on Friday" / "Bilal bu akşam ücretsiz oynasın" -> fee_waiver, coveredRefs ["Bilal"], undo false, matchDay "on Friday" / "bu akşam"
   "scrap that, Tom isn't free, he pays" / "Ali ücretsiz değil, ödesin" -> fee_waiver, coveredRefs ["Tom"] / ["Ali"], undo true
-  "should Bilal play free?" -> other: a discussion
+  "should Bilal play free?" -> other, toMatchTime false: a discussion
 Calling a game off, and putting it back on:
   "Cancel the session" / "maçı iptal et" -> cancel_match, matchDay ""
   "storm, no game Friday" / "bu hafta maç yok" -> cancel_match, matchDay "Friday" / ""
   "it's back on, uncancel Friday" / "maç yapılıyor, iptali geri al" -> restore_match, matchDay "Friday" / ""
-  "should we cancel Friday?" / "the session should be cancelled anyway" -> other: a question, an opinion
+  "should we cancel Friday?" / "the session should be cancelled anyway" -> other, toMatchTime false: a question, an opinion
 Reminders:
   "remind me tomorrow at 6 to bring the bibs" -> reminder, phrase "tomorrow at 6", note "bring the bibs"
 Players from the club's own past games:
@@ -526,12 +533,12 @@ Players from another club:
   "@Match Time ask Friday MT Community if anyone can play tonight" -> recruit, partnerClubs true, clubRef "Friday MT Community"
   "search for players from our partner groups" / "diğer gruplara sor, oynayacak biri var mı" -> recruit, partnerClubs true, clubRef ""
   "try another club for one more" / "başka bir kulübe sorar mısın" -> recruit, partnerClubs true, clubRef ""
-  "Sutton were great last week" / "Sutton geçen hafta çok iyi oynadı" -> other: talk about another club
-  "did Sutton ever get back to us?" -> other: a question
+  "Sutton were great last week" / "Sutton geçen hafta çok iyi oynadı" -> other, toMatchTime false: talk about another club
+  "did Sutton ever get back to us?" -> other, toMatchTime false: a question
 Stats links:
   "@Match Time send everyone their stats" / "@Match Time DM the squad their ratings links" -> stats_blast
-  "lads don't forget to rate the players via the link MatchTime DM'ed you" -> other: it tells the players
-  "did everyone get their stats link?" -> other: a question
+  "lads don't forget to rate the players via the link MatchTime DM'ed you" -> other, toMatchTime false: it tells the players
+  "did everyone get their stats link?" -> other, toMatchTime false: a question
   "@Match Time what are my stats" -> other: one person asking about themselves
 `,
 };
@@ -730,8 +737,11 @@ const ADMIN_SCHEMA = {
     // come from a partner club or group, and that club's name as written.
     partnerClubs: { type: "boolean" },
     clubRef: { type: "string" },
+    // Who the message is spoken to (2026-10-22): MatchTime, or a person or
+    // the others. Code lets nothing leave HQ untagged unless it is MatchTime.
+    toMatchTime: { type: "boolean" },
   },
-  required: ["action", "payerRef", "count", "coveredRefs", "undo", "matchDay", "phrase", "note", "lookbackMatches", "partnerClubs", "clubRef"],
+  required: ["action", "payerRef", "count", "coveredRefs", "undo", "matchDay", "phrase", "note", "lookbackMatches", "partnerClubs", "clubRef", "toMatchTime"],
   additionalProperties: false,
 } as const;
 
@@ -1063,6 +1073,9 @@ export function parseFacts(
         // another club, whatever the boolean said; both are recruit only.
         ...(action === "recruit" && (raw.partnerClubs === true || clubRef) ? { partnerClubs: true } : {}),
         ...(action === "recruit" && clubRef ? { clubRef } : {}),
+        // Only a clear true: a missing or false value keeps HQ's outward
+        // actions closed (`admin-group-understand.ts`).
+        ...(raw.toMatchTime === true ? { toMatchTime: true } : {}),
       };
       return { facts, degradations };
     }

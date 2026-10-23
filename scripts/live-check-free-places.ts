@@ -44,6 +44,7 @@ import { spendDevApiKeyOrExit } from "../e2e/helpers/dev-api-key.ts";
 import { anthropicModel, type PipelineModel } from "../src/lib/pipeline/llm.ts";
 import { routeBatch } from "../src/lib/pipeline/router.ts";
 import { extractForRoute } from "../src/lib/pipeline/extractors.ts";
+import { messageMentionsBotExplicitly } from "../src/lib/interaction-contract.ts";
 import { organisersContext } from "../src/lib/admin-group-context.ts";
 import { batchMessages } from "../e2e/replay/reconstruct.ts";
 import type { ReplaySource } from "../e2e/replay/types.ts";
@@ -173,7 +174,7 @@ async function main() {
     let extra = "";
     if (ok && route === "admin_ops" && (c.facts || c.notGiven)) {
       const history = c.waiting ? [{ author: "MatchTime", body: QUESTION }] : [];
-      const ex = await extractForRoute(model, "admin_ops", { id, body: c.text, authorName: "Raihan", tagged: true, history, lastBotPost: c.waiting ? QUESTION : null });
+      const ex = await extractForRoute(model, "admin_ops", { id, body: c.text, authorName: "Raihan", tagged: messageMentionsBotExplicitly({ body: c.text }), history, lastBotPost: c.waiting ? QUESTION : null });
       const f = ex.facts.kind === "admin" ? ex.facts : null;
       if (c.facts) ok = !!f && c.facts(f);
       // Never a free place GIVEN: other, or a take-back, is fine.

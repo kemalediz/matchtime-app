@@ -1174,7 +1174,7 @@ describe("Man of the Match, where the organisers pick it", () => {
 
 describe("slice S6: an organiser asks MatchTime to ask the partner clubs", () => {
   const recruitFromPartners = (clubRef: string) =>
-    adminFacts({ action: "recruit", undo: false, matchDay: "", partnerClubs: true, clubRef });
+    adminFacts({ action: "recruit", undo: false, matchDay: "", partnerClubs: true, clubRef, toMatchTime: true });
 
   const SUTTON = { partnershipId: "p1", partnerOrgId: "sutton", name: "Sutton FC" };
 
@@ -1185,8 +1185,8 @@ describe("slice S6: an organiser asks MatchTime to ask the partner clubs", () =>
     expect(requests[1].user).toBe(requests[0].user);
   });
 
-  it("ask_group, a club with no partner: the players' group ask, no extractor call (unchanged)", async () => {
-    const r = await ask("ask Sutton if anyone can play tonight", "ask_group");
+  it("ask_group, tagged, a club with no partner: the players' group ask, no extractor call (unchanged)", async () => {
+    const r = await ask("@Match Time ask Sutton if anyone can play tonight", "ask_group");
     expect(r?.outcome).toBe("group-asked");
     expect(requests.length).toBe(1);
     expect(partnerWords.askPartnersFromWords).not.toHaveBeenCalled();
@@ -1203,17 +1203,17 @@ describe("slice S6: an organiser asks MatchTime to ask the partner clubs", () =>
 
   it("ask_group, a partnered club, the club's own group meant: the players' group ask as before", async () => {
     partnerWords.activePartnerChoices.mockResolvedValue([SUTTON]);
-    const deps = { routerModel: routeTo("ask_group"), extractorModel: adminFacts({ action: "recruit" }) };
+    const deps = { routerModel: routeTo("ask_group"), extractorModel: adminFacts({ action: "recruit", toMatchTime: true }) };
     const r = await ask("gruba sor, oynayabilecek var mı", "ask_group", { deps });
     expect(r?.outcome).toBe("group-asked");
     expect(partnerWords.askPartnersFromWords).not.toHaveBeenCalled();
   });
 
-  it("ask_group, a partnered club, the extractor failing: the players' group ask as before", async () => {
+  it("ask_group, tagged, a partnered club, the extractor failing: the players' group ask as before", async () => {
     partnerWords.activePartnerChoices.mockResolvedValue([SUTTON]);
     const router = routeTo("ask_group");
     const broken: PipelineModel = { name: "broken", async complete() { throw new Error("529"); } };
-    const r = await ask("ask in the group if anyone is free", "ask_group", { deps: { routerModel: router, extractorModel: broken } });
+    const r = await ask("@Match Time ask in the group if anyone is free", "ask_group", { deps: { routerModel: router, extractorModel: broken } });
     expect(r?.outcome).toBe("group-asked");
   });
 
@@ -1247,7 +1247,7 @@ describe("slice S6: an organiser asks MatchTime to ask the partner clubs", () =>
   });
 
   it("a recruit of the club's own players is still not done from HQ, unchanged", async () => {
-    const deps = { routerModel: routeTo("admin_ops"), extractorModel: adminFacts({ action: "recruit", lookbackMatches: 5 }) };
+    const deps = { routerModel: routeTo("admin_ops"), extractorModel: adminFacts({ action: "recruit", lookbackMatches: 5, toMatchTime: true }) };
     const r = await ask("message the lads from the last 5 games", "admin_ops", { deps });
     expect(r?.outcome).toBe("hq-not-here");
     expect(partnerWords.askPartnersFromWords).not.toHaveBeenCalled();
@@ -1344,5 +1344,80 @@ describe("'I can't do that from this group' is one line, and not repeated (2026-
   it("said seven hours ago: said again", async () => {
     hqLog.hqLogSince.mockResolvedValue([notHereRow(new Date(NOW.getTime() - 7 * 60 * 60 * 1000))]);
     expect((await ask("@Match Time change the kit colour", "admin_ops", { deps: other }))?.replyText).toBe("I can't do that from this group.");
+  });
+});
+
+// AN ACTION THAT LEAVES HQ NEEDS TO BE ASKED OF MATCHTIME (2026-10-22).
+// FNF HQ 07:22 UTC: Raihan wrote "@89485761081551 can we ask Sutton
+// group?". The tag was Kemal, a person. The router sent it to ask_group and
+// MatchTime posted "We need 3 more players" in the players' group. Now a
+// post in the players' group or an ask to partner clubs happens only when
+// the message tags MatchTime, or the admin extractor says it is spoken to
+// MatchTime (toMatchTime). Otherwise nothing leaves HQ and nothing is said.
+describe("an action that leaves HQ happens only when it is asked of MatchTime (2026-10-22)", () => {
+  const INCIDENT = "@89485761081551 can we ask Sutton group?";
+  const SUTTON = { partnershipId: "p1", partnerOrgId: "sutton", name: "Sutton FC" };
+  const facts = (f: Record<string, unknown>) => adminFacts({ undo: false, matchDay: "", partnerClubs: false, clubRef: "", ...f });
+
+  it("the incident, a club with no partner: the extractor says it is spoken to a person, nothing posted, silent", async () => {
+    const deps = { routerModel: routeTo("ask_group"), extractorModel: facts({ action: "recruit", partnerClubs: true, clubRef: "Sutton", toMatchTime: false }) };
+    expect(await ask(INCIDENT, "ask_group", { deps })).toBeNull();
+    expect(groupAsk.askPlayersGroup).not.toHaveBeenCalled();
+    expect(partnerWords.askPartnersFromWords).not.toHaveBeenCalled();
+    // The extractor is told the truth: no tag on the bot.
+    const ex = requests.find((r) => r.label === "extractor:admin");
+    expect(ex?.user).toContain("THE MESSAGE (from Raihan):");
+  });
+
+  it("the incident, a partnered club: no partner ask either", async () => {
+    partnerWords.activePartnerChoices.mockResolvedValue([SUTTON]);
+    const deps = { routerModel: routeTo("ask_group"), extractorModel: facts({ action: "recruit", partnerClubs: true, clubRef: "Sutton", toMatchTime: false }) };
+    expect(await ask(INCIDENT, "ask_group", { deps })).toBeNull();
+    expect(partnerWords.askPartnersFromWords).not.toHaveBeenCalled();
+    expect(groupAsk.askPlayersGroup).not.toHaveBeenCalled();
+  });
+
+  it("untagged, spoken to MatchTime: the players' group is asked, as before", async () => {
+    const deps = { routerModel: routeTo("ask_group"), extractorModel: facts({ action: "recruit", toMatchTime: true }) };
+    const r = await ask("ask the group if anyone can play", "ask_group", { deps });
+    expect(r?.outcome).toBe("group-asked");
+    expect(groupAsk.askPlayersGroup).toHaveBeenCalledTimes(1);
+  });
+
+  it("untagged, the extractor failing: nothing leaves HQ (fails closed)", async () => {
+    const broken: PipelineModel = { name: "broken", async complete() { throw new Error("529"); } };
+    expect(await ask("ask the group if anyone can play", "ask_group", { deps: { routerModel: routeTo("ask_group"), extractorModel: broken } })).toBeNull();
+    expect(groupAsk.askPlayersGroup).not.toHaveBeenCalled();
+  });
+
+  it("tagged, a club with no partner: asked, and no extractor call (the tag says it)", async () => {
+    const r = await ask("@Match Time ask the group if anyone can play", "ask_group");
+    expect(r?.outcome).toBe("group-asked");
+    expect(requests.map((q) => q.label)).toEqual(["router"]);
+  });
+
+  it("tagged, a partnered club: the tag wins over the extractor's toMatchTime", async () => {
+    partnerWords.activePartnerChoices.mockResolvedValue([SUTTON]);
+    const deps = { routerModel: routeTo("ask_group"), extractorModel: facts({ action: "recruit", partnerClubs: true, clubRef: "Sutton", toMatchTime: false }) };
+    const r = await ask("@Match Time ask Sutton if anyone can play", "ask_group", { deps });
+    expect(r?.outcome).toBe("xask-words-asked");
+  });
+
+  it("admin_ops, recruit from a partner club, spoken to a person: no partner ask, silent", async () => {
+    const deps = { routerModel: routeTo("admin_ops"), extractorModel: facts({ action: "recruit", partnerClubs: true, clubRef: "Sutton", toMatchTime: false }) };
+    expect(await ask(INCIDENT, "admin_ops", { deps })).toBeNull();
+    expect(partnerWords.askPartnersFromWords).not.toHaveBeenCalled();
+  });
+
+  it.each(["recruit", "stats_blast"])("admin_ops %s, untagged and spoken to the others: silent, not even the one line", async (action) => {
+    const deps = { routerModel: routeTo("admin_ops"), extractorModel: facts({ action, toMatchTime: false }) };
+    expect(await ask("should we send everyone their stats?", "admin_ops", { deps })).toBeNull();
+    expect(hqLog.recordMatchTimeLine).not.toHaveBeenCalled();
+  });
+
+  it("what stays in HQ is unchanged: an untagged free place spoken to the others is still asked about", async () => {
+    feeWaiver.proposeFeeFreeInHq.mockResolvedValue({ outcome: "fee-asked", replyText: "Bilal plays free on Fri? YES to confirm." });
+    const deps = { routerModel: routeTo("admin_ops"), extractorModel: facts({ action: "fee_waiver", coveredRefs: ["Bilal"], toMatchTime: false }) };
+    expect((await ask("Bilal washed the bibs, he's free this week", "admin_ops", { deps }))?.outcome).toBe("fee-asked");
   });
 });
