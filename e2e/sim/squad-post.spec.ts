@@ -107,7 +107,8 @@ test("a burst of mixed messages collapses to ONE squad+bench post built from the
   expect(spoke, `one speaker per batch, got: ${JSON.stringify(batch.results.map((r) => r.reply))}`)
     .toHaveLength(1);
   const post = spoke[0].reply!;
-  expect(post).toContain("Based on all the messages I've picked up");
+  // Named for its match (2026-10-23, FNF): the day, date and time.
+  expect(post).toMatch(/^📋 Here's the squad and bench for \*\w{3} \d{1,2} \w{3}, \d{2}:\d{2}\*: /);
   expect(post).toContain("*4/5*");
   expect(post).toContain("need *1 more*");
   expect(post).toContain("*Playing:*");

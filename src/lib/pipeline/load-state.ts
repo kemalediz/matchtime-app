@@ -12,7 +12,8 @@
  * module that could break it.
  */
 import { db } from "../db";
-import { kickoffLabel } from "../i18n/dates";
+import { dayCommaTimeLabel, dayLabel, kickoffLabel } from "../i18n/dates";
+import { cancelledMatchToMention } from "../cancelled-match-notice";
 import { t } from "../i18n/t";
 import type { Lang } from "../i18n/lang";
 import { getOrgFeatures } from "../org-features";
@@ -267,11 +268,17 @@ export async function loadSquadState(
   // Review L1: members playing for a partner club as a guest at a time
   // overlapping this club's active match. Empty for nearly every club.
   const guestElsewhere = match ? await loadGuestElsewhere(orgId, match.date, now) : {};
+  // THIS WEEK'S MATCH, WHEN IT IS CANCELLED (2026-10-23, FNF): the squad
+  // shown is then the next one, and the post says so first. From the rows
+  // already loaded (30 days, every status); the window is the helper's.
+  const cancelled = cancelledMatchToMention(matches, match ? { id: match.id, date: match.date } : null, now);
 
   return {
     matchId: match?.id ?? null,
     maxPlayers: match?.maxPlayers ?? 0,
     kickoffLabel: match ? kickoffLabel(lang, match.date) : t(lang).no_match_label,
+    matchLabel: match ? dayCommaTimeLabel(lang, match.date) : null,
+    cancelledMatch: cancelled ? { id: cancelled.id, dayLabel: dayLabel(lang, cancelled.date) } : null,
     venue: match?.activity.venue ?? "",
     rows,
     roster,

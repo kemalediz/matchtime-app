@@ -158,11 +158,12 @@ export const tr: Strings = {
 
   squad_status_lead: (p) => {
     const count = `*${p.confirmed}/${p.maxPlayers}*`;
-    return (
-      `📋 Aldığım mesajlara göre son kadro${p.withBench ? " ve yedekler" : ""}: ` +
-      (p.need > 0 ? `${count}, *${p.need} kişi daha* lazım 🙏` : `${count} ✅ kadro tamam.`)
-    );
+    const head = p.matchLabel
+      ? `📋 *${p.matchLabel}* maçının kadrosu${p.withBench ? " ve yedekleri" : ""}: `
+      : `📋 Aldığım mesajlara göre son kadro${p.withBench ? " ve yedekler" : ""}: `;
+    return head + (p.need > 0 ? `${count}, *${p.need} kişi daha* lazım 🙏` : `${count} ✅ kadro tamam.`);
   },
+  squad_status_cancelled: (p) => `❌ *${p.dayLabel}* maçı iptal edildi.`,
   playing_header: "*Oynayanlar:*",
   bench_header: (p) => `*Yedekler (${p.count}):*`,
 

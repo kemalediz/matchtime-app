@@ -100,7 +100,8 @@ test("the reply to 'X is out, can we have more players' posts the squad and the 
   expect((await grp.attendanceOf("jake"))?.status).toBe("DROPPED");
   // One reply: the squad from the database, then the recruit line. No
   // em dash in either (Kemal's rule).
-  expect(res.reply).toContain("here's the latest squad: *5/6*, need *1 more* 🙏");
+  // Named for its match since 2026-10-23 (FNF): "for *Thu 29 Oct, 20:00*".
+  expect(res.reply).toMatch(/📋 Here's the squad for \*\w{3} \d{1,2} \w{3}, \d{2}:\d{2}\*: \*5\/6\*, need \*1 more\* 🙏/);
   expect(res.reply).toContain("1. Oscar Owner");
   expect(res.reply).toContain("6. 🥁");
   expect(res.reply).toContain("📣 On it, DM'd 3 recent players who hadn't replied");

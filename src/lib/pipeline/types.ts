@@ -787,6 +787,17 @@ export interface SquadState {
   /** Pre-formatted for the composer, so it needs no clock and no
    *  timezone library: "Tue 21:30". */
   kickoffLabel: string;
+  /** The active match's day, date and time, "Fri 30 Oct, 20:30" /
+   *  "30 Ekim Cuma 20:30" (`dayCommaTimeLabel`). The squad post names its
+   *  match with it (2026-10-23, FNF: a dateless list on a cancelled Friday
+   *  was read as that night's). Absent or null: no match, or an older
+   *  fixture; the post then reads as it always has. */
+  matchLabel?: string | null;
+  /** This week's match, CANCELLED, when the squad being shown is the next
+   *  one (`cancelled-match-notice.ts` has the window). The squad post
+   *  leads with it. `dayLabel` is "Fri 23 Oct" / "23 Ekim Cuma". Absent
+   *  or null: nothing to say. */
+  cancelledMatch?: { id: string; dayLabel: string } | null;
   venue: string;
   rows: AttendanceRow[];
   roster: Member[];

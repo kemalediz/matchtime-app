@@ -127,13 +127,27 @@ export const en = {
 
   // ── row 1: composeSquadStatusPost (group-copy.ts) ────────────────
 
-  squad_status_lead: (p: { withBench: boolean; confirmed: number; maxPlayers: number; need: number }): string => {
+  //   NAMES ITS MATCH (2026-10-23, FNF): "here's the latest squad: 18/18"
+  //   on the morning of a cancelled Friday was next week's squad, and
+  //   everyone read it as that night's. With `matchLabel` ("Fri 30 Oct,
+  //   20:30", `dayCommaTimeLabel`) the lead says which match it is. Every
+  //   shipped caller passes it; without it the old words stand.
+  squad_status_lead: (p: {
+    withBench: boolean;
+    confirmed: number;
+    maxPlayers: number;
+    need: number;
+    matchLabel?: string | null;
+  }): string => {
     const count = `*${p.confirmed}/${p.maxPlayers}*`;
-    return (
-      `📋 Based on all the messages I've picked up, here's the latest squad${p.withBench ? " and bench" : ""}: ` +
-      (p.need > 0 ? `${count}, need *${p.need} more* 🙏` : `${count} ✅ full squad.`)
-    );
+    const head = p.matchLabel
+      ? `📋 Here's the squad${p.withBench ? " and bench" : ""} for *${p.matchLabel}*: `
+      : `📋 Based on all the messages I've picked up, here's the latest squad${p.withBench ? " and bench" : ""}: `;
+    return head + (p.need > 0 ? `${count}, need *${p.need} more* 🙏` : `${count} ✅ full squad.`);
   },
+  /** The line above the squad post when this week's match is cancelled
+   *  (`cancelled-match-notice.ts`). `dayLabel` is "Fri 23 Oct". */
+  squad_status_cancelled: (p: { dayLabel: string }): string => `❌ The match on *${p.dayLabel}* is cancelled.`,
   playing_header: "*Playing:*",
   bench_header: (p: { count: number }): string => `*Bench (${p.count}):*`,
 

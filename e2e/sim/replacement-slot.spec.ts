@@ -154,6 +154,7 @@ const LIVE = process.env.MT_SIM_LIVE_LLM === "1";
       expect(reply).toContain("Objections? An admin can ask me to regenerate the teams.");
       expect(reply).not.toContain("*Playing:*");
       expect(reply).not.toContain("Based on all the messages");
+      expect(reply).not.toContain("Here's the squad");
       expect(reply).not.toContain("[SQUAD]");
 
       // AND NOTHING ELSE SPOKE. `announceSquadFullIfJustFilled` fired the
