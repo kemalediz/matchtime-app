@@ -40,6 +40,12 @@ export function composeSquadStatusPost(args: {
   bench: string[];
   maxPlayers: number;
   lang?: Lang | string | null;
+  /** The match this squad is for, "Fri 30 Oct, 20:30" (2026-10-23, FNF:
+   *  a dateless list on a cancelled Friday was read as that night's). */
+  matchLabel?: string | null;
+  /** This week's match is cancelled: its day, "Fri 23 Oct". The post
+   *  leads with that (`cancelled-match-notice.ts`). */
+  cancelledDayLabel?: string | null;
 }): string {
   const { confirmed, bench, maxPlayers } = args;
   const s = t(args.lang);
@@ -49,8 +55,18 @@ export function composeSquadStatusPost(args: {
     confirmed: confirmed.length,
     maxPlayers,
     need,
+    matchLabel: args.matchLabel,
   });
-  return [lead, "", buildSlotRosterBlock({ header: s.playing_header, confirmed, bench, maxPlayers, lang: args.lang })].join("\n");
+  const post = [lead, "", buildSlotRosterBlock({ header: s.playing_header, confirmed, bench, maxPlayers, lang: args.lang })].join("\n");
+  return withCancelledLine(post, args.cancelledDayLabel, args.lang);
+}
+
+/** The squad post, or the team sheet that replaces it, with "this week's
+ *  match is cancelled" above it when it is. One place, so the roster and
+ *  the line-ups cannot disagree about saying it. */
+export function withCancelledLine(post: string, cancelledDayLabel: string | null | undefined, lang?: Lang | string | null): string {
+  if (!cancelledDayLabel) return post;
+  return `${t(lang).squad_status_cancelled({ dayLabel: cancelledDayLabel })}\n\n${post}`;
 }
 
 /**
@@ -247,6 +263,12 @@ export interface SquadTruth {
     kickoff: string;
     venue: string;
   } | null;
+  /** The match the squad is for, "Fri 30 Oct, 20:30" (2026-10-23, FNF).
+   *  Absent: the post reads as it always has. */
+  matchLabel?: string | null;
+  /** This week's match is cancelled: its day, "Fri 23 Oct"
+   *  (`cancelled-match-notice.ts`). The post leads with it. */
+  cancelledDayLabel?: string | null;
 }
 
 /** Leaderboard rows also use "N. <name>" numbering but carry stats
@@ -514,21 +536,27 @@ function composeSquadTruthPost(truth: SquadTruth, lang?: Lang | string | null): 
   // English for a Turkish group.
   const sheet = truth.teams;
   if (sheet && sheet.red.length + sheet.yellow.length > 0) {
-    return formatTeamsPost({
-      redLabel: sheet.labels[0],
-      yellowLabel: sheet.labels[1],
-      red: sheet.red.map((name) => ({ name })),
-      yellow: sheet.yellow.map((name) => ({ name })),
-      kickoff: sheet.kickoff,
-      venue: sheet.venue,
+    return withCancelledLine(
+      formatTeamsPost({
+        redLabel: sheet.labels[0],
+        yellowLabel: sheet.labels[1],
+        red: sheet.red.map((name) => ({ name })),
+        yellow: sheet.yellow.map((name) => ({ name })),
+        kickoff: sheet.kickoff,
+        venue: sheet.venue,
+        lang,
+      }),
+      truth.cancelledDayLabel,
       lang,
-    });
+    );
   }
   return composeSquadStatusPost({
     confirmed: truth.confirmedDisplay ?? truth.confirmed,
     bench: truth.benchDisplay ?? truth.bench,
     maxPlayers: truth.maxPlayers,
     lang,
+    matchLabel: truth.matchLabel,
+    cancelledDayLabel: truth.cancelledDayLabel,
   });
 }
 

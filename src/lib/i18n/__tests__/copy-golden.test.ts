@@ -748,6 +748,15 @@ function cases(lang: Lang): Case[] {
   add("R1 squad_status / short with bench", say(short, { kind: "squad_status", messageId: null }));
   add("R1 squad_status / full", say(full, { kind: "squad_status", messageId: null }));
   add("R1 squad_status / empty squad", say(w(), { kind: "squad_status", messageId: null }));
+  // 2026-10-23 (FNF): the loader names the match, and leads with this
+  // week's match when it is cancelled. What `load-state.ts` sets.
+  const dated = (s: SquadState, cancelled: boolean): SquadState => ({
+    ...s,
+    matchLabel: lang === "tr" ? "30 Ekim Cuma 20:30" : "Fri 30 Oct, 20:30",
+    cancelledMatch: cancelled ? { id: "m-23", dayLabel: lang === "tr" ? "23 Ekim Cuma" : "Fri 23 Oct" } : null,
+  });
+  add("R1 squad_status / named for its match", say(dated(short, false), { kind: "squad_status", messageId: null }));
+  add("R1 squad_status / this week's match cancelled", say(dated(full, true), { kind: "squad_status", messageId: null }));
 
   add("R6 answer_count / short, no stated count", say(short, { kind: "answer_count", messageId: MSG, statedCount: null }));
   add("R6 answer_count / short, stated count wrong", say(short, { kind: "answer_count", messageId: MSG, statedCount: 9 }));

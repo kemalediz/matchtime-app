@@ -48,7 +48,7 @@ import { renderGuestNameAsk } from "../guest-name-ask";
 // loadable in the Playwright worker (which never loads Prisma) so the
 // corpus can judge this pipeline. The functions themselves are the same
 // ones, moved and re-exported, not copies.
-import { composeSquadStatusPost, formatTeamsPost } from "../group-copy";
+import { composeSquadStatusPost, formatTeamsPost, withCancelledLine } from "../group-copy";
 // The Prisma-free half of `rating-progress.ts`, split out on 2026-09-11
 // precisely so this file can render that answer. See this module's
 // header for what a Prisma import here does to the corpus spec.
@@ -197,16 +197,33 @@ export function compose(result: EngineResult): ComposedOutput {
    */
   const squadStatePost = (): string => {
     const sh = sheet();
-    if (!sh) return composeSquadStatusPost({ confirmed, bench, maxPlayers: state.maxPlayers, lang });
-    return formatTeamsPost({
-      redLabel: state.teamLabels[0],
-      yellowLabel: state.teamLabels[1],
-      red: sh.red.map((n) => ({ name: n })),
-      yellow: sh.yellow.map((n) => ({ name: n })),
-      kickoff: state.kickoffLabel,
-      venue: state.venue,
+    // Named for its match, and led by "this week's is cancelled" when it
+    // is (2026-10-23, FNF). Both optional on the state; absent, the post
+    // reads as it always has.
+    const cancelledDayLabel = state.cancelledMatch?.dayLabel ?? null;
+    if (!sh) {
+      return composeSquadStatusPost({
+        confirmed,
+        bench,
+        maxPlayers: state.maxPlayers,
+        lang,
+        matchLabel: state.matchLabel ?? null,
+        cancelledDayLabel,
+      });
+    }
+    return withCancelledLine(
+      formatTeamsPost({
+        redLabel: state.teamLabels[0],
+        yellowLabel: state.teamLabels[1],
+        red: sh.red.map((n) => ({ name: n })),
+        yellow: sh.yellow.map((n) => ({ name: n })),
+        kickoff: state.kickoffLabel,
+        venue: state.venue,
+        lang,
+      }),
+      cancelledDayLabel,
       lang,
-    });
+    );
   };
 
   /** `answer_squad` for the organisers: the post, then the bench line

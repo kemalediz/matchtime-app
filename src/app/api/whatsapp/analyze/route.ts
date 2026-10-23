@@ -331,7 +331,8 @@ import { resolveTeamLabels } from "@/lib/team-labels";
 // in the same LANGUAGE, which is why this is `i18n/dates`' helper and
 // not a raw `formatLondon` pattern. Its English is "EEE HH:mm", byte for
 // byte what the loader produced before the string tables existed.
-import { kickoffLabel } from "@/lib/i18n/dates";
+import { dayCommaTimeLabel, dayLabel, kickoffLabel } from "@/lib/i18n/dates";
+import { CANCELLED_NOTICE_AFTER_MS, SAME_FIXTURE_MS, cancelledMatchToMention } from "@/lib/cancelled-match-notice";
 import { selectRegistrationMatch } from "@/lib/registration-match-select";
 import { messageMentionsBotExplicitly, messageTagsBot } from "@/lib/interaction-contract";
 import { mergeRecruitReply } from "@/lib/recruit-request";
@@ -3631,6 +3632,26 @@ async function handleAnalyzeRequest(request: Request) {
           },
         });
         const sheetRows = sheetMatch?.teamAssignments ?? [];
+        // THIS WEEK'S MATCH, WHEN IT IS CANCELLED (2026-10-23, FNF): the
+        // post names its match and leads with the cancellation, exactly as
+        // the pipeline's composer does from `SquadState.cancelledMatch`.
+        // Only the rows the window can reach (`cancelled-match-notice.ts`).
+        const replyNow = new Date();
+        const nearby = await db.match.findMany({
+          where: {
+            activity: { orgId: org.id },
+            date: {
+              gte: new Date(replyNow.getTime() - CANCELLED_NOTICE_AFTER_MS - SAME_FIXTURE_MS),
+              lte: nextMatchForReply.date,
+            },
+          },
+          select: { id: true, date: true, status: true },
+        });
+        const cancelledThisWeek = cancelledMatchToMention(
+          nearby,
+          { id: nextMatchForReply.id, date: nextMatchForReply.date },
+          replyNow,
+        );
         const teamLabels = sheetMatch
           ? resolveTeamLabels(
               { teamLabels: sheetMatch.teamLabels },
@@ -3659,6 +3680,8 @@ async function handleAnalyzeRequest(request: Request) {
           confirmedDisplay: confirmedAtt.map((a) => shownName(a.userId, a.user.name)),
           benchDisplay: benchAtt.map((a) => shownName(a.userId, a.user.name)),
           maxPlayers: nextMatchForReply.maxPlayers,
+          matchLabel: dayCommaTimeLabel(org.language, nextMatchForReply.date),
+          cancelledDayLabel: cancelledThisWeek ? dayLabel(org.language, cancelledThisWeek.date) : null,
           knownNames: memberships
             .map((m) => m.user.name)
             .filter((n): n is string => !!n),
