@@ -19,11 +19,14 @@ import {
   Shield,
 } from "lucide-react";
 import { setPlayerPositions } from "@/app/actions/players";
+import { adminPlayerLabel, adminPlayerMatches } from "@/lib/admin-player-label";
 
 interface Player {
   id: string;
   name: string | null;
-  email: string;
+  /** Null for a partner club's guest: his email is never sent. */
+  email: string | null;
+  guestFrom?: string | null;
   isActive: boolean;
   positions: string[]; // for the currently-selected activity
   _count: { attendances: number };
@@ -120,7 +123,7 @@ export default function BulkPositionsPage() {
     return players.filter((p) => {
       if (filter === "active" && !p.isActive) return false;
       if (!q) return true;
-      return (p.name ?? "").toLowerCase().includes(q) || p.email.toLowerCase().includes(q);
+      return adminPlayerMatches(p, q);
     });
   }, [players, filter, search]);
 
@@ -211,7 +214,7 @@ export default function BulkPositionsPage() {
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="font-medium text-slate-800 truncate">
-                      {p.name ?? p.email}
+                      {adminPlayerLabel(p)}
                       {!p.isActive && (
                         <span className="ml-2 inline-flex px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 text-[10px] font-semibold uppercase tracking-wider">
                           Inactive

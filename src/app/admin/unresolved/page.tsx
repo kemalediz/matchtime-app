@@ -10,11 +10,14 @@ import {
   type UnresolvedGroup,
   type FailedAttendanceWrite,
 } from "@/app/actions/unresolved";
+import { adminPlayerLabel } from "@/lib/admin-player-label";
 
 interface Player {
   id: string;
   name: string | null;
-  email: string;
+  /** Null for a partner club's guest: his email is never sent. */
+  email: string | null;
+  guestFrom?: string | null;
 }
 
 const INTENT_LABEL: Record<string, string> = {
@@ -212,7 +215,7 @@ export default function UnresolvedPage() {
                     .sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""))
                     .map((p) => (
                       <option key={p.id} value={p.id}>
-                        {p.name ?? p.email}
+                        {adminPlayerLabel(p)}
                       </option>
                     ))}
                 </select>

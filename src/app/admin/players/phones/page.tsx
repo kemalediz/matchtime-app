@@ -6,11 +6,13 @@ import { ArrowLeft, Check, AlertCircle, Loader2, Phone } from "lucide-react";
 import { updatePlayerPhone } from "@/app/actions/players";
 import { t } from "@/lib/i18n/t";
 import { DEFAULT_LANG, type Lang } from "@/lib/i18n/lang";
+import { adminPlayerLabel, adminPlayerMatches } from "@/lib/admin-player-label";
 
 interface Player {
   id: string;
   name: string | null;
-  email: string;
+  /** Null for a partner club's guest (never listed on this page anyway). */
+  email: string | null;
   phoneNumber: string | null;
   isActive: boolean;
   positions: string[];
@@ -131,11 +133,7 @@ export default function BulkPhonesPage() {
       if (filter === "missing" && p.phoneNumber) return false;
       if (filter === "active" && !p.isActive) return false;
       if (!q) return true;
-      return (
-        (p.name ?? "").toLowerCase().includes(q) ||
-        p.email.toLowerCase().includes(q) ||
-        (p.phoneNumber ?? "").includes(q)
-      );
+      return adminPlayerMatches(p, q) || (p.phoneNumber ?? "").includes(q);
     });
   }, [players, filter, search]);
 
@@ -208,7 +206,7 @@ export default function BulkPhonesPage() {
                 >
                   <div className="min-w-0">
                     <p className="font-medium text-slate-800 truncate">
-                      {p.name ?? p.email}
+                      {adminPlayerLabel(p, lang)}
                       {!p.isActive && (
                         <span className="ml-2 inline-flex px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 text-[10px] font-semibold uppercase tracking-wider">
                           Inactive

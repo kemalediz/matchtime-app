@@ -32,6 +32,7 @@ import {
 } from "@/app/actions/players";
 import { groupSyncAdminWarning } from "@/lib/group-membership-gate";
 import { t } from "@/lib/i18n/t";
+import { adminPlayerInitial, adminPlayerLabel } from "@/lib/admin-player-label";
 import { DEFAULT_LANG, type Lang } from "@/lib/i18n/lang";
 import { PhoneLinkDialog } from "./phone-link-dialog";
 import { ProvisionalPlayersBanner, ClubRatingCell, DuplicateSuggestionsBanner, PlayersInfoLegend } from "./player-row-bits";
@@ -41,7 +42,8 @@ import type { DuplicateSuggestion } from "@/lib/placeholder-link-rules";
 interface Player {
   id: string;
   name: string | null;
-  email: string;
+  /** Null for a partner club's guest: his email is never sent. */
+  email: string | null;
   image: string | null;
   role: string;
   positions: string[];
@@ -554,22 +556,25 @@ export default function PlayersPage() {
           {players.map((p) => (
             <div
               key={p.id}
+              data-testid={`player-row-${p.id}`}
               className={`flex flex-col gap-3 sm:grid sm:grid-cols-[1fr_auto_auto_auto] sm:gap-4 px-4 sm:px-6 py-4 sm:items-center ${
                 p.leftAt ? "bg-slate-50/70 opacity-70" : p.provisionallyAddedAt ? "bg-amber-50/50" : ""
               }`}
             >
               <div className="flex items-center gap-3 min-w-0">
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold shrink-0 ${
+                <div data-testid="player-initial" className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold shrink-0 ${
                   p.provisionallyAddedAt ? "bg-amber-100 text-amber-700" : "bg-blue-50 text-blue-700"
                 }`}>
-                  {(p.name ?? p.email).charAt(0).toUpperCase()}
+                  {/* A partner guest's email is null and his name can be too
+                      (prod, MT Test, 2026-10-23): this used to throw. */}
+                  {adminPlayerInitial(p)}
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 min-w-0 flex-wrap">
                     <input
                       type="text"
                       defaultValue={p.name ?? ""}
-                      placeholder={p.email}
+                      placeholder={adminPlayerLabel(p, lang)}
                       onBlur={(e) => handleRename(p.id, e.target.value, p.name)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") (e.target as HTMLInputElement).blur();
@@ -634,7 +639,7 @@ export default function PlayersPage() {
                   {mergeFrom === p.id && (
                     <div className="mt-2 p-2 rounded bg-slate-50 border border-slate-200 text-xs">
                       <p className="text-slate-700 mb-1.5">
-                        Merge{" "}<strong>{p.name ?? p.email}</strong>{" "}into another player. Pick the one to keep:
+                        Merge{" "}<strong>{adminPlayerLabel(p, lang)}</strong>{" "}into another player. Pick the one to keep:
                       </p>
                       <div className="flex flex-wrap gap-1">
                         {players
@@ -645,7 +650,7 @@ export default function PlayersPage() {
                               onClick={() => handleMerge(p.id, q.id)}
                               className="px-2 py-1 rounded bg-white border border-slate-200 hover:border-blue-400 hover:bg-blue-50 text-slate-700"
                             >
-                              {q.name ?? q.email}
+                              {adminPlayerLabel(q, lang)}
                             </button>
                           ))}
                         <button
