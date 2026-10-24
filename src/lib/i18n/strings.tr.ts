@@ -4271,6 +4271,7 @@ export const tr: Strings = {
   pool_dm_code_expired: (p) =>
     `Bu kayıt kodunun süresi doldu. Lütfen buradan yeniden kaydol ve yeni mesajı gönder: ${p.playLink}`,
   pool_dm_claim_wait: "Teşekkürler. Bu kayıt MatchTime uygulamasında devam ediyor: tamamlamak için başladığın yerde uygulamayı aç.",
+  pool_dm_code_not_yours: "Üzgünüm, bu kod bu numaradan kullanılamaz.",
   pool_dm_code_wrong: (p) =>
     `Bu kodla bir kayıt bulamadım. Lütfen mesajı açıldığı gibi gönder ya da buradan yeniden kaydol: ${p.playLink}`,
 };

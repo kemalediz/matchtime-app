@@ -36,7 +36,8 @@ export function poolAlreadyText(lang: Lang, status: "active" | "paused" | "stopp
 }
 
 /** A code that did not work. Never carries a code: nobody learns one. */
-export function poolCodeReplyText(kind: "expired" | "wrong-code", lang: Lang): string {
+export function poolCodeReplyText(kind: "expired" | "wrong-code" | "not-yours", lang: Lang): string {
+  if (kind === "not-yours") return t(lang).pool_dm_code_not_yours;
   const playLink = appUrl(POOL_PLAY_PATH);
   return kind === "expired" ? t(lang).pool_dm_code_expired({ playLink }) : t(lang).pool_dm_code_wrong({ playLink });
 }

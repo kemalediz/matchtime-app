@@ -30,8 +30,11 @@
  * your code: is this your number?", `member-claim.ts`); the number that
  * wrote hears only that the sign-up continues in the app. So a code he
  * forwards can never put someone else's number on his account (their DMs,
- * INs and payments would resolve as him). A number that already belongs to
- * an account gets the profile, as for any sign-up.
+ * INs and payments would resolve as him). And a member's sign-up only ever
+ * ends on HIS account: from a number of ANOTHER account it is refused, the
+ * code dies, and that sender hears one neutral line that names nobody
+ * (counted as a failed attempt). Only a stranger's /play sign-up goes to
+ * whatever account the number already has.
  *
  * Every failure (wrong code, expired, a number that has a profile) is
  * recorded against the NUMBER, for strangers and members alike, and the
@@ -94,7 +97,7 @@ export async function handlePoolConfirmDm(input: PoolConfirmInput): Promise<Pool
 
   const rows = await db.poolProfile.findMany({
     where: { status: "pending-verify", confirmCode: { in: candidates } },
-    select: { id: true, confirmCode: true, confirmCodeExpiresAt: true, language: true, claimPhone: true },
+    select: { id: true, confirmCode: true, confirmCodeExpiresAt: true, language: true, claimPhone: true, userId: true },
   });
   const row = candidates.map((c) => rows.find((r) => r.confirmCode === c)).find(Boolean) ?? null;
   // Slice L3: a member's code that a number has already claimed waits for
@@ -121,6 +124,8 @@ export async function handlePoolConfirmDm(input: PoolConfirmInput): Promise<Pool
     ownCode,
     failuresToday,
     looksLikeConfirm: message !== null,
+    // Slice L3: a member's sign-up only ever ends on his own account.
+    notYours: !!row && confirmTarget({ numberUserId: sender?.id ?? null, starterId: row.userId }).kind === "not-yours",
     now,
   });
 
@@ -131,6 +136,14 @@ export async function handlePoolConfirmDm(input: PoolConfirmInput): Promise<Pool
       return out(decision.reason);
     case "failed": {
       await recordFailure(phone!, decision.reply === "expired" ? "expired" : "wrong");
+      if (decision.reply === "not-yours") {
+        // The code dies: nothing of the member's sign-up reaches this
+        // account, and the line below names nobody. In HIS language or the
+        // message's own, never the sign-up's.
+        await db.poolProfile.updateMany({ where: { id: row!.id, status: "pending-verify", claimPhone: null }, data: { confirmCodeExpiresAt: now } });
+        const lang = normaliseLang(senderProfile?.language ?? message?.lang ?? null);
+        return out("not-yours", await replyIfAllowed(phone!, poolCodeReplyText("not-yours", lang), now));
+      }
       // His profile's language, else the sign-up's, else the message's own.
       const lang = normaliseLang(senderProfile?.language ?? row?.language ?? message?.lang ?? null);
       return out(decision.reply, await replyIfAllowed(phone!, poolCodeReplyText(decision.reply, lang), now));
@@ -208,8 +221,10 @@ async function confirm(profileId: string, code: string, phone: string, waMessage
     if (row?.status !== "pending-verify" || row.claimPhone) return null;
 
     const existing = await tx.user.findUnique({ where: { phoneNumber: `+${phone}` }, select: { id: true, poolProfile: { select: { id: true } } } });
-    if (existing?.poolProfile) return null;
+    // (A member's own number: his waiting sign-up IS his profile row.)
+    if (existing?.poolProfile && existing.poolProfile.id !== profileId) return null;
     const target = confirmTarget({ numberUserId: existing?.id ?? null, starterId: row.userId });
+    if (target.kind === "not-yours") return null;
 
     if (target.kind === "member-claim") {
       const { count } = await tx.poolProfile.updateMany({

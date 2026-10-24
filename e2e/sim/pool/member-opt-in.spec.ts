@@ -16,9 +16,9 @@
  *   - a friend he forwarded the code to sends it; he says No: nothing is
  *     attached, the code dies, the friend hears nothing more (not even when
  *     he sends it again), and no account is made for the friend
- *   - his code sent from a number another member already holds: that
- *     account is the one recorded (as any /play sign-up), his own account
- *     gets nothing, and nobody else hears anything
+ *   - his code sent from a number another account holds: refused with one
+ *     neutral line naming nobody, counted against that number, the code
+ *     dies; a member's sign-up only ever ends on HIS account
  */
 import type { Page } from "@playwright/test";
 import { signInAs } from "../../fixtures";
@@ -179,7 +179,7 @@ scenarios("a club member opts in from his profile", () => {
     pool.expectSent(await pool.collect(), []);
   });
 
-  scenario("his code sent from a number another member holds: that account is recorded, his own gets nothing", async ({ pool, page }) => {
+  scenario("his code sent from a number of ANOTHER account: refused, nothing of his reaches it, the code dies, counted", async ({ pool, page }) => {
     const fnf = await pool.club("fnf", {
       name: "Friday Night Football",
       players: [
@@ -196,14 +196,23 @@ scenarios("a club member opts in from his profile", () => {
     await card.getByRole("button", { name: EN.member.continueWhatsApp }).click();
     const prefill = (await card.getByTestId("pool-prefill").innerText()).trim();
 
-    pool.note("Pete sends Gary's message from his own phone");
+    pool.note("Pete sends Gary's message from his own phone: Pete has an account");
     const ex = await pete.dm(prefill);
-    expect(ex.json).toMatchObject({ handled: "pool-confirm", result: "confirmed" });
-    pool.expectSent(ex.sent, [{ to: "fnf.pete", purpose: "pool-welcome" }]);
+    expect(ex.json).toMatchObject({ handled: "pool-confirm", result: "not-yours" });
+    pool.expectSent(ex.sent, [{ to: "fnf.pete", purpose: "pool-code-reply", text: /^Sorry, that code can't be used from this number\.$/ }]);
+    pool.expectNoLeaks(["Gary", "Riverside", "Friday Night Football"], { to: ["fnf.pete"] });
 
-    expect(await pool.profileOf(pete)).toMatchObject({ status: "active" });
+    expect(await pool.profileOf(pete)).toBeNull();
+    expect(await pool.failedAttempts(pete)).toBe(1);
     expect(await pool.db.one(`SELECT "phoneNumber" FROM "User" WHERE id = $1`, [garyId])).toEqual({ phoneNumber: null });
-    expect(await pool.db.count(`SELECT count(*) FROM "PoolProfile" WHERE "userId" = $1`, [garyId])).toBe(0);
+    expect(await pool.db.count(`SELECT count(*) FROM "PoolProfile" WHERE "userId" = $1 AND status <> 'pending-verify'`, [garyId])).toBe(0);
     expect(await pool.consentRecords(garyId)).toEqual([]);
+
+    pool.note("the code is dead: Gary's card offers a fresh start, and the code sent again is only 'expired'");
+    await page.reload();
+    await expect(page.getByTestId("play-elsewhere").getByRole("button", { name: EN.member.open })).toBeVisible();
+    const again = await pete.dm(prefill);
+    expect(again.json).toMatchObject({ result: "expired" });
+    expect(await pool.profileOf(pete)).toBeNull();
   });
 });

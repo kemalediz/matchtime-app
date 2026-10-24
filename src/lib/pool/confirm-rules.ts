@@ -123,8 +123,10 @@ export type PoolConfirmDecision =
    *  sign-up is NOT attached (a code belongs to the sign-up that made it),
    *  he is told how to manage his own, and the attempt counts. */
   | { action: "already-signed-up"; status: "active" | "paused" | "stopped" }
-  /** Record a failed attempt, and reply if `codeReplyAllowed` says so. */
-  | { action: "failed"; reply: "expired" | "wrong-code" }
+  /** Record a failed attempt, and reply if `codeReplyAllowed` says so.
+   *  "not-yours" (slice L3): a member's code from another account's number;
+   *  the code dies too. */
+  | { action: "failed"; reply: "expired" | "wrong-code" | "not-yours" }
   /** Nothing is sent and nothing below in the DM route reads it. */
   | { action: "ignore"; reason: "no-phone" | "locked" | "already-in-pool" }
   /** Not the pool's: the DM goes on exactly as before. */
@@ -142,6 +144,8 @@ export type PoolConfirmDecision =
  *                                          strangers and members alike, so
  *                                          nobody can guess for free)
  *   expired                                failed: expired
+ *   a member's code, another account's     failed: not-yours (slice L3;
+ *     number                               the code dies too)
  *   he has a profile already               already-signed-up (counted)
  *   otherwise                              confirm
  */
@@ -153,6 +157,9 @@ export function decidePoolConfirm(args: {
   ownCode: boolean;
   failuresToday: number;
   looksLikeConfirm: boolean;
+  /** Slice L3: the named sign-up was started by a signed-in member and the
+   *  sending number belongs to a DIFFERENT account (`confirmTarget`). */
+  notYours?: boolean;
   now: Date;
 }): PoolConfirmDecision {
   const { row, sender, now } = args;
@@ -162,6 +169,7 @@ export function decidePoolConfirm(args: {
   if (args.failuresToday >= POOL_CONFIRM.wrongCodesPerDay) return { action: "ignore", reason: "locked" };
   if (!row) return { action: "failed", reply: "wrong-code" };
   if (row.expiresAt && row.expiresAt.getTime() <= now.getTime()) return { action: "failed", reply: "expired" };
+  if (args.notYours) return { action: "failed", reply: "not-yours" };
   if (sender) return { action: "already-signed-up", status: sender.status };
   return { action: "confirm" };
 }
@@ -192,9 +200,13 @@ export function attemptPurgeBefore(now: Date): Date {
 // ── Whose profile it becomes (slice L3) ────────────────────────────────
 
 export type ConfirmTarget =
-  /** The number belongs to an account: that account, whoever started the
-   *  sign-up. Accounts are never merged. */
+  /** The number's own account: for a stranger's /play sign-up, whatever
+   *  account it is; for a member's, only when it is HIS. Never merged. */
   | { kind: "number-account"; userId: string }
+  /** A member's sign-up, sent from a number of ANOTHER account: nothing is
+   *  attached (his name, pitches and hours must never reach that account),
+   *  the code dies, and the sender is told only that it cannot be used. */
+  | { kind: "not-yours" }
   /** A member started it from his profile and the number is on no account:
    *  NOTHING is attached. The claim waits for his yes on his signed-in
    *  page ("a number ending 7041 messaged us with your code"), so a code he
@@ -204,6 +216,8 @@ export type ConfirmTarget =
   | { kind: "new-account" };
 
 export function confirmTarget(args: { numberUserId: string | null; starterId: string | null }): ConfirmTarget {
+  // A member's sign-up only ever ends on his own account.
+  if (args.starterId && args.numberUserId && args.numberUserId !== args.starterId) return { kind: "not-yours" };
   if (args.numberUserId) return { kind: "number-account", userId: args.numberUserId };
   if (args.starterId) return { kind: "member-claim", starterId: args.starterId };
   return { kind: "new-account" };

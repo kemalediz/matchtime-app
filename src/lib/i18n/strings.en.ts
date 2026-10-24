@@ -5729,6 +5729,7 @@ export const en = {
   pool_dm_code_expired: (p: { playLink: string }): string =>
     `That sign-up code has expired. Please sign up again here and send the new message: ${p.playLink}`,
   pool_dm_claim_wait: "Thanks. This sign-up continues in the MatchTime app: open it where you started to finish.",
+  pool_dm_code_not_yours: "Sorry, that code can't be used from this number.",
   pool_dm_code_wrong: (p: { playLink: string }): string =>
     `I couldn't find a sign-up with that code. Please send the message exactly as it opened, or sign up again here: ${p.playLink}`,
 };
