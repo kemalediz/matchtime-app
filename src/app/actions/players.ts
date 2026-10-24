@@ -522,9 +522,26 @@ export async function removeProvisionalPlayer(
     where: { userId_orgId: { userId, orgId } },
     data: { leftAt: new Date(), provisionallyAddedAt: null },
   });
+  // ...and off every match of the club still to come (FNF, 2026-10-24:
+  // "Glazers" stayed on the bench, printed as "a player"). After the
+  // leftAt write: the helper acts only on a closed membership. Imported
+  // when needed, like the partner-guest check below (attendance.ts pulls in
+  // the scheduler).
+  const { takeRemovedMemberOffUpcomingMatches } = await import("@/lib/member-removal");
+  const takenOff = await takeRemovedMemberOffUpcomingMatches({
+    userId,
+    orgId,
+    event: {
+      cause: "member-removed",
+      actorKind: "admin",
+      actorUserId: session.user.id,
+      sourceRef: "admin:removeProvisionalPlayer",
+    },
+  });
 
   revalidatePath("/admin/players");
   revalidatePath("/admin");
+  for (const t of takenOff) revalidatePath(`/matches/${t.matchId}`);
   return { ok: true };
 }
 

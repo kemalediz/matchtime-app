@@ -10,12 +10,14 @@
  *   4. Find Membership for (user, org). If not found or already leftAt,
  *      silent noop.
  *   5. Set Membership.leftAt = now.
- *   6. Queue BotJob DM to every admin: "<name|phone> left the group."
+ *   6. Take him off the club's upcoming matches (member-removal.ts).
+ *   7. Queue BotJob DM to every admin: "<name|phone> left the group."
  */
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { normalisePhone } from "@/lib/phone";
 import { sendAdminNotice } from "@/lib/admin-channel";
+import { takeRemovedMemberOffUpcomingMatches } from "@/lib/member-removal";
 
 export async function POST(request: Request) {
   const apiKey = request.headers.get("x-api-key");
@@ -86,6 +88,15 @@ export async function POST(request: Request) {
     await db.membership.update({
       where: { id: membership.id },
       data: { leftAt: now },
+    });
+    // Off every match of the club still to come (2026-10-24): a place held
+    // for a player who is no longer in the group is printed nameless and
+    // cannot be dropped by "X out". Past matches keep their history.
+    await takeRemovedMemberOffUpcomingMatches({
+      userId: user.id,
+      orgId: org.id,
+      now,
+      event: { cause: "member-removed", actorKind: "system", sourceRef: "whatsapp:group-leave" },
     });
 
     // Tell the admins the roster shrank, through the club's admin channel

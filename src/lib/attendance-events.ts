@@ -132,6 +132,11 @@ export const ATTENDANCE_EVENT_CAUSES = [
   /** Duplicate User rows were merged; this row was remapped to the
    *  survivor or dropped as the loser of a unique-key clash. */
   "player-merge",
+  /** The player stopped being a member of the club (an admin removed him
+   *  on the players page, or he left the WhatsApp group), so his place on
+   *  each upcoming match was dropped (`member-removal.ts`, 2026-10-24).
+   *  `sourceRef` names the removal that did it. */
+  "member-removed",
   /** A one-off maintenance script. Also the fallback recorded when a
    *  caller supplies no context at all, so an unattributed write is
    *  VISIBLE in the log rather than missing from it. */

@@ -806,6 +806,12 @@ export interface SquadState {
   venue: string;
   rows: AttendanceRow[];
   roster: Member[];
+  /** The PRINTED name of each row user who is not on `roster` (he is no
+   *  longer a member: removed, or left the group, with a row still on the
+   *  match). Print only, never matched on: the roster is who people can be
+   *  resolved to (FNF, 2026-10-24, "Bench (1): 1. a player"). Absent or
+   *  empty when every row user is a member. */
+  rowNames?: Record<string, string>;
   openOffers: BenchOffer[];
   teams: Array<{ userId: string; team: "RED" | "YELLOW" }>;
   teamLabels: [string, string];

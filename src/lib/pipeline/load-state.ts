@@ -115,6 +115,18 @@ export async function loadSquadState(
       ).map((a) => ({ userId: a.userId, status: a.status, position: a.position }))
     : [];
 
+  // A row whose player is no longer a member (removed, or left the group,
+  // before his place was taken off): print him by name, never as "a
+  // player" (FNF, 2026-10-24). One read, only when there is such a row.
+  // Not added to the roster: nobody is matched to a former member.
+  const onRoster = new Set(roster.map((m) => m.userId));
+  const offRosterIds = [...new Set(rows.map((r) => r.userId).filter((id) => !onRoster.has(id)))];
+  const rowNames: Record<string, string> = {};
+  if (offRosterIds.length > 0) {
+    const names = await loadPlayerNames(orgId, offRosterIds, features.language);
+    for (const [id, n] of names) rowNames[id] = n.display;
+  }
+
   const benchIds = rows.filter((r) => r.status === "BENCH").map((r) => r.userId);
 
   // Slice 2b: in an organiser-pick club, who may take a free place back
@@ -288,6 +300,7 @@ export async function loadSquadState(
     venue: match?.activity.venue ?? "",
     rows,
     roster,
+    ...(offRosterIds.length > 0 ? { rowNames } : {}),
     openOffers: offers.map((o) => ({
       id: o.id,
       replacingUserId: o.replacingUserId,
