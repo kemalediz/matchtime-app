@@ -162,7 +162,7 @@ describe("handleOrganiserPickDm: a paused club's admins are not looked at", () =
     expect(dbMock.membership.findMany.mock.calls[0][0].where).toEqual({
       userId: "u1",
       leftAt: null,
-      role: { in: ["OWNER", "ADMIN"] },
+      role: { in: ["OWNER", "ADMIN"] }, guestMatchId: null,
       org: { benchPickMode: "organiser" },
     });
   });

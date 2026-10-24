@@ -1,9 +1,12 @@
 /**
  * Admitting pool offers at DISPATCH (slice L5a; the design is L4's
- * caps.ts header): planning may overbook, dispatch never does. Under one
- * lock, each poll counts what went, admits at most the room, re-checks
- * each person's caps, every switch and the offer's own state, and holds
- * the rest (never drops them). Quiet hours defer.
+ * caps.ts header, revised by the review of #400, M3). Under one lock, each
+ * poll counts the pool DMs IN FLIGHT or DELIVERED (a job claimed and not
+ * released, or sent), admits at most the room (claiming the job), re-checks
+ * his caps (delivered and in-flight offers only), every switch, the
+ * offer's own state and the game's (cut-off, kickoff, status, its planned
+ * expiry), and holds the rest. Quiet hours defer. Nothing is stamped as
+ * delivered here: that is the Pi's "sent".
  */
 import { describe, expect, it } from "vitest";
 import { londonDateTimeToUtc } from "../../london-time";
@@ -21,11 +24,11 @@ const job = (over: Partial<PoolJobView> = {}): PoolJobView => {
     offerId: `o${n}`,
     userId: `u${n}`,
     orgId: "club-a",
-    admitted: false,
     clubOpen: true,
     profileActive: true,
     offerOpen: true,
     askOpen: true,
+    gameOpen: true,
     ledger: [],
     ...over,
   };
@@ -33,9 +36,9 @@ const job = (over: Partial<PoolJobView> = {}): PoolJobView => {
 
 describe("room: at most the platform caps, oldest first, the rest held", () => {
   it("admits up to the room and holds the rest", () => {
-    const sentAts = Array.from({ length: POOL_PLATFORM_CAPS.perHour - 2 }, (_, i) => new Date(NOW.getTime() - (i + 1) * MIN));
+    const busy = Array.from({ length: POOL_PLATFORM_CAPS.perHour - 2 }, (_, i) => new Date(NOW.getTime() - (i + 1) * MIN));
     const jobs = [job(), job(), job(), job()];
-    const plan = planPoolAdmission(jobs, sentAts, NOW, 10);
+    const plan = planPoolAdmission(jobs, busy, NOW, 10);
     expect(plan.admit).toEqual([jobs[0].jobId, jobs[1].jobId]);
     expect(plan.hold).toEqual([jobs[2].jobId, jobs[3].jobId]);
     expect(plan.cancel).toEqual([]);
@@ -49,28 +52,22 @@ describe("room: at most the platform caps, oldest first, the rest held", () => {
   });
 
   it("two claimers in turn (the lock serialises them) cannot spend the same room", () => {
-    const sentAts = Array.from({ length: POOL_PLATFORM_CAPS.perHour - 1 }, (_, i) => new Date(NOW.getTime() - (i + 1) * MIN));
-    const a = planPoolAdmission([job()], sentAts, NOW, 5);
-    expect(a.admit).toHaveLength(1);
-    // The first claimer's stamp is committed before the second counts.
-    const b = planPoolAdmission([job()], [...sentAts, NOW], NOW, 5);
+    const busy = Array.from({ length: POOL_PLATFORM_CAPS.perHour - 1 }, (_, i) => new Date(NOW.getTime() - (i + 1) * MIN));
+    expect(planPoolAdmission([job()], busy, NOW, 5).admit).toHaveLength(1);
+    // The first claimer's claim is committed before the second counts.
+    const b = planPoolAdmission([job()], [...busy, NOW], NOW, 5);
     expect(b.admit).toEqual([]);
     expect(b.hold).toHaveLength(1);
   });
-
-  it("an offer admitted already (released by the Pi's pacing) passes without using room", () => {
-    const full = Array.from({ length: POOL_PLATFORM_CAPS.perHour }, (_, i) => new Date(NOW.getTime() - (i + 1) * MIN));
-    const again = job({ admitted: true });
-    expect(planPoolAdmission([again], full, NOW, 5).admit).toEqual([again.jobId]);
-  });
 });
 
-describe("re-checked at send time: switches, the offer, the person", () => {
+describe("re-checked at send time: switches, the offer, the game, the person", () => {
   const cases: Array<[string, Partial<PoolJobView>, string]> = [
     ["the switch or the club's flag went off", { clubOpen: false }, "switched-off"],
     ["he paused or stopped meanwhile", { profileActive: false }, "profile-off"],
     ["the offer was answered or ended", { offerOpen: false }, "closed"],
     ["the round closed (filled, cut-off, cancelled)", { askOpen: false }, "closed"],
+    ["past the cut-off, kicked off, the game off, or its planned window gone (minor 3)", { gameOpen: false }, "closed"],
   ];
   for (const [name, over, reason] of cases) {
     it(`${name}: cancelled, never sent`, () => {
@@ -80,12 +77,8 @@ describe("re-checked at send time: switches, the offer, the person", () => {
       expect(plan.admit).toEqual([]);
     });
   }
-  it("a switch off cancels even an offer already admitted", () => {
-    const j = job({ admitted: true, clubOpen: false });
-    expect(planPoolAdmission([j], [], NOW, 5).cancel).toHaveLength(1);
-  });
 
-  it("his caps, judged now with what went meanwhile (another club's offer today)", () => {
+  it("his caps, judged now with what reached him meanwhile (another club's offer today)", () => {
     const today: OfferLedgerEntry = { orgId: "club-b", at: new Date(NOW.getTime() - 60 * MIN), outcome: null, resolvedAt: null };
     const j = job({ ledger: [today] });
     expect(planPoolAdmission([j], [], NOW, 5).cancel).toEqual([{ jobId: j.jobId, offerId: j.offerId, reason: "day-cap" }]);
@@ -101,16 +94,11 @@ describe("re-checked at send time: switches, the offer, the person", () => {
 });
 
 describe("quiet hours: deferred to 08:30, never dropped", () => {
-  it("at 21:45 every job waits for 08:30, an admitted one re-counts then", () => {
+  it("at 21:45 every job waits for 08:30", () => {
     const late = londonDateTimeToUtc("2026-10-27", "21:45");
-    const fresh = job();
-    const released = job({ admitted: true });
-    const plan = planPoolAdmission([fresh, released], [], late, 5);
-    const until = londonDateTimeToUtc("2026-10-28", "08:30");
-    expect(plan.defer).toEqual([
-      { jobId: fresh.jobId, offerId: fresh.offerId, until, unadmit: false },
-      { jobId: released.jobId, offerId: released.offerId, until, unadmit: true },
-    ]);
+    const a = job();
+    const plan = planPoolAdmission([a], [], late, 5);
+    expect(plan.defer).toEqual([{ jobId: a.jobId, offerId: a.offerId, until: londonDateTimeToUtc("2026-10-28", "08:30") }]);
     expect(plan.admit).toEqual([]);
   });
   it("the autumn clock change night: 21:45 BST on Sat 24 Oct waits for 08:30 GMT on Sun 25 Oct", () => {

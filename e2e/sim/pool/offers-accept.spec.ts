@@ -14,7 +14,7 @@
  */
 import { scenario, scenarios, expect } from "./fixtures";
 import { E2E } from "../../helpers/env";
-import { askOf, at, near, offersOf, openClub, organiserAsks, pollPlatform, poolPlayer, tapLinkIn, tapOffer } from "./offers-world";
+import { askOf, at, near, poolSwitchCookie, offersOf, openClub, organiserAsks, pollPlatform, poolPlayer, tapLinkIn, tapOffer } from "./offers-world";
 
 const PI = { "x-api-key": E2E.WHATSAPP_API_KEY };
 
@@ -27,7 +27,7 @@ scenarios("saying yes to a pool offer", () => {
     await pollPlatform(pool, { now: at(fnf.kickoff, -8) });
     const offer = ex.sent.find((m) => m.to === "ali")!;
 
-    expect(await tapOffer(page, tapLinkIn(offer), "yes")).toBe("in");
+    expect(await tapOffer(pool, page, tapLinkIn(offer), "yes")).toBe("in");
     await expect(page.getByTestId("pool-offer-state")).toContainText("You're in: FNF");
 
     const sent = await pool.collect();
@@ -67,10 +67,11 @@ scenarios("saying yes to a pool offer", () => {
     const ex = await organiserAsks(pool, page, gs, { places: 1, now: at(gs.kickoff, -8) });
     await pollPlatform(pool, { now: at(gs.kickoff, -8) });
 
+    await poolSwitchCookie(page);
     await page.goto(tapLinkIn(ex.sent[0]));
     await expect(page.getByRole("heading")).toHaveText("Sana bir maç");
     await expect(page.getByTestId("pool-offer-yes")).toHaveText("Evet, oynarım");
-    expect(await tapOffer(page, tapLinkIn(ex.sent[0]), "yes")).toBe("in");
+    expect(await tapOffer(pool, page, tapLinkIn(ex.sent[0]), "yes")).toBe("in");
     await expect(page.getByTestId("pool-offer-state")).toContainText("Yerin hazır: Galata FC");
 
     pool.expectSent(await pool.collect(), [
@@ -89,8 +90,8 @@ scenarios("saying yes to a pool offer", () => {
     const [pa, pb] = await Promise.all([ctxA.newPage(), ctxB.newPage()]);
 
     const states = await Promise.all([
-      tapOffer(pa, tapLinkIn(ex.sent.find((m) => m.to === "ali")!), "yes"),
-      tapOffer(pb, tapLinkIn(ex.sent.find((m) => m.to === "ben")!), "yes"),
+      tapOffer(pool, pa, tapLinkIn(ex.sent.find((m) => m.to === "ali")!), "yes"),
+      tapOffer(pool, pb, tapLinkIn(ex.sent.find((m) => m.to === "ben")!), "yes"),
     ]);
     await Promise.all([ctxA.close(), ctxB.close()]);
 
@@ -110,6 +111,7 @@ scenarios("saying yes to a pool offer", () => {
     await pollPlatform(pool, { now: at(fnf.kickoff, -8) });
     await pool.db.run(`UPDATE "PoolOffer" SET "expiresAt" = $2 WHERE "userId" = $1`, [ali.userId, new Date(Date.now() - 60_000)]);
 
+    await poolSwitchCookie(page);
     await page.goto(tapLinkIn(ex.sent[0]));
     await expect(page.getByTestId("pool-offer-page")).toHaveAttribute("data-state", "expired");
     await expect(page.getByTestId("pool-offer-yes")).toHaveCount(0);
@@ -123,7 +125,7 @@ scenarios("saying yes to a pool offer", () => {
     const ex = await organiserAsks(pool, page, fnf, { places: 1, now: at(fnf.kickoff, -8) });
     await pollPlatform(pool, { now: at(fnf.kickoff, -8) });
 
-    expect(await tapOffer(page, tapLinkIn(ex.sent[0]), "yes")).toBe("bench");
+    expect(await tapOffer(pool, page, tapLinkIn(ex.sent[0]), "yes")).toBe("bench");
     pool.expectSent(await pool.collect(), [
       { to: "fnf.hq", text: /^🙋 Ali K from the MatchTime player pool is on the bench for .*, for you to pick\. New to MatchTime\.$/ },
       { to: "ali", purpose: "pool-placed", text: /📝 You're on the bench for \*FNF\*/ },
@@ -140,7 +142,7 @@ scenarios("saying yes to a pool offer", () => {
     const ex = await organiserAsks(pool, page, fnf, { places: 1, now: at(fnf.kickoff, -8) });
     expect(ex.sent[0].text).toContain("💷 £6 match fee");
     await pollPlatform(pool, { now: at(fnf.kickoff, -8) });
-    expect(await tapOffer(page, tapLinkIn(ex.sent[0]), "yes")).toBe("in");
+    expect(await tapOffer(pool, page, tapLinkIn(ex.sent[0]), "yes")).toBe("in");
     const placed = (await pool.collect()).find((m) => m.purpose === "pool-placed")!;
     expect(placed.text).toContain("The match fee is £6. You'll get a pay link after the game.");
 
@@ -189,7 +191,7 @@ scenarios("saying yes to a pool offer", () => {
     pool.expectSent(second.sent, []);
 
     pool.note("Ben takes the place");
-    expect(await tapOffer(page, tapLinkIn(ex.sent.find((m) => m.to === "ben")!), "yes")).toBe("in");
+    expect(await tapOffer(pool, page, tapLinkIn(ex.sent.find((m) => m.to === "ben")!), "yes")).toBe("in");
     await pool.collect();
     const late = await ali.dm("still need someone?");
     pool.expectSent(late.sent, [{ to: "ali", purpose: "pool-reply", text: /That place with FNF has gone now/ }]);
@@ -201,10 +203,10 @@ scenarios("saying yes to a pool offer", () => {
     const ali = await poolPlayer(pool, "ali", { name: "Ali Kaya", at: near(fnf) });
     const ex = await organiserAsks(pool, page, fnf, { places: 1, now: at(fnf.kickoff, -8) });
     await pollPlatform(pool, { now: at(fnf.kickoff, -8) });
-    expect(await tapOffer(page, tapLinkIn(ex.sent[0]), "yes")).toBe("in");
+    expect(await tapOffer(pool, page, tapLinkIn(ex.sent[0]), "yes")).toBe("in");
     await pool.collect();
 
-    expect(await tapOffer(page, tapLinkIn(ex.sent[0]), "pull-out")).toBe("withdrawn");
+    expect(await tapOffer(pool, page, tapLinkIn(ex.sent[0]), "pull-out")).toBe("withdrawn");
     const sent = await pool.collect();
     expect(sent.filter((m) => m.to === "fnf.hq").map((m) => m.text)).toEqual([expect.stringMatching(/^Ali K from the MatchTime player pool can no longer play on .*\. The place is open again\.$/)]);
     const row = await pool.db.one<{ status: string }>(`SELECT status FROM "Attendance" WHERE "matchId" = $1 AND "userId" = $2`, [fnf.group.matchId, ali.userId]);

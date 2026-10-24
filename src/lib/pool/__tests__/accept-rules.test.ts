@@ -11,6 +11,7 @@ describe("offerPageState", () => {
     ["past its time", { refusal: "expired" }, "expired"],
     ["he stopped meanwhile", { refusal: "profile-off" }, "expired"],
     ["never sent", { refusal: "not-sent" }, "invalid"],
+    ["the pool was switched off", { refusal: "pool-closed" }, "expired"],
     ["accepted, confirmed", { outcome: "accepted", attendanceStatus: "CONFIRMED" }, "in"],
     ["accepted, on the bench", { outcome: "accepted", attendanceStatus: "BENCH" }, "bench"],
     ["accepted, gave it back in time", { outcome: "accepted", guestResult: "withdrawn" }, "withdrawn"],

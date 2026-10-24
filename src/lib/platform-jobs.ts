@@ -78,7 +78,7 @@ import { e164Digits } from "./phone";
 // The pure half, not club-approval.ts: slice 7 makes club-approval import
 // owner-dm, which imports this file, and a cycle there would be silent.
 import { APPROVED_CLUB_WHERE } from "./club-approval-state";
-import { POOL_OFFER_PURPOSE, admitPoolOfferJobs, onPoolOfferJobFailed } from "./pool/dispatch";
+import { POOL_OFFER_PURPOSE, admitPoolOfferJobs, onPoolOfferJobFailed, onPoolOfferJobSent } from "./pool/dispatch";
 
 // ── Vocabulary ──────────────────────────────────────────────────────────
 
@@ -528,15 +528,11 @@ export async function claimDuePlatformJobs(
   const seen = new Set<string>();
   const read0 = [...(codes ?? []), ...(others ?? [])].filter((r) => (seen.has(r.id) ? false : (seen.add(r.id), true)));
   if (read0.length === 0) return [];
-  // Pool offers are admitted under the platform cap's lock first (local
-  // player pool L5a, `pool/dispatch.ts`): one not admitted now is not
-  // handed out on this poll.
-  const poolJobs = read0.filter((r) => r.purpose === POOL_OFFER_PURPOSE).map((r) => r.id);
-  const notNow = poolJobs.length
-    ? await admitPoolOfferJobs(poolJobs, { now, limit: opts.limit ?? MAX_JOBS_PER_POLL, env: opts.env })
-    : new Set<string>();
-  const rows = read0.filter((r) => !notNow.has(r.id));
-  if (rows.length === 0) return [];
+  // Pool offers (local player pool L5a, `pool/dispatch.ts`) are not
+  // planned here: they take the poll's room LEFT after everything else,
+  // and are admitted AND claimed under the platform cap's lock.
+  const poolRows = read0.filter((r) => r.purpose === POOL_OFFER_PURPOSE && r.kind === "dm");
+  const rows = read0.filter((r) => !(r.purpose === POOL_OFFER_PURPOSE && r.kind === "dm"));
 
   const leaveGroups = [...new Set(rows.filter((r) => r.kind === "leave-group" && r.groupId).map((r) => r.groupId as string))];
   const approved = leaveGroups.length
@@ -583,6 +579,16 @@ export async function claimDuePlatformJobs(
       data: { status: "claimed", claimedAt: now },
     });
     if (count === 1) out.push(job.instruction);
+  }
+  const room = Math.max(0, (opts.limit ?? MAX_JOBS_PER_POLL) - plan.dispatch.length);
+  if (poolRows.length > 0 && room > 0) {
+    const { claimed } = await admitPoolOfferJobs(
+      poolRows.map((r) => r.id),
+      { now, limit: room, env: opts.env },
+    );
+    for (const r of poolRows) {
+      if (claimed.has(r.id) && r.phone && r.text) out.push({ id: r.id, kind: "dm", phone: r.phone, text: r.text, purpose: r.purpose });
+    }
   }
   return out;
 }
@@ -644,6 +650,8 @@ export async function recordPlatformJobOutcome(
       return { updated: true };
     }
   }
+  // A pool offer reached him only when the Pi says so (review of #400, M3).
+  if ((result.outcome === "sent" || result.outcome === "unconfirmed") && count > 0) await onPoolOfferJobSent(id, now);
   if (result.outcome === "failed" && count > 0) {
     console.error(`[platform-jobs] job ${id} FAILED on the Pi: ${result.reason}`);
     // A pool offer that never reached him ends cancelled (L5a).

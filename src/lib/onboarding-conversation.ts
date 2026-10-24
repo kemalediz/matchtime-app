@@ -31,6 +31,7 @@
  *   snapshot into the roster, and DMs the admin a magic link into
  *   /admin.
  */
+import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
 import { db } from "./db";
 import { SPORT_PRESETS } from "./sport-presets";
 import { FEATURE_META, OFFERED_FEATURE_META, isFeatureOffered, type ToggleableKey } from "./org-features-meta";
@@ -1514,7 +1515,7 @@ async function completeOnboarding(
       });
       if (adminUser) {
         const existingOwner = await db.membership.findFirst({
-          where: { orgId, role: "OWNER", leftAt: null },
+          where: { orgId, role: "OWNER", leftAt: null, ...ORDINARY_MEMBER_WHERE },
           select: { userId: true },
         });
         const role =

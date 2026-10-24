@@ -24,8 +24,22 @@ function secret(): string {
 
 const b64url = (b: Buffer): string => b.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 
-function sign(offerId: string): string {
-  return b64url(createHmac("sha256", secret()).update(`pool-offer:${offerId}`).digest().subarray(0, SIG_BYTES));
+function sign(offerId: string, purpose = "pool-offer"): string {
+  return b64url(createHmac("sha256", secret()).update(`${purpose}:${offerId}`).digest().subarray(0, SIG_BYTES));
+}
+
+/** The cookie value that says "this browser proved it is his" for ONE
+ *  offer (review of #400, M2; `offer-proof.ts`). A different purpose from
+ *  the link's, so the token in the link is never itself a proof. */
+export function poolOfferProof(offerId: string): string {
+  return sign(offerId, "pool-offer-proof");
+}
+
+export function isPoolOfferProof(offerId: string, value: string | null | undefined): boolean {
+  if (!value) return false;
+  const want = Buffer.from(poolOfferProof(offerId));
+  const got = Buffer.from(value);
+  return want.length === got.length && timingSafeEqual(want, got);
 }
 
 export function poolOfferToken(offerId: string): string {

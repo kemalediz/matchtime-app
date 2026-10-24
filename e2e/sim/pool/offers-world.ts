@@ -25,7 +25,7 @@
 import type { Page } from "@playwright/test";
 import { expect } from "@playwright/test";
 import { signInAs } from "../../fixtures";
-import { E2E } from "../../helpers/env";
+import { E2E, E2E_BASE_URL } from "../../helpers/env";
 import { nextMsgId } from "../group";
 import { formatLondon, londonDateTimeToUtc } from "../../../src/lib/london-time";
 import { classifyPlatformJob, type SentMessage } from "./transcript";
@@ -33,6 +33,7 @@ import type { PoolClub, PoolClubOpts, PoolPerson, PoolWorld, Exchange } from "./
 
 const PI = { "x-api-key": E2E.WHATSAPP_API_KEY };
 const POOL_OPEN = "x-mt-test-pool-open";
+const POOL_OPEN_COOKIE = "mt-test-pool-open";
 
 export interface Spot {
   lat: number;
@@ -202,7 +203,10 @@ export async function organiserAsks(
 
 /** The Pi's platform poll at `now`: the sweep runs, then the claim. What
  *  it hands out is what goes out now. */
-export async function pollPlatform(world: PoolWorld, opts: { now: Date; poolOpen?: boolean }): Promise<{ out: SentMessage[]; queued: SentMessage[] }> {
+export async function pollPlatform(
+  world: PoolWorld,
+  opts: { now: Date; poolOpen?: boolean; /** What the Pi reports for each job handed out: "sent" (default), "release" (its DM pacing held it), or nothing. */ report?: "sent" | "release" | "none" },
+): Promise<{ out: SentMessage[]; queued: SentMessage[] }> {
   world.note(`(the Pi polls at ${opts.now.toISOString()})`);
   const res = await world.request.get("/api/whatsapp/platform-jobs", {
     headers: { ...PI, "x-test-now": opts.now.toISOString(), [POOL_OPEN]: opts.poolOpen === false ? "0" : "1" },
@@ -216,6 +220,16 @@ export async function pollPlatform(world: PoolWorld, opts: { now: Date; poolOpen
       byId.get(j.id) ??
       classifyPlatformJob({ id: j.id, kind: j.kind, phone: j.phone ?? null, groupId: null, text: j.text ?? null, purpose: j.purpose ?? "?", sendAfter: null }, registryless(world, j.phone)),
   );
+  const report = opts.report ?? "sent";
+  if (report !== "none") {
+    for (const j of jobs) {
+      const r = await world.request.post("/api/whatsapp/platform-jobs", {
+        headers: { ...PI, "x-test-now": opts.now.toISOString() },
+        data: report === "sent" ? { id: j.id, outcome: "sent", waMessageId: `wamid-${j.id}` } : { id: j.id, outcome: "release" },
+      });
+      expect(r.status()).toBe(200);
+    }
+  }
   return { out, queued };
 }
 
@@ -240,14 +254,38 @@ export function tapLinkIn(m: SentMessage): string {
   return hit[1];
 }
 
-/** Open the offer page and press a button; returns the page's new state. */
-export async function tapOffer(page: Page, path: string, button: "yes" | "no" | "pull-out"): Promise<string> {
+/** Open the offer page and press a button as HIM: when the page asks for
+ *  the last 4 digits of his WhatsApp number (review of #400, M2), they are
+ *  typed in. Returns the page's new state. */
+export async function tapOffer(
+  world: PoolWorld,
+  page: Page,
+  path: string,
+  button: "yes" | "no" | "pull-out",
+  opts: { digits?: string; poolOpen?: boolean } = {},
+): Promise<string> {
+  // The page and its answers read the pool switch too (review minor 2).
+  await poolSwitchCookie(page, opts.poolOpen !== false);
   await page.goto(path);
   const root = page.getByTestId("pool-offer-page");
   const before = await root.getAttribute("data-state");
+  const field = page.getByTestId("pool-offer-digits");
+  if (await field.isVisible()) await field.fill(opts.digits ?? (await holderDigits(world, path)));
   await page.getByTestId(`pool-offer-${button}`).click();
   await expect(root).not.toHaveAttribute("data-state", before ?? "", { timeout: 20_000 });
   return (await root.getAttribute("data-state")) ?? "";
+}
+
+/** The pool switch's test seam for a browser (pages and server actions). */
+export async function poolSwitchCookie(page: Page, open = true): Promise<void> {
+  await page.context().addCookies([{ name: POOL_OPEN_COOKIE, value: open ? "1" : "0", url: E2E_BASE_URL }]);
+}
+
+/** The last 4 digits of the number the offer behind `path` went to. */
+export async function holderDigits(world: PoolWorld, path: string): Promise<string> {
+  const offerId = path.split("/").pop()!.split(".")[0];
+  const row = await world.db.one<{ phone: string }>(`SELECT u."phoneNumber" AS phone FROM "PoolOffer" o JOIN "User" u ON u.id = o."userId" WHERE o.id = $1`, [offerId]);
+  return row!.phone.replace(/\D/g, "").slice(-4);
 }
 
 export interface OfferRow {
@@ -268,18 +306,17 @@ export function askOf(world: PoolWorld, club: PoolClub): Promise<{ id: string; s
   return world.db.one(`SELECT id, status, "closeReason", "roundId" FROM "PoolAsk" WHERE "orgId" = $1 ORDER BY "createdAt" DESC LIMIT 1`, [club.group.orgId]);
 }
 
-/** Pretend `n` pool DMs went out at `at` (the platform cap's count). */
+/** Pretend `n` pool DMs went out at `sentAt` (the platform cap counts
+ *  pool-offer jobs sent, or claimed and on their way). */
 export async function pastPoolSends(world: PoolWorld, club: PoolClub, n: number, sentAt: Date): Promise<void> {
-  const ask = `sim-past-ask-${nextMsgId()}`;
-  await world.db.run(
-    `INSERT INTO "PoolAsk" (id, "matchId", "orgId", places, via, status, "closedAt", "createdAt", "updatedAt") VALUES ($1, $2, $3, 1, 'page', 'closed', now(), $4, now())`,
-    [ask, club.group.matchId, club.group.orgId, new Date(sentAt.getTime() - 8 * 24 * 3600_000)],
-  );
+  void club;
   for (let i = 0; i < n; i++) {
     await world.db.run(
-      `INSERT INTO "PoolOffer" (id, "poolAskId", "matchId", "orgId", "userId", "distanceMiles", "sentAt", "expiresAt", outcome, "resolvedAt")
-       VALUES ($1, $2, $3, $4, $5, 1, $6, $6, 'expired', $6)`,
-      [`${ask}-o${i}`, ask, club.group.matchId, club.group.orgId, `sim-ghost-${nextMsgId()}`, sentAt],
+      `INSERT INTO "PlatformJob" (id, kind, phone, text, purpose, status, "claimedAt", "sentAt", "createdAt", "updatedAt")
+       VALUES ($1, 'dm', '447700000000', 'earlier offer', 'pool-offer', 'sent', $2, $2, $2, now())`,
+      [`sim-past-${nextMsgId()}`, sentAt],
     );
   }
+  // Not this scenario's messages: seen now, so no assertion counts them.
+  await world.collect();
 }

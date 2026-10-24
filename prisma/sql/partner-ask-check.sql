@@ -37,6 +37,18 @@ ALTER TABLE "Membership" DROP CONSTRAINT IF EXISTS "Membership_guest_check";
 ALTER TABLE "Membership" ADD CONSTRAINT "Membership_guest_check"
   CHECK (("guestVia" IS NULL AND ("guestFromOrgId" IS NULL) = ("guestMatchId" IS NULL)) OR ("guestVia" IS NOT NULL AND "guestVia" = 'partner' AND "guestFromOrgId" IS NOT NULL AND "guestMatchId" IS NOT NULL) OR ("guestVia" IS NOT NULL AND "guestVia" = 'pool' AND "guestFromOrgId" IS NULL AND "guestMatchId" IS NOT NULL));
 
+-- A guest is a PLAYER of the club he guests for (review of #400, M1): a
+-- former OWNER or ADMIN who left and came back as a guest must not keep his
+-- old role, or every organiser check passes for him. NOT VALID: it binds
+-- every row written or updated from now on and checks no existing row, so
+-- adding it never fails and never changes a live row; validate it after
+-- confirming no live row breaks it (`ALTER TABLE "Membership" VALIDATE
+-- CONSTRAINT "Membership_guest_player_check"`). Also applied by
+-- prisma/migrations/20261025140000_pool_offer_review/migration.sql.
+ALTER TABLE "Membership" DROP CONSTRAINT IF EXISTS "Membership_guest_player_check";
+ALTER TABLE "Membership" ADD CONSTRAINT "Membership_guest_player_check"
+  CHECK ("guestMatchId" IS NULL OR "role" = 'PLAYER') NOT VALID;
+
 ALTER TABLE "ClubPartnership" DROP CONSTRAINT IF EXISTS "ClubPartnership_status_check";
 ALTER TABLE "ClubPartnership" ADD CONSTRAINT "ClubPartnership_status_check"
   CHECK ("status" IN ('proposed', 'active', 'paused', 'ended'));

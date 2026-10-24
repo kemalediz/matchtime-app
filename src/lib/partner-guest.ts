@@ -293,7 +293,10 @@ async function decideAndWriteVolunteer(w: VolunteerWrite, now: Date): Promise<De
           update:
             askerMember && !askerMember.leftAt && isGuestMembership(askerMember) && askerMember.guestMatchId === ask.matchId
               ? {}
-              : { leftAt: null, guestVia: "partner", guestFromOrgId: partner.id, guestMatchId: ask.matchId },
+              : // A guest is a PLAYER of the club he guests for, whatever this
+                // row's old role was (review of #400, M1: a former admin who
+                // left kept OWNER/ADMIN and passed every organiser check).
+                { role: "PLAYER", leftAt: null, guestVia: "partner", guestFromOrgId: partner.id, guestMatchId: ask.matchId },
         });
       }
       return registerAttendance(userId, ask.matchId, { event, actorIsAdmin: false });
@@ -512,7 +515,8 @@ export async function keepGuestAsMember(orgId: string, userId: string): Promise<
   // too, so the guest CHECK holds.
   const done = await db.membership.updateMany({
     where: { orgId, userId, ...GUEST_MEMBER_WHERE },
-    data: { guestVia: null, guestFromOrgId: null, guestMatchId: null, leftAt: null },
+    // He joins as a PLAYER (decision L5a.20): never an old role back.
+    data: { role: "PLAYER", guestVia: null, guestFromOrgId: null, guestMatchId: null, leftAt: null },
   });
   if (done.count > 0) console.log(`[partner-guest] org ${orgId}: guest ${userId} kept as a member`);
   return done.count > 0;
@@ -694,6 +698,9 @@ export interface PoolGuestWrite {
 export type PoolGuestPlaced =
   | { kind: "in" | "bench"; roundNowFull: boolean }
   | { kind: "gone" }
+  /** He is this club's live guest for ANOTHER match: one row carries one
+   *  guest match, so nothing is written (review of #400, minor 6). */
+  | { kind: "elsewhere" }
   | { kind: "failed" };
 
 /**
@@ -708,6 +715,10 @@ export async function placePoolGuest(w: PoolGuestWrite): Promise<PoolGuestPlaced
   try {
     const mem = await db.membership.findUnique({ where: { userId_orgId: { userId: w.userId, orgId: w.orgId } }, select: { leftAt: true, ...GUEST_MARKS } });
     const ordinary = !!mem && !mem.leftAt && !isGuestMembership(mem);
+    if (mem && !mem.leftAt && isGuestMembership(mem) && mem.guestMatchId !== w.matchId) {
+      console.log(`[partner-guest] pool offer ${w.offerId}: ${w.userId} is already this club's guest for another match; not written`);
+      return { kind: "elsewhere" };
+    }
     const event = {
       cause: "pool-ask" as const,
       actorKind: "player" as const,
@@ -721,7 +732,8 @@ export async function placePoolGuest(w: PoolGuestWrite): Promise<PoolGuestPlaced
         await db.membership.upsert({
           where: { userId_orgId: { userId: w.userId, orgId: w.orgId } },
           create: { userId: w.userId, orgId: w.orgId, role: "PLAYER", guestVia: "pool", guestMatchId: w.matchId },
-          update: liveHere ? {} : { leftAt: null, guestVia: "pool", guestFromOrgId: null, guestMatchId: w.matchId },
+          // A guest is a PLAYER, whatever the row's old role (review M1).
+          update: liveHere ? {} : { role: "PLAYER", leftAt: null, guestVia: "pool", guestFromOrgId: null, guestMatchId: w.matchId },
         });
       }
       return registerAttendance(w.userId, w.matchId, { event, actorIsAdmin: false });

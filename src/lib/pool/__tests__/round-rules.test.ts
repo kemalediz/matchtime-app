@@ -102,10 +102,11 @@ describe("how an offer ends (decision #8)", () => {
 });
 
 describe("acceptRefusal: who may say yes", () => {
-  const offer = { outcome: null, sentAt: NOW, expiresAt: new Date(NOW.getTime() + 60 * MIN), askStatus: "open", matchLive: true, kickoff: CUTOFF, profileActive: true, now: new Date(NOW.getTime() + 5 * MIN) };
+  const offer = { outcome: null, sentAt: NOW, expiresAt: new Date(NOW.getTime() + 60 * MIN), askStatus: "open", matchLive: true, kickoff: CUTOFF, profileActive: true, poolOpen: true, now: new Date(NOW.getTime() + 5 * MIN) };
   it("yes while open", () => expect(acceptRefusal(offer)).toBeNull());
   it("answered already", () => expect(acceptRefusal({ ...offer, outcome: "declined" })).toBe("answered"));
   it("never reached him", () => expect(acceptRefusal({ ...offer, sentAt: null })).toBe("not-sent"));
+  it("the switch or the club's flag is off at tap time (review minor 2)", () => expect(acceptRefusal({ ...offer, poolOpen: false })).toBe("pool-closed"));
   it("the game is off", () => expect(acceptRefusal({ ...offer, matchLive: false })).toBe("match-off"));
   it("kicked off", () => expect(acceptRefusal({ ...offer, now: CUTOFF })).toBe("match-off"));
   it("the round closed (filled by others)", () => expect(acceptRefusal({ ...offer, askStatus: "filled" })).toBe("gone"));

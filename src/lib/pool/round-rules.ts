@@ -112,7 +112,7 @@ export function ownTimeRanOut(o: { sentAt: Date | null; expiresAt: Date; cutoff:
   return !!o.sentAt && o.expiresAt.getTime() < o.cutoff.getTime() && o.now.getTime() >= o.expiresAt.getTime();
 }
 
-export type AcceptRefusal = "answered" | "not-sent" | "match-off" | "gone" | "expired" | "profile-off";
+export type AcceptRefusal = "answered" | "not-sent" | "pool-closed" | "match-off" | "gone" | "expired" | "profile-off";
 
 export function acceptRefusal(o: {
   outcome: string | null;
@@ -122,10 +122,13 @@ export function acceptRefusal(o: {
   matchLive: boolean;
   kickoff: Date;
   profileActive: boolean;
+  /** The global switch AND the club's flag, at tap time (review minor 2). */
+  poolOpen: boolean;
   now: Date;
 }): AcceptRefusal | null {
   if (o.outcome) return "answered";
   if (!o.sentAt) return "not-sent";
+  if (!o.poolOpen) return "pool-closed";
   if (!o.matchLive || o.now.getTime() >= o.kickoff.getTime()) return "match-off";
   if (o.askStatus !== "open") return "gone";
   if (o.now.getTime() >= o.expiresAt.getTime()) return "expired";

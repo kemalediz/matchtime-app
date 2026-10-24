@@ -97,6 +97,10 @@ export const poolOfferEn = {
   page_pull_out: "I can't make it any more",
   page_pulled_out: "Done, your place is free again. Thanks for telling us.",
   page_try_again: "Something went wrong. Please try again in a minute.",
+  page_busy: "You already have a place with this club for another game. Once that game is played you can take another.",
+  page_verify_label: "To answer, type the last 4 digits of the WhatsApp number this offer came to",
+  page_verify_wrong: "Those digits do not match. Please try again.",
+  page_verify_locked: "Too many tries. Open the 'Stop or change' link in your WhatsApp message to sign in, then open this offer again.",
 };
 
 export type PoolOfferStrings = typeof poolOfferEn;

@@ -20,6 +20,11 @@
  *                  days (`caps.ts`, decision cooldown).
  *   pullOutOfOffer he gives the place back: the normal drop flow, the
  *                  organisers told, his guest place marked in time or late.
+ *
+ * WHO MAY ANSWER (review of #400, M2): the three answers change HIS record,
+ * so the page's actions run them only for the holder (`isOfferHolder`:
+ * signed in as him, or his last 4 digits proved on this phone,
+ * `checkOfferDigits`); a forwarded link shows the game's facts only.
  */
 import { db } from "../db";
 import { appUrl } from "../app-url";
@@ -39,6 +44,11 @@ import { poolOrganiserNotice, poolPlacedText, shortDisplayName } from "./offer-c
 import { poolOfferPath } from "./offer-token";
 import { closePoolAsk, poolAskFill } from "./round";
 import { acceptRefusal, pullOutResult } from "./round-rules";
+import { poolOffersOpenForClub } from "./flags";
+import { digitsAnswer, digitsMatch, type DigitsAnswer } from "./offer-proof-rules";
+import { isPoolOfferProof } from "./offer-token";
+
+type Env = Record<string, string | undefined>;
 
 const OFFER_SELECT = {
   id: true,
@@ -56,7 +66,7 @@ const OFFER_SELECT = {
       roundId: true,
       places: true,
       status: true,
-      org: { select: { name: true, language: true, benchPickMode: true } },
+      org: { select: { name: true, language: true, benchPickMode: true, featurePlayerPool: true } },
       match: { select: { date: true, status: true, isHistorical: true } },
     },
   },
@@ -73,24 +83,32 @@ async function profileOf(userId: string) {
   return db.poolProfile.findUnique({ where: { userId }, select: { status: true, language: true, displayName: true, user: { select: { phoneNumber: true } } } });
 }
 
-async function stateOf(o: LoadedOffer, profileActive: boolean, now: Date): Promise<OfferPageState> {
+async function stateOf(o: LoadedOffer, profileActive: boolean, now: Date, env?: Env): Promise<OfferPageState> {
   const [place, row] = o.outcome === "accepted"
     ? await Promise.all([
         db.guestPlace.findUnique({ where: { matchId_userId: { matchId: o.matchId, userId: o.userId } }, select: { result: true } }),
         db.attendance.findUnique({ where: { matchId_userId: { matchId: o.matchId, userId: o.userId } }, select: { status: true } }),
       ])
     : [null, null];
-  return offerPageState({
+  const state = offerPageState({
     outcome: o.outcome,
-    refusal: o.outcome ? null : refusalOf(o, profileActive, now),
+    refusal: o.outcome ? null : refusalOf(o, profileActive, now, env),
     guestResult: place?.result ?? null,
     attendanceStatus: row?.status ?? null,
     matchLive: matchLiveOf(o.ask.match),
   });
+  // Open, but he is this club's live guest for ANOTHER game: one guest
+  // place per club at a time (review of #400, minor 6).
+  if (state === "open") {
+    const mem = await db.membership.findUnique({ where: { userId_orgId: { userId: o.userId, orgId: o.orgId } }, select: { leftAt: true, guestMatchId: true } });
+    if (mem && !mem.leftAt && mem.guestMatchId && mem.guestMatchId !== o.matchId) return "busy";
+  }
+  return state;
 }
 
-function refusalOf(o: LoadedOffer, profileActive: boolean, now: Date) {
+function refusalOf(o: LoadedOffer, profileActive: boolean, now: Date, env?: Env) {
   return acceptRefusal({
+    poolOpen: poolOffersOpenForClub(o.ask.org, env),
     outcome: o.outcome,
     sentAt: o.sentAt,
     expiresAt: o.expiresAt,
@@ -105,10 +123,37 @@ function refusalOf(o: LoadedOffer, profileActive: boolean, now: Date) {
 export interface OfferPage {
   lang: Lang;
   state: OfferPageState;
-  facts: (MatchOfferFacts & { places: number; distanceMiles: number }) | null;
+  /** The game's facts; `distanceMiles` only once it is proved to be him. */
+  facts: (MatchOfferFacts & { places: number; distanceMiles: number | null }) | null;
+  /** He proved it is him (signed in as him, or his digits on this phone). */
+  verified: boolean;
 }
 
-export async function loadOfferPage(offerId: string, now: Date = new Date()): Promise<OfferPage | null> {
+/** Is this request HIS (review of #400, M2; `offer-proof-rules.ts`)? */
+export async function isOfferHolder(offerId: string, viewer: { sessionUserId: string | null; proof: string | null }): Promise<boolean> {
+  if (isPoolOfferProof(offerId, viewer.proof)) return true;
+  if (!viewer.sessionUserId) return false;
+  const o = await db.poolOffer.findUnique({ where: { id: offerId }, select: { userId: true } });
+  return o?.userId === viewer.sessionUserId;
+}
+
+/** His last 4 digits, typed on the page. A wrong one is recorded; five in a
+ *  day lock the digits for this offer. */
+export async function checkOfferDigits(offerId: string, digits: unknown, now: Date = new Date()): Promise<DigitsAnswer> {
+  const o = await db.poolOffer.findUnique({ where: { id: offerId }, select: { userId: true } });
+  if (!o) return "wrong";
+  const [user, wrongToday] = await Promise.all([
+    db.user.findUnique({ where: { id: o.userId }, select: { phoneNumber: true } }),
+    db.poolAttempt.count({ where: { kind: "offer-verify", key: offerId, createdAt: { gte: new Date(now.getTime() - 24 * 3600_000) } } }),
+  ]);
+  const answer = digitsAnswer({ match: digitsMatch(user?.phoneNumber, digits), wrongToday });
+  if (answer === "wrong") await db.poolAttempt.create({ data: { kind: "offer-verify", key: offerId, result: "wrong", createdAt: now } });
+  if (answer !== "ok") console.log(`[pool] offer ${offerId}: digits ${answer}`);
+  return answer;
+}
+
+export async function loadOfferPage(offerId: string, opts: { verified: boolean; now?: Date; env?: Env }): Promise<OfferPage | null> {
+  const now = opts.now ?? new Date();
   const o = await loadOffer(offerId);
   if (!o) return null;
   const profile = await profileOf(o.userId);
@@ -116,8 +161,11 @@ export async function loadOfferPage(offerId: string, now: Date = new Date()): Pr
   const facts = await loadMatchOfferFacts(o.matchId, now);
   return {
     lang,
-    state: await stateOf(o, profile?.status === "active", now),
-    facts: facts ? { ...facts, places: o.ask.places, distanceMiles: o.distanceMiles } : null,
+    state: await stateOf(o, profile?.status === "active", now, opts.env),
+    // Unproved (a forwarded link), the game's facts only: his distance says
+    // where he lives.
+    facts: facts ? { ...facts, places: o.ask.places, distanceMiles: opts.verified ? o.distanceMiles : null } : null,
+    verified: opts.verified,
   };
 }
 
@@ -140,12 +188,12 @@ async function tellOrganisersOnce(o: LoadedOffer, key: string, text: string, now
   await sendAdminNotice({ orgId: o.orgId, now, holdOvernight: false, text });
 }
 
-export async function acceptOffer(offerId: string, now: Date = new Date()): Promise<OfferPageState> {
+export async function acceptOffer(offerId: string, now: Date = new Date(), env?: Env): Promise<OfferPageState> {
   const o = await loadOffer(offerId);
   if (!o) return "invalid";
   const profile = await profileOf(o.userId);
-  const refusal = refusalOf(o, profile?.status === "active", now);
-  if (refusal || o.outcome) return stateOf(o, profile?.status === "active", now);
+  const refusal = refusalOf(o, profile?.status === "active", now, env);
+  if (refusal || o.outcome) return stateOf(o, profile?.status === "active", now, env);
 
   const claimed = await db.poolOffer.updateMany({ where: { id: o.id, outcome: null }, data: { outcome: "accepted", resolvedAt: now, repliedVia: "link" } });
   if (claimed.count === 0) return stateOf((await loadOffer(offerId))!, true, now);
@@ -163,9 +211,11 @@ export async function acceptOffer(offerId: string, now: Date = new Date()): Prom
     await db.poolOffer.updateMany({ where: { id: o.id, outcome: "accepted" }, data: { outcome: "filled", resolvedAt: now } });
     return "gone";
   }
-  if (placed.kind === "failed") {
+  if (placed.kind === "failed" || placed.kind === "elsewhere") {
+    // Nothing was written: the offer is his to answer again (minor 6: he
+    // is this club's guest for another game already, so not now).
     await db.poolOffer.updateMany({ where: { id: o.id, outcome: "accepted" }, data: { outcome: null, resolvedAt: null, repliedVia: null } });
-    return "open";
+    return placed.kind === "elsewhere" ? "busy" : "open";
   }
   const bench = placed.kind === "bench";
   await db.poolProfile.updateMany({ where: { userId: o.userId }, data: { lastActiveAt: now } });

@@ -42,9 +42,10 @@ export const POOL_PROFILE_SOURCES = ["web", "profile", "referral", "campaign"] a
 export type PoolProfileSource = (typeof POOL_PROFILE_SOURCES)[number];
 
 /** `PoolAttempt.kind` (slice L2): a WhatsApp confirm code that did not
- *  work, keyed by the sending number; or a /play sign-up attempt, keyed by
- *  the requesting address. Read only to rate-limit. */
-export const POOL_ATTEMPT_KINDS = ["confirm", "signup"] as const;
+ *  work, keyed by the sending number; a /play sign-up attempt, keyed by
+ *  the requesting address; or a wrong "last 4 digits" on an offer page,
+ *  keyed by the offer (L5a). Read only to rate-limit. */
+export const POOL_ATTEMPT_KINDS = ["confirm", "signup", "offer-verify"] as const;
 export type PoolAttemptKind = (typeof POOL_ATTEMPT_KINDS)[number];
 /** A confirm code that did not work: named no sign-up, had expired, or was
  *  sent by a number that already has a profile (never attached). */
@@ -53,6 +54,9 @@ export type PoolConfirmAttemptResult = (typeof POOL_CONFIRM_ATTEMPT_RESULTS)[num
 /** A sign-up attempt that got as far as placing the area. */
 export const POOL_SIGNUP_ATTEMPT_RESULTS = ["created", "area-not-found", "venues-unknown"] as const;
 export type PoolSignupAttemptResult = (typeof POOL_SIGNUP_ATTEMPT_RESULTS)[number];
+/** A wrong "last 4 digits" on a pool offer's page (slice L5a, review of
+ *  #400 M2), keyed by the offer: five in a day lock the digits for it. */
+export const POOL_OFFER_VERIFY_ATTEMPT_RESULTS = ["wrong"] as const;
 
 /** `PoolConsentRecord.action`: an agreement given, or withdrawn (stop, or
  *  delete). Append-only; kept POOL_RETENTION.consentRecordYears. */

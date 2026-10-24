@@ -130,6 +130,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'outcome must be "sent", "failed" or "release"' }, { status: 400 });
   }
 
-  const { updated } = await recordPlatformJobOutcome(id, outcome);
+  // The test clock (MT_TEST_MODE only): a pool offer's delivery time and
+  // its six hours start from the Pi's report (L5a review, M3).
+  const { updated } = await recordPlatformJobOutcome(id, outcome, nowOf(request));
   return NextResponse.json({ ok: true, updated });
 }

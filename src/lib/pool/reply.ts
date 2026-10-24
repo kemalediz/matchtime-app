@@ -7,12 +7,20 @@
  *   just ended   (expired, filled by others, or he lost the race) one line,
  *                "that place has gone";
  * each at most ONCE per offer (a `SentNotification` key), so a chatty
- * reply never gets a stream of answers. Anything else: null, and the DM
- * route carries on exactly as before. Slotted in the DM route just before
- * the scoped Q&A (the general fallback), so every specific handler for a
- * club member keeps its turn.
+ * reply never gets a stream of answers. Only an offer that REACHED him
+ * (`sentAt`, the Pi's "sent") is ever referred to (review of #400, M3).
+ *
+ * NEVER SWALLOWS A MEMBER'S DM (review of #400, minor 1). The line is taken
+ * only when the DM is clearly about the offer, from facts, not words:
+ *   - it is a swipe-reply QUOTING the offer's own message (its WhatsApp
+ *     id), or
+ *   - he belongs to no club, so nothing else in the route could answer him.
+ * A club member's plain DM gets null and carries on to his club's Q&A
+ * exactly as before. Anything else: null too.
  */
 import { db } from "../db";
+import { ORDINARY_MEMBER_WHERE } from "../guest-membership";
+import { sameWhatsAppMessage } from "../quoted-message";
 import { appUrl } from "../app-url";
 import { normaliseLang } from "../i18n/lang";
 import { queuePlatformDm } from "../platform-jobs";
@@ -24,15 +32,19 @@ const DAY_MS = 24 * 3600_000;
 
 export type PoolReplyAnswer = "pool-offer-tap-link" | "pool-offer-gone" | null;
 
-export async function answerPoolOfferReply(args: { userId: string; now?: Date }): Promise<PoolReplyAnswer> {
+export async function answerPoolOfferReply(args: { userId: string; quotedId?: string | null; now?: Date }): Promise<PoolReplyAnswer> {
   const now = args.now ?? new Date();
   try {
     const offer = await db.poolOffer.findFirst({
       where: { userId: args.userId, sentAt: { gte: new Date(now.getTime() - DAY_MS), lte: now } },
       orderBy: { sentAt: "desc" },
-      select: { id: true, outcome: true, expiresAt: true, ask: { select: { status: true, org: { select: { name: true } } } } },
+      select: { id: true, outcome: true, expiresAt: true, platformJobId: true, ask: { select: { status: true, org: { select: { name: true } } } } },
     });
     if (!offer) return null;
+    const job = offer.platformJobId ? await db.platformJob.findUnique({ where: { id: offer.platformJobId }, select: { waMessageId: true } }) : null;
+    const quotesOffer = !!args.quotedId && !!job?.waMessageId && sameWhatsAppMessage(args.quotedId, job.waMessageId);
+    const inAClub = (await db.membership.count({ where: { userId: args.userId, leftAt: null, ...ORDINARY_MEMBER_WHERE } })) > 0;
+    if (!quotesOffer && inAClub) return null;
     const open = offer.outcome === null && offer.ask.status === "open" && offer.expiresAt.getTime() > now.getTime();
     const ended = offer.outcome === null || offer.outcome === "expired" || offer.outcome === "filled" || offer.outcome === "ignored";
     const kind: PoolReplyAnswer = open ? "pool-offer-tap-link" : ended ? "pool-offer-gone" : null;

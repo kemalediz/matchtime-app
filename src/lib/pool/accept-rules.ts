@@ -16,7 +16,7 @@
 import type { AcceptRefusal } from "./round-rules";
 import type { TurnUpRecord } from "./turn-up";
 
-export type OfferPageState = "open" | "in" | "bench" | "declined" | "gone" | "expired" | "off" | "withdrawn" | "invalid";
+export type OfferPageState = "open" | "in" | "bench" | "declined" | "gone" | "expired" | "off" | "withdrawn" | "invalid" | "busy";
 
 export function offerPageState(o: {
   outcome: string | null;

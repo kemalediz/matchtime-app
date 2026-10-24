@@ -12,6 +12,7 @@
  *  - Use the same update path as admin's manual entry so the Elo Elo
  *    delta is computed and match-end flow triggers fire.
  */
+import { isGuestMembership } from "@/lib/guest-membership";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { normalisePhone } from "@/lib/phone";
@@ -89,7 +90,7 @@ export async function POST(request: Request) {
   const membership = await db.membership.findUnique({
     where: { userId_orgId: { userId: user.id, orgId: org.id } },
   });
-  const isAdmin = membership && (membership.role === "OWNER" || membership.role === "ADMIN");
+  const isAdmin = membership && !membership.leftAt && !isGuestMembership(membership) && (membership.role === "OWNER" || membership.role === "ADMIN");
   const wasPlaying = attendance?.status === "CONFIRMED";
   if (!isAdmin && !wasPlaying) {
     return NextResponse.json(

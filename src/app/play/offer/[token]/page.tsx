@@ -1,7 +1,11 @@
 import type { Metadata } from "next";
 import { longDayTimeLabel } from "@/lib/i18n/dates";
 import { poolCopy } from "@/lib/i18n/pool-offer";
-import { loadOfferPage } from "@/lib/pool/accept";
+import { cookies } from "next/headers";
+import { auth } from "@/lib/auth";
+import { isOfferHolder, loadOfferPage } from "@/lib/pool/accept";
+import { proofCookieName } from "@/lib/pool/offer-proof-rules";
+import { poolEnvForRequest } from "@/lib/pool/switch-env";
 import type { OfferPageState } from "@/lib/pool/accept-rules";
 import { poolOfferLines } from "@/lib/pool/offer-copy";
 import { offerIdFromToken } from "@/lib/pool/offer-token";
@@ -14,15 +18,25 @@ export const metadata: Metadata = { title: "MatchTime", robots: { index: false, 
 /**
  * A POOL OFFER'S TAP LINK (local player pool L5a, 2026-10-24): the game's
  * facts (the same lines as the DM, with the map), and Yes / No thanks.
- * Public: the signed token in the path is the access control. Opening it
- * changes nothing (WhatsApp fetches links for previews); the answer is a
- * button. In HIS language. Never a group name, a member's name or a phone
+ * Public: the signed token in the path names the offer. Opening it changes
+ * nothing (WhatsApp fetches links for previews); the answer is a button,
+ * and answering needs proof it is HIM (review of #400, M2): signed in as
+ * him, or his last 4 digits. Unproved (a forwarded link), the game's facts
+ * only, never his distance. In HIS language. Never a group name, a member's name or a phone
  * number (the facts carry none).
  */
 export default async function PoolOfferPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
   const offerId = offerIdFromToken(token);
-  const page = offerId ? await loadOfferPage(offerId) : null;
+  // Is it HIM (review of #400, M2)? Signed in as him, or this phone proved
+  // his digits for this offer. Otherwise the game's facts only.
+  const verified = offerId
+    ? await isOfferHolder(offerId, {
+        sessionUserId: (await auth())?.user?.id ?? null,
+        proof: (await cookies()).get(proofCookieName(offerId))?.value ?? null,
+      })
+    : false;
+  const page = offerId ? await loadOfferPage(offerId, { verified, env: await poolEnvForRequest() }) : null;
   const lang = page?.lang ?? "en";
   const c = poolCopy(lang);
 
@@ -48,6 +62,7 @@ export default async function PoolOfferPage({ params }: { params: Promise<{ toke
     off: c.page_off,
     withdrawn: c.page_pulled_out,
     invalid: c.page_invalid,
+    busy: c.page_busy,
   };
 
   return (
@@ -77,7 +92,7 @@ export default async function PoolOfferPage({ params }: { params: Promise<{ toke
             {message[page.state]!.replace(/\*/g, "")}
           </p>
         )}
-        <PoolOfferAnswer token={token} language={lang} state={page.state} />
+        <PoolOfferAnswer token={token} language={lang} state={page.state} verified={page.verified} />
         <p className="mt-8 text-xs text-slate-500">
           <a href={POOL_MANAGE_PATH} className="underline" data-testid="pool-offer-manage">
             {c.page_manage}

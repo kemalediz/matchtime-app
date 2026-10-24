@@ -15,12 +15,16 @@
  *           club's offer to him went out meanwhile). Never sent; the offer
  *           ends `cancelled` (it never reached him, so no cap counts it).
  *   defer   quiet hours (21:30 to 08:30 London): held to 08:30, never
- *           dropped. One admitted earlier and released by the Pi's
- *           pacing is un-admitted, so it is counted again at 08:30.
- *   admit   stamp `sentAt` now, within the room the platform caps leave
- *           and the per-poll limit.
+ *           dropped.
+ *   admit   CLAIM the job now (it is in flight from here), within the room
+ *           the platform caps leave and the per-poll limit.
  *   hold    no room now: left queued for a later poll.
- * One admitted before (released by the Pi) passes again without room.
+ * DELIVERED IS THE PI'S WORD (review of #400, M3): `PoolOffer.sentAt` is
+ * stamped only when the Pi reports the send (`onPoolOfferJobSent`). The
+ * caps count a job while it is claimed (on its way) and once it is sent; a
+ * job the Pi releases (its DM pacing) is queued again and counts for
+ * nothing until it is claimed again. An offer that never reached him and
+ * whose round closes ends `cancelled`, which no cap counts.
  */
 import { platformRoom, playerCapRefusal, type OfferLedgerEntry, type PlayerCapRefusal } from "./caps";
 import { poolSendAt } from "./waves";
@@ -30,8 +34,6 @@ export interface PoolJobView {
   offerId: string;
   userId: string;
   orgId: string;
-  /** `PoolOffer.sentAt` is set: admitted by an earlier poll. */
-  admitted: boolean;
   /** The global switch AND the club's flag. */
   clubOpen: boolean;
   profileActive: boolean;
@@ -39,7 +41,10 @@ export interface PoolJobView {
   offerOpen: boolean;
   /** Its ask is still open. */
   askOpen: boolean;
-  /** His OTHER offers, for his caps. */
+  /** The game is live, not kicked off, before the club's cut-off, and the
+   *  offer's planned window has not passed (review of #400, minor 3). */
+  gameOpen: boolean;
+  /** His OTHER offers that reached him or are on their way (claimed). */
   ledger: OfferLedgerEntry[];
 }
 
@@ -49,14 +54,18 @@ export interface PoolAdmission {
   admit: string[];
   hold: string[];
   cancel: Array<{ jobId: string; offerId: string; reason: AdmissionCancelReason }>;
-  defer: Array<{ jobId: string; offerId: string; until: Date; unadmit: boolean }>;
+  defer: Array<{ jobId: string; offerId: string; until: Date }>;
 }
 
-export function planPoolAdmission(jobs: readonly PoolJobView[], sentAts: readonly Date[], now: Date, limit: number): PoolAdmission {
+/**
+ * @param busy when each pool DM in flight (claimed, not released) or
+ *             delivered went: what the platform caps count.
+ */
+export function planPoolAdmission(jobs: readonly PoolJobView[], busy: readonly Date[], now: Date, limit: number): PoolAdmission {
   const plan: PoolAdmission = { admit: [], hold: [], cancel: [], defer: [] };
   const quietUntil = poolSendAt(now);
   const quiet = quietUntil.getTime() > now.getTime();
-  let room = platformRoom(sentAts, now);
+  let room = platformRoom(busy, now);
   /** Offers admitted in THIS poll, per person, so his caps see them. */
   const admittedNow = new Map<string, OfferLedgerEntry[]>();
 
@@ -70,16 +79,12 @@ export function planPoolAdmission(jobs: readonly PoolJobView[], sentAts: readonl
       cancel("profile-off");
       continue;
     }
-    if (!j.offerOpen || !j.askOpen) {
+    if (!j.offerOpen || !j.askOpen || !j.gameOpen) {
       cancel("closed");
       continue;
     }
     if (quiet) {
-      plan.defer.push({ jobId: j.jobId, offerId: j.offerId, until: quietUntil, unadmit: j.admitted });
-      continue;
-    }
-    if (j.admitted) {
-      plan.admit.push(j.jobId);
+      plan.defer.push({ jobId: j.jobId, offerId: j.offerId, until: quietUntil });
       continue;
     }
     const ledger = [...j.ledger, ...(admittedNow.get(j.userId) ?? [])];

@@ -41,6 +41,7 @@
  *
  * Logs carry ids only.
  */
+import { ORDINARY_MEMBER_WHERE } from "./guest-membership";
 import { db } from "./db";
 import { e164Digits } from "./phone";
 import { t } from "./i18n/t";
@@ -252,7 +253,7 @@ function outcomeOf(action: "accept" | "decline", result: ActResult): string {
 }
 
 async function roleIn(userId: string, orgId: string): Promise<ClubRole> {
-  const m = await db.membership.findFirst({ where: { userId, orgId, leftAt: null }, select: { role: true } });
+  const m = await db.membership.findFirst({ where: { userId, orgId, leftAt: null, ...ORDINARY_MEMBER_WHERE }, select: { role: true } });
   return m?.role === "OWNER" || m?.role === "ADMIN" ? m.role : "PLAYER";
 }
 

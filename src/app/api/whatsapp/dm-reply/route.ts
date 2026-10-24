@@ -72,6 +72,7 @@
  *
  * If no active survey applies, the DM is silently ignored.
  */
+import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
 import { withOrgAiBudget } from "@/lib/ai-budget";
 import { handleApproverDm, nonServingClubsReason } from "@/lib/club-approval";
 import { IN_LIVE_STAGE_CLUB_WHERE, settingUpClubsReason } from "@/lib/club-setup";
@@ -91,7 +92,7 @@ import { selfJoinEnabledForApiRequest } from "@/lib/self-join-flag";
 import { NextResponse } from "next/server";
 import { REPLY_PRIORITY } from "@/lib/dm-reply-priority";
 import { db } from "@/lib/db";
-import { loadDmReplyContext, logDmQuote, quoteForClubs, quoteForMatch, type QuotedBotMessage } from "@/lib/reply-context";
+import { loadDmReplyContext, logDmQuote, parseDmQuote, quoteForClubs, quoteForMatch, type QuotedBotMessage } from "@/lib/reply-context";
 import { normalisePhone } from "@/lib/phone";
 import { classifyRosterReply } from "@/lib/roster-survey-classifier";
 import { resolveBenchConfirmation } from "@/lib/bench-confirmation";
@@ -1122,7 +1123,7 @@ export async function POST(request: Request) {
             // from the first id here, and recruit and rating progress act on
             // one of them.
             ...IN_LIVE_STAGE_CLUB_WHERE,
-            ...(su ? {} : { role: { in: ["OWNER", "ADMIN"] } }),
+            ...(su ? {} : { role: { in: ["OWNER", "ADMIN"] }, ...ORDINARY_MEMBER_WHERE }),
           },
           select: { orgId: true },
         });
@@ -1429,11 +1430,14 @@ export async function POST(request: Request) {
 
   if (!dm) {
     // ── A reply in words to a pool offer (local player pool L5a) ──────
-    //   Until L6 reads them: someone whose pool offer reached him in the
+    //   Until L6 reads them: someone whose pool offer REACHED him in the
     //   last day gets ONE line per offer, "tap the link" while it is open
-    //   or "that place has gone" once it ended. A state rule, no model,
-    //   no phrase list; after that one line the DM carries on below.
-    const poolReply = await answerPoolOfferReply({ userId: user.id });
+    //   or "that place has gone" once it ended, but only when the DM is
+    //   clearly about it (a swipe-reply quoting the offer, or he is in no
+    //   club at all). A club member's plain DM is never swallowed: it
+    //   carries on to the Q&A below (review of #400, minor 1). A state
+    //   rule, no model, no phrase list.
+    const poolReply = await answerPoolOfferReply({ userId: user.id, quotedId: parseDmQuote(body)?.id ?? null });
     if (poolReply) return NextResponse.json({ ok: true, handled: poolReply });
 
     // ── Scoped Q&A (2026-06-01) ──────────────────────────────────────
@@ -1486,7 +1490,7 @@ export async function POST(request: Request) {
       const includePhoneFlags =
         su ||
         (await db.membership.count({
-          where: { userId: user.id, orgId, leftAt: null, role: { in: ["OWNER", "ADMIN"] } },
+          where: { userId: user.id, orgId, leftAt: null, role: { in: ["OWNER", "ADMIN"] }, ...ORDINARY_MEMBER_WHERE },
         })) > 0;
       const result = await answerScopedQuestion({
         userId: user.id,

@@ -29,7 +29,7 @@ vi.mock("../partner-guest-standing", () => ({ loadGuestStandings }));
 vi.mock("@/lib/org-features", () => ({ getOrgFeatures: vi.fn() }));
 vi.mock("@/lib/admin-channel", () => ({ sendAdminNotice: vi.fn(), loadAdminChannel: vi.fn() }));
 
-import { getUserOrg } from "../org";
+import { findOrgAdminsWithPhone, getUserOrg, isOrgAdmin } from "../org";
 import { loadGuestUserIds } from "../ranked-table-activity";
 import { announcePickToGroupAndPlayers, loadPickListRows } from "../organiser-pick";
 
@@ -118,5 +118,21 @@ describe("the organisers' pick list (organiser-pick.ts)", () => {
     // xask_picked_dm in Turkish: names the club he plays for; no home club looked up.
     expect(dm.text).toContain("*FNF* için oynuyorsun");
     expect(dbMock.organisation.findUnique).not.toHaveBeenCalled();
+  });
+});
+
+describe("M1 (review of #400): a guest row with an old OWNER/ADMIN role is never an organiser", () => {
+  it("isOrgAdmin is false for a live guest whose row still says ADMIN", async () => {
+    dbMock.membership.findUnique.mockResolvedValue({ ...POOL, role: "ADMIN" });
+    expect(await isOrgAdmin("ali", "fnf")).toBe(false);
+    dbMock.membership.findUnique.mockResolvedValue({ guestVia: "partner", guestFromOrgId: "sutton", guestMatchId: "m1", leftAt: null, role: "OWNER" });
+    expect(await isOrgAdmin("ali", "fnf")).toBe(false);
+    dbMock.membership.findUnique.mockResolvedValue({ guestVia: null, guestFromOrgId: null, guestMatchId: null, leftAt: null, role: "ADMIN" });
+    expect(await isOrgAdmin("ali", "fnf")).toBe(true);
+  });
+  it("findOrgAdminsWithPhone asks for ordinary members only", async () => {
+    dbMock.membership.findMany.mockResolvedValue([]);
+    await findOrgAdminsWithPhone("fnf");
+    expect(dbMock.membership.findMany.mock.calls.at(-1)![0].where).toMatchObject({ orgId: "fnf", leftAt: null, guestMatchId: null, role: { in: ["OWNER", "ADMIN"] } });
   });
 });

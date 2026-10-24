@@ -30,6 +30,7 @@
  * slice 2a); posts to the community group and DMs to a player are BotJobs,
  * so a muted club sends nothing until unmuted, like every other post.
  */
+import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
 import { db } from "./db";
 import { REPLY_PRIORITY } from "./dm-reply-priority";
 import { recordAttendanceEvent } from "./attendance-events";
@@ -1081,7 +1082,7 @@ export async function handleOrganiserPickDm(input: {
       where: {
         userId: user.id,
         leftAt: null,
-        role: { in: ["OWNER", "ADMIN"] },
+        role: { in: ["OWNER", "ADMIN"] }, ...ORDINARY_MEMBER_WHERE,
         org: { benchPickMode: "organiser", ...billingQuietWhere() },
       },
       select: { orgId: true },

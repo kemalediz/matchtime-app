@@ -112,3 +112,24 @@ describe("guest membership: one definition", () => {
     for (const f of fine) expect(offenders(f), f).toEqual([]);
   });
 });
+
+describe("organiser rights never reach a guest (review of #400, M1)", () => {
+  const files = walk(SRC).filter((f) => !/guest-membership\.ts$/.test(f));
+  it("every membership query granting OWNER/ADMIN also says 'not a guest'", () => {
+    const ROLE = /role:\s*(\{\s*in:\s*\[\s*"(OWNER|ADMIN)",\s*"(OWNER|ADMIN)"\s*\]\s*\}|"OWNER")\s*,\s*(leftAt: null)?/g;
+    const bad: string[] = [];
+    for (const f of files) {
+      const src = readFileSync(f, "utf8");
+      const lines = src.split("\n");
+      for (const [i, line] of lines.entries()) {
+        if (!ROLE.test(line)) continue;
+        // A row being WRITTEN (a create block a few lines up) is not a gate.
+        if (/\bcreate:\s*\{/.test(lines.slice(Math.max(0, i - 3), i).join(" "))) continue;
+        ROLE.lastIndex = 0;
+        if (/^\s*(\*|\/\/)/.test(line) || /create:|data:|role: "OWNER" as const|SELF_JOIN_CLUB_WHERE|id: actor/.test(line)) continue;
+        if (!/ORDINARY_MEMBER_WHERE|guestMatchId: null/.test(line)) bad.push(`${rel(f)}: ${line.trim()}`);
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+});

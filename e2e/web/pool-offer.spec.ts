@@ -15,7 +15,7 @@ import type { Page } from "@playwright/test";
 import { test, expect, resetDb, signInAs } from "../fixtures";
 import { E2E_BASE_URL } from "../helpers/env";
 import { PoolWorld } from "../sim/pool/world";
-import { at, near, openClub, organiserAsks, pollPlatform, poolPlayer, tapLinkIn } from "../sim/pool/offers-world";
+import { at, holderDigits, near, openClub, organiserAsks, pollPlatform, poolPlayer, tapLinkIn } from "../sim/pool/offers-world";
 
 test.describe.configure({ mode: "serial" });
 test.beforeAll(() => resetDb());
@@ -100,6 +100,7 @@ for (const vp of WIDTHS) {
     const ex = await organiserAsks(world, page, fnf, { places: 1, now: at(fnf.kickoff, -8) });
     await pollPlatform(world, { now: at(fnf.kickoff, -8) });
     await page.context().clearCookies();
+    await poolOpenCookie(page);
 
     await page.goto(tapLinkIn(ex.sent[0]));
     await expect(page.getByRole("heading")).toHaveText("A game for you");
@@ -111,11 +112,17 @@ for (const vp of WIDTHS) {
     await expect(page.getByTestId("pool-offer-map")).toHaveAttribute("href", /google\.com\/maps/);
     await expect(page.getByTestId("pool-offer-yes")).toBeVisible();
     await expect(page.getByTestId("pool-offer-no")).toBeVisible();
+    await expect(page.getByTestId("pool-offer-digits")).toBeVisible();
     // No sign-in link on the page: it may be forwarded (his DMs carry his own).
     await expect(page.getByTestId("pool-offer-manage")).toHaveAttribute("href", "/play/manage");
     await expect(page.locator('a[href*="/r/"]')).toHaveCount(0);
+    // Not proved to be him yet (a forwarded link reads the same): no
+    // distance, and his last 4 digits are asked before any answer.
+    await expect(facts).not.toContainText("from you");
+    await expect(page.getByTestId("pool-offer-yes")).toBeDisabled();
     await noSidewaysScroll(page);
 
+    await page.getByTestId("pool-offer-digits").fill(await holderDigits(world, tapLinkIn(ex.sent[0])));
     await page.getByTestId("pool-offer-yes").click();
     await expect(page.getByTestId("pool-offer-page")).toHaveAttribute("data-state", "in", { timeout: 20_000 });
     await expect(page.getByTestId("pool-offer-state")).toContainText("You're in: FNF");
@@ -140,7 +147,9 @@ test("after his yes, the organisers' match page shows him as a guest from the po
   await pollPlatform(world, { now: at(fnf.kickoff, -8) });
   const owner = (await world.userOf(fnf.member("owner")))!;
   await page.context().clearCookies();
+  await poolOpenCookie(page);
   await page.goto(tapLinkIn(ex.sent[0]));
+  await page.getByTestId("pool-offer-digits").fill(await holderDigits(world, tapLinkIn(ex.sent[0])));
   await page.getByTestId("pool-offer-yes").click();
   await expect(page.getByTestId("pool-offer-page")).toHaveAttribute("data-state", "in", { timeout: 20_000 });
 

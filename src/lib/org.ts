@@ -129,6 +129,9 @@ export async function isOrgAdmin(userId: string, orgId: string): Promise<boolean
     where: { userId_orgId: { userId, orgId } },
   });
   if (!membership || membership.leftAt !== null) return false;
+  // A guest (partner or pool) is never an organiser of the club he guests
+  // for, whatever an old row's role says (review of #400, M1).
+  if (isGuestMembership(membership)) return false;
   return membership.role === "OWNER" || membership.role === "ADMIN";
 }
 
@@ -148,7 +151,7 @@ export async function findOrgAdminsWithPhone(
   orgId: string,
 ): Promise<Array<{ id: string; name: string | null; phoneNumber: string }>> {
   const memberships = await db.membership.findMany({
-    where: { orgId, leftAt: null, role: { in: ["OWNER", "ADMIN"] } },
+    where: { orgId, leftAt: null, role: { in: ["OWNER", "ADMIN"] }, ...ORDINARY_MEMBER_WHERE },
     include: { user: { select: { id: true, name: true, phoneNumber: true } } },
     orderBy: { role: "asc" },
   });

@@ -26,3 +26,10 @@ describe("the one-open-ask index is never dropped on a re-run", () => {
     expect(sql).toMatch(/^\s*COMMIT;\s*$/m);
   });
 });
+
+describe("a guest is a PLAYER (review of #400, M1)", () => {
+  const sql = readFileSync(join(__dirname, "..", "..", "..", "prisma", "sql", "partner-ask-check.sql"), "utf8");
+  it("the CHECK binds new rows without failing on old ones", () => {
+    expect(sql).toMatch(/ADD CONSTRAINT "Membership_guest_player_check"\s+CHECK \("guestMatchId" IS NULL OR "role" = 'PLAYER'\) NOT VALID;/);
+  });
+});

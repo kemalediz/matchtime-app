@@ -210,10 +210,11 @@ export async function handleAdminGroupMessage(msg: AdminGroupMessage): Promise<A
   const memberships = senderIds.length
     ? ((await db.membership.findMany({
         where: { orgId: org.id, userId: { in: senderIds }, leftAt: null },
-        select: { userId: true, role: true },
+        select: { userId: true, role: true, guestMatchId: true },
       })) ?? [])
     : [];
-  const admin = memberships.find((m) => m.role === "OWNER" || m.role === "ADMIN") ?? null;
+  // A guest is never the club's admin (review of #400, M1).
+  const admin = memberships.find((m) => !m.guestMatchId && (m.role === "OWNER" || m.role === "ADMIN")) ?? null;
   const senderUserId = admin?.userId ?? memberships[0]?.userId ?? senderIds[0] ?? null;
 
   // Everything said in a live club's HQ, by anyone, for the safe-YES rule.

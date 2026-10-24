@@ -33,6 +33,7 @@
  * goes to the club's one person (the owner) by DM. No reading, or no table
  * yet, means "can post": today's routing.
  */
+import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
 import { db } from "./db";
 import { appUrl, buildAdminLink } from "./admin-link";
 import {
@@ -114,7 +115,7 @@ function effectiveCaps(ch: LoadedAdminChannel, piCaps: PiCaps): PiCaps {
 async function loadChannelAdmins(orgId: string): Promise<ChannelAdmin[]> {
   const rows =
     (await db.membership.findMany({
-      where: { orgId, leftAt: null, role: { in: ["OWNER", "ADMIN"] } },
+      where: { orgId, leftAt: null, role: { in: ["OWNER", "ADMIN"] }, ...ORDINARY_MEMBER_WHERE },
       include: { user: { select: { id: true, name: true, phoneNumber: true } } },
       orderBy: { role: "asc" },
     })) ?? [];

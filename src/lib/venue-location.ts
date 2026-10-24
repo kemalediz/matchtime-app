@@ -41,6 +41,7 @@
  * Every exported function returns an outcome and does not throw for
  * anything Google or a pasted link can do.
  */
+import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
 import { db } from "./db";
 import { londonMidnight } from "./club-connect-rules";
 import { geocode, geocodingConfigured } from "./geocode";
@@ -83,7 +84,7 @@ async function loadActivity(activityId: string) {
           language: true,
           // The organiser: the club's first OWNER still in it.
           memberships: {
-            where: { role: "OWNER", leftAt: null },
+            where: { role: "OWNER", leftAt: null, ...ORDINARY_MEMBER_WHERE },
             orderBy: { createdAt: "asc" },
             take: 1,
             select: { user: { select: { phoneNumber: true } } },

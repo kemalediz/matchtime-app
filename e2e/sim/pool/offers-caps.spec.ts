@@ -78,7 +78,7 @@ scenarios("the pool's limits", () => {
 
     const ex = await organiserAsks(pool, page, fnf, { places: 1, now: at(fnf.kickoff, -8) });
     await pollPlatform(pool, { now: at(fnf.kickoff, -8) });
-    expect(await tapOffer(page, tapLinkIn(ex.sent[0]), "no")).toBe("declined");
+    expect(await tapOffer(pool, page, tapLinkIn(ex.sent[0]), "no")).toBe("declined");
 
     const again = await organiserAsks(pool, page, fnf, { places: 1, now: at(next.kickoff, -8), matchId: next.id });
     expect(again.json.pool).toEqual({ ok: false, refusal: "none-near" });

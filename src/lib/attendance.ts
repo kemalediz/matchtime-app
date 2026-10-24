@@ -670,7 +670,8 @@ async function isClubAdminActor(event: AttendanceEventContext, orgId: string): P
   if (!event.actorUserId || event.cause === "unresolved-link") return false;
   const m = await db.membership.findUnique({
     where: { userId_orgId: { userId: event.actorUserId, orgId } },
-    select: { role: true, leftAt: true },
+    select: { role: true, leftAt: true, guestMatchId: true },
   });
-  return !!m && !m.leftAt && (m.role === "OWNER" || m.role === "ADMIN");
+  // A guest is never the club's admin (review of #400, M1).
+  return !!m && !m.leftAt && !m.guestMatchId && (m.role === "OWNER" || m.role === "ADMIN");
 }

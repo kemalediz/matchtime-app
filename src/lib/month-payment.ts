@@ -36,6 +36,7 @@
  * The rules are pure and live in `month-payment-rules.ts`. No model is
  * called anywhere in this file.
  */
+import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
 import { db } from "./db";
 import { REPLY_PRIORITY } from "./dm-reply-priority";
 import { sendAdminNotice } from "./admin-channel";
@@ -129,7 +130,7 @@ export async function mayConfirmPayments(orgId: string, userId: string): Promise
   if (!org) return false;
   if (org.paymentHolderId) return org.paymentHolderId === userId;
   const admin = await db.membership.findFirst({
-    where: { orgId, userId, leftAt: null, role: { in: ["OWNER", "ADMIN"] } },
+    where: { orgId, userId, leftAt: null, role: { in: ["OWNER", "ADMIN"] }, ...ORDINARY_MEMBER_WHERE },
     select: { id: true },
   });
   return admin !== null;

@@ -127,7 +127,7 @@ describe("Add to FNF", () => {
     expect(await keepGuestAsMember("fnf", "ali")).toBe(true);
     expect(dbMock.membership.updateMany).toHaveBeenCalledWith({
       where: { orgId: "fnf", userId: "ali", guestMatchId: { not: null } },
-      data: { guestVia: null, guestFromOrgId: null, guestMatchId: null, leftAt: null },
+      data: { role: "PLAYER", guestVia: null, guestFromOrgId: null, guestMatchId: null, leftAt: null },
     });
   });
 });

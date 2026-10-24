@@ -56,3 +56,14 @@ describe("the offer page is public and full-bleed", () => {
     expect(shouldShowSidebar(path, "authenticated")).toBe(false);
   });
 });
+
+describe("the proof cookie (review of #400, M2)", () => {
+  it("is per offer, and the link's token is never a proof", async () => {
+    const { isPoolOfferProof, poolOfferProof } = await import("../offer-token");
+    process.env.AUTH_SECRET = "test-secret-for-offer-tokens";
+    expect(isPoolOfferProof("o1", poolOfferProof("o1"))).toBe(true);
+    expect(isPoolOfferProof("o2", poolOfferProof("o1"))).toBe(false);
+    expect(isPoolOfferProof("o1", poolOfferToken("o1").split(".")[1])).toBe(false);
+    expect(isPoolOfferProof("o1", undefined)).toBe(false);
+  });
+});

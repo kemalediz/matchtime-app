@@ -366,7 +366,7 @@ export async function seedMonthlySquad(args: {
   // never moved to the waiting list by the seed.
   const organisers = (
     await db.membership.findMany({
-      where: { orgId: week.orgId, leftAt: null, role: { in: ["OWNER", "ADMIN"] } },
+      where: { orgId: week.orgId, leftAt: null, role: { in: ["OWNER", "ADMIN"] }, ...ORDINARY_MEMBER_WHERE },
       select: { userId: true },
     })
   ).map((m) => m.userId);

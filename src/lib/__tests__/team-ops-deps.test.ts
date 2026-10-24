@@ -220,7 +220,7 @@ describe("buildTeamClearDeps", () => {
     expect((findFirst.mock.calls[0][0] as { where: unknown }).where).toEqual({
       orgId: "org-1",
       userId: "u-1",
-      role: { in: ["OWNER", "ADMIN"] },
+      role: { in: ["OWNER", "ADMIN"] }, guestMatchId: null,
       leftAt: null,
     });
   });

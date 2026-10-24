@@ -43,7 +43,7 @@ import { pausesForIgnored } from "./caps";
 import { ledgerEntryOf } from "./candidate-rows";
 import { findPoolCandidates } from "./candidates";
 import { POOL_OFFER_PURPOSE } from "./dispatch";
-import { poolOffersOpenForClub } from "./flags";
+import { isPoolOffersEnabled, poolOffersOpenForClub } from "./flags";
 import { buildPoolManageLink } from "./links";
 import { OPEN_MATCH_STATUSES } from "./matching-rules";
 import { loadMatchOfferFacts } from "./offer-facts";
@@ -59,7 +59,7 @@ import {
   type PoolAskCloseReason,
   type PoolAskRefusal,
 } from "./round-rules";
-import { POOL_CAPS } from "./rules";
+import { POOL_CAPS, POOL_ROUND } from "./rules";
 import { firstWaveSize, offerExpiresAt, poolSendAt, secondWave } from "./waves";
 import { normaliseLang } from "../i18n/lang";
 import type { PoolAskVia } from "./vocab";
@@ -146,32 +146,46 @@ export async function requestPoolAsk(args: {
   return { ok: true, askId, waveSent };
 }
 
-/** Queue one wave's offers. Returns how many were queued. */
+/**
+ * Queue one wave's offers. Returns how many were queued.
+ *
+ * ONE WAVE AT A TIME PER ASK (review of #400, minor 4): two sweeps at once
+ * (two Pi processes, or a sweep and the organiser's press) must never both
+ * send a wave and take a round past `POOL_ROUND.maxOffers`. The whole wave
+ * runs in one transaction holding `pg_advisory_xact_lock` on the ask, and
+ * re-reads under it what the ask has already sent: wave 1 goes once, wave 2
+ * once, and never more than the round's maximum in total.
+ */
 async function sendWave(askId: string, wave: 1 | 2, now: Date, env: Env | undefined, size?: number): Promise<number> {
-  const ask = await db.poolAsk.findUnique({ where: { id: askId }, select: { id: true, matchId: true, orgId: true, places: true, status: true } });
-  if (!ask || ask.status !== "open") return 0;
-  const found = await findPoolCandidates(ask.matchId, { now, env });
-  if (found.selection.gate || !found.ctx) return 0;
-  const take = size ?? firstWaveSize(found.selection.eligible.length, ask.places);
-  const picked = found.selection.eligible.slice(0, take);
-  if (picked.length === 0) return 0;
-  const facts = await loadMatchOfferFacts(ask.matchId, now);
-  if (!facts) return 0;
-  const cutoff = await cutoffOf(ask.orgId, found.ctx.kickoff);
-  const profiles = await db.poolProfile.findMany({
-    where: { userId: { in: picked.map((p) => p.userId) } },
-    select: { userId: true, language: true, user: { select: { phoneNumber: true } } },
-  });
-  const byUser = new Map(profiles.map((p) => [p.userId as string, p]));
-  const sendAfter = found.sendAt.getTime() > now.getTime() ? found.sendAt : null;
-  let queued = 0;
-  for (const c of picked) {
-    const profile = byUser.get(c.userId);
-    const phone = profile?.user?.phoneNumber;
-    if (!profile || !phone) continue;
-    try {
-      const manageLink = await buildPoolManageLink(c.userId);
-      await db.$transaction(async (tx) => {
+  return db.$transaction(
+    async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`pool-ask:${askId}`}))`;
+      const ask = await tx.poolAsk.findUnique({ where: { id: askId }, select: { id: true, matchId: true, orgId: true, places: true, status: true } });
+      if (!ask || ask.status !== "open") return 0;
+      const already = await tx.poolOffer.findMany({ where: { poolAskId: askId }, select: { wave: true } });
+      if (already.some((o) => o.wave === wave)) return 0;
+      const roomInRound = POOL_ROUND.maxOffers - already.length;
+      if (roomInRound <= 0) return 0;
+      const found = await findPoolCandidates(ask.matchId, { now, env });
+      if (found.selection.gate || !found.ctx) return 0;
+      const take = Math.min(roomInRound, size ?? firstWaveSize(found.selection.eligible.length, ask.places));
+      const picked = found.selection.eligible.slice(0, take);
+      if (picked.length === 0) return 0;
+      const facts = await loadMatchOfferFacts(ask.matchId, now);
+      if (!facts) return 0;
+      const cutoff = await cutoffOf(ask.orgId, found.ctx.kickoff);
+      const profiles = await tx.poolProfile.findMany({
+        where: { userId: { in: picked.map((p) => p.userId) } },
+        select: { userId: true, language: true, user: { select: { phoneNumber: true } } },
+      });
+      const byUser = new Map(profiles.map((p) => [p.userId as string, p]));
+      const sendAfter = found.sendAt.getTime() > now.getTime() ? found.sendAt : null;
+      let queued = 0;
+      for (const c of picked) {
+        const profile = byUser.get(c.userId);
+        const phone = profile?.user?.phoneNumber;
+        if (!profile || !phone) continue;
+        const manageLink = await buildPoolManageLink(c.userId);
         const offer = await tx.poolOffer.create({
           data: {
             poolAskId: ask.id,
@@ -180,6 +194,8 @@ async function sendWave(askId: string, wave: 1 | 2, now: Date, env: Env | undefi
             userId: c.userId,
             distanceMiles: c.distanceMiles,
             wave,
+            // The planned window; the real six hours start when the Pi
+            // reports the DM sent (`dispatch.ts` `onPoolOfferJobSent`).
             expiresAt: offerExpiresAt(found.sendAt, cutoff),
             // The caps count a queued offer at its creation (L4.3): the
             // moment the rules judged it.
@@ -200,17 +216,16 @@ async function sendWave(askId: string, wave: 1 | 2, now: Date, env: Env | undefi
           client: tx as unknown as Parameters<typeof queuePlatformDm>[0]["client"],
         });
         await tx.poolOffer.update({ where: { id: offer.id }, data: { platformJobId: job.id } });
-      });
-      queued++;
-    } catch (err) {
-      // One per match per person (unique): offered already, by a racing poll.
-      if ((err as { code?: string })?.code !== "P2002") {
-        console.error(`[pool] ask ${ask.id}: offer to ${c.userId} not queued:`, err instanceof Error ? err.message : "failed");
+        queued++;
       }
-    }
-  }
-  console.log(`[pool] ask ${ask.id}: wave ${wave}, ${queued} offer(s) queued${sendAfter ? ` for ${sendAfter.toISOString()}` : ""}`);
-  return queued;
+      console.log(`[pool] ask ${ask.id}: wave ${wave}, ${queued} offer(s) queued${sendAfter ? ` for ${sendAfter.toISOString()}` : ""}`);
+      return queued;
+    },
+    { maxWait: 20_000, timeout: 60_000 },
+  ).catch((err: unknown) => {
+    console.error(`[pool] ask ${askId}: wave ${wave} not queued:`, err instanceof Error ? err.message : "failed");
+    return 0;
+  });
 }
 
 /** Close one open ask for `reason`: compare-and-set, then its offers. */
@@ -247,7 +262,7 @@ export function poolAskFill(ask: { id: string; roundId: string | null; matchId: 
 }
 
 /** Offers whose own time ran out: "ignored", and the pause rule. */
-async function expireOwnTime(ask: { id: string; cutoff: Date }, now: Date): Promise<void> {
+async function expireOwnTime(ask: { id: string; cutoff: Date }, now: Date, env?: Env): Promise<void> {
   const open = await db.poolOffer.findMany({
     where: { poolAskId: ask.id, outcome: null, sentAt: { not: null }, expiresAt: { lte: now } },
     select: { id: true, userId: true, sentAt: true, expiresAt: true },
@@ -255,7 +270,7 @@ async function expireOwnTime(ask: { id: string; cutoff: Date }, now: Date): Prom
   for (const o of open) {
     if (!ownTimeRanOut({ sentAt: o.sentAt, expiresAt: o.expiresAt, cutoff: ask.cutoff, now })) continue;
     const done = await db.poolOffer.updateMany({ where: { id: o.id, outcome: null }, data: { outcome: "ignored", resolvedAt: now } });
-    if (done.count > 0) await pauseIfIgnoring(o.userId, now);
+    if (done.count > 0) await pauseIfIgnoring(o.userId, now, env);
   }
 }
 
@@ -265,7 +280,9 @@ async function expireOwnTime(ask: { id: string; cutoff: Date }, now: Date): Prom
  * the manage page; decision L5a.7), so resuming starts the count again.
  * One DM with the manage link, once (the status compare-and-set).
  */
-async function pauseIfIgnoring(userId: string, now: Date): Promise<void> {
+async function pauseIfIgnoring(userId: string, now: Date, env?: Env): Promise<void> {
+  // No pool message of any kind while the master switch is off (minor 5).
+  if (!isPoolOffersEnabled(env)) return;
   const profile = await db.poolProfile.findUnique({ where: { userId }, select: { status: true, language: true, lastActiveAt: true, user: { select: { phoneNumber: true } } } });
   if (!profile || profile.status !== "active") return;
   const rows = await db.poolOffer.findMany({
@@ -306,8 +323,14 @@ export async function sweepPool(now: Date = new Date(), env?: Env): Promise<{ cl
     });
     for (const ask of asks) {
       try {
+        // The switches FIRST (review of #400, minor 5): with the pool off
+        // nothing more happens for this ask, not even a pause message.
+        if (!poolOffersOpenForClub(ask.org, env)) {
+          if (await closePoolAsk(ask.id, "switched-off", now)) closed++;
+          continue;
+        }
         const cutoff = await cutoffOf(ask.orgId, ask.match.date);
-        await expireOwnTime({ id: ask.id, cutoff }, now);
+        await expireOwnTime({ id: ask.id, cutoff }, now, env);
         const [fill, placesOpen] = await Promise.all([poolAskFill(ask), placesOpenOf(ask.matchId)]);
         const reason = poolAskCloseReason({
           now,
