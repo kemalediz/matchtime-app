@@ -34,7 +34,7 @@ import { withOrgAiBudget } from "../ai-budget";
 import { appUrl } from "../app-url";
 import { ORDINARY_MEMBER_WHERE } from "../guest-membership";
 import { normaliseLang, type Lang } from "../i18n/lang";
-import { normalisePhone } from "../phone";
+import { e164Digits } from "../phone";
 import { queuePlatformDm } from "../platform-jobs";
 import { sameWhatsAppMessage } from "../quoted-message";
 import { acceptOffer, declineOffer, pullOutOfOffer } from "./accept";
@@ -102,7 +102,8 @@ interface LoadedReplyOffer extends ReplyOffer {
   text: string;
 }
 
-const digitsOf = (p: string | null | undefined) => (p ? (normalisePhone(p) ?? "").replace(/^\+/, "") : "");
+/** Bare international digits too (`normalisePhone` takes bare digits only for UK numbers). */
+const digitsOf = (p: string | null | undefined) => (p ? (e164Digits(p) ?? "") : "");
 const LIVE_STATUSES = OPEN_MATCH_STATUSES as readonly string[];
 
 export async function answerPoolOfferReply(args: PoolReplyInput): Promise<PoolReplyAnswer> {

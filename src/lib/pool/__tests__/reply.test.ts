@@ -190,3 +190,14 @@ describe("each answer goes through the tap link's own writers", () => {
     expect(await answerPoolOfferReply({ ...fromHim, text: "yes" })).toBeNull();
   });
 });
+
+describe("proof by his number works for any country", () => {
+  it("a Turkish number on the envelope as bare digits is his", async () => {
+    dbMock.poolProfile.findUnique.mockResolvedValue({ status: "active", language: "tr", user: { phoneNumber: "+905321112233" } });
+    dbMock.platformJob.findMany.mockResolvedValue([{ id: "j-new", waMessageId: "wa-new", text: "x", phone: "905321112233" }]);
+    dbMock.poolOffer.findMany.mockResolvedValue([newOffer]);
+    reading("accept");
+    expect(await answerPoolOfferReply({ userId: "can", phone: "905321112233", text: "varım", now: NOW })).toBe("pool-reply-accept");
+    expect(writers.acceptOffer).toHaveBeenCalled();
+  });
+});

@@ -10,7 +10,8 @@
  *
  * For each queued `pool-offer` job, oldest first:
  *   cancel  the global switch or the club's flag is off; he is no longer
- *           active (paused, stopped); the offer was answered or ended, or
+ *           active (paused, stopped); he has opted out of MatchTime DMs
+ *           (`optedOutOfDms`, decision L6.10); the offer was answered or ended, or
  *           its round closed; or one of HIS caps refuses it now (another
  *           club's offer to him went out meanwhile). Never sent; the offer
  *           ends `cancelled` (it never reached him, so no cap counts it).
@@ -26,6 +27,7 @@
  * nothing until it is claimed again. An offer that never reached him and
  * whose round closes ends `cancelled`, which no cap counts.
  */
+import { DM_SUB_FIELDS, type DmSubField } from "../dm-subscriptions";
 import { platformRoom, playerCapRefusal, type OfferLedgerEntry, type PlayerCapRefusal } from "./caps";
 import { poolSendAt } from "./waves";
 
@@ -37,6 +39,8 @@ export interface PoolJobView {
   /** The global switch AND the club's flag. */
   clubOpen: boolean;
   profileActive: boolean;
+  /** He opted out of MatchTime DMs (`optedOutOfDms`). */
+  dmOptedOut: boolean;
   /** The offer has no outcome. */
   offerOpen: boolean;
   /** Its ask is still open. */
@@ -48,7 +52,28 @@ export interface PoolJobView {
   ledger: OfferLedgerEntry[];
 }
 
-export type AdmissionCancelReason = "switched-off" | "profile-off" | "closed" | PlayerCapRefusal;
+export type AdmissionCancelReason = "switched-off" | "profile-off" | "opted-out" | "closed" | PlayerCapRefusal;
+
+/**
+ * HAS HE OPTED OUT OF MATCHTIME DMs? (decision L6.10, the manager, 2026-10-24:
+ * a person who opts out of MatchTime DMs has withdrawn consent, so pool
+ * offers respect it.) The general opt-out ("stop", "stop messaging me",
+ * `dm-subscriptions.ts` "opt-out-all") turns EVERY category off on all his
+ * live memberships at once; only ratings off is not it. A pool consent given
+ * AFTER it (Start again on the manage page, a fresh agreement) is his newer
+ * word and wins. No club: nothing to opt out of here (his pool profile is
+ * the only switch).
+ */
+export function optedOutOfDms(a: {
+  memberships: ReadonlyArray<Record<DmSubField, boolean> & { subPrefsUpdatedAt: Date | null }>;
+  poolConsentAt: Date | null;
+}): boolean {
+  return a.memberships.some((m) => {
+    if (!DM_SUB_FIELDS.every((f) => m[f] === false)) return false;
+    if (!a.poolConsentAt || !m.subPrefsUpdatedAt) return true;
+    return a.poolConsentAt.getTime() <= m.subPrefsUpdatedAt.getTime();
+  });
+}
 
 /** The `PlatformJob.failReason` an offer cancelled at dispatch is failed
  *  with. One definition: the dispatcher writes it, the owner's funnel
@@ -84,6 +109,10 @@ export function planPoolAdmission(jobs: readonly PoolJobView[], busy: readonly D
     }
     if (!j.profileActive) {
       cancel("profile-off");
+      continue;
+    }
+    if (j.dmOptedOut) {
+      cancel("opted-out");
       continue;
     }
     if (!j.offerOpen || !j.askOpen || !j.gameOpen) {

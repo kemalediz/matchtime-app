@@ -11,7 +11,7 @@
 import { describe, expect, it } from "vitest";
 import { londonDateTimeToUtc } from "../../london-time";
 import { POOL_PLATFORM_CAPS, type OfferLedgerEntry } from "../caps";
-import { planPoolAdmission, type PoolJobView } from "../dispatch-rules";
+import { optedOutOfDms, planPoolAdmission, type PoolJobView } from "../dispatch-rules";
 
 const NOW = londonDateTimeToUtc("2026-10-27", "12:00");
 const MIN = 60_000;
@@ -26,6 +26,7 @@ const job = (over: Partial<PoolJobView> = {}): PoolJobView => {
     orgId: "club-a",
     clubOpen: true,
     profileActive: true,
+    dmOptedOut: false,
     offerOpen: true,
     askOpen: true,
     gameOpen: true,
@@ -108,5 +109,39 @@ describe("quiet hours: deferred to 08:30, never dropped", () => {
   it("a switch-off still cancels in quiet hours", () => {
     const j = job({ clubOpen: false });
     expect(planPoolAdmission([j], [], londonDateTimeToUtc("2026-10-27", "23:00"), 5).cancel).toHaveLength(1);
+  });
+});
+
+describe("the general DM opt-out (decision L6.10): a person who opted out of MatchTime DMs gets no pool offer", () => {
+  it("an opted-out person's offer is cancelled at admission, never sent, counted against nobody", () => {
+    const jobs = [job({ dmOptedOut: true }), job()];
+    const plan = planPoolAdmission(jobs, [], NOW, 10);
+    expect(plan.cancel).toEqual([{ jobId: jobs[0].jobId, offerId: jobs[0].offerId, reason: "opted-out" }]);
+    expect(plan.admit).toEqual([jobs[1].jobId]);
+  });
+});
+
+describe("optedOutOfDms", () => {
+  const all = (on: boolean, at: Date | null = new Date(NOW.getTime() - 3 * 24 * 3600_000)) => ({
+    subMatchInviteDm: on,
+    subBenchOfferDm: on,
+    subTentativeDm: on,
+    subRatingDm: on,
+    subReminderDm: on,
+    subPrefsUpdatedAt: at,
+  });
+  it("no club, or every category on: not opted out", () => {
+    expect(optedOutOfDms({ memberships: [], poolConsentAt: null })).toBe(false);
+    expect(optedOutOfDms({ memberships: [all(true)], poolConsentAt: null })).toBe(false);
+  });
+  it("only ratings off is not the general opt-out", () => {
+    expect(optedOutOfDms({ memberships: [{ ...all(true), subRatingDm: false }], poolConsentAt: null })).toBe(false);
+  });
+  it("every category off on a live membership: opted out", () => {
+    expect(optedOutOfDms({ memberships: [all(true), all(false)], poolConsentAt: new Date(NOW.getTime() - 9 * 24 * 3600_000) })).toBe(true);
+  });
+  it("a fresh pool consent AFTER the opt-out (Start again on the manage page) is his newer word", () => {
+    expect(optedOutOfDms({ memberships: [all(false)], poolConsentAt: NOW })).toBe(false);
+    expect(optedOutOfDms({ memberships: [all(false, null)], poolConsentAt: NOW })).toBe(true);
   });
 });

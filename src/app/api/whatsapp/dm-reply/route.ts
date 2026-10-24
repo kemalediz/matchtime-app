@@ -87,6 +87,7 @@ import { handleConnectDm } from "@/lib/connect-dm";
 import { handlePoolConfirmDm } from "@/lib/pool/confirm";
 import { answerPoolOfferReply } from "@/lib/pool/reply";
 import { poolEnvForApiRequest } from "@/lib/pool/switch-env";
+import { dmOptOutStopsPool, poolLanguageOf, stopPoolOnDmOptOut } from "@/lib/pool/dm-optout";
 import { handleOrganiserPickDm } from "@/lib/organiser-pick";
 import { handleCollectorPaidDm, handlePlayerPaidDm } from "@/lib/month-payment";
 import { selfJoinEnabledForApiRequest } from "@/lib/self-join-flag";
@@ -682,7 +683,8 @@ export async function POST(request: Request) {
       where: { userId: user.id, leftAt: null, ...IN_LIVE_STAGE_CLUB_WHERE },
       select: { orgId: true, org: { select: { language: true } } },
     });
-    const subLang = subMem?.org.language;
+    // Someone in no club (a pool player) reads it in his pool language (L6.11).
+    const subLang = subMem ? subMem.org.language : await poolLanguageOf(user.id);
     const cmd = parseDmSubscriptionCommand(text ?? "", subLang);
     if (cmd) {
       let written = false;
@@ -705,8 +707,14 @@ export async function POST(request: Request) {
             data: { orgId: subMem.orgId, kind: "dm", phone: replyPhone, text: dmSubAckMessage(cmd, subLang), ...REPLY_PRIORITY },
           });
         }
-        return NextResponse.json({ ok: true, handled: "dm-subscription", cmd });
       }
+      // Local player pool (decision L6.11): the general opt-out withdraws his
+      // pool consent too, through the manage page's Stop. He hears the reply
+      // above when it was sent (a club member); otherwise one pool line.
+      const pool = dmOptOutStopsPool(cmd)
+        ? await stopPoolOnDmOptOut({ userId: user.id, waMessageId, fromPhones: [phone, senderAltPhone], sendLine: !(written && subMem) })
+        : { stopped: false };
+      if (written || pool.stopped) return NextResponse.json({ ok: true, handled: "dm-subscription", cmd, ...(pool.stopped ? { poolStopped: true } : {}) });
       // Write didn't land — don't lie. Fall through to normal handling.
     }
   }
