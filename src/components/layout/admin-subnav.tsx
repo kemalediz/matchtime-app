@@ -23,6 +23,7 @@ const OWNER_TABS = [
   { label: "Clubs", href: "/admin/clubs" },
   { label: "Health", href: "/admin/health" },
   { label: "Pool codes", href: "/admin/pool/campaigns" },
+  { label: "Pool funnel", href: "/admin/pool/funnel" },
 ];
 
 /**

@@ -50,6 +50,13 @@ export interface PoolJobView {
 
 export type AdmissionCancelReason = "switched-off" | "profile-off" | "closed" | PlayerCapRefusal;
 
+/** The `PlatformJob.failReason` an offer cancelled at dispatch is failed
+ *  with. One definition: the dispatcher writes it, the owner's funnel
+ *  (`funnel-rules.ts`) counts the player-cap ones. */
+export function poolOfferCancelFailReason(reason: AdmissionCancelReason): string {
+  return `cancelled: pool offer ${reason}`;
+}
+
 export interface PoolAdmission {
   admit: string[];
   hold: string[];

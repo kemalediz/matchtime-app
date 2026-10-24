@@ -24,7 +24,7 @@ import { askWindows } from "../partner-ask-rules";
 import { loadPartnerAskSettings } from "../club-partnership";
 import { ledgerEntryOf } from "./candidate-rows";
 import { POOL_CAPS } from "./rules";
-import { planPoolAdmission, type PoolJobView } from "./dispatch-rules";
+import { planPoolAdmission, poolOfferCancelFailReason, type PoolJobView } from "./dispatch-rules";
 import { poolOffersOpenForClub } from "./flags";
 import { OPEN_MATCH_STATUSES } from "./matching-rules";
 import { offerExpiresAt } from "./waves";
@@ -37,7 +37,6 @@ export const POOL_PLATFORM_CAP_LOCK = "pool-platform-cap";
 const HOUR_MS = 3600_000;
 const DAY_MS = 24 * HOUR_MS;
 const LEDGER_LOOKBACK_MS = (POOL_CAPS.declineCooldownDays + 7) * DAY_MS;
-const CANCEL_PREFIX = "cancelled: ";
 
 async function cutoffFor(orgId: string, kickoff: Date): Promise<Date> {
   return askWindows(kickoff, (await loadPartnerAskSettings(orgId))?.cutoffHours ?? 4).postBy;
@@ -141,7 +140,7 @@ export async function admitPoolOfferJobs(jobIds: readonly string[], opts: { now:
           await tx.poolOffer.updateMany({ where: { id: c.offerId, outcome: null }, data: { outcome: "cancelled", resolvedAt: now } });
           await tx.platformJob.updateMany({
             where: { id: c.jobId, status: "queued" },
-            data: { status: "failed", failedAt: now, failReason: `${CANCEL_PREFIX}pool offer ${c.reason}` },
+            data: { status: "failed", failedAt: now, failReason: poolOfferCancelFailReason(c.reason) },
           });
         }
         for (const d of plan.defer) {
