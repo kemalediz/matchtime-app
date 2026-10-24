@@ -145,17 +145,22 @@ export async function savePoolFields(userId: string, fields: PoolFields, now: Da
   return { ok: true };
 }
 
-/** Pause, resume, stop offers, or start again (with the consent ticked). */
+/**
+ * Pause, resume, stop offers, or start again (with the consent ticked).
+ * `via`: the manage page (the default: the signed-in person, and when), or
+ * his own WhatsApp message saying stop (slice L6, `reply.ts`: the message
+ * id is the evidence, as at the confirm).
+ */
 export async function applyManageAction(
   userId: string,
   action: ManageAction,
-  opts: { consent?: boolean; now?: Date } = {},
+  opts: { consent?: boolean; now?: Date; via?: { channel: "whatsapp"; waMessageId: string } } = {},
 ): Promise<PoolManageResult> {
   const now = opts.now ?? new Date();
   const p = await db.poolProfile.findUnique({ where: { userId }, select: { id: true, status: true, pausedReason: true, pausedAt: true } });
   if (!p || p.status === "pending-verify") return { ok: false, reason: "no-profile" };
-  // What proves it: the signed-in person, and when.
-  const evidence = `web:${userId}:${now.getTime()}`;
+  const channel = opts.via?.channel ?? "web";
+  const evidence = opts.via ? `whatsapp:${opts.via.waMessageId}` : `web:${userId}:${now.getTime()}`;
   const t = manageTransition({
     action,
     profile: { status: p.status as PoolProfileStatus, pausedReason: p.pausedReason as PoolPauseReason | null, pausedAt: p.pausedAt },
@@ -168,9 +173,9 @@ export async function applyManageAction(
     // Compare-and-set on the state the rule read, so two taps cannot cross.
     const { count } = await tx.poolProfile.updateMany({ where: { id: p.id, status: p.status, pausedReason: p.pausedReason }, data: t.patch });
     if (count !== 1) return { ok: false as const, reason: "no-profile" as const };
-    if (action === "stop") await recordPoolConsent(tx, { userId, action: "withdraw", channel: "web", evidence: `${evidence}:stop`, at: now });
+    if (action === "stop") await recordPoolConsent(tx, { userId, action: "withdraw", channel, evidence: `${evidence}:stop`, at: now });
     if (action === "restart") {
-      await recordPoolConsent(tx, { userId, action: "consent", channel: "web", evidence, version: t.patch.consentVersion ?? null, at: now });
+      await recordPoolConsent(tx, { userId, action: "consent", channel, evidence, version: t.patch.consentVersion ?? null, at: now });
     }
     return { ok: true as const };
   });

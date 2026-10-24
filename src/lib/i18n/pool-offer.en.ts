@@ -30,7 +30,7 @@ export const poolOfferEn = {
   club_size: (p: { members: number }) => `A group of ${p.members} players`,
   fee: (p: { amount: string }) => `💷 ${p.amount} match fee`,
   free: "💷 Free, no match fee",
-  offer_cta: (p: { link: string }) => `Would you like the place? Tap to say yes or no: ${p.link}`,
+  offer_cta: (p: { link: string }) => `Would you like the place? Reply here, or tap to answer: ${p.link}`,
   footer: (p: { link: string }) => `You get these because you joined the MatchTime player pool. Stop or change them: ${p.link}`,
 
   // ── After he says yes ─────────────────────────────────────────────────
@@ -40,9 +40,16 @@ export const poolOfferEn = {
   placed_fee: (p: { amount: string }) => `The match fee is ${p.amount}. You'll get a pay link after the game.`,
   placed_pull_out: (p: { link: string }) => `Can't make it after all? Give the place back here: ${p.link}`,
 
-  // ── Replies in words (L6 reads them; until then one line) ─────────────
+  // ── Replies in words (L6: the reader; one line each) ──────────────────
   reply_tap: (p: { link: string }) => `To answer the offer, tap the link: ${p.link}`,
   reply_gone: (p: { club: string }) => `Thanks. That place with ${p.club} has gone now. I'll message you about the next game near you.`,
+  reply_facts_head: "Here's everything I know about this game:",
+  reply_reask: (p: { link: string }) => `Sorry, I didn't quite get that. Would you like the place? Reply yes or no, or tap to answer: ${p.link}`,
+  reply_which: (p: { n: number; list: string }) =>
+    `You have ${p.n} game offers open. Which one do you mean? Swipe-reply to its message, or tap its link:\n${p.list}`,
+  reply_stopped: (p: { link: string }) => `Done, I've stopped game offers. You can start them again here: ${p.link}`,
+  reply_profile_off: (p: { link: string }) =>
+    `Your game offers are switched off, so I haven't booked anything. You can switch them back on here: ${p.link}`,
 
   // ── Paused after offers went unanswered ───────────────────────────────
   paused: (p: { n: number; link: string }) =>

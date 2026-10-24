@@ -85,7 +85,7 @@ scenarios("the automatic ask includes the MatchTime player pool", () => {
 
     const sent = await schedulerPoll(pool, fnf, { now: londonOn(fnf.kickoff, 0, "12:05") });
     pool.expectSent(offers(sent), [{ to: "ali", channel: "dm", purpose: "pool-offer", text: OFFER_EN }]);
-    for (const fact of [/📍 \*Goals North Cheam\*/, /🤝 Casual, friendly game/, /💷 £6 match fee/, /Tap to say yes or no: https?:\/\/\S+\/play\/offer\//, /Stop or change them: https?:\/\/\S+\/r\//]) {
+    for (const fact of [/📍 \*Goals North Cheam\*/, /🤝 Casual, friendly game/, /💷 £6 match fee/, /Reply here, or tap to answer: https?:\/\/\S+\/play\/offer\//, /Stop or change them: https?:\/\/\S+\/r\//]) {
       expect(offers(sent)[0].text).toMatch(fact);
     }
     pool.expectNoLeaks(fnf.secrets(), { to: ["ali"] });
@@ -242,7 +242,7 @@ scenarios("the automatic ask includes the MatchTime player pool", () => {
     const sent = await schedulerPoll(pool, fnf, { now: londonOn(fnf.kickoff, 0, "12:05") });
     pool.expectSent(offers(sent), [{ to: "can", purpose: "pool-offer", text: /⚽ \*FNF\*, 7'ye 7 futbol maçı için 1 oyuncu arıyor/ }]);
     expect(offers(sent)[0].text).toContain("🤝 Rekabetçi bir maç");
-    expect(offers(sent)[0].text).toMatch(/Evet ya da hayır demek için dokun: https?:\/\/\S+\/play\/offer\//);
+    expect(offers(sent)[0].text).toMatch(/Buradan cevap ver ya da bağlantıya dokun: https?:\/\/\S+\/play\/offer\//);
     const lines = autoLines(sent);
     expect(lines).toHaveLength(1);
     expect(lines[0].text).toMatch(/Otomatik isteğiniz: .* MatchTime oyuncu havuzundaki yakın oyunculara soruyorum/);

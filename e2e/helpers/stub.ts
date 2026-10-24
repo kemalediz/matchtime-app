@@ -255,6 +255,19 @@ export function clearVolunteerNameStub(): void {
   rmSync(`${E2E.VOLUNTEER_NAME_STUB_FILE}.calls`, { force: true });
 }
 
+/** The POOL REPLY stub (slice L6): a pool player's reply to his offer →
+ *  "accept" | "decline" | "stop" | "question" | "neither", or "low:<intent>"
+ *  for an unsure reading. `{}` means "neither", which keeps today's line. */
+export function setPoolReplyStub(stub: { bodies?: Record<string, string>; fail?: string[] }): void {
+  mkdirSync(path.dirname(E2E.POOL_REPLY_STUB_FILE), { recursive: true });
+  writeFileSync(E2E.POOL_REPLY_STUB_FILE, JSON.stringify(stub, null, 2));
+}
+
+export function clearPoolReplyStub(): void {
+  setPoolReplyStub({});
+  rmSync(`${E2E.POOL_REPLY_STUB_FILE}.calls`, { force: true });
+}
+
 /** The user turns a DM classifier stub was asked about, oldest first. */
 export function stubCalls(file: string): Array<{ label: string; user: string }> {
   try {

@@ -33,7 +33,7 @@ scenarios("a club asks the MatchTime player pool", () => {
       /📍 \*Goals North Cheam\*, Cheam Common Rd, Worcester Park KT4 8RH\. \d\.\d miles from you\. Map: https:\/\/www\.google\.com\/maps\/search\//,
       /🤝 Casual, friendly game\. A group of \d+ players/,
       /💷 £6 match fee/,
-      /Tap to say yes or no: https?:\/\/\S+\/play\/offer\/\S+/,
+      /Reply here, or tap to answer: https?:\/\/\S+\/play\/offer\/\S+/,
       /Stop or change them: https?:\/\/\S+\/r\/\S+/,
     ]) {
       expect(text).toMatch(fact);
@@ -56,7 +56,7 @@ scenarios("a club asks the MatchTime player pool", () => {
     const text = ex.sent[0].text;
     expect(text).toMatch(/sana \d,\d mil\. Harita: /);
     expect(text).toContain("🤝 Rekabetçi bir maç");
-    expect(text).toMatch(/Evet ya da hayır demek için dokun: https?:\/\/\S+\/play\/offer\//);
+    expect(text).toMatch(/Buradan cevap ver ya da bağlantıya dokun: https?:\/\/\S+\/play\/offer\//);
     expect(text).toMatch(/Durdur ya da değiştir: https?:\/\/\S+\/r\//);
     pool.expectNoLeaks(fnf.secrets(), { to: ["can"] });
   });

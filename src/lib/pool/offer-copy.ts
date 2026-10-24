@@ -11,14 +11,15 @@
  * organiser's or member's name, or a phone number: `PoolOfferFacts` has no
  * field that could carry one.
  *
- * Until L6 reads replies in words, the offer asks for a TAP (decision
- * L5a.4): "Reply here" would invite an answer MatchTime cannot read yet.
+ * Since L6 reads replies in words (`reply.ts`), the offer says "Reply
+ * here, or tap" (decision L5a.4 said to rewrite the line then).
  */
 import { longDayTimeLabel } from "../i18n/dates";
 import type { Lang } from "../i18n/lang";
 import { poolCopy } from "../i18n/pool-offer";
 import { t } from "../i18n/t";
 import { sportLabel, type PoolSportKey } from "./sports";
+import type { OfferPageState } from "./accept-rules";
 import type { TurnUpRecord } from "./turn-up";
 import type { PlayStyle } from "./vocab";
 
@@ -141,6 +142,61 @@ export function poolReplyTapText(lang: Lang, p: PoolLinks): string {
 export function poolReplyGoneText(lang: Lang, p: { club: string; manageLink: string }): string {
   const c = poolCopy(lang);
   return [c.reply_gone({ club: p.club }), c.footer({ link: p.manageLink })].join("\n\n");
+}
+
+// ── Replies in words (slice L6) ──────────────────────────────────────────
+
+const withFooter = (lang: Lang, body: string, manageLink: string) => [body, poolCopy(lang).footer({ link: manageLink })].join("\n\n");
+
+/** A question: the offer's own facts again and the way to answer it. Never
+ *  an answer the facts do not hold (plan 5.3: "nothing invented"). */
+export function poolReplyFactsText(
+  lang: Lang,
+  f: PoolOfferFacts,
+  p: { state: "open" | "taken"; tapLink: string; manageLink: string },
+): string {
+  const c = poolCopy(lang);
+  const end = p.state === "taken" ? c.placed_pull_out({ link: p.tapLink }) : c.offer_cta({ link: p.tapLink });
+  return withFooter(lang, [[c.reply_facts_head, ...poolOfferLines(lang, f)].join("\n"), end].join("\n\n"), p.manageLink);
+}
+
+/** The one re-ask when the reader was not sure. */
+export function poolReplyReaskText(lang: Lang, p: PoolLinks): string {
+  return withFooter(lang, poolCopy(lang).reply_reask({ link: p.tapLink }), p.manageLink);
+}
+
+/** Two or more open offers and a plain reply: which one, never a guess. */
+export function poolReplyWhichText(lang: Lang, p: { offers: Array<{ club: string; kickoff: Date; tapLink: string }>; manageLink: string }): string {
+  const list = p.offers.map((o, i) => `${i + 1}. *${o.club}*, ${longDayTimeLabel(lang, o.kickoff)}: ${o.tapLink}`).join("\n");
+  return withFooter(lang, poolCopy(lang).reply_which({ n: p.offers.length, list }), p.manageLink);
+}
+
+/** "Stop" in his own words: done (the manage link starts them again). */
+export function poolReplyStoppedText(lang: Lang, manageLink: string): string {
+  return poolCopy(lang).reply_stopped({ link: manageLink });
+}
+
+/** A yes or a question while his offers are paused or stopped. */
+export function poolReplyProfileOffText(lang: Lang, manageLink: string): string {
+  return poolCopy(lang).reply_profile_off({ link: manageLink });
+}
+
+/** What his yes, no or give-back by words came to: the offer page's own
+ *  words for that state (one source for both), the manage link last. "in"
+ *  and "bench" have none: the match details DM says it. */
+export function poolReplyStateText(lang: Lang, state: Exclude<OfferPageState, "in" | "bench">, manageLink: string): string {
+  const c = poolCopy(lang);
+  const body: Record<Exclude<OfferPageState, "in" | "bench">, string> = {
+    declined: c.page_declined,
+    gone: c.page_gone,
+    expired: c.page_expired,
+    off: c.page_off,
+    busy: c.page_busy,
+    withdrawn: c.page_pulled_out,
+    open: c.page_try_again,
+    invalid: c.page_expired,
+  };
+  return withFooter(lang, body[state], manageLink);
 }
 
 export function poolPausedText(lang: Lang, p: { n: number; manageLink: string }): string {
