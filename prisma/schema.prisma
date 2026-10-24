@@ -3133,6 +3133,10 @@ model PoolProfile {
   /// Cleared once used, so it is only ever set while "pending-verify".
   confirmCode          String?   @unique
   confirmCodeExpiresAt DateTime?
+  /// The requesting address of the /play form, for its per-hour cap
+  /// (rules.ts POOL_SIGNUP). Set only while "pending-verify" (CHECK):
+  /// cleared when the sign-up is confirmed (slice L2).
+  signupIp             String?
 
   // ── Consent (UK GDPR art. 6(1)(a), PECR) ──
   /// Required on every profile past "pending-verify" (CHECK): when, which
@@ -3310,6 +3314,24 @@ model PoolBlock {
 
   @@unique([orgId, userId, by])
   @@index([userId])
+}
+
+/// A /play code from one number that did not work: wrong (it named no
+/// sign-up) or expired (slice L2). Read only to rate-limit: a number
+/// that guessed too many codes in 24 hours has every code ignored, and
+/// the "that code did not work" reply goes at most so often (rules.ts
+/// POOL_CONFIRM). Deleted after POOL_CONFIRM.attemptKeepDays. Holds no
+/// text and no code: the number, the result, the time.
+model PoolConfirmAttempt {
+  id        String   @id @default(cuid())
+  /// E.164 digits, no "+".
+  phone     String
+  /// "wrong" | "expired" (vocab.ts POOL_CONFIRM_ATTEMPT_RESULTS).
+  result    String
+  createdAt DateTime @default(now())
+
+  @@index([phone, createdAt])
+  @@index([createdAt])
 }
 
 /// A campaign code for matchtime.ai/p/<code> (G1): a LinkedIn post, a

@@ -21,11 +21,19 @@
  * same component as the others, and the nav picks it up. Nothing else
  * changes.
  *
+ * THE PLAYER POOL (G0 part 2, with slice L2): its section is the first
+ * spotlight and carries the "Join the MatchTime player pool" invitation,
+ * a button to /play. While the pool is not open anywhere, signing up puts
+ * a player on the early sign-up list; the copy says so and claims nothing
+ * the pool does not do yet (no offers are sent before slice L5).
+ *
  * The landing page is English only today (the club's language is not
  * known to a signed-out visitor, and the page has never been translated).
  */
 import { PARTNER_ASK_CUTOFF_DEFAULT_HOURS } from "@/lib/club-partnership-rules";
 import { MAX_RADIUS_MILES } from "@/lib/club-discovery-rules";
+import { POOL_PLAY_PATH } from "@/lib/pool/paths";
+import { POOL_CAPS, POOL_MIN_AGE, POOL_QUIET_HOURS } from "@/lib/pool/rules";
 
 // ─── Types ─────────────────────────────────────────────────────────────
 
@@ -109,6 +117,9 @@ export interface Spotlight {
   chat?: { caption: string; lines: ChatLine[] };
   /** One closing line under the section, e.g. how to set it up. */
   footnote?: string;
+  /** A button under the heading (the player pool's invitation, G0).
+   *  `pulse`: the soft pulsing ring (globals.css `.pool-invite-pulse`). */
+  cta?: { label: string; href: string; pulse?: boolean };
 }
 
 // ─── Top menu ──────────────────────────────────────────────────────────
@@ -468,11 +479,84 @@ const YOUR_WAY: Spotlight = {
   ],
 };
 
+// src/lib/pool/*: the /play sign-up (slice L2), its WhatsApp confirmation
+// (pool/confirm.ts), the limits (pool/rules.ts POOL_CAPS, POOL_QUIET_HOURS,
+// POOL_MIN_AGE) and the privacy rules (plan section 6). Offers themselves
+// come with slice L5: the copy says "when it opens", never "today".
+const PLAYER_POOL: Spotlight = {
+  id: "player-pool",
+  navLabel: "Player pool",
+  tone: "light",
+  eyebrow: "For players",
+  title: "Looking for a game? Join the MatchTime player pool.",
+  lead: "Tell MatchTime where and when you can play, and which sports. When a club near you is a player short at a time you can play, MatchTime can message you on WhatsApp with the game, and you decide. The pool is opening town by town: sign up now to join the early sign-up list.",
+  cta: { label: "Join the MatchTime player pool", href: POOL_PLAY_PATH, pulse: true },
+  stepsLabel: "How joining works",
+  steps: [
+    {
+      // pool/profile-fields.ts: name, area, travel, days and hours, sports, level.
+      key: "signup",
+      title: "Fill in one page",
+      body: "Your first name, your postcode area or the pitches you like, how far you'll travel, the days and hours you can play, and your sports. Level is optional.",
+    },
+    {
+      // pool/confirm.ts: the person's own message carrying the code.
+      key: "confirm",
+      title: "Confirm on WhatsApp",
+      body: "WhatsApp opens with a short message and a code. You send it, which confirms your number. We never ask for your number on the page and never message you first.",
+    },
+    {
+      // pool/rules.ts POOL_CAPS.perPlayerPerWeek and POOL_QUIET_HOURS.
+      key: "offers",
+      title: "Hear about games near you",
+      body: `Once the pool opens near you, a club that needs a player can be offered you: at most ${POOL_CAPS.perPlayerPerWeek} messages a week, never between ${POOL_QUIET_HOURS.from} and ${POOL_QUIET_HOURS.to}.`,
+    },
+  ],
+  points: [
+    {
+      // pool/sports.ts POOL_SPORTS.
+      key: "sports",
+      icon: "gamepad",
+      color: "teal",
+      title: "Football and more",
+      body: "Football, basketball, tennis, padel, badminton, squash, table tennis, snooker, pool and any sport you play by booking a venue with mates.",
+    },
+    {
+      // pool/manage.ts and pool/links.ts: the signed link in the reply.
+      key: "control",
+      icon: "shield-check",
+      color: "blue",
+      title: "You stay in control",
+      body: "Your own link lets you pause, change your details, stop game messages or delete everything, at any time.",
+    },
+    {
+      // pool/rules.ts POOL_MIN_AGE.
+      key: "age",
+      icon: "users",
+      color: "amber",
+      title: `${POOL_MIN_AGE} and over`,
+      body: "You'll be playing with people you haven't met yet, so the pool is for adults only.",
+    },
+  ],
+  note: {
+    title: "Your details stay private",
+    items: [
+      // Plan section 6: numbers cross only when a player joins a group himself.
+      { key: "number", text: "Clubs never get your phone number from MatchTime." },
+      // Plan section 6: first name and last initial, only after a yes.
+      { key: "name", text: "A club sees your first name and the first letter of your surname, and only once you say yes to its game." },
+      // pool/rules.ts POSTCODE_DISTRICT_RE: the district only.
+      { key: "area", text: "We keep your postcode area, never your full postcode." },
+    ],
+  },
+  footnote: "The player pool is separate from your own club. If you already play with a club on MatchTime, nothing changes there.",
+};
+
 /**
- * The spotlight sections, in page order. One entry per section: add the
- * local player pool here (L2) and the page and the menu follow.
+ * The spotlight sections, in page order. One entry per section; the menu
+ * follows.
  */
-export const LANDING_SPOTLIGHTS: Spotlight[] = [PARTNER_CLUBS, ADMIN_GROUP, YOUR_WAY];
+export const LANDING_SPOTLIGHTS: Spotlight[] = [PLAYER_POOL, PARTNER_CLUBS, ADMIN_GROUP, YOUR_WAY];
 
 // ─── Ask MatchTime anything ────────────────────────────────────────────
 

@@ -25,6 +25,8 @@ export default function robots(): MetadataRoute.Robots {
         "/onboarding",
         "/create-org",
         "/finish-setup",
+        // The player pool manage page is personal (slice L2); /play is not.
+        "/play/manage",
       ],
     },
     sitemap: `${BASE}/sitemap.xml`,

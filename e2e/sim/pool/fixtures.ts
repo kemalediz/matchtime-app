@@ -23,16 +23,35 @@
  */
 import { test as base, expect, resetDb } from "../../fixtures";
 import { requireDevApiKey } from "../../helpers/dev-api-key";
+import { clearGeocodeStub, setGeocodeStub } from "../../helpers/geocode-stub";
 import { PoolWorld } from "./world";
 
 export const LIVE = process.env.MT_SIM_LIVE_LLM === "1";
+
+/** Google's answer for a UK postcode district (one shape for every stubbed lookup). */
+const UK_POINT = {
+  status: "OK",
+  results: [
+    {
+      place_id: "e2e-pool-district",
+      formatted_address: "Sutton SM1, UK",
+      geometry: { location: { lat: 51.3656, lng: -0.1963 }, location_type: "APPROXIMATE" },
+      types: ["postal_code_prefix", "postal_code"],
+      address_components: [{ long_name: "United Kingdom", short_name: "GB", types: ["country", "political"] }],
+    },
+  ],
+};
 
 /** One pool scenario: `scenario("...", async ({ pool }) => { ... })`. */
 export const scenario = base.extend<{ pool: PoolWorld }>({
   pool: async ({ request, db }, provide, testInfo) => {
     const world = new PoolWorld(request, db, LIVE);
     await world.start();
+    // A postcode district is placed by Google (stubbed): every address gets
+    // a point in the UK, so a /play sign-up near "SM1" has its centre.
+    setGeocodeStub({ geocode: { "*": { body: UK_POINT } } });
     await provide(world);
+    clearGeocodeStub();
     if (testInfo.status !== testInfo.expectedStatus) {
       const transcript = world.transcript();
       await testInfo.attach("transcript", { body: transcript, contentType: "text/plain" });

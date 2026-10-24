@@ -18,6 +18,7 @@
  * one module that knows how a window is read. Only the hours are the pool's.
  */
 import type { QuietHours } from "../message-hours";
+import { PRIVACY_POLICY_VERSION } from "../privacy-policy";
 
 // ── Limits ─────────────────────────────────────────────────────────────
 
@@ -59,9 +60,11 @@ export const DEFAULT_POOL_TRAVEL_MILES: PoolTravelMiles = 3;
 /** Minimum age, stated at sign-up and in the policy (decision log #1). */
 export const POOL_MIN_AGE = 18;
 
-/** The consent wording's version, stored on each profile with its consent.
- *  Bump it whenever the consent text or the privacy policy changes. */
-export const POOL_CONSENT_VERSION = 1;
+/** The consent wording's version, stored on each profile with its consent:
+ *  the privacy policy's version (src/lib/privacy-policy.ts), ONE number,
+ *  so the policy a player agreed to and the consent record never disagree
+ *  (slice L2). Bump PRIVACY_POLICY_VERSION when either text changes. */
+export const POOL_CONSENT_VERSION = PRIVACY_POLICY_VERSION;
 
 export const POOL_RETENTION = Object.freeze({
   /** No activity this long: one "still want game offers?" DM. */
@@ -72,6 +75,44 @@ export const POOL_RETENTION = Object.freeze({
   offerAnonymiseMonths: 24,
   /** A sign-up never confirmed on WhatsApp is deleted after this. */
   pendingExpiryDays: 7,
+});
+
+/**
+ * Confirming a sign-up on WhatsApp (slice L2, `confirm-rules.ts`).
+ *   codeTtlDays       a /play code works this long (the pending profile
+ *                     itself lives as long: POOL_RETENTION.pendingExpiryDays).
+ *   wrongCodesPerDay  a number that sent this many wrong or expired codes
+ *                     in 24 hours has every further code ignored, a right
+ *                     one too, until the 24 hours pass (guessing codes).
+ *   replyThrottleMins at most one "that code did not work" reply per number
+ *   repliesPerDay     this often, and this many in 24 hours.
+ *   attemptKeepDays   failed attempts are kept this long, for the two rules
+ *                     above, then deleted.
+ */
+export const POOL_CONFIRM = Object.freeze({
+  codeTtlDays: POOL_RETENTION.pendingExpiryDays,
+  wrongCodesPerDay: 5,
+  replyThrottleMins: 10,
+  repliesPerDay: 3,
+  attemptKeepDays: 30,
+});
+
+/**
+ * The /play form (slice L2).
+ *   perIpPerHour       sign-ups one requesting address may start an hour.
+ *   purgePendingAfterDays  a sign-up never confirmed is deleted this long
+ *                      after its code expired (until then a late message
+ *                      still gets "that code has expired").
+ *   maxSports, maxRanges   what one profile may hold.
+ *   nameMax            the name as typed, at most this long.
+ */
+export const POOL_SIGNUP = Object.freeze({
+  perIpPerHour: 5,
+  purgePendingAfterDays: 30,
+  maxSports: 12,
+  maxRanges: 21,
+  nameMax: 40,
+  maxVenues: 5,
 });
 
 /** The WhatsApp confirm code: 4 characters from an alphabet with no 0, O,

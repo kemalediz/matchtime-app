@@ -1,0 +1,156 @@
+/**
+ * The words on the local player pool's pages, /play and /play/manage
+ * (slice L2), in every language MatchTime ships. CLIENT-SAFE.
+ *
+ * Page copy, so it is not in the flat `strings.*.ts` tables (as the privacy
+ * policy is not): one object per language, `pool-play.en.ts` and
+ * `pool-play.tr.ts`, typed by `PoolPlayCopy`, so a missing line in either
+ * language is a `tsc` error. The pages hold no wording of their own. The
+ * pool's DMs stay in the string tables (`pool_dm_*`).
+ *
+ * Every number in a sentence (the age, the limits, the quiet hours) is
+ * passed in from `src/lib/pool/rules.ts`, never typed. House rules (unit
+ * tested in `__tests__/pool-play.test.ts`): no em or en dashes, no slash as
+ * a separator, "early sign-up list" and never "waiting list", Turkish never
+ * equal to English.
+ */
+import { normaliseLang, type Lang } from "./lang";
+import { buildPoolPlayEn } from "./pool-play.en";
+import { buildPoolPlayTr } from "./pool-play.tr";
+
+/** The numbers the copy quotes, from rules.ts. */
+export interface PoolPlayFacts {
+  minAge: number;
+  perWeek: number;
+  quietFrom: string;
+  quietTo: string;
+  /** How long a /play code works. */
+  codeDays: number;
+}
+
+export type PoolErrorKey =
+  | "name"
+  | "area-required"
+  | "area-district"
+  | "area-venues"
+  | "maxMiles"
+  | "availability-none"
+  | "availability-bad-day"
+  | "availability-bad-time"
+  | "availability-bad-range"
+  | "availability-too-many"
+  | "sports-none"
+  | "sports-bad-sport"
+  | "sports-other-needs-name"
+  | "sports-bad-format"
+  | "sports-bad-level"
+  | "sports-duplicate"
+  | "sports-too-many"
+  | "adult"
+  | "consent"
+  | "busy"
+  | "area-not-found"
+  | "venues-unknown"
+  | "paused"
+  | "unavailable"
+  | "generic";
+
+export interface PoolFieldsCopy {
+  nameLabel: string;
+  nameHint: string;
+  areaLegend: string;
+  areaDistrictOption: string;
+  areaVenuesOption: string;
+  districtLabel: string;
+  districtHint: string;
+  venueSearchLabel: string;
+  venueSearchHint: string;
+  venueNoResults: string;
+  venueAdd: (name: string) => string;
+  venueRemove: (name: string) => string;
+  venuesChosen: string;
+  travelLegend: string;
+  miles: (n: number) => string;
+  daysLegend: string;
+  daysHint: string;
+  /** Sunday first, as `PoolAvailability.day` (0 = Sunday). */
+  dayNames: readonly string[];
+  fromLabel: (day: string) => string;
+  toLabel: (day: string) => string;
+  addRange: (day: string) => string;
+  removeRange: (day: string) => string;
+  sportsLegend: string;
+  sportsHint: string;
+  formatsLegend: (sport: string) => string;
+  levelLabel: (sport: string) => string;
+  levelNone: string;
+  levelOwnWords: string;
+  levelOwnWordsLabel: (sport: string) => string;
+  otherNameLabel: string;
+  languageLabel: string;
+}
+
+export interface PoolPlayCopy {
+  title: string;
+  description: string;
+  languageSwitchLabel: string;
+  backHome: string;
+  privacyLink: string;
+  fields: PoolFieldsCopy;
+  errors: Record<PoolErrorKey, string>;
+  errorSummary: string;
+  signup: {
+    heading: string;
+    lead: string;
+    earlyNote: string;
+    howItWorks: readonly string[];
+    adultLabel: string;
+    consentLabel: string;
+    consentPolicy: string;
+    submit: string;
+    submitting: string;
+    pausedNote: string;
+    confirmHeading: string;
+    confirmLead: string;
+    openWhatsApp: string;
+    codeLabel: string;
+    messageLabel: string;
+    confirmEarly: string;
+    confirmHelp: string;
+  };
+  manage: {
+    heading: string;
+    noProfile: string;
+    signUpLink: string;
+    statusLabel: string;
+    status: { active: string; paused: string; pausedByMatchTime: string; stopped: string };
+    earlyNote: string;
+    consentLine: (date: string, version: number) => string;
+    pause: string;
+    resume: string;
+    stop: string;
+    stopHint: string;
+    restartConsent: string;
+    restart: string;
+    editHeading: string;
+    save: string;
+    saving: string;
+    saved: string;
+    privacyHeading: string;
+    showRecognitionLabel: string;
+    showRecognitionHint: string;
+    deleteHeading: string;
+    deleteHint: string;
+    deleteButton: string;
+    deleteConfirm: string;
+    deleteCancel: string;
+    deletedHeading: string;
+    deletedBody: string;
+  };
+}
+
+const BUILDERS: Record<Lang, (f: PoolPlayFacts) => PoolPlayCopy> = { en: buildPoolPlayEn, tr: buildPoolPlayTr };
+
+export function poolPlayCopy(lang: Lang | string | null | undefined, facts: PoolPlayFacts): PoolPlayCopy {
+  return BUILDERS[normaliseLang(lang)](facts);
+}

@@ -17,7 +17,13 @@
  *      so the reader can never be bundled for the browser (importing
  *      the server ACTION in app/actions/club-connect.ts is fine: Next
  *      sends the browser a reference to it, never its code);
- *   4. next.config does not forward it through `env` either.
+ *   4. next.config does not forward it through `env` either;
+ *   5. (local player pool, slice L2) the /play sign-up route is the ONE
+ *      public API answer that carries it, in a wa.me link, only after a
+ *      valid, rate-limited sign-up: a stranger must be able to write to
+ *      MatchTime, since that message IS the pool's sign-up. Never the
+ *      /play page or a bundle (e2e/web/play-signup.spec.ts checks the
+ *      rendered page).
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
@@ -63,5 +69,15 @@ describe("MATCHTIME_WA_NUMBER stays on the server", () => {
 
   it("next.config does not forward it to the browser", () => {
     expect(readFileSync(path.join(ROOT, "next.config.ts"), "utf8")).not.toContain("MATCHTIME_WA_NUMBER");
+  });
+});
+
+describe("the /play sign-up is the one public API answer that carries the number (slice L2)", () => {
+  const callers = FILES.filter((f) => f !== READER && /\bmatchtimeWaNumber\s*\(/.test(readFileSync(f, "utf8"))).map((f) => path.relative(SRC, f));
+  it("no other API route calls matchtimeWaNumber", () => {
+    expect(callers.filter((r) => r.startsWith("app/api/"))).toEqual(["app/api/play/signup/route.ts"]);
+  });
+  it("the pool's pages and components never do (the page renders no number)", () => {
+    expect(callers.filter((r) => r.startsWith("app/play/") || r.startsWith("components/pool/"))).toEqual([]);
   });
 });
