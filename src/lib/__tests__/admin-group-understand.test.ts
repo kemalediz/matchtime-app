@@ -19,7 +19,7 @@ const dbMock = vi.hoisted(() => ({
   // What an HQ reply quotes, by its WhatsApp id (slice S4).
   sentNotification: { findMany: vi.fn() },
   botJob: { findMany: vi.fn() },
-  adminGroupMessage: { findMany: vi.fn() },
+  adminGroupMessage: { findMany: vi.fn(), updateMany: vi.fn() },
   user: { findMany: vi.fn() },
 }));
 vi.mock("@/lib/db", () => ({ db: dbMock }));
@@ -151,10 +151,44 @@ beforeEach(() => {
   dbMock.sentNotification.findMany.mockResolvedValue([]);
   dbMock.botJob.findMany.mockResolvedValue([]);
   dbMock.adminGroupMessage.findMany.mockResolvedValue([]);
+  dbMock.adminGroupMessage.updateMany.mockResolvedValue({ count: 1 });
   dbMock.user.findMany.mockResolvedValue([]);
   dbMock.membership.findFirst.mockResolvedValue(null);
   partnerWords.activePartnerChoices.mockResolvedValue([]);
   partnerWords.askPartnersFromWords.mockResolvedValue({ outcome: "xask-words-asked", replyText: "I've asked *Sutton FC*'s organisers.", asked: 1 });
+});
+
+describe("what MatchTime decided is kept on the HQ row (FNF HQ 2026-10-24, \"Glazers OUT\")", () => {
+  const saved = () => {
+    expect(dbMock.adminGroupMessage.updateMany).toHaveBeenCalledTimes(1);
+    return dbMock.adminGroupMessage.updateMany.mock.calls[0][0];
+  };
+
+  it("a squad change that went silent: the router's route and source, and \"silent\"", async () => {
+    squad.handleAdminSquadChange.mockResolvedValue({ handled: false, why: "not-a-squad-change" });
+    expect(await ask("Glazers OUT", "other_att")).toBeNull();
+    const arg = saved();
+    expect(arg.where).toEqual({ orgId: ORG.id, waMessageId: "wa-9" });
+    expect(arg.data.hqOutcome).toBe("silent");
+    expect(arg.data.pipelineTrace).toMatchObject({ v: 1, router: { route: "other_att", source: "model" } });
+  });
+
+  it("an answered message: its outcome", async () => {
+    await ask("Tom out", "other_att");
+    expect(saved().data.hqOutcome).toBe("squad-changed");
+  });
+
+  it("the organisers' own chat: none, and silent", async () => {
+    expect(await ask("who has the bibs?", "none")).toBeNull();
+    const arg = saved();
+    expect(arg.data.hqOutcome).toBe("silent");
+    expect(arg.data.pipelineTrace.router.route).toBe("none");
+  });
+
+  it("a failed save never fails HQ", async () => {
+    dbMock.adminGroupMessage.updateMany.mockRejectedValue(new Error("column does not exist"));
+    expect(await ask("Tom out", "other_att")).toMatchObject({ outcome: "squad-changed" });
+  });
 });
 
 describe("the router is the players' group's router, shown the organisers' context", () => {

@@ -170,6 +170,7 @@ import {
   type EngineWriteResult,
 } from "./attendance-engine";
 import { extractorCacheKey, fanOutWarmFirst } from "./pipeline/fan-out";
+import { membersNamedIn } from "./pipeline/identity";
 
 export interface EngineBatchMessage {
   waMessageId: string;
@@ -740,6 +741,9 @@ export async function runAttendanceEngineBatch(args: {
         // The message it quotes, shown as it is (a reply to another
         // match's post was not owned above).
         reply: m.reply ?? null,
+        // The club's members the words name, from the roster (2026-10-24,
+        // FNF HQ "Glazers OUT"): the extractor is told they are people.
+        members: membersNamedIn(m.body, state.roster),
         now,
       });
       if (res.budgetRefused) {

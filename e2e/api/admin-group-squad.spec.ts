@@ -9,6 +9,7 @@
  * match at 4 of 5: Alex Admin, Colin Collector, Pat Player, Tom Third, and
  * Ben Bench on the bench. Alex is the OWNER.
  */
+import { readFileSync } from "node:fs";
 import { test, expect, resetDb } from "../fixtures";
 import { MATCH, ORG_ID, PHONE, U } from "../helpers/constants";
 import { E2E } from "../helpers/env";
@@ -382,5 +383,74 @@ test.describe("organiser pick: a place opens with someone on the bench", () => {
       'Tamam: Pat Player çıktı. 3/4, yedekte 1 kişi (Tom Third). Bir yer boş. Yedekten kimin gireceğini kendi cümlelerinizle yazmanız yeterli (örneğin Tom Third).',
     );
     await db.run(`UPDATE "Organisation" SET language = 'en' WHERE id = $1`, [ORG_ID]);
+  });
+});
+
+// FNF HQ 2026-10-24 11:30-11:43 UTC. "Glazers in" added a brand-new,
+// phoneless member and benched him; "Glazers OUT" a few minutes later did
+// nothing and said nothing. The real attendance extractor read no claim in
+// "Glazers OUT" (measured on the dev key), because nothing told it Glazers
+// is a person in the club. It is now shown the club's members the message
+// names, from the roster the engine already loads, a member created minutes
+// earlier included. What HQ decided is kept on the message's row.
+test.describe("a player added in HQ a minute ago is taken out by name", () => {
+  test.beforeAll(async ({ db }) => {
+    resetDb();
+    await db.run(`UPDATE "Organisation" SET "adminGroupId" = $2, "adminChannelMode" = 'admin-group' WHERE id = $1`, [ORG_ID, HQ]);
+  });
+
+  const glazers = (db: TestDb) => db.one<{ id: string; phoneNumber: string | null }>(`SELECT id, "phoneNumber" FROM "User" WHERE name = 'Glazers'`);
+  const callsFor = (body: string): string[] => {
+    let raw = "";
+    try {
+      raw = readFileSync(`${E2E.EXTRACTOR_STUB_FILE}.calls`, "utf8");
+    } catch {
+      return [];
+    }
+    return raw
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => (JSON.parse(l) as { user: string }).user)
+      .filter((u) => u.trimEnd().endsWith(`\n${body}`));
+  };
+
+  test("'Glazers in': a new player, no phone, in the squad", async ({ request, db }) => {
+    engineOn({ "Glazers in": { route: "other_att", facts: otherFacts("Glazers", "in") } });
+    const out = await say(request, "Glazers in", ADMIN, "e2e-ags-glazers-in");
+    expect(out).toMatchObject({ handled: true, outcome: "squad-changed" });
+    const g = await glazers(db);
+    expect(g?.phoneNumber ?? null).toBeNull();
+    expect(["CONFIRMED", "BENCH"]).toContain(await statusOf(db, g!.id));
+  });
+
+  test("'Glazers OUT': the extractor is told Glazers is a member, he is out, and the decision is on the HQ row", async ({ request, db }) => {
+    engineOn({ "Glazers OUT": { route: "other_att", facts: otherFacts("Glazers", "out") } });
+    const out = await say(request, "Glazers OUT", ADMIN, "e2e-ags-glazers-out");
+    expect(out).toMatchObject({ handled: true, outcome: "squad-changed", react: "✅" });
+    expect(out.replyText).toMatch(/^Done: Glazers out\./);
+    const g = await glazers(db);
+    expect(await statusOf(db, g!.id)).toBe("DROPPED");
+
+    const seen = callsFor("Glazers OUT");
+    expect(seen.length).toBeGreaterThan(0);
+    expect(seen[0]).toContain("CLUB MEMBERS NAMED: Glazers");
+
+    const row = await db.one<{ hqOutcome: string | null; pipelineTrace: { router?: { route: string }; extractions: Array<{ owner: string; facts: { claims?: Array<{ personRef: string; polarity: string }> } }> } | null }>(
+      `SELECT "hqOutcome", "pipelineTrace" FROM "AdminGroupMessage" WHERE "waMessageId" = $1`,
+      ["e2e-ags-glazers-out"],
+    );
+    expect(row?.hqOutcome).toBe("squad-changed");
+    expect(row?.pipelineTrace?.router?.route).toBe("other_att");
+    expect(row?.pipelineTrace?.extractions[0]).toMatchObject({ owner: "attendance", facts: { claims: [{ personRef: "Glazers", polarity: "out" }] } });
+  });
+
+  test("chat the router calls none: silent, and the row says so", async ({ request, db }) => {
+    engineOn({ "who has the bibs?": { route: "none" } });
+    expect(await say(request, "who has the bibs?", ADMIN, "e2e-ags-bibs")).toMatchObject({ handled: false, replyText: null });
+    const row = await db.one<{ hqOutcome: string | null; pipelineTrace: { router?: { route: string } } | null }>(
+      `SELECT "hqOutcome", "pipelineTrace" FROM "AdminGroupMessage" WHERE "waMessageId" = $1`,
+      ["e2e-ags-bibs"],
+    );
+    expect(row).toMatchObject({ hqOutcome: "silent", pipelineTrace: { router: { route: "none" } } });
   });
 });

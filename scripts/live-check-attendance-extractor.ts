@@ -65,6 +65,8 @@ interface Case {
   now?: Date;
   /** Runs RUNS times (the incident set) instead of once. */
   repeat?: boolean;
+  /** The CLUB MEMBERS NAMED line (`membersNamedIn`), as the engine sends it. */
+  members?: string[];
 }
 
 // ── Grading helpers ───────────────────────────────────────────────────
@@ -333,6 +335,29 @@ const CASES: Case[] = [
   { id: "T5", body: "what time is kickoff?", check: noClaims, want: "no claims" },
   { id: "T6", body: "Mojib Habib and Kieran on same side", author: "Abid Kazmi", history: SUTTON_HISTORY.slice(0, 2), lastBotPost: SUTTON_LAST_POST, check: noClaims, want: "no claims" },
   { id: "T7", body: "we need one more for tuesday, anyone?", check: (f) => noSelfOut(f) && f.sideRequests.length > 0, want: "a side request, no claim for the sender" },
+  // FNF HQ 2026-10-24: Glazers, a member added minutes earlier. Without the
+  // CLUB MEMBERS NAMED line the extractor read no claim in either (2 of 2).
+  ...[
+    { id: "GZ1", body: "Glazers OUT" },
+    { id: "GZ2", body: "Glazers out. I was just testing you" },
+    // 12:41 and 12:42/12:46 UTC: no claim, and an out at 0.5-0.6 (held under HQ's 0.7 floor).
+    { id: "GZ7", body: "Remove glazers" },
+    { id: "GZ8", body: "Glazers out" },
+  ].map((g) => ({
+    ...g,
+    author: "Abdul-Hafeez",
+    route: "other_att" as Route,
+    tagged: true,
+    members: ["Glazers"],
+    repeat: true,
+    check: (f: AttendanceFacts) => other(f, /^glazers$/i).some((c) => isOut(c) && c.confidence >= 0.7) && noSelfOut(f),
+    want: "Glazers out, at 0.7 or above (HQ's floor)",
+  })),
+  { id: "GZ3", body: "Glazers in", author: "Nasir", route: "other_att", tagged: true, members: ["Glazers"], check: (f) => other(f, /^glazers$/i).some((c) => c.polarity === "in") && self(f).length === 0, want: "Glazers in, not the sender" },
+  // A listed member whose name is also an ordinary word is read as the word.
+  { id: "GZ4", body: "will you play tonight?", members: ["Will Smith"], check: (f) => !other(f, /will/i).length, want: "no claim for Will" },
+  { id: "GZ5", body: "Mark my words, it'll be wet on Friday", members: ["Mark Jones"], check: noClaims, want: "no claims" },
+  { id: "GZ6", body: "Mark is out this week", members: ["Mark Jones"], route: "other_att", check: (f) => other(f, /mark/i).some(isOut), want: "Mark out" },
 ];
 
 async function main() {
@@ -350,6 +375,7 @@ async function main() {
         history: c.history ?? [],
         lastBotPost: c.lastBotPost ?? null,
         reply: c.reply ?? null,
+        ...(c.members ? { members: c.members } : {}),
         now: c.now ?? new Date("2026-10-20T11:00:00Z"),
       });
       const f = ex.facts.kind === "attendance" ? ex.facts : null;
