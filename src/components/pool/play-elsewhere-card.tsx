@@ -20,6 +20,7 @@ import Link from "next/link";
 import { Globe2 } from "lucide-react";
 import { answerPlayElsewhereClaim, joinPlayElsewhereAction, loadPlayElsewhereAction, startPlayElsewhereWhatsApp, type PlayElsewhereState, type WhatsAppStep } from "@/app/actions/pool-member";
 import { PoolProfileFields, type FieldErrorText } from "@/components/pool/pool-profile-fields";
+import { PoolShareCard } from "@/components/pool/pool-share-card";
 import { PoolTick } from "@/components/pool/pool-tick";
 import { PoolWhatsAppStep } from "@/components/pool/pool-whatsapp-step";
 import type { Lang } from "@/lib/i18n/lang";
@@ -125,6 +126,7 @@ export function PlayElsewhereCard({ lang }: { lang: Lang }) {
         <Link href={POOL_MANAGE_PATH} className="mt-3 inline-block font-semibold text-blue-700 underline">
           {m.manageLink}
         </Link>
+        <PoolShareCard lang={lang} />
       </>
     );
   } else if (path.kind === "waiting-whatsapp" && step && !open) {

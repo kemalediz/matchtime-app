@@ -59,6 +59,7 @@ import {
 import { recordPoolConsent } from "./consent-record";
 import { poolAlreadyText, poolClaimWaitText, poolCodeReplyText, poolWelcomeText } from "./copy";
 import { isPoolSignupPaused } from "./flags";
+import { settlePoolReferral } from "./growth";
 import { buildPoolManageLink } from "./links";
 import { POOL_CONSENT_VERSION } from "./rules";
 import type { PoolConfirmAttemptResult } from "./vocab";
@@ -252,6 +253,10 @@ async function confirm(profileId: string, code: string, phone: string, waMessage
             })
           ).id;
     const live = await activatePendingProfile(tx, { profileId, userId, phone, code, waMessageId, now });
+    // Slice G1: a friend's referral is settled once, now his account is
+    // known. (A member's claim, member-claim.ts, is source "profile": no
+    // referral to settle.)
+    if (live) await settlePoolReferral(tx, profileId, { friendAccountExisted: target.kind === "number-account" });
     return live ? { kind: "confirmed" as const, ...live } : null;
   });
 }

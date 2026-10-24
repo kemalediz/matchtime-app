@@ -12,6 +12,7 @@ import { useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { PoolProfileFields, type FieldErrorText } from "@/components/pool/pool-profile-fields";
 import { PoolPageShell } from "@/components/pool/pool-page-shell";
+import { PoolShareCard } from "@/components/pool/pool-share-card";
 import { deletePoolProfileAction, poolManageAction, savePoolProfileAction, setPoolRecognitionAction } from "@/app/actions/pool-manage";
 import type { Lang } from "@/lib/i18n/lang";
 import type { PoolErrorKey } from "@/lib/i18n/pool-play";
@@ -194,6 +195,9 @@ export function ManageView({ view }: { view: PoolManageView | null }) {
         </label>
         <p className="mt-1 pl-8 text-sm text-slate-600">{m.showRecognitionHint}</p>
       </section>
+
+      {/* Slice G1: his share link; reloads when the privacy switch or his status moves. */}
+      <PoolShareCard lang={lang} refreshKey={`${showRecognition}:${view.status}`} />
 
       <section aria-labelledby="pool-delete" className="mt-10 border-t border-slate-200 pt-8">
         <h2 id="pool-delete" className="text-lg font-semibold text-slate-900">

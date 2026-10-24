@@ -7,6 +7,7 @@
  * The browser runs the same validator the server does, so errors show at
  * once; the server's answer is the truth. No wording here (page-copy.ts).
  */
+import { poolShareCopy } from "@/lib/i18n/pool-share";
 import { useState } from "react";
 import Link from "next/link";
 import { MessageCircle } from "lucide-react";
@@ -27,7 +28,16 @@ interface Confirm {
   earlyList: boolean;
 }
 
-export function PlaySignup({ source, paused }: { source: { campaignCode: string | null; referralCode: string | null }; paused: boolean }) {
+export function PlaySignup({
+  source,
+  paused,
+  invitedBy = null,
+}: {
+  source: { campaignCode: string | null; referralCode: string | null };
+  paused: boolean;
+  /** Slice G1: the friend whose link this is, when his privacy switch shows his name. */
+  invitedBy?: string | null;
+}) {
   const browserLang = useBrowserLang();
   const [chosen, setChosen] = useState<Lang | null>(null);
   const lang = chosen ?? browserLang;
@@ -120,6 +130,11 @@ export function PlaySignup({ source, paused }: { source: { campaignCode: string 
       }}
       copy={copy}
     >
+      {invitedBy && (
+        <p data-testid="pool-invited-by" className="mb-3 text-sm font-medium text-emerald-800">
+          {poolShareCopy(lang).invitedBy(invitedBy)}
+        </p>
+      )}
       <h1 className="text-2xl font-bold text-slate-900">{copy.signup.heading}</h1>
       <p className="mt-3 text-slate-700">{copy.signup.lead}</p>
       <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">{copy.signup.earlyNote}</p>
