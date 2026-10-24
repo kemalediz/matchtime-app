@@ -129,5 +129,20 @@ export function buildPoolPlayTr(f: PoolPlayFacts): PoolPlayCopy {
       deletedHeading: "Bilgilerin silindi",
       deletedBody: "Artık MatchTime oyuncu havuzunda değilsin. İstediğin zaman yeniden katılabilirsin.",
     },
+    member: {
+      heading: "Başka yerlerde de oyna",
+      lead: "Maçın mı yok? Yakınındaki başka bir kulüp boş olduğun bir saatte bir oyuncu eksik kaldığında MatchTime sana haber verebilir. Her seferinde sen karar verirsin.",
+      ownClubNote: "Kendi kulübünün maçları şimdiki gibi kulübünün grubunda kalır. Bu yalnızca başka kulüpler için.",
+      open: "Ayarla",
+      prefillNote: "Bunu kulübünün maçlarından ve sahalarından doldurduk. Kontrol et, istediğini değiştir.",
+      whatsAppNote: "Hesabında henüz telefon numarası yok, bu yüzden son adımda numaranı WhatsApp'tan onaylarsın.",
+      join: "Oyuncu havuzuna katıl",
+      joining: "Kaydediliyor...",
+      continueWhatsApp: "WhatsApp ile devam et",
+      inPool: "MatchTime oyuncu havuzundasın.",
+      manageLink: "Oyuncu havuzu bilgilerini yönet",
+      waitingHeading: "Son adım: WhatsApp'tan onayla",
+      startAgain: "Bilgilerimi değiştirip yeniden başla",
+    },
   };
 }

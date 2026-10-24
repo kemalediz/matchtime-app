@@ -9,6 +9,7 @@ import { updateProfile, setMyPositions } from "@/app/actions/players";
 import { t } from "@/lib/i18n/t";
 import { useBrowserLang } from "@/lib/i18n/browser-lang";
 import { ownPhoneError } from "@/lib/own-phone-copy";
+import { PlayElsewhereCard } from "@/components/pool/play-elsewhere-card";
 
 type ActivityPositions = {
   positions: string[];
@@ -32,7 +33,8 @@ type Stats = {
 
 export default function ProfilePage() {
   const { data: session } = useSession();
-  const s = t(useBrowserLang());
+  const lang = useBrowserLang();
+  const s = t(lang);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
   const [editing, setEditing] = useState(false);
@@ -247,6 +249,9 @@ export default function ProfilePage() {
         <StatTile icon={<Trophy className="w-4 h-4" />} label="MoM" value={stats.momCount} color="amber" />
         <StatTile icon={<TrendingUp className="w-4 h-4" />} label="Attendance" value={`${stats.attendanceRate}%`} color="purple" />
       </div>
+
+      {/* The local player pool (slice L3): join from here, no stranger flow. */}
+      <PlayElsewhereCard lang={lang} />
 
       <Link
         href="/profile/stats"

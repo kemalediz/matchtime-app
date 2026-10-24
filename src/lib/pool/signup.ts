@@ -13,6 +13,12 @@
  * hour, whatever their result, counted before the area is placed, because
  * placing a district may cost a paid geocoding call. Old waiting sign-ups
  * and attempts are deleted by the daily housekeeping (`housekeeping.ts`).
+ *
+ * STARTED BY A SIGNED-IN MEMBER (slice L3, `member-optin.ts`): a member
+ * whose account has no phone number takes this same step from his profile.
+ * The waiting row then carries his user id and the source "profile", so his
+ * own WhatsApp message confirms it onto HIS account (`confirm.ts`) instead
+ * of a new one; `ip` is then his key (`member:<id>`), not an address.
  */
 import { db } from "../db";
 import { generatePoolConfirmCode, poolCodeExpiry } from "./confirm-rules";
@@ -30,6 +36,8 @@ export async function createPoolSignup(args: {
   ip: string | null;
   source: { campaignCode: string | null; referralCode: string | null };
   earlyList: boolean;
+  /** Slice L3: the signed-in member (with no phone) who started it. */
+  startedByUserId?: string;
   now?: Date;
 }): Promise<PoolSignupResult> {
   const now = args.now ?? new Date();
@@ -50,7 +58,9 @@ export async function createPoolSignup(args: {
   }
   await attempt("created");
 
-  const source = await resolveSource(args.source);
+  const source = args.startedByUserId
+    ? { source: "profile" as const, sourceCode: null, referrerUserId: null }
+    : await resolveSource(args.source);
   const f = args.fields;
 
   for (let attempt = 0; attempt < 10; attempt++) {
@@ -59,6 +69,7 @@ export async function createPoolSignup(args: {
       await db.poolProfile.create({
         data: {
           status: "pending-verify",
+          userId: args.startedByUserId ?? null,
           confirmCode: code,
           confirmCodeExpiresAt: poolCodeExpiry(now),
           signupIp: args.ip,
@@ -80,7 +91,10 @@ export async function createPoolSignup(args: {
       console.log(`[pool-signup] waiting sign-up created early=${args.earlyList} source=${source.source}`);
       return { ok: true, code, earlyList: args.earlyList };
     } catch (err) {
-      // Another waiting sign-up holds this code: draw again.
+      // Another waiting sign-up holds this code: draw again. (His user id
+      // taken meanwhile, by a second tap, is not a code clash.)
+      const target = (err as { meta?: { target?: unknown } })?.meta?.target;
+      if ((err as { code?: string })?.code === "P2002" && args.startedByUserId && String(target ?? "").includes("userId")) return { ok: false, reason: "busy" };
       if ((err as { code?: string })?.code === "P2002") continue;
       throw err;
     }

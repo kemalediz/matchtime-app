@@ -129,5 +129,20 @@ export function buildPoolPlayEn(f: PoolPlayFacts): PoolPlayCopy {
       deletedHeading: "Your details are deleted",
       deletedBody: "You're no longer in the MatchTime player pool. You can join again at any time.",
     },
+    member: {
+      heading: "Play elsewhere too",
+      lead: "Short of a game? MatchTime can tell you when another club near you is a player short at a time you're free. You decide each time.",
+      ownClubNote: "Your own club's games stay in your club's group as now. This is only for other clubs.",
+      open: "Set it up",
+      prefillNote: "We filled this in from your club's games and pitches. Check it and change anything you like.",
+      whatsAppNote: "Your account has no phone number yet, so the last step confirms it on WhatsApp.",
+      join: "Join the player pool",
+      joining: "Saving...",
+      continueWhatsApp: "Continue to WhatsApp",
+      inPool: "You're in the MatchTime player pool.",
+      manageLink: "Manage your player pool details",
+      waitingHeading: "Last step: confirm on WhatsApp",
+      startAgain: "Change my details and start again",
+    },
   };
 }

@@ -16,7 +16,9 @@
  * how to manage his own, and the attempt counts against him.
  *
  * Confirming, in ONE transaction with a compare-and-set on the waiting row:
- * the User is found by the number, or created (a member keeps his one
+ * the User is found by the number, or (slice L3) the signed-in member with
+ * no number who started the sign-up from his profile gets it, or a User is
+ * created (a member keeps his one
  * identity; two first messages at once from a new number resolve to one
  * User); the profile turns "active" with its consent (policy version, time,
  * channel "whatsapp", this message's id); the code and the sign-up address
@@ -174,13 +176,14 @@ async function confirmOnce(profileId: string, code: string, phone: string, waMes
  *  message confirmed it first, or the number got a profile meanwhile. */
 async function confirm(profileId: string, code: string, phone: string, waMessageId: string, now: Date) {
   return db.$transaction(async (tx: Tx) => {
-    const row = await tx.poolProfile.findUnique({ where: { id: profileId }, select: { status: true, displayName: true } });
+    const row = await tx.poolProfile.findUnique({ where: { id: profileId }, select: { status: true, displayName: true, userId: true } });
     if (row?.status !== "pending-verify") return null;
 
     const existing = await tx.user.findUnique({ where: { phoneNumber: `+${phone}` }, select: { id: true, poolProfile: { select: { id: true } } } });
     if (existing?.poolProfile) return null;
     const userId =
       existing?.id ??
+      (await claimForStarter(tx, row.userId, phone)) ??
       (
         await tx.user.create({
           data: {
@@ -218,6 +221,21 @@ async function confirm(profileId: string, code: string, phone: string, waMessage
       select: { id: true, userId: true, displayName: true, language: true, earlyList: true },
     }) as Promise<{ id: string; userId: string; displayName: string; language: string; earlyList: boolean }>;
   });
+}
+
+/**
+ * Slice L3: a member with no number on his account started this sign-up
+ * from his profile (`member-optin.ts`), so the waiting row names him. When
+ * no account holds the number that wrote, his own message proves it is his:
+ * the number goes on HIS account and the profile is his. Null otherwise (the
+ * number already belongs to an account: that account is the one recorded,
+ * as for any sign-up; he has gained a number meanwhile; or nobody started
+ * it), and the caller goes on as before.
+ */
+async function claimForStarter(tx: Tx, starterId: string | null, phone: string): Promise<string | null> {
+  if (!starterId) return null;
+  const { count } = await tx.user.updateMany({ where: { id: starterId, phoneNumber: null }, data: { phoneNumber: `+${phone}` } });
+  return count === 1 ? starterId : null;
 }
 
 /**
