@@ -22,6 +22,10 @@
  *      "X in"), merge it into them so their games and team place follow.
  *      Ambiguous or partial matches are only suggested. Rules:
  *      src/lib/placeholder-link-rules.ts.
+ *   5b. A guest the club invited (pool L8: the club and he both said yes,
+ *      and he got the group's link) becomes an ordinary member
+ *      (`adoptInvitedGuest`); that is a state change, so the admins hear
+ *      he joined.
  *   6. Queue a `BotJob` DM to every org admin ONLY on state change: a
  *      brand-new number, a known user's FIRST membership here ("joined"),
  *      or a membership that had left ("rejoined"). Already-active members
@@ -37,6 +41,8 @@ import { sendAdminNotice } from "@/lib/admin-channel";
 import { linkJoinerToPlaceholder, type LinkOutcome } from "@/lib/placeholder-link";
 import { composeJoinDm, joinDmPath, type JoinDmInput, type JoinLinkNote } from "@/lib/join-dm";
 import { usableWhatsAppName } from "@/lib/resolve-sender";
+import { isGuestMembership } from "@/lib/guest-membership";
+import { adoptInvitedGuest } from "@/lib/pool/club-invitation";
 
 export async function POST(request: Request) {
   const apiKey = request.headers.get("x-api-key");
@@ -141,7 +147,7 @@ export async function POST(request: Request) {
     const now = new Date();
     const existing = await db.membership.findUnique({
       where: { userId_orgId: { userId: user.id, orgId: org.id } },
-      select: { id: true, leftAt: true, role: true },
+      select: { id: true, leftAt: true, role: true, guestMatchId: true, guestFromOrgId: true, guestVia: true },
     });
     let rejoined = false;
     let alreadyActive = false;
@@ -161,6 +167,19 @@ export async function POST(request: Request) {
         data: { lastSeenInGroupAt: now },
       });
       alreadyActive = true;
+    }
+
+    // Step 5b (pool L8): an invited guest who joined is a member now.
+    if (existing && isGuestMembership(existing)) {
+      try {
+        if (await adoptInvitedGuest(org.id, user.id)) {
+          // His first join as a member: "joined", not "rejoined".
+          alreadyActive = false;
+          rejoined = false;
+        }
+      } catch (err) {
+        console.error(`[group-join] org ${org.id}: adopting an invited guest failed:`, err instanceof Error ? err.message : "failed");
+      }
     }
 
     // Step 5: link a placeholder a third party's "X in" created for this

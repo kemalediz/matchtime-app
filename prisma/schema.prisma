@@ -605,6 +605,14 @@ model Organisation {
   /// per town), a lowercase slug such as "sutton". NULL: the first town's
   /// number, which is every club today.
   town                      String?
+  /// The club's WhatsApp group invite link, pasted once by an organiser
+  /// on the settings page (pool L8, source B in src/lib/pool/invite-link.ts),
+  /// canonical `https://chat.whatsapp.com/<code>` (CHECK). Sent only to a
+  /// guest the club and he both said yes to; never shown to players. NULL:
+  /// none pasted (MatchTime may still make the link as a group admin).
+  groupInviteLink           String?
+  groupInviteLinkSetAt      DateTime?
+  groupInviteLinkSetById    String?
 
   memberships        Membership[]
   clubConnects       ClubConnect[]

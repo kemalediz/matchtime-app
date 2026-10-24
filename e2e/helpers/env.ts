@@ -290,6 +290,11 @@ export function buildTestEnv(): Record<string, string> {
     // Stripe's own retries are on, as production sets it (review L2: the
     // "it will be tried again" copy needs it explicitly on).
     BILLING_STRIPE_RETRIES: "1",
+    // Pool L8: the Pi's invite-code job (link source A). ON for the suite
+    // so a club where MatchTime is group admin exercises it; prod keeps it
+    // OFF until the Pi build that knows the job is deployed. A club with no
+    // botIsAdmin reading takes source B exactly as with the flag off.
+    GROUP_INVITE_CODE_JOBS: "1",
     // Venue location: a dummy key (never a real one) so the lookup path
     // runs, and the stub file every "Google" answer comes from. With
     // MT_TEST_MODE=1 the seam never touches the network, key or no key.

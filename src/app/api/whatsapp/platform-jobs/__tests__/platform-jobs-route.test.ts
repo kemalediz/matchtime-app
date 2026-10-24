@@ -27,6 +27,12 @@ vi.mock("@/lib/group-add", () => ({
   queueUnsolicitedAutoLeaves: (...a: unknown[]) => groupAdd.queueUnsolicitedAutoLeaves(...a),
 }));
 
+const inviteMock = vi.hoisted(() => ({ onInviteCodeReported: vi.fn(), sweepClubInvitations: vi.fn() }));
+vi.mock("@/lib/pool/club-invitation", () => ({
+  onInviteCodeReported: (...a: unknown[]) => inviteMock.onInviteCodeReported(...a),
+  sweepClubInvitations: (...a: unknown[]) => inviteMock.sweepClubInvitations(...a),
+}));
+
 const versionMock = vi.hoisted(() => ({ loadClubSetVersion: vi.fn() }));
 vi.mock("@/lib/club-set-version", () => ({ loadClubSetVersion: () => versionMock.loadClubSetVersion() }));
 
@@ -252,5 +258,29 @@ describe("POST (outcome)", () => {
   it("does not accept 'unconfirmed' from a Pi: only the legacy bridge writes that", async () => {
     const res = await post({ id: "pj1", outcome: "unconfirmed" });
     expect(res.status).toBe(400);
+  });
+});
+
+describe("POST: the group invite code (pool L8)", () => {
+  it("passes the code with the sent outcome and hands it to the invitations flow once the job moved", async () => {
+    const res = await post({ id: "pj9", outcome: "sent", inviteCode: "Fh3kQ9zLmP2xW7vB1nR4tY" });
+    expect(res.status).toBe(200);
+    expect(libMock.recordPlatformJobOutcome).toHaveBeenCalledWith("pj9", { outcome: "sent", inviteCode: "Fh3kQ9zLmP2xW7vB1nR4tY" }, expect.any(Date));
+    expect(inviteMock.onInviteCodeReported).toHaveBeenCalledWith("pj9", { outcome: "sent", inviteCode: "Fh3kQ9zLmP2xW7vB1nR4tY" }, expect.any(Date));
+  });
+
+  it("a replayed report (nothing moved) and a release are not handed on", async () => {
+    libMock.recordPlatformJobOutcome.mockResolvedValueOnce({ updated: false });
+    await post({ id: "pj9", outcome: "sent", inviteCode: "Fh3kQ9zLmP2xW7vB1nR4tY" });
+    await post({ id: "pj9", outcome: "release" });
+    expect(inviteMock.onInviteCodeReported).not.toHaveBeenCalled();
+  });
+
+  it("the poll runs the invitations sweep, and its failure never costs the poll its jobs", async () => {
+    inviteMock.sweepClubInvitations.mockRejectedValueOnce(new Error("db down"));
+    const res = await GET(new Request("http://x/api/whatsapp/platform-jobs", { headers: { "x-api-key": KEY } }));
+    expect(res.status).toBe(200);
+    expect(inviteMock.sweepClubInvitations).toHaveBeenCalled();
+    expect(((await res.json()) as { jobs: unknown[] }).jobs).toHaveLength(2);
   });
 });

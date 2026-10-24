@@ -85,6 +85,10 @@ function fakeDriver(): Spy {
     },
     sendTextViaChat: async (...a) => note("sendTextViaChat")(...a),
     leaveGroup: async (...a) => note("leaveGroup")(...a),
+    groupInviteCode: async (...a) => {
+      note("groupInviteCode")(...a);
+      return "Fh3kQ9zLmP2xW7vB1nR4tY";
+    },
     listGroups: async () => {
       calls.push("listGroups()");
       return [{ id: "120363@g.us", name: "Test" }];
@@ -158,6 +162,7 @@ describe("shadowGuard refuses every send path", () => {
   it("covers exactly the outbound members, no more and no fewer", () => {
     expect([...SHADOW_SEND_MEMBERS].sort()).toEqual(
       [
+        "groupInviteCode",
         "leaveGroup",
         "replyTo",
         "sendDirectText",
@@ -191,6 +196,8 @@ describe("shadowGuard refuses every send path", () => {
       // Leaving a group is an action on the real account: a shadow number
       // must never do it, even though the scheduler that asks never starts.
       ["leaveGroup", () => guarded.leaveGroup("120363@g.us")],
+      // A group's invite code is a way into a real group (pool L8).
+      ["groupInviteCode", () => guarded.groupInviteCode("120363@g.us")],
     ];
 
     for (const [member, call] of attempts) {

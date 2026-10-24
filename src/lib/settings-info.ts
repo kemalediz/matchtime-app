@@ -81,6 +81,7 @@ export const SETTING_INFO_KEYS = [
   "playStyle",
   // Local player pool (slice L9, 2026-10-24)
   "poolAutoAsk",
+  "groupInviteLink",
   // Posters
   "posters",
   "posterDesign",
@@ -1509,6 +1510,38 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
         "Partner kulüpleriniz varsa bu yalnızca Partner kulüplerden oyuncu iste ayarı Belirli bir saatte kendiliğinden iken çalışır; Biz isteyince seçiliyse her isteğe organizatörleriniz kendileri karar verir.",
         "Geri kalan her şey organizatörlerinizin istediği zamanki gibidir: tekliflerde aynı sınırlar, gece geç saatte teklif yok ve evet diyen oyuncular maçınıza misafir olarak katılır.",
         "Bu kart yalnızca kulübünüz MatchTime oyuncu havuzundan oyuncu isteyebildiği sürece görünür.",
+      ],
+    },
+  },
+  // Traced 2026-10-24 (pool slice L8): `Organisation.groupInviteLink`, saved
+  // by app/actions/club-invite.ts; option A is the Pi's invite-code job
+  // (src/lib/pool/invite-link.ts). Shown only to a club that has had a guest
+  // or may ask the pool (`guestPlayersTabShown`).
+  groupInviteLink: {
+    en: {
+      title: "Group invite link",
+      what: [
+        "When a guest who played with you wants to join, and your club says yes too (Invite to club, or Send the invite link on the guest's card), MatchTime sends that guest your WhatsApp group's invite link in a private message. Nobody else is sent it.",
+        "Option A: make MatchTime an admin of your WhatsApp group. It then gets the group's link itself each time. Option B: paste the link here once.",
+      ],
+      example: "🎉 Welcome to FNF. Join their WhatsApp group here: https://chat.whatsapp.com/...",
+      newClubs: "No link pasted.",
+      together: [
+        "This card and the Invite to club button show only while your club may ask the MatchTime player pool for players. After a game MatchTime asks only players who came from the pool; a partner club's player is invited only when you press Invite to club.",
+        "When the guest joins the group he becomes a member of your club. Change or remove the link here and any link not sent yet is held back and replaced.",
+      ],
+    },
+    tr: {
+      title: "Grup davet bağlantısı",
+      what: [
+        "Sizinle oynayan bir misafir katılmak istediğinde ve kulübünüz de evet dediğinde (Kulübe davet et ya da misafir kartındaki Davet bağlantısını gönder), MatchTime o misafire WhatsApp grubunuzun davet bağlantısını özel mesajla gönderir. Başka kimseye gönderilmez.",
+        "A seçeneği: MatchTime'ı WhatsApp grubunuzda yönetici yapın. Bağlantıyı her seferinde kendisi alır. B seçeneği: bağlantıyı bir kez buraya yapıştırın.",
+      ],
+      example: "🎉 FNF grubuna hoş geldin. WhatsApp grubuna buradan katıl: https://chat.whatsapp.com/...",
+      newClubs: "Yapıştırılmış bağlantı yok.",
+      together: [
+        "Bu kart ve Kulübe davet et düğmesi yalnızca kulübünüz MatchTime oyuncu havuzundan oyuncu isteyebildiği sürece görünür. Maçtan sonra MatchTime yalnızca havuzdan gelen oyunculara sorar; partner kulübün bir oyuncusu yalnızca siz Kulübe davet et'e bastığınızda davet edilir.",
+        "Misafir gruba katıldığında kulübünüzün üyesi olur. Bağlantıyı burada değiştirir ya da kaldırırsanız henüz gönderilmemiş bağlantı bekletilir ve yenisiyle değiştirilir.",
       ],
     },
   },

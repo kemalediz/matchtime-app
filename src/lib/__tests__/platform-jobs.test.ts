@@ -43,6 +43,8 @@ import {
   planPlatformDispatch,
   platformJobKey,
   queuePlatformDm,
+  queuePlatformInviteCode,
+  cancelQueuedPlatformDms,
   queuePlatformLeaveGroup,
   recordPlatformJobOutcome,
 } from "../platform-jobs";
@@ -434,5 +436,51 @@ describe("the due-posts bridge for a Pi built before slice 3", () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
     expect(await bridgePlatformDmsForLegacyPi(req(), NOW)).toEqual([]);
     spy.mockRestore();
+  });
+});
+
+describe("the group invite code job (pool L8)", () => {
+  it("queues reading the invite code of an approved club's group, once per invitation while outstanding", async () => {
+    dbMock.organisation.findFirst.mockResolvedValue({ id: "fnf" });
+    dbMock.platformJob.findFirst.mockResolvedValue(null);
+    const out = await queuePlatformInviteCode({ groupId: "120363000000000009@g.us", refId: "inv1" });
+    expect(out).toEqual({ id: "new-job" });
+    expect(dbMock.platformJob.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ kind: "invite-code", groupId: "120363000000000009@g.us", purpose: "invite-code", refId: "inv1", status: "queued" }),
+    });
+    dbMock.platformJob.findFirst.mockResolvedValue({ id: "existing" });
+    expect(await queuePlatformInviteCode({ groupId: "120363000000000009@g.us", refId: "inv1" })).toEqual({ id: "existing" });
+  });
+
+  it("refuses a group no approved club owns, and anything that is not a group", async () => {
+    expect(await queuePlatformInviteCode({ groupId: "120363000000000009@g.us", refId: "inv1" })).toEqual({ refused: "not-a-club-group" });
+    expect(await queuePlatformInviteCode({ groupId: "447700900123@s.whatsapp.net", refId: "inv1" })).toEqual({ refused: "not-a-group" });
+    expect(dbMock.platformJob.create).not.toHaveBeenCalled();
+  });
+
+  it("dispatch hands it out only for a group an approved club still owns", () => {
+    const code = job({ id: "ic", kind: "invite-code", phone: null, text: null, groupId: "g-live", purpose: "invite-code" });
+    const ok = planPlatformDispatch([code], { now: NOW, approvedGroupIds: new Set(["g-live"]), limit: 5 });
+    expect(ok.dispatch.map((d) => d.instruction)).toEqual([{ id: "ic", kind: "invite-code", groupId: "g-live" }]);
+    const gone = planPlatformDispatch([code], { now: NOW, approvedGroupIds: new Set(), limit: 5 });
+    expect(gone.dispatch).toEqual([]);
+    expect(gone.refuse).toEqual([{ id: "ic", reason: expect.stringMatching(/no approved club/i) }]);
+    const bad = planPlatformDispatch([job({ id: "ic2", kind: "invite-code", phone: null, text: null, groupId: null, purpose: "invite-code" })], { now: NOW, approvedGroupIds: new Set(), limit: 5 });
+    expect(bad.refuse.map((r) => r.id)).toEqual(["ic2"]);
+  });
+
+  it("the club invite DMs are platform purposes, to a known number only", async () => {
+    for (const purpose of ["club-invite-ask", "club-invite-link", "club-invite-closed"] as const) {
+      await expect(queuePlatformDm({ phone: "+447700900123", text: "x", purpose })).rejects.toMatchObject({ code: "number-not-known" });
+    }
+  });
+});
+
+describe("club invite DMs can be cancelled (pool L8 review, M2/M3)", () => {
+  it("a link, an ask or a closing line not sent yet can be taken back", async () => {
+    dbMock.platformJob.updateMany.mockResolvedValue({ count: 0 });
+    (dbMock as unknown as { $queryRaw: ReturnType<typeof vi.fn> }).$queryRaw = vi.fn(async () => [{ status: "failed", purpose: "club-invite-link" }]);
+    const r = await cancelQueuedPlatformDms({ purposes: ["club-invite-link", "club-invite-ask", "club-invite-closed"], refIds: ["inv1"], reason: "link replaced" });
+    expect(r.cancelled).toBe(1);
   });
 });

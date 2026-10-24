@@ -18,12 +18,13 @@ import { deletePoolProfileAction, poolManageAction, savePoolProfileAction, setPo
 import type { Lang } from "@/lib/i18n/lang";
 import type { PoolErrorKey } from "@/lib/i18n/pool-play";
 import { formatPolicyDate } from "@/lib/i18n/privacy-policy-shared";
+import { inviteCopy } from "@/lib/i18n/pool-invite";
 import { fromSavedProfile, toPoolPayload, type PoolFormValue } from "@/lib/pool/form-state";
 import type { PoolManageView } from "@/lib/pool/manage";
 import type { ManageAction } from "@/lib/pool/manage-rules";
 import { fieldErrorKeys, poolPageCopy } from "@/lib/pool/page-copy";
 import { validatePoolFields, type PoolFieldErrors } from "@/lib/pool/profile-fields";
-import { POOL_PLAY_PATH } from "@/lib/pool/paths";
+import { POOL_INVITATIONS_PATH, POOL_PLAY_PATH } from "@/lib/pool/paths";
 
 const BTN = "inline-flex items-center justify-center rounded-xl px-5 py-2.5 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-60";
 
@@ -108,6 +109,12 @@ export function ManageView({ view }: { view: PoolManageView | null }) {
   return (
     <PoolPageShell lang={lang} onLang={setLang} copy={copy}>
       <h1 className="text-2xl font-bold text-slate-900">{m.heading}</h1>
+      {/* My invitations (pool L8): his club invitations and open game offers. */}
+      <p className="mt-2 text-sm">
+        <Link href={POOL_INVITATIONS_PATH} data-testid="pool-manage-invitations" className="font-semibold text-blue-700 underline">
+          {inviteCopy(lang).inv_title}
+        </Link>
+      </p>
 
       {(failure || Object.keys(errors).length > 0) && (
         <p role="alert" className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">

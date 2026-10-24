@@ -5,7 +5,7 @@
  *
  * PRIVACY (plan section 6). This file selects, about a guest: his user id,
  * his name, his games' results, his pool profile's status and sports, and
- * whether an invitation is open. Never his phone number, his area, or the
+ * his invitations from this club (L8). Never his phone number, his area, or the
  * clubs he plays for. The one club name it reads is the partner club a
  * partner guest came from, which this club asked. His games at other clubs
  * are read for his turn-up record as results only (no club, no venue, no
@@ -21,6 +21,7 @@ import { db } from "../db";
 import type { GuestPoolState } from "./club-invite";
 import type { Lang } from "../i18n/lang";
 import { buildGuestPlayers } from "./guest-report";
+import { invitationView } from "./club-invitation-rules";
 import type {
   AttendanceLike,
   GuestCard,
@@ -48,7 +49,7 @@ export interface GuestFacts {
 const isMemberRow = (m: { leftAt: Date | null; guestMatchId: string | null; guestFromOrgId: string | null }) =>
   m.leftAt === null && !isGuestMembership(m);
 
-export async function loadGuestFacts(orgId: string, opts: { userIds?: string[]; report?: boolean } = {}): Promise<GuestFacts> {
+export async function loadGuestFacts(orgId: string, opts: { userIds?: string[]; report?: boolean; now?: Date } = {}): Promise<GuestFacts> {
   const onlyUsers = opts.userIds ? { userId: { in: opts.userIds } } : {};
 
   const [guestMemberships, placesHere] = await Promise.all([
@@ -90,7 +91,10 @@ export async function loadGuestFacts(orgId: string, opts: { userIds?: string[]; 
       where: { userId: { in: userIds } },
       select: { userId: true, status: true, sports: { select: { sport: true, otherName: true, level: true, levelText: true } } },
     }),
-    db.clubInvitation.findMany({ where: { orgId, userId: { in: userIds }, status: "open" }, select: { userId: true } }),
+    db.clubInvitation.findMany({
+      where: { orgId, userId: { in: userIds } },
+      select: { userId: true, status: true, origin: true, clubYesAt: true, playerYesAt: true, declinedBy: true, closedAt: true, createdAt: true, linkSentAt: true },
+    }),
     db.guestPlace.findMany({ where: { userId: { in: userIds }, orgId: { not: orgId } }, select: { userId: true, matchId: true, result: true, settledAt: true } }),
     db.attendance.findMany({
       where: { userId: { in: guestMemberships.map((m) => m.userId) }, match: { activity: { orgId } } },
@@ -184,7 +188,9 @@ export async function loadGuestFacts(orgId: string, opts: { userIds?: string[]; 
   const members = new Set(memberRows.filter(isMemberRow).map((m) => m.userId));
   const nameOf = new Map(users.map((u) => [u.id, u.name]));
   const profileOf = new Map(profiles.map((p) => [p.userId, p]));
-  const invited = new Set(invitations.map((i) => i.userId));
+  const invitationsOf = new Map<string, typeof invitations>();
+  for (const i of invitations) invitationsOf.set(i.userId, [...(invitationsOf.get(i.userId) ?? []), i]);
+  const now = opts.now ?? new Date();
   const people: GuestPersonFacts[] = userIds.map((userId) => {
     const profile = profileOf.get(userId);
     const cameViaPool = games.some((g) => g.userId === userId && g.orgId === orgId && g.source === "pool");
@@ -208,7 +214,7 @@ export async function loadGuestFacts(orgId: string, opts: { userIds?: string[]; 
           levelText: s.levelText,
         }),
       ),
-      openInvitation: invited.has(userId),
+      invitation: invitationView(invitationsOf.get(userId) ?? [], now),
       clubBlocked: blockedHere.has(userId),
     };
   });
@@ -268,7 +274,7 @@ export async function loadMatchGuestCards(args: {
   const ids = await loadMatchGuestIds(args.orgId, args.matchId, args.attendeeIds);
   if (ids.length === 0) return {};
   if (!args.admin) return Object.fromEntries(ids.map((id) => [id, null]));
-  const facts = await loadGuestFacts(args.orgId, { userIds: ids });
+  const facts = await loadGuestFacts(args.orgId, { userIds: ids, now: args.now });
   const built = buildGuestPlayers({ orgId: args.orgId, now: args.now ?? new Date(), lang: args.lang, games: facts.games, people: facts.people });
   return Object.fromEntries(ids.map((id) => [id, built.cards[id] ?? null]));
 }

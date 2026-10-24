@@ -127,6 +127,7 @@ export const SHADOW_SEND_MEMBERS = [
   "replyTo",
   "sendTextViaChat",
   "leaveGroup",
+  "groupInviteCode",
 ] as const;
 
 export type ShadowSendMember = (typeof SHADOW_SEND_MEMBERS)[number];
@@ -251,6 +252,10 @@ export function shadowGuard<T extends WaDriver>(driver: T, opts: ShadowGuardOpti
 
     leaveGroup: async (groupId: string) => {
       throw refuse("leaveGroup", `leave the group ${shadowPreview(groupId, 80)}`);
+    },
+
+    groupInviteCode: async (groupId: string) => {
+      throw refuse("groupInviteCode", `read the invite code of ${shadowPreview(groupId, 80)}`);
     },
 
     /**

@@ -23,7 +23,7 @@ const card: GuestCard = {
   invite: "available",
   blocked: false,
 };
-const action = async () => ({ ok: true as const });
+const action = async () => ({ ok: true as const, state: "invited" as const });
 const html = (c: GuestCard, lang = "en", withAction = false) =>
   renderToStaticMarkup(createElement(GuestCardDetails, { card: c, lang, orgId: "o", inviteAction: withAction ? action : undefined }));
 
@@ -49,10 +49,10 @@ describe("GuestCardDetails", () => {
 });
 
 describe("InviteToClubButton", () => {
-  const button = (state: GuestCard["invite"], withAction = true) =>
-    renderToStaticMarkup(createElement(InviteToClubButton, { orgId: "o", userId: "u1", state, lang: "en", action: withAction ? action : undefined }));
+  const button = (state: GuestCard["invite"], withAction = true, linkReady = true, lang = "en") =>
+    renderToStaticMarkup(createElement(InviteToClubButton, { orgId: "o", userId: "u1", state, lang, linkReady, action: withAction ? action : undefined }));
 
-  it("is not rendered until L8 hands it an action", () => {
+  it("is not rendered without an action", () => {
     expect(html(card)).not.toContain("guest-invite");
     expect(button("available", false)).toBe("");
   });
@@ -62,15 +62,39 @@ describe("InviteToClubButton", () => {
     expect(h).not.toMatch(/disabled=""/);
     expect(html(card, "en", true)).toContain("Invite to club");
   });
+  it("no link source yet: greyed, with how to set one up and a link to Settings", () => {
+    const h = button("available", true, false);
+    expect(h).toMatch(/disabled=""/);
+    expect(h).toContain('data-testid="guest-invite-no-link"');
+    expect(h).toContain("make MatchTime an admin of your WhatsApp group");
+    expect(h).toContain('href="/admin/settings#group-invite-link"');
+    expect(button("requested", true, false)).toContain('data-testid="guest-invite-no-link"');
+  });
   it("unavailable: greyed out, with the reason tied to it", () => {
     const h = button("unavailable");
     expect(h).toMatch(/disabled=""/);
     expect(h).toContain('aria-describedby="guest-invite-note-u1"');
     expect(h).toContain("stopped messages from MatchTime or deleted the profile");
   });
-  it("invited: says so, no button; hidden: nothing", () => {
+  it("requested: he wants to join, Send the invite link and Not now", () => {
+    const h = button("requested");
+    expect(h).toContain("Wants to join your group");
+    expect(h).toContain('data-testid="guest-invite-send"');
+    expect(h).toContain('data-testid="guest-invite-not-now"');
+    expect(button("requested", true, true, "tr")).toContain("Davet bağlantısını gönder");
+  });
+  it("declined lately: greyed with the note", () => {
+    const h = button("declined");
+    expect(h).toMatch(/disabled=""/);
+    expect(h).toContain("Said no thanks to joining lately.");
+  });
+  it("invited and link sent: says so, no button; hidden: nothing", () => {
     expect(button("invited")).toContain("Invited, waiting for an answer");
     expect(button("invited")).not.toContain("<button");
+    expect(button("link-sent")).toContain("Invite link sent");
+    expect(button("link-sent")).not.toContain("<button");
+    expect(button("approved")).toContain("Approved, waiting for the group link.");
+    expect(button("approved")).not.toContain("<button");
     expect(button("hidden")).toBe("");
   });
 });

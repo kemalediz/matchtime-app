@@ -3,6 +3,7 @@ import { MoveUpFromBenchButton } from "./move-up-from-bench-button";
 import { GuestCardTrigger, GuestTag } from "@/components/guests/guest-card";
 import { GuestSafety } from "@/components/guests/guest-safety";
 import { guestSafetyShown, type GuestCard } from "@/lib/pool/guest-report";
+import type { InviteToClubAction } from "@/lib/pool/club-invite";
 
 /** The guests on the match (pool slice L5b): his card for an organiser, null
  *  (the plain Guest tag) for anyone else. */
@@ -14,6 +15,9 @@ export interface AttendanceGuests {
   matchId?: string;
   /** The club may ask the pool: its pool guests' cards get block and report. */
   poolClub?: boolean;
+  /** Invite to club on an organiser's card (pool L8). */
+  inviteAction?: InviteToClubAction;
+  linkReady?: boolean;
 }
 
 function GuestMark({ guests, userId }: { guests?: AttendanceGuests; userId: string }) {
@@ -25,6 +29,8 @@ function GuestMark({ guests, userId }: { guests?: AttendanceGuests; userId: stri
       card={card}
       lang={guests.lang}
       orgId={guests.orgId}
+      inviteAction={guests.inviteAction}
+      linkReady={guests.linkReady}
       className="rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
       extra={
         guestSafetyShown(card, guests.poolClub === true) ? (
