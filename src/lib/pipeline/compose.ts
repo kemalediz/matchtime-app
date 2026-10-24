@@ -122,9 +122,13 @@ function firstName(name: string, fallback: string): string {
 
 /** The PRINTED line per member: `displayName` (a partner guest's club, an
  *  alias for an empty name; player-display-name.ts) when load-state set
- *  it, else the plain name. Matching never reads this. */
+ *  it, else the plain name. Matching never reads this. A row user who is no
+ *  longer a member is printed by the name load-state carried for him
+ *  (`rowNames`), never as "a player" (FNF, 2026-10-24). */
 function printedNames(state: SquadState): Map<string, string> {
-  return new Map(state.roster.map((m) => [m.userId, m.displayName ?? m.name]));
+  const out = new Map(Object.entries(state.rowNames ?? {}));
+  for (const m of state.roster) out.set(m.userId, m.displayName ?? m.name);
+  return out;
 }
 
 function namesByStatus(state: SquadState, status: "CONFIRMED" | "BENCH", fallback: string): string[] {
