@@ -18,6 +18,17 @@
  *   otp                 any number. The one standing exception: a code is
  *                       how a number becomes verified. Capped at the
  *                       sign-up action (per phone, per IP, site per day).
+ *   pool-code-reply     any number, because it only ever ANSWERS that
+ *                       number's own DM: "that sign-up code did not work"
+ *                       to whoever just sent a /play code that named
+ *                       nothing (local player pool, slice L2). Queued only
+ *                       by src/lib/pool/confirm.ts, rate-limited there per
+ *                       number (src/lib/pool/rules.ts POOL_CONFIRM), never
+ *                       to a number that did not write first
+ *                       (`platform-jobs-source-guard.test.ts`).
+ *   pool-welcome        only a number MatchTime already knows: the person
+ *                       whose own message just confirmed his sign-up (his
+ *                       User exists by then).
  *   connect-reply,      only a number MatchTime already knows (a User with
  *   organiser-decision, that phone: a verified sign-up or a club member).
  *   billing,
@@ -101,8 +112,14 @@ export const PLATFORM_DM_PURPOSES = [
   "setup-reply",
   "setup-removed",
   "setup-owner-live",
+  "pool-welcome",
+  "pool-code-reply",
 ] as const;
 export type PlatformDmPurpose = (typeof PLATFORM_DM_PURPOSES)[number];
+
+/** DM purposes that may go to a number no User has (see the header): a
+ *  sign-up code, and the reply to a /play code that named nothing. */
+const ANY_NUMBER_PURPOSES = ["otp", "pool-code-reply"] as const;
 
 /** DM purposes only `queueOwnerDm` may write. */
 /** "owner-setup-stuck" (go-live slice S6, 2026-10-12): ONE note per club
@@ -249,7 +266,7 @@ export async function queuePlatformDm(args: {
   const text = typeof args.text === "string" ? args.text : "";
   if (!text.trim()) throw new PlatformDmRefused("empty text", "empty-text");
 
-  if (purpose !== "otp") {
+  if (!(ANY_NUMBER_PURPOSES as readonly string[]).includes(purpose)) {
     // Rule 12: MatchTime never messages a number it does not already know.
     const known = await client.user.findFirst({ where: { phoneNumber: `+${digits}` }, select: { id: true } });
     if (!known) throw new PlatformDmRefused(`${purpose}: no MatchTime user has this number`, "number-not-known");

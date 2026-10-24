@@ -41,6 +41,10 @@ export type PoolConsentChannel = (typeof POOL_CONSENT_CHANNELS)[number];
 export const POOL_PROFILE_SOURCES = ["web", "profile", "referral", "campaign"] as const;
 export type PoolProfileSource = (typeof POOL_PROFILE_SOURCES)[number];
 
+/** A /play code that did not work (`PoolConfirmAttempt.result`, slice L2). */
+export const POOL_CONFIRM_ATTEMPT_RESULTS = ["wrong", "expired"] as const;
+export type PoolConfirmAttemptResult = (typeof POOL_CONFIRM_ATTEMPT_RESULTS)[number];
+
 // ── PoolAsk / PoolOffer ────────────────────────────────────────────────
 
 /** A club's ask to the pool for one match. Created only once an organiser

@@ -1999,6 +1999,12 @@ const SAMPLES: SampleArgs = {
   mch_status: { status: "COMPLETED" },
   mch_back_to_match: null,
   privacy_link: null,
+  pool_confirm_prefill: { code: "K7QP" },
+  pool_dm_welcome: { name: "Alisample", perWeek: 7, quietFrom: "21:31", quietTo: "08:29", manageLink: "https://x.test/r/MANAGELINK", privacyLink: "https://x.test/PRIVACYLINK" },
+  pool_dm_welcome_early: { name: "Alisample", perWeek: 7, quietFrom: "21:31", quietTo: "08:29", manageLink: "https://x.test/r/MANAGELINK", privacyLink: "https://x.test/PRIVACYLINK" },
+  pool_dm_already: { manageLink: "https://x.test/r/MANAGELINK" },
+  pool_dm_code_expired: { playLink: "https://x.test/PLAYLINK" },
+  pool_dm_code_wrong: { playLink: "https://x.test/PLAYLINK" },
 };
 
 /** Render an entry with its sample arguments. */

@@ -5712,4 +5712,20 @@ export const en = {
   // The label of every link to /privacy (site footer now; /play and the
   // pool's first reply later). The policy itself is in privacy-policy.*.ts.
   privacy_link: "Privacy policy",
+
+  // ── Local player pool: confirming a /play sign-up (slice L2, 2026-10-24) ──
+  // The prefilled WhatsApp message the /play form opens with; the code in
+  // it is read by src/lib/pool/confirm-rules.ts. Then MatchTime's replies to
+  // that message (src/lib/pool/copy.ts passes the limits from rules.ts).
+  pool_confirm_prefill: (p: { code: string }): string => `Hi MatchTime, sign me up to play. Code ${p.code}`,
+  pool_dm_welcome: (p: { name: string | null; perWeek: number; quietFrom: string; quietTo: string; manageLink: string; privacyLink: string }): string =>
+    `✅ ${p.name ? `Thanks ${p.name}, you're` : "You're"} in the MatchTime player pool. When a club near you needs a player at a time you can play, I'll message you here with the game, and you decide. At most ${p.perWeek} a week, and never between ${p.quietFrom} and ${p.quietTo}.\n\nPause, change your details or delete them any time: ${p.manageLink}\nPrivacy: ${p.privacyLink}`,
+  pool_dm_welcome_early: (p: { name: string | null; perWeek: number; quietFrom: string; quietTo: string; manageLink: string; privacyLink: string }): string =>
+    `✅ ${p.name ? `Thanks ${p.name}, you're` : "You're"} on the early sign-up list for the MatchTime player pool. The pool is not open near you yet, so I won't message you about games until it is. Then it's at most ${p.perWeek} a week, and never between ${p.quietFrom} and ${p.quietTo}.\n\nChange your details or delete them any time: ${p.manageLink}\nPrivacy: ${p.privacyLink}`,
+  pool_dm_already: (p: { manageLink: string }): string =>
+    `You're already in the MatchTime player pool. To change your details, pause or stop: ${p.manageLink}`,
+  pool_dm_code_expired: (p: { playLink: string }): string =>
+    `That sign-up code has expired. Please sign up again here and send the new message: ${p.playLink}`,
+  pool_dm_code_wrong: (p: { playLink: string }): string =>
+    `I couldn't find a sign-up with that code. Please send the message exactly as it opened, or sign up again here: ${p.playLink}`,
 };

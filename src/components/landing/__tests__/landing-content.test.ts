@@ -23,6 +23,10 @@ import {
 import { PARTNER_ASK_CUTOFF_DEFAULT_HOURS } from "@/lib/club-partnership-rules";
 import { PARTNER_ASKS_PER_DAY } from "@/lib/partner-ask-rules";
 import { MAX_RADIUS_MILES } from "@/lib/club-discovery-rules";
+import { POOL_PLAY_PATH } from "@/lib/pool/paths";
+import { POOL_CAPS, POOL_MIN_AGE, POOL_QUIET_HOURS } from "@/lib/pool/rules";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 
 /** Fields that are identifiers or styling, never shown as words. */
 const NOT_COPY = new Set(["id", "key", "href", "icon", "color", "tone", "from"]);
@@ -80,14 +84,14 @@ describe("landing content: house rules", () => {
     expect(ALL.filter((s) => /@MatchTime/.test(s.text))).toEqual([]);
   });
 
-  it("says nothing about a player pool yet (that section arrives with L2)", () => {
-    expect(ALL.filter((s) => /\bpool\b/i.test(s.text))).toEqual([]);
+  it("says early sign-up list, never a waiting list, for the pool", () => {
+    expect(spotlight("player-pool").lead).toContain("early sign-up list");
   });
 });
 
 describe("landing content: structure", () => {
   it("has the spotlight sections in order, each with a unique anchor", () => {
-    expect(LANDING_SPOTLIGHTS.map((s) => s.id)).toEqual(["partner-clubs", "admin-group", "your-way"]);
+    expect(LANDING_SPOTLIGHTS.map((s) => s.id)).toEqual(["player-pool", "partner-clubs", "admin-group", "your-way"]);
     const ids = LANDING_SPOTLIGHTS.map((s) => s.id);
     expect(new Set(ids).size).toBe(ids.length);
   });
@@ -120,7 +124,7 @@ describe("landing content: structure", () => {
     for (const s of LANDING_SPOTLIGHTS.filter((x) => x.navLabel)) {
       expect(LANDING_NAV.some((n) => n.href === `#${s.id}`), s.id).toBe(true);
     }
-    expect(LANDING_NAV.map((n) => n.href)).toEqual(expect.arrayContaining(["#partner-clubs", "#admin-group"]));
+    expect(LANDING_NAV.map((n) => n.href)).toEqual(expect.arrayContaining(["#player-pool", "#partner-clubs", "#admin-group"]));
   });
 });
 
@@ -175,6 +179,42 @@ describe("landing content: every claim is present", () => {
     expect(keysOf(FEATURES)).toEqual(
       expect.arrayContaining(["in-out", "bench", "chase", "teams", "ratings", "stats-qa", "payments", "quiet", "replacements"]),
     );
+  });
+});
+
+describe("landing content: the player pool (G0 part 2)", () => {
+  const s = spotlight("player-pool");
+
+  it("invites players to /play with the pulsing button, and only that spotlight pulses", () => {
+    expect(s.cta).toEqual({ label: "Join the MatchTime player pool", href: POOL_PLAY_PATH, pulse: true });
+    expect(LANDING_SPOTLIGHTS.filter((x) => x.cta?.pulse).map((x) => x.id)).toEqual(["player-pool"]);
+  });
+
+  it("how joining works, the privacy promises, and the points", () => {
+    expect(keysOf(s.steps)).toEqual(["signup", "confirm", "offers"]);
+    expect(keysOf(s.note?.items)).toEqual(["number", "name", "area"]);
+    expect(keysOf(s.points)).toEqual(["sports", "control", "age"]);
+  });
+
+  it("the limits and the age come from pool/rules.ts", () => {
+    const offers = s.steps!.find((x) => x.key === "offers")!.body;
+    expect(offers).toContain(`at most ${POOL_CAPS.perPlayerPerWeek} messages a week`);
+    expect(offers).toContain(`between ${POOL_QUIET_HOURS.from} and ${POOL_QUIET_HOURS.to}`);
+    expect(s.points.find((x) => x.key === "age")!.title).toBe(`${POOL_MIN_AGE} and over`);
+  });
+
+  it("claims nothing the pool does not do yet: offers only once it opens", () => {
+    expect(`${s.lead} ${s.steps!.map((x) => x.body).join(" ")}`).toMatch(/opens/);
+  });
+
+  it("the pulse flashes under 3 times a second and stops for reduced motion (globals.css)", () => {
+    const css = readFileSync(path.join(__dirname, "..", "..", "..", "app", "globals.css"), "utf8");
+    const m = /@media \(prefers-reduced-motion: no-preference\)\s*\{\s*\.pool-invite-pulse\s*\{\s*animation:\s*pool-invite-pulse\s+([\d.]+)(m?s)/.exec(css);
+    expect(m).not.toBeNull();
+    const seconds = Number(m![1]) / (m![2] === "ms" ? 1000 : 1);
+    expect(1 / seconds).toBeLessThan(3);
+    // The only animation rule for the class is the no-preference one.
+    expect(css.match(/\.pool-invite-pulse\s*\{/g)).toHaveLength(1);
   });
 });
 

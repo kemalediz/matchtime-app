@@ -19,6 +19,14 @@ describe("shouldShowSidebar", () => {
     expect(shouldShowSidebar("/privacy", "authenticated")).toBe(true);
   });
 
+  it("shows the player pool's pages full-bleed, signed in or not (slice L2)", () => {
+    for (const status of ["authenticated", "unauthenticated", "loading"] as const) {
+      expect(shouldShowSidebar("/play", status)).toBe(false);
+      expect(shouldShowSidebar("/play/manage", status)).toBe(false);
+    }
+    expect(shouldShowSidebar("/players", "authenticated")).toBe(true);
+  });
+
   it("treats loading as signed in so a signed-in refresh does not flash", () => {
     expect(shouldShowSidebar("/help", "loading")).toBe(true);
     expect(shouldShowSidebar("/", "loading")).toBe(true);

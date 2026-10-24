@@ -40,7 +40,16 @@ const stripComments = (src: string): string => src.replace(/\/\*[\s\S]*?\*\//g, 
 const FILES = walk(SRC).map((f) => ({ rel: rel(f), code: stripComments(readFileSync(f, "utf8")) }));
 
 /** The pool's own tables (Prisma model names). */
-const POOL_TABLES = ["PoolProfile", "PoolSport", "PoolAvailability", "PoolAsk", "PoolOffer", "PoolBlock", "PoolCampaign"] as const;
+const POOL_TABLES = [
+  "PoolProfile",
+  "PoolSport",
+  "PoolAvailability",
+  "PoolAsk",
+  "PoolOffer",
+  "PoolBlock",
+  "PoolCampaign",
+  "PoolConfirmAttempt",
+] as const;
 /** Club-side records about guests: readable by club pages, never by a model. */
 const GUEST_TABLES = ["GuestPlace", "ClubInvitation"] as const;
 
@@ -136,5 +145,15 @@ describe("the unused discoverable-nearby columns stay unread", () => {
   it("no file names them", () => {
     const re = /\b(discoverableNearby|discoverableNearbyAt|discoverableConsentVer|nearbyRadiusKm|homeAreaLabel|homeAreaLat|homeAreaLng)\b/;
     expect(FILES.filter((f) => re.test(f.code)).map((f) => f.rel)).toEqual([]);
+  });
+});
+
+describe("the reply that may go to a number no User has (slice L2)", () => {
+  // "pool-code-reply" is, with "otp", the only platform DM that skips the
+  // known-number rule, because it only ever answers the number that just
+  // sent a /play code. One queuer, which rate-limits it.
+  it("is queued only by the confirm handler", () => {
+    const users = FILES.filter((f) => /["']pool-code-reply["']/.test(f.code)).map((f) => f.rel);
+    expect(users.sort()).toEqual(["lib/platform-jobs.ts", "lib/pool/confirm.ts"]);
   });
 });

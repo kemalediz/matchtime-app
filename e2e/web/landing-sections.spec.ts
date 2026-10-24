@@ -91,3 +91,41 @@ test("the whole page reads as plain words: no dashes, no real club names, bench 
   expect(body).not.toMatch(/\bFNF\b|Sutton|Hamzah|Erdal/);
   expect(body).not.toMatch(/waiting list/i);
 });
+
+test.describe("the player pool invitation (G0 part 2)", () => {
+  test("the hero link and the pool section's pulsing button lead to /play, and the nav has the pool", async ({ page }) => {
+    await page.setViewportSize(DESKTOP);
+    await page.goto("/");
+    await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Player pool", exact: true })).toHaveAttribute("href", "#player-pool");
+    await page.getByRole("link", { name: "Join the MatchTime player pool" }).first().click();
+    await expect(page).toHaveURL(/#player-pool$/);
+    const cta = page.locator("section#player-pool").getByTestId("spotlight-cta");
+    await expect(cta).toHaveAttribute("href", "/play");
+    await expect(cta).toHaveText("Join the MatchTime player pool");
+    await cta.click();
+    await page.waitForURL("**/play");
+    await expect(page.getByRole("heading", { level: 1, name: "Join the MatchTime player pool" })).toBeVisible();
+  });
+
+  test("the button pulses under 3 times a second", async ({ page }) => {
+    await page.goto("/");
+    const cta = page.locator("section#player-pool").getByTestId("spotlight-cta");
+    const anim = await cta.evaluate((el) => {
+      const s = getComputedStyle(el);
+      return { name: s.animationName, duration: s.animationDuration };
+    });
+    expect(anim.name).toBe("pool-invite-pulse");
+    const seconds = parseFloat(anim.duration) / (anim.duration.endsWith("ms") ? 1000 : 1);
+    expect(1 / seconds).toBeLessThan(3);
+  });
+
+  test.describe("for a visitor who asked for less motion", () => {
+    test("the button does not pulse", async ({ page }) => {
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      await page.goto("/");
+      expect(await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches)).toBe(true);
+      const cta = page.locator("section#player-pool").getByTestId("spotlight-cta");
+      expect(await cta.evaluate((el) => getComputedStyle(el).animationName)).toBe("none");
+    });
+  });
+});
