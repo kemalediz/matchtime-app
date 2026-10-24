@@ -58,7 +58,7 @@ export async function loadGuestFacts(orgId: string, opts: { userIds?: string[]; 
     }),
     db.guestPlace.findMany({
       where: { orgId, ...onlyUsers },
-      select: { userId: true, matchId: true, source: true, fromOrgId: true, result: true },
+      select: { userId: true, matchId: true, source: true, fromOrgId: true, result: true, settledAt: true },
     }),
   ]);
 
@@ -80,7 +80,7 @@ export async function loadGuestFacts(orgId: string, opts: { userIds?: string[]; 
 
   if (userIds.length === 0 && askFacts.length === 0) return { games: [], people: [], asks: [], matches: [], members: new Set() };
 
-  const [memberRows, users, profiles, invitations, placesElsewhere, legacyAttendance] = await Promise.all([
+  const [memberRows, users, profiles, invitations, placesElsewhere, legacyAttendance, clubBlocks] = await Promise.all([
     db.membership.findMany({
       where: { orgId, userId: { in: userIds } },
       select: { userId: true, leftAt: true, guestMatchId: true, guestFromOrgId: true },
@@ -91,12 +91,15 @@ export async function loadGuestFacts(orgId: string, opts: { userIds?: string[]; 
       select: { userId: true, status: true, sports: { select: { sport: true, otherName: true, level: true, levelText: true } } },
     }),
     db.clubInvitation.findMany({ where: { orgId, userId: { in: userIds }, status: "open" }, select: { userId: true } }),
-    db.guestPlace.findMany({ where: { userId: { in: userIds }, orgId: { not: orgId } }, select: { userId: true, matchId: true, result: true } }),
+    db.guestPlace.findMany({ where: { userId: { in: userIds }, orgId: { not: orgId } }, select: { userId: true, matchId: true, result: true, settledAt: true } }),
     db.attendance.findMany({
       where: { userId: { in: guestMemberships.map((m) => m.userId) }, match: { activity: { orgId } } },
       select: { userId: true, matchId: true, status: true },
     }),
+    // Slice L7: this club's own blocks (the card's "Offer our games again").
+    db.poolBlock.findMany({ where: { orgId, userId: { in: userIds }, by: "club" }, select: { userId: true } }),
   ]);
+  const blockedHere = new Set(clubBlocks.map((b) => b.userId));
 
   const recordedHere = new Set(placesHere.map((p) => `${p.matchId}:${p.userId}`));
   const legacy = legacyAttendance.filter((a) => !recordedHere.has(`${a.matchId}:${a.userId}`));
@@ -150,6 +153,7 @@ export async function loadGuestFacts(orgId: string, opts: { userIds?: string[]; 
     recorded: GuestResult | null,
     source: GuestSource,
     fromOrgId: string | null,
+    settled = false,
   ): GuestGameFact | null => {
     const m = matchOf.get(g.matchId);
     if (!m) return null;
@@ -160,6 +164,7 @@ export async function loadGuestFacts(orgId: string, opts: { userIds?: string[]; 
       match,
       attendance: attendanceOf.get(`${g.matchId}:${g.userId}`) ?? null,
       recorded,
+      settled,
       source,
       fromClub: source === "partner" && fromOrgId ? (clubNames.get(fromOrgId) ?? null) : null,
     };
@@ -168,8 +173,8 @@ export async function loadGuestFacts(orgId: string, opts: { userIds?: string[]; 
   const source = (s: string | null | undefined): GuestSource => (isOneOf(GUEST_SOURCES, s) ? s : "partner");
 
   const games = [
-    ...placesHere.map((p) => toFact(p, result(p.result) ?? "booked", source(p.source), p.fromOrgId)),
-    ...placesElsewhere.map((p) => toFact(p, result(p.result) ?? "booked", "pool", null)),
+    ...placesHere.map((p) => toFact(p, result(p.result) ?? "booked", source(p.source), p.fromOrgId, p.settledAt !== null)),
+    ...placesElsewhere.map((p) => toFact(p, result(p.result) ?? "booked", "pool", null, p.settledAt !== null)),
     ...legacy.map((a) => {
       const gm = membershipOf.get(a.userId);
       return toFact(a, null, source(guestSourceOf(gm) ?? "pool"), gm?.guestFromOrgId ?? null);
@@ -204,6 +209,7 @@ export async function loadGuestFacts(orgId: string, opts: { userIds?: string[]; 
         }),
       ),
       openInvitation: invited.has(userId),
+      clubBlocked: blockedHere.has(userId),
     };
   });
 

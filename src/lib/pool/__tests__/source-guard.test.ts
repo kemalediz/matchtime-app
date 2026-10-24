@@ -50,6 +50,7 @@ const POOL_TABLES = [
   "PoolCampaign",
   "PoolAttempt",
   "PoolConsentRecord",
+  "PoolReport",
 ] as const;
 /** Club-side records about guests: readable by club pages, never by a model. */
 const GUEST_TABLES = ["GuestPlace", "ClubInvitation"] as const;

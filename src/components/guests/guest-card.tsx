@@ -13,6 +13,8 @@
  *                     organiser.
  *   InviteToClubButton  the card's Invite to club button; rendered only when
  *                     the page hands it L8's action (`club-invite.ts`).
+ *   `extra`           slice L7: the organisers' block and report controls
+ *                     (`guest-safety.tsx`), handed in by the page.
  */
 import { useState, useTransition, type ReactNode } from "react";
 import { toast } from "sonner";
@@ -81,7 +83,7 @@ export function InviteToClubButton(props: {
   );
 }
 
-export function GuestCardDetails(props: { card: GuestCard; lang: string | null | undefined; orgId: string; inviteAction?: InviteToClubAction }) {
+export function GuestCardDetails(props: { card: GuestCard; lang: string | null | undefined; orgId: string; inviteAction?: InviteToClubAction; extra?: ReactNode }) {
   const s = t(props.lang);
   const c = props.card;
   const row = "grid grid-cols-[minmax(0,9rem)_1fr] gap-x-3 gap-y-1 text-sm";
@@ -121,6 +123,7 @@ export function GuestCardDetails(props: { card: GuestCard; lang: string | null |
         </div>
       </dl>
       <InviteToClubButton orgId={props.orgId} userId={c.userId} state={c.invite} lang={props.lang} action={props.inviteAction} />
+      {props.extra}
     </div>
   );
 }
@@ -133,6 +136,8 @@ export function GuestCardTrigger(props: {
   inviteAction?: InviteToClubAction;
   children?: ReactNode;
   className?: string;
+  /** Slice L7: the organisers' block and report controls (`GuestSafety`). */
+  extra?: ReactNode;
 }) {
   const s = t(props.lang);
   const name = guestName(s, props.card);
@@ -149,7 +154,7 @@ export function GuestCardTrigger(props: {
         <DialogHeader>
           <DialogTitle data-testid="guest-card-name">{name}</DialogTitle>
         </DialogHeader>
-        <GuestCardDetails card={props.card} lang={props.lang} orgId={props.orgId} inviteAction={props.inviteAction} />
+        <GuestCardDetails card={props.card} lang={props.lang} orgId={props.orgId} inviteAction={props.inviteAction} extra={props.extra} />
       </DialogContent>
     </Dialog>
   );

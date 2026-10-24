@@ -635,6 +635,7 @@ model Organisation {
   clubBlocksAgainst  ClubBlock[]       @relation("ClubBlocked")
   poolAsks           PoolAsk[]
   poolBlocks         PoolBlock[]
+  poolReports        PoolReport[]
   guestPlaces        GuestPlace[]
   clubInvitations    ClubInvitation[]
 
@@ -3196,6 +3197,11 @@ model PoolProfile {
   lastActiveAt    DateTime?
   reconfirmSentAt DateTime?
 
+  /// Slice L7: he asked a person to look at a pause MatchTime decided
+  /// (no-shows, reports, the owner). Set only while such a pause is on the
+  /// row; cleared when it is lifted.
+  reviewRequestedAt DateTime?
+
   sports       PoolSport[]
   availability PoolAvailability[]
 
@@ -3318,10 +3324,43 @@ model PoolBlock {
   by        String
   /// The organiser who pressed it, for a club block.
   byUserId  String?
+  /// Slice L7: when his pool profile was deleted. The record is kept
+  /// POOL_RELIABILITY.safetyRecordMonthsAfterDeletion after that (decision
+  /// L0.3), then the daily housekeeping removes it.
+  userGoneAt DateTime?
   createdAt DateTime     @default(now())
 
   @@unique([orgId, userId, by])
   @@index([userId])
+}
+
+/// A problem reported to the platform owner (slice L7), by a club about a
+/// guest ("club") or by a player about a club ("player"). Never shown to
+/// the other side. Like blocks, kept after the person deletes his profile
+/// (no foreign key on the user) for 24 months (decision L0.3).
+model PoolReport {
+  id         String       @id @default(cuid())
+  orgId      String
+  org        Organisation @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  /// The player the report is about, or who made it.
+  userId     String
+  /// "club" | "player": who reported.
+  by         String
+  /// The organiser who reported, for a club report; the player himself
+  /// for a player report.
+  byUserId   String
+  /// The game it is about, when there is one.
+  matchId    String?
+  text       String       @db.Text
+  /// When the owner looked at it. Open reports from two clubs pause him.
+  reviewedAt DateTime?
+  reviewedBy String?
+  userGoneAt DateTime?
+  createdAt  DateTime     @default(now())
+
+  @@index([userId, createdAt])
+  @@index([orgId, createdAt])
+  @@index([reviewedAt])
 }
 
 /// A rate-limit record (slice L2): a WhatsApp confirm code that did not
@@ -3409,6 +3448,9 @@ model GuestPlace {
   resultAt     DateTime?
   /// The organiser who marked it, when one did (a no-show, L7).
   resultById   String?
+  /// Slice L7: the result is final (the no-show window closed, or the
+  /// game was cancelled). Set once, by the complete-matches cron.
+  settledAt    DateTime?
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 

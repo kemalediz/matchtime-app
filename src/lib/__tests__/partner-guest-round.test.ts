@@ -12,6 +12,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const dbMock = vi.hoisted(() => ({
+  guestPlace: { upsert: vi.fn(), updateMany: vi.fn() },
   partnerAsk: { findUnique: vi.fn(), findMany: vi.fn(), updateMany: vi.fn() },
   sentNotification: { create: vi.fn() },
   $executeRaw: vi.fn(),
@@ -23,6 +24,8 @@ const dbMock = vi.hoisted(() => ({
   botJob: { create: vi.fn() },
 }));
 vi.mock("../db", () => ({ db: dbMock }));
+// Slice L7: the partner guest's GuestPlace, and the club's cut-off for a late drop.
+vi.mock("../club-partnership", () => ({ loadPartnerAskSettings: vi.fn(async () => ({ cutoffHours: 4 })) }));
 const att = vi.hoisted(() => ({ registerAttendance: vi.fn(), cancelAttendance: vi.fn() }));
 vi.mock("../attendance", () => att);
 const notice = vi.hoisted(() => ({ sendAdminNotice: vi.fn() }));

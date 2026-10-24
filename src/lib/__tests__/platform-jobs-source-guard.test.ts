@@ -60,6 +60,11 @@ const OWNER_DM_IMPORTERS = new Set<string>([
   // bot-added route sends for any link, with the same refId. An action
   // item, not an alert.
   "lib/group-add.ts",
+  // Local player pool, slice L7: a problem reported by a club or a player,
+  // and a player asking a person to look at a pause (the privacy policy
+  // promises a person). Action items he acts on at /admin/pool/safety; at
+  // most one per player per day.
+  "lib/pool/safety.ts",
 ]);
 
 const OWNER_DM_IMPORT = /from\s+["'](?:@\/lib\/owner-dm|\.{1,2}\/(?:[\w-]+\/)*owner-dm)["']|import\(\s*["'][^"']*owner-dm["']\s*\)/;

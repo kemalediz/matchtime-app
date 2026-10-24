@@ -13,7 +13,11 @@
  * guest from before the pool, his attendance row on the club's match while
  * he holds a guest membership there (`recorded` null). `settleGuestResult`
  * turns both into one `GuestResult`, so every tab, the card and the report
- * read the same answer.
+ * read the same answer. From slice L7 a recorded place's result is the
+ * RECORD (an organiser's no-show, a late cancel, or "played" written by the
+ * complete-matches cron once the 24-hour no-show window closed,
+ * `reliability-rules.ts`): until then an ended game is "booked", its result
+ * due. Only a pre-pool guest's game is still read from his attendance.
  *
  * THE REPORT (one row per London month, or per season 1 Aug to 31 Jul):
  *   asked          people put the question directly: every pool offer that
@@ -67,6 +71,8 @@ export interface GuestGameFact {
   attendance: AttendanceLike | null;
   /** `GuestPlace.result`; null for a pre-pool partner guest's game. */
   recorded: GuestResult | null;
+  /** `GuestPlace.settledAt` is set: the result is final (slice L7). */
+  settled?: boolean;
   source: GuestSource;
   /** The partner club he came from (this club's partner): partner only. */
   fromClub: string | null;
@@ -89,6 +95,9 @@ export interface GuestPersonFacts {
   poolSports: GuestSportFact[];
   /** An open `ClubInvitation` from this club. */
   openInvitation: boolean;
+  /** This club stopped offering him its games (slice L7, `PoolBlock` by
+   *  the club). Never shown to him. */
+  clubBlocked?: boolean;
 }
 
 // ── One result per game ────────────────────────────────────────────────
@@ -106,12 +115,20 @@ export function matchEnded(m: Pick<GuestMatchFacts, "kickoff" | "durationMins" |
  * "booked" is read from his attendance row, as a pre-pool game is.
  */
 export function settleGuestResult(
-  g: { match: Pick<GuestMatchFacts, "kickoff" | "durationMins" | "status">; attendance: AttendanceLike | null; recorded: GuestResult | null },
+  g: { match: Pick<GuestMatchFacts, "kickoff" | "durationMins" | "status">; attendance: AttendanceLike | null; recorded: GuestResult | null; settled?: boolean },
   now: Date,
 ): GuestResult | null {
   if (g.match.status === "CANCELLED") return null;
   if (g.recorded && g.recorded !== "booked") return g.recorded;
   if (!matchEnded(g.match, now)) return g.attendance === "DROPPED" ? "withdrawn" : "booked";
+  if (g.recorded === "booked") {
+    // A recorded place (slice L7): settled and still booked was never a
+    // game (a bench place never called up); otherwise what the cron will
+    // record, with "booked" meaning the result is still due.
+    if (g.settled) return null;
+    if (g.attendance === "CONFIRMED") return "booked";
+    return g.attendance === "BENCH" ? null : "withdrawn";
+  }
   if (g.attendance === "CONFIRMED") return "played";
   if (g.attendance === "DROPPED") return "withdrawn";
   return null;
@@ -140,6 +157,8 @@ export interface GuestCard {
   /** Games he played with this club. */
   gamesHere: number;
   invite: InviteToClubState;
+  /** This club stopped offering him its games (slice L7). */
+  blocked: boolean;
 }
 
 export interface UpcomingGroup {
@@ -207,6 +226,7 @@ export function buildGuestPlayers(input: {
       record: turnUpRecordOf(all.filter((g) => g.userId === p.userId).map((g) => g.result)),
       gamesHere,
       invite: inviteToClubState({ member: p.member, playedHere: gamesHere, openInvitation: p.openInvitation, pool: p.pool }),
+      blocked: p.clubBlocked === true,
     };
   }
 
@@ -215,7 +235,7 @@ export function buildGuestPlayers(input: {
 
   const groups = new Map<string, UpcomingGroup>();
   for (const g of here) {
-    if (g.result !== "booked" || !cards[g.userId]) continue;
+    if (g.result !== "booked" || matchEnded(g.match, input.now) || !cards[g.userId]) continue;
     const grp = groups.get(g.match.matchId) ?? { matchId: g.match.matchId, kickoff: g.match.kickoff, venue: g.match.venue, sportName: g.match.sportName, guests: [] };
     grp.guests.push({ userId: g.userId, onBench: g.attendance === "BENCH" });
     groups.set(g.match.matchId, grp);

@@ -48,7 +48,9 @@ import { registerAttendance, cancelAttendance } from "./attendance";
 import { sendAdminNotice } from "./admin-channel";
 import { dayCommaTimeLabel, timeLabel } from "./i18n/dates";
 import { t } from "./i18n/t";
-import { gamesOverlap } from "./partner-ask-rules";
+import { askWindows, gamesOverlap } from "./partner-ask-rules";
+import { loadPartnerAskSettings } from "./club-partnership";
+import { pullOutResult } from "./pool/round-rules";
 import { decideVolunteer, isPastGuestDue } from "./partner-volunteer-rules";
 import { loadRoundFill, type RoundFill } from "./partner-ask-round";
 import { GUEST_MEMBER_WHERE, isGuestMembership } from "./guest-membership";
@@ -260,6 +262,7 @@ async function decideAndWriteVolunteer(w: VolunteerWrite, now: Date): Promise<De
   try {
     if (decision.kind === "withdraw") {
       await cancelAttendance(userId, ask.matchId, event);
+      await markGuestPlaceDropped(ask.matchId, userId, await partnerDropResult(asker.id, ask.match.date, now), now);
       // Review M7: removed in SQL, never rewritten from a stale read.
       await db.$executeRaw`UPDATE "PartnerAsk" SET "volunteerUserIds" = array_remove("volunteerUserIds", ${userId}) WHERE id = ${ask.id}`;
       await tellAskerOnce("out", t(askerLang).xask_vol_out_notice_asker({ name: w.name, partner: partner.name, day }));
@@ -346,6 +349,10 @@ async function decideAndWriteVolunteer(w: VolunteerWrite, now: Date): Promise<De
       return { ok: true, outcome: "closed", dmText: ps.xask_vol_closed({ asker: asker.name }), partnerOrgId: partner.id };
     }
     const bench = result.status === "BENCH";
+    // His guest place (slice L7): the record his no-show is marked on.
+    if (decision.asGuest && (result.status === "CONFIRMED" || result.status === "BENCH")) {
+      await recordPartnerGuestPlace({ orgId: asker.id, matchId: ask.matchId, userId, fromOrgId: partner.id, partnerAskId: ask.id });
+    }
     // His standing at HIS club (2026-10-22, option C): his band there, and
     // his number there only when his club shares it. Unreadable: his
     // club's name alone, as before.
@@ -561,6 +568,7 @@ export async function withdrawGuest(args: { userId: string; matchId: string; now
     sourceRef: `xask-dm:${args.matchId}`,
     note: "the guest said OUT by DM",
   });
+  await markGuestPlaceDropped(args.matchId, args.userId, await partnerDropResult(orgId, match.date, now), now);
   await db.$executeRaw`UPDATE "PartnerAsk" SET "volunteerUserIds" = array_remove("volunteerUserIds", ${args.userId}) WHERE "matchId" = ${args.matchId}`;
   const [asker, from, user] = await Promise.all([
     db.organisation.findUnique({ where: { id: orgId }, select: { name: true, language: true } }),
@@ -603,7 +611,9 @@ export async function withdrawGuest(args: { userId: string; matchId: string; now
  * DM from his own club, in its language. His place is freed as any place
  * is (`cancelAttendance` already did that: the bench offer, the round's
  * count). His own OUT never comes here (actor "player"), so he keeps the
- * one reply he gets today. Never throws.
+ * one reply he gets today. A POOL guest has no home club: he gets the
+ * pool's own neutral DM instead (`pool/removal.ts`, slice L7). Either way
+ * his guest place is marked given up in time, never a miss. Never throws.
  */
 export async function tellGuestTakenOffByAdmin(args: { userId: string; matchId: string }): Promise<boolean> {
   try {
@@ -615,10 +625,17 @@ export async function tellGuestTakenOffByAdmin(args: { userId: string; matchId: 
     const orgId = match.activity.orgId;
     const mem = await db.membership.findUnique({
       where: { userId_orgId: { userId: args.userId, orgId } },
-      select: { guestFromOrgId: true, guestMatchId: true, leftAt: true },
+      select: { guestFromOrgId: true, guestMatchId: true, guestVia: true, leftAt: true },
     });
+    // A POOL guest (slice L7): his own neutral DM on the platform channel.
+    if (mem?.guestVia === "pool") {
+      const { tellPoolGuestRemoved } = await import("./pool/removal");
+      return tellPoolGuestRemoved({ userId: args.userId, matchId: args.matchId, orgId });
+    }
     if (!mem?.guestFromOrgId || mem.leftAt || mem.guestMatchId !== args.matchId) return false;
     await db.$executeRaw`UPDATE "PartnerAsk" SET "volunteerUserIds" = array_remove("volunteerUserIds", ${args.userId}) WHERE "matchId" = ${args.matchId}`;
+    // His guest place: given up in time, not his doing (slice L7).
+    await markGuestPlaceDropped(args.matchId, args.userId, "withdrawn", new Date());
     const [asker, from, user] = await Promise.all([
       db.organisation.findUnique({ where: { id: orgId }, select: { id: true, name: true, language: true } }),
       db.organisation.findUnique({ where: { id: mem.guestFromOrgId }, select: { id: true, name: true, language: true } }),
@@ -680,6 +697,32 @@ export async function tellGuestsMoved(askId: string, now: Date = new Date()): Pr
     console.error(`[partner-guest] ask ${askId}: telling guests of the move failed:`, err instanceof Error ? err.message : "failed");
     return 0;
   }
+}
+
+// ── Guest places for partner guests (local player pool L7, 2026-10-24) ──
+
+/**
+ * A partner guest's game is a `GuestPlace` row too (decision log #7), so his
+ * no-show can be recorded and his turn-up record is one record with the
+ * pool's. Written when he takes a place on the asking club's match (a
+ * confirmed place or the bench), and marked when he gives it up.
+ */
+async function recordPartnerGuestPlace(a: { orgId: string; matchId: string; userId: string; fromOrgId: string; partnerAskId: string }): Promise<void> {
+  await db.guestPlace.upsert({
+    where: { matchId_userId: { matchId: a.matchId, userId: a.userId } },
+    create: { orgId: a.orgId, matchId: a.matchId, userId: a.userId, source: "partner", fromOrgId: a.fromOrgId, partnerAskId: a.partnerAskId },
+    update: { source: "partner", fromOrgId: a.fromOrgId, partnerAskId: a.partnerAskId, poolOfferId: null, result: "booked", resultAt: null, resultById: null, settledAt: null },
+  });
+}
+
+/** A booked guest place given up: in time ("withdrawn") or late. */
+export async function markGuestPlaceDropped(matchId: string, userId: string, result: "withdrawn" | "late-cancel", now: Date): Promise<void> {
+  await db.guestPlace.updateMany({ where: { matchId, userId, result: "booked", settledAt: null }, data: { result, resultAt: now } });
+}
+
+/** In time or late, by the asking club's cut-off (the pool's rule, `pullOutResult`). */
+async function partnerDropResult(askerOrgId: string, kickoff: Date, now: Date): Promise<"withdrawn" | "late-cancel"> {
+  return pullOutResult({ now, cutoff: askWindows(kickoff, (await loadPartnerAskSettings(askerOrgId))?.cutoffHours ?? 4).postBy });
 }
 
 // ── The pool's entry points (local player pool L5a, 2026-10-24) ─────────

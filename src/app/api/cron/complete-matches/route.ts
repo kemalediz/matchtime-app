@@ -25,6 +25,8 @@ import { NextResponse } from "next/server";
 import { completeFinishedMatches } from "@/lib/match-completion";
 import { seedDueRollingSquads } from "@/lib/rolling-squad";
 import { seedDueMonthlySquads } from "@/lib/monthly-week";
+import { finaliseGuestPlaces } from "@/lib/pool/no-shows";
+import { poolEnvForApiRequest } from "@/lib/pool/switch-env";
 
 export async function GET(request: Request) {
   const authHeader = request.headers.get("authorization");
@@ -61,5 +63,10 @@ export async function GET(request: Request) {
   } catch (err) {
     console.error("[complete-matches] monthly-squad seeding failed:", err);
   }
-  return NextResponse.json({ ok: true, completed, rollingSeeded, monthlySeeded });
+  // Guests' results (player pool, slice L7): once a game's 24-hour no-show
+  // window has closed, every guest place gets its final result (played
+  // unless an organiser marked a no-show), and a guest with a second
+  // no-show in his last five games is paused. Never throws.
+  const guests = await finaliseGuestPlaces(now, poolEnvForApiRequest(request));
+  return NextResponse.json({ ok: true, completed, rollingSeeded, monthlySeeded, guests });
 }

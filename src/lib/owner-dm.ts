@@ -10,10 +10,12 @@
  * here.
  *
  * What makes it hard to misuse:
- *   - three purposes only (the approval request, its ack, and the one
- *     note about a club still setting up three days after its approval,
- *     which he acts on with "Go live now"), checked at runtime, not just
- *     by the type;
+ *   - five purposes only (the approval request, its ack, the one note
+ *     about a club still setting up three days after its approval, which
+ *     he acts on with "Go live now", and, for the player pool, a reported
+ *     problem and a player asking a person to look at his pause, which he
+ *     acts on at /admin/pool/safety), checked at runtime, not just by the
+ *     type;
  *   - a refId is required, and there is ONE DM per (purpose, refId,
  *     approver phone), ever, so a retry or a re-add cannot DM twice about
  *     the same club (a club that went back to draft and was linked again
@@ -39,7 +41,7 @@ export type { OwnerDmPurpose } from "./platform-jobs";
 
 /** The purposes held through quiet hours: everything that is not the
  *  answer to something the owner has just done. */
-const QUIET_HOURS_PURPOSES: ReadonlySet<string> = new Set(["owner-approval", "owner-setup-stuck"]);
+const QUIET_HOURS_PURPOSES: ReadonlySet<string> = new Set(["owner-approval", "owner-setup-stuck", "owner-pool-report", "owner-pool-review"]);
 
 /** SELF_JOIN_APPROVER_PHONES: a comma, semicolon or space separated list. */
 export function parseApproverPhones(raw: string | undefined): string[] {

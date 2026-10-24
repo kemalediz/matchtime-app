@@ -41,7 +41,8 @@ ALTER TABLE "PoolProfile" ADD CONSTRAINT "PoolProfile_pausedReason_check"
   CHECK ("pausedReason" IS NULL OR "pausedReason" IN ('self', 'ignored', 'no-shows', 'reports', 'admin'));
 ALTER TABLE "PoolProfile" DROP CONSTRAINT IF EXISTS "PoolProfile_paused_check";
 ALTER TABLE "PoolProfile" ADD CONSTRAINT "PoolProfile_paused_check"
-  CHECK (("status" = 'paused') = ("pausedReason" IS NOT NULL AND "pausedAt" IS NOT NULL));
+  CHECK ((("pausedReason" IS NULL) = ("pausedAt" IS NULL)) AND ("status" <> 'paused' OR "pausedReason" IS NOT NULL)
+    AND ("pausedReason" IS NULL OR "status" = 'paused' OR ("status" = 'stopped' AND "pausedReason" IN ('no-shows', 'reports', 'admin'))));
 ALTER TABLE "PoolProfile" DROP CONSTRAINT IF EXISTS "PoolProfile_stopped_check";
 ALTER TABLE "PoolProfile" ADD CONSTRAINT "PoolProfile_stopped_check"
   CHECK (("status" = 'stopped') = ("stoppedAt" IS NOT NULL));
@@ -107,6 +108,21 @@ ALTER TABLE "PoolConsentRecord" ADD CONSTRAINT "PoolConsentRecord_channel_check"
 ALTER TABLE "PoolConsentRecord" DROP CONSTRAINT IF EXISTS "PoolConsentRecord_version_check";
 ALTER TABLE "PoolConsentRecord" ADD CONSTRAINT "PoolConsentRecord_version_check"
   CHECK ("action" <> 'consent' OR "version" IS NOT NULL);
+
+-- Slice L7 (prisma/migrations/20261026090000_pool_no_shows carries the
+-- same CHECKs): a review asked for a pause MatchTime decided; reports.
+ALTER TABLE "PoolProfile" DROP CONSTRAINT IF EXISTS "PoolProfile_reviewRequested_check";
+ALTER TABLE "PoolProfile" ADD CONSTRAINT "PoolProfile_reviewRequested_check"
+  CHECK ("reviewRequestedAt" IS NULL OR "pausedReason" IN ('no-shows', 'reports', 'admin'));
+ALTER TABLE "PoolReport" DROP CONSTRAINT IF EXISTS "PoolReport_by_check";
+ALTER TABLE "PoolReport" ADD CONSTRAINT "PoolReport_by_check"
+  CHECK ("by" IN ('club', 'player'));
+ALTER TABLE "PoolReport" DROP CONSTRAINT IF EXISTS "PoolReport_text_check";
+ALTER TABLE "PoolReport" ADD CONSTRAINT "PoolReport_text_check"
+  CHECK (length("text") BETWEEN 3 AND 1000);
+ALTER TABLE "PoolReport" DROP CONSTRAINT IF EXISTS "PoolReport_reviewed_check";
+ALTER TABLE "PoolReport" ADD CONSTRAINT "PoolReport_reviewed_check"
+  CHECK (("reviewedAt" IS NULL) = ("reviewedBy" IS NULL));
 
 -- PoolSport
 ALTER TABLE "PoolSport" DROP CONSTRAINT IF EXISTS "PoolSport_sport_check";

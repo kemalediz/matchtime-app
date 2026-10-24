@@ -3,6 +3,8 @@
  * components over the pure read model; each guest's name opens his card.
  */
 import { GuestCardTrigger } from "@/components/guests/guest-card";
+import { GuestSafety } from "@/components/guests/guest-safety";
+import { poolSafetyCopy } from "@/lib/i18n/pool-safety";
 import { guestSourceText, turnUpText } from "@/components/guests/guest-text";
 import { dayLabel, historyDateLabel, timeLabel } from "@/lib/i18n/dates";
 import type { Strings } from "@/lib/i18n/t";
@@ -20,7 +22,7 @@ interface ListProps {
 function GuestLine({ s, lang, orgId, card, extra }: { s: Strings; lang: string; orgId: string; card: GuestCard; extra?: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-0.5 sm:flex-row sm:flex-wrap sm:items-baseline sm:gap-x-3">
-      <GuestCardTrigger card={card} lang={lang} orgId={orgId} />
+      <GuestCardTrigger card={card} lang={lang} orgId={orgId} extra={<GuestSafety orgId={orgId} userId={card.userId} blocked={card.blocked} lang={lang} />} />
       <span className="text-sm text-slate-600" data-testid="guest-source">
         {guestSourceText(s, card)}
       </span>
@@ -95,7 +97,10 @@ export function HistoryList({ s, lang, orgId, cards, rows }: ListProps & { rows:
               <li key={g.matchId} data-testid="guest-history-game" data-result={g.result} className="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <span className="text-slate-700">{historyDateLabel(lang, g.kickoff)}</span>
                 <span className="text-slate-500">{g.venue}</span>
-                <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${RESULT_TONE[g.result] ?? ""}`}>{s.gst_result({ outcome: g.result })}</span>
+                <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${RESULT_TONE[g.result] ?? ""}`}>
+                  {/* A past game still "booked" is waiting for its result (slice L7). */}
+                  {g.result === "booked" ? poolSafetyCopy(lang).result_due : s.gst_result({ outcome: g.result })}
+                </span>
               </li>
             ))}
           </ul>
