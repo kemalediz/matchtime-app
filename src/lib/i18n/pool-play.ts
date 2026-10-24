@@ -147,6 +147,29 @@ export interface PoolPlayCopy {
     deletedHeading: string;
     deletedBody: string;
   };
+  /** Slice L3: the "Play elsewhere" card on a club member's own profile. */
+  member: {
+    heading: string;
+    lead: string;
+    ownClubNote: string;
+    open: string;
+    prefillNote: string;
+    whatsAppNote: string;
+    join: string;
+    joining: string;
+    continueWhatsApp: string;
+    inPool: string;
+    manageLink: string;
+    waitingHeading: string;
+    startAgain: string;
+    claimHeading: string;
+    claimQuestion: (tail: string) => string;
+    claimYes: string;
+    claimNo: string;
+    claimNoDone: string;
+    claimExpired: string;
+    claimTaken: string;
+  };
 }
 
 const BUILDERS: Record<Lang, (f: PoolPlayFacts) => PoolPlayCopy> = { en: buildPoolPlayEn, tr: buildPoolPlayTr };

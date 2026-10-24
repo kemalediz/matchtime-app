@@ -138,6 +138,12 @@ describe("what a DM with a code does", () => {
     expect(decidePoolConfirm({ ...base, failuresToday: POOL_CONFIRM.wrongCodesPerDay - 1, row: live })).toEqual({ action: "confirm" });
   });
 
+  it("a member's code from another account's number: refused with the neutral line, and it counts (slice L3)", () => {
+    expect(decidePoolConfirm({ ...base, row: live, notYours: true })).toEqual({ action: "failed", reply: "not-yours" });
+    expect(decidePoolConfirm({ ...base, row: live, notYours: true, sender: { status: "active" } })).toEqual({ action: "failed", reply: "not-yours" });
+    expect(decidePoolConfirm({ ...base, failuresToday: POOL_CONFIRM.wrongCodesPerDay, row: live, notYours: true })).toEqual({ action: "ignore", reason: "locked" });
+  });
+
   it("a LID with no phone can be neither recorded nor answered", () => {
     expect(decidePoolConfirm({ ...base, hasPhone: false, row: live })).toEqual({ action: "ignore", reason: "no-phone" });
     expect(decidePoolConfirm({ ...base, hasPhone: false, row: null })).toEqual({ action: "ignore", reason: "no-phone" });
@@ -164,5 +170,28 @@ describe("the 'that code did not work' reply is rate-limited", () => {
   it("the windows", () => {
     expect(NOW.getTime() - confirmWindowStart(NOW).getTime()).toBe(24 * 3600_000);
     expect(NOW.getTime() - attemptPurgeBefore(NOW).getTime()).toBe(POOL_CONFIRM.attemptKeepDays * 24 * 3600_000);
+  });
+});
+
+// Slice L3 (manager review of #401): a number is never put on a member's
+// account silently. A code he started from his profile, sent from a number
+// no account holds, waits for HIS yes on the signed-in page.
+import { confirmTarget } from "../confirm-rules";
+
+describe("whose profile a confirmed code becomes", () => {
+  it("a stranger's /play sign-up: the number's own account (accounts are never merged)", () => {
+    expect(confirmTarget({ numberUserId: "u-num", starterId: null })).toEqual({ kind: "number-account", userId: "u-num" });
+  });
+  it("a member's sign-up only ever ends on HIS account: his own number confirms it", () => {
+    expect(confirmTarget({ numberUserId: "u-member", starterId: "u-member" })).toEqual({ kind: "number-account", userId: "u-member" });
+  });
+  it("a member's sign-up sent from a number of ANOTHER account: nothing attached (his name, pitches and hours never reach that account)", () => {
+    expect(confirmTarget({ numberUserId: "u-other", starterId: "u-member" })).toEqual({ kind: "not-yours" });
+  });
+  it("a number no account holds, on a member's code: his claim to answer, nothing attached", () => {
+    expect(confirmTarget({ numberUserId: null, starterId: "u-member" })).toEqual({ kind: "member-claim", starterId: "u-member" });
+  });
+  it("a number no account holds, on a stranger's /play code: a new account, as before", () => {
+    expect(confirmTarget({ numberUserId: null, starterId: null })).toEqual({ kind: "new-account" });
   });
 });

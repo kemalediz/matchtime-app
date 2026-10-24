@@ -153,7 +153,7 @@ write; "today" rows exist now. EN and TR wherever MatchTime speaks.
 
 - BUILT (L2, `manage-then-message.spec.ts`, through the real link in the welcome and the real page): stop, then his own message again (silent), then a NEW sign-up's code (never attached: he starts again from his link); delete a pool-only person (he is a stranger again); delete a club member (User and club stay); pause, then a message gets no pool reply. Edit, resume, start again, the badge switch: `e2e/web/play-manage.spec.ts`.
 - "stop" in words to MatchTime (L6 reader): stopped, one ack, no more offers
-- members opt in from their profile (L3), area defaulted from their clubs' venues
+- BUILT (L3, `member-opt-in.spec.ts`, through the real /profile card): a member with a number joins, active at once, nothing sent, help DM unchanged, then stops on the manage page (consent record: web consent, web withdraw); a member with no number (Turkish club) takes the WhatsApp step: the message attaches nothing, the number hears only that the sign-up continues in the app, and his card asks "a number ending NNNN messaged us with your code: is this your number?"; Yes puts the number and the profile on his account, one Turkish welcome; a friend he forwarded the code to sends it and he says No: nothing attached, the code dies, the friend hears nothing more even on a resend; his code sent from a number of another account is refused with one neutral line naming nobody, counted, and the code dies (a member's sign-up only ever ends on his own account). Prefill, ticks, edit and the manage link at phone and desktop width: `e2e/web/play-elsewhere.spec.ts`.
 
 ### Offers (L4, L5, L9)
 

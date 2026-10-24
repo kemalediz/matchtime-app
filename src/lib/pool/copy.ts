@@ -36,7 +36,14 @@ export function poolAlreadyText(lang: Lang, status: "active" | "paused" | "stopp
 }
 
 /** A code that did not work. Never carries a code: nobody learns one. */
-export function poolCodeReplyText(kind: "expired" | "wrong-code", lang: Lang): string {
+export function poolCodeReplyText(kind: "expired" | "wrong-code" | "not-yours", lang: Lang): string {
+  if (kind === "not-yours") return t(lang).pool_dm_code_not_yours;
   const playLink = appUrl(POOL_PLAY_PATH);
   return kind === "expired" ? t(lang).pool_dm_code_expired({ playLink }) : t(lang).pool_dm_code_wrong({ playLink });
+}
+
+/** Slice L3: the one line to a number that sent a member's code. Names no
+ *  account and no person; the member finishes on his own page. */
+export function poolClaimWaitText(lang: Lang): string {
+  return t(lang).pool_dm_claim_wait;
 }
