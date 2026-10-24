@@ -110,19 +110,22 @@ for (const vp of WIDTHS) {
     await expect(facts).toContainText("Mixed levels, everyone welcome");
     await expect(facts).toContainText("£6 match fee");
     await expect(page.getByTestId("pool-offer-map")).toHaveAttribute("href", /google\.com\/maps/);
-    await expect(page.getByTestId("pool-offer-yes")).toBeVisible();
-    await expect(page.getByTestId("pool-offer-no")).toBeVisible();
     await expect(page.getByTestId("pool-offer-digits")).toBeVisible();
+    await expect(page.getByTestId("pool-offer-confirm")).toBeVisible();
     // No sign-in link on the page: it may be forwarded (his DMs carry his own).
     await expect(page.getByTestId("pool-offer-manage")).toHaveAttribute("href", "/play/manage");
     await expect(page.locator('a[href*="/r/"]')).toHaveCount(0);
-    // Not proved to be him yet (a forwarded link reads the same): no
-    // distance, and his last 4 digits are asked before any answer.
+    // Not proved to be him yet (a forwarded link reads the same): the game
+    // only, no distance, no answers; his last 4 digits first.
     await expect(facts).not.toContainText("from you");
-    await expect(page.getByTestId("pool-offer-yes")).toBeDisabled();
+    await expect(page.getByTestId("pool-offer-yes")).toHaveCount(0);
     await noSidewaysScroll(page);
 
     await page.getByTestId("pool-offer-digits").fill(await holderDigits(world, tapLinkIn(ex.sent[0])));
+    await page.getByTestId("pool-offer-confirm").click();
+    await expect(page.getByTestId("pool-offer-page")).toHaveAttribute("data-state", "open", { timeout: 20_000 });
+    await expect(facts).toContainText("from you");
+    await expect(page.getByTestId("pool-offer-no")).toBeVisible();
     await page.getByTestId("pool-offer-yes").click();
     await expect(page.getByTestId("pool-offer-page")).toHaveAttribute("data-state", "in", { timeout: 20_000 });
     await expect(page.getByTestId("pool-offer-state")).toContainText("You're in: FNF");
@@ -150,6 +153,8 @@ test("after his yes, the organisers' match page shows him as a guest from the po
   await poolOpenCookie(page);
   await page.goto(tapLinkIn(ex.sent[0]));
   await page.getByTestId("pool-offer-digits").fill(await holderDigits(world, tapLinkIn(ex.sent[0])));
+  await page.getByTestId("pool-offer-confirm").click();
+  await expect(page.getByTestId("pool-offer-page")).toHaveAttribute("data-state", "open", { timeout: 20_000 });
   await page.getByTestId("pool-offer-yes").click();
   await expect(page.getByTestId("pool-offer-page")).toHaveAttribute("data-state", "in", { timeout: 20_000 });
 

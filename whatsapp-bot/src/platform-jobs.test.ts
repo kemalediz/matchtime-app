@@ -198,3 +198,35 @@ describe("runPlatformJobs", () => {
     expect(calls.map((c) => c[1])).toEqual(["120363900000000001@g.us", "120363900000000002@g.us"]);
   });
 });
+
+describe("the outcome report is retried, bounded (second review of #400, item 2)", () => {
+  it("a lost report is tried again, up to 3 times, then given up without stopping the next job", async () => {
+    let fails = 2;
+    const tries: unknown[] = [];
+    const sleeps: number[] = [];
+    const { deps } = setup(
+      {
+        report: vi.fn(async (r) => {
+          tries.push(r);
+          if (fails-- > 0) throw new Error("network down");
+        }),
+        sleep: async (ms: number) => {
+          sleeps.push(ms);
+        },
+      },
+      [DM],
+    );
+    expect(await runPlatformJobs(deps)).toEqual({ sent: 1, failed: 0, released: 0 });
+    expect(tries).toHaveLength(3);
+    expect(sleeps).toEqual([1_000, 3_000]);
+  });
+
+  it("never more than 3 tries", async () => {
+    const report = vi.fn(async () => {
+      throw new Error("server down");
+    });
+    const { deps } = setup({ report, sleep: async () => {} }, [DM, LEAVE]);
+    await runPlatformJobs(deps);
+    expect(report).toHaveBeenCalledTimes(6);
+  });
+});

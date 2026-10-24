@@ -29,7 +29,7 @@ export function offerPageState(o: {
   switch (o.outcome) {
     case null:
       if (!o.refusal) return "open";
-      if (o.refusal === "match-off") return "off";
+      if (o.refusal === "match-off" || o.refusal === "pool-closed") return "off";
       if (o.refusal === "gone") return "gone";
       if (o.refusal === "not-sent") return "invalid";
       return "expired";

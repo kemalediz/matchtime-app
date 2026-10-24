@@ -42,7 +42,7 @@ import { queuePlatformDm } from "../platform-jobs";
 import { pausesForIgnored } from "./caps";
 import { ledgerEntryOf } from "./candidate-rows";
 import { findPoolCandidates } from "./candidates";
-import { POOL_OFFER_PURPOSE } from "./dispatch";
+import { POOL_OFFER_PURPOSE, stampUnreportedDeliveries } from "./dispatch";
 import { isPoolOffersEnabled, poolOffersOpenForClub } from "./flags";
 import { buildPoolManageLink } from "./links";
 import { OPEN_MATCH_STATUSES } from "./matching-rules";
@@ -60,6 +60,7 @@ import {
   type PoolAskRefusal,
 } from "./round-rules";
 import { POOL_CAPS, POOL_ROUND } from "./rules";
+import { eachUnderSavepoint } from "./savepoint";
 import { firstWaveSize, offerExpiresAt, poolSendAt, secondWave } from "./waves";
 import { normaliseLang } from "../i18n/lang";
 import type { PoolAskVia } from "./vocab";
@@ -150,82 +151,101 @@ export async function requestPoolAsk(args: {
  * Queue one wave's offers. Returns how many were queued.
  *
  * ONE WAVE AT A TIME PER ASK (review of #400, minor 4): two sweeps at once
- * (two Pi processes, or a sweep and the organiser's press) must never both
- * send a wave and take a round past `POOL_ROUND.maxOffers`. The whole wave
- * runs in one transaction holding `pg_advisory_xact_lock` on the ask, and
- * re-reads under it what the ask has already sent: wave 1 goes once, wave 2
- * once, and never more than the round's maximum in total.
+ * must never both send a wave or take a round past `POOL_ROUND.maxOffers`.
+ * The writes run in one transaction holding `pg_advisory_xact_lock` on the
+ * ask, which re-reads under it what the ask already sent.
+ *
+ * SMALL AND SAFE (second review, item 3): who to ask, the facts and each
+ * person's manage link are worked out BEFORE the transaction (they read
+ * and write elsewhere); inside it each person is one savepoint step
+ * (`savepoint.ts`), so one failure skips only that person.
  */
 async function sendWave(askId: string, wave: 1 | 2, now: Date, env: Env | undefined, size?: number): Promise<number> {
-  return db.$transaction(
-    async (tx) => {
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`pool-ask:${askId}`}))`;
-      const ask = await tx.poolAsk.findUnique({ where: { id: askId }, select: { id: true, matchId: true, orgId: true, places: true, status: true } });
-      if (!ask || ask.status !== "open") return 0;
-      const already = await tx.poolOffer.findMany({ where: { poolAskId: askId }, select: { wave: true } });
-      if (already.some((o) => o.wave === wave)) return 0;
-      const roomInRound = POOL_ROUND.maxOffers - already.length;
-      if (roomInRound <= 0) return 0;
-      const found = await findPoolCandidates(ask.matchId, { now, env });
-      if (found.selection.gate || !found.ctx) return 0;
-      const take = Math.min(roomInRound, size ?? firstWaveSize(found.selection.eligible.length, ask.places));
-      const picked = found.selection.eligible.slice(0, take);
-      if (picked.length === 0) return 0;
-      const facts = await loadMatchOfferFacts(ask.matchId, now);
-      if (!facts) return 0;
-      const cutoff = await cutoffOf(ask.orgId, found.ctx.kickoff);
-      const profiles = await tx.poolProfile.findMany({
-        where: { userId: { in: picked.map((p) => p.userId) } },
-        select: { userId: true, language: true, user: { select: { phoneNumber: true } } },
-      });
-      const byUser = new Map(profiles.map((p) => [p.userId as string, p]));
-      const sendAfter = found.sendAt.getTime() > now.getTime() ? found.sendAt : null;
-      let queued = 0;
-      for (const c of picked) {
-        const profile = byUser.get(c.userId);
-        const phone = profile?.user?.phoneNumber;
-        if (!profile || !phone) continue;
-        const manageLink = await buildPoolManageLink(c.userId);
-        const offer = await tx.poolOffer.create({
-          data: {
-            poolAskId: ask.id,
-            matchId: ask.matchId,
-            orgId: ask.orgId,
-            userId: c.userId,
-            distanceMiles: c.distanceMiles,
-            wave,
-            // The planned window; the real six hours start when the Pi
-            // reports the DM sent (`dispatch.ts` `onPoolOfferJobSent`).
-            expiresAt: offerExpiresAt(found.sendAt, cutoff),
-            // The caps count a queued offer at its creation (L4.3): the
-            // moment the rules judged it.
-            createdAt: now,
+  try {
+    const ask = await db.poolAsk.findUnique({ where: { id: askId }, select: { id: true, matchId: true, orgId: true, places: true, status: true } });
+    if (!ask || ask.status !== "open") return 0;
+    const found = await findPoolCandidates(ask.matchId, { now, env });
+    if (found.selection.gate || !found.ctx) return 0;
+    const facts = await loadMatchOfferFacts(ask.matchId, now);
+    if (!facts) return 0;
+    const cutoff = await cutoffOf(ask.orgId, found.ctx.kickoff);
+    const want = Math.min(POOL_ROUND.maxOffers, size ?? firstWaveSize(found.selection.eligible.length, ask.places));
+    const shortlist = found.selection.eligible.slice(0, want);
+    if (shortlist.length === 0) return 0;
+    const profiles = await db.poolProfile.findMany({
+      where: { userId: { in: shortlist.map((p) => p.userId) } },
+      select: { userId: true, language: true, user: { select: { phoneNumber: true } } },
+    });
+    const byUser = new Map(profiles.map((p) => [p.userId as string, p]));
+    const prepared: Array<{ userId: string; distanceMiles: number; phone: string; lang: ReturnType<typeof normaliseLang>; manageLink: string }> = [];
+    for (const c of shortlist) {
+      const profile = byUser.get(c.userId);
+      const phone = profile?.user?.phoneNumber;
+      if (!profile || !phone) continue;
+      prepared.push({ userId: c.userId, distanceMiles: c.distanceMiles, phone, lang: normaliseLang(profile.language), manageLink: await buildPoolManageLink(c.userId) });
+    }
+    const sendAfter = found.sendAt.getTime() > now.getTime() ? found.sendAt : null;
+
+    const queued = await db.$transaction(
+      async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`pool-ask:${askId}`}))`;
+        const fresh = await tx.poolAsk.findUnique({ where: { id: askId }, select: { status: true } });
+        if (fresh?.status !== "open") return 0;
+        const already = await tx.poolOffer.findMany({ where: { poolAskId: askId }, select: { wave: true } });
+        if (already.some((o) => o.wave === wave)) return 0;
+        const room = POOL_ROUND.maxOffers - already.length;
+        if (room <= 0) return 0;
+        const offeredHere = new Set(
+          (await tx.poolOffer.findMany({ where: { matchId: ask.matchId, userId: { in: prepared.map((p) => p.userId) } }, select: { userId: true } })).map((o) => o.userId),
+        );
+        const go = prepared.filter((p) => !offeredHere.has(p.userId)).slice(0, room);
+        const done = await eachUnderSavepoint(
+          tx,
+          go,
+          async (p) => {
+            const offer = await tx.poolOffer.create({
+              data: {
+                poolAskId: ask.id,
+                matchId: ask.matchId,
+                orgId: ask.orgId,
+                userId: p.userId,
+                distanceMiles: p.distanceMiles,
+                wave,
+                // The planned window; the real six hours start when the Pi
+                // reports the DM sent (`dispatch.ts` `onPoolOfferJobSent`).
+                expiresAt: offerExpiresAt(found.sendAt, cutoff),
+                // The caps count a queued offer at its creation (L4.3).
+                createdAt: now,
+              },
+              select: { id: true },
+            });
+            const text = poolOfferText(p.lang, { ...facts, places: ask.places, distanceMiles: p.distanceMiles }, {
+              tapLink: appUrl(poolOfferPath(offer.id)),
+              manageLink: p.manageLink,
+            });
+            const job = await queuePlatformDm({
+              phone: p.phone,
+              text,
+              purpose: POOL_OFFER_PURPOSE,
+              refId: offer.id,
+              sendAfter,
+              client: tx as unknown as Parameters<typeof queuePlatformDm>[0]["client"],
+            });
+            await tx.poolOffer.update({ where: { id: offer.id }, data: { platformJobId: job.id } });
+            return offer.id;
           },
-          select: { id: true },
-        });
-        const text = poolOfferText(normaliseLang(profile.language), { ...facts, places: ask.places, distanceMiles: c.distanceMiles }, {
-          tapLink: appUrl(poolOfferPath(offer.id)),
-          manageLink,
-        });
-        const job = await queuePlatformDm({
-          phone,
-          text,
-          purpose: POOL_OFFER_PURPOSE,
-          refId: offer.id,
-          sendAfter,
-          client: tx as unknown as Parameters<typeof queuePlatformDm>[0]["client"],
-        });
-        await tx.poolOffer.update({ where: { id: offer.id }, data: { platformJobId: job.id } });
-        queued++;
-      }
-      console.log(`[pool] ask ${ask.id}: wave ${wave}, ${queued} offer(s) queued${sendAfter ? ` for ${sendAfter.toISOString()}` : ""}`);
-      return queued;
-    },
-    { maxWait: 20_000, timeout: 60_000 },
-  ).catch((err: unknown) => {
+          (p, err) => console.error(`[pool] ask ${askId}: offer to ${p.userId} skipped:`, err instanceof Error ? err.message : "failed"),
+        );
+        return done.length;
+      },
+      { maxWait: 20_000, timeout: 30_000 },
+    );
+    console.log(`[pool] ask ${askId}: wave ${wave}, ${queued} offer(s) queued${sendAfter ? ` for ${sendAfter.toISOString()}` : ""}`);
+    return queued;
+  } catch (err) {
     console.error(`[pool] ask ${askId}: wave ${wave} not queued:`, err instanceof Error ? err.message : "failed");
     return 0;
-  });
+  }
 }
 
 /** Close one open ask for `reason`: compare-and-set, then its offers. */
@@ -307,6 +327,8 @@ async function pauseIfIgnoring(userId: string, now: Date, env?: Env): Promise<vo
 export async function sweepPool(now: Date = new Date(), env?: Env): Promise<{ closed: number; queued: number }> {
   let closed = 0;
   let queued = 0;
+  // Offers whose "sent" report never arrived are delivered all the same.
+  await stampUnreportedDeliveries(now);
   try {
     const asks = await db.poolAsk.findMany({
       where: { status: "open" },

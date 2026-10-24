@@ -65,8 +65,11 @@ export default async function PoolOfferPage({ params }: { params: Promise<{ toke
     busy: c.page_busy,
   };
 
+  // Unproved (perhaps a forwarded link): the game's facts only, never HIS
+  // offer's state (second review of #400, item 4).
+  const shown: OfferPageState | "unproved" = page.verified ? page.state : "unproved";
   return (
-    <main className="min-h-screen bg-slate-50 px-4 py-10" data-testid="pool-offer-page" data-state={page.state}>
+    <main className="min-h-screen bg-slate-50 px-4 py-10" data-testid="pool-offer-page" data-state={shown}>
       <div className="max-w-md mx-auto">
         <h1 className="text-xl font-bold text-slate-900">{c.page_title}</h1>
         <ul className="mt-4 space-y-2 rounded-xl bg-white border border-slate-200 p-4 text-sm text-slate-800" data-testid="pool-offer-facts">
@@ -87,7 +90,7 @@ export default async function PoolOfferPage({ params }: { params: Promise<{ toke
             {c.page_map}
           </a>
         )}
-        {message[page.state] && (
+        {page.verified && message[page.state] && (
           <p className="mt-5 text-base text-slate-900" data-testid="pool-offer-state">
             {message[page.state]!.replace(/\*/g, "")}
           </p>

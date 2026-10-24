@@ -35,14 +35,22 @@ export type PoolReplyAnswer = "pool-offer-tap-link" | "pool-offer-gone" | null;
 export async function answerPoolOfferReply(args: { userId: string; quotedId?: string | null; now?: Date }): Promise<PoolReplyAnswer> {
   const now = args.now ?? new Date();
   try {
-    const offer = await db.poolOffer.findFirst({
+    // Every offer that REACHED him in the window: a quote may answer an
+    // older one, not only the newest (second review of #400, item 4).
+    const delivered = await db.poolOffer.findMany({
       where: { userId: args.userId, sentAt: { gte: new Date(now.getTime() - DAY_MS), lte: now } },
       orderBy: { sentAt: "desc" },
       select: { id: true, outcome: true, expiresAt: true, platformJobId: true, ask: { select: { status: true, org: { select: { name: true } } } } },
     });
-    if (!offer) return null;
-    const job = offer.platformJobId ? await db.platformJob.findUnique({ where: { id: offer.platformJobId }, select: { waMessageId: true } }) : null;
-    const quotesOffer = !!args.quotedId && !!job?.waMessageId && sameWhatsAppMessage(args.quotedId, job.waMessageId);
+    if (delivered.length === 0) return null;
+    const jobs = await db.platformJob.findMany({
+      where: { id: { in: delivered.map((o) => o.platformJobId).filter((x): x is string => !!x) } },
+      select: { id: true, waMessageId: true },
+    });
+    const waOf = new Map(jobs.map((j) => [j.id, j.waMessageId]));
+    const quoted = args.quotedId ? delivered.find((o) => o.platformJobId && sameWhatsAppMessage(args.quotedId, waOf.get(o.platformJobId))) : undefined;
+    const quotesOffer = !!quoted;
+    const offer = quoted ?? delivered[0];
     const inAClub = (await db.membership.count({ where: { userId: args.userId, leftAt: null, ...ORDINARY_MEMBER_WHERE } })) > 0;
     if (!quotesOffer && inAClub) return null;
     const open = offer.outcome === null && offer.ask.status === "open" && offer.expiresAt.getTime() > now.getTime();

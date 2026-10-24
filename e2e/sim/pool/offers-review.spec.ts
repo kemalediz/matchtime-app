@@ -14,7 +14,7 @@
  *        ever refers to it.
  *   m1   a club member's plain question is never swallowed by the pool
  *        line; quoting the offer gets it.
- *   m2   the switch off after delivery: a tap says the offer has ended.
+ *   m2   the switch off after delivery: his page says the game is off for him.
  *   m4   two sweeps racing for the second wave: it goes once, never past 8.
  *   m6   already this club's guest for another game: "busy", nothing written.
  */
@@ -32,6 +32,7 @@ import {
   pollPlatform,
   poolPlayer,
   poolSwitchCookie,
+  proveOffer,
   tapLinkIn,
   tapOffer,
 } from "./offers-world";
@@ -75,15 +76,19 @@ scenarios("review of #400: the fixes", () => {
     await friend.goto(link);
     await expect(friend.getByTestId("pool-offer-facts")).toContainText("FNF needs 1 player");
     await expect(friend.getByTestId("pool-offer-facts")).not.toContainText("from you");
-    await expect(friend.getByTestId("pool-offer-yes")).toBeDisabled();
+    // Only the game: not his offer's state, and no answer to press.
+    await expect(friend.getByTestId("pool-offer-page")).toHaveAttribute("data-state", "unproved");
+    await expect(friend.getByTestId("pool-offer-state")).toHaveCount(0);
+    await expect(friend.getByTestId("pool-offer-yes")).toHaveCount(0);
     for (let i = 0; i < 5; i++) {
       await friend.getByTestId("pool-offer-digits").fill(wrong);
-      await friend.getByTestId("pool-offer-no").click();
+      await friend.getByTestId("pool-offer-confirm").click();
       await expect(friend.getByTestId("pool-offer-verify-wrong")).toBeVisible();
     }
     await friend.getByTestId("pool-offer-digits").fill(right);
-    await friend.getByTestId("pool-offer-yes").click();
+    await friend.getByTestId("pool-offer-confirm").click();
     await expect(friend.getByTestId("pool-offer-verify-locked")).toBeVisible();
+    await expect(friend.getByTestId("pool-offer-page")).toHaveAttribute("data-state", "unproved");
     await ctx.close();
     expect((await offersOf(pool, ali))[0].outcome).toBeNull();
     expect(await pool.db.count(`SELECT count(*) FROM "Attendance" WHERE "userId" = $1`, [ali.userId])).toBe(0);
@@ -168,15 +173,13 @@ scenarios("review of #400: the fixes", () => {
     pool.expectSent(quoted.sent, [{ to: "home.pete", purpose: "pool-reply", text: /tap the link/ }]);
   });
 
-  scenario("m2: the switch goes off after the offer reached him: his tap says it has ended, nothing is written", async ({ pool, page }) => {
+  scenario("m2: the switch goes off after the offer reached him: his page says it is off, nothing is written", async ({ pool, page }) => {
     const fnf = await openClub(pool, "fnf", { name: "FNF", hq: true });
     const ali = await poolPlayer(pool, "ali", { at: near(fnf) });
     const ex = await organiserAsks(pool, page, fnf, { places: 1, now: at(fnf.kickoff, -8) });
     await pollPlatform(pool, { now: at(fnf.kickoff, -8) });
     await page.context().clearCookies();
-    await poolSwitchCookie(page, false);
-    await page.goto(tapLinkIn(ex.sent[0]));
-    await expect(page.getByTestId("pool-offer-page")).toHaveAttribute("data-state", "expired");
+    expect(await proveOffer(pool, page, tapLinkIn(ex.sent[0]), { poolOpen: false })).toBe("off");
     await expect(page.getByTestId("pool-offer-yes")).toHaveCount(0);
     expect(await pool.db.count(`SELECT count(*) FROM "Attendance" WHERE "userId" = $1`, [ali.userId])).toBe(0);
   });
@@ -208,9 +211,7 @@ scenarios("review of #400: the fixes", () => {
     await pollPlatform(pool, { now: at(next.kickoff, -8) });
     await page.context().clearCookies();
 
-    await poolSwitchCookie(page);
-    await page.goto(tapLinkIn(ex.sent[0]));
-    await expect(page.getByTestId("pool-offer-page")).toHaveAttribute("data-state", "busy");
+    expect(await proveOffer(pool, page, tapLinkIn(ex.sent[0]))).toBe("busy");
     await expect(page.getByTestId("pool-offer-state")).toContainText("You already have a place with this club for another game");
     await expect(page.getByTestId("pool-offer-yes")).toHaveCount(0);
     expect((await offersOf(pool, ali))[0].outcome).toBeNull();

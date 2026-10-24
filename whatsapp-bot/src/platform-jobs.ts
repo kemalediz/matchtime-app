@@ -48,6 +48,8 @@ export interface PlatformPollDeps {
    */
   takeDmSlot(label: string): boolean | Promise<boolean>;
   sendTimeoutMs: number;
+  /** Waits between report retries; a timer by default (injected in tests). */
+  sleep?(ms: number): Promise<void>;
   log?(line: string): void;
   error?(line: string, err?: unknown): void;
 }
@@ -57,6 +59,10 @@ export interface PlatformPollResult {
   failed: number;
   released: number;
 }
+
+/** Tries for one outcome report, and the waits between them. */
+export const REPORT_TRIES = 3;
+const REPORT_RETRY_MS = [1_000, 3_000] as const;
 
 function errorText(err: unknown): string {
   const text = err instanceof Error ? err.message : String(err);
@@ -71,13 +77,25 @@ export async function runPlatformJobs(deps: PlatformPollDeps): Promise<PlatformP
   const jobs = await deps.fetchJobs();
   if (!jobs || jobs.length === 0) return out;
 
+  const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  // A lost report is tried again, at most REPORT_TRIES times (second review
+  // of #400, item 2): a "sent" that never arrives leaves the server unsure
+  // the DM went (a pool offer would never start its clock). Safe to repeat:
+  // the server moves only a CLAIMED job, so a second copy changes nothing.
   const report = async (r: PlatformJobReport) => {
-    try {
-      await deps.report(r);
-    } catch (err) {
-      // The job was handled; only the bookkeeping failed. The next job
-      // must not pay for it.
-      error(`[platform] could not report ${r.outcome} for job ${r.id}:`, err);
+    for (let attempt = 1; attempt <= REPORT_TRIES; attempt++) {
+      try {
+        await deps.report(r);
+        return;
+      } catch (err) {
+        if (attempt === REPORT_TRIES) {
+          // The job was handled; only the bookkeeping failed. The next job
+          // must not pay for it.
+          error(`[platform] could not report ${r.outcome} for job ${r.id} after ${REPORT_TRIES} tries:`, err);
+          return;
+        }
+        await sleep(REPORT_RETRY_MS[attempt - 1]);
+      }
     }
   };
 

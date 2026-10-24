@@ -76,7 +76,8 @@ export const poolOfferTr: PoolOfferStrings = {
   page_pulled_out: "Tamam, yerin yeniden boş. Haber verdiğin için teşekkürler.",
   page_try_again: "Bir sorun oldu. Lütfen bir dakika sonra yeniden dene.",
   page_busy: "Bu kulüpte başka bir maç için zaten yerin var. O maç oynandıktan sonra yeni bir yer alabilirsin.",
-  page_verify_label: "Cevap vermek için bu teklifin geldiği WhatsApp numarasının son 4 hanesini yaz",
+  page_verify_label: "Bu teklif senin mi? Geldiği WhatsApp numarasının son 4 hanesini yaz",
+  page_confirm: "Teklifimi göster",
   page_verify_wrong: "Bu haneler eşleşmiyor. Lütfen yeniden dene.",
   page_verify_locked: "Çok fazla deneme oldu. Giriş yapmak için WhatsApp mesajındaki 'Durdur ya da değiştir' bağlantısını aç, sonra bu teklifi yeniden aç.",
 };

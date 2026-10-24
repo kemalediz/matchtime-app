@@ -58,3 +58,9 @@ export async function declinePoolOfferAction(token: string, digits: string | nul
 export async function pullOutPoolOfferAction(token: string, digits: string | null = null): Promise<Answer> {
   return run(token, digits, (id) => pullOutOfOffer(id));
 }
+
+/** "Show my offer": the digits alone, so the page can show HIS offer's
+ *  state (second review of #400, item 4: unproved, it shows the game only). */
+export async function provePoolOfferAction(token: string, digits: string | null = null): Promise<Answer> {
+  return run(token, digits, async () => "open");
+}

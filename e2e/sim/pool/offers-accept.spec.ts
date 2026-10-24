@@ -14,7 +14,7 @@
  */
 import { scenario, scenarios, expect } from "./fixtures";
 import { E2E } from "../../helpers/env";
-import { askOf, at, near, poolSwitchCookie, offersOf, openClub, organiserAsks, pollPlatform, poolPlayer, tapLinkIn, tapOffer } from "./offers-world";
+import { askOf, at, near, poolSwitchCookie, proveOffer, offersOf, openClub, organiserAsks, pollPlatform, poolPlayer, tapLinkIn, tapOffer } from "./offers-world";
 
 const PI = { "x-api-key": E2E.WHATSAPP_API_KEY };
 
@@ -70,6 +70,8 @@ scenarios("saying yes to a pool offer", () => {
     await poolSwitchCookie(page);
     await page.goto(tapLinkIn(ex.sent[0]));
     await expect(page.getByRole("heading")).toHaveText("Sana bir maç");
+    await expect(page.getByTestId("pool-offer-confirm")).toHaveText("Teklifimi göster");
+    expect(await proveOffer(pool, page, tapLinkIn(ex.sent[0]))).toBe("open");
     await expect(page.getByTestId("pool-offer-yes")).toHaveText("Evet, oynarım");
     expect(await tapOffer(pool, page, tapLinkIn(ex.sent[0]), "yes")).toBe("in");
     await expect(page.getByTestId("pool-offer-state")).toContainText("Yerin hazır: Galata FC");
@@ -111,9 +113,7 @@ scenarios("saying yes to a pool offer", () => {
     await pollPlatform(pool, { now: at(fnf.kickoff, -8) });
     await pool.db.run(`UPDATE "PoolOffer" SET "expiresAt" = $2 WHERE "userId" = $1`, [ali.userId, new Date(Date.now() - 60_000)]);
 
-    await poolSwitchCookie(page);
-    await page.goto(tapLinkIn(ex.sent[0]));
-    await expect(page.getByTestId("pool-offer-page")).toHaveAttribute("data-state", "expired");
+    expect(await proveOffer(pool, page, tapLinkIn(ex.sent[0]))).toBe("expired");
     await expect(page.getByTestId("pool-offer-yes")).toHaveCount(0);
     expect(await pool.db.count(`SELECT count(*) FROM "Attendance" WHERE "matchId" = $1 AND "userId" = $2`, [fnf.group.matchId, ali.userId])).toBe(0);
     pool.expectSent(await pool.collect(), []);

@@ -254,9 +254,23 @@ export function tapLinkIn(m: SentMessage): string {
   return hit[1];
 }
 
-/** Open the offer page and press a button as HIM: when the page asks for
- *  the last 4 digits of his WhatsApp number (review of #400, M2), they are
- *  typed in. Returns the page's new state. */
+/** Open the offer page as HIM: when it asks (unproved, review of #400 M2
+ *  and the second review's item 4), type the last 4 digits of his number
+ *  and press "Show my offer". Returns the page's state then. */
+export async function proveOffer(world: PoolWorld, page: Page, path: string, opts: { digits?: string; poolOpen?: boolean } = {}): Promise<string> {
+  // The page and its answers read the pool switch too (review minor 2).
+  await poolSwitchCookie(page, opts.poolOpen !== false);
+  await page.goto(path);
+  const root = page.getByTestId("pool-offer-page");
+  if ((await root.getAttribute("data-state")) === "unproved") {
+    await page.getByTestId("pool-offer-digits").fill(opts.digits ?? (await holderDigits(world, path)));
+    await page.getByTestId("pool-offer-confirm").click();
+    await expect(root).not.toHaveAttribute("data-state", "unproved", { timeout: 20_000 });
+  }
+  return (await root.getAttribute("data-state")) ?? "";
+}
+
+/** Open the offer page as HIM and press a button; returns the new state. */
 export async function tapOffer(
   world: PoolWorld,
   page: Page,
@@ -264,15 +278,10 @@ export async function tapOffer(
   button: "yes" | "no" | "pull-out",
   opts: { digits?: string; poolOpen?: boolean } = {},
 ): Promise<string> {
-  // The page and its answers read the pool switch too (review minor 2).
-  await poolSwitchCookie(page, opts.poolOpen !== false);
-  await page.goto(path);
+  const before = await proveOffer(world, page, path, opts);
   const root = page.getByTestId("pool-offer-page");
-  const before = await root.getAttribute("data-state");
-  const field = page.getByTestId("pool-offer-digits");
-  if (await field.isVisible()) await field.fill(opts.digits ?? (await holderDigits(world, path)));
   await page.getByTestId(`pool-offer-${button}`).click();
-  await expect(root).not.toHaveAttribute("data-state", before ?? "", { timeout: 20_000 });
+  await expect(root).not.toHaveAttribute("data-state", before, { timeout: 20_000 });
   return (await root.getAttribute("data-state")) ?? "";
 }
 

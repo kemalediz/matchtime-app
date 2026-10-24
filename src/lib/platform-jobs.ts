@@ -150,6 +150,9 @@ export type PlatformJobStatus = "queued" | "claimed" | "sent" | "failed" | "unco
  *  releases the rest, as it does for due-posts. */
 export const MAX_JOBS_PER_POLL = 5;
 
+/** Of those, kept for pool offers when any are due (L5a, second review). */
+export const POOL_RESERVED_PER_POLL = 1;
+
 /** A sign-up code lives 10 minutes (phone-signup.ts, claim.ts). A code DM
  *  that waited longer than that would deliver a dead code, so it is failed
  *  instead of sent. */
@@ -531,8 +534,19 @@ export async function claimDuePlatformJobs(
   // Pool offers (local player pool L5a, `pool/dispatch.ts`) are not
   // planned here: they take the poll's room LEFT after everything else,
   // and are admitted AND claimed under the platform cap's lock.
-  const poolRows = read0.filter((r) => r.purpose === POOL_OFFER_PURPOSE && r.kind === "dm");
+  const poolAll = read0.filter((r) => r.purpose === POOL_OFFER_PURPOSE && r.kind === "dm");
   const rows = read0.filter((r) => !(r.purpose === POOL_OFFER_PURPOSE && r.kind === "dm"));
+  // A pool row with nothing to send is never claimed: failed, here and now
+  // (second review of #400, item 4); its offer ends cancelled.
+  const poolRows = poolAll.filter((r) => r.phone && r.text);
+  for (const r of poolAll.filter((x) => !x.phone || !x.text)) {
+    await db.platformJob.updateMany({ where: { id: r.id, status: "queued" }, data: { status: "failed", failedAt: now, failReason: "malformed: a pool offer with no phone or no text" } });
+    await onPoolOfferJobFailed(r.id, now);
+  }
+  // A small reserved share (one of the poll's places) for pool offers, so a
+  // backlog of other DMs never starves them; the poll's total, and so the
+  // Pi's pacing, is unchanged.
+  const reserved = poolRows.length > 0 ? POOL_RESERVED_PER_POLL : 0;
 
   const leaveGroups = [...new Set(rows.filter((r) => r.kind === "leave-group" && r.groupId).map((r) => r.groupId as string))];
   const approved = leaveGroups.length
@@ -559,7 +573,7 @@ export async function claimDuePlatformJobs(
     now,
     approvedGroupIds,
     adminGroupIds,
-    limit: opts.limit ?? MAX_JOBS_PER_POLL,
+    limit: Math.max(0, (opts.limit ?? MAX_JOBS_PER_POLL) - reserved),
   });
 
   for (const r of plan.refuse) {

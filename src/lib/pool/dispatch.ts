@@ -173,7 +173,7 @@ export async function admitPoolOfferJobs(jobIds: readonly string[], opts: { now:
  * it ends `expired` (the round closed first, decision #8), so his caps and
  * a later reply know he saw it. Never throws.
  */
-export async function onPoolOfferJobSent(jobId: string, now: Date = new Date()): Promise<void> {
+export async function onPoolOfferJobSent(jobId: string, now: Date = new Date(), deliveredAt: Date = now): Promise<void> {
   try {
     const offer = await db.poolOffer.findFirst({
       where: { platformJobId: jobId, sentAt: null },
@@ -181,13 +181,61 @@ export async function onPoolOfferJobSent(jobId: string, now: Date = new Date()):
     });
     if (!offer) return;
     const cutoff = await cutoffFor(offer.orgId, offer.ask.match.date);
-    await db.poolOffer.updateMany({ where: { id: offer.id, sentAt: null }, data: { sentAt: now, expiresAt: offerExpiresAt(now, cutoff) } });
+    await db.poolOffer.updateMany({ where: { id: offer.id, sentAt: null }, data: { sentAt: deliveredAt, expiresAt: offerExpiresAt(deliveredAt, cutoff) } });
     if (offer.outcome === "cancelled") {
       await db.poolOffer.updateMany({ where: { id: offer.id, outcome: "cancelled" }, data: { outcome: "expired" } });
     }
   } catch (err) {
     console.error(`[pool] job ${jobId}: marking its offer delivered failed:`, err instanceof Error ? err.message : "failed");
   }
+}
+
+/** A claimed pool job with no report this long is taken as delivered. */
+export const UNREPORTED_AFTER_MS = 5 * 60_000;
+
+/**
+ * A "sent" that never arrived (second review of #400, item 2): the Pi
+ * retries its report, but if every try is lost, or stamping it failed here,
+ * the job stays claimed and the offer would never be "delivered": the page
+ * would call his link invalid and the offer would never end. So a pool job
+ * CLAIMED more than `UNREPORTED_AFTER_MS` ago, or reported sent/unconfirmed
+ * with its offer still unstamped, is taken as delivered at its send (or
+ * claim) time. The job itself is left alone: a late report still lands.
+ * Every platform poll (`round.ts` `sweepPool`). Never throws.
+ */
+export async function stampUnreportedDeliveries(now: Date = new Date()): Promise<number> {
+  try {
+    const jobs = await db.platformJob.findMany({
+      where: {
+        purpose: POOL_OFFER_PURPOSE,
+        createdAt: { gte: new Date(now.getTime() - 3 * DAY_MS) },
+        OR: [{ status: "claimed", claimedAt: { lte: new Date(now.getTime() - UNREPORTED_AFTER_MS) } }, { status: { in: ["sent", "unconfirmed"] } }],
+      },
+      select: { id: true, claimedAt: true, sentAt: true },
+    });
+    if (jobs.length === 0) return 0;
+    const unstamped = await db.poolOffer.findMany({ where: { platformJobId: { in: jobs.map((j) => j.id) }, sentAt: null }, select: { platformJobId: true } });
+    const byId = new Map(jobs.map((j) => [j.id, j]));
+    for (const o of unstamped) {
+      const j = byId.get(o.platformJobId as string)!;
+      await onPoolOfferJobSent(j.id, now, j.sentAt ?? j.claimedAt ?? now);
+    }
+    if (unstamped.length > 0) console.log(`[pool] ${unstamped.length} offer(s) taken as delivered: no report from the Pi`);
+    return unstamped.length;
+  } catch (err) {
+    console.error("[pool] stamping unreported deliveries failed:", err instanceof Error ? err.message : "failed");
+    return 0;
+  }
+}
+
+/** For the HOLDER's own tap: his offer's job is claimed or sent, so the DM
+ *  is with him (he has the link) even if no report arrived yet. */
+export async function stampIfOnItsWay(offerId: string, now: Date = new Date()): Promise<void> {
+  const o = await db.poolOffer.findUnique({ where: { id: offerId }, select: { sentAt: true, platformJobId: true } });
+  if (!o || o.sentAt || !o.platformJobId) return;
+  const j = await db.platformJob.findUnique({ where: { id: o.platformJobId }, select: { status: true, claimedAt: true, sentAt: true } });
+  if (!j || !["claimed", "sent", "unconfirmed"].includes(j.status)) return;
+  await onPoolOfferJobSent(o.platformJobId, now, j.sentAt ?? j.claimedAt ?? now);
 }
 
 export async function onPoolOfferJobFailed(jobId: string, now: Date = new Date()): Promise<void> {

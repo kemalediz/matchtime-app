@@ -47,6 +47,7 @@ import { acceptRefusal, pullOutResult } from "./round-rules";
 import { poolOffersOpenForClub } from "./flags";
 import { digitsAnswer, digitsMatch, type DigitsAnswer } from "./offer-proof-rules";
 import { isPoolOfferProof } from "./offer-token";
+import { stampIfOnItsWay } from "./dispatch";
 
 type Env = Record<string, string | undefined>;
 
@@ -142,18 +143,27 @@ export async function isOfferHolder(offerId: string, viewer: { sessionUserId: st
 export async function checkOfferDigits(offerId: string, digits: unknown, now: Date = new Date()): Promise<DigitsAnswer> {
   const o = await db.poolOffer.findUnique({ where: { id: offerId }, select: { userId: true } });
   if (!o) return "wrong";
-  const [user, wrongToday] = await Promise.all([
-    db.user.findUnique({ where: { id: o.userId }, select: { phoneNumber: true } }),
-    db.poolAttempt.count({ where: { kind: "offer-verify", key: offerId, createdAt: { gte: new Date(now.getTime() - 24 * 3600_000) } } }),
-  ]);
-  const answer = digitsAnswer({ match: digitsMatch(user?.phoneNumber, digits), wrongToday });
-  if (answer === "wrong") await db.poolAttempt.create({ data: { kind: "offer-verify", key: offerId, result: "wrong", createdAt: now } });
+  const user = await db.user.findUnique({ where: { id: o.userId }, select: { phoneNumber: true } });
+  // The count and the record in ONE transaction under a lock per offer
+  // (second review of #400, item 1): 50 guesses at once are judged one by
+  // one, so the lock closes after the fifth wrong one, not after all 50.
+  const answer = await db.$transaction(
+    async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`pool-verify:${offerId}`}))`;
+      const wrongToday = await tx.poolAttempt.count({ where: { kind: "offer-verify", key: offerId, createdAt: { gte: new Date(now.getTime() - 24 * 3600_000) } } });
+      const a = digitsAnswer({ match: digitsMatch(user?.phoneNumber, digits), wrongToday });
+      if (a === "wrong") await tx.poolAttempt.create({ data: { kind: "offer-verify", key: offerId, result: "wrong", createdAt: now } });
+      return a;
+    },
+    { maxWait: 20_000, timeout: 20_000 },
+  );
   if (answer !== "ok") console.log(`[pool] offer ${offerId}: digits ${answer}`);
   return answer;
 }
 
 export async function loadOfferPage(offerId: string, opts: { verified: boolean; now?: Date; env?: Env }): Promise<OfferPage | null> {
   const now = opts.now ?? new Date();
+  if (opts.verified) await stampIfOnItsWay(offerId, now);
   const o = await loadOffer(offerId);
   if (!o) return null;
   const profile = await profileOf(o.userId);
@@ -189,6 +199,8 @@ async function tellOrganisersOnce(o: LoadedOffer, key: string, text: string, now
 }
 
 export async function acceptOffer(offerId: string, now: Date = new Date(), env?: Env): Promise<OfferPageState> {
+  // He holds the link, so the DM reached him even if its report was lost.
+  await stampIfOnItsWay(offerId, now);
   const o = await loadOffer(offerId);
   if (!o) return "invalid";
   const profile = await profileOf(o.userId);
@@ -273,6 +285,8 @@ async function closeFilledRound(o: LoadedOffer, now: Date): Promise<void> {
 }
 
 export async function declineOffer(offerId: string, now: Date = new Date()): Promise<OfferPageState> {
+  // He holds the link, so the DM reached him even if its report was lost.
+  await stampIfOnItsWay(offerId, now);
   const o = await loadOffer(offerId);
   if (!o) return "invalid";
   if (!o.outcome && o.sentAt) {
@@ -288,6 +302,8 @@ export async function declineOffer(offerId: string, now: Date = new Date()): Pro
 }
 
 export async function pullOutOfOffer(offerId: string, now: Date = new Date()): Promise<OfferPageState> {
+  // He holds the link, so the DM reached him even if its report was lost.
+  await stampIfOnItsWay(offerId, now);
   const o = await loadOffer(offerId);
   if (!o) return "invalid";
   const profile = await profileOf(o.userId);
