@@ -17,6 +17,7 @@
  * Logs carry ids only.
  */
 import { db } from "./db";
+import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
 import { sendAdminNotice } from "./admin-channel";
 import { recordMatchTimeQuestion } from "./admin-group-log";
 import { servingClubWhere } from "./club-approval-state";
@@ -573,7 +574,7 @@ function requestCard(asker: CardClub, members: number, partner: CardClub): strin
 
 /** Live, non-guest members: what the card counts (plan 2.3). */
 function memberCount(orgId: string): Promise<number> {
-  return db.membership.count({ where: { orgId, leftAt: null, guestFromOrgId: null } });
+  return db.membership.count({ where: { orgId, leftAt: null, ...ORDINARY_MEMBER_WHERE } });
 }
 
 /**

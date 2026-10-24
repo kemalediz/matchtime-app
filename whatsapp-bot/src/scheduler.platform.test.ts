@@ -5,8 +5,7 @@
  *     bot is switched off; that is the bug the platform channel fixes (a
  *     sign-up code used to borrow the first bot-enabled club).
  *   - It runs BEFORE the clubs, so a sign-up code (someone is staring at a
- *     "check WhatsApp" screen) gets the minute's DM slot ahead of a
- *     reminder.
+ *     "check WhatsApp" screen) gets the DM slot ahead of a reminder.
  *   - It shares the ONE DM slot with the clubs: a platform DM and a club DM
  *     in the same tick means the club DM is held and released, exactly as
  *     two club DMs would be.
@@ -35,6 +34,8 @@ vi.mock("./api.js", () => ({
 }));
 
 const { initScheduler, stopScheduler } = await import("./scheduler.js");
+const { createDmPacer, _setDmPacerForTest } = await import("./dm-pacer.js");
+const { DEFAULT_DM_PACING } = await import("./dm-pacing.js");
 const { _test_resetOrgRefresh, notePolledClubSetVersion, noteSnapshotClubSetVersion, setOrgRefresher } = await import("./org-refresh.js");
 
 const GID = "447525334985-1607872139@g.us";
@@ -68,10 +69,15 @@ beforeEach(() => {
   releaseInstruction.mockClear();
   reportPlatformJob.mockClear();
   vi.spyOn(console, "log").mockImplementation(() => {});
+  // The default 60 s pacing, explicitly: these tests pin one DM per tick.
+  _setDmPacerForTest(
+    createDmPacer({ config: DEFAULT_DM_PACING, now: () => Date.now(), random: () => 0.5, store: null, log: () => {} }),
+  );
 });
 
 afterEach(() => {
   stopScheduler();
+  _setDmPacerForTest(null);
   _test_resetOrgRefresh();
   vi.useRealTimers();
   vi.restoreAllMocks();

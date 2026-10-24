@@ -43,6 +43,10 @@ export function isPublicPath(pathname: string): boolean {
     pathname.startsWith("/join/") ||
     pathname.startsWith("/r/") || // magic-link landing page does its own sign-in
     pathname.startsWith("/api/r/") || // short-code to token resolver (code is the secret)
+    // A pool offer's tap link (local player pool L5a): the signed token in
+    // the path is the access control (src/lib/pool/offer-token.ts, the
+    // prefix pinned by its test); opening it changes nothing.
+    pathname.startsWith("/play/offer/") ||
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/api/cron") ||
     pathname.startsWith("/api/whatsapp") ||

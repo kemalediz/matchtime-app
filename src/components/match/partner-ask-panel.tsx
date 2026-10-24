@@ -17,6 +17,12 @@
  *     "Cancel this ask".
  * The server decides everything again (`requestPartnerRound`,
  * `cancelPartnerRound`).
+ *
+ * The MatchTime player pool (L5a, 2026-10-24) is one more tick, shown
+ * only when the pool is open for the club: the band of players near the
+ * venue ("a few", "5+"), never who; once asked, how many were asked and
+ * how many said no. Ticked by default like the partners; the press is the
+ * organisers' approval (nobody is contacted before it).
  */
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
@@ -24,6 +30,8 @@ import { toast } from "sonner";
 import { Handshake } from "lucide-react";
 import { t } from "@/lib/i18n/t";
 import { cancelPartnerRoundAction, requestPartnerRoundAction } from "@/app/actions/partner-asks";
+import { poolCopy } from "@/lib/i18n/pool-offer";
+import type { PoolPanelData } from "@/lib/pool/panel";
 
 export interface PartnerAskPanelRow {
   partnershipId: string;
@@ -39,6 +47,8 @@ export interface PartnerAskPanelRound {
   wanted: number;
   placed: number;
   partners: string[];
+  /** The MatchTime player pool is asked in this round too. */
+  pool?: boolean;
 }
 
 const isOpen = (status: string | null) => status === "awaiting-approval" || status === "posted";
@@ -49,8 +59,14 @@ export function PartnerAskPanel(props: {
   placesOpen: number;
   rows: PartnerAskPanelRow[];
   rounds: PartnerAskPanelRound[];
+  pool?: PoolPanelData | null;
 }) {
   const s = t(props.language);
+  const ps = poolCopy(props.language);
+  const pool = props.pool ?? null;
+  const poolAskable = !!pool && !pool.gate && pool.band !== "none" && pool.ask?.status !== "open";
+  const [poolUnticked, setPoolUnticked] = useState(false);
+  const poolTicked = poolAskable && !poolUnticked;
   const router = useRouter();
   const [pending, start] = useTransition();
   const askable = props.rows.filter((r) => !r.paused && !isOpen(r.status));
@@ -84,12 +100,14 @@ export function PartnerAskPanel(props: {
     });
 
   const ask = () => {
-    if (tickedNow.length === 0) {
+    if (tickedNow.length === 0 && !poolTicked) {
       toast.error(s.xask_round_none_ticked);
       return;
     }
-    run(() => requestPartnerRoundAction(props.matchId, tickedNow, chosen));
+    run(() => requestPartnerRoundAction(props.matchId, tickedNow, chosen, poolTicked));
   };
+  const anyAskable = askable.length > 0 || poolAskable;
+  const anyTicked = tickedNow.length > 0 || poolTicked;
 
   return (
     <section className="bg-white rounded-xl border border-slate-200 p-4" data-testid="partner-ask-panel">
@@ -111,7 +129,7 @@ export function PartnerAskPanel(props: {
             >
               <div className="min-w-0">
                 <p className="text-sm text-slate-800">{s.xask_round_status({ wanted: round.wanted, placed: round.placed })}</p>
-                <p className="text-xs text-slate-500 break-words">{round.partners.join(", ")}</p>
+                <p className="text-xs text-slate-500 break-words">{[...round.partners, ...(round.pool ? [ps.pool_label] : [])].join(", ")}</p>
               </div>
               <button
                 type="button"
@@ -156,10 +174,40 @@ export function PartnerAskPanel(props: {
               )}
             </li>
           ))}
+          {pool && (
+            <li data-testid="pool-ask-row" data-band={pool.band} data-status={pool.ask?.status ?? "none"}>
+              {pool.gate === "no-venue" ? (
+                <p className="text-sm text-slate-500" data-testid="pool-ask-no-venue">
+                  {ps.panel_no_venue}
+                </p>
+              ) : pool.ask?.status === "open" ? (
+                <p className="text-sm text-slate-700" data-testid="pool-ask-status">
+                  {ps.pool_label}:{" "}
+                  {pool.ask.waitingForPartners ? ps.panel_partners_first : pool.ask.asked > 0 ? ps.panel_asked({ asked: pool.ask.asked, declined: pool.ask.declined }) : ps.panel_waiting}
+                </p>
+              ) : pool.band === "none" || pool.gate ? (
+                <p className="text-sm text-slate-500" data-testid="pool-ask-none">
+                  {ps.pool_label}: {ps.band_none}
+                </p>
+              ) : (
+                <label className="flex items-center gap-2 text-sm text-slate-800 min-h-10">
+                  <input
+                    type="checkbox"
+                    data-testid="pool-ask-tick"
+                    checked={!poolUnticked}
+                    disabled={pending || max <= 0}
+                    onChange={() => setPoolUnticked((v) => !v)}
+                    className="h-4 w-4"
+                  />
+                  {ps.pool_label} ({pool.band === "5+" ? ps.band_many : ps.band_few})
+                </label>
+              )}
+            </li>
+          )}
         </ul>
       </fieldset>
 
-      {askable.length > 0 &&
+      {anyAskable &&
         (max <= 0 ? (
           <p className="mt-3 text-sm text-slate-500" data-testid="partner-ask-no-places">
             {s.xask_refused_no_places}
@@ -185,13 +233,14 @@ export function PartnerAskPanel(props: {
             <button
               type="button"
               data-testid="partner-ask-button"
-              disabled={pending || tickedNow.length === 0}
+              disabled={pending || !anyTicked}
               onClick={ask}
               className="h-10 px-4 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium disabled:opacity-50"
             >
               {pending ? "…" : s.xask_round_button({ places: chosen })}
             </button>
-            {tickedNow.length > 1 && <p className="w-full text-xs text-slate-500">{s.xask_round_count_hint}</p>}
+            {tickedNow.length + (poolTicked ? 1 : 0) > 1 && <p className="w-full text-xs text-slate-500">{s.xask_round_count_hint}</p>}
+            {poolTicked && tickedNow.length > 0 && <p className="w-full text-xs text-slate-500">{ps.panel_partners_first}</p>}
           </div>
         ))}
     </section>

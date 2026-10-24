@@ -38,6 +38,7 @@
  * throws the minified `r`). It reads NOTHING off the client at
  * construction time, so a fake with throwing getters can still be wrapped.
  */
+import { warningFromWwebjsDisconnect } from "../dm-pacing.js";
 import pkg from "whatsapp-web.js";
 import type { Client, Message } from "whatsapp-web.js";
 const { Client: WwebClient, LocalAuth, Poll, MessageMedia } = pkg;
@@ -130,6 +131,16 @@ export function makeWwebjsDriver(client: WwebjsClientLike): WaDriver {
 
     onClose(handler) {
       client.on("disconnected", (reason: string) => handler(reason));
+    },
+
+    // Slice L5a: a TOS block, a logout or an unpairing drops the DM pacer
+    // to one a minute. The only account signal this library surfaces; a
+    // refused send here carries no code we can read.
+    onAccountWarning(handler) {
+      client.on("disconnected", (reason: string) => {
+        const w = warningFromWwebjsDisconnect(reason);
+        if (w) handler(w);
+      });
     },
 
     // ── Identity ─────────────────────────────────────────────────────

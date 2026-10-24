@@ -39,7 +39,7 @@ describe("loadGuestStandings", () => {
   it("reads only the home club's ratings, of its current ordinary members", async () => {
     await loadGuestStandings([{ userId: "c1", homeOrgId: "fmc" }]);
     expect(dbMock.membership.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { orgId: { in: ["fmc"] }, leftAt: null, guestFromOrgId: null } }),
+      expect.objectContaining({ where: { orgId: { in: ["fmc"] }, leftAt: null, guestMatchId: null } }),
     );
     const where = dbMock.rating.findMany.mock.calls[0][0].where;
     expect(where.match).toEqual({ activity: { orgId: "fmc" } });

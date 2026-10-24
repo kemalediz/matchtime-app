@@ -72,8 +72,17 @@ describe("GET /api/players/:id and a partner club's guest", () => {
     expect(r.body.player).not.toHaveProperty("phoneNumber");
   });
 
+  it("nor a POOL guest's (no home club: guestFromOrgId null, guestMatchId set)", async () => {
+    membershipFindFirst.mockResolvedValue({ id: "m", guestVia: "pool", guestFromOrgId: null, guestMatchId: "m-fnf", leftAt: null });
+    const r = await call("ali");
+    expect(r.status).toBe(200);
+    expect(r.body.player?.name).toBe("Ali K");
+    expect(r.body.player).not.toHaveProperty("phoneNumber");
+    expect(r.body.player).not.toHaveProperty("email");
+  });
+
   it("an ordinary member's contact details are shown to the club's admin, as before", async () => {
-    membershipFindFirst.mockResolvedValue({ id: "m", guestFromOrgId: null });
+    membershipFindFirst.mockResolvedValue({ id: "m", guestFromOrgId: null, guestMatchId: null });
     const r = await call("ali");
     expect(r.body.player?.phoneNumber).toBe("+447700900111");
   });
@@ -96,6 +105,15 @@ describe("updatePlayerPhone and a guest", () => {
     expect(r.ok).toBe(false);
     expect(!r.ok && r.error).toMatch(/guest/i);
   });
+
+  it("nor a pool guest's", async () => {
+    authMock.mockResolvedValue({ user: { id: "fnf-admin" } });
+    membershipFindUnique.mockResolvedValue({ userId: "ali", guestFromOrgId: null, guestMatchId: "m-fnf" });
+    const { updatePlayerPhone } = await import("@/app/actions/players");
+    const r = await updatePlayerPhone("ali", "fnf", "+447700900999");
+    expect(r.ok).toBe(false);
+    expect(!r.ok && r.error).toMatch(/guest/i);
+  });
 });
 
 describe("the money-collector candidates", () => {
@@ -103,6 +121,7 @@ describe("the money-collector candidates", () => {
     const { readFileSync } = await import("node:fs");
     const { join } = await import("node:path");
     const src = readFileSync(join(__dirname, "..", "org", "settings", "route.ts"), "utf8");
-    expect(src).toMatch(/where: \{ orgId: org\.id, leftAt: null, guestFromOrgId: null, user: \{ phoneNumber: \{ not: null \} \} \}/);
+    // Any guest, partner or pool: the shared fragment (guest-membership.ts).
+    expect(src).toMatch(/where: \{ orgId: org\.id, leftAt: null, \.\.\.ORDINARY_MEMBER_WHERE, user: \{ phoneNumber: \{ not: null \} \} \}/);
   });
 });

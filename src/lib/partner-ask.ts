@@ -68,6 +68,8 @@ import {
 } from "./partner-ask-rules";
 import type { PartnerAskOutcome } from "./partner-ask-words-rules";
 import { effectiveAskTime, type ClubRole } from "./club-partnership-rules";
+import { loadPoolPanel, type PoolPanelData } from "./pool/panel";
+import { cancelPoolAsk } from "./pool/round";
 
 /** The ask ref of the approval question in the partner's admin group. */
 export const partnerAskRef = (askId: string): string => `xask:${askId}`;
@@ -602,14 +604,27 @@ export interface PartnerAskPanelData {
     /** The round of its OPEN ask, or null. */
     roundKey: string | null;
   }>;
-  /** Each round still open: its number, how many have a place, who. */
-  rounds: Array<{ roundKey: string; wanted: number; placed: number; partners: string[] }>;
+  /** Each round still open: its number, how many have a place, who.
+   *  `pool`: the MatchTime player pool is asked in it too (L5a). */
+  rounds: Array<{ roundKey: string; wanted: number; placed: number; partners: string[]; pool: boolean }>;
+  /** The MatchTime player pool (L5a): null unless the pool is open for
+   *  this club (the switch and its flag), so the panel is unchanged for
+   *  every club today. */
+  pool: PoolPanelData | null;
 }
 
 /** The asks of this club's next match, for the match page (P4): the open
  *  places, a line per partner (what an organiser can tick, a paused one,
  *  or what is already open), and each open round with its number. */
-export async function loadPartnerAskPanel(matchId: string, askerOrgId: string): Promise<PartnerAskPanelData | null> {
+export async function loadPartnerAskPanel(
+  matchId: string,
+  askerOrgId: string,
+  opts: { poolEnv?: Record<string, string | undefined>; now?: Date } = {},
+): Promise<PartnerAskPanelData | null> {
+  const pool = await loadPoolPanel(matchId, askerOrgId, { env: opts.poolEnv, now: opts.now }).catch((err: unknown) => {
+    console.error(`[partner-ask] match ${matchId}: the pool panel was not read:`, err instanceof Error ? err.message : "failed");
+    return null;
+  });
   const [settings, partnerships, asks, match] = await Promise.all([
     loadPartnerAskSettings(askerOrgId),
     db.clubPartnership.findMany({
@@ -624,9 +639,11 @@ export async function loadPartnerAskPanel(matchId: string, askerOrgId: string): 
     }),
     db.match.findUnique({ where: { id: matchId }, select: { maxPlayers: true } }),
   ]);
-  if (!settings || settings.when === "off" || partnerships.length === 0 || !match) return null;
+  if (!match) return null;
+  const partnersOn = !!settings && settings.when !== "off" && partnerships.length > 0;
+  if (!partnersOn && !pool) return null;
   const nameOf = new Map(partnerships.map((p) => [p.partnerOrgId, p.partnerOrg.name]));
-  const rows = partnerships.map((p) => {
+  const rows = (partnersOn ? partnerships : []).map((p) => {
     const latest = asks.find((a) => a.partnerOrgId === p.partnerOrgId) ?? null;
     const open = latest && isOpenAsk(latest.status);
     return {
@@ -643,9 +660,19 @@ export async function loadPartnerAskPanel(matchId: string, askerOrgId: string): 
   for (const key of [...new Set(openAsks.map((a) => roundKey(a)))]) {
     const inRound = openAsks.filter((a) => roundKey(a) === key);
     const fill = await loadRoundFill({ ...inRound[0], matchId });
-    rounds.push({ roundKey: key, wanted: fill.wanted, placed: fill.placed, partners: inRound.map((a) => nameOf.get(a.partnerOrgId) ?? "") });
+    rounds.push({
+      roundKey: key,
+      wanted: fill.wanted,
+      placed: fill.placed,
+      partners: inRound.map((a) => nameOf.get(a.partnerOrgId) ?? ""),
+      pool: pool?.ask?.status === "open" && pool.ask.roundKey === key,
+    });
   }
-  return { placesOpen: await placesOpen(matchId, match.maxPlayers), rows, rounds };
+  // A round that asks only the pool (L5a): its own line.
+  if (pool?.ask?.status === "open" && !rounds.some((r) => r.roundKey === pool.ask!.roundKey)) {
+    rounds.push({ roundKey: pool.ask.roundKey, wanted: pool.ask.wanted, placed: pool.ask.placed, partners: [], pool: true });
+  }
+  return { placesOpen: await placesOpen(matchId, match.maxPlayers), rows, rounds, pool };
 }
 
 const isOpenAsk = (status: string): boolean => (OPEN_ASK_STATUSES as readonly string[]).includes(status);
@@ -820,6 +847,12 @@ export async function cancelPartnerRound(args: {
   for (const ask of asks) {
     if (await closeAsk(ask, "organiser-cancelled", now)) cancelled++;
   }
+  // The round's pool ask, if it has one (L5a): its unsent offers are
+  // cancelled and nobody else is offered the place.
+  cancelled += await cancelPoolAsk({ orgId: args.askerOrgId, matchId: args.matchId, roundKey: args.roundKey, now }).catch((err: unknown) => {
+    console.error(`[partner-ask] round ${args.roundKey}: the pool ask was not cancelled:`, err instanceof Error ? err.message : "failed");
+    return 0;
+  });
   console.log(`[partner-ask] round ${args.roundKey} of match ${args.matchId}: ${cancelled} ask(s) cancelled by ${args.userId}`);
   return { ok: cancelled > 0, cancelled };
 }

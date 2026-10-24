@@ -147,6 +147,7 @@ import {
   buildUnpaidTailText,
 } from "./scheduler-copy";
 import { withPartnerOffer } from "./partner-ask-rules";
+import { withPoolOffer } from "./pool/offer-copy";
 import { organisersAnnounce } from "./list-announcer";
 import { buildProvisionalReviewNotice } from "./provisional-review-copy";
 import {
@@ -530,7 +531,7 @@ export async function computeDuePosts(
   /** `replyPriority`: DM_REPLY_PRIORITY_ENABLED as the due-posts route
    *  read it (src/lib/dm-reply-priority.ts). Off or omitted: today's
    *  BotJob query and today's order, exactly. */
-  opts: { replyPriority?: boolean } = {},
+  opts: { replyPriority?: boolean; poolEnv?: Record<string, string | undefined> } = {},
 ): Promise<DuePostsResult | null> {
   const org = await db.organisation.findFirst({
     where: { whatsappGroupId: groupId, whatsappBotEnabled: true },
@@ -1004,7 +1005,7 @@ export async function computeDuePosts(
       : signupMonth
         ? { monthId: signupMonth.id, seeded: false, signup: true, members: [], paygPricePence: org.paygPricePence ?? null }
         : null;
-    await computeForMatch(m, now, sentKeys, out, groupId, matches, features, admin, monthly, cancelledHolds);
+    await computeForMatch(m, now, sentKeys, out, groupId, matches, features, admin, monthly, cancelledHolds, opts.poolEnv);
   }
 
   // ── "Rate your players before the first teams" (2026-10-15) ─────────
@@ -1235,6 +1236,9 @@ async function computeForMatch(
   /** CANCELLED matches of the club whose day may not be over. Read ONLY by
    *  the next-upcoming gate of the announcement and the 17:00 post. */
   cancelledHolds: MatchWithIncludes[] = [],
+  /** The pool switch as the due-posts request read it (local player pool
+   *  L5a): the short-squad notice's pool line. */
+  poolEnv?: Record<string, string | undefined>,
 ) {
   /**
    * The composed chase, or null for the static copy: a rolling-squad or
@@ -1371,6 +1375,16 @@ async function computeForMatch(
     (partnerOfferRead ??= import("./partner-ask")
       .then((x) => x.partnerOfferFor(m.activity.orgId, { id: matchId, date: m.date }, now))
       .catch(() => null));
+  /** The MatchTime player pool's band for this match (L5a), read once, and
+   *  only when a short-squad notice goes to the organisers. Null (the pool
+   *  closed for the club, no venue, nobody near, an ask open): the notice
+   *  is exactly as before. */
+  let poolBandRead: Promise<"few" | "5+" | null> | null = null;
+  const poolBand = (): Promise<"few" | "5+" | null> =>
+    (poolBandRead ??= import("./pool/panel")
+      .then((x) => x.poolNoticeBand(m.activity.orgId, { id: matchId, date: m.date }, now, poolEnv))
+      .then((b) => (b === "few" || b === "5+" ? b : null))
+      .catch(() => null));
   async function toOrganisers(
     key: string,
     reason: OrganiserListReason,
@@ -1378,12 +1392,13 @@ async function computeForMatch(
       dropOutTime?: string | null;
       unpaid?: number | null;
       partnerOffer?: string[] | null;
+      poolBand?: "few" | "5+" | null;
       leftOut?: Array<{ name: string | null }> | null;
     } = {},
   ): Promise<void> {
     const channel = await admin.getChannel();
     if (!channel) return;
-    const { partnerOffer, ...listExtra } = extra;
+    const { partnerOffer, poolBand: band, ...listExtra } = extra;
     out.push(
       ...(await adminNoticeInstructions({
         channel,
@@ -1396,20 +1411,25 @@ async function computeForMatch(
           // A partner club to ask (cross-club ask, slice S5): the notice
           // ends with one line and links the match page. None: the
           // notice is exactly as before (`withPartnerOffer`).
-          ...(partnerOffer ? { nextPath: `/matches/${matchId}` } : {}),
+          ...(partnerOffer || band ? { nextPath: `/matches/${matchId}` } : {}),
           text: (link: string) =>
-            withPartnerOffer(
-              buildOrganiserListUpdate({
-                reason,
-                activityName: activity.name,
-                whenLabel: dayTimeLabel(lang, m.date),
-                confirmed: confirmed.map((a) => a.user),
-                bench: bench.map((a) => a.user),
-                maxPlayers,
+            withPoolOffer(
+              withPartnerOffer(
+                buildOrganiserListUpdate({
+                  reason,
+                  activityName: activity.name,
+                  whenLabel: dayTimeLabel(lang, m.date),
+                  confirmed: confirmed.map((a) => a.user),
+                  bench: bench.map((a) => a.user),
+                  maxPlayers,
+                  lang,
+                  ...listExtra,
+                }),
+                partnerOffer ?? null,
+                link,
                 lang,
-                ...listExtra,
-              }),
-              partnerOffer ?? null,
+              ),
+              band ?? null,
               link,
               lang,
             ),
@@ -2655,7 +2675,7 @@ async function computeForMatch(
       ) {
         // The organisers announce: the short squad goes to them. (An admin
         // GROUP's hours start at 09:00, so there it waits for the 3h chase.)
-        if (organisers) await toOrganisers(key, "chase", { partnerOffer: await partnerOffer() });
+        if (organisers) await toOrganisers(key, "chase", { partnerOffer: await partnerOffer(), poolBand: await poolBand() });
         else {
           const chase = await chaseText(
             "match-day-morning",
@@ -2678,7 +2698,7 @@ async function computeForMatch(
         hoursUntilMatch <= 4 &&
         hoursUntilMatch >= 3
       ) {
-        if (organisers) await toOrganisers(key, "chase", { partnerOffer: await partnerOffer() });
+        if (organisers) await toOrganisers(key, "chase", { partnerOffer: await partnerOffer(), poolBand: await poolBand() });
         else {
           const chase = await chaseText("chase-pre-kickoff", () =>
             buildChasePreKickoffFallback({
@@ -2709,7 +2729,7 @@ async function computeForMatch(
       hoursUntilMatch > 0.5 &&
       (m.status === "TEAMS_PUBLISHED" || m.status === "TEAMS_GENERATED" || m.status === "UPCOMING")
     ) {
-      if (organisers) await toOrganisers(key, "chase", { partnerOffer: await partnerOffer() });
+      if (organisers) await toOrganisers(key, "chase", { partnerOffer: await partnerOffer(), poolBand: await poolBand() });
       else {
         const chase = await chaseText("pre-kickoff-short", () =>
           buildPreKickoffShortFallback({

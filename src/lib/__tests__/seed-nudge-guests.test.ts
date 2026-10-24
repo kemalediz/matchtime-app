@@ -41,4 +41,14 @@ describe("loadSeedState", () => {
     expect(s.confirmed).toEqual({ total: 1, seeded: 1 });
     expect(s.active).toEqual({ total: 1, seeded: 1 });
   });
+
+  it("a POOL guest (no home club, L5a) is left out of both counts too", async () => {
+    dbMock.membership.findMany.mockResolvedValue([
+      { userId: "a", seedRating: 6, leftAt: null, guestFromOrgId: null, guestMatchId: null },
+      { userId: "p", seedRating: null, leftAt: null, guestFromOrgId: null, guestMatchId: "m1" },
+    ]);
+    const s = await loadSeedState("org", ["a", "p"]);
+    expect(s.confirmed).toEqual({ total: 1, seeded: 1 });
+    expect(s.active).toEqual({ total: 1, seeded: 1 });
+  });
 });

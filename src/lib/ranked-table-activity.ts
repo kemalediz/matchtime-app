@@ -54,6 +54,8 @@
  * with time as the axis instead of count.
  */
 
+import { GUEST_MEMBER_WHERE, isGuestMembership } from "@/lib/guest-membership";
+
 /**
  * How long a player can go without a match before they come out of the
  * ranked tables.
@@ -348,21 +350,21 @@ export function formatLastPlayed(d: Date): string {
 interface GuestReader {
   membership: {
     findMany(args: {
-      where: { orgId: string; guestFromOrgId: { not: null } };
-      select: { userId: true; guestFromOrgId: true };
-    }): Promise<Array<{ userId: string; guestFromOrgId: string | null }>>;
+      where: { orgId: string; guestMatchId: { not: null } };
+      select: { userId: true; guestMatchId: true };
+    }): Promise<Array<{ userId: string; guestMatchId: string | null }>>;
   };
 }
 
 /**
- * The club's guests from partner clubs, current or past (cross-club ask,
- * review L3), for `buildRankedRoster`'s `excluded`. Never fails a table: a
+ * The club's guests, from partner clubs or the player pool, current or
+ * past (cross-club ask, review L3; pool, L5a), for `buildRankedRoster`'s `excluded`. Never fails a table: a
  * read error (or a database before the migration) reads as none.
  */
 export async function loadGuestUserIds(db: GuestReader, orgId: string): Promise<Set<string>> {
   const rows = await Promise.resolve()
-    .then(() => db.membership.findMany({ where: { orgId, guestFromOrgId: { not: null } }, select: { userId: true, guestFromOrgId: true } }))
-    .catch(() => [] as Array<{ userId: string; guestFromOrgId: string | null }>);
+    .then(() => db.membership.findMany({ where: { orgId, ...GUEST_MEMBER_WHERE }, select: { userId: true, guestMatchId: true } }))
+    .catch(() => [] as Array<{ userId: string; guestMatchId: string | null }>);
   // Filtered again here: only a row that says it is a guest's counts.
-  return new Set((rows ?? []).filter((r) => !!r?.guestFromOrgId).map((r) => r.userId));
+  return new Set((rows ?? []).filter((r) => isGuestMembership(r)).map((r) => r.userId));
 }

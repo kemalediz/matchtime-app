@@ -90,7 +90,7 @@ describe("loadCrossClubLinkFacts", () => {
     });
     expect(tx.membership.findMany).toHaveBeenCalledWith({
       where: { userId: "keep" },
-      select: { orgId: true, leftAt: true, guestFromOrgId: true, org: { select: { name: true } } },
+      select: { orgId: true, leftAt: true, guestFromOrgId: true, guestMatchId: true, org: { select: { name: true } } },
     });
     expect(f.keep).toEqual({
       id: "keep",
@@ -101,7 +101,7 @@ describe("loadCrossClubLinkFacts", () => {
     });
     expect(f.drop).toEqual({
       id: "drop",
-      membershipInOrg: { guestFromOrgId: null },
+      membershipInOrg: { guestFromOrgId: null, guestMatchId: null },
       otherClubMemberships: 0,
       rowsOutsideOrg: 0,
       hasOwnSignIn: false,

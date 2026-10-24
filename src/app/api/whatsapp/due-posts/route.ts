@@ -58,6 +58,7 @@
  * NULL `approvedAt` and is never capped. Fails open, like the guards above.
  */
 import { NextResponse } from "next/server";
+import { poolEnvForApiRequest } from "@/lib/pool/switch-env";
 import { db } from "@/lib/db";
 import { computeDuePosts, sweepExpiredBenchConfirmations, type DueInstruction } from "@/lib/bot-scheduler";
 import { badgeLedgerOf, claimBadgePost, withoutServerBookkeeping } from "@/lib/badge-announcement-scheduler";
@@ -378,6 +379,7 @@ export async function GET(request: Request) {
   const replyPriority = dmReplyPriorityEnabledForApiRequest(request);
   const result = await computeDuePosts(groupId, nowOverride, piCaps, runningMonths, liveMonths, {
     replyPriority,
+    poolEnv: poolEnvForApiRequest(request),
   });
   if (!result) {
     return NextResponse.json({ instructions: previewOnly ? [] : await bridgePlatformDmsForLegacyPi(request) });

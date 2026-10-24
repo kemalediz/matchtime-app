@@ -1,4 +1,5 @@
 import { db } from "./db";
+import { ORDINARY_MEMBER_WHERE, isGuestMembership } from "@/lib/guest-membership";
 import { cookies } from "next/headers";
 
 export async function getCurrentOrgId(): Promise<string | null> {
@@ -74,7 +75,7 @@ export async function getUserOrg(userId: string) {
       include: { org: true },
     });
     // Never a club he is only a guest of (cross-club ask, review M6).
-    if (membership && membership.leftAt === null && !membership.guestFromOrgId) return membership;
+    if (membership && membership.leftAt === null && !isGuestMembership(membership)) return membership;
 
     // Superadmin → synthesise a membership-shaped result for any org in DB
     if (superuser) {
@@ -95,7 +96,7 @@ export async function getUserOrg(userId: string) {
 
   // Fallback 1: user's first real membership
   const membership = await db.membership.findFirst({
-    where: { userId, leftAt: null, guestFromOrgId: null },
+    where: { userId, leftAt: null, ...ORDINARY_MEMBER_WHERE },
     include: { org: true },
     orderBy: { createdAt: "asc" },
   });

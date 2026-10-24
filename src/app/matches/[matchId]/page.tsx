@@ -26,6 +26,7 @@ import { buildWeekList } from "@/lib/monthly-week-rules";
 import { PartnerAskPanel } from "@/components/match/partner-ask-panel";
 import { PartnerGuestsPanel } from "@/components/match/partner-guests-panel";
 import { loadPartnerAskPanel } from "@/lib/partner-ask";
+import { poolEnvForRequest } from "@/lib/pool/switch-env";
 import { organisersPickMom } from "@/lib/mom-chooser";
 import { loadMatchGuestCards } from "@/lib/pool/guest-report-loader";
 import { normaliseLang } from "@/lib/i18n/lang";
@@ -155,7 +156,7 @@ export default async function MatchDetailPage({
   // active partner and asking switched on, for a match still to play.
   const partnerAskPanel =
     isAdmin && ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"].includes(match.status)
-      ? await loadPartnerAskPanel(matchId, match.activity.orgId).catch(() => null)
+      ? await loadPartnerAskPanel(matchId, match.activity.orgId, { poolEnv: await poolEnvForRequest() }).catch(() => null)
       : null;
   // Guests from partner clubs on this match (S4): name and club, never a
   // phone, with "Add to <club>". Admins only; none for every club today.
@@ -556,13 +557,14 @@ export default async function MatchDetailPage({
         <PartnerGuestsPanel matchId={matchId} clubName={match.activity.org.name} language={match.activity.org.language} rows={partnerGuestRows} />
       )}
 
-      {partnerAskPanel && partnerAskPanel.rows.length > 0 && (
+      {partnerAskPanel && (partnerAskPanel.rows.length > 0 || partnerAskPanel.pool) && (
         <PartnerAskPanel
           matchId={matchId}
           language={match.activity.org.language}
           placesOpen={partnerAskPanel.placesOpen}
           rows={partnerAskPanel.rows}
           rounds={partnerAskPanel.rounds}
+          pool={partnerAskPanel.pool}
         />
       )}
 

@@ -35,8 +35,10 @@ describe("the scheduler adds it only on the organisers' short-squad notices", ()
   it("every partner offer is passed to toOrganisers, never to a players' group post", () => {
     const calls = src.match(/partnerOffer: await partnerOffer\(\)/g) ?? [];
     expect(calls).toHaveLength(3);
+    expect(src.match(/poolBand: await poolBand\(\)/g) ?? []).toHaveLength(3);
     for (const line of src.split("\n").filter((l) => l.includes("partnerOffer: await partnerOffer()"))) {
-      expect(line).toMatch(/if \(organisers\) await toOrganisers\(key, "chase", \{ partnerOffer: await partnerOffer\(\) \}\);/);
+      // The pool's band rides on the same organiser-only calls (L5a).
+      expect(line).toMatch(/if \(organisers\) await toOrganisers\(key, "chase", \{ partnerOffer: await partnerOffer\(\), poolBand: await poolBand\(\) \}\);/);
     }
   });
 });

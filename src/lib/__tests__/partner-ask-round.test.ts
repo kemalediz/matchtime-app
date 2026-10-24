@@ -329,7 +329,8 @@ describe("loadPartnerAskPanel", () => {
           { partnershipId: "p1", partnerName: "Sutton FC", status: "posted", volunteers: 2, paused: false, roundKey: "r1" },
           { partnershipId: "p2", partnerName: "Cheam", status: null, volunteers: 0, paused: true, roundKey: null },
         ],
-        rounds: [{ roundKey: "r1", wanted: 2, placed: 1, partners: ["Sutton FC"] }],
+        rounds: [{ roundKey: "r1", wanted: 2, placed: 1, partners: ["Sutton FC"], pool: false }],
+        pool: null,
       });
     } finally {
       vi.unstubAllEnvs();

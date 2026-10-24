@@ -10,6 +10,7 @@
  * Authorisation is the CALLER's job (org admin/owner). This lib just does
  * the work for a given orgId.
  */
+import { GUEST_MEMBER_WHERE } from "@/lib/guest-membership";
 import { db } from "./db";
 import { recruitNoMatchRefusal, buildRecruitFullSquadRefusal } from "./group-copy";
 import { buildFullSquadBenchInvite } from "./bench-offer-copy";
@@ -419,9 +420,10 @@ export async function inviteRecentPlayers(
   const inviteOptedOut = new Set(
     (
       await db.membership.findMany({
-        // Opted out, or a guest from a partner club, current or past
-        // (cross-club ask, S4): never DM'd for this club's later games.
-        where: { orgId, OR: [{ subMatchInviteDm: false }, { guestFromOrgId: { not: null } }] },
+        // Opted out, or a guest (a partner club's or the player pool's),
+        // current or past (cross-club ask, S4; pool, L5a): never DM'd for
+        // this club's later games.
+        where: { orgId, OR: [{ subMatchInviteDm: false }, GUEST_MEMBER_WHERE] },
         select: { userId: true },
       })
     ).map((mem) => mem.userId),

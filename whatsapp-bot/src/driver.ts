@@ -35,6 +35,7 @@
  * silently switch off the bot's only off-Pi health signal. Each member
  * below says whether it may throw.
  */
+import type { AccountWarning } from "./dm-pacing.js";
 import type { ReactionOutcome } from "./react-with-id.js";
 import type { GroupPostability } from "./group-postability.js";
 
@@ -192,6 +193,15 @@ export interface WaDriver {
 
   /** The line is down. The reason is logged, not branched on. */
   onClose(handler: (reason: string) => void): void;
+
+  /**
+   * WhatsApp showed a warning about the ACCOUNT (a restriction notice, a
+   * refused send that names a rate limit or a restriction, a ban or an
+   * unlink). Slice L5a: index.ts hands it to the DM pacer, which drops to
+   * one DM a minute for 24 hours. Optional so a test double need not
+   * implement it. Fired synchronously; a handler must not throw.
+   */
+  onAccountWarning?(handler: (w: AccountWarning) => void): void;
 
   // ── Identity ───────────────────────────────────────────────────────
 

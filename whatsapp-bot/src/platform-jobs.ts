@@ -20,10 +20,12 @@
  *            The server puts it back in the queue.
  *
  * ── Pacing ───────────────────────────────────────────────────────────
- * A DM takes the SAME one-a-minute slot as a club DM (`takeDmSlot`, owned
- * by the scheduler): WhatsApp restricted the number for 21 hours after
- * about 56 DMs in quick succession. Leaving a group is not a message and is
- * not paced.
+ * A DM takes the SAME slot as a club DM (`takeDmSlot`, the scheduler's
+ * per-tick gate over `dm-pacer.ts`): WhatsApp restricted the number for 21
+ * hours after about 56 DMs in quick succession. The gap is 60 s by default
+ * and about 10 s once configured (slice L5a); the gate may wait a few
+ * seconds for the slot inside the tick before it answers, so this awaits
+ * it. Leaving a group is not a message and is not paced.
  *
  * ── Backward compatibility ───────────────────────────────────────────
  * Against a server that predates slice 3 the endpoint 404s: `fetchJobs`
@@ -40,8 +42,11 @@ export interface PlatformPollDeps {
   /** The claimed jobs, or null when the server has none to give or cannot answer. */
   fetchJobs(): Promise<PlatformJob[] | null>;
   report(r: PlatformJobReport): Promise<void>;
-  /** Take the shared DM slot if it is open. False means "held". */
-  takeDmSlot(label: string): boolean;
+  /**
+   * Take the shared DM slot, possibly after a short wait inside the tick.
+   * True: the slot is reserved for this DM, send it. False: "held".
+   */
+  takeDmSlot(label: string): boolean | Promise<boolean>;
   sendTimeoutMs: number;
   log?(line: string): void;
   error?(line: string, err?: unknown): void;
@@ -88,7 +93,7 @@ export async function runPlatformJobs(deps: PlatformPollDeps): Promise<PlatformP
         await report({ id, outcome: "failed", error: "malformed job: a DM with no phone or no text" });
         continue;
       }
-      if (!deps.takeDmSlot(`platform DM ${id}`)) {
+      if (!(await deps.takeDmSlot(`platform DM ${id}`))) {
         out.released++;
         await report({ id, outcome: "release" });
         continue;

@@ -1,5 +1,6 @@
 "use server";
 
+import { isGuestMembership } from "@/lib/guest-membership";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { onboardingSchema, playerPositionsSchema } from "@/lib/validations";
@@ -426,13 +427,13 @@ export async function createPlayer(
     if (existing) {
       const mem = await db.membership.findUnique({
         where: { userId_orgId: { userId: existing.id, orgId } },
-        select: { id: true, leftAt: true, guestFromOrgId: true },
+        select: { id: true, leftAt: true, guestMatchId: true },
       });
       // The number already belongs to somebody who is not this club's
-      // member (another club, a partner club's guest, or no club yet).
+      // member (another club, a guest here, or no club yet).
       // Never attach them silently: the answer names nobody and no club
       // (player-account-guard.ts).
-      if (!mem || mem.guestFromOrgId) return { ok: false, error: s.pg_err_number_on_matchtime };
+      if (!mem || isGuestMembership(mem)) return { ok: false, error: s.pg_err_number_on_matchtime };
       // Backfill a name if the record had none, only on a record we own.
       if (name && !existing.name && (await isClubOwnedUser(existing.id, orgId))) {
         await db.user.update({ where: { id: existing.id }, data: { name } });
@@ -636,12 +637,12 @@ async function updatePlayerPhoneInner(
 
   const membership = await db.membership.findUnique({
     where: { userId_orgId: { userId, orgId } },
-    select: { userId: true, guestFromOrgId: true },
+    select: { userId: true, guestMatchId: true },
   });
   if (!membership) return { ok: false, error: (await clubStrings(orgId)).s.phone_err_not_member };
-  // A partner club's guest (cross-club ask, review H1): his number is not
-  // this club's to see or to set.
-  if (membership.guestFromOrgId) return { ok: false, error: s.phone_err_guest };
+  // A guest, a partner club's or the player pool's (cross-club ask, review
+  // H1; pool, L5a): his number is not this club's to see or to set.
+  if (isGuestMembership(membership)) return { ok: false, error: s.phone_err_guest };
   // A number is a sign-in (verifyPhoneSignIn): only a record this club
   // owns may have it changed by an admin (player-account-guard.ts, #314).
   // This runs BEFORE the cross-club link offer below, so a link can only
@@ -703,9 +704,9 @@ async function updatePlayerPhoneInner(
       if (colliding && colliding.id !== userId && !(await isClubOwnedUser(colliding.id, orgId))) {
         const here = await db.membership.findUnique({
           where: { userId_orgId: { userId: colliding.id, orgId } },
-          select: { guestFromOrgId: true },
+          select: { guestMatchId: true },
         });
-        if (here && !here.guestFromOrgId) {
+        if (here && !isGuestMembership(here)) {
           return { ok: false, error: s.phone_err_taken_here({ name: firstNameOf(colliding.name) }) };
         }
         return { ok: false, error: s.phone_err_taken };
@@ -1014,9 +1015,9 @@ async function ensureOrgPlayer(
     // user id must not attach a stranger (player-account-guard.ts).
     const mem = await db.membership.findUnique({
       where: { userId_orgId: { userId: u.id, orgId } },
-      select: { guestFromOrgId: true, leftAt: true },
+      select: { guestMatchId: true, leftAt: true },
     });
-    if (!mem || (mem.guestFromOrgId && mem.leftAt)) return { ok: false, error: s.pg_err_number_on_matchtime };
+    if (!mem || (isGuestMembership(mem) && mem.leftAt)) return { ok: false, error: s.pg_err_number_on_matchtime };
     await ensureMembership(u.id, orgId);
     return { ok: true, userId: u.id, created: false };
   }
@@ -1031,9 +1032,9 @@ async function ensureOrgPlayer(
       // is not this club's member attaches nobody and names nobody.
       const mem = await db.membership.findUnique({
         where: { userId_orgId: { userId: existing.id, orgId } },
-        select: { guestFromOrgId: true },
+        select: { guestMatchId: true },
       });
-      if (!mem || mem.guestFromOrgId) return { ok: false, error: s.pg_err_number_on_matchtime };
+      if (!mem || isGuestMembership(mem)) return { ok: false, error: s.pg_err_number_on_matchtime };
       if (name && !existing.name && (await isClubOwnedUser(existing.id, orgId))) {
         await db.user.update({ where: { id: existing.id }, data: { name } });
       }

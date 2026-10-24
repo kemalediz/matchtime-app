@@ -18,6 +18,7 @@
  * Who may call it (an owner or admin of `orgId`) is proven by the caller.
  */
 import { db } from "./db";
+import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
 import { isClubApproved } from "./club-approval-state";
 import {
   DEFAULT_RADIUS_MILES,
@@ -64,7 +65,7 @@ export const NEARBY_CLUB_SELECT = {
     where: { isActive: true },
     select: { dayOfWeek: true, time: true, sport: { select: { playersPerTeam: true } }, venueRef: VENUE_FIELDS },
   },
-  _count: { select: { memberships: { where: { leftAt: null, guestFromOrgId: null } } } },
+  _count: { select: { memberships: { where: { leftAt: null, ...ORDINARY_MEMBER_WHERE } } } },
 } as const;
 
 interface VenueRow {
@@ -211,7 +212,7 @@ async function loadRegularPlayers(orgIds: string[], now: Date): Promise<Map<stri
       FROM last l
       JOIN "Attendance" at ON at."matchId" = l.id AND at.status = 'CONFIRMED'
       JOIN "Membership" ms ON ms."userId" = at."userId" AND ms."orgId" = l."orgId"
-                          AND ms."leftAt" IS NULL AND ms."guestFromOrgId" IS NULL
+                          AND ms."leftAt" IS NULL AND ms."guestMatchId" IS NULL
      WHERE l.rn <= ${REGULAR_LAST_GAMES}`;
   const byOrg = new Map<string, Map<string, string[]>>();
   for (const r of rows) {

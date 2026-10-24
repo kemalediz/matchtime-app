@@ -21,6 +21,7 @@
  * out as his club's BotJobs. Logs carry ids only.
  */
 import { db } from "./db";
+import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
 import { REPLY_PRIORITY } from "./dm-reply-priority";
 import { withOrgAiBudget } from "./ai-budget";
 import { resolveDmSelfAttendance } from "./dm-self-attendance";
@@ -529,7 +530,7 @@ export async function askAboutOpenPartnerAsk(args: {
 }): Promise<boolean> {
   const now = args.now ?? new Date();
   if (args.own && args.decision !== "in") return false;
-  const mems = await db.membership.findMany({ where: { userId: args.userId, leftAt: null, guestFromOrgId: null }, select: { orgId: true } });
+  const mems = await db.membership.findMany({ where: { userId: args.userId, leftAt: null, ...ORDINARY_MEMBER_WHERE }, select: { orgId: true } });
   if (mems.length === 0) return false;
   const open = await db.partnerAsk.findMany({
     where: { partnerOrgId: { in: mems.map((m) => m.orgId) }, status: "posted", closesAt: { gt: now }, NOT: { volunteerUserIds: { has: args.userId } } },

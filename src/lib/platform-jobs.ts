@@ -37,6 +37,13 @@
  *   setup-admin-code,
  *   setup-reminder,
  *   setup-reply
+ *   pool-offer,         only a number MatchTime already knows: a pool
+ *   pool-placed,        player whose own WhatsApp message confirmed his
+ *   pool-reply,         sign-up (local player pool, slice L5a). Queued only
+ *   pool-paused         by src/lib/pool/ (round.ts, accept.ts, reply.ts).
+ *                       A `pool-offer` is ADMITTED at dispatch under the
+ *                       platform cap's lock (`pool/dispatch.ts`): switches,
+ *                       his caps and quiet hours are re-checked there.
  *   owner-approval,     NEVER through here. `queueOwnerDm` (owner-dm.ts)
  *   owner-ack,          is the only door to Kemal's phone.
  *   owner-setup-stuck
@@ -71,6 +78,7 @@ import { e164Digits } from "./phone";
 // The pure half, not club-approval.ts: slice 7 makes club-approval import
 // owner-dm, which imports this file, and a cycle there would be silent.
 import { APPROVED_CLUB_WHERE } from "./club-approval-state";
+import { POOL_OFFER_PURPOSE, admitPoolOfferJobs, onPoolOfferJobFailed } from "./pool/dispatch";
 
 // ── Vocabulary ──────────────────────────────────────────────────────────
 
@@ -114,6 +122,10 @@ export const PLATFORM_DM_PURPOSES = [
   "setup-owner-live",
   "pool-welcome",
   "pool-code-reply",
+  "pool-offer",
+  "pool-placed",
+  "pool-reply",
+  "pool-paused",
 ] as const;
 export type PlatformDmPurpose = (typeof PLATFORM_DM_PURPOSES)[number];
 
@@ -290,7 +302,7 @@ export async function queuePlatformDm(args: {
 /** DM purposes `cancelQueuedPlatformDms` will touch. A sign-up code, a
  *  decision, a billing notice and anything for the owner are never
  *  cancelled from here. */
-export const CANCELLABLE_DM_PURPOSES = ["setup-ask", "setup-admin-code", "setup-reminder", "setup-removed"] as const;
+export const CANCELLABLE_DM_PURPOSES = ["setup-ask", "setup-admin-code", "setup-reminder", "setup-removed", "pool-offer"] as const;
 export type CancellableDmPurpose = (typeof CANCELLABLE_DM_PURPOSES)[number];
 
 /** How a cancelled job's `failReason` starts. On a CLAIMED job it is the
@@ -489,7 +501,7 @@ export function planPlatformDispatch(
  * 3 cannot leave a group.
  */
 export async function claimDuePlatformJobs(
-  opts: { now?: Date; limit?: number; kinds?: PlatformJobKind[] } = {},
+  opts: { now?: Date; limit?: number; kinds?: PlatformJobKind[]; env?: Record<string, string | undefined> } = {},
 ): Promise<PlatformJobInstruction[]> {
   const now = opts.now ?? new Date();
   const kinds = opts.kinds ?? ["dm", "leave-group"];
@@ -514,7 +526,16 @@ export async function claimDuePlatformJobs(
     }) as Promise<PlatformJobRow[]>;
   const [codes, others] = await Promise.all([read("otp"), read({ not: "otp" })]);
   const seen = new Set<string>();
-  const rows = [...(codes ?? []), ...(others ?? [])].filter((r) => (seen.has(r.id) ? false : (seen.add(r.id), true)));
+  const read0 = [...(codes ?? []), ...(others ?? [])].filter((r) => (seen.has(r.id) ? false : (seen.add(r.id), true)));
+  if (read0.length === 0) return [];
+  // Pool offers are admitted under the platform cap's lock first (local
+  // player pool L5a, `pool/dispatch.ts`): one not admitted now is not
+  // handed out on this poll.
+  const poolJobs = read0.filter((r) => r.purpose === POOL_OFFER_PURPOSE).map((r) => r.id);
+  const notNow = poolJobs.length
+    ? await admitPoolOfferJobs(poolJobs, { now, limit: opts.limit ?? MAX_JOBS_PER_POLL, env: opts.env })
+    : new Set<string>();
+  const rows = read0.filter((r) => !notNow.has(r.id));
   if (rows.length === 0) return [];
 
   const leaveGroups = [...new Set(rows.filter((r) => r.kind === "leave-group" && r.groupId).map((r) => r.groupId as string))];
@@ -625,6 +646,8 @@ export async function recordPlatformJobOutcome(
   }
   if (result.outcome === "failed" && count > 0) {
     console.error(`[platform-jobs] job ${id} FAILED on the Pi: ${result.reason}`);
+    // A pool offer that never reached him ends cancelled (L5a).
+    await onPoolOfferJobFailed(id, now);
   }
   return { updated: count > 0 };
 }

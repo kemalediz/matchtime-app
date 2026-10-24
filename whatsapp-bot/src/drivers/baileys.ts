@@ -256,6 +256,7 @@ import { createGroupAddPrivacyCheck, groupAddPrivacyEnabled, type PrivacySocketL
 import { installLibsignalConsoleFilter } from "../baileys/libsignal-console.js";
 import { postGroupInviteCheck } from "../group-invite-api.js";
 import { shadowMode } from "../shadow.js";
+import { warningFromSendError, type AccountWarning } from "../dm-pacing.js";
 import type { PictureReader } from "../picture-reader.js";
 import { createLivePictureReader } from "../picture-live.js";
 
@@ -624,6 +625,18 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
   const joinHandlers: Array<(e: GroupMembershipEvent) => void | Promise<void>> = [];
   const leaveHandlers: Array<(e: GroupMembershipEvent) => void | Promise<void>> = [];
   const undecryptableHandlers: Array<(e: UndecryptableEvent) => void | Promise<void>> = [];
+  // Slice L5a: account warnings for the DM pacer. Fired synchronously.
+  const warningHandlers: Array<(w: AccountWarning) => void> = [];
+  const fireWarning = (w: AccountWarning | null) => {
+    if (!w) return;
+    for (const h of warningHandlers) {
+      try {
+        h(w);
+      } catch (err) {
+        error(`[baileys] an onAccountWarning handler failed: ${errorText(err)}`);
+      }
+    }
+  };
   const now = deps.now ?? Date.now;
   const schedule =
     deps.schedule ??
@@ -1596,6 +1609,10 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
   }
 
   if (conn) {
+    // The connection's own warnings (reach-out timelock, a 463 bad ack on
+    // our message, a 401/403 close: baileys/lifecycle.ts). Optional
+    // chaining: a hand-built test connection may not have it.
+    conn.onAccountWarning?.((w) => fireWarning(w));
     conn.on("messages.upsert", ({ messages, type, requestId }) => {
       const batch = Array.isArray(messages) ? [...messages] : [];
       const upsertType = String(type ?? "?");
@@ -1696,7 +1713,15 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
   ): Promise<BaileysSendResult | undefined> {
     const sock = getSocket();
     if (!sock) throw new NotConnectedError();
-    const sent = await sock.sendMessage(chatJid, content, options);
+    let sent: Awaited<ReturnType<typeof sock.sendMessage>>;
+    try {
+      sent = await sock.sendMessage(chatJid, content, options);
+    } catch (err) {
+      // A refusal that names a rate limit or a restriction is an account
+      // warning (slice L5a). The error still goes to the caller unchanged.
+      fireWarning(warningFromSendError(err));
+      throw err;
+    }
     // Undefined stays undefined, so the scheduler's CRITICAL
     // missing-result line still fires exactly as it did.
     if (!sent) return undefined;
@@ -1735,6 +1760,10 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
 
     onClose(handler) {
       requireConnection("onClose").onClose(handler);
+    },
+
+    onAccountWarning(handler) {
+      warningHandlers.push(handler);
     },
 
     // ── Identity ─────────────────────────────────────────────────────

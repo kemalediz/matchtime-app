@@ -49,6 +49,9 @@
  *   8. COLD self-attendance fallback    (2026-08-31 — a player replying
  *      "IN"/"OUT" to a recruit DM with nothing more specific to attribute
  *      it to; registers against the active match)
+ *   8b. a reply in words to a pool offer (local player pool L5a: one
+ *      "tap the link" or "that place has gone" line per offer; a state
+ *      rule, no model; see lib/pool/reply.ts. L6 reads the words.)
  *   9. scoped Q&A, else ignore
  *
  * Adding a handler means slotting it by SPECIFICITY, never in front of a
@@ -81,6 +84,7 @@ import { billingEnabledForApiRequest } from "@/lib/billing-flag";
 import { billingQuietMatchWhere } from "@/lib/club-billing-rules";
 import { handleConnectDm } from "@/lib/connect-dm";
 import { handlePoolConfirmDm } from "@/lib/pool/confirm";
+import { answerPoolOfferReply } from "@/lib/pool/reply";
 import { handleOrganiserPickDm } from "@/lib/organiser-pick";
 import { handleCollectorPaidDm, handlePlayerPaidDm } from "@/lib/month-payment";
 import { selfJoinEnabledForApiRequest } from "@/lib/self-join-flag";
@@ -1424,6 +1428,14 @@ export async function POST(request: Request) {
   }
 
   if (!dm) {
+    // ── A reply in words to a pool offer (local player pool L5a) ──────
+    //   Until L6 reads them: someone whose pool offer reached him in the
+    //   last day gets ONE line per offer, "tap the link" while it is open
+    //   or "that place has gone" once it ended. A state rule, no model,
+    //   no phrase list; after that one line the DM carries on below.
+    const poolReply = await answerPoolOfferReply({ userId: user.id });
+    if (poolReply) return NextResponse.json({ ok: true, handled: poolReply });
+
     // ── Scoped Q&A (2026-06-01) ──────────────────────────────────────
     //   No open survey to answer → if this resolved member is asking a
     //   question, treat it as a private match Q&A. Strictly scoped to

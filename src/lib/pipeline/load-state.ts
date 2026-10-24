@@ -12,6 +12,7 @@
  * module that could break it.
  */
 import { db } from "../db";
+import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
 import { withAliases } from "../member-aliases";
 import { dayCommaTimeLabel, dayLabel, kickoffLabel } from "../i18n/dates";
 import { cancelledMatchToMention } from "../cancelled-match-notice";
@@ -538,7 +539,7 @@ async function loadGuestElsewhere(orgId: string, kickoff: Date, now: Date): Prom
     const rows = await db.attendance.findMany({
       where: {
         status: { in: ["CONFIRMED", "BENCH"] },
-        user: { memberships: { some: { orgId, leftAt: null, guestFromOrgId: null } } },
+        user: { memberships: { some: { orgId, leftAt: null, ...ORDINARY_MEMBER_WHERE } } },
         match: {
           status: { in: ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] },
           date: { gte: new Date(kickoff.getTime() - 24 * 3600_000), lte: new Date(kickoff.getTime() + 24 * 3600_000) },

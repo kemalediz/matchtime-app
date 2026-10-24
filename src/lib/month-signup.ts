@@ -28,6 +28,7 @@
  * no sign-up: it is "running" from the start and never read as "open".
  */
 import { db } from "./db";
+import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
 import { sendAdminNotice } from "./admin-channel";
 import { appUrl } from "./app-url";
 import { isClubOperational } from "./club-approval-state";
@@ -870,7 +871,7 @@ async function loadRoster(orgId: string): Promise<{ roster: SignupRosterMember[]
   const [memberships, aliases] = await Promise.all([
     db.membership.findMany({
       // Not a partner club's guest (cross-club ask, review M6).
-      where: { orgId, leftAt: null, guestFromOrgId: null, user: { isActive: true } },
+      where: { orgId, leftAt: null, ...ORDINARY_MEMBER_WHERE, user: { isActive: true } },
       select: { user: { select: { id: true, name: true, phoneNumber: true } } },
     }),
     db.userAlias.findMany({ where: { orgId }, select: { userId: true, alias: true } }),

@@ -77,8 +77,8 @@ describe("handlePartnerVolunteer", () => {
     expect(r).toMatchObject({ ok: true, outcome: "registered-bench" });
     expect(dbMock.membership.upsert).toHaveBeenCalledWith({
       where: { userId_orgId: { userId: "ali", orgId: "fnf" } },
-      create: { userId: "ali", orgId: "fnf", role: "PLAYER", guestFromOrgId: "sutton", guestMatchId: "m-fnf" },
-      update: { leftAt: null, guestFromOrgId: "sutton", guestMatchId: "m-fnf" },
+      create: { userId: "ali", orgId: "fnf", role: "PLAYER", guestVia: "partner", guestFromOrgId: "sutton", guestMatchId: "m-fnf" },
+      update: { leftAt: null, guestVia: "partner", guestFromOrgId: "sutton", guestMatchId: "m-fnf" },
     });
     expect(att.registerAttendance).toHaveBeenCalledWith("ali", "m-fnf", {
       event: expect.objectContaining({ cause: "partner-ask", actorKind: "player", actorUserId: "ali", sourceRef: "xask:ask1" }),

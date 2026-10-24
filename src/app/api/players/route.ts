@@ -5,6 +5,8 @@ import { loadClubDisplayRatings } from "@/lib/player-stats";
 import { seesAdminFields } from "@/lib/admin-view";
 import { findDuplicateSuggestions } from "@/lib/placeholder-link-rules";
 import { NextResponse } from "next/server";
+import { type GuestMarks, guestSourceOf, isGuestMembership, partnerHomeClubOf } from "@/lib/guest-membership";
+import { t } from "@/lib/i18n/t";
 
 export async function GET(request: Request) {
   const session = await auth();
@@ -70,15 +72,23 @@ export async function GET(request: Request) {
     orderBy: { user: { name: "asc" } },
   });
 
-  // Guests from partner clubs (cross-club ask, S4): the club's name for
-  // the label. Their phone and email are never shown to this club.
-  const guestClubIds = [...new Set(memberships.map((m) => m.guestFromOrgId).filter((x): x is string => !!x))];
+  // Guests (cross-club ask, S4; local player pool, L5a): a partner guest
+  // is labelled with his home club's name, a pool guest (no home club)
+  // with "MatchTime pool" in this club's language. No guest's phone or
+  // email is ever shown to this club.
+  const guestClubIds = [...new Set(memberships.map((m) => partnerHomeClubOf(m)).filter((x): x is string => x !== null))];
   const guestClubName = new Map(
     (guestClubIds.length ? await db.organisation.findMany({ where: { id: { in: guestClubIds } }, select: { id: true, name: true } }) : []).map(
       (o) => [o.id, o.name] as const,
     ),
   );
-  const guestFromOf = (m: { guestFromOrgId: string | null }) => (m.guestFromOrgId ? guestClubName.get(m.guestFromOrgId) ?? "" : null);
+  const poolLabel = t(membership.org?.language).gst_source_pool;
+  const guestFromOf = (m: GuestMarks): string | null => {
+    const source = guestSourceOf(m);
+    if (source === "pool") return poolLabel;
+    if (source === "partner") return guestClubName.get(partnerHomeClubOf(m) ?? "") ?? "";
+    return null;
+  };
 
   // A plain member stops here: names, ids and positions only.
   if (!isAdmin) {
@@ -131,10 +141,11 @@ export async function GET(request: Request) {
   const players = memberships.map((m) => ({
     id: m.user.id,
     name: m.user.name,
-    // Hidden for a partner club's guest: never shown to the asking club.
-    email: m.guestFromOrgId ? null : m.user.email,
+    // Hidden for ANY guest (a partner club's or the player pool's): never
+    // shown to the club he guests for.
+    email: isGuestMembership(m) ? null : m.user.email,
     image: m.user.image,
-    phoneNumber: m.guestFromOrgId ? null : m.user.phoneNumber,
+    phoneNumber: isGuestMembership(m) ? null : m.user.phoneNumber,
     guestFrom: guestFromOf(m),
     role: m.role,
     positions: m.user.activityPositions?.[0]?.positions ?? [],
@@ -159,7 +170,7 @@ export async function GET(request: Request) {
   // else is offered here for a one-tap merge. Rules:
   // src/lib/placeholder-link-rules.ts.
   const duplicateSuggestions = findDuplicateSuggestions(
-    memberships.filter((m) => !m.guestFromOrgId).map((m) => ({
+    memberships.filter((m) => !isGuestMembership(m)).map((m) => ({
       id: m.user.id,
       name: m.user.name,
       phoneNumber: m.user.phoneNumber,

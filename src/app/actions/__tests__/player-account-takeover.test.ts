@@ -238,6 +238,14 @@ describe("ownership (pure)", () => {
     expect(clubOwnsUser({ ...base, memberships: [{ orgId: CLUB, guestFromOrgId: OTHER }] }, CLUB)).toBe(false);
     expect(clubOwnsUser({ ...base, memberships: [] }, CLUB)).toBe(false);
   });
+  it("a POOL guest row (no home club, L5a) is never this club's claim on his record", () => {
+    // His only row here is a pool guest's: not an ordinary membership.
+    expect(clubOwnsUser({ ...base, memberships: [{ orgId: CLUB, guestFromOrgId: null, guestMatchId: "m1" }] }, CLUB)).toBe(false);
+    // A pool guest row at another club is not lent out by this one.
+    expect(
+      clubOwnsUser({ ...base, memberships: [...base.memberships, { orgId: OTHER, guestFromOrgId: null, guestMatchId: "m1" }] }, CLUB),
+    ).toBe(false);
+  });
 });
 
 describe("step 1: attaching a stranger by number is refused", () => {

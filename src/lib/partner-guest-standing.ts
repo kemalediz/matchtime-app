@@ -16,6 +16,7 @@
  * shows his club's name alone, as before.
  */
 import { db } from "./db";
+import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
 import { summariseClubDisplayRatings } from "./player-rating";
 import { standingBand, type GuestStanding } from "./partner-guest-standing-rules";
 
@@ -29,7 +30,7 @@ export async function loadGuestStandings(guests: ReadonlyArray<{ userId: string;
     const homeIds = [...new Set(guests.map((g) => g.homeOrgId))];
     const [orgs, members] = await Promise.all([
       db.organisation.findMany({ where: { id: { in: homeIds } }, select: { id: true, name: true, sharePlayerRatingsWithPartners: true } }),
-      db.membership.findMany({ where: { orgId: { in: homeIds }, leftAt: null, guestFromOrgId: null }, select: { userId: true, orgId: true } }),
+      db.membership.findMany({ where: { orgId: { in: homeIds }, leftAt: null, ...ORDINARY_MEMBER_WHERE }, select: { userId: true, orgId: true } }),
     ]);
     for (const org of orgs) {
       const mine = guests.filter((g) => g.homeOrgId === org.id);

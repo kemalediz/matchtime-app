@@ -119,3 +119,65 @@ per line, exported with a read-only query. It prints fixed lines (phones
 masked), a `VERDICT:` line (`PASS` only when every known phone came back),
 and a final `RESULT {json}` line. It takes the Baileys process lock, so stop
 the observer or any Baileys bot on the same session first.
+
+## DM pacing (slice L5a, 24 Oct 2026)
+
+Every private message, club and platform alike, takes ONE shared slot.
+The rules are in `src/dm-pacing.ts` (pure), the running state in
+`src/dm-pacer.ts`, and `src/scheduler.ts` builds one gate per tick that both
+the platform channel and the clubs go through. Group posts, polls and
+reactions are never paced.
+
+| Env (whatsapp-bot/.env) | Default | Meaning |
+|---|---|---|
+| `DM_GAP_SEC` | 60 | Target gap between DMs, 7 to 60 seconds. |
+| `DM_GAP_JITTER_SEC` | 0 | Random spread either side of the target, 0 to 30. The gap drawn is clamped to 7..60 s. |
+| `DM_NUMBER_STARTED_AT` | unset | ISO date the WhatsApp number started sending. For its first 14 days the gap is 60 s whatever `DM_GAP_SEC` says. Unset with a fast gap also means 60 s. |
+| `DM_PACING_STATE_PATH` | `whatsapp-bot/.dm-pacing.json` | Where the last warning is kept across restarts (gitignored). |
+
+A bad value falls back to that setting's safe value, with one
+`[dm-pacing]` line in the journal at startup. With no env at all the bot
+behaves exactly as before: one DM a minute, one per tick, the rest released.
+
+**In a tick.** At a gap below 60 s a tick may wait for the slot instead of
+releasing the DM: never longer than the gap, never more than 25 s in total
+per tick (`TICK_DM_WAIT_BUDGET_MS`), so a 30 s poll sends about three DMs
+and the bot reaches about six a minute. Once a DM is held in a tick every
+later DM in that tick is held too, so the server's order is kept. At 60 s
+nothing waits. A DM being waited on is already claimed and the server has
+no claim timeout, so a Pi that dies mid-wait loses it (at-most-once, as
+designed); the 25 s budget keeps that window short. A disconnect, SIGINT or
+SIGTERM wakes the wait at once and the DM is released, not sent or lost.
+
+**Warnings.** Any of these drops the gap to 60 s at once, for 24 hours from
+the latest one, saved to the state file synchronously (before a fatal close
+exits), so a restart does not undo it:
+
+- Baileys `connection.update.reachoutTimeLock.isActive` (WhatsApp's own
+  restriction notice): `src/baileys/lifecycle.ts`;
+- Baileys `messages.update` status ERROR on our own message with ack error
+  463 (account restricted): `src/baileys/lifecycle.ts`;
+- a Baileys close with 401 (logged out) or 403 (forbidden):
+  `src/baileys/lifecycle.ts`;
+- a Baileys send that throws with 429 / 463 / `rate-overlimit` / spam /
+  restricted: `src/drivers/baileys.ts` `send()`;
+- whatsapp-web.js (rollback only) `disconnected` with `TOS_BLOCK`,
+  `SMB_TOS_BLOCK`, `LOGOUT` or `UNPAIRED`: `src/drivers/wwebjs.ts`.
+
+The journal says `CRITICAL: [dm-pacing] WhatsApp warning from ...`. To lift a
+fall-back early (a known false alarm only), delete the state file and
+redeploy with `scripts/deploy-pi.sh`: the file is read once, at startup.
+
+**Turning it on (Pi).** Add to `~/matchtime-bot/whatsapp-bot/.env`:
+
+```
+DM_GAP_SEC=10
+DM_GAP_JITTER_SEC=3
+DM_NUMBER_STARTED_AT=<the date this number started sending, e.g. 2026-04-30>
+```
+
+then deploy with `scripts/deploy-pi.sh` only (never a bare `systemctl
+restart`: orphan processes are how a customer group got 30 copies of one
+message on 2026-07-19). Check the startup line reads
+`[dm-pacing] 10s ±3s between DMs (configured)`. To go back to one a minute,
+remove `DM_GAP_SEC` (or set it to 60) and deploy again.

@@ -123,6 +123,10 @@ export const ATTENDANCE_EVENT_CAUSES = [
   "organiser-pick",
   /** A partner club's player replied to its ask (cross-club ask, S3). */
   "partner-ask",
+  /** A MatchTime player pool guest took (or gave back) a place by the
+   *  offer's tap link (local player pool L5a). `sourceRef` is
+   *  "pool-offer:<offerId>". Written only by partner-guest.ts. */
+  "pool-ask",
   /** A posted squad list was extracted and written to the DB
    *  (`featureSquadFromList` orgs). */
   "pasted-roster",

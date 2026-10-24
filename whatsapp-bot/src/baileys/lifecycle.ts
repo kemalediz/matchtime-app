@@ -45,6 +45,12 @@ import type { BaileysEventMap } from "baileys";
 import { decideOnClose } from "./connection.js";
 import { pairingCodeBanner } from "./config.js";
 import type { SessionLedger } from "./session-ledger.js";
+import {
+  warningFromAckError,
+  warningFromCloseStatus,
+  warningFromReachoutTimelock,
+  type AccountWarning,
+} from "../dm-pacing.js";
 
 /** The part of `WASocket` the lifecycle touches. */
 export interface LifecycleSocket {
@@ -89,6 +95,14 @@ export interface BaileysConnection<S extends LifecycleSocket> {
   user(): { id?: string | null; lid?: string | null } | null;
   onOpen(handler: () => void | Promise<void>): void;
   onClose(handler: (reason: string) => void): void;
+  /**
+   * WhatsApp showed a warning on the connection itself: an active
+   * reach-out timelock, a 463 bad ack on one of our messages, or a 401/403
+   * close (fired BEFORE the exit, and
+   * synchronously, so a handler that saves to disk has done so). Slice L5a:
+   * the DM pacer drops to one a minute.
+   */
+  onAccountWarning(handler: (w: AccountWarning) => void): void;
   /** Subscribe to a socket event on the current socket and every future one. */
   on<K extends keyof BaileysEventMap>(event: K, handler: SocketEventHandler<S, K>): void;
 }
@@ -118,6 +132,7 @@ export function createBaileysConnection<S extends LifecycleSocket>(
 
   const openHandlers: Array<() => void | Promise<void>> = [];
   const closeHandlers: Array<(reason: string) => void> = [];
+  const warningHandlers: Array<(w: AccountWarning) => void> = [];
   const subscriptions: Array<{ event: keyof BaileysEventMap; handler: SocketEventHandler<S, never> }> =
     [];
 
@@ -148,6 +163,17 @@ export function createBaileysConnection<S extends LifecycleSocket>(
         h(reason);
       } catch (err) {
         error(`[baileys] an onClose handler failed: ${errorText(err)}`);
+      }
+    }
+  }
+
+  function fireWarning(w: AccountWarning | null): void {
+    if (!w) return;
+    for (const h of warningHandlers) {
+      try {
+        h(w);
+      } catch (err) {
+        error(`[baileys] an onAccountWarning handler failed: ${errorText(err)}`);
       }
     }
   }
@@ -209,6 +235,10 @@ export function createBaileysConnection<S extends LifecycleSocket>(
 
     if (qr) void onQr(s, qr, state);
 
+    // WhatsApp's own restriction notice (Baileys emits it from a mex
+    // notification and from fetchAccountReachoutTimelock after a bad ack).
+    if ("reachoutTimeLock" in update) fireWarning(warningFromReachoutTimelock(update.reachoutTimeLock));
+
     if (connection === "open") {
       isOpen = true;
       failures = 0;
@@ -221,6 +251,8 @@ export function createBaileysConnection<S extends LifecycleSocket>(
       isOpen = false;
       const status = statusOf(update);
       const decision = decideOnClose(status, failures);
+      // Before the exit below: the pacer saves it synchronously.
+      fireWarning(warningFromCloseStatus(status));
       if (decision.action === "exit") {
         if (status === 401) deps.ledger.recordLoggedOut(401);
         const reason = `disconnected: ${decision.reason}`;
@@ -259,6 +291,17 @@ export function createBaileysConnection<S extends LifecycleSocket>(
     isOpen = false;
     const state = { codeRequested: false };
     s.ev.on("connection.update", (update) => onUpdate(s, gen, update, state));
+    // A bad ack on OUR message (Baileys handleBadAck): status ERROR (0) with
+    // the error code first in messageStubParameters; 463 = account
+    // restricted. Only for the DM pacer's warning (slice L5a): poll votes
+    // never come from here (drivers/baileys.source.test.ts).
+    s.ev.on("messages.update", (updates) => {
+      if (gen !== generation) return;
+      for (const u of Array.isArray(updates) ? updates : []) {
+        if (u?.key?.fromMe !== true || (u.update?.status as unknown) !== 0) continue;
+        fireWarning(warningFromAckError(u.update.messageStubParameters));
+      }
+    });
     for (const sub of subscriptions) attach(s, gen, sub.event, sub.handler as never);
   }
 
@@ -323,6 +366,10 @@ export function createBaileysConnection<S extends LifecycleSocket>(
 
     onClose(handler) {
       closeHandlers.push(handler);
+    },
+
+    onAccountWarning(handler) {
+      warningHandlers.push(handler);
     },
 
     on(event, handler) {

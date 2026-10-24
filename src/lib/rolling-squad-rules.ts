@@ -12,6 +12,7 @@
  * clock, no model. `rolling-squad.ts` loads the rows and writes the
  * result.
  */
+import { guestSourceOf } from "@/lib/guest-membership";
 import { formatLondon, londonDateTimeToUtc } from "./london-time";
 import { messageHoursSendAfter, type QuietHours } from "./message-hours";
 import { isSameRecurringFixture, type RecurringFixtureKey } from "./match-slot";
@@ -122,7 +123,7 @@ export interface SeedSourceRow {
   email: string;
   isActive: boolean;
   /** The player's membership of THIS club, or null when there is none. */
-  membership: { leftAt: Date | null; provisionallyAddedAt: Date | null; guestFromOrgId?: string | null } | null;
+  membership: { leftAt: Date | null; provisionallyAddedAt: Date | null; guestFromOrgId?: string | null; guestMatchId?: string | null } | null;
   /** An admin has put this player on a squad of this club (an admin-group
    *  paste or squad change, an admin screen): see `admin-added.ts`.
    *  Missing means no. */
@@ -132,7 +133,7 @@ export interface SeedSourceRow {
   fromCancelledWeek?: boolean;
 }
 
-export type CarryOverExclusion = "did not play" | "left the group" | "deactivated" | "guest without a phone" | "partner club guest";
+export type CarryOverExclusion = "did not play" | "left the group" | "deactivated" | "guest without a phone" | "partner club guest" | "pool guest";
 
 /**
  * Why a source row is NOT carried over, or null when it is (plan 1.3).
@@ -153,8 +154,11 @@ export type CarryOverExclusion = "did not play" | "left the group" | "deactivate
 export function carryOverExclusion(row: SeedSourceRow): CarryOverExclusion | null {
   if (row.status !== "CONFIRMED") return "did not play";
   if (!row.membership || row.membership.leftAt) return "left the group";
-  // A guest from a partner club played one match (cross-club ask, S4).
-  if (row.membership.guestFromOrgId) return "partner club guest";
+  // A guest played one match: a partner club's (cross-club ask, S4) or
+  // the player pool's (L5a). Neither is carried to next week.
+  const source = guestSourceOf(row.membership);
+  if (source === "partner") return "partner club guest";
+  if (source === "pool") return "pool guest";
   if (!row.isActive) return "deactivated";
   const placeholder = row.email.startsWith("provisional+") || row.membership.provisionallyAddedAt != null;
   if (!row.phoneNumber && placeholder && !row.addedByAdmin) return "guest without a phone";

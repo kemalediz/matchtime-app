@@ -126,8 +126,8 @@ describe("Add to FNF", () => {
   it("clears both guest marks and leftAt: an ordinary member", async () => {
     expect(await keepGuestAsMember("fnf", "ali")).toBe(true);
     expect(dbMock.membership.updateMany).toHaveBeenCalledWith({
-      where: { orgId: "fnf", userId: "ali", guestFromOrgId: { not: null } },
-      data: { guestFromOrgId: null, guestMatchId: null, leftAt: null },
+      where: { orgId: "fnf", userId: "ali", guestMatchId: { not: null } },
+      data: { guestVia: null, guestFromOrgId: null, guestMatchId: null, leftAt: null },
     });
   });
 });

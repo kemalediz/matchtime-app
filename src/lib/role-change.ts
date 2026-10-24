@@ -13,6 +13,7 @@
  *
  * Creating a membership with a role is not a change and is not logged.
  */
+import { isGuestMembership } from "@/lib/guest-membership";
 import {
   isMemberRole,
   planOwnershipTransfer,
@@ -32,8 +33,8 @@ export interface RoleChangeClient extends RoleChangeSink {
   membership: {
     findUnique(args: {
       where: { userId_orgId: { userId: string; orgId: string } };
-      select: { id: true; role: true; leftAt?: true; guestFromOrgId?: true };
-    }): Promise<{ id: string; role: string; leftAt?: Date | null; guestFromOrgId?: string | null } | null>;
+      select: { id: true; role: true; leftAt?: true; guestMatchId?: true };
+    }): Promise<{ id: string; role: string; leftAt?: Date | null; guestMatchId?: string | null } | null>;
     updateMany(args: { where: { id: string; role: MemberRoleName }; data: { role: MemberRoleName } }): Promise<{
       count: number;
     }>;
@@ -121,7 +122,7 @@ export async function transferOwnership(
       const read = (userId: string) =>
         tx.membership.findUnique({
           where: { userId_orgId: { userId, orgId: args.orgId } },
-          select: { id: true, role: true, leftAt: true, guestFromOrgId: true },
+          select: { id: true, role: true, leftAt: true, guestMatchId: true },
         });
       const [actor, target] = [await read(args.actorUserId), await read(args.targetUserId)];
       const actorRole = actor && !actor.leftAt && isMemberRole(actor.role) ? actor.role : null;
@@ -131,7 +132,7 @@ export async function transferOwnership(
         actorRole,
         targetUserId: args.targetUserId,
         targetRole,
-        targetActive: !!target && !target.leftAt && !target.guestFromOrgId,
+        targetActive: !!target && !target.leftAt && !isGuestMembership(target),
       });
       if (!plan.ok) return plan;
       const from = targetRole as MemberRoleName;

@@ -42,13 +42,15 @@
  * all, is "not-cross-club": the existing same-club paths handle it.
  */
 
+import { isGuestMembership } from "@/lib/guest-membership";
+
 export interface CrossClubLinkFacts {
   orgId: string;
   /** Club A's player, the row that is merged away. */
   drop: {
     id: string;
     /** Their membership of club A, or null when they have none. */
-    membershipInOrg: { guestFromOrgId: string | null } | null;
+    membershipInOrg: { guestFromOrgId: string | null; guestMatchId?: string | null } | null;
     /** Membership rows (left ones included) at any club other than A. */
     otherClubMemberships: number;
     /** Attendance, ratings, MoM votes, team places, positions, aliases,
@@ -101,7 +103,8 @@ export function decideCrossClubLink(f: CrossClubLinkFacts): CrossClubLinkVerdict
   if (clubNames.length === 0) return { kind: "not-cross-club" };
 
   if (!drop.membershipInOrg) return { kind: "refuse", reason: "drop_not_member" };
-  if (drop.membershipInOrg.guestFromOrgId) return { kind: "refuse", reason: "drop_guest" };
+  // A guest of either kind (partner or pool) is not club A's to link.
+  if (isGuestMembership(drop.membershipInOrg)) return { kind: "refuse", reason: "drop_guest" };
   if (drop.otherClubMemberships > 0 || drop.rowsOutsideOrg > 0) {
     return { kind: "refuse", reason: "drop_other_clubs" };
   }
