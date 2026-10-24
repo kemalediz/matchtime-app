@@ -15,6 +15,7 @@ import {
   periodOf,
   reportFilterOptions,
   settleGuestResult,
+  guestSafetyShown,
   type GuestGameFact,
   type GuestMatchFacts,
   type GuestPersonFacts,
@@ -91,12 +92,32 @@ describe("settleGuestResult: one rule for recorded and pre-pool guests", () => {
     expect(settleGuestResult(game("u", future, { recorded: "booked", attendance: null }), NOW)).toBe("booked");
   });
 
-  it("after the game: confirmed is played, dropped is withdrawn, a bench place never called up is not a game", () => {
+  it("after the game, a pre-pool guest (no record): confirmed is played, dropped is withdrawn, a bench place never called up is not a game", () => {
     expect(settleGuestResult(game("u", past), NOW)).toBe("played");
-    expect(settleGuestResult(game("u", past, { recorded: "booked" }), NOW)).toBe("played");
     expect(settleGuestResult(game("u", past, { attendance: "DROPPED" }), NOW)).toBe("withdrawn");
     expect(settleGuestResult(game("u", past, { attendance: "BENCH" }), NOW)).toBeNull();
-    expect(settleGuestResult(game("u", past, { attendance: null, recorded: "booked" }), NOW)).toBeNull();
+  });
+
+  it("after the game, a recorded place (slice L7): the RECORD decides, never his attendance row", () => {
+    // Still booked and not settled: the organisers may yet mark a no-show,
+    // so it is "booked" (result due), not played.
+    expect(settleGuestResult(game("u", past, { recorded: "booked" }), NOW)).toBe("booked");
+    // The cron recorded it played once the window closed.
+    expect(settleGuestResult(game("u", past, { recorded: "played", settled: true }), NOW)).toBe("played");
+    // Settled and still booked: a bench place never called up, not a game.
+    expect(settleGuestResult(game("u", past, { recorded: "booked", settled: true }), NOW)).toBeNull();
+    // Not settled yet: a bench place or a place given up is what it will be.
+    expect(settleGuestResult(game("u", past, { recorded: "booked", attendance: "BENCH" }), NOW)).toBeNull();
+    expect(settleGuestResult(game("u", past, { attendance: null, recorded: "booked" }), NOW)).toBe("withdrawn");
+  });
+});
+
+describe("Upcoming and History around the no-show window (slice L7)", () => {
+  it("a game that has ended with its result due leaves Upcoming and shows in History as booked", () => {
+    const ended = match("m-end", "2026-10-24T09:00:00Z");
+    const r = buildGuestPlayers({ orgId: ORG, now: NOW, lang: "en", games: [game("ali", ended, { source: "pool", fromClub: null, recorded: "booked" })], people: [person("ali")] });
+    expect(r.upcoming).toEqual([]);
+    expect(r.history[0].games).toEqual([{ matchId: "m-end", kickoff: ended.kickoff, venue: "Goals Sutton", result: "booked" }]);
   });
 });
 
@@ -185,7 +206,12 @@ describe("buildGuestPlayers: Upcoming, History and the cards", () => {
 
   it("the card carries no phone, area or other club: only the fields it lists", () => {
     const r = build([game("ali", old1)], [person("ali")]);
-    expect(Object.keys(r.cards.ali).sort()).toEqual(["fromClub", "gamesHere", "invite", "name", "record", "source", "sports", "userId"]);
+    expect(Object.keys(r.cards.ali).sort()).toEqual(["blocked", "fromClub", "gamesHere", "invite", "name", "record", "source", "sports", "userId"]);
+  });
+
+  it("slice L7: the card says whether THIS club stopped offering him its games", () => {
+    expect(build([game("ali", old1)], [person("ali")]).cards.ali.blocked).toBe(false);
+    expect(build([game("ali", old1)], [person("ali", { clubBlocked: true })]).cards.ali.blocked).toBe(true);
   });
 
   it("the latest game decides the source shown", () => {
@@ -374,5 +400,13 @@ describe("parseGuestPageQuery: the page's tab and report filters from the URL", 
       sportId: null,
       venue: "a",
     });
+  });
+});
+
+describe("review of #404, 3: the block and report controls only for a pool guest of a club that may ask the pool", () => {
+  it("a pool guest in a pool club: shown; a partner guest, or any guest of a club without the pool: not", () => {
+    expect(guestSafetyShown({ source: "pool" }, true)).toBe(true);
+    expect(guestSafetyShown({ source: "partner" }, true)).toBe(false);
+    expect(guestSafetyShown({ source: "pool" }, false)).toBe(false);
   });
 });

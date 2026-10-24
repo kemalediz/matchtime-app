@@ -32,11 +32,46 @@ describe("pause and resume", () => {
     }
   });
 
-  it("never lifts a pause someone else decided (no-shows, reports, the owner)", () => {
-    for (const reason of ["no-shows", "reports", "admin"] as const) {
-      expect(manageTransition({ action: "resume", profile: { status: "paused", pausedReason: reason }, now: NOW })).toEqual({ ok: false, reason: "paused-by-matchtime" });
+  it("never lifts a pause someone else decided (reports, the owner)", () => {
+    for (const reason of ["reports", "admin"] as const) {
+      expect(manageTransition({ action: "resume", profile: { status: "paused", pausedReason: reason, pausedAt: new Date(0) }, now: NOW })).toEqual({
+        ok: false,
+        reason: "paused-by-matchtime",
+      });
     }
   });
+
+  it("the no-show pause: his to lift 30 days after it began (slice L7, plan 5.5), not before", () => {
+    const DAY = 24 * 3600_000;
+    const pausedAt = new Date(NOW.getTime() - 29 * DAY);
+    expect(manageTransition({ action: "resume", profile: { status: "paused", pausedReason: "no-shows", pausedAt }, now: NOW })).toEqual({ ok: false, reason: "not-yet" });
+    const later = new Date(NOW.getTime() - 30 * DAY);
+    expect(manageTransition({ action: "resume", profile: { status: "paused", pausedReason: "no-shows", pausedAt: later }, now: NOW })).toEqual({
+      ok: true,
+      patch: { status: "active", pausedReason: null, pausedAt: null, reviewRequestedAt: null, lastActiveAt: NOW },
+    });
+    // Without its start time it is never his to lift.
+    expect(manageTransition({ action: "resume", profile: { status: "paused", pausedReason: "no-shows" }, now: NOW })).toEqual({ ok: false, reason: "paused-by-matchtime" });
+  });
+});
+
+describe("a pause MatchTime decided survives stop and start again (slice L7, the L2 known gap)", () => {
+  const pausedAt = new Date("2026-10-20T09:00:00Z");
+  for (const reason of ["no-shows", "reports", "admin"] as const) {
+    it(`stop keeps the "${reason}" pause on the row, and start again comes back paused`, () => {
+      const stop = manageTransition({ action: "stop", profile: { status: "paused", pausedReason: reason, pausedAt }, now: NOW });
+      expect(stop).toEqual({ ok: true, patch: { status: "stopped", stoppedAt: NOW, lastActiveAt: NOW } });
+      const restart = manageTransition({
+        action: "restart",
+        profile: { status: "stopped", pausedReason: reason, pausedAt },
+        now: NOW,
+        consent: true,
+        evidence: "web:u1:1",
+      });
+      expect(restart.ok && restart.patch).toMatchObject({ status: "paused", stoppedAt: null, consentChannel: "web" });
+      expect(restart.ok && "pausedReason" in restart.patch).toBe(false);
+    });
+  }
 });
 
 describe("stop offers and start again", () => {

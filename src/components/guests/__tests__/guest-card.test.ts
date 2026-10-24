@@ -21,6 +21,7 @@ const card: GuestCard = {
   record: { played: 5, missed: 1 },
   gamesHere: 2,
   invite: "available",
+  blocked: false,
 };
 const action = async () => ({ ok: true as const });
 const html = (c: GuestCard, lang = "en", withAction = false) =>

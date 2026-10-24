@@ -7,19 +7,22 @@
  * when; a confirmed one carries its consent). `manage.ts` writes it.
  *
  *   pause     active -> paused ("self")
- *   resume    paused -> active, only for his own pause or the 3-ignored
- *             pause ("until they say they want more"); a pause MatchTime
- *             decided (no-shows, reports, the owner) is not his to lift
- *   stop      active or paused -> stopped: consent withdrawn
- *   restart   stopped -> active, with the consent ticked again on the
- *             page: a fresh consent, recorded as given on the web
- *
- * KNOWN GAP for L7: `stop` clears the pause reason (the CHECK allows a
- * reason only while paused), so a profile paused for no-shows that is
- * stopped and restarted comes back active. Nothing pauses for no-shows,
- * reports or the owner until L7, which must keep that reason across a stop.
+ *   resume    paused -> active, for his own pause or the 3-ignored pause
+ *             ("until they say they want more") at once, and for the
+ *             no-show pause 30 days after it began (slice L7,
+ *             `reliability-rules.ts` `selfResumeFrom`); a pause after
+ *             reports or by the owner is not his to lift (he can ask a
+ *             person to look at it)
+ *   stop      active or paused -> stopped: consent withdrawn. A pause
+ *             MatchTime decided (no-shows, reports, the owner) STAYS on the
+ *             row (slice L7; the CHECK allows it on a stopped profile), so
+ *             stopping and starting again cannot lift it
+ *   restart   stopped -> active, or back to that pause, with the consent
+ *             ticked again on the page: a fresh consent, recorded as given
+ *             on the web
  */
 import { POOL_CONSENT_VERSION } from "./rules";
+import { MATCHTIME_PAUSE_REASONS, selfResumeFrom } from "./reliability-rules";
 import type { PoolPauseReason, PoolProfileStatus } from "./vocab";
 
 export type ManageAction = "pause" | "resume" | "stop" | "restart";
@@ -27,9 +30,11 @@ export type ManageAction = "pause" | "resume" | "stop" | "restart";
 export interface ManageProfileState {
   status: PoolProfileStatus;
   pausedReason: PoolPauseReason | null;
+  /** When the pause began; needed to lift a no-show pause. */
+  pausedAt?: Date | null;
 }
 
-export type ManageRefusal = "not-active" | "not-paused" | "paused-by-matchtime" | "not-stopped" | "consent-required";
+export type ManageRefusal = "not-active" | "not-paused" | "paused-by-matchtime" | "not-yet" | "not-stopped" | "consent-required";
 
 export type ManagePatch = Partial<{
   status: PoolProfileStatus;
@@ -40,10 +45,11 @@ export type ManagePatch = Partial<{
   consentVersion: number;
   consentChannel: "web";
   consentEvidence: string;
+  reviewRequestedAt: Date | null;
   lastActiveAt: Date;
 }>;
 
-const SELF_RESUMABLE: readonly PoolPauseReason[] = ["self", "ignored"];
+const keepsPause = (p: ManageProfileState) => !!p.pausedReason && MATCHTIME_PAUSE_REASONS.includes(p.pausedReason);
 
 export function manageTransition(args: {
   action: ManageAction;
@@ -60,10 +66,18 @@ export function manageTransition(args: {
       return { ok: true, patch: { status: "paused", pausedReason: "self", pausedAt: now, lastActiveAt: now } };
     case "resume":
       if (profile.status !== "paused") return { ok: false, reason: "not-paused" };
-      if (!profile.pausedReason || !SELF_RESUMABLE.includes(profile.pausedReason)) return { ok: false, reason: "paused-by-matchtime" };
-      return { ok: true, patch: { status: "active", pausedReason: null, pausedAt: null, lastActiveAt: now } };
+      const from = profile.pausedReason ? selfResumeFrom({ reason: profile.pausedReason, pausedAt: profile.pausedAt ?? null }) : null;
+      if (!from) return { ok: false, reason: "paused-by-matchtime" };
+      if (now.getTime() < from.getTime()) return { ok: false, reason: "not-yet" };
+      return {
+        ok: true,
+        patch: keepsPause(profile)
+          ? { status: "active", pausedReason: null, pausedAt: null, reviewRequestedAt: null, lastActiveAt: now }
+          : { status: "active", pausedReason: null, pausedAt: null, lastActiveAt: now },
+      };
     case "stop":
       if (profile.status !== "active" && profile.status !== "paused") return { ok: false, reason: "not-active" };
+      if (keepsPause(profile)) return { ok: true, patch: { status: "stopped", stoppedAt: now, lastActiveAt: now } };
       return { ok: true, patch: { status: "stopped", stoppedAt: now, pausedReason: null, pausedAt: null, lastActiveAt: now } };
     case "restart":
       if (profile.status !== "stopped") return { ok: false, reason: "not-stopped" };
@@ -71,7 +85,7 @@ export function manageTransition(args: {
       return {
         ok: true,
         patch: {
-          status: "active",
+          status: keepsPause(profile) ? "paused" : "active",
           stoppedAt: null,
           consentAt: now,
           consentVersion: POOL_CONSENT_VERSION,

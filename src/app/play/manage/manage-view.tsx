@@ -13,6 +13,7 @@ import { signOut } from "next-auth/react";
 import { PoolProfileFields, type FieldErrorText } from "@/components/pool/pool-profile-fields";
 import { PoolPageShell } from "@/components/pool/pool-page-shell";
 import { PoolShareCard } from "@/components/pool/pool-share-card";
+import { PoolPauseNote, PoolRecordAndClubs } from "@/components/pool/pool-safety-section";
 import { deletePoolProfileAction, poolManageAction, savePoolProfileAction, setPoolRecognitionAction } from "@/app/actions/pool-manage";
 import type { Lang } from "@/lib/i18n/lang";
 import type { PoolErrorKey } from "@/lib/i18n/pool-play";
@@ -61,6 +62,8 @@ export function ManageView({ view }: { view: PoolManageView | null }) {
     (["name", "area", "maxMiles", "availability", "sports"] as const).filter((k) => keys[k]).map((k) => [k, copy.errors[keys[k]!]]),
   );
   const pausedByMatchTime = view.status === "paused" && view.pausedReason !== "self" && view.pausedReason !== "ignored";
+  // Slice L7: a no-show pause is his to lift 30 days after it began.
+  const canResume = view.canResume;
   const statusText =
     view.status === "active" ? m.status.active : view.status === "stopped" ? m.status.stopped : pausedByMatchTime ? m.status.pausedByMatchTime : m.status.paused;
 
@@ -124,6 +127,7 @@ export function ManageView({ view }: { view: PoolManageView | null }) {
         <p className="mt-2 text-slate-800" data-testid="pool-status">
           {statusText}
         </p>
+        <PoolPauseNote view={view} lang={lang} />
         {view.earlyList && <p className="mt-2 text-sm text-slate-600">{m.earlyNote}</p>}
         {view.consentAt && view.consentVersion !== null && (
           <p className="mt-2 text-sm text-slate-600">{m.consentLine(formatPolicyDate(view.consentAt.slice(0, 10), lang), view.consentVersion)}</p>
@@ -134,7 +138,7 @@ export function ManageView({ view }: { view: PoolManageView | null }) {
               {m.pause}
             </button>
           )}
-          {view.status === "paused" && !pausedByMatchTime && (
+          {canResume && (
             <button type="button" disabled={pending} onClick={() => act("resume")} className={`${BTN} bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500`}>
               {m.resume}
             </button>
@@ -195,6 +199,9 @@ export function ManageView({ view }: { view: PoolManageView | null }) {
         </label>
         <p className="mt-1 pl-8 text-sm text-slate-600">{m.showRecognitionHint}</p>
       </section>
+
+      {/* Slice L7: his turn-up record, and the clubs that offered him games. */}
+      <PoolRecordAndClubs view={view} lang={lang} />
 
       {/* Slice G1: his share link; reloads when the privacy switch or his status moves. */}
       <PoolShareCard lang={lang} refreshKey={`${showRecognition}:${view.status}`} />

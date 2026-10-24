@@ -40,13 +40,16 @@
  *   pool-offer,         only a number MatchTime already knows: a pool
  *   pool-placed,        player whose own WhatsApp message confirmed his
  *   pool-reply,         sign-up (local player pool, slice L5a). Queued only
- *   pool-paused         by src/lib/pool/ (round.ts, accept.ts, reply.ts).
+ *   pool-paused,        by src/lib/pool/ (round.ts, accept.ts, reply.ts;
+ *   pool-removed        L7: no-shows.ts, safety.ts, removal.ts).
  *                       A `pool-offer` is ADMITTED at dispatch under the
  *                       platform cap's lock (`pool/dispatch.ts`): switches,
  *                       his caps and quiet hours are re-checked there.
  *   owner-approval,     NEVER through here. `queueOwnerDm` (owner-dm.ts)
  *   owner-ack,          is the only door to Kemal's phone.
- *   owner-setup-stuck
+ *   owner-setup-stuck,
+ *   owner-pool-report,
+ *   owner-pool-review
  *
  * ── Dispatch: claim-on-dispatch, as due-posts ────────────────────────
  * `claimDuePlatformJobs` flips each job queued -> claimed with a
@@ -126,6 +129,7 @@ export const PLATFORM_DM_PURPOSES = [
   "pool-placed",
   "pool-reply",
   "pool-paused",
+  "pool-removed",
 ] as const;
 export type PlatformDmPurpose = (typeof PLATFORM_DM_PURPOSES)[number];
 
@@ -138,7 +142,12 @@ const ANY_NUMBER_PURPOSES = ["otp", "pool-code-reply"] as const;
  *  that is still setting up 72 hours after its approval. An action item,
  *  not an alert: the owner can press "Go live now" on the clubs page
  *  (src/lib/club-setup-stuck.ts). */
-export const OWNER_DM_PURPOSES = ["owner-approval", "owner-ack", "owner-setup-stuck"] as const;
+/** "owner-pool-report" / "owner-pool-review" (local player pool, slice L7):
+ *  a problem reported by a club or a player, and a player asking a person
+ *  to look at a pause MatchTime decided. Action items (the privacy policy
+ *  promises a person), at most one per player per London day, held through
+ *  the owner's quiet hours (src/lib/pool/safety.ts). */
+export const OWNER_DM_PURPOSES = ["owner-approval", "owner-ack", "owner-setup-stuck", "owner-pool-report", "owner-pool-review"] as const;
 export type OwnerDmPurpose = (typeof OWNER_DM_PURPOSES)[number];
 
 export const LEAVE_GROUP_PURPOSE = "leave-group" as const;

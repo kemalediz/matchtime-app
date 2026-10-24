@@ -44,6 +44,7 @@
  * so two at once cannot both pass. A reply never carries a code. MatchTime
  * only ever answers a number that has just written to it.
  */
+import { applyStandingPause, type StandingPauseClient } from "./standing-pause";
 import { db } from "../db";
 import { normaliseLang } from "../i18n/lang";
 import { PlatformDmRefused, platformPhoneDigits, queuePlatformDm, type PlatformDmPurpose } from "../platform-jobs";
@@ -301,6 +302,8 @@ export async function activatePendingProfile(
     code: a.code,
     at: a.now,
   });
+  // A pause MatchTime decided survives a deleted profile (slice L7).
+  await applyStandingPause(tx as unknown as StandingPauseClient, a.userId, a.now);
   return tx.poolProfile.findUniqueOrThrow({
     where: { id: a.profileId },
     select: { id: true, userId: true, displayName: true, language: true, earlyList: true },

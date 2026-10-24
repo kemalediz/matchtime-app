@@ -27,7 +27,9 @@ const place = (over: Partial<FunnelPlaceFact> = {}): FunnelPlaceFact => ({
   orgId: "club-a",
   match: { kickoff: new Date(NOW.getTime() - 3 * DAY), durationMins: 60, status: "COMPLETED" },
   attendance: "CONFIRMED",
-  recorded: "booked",
+  // Slice L7: the cron records "played" once the no-show window closed.
+  recorded: "played",
+  settled: true,
   ...over,
 });
 
@@ -84,8 +86,10 @@ describe("funnelStepsReached: one milestone after another, each needing the one 
   it("played is the Guest players page's rule (settleGuestResult): CONFIRMED on an ended game", () => {
     expect(reached(profile({ offersDelivered: 1, places: [place()] }))).toContain("played");
     // Not played yet: the game is still to come.
-    const upcoming = place({ match: { kickoff: new Date(NOW.getTime() + DAY), durationMins: 60, status: "UPCOMING" } });
+    const upcoming = place({ match: { kickoff: new Date(NOW.getTime() + DAY), durationMins: 60, status: "UPCOMING" }, recorded: "booked", settled: false });
     expect(reached(profile({ offersDelivered: 1, places: [upcoming] }))).not.toContain("played");
+    // Slice L7: still booked after the game, the result is due, not played yet.
+    expect(reached(profile({ offersDelivered: 1, places: [place({ recorded: "booked", settled: false })] }))).not.toContain("played");
     // A no-show an organiser recorded wins over his CONFIRMED row.
     expect(reached(profile({ offersDelivered: 1, places: [place({ recorded: "no-show" })] }))).not.toContain("played");
     // A cancelled match was not a game.

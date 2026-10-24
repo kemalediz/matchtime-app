@@ -54,7 +54,7 @@ describe("the Guest players surface never reads what it must not show", () => {
 
   it("another club's game is read as a result only", () => {
     const src = read("lib/pool/guest-report-loader.ts");
-    expect(src).toContain("db.guestPlace.findMany({ where: { userId: { in: userIds }, orgId: { not: orgId } }, select: { userId: true, matchId: true, result: true } })");
+    expect(src).toContain("db.guestPlace.findMany({ where: { userId: { in: userIds }, orgId: { not: orgId } }, select: { userId: true, matchId: true, result: true, settledAt: true } })");
     expect(src).toMatch(/sportName: here \? m\.activity\.sport\.name : ""/);
     expect(src).toMatch(/venue: here \? m\.activity\.venue : ""/);
   });

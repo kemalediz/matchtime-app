@@ -106,6 +106,15 @@ export const POOL_OFFER_WAVES = [1, 2] as const;
 export const POOL_BLOCK_BY = ["club", "player"] as const;
 export type PoolBlockBy = (typeof POOL_BLOCK_BY)[number];
 
+/** Who reported a problem to the platform owner (slice L7): a club about
+ *  a guest, or a player about a club. The same two sides as a block. */
+export const POOL_REPORT_BY = POOL_BLOCK_BY;
+export type PoolReportBy = PoolBlockBy;
+
+/** The pauses only MatchTime (or a person reviewing them) decides. They
+ *  survive a stop (slice L7), and a review can be asked for them. */
+export const POOL_MATCHTIME_PAUSE_REASONS = ["no-shows", "reports", "admin"] as const satisfies readonly PoolPauseReason[];
+
 /** A campaign code's channel (G1). */
 export const POOL_CAMPAIGN_SOURCES = ["linkedin", "leaflet", "club", "other"] as const;
 export type PoolCampaignSource = (typeof POOL_CAMPAIGN_SOURCES)[number];

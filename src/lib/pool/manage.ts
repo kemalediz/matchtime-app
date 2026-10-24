@@ -23,6 +23,8 @@ import { canEraseUser, manageTransition, type ManageAction, type ManageRefusal }
 import type { PoolFields } from "./profile-fields";
 import { availabilityRows, loadPoolVenues, resolveArea, sportRows, type PoolVenueOption } from "./profile-store";
 import { formatMinutes } from "./rules";
+import { loadOwnTurnUp, loadPlayerClubs, ownResumeFrom, stampSafetyRecordsGone } from "./safety";
+import type { TurnUpRecord } from "./turn-up";
 import type { SportLevel, PoolSportChoiceKey } from "./sports";
 import type { PoolPauseReason, PoolProfileStatus } from "./vocab";
 
@@ -30,6 +32,16 @@ import type { PoolPauseReason, PoolProfileStatus } from "./vocab";
 export interface PoolManageView {
   status: PoolProfileStatus;
   pausedReason: PoolPauseReason | null;
+  /** Slice L7: when he may lift his pause himself (ISO), or null for never. */
+  resumeFrom: string | null;
+  /** He may lift his pause himself now (the server's clock). */
+  canResume: boolean;
+  /** He asked a person to look at a pause MatchTime decided. */
+  reviewRequested: boolean;
+  /** His turn-up record across every club, counts only. */
+  record: TurnUpRecord;
+  /** Clubs that offered him a game or had him as a guest, and his blocks. */
+  clubs: { orgId: string; name: string; blocked: boolean }[];
   earlyList: boolean;
   showRecognition: boolean;
   consentAt: string | null;
@@ -45,12 +57,14 @@ export interface PoolManageView {
   };
 }
 
-export async function loadPoolManageView(userId: string): Promise<PoolManageView | null> {
+export async function loadPoolManageView(userId: string, now: Date = new Date()): Promise<PoolManageView | null> {
   const p = await db.poolProfile.findUnique({
     where: { userId },
     select: {
       status: true,
       pausedReason: true,
+      pausedAt: true,
+      reviewRequestedAt: true,
       earlyList: true,
       showRecognition: true,
       consentAt: true,
@@ -65,9 +79,17 @@ export async function loadPoolManageView(userId: string): Promise<PoolManageView
     },
   });
   if (!p || p.status === "pending-verify") return null;
+  const [record, clubs] = await Promise.all([loadOwnTurnUp(userId), loadPlayerClubs(userId)]);
+  const pausedReason = p.pausedReason as PoolPauseReason | null;
+  const resumeFrom = p.status === "paused" ? ownResumeFrom({ pausedReason, pausedAt: p.pausedAt }) : null;
   return {
     status: p.status as PoolProfileStatus,
-    pausedReason: p.pausedReason as PoolPauseReason | null,
+    pausedReason,
+    resumeFrom: resumeFrom?.toISOString() ?? null,
+    canResume: !!resumeFrom && resumeFrom.getTime() <= now.getTime(),
+    reviewRequested: p.reviewRequestedAt !== null,
+    record,
+    clubs,
     earlyList: p.earlyList,
     showRecognition: p.showRecognition,
     consentAt: p.consentAt?.toISOString() ?? null,
@@ -130,13 +152,13 @@ export async function applyManageAction(
   opts: { consent?: boolean; now?: Date } = {},
 ): Promise<PoolManageResult> {
   const now = opts.now ?? new Date();
-  const p = await db.poolProfile.findUnique({ where: { userId }, select: { id: true, status: true, pausedReason: true } });
+  const p = await db.poolProfile.findUnique({ where: { userId }, select: { id: true, status: true, pausedReason: true, pausedAt: true } });
   if (!p || p.status === "pending-verify") return { ok: false, reason: "no-profile" };
   // What proves it: the signed-in person, and when.
   const evidence = `web:${userId}:${now.getTime()}`;
   const t = manageTransition({
     action,
-    profile: { status: p.status as PoolProfileStatus, pausedReason: p.pausedReason as PoolPauseReason | null },
+    profile: { status: p.status as PoolProfileStatus, pausedReason: p.pausedReason as PoolPauseReason | null, pausedAt: p.pausedAt },
     now,
     consent: opts.consent,
     evidence,
@@ -144,7 +166,7 @@ export async function applyManageAction(
   if (!t.ok) return t;
   return db.$transaction(async (tx) => {
     // Compare-and-set on the state the rule read, so two taps cannot cross.
-    const { count } = await tx.poolProfile.updateMany({ where: { id: p.id, status: p.status }, data: t.patch });
+    const { count } = await tx.poolProfile.updateMany({ where: { id: p.id, status: p.status, pausedReason: p.pausedReason }, data: t.patch });
     if (count !== 1) return { ok: false as const, reason: "no-profile" as const };
     if (action === "stop") await recordPoolConsent(tx, { userId, action: "withdraw", channel: "web", evidence: `${evidence}:stop`, at: now });
     if (action === "restart") {
@@ -175,6 +197,8 @@ export async function deletePoolProfile(userId: string, now: Date = new Date()):
     const { count } = await tx.poolProfile.deleteMany({ where: { userId } });
     if (count === 0) return { ok: false as const, reason: "no-profile" as const };
     await recordPoolConsent(tx, { userId, action: "withdraw", channel: "web", evidence: `web:${userId}:${now.getTime()}:delete`, at: now });
+    // Slice L7: his block and report records start their 24 months now.
+    await stampSafetyRecordsGone(tx, userId, now);
     const user = await tx.user.findUnique({
       where: { id: userId },
       select: { isSuperadmin: true, _count: { select: { memberships: true, attendances: true, guestPlaces: true } } },

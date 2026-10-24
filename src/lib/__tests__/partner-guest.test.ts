@@ -5,6 +5,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const dbMock = vi.hoisted(() => ({
+  guestPlace: { upsert: vi.fn(), updateMany: vi.fn() },
   partnerAsk: { findUnique: vi.fn(), updateMany: vi.fn() },
   sentNotification: { create: vi.fn() },
   $executeRaw: vi.fn(),
@@ -17,6 +18,8 @@ const dbMock = vi.hoisted(() => ({
   botJob: { create: vi.fn() },
 }));
 vi.mock("../db", () => ({ db: dbMock }));
+// Slice L7: the partner guest's GuestPlace, and the club's cut-off for a late drop.
+vi.mock("../club-partnership", () => ({ loadPartnerAskSettings: vi.fn(async () => ({ cutoffHours: 4 })) }));
 const att = vi.hoisted(() => ({ registerAttendance: vi.fn(), cancelAttendance: vi.fn() }));
 vi.mock("../attendance", () => att);
 const notice = vi.hoisted(() => ({ sendAdminNotice: vi.fn() }));
@@ -262,5 +265,37 @@ describe("handlePartnerVolunteer", () => {
     expect(r.outcome).toBe("registered-bench");
     expect(r.dmQueued).toBe(false);
     expect(dmTo()).toBeUndefined();
+  });
+});
+
+describe("slice L7: a partner guest's game is a GuestPlace too", () => {
+  it("taking a place (bench or in) as a guest writes his partner guest place", async () => {
+    await handlePartnerVolunteer(write(), NOW);
+    expect(dbMock.guestPlace.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { matchId_userId: { matchId: "m-fnf", userId: "ali" } },
+        create: { orgId: "fnf", matchId: "m-fnf", userId: "ali", source: "partner", fromOrgId: "sutton", partnerAskId: "ask1" },
+      }),
+    );
+  });
+
+  it("an ordinary member of the asking club gets no guest place", async () => {
+    dbMock.membership.findUnique.mockResolvedValue({ id: "mem", leftAt: null, guestFromOrgId: null });
+    await handlePartnerVolunteer(write(), NOW);
+    expect(dbMock.guestPlace.upsert).not.toHaveBeenCalled();
+  });
+
+  it("OUT after the club's cut-off marks his place a late cancel; before it, given up in time", async () => {
+    dbMock.membership.findUnique.mockImplementation(({ where }: { where: { userId_orgId: { orgId: string } } }) =>
+      Promise.resolve(where.userId_orgId.orgId === "sutton" ? { leftAt: null, guestFromOrgId: null } : { id: "g", leftAt: null, guestFromOrgId: "sutton", guestMatchId: "m-fnf", guestVia: "partner" }),
+    );
+    dbMock.attendance.findUnique.mockResolvedValue({ status: "CONFIRMED" });
+    dbMock.partnerAsk.findUnique.mockResolvedValue({ ...ASK, volunteerUserIds: ["ali"] });
+    // NOW is 5.5 hours before kickoff, the cut-off 4: in time.
+    await handlePartnerVolunteer(write({ polarity: "out" }), NOW);
+    expect(dbMock.guestPlace.updateMany).toHaveBeenLastCalledWith({ where: { matchId: "m-fnf", userId: "ali", result: "booked", settledAt: null }, data: { result: "withdrawn", resultAt: NOW } });
+    const late = new Date(KICKOFF.getTime() - 3600_000);
+    await handlePartnerVolunteer(write({ polarity: "out", sourceMessageId: "wa-2" }), late);
+    expect(dbMock.guestPlace.updateMany).toHaveBeenLastCalledWith({ where: { matchId: "m-fnf", userId: "ali", result: "booked", settledAt: null }, data: { result: "late-cancel", resultAt: late } });
   });
 });

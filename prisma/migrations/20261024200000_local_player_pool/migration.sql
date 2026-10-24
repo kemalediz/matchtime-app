@@ -326,7 +326,8 @@ ALTER TABLE "PoolProfile" ADD CONSTRAINT "PoolProfile_pausedReason_check"
   CHECK ("pausedReason" IS NULL OR "pausedReason" IN ('self', 'ignored', 'no-shows', 'reports', 'admin'));
 ALTER TABLE "PoolProfile" DROP CONSTRAINT IF EXISTS "PoolProfile_paused_check";
 ALTER TABLE "PoolProfile" ADD CONSTRAINT "PoolProfile_paused_check"
-  CHECK (("status" = 'paused') = ("pausedReason" IS NOT NULL AND "pausedAt" IS NOT NULL));
+  CHECK ((("pausedReason" IS NULL) = ("pausedAt" IS NULL)) AND ("status" <> 'paused' OR "pausedReason" IS NOT NULL)
+    AND ("pausedReason" IS NULL OR "status" = 'paused' OR ("status" = 'stopped' AND "pausedReason" IN ('no-shows', 'reports', 'admin'))));
 ALTER TABLE "PoolProfile" DROP CONSTRAINT IF EXISTS "PoolProfile_stopped_check";
 ALTER TABLE "PoolProfile" ADD CONSTRAINT "PoolProfile_stopped_check"
   CHECK (("status" = 'stopped') = ("stoppedAt" IS NOT NULL));

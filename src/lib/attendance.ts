@@ -314,6 +314,18 @@ export async function registerAttendance(
     return row;
   });
 
+  // ── A guest back on a game he gave up (player pool, slice L7; review of
+  // #404, 7): his guest place for it is booked again, as a partner
+  // volunteer's is, so a late cancel he took back is not a miss. One
+  // indexed no-op for everyone else. Never fails the registration.
+  if (!existing || existing.status === "DROPPED") {
+    try {
+      await rebookGuestPlace(matchId, userId);
+    } catch (err) {
+      console.error(`[attendance] ${userId}: guest place not re-booked:`, err instanceof Error ? err.message : "failed");
+    }
+  }
+
   // ── Auto-resolve any open BenchSlotOffer for this user (2026-05-26) ──
   // If we just re-CONFIRMED / re-BENCHED a user who was previously
   // DROPPED, any open BenchSlotOffer where they were `replacingUserId`
@@ -674,4 +686,14 @@ async function isClubAdminActor(event: AttendanceEventContext, orgId: string): P
   });
   // A guest is never the club's admin (review of #400, M1).
   return !!m && !m.leftAt && !m.guestMatchId && (m.role === "OWNER" || m.role === "ADMIN");
+}
+
+/** A guest place given up (in time or late) and not settled yet, booked
+ *  again because he is back on the game (slice L7). Exported for tests. */
+export async function rebookGuestPlace(matchId: string, userId: string): Promise<number> {
+  const done = await db.guestPlace.updateMany({
+    where: { matchId, userId, result: { in: ["withdrawn", "late-cancel"] }, settledAt: null },
+    data: { result: "booked", resultAt: null, resultById: null },
+  });
+  return done.count;
 }

@@ -22,6 +22,7 @@
  * venue. Members are never offered their own club's games: that is the
  * matcher's rule (L4 `candidates.ts`), not this card's.
  */
+import { applyStandingPause, type StandingPauseClient } from "./standing-pause";
 import { db } from "../db";
 import { recordPoolConsent } from "./consent-record";
 import { memberJoinConsent, memberOptInPath, memberPrefill, type MemberClubFacts, type MemberOptInPath, type MemberPrefill } from "./member-prefill";
@@ -163,6 +164,8 @@ export async function joinPoolAsMember(userId: string, fields: PoolFields, opts:
         phone: user.phoneNumber!.replace(/^\+/, ""),
         at: now,
       });
+      // A pause MatchTime decided survives a deleted profile (slice L7).
+      await applyStandingPause(tx as unknown as StandingPauseClient, userId, now);
     });
   } catch (err) {
     // Two taps at once: the other one made his profile.

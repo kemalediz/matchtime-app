@@ -179,6 +179,14 @@ export async function loadOfferPage(offerId: string, opts: { verified: boolean; 
   };
 }
 
+/** Who an offer is between (slice L7: the offer page's block and report). */
+export async function offerParties(offerId: string): Promise<{ userId: string; orgId: string; matchId: string; club: string; blocked: boolean } | null> {
+  const o = await db.poolOffer.findUnique({ where: { id: offerId }, select: { userId: true, orgId: true, matchId: true, ask: { select: { org: { select: { name: true } } } } } });
+  if (!o) return null;
+  const block = await db.poolBlock.findFirst({ where: { orgId: o.orgId, userId: o.userId, by: "player" }, select: { id: true } });
+  return { userId: o.userId, orgId: o.orgId, matchId: o.matchId, club: o.ask.org.name, blocked: !!block };
+}
+
 /** The organisers' record line for him: counts only. */
 async function recordOf(userId: string) {
   const [confirmedCompleted, noShows, lateCancels] = await Promise.all([

@@ -3,7 +3,7 @@ import { longDayTimeLabel } from "@/lib/i18n/dates";
 import { poolCopy } from "@/lib/i18n/pool-offer";
 import { cookies } from "next/headers";
 import { auth } from "@/lib/auth";
-import { isOfferHolder, loadOfferPage } from "@/lib/pool/accept";
+import { isOfferHolder, loadOfferPage, offerParties } from "@/lib/pool/accept";
 import { proofCookieName } from "@/lib/pool/offer-proof-rules";
 import { poolEnvForRequest } from "@/lib/pool/switch-env";
 import type { OfferPageState } from "@/lib/pool/accept-rules";
@@ -11,6 +11,7 @@ import { poolOfferLines } from "@/lib/pool/offer-copy";
 import { offerIdFromToken } from "@/lib/pool/offer-token";
 import { POOL_MANAGE_PATH } from "@/lib/pool/paths";
 import { PoolOfferAnswer } from "./answer";
+import { OfferSafety } from "./safety";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "MatchTime", robots: { index: false, follow: false } };
@@ -37,6 +38,8 @@ export default async function PoolOfferPage({ params }: { params: Promise<{ toke
       })
     : false;
   const page = offerId ? await loadOfferPage(offerId, { verified, env: await poolEnvForRequest() }) : null;
+  // Slice L7: block and report, for the holder only.
+  const parties = offerId && page?.verified ? await offerParties(offerId) : null;
   const lang = page?.lang ?? "en";
   const c = poolCopy(lang);
 
@@ -96,6 +99,7 @@ export default async function PoolOfferPage({ params }: { params: Promise<{ toke
           </p>
         )}
         <PoolOfferAnswer token={token} language={lang} state={page.state} verified={page.verified} />
+        {parties && <OfferSafety token={token} language={lang} club={parties.club} blocked={parties.blocked} />}
         <p className="mt-8 text-xs text-slate-500">
           <a href={POOL_MANAGE_PATH} className="underline" data-testid="pool-offer-manage">
             {c.page_manage}

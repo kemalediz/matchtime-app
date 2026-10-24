@@ -30,6 +30,8 @@ import { loadPartnerAskPanel } from "@/lib/partner-ask";
 import { poolEnvForRequest } from "@/lib/pool/switch-env";
 import { organisersPickMom } from "@/lib/mom-chooser";
 import { loadMatchGuestCards } from "@/lib/pool/guest-report-loader";
+import { loadGuestResultsPanel, markByLabel } from "@/lib/pool/no-shows";
+import { GuestResultsPanel } from "@/components/match/guest-results-panel";
 import { normaliseLang } from "@/lib/i18n/lang";
 
 export default async function MatchDetailPage({
@@ -48,7 +50,7 @@ export default async function MatchDetailPage({
   const match = await db.match.findUnique({
     where: { id: matchId },
     include: {
-      activity: { include: { sport: true, org: { select: { name: true, teamLabels: true, language: true, momChosenBy: true } } } },
+      activity: { include: { sport: true, org: { select: { name: true, teamLabels: true, language: true, momChosenBy: true, featurePlayerPool: true } } } },
       attendances: {
         where: { status: { in: ["CONFIRMED", "BENCH"] } },
         include: {
@@ -201,6 +203,10 @@ export default async function MatchDetailPage({
     lang: normaliseLang(match.activity.org.language),
     admin: isAdmin,
   }).catch(() => ({}));
+  // Did the guests turn up? (pool slice L7): organisers, from kickoff, in a
+  // club that may ask the pool (every other club's page is as before).
+  const poolClub = match.activity.org.featurePlayerPool === true;
+  const guestResults = isAdmin && poolClub ? await loadGuestResultsPanel(match.activity.orgId, matchId).catch(() => null) : null;
   const isPastDeadline = new Date() > match.attendanceDeadline;
   // "Enter score" / "Edit score" for an admin on any PLAYED match that was
   // not cancelled (FNF, 2026-10-18). Both open the score panel in the
@@ -554,13 +560,23 @@ export default async function MatchDetailPage({
             admin={isAdmin}
             matchId={matchId}
             hideBench={organiserPicks}
-            guests={{ lang: match.activity.org.language, orgId: match.activity.orgId, byUser: guestTags }}
+            guests={{ lang: match.activity.org.language, orgId: match.activity.orgId, byUser: guestTags, matchId, poolClub }}
           />
           {organiserPicks && (
             <WaitingListControls matchId={matchId} lang={match.activity.org.language} rows={waitingRows} />
           )}
         </div>
       </section>
+
+      {guestResults && (
+        <GuestResultsPanel
+          matchId={matchId}
+          lang={match.activity.org.language}
+          until={markByLabel(match.activity.org.language, guestResults.closesAt)}
+          final={guestResults.final}
+          rows={guestResults.rows}
+        />
+      )}
 
       {partnerGuestRows.length > 0 && (
         <PartnerGuestsPanel matchId={matchId} clubName={match.activity.org.name} language={match.activity.org.language} rows={partnerGuestRows} />

@@ -212,3 +212,41 @@ describe("slice L2's migration (codes, the sign-up IP, attempts, the consent rec
     expect(sql).not.toMatch(/^\s*(UPDATE|DELETE|INSERT)\b/im);
   });
 });
+
+describe("slice L7's migration (no-shows, reviews, blocks kept after deletion, reports)", () => {
+  const L7 = "prisma/migrations/20261026090000_pool_no_shows/migration.sql";
+  const sql = code(read(L7));
+  const reasons = list(V.POOL_MATCHTIME_PAUSE_REASONS);
+  const PAUSED =
+    `CHECK ((("pausedReason" IS NULL) = ("pausedAt" IS NULL)) AND ("status" <> 'paused' OR "pausedReason" IS NOT NULL)` +
+    `\n    AND ("pausedReason" IS NULL OR "status" = 'paused' OR ("status" = 'stopped' AND "pausedReason" IN (${reasons}))))`;
+  const REVIEW = `CHECK ("reviewRequestedAt" IS NULL OR "pausedReason" IN (${reasons}))`;
+  const BY = inList("by", V.POOL_REPORT_BY);
+
+  it("a MatchTime pause may stay on a stopped profile, in L1, L7 and the CHECK file alike (re-runnable in any order)", () => {
+    for (const f of [MIGRATION, L7, CHECKS]) expect(code(read(f)), f).toContain(PAUSED);
+    expect(code(read(MIGRATION))).not.toContain(`CHECK (("status" = 'paused') = ("pausedReason" IS NOT NULL AND "pausedAt" IS NOT NULL))`);
+  });
+  it("carries the same review and report CHECKs as the CHECK file, from the vocab", () => {
+    for (const f of [L7, CHECKS]) for (const c of [REVIEW, BY, `CHECK (length("text") BETWEEN 3 AND 1000)`]) expect(code(read(f)), `${f}: ${c}`).toContain(c);
+  });
+  it("the report keeps no foreign key on the user: it outlives the profile (decision L0.3)", () => {
+    const table = sql.slice(sql.indexOf('CREATE TABLE IF NOT EXISTS "PoolReport"'));
+    expect(table.slice(0, table.indexOf(");"))).not.toMatch(/REFERENCES/);
+    expect(sql).not.toMatch(/"PoolReport_userId_fkey"/);
+  });
+  it("is additive, idempotent and one transaction with no session-level SET", () => {
+    expect(sql).not.toMatch(/DROP\s+(COLUMN|TABLE)/i);
+    const dropped = [...sql.matchAll(/DROP CONSTRAINT IF EXISTS "([^"]+)"/g)].map((m) => m[1]);
+    const added = new Set([...sql.matchAll(/ADD CONSTRAINT "([^"]+)"/g)].map((m) => m[1]));
+    for (const name of dropped) expect(added.has(name), name).toBe(true);
+    expect(sql).not.toMatch(/CREATE TABLE (?!IF NOT EXISTS)/);
+    expect(sql).not.toMatch(/CREATE (UNIQUE )?INDEX (?!IF NOT EXISTS)/);
+    expect(sql).not.toMatch(/ADD COLUMN (?!IF NOT EXISTS)/);
+    expect(sql).toMatch(/^\s*BEGIN;/m);
+    expect(sql).toMatch(/^\s*SET LOCAL lock_timeout = '5s';/m);
+    expect(sql).toMatch(/^\s*COMMIT;\s*$/m);
+    expect(sql).not.toMatch(/^\s*SET\s+(?!LOCAL)/im);
+    expect(sql).not.toMatch(/^\s*(UPDATE|DELETE|INSERT)\b/im);
+  });
+});

@@ -38,7 +38,7 @@ async function loadProfiles(): Promise<FunnelProfileFact[]> {
   const [offers, places] = userIds.length
     ? await Promise.all([
         db.poolOffer.groupBy({ by: ["userId"], where: { userId: { in: userIds }, sentAt: { not: null } }, _count: { _all: true } }),
-        db.guestPlace.findMany({ where: { userId: { in: userIds }, source: "pool" }, select: { userId: true, orgId: true, matchId: true, result: true } }),
+        db.guestPlace.findMany({ where: { userId: { in: userIds }, source: "pool" }, select: { userId: true, orgId: true, matchId: true, result: true, settledAt: true } }),
       ])
     : [[], []];
 
@@ -68,7 +68,7 @@ async function loadProfiles(): Promise<FunnelProfileFact[]> {
     const match = matchOf.get(p.matchId);
     if (!match) continue;
     const list = placesOf.get(p.userId) ?? [];
-    list.push({ orgId: p.orgId, match, attendance: attendanceOf.get(`${p.matchId}:${p.userId}`) ?? null, recorded: isOneOf(GUEST_RESULTS, p.result) ? p.result : "booked" });
+    list.push({ orgId: p.orgId, match, attendance: attendanceOf.get(`${p.matchId}:${p.userId}`) ?? null, recorded: isOneOf(GUEST_RESULTS, p.result) ? p.result : "booked", settled: p.settledAt !== null });
     placesOf.set(p.userId, list);
   }
   const membersOf = new Map<string, string[]>();
