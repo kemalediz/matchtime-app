@@ -109,6 +109,8 @@ describe("afterGameAskDue: who is asked after a game, and when", () => {
     expect(afterGameAskDue({ ...base, now, pool: "deleted" })).toEqual({ due: false, why: "stopped" });
     expect(afterGameAskDue({ ...base, now, hasPhone: false })).toEqual({ due: false, why: "no-phone" });
     expect(afterGameAskDue({ ...base, now, askedBefore: true })).toEqual({ due: false, why: "asked-before" });
+    // The club blocked him (slice L7): never asked to join it.
+    expect(afterGameAskDue({ ...base, now, blocked: true })).toEqual({ due: false, why: "blocked" });
   });
 
   it("a partner club's guest (no pool profile) is asked too", () => {

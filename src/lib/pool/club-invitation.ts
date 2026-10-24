@@ -615,6 +615,7 @@ async function askAfterGames(now: Date): Promise<number> {
         pool: person?.pool ?? "none",
         hasPhone: !!phone,
         askedBefore: asked.has(`${orgId}:${userId}`),
+        blocked: person?.clubBlocked === true,
         now,
       });
       if (!due.due || !phone) continue;

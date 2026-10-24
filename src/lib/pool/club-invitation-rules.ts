@@ -113,7 +113,7 @@ export function clubSilentBefore(now: Date): Date {
 
 // ── After the game ─────────────────────────────────────────────────────
 
-export type AfterGameSkip = "too-soon" | "too-late" | "not-played" | "member" | "stopped" | "no-phone" | "asked-before";
+export type AfterGameSkip = "too-soon" | "too-late" | "not-played" | "member" | "stopped" | "blocked" | "no-phone" | "asked-before";
 
 export function afterGameAskDue(c: {
   match: { kickoff: Date; durationMins: number; status: string };
@@ -125,11 +125,14 @@ export function afterGameAskDue(c: {
   hasPhone: boolean;
   /** This club asked him after a game before (any invitation, any status). */
   askedBefore: boolean;
+  /** This club blocked him (slice L7). */
+  blocked?: boolean;
   now: Date;
 }): { due: true } | { due: false; why: AfterGameSkip } {
   if (c.result !== "played") return { due: false, why: "not-played" };
   if (c.member) return { due: false, why: "member" };
   if (c.pool === "stopped" || c.pool === "deleted") return { due: false, why: "stopped" };
+  if (c.blocked) return { due: false, why: "blocked" };
   if (!c.hasPhone) return { due: false, why: "no-phone" };
   if (c.askedBefore) return { due: false, why: "asked-before" };
   const end = c.match.kickoff.getTime() + c.match.durationMins * 60_000;
