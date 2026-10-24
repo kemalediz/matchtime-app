@@ -1,3 +1,5 @@
+import { PRIVACY_PATH } from "./privacy-policy";
+
 export type SessionStatus = "authenticated" | "unauthenticated" | "loading";
 
 /**
@@ -5,7 +7,8 @@ export type SessionStatus = "authenticated" | "unauthenticated" | "loading";
  *
  * - Auth routes, magic links, join links and onboarding are always
  *   full-bleed: they have their own background.
- * - Public marketing pages (the landing page at `/` and the help guides)
+ * - Public marketing pages (the landing page at `/`, the help guides and
+ *   the privacy policy)
  *   are full-bleed for signed-out visitors, so an empty app sidebar does
  *   not appear next to them. Signed-in users keep the sidebar there.
  * - "loading" counts as signed in, so a signed-in user's hard refresh
@@ -21,7 +24,10 @@ export function shouldShowSidebar(pathname: string | null, status: SessionStatus
   const isOnboarding = pathname?.startsWith("/onboarding");
 
   const isMarketingPath =
-    pathname === "/" || pathname === "/help" || !!pathname?.startsWith("/help/");
+    pathname === "/" ||
+    pathname === "/help" ||
+    !!pathname?.startsWith("/help/") ||
+    pathname === PRIVACY_PATH;
   const signedOut = status === "unauthenticated";
   const isPublicMarketing = isMarketingPath && signedOut;
 

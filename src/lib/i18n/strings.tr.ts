@@ -4174,6 +4174,9 @@ export const tr: Strings = {
     }
   },
   mch_back_to_match: "Maça dön",
+
+  // ── Privacy policy link (local player pool L0, 2026-10-24) ─────────
+  privacy_link: "Gizlilik politikası",
 };
 
 /**

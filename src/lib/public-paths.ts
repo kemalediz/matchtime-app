@@ -1,3 +1,5 @@
+import { PRIVACY_PATH } from "./privacy-policy";
+
 /**
  * The email sign-up pages, retired 2026-10-11 when WhatsApp became the
  * only way in. The pages are deleted; an old link to one is redirected
@@ -29,6 +31,9 @@ export function isPublicPath(pathname: string): boolean {
     // before anyone signs up. They render no session data.
     pathname === "/help" ||
     pathname.startsWith("/help/") ||
+    // The privacy policy: anyone must be able to read it before signing
+    // up or sharing a detail (local player pool slice L0).
+    pathname === PRIVACY_PATH ||
     pathname.startsWith("/join/") ||
     pathname.startsWith("/r/") || // magic-link landing page does its own sign-in
     pathname.startsWith("/api/r/") || // short-code to token resolver (code is the secret)

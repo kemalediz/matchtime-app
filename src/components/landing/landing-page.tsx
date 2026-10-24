@@ -27,6 +27,8 @@ import {
 } from "lucide-react";
 import { StatsShowcase, WrappedCard } from "./stats-showcase";
 import { firstMonthsFree, firstMonthsFreeBadge } from "@/lib/i18n/free-period";
+import { t } from "@/lib/i18n/t";
+import { PRIVACY_PATH } from "@/lib/privacy-policy";
 import { CONNECT_HOW_LONG, holdHowItWorksSentence } from "@/lib/setup-hold-public-copy";
 
 /**
@@ -697,6 +699,9 @@ export function LandingPage({ holdOn = false }: { holdOn?: boolean } = {}) {
             </Link>
             <Link href="/help/admin" className="hover:text-white transition-colors">
               Organiser guide
+            </Link>
+            <Link href={PRIVACY_PATH} className="hover:text-white transition-colors">
+              {t("en").privacy_link}
             </Link>
             <a
               href="mailto:hello@matchtime.ai"
