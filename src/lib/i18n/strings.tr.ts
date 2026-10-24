@@ -4065,7 +4065,7 @@ export const tr: Strings = {
   xaskw_ambiguous: (p) => `"${p.ref}" ${p.choice} olabilir. Hangisi olduğunu yazın ya da tüm partner kulüplerinize sorun.`,
   xask_picked_dm: (p) =>
     `✅ *${p.asker}* için oynuyorsun: ${p.day}, ${p.venue}. Gelemeyeceksen buraya *YOKUM* yaz.`,
-  xask_guests_title: "Partner kulüplerden misafirler",
+  xask_guests_title: "Bu maçtaki misafirler",
   xask_guest_row: (p) => `${p.name}, misafir: ${p.club}`,
   xask_keep_button: (p) => `${p.club} kulübüne ekle`,
   xask_keep_done: "Üye olarak eklendi.",

@@ -5481,7 +5481,7 @@ export const en = {
     `"${p.ref}" could be ${p.choice}. Tell me which one, or ask all your partner clubs.`,
   xask_picked_dm: (p: { asker: string; day: string; venue: string }) =>
     `✅ You're playing for *${p.asker}*: ${p.day} at ${p.venue}. Can't make it after all? Reply *OUT* here.`,
-  xask_guests_title: "Guests from partner clubs",
+  xask_guests_title: "Guests on this game",
   xask_guest_row: (p: { name: string; club: string }) => `${p.name}, guest from ${p.club}`,
   xask_keep_button: (p: { club: string }) => `Add to ${p.club}`,
   xask_keep_done: "Added as a member.",

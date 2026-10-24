@@ -52,7 +52,7 @@ const ALLOWED = new Set([
  * Each entry here is a known pool-guest gap, not an exemption: remove it in
  * the slice that moves the file onto guest-membership.ts.
  */
-const PENDING = new Set(["src/app/matches/[matchId]/page.tsx"]);
+const PENDING = new Set<string>([]);
 
 /** A membership TEST on guestFromOrgId (not a value read). */
 const PATTERNS: Array<[string, RegExp]> = [

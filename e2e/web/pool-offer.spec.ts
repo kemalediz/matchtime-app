@@ -130,3 +130,26 @@ test("a link that is not ours: the page says it does not work, and offers nothin
   await expect(page.getByText("This link does not work.")).toBeVisible();
   await expect(page.getByTestId("pool-offer-yes")).toHaveCount(0);
 });
+
+test("after his yes, the organisers' match page shows him as a guest from the pool: the Guest tag and the guests panel, never his number", async ({ page, request, db }) => {
+  const world = new PoolWorld(request, db, false);
+  await world.start();
+  const fnf = await openClub(world, "fnf-tag", { name: "FNF Tag" });
+  const ali = await poolPlayer(world, "ali-tag", { name: "Ali Kaya", at: near(fnf) });
+  const ex = await organiserAsks(world, page, fnf, { places: 1, now: at(fnf.kickoff, -8) });
+  await pollPlatform(world, { now: at(fnf.kickoff, -8) });
+  const owner = (await world.userOf(fnf.member("owner")))!;
+  await page.context().clearCookies();
+  await page.goto(tapLinkIn(ex.sent[0]));
+  await page.getByTestId("pool-offer-yes").click();
+  await expect(page.getByTestId("pool-offer-page")).toHaveAttribute("data-state", "in", { timeout: 20_000 });
+
+  await signInAs(page, owner.id, `/matches/${fnf.group.matchId}`);
+  const row = page.getByTestId("partner-guest-row");
+  await expect(row).toHaveCount(1, { timeout: 30_000 });
+  await expect(row).toContainText("guest from MatchTime player pool");
+  await expect(page.getByTestId("partner-guests-panel")).toContainText("Guests on this game");
+  await expect(page.getByTestId("partner-guest-standing")).toHaveCount(0);
+  await expect(page.getByTestId("guest-tag").first()).toBeVisible();
+  for (const v of ali.phoneVariants()) await expect(page.locator("body")).not.toContainText(v);
+});
