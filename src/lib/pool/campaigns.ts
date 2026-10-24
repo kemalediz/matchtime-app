@@ -6,9 +6,14 @@
  * every caller checks that first.
  *
  * Counts only, never names: the page answers "how many", not "who".
+ *
+ * A club's own code (source "club", slice G3) is made here too, by
+ * `ensureClubPoolCampaign`, for that club's one share post: never from the
+ * owner page, which knows no club.
  */
 import { appBaseUrl } from "../app-url";
 import { db } from "../db";
+import { clubShareCampaignCode, clubShareCampaignLabel } from "./club-share-rules";
 import { campaignSignupCounts, poolCampaignUrl, validateCampaignInput, type CampaignInputErrors } from "./growth-rules";
 
 export interface PoolCampaignRow {
@@ -65,4 +70,32 @@ export async function setPoolCampaignActive(code: string, active: boolean): Prom
 export async function poolCampaignLink(code: string): Promise<string | null> {
   const c = await db.poolCampaign.findUnique({ where: { code }, select: { code: true } });
   return c ? poolCampaignUrl(appBaseUrl(), c.code) : null;
+}
+
+/** How many "-2", "-3" a club's code may try before giving up. */
+const CLUB_CODE_ATTEMPTS = 10;
+
+/**
+ * The club's own campaign link (slice G3, its share post), made the first
+ * time it is needed and the same ever after: "/play?src=club-<slug>", or
+ * "club-<slug>-2" in the rare case that code is someone else's. Two pages
+ * at once make ONE code (the code is the key; the loser reads it back).
+ * Null only if every attempt was taken.
+ */
+export async function ensureClubPoolCampaign(org: { id: string; slug: string; name: string }): Promise<string | null> {
+  const base = appBaseUrl();
+  const existing = await db.poolCampaign.findFirst({ where: { source: "club", orgId: org.id }, orderBy: { createdAt: "asc" }, select: { code: true } });
+  if (existing) return poolCampaignUrl(base, existing.code);
+  for (let attempt = 1; attempt <= CLUB_CODE_ATTEMPTS; attempt++) {
+    const code = clubShareCampaignCode(org.slug, attempt);
+    try {
+      await db.poolCampaign.create({ data: { code, source: "club", label: clubShareCampaignLabel(org.name), orgId: org.id } });
+      return poolCampaignUrl(base, code);
+    } catch (err) {
+      if ((err as { code?: string })?.code !== "P2002") throw err;
+      const taken = await db.poolCampaign.findUnique({ where: { code }, select: { source: true, orgId: true } });
+      if (taken?.source === "club" && taken.orgId === org.id) return poolCampaignUrl(base, code);
+    }
+  }
+  return null;
 }
