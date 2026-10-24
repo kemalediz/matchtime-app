@@ -50,7 +50,7 @@ export async function pastMatch(world: PoolWorld, club: PoolClub, hoursAgo = 3, 
 /**
  * Someone who played ONE game with this club as a guest, as L5a's tap-yes
  * (pool) or the partner writer (partner) leaves him: a guest membership for
- * that game, CONFIRMED on it, and (pool) his guest place.
+ * that game, CONFIRMED on it, and his guest place with its FINAL result.
  */
 export async function playedGuest(
   world: PoolWorld,
@@ -77,9 +77,12 @@ export async function playedGuest(
     [`sim-gm-${nextMsgId()}`, userId, club.group.orgId, via, via === "partner" ? opts.partner!.group.orgId : null, game.id],
   );
   await world.db.run(`INSERT INTO "Attendance" (id, "matchId", "userId", status, "updatedAt") VALUES ($1, $2, $3, $4, now())`, [`sim-att-${nextMsgId()}`, game.id, userId, opts.attendance ?? "CONFIRMED"]);
+  // Settled, as the complete-matches cron leaves it once the no-show window
+  // closed (slice L7): the after-game question waits for a FINAL result.
+  const result = (opts.attendance ?? "CONFIRMED") === "CONFIRMED" ? "played" : "withdrawn";
   await world.db.run(
-    `INSERT INTO "GuestPlace" (id, "orgId", "matchId", "userId", source, "fromOrgId", "updatedAt") VALUES ($1, $2, $3, $4, $5, $6, now())`,
-    [`sim-gp-${nextMsgId()}`, club.group.orgId, game.id, userId, via, via === "partner" ? opts.partner!.group.orgId : null],
+    `INSERT INTO "GuestPlace" (id, "orgId", "matchId", "userId", source, "fromOrgId", result, "resultAt", "settledAt", "updatedAt") VALUES ($1, $2, $3, $4, $5, $6, $7, now(), now(), now())`,
+    [`sim-gp-${nextMsgId()}`, club.group.orgId, game.id, userId, via, via === "partner" ? opts.partner!.group.orgId : null, result],
   );
   // Seeding writes no message; nothing seen so far belongs to the scenario.
   await world.collect();

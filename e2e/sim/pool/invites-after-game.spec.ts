@@ -189,6 +189,9 @@ scenarios("after the game: joining the club's group", () => {
     await pasteLink(pool, bur);
     await playedGuest(pool, bur, "gus", { name: "Gus Stop", status: "stopped" });
     await playedGuest(pool, bur, "hal", { name: "Hal Drop", attendance: "DROPPED" });
+    const ned = await playedGuest(pool, bur, "ned", { name: "Ned Noshow" });
+    pool.note("an organiser marked Ned a no-show (slice L7): his final result");
+    await pool.db.run(`UPDATE "GuestPlace" SET result = 'no-show' WHERE "userId" = $1`, [ned.userId]);
     const ivy = await playedGuest(pool, bur, "ivy", { name: "Ivy Lane", hoursAgo: 0.5 });
     pool.note("Ivy's game ended less than an hour ago: not yet");
     pool.expectSent((await piPolls(pool)).queued, []);
