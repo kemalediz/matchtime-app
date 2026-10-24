@@ -105,7 +105,10 @@ export function matchEnded(m: Pick<GuestMatchFacts, "kickoff" | "durationMins" |
  * outcome (an organiser's no-show, a late cancel) wins; a place still
  * "booked" is read from his attendance row, as a pre-pool game is.
  */
-export function settleGuestResult(g: Pick<GuestGameFact, "match" | "attendance" | "recorded">, now: Date): GuestResult | null {
+export function settleGuestResult(
+  g: { match: Pick<GuestMatchFacts, "kickoff" | "durationMins" | "status">; attendance: AttendanceLike | null; recorded: GuestResult | null },
+  now: Date,
+): GuestResult | null {
   if (g.match.status === "CANCELLED") return null;
   if (g.recorded && g.recorded !== "booked") return g.recorded;
   if (!matchEnded(g.match, now)) return g.attendance === "DROPPED" ? "withdrawn" : "booked";
@@ -393,8 +396,9 @@ export function fillRatePercent(rate: number | null): string | null {
   return rate === null ? null : `${Math.round(rate * 100)}%`;
 }
 
-/** A cell, quoted when it must be, and never read as a spreadsheet formula. */
-function csvCell(v: string | number): string {
+/** A cell, quoted when it must be, and never read as a spreadsheet formula.
+ *  Also the owner's funnel CSV's (`funnel-rules.ts`). */
+export function csvCell(v: string | number): string {
   let s = String(v);
   if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
   return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
