@@ -26,9 +26,16 @@ ALTER TABLE "Organisation" DROP CONSTRAINT IF EXISTS "Organisation_partnerAskTim
 ALTER TABLE "Organisation" ADD CONSTRAINT "Organisation_partnerAskTime_check"
   CHECK ("partnerAskTime" IS NULL OR "partnerAskTime" ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$');
 
+-- A guest membership has both its marks or neither; since the local player
+-- pool (2026-10-24, slice L1) "guestVia" says where he came from, and a POOL
+-- guest has no home club: his match is set and his home club is not. Rows
+-- written before the pool have "guestVia" NULL and keep the original rule.
+-- The ONE definition of this CHECK (prisma/sql/pool-check.sql does not
+-- repeat it); also applied by
+-- prisma/migrations/20261024200000_local_player_pool/migration.sql.
 ALTER TABLE "Membership" DROP CONSTRAINT IF EXISTS "Membership_guest_check";
 ALTER TABLE "Membership" ADD CONSTRAINT "Membership_guest_check"
-  CHECK (("guestFromOrgId" IS NULL) = ("guestMatchId" IS NULL));
+  CHECK (("guestVia" IS NULL AND ("guestFromOrgId" IS NULL) = ("guestMatchId" IS NULL)) OR ("guestVia" IS NOT NULL AND "guestVia" = 'partner' AND "guestFromOrgId" IS NOT NULL AND "guestMatchId" IS NOT NULL) OR ("guestVia" IS NOT NULL AND "guestVia" = 'pool' AND "guestFromOrgId" IS NULL AND "guestMatchId" IS NOT NULL));
 
 ALTER TABLE "ClubPartnership" DROP CONSTRAINT IF EXISTS "ClubPartnership_status_check";
 ALTER TABLE "ClubPartnership" ADD CONSTRAINT "ClubPartnership_status_check"
