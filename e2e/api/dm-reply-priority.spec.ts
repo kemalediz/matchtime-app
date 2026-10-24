@@ -14,12 +14,25 @@
  *
  * The pure order rules are in src/lib/__tests__/dm-reply-priority*.test.ts,
  * the Pi's order and pacing in whatsapp-bot/src/scheduler.dm-order.test.ts.
+ *
+ * THE CLOCK (2026-10-25). The spec runs near the real time, but every
+ * due-posts poll in a group is pinned with `x-test-now` to ONE instant,
+ * `NOW`, taken when that group's setup starts, and every row the spec
+ * writes is timed in JS from `NOW` (never SQL now(): the test cluster runs
+ * in Europe/London, so a bare now() reads back an hour ahead in BST). The
+ * twenty "spent" DMs used to be stamped "one minute ago"; in the first
+ * minute after London midnight that is yesterday, the new-club cap
+ * (counted from London midnight) saw none spent, and both cap groups
+ * failed. They are now stamped no earlier than NOW's London midnight, and
+ * the polls of a group cannot straddle midnight or the start of a
+ * scheduled-post window, because they all read the same pinned instant.
  */
 import { test, expect, resetDb } from "../fixtures";
 import { ORG_ID, PHONE } from "../helpers/constants";
 import { E2E } from "../helpers/env";
 import { setPaymentClaimStub, clearPaymentClaimStub } from "../helpers/stub";
 import { DM_REPLY_PRIORITY_TEST_HEADER } from "@/lib/dm-reply-priority";
+import { londonMidnight } from "@/lib/club-connect-rules";
 import type { APIRequestContext } from "@playwright/test";
 import type { TestDb } from "../helpers/test-db";
 
@@ -35,11 +48,14 @@ interface Instruction {
 const bare = (p: string) => p.replace(/^\+/, "");
 const PAY_PHONES = Array.from({ length: 16 }, (_, i) => `4477009991${String(i).padStart(2, "0")}`);
 
+/** The one instant a group's polls read; set when its setup starts. */
+let NOW = new Date();
+
 async function duePosts(
   request: APIRequestContext,
   opts: { flag?: "1" | "0"; claim?: boolean } = {},
 ): Promise<Instruction[]> {
-  const headers: Record<string, string> = { "x-api-key": E2E.WHATSAPP_API_KEY };
+  const headers: Record<string, string> = { "x-api-key": E2E.WHATSAPP_API_KEY, "x-test-now": NOW.toISOString() };
   if (!opts.claim) headers["x-no-claim"] = "1";
   if (opts.flag) headers[DM_REPLY_PRIORITY_TEST_HEADER] = opts.flag;
   const res = await request.get(`/api/whatsapp/due-posts?groupId=${encodeURIComponent(E2E.GROUP_ID)}`, { headers });
@@ -56,18 +72,17 @@ async function postDm(request: APIRequestContext, phone: string, body: string) {
   return res.json();
 }
 
-/** The fee release: 16 pay links, queued seven minutes ago, oldest first.
- *  "createdAt" is a timestamp WITHOUT time zone holding UTC (Prisma writes
- *  it from JS), so the SQL side says UTC explicitly: a bare now() would be
- *  the session's local time, an hour ahead in BST. */
+/** The fee release: 16 pay links, queued seven minutes before NOW, oldest
+ *  first. "createdAt" is a timestamp WITHOUT time zone holding UTC, so it is
+ *  written from JS (test-db.ts stores a Date as its UTC wall time). */
 async function queuePayLinks(db: TestDb): Promise<string[]> {
   const ids: string[] = [];
   for (let i = 0; i < PAY_PHONES.length; i++) {
     const id = `e2e-prio-pay-${String(i).padStart(2, "0")}`;
     await db.run(
       `INSERT INTO "BotJob" (id, "orgId", kind, phone, text, "createdAt")
-       VALUES ($1, $2, 'dm', $3, $4, (now() AT TIME ZONE 'UTC') - interval '7 minutes' + ($5 || ' milliseconds')::interval)`,
-      [id, ORG_ID, PAY_PHONES[i], `Pay link ${i}`, String(i)],
+       VALUES ($1, $2, 'dm', $3, $4, $5)`,
+      [id, ORG_ID, PAY_PHONES[i], `Pay link ${i}`, new Date(NOW.getTime() - 7 * 60_000 + i)],
     );
     ids.push(`botjob-${id}`);
   }
@@ -90,6 +105,7 @@ test("a 'Paid' after a fee release: the reply and the collector notice are marke
   // Quiet hours off: this spec is about send ORDER and runs on the real
   // clock; inside quiet hours the collector's notice waits for them to end
   // (2026-10-21), which pay-links-quiet-hours.spec.ts and the unit tests pin.
+  NOW = new Date();
   await db.run(`UPDATE "Organisation" SET "quietHoursEnabled" = false WHERE id = $1`, [ORG_ID]);
   payKeys = await queuePayLinks(db);
   setPaymentClaimStub({ bodies: { "I've transferred already": "paid" } });
@@ -182,25 +198,26 @@ async function quietHoursOff(db: TestDb): Promise<void> {
   await db.run(`UPDATE "Organisation" SET "quietHoursEnabled" = false WHERE id = $1`, [ORG_ID]);
 }
 
-/** Make the seeded club a new self-join club with `spent` DMs claimed today. */
+/** Make the seeded club a new self-join club with `spent` DMs claimed
+ *  today. "Today" is NOW's London day: the cap counts from NOW's London
+ *  midnight, so a DM stamped "a minute ago" just after midnight would be
+ *  yesterday's and the cap would never be reached. */
 async function newClubWithSpent(db: TestDb, spent: number): Promise<void> {
-  await db.run(
-    `UPDATE "Organisation" SET "approvedAt" = (now() AT TIME ZONE 'UTC') - interval '2 days',
-                               "liveAt" = (now() AT TIME ZONE 'UTC') - interval '2 days'
-      WHERE id = $1`,
-    [ORG_ID],
-  );
+  const twoDaysAgo = new Date(NOW.getTime() - 2 * 24 * 60 * 60 * 1000);
+  await db.run(`UPDATE "Organisation" SET "approvedAt" = $2, "liveAt" = $2 WHERE id = $1`, [ORG_ID, twoDaysAgo]);
+  const claimedAt = new Date(Math.max(NOW.getTime() - 60_000, londonMidnight(NOW).getTime()));
   for (let i = 0; i < spent; i++) {
     const id = `e2e-cap-sent-${String(i).padStart(2, "0")}`;
     await db.run(
       `INSERT INTO "BotJob" (id, "orgId", kind, phone, text, "sentAt", "createdAt")
-       VALUES ($1, $2, 'dm', $3, 'earlier DM', now() AT TIME ZONE 'UTC', (now() AT TIME ZONE 'UTC') - interval '1 minute')`,
-      [id, ORG_ID, `4477009992${String(i).padStart(2, "0")}`],
+       VALUES ($1, $2, 'dm', $3, 'earlier DM', $4, $4)`,
+      [id, ORG_ID, `4477009992${String(i).padStart(2, "0")}`, claimedAt],
     );
-    await db.run(
-      `INSERT INTO "SentNotification" (id, key, kind, "createdAt") VALUES ($1, $2, 'dm', (now() AT TIME ZONE 'UTC') - interval '1 minute')`,
-      [`e2e-cap-sn-${i}`, `botjob-${id}`],
-    );
+    await db.run(`INSERT INTO "SentNotification" (id, key, kind, "createdAt") VALUES ($1, $2, 'dm', $3)`, [
+      `e2e-cap-sn-${i}`,
+      `botjob-${id}`,
+      claimedAt,
+    ]);
   }
 }
 
@@ -235,6 +252,7 @@ test.describe("the new-club DM cap, reached (20 spent)", () => {
     db,
   }) => {
     resetDb();
+    NOW = new Date();
     await quietHoursOff(db);
     await newClubWithSpent(db, 20);
     capPay = await queuePayLinks(db);
@@ -259,6 +277,7 @@ test.describe("the new-club DM cap: replies do not count toward it (19 spent)", 
 
   test("setup: 19 of 20 spent, 16 pay links, then a 'Paid'", async ({ request, db }) => {
     resetDb();
+    NOW = new Date();
     await quietHoursOff(db);
     await newClubWithSpent(db, 19);
     capPay = await queuePayLinks(db);
