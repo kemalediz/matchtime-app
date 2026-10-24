@@ -7,7 +7,9 @@
  * one is ignored: no reply, nothing written. These scenarios pin that, so
  * the slice that changes it (L2: the /play confirm code and the one-time
  * reply with the /play link) flips an expectation on purpose instead of
- * discovering it.
+ * discovering it. L2 flipped the confirm-message one; a plain DM from a
+ * stranger is still ignored (the brief: anything else a stranger says
+ * keeps today's behaviour).
  *
  * Each scenario: who is in the world, what they send, EXACTLY what
  * MatchTime queued and for whom, what the database holds, and that nothing
@@ -29,17 +31,17 @@ scenarios("a stranger messages MatchTime (today)", () => {
     pool.expectNoLeaks(fnf.secrets(), { to: ["ali"] });
   });
 
-  // L2 TEMPLATE: this is the message /play prefills. Today it is just another
-  // unknown sender's DM. L2 replaces this expectation with: the profile turns
-  // active, consent recorded with the message id, ONE welcome DM to ali on
-  // the platform channel, nothing to anyone else.
-  scenario("the /play confirm message with a code is ignored until slice L2 handles it", async ({ pool }) => {
+  // FLIPPED BY L2 (2026-10-24), on purpose: this is the message /play
+  // prefills. With no sign-up behind its code, the sender (who just wrote
+  // to MatchTime) gets ONE short reply pointing at /play; no user is made.
+  // The confirmed path is e2e/sim/pool/signup-confirm.spec.ts.
+  scenario("the /play confirm message whose code names no sign-up gets one short reply, and no user is made", async ({ pool }) => {
     const ali = await pool.stranger("ali", { name: "Ali Kaya" });
 
-    const ex = await ali.dm("Hi MatchTime, sign me up to play. Code K7QP");
+    const ex = await ali.dm("Hi MatchTime, sign me up to play. Code K7QP2");
 
-    expect(ex.json).toMatchObject({ ignored: "unknown-sender" });
-    pool.expectSent(ex.sent, []);
+    expect(ex.json).toMatchObject({ handled: "pool-confirm", result: "wrong-code" });
+    pool.expectSent(ex.sent, [{ to: "ali", channel: "dm", purpose: "pool-code-reply", text: /\/play$/ }]);
     expect(await pool.userOf(ali)).toBeNull();
   });
 

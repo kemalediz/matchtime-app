@@ -15,6 +15,17 @@ describe("retiredAuthRedirect", () => {
     expect(retiredAuthRedirect("/verify-email")).toBe("/login");
   });
 
+  // The local player pool's sign-up (slice L2): public, and its API; the
+  // manage page needs the person's session.
+  it("lets a visitor sign up to the player pool, but not manage a profile signed out", () => {
+    expect(isPublicPath("/play")).toBe(true);
+    expect(isPublicPath("/api/play/signup")).toBe(true);
+    expect(isPublicPath("/api/play/venues")).toBe(true);
+    expect(isPublicPath("/play/manage")).toBe(false);
+    expect(isPublicPath("/playground")).toBe(false);
+    expect(isPublicPath("/api/player")).toBe(false);
+  });
+
   it.each(["/", "/login", "/signup", "/admin", "/signup-emails", "/verify-email/x"])("leaves %s alone", (p) => {
     expect(retiredAuthRedirect(p)).toBeNull();
   });
@@ -38,6 +49,17 @@ describe("isPublicPath", () => {
   it("lets signed-out visitors read the privacy policy", () => {
     expect(isPublicPath("/privacy")).toBe(true);
     expect(isPublicPath("/privacyx")).toBe(false);
+  });
+
+  // The local player pool's sign-up (slice L2): public, and its API; the
+  // manage page needs the person's session.
+  it("lets a visitor sign up to the player pool, but not manage a profile signed out", () => {
+    expect(isPublicPath("/play")).toBe(true);
+    expect(isPublicPath("/api/play/signup")).toBe(true);
+    expect(isPublicPath("/api/play/venues")).toBe(true);
+    expect(isPublicPath("/play/manage")).toBe(false);
+    expect(isPublicPath("/playground")).toBe(false);
+    expect(isPublicPath("/api/player")).toBe(false);
   });
 
   it.each(["/", "/login", "/signup", "/sitemap.xml", "/robots.txt", "/join/abc", "/r/tok", "/api/stripe/webhook"])(

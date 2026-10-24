@@ -3133,6 +3133,10 @@ model PoolProfile {
   /// Cleared once used, so it is only ever set while "pending-verify".
   confirmCode          String?   @unique
   confirmCodeExpiresAt DateTime?
+  /// The requesting address of the /play form, for its per-hour cap
+  /// (rules.ts POOL_SIGNUP). Set only while "pending-verify" (CHECK):
+  /// cleared when the sign-up is confirmed (slice L2).
+  signupIp             String?
 
   // ── Consent (UK GDPR art. 6(1)(a), PECR) ──
   /// Required on every profile past "pending-verify" (CHECK): when, which
@@ -3310,6 +3314,50 @@ model PoolBlock {
 
   @@unique([orgId, userId, by])
   @@index([userId])
+}
+
+/// A rate-limit record (slice L2): a WhatsApp confirm code that did not
+/// work ("confirm", keyed by the sending number's digits: "wrong",
+/// "expired", "has-profile"), or a /play sign-up attempt ("signup", keyed
+/// by the requesting address: "created", "area-not-found",
+/// "venues-unknown"). Holds no text and no code. Deleted after
+/// POOL_CONFIRM.attemptKeepDays (housekeeping.ts).
+model PoolAttempt {
+  id        String   @id @default(cuid())
+  /// vocab.ts POOL_ATTEMPT_KINDS.
+  kind      String
+  key       String
+  result    String
+  createdAt DateTime @default(now())
+
+  @@index([kind, key, createdAt])
+  @@index([createdAt])
+}
+
+/// The consent record (slice L2): every agreement and every withdrawal,
+/// APPEND-ONLY, never deleted with the profile or the User (no foreign
+/// key), kept POOL_RETENTION.consentRecordYears to show what was agreed
+/// (the privacy policy's retention line).
+model PoolConsentRecord {
+  id        String   @id @default(cuid())
+  userId    String
+  /// The number it came from, digits, for a WhatsApp consent.
+  phone     String?
+  /// "consent" | "withdraw" (vocab.ts POOL_CONSENT_ACTIONS).
+  action    String
+  /// The privacy policy version agreed to (consent only).
+  version   Int?
+  /// "whatsapp" | "web".
+  channel   String
+  /// The WhatsApp message id, or the signed-in request's id.
+  evidence  String
+  /// The /play code a WhatsApp consent carried (so his own message sent
+  /// twice is known as his).
+  code      String?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([createdAt])
 }
 
 /// A campaign code for matchtime.ai/p/<code> (G1): a LinkedIn post, a

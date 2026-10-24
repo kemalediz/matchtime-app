@@ -18,6 +18,8 @@
  * one module that knows how a window is read. Only the hours are the pool's.
  */
 import type { QuietHours } from "../message-hours";
+import { PRIVACY_POLICY_VERSION } from "../privacy-policy";
+import type { GeocodeHit } from "../geocode";
 
 // ── Limits ─────────────────────────────────────────────────────────────
 
@@ -59,9 +61,11 @@ export const DEFAULT_POOL_TRAVEL_MILES: PoolTravelMiles = 3;
 /** Minimum age, stated at sign-up and in the policy (decision log #1). */
 export const POOL_MIN_AGE = 18;
 
-/** The consent wording's version, stored on each profile with its consent.
- *  Bump it whenever the consent text or the privacy policy changes. */
-export const POOL_CONSENT_VERSION = 1;
+/** The consent wording's version, stored on each profile with its consent:
+ *  the privacy policy's version (src/lib/privacy-policy.ts), ONE number,
+ *  so the policy a player agreed to and the consent record never disagree
+ *  (slice L2). Bump PRIVACY_POLICY_VERSION when either text changes. */
+export const POOL_CONSENT_VERSION = PRIVACY_POLICY_VERSION;
 
 export const POOL_RETENTION = Object.freeze({
   /** No activity this long: one "still want game offers?" DM. */
@@ -70,14 +74,59 @@ export const POOL_RETENTION = Object.freeze({
   reconfirmGraceDays: 30,
   /** Offer rows keep ids and outcomes only, anonymised after this. */
   offerAnonymiseMonths: 24,
-  /** A sign-up never confirmed on WhatsApp is deleted after this. */
+  /** A sign-up never confirmed on WhatsApp is deleted after this (the
+   *  daily housekeeping, `housekeeping.ts`). */
   pendingExpiryDays: 7,
+  /** The consent record (consents and withdrawals) is kept this long, also
+   *  after the profile is deleted, to show what was agreed (decision L0.3). */
+  consentRecordYears: 6,
 });
 
-/** The WhatsApp confirm code: 4 characters from an alphabet with no 0, O,
- *  1, I or L (the ClubConnect code's alphabet), so nobody mistypes it. */
+/**
+ * Confirming a sign-up on WhatsApp (slice L2, `confirm-rules.ts`).
+ *   codeTtlDays       a /play code works this long. The waiting sign-up
+ *                     lives longer (POOL_RETENTION.pendingExpiryDays), so a
+ *                     late message still hears "that code has expired".
+ *   wrongCodesPerDay  a number that sent this many wrong or expired codes
+ *                     in 24 hours has every further code ignored, a right
+ *                     one too, until the 24 hours pass (guessing codes).
+ *   replyThrottleMins at most one "that code did not work" reply per number
+ *   repliesPerDay     this often, and this many in 24 hours.
+ *   attemptKeepDays   failed attempts are kept this long, for the two rules
+ *                     above, then deleted.
+ */
+export const POOL_CONFIRM = Object.freeze({
+  codeTtlDays: 3,
+  wrongCodesPerDay: 5,
+  replyThrottleMins: 10,
+  repliesPerDay: 3,
+  attemptKeepDays: 30,
+});
+
+/**
+ * The /play form (slice L2).
+ *   perIpPerHour       sign-up ATTEMPTS one requesting address may make an
+ *                      hour, whatever their result (each may cost a paid
+ *                      geocoding call). 20, not 5: mobile networks put many
+ *                      people behind one address (carrier NAT).
+ *   maxSports, maxRanges   what one profile may hold.
+ *   nameMax            the name as typed, at most this long.
+ */
+export const POOL_SIGNUP = Object.freeze({
+  perIpPerHour: 20,
+  maxSports: 12,
+  maxRanges: 21,
+  nameMax: 40,
+  maxVenues: 5,
+});
+
+/** The WhatsApp confirm code: from an alphabet with no 0, O, 1, I or L (the
+ *  ClubConnect code's alphabet), so nobody mistypes it. FIVE characters
+ *  (slice L2), where a self-join connect code has four: the two readers
+ *  each take only their own length, so a pool code can never be read as a
+ *  connect code or the other way round, whatever words surround it. */
 export const POOL_CONFIRM_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
-export const POOL_CONFIRM_CODE_LENGTH = 4;
+export const POOL_CONFIRM_CODE_LENGTH = 5;
 
 // ── Field rules ────────────────────────────────────────────────────────
 
@@ -87,6 +136,22 @@ export const POOL_CONFIRM_CODE_LENGTH = 4;
  * only (plan section 3.3, data held).
  */
 export const POSTCODE_DISTRICT_RE = /^[A-Z]{1,2}[0-9][A-Z0-9]?$/;
+
+/**
+ * Is this Google result a UK postcode area we may store as his centre
+ * point (slice L2)? Only a postcode or postcode-area result, matched whole,
+ * in the UK: never a country, a town, or a partial match, which would put
+ * him miles from where he plays.
+ */
+export function acceptDistrictGeocode(hit: Pick<GeocodeHit, "types" | "partialMatch" | "countryCode">): boolean {
+  if (hit.countryCode !== "GB" || hit.partialMatch) return false;
+  return hit.types.includes("postal_code_prefix") || hit.types.includes("postal_code");
+}
+
+/** Waiting sign-ups made before this are deleted (the daily housekeeping). */
+export function pendingSignupPurgeBefore(now: Date): Date {
+  return new Date(now.getTime() - POOL_RETENTION.pendingExpiryDays * 24 * 60 * 60 * 1000);
+}
 
 export function normaliseDistrict(v: unknown): string | null {
   if (typeof v !== "string") return null;

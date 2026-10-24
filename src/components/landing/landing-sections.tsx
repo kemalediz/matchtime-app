@@ -8,6 +8,7 @@
  * plain words.
  */
 import type { CSSProperties, ReactNode } from "react";
+import Link from "next/link";
 import {
   BarChart3,
   Bell,
@@ -321,7 +322,10 @@ export function SpotlightSection({ s }: { s: Spotlight }) {
             s.chat ? "grid grid-cols-1 lg:grid-cols-[1.05fr_0.95fr] gap-12 lg:gap-16 items-center" : undefined
           }
         >
-          <SectionIntro id={headingId} eyebrow={s.eyebrow} title={s.title} lead={s.lead} tone={s.tone} />
+          <div>
+            <SectionIntro id={headingId} eyebrow={s.eyebrow} title={s.title} lead={s.lead} tone={s.tone} />
+            {s.cta && <SpotlightCta cta={s.cta} />}
+          </div>
           {s.chat && <ChatMock caption={s.chat.caption} lines={s.chat.lines} />}
         </div>
 
@@ -346,6 +350,22 @@ export function SpotlightSection({ s }: { s: Spotlight }) {
         )}
       </div>
     </section>
+  );
+}
+
+/** A spotlight's button. `pulse` adds the soft ring (globals.css), which
+ *  stops for anyone who prefers reduced motion. */
+export function SpotlightCta({ cta }: { cta: NonNullable<Spotlight["cta"]> }) {
+  return (
+    <div className="mt-8 text-center">
+      <Link
+        href={cta.href}
+        data-testid="spotlight-cta"
+        className={`inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-7 py-3.5 text-base font-semibold text-white shadow-lg hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 ${cta.pulse ? "pool-invite-pulse" : ""}`}
+      >
+        {cta.label}
+      </Link>
+    </div>
   );
 }
 

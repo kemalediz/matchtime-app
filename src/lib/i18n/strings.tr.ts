@@ -4257,6 +4257,21 @@ export const tr: Strings = {
 
   // ── Privacy policy link (local player pool L0, 2026-10-24) ─────────
   privacy_link: "Gizlilik politikası",
+
+  // ── Local player pool: confirming a /play sign-up (slice L2, 2026-10-24) ──
+  pool_confirm_prefill: (p) => `Merhaba MatchTime, oynamak için kaydet. Kod ${p.code}`,
+  pool_dm_welcome: (p) =>
+    `✅ ${p.name ? `Teşekkürler ${p.name}, ` : ""}MatchTime oyuncu havuzuna katıldın. Yakınındaki bir kulübün, oynayabileceğin bir saatte oyuncuya ihtiyacı olduğunda maçı sana buradan yazacağım, karar senin. Haftada en fazla ${p.perWeek} kez, ${p.quietFrom} ile ${p.quietTo} arasında asla.\n\nGüvende kal: halka açık sahalarda oyna, bir sorun olursa bize buradan yaz.\n\nİstediğin zaman duraklatabilir, bilgilerini değiştirebilir ya da silebilirsin: ${p.manageLink}\nGizlilik: ${p.privacyLink}`,
+  pool_dm_welcome_early: (p) =>
+    `✅ ${p.name ? `Teşekkürler ${p.name}, ` : ""}MatchTime oyuncu havuzunun erken kayıt listesine katıldın. Havuz henüz senin bölgende açık değil, açılana kadar sana maç için yazmayacağım. Açıldığında haftada en fazla ${p.perWeek} kez, ${p.quietFrom} ile ${p.quietTo} arasında asla.\n\nGüvende kal: halka açık sahalarda oyna, bir sorun olursa bize buradan yaz.\n\nBilgilerini istediğin zaman değiştirebilir ya da silebilirsin: ${p.manageLink}\nGizlilik: ${p.privacyLink}`,
+  pool_dm_already: (p) =>
+    `Zaten MatchTime oyuncu havuzundasın. Bilgilerini değiştirmek, duraklatmak ya da durdurmak için: ${p.manageLink}`,
+  pool_dm_already_stopped: (p) =>
+    `Zaten bir MatchTime oyuncu havuzu profilin var ve maç mesajlarını durdurdun. Yeniden başlatmak ya da bilgilerini değiştirmek için bağlantını kullan: ${p.manageLink}`,
+  pool_dm_code_expired: (p) =>
+    `Bu kayıt kodunun süresi doldu. Lütfen buradan yeniden kaydol ve yeni mesajı gönder: ${p.playLink}`,
+  pool_dm_code_wrong: (p) =>
+    `Bu kodla bir kayıt bulamadım. Lütfen mesajı açıldığı gibi gönder ya da buradan yeniden kaydol: ${p.playLink}`,
 };
 
 /**

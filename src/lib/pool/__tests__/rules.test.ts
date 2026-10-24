@@ -18,6 +18,8 @@ import {
   normaliseAvailability,
   normaliseDistrict,
   parseMinutes,
+  acceptDistrictGeocode,
+  pendingSignupPurgeBefore,
 } from "../rules";
 
 describe("the limits (approved spec, plain wording)", () => {
@@ -122,5 +124,40 @@ describe("normaliseAvailability: days and from-to hours", () => {
     expect(normaliseAvailability([{ day: 1, from: "9am", to: "10:00" }])).toEqual({ ok: false, error: "bad-time" });
     expect(normaliseAvailability([{ day: 1, from: "22:00", to: "01:00" }])).toEqual({ ok: false, error: "bad-range" });
     expect(normaliseAvailability([{ day: 1, from: "10:00", to: "10:00" }])).toEqual({ ok: false, error: "bad-range" });
+  });
+});
+
+describe("placing a postcode district (slice L2): only a real UK postcode-area result", () => {
+  const hit = (over: Partial<Parameters<typeof acceptDistrictGeocode>[0]> = {}) => ({
+    placeId: "p",
+    formattedAddress: "Sutton SM1, UK",
+    lat: 51.36,
+    lng: -0.19,
+    types: ["postal_code_prefix", "postal_code"],
+    partialMatch: false,
+    locationType: "APPROXIMATE",
+    countryCode: "GB",
+    ...over,
+  });
+  it("accepts a postcode area or postcode result in the UK", () => {
+    expect(acceptDistrictGeocode(hit())).toBe(true);
+    expect(acceptDistrictGeocode(hit({ types: ["postal_code"] }))).toBe(true);
+  });
+  it("refuses a country, a town, a partial match, or anywhere outside the UK", () => {
+    expect(acceptDistrictGeocode(hit({ types: ["country", "political"] }))).toBe(false);
+    expect(acceptDistrictGeocode(hit({ types: ["locality", "political"] }))).toBe(false);
+    expect(acceptDistrictGeocode(hit({ partialMatch: true }))).toBe(false);
+    expect(acceptDistrictGeocode(hit({ countryCode: "IE" }))).toBe(false);
+    expect(acceptDistrictGeocode(hit({ countryCode: null }))).toBe(false);
+  });
+});
+
+describe("housekeeping windows (slice L2)", () => {
+  const NOW = new Date("2026-10-24T12:00:00Z");
+  it("a waiting sign-up is deleted pendingExpiryDays after it was made", () => {
+    expect(NOW.getTime() - pendingSignupPurgeBefore(NOW).getTime()).toBe(POOL_RETENTION.pendingExpiryDays * 24 * 3600_000);
+  });
+  it("the consent record is kept 6 years (the policy's line)", () => {
+    expect(POOL_RETENTION.consentRecordYears).toBe(6);
   });
 });

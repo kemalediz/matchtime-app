@@ -55,9 +55,6 @@ ALTER TABLE "PoolProfile" DROP CONSTRAINT IF EXISTS "PoolProfile_consent_check";
 ALTER TABLE "PoolProfile" ADD CONSTRAINT "PoolProfile_consent_check"
   CHECK ("status" = 'pending-verify' OR ("consentAt" IS NOT NULL AND "consentVersion" IS NOT NULL
     AND "consentChannel" IS NOT NULL AND "consentEvidence" IS NOT NULL AND "adultConfirmedAt" IS NOT NULL));
-ALTER TABLE "PoolProfile" DROP CONSTRAINT IF EXISTS "PoolProfile_confirmCode_check";
-ALTER TABLE "PoolProfile" ADD CONSTRAINT "PoolProfile_confirmCode_check"
-  CHECK ("confirmCode" IS NULL OR ("status" = 'pending-verify' AND "confirmCode" ~ '^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{4}$'));
 ALTER TABLE "PoolProfile" DROP CONSTRAINT IF EXISTS "PoolProfile_source_check";
 ALTER TABLE "PoolProfile" ADD CONSTRAINT "PoolProfile_source_check"
   CHECK ("source" IS NULL OR "source" IN ('web', 'profile', 'referral', 'campaign'));
@@ -83,6 +80,29 @@ ALTER TABLE "PoolProfile" ADD CONSTRAINT "PoolProfile_town_check"
 ALTER TABLE "PoolProfile" DROP CONSTRAINT IF EXISTS "PoolProfile_shareCode_check";
 ALTER TABLE "PoolProfile" ADD CONSTRAINT "PoolProfile_shareCode_check"
   CHECK ("shareCode" IS NULL OR "shareCode" ~ '^[A-Za-z0-9]{4,12}$');
+
+ALTER TABLE "PoolProfile" DROP CONSTRAINT IF EXISTS "PoolProfile_signupIp_check";
+ALTER TABLE "PoolProfile" ADD CONSTRAINT "PoolProfile_signupIp_check"
+  CHECK ("signupIp" IS NULL OR "status" = 'pending-verify');
+
+-- Slice L2 (prisma/migrations/20261025090000_pool_signup_confirm carries
+-- the same CHECKs): the pool code is five characters; the rate-limit
+-- records; the append-only consent record.
+ALTER TABLE "PoolProfile" DROP CONSTRAINT IF EXISTS "PoolProfile_confirmCode_check";
+ALTER TABLE "PoolProfile" ADD CONSTRAINT "PoolProfile_confirmCode_check"
+  CHECK ("confirmCode" IS NULL OR ("status" = 'pending-verify' AND "confirmCode" ~ '^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{5}$'));
+ALTER TABLE "PoolAttempt" DROP CONSTRAINT IF EXISTS "PoolAttempt_result_check";
+ALTER TABLE "PoolAttempt" ADD CONSTRAINT "PoolAttempt_result_check"
+  CHECK (("kind" = 'confirm' AND "result" IN ('wrong', 'expired', 'has-profile')) OR ("kind" = 'signup' AND "result" IN ('created', 'area-not-found', 'venues-unknown')));
+ALTER TABLE "PoolConsentRecord" DROP CONSTRAINT IF EXISTS "PoolConsentRecord_action_check";
+ALTER TABLE "PoolConsentRecord" ADD CONSTRAINT "PoolConsentRecord_action_check"
+  CHECK ("action" IN ('consent', 'withdraw'));
+ALTER TABLE "PoolConsentRecord" DROP CONSTRAINT IF EXISTS "PoolConsentRecord_channel_check";
+ALTER TABLE "PoolConsentRecord" ADD CONSTRAINT "PoolConsentRecord_channel_check"
+  CHECK ("channel" IN ('whatsapp', 'web'));
+ALTER TABLE "PoolConsentRecord" DROP CONSTRAINT IF EXISTS "PoolConsentRecord_version_check";
+ALTER TABLE "PoolConsentRecord" ADD CONSTRAINT "PoolConsentRecord_version_check"
+  CHECK ("action" <> 'consent' OR "version" IS NOT NULL);
 
 -- PoolSport
 ALTER TABLE "PoolSport" DROP CONSTRAINT IF EXISTS "PoolSport_sport_check";

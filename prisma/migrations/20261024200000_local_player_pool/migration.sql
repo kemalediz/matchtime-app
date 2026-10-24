@@ -340,9 +340,12 @@ ALTER TABLE "PoolProfile" DROP CONSTRAINT IF EXISTS "PoolProfile_consent_check";
 ALTER TABLE "PoolProfile" ADD CONSTRAINT "PoolProfile_consent_check"
   CHECK ("status" = 'pending-verify' OR ("consentAt" IS NOT NULL AND "consentVersion" IS NOT NULL
     AND "consentChannel" IS NOT NULL AND "consentEvidence" IS NOT NULL AND "adultConfirmedAt" IS NOT NULL));
+-- Five characters since slice L2 (20261025090000_pool_signup_confirm swaps
+-- it on a database that ran this file when it said four), so this file can
+-- still re-run once five-character codes are stored.
 ALTER TABLE "PoolProfile" DROP CONSTRAINT IF EXISTS "PoolProfile_confirmCode_check";
 ALTER TABLE "PoolProfile" ADD CONSTRAINT "PoolProfile_confirmCode_check"
-  CHECK ("confirmCode" IS NULL OR ("status" = 'pending-verify' AND "confirmCode" ~ '^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{4}$'));
+  CHECK ("confirmCode" IS NULL OR ("status" = 'pending-verify' AND "confirmCode" ~ '^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{5}$'));
 ALTER TABLE "PoolProfile" DROP CONSTRAINT IF EXISTS "PoolProfile_source_check";
 ALTER TABLE "PoolProfile" ADD CONSTRAINT "PoolProfile_source_check"
   CHECK ("source" IS NULL OR "source" IN ('web', 'profile', 'referral', 'campaign'));

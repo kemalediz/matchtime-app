@@ -78,7 +78,7 @@ test("a well-formed record of every kind is accepted", async ({ db }) => {
   await db.run(`UPDATE "Organisation" SET "playStyle" = 'casual', town = 'sutton', "featurePlayerPool" = true WHERE id = $1`, [ORG_ID]);
 
   const pending = id("profile");
-  await insert(db, "PoolProfile", { id: pending, status: "pending-verify", confirmCode: "K7QP", displayName: "Bo T", venueIds: ["venue-1"], updatedAt: NOW });
+  await insert(db, "PoolProfile", { id: pending, status: "pending-verify", confirmCode: "K7QP2", displayName: "Bo T", venueIds: ["venue-1"], updatedAt: NOW });
   const p = await profile(db, { source: "campaign", sourceCode: "li-kemal", shareCode: "AB12cd", town: "sutton" });
   await insert(db, "PoolSport", { id: id("sport"), profileId: p, sport: "football", formats: [5, 7], level: "intermediate" });
   await insert(db, "PoolSport", { id: id("sport"), profileId: p, sport: "padel", levelText: "played at uni" });
@@ -109,8 +109,10 @@ const REFUSED: Array<{ name: string; constraint: string; write: (db: TestDb) => 
   { name: "paused with no reason", constraint: "PoolProfile_paused_check", write: (db) => profile(db, { status: "paused" }) },
   { name: "a reason while not paused", constraint: "PoolProfile_paused_check", write: (db) => profile(db, { pausedReason: "self", pausedAt: NOW }) },
   { name: "stopped with no time", constraint: "PoolProfile_stopped_check", write: (db) => profile(db, { status: "stopped" }) },
-  { name: "a confirm code left on an active profile", constraint: "PoolProfile_confirmCode_check", write: (db) => profile(db, { confirmCode: "K7QX" }) },
-  { name: "a confirm code with a 0 in it", constraint: "PoolProfile_confirmCode_check", write: (db) => profile(db, { status: "pending-verify", userId: null, confirmCode: "K0QP" }) },
+  { name: "a confirm code left on an active profile", constraint: "PoolProfile_confirmCode_check", write: (db) => profile(db, { confirmCode: "K7QX2" }) },
+  { name: "a confirm code with a 0 in it", constraint: "PoolProfile_confirmCode_check", write: (db) => profile(db, { status: "pending-verify", userId: null, confirmCode: "K0QP2" }) },
+  // Slice L2: a pool code is 5 characters; 4 is a self-join connect code's length.
+  { name: "a 4-character confirm code", constraint: "PoolProfile_confirmCode_check", write: (db) => profile(db, { status: "pending-verify", userId: null, confirmCode: "K7QP" }) },
   { name: "a full postcode", constraint: "PoolProfile_areaDistrict_check", write: (db) => profile(db, { areaDistrict: "SM1 2AB" }) },
   { name: "a travel distance off the list", constraint: "PoolProfile_maxMiles_check", write: (db) => profile(db, { maxMiles: 4 }) },
   { name: "no area and no venue", constraint: "PoolProfile_area_check", write: (db) => profile(db, { areaDistrict: null, areaLat: null, areaLng: null }) },
@@ -251,10 +253,16 @@ test("the guest CHECK: a pool guest has a match and no home club; the old rule h
   }
 });
 
-test("the migration re-runs cleanly on a database that already has it, and its verify queries agree", async ({ db }) => {
-  const sql = readFileSync(path.join(REPO_ROOT, "prisma/migrations/20261024200000_local_player_pool/migration.sql"), "utf8");
-  await db.run(sql);
-  await db.run(sql);
+test("the migrations re-run cleanly on a database that already has them, and their verify queries agree", async ({ db }) => {
+  // L1 then L2, always as a pair: L2 replaces L1's 4-character confirm code
+  // CHECK with the 5-character one (slice L2), so L1 alone would not re-run
+  // over a 5-character code.
+  const l1 = readFileSync(path.join(REPO_ROOT, "prisma/migrations/20261024200000_local_player_pool/migration.sql"), "utf8");
+  const l2 = readFileSync(path.join(REPO_ROOT, "prisma/migrations/20261025090000_pool_signup_confirm/migration.sql"), "utf8");
+  await db.run(`${l1}\n${l2}`);
+  await db.run(`${l1}\n${l2}`);
+  const l2Tables = await db.all(`SELECT table_name FROM information_schema.tables WHERE table_name IN ('PoolAttempt', 'PoolConsentRecord')`);
+  expect(l2Tables).toHaveLength(2);
   const cols = await db.all(
     `SELECT column_name FROM information_schema.columns WHERE table_name = 'Organisation' AND column_name IN ('featurePlayerPool', 'poolAutoAsk', 'playStyle', 'town')`,
   );

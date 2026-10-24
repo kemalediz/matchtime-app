@@ -175,3 +175,24 @@
 .help-article code { font-size: 13px; padding: 0.1rem 0.3rem; border-radius: 0.25rem; background: #f1f5f9; color: #1e293b; }
 .help-article p > a, .help-article li > a { color: #2563eb; text-decoration: underline; }
 .help-article .not-prose p { margin-bottom: 0; }
+
+/* The landing page's "Join the MatchTime player pool" button (pool G0,
+   2026-10-24): a soft ring that grows and fades once every 2 seconds, so
+   0.5 flashes a second, well under the 3-a-second seizure threshold
+   (WCAG 2.3.1). It runs ONLY for a viewer with no motion preference, so
+   anyone who asked for less motion never sees it. The period is
+   pinned by src/components/landing/__tests__/landing-content.test.ts. */
+@keyframes pool-invite-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.55);
+  }
+  50% {
+    box-shadow: 0 0 0 12px rgba(16, 185, 129, 0);
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .pool-invite-pulse {
+    animation: pool-invite-pulse 2s ease-in-out infinite;
+  }
+}

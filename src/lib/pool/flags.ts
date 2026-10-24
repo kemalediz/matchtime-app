@@ -16,8 +16,19 @@
  *   Organisation.poolAutoAsk         the club's automatic ask includes the
  *                                    pool (L9).
  *
- * A per-request test override (the `self-join-flag.ts` pattern) is added
- * by the first slice whose routes read the switch.
+ *   POOL_SIGNUP_PAUSED    (slice L2) the brake on the /play sign-up and
+ *                         its WhatsApp confirmation: sign-up is OPEN unless
+ *                         this is explicitly on. Sign-up changes no club and
+ *                         sends nothing first, and while the pool is not
+ *                         open it fills the early sign-up list (G0), so it
+ *                         is on by default; the brake is for abuse.
+ *
+ * While the pool is not open (POOL_OFFERS_ENABLED off), a sign-up goes on
+ * the early sign-up list (`signupGoesOnEarlyList`). Per town later (D-6).
+ *
+ * TEST SEAM (`poolOpenFrom`, the `self-join-flag.ts` pattern): a cookie or
+ * header may say the pool is open or not, honoured only when the server was
+ * booted with MT_TEST_MODE exactly "1" (`flags-request.ts` reads it).
  */
 
 export const POOL_OFFERS_ENV = "POOL_OFFERS_ENABLED";
@@ -34,4 +45,26 @@ export function poolOffersOpenForClub(
   env: Env = process.env,
 ): boolean {
   return org?.featurePlayerPool === true && isPoolOffersEnabled(env);
+}
+
+export const POOL_SIGNUP_PAUSED_ENV = "POOL_SIGNUP_PAUSED";
+
+/** Is the /play sign-up (and its WhatsApp confirmation) braked? */
+export function isPoolSignupPaused(env: Env = process.env): boolean {
+  return /^(1|true|on|yes)$/i.test((env[POOL_SIGNUP_PAUSED_ENV] ?? "").trim());
+}
+
+/** A sign-up made now goes on the early sign-up list: the pool is not open. */
+export function signupGoesOnEarlyList(env: Env = process.env): boolean {
+  return !isPoolOffersEnabled(env);
+}
+
+/** Is the pool open, given a test override ("1" / "0") and the environment?
+ *  The override counts only under MT_TEST_MODE=1. */
+export function poolOpenFrom(override: string | undefined, env: Env = process.env): boolean {
+  if (env.MT_TEST_MODE === "1") {
+    if (override === "1") return true;
+    if (override === "0") return false;
+  }
+  return isPoolOffersEnabled(env);
 }

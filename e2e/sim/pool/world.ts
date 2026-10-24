@@ -11,7 +11,7 @@
  *   const fnf = await pool.club("fnf", { hq: true });
  *   const ali = await pool.stranger("ali", { name: "Ali Kaya" });
  *
- *   const ex = await ali.dm("Hi MatchTime, sign me up to play. Code K7QP");
+ *   const ex = await ali.dm("Hi MatchTime, sign me up to play. Code K7QP2");
  *   pool.expectSent(ex.sent, [{ to: "ali", purpose: "pool-welcome", text: /signed up/ }]);
  *   pool.expectNoLeaks(fnf.secrets(), { to: ["ali"] });
  *   expect(await pool.profileOf(ali)).toMatchObject({ status: "active" });
@@ -56,7 +56,49 @@ const HEADERS = { "x-api-key": E2E.WHATSAPP_API_KEY };
 export interface Exchange {
   json: Record<string, unknown>;
   sent: SentMessage[];
+  /** The inbound WhatsApp message id, for a DM. */
+  messageId?: string;
 }
+
+/** What the /play form sends (`POST /api/play/signup`). Every field may be
+ *  overridden; the default is a valid football sign-up near SM1. */
+export interface SignUpBody {
+  name: string;
+  area: { kind: "district"; district: string } | { kind: "venues"; venueIds: string[] };
+  maxMiles: number;
+  availability: Array<{ day: number; from: string; to: string }>;
+  sports: Array<Record<string, unknown>>;
+  language: "en" | "tr";
+  adult: boolean;
+  consent: boolean;
+  source: { c?: string; ref?: string };
+}
+
+/** The sign-up route's answer. */
+export interface SignUpAnswer {
+  status: number;
+  ok: boolean;
+  code?: string;
+  prefill?: string;
+  waLink?: string;
+  earlyList?: boolean;
+  reason?: string;
+  errors?: Record<string, string>;
+  /** Everything queued meanwhile: the form must send nothing to anyone. */
+  sent: SentMessage[];
+}
+
+const DEFAULT_SIGNUP: SignUpBody = {
+  name: "Ali Kaya",
+  area: { kind: "district", district: "SM1" },
+  maxMiles: 3,
+  availability: [{ day: 2, from: "19:00", to: "22:00" }],
+  sports: [{ sport: "football", formats: [7] }],
+  language: "en",
+  adult: true,
+  consent: true,
+  source: {},
+};
 
 export interface StrangerOpts {
   /** WhatsApp display name (pushname). Default: none. */
@@ -84,15 +126,27 @@ export class PoolPerson {
   /** A 1-1 DM to MatchTime, through the real /api/whatsapp/dm-reply. */
   async dm(
     text: string,
-    opts: { quote?: { id?: string; text: string; fromMatchTime?: boolean }; headers?: Record<string, string> } = {},
+    opts: {
+      quote?: { id?: string; text: string; fromMatchTime?: boolean };
+      headers?: Record<string, string>;
+      /** The same WhatsApp message again (a Pi retry): reuse its id. */
+      messageId?: string;
+      /** What the Pi put on the envelope, when not just this person's phone:
+       *  a LID resolved to his number (`senderLid` plus his phone), or a LID
+       *  alone (`phone: ""`). */
+      envelope?: { phone?: string; senderLid?: string; senderAltPhone?: string };
+    } = {},
   ): Promise<Exchange> {
     this.world.log({ kind: "in", from: this.key, channel: "dm", text });
+    const messageId = opts.messageId ?? nextMsgId();
     const res = await this.world.request.post("/api/whatsapp/dm-reply", {
       headers: { ...HEADERS, ...(opts.headers ?? {}) },
       data: {
-        phone: this.phone.replace(/^\+/, ""),
+        phone: opts.envelope?.phone ?? this.phone.replace(/^\+/, ""),
+        ...(opts.envelope?.senderLid ? { senderLid: opts.envelope.senderLid } : {}),
+        ...(opts.envelope?.senderAltPhone ? { senderAltPhone: opts.envelope.senderAltPhone } : {}),
         body: text,
-        waMessageId: nextMsgId(),
+        waMessageId: messageId,
         ...(this.name ? { authorName: this.name } : {}),
         ...(opts.quote
           ? { quotedMessageId: opts.quote.id ?? nextMsgId(), quotedText: opts.quote.text, quotedFromMatchTime: opts.quote.fromMatchTime ?? true }
@@ -100,7 +154,7 @@ export class PoolPerson {
       },
     });
     expect(res.status(), await res.text()).toBe(200);
-    return { json: (await res.json()) as Record<string, unknown>, sent: await this.world.collect() };
+    return { json: (await res.json()) as Record<string, unknown>, sent: await this.world.collect(), messageId };
   }
 
   /** Every way this person's number could be written, for leak checks. */
@@ -188,6 +242,7 @@ export class PoolWorld {
   private readonly events: TranscriptEvent[] = [];
   private readonly all: SentMessage[] = [];
   private startedAt = new Date();
+  private visitors = Math.floor(Math.random() * 250);
 
   constructor(request: APIRequestContext, db: TestDb, live: boolean) {
     this.request = request;
@@ -335,6 +390,43 @@ export class PoolWorld {
     );
   }
 
+  // ── The /play form ───────────────────────────────────────────────────
+
+  /**
+   * Fill in /play and submit it, through the very route the page posts to
+   * (`POST /api/play/signup`). Nobody's number is involved: the page never
+   * asks for one. `poolOpen` sets the pool's open/closed test seam (the
+   * default, like production today, is closed: the early sign-up list).
+   */
+  async signUp(body: Partial<SignUpBody> = {}, opts: { poolOpen?: boolean; ip?: string } = {}): Promise<SignUpAnswer> {
+    const data = { ...DEFAULT_SIGNUP, ...body };
+    this.note(`(someone fills in /play: ${data.name}, ${data.language}${opts.poolOpen ? ", pool open" : ""})`);
+    // Each visitor has his own address unless the scenario says otherwise
+    // (the per-address cap is a scenario of its own).
+    const ip = opts.ip ?? `198.51.100.${(this.visitors = (this.visitors % 250) + 1)}`;
+    const res = await this.request.post("/api/play/signup", {
+      headers: { "x-forwarded-for": ip, ...(opts.poolOpen === undefined ? {} : { "x-mt-test-pool-open": opts.poolOpen ? "1" : "0" }) },
+      data,
+    });
+    const json = (await res.json()) as Omit<SignUpAnswer, "status" | "sent">;
+    return { ...json, status: res.status(), sent: await this.collect() };
+  }
+
+  /** A waiting sign-up, by its code (plain SQL). */
+  pendingByCode(code: string): Promise<Record<string, unknown> | null> {
+    return this.db.one(`SELECT * FROM "PoolProfile" WHERE "confirmCode" = $1`, [code]);
+  }
+
+  /** How many /play codes from this person's number did not work. */
+  failedAttempts(p: PoolPerson): Promise<number> {
+    return this.db.count(`SELECT count(*) FROM "PoolAttempt" WHERE kind = 'confirm' AND key = $1`, [p.phone.replace(/^\+/, "")]);
+  }
+
+  /** The append-only consent record for a user id, oldest first. */
+  consentRecords(userId: string): Promise<Array<{ action: string; channel: string }>> {
+    return this.db.all(`SELECT action, channel FROM "PoolConsentRecord" WHERE "userId" = $1 ORDER BY "createdAt", id`, [userId]);
+  }
+
   // ── Assertions ───────────────────────────────────────────────────────
 
   /** Exactly these messages, in this order (`[]`: nothing at all). */
@@ -377,7 +469,7 @@ export class PoolWorld {
   /** Rows in the pool's tables, for "nothing was written" checks. */
   async poolRowCounts(): Promise<Record<string, number>> {
     const out: Record<string, number> = {};
-    for (const t of ["PoolProfile", "PoolAsk", "PoolOffer", "PoolBlock", "GuestPlace", "ClubInvitation"]) {
+    for (const t of ["PoolProfile", "PoolAsk", "PoolOffer", "PoolBlock", "GuestPlace", "ClubInvitation", "PoolAttempt", "PoolConsentRecord"]) {
       out[t] = await this.db.count(`SELECT count(*) FROM "${t}"`);
     }
     return out;

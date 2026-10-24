@@ -38,7 +38,7 @@ scenarios("a stranger signs up", () => {
     const ali = await pool.stranger("ali", { name: "Ali Kaya" });     // a number MatchTime never saw
 
     // What they send
-    const ex = await ali.dm("Hi MatchTime, sign me up to play. Code K7QP");
+    const ex = await ali.dm("Hi MatchTime, sign me up to play. Code K7QP2");
 
     // Exactly what MatchTime queued, in order, by name ([] = nothing at all)
     pool.expectSent(ex.sent, [{ to: "ali", channel: "dm", purpose: "pool-welcome", text: /signed up/ }]);
@@ -66,6 +66,8 @@ scenarios("a stranger signs up", () => {
 | `club.hq.say(memberKey, text, { tag? })` | `POST /api/whatsapp/admin-group` |
 | `club.post(memberKey, text, simOpts)` | the players' group, `POST /api/whatsapp/analyze` (the sim's `post`) |
 | `club.group` | the underlying `SimGroup`, for anything else the group sim does |
+| `pool.signUp(body?, { poolOpen? })` | the /play form: `POST /api/play/signup`, the route the page posts to; returns the code, the prefilled message and the wa.me link |
+| `person.dm(text, { messageId?, envelope? })` | also: the same message again (a Pi retry), or a LID on the envelope |
 | `pool.dispatchPlatform()` | the Pi's platform poll: claims the due `PlatformJob`s, as the Pi would |
 | `pool.note(text)` | a line of commentary in the transcript |
 
@@ -95,7 +97,10 @@ message to the wrong person fails the scenario.
 
 Plain SQL through `pool.db` (e2e code sits outside the `src/` pool-table
 guard). Helpers: `pool.userOf(person)`, `pool.profileOf(person)`,
-`pool.poolRowCounts()`. Add a helper here when two slices need the same
+`pool.pendingByCode(code)`, `pool.failedAttempts(person)`,
+`pool.poolRowCounts()`. Scenarios in one file share a database, so count
+deltas, not totals. Google is stubbed per scenario (a UK point for every
+district). Add a helper here when two slices need the same
 query.
 
 ### The model
@@ -119,23 +124,36 @@ of the affected suite), calls and cost reported, Kemal's yes above $2.
 One scenario per behaviour, in a file per area. Each row is a scenario to
 write; "today" rows exist now. EN and TR wherever MatchTime speaks.
 
-### Sign-up and confirmation (L2, G0)
+### Sign-up and confirmation (L2, G0): BUILT
 
-- happy path EN, happy path TR: /play form, the prefilled confirm DM with its code, profile active, consent version and message id recorded, ONE welcome DM to him with the manage link, nothing to anyone else
-- the code sent from a different number than expected: the sending number is recorded
-- a code twice (re-forwarded DM): one profile, one welcome
-- an expired code, an unknown code, a code with extra words around it
-- a stranger's plain DM with no code: ONE reply with the /play link, then none for 30 days (today: ignored, `stranger-dm.spec.ts`)
-- a known club member sends a confirm code: same profile, his User reused, no duplicate identity
-- early sign-up list (pool not open in his town): `earlyList` set, the reply says it is not live yet
-- 18+ not ticked, consent not ticked: nothing is created
+| Scenario | File |
+| --- | --- |
+| happy path EN (pool not open: early sign-up list), consent version, time, channel and message id, ONE welcome with the manage and privacy links, nothing to anyone else | `signup-confirm.spec.ts` |
+| happy path TR (pool open: not the early list), sports, formats and levels stored | `signup-confirm.spec.ts` |
+| 18+ or consent not ticked, a full postcode: nothing is created | `signup-confirm.spec.ts` |
+| a campaign code on the URL stamped as the source; an unknown one is the web | `signup-confirm.spec.ts` |
+| an unknown code: ONE reply with the /play link (EN, and TR for a Turkish message), then throttled | `confirm-edges.spec.ts`, `stranger-dm.spec.ts` |
+| an expired code: told to sign up again; the sign-up stays waiting | `confirm-edges.spec.ts` |
+| the code twice (a Pi retry, then the same text again): one profile, one welcome | `confirm-edges.spec.ts` |
+| someone forwards another person's code: the number that wrote is recorded; the other gets nothing until he writes | `confirm-edges.spec.ts` |
+| a club member signs up: his User reused, his club untouched | `confirm-edges.spec.ts` |
+| a LID resolved to his number confirms; a LID alone is neither recorded nor answered | `confirm-edges.spec.ts` |
+| a confirmed pool player chatting on; a member asking "what's the code then"; the connect message with a pool code in it | `confirm-edges.spec.ts` |
+| a number that never messaged gets nothing | `confirm-edges.spec.ts` |
+| a stranger spamming codes: one reply, then locked out (a right code too); reply throttle over time; the per-address sign-up cap; a number or link typed as a name | `confirm-abuse.spec.ts` |
+| a stranger's plain DM with no code: still ignored (the brief keeps today's behaviour) | `stranger-dm.spec.ts` |
+| a bare self-join connect code ("Code 7KQ2", "Kod", "kodu") reaches the connect handler; the pool neither answers nor counts it (codes are 5 characters, connect codes 4) | `connect-code-untouched.spec.ts` |
+| someone already in the pool guessing: counted and locked like anyone; a hit never attaches the other person's sign-up | `confirm-abuse.spec.ts` |
+| two wrong codes at once: one reply; two first messages at once from a new number: one User, one welcome, no error | `confirm-abuse.spec.ts` |
+| failed sign-ups (a district placed only at the country) count against the address | `confirm-abuse.spec.ts` |
+| the consent record: one row per consent and withdrawal, kept after the profile and the User are deleted | `signup-confirm.spec.ts`, `manage-then-message.spec.ts` |
+| the daily housekeeping: unconfirmed sign-ups after 7 days, old attempts; the consent record stays | `housekeeping.spec.ts` |
 
 ### Managing the profile (L2, L3)
 
-- pause, resume, edit days and hours, edit sports and levels, stop, delete (delete erases; a past guest's history stays with the club)
+- BUILT (L2, `manage-then-message.spec.ts`, through the real link in the welcome and the real page): stop, then his own message again (silent), then a NEW sign-up's code (never attached: he starts again from his link); delete a pool-only person (he is a stranger again); delete a club member (User and club stay); pause, then a message gets no pool reply. Edit, resume, start again, the badge switch: `e2e/web/play-manage.spec.ts`.
 - "stop" in words to MatchTime (L6 reader): stopped, one ack, no more offers
 - members opt in from their profile (L3), area defaulted from their clubs' venues
-- the privacy switch: badges and "Brought by" kept private
 
 ### Offers (L4, L5, L9)
 

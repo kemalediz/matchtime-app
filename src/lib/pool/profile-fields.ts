@@ -1,0 +1,165 @@
+/**
+ * A POOL PROFILE'S FIELDS, as the /play form and the manage page send them
+ * (slice L2, 2026-10-24). PURE and CLIENT-SAFE: no database, no server
+ * import, so the form can show the same errors the server enforces.
+ *
+ * ONE validator for both pages: sign-up is `validatePoolFields` plus the
+ * two ticks (18 or over, consent), which the manage page never asks again.
+ * Each field is checked by the L1 rule that owns it (`normaliseDistrict`,
+ * `normaliseAvailability`, `normaliseSportChoice`); this file only puts
+ * them together and names what is wrong, field by field, so the form can
+ * say it next to the field.
+ */
+import { normaliseLang, type Lang } from "../i18n/lang";
+import { normaliseSportChoice, type PoolSportChoice, type SportChoiceError } from "./sports";
+import {
+  POOL_SIGNUP,
+  POOL_TRAVEL_MILES,
+  normaliseAvailability,
+  normaliseDistrict,
+  type AvailabilityError,
+  type AvailabilityRange,
+  type PoolTravelMiles,
+} from "./rules";
+
+/** What a profile stores (the `PoolProfile`, `PoolSport` and
+ *  `PoolAvailability` rows' fields). */
+export interface PoolFields {
+  displayName: string;
+  /** A district ("SM1"), or null when he chose pitches instead. */
+  areaDistrict: string | null;
+  venueIds: string[];
+  maxMiles: PoolTravelMiles;
+  availability: AvailabilityRange[];
+  sports: PoolSportChoice[];
+  language: Lang;
+}
+
+export type PoolFieldErrors = Partial<{
+  name: "required";
+  area: "required" | "district" | "venues";
+  maxMiles: "invalid";
+  availability: AvailabilityError | "too-many";
+  sports: SportChoiceError | "none" | "duplicate" | "too-many";
+  adult: "required";
+  consent: "required";
+}>;
+
+export type PoolFieldsResult = { ok: true; value: PoolFields } | { ok: false; errors: PoolFieldErrors };
+
+const PHONE_LIKE = /\d[\d\s()+-]{6,}\d/;
+/** A link with or without a scheme or slash: "evil.com", "bit.ly", "t.me",
+ *  an email. The part after the dot is lower case, so an initial or a name
+ *  written "St.John" is not one. */
+const LINK_LIKE = /https?:|www\.|@|[A-Za-z0-9-]+\.[a-z]{2,}\b/;
+
+/** The name as typed, tidied; null when empty, too long, or not a name. */
+export function normaliseDisplayName(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const s = v.trim().replace(/\s+/g, " ");
+  if (!s || s.length > POOL_SIGNUP.nameMax) return null;
+  if (PHONE_LIKE.test(s) || LINK_LIKE.test(s)) return null;
+  return s;
+}
+
+function readArea(raw: unknown): { ok: true; district: string | null; venueIds: string[] } | { ok: false; error: "required" | "district" | "venues" } {
+  const a = raw as { kind?: unknown; district?: unknown; venueIds?: unknown } | null;
+  if (!a || typeof a !== "object") return { ok: false, error: "required" };
+  if (a.kind === "district") {
+    const district = normaliseDistrict(a.district);
+    return district ? { ok: true, district, venueIds: [] } : { ok: false, error: "district" };
+  }
+  if (a.kind === "venues") {
+    const ids = Array.isArray(a.venueIds) ? a.venueIds.filter((x): x is string => typeof x === "string" && x.length > 0 && x.length <= 40) : [];
+    const unique = [...new Set(ids)];
+    if (unique.length === 0 || unique.length > POOL_SIGNUP.maxVenues) return { ok: false, error: "venues" };
+    return { ok: true, district: null, venueIds: unique };
+  }
+  return { ok: false, error: "required" };
+}
+
+function readSports(raw: unknown): { ok: true; value: PoolSportChoice[] } | { ok: false; error: NonNullable<PoolFieldErrors["sports"]> } {
+  if (!Array.isArray(raw) || raw.length === 0) return { ok: false, error: "none" };
+  if (raw.length > POOL_SIGNUP.maxSports) return { ok: false, error: "too-many" };
+  const out: PoolSportChoice[] = [];
+  const seen = new Set<string>();
+  for (const item of raw) {
+    const r = normaliseSportChoice((item ?? {}) as Parameters<typeof normaliseSportChoice>[0]);
+    if (!r.ok) return { ok: false, error: r.error };
+    const key = `${r.value.sport}:${r.value.otherName.toLowerCase()}`;
+    if (seen.has(key)) return { ok: false, error: "duplicate" };
+    seen.add(key);
+    out.push(r.value);
+  }
+  return { ok: true, value: out };
+}
+
+/** The fields both pages edit. Every wrong field is named at once. */
+export function validatePoolFields(raw: unknown): PoolFieldsResult {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  const errors: PoolFieldErrors = {};
+
+  const displayName = normaliseDisplayName(r.name);
+  if (!displayName) errors.name = "required";
+
+  const area = readArea(r.area);
+  if (!area.ok) errors.area = area.error;
+
+  const maxMiles = (POOL_TRAVEL_MILES as readonly unknown[]).includes(r.maxMiles) ? (r.maxMiles as PoolTravelMiles) : null;
+  if (maxMiles === null) errors.maxMiles = "invalid";
+
+  let availability: AvailabilityRange[] = [];
+  if (Array.isArray(r.availability) && r.availability.length > POOL_SIGNUP.maxRanges) errors.availability = "too-many";
+  else {
+    const a = normaliseAvailability(Array.isArray(r.availability) ? r.availability : []);
+    if (a.ok) availability = a.value;
+    else errors.availability = a.error;
+  }
+
+  const sports = readSports(r.sports);
+  if (!sports.ok) errors.sports = sports.error;
+
+  if (Object.keys(errors).length > 0 || !displayName || !area.ok || maxMiles === null || !sports.ok) return { ok: false, errors };
+  return {
+    ok: true,
+    value: {
+      displayName,
+      areaDistrict: area.district,
+      venueIds: area.venueIds,
+      maxMiles,
+      availability,
+      sports: sports.value,
+      language: normaliseLang(typeof r.language === "string" ? r.language : null),
+    },
+  };
+}
+
+/** Sign-up: the fields, and "I am 18 or over" and the consent, both ticked
+ *  (a real `true`; unticked by default on the form). */
+export function validatePoolSignup(raw: unknown): PoolFieldsResult {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  const fields = validatePoolFields(raw);
+  const ticks: PoolFieldErrors = {};
+  if (r.adult !== true) ticks.adult = "required";
+  if (r.consent !== true) ticks.consent = "required";
+  if (Object.keys(ticks).length === 0) return fields;
+  return { ok: false, errors: { ...(fields.ok ? {} : fields.errors), ...ticks } };
+}
+
+const CAMPAIGN_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const SHARE_RE = /^[A-Za-z0-9]{4,12}$/;
+
+/**
+ * Where a visitor came from, off the /play URL: `?c=<campaign>` (a
+ * PoolCampaign code: lowercase letters, digits, hyphens) or `?ref=<share
+ * code>` (a friend's PoolProfile.shareCode). Anything else is dropped,
+ * never stored. Whether the code exists is the server's question.
+ */
+export function readSignupSource(params: Record<string, unknown>): { campaignCode: string | null; referralCode: string | null } {
+  const c = typeof params.c === "string" ? params.c.trim().toLowerCase() : "";
+  const ref = typeof params.ref === "string" ? params.ref.trim() : "";
+  return {
+    campaignCode: c && c.length <= 40 && CAMPAIGN_RE.test(c) ? c : null,
+    referralCode: SHARE_RE.test(ref) ? ref : null,
+  };
+}

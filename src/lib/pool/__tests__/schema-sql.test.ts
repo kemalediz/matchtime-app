@@ -79,10 +79,8 @@ describe("the CHECKs carry the TypeScript's values", () => {
       const sql = code(read(file));
       for (const c of ENUM_CHECKS) expect(sql, c).toContain(c);
     });
-    it(`${file}: the confirm code's alphabet and the postcode district`, () => {
-      const sql = code(read(file));
-      expect(sql).toContain(`"confirmCode" ~ '^[${POOL_CONFIRM_CODE_ALPHABET}]{${POOL_CONFIRM_CODE_LENGTH}}$'`);
-      expect(sql).toContain(`"areaDistrict" ~ '${POSTCODE_DISTRICT_RE.source}'`);
+    it(`${file}: the postcode district`, () => {
+      expect(code(read(file))).toContain(`"areaDistrict" ~ '${POSTCODE_DISTRICT_RE.source}'`);
     });
     it(`${file}: the formats per sport`, () => {
       expect(code(read(file))).toContain(formatsCheck());
@@ -158,5 +156,50 @@ describe("the migration is additive and whole", () => {
     const pool = run.indexOf('"pool-check.sql"');
     expect(partner).toBeGreaterThan(0);
     expect(pool).toBeGreaterThan(partner);
+  });
+});
+
+describe("slice L2's migration (codes, the sign-up IP, attempts, the consent record)", () => {
+  const L2 = "prisma/migrations/20261025090000_pool_signup_confirm/migration.sql";
+  const sql = code(read(L2));
+  const both = [L2, CHECKS];
+  const CODE_CHECK = `"confirmCode" ~ '^[${POOL_CONFIRM_CODE_ALPHABET}]{${POOL_CONFIRM_CODE_LENGTH}}$'`;
+  const IP_CHECK = `CHECK ("signupIp" IS NULL OR "status" = 'pending-verify')`;
+  const ATTEMPT_CHECK =
+    `CHECK (("kind" = 'confirm' AND "result" IN (${list(V.POOL_CONFIRM_ATTEMPT_RESULTS)}))` +
+    ` OR ("kind" = 'signup' AND "result" IN (${list(V.POOL_SIGNUP_ATTEMPT_RESULTS)})))`;
+  const ACTION_CHECK = inList("action", V.POOL_CONSENT_ACTIONS);
+  const CHANNEL_CHECK = inList("channel", V.POOL_CONSENT_CHANNELS);
+
+  it("the confirm code CHECK is the pool's own length, in both migrations and the CHECK file", () => {
+    for (const f of [...both, MIGRATION]) expect(code(read(f)), f).toContain(CODE_CHECK);
+    expect(code(read(MIGRATION))).not.toContain("]{4}$'");
+    expect(POOL_CONFIRM_CODE_LENGTH).toBe(5);
+  });
+  it("carries the same CHECKs as the CHECK file, from the vocab", () => {
+    for (const f of both) {
+      for (const c of [IP_CHECK, ATTEMPT_CHECK, ACTION_CHECK, CHANNEL_CHECK]) expect(code(read(f)), `${f}: ${c}`).toContain(c);
+      expect(code(read(f)), f).toContain(`CHECK ("action" <> 'consent' OR "version" IS NOT NULL)`);
+    }
+    expect(V.POOL_ATTEMPT_KINDS).toEqual(["confirm", "signup"]);
+  });
+  it("the consent record has no foreign key: it outlives the profile and the User (policy: 6 years)", () => {
+    const table = sql.slice(sql.indexOf('CREATE TABLE IF NOT EXISTS "PoolConsentRecord"'));
+    expect(table.slice(0, table.indexOf(");"))).not.toMatch(/REFERENCES/);
+    expect(sql).not.toMatch(/"PoolConsentRecord"[^;]*FOREIGN KEY/);
+  });
+  it("is additive, idempotent and one transaction with no session-level SET", () => {
+    expect(sql).not.toMatch(/DROP\s+(COLUMN|TABLE)/i);
+    const dropped = [...sql.matchAll(/DROP CONSTRAINT IF EXISTS "([^"]+)"/g)].map((m) => m[1]);
+    const added = new Set([...sql.matchAll(/ADD CONSTRAINT "([^"]+)"/g)].map((m) => m[1]));
+    for (const name of dropped) expect(added.has(name), name).toBe(true);
+    expect(sql).not.toMatch(/CREATE TABLE (?!IF NOT EXISTS)/);
+    expect(sql).not.toMatch(/CREATE (UNIQUE )?INDEX (?!IF NOT EXISTS)/);
+    expect(sql).not.toMatch(/ADD COLUMN (?!IF NOT EXISTS)/);
+    expect(sql).toMatch(/^\s*BEGIN;/m);
+    expect(sql).toMatch(/^\s*SET LOCAL lock_timeout = '5s';/m);
+    expect(sql).toMatch(/^\s*COMMIT;\s*$/m);
+    expect(sql).not.toMatch(/^\s*SET\s+(?!LOCAL)/im);
+    expect(sql).not.toMatch(/^\s*(UPDATE|DELETE|INSERT)\b/im);
   });
 });
