@@ -366,6 +366,12 @@ async function runSuite(): Promise<number> {
     // and partner club.
     console.log("[e2e] arming the partner-ask CHECK constraints…");
     await applySql(path.join(REPO_ROOT, "prisma", "sql", "partner-ask-check.sql"));
+    // And the local player pool's (slice L1, 2026-10-24): every enum column
+    // one of its values, each record's fields agreeing with its state, and
+    // one open pool ask per match and club, one open invitation per club
+    // and person. After the partner file, which owns the guest CHECK.
+    console.log("[e2e] arming the player-pool CHECK constraints…");
+    await applySql(path.join(REPO_ROOT, "prisma", "sql", "pool-check.sql"));
 
     console.log("[e2e] seeding fixture world…");
     const seedCode = await run("npx", ["tsx", "e2e/helpers/seed-cli.ts"], {

@@ -123,6 +123,10 @@ model User {
   tentativeAvailabilities TentativeAvailability[]
   squadMonthMemberships   SquadMonthMember[]
   squadCredits            SquadCredit[]
+  /// The local player pool (2026-10-24). Read only through src/lib/pool.
+  poolProfile             PoolProfile?
+  guestPlaces             GuestPlace[]
+  clubInvitations         ClubInvitation[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -587,6 +591,26 @@ model Organisation {
   /// is a compare-and-set on this column, so two runs never both send.
   venueReminderSentAt       DateTime?
 
+  /// ─── The local player pool (2026-10-24, slice L1) ─────────────────
+  /// Plan: MDs/local-player-pool-plan-2026-10-23.md section 7 and
+  /// MDs/local-player-pool-approved-spec-2026-10-24.md. Every switch is
+  /// OFF (decision log #2), so these columns change nothing until a club
+  /// turns one on and the global POOL_OFFERS_ENABLED is on too
+  /// (src/lib/pool/flags.ts). CHECKs: prisma/sql/pool-check.sql.
+  ///
+  /// The club may ask the MatchTime player pool for players.
+  featurePlayerPool         Boolean   @default(false)
+  /// The club's automatic ask includes the pool, after its partners (L9).
+  poolAutoAsk               Boolean   @default(false)
+  /// The club's own description of its games on a pool offer: "casual" |
+  /// "competitive" | "mixed" (src/lib/pool/vocab.ts PLAY_STYLES). NULL:
+  /// the offer has no style line.
+  playStyle                 String?
+  /// The town this club is served from (decision D-6: one WhatsApp number
+  /// per town), a lowercase slug such as "sutton". NULL: the first town's
+  /// number, which is every club today.
+  town                      String?
+
   memberships        Membership[]
   clubConnects       ClubConnect[]
   activities         Activity[]
@@ -609,6 +633,10 @@ model Organisation {
   partnersLending    ClubPartnership[] @relation("PartnershipPartner")
   clubBlocksMade     ClubBlock[]       @relation("ClubBlocker")
   clubBlocksAgainst  ClubBlock[]       @relation("ClubBlocked")
+  poolAsks           PoolAsk[]
+  poolBlocks         PoolBlock[]
+  guestPlaces        GuestPlace[]
+  clubInvitations    ClubInvitation[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -848,6 +876,13 @@ model Membership {
   /// src/lib/partner-guest.ts.
   guestFromOrgId String?
   guestMatchId   String?
+  /// Where this guest came from (local player pool, 2026-10-24): "partner"
+  /// | "pool" (src/lib/pool/vocab.ts MEMBERSHIP_GUEST_VIA). A pool guest has
+  /// no home club, so his row has `guestMatchId` set and `guestFromOrgId`
+  /// NULL. NULL on every row written before the pool: the original rule
+  /// (both marks or neither) still holds for them. CHECK:
+  /// "Membership_guest_check" in prisma/sql/partner-ask-check.sql.
+  guestVia       String?
 
   createdAt DateTime @default(now())
 
@@ -1153,6 +1188,8 @@ model Match {
   momVotes                MoMVote[]
   sentNotifications       SentNotification[]
   partnerAsks             PartnerAsk[]
+  poolAsks                PoolAsk[]
+  guestPlaces             GuestPlace[]
   benchConfirmations      PendingBenchConfirmation[]
   benchSlotOffers         BenchSlotOffer[]
   ratingAdjustments       RatingAdjustment[]
@@ -3049,4 +3086,312 @@ model ClubGraphicsChoice {
   updatedAt       DateTime              @updatedAt
 
   @@index([sharedFromOrgId])
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// THE LOCAL PLAYER POOL (2026-10-24, slice L1)
+// ═══════════════════════════════════════════════════════════════════════
+// People who want to be offered games near them, the clubs' asks to them,
+// the offers, and the club-side records of guests and invitations.
+// Plan: MDs/local-player-pool-plan-2026-10-23.md section 7, extended by
+// MDs/local-player-pool-approved-spec-2026-10-24.md (which wins).
+//
+// Every value of every enum-in-a-string column is in src/lib/pool/vocab.ts
+// (the sports in src/lib/pool/sports.ts); the CHECKs in
+// prisma/sql/pool-check.sql are pinned to them by a unit test.
+//
+// The Pool* tables are read and written ONLY by src/lib/pool/** and the
+// superadmin pool page, and never reach a model's context
+// (src/lib/pool/__tests__/source-guard.test.ts).
+//
+// User ids on offers and blocks carry no foreign key on purpose: a pool-only
+// person who deletes his profile is erased, but the caps and the abuse
+// record (plan 3.3, retention) must outlive him.
+
+/// One person's wish to be offered local games. At most one per User.
+/// Created by the /play form as "pending-verify" with no user; the
+/// person's own WhatsApp message carrying `confirmCode` finds or creates
+/// the User by the number that sent it and makes it "active". The early
+/// sign-up list (G0, before the pool opens) is the same row with
+/// `earlyList` set: same form, same WhatsApp confirmation, same consent.
+model PoolProfile {
+  id           String    @id @default(cuid())
+  /// NULL only while "pending-verify" (CHECK).
+  userId       String?   @unique
+  user         User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// "pending-verify" | "active" | "paused" | "stopped" (vocab.ts).
+  status       String    @default("pending-verify")
+  /// Set exactly while "paused": "self" | "ignored" | "no-shows" |
+  /// "reports" | "admin".
+  pausedReason String?
+  pausedAt     DateTime?
+  /// Set exactly while "stopped": when consent was withdrawn.
+  stoppedAt    DateTime?
+
+  // ── Confirming on WhatsApp ──
+  /// The code in the prefilled WhatsApp message (rules.ts alphabet).
+  /// Cleared once used, so it is only ever set while "pending-verify".
+  confirmCode          String?   @unique
+  confirmCodeExpiresAt DateTime?
+
+  // ── Consent (UK GDPR art. 6(1)(a), PECR) ──
+  /// Required on every profile past "pending-verify" (CHECK): when, which
+  /// wording (rules.ts POOL_CONSENT_VERSION), where ("whatsapp" | "web"),
+  /// and the evidence (the confirm DM's WhatsApp message id, or the web
+  /// request's id for a signed-in member, L3).
+  consentAt        DateTime?
+  consentVersion   Int?
+  consentChannel   String?
+  consentEvidence  String?
+  /// The "I am 18 or over" tick (decision log #1).
+  adultConfirmedAt DateTime?
+
+  // ── Who and where ──
+  /// "en" | "tr": the language every pool message to him is written in.
+  language     String   @default("en")
+  /// First name and last initial: shown to a club only after he accepts.
+  displayName  String
+  /// The town whose WhatsApp number serves him (decision D-6). NULL: the
+  /// first town, as for clubs.
+  town         String?
+  /// A UK postcode DISTRICT ("SM1"), never a full postcode, and its
+  /// centre point; or `venueIds`, the pitches he chose. One of the two
+  /// is required (CHECK).
+  areaDistrict String?
+  areaLat      Float?
+  areaLng      Float?
+  venueIds     String[] @default([])
+  /// 1 | 3 | 5 | 10 (rules.ts POOL_TRAVEL_MILES).
+  maxMiles     Int      @default(3)
+
+  // ── Growth ──
+  /// "web" | "profile" | "referral" | "campaign".
+  source            String?
+  /// The campaign code (PoolCampaign.code) or the referrer's shareCode.
+  sourceCode        String?
+  referrerUserId    String?
+  /// When the referral counted (only once the friend has played).
+  referralCountedAt DateTime?
+  /// His own share code for matchtime.ai/p/<code> (G1).
+  shareCode         String?   @unique
+  /// "Keep my badges and 'Brought by' private" OFF: shown. The manage page
+  /// switch.
+  showRecognition   Boolean   @default(true)
+  /// Signed up before the pool opened in his town (the early sign-up list).
+  earlyList         Boolean   @default(false)
+
+  // ── Retention (12-month rule, rules.ts POOL_RETENTION) ──
+  lastActiveAt    DateTime?
+  reconfirmSentAt DateTime?
+
+  sports       PoolSport[]
+  availability PoolAvailability[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([areaLat, areaLng])
+  @@index([town, status])
+  @@index([referrerUserId])
+}
+
+/// One sport on a pool profile, with its formats and optional level.
+model PoolSport {
+  id        String      @id @default(cuid())
+  profileId String
+  profile   PoolProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  /// A sports.ts catalogue key, or "other".
+  sport     String
+  /// The typed-in name when "other"; "" otherwise (CHECK), so the unique
+  /// key below holds for catalogue sports too.
+  otherName String      @default("")
+  /// "novice" | "intermediate" | "advanced" | "pro", or his own words in
+  /// `levelText`; never both; both optional.
+  level     String?
+  levelText String?
+  /// Players per side he will play; only where the sport has formats.
+  formats   Int[]       @default([])
+
+  @@unique([profileId, sport, otherName])
+  @@index([sport])
+}
+
+/// One stretch of a weekday he can play: London time, minutes after
+/// midnight, `fromMin` inclusive, `toMin` exclusive, never crossing
+/// midnight. Several per day allowed (rules.ts normaliseAvailability).
+model PoolAvailability {
+  id        String      @id @default(cuid())
+  profileId String
+  profile   PoolProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  /// 0 = Sunday .. 6 = Saturday, as Activity.dayOfWeek.
+  day       Int
+  fromMin   Int
+  toMin     Int
+
+  @@unique([profileId, day, fromMin])
+  @@index([day])
+}
+
+/// One club's approved ask to the pool for one of its matches. An
+/// organiser's approval creates it (decision D-1), so it starts "open".
+/// Shares PartnerAsk.roundId so one round can span partner clubs and the
+/// pool. One open ask per (match, club): a partial unique index in
+/// prisma/sql/pool-check.sql.
+model PoolAsk {
+  id               String       @id @default(cuid())
+  matchId          String
+  match            Match        @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  orgId            String
+  org              Organisation @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  roundId          String?
+  /// Players asked for (at least 1).
+  places           Int
+  /// "page" | "notice" | "auto" | "words".
+  via              String
+  /// Who approved it; NULL for the automatic ask.
+  approvedByUserId String?
+  /// "open" | "filled" | "closed" | "cancelled". `closedAt` set exactly
+  /// when it is no longer open.
+  status           String       @default("open")
+  closeReason      String?
+  closedAt         DateTime?
+  offers           PoolOffer[]
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@index([roundId])
+  @@index([orgId, createdAt])
+  @@index([matchId, status])
+}
+
+/// One offer to one person: the cap ledger and the audit trail. One per
+/// (match, person) ever. `outcome` and `resolvedAt` are set together.
+model PoolOffer {
+  id            String    @id @default(cuid())
+  poolAskId     String
+  ask           PoolAsk   @relation(fields: [poolAskId], references: [id], onDelete: Cascade)
+  matchId       String
+  orgId         String
+  userId        String
+  /// Distance from his area to the venue when he was picked.
+  distanceMiles Float
+  /// 1 or 2 (rules.ts POOL_ROUND).
+  wave          Int       @default(1)
+  /// The PlatformJob carrying the offer DM.
+  platformJobId String?
+  sentAt        DateTime?
+  expiresAt     DateTime
+  /// vocab.ts POOL_OFFER_OUTCOMES; NULL while open.
+  outcome       String?
+  resolvedAt    DateTime?
+  /// "link" | "words": how he answered, when he did.
+  repliedVia    String?
+  createdAt     DateTime  @default(now())
+
+  @@unique([matchId, userId])
+  @@index([poolAskId])
+  @@index([userId, sentAt])
+  @@index([orgId, userId, sentAt])
+}
+
+/// A club blocks a person, or a person blocks a club. Kept after the
+/// person deletes his profile (no foreign key on the user).
+model PoolBlock {
+  id        String       @id @default(cuid())
+  orgId     String
+  org       Organisation @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  userId    String
+  /// "club" | "player": who blocked.
+  by        String
+  /// The organiser who pressed it, for a club block.
+  byUserId  String?
+  createdAt DateTime     @default(now())
+
+  @@unique([orgId, userId, by])
+  @@index([userId])
+}
+
+/// A campaign code for matchtime.ai/p/<code> (G1): a LinkedIn post, a
+/// leaflet run, a club's share post.
+model PoolCampaign {
+  /// Lowercase letters, digits and hyphens ("li-kemal", "lf-sutton-goals").
+  code      String   @id
+  /// "linkedin" | "leaflet" | "club" | "other".
+  source    String
+  label     String
+  /// The club whose share post this is, for source "club".
+  orgId     String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+/// One guest's game for a club: partner guests and pool guests alike. The
+/// ONE record of how a guest's game went, read by the Guest players page
+/// (Upcoming, History, Report), the turn-up record and the "Invite to
+/// club" rule (at least one game with this club). The guest membership
+/// (`Membership.guestMatchId`) only holds his current match; this keeps
+/// every one.
+model GuestPlace {
+  id           String       @id @default(cuid())
+  orgId        String
+  org          Organisation @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  matchId      String
+  match        Match        @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// "pool" | "partner".
+  source       String
+  /// The partner club he came from: set exactly for "partner" (CHECK).
+  fromOrgId    String?
+  partnerAskId String?
+  /// The offer he accepted: only for "pool".
+  poolOfferId  String?      @unique
+  /// "booked" | "played" | "no-show" | "late-cancel" | "withdrawn".
+  /// `resultAt` set exactly when it is no longer "booked".
+  result       String       @default("booked")
+  resultAt     DateTime?
+  /// The organiser who marked it, when one did (a no-show, L7).
+  resultById   String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@unique([matchId, userId])
+  @@index([orgId, createdAt])
+  @@index([userId])
+}
+
+/// An invitation to join a club's WhatsApp group: My invitations (the
+/// player's page), the "Invite to club" button and the after-game ask.
+/// The invite link goes out only once both sides said yes. One open
+/// invitation per (club, person): a partial unique index in
+/// prisma/sql/pool-check.sql.
+model ClubInvitation {
+  id              String       @id @default(cuid())
+  orgId           String
+  org             Organisation @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  userId          String
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// The game it follows, when there is one.
+  matchId         String?
+  /// "after-game" | "organiser". An organiser's tap IS the club's yes, so
+  /// an "organiser" invitation always has `clubYesAt` (CHECK).
+  origin          String
+  invitedByUserId String?
+  /// "open" | "accepted" | "declined" | "withdrawn". `closedAt` set
+  /// exactly when it is no longer open; "accepted" needs both yeses and
+  /// "declined" names who said no.
+  status          String       @default("open")
+  clubYesAt       DateTime?
+  clubYesById     String?
+  playerYesAt     DateTime?
+  declinedBy      String?
+  closedAt        DateTime?
+  /// When the invite link was sent to him.
+  linkSentAt      DateTime?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@index([userId, status])
+  @@index([orgId, status])
 }
