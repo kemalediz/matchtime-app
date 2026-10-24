@@ -15,6 +15,7 @@ import {
   periodOf,
   reportFilterOptions,
   settleGuestResult,
+  guestSafetyShown,
   type GuestGameFact,
   type GuestMatchFacts,
   type GuestPersonFacts,
@@ -399,5 +400,13 @@ describe("parseGuestPageQuery: the page's tab and report filters from the URL", 
       sportId: null,
       venue: "a",
     });
+  });
+});
+
+describe("review of #404, 3: the block and report controls only for a pool guest of a club that may ask the pool", () => {
+  it("a pool guest in a pool club: shown; a partner guest, or any guest of a club without the pool: not", () => {
+    expect(guestSafetyShown({ source: "pool" }, true)).toBe(true);
+    expect(guestSafetyShown({ source: "partner" }, true)).toBe(false);
+    expect(guestSafetyShown({ source: "pool" }, false)).toBe(false);
   });
 });

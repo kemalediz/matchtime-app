@@ -12,7 +12,11 @@
  *       guest nobody marked PLAYED; a result already recorded (no-show,
  *       late cancel, pulled out) stays; a place given up with nothing
  *       recorded was given up in time; a bench place never called up and a
- *       cancelled game are not games (settled, still "booked").
+ *       cancelled game are not games (settled, still "booked"; a cancelled
+ *       game waits for its window too, as it may be put back on).
+ *   countableGuestGames / standingPause
+ *       Only final, not-cancelled games count; the pause that still applies
+ *       to a profile made anew.
  *   pausesForNoShows
  *       `noShowPause.noShows` no-shows among his last `lastGames` counted
  *       guest games (every club, partner and pool guest games alike: one
@@ -72,15 +76,20 @@ export function noShowMarkRefusal(a: {
   const w = noShowMarkWindow(a.kickoff);
   if (a.now.getTime() < w.opensAt.getTime()) return "not-started";
   if (a.settled || a.now.getTime() >= w.closesAt.getTime()) return "closed";
-  if (a.attendance !== "CONFIRMED") return "not-playing";
+  // A bench place never held a place. No row (or a dropped one) on a place
+  // still booked is a guest taken off AFTER kickoff (review of #404, 6):
+  // every drop before kickoff records its own result.
+  if (a.attendance === "BENCH") return "not-playing";
   if (a.result !== "booked" && a.result !== "no-show") return "not-playing";
   return null;
 }
 
 /** His game's final result, or null while the window is still open. */
 export function finalGuestResult(a: { result: GuestResult; attendance: Attendance; matchStatus: MatchStatus; kickoff: Date; now: Date }): { result: GuestResult } | null {
-  if (a.matchStatus === "CANCELLED") return { result: a.result };
+  // A cancelled match waits like any other (review of #404, 2: it may be
+  // put back on), then is not a game: any recorded result is cleared (8).
   if (a.now.getTime() < noShowMarkWindow(a.kickoff).closesAt.getTime()) return null;
+  if (a.matchStatus === "CANCELLED") return { result: "booked" };
   if (a.result !== "booked") return { result: a.result };
   if (a.attendance === "CONFIRMED") return { result: "played" };
   if (a.attendance === "BENCH") return { result: "booked" };
@@ -96,6 +105,36 @@ export function pausesForNoShows(games: readonly { kickoff: Date; result: GuestR
     .sort((a, b) => b.kickoff.getTime() - a.kickoff.getTime())
     .slice(0, lastGames);
   return last.filter((g) => g.result === "no-show").length >= noShows;
+}
+
+/**
+ * The games his record and his pause count (review of #404, 1 and 8): only
+ * FINAL results (the window closed, so no organiser can still undo them),
+ * never a game whose match was cancelled.
+ */
+export function countableGuestGames<T extends { settledAt: Date | null; cancelled: boolean }>(games: readonly T[]): T[] {
+  return games.filter((g) => g.settledAt !== null && !g.cancelled);
+}
+
+/**
+ * The pause MatchTime decided that still applies to him, from his records,
+ * for a profile made anew (review of #404, 4: deleting the profile and
+ * signing up again must not lift it). Open club reports from two clubs: a
+ * report pause now. Otherwise the no-show rule on his final games, dated
+ * from the latest final no-show, unless its 30 days are already over.
+ */
+export function standingPause(a: {
+  games: readonly { kickoff: Date; result: GuestResult; settledAt: Date | null; cancelled: boolean }[];
+  openClubReportOrgs: readonly string[];
+  now: Date;
+}): { reason: "no-shows" | "reports"; pausedAt: Date } | null {
+  if (pausesForReports(a.openClubReportOrgs.map((orgId) => ({ orgId, by: "club" as const, reviewed: false })))) return { reason: "reports", pausedAt: a.now };
+  const games = countableGuestGames(a.games);
+  if (!pausesForNoShows(games)) return null;
+  const last = Math.max(...games.filter((g) => g.result === "no-show").map((g) => g.settledAt!.getTime()));
+  const pausedAt = new Date(last);
+  const until = selfResumeFrom({ reason: "no-shows", pausedAt })!;
+  return until.getTime() > a.now.getTime() ? { reason: "no-shows", pausedAt } : null;
 }
 
 /** From when he may lift this pause himself, or null for never (a
@@ -146,8 +185,10 @@ export function reportTextOf(raw: unknown): string | null {
     .join("\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
-  if (text.length < POOL_RELIABILITY.reportTextMin) return null;
-  return text.slice(0, POOL_RELIABILITY.reportTextMax);
+  // Characters (code points), as the database's length() counts them.
+  const chars = [...text];
+  if (chars.length < POOL_RELIABILITY.reportTextMin) return null;
+  return chars.slice(0, POOL_RELIABILITY.reportTextMax).join("").trim();
 }
 
 /** Block and report records about someone whose profile was deleted

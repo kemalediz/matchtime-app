@@ -29,7 +29,12 @@
 --   * "PoolProfile_paused_check" replaced by one that ALSO allows a pause
 --     MatchTime decided ("no-shows", "reports", "admin") to stay on a
 --     STOPPED profile, so stopping and starting again cannot lift it. It
---     only allows more: every row the old CHECK accepted passes.
+--     also requires "pausedReason" and "pausedAt" to be set together,
+--     which the old one did not (it allowed a "pausedAt" with no reason on
+--     a profile that was not paused). "PoolProfile" is EMPTY in production
+--     today (the pool has not opened), so the swap meets no row. On a
+--     database that has profiles, check first (expect 0):
+--       SELECT count(*) FROM "PoolProfile" WHERE ("pausedReason" IS NULL) <> ("pausedAt" IS NULL);
 --
 -- IDEMPOTENT: every column, table and index is IF NOT EXISTS and every
 -- constraint is dropped if present before it is added. ONE transaction.

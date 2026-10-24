@@ -7,6 +7,8 @@ import { describe, expect, it } from "vitest";
 import {
   POOL_RELIABILITY,
   clubsMarkingTooMany,
+  countableGuestGames,
+  standingPause,
   finalGuestResult,
   noShowMarkRefusal,
   noShowMarkWindow,
@@ -45,8 +47,6 @@ describe("the no-show window: from kickoff until 24 hours after it", () => {
 
   it("only a guest who held a place: not the bench, not one who pulled out, not a cancelled game", () => {
     expect(noShowMarkRefusal({ ...base, attendance: "BENCH", noShow: true, now: at(2) })).toBe("not-playing");
-    expect(noShowMarkRefusal({ ...base, attendance: "DROPPED", noShow: true, now: at(2) })).toBe("not-playing");
-    expect(noShowMarkRefusal({ ...base, attendance: null, noShow: true, now: at(2) })).toBe("not-playing");
     expect(noShowMarkRefusal({ ...base, result: "late-cancel", noShow: true, now: at(2) })).toBe("not-playing");
     expect(noShowMarkRefusal({ ...base, result: "withdrawn", noShow: false, now: at(2) })).toBe("not-playing");
     expect(noShowMarkRefusal({ ...base, matchStatus: "CANCELLED", noShow: true, now: at(2) })).toBe("cancelled");
@@ -75,7 +75,7 @@ describe("the result of a guest's game, once the window has closed", () => {
 
   it("a bench place never called up and a cancelled game are not games: settled, still booked", () => {
     expect(finalGuestResult({ ...base, attendance: "BENCH", now: at(30) })).toEqual({ result: "booked" });
-    expect(finalGuestResult({ ...base, matchStatus: "CANCELLED", now: at(-5) })).toEqual({ result: "booked" });
+    expect(finalGuestResult({ ...base, matchStatus: "CANCELLED", now: at(30) })).toEqual({ result: "booked" });
   });
 });
 
@@ -157,5 +157,68 @@ describe("retention (decision L0.3)", () => {
   it("block and report records go 24 months after the profile was deleted", () => {
     const now = new Date("2028-12-01T00:00:00Z");
     expect(safetyRecordPurgeBefore(now)).toEqual(new Date("2026-12-01T00:00:00Z"));
+  });
+});
+
+// ── Review of #404 ─────────────────────────────────────────────────────
+
+describe("review #404: only final results count toward the pause (finding 1, and 8)", () => {
+  const g = (days: number, result: "played" | "no-show", over: { settled?: boolean; cancelled?: boolean } = {}) => ({
+    kickoff: new Date(KICKOFF.getTime() + days * 24 * H),
+    result,
+    settledAt: over.settled === false ? null : new Date(KICKOFF.getTime() + (days + 1) * 24 * H),
+    cancelled: over.cancelled ?? false,
+  });
+  it("a no-show still inside its window (undo-able) is not counted", () => {
+    expect(countableGuestGames([g(0, "no-show"), g(5, "no-show", { settled: false })])).toHaveLength(1);
+  });
+  it("a game whose match was cancelled is never counted, whatever it says", () => {
+    expect(countableGuestGames([g(0, "no-show", { cancelled: true }), g(5, "no-show")])).toHaveLength(1);
+  });
+});
+
+describe("review #404: a cancelled match waits like any other (finding 2), and is reset as not a game (finding 8)", () => {
+  const base = { result: "booked" as const, attendance: "CONFIRMED" as const, matchStatus: "CANCELLED" as const, kickoff: KICKOFF };
+  it("before the window has closed: not settled, so a restored game can still be played and marked", () => {
+    expect(finalGuestResult({ ...base, now: at(-5) })).toBeNull();
+    expect(finalGuestResult({ ...base, now: at(23) })).toBeNull();
+  });
+  it("after the window: settled as not a game, a recorded result cleared", () => {
+    expect(finalGuestResult({ ...base, now: at(24) })).toEqual({ result: "booked" });
+    expect(finalGuestResult({ ...base, result: "no-show", now: at(30) })).toEqual({ result: "booked" });
+    expect(finalGuestResult({ ...base, result: "late-cancel", now: at(30) })).toEqual({ result: "booked" });
+  });
+});
+
+describe("review #404: a guest taken off after kickoff can still be marked (finding 6)", () => {
+  const base = { result: "booked" as const, settled: false, matchStatus: "COMPLETED" as const, kickoff: KICKOFF, noShow: true, now: at(2) };
+  it("no attendance row any more (removed after kickoff): markable; the bench still is not", () => {
+    expect(noShowMarkRefusal({ ...base, attendance: null })).toBeNull();
+    expect(noShowMarkRefusal({ ...base, attendance: "DROPPED" })).toBeNull();
+    expect(noShowMarkRefusal({ ...base, attendance: "BENCH" })).toBe("not-playing");
+  });
+});
+
+describe("review #404: a pause MatchTime decided comes back on a new profile (finding 4)", () => {
+  const now = new Date("2026-12-01T12:00:00Z");
+  const ns = (daysAgo: number) => ({ kickoff: new Date(now.getTime() - (daysAgo + 1) * 24 * H), result: "no-show" as const, settledAt: new Date(now.getTime() - daysAgo * 24 * H), cancelled: false });
+  it("two recent final no-shows: paused for no-shows from the later one's settling, not from now", () => {
+    expect(standingPause({ games: [ns(20), ns(10)], openClubReportOrgs: [], now })).toEqual({ reason: "no-shows", pausedAt: new Date(now.getTime() - 10 * 24 * H) });
+  });
+  it("its 30 days already over: no pause", () => {
+    expect(standingPause({ games: [ns(60), ns(40)], openClubReportOrgs: [], now })).toBeNull();
+  });
+  it("open reports from two clubs: paused for reports, now", () => {
+    expect(standingPause({ games: [], openClubReportOrgs: ["a", "b", "a"], now })).toEqual({ reason: "reports", pausedAt: now });
+    expect(standingPause({ games: [], openClubReportOrgs: ["a", "a"], now })).toBeNull();
+  });
+});
+
+describe("review #404: report text counted in characters, as the database does (finding 11)", () => {
+  it("emoji count as one character each", () => {
+    const text = "😀".repeat(POOL_RELIABILITY.reportTextMax + 10);
+    const out = reportTextOf(text)!;
+    expect([...out].length).toBe(POOL_RELIABILITY.reportTextMax);
+    expect(reportTextOf("😀😀")).toBeNull();
   });
 });

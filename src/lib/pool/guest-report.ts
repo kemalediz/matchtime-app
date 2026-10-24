@@ -134,6 +134,16 @@ export function settleGuestResult(
   return null;
 }
 
+/**
+ * The guest card's block and report controls (slice L7; review of #404,
+ * 3): a club's block only stops POOL offers, so they show only for a pool
+ * guest, and only in a club that may ask the pool. Every other club's card
+ * is exactly as before.
+ */
+export function guestSafetyShown(card: Pick<GuestCard, "source">, poolClub: boolean): boolean {
+  return poolClub && card.source === "pool";
+}
+
 /** "Ali Khan" -> "Ali K". Null when there is no name. */
 export function guestDisplayName(name: string | null | undefined): string | null {
   const words = (name ?? "").replace(/\./g, " ").trim().split(/\s+/).filter(Boolean);

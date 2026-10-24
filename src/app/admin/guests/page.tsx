@@ -34,7 +34,7 @@ export default async function GuestPlayersPage({ searchParams }: { searchParams:
   const now = new Date();
   const facts = await loadGuestFacts(orgId, { report: query.tab === "report" });
   const players = buildGuestPlayers({ orgId, now, lang, games: facts.games, people: facts.people });
-  const list = { s, lang, orgId, cards: players.cards };
+  const list = { s, lang, orgId, cards: players.cards, poolClub: membership.org.featurePlayerPool === true };
 
   return (
     <div className="space-y-5" data-testid="guest-players-page">

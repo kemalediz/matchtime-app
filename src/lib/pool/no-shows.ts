@@ -31,7 +31,7 @@ import { queuePlatformDm } from "../platform-jobs";
 import { isPoolOffersEnabled } from "./flags";
 import { guestDisplayName } from "./guest-report";
 import { buildPoolManageLink } from "./links";
-import { POOL_RELIABILITY, finalGuestResult, noShowMarkRefusal, noShowMarkWindow, pausesForNoShows, type NoShowMarkRefusal } from "./reliability-rules";
+import { POOL_RELIABILITY, countableGuestGames, finalGuestResult, noShowMarkRefusal, noShowMarkWindow, pausesForNoShows, type NoShowMarkRefusal } from "./reliability-rules";
 import { turnUpRecordOf, type TurnUpRecord } from "./turn-up";
 import { isOneOf, GUEST_RESULTS, type GuestResult } from "./vocab";
 import { poolSendAt } from "./waves";
@@ -80,9 +80,10 @@ export async function loadGuestResultsPanel(orgId: string, matchId: string, now:
   for (const p of places) {
     const result = resultOf(p.result);
     const attendance = statusOf.get(p.userId) ?? null;
-    // Only guests who held a place: a bench place never called up and a
-    // place given up are not on this list.
-    if (attendance !== "CONFIRMED" && result !== "no-show") continue;
+    // Only guests who held a place: a bench place never called up, a place
+    // given up before kickoff (its own result) and a settled non-game are
+    // not on this list. One taken off AFTER kickoff stays (review of #404, 6).
+    if (!inResultsPanel({ result, attendance, settled: p.settledAt !== null })) continue;
     const refusal = noShowMarkRefusal({
       result,
       settled: p.settledAt !== null,
@@ -104,6 +105,12 @@ export async function loadGuestResultsPanel(orgId: string, matchId: string, now:
   if (out.length === 0) return null;
   out.sort((a, b) => (a.name ?? "").localeCompare(b.name ?? "") || a.userId.localeCompare(b.userId));
   return { closesAt: window.closesAt, final, rows: out };
+}
+
+/** Is this guest place on the match page's results list? Pure. */
+export function inResultsPanel(p: { result: GuestResult; attendance: Attendance; settled: boolean }): boolean {
+  if (p.result === "no-show" || p.result === "played") return true;
+  return p.result === "booked" && !p.settled && p.attendance !== "BENCH";
 }
 
 export type MarkResult = { ok: true; result: GuestResult } | { ok: false; reason: NoShowMarkRefusal | "not-a-guest" };
@@ -143,6 +150,8 @@ export async function markGuestNoShow(a: { orgId: string; matchId: string; userI
 // ── The cron ───────────────────────────────────────────────────────────
 
 const FINALISE_BATCH = 500;
+/** How far back a final no-show is checked again (review of #404, 10). */
+const RECHECK_DAYS = 2;
 
 export async function finaliseGuestPlaces(now: Date = new Date(), env?: Env): Promise<{ settled: number; paused: number }> {
   let settled = 0;
@@ -150,15 +159,18 @@ export async function finaliseGuestPlaces(now: Date = new Date(), env?: Env): Pr
   try {
     const due = new Date(now.getTime() - POOL_RELIABILITY.markWindowHours * 3600_000);
     const places = await db.guestPlace.findMany({
-      where: { settledAt: null, match: { OR: [{ date: { lte: due } }, { status: "CANCELLED" }] } },
+      // Cancelled matches too, but only once their window is over: one put
+      // back on before kickoff is played and marked as any other (review 2).
+      where: { settledAt: null, match: { date: { lte: due } } },
       select: { id: true, userId: true, matchId: true, result: true, match: { select: { date: true, status: true } } },
       take: FINALISE_BATCH,
     });
-    if (places.length === 0) return { settled, paused };
-    const rows = await db.attendance.findMany({
-      where: { OR: places.map((p) => ({ matchId: p.matchId, userId: p.userId })) },
-      select: { matchId: true, userId: true, status: true },
-    });
+    const rows = places.length
+      ? await db.attendance.findMany({
+          where: { OR: places.map((p) => ({ matchId: p.matchId, userId: p.userId })) },
+          select: { matchId: true, userId: true, status: true },
+        })
+      : [];
     const statusOf = new Map(rows.map((r) => [`${r.matchId}:${r.userId}`, r.status as Attendance]));
     const newlyNoShow = new Set<string>();
     for (const p of places) {
@@ -173,13 +185,32 @@ export async function finaliseGuestPlaces(now: Date = new Date(), env?: Env): Pr
       const changes = final.result !== p.result;
       const done = await db.guestPlace.updateMany({
         where: { id: p.id, result: p.result, settledAt: null },
-        data: { settledAt: now, ...(changes ? { result: final.result, resultAt: now } : {}) },
+        data: {
+          settledAt: now,
+          ...(changes ? (final.result === "booked" ? { result: "booked", resultAt: null, resultById: null } : { result: final.result, resultAt: now }) : {}),
+        },
       });
       if (done.count === 0) continue;
       settled++;
       if (final.result === "no-show") newlyNoShow.add(p.userId);
     }
-    for (const userId of newlyNoShow) if (await pauseForNoShowsIfDue(userId, now, env)) paused++;
+    // The retry path (review 10): anyone with a no-show made final in the
+    // last two days is checked again, so a check that threw on an earlier
+    // run is not lost. The check is idempotent (a pause is set once).
+    const recent = await db.guestPlace.findMany({
+      where: { result: "no-show", settledAt: { gte: new Date(now.getTime() - RECHECK_DAYS * 24 * 3600_000), lt: now } },
+      select: { userId: true },
+      distinct: ["userId"],
+    });
+    for (const r of recent) newlyNoShow.add(r.userId);
+    // One player's failure never skips the rest (review 10).
+    for (const userId of newlyNoShow) {
+      try {
+        if (await pauseForNoShowsIfDue(userId, now, env)) paused++;
+      } catch (err) {
+        console.error(`[pool-no-show] ${userId}: the pause check failed (retried next run):`, err instanceof Error ? err.message : "failed");
+      }
+    }
     if (settled || paused) console.log(`[pool-no-show] finalised ${settled} guest place(s), ${paused} paused for no-shows`);
   } catch (err) {
     console.error("[pool-no-show] finalising guest places failed:", err instanceof Error ? err.message : "failed");
@@ -198,8 +229,10 @@ async function pauseForNoShowsIfDue(userId: string, now: Date, env?: Env): Promi
   const profile = await db.poolProfile.findUnique({ where: { userId }, select: { id: true, status: true, pausedReason: true, language: true, user: { select: { phoneNumber: true } } } });
   if (!profile || profile.status === "pending-verify") return false;
   if (profile.pausedReason === "no-shows" || profile.pausedReason === "reports" || profile.pausedReason === "admin") return false;
-  const games = await db.guestPlace.findMany({ where: { userId }, select: { result: true, match: { select: { date: true } } } });
-  if (!pausesForNoShows(games.map((g) => ({ kickoff: g.match.date, result: resultOf(g.result) })))) return false;
+  // Final results only, never a cancelled match (review of #404, 1 and 8).
+  const games = await db.guestPlace.findMany({ where: { userId }, select: { result: true, settledAt: true, match: { select: { date: true, status: true } } } });
+  const counted = countableGuestGames(games.map((g) => ({ kickoff: g.match.date, result: resultOf(g.result), settledAt: g.settledAt, cancelled: g.match.status === "CANCELLED" })));
+  if (!pausesForNoShows(counted)) return false;
   const done = await db.poolProfile.updateMany({
     where: { id: profile.id, status: profile.status, pausedReason: profile.pausedReason },
     data: profile.status === "stopped" ? { pausedReason: "no-shows", pausedAt: now } : { status: "paused", pausedReason: "no-shows", pausedAt: now },

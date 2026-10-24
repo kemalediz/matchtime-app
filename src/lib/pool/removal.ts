@@ -28,16 +28,21 @@ export async function tellPoolGuestRemoved(args: { userId: string; matchId: stri
       select: { guestVia: true, guestMatchId: true, leftAt: true },
     });
     if (!mem || mem.guestVia !== "pool" || mem.leftAt || mem.guestMatchId !== args.matchId) return false;
+    const match = await db.match.findUnique({ where: { id: args.matchId }, select: { date: true } });
+    // After kickoff (review of #404, 6): nothing is marked and nothing sent;
+    // he stays on the no-show panel for the organisers to mark.
+    if (!match || now.getTime() >= match.date.getTime()) return false;
     await db.guestPlace.updateMany({ where: { matchId: args.matchId, userId: args.userId, result: "booked" }, data: { result: "withdrawn", resultAt: now } });
-    await db.membership.updateMany({ where: { userId: args.userId, orgId: args.orgId, guestMatchId: args.matchId, leftAt: null }, data: { leftAt: now } });
-    const [club, match, profile, user] = await Promise.all([
+    // Only the call that made him a past guest tells him (review 5).
+    const left = await db.membership.updateMany({ where: { userId: args.userId, orgId: args.orgId, guestMatchId: args.matchId, leftAt: null }, data: { leftAt: now } });
+    if (left.count !== 1) return false;
+    const [club, profile, user] = await Promise.all([
       db.organisation.findUnique({ where: { id: args.orgId }, select: { name: true, language: true } }),
-      db.match.findUnique({ where: { id: args.matchId }, select: { date: true } }),
       db.poolProfile.findUnique({ where: { userId: args.userId }, select: { language: true } }),
       db.user.findUnique({ where: { id: args.userId }, select: { phoneNumber: true } }),
     ]);
     const phone = user?.phoneNumber;
-    if (club && match && phone) {
+    if (club && phone) {
       const lang = normaliseLang(profile?.language ?? club.language);
       const sendAt = poolSendAt(now);
       await queuePlatformDm({

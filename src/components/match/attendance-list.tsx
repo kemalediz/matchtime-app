@@ -2,7 +2,7 @@ import { RemoveFromMatchButton } from "./remove-from-match-button";
 import { MoveUpFromBenchButton } from "./move-up-from-bench-button";
 import { GuestCardTrigger, GuestTag } from "@/components/guests/guest-card";
 import { GuestSafety } from "@/components/guests/guest-safety";
-import type { GuestCard } from "@/lib/pool/guest-report";
+import { guestSafetyShown, type GuestCard } from "@/lib/pool/guest-report";
 
 /** The guests on the match (pool slice L5b): his card for an organiser, null
  *  (the plain Guest tag) for anyone else. */
@@ -12,6 +12,8 @@ export interface AttendanceGuests {
   byUser: Record<string, GuestCard | null>;
   /** The match, for a report about a guest (slice L7). */
   matchId?: string;
+  /** The club may ask the pool: its pool guests' cards get block and report. */
+  poolClub?: boolean;
 }
 
 function GuestMark({ guests, userId }: { guests?: AttendanceGuests; userId: string }) {
@@ -24,7 +26,11 @@ function GuestMark({ guests, userId }: { guests?: AttendanceGuests; userId: stri
       lang={guests.lang}
       orgId={guests.orgId}
       className="rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-      extra={<GuestSafety orgId={guests.orgId} userId={card.userId} blocked={card.blocked} lang={guests.lang} matchId={guests.matchId} />}
+      extra={
+        guestSafetyShown(card, guests.poolClub === true) ? (
+          <GuestSafety orgId={guests.orgId} userId={card.userId} blocked={card.blocked} lang={guests.lang} matchId={guests.matchId} />
+        ) : undefined
+      }
     >
       <GuestTag lang={guests.lang} />
     </GuestCardTrigger>

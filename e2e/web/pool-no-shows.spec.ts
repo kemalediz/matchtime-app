@@ -24,6 +24,9 @@ const DESKTOP = { width: 1280, height: 900 };
 const H = 3600_000;
 
 async function seed(db: TestDb) {
+  // The panel and the guest card's block and report show only in a club
+  // that may ask the pool (review of #404, 3).
+  await db.run(`UPDATE "Organisation" SET "featurePlayerPool" = true WHERE id = $1`, [ORG_ID]);
   await db.run(`INSERT INTO "User" (id,name,email,"phoneNumber",onboarded,"isActive","updatedAt") VALUES ($1,'Ali Khan',$2,'+447700900991',true,true,now())`, [ALI, `${ALI}@e2e-test.invalid`]);
   for (const [id, at, status] of [
     [GAME, new Date(Date.now() - 2 * H), "COMPLETED"],
@@ -185,6 +188,19 @@ test("paused for no-shows: the reason, when he can start again, and asking a per
   await page.reload();
   await expect(note).toContainText("You can start game offers again now.");
   await expect(page.getByRole("button", { name: "Resume game messages" })).toBeVisible();
+});
+
+test("a club without the pool (every live club today): no results panel and no block or report on the guest card", async ({ page, db }) => {
+  await db.run(`UPDATE "Organisation" SET "featurePlayerPool" = false WHERE id = $1`, [ORG_ID]);
+  await signInAs(page, U.admin, `/matches/${GAME}`);
+  await page.goto(`/matches/${GAME}`);
+  await expect(page.getByTestId("attendance-section")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("guest-results-panel")).toHaveCount(0);
+  await page.goto("/admin/guests?tab=history");
+  await page.getByTestId("guest-card-open").first().click();
+  await expect(page.getByTestId("guest-card")).toBeVisible();
+  await expect(page.getByTestId("guest-safety")).toHaveCount(0);
+  await db.run(`UPDATE "Organisation" SET "featurePlayerPool" = true WHERE id = $1`, [ORG_ID]);
 });
 
 test("the owner's safety page: open reports, the pause and the review asked, and lifting it", async ({ page, db }) => {

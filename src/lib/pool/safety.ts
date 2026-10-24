@@ -40,6 +40,7 @@ import { isPoolOffersEnabled } from "./flags";
 import { buildPoolManageLink } from "./links";
 import { clubsMarkingTooMany, pausesForReports, reportTextOf, safetyRecordPurgeBefore, selfResumeFrom } from "./reliability-rules";
 import { turnUpRecordOf, type TurnUpRecord } from "./turn-up";
+import { poolSendAt } from "./waves";
 import { isOneOf, GUEST_RESULTS, POOL_MATCHTIME_PAUSE_REASONS, type GuestResult, type PoolPauseReason, type PoolReportBy } from "./vocab";
 
 type Env = Record<string, string | undefined>;
@@ -138,10 +139,17 @@ async function tellOwner(purpose: "owner-pool-report" | "owner-pool-review", use
 async function writeReport(a: { orgId: string; userId: string; by: PoolReportBy; byUserId: string; matchId?: string | null; text: unknown; now: Date }): Promise<SafetyResult> {
   const text = reportTextOf(a.text);
   if (!text) return { ok: false, reason: "too-short" };
-  const report = await db.poolReport.create({
-    data: { orgId: a.orgId, userId: a.userId, by: a.by, byUserId: a.byUserId, matchId: a.matchId ?? null, text, createdAt: a.now },
-    select: { id: true },
-  });
+  let report: { id: string };
+  try {
+    report = await db.poolReport.create({
+      data: { orgId: a.orgId, userId: a.userId, by: a.by, byUserId: a.byUserId, matchId: a.matchId ?? null, text, createdAt: a.now },
+      select: { id: true },
+    });
+  } catch (err) {
+    // A database refusal (a CHECK) is a friendly answer, never a crash (review 11).
+    console.error("[pool-safety] report not written:", err instanceof Error ? err.message : "failed");
+    return { ok: false, reason: "failed" };
+  }
   console.log(`[pool-safety] report ${report.id} by ${a.by}: org ${a.orgId}, user ${a.userId}`);
   await tellOwner(
     "owner-pool-report",
@@ -156,6 +164,10 @@ async function writeReport(a: { orgId: string; userId: string; by: PoolReportBy;
 export async function reportFromClub(a: { orgId: string; userId: string; byUserId: string; text: unknown; matchId?: string | null; now?: Date; env?: Env }): Promise<SafetyResult> {
   const now = a.now ?? new Date();
   if (!(await wasGuestOf(a.orgId, a.userId))) return { ok: false, reason: "not-allowed" };
+  // The match named must be this club's game with this guest (review 13).
+  if (a.matchId && !(await db.guestPlace.findFirst({ where: { orgId: a.orgId, userId: a.userId, matchId: a.matchId }, select: { id: true } }))) {
+    return { ok: false, reason: "not-allowed" };
+  }
   const r = await writeReport({ ...a, by: "club", now });
   if (r.ok) await pauseForReportsIfDue(a.userId, now, a.env);
   return r;
@@ -181,12 +193,14 @@ async function pauseForReportsIfDue(userId: string, now: Date, env?: Env): Promi
   if (done.count === 0) return;
   console.log(`[pool-safety] ${userId}: pool offers paused after reports from two clubs`);
   if (p.status === "stopped" || !p.user?.phoneNumber || !isPoolOffersEnabled(env)) return;
-  await dmPlayer(p.user.phoneNumber, `reports:${p.id}:${now.getTime()}`, poolSafetyCopy(normaliseLang(p.language)).dm_paused_reports({ link: await buildPoolManageLink(userId) }));
+  await dmPlayer(p.user.phoneNumber, `reports:${p.id}:${now.getTime()}`, poolSafetyCopy(normaliseLang(p.language)).dm_paused_reports({ link: await buildPoolManageLink(userId) }), now);
 }
 
-async function dmPlayer(phone: string, refId: string, text: string): Promise<void> {
+async function dmPlayer(phone: string, refId: string, text: string, now: Date): Promise<void> {
+  // Not a reply to anything he sent: the pool's quiet hours hold it (review 9).
+  const sendAt = poolSendAt(now);
   try {
-    await queuePlatformDm({ phone, purpose: "pool-paused", refId, text });
+    await queuePlatformDm({ phone, purpose: "pool-paused", refId, text, sendAfter: sendAt.getTime() > now.getTime() ? sendAt : null });
   } catch (err) {
     console.error(`[pool-safety] DM ${refId} not queued:`, err instanceof Error ? err.message : "failed");
   }
@@ -308,7 +322,7 @@ export async function liftPoolPause(userId: string, ownerId: string, now: Date =
   if (!done) return false;
   console.log(`[pool-safety] ${userId}: the ${p.pausedReason} pause lifted by ${ownerId}`);
   if (p.status === "paused" && p.user?.phoneNumber && isPoolOffersEnabled(env)) {
-    await dmPlayer(p.user.phoneNumber, `resumed:${p.id}:${now.getTime()}`, poolSafetyCopy(normaliseLang(p.language)).dm_resumed({ link: await buildPoolManageLink(userId) }));
+    await dmPlayer(p.user.phoneNumber, `resumed:${p.id}:${now.getTime()}`, poolSafetyCopy(normaliseLang(p.language)).dm_resumed({ link: await buildPoolManageLink(userId) }), now);
   }
   return true;
 }

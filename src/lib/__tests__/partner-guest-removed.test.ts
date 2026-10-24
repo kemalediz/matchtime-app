@@ -103,15 +103,21 @@ describe("tellGuestTakenOffByAdmin", () => {
 });
 
 describe("slice L7: the guest place, and a pool guest", () => {
-  it("a partner guest taken off: his guest place is marked given up in time, never a miss", async () => {
-    await tellGuestTakenOffByAdmin({ userId: "c1", matchId: "m-mt" });
+  it("a partner guest taken off before kickoff: his guest place is marked given up in time, never a miss", async () => {
+    await tellGuestTakenOffByAdmin({ userId: "c1", matchId: "m-mt", now: new Date(KICKOFF.getTime() - 3600_000) });
     expect(dbMock.guestPlace.updateMany).toHaveBeenCalledWith({ where: { matchId: "m-mt", userId: "c1", result: "booked", settledAt: null }, data: { result: "withdrawn", resultAt: expect.any(Date) } });
   });
 
   it("a POOL guest goes to the pool's own neutral DM, never his (non-existent) home club's", async () => {
     dbMock.membership.findUnique.mockResolvedValue({ guestFromOrgId: null, guestMatchId: "m-mt", guestVia: "pool", leftAt: null });
-    expect(await tellGuestTakenOffByAdmin({ userId: "p1", matchId: "m-mt" })).toBe(true);
-    expect(removal.tellPoolGuestRemoved).toHaveBeenCalledWith({ userId: "p1", matchId: "m-mt", orgId: "mt" });
+    const now = new Date(KICKOFF.getTime() - 3600_000);
+    expect(await tellGuestTakenOffByAdmin({ userId: "p1", matchId: "m-mt", now })).toBe(true);
+    expect(removal.tellPoolGuestRemoved).toHaveBeenCalledWith({ userId: "p1", matchId: "m-mt", orgId: "mt", now });
     expect(dbMock.botJob.create).not.toHaveBeenCalled();
+  });
+
+  it("a partner guest taken off after kickoff: his place is left for the no-show panel", async () => {
+    await tellGuestTakenOffByAdmin({ userId: "c1", matchId: "m-mt", now: new Date(KICKOFF.getTime() + 3600_000) });
+    expect(dbMock.guestPlace.updateMany).not.toHaveBeenCalled();
   });
 });

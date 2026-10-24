@@ -9,6 +9,7 @@ import { dayTimeLabel } from "../i18n/dates";
 const dbMock = vi.hoisted(() => ({
   match: { findUnique: vi.fn(), findMany: vi.fn(), updateMany: vi.fn() },
   botJob: { create: vi.fn() },
+  guestPlace: { updateMany: vi.fn() },
   organisation: { findUnique: vi.fn() },
   membership: { findMany: vi.fn() },
 }));
@@ -74,6 +75,12 @@ describe("restoreMatchById", () => {
     expect(dbMock.botJob.create.mock.calls[0][0].data.text).toBe(
       `✅ *Match back on*: Friday Night Football on ${dayTimeLabel("en", FRI)}. It goes ahead as planned.`,
     );
+  });
+
+  it("slice L7 (review of #404, 2): its guests' places are not left settled, so the game is marked and played as any other", async () => {
+    dbMock.match.findUnique.mockResolvedValue(row("CANCELLED"));
+    await restoreMatchById("m1", NOW);
+    expect(dbMock.guestPlace.updateMany).toHaveBeenCalledWith({ where: { matchId: "m1", settledAt: { not: null } }, data: { settledAt: null } });
   });
 
   it("its kickoff has passed: not restored", async () => {

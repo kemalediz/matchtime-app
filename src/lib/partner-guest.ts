@@ -615,7 +615,8 @@ export async function withdrawGuest(args: { userId: string; matchId: string; now
  * pool's own neutral DM instead (`pool/removal.ts`, slice L7). Either way
  * his guest place is marked given up in time, never a miss. Never throws.
  */
-export async function tellGuestTakenOffByAdmin(args: { userId: string; matchId: string }): Promise<boolean> {
+export async function tellGuestTakenOffByAdmin(args: { userId: string; matchId: string; now?: Date }): Promise<boolean> {
+  const now = args.now ?? new Date();
   try {
     const match = await db.match.findUnique({
       where: { id: args.matchId },
@@ -630,12 +631,13 @@ export async function tellGuestTakenOffByAdmin(args: { userId: string; matchId: 
     // A POOL guest (slice L7): his own neutral DM on the platform channel.
     if (mem?.guestVia === "pool") {
       const { tellPoolGuestRemoved } = await import("./pool/removal");
-      return tellPoolGuestRemoved({ userId: args.userId, matchId: args.matchId, orgId });
+      return tellPoolGuestRemoved({ userId: args.userId, matchId: args.matchId, orgId, now });
     }
     if (!mem?.guestFromOrgId || mem.leftAt || mem.guestMatchId !== args.matchId) return false;
     await db.$executeRaw`UPDATE "PartnerAsk" SET "volunteerUserIds" = array_remove("volunteerUserIds", ${args.userId}) WHERE "matchId" = ${args.matchId}`;
-    // His guest place: given up in time, not his doing (slice L7).
-    await markGuestPlaceDropped(args.matchId, args.userId, "withdrawn", new Date());
+    // His guest place: given up in time, not his doing (slice L7). After
+    // kickoff it is left for the no-show panel (review of #404, 6).
+    if (now.getTime() < match.date.getTime()) await markGuestPlaceDropped(args.matchId, args.userId, "withdrawn", now);
     const [asker, from, user] = await Promise.all([
       db.organisation.findUnique({ where: { id: orgId }, select: { id: true, name: true, language: true } }),
       db.organisation.findUnique({ where: { id: mem.guestFromOrgId }, select: { id: true, name: true, language: true } }),
@@ -799,7 +801,7 @@ export async function placePoolGuest(w: PoolGuestWrite): Promise<PoolGuestPlaced
       await db.guestPlace.upsert({
         where: { matchId_userId: { matchId: w.matchId, userId: w.userId } },
         create: { orgId: w.orgId, matchId: w.matchId, userId: w.userId, source: "pool", poolOfferId: w.offerId },
-        update: { source: "pool", fromOrgId: null, partnerAskId: null, poolOfferId: w.offerId, result: "booked", resultAt: null, resultById: null },
+        update: { source: "pool", fromOrgId: null, partnerAskId: null, poolOfferId: w.offerId, result: "booked", resultAt: null, resultById: null, settledAt: null },
       });
     }
     console.log(`[partner-guest] pool offer ${w.offerId}: ${w.userId} on match ${w.matchId} as ${result.status}${ordinary ? " (member)" : " (pool guest)"}`);

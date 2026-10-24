@@ -87,6 +87,9 @@ export async function restoreMatchById(matchId: string, now: Date): Promise<Rest
   if (match.date.getTime() <= now.getTime()) return { kind: "past" };
   const res = await db.match.updateMany({ where: { id: matchId, status: "CANCELLED" }, data: { status: "UPCOMING" } });
   if (res.count === 0) return { kind: "not-cancelled" };
+  // Its guests' results (player pool, slice L7; review of #404, 2): a game
+  // back on is played and marked as any other, so nothing stays settled.
+  await db.guestPlace.updateMany({ where: { matchId, settledAt: { not: null } }, data: { settledAt: null } });
   const lang = normaliseLang(match.activity.org?.language);
   await db.botJob.create({
     data: {

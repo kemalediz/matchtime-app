@@ -8,7 +8,7 @@ import { poolSafetyCopy } from "@/lib/i18n/pool-safety";
 import { guestSourceText, turnUpText } from "@/components/guests/guest-text";
 import { dayLabel, historyDateLabel, timeLabel } from "@/lib/i18n/dates";
 import type { Strings } from "@/lib/i18n/t";
-import type { GuestCard, HistoryRow, UpcomingGroup } from "@/lib/pool/guest-report";
+import { guestSafetyShown, type GuestCard, type HistoryRow, type UpcomingGroup } from "@/lib/pool/guest-report";
 import { EmptyState } from "./guest-tabs";
 
 interface ListProps {
@@ -16,13 +16,20 @@ interface ListProps {
   lang: string;
   orgId: string;
   cards: Record<string, GuestCard>;
+  /** The club may ask the pool (slice L7: block and report on pool guests). */
+  poolClub?: boolean;
 }
 
 /** Name (opens the card), where he came from, his turn-up record. */
-function GuestLine({ s, lang, orgId, card, extra }: { s: Strings; lang: string; orgId: string; card: GuestCard; extra?: React.ReactNode }) {
+function GuestLine({ s, lang, orgId, card, extra, poolClub }: { s: Strings; lang: string; orgId: string; card: GuestCard; extra?: React.ReactNode; poolClub?: boolean }) {
   return (
     <div className="flex flex-col gap-0.5 sm:flex-row sm:flex-wrap sm:items-baseline sm:gap-x-3">
-      <GuestCardTrigger card={card} lang={lang} orgId={orgId} extra={<GuestSafety orgId={orgId} userId={card.userId} blocked={card.blocked} lang={lang} />} />
+      <GuestCardTrigger
+        card={card}
+        lang={lang}
+        orgId={orgId}
+        extra={guestSafetyShown(card, poolClub === true) ? <GuestSafety orgId={orgId} userId={card.userId} blocked={card.blocked} lang={lang} /> : undefined}
+      />
       <span className="text-sm text-slate-600" data-testid="guest-source">
         {guestSourceText(s, card)}
       </span>
@@ -34,7 +41,7 @@ function GuestLine({ s, lang, orgId, card, extra }: { s: Strings; lang: string; 
   );
 }
 
-export function UpcomingList({ s, lang, orgId, cards, groups }: ListProps & { groups: UpcomingGroup[] }) {
+export function UpcomingList({ s, lang, orgId, cards, groups, poolClub }: ListProps & { groups: UpcomingGroup[] }) {
   if (groups.length === 0) return <EmptyState testId="guest-empty-upcoming">{s.gst_empty_upcoming}</EmptyState>;
   return (
     <div className="space-y-4">
@@ -47,6 +54,7 @@ export function UpcomingList({ s, lang, orgId, cards, groups }: ListProps & { gr
             {g.guests.map((x) => (
               <li key={x.userId} data-testid="guest-upcoming-row" className="px-4 sm:px-6 py-3">
                 <GuestLine
+                  poolClub={poolClub}
                   s={s}
                   lang={lang}
                   orgId={orgId}
@@ -76,14 +84,14 @@ const RESULT_TONE: Record<string, string> = {
   booked: "bg-blue-50 text-blue-800",
 };
 
-export function HistoryList({ s, lang, orgId, cards, rows }: ListProps & { rows: HistoryRow[] }) {
+export function HistoryList({ s, lang, orgId, cards, rows, poolClub }: ListProps & { rows: HistoryRow[] }) {
   if (rows.length === 0) return <EmptyState testId="guest-empty-history">{s.gst_empty_history}</EmptyState>;
   return (
     <ul className="space-y-4">
       {rows.map((r) => (
         <li key={r.userId} data-testid="guest-history-row" className="bg-white rounded-xl border border-slate-200 shadow-sm px-4 sm:px-6 py-4 space-y-3">
           <div className="flex flex-wrap items-start justify-between gap-2">
-            <GuestLine s={s} lang={lang} orgId={orgId} card={cards[r.userId]} />
+            <GuestLine s={s} lang={lang} orgId={orgId} card={cards[r.userId]} poolClub={poolClub} />
             <span
               data-testid="guest-joined"
               data-joined={r.joined ? "yes" : "no"}

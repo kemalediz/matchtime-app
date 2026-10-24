@@ -72,6 +72,8 @@ export interface FunnelPlaceFact {
   match: Pick<GuestMatchFacts, "kickoff" | "durationMins" | "status">;
   attendance: AttendanceLike | null;
   recorded: GuestResult | null;
+  /** The result is final (slice L7, `GuestPlace.settledAt`). */
+  settled?: boolean;
 }
 
 /** One pool profile, as the funnel reads it. No name, no number, no area. */
