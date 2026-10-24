@@ -179,6 +179,7 @@ import { resolveBenchConfirmation } from "@/lib/bench-confirmation";
 import { moveNamedSlot } from "@/lib/team-slot-fill";
 import { getOrgFeatures } from "@/lib/org-features";
 import { organisersAnnounce } from "@/lib/list-announcer";
+import { appendAfterComposition, joinAlsoAnswered } from "@/lib/also-asks-reply";
 import { organisersGroupReply, passesOrganisersNet } from "@/lib/organisers-list-copy";
 import { sendAdminNotice } from "@/lib/admin-channel";
 import {
@@ -2575,6 +2576,18 @@ async function handleAnalyzeRequest(request: Request) {
     routesHeaderOverride(request.headers.get(STEP_SEVEN_HEADER)),
   );
 
+  // A CHANGE THAT ALSO ASKS MATCHTIME SOMETHING (#392 follow-up, Kemal
+  // 2026-10-24): "@Match Time I'm out, what's the list?". The engine owns
+  // the message and has made the change; the question answering below reads
+  // its question under a standalone question's gates, from the state after
+  // that change, and the engine's reply carries the answer
+  // (`also-asks-reply.ts`). Never in a club whose organisers announce the
+  // list: those clubs hear exactly what they did before.
+  const alsoAsksIds = new Set(
+    organisersMode
+      ? []
+      : [...(engineBatch?.outcomes.values() ?? [])].filter((o) => o.alsoAsksQuestion).map((o) => o.waMessageId),
+  );
   const answerBatch =
     fresh.length > 0
       ? await runAnswerBatch({
@@ -2589,6 +2602,7 @@ async function handleAnalyzeRequest(request: Request) {
           enabled: stepSevenEnabled,
           deps: {},
           clarifications: statsClarifications,
+          ...(alsoAsksIds.size > 0 ? { alsoAsks: alsoAsksIds } : {}),
         })
       : null;
 
@@ -2652,8 +2666,13 @@ async function handleAnalyzeRequest(request: Request) {
         })
       : null;
 
+  // A question inside an attendance message that went unanswered is logged,
+  // never put on the operator note: that message is the engine's, and its
+  // note reads as it did before (`silentDiscard`, `reasonFor`).
+  const isAlsoAsksLine = (d: string) => [...alsoAsksIds].some((id) => d.includes(id));
+  for (const d of (answerBatch?.degradations ?? []).filter(isAlsoAsksLine)) console.warn(`[analyze] also asks: ${d}`);
   const ownerDegradations = [
-    ...(answerBatch?.degradations ?? []),
+    ...(answerBatch?.degradations ?? []).filter((d) => !isAlsoAsksLine(d)),
     ...(scoreBatch?.degradations ?? []),
     ...(adminOpsBatch?.degradations ?? []),
     ...(teamOpsBatch?.degradations ?? []),
@@ -2814,6 +2833,9 @@ async function handleAnalyzeRequest(request: Request) {
   // late: where the batch's squad post goes when the engine's own choice
   // was a late message (a late write is silent, see below).
   let lastFreshActedId: string | null = null;
+  // The answers to a change's own question that the squad pass must not
+  // touch (a stats table, help, a team post), added after it.
+  const alsoAnswerAfterComposition = new Map<string, string>();
 
   for (const msg of fresh) {
     const sender = senderById.get(msg.waMessageId)!;
@@ -2925,6 +2947,23 @@ async function handleAnalyzeRequest(request: Request) {
             lang: org.language,
           });
       if (engineNudge.applies) engineReply = engineNudge.reply;
+      // The question it also asked, answered after the change: one reply.
+      const alsoAnswer = late ? undefined : answerBatch?.alsoAnswered.get(msg.waMessageId);
+      if (alsoAnswer?.reply) {
+        const joined = joinAlsoAnswered(
+          engineReply,
+          {
+            reply: nextMatchForReply ? enforceProximity(alsoAnswer.reply, nextMatchForReply.date, org.language) : alsoAnswer.reply,
+            intent: alsoAnswer.intent,
+          },
+          org.language,
+        );
+        engineReply = joined.reply;
+        if (joined.afterComposition) alsoAnswerAfterComposition.set(msg.waMessageId, joined.afterComposition);
+        console.log(`[analyze] ${msg.waMessageId}: also asks MatchTime: answered (${alsoAnswer.intent})`);
+      } else if (alsoAsksIds.has(msg.waMessageId)) {
+        console.log(`[analyze] ${msg.waMessageId}: also asks MatchTime: nothing answered`);
+      }
 
       await recordAnalysis({
         orgId: org.id,
@@ -2934,7 +2973,10 @@ async function handleAnalyzeRequest(request: Request) {
         intent: engineOutcome.intent,
         action: engineOutcome.action,
         confidence: 1,
-        reasoning: engineOutcome.reasoning + lateNote,
+        reasoning:
+          engineOutcome.reasoning +
+          lateNote +
+          (alsoAnswer?.reply ? `; also asks: ${alsoAnswer.reasoning}` : ""),
         authorUserId: sender.userId,
         authorName: msg.authorName ?? null,
       });
@@ -3774,6 +3816,13 @@ async function handleAnalyzeRequest(request: Request) {
     } catch (err) {
       console.error("[analyze] squad-status composition failed:", err);
     }
+  }
+
+  // A change's own question whose answer the squad pass must not touch
+  // (`also-asks-reply.ts`): added now, after the change's line and any list.
+  for (const [id, text] of alsoAnswerAfterComposition) {
+    const r = results.find((x) => x.waMessageId === id);
+    if (r) r.reply = appendAfterComposition(r.reply ?? null, text);
   }
 
   // ── RUN THE RECRUIT (verdict-driven, 2026-09-01) ────────────────────

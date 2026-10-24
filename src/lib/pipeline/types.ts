@@ -252,7 +252,9 @@ export type SideRequest =
   /** "Glazers is out now. @Match Time what is the list?": the message also
    *  asks MatchTime for something it holds (FNF HQ, 2026-10-24: the claim
    *  was read and the tagged question lost). HQ answers it after the change
-   *  (`admin-group-understand.ts`); the players' group does not read it yet. */
+   *  (`admin-group-understand.ts`). The players' group answers it the same
+   *  way when tagged (`runAnswerBatch`'s `alsoAsks`), except where the
+   *  organisers announce the list; no other attendance reader counts it. */
   | "question";
 
 export interface AttendanceFacts {
