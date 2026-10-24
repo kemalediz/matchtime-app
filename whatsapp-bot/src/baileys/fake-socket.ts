@@ -67,6 +67,12 @@ export class FakeSocket {
   readonly leftGroups: string[] = [];
   /** When set, `groupLeave` throws it, as a refused IQ would. */
   leaveError: Error | null = null;
+  /** Each group's current invite code (pool L8); absent: none returned. */
+  readonly inviteCodes: Record<string, string> = {};
+  /** Every `groupInviteCode`, in order. */
+  readonly inviteCodeCalls: string[] = [];
+  /** When set, `groupInviteCode` throws it (not an admin). */
+  inviteCodeError: Error | null = null;
 
   readonly ev = {
     on: (event: string, listener: Listener): void => {
@@ -109,6 +115,12 @@ export class FakeSocket {
       out[jid] = copy;
     }
     return out;
+  }
+
+  async groupInviteCode(jid: string): Promise<string | undefined> {
+    this.inviteCodeCalls.push(jid);
+    if (this.inviteCodeError) throw this.inviteCodeError;
+    return this.inviteCodes[jid];
   }
 
   async groupLeave(jid: string): Promise<void> {

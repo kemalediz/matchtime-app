@@ -32,6 +32,9 @@ import { organisersPickMom } from "@/lib/mom-chooser";
 import { loadMatchGuestCards } from "@/lib/pool/guest-report-loader";
 import { loadGuestResultsPanel, markByLabel } from "@/lib/pool/no-shows";
 import { GuestResultsPanel } from "@/components/match/guest-results-panel";
+import { inviteToClub } from "@/app/actions/club-invite";
+import { CLUB_INVITE_LIVE } from "@/lib/pool/club-invite";
+import { loadLinkSource } from "@/lib/pool/club-invitation";
 import { normaliseLang } from "@/lib/i18n/lang";
 
 export default async function MatchDetailPage({
@@ -207,6 +210,12 @@ export default async function MatchDetailPage({
   // club that may ask the pool (every other club's page is as before).
   const poolClub = match.activity.org.featurePlayerPool === true;
   const guestResults = isAdmin && poolClub ? await loadGuestResultsPanel(match.activity.orgId, matchId).catch(() => null) : null;
+  // Invite to club on the card (pool L8): organisers only, and only when a
+  // guest card is shown at all.
+  const guestInvite =
+    isAdmin && CLUB_INVITE_LIVE && Object.values(guestTags).some(Boolean)
+      ? { inviteAction: inviteToClub, linkReady: (await loadLinkSource(match.activity.orgId).catch(() => ({ kind: "none" as const }))).kind !== "none" }
+      : {};
   const isPastDeadline = new Date() > match.attendanceDeadline;
   // "Enter score" / "Edit score" for an admin on any PLAYED match that was
   // not cancelled (FNF, 2026-10-18). Both open the score panel in the
@@ -560,7 +569,7 @@ export default async function MatchDetailPage({
             admin={isAdmin}
             matchId={matchId}
             hideBench={organiserPicks}
-            guests={{ lang: match.activity.org.language, orgId: match.activity.orgId, byUser: guestTags, matchId, poolClub }}
+            guests={{ lang: match.activity.org.language, orgId: match.activity.orgId, byUser: guestTags, matchId, poolClub, ...guestInvite }}
           />
           {organiserPicks && (
             <WaitingListControls matchId={matchId} lang={match.activity.org.language} rows={waitingRows} />

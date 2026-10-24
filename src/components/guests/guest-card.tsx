@@ -11,8 +11,10 @@
  *                     that opens the card in a dialog.
  *   GuestTag          the plain "Guest" tag, for a viewer who is not an
  *                     organiser.
- *   InviteToClubButton  the card's Invite to club button; rendered only when
- *                     the page hands it L8's action (`club-invite.ts`).
+ *   InviteToClubButton  the card's Invite to club button (and, for a guest
+ *                     who asked to join after a game, Send the invite link
+ *                     and Not now); rendered only when the page hands it
+ *                     the action (`app/actions/club-invite.ts`, pool L8).
  *   `extra`           slice L7: the organisers' block and report controls
  *                     (`guest-safety.tsx`), handed in by the page.
  */
@@ -23,6 +25,8 @@ import { t } from "@/lib/i18n/t";
 import type { GuestCard } from "@/lib/pool/guest-report";
 import { guestName, guestSourceText, turnUpText } from "./guest-text";
 import type { InviteToClubAction, InviteToClubState } from "@/lib/pool/club-invite";
+import { inviteCopy } from "@/lib/i18n/pool-invite";
+import { INVITE_LINK_SETTINGS_PATH } from "@/lib/pool/invite-link";
 
 export function GuestTag({ lang }: { lang: string | null | undefined }) {
   return (
@@ -38,52 +42,101 @@ export function InviteToClubButton(props: {
   state: InviteToClubState;
   lang: string | null | undefined;
   action?: InviteToClubAction;
+  /** The club has a way to send its group link (pool L8). Default true. */
+  linkReady?: boolean;
 }) {
   const s = t(props.lang);
+  const c = inviteCopy(props.lang);
   const [state, setState] = useState(props.state);
   const [pending, start] = useTransition();
   if (!props.action || state === "hidden") return null;
   const action = props.action;
-  if (state === "invited")
+  if (state === "invited" || state === "link-sent")
     return (
-      <p data-testid="guest-invite-invited" className="text-sm text-slate-600">
-        {s.gst_invite_invited}
+      <p data-testid={state === "invited" ? "guest-invite-invited" : "guest-invite-link-sent"} className="text-sm text-slate-600">
+        {state === "invited" ? s.gst_invite_invited : c.card_link_sent}
       </p>
     );
-  const unavailable = state === "unavailable";
+  const linkReady = props.linkReady !== false;
   const noteId = `guest-invite-note-${props.userId}`;
-  const invite = () =>
+  const answer = (a: "yes" | "no") =>
     start(async () => {
       try {
-        const r = await action({ orgId: props.orgId, userId: props.userId });
-        if (r.ok || r.reason === "already-invited") setState("invited");
-        else toast.error(s.gst_invite_failed);
+        const r = await action({ orgId: props.orgId, userId: props.userId, answer: a });
+        if (r.ok) {
+          setState(r.state);
+          toast.success(a === "no" ? c.card_closed_toast : state === "requested" ? c.card_link_sent_toast : c.card_invited_toast);
+        } else if (r.reason === "already-invited") setState("invited");
+        else toast.error(r.reason === "no-link" ? c.card_no_link : s.gst_invite_failed);
       } catch {
         toast.error(s.gst_invite_failed);
       }
     });
+  const greyed = state === "unavailable" || state === "declined" || !linkReady;
+  const note =
+    state === "unavailable" ? (
+      <p id={noteId} data-testid="guest-invite-unavailable" className="text-xs text-slate-500">
+        {s.gst_invite_unavailable}
+      </p>
+    ) : state === "declined" ? (
+      <p id={noteId} data-testid="guest-invite-declined" className="text-xs text-slate-500">
+        {c.card_declined}
+      </p>
+    ) : !linkReady ? (
+      <p id={noteId} data-testid="guest-invite-no-link" className="text-xs text-slate-500">
+        {c.card_no_link}{" "}
+        <a href={INVITE_LINK_SETTINGS_PATH} className="font-medium text-blue-700 underline underline-offset-2">
+          {c.card_no_link_cta}
+        </a>
+      </p>
+    ) : null;
+  const button = "h-10 px-4 rounded-lg text-sm font-medium disabled:bg-slate-200 disabled:text-slate-500";
+  if (state === "requested")
+    return (
+      <div className="space-y-2" data-testid="guest-invite-requested">
+        <p className="text-sm font-medium text-slate-800">{c.card_requested}</p>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            data-testid="guest-invite-send"
+            disabled={greyed || pending}
+            aria-describedby={note ? noteId : undefined}
+            onClick={() => answer("yes")}
+            className={`${button} bg-blue-600 text-white hover:bg-blue-700`}
+          >
+            {c.card_send_link}
+          </button>
+          <button
+            type="button"
+            data-testid="guest-invite-not-now"
+            disabled={pending}
+            onClick={() => answer("no")}
+            className={`${button} border border-slate-200 bg-white text-slate-700 hover:bg-slate-50`}
+          >
+            {c.card_not_now}
+          </button>
+        </div>
+        {note}
+      </div>
+    );
   return (
     <div className="space-y-1">
       <button
         type="button"
         data-testid="guest-invite"
-        disabled={unavailable || pending}
-        aria-describedby={unavailable ? noteId : undefined}
-        onClick={invite}
-        className="h-10 px-4 rounded-lg bg-blue-600 text-sm font-medium text-white hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-500"
+        disabled={greyed || pending}
+        aria-describedby={note ? noteId : undefined}
+        onClick={() => answer("yes")}
+        className={`${button} bg-blue-600 text-white hover:bg-blue-700`}
       >
         {s.gst_invite}
       </button>
-      {unavailable && (
-        <p id={noteId} data-testid="guest-invite-unavailable" className="text-xs text-slate-500">
-          {s.gst_invite_unavailable}
-        </p>
-      )}
+      {note}
     </div>
   );
 }
 
-export function GuestCardDetails(props: { card: GuestCard; lang: string | null | undefined; orgId: string; inviteAction?: InviteToClubAction; extra?: ReactNode }) {
+export function GuestCardDetails(props: { card: GuestCard; lang: string | null | undefined; orgId: string; inviteAction?: InviteToClubAction; linkReady?: boolean; extra?: ReactNode }) {
   const s = t(props.lang);
   const c = props.card;
   const row = "grid grid-cols-[minmax(0,9rem)_1fr] gap-x-3 gap-y-1 text-sm";
@@ -122,7 +175,7 @@ export function GuestCardDetails(props: { card: GuestCard; lang: string | null |
           </dd>
         </div>
       </dl>
-      <InviteToClubButton orgId={props.orgId} userId={c.userId} state={c.invite} lang={props.lang} action={props.inviteAction} />
+      <InviteToClubButton orgId={props.orgId} userId={c.userId} state={c.invite} lang={props.lang} action={props.inviteAction} linkReady={props.linkReady} />
       {props.extra}
     </div>
   );
@@ -134,6 +187,7 @@ export function GuestCardTrigger(props: {
   lang: string | null | undefined;
   orgId: string;
   inviteAction?: InviteToClubAction;
+  linkReady?: boolean;
   children?: ReactNode;
   className?: string;
   /** Slice L7: the organisers' block and report controls (`GuestSafety`). */
@@ -154,7 +208,7 @@ export function GuestCardTrigger(props: {
         <DialogHeader>
           <DialogTitle data-testid="guest-card-name">{name}</DialogTitle>
         </DialogHeader>
-        <GuestCardDetails card={props.card} lang={props.lang} orgId={props.orgId} inviteAction={props.inviteAction} extra={props.extra} />
+        <GuestCardDetails card={props.card} lang={props.lang} orgId={props.orgId} inviteAction={props.inviteAction} linkReady={props.linkReady} extra={props.extra} />
       </DialogContent>
     </Dialog>
   );

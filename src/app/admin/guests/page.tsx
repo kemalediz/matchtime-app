@@ -18,6 +18,9 @@ import { buildGuestPlayers, buildGuestReport, parseGuestPageQuery, reportFilterO
 import { GuestTabs } from "./guest-tabs";
 import { HistoryList, UpcomingList } from "./guest-lists";
 import { GuestReportView } from "./guest-report-view";
+import { inviteToClub } from "@/app/actions/club-invite";
+import { CLUB_INVITE_LIVE } from "@/lib/pool/club-invite";
+import { loadLinkSource } from "@/lib/pool/club-invitation";
 
 export const dynamic = "force-dynamic";
 
@@ -32,9 +35,11 @@ export default async function GuestPlayersPage({ searchParams }: { searchParams:
   const lang = normaliseLang(membership.org.language);
   const s = t(lang);
   const now = new Date();
-  const facts = await loadGuestFacts(orgId, { report: query.tab === "report" });
+  const facts = await loadGuestFacts(orgId, { report: query.tab === "report", now });
   const players = buildGuestPlayers({ orgId, now, lang, games: facts.games, people: facts.people });
-  const list = { s, lang, orgId, cards: players.cards, poolClub: membership.org.featurePlayerPool === true };
+  // Invite to club (pool L8): the tap, and whether the club can send its link.
+  const linkReady = (await loadLinkSource(orgId)).kind !== "none";
+  const list = { s, lang, orgId, cards: players.cards, poolClub: membership.org.featurePlayerPool === true, inviteAction: CLUB_INVITE_LIVE ? inviteToClub : undefined, linkReady };
 
   return (
     <div className="space-y-5" data-testid="guest-players-page">

@@ -45,6 +45,10 @@
  *                       A `pool-offer` is ADMITTED at dispatch under the
  *                       platform cap's lock (`pool/dispatch.ts`): switches,
  *                       his caps and quiet hours are re-checked there.
+ *   club-invite-ask,    only a number MatchTime already knows: a guest who
+ *   club-invite-link,   played with the club (pool L8). Queued only by
+ *   club-invite-closed  src/lib/pool/club-invitation.ts. The LINK goes only
+ *                       to a guest the club and he both said yes to.
  *   owner-approval,     NEVER through here. `queueOwnerDm` (owner-dm.ts)
  *   owner-ack,          is the only door to Kemal's phone.
  *   owner-setup-stuck,
@@ -130,6 +134,9 @@ export const PLATFORM_DM_PURPOSES = [
   "pool-reply",
   "pool-paused",
   "pool-removed",
+  "club-invite-ask",
+  "club-invite-link",
+  "club-invite-closed",
 ] as const;
 export type PlatformDmPurpose = (typeof PLATFORM_DM_PURPOSES)[number];
 
@@ -152,7 +159,11 @@ export type OwnerDmPurpose = (typeof OWNER_DM_PURPOSES)[number];
 
 export const LEAVE_GROUP_PURPOSE = "leave-group" as const;
 
-export type PlatformJobKind = "dm" | "leave-group";
+/** Pool L8: the Pi reads the current invite code of a club's group (it is
+ *  an admin there) and reports it back; never a revoke. */
+export const INVITE_CODE_PURPOSE = "invite-code" as const;
+
+export type PlatformJobKind = "dm" | "leave-group" | "invite-code";
 export type PlatformJobStatus = "queued" | "claimed" | "sent" | "failed" | "unconfirmed";
 
 /** Jobs handed to the Pi per poll. It sends what its DM pacing allows and
@@ -432,12 +443,38 @@ export async function queuePlatformLeaveGroup(args: {
   return { id: row.id };
 }
 
+/**
+ * Queue reading the invite code of a club's players' group (pool L8, link
+ * source A in src/lib/pool/invite-link.ts). Only for a group an APPROVED
+ * club owns, checked again at dispatch. Idempotent per refId (the
+ * invitation) while one is outstanding.
+ */
+export async function queuePlatformInviteCode(args: {
+  groupId: string;
+  refId: string;
+}): Promise<{ id: string } | { refused: "not-a-group" | "not-a-club-group" }> {
+  const groupId = typeof args.groupId === "string" ? args.groupId.trim() : "";
+  if (!/@g\.us$/.test(groupId)) return { refused: "not-a-group" };
+  const owner = await db.organisation.findFirst({ where: { ...APPROVED_CLUB_WHERE, whatsappGroupId: groupId }, select: { id: true } });
+  if (!owner) return { refused: "not-a-club-group" };
+  const outstanding = await db.platformJob.findFirst({
+    where: { kind: "invite-code", refId: args.refId, status: { in: ["queued", "claimed"] } },
+    select: { id: true },
+  });
+  if (outstanding) return { id: outstanding.id };
+  const row = await db.platformJob.create({
+    data: { kind: "invite-code", groupId, purpose: INVITE_CODE_PURPOSE, refId: args.refId, status: "queued" },
+  });
+  return { id: row.id };
+}
+
 // ── Dispatch ────────────────────────────────────────────────────────────
 
 /** What the Pi is handed. */
 export type PlatformJobInstruction =
   | { id: string; kind: "dm"; phone: string; text: string; purpose: string }
-  | { id: string; kind: "leave-group"; groupId: string };
+  | { id: string; kind: "leave-group"; groupId: string }
+  | { id: string; kind: "invite-code"; groupId: string };
 
 /** The columns dispatch reads. */
 export interface PlatformJobRow {
@@ -500,6 +537,18 @@ export function planPlatformDispatch(
       ok.push({ ...row, instruction: { id: row.id, kind: "leave-group", groupId: row.groupId } });
       continue;
     }
+    if (row.kind === "invite-code") {
+      if (!row.groupId) {
+        refuse.push({ id: row.id, reason: "malformed: an invite code with no group" });
+        continue;
+      }
+      if (!opts.approvedGroupIds.has(row.groupId)) {
+        refuse.push({ id: row.id, reason: "refused: no approved club owns this group now" });
+        continue;
+      }
+      ok.push({ ...row, instruction: { id: row.id, kind: "invite-code", groupId: row.groupId } });
+      continue;
+    }
     refuse.push({ id: row.id, reason: `unknown kind "${row.kind}"` });
   }
   const rank = (r: PlatformJobRow) => (r.purpose === "otp" ? 0 : 1);
@@ -516,7 +565,7 @@ export async function claimDuePlatformJobs(
   opts: { now?: Date; limit?: number; kinds?: PlatformJobKind[]; env?: Record<string, string | undefined> } = {},
 ): Promise<PlatformJobInstruction[]> {
   const now = opts.now ?? new Date();
-  const kinds = opts.kinds ?? ["dm", "leave-group"];
+  const kinds = opts.kinds ?? ["dm", "leave-group", "invite-code"];
   // ── Two reads, so a sign-up code can never be starved (PR #234 review,
   //    fix 1c) ──
   // One read of "the 50 oldest", ranked afterwards, hid a new code behind
@@ -558,9 +607,11 @@ export async function claimDuePlatformJobs(
   const reserved = poolRows.length > 0 ? POOL_RESERVED_PER_POLL : 0;
 
   const leaveGroups = [...new Set(rows.filter((r) => r.kind === "leave-group" && r.groupId).map((r) => r.groupId as string))];
-  const approved = leaveGroups.length
+  const codeGroups = [...new Set(rows.filter((r) => r.kind === "invite-code" && r.groupId).map((r) => r.groupId as string))];
+  const groupsToCheck = [...new Set([...leaveGroups, ...codeGroups])];
+  const approved = groupsToCheck.length
     ? await db.organisation.findMany({
-        where: { ...APPROVED_CLUB_WHERE, whatsappGroupId: { in: leaveGroups } },
+        where: { ...APPROVED_CLUB_WHERE, whatsappGroupId: { in: groupsToCheck } },
         select: { whatsappGroupId: true },
       })
     : [];
@@ -619,7 +670,9 @@ export async function claimDuePlatformJobs(
 // ── Outcomes ────────────────────────────────────────────────────────────
 
 export type PlatformJobOutcome =
-  | { outcome: "sent"; waMessageId?: string }
+  /** `inviteCode`: what an "invite-code" job read (pool L8); the route
+   *  hands it to src/lib/pool/club-invitation.ts and it is stored nowhere. */
+  | { outcome: "sent"; waMessageId?: string; inviteCode?: string }
   | { outcome: "failed"; reason: string }
   | { outcome: "release" }
   | { outcome: "unconfirmed"; reason: string };

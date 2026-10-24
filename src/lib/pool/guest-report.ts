@@ -46,6 +46,7 @@ import { levelLabel, sportLabel, type PoolSportChoiceKey, type SportLevel } from
 import { turnUpRecordOf, type TurnUpRecord } from "./turn-up";
 import { inviteToClubState, type GuestPoolState, type InviteToClubState } from "./club-invite";
 import type { GuestResult, GuestSource } from "./vocab";
+import type { InvitationView } from "./club-invitation-rules";
 
 export type MatchStatusLike = "UPCOMING" | "TEAMS_GENERATED" | "TEAMS_PUBLISHED" | "COMPLETED" | "CANCELLED";
 export type AttendanceLike = "CONFIRMED" | "BENCH" | "DROPPED";
@@ -93,8 +94,8 @@ export interface GuestPersonFacts {
   member: boolean;
   pool: GuestPoolState;
   poolSports: GuestSportFact[];
-  /** An open `ClubInvitation` from this club. */
-  openInvitation: boolean;
+  /** His invitations from this club, as the card reads them (L8). */
+  invitation: InvitationView;
   /** This club stopped offering him its games (slice L7, `PoolBlock` by
    *  the club). Never shown to him. */
   clubBlocked?: boolean;
@@ -235,7 +236,7 @@ export function buildGuestPlayers(input: {
       sports,
       record: turnUpRecordOf(all.filter((g) => g.userId === p.userId).map((g) => g.result)),
       gamesHere,
-      invite: inviteToClubState({ member: p.member, playedHere: gamesHere, openInvitation: p.openInvitation, pool: p.pool }),
+      invite: inviteToClubState({ member: p.member, playedHere: gamesHere, invitation: p.invitation, pool: p.pool }),
       blocked: p.clubBlocked === true,
     };
   }

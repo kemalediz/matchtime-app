@@ -45,7 +45,7 @@ function game(userId: string, m: GuestMatchFacts, over: Partial<GuestGameFact> =
 }
 
 function person(userId: string, over: Partial<GuestPersonFacts> = {}): GuestPersonFacts {
-  return { userId, name: "Ali Khan", member: false, pool: "none", poolSports: [], openInvitation: false, ...over };
+  return { userId, name: "Ali Khan", member: false, pool: "none", poolSports: [], invitation: "none", ...over };
 }
 
 describe("guestDisplayName: first name and last initial", () => {
@@ -224,7 +224,7 @@ describe("buildGuestPlayers: Upcoming, History and the cards", () => {
 });
 
 describe("inviteToClubState: who may be invited to the club", () => {
-  const base = { member: false, playedHere: 1, openInvitation: false, pool: "none" as const };
+  const base = { member: false, playedHere: 1, invitation: "none" as const, pool: "none" as const };
   it("any guest with at least one game here, however long ago, not a member", () => {
     expect(inviteToClubState(base)).toBe("available");
     expect(inviteToClubState({ ...base, pool: "active" })).toBe("available");
@@ -233,13 +233,28 @@ describe("inviteToClubState: who may be invited to the club", () => {
   it("hidden for a member or a guest with no game played here", () => {
     expect(inviteToClubState({ ...base, member: true })).toBe("hidden");
     expect(inviteToClubState({ ...base, playedHere: 0 })).toBe("hidden");
+    expect(inviteToClubState({ ...base, member: true, invitation: "player-yes" })).toBe("hidden");
   });
   it("greyed out once he stopped messages or deleted his profile", () => {
     expect(inviteToClubState({ ...base, pool: "stopped" })).toBe("unavailable");
     expect(inviteToClubState({ ...base, pool: "deleted" })).toBe("unavailable");
   });
-  it("an open invitation shows as invited", () => {
-    expect(inviteToClubState({ ...base, openInvitation: true })).toBe("invited");
+  it("the club said yes: invited, waiting for him", () => {
+    expect(inviteToClubState({ ...base, invitation: "club-yes" })).toBe("invited");
+    expect(inviteToClubState({ ...base, invitation: "club-yes", pool: "stopped" })).toBe("invited");
+  });
+  it("he asked to join: requested, the tap sends the link (even if he stopped offers since)", () => {
+    expect(inviteToClubState({ ...base, invitation: "player-yes" })).toBe("requested");
+    expect(inviteToClubState({ ...base, invitation: "player-yes", pool: "stopped" })).toBe("requested");
+  });
+  it("asked after the game, nobody answered: the tap is the club's yes", () => {
+    expect(inviteToClubState({ ...base, invitation: "asked" })).toBe("available");
+  });
+  it("both said yes: the link went, waiting for him to join", () => {
+    expect(inviteToClubState({ ...base, invitation: "accepted" })).toBe("link-sent");
+  });
+  it("he said no thanks lately: greyed", () => {
+    expect(inviteToClubState({ ...base, invitation: "declined" })).toBe("declined");
   });
 });
 

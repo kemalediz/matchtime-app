@@ -25,6 +25,10 @@
  *           { id, outcome: "sent", waMessageId? }
  *           { id, outcome: "failed", error? }   never recorded as sent
  *           { id, outcome: "release" }          the Pi's DM pacing held it
+ *           { id, outcome: "sent", inviteCode }  an "invite-code" job: the
+ *                                                club group's current code
+ *                                                (pool L8), handed to
+ *                                                `onInviteCodeReported`
  *
  *         THE POOL (local player pool L5a, 2026-10-24): before the claim, the
  *         pool's sweep runs (`sweepPool`: offers whose time ran out, asks
@@ -35,6 +39,10 @@
  *         (`pool/dispatch.ts`). TEST SEAMS, honoured only under
  *         MT_TEST_MODE=1: `x-test-now` (the clock) and `x-mt-test-pool-open`
  *         (the pool switch, `pool/flags-request.ts`).
+ *
+ *         JOINING A CLUB'S GROUP (pool L8): the invitations sweep runs too
+ *         (`sweepClubInvitations`: the after-game question, invitations the
+ *         club never answered, invite code jobs that never came back).
  *
  * Polled once per scheduler tick by a Pi built with slice 3, whatever the
  * clubs' bot switches say. A Pi built before it never calls this; due-posts
@@ -47,6 +55,7 @@ import { selfJoinEnabledForApiRequest } from "@/lib/self-join-flag";
 import { readClubSetVersion } from "@/lib/club-set-version-read";
 import { sweepPool } from "@/lib/pool/round";
 import { poolEnvForApiRequest } from "@/lib/pool/switch-env";
+import { onInviteCodeReported, sweepClubInvitations } from "@/lib/pool/club-invitation";
 
 /** The test clock (e2e only), as due-posts reads it. */
 function nowOf(request: Request): Date {
@@ -90,6 +99,11 @@ export async function GET(request: Request) {
   } catch (err) {
     console.error("[platform-jobs] pool sweep failed; the next poll tries again:", err);
   }
+  try {
+    await sweepClubInvitations(now);
+  } catch (err) {
+    console.error("[platform-jobs] club invitations sweep failed; the next poll tries again:", err);
+  }
   const jobs = await claimDuePlatformJobs({ now, env: poolEnv });
   if (jobs.length > 0) {
     console.log(`[platform-jobs] handed out ${jobs.length}: ${jobs.map((j) => `${j.kind}:${j.id}`).join(", ")}`);
@@ -100,7 +114,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   if (!authorised(request)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  let body: { id?: unknown; outcome?: unknown; waMessageId?: unknown; error?: unknown };
+  let body: { id?: unknown; outcome?: unknown; waMessageId?: unknown; error?: unknown; inviteCode?: unknown };
   try {
     body = (await request.json()) as typeof body;
   } catch {
@@ -116,6 +130,7 @@ export async function POST(request: Request) {
         typeof body.waMessageId === "string" && body.waMessageId
           ? { outcome: "sent", waMessageId: body.waMessageId }
           : { outcome: "sent" };
+      if (typeof body.inviteCode === "string" && body.inviteCode) outcome = { ...outcome, inviteCode: body.inviteCode };
       break;
     case "failed":
       outcome = {
@@ -132,6 +147,16 @@ export async function POST(request: Request) {
 
   // The test clock (MT_TEST_MODE only): a pool offer's delivery time and
   // its six hours start from the Pi's report (L5a review, M3).
-  const { updated } = await recordPlatformJobOutcome(id, outcome, nowOf(request));
+  const at = nowOf(request);
+  const { updated } = await recordPlatformJobOutcome(id, outcome, at);
+  // An "invite-code" job (pool L8): the link goes to the approved guest, or
+  // the fallback runs. Only for a report that moved the job (never twice).
+  if (updated && outcome.outcome !== "release") {
+    try {
+      await onInviteCodeReported(id, outcome, at);
+    } catch (err) {
+      console.error(`[platform-jobs] invite code report for ${id} could not be handled:`, err);
+    }
+  }
   return NextResponse.json({ ok: true, updated });
 }

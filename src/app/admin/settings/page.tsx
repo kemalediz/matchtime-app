@@ -29,6 +29,7 @@ import { QuietHoursSection } from "@/components/settings/quiet-hours-section";
 import { PlayStyleSection } from "@/components/settings/play-style-section";
 import { PoolAutoAskSection } from "@/components/settings/pool-auto-ask-section";
 import { PoolClubShareSection } from "@/components/settings/pool-club-share-section";
+import { GroupInviteLinkSection } from "@/components/settings/group-invite-link-section";
 
 type FeatureKey = ToggleableKey;
 
@@ -810,6 +811,8 @@ export default function SettingsPage() {
       <PoolAutoAskSection orgId={org.id} language={org.language} />
       {/* The club's one share post (pool G3): only while the club has the player pool. */}
       <PoolClubShareSection orgId={org.id} language={org.language} />
+      {/* Group invite link (pool L8): only while the club has the player pool. */}
+      <GroupInviteLinkSection orgId={org.id} language={org.language} />
 
       {!goLiveSetup && <PostersCard club={org.name} language={org.language} />}
 

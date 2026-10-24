@@ -9,6 +9,7 @@ import { guestSourceText, turnUpText } from "@/components/guests/guest-text";
 import { dayLabel, historyDateLabel, timeLabel } from "@/lib/i18n/dates";
 import type { Strings } from "@/lib/i18n/t";
 import { guestSafetyShown, type GuestCard, type HistoryRow, type UpcomingGroup } from "@/lib/pool/guest-report";
+import type { InviteToClubAction } from "@/lib/pool/club-invite";
 import { EmptyState } from "./guest-tabs";
 
 interface ListProps {
@@ -18,16 +19,21 @@ interface ListProps {
   cards: Record<string, GuestCard>;
   /** The club may ask the pool (slice L7: block and report on pool guests). */
   poolClub?: boolean;
+  /** Invite to club (pool L8) and whether the club can send its link. */
+  inviteAction?: InviteToClubAction;
+  linkReady?: boolean;
 }
 
 /** Name (opens the card), where he came from, his turn-up record. */
-function GuestLine({ s, lang, orgId, card, extra, poolClub }: { s: Strings; lang: string; orgId: string; card: GuestCard; extra?: React.ReactNode; poolClub?: boolean }) {
+function GuestLine({ s, lang, orgId, card, extra, poolClub, inviteAction, linkReady }: Omit<ListProps, "cards"> & { card: GuestCard; extra?: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-0.5 sm:flex-row sm:flex-wrap sm:items-baseline sm:gap-x-3">
       <GuestCardTrigger
         card={card}
         lang={lang}
         orgId={orgId}
+        inviteAction={inviteAction}
+        linkReady={linkReady}
         extra={guestSafetyShown(card, poolClub === true) ? <GuestSafety orgId={orgId} userId={card.userId} blocked={card.blocked} lang={lang} /> : undefined}
       />
       <span className="text-sm text-slate-600" data-testid="guest-source">
@@ -41,7 +47,7 @@ function GuestLine({ s, lang, orgId, card, extra, poolClub }: { s: Strings; lang
   );
 }
 
-export function UpcomingList({ s, lang, orgId, cards, groups, poolClub }: ListProps & { groups: UpcomingGroup[] }) {
+export function UpcomingList({ s, lang, orgId, cards, groups, poolClub, inviteAction, linkReady }: ListProps & { groups: UpcomingGroup[] }) {
   if (groups.length === 0) return <EmptyState testId="guest-empty-upcoming">{s.gst_empty_upcoming}</EmptyState>;
   return (
     <div className="space-y-4">
@@ -58,6 +64,8 @@ export function UpcomingList({ s, lang, orgId, cards, groups, poolClub }: ListPr
                   s={s}
                   lang={lang}
                   orgId={orgId}
+                  inviteAction={inviteAction}
+                  linkReady={linkReady}
                   card={cards[x.userId]}
                   extra={
                     x.onBench ? (
@@ -84,14 +92,14 @@ const RESULT_TONE: Record<string, string> = {
   booked: "bg-blue-50 text-blue-800",
 };
 
-export function HistoryList({ s, lang, orgId, cards, rows, poolClub }: ListProps & { rows: HistoryRow[] }) {
+export function HistoryList({ s, lang, orgId, cards, rows, poolClub, inviteAction, linkReady }: ListProps & { rows: HistoryRow[] }) {
   if (rows.length === 0) return <EmptyState testId="guest-empty-history">{s.gst_empty_history}</EmptyState>;
   return (
     <ul className="space-y-4">
       {rows.map((r) => (
         <li key={r.userId} data-testid="guest-history-row" className="bg-white rounded-xl border border-slate-200 shadow-sm px-4 sm:px-6 py-4 space-y-3">
           <div className="flex flex-wrap items-start justify-between gap-2">
-            <GuestLine s={s} lang={lang} orgId={orgId} card={cards[r.userId]} poolClub={poolClub} />
+            <GuestLine s={s} lang={lang} orgId={orgId} card={cards[r.userId]} poolClub={poolClub} inviteAction={inviteAction} linkReady={linkReady} />
             <span
               data-testid="guest-joined"
               data-joined={r.joined ? "yes" : "no"}

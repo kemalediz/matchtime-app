@@ -283,6 +283,17 @@ export function makeWwebjsDriver(client: WwebjsClientLike): WaDriver {
       await chat.leave();
     },
 
+    async groupInviteCode(groupId) {
+      // GroupChat.getInviteCode() (pool L8). Only a group chat has one.
+      const chat = await client.getChatById(groupId);
+      if (!chat || chat.isGroup !== true || typeof chat.getInviteCode !== "function") {
+        throw new Error(`[wwebjs driver] groupInviteCode: ${JSON.stringify(groupId)} is not a group chat`);
+      }
+      const code = await chat.getInviteCode();
+      if (typeof code !== "string" || !code) throw new Error("[wwebjs driver] groupInviteCode: no invite code returned");
+      return code;
+    },
+
     // ── Groups and roster ────────────────────────────────────────────
     async listGroups() {
       const chats = await client.getChats();

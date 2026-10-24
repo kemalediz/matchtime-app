@@ -177,8 +177,8 @@ write; "today" rows exist now. EN and TR wherever MatchTime speaks.
 ### After the game (L7, L8)
 
 - no-show marked by an organiser; 2 in his last 5 pause him; turn-up record updated
-- both sides asked to join (guest privately, admins in HQ, or tagged in the main group with no HQ); only on both yeses the invite link goes to him; never to anyone else
-- Invite to club from the Guest players page (organiser's tap is the club's yes); greyed out for a stopped or deleted profile; My invitations Join and No thanks
+- BUILT (L8, `invites-after-game.spec.ts`, through the Pi's real poll, the real My invitations page and the real guest card; `invites-world.ts` seeds a guest game in the past): both yes with a pasted link (asked an hour after the game, Join, the organisers told in HQ with first name and last initial, Send the invite link, the link to him only, he joins the group and is an ordinary member, nobody asked twice); he says no thanks (nobody told, the card greyed); the club says not now (one kind DM, no link); the club never answers (withdrawn after 7 days, one DM); source A (MatchTime group admin: the Pi reads the code, the link goes to him); A fails with nothing pasted (the organisers told, the paste then sends it); no link set up (the organisers told how, the card greyed); a stopped profile, a guest who did not play, a game ended under an hour ago; a club with no HQ (the admin DM with a signed link); a partner club's guest in his home club's Turkish, the Turkish club's organisers in Turkish
+- BUILT (L8, `invites-organiser.spec.ts`): Invite to club on a club with the pool off (the tap asks him, his Join sends the link at once, joining makes him a member); a second tap changes nothing; a stopped guest's button greyed and nothing sent; Turkish ask, page and link. Settings card, Invite to club and My invitations at phone and desktop: `e2e/web/club-invites.spec.ts`
 - an invitation stays open until answered; one open per club and person
 
 ### Abuse and safety

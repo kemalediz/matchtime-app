@@ -6,9 +6,18 @@
  */
 import { MAGIC_LINK_TTL, signMagicLinkToken } from "../magic-link";
 import { buildShortMagicLinkUrl } from "../short-link";
-import { POOL_MANAGE_PATH } from "./paths";
+import { POOL_INVITATIONS_PATH, POOL_MANAGE_PATH } from "./paths";
+
+async function signedLinkTo(userId: string, nextPath: string): Promise<string> {
+  const token = signMagicLinkToken({ userId, purpose: "sign-in", nextPath, ttlSeconds: MAGIC_LINK_TTL.bookmark });
+  return buildShortMagicLinkUrl(token);
+}
 
 export async function buildPoolManageLink(userId: string): Promise<string> {
-  const token = signMagicLinkToken({ userId, purpose: "sign-in", nextPath: POOL_MANAGE_PATH, ttlSeconds: MAGIC_LINK_TTL.bookmark });
-  return buildShortMagicLinkUrl(token);
+  return signedLinkTo(userId, POOL_MANAGE_PATH);
+}
+
+/** My invitations (L8): the same signed link, landing on his invitations. */
+export async function buildPoolInvitationsLink(userId: string): Promise<string> {
+  return signedLinkTo(userId, POOL_INVITATIONS_PATH);
 }

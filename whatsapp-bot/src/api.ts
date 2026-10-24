@@ -219,10 +219,13 @@ export async function releaseInstruction(key: string): Promise<void> {
 /** A job that belongs to no club, already CLAIMED by the server for us. */
 export type PlatformJob =
   | { id: string; kind: "dm"; phone: string; text: string; purpose?: string }
-  | { id: string; kind: "leave-group"; groupId: string };
+  | { id: string; kind: "leave-group"; groupId: string }
+  /** Pool L8: read the club group's current invite code (MatchTime is an
+   *  admin there) and report it back. Never a revoke. */
+  | { id: string; kind: "invite-code"; groupId: string };
 
 export type PlatformJobReport =
-  | { id: string; outcome: "sent"; waMessageId?: string }
+  | { id: string; outcome: "sent"; waMessageId?: string; inviteCode?: string }
   | { id: string; outcome: "failed"; error: string }
   | { id: string; outcome: "release" };
 

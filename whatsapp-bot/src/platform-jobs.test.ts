@@ -30,6 +30,10 @@ function setup(over: Partial<PlatformPollDeps> = {}, jobs: unknown[] | null = []
     leaveGroup: vi.fn(async (groupId: string) => {
       calls.push(["leaveGroup", groupId]);
     }),
+    groupInviteCode: vi.fn(async (groupId: string) => {
+      calls.push(["groupInviteCode", groupId]);
+      return "Fh3kQ9zLmP2xW7vB1nR4tY";
+    }),
   } as unknown as WaDriver;
   const reports: unknown[] = [];
   let slots = 1;
@@ -228,5 +232,47 @@ describe("the outcome report is retried, bounded (second review of #400, item 2)
     const { deps } = setup({ report, sleep: async () => {} }, [DM, LEAVE]);
     await runPlatformJobs(deps);
     expect(report).toHaveBeenCalledTimes(6);
+  });
+});
+
+describe("runPlatformJobs: the group invite code (pool L8)", () => {
+  const CODE_JOB = { id: "pj9", kind: "invite-code", groupId: "120363900000000009@g.us" };
+
+  it("reads the group's current code and reports it with the sent outcome; not paced", async () => {
+    const { deps, calls, reports, setSlots } = setup({}, [CODE_JOB]);
+    setSlots(0);
+    const out = await runPlatformJobs(deps);
+    expect(calls).toEqual([["groupInviteCode", "120363900000000009@g.us"]]);
+    expect(reports).toEqual([{ id: "pj9", outcome: "sent", inviteCode: "Fh3kQ9zLmP2xW7vB1nR4tY" }]);
+    expect(out).toEqual({ sent: 1, failed: 0, released: 0 });
+    expect(deps.takeDmSlot).not.toHaveBeenCalled();
+  });
+
+  it("a throw (not admin any more, not connected) is a failed job, never a code", async () => {
+    const { deps, driver, reports } = setup({}, [CODE_JOB]);
+    (driver.groupInviteCode as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("not-authorized"));
+    const out = await runPlatformJobs(deps);
+    expect(reports).toEqual([{ id: "pj9", outcome: "failed", error: "not-authorized" }]);
+    expect(out.failed).toBe(1);
+  });
+
+  it("a code that does not look like one is failed, not passed on", async () => {
+    const { deps, driver, reports } = setup({}, [CODE_JOB]);
+    (driver.groupInviteCode as ReturnType<typeof vi.fn>).mockResolvedValueOnce("not a code!");
+    await runPlatformJobs(deps);
+    expect(reports).toEqual([{ id: "pj9", outcome: "failed", error: expect.stringMatching(/no usable invite code/) }]);
+  });
+
+  it("a job with no group, or a JID that is not a group, is failed without calling WhatsApp", async () => {
+    const { deps, calls, reports } = setup({}, [
+      { id: "pjA", kind: "invite-code" },
+      { id: "pjB", kind: "invite-code", groupId: "447700900123@s.whatsapp.net" },
+    ]);
+    await runPlatformJobs(deps);
+    expect(calls).toEqual([]);
+    expect(reports).toEqual([
+      { id: "pjA", outcome: "failed", error: expect.stringMatching(/malformed/) },
+      { id: "pjB", outcome: "failed", error: expect.stringMatching(/malformed/) },
+    ]);
   });
 });

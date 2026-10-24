@@ -31,6 +31,10 @@ ALTER TABLE "Organisation" ADD CONSTRAINT "Organisation_playStyle_check"
 ALTER TABLE "Organisation" DROP CONSTRAINT IF EXISTS "Organisation_town_check";
 ALTER TABLE "Organisation" ADD CONSTRAINT "Organisation_town_check"
   CHECK ("town" IS NULL OR "town" ~ '^[a-z0-9]+(-[a-z0-9]+)*$');
+-- The pasted group invite link (pool L8): canonical, chat.whatsapp.com only.
+ALTER TABLE "Organisation" DROP CONSTRAINT IF EXISTS "Organisation_groupInviteLink_check";
+ALTER TABLE "Organisation" ADD CONSTRAINT "Organisation_groupInviteLink_check"
+  CHECK ("groupInviteLink" IS NULL OR "groupInviteLink" ~ '^https://chat\.whatsapp\.com/[A-Za-z0-9]{10,40}$');
 
 -- PoolProfile
 ALTER TABLE "PoolProfile" DROP CONSTRAINT IF EXISTS "PoolProfile_status_check";

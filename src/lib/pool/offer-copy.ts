@@ -80,7 +80,8 @@ function styleOf(lang: Lang, style: PlayStyle | null): string | null {
   return null;
 }
 
-function clubLineOf(lang: Lang, members: number, games: number): string | null {
+/** "A regular group of 30 players, playing every week" (the offer and My invitations, L8). */
+export function clubLineOf(lang: Lang, members: number, games: number): string | null {
   const c = poolCopy(lang);
   if (!(members > 0)) return null;
   const r = regularityOf(games);

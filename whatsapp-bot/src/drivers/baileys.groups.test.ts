@@ -623,3 +623,30 @@ describe("leaveGroup (self-join slice 3: reject, suspend, an unsolicited add)", 
     await expect(t.driver.leaveGroup(GROUP)).rejects.toThrow(/not connected/i);
   });
 });
+
+describe("groupInviteCode (pool L8: the link for one approved guest)", () => {
+  it("reads the group's current code with ONE groupInviteCode, never a revoke", async () => {
+    const t = await started();
+    t.sock().inviteCodes[GROUP] = "Fh3kQ9zLmP2xW7vB1nR4tY";
+    expect(await t.driver.groupInviteCode(GROUP)).toBe("Fh3kQ9zLmP2xW7vB1nR4tY");
+    expect(t.sock().inviteCodeCalls).toEqual([GROUP]);
+  });
+
+  it("propagates a refusal (not an admin), so the platform job is reported failed", async () => {
+    const t = await started();
+    t.sock().inviteCodeError = new Error("not-authorized");
+    await expect(t.driver.groupInviteCode(GROUP)).rejects.toThrow(/not-authorized/);
+  });
+
+  it("an empty answer is an error, not an empty link", async () => {
+    const t = await started();
+    await expect(t.driver.groupInviteCode(GROUP)).rejects.toThrow(/no invite code/);
+  });
+
+  it("refuses anything that is not a group JID, and throws when not connected", async () => {
+    const t = await started();
+    await expect(t.driver.groupInviteCode("447700900123@s.whatsapp.net")).rejects.toThrow(/not a group/);
+    expect(t.sock().inviteCodeCalls).toEqual([]);
+    await expect(setup().driver.groupInviteCode(GROUP)).rejects.toThrow(/not connected/i);
+  });
+});

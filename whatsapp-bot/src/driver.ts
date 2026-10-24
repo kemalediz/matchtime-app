@@ -367,6 +367,17 @@ export interface WaDriver {
    */
   leaveGroup(groupId: string): Promise<void>;
 
+  /**
+   * The CURRENT invite code of a group MatchTime is an admin of (local
+   * player pool L8): the server turns it into the chat.whatsapp.com link it
+   * sends to one approved guest. Driven only by an `invite-code` platform
+   * job. Never revokes (a revoke would break every link the organisers
+   * already shared). Under Outbound because it hands out a way into a real
+   * group: shadow mode refuses it. MAY THROW, and must (not an admin, not
+   * connected): the throw is what the poller reports as a FAILED job.
+   */
+  groupInviteCode(groupId: string): Promise<string>;
+
   // ── Groups and roster ──────────────────────────────────────────────
 
   /**

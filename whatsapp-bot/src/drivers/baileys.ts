@@ -284,6 +284,8 @@ export interface BaileysSocketLike extends LifecycleSocket {
   groupMetadata?(jid: string): Promise<GroupMetaLike>;
   /** Leave a group. One IQ about a group we are in; no directory lookup. */
   groupLeave?(jid: string): Promise<void>;
+  /** A group's CURRENT invite code (needs admin). Pool L8. */
+  groupInviteCode?(jid: string): Promise<string | undefined>;
   /** Accept a private invite (`groupInviteMessage`). Resolves to the group JID. */
   groupAcceptInviteV4?(key: string | WAMessageKey, inviteMessage: proto.Message.IGroupInviteMessage): Promise<unknown>;
   /** What a `chat.whatsapp.com/<code>` link is for. Throws for a bad link. */
@@ -1921,6 +1923,22 @@ export function makeBaileysDriver(deps: BaileysDriverDeps): BaileysDriver {
       groupCache.forget(jid);
       postability.forget(jid);
       log(`[baileys][groups] left ${jid}`);
+    },
+
+    async groupInviteCode(groupId) {
+      // MAY THROW: the platform poller reports the throw as a failed job.
+      // Reads the code; never `groupRevokeInvite`, which would break every
+      // link the organisers already shared (pool L8).
+      const jid = typeof groupId === "string" ? groupId.trim() : "";
+      if (!jid.endsWith("@g.us")) {
+        throw new Error(`[baileys driver] groupInviteCode: ${JSON.stringify(groupId)} is not a group JID`);
+      }
+      const sock = getSocket();
+      if (!sock) throw new NotConnectedError(`no invite code was read for ${jid}`);
+      if (!sock.groupInviteCode) throw new Error("[baileys driver] groupInviteCode: this socket has no groupInviteCode");
+      const code = await sock.groupInviteCode(jid);
+      if (typeof code !== "string" || !code) throw new Error(`[baileys driver] groupInviteCode: WhatsApp returned no invite code for ${jid}`);
+      return code;
     },
 
     // ── Groups and roster ────────────────────────────────────────────

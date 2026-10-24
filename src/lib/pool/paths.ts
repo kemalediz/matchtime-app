@@ -4,6 +4,8 @@
  */
 export const POOL_PLAY_PATH = "/play";
 export const POOL_MANAGE_PATH = "/play/manage";
+/** My invitations (L8): his open club invitations and game offers. Needs his session. */
+export const POOL_INVITATIONS_PATH = "/play/invitations";
 /** The sign-up and venue-search API (public: the form posts to it). */
 export const POOL_API_PREFIX = "/api/play/";
 

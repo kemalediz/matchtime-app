@@ -60,6 +60,9 @@ export interface PlatformPollResult {
   released: number;
 }
 
+/** A WhatsApp group invite code, as the invite reader takes one. */
+const INVITE_CODE_RE = /^[A-Za-z0-9]{10,40}$/;
+
 /** Tries for one outcome report, and the waits between them. */
 export const REPORT_TRIES = 3;
 const REPORT_RETRY_MS = [1_000, 3_000] as const;
@@ -149,6 +152,32 @@ export async function runPlatformJobs(deps: PlatformPollDeps): Promise<PlatformP
       } catch (err) {
         out.failed++;
         error(`[platform] leaving ${groupId} (job ${id}) FAILED, reported as failed:`, err);
+        await report({ id, outcome: "failed", error: errorText(err) });
+      }
+      continue;
+    }
+
+    if (job.kind === "invite-code") {
+      const groupId = typeof job.groupId === "string" ? job.groupId.trim() : "";
+      if (!groupId.endsWith("@g.us")) {
+        out.failed++;
+        await report({ id, outcome: "failed", error: "malformed job: an invite code with no group" });
+        continue;
+      }
+      try {
+        const code = await withTimeout(deps.driver.groupInviteCode(groupId), deps.sendTimeoutMs, `invite code ${groupId}`);
+        if (typeof code !== "string" || !INVITE_CODE_RE.test(code)) {
+          out.failed++;
+          await report({ id, outcome: "failed", error: "WhatsApp gave no usable invite code" });
+          continue;
+        }
+        out.sent++;
+        // The code is a secret of the club's group: never logged.
+        log(`[platform] read the invite code of ${groupId} (job ${id})`);
+        await report({ id, outcome: "sent", inviteCode: code });
+      } catch (err) {
+        out.failed++;
+        error(`[platform] reading the invite code of ${groupId} (job ${id}) FAILED, reported as failed:`, err);
         await report({ id, outcome: "failed", error: errorText(err) });
       }
       continue;
