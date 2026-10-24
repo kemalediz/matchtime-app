@@ -40,6 +40,18 @@ export async function poolAutoAskClub(orgId: string, env?: Env): Promise<PoolAut
   return { poolOpen: poolOffersOpenForClub(org, env), poolAutoAsk: org.poolAutoAsk === true, language: org.language ?? null };
 }
 
+/** The newest partner round still open on the match, with its number:
+ *  a pool ask joins it, so the partners have their hour first. Also the
+ *  organisers' ask in HQ (L10, `admin-group-pool.ts`). */
+export async function openPartnerRoundOf(orgId: string, matchId: string): Promise<{ roundId: string; places: number } | null> {
+  const open = await db.partnerAsk.findFirst({
+    where: { matchId, askerOrgId: orgId, status: { in: [...OPEN_ASK_STATUSES] }, roundId: { not: null } },
+    orderBy: { createdAt: "desc" },
+    select: { roundId: true, places: true },
+  });
+  return open?.roundId ? { roundId: open.roundId, places: open.places } : null;
+}
+
 export async function autoAskPool(args: {
   orgId: string;
   match: { id: string; date: Date };
@@ -72,16 +84,9 @@ export async function autoAskPool(args: {
     const asked = (await db.poolAsk.count({ where: { orgId: args.orgId, matchId: args.match.id } })) > 0;
     if (!poolAutoAskDue({ ...rule, poolAskedBefore: asked })) return null;
 
-    const open = args.askedNowRoundId
-      ? null
-      : await db.partnerAsk.findFirst({
-          where: { matchId: args.match.id, askerOrgId: args.orgId, status: { in: [...OPEN_ASK_STATUSES] }, roundId: { not: null } },
-          orderBy: { createdAt: "desc" },
-          select: { roundId: true, places: true },
-        });
     const round = poolAutoRound({
       askedNowRoundId: args.askedNowRoundId,
-      openRound: open?.roundId ? { roundId: open.roundId, places: open.places } : null,
+      openRound: args.askedNowRoundId ? null : await openPartnerRoundOf(args.orgId, args.match.id),
       placesOpen: args.placesOpen,
     });
     const r = await requestPoolAsk({

@@ -141,6 +141,19 @@ describe("a recruit side request on a reply to a partner club's ask", () => {
     const r = adminRecruit(null);
     expect(r.writes.filter((w) => w.kind === "recruit_blast")).toHaveLength(1);
   });
+
+  // Local player pool L10: the pool is asked from the organisers' group or
+  // the match page. Asked for in the players' group it is never a blast to
+  // the club's own past players (and never a partner ask).
+  it("a recruit from the MatchTime player pool in the players' group: nothing written", () => {
+    const r = decide({
+      now: NOW,
+      state: world({ confirmed: ["sait"] }),
+      messages: [promote({ route: "admin_ops", tagged: true, taggedExplicitly: true, quoted: null, facts: { kind: "admin", action: "recruit", pool: true } })],
+    });
+    expect(r.writes).toEqual([]);
+    expect(r.outcomes[0].reasons.join(" ")).toMatch(/MatchTime player pool/);
+  });
 });
 
 describe("everything else is exactly today's behaviour", () => {

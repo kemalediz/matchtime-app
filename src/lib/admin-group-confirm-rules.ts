@@ -40,9 +40,11 @@ export interface PendingItem {
    *  `partnerAskRef(askId)` (a partner club's ask for a player, cross-club
    *  ask slice S2), `feeAskRef(proposalId)` (a free place, 2026-10-16) or
    *  `pairingNoticeKey(pairing, club)` (a partner-club pairing waiting for
-   *  the owner's answer, 2026-10-21). */
+   *  the owner's answer, 2026-10-21), `poolAskRef(matchId)` (the
+   *  short-squad notice's MatchTime player pool line, L10,
+   *  `admin-group-pool-refs.ts`). */
   ref: string;
-  kind: "teams" | "list" | "partner-ask" | "fee" | "pairing";
+  kind: "teams" | "list" | "partner-ask" | "fee" | "pairing" | "pool-ask";
   /** When it was (last) asked: a quote of an older post about it is stale. */
   askedAt?: Date;
 }

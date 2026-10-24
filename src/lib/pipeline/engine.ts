@@ -3141,6 +3141,15 @@ export function decide(input: EngineInput): EngineResult {
           );
           return;
         }
+        // ── THE MATCHTIME PLAYER POOL (local player pool L10) ─────────
+        //
+        // Asked for in the organisers' group or on the match page, never
+        // from the players' group. Asking for the pool is never a blast to
+        // the club's own past players: nothing is written.
+        if (facts.pool) {
+          out.reasons.push("a recruit from the MatchTime player pool is asked in the organisers' group or on the match page: nothing written");
+          return;
+        }
         // ── ANOTHER CLUB'S PLAYERS (slice S6, 2026-10-21) ────────────
         //
         // "@Match Time ask Sutton if anyone can play": the same two gates

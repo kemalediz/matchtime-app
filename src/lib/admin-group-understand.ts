@@ -24,7 +24,9 @@
  *                         after it, in the same reply (2026-10-24)
  *   balancer              the teams extractor, then `team-proposal.ts`
  *   approve               the safe-YES rule (`admin-group-confirm-rules.ts`),
- *                         then `answerTeamsYes` / `answerSquadPasteYes`; a
+ *                         then `answerTeamsYes` / `answerSquadPasteYes` (or
+ *                         the pool, for the short-squad notice's pool line,
+ *                         L10); a
  *                         member who is not an organiser says YES to the
  *                         list they pasted only (2026-10-20)
  *   poster, team_sheet    `admin-group-graphics.ts`
@@ -33,14 +35,19 @@
  *                         menu (`admin-group-help.ts`) for how-it-works,
  *                         and for help it does not answer
  *   ask_group             one place-open ask in the players' group
- *                         (`admin-group-ask-group.ts`); for a club with
- *                         partner clubs, the admin extractor first says
- *                         whether another club is meant, and then the
- *                         partners are asked (`partner-ask-words.ts`, S6)
+ *                         (`admin-group-ask-group.ts`); the admin extractor
+ *                         first says whether another club is meant, and then
+ *                         the partners are asked (`partner-ask-words.ts`,
+ *                         S6), or the MatchTime player pool ("ask the pool",
+ *                         "find someone nearby"), which is asked through the
+ *                         match page tick's own function
+ *                         (`admin-group-pool.ts`, local player pool L10)
  *   admin_ops             the shared admin extractor: players from a
  *                         partner club ("ask Sutton if anyone can play",
  *                         slice S6) are asked for by `partner-ask-words.ts`,
- *                         an organiser's alone; a free place
+ *                         and the MatchTime player pool by
+ *                         `admin-group-pool.ts` (L10), an organiser's alone;
+ *                         a free place
  *                         ("Bilal washed the bibs, he's free this week",
  *                         action fee_waiver, or one taken back) is ASKED
  *                         about by `fee-waiver.ts` and given on the YES
@@ -134,6 +141,9 @@ import { readHqNameList } from "./admin-group-name-list";
 import { answerPairingInHq, pairingsAwaitingOwner } from "./pairing-reply";
 import { parsePairingNoticeKey } from "./club-partnership-rules";
 import { activePartnerChoices, askPartnersFromWords } from "./partner-ask-words";
+import { askPoolInHq, poolNoticesAwaiting } from "./admin-group-pool";
+import { confirmQuestion } from "./admin-group-confirm-copy";
+import { parsePoolAskRef } from "./admin-group-pool-refs";
 
 /** How far back the router's "earlier here" lines reach, and how many. */
 const RECENT_MS = 30 * 60 * 1000;
@@ -171,6 +181,9 @@ export interface UnderstandInput {
   senderName: string | null;
   sentAt: Date | null;
   now: Date;
+  /** The pool switch as the request read it (`pool/switch-env.ts`):
+   *  POOL_OFFERS_ENABLED, or the e2e seam under MT_TEST_MODE=1. */
+  poolEnv?: Record<string, string | undefined>;
   /** Injected in tests only. */
   deps?: { routerModel?: PipelineModel; extractorModel?: PipelineModel };
 }
@@ -182,7 +195,12 @@ export interface Understood {
 }
 
 /** What MatchTime is waiting to hear from the organisers. */
-export async function loadPending(orgId: string, now: Date, lang: string | null): Promise<PendingWithLabel[]> {
+export async function loadPending(
+  orgId: string,
+  now: Date,
+  lang: string | null,
+  poolEnv?: Record<string, string | undefined>,
+): Promise<PendingWithLabel[]> {
   const out: PendingWithLabel[] = [];
   const teams = await db.adminTeamProposal.findFirst({
     where: { orgId, state: { in: ["proposed", "uneven-asked"] } },
@@ -217,6 +235,10 @@ export async function loadPending(orgId: string, now: Date, lang: string | null)
   // (2026-10-21, `pairing-reply.ts`). Never fails HQ.
   const pairings = await pairingsAwaitingOwner(orgId).catch(() => []);
   for (const p of pairings) out.push({ ref: p.ref, kind: "pairing", day: null, club: p.other, ownClub: p.club, askedAt: p.askedAt });
+  // The short-squad notice's MatchTime player pool line, posted here and
+  // still askable (local player pool L10, `admin-group-pool.ts`). Never
+  // fails HQ.
+  out.push(...(await poolNoticesAwaiting(orgId, now, lang, poolEnv).catch(() => [])));
   return out;
 }
 
@@ -311,7 +333,7 @@ async function understandInTrace(input: UnderstandInput): Promise<Understood | n
 
   return withOrgAiBudget(org.id, async () => {
     const [pending, logAll, body] = await Promise.all([
-      loadPending(org.id, now, lang),
+      loadPending(org.id, now, lang, input.poolEnv),
       hqLogSince(org.id, new Date(now.getTime() - DAY_MS)),
       nameMentions(org.id, input.text, input.mentionNames),
     ]);
@@ -571,6 +593,17 @@ async function understandInTrace(input: UnderstandInput): Promise<Understood | n
       return true;
     };
 
+    // The MatchTime player pool (local player pool L10): asked in words
+    // ("ask the pool", "find someone nearby"), for the club's next match,
+    // through the match page tick's own function (`admin-group-pool.ts`).
+    // An organiser's alone; a weekly club's (as asking the group is).
+    const askPoolInWords = async (): Promise<Understood> => {
+      if (!actor) return onlyOrganisers();
+      if (!weekly) return notHere();
+      const r = await askPoolInHq({ orgId: org.id, userId: actor, via: "words", lang, now, env: input.poolEnv });
+      return said(r.outcome, r.replyText);
+    };
+
     // The safe-YES rule and the score keep their own rules for a quoted
     // message (a YES quoting another organiser is already silent there; a
     // scoreline answering "what was the score?" is still the score).
@@ -632,6 +665,13 @@ async function understandInTrace(input: UnderstandInput): Promise<Understood | n
             });
             return r ? said(r.outcome, r.replyText) : null;
           }
+          if (item.kind === "pool-ask" && actor) {
+            // The short-squad notice's pool line (L10): the organiser's YES
+            // is the pool's approval, for that notice's match.
+            const matchId = parsePoolAskRef(item.ref);
+            const r = matchId ? await askPoolInHq({ orgId: org.id, matchId, userId: actor, via: "notice", lang, now, env: input.poolEnv }) : null;
+            return r ? said(r.outcome, r.replyText) : said("hq-nothing-waiting", s.hq_nothing_waiting);
+          }
           if (item.kind === "partner-ask" && actor) {
             const askId = parsePartnerAskRef(item.ref);
             const r = askId ? await answerPartnerAskYes({ orgId: org.id, askId, userId: actor, lang, now }) : null;
@@ -650,20 +690,9 @@ async function understandInTrace(input: UnderstandInput): Promise<Understood | n
         }
         if (decision.kind === "nothing-waiting") return said("hq-nothing-waiting", s.hq_nothing_waiting);
         if (decision.kind === "silent") return null;
-        const day = pending.find((i) => i.kind === "teams")?.day ?? "";
-        const item = decision.kind === "ask-which" ? null : pending.find((i) => i.ref === decision.item.ref);
-        const text =
-          decision.kind === "ask-which"
-            ? s.hq_confirm_which({ day })
-            : decision.item.kind === "teams"
-              ? s.hq_confirm_teams({ day })
-              : decision.item.kind === "partner-ask"
-                ? s.hq_confirm_partner_ask({ asker: item?.club ?? "", day: item?.day ?? "" })
-                : decision.item.kind === "pairing"
-                  ? s.hq_confirm_pairing({ club: item?.ownClub ?? "", other: item?.club ?? "" })
-                : decision.item.kind === "fee"
-                  ? s.hq_confirm_fee({ names: item?.names ?? "", day: item?.day ?? "" })
-                  : s.hq_confirm_list;
+        // The one question, naming what it is about (`admin-group-confirm-copy.ts`).
+        const about = decision.kind === "ask-which" ? pending : pending.filter((i) => i.ref === decision.item.ref);
+        const text = confirmQuestion(lang, about);
         const askRef = decision.kind === "ask-which" ? WHICH_ASK_REF : decision.item.ref;
         await recordMatchTimeQuestion({ orgId: org.id, askRef, text, now, confirm: true });
         return said("hq-confirm-asked", text);
@@ -746,11 +775,16 @@ async function understandInTrace(input: UnderstandInput): Promise<Understood | n
         // Untagged, the same extractor also says whether the message is
         // spoken to MatchTime at all (2026-10-22, FNF HQ: "@Kemal can we ask
         // Sutton group?" was posted in the players' group): see
-        // `leavesHqUnasked`. A tagged ask from a club with no partner pays no
-        // extra call and gets exactly what it got before.
+        // `leavesHqUnasked`.
+        //
+        // The same extractor says whether the MatchTime player pool is
+        // meant (L10: "ask the pool", "find someone nearby"), so it is read
+        // for every ask, tagged or not: one call on a rare request, and a
+        // club without the pool hears so instead of a post in its group.
         const partners = await activePartnerChoices(org.id).catch(() => []);
-        const facts = !tagged || partners.length > 0 ? await readAdminFacts() : null;
+        const facts = await readAdminFacts();
         if (leavesHqUnasked(facts)) return null;
+        if (facts?.action === "recruit" && facts.pool) return askPoolInWords();
         if (partners.length > 0) {
           if (facts?.action === "recruit" && facts.partnerClubs) {
             const r = await askPartnersFromWords({ orgId: org.id, requestedByUserId: actor, via: "hq", clubRef: facts.clubRef ?? null, lang, now });
@@ -774,6 +808,8 @@ async function understandInTrace(input: UnderstandInput): Promise<Understood | n
         // HQ: only when asked of MatchTime (2026-10-22). Untagged and spoken
         // to someone else, not even the "not from this group" line.
         if (facts.kind === "admin" && (facts.action === "recruit" || facts.action === "stats_blast") && leavesHqUnasked(facts)) return null;
+        // The MatchTime player pool (L10): "get us a player from the app".
+        if (facts.kind === "admin" && facts.action === "recruit" && facts.pool) return askPoolInWords();
         // Another club's players (slice S6, 2026-10-21): "ask Sutton if
         // anyone can play", "search for players from our partner groups".
         // The shared door every surface uses (`partner-ask-words.ts`);

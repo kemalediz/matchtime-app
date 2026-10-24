@@ -33,6 +33,7 @@
  *   release                 back to queued (the Pi's DM pacing)
  */
 import { stampHqLogStanza } from "@/lib/hq-log-stanza";
+import { forgetScheduledHqQuestion } from "@/lib/admin-group-log";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { planAckSideEffects } from "@/lib/dispatch-claim";
@@ -88,6 +89,9 @@ export async function POST(request: Request) {
     const { count } = await db.sentNotification.deleteMany({
       where: { key, waMessageId: null },
     });
+    // A scheduled HQ post logged as MatchTime's question when it was
+    // claimed (L10) asked nothing if it never went.
+    if (count > 0) await forgetScheduledHqQuestion(key);
     return NextResponse.json({ ok: true, released: count > 0 });
   }
 
@@ -107,7 +111,7 @@ export async function POST(request: Request) {
   });
   // MatchTime's line in the HQ log learns the stanza id of its send, so an
   // HQ reply quoting it is decided by the id (`hq-log-stanza.ts`).
-  if (key.startsWith("hqreply:") || key.startsWith("botjob-")) await stampHqLogStanza(key, waStanzaId);
+  if (key.startsWith("hqreply:") || key.startsWith("botjob-") || kind === "admin-group-message") await stampHqLogStanza(key, waStanzaId);
 
   // Per-key-class side effects — identical set to pre-claim behaviour,
   // just derived by a unit-tested pure mapper. Each is itself idempotent

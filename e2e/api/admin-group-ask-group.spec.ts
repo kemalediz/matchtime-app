@@ -30,7 +30,7 @@ const REMIND = "@Match Time remind me on Monday";
 // FNF HQ 2026-10-22 07:22 UTC: the tag is a person (Kemal), not MatchTime.
 const INCIDENT = "@89485761081551 can we ask Sutton group?";
 const UNTAGGED = "ask the group if anyone can play";
-const ADMIN_FACTS = { payerRef: "", count: 0, coveredRefs: [], undo: false, matchDay: "", phrase: "", note: "", lookbackMatches: 0, partnerClubs: false, clubRef: "" };
+const ADMIN_FACTS = { payerRef: "", count: 0, coveredRefs: [], undo: false, matchDay: "", phrase: "", note: "", lookbackMatches: 0, playersFrom: "", clubRef: "" };
 
 let seq = 0;
 async function say(request: APIRequestContext, text: string, senderPhone = ADMIN) {
@@ -54,7 +54,7 @@ test.beforeAll(async ({ db }) => {
     // Untagged: the admin extractor says it is spoken to MatchTime.
     [ASK_TR]: { route: "ask_group", facts: { action: "recruit", ...ADMIN_FACTS, toMatchTime: true } },
     [REMIND]: { route: "admin_ops" },
-    [INCIDENT]: { route: "ask_group", facts: { action: "recruit", ...ADMIN_FACTS, partnerClubs: true, clubRef: "Sutton", toMatchTime: false } },
+    [INCIDENT]: { route: "ask_group", facts: { action: "recruit", ...ADMIN_FACTS, playersFrom: "partners", clubRef: "Sutton", toMatchTime: false } },
     [UNTAGGED]: { route: "ask_group", facts: { action: "recruit", ...ADMIN_FACTS, toMatchTime: true } },
   });
 });

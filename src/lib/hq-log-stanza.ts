@@ -3,12 +3,14 @@
  * findings 4 and 5). When the Pi acks one of MatchTime's posts in a club's
  * admin group (an inline HQ reply, `hqreply:<orgId>:...`, or an
  * `admin-group` BotJob such as the teams proposal), the HQ log row that
- * recorded the same words (`recordMatchTimeQuestion`) gets the stanza id,
+ * recorded the same words (`recordMatchTimeQuestion`) gets the stanza id
+ * (a scheduled post that asks something, by its key: `recordScheduledHqQuestion`),
  * so a YES quoting it is decided by the id (`quotedLogRow`). Our own two
  * copies of one string are compared, never a person's words. Never throws.
  */
 import { db } from "./db";
 import { botJobIdOfKey } from "./dispatch-claim";
+import { scheduledHqQuestionId } from "./admin-group-log";
 
 const LOG_TEXT_MAX = 500;
 /** The logged line is written in the same request as the send is claimed. */
@@ -27,7 +29,14 @@ export async function stampHqLogStanza(key: string, waStanzaId: string | null): 
       at = row?.createdAt ?? null;
     } else {
       const jobId = botJobIdOfKey(key);
-      if (!jobId) return 0;
+      if (!jobId) {
+        // A scheduled post logged by its key when it was claimed (L10).
+        const { count } = await db.adminGroupMessage.updateMany({
+          where: { waMessageId: scheduledHqQuestionId(key), waStanzaId: null },
+          data: { waStanzaId },
+        });
+        return count;
+      }
       const job = await db.botJob.findUnique({ where: { id: jobId }, select: { orgId: true, kind: true, text: true, createdAt: true } });
       if (!job || job.kind !== "admin-group") return 0;
       orgId = job.orgId;

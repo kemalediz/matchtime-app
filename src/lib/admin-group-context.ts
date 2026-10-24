@@ -65,27 +65,35 @@ export function organisersContext(p: {
           : `WAITING: which team won ${w.first}-${w.second}, ${w.labels[0]} or ${w.labels[1]}, asked at ${formatLondon(w.askedAt, "HH:mm")}.`,
     );
   }
-  for (const i of p.pending) {
-    const at = formatLondon(i.askedAt, "HH:mm");
-    lines.push(
-      i.kind === "teams"
-        ? `WAITING: approval of the proposed teams for ${i.day}, asked at ${at}.`
-        : i.kind === "partner-ask"
-          ? `WAITING: YES to post ${i.club}'s ask for a player in the players' group, for ${i.day}, asked at ${at}.`
-          : i.kind === "pairing"
-            ? `WAITING: the club owner's answer to pairing ${i.ownClub} with ${i.club} as partner clubs (1 or yes accepts, 2 or no declines), asked at ${at}.`
-          : i.kind === "fee"
-            ? i.undo
-              ? `WAITING: YES to take the free place away from ${i.names} for ${i.day}, asked at ${at}.`
-              : `WAITING: YES to give ${i.names} a free place for ${i.day}, asked at ${at}.`
-            : `WAITING: YES to apply the squad list pasted at ${at}.`,
-    );
-  }
+  for (const i of p.pending) lines.push(waitingLine(i));
   if (p.recent.length > 0) {
     lines.push("EARLIER HERE, oldest first:");
     for (const r of p.recent) lines.push(`- ${r.fromMatchTime ? "MatchTime" : "a member"}: ${oneLine(r.text, 200)}`);
   }
   return lines;
+}
+
+/** One item waiting for the organisers, as the router reads it. */
+function waitingLine(i: PendingWithLabel): string {
+  const at = formatLondon(i.askedAt, "HH:mm");
+  switch (i.kind) {
+    case "teams":
+      return `WAITING: approval of the proposed teams for ${i.day}, asked at ${at}.`;
+    case "partner-ask":
+      return `WAITING: YES to post ${i.club}'s ask for a player in the players' group, for ${i.day}, asked at ${at}.`;
+    case "pairing":
+      return `WAITING: the club owner's answer to pairing ${i.ownClub} with ${i.club} as partner clubs (1 or yes accepts, 2 or no declines), asked at ${at}.`;
+    case "fee":
+      return i.undo
+        ? `WAITING: YES to take the free place away from ${i.names} for ${i.day}, asked at ${at}.`
+        : `WAITING: YES to give ${i.names} a free place for ${i.day}, asked at ${at}.`;
+    // The local player pool (L10): the short-squad notice's pool line. Only
+    // what the notice already said in HQ: the game's day.
+    case "pool-ask":
+      return `WAITING: YES to ask nearby players from the MatchTime player pool for ${i.day}, asked at ${at}.`;
+    case "list":
+      return `WAITING: YES to apply the squad list pasted at ${at}.`;
+  }
 }
 
 /**

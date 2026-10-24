@@ -47,10 +47,17 @@ export const poolOfferTr: PoolOfferStrings = {
   turnup_all: (p) => (p.n === 1 ? "MatchTime'da 1 maç oynadı ve geldi." : `MatchTime'da ${p.n} maç oynadı, hepsine geldi.`),
   turnup_some: (p) => `MatchTime'daki ${p.n} maçın ${p.played} tanesine geldi.`,
   notice_offer_line: (p) => `🔎 Ya da MatchTime havuzundan yakındaki oyunculara sorayım (${p.band}). Maç sayfasını açın: ${p.link}`,
+  notice_offer_line_hq: (p) => `🔎 Ya da MatchTime havuzundan yakındaki oyunculara sorayım (${p.band}): burada EVET yazın ya da maç sayfasını açın: ${p.link}`,
   notice_auto: (p) =>
     p.partnersFirst
       ? `🔎 Otomatik isteğiniz: ${p.day} için hâlâ boş yer var ve yedek listenizde kimse yok; partner kulüpleriniz bir saat içinde doldurmazsa MatchTime oyuncu havuzundaki yakın oyunculara soracağım. Biri yer alınca size haber vereceğim.`
       : `🔎 Otomatik isteğiniz: ${p.day} için hâlâ boş yer var ve yedek listenizde kimse yok, bu yüzden MatchTime oyuncu havuzundaki yakın oyunculara soruyorum. Biri yer alınca size haber vereceğim.`,
+
+  hq_asked: (p) =>
+    p.partnersFirst
+      ? `🔎 ${p.day} maçı için partner kulüpleriniz bir saat içinde doldurmazsa MatchTime oyuncu havuzundaki yakın oyunculara soracağım (${p.places} kişi). Biri yer alınca burada haber vereceğim.`
+      : `🔎 ${p.day} maçı için MatchTime oyuncu havuzundaki yakın oyunculara soruyorum (${p.places} kişi). Biri yer alınca burada haber vereceğim.`,
+  hq_closed: "MatchTime oyuncu havuzu kulübünüz için henüz açık değil. İsterseniz oyuncu grubunuza oynayabilecek biri var mı diye sorabilirim.",
 
   pool_label: "MatchTime oyuncu havuzu",
   band_none: "bu sahanın yakınında henüz havuz oyuncusu yok",

@@ -465,7 +465,7 @@ describe("S22 · a personal reminder", () => {
 
 describe("a partner ask is reported, never performed here", () => {
   const ASK = "@Match Time ask Sutton if anyone can play";
-  const ASK_FACTS = { ...BLAST_FACTS, lookbackMatches: 0, partnerClubs: true, clubRef: "Sutton" };
+  const ASK_FACTS = { ...BLAST_FACTS, lookbackMatches: 0, playersFrom: "partners", clubRef: "Sutton" };
 
   it("an admin's ask is owned, carries the club as written, and is not a blast", async () => {
     const { model } = stubModel({ [ASK]: ASK_FACTS });

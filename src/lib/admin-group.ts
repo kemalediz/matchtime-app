@@ -84,6 +84,8 @@ export interface AdminGroupMessage {
     authorPhone?: string | null;
   } | null;
   now?: Date;
+  /** The pool switch as the route read it (local player pool L10). */
+  poolEnv?: Record<string, string | undefined>;
 }
 
 export type AdminGroupMessageResult =
@@ -135,6 +137,10 @@ const NO_TICK: ReadonlySet<string> = new Set([
   // monthly club told to use the website (2026-10-22, match-cancel.ts).
   HQ_CANCEL_NOTHING_DONE,
   "hq-cancel-monthly",
+  // The MatchTime player pool asked from HQ (L10) and not asked: closed for
+  // the club, nobody near, too late, no game.
+  "hq-pool-not-asked",
+  "hq-pool-no-match",
 ]);
 export const HQ_TICK = "✅";
 
@@ -264,6 +270,7 @@ export async function handleAdminGroupMessage(msg: AdminGroupMessage): Promise<A
       senderName: sender?.name ?? null,
       sentAt: parseTimestamp(msg.timestamp),
       now,
+      ...(msg.poolEnv ? { poolEnv: msg.poolEnv } : {}),
     });
   };
 

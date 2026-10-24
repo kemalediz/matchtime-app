@@ -162,7 +162,7 @@ describe("askPartnersFromDmText: a DM the classifier called partner_ask", () => 
     name: "stub",
     async complete() {
       return {
-        text: JSON.stringify({ action: "other", payerRef: "", count: 0, coveredRefs: [], undo: false, matchDay: "", phrase: "", note: "", lookbackMatches: 0, partnerClubs: false, clubRef: "", ...facts }),
+        text: JSON.stringify({ action: "other", payerRef: "", count: 0, coveredRefs: [], undo: false, matchDay: "", phrase: "", note: "", lookbackMatches: 0, playersFrom: "", clubRef: "", ...facts }),
         stopReason: "end_turn",
         usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
         costUsd: 0,
@@ -173,14 +173,14 @@ describe("askPartnersFromDmText: a DM the classifier called partner_ask", () => 
   const dm = { orgId: "fnf", userId: "u-raihan", text: "ask Sutton if anyone can play", senderName: "Raihan", lang: "en", now: NOW };
 
   it("the shared admin extractor reads the club; the shared door asks, via dm", async () => {
-    const reply = await askPartnersFromDmText({ ...dm, model: extractor({ action: "recruit", partnerClubs: true, clubRef: "Sutton" }) });
+    const reply = await askPartnersFromDmText({ ...dm, model: extractor({ action: "recruit", playersFrom: "partners", clubRef: "Sutton" }) });
     expect(askMock.requestPartnerAsk).toHaveBeenCalledTimes(1);
     expect(askMock.requestPartnerAsk.mock.calls[0][0]).toMatchObject({ partnershipId: "p-sutton", via: "dm", requestedByUserId: "u-raihan" });
     expect(reply).toContain("Sutton FC");
   });
 
   it("no club named: every partner", async () => {
-    await askPartnersFromDmText({ ...dm, model: extractor({ action: "recruit", partnerClubs: true }) });
+    await askPartnersFromDmText({ ...dm, model: extractor({ action: "recruit", playersFrom: "partners" }) });
     expect(askMock.requestPartnerAsk).toHaveBeenCalledTimes(2);
   });
 

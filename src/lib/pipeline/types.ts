@@ -705,6 +705,14 @@ export interface AdminFacts {
    *  (`partner-ask-words-rules.ts`), never trusted as a club. */
   clubRef?: string;
   /**
+   * recruit, local player pool L10 (2026-10-24): the players are to come
+   * from the MatchTime player pool (nearby players who are not in the
+   * club), not from the club or a partner. Asked only from the admin group
+   * (`admin-group-understand.ts`, `admin-group-pool.ts`); never with
+   * `partnerClubs`. Absent means not the pool.
+   */
+  pool?: true;
+  /**
    * The message is spoken to MatchTime itself, not to a person or the
    * others in the chat (2026-10-22, FNF HQ: "@Kemal can we ask Sutton
    * group?" was posted in the players' group). Absent means no. From HQ an

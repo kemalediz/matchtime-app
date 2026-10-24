@@ -27,7 +27,7 @@ const UNTAGGED = "no game this week lads, pitch is flooded";
 
 const admin = (action: string) => ({
   route: "admin_ops",
-  facts: { action, payerRef: "", count: 0, coveredRefs: [], undo: false, matchDay: "", phrase: "", note: "", lookbackMatches: 0, partnerClubs: false, clubRef: "" },
+  facts: { action, payerRef: "", count: 0, coveredRefs: [], undo: false, matchDay: "", phrase: "", note: "", lookbackMatches: 0, playersFrom: "", clubRef: "" },
 });
 
 let seq = 0;

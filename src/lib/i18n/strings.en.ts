@@ -1414,9 +1414,19 @@ export const en = {
   hq_confirm_teams: (p: { day: string }): string => `Is that YES to the proposed teams for ${p.day}?`,
   /** A YES MatchTime cannot be sure was meant for the pasted list. */
   hq_confirm_list: `Is that YES to the squad list pasted here?`,
-  /** Two things waiting: which one. */
-  hq_confirm_which: (p: { day: string }): string =>
-    `Which one is that YES for: the proposed teams for ${p.day}, or the pasted squad list? Reply YES to that message.`,
+  /** Several things waiting: which one, each named by its `hq_which_*`
+   *  label (`admin-group-confirm-copy.ts`, L10). */
+  hq_confirm_which: (p: { items: string[] }): string =>
+    `Which one is that YES for: ${p.items.length > 1 ? `${p.items.slice(0, -1).join(", ")}, or ${p.items[p.items.length - 1]}` : p.items.join("")}? Reply YES to that message.`,
+  hq_which_teams: (p: { day: string }): string => `the proposed teams for ${p.day}`,
+  hq_which_list: `the pasted squad list`,
+  hq_which_fee: (p: { names: string; day: string }): string => `the free place for ${p.names} on ${p.day}`,
+  hq_which_partner_ask: (p: { asker: string; day: string }): string => `posting *${p.asker}*'s ask for ${p.day} in your players' group`,
+  hq_which_pairing: (p: { club: string; other: string }): string => `pairing *${p.club}* with *${p.other}*`,
+  hq_which_pool_ask: (p: { day: string }): string => `asking nearby players from the MatchTime player pool for ${p.day}`,
+  /** A YES MatchTime cannot be sure was meant for the short-squad notice's
+   *  MatchTime player pool line (L10). */
+  hq_confirm_pool_ask: (p: { day: string }): string => `Is that YES to asking nearby players from the MatchTime player pool for ${p.day}?`,
   /** YES quoting MatchTime with nothing waiting. */
   hq_nothing_waiting: `There's nothing waiting for a YES right now.`,
   /** An admin asked MatchTime for something the admin group cannot do. */

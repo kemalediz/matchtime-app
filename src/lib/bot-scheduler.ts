@@ -148,6 +148,7 @@ import {
 } from "./scheduler-copy";
 import { withPartnerOffer } from "./partner-ask-rules";
 import { withPoolOffer } from "./pool/offer-copy";
+import { poolAskRef } from "./admin-group-pool-refs";
 import { organisersAnnounce } from "./list-announcer";
 import { buildProvisionalReviewNotice } from "./provisional-review-copy";
 import {
@@ -311,6 +312,11 @@ export type DueInstruction =
        *  players' group): as on `group-message`. Server-side; stripped
        *  before the Pi sees it. */
       badgeLedger?: { userId: string; badgeKey: string; matchId: string | null }[];
+      /** The post asks the organisers something a YES answers (L10: the
+       *  short-squad notice's MatchTime player pool line): logged as
+       *  MatchTime's question once claimed. Server-side; stripped before
+       *  the Pi sees it. */
+      hqAskRef?: string;
     };
 
 export interface DuePostsResult {
@@ -1399,8 +1405,7 @@ async function computeForMatch(
     const channel = await admin.getChannel();
     if (!channel) return;
     const { partnerOffer, poolBand: band, ...listExtra } = extra;
-    out.push(
-      ...(await adminNoticeInstructions({
+    const instructions = await adminNoticeInstructions({
         channel,
         piCaps: admin.piCaps,
         sentKeys,
@@ -1412,7 +1417,7 @@ async function computeForMatch(
           // ends with one line and links the match page. None: the
           // notice is exactly as before (`withPartnerOffer`).
           ...(partnerOffer || band ? { nextPath: `/matches/${matchId}` } : {}),
-          text: (link: string) =>
+          text: (link: string, audience?: "dm" | "group") =>
             withPoolOffer(
               withPartnerOffer(
                 buildOrganiserListUpdate({
@@ -1432,10 +1437,13 @@ async function computeForMatch(
               band ?? null,
               link,
               lang,
+              { inHq: audience === "group" },
             ),
         },
-      })),
-    );
+      });
+    // In the admin group the pool line is a question a YES answers (L10):
+    // logged as MatchTime's question once the post is claimed.
+    out.push(...(band ? instructions.map((i) => (i.kind === "admin-group-message" ? { ...i, hqAskRef: poolAskRef(matchId) } : i)) : instructions));
   }
   /**
    * A players' group post that names nobody, relayed to the admin channel
