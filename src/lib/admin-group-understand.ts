@@ -18,7 +18,10 @@
  * The route decides who acts, with the code the rest of MatchTime uses:
  *
  *   self_att, other_att   the attendance engine (`admin-group-squad-change.ts`),
- *                         for any member of the club (2026-10-20)
+ *                         for any member of the club (2026-10-20); a question
+ *                         to MatchTime in the same message (the attendance
+ *                         extractor's "question" side request) is answered
+ *                         after it, in the same reply (2026-10-24)
  *   balancer              the teams extractor, then `team-proposal.ts`
  *   approve               the safe-YES rule (`admin-group-confirm-rules.ts`),
  *                         then `answerTeamsYes` / `answerSquadPasteYes`; a
@@ -107,7 +110,7 @@ import { anthropicModel, type PipelineModel } from "./pipeline/llm";
 import type { AdminFacts, Degradation, Route } from "./pipeline/types";
 import { dayLabel } from "./i18n/dates";
 import { t } from "./i18n/t";
-import { handleAdminSquadChange, nameMentions } from "./admin-group-squad-change";
+import { handleAdminSquadChange, nameMentions, type AdminSquadChangeResult } from "./admin-group-squad-change";
 import { answerTeamsYes, handleTeamCommand } from "./team-proposal";
 import { teamCommandFromFacts } from "./team-proposal-rules";
 import { answerSquadPasteYes } from "./admin-group-paste";
@@ -522,6 +525,21 @@ async function understandInTrace(input: UnderstandInput): Promise<Understood | n
         ...(input.deps?.extractorModel ? { deps: { model: input.deps.extractorModel } } : {}),
       });
 
+    // A squad change that ALSO asks MatchTime something (FNF HQ 2026-10-24:
+    // "Glazers is out now.\n\n@Match Time what is the list?" was routed
+    // other_att and the tagged question went unanswered). The attendance
+    // extractor says so (its "question" side request, the shared pipeline's
+    // way of keeping a second fact); the question answering above answers it,
+    // AFTER the change so the list is the new one, in the same reply. Only
+    // when asked of MatchTime: untagged, a question in HQ is the organisers'.
+    const withItsQuestion = async (change: AdminSquadChangeResult): Promise<Understood | null> => {
+      const answered = change.alsoAsks === true && addressed ? await answerQuestion() : null;
+      if (change.alsoAsks === true) console.log(`[admin-group] ${messageId}: also asks MatchTime: ${answered ? answered.outcome : addressed ? "nothing answered" : "not addressed"}`);
+      if (!change.handled) return answered ? said(answered.outcome, answered.replyText) : null;
+      if (!answered) return said(change.outcome, change.replyText);
+      return said(`${change.outcome}+${answered.outcome}`, `${change.replyText}\n\n${answered.replyText}`);
+    };
+
     // The shared admin extractor on this message, told truly whether the bot
     // was tagged. Null when its call fails or it reads nothing.
     const readAdminFacts = async (): Promise<AdminFacts | null> => {
@@ -708,9 +726,10 @@ async function understandInTrace(input: UnderstandInput): Promise<Understood | n
           sentAt: input.sentAt,
           route,
           addressed,
+          organiser: input.organiser,
           reply: replyShown,
         });
-        return change.handled ? said(change.outcome, change.replyText) : null;
+        return withItsQuestion(change);
       }
       case "ask_group": {
         // One place-open ask in the players' group (`admin-group-ask-group.ts`).
@@ -835,8 +854,12 @@ async function understandInTrace(input: UnderstandInput): Promise<Understood | n
             sentAt: input.sentAt,
             route,
             addressed,
+            organiser: input.organiser,
           });
-          if (change.handled) return said(change.outcome, change.replyText);
+          if (change.handled || change.alsoAsks) {
+            const r = await withItsQuestion(change);
+            if (r) return r;
+          }
         }
         // Then the question answering, for anyone (FNF HQ, 2026-10-18 13:32:
         // "@Match Time what is squad now including bench?" fell back to

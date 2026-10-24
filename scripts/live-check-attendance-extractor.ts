@@ -278,6 +278,16 @@ const CASES: Case[] = [
   { id: "SR3", body: "2 short for Friday, who can play?", author: "Oscar Owner", route: "offer", repeat: true, check: (f) => self(f).length === 0 && f.sideRequests.includes("recruit"), want: "recruit (held out)" },
   { id: "SR4", body: "salı için 3 kişi eksiğiz, gelebilecek var mı?", author: "Oscar Owner", route: "offer", repeat: true, check: (f) => self(f).length === 0 && f.sideRequests.includes("recruit"), want: "recruit (held out, Turkish)" },
   { id: "SR5", body: "come on lads, more players needed", author: "Oscar Owner", route: "offer", repeat: true, check: (f) => self(f).length === 0 && f.sideRequests.includes("chase") && !f.sideRequests.includes("recruit"), want: "chase only (held out)" },
+  // ── FNF HQ 2026-10-24 13:47: a claim plus a question to MatchTime ────
+  // The exact body, as HQ hands it to the engine (tagged, other_att, no
+  // history; Glazers had left the club, so no CLUB MEMBERS NAMED line).
+  // Production read the OUT and `sideRequests: []`.
+  { id: "Q1", body: "Glazers is out now.\n\n@Match Time what is the list?", author: "Kemal Ediz", route: "other_att", tagged: true, repeat: true, check: (f) => other(f, /glazers/i).some(isOut) && f.sideRequests.includes("question"), want: "Glazers out, plus question (the incident)" },
+  { id: "Q1tr", body: "Glazers yok artık.\n\n@Match Time liste ne?", author: "Kemal Ediz", route: "other_att", tagged: true, check: (f) => other(f, /glazers/i).some(isOut) && f.sideRequests.includes("question"), want: "Glazers out, plus question (Turkish)" },
+  { id: "Q2", body: "Najib can't make it. @Match Time how many are we now?", author: "Oscar Owner", route: "other_att", tagged: true, check: (f) => other(f, /najib/i).some(isOut) && f.sideRequests.includes("question"), want: "Najib out, plus question (held out)" },
+  { id: "Q3", body: "@Match Time Tom out", author: "Oscar Owner", route: "other_att", tagged: true, check: (f) => other(f, /tom/i).some(isOut) && !f.sideRequests.includes("question"), want: "Tom out, no question" },
+  { id: "Q4", body: "Tom is out, @Sam are you free friday?", author: "Oscar Owner", route: "other_att", tagged: true, check: (f) => other(f, /tom/i).some(isOut) && !f.sideRequests.includes("question"), want: "Tom out, no question: it is put to Sam" },
+  { id: "Q5", body: "Tom yok, @Ali cuma gelebilir misin?", author: "Oscar Owner", route: "other_att", tagged: true, check: (f) => other(f, /tom/i).some(isOut) && !f.sideRequests.includes("question"), want: "Tom out, no question: put to Ali (Turkish)" },
 
   // ── 2026-09-09 echo (once each) ────────────────────────────────────
   ...["In", "in", "IN", "I'm in", "im in", "In for Tuesday", "count me in", "count me", "add me", "put me down", "I'll play", "I'm there", "yes im in"].map((b, i) =>

@@ -124,6 +124,12 @@ const LIST: ListCase[] = [
   { text: "Yedek var mı? Listeyi paylaşır mısın", want: "squad", why: "held out, TR" },
   { text: "liste nedir", history: [{ author: null, body: "yedekte kim var?" }], want: "squad", why: "held out, TR, bench asked above" },
   { text: "Listeyi gönder", want: "squad", why: "held out, TR" },
+  // FNF HQ 2026-10-24 13:47 (Kemal): a squad change that also asks
+  // MatchTime for the list. HQ now hands the whole message to the question
+  // answering after the change (the attendance extractor's "question" side
+  // request); the claim beside the question must not change the topic.
+  { text: "Glazers is out now.\n\n@Match Time what is the list?", want: "squad", why: "the incident, 2026-10-24, beside an OUT" },
+  { text: "Glazers yok artık.\n\n@Match Time liste ne?", want: "squad", why: "the incident, TR" },
   { text: "anyone on the bench?", want: "bench", why: "the bench alone stays bench" },
   { text: "what's the bench list?", want: "bench", why: "the bench's own list stays bench" },
   { text: "yedekte kimse var mı?", want: "bench", why: "the bench alone, TR" },

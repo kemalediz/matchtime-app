@@ -106,7 +106,13 @@ const self = (over: Partial<Claim> = {}) => claim({ subject: "sender", personRef
 
 /** Run the facts through the hook this module handed the engine, against
  *  a squad state, as the real runner does before `decide()`. */
-function vetThrough(a: EngineArgs, claims: Claim[], rows: SquadState["rows"], body?: string): AttendanceFacts {
+function vetThrough(
+  a: EngineArgs,
+  claims: Claim[],
+  rows: SquadState["rows"],
+  body?: string,
+  sideRequests: AttendanceFacts["sideRequests"] = [],
+): AttendanceFacts {
   expect(a.deps.vetFacts).toBeTypeOf("function");
   const state = {
     matchId: MATCH_ID,
@@ -121,7 +127,7 @@ function vetThrough(a: EngineArgs, claims: Claim[], rows: SquadState["rows"], bo
     ],
   } as unknown as SquadState;
   const message = { ...a.messages[0], ...(body ? { body } : {}) };
-  return a.deps.vetFacts!({ message, facts: { kind: "attendance", claims, affirmation: null, sideRequests: [] }, state });
+  return a.deps.vetFacts!({ message, facts: { kind: "attendance", claims, affirmation: null, sideRequests }, state });
 }
 
 const statuses = new Map<string, string>();
@@ -283,6 +289,41 @@ describe("handleAdminSquadChange", () => {
     });
     const r = await handleAdminSquadChange({ ...input, route });
     expect(r).toEqual({ handled: true, outcome: "squad-unchanged", replyText: "Nothing to change: the squad already says that. 17 of 18." });
+  });
+
+  // FNF HQ 2026-10-24 13:47: "Glazers is out now.\n\n@Match Time what is the
+  // list?" Glazers had left the club and been dropped minutes before: on no
+  // roster. The extractor read the OUT; nothing moved; MatchTime said nothing.
+  describe("the incident: an OUT for someone not on the list, beside a question to MatchTime", () => {
+    const TEXT = "Glazers is out now.\n\n@Match Time what is the list?";
+    const glazersOut = (a: EngineArgs, side: AttendanceFacts["sideRequests"] = ["question"]) =>
+      void vetThrough(a, [claim({ personRef: "Glazers", polarity: "out", confidence: 0.85 })], [], TEXT, side);
+
+    it("says Glazers is not on the list, nothing written, and passes on that the message also asks MatchTime something", async () => {
+      routed("other_att");
+      engineDoes(async (a) => glazersOut(a), { claimCount: 1 });
+      const r = await handleAdminSquadChange({ ...input, route, text: TEXT, addressed: true });
+      expect(r).toEqual({
+        handled: true,
+        outcome: "squad-not-on-list",
+        replyText: "I can't find Glazers on the list for Fri 20:30, so nothing changed.",
+        alsoAsks: true,
+      });
+      expect(att.cancelAttendance).not.toHaveBeenCalled();
+    });
+
+    it("an organiser's untagged instruction: the same line, and no question passed on when none was asked", async () => {
+      routed("other_att");
+      engineDoes(async (a) => glazersOut(a, []), { claimCount: 1 });
+      const r = await handleAdminSquadChange({ ...input, route, text: "Glazers is out now", organiser: true });
+      expect(r).toEqual({ handled: true, outcome: "squad-not-on-list", replyText: "I can't find Glazers on the list for Fri 20:30, so nothing changed." });
+    });
+
+    it("a change that says nothing still passes the question on", async () => {
+      routed("other_att");
+      engineDoes(async (a) => void vetThrough(a, [], [], TEXT, ["question"]), { claimCount: 0 });
+      expect(await handleAdminSquadChange({ ...input, route, text: TEXT })).toEqual({ handled: false, why: "not-a-squad-change", alsoAsks: true });
+    });
   });
 
   it("no claim read at all: silent", async () => {

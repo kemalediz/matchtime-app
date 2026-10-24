@@ -528,6 +528,41 @@ describe("buildAdminSquadReply: what MatchTime says back, and when it says nothi
     });
   });
 
+  // FNF HQ 2026-10-24 13:47: "Glazers is out now. @Match Time what is the
+  // list?" Glazers had been removed from the club and dropped from the match
+  // minutes before, so he was on no roster: the claim resolved to a name
+  // nobody in the club has, nothing moved, and MatchTime said nothing.
+  describe("an OUT for someone not on the list (FNF HQ 2026-10-24)", () => {
+    const glazers = v({ claim: claim({ personRef: "Glazers", polarity: "out" }), ref: { kind: "unknown", name: "Glazers" } });
+    it("asked of MatchTime: one line saying they are not on the list and nothing changed, EN and TR", () => {
+      expect(buildAdminSquadReply({ ...base, vetted: [glazers], addressed: true })).toEqual({
+        text: "I can't find Glazers on the list for Fri 20:30, so nothing changed.",
+        outcome: "squad-not-on-list",
+      });
+      expect(reply({ ...base, lang: "tr", kickoffLabel: "Cum 20:30", vetted: [glazers], addressed: true })).toBe(
+        "Cum 20:30 listesinde Glazers adında birini bulamadım, bu yüzden hiçbir şey değişmedi.",
+      );
+    });
+    it("an organiser's instruction, untagged: the same line", () => {
+      expect(reply({ ...base, vetted: [glazers], organiser: true })).toBe("I can't find Glazers on the list for Fri 20:30, so nothing changed.");
+    });
+    it("a member who is not an organiser, untagged: silence, as for chatter", () => {
+      expect(reply({ ...base, vetted: [glazers] })).toBeNull();
+    });
+    it("held as conversation, even asked of MatchTime or by an organiser: silence, as a stranger's drop always was", () => {
+      expect(reply({ ...base, vetted: [{ ...glazers, hold: "not-a-command" }], addressed: true })).toBeNull();
+      expect(reply({ ...base, vetted: [{ ...glazers, hold: "not-a-command" }], organiser: true })).toBeNull();
+    });
+    it("a tentative or past mention: silence, tagged or not", () => {
+      expect(reply({ ...base, vetted: [{ ...glazers, hold: "contingent" }], addressed: true })).toBeNull();
+      expect(reply({ ...base, vetted: [{ ...glazers, hold: "not-now" }], addressed: true })).toBeNull();
+    });
+    it("two names: one line naming both", () => {
+      const zed = v({ claim: claim({ personRef: "Zed", polarity: "out" }), ref: { kind: "unknown", name: "Zed" } });
+      expect(reply({ ...base, vetted: [glazers, zed], addressed: true })).toBe("I can't find Glazers, Zed on the list for Fri 20:30, so nothing changed.");
+    });
+  });
+
   it('"Nothing to change" only when it is literally true', () => {
     expect(buildAdminSquadReply({ ...base, vetted: [v({ claim: claim({ polarity: "out" }), before: "DROPPED" })] })).toEqual({
       text: "Nothing to change: the squad already says that. 17 of 18.",

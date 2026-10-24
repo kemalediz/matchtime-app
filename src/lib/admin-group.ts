@@ -117,6 +117,10 @@ const NO_TICK: ReadonlySet<string> = new Set([
   // can carry changes that did land beside one that did not.)
   "squad-question",
   "squad-not-set",
+  // An OUT for someone not on the list (2026-10-24): nothing was written.
+  // With the answer to a question beside it the outcome is
+  // "squad-not-on-list+hq-answered", a real answer, and keeps its tick.
+  "squad-not-on-list",
   // The score (2026-10-16): a tick only when it was recorded.
   "hq-score-asked",
   "hq-score-not-changed",

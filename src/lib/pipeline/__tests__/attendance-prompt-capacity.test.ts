@@ -128,6 +128,22 @@ describe("side requests: a named gap is recruit, a general nudge is chase (2026-
     expect(s).toMatch(/"recruit"\s+it says how many players are needed or whose place needs taking[^\n]*"we're 4 short, anyone free\?"/);
     expect(s).toMatch(/"chase"\s+it nudges for more players without saying how many or for whom[^\n]*"@all we need more players pls"/);
   });
+
+  // FNF HQ 2026-10-24 13:47: "Glazers is out now.\n\n@Match Time what is the
+  // list?" came back with the claim and `sideRequests: []`: the question to
+  // MatchTime had no field to land in, so it was lost.
+  it("a question to MatchTime beside the claims is a side request of its own, defined once, and never a question to a member", () => {
+    const s = P.slice(P.indexOf("  sideRequests"), P.indexOf("EXAMPLES"));
+    expect(s).toMatch(/"question"\s+it also asks MatchTime for something it holds[^\n]*what's the list\?"/);
+    expect(s).toMatch(/"question"[^\n]*never a question put to another member/);
+    expect(s.match(/"question"/g)).toHaveLength(1);
+  });
+
+  it("teaches a claim plus a question to MatchTime, English and Turkish", () => {
+    const g = P.slice(P.indexOf("Several things in one message"), P.indexOf("Hedges"));
+    expect(g).toMatch(/"Kai is out now\. @Match Time what's the list\?" \| "Kai yok\. @Match Time liste ne\?" -> Kai out, plus "question"/);
+    expect(g).toMatch(/"Kai out, @Ali can you play\?"[^\n]*-> Kai out, no side request/);
+  });
 });
 
 describe("an injury is not an out (Sutton FC, 2026-10-20)", () => {
