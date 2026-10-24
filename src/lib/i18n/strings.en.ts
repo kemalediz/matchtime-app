@@ -5569,6 +5569,13 @@ export const en = {
     }
   },
   ps_saved: "Style of play saved.",
+  // ─── Ask the pool automatically (pool slice L9, 2026-10-24) ──────────
+  // /admin/settings, beside Style of play, shown while the club may ask
+  // the player pool. The rule is src/lib/pool/auto-ask-rules.ts.
+  pauto_title: "Ask the player pool automatically",
+  pauto_blurb:
+    "On match day, when a place is still open and nobody is on your bench, MatchTime asks nearby players from the MatchTime player pool by itself, an hour after your partner clubs, or straight away if you have none.",
+  pauto_saved: (p: { on: boolean }): string => (p.on ? "MatchTime will ask the player pool automatically." : "MatchTime will ask the player pool only when you ask it to."),
   // ─── D5b, the one question (slice S5b, 2026-10-16) ──────────────────
   /** D5b in the group, used only when he cannot be messaged privately (no
    *  number on file). Otherwise `xask_which_dm` goes to him by DM. */

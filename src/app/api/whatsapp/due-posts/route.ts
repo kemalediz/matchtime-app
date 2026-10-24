@@ -287,9 +287,11 @@ export async function GET(request: Request) {
   // this club made or received that should close, with one line to each
   // side. A club with no partner makes one query. Never throws.
   if (!previewOnly) await sweepPartnerAsks(org.id, nowOverride ?? new Date());
-  // The automatic ask (slice S5): a club on "Automatically at a time"
-  // only; every other club makes one read. Never throws.
-  if (!previewOnly) await sweepAutoPartnerAsks(org.id, nowOverride ?? new Date());
+  // The automatic ask (slice S5): a club on "Automatically at a time", or
+  // one whose automatic ask includes the player pool (L9, the pool switch
+  // read as the platform poll reads it); every other club makes two reads.
+  // Never throws.
+  if (!previewOnly) await sweepAutoPartnerAsks(org.id, nowOverride ?? new Date(), { poolEnv: poolEnvForApiRequest(request) });
 
   if (!previewOnly) {
     try {

@@ -61,6 +61,11 @@ export const poolOfferEn = {
   turnup_some: (p: { played: number; n: number }) => `Turned up to ${p.played} of ${p.n} MatchTime games.`,
   /** The short-squad notice's extra line (the organisers' language). */
   notice_offer_line: (p: { band: string; link: string }) => `🔎 Or ask nearby players from the MatchTime pool (${p.band}). Open the match page: ${p.link}`,
+  /** The automatic ask asked the pool (slice L9): one line to the organisers. */
+  notice_auto: (p: { day: string; partnersFirst: boolean }) =>
+    p.partnersFirst
+      ? `🔎 Your automatic ask: a place is still open for ${p.day} and nobody is on your bench, so I'll ask nearby players from the MatchTime player pool if your partner clubs have not filled it within the hour. I'll tell you when one takes a place.`
+      : `🔎 Your automatic ask: a place is still open for ${p.day} and nobody is on your bench, so I'm asking nearby players from the MatchTime player pool. I'll tell you when one takes a place.`,
 
   // ── The match page's pool line (organisers) ───────────────────────────
   pool_label: "MatchTime player pool",

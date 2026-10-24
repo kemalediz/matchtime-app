@@ -184,6 +184,8 @@ describe("settings explanations: house rules", () => {
         clubHomeVenue: s.pd_venue_label,
         // Local player pool (slice L5b, 2026-10-24).
         playStyle: s.ps_title,
+        // Local player pool (slice L9, 2026-10-24).
+        poolAutoAsk: s.pauto_title,
       };
       for (const [k, label] of Object.entries(titles)) expect(settingInfo(lang, k as SettingInfoKey).title, `${k} ${lang}`).toBe(label);
     }
@@ -215,7 +217,7 @@ describe("settings explanations: house rules", () => {
       expect(names("partnerAskWhen")).toEqual([s.pc_when_off, s.pc_when_on_request, s.pc_when_auto]);
       expect(names("partnerApproval")).toEqual([s.pc_approval_each, s.pc_approval_standing]);
       // Partner discovery (slice P1): a switch's choices are On and Off.
-      for (const k of ["partnerDiscoverable", "partnerAutoAccept", "partnerShareRatings"] as const) expect(names(k)).toEqual(lang === "tr" ? ["Açık", "Kapalı"] : ["On", "Off"]);
+      for (const k of ["partnerDiscoverable", "partnerAutoAccept", "partnerShareRatings", "poolAutoAsk"] as const) expect(names(k)).toEqual(lang === "tr" ? ["Açık", "Kapalı"] : ["On", "Off"]);
     }
   });
 
@@ -265,6 +267,7 @@ describe("settings explanations: the facts match the code", () => {
       badgeAnnouncements: "featureBadgeAnnouncements",
       gearReminder: "featureGearReminder",
       rollingSquad: "rollingSquadEnabled",
+      poolAutoAsk: "poolAutoAsk",
     };
     for (const [k, col] of Object.entries(columns)) {
       expect(d[col], col).toMatch(/^(true|false)$/);

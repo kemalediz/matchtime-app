@@ -4150,6 +4150,10 @@ export const tr: Strings = {
     }
   },
   ps_saved: "Oyun tarzı kaydedildi.",
+  pauto_title: "Oyuncu havuzuna kendiliğinden sor",
+  pauto_blurb:
+    "Maç günü hâlâ boş yer varsa ve yedek listenizde kimse yoksa MatchTime, MatchTime oyuncu havuzundaki yakın oyunculara kendiliğinden sorar: partner kulüplerinizden bir saat sonra, partner kulübünüz yoksa hemen.",
+  pauto_saved: (p) => (p.on ? "MatchTime oyuncu havuzuna kendiliğinden soracak." : "MatchTime oyuncu havuzuna yalnızca siz isteyince soracak."),
   // ─── D5b, tek soru (slice S5b) ──────────────────────────────────────
   xask_which: (p) =>
     `Bu VARIM *${p.asker}* maçı için mi, bizim maç için mi? ${p.asker} için ${p.asker} mesajımı yanıtlayıp VARIM yaz. Bizim maç için tekrar VARIM yazman yeterli.`,

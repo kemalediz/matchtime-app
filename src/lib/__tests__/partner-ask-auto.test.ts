@@ -26,6 +26,10 @@ vi.mock("../admin-group-log", () => ({ recordMatchTimeQuestion: vi.fn() }));
 vi.mock("../group-postability-store", () => ({ isGroupPostable: vi.fn().mockResolvedValue(true) }));
 const settingsMock = vi.hoisted(() => ({ loadPartnerAskSettings: vi.fn() }));
 vi.mock("../club-partnership", () => settingsMock);
+// The pool's part of the automatic ask (slice L9) is its own module, tested
+// in pool/__tests__/auto-ask.test.ts; here only the wiring.
+const poolAutoMock = vi.hoisted(() => ({ poolAutoAskClub: vi.fn(), autoAskPool: vi.fn() }));
+vi.mock("../pool/auto-ask", () => poolAutoMock);
 
 import { partnerOfferFor, sweepAutoPartnerAsks } from "../partner-ask";
 
@@ -72,6 +76,8 @@ beforeEach(() => {
   dbMock.partnerAsk.create.mockResolvedValue({ id: "ask1" });
   dbMock.partnerAsk.findMany.mockResolvedValue([]);
   noticeMock.sendAdminNotice.mockResolvedValue({ channel: "dm", queued: 1 });
+  poolAutoMock.poolAutoAskClub.mockResolvedValue({ poolOpen: false, poolAutoAsk: false, language: "en" });
+  poolAutoMock.autoAskPool.mockResolvedValue(null);
 });
 
 describe("sweepAutoPartnerAsks", () => {
@@ -121,6 +127,70 @@ describe("sweepAutoPartnerAsks", () => {
   it("never throws", async () => {
     settingsMock.loadPartnerAskSettings.mockRejectedValue(new Error("down"));
     await expect(sweepAutoPartnerAsks("fnf", AT_1601)).resolves.toEqual({ asked: 0 });
+  });
+});
+
+describe("sweepAutoPartnerAsks: the pool joins (slice L9)", () => {
+  const POOL_ON = { poolOpen: true, poolAutoAsk: true, language: "en" };
+
+  it("the partners asked in one pass share a round, as an organiser's tap does, and the pool is offered that round", async () => {
+    poolAutoMock.poolAutoAskClub.mockResolvedValue(POOL_ON);
+    const env = { POOL_OFFERS_ENABLED: "1" };
+    expect(await sweepAutoPartnerAsks("fnf", AT_1601, { poolEnv: env })).toEqual({ asked: 1 });
+    const roundId = dbMock.partnerAsk.create.mock.calls[0][0].data.roundId;
+    expect(typeof roundId).toBe("string");
+    expect(poolAutoMock.poolAutoAskClub).toHaveBeenCalledWith("fnf", env);
+    expect(poolAutoMock.autoAskPool).toHaveBeenCalledTimes(1);
+    expect(poolAutoMock.autoAskPool.mock.calls[0][0]).toMatchObject({
+      orgId: "fnf",
+      match: { id: "m1", date: KICKOFF },
+      now: AT_1601,
+      askAt: new Date("2026-10-30T16:00:00Z"),
+      postBy: new Date("2026-10-30T16:30:00Z"),
+      placesOpen: 1,
+      waitingCount: 0,
+      hasPartners: true,
+      partnersWhen: "auto",
+      askedNowRoundId: roundId,
+      club: POOL_ON,
+      env,
+    });
+  });
+
+  it("no partner asked in this pass (asked before): the pool is offered no round of this pass", async () => {
+    poolAutoMock.poolAutoAskClub.mockResolvedValue(POOL_ON);
+    dbMock.partnerAsk.count.mockResolvedValue(1);
+    await sweepAutoPartnerAsks("fnf", AT_1601);
+    expect(dbMock.partnerAsk.create).not.toHaveBeenCalled();
+    expect(poolAutoMock.autoAskPool.mock.calls[0][0]).toMatchObject({ hasPartners: true, askedNowRoundId: null });
+  });
+
+  it("a club with no partner club and the automatic pool ask on: the pool is still offered the match, whatever the partner setting", async () => {
+    poolAutoMock.poolAutoAskClub.mockResolvedValue(POOL_ON);
+    settingsMock.loadPartnerAskSettings.mockResolvedValue({ when: "off", time: null, cutoffHours: 4 });
+    dbMock.clubPartnership.findMany.mockResolvedValue([]);
+    expect(await sweepAutoPartnerAsks("fnf", AT_1601)).toEqual({ asked: 0 });
+    expect(poolAutoMock.autoAskPool).toHaveBeenCalledTimes(1);
+    expect(poolAutoMock.autoAskPool.mock.calls[0][0]).toMatchObject({ hasPartners: false, partnersWhen: "off", askedNowRoundId: null });
+  });
+
+  it("partners on When we ask: neither the partners nor the pool are asked by the sweep", async () => {
+    poolAutoMock.poolAutoAskClub.mockResolvedValue(POOL_ON);
+    settingsMock.loadPartnerAskSettings.mockResolvedValue({ when: "on-request", time: null, cutoffHours: 4 });
+    await sweepAutoPartnerAsks("fnf", AT_1601);
+    expect(dbMock.partnerAsk.create).not.toHaveBeenCalled();
+    expect(poolAutoMock.autoAskPool).not.toHaveBeenCalled();
+  });
+
+  it("the automatic pool ask off: the pool is never offered the match", async () => {
+    await sweepAutoPartnerAsks("fnf", AT_1601);
+    expect(poolAutoMock.autoAskPool).not.toHaveBeenCalled();
+  });
+
+  it("not the club's next match, or not match day: the pool is not offered it either", async () => {
+    poolAutoMock.poolAutoAskClub.mockResolvedValue(POOL_ON);
+    expect(await sweepAutoPartnerAsks("fnf", new Date("2026-10-29T16:01:00Z"))).toEqual({ asked: 0 });
+    expect(poolAutoMock.autoAskPool).not.toHaveBeenCalled();
   });
 });
 
