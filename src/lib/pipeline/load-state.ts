@@ -12,6 +12,7 @@
  * module that could break it.
  */
 import { db } from "../db";
+import { withAliases } from "../member-aliases";
 import { dayCommaTimeLabel, dayLabel, kickoffLabel } from "../i18n/dates";
 import { cancelledMatchToMention } from "../cancelled-match-notice";
 import { t } from "../i18n/t";
@@ -91,13 +92,18 @@ export async function loadSquadState(
     memberships.map((m) => m.user.id),
     features.language,
   );
-  const roster = memberships.map((m) => ({
-    userId: m.user.id,
-    name: m.user.name ?? "",
-    displayName: shownNames.get(m.user.id)?.display,
-    isAdmin: m.role === "OWNER" || m.role === "ADMIN",
-    hasPhone: !!m.user.phoneNumber,
-  }));
+  // The club's aliases ride on each member ("AH" is Abdul-Hafeez, FNF HQ
+  // 2026-10-24): the engine's resolver matches people on them too.
+  const roster = await withAliases(
+    orgId,
+    memberships.map((m) => ({
+      userId: m.user.id,
+      name: m.user.name ?? "",
+      displayName: shownNames.get(m.user.id)?.display,
+      isAdmin: m.role === "OWNER" || m.role === "ADMIN",
+      hasPhone: !!m.user.phoneNumber,
+    })),
+  );
 
   const rows = match
     ? (

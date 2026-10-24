@@ -94,6 +94,8 @@ vi.mock("../db", () => ({
       },
     },
     organisation: { findUnique: async () => org },
+    // The club's aliases (member-aliases.ts): none in these tests.
+    userAlias: { findMany: async () => [] },
     user: {
       findUnique: async ({ where }: { where: { id: string } }) => {
         const r = rows.find((x) => x.userId === where.id);

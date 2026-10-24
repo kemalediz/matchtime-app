@@ -353,6 +353,29 @@ const CASES: Case[] = [
     check: (f: AttendanceFacts) => other(f, /^glazers$/i).some((c) => isOut(c) && c.confidence >= 0.7) && noSelfOut(f),
     want: "Glazers out, at 0.7 or above (HQ's floor)",
   })),
+  // FNF HQ 2026-10-24 12:52 UTC: "AH out", AH being the alias the club set
+  // for Abdul-Hafeez. Production sent no CLUB MEMBERS NAMED line (AH0, the
+  // input as it was); the line now shows the alias with the member's name.
+  { id: "AH0", body: "AH out", author: "Raihan", route: "other_att", tagged: true, check: (f) => other(f, /^(ah|abdul-hafeez)$/i).some(isOut) && noSelfOut(f), want: "AH out (production's input, no line)" },
+  { id: "AH0b", body: "AH IN", author: "Raihan", route: "other_att", tagged: true, check: (f) => other(f, /^(ah|abdul-hafeez)$/i).some((c) => c.polarity === "in") && self(f).length === 0, want: "AH in, not the sender (no line)" },
+  // "ah" as the word, with no member listed: still the sender's own place.
+  { id: "AH4", body: "ah ok, I'm in", check: (f) => selfIn(f) && f.claims.every((c) => c.subject === "sender"), want: "the sender in, no one called ah" },
+  { id: "AH5", body: "Ah sorry lads can't make it tonight", check: (f) => selfOutDecided(f) && f.claims.every((c) => c.subject === "sender"), want: "the sender out, no one called ah" },
+  ...[
+    { id: "AH1", body: "AH out", polarity: "out" },
+    { id: "AH2", body: "AH IN", polarity: "in" },
+    { id: "AH3", body: "AH yok bu hafta", polarity: "out" },
+  ].map((g) => ({
+    id: g.id,
+    body: g.body,
+    author: "Raihan",
+    route: "other_att" as Route,
+    tagged: true,
+    members: ["AH (Abdul-Hafeez)"],
+    check: (f: AttendanceFacts) =>
+      other(f, /^(ah|abdul-hafeez)$/i).some((c) => c.polarity === g.polarity && !c.contingent && c.confidence >= 0.7) && self(f).length === 0,
+    want: `AH ${g.polarity}, not the sender, at 0.7 or above`,
+  })),
   { id: "GZ3", body: "Glazers in", author: "Nasir", route: "other_att", tagged: true, members: ["Glazers"], check: (f) => other(f, /^glazers$/i).some((c) => c.polarity === "in") && self(f).length === 0, want: "Glazers in, not the sender" },
   // A listed member whose name is also an ordinary word is read as the word.
   { id: "GZ4", body: "will you play tonight?", members: ["Will Smith"], check: (f) => !other(f, /will/i).length, want: "no claim for Will" },
