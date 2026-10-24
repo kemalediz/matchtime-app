@@ -1,4 +1,5 @@
 import type { MetadataRoute } from "next";
+import { PRIVACY_PATH } from "@/lib/privacy-policy";
 
 const BASE =
   process.env.NEXTAUTH_URL?.replace(/\/$/, "") ?? "https://matchtime.ai";
@@ -30,6 +31,11 @@ export default function sitemap(): MetadataRoute.Sitemap {
       url: `${BASE}/help/admin`,
       changeFrequency: "monthly",
       priority: 0.7,
+    },
+    {
+      url: `${BASE}${PRIVACY_PATH}`,
+      changeFrequency: "yearly",
+      priority: 0.3,
     },
     {
       url: `${BASE}/login`,

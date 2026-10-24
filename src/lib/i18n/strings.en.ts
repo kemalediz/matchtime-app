@@ -5624,4 +5624,9 @@ export const en = {
     }
   },
   mch_back_to_match: "Back to match",
+
+  // ── Privacy policy link (local player pool L0, 2026-10-24) ─────────
+  // The label of every link to /privacy (site footer now; /play and the
+  // pool's first reply later). The policy itself is in privacy-policy.*.ts.
+  privacy_link: "Privacy policy",
 };

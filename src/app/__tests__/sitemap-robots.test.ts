@@ -7,6 +7,10 @@ describe("sitemap", () => {
     const paths = sitemap().map((e) => new URL(e.url).pathname);
     expect(paths).toEqual(expect.arrayContaining(["/", "/help", "/help/player", "/help/admin"]));
   });
+
+  it("lists the privacy policy", () => {
+    expect(sitemap().map((e) => new URL(e.url).pathname)).toContain("/privacy");
+  });
 });
 
 describe("robots.txt", () => {

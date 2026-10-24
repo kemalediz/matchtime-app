@@ -33,6 +33,13 @@ describe("isPublicPath", () => {
     },
   );
 
+  // The privacy policy (local player pool slice L0) must be readable by
+  // anyone before they sign up or share any detail.
+  it("lets signed-out visitors read the privacy policy", () => {
+    expect(isPublicPath("/privacy")).toBe(true);
+    expect(isPublicPath("/privacyx")).toBe(false);
+  });
+
   it.each(["/", "/login", "/signup", "/sitemap.xml", "/robots.txt", "/join/abc", "/r/tok", "/api/stripe/webhook"])(
     "keeps the existing public route %s public",
     (p) => {

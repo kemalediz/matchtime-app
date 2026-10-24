@@ -29,6 +29,8 @@ const PUBLIC_FILES = [
   "src/app/help/admin/page.tsx",
   "src/app/layout.tsx",
   "src/app/create-org/page.tsx",
+  "src/app/privacy/page.tsx",
+  "src/app/privacy/privacy-policy-view.tsx",
 ];
 
 function stripComments(src: string): string {

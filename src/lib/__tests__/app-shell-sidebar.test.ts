@@ -14,6 +14,11 @@ describe("shouldShowSidebar", () => {
     }
   });
 
+  it("shows the privacy policy full-bleed for visitors and with the sidebar for signed-in users", () => {
+    expect(shouldShowSidebar("/privacy", "unauthenticated")).toBe(false);
+    expect(shouldShowSidebar("/privacy", "authenticated")).toBe(true);
+  });
+
   it("treats loading as signed in so a signed-in refresh does not flash", () => {
     expect(shouldShowSidebar("/help", "loading")).toBe(true);
     expect(shouldShowSidebar("/", "loading")).toBe(true);

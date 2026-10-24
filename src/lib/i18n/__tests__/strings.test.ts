@@ -1945,6 +1945,7 @@ const SAMPLES: SampleArgs = {
   mch_kickoff: { time: "21:37" },
   mch_status: { status: "COMPLETED" },
   mch_back_to_match: null,
+  privacy_link: null,
 };
 
 /** Render an entry with its sample arguments. */
