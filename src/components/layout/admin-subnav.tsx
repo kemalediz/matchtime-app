@@ -28,8 +28,10 @@ const OWNER_TABS = [
  * `monthsLabel`: the "Months" tab, in the club's language. The admin
  * layout passes it ONLY for a club on a monthly squad (monthly squad,
  * slice 2); every other club's tabs are exactly what they were.
+ * `guestsLabel`: the "Guest players" tab (pool slice L5b), passed only for a
+ * club that may ask the pool or has had a guest (`guestPlayersTabShown`).
  */
-export function AdminSubnav({ monthsLabel }: { monthsLabel?: string } = {}) {
+export function AdminSubnav({ monthsLabel, guestsLabel }: { monthsLabel?: string; guestsLabel?: string } = {}) {
   const pathname = usePathname();
   // Live count of unresolved attendance messages — the whole point of
   // #1 is that silent drops are impossible to MISS, so the badge sits
@@ -60,11 +62,15 @@ export function AdminSubnav({ monthsLabel }: { monthsLabel?: string } = {}) {
     };
   }, [pathname]);
 
+  // "Guest players" sits just after Players.
+  const players = TABS.findIndex((x) => x.href === "/admin/players") + 1;
+  const tabs = guestsLabel ? [...TABS.slice(0, players), { label: guestsLabel, href: "/admin/guests" }, ...TABS.slice(players)] : TABS;
+
   return (
     <nav className="flex gap-1 p-1 bg-slate-100 rounded-lg max-w-full overflow-x-auto">
       {[
         // "Months" sits just before Settings, for a monthly club only.
-        ...(monthsLabel ? [...TABS.slice(0, -1), { label: monthsLabel, href: "/admin/months" }, ...TABS.slice(-1)] : TABS),
+        ...(monthsLabel ? [...tabs.slice(0, -1), { label: monthsLabel, href: "/admin/months" }, ...tabs.slice(-1)] : tabs),
         ...(owner ? OWNER_TABS : []),
       ].map((t) => {
         const active =

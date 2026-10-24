@@ -182,6 +182,8 @@ describe("settings explanations: house rules", () => {
         partnerAutoAccept: s.pd_auto_accept_label,
         partnerShareRatings: s.pd_share_ratings_label,
         clubHomeVenue: s.pd_venue_label,
+        // Local player pool (slice L5b, 2026-10-24).
+        playStyle: s.ps_title,
       };
       for (const [k, label] of Object.entries(titles)) expect(settingInfo(lang, k as SettingInfoKey).title, `${k} ${lang}`).toBe(label);
     }

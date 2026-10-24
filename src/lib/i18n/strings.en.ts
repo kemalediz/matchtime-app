@@ -5486,6 +5486,89 @@ export const en = {
   xask_keep_button: (p: { club: string }) => `Add to ${p.club}`,
   xask_keep_done: "Added as a member.",
   xask_guest_badge: (p: { club: string }) => `Guest from ${p.club}`,
+  // ─── Guest players page, guest tag and card (pool slice L5b, 2026-10-24) ─
+  // /admin/guests (src/app/admin/guests), the match page's Guest tag and the
+  // guest card. Read model: src/lib/pool/guest-report.ts.
+  gst_title: "Guest players",
+  gst_intro: "Players from your partner clubs and from the MatchTime player pool who took a place in your games.",
+  gst_tab_upcoming: "Upcoming",
+  gst_tab_history: "History",
+  gst_tab_report: "Report",
+  gst_empty_upcoming: "No guest is booked for your coming games.",
+  gst_empty_history: "No guest has played with your club yet.",
+  gst_empty_report: "Nothing to report yet. Your club has not asked for guests or had one.",
+  gst_source_pool: "MatchTime player pool",
+  gst_source_partner: (p: { club: string }) => `From ${p.club}`,
+  gst_source_partner_unknown: "From a partner club",
+  gst_on_bench: "On the bench",
+  gst_record_new: "New to MatchTime",
+  gst_record: (p: { played: number; games: number }) => `Turned up to ${p.played} of ${p.games} ${p.games === 1 ? "game" : "games"}`,
+  gst_games_here: (p: { n: number }) => (p.n === 1 ? "1 game with your club" : `${p.n} games with your club`),
+  gst_result: (p: { outcome: string }): string => {
+    switch (p.outcome) {
+      case "played":
+        return "Played";
+      case "no-show":
+        return "No-show";
+      case "late-cancel":
+        return "Late cancel";
+      case "withdrawn":
+        return "Pulled out in time";
+      default:
+        return "Booked";
+    }
+  },
+  gst_joined: "Joined the club",
+  gst_not_joined: "Not a member",
+  gst_guest_tag: "Guest",
+  gst_card_open: (p: { name: string }) => `About ${p.name}`,
+  gst_card_sports: "Sports",
+  gst_card_record: "Turn-up record",
+  gst_card_games: "Games with your club",
+  gst_card_source: "Came from",
+  gst_nameless: "Guest with no name",
+  gst_invite: "Invite to club",
+  gst_invite_invited: "Invited, waiting for an answer",
+  gst_invite_unavailable: "Cannot be invited: this player stopped messages from MatchTime or deleted the profile.",
+  gst_invite_failed: "That invitation could not be sent. Reload the page and try again.",
+  gst_period: "Period",
+  gst_period_month: "By month",
+  gst_period_season: "By season",
+  gst_season: (p: { key: string }) => `Season ${p.key}`,
+  gst_filter_sport: "Sport",
+  gst_filter_venue: "Venue",
+  gst_filter_all: "All",
+  gst_filter_apply: "Show",
+  gst_csv: "Download CSV",
+  gst_col_asked: "Asked",
+  gst_col_accepted: "Accepted",
+  gst_col_played: "Played",
+  gst_col_no_shows: "No-shows",
+  gst_col_members: "Became members",
+  gst_col_short: "Short games",
+  gst_col_rescued: "Rescued",
+  gst_col_fill_rate: "Fill rate",
+  gst_total: "Total",
+  gst_fill_none: "None",
+  gst_report_help:
+    "A short game is a game you asked guests for. It is rescued when a guest played in it. The fill rate is the share of short games rescued; a game still to play is not counted yet.",
+  // ─── Style of play (pool slice L5b, 2026-10-24) ──────────────────────
+  // /admin/settings, shown while the club may ask the player pool.
+  ps_title: "Style of play",
+  ps_blurb: "How your games feel. It is shown on offers to players from the MatchTime player pool.",
+  ps_style: (p: { kind: string }): string => {
+    switch (p.kind) {
+      case "casual":
+        return "Casual";
+      case "competitive":
+        return "Competitive";
+      case "mixed":
+        return "Mixed";
+      default:
+        return "Not set";
+    }
+  },
+  ps_saved: "Style of play saved.",
   // ─── D5b, the one question (slice S5b, 2026-10-16) ──────────────────
   /** D5b in the group, used only when he cannot be messaged privately (no
    *  number on file). Otherwise `xask_which_dm` goes to him by DM. */

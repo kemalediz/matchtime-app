@@ -1,5 +1,26 @@
 import { RemoveFromMatchButton } from "./remove-from-match-button";
 import { MoveUpFromBenchButton } from "./move-up-from-bench-button";
+import { GuestCardTrigger, GuestTag } from "@/components/guests/guest-card";
+import type { GuestCard } from "@/lib/pool/guest-report";
+
+/** The guests on the match (pool slice L5b): his card for an organiser, null
+ *  (the plain Guest tag) for anyone else. */
+export interface AttendanceGuests {
+  lang: string | null;
+  orgId: string;
+  byUser: Record<string, GuestCard | null>;
+}
+
+function GuestMark({ guests, userId }: { guests?: AttendanceGuests; userId: string }) {
+  if (!guests || !(userId in guests.byUser)) return null;
+  const card = guests.byUser[userId];
+  if (!card) return <GuestTag lang={guests.lang} />;
+  return (
+    <GuestCardTrigger card={card} lang={guests.lang} orgId={guests.orgId} className="rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+      <GuestTag lang={guests.lang} />
+    </GuestCardTrigger>
+  );
+}
 
 interface AttendancePlayer {
   id: string;
@@ -28,6 +49,7 @@ export function AttendanceList({
   admin = false,
   matchId,
   hideBench = false,
+  guests,
 }: {
   attendances: AttendancePlayer[];
   maxPlayers: number;
@@ -37,6 +59,7 @@ export function AttendanceList({
   /** An organiser-pick club shows its waiting list to admins with the
    *  pick controls instead (`waiting-list-controls.tsx`). */
   hideBench?: boolean;
+  guests?: AttendanceGuests;
 }) {
   const confirmed = attendances
     .filter((a) => a.status === "CONFIRMED")
@@ -57,6 +80,7 @@ export function AttendanceList({
               <span className="text-xs text-slate-400 w-5 text-right font-mono">{i + 1}</span>
               <Initials name={a.user.name} />
               <span className="text-sm font-medium text-slate-800 truncate">{a.user.name}</span>
+              <GuestMark guests={guests} userId={a.user.id} />
               <div className="ml-auto flex items-center gap-1.5">
                 {a.user.positions.slice(0, 2).map((pos) => (
                   <span
@@ -89,6 +113,7 @@ export function AttendanceList({
                 <span className="text-xs text-slate-400 w-5 text-right font-mono">{i + 1}</span>
                 <Initials name={a.user.name} />
                 <span className="text-sm text-slate-700">{a.user.name}</span>
+                <GuestMark guests={guests} userId={a.user.id} />
                 {admin && matchId && (
                   <span className="ml-auto flex items-center gap-1.5">
                     <MoveUpFromBenchButton matchId={matchId} userId={a.user.id} name={a.user.name} />
