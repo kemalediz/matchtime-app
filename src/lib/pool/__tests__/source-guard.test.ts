@@ -15,9 +15,9 @@
  *    reader of slice L6, which reads only the person's own offer) must be
  *    named in `POOL_MODEL_READERS` below, on purpose, in review.
  *
- * 3. The seven unused `User.discoverableNearby*` / `homeArea*` /
- *    `nearbyRadiusKm` columns (added 2026-06-18, 0 users) stay unread until
- *    slice L11 drops them. The pool replaced them.
+ * 3. (Retired in slice L11: the seven unused "nearby players" `User`
+ *    columns are off the model; `src/lib/__tests__/
+ *    no-discoverable-nearby-columns.test.ts` keeps them gone.)
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
@@ -142,13 +142,6 @@ describe("nothing a model reads comes from the pool", () => {
     expect(POOL_IMPORT.test(`import { x } from "../pool/sports";`)).toBe(true);
     expect(POOL_IMPORT.test(`const m = await import("@/lib/pool/offers");`)).toBe(true);
     expect(POOL_IMPORT.test(`import { x } from "@/lib/pooled-thing";`)).toBe(false);
-  });
-});
-
-describe("the unused discoverable-nearby columns stay unread", () => {
-  it("no file names them", () => {
-    const re = /\b(discoverableNearby|discoverableNearbyAt|discoverableConsentVer|nearbyRadiusKm|homeAreaLabel|homeAreaLat|homeAreaLng)\b/;
-    expect(FILES.filter((f) => re.test(f.code)).map((f) => f.rel)).toEqual([]);
   });
 });
 
