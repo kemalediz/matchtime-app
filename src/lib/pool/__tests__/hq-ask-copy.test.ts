@@ -16,6 +16,13 @@ describe("the reply to an ask that went", () => {
     );
   });
 
+  it("said in the players' group (L10): it lets them know, never \"here\"", () => {
+    expect(poolHqAskReply("en", { ok: true, places: 1, day: "Tue 27 Oct, 20:00", partnersFirst: false, inHq: false })).toBe(
+      "🔎 Asking nearby players from the MatchTime player pool for 1 place on Tue 27 Oct, 20:00. I'll let you know when one takes a place.",
+    );
+    expect(poolHqAskReply("tr", { ok: true, places: 1, day: "27 Eki Sal, 20:00", partnersFirst: true, inHq: false })).toMatch(/Biri yer alınca size haber vereceğim\.$/);
+  });
+
   it("after the partner clubs: says it waits for them first", () => {
     expect(poolHqAskReply("en", { ok: true, places: 1, day: "Tue 27 Oct, 20:00", partnersFirst: true })).toMatch(
       /^🔎 I'll ask nearby players from the MatchTime player pool for 1 place on Tue 27 Oct, 20:00 if your partner clubs have not filled it within the hour\./,

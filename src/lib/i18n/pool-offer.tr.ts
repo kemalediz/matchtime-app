@@ -54,9 +54,11 @@ export const poolOfferTr: PoolOfferStrings = {
       : `🔎 Otomatik isteğiniz: ${p.day} için hâlâ boş yer var ve yedek listenizde kimse yok, bu yüzden MatchTime oyuncu havuzundaki yakın oyunculara soruyorum. Biri yer alınca size haber vereceğim.`,
 
   hq_asked: (p) =>
-    p.partnersFirst
-      ? `🔎 ${p.day} maçı için partner kulüpleriniz bir saat içinde doldurmazsa MatchTime oyuncu havuzundaki yakın oyunculara soracağım (${p.places} kişi). Biri yer alınca burada haber vereceğim.`
-      : `🔎 ${p.day} maçı için MatchTime oyuncu havuzundaki yakın oyunculara soruyorum (${p.places} kişi). Biri yer alınca burada haber vereceğim.`,
+    `${
+      p.partnersFirst
+        ? `🔎 ${p.day} maçı için partner kulüpleriniz bir saat içinde doldurmazsa MatchTime oyuncu havuzundaki yakın oyunculara soracağım (${p.places} kişi).`
+        : `🔎 ${p.day} maçı için MatchTime oyuncu havuzundaki yakın oyunculara soruyorum (${p.places} kişi).`
+    } ${p.inHq ? "Biri yer alınca burada haber vereceğim." : "Biri yer alınca size haber vereceğim."}`,
   hq_closed: "MatchTime oyuncu havuzu kulübünüz için henüz açık değil. İsterseniz oyuncu grubunuza oynayabilecek biri var mı diye sorabilirim.",
 
   pool_label: "MatchTime oyuncu havuzu",

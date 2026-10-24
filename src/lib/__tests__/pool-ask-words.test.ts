@@ -20,7 +20,7 @@ vi.mock("../pool/auto-ask", () => autoAsk);
 const panel = vi.hoisted(() => ({ poolNoticeBand: vi.fn() }));
 vi.mock("../pool/panel", () => panel);
 
-import { askPoolInHq, poolNoticesAwaiting } from "../admin-group-pool";
+import { askPoolFromWords, poolNoticesAwaiting } from "../pool-ask-words";
 import { latestPoolNoticeAsks, poolAskRef } from "../admin-group-pool-refs";
 
 const NOW = new Date("2026-10-27T12:00:00Z");
@@ -40,13 +40,13 @@ beforeEach(() => {
 
 describe("asking the pool from HQ", () => {
   it("in words: the club's next match, every open place, the organiser's approval, via words; one line back", async () => {
-    const r = await askPoolInHq({ orgId: "o1", userId: "u-owner", via: "words", lang: "en", now: NOW, env: ENV });
+    const r = await askPoolFromWords({ orgId: "o1", userId: "u-owner", via: "words", lang: "en", now: NOW, env: ENV });
     expect(round.requestPoolAsk).toHaveBeenCalledWith({ orgId: "o1", matchId: "m1", places: 2, roundId: null, approvedByUserId: "u-owner", via: "words", now: NOW, env: ENV });
     expect(r).toEqual({ outcome: "hq-pool-asked", replyText: expect.stringMatching(/^🔎 Asking nearby players from the MatchTime player pool for 2 places on Tue 27 Oct, 20:00\./) });
   });
 
   it("a YES to the notice: that notice's match, via notice", async () => {
-    await askPoolInHq({ orgId: "o1", matchId: "m1", userId: "u-owner", via: "notice", lang: "en", now: NOW, env: ENV });
+    await askPoolFromWords({ orgId: "o1", matchId: "m1", userId: "u-owner", via: "notice", lang: "en", now: NOW, env: ENV });
     expect(squad.loadSquadState).not.toHaveBeenCalled();
     expect(round.requestPoolAsk).toHaveBeenCalledWith(expect.objectContaining({ matchId: "m1", via: "notice" }));
   });
@@ -54,20 +54,20 @@ describe("asking the pool from HQ", () => {
   it("partner clubs already asked for this game: the pool joins their round, for their number, and waits its hour", async () => {
     autoAsk.openPartnerRoundOf.mockResolvedValue({ roundId: "r1", places: 1 });
     round.requestPoolAsk.mockResolvedValue({ ok: true, askId: "a1", waveSent: false });
-    const r = await askPoolInHq({ orgId: "o1", userId: "u-owner", via: "words", lang: "en", now: NOW, env: ENV });
+    const r = await askPoolFromWords({ orgId: "o1", userId: "u-owner", via: "words", lang: "en", now: NOW, env: ENV });
     expect(round.requestPoolAsk).toHaveBeenCalledWith(expect.objectContaining({ roundId: "r1", places: 1 }));
     expect(r.replyText).toMatch(/if your partner clubs have not filled it within the hour/);
   });
 
   it("refused (the pool closed for the club): the helpful line, nothing asked, no tick outcome", async () => {
     round.requestPoolAsk.mockResolvedValue({ ok: false, refusal: "pool-closed" });
-    const r = await askPoolInHq({ orgId: "o1", userId: "u-owner", via: "words", lang: "tr", now: NOW, env: ENV });
+    const r = await askPoolFromWords({ orgId: "o1", userId: "u-owner", via: "words", lang: "tr", now: NOW, env: ENV });
     expect(r).toEqual({ outcome: "hq-pool-not-asked", replyText: expect.stringMatching(/^MatchTime oyuncu havuzu kulübünüz için henüz açık değil\./) });
   });
 
   it("no upcoming match: the recruit line, the pool never asked", async () => {
     squad.loadSquadState.mockResolvedValue({ matchId: null });
-    const r = await askPoolInHq({ orgId: "o1", userId: "u-owner", via: "words", lang: "en", now: NOW, env: ENV });
+    const r = await askPoolFromWords({ orgId: "o1", userId: "u-owner", via: "words", lang: "en", now: NOW, env: ENV });
     expect(round.requestPoolAsk).not.toHaveBeenCalled();
     expect(r.outcome).toBe("hq-pool-no-match");
   });

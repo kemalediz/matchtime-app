@@ -1,8 +1,9 @@
 /**
- * THE ADMIN GROUP'S DOOR TO THE MATCHTIME PLAYER POOL (local player pool
- * L10, 2026-10-24). Thin I/O; the rules are the pool's own.
+ * ORGANISERS ASKING THE MATCHTIME PLAYER POOL IN THEIR OWN WORDS (local
+ * player pool L10, 2026-10-24), the pool's twin of `partner-ask-words.ts`.
+ * Thin I/O; the rules are the pool's own.
  *
- * Two ways an organiser asks the pool from HQ, both through L5a's
+ * Three ways an organiser asks the pool from a group, all through L5a's
  * `requestPoolAsk` (`pool/round.ts`), the match page tick's own function,
  * so every rule of a tap holds (the switch and the club's flag, an
  * organiser, the match gate, the cut-off, places open, one open ask, 3 a
@@ -12,12 +13,16 @@
  *   in words       "ask the pool", "find someone nearby", "get a player from
  *                  the app" (EN/TR, any wording): the shared admin extractor
  *                  reads `recruit` from the pool (`AdminFacts.pool`), then
- *                  `admin-group-understand.ts` calls `askPoolInHq` with
+ *                  `admin-group-understand.ts` calls `askPoolFromWords` with
  *                  `via: "words"` for the club's next match
+ *   in the players' group   an organiser's tagged ask (the engine's admin
+ *                  and tag gates, `pool_ask` write), performed by the
+ *                  analyze route's batch-final pass, `via: "words"`, for
+ *                  the state's match (clubs with no HQ ask here)
  *   a YES          to the short-squad notice's pool line, posted in HQ and
  *                  logged as MatchTime's question (`pool-ask:<matchId>`,
  *                  `poolNoticesAwaiting`), decided by the safe-YES rule,
- *                  then `askPoolInHq` with `via: "notice"` for that match
+ *                  then `askPoolFromWords` with `via: "notice"` for that match
  *
  * The organisers' request IS the approval the pool needs (an organiser
  * asked; `requestPoolAsk` re-checks the role). Like the automatic ask it
@@ -47,12 +52,14 @@ const DAY_MS = 24 * 3600_000;
 
 export type PoolHqOutcome = "hq-pool-asked" | "hq-pool-not-asked" | "hq-pool-no-match";
 
-export async function askPoolInHq(args: {
+export async function askPoolFromWords(args: {
   orgId: string;
   /** The notice's match; absent: the club's next match (asked in words). */
   matchId?: string | null;
   userId: string;
   via: "words" | "notice";
+  /** Where it was said: "hq" (default) or the players' "group". */
+  where?: "hq" | "group";
   lang: string | null;
   now: Date;
   env?: Env;
@@ -73,11 +80,17 @@ export async function askPoolInHq(args: {
     now,
     env: args.env,
   });
-  console.log(`[admin-group-pool] ${orgId}: ${args.via} ask for match ${match.id}: ${r.ok ? `asked ${r.askId}` : r.refusal}`);
+  console.log(`[pool-ask-words] ${orgId}: ${args.where ?? "hq"} ${args.via} ask for match ${match.id}: ${r.ok ? `asked ${r.askId}` : r.refusal}`);
   if (!r.ok) return { outcome: "hq-pool-not-asked", replyText: poolHqAskReply(lang, { ok: false, refusal: r.refusal, placesOpen }) };
   return {
     outcome: "hq-pool-asked",
-    replyText: poolHqAskReply(lang, { ok: true, places: round.places, day: dayCommaTimeLabel(lang, match.date), partnersFirst: round.roundId !== null && !r.waveSent }),
+    replyText: poolHqAskReply(lang, {
+      ok: true,
+      places: round.places,
+      day: dayCommaTimeLabel(lang, match.date),
+      partnersFirst: round.roundId !== null && !r.waveSent,
+      inHq: args.where !== "group",
+    }),
   };
 }
 

@@ -10,7 +10,7 @@
  *
  *   requestPoolAsk  an organiser's one-tap approval (the match page; L9
  *                   adds the automatic ask, L10 asking in words and a YES
- *                   in HQ, `admin-group-pool.ts`). Checks
+ *                   in HQ, `pool-ask-words.ts`). Checks
  *                   every rule, writes the ask, and sends wave 1 at once
  *                   when no partner ask of the round is open.
  *   sweepPool       every platform-jobs poll (the Pi polls it whatever the

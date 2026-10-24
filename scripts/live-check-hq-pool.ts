@@ -23,6 +23,7 @@
  * hq-questions.
  *
  *   npx tsx --env-file=.env scripts/live-check-hq-pool.ts
+ *   ONLY_PG=1 ...   the players' group cases only; ONLY=<text> one case
  *
  * Spends ANTHROPIC_API_KEY_DEV only (refuses without it). No database,
  * sends nothing. Prints each case, the calls made and the cost.
@@ -33,6 +34,7 @@ import { routeBatch } from "../src/lib/pipeline/router.ts";
 import { extractForRoute } from "../src/lib/pipeline/extractors.ts";
 import { organisersContext, type PendingWithLabel } from "../src/lib/admin-group-context.ts";
 import { messageMentionsBotExplicitly } from "../src/lib/interaction-contract.ts";
+import { recruitWantsPool } from "../src/lib/recruit-source.ts";
 
 const MAX_USD = 0.5;
 spendDevApiKeyOrExit("the HQ pool live check");
@@ -98,9 +100,60 @@ const CASES: Array<{ text: string; ctx?: typeof nothing; want: Got[]; why: strin
   { text: "nah let's wait till the morning", ctx: poolWaiting, want: ["quiet"], why: "a no between organisers" },
 ];
 
+// THE PLAYERS' GROUP (manager review of #410): an organiser's tagged ask
+// there. The router (no organisers' header) usually says `offer`; the
+// attendance extractor's "recruit" side request is then read for its source
+// before any blast (`recruit-source.ts`), or `admin_ops` reads it directly.
+//   pool   the pool is asked    blast   the recruit blast, as today
+//   none   nothing recruited
+type PgGot = "pool" | "blast" | "none";
+const PLAYERS: Array<{ text: string; want: PgGot[]; why: string }> = [
+  { text: "@Match Time ask the pool for a player", want: ["pool"], why: "the plain ask" },
+  { text: "@Match Time find someone nearby for tonight", want: ["pool"], why: "someone nearby" },
+  { text: "@Match Time get us a player from the app", want: ["pool"], why: "from the app" },
+  { text: "@Match Time havuzdan bir oyuncu bul", want: ["pool"], why: "TR" },
+  { text: "@Match Time we're one short, try the MatchTime pool", want: ["pool"], why: "the shortage, then the pool" },
+  // Unchanged: a shortage ask with no pool in it is today's recruit.
+  { text: "Najib is out. We need one more player. @Match Time", want: ["blast", "none"], why: "the production replay shape: never the pool" },
+  { text: "@Match Time we need one more, can you round someone up", want: ["blast", "none"], why: "the club's own players: never the pool" },
+];
+
+async function playersGroup(): Promise<{ pass: number; fail: number }> {
+  let pass = 0;
+  let fail = 0;
+  for (const [i, c] of PLAYERS.entries()) {
+    if (process.env.ONLY && !c.text.includes(process.env.ONLY)) continue;
+    const id = `g${i}`;
+    const r = await routeBatch(model, [{ id, authorName: "Oscar", body: c.text }], { floor: true });
+    const route = r.routes[0]?.route ?? null;
+    let got: PgGot = "none";
+    let detail = "";
+    if (route === "admin_ops") {
+      const ex = await extractForRoute(model, "admin_ops", { id, body: c.text, authorName: "Oscar", tagged: true, history: [], lastBotPost: null });
+      const f = ex.facts.kind === "admin" ? ex.facts : null;
+      detail = ` -> ${f?.action}${f?.pool ? " pool" : ""}`;
+      got = f?.action === "recruit" ? (f.pool ? "pool" : f.partnerClubs ? "none" : "blast") : "none";
+    } else if (route === "offer" || route === "other_att" || route === "self_att" || route === "unsure") {
+      const ex = await extractForRoute(model, route, { id, body: c.text, authorName: "Oscar", tagged: true, history: [], lastBotPost: null });
+      const side = ex.facts.kind === "attendance" ? (ex.facts.sideRequests ?? []) : [];
+      detail = ` -> side ${JSON.stringify(side)}`;
+      if (side.includes("recruit")) got = (await recruitWantsPool({ id, body: c.text, authorName: "Oscar", now: new Date(), model })) ? "pool" : "blast";
+    }
+    const ok = c.want.includes(got);
+    ok ? pass++ : fail++;
+    console.log(`${ok ? "PASS" : "FAIL"}  PG ${JSON.stringify(c.text)}  routed ${route}${detail}  => ${got}   (${c.why}; want ${c.want.join("|")})`);
+  }
+  return { pass, fail };
+}
+
 async function main() {
   let pass = 0;
   let fail = 0;
+  if (process.env.ONLY_PG) {
+    const pg = await playersGroup();
+    console.log(`\n${pg.pass} passed, ${pg.fail} failed. Model calls: ${calls}. Cost: $${usd.toFixed(4)} (dev key).`);
+    process.exit(pg.fail > 0 ? 1 : 0);
+  }
   // ONLY=<substring>: re-run just the cases whose text contains it.
   const only = process.env.ONLY;
   for (const [i, c] of CASES.entries()) {
@@ -132,6 +185,9 @@ async function main() {
     ok ? pass++ : fail++;
     console.log(`${ok ? "PASS" : "FAIL"}  ${JSON.stringify(c.text)}${c.ctx ? " (pool notice waiting)" : ""}  routed ${route}${detail}  => ${got}   (${c.why}; want ${c.want.join("|")})`);
   }
+  const pg = await playersGroup();
+  pass += pg.pass;
+  fail += pg.fail;
   console.log(`\n${pass} passed, ${fail} failed. Model calls: ${calls}. Cost: $${usd.toFixed(4)} (dev key).`);
   process.exit(fail > 0 ? 1 : 0);
 }

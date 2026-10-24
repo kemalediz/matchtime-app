@@ -3143,11 +3143,17 @@ export function decide(input: EngineInput): EngineResult {
         }
         // ── THE MATCHTIME PLAYER POOL (local player pool L10) ─────────
         //
-        // Asked for in the organisers' group or on the match page, never
-        // from the players' group. Asking for the pool is never a blast to
-        // the club's own past players: nothing is written.
+        // "@Match Time ask the pool for a player": the same two gates (an
+        // admin, tagged), then the pool is asked by the batch-final pass
+        // through the match page tick's own function, never a blast to the
+        // club's own past players and never a partner ask.
         if (facts.pool) {
-          out.reasons.push("a recruit from the MatchTime player pool is asked in the organisers' group or on the match page: nothing written");
+          emit({
+            kind: "pool_ask",
+            matchId: state.matchId,
+            sourceMessageId: msg.id,
+            reason: "admin asked MatchTime to ask the MatchTime player pool for a player",
+          });
           return;
         }
         // ── ANOTHER CLUB'S PLAYERS (slice S6, 2026-10-21) ────────────

@@ -142,17 +142,30 @@ describe("a recruit side request on a reply to a partner club's ask", () => {
     expect(r.writes.filter((w) => w.kind === "recruit_blast")).toHaveLength(1);
   });
 
-  // Local player pool L10: the pool is asked from the organisers' group or
-  // the match page. Asked for in the players' group it is never a blast to
-  // the club's own past players (and never a partner ask).
-  it("a recruit from the MatchTime player pool in the players' group: nothing written", () => {
-    const r = decide({
+  // Local player pool L10: an organiser asking the pool in the players'
+  // group (tagged) gets the pool asked, by the batch-final pass, never a
+  // blast to the club's own past players and never a partner ask.
+  const poolAsk = (over: Partial<EngineMessage> = {}) =>
+    decide({
       now: NOW,
       state: world({ confirmed: ["sait"] }),
-      messages: [promote({ route: "admin_ops", tagged: true, taggedExplicitly: true, quoted: null, facts: { kind: "admin", action: "recruit", pool: true } })],
+      messages: [promote({ route: "admin_ops", tagged: true, taggedExplicitly: true, quoted: null, facts: { kind: "admin", action: "recruit", pool: true }, ...over })],
     });
+
+  it("an organiser's tagged ask for the MatchTime player pool: one pool_ask write, nothing else", () => {
+    const r = poolAsk();
+    expect(r.writes).toEqual([expect.objectContaining({ kind: "pool_ask", matchId: expect.any(String) })]);
+    expect(r.writes.some((w) => w.kind === "recruit_blast" || w.kind === "partner_ask")).toBe(false);
+  });
+
+  it("the same ask untagged: nothing written (a mass of strangers is never asked off an untagged message)", () => {
+    expect(poolAsk({ tagged: false, taggedExplicitly: false }).writes).toEqual([]);
+  });
+
+  it("a player who is not an admin asking: today's refusal, nothing written", () => {
+    const r = poolAsk({ senderUserId: "u-sait" });
     expect(r.writes).toEqual([]);
-    expect(r.outcomes[0].reasons.join(" ")).toMatch(/MatchTime player pool/);
+    expect(r.outcomes[0].reasons.join(" ")).toMatch(/only an admin/);
   });
 });
 

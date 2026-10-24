@@ -252,16 +252,16 @@ export function poolAskRefusalText(lang: Lang | string | null | undefined, refus
   }
 }
 
-/** What the organisers hear in HQ after asking the pool in words, or a YES
- *  to the short-squad notice (L10). A refusal is the match page's own line
+/** What the organisers hear after asking the pool in words (HQ or the
+ *  players' group), or a YES to the short-squad notice in HQ (L10). A refusal is the match page's own line
  *  (`poolAskRefusalText`), except the pool not open for the club, which
  *  says what MatchTime can do instead. */
 export function poolHqAskReply(
   lang: Lang | string | null | undefined,
-  r: { ok: true; places: number; day: string; partnersFirst: boolean } | { ok: false; refusal: string; placesOpen: number },
+  r: { ok: true; places: number; day: string; partnersFirst: boolean; inHq?: boolean } | { ok: false; refusal: string; placesOpen: number },
 ): string {
   const c = poolCopy(lang);
-  if (r.ok) return c.hq_asked({ places: r.places, day: r.day, partnersFirst: r.partnersFirst });
+  if (r.ok) return c.hq_asked({ places: r.places, day: r.day, partnersFirst: r.partnersFirst, inHq: r.inHq !== false });
   return r.refusal === "pool-closed" ? c.hq_closed : poolAskRefusalText(lang, r.refusal, r.placesOpen);
 }
 

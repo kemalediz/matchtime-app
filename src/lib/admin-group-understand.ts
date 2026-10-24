@@ -41,12 +41,12 @@
  *                         S6), or the MatchTime player pool ("ask the pool",
  *                         "find someone nearby"), which is asked through the
  *                         match page tick's own function
- *                         (`admin-group-pool.ts`, local player pool L10)
+ *                         (`pool-ask-words.ts`, local player pool L10)
  *   admin_ops             the shared admin extractor: players from a
  *                         partner club ("ask Sutton if anyone can play",
  *                         slice S6) are asked for by `partner-ask-words.ts`,
  *                         and the MatchTime player pool by
- *                         `admin-group-pool.ts` (L10), an organiser's alone;
+ *                         `pool-ask-words.ts` (L10), an organiser's alone;
  *                         a free place
  *                         ("Bilal washed the bibs, he's free this week",
  *                         action fee_waiver, or one taken back) is ASKED
@@ -141,7 +141,7 @@ import { readHqNameList } from "./admin-group-name-list";
 import { answerPairingInHq, pairingsAwaitingOwner } from "./pairing-reply";
 import { parsePairingNoticeKey } from "./club-partnership-rules";
 import { activePartnerChoices, askPartnersFromWords } from "./partner-ask-words";
-import { askPoolInHq, poolNoticesAwaiting } from "./admin-group-pool";
+import { askPoolFromWords, poolNoticesAwaiting } from "./pool-ask-words";
 import { confirmQuestion } from "./admin-group-confirm-copy";
 import { parsePoolAskRef } from "./admin-group-pool-refs";
 
@@ -236,7 +236,7 @@ export async function loadPending(
   const pairings = await pairingsAwaitingOwner(orgId).catch(() => []);
   for (const p of pairings) out.push({ ref: p.ref, kind: "pairing", day: null, club: p.other, ownClub: p.club, askedAt: p.askedAt });
   // The short-squad notice's MatchTime player pool line, posted here and
-  // still askable (local player pool L10, `admin-group-pool.ts`). Never
+  // still askable (local player pool L10, `pool-ask-words.ts`). Never
   // fails HQ.
   out.push(...(await poolNoticesAwaiting(orgId, now, lang, poolEnv).catch(() => [])));
   return out;
@@ -595,12 +595,12 @@ async function understandInTrace(input: UnderstandInput): Promise<Understood | n
 
     // The MatchTime player pool (local player pool L10): asked in words
     // ("ask the pool", "find someone nearby"), for the club's next match,
-    // through the match page tick's own function (`admin-group-pool.ts`).
+    // through the match page tick's own function (`pool-ask-words.ts`).
     // An organiser's alone; a weekly club's (as asking the group is).
     const askPoolInWords = async (): Promise<Understood> => {
       if (!actor) return onlyOrganisers();
       if (!weekly) return notHere();
-      const r = await askPoolInHq({ orgId: org.id, userId: actor, via: "words", lang, now, env: input.poolEnv });
+      const r = await askPoolFromWords({ orgId: org.id, userId: actor, via: "words", lang, now, env: input.poolEnv });
       return said(r.outcome, r.replyText);
     };
 
@@ -669,7 +669,7 @@ async function understandInTrace(input: UnderstandInput): Promise<Understood | n
             // The short-squad notice's pool line (L10): the organiser's YES
             // is the pool's approval, for that notice's match.
             const matchId = parsePoolAskRef(item.ref);
-            const r = matchId ? await askPoolInHq({ orgId: org.id, matchId, userId: actor, via: "notice", lang, now, env: input.poolEnv }) : null;
+            const r = matchId ? await askPoolFromWords({ orgId: org.id, matchId, userId: actor, via: "notice", lang, now, env: input.poolEnv }) : null;
             return r ? said(r.outcome, r.replyText) : said("hq-nothing-waiting", s.hq_nothing_waiting);
           }
           if (item.kind === "partner-ask" && actor) {

@@ -85,10 +85,10 @@ vi.mock("@/lib/partner-ask-words", () => partnerWords);
 // The MatchTime player pool asked from HQ (local player pool L10): nothing
 // waiting by default.
 const hqPool = vi.hoisted(() => ({
-  askPoolInHq: vi.fn(),
+  askPoolFromWords: vi.fn(),
   poolNoticesAwaiting: vi.fn().mockResolvedValue([]),
 }));
-vi.mock("@/lib/admin-group-pool", () => hqPool);
+vi.mock("@/lib/pool-ask-words", () => hqPool);
 
 // Cancelling a match, or putting it back on, from HQ (2026-10-22).
 const matchCancel = vi.hoisted(() => ({ hqCancelOrRestore: vi.fn() }));
@@ -165,7 +165,7 @@ beforeEach(() => {
   partnerWords.activePartnerChoices.mockResolvedValue([]);
   partnerWords.askPartnersFromWords.mockResolvedValue({ outcome: "xask-words-asked", replyText: "I've asked *Sutton FC*'s organisers.", asked: 1 });
   hqPool.poolNoticesAwaiting.mockResolvedValue([]);
-  hqPool.askPoolInHq.mockResolvedValue({ outcome: "hq-pool-asked", replyText: "🔎 Asking nearby players from the MatchTime player pool for 1 place on Fri 16 Oct, 20:00." });
+  hqPool.askPoolFromWords.mockResolvedValue({ outcome: "hq-pool-asked", replyText: "🔎 Asking nearby players from the MatchTime player pool for 1 place on Fri 16 Oct, 20:00." });
 });
 
 describe("what MatchTime decided is kept on the HQ row (FNF HQ 2026-10-24, \"Glazers OUT\")", () => {
@@ -1539,7 +1539,7 @@ describe("local player pool L10: asking the pool in HQ, in words and by YES to i
   it("ask_group, tagged, the extractor reads the pool: the pool is asked in words for the next match, nothing posted", async () => {
     const deps = { routerModel: routeTo("ask_group"), extractorModel: fromPool() };
     const r = await ask("@Match Time ask the pool for a player", "ask_group", { deps, poolEnv: ENV });
-    expect(hqPool.askPoolInHq).toHaveBeenCalledWith({ orgId: "org-fnf", userId: "u-admin", via: "words", lang: "en", now: NOW, env: ENV });
+    expect(hqPool.askPoolFromWords).toHaveBeenCalledWith({ orgId: "org-fnf", userId: "u-admin", via: "words", lang: "en", now: NOW, env: ENV });
     expect(r).toEqual({ route: "ask_group", outcome: "hq-pool-asked", replyText: expect.stringMatching(/^🔎 Asking nearby players/) });
     expect(groupAsk.askPlayersGroup).not.toHaveBeenCalled();
     expect(partnerWords.askPartnersFromWords).not.toHaveBeenCalled();
@@ -1548,7 +1548,7 @@ describe("local player pool L10: asking the pool in HQ, in words and by YES to i
   it("Turkish, untagged but spoken to MatchTime: the same ask", async () => {
     const deps = { routerModel: routeTo("ask_group"), extractorModel: fromPool() };
     expect((await ask("havuzdan bir oyuncu bulur musun", "ask_group", { deps, org: { ...ORG, language: "tr" } }))?.outcome).toBe("hq-pool-asked");
-    expect(hqPool.askPoolInHq).toHaveBeenCalledWith(expect.objectContaining({ via: "words", lang: "tr" }));
+    expect(hqPool.askPoolFromWords).toHaveBeenCalledWith(expect.objectContaining({ via: "words", lang: "tr" }));
   });
 
   it("the pool wins over partner clubs when the pool is what was asked for", async () => {
@@ -1561,13 +1561,13 @@ describe("local player pool L10: asking the pool in HQ, in words and by YES to i
   it("admin_ops, recruit from the pool: the same door", async () => {
     const deps = { routerModel: routeTo("admin_ops"), extractorModel: fromPool() };
     expect((await ask("@Match Time get us a player from the app", "admin_ops", { deps }))?.outcome).toBe("hq-pool-asked");
-    expect(hqPool.askPoolInHq).toHaveBeenCalledWith(expect.objectContaining({ via: "words", userId: "u-admin" }));
+    expect(hqPool.askPoolFromWords).toHaveBeenCalledWith(expect.objectContaining({ via: "words", userId: "u-admin" }));
   });
 
   it("untagged and spoken to the others ('shall we try the pool?'): nothing leaves HQ, silent", async () => {
     const deps = { routerModel: routeTo("ask_group"), extractorModel: fromPool({ toMatchTime: false }) };
     expect(await ask("shall we try the pool?", "ask_group", { deps })).toBeNull();
-    expect(hqPool.askPoolInHq).not.toHaveBeenCalled();
+    expect(hqPool.askPoolFromWords).not.toHaveBeenCalled();
     expect(groupAsk.askPlayersGroup).not.toHaveBeenCalled();
   });
 
@@ -1575,22 +1575,22 @@ describe("local player pool L10: asking the pool in HQ, in words and by YES to i
     const deps = { routerModel: routeTo("ask_group"), extractorModel: fromPool() };
     const r = await ask("@Match Time ask the pool for a player", "ask_group", { deps, organiser: false, member: true, senderUserId: "u-pete" });
     expect(r?.outcome).toBe("hq-only-organisers");
-    expect(hqPool.askPoolInHq).not.toHaveBeenCalled();
+    expect(hqPool.askPoolFromWords).not.toHaveBeenCalled();
     const viaOps = await ask("@Match Time ask the pool for a player", "admin_ops", { deps: { routerModel: routeTo("admin_ops"), extractorModel: fromPool() }, organiser: false, member: true, senderUserId: "u-pete" });
     expect(viaOps?.outcome).toBe("hq-only-organisers");
-    expect(hqPool.askPoolInHq).not.toHaveBeenCalled();
+    expect(hqPool.askPoolFromWords).not.toHaveBeenCalled();
   });
 
   it("a monthly club: not from HQ (the one line)", async () => {
     const deps = { routerModel: routeTo("admin_ops"), extractorModel: fromPool() };
     expect((await ask("@Match Time ask the pool", "admin_ops", { deps, org: { ...ORG, squadMode: "monthly" } }))?.outcome).toBe("hq-not-here");
-    expect(hqPool.askPoolInHq).not.toHaveBeenCalled();
+    expect(hqPool.askPoolFromWords).not.toHaveBeenCalled();
   });
 
   it("ask_group of the club's own group is still the players' group ask (the extractor now always says which)", async () => {
     const deps = { routerModel: routeTo("ask_group"), extractorModel: adminFacts({ action: "recruit", playersFrom: "club", toMatchTime: true }) };
     expect((await ask("@Match Time ask the group if anyone can play", "ask_group", { deps }))?.outcome).toBe("group-asked");
-    expect(hqPool.askPoolInHq).not.toHaveBeenCalled();
+    expect(hqPool.askPoolFromWords).not.toHaveBeenCalled();
   });
 
   it("the router is shown the pool notice as waiting for a YES", async () => {
@@ -1605,7 +1605,7 @@ describe("local player pool L10: asking the pool in HQ, in words and by YES to i
     hqPool.poolNoticesAwaiting.mockResolvedValue([poolWaiting]);
     hqLog.hqLogSince.mockResolvedValue([mtRow(ASKED, "pool-ask:m1", POOL_NOTICE)]);
     const r = await ask("yes", "approve", { poolEnv: ENV });
-    expect(hqPool.askPoolInHq).toHaveBeenCalledWith({ orgId: "org-fnf", matchId: "m1", userId: "u-admin", via: "notice", lang: "en", now: NOW, env: ENV });
+    expect(hqPool.askPoolFromWords).toHaveBeenCalledWith({ orgId: "org-fnf", matchId: "m1", userId: "u-admin", via: "notice", lang: "en", now: NOW, env: ENV });
     expect(r?.outcome).toBe("hq-pool-asked");
   });
 
@@ -1624,7 +1624,7 @@ describe("local player pool L10: asking the pool in HQ, in words and by YES to i
     const r = await ask("yes", "approve");
     expect(r).toEqual({ route: "approve", outcome: "hq-confirm-asked", replyText: "Is that YES to asking nearby players from the MatchTime player pool for Fri 16 Oct?" });
     expect(hqLog.recordMatchTimeQuestion).toHaveBeenCalledWith(expect.objectContaining({ askRef: "pool-ask:m1", confirm: true }));
-    expect(hqPool.askPoolInHq).not.toHaveBeenCalled();
+    expect(hqPool.askPoolFromWords).not.toHaveBeenCalled();
   });
 
   it("the pool notice and the teams both waiting, after talk: asks which, asks nothing of the pool", async () => {
@@ -1633,7 +1633,7 @@ describe("local player pool L10: asking the pool in HQ, in words and by YES to i
     const r = await ask("yes", "approve");
     expect(r?.outcome).toBe("hq-confirm-asked");
     expect(hqLog.recordMatchTimeQuestion).toHaveBeenCalledWith(expect.objectContaining({ askRef: "which" }));
-    expect(hqPool.askPoolInHq).not.toHaveBeenCalled();
+    expect(hqPool.askPoolFromWords).not.toHaveBeenCalled();
     expect(teams.answerTeamsYes).not.toHaveBeenCalled();
   });
 
@@ -1643,7 +1643,7 @@ describe("local player pool L10: asking the pool in HQ, in words and by YES to i
     hqLog.hqLogSince.mockResolvedValue([mtRow(ASKED, "pool-ask:m1", POOL_NOTICE)]);
     const r = await ask("yes", "approve", { organiser: false, member: true, senderUserId: "u-pete" });
     expect(r?.outcome).toBe("hq-only-organisers");
-    expect(hqPool.askPoolInHq).not.toHaveBeenCalled();
+    expect(hqPool.askPoolFromWords).not.toHaveBeenCalled();
   });
 
   it("the pool's waiting items never fail HQ: a read error is nothing waiting", async () => {

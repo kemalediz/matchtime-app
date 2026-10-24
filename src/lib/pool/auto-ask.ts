@@ -42,7 +42,7 @@ export async function poolAutoAskClub(orgId: string, env?: Env): Promise<PoolAut
 
 /** The newest partner round still open on the match, with its number:
  *  a pool ask joins it, so the partners have their hour first. Also the
- *  organisers' ask in HQ (L10, `admin-group-pool.ts`). */
+ *  organisers' ask in HQ (L10, `pool-ask-words.ts`). */
 export async function openPartnerRoundOf(orgId: string, matchId: string): Promise<{ roundId: string; places: number } | null> {
   const open = await db.partnerAsk.findFirst({
     where: { matchId, askerOrgId: orgId, status: { in: [...OPEN_ASK_STATUSES] }, roundId: { not: null } },

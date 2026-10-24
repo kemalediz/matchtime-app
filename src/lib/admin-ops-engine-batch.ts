@@ -289,6 +289,12 @@ export interface AdminOpsMessageOutcome {
    * `clubRef` is the club named, as written, or null for every partner.
    */
   partnerAskRequest: { clubRef: string | null; matchId: string | null } | null;
+  /**
+   * An admin asked, with a tag, for the MatchTime player pool to be asked
+   * (local player pool L10). Same batch-final pass as `partnerAskRequest`:
+   * the route calls `askPoolFromWords`.
+   */
+  poolAskRequest: { matchId: string | null } | null;
   /** A write threw. The caller must not say anything cheerful. */
   writeFailed: boolean;
 }
@@ -620,6 +626,7 @@ export async function runAdminOpsBatch(args: {
       recruitLookbackMatches: null,
       statsBlastRequest: false,
       partnerAskRequest: null,
+      poolAskRequest: null,
     };
     const action = ask.mode === "cancel" ? "cancel_match" : "restore_match";
     try {
@@ -679,6 +686,7 @@ export async function runAdminOpsBatch(args: {
         recruitLookbackMatches: null,
         statsBlastRequest: false,
         partnerAskRequest: null,
+        poolAskRequest: null,
         writeFailed: false,
       });
     }
@@ -732,6 +740,7 @@ export async function runAdminOpsBatch(args: {
   const recruitByMessage = new Map<string, number | null>();
   const statsBlastIds = new Set<string>();
   const partnerAskByMessage = new Map<string, { clubRef: string | null; matchId: string | null }>();
+  const poolRequestByMessage = new Map<string, { matchId: string | null }>();
   const foreign: string[] = [];
   for (const w of result.writes) {
     if (!ownedIds.has(w.sourceMessageId)) {
@@ -748,6 +757,8 @@ export async function runAdminOpsBatch(args: {
     // Deferred the same way (slice S6): the partner clubs are asked after
     // the batch's writes, so the places asked for count this batch's drops.
     else if (w.kind === "partner_ask") partnerAskByMessage.set(w.sourceMessageId, { clubRef: w.clubRef, matchId: w.matchId });
+    // And the MatchTime player pool (L10), the same way.
+    else if (w.kind === "pool_ask") poolRequestByMessage.set(w.sourceMessageId, { matchId: w.matchId });
     else foreign.push(w.kind);
   }
   if (foreign.length > 0) {
@@ -864,6 +875,7 @@ export async function runAdminOpsBatch(args: {
     const isRecruit = recruitByMessage.has(m.waMessageId);
     const isStatsBlast = statsBlastIds.has(m.waMessageId);
     const partnerAsk = partnerAskByMessage.get(m.waMessageId) ?? null;
+    const poolRequest = poolRequestByMessage.get(m.waMessageId) ?? null;
 
     // §3.2 S7: a write that threw says nothing at all.
     const reply = failed ? null : (replyByMessage.get(m.waMessageId) ?? null);
@@ -901,7 +913,9 @@ export async function runAdminOpsBatch(args: {
                 ? "stats_blast"
                 : partnerAsk
                   ? "partner_ask"
-                  : "noise",
+                  : poolRequest
+                    ? "pool_ask"
+                    : "noise",
       action: failed ? "none" : actedIds.has(m.waMessageId) ? action : react ? "react" : reply ? "reply" : "none",
       reasoning:
         `${ADMIN_OPS_HANDLED_BY} (${m.route}): ${machineReasons || "no rule fired"}` +
@@ -910,6 +924,7 @@ export async function runAdminOpsBatch(args: {
       recruitLookbackMatches: recruitByMessage.get(m.waMessageId) ?? null,
       statsBlastRequest: isStatsBlast,
       partnerAskRequest: partnerAsk,
+      poolAskRequest: poolRequest,
       writeFailed: failed,
     });
   }
