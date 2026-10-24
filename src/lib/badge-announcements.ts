@@ -46,7 +46,8 @@
  *          are posted, and every other badge already held is written to
  *          the ledger in the same transaction as the post, silently.
  */
-import { badgeMeta, milestoneBadgesEarned, momWinners, type MilestoneBadgeKey } from "./badge-rules";
+import { REFERRAL_BADGES, badgeMeta, milestoneBadgesEarned, momWinners, type MilestoneBadgeKey, type ReferralBadgeKey } from "./badge-rules";
+import { poolReferralCopy } from "./i18n/pool-referral";
 import { formatLondon, londonDateTimeToUtc } from "./london-time";
 import { t } from "./i18n/t";
 import type { Lang } from "./i18n/lang";
@@ -343,15 +344,23 @@ export function entriesFor(awards: BadgeAward[], nameById: ReadonlyMap<string, s
   return [...byUser].map(([userId, e]) => ({ name: nameById.get(userId) ?? userId, ...e }));
 }
 
+/** A referral badge (player pool, slice G4) the post announces. */
+export interface ReferralPostEntry {
+  name: string;
+  key: ReferralBadgeKey;
+}
+
 /**
  * The group post: a header, one line per badge (players who earned the
  * same badge share its line, names alphabetical), and a sign-off. Badge
  * names stay English in every language, as on the stats page. Null when
- * there is nothing to say.
+ * there is nothing to say. Referral badges (`referrals`, slice G4) come
+ * after the club's own, lowest first.
  */
 export function buildBadgeAnnouncementPost(
   entries: BadgePostEntry[],
   lang?: Lang | string | null,
+  referrals: readonly ReferralPostEntry[] = [],
 ): string | null {
   const s = t(lang);
   const lines: string[] = [];
@@ -404,6 +413,11 @@ export function buildBadgeAnnouncementPost(
         lines.push(s.badges_line_reliable(p));
         break;
     }
+  }
+  const rc = poolReferralCopy(lang);
+  for (const b of REFERRAL_BADGES) {
+    const names = referrals.filter((r) => r.key === b.key).map((r) => r.name).sort((x, y) => x.localeCompare(y));
+    if (names.length > 0) lines.push(rc.postLine({ key: b.key, emoji: b.emoji, label: b.label, names, friends: b.minFriends }));
   }
   if (lines.length === 0) return null;
   return `${s.badges_post_header}\n\n${lines.join("\n")}\n\n${s.badges_post_footer}`;

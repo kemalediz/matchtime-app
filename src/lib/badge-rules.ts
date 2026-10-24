@@ -174,6 +174,50 @@ export function milestoneBadgesEarned(i: MilestoneInput): Record<MilestoneBadgeK
   };
 }
 
+// ── Referral badges (player pool, slice G4, 2026-10-24) ──────────────
+//
+// Earned by bringing new players to the game through his pool share
+// link: a friend counts once he has PLAYED (`pool/referral-rules.ts`).
+// Unlike the badges above they belong to the PERSON, not to one club, so
+// they are announced once, in one club (his home club), and live on his
+// own stats page only. Same ledger (`BadgeAnnouncement`), same group post.
+
+/** Friends who have played, for each referral badge. */
+export const RECRUITER_MIN_FRIENDS = 1;
+export const SCOUT_MIN_FRIENDS = 3;
+export const TALENT_SPOTTER_MIN_FRIENDS = 10;
+
+export type ReferralBadgeKey = "recruiter" | "scout" | "talent-spotter";
+
+export interface ReferralBadgeMeta {
+  key: ReferralBadgeKey;
+  emoji: string;
+  label: string;
+  minFriends: number;
+}
+
+/** Lowest first. Names stay English in every language, as every badge's. */
+export const REFERRAL_BADGES: readonly ReferralBadgeMeta[] = [
+  { key: "recruiter", emoji: "🤝", label: "Recruiter", minFriends: RECRUITER_MIN_FRIENDS },
+  { key: "scout", emoji: "🔭", label: "Scout", minFriends: SCOUT_MIN_FRIENDS },
+  { key: "talent-spotter", emoji: "💎", label: "Talent Spotter", minFriends: TALENT_SPOTTER_MIN_FRIENDS },
+];
+
+export const REFERRAL_BADGE_KEYS: readonly ReferralBadgeKey[] = REFERRAL_BADGES.map((b) => b.key);
+
+export function isReferralBadgeKey(key: string): key is ReferralBadgeKey {
+  return (REFERRAL_BADGE_KEYS as readonly string[]).includes(key);
+}
+
+/** Which referral badges `friendsPlayed` friends earn. */
+export function referralBadgesEarned(friendsPlayed: number): Record<ReferralBadgeKey, boolean> {
+  return Object.fromEntries(REFERRAL_BADGES.map((b) => [b.key, friendsPlayed >= b.minFriends])) as Record<ReferralBadgeKey, boolean>;
+}
+
+export function referralBadgeMeta(key: ReferralBadgeKey): ReferralBadgeMeta {
+  return REFERRAL_BADGES.find((b) => b.key === key)!;
+}
+
 /** The emoji and name the stats page shows for a badge. */
 export function badgeMeta(key: BadgeKey): BadgeMeta {
   return BADGES.find((b) => b.key === key)!;

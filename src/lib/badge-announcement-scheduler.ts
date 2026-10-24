@@ -14,13 +14,16 @@
  * evenings `badgesPostDue` allows) for a match whose post has not gone
  * out. Inside one, four reads per poll: the club's completed matches
  * with their ratings, votes, team sheets and confirmed players; its
- * members; its ledger; its lifecycle.
+ * members; its ledger; its lifecycle. A club with the player pool on
+ * adds one more (its members' friends who have played, slice G4), and a
+ * few only when one has.
  */
 import { db } from "./db";
 import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
 import { isClubOperational } from "./club-approval-state";
 import { claimTextOf, type Claimable } from "./dispatch-claim";
 import type { Lang } from "./i18n/lang";
+import { loadClubReferralAwards } from "./pool/referrals";
 import {
   announcedKey,
   badgeMatchFinalised,
@@ -31,9 +34,18 @@ import {
   pickBadgeAwards,
   replayBadges,
   toReplayMatches,
-  type BadgeAward,
   type RawBadgeMatch,
+  type ReferralPostEntry,
 } from "./badge-announcements";
+
+/** One `BadgeAnnouncement` row to write with the post. A club badge
+ *  carries the match it was earned at; a referral badge (slice G4) belongs
+ *  to the person, not a match, so its `matchId` is null. */
+export interface BadgeLedgerRow {
+  userId: string;
+  badgeKey: string;
+  matchId: string | null;
+}
 
 export interface BadgePostInstruction {
   kind: "group-message";
@@ -41,7 +53,7 @@ export interface BadgePostInstruction {
   matchId: string;
   text: string;
   /** Ledger rows to write when (and only when) this post is claimed. */
-  badgeLedger: BadgeAward[];
+  badgeLedger: BadgeLedgerRow[];
 }
 
 /** The scheduler's view of a match: what deciding "due" needs. */
@@ -100,7 +112,7 @@ export async function computeBadgeAnnouncements(args: {
   // initiative, even with the bot switched on.
   const org = await db.organisation.findUnique({
     where: { id: orgId },
-    select: { approvalStatus: true, dormantAt: true, billingStatus: true },
+    select: { approvalStatus: true, dormantAt: true, billingStatus: true, featurePlayerPool: true },
   });
   if (!org || !isClubOperational(org)) return [];
 
@@ -123,6 +135,11 @@ export async function computeBadgeAnnouncements(args: {
   const announced = new Set(ledger.map((r) => announcedKey(r.userId, r.badgeKey)));
   const isFinal = (m: { id: string; date: Date }) => badgeMatchFinalised(m, sentKeys, now);
 
+  // Referral badges (player pool, slice G4): only in a club with the pool
+  // switched on (decision #2), and only in the referrer's home club. They
+  // belong to no match, so they ride on the FIRST post that goes out.
+  let referral = org.featurePlayerPool ? await loadClubReferralAwards(orgId, eligible) : { awards: [], silent: [] };
+
   const out: BadgePostInstruction[] = [];
   for (const m of due) {
     const upTo = raw.findIndex((r) => r.id === m.id);
@@ -136,9 +153,15 @@ export async function computeBadgeAnnouncements(args: {
       bootstrap: announced.size === 0,
       eligibleUserIds: eligible,
     });
-    const text = buildBadgeAnnouncementPost(entriesFor(awards, nameById), lang);
+    const referralEntries: ReferralPostEntry[] = referral.awards.map((a) => ({ name: nameById.get(a.userId)!, key: a.badgeKey }));
+    const text = buildBadgeAnnouncementPost(entriesFor(awards, nameById), lang, referralEntries);
     if (!text) continue;
-    const badgeLedger = [...awards, ...baseline];
+    const badgeLedger: BadgeLedgerRow[] = [
+      ...awards,
+      ...baseline,
+      ...[...referral.awards, ...referral.silent].map((a) => ({ userId: a.userId, badgeKey: a.badgeKey, matchId: null })),
+    ];
+    referral = { awards: [], silent: [] };
     // A second match due in the same poll must not repeat these.
     for (const r of badgeLedger) announced.add(announcedKey(r.userId, r.badgeKey));
     out.push({ kind: "group-message", key: badgesPostKey(m.id), matchId: m.id, text, badgeLedger });
@@ -147,9 +170,9 @@ export async function computeBadgeAnnouncements(args: {
 }
 
 /** The ledger rows an instruction carries, if it is a badges post. */
-export function badgeLedgerOf(instr: unknown): BadgeAward[] | null {
+export function badgeLedgerOf(instr: unknown): BadgeLedgerRow[] | null {
   const rows = (instr as { badgeLedger?: unknown }).badgeLedger;
-  return Array.isArray(rows) && rows.length > 0 ? (rows as BadgeAward[]) : null;
+  return Array.isArray(rows) && rows.length > 0 ? (rows as BadgeLedgerRow[]) : null;
 }
 
 /**
@@ -177,7 +200,7 @@ export function withoutServerBookkeeping<T extends object>(instr: T): T {
 export async function claimBadgePost(
   orgId: string,
   instr: Claimable,
-  rows: BadgeAward[],
+  rows: BadgeLedgerRow[],
 ): Promise<void> {
   await db.$transaction([
     db.sentNotification.create({

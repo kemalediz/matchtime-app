@@ -235,7 +235,7 @@ export type DueInstruction =
       /** Badges post only (`badge-announcement-scheduler.ts`): the ledger
        *  rows /api/whatsapp/due-posts writes in the same transaction as
        *  the claim. Server-side; stripped before the Pi sees it. */
-      badgeLedger?: { userId: string; badgeKey: string; matchId: string }[];
+      badgeLedger?: { userId: string; badgeKey: string; matchId: string | null }[];
       /** Set when this post carries the squad roster (`roster-shown.ts`):
        *  /api/whatsapp/due-posts records it when it hands the post out,
        *  so the next scheduled post does not list the same squad again.
@@ -267,7 +267,7 @@ export type DueInstruction =
        *  2026-10-14 to 2026-10-16; nothing emits it now, badges post in the
        *  players' group): as on `group-message`. Server-side; stripped
        *  before the Pi sees it. */
-      badgeLedger?: { userId: string; badgeKey: string; matchId: string }[];
+      badgeLedger?: { userId: string; badgeKey: string; matchId: string | null }[];
     }
   | {
       kind: "bench-prompt";
@@ -310,7 +310,7 @@ export type DueInstruction =
        *  2026-10-14 to 2026-10-16; nothing emits it now, badges post in the
        *  players' group): as on `group-message`. Server-side; stripped
        *  before the Pi sees it. */
-      badgeLedger?: { userId: string; badgeKey: string; matchId: string }[];
+      badgeLedger?: { userId: string; badgeKey: string; matchId: string | null }[];
     };
 
 export interface DuePostsResult {

@@ -50,6 +50,8 @@ import { poolOffersOpenForClub } from "./flags";
 import { digitsAnswer, digitsMatch, type DigitsAnswer } from "./offer-proof-rules";
 import { isPoolOfferProof } from "./offer-token";
 import { stampIfOnItsWay } from "./dispatch";
+import { broughtByForFirstGame } from "./referrals";
+import { poolReferralCopy } from "../i18n/pool-referral";
 
 type Env = Record<string, string | undefined>;
 
@@ -246,17 +248,16 @@ export async function acceptOffer(offerId: string, now: Date = new Date(), env?:
   await db.poolProfile.updateMany({ where: { userId: o.userId }, data: { lastActiveAt: now } });
 
   const clubLang = o.ask.org.language;
-  await tellOrganisersOnce(
-    o,
-    `pool-offer:${o.id}:placed`,
-    poolOrganiserNotice(normaliseLang(clubLang), {
-      name: shortDisplayName(profile?.displayName ?? ""),
-      day: dayCommaTimeLabel(clubLang, o.ask.match.date),
-      bench,
-      record: await recordOf(o.userId),
-    }),
-    now,
-  );
+  // Slice G4: "Brought by Ali K." on his FIRST game, when the friend who
+  // brought him lets himself be named.
+  const broughtBy = await broughtByForFirstGame(o.userId);
+  const notice = poolOrganiserNotice(normaliseLang(clubLang), {
+    name: shortDisplayName(profile?.displayName ?? ""),
+    day: dayCommaTimeLabel(clubLang, o.ask.match.date),
+    bench,
+    record: await recordOf(o.userId),
+  });
+  await tellOrganisersOnce(o, `pool-offer:${o.id}:placed`, broughtBy ? `${notice} ${poolReferralCopy(clubLang).broughtBy(broughtBy)}` : notice, now);
 
   const phone = profile?.user?.phoneNumber;
   const facts = await loadMatchOfferFacts(o.matchId, now);
