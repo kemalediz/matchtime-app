@@ -61,3 +61,14 @@ describe("pool invite copy: hygiene", () => {
     }
   });
 });
+
+describe("pool invite copy: review of #406 (L3)", () => {
+  for (const [lang, table] of Object.entries(POOL_INVITE_TABLES)) {
+    it(`${lang}: the organisers' notice names the card's real button`, () => {
+      expect(table.notice_wants_join({ name: "Sam K", day: "Tue", link: "L" })).toContain(table.card_send_link);
+    });
+    it(`${lang}: the link DM claims nothing about who may use the link`, () => {
+      expect(table.link_dm({ club: "FNF", link: "L" })).not.toMatch(/share|paylaş|just for you|yalnızca senin/i);
+    });
+  }
+});

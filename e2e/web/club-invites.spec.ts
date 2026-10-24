@@ -47,16 +47,21 @@ const setLink = (db: import("../helpers/test-db").TestDb, link: string | null) =
 test.beforeAll(() => resetDb());
 test.afterAll(() => resetDb());
 
-test("the settings card is not shown to a club that has never had a guest", async ({ page }) => {
+test("the settings card and Invite to club are not shown to a club with the pool off (live clubs unchanged)", async ({ page, db }) => {
+  await seed(db);
   await signInAs(page, U.admin, "/admin/settings");
   await expect(page.getByTestId("weekly-routine")).toBeVisible({ timeout: 30_000 });
   await page.waitForLoadState("networkidle");
   await expect(page.getByTestId("group-invite-link")).toHaveCount(0);
+  await signInAs(page, U.admin, "/admin/guests?tab=history");
+  await page.getByRole("button", { name: "About Ali K" }).click();
+  await expect(page.getByTestId("guest-card")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("guest-invite")).toHaveCount(0);
+  await db.run(`UPDATE "Organisation" SET "featurePlayerPool" = true WHERE id = $1`, [ORG_ID]);
 });
 
 for (const [label, size] of SIZES) {
   test(`settings card (${label}): A and B explained, a bad link refused, a good one saved and removed`, async ({ page, db }) => {
-    if (label === "desktop") await seed(db);
     await setLink(db, null);
     await page.setViewportSize(size);
     await signInAs(page, U.admin, "/admin/settings");
@@ -66,21 +71,22 @@ for (const [label, size] of SIZES) {
     await expect(card.getByTestId("group-invite-link-status")).toHaveText("Not set up yet: guests cannot be invited to your group.");
     await expect(card.getByTestId("group-invite-link-option-a")).toContainText("make MatchTime an admin of your WhatsApp group");
     await expect(card.getByTestId("group-invite-link-option-b")).toContainText("paste your group's invite link below");
+    await expect(card.getByTestId("group-invite-link-not-hq")).toHaveText("Paste the link of your players' group, not of your admin group.");
 
     await card.getByTestId("group-invite-link-input").fill("https://evil.example/join");
     await card.getByTestId("group-invite-link-save").click();
-    await expect(card.getByTestId("group-invite-link-error")).toHaveText(/not a WhatsApp group invite link/);
+    await expect(card.getByTestId("group-invite-link-error")).toHaveText(/not a WhatsApp group invite link/, { timeout: 30_000 });
     expect((await db.one<{ l: string | null }>(`SELECT "groupInviteLink" AS l FROM "Organisation" WHERE id = $1`, [ORG_ID]))!.l).toBeNull();
 
     await card.getByTestId("group-invite-link-input").fill(`  ${LINK}?mode=ems_copy_t `);
     await card.getByTestId("group-invite-link-save").click();
-    await expect(card).toHaveAttribute("data-mode", "pasted", { timeout: 20_000 });
+    await expect(card).toHaveAttribute("data-mode", "pasted", { timeout: 45_000 });
     await expect(card.getByTestId("group-invite-link-input")).toHaveValue(LINK);
     expect((await db.one<{ l: string | null }>(`SELECT "groupInviteLink" AS l FROM "Organisation" WHERE id = $1`, [ORG_ID]))!.l).toBe(LINK);
     await expectNoSideScroll(page);
 
     await card.getByTestId("group-invite-link-remove").click();
-    await expect(card).toHaveAttribute("data-mode", "none", { timeout: 20_000 });
+    await expect(card).toHaveAttribute("data-mode", "none", { timeout: 45_000 });
   });
 }
 

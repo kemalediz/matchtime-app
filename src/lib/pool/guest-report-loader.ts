@@ -93,7 +93,7 @@ export async function loadGuestFacts(orgId: string, opts: { userIds?: string[]; 
     }),
     db.clubInvitation.findMany({
       where: { orgId, userId: { in: userIds } },
-      select: { userId: true, status: true, origin: true, clubYesAt: true, playerYesAt: true, declinedBy: true, closedAt: true, createdAt: true },
+      select: { userId: true, status: true, origin: true, clubYesAt: true, playerYesAt: true, declinedBy: true, closedAt: true, createdAt: true, linkSentAt: true },
     }),
     db.guestPlace.findMany({ where: { userId: { in: userIds }, orgId: { not: orgId } }, select: { userId: true, matchId: true, result: true, settledAt: true } }),
     db.attendance.findMany({

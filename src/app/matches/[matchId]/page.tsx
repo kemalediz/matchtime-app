@@ -213,7 +213,7 @@ export default async function MatchDetailPage({
   // Invite to club on the card (pool L8): organisers only, and only when a
   // guest card is shown at all.
   const guestInvite =
-    isAdmin && CLUB_INVITE_LIVE && Object.values(guestTags).some(Boolean)
+    isAdmin && CLUB_INVITE_LIVE && match.activity.org.featurePlayerPool && Object.values(guestTags).some(Boolean)
       ? { inviteAction: inviteToClub, linkReady: (await loadLinkSource(match.activity.orgId).catch(() => ({ kind: "none" as const }))).kind !== "none" }
       : {};
   const isPastDeadline = new Date() > match.attendanceDeadline;

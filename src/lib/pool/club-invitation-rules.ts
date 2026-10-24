@@ -49,6 +49,8 @@ export interface InvitationFacts {
   declinedBy: string | null;
   closedAt: Date | null;
   createdAt: Date;
+  /** When the link DM was queued; null while none has gone (no source yet). */
+  linkSentAt?: Date | null;
 }
 
 export type InvitationEvent =
@@ -152,16 +154,19 @@ export function afterGameKickoffRange(now: Date, maxDurationMins = 24 * 60): { f
  *   asked      asked after the game, nobody answered yet
  *   club-yes   the club said yes, waiting for him
  *   player-yes he wants to join, waiting for the club
+ *   approved   both said yes, no link has gone yet (no link source):
+ *              waiting for the group link, however long (review M1)
  *   accepted   both said yes, the link went; he has not joined yet
  *   declined   he said no thanks lately
  */
-export type InvitationView = "none" | "asked" | "club-yes" | "player-yes" | "accepted" | "declined";
+export type InvitationView = "none" | "asked" | "club-yes" | "player-yes" | "approved" | "accepted" | "declined";
 
 export function invitationView(rows: readonly InvitationFacts[], now: Date): InvitationView {
   const openRow = rows.find((r) => r.status === "open");
   if (openRow) return openRow.clubYesAt ? "club-yes" : openRow.playerYesAt ? "player-yes" : "asked";
-  const within = (r: InvitationFacts, days: number) => !!r.closedAt && now.getTime() - r.closedAt.getTime() < days * DAY_MS;
-  if (rows.some((r) => r.status === "accepted" && within(r, CLUB_INVITE_RULES.linkSentShownDays))) return "accepted";
+  if (rows.some((r) => r.status === "accepted" && !r.linkSentAt)) return "approved";
+  const sentWithin = (r: InvitationFacts) => !!r.linkSentAt && now.getTime() - r.linkSentAt.getTime() < CLUB_INVITE_RULES.linkSentShownDays * DAY_MS;
+  if (rows.some((r) => r.status === "accepted" && sentWithin(r))) return "accepted";
   const cooldown = CLUB_INVITE_RULES.playerDeclineCooldownDays * DAY_MS;
   const recentNo = rows.some((r) => r.status === "declined" && r.declinedBy === "player" && r.closedAt && now.getTime() - r.closedAt.getTime() < cooldown);
   return recentNo ? "declined" : "none";

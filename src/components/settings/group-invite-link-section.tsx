@@ -24,12 +24,19 @@ export function GroupInviteLinkSection(props: { orgId: string; language: string 
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
+    // A late answer from an earlier run of this effect must never overwrite
+    // what the organiser has typed since.
+    let live = true;
     getInviteLinkSettings(props.orgId)
       .then((r) => {
+        if (!live) return;
         setData(r);
         setDraft(r?.link ?? "");
       })
-      .catch(() => setData(null));
+      .catch(() => live && setData(null));
+    return () => {
+      live = false;
+    };
   }, [props.orgId]);
 
   if (!data) return null;
@@ -120,6 +127,9 @@ export function GroupInviteLinkSection(props: { orgId: string; language: string 
               )}
             </div>
           </div>
+          <p data-testid="group-invite-link-not-hq" className="text-xs text-slate-500">
+            {c.set_not_hq}
+          </p>
           {error && (
             <p id="group-invite-link-error" role="alert" data-testid="group-invite-link-error" className="text-sm text-red-700">
               {error}

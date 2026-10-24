@@ -39,9 +39,9 @@ import { dayLabel } from "../i18n/dates";
 import { inviteCopy } from "../i18n/pool-invite";
 import { normaliseLang, type Lang } from "../i18n/lang";
 import { keepGuestAsMember } from "../partner-guest";
-import { queuePlatformDm, queuePlatformInviteCode, type PlatformDmClient, type PlatformJobOutcome } from "../platform-jobs";
+import { cancelQueuedPlatformDms, queuePlatformDm, queuePlatformInviteCode, type PlatformDmClient, type PlatformJobOutcome } from "../platform-jobs";
 import { readPostState } from "../group-postability-store";
-import { GUEST_MEMBER_WHERE, partnerHomeClubOf } from "../guest-membership";
+import { GUEST_MEMBER_WHERE, isGuestMembership, partnerHomeClubOf } from "../guest-membership";
 import { loadGuestFacts } from "./guest-report-loader";
 import { buildGuestPlayers, guestDisplayName, settleGuestResult } from "./guest-report";
 import type { InviteToClubResult, InviteToClubState } from "./club-invite";
@@ -65,6 +65,9 @@ export const GUEST_HISTORY_PATH = "/admin/guests?tab=history";
 
 /** An invite code job not reported within this is taken as failed. */
 const INVITE_CODE_STALE_MS = 10 * 60_000;
+/** After the Pi failed to read the code, it is not asked again for this long
+ *  (the pasted link, or the organisers' one notice, in between). */
+const INVITE_CODE_RETRY_MS = 6 * 3600_000;
 
 const INVITATION_SELECT = {
   id: true,
@@ -124,6 +127,23 @@ async function phoneOf(userId: string): Promise<string | null> {
   return (await db.user.findUnique({ where: { id: userId }, select: { phoneNumber: true } }))?.phoneNumber ?? null;
 }
 
+/**
+ * He withdrew his consent (review of #406, M3; decision L8.14): his pool
+ * profile is stopped, or he came through the pool and deleted it. Then
+ * nothing more about joining goes to him: no link, no closing line.
+ */
+async function consentWithdrawn(userId: string): Promise<boolean> {
+  const profile = await db.poolProfile.findUnique({ where: { userId }, select: { status: true } });
+  if (profile) return profile.status === "stopped";
+  return !!(await db.guestPlace.findFirst({ where: { userId, source: "pool" }, select: { id: true } }));
+}
+
+/** A live, ordinary member of the club already (review L6). */
+async function isMemberOf(orgId: string, userId: string): Promise<boolean> {
+  const m = await db.membership.findUnique({ where: { userId_orgId: { userId, orgId } }, select: { leftAt: true, guestMatchId: true, guestFromOrgId: true, guestVia: true } });
+  return !!m && m.leftAt === null && !isGuestMembership(m);
+}
+
 /** The card's state for one guest, from the database (never the page). */
 export async function guestInviteState(orgId: string, userId: string, now: Date): Promise<InviteToClubState> {
   const facts = await loadGuestFacts(orgId, { userIds: [userId], now });
@@ -162,7 +182,7 @@ async function step(inv: InvitationRow, ev: InvitationEvent, now: Date, env: Env
 
 // ── The guest's answer (My invitations) ────────────────────────────────
 
-export type PlayerAnswerResult = "waiting-club" | "link-sent" | "declined" | "closed" | "not-yours";
+export type PlayerAnswerResult = "waiting-club" | "link-sent" | "declined" | "closed" | "member" | "not-yours";
 
 export async function answerAsPlayer(args: { invitationId: string; userId: string; answer: "join" | "no"; now?: Date; env?: Env }): Promise<PlayerAnswerResult> {
   const now = args.now ?? new Date();
@@ -170,6 +190,7 @@ export async function answerAsPlayer(args: { invitationId: string; userId: strin
   const inv = (await db.clubInvitation.findUnique({ where: { id: args.invitationId }, select: INVITATION_SELECT })) as InvitationRow | null;
   if (!inv || inv.userId !== args.userId) return "not-yours";
   if (inv.status !== "open") return "closed";
+  if (args.answer === "join" && (await isMemberOf(inv.orgId, inv.userId))) return "member";
   const done = await step(inv, args.answer === "join" ? { kind: "player-yes", at: now } : { kind: "player-no", at: now }, now, env);
   if (!done.ok) return "closed";
   if (args.answer === "no") return "declined";
@@ -182,6 +203,9 @@ export async function answerAsPlayer(args: { invitationId: string; userId: strin
 export async function answerAsClub(args: { orgId: string; userId: string; actorId: string; answer: "yes" | "no"; now?: Date; env?: Env }): Promise<InviteToClubResult> {
   const now = args.now ?? new Date();
   const env = args.env ?? process.env;
+  // Live clubs unchanged (review M4): only a club with the pool on.
+  const pool = await db.organisation.findUnique({ where: { id: args.orgId }, select: { featurePlayerPool: true } });
+  if (!pool?.featurePlayerPool) return { ok: false, reason: "not-allowed" };
   const state = await guestInviteState(args.orgId, args.userId, now);
   const open = (await db.clubInvitation.findFirst({ where: { orgId: args.orgId, userId: args.userId, status: "open" }, select: INVITATION_SELECT })) as InvitationRow | null;
 
@@ -191,7 +215,7 @@ export async function answerAsClub(args: { orgId: string; userId: string; actorI
     return done.ok ? { ok: true, state: await guestInviteState(args.orgId, args.userId, now) } : { ok: false, reason: "failed" };
   }
 
-  if (state === "invited" || state === "link-sent") return { ok: false, reason: "already-invited" };
+  if (state === "invited" || state === "link-sent" || state === "approved") return { ok: false, reason: "already-invited" };
   if (state !== "available" && state !== "requested") return { ok: false, reason: "not-eligible" };
   if ((await loadLinkSource(args.orgId, env)).kind === "none") return { ok: false, reason: "no-link" };
 
@@ -222,9 +246,15 @@ export async function answerAsClub(args: { orgId: string; userId: string; actorI
       });
     });
   } catch (err) {
-    // The partial unique index: another tap (or the after-game question)
-    // opened one a moment ago.
-    if ((err as { code?: string })?.code === "P2002") return { ok: false, reason: "already-invited" };
+    // The partial unique index: another tap, or the after-game question,
+    // opened one a moment ago (review L2). The tap is then the club's yes
+    // on that one.
+    if ((err as { code?: string })?.code === "P2002") {
+      const won = (await db.clubInvitation.findFirst({ where: { orgId: args.orgId, userId: args.userId, status: "open" }, select: INVITATION_SELECT })) as InvitationRow | null;
+      if (!won || won.clubYesAt) return { ok: false, reason: "already-invited" };
+      const done = await step(won, { kind: "club-yes", at: now, byUserId: args.actorId }, now, env);
+      return done.ok ? { ok: true, state: "invited" } : { ok: false, reason: "already-invited" };
+    }
     console.error(`[club-invite] org ${args.orgId}: invite failed:`, err instanceof Error ? err.message : "failed");
     return { ok: false, reason: "failed" };
   }
@@ -241,6 +271,7 @@ export async function answerAsClub(args: { orgId: string; userId: string; actorI
 async function queueLinkDm(invitationId: string, link: string, now: Date): Promise<boolean> {
   const inv = await db.clubInvitation.findUnique({ where: { id: invitationId }, select: { id: true, orgId: true, userId: true, status: true, linkSentAt: true, playerYesAt: true } });
   if (!inv || inv.status !== "accepted" || inv.linkSentAt) return false;
+  if (await consentWithdrawn(inv.userId)) return false;
   const [phone, club, lang] = await Promise.all([phoneOf(inv.userId), clubOf(inv.orgId), guestLanguage(inv.userId, inv.orgId)]);
   if (!phone || !club) return false;
   // His own tap was the second yes: an answer, sent now. The club's tap
@@ -267,20 +298,26 @@ export async function deliverInviteLink(
   invitationId: string,
   now: Date,
   env: Env = process.env,
-  opts: { preferPasted?: boolean } = {},
+  /** preferPasted: a link an organiser has just pasted goes first.
+   *  skipBot: the Pi's last try failed lately; do not ask it again yet. */
+  opts: { preferPasted?: boolean; skipBot?: boolean } = {},
 ): Promise<"queued" | "asked-pi" | "no-link" | "nothing"> {
   const inv = await db.clubInvitation.findUnique({ where: { id: invitationId }, select: { id: true, orgId: true, userId: true, status: true, linkSentAt: true } });
   if (!inv || inv.status !== "accepted" || inv.linkSentAt) return "nothing";
+  if (await consentWithdrawn(inv.userId)) return "nothing";
   const source = await loadLinkSource(inv.orgId, env);
   // A link an organiser has just pasted is what he expects to go out now.
-  if (opts.preferPasted && source.kind === "bot" && source.fallback) return (await queueLinkDm(inv.id, source.fallback, now)) ? "queued" : "nothing";
+  if (source.kind === "bot" && source.fallback && (opts.preferPasted || opts.skipBot)) return (await queueLinkDm(inv.id, source.fallback, now)) ? "queued" : "nothing";
   if (source.kind === "bot") {
-    const job = await queuePlatformInviteCode({ groupId: source.groupId, refId: inv.id });
-    if ("id" in job) return "asked-pi";
+    const job = opts.skipBot ? null : await queuePlatformInviteCode({ groupId: source.groupId, refId: inv.id });
+    if (job && "id" in job) return "asked-pi";
     if (source.fallback) return (await queueLinkDm(inv.id, source.fallback, now)) ? "queued" : "nothing";
-  } else if (source.kind === "pasted") {
-    return (await queueLinkDm(inv.id, source.link, now)) ? "queued" : "nothing";
+    // MatchTime IS an admin, so "make MatchTime an admin" would be wrong
+    // (review L1): the organisers are asked to paste the link.
+    await tellClubNoLink(inv, now, "link-failed");
+    return "no-link";
   }
+  if (source.kind === "pasted") return (await queueLinkDm(inv.id, source.link, now)) ? "queued" : "nothing";
   await tellClubNoLink(inv, now, "no-link");
   return "no-link";
 }
@@ -374,9 +411,58 @@ async function tellClubNoLink(inv: { id: string; orgId: string; userId: string }
 }
 
 async function tellGuestClosed(inv: InvitationRow, now: Date): Promise<void> {
+  if (await consentWithdrawn(inv.userId)) return;
   const [phone, club, lang] = await Promise.all([phoneOf(inv.userId), clubOf(inv.orgId), guestLanguage(inv.userId, inv.orgId)]);
   if (!phone || !club) return;
   await queuePlatformDm({ phone, purpose: "club-invite-closed", refId: inv.id, text: inviteCopy(lang).closed_dm({ club: club.name }), sendAfter: poolSendAt(now) });
+}
+
+// ── Taking a link back (review M2) and a withdrawn consent (M3) ────────
+
+/**
+ * The club removed or replaced its pasted link: every link DM not handed to
+ * the Pi yet is cancelled, and its invitation's `linkSentAt` cleared, so
+ * the next delivery (now, with a new link; or the sweep, once there is a
+ * source again) sends the CURRENT link. A DM already on its way is left.
+ */
+export async function retractUnsentLinks(orgId: string, now: Date = new Date()): Promise<number> {
+  const sent = await db.clubInvitation.findMany({ where: { orgId, status: "accepted", linkSentAt: { not: null } }, select: { id: true } });
+  if (sent.length === 0) return 0;
+  const queued = await db.platformJob.findMany({
+    where: { kind: "dm", purpose: "club-invite-link", status: "queued", refId: { in: sent.map((i) => i.id) } },
+    select: { refId: true },
+  });
+  const refIds = [...new Set(queued.map((q) => q.refId).filter((r): r is string => !!r))];
+  if (refIds.length === 0) return 0;
+  await cancelQueuedPlatformDms({ purposes: ["club-invite-link"], refIds, reason: "the club changed its group link", now });
+  const still = await db.platformJob.findMany({ where: { purpose: "club-invite-link", refId: { in: refIds }, status: { in: ["claimed", "sent", "unconfirmed"] } }, select: { refId: true } });
+  const gone = refIds.filter((r) => !still.some((x) => x.refId === r));
+  if (gone.length > 0) await db.clubInvitation.updateMany({ where: { id: { in: gone }, status: "accepted" }, data: { linkSentAt: null } });
+  return gone.length;
+}
+
+/**
+ * He stopped or deleted his pool profile (decision L8.14): a withdrawal of
+ * consent. His open invitations, and approved ones whose link has not gone,
+ * are withdrawn with no message; every invitation DM to him not handed to
+ * the Pi yet is cancelled.
+ */
+export async function withdrawInvitationsForConsent(userId: string, now: Date = new Date()): Promise<number> {
+  const rows = await db.clubInvitation.findMany({ where: { userId, status: { in: ["open", "accepted"] } }, select: { id: true } });
+  if (rows.length === 0) return 0;
+  await cancelQueuedPlatformDms({
+    purposes: ["club-invite-ask", "club-invite-link", "club-invite-closed"],
+    refIds: rows.map((r) => r.id),
+    reason: "he withdrew his consent",
+    now,
+  });
+  const unsent = await db.platformJob.findMany({ where: { purpose: "club-invite-link", refId: { in: rows.map((r) => r.id) }, status: { in: ["claimed", "sent", "unconfirmed"] } }, select: { refId: true } });
+  const delivered = new Set(unsent.map((u) => u.refId));
+  const { count } = await db.clubInvitation.updateMany({
+    where: { id: { in: rows.map((r) => r.id).filter((id) => !delivered.has(id)) }, status: { in: ["open", "accepted"] } },
+    data: { status: "withdrawn", closedAt: now },
+  });
+  return count;
 }
 
 // ── He joined the group ────────────────────────────────────────────────
@@ -420,6 +506,11 @@ export async function sweepClubInvitations(now: Date = new Date(), env: Env = pr
     console.error("[club-invite] expiring unanswered invitations failed:", err instanceof Error ? err.message : "failed");
   }
   try {
+    await retryWaitingLinks(now, env);
+  } catch (err) {
+    console.error("[club-invite] retrying approved invitations failed:", err instanceof Error ? err.message : "failed");
+  }
+  try {
     const stale = await db.platformJob.findMany({
       where: { kind: "invite-code", status: { in: ["queued", "claimed"] }, createdAt: { lt: new Date(now.getTime() - INVITE_CODE_STALE_MS) } },
       select: { id: true, refId: true },
@@ -441,6 +532,31 @@ export async function sweepClubInvitations(now: Date = new Date(), env: Env = pr
   return out;
 }
 
+/**
+ * Approved invitations still waiting for a link (review M1): whenever the
+ * club has a source now, the link goes. The Pi is not asked again while a
+ * job is outstanding, nor for a while after it failed (a job refused at
+ * dispatch included, review L1): then the pasted link, or the organisers'
+ * one notice.
+ */
+async function retryWaitingLinks(now: Date, env: Env): Promise<void> {
+  const waiting = await db.clubInvitation.findMany({
+    where: { status: "accepted", linkSentAt: null, org: { featurePlayerPool: true } },
+    select: { id: true, orgId: true },
+    orderBy: { closedAt: "asc" },
+    take: 20,
+  });
+  const sources = new Map<string, InviteLinkSource>();
+  for (const w of waiting) {
+    if (!sources.has(w.orgId)) sources.set(w.orgId, await loadLinkSource(w.orgId, env));
+    if (sources.get(w.orgId)!.kind === "none") continue;
+    const last = await db.platformJob.findFirst({ where: { kind: "invite-code", refId: w.id }, orderBy: { createdAt: "desc" }, select: { status: true, failedAt: true } });
+    if (last && (last.status === "queued" || last.status === "claimed")) continue;
+    const failedLately = last?.status === "failed" && !!last.failedAt && now.getTime() - last.failedAt.getTime() < INVITE_CODE_RETRY_MS;
+    await deliverInviteLink(w.id, now, env, { skipBot: failedLately });
+  }
+}
+
 /** The after-game question to every guest due one now. */
 async function askAfterGames(now: Date): Promise<number> {
   const range = afterGameKickoffRange(now);
@@ -454,8 +570,10 @@ async function askAfterGames(now: Date): Promise<number> {
   const [memberships, places] = await Promise.all([
     // The clubs' guest rows, filtered to these matches below (a guest row
     // is written only by partner-guest.ts; this reads them).
-    db.membership.findMany({ where: { ...GUEST_MEMBER_WHERE, orgId: { in: [...new Set(recent.map((m) => m.activity.orgId))] } }, select: { userId: true, orgId: true, guestMatchId: true } }),
-    db.guestPlace.findMany({ where: { matchId: { in: matchIds } }, select: { userId: true, orgId: true, matchId: true } }),
+    // POOL guests only (review M4): a partner club's player is recruited
+    // only by a deliberate Invite to club, never automatically.
+    db.membership.findMany({ where: { ...GUEST_MEMBER_WHERE, guestVia: "pool", orgId: { in: [...new Set(recent.map((m) => m.activity.orgId))] } }, select: { userId: true, orgId: true, guestMatchId: true } }),
+    db.guestPlace.findMany({ where: { matchId: { in: matchIds }, source: "pool" }, select: { userId: true, orgId: true, matchId: true } }),
   ]);
   const pairs = new Map<string, { orgId: string; userId: string; matchId: string }>();
   const wanted = new Set(matchIds);
@@ -478,6 +596,8 @@ async function askAfterGames(now: Date): Promise<number> {
   for (const p of pairs.values()) {
     const m = matchOf.get(p.matchId);
     if (!m || m.activity.orgId !== p.orgId) continue;
+    // Asked before: skipped before anything else is read (review L4).
+    if (asked.has(`${p.orgId}:${p.userId}`)) continue;
     byOrg.set(p.orgId, [...(byOrg.get(p.orgId) ?? []), p]);
   }
   for (const [orgId, list] of byOrg) {

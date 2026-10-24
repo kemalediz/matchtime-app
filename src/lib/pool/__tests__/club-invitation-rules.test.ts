@@ -131,11 +131,18 @@ describe("invitationView: what the guest card shows", () => {
     expect(invitationView([], T0)).toBe("none");
   });
 
+  it("both said yes but no link has gone yet (no source): approved, waiting for the link, however long", () => {
+    const waiting = open({ status: "accepted", clubYesAt: T0, playerYesAt: T0, closedAt: T0, linkSentAt: null });
+    expect(invitationView([waiting], d(400))).toBe("approved");
+  });
+
   it("both said yes: the link went, waiting for him to join (for a while)", () => {
-    const accepted = open({ status: "accepted", clubYesAt: T0, playerYesAt: T0, closedAt: T0 });
+    const accepted = open({ status: "accepted", clubYesAt: T0, playerYesAt: T0, closedAt: T0, linkSentAt: T0 });
     expect(invitationView([accepted], d(CLUB_INVITE_RULES.linkSentShownDays - 1))).toBe("accepted");
     expect(invitationView([accepted], d(CLUB_INVITE_RULES.linkSentShownDays))).toBe("none");
     // An open one wins over an older accepted one.
     expect(invitationView([accepted, open({ clubYesAt: d(1) })], d(2))).toBe("club-yes");
+    // Counted from when the link went, not from the second yes.
+    expect(invitationView([{ ...accepted, linkSentAt: d(10) }], d(CLUB_INVITE_RULES.linkSentShownDays + 5))).toBe("accepted");
   });
 });

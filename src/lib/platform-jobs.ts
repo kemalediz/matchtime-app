@@ -325,7 +325,17 @@ export async function queuePlatformDm(args: {
 /** DM purposes `cancelQueuedPlatformDms` will touch. A sign-up code, a
  *  decision, a billing notice and anything for the owner are never
  *  cancelled from here. */
-export const CANCELLABLE_DM_PURPOSES = ["setup-ask", "setup-admin-code", "setup-reminder", "setup-removed", "pool-offer"] as const;
+export const CANCELLABLE_DM_PURPOSES = [
+  "setup-ask",
+  "setup-admin-code",
+  "setup-reminder",
+  "setup-removed",
+  "pool-offer",
+  // Pool L8 (review of #406): a link replaced or removed, a consent withdrawn.
+  "club-invite-ask",
+  "club-invite-link",
+  "club-invite-closed",
+] as const;
 export type CancellableDmPurpose = (typeof CANCELLABLE_DM_PURPOSES)[number];
 
 /** How a cancelled job's `failReason` starts. On a CLAIMED job it is the

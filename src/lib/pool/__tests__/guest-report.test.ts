@@ -241,11 +241,18 @@ describe("inviteToClubState: who may be invited to the club", () => {
   });
   it("the club said yes: invited, waiting for him", () => {
     expect(inviteToClubState({ ...base, invitation: "club-yes" })).toBe("invited");
-    expect(inviteToClubState({ ...base, invitation: "club-yes", pool: "stopped" })).toBe("invited");
   });
-  it("he asked to join: requested, the tap sends the link (even if he stopped offers since)", () => {
+  it("he asked to join: requested, the tap sends the link", () => {
     expect(inviteToClubState({ ...base, invitation: "player-yes" })).toBe("requested");
-    expect(inviteToClubState({ ...base, invitation: "player-yes", pool: "stopped" })).toBe("requested");
+  });
+  it("a stop or a delete withdraws consent: unavailable whatever is open (decision L8.14)", () => {
+    for (const invitation of ["player-yes", "club-yes", "approved", "accepted", "asked"] as const) {
+      expect(inviteToClubState({ ...base, invitation, pool: "stopped" }), invitation).toBe("unavailable");
+      expect(inviteToClubState({ ...base, invitation, pool: "deleted" }), invitation).toBe("unavailable");
+    }
+  });
+  it("both said yes, no link sent yet: approved, waiting for the group link", () => {
+    expect(inviteToClubState({ ...base, invitation: "approved" })).toBe("approved");
   });
   it("asked after the game, nobody answered: the tap is the club's yes", () => {
     expect(inviteToClubState({ ...base, invitation: "asked" })).toBe("available");

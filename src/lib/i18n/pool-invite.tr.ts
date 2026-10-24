@@ -10,13 +10,13 @@ export const poolInviteTr: PoolInviteStrings = {
   ask_after_game: (p) =>
     `${p.day} günü *${p.club}* ile oynadığın maç güzel geçti mi? Sonraki maçlar için gruplarına katılmak ister misin? Buradan yanıtla: ${p.link}`,
   ask_organiser: (p) => `*${p.club}* sonraki maçlar için seni gruplarında görmek istiyor. Katılmak ister misin? Buradan yanıtla: ${p.link}`,
-  link_dm: (p) => `🎉 *${p.club}* grubuna hoş geldin. WhatsApp grubuna buradan katıl: ${p.link}\nBu bağlantı yalnızca senin için, lütfen paylaşma.`,
+  link_dm: (p) => `🎉 *${p.club}* grubuna hoş geldin. WhatsApp grubuna buradan katıl: ${p.link}`,
   closed_dm: (p) =>
     `Evet dediğin için teşekkürler. *${p.club}* şu anda gruplarına yeni oyuncu almıyor. Yakınındaki maçları MatchTime üzerinden almaya devam edebilirsin.`,
 
   // ── To the organisers ─────────────────────────────────────────────────
   notice_wants_join: (p) =>
-    `🙋 ${p.name}, ${p.day} günü sizinle misafir olarak oynadı ve grubunuza katılmak istiyor. Grubun davet bağlantısını göndermek için kartındaki Davet et düğmesine dokunun: ${p.link}`,
+    `🙋 ${p.name}, ${p.day} günü sizinle misafir olarak oynadı ve grubunuza katılmak istiyor. Grubun davet bağlantısını göndermek için kartındaki Davet bağlantısını gönder düğmesine dokunun: ${p.link}`,
   /** The guest when he has no name on MatchTime. */
   notice_someone: "Bir misafir",
   notice_no_link: (p) =>
@@ -28,6 +28,7 @@ export const poolInviteTr: PoolInviteStrings = {
   card_requested: "Grubunuza katılmak istiyor",
   card_send_link: "Davet bağlantısını gönder",
   card_not_now: "Şimdi değil",
+  card_approved: "Onaylandı, grup bağlantısı bekleniyor.",
   card_link_sent: "Davet bağlantısı gönderildi. Henüz grupta değil.",
   card_declined: "Yakın zamanda katılmak istemediğini söyledi.",
   card_no_link: "Misafirleri davet etmek için MatchTime'ı WhatsApp grubunuzda yönetici yapın ya da grubunuzun davet bağlantısını Ayarlar'a yapıştırın.",
@@ -51,6 +52,7 @@ export const poolInviteTr: PoolInviteStrings = {
   set_saved: "Kaydedildi. MatchTime bunu yalnızca iki tarafın da onayladığı misafirlere gönderir.",
   set_removed: "Kaldırıldı.",
   set_invalid: "Bu bir WhatsApp grup davet bağlantısı değil. https://chat.whatsapp.com/ ile başlar",
+  set_not_hq: "Yönetici grubunuzun değil, oyuncu grubunuzun bağlantısını yapıştırın.",
   set_sent_waiting: (p) => `Bekleyen ${p.n} onaylı misafire gönderildi.`,
 
   // ── My invitations ────────────────────────────────────────────────────
@@ -66,6 +68,7 @@ export const poolInviteTr: PoolInviteStrings = {
   inv_waiting_club: "Teşekkürler. Kulübün onayı bekleniyor.",
   inv_link_sent: "Tamam. Davet bağlantısı WhatsApp'tan sana geliyor.",
   inv_declined: "Bize bildirdiğin için teşekkürler.",
+  inv_member: "Zaten bu kulüptesin.",
   inv_open_offer: "Teklifi aç",
   inv_offer_until: (p) => `En geç ${p.time} yanıtla`,
   inv_try_again: "Bir şeyler ters gitti. Lütfen bir dakika sonra tekrar dene.",

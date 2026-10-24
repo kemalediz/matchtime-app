@@ -237,9 +237,8 @@ for (const [label, size] of [
     await expect(card.getByTestId("guest-card-record")).toHaveText("Turned up to 1 of 2 games");
     await expect(card.getByTestId("guest-card-games")).toHaveText("1 game with your club");
     await expect(card.getByTestId("guest-card-source")).toHaveText("MatchTime player pool");
-    // Invite to club (L8): shown, greyed until the club has a group link.
-    await expect(card.getByTestId("guest-invite")).toBeDisabled();
-    await expect(card.getByTestId("guest-invite-no-link")).toBeVisible();
+    // Invite to club (L8) shows only for a club with the pool on.
+    await expect(card.getByTestId("guest-invite")).toHaveCount(0);
     await expectNoSecrets(page);
     await page.keyboard.press("Escape");
     await expect(card).toHaveCount(0);

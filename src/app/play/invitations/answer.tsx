@@ -25,7 +25,7 @@ export function InvitationAnswer(props: { invitationId: string; state: "waiting-
 
   if (result && result !== "error") {
     const text =
-      result === "waiting-club" ? c.inv_waiting_club : result === "link-sent" ? c.inv_link_sent : result === "declined" ? c.inv_declined : c.inv_try_again;
+      result === "waiting-club" ? c.inv_waiting_club : result === "link-sent" ? c.inv_link_sent : result === "declined" ? c.inv_declined : result === "member" ? c.inv_member : c.inv_try_again;
     return (
       <p role="status" data-testid="my-invitation-result" data-result={result} className="text-sm font-medium text-slate-800">
         {text}

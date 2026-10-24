@@ -44,6 +44,7 @@ import {
   platformJobKey,
   queuePlatformDm,
   queuePlatformInviteCode,
+  cancelQueuedPlatformDms,
   queuePlatformLeaveGroup,
   recordPlatformJobOutcome,
 } from "../platform-jobs";
@@ -472,5 +473,14 @@ describe("the group invite code job (pool L8)", () => {
     for (const purpose of ["club-invite-ask", "club-invite-link", "club-invite-closed"] as const) {
       await expect(queuePlatformDm({ phone: "+447700900123", text: "x", purpose })).rejects.toMatchObject({ code: "number-not-known" });
     }
+  });
+});
+
+describe("club invite DMs can be cancelled (pool L8 review, M2/M3)", () => {
+  it("a link, an ask or a closing line not sent yet can be taken back", async () => {
+    dbMock.platformJob.updateMany.mockResolvedValue({ count: 0 });
+    (dbMock as unknown as { $queryRaw: ReturnType<typeof vi.fn> }).$queryRaw = vi.fn(async () => [{ status: "failed", purpose: "club-invite-link" }]);
+    const r = await cancelQueuedPlatformDms({ purposes: ["club-invite-link", "club-invite-ask", "club-invite-closed"], refIds: ["inv1"], reason: "link replaced" });
+    expect(r.cancelled).toBe(1);
   });
 });

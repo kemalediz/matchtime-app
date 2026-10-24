@@ -93,6 +93,8 @@ describe("InviteToClubButton", () => {
     expect(button("invited")).not.toContain("<button");
     expect(button("link-sent")).toContain("Invite link sent");
     expect(button("link-sent")).not.toContain("<button");
+    expect(button("approved")).toContain("Approved, waiting for the group link.");
+    expect(button("approved")).not.toContain("<button");
     expect(button("hidden")).toBe("");
   });
 });

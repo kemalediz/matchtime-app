@@ -17,6 +17,7 @@
  * transaction as the change.
  */
 import { db } from "../db";
+import { withdrawInvitationsForConsent } from "./club-invitation";
 import { normaliseLang, type Lang } from "../i18n/lang";
 import { recordPoolConsent } from "./consent-record";
 import { canEraseUser, manageTransition, type ManageAction, type ManageRefusal } from "./manage-rules";
@@ -169,7 +170,7 @@ export async function applyManageAction(
     evidence,
   });
   if (!t.ok) return t;
-  return db.$transaction(async (tx) => {
+  const done = await db.$transaction(async (tx) => {
     // Compare-and-set on the state the rule read, so two taps cannot cross.
     const { count } = await tx.poolProfile.updateMany({ where: { id: p.id, status: p.status, pausedReason: p.pausedReason }, data: t.patch });
     if (count !== 1) return { ok: false as const, reason: "no-profile" as const };
@@ -179,6 +180,17 @@ export async function applyManageAction(
     }
     return { ok: true as const };
   });
+  // A stop withdraws consent: his club invitations close, silently (L8.14).
+  if (done.ok && action === "stop") await withdrawInvitations(userId, now);
+  return done;
+}
+
+async function withdrawInvitations(userId: string, now: Date): Promise<void> {
+  try {
+    await withdrawInvitationsForConsent(userId, now);
+  } catch (err) {
+    console.error("[pool-manage] withdrawing club invitations failed:", err instanceof Error ? err.message : "failed");
+  }
 }
 
 export async function setShowRecognition(userId: string, show: boolean, now: Date = new Date()): Promise<PoolManageResult> {
@@ -198,6 +210,10 @@ export async function setShowRecognition(userId: string, show: boolean, now: Dat
  * log #14, L0.3), however the profile and the User go.
  */
 export async function deletePoolProfile(userId: string, now: Date = new Date()): Promise<{ ok: true; userErased: boolean } | { ok: false; reason: "no-profile" }> {
+  // Before the delete: an erased User takes his invitations with him, a
+  // kept one must not keep them open (L8.14).
+  const has = await db.poolProfile.findUnique({ where: { userId }, select: { id: true } });
+  if (has) await withdrawInvitations(userId, now);
   return db.$transaction(async (tx) => {
     const { count } = await tx.poolProfile.deleteMany({ where: { userId } });
     if (count === 0) return { ok: false as const, reason: "no-profile" as const };

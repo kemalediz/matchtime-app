@@ -38,8 +38,10 @@ export default async function GuestPlayersPage({ searchParams }: { searchParams:
   const facts = await loadGuestFacts(orgId, { report: query.tab === "report", now });
   const players = buildGuestPlayers({ orgId, now, lang, games: facts.games, people: facts.people });
   // Invite to club (pool L8): the tap, and whether the club can send its link.
-  const linkReady = (await loadLinkSource(orgId)).kind !== "none";
-  const list = { s, lang, orgId, cards: players.cards, poolClub: membership.org.featurePlayerPool === true, inviteAction: CLUB_INVITE_LIVE ? inviteToClub : undefined, linkReady };
+  // Only where the pool is on (review M4: live clubs unchanged).
+  const inviteOn = CLUB_INVITE_LIVE && membership.org.featurePlayerPool === true;
+  const linkReady = inviteOn && (await loadLinkSource(orgId)).kind !== "none";
+  const list = { s, lang, orgId, cards: players.cards, poolClub: membership.org.featurePlayerPool === true, inviteAction: inviteOn ? inviteToClub : undefined, linkReady };
 
   return (
     <div className="space-y-5" data-testid="guest-players-page">

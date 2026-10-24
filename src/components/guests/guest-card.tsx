@@ -51,10 +51,10 @@ export function InviteToClubButton(props: {
   const [pending, start] = useTransition();
   if (!props.action || state === "hidden") return null;
   const action = props.action;
-  if (state === "invited" || state === "link-sent")
+  if (state === "invited" || state === "link-sent" || state === "approved")
     return (
-      <p data-testid={state === "invited" ? "guest-invite-invited" : "guest-invite-link-sent"} className="text-sm text-slate-600">
-        {state === "invited" ? s.gst_invite_invited : c.card_link_sent}
+      <p data-testid={`guest-invite-${state}`} className="text-sm text-slate-600">
+        {state === "invited" ? s.gst_invite_invited : state === "approved" ? c.card_approved : c.card_link_sent}
       </p>
     );
   const linkReady = props.linkReady !== false;

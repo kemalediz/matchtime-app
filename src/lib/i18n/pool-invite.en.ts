@@ -24,13 +24,13 @@ export const poolInviteEn = {
   ask_organiser: (p: { club: string; link: string }) =>
     `*${p.club}* would like you to join their group for future games. Want to join? Answer here: ${p.link}`,
   link_dm: (p: { club: string; link: string }) =>
-    `🎉 Welcome to *${p.club}*. Join their WhatsApp group here: ${p.link}\nThis link is just for you, please don't share it.`,
+    `🎉 Welcome to *${p.club}*. Join their WhatsApp group here: ${p.link}`,
   closed_dm: (p: { club: string }) =>
     `Thanks for saying yes. *${p.club}* is not adding new players to their group right now. You can still get games near you through MatchTime.`,
 
   // ── To the organisers (the club's language) ───────────────────────────
   notice_wants_join: (p: { name: string; day: string; link: string }) =>
-    `🙋 ${p.name} played with you on ${p.day} as a guest and wants to join your group. To send them the group's invite link, tap Invite on their card: ${p.link}`,
+    `🙋 ${p.name} played with you on ${p.day} as a guest and wants to join your group. To send them the group's invite link, tap Send the invite link on their card: ${p.link}`,
   /** The guest when he has no name on MatchTime. */
   notice_someone: "A guest",
   notice_no_link: (p: { link: string }) =>
@@ -43,6 +43,7 @@ export const poolInviteEn = {
   card_send_link: "Send the invite link",
   card_not_now: "Not now",
   card_link_sent: "Invite link sent. Not in the group yet.",
+  card_approved: "Approved, waiting for the group link.",
   card_declined: "Said no thanks to joining lately.",
   card_no_link: "To invite guests, make MatchTime an admin of your WhatsApp group, or paste your group's invite link in Settings.",
   card_no_link_cta: "Open Settings",
@@ -65,6 +66,7 @@ export const poolInviteEn = {
   set_saved: "Saved. MatchTime sends it only to guests both sides approved.",
   set_removed: "Removed.",
   set_invalid: "That is not a WhatsApp group invite link. It starts with https://chat.whatsapp.com/",
+  set_not_hq: "Paste the link of your players' group, not of your admin group.",
   set_sent_waiting: (p: { n: number }) => `Sent to ${p.n} approved ${plural(p.n, "guest", "guests")} who were waiting for it.`,
 
   // ── My invitations (the player's language) ────────────────────────────
@@ -80,6 +82,7 @@ export const poolInviteEn = {
   inv_waiting_club: "Thanks. Waiting for the club to say yes.",
   inv_link_sent: "Done. The invite link is on its way to you on WhatsApp.",
   inv_declined: "Thanks for letting us know.",
+  inv_member: "You are already in this club.",
   inv_open_offer: "Open the offer",
   inv_offer_until: (p: { time: string }) => `Answer by ${p.time}`,
   inv_try_again: "Something went wrong. Please try again in a minute.",

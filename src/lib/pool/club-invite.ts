@@ -33,11 +33,13 @@ export type GuestPoolState = "none" | "deleted" | PoolProfileStatus;
  *   requested    he asked to join after a game: the tap sends him the link,
  *                "Not now" closes it.
  *   invited      the club said yes, waiting for him.
+ *   approved     both said yes, no link has gone yet: waiting for the group
+ *                link (no link source; it goes as soon as there is one).
  *   link-sent    both said yes, the link went; he has not joined yet.
  *   declined     greyed: he said no thanks lately.
  *   unavailable  greyed out: he stopped messages or deleted his profile.
  */
-export type InviteToClubState = "hidden" | "available" | "requested" | "invited" | "link-sent" | "declined" | "unavailable";
+export type InviteToClubState = "hidden" | "available" | "requested" | "invited" | "approved" | "link-sent" | "declined" | "unavailable";
 
 export function inviteToClubState(g: {
   member: boolean;
@@ -47,11 +49,13 @@ export function inviteToClubState(g: {
   pool: GuestPoolState;
 }): InviteToClubState {
   if (g.member || g.playedHere < 1) return "hidden";
-  if (g.invitation === "club-yes") return "invited";
-  if (g.invitation === "accepted") return "link-sent";
-  // His own yes is an answer to us, so it is honoured even after a stop.
-  if (g.invitation === "player-yes") return "requested";
+  // A stop or a delete withdraws his consent: nothing more goes to him,
+  // whatever was open (review of #406, M3; decision L8.14).
   if (g.pool === "stopped" || g.pool === "deleted") return "unavailable";
+  if (g.invitation === "club-yes") return "invited";
+  if (g.invitation === "approved") return "approved";
+  if (g.invitation === "accepted") return "link-sent";
+  if (g.invitation === "player-yes") return "requested";
   if (g.invitation === "declined") return "declined";
   return "available";
 }

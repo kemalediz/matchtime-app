@@ -1526,7 +1526,10 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       ],
       example: "🎉 Welcome to FNF. Join their WhatsApp group here: https://chat.whatsapp.com/...",
       newClubs: "No link pasted.",
-      together: ["Joining after a game is asked only while your club may ask the MatchTime player pool. When the guest joins the group he becomes a member of your club."],
+      together: [
+        "This card and the Invite to club button show only while your club may ask the MatchTime player pool for players. After a game MatchTime asks only players who came from the pool; a partner club's player is invited only when you press Invite to club.",
+        "When the guest joins the group he becomes a member of your club. Change or remove the link here and any link not sent yet is held back and replaced.",
+      ],
     },
     tr: {
       title: "Grup davet bağlantısı",
@@ -1536,7 +1539,10 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       ],
       example: "🎉 FNF grubuna hoş geldin. WhatsApp grubuna buradan katıl: https://chat.whatsapp.com/...",
       newClubs: "Yapıştırılmış bağlantı yok.",
-      together: ["Maç sonrası katılma sorusu yalnızca kulübünüz MatchTime oyuncu havuzundan oyuncu isteyebildiği sürece sorulur. Misafir gruba katıldığında kulübünüzün üyesi olur."],
+      together: [
+        "Bu kart ve Kulübe davet et düğmesi yalnızca kulübünüz MatchTime oyuncu havuzundan oyuncu isteyebildiği sürece görünür. Maçtan sonra MatchTime yalnızca havuzdan gelen oyunculara sorar; partner kulübün bir oyuncusu yalnızca siz Kulübe davet et'e bastığınızda davet edilir.",
+        "Misafir gruba katıldığında kulübünüzün üyesi olur. Bağlantıyı burada değiştirir ya da kaldırırsanız henüz gönderilmemiş bağlantı bekletilir ve yenisiyle değiştirilir.",
+      ],
     },
   },
   // ════ Posters ═══════════════════════════════════════════════════════

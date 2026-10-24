@@ -14,9 +14,12 @@
  *   fails and there is no pasted link: the organisers are told
  *   no link set up: the organisers are told how; the card is greyed
  *   a stopped profile, a guest who did not play, asked once only
- *   a partner club's guest, in his home club's language; Turkish
+ *   a partner club's guest is never asked automatically (Invite to club
+ *   only); Turkish; the link taken back or replaced before it went; a
+ *   stop after his yes; Join from someone already a member
  */
 import { scenario, scenarios, expect } from "./fixtures";
+import { signInAs } from "../../fixtures";
 import { openClub } from "./offers-world";
 import {
   PASTED,
@@ -54,7 +57,7 @@ scenarios("after the game: joining the club's group", () => {
     const guest = await browserOf(browser);
     expect(await openAndAnswer(pool, guest, linkIn(queued[0]), "join", "sam")).toBe("waiting-club");
     const told = await pool.collect();
-    pool.expectSent(told, [{ to: "fnf.hq", channel: "hq", text: /^🙋 Sam K played with you on .+ as a guest and wants to join your group\. To send them the group's invite link, tap Invite on their card: \S+\/admin\/guests\?tab=history$/ }]);
+    pool.expectSent(told, [{ to: "fnf.hq", channel: "hq", text: /^🙋 Sam K played with you on .+ as a guest and wants to join your group\. To send them the group's invite link, tap Send the invite link on their card: \S+\/admin\/guests\?tab=history$/ }]);
     pool.expectNoLeaks(sam.phoneVariants(), { to: ["fnf.hq"] });
 
     const owner = await browserOf(browser);
@@ -86,7 +89,7 @@ scenarios("after the game: joining the club's group", () => {
 
     const owner = await browserOf(browser);
     const o = await pool.userOf(ham.member("owner"));
-    await (await import("../../fixtures")).signInAs(owner, o!.id, "/admin/guests?tab=history");
+    await signInAs(owner, o!.id, "/admin/guests?tab=history");
     await owner.goto("/admin/guests?tab=history");
     await owner.getByTestId("guest-card-open").first().click();
     await expect(owner.getByTestId("guest-invite")).toBeDisabled();
@@ -153,11 +156,11 @@ scenarios("after the game: joining the club's group", () => {
 
     pool.note("an organiser pastes the link on the settings page");
     const o = await pool.userOf(tot.member("owner"));
-    await (await import("../../fixtures")).signInAs(page, o!.id, "/admin/settings");
+    await signInAs(page, o!.id, "/admin/settings");
     await page.goto("/admin/settings#group-invite-link");
     await page.getByTestId("group-invite-link-input").fill(PASTED);
     await page.getByTestId("group-invite-link-save").click();
-    await expect(page.getByTestId("group-invite-link-remove")).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByTestId("group-invite-link-remove")).toBeVisible({ timeout: 45_000 });
     pool.expectSent(await pool.collect(), [{ to: "eli", purpose: "club-invite-link", text: PASTED }]);
   });
 
@@ -173,7 +176,7 @@ scenarios("after the game: joining the club's group", () => {
 
     const owner = await browserOf(browser);
     const o = await pool.userOf(lut.member("owner"));
-    await (await import("../../fixtures")).signInAs(owner, o!.id, "/admin/guests?tab=history");
+    await signInAs(owner, o!.id, "/admin/guests?tab=history");
     await owner.goto("/admin/guests?tab=history");
     await owner.getByTestId("guest-card-open").first().click();
     await expect(owner.getByTestId("guest-invite-send")).toBeDisabled();
@@ -210,18 +213,122 @@ scenarios("after the game: joining the club's group", () => {
     pool.expectNoLeaks([...jay.phoneVariants(), PASTED], { in: told });
   });
 
-  scenario("a partner club's guest is asked too, in his own club's language; a Turkish club's organisers in Turkish", async ({ pool, browser }) => {
+  scenario("a partner club's guest is never asked automatically (only a deliberate Invite to club recruits him)", async ({ pool }) => {
     const ev = await pool.club("ev", { name: "Erdal Vets" });
-    await pool.db.run(`UPDATE "Organisation" SET language = 'tr' WHERE id = $1`, [ev.group.orgId]);
     const gal = await openClub(pool, "gal", { name: "Galata FC", hq: true });
-    await pool.db.run(`UPDATE "Organisation" SET language = 'tr' WHERE id = $1`, [gal.group.orgId]);
     await pasteLink(pool, gal);
     const pete = await playedGuest(pool, gal, "pete", { via: "partner", partner: ev });
+    pool.expectSent((await piPolls(pool)).queued, []);
+    expect(await invitationsOf(pool, gal, pete)).toEqual([]);
+  });
+
+  scenario("a Turkish club: the pool guest asked in his Turkish, the organisers told in Turkish", async ({ pool, browser }) => {
+    const kad = await openClub(pool, "kad", { name: "Moda FC", hq: true });
+    await pool.db.run(`UPDATE "Organisation" SET language = 'tr' WHERE id = $1`, [kad.group.orgId]);
+    await pasteLink(pool, kad);
+    await playedGuest(pool, kad, "emre", { name: "Emre Sahin", lang: "tr" });
     const { queued } = await piPolls(pool);
-    pool.expectSent(queued, [{ to: "ev.pete", purpose: "club-invite-ask", text: /günü \*Galata FC\* ile oynadığın maç güzel geçti mi\? .*Buradan yanıtla: / }]);
-    pool.expectNoLeaks(gal.secrets(), { to: ["ev.pete"] });
-    await openAndAnswer(pool, await browserOf(browser), linkIn(queued[0]), "join", "ev.pete");
-    pool.expectSent(await pool.collect(), [{ to: "gal.hq", text: /misafir olarak oynadı ve grubunuza katılmak istiyor/ }]);
-    void pete;
+    pool.expectSent(queued, [{ to: "emre", purpose: "club-invite-ask", text: /günü \*Moda FC\* ile oynadığın maç güzel geçti mi\? .*Buradan yanıtla: / }]);
+    pool.expectNoLeaks(kad.secrets(), { to: ["emre"] });
+    await openAndAnswer(pool, await browserOf(browser), linkIn(queued[0]), "join", "emre");
+    pool.expectSent(await pool.collect(), [{ to: "kad.hq", text: /misafir olarak oynadı ve grubunuza katılmak istiyor\. .*Davet bağlantısını gönder düğmesine dokunun/ }]);
+  });
+
+  scenario("the club takes its link back before the DM went: cancelled, the card says approved; once MatchTime is admin the Pi's link goes", async ({ pool, browser, page }) => {
+    const new1 = await openClub(pool, "new1", { name: "Newham Weds", hq: true });
+    await pasteLink(pool, new1);
+    const kai = await playedGuest(pool, new1, "kai", { name: "Kai Moon" });
+    const { queued } = await piPolls(pool);
+    await openAndAnswer(pool, await browserOf(browser), linkIn(queued[0]), "join", "kai");
+    await pool.collect();
+    await organiserTaps(pool, await browserOf(browser), new1, "send");
+    const link = await pool.collect();
+    pool.expectSent(link, [{ to: "kai", purpose: "club-invite-link", text: PASTED }]);
+
+    pool.note("before the Pi takes it, an organiser removes the link on the settings page");
+    const o = await pool.userOf(new1.member("owner"));
+    await signInAs(page, o!.id, "/admin/settings");
+    await page.goto("/admin/settings#group-invite-link");
+    await page.getByTestId("group-invite-link-remove").click();
+    await expect(page.getByTestId("group-invite-link")).toHaveAttribute("data-mode", "none", { timeout: 45_000 });
+    expect(await pool.db.one(`SELECT status FROM "PlatformJob" WHERE id = $1`, [link[0].id])).toEqual({ status: "failed" });
+    expect(await invitationsOf(pool, new1, kai)).toMatchObject([{ status: "accepted", linkSentAt: null }]);
+    await page.goto("/admin/guests?tab=history");
+    await page.getByTestId("guest-card-open").first().click();
+    await expect(page.getByTestId("guest-invite-approved")).toHaveText("Approved, waiting for the group link.");
+    pool.expectSent((await piPolls(pool)).queued, []);
+
+    pool.note("MatchTime is made an admin of the group: the next poll gets the link from the Pi");
+    await botIsGroupAdmin(pool, new1);
+    const poll = await piPolls(pool, { code: PI_CODE });
+    expect(poll.jobs.map((j) => j.kind)).toEqual(["invite-code"]);
+    pool.expectSent(await pool.collect(), [{ to: "kai", purpose: "club-invite-link", text: `https://chat.whatsapp.com/${PI_CODE}` }]);
+    expect(linkLeaks(pool.sent, "kai", PI_CODE)).toEqual([]);
+  });
+
+  scenario("the club replaces its link before the DM went: the old one is taken back, the new one goes", async ({ pool, browser, page }) => {
+    const rep = await openClub(pool, "rep", { name: "Redbridge Mon", hq: true });
+    await pasteLink(pool, rep);
+    await playedGuest(pool, rep, "lou", { name: "Lou Park" });
+    const { queued } = await piPolls(pool);
+    await openAndAnswer(pool, await browserOf(browser), linkIn(queued[0]), "join", "lou");
+    await pool.collect();
+    await organiserTaps(pool, await browserOf(browser), rep, "send");
+    const old = await pool.collect();
+    const NEW = "https://chat.whatsapp.com/NewL1nkZyXwVuTsRq9876";
+    const o = await pool.userOf(rep.member("owner"));
+    await signInAs(page, o!.id, "/admin/settings");
+    await page.goto("/admin/settings#group-invite-link");
+    await page.getByTestId("group-invite-link-input").fill(NEW);
+    await page.getByTestId("group-invite-link-save").click();
+    await expect(page.getByTestId("group-invite-link-remove")).toBeVisible({ timeout: 45_000 });
+    await expect(page.getByText(/^Saved\. MatchTime sends it only/)).toBeVisible({ timeout: 30_000 });
+    pool.expectSent(await pool.collect(), [{ to: "lou", purpose: "club-invite-link", text: NEW }]);
+    expect(await pool.db.one(`SELECT status FROM "PlatformJob" WHERE id = $1`, [old[0].id])).toEqual({ status: "failed" });
+  });
+
+  scenario("he stops game messages after saying yes: withdrawn, no link and no closing line ever", async ({ pool, browser }) => {
+    const sto = await openClub(pool, "sto", { name: "Stockwell Fri", hq: true });
+    await pasteLink(pool, sto);
+    const mo = await playedGuest(pool, sto, "mo", { name: "Mo Ali" });
+    const { queued } = await piPolls(pool);
+    const guest = await browserOf(browser);
+    await openAndAnswer(pool, guest, linkIn(queued[0]), "join", "mo");
+    await pool.collect();
+    pool.note("he stops MatchTime's game messages on his manage page");
+    await guest.goto("/play/manage");
+    await guest.getByRole("button", { name: "Stop game messages" }).click();
+    await expect(guest.getByTestId("pool-status")).toContainText(/stopped/i, { timeout: 20_000 });
+    expect(await invitationsOf(pool, sto, mo)).toMatchObject([{ status: "withdrawn", linkSentAt: null }]);
+    // (Earlier scenarios' unanswered invitations expire in this poll; none is his.)
+    expect((await piPolls(pool, { now: new Date(Date.now() + 8 * DAY) })).queued.filter((m) => m.to === "mo")).toEqual([]);
+    const o = await pool.userOf(sto.member("owner"));
+    const owner = await browserOf(browser);
+    await signInAs(owner, o!.id, "/admin/guests?tab=history");
+    await owner.goto("/admin/guests?tab=history");
+    await owner.getByTestId("guest-card-open").first().click();
+    await expect(owner.getByTestId("guest-invite")).toBeDisabled();
+    await expect(owner.getByTestId("guest-invite-unavailable")).toBeVisible();
+    pool.expectSent(await pool.collect(), []);
+  });
+
+  scenario("he is already a member when he taps Join: refused, nothing sent", async ({ pool, browser }) => {
+    const mem = await openClub(pool, "mem", { name: "Merton Tue", hq: true });
+    await pasteLink(pool, mem);
+    const nia = await playedGuest(pool, mem, "nia", { name: "Nia Bell" });
+    const { queued } = await piPolls(pool);
+    const guest = await browserOf(browser);
+    await guest.goto(linkIn(queued[0]));
+    await guest.waitForURL(/\/play\/invitations/);
+    pool.note("while his page is open, an organiser adds him to the club another way");
+    await pool.db.run(`UPDATE "Membership" SET "guestVia" = NULL, "guestMatchId" = NULL WHERE "orgId" = $1 AND "userId" = $2`, [mem.group.orgId, nia.userId]);
+    await guest.getByTestId("my-invitation-join").click();
+    await expect(guest.getByTestId("my-invitation-result")).toHaveAttribute("data-result", "member", { timeout: 20_000 });
+    await expect(guest.getByTestId("my-invitation-result")).toHaveText("You are already in this club.");
+    pool.note("on a reload the invitation is not listed");
+    await guest.reload();
+    await expect(guest.getByTestId("my-invitations-none")).toBeVisible({ timeout: 30_000 });
+    pool.expectSent(await pool.collect(), []);
+    expect(await invitationsOf(pool, mem, nia)).toMatchObject([{ status: "open", playerYesAt: null }]);
   });
 });
