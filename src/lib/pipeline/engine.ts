@@ -880,7 +880,10 @@ export function decide(input: EngineInput): EngineResult {
       // Side requests are facts in their own right and must survive
       // alongside the claims. Today's incident was a fast path claiming
       // a two-intent message and throwing half of it away.
-      for (const sr of facts.sideRequests) out.reasons.push(`side-request:${sr}`);
+      // Not "question": the attendance engine does nothing with it (the
+      // analyze route answers it, or HQ does), so its reasons read as they
+      // did before the extractor could report one (#392 follow-up).
+      for (const sr of facts.sideRequests) if (sr !== "question") out.reasons.push(`side-request:${sr}`);
 
       if (claims.length === 0) {
         if (facts.sideRequests.includes("chase")) {

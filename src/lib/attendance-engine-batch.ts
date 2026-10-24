@@ -269,8 +269,20 @@ export interface EngineMessageOutcome {
   disposition: Disposition;
   /** Claims the EXTRACTOR came away with, about anybody. */
   claimCount: number;
-  /** Side requests (chase, recruit) it came away with. */
+  /** Side requests (chase, recruit) it came away with. Never counts
+   *  "question": the engine acts on nothing for it, and a claimless
+   *  message carrying only that is the silent discard it was before the
+   *  extractor could report one (#392 follow-up). */
   sideRequestCount: number;
+  /**
+   * The extractor read that the message ALSO asks MatchTime something it
+   * holds ("@Match Time I'm out, what's the list?"). The engine does
+   * nothing with it; the analyze route has the players' group's question
+   * answering answer it after the change (`runAnswerBatch`'s `alsoAsks`),
+   * except in a club whose organisers announce the list. HQ reads the raw
+   * facts itself (`admin-group-squad-change.ts`).
+   */
+  alsoAsksQuestion: boolean;
 }
 
 export interface EngineBatchResult {
@@ -1287,7 +1299,8 @@ export async function runAttendanceEngineBatch(args: {
       // `disposition` that excludes it. What these count is what the
       // pipeline came away with from the TEXT.
       claimCount: attendanceFacts?.claims.length ?? 0,
-      sideRequestCount: attendanceFacts?.sideRequests.length ?? 0,
+      sideRequestCount: attendanceFacts?.sideRequests.filter((s) => s !== "question").length ?? 0,
+      alsoAsksQuestion: attendanceFacts?.sideRequests.includes("question") ?? false,
     });
   }
 

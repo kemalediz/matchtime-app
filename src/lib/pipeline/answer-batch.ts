@@ -647,6 +647,13 @@ export interface AnswerMessageOutcome {
 export interface AnswerBatchResult {
   ownedIds: Set<string>;
   outcomes: Map<string, AnswerMessageOutcome>;
+  /**
+   * The answers to the `alsoAsks` messages, kept APART from `ownedIds` and
+   * `outcomes`: the attendance engine owns those messages and speaks for
+   * them, and the analyze route adds this answer to its reply. Empty when
+   * nothing was asked or nothing answered.
+   */
+  alsoAnswered: Map<string, AnswerMessageOutcome>;
   /** Always empty. Present so a caller can assert it rather than trust
    *  this comment, and so the shape matches the attendance batch. */
   writes: ProposedWrite[];
@@ -750,6 +757,7 @@ function empty(degradations: string[] = []): AnswerBatchResult {
   return {
     ownedIds: new Set(),
     outcomes: new Map(),
+    alsoAnswered: new Map(),
     writes: [],
     matchId: null,
     degradations,
@@ -783,8 +791,25 @@ export async function runAnswerBatch(args: {
   clarifications?: StatsClarification[];
   /** See `AnswerAudience`. Absent is the players' group. */
   audience?: AnswerAudience;
+  /**
+   * ATTENDANCE MESSAGES THAT ALSO ASK MATCHTIME SOMETHING (#392 follow-up).
+   * The ids of messages the attendance engine owns whose extractor read a
+   * "question" side request ("@Match Time I'm out, what's the list?"). Each
+   * is read here as the `question` it also is, under every gate a
+   * standalone question meets (the tag, the route's flag, the carve-outs),
+   * from the state loaded after the engine's writes landed. Its own
+   * attendance route does not count as other traffic against it: that
+   * write has landed and its reply is the one this answer joins. The
+   * answer comes back in `alsoAnswered`, never in `ownedIds`. The analyze
+   * route passes none for a club whose organisers announce the list.
+   */
+  alsoAsks?: ReadonlySet<string>;
 }): Promise<AnswerBatchResult> {
-  const { orgId, now, messages, history, expectedMatchId, enabled, deps } = args;
+  const { orgId, now, history, expectedMatchId, enabled, deps } = args;
+  const alsoAsks: ReadonlySet<string> = args.alsoAsks ?? new Set<string>();
+  const messages: AnswerBatchMessage[] = args.messages.map((m) =>
+    alsoAsks.has(m.waMessageId) && !m.gated ? { ...m, route: "question" as Route } : m,
+  );
   const organisers = args.audience === "organisers";
   const t0 = Date.now();
 
@@ -799,7 +824,7 @@ export async function runAnswerBatch(args: {
   // reads as a name.
   const clarificationFor = new Map<string, { c: StatsClarification; subject: string }>();
   for (const m of messages) {
-    if (m.gated || m.route !== "question") continue;
+    if (m.gated || m.route !== "question" || alsoAsks.has(m.waMessageId)) continue;
     const c = (args.clarifications ?? []).find((q) => isFromAsker(q, m));
     const subject = c ? clarificationSubject(m.body) : null;
     if (c && subject) clarificationFor.set(m.waMessageId, { c, subject });
@@ -1791,14 +1816,18 @@ export async function runAnswerBatch(args: {
     });
   }
 
+  // The `alsoAsks` answers leave the module's own outcomes (a new map
+  // each, never a removal: see the `.delete(` note above `silentIds`).
+  const alsoAnswered = new Map([...outcomes].filter(([id]) => alsoAsks.has(id)));
   return {
     // The ids that both survived ownership AND produced an answer.
     // There is exactly one outcome per id in here. An id in neither used
     // to be "one the analyzer decides"; since §10 step 8 it is one
     // NOBODY decides — silence in the group plus a line on the operator
     // DM, with its reason taken from `degradations` above.
-    ownedIds: spokenIds,
-    outcomes,
+    ownedIds: new Set([...spokenIds].filter((id) => !alsoAsks.has(id))),
+    outcomes: new Map([...outcomes].filter(([id]) => !alsoAsks.has(id))),
+    alsoAnswered,
     writes: [],
     matchId,
     degradations,
