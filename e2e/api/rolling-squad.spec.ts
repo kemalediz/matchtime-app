@@ -350,3 +350,104 @@ test.describe("OUT before and after the drop-out deadline", () => {
     expect(await lateNotices(db)).toEqual([]);
   });
 });
+
+/**
+ * A CANCELLED WEEK IN BETWEEN (2026-10-24, Kemal, after FNF's 23 Oct).
+ * Jan 1 played; Jan 8 cancelled on Thu 7 Jan 12:00; Jan 15 is next.
+ *   - Bob said OUT for Jan 8 before it was cancelled: not carried, named;
+ *   - Cy said OUT only after it was cancelled: carried as usual;
+ *   - Dee was not on Jan 1 and said IN for Jan 8: carried after the rest.
+ */
+test.describe("a cancelled week between: its OUTs are not carried and are named", () => {
+  const GROUP_X = "e2e-rolling-x@g.us";
+  const CANCELLED_AT = new Date("2027-01-07T12:00:00.000Z");
+  const at = (iso: string) => new Date(iso).toISOString();
+
+  async function row(db: TestDb, matchId: string, userId: string, status: string, position: number) {
+    await db.run(
+      `INSERT INTO "Attendance" (id, "matchId", "userId", status, position, "updatedAt")
+       VALUES ($1, $2, $3, $4::"AttendanceStatus", $5, now())`,
+      [`e2e-rsx-att-${matchId}-${userId}`, matchId, userId, status, position],
+    );
+  }
+  let evN = 0;
+  async function event(db: TestDb, matchId: string, userId: string, from: string | null, to: string, cause: string, when: string, toPosition: number) {
+    await db.run(
+      `INSERT INTO "AttendanceEvent" (id, "matchId", "userId", "orgId", "fromStatus", "toStatus", "toPosition", cause, "actorKind", at)
+       VALUES ($1, $2, $3, 'e2e-rs-org-x', $4::"AttendanceStatus", $5::"AttendanceStatus", $6, $7, 'player', $8)`,
+      [`e2e-rsx-ev-${++evN}`, matchId, userId, from, to, toPosition, cause, at(when)],
+    );
+  }
+
+  test.beforeAll(async () => {
+    resetDb();
+    const db = testDb();
+    await club(db, "x", true, GROUP_X);
+    await member(db, "x", "e2e-rsx-ann", "Ann Able", "+447700920001");
+    await member(db, "x", "e2e-rsx-bob", "Bob Out", "+447700920002");
+    await member(db, "x", "e2e-rsx-cy", "Cy Late", "+447700920003");
+    await member(db, "x", "e2e-rsx-dee", "Dee In", "+447700920004");
+    await match(db, "x", "e2e-rsx-wk1", JAN_1, "COMPLETED");
+    await match(db, "x", "e2e-rsx-wk2", JAN_8, "CANCELLED");
+    await match(db, "x", "e2e-rsx-wk3", JAN_15, "UPCOMING");
+    await db.run(`UPDATE "Match" SET "updatedAt" = $2 WHERE id = $1`, ["e2e-rsx-wk2", CANCELLED_AT.toISOString()]);
+
+    for (const [u, p] of [["e2e-rsx-ann", 1], ["e2e-rsx-bob", 2], ["e2e-rsx-cy", 3]] as const) {
+      await row(db, "e2e-rsx-wk1", u, "CONFIRMED", p);
+    }
+    // Jan 8: the seed's rows, then what people said.
+    await row(db, "e2e-rsx-wk2", "e2e-rsx-ann", "CONFIRMED", 1);
+    await row(db, "e2e-rsx-wk2", "e2e-rsx-bob", "DROPPED", 2);
+    await row(db, "e2e-rsx-wk2", "e2e-rsx-cy", "DROPPED", 3);
+    await row(db, "e2e-rsx-wk2", "e2e-rsx-dee", "CONFIRMED", 4);
+    for (const [u, p] of [["e2e-rsx-ann", 1], ["e2e-rsx-bob", 2], ["e2e-rsx-cy", 3]] as const) {
+      await event(db, "e2e-rsx-wk2", u, null, "CONFIRMED", "rolling-squad", "2027-01-02T08:00:00Z", p);
+    }
+    await event(db, "e2e-rsx-wk2", "e2e-rsx-bob", "CONFIRMED", "DROPPED", "self-attendance", "2027-01-05T18:00:00Z", 2);
+    await event(db, "e2e-rsx-wk2", "e2e-rsx-dee", null, "CONFIRMED", "self-attendance", "2027-01-06T09:00:00Z", 4);
+    await event(db, "e2e-rsx-wk2", "e2e-rsx-cy", "CONFIRMED", "DROPPED", "self-attendance", "2027-01-07T13:00:00Z", 3);
+  });
+
+  test.afterAll(() => resetDb());
+
+  test("the seed leaves out Bob, keeps Cy, and adds Dee after last week's squad", async ({ request, db }) => {
+    await completeMatchesAt(request, SAT_0805);
+    expect((await seededFrom(db, "e2e-rsx-wk3")).from).toBe("e2e-rsx-wk1");
+    expect(await rowsOn(db, "e2e-rsx-wk3")).toEqual([
+      { userId: "e2e-rsx-ann", status: "CONFIRMED", position: 1 },
+      { userId: "e2e-rsx-cy", status: "CONFIRMED", position: 2 },
+      { userId: "e2e-rsx-dee", status: "CONFIRMED", position: 3 },
+    ]);
+    const dee = await db.one<{ note: string }>(
+      `SELECT note FROM "AttendanceEvent" WHERE "matchId" = $1 AND "userId" = $2 AND cause = 'rolling-squad'`,
+      ["e2e-rsx-wk3", "e2e-rsx-dee"],
+    );
+    expect(dee?.note).toBe("carried over (IN for the cancelled week) from 2027-01-01");
+  });
+
+  test("the morning announcement names Bob as left out for saying OUT", async ({ request }) => {
+    const res = await request.get(`/api/whatsapp/due-posts?groupId=${encodeURIComponent(GROUP_X)}`, {
+      headers: { "x-api-key": E2E.WHATSAPP_API_KEY, "x-test-now": SAT_1000.toISOString(), "x-no-claim": "1" },
+    });
+    expect(res.status(), await res.text()).toBe(200);
+    const { instructions } = (await res.json()) as { instructions: Array<{ key: string; text?: string }> };
+    const ann = instructions.filter((i) => i.key === "e2e-rsx-wk3:rolling-announce");
+    expect(ann).toHaveLength(1);
+    expect(ann[0].text).toBe(
+      [
+        "📅 *Friday 9-a-side*, *Friday 15 January at 20:30*, Powerleague.",
+        "",
+        "Everyone who played last time is in again. Drop-out deadline: *Friday 15:30*. Until then, you're in unless you say *OUT*.",
+        "",
+        "*In (3/18):*",
+        "1. Ann Able",
+        "2. Cy Late",
+        "3. Dee In",
+        "",
+        "Not on this week's squad because they said *OUT* last week: Bob Out.",
+        "",
+        "15 places open: say *IN* to take one.",
+      ].join("\n"),
+    );
+  });
+});

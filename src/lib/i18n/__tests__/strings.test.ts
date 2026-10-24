@@ -714,6 +714,7 @@ const SAMPLES: SampleArgs = {
   rolling_tail_open: { open: 2 },
   rolling_tail_open_organiser: { open: 2 },
   rolling_tail_full: null,
+  rolling_left_out: { names: ["Yaseen", "Mo"] },
   rolling_deadline_line: { deadline: "Thursday 15:30" },
   rolling_deadline_line_first: { deadline: "Thursday 15:30" },
   intro_rolling_squad: null,

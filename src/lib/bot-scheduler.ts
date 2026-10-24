@@ -87,6 +87,7 @@ import {
   weeklyDeadlinesFor,
 } from "./weekly-deadlines";
 import { isSubstantialSquad } from "./rolling-squad-rules";
+import { loadRollingLeftOut } from "./rolling-squad";
 import { normaliseLang, type Lang } from "./i18n/lang";
 import {
   RECRUIT_ACK_KIND,
@@ -1373,7 +1374,12 @@ async function computeForMatch(
   async function toOrganisers(
     key: string,
     reason: OrganiserListReason,
-    extra: { dropOutTime?: string | null; unpaid?: number | null; partnerOffer?: string[] | null } = {},
+    extra: {
+      dropOutTime?: string | null;
+      unpaid?: number | null;
+      partnerOffer?: string[] | null;
+      leftOut?: Array<{ name: string | null }> | null;
+    } = {},
   ): Promise<void> {
     const channel = await admin.getChannel();
     if (!channel) return;
@@ -1525,8 +1531,11 @@ async function computeForMatch(
         });
         if (carried > 0) {
           rollingAnnounceDue = true;
+          // After a cancelled week, who was left out for saying OUT for
+          // it (2026-10-24, Kemal): named in the post, either channel.
+          const leftOut = await loadRollingLeftOut(matchId);
           // The organisers announce: the carried squad goes to them.
-          if (organisers) await toOrganisers(rollingKey, "announce");
+          if (organisers) await toOrganisers(rollingKey, "announce", { leftOut });
           else out.push({
             kind: "group-message",
             key: rollingKey,
@@ -1542,6 +1551,7 @@ async function computeForMatch(
               // Slice 2b: an organiser-pick club says IN puts you on the
               // waiting list, and the organisers pick.
               organiserPicks: features.benchPickMode === "organiser",
+              leftOut,
               lang,
             }),
           });

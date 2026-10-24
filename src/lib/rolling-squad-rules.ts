@@ -127,6 +127,9 @@ export interface SeedSourceRow {
    *  paste or squad change, an admin screen): see `admin-added.ts`.
    *  Missing means no. */
   addedByAdmin?: boolean;
+  /** Not on last week's played squad: said IN for a cancelled week in
+   *  between (`applyCancelledWeeks`). Only changes the event's note. */
+  fromCancelledWeek?: boolean;
 }
 
 export type CarryOverExclusion = "did not play" | "left the group" | "deactivated" | "guest without a phone" | "partner club guest";
@@ -166,7 +169,119 @@ export interface SeedDecision {
 }
 
 export const SEED_NOTE_CARRIED = "carried over";
+export const SEED_NOTE_CARRIED_CANCELLED_IN = "carried over (IN for the cancelled week)";
 export const SEED_NOTE_OVERFLOW = "rolling overflow: no place left";
+
+/**
+ * A CANCELLED WEEK BETWEEN LAST WEEK'S PLAYED MATCH AND THE TARGET
+ * (2026-10-24, Kemal, after FNF's 23 Oct). The cancelled week's squad is
+ * not the source (`pickSeedSource` skips it, D1), but what players SAID
+ * for it is still their latest word:
+ *
+ *   - a carried player whose last statement for it was OUT is left out
+ *     of the next week, and the announcement names him ("they said OUT
+ *     last week");
+ *   - a player who said IN for it, not on last week's played squad, is
+ *     carried too, after last week's squad (owner suggestion, flagged as
+ *     a decision in the PR).
+ *
+ * Cancelling touches no Attendance row (`match-cancel.ts`, the block
+ * booking bulk cancel), so every DROPPED on a cancelled match was written
+ * by a player, a member or an admin. Only events strictly BEFORE
+ * `cancelledAt` count: after it the week is off and nothing said about it
+ * is a decision about playing.
+ */
+export interface CancelledWeekEvent {
+  userId: string;
+  fromStatus: string | null;
+  toStatus: string | null;
+  cause: string;
+  at: Date;
+  toPosition: number | null;
+}
+
+export interface CancelledWeek {
+  date: Date;
+  /** When the match was cancelled. The loader reads `Match.updatedAt`: no
+   *  cancel path writes the match after its status, so it is the cancel
+   *  time, and at worst later than it. */
+  cancelledAt: Date;
+  events: CancelledWeekEvent[];
+}
+
+/** Writes that are not anybody's statement about playing: the seed's own
+ *  rows, a duplicate merge, a format recut. */
+const NOT_A_STATEMENT = new Set(["rolling-squad", "player-merge", "format-switch"]);
+
+export type CancelledWeekIntent = { intent: "out" } | { intent: "in"; position: number };
+
+/**
+ * Each player's latest word over the cancelled weeks, oldest week first,
+ * a later week's statement replacing an earlier one. Per week, the
+ * player's LAST statement before the cancellation decides:
+ *
+ *   CONFIRMED or BENCH -> DROPPED   "out"
+ *   anything -> CONFIRMED           "in" (with the position it took)
+ *   to BENCH, or the row removed    no word (not carried either way)
+ */
+export function cancelledWeekIntents(weeks: CancelledWeek[]): Map<string, CancelledWeekIntent> {
+  const out = new Map<string, CancelledWeekIntent>();
+  for (const w of [...weeks].sort((a, b) => a.date.getTime() - b.date.getTime())) {
+    const last = new Map<string, CancelledWeekEvent>();
+    for (const e of [...w.events].sort((a, b) => a.at.getTime() - b.at.getTime())) {
+      if (e.at.getTime() >= w.cancelledAt.getTime()) continue;
+      if (NOT_A_STATEMENT.has(e.cause)) continue;
+      last.set(e.userId, e);
+    }
+    for (const [userId, e] of last) {
+      if (e.toStatus === "DROPPED" && (e.fromStatus === "CONFIRMED" || e.fromStatus === "BENCH")) {
+        out.set(userId, { intent: "out" });
+      } else if (e.toStatus === "CONFIRMED") {
+        out.set(userId, { intent: "in", position: e.toPosition ?? Number.MAX_SAFE_INTEGER });
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * The rows `decideSeed` carries from, once the cancelled weeks are read,
+ * and who was left out for saying OUT (user ids, last week's order).
+ *
+ * `leftOut` holds only players last week's squad WOULD have carried
+ * (`carryOverExclusion` null): a bencher who said OUT was never coming.
+ * `cancelledWeekRows` describes the players who said IN for a cancelled
+ * week (phone, membership: the same checks apply to them); their status
+ * and position are replaced here.
+ */
+export function applyCancelledWeeks(args: {
+  sourceRows: SeedSourceRow[];
+  weeks: CancelledWeek[];
+  cancelledWeekRows: SeedSourceRow[];
+}): { rows: SeedSourceRow[]; leftOut: string[] } {
+  if (args.weeks.length === 0) return { rows: args.sourceRows, leftOut: [] };
+  const intents = cancelledWeekIntents(args.weeks);
+  const carriable = args.sourceRows.filter((r) => carryOverExclusion(r) === null);
+  const carriableIds = new Set(carriable.map((r) => r.userId));
+  const leftOut = carriable
+    .filter((r) => intents.get(r.userId)?.intent === "out")
+    .sort((a, b) => a.position - b.position || a.userId.localeCompare(b.userId));
+  const leftOutIds = new Set(leftOut.map((r) => r.userId));
+  const kept = args.sourceRows.filter((r) => !leftOutIds.has(r.userId) && carriableIds.has(r.userId));
+
+  const describe = new Map(args.cancelledWeekRows.map((r) => [r.userId, r]));
+  const maxPos = args.sourceRows.reduce((m, r) => Math.max(m, r.position), 0);
+  const saidIn = [...intents]
+    .flatMap(([userId, i]) => (i.intent === "in" && !carriableIds.has(userId) && describe.has(userId) ? [{ userId, position: i.position }] : []))
+    .sort((a, b) => a.position - b.position || a.userId.localeCompare(b.userId));
+  const added: SeedSourceRow[] = saidIn.map((s, i) => ({
+    ...describe.get(s.userId)!,
+    status: "CONFIRMED",
+    position: maxPos + 1 + i,
+    fromCancelledWeek: true,
+  }));
+  return { rows: [...kept, ...added], leftOut: leftOut.map((r) => r.userId) };
+}
 
 /**
  * Who is written onto the target, in order.
@@ -195,7 +310,7 @@ export function decideSeed(args: {
   const out: SeedDecision[] = [];
   for (const r of carried) {
     if (room > 0) {
-      out.push({ userId: r.userId, status: "CONFIRMED", note: SEED_NOTE_CARRIED });
+      out.push({ userId: r.userId, status: "CONFIRMED", note: r.fromCancelledWeek ? SEED_NOTE_CARRIED_CANCELLED_IN : SEED_NOTE_CARRIED });
       room--;
     } else {
       out.push({ userId: r.userId, status: "BENCH", note: SEED_NOTE_OVERFLOW });

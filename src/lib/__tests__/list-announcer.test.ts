@@ -31,6 +31,25 @@ const confirmed = ["Ali", "Baki", "Can"].map((name) => ({ name }));
 const bench = [{ name: "Deniz" }];
 
 describe("buildOrganiserListUpdate", () => {
+  it("names the players left out for saying OUT for a cancelled week, after the roster (2026-10-24)", () => {
+    const args = {
+      reason: "announce" as const,
+      activityName: "FNF",
+      whenLabel: "Fri 30 Oct at 20:30",
+      confirmed,
+      bench,
+      maxPlayers: 18,
+      leftOut: [{ name: "Yaseen" }, { name: "Mo" }],
+    };
+    const en = buildOrganiserListUpdate({ ...args, lang: "en" });
+    expect(en).toContain("Not on this week's squad because they said *OUT* last week: Yaseen and Mo.");
+    expect(en.indexOf("Deniz")).toBeLessThan(en.indexOf("Not on this week's squad"));
+    expect(en.indexOf("Not on this week's squad")).toBeLessThan(en.indexOf(t("en").oa_footer));
+    const tr = buildOrganiserListUpdate({ ...args, lang: "tr" });
+    expect(tr).toContain("Geçen hafta *YOKUM* dedikleri için bu haftanın kadrosuna alınmadılar: Yaseen ve Mo.");
+    expect(buildOrganiserListUpdate({ ...args, leftOut: [], lang: "en" })).not.toContain("Not on this week");
+  });
+
   it("English: squad header with the count, the reason, the roster and the footer", () => {
     const text = buildOrganiserListUpdate({
       reason: "evening",

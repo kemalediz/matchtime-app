@@ -77,6 +77,14 @@ vi.mock("@/lib/badge-announcement-scheduler", async (orig) => ({
   computeBadgeAnnouncements: async () => badges.posts.map((p) => ({ ...p })),
 }));
 
+// Who was left out after a cancelled week (2026-10-24): its own tests
+// are in rolling-squad.test.ts; here only that the post names them.
+const leftOutMock = vi.hoisted(() => ({ names: [] as string[] }));
+vi.mock("@/lib/rolling-squad", () => ({
+  loadRollingLeftOut: async () => leftOutMock.names.map((name, i) => ({ userId: `lo${i}`, name })),
+  rollingSeedPendingAt: async () => null,
+}));
+
 import { computeDuePosts, type DueInstruction } from "@/lib/bot-scheduler";
 import { buildOrganiserListUpdate, buildOrganiserRelay } from "@/lib/organisers-list-copy";
 import { buildGearReminder } from "@/lib/scheduler-copy";
@@ -379,6 +387,21 @@ describe('"The organisers": the squad posts go to the admin group', () => {
     expect(byKey(out, key)?.kind).toBe("admin-group-message");
     expect(byKey(out, key)?.text).toBe(ADMIN_TEXT("announce"));
     expect(groupPosts(out)).toHaveLength(0);
+  });
+
+  it("after a cancelled week, the admins' rolling notice names who was left out for saying OUT (2026-10-24)", async () => {
+    features.rollingSquad = true;
+    leftOutMock.names = ["Yaseen", "Mo", "Feroz"];
+    try {
+      const m = match(NO_DEADLINES, { rollingSeededAt: new Date("2026-10-03T08:00:00.000Z") });
+      setWorld([m], { carried: 4 });
+      const out = await instructions(MON_1005);
+      const text = byKey(out, `${m.id}:rolling-announce`)?.text ?? "";
+      expect(text).toContain("Not on this week's squad because they said *OUT* last week: Yaseen, Mo and Feroz.");
+      expect(groupPosts(out)).toHaveLength(0);
+    } finally {
+      leftOutMock.names = [];
+    }
   });
 
   it("the cold announcement goes to the admins", async () => {

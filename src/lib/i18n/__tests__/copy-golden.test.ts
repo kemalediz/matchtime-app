@@ -1783,6 +1783,16 @@ function cases(lang: Lang): Case[] {
     "RSQ1 buildRollingAnnouncePost / full, with overflow",
     buildRollingAnnouncePost({ ...rollingBase, confirmed: nine, bench: [{ name: "Ali Demir" }, { name: null }], maxPlayers: 4 }),
   );
+  // Deliberate addition (2026-10-24): after a cancelled week, the
+  // players who said OUT for it are named as left out.
+  add(
+    "RSQ1 buildRollingAnnouncePost / left out after a cancelled week",
+    buildRollingAnnouncePost({ ...rollingBase, confirmed: nine, bench: [], maxPlayers: 18, leftOut: [{ name: "Yaseen" }, { name: "Mo" }, { name: "Feroz" }] }),
+  );
+  add(
+    "RSQ1 buildRollingAnnouncePost / one left out",
+    buildRollingAnnouncePost({ ...rollingBase, confirmed: nine, bench: [], maxPlayers: 18, leftOut: [{ name: "Yaseen" }] }),
+  );
   add("RSQ2 buildRollingDeadlineLine", buildRollingDeadlineLine({ deadline: rollingBase.deadline, lang }));
   // Deliberate addition (2026-10-13): a game nobody was carried onto.
   add(

@@ -2879,6 +2879,11 @@ export const en = {
   rolling_tail_open_organiser: (p: { open: number }): string =>
     `${p.open === 1 ? "1 place open" : `${p.open} places open`}: say *IN* to go on the bench, and the organisers will pick who plays.`,
   rolling_tail_full: "The squad is full. Say *IN* to go on the bench.",
+  /** RSQ1b (2026-10-24, Kemal): after a cancelled week, the carried
+   *  players who said OUT for it are not carried, and are named. Also in
+   *  the organisers' notice when they announce. */
+  rolling_left_out: (p: { names: string[] }): string =>
+    `Not on this week's squad because they said *OUT* last week: ${joinList("en", p.names)}.`,
   /** RSQ2: the extra line on the 17:00 post while the deadline is ahead. */
   rolling_deadline_line: (p: { deadline: string }): string =>
     `Drop-out deadline: *${p.deadline}*. Until then, you're in unless you say *OUT*.`,

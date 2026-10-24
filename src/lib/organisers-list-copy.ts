@@ -41,6 +41,9 @@ export function buildOrganiserListUpdate(args: {
   dropOutTime?: string | null;
   /** Players still to pay for the last match, or null for no line. */
   unpaid?: number | null;
+  /** The rolling announcement after a cancelled week (2026-10-24): the
+   *  players left out because they said OUT for it. Empty, no line. */
+  leftOut?: Array<{ name: string | null }> | null;
   lang: Lang | string | null | undefined;
 }): string {
   const s = t(args.lang);
@@ -75,6 +78,9 @@ export function buildOrganiserListUpdate(args: {
       lang: args.lang as Lang,
     }),
   );
+  if (args.leftOut && args.leftOut.length > 0) {
+    parts.push(s.rolling_left_out({ names: args.leftOut.map((r) => r.name?.trim() || s.unnamed) }));
+  }
   if (args.unpaid != null && args.unpaid > 0) parts.push(s.oa_unpaid({ count: args.unpaid }));
   parts.push(s.oa_footer);
   return parts.join("\n\n");

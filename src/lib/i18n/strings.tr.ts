@@ -2169,6 +2169,10 @@ export const tr: Strings = {
   rolling_tail_open_organiser: (p) =>
     `${p.open} yer boş: *VARIM* yazın, yedek listesine ekleyeyim; kimin oynayacağını organizatörler seçer.`,
   rolling_tail_full: "Kadro dolu. Yedek listesine girmek için *VARIM* yazın.",
+  rolling_left_out: (p) =>
+    p.names.length === 1
+      ? `Geçen hafta *YOKUM* dediği için bu haftanın kadrosuna alınmadı: ${p.names[0]}.`
+      : `Geçen hafta *YOKUM* dedikleri için bu haftanın kadrosuna alınmadılar: ${joinList("tr", p.names)}.`,
   rolling_deadline_line: (p) => `Son çıkış: *${p.deadline}*. O saate kadar *YOKUM* yazmazsanız kadrodasınız.`,
   rolling_deadline_line_first: (p) =>
     `Son çıkış: *${p.deadline}*. Listedeyseniz ve oynayamayacaksanız o saatten önce *YOKUM* yazın.`,

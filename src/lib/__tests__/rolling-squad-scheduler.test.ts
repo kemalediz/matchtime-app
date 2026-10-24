@@ -62,6 +62,14 @@ vi.mock("@/lib/message-analyzer", () => ({
   composeChaseText: (...a: unknown[]) => composeChaseText(...(a as [])),
 }));
 
+// Who was left out after a cancelled week (2026-10-24): its own tests
+// are in rolling-squad.test.ts; here only that the post names them.
+const leftOutMock = vi.hoisted(() => ({ names: [] as string[] }));
+vi.mock("@/lib/rolling-squad", () => ({
+  loadRollingLeftOut: async () => leftOutMock.names.map((name, i) => ({ userId: `lo${i}`, name })),
+  rollingSeedPendingAt: async () => null,
+}));
+
 import { computeDuePosts } from "@/lib/bot-scheduler";
 import { buildRollingAnnouncePost, buildRollingDeadlineLine } from "@/lib/scheduler-copy";
 
@@ -144,6 +152,7 @@ async function instructions(now: Date) {
 beforeEach(() => {
   features.rollingSquad = true;
   composeChaseText.mockClear();
+  leftOutMock.names = [];
 });
 
 describe("R1: the rolling announcement", () => {
@@ -167,6 +176,14 @@ describe("R1: the rolling announcement", () => {
       }),
     );
     expect(out.some((i) => i.key === `${m.id}:announce-match`)).toBe(false);
+  });
+
+  it("after a cancelled week, names who was left out for saying OUT for it (2026-10-24)", async () => {
+    leftOutMock.names = ["Yaseen", "Mo"];
+    const m = match();
+    setWorld(m);
+    const text = ((await instructions(SAT_10AM)).find((i) => i.key === `${m.id}:rolling-announce`) as { text: string }).text;
+    expect(text).toContain("\n\nNot on this week's squad because they said *OUT* last week: Yaseen and Mo.\n\n14 places open");
   });
 
   it("not again once sent", async () => {

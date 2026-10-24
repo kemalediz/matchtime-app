@@ -30,11 +30,14 @@ import { loadAdminAddedUserIds, type AdminAddedReadClient } from "./admin-added"
 import { isSameRecurringFixture, type RecurringFixtureKey } from "./match-slot";
 import {
   ROLLING_LOOKBACK_DAYS,
+  applyCancelledWeeks,
+  cancelledWeekIntents,
   decideSeed,
   pickSeedSource,
   pickSeedTarget,
   rollingSeedDue,
   rollingSeedDueAt,
+  type CancelledWeek,
   type SeedSourceRow,
 } from "./rolling-squad-rules";
 
@@ -50,6 +53,155 @@ export interface SeedResult {
 }
 
 const NOTHING: SeedResult = { seeded: false, carried: 0, overflow: 0 };
+
+type AttendanceWithUser = {
+  userId: string;
+  status: string;
+  position: number;
+  user: { phoneNumber: string | null; email: string; isActive: boolean };
+};
+
+/** `SeedSourceRow`s for attendance rows of this club: membership and
+ *  whether an admin added a phoneless player, read in bulk. */
+async function describeRows(orgId: string, atts: AttendanceWithUser[]): Promise<SeedSourceRow[]> {
+  if (atts.length === 0) return [];
+  const memberships = await db.membership.findMany({
+    where: { orgId, userId: { in: atts.map((a) => a.userId) } },
+    select: { userId: true, leftAt: true, provisionallyAddedAt: true, guestFromOrgId: true },
+  });
+  const membershipOf = new Map(memberships.map((m) => [m.userId, m]));
+  // Only a phoneless player's carry depends on whether an admin added him.
+  const phoneless = atts.filter((a) => a.status === "CONFIRMED" && !a.user.phoneNumber).map((a) => a.userId);
+  const adminAdded =
+    phoneless.length > 0
+      ? await loadAdminAddedUserIds(db as unknown as AdminAddedReadClient, orgId, phoneless)
+      : new Set<string>();
+  return atts.map((a) => {
+    const mem = membershipOf.get(a.userId);
+    return {
+      userId: a.userId,
+      status: a.status,
+      position: a.position,
+      phoneNumber: a.user.phoneNumber,
+      email: a.user.email,
+      isActive: a.user.isActive,
+      membership: mem ? { leftAt: mem.leftAt, provisionallyAddedAt: mem.provisionallyAddedAt, guestFromOrgId: mem.guestFromOrgId } : null,
+      addedByAdmin: adminAdded.has(a.userId),
+    };
+  });
+}
+
+/**
+ * The rows the seed carries from, and who is left out for saying OUT for
+ * a cancelled week (2026-10-24, `applyCancelledWeeks`). The cancelled
+ * weeks are the CANCELLED, non-historical matches of the same fixture
+ * strictly between the source and the target.
+ */
+async function loadCarryRows(args: {
+  orgId: string;
+  fixture: RecurringFixtureKey;
+  target: { id: string; date: Date };
+  source: { id: string; date: Date };
+}): Promise<{ rows: SeedSourceRow[]; leftOut: string[] }> {
+  const { orgId, target, source } = args;
+  const sourceAtt = await db.attendance.findMany({
+    where: { matchId: source.id },
+    include: { user: { select: { id: true, phoneNumber: true, email: true, isActive: true } } },
+  });
+  const sourceRows = await describeRows(orgId, sourceAtt);
+
+  const between = await db.match.findMany({
+    where: {
+      activity: { orgId },
+      status: "CANCELLED",
+      isHistorical: false,
+      date: { gt: source.date, lt: target.date },
+    },
+    select: {
+      id: true,
+      date: true,
+      status: true,
+      isHistorical: true,
+      updatedAt: true,
+      activity: { select: { orgId: true, venue: true, dayOfWeek: true } },
+    },
+  });
+  const cancelled = between.filter(
+    (m) =>
+      m.status === "CANCELLED" &&
+      !m.isHistorical &&
+      m.date.getTime() > source.date.getTime() &&
+      m.date.getTime() < target.date.getTime() &&
+      isSameRecurringFixture(m.activity, { ...args.fixture, orgId }),
+  );
+  if (cancelled.length === 0) return { rows: sourceRows, leftOut: [] };
+
+  const events = await db.attendanceEvent.findMany({
+    where: { matchId: { in: cancelled.map((m) => m.id) } },
+    select: { matchId: true, userId: true, fromStatus: true, toStatus: true, cause: true, at: true, toPosition: true },
+  });
+  const weeks: CancelledWeek[] = cancelled.map((m) => ({
+    date: m.date,
+    cancelledAt: m.updatedAt,
+    events: events.filter((e) => e.matchId === m.id),
+  }));
+  const intents = cancelledWeekIntents(weeks);
+  const saidIn = [...intents].filter(([, i]) => i.intent === "in").map(([u]) => u);
+  const inAtt =
+    saidIn.length > 0
+      ? await db.attendance.findMany({
+          where: { matchId: { in: cancelled.map((m) => m.id) }, userId: { in: saidIn } },
+          include: { user: { select: { id: true, phoneNumber: true, email: true, isActive: true } } },
+        })
+      : [];
+  // One description per player; CONFIRMED so a phoneless one is checked
+  // for an admin's add like any carried player.
+  const seen = new Set<string>();
+  const unique = inAtt.filter((a) => (seen.has(a.userId) ? false : (seen.add(a.userId), true)));
+  const cancelledWeekRows = await describeRows(
+    orgId,
+    unique.map((a) => ({ ...a, status: "CONFIRMED" })),
+  );
+  return applyCancelledWeeks({ sourceRows, weeks, cancelledWeekRows });
+}
+
+/**
+ * WHO WAS LEFT OUT OF `matchId`'s CARRIED SQUAD FOR SAYING OUT FOR A
+ * CANCELLED WEEK (2026-10-24, Kemal): "MT should mention who is excluded
+ * from this week's squad due to changing their minds and telling OUT".
+ * Read by the rolling announcement (players' group, or the organisers'
+ * notice in HQ). Recomputed from the same history the seed read, which
+ * no longer changes. A player who has since said IN or gone on the bench
+ * for this match is not named: he is on the list.
+ *
+ * Empty when the match was not seeded, or nobody was left out.
+ */
+export async function loadRollingLeftOut(matchId: string): Promise<Array<{ userId: string; name: string | null }>> {
+  const target = await db.match.findUnique({
+    where: { id: matchId },
+    select: {
+      id: true,
+      date: true,
+      rollingSeededFromMatchId: true,
+      activity: { select: { orgId: true, venue: true, dayOfWeek: true } },
+    },
+  });
+  if (!target?.rollingSeededFromMatchId) return [];
+  const source = await db.match.findUnique({ where: { id: target.rollingSeededFromMatchId }, select: { id: true, date: true } });
+  if (!source) return [];
+  const { leftOut } = await loadCarryRows({ orgId: target.activity.orgId, fixture: target.activity, target, source });
+  if (leftOut.length === 0) return [];
+  const [onTarget, users] = await Promise.all([
+    db.attendance.findMany({
+      where: { matchId, userId: { in: leftOut }, status: { in: ["CONFIRMED", "BENCH"] } },
+      select: { userId: true },
+    }),
+    db.user.findMany({ where: { id: { in: leftOut } }, select: { id: true, name: true } }),
+  ]);
+  const listed = new Set(onTarget.map((a) => a.userId));
+  const nameOf = new Map(users.map((u) => [u.id, u.name]));
+  return leftOut.filter((u) => !listed.has(u)).map((u) => ({ userId: u, name: nameOf.get(u) ?? null }));
+}
 
 /**
  * Copy `sourceId`'s squad onto `targetId`, once.
@@ -74,42 +226,18 @@ export async function seedRollingSquad(args: {
 }): Promise<SeedResult> {
   const now = args.now ?? new Date();
   const [target, source] = await Promise.all([
-    db.match.findUnique({ where: { id: args.targetId }, include: { activity: { select: { orgId: true } } } }),
+    db.match.findUnique({
+      where: { id: args.targetId },
+      include: { activity: { select: { orgId: true, venue: true, dayOfWeek: true } } },
+    }),
     db.match.findUnique({ where: { id: args.sourceId }, select: { id: true, date: true } }),
   ]);
   if (!target || !source) return NOTHING;
   const orgId = target.activity.orgId;
 
-  // History: the source's rows are not changing any more, so they are
-  // read outside the transaction.
-  const sourceAtt = await db.attendance.findMany({
-    where: { matchId: source.id },
-    include: { user: { select: { id: true, phoneNumber: true, email: true, isActive: true } } },
-  });
-  const memberships = await db.membership.findMany({
-    where: { orgId, userId: { in: sourceAtt.map((a) => a.userId) } },
-    select: { userId: true, leftAt: true, provisionallyAddedAt: true, guestFromOrgId: true },
-  });
-  const membershipOf = new Map(memberships.map((m) => [m.userId, m]));
-  // Only a phoneless player's carry depends on whether an admin added him.
-  const adminAdded = await loadAdminAddedUserIds(
-    db as unknown as AdminAddedReadClient,
-    orgId,
-    sourceAtt.filter((a) => a.status === "CONFIRMED" && !a.user.phoneNumber).map((a) => a.userId),
-  );
-  const sourceRows: SeedSourceRow[] = sourceAtt.map((a) => {
-    const mem = membershipOf.get(a.userId);
-    return {
-      userId: a.userId,
-      status: a.status,
-      position: a.position,
-      phoneNumber: a.user.phoneNumber,
-      email: a.user.email,
-      isActive: a.user.isActive,
-      membership: mem ? { leftAt: mem.leftAt, provisionallyAddedAt: mem.provisionallyAddedAt, guestFromOrgId: mem.guestFromOrgId } : null,
-      addedByAdmin: adminAdded.has(a.userId),
-    };
-  });
+  // History: the source's rows, and the cancelled weeks in between, are
+  // not changing any more, so they are read outside the transaction.
+  const { rows: sourceRows } = await loadCarryRows({ orgId, fixture: target.activity, target, source });
   const sourceLabel = formatLondon(source.date, "yyyy-MM-dd");
 
   return db.$transaction(async (tx) => {

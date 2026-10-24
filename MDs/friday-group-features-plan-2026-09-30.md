@@ -65,6 +65,7 @@ A club with `rollingSquadEnabled = true`:
 - `status = COMPLETED`, `isHistorical = false`, `date < target.date`.
 - The most recent one within `ROLLING_LOOKBACK_DAYS = 21`.
 - **After a cancelled week:** the cancelled match is skipped and the one before it is used, if it is within 21 days. The cancelled week's own attendance (people who said OUT for that week only) is ignored. Decided, D1.
+  - **Superseded 2026-10-24 (Kemal, after FNF's 23 Oct):** the cancelled week is still not the source, but what players said for it before it was cancelled is their latest word. A carried player whose last statement for it was OUT (CONFIRMED or BENCH to DROPPED, before `Match.updatedAt` of the cancelled match) is not carried, and the rolling announcement (players' group, or the organisers' notice in HQ) names him: "Not on this week's squad because they said *OUT* last week: ...". A player who said IN for it (CONFIRMED there) but was not on last played squad is carried after it. The seed's own rows, merges and format recuts are not statements. `applyCancelledWeeks` in `rolling-squad-rules.ts`, `loadRollingLeftOut` in `rolling-squad.ts`.
 - **Longer gap** (summer break, a month off): no source, no seeding. The match opens empty and the ordinary cold announcement fires. The admin can press "Carry over last squad" on the match page (1.9) if they want it anyway.
 - **The target** is the soonest live (UPCOMING) match of that fixture after the source, not already seeded, with `now < date`. Only one target per source.
 
