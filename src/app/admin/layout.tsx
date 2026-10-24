@@ -12,6 +12,7 @@ import { normaliseSquadMode } from "@/lib/squad-month-rules";
 import { CONNECT_FOCUS_HOME, PATHNAME_HEADER, connectFocusAdminView } from "@/lib/connect-focus";
 import { connectFocusFor } from "@/lib/connect-focus-server";
 import { ConnectFocusGate } from "@/components/club-connect/connect-focus-gate";
+import { guestPlayersTabShown } from "@/lib/pool/guest-report-loader";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
@@ -46,6 +47,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   // and ADMINs in grace, past due or paused. Never in trial, never for an
   // exempt club, never with BILLING_ENABLED off.
   const banner = await loadBillingBanner(membership.orgId, { flagOn: await billingUiEnabledForRequest() });
+  // The Guest players tab (pool slice L5b), only where it has something to show.
+  const guestsTab = await guestPlayersTabShown(membership.orgId).catch(() => false);
 
   return (
     <div className="p-6 sm:p-8 max-w-6xl mx-auto">
@@ -70,6 +73,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         monthsLabel={
           normaliseSquadMode(membership.org.squadMode) === "monthly" ? t(membership.org.language).mth_nav : undefined
         }
+        guestsLabel={guestsTab ? t(membership.org.language).gst_title : undefined}
       />
       <div className="mt-6">
         {/* The club's language for the client pages' ⓘ popups (F1). */}

@@ -27,6 +27,8 @@ import { PartnerAskPanel } from "@/components/match/partner-ask-panel";
 import { PartnerGuestsPanel } from "@/components/match/partner-guests-panel";
 import { loadPartnerAskPanel } from "@/lib/partner-ask";
 import { organisersPickMom } from "@/lib/mom-chooser";
+import { loadMatchGuestCards } from "@/lib/pool/guest-report-loader";
+import { normaliseLang } from "@/lib/i18n/lang";
 
 export default async function MatchDetailPage({
   params,
@@ -180,6 +182,15 @@ export default async function MatchDetailPage({
         });
       })()
     : [];
+  // Guest tags on the attendance list (pool slice L5b): every viewer sees the
+  // tag; an organiser's opens the guest card.
+  const guestTags = await loadMatchGuestCards({
+    orgId: match.activity.orgId,
+    matchId,
+    attendeeIds: match.attendances.map((a) => a.userId),
+    lang: normaliseLang(match.activity.org.language),
+    admin: isAdmin,
+  }).catch(() => ({}));
   const isPastDeadline = new Date() > match.attendanceDeadline;
   // "Enter score" / "Edit score" for an admin on any PLAYED match that was
   // not cancelled (FNF, 2026-10-18). Both open the score panel in the
@@ -533,6 +544,7 @@ export default async function MatchDetailPage({
             admin={isAdmin}
             matchId={matchId}
             hideBench={organiserPicks}
+            guests={{ lang: match.activity.org.language, orgId: match.activity.orgId, byUser: guestTags }}
           />
           {organiserPicks && (
             <WaitingListControls matchId={matchId} lang={match.activity.org.language} rows={waitingRows} />

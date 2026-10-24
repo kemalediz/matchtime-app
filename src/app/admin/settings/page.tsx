@@ -26,6 +26,7 @@ import { PostersCard } from "@/components/settings/posters-card";
 import { PartnerClubsSection } from "@/components/settings/partner-clubs-section";
 import { scrollToHashTarget } from "@/lib/scroll-to-hash";
 import { QuietHoursSection } from "@/components/settings/quiet-hours-section";
+import { PlayStyleSection } from "@/components/settings/play-style-section";
 
 type FeatureKey = ToggleableKey;
 
@@ -802,6 +803,8 @@ export default function SettingsPage() {
           since partner discovery (P1, 2026-10-22): the discovery switches
           and the club venue are every club's. */}
       <PartnerClubsSection orgId={org.id} language={org.language} />
+      {/* Style of play (pool L5b): only while the club may ask the player pool. */}
+      <PlayStyleSection orgId={org.id} language={org.language} />
 
       {!goLiveSetup && <PostersCard club={org.name} language={org.language} />}
 

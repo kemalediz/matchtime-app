@@ -4070,6 +4070,86 @@ export const tr: Strings = {
   xask_keep_button: (p) => `${p.club} kulübüne ekle`,
   xask_keep_done: "Üye olarak eklendi.",
   xask_guest_badge: (p) => `Misafir: ${p.club}`,
+  // ─── Misafir oyuncular sayfası, misafir etiketi ve kartı (L5b) ─────
+  gst_title: "Misafir oyuncular",
+  gst_intro: "Partner kulüplerinizden ve MatchTime oyuncu havuzundan gelip maçlarınızda yer alan oyuncular.",
+  gst_tab_upcoming: "Yaklaşan",
+  gst_tab_history: "Geçmiş",
+  gst_tab_report: "Rapor",
+  gst_empty_upcoming: "Önümüzdeki maçlarınız için kayıtlı misafir yok.",
+  gst_empty_history: "Kulübünüzle henüz hiçbir misafir oynamadı.",
+  gst_empty_report: "Henüz raporlanacak bir şey yok. Kulübünüz misafir istemedi ya da misafir ağırlamadı.",
+  gst_source_pool: "MatchTime oyuncu havuzu",
+  gst_source_partner: (p) => `Geldiği kulüp: ${p.club}`,
+  gst_source_partner_unknown: "Bir partner kulüpten",
+  gst_on_bench: "Yedekte",
+  gst_record_new: "MatchTime'da yeni",
+  gst_record: (p) => `${p.games} maçın ${p.played} tanesine geldi`,
+  gst_games_here: (p) => `Kulübünüzle ${p.n} maç`,
+  gst_result: (p) => {
+    switch (p.outcome) {
+      case "played":
+        return "Oynadı";
+      case "no-show":
+        return "Gelmedi";
+      case "late-cancel":
+        return "Son anda bıraktı";
+      case "withdrawn":
+        return "Zamanında çekildi";
+      default:
+        return "Kayıtlı";
+    }
+  },
+  gst_joined: "Kulübe katıldı",
+  gst_not_joined: "Üye değil",
+  gst_guest_tag: "Misafir",
+  gst_card_open: (p) => `${p.name} hakkında`,
+  gst_card_sports: "Sporlar",
+  gst_card_record: "Maça gelme kaydı",
+  gst_card_games: "Kulübünüzle maçlar",
+  gst_card_source: "Nereden geldi",
+  gst_nameless: "Adı olmayan misafir",
+  gst_invite: "Kulübe davet et",
+  gst_invite_invited: "Davet edildi, yanıt bekleniyor",
+  gst_invite_unavailable: "Davet edilemez: bu oyuncu MatchTime mesajlarını durdurdu ya da profilini sildi.",
+  gst_invite_failed: "Davet gönderilemedi. Sayfayı yenileyip tekrar deneyin.",
+  gst_period: "Dönem",
+  gst_period_month: "Aylık",
+  gst_period_season: "Sezonluk",
+  gst_season: (p) => `${p.key} sezonu`,
+  gst_filter_sport: "Spor",
+  gst_filter_venue: "Saha",
+  gst_filter_all: "Tümü",
+  gst_filter_apply: "Göster",
+  gst_csv: "CSV indir",
+  gst_col_asked: "Sorulan",
+  gst_col_accepted: "Kabul eden",
+  gst_col_played: "Oynayan",
+  gst_col_no_shows: "Gelmeyen",
+  gst_col_members: "Üye olan",
+  gst_col_short: "Eksik maçlar",
+  gst_col_rescued: "Kurtarılan",
+  gst_col_fill_rate: "Doldurma oranı",
+  gst_total: "Toplam",
+  gst_fill_none: "Yok",
+  gst_report_help:
+    "Eksik maç, misafir istediğiniz maçtır. Bir misafir o maçta oynadıysa maç kurtarılmış sayılır. Doldurma oranı, kurtarılan eksik maçların payıdır; henüz oynanmamış maçlar sayılmaz.",
+  // ─── Oyun tarzı (L5b) ──────────────────────────────────────────────
+  ps_title: "Oyun tarzı",
+  ps_blurb: "Maçlarınızın havası. MatchTime oyuncu havuzundaki oyunculara giden tekliflerde gösterilir.",
+  ps_style: (p) => {
+    switch (p.kind) {
+      case "casual":
+        return "Keyif için";
+      case "competitive":
+        return "Rekabetçi";
+      case "mixed":
+        return "Karışık";
+      default:
+        return "Belirtilmedi";
+    }
+  },
+  ps_saved: "Oyun tarzı kaydedildi.",
   // ─── D5b, tek soru (slice S5b) ──────────────────────────────────────
   xask_which: (p) =>
     `Bu VARIM *${p.asker}* maçı için mi, bizim maç için mi? ${p.asker} için ${p.asker} mesajımı yanıtlayıp VARIM yaz. Bizim maç için tekrar VARIM yazman yeterli.`,

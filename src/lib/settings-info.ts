@@ -77,6 +77,8 @@ export const SETTING_INFO_KEYS = [
   "partnerAutoAccept",
   "partnerShareRatings",
   "clubHomeVenue",
+  // Local player pool (slice L5b, 2026-10-24)
+  "playStyle",
   // Posters
   "posters",
   "posterDesign",
@@ -1433,6 +1435,39 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       together: [
         "Kulübünüzün bir sahası olana kadar (etkin bir maçın sahası ya da bu) kulübünüz yakındaki kulüplere gösterilmez ve sahipleriniz ile yöneticileriniz haftada bir hatırlatma alır. Bir saha seçilince hatırlatma tamamen durur.",
       ],
+    },
+  },
+  // Traced 2026-10-24 (pool slice L5b): `Organisation.playStyle`, saved by
+  // app/actions/play-style.ts; the card shows only while the club may ask
+  // the player pool (`featurePlayerPool`). The offer that reads it is L5.
+  playStyle: {
+    en: {
+      title: "Style of play",
+      what: [
+        "A word about how your games feel. When your club asks the MatchTime player pool for players, the offer they get says it, so a player looking for a relaxed kickabout is not surprised by a serious game.",
+      ],
+      choices: [
+        { name: "Not set", text: "The offer has no line about the style of play." },
+        { name: "Casual", text: "Games played for fun." },
+        { name: "Competitive", text: "Games played to win, at a good pace." },
+        { name: "Mixed", text: "Some of each." },
+      ],
+      newClubs: "Not set.",
+      together: ["This card shows only while your club may ask the MatchTime player pool for players."],
+    },
+    tr: {
+      title: "Oyun tarzı",
+      what: [
+        "Maçlarınızın havasını anlatan bir kelime. Kulübünüz MatchTime oyuncu havuzundan oyuncu istediğinde, oyunculara giden teklifte bu yazar; böylece rahat bir maç arayan bir oyuncu ciddi bir maçla karşılaşıp şaşırmaz.",
+      ],
+      choices: [
+        { name: "Belirtilmedi", text: "Teklifte oyun tarzıyla ilgili bir satır olmaz." },
+        { name: "Keyif için", text: "Eğlence için oynanan maçlar." },
+        { name: "Rekabetçi", text: "Kazanmak için, iyi bir tempoda oynanan maçlar." },
+        { name: "Karışık", text: "İkisinden de biraz." },
+      ],
+      newClubs: "Belirtilmedi.",
+      together: ["Bu kart yalnızca kulübünüz MatchTime oyuncu havuzundan oyuncu isteyebildiği sürece görünür."],
     },
   },
   // ════ Posters ═══════════════════════════════════════════════════════
