@@ -84,6 +84,20 @@ ALTER TABLE "PoolProfile" DROP CONSTRAINT IF EXISTS "PoolProfile_shareCode_check
 ALTER TABLE "PoolProfile" ADD CONSTRAINT "PoolProfile_shareCode_check"
   CHECK ("shareCode" IS NULL OR "shareCode" ~ '^[A-Za-z0-9]{4,12}$');
 
+ALTER TABLE "PoolProfile" DROP CONSTRAINT IF EXISTS "PoolProfile_signupIp_check";
+ALTER TABLE "PoolProfile" ADD CONSTRAINT "PoolProfile_signupIp_check"
+  CHECK ("signupIp" IS NULL OR "status" = 'pending-verify');
+
+-- PoolConfirmAttempt (slice L2; created by
+-- prisma/migrations/20261025090000_pool_signup_confirm, which carries the
+-- same CHECKs)
+ALTER TABLE "PoolConfirmAttempt" DROP CONSTRAINT IF EXISTS "PoolConfirmAttempt_result_check";
+ALTER TABLE "PoolConfirmAttempt" ADD CONSTRAINT "PoolConfirmAttempt_result_check"
+  CHECK ("result" IN ('wrong', 'expired'));
+ALTER TABLE "PoolConfirmAttempt" DROP CONSTRAINT IF EXISTS "PoolConfirmAttempt_phone_check";
+ALTER TABLE "PoolConfirmAttempt" ADD CONSTRAINT "PoolConfirmAttempt_phone_check"
+  CHECK ("phone" ~ '^[0-9]{8,15}$');
+
 -- PoolSport
 ALTER TABLE "PoolSport" DROP CONSTRAINT IF EXISTS "PoolSport_sport_check";
 ALTER TABLE "PoolSport" ADD CONSTRAINT "PoolSport_sport_check"

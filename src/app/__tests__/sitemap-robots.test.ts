@@ -8,6 +8,12 @@ describe("sitemap", () => {
     expect(paths).toEqual(expect.arrayContaining(["/", "/help", "/help/player", "/help/admin"]));
   });
 
+  it("lists the player pool's sign-up, never its manage page", () => {
+    const paths = sitemap().map((e) => new URL(e.url).pathname);
+    expect(paths).toContain("/play");
+    expect(paths).not.toContain("/play/manage");
+  });
+
   it("lists the privacy policy", () => {
     expect(sitemap().map((e) => new URL(e.url).pathname)).toContain("/privacy");
   });
@@ -25,7 +31,7 @@ describe("robots.txt", () => {
     const r = robots();
     const rules = Array.isArray(r.rules) ? r.rules : [r.rules];
     const disallow = ([] as string[]).concat(rules[0].disallow ?? []);
-    for (const p of ["/admin", "/api/", "/r/", "/join/", "/profile", "/matches/"]) {
+    for (const p of ["/admin", "/api/", "/r/", "/join/", "/profile", "/matches/", "/play/manage"]) {
       expect(disallow).toContain(p);
     }
   });

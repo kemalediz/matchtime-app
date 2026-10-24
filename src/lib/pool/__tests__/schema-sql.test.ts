@@ -160,3 +160,31 @@ describe("the migration is additive and whole", () => {
     expect(pool).toBeGreaterThan(partner);
   });
 });
+
+describe("slice L2's migration (the sign-up IP and the failed confirm attempts)", () => {
+  const L2 = "prisma/migrations/20261025090000_pool_signup_confirm/migration.sql";
+  const sql = code(read(L2));
+  const IP_CHECK = `CHECK ("signupIp" IS NULL OR "status" = 'pending-verify')`;
+  const RESULT_CHECK = inList("result", V.POOL_CONFIRM_ATTEMPT_RESULTS);
+
+  it("carries the same CHECKs as the CHECK file, from the vocab", () => {
+    for (const file of [L2, CHECKS]) {
+      expect(code(read(file)), file).toContain(IP_CHECK);
+      expect(code(read(file)), file).toContain(RESULT_CHECK);
+    }
+  });
+  it("is additive, idempotent and one transaction with no session-level SET", () => {
+    expect(sql).not.toMatch(/DROP\s+(COLUMN|TABLE)/i);
+    const dropped = [...sql.matchAll(/DROP CONSTRAINT IF EXISTS "([^"]+)"/g)].map((m) => m[1]);
+    const added = new Set([...sql.matchAll(/ADD CONSTRAINT "([^"]+)"/g)].map((m) => m[1]));
+    for (const name of dropped) expect(added.has(name), name).toBe(true);
+    expect(sql).not.toMatch(/CREATE TABLE (?!IF NOT EXISTS)/);
+    expect(sql).not.toMatch(/CREATE (UNIQUE )?INDEX (?!IF NOT EXISTS)/);
+    expect(sql).not.toMatch(/ADD COLUMN (?!IF NOT EXISTS)/);
+    expect(sql).toMatch(/^\s*BEGIN;/m);
+    expect(sql).toMatch(/^\s*SET LOCAL lock_timeout = '5s';/m);
+    expect(sql).toMatch(/^\s*COMMIT;\s*$/m);
+    expect(sql).not.toMatch(/^\s*SET\s+(?!LOCAL)/im);
+    expect(sql).not.toMatch(/^\s*(UPDATE|DELETE|INSERT)\b/im);
+  });
+});

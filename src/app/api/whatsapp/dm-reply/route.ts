@@ -5,6 +5,12 @@
  * HANDLER ORDER IS THE CONTRACT. The most SPECIFIC pending prompt wins,
  * and the general fallback runs last:
  *
+ *   0.  local player pool confirm code  ("Hi MatchTime, sign me up to play.
+ *      Code K7QP", slice L2, 2026-10-24; a /play sign-up confirmed by the
+ *      person's own message, usually a stranger's; deterministic, no model;
+ *      never the self-join connect message; a DM with no code, or with a
+ *      code that names nothing in other words, falls through untouched.
+ *      See lib/pool/confirm.ts)
  *   0a. self-join owner decision        ("APPROVE 7KQ2" / "REJECT 7KQ2" from a
  *      number in SELF_JOIN_APPROVER_PHONES; only while SELF_JOIN_ENABLED is
  *      on; deterministic, no model; a command with a ref from anybody else
@@ -74,6 +80,7 @@ import { setupLearningTestSeam } from "@/lib/setup-learning/test-seam";
 import { billingEnabledForApiRequest } from "@/lib/billing-flag";
 import { billingQuietMatchWhere } from "@/lib/club-billing-rules";
 import { handleConnectDm } from "@/lib/connect-dm";
+import { handlePoolConfirmDm } from "@/lib/pool/confirm";
 import { handleOrganiserPickDm } from "@/lib/organiser-pick";
 import { handleCollectorPaidDm, handlePlayerPaidDm } from "@/lib/month-payment";
 import { selfJoinEnabledForApiRequest } from "@/lib/self-join-flag";
@@ -157,6 +164,20 @@ export async function POST(request: Request) {
   //   their whole chat context (`loadDmReplyContext`). Total: a failed read
   //   is logged and the DM carries on as a non-reply.
   const quoted = await logDmQuote(db, { body, waMessageId, phones: [phone, senderAltPhone] });
+
+  // ── Local player pool: the /play confirm code (slice L2, 2026-10-24) ──
+  //   "Hi MatchTime, sign me up to play. Code K7QP" (Turkish: "Merhaba
+  //   MatchTime, oynamak için kaydet. Kod K7QP"), the message the /play form
+  //   opens. FIRST, ahead of the sender lookup: the sender is usually a
+  //   stranger with no User yet, and nothing below may answer this DM with a
+  //   model. A token lookup, deterministic. It never takes the self-join
+  //   connect message ("Connect ..., code ..."), and a DM with no code, or a
+  //   code that names no sign-up in words that are not the confirm message,
+  //   comes back null and carries on exactly as before. See lib/pool/confirm.ts.
+  {
+    const pool = await handlePoolConfirmDm({ text, phone, senderAltPhone, waMessageId });
+    if (pool) return NextResponse.json({ ok: true, ...pool });
+  }
 
   // ── Self-join: the owner's decision (slice 7), then the connect DM (slice 5) ──
   //   The organiser's prefilled "Connect Riverside FC, code 7KQ2" (Turkish:

@@ -170,6 +170,15 @@ export function LandingPage({ holdOn = false }: { holdOn?: boolean } = {}) {
             </Link>
           </div>
 
+          {/* The player pool's invitation (G0 part 2): players with no
+              group find the pool section, whose button pulses. */}
+          <p className="mt-6 text-sm text-slate-200">
+            Looking for a game, not a group?{" "}
+            <Link href="#player-pool" className="font-semibold text-emerald-300 underline underline-offset-4 hover:text-emerald-200">
+              Join the MatchTime player pool
+            </Link>
+          </p>
+
           <div className="mt-14 flex flex-wrap items-center justify-center gap-x-8 gap-y-3 text-xs sm:text-sm text-slate-300">
             <span className="inline-flex items-center gap-1.5">
               <Check className="w-4 h-4 text-emerald-400" />
@@ -202,7 +211,7 @@ export function LandingPage({ holdOn = false }: { holdOn?: boolean } = {}) {
         </div>
       </section>
 
-      {/* ── Spotlights: partner clubs, the admin group, the settings ──── */}
+      {/* ── Spotlights: the player pool, partner clubs, the admin group, the settings ── */}
       {LANDING_SPOTLIGHTS.map((s) => (
         <SpotlightSection key={s.id} s={s} />
       ))}
