@@ -16,6 +16,8 @@ import { ShareImageButton } from "@/components/stats/share-image-button";
 import { t } from "@/lib/i18n/t";
 import { lastPlayedLabel } from "@/lib/i18n/dates";
 import { GROUP_RATINGS_MIN_GAMES } from "@/lib/pipeline/stats-answer";
+import { loadReferralSummary } from "@/lib/pool/referrals";
+import { poolReferralCopy } from "@/lib/i18n/pool-referral";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +29,7 @@ export default async function MyStatsPage() {
   if (!membership) redirect("/create-org");
 
   const meId = session.user.id;
-  const [stats, leaderboard, tots, allClubs, myClubRating] = await Promise.all([
+  const [stats, leaderboard, tots, allClubs, myClubRating, referrals] = await Promise.all([
     loadPlayerSeasonStats(membership.orgId, meId),
     // The loader's default minimum is GROUP_RATINGS_MIN_GAMES, the same
     // rule as Team of the Season (Kemal, 2026-09-30). Do not lower it
@@ -43,6 +45,10 @@ export default async function MyStatsPage() {
     // than passed once. Never hand it a `[playerId]` route parameter.
     loadAllClubsOverview({ userId: meId, viewerId: meId }),
     loadClubRating(membership.orgId, meId),
+    // Player pool, slice G4: friends he brought who have played. His own
+    // page, so shown even while he keeps them private. Null (nothing on
+    // the page) until one has.
+    loadReferralSummary(meId),
   ]);
   if (!stats) redirect("/profile");
 
@@ -455,6 +461,8 @@ export default async function MyStatsPage() {
           </div>
         )}
 
+        {referrals && <ReferralCard summary={referrals} lang={membership.org.language} />}
+
         {/* Badges */}
         <div className="mt-4 rounded-2xl bg-white border border-slate-200 p-4">
           <div className="flex items-center gap-1.5 mb-3">
@@ -511,6 +519,40 @@ export default async function MyStatsPage() {
           </p>
         )}
       </div>
+    </div>
+  );
+}
+
+/** "Players brought to the game: N" and his referral badges (slice G4). */
+function ReferralCard({ summary, lang }: { summary: NonNullable<Awaited<ReturnType<typeof loadReferralSummary>>>; lang: string | null }) {
+  const c = poolReferralCopy(lang);
+  return (
+    <div className="mt-4 rounded-2xl bg-white border border-slate-200 p-4" data-testid="referral-card">
+      <div className="flex items-center gap-1.5">
+        <div className="text-sm font-semibold text-slate-800">{c.statsTitle}</div>
+        <InfoButton title={c.statsTitle}>
+          <p>{c.statsHowItCounts}</p>
+        </InfoButton>
+      </div>
+      <p className="mt-1 text-sm text-slate-700" data-testid="referral-count">
+        {c.statsCount(summary.friendsPlayed)}
+      </p>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        {summary.badges.map((b) => (
+          <div key={b.key} className="flex items-center gap-2 rounded-xl border p-2.5 bg-amber-50 border-amber-200" data-testid="referral-badge">
+            <span className="text-xl">{b.emoji}</span>
+            <div className="min-w-0 flex-1">
+              <div className="text-xs font-semibold text-slate-800 truncate">{b.label}</div>
+              <div className="text-[10px] text-slate-400 leading-tight">{c.badgeHint(b.minFriends)}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+      {!summary.shown && (
+        <p className="mt-2 text-[11px] text-slate-400" data-testid="referral-private">
+          {c.statsPrivate}
+        </p>
+      )}
     </div>
   );
 }

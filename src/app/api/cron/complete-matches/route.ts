@@ -26,6 +26,7 @@ import { completeFinishedMatches } from "@/lib/match-completion";
 import { seedDueRollingSquads } from "@/lib/rolling-squad";
 import { seedDueMonthlySquads } from "@/lib/monthly-week";
 import { finaliseGuestPlaces } from "@/lib/pool/no-shows";
+import { stampPlayedReferrals } from "@/lib/pool/referrals";
 import { poolEnvForApiRequest } from "@/lib/pool/switch-env";
 
 export async function GET(request: Request) {
@@ -68,5 +69,15 @@ export async function GET(request: Request) {
   // unless an organiser marked a no-show), and a guest with a second
   // no-show in his last five games is paused. Never throws.
   const guests = await finaliseGuestPlaces(now, poolEnvForApiRequest(request));
-  return NextResponse.json({ ok: true, completed, rollingSeeded, monthlySeeded, guests });
+  // Referrals (player pool, slice G4): AFTER the guests' results, so a
+  // friend whose first guest game settled on this tick counts now. Marks
+  // the referral counted once; sends nothing (the referrer's badge goes in
+  // his club's badges post). Its own try/catch, as above.
+  let referralsCounted = 0;
+  try {
+    referralsCounted = (await stampPlayedReferrals(now)).counted;
+  } catch (err) {
+    console.error("[complete-matches] referral counting failed:", err);
+  }
+  return NextResponse.json({ ok: true, completed, rollingSeeded, monthlySeeded, guests, referralsCounted });
 }
