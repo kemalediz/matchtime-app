@@ -146,20 +146,54 @@ const GROUP_ADDRESS =
  * their full name appears as whole words, or their first name (three
  * letters or more) does. Full names, each once, at most `max`.
  */
-export function membersNamedIn(body: string, roster: ReadonlyArray<Pick<Member, "name">>, max = 8): string[] {
+export function membersNamedIn(
+  body: string,
+  roster: ReadonlyArray<Pick<Member, "name" | "aliases">>,
+  max = 8,
+): string[] {
   const words = norm(body ?? "").split(" ").filter(Boolean);
   if (words.length === 0) return [];
   const text = ` ${words.join(" ")} `;
   const out: string[] = [];
+  const seen = new Set<string>();
   for (const m of roster) {
     const full = norm(m.name ?? "");
-    if (!full || !/[a-z]/.test(full)) continue;
+    if (!full || !/[a-z]/.test(full) || seen.has(m.name)) continue;
     const first = firstToken(full);
     const named = text.includes(` ${full} `) || (first.length >= 3 && words.includes(first));
-    if (named && !out.includes(m.name)) out.push(m.name);
+    // An alias the club set ("AH" for Abdul-Hafeez, 2026-10-24), as whole
+    // words: shown as the message wrote it, with the member's name.
+    const alias = named ? null : aliasKeys(m).find((a) => text.includes(` ${a} `));
+    if (named) out.push(m.name);
+    else if (alias) out.push(`${asWritten(body, alias)} (${m.name})`);
+    else continue;
+    seen.add(m.name);
     if (out.length >= max) break;
   }
   return out;
+}
+
+/** A member's aliases as the resolver compares them; only those with a letter. */
+function aliasKeys(m: Pick<Member, "aliases">): string[] {
+  return (m.aliases ?? []).map((a) => norm(a)).filter((a) => /[a-z]/.test(a));
+}
+
+/** The words of `body` that `key` (normalised) stands for, as written. */
+function asWritten(body: string, key: string): string {
+  const raw = (body ?? "").split(/\s+/).filter(Boolean);
+  const n = key.split(" ").length;
+  for (let i = 0; i + n <= raw.length; i++) {
+    const words = raw.slice(i, i + n);
+    if (norm(words.join(" ")) === key) return words.join(" ").replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
+  }
+  return key;
+}
+
+/** Members one of whose aliases is the whole reference, or a whole word
+ *  (or words) of it: "AH", "my mate AH". Never part of a word. */
+function byAlias(target: string, roster: Member[], wholeRef: boolean): Member[] {
+  const text = ` ${target} `;
+  return roster.filter((m) => aliasKeys(m).some((a) => (wholeRef ? a === target : text.includes(` ${a} `))));
 }
 
 export function resolvePerson(ref: string, roster: Member[]): ResolutionOutcome {
@@ -183,6 +217,14 @@ export function resolvePerson(ref: string, roster: Member[]): ResolutionOutcome 
   const exact = roster.filter((m) => norm(m.name) === target || (hasDigit && compact(m.name) === compact(target)));
   if (exact.length === 1) return { kind: "resolved", member: exact[0] };
   if (exact.length > 1) return { kind: "ambiguous", candidates: exact };
+
+  // 1b. An alias the club set for a member (admin portal, `UserAlias`):
+  //     "AH" is Abdul-Hafeez (FNF HQ, 2026-10-24). Curated by an
+  //     organiser, so it beats a first-name guess, as it does for a
+  //     sender (`resolve-sender.ts`) and for a stats question.
+  const aliased = byAlias(target, roster, true);
+  if (aliased.length === 1) return { kind: "resolved", member: aliased[0] };
+  if (aliased.length > 1) return { kind: "ambiguous", candidates: aliased };
 
   // 2. First-name match. `target` may itself be several words
   //    ("my dad Najib") so we compare on the first token of each.
@@ -211,8 +253,11 @@ export function resolvePerson(ref: string, roster: Member[]): ResolutionOutcome 
   // result was a duplicate member called "my dad Najib" beside the real
   // Najib. Two different members matching different tokens is an
   // ambiguity and bails, as everywhere else here.
+  // An alias as whole words of the reference counts here too ("my mate
+  // AH"), whatever its length: it is the club's own word for the member.
   const tokens = target.split(" ").filter((t) => t.length >= 3);
-  const byAnyToken = roster.filter((m) => tokens.includes(firstToken(m.name)));
+  const aliasedIn = new Set(byAlias(target, roster, false).map((m) => m.userId));
+  const byAnyToken = roster.filter((m) => tokens.includes(firstToken(m.name)) || aliasedIn.has(m.userId));
   if (byAnyToken.length === 1) return { kind: "resolved", member: byAnyToken[0] };
   if (byAnyToken.length > 1) return { kind: "ambiguous", candidates: byAnyToken };
 

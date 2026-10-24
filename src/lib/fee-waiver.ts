@@ -39,6 +39,7 @@ import { t } from "./i18n/t";
 import { dayLabel } from "./i18n/dates";
 import { joinChoice, joinList } from "./i18n/text";
 import { resolvePerson } from "./pipeline/identity";
+import { withAliases } from "./member-aliases";
 import type { Member } from "./pipeline/types";
 import { recordMatchTimeQuestion } from "./admin-group-log";
 import {
@@ -210,7 +211,8 @@ export async function proposeFeeFreeInHq(input: HqFeeFreeInput): Promise<HqReply
   });
   const named = squad.filter((a) => !!a.user?.name);
   const asMember = (a: (typeof named)[number]): Member => ({ userId: a.userId, name: a.user.name as string, isAdmin: false, hasPhone: !!a.user.phoneNumber });
-  const roster = named.filter((a) => a.userId !== collectorId).map(asMember);
+  // The club's aliases ("AH" is Abdul-Hafeez), for the one resolver.
+  const roster = await withAliases(input.orgId, named.filter((a) => a.userId !== collectorId).map(asMember));
   const collectorName = collectorId
     ? ((await db.user.findUnique({ where: { id: collectorId }, select: { name: true } }))?.name ?? null)
     : null;

@@ -454,3 +454,52 @@ test.describe("a player added in HQ a minute ago is taken out by name", () => {
     expect(row).toMatchObject({ hqOutcome: "silent", pipelineTrace: { router: { route: "none" } } });
   });
 });
+
+// FNF HQ 2026-10-24 12:48-12:52 UTC. Abdul-Hafeez has the alias "AH", set
+// in the admin portal. "AH\nRafi\nShehryar\nRaihan\nHamzah\n\nIN" brought
+// the other four off the bench and left him there; "AH out" did nothing and
+// said nothing. The engine's resolver now reads the club's aliases, and the
+// extractor is told who an alias in the message is.
+test.describe("an alias set in the admin portal names the player in HQ", () => {
+  test.beforeAll(async ({ db }) => {
+    resetDb();
+    await db.run(`UPDATE "Organisation" SET "adminGroupId" = $2, "adminChannelMode" = 'admin-group' WHERE id = $1`, [ORG_ID, HQ]);
+    await db.run(`INSERT INTO "UserAlias" (id, "userId", "orgId", alias, source) VALUES ('e2e-ags-alias-bb', $1, $2, 'bb', 'manual')`, [U.bench, ORG_ID]);
+  });
+
+  const callsFor = (body: string): string[] => {
+    let raw = "";
+    try {
+      raw = readFileSync(`${E2E.EXTRACTOR_STUB_FILE}.calls`, "utf8");
+    } catch {
+      return [];
+    }
+    return raw
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => (JSON.parse(l) as { user: string }).user)
+      .filter((u) => u.trimEnd().endsWith(`\n${body}`));
+  };
+
+  test("a name list with the alias and IN: Ben Bench comes off the bench, as himself", async ({ request, db }) => {
+    const text = "BB\nPat\n\nIN";
+    engineOn({ [text]: { route: "none" } });
+    const out = await say(request, text, ADMIN, "e2e-ags-alias-list");
+    expect(out).toMatchObject({ handled: true, outcome: "squad-changed", react: "✅" });
+    expect(out.replyText).toMatch(/^Done: Ben Bench in\. 5 of 5\.$/);
+    expect(await statusOf(db, U.bench)).toBe("CONFIRMED");
+    // No new player called "BB".
+    expect(await db.one(`SELECT id FROM "User" WHERE name = 'BB'`)).toBeNull();
+  });
+
+  test("'BB out': the extractor is told BB is Ben Bench, and he is out", async ({ request, db }) => {
+    engineOn({ "BB out": { route: "other_att", facts: otherFacts("BB", "out") } });
+    const out = await say(request, "BB out", ADMIN, "e2e-ags-alias-out");
+    expect(out).toMatchObject({ handled: true, outcome: "squad-changed", react: "✅" });
+    expect(out.replyText).toMatch(/^Done: Ben Bench out\./);
+    expect(await statusOf(db, U.bench)).toBe("DROPPED");
+    const seen = callsFor("BB out");
+    expect(seen.length).toBeGreaterThan(0);
+    expect(seen[0]).toContain("CLUB MEMBERS NAMED: BB (Ben Bench)");
+  });
+});

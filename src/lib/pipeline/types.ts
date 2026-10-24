@@ -731,6 +731,11 @@ export interface Member {
    *  (Friday MT Community)" for a partner guest. Absent in fixtures that
    *  predate it: printers then fall back to `name`. */
   displayName?: string;
+  /** The club's aliases for this member (`UserAlias.alias`, set in the
+   *  admin portal, e.g. "ah" for Abdul-Hafeez), as stored. The resolver
+   *  (`identity.ts`) matches people on these too, as whole words only.
+   *  Absent: none known. */
+  aliases?: readonly string[];
   isAdmin: boolean;
   hasPhone: boolean;
 }

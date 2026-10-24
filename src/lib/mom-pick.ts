@@ -25,6 +25,7 @@
 import { db } from "./db";
 import { momWinners } from "./badge-rules";
 import { resolvePerson } from "./pipeline/identity";
+import { withAliases } from "./member-aliases";
 import type { Member } from "./pipeline/types";
 
 /** What an organiser's name for Man of the Match comes to, for one match. */
@@ -49,7 +50,12 @@ export async function matchPlayers(matchId: string): Promise<Member[]> {
   for (const r of [...att, ...teams]) {
     if (!byId.has(r.userId)) byId.set(r.userId, { userId: r.userId, name: r.user?.name ?? "", isAdmin: false, hasPhone: false });
   }
-  return [...byId.values()].filter((m) => m.name.trim());
+  const players = [...byId.values()].filter((m) => m.name.trim());
+  // The club's aliases ("AH" is Abdul-Hafeez), for the one resolver.
+  const orgId = players.length
+    ? (await db.match.findUnique({ where: { id: matchId }, select: { activity: { select: { orgId: true } } } }))?.activity.orgId
+    : undefined;
+  return orgId ? withAliases(orgId, players) : players;
 }
 
 /** Resolve the organiser's words against the match's players. Pure. */

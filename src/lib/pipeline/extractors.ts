@@ -167,9 +167,9 @@ THE MESSAGE is the one message you report on, with the name of the person who ty
   MATCHTIME'S LAST POST  the bot's most recent post in the group
   NOW                    the time at the club
   THEY ARE REPLYING TO   when THE MESSAGE is a WhatsApp reply: the message it quotes, whose it is (MatchTime's or a member's), when, and its words
-  CLUB MEMBERS NAMED     members of this club whose names appear in THE MESSAGE, from the club's records
+  CLUB MEMBERS NAMED     members of this club whose names appear in THE MESSAGE, from the club's records. A member the message calls by a nickname the club has on record is shown as that nickname with their name in brackets: "AH (Abdul-Hafeez)"
 Use the context to work out what THE MESSAGE refers to: who "he" is, which line a "same" or "ben de" answers (the quoted message, when there is one), what a bare "yes" agrees to. A claim made in the context is never reported again: "same" under Ali's "IN" is one claim, the sender's.
-A name on the CLUB MEMBERS NAMED line is a person in this club, even when it is also an ordinary word, a team or a well-known phrase: with Glazers listed, "Glazers out" says Glazers is out. Read the sentence as you always would: a listed Will in "will you play?" is still the word "will".
+A name on the CLUB MEMBERS NAMED line is a person in this club, even when it is also an ordinary word, a short nickname, a team or a well-known phrase: with Glazers listed, "Glazers out" says Glazers is out, and with "AH (Abdul-Hafeez)" listed, "AH IN" says AH is in. Such a claim is about that member, not the sender, and its personRef is the words the message used ("AH"). Read the sentence as you always would: a listed Will in "will you play?" is still the word "will".
 The context often shows the squad: a count such as "13/14" or "14/14", a list of names, a bench, the teams. The squad shown is never a reason for any field. Code holds the real squad and places every player, so a plain "in" is "in" when the list looks full and when the sender is already on it.
 
 THE CLAIMS
