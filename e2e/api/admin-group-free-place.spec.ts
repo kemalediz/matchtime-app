@@ -42,11 +42,18 @@ const waiver = (coveredRefs: string[], undo = false) => ({
   facts: { action: "fee_waiver", payerRef: "", count: 0, coveredRefs, undo, matchDay: "", phrase: "", note: "", lookbackMatches: 0 },
 });
 
+// The clock is pinned (`x-test-now`): today's game at 19:00 London, each
+// message a second after the one before. It was `now()` in SQL, and the
+// e2e Postgres runs in Europe/London, so the timezone-less column stored
+// London wall time that Prisma reads as UTC: an hour ahead, and from 23:00
+// to midnight "today's game" was tomorrow's (failed nightly).
+const GAME = londonAt(0, 19, 0);
 let seq = 0;
 async function say(request: APIRequestContext, text: string, senderPhone = ADMIN) {
+  const at = new Date(GAME.getTime() + ++seq * 1000);
   const res = await request.post("/api/whatsapp/admin-group", {
-    headers: KEY,
-    data: { channel: "admin-group", groupId: HQ, messageId: `e2e-free-${++seq}`, text, senderPhone, timestamp: String(Math.floor(Date.now() / 1000)) },
+    headers: { ...KEY, "x-test-now": at.toISOString() },
+    data: { channel: "admin-group", groupId: HQ, messageId: `e2e-free-${seq}`, text, senderPhone, timestamp: String(Math.floor(at.getTime() / 1000)) },
   });
   expect(res.status(), await res.text()).toBe(200);
   return res.json();
@@ -62,7 +69,7 @@ const dmsTo = (db: TestDb, phone: string) => db.all<{ text: string }>(`SELECT te
 test.beforeEach(async ({ db }) => {
   resetDb();
   await db.run(`UPDATE "Organisation" SET "adminGroupId" = $2, "adminChannelMode" = 'admin-group' WHERE id = $1`, [ORG_ID, HQ]);
-  await db.run(`UPDATE "Match" SET date = now() WHERE id = $1`, [MATCH.pay]);
+  await db.run(`UPDATE "Match" SET date = $2 WHERE id = $1`, [MATCH.pay, GAME]);
   engineOn({
     [FREE]: waiver(["Ian"]),
     [FREE_TR]: waiver(["Ian"]),

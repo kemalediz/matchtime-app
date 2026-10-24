@@ -497,6 +497,8 @@ export interface SimBatchOpts {
   extractorFail?: string[];
   /** Every extractor call fails — the total-overload edge. */
   extractorFailAll?: boolean;
+  /** Extra request headers (a test seam such as `x-mt-test-pool-open`). */
+  headers?: Record<string, string>;
 }
 
 // ── The group itself ───────────────────────────────────────────────────
@@ -663,7 +665,7 @@ export class SimGroup {
         h.timestamp ?? new Date(Date.now() - (arr.length - i) * 60_000).toISOString(),
     }));
     const res = await this.request.post("/api/whatsapp/analyze", {
-      headers: HEADERS,
+      headers: { ...HEADERS, ...(opts.headers ?? {}) },
       data: {
         groupId: this.groupId,
         messages,
@@ -705,6 +707,8 @@ export class SimGroup {
       engineRoutes?: string[];
       /** Make this message's extractor call fail like an overloaded API. */
       extractorFails?: boolean;
+      /** Extra request headers (a test seam). */
+      headers?: Record<string, string>;
     } = {},
   ): Promise<SimPostResult> {
     const batch = await this.postBatch(
@@ -724,6 +728,7 @@ export class SimGroup {
         ...(opts.floor !== undefined ? { floor: opts.floor } : {}),
         ...(opts.engineRoutes !== undefined ? { engineRoutes: opts.engineRoutes } : {}),
         ...(opts.extractorFails ? { extractorFail: [body.trim()] } : {}),
+        ...(opts.headers ? { headers: opts.headers } : {}),
       },
     );
     return { ...batch.results[0], groupPosts: batch.groupPosts, dms: batch.dms, raw: batch.raw };

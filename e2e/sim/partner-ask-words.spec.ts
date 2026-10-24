@@ -8,7 +8,7 @@
  *                                                 EVERY active partner
  *
  * Stubbed: the router says admin_ops and the admin extractor says
- * `recruit` with `partnerClubs` (and `clubRef` when a club is named), which
+ * `recruit` from `playersFrom: "partners"` (and `clubRef` when a club is named), which
  * IS the classification under test; whether the real model reports it is
  * `scripts/live-check-partner-ask-words.ts`. Everything after is the
  * shipped code: the engine's admin and tag gates, the batch-final pass,
@@ -36,7 +36,7 @@ const recruitFromPartners = (clubRef: string) => ({
     phrase: "",
     note: "",
     lookbackMatches: 0,
-    partnerClubs: true,
+    playersFrom: "partners",
     clubRef,
   },
 });

@@ -448,7 +448,7 @@ describe("parseFacts (other routes)", () => {
     for (const action of ["bulk_payment", "fee_waiver", "reminder", "recruit", "stats_blast", "other"]) {
       expect(p.split(`\n  "${action}" `).length, action).toBe(2);
     }
-    for (const field of ["payerRef", "count", "coveredRefs", "undo", "matchDay", "phrase", "note", "lookbackMatches", "partnerClubs", "clubRef"]) {
+    for (const field of ["payerRef", "count", "coveredRefs", "undo", "matchDay", "phrase", "note", "lookbackMatches", "playersFrom", "clubRef"]) {
       expect(p.split(`\n  ${field} `).length, field).toBe(2);
     }
     expect(p).not.toMatch(/WHO DOES THE WORK/);
@@ -521,7 +521,7 @@ describe("parseFacts (other routes)", () => {
   it("admin · the S6 rewrite: partner clubs defined once, EN and TR examples, near misses", () => {
     const p = EXTRACTOR_PROMPTS.admin;
     expect(p).toMatch(/"Sutton'a sor bakalım oynayan var mı"[^\n]*clubRef "Sutton"/);
-    expect(p).toMatch(/"search for players from our partner groups"[^\n]*partnerClubs true, clubRef ""/);
+    expect(p).toMatch(/"search for players from our partner groups"[^\n]*playersFrom "partners", clubRef ""/);
     expect(p).toMatch(/"Sutton were great last week"[^\n]*other/);
     expect(p).not.toMatch(/[–—]/);
   });
@@ -546,32 +546,34 @@ describe("parseFacts (other routes)", () => {
   });
 
   it("admin · toMatchTime true is carried; false or missing is not (fails closed)", () => {
-    const base = '"payerRef":"","count":0,"coveredRefs":[],"undo":false,"matchDay":"","phrase":"","note":"","lookbackMatches":0,"partnerClubs":false,"clubRef":""';
+    const base = '"payerRef":"","count":0,"coveredRefs":[],"undo":false,"matchDay":"","phrase":"","note":"","lookbackMatches":0,"playersFrom":"club","clubRef":""';
     expect(parseFacts("admin", `{"action":"recruit",${base},"toMatchTime":true}`, "wa-1").facts).toMatchObject({ toMatchTime: true });
     expect("toMatchTime" in parseFacts("admin", `{"action":"recruit",${base},"toMatchTime":false}`, "wa-1").facts).toBe(false);
     expect("toMatchTime" in parseFacts("admin", `{"action":"recruit",${base}}`, "wa-1").facts).toBe(false);
   });
 
-  it("admin · the schema requires the two S6 facts", () => {
+  it("admin · the schema requires where the players come from, and the club named", () => {
     const schema = factsSchemaFor("admin_ops") as { required: string[]; properties: Record<string, unknown> };
-    expect(schema.required).toEqual(expect.arrayContaining(["partnerClubs", "clubRef"]));
-    expect(schema.properties.partnerClubs).toEqual({ type: "boolean" });
+    expect(schema.required).toEqual(expect.arrayContaining(["playersFrom", "clubRef"]));
+    expect(schema.properties.playersFrom).toEqual({ type: "string", enum: ["", "club", "partners", "pool"] });
     expect(schema.properties.clubRef).toEqual({ type: "string" });
+    // One source, one field: S6's boolean is gone from what the model fills.
+    expect(schema.properties.partnerClubs).toBeUndefined();
   });
 
   it("admin · recruit from partner clubs: partnerClubs and the name as written", () => {
     const { facts } = parseFacts(
       "admin",
-      '{"action":"recruit","payerRef":"","count":0,"coveredRefs":[],"undo":false,"matchDay":"","phrase":"","note":"","lookbackMatches":0,"partnerClubs":true,"clubRef":" Sutton "}',
+      '{"action":"recruit","payerRef":"","count":0,"coveredRefs":[],"undo":false,"matchDay":"","phrase":"","note":"","lookbackMatches":0,"playersFrom":"partners","clubRef":" Sutton "}',
       "wa-1",
     );
     expect(facts).toMatchObject({ kind: "admin", action: "recruit", partnerClubs: true, clubRef: "Sutton" });
   });
 
-  it("admin · a club name implies another club even when partnerClubs came back false", () => {
+  it("admin · a club name implies another club whatever source came back", () => {
     const { facts } = parseFacts(
       "admin",
-      '{"action":"recruit","payerRef":"","count":0,"coveredRefs":[],"undo":false,"matchDay":"","phrase":"","note":"","lookbackMatches":0,"partnerClubs":false,"clubRef":"Friday MT Community"}',
+      '{"action":"recruit","payerRef":"","count":0,"coveredRefs":[],"undo":false,"matchDay":"","phrase":"","note":"","lookbackMatches":0,"playersFrom":"club","clubRef":"Friday MT Community"}',
       "wa-1",
     );
     expect(facts).toMatchObject({ partnerClubs: true, clubRef: "Friday MT Community" });
@@ -580,18 +582,51 @@ describe("parseFacts (other routes)", () => {
   it("admin · the S6 facts are dropped on any action but recruit, and when empty", () => {
     const other = parseFacts(
       "admin",
-      '{"action":"other","payerRef":"","count":0,"coveredRefs":[],"undo":false,"matchDay":"","phrase":"","note":"","lookbackMatches":0,"partnerClubs":true,"clubRef":"Sutton"}',
+      '{"action":"other","payerRef":"","count":0,"coveredRefs":[],"undo":false,"matchDay":"","phrase":"","note":"","lookbackMatches":0,"playersFrom":"partners","clubRef":"Sutton"}',
       "wa-1",
     ).facts;
     expect("partnerClubs" in other).toBe(false);
     expect("clubRef" in other).toBe(false);
     const own = parseFacts(
       "admin",
-      '{"action":"recruit","payerRef":"","count":0,"coveredRefs":[],"undo":false,"matchDay":"","phrase":"","note":"","lookbackMatches":5,"partnerClubs":false,"clubRef":""}',
+      '{"action":"recruit","payerRef":"","count":0,"coveredRefs":[],"undo":false,"matchDay":"","phrase":"","note":"","lookbackMatches":5,"playersFrom":"club","clubRef":""}',
       "wa-1",
     ).facts;
     expect("partnerClubs" in own).toBe(false);
     expect("clubRef" in own).toBe(false);
+  });
+
+  // ── Local player pool L10 (2026-10-24): the MatchTime player pool is a
+  // third source of players, asked from the organisers' group.
+  const recruitFrom = (from: string, clubRef = "", action = "recruit") =>
+    parseFacts(
+      "admin",
+      `{"action":"${action}","payerRef":"","count":0,"coveredRefs":[],"undo":false,"matchDay":"","phrase":"","note":"","lookbackMatches":0,"playersFrom":"${from}","clubRef":"${clubRef}","toMatchTime":true}`,
+      "wa-1",
+    ).facts;
+
+  it("admin · recruit from the pool: pool, never partner clubs", () => {
+    const f = recruitFrom("pool");
+    expect(f).toMatchObject({ kind: "admin", action: "recruit", pool: true });
+    expect("partnerClubs" in f).toBe(false);
+  });
+
+  it("admin · the pool is never guessed: not with a club named, not on another action, not from the club or partners", () => {
+    expect(recruitFrom("pool", "Sutton")).toMatchObject({ partnerClubs: true, clubRef: "Sutton" });
+    expect("pool" in recruitFrom("pool", "Sutton")).toBe(false);
+    expect("pool" in recruitFrom("pool", "", "other")).toBe(false);
+    expect("pool" in recruitFrom("club")).toBe(false);
+    expect("pool" in recruitFrom("partners")).toBe(false);
+    expect("pool" in recruitFrom("")).toBe(false);
+  });
+
+  it("admin · the L10 rewrite: playersFrom defined once with its three sources, pool examples EN and TR, near misses", () => {
+    const p = EXTRACTOR_PROMPTS.admin;
+    for (const source of ["club", "partners", "pool"]) expect(p.split(`\n    "${source}" `).length, source).toBe(2);
+    expect(p).toMatch(/"@Match Time ask the pool for a player" \/ "@Match Time havuzdan bir oyuncu bul" -> recruit, playersFrom "pool"/);
+    expect(p).toMatch(/"find someone nearby for tonight" \/ "bu akşam için yakınlardan birini bul" -> recruit, playersFrom "pool"/);
+    expect(p).toMatch(/"shall we try the pool\?" \/ "havuza soralım mı\?" -> other, toMatchTime false/);
+    expect(p).not.toMatch(/partnerClubs/);
   });
 
   it("admin · an unknown action still drops the whole shape rather than guessing", () => {

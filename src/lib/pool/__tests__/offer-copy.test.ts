@@ -193,6 +193,16 @@ describe("the organisers' side: the notice line and refusals, a band never a lis
     );
     expect(withPoolOffer("Kadro eksik.", "5+", "https://m/1", "tr")).toContain("yakınınızda 5+ kişi");
   });
+  it("in the admin group (L10) the line invites a YES there, the match page still linked; a DM is unchanged", () => {
+    expect(withPoolOffer("Squad short.", "few", "https://m/1", "en", { inHq: true })).toBe(
+      "Squad short.\n\n🔎 Or I can ask nearby players from the MatchTime pool (a few near you): reply YES here, or open the match page: https://m/1",
+    );
+    expect(withPoolOffer("Kadro eksik.", "few", "https://m/1", "tr", { inHq: true })).toBe(
+      "Kadro eksik.\n\n🔎 Ya da MatchTime havuzundan yakındaki oyunculara sorayım (yakınınızda birkaç kişi): burada EVET yazın ya da maç sayfasını açın: https://m/1",
+    );
+    expect(withPoolOffer("Squad short.", "few", "https://m/1", "en", { inHq: false })).toBe(withPoolOffer("Squad short.", "few", "https://m/1", "en"));
+    expect(withPoolOffer("Squad short.", null, "https://m/1", "en", { inHq: true })).toBe("Squad short.");
+  });
   it("every refusal has its words, EN and TR", () => {
     for (const r of ["pool-closed", "no-venue", "too-late", "round-open", "club-week-cap", "no-places", "bad-number", "none-near", "not-found"]) {
       expect(poolAskRefusalText("en", r, 3)).toBeTruthy();

@@ -221,3 +221,16 @@ venue in its OWN area so scenarios sharing a database never reach each other's p
 | `dm-optout.spec.ts` | (L6.10, L6.11) the general DM opt-out: a pool-only player's "stop" stops his pool offers (recorded from his message, one line) EN and TR; a club member's "stop": his club's reply as before and his pool offers stop; someone opted out before the pool: the offer is cancelled at dispatch, and a fresh "start again" consent is his newer word |
 | `offers-reply-words-live.spec.ts` | (L6, PAID, `MT_SIM_LIVE_LLM=1`) the same route on the real model: a yes books, a Turkish no declines, a question gets the facts |
 | `../../web/pool-offer.spec.ts` | Playwright, phone and desktop: the match page's pool tick (a band, never who) EN and TR, switched off; the offer page |
+
+## Asking the pool from HQ (slice L10): where each scenario lives
+
+`club.hq.say(member, text, { now, poolOpen, quote })` pins the clock (`x-test-now`), the pool
+switch (`x-mt-test-pool-open`) and a swipe-reply quote, all honoured only under `MT_TEST_MODE=1`.
+The short-squad notice is the scheduler's own (`/api/whatsapp/due-posts` with an admin-group Pi,
+3 to 4 hours before kickoff), claimed and acked as the Pi does, so its pool line is logged as
+MatchTime's question. The model is stubbed; `scripts/live-check-hq-pool.ts` is the paid check.
+
+| File | Covers |
+| --- | --- |
+| `hq-ask.spec.ts` | "ask the pool" in words EN and TR (one HQ line, the same offer a tap sends, nothing in the players' group, the ask `via: words` approved by the organiser); the pool closed for the club or switched off (one helpful line, nobody asked); a member who is not an organiser (the one line naming who can); untagged chatter and "shall we try the pool?" (silent); YES to the short-squad notice (checked once after chatter, then asked `via: notice`, a second YES asks nothing); a YES quoting the notice (an organiser asks, a player gets the one line); two games each with a notice (a bare YES asks which, naming both) |
+| `group-ask.spec.ts` | an organiser's tagged "ask the pool" in the PLAYERS' group (a club with no HQ): the real routing (`offer`, a "recruit" side request whose source the admin extractor reads before any blast) and the `admin_ops` path both reach the same door; pool on (one line, the offer, `via: words`), EN and TR; pool off or switched off (HQ's helpful line, nobody asked, no DM); a player asking (nothing asked, no blast); a plain shortage ask (still the club's own recruit) |

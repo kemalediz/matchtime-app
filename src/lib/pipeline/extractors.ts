@@ -88,6 +88,15 @@ const EXTRACTOR_MAX_TOKENS = 1_024;
  * and S25, every shape the prompt reads) and one pass of the corpus,
  * router-regressions, the live attendance sim specs, hq-chatter,
  * free-places and admin-group.
+ *
+ * Admin was rewritten whole again on 2026-10-24 (local player pool L10):
+ * where the players come from is ONE field, `playersFrom` ("club",
+ * "partners" or the new "pool", the MatchTime player pool), replacing S6's
+ * `partnerClubs` boolean; the pool's examples sit beside the partner
+ * clubs', EN and TR. 7,389 to 8,503 characters. One paid pass of
+ * live-check-hq-pool (new), hq-outward, partner-ask-words, free-places,
+ * hq-cancel, players-cancel, admin-group, hq-questions, hq-chatter and
+ * the recruit and HQ organisers-only live sims.
  */
 export const EXTRACTOR_CALLS: Record<Exclude<ExtractorKind, "none">, ModelCall> = {
   attendance: HAIKU_CALL,
@@ -487,13 +496,13 @@ The latest game or an earlier one:
 
 THE MESSAGE is the one you report on, with its sender and whether they tagged the bot. Above it you may see RECENT CHAT, MATCHTIME'S LAST POST, NOW (the time at the club) and, for a WhatsApp reply, the message it quotes (the THEY ARE REPLYING TO line). They tell you who "he" or "them" is and who is being spoken to; the action and every field come from THE MESSAGE.
 
-THE ACTION, exactly one: what the message asks to be done. A question, an opinion or a discussion about whether to do it ("should we cancel?", "should Bilal play free?") is "other".
+THE ACTION, exactly one: what the message asks to be done. A question, an opinion or a discussion about whether to do it ("should we cancel?", "should Bilal play free?", "shall we try the pool?") is "other".
   "bulk_payment" someone paid for several players.
   "fee_waiver" the sender gives named players a free place, so they owe nothing for a game, or takes a free place back. "Free" meaning able to play ("I'm free Tuesday") is not this.
   "cancel_match" the sender calls off the club's game: cancel it, it is not happening, no game.
   "restore_match" the sender puts a called-off game back on: it is back on, uncancel it, it goes ahead after all.
   "reminder" the sender wants MatchTime to remind them, at a time.
-  "recruit" find players who are not in the squad yet, either by inviting the club's own past players or by asking the club's group, another club or another group whether anyone can play. Asking to show, list or count the squad is "other", and so is talking or asking about another club.
+  "recruit" find players who are not in the squad yet, from wherever playersFrom says. Asking to show, list or count the squad is "other", and so is talking or asking about another club or the player pool.
   "stats_blast" MatchTime itself is to send every player their own stats or ratings link. Telling the PLAYERS to do something (rate each other, open the link they already have) is "other".
   "other" anything else.
 
@@ -506,17 +515,37 @@ THE FIELDS. toMatchTime is always filled; fill the others for the action, and ev
   matchDay fee_waiver, cancel_match, restore_match: the day the message names for the game, as written ("tonight", "next Friday", "cuma"); "" when it names none or only "this week".
   phrase reminder: the time phrase exactly as written ("on Monday", "tomorrow at 6"), never a date.
   note reminder: what to remind them about, in their own words ("bring the bibs"); "" when it names nothing.
-  lookbackMatches recruit: how many of the club's recent matches to draw its own players from ("the last 5 matches" -> 5, "the last couple of games" -> 2); 0 when no number is named.
-  partnerClubs recruit: true when the players are to come from another club, a partner club or the other groups, named or not; false when they are the club's own players, and "the group" or "the main group" is the club's own players' group.
-  clubRef recruit: the other club's name as written, without a Turkish case ending ("Sutton'a" -> "Sutton"); "" when the message names no club ("the partner clubs", "the other groups", "another club").
+  playersFrom recruit: where the players are to come from, one of three.
+    "club" the club's own players: its regulars, its past players, or its own players' group ("the group" and "the main group" are this club's players' group). Also when the message names no source at all ("find us a player").
+    "partners" another club, a partner club or the other groups, named or not.
+    "pool" the MatchTime player pool: players near the pitch who are not in the club, found by MatchTime ("the pool", "someone nearby", "a player from the app", "MatchTime's players").
+  lookbackMatches recruit from the club: how many of the club's recent matches to draw its own players from ("the last 5 matches" -> 5, "the last couple of games" -> 2); 0 when no number is named.
+  clubRef recruit from partners: the other club's name as written, without a Turkish case ending ("Sutton'a" -> "Sutton"); "" when the message names no club ("the partner clubs", "the other groups", "another club").
 
-EXAMPLES, English and Turkish, grouped by what they teach. toMatchTime is true in each unless shown.
+EXAMPLES, English and Turkish side by side, grouped by what they teach. toMatchTime is true in each unless shown.
 Who it is spoken to:
-  "ask the group if anyone can play" / "MatchTime oyuncu grubuna sor" -> recruit, partnerClubs false, toMatchTime true
-  "@Match Time ask the group" / "@Match Time gruba sor" -> recruit, partnerClubs false, toMatchTime true
-  "@Kemal can we ask Sutton group?" -> recruit, partnerClubs true, clubRef "Sutton", toMatchTime false: a question to Kemal
+  "ask the group if anyone can play" / "MatchTime oyuncu grubuna sor" -> recruit, playersFrom "club", toMatchTime true
+  "@Match Time ask the group" / "@Match Time gruba sor" -> recruit, playersFrom "club", toMatchTime true
+  "@Kemal can we ask Sutton group?" -> recruit, playersFrom "partners", clubRef "Sutton", toMatchTime false: a question to Kemal
   "should we ask the group?" / "gruba soralım mı?" -> other, toMatchTime false: the sender asks the others
   "you able to find players?" / "oyuncu bulabilir misin?" (to another organiser) -> other, toMatchTime false
+Players from the club itself:
+  "message the lads from the last 5 matches and invite them" / "son 5 maçta oynayanlara yaz, davet et" -> recruit, playersFrom "club", lookbackMatches 5
+  "we need more players, can you round some up" / "ask the regulars if they can play" -> recruit, playersFrom "club", lookbackMatches 0
+  "@Match Time find us a player for Friday" / "@Match Time cumaya bir oyuncu bul" -> recruit, playersFrom "club"
+Players from another club:
+  "ask Sutton if anyone can play" / "Sutton'a sor bakalım oynayan var mı" -> recruit, playersFrom "partners", clubRef "Sutton"
+  "@Match Time ask Friday MT Community if anyone can play tonight" -> recruit, playersFrom "partners", clubRef "Friday MT Community"
+  "search for players from our partner groups" / "diğer gruplara sor, oynayacak biri var mı" -> recruit, playersFrom "partners", clubRef ""
+  "try another club for one more" / "başka bir kulübe sorar mısın" -> recruit, playersFrom "partners", clubRef ""
+  "Sutton were great last week" / "Sutton geçen hafta çok iyi oynadı" -> other, toMatchTime false: talk about another club
+  "did Sutton ever get back to us?" -> other, toMatchTime false: a question
+Players from the MatchTime player pool:
+  "@Match Time ask the pool for a player" / "@Match Time havuzdan bir oyuncu bul" -> recruit, playersFrom "pool"
+  "find someone nearby for tonight" / "bu akşam için yakınlardan birini bul" -> recruit, playersFrom "pool"
+  "get us a player from the app" / "uygulamadan bir oyuncu bulur musun" -> recruit, playersFrom "pool"
+  "shall we try the pool?" / "havuza soralım mı?" -> other, toMatchTime false: the sender asks the others
+  "the pool lad last week was good" / "geçen haftaki havuz oyuncusu iyiydi" -> other, toMatchTime false: talk about the pool
 Payments and free places:
   "Amir paid for 4 players" -> bulk_payment, payerRef "Amir", count 4
   "Amir paid for Faris and Adam" -> bulk_payment, payerRef "Amir", count 2, coveredRefs ["Faris","Adam"]
@@ -531,17 +560,7 @@ Calling a game off, and putting it back on:
   "it's back on, uncancel Friday" / "maç yapılıyor, iptali geri al" -> restore_match, matchDay "Friday" / ""
   "should we cancel Friday?" / "the session should be cancelled anyway" -> other, toMatchTime false: a question, an opinion
 Reminders:
-  "remind me tomorrow at 6 to bring the bibs" -> reminder, phrase "tomorrow at 6", note "bring the bibs"
-Players from the club's own past games:
-  "message the lads from the last 5 matches and invite them" / "son 5 maçta oynayanlara yaz, davet et" -> recruit, lookbackMatches 5, partnerClubs false
-  "we need more players, can you round some up" / "ask the regulars if they can play" -> recruit, lookbackMatches 0, partnerClubs false
-Players from another club:
-  "ask Sutton if anyone can play" / "Sutton'a sor bakalım oynayan var mı" -> recruit, partnerClubs true, clubRef "Sutton"
-  "@Match Time ask Friday MT Community if anyone can play tonight" -> recruit, partnerClubs true, clubRef "Friday MT Community"
-  "search for players from our partner groups" / "diğer gruplara sor, oynayacak biri var mı" -> recruit, partnerClubs true, clubRef ""
-  "try another club for one more" / "başka bir kulübe sorar mısın" -> recruit, partnerClubs true, clubRef ""
-  "Sutton were great last week" / "Sutton geçen hafta çok iyi oynadı" -> other, toMatchTime false: talk about another club
-  "did Sutton ever get back to us?" -> other, toMatchTime false: a question
+  "remind me tomorrow at 6 to bring the bibs" / "yarın 6'da yelekleri getirmeyi hatırlat" -> reminder, phrase "tomorrow at 6" / "yarın 6'da", note "bring the bibs" / "yelekleri getirmeyi"
 Stats links:
   "@Match Time send everyone their stats" / "@Match Time DM the squad their ratings links" -> stats_blast
   "lads don't forget to rate the players via the link MatchTime DM'ed you" -> other, toMatchTime false: it tells the players
@@ -740,15 +759,17 @@ const ADMIN_SCHEMA = {
     // 0 is the schema's stand-in for null, the same convention
     // `statedCount` uses. A nullable number is rejected by the API.
     lookbackMatches: { type: "number" },
-    // recruit from another club (slice S6, 2026-10-21): the players are to
-    // come from a partner club or group, and that club's name as written.
-    partnerClubs: { type: "boolean" },
+    // recruit: where the players are to come from (one choice, L10
+    // 2026-10-24: it replaced S6's `partnerClubs` boolean when the
+    // MatchTime player pool became a third source), and the other club's
+    // name as written for "partners" (slice S6, 2026-10-21).
+    playersFrom: { type: "string", enum: ["", "club", "partners", "pool"] },
     clubRef: { type: "string" },
     // Who the message is spoken to (2026-10-22): MatchTime, or a person or
     // the others. Code lets nothing leave HQ untagged unless it is MatchTime.
     toMatchTime: { type: "boolean" },
   },
-  required: ["action", "payerRef", "count", "coveredRefs", "undo", "matchDay", "phrase", "note", "lookbackMatches", "partnerClubs", "clubRef", "toMatchTime"],
+  required: ["action", "payerRef", "count", "coveredRefs", "undo", "matchDay", "phrase", "note", "lookbackMatches", "playersFrom", "clubRef", "toMatchTime"],
   additionalProperties: false,
 } as const;
 
@@ -1053,6 +1074,7 @@ export function parseFacts(
         return { facts: { kind: "none" }, degradations };
       }
       const clubRef = typeof raw.clubRef === "string" ? raw.clubRef.trim() : "";
+      const from = str(raw.playersFrom).toLowerCase();
       const facts: AdminFacts = {
         kind: "admin",
         action: action as AdminFacts["action"],
@@ -1077,9 +1099,12 @@ export function parseFacts(
           ? { lookbackMatches: raw.lookbackMatches }
           : {}),
         // Slice S6: another club's players. A club name as written is
-        // another club, whatever the boolean said; both are recruit only.
-        ...(action === "recruit" && (raw.partnerClubs === true || clubRef) ? { partnerClubs: true } : {}),
+        // another club, whatever the source said; both are recruit only.
+        ...(action === "recruit" && (from === "partners" || clubRef) ? { partnerClubs: true } : {}),
         ...(action === "recruit" && clubRef ? { clubRef } : {}),
+        // L10: the MatchTime player pool. Never with a club named: a club
+        // name is another club, so the pool is not asked by a guess.
+        ...(action === "recruit" && from === "pool" && !clubRef ? { pool: true } : {}),
         // Only a clear true: a missing or false value keeps HQ's outward
         // actions closed (`admin-group-understand.ts`).
         ...(raw.toMatchTime === true ? { toMatchTime: true } : {}),

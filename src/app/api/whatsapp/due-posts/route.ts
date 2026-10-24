@@ -62,6 +62,7 @@ import { poolEnvForApiRequest } from "@/lib/pool/switch-env";
 import { db } from "@/lib/db";
 import { computeDuePosts, sweepExpiredBenchConfirmations, type DueInstruction } from "@/lib/bot-scheduler";
 import { badgeLedgerOf, claimBadgePost, withoutServerBookkeeping } from "@/lib/badge-announcement-scheduler";
+import { recordScheduledHqQuestion } from "@/lib/admin-group-log";
 import { ROSTER_SHOWN_KIND, rosterShownKey } from "@/lib/roster-shown";
 import { bridgePlatformDmsForLegacyPi } from "@/lib/platform-jobs";
 import { billingQuietWhere } from "@/lib/club-billing-rules";
@@ -188,9 +189,26 @@ async function replyDmKeys(instructions: DueInstruction[]): Promise<Set<string>>
 }
 
 /** Server-side bookkeeping never reaches the Pi: the badges ledger and
- *  the roster-shown marker, on any kind (badge-announcement-scheduler.ts). */
+ *  the roster-shown marker, on any kind (badge-announcement-scheduler.ts),
+ *  and an HQ post's question ref (L10, `hqQuestionOf`). */
 function withoutBadgeLedger(instr: DueInstruction): DueInstruction {
-  return withoutServerBookkeeping(instr);
+  const out = withoutServerBookkeeping(instr);
+  if (!("hqAskRef" in out)) return out;
+  const rest = { ...out } as DueInstruction & { hqAskRef?: unknown };
+  delete rest.hqAskRef;
+  return rest;
+}
+
+/**
+ * A scheduled HQ post that asks the organisers something (L10: the
+ * short-squad notice's MatchTime player pool line) is logged as
+ * MatchTime's question once it is claimed, so the safe-YES rule knows a
+ * YES next, or one quoting it, is about it. Best effort.
+ */
+async function recordHqQuestion(orgId: string, instr: Claimable, now: Date): Promise<void> {
+  const ask = instr as { kind?: unknown; hqAskRef?: unknown; text?: unknown };
+  if (ask.kind !== "admin-group-message" || typeof ask.hqAskRef !== "string" || typeof ask.text !== "string") return;
+  await recordScheduledHqQuestion({ orgId, key: instr.key, askRef: ask.hqAskRef, text: ask.text, now });
 }
 
 /**
@@ -462,6 +480,7 @@ export async function GET(request: Request) {
         },
       });
       await recordRosterShown(instr, now);
+      await recordHqQuestion(org.id, instr, now);
     },
     onBreak: ({ count, cap }) => {
       console.error(

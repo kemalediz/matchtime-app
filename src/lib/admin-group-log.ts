@@ -96,6 +96,44 @@ export async function recordMatchTimeQuestion(args: {
   }
 }
 
+/**
+ * A SCHEDULED post in HQ that asks the organisers something (local player
+ * pool L10: the short-squad notice's pool line). The scheduler only emits
+ * it; the due-posts route records it once it has CLAIMED it (it is really
+ * going out), one row per instruction key (`mt:sched:<key>`), so a re-claim
+ * never doubles it. The ack stamps its stanza id (`hq-log-stanza.ts`); a
+ * release (the Pi held it) takes it back. Never throws.
+ */
+export const scheduledHqQuestionId = (key: string): string => `mt:sched:${key}`;
+
+export async function recordScheduledHqQuestion(args: { orgId: string; key: string; askRef: string; text: string; now: Date }): Promise<void> {
+  try {
+    await db.adminGroupMessage.upsert({
+      where: { waMessageId: scheduledHqQuestionId(args.key) },
+      create: {
+        orgId: args.orgId,
+        waMessageId: scheduledHqQuestionId(args.key),
+        fromMatchTime: true,
+        text: (args.text ?? "").slice(0, MAX_TEXT),
+        askRef: args.askRef,
+        createdAt: args.now,
+      },
+      update: {},
+    });
+  } catch (err) {
+    console.error(`[admin-group] scheduled question ${args.askRef} not recorded:`, err instanceof Error ? err.message : "failed");
+  }
+}
+
+/** The Pi released the post unsent: it asked nothing. Never throws. */
+export async function forgetScheduledHqQuestion(key: string): Promise<void> {
+  try {
+    await db.adminGroupMessage.deleteMany({ where: { waMessageId: scheduledHqQuestionId(key), waStanzaId: null } });
+  } catch (err) {
+    console.error(`[admin-group] scheduled question for ${key} not taken back:`, err instanceof Error ? err.message : "failed");
+  }
+}
+
 /** The id prefix of MatchTime's "I can't do that from this group" line. */
 export const NOT_HERE_ID_PREFIX = "mt:said:not-here:";
 
@@ -118,6 +156,17 @@ export async function recordMatchTimeLine(args: { orgId: string; idPrefix: strin
   } catch (err) {
     console.error(`[admin-group] line ${args.idPrefix} not recorded:`, err instanceof Error ? err.message : "failed");
   }
+}
+
+/** MatchTime's questions in HQ since `since` whose ask ref starts with
+ *  `prefix`, oldest first (L10: the pool notice's). */
+export async function hqQuestionsSince(orgId: string, prefix: string, since: Date): Promise<Array<{ askRef: string; createdAt: Date }>> {
+  const rows = await db.adminGroupMessage.findMany({
+    where: { orgId, fromMatchTime: true, askRef: { startsWith: prefix }, createdAt: { gte: since } },
+    orderBy: { createdAt: "asc" },
+    select: { askRef: true, createdAt: true },
+  });
+  return (rows ?? []).flatMap((r) => (r.askRef ? [{ askRef: r.askRef, createdAt: r.createdAt }] : []));
 }
 
 /** HQ rows of a club since `since`, oldest first. */

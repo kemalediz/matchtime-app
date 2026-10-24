@@ -705,6 +705,14 @@ export interface AdminFacts {
    *  (`partner-ask-words-rules.ts`), never trusted as a club. */
   clubRef?: string;
   /**
+   * recruit, local player pool L10 (2026-10-24): the players are to come
+   * from the MatchTime player pool (nearby players who are not in the
+   * club), not from the club or a partner. Asked only from the admin group
+   * (`admin-group-understand.ts`, `pool-ask-words.ts`); never with
+   * `partnerClubs`. Absent means not the pool.
+   */
+  pool?: true;
+  /**
    * The message is spoken to MatchTime itself, not to a person or the
    * others in the chat (2026-10-22, FNF HQ: "@Kemal can we ask Sutton
    * group?" was posted in the players' group). Absent means no. From HQ an
@@ -1442,6 +1450,21 @@ export type ProposedWrite =
       /** The other club's name as written; null when none was named, and
        *  then every active partner is asked. Looked up by code. */
       clubRef: string | null;
+      /** The match the state was loaded for (`SquadState.matchId`). */
+      matchId: string | null;
+      sourceMessageId: string;
+      reason: string;
+    }
+  | {
+      /**
+       * Ask the MatchTime player pool for a player (local player pool L10):
+       * an admin's tagged "ask the pool" in the players' group. Decided like
+       * `partner_ask` (an admin, tagged) and performed the same way, by the
+       * route's batch-final pass (`pool-ask-words.ts`, L5a's
+       * `requestPoolAsk`, every rule of the match page tick). It DMs only
+       * pool players, through the pool's own offers.
+       */
+      kind: "pool_ask";
       /** The match the state was loaded for (`SquadState.matchId`). */
       matchId: string | null;
       sourceMessageId: string;

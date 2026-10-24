@@ -12,10 +12,13 @@
  * Never mixed into the players' group's analysis history or batch. An
  * owner's or admin's message is read by the same pipeline as the players'
  * group, with the organisers' group context (`src/lib/admin-group.ts`).
+ *
+ * TEST SEAMS (MT_TEST_MODE=1 only): `x-test-now` and `x-mt-test-pool-open`.
  */
 import { claimGroupReplies } from "@/lib/group-reply-claims";
 import { NextResponse } from "next/server";
 import { handleAdminGroupMessage } from "@/lib/admin-group";
+import { poolEnvForApiRequest } from "@/lib/pool/switch-env";
 
 const str = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v.trim() : null);
 
@@ -28,8 +31,17 @@ export async function POST(request: Request) {
   if (!groupId || !groupId.endsWith("@g.us") || typeof body?.text !== "string") {
     return NextResponse.json({ error: "groupId and text required" }, { status: 400 });
   }
+  // TEST SEAMS, honoured only under MT_TEST_MODE=1: `x-test-now` (the
+  // clock) and `x-mt-test-pool-open` (the pool switch, `pool/switch-env.ts`).
+  let now: Date | undefined;
+  if (process.env.MT_TEST_MODE === "1") {
+    const pinned = new Date(request.headers.get("x-test-now") ?? "");
+    if (!Number.isNaN(pinned.getTime())) now = pinned;
+  }
   const result = await handleAdminGroupMessage({
     groupId,
+    ...(now ? { now } : {}),
+    poolEnv: poolEnvForApiRequest(request),
     messageId: str(body.messageId),
     text: body.text,
     senderPhone: str(body.senderPhone),

@@ -9,7 +9,8 @@
  * pool guests together (`partner-ask-round.ts`).
  *
  *   requestPoolAsk  an organiser's one-tap approval (the match page; L9
- *                   adds the automatic ask, L10 asking in words). Checks
+ *                   adds the automatic ask, L10 asking in words and a YES
+ *                   in HQ, `pool-ask-words.ts`). Checks
  *                   every rule, writes the ask, and sends wave 1 at once
  *                   when no partner ask of the round is open.
  *   sweepPool       every platform-jobs poll (the Pi polls it whatever the
@@ -74,7 +75,8 @@ async function cutoffOf(orgId: string, kickoff: Date): Promise<Date> {
   return askWindows(kickoff, settings?.cutoffHours ?? 4).postBy;
 }
 
-async function placesOpenOf(matchId: string): Promise<number> {
+/** The match's places not yet taken (CONFIRMED against its size). */
+export async function placesOpenOf(matchId: string): Promise<number> {
   const m = await db.match.findUnique({ where: { id: matchId }, select: { maxPlayers: true } });
   if (!m) return 0;
   const confirmed = await db.attendance.count({ where: { matchId, status: "CONFIRMED" } });

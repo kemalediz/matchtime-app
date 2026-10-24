@@ -1204,8 +1204,14 @@ export const tr: Strings = {
 
   hq_confirm_teams: (p) => `Bu EVET, ${p.day} için önerilen takımlara mı?`,
   hq_confirm_list: `Bu EVET, buraya yapıştırılan kadro listesine mi?`,
-  hq_confirm_which: (p) =>
-    `Bu EVET hangisi için: ${p.day} için önerilen takımlar mı, yapıştırılan kadro listesi mi? O mesaja EVET diye cevap verin.`,
+  hq_confirm_which: (p) => `Bu EVET hangisi için: ${p.items.join(", ")}? O mesaja EVET diye cevap verin.`,
+  hq_which_teams: (p) => `${p.day} için önerilen takımlar mı`,
+  hq_which_list: `yapıştırılan kadro listesi mi`,
+  hq_which_fee: (p) => `${p.day} için ${p.names} ücretsiz yeri mi`,
+  hq_which_partner_ask: (p) => `*${p.asker}* kulübünün ${p.day} isteğini oyuncu grubunuzda paylaşmak mı`,
+  hq_which_pairing: (p) => `*${p.club}* ile *${p.other}* eşleşmesi mi`,
+  hq_which_pool_ask: (p) => `${p.day} maçı için MatchTime oyuncu havuzundaki yakın oyunculara sormak mı`,
+  hq_confirm_pool_ask: (p) => `Bu EVET, ${p.day} maçı için MatchTime oyuncu havuzundaki yakın oyunculara sormak için mi?`,
   hq_nothing_waiting: `Şu anda EVET bekleyen bir şey yok.`,
   hq_not_here: `Bunu bu gruptan yapamam.`,
   hq_match_cancelled: (p) => `Tamam: ${p.activityName}, ${p.when} iptal edildi. Oyuncu grubuna haber verdim.`,

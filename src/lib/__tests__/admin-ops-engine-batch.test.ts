@@ -465,7 +465,7 @@ describe("S22 · a personal reminder", () => {
 
 describe("a partner ask is reported, never performed here", () => {
   const ASK = "@Match Time ask Sutton if anyone can play";
-  const ASK_FACTS = { ...BLAST_FACTS, lookbackMatches: 0, partnerClubs: true, clubRef: "Sutton" };
+  const ASK_FACTS = { ...BLAST_FACTS, lookbackMatches: 0, playersFrom: "partners", clubRef: "Sutton" };
 
   it("an admin's ask is owned, carries the club as written, and is not a blast", async () => {
     const { model } = stubModel({ [ASK]: ASK_FACTS });
@@ -493,6 +493,36 @@ describe("a partner ask is reported, never performed here", () => {
     const r = recorder(model, paidWorld());
     const res = await run({ messages: [msg({ body: ASK, senderUserId: "u-zair", senderName: fullName("zair") })], deps: r.deps });
     expect([...res.outcomes.values()][0].partnerAskRequest).toBeNull();
+  });
+});
+
+// ── 4c. The MatchTime player pool asked in the players' group (L10) ─────
+
+describe("a pool ask is reported, never performed here", () => {
+  const ASK = "@Match Time ask the pool for a player";
+  const POOL_FACTS = { ...BLAST_FACTS, lookbackMatches: 0, playersFrom: "pool", clubRef: "" };
+
+  it("an admin's ask is owned and reported for the batch-final pass; no blast, no partner ask, no DM", async () => {
+    const { model } = stubModel({ [ASK]: POOL_FACTS });
+    const r = recorder(model, paidWorld());
+    const res = await run({ messages: [msg({ body: ASK, senderUserId: "u-kemal" })], deps: r.deps });
+    const out = [...res.outcomes.values()][0];
+    expect(res.degradations.join(" ")).not.toMatch(/cannot apply/);
+    expect(out.poolAskRequest).toEqual({ matchId: expect.any(String) });
+    expect(out.partnerAskRequest).toBeNull();
+    expect(out.recruitRequest).toBe(false);
+    expect(out.intent).toBe("pool_ask");
+    expect(r.dms).toEqual([]);
+  });
+
+  it("a non-admin's ask is not reported (today's behaviour for that route)", async () => {
+    const { model } = stubModel({ [ASK]: POOL_FACTS });
+    const r = recorder(model, paidWorld());
+    const res = await run({ messages: [msg({ body: ASK, senderUserId: "u-zair", senderName: fullName("zair") })], deps: r.deps });
+    const out = [...res.outcomes.values()][0];
+    expect(out.poolAskRequest).toBeNull();
+    expect(out.recruitRequest).toBe(false);
+    expect(r.dms).toEqual([]);
   });
 });
 

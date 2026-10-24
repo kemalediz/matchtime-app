@@ -3141,6 +3141,21 @@ export function decide(input: EngineInput): EngineResult {
           );
           return;
         }
+        // ── THE MATCHTIME PLAYER POOL (local player pool L10) ─────────
+        //
+        // "@Match Time ask the pool for a player": the same two gates (an
+        // admin, tagged), then the pool is asked by the batch-final pass
+        // through the match page tick's own function, never a blast to the
+        // club's own past players and never a partner ask.
+        if (facts.pool) {
+          emit({
+            kind: "pool_ask",
+            matchId: state.matchId,
+            sourceMessageId: msg.id,
+            reason: "admin asked MatchTime to ask the MatchTime player pool for a player",
+          });
+          return;
+        }
         // ── ANOTHER CLUB'S PLAYERS (slice S6, 2026-10-21) ────────────
         //
         // "@Match Time ask Sutton if anyone can play": the same two gates

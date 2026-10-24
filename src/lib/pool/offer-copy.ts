@@ -252,9 +252,30 @@ export function poolAskRefusalText(lang: Lang | string | null | undefined, refus
   }
 }
 
+/** What the organisers hear after asking the pool in words (HQ or the
+ *  players' group), or a YES to the short-squad notice in HQ (L10). A refusal is the match page's own line
+ *  (`poolAskRefusalText`), except the pool not open for the club, which
+ *  says what MatchTime can do instead. */
+export function poolHqAskReply(
+  lang: Lang | string | null | undefined,
+  r: { ok: true; places: number; day: string; partnersFirst: boolean; inHq?: boolean } | { ok: false; refusal: string; placesOpen: number },
+): string {
+  const c = poolCopy(lang);
+  if (r.ok) return c.hq_asked({ places: r.places, day: r.day, partnersFirst: r.partnersFirst, inHq: r.inHq !== false });
+  return r.refusal === "pool-closed" ? c.hq_closed : poolAskRefusalText(lang, r.refusal, r.placesOpen);
+}
+
 /** The short-squad notice's extra line (`panel.ts` `poolNoticeBand`). */
-export function withPoolOffer(text: string, band: "few" | "5+" | null, link: string, lang: Lang | string | null): string {
+export function withPoolOffer(
+  text: string,
+  band: "few" | "5+" | null,
+  link: string,
+  lang: Lang | string | null,
+  /** Posted in the club's admin group (L10): a YES there asks the pool. */
+  opts: { inHq?: boolean } = {},
+): string {
   if (!band) return text;
   const c = poolCopy(lang);
-  return `${text}\n\n${c.notice_offer_line({ band: band === "5+" ? c.band_many : c.band_few, link })}`;
+  const args = { band: band === "5+" ? c.band_many : c.band_few, link };
+  return `${text}\n\n${opts.inHq ? c.notice_offer_line_hq(args) : c.notice_offer_line(args)}`;
 }

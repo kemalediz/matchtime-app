@@ -163,9 +163,20 @@ export class PoolPerson {
   }
 }
 
+/** How a message is said in HQ. */
+export interface HqSayOpts {
+  tag?: boolean;
+  /** The server's clock for this message (`x-test-now`, MT_TEST_MODE only). */
+  now?: Date;
+  /** The pool switch for this message (`x-mt-test-pool-open`); unset: the environment. */
+  poolOpen?: boolean;
+  /** A WhatsApp swipe-reply to this message. */
+  quote?: { text: string; id?: string | null; fromMatchTime?: boolean };
+}
+
 /** A club: its players' group (a real SimGroup) and, optionally, its HQ. */
 export class PoolClub {
-  readonly hq: { groupId: string | null; say: (memberKey: string, text: string, opts?: { tag?: boolean }) => Promise<Exchange> };
+  readonly hq: { groupId: string | null; say: (memberKey: string, text: string, opts?: HqSayOpts) => Promise<Exchange> };
 
   constructor(
     private readonly world: PoolWorld,
@@ -182,14 +193,21 @@ export class PoolClub {
         const body = opts.tag && !/@match\s*time/i.test(text) ? `@Match Time ${text}` : text;
         this.world.log({ kind: "in", from: m.key, channel: "hq", text: body });
         const res = await this.world.request.post("/api/whatsapp/admin-group", {
-          headers: HEADERS,
+          headers: {
+            ...HEADERS,
+            ...(opts.now ? { "x-test-now": opts.now.toISOString() } : {}),
+            ...(opts.poolOpen === undefined ? {} : { "x-mt-test-pool-open": opts.poolOpen ? "1" : "0" }),
+          },
           data: {
             channel: "admin-group",
             groupId: hqGroupId,
             messageId: nextMsgId(),
             text: body,
             senderPhone: m.phone.replace(/^\+/, ""),
-            timestamp: String(Math.floor(Date.now() / 1000)),
+            timestamp: String(Math.floor((opts.now ?? new Date()).getTime() / 1000)),
+            ...(opts.quote
+              ? { quotedMessageId: opts.quote.id ?? null, quotedText: opts.quote.text, quotedFromMatchTime: opts.quote.fromMatchTime !== false }
+              : {}),
           },
         });
         expect(res.status(), await res.text()).toBe(200);

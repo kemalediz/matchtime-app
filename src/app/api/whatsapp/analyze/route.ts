@@ -383,6 +383,9 @@ import { claimGroupReplies } from "@/lib/group-reply-claims";
 import { handlePartnerVolunteer } from "@/lib/partner-guest";
 import { askPartnerAfterOwnInByDm, askPartnerWhichByDm } from "@/lib/partner-guest-dm";
 import { askPartnersFromWords, partnerClubsForRouter } from "@/lib/partner-ask-words";
+import { askPoolFromWords } from "@/lib/pool-ask-words";
+import { recruitWantsPool } from "@/lib/recruit-source";
+import { poolEnvForApiRequest } from "@/lib/pool/switch-env";
 import { chatAuthorOf, groupChatHistory } from "@/lib/group-chat-history";
 
 interface InboundMessage {
@@ -2779,6 +2782,9 @@ async function handleAnalyzeRequest(request: Request) {
     msg: InboundMessage;
     sender: ResolvedSender;
     lookbackMatches: number | null;
+    /** From the attendance path's bare "recruit" side request (L10: its
+     *  source is read before any blast, `recruit-source.ts`). */
+    fromAttendance?: boolean;
   }> = [];
 
   // ── AND SO DOES THE STATS BLAST (2026-09-10) ────────────────────────
@@ -2802,6 +2808,7 @@ async function handleAnalyzeRequest(request: Request) {
   //   It DMs nobody: `askPartnersFromWords` asks each partner through
   //   `requestPartnerAsk`, the match page button's own door.
   const partnerAskRequests: Array<{ msg: InboundMessage; sender: ResolvedSender; clubRef: string | null; matchId: string | null }> = [];
+  const poolRequests: Array<{ msg: InboundMessage; userId: string; matchId: string | null }> = [];
 
   // ── EVERY MESSAGE NOBODY OWNED ─────────────────────────────────────
   //   The input to `lib/operator-note.ts`, which is what replaces "fall
@@ -2869,7 +2876,7 @@ async function handleAnalyzeRequest(request: Request) {
       }
       // A recruit blast is a mass DM: never for a late message.
       if (engineOutcome.recruitRequest && !late) {
-        recruitRequests.push({ msg, sender, lookbackMatches: null });
+        recruitRequests.push({ msg, sender, lookbackMatches: null, fromAttendance: true });
       }
       // The tentative follow-up is a DM 24 hours on: never for a late one.
       if (engineBatch?.matchId && nextMatchForReply && !late) {
@@ -3112,6 +3119,11 @@ async function handleAnalyzeRequest(request: Request) {
       }
       if (adminOutcome?.partnerAskRequest) {
         partnerAskRequests.push({ msg, sender, ...adminOutcome.partnerAskRequest });
+      }
+      // An admin's tagged ask for the MatchTime player pool (L10), deferred
+      // the same way; the engine applied both gates.
+      if (adminOutcome?.poolAskRequest && sender.userId) {
+        poolRequests.push({ msg, userId: sender.userId, ...adminOutcome.poolAskRequest });
       }
       // The asker's own stats link (2026-09-17, `QuestionTopic.my_stats`).
       // The engine has applied the tag and resolved-sender gates; this
@@ -3840,6 +3852,25 @@ async function handleAnalyzeRequest(request: Request) {
   //   unchanged. What moved is WHEN it runs and WHO decided it was asked
   //   for. The reply is MERGED into the message's single existing result,
   //   never pushed as a second one: MatchTime replies once or not at all.
+  // ── THE POOL, NOT A BLAST (local player pool L10) ────────────────────
+  //   "@Match Time ask the pool for a player" reaches here from the
+  //   attendance path (the router calls it `offer`; its extractor only
+  //   says "recruit"). Before a mass DM, the shared admin extractor reads
+  //   where the players are to come from; the MatchTime player pool is
+  //   asked instead (the pool pass below), and nobody is DM'd.
+  if (recruitRequests.length > 0) {
+    const last = recruitRequests[recruitRequests.length - 1];
+    if (
+      last.fromAttendance &&
+      last.sender.userId &&
+      (await recruitWantsPool({ id: last.msg.waMessageId, body: last.msg.body, authorName: last.sender.name ?? last.msg.authorName ?? null, now: new Date() }))
+    ) {
+      console.log(`[analyze] ${last.msg.waMessageId}: a recruit for the MatchTime player pool: the pool is asked, no recruit blast`);
+      poolRequests.push({ msg: last.msg, userId: last.sender.userId, matchId: null });
+      recruitRequests.length = 0;
+    }
+  }
+
   if (recruitRequests.length > 0) {
     // Only the LAST request fires, mirroring the generate_teams_request
     // dedupe above. Two admins asking in one batch must not produce two
@@ -3964,6 +3995,48 @@ async function handleAnalyzeRequest(request: Request) {
       });
     } catch (err) {
       console.error("[analyze] partner ask failed:", err instanceof Error ? err.message : "failed");
+    }
+  }
+
+  // ── ASK THE MATCHTIME PLAYER POOL (local player pool L10) ──────────
+  //   An organiser's tagged "ask the pool" in the players' group (clubs
+  //   with no admin group ask here). The same door as HQ
+  //   (`pool-ask-words.ts`): L5a's `requestPoolAsk`, every rule of the
+  //   match page tick, after every write in the batch. The last request
+  //   only (one open pool ask per match anyway). ONE line back, always:
+  //   asked, why not, or that the pool is not open for the club.
+  if (poolRequests.length > 0) {
+    const ask = poolRequests[poolRequests.length - 1];
+    try {
+      const r = await askPoolFromWords({
+        orgId: org.id,
+        matchId: ask.matchId,
+        userId: ask.userId,
+        via: "words",
+        where: "group",
+        lang: org.language,
+        now: new Date(),
+        env: poolEnvForApiRequest(request),
+      });
+      const react = r.outcome === "hq-pool-asked" ? "✅" : null;
+      const idx = results.findIndex((x) => x.waMessageId === ask.msg.waMessageId);
+      if (idx >= 0) {
+        results[idx].reply = mergeRecruitReply(results[idx].reply, r.replyText);
+        results[idx].react = results[idx].react ?? react;
+        if (results[idx].handledBy === "ignored" || results[idx].intent === "noise" || results[idx].intent === "unclear") {
+          results[idx].handledBy = "fast-path";
+          results[idx].intent = "pool_ask";
+        }
+      } else {
+        results.push({ waMessageId: ask.msg.waMessageId, handledBy: "fast-path", intent: "pool_ask", react, reply: r.replyText });
+      }
+      await augmentAnalysis({
+        waMessageId: ask.msg.waMessageId,
+        action: `pool-ask:${r.outcome}`,
+        reasoningSuffix: `admin asked the MatchTime player pool (${r.outcome})`,
+      });
+    } catch (err) {
+      console.error("[analyze] pool ask failed:", err instanceof Error ? err.message : "failed");
     }
   }
 
