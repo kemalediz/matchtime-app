@@ -79,6 +79,8 @@ export const SETTING_INFO_KEYS = [
   "clubHomeVenue",
   // Local player pool (slice L5b, 2026-10-24)
   "playStyle",
+  // Local player pool (slice L9, 2026-10-24)
+  "poolAutoAsk",
   // Posters
   "posters",
   "posterDesign",
@@ -1468,6 +1470,46 @@ export const SETTINGS_INFO: Record<SettingInfoKey, Record<Lang, SettingInfoCopy>
       ],
       newClubs: "Belirtilmedi.",
       together: ["Bu kart yalnızca kulübünüz MatchTime oyuncu havuzundan oyuncu isteyebildiği sürece görünür."],
+    },
+  },
+  // Traced 2026-10-24 (pool slice L9): `Organisation.poolAutoAsk`, saved by
+  // app/actions/pool-auto-ask.ts; the rule is pool/auto-ask-rules.ts, run by
+  // the automatic partner ask (partner-ask.ts sweepAutoPartnerAsks) through
+  // the organiser tap's own requestPoolAsk (pool/round.ts, via "auto").
+  poolAutoAsk: {
+    en: {
+      title: "Ask the player pool automatically",
+      what: [
+        "Whether MatchTime asks nearby players from the MatchTime player pool by itself, so nobody has to ask for players on the match page.",
+        "It asks on match day, from the Automatic ask time (16:00 for a club that has not set one) until Last ask before kickoff, when a place is still open and nobody is on your bench. With partner clubs it asks the pool an hour after them, if they have not filled the place; with no partner club, straight away. It asks once for each match, and your organisers are told when it does.",
+      ],
+      choices: [
+        { name: ON.en, text: "MatchTime asks the pool by itself on match day, as above." },
+        { name: OFF.en, text: "MatchTime asks the pool only when one of your owners or admins asks for players on the match page." },
+      ],
+      newClubs: "Off.",
+      together: [
+        "With partner clubs, this works only while Ask partner clubs for players is set to Automatically at a time; on When we ask, your organisers decide every ask themselves.",
+        "Everything else is as when your organisers ask: the same limits on offers, no offers late at night, and players who say yes join your game as guests.",
+        "This card shows only while your club may ask the MatchTime player pool for players.",
+      ],
+    },
+    tr: {
+      title: "Oyuncu havuzuna kendiliğinden sor",
+      what: [
+        "MatchTime'ın MatchTime oyuncu havuzundaki yakın oyunculara kendiliğinden sorup sormayacağı; böylece kimsenin maç sayfasından oyuncu istemesi gerekmez.",
+        "Maç günü, Otomatik istek saatinden (bir saat seçmemiş kulüpte 16:00) Başlama saatinden önce son istek saatine kadar, hâlâ boş yer varsa ve yedek listenizde kimse yoksa sorar. Partner kulüpleriniz varsa onlar yeri doldurmazsa havuza onlardan bir saat sonra sorar; partner kulübünüz yoksa hemen. Her maç için bir kez sorar ve sorduğunda organizatörlerinize haber verilir.",
+      ],
+      choices: [
+        { name: ON.tr, text: "MatchTime maç günü havuza yukarıdaki gibi kendiliğinden sorar." },
+        { name: OFF.tr, text: "MatchTime havuza yalnızca kulübünüzün sahibi ya da bir yöneticisi maç sayfasından oyuncu isteyince sorar." },
+      ],
+      newClubs: "Kapalı.",
+      together: [
+        "Partner kulüpleriniz varsa bu yalnızca Partner kulüplerden oyuncu iste ayarı Belirli bir saatte kendiliğinden iken çalışır; Biz isteyince seçiliyse her isteğe organizatörleriniz kendileri karar verir.",
+        "Geri kalan her şey organizatörlerinizin istediği zamanki gibidir: tekliflerde aynı sınırlar, gece geç saatte teklif yok ve evet diyen oyuncular maçınıza misafir olarak katılır.",
+        "Bu kart yalnızca kulübünüz MatchTime oyuncu havuzundan oyuncu isteyebildiği sürece görünür.",
+      ],
     },
   },
   // ════ Posters ═══════════════════════════════════════════════════════

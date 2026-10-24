@@ -70,6 +70,8 @@ import type { PartnerAskOutcome } from "./partner-ask-words-rules";
 import { effectiveAskTime, type ClubRole } from "./club-partnership-rules";
 import { loadPoolPanel, type PoolPanelData } from "./pool/panel";
 import { cancelPoolAsk } from "./pool/round";
+import { autoAskPool, poolAutoAskClub } from "./pool/auto-ask";
+import { poolAutoAskApplies } from "./pool/auto-ask-rules";
 
 /** The ask ref of the approval question in the partner's admin group. */
 export const partnerAskRef = (askId: string): string => `xask:${askId}`;
@@ -979,20 +981,37 @@ export function askRefusalText(
  * once for the match (`autoAskDue`), unless that partner's own game at an
  * overlapping time is short itself (plan 3.13). Through `requestPartnerAsk`,
  * so every rule and gate of a button press applies; the asking club's
- * organisers are told what was asked. A club on Off or When we ask makes
- * one read. Never throws.
+ * organisers are told what was asked. The partners asked in one pass share
+ * a round (`roundId`), as the ones an organiser ticks together do.
+ *
+ * THE POOL (local player pool L9, 2026-10-24): a club that switched on the
+ * automatic pool ask (`poolAutoAsk`, with the pool open for it) has the
+ * pool join the same round right after, through the organiser tap's own
+ * function (`pool/auto-ask.ts`), so its first offers go an hour after the
+ * partners, or at once when none was asked. A club with no partner club
+ * gets that too. Every other club makes two reads. Never throws.
  */
-export async function sweepAutoPartnerAsks(orgId: string, now: Date = new Date()): Promise<{ asked: number }> {
+export async function sweepAutoPartnerAsks(
+  orgId: string,
+  now: Date = new Date(),
+  opts: { poolEnv?: Record<string, string | undefined> } = {},
+): Promise<{ asked: number }> {
   let asked = 0;
   try {
     const settings = await loadPartnerAskSettings(orgId);
-    if (!settings || settings.when !== "auto") return { asked };
+    if (!settings) return { asked };
+    const pool = await poolAutoAskClub(orgId, opts.poolEnv);
+    const poolRule = { poolOpen: pool.poolOpen, poolAutoAsk: pool.poolAutoAsk, partnersWhen: settings.when };
+    // Before reading the partners: could the pool join at all (it can with none)?
+    if (settings.when !== "auto" && !poolAutoAskApplies({ ...poolRule, hasPartners: false })) return { asked };
     const partnerships = await db.clubPartnership.findMany({
       where: { askerOrgId: orgId, status: "active" },
       orderBy: { createdAt: "asc" },
       select: { id: true, partnerOrgId: true },
     });
-    if (partnerships.length === 0) return { asked };
+    const askPartners = settings.when === "auto" ? partnerships : [];
+    const poolJoins = poolAutoAskApplies({ ...poolRule, hasPartners: partnerships.length > 0 });
+    if (askPartners.length === 0 && !poolJoins) return { asked };
     const dayStart = londonMidnight(now);
     const matches = (await db.match.findMany({
       where: { activity: { orgId }, isHistorical: false, status: { in: LIVE_MATCH }, date: { gte: now, lt: new Date(dayStart.getTime() + 30 * 3600_000) } },
@@ -1009,7 +1028,9 @@ export async function sweepAutoPartnerAsks(orgId: string, now: Date = new Date()
         placesOpen(match.id, match.maxPlayers),
         db.attendance.count({ where: { matchId: match.id, status: "BENCH" } }),
       ]);
-      for (const p of partnerships) {
+      const roundId = randomUUID();
+      let askedHere = 0;
+      for (const p of askPartners) {
         const askedBefore = (await db.partnerAsk.count({ where: { matchId: match.id, partnerOrgId: p.partnerOrgId } })) > 0;
         const due = autoAskDue({
           now,
@@ -1021,12 +1042,13 @@ export async function sweepAutoPartnerAsks(orgId: string, now: Date = new Date()
           partnerOwnGameShort: await partnerOwnOverlappingGameShort(p.partnerOrgId, match.date, match.activity.matchDurationMins),
         });
         if (!due) continue;
-        const r = await requestPartnerAsk({ askerOrgId: orgId, matchId: match.id, partnershipId: p.id, requestedByUserId: null, via: "auto", now });
+        const r = await requestPartnerAsk({ askerOrgId: orgId, matchId: match.id, partnershipId: p.id, requestedByUserId: null, via: "auto", roundId, now });
         if (!r.ok) {
           console.log(`[partner-ask] auto ask for match ${match.id} to ${p.partnerOrgId} not made: ${r.refusal}`);
           continue;
         }
         asked++;
+        askedHere++;
         const asker = await db.organisation.findUnique({ where: { id: orgId }, select: { language: true } });
         const lang = asker?.language ?? null;
         await sendAdminNotice({
@@ -1034,6 +1056,22 @@ export async function sweepAutoPartnerAsks(orgId: string, now: Date = new Date()
           now,
           holdOvernight: false,
           text: t(lang).xask_auto_notice_asker({ partner: r.partnerName, day: dayCommaTimeLabel(lang, match.date), posted: r.status === "posted" }),
+        });
+      }
+      if (poolJoins) {
+        await autoAskPool({
+          orgId,
+          match: { id: match.id, date: match.date },
+          now,
+          askAt,
+          postBy,
+          placesOpen: places,
+          waitingCount: waiting,
+          hasPartners: partnerships.length > 0,
+          partnersWhen: settings.when,
+          askedNowRoundId: askedHere > 0 ? roundId : null,
+          club: pool,
+          env: opts.poolEnv,
         });
       }
     }
