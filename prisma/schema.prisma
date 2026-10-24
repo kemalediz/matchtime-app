@@ -92,18 +92,13 @@ model User {
   isActive      Boolean   @default(true)
   onboarded     Boolean   @default(false)
 
-  /// Cross-club "nearby players" discoverability. Default OFF — a user is
-  /// only surfaced to other groups after explicit opt-in. Scope is narrow:
-  /// a coarse home-area point + radius, never a precise location, and no
-  /// data here is shared until the user consents (discoverableConsentVer
-  /// records which consent text they agreed to).
-  discoverableNearby     Boolean   @default(false)
-  discoverableNearbyAt   DateTime?
-  discoverableConsentVer Int?
-  nearbyRadiusKm         Int       @default(10)
-  homeAreaLabel          String?
-  homeAreaLat            Float?
-  homeAreaLng            Float?
+  // The seven unused "nearby players" opt-in columns of 2026-06-18
+  // (never read or written, 0 users) were retired in slice L11 of
+  // MDs/local-player-pool-plan-2026-10-23.md; the local player pool
+  // (PoolProfile) replaced them. Their DB columns are dropped only by the
+  // hand-applied migration 20261027090000_drop_discoverable_nearby.
+  // src/lib/__tests__/no-discoverable-nearby-columns.test.ts fails if one
+  // comes back.
 
   accounts                Account[]
   sessions                Session[]

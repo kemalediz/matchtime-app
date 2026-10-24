@@ -2,6 +2,13 @@
 
 **Status: DESIGN ONLY — no code, no schema changes shipped with this doc.**
 
+> **Update 2026-10-24 (local player pool, slice L11):** the seven `User` opt-in columns this
+> design proposed (`discoverableNearby`, `discoverableNearbyAt`, `discoverableConsentVer`,
+> `nearbyRadiusKm`, `homeAreaLabel`, `homeAreaLat`, `homeAreaLng`) were added in June but never
+> used, and are now off the Prisma model. The local player pool (`PoolProfile`, with its own
+> consent record) replaced them; see `MDs/local-player-pool-plan-2026-10-23.md`. The DB columns
+> are dropped by the hand-applied migration `20261027090000_drop_discoverable_nearby`.
+
 Goal: let a club that is short for a game reach **opted-in players from other
 groups who are physically nearby** — without ever leaking anyone's phone
 number, roster, or location to a club they didn't choose to share it with.
