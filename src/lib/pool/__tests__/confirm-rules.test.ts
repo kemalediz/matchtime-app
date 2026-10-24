@@ -166,3 +166,21 @@ describe("the 'that code did not work' reply is rate-limited", () => {
     expect(NOW.getTime() - attemptPurgeBefore(NOW).getTime()).toBe(POOL_CONFIRM.attemptKeepDays * 24 * 3600_000);
   });
 });
+
+// Slice L3 (manager review of #401): a number is never put on a member's
+// account silently. A code he started from his profile, sent from a number
+// no account holds, waits for HIS yes on the signed-in page.
+import { confirmTarget } from "../confirm-rules";
+
+describe("whose profile a confirmed code becomes", () => {
+  it("the number's own account, whoever started it (accounts are never merged)", () => {
+    expect(confirmTarget({ numberUserId: "u-num", starterId: "u-member" })).toEqual({ kind: "number-account", userId: "u-num" });
+    expect(confirmTarget({ numberUserId: "u-num", starterId: null })).toEqual({ kind: "number-account", userId: "u-num" });
+  });
+  it("a number no account holds, on a member's code: his claim to answer, nothing attached", () => {
+    expect(confirmTarget({ numberUserId: null, starterId: "u-member" })).toEqual({ kind: "member-claim", starterId: "u-member" });
+  });
+  it("a number no account holds, on a stranger's /play code: a new account, as before", () => {
+    expect(confirmTarget({ numberUserId: null, starterId: null })).toEqual({ kind: "new-account" });
+  });
+});

@@ -8,9 +8,14 @@
  *   - a member with a number joins from the card: active at once, nothing is
  *     sent to anyone, his club is untouched; his "help" DM is answered as
  *     before; he stops on the manage page; the consent record holds both
- *   - a member with NO number: the WhatsApp step; his own message puts the
- *     number and the profile on HIS account, one welcome to that number,
- *     in his club's language (Turkish; the page follows his browser)
+ *   - a member with NO number: the WhatsApp step. The message from a number
+ *     no account holds attaches NOTHING: that number hears only that the
+ *     sign-up continues in the app; his signed-in card asks "a number ending
+ *     NNNN messaged us with your code: is this your number?". Yes: the
+ *     number and the profile become his, one welcome (Turkish club).
+ *   - a friend he forwarded the code to sends it; he says No: nothing is
+ *     attached, the code dies, the friend hears nothing more (not even when
+ *     he sends it again), and no account is made for the friend
  *   - his code sent from a number another member already holds: that
  *     account is the one recorded (as any /play sign-up), his own account
  *     gets nothing, and nobody else hears anything
@@ -86,7 +91,7 @@ scenarios("a club member opts in from his profile", () => {
     pool.expectSent(pool.sent.filter((m) => m.purpose?.startsWith("pool-")), []);
   });
 
-  scenario("no number (Turkish club): the WhatsApp step puts the number and the profile on HIS account", async ({ pool, page }) => {
+  scenario("no number (Turkish club): nothing attached until he says Yes on his page; then the number and the profile are his", async ({ pool, page }) => {
     const ist = await pool.club("ist", {
       name: "Cuma Futbolu",
       players: [
@@ -98,7 +103,7 @@ scenarios("a club member opts in from his profile", () => {
     await atPitch(pool, ist, "Sahil Halı Saha");
     const garyId = ist.group.player("gary").userId;
 
-    pool.note("his browser is English, so the page is; his club speaks Turkish, so his messages will");
+    pool.note("his browser is English, so the page is; his club speaks Turkish, so his messages are");
     const card = await openAndTick(page, garyId);
     await expect(card.getByText(EN.member.whatsAppNote)).toBeVisible();
     await card.getByRole("button", { name: EN.member.continueWhatsApp }).click();
@@ -106,20 +111,72 @@ scenarios("a club member opts in from his profile", () => {
     expect(prefill).toMatch(/^Merhaba MatchTime, oynamak için kaydet\. Kod [A-Z2-9]{5}$/);
     pool.expectSent(await pool.collect(), []);
 
-    pool.note("he sends it from his own WhatsApp: a number MatchTime has never seen");
+    pool.note("he sends it from his own WhatsApp: a number no account holds");
     const phone = await pool.stranger("gary-phone", { name: "Gary" });
     const ex = await phone.dm(prefill);
-    expect(ex.json).toMatchObject({ handled: "pool-confirm", result: "confirmed" });
-    pool.expectSent(ex.sent, [{ to: "gary-phone", purpose: "pool-welcome", text: /oyuncu havuzu/i }]);
-    pool.expectNoLeaks(ist.secrets(), { to: ["gary-phone"] });
+    expect(ex.json).toMatchObject({ handled: "pool-confirm", result: "claim-recorded" });
+    pool.expectSent(ex.sent, [{ to: "gary-phone", purpose: "pool-code-reply", text: /^Teşekkürler\. Bu kayıt MatchTime uygulamasında devam ediyor/ }]);
+    pool.expectNoLeaks([...ist.secrets(), "Gary Guest", "Cuma Futbolu"], { to: ["gary-phone"] });
+    expect(await pool.db.one(`SELECT "phoneNumber" FROM "User" WHERE id = $1`, [garyId])).toEqual({ phoneNumber: null });
+    expect(await pool.userOf(phone)).toBeNull();
+    expect(await pool.consentRecords(garyId)).toEqual([]);
+
+    pool.note("the same message again (a Pi retry) is silent");
+    pool.expectSent((await phone.dm(prefill, { messageId: ex.messageId })).sent, []);
+
+    pool.note("on his page: is this your number?");
+    await page.reload();
+    const claim = page.getByTestId("play-elsewhere-claim");
+    await expect(claim.getByText(EN.member.claimQuestion(phone.phone.slice(-4)))).toBeVisible();
+    await expect(page.getByTestId("play-elsewhere")).not.toContainText(phone.phone.slice(1, -4));
+    await claim.getByRole("button", { name: EN.member.claimYes }).click();
+    await expect(page.getByTestId("play-elsewhere-status")).toHaveText(EN.manage.status.active);
 
     expect(await pool.db.one(`SELECT "phoneNumber" FROM "User" WHERE id = $1`, [garyId])).toEqual({ phoneNumber: phone.phone });
-    expect(await pool.db.count(`SELECT count(*) FROM "User" WHERE "phoneNumber" = $1`, [phone.phone])).toBe(1);
-    expect(await pool.profileOf(phone)).toMatchObject({ userId: garyId, status: "active", source: "profile", consentChannel: "whatsapp", language: "tr" });
+    expect(await pool.profileOf(phone)).toMatchObject({ userId: garyId, status: "active", source: "profile", consentChannel: "whatsapp", claimPhone: null, language: "tr" });
     expect(await pool.consentRecords(garyId)).toEqual([{ action: "consent", channel: "whatsapp" }]);
+    pool.expectSent(await pool.collect(), [{ to: "gary-phone", purpose: "pool-welcome", text: /oyuncu havuzu/i }]);
+  });
+
+  scenario("a friend sends his forwarded code; he says No: nothing attached, the code dies, the friend hears nothing more", async ({ pool, page }) => {
+    const fnf = await pool.club("fnf", {
+      name: "Friday Night Football",
+      players: [
+        { key: "owner", name: "Oscar Owner", role: "OWNER" },
+        { key: "gary", name: "Gary Guest", hasPhone: false },
+      ],
+    });
+    await atPitch(pool, fnf, "Riverside Sports Centre");
+    const garyId = fnf.group.player("gary").userId;
+    const card = await openAndTick(page, garyId);
+    await card.getByRole("button", { name: EN.member.continueWhatsApp }).click();
+    const prefill = (await card.getByTestId("pool-prefill").innerText()).trim();
+
+    pool.note("Gary forwards the message; his friend Fred sends it from his own phone");
+    const fred = await pool.stranger("fred", { name: "Fred" });
+    const ex = await fred.dm(prefill);
+    expect(ex.json).toMatchObject({ result: "claim-recorded" });
+    pool.expectSent(ex.sent, [{ to: "fred", purpose: "pool-code-reply", text: /^Thanks\. This sign-up continues in the MatchTime app/ }]);
+    pool.expectNoLeaks([...fnf.secrets(), "Gary", "Friday Night Football"], { to: ["fred"] });
 
     await page.reload();
-    await expect(page.getByTestId("play-elsewhere").getByTestId("play-elsewhere-status")).toHaveText(EN.manage.status.active);
+    const claim = page.getByTestId("play-elsewhere-claim");
+    await expect(claim.getByText(EN.member.claimQuestion(fred.phone.slice(-4)))).toBeVisible();
+    await claim.getByRole("button", { name: EN.member.claimNo }).click();
+    await expect(page.getByTestId("play-elsewhere").getByRole("status")).toHaveText(EN.member.claimNoDone);
+    await expect(page.getByTestId("play-elsewhere").getByRole("button", { name: EN.member.open })).toBeVisible();
+
+    expect(await pool.db.one(`SELECT "phoneNumber" FROM "User" WHERE id = $1`, [garyId])).toEqual({ phoneNumber: null });
+    expect(await pool.userOf(fred)).toBeNull();
+    expect(await pool.db.count(`SELECT count(*) FROM "PoolProfile" WHERE "userId" = $1 AND status <> 'pending-verify'`, [garyId])).toBe(0);
+    expect(await pool.consentRecords(garyId)).toEqual([]);
+
+    pool.note("Fred sends the code again: the code is dead and he hears nothing");
+    const again = await fred.dm(prefill);
+    expect(again.json).toMatchObject({ handled: "pool-confirm", result: "claim-waiting" });
+    pool.expectSent(again.sent, []);
+    expect(await pool.userOf(fred)).toBeNull();
+    pool.expectSent(await pool.collect(), []);
   });
 
   scenario("his code sent from a number another member holds: that account is recorded, his own gets nothing", async ({ pool, page }) => {

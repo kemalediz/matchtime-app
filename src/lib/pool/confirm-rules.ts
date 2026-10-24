@@ -188,3 +188,23 @@ export function confirmWindowStart(now: Date): Date {
 export function attemptPurgeBefore(now: Date): Date {
   return new Date(now.getTime() - POOL_CONFIRM.attemptKeepDays * DAY_MS);
 }
+
+// ── Whose profile it becomes (slice L3) ────────────────────────────────
+
+export type ConfirmTarget =
+  /** The number belongs to an account: that account, whoever started the
+   *  sign-up. Accounts are never merged. */
+  | { kind: "number-account"; userId: string }
+  /** A member started it from his profile and the number is on no account:
+   *  NOTHING is attached. The claim waits for his yes on his signed-in
+   *  page ("a number ending 7041 messaged us with your code"), so a code he
+   *  forwarded can never put a friend's number on his account. */
+  | { kind: "member-claim"; starterId: string }
+  /** A stranger's /play sign-up from a new number: a new account. */
+  | { kind: "new-account" };
+
+export function confirmTarget(args: { numberUserId: string | null; starterId: string | null }): ConfirmTarget {
+  if (args.numberUserId) return { kind: "number-account", userId: args.numberUserId };
+  if (args.starterId) return { kind: "member-claim", starterId: args.starterId };
+  return { kind: "new-account" };
+}

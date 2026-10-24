@@ -88,6 +88,10 @@ ALTER TABLE "PoolProfile" ADD CONSTRAINT "PoolProfile_signupIp_check"
 -- Slice L2 (prisma/migrations/20261025090000_pool_signup_confirm carries
 -- the same CHECKs): the pool code is five characters; the rate-limit
 -- records; the append-only consent record.
+ALTER TABLE "PoolProfile" DROP CONSTRAINT IF EXISTS "PoolProfile_claim_check";
+ALTER TABLE "PoolProfile" ADD CONSTRAINT "PoolProfile_claim_check"
+  CHECK (("claimPhone" IS NULL) = ("claimMessageId" IS NULL) AND ("claimPhone" IS NULL) = ("claimAt" IS NULL)
+    AND ("claimPhone" IS NULL OR ("status" = 'pending-verify' AND "userId" IS NOT NULL AND "claimPhone" ~ '^[0-9]{7,15}$')));
 ALTER TABLE "PoolProfile" DROP CONSTRAINT IF EXISTS "PoolProfile_confirmCode_check";
 ALTER TABLE "PoolProfile" ADD CONSTRAINT "PoolProfile_confirmCode_check"
   CHECK ("confirmCode" IS NULL OR ("status" = 'pending-verify' AND "confirmCode" ~ '^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{5}$'));

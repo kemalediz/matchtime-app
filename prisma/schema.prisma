@@ -3137,6 +3137,14 @@ model PoolProfile {
   /// (rules.ts POOL_SIGNUP). Set only while "pending-verify" (CHECK):
   /// cleared when the sign-up is confirmed (slice L2).
   signupIp             String?
+  /// Slice L3: a member with no number started this sign-up from his
+  /// profile (`userId` set), and a number NO account holds sent the code.
+  /// Nothing is attached: the number (digits), that message's id and when
+  /// wait for his yes on his signed-in page. All three or none, only while
+  /// "pending-verify" with a user (CHECK). They go with the sign-up.
+  claimPhone           String?
+  claimMessageId       String?
+  claimAt              DateTime?
 
   // ── Consent (UK GDPR art. 6(1)(a), PECR) ──
   /// Required on every profile past "pending-verify" (CHECK): when, which

@@ -2005,6 +2005,7 @@ const SAMPLES: SampleArgs = {
   pool_dm_already: { manageLink: "https://x.test/r/MANAGELINK" },
   pool_dm_already_stopped: { manageLink: "https://x.test/r/MANAGELINK" },
   pool_dm_code_expired: { playLink: "https://x.test/PLAYLINK" },
+  pool_dm_claim_wait: null,
   pool_dm_code_wrong: { playLink: "https://x.test/PLAYLINK" },
 };
 

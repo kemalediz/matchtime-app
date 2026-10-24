@@ -21,6 +21,7 @@ import { normaliseLang } from "@/lib/i18n/lang";
 import { poolConfirmPrefill } from "@/lib/pool/confirm-rules";
 import { isPoolSignupPaused, poolOpenFrom } from "@/lib/pool/flags";
 import { POOL_OPEN_TEST_COOKIE } from "@/lib/pool/flags-request";
+import { answerMemberClaim } from "@/lib/pool/member-claim";
 import { joinPoolAsMember, loadPlayElsewhere, startMemberWhatsAppStep, type PlayElsewhereView } from "@/lib/pool/member-optin";
 import { validatePoolSignup, type PoolFieldErrors } from "@/lib/pool/profile-fields";
 
@@ -88,4 +89,14 @@ export async function startPlayElsewhereWhatsApp(payload: unknown): Promise<({ o
   if (!res.ok) return res;
   const step = whatsAppStep(res.code, valid.value.language);
   return step ? { ok: true, ...step } : { ok: false, reason: "unavailable" };
+}
+
+/** His answer to "a number ending 7041 messaged us with your code: is this
+ *  your number?" (`member-claim.ts`). */
+export async function answerPlayElsewhereClaim(yes: boolean): Promise<{ ok: true; answer: "yes" | "no" } | Refusal> {
+  const userId = await me();
+  if (!userId) return { ok: false, reason: "signed-out" };
+  const res = await answerMemberClaim(userId, yes === true);
+  revalidatePath(PROFILE_PATH);
+  return res;
 }

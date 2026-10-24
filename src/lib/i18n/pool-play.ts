@@ -162,6 +162,13 @@ export interface PoolPlayCopy {
     manageLink: string;
     waitingHeading: string;
     startAgain: string;
+    claimHeading: string;
+    claimQuestion: (tail: string) => string;
+    claimYes: string;
+    claimNo: string;
+    claimNoDone: string;
+    claimExpired: string;
+    claimTaken: string;
   };
 }
 

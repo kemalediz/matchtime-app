@@ -16,9 +16,10 @@
  *
  * STARTED BY A SIGNED-IN MEMBER (slice L3, `member-optin.ts`): a member
  * whose account has no phone number takes this same step from his profile.
- * The waiting row then carries his user id and the source "profile", so his
- * own WhatsApp message confirms it onto HIS account (`confirm.ts`) instead
- * of a new one; `ip` is then his key (`member:<id>`), not an address.
+ * The waiting row then carries his user id and the source "profile"; a
+ * number no account holds that sends the code is only recorded as a claim
+ * he answers on his page (`confirm.ts`, `member-claim.ts`); `ip` is then
+ * his key (`member:<id>`), not an address.
  */
 import { db } from "../db";
 import { generatePoolConfirmCode, poolCodeExpiry } from "./confirm-rules";

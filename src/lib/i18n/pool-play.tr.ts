@@ -143,6 +143,13 @@ export function buildPoolPlayTr(f: PoolPlayFacts): PoolPlayCopy {
       manageLink: "Oyuncu havuzu bilgilerini yönet",
       waitingHeading: "Son adım: WhatsApp'tan onayla",
       startAgain: "Bilgilerimi değiştirip yeniden başla",
+      claimHeading: "Bu senin numaran mı?",
+      claimQuestion: (tail) => `Sonu ${tail} ile biten bir WhatsApp numarası kodunla bize yazdı. Bu senin numaran mı?`,
+      claimYes: "Evet, benim numaram",
+      claimNo: "Hayır, değil",
+      claimNoDone: "Teşekkürler. O kayıt iptal edildi ve hesabına hiçbir şey eklenmedi. Buradan yeniden başlayabilirsin.",
+      claimExpired: "Kodunun süresi doldu. Lütfen yeniden başla.",
+      claimTaken: "Bu numarayı hesabına ekleyemedik. Buradan yeniden başlayabilirsin.",
     },
   };
 }

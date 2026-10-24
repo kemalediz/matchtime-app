@@ -6,7 +6,8 @@
  * change anything before joining, joining makes him active at once (his
  * number is on his account) with a "web" consent record, and the card then
  * links to /play/manage. A member with NO number takes the /play WhatsApp
- * step, and his own message puts the number and the profile on HIS account.
+ * step; the message attaches nothing until he answers "a number ending NNNN
+ * messaged us with your code: is this your number?" on the card (Yes, No).
  * Turkish too. No model, Google not called (a geocoded pitch): $0.
  */
 import type { Page } from "@playwright/test";
@@ -152,7 +153,7 @@ test("the card links to his manage page, which shows the profile he just made", 
 });
 
 for (const [name, size] of [["phone", MOBILE], ["desktop", DESKTOP]] as const) {
-  test(`${name}: a member with no number confirms on WhatsApp, and the number and profile become HIS`, async ({ page, db, request }) => {
+  test(`${name}: a member with no number: the WhatsApp step, then "is this your number?", Yes attaches it`, async ({ page, db, request }) => {
     await page.setViewportSize(size);
     await openCard(page, U.guest);
     const c = card(page);
@@ -182,15 +183,53 @@ for (const [name, size] of [["phone", MOBILE], ["desktop", DESKTOP]] as const) {
       headers: { "x-api-key": E2E.WHATSAPP_API_KEY },
       data: { phone, body: prefill, waMessageId: `e2e-elsewhere-${Date.now()}` },
     });
-    expect(await res.json()).toMatchObject({ handled: "pool-confirm", result: "confirmed" });
-    expect(await db.one(`SELECT "phoneNumber" FROM "User" WHERE id = $1`, [U.guest])).toEqual({ phoneNumber: `+${phone}` });
-    expect(await profileOf(db, U.guest)).toMatchObject({ status: "active", consentChannel: "whatsapp", source: "profile" });
-    expect(await db.count(`SELECT count(*) FROM "User" WHERE "phoneNumber" = $1`, [`+${phone}`])).toBe(1);
+    expect(await res.json()).toMatchObject({ handled: "pool-confirm", result: "claim-recorded" });
+    // Nothing is attached until he says so.
+    expect(await db.one(`SELECT "phoneNumber" FROM "User" WHERE id = $1`, [U.guest])).toEqual({ phoneNumber: null });
+    expect(await profileOf(db, U.guest)).toMatchObject({ status: "pending-verify", claimPhone: phone });
 
     await page.reload();
+    const claim = card(page).getByTestId("play-elsewhere-claim");
+    await expect(claim.getByRole("heading", { name: EN.member.claimHeading })).toBeVisible();
+    await expect(claim.getByText(EN.member.claimQuestion(phone.slice(-4)))).toBeVisible();
+    // Only the last 4 digits reach the page.
+    expect(await page.content()).not.toContain(phone.slice(0, -4));
+    expect(await overflow(page)).toBeLessThanOrEqual(0);
+    await page.screenshot({ path: `test-results/play-elsewhere-claim-${name}.png`, fullPage: true });
+    await claim.getByRole("button", { name: EN.member.claimYes }).click();
+
     await expect(card(page).getByTestId("play-elsewhere-status")).toHaveText(EN.manage.status.active);
+    expect(await db.one(`SELECT "phoneNumber" FROM "User" WHERE id = $1`, [U.guest])).toEqual({ phoneNumber: `+${phone}` });
+    expect(await profileOf(db, U.guest)).toMatchObject({ status: "active", consentChannel: "whatsapp", source: "profile", claimPhone: null });
+    expect(await db.count(`SELECT count(*) FROM "User" WHERE "phoneNumber" = $1`, [`+${phone}`])).toBe(1);
+    expect(await db.count(`SELECT count(*) FROM "PlatformJob" WHERE purpose = 'pool-welcome' AND phone = $1`, [phone])).toBe(1);
   });
 }
+
+test("No to \"is this your number?\": nothing attached, the code dies, he can start again", async ({ page, db, request }) => {
+  await openCard(page, U.guest);
+  const c = card(page);
+  await c.getByRole("checkbox", { name: EN.signup.adultLabel }).check();
+  await c.getByRole("checkbox", { name: EN.signup.consentLabel }).check();
+  await c.getByRole("button", { name: EN.member.continueWhatsApp }).click();
+  const prefill = (await c.getByTestId("pool-prefill").innerText()).trim();
+  const phone = "447700933333";
+  const post = (id: string) =>
+    request.post("/api/whatsapp/dm-reply", { headers: { "x-api-key": E2E.WHATSAPP_API_KEY }, data: { phone, body: prefill, waMessageId: id } });
+  expect(await (await post(`e2e-elsewhere-no-${Date.now()}`)).json()).toMatchObject({ result: "claim-recorded" });
+
+  await page.reload();
+  await card(page).getByTestId("play-elsewhere-claim").getByRole("button", { name: EN.member.claimNo }).click();
+  await expect(card(page).getByRole("status")).toHaveText(EN.member.claimNoDone);
+  await expect(card(page).getByRole("button", { name: EN.member.open })).toBeVisible();
+  expect(await db.one(`SELECT "phoneNumber" FROM "User" WHERE id = $1`, [U.guest])).toEqual({ phoneNumber: null });
+  expect(await db.count(`SELECT count(*) FROM "User" WHERE "phoneNumber" = $1`, [`+${phone}`])).toBe(0);
+
+  // The code is dead: sent again, nothing happens and nobody is answered.
+  const jobsBefore = await db.count(`SELECT count(*) FROM "PlatformJob" WHERE phone = $1`, [phone]);
+  expect(await (await post(`e2e-elsewhere-no2-${Date.now()}`)).json()).toMatchObject({ result: "claim-waiting" });
+  expect(await db.count(`SELECT count(*) FROM "PlatformJob" WHERE phone = $1`, [phone])).toBe(jobsBefore);
+});
 
 test.describe("in Turkish", () => {
   test.use({ locale: "tr-TR" });
@@ -202,5 +241,6 @@ test.describe("in Turkish", () => {
     await expect(card(page).getByText(TR.member.prefillNote)).toBeVisible();
     await expect(card(page).getByRole("checkbox", { name: TR.signup.consentLabel })).not.toBeChecked();
     await expect(card(page).getByRole("button", { name: TR.member.join })).toBeVisible();
+    expect(TR.member.claimQuestion("7041")).toBe("Sonu 7041 ile biten bir WhatsApp numarası kodunla bize yazdı. Bu senin numaran mı?");
   });
 });

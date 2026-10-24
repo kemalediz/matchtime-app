@@ -143,6 +143,13 @@ export function buildPoolPlayEn(f: PoolPlayFacts): PoolPlayCopy {
       manageLink: "Manage your player pool details",
       waitingHeading: "Last step: confirm on WhatsApp",
       startAgain: "Change my details and start again",
+      claimHeading: "Is this your number?",
+      claimQuestion: (tail) => `A WhatsApp number ending ${tail} messaged us with your code. Is this your number?`,
+      claimYes: "Yes, it's my number",
+      claimNo: "No, it isn't",
+      claimNoDone: "Thanks. That sign-up is cancelled and nothing was added to your account. You can start again here.",
+      claimExpired: "Your code has run out. Please start again.",
+      claimTaken: "We couldn't add that number to your account. You can start again here.",
     },
   };
 }

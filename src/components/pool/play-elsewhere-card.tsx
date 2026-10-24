@@ -18,7 +18,7 @@
 import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { Globe2 } from "lucide-react";
-import { joinPlayElsewhereAction, loadPlayElsewhereAction, startPlayElsewhereWhatsApp, type PlayElsewhereState, type WhatsAppStep } from "@/app/actions/pool-member";
+import { answerPlayElsewhereClaim, joinPlayElsewhereAction, loadPlayElsewhereAction, startPlayElsewhereWhatsApp, type PlayElsewhereState, type WhatsAppStep } from "@/app/actions/pool-member";
 import { PoolProfileFields, type FieldErrorText } from "@/components/pool/pool-profile-fields";
 import { PoolTick } from "@/components/pool/pool-tick";
 import { PoolWhatsAppStep } from "@/components/pool/pool-whatsapp-step";
@@ -44,6 +44,7 @@ export function PlayElsewhereCard({ lang }: { lang: Lang }) {
   const [errors, setErrors] = useState<PoolFieldErrors>({});
   const [failure, setFailure] = useState<PoolErrorKey | null>(null);
   const [step, setStep] = useState<WhatsAppStep | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
   const reload = () => loadPlayElsewhereAction().then((s) => {
@@ -87,8 +88,33 @@ export function PlayElsewhereCard({ lang }: { lang: Lang }) {
     });
   };
 
+  const answer = (yes: boolean) =>
+    start(async () => {
+      setFailure(null);
+      setNotice(null);
+      const r = await answerPlayElsewhereClaim(yes);
+      if (r.ok) setNotice(r.answer === "no" ? m.claimNoDone : null);
+      else setNotice(r.reason === "no-claim" ? m.claimExpired : m.claimTaken);
+      await reload();
+    });
+
   let body: React.ReactNode;
-  if (path.kind === "in-pool") {
+  if (path.kind === "claim") {
+    body = (
+      <div className="mt-4" data-testid="play-elsewhere-claim">
+        <h3 className="text-base font-semibold text-slate-900">{m.claimHeading}</h3>
+        <p className="mt-2 text-slate-800">{m.claimQuestion(path.tail)}</p>
+        <div className="mt-4 flex flex-wrap gap-3">
+          <button type="button" disabled={pending} onClick={() => answer(true)} className={`${BTN} bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500`}>
+            {m.claimYes}
+          </button>
+          <button type="button" disabled={pending} onClick={() => answer(false)} className={`${BTN} border border-slate-300 bg-white text-slate-800 hover:bg-slate-50 focus:ring-slate-400`}>
+            {m.claimNo}
+          </button>
+        </div>
+      </div>
+    );
+  } else if (path.kind === "in-pool") {
     body = (
       <>
         <p className="mt-3 font-medium text-slate-900">{m.inPool}</p>
@@ -155,11 +181,16 @@ export function PlayElsewhereCard({ lang }: { lang: Lang }) {
         <Globe2 className="h-5 w-5 text-blue-600" aria-hidden="true" />
         {m.heading}
       </h2>
-      {path.kind !== "in-pool" && (
+      {path.kind !== "in-pool" && path.kind !== "claim" && (
         <>
           <p className="mt-2 text-sm text-slate-700">{m.lead}</p>
           <p className="mt-1 text-sm text-slate-500">{m.ownClubNote}</p>
         </>
+      )}
+      {notice && (
+        <p role="status" className="mt-4 rounded-lg bg-slate-100 px-4 py-3 text-sm text-slate-800">
+          {notice}
+        </p>
       )}
       {body}
     </section>

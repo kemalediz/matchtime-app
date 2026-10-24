@@ -16,14 +16,22 @@
  * how to manage his own, and the attempt counts against him.
  *
  * Confirming, in ONE transaction with a compare-and-set on the waiting row:
- * the User is found by the number, or (slice L3) the signed-in member with
- * no number who started the sign-up from his profile gets it, or a User is
- * created (a member keeps his one
+ * the User is found by the number, or a User is created (a member keeps his one
  * identity; two first messages at once from a new number resolve to one
  * User); the profile turns "active" with its consent (policy version, time,
  * channel "whatsapp", this message's id); the code and the sign-up address
  * are cleared; and the append-only consent record gets its row
  * (`consent-record.ts`). Then ONE welcome DM to that number only.
+ *
+ * SLICE L3 (manager review): a sign-up a club member with no number started
+ * from his profile, sent from a number NO account holds, attaches NOTHING.
+ * The number waits on the sign-up as a claim (`confirmTarget`) until he
+ * answers on his signed-in page ("a number ending 7041 messaged us with
+ * your code: is this your number?", `member-claim.ts`); the number that
+ * wrote hears only that the sign-up continues in the app. So a code he
+ * forwards can never put someone else's number on his account (their DMs,
+ * INs and payments would resolve as him). A number that already belongs to
+ * an account gets the profile, as for any sign-up.
  *
  * Every failure (wrong code, expired, a number that has a profile) is
  * recorded against the NUMBER, for strangers and members alike, and the
@@ -38,6 +46,7 @@ import { normaliseLang } from "../i18n/lang";
 import { PlatformDmRefused, platformPhoneDigits, queuePlatformDm, type PlatformDmPurpose } from "../platform-jobs";
 import {
   codeReplyAllowed,
+  confirmTarget,
   confirmWindowStart,
   decidePoolConfirm,
   poolCodeCandidates,
@@ -45,7 +54,7 @@ import {
   type SenderProfile,
 } from "./confirm-rules";
 import { recordPoolConsent } from "./consent-record";
-import { poolAlreadyText, poolCodeReplyText, poolWelcomeText } from "./copy";
+import { poolAlreadyText, poolClaimWaitText, poolCodeReplyText, poolWelcomeText } from "./copy";
 import { isPoolSignupPaused } from "./flags";
 import { buildPoolManageLink } from "./links";
 import { POOL_CONSENT_VERSION } from "./rules";
@@ -66,7 +75,7 @@ export interface PoolConfirmOutcome {
   replied: boolean;
 }
 
-type Tx = Parameters<Parameters<typeof db.$transaction>[0]>[0];
+export type Tx = Parameters<Parameters<typeof db.$transaction>[0]>[0];
 
 export async function handlePoolConfirmDm(input: PoolConfirmInput): Promise<PoolConfirmOutcome | null> {
   if (isPoolSignupPaused()) return null;
@@ -85,9 +94,13 @@ export async function handlePoolConfirmDm(input: PoolConfirmInput): Promise<Pool
 
   const rows = await db.poolProfile.findMany({
     where: { status: "pending-verify", confirmCode: { in: candidates } },
-    select: { id: true, confirmCode: true, confirmCodeExpiresAt: true, language: true },
+    select: { id: true, confirmCode: true, confirmCodeExpiresAt: true, language: true, claimPhone: true },
   });
   const row = candidates.map((c) => rows.find((r) => r.confirmCode === c)).find(Boolean) ?? null;
+  // Slice L3: a member's code that a number has already claimed waits for
+  // HIS answer on his page. The same message again (a retry), the code
+  // again, or from anyone else: silent, counted for nobody.
+  if (row?.claimPhone) return out("claim-waiting");
 
   const phone = senderPhone(input);
   const sender = phone
@@ -133,12 +146,26 @@ export async function handlePoolConfirmDm(input: PoolConfirmInput): Promise<Pool
 
   const confirmed = await confirmOnce(row!.id, row!.confirmCode!, phone!, input.waMessageId, now);
   if (!confirmed) return out("race-lost");
-  const text = poolWelcomeText(normaliseLang(confirmed.language), {
-    displayName: confirmed.displayName,
-    earlyList: confirmed.earlyList,
-    manageLink: await buildPoolManageLink(confirmed.userId),
+  if (confirmed.kind === "claim") {
+    // Nothing attached. One line to the number that wrote: the sign-up
+    // goes on in the app. It names no account and no person.
+    const text = poolClaimWaitText(normaliseLang(confirmed.language));
+    return out("claim-recorded", await queueOnce(phone!, text, "pool-code-reply", `pool-claim:${confirmed.id}`));
+  }
+  return out("confirmed", await queuePoolWelcome(confirmed, phone!));
+}
+
+/** The ONE welcome to the number a sign-up was confirmed for. */
+export async function queuePoolWelcome(
+  p: { id: string; userId: string; displayName: string; language: string; earlyList: boolean },
+  phone: string,
+): Promise<boolean> {
+  const text = poolWelcomeText(normaliseLang(p.language), {
+    displayName: p.displayName,
+    earlyList: p.earlyList,
+    manageLink: await buildPoolManageLink(p.userId),
   });
-  return out("confirmed", await queueOnce(phone!, text, "pool-welcome", `pool-welcome:${confirmed.id}`));
+  return queueOnce(phone, text, "pool-welcome", `pool-welcome:${p.id}`);
 }
 
 /** The sender's phone, digits, off the envelope; null for a LID alone. */
@@ -172,70 +199,92 @@ async function confirmOnce(profileId: string, code: string, phone: string, waMes
   }
 }
 
-/** Make the waiting sign-up live for this number. Null when another
- *  message confirmed it first, or the number got a profile meanwhile. */
+/** Make the waiting sign-up live for this number, or (slice L3) record a
+ *  number's claim on a member's sign-up. Null when another message
+ *  confirmed it first, or the number got a profile meanwhile. */
 async function confirm(profileId: string, code: string, phone: string, waMessageId: string, now: Date) {
   return db.$transaction(async (tx: Tx) => {
-    const row = await tx.poolProfile.findUnique({ where: { id: profileId }, select: { status: true, displayName: true, userId: true } });
-    if (row?.status !== "pending-verify") return null;
+    const row = await tx.poolProfile.findUnique({ where: { id: profileId }, select: { status: true, displayName: true, userId: true, language: true, claimPhone: true } });
+    if (row?.status !== "pending-verify" || row.claimPhone) return null;
 
     const existing = await tx.user.findUnique({ where: { phoneNumber: `+${phone}` }, select: { id: true, poolProfile: { select: { id: true } } } });
     if (existing?.poolProfile) return null;
-    const userId =
-      existing?.id ??
-      (await claimForStarter(tx, row.userId, phone)) ??
-      (
-        await tx.user.create({
-          data: {
-            name: row.displayName,
-            phoneNumber: `+${phone}`,
-            email: `pool+${phone}-${now.getTime().toString(36)}@matchtime.local`,
-            // His own WhatsApp message verified the number: a complete
-            // handshake, as a phone sign-up is (phone-signup.ts).
-            onboarded: true,
-            isActive: true,
-          },
-          select: { id: true },
-        })
-      ).id;
+    const target = confirmTarget({ numberUserId: existing?.id ?? null, starterId: row.userId });
 
-    const { count } = await tx.poolProfile.updateMany({
-      where: { id: profileId, status: "pending-verify" },
-      data: {
-        userId,
-        status: "active",
-        confirmCode: null,
-        confirmCodeExpiresAt: null,
-        signupIp: null,
-        consentAt: now,
-        consentVersion: POOL_CONSENT_VERSION,
-        consentChannel: "whatsapp",
-        consentEvidence: waMessageId,
-        lastActiveAt: now,
-      },
-    });
-    if (count !== 1) return null;
-    await recordPoolConsent(tx, { userId, action: "consent", channel: "whatsapp", evidence: waMessageId, version: POOL_CONSENT_VERSION, phone, code, at: now });
-    return tx.poolProfile.findUniqueOrThrow({
-      where: { id: profileId },
-      select: { id: true, userId: true, displayName: true, language: true, earlyList: true },
-    }) as Promise<{ id: string; userId: string; displayName: string; language: string; earlyList: boolean }>;
+    if (target.kind === "member-claim") {
+      const { count } = await tx.poolProfile.updateMany({
+        where: { id: profileId, status: "pending-verify", claimPhone: null },
+        data: { claimPhone: phone, claimMessageId: waMessageId, claimAt: now },
+      });
+      return count === 1 ? { kind: "claim" as const, id: profileId, language: row.language } : null;
+    }
+
+    const userId =
+      target.kind === "number-account"
+        ? target.userId
+        : (
+            await tx.user.create({
+              data: {
+                name: row.displayName,
+                phoneNumber: `+${phone}`,
+                email: `pool+${phone}-${now.getTime().toString(36)}@matchtime.local`,
+                // His own WhatsApp message verified the number: a complete
+                // handshake, as a phone sign-up is (phone-signup.ts).
+                onboarded: true,
+                isActive: true,
+              },
+              select: { id: true },
+            })
+          ).id;
+    const live = await activatePendingProfile(tx, { profileId, userId, phone, code, waMessageId, now });
+    return live ? { kind: "confirmed" as const, ...live } : null;
   });
 }
 
 /**
- * Slice L3: a member with no number on his account started this sign-up
- * from his profile (`member-optin.ts`), so the waiting row names him. When
- * no account holds the number that wrote, his own message proves it is his:
- * the number goes on HIS account and the profile is his. Null otherwise (the
- * number already belongs to an account: that account is the one recorded,
- * as for any sign-up; he has gained a number meanwhile; or nobody started
- * it), and the caller goes on as before.
+ * The waiting sign-up turns active for `userId`, with its consent (policy
+ * version, time, channel "whatsapp", the message's id) and a row in the
+ * consent record; the code, the sign-up address and any claim are cleared.
+ * Compare-and-set on "pending-verify". Shared by the WhatsApp confirm and a
+ * member's yes to a claim (`member-claim.ts`).
  */
-async function claimForStarter(tx: Tx, starterId: string | null, phone: string): Promise<string | null> {
-  if (!starterId) return null;
-  const { count } = await tx.user.updateMany({ where: { id: starterId, phoneNumber: null }, data: { phoneNumber: `+${phone}` } });
-  return count === 1 ? starterId : null;
+export async function activatePendingProfile(
+  tx: Tx,
+  a: { profileId: string; userId: string; phone: string; code: string | null; waMessageId: string; now: Date },
+): Promise<{ id: string; userId: string; displayName: string; language: string; earlyList: boolean } | null> {
+  const { count } = await tx.poolProfile.updateMany({
+    where: { id: a.profileId, status: "pending-verify" },
+    data: {
+      userId: a.userId,
+      status: "active",
+      confirmCode: null,
+      confirmCodeExpiresAt: null,
+      signupIp: null,
+      claimPhone: null,
+      claimMessageId: null,
+      claimAt: null,
+      consentAt: a.now,
+      consentVersion: POOL_CONSENT_VERSION,
+      consentChannel: "whatsapp",
+      consentEvidence: a.waMessageId,
+      lastActiveAt: a.now,
+    },
+  });
+  if (count !== 1) return null;
+  await recordPoolConsent(tx, {
+    userId: a.userId,
+    action: "consent",
+    channel: "whatsapp",
+    evidence: a.waMessageId,
+    version: POOL_CONSENT_VERSION,
+    phone: a.phone,
+    code: a.code,
+    at: a.now,
+  });
+  return tx.poolProfile.findUniqueOrThrow({
+    where: { id: a.profileId },
+    select: { id: true, userId: true, displayName: true, language: true, earlyList: true },
+  }) as Promise<{ id: string; userId: string; displayName: string; language: string; earlyList: boolean }>;
 }
 
 /**

@@ -162,11 +162,23 @@ export type MemberOptInPath =
   /** No number: the /play WhatsApp step verifies one. */
   | { kind: "join-whatsapp" }
   /** He started the WhatsApp step and has not sent the message yet. */
-  | { kind: "waiting-whatsapp" };
+  | { kind: "waiting-whatsapp" }
+  /** A number no account holds sent his code: is it his? Only its last 4
+   *  digits reach the page. */
+  | { kind: "claim"; tail: string };
 
-export function memberOptInPath(args: { hasPhone: boolean; profile: { status: PoolProfileStatus } | null }): MemberOptInPath {
+/** The last 4 digits of a number, all a page ever shows of a claim. */
+export function phoneTail(phone: string): string {
+  return phone.replace(/\D/g, "").slice(-4);
+}
+
+export function memberOptInPath(args: {
+  hasPhone: boolean;
+  profile: { status: PoolProfileStatus; claimPhone?: string | null } | null;
+}): MemberOptInPath {
   const { profile } = args;
   if (profile && profile.status !== "pending-verify") return { kind: "in-pool", status: profile.status };
+  if (profile?.claimPhone) return { kind: "claim", tail: phoneTail(profile.claimPhone) };
   // A number on his account now (added since he started): join here; the
   // waiting sign-up is dropped by the join.
   if (args.hasPhone) return { kind: "join-here" };

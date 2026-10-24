@@ -13,8 +13,9 @@
  *                           transaction
  *   startMemberWhatsAppStep a member with NO number: the /play sign-up
  *                           itself (`createPoolSignup`), marked as started
- *                           by him, so his own WhatsApp message confirms it
- *                           onto HIS account (`confirm.ts`)
+ *                           by him. A number no account holds that sends the
+ *                           code attaches NOTHING: he is asked on this card
+ *                           whether it is his (`member-claim.ts`)
  *
  * His clubs: live memberships that are not a guest place (`guestMatchId`
  * set), their active weekly games with sport and venue, and the club's home
@@ -83,13 +84,13 @@ export async function loadPlayElsewhere(userId: string, opts: { earlyList: boole
   const now = opts.now ?? new Date();
   const user = await db.user.findUnique({
     where: { id: userId },
-    select: { name: true, phoneNumber: true, poolProfile: { select: { status: true, confirmCode: true, confirmCodeExpiresAt: true } } },
+    select: { name: true, phoneNumber: true, poolProfile: { select: { status: true, confirmCode: true, confirmCodeExpiresAt: true, claimPhone: true } } },
   });
   if (!user) return null;
   const p = user.poolProfile;
   // A waiting sign-up whose code has run out is no longer a way in.
   const live = p && !(p.status === "pending-verify" && (!p.confirmCode || (p.confirmCodeExpiresAt && p.confirmCodeExpiresAt <= now))) ? p : null;
-  const path = memberOptInPath({ hasPhone: !!user.phoneNumber, profile: live ? { status: live.status as PoolProfileStatus } : null });
+  const path = memberOptInPath({ hasPhone: !!user.phoneNumber, profile: live ? { status: live.status as PoolProfileStatus, claimPhone: live.claimPhone } : null });
   return {
     path,
     prefill: memberPrefill({ name: user.name, clubs: await memberClubs(userId) }),

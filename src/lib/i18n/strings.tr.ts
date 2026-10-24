@@ -4270,6 +4270,7 @@ export const tr: Strings = {
     `Zaten bir MatchTime oyuncu havuzu profilin var ve maç mesajlarını durdurdun. Yeniden başlatmak ya da bilgilerini değiştirmek için bağlantını kullan: ${p.manageLink}`,
   pool_dm_code_expired: (p) =>
     `Bu kayıt kodunun süresi doldu. Lütfen buradan yeniden kaydol ve yeni mesajı gönder: ${p.playLink}`,
+  pool_dm_claim_wait: "Teşekkürler. Bu kayıt MatchTime uygulamasında devam ediyor: tamamlamak için başladığın yerde uygulamayı aç.",
   pool_dm_code_wrong: (p) =>
     `Bu kodla bir kayıt bulamadım. Lütfen mesajı açıldığı gibi gönder ya da buradan yeniden kaydol: ${p.playLink}`,
 };

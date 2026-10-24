@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { fromSavedProfile, toPoolPayload } from "../form-state";
-import { memberJoinConsent, memberOptInPath, memberPrefill, shortDisplayName, type MemberClubFacts } from "../member-prefill";
+import { memberJoinConsent, memberOptInPath, phoneTail, memberPrefill, shortDisplayName, type MemberClubFacts } from "../member-prefill";
 import { validatePoolFields } from "../profile-fields";
 import { POOL_CONSENT_VERSION, POOL_SIGNUP } from "../rules";
 
@@ -163,6 +163,16 @@ describe("memberOptInPath: which way a signed-in member joins", () => {
   });
   it("a WhatsApp step he started and has not sent yet", () => {
     expect(memberOptInPath({ hasPhone: false, profile: { status: "pending-verify" } })).toEqual({ kind: "waiting-whatsapp" });
+  });
+  it("a number no account holds sent his code: he is asked whether it is his, by its last 4 digits only", () => {
+    expect(memberOptInPath({ hasPhone: false, profile: { status: "pending-verify", claimPhone: "447700917041" } })).toEqual({ kind: "claim", tail: "7041" });
+  });
+  it("the claim waits for him even if he added a number meanwhile (he answers it first)", () => {
+    expect(memberOptInPath({ hasPhone: true, profile: { status: "pending-verify", claimPhone: "447700917041" } })).toEqual({ kind: "claim", tail: "7041" });
+  });
+  it("phoneTail: the last 4 digits, never more", () => {
+    expect(phoneTail("+44 7700 917041")).toBe("7041");
+    expect(phoneTail("12")).toBe("12");
   });
   it("he added a number since he started the WhatsApp step: he joins here", () => {
     expect(memberOptInPath({ hasPhone: true, profile: { status: "pending-verify" } })).toEqual({ kind: "join-here" });
