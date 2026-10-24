@@ -71,7 +71,7 @@ export interface SignUpBody {
   language: "en" | "tr";
   adult: boolean;
   consent: boolean;
-  source: { c?: string; ref?: string };
+  source: { c?: string; src?: string; ref?: string };
 }
 
 /** The sign-up route's answer. */

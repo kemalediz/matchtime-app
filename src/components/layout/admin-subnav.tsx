@@ -22,6 +22,7 @@ const TABS = [
 const OWNER_TABS = [
   { label: "Clubs", href: "/admin/clubs" },
   { label: "Health", href: "/admin/health" },
+  { label: "Pool codes", href: "/admin/pool/campaigns" },
 ];
 
 /**

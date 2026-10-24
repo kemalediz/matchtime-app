@@ -150,13 +150,15 @@ const CAMPAIGN_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const SHARE_RE = /^[A-Za-z0-9]{4,12}$/;
 
 /**
- * Where a visitor came from, off the /play URL: `?c=<campaign>` (a
- * PoolCampaign code: lowercase letters, digits, hyphens) or `?ref=<share
- * code>` (a friend's PoolProfile.shareCode). Anything else is dropped,
- * never stored. Whether the code exists is the server's question.
+ * Where a visitor came from, off the /play URL: `?src=<campaign>` (a
+ * PoolCampaign code: lowercase letters, digits, hyphens; slice G1's links,
+ * `growth-rules.ts`; `?c=` is read the same) or `?ref=<share code>` (a
+ * friend's PoolProfile.shareCode). Anything else is dropped, never stored.
+ * Whether the code exists is the server's question.
  */
 export function readSignupSource(params: Record<string, unknown>): { campaignCode: string | null; referralCode: string | null } {
-  const c = typeof params.c === "string" ? params.c.trim().toLowerCase() : "";
+  const raw = typeof params.src === "string" ? params.src : params.c;
+  const c = typeof raw === "string" ? raw.trim().toLowerCase() : "";
   const ref = typeof params.ref === "string" ? params.ref.trim() : "";
   return {
     campaignCode: c && c.length <= 40 && CAMPAIGN_RE.test(c) ? c : null,

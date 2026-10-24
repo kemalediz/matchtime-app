@@ -196,4 +196,5 @@ write; "today" rows exist now. EN and TR wherever MatchTime speaks.
 
 ### Referrals and growth (G1 to G4)
 
+- BUILT (G1, `referral.spec.ts`, through the real welcome link, the real "Bring a friend" card and /play): Ali's share link and message (EN, TR) carry no number; Bea signs up through it in Turkish and confirms: `source` referral, his code, `referrerUserId` = Ali, nothing sent to Ali; his privacy switch off hides his name on /play; a stopped referrer, a number already on MatchTime and his own link from his own number never keep a referral (the source and code stay); a made-up share code is the web; a campaign's `?src=` is stamped. Owner page, QR downloads, Copy and Share buttons: `e2e/web/pool-growth.spec.ts`.
 - personal link and campaign code stamped as the source; the referral counts only once the friend has played; Recruiter (1), Scout (3), Talent Spotter (10) announced in the referrer's club group unless he keeps them private; "Brought by X" on the friend's first game
