@@ -21,7 +21,7 @@ export const poolOfferTr: PoolOfferStrings = {
   club_size: (p) => `${p.members} kişilik bir grup`,
   fee: (p) => `💷 Maç ücreti ${p.amount}`,
   free: "💷 Ücretsiz, maç ücreti yok",
-  offer_cta: (p) => `Yeri ister misin? Evet ya da hayır demek için dokun: ${p.link}`,
+  offer_cta: (p) => `Yeri ister misin? Buradan cevap ver ya da bağlantıya dokun: ${p.link}`,
   footer: (p) => `Bu mesajları MatchTime oyuncu havuzuna katıldığın için alıyorsun. Durdur ya da değiştir: ${p.link}`,
 
   placed_in: (p) => `✅ Yerin hazır: *${p.club}*, ${p.day}, ${p.venue}.`,
@@ -32,6 +32,11 @@ export const poolOfferTr: PoolOfferStrings = {
 
   reply_tap: (p) => `Teklife cevap vermek için bağlantıya dokun: ${p.link}`,
   reply_gone: (p) => `Teşekkürler. ${p.club} maçındaki o yer doldu. Yakınında yeni bir maç olunca yazarım.`,
+  reply_facts_head: "Bu maç hakkında bildiklerim:",
+  reply_reask: (p) => `Kusura bakma, tam anlayamadım. Yeri ister misin? Evet ya da hayır yaz, ya da bağlantıya dokun: ${p.link}`,
+  reply_which: (p) => `Açık ${p.n} maç teklifin var. Hangisini kastediyorsun? Mesajını yanıtla ya da bağlantısına dokun:\n${p.list}`,
+  reply_stopped: (p) => `Tamam, maç tekliflerini durdurdum. Yeniden başlatmak için: ${p.link}`,
+  reply_profile_off: (p) => `Maç tekliflerin kapalı, bu yüzden yer ayırmadım. Yeniden açmak için: ${p.link}`,
 
   paused: (p) => `Son ${p.n} teklif cevapsız kaldığı için maç tekliflerini durdurdum. Yeniden istersen buraya dokun: ${p.link}`,
 

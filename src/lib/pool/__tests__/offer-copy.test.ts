@@ -18,8 +18,14 @@ import {
   poolOrganiserNotice,
   poolPausedText,
   poolPlacedText,
+  poolReplyFactsText,
   poolReplyGoneText,
+  poolReplyProfileOffText,
+  poolReplyReaskText,
+  poolReplyStateText,
+  poolReplyStoppedText,
   poolReplyTapText,
+  poolReplyWhichText,
   regularityOf,
   shortDisplayName,
   turnUpLine,
@@ -55,7 +61,7 @@ describe("the offer DM, EN (the spec's example)", () => {
         "🤝 Casual, friendly game. A regular group of 30 players, playing every week",
         "💷 £6 match fee",
         "",
-        "Would you like the place? Tap to say yes or no: https://matchtime.ai/play/offer/abc.def",
+        "Would you like the place? Reply here, or tap to answer: https://matchtime.ai/play/offer/abc.def",
         "",
         "You get these because you joined the MatchTime player pool. Stop or change them: https://matchtime.ai/r/x1",
       ].join("\n"),
@@ -98,7 +104,7 @@ describe("the offer DM, TR", () => {
     expect(text).toContain("sana 1,8 mil. Harita: https://");
     expect(text).toContain("🤝 Keyifli, dostane bir maç. Her hafta oynayan 30 kişilik düzenli bir grup");
     expect(text).toContain("💷 Maç ücreti £6");
-    expect(text).toContain("Yeri ister misin? Evet ya da hayır demek için dokun: https://matchtime.ai/play/offer/abc.def");
+    expect(text).toContain("Yeri ister misin? Buradan cevap ver ya da bağlantıya dokun: https://matchtime.ai/play/offer/abc.def");
     expect(text).toContain("Durdur ya da değiştir: https://matchtime.ai/r/x1");
   });
 });
@@ -196,5 +202,49 @@ describe("the organisers' side: the notice line and refusals, a band never a lis
   });
   it("the page shows the same fact lines as the DM", () => {
     expect(poolOfferText("en", FACTS, LINKS).startsWith(poolOfferLines("en", FACTS).join("\n"))).toBe(true);
+  });
+});
+
+describe("replies in words (slice L6): one short line each, the manage link last, nothing invented", () => {
+  const M = "https://matchtime.ai/r/x1";
+  it("a question gets the offer's own facts and the way to answer, nothing else", () => {
+    const text = poolReplyFactsText("en", FACTS, { state: "open", tapLink: LINKS.tapLink, manageLink: M });
+    expect(text).toBe(
+      ["Here's everything I know about this game:", poolOfferLines("en", FACTS).join("\n"), "", "Would you like the place? Reply here, or tap to answer: https://matchtime.ai/play/offer/abc.def", "", `You get these because you joined the MatchTime player pool. Stop or change them: ${M}`].join("\n"),
+    );
+  });
+  it("a question about a place he holds ends with how to give it back", () => {
+    const text = poolReplyFactsText("en", FACTS, { state: "taken", tapLink: LINKS.tapLink, manageLink: M });
+    expect(text).toContain("Can't make it after all? Give the place back here: https://matchtime.ai/play/offer/abc.def");
+    expect(text).not.toContain("Would you like the place?");
+    expect(poolReplyFactsText("tr", FACTS, { state: "open", tapLink: LINKS.tapLink, manageLink: M })).toMatch(/^Bu maç hakkında bildiklerim:\n⚽ \*FNF\*/);
+  });
+  it("the one re-ask below the floor, EN and TR", () => {
+    expect(poolReplyReaskText("en", { tapLink: LINKS.tapLink, manageLink: M })).toBe(
+      `Sorry, I didn't quite get that. Would you like the place? Reply yes or no, or tap to answer: ${LINKS.tapLink}\n\nYou get these because you joined the MatchTime player pool. Stop or change them: ${M}`,
+    );
+    expect(poolReplyReaskText("tr", { tapLink: LINKS.tapLink, manageLink: M })).toMatch(/^Kusura bakma, tam anlayamadım\./);
+  });
+  it("two open offers: which one, each with its own link, never a guess", () => {
+    const text = poolReplyWhichText("en", {
+      offers: [
+        { club: "FNF", kickoff: KICKOFF, tapLink: "https://m/a" },
+        { club: "Sutton FC", kickoff: KICKOFF, tapLink: "https://m/b" },
+      ],
+      manageLink: M,
+    });
+    expect(text).toMatch(/^You have 2 game offers open\. Which one do you mean\? Swipe-reply to its message, or tap its link:\n1\. \*FNF\*, Friday 30 October at 20:30: https:\/\/m\/a\n2\. \*Sutton FC\*, .*: https:\/\/m\/b\n\n/);
+  });
+  it("stopped by words, offers off, and every answer state, EN and TR", () => {
+    expect(poolReplyStoppedText("en", M)).toBe(`Done, I've stopped game offers. You can start them again here: ${M}`);
+    expect(poolReplyStoppedText("tr", M)).toContain(M);
+    expect(poolReplyProfileOffText("en", M)).toBe(`Your game offers are switched off, so I haven't booked anything. You can switch them back on here: ${M}`);
+    for (const s of ["declined", "gone", "expired", "off", "busy", "withdrawn", "open", "invalid"] as const) {
+      const en = poolReplyStateText("en", s, M);
+      expect(en).toContain(M);
+      expect(poolReplyStateText("tr", s, M)).not.toBe(en);
+    }
+    expect(poolReplyStateText("en", "declined", M)).toMatch(/^Thanks for letting us know\./);
+    expect(poolReplyStateText("en", "withdrawn", M)).toMatch(/^Done, your place is free again\./);
   });
 });

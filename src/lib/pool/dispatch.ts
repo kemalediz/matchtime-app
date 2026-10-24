@@ -24,7 +24,8 @@ import { askWindows } from "../partner-ask-rules";
 import { loadPartnerAskSettings } from "../club-partnership";
 import { ledgerEntryOf } from "./candidate-rows";
 import { POOL_CAPS } from "./rules";
-import { planPoolAdmission, poolOfferCancelFailReason, type PoolJobView } from "./dispatch-rules";
+import { DM_SUB_FIELDS, type DmSubField } from "../dm-subscriptions";
+import { optedOutOfDms, planPoolAdmission, poolOfferCancelFailReason, type PoolJobView } from "./dispatch-rules";
 import { poolOffersOpenForClub } from "./flags";
 import { OPEN_MATCH_STATUSES } from "./matching-rules";
 import { offerExpiresAt } from "./waves";
@@ -73,8 +74,13 @@ export async function admitPoolOfferJobs(jobIds: readonly string[], opts: { now:
         });
         const userIds = [...new Set(offers.map((o) => o.userId))];
         const since = new Date(now.getTime() - 26 * HOUR_MS);
-        const [profiles, ledgerRows, busyJobs] = await Promise.all([
-          tx.poolProfile.findMany({ where: { userId: { in: userIds } }, select: { userId: true, status: true } }),
+        const [profiles, memberships, ledgerRows, busyJobs] = await Promise.all([
+          tx.poolProfile.findMany({ where: { userId: { in: userIds } }, select: { userId: true, status: true, consentAt: true } }),
+          // His DM preferences (the general opt-out, decision L6.10).
+          tx.membership.findMany({
+            where: { userId: { in: userIds }, leftAt: null },
+            select: { userId: true, subPrefsUpdatedAt: true, ...Object.fromEntries(DM_SUB_FIELDS.map((f) => [f, true])) } as { userId: true; subPrefsUpdatedAt: true } & Record<DmSubField, true>,
+          }),
           tx.poolOffer.findMany({
             where: { userId: { in: userIds }, createdAt: { gte: new Date(now.getTime() - LEDGER_LOOKBACK_MS) } },
             select: { id: true, userId: true, matchId: true, orgId: true, sentAt: true, createdAt: true, outcome: true, resolvedAt: true, platformJobId: true },
@@ -94,6 +100,10 @@ export async function admitPoolOfferJobs(jobIds: readonly string[], opts: { now:
         const inFlightAt = new Map(busyJobs.filter((j) => j.status === "claimed" && j.claimedAt).map((j) => [j.id, j.claimedAt as Date]));
         const busy = busyJobs.map((j) => (j.status === "claimed" ? j.claimedAt : j.sentAt)).filter((d): d is Date => !!d && d.getTime() <= now.getTime());
         const active = new Set(profiles.filter((p) => p.status === "active").map((p) => p.userId as string));
+        const consentAt = new Map(profiles.map((p) => [p.userId as string, p.consentAt]));
+        const optedOut = new Set(
+          userIds.filter((u) => optedOutOfDms({ memberships: memberships.filter((m) => m.userId === u), poolConsentAt: consentAt.get(u) ?? null })),
+        );
         const cutoffs = new Map<string, Date>();
         for (const o of offers) if (!cutoffs.has(o.id)) cutoffs.set(o.id, await cutoffFor(o.orgId, o.ask.match.date));
 
@@ -112,6 +122,7 @@ export async function admitPoolOfferJobs(jobIds: readonly string[], opts: { now:
             orgId: o.orgId,
             clubOpen: poolOffersOpenForClub(o.ask.org, env),
             profileActive: active.has(o.userId),
+            dmOptedOut: optedOut.has(o.userId),
             offerOpen: o.outcome === null,
             askOpen: o.ask.status === "open",
             gameOpen,

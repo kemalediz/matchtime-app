@@ -49,9 +49,9 @@
  *   8. COLD self-attendance fallback    (2026-08-31 — a player replying
  *      "IN"/"OUT" to a recruit DM with nothing more specific to attribute
  *      it to; registers against the active match)
- *   8b. a reply in words to a pool offer (local player pool L5a: one
- *      "tap the link" or "that place has gone" line per offer; a state
- *      rule, no model; see lib/pool/reply.ts. L6 reads the words.)
+ *   8b. a reply in words to a pool offer (local player pool L5a, L6: only
+ *      for a sender with a delivered offer; the L6 reader, then the tap
+ *      link's own writers; see lib/pool/reply.ts)
  *   9. scoped Q&A, else ignore
  *
  * Adding a handler means slotting it by SPECIFICITY, never in front of a
@@ -86,6 +86,8 @@ import { billingQuietMatchWhere } from "@/lib/club-billing-rules";
 import { handleConnectDm } from "@/lib/connect-dm";
 import { handlePoolConfirmDm } from "@/lib/pool/confirm";
 import { answerPoolOfferReply } from "@/lib/pool/reply";
+import { poolEnvForApiRequest } from "@/lib/pool/switch-env";
+import { dmOptOutStopsPool, poolLanguageOf, stopPoolOnDmOptOut } from "@/lib/pool/dm-optout";
 import { handleOrganiserPickDm } from "@/lib/organiser-pick";
 import { handleCollectorPaidDm, handlePlayerPaidDm } from "@/lib/month-payment";
 import { selfJoinEnabledForApiRequest } from "@/lib/self-join-flag";
@@ -681,7 +683,8 @@ export async function POST(request: Request) {
       where: { userId: user.id, leftAt: null, ...IN_LIVE_STAGE_CLUB_WHERE },
       select: { orgId: true, org: { select: { language: true } } },
     });
-    const subLang = subMem?.org.language;
+    // Someone in no club (a pool player) reads it in his pool language (L6.11).
+    const subLang = subMem ? subMem.org.language : await poolLanguageOf(user.id);
     const cmd = parseDmSubscriptionCommand(text ?? "", subLang);
     if (cmd) {
       let written = false;
@@ -704,8 +707,14 @@ export async function POST(request: Request) {
             data: { orgId: subMem.orgId, kind: "dm", phone: replyPhone, text: dmSubAckMessage(cmd, subLang), ...REPLY_PRIORITY },
           });
         }
-        return NextResponse.json({ ok: true, handled: "dm-subscription", cmd });
       }
+      // Local player pool (decision L6.11): the general opt-out withdraws his
+      // pool consent too, through the manage page's Stop. He hears the reply
+      // above when it was sent (a club member); otherwise one pool line.
+      const pool = dmOptOutStopsPool(cmd)
+        ? await stopPoolOnDmOptOut({ userId: user.id, waMessageId, fromPhones: [phone, senderAltPhone], sendLine: !(written && subMem) })
+        : { stopped: false };
+      if (written || pool.stopped) return NextResponse.json({ ok: true, handled: "dm-subscription", cmd, ...(pool.stopped ? { poolStopped: true } : {}) });
       // Write didn't land — don't lie. Fall through to normal handling.
     }
   }
@@ -1429,15 +1438,23 @@ export async function POST(request: Request) {
   }
 
   if (!dm) {
-    // ── A reply in words to a pool offer (local player pool L5a) ──────
-    //   Until L6 reads them: someone whose pool offer REACHED him in the
-    //   last day gets ONE line per offer, "tap the link" while it is open
-    //   or "that place has gone" once it ended, but only when the DM is
-    //   clearly about it (a swipe-reply quoting the offer, or he is in no
-    //   club at all). A club member's plain DM is never swallowed: it
-    //   carries on to the Q&A below (review of #400, minor 1). A state
-    //   rule, no model, no phrase list.
-    const poolReply = await answerPoolOfferReply({ userId: user.id, quotedId: parseDmQuote(body)?.id ?? null });
+    // ── A reply in words to a pool offer (local player pool L5a, L6) ──
+    //   Only for someone whose pool offer REACHED him (the state prior, no
+    //   model otherwise). The L6 reader reads his words against the offer:
+    //   accept, decline, stop, question or neither, through the tap link's
+    //   own writers; below the floor one re-ask; "neither" keeps L5a's one
+    //   line. A club member's plain DM is read only with exactly one live
+    //   offer and no club DM since, and an unsure or "neither" reading
+    //   carries on to the Q&A below (never swallowed). See lib/pool/reply.ts.
+    const poolReply = await answerPoolOfferReply({
+      userId: user.id,
+      text,
+      quotedId: parseDmQuote(body)?.id ?? null,
+      phone,
+      senderAltPhone,
+      waMessageId,
+      env: poolEnvForApiRequest(request),
+    });
     if (poolReply) return NextResponse.json({ ok: true, handled: poolReply });
 
     // ── Scoped Q&A (2026-06-01) ──────────────────────────────────────

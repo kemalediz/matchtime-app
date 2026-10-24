@@ -24,7 +24,9 @@
  * WHO MAY ANSWER (review of #400, M2): the three answers change HIS record,
  * so the page's actions run them only for the holder (`isOfferHolder`:
  * signed in as him, or his last 4 digits proved on this phone,
- * `checkOfferDigits`); a forwarded link shows the game's facts only.
+ * `checkOfferDigits`); a forwarded link shows the game's facts only. A
+ * reply in his own words (L6, `reply.ts`) runs the SAME three functions,
+ * `via: "words"`, only for a DM from the number the offer went to.
  */
 import { db } from "../db";
 import { appUrl } from "../app-url";
@@ -206,7 +208,10 @@ async function tellOrganisersOnce(o: LoadedOffer, key: string, text: string, now
   await sendAdminNotice({ orgId: o.orgId, now, holdOvernight: false, text });
 }
 
-export async function acceptOffer(offerId: string, now: Date = new Date(), env?: Env): Promise<OfferPageState> {
+/** How he answered: the tap link's page, or his own words by DM (L6). */
+export type OfferAnswerVia = "link" | "words";
+
+export async function acceptOffer(offerId: string, now: Date = new Date(), env?: Env, via: OfferAnswerVia = "link"): Promise<OfferPageState> {
   // He holds the link, so the DM reached him even if its report was lost.
   await stampIfOnItsWay(offerId, now);
   const o = await loadOffer(offerId);
@@ -215,7 +220,7 @@ export async function acceptOffer(offerId: string, now: Date = new Date(), env?:
   const refusal = refusalOf(o, profile?.status === "active", now, env);
   if (refusal || o.outcome) return stateOf(o, profile?.status === "active", now, env);
 
-  const claimed = await db.poolOffer.updateMany({ where: { id: o.id, outcome: null }, data: { outcome: "accepted", resolvedAt: now, repliedVia: "link" } });
+  const claimed = await db.poolOffer.updateMany({ where: { id: o.id, outcome: null }, data: { outcome: "accepted", resolvedAt: now, repliedVia: via } });
   if (claimed.count === 0) return stateOf((await loadOffer(offerId))!, true, now);
 
   const placed = await placePoolGuest({
@@ -292,13 +297,13 @@ async function closeFilledRound(o: LoadedOffer, now: Date): Promise<void> {
   }
 }
 
-export async function declineOffer(offerId: string, now: Date = new Date()): Promise<OfferPageState> {
+export async function declineOffer(offerId: string, now: Date = new Date(), via: OfferAnswerVia = "link"): Promise<OfferPageState> {
   // He holds the link, so the DM reached him even if its report was lost.
   await stampIfOnItsWay(offerId, now);
   const o = await loadOffer(offerId);
   if (!o) return "invalid";
   if (!o.outcome && o.sentAt) {
-    const done = await db.poolOffer.updateMany({ where: { id: o.id, outcome: null }, data: { outcome: "declined", resolvedAt: now, repliedVia: "link" } });
+    const done = await db.poolOffer.updateMany({ where: { id: o.id, outcome: null }, data: { outcome: "declined", resolvedAt: now, repliedVia: via } });
     if (done.count > 0) {
       await db.poolProfile.updateMany({ where: { userId: o.userId }, data: { lastActiveAt: now } });
       console.log(`[pool] offer ${o.id}: declined`);

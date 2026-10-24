@@ -102,8 +102,10 @@ const MODEL_CONTEXT_LOADERS = [
   "lib/analyze-batch-context.ts",
 ];
 
-/** Pool modules allowed to call the model. Empty until slice L6. */
-const POOL_MODEL_READERS = new Set<string>([]);
+/** Pool modules allowed to call the model. Slice L6: the offer reply
+ *  reader, which reads only the person's own offers (links hidden) and his
+ *  reply. */
+const POOL_MODEL_READERS = new Set<string>(["lib/pool/reply-reader.ts"]);
 
 const CALLS_MODEL = /getAnthropic\s*\(|from\s+["']@anthropic-ai\/sdk["']|from\s+["'](?:@\/lib\/pipeline\/llm|(?:\.{1,2}\/)+(?:pipeline\/)?llm)["']/;
 
