@@ -11,11 +11,11 @@ scenarios("confirming a sign-up: the edges", () => {
   scenario("a code that names no sign-up gets ONE short reply with the /play link; no user, nothing else", async ({ pool }) => {
     const ali = await pool.stranger("ali");
 
-    const first = await ali.dm("Hi MatchTime, sign me up to play. Code ZZZZ");
+    const first = await ali.dm("Hi MatchTime, sign me up to play. Code ZZZZZ");
     pool.expectSent(first.sent, [{ to: "ali", purpose: "pool-code-reply", text: /^I couldn't find a sign-up with that code\.[\s\S]*\/play$/ }]);
     expect(first.json).toMatchObject({ handled: "pool-confirm", result: "wrong-code", replied: true });
 
-    const again = await ali.dm("Hi MatchTime, sign me up to play. Code YYYY");
+    const again = await ali.dm("Hi MatchTime, sign me up to play. Code YYYYY");
     pool.expectSent(again.sent, []);
     expect(again.json).toMatchObject({ result: "wrong-code", replied: false });
 
@@ -25,7 +25,7 @@ scenarios("confirming a sign-up: the edges", () => {
 
   scenario("the reply to a Turkish message with a wrong code is in Turkish", async ({ pool }) => {
     const can = await pool.stranger("can");
-    const ex = await can.dm("Merhaba MatchTime, oynamak için kaydet. Kod ZZZZ");
+    const ex = await can.dm("Merhaba MatchTime, oynamak için kaydet. Kod ZZZZZ");
     pool.expectSent(ex.sent, [{ to: "can", purpose: "pool-code-reply", text: /^Bu kodla bir kayıt bulamadım/ }]);
   });
 
@@ -114,6 +114,7 @@ scenarios("confirming a sign-up: the edges", () => {
     const fnf = await pool.club("fnf2", { name: "Riverside Wednesday", hq: true });
     const ali = await pool.stranger("ali6");
     const form = await pool.signUp();
+    expect(form.ok, JSON.stringify({ ...form, sent: undefined })).toBe(true);
     await ali.dm(form.prefill!);
 
     const ex = await ali.dm("great, so when is the next game near me? who else is in the pool?");
@@ -130,10 +131,10 @@ scenarios("confirming a sign-up: the edges", () => {
     expect(ex.sent.filter((m) => m.purpose === "pool-code-reply")).toEqual([]);
   });
 
-  scenario("the self-join connect message is never taken for a pool sign-up, even with a pool code in it", async ({ pool }) => {
+  scenario("the self-join connect message (a 4-character code) is never taken for a pool sign-up", async ({ pool }) => {
     const ali = await pool.stranger("ali7");
     const form = await pool.signUp();
-    const ex = await ali.dm(`Connect Riverside FC, code ${form.code}`);
+    const ex = await ali.dm(`Connect Riverside FC, code ${form.code!.slice(0, 4)}`);
     expect(ex.json.handled).not.toBe("pool-confirm");
     pool.expectSent(ex.sent, []);
     expect(await pool.pendingByCode(form.code!)).toMatchObject({ status: "pending-verify" });

@@ -37,10 +37,25 @@ describe("the welcome", () => {
   });
 });
 
+describe("the safety line (plan section 9)", () => {
+  it("is in the first welcome, both kinds, both languages, and claims no identity check", () => {
+    for (const earlyList of [true, false]) {
+      const en = poolWelcomeText("en", { displayName: "Ali", earlyList, manageLink: LINK });
+      expect(en).toContain("Stay safe: play at public venues, and tell us here about any problem.");
+      expect(en).not.toMatch(/verif|check(ed)? (every|each|all)/i);
+      expect(poolWelcomeText("tr", { displayName: "Ali", earlyList, manageLink: LINK })).toContain("Güvende kal: halka açık sahalarda oyna, bir sorun olursa bize buradan yaz.");
+    }
+  });
+});
+
 describe("the other replies", () => {
-  it("already in the pool: the manage link", () => {
-    expect(poolAlreadyText("en", LINK)).toContain(LINK);
-    expect(poolAlreadyText("tr", LINK)).toContain(LINK);
+  it("already in the pool: the manage link; a stopped profile is told how to start again there", () => {
+    expect(poolAlreadyText("en", "active", LINK)).toMatch(/^You're already in the MatchTime player pool/);
+    expect(poolAlreadyText("en", "active", LINK)).toContain(LINK);
+    expect(poolAlreadyText("tr", "paused", LINK)).toContain(LINK);
+    expect(poolAlreadyText("en", "stopped", LINK)).toMatch(/stopped game messages/);
+    expect(poolAlreadyText("en", "stopped", LINK)).toContain(LINK);
+    expect(poolAlreadyText("tr", "stopped", LINK)).toMatch(/durdurdun/);
   });
 
   it("a code that did not work points at /play, and never carries a code", () => {

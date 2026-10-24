@@ -38,7 +38,7 @@ scenarios("a stranger signs up", () => {
     const ali = await pool.stranger("ali", { name: "Ali Kaya" });     // a number MatchTime never saw
 
     // What they send
-    const ex = await ali.dm("Hi MatchTime, sign me up to play. Code K7QP");
+    const ex = await ali.dm("Hi MatchTime, sign me up to play. Code K7QP2");
 
     // Exactly what MatchTime queued, in order, by name ([] = nothing at all)
     pool.expectSent(ex.sent, [{ to: "ali", channel: "dm", purpose: "pool-welcome", text: /signed up/ }]);
@@ -142,10 +142,16 @@ write; "today" rows exist now. EN and TR wherever MatchTime speaks.
 | a number that never messaged gets nothing | `confirm-edges.spec.ts` |
 | a stranger spamming codes: one reply, then locked out (a right code too); reply throttle over time; the per-address sign-up cap; a number or link typed as a name | `confirm-abuse.spec.ts` |
 | a stranger's plain DM with no code: still ignored (the brief keeps today's behaviour) | `stranger-dm.spec.ts` |
+| a bare self-join connect code ("Code 7KQ2", "Kod", "kodu") reaches the connect handler; the pool neither answers nor counts it (codes are 5 characters, connect codes 4) | `connect-code-untouched.spec.ts` |
+| someone already in the pool guessing: counted and locked like anyone; a hit never attaches the other person's sign-up | `confirm-abuse.spec.ts` |
+| two wrong codes at once: one reply; two first messages at once from a new number: one User, one welcome, no error | `confirm-abuse.spec.ts` |
+| failed sign-ups (a district placed only at the country) count against the address | `confirm-abuse.spec.ts` |
+| the consent record: one row per consent and withdrawal, kept after the profile and the User are deleted | `signup-confirm.spec.ts`, `manage-then-message.spec.ts` |
+| the daily housekeeping: unconfirmed sign-ups after 7 days, old attempts; the consent record stays | `housekeeping.spec.ts` |
 
 ### Managing the profile (L2, L3)
 
-- BUILT (L2, `manage-then-message.spec.ts`, through the real link in the welcome and the real page): stop then the old message again then a new sign-up; delete a pool-only person (he is a stranger again); delete a club member (User and club stay); pause, then a message gets no pool reply. Edit, resume, start again, the badge switch: `e2e/web/play-manage.spec.ts`.
+- BUILT (L2, `manage-then-message.spec.ts`, through the real link in the welcome and the real page): stop, then his own message again (silent), then a NEW sign-up's code (never attached: he starts again from his link); delete a pool-only person (he is a stranger again); delete a club member (User and club stay); pause, then a message gets no pool reply. Edit, resume, start again, the badge switch: `e2e/web/play-manage.spec.ts`.
 - "stop" in words to MatchTime (L6 reader): stopped, one ack, no more offers
 - members opt in from their profile (L3), area defaulted from their clubs' venues
 

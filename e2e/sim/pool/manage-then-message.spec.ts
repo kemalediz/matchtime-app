@@ -24,7 +24,7 @@ async function joinAndOpenManage(pool: PoolWorld, page: Page, who: PoolPerson, n
 }
 
 scenarios("managing the profile, then messaging again", () => {
-  scenario("stop offers, then the old message again, then a new sign-up: one profile, a fresh consent, one new welcome", async ({ pool, page }) => {
+  scenario("stop offers, his own message again, a NEW sign-up's code: never attached; he starts again from his link", async ({ pool, page }) => {
     const ali = await pool.stranger("ali");
     const old = await joinAndOpenManage(pool, page, ali, "Ali Kaya");
 
@@ -32,17 +32,31 @@ scenarios("managing the profile, then messaging again", () => {
     await expect(page.getByTestId("pool-status")).toHaveText(EN.status.stopped);
     expect(await pool.profileOf(ali)).toMatchObject({ status: "stopped" });
 
-    pool.note("he sends his old message again: the code is spent");
+    pool.note("he sends his own old message again: his own spent code, silent");
     const again = await ali.dm(old.prefill!);
-    pool.expectSent(again.sent, [{ to: "ali", purpose: "pool-code-reply", text: /couldn't find a sign-up/ }]);
-    expect(await pool.profileOf(ali)).toMatchObject({ status: "stopped" });
+    expect(again.json).toMatchObject({ handled: "pool-confirm", result: "already-in-pool" });
+    pool.expectSent(again.sent, []);
 
-    pool.note("he signs up again on /play and confirms");
+    pool.note("a new sign-up's code from his number: it is not attached to him");
     const fresh = await pool.signUp({ name: "Ali K" });
     const back = await ali.dm(fresh.prefill!);
-    pool.expectSent(back.sent, [{ to: "ali", purpose: "pool-welcome", text: /Thanks Ali/ }]);
-    expect(await pool.profileOf(ali)).toMatchObject({ status: "active", displayName: "Ali K", consentEvidence: back.messageId });
-    expect(await pool.db.count(`SELECT count(*) FROM "PoolProfile" p JOIN "User" u ON u.id = p."userId" WHERE u."phoneNumber" = $1`, [ali.phone])).toBe(1);
+    expect(back.json).toMatchObject({ handled: "pool-confirm", result: "already-signed-up" });
+    pool.expectSent(back.sent, [{ to: "ali", purpose: "pool-code-reply", text: /^You already have a MatchTime player pool profile, and you stopped game messages/ }]);
+    expect(await pool.profileOf(ali)).toMatchObject({ status: "stopped", displayName: "Ali Kaya" });
+    expect(await pool.pendingByCode(fresh.code!)).toMatchObject({ status: "pending-verify", userId: null });
+    expect(await pool.failedAttempts(ali)).toBe(1);
+
+    pool.note("he starts again on the page, with the consent ticked");
+    await page.reload();
+    await page.getByRole("checkbox", { name: EN.restartConsent }).check();
+    await page.getByRole("button", { name: EN.restart }).click();
+    await expect(page.getByTestId("pool-status")).toHaveText(EN.status.active);
+    const user = await pool.userOf(ali);
+    expect(await pool.consentRecords(user!.id)).toEqual([
+      { action: "consent", channel: "whatsapp" },
+      { action: "withdraw", channel: "web" },
+      { action: "consent", channel: "web" },
+    ]);
   });
 
   scenario("delete (a pool-only person): profile and User erased; he is a stranger again", async ({ pool, page }) => {
@@ -52,7 +66,13 @@ scenarios("managing the profile, then messaging again", () => {
     await page.getByRole("button", { name: EN.deleteButton }).click();
     await page.getByRole("button", { name: EN.deleteConfirm }).click();
     await expect(page.getByRole("heading", { level: 1, name: EN.deletedHeading })).toBeVisible();
+    const userId = (await pool.db.one<{ userId: string }>(`SELECT "userId" FROM "PoolConsentRecord" WHERE phone = $1`, [bob.phone.slice(1)]))!.userId;
     expect(await pool.userOf(bob)).toBeNull();
+    pool.note("the consent record outlives the profile and the User (the privacy policy's 6 years)");
+    expect(await pool.consentRecords(userId)).toEqual([
+      { action: "consent", channel: "whatsapp" },
+      { action: "withdraw", channel: "web" },
+    ]);
 
     const hi = await bob.dm("hi, is there a game this week?");
     expect(hi.json).toMatchObject({ ignored: "unknown-sender" });

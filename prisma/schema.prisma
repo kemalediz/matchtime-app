@@ -3316,21 +3316,47 @@ model PoolBlock {
   @@index([userId])
 }
 
-/// A /play code from one number that did not work: wrong (it named no
-/// sign-up) or expired (slice L2). Read only to rate-limit: a number
-/// that guessed too many codes in 24 hours has every code ignored, and
-/// the "that code did not work" reply goes at most so often (rules.ts
-/// POOL_CONFIRM). Deleted after POOL_CONFIRM.attemptKeepDays. Holds no
-/// text and no code: the number, the result, the time.
-model PoolConfirmAttempt {
+/// A rate-limit record (slice L2): a WhatsApp confirm code that did not
+/// work ("confirm", keyed by the sending number's digits: "wrong",
+/// "expired", "has-profile"), or a /play sign-up attempt ("signup", keyed
+/// by the requesting address: "created", "area-not-found",
+/// "venues-unknown"). Holds no text and no code. Deleted after
+/// POOL_CONFIRM.attemptKeepDays (housekeeping.ts).
+model PoolAttempt {
   id        String   @id @default(cuid())
-  /// E.164 digits, no "+".
-  phone     String
-  /// "wrong" | "expired" (vocab.ts POOL_CONFIRM_ATTEMPT_RESULTS).
+  /// vocab.ts POOL_ATTEMPT_KINDS.
+  kind      String
+  key       String
   result    String
   createdAt DateTime @default(now())
 
-  @@index([phone, createdAt])
+  @@index([kind, key, createdAt])
+  @@index([createdAt])
+}
+
+/// The consent record (slice L2): every agreement and every withdrawal,
+/// APPEND-ONLY, never deleted with the profile or the User (no foreign
+/// key), kept POOL_RETENTION.consentRecordYears to show what was agreed
+/// (the privacy policy's retention line).
+model PoolConsentRecord {
+  id        String   @id @default(cuid())
+  userId    String
+  /// The number it came from, digits, for a WhatsApp consent.
+  phone     String?
+  /// "consent" | "withdraw" (vocab.ts POOL_CONSENT_ACTIONS).
+  action    String
+  /// The privacy policy version agreed to (consent only).
+  version   Int?
+  /// "whatsapp" | "web".
+  channel   String
+  /// The WhatsApp message id, or the signed-in request's id.
+  evidence  String
+  /// The /play code a WhatsApp consent carried (so his own message sent
+  /// twice is known as his).
+  code      String?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
   @@index([createdAt])
 }
 

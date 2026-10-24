@@ -113,6 +113,11 @@ test("pause, resume, stop, and start again with a fresh web consent", async ({ p
   const p = await profile(db, userId);
   expect(p).toMatchObject({ status: "active", consentChannel: "web" });
   expect(String(p!.consentEvidence)).toMatch(new RegExp(`^web:${userId}:\\d+$`));
+  expect(await db.all(`SELECT action, channel FROM "PoolConsentRecord" WHERE "userId" = $1 ORDER BY "createdAt", id`, [userId])).toEqual([
+    { action: "consent", channel: "whatsapp" },
+    { action: "withdraw", channel: "web" },
+    { action: "consent", channel: "web" },
+  ]);
 });
 
 test("a pause MatchTime decided cannot be lifted from the page", async ({ page, request, db }) => {

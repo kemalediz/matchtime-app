@@ -7,14 +7,14 @@
  * another profile that already has the same district (no lookup at all),
  * else one Google Geocoding call (`geocode.ts`, reused; it never throws and
  * sends the district and the region only). A district Google cannot place
- * in the UK is refused, so the CHECK "a centre point or chosen pitches" can
+ * as a UK postcode area, matched whole (`acceptDistrictGeocode`), is refused, so the CHECK "a centre point or chosen pitches" can
  * never be met by a guess. Chosen pitches are MatchTime's own geocoded
  * venues (`Venue`), searched by name; no lookup, no cost.
  */
 import { db } from "../db";
 import { geocode } from "../geocode";
 import type { PoolFields } from "./profile-fields";
-import { POOL_SIGNUP } from "./rules";
+import { POOL_SIGNUP, acceptDistrictGeocode } from "./rules";
 
 export type AreaResult =
   | { ok: true; areaDistrict: string | null; areaLat: number | null; areaLng: number | null; venueIds: string[] }
@@ -39,7 +39,7 @@ export async function resolveArea(
       return { ok: true, areaDistrict: district, areaLat: known.areaLat, areaLng: known.areaLng, venueIds: [] };
     }
     const out = await geocode({ address: `${district}, UK`, region: "gb" });
-    if (out.status !== "ok" || out.hit.countryCode !== "GB") return { ok: false, reason: "area-not-found" };
+    if (out.status !== "ok" || !acceptDistrictGeocode(out.hit)) return { ok: false, reason: "area-not-found" };
     return { ok: true, areaDistrict: district, areaLat: out.hit.lat, areaLng: out.hit.lng, venueIds: [] };
   }
   const venues = await db.venue.findMany({

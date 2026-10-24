@@ -10,8 +10,10 @@
  * top of the DM route.
  *
  * READING THE CODE is a token lookup, never reading what someone means:
- * the four characters after "code" or "kod", exactly as the self-join
- * connect DM reads its code (`connectCodeCandidates`, reused, not copied).
+ * the five characters after "code" or "kod". The self-join connect code is
+ * FOUR characters after the same words (`connect-dm-rules.ts`), so the two
+ * readers can never take each other's code: a bare "Code 7KQ2" is the
+ * connect handler's, never the pool's.
  * A code that names a waiting sign-up confirms it, whatever words surround
  * it. Only a code that names NOTHING looks at the words, and only to
  * decide whether the "that code did not work" reply is owed: the text must
@@ -20,7 +22,6 @@
  * about the pool.
  */
 import { randomInt } from "node:crypto";
-import { connectCodeCandidates, looksLikeConnectMessage } from "../connect-dm-rules";
 import { t } from "../i18n/t";
 import { LANGS, type Lang } from "../i18n/lang";
 import { POOL_CONFIRM, POOL_CONFIRM_CODE_ALPHABET, POOL_CONFIRM_CODE_LENGTH } from "./rules";
@@ -46,14 +47,28 @@ export function poolConfirmPrefill(lang: Lang, code: string): string {
   return t(lang).pool_confirm_prefill({ code });
 }
 
+const CODE_CHARS = POOL_CONFIRM_CODE_ALPHABET.replace(/[A-Z]/g, (c) => c + c.toLowerCase());
+/** "code" or "kod" (also "kodu", "kodum"), any punctuation or spacing, then
+ *  exactly POOL_CONFIRM_CODE_LENGTH code characters standing alone. */
+const CODE_RE = new RegExp(
+  `(?<![\\p{L}\\p{N}])(?:code|kodum|kodu|kod)(?![\\p{L}\\p{N}])[^\\p{L}\\p{N}]*([${CODE_CHARS}]{${POOL_CONFIRM_CODE_LENGTH}})(?![\\p{L}\\p{N}])`,
+  "giu",
+);
+
 /**
- * Every code-shaped token after "code" or "kod", last first. Empty for the
- * self-join connect message ("Connect Riverside FC, code 7KQ2"), which is
- * that handler's and never the pool's, whatever its code.
+ * Every pool-code-shaped token after "code" or "kod", last first (the
+ * prefilled text ends with the code), no repeats. The self-join connect
+ * message ("Connect Riverside FC, code 7KQ2") carries a FOUR-character code,
+ * so it gives nothing here: the length alone keeps the two apart.
  */
 export function poolCodeCandidates(text: string | null | undefined): string[] {
-  if (looksLikeConnectMessage(text)) return [];
-  return connectCodeCandidates(text);
+  if (typeof text !== "string" || text.length === 0 || text.length > 500) return [];
+  const out: string[] = [];
+  for (const m of [...text.matchAll(CODE_RE)].reverse()) {
+    const c = m[1].toUpperCase();
+    if (!out.includes(c)) out.push(c);
+  }
+  return out;
 }
 
 const squash = (s: string) =>
@@ -99,16 +114,15 @@ export interface PendingRow {
 }
 
 /** The sender's own profile, when the sending number already has one. */
-export type SenderProfile = { status: "active" | "paused" | "stopped" | "pending-verify" } | null;
-
-export type PoolConfirmReply = "welcome" | "already-signed-up" | "expired" | "wrong-code";
+export type SenderProfile = { status: "active" | "paused" | "stopped" } | null;
 
 export type PoolConfirmDecision =
-  /** Make the waiting sign-up live for this number (a stopped profile of
-   *  his is replaced by it: the new sign-up is a fresh consent). */
+  /** Make the waiting sign-up live for this number. */
   | { action: "confirm" }
-  /** He is already in the pool: keep his profile, tell him how to change it. */
-  | { action: "already-signed-up" }
+  /** He has a profile already (of any status): it stays his, the waiting
+   *  sign-up is NOT attached (a code belongs to the sign-up that made it),
+   *  he is told how to manage his own, and the attempt counts. */
+  | { action: "already-signed-up"; status: "active" | "paused" | "stopped" }
   /** Record a failed attempt, and reply if `codeReplyAllowed` says so. */
   | { action: "failed"; reply: "expired" | "wrong-code" }
   /** Nothing is sent and nothing below in the DM route reads it. */
@@ -117,35 +131,38 @@ export type PoolConfirmDecision =
   | { action: "pass" };
 
 /**
- * What one DM carrying a code does.
- *   row               the waiting sign-up its code named (null: none).
- *   hasPhone          the envelope gave a phone number (a LID alone
- *                     cannot be recorded or answered).
- *   sender            the sending number's own profile, if any.
- *   failuresToday     wrong or expired codes from this number, last 24 h.
- *   looksLikeConfirm  `looksLikePoolConfirm(text)`.
+ * What one DM carrying a pool code does. In this order:
+ *   not our message and no sign-up named   not the pool's
+ *   no phone (a LID alone)                 nothing recorded, nothing sent
+ *   his own spent code again               silent, not counted (he was
+ *                                          welcomed once; not a guess)
+ *   too many failures in 24 hours          locked, for EVERYONE, a right
+ *                                          code too
+ *   no sign-up named                       failed: wrong code (counted for
+ *                                          strangers and members alike, so
+ *                                          nobody can guess for free)
+ *   expired                                failed: expired
+ *   he has a profile already               already-signed-up (counted)
+ *   otherwise                              confirm
  */
 export function decidePoolConfirm(args: {
   row: PendingRow | null;
   hasPhone: boolean;
   sender: SenderProfile;
+  /** The code is one that once confirmed the sender's own profile. */
+  ownCode: boolean;
   failuresToday: number;
   looksLikeConfirm: boolean;
   now: Date;
 }): PoolConfirmDecision {
   const { row, sender, now } = args;
-  if (!row) {
-    if (!args.looksLikeConfirm) return { action: "pass" };
-    if (!args.hasPhone) return { action: "ignore", reason: "no-phone" };
-    // Sent his code twice, or tapped the link again: he was welcomed once.
-    if (sender && (sender.status === "active" || sender.status === "paused")) return { action: "ignore", reason: "already-in-pool" };
-    if (args.failuresToday >= POOL_CONFIRM.wrongCodesPerDay) return { action: "ignore", reason: "locked" };
-    return { action: "failed", reply: "wrong-code" };
-  }
+  if (!row && !args.looksLikeConfirm) return { action: "pass" };
   if (!args.hasPhone) return { action: "ignore", reason: "no-phone" };
+  if (!row && args.ownCode && sender) return { action: "ignore", reason: "already-in-pool" };
   if (args.failuresToday >= POOL_CONFIRM.wrongCodesPerDay) return { action: "ignore", reason: "locked" };
+  if (!row) return { action: "failed", reply: "wrong-code" };
   if (row.expiresAt && row.expiresAt.getTime() <= now.getTime()) return { action: "failed", reply: "expired" };
-  if (sender && (sender.status === "active" || sender.status === "paused")) return { action: "already-signed-up" };
+  if (sender) return { action: "already-signed-up", status: sender.status };
   return { action: "confirm" };
 }
 

@@ -9,18 +9,17 @@
  * number that sent it, and records his consent. The page never asks for a
  * phone number, so there is nothing to mistype and nothing to cold-message.
  *
- * Caps (rules.ts POOL_SIGNUP): sign-ups per requesting address per hour.
- * Housekeeping on the way: waiting sign-ups whose code expired long ago,
- * and old failed confirm attempts, are deleted.
+ * Cap (rules.ts POOL_SIGNUP): sign-up ATTEMPTS per requesting address per
+ * hour, whatever their result, counted before the area is placed, because
+ * placing a district may cost a paid geocoding call. Old waiting sign-ups
+ * and attempts are deleted by the daily housekeeping (`housekeeping.ts`).
  */
 import { db } from "../db";
-import { attemptPurgeBefore, generatePoolConfirmCode, poolCodeExpiry } from "./confirm-rules";
+import { generatePoolConfirmCode, poolCodeExpiry } from "./confirm-rules";
 import type { PoolFields } from "./profile-fields";
 import { availabilityRows, resolveArea, sportRows } from "./profile-store";
 import { POOL_SIGNUP } from "./rules";
-import type { PoolProfileSource } from "./vocab";
-
-const DAY_MS = 24 * 60 * 60 * 1000;
+import type { PoolProfileSource, PoolSignupAttemptResult } from "./vocab";
 
 export type PoolSignupResult =
   | { ok: true; code: string; earlyList: boolean }
@@ -34,17 +33,22 @@ export async function createPoolSignup(args: {
   now?: Date;
 }): Promise<PoolSignupResult> {
   const now = args.now ?? new Date();
-  await housekeeping(now);
+  const ip = args.ip;
 
-  if (args.ip) {
-    const fromIp = await db.poolProfile.count({
-      where: { signupIp: args.ip, status: "pending-verify", createdAt: { gte: new Date(now.getTime() - 3600_000) } },
+  if (ip) {
+    const fromIp = await db.poolAttempt.count({
+      where: { kind: "signup", key: ip, createdAt: { gte: new Date(now.getTime() - 3600_000) } },
     });
     if (fromIp >= POOL_SIGNUP.perIpPerHour) return { ok: false, reason: "busy" };
   }
+  const attempt = (result: PoolSignupAttemptResult) => (ip ? db.poolAttempt.create({ data: { kind: "signup", key: ip, result } }) : null);
 
   const area = await resolveArea(args.fields);
-  if (!area.ok) return { ok: false, reason: area.reason };
+  if (!area.ok) {
+    await attempt(area.reason);
+    return { ok: false, reason: area.reason };
+  }
+  await attempt("created");
 
   const source = await resolveSource(args.source);
   const f = args.fields;
@@ -99,13 +103,4 @@ async function resolveSource(s: { campaignCode: string | null; referralCode: str
     if (campaign) return { source: "campaign", sourceCode: campaign.code, referrerUserId: null };
   }
   return { source: "web", sourceCode: null, referrerUserId: null };
-}
-
-/** Waiting sign-ups whose code expired long ago go, and so do old failed
- *  confirm attempts. Until then a late message still hears "expired". */
-async function housekeeping(now: Date): Promise<void> {
-  await db.poolProfile.deleteMany({
-    where: { status: "pending-verify", confirmCodeExpiresAt: { lt: new Date(now.getTime() - POOL_SIGNUP.purgePendingAfterDays * DAY_MS) } },
-  });
-  await db.poolConfirmAttempt.deleteMany({ where: { createdAt: { lt: attemptPurgeBefore(now) } } });
 }

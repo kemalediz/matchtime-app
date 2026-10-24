@@ -17,7 +17,8 @@ import {
   poolConfirmPrefill,
   readPoolConfirmMessage,
 } from "../confirm-rules";
-import { POOL_CONFIRM, POOL_CONFIRM_CODE_ALPHABET, POOL_RETENTION } from "../rules";
+import { POOL_CONFIRM, POOL_CONFIRM_CODE_ALPHABET, POOL_CONFIRM_CODE_LENGTH, POOL_RETENTION } from "../rules";
+import { connectCodeCandidates } from "../../connect-dm-rules";
 
 const NOW = new Date("2026-10-24T12:00:00Z");
 const mins = (n: number) => new Date(NOW.getTime() - n * 60_000);
@@ -26,25 +27,36 @@ describe("the code", () => {
   it("uses the pool alphabet, which is the connect code's (one way to read both)", () => {
     expect(POOL_CONFIRM_CODE_ALPHABET).toBe(CONNECT_CODE_ALPHABET);
     let i = 0;
-    expect(generatePoolConfirmCode(() => i++ % 31)).toBe("ABCD");
-    for (let n = 0; n < 50; n++) expect(generatePoolConfirmCode()).toMatch(/^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{4}$/);
+    expect(generatePoolConfirmCode(() => i++ % 31)).toBe("ABCDE");
+    for (let n = 0; n < 50; n++) expect(generatePoolConfirmCode()).toMatch(/^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{5}$/);
   });
 
-  it("lives as long as a waiting sign-up does", () => {
-    expect(POOL_CONFIRM.codeTtlDays).toBe(POOL_RETENTION.pendingExpiryDays);
-    expect(poolCodeExpiry(NOW).getTime() - NOW.getTime()).toBe(7 * 24 * 3600_000);
+  it("is 5 characters, so it can never be read as a 4-character self-join connect code, and the other way round", () => {
+    expect(POOL_CONFIRM_CODE_LENGTH).toBe(5);
+    expect(connectCodeCandidates(poolConfirmPrefill("en", "K7QP2"))).toEqual([]);
+    expect(connectCodeCandidates(poolConfirmPrefill("tr", "K7QP2"))).toEqual([]);
+    for (const bare of ["Code 7KQ2", "code: 7KQ2", "Kod 7KQ2", "kodu 7KQ2", "kodum 7KQ2"]) {
+      expect(connectCodeCandidates(bare), bare).toEqual(["7KQ2"]);
+      expect(poolCodeCandidates(bare), bare).toEqual([]);
+      expect(readPoolConfirmMessage(bare), bare).toBeNull();
+    }
+  });
+
+  it("expires before the waiting sign-up is deleted, so a late message hears 'expired' for a while", () => {
+    expect(POOL_CONFIRM.codeTtlDays).toBeLessThan(POOL_RETENTION.pendingExpiryDays);
+    expect(poolCodeExpiry(NOW).getTime() - NOW.getTime()).toBe(POOL_CONFIRM.codeTtlDays * 24 * 3600_000);
   });
 
   it("is carried in the prefilled message in English and Turkish", () => {
-    expect(poolConfirmPrefill("en", "K7QP")).toBe("Hi MatchTime, sign me up to play. Code K7QP");
-    expect(poolConfirmPrefill("tr", "K7QP")).toBe("Merhaba MatchTime, oynamak için kaydet. Kod K7QP");
-    expect(poolCodeCandidates(poolConfirmPrefill("en", "K7QP"))).toEqual(["K7QP"]);
-    expect(poolCodeCandidates(poolConfirmPrefill("tr", "K7QP"))).toEqual(["K7QP"]);
+    expect(poolConfirmPrefill("en", "K7QP2")).toBe("Hi MatchTime, sign me up to play. Code K7QP2");
+    expect(poolConfirmPrefill("tr", "K7QP2")).toBe("Merhaba MatchTime, oynamak için kaydet. Kod K7QP2");
+    expect(poolCodeCandidates(poolConfirmPrefill("en", "K7QP2"))).toEqual(["K7QP2"]);
+    expect(poolCodeCandidates(poolConfirmPrefill("tr", "K7QP2"))).toEqual(["K7QP2"]);
   });
 
   it("is found whatever surrounds it, in any case", () => {
-    expect(poolCodeCandidates("ok here it is: code k7qp thanks")).toEqual(["K7QP"]);
-    expect(poolCodeCandidates("kodum: K7QP")).toEqual(["K7QP"]);
+    expect(poolCodeCandidates("ok here it is: code k7qp2 thanks")).toEqual(["K7QP2"]);
+    expect(poolCodeCandidates("kodum: K7QP2")).toEqual(["K7QP2"]);
   });
 
   it("is never read out of the self-join connect message, which is that handler's", () => {
@@ -60,22 +72,22 @@ describe("the code", () => {
 
 describe("does it read like our confirm message?", () => {
   it("our prefill in either language, edited only in case, spacing or punctuation", () => {
-    expect(looksLikePoolConfirm("Hi MatchTime, sign me up to play. Code K7QP")).toBe(true);
-    expect(looksLikePoolConfirm("hi matchtime sign me up to play code zzzz")).toBe(true);
-    expect(looksLikePoolConfirm("Merhaba MatchTime, oynamak için kaydet. Kod K7QP")).toBe(true);
-    expect(looksLikePoolConfirm("MERHABA MATCHTIME OYNAMAK ICIN KAYDET KOD K7QP")).toBe(true);
+    expect(looksLikePoolConfirm("Hi MatchTime, sign me up to play. Code K7QP2")).toBe(true);
+    expect(looksLikePoolConfirm("hi matchtime sign me up to play code zzzzz")).toBe(true);
+    expect(looksLikePoolConfirm("Merhaba MatchTime, oynamak için kaydet. Kod K7QP2")).toBe(true);
+    expect(looksLikePoolConfirm("MERHABA MATCHTIME OYNAMAK ICIN KAYDET KOD K7QP2")).toBe(true);
   });
 
   it("says which language it is in", () => {
-    expect(readPoolConfirmMessage("Hi MatchTime, sign me up to play. Code K7QP")).toEqual({ lang: "en" });
-    expect(readPoolConfirmMessage("Merhaba MatchTime, oynamak için kaydet. Kod K7QP")).toEqual({ lang: "tr" });
-    expect(readPoolConfirmMessage("kod K7QP")).toEqual({ lang: "tr" });
+    expect(readPoolConfirmMessage("Hi MatchTime, sign me up to play. Code K7QP2")).toEqual({ lang: "en" });
+    expect(readPoolConfirmMessage("Merhaba MatchTime, oynamak için kaydet. Kod K7QP2")).toEqual({ lang: "tr" });
+    expect(readPoolConfirmMessage("kod K7QP2")).toEqual({ lang: "tr" });
     expect(readPoolConfirmMessage("can I play")).toBeNull();
   });
 
   it("the code phrase alone", () => {
-    expect(looksLikePoolConfirm("Code K7QP")).toBe(true);
-    expect(looksLikePoolConfirm("kod: K7QP")).toBe(true);
+    expect(looksLikePoolConfirm("Code K7QP2")).toBe(true);
+    expect(looksLikePoolConfirm("kod: K7QP2")).toBe(true);
   });
 
   it("not chat that happens to contain a code-shaped word", () => {
@@ -87,42 +99,42 @@ describe("does it read like our confirm message?", () => {
 });
 
 describe("what a DM with a code does", () => {
-  const base = { hasPhone: true, sender: null, failuresToday: 0, looksLikeConfirm: true, now: NOW };
+  const base = { hasPhone: true, sender: null, ownCode: false, failuresToday: 0, looksLikeConfirm: true, now: NOW };
   const live = { expiresAt: new Date(NOW.getTime() + 3600_000) };
 
-  it("a live code from a new number confirms", () => {
+  it("a live code from a number with no profile confirms (the first number to send it verifies)", () => {
     expect(decidePoolConfirm({ ...base, row: live })).toEqual({ action: "confirm" });
   });
 
-  it("a live code from someone whose profile is stopped confirms too (a fresh consent)", () => {
-    expect(decidePoolConfirm({ ...base, row: live, sender: { status: "stopped" } })).toEqual({ action: "confirm" });
-  });
-
-  it("a live code from someone already in the pool keeps his profile and tells him how to change it", () => {
-    expect(decidePoolConfirm({ ...base, row: live, sender: { status: "active" } })).toEqual({ action: "already-signed-up" });
-    expect(decidePoolConfirm({ ...base, row: live, sender: { status: "paused" } })).toEqual({ action: "already-signed-up" });
+  it("a live code from a number that already has a profile, of ANY status, never attaches it: a clear message, and it counts", () => {
+    for (const status of ["active", "paused", "stopped"] as const) {
+      expect(decidePoolConfirm({ ...base, row: live, sender: { status } })).toEqual({ action: "already-signed-up", status });
+    }
   });
 
   it("an expired code fails with the expired reply", () => {
     expect(decidePoolConfirm({ ...base, row: { expiresAt: NOW } })).toEqual({ action: "failed", reply: "expired" });
   });
 
-  it("an unknown code in our message fails with the wrong-code reply", () => {
+  it("an unknown code in our message fails with the wrong-code reply, for strangers AND for people in the pool", () => {
     expect(decidePoolConfirm({ ...base, row: null })).toEqual({ action: "failed", reply: "wrong-code" });
+    expect(decidePoolConfirm({ ...base, row: null, sender: { status: "active" } })).toEqual({ action: "failed", reply: "wrong-code" });
   });
 
   it("an unknown code in other words is not the pool's", () => {
     expect(decidePoolConfirm({ ...base, row: null, looksLikeConfirm: false })).toEqual({ action: "pass" });
   });
 
-  it("an already-confirmed person sending his message again is welcomed once, never told it failed", () => {
-    expect(decidePoolConfirm({ ...base, row: null, sender: { status: "active" } })).toEqual({ action: "ignore", reason: "already-in-pool" });
+  it("his OWN spent code again (he sent his message twice) is silent and not counted: he was welcomed once", () => {
+    expect(decidePoolConfirm({ ...base, row: null, sender: { status: "active" }, ownCode: true })).toEqual({ action: "ignore", reason: "already-in-pool" });
   });
 
-  it("a number that guessed too many codes today has every code ignored, a right one too", () => {
+  it("the lock comes first, for everybody: strangers, members, a right code, a wrong one", () => {
     const locked = { ...base, failuresToday: POOL_CONFIRM.wrongCodesPerDay };
     expect(decidePoolConfirm({ ...locked, row: live })).toEqual({ action: "ignore", reason: "locked" });
     expect(decidePoolConfirm({ ...locked, row: null })).toEqual({ action: "ignore", reason: "locked" });
+    expect(decidePoolConfirm({ ...locked, row: null, sender: { status: "active" } })).toEqual({ action: "ignore", reason: "locked" });
+    expect(decidePoolConfirm({ ...locked, row: live, sender: { status: "stopped" } })).toEqual({ action: "ignore", reason: "locked" });
     expect(decidePoolConfirm({ ...base, failuresToday: POOL_CONFIRM.wrongCodesPerDay - 1, row: live })).toEqual({ action: "confirm" });
   });
 

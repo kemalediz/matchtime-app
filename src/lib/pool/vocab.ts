@@ -41,9 +41,23 @@ export type PoolConsentChannel = (typeof POOL_CONSENT_CHANNELS)[number];
 export const POOL_PROFILE_SOURCES = ["web", "profile", "referral", "campaign"] as const;
 export type PoolProfileSource = (typeof POOL_PROFILE_SOURCES)[number];
 
-/** A /play code that did not work (`PoolConfirmAttempt.result`, slice L2). */
-export const POOL_CONFIRM_ATTEMPT_RESULTS = ["wrong", "expired"] as const;
+/** `PoolAttempt.kind` (slice L2): a WhatsApp confirm code that did not
+ *  work, keyed by the sending number; or a /play sign-up attempt, keyed by
+ *  the requesting address. Read only to rate-limit. */
+export const POOL_ATTEMPT_KINDS = ["confirm", "signup"] as const;
+export type PoolAttemptKind = (typeof POOL_ATTEMPT_KINDS)[number];
+/** A confirm code that did not work: named no sign-up, had expired, or was
+ *  sent by a number that already has a profile (never attached). */
+export const POOL_CONFIRM_ATTEMPT_RESULTS = ["wrong", "expired", "has-profile"] as const;
 export type PoolConfirmAttemptResult = (typeof POOL_CONFIRM_ATTEMPT_RESULTS)[number];
+/** A sign-up attempt that got as far as placing the area. */
+export const POOL_SIGNUP_ATTEMPT_RESULTS = ["created", "area-not-found", "venues-unknown"] as const;
+export type PoolSignupAttemptResult = (typeof POOL_SIGNUP_ATTEMPT_RESULTS)[number];
+
+/** `PoolConsentRecord.action`: an agreement given, or withdrawn (stop, or
+ *  delete). Append-only; kept POOL_RETENTION.consentRecordYears. */
+export const POOL_CONSENT_ACTIONS = ["consent", "withdraw"] as const;
+export type PoolConsentAction = (typeof POOL_CONSENT_ACTIONS)[number];
 
 // ── PoolAsk / PoolOffer ────────────────────────────────────────────────
 

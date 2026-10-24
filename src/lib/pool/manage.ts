@@ -12,10 +12,13 @@
  *                        pool sign-up (`canEraseUser`, plan 3.3)
  *
  * Every write stamps `lastActiveAt` (a visit to the manage page is activity
- * for the 12-month rule, plan 3.3).
+ * for the 12-month rule, plan 3.3). Stop, start again and delete each add a
+ * row to the append-only consent record (`consent-record.ts`), in the same
+ * transaction as the change.
  */
 import { db } from "../db";
 import { normaliseLang, type Lang } from "../i18n/lang";
+import { recordPoolConsent } from "./consent-record";
 import { canEraseUser, manageTransition, type ManageAction, type ManageRefusal } from "./manage-rules";
 import type { PoolFields } from "./profile-fields";
 import { availabilityRows, loadPoolVenues, resolveArea, sportRows, type PoolVenueOption } from "./profile-store";
@@ -129,18 +132,26 @@ export async function applyManageAction(
   const now = opts.now ?? new Date();
   const p = await db.poolProfile.findUnique({ where: { userId }, select: { id: true, status: true, pausedReason: true } });
   if (!p || p.status === "pending-verify") return { ok: false, reason: "no-profile" };
+  // What proves it: the signed-in person, and when.
+  const evidence = `web:${userId}:${now.getTime()}`;
   const t = manageTransition({
     action,
     profile: { status: p.status as PoolProfileStatus, pausedReason: p.pausedReason as PoolPauseReason | null },
     now,
     consent: opts.consent,
-    // A consent given on the page: the signed-in person, and when.
-    evidence: `web:${userId}:${now.getTime()}`,
+    evidence,
   });
   if (!t.ok) return t;
-  // Compare-and-set on the state the rule read, so two taps cannot cross.
-  const { count } = await db.poolProfile.updateMany({ where: { id: p.id, status: p.status }, data: t.patch });
-  return count === 1 ? { ok: true } : { ok: false, reason: "no-profile" };
+  return db.$transaction(async (tx) => {
+    // Compare-and-set on the state the rule read, so two taps cannot cross.
+    const { count } = await tx.poolProfile.updateMany({ where: { id: p.id, status: p.status }, data: t.patch });
+    if (count !== 1) return { ok: false as const, reason: "no-profile" as const };
+    if (action === "stop") await recordPoolConsent(tx, { userId, action: "withdraw", channel: "web", evidence: `${evidence}:stop`, at: now });
+    if (action === "restart") {
+      await recordPoolConsent(tx, { userId, action: "consent", channel: "web", evidence, version: t.patch.consentVersion ?? null, at: now });
+    }
+    return { ok: true as const };
+  });
 }
 
 export async function setShowRecognition(userId: string, show: boolean, now: Date = new Date()): Promise<PoolManageResult> {
@@ -153,14 +164,17 @@ export async function setShowRecognition(userId: string, show: boolean, now: Dat
 
 /**
  * Erase his pool profile (its sports and hours cascade). His User row goes
- * too only when he has no club and no history (`canEraseUser`). The offer,
- * block and consent records the policy keeps after a deletion carry no
- * foreign key and stay (decision log #14, L0.3).
+ * too only when he has no club and no history (`canEraseUser`). A
+ * withdrawal is added to the consent record first: the consent record
+ * (`PoolConsentRecord`), like the offer and block records, carries no
+ * foreign key and stays for as long as the privacy policy says (decision
+ * log #14, L0.3), however the profile and the User go.
  */
-export async function deletePoolProfile(userId: string): Promise<{ ok: true; userErased: boolean } | { ok: false; reason: "no-profile" }> {
+export async function deletePoolProfile(userId: string, now: Date = new Date()): Promise<{ ok: true; userErased: boolean } | { ok: false; reason: "no-profile" }> {
   return db.$transaction(async (tx) => {
     const { count } = await tx.poolProfile.deleteMany({ where: { userId } });
     if (count === 0) return { ok: false as const, reason: "no-profile" as const };
+    await recordPoolConsent(tx, { userId, action: "withdraw", channel: "web", evidence: `web:${userId}:${now.getTime()}:delete`, at: now });
     const user = await tx.user.findUnique({
       where: { id: userId },
       select: { isSuperadmin: true, _count: { select: { memberships: true, attendances: true, guestPlaces: true } } },

@@ -11,7 +11,7 @@
  *   const fnf = await pool.club("fnf", { hq: true });
  *   const ali = await pool.stranger("ali", { name: "Ali Kaya" });
  *
- *   const ex = await ali.dm("Hi MatchTime, sign me up to play. Code K7QP");
+ *   const ex = await ali.dm("Hi MatchTime, sign me up to play. Code K7QP2");
  *   pool.expectSent(ex.sent, [{ to: "ali", purpose: "pool-welcome", text: /signed up/ }]);
  *   pool.expectNoLeaks(fnf.secrets(), { to: ["ali"] });
  *   expect(await pool.profileOf(ali)).toMatchObject({ status: "active" });
@@ -242,6 +242,7 @@ export class PoolWorld {
   private readonly events: TranscriptEvent[] = [];
   private readonly all: SentMessage[] = [];
   private startedAt = new Date();
+  private visitors = Math.floor(Math.random() * 250);
 
   constructor(request: APIRequestContext, db: TestDb, live: boolean) {
     this.request = request;
@@ -397,11 +398,14 @@ export class PoolWorld {
    * asks for one. `poolOpen` sets the pool's open/closed test seam (the
    * default, like production today, is closed: the early sign-up list).
    */
-  async signUp(body: Partial<SignUpBody> = {}, opts: { poolOpen?: boolean } = {}): Promise<SignUpAnswer> {
+  async signUp(body: Partial<SignUpBody> = {}, opts: { poolOpen?: boolean; ip?: string } = {}): Promise<SignUpAnswer> {
     const data = { ...DEFAULT_SIGNUP, ...body };
     this.note(`(someone fills in /play: ${data.name}, ${data.language}${opts.poolOpen ? ", pool open" : ""})`);
+    // Each visitor has his own address unless the scenario says otherwise
+    // (the per-address cap is a scenario of its own).
+    const ip = opts.ip ?? `198.51.100.${(this.visitors = (this.visitors % 250) + 1)}`;
     const res = await this.request.post("/api/play/signup", {
-      headers: opts.poolOpen === undefined ? {} : { "x-mt-test-pool-open": opts.poolOpen ? "1" : "0" },
+      headers: { "x-forwarded-for": ip, ...(opts.poolOpen === undefined ? {} : { "x-mt-test-pool-open": opts.poolOpen ? "1" : "0" }) },
       data,
     });
     const json = (await res.json()) as Omit<SignUpAnswer, "status" | "sent">;
@@ -415,7 +419,12 @@ export class PoolWorld {
 
   /** How many /play codes from this person's number did not work. */
   failedAttempts(p: PoolPerson): Promise<number> {
-    return this.db.count(`SELECT count(*) FROM "PoolConfirmAttempt" WHERE phone = $1`, [p.phone.replace(/^\+/, "")]);
+    return this.db.count(`SELECT count(*) FROM "PoolAttempt" WHERE kind = 'confirm' AND key = $1`, [p.phone.replace(/^\+/, "")]);
+  }
+
+  /** The append-only consent record for a user id, oldest first. */
+  consentRecords(userId: string): Promise<Array<{ action: string; channel: string }>> {
+    return this.db.all(`SELECT action, channel FROM "PoolConsentRecord" WHERE "userId" = $1 ORDER BY "createdAt", id`, [userId]);
   }
 
   // ── Assertions ───────────────────────────────────────────────────────
@@ -460,7 +469,7 @@ export class PoolWorld {
   /** Rows in the pool's tables, for "nothing was written" checks. */
   async poolRowCounts(): Promise<Record<string, number>> {
     const out: Record<string, number> = {};
-    for (const t of ["PoolProfile", "PoolAsk", "PoolOffer", "PoolBlock", "GuestPlace", "ClubInvitation", "PoolConfirmAttempt"]) {
+    for (const t of ["PoolProfile", "PoolAsk", "PoolOffer", "PoolBlock", "GuestPlace", "ClubInvitation", "PoolAttempt", "PoolConsentRecord"]) {
       out[t] = await this.db.count(`SELECT count(*) FROM "${t}"`);
     }
     return out;

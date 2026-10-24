@@ -5719,11 +5719,13 @@ export const en = {
   // that message (src/lib/pool/copy.ts passes the limits from rules.ts).
   pool_confirm_prefill: (p: { code: string }): string => `Hi MatchTime, sign me up to play. Code ${p.code}`,
   pool_dm_welcome: (p: { name: string | null; perWeek: number; quietFrom: string; quietTo: string; manageLink: string; privacyLink: string }): string =>
-    `✅ ${p.name ? `Thanks ${p.name}, you're` : "You're"} in the MatchTime player pool. When a club near you needs a player at a time you can play, I'll message you here with the game, and you decide. At most ${p.perWeek} a week, and never between ${p.quietFrom} and ${p.quietTo}.\n\nPause, change your details or delete them any time: ${p.manageLink}\nPrivacy: ${p.privacyLink}`,
+    `✅ ${p.name ? `Thanks ${p.name}, you're` : "You're"} in the MatchTime player pool. When a club near you needs a player at a time you can play, I'll message you here with the game, and you decide. At most ${p.perWeek} a week, and never between ${p.quietFrom} and ${p.quietTo}.\n\nStay safe: play at public venues, and tell us here about any problem.\n\nPause, change your details or delete them any time: ${p.manageLink}\nPrivacy: ${p.privacyLink}`,
   pool_dm_welcome_early: (p: { name: string | null; perWeek: number; quietFrom: string; quietTo: string; manageLink: string; privacyLink: string }): string =>
-    `✅ ${p.name ? `Thanks ${p.name}, you're` : "You're"} on the early sign-up list for the MatchTime player pool. The pool is not open near you yet, so I won't message you about games until it is. Then it's at most ${p.perWeek} a week, and never between ${p.quietFrom} and ${p.quietTo}.\n\nChange your details or delete them any time: ${p.manageLink}\nPrivacy: ${p.privacyLink}`,
+    `✅ ${p.name ? `Thanks ${p.name}, you're` : "You're"} on the early sign-up list for the MatchTime player pool. The pool is not open near you yet, so I won't message you about games until it is. Then it's at most ${p.perWeek} a week, and never between ${p.quietFrom} and ${p.quietTo}.\n\nStay safe: play at public venues, and tell us here about any problem.\n\nChange your details or delete them any time: ${p.manageLink}\nPrivacy: ${p.privacyLink}`,
   pool_dm_already: (p: { manageLink: string }): string =>
     `You're already in the MatchTime player pool. To change your details, pause or stop: ${p.manageLink}`,
+  pool_dm_already_stopped: (p: { manageLink: string }): string =>
+    `You already have a MatchTime player pool profile, and you stopped game messages. To start them again or change your details, use your link: ${p.manageLink}`,
   pool_dm_code_expired: (p: { playLink: string }): string =>
     `That sign-up code has expired. Please sign up again here and send the new message: ${p.playLink}`,
   pool_dm_code_wrong: (p: { playLink: string }): string =>

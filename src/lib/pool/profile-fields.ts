@@ -48,7 +48,10 @@ export type PoolFieldErrors = Partial<{
 export type PoolFieldsResult = { ok: true; value: PoolFields } | { ok: false; errors: PoolFieldErrors };
 
 const PHONE_LIKE = /\d[\d\s()+-]{6,}\d/;
-const LINK_LIKE = /https?:|www\.|\.[a-z]{2,}\//i;
+/** A link with or without a scheme or slash: "evil.com", "bit.ly", "t.me",
+ *  an email. The part after the dot is lower case, so an initial or a name
+ *  written "St.John" is not one. */
+const LINK_LIKE = /https?:|www\.|@|[A-Za-z0-9-]+\.[a-z]{2,}\b/;
 
 /** The name as typed, tidied; null when empty, too long, or not a name. */
 export function normaliseDisplayName(v: unknown): string | null {

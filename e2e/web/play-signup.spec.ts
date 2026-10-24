@@ -124,7 +124,7 @@ test.describe("English visitor", () => {
 
     await expect(page.getByRole("heading", { level: 1, name: EN.signup.confirmHeading })).toBeVisible();
     const code = (await page.getByTestId("pool-code").innerText()).trim();
-    expect(code).toMatch(/^[A-Z2-9]{4}$/);
+    expect(code).toMatch(/^[A-Z2-9]{5}$/);
     const prefill = `Hi MatchTime, sign me up to play. Code ${code}`;
     await expect(page.getByTestId("pool-prefill")).toHaveText(prefill);
     await expect(page.getByRole("link", { name: EN.signup.openWhatsApp })).toHaveAttribute(
@@ -202,7 +202,7 @@ test.describe("Turkish visitor", () => {
     await page.getByRole("checkbox", { name: TR.signup.consentLabel }).check();
     await page.getByRole("button", { name: TR.signup.submit }).click();
     await expect(page.getByRole("heading", { level: 1, name: TR.signup.confirmHeading })).toBeVisible();
-    await expect(page.getByTestId("pool-prefill")).toHaveText(/^Merhaba MatchTime, oynamak için kaydet\. Kod [A-Z2-9]{4}$/);
+    await expect(page.getByTestId("pool-prefill")).toHaveText(/^Merhaba MatchTime, oynamak için kaydet\. Kod [A-Z2-9]{5}$/);
     expect(await overflow(page)).toBeLessThanOrEqual(0);
   });
 });

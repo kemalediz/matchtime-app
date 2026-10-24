@@ -9,23 +9,27 @@
  * are not our confirm message ("what's the code then?"). Otherwise the DM
  * is this handler's, whatever it decides, and nothing below reads it.
  *
- * Confirming, in ONE transaction with a compare-and-set on the waiting row:
- *   - the User is found by the number that sent it, or created (a member
- *     who signs up keeps his one identity); the number that reached us is
- *     the one recorded, whoever's code it was (plan 3.1, point 4);
- *   - a stopped profile of his is replaced by the new sign-up (a fresh
- *     consent; deleting a profile already removed it);
- *   - the profile turns "active", consent is recorded: the policy version,
- *     the time, channel "whatsapp", and this message's id as the evidence;
- *     the code and the sign-up address are cleared.
- * Then ONE welcome DM, on the platform channel, to that number only (refId
- * `pool-welcome:<profile>`, so a resent message cannot welcome him twice).
+ * A CODE BELONGS TO THE SIGN-UP THAT MADE IT; the first number with no
+ * profile of its own to send it verifies it (plan 3.1, point 4: the number
+ * that reached us is the one recorded). A number that already has a
+ * profile, of any status, never gets another sign-up attached: he is told
+ * how to manage his own, and the attempt counts against him.
  *
- * A code that did not work (wrong, expired) is recorded against the number,
- * not the code, and answered at most `codeReplyAllowed` allows: a flood of
- * codes costs one reply, and a number that guessed too many has every code
- * ignored for 24 hours (rules.ts POOL_CONFIRM). A reply never carries a
- * code. MatchTime only ever answers a number that has just written to it.
+ * Confirming, in ONE transaction with a compare-and-set on the waiting row:
+ * the User is found by the number, or created (a member keeps his one
+ * identity; two first messages at once from a new number resolve to one
+ * User); the profile turns "active" with its consent (policy version, time,
+ * channel "whatsapp", this message's id); the code and the sign-up address
+ * are cleared; and the append-only consent record gets its row
+ * (`consent-record.ts`). Then ONE welcome DM to that number only.
+ *
+ * Every failure (wrong code, expired, a number that has a profile) is
+ * recorded against the NUMBER, for strangers and members alike, and the
+ * lock (too many in 24 hours) comes first for everyone: nobody can guess
+ * codes for free (rules.ts POOL_CONFIRM). The "that code did not work"
+ * reply goes at most so often, decided and queued under a per-number lock
+ * so two at once cannot both pass. A reply never carries a code. MatchTime
+ * only ever answers a number that has just written to it.
  */
 import { db } from "../db";
 import { normaliseLang } from "../i18n/lang";
@@ -38,10 +42,12 @@ import {
   readPoolConfirmMessage,
   type SenderProfile,
 } from "./confirm-rules";
+import { recordPoolConsent } from "./consent-record";
 import { poolAlreadyText, poolCodeReplyText, poolWelcomeText } from "./copy";
 import { isPoolSignupPaused } from "./flags";
 import { buildPoolManageLink } from "./links";
 import { POOL_CONSENT_VERSION } from "./rules";
+import type { PoolConfirmAttemptResult } from "./vocab";
 
 export interface PoolConfirmInput {
   text: string;
@@ -58,6 +64,8 @@ export interface PoolConfirmOutcome {
   replied: boolean;
 }
 
+type Tx = Parameters<Parameters<typeof db.$transaction>[0]>[0];
+
 export async function handlePoolConfirmDm(input: PoolConfirmInput): Promise<PoolConfirmOutcome | null> {
   if (isPoolSignupPaused()) return null;
   const candidates = poolCodeCandidates(input.text);
@@ -69,27 +77,33 @@ export async function handlePoolConfirmDm(input: PoolConfirmInput): Promise<Pool
   };
 
   // The same WhatsApp message forwarded twice (a Pi retry, a restart replay).
-  if (await db.poolProfile.findFirst({ where: { consentEvidence: input.waMessageId }, select: { id: true } })) {
+  if (await db.poolConsentRecord.findFirst({ where: { evidence: input.waMessageId }, select: { id: true } })) {
     return out("duplicate");
   }
 
   const rows = await db.poolProfile.findMany({
     where: { status: "pending-verify", confirmCode: { in: candidates } },
-    select: { id: true, confirmCode: true, confirmCodeExpiresAt: true },
+    select: { id: true, confirmCode: true, confirmCodeExpiresAt: true, language: true },
   });
   const row = candidates.map((c) => rows.find((r) => r.confirmCode === c)).find(Boolean) ?? null;
 
   const phone = senderPhone(input);
   const sender = phone
-    ? await db.user.findUnique({ where: { phoneNumber: `+${phone}` }, select: { id: true, poolProfile: { select: { id: true, status: true, language: true } } } })
+    ? await db.user.findUnique({ where: { phoneNumber: `+${phone}` }, select: { id: true, poolProfile: { select: { status: true, language: true } } } })
     : null;
-  const failuresToday = phone ? await db.poolConfirmAttempt.count({ where: { phone, createdAt: { gte: confirmWindowStart(now) } } }) : 0;
+  const senderProfile = sender?.poolProfile && sender.poolProfile.status !== "pending-verify" ? sender.poolProfile : null;
+  const ownCode =
+    !!sender && (await db.poolConsentRecord.count({ where: { userId: sender.id, action: "consent", code: { in: candidates } } })) > 0;
+  const failuresToday = phone
+    ? await db.poolAttempt.count({ where: { kind: "confirm", key: phone, createdAt: { gte: confirmWindowStart(now) } } })
+    : 0;
 
   const message = readPoolConfirmMessage(input.text);
   const decision = decidePoolConfirm({
     row: row ? { expiresAt: row.confirmCodeExpiresAt } : null,
     hasPhone: phone !== null,
-    sender: (sender?.poolProfile ? { status: sender.poolProfile.status } : null) as SenderProfile,
+    sender: (senderProfile ? { status: senderProfile.status } : null) as SenderProfile,
+    ownCode,
     failuresToday,
     looksLikeConfirm: message !== null,
     now,
@@ -101,21 +115,21 @@ export async function handlePoolConfirmDm(input: PoolConfirmInput): Promise<Pool
     case "ignore":
       return out(decision.reason);
     case "failed": {
-      await db.poolConfirmAttempt.create({ data: { phone: phone!, result: decision.reply === "expired" ? "expired" : "wrong" } });
+      await recordFailure(phone!, decision.reply === "expired" ? "expired" : "wrong");
       // His profile's language, else the sign-up's, else the message's own.
-      const lang = normaliseLang(sender?.poolProfile?.language ?? (row ? await rowLanguage(row.id) : null) ?? message?.lang ?? null);
-      return out(decision.reply, await replyIfAllowed(phone!, decision.reply, lang, now));
+      const lang = normaliseLang(senderProfile?.language ?? row?.language ?? message?.lang ?? null);
+      return out(decision.reply, await replyIfAllowed(phone!, poolCodeReplyText(decision.reply, lang), now));
     }
     case "already-signed-up": {
-      const lang = normaliseLang(sender!.poolProfile!.language);
-      const text = poolAlreadyText(lang, await buildPoolManageLink(sender!.id));
-      return out("already-signed-up", await queueOnce(phone!, text, "pool-welcome", `pool-already:${row!.id}`));
+      await recordFailure(phone!, "has-profile");
+      const text = poolAlreadyText(normaliseLang(senderProfile!.language), decision.status, await buildPoolManageLink(sender!.id));
+      return out("already-signed-up", await replyIfAllowed(phone!, text, now));
     }
     case "confirm":
       break;
   }
 
-  const confirmed = await confirm(row!.id, phone!, sender?.id ?? null, input.waMessageId, now);
+  const confirmed = await confirmOnce(row!.id, row!.confirmCode!, phone!, input.waMessageId, now);
   if (!confirmed) return out("race-lost");
   const text = poolWelcomeText(normaliseLang(confirmed.language), {
     displayName: confirmed.displayName,
@@ -134,39 +148,53 @@ function senderPhone(input: PoolConfirmInput): string | null {
   return null;
 }
 
-async function rowLanguage(id: string): Promise<string | null> {
-  return (await db.poolProfile.findUnique({ where: { id }, select: { language: true } }))?.language ?? null;
+function recordFailure(phone: string, result: PoolConfirmAttemptResult) {
+  return db.poolAttempt.create({ data: { kind: "confirm", key: phone, result } });
+}
+
+const isUniqueViolation = (err: unknown) => (err as { code?: string } | null)?.code === "P2002";
+
+/** `confirm`, once more if a first message from a new number lost the race
+ *  to create its User (the other one made it: use his). */
+async function confirmOnce(profileId: string, code: string, phone: string, waMessageId: string, now: Date) {
+  try {
+    return await confirm(profileId, code, phone, waMessageId, now);
+  } catch (err) {
+    if (!isUniqueViolation(err)) throw err;
+    try {
+      return await confirm(profileId, code, phone, waMessageId, now);
+    } catch (again) {
+      if (isUniqueViolation(again)) return null;
+      throw again;
+    }
+  }
 }
 
 /** Make the waiting sign-up live for this number. Null when another
- *  message confirmed it first. */
-async function confirm(profileId: string, phone: string, knownUserId: string | null, waMessageId: string, now: Date) {
-  return db.$transaction(async (tx) => {
+ *  message confirmed it first, or the number got a profile meanwhile. */
+async function confirm(profileId: string, code: string, phone: string, waMessageId: string, now: Date) {
+  return db.$transaction(async (tx: Tx) => {
     const row = await tx.poolProfile.findUnique({ where: { id: profileId }, select: { status: true, displayName: true } });
     if (row?.status !== "pending-verify") return null;
 
-    let userId = knownUserId;
-    if (!userId) {
-      const user = await tx.user.upsert({
-        where: { phoneNumber: `+${phone}` },
-        update: {},
-        create: {
-          name: row.displayName,
-          phoneNumber: `+${phone}`,
-          email: `pool+${phone}-${now.getTime().toString(36)}@matchtime.local`,
-          // His own WhatsApp message verified the number: a complete
-          // handshake, as a phone sign-up is (phone-signup.ts).
-          onboarded: true,
-          isActive: true,
-        },
-        select: { id: true },
-      });
-      userId = user.id;
-    }
-    // A stopped profile of his gives way to the new sign-up. An active or
-    // paused one never reaches here (decidePoolConfirm), and a race that
-    // made one meanwhile fails the unique userId and rolls back.
-    await tx.poolProfile.deleteMany({ where: { userId, status: "stopped" } });
+    const existing = await tx.user.findUnique({ where: { phoneNumber: `+${phone}` }, select: { id: true, poolProfile: { select: { id: true } } } });
+    if (existing?.poolProfile) return null;
+    const userId =
+      existing?.id ??
+      (
+        await tx.user.create({
+          data: {
+            name: row.displayName,
+            phoneNumber: `+${phone}`,
+            email: `pool+${phone}-${now.getTime().toString(36)}@matchtime.local`,
+            // His own WhatsApp message verified the number: a complete
+            // handshake, as a phone sign-up is (phone-signup.ts).
+            onboarded: true,
+            isActive: true,
+          },
+          select: { id: true },
+        })
+      ).id;
 
     const { count } = await tx.poolProfile.updateMany({
       where: { id: profileId, status: "pending-verify" },
@@ -184,6 +212,7 @@ async function confirm(profileId: string, phone: string, knownUserId: string | n
       },
     });
     if (count !== 1) return null;
+    await recordPoolConsent(tx, { userId, action: "consent", channel: "whatsapp", evidence: waMessageId, version: POOL_CONSENT_VERSION, phone, code, at: now });
     return tx.poolProfile.findUniqueOrThrow({
       where: { id: profileId },
       select: { id: true, userId: true, displayName: true, language: true, earlyList: true },
@@ -191,26 +220,36 @@ async function confirm(profileId: string, phone: string, knownUserId: string | n
   });
 }
 
-/** The "that code did not work" reply, when the rate limit allows it. */
-async function replyIfAllowed(phone: string, kind: "expired" | "wrong-code", lang: ReturnType<typeof normaliseLang>, now: Date): Promise<boolean> {
-  const earlier = await db.platformJob.findMany({
-    where: { purpose: "pool-code-reply", phone, createdAt: { gte: confirmWindowStart(now) } },
-    select: { createdAt: true },
+/**
+ * A reply to a code that did not work (or to a number that already has a
+ * profile), when the per-number rate limit allows it. Decided and queued
+ * under one lock per number, so two messages at once cannot both pass.
+ */
+async function replyIfAllowed(phone: string, text: string, now: Date): Promise<boolean> {
+  return db.$transaction(async (tx: Tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`pool-code-reply:${phone}`}))`;
+    const earlier = await tx.platformJob.findMany({
+      where: { purpose: "pool-code-reply", phone, createdAt: { gte: confirmWindowStart(now) } },
+      select: { createdAt: true },
+    });
+    if (!codeReplyAllowed(earlier.map((j) => j.createdAt), now)) return false;
+    return queue(phone, text, "pool-code-reply", `pool-code:${phone}`, tx);
   });
-  if (!codeReplyAllowed(earlier.map((j) => j.createdAt), now)) return false;
-  return queue(phone, poolCodeReplyText(kind, lang), "pool-code-reply", `pool-code:${phone}:${now.getTime()}`);
 }
 
-/** Queue a DM unless one with this refId exists already. */
+/** Queue a DM unless one with this refId exists, under a lock on the refId. */
 async function queueOnce(phone: string, text: string, purpose: PlatformDmPurpose, refId: string): Promise<boolean> {
-  if (await db.platformJob.findFirst({ where: { purpose, refId }, select: { id: true } })) return false;
-  return queue(phone, text, purpose, refId);
+  return db.$transaction(async (tx: Tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${refId}))`;
+    if (await tx.platformJob.findFirst({ where: { purpose, refId }, select: { id: true } })) return false;
+    return queue(phone, text, purpose, refId, tx);
+  });
 }
 
 /** False, and logged, when the platform channel refuses it; never thrown at the DM route. */
-async function queue(phone: string, text: string, purpose: PlatformDmPurpose, refId: string): Promise<boolean> {
+async function queue(phone: string, text: string, purpose: PlatformDmPurpose, refId: string, tx: Tx): Promise<boolean> {
   try {
-    await queuePlatformDm({ phone, text, purpose, refId });
+    await queuePlatformDm({ phone, text, purpose, refId, client: tx as never });
     return true;
   } catch (err) {
     if (err instanceof PlatformDmRefused) {
@@ -220,3 +259,4 @@ async function queue(phone: string, text: string, purpose: PlatformDmPurpose, re
     throw err;
   }
 }
+

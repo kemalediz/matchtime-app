@@ -111,6 +111,16 @@ describe("normaliseDisplayName", () => {
     expect(normaliseDisplayName("07700 900123")).toBeNull();
     expect(normaliseDisplayName("https://spam.example")).toBeNull();
   });
+
+  it("refuses a link with no slash or scheme (a domain-like word)", () => {
+    for (const n of ["Visit evil.com", "bit.ly abc", "join t.me x", "wa.me/447700", "ali@mail.co", "Ali 0770 090", "+44 7700 900123"]) {
+      expect(normaliseDisplayName(n), n).toBeNull();
+    }
+  });
+
+  it("keeps names with initials and dots that are not links", () => {
+    for (const n of ["A.J. Smith", "Ali K.", "St.John Baker", "Jean-Luc O'Neill"]) expect(normaliseDisplayName(n), n).toBe(n);
+  });
 });
 
 describe("readSignupSource: where the visitor came from, off the URL", () => {

@@ -28,6 +28,7 @@ scenarios("signing up on /play and confirming on WhatsApp", () => {
 
     expect(ex.json).toMatchObject({ ok: true, handled: "pool-confirm", result: "confirmed", replied: true });
     pool.expectSent(ex.sent, [{ to: "ali", channel: "dm", purpose: "pool-welcome", text: /^✅ Thanks Ali, you're on the early sign-up list for the MatchTime player pool/ }]);
+    expect(ex.sent[0].text).toContain("Stay safe: play at public venues, and tell us here about any problem.");
     expect(ex.sent[0].text).toMatch(/\/r\/[A-Za-z0-9]+/);
     expect(ex.sent[0].text).toMatch(/\/privacy$/);
     const profile = await pool.profileOf(ali);
@@ -42,7 +43,11 @@ scenarios("signing up on /play and confirming on WhatsApp", () => {
     });
     expect(profile!.consentAt).toBeTruthy();
     expect(profile!.adultConfirmedAt).toBeTruthy();
-    expect(await pool.userOf(ali)).toMatchObject({ name: "Ali Kaya" });
+    const user = await pool.userOf(ali);
+    expect(user).toMatchObject({ name: "Ali Kaya" });
+    expect(await pool.db.all(`SELECT action, channel, version, evidence, code, phone FROM "PoolConsentRecord" WHERE "userId" = $1`, [user!.id])).toEqual([
+      { action: "consent", channel: "whatsapp", version: PRIVACY_POLICY_VERSION, evidence: ex.messageId, code: form.code, phone: ali.phone.slice(1) },
+    ]);
     pool.expectNoLeaks(fnf.secrets(), { to: ["ali"] });
   });
 

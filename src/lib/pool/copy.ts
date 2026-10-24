@@ -29,9 +29,10 @@ export function poolWelcomeText(lang: Lang, p: { displayName: string; earlyList:
   return p.earlyList ? s.pool_dm_welcome_early(args) : s.pool_dm_welcome(args);
 }
 
-/** He is in the pool already and sent a new sign-up's code. */
-export function poolAlreadyText(lang: Lang, manageLink: string): string {
-  return t(lang).pool_dm_already({ manageLink });
+/** He has a profile already and sent a waiting sign-up's code: his own
+ *  profile stays his (a stopped one is started again from his link). */
+export function poolAlreadyText(lang: Lang, status: "active" | "paused" | "stopped", manageLink: string): string {
+  return status === "stopped" ? t(lang).pool_dm_already_stopped({ manageLink }) : t(lang).pool_dm_already({ manageLink });
 }
 
 /** A code that did not work. Never carries a code: nobody learns one. */

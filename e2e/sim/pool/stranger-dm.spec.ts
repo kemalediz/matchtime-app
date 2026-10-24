@@ -38,7 +38,7 @@ scenarios("a stranger messages MatchTime (today)", () => {
   scenario("the /play confirm message whose code names no sign-up gets one short reply, and no user is made", async ({ pool }) => {
     const ali = await pool.stranger("ali", { name: "Ali Kaya" });
 
-    const ex = await ali.dm("Hi MatchTime, sign me up to play. Code K7QP");
+    const ex = await ali.dm("Hi MatchTime, sign me up to play. Code K7QP2");
 
     expect(ex.json).toMatchObject({ handled: "pool-confirm", result: "wrong-code" });
     pool.expectSent(ex.sent, [{ to: "ali", channel: "dm", purpose: "pool-code-reply", text: /\/play$/ }]);
