@@ -248,7 +248,12 @@ export type SideRequest =
    *  (or the bench) for a replacement. */
   | "recruit"
   /** "@all we need more players" — a nudge, NOT the sender leaving. */
-  | "chase";
+  | "chase"
+  /** "Glazers is out now. @Match Time what is the list?": the message also
+   *  asks MatchTime for something it holds (FNF HQ, 2026-10-24: the claim
+   *  was read and the tagged question lost). HQ answers it after the change
+   *  (`admin-group-understand.ts`); the players' group does not read it yet. */
+  | "question";
 
 export interface AttendanceFacts {
   kind: "attendance";

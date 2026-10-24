@@ -58,6 +58,7 @@ import {
   buildAdminSquadReply,
   vetAdminGroupFacts,
   type AdminClaimRef,
+  type AdminSquadReplyOutcome,
   type SquadChangeKind,
   type VettedClaim,
 } from "./admin-group-squad-rules";
@@ -81,16 +82,28 @@ export interface AdminSquadChangeInput {
   addressed?: boolean;
   /** The message it is a WhatsApp reply to (slice S4), as resolved. */
   reply?: QuotedGroupMessage | null;
+  /** The sender is an owner or admin: their instruction about a name not on
+   *  the list gets a line, tagged or not (2026-10-24). Absent: not. */
+  organiser?: boolean;
 }
 
+/**
+ * `alsoAsks`: the attendance extractor read that the message ALSO asks
+ * MatchTime for something it holds (its "question" side request, FNF HQ
+ * 2026-10-24: "Glazers is out now. @Match Time what is the list?"). Only
+ * present when true. The caller answers it, after this change.
+ */
 export type AdminSquadChangeResult =
-  | { handled: false; why: "not-a-squad-change" | "no-match" }
+  | { handled: false; why: "not-a-squad-change" | "no-match"; alsoAsks?: true }
   | {
       handled: true;
       /** "squad-question": nothing written, one line saying how to make the
-       *  change (an unknown name, the sender's own plain IN/OUT in chat). */
-      outcome: "squad-changed" | "squad-unchanged" | "squad-change-failed" | "squad-question" | "squad-not-set";
+       *  change (an unknown name, the sender's own plain IN/OUT in chat).
+       *  "squad-not-on-list": nothing written, an OUT for a name nobody in
+       *  the club has. */
+      outcome: AdminSquadReplyOutcome;
       replyText: string;
+      alsoAsks?: true;
     };
 
 type Status = "CONFIRMED" | "BENCH" | "DROPPED";
@@ -147,6 +160,9 @@ export async function handleAdminSquadChange(input: AdminSquadChangeInput): Prom
     // for the one line back. See `admin-group-squad-rules.ts`.
     let vetted: VettedClaim[] = [];
     let kickoffLabel = "";
+    // The extractor's "question" side request (the engine does nothing with
+    // it): passed back so the caller answers the question after the change.
+    let alsoAsks = false;
     // THE NEXT GAME'S LIST NOT SET YET (2026-10-17): a rolling club's
     // squad is carried over at 08:00 the morning after the last game. Until
     // then nothing said in HQ is applied to it. Read on the match the
@@ -169,6 +185,7 @@ export async function handleAdminSquadChange(input: AdminSquadChangeInput): Prom
     const vetFacts: NonNullable<Parameters<typeof runAttendanceEngineBatch>[0]["deps"]["vetFacts"]> = ({ message, facts, state }) => {
       if (message.waMessageId !== messageId) return facts;
       kickoffLabel = state.kickoffLabel;
+      alsoAsks = facts.sideRequests.includes("question");
       // An organiser's list of names with IN/OUT ("Imti\nRafi\nAH\n\nIn",
       // admin-group-name-list.ts): each listed name is the instruction.
       const listedNames = readHqNameList(message.body)?.names ?? [];
@@ -255,11 +272,12 @@ export async function handleAdminSquadChange(input: AdminSquadChangeInput): Prom
       },
     });
 
+    const asks = alsoAsks ? ({ alsoAsks: true } as const) : {};
     const outcome = batch.outcomes.get(messageId);
     const matchId = batch.matchId;
     if (!outcome || !matchId) {
       console.log(`[admin-group] ${messageId}: the attendance engine owned nothing (${batch.degradations.length} degradation(s))`);
-      return { handled: false, why: "no-match" };
+      return { handled: false, why: "no-match", ...asks };
     }
 
     const match = await db.match.findUnique({ where: { id: matchId }, select: { date: true } });
@@ -307,15 +325,16 @@ export async function handleAdminSquadChange(input: AdminSquadChangeInput): Prom
       senderName: input.senderName,
       addressed: input.addressed === true,
       aboutOthers: route === "other_att",
+      organiser: input.organiser === true,
       notSet: notSetAt ? { day: weekdayLabel(input.lang, notSetAt), time: timeLabel(notSetAt) } : null,
     });
     if (reply === null) {
-      console.log(`[admin-group] ${messageId}: routed ${route}, nothing to apply or say (${vetted.length} claim(s) read)`);
-      return { handled: false, why: "not-a-squad-change" };
+      console.log(`[admin-group] ${messageId}: routed ${route}, nothing to apply or say (${vetted.length} claim(s) read${alsoAsks ? ", also asks" : ""})`);
+      return { handled: false, why: "not-a-squad-change", ...asks };
     }
     console.log(
-      `[admin-group] ${messageId}: ${route} on match ${matchId}: ${changes.length} change(s), ${failed.length} failure(s), ${confirmed} confirmed, ${reply.outcome}`,
+      `[admin-group] ${messageId}: ${route} on match ${matchId}: ${changes.length} change(s), ${failed.length} failure(s), ${confirmed} confirmed, ${reply.outcome}${alsoAsks ? ", also asks" : ""}`,
     );
-    return { handled: true, outcome: reply.outcome, replyText: reply.text };
+    return { handled: true, outcome: reply.outcome, replyText: reply.text, ...asks };
   });
 }

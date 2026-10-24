@@ -784,6 +784,7 @@ const SAMPLES: SampleArgs = {
   ag_sq_failed: { names: "Clarence" },
   ag_sq_nothing: null,
   ag_sq_unknown: { name: "Zayn" },
+  ag_sq_not_on_list: { names: "Glazers", when: "Fri 20:30" },
   ag_sq_who: null,
   ag_sq_not_set: { when: "Fri 20:30", day: "Saturday", time: "08:00" },
   ag_sq_self_hint_out: { name: "Omar", when: "Fri 20:30" },

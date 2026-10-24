@@ -199,9 +199,10 @@ Return one claim for each person the message speaks about as a player in the mat
 
 THE WHOLE MESSAGE
   affirmation  "yes" or "no" when the message is a bare answer to MatchTime ("Confirmed", "yes", "no"): to the MatchTime message it replies to, else to MATCHTIME'S LAST POST. Otherwise "none". Words that state the sender's own place ("in", "varım", "out") are a claim, whatever they answer
-  sideRequests any of, for a message that asks for players:
-                 "recruit"  it says how many players are needed or whose place needs taking ("we're 4 short, anyone free?", "can someone take my spot?")
-                 "chase"    it nudges for more players without saying how many or for whom ("@all we need more players pls")
+  sideRequests any of, for what else the message asks for beside its claims:
+                 "recruit"   it says how many players are needed or whose place needs taking ("we're 4 short, anyone free?", "can someone take my spot?")
+                 "chase"     it nudges for more players without saying how many or for whom ("@all we need more players pls")
+                 "question"  it also asks MatchTime for something it holds, such as the list, who is in or how many ("@Match Time what's the list?", "how many are we now?"), never a question put to another member ("@Ali can you play?")
 
 EXAMPLES
 Messages come in English or Turkish, often mixed or misspelt, and carry the same facts either way. Each group teaches one thing, English | Turkish.
@@ -245,6 +246,10 @@ Offering someone else: the one who would play is another person, even when the s
 Several people in one message: one claim each, with any side request.
   "I'm in, and my brother can play too" -> two claims
   "is anyone able to replace me and Habib tonight?" | "bu akşam benim ve Habib'in yerine gelebilecek var mı?" -> the sender out and Habib out, contingent false, plus "recruit"
+
+Several things in one message: the claims, plus what else it asks MatchTime for.
+  "Kai is out now. @Match Time what's the list?" | "Kai yok. @Match Time liste ne?" -> Kai out, plus "question"
+  "Kai out, @Ali can you play?" | "Kai yok, @Ali gelebilir misin?" -> Kai out, no side request: the question is put to Ali, not MatchTime
 
 Hedges: the sender might play and has not decided. Subject sender, in, contingent true, conditionOn "self", decision, tense future. This shape is what gets the person asked again nearer the match; an empty claims array for a hedge is a maybe nobody follows up.
   "maybe", "50/50", "not sure yet", "I'll see" | "belki", "bakarız", "kesin değil", "bakacağım" -> the hedge
@@ -593,7 +598,7 @@ export const ATTENDANCE_SCHEMA = {
     // degradation on the very first live case. The parser maps "none"
     // back to null so the fact type stays honest.
     affirmation: { type: "string", enum: ["yes", "no", "none"] },
-    sideRequests: { type: "array", items: { type: "string", enum: ["recruit", "chase"] } },
+    sideRequests: { type: "array", items: { type: "string", enum: ["recruit", "chase", "question"] } },
   },
   required: ["claims", "affirmation", "sideRequests"],
   additionalProperties: false,
@@ -908,7 +913,7 @@ export function parseFacts(
         Array.isArray(raw.sideRequests) ? raw.sideRequests : []
       )
         .map((s) => str(s).toLowerCase())
-        .filter((s): s is SideRequest => s === "recruit" || s === "chase");
+        .filter((s): s is SideRequest => s === "recruit" || s === "chase" || s === "question");
       const facts: AttendanceFacts = { kind: "attendance", claims, affirmation, sideRequests };
       return { facts, degradations };
     }

@@ -3078,6 +3078,8 @@ export const en = {
   ag_sq_nothing: "Nothing to change: the squad already says that.",
   /** A name nobody in the club has, said in passing as coming in (2026-10-15). */
   ag_sq_unknown: (p: { name: string }): string => `I don't know ${p.name} yet. To add them, just ask me in your own words (for example put ${p.name} in).`,
+  /** An OUT for a name nobody in the club has: nothing to take out (FNF HQ 2026-10-24, "Glazers is out now"). */
+  ag_sq_not_on_list: (p: { names: string; when: string }): string => `I can't find ${p.names} on the list for ${p.when}, so nothing changed.`,
   /** Said to MatchTime, read as about someone else's place, but no one named in it ("@Match Time AH back", 2026-10-19). */
   ag_sq_who: `I couldn't tell who that's about, so I haven't changed anything. To add someone or take them out, just ask me in your own words with their name (for example put Bilal in).`,
   /** The game's list is not set yet: the rolling squad carries over in the morning (2026-10-17). */

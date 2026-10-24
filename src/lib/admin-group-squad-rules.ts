@@ -559,7 +559,15 @@ export function vetAdminGroupFacts(p: {
 /** What `admin-group-squad-change.ts` reports as the message's outcome.
  *  "squad-question": nothing written; the line says how to make the change
  *  or asks for a full name. */
-export type AdminSquadReplyOutcome = "squad-changed" | "squad-unchanged" | "squad-change-failed" | "squad-question" | "squad-not-set";
+export type AdminSquadReplyOutcome =
+  | "squad-changed"
+  | "squad-unchanged"
+  | "squad-change-failed"
+  | "squad-question"
+  | "squad-not-set"
+  /** An OUT for a name nobody in the club has: nothing written, one line
+   *  saying they are not on the list (FNF HQ 2026-10-24). */
+  | "squad-not-on-list";
 
 function wantedStatus(polarity: Claim["polarity"]): SquadStatus {
   return polarity === "in" ? "CONFIRMED" : polarity === "bench" ? "BENCH" : "DROPPED";
@@ -598,6 +606,13 @@ function alreadySo(v: VettedClaim): boolean {
  *     write, and never a YES question: a YES in HQ answers whatever list or
  *     teams are waiting.
  *
+ * An OUT for a name nobody in the club has (FNF HQ 2026-10-24, "Glazers is
+ * out now. @Match Time what is the list?", Glazers removed from the club and
+ * dropped minutes before, so on no roster): nothing to take out, and one
+ * line saying so, never silence, for an instruction (a claim not held) asked
+ * of MatchTime or given by an organiser. A held one (said in conversation)
+ * stays silent, tagged or not, as before; so does a member's untagged one.
+ *
  * And when the router read it as about someone else's place (`aboutOthers`,
  * route other_att) but nothing in it named anyone ("@Match Time AH back",
  * 2026-10-19: the extractor read it as the sender's own, at 0.3): one line
@@ -625,6 +640,8 @@ export function buildAdminSquadReply(p: {
   addressed?: boolean;
   /** The router read the message as about someone else's place (other_att). */
   aboutOthers?: boolean;
+  /** The sender is an owner or admin of the club. Absent: not. */
+  organiser?: boolean;
   /** The game's list is not set yet: when the squad carries over, labelled. */
   notSet?: { day: string; time: string } | null;
 }): { text: string; outcome: AdminSquadReplyOutcome } | null {
@@ -679,6 +696,21 @@ export function buildAdminSquadReply(p: {
   ];
   for (const name of strangers) parts.push(s.ag_sq_unknown({ name }));
 
+  const notOnList = [
+    ...new Set(
+      p.vetted.flatMap((v) =>
+        !v.self &&
+        v.claim.polarity === "out" &&
+        v.ref.kind === "unknown" &&
+        v.hold === null &&
+        (p.addressed === true || p.organiser === true)
+          ? [v.ref.name]
+          : [],
+      ),
+    ),
+  ];
+  if (notOnList.length > 0) parts.push(s.ag_sq_not_on_list({ names: notOnList.join(", "), when: p.kickoffLabel }));
+
   const ownHeld = p.vetted.find(
     (v) =>
       v.self &&
@@ -707,6 +739,8 @@ export function buildAdminSquadReply(p: {
         ? "squad-changed"
         : literalNothing
           ? "squad-unchanged"
-          : "squad-question";
+          : notOnList.length > 0
+            ? "squad-not-on-list"
+            : "squad-question";
   return { text: parts.join(" "), outcome };
 }

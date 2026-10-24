@@ -490,6 +490,66 @@ describe("the other routes reach the code the rest of MatchTime uses", () => {
     expect(squad.handleAdminSquadChange).toHaveBeenLastCalledWith(expect.objectContaining({ addressed: true }));
   });
 
+  it("tells the squad change whether the sender is an organiser", async () => {
+    await ask("Tom is out tonight", "other_att");
+    expect(squad.handleAdminSquadChange).toHaveBeenLastCalledWith(expect.objectContaining({ organiser: true }));
+    await ask("Tom is out tonight", "other_att", { organiser: false, member: true });
+    expect(squad.handleAdminSquadChange).toHaveBeenLastCalledWith(expect.objectContaining({ organiser: false }));
+  });
+
+  // FNF HQ 2026-10-24 13:47, Kemal (owner): "Glazers is out now.\n\n@Match
+  // Time what is the list?" Routed other_att; the attendance extractor read
+  // the OUT; nobody answered the tagged question. The extractor now says the
+  // message also asks MatchTime something (its "question" side request), and
+  // HQ answers it with the same question answering, after the change.
+  describe("a squad change that also asks MatchTime something (FNF HQ 2026-10-24)", () => {
+    const TEXT = "Glazers is out now.\n\n@Match Time what is the list?";
+    const NOT_ON = "I can't find Glazers on the list for Fri 20:30, so nothing changed.";
+    const LIST = "*Fri 20:30*: 17 of 18\n1. Ali";
+
+    it("the incident: the squad line, then the answer, in one reply", async () => {
+      squad.handleAdminSquadChange.mockResolvedValue({ handled: true, outcome: "squad-not-on-list", replyText: NOT_ON, alsoAsks: true });
+      hqQuestion.answerHqQuestion.mockResolvedValue({ outcome: "hq-answered", replyText: LIST });
+      const r = await ask(TEXT, "other_att");
+      expect(r).toEqual({ route: "other_att", outcome: "squad-not-on-list+hq-answered", replyText: `${NOT_ON}\n\n${LIST}` });
+      expect(hqQuestion.answerHqQuestion).toHaveBeenCalledWith(expect.objectContaining({ body: TEXT }));
+      // Answered after the change, so the list it prints is the new one.
+      expect(hqQuestion.answerHqQuestion.mock.invocationCallOrder[0]).toBeGreaterThan(squad.handleAdminSquadChange.mock.invocationCallOrder[0]);
+    });
+
+    it("a change that says nothing: the answer alone", async () => {
+      squad.handleAdminSquadChange.mockResolvedValue({ handled: false, why: "not-a-squad-change", alsoAsks: true });
+      hqQuestion.answerHqQuestion.mockResolvedValue({ outcome: "hq-answered", replyText: LIST });
+      expect(await ask(TEXT, "other_att")).toEqual({ route: "other_att", outcome: "hq-answered", replyText: LIST });
+    });
+
+    it("the question answering answers nothing: the squad line alone", async () => {
+      squad.handleAdminSquadChange.mockResolvedValue({ handled: true, outcome: "squad-not-on-list", replyText: NOT_ON, alsoAsks: true });
+      hqQuestion.answerHqQuestion.mockResolvedValue(null);
+      expect(await ask(TEXT, "other_att")).toEqual({ route: "other_att", outcome: "squad-not-on-list", replyText: NOT_ON });
+    });
+
+    it("not asked of MatchTime (no tag, not a reply to it): the question is the organisers' own, never answered", async () => {
+      squad.handleAdminSquadChange.mockResolvedValue({ handled: true, outcome: "squad-changed", replyText: "Done: Tom out.", alsoAsks: true });
+      const r = await ask("Tom out, who's got the bibs?", "other_att");
+      expect(r).toEqual({ route: "other_att", outcome: "squad-changed", replyText: "Done: Tom out." });
+      expect(hqQuestion.answerHqQuestion).not.toHaveBeenCalled();
+    });
+
+    it("no question in it: no question answering call", async () => {
+      await ask("@Match Time Tom is out tonight", "other_att");
+      expect(hqQuestion.answerHqQuestion).not.toHaveBeenCalled();
+    });
+
+    it("routed unsure and addressed: the same, change then answer", async () => {
+      squad.handleAdminSquadChange.mockResolvedValue({ handled: true, outcome: "squad-changed", replyText: "Done: Tom out.", alsoAsks: true });
+      hqQuestion.answerHqQuestion.mockResolvedValue({ outcome: "hq-answered", replyText: LIST });
+      const r = await ask("@Match Time Tom out and the list?", "unsure");
+      expect(r).toEqual({ route: "unsure", outcome: "squad-changed+hq-answered", replyText: `Done: Tom out.\n\n${LIST}` });
+      expect(hqQuestion.answerHqQuestion).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it("a monthly club: no weekly squad or team change, one line instead", async () => {
     const r = await ask("Tom is out tonight", "other_att", { org: { ...ORG, squadMode: "monthly" } });
     expect(r?.outcome).toBe("hq-not-here");
