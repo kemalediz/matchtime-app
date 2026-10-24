@@ -22,6 +22,8 @@ import { firstMonthsFree, firstMonthsFreeBadge } from "@/lib/i18n/free-period";
 const ROOT = path.resolve(__dirname, "../../..");
 const PUBLIC_FILES = [
   "src/components/landing/landing-page.tsx",
+  "src/components/landing/landing-content.ts",
+  "src/components/landing/landing-sections.tsx",
   "src/components/landing/stats-showcase.tsx",
   "src/app/help/layout.tsx",
   "src/app/help/page.tsx",
@@ -107,8 +109,10 @@ describe("public website copy", () => {
     expect(emails.filter((e) => e !== "hello@matchtime.ai")).toEqual([]);
   });
 
+  // "\bour number": a partner club's ask promises "Your number is not
+  // shared", which is the player's own number, not MatchTime's.
   it.each(sources)("$file never asks visitors to add a MatchTime number", ({ text }) => {
-    expect(text).not.toMatch(/MatchTime number|MatchTime's number|MatchTime&apos;s number|our number|bot's number/i);
+    expect(text).not.toMatch(/MatchTime number|MatchTime's number|MatchTime&apos;s number|\bour number|bot's number/i);
   });
 
   it.each(sources)("$file names no real club, player or venue", ({ text }) => {
