@@ -101,10 +101,10 @@ import { db } from "./db";
 import { rosterLabels } from "./group-chat-history";
 import { withOrgAiBudget, getAiBudgetStatus } from "./ai-budget";
 import { gateBatch } from "./pipeline/gate";
-import { extractForRoute } from "./pipeline/extractors";
+import { extractForRouteTraced, persistPipelineTraces, traceRouting, withPipelineTrace, type PipelineTrace } from "./pipeline/trace";
 import { extractorStubFromEnv } from "./pipeline/extractor-stub";
 import { anthropicModel, type PipelineModel } from "./pipeline/llm";
-import type { AdminFacts, Route } from "./pipeline/types";
+import type { AdminFacts, Degradation, Route } from "./pipeline/types";
 import { dayLabel } from "./i18n/dates";
 import { t } from "./i18n/t";
 import { handleAdminSquadChange, nameMentions } from "./admin-group-squad-change";
@@ -268,7 +268,38 @@ function squadActorOf(input: Pick<UnderstandInput, "organiser" | "member" | "sen
   return input.organiser || input.member === true ? input.senderUserId : null;
 }
 
+/**
+ * The trace this request collected for an HQ message (`pipeline/trace.ts`:
+ * the router's route, each extractor's facts) and what HQ did with it, an
+ * outcome or "silent", onto its `AdminGroupMessage` row (2026-10-24, FNF
+ * "Glazers OUT": HQ messages are not AnalyzedMessage rows, so a silent one
+ * could not be explained from the database). Never throws: a failed save is
+ * logged and HQ carries on.
+ */
+async function recordHqDecision(orgId: string, waMessageId: string, outcome: string): Promise<void> {
+  let trace: PipelineTrace | null = null;
+  await persistPipelineTraces(async (id, t) => {
+    if (id === waMessageId) trace = t;
+  });
+  try {
+    await db.adminGroupMessage.updateMany({
+      where: { orgId, waMessageId },
+      data: { hqOutcome: outcome.slice(0, 64), ...(trace ? { pipelineTrace: trace as unknown as object } : {}) },
+    });
+  } catch (err) {
+    console.error(`[admin-group] ${waMessageId}: saving the decision failed (HQ is unaffected):`, err instanceof Error ? err.message : "unknown");
+  }
+}
+
 export async function understandAdminMessage(input: UnderstandInput): Promise<Understood | null> {
+  return withPipelineTrace(async () => {
+    const understood = await understandInTrace(input);
+    await recordHqDecision(input.org.id, input.messageId, understood?.outcome ?? "silent");
+    return understood;
+  });
+}
+
+async function understandInTrace(input: UnderstandInput): Promise<Understood | null> {
   const { org, messageId, now } = input;
   const lang = org.language;
   const s = t(lang);
@@ -368,7 +399,12 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
     // only (`admin-group-name-list.ts`); the players' group is unchanged.
     const nameList = squadActorOf(input) ? readHqNameList(body) : null;
     const gate = nameList
-      ? { routes: [{ messageId, route: "other_att" as Route, source: "name-list" }], degradations: [] as Array<{ detail: string }> }
+      ? {
+          routes: [{ messageId, route: "other_att" as Route, source: "name-list" as const }],
+          degradations: [] as Degradation[],
+          modelCalled: false,
+          floorEnabled: false,
+        }
       : await gateBatch(
           [
             {
@@ -387,6 +423,12 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
             ...(input.deps?.routerModel ? { model: input.deps.routerModel } : {}),
           },
         );
+    // What the router said, kept on the message's HQ row (2026-10-24,
+    // `admin-group.ts`): FNF's "Glazers OUT" could not be explained from
+    // the database, as HQ messages are not AnalyzedMessage rows.
+    // The name list's "name-list" source is not a router source; the trace
+    // stores it as the string it is.
+    traceRouting(gate as Parameters<typeof traceRouting>[0]);
     const routed = gate.routes.find((r) => r.messageId === messageId);
     const route = routed?.route ?? null;
     // The source says whether the model chose the route or a fallback did
@@ -484,7 +526,7 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
     // was tagged. Null when its call fails or it reads nothing.
     const readAdminFacts = async (): Promise<AdminFacts | null> => {
       const model = input.deps?.extractorModel ?? extractorStubFromEnv() ?? anthropicModel();
-      const extracted = await extractForRoute(model, "admin_ops", {
+      const extracted = await extractForRouteTraced("admin_ops", model, "admin_ops", {
         id: messageId,
         body,
         authorName: input.senderName,
@@ -630,7 +672,7 @@ export async function understandAdminMessage(input: UnderstandInput): Promise<Un
         if (!actor) return onlyOrganisers();
         if (!weekly) return notHere();
         const model = input.deps?.extractorModel ?? extractorStubFromEnv() ?? anthropicModel();
-        const extracted = await extractForRoute(model, "balancer", {
+        const extracted = await extractForRouteTraced("balancer", model, "balancer", {
           id: messageId,
           body,
           authorName: input.senderName,

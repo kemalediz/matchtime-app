@@ -128,6 +128,40 @@ function nearMiss(a: string, b: string): boolean {
 const GROUP_ADDRESS =
   /^(?:@?everyone|@?everybody|@?all(?:\s+of\s+(?:you|us))?|the\s+group|the\s+lads|the\s+boys|lads|boys|guys|team|squad)$/i;
 
+/**
+ * THE CLUB'S MEMBERS A MESSAGE NAMES, from the club's records (2026-10-24).
+ *
+ * FNF HQ, 2026-10-24 11:43 UTC: "Glazers OUT", about Glazers, a member an
+ * organiser had put on the bench minutes before, came back from the
+ * attendance extractor with no claim at all (measured on the dev key, the
+ * same input production sends: 2 of 2 empty, while "Tom OUT" and
+ * "Shehryar OUT" each gave an "out" claim). The extractor is never shown
+ * the squad, so a name that is also an ordinary word or a well-known
+ * phrase is not known to be a person, and the message went silent.
+ *
+ * This is identity lookup, the resolver's own job, never a reading of what
+ * the message means: which roster names appear in the words, so the
+ * extractor is TOLD those words are people in this club. What the message
+ * says about them is still the model's to read. A member is listed when
+ * their full name appears as whole words, or their first name (three
+ * letters or more) does. Full names, each once, at most `max`.
+ */
+export function membersNamedIn(body: string, roster: ReadonlyArray<Pick<Member, "name">>, max = 8): string[] {
+  const words = norm(body ?? "").split(" ").filter(Boolean);
+  if (words.length === 0) return [];
+  const text = ` ${words.join(" ")} `;
+  const out: string[] = [];
+  for (const m of roster) {
+    const full = norm(m.name ?? "");
+    if (!full || !/[a-z]/.test(full)) continue;
+    const first = firstToken(full);
+    const named = text.includes(` ${full} `) || (first.length >= 3 && words.includes(first));
+    if (named && !out.includes(m.name)) out.push(m.name);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
 export function resolvePerson(ref: string, roster: Member[]): ResolutionOutcome {
   const raw = (ref ?? "").trim().replace(/^@/, "").trim();
   if (!raw) return { kind: "not-a-person", why: "empty reference" };

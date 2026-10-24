@@ -200,6 +200,8 @@ function extractionKey(model: PipelineModel, route: Route, msg: ExtractorMessage
     // The shared group block (quoted-reply context, slice S4): the message
     // replied to and the time now are part of what the model is shown.
     msg.reply ?? null,
+    // The club's members the message names (2026-10-24).
+    msg.members ?? null,
     msg.now?.toISOString() ?? null,
   ]);
 }
