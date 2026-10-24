@@ -102,7 +102,7 @@ describe("goLiveClubAction", () => {
       userId: "u-hana",
       orgId: "o1",
       leftAt: null,
-      role: { in: ["OWNER", "ADMIN"] },
+      role: { in: ["OWNER", "ADMIN"] }, guestMatchId: null,
     });
     expect(goLiveClub).toHaveBeenCalledWith("o1", "u-hana", expect.any(Date), { learningEnabled: false });
     expect(revalidatePath).toHaveBeenCalledWith("/admin/settings");

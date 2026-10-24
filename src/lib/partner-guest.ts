@@ -31,6 +31,16 @@
  * as a reply-priority BotJob of HIS club, to the number he messaged from
  * or the one on file. With no number at all nothing is sent anywhere and
  * the caller is told (`dmQueued: false`).
+ *
+ * THE POOL (local player pool L5a, 2026-10-24): the same writer gains a
+ * pool entry point, `placePoolGuest` (and `withdrawPoolGuest`), so a pool
+ * player who taps yes is written exactly as a partner volunteer is: a
+ * guest membership in the club (`guestVia = 'pool'`, no home club), a
+ * `registerAttendance` on the match with cause "pool-ask", the club's own
+ * rule deciding (first-come confirms while the ROUND is below its number,
+ * under the SAME per-match lock, `underRoundLock`; organiser-pick benches),
+ * plus his `GuestPlace` row. What he and the organisers are told is the
+ * pool's (`pool/accept.ts`).
  */
 import { db } from "./db";
 import { REPLY_PRIORITY } from "./dm-reply-priority";
@@ -40,7 +50,8 @@ import { dayCommaTimeLabel, timeLabel } from "./i18n/dates";
 import { t } from "./i18n/t";
 import { gamesOverlap } from "./partner-ask-rules";
 import { decideVolunteer, isPastGuestDue } from "./partner-volunteer-rules";
-import { loadRoundFill } from "./partner-ask-round";
+import { loadRoundFill, type RoundFill } from "./partner-ask-round";
+import { GUEST_MEMBER_WHERE, isGuestMembership } from "./guest-membership";
 import { normaliseBenchPickMode } from "./squad-capacity";
 import { loadGuestStandings } from "./partner-guest-standing";
 import { standingPhrase } from "./partner-guest-standing-rules";
@@ -90,6 +101,35 @@ async function dmVolunteer(args: { partnerOrgId: string; userId: string | null; 
     console.error(`[partner-guest] ${args.userId ?? "unknown sender"}: the DM was not queued:`, err instanceof Error ? err.message : "failed");
     return false;
   }
+}
+
+/** The guest marks every reader of a membership row needs. */
+const GUEST_MARKS = { guestFromOrgId: true, guestMatchId: true, guestVia: true } as const;
+
+/**
+ * THE ROUND'S NUMBER, UNDER ONE LOCK PER MATCH (partner discovery P4,
+ * 2026-10-22; shared with the pool, L5a). For a first-come club: the fill
+ * check and the place are written under ONE advisory lock per match, so
+ * two people at once (two partner volunteers, two pool players, or one of
+ * each) can never both take the last wanted place. `registerAttendance`
+ * commits its own write before the lock is let go, so the next check sees
+ * it. Null: the round already has its number (or is gone), nothing written.
+ */
+async function underRoundLock<R extends { status: string }>(
+  matchId: string,
+  fill: () => Promise<RoundFill | null>,
+  write: () => Promise<R>,
+): Promise<{ r: R; full: boolean } | null> {
+  return db.$transaction(
+    async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`xask-fill:${matchId}`}))`;
+      const f = await fill();
+      if (!f || f.placed >= f.wanted) return null;
+      const r = await write();
+      return { r, full: r.status === "CONFIRMED" && f.placed + 1 >= f.wanted };
+    },
+    { maxWait: 20_000, timeout: 30_000 },
+  );
 }
 
 export async function handlePartnerVolunteer(w: VolunteerWrite, now: Date = new Date()): Promise<VolunteerResult> {
@@ -158,8 +198,8 @@ async function decideAndWriteVolunteer(w: VolunteerWrite, now: Date): Promise<De
 
   const [partnerMember, askerMember, row] = w.userId
     ? await Promise.all([
-        db.membership.findUnique({ where: { userId_orgId: { userId: w.userId, orgId: partner.id } }, select: { leftAt: true, guestFromOrgId: true } }),
-        db.membership.findUnique({ where: { userId_orgId: { userId: w.userId, orgId: asker.id } }, select: { id: true, leftAt: true, guestFromOrgId: true, guestMatchId: true } }),
+        db.membership.findUnique({ where: { userId_orgId: { userId: w.userId, orgId: partner.id } }, select: { leftAt: true, ...GUEST_MARKS } }),
+        db.membership.findUnique({ where: { userId_orgId: { userId: w.userId, orgId: asker.id } }, select: { id: true, leftAt: true, ...GUEST_MARKS } }),
         db.attendance.findUnique({ where: { matchId_userId: { matchId: ask.matchId, userId: w.userId } }, select: { status: true } }),
       ])
     : [null, null, null];
@@ -171,14 +211,14 @@ async function decideAndWriteVolunteer(w: VolunteerWrite, now: Date): Promise<De
     polarity: w.polarity,
     askOpen: ask.status === "posted" && now.getTime() < ask.closesAt.getTime(),
     // A partner member who is himself a guest there is not that club's.
-    senderIsPartnerMember: !!partnerMember && !partnerMember.leftAt && !partnerMember.guestFromOrgId,
+    senderIsPartnerMember: !!partnerMember && !partnerMember.leftAt && !isGuestMembership(partnerMember),
     inOverlappingOwnGame: overlap.yes,
-    ordinaryAskerMember: !!askerMember && !askerMember.leftAt && !askerMember.guestFromOrgId,
+    ordinaryAskerMember: !!askerMember && !askerMember.leftAt && !isGuestMembership(askerMember),
     onAskerMatch: !!row && (row.status === "CONFIRMED" || row.status === "BENCH"),
     // Review H2: an OUT never touches a game that is over or played, nor a
     // past guest's row.
     askerMatchLive: LIVE.includes(ask.match.status as (typeof LIVE)[number]),
-    pastGuest: !!askerMember?.guestFromOrgId && !!askerMember.leftAt,
+    pastGuest: isGuestMembership(askerMember) && !!askerMember?.leftAt,
   });
 
   if (decision.kind === "refuse") {
@@ -247,13 +287,16 @@ async function decideAndWriteVolunteer(w: VolunteerWrite, now: Date): Promise<De
         // row, so his rating here carries on.
         await db.membership.upsert({
           where: { userId_orgId: { userId, orgId: asker.id } },
-          create: { userId, orgId: asker.id, role: "PLAYER", guestFromOrgId: partner.id, guestMatchId: ask.matchId },
+          create: { userId, orgId: asker.id, role: "PLAYER", guestVia: "partner", guestFromOrgId: partner.id, guestMatchId: ask.matchId },
           // Review L4: a live guest mark for this match (from another partner
-          // club's ask) is kept, never overwritten.
+          // club's ask, or the pool) is kept, never overwritten.
           update:
-            askerMember && !askerMember.leftAt && askerMember.guestFromOrgId && askerMember.guestMatchId === ask.matchId
+            askerMember && !askerMember.leftAt && isGuestMembership(askerMember) && askerMember.guestMatchId === ask.matchId
               ? {}
-              : { leftAt: null, guestFromOrgId: partner.id, guestMatchId: ask.matchId },
+              : // A guest is a PLAYER of the club he guests for, whatever this
+                // row's old role was (review of #400, M1: a former admin who
+                // left kept OWNER/ADMIN and passed every organiser check).
+                { role: "PLAYER", leftAt: null, guestVia: "partner", guestFromOrgId: partner.id, guestMatchId: ask.matchId },
         });
       }
       return registerAttendance(userId, ask.matchId, { event, actorIsAdmin: false });
@@ -273,20 +316,16 @@ async function decideAndWriteVolunteer(w: VolunteerWrite, now: Date): Promise<De
     if (normaliseBenchPickMode(asker.benchPickMode) === "organiser") {
       result = await writePlace();
     } else {
-      const locked = await db.$transaction(
-        async (tx) => {
-          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`xask-fill:${ask.matchId}`}))`;
+      const locked = await underRoundLock(
+        ask.matchId,
+        async () => {
           const fresh = await db.partnerAsk.findUnique({
             where: { id: ask.id },
             select: { id: true, roundId: true, matchId: true, places: true, volunteerUserIds: true, pickedUserIds: true },
           });
-          if (!fresh) return null;
-          const fill = await loadRoundFill(fresh);
-          if (fill.placed >= fill.wanted) return null;
-          const r = await writePlace();
-          return { r, full: r.status === "CONFIRMED" && fill.placed + 1 >= fill.wanted };
+          return fresh ? loadRoundFill(fresh) : null;
         },
-        { maxWait: 20_000, timeout: 30_000 },
+        writePlace,
       );
       if (!locked) {
         // The round has its number: he is taken off the ask again, nothing
@@ -472,9 +511,12 @@ export async function retirePastGuests(orgId: string, now: Date = new Date()): P
  * proven the actor is an owner or admin of `orgId`.
  */
 export async function keepGuestAsMember(orgId: string, userId: string): Promise<boolean> {
+  // A partner or a pool guest (L5a): every guest mark cleared, `guestVia`
+  // too, so the guest CHECK holds.
   const done = await db.membership.updateMany({
-    where: { orgId, userId, guestFromOrgId: { not: null } },
-    data: { guestFromOrgId: null, guestMatchId: null, leftAt: null },
+    where: { orgId, userId, ...GUEST_MEMBER_WHERE },
+    // He joins as a PLAYER (decision L5a.20): never an old role back.
+    data: { role: "PLAYER", guestVia: null, guestFromOrgId: null, guestMatchId: null, leftAt: null },
   });
   if (done.count > 0) console.log(`[partner-guest] org ${orgId}: guest ${userId} kept as a member`);
   return done.count > 0;
@@ -638,4 +680,114 @@ export async function tellGuestsMoved(askId: string, now: Date = new Date()): Pr
     console.error(`[partner-guest] ask ${askId}: telling guests of the move failed:`, err instanceof Error ? err.message : "failed");
     return 0;
   }
+}
+
+// ── The pool's entry points (local player pool L5a, 2026-10-24) ─────────
+
+export interface PoolGuestWrite {
+  offerId: string;
+  userId: string;
+  orgId: string;
+  matchId: string;
+  benchPickMode: string | null;
+  /** The round's fill (`pool/round.ts` `poolAskFill`), read under the lock. */
+  fill: () => Promise<RoundFill | null>;
+  now: Date;
+}
+
+export type PoolGuestPlaced =
+  | { kind: "in" | "bench"; roundNowFull: boolean }
+  | { kind: "gone" }
+  /** He is this club's live guest for ANOTHER match: one row carries one
+   *  guest match, so nothing is written (review of #400, minor 6). */
+  | { kind: "elsewhere" }
+  | { kind: "failed" };
+
+/**
+ * A pool player said yes by the tap link. The CALLER (`pool/accept.ts`)
+ * has already claimed the offer (a compare-and-set on its outcome, so a
+ * double tap writes once) and gives it back if this says "gone" or
+ * "failed". Here he is placed under the club's rule and his `GuestPlace`
+ * row written. Lost the race (the round has its number): nothing written.
+ * Never throws.
+ */
+export async function placePoolGuest(w: PoolGuestWrite): Promise<PoolGuestPlaced> {
+  try {
+    const mem = await db.membership.findUnique({ where: { userId_orgId: { userId: w.userId, orgId: w.orgId } }, select: { leftAt: true, ...GUEST_MARKS } });
+    const ordinary = !!mem && !mem.leftAt && !isGuestMembership(mem);
+    if (mem && !mem.leftAt && isGuestMembership(mem) && mem.guestMatchId !== w.matchId) {
+      console.log(`[partner-guest] pool offer ${w.offerId}: ${w.userId} is already this club's guest for another match; not written`);
+      return { kind: "elsewhere" };
+    }
+    const event = {
+      cause: "pool-ask" as const,
+      actorKind: "player" as const,
+      actorUserId: w.userId,
+      sourceRef: `pool-offer:${w.offerId}`,
+      note: "MatchTime player pool: said yes by the offer link",
+    };
+    const writePlace = async () => {
+      if (!ordinary) {
+        const liveHere = !!mem && !mem.leftAt && mem.guestMatchId === w.matchId;
+        await db.membership.upsert({
+          where: { userId_orgId: { userId: w.userId, orgId: w.orgId } },
+          create: { userId: w.userId, orgId: w.orgId, role: "PLAYER", guestVia: "pool", guestMatchId: w.matchId },
+          // A guest is a PLAYER, whatever the row's old role (review M1).
+          update: liveHere ? {} : { role: "PLAYER", leftAt: null, guestVia: "pool", guestFromOrgId: null, guestMatchId: w.matchId },
+        });
+      }
+      return registerAttendance(w.userId, w.matchId, { event, actorIsAdmin: false });
+    };
+    let result: Awaited<ReturnType<typeof registerAttendance>>;
+    let roundNowFull = false;
+    if (normaliseBenchPickMode(w.benchPickMode) === "organiser") {
+      result = await writePlace();
+    } else {
+      const locked = await underRoundLock(w.matchId, w.fill, writePlace);
+      if (!locked) {
+        console.log(`[partner-guest] pool offer ${w.offerId}: ${w.userId} too late, the round has its number`);
+        return { kind: "gone" };
+      }
+      result = locked.r;
+      roundNowFull = locked.full;
+    }
+    if (result.status !== "CONFIRMED" && result.status !== "BENCH") return { kind: "failed" };
+    if (!ordinary) {
+      await db.guestPlace.upsert({
+        where: { matchId_userId: { matchId: w.matchId, userId: w.userId } },
+        create: { orgId: w.orgId, matchId: w.matchId, userId: w.userId, source: "pool", poolOfferId: w.offerId },
+        update: { source: "pool", fromOrgId: null, partnerAskId: null, poolOfferId: w.offerId, result: "booked", resultAt: null, resultById: null },
+      });
+    }
+    console.log(`[partner-guest] pool offer ${w.offerId}: ${w.userId} on match ${w.matchId} as ${result.status}${ordinary ? " (member)" : " (pool guest)"}`);
+    return { kind: result.status === "CONFIRMED" ? "in" : "bench", roundNowFull };
+  } catch (err) {
+    console.error(`[partner-guest] pool offer ${w.offerId}: ${w.userId} not written:`, err instanceof Error ? err.message : "failed");
+    return { kind: "failed" };
+  }
+}
+
+/**
+ * A pool guest gives his place back (the offer page's "I can't make it"):
+ * his row dropped (cause "pool-ask"; the normal drop flow and the bench
+ * offer follow, as for any OUT), his `GuestPlace` marked `result` (in time
+ * or late, `pool/round-rules.ts` `pullOutResult`), and he becomes a past
+ * guest. True when there was a place to give back.
+ */
+export async function withdrawPoolGuest(args: { userId: string; matchId: string; orgId: string; offerId: string; result: "withdrawn" | "late-cancel"; now: Date }): Promise<boolean> {
+  const mem = await db.membership.findUnique({ where: { userId_orgId: { userId: args.userId, orgId: args.orgId } }, select: { leftAt: true, ...GUEST_MARKS } });
+  if (!mem || mem.leftAt || mem.guestVia !== "pool" || mem.guestMatchId !== args.matchId) return false;
+  const row = await db.attendance.findUnique({ where: { matchId_userId: { matchId: args.matchId, userId: args.userId } }, select: { status: true } });
+  if (!row || (row.status !== "CONFIRMED" && row.status !== "BENCH")) return false;
+  await cancelAttendance(args.userId, args.matchId, {
+    cause: "pool-ask",
+    actorKind: "player",
+    actorUserId: args.userId,
+    sourceRef: `pool-offer:${args.offerId}`,
+    note: "MatchTime player pool: gave the place back by the offer link",
+  });
+  await db.guestPlace.updateMany({ where: { matchId: args.matchId, userId: args.userId, result: "booked" }, data: { result: args.result, resultAt: args.now } });
+  await db.membership.updateMany({ where: { userId: args.userId, orgId: args.orgId, guestMatchId: args.matchId, leftAt: null }, data: { leftAt: args.now } });
+  console.log(`[partner-guest] pool offer ${args.offerId}: ${args.userId} gave the place back (${args.result})`);
+  return true;
 }

@@ -1,4 +1,5 @@
 import { db } from "./db";
+import { ORDINARY_MEMBER_WHERE, isGuestMembership } from "@/lib/guest-membership";
 import { cookies } from "next/headers";
 
 export async function getCurrentOrgId(): Promise<string | null> {
@@ -74,7 +75,7 @@ export async function getUserOrg(userId: string) {
       include: { org: true },
     });
     // Never a club he is only a guest of (cross-club ask, review M6).
-    if (membership && membership.leftAt === null && !membership.guestFromOrgId) return membership;
+    if (membership && membership.leftAt === null && !isGuestMembership(membership)) return membership;
 
     // Superadmin → synthesise a membership-shaped result for any org in DB
     if (superuser) {
@@ -95,7 +96,7 @@ export async function getUserOrg(userId: string) {
 
   // Fallback 1: user's first real membership
   const membership = await db.membership.findFirst({
-    where: { userId, leftAt: null, guestFromOrgId: null },
+    where: { userId, leftAt: null, ...ORDINARY_MEMBER_WHERE },
     include: { org: true },
     orderBy: { createdAt: "asc" },
   });
@@ -128,6 +129,9 @@ export async function isOrgAdmin(userId: string, orgId: string): Promise<boolean
     where: { userId_orgId: { userId, orgId } },
   });
   if (!membership || membership.leftAt !== null) return false;
+  // A guest (partner or pool) is never an organiser of the club he guests
+  // for, whatever an old row's role says (review of #400, M1).
+  if (isGuestMembership(membership)) return false;
   return membership.role === "OWNER" || membership.role === "ADMIN";
 }
 
@@ -147,7 +151,7 @@ export async function findOrgAdminsWithPhone(
   orgId: string,
 ): Promise<Array<{ id: string; name: string | null; phoneNumber: string }>> {
   const memberships = await db.membership.findMany({
-    where: { orgId, leftAt: null, role: { in: ["OWNER", "ADMIN"] } },
+    where: { orgId, leftAt: null, role: { in: ["OWNER", "ADMIN"] }, ...ORDINARY_MEMBER_WHERE },
     include: { user: { select: { id: true, name: true, phoneNumber: true } } },
     orderBy: { role: "asc" },
   });

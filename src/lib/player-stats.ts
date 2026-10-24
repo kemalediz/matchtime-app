@@ -15,6 +15,7 @@
  * matches, ~14 players) this is a handful of rows — cheap.
  */
 
+import { GUEST_MEMBER_WHERE } from "@/lib/guest-membership";
 import { db } from "./db";
 import { formatLondon } from "./london-time";
 import {
@@ -1093,10 +1094,11 @@ export async function loadAllClubsOverview(args: {
   }
 
   // Live memberships, AND a guest's or past guest's membership of a club
-  // he played for through a partner ask (Kemal, 2026-10-16): his ratings
-  // there are his club rating there, and he sees them here.
+  // he played for through a partner ask or the player pool (Kemal,
+  // 2026-10-16): his ratings there are his club rating there, and he sees
+  // them here.
   const memberships = await db.membership.findMany({
-    where: { userId, OR: [{ leftAt: null }, { guestFromOrgId: { not: null } }] },
+    where: { userId, OR: [{ leftAt: null }, GUEST_MEMBER_WHERE] },
     select: { org: { select: { id: true, name: true } } },
   });
   const orgs = memberships.map((m) => m.org);

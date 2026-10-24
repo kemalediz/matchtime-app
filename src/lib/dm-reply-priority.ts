@@ -9,8 +9,10 @@
  * acknowledgement.
  *
  * WHY IT WAITED (traced):
- *   - The Pi sends at most ONE DM a minute (`DM_GAP_MS` in
- *     whatsapp-bot/src/scheduler.ts, `takeDmSlot`). On each tick it walks
+ *   - The Pi paces DMs through one shared slot (whatsapp-bot/src/dm-pacer.ts):
+ *     one a minute by default (as at the time of this case), about one every
+ *     10 s once DM_GAP_SEC is set, back to one a minute on any WhatsApp
+ *     warning (local player pool L5a, 2026-10-24). On each tick it walks
  *     the server's instruction list IN ORDER: the first DM takes the slot,
  *     every later DM is released back (`releaseInstruction`) and comes back
  *     on the next poll. It never reorders.
@@ -35,8 +37,8 @@
  *   3. Flag on, `prioritiseReplyDms` moves those replies into the first DM
  *      slots of the list. Non-DM instructions keep their positions.
  *
- * PACING IS UNTOUCHED: the Pi still sends one DM a minute; only WHICH DM
- * takes the minute changes. PER-RECIPIENT ORDER IS KEPT: a reply never
+ * PACING IS UNTOUCHED: the Pi's shared DM slot paces as before; only WHICH
+ * DM takes the next slot changes. PER-RECIPIENT ORDER IS KEPT: a reply never
  * overtakes an earlier DM to the same phone; that earlier DM moves up with
  * it, immediately before it.
  */

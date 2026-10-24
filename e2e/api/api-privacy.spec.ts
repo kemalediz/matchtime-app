@@ -12,11 +12,14 @@
  *   - GET /api/matches/:id: attendance rows carry no payment fields,
  *     and another club's match is a 404;
  *   - GET /api/org/settings: a PLAYER gets no invite code, group id,
- *     Stripe status or member list; the OWNER does.
+ *     Stripe status or member list; the OWNER does;
+ *   - a POOL guest (local player pool, L5a: no home club) is a guest to
+ *     the OWNER too: no phone or email, labelled "MatchTime player pool", never a
+ *     money-collector candidate.
  */
 import { test, expect, signInAs, resetDb, U } from "../fixtures";
 import { testDb } from "../helpers/test-db";
-import { PHONE, SPORT_ID, MATCH } from "../helpers/constants";
+import { PHONE, SPORT_ID, MATCH, ORG_ID } from "../helpers/constants";
 
 test.describe.configure({ mode: "serial" });
 
@@ -25,6 +28,9 @@ const OTHER_USER = "e2e-privacy-other-user";
 const OTHER_PHONE = "+447700900977";
 const OTHER_ACTIVITY = "e2e-privacy-other-activity";
 const OTHER_MATCH = "e2e-privacy-other-match";
+const POOL_USER = "e2e-privacy-pool-guest";
+const POOL_PHONE = "+447700900978";
+const POOL_EMAIL = `${POOL_USER}@e2e-test.invalid`;
 
 test.beforeAll(async () => {
   resetDb();
@@ -53,6 +59,16 @@ test.beforeAll(async () => {
     `INSERT INTO "Match" (id,"activityId",date,"maxPlayers","attendanceDeadline","createdAt","updatedAt")
      VALUES ($1,$2,now() + interval '2 days',10,now() + interval '1 day',now(),now())`,
     [OTHER_MATCH, OTHER_ACTIVITY],
+  );
+  // A pool guest of the e2e club for its upcoming match: no home club.
+  await db.run(
+    `INSERT INTO "User" (id,name,email,"phoneNumber",onboarded,"isActive","updatedAt")
+     VALUES ($1,'Poppy Pool',$2,$3,true,true,now())`,
+    [POOL_USER, POOL_EMAIL, POOL_PHONE],
+  );
+  await db.run(
+    `INSERT INTO "Membership" (id,"userId","orgId",role,"guestVia","guestMatchId") VALUES ($1,$2,$3,'PLAYER','pool',$4)`,
+    [`${POOL_USER}-mem`, POOL_USER, ORG_ID, MATCH.upcoming],
   );
   // A seed rating so the member view has something to leak.
   await db.run(`UPDATE "Membership" SET "seedRating" = 7 WHERE "userId" = $1`, [U.rater]);
@@ -144,4 +160,23 @@ test("/api/org/settings gives a member no invite code or payment data; the owner
   const owner = (await (await page.request.get("/api/org/settings")).json()) as Record<string, unknown>;
   expect(owner.inviteCode).toBeTruthy();
   expect(owner).toHaveProperty("members");
+});
+
+test("a pool guest's phone and email never reach the club's OWNER; he is labelled MatchTime player pool", async ({ page }) => {
+  await signInAs(page, U.admin, "/admin/players");
+  const res = await page.request.get("/api/players");
+  const text = await res.text();
+  const body = JSON.parse(text) as { players: Array<Record<string, unknown>> };
+  const pool = body.players.find((p) => p.id === POOL_USER)!;
+  expect(pool).toMatchObject({ name: "Poppy Pool", phoneNumber: null, email: null, guestFrom: "MatchTime player pool" });
+  expect(text).not.toContain(POOL_PHONE);
+  expect(text).not.toContain(POOL_EMAIL);
+
+  const one = (await (await page.request.get(`/api/players/${POOL_USER}`)).json()) as { player: Record<string, unknown> };
+  expect(one.player).toMatchObject({ id: POOL_USER, name: "Poppy Pool" });
+  expect(one.player).not.toHaveProperty("phoneNumber");
+  expect(one.player).not.toHaveProperty("email");
+
+  const settings = (await (await page.request.get("/api/org/settings")).json()) as { members: Array<{ id: string }> };
+  expect(settings.members.some((m) => m.id === POOL_USER)).toBe(false);
 });

@@ -77,8 +77,8 @@ describe("handlePartnerVolunteer", () => {
     expect(r).toMatchObject({ ok: true, outcome: "registered-bench" });
     expect(dbMock.membership.upsert).toHaveBeenCalledWith({
       where: { userId_orgId: { userId: "ali", orgId: "fnf" } },
-      create: { userId: "ali", orgId: "fnf", role: "PLAYER", guestFromOrgId: "sutton", guestMatchId: "m-fnf" },
-      update: { leftAt: null, guestFromOrgId: "sutton", guestMatchId: "m-fnf" },
+      create: { userId: "ali", orgId: "fnf", role: "PLAYER", guestVia: "partner", guestFromOrgId: "sutton", guestMatchId: "m-fnf" },
+      update: { role: "PLAYER", leftAt: null, guestVia: "partner", guestFromOrgId: "sutton", guestMatchId: "m-fnf" },
     });
     expect(att.registerAttendance).toHaveBeenCalledWith("ali", "m-fnf", {
       event: expect.objectContaining({ cause: "partner-ask", actorKind: "player", actorUserId: "ali", sourceRef: "xask:ask1" }),
@@ -107,6 +107,16 @@ describe("handlePartnerVolunteer", () => {
     standing.loadGuestStandings.mockResolvedValue(new Map());
     await handlePartnerVolunteer(write(), NOW);
     expect(notice.sendAdminNotice).toHaveBeenCalledWith(expect.objectContaining({ text: expect.stringContaining("Ali Kaya (Sutton FC) answered") }));
+  });
+
+  it("M1 (review of #400): a former ADMIN who left the asking club comes back as a guest: his row is a PLAYER again, never an admin", async () => {
+    dbMock.membership.findUnique.mockImplementation(({ where }: { where: { userId_orgId: { orgId: string } } }) =>
+      Promise.resolve(
+        where.userId_orgId.orgId === "sutton" ? { leftAt: null, guestFromOrgId: null } : { id: "old", leftAt: new Date("2026-09-01"), guestFromOrgId: null, guestMatchId: null, guestVia: null },
+      ),
+    );
+    await handlePartnerVolunteer(write(), NOW);
+    expect(dbMock.membership.upsert.mock.calls[0][0].update).toMatchObject({ role: "PLAYER", leftAt: null, guestVia: "partner" });
   });
 
   it("an ordinary member of the asking club already: an ordinary IN, no guest mark", async () => {

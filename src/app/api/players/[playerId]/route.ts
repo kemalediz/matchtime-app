@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth";
+import { isGuestMembership } from "@/lib/guest-membership";
 import { db } from "@/lib/db";
 import { getUserOrg } from "@/lib/org";
 import { loadPlayerSeasonStats } from "@/lib/player-stats";
@@ -41,18 +42,18 @@ export async function GET(
   // only; a plain club-mate sees the name, positions and stats.
   const viewerOrg = await getUserOrg(session.user.id);
   const isSelf = playerId === session.user.id;
-  // A partner club's guest, current or past (cross-club ask, review H1):
-  // his name and club only (D7). His membership here never makes his
+  // A guest, current or past, a partner club's (cross-club ask, review H1)
+  // or the player pool's (L5a): his name and club only (D7). His membership here never makes his
   // phone or email this club's to see.
   let guestHere = false;
   if (!isSelf) {
     if (!viewerOrg) return NextResponse.json({ error: "Not found" }, { status: 404 });
     const shared = await db.membership.findFirst({
       where: { userId: playerId, orgId: viewerOrg.orgId },
-      select: { id: true, guestFromOrgId: true },
+      select: { id: true, guestMatchId: true },
     });
     if (!shared) return NextResponse.json({ error: "Not found" }, { status: 404 });
-    guestHere = !!shared.guestFromOrgId;
+    guestHere = isGuestMembership(shared);
   }
   const showContact = isSelf || (!guestHere && !!viewerOrg && (await seesAdminFields(session.user.id, viewerOrg.role)));
 

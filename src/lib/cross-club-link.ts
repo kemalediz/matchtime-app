@@ -14,6 +14,7 @@
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type TxClient = any;
 
+import { type GuestMarks, isGuestMembership } from "@/lib/guest-membership";
 import { mergePlayersCore } from "./merge-players-core";
 import { hasOwnSignIn } from "./player-account-guard";
 import {
@@ -39,13 +40,12 @@ export async function loadCrossClubLinkFacts(
   if (keepUser) {
     // Only the club's NAME is read from the other club, never a rating,
     // a role or any history.
-    const mems: Array<{ orgId: string; leftAt: Date | null; guestFromOrgId: string | null; org: { name: string } }> =
+    const mems: Array<{ orgId: string; leftAt: Date | null; guestFromOrgId: string | null; guestMatchId?: string | null; org: { name: string } }> =
       await tx.membership.findMany({
         where: { userId: keepUser.id },
-        select: { orgId: true, leftAt: true, guestFromOrgId: true, org: { select: { name: true } } },
+        select: { orgId: true, leftAt: true, guestFromOrgId: true, guestMatchId: true, org: { select: { name: true } } },
       });
-    const rank = (m: { leftAt: Date | null; guestFromOrgId: string | null }) =>
-      (m.leftAt ? 2 : 0) + (m.guestFromOrgId ? 1 : 0);
+    const rank = (m: { leftAt: Date | null } & GuestMarks) => (m.leftAt ? 2 : 0) + (isGuestMembership(m) ? 1 : 0);
     const others = mems.filter((m) => m.orgId !== orgId).sort((a, b) => rank(a) - rank(b));
     keep = {
       id: keepUser.id,
@@ -67,9 +67,9 @@ export async function loadCrossClubLinkFacts(
     where: { id: dropUserId },
     select: { id: true, email: true, password: true, onboarded: true, emailVerified: true, isSuperadmin: true },
   });
-  const dropMem: { guestFromOrgId: string | null } | null = await tx.membership.findUnique({
+  const dropMem: { guestFromOrgId: string | null; guestMatchId?: string | null } | null = await tx.membership.findUnique({
     where: { userId_orgId: { userId: dropUserId, orgId } },
-    select: { guestFromOrgId: true },
+    select: { guestFromOrgId: true, guestMatchId: true },
   });
   const otherClubMemberships: number = await tx.membership.count({
     where: { userId: dropUserId, orgId: { not: orgId } },
@@ -105,7 +105,7 @@ export async function loadCrossClubLinkFacts(
     orgId,
     drop: {
       id: dropUserId,
-      membershipInOrg: dropUser && dropMem ? { guestFromOrgId: dropMem.guestFromOrgId } : null,
+      membershipInOrg: dropUser && dropMem ? { guestFromOrgId: dropMem.guestFromOrgId, guestMatchId: dropMem.guestMatchId ?? null } : null,
       otherClubMemberships,
       rowsOutsideOrg: counts.reduce((a, b) => a + b, 0),
       // #314's definition (player-account-guard.ts `hasOwnSignIn`): onboarded

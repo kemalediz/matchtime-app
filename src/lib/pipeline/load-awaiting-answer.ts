@@ -15,6 +15,7 @@
  * READ-ONLY BY CONSTRUCTION: every statement in this file is a
  * `findMany`. The gate never writes.
  */
+import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
 import {
   SCORE_ASK_KIND,
   SCORE_ASK_TTL_MS,
@@ -190,7 +191,7 @@ export async function loadOpenScoreAsk(
   const parsed = row ? parseScoreAskKey(row.key) : null;
   if (!row || !parsed || !row.match) return null;
   const admins = await db.membership.findMany({
-    where: { orgId, role: { in: ["OWNER", "ADMIN"] }, leftAt: null },
+    where: { orgId, role: { in: ["OWNER", "ADMIN"] }, ...ORDINARY_MEMBER_WHERE, leftAt: null },
     select: { userId: true },
   });
   return {

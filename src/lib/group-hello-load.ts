@@ -28,6 +28,7 @@
  * gets `false` with no read; the builder only looks at it for a rolling
  * club.
  */
+import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
 import { db } from "@/lib/db";
 import { HELLO_ORG_SELECT, helloInputFromOrg, type GroupHelloInput, type HelloOrgRow } from "./group-hello";
 import {
@@ -72,7 +73,7 @@ export interface HelloReadClient {
   };
   membership: {
     findFirst(args: {
-      where: { orgId: string; role: "OWNER"; leftAt: null };
+      where: { orgId: string; role: "OWNER"; leftAt: null; guestMatchId: null };
       orderBy: { id: "asc" };
       select: { userId: true };
     }): Promise<{ userId: string } | null>;
@@ -180,7 +181,7 @@ export async function loadHelloInput(
   }
   if (!userId) {
     const owner = await client.membership.findFirst({
-      where: { orgId, role: "OWNER", leftAt: null },
+      where: { orgId, role: "OWNER", leftAt: null, ...ORDINARY_MEMBER_WHERE },
       orderBy: { id: "asc" },
       select: { userId: true },
     });

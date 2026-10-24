@@ -413,6 +413,9 @@ export interface PickListRow {
    *  his number there only when his club shares ratings. Shown beside his
    *  club: "Ali K (Sutton FC, top third there)". */
   fromStanding?: { band: StandingBand; rating: number | null } | null;
+  /** A guest from the local player pool (L5a): no home club, so he is shown
+   *  as "Ali K (MatchTime player pool)" in the club's language. */
+  fromPool?: boolean;
 }
 
 /** "GK/DEF" from a player's positions for the activity, or null. */
@@ -430,7 +433,9 @@ export function buildPickListBlock(lang: string | null | undefined, rows: PickLi
         n: i + 1,
         name: r.fromClub
           ? `${r.name} (${r.fromStanding ? standingPhrase(lang, { club: r.fromClub, ...r.fromStanding }) : r.fromClub})`
-          : r.name,
+          : r.fromPool
+            ? `${r.name} (${s.gst_source_pool})`
+            : r.name,
         position: r.position,
         rating: r.rating === null ? null : r.rating.toFixed(1),
       }),

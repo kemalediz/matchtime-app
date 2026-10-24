@@ -11,7 +11,19 @@
  * Each tick FIRST runs the platform channel (self-join slice 3,
  * platform-jobs.ts): sends that belong to no club, sign-up codes above
  * all. It runs with zero clubs, before the clubs, and takes the same
- * one-DM-a-minute slot (`takeDmSlot`).
+ * DM slot through the same per-tick gate.
+ *
+ * ── DM pacing (slice L5a, 24 Oct 2026) ───────────────────────────────
+ * The gap between DMs comes from ONE place, `dm-pacer.ts` (rules in
+ * `dm-pacing.ts`): 60 s by default, about 10 s once DM_GAP_SEC is set and
+ * the number is past its 14-day warm-up, back to 60 s for 24 hours on any
+ * WhatsApp warning. Each tick builds one `TickGate`; club DMs and platform
+ * DMs both go through it, so they share one slot. With a fast gap the gate
+ * may WAIT for the slot inside the tick (never longer than the gap, never
+ * more than TICK_DM_WAIT_BUDGET_MS in total) so a 30 s poll can send
+ * about three DMs; whatever does not fit is released as before. At the
+ * 60 s safe gap it never waits: one DM, the rest released, the old code
+ * path exactly. Group messages, polls and reactions are never paced.
  */
 import type { WaDriver } from "./driver.js";
 import {
@@ -27,6 +39,7 @@ import { refreshIfClubSetChanged } from "./org-refresh.js";
 import { runPendingCatchUps } from "./club-catch-up.js";
 import { withTimeout } from "./with-timeout.js";
 import { config } from "./config.js";
+import { createTickGate, getDmPacer } from "./dm-pacer.js";
 import { reactAndReport } from "./react-with-id.js";
 import { isAdminGroup } from "./handlers.js";
 import { fetchGraphic } from "./graphic-fetch.js";
@@ -47,30 +60,50 @@ let intervalId: ReturnType<typeof setInterval> | null = null;
 
 // Outbound DM rate-limit. WhatsApp imposed a 21h spam restriction on
 // the MatchTime account on 2026-04-30 after the bot fired ~56 survey
-// DMs in quick succession. To stay under the radar going forward we
-// hold to ≤ 1 DM per DM_GAP_MS window. DMs whose turn hasn't come yet
-// are not acked — the server re-emits them on the next poll, and we
-// release them when the gap elapses. Group messages, polls, bench
-// prompts and reactions are unaffected (they fire inside an existing
-// chat and don't trigger anti-spam).
-const DM_GAP_MS = 60_000;
-let lastDmAtMs = 0;
+// DMs in quick succession. Since then every DM takes the shared slot in
+// `dm-pacer.ts` (the gap is set there, nowhere else). DMs whose turn
+// hasn't come are not sent: their claim is released and the server
+// re-emits them on a later poll. Group messages, polls, bench prompts and
+// reactions are unaffected (they fire inside an existing chat and don't
+// trigger anti-spam).
+//
+// The slot is reserved BEFORE the (awaited) send, so a slow or hung send
+// cannot be double-gated by a later instruction, and the timer only
+// advances when we commit to a DM, never merely on holding one back.
 
 /**
- * Take the shared DM slot if it is open. Reserving BEFORE the (awaited)
- * send means a slow or hung send cannot be double-gated by a later
- * instruction, and the timer only advances when we commit to a DM, never
- * merely on holding one back. Club DMs and platform DMs share it.
+ * The most a tick may spend WAITING for the DM slot, in total. Why 25 s:
+ *   - under one 30 s poll, so a tick normally ends before the next fires
+ *     (an overrun just skips one tick: ticks are serialised below);
+ *   - a DM the gate is waiting on is already CLAIMED by the server, and
+ *     there is no claim timeout (src/lib/platform-jobs.ts, due-posts'
+ *     claim-on-dispatch; src/lib/club-setup-stale-claims.ts says so). If
+ *     the Pi dies mid-wait the DM is lost, as at-most-once intends, so the
+ *     window is kept short: at most 25 s per tick, never one whole gap of
+ *     60 s (the safe gap never waits at all). The only server clock it
+ *     meets is the 15-minute stale-claim alert for setup DMs, and the
+ *     10-minute life of a sign-up code, both far longer.
  */
-function takeDmSlot(label: string): boolean {
-  const sinceLast = Date.now() - lastDmAtMs;
-  if (sinceLast < DM_GAP_MS) {
-    const remainingS = Math.ceil((DM_GAP_MS - sinceLast) / 1000);
-    console.log(`[rate-limit] ${label} held — ${remainingS}s until next DM allowed`);
-    return false;
-  }
-  lastDmAtMs = Date.now();
-  return true;
+export const TICK_DM_WAIT_BUDGET_MS = 25_000;
+
+// The in-tick wait, interruptible: stopScheduler() (a disconnect, SIGINT,
+// SIGTERM) wakes every sleeper at once, and the gate then HOLDS the DM it
+// was waiting for, so it is released to the server rather than sent into a
+// closing socket (which would ack it as failed) or lost with the process.
+// A generation, not a flag: a tick that began before a stop stays stopped
+// even if a reconnect starts the scheduler again while it is still running.
+let stopGeneration = 0;
+const sleepers = new Set<() => void>();
+function sleep(ms: number): Promise<void> {
+  return new Promise<void>((resolve) => {
+    const wake = () => {
+      clearTimeout(timer);
+      sleepers.delete(wake);
+      resolve();
+    };
+    const timer = setTimeout(wake, ms);
+    sleepers.add(wake);
+  });
 }
 
 // Max time we'll wait for a single outbound send before giving up on it.
@@ -83,10 +116,10 @@ const SEND_TIMEOUT_MS = 30_000;
 
 // Re-entrancy guard. setInterval() fires tick() on a fixed cadence and
 // does NOT wait for the previous (async) tick to finish. With the poll
-// interval (30s) shorter than DM_GAP_MS (60s), ticks overlapped: while
+// interval (30s) shorter than the DM gap (60s then), ticks overlapped: while
 // tick A was awaiting a slow/hung send, tick B fired, re-read the same
-// due-posts, and raced the rate-limit gate on a STALE lastDmAtMs. The
-// successful ticks kept bumping lastDmAtMs to "now", so the held DMs'
+// due-posts, and raced the rate-limit gate on a STALE last-DM time. The
+// successful ticks kept bumping it to "now", so the held DMs'
 // "next allowed" countdown perpetually reset (the observed 31s/1s/60s
 // cycle on 2026-06-12) and nothing was ever released — a ~2h deadlock.
 // Serializing ticks makes the gate check + timer advance atomic again.
@@ -124,6 +157,9 @@ export function initScheduler(waDriver: WaDriver, orgConfigs: Org[]) {
 }
 
 export function stopScheduler() {
+  // A tick waiting for the DM slot stops waiting and releases what it held.
+  stopGeneration++;
+  for (const wake of [...sleepers]) wake();
   if (intervalId) {
     clearInterval(intervalId);
     intervalId = null;
@@ -136,20 +172,29 @@ async function tick(): Promise<void> {
   // 2026-06-12 deadlock fix: refuse to run a new tick while the previous
   // one is still in flight. setInterval keeps firing on its cadence even
   // if a tick is mid-await (e.g. a slow send). Overlapping ticks used to
-  // race the DM rate-limit gate on a stale lastDmAtMs and reset the
+  // race the DM rate-limit gate on a stale last-DM time and reset the
   // "next allowed" countdown forever. One tick at a time = the gate
   // check and the timer advance below stay consistent.
   if (tickRunning) return;
   tickRunning = true;
+  const tickGeneration = stopGeneration;
+  // One gate per tick, shared by the platform channel and every club: one
+  // DM slot, one in-tick waiting budget, and once a DM is held every later
+  // DM in this tick is held too (so none overtakes the server's order).
+  const dmGate = createTickGate(getDmPacer(), {
+    sleep,
+    budgetMs: TICK_DM_WAIT_BUDGET_MS,
+    stopped: () => stopGeneration !== tickGeneration,
+  });
   try {
     // The platform channel first: no club needed, and a sign-up code beats
-    // a reminder to the minute's DM slot. Never allowed to stop the clubs.
+    // a reminder to the DM slot. Never allowed to stop the clubs.
     try {
       await runPlatformJobs({
         driver,
         fetchJobs: getPlatformJobs,
         report: reportPlatformJob,
-        takeDmSlot,
+        takeDmSlot: (label) => dmGate.acquire(label),
         sendTimeoutMs: SEND_TIMEOUT_MS,
       });
     } catch (err) {
@@ -183,7 +228,7 @@ async function tick(): Promise<void> {
         console.log(`[${org.orgName}] ${result.instructions.length} due instruction(s)`);
         for (const instr of result.instructions) {
           if (instr.kind === "dm") {
-            if (!takeDmSlot(`DM ${instr.key}`)) {
+            if (!(await dmGate.acquire(`DM ${instr.key}`))) {
               // Since claim-on-dispatch (2026-07-19) the server has
               // ALREADY written this key's dedupe row, so simply skipping
               // would drop the DM permanently. Release the claim so the

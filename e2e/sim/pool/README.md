@@ -198,3 +198,22 @@ write; "today" rows exist now. EN and TR wherever MatchTime speaks.
 
 - BUILT (G1, `referral.spec.ts`, through the real welcome link, the real "Bring a friend" card and /play): Ali's share link and message (EN, TR) carry no number; Bea signs up through it in Turkish and confirms: `source` referral, his code, `referrerUserId` = Ali, nothing sent to Ali; his privacy switch off hides his name on /play; a stopped referrer, a number already on MatchTime and his own link from his own number never keep a referral (the source and code stay); a made-up share code is the web; a campaign's `?src=` is stamped. Owner page, QR downloads, Copy and Share buttons: `e2e/web/pool-growth.spec.ts`.
 - personal link and campaign code stamped as the source; the referral counts only once the friend has played; Recruiter (1), Scout (3), Talent Spotter (10) announced in the referrer's club group unless he keeps them private; "Brought by X" on the friend's first game
+
+## Offers (slice L5a): the DSL and where each scenario lives
+
+`offers-world.ts` adds, on top of `world.ts`: `openClub` (the pool on for the club, a geocoded
+venue in its OWN area so scenarios sharing a database never reach each other's players),
+`poolPlayer` (an active profile as L2's confirmation leaves it), `near(club)` / `far(club)`,
+`organiserAsks` (the match page's one-tap approval, over HTTP with the owner's session),
+`pollPlatform` (the Pi's poll at a pinned time: the pool sweep, then the claim and admission),
+`tapOffer` (the offer page in a real browser), `at` / `londonOn` (pinned clocks),
+`extraMatch`, `pastPoolSends` (the platform cap's earlier sends). Seams: `x-test-now` and
+`x-mt-test-pool-open`, honoured only under `MT_TEST_MODE=1`.
+
+| File | Covers |
+| --- | --- |
+| `offers-ask.spec.ts` | one-tap approval, nothing before it; the offer EN and TR with every fact and no names or numbers; every exclusion gets no message; switch and club flag off at queue time AND at send time; paused after queueing; waves fired and skipped; partners first (the pool an hour later) |
+| `offers-caps.spec.ts` | quiet hours; the autumn clock-change night; 1 a day and 2 a week across clubs; the 14-day decline cooldown; 3 ignored in a row pause him with one DM |
+| `offers-platform-cap.spec.ts` | the platform cap with two pollers racing for the last room |
+| `offers-accept.spec.ts` | yes (first-come) with the organisers' notice and his details; TR; two yeses for the last place; yes after expiry; organiser-pick (bench); a fee club and the club's own pay link; a reply in words; giving the place back; the stop link signs him in to his manage page |
+| `../../web/pool-offer.spec.ts` | Playwright, phone and desktop: the match page's pool tick (a band, never who) EN and TR, switched off; the offer page |

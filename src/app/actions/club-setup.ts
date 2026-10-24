@@ -1,4 +1,5 @@
 "use server";
+import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
 
 /**
  * GOING LIVE FROM THE WEBSITE (go-live slice S4, 2026-10-12). The Go live
@@ -92,7 +93,7 @@ export async function goLiveClubAction(orgId: string): Promise<GoLiveActionResul
   // The club's own owner or admin is recorded by user id. Anybody else who
   // passed the gate is the MatchTime owner acting for the club.
   const own = await db.membership.findFirst({
-    where: { userId, orgId, leftAt: null, role: { in: ["OWNER", "ADMIN"] } },
+    where: { userId, orgId, leftAt: null, role: { in: ["OWNER", "ADMIN"] }, ...ORDINARY_MEMBER_WHERE },
     select: { id: true },
   });
   // The hello names whoever connected the club (the loader's default).

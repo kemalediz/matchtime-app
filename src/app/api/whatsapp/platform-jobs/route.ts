@@ -26,6 +26,16 @@
  *           { id, outcome: "failed", error? }   never recorded as sent
  *           { id, outcome: "release" }          the Pi's DM pacing held it
  *
+ *         THE POOL (local player pool L5a, 2026-10-24): before the claim, the
+ *         pool's sweep runs (`sweepPool`: offers whose time ran out, asks
+ *         that should close, wave 1 an hour after the partners, wave 2),
+ *         because this is the one endpoint polled whatever the clubs'
+ *         switches say. Never allowed to cost the poll its jobs. Pool offers
+ *         are then admitted under the platform cap's lock inside the claim
+ *         (`pool/dispatch.ts`). TEST SEAMS, honoured only under
+ *         MT_TEST_MODE=1: `x-test-now` (the clock) and `x-mt-test-pool-open`
+ *         (the pool switch, `pool/flags-request.ts`).
+ *
  * Polled once per scheduler tick by a Pi built with slice 3, whatever the
  * clubs' bot switches say. A Pi built before it never calls this; due-posts
  * bridges platform DMs to that Pi instead (see due-posts/route.ts).
@@ -35,6 +45,17 @@ import { claimDuePlatformJobs, recordPlatformJobOutcome, type PlatformJobOutcome
 import { queueUnsolicitedAutoLeaves } from "@/lib/group-add";
 import { selfJoinEnabledForApiRequest } from "@/lib/self-join-flag";
 import { readClubSetVersion } from "@/lib/club-set-version-read";
+import { sweepPool } from "@/lib/pool/round";
+import { poolEnvForApiRequest } from "@/lib/pool/switch-env";
+
+/** The test clock (e2e only), as due-posts reads it. */
+function nowOf(request: Request): Date {
+  if (process.env.MT_TEST_MODE === "1") {
+    const pinned = new Date(request.headers.get("x-test-now") ?? "");
+    if (!Number.isNaN(pinned.getTime())) return pinned;
+  }
+  return new Date();
+}
 
 function authorised(request: Request): boolean {
   return request.headers.get("x-api-key") === process.env.WHATSAPP_API_KEY;
@@ -62,7 +83,14 @@ export async function GET(request: Request) {
       console.error("[platform-jobs] unsolicited auto-leave check failed; the next poll tries again:", err);
     }
   }
-  const jobs = await claimDuePlatformJobs();
+  const now = nowOf(request);
+  const poolEnv = poolEnvForApiRequest(request);
+  try {
+    await sweepPool(now, poolEnv);
+  } catch (err) {
+    console.error("[platform-jobs] pool sweep failed; the next poll tries again:", err);
+  }
+  const jobs = await claimDuePlatformJobs({ now, env: poolEnv });
   if (jobs.length > 0) {
     console.log(`[platform-jobs] handed out ${jobs.length}: ${jobs.map((j) => `${j.kind}:${j.id}`).join(", ")}`);
   }
@@ -102,6 +130,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'outcome must be "sent", "failed" or "release"' }, { status: 400 });
   }
 
-  const { updated } = await recordPlatformJobOutcome(id, outcome);
+  // The test clock (MT_TEST_MODE only): a pool offer's delivery time and
+  // its six hours start from the Pi's report (L5a review, M3).
+  const { updated } = await recordPlatformJobOutcome(id, outcome, nowOf(request));
   return NextResponse.json({ ok: true, updated });
 }

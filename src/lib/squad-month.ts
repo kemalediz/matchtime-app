@@ -13,6 +13,7 @@
  * before anything is read.
  */
 import { db } from "./db";
+import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
 import { formatLondon } from "./london-time";
 import { defaultPayBy } from "./month-payment-rules";
 import { WAITING_NOTE, firstKickoffOf, signupEndsAt } from "./month-signup-rules";
@@ -69,7 +70,7 @@ export async function startMonth(
 
   const members = await db.membership.findMany({
     // Not a partner club's guest (cross-club ask, review M6).
-    where: { orgId, leftAt: null, guestFromOrgId: null, user: { isActive: true } },
+    where: { orgId, leftAt: null, ...ORDINARY_MEMBER_WHERE, user: { isActive: true } },
     select: { userId: true },
   });
   const plan = planMonthSeed(input, { memberUserIds: new Set(members.map((m) => m.userId)), actorUserId, now });

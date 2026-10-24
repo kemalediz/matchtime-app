@@ -36,6 +36,7 @@
  * connect panel (admin/layout.tsx), so nothing they legitimately do needs
  * these actions.
  */
+import { isGuestMembership } from "@/lib/guest-membership";
 import { db } from "./db";
 import { t, type Strings } from "./i18n/t";
 import { isClubApproved } from "./club-approval-state";
@@ -54,7 +55,9 @@ export interface OwnershipFacts {
   emailVerified: Date | null;
   isSuperadmin: boolean;
   accountCount: number;
-  memberships: Array<{ orgId: string; guestFromOrgId: string | null }>;
+  /** `guestMatchId` marks any guest row (partner or pool); `guestFromOrgId`
+   *  is a partner guest's home club, the only thing "lent out" reads. */
+  memberships: Array<{ orgId: string; guestFromOrgId: string | null; guestMatchId?: string | null }>;
   /** The clubs, among those where he holds a guest row, where his
    *  attendance history has anything the guest flow did not write
    *  (`GUEST_PLACE_CAUSES`). Loaded only when he holds a guest row;
@@ -96,16 +99,21 @@ export function hasOwnSignIn(f: OwnershipFacts): boolean {
  */
 export function clubOwnsUser(f: OwnershipFacts, orgId: string): boolean {
   if (hasOwnSignIn(f)) return false;
-  if (!f.memberships.some((m) => m.orgId === orgId && !m.guestFromOrgId)) return false;
+  // Ordinary means not a guest of either kind: a POOL guest's row (no home
+  // club) is never this club's claim on his record (L5a).
+  const ordinaryHere = (m: OwnershipFacts["memberships"][number]) => m.orgId === orgId && !isGuestMembership(m);
+  if (!f.memberships.some(ordinaryHere)) return false;
   // A lent-out row counts only while the club he guests at holds nothing
   // of his but guest places (adversarial review, 2026-10-22): a FORMER
   // ordinary member there who volunteers has his old row relabelled as a
   // guest row (partner-guest.ts writePlace), and that history is not this
   // club's to take over. Unknown history fails closed.
   const otherHistory = f.guestOrgsWithOtherHistory;
-  const lentOut = (m: { orgId: string; guestFromOrgId: string | null }) =>
+  // Partner-specific: only a partner guest has a home club to be lent out
+  // by. A pool guest row at another club is never lent out by this one.
+  const lentOut = (m: OwnershipFacts["memberships"][number]) =>
     m.orgId !== orgId && m.guestFromOrgId === orgId && !!otherHistory && !otherHistory.includes(m.orgId);
-  return f.memberships.every((m) => (m.orgId === orgId && !m.guestFromOrgId) || lentOut(m));
+  return f.memberships.every((m) => ordinaryHere(m) || lentOut(m));
 }
 
 export async function loadOwnershipFacts(userId: string): Promise<OwnershipFacts | null> {
@@ -118,12 +126,12 @@ export async function loadOwnershipFacts(userId: string): Promise<OwnershipFacts
       emailVerified: true,
       isSuperadmin: true,
       _count: { select: { accounts: true } },
-      memberships: { select: { orgId: true, guestFromOrgId: true } },
+      memberships: { select: { orgId: true, guestFromOrgId: true, guestMatchId: true } },
     },
   });
   if (!u) return null;
   const memberships = u.memberships ?? [];
-  const guestOrgIds = [...new Set(memberships.filter((m) => m.guestFromOrgId).map((m) => m.orgId))];
+  const guestOrgIds = [...new Set(memberships.filter((m) => isGuestMembership(m)).map((m) => m.orgId))];
   const guestOrgsWithOtherHistory =
     guestOrgIds.length === 0
       ? []

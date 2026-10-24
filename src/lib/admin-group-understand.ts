@@ -98,6 +98,7 @@
  * the organisers' own chat routes none and stays silent. Logs carry ids
  * and counts only.
  */
+import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
 import { loadGroupReplyContexts, parseGroupQuote, type QuotedGroupMessage } from "./reply-context";
 import { rosterMemberByPhone } from "./roster-name-by-phone";
 import { db } from "./db";
@@ -228,7 +229,7 @@ export async function loadPending(orgId: string, now: Date, lang: string | null)
 export async function onlyOrganisersLine(orgId: string, lang: string | null): Promise<string> {
   const rows =
     (await db.membership.findMany({
-      where: { orgId, leftAt: null, role: { in: ["OWNER", "ADMIN"] } },
+      where: { orgId, leftAt: null, role: { in: ["OWNER", "ADMIN"] }, ...ORDINARY_MEMBER_WHERE },
       select: { user: { select: { name: true } } },
       orderBy: [{ role: "asc" }, { id: "asc" }],
     })) ?? [];

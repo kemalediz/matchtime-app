@@ -10,7 +10,7 @@
  *   sent     the send resolved (with the message id when there is one)
  *   failed   the send threw or timed out. Reported as FAILED, never as
  *            sent, and not retried (a timed-out send may have landed).
- *   release  the one-DM-a-minute pacing held it. The server re-queues it.
+ *   release  the DM pacing held it. The server re-queues it.
  *
  * A DM spends the same pacing slot as a club's DMs (WhatsApp restricted
  * the number for 21 hours after ~56 DMs in a burst). Leaving a group is
@@ -112,6 +112,40 @@ describe("runPlatformJobs", () => {
     ]);
   });
 
+  // Slice L5a: the scheduler's gate may wait a few seconds for the slot
+  // before answering. The send must wait for that answer, in order.
+  it("awaits a slot that is granted after a short wait, and only then sends", async () => {
+    const order: string[] = [];
+    let release!: (ok: boolean) => void;
+    const { deps, reports } = setup(
+      {
+        takeDmSlot: vi.fn(() => {
+          order.push("slot asked");
+          return new Promise<boolean>((r) => (release = r));
+        }),
+      },
+      [DM],
+    );
+    (deps.driver.sendDirectText as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+      order.push("sent");
+      return { id: { _serialized: "x" } };
+    });
+    const run = runPlatformJobs(deps);
+    await Promise.resolve();
+    expect(order).toEqual(["slot asked"]);
+    release(true);
+    expect(await run).toEqual({ sent: 1, failed: 0, released: 0 });
+    expect(order).toEqual(["slot asked", "sent"]);
+    expect(reports).toHaveLength(1);
+  });
+
+  it("an awaited slot that comes back held releases the DM", async () => {
+    const { deps, calls, reports } = setup({ takeDmSlot: vi.fn(async () => false) }, [DM]);
+    expect(await runPlatformJobs(deps)).toEqual({ sent: 0, failed: 0, released: 1 });
+    expect(calls).toEqual([]);
+    expect(reports).toEqual([{ id: "pj1", outcome: "release" }]);
+  });
+
   it("leaves a group without spending a DM slot", async () => {
     const { deps, calls, reports, setSlots } = setup({}, [LEAVE]);
     setSlots(0);
@@ -162,5 +196,37 @@ describe("runPlatformJobs", () => {
     );
     await runPlatformJobs(deps);
     expect(calls.map((c) => c[1])).toEqual(["120363900000000001@g.us", "120363900000000002@g.us"]);
+  });
+});
+
+describe("the outcome report is retried, bounded (second review of #400, item 2)", () => {
+  it("a lost report is tried again, up to 3 times, then given up without stopping the next job", async () => {
+    let fails = 2;
+    const tries: unknown[] = [];
+    const sleeps: number[] = [];
+    const { deps } = setup(
+      {
+        report: vi.fn(async (r) => {
+          tries.push(r);
+          if (fails-- > 0) throw new Error("network down");
+        }),
+        sleep: async (ms: number) => {
+          sleeps.push(ms);
+        },
+      },
+      [DM],
+    );
+    expect(await runPlatformJobs(deps)).toEqual({ sent: 1, failed: 0, released: 0 });
+    expect(tries).toHaveLength(3);
+    expect(sleeps).toEqual([1_000, 3_000]);
+  });
+
+  it("never more than 3 tries", async () => {
+    const report = vi.fn(async () => {
+      throw new Error("server down");
+    });
+    const { deps } = setup({ report, sleep: async () => {} }, [DM, LEAVE]);
+    await runPlatformJobs(deps);
+    expect(report).toHaveBeenCalledTimes(6);
   });
 });

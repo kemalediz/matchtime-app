@@ -12,6 +12,7 @@
  * its window makes no query here. Never throws: a failure costs this one
  * notice on this poll, never the poll.
  */
+import { isGuestMembership } from "@/lib/guest-membership";
 import { db } from "./db";
 import { adminNoticeInstructions, type LoadedAdminChannel } from "./admin-channel";
 import type { PiCaps } from "./admin-channel-rules";
@@ -54,12 +55,12 @@ export async function loadSeedState(
   const peer = await db.rating.findFirst({ where: { match: { activity: { orgId } } }, select: { id: true } });
   const all = await db.membership.findMany({
     where: { orgId },
-    select: { userId: true, seedRating: true, leftAt: true, guestFromOrgId: true },
+    select: { userId: true, seedRating: true, leftAt: true, guestFromOrgId: true, guestMatchId: true },
   });
-  // A partner club's guest is not this club's player to seed (cross-club
-  // ask); with no guest, the counts are exactly what they always were.
-  const guestIds = new Set(all.filter((m) => m.guestFromOrgId).map((m) => m.userId));
-  const members = all.filter((m) => !m.guestFromOrgId);
+  // A guest (a partner club's or the player pool's) is not this club's
+  // player to seed; with no guest, the counts are exactly what they always were.
+  const guestIds = new Set(all.filter((m) => isGuestMembership(m)).map((m) => m.userId));
+  const members = all.filter((m) => !isGuestMembership(m));
   const seedOf = new Map(members.map((m) => [m.userId, m.seedRating]));
   const active = members.filter((m) => m.leftAt == null);
   const manual = await db.botJob.findFirst({

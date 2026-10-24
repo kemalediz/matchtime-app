@@ -5,7 +5,7 @@
  *   - /admin/players: the guest is labelled "Guest from Sutton Lenders",
  *     with no phone field and no merge button;
  *   - /admin/players/phones: the guest is not listed at all;
- *   - the match page: "Guests from partner clubs", and "Add to <club>"
+ *   - the match page: "Guests on this game", and "Add to <club>"
  *     makes him an ordinary member.
  */
 import { test, expect, signInAs, resetDb, U } from "../fixtures";

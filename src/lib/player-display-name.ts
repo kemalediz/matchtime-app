@@ -12,7 +12,8 @@
  *   3. for a partner guest, his HOME club's `UserAlias`;
  *   4. nothing: `resolvePlayerName` is null and the display line is the
  *      group's own word for "unnamed" (`s.unnamed`, EN and TR).
- * A partner guest's line then gets " (Home club)" appended.
+ * A partner guest's line then gets " (Home club)" appended; a pool guest's
+ * (local player pool, L5a, no home club) gets " (MatchTime player pool)".
  *
  * A phone number is never a name, at any step. Aliases are stored
  * normalised (lower case, accents stripped), so they are capitalised
@@ -24,6 +25,7 @@
  * `User.name`: this is for printing only.
  */
 import { db } from "./db";
+import { guestSourceOf, partnerHomeClubOf } from "./guest-membership";
 import { t } from "./i18n/t";
 import { normaliseLang, type Lang } from "./i18n/lang";
 
@@ -51,7 +53,8 @@ export interface PlayerNameFacts {
   aliasesHere?: readonly string[];
   /** For a partner guest: `UserAlias.alias` rows at his home club. */
   aliasesHome?: readonly string[];
-  /** For a partner guest: his home club's name. Absent for a member. */
+  /** For a partner guest: his home club's name; for a pool guest, the
+   *  "MatchTime player pool" label. Absent for a member. */
   guestClubName?: string | null;
 }
 
@@ -111,9 +114,17 @@ async function loadPlayerNamesOrThrow(
 
   const [users, mems] = await Promise.all([
     db.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } }),
-    db.membership.findMany({ where: { orgId, userId: { in: ids } }, select: { userId: true, guestFromOrgId: true } }),
+    db.membership.findMany({ where: { orgId, userId: { in: ids } }, select: { userId: true, guestFromOrgId: true, guestMatchId: true } }),
   ]);
-  const homeOf = new Map(mems.filter((m) => m.guestFromOrgId).map((m) => [m.userId, m.guestFromOrgId as string]));
+  // A partner guest's home club (for his home aliases and his label). A
+  // POOL guest has none: he is labelled "MatchTime player pool" instead (L5a).
+  const homeOf = new Map(
+    mems.flatMap((m) => {
+      const home = partnerHomeClubOf(m);
+      return home === null ? [] : [[m.userId, home] as const];
+    }),
+  );
+  const poolGuests = new Set(mems.filter((m) => guestSourceOf(m) === "pool").map((m) => m.userId));
   const homeIds = [...new Set(homeOf.values())];
   const [aliases, homes] = await Promise.all([
     db.userAlias.findMany({
@@ -133,7 +144,7 @@ async function loadPlayerNamesOrThrow(
       name: u.name,
       aliasesHere: aliases.filter((a) => a.userId === u.id && a.orgId === orgId).map((a) => a.alias),
       aliasesHome: home ? aliases.filter((a) => a.userId === u.id && a.orgId === home).map((a) => a.alias) : [],
-      guestClubName: home ? (clubName.get(home) ?? null) : null,
+      guestClubName: home ? (clubName.get(home) ?? null) : poolGuests.has(u.id) ? t(lang).gst_source_pool : null,
     };
     out.set(u.id, { name: resolvePlayerName(facts, lang), display: playerDisplayName(facts, lang) });
   }

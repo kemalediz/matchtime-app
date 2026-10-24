@@ -12,7 +12,11 @@ import { db } from "@/lib/db";
 import { requireOrgAdmin } from "@/lib/org";
 import { t } from "@/lib/i18n/t";
 import { loadPartnerAskSettings } from "@/lib/club-partnership";
-import { approvePartnerAsk, askRefusalText, cancelPartnerRound, declinePartnerAsk, requestPartnerRound } from "@/lib/partner-ask";
+import { approvePartnerAsk, askRefusalText, cancelPartnerRound, declinePartnerAsk } from "@/lib/partner-ask";
+import { requestAskRound } from "@/lib/pool/ask-round";
+import { poolAskRefusalText } from "@/lib/pool/offer-copy";
+import { poolEnvForRequest } from "@/lib/pool/switch-env";
+import { poolCopy } from "@/lib/i18n/pool-offer";
 import { joinList } from "@/lib/i18n/text";
 import { keepGuestAsMember } from "@/lib/partner-guest";
 
@@ -35,31 +39,45 @@ async function adminOfMatch(matchId: string): Promise<{ userId: string; orgId: s
  * 2026-10-22): the number the organiser picked (1 up to the open places)
  * and the partners ticked, one round. OWNER or ADMIN only. A paused
  * partner is never asked, and the reply says which.
+ *
+ * The MatchTime player pool (L5a, 2026-10-24) is one more tick: `pool`
+ * true asks it in the SAME round (`pool/ask-round.ts`). The tap is the
+ * organisers' approval; nobody is contacted before it.
  */
-export async function requestPartnerRoundAction(matchId: string, partnershipIds: string[], places: number): Promise<{ ok: boolean; message: string }> {
+export async function requestPartnerRoundAction(
+  matchId: string,
+  partnershipIds: string[],
+  places: number,
+  pool = false,
+): Promise<{ ok: boolean; message: string }> {
   const { userId, orgId, lang } = await adminOfMatch(matchId);
   const s = t(lang);
   const ids = Array.isArray(partnershipIds) ? partnershipIds.filter((x): x is string => typeof x === "string") : [];
-  if (ids.length === 0) return { ok: false, message: s.xask_round_none_ticked };
-  const r = await requestPartnerRound({
-    askerOrgId: orgId,
-    matchId,
-    partnershipIds: ids,
-    places: Number(places),
-    requestedByUserId: userId,
-    via: "button",
-  });
+  if (ids.length === 0 && pool !== true) return { ok: false, message: s.xask_round_none_ticked };
+  const r = await requestAskRound({ orgId, matchId, partnershipIds: ids, pool: pool === true, places: Number(places), userId, poolEnv: await poolEnvForRequest() });
   revalidatePath(`/matches/${matchId}`);
-  const cutoff = (await loadPartnerAskSettings(orgId))?.cutoffHours ?? 4;
-  const asked = r.results.filter((x) => x.result === "posted" || x.result === "awaiting").map((x) => x.partnerName);
   const parts: string[] = [];
-  if (asked.length > 0) parts.push(s.xask_round_asked_toast({ partners: joinList(lang, asked), places: Number(places) }));
-  for (const x of r.results) {
-    if (x.result === "posted" || x.result === "awaiting") continue;
-    parts.push(askRefusalText(lang, x.result, x.partnerName, cutoff, r.placesOpen));
+  let asked = 0;
+  if (r.partner) {
+    const cutoff = (await loadPartnerAskSettings(orgId))?.cutoffHours ?? 4;
+    const names = r.partner.results.filter((x) => x.result === "posted" || x.result === "awaiting").map((x) => x.partnerName);
+    asked += names.length;
+    if (names.length > 0) parts.push(s.xask_round_asked_toast({ partners: joinList(lang, names), places: Number(places) }));
+    for (const x of r.partner.results) {
+      if (x.result === "posted" || x.result === "awaiting") continue;
+      parts.push(askRefusalText(lang, x.result, x.partnerName, cutoff, r.partner.placesOpen));
+    }
+    if (r.partner.skippedPaused.length > 0) parts.push(s.xask_round_skipped_paused({ partners: joinList(lang, r.partner.skippedPaused) }));
   }
-  if (r.skippedPaused.length > 0) parts.push(s.xask_round_skipped_paused({ partners: joinList(lang, r.skippedPaused) }));
-  return { ok: asked.length > 0, message: parts.join(" ") || s.xask_refused_generic };
+  if (r.pool) {
+    if (r.pool.ok) {
+      asked++;
+      parts.push(poolCopy(lang).toast_asked({ places: Number(places) }));
+    } else {
+      parts.push(poolAskRefusalText(lang, r.pool.refusal, r.partner?.placesOpen ?? Number(places)));
+    }
+  }
+  return { ok: asked > 0, message: parts.join(" ") || s.xask_refused_generic };
 }
 
 /** The match page's "Cancel this ask" (Kemal, 2026-10-22): every open ask

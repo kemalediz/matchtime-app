@@ -97,7 +97,7 @@ ALTER TABLE "PoolProfile" ADD CONSTRAINT "PoolProfile_confirmCode_check"
   CHECK ("confirmCode" IS NULL OR ("status" = 'pending-verify' AND "confirmCode" ~ '^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{5}$'));
 ALTER TABLE "PoolAttempt" DROP CONSTRAINT IF EXISTS "PoolAttempt_result_check";
 ALTER TABLE "PoolAttempt" ADD CONSTRAINT "PoolAttempt_result_check"
-  CHECK (("kind" = 'confirm' AND "result" IN ('wrong', 'expired', 'has-profile')) OR ("kind" = 'signup' AND "result" IN ('created', 'area-not-found', 'venues-unknown')));
+  CHECK (("kind" = 'confirm' AND "result" IN ('wrong', 'expired', 'has-profile')) OR ("kind" = 'signup' AND "result" IN ('created', 'area-not-found', 'venues-unknown')) OR ("kind" = 'offer-verify' AND "result" IN ('wrong')));
 ALTER TABLE "PoolConsentRecord" DROP CONSTRAINT IF EXISTS "PoolConsentRecord_action_check";
 ALTER TABLE "PoolConsentRecord" ADD CONSTRAINT "PoolConsentRecord_action_check"
   CHECK ("action" IN ('consent', 'withdraw'));

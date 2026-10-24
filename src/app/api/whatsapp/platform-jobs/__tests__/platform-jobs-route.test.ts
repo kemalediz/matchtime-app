@@ -217,7 +217,7 @@ describe("POST (outcome)", () => {
     const res = await post({ id: "pj1", outcome: "sent", waMessageId: "wa1" });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, updated: true });
-    expect(libMock.recordPlatformJobOutcome).toHaveBeenCalledWith("pj1", { outcome: "sent", waMessageId: "wa1" });
+    expect(libMock.recordPlatformJobOutcome).toHaveBeenCalledWith("pj1", { outcome: "sent", waMessageId: "wa1" }, expect.any(Date));
   });
 
   it("records a failure with its reason, and never as sent", async () => {
@@ -225,7 +225,7 @@ describe("POST (outcome)", () => {
     expect(libMock.recordPlatformJobOutcome).toHaveBeenCalledWith("pj1", {
       outcome: "failed",
       reason: "not on WhatsApp",
-    });
+    }, expect.any(Date));
   });
 
   it("a failure with no reason still records a reason", async () => {
@@ -233,12 +233,12 @@ describe("POST (outcome)", () => {
     expect(libMock.recordPlatformJobOutcome).toHaveBeenCalledWith("pj1", {
       outcome: "failed",
       reason: expect.stringMatching(/no reason/i),
-    });
+    }, expect.any(Date));
   });
 
   it("releases a paced DM", async () => {
     await post({ id: "pj1", outcome: "release" });
-    expect(libMock.recordPlatformJobOutcome).toHaveBeenCalledWith("pj1", { outcome: "release" });
+    expect(libMock.recordPlatformJobOutcome).toHaveBeenCalledWith("pj1", { outcome: "release" }, expect.any(Date));
   });
 
   it("rejects a bad body", async () => {

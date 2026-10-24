@@ -1,5 +1,6 @@
 "use server";
 
+import { isGuestMembership } from "@/lib/guest-membership";
 import { normaliseBenchPickFallback, normaliseBenchPickMode } from "@/lib/squad-capacity";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -290,7 +291,7 @@ export async function switchOrg(orgId: string) {
       where: { userId_orgId: { userId: session.user.id, orgId } },
     });
     // A partner club's guest is not that club's member (review M6).
-    if (!membership || membership.leftAt !== null || membership.guestFromOrgId) {
+    if (!membership || membership.leftAt !== null || isGuestMembership(membership)) {
       throw new Error("Not a member of this organisation");
     }
   } else {

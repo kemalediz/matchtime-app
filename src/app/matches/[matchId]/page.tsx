@@ -9,6 +9,7 @@ import { CarryOverSquadButton } from "@/components/match/carry-over-squad-button
 import { WaitingListControls } from "@/components/match/waiting-list-controls";
 import { summariseClubDisplayRatings } from "@/lib/player-rating";
 import { loadGuestStandings } from "@/lib/partner-guest-standing";
+import { GUEST_MEMBER_WHERE, guestSourceOf, partnerHomeClubOf } from "@/lib/guest-membership";
 import { standingPhrase } from "@/lib/partner-guest-standing-rules";
 import { positionLabel } from "@/lib/organiser-pick-rules";
 import { findCarryOverSource } from "@/lib/rolling-squad";
@@ -26,6 +27,7 @@ import { buildWeekList } from "@/lib/monthly-week-rules";
 import { PartnerAskPanel } from "@/components/match/partner-ask-panel";
 import { PartnerGuestsPanel } from "@/components/match/partner-guests-panel";
 import { loadPartnerAskPanel } from "@/lib/partner-ask";
+import { poolEnvForRequest } from "@/lib/pool/switch-env";
 import { organisersPickMom } from "@/lib/mom-chooser";
 import { loadMatchGuestCards } from "@/lib/pool/guest-report-loader";
 import { normaliseLang } from "@/lib/i18n/lang";
@@ -155,28 +157,36 @@ export default async function MatchDetailPage({
   // active partner and asking switched on, for a match still to play.
   const partnerAskPanel =
     isAdmin && ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"].includes(match.status)
-      ? await loadPartnerAskPanel(matchId, match.activity.orgId).catch(() => null)
+      ? await loadPartnerAskPanel(matchId, match.activity.orgId, { poolEnv: await poolEnvForRequest() }).catch(() => null)
       : null;
-  // Guests from partner clubs on this match (S4): name and club, never a
-  // phone, with "Add to <club>". Admins only; none for every club today.
+  // Guests on this match (S4; the player pool, L5a): name and where he came
+  // from (a partner club's name, or "MatchTime player pool"), never a phone,
+  // with "Add to <club>". A partner guest's standing at HIS club; a pool
+  // guest has no home club, so none. Admins only.
   const partnerGuestRows = isAdmin
     ? await (async () => {
         const ids = match.attendances.map((a) => a.userId);
         if (ids.length === 0) return [];
         const guests = await db.membership
-          .findMany({ where: { orgId: match.activity.orgId, userId: { in: ids }, guestFromOrgId: { not: null } }, select: { userId: true, guestFromOrgId: true } })
+          .findMany({
+            where: { orgId: match.activity.orgId, userId: { in: ids }, ...GUEST_MEMBER_WHERE },
+            select: { userId: true, guestFromOrgId: true, guestMatchId: true, guestVia: true },
+          })
           .catch(() => []);
         if (guests.length === 0) return [];
-        const clubs = await db.organisation.findMany({ where: { id: { in: guests.map((g) => g.guestFromOrgId!) } }, select: { id: true, name: true } });
+        const homes = guests.map((g) => ({ userId: g.userId, homeOrgId: partnerHomeClubOf(g) })).filter((g): g is { userId: string; homeOrgId: string } => !!g.homeOrgId);
+        const clubs = homes.length ? await db.organisation.findMany({ where: { id: { in: homes.map((h) => h.homeOrgId) } }, select: { id: true, name: true } }) : [];
         const nameOf = new Map(clubs.map((c) => [c.id, c.name]));
         // His standing at HIS club (2026-10-22, option C), in this club's words.
-        const standings = await loadGuestStandings(guests.map((g) => ({ userId: g.userId, homeOrgId: g.guestFromOrgId! })));
+        const standings = homes.length ? await loadGuestStandings(homes) : new Map();
+        const poolLabel = t(match.activity.org.language).gst_source_pool;
         return guests.map((g) => {
           const st = standings.get(g.userId);
+          const home = partnerHomeClubOf(g);
           return {
             userId: g.userId,
             name: match.attendances.find((a) => a.userId === g.userId)?.user.name ?? "?",
-            club: nameOf.get(g.guestFromOrgId!) ?? "",
+            club: guestSourceOf(g) === "pool" ? poolLabel : home ? (nameOf.get(home) ?? "") : "",
             standing: st ? standingPhrase(match.activity.org.language, st) : null,
           };
         });
@@ -556,13 +566,14 @@ export default async function MatchDetailPage({
         <PartnerGuestsPanel matchId={matchId} clubName={match.activity.org.name} language={match.activity.org.language} rows={partnerGuestRows} />
       )}
 
-      {partnerAskPanel && partnerAskPanel.rows.length > 0 && (
+      {partnerAskPanel && (partnerAskPanel.rows.length > 0 || partnerAskPanel.pool) && (
         <PartnerAskPanel
           matchId={matchId}
           language={match.activity.org.language}
           placesOpen={partnerAskPanel.placesOpen}
           rows={partnerAskPanel.rows}
           rounds={partnerAskPanel.rounds}
+          pool={partnerAskPanel.pool}
         />
       )}
 

@@ -111,7 +111,7 @@ describe("THE GUARD: what one club learns about another", () => {
     // Memberships only as a COUNT, never as rows.
     expect(keys.filter((k) => k.startsWith("memberships"))).toEqual([]);
     expect(keys).toContain("_count.select.memberships.where.leftAt");
-    expect(keys).toContain("_count.select.memberships.where.guestFromOrgId");
+    expect(keys).toContain("_count.select.memberships.where.guestMatchId");
   });
 
   it("the cards carry the card's fields only: no coordinates, names, numbers, links, fees or ratings", async () => {

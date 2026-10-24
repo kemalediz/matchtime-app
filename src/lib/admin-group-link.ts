@@ -26,6 +26,7 @@
  * NO MODEL anywhere here, and no message from an admin group is ever
  * analysed: the Pi forwards only the link command from a silent group.
  */
+import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
 import { db } from "./db";
 import { t } from "./i18n/t";
 import { e164Digits, normalisePhone } from "./phone";
@@ -526,7 +527,7 @@ export async function handleAdminGroupRemoved(
   if (count !== 1) return { unlinked: false };
   const owners =
     (await db.membership.findMany({
-      where: { orgId: org.id, role: "OWNER", leftAt: null, user: { phoneNumber: { not: null } } },
+      where: { orgId: org.id, role: "OWNER", leftAt: null, ...ORDINARY_MEMBER_WHERE, user: { phoneNumber: { not: null } } },
       select: { user: { select: { phoneNumber: true } } },
       take: 1,
     })) ?? [];

@@ -16,7 +16,7 @@ import { en } from "@/lib/i18n/strings.en";
 import { tr } from "@/lib/i18n/strings.tr";
 
 const users: Array<{ id: string; name: string | null }> = [];
-const mems: Array<{ userId: string; orgId: string; guestFromOrgId: string | null }> = [];
+const mems: Array<{ userId: string; orgId: string; guestFromOrgId: string | null; guestMatchId?: string | null; guestVia?: string | null }> = [];
 const aliases: Array<{ userId: string; orgId: string; alias: string; createdAt: Date }> = [];
 const orgs: Array<{ id: string; name: string }> = [];
 
@@ -111,6 +111,13 @@ describe("loadPlayerNames (prod shapes)", () => {
     expect(names.get("elvin")).toEqual({ name: "Elvin", display: "Elvin" });
     expect(names.get("c1")).toEqual({ name: "C1", display: "C1 (Friday MT Community)" });
     expect(names.get("c2")).toEqual({ name: null, display: `${en.unnamed} (Friday MT Community)` });
+  });
+
+  it("a POOL guest (no home club, L5a) is shown as from the MatchTime pool, in the group's language", async () => {
+    users.push({ id: "pool1", name: "Ali K" });
+    mems.push({ userId: "pool1", orgId: MT_TEST, guestFromOrgId: null, guestMatchId: "m1", guestVia: "pool" });
+    expect((await loadPlayerNames(MT_TEST, ["pool1"], "en")).get("pool1")).toEqual({ name: "Ali K", display: "Ali K (MatchTime player pool)" });
+    expect((await loadPlayerNames(MT_TEST, ["pool1"], "tr")).get("pool1")?.display).toBe("Ali K (MatchTime oyuncu havuzu)");
   });
 
   it("a guest's home-club alias names him when User.name is empty", async () => {

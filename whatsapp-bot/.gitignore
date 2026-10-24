@@ -6,3 +6,4 @@ bot.log
 bot.err.log
 dist/
 .baileys_auth/
+.dm-pacing.json

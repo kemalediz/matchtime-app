@@ -147,7 +147,7 @@ describe("partnerClubsForRouter: the players' group router's partner line", () =
       orgId: "fnf",
       userId: { in: ["u-raihan", "u-player"] },
       leftAt: null,
-      role: { in: ["OWNER", "ADMIN"] },
+      role: { in: ["OWNER", "ADMIN"] }, guestMatchId: null,
     });
   });
 

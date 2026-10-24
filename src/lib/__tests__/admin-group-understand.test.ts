@@ -913,7 +913,7 @@ describe("a sender who is not an organiser", () => {
   it("the organisers are the club's current owners and admins", async () => {
     await ask("@Match Time swap Maj and Kieran", "balancer", player());
     expect(dbMock.membership.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { orgId: "org-fnf", leftAt: null, role: { in: ["OWNER", "ADMIN"] } } }),
+      expect.objectContaining({ where: { orgId: "org-fnf", leftAt: null, role: { in: ["OWNER", "ADMIN"] }, guestMatchId: null } }),
     );
   });
 

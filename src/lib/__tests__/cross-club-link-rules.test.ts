@@ -84,6 +84,13 @@ describe("decideCrossClubLink", () => {
     });
   });
 
+  it("refuses a POOL guest of club A too (no home club, L5a)", () => {
+    expect(decideCrossClubLink(facts({ drop: { membershipInOrg: { guestFromOrgId: null, guestMatchId: "m1" } } }))).toEqual({
+      kind: "refuse",
+      reason: "drop_guest",
+    });
+  });
+
   it("refuses when club A's player also belongs to another club (the merge would write that club)", () => {
     expect(decideCrossClubLink(facts({ drop: { otherClubMemberships: 1 } }))).toEqual({
       kind: "refuse",

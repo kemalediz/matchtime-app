@@ -37,6 +37,13 @@
  *   setup-admin-code,
  *   setup-reminder,
  *   setup-reply
+ *   pool-offer,         only a number MatchTime already knows: a pool
+ *   pool-placed,        player whose own WhatsApp message confirmed his
+ *   pool-reply,         sign-up (local player pool, slice L5a). Queued only
+ *   pool-paused         by src/lib/pool/ (round.ts, accept.ts, reply.ts).
+ *                       A `pool-offer` is ADMITTED at dispatch under the
+ *                       platform cap's lock (`pool/dispatch.ts`): switches,
+ *                       his caps and quiet hours are re-checked there.
  *   owner-approval,     NEVER through here. `queueOwnerDm` (owner-dm.ts)
  *   owner-ack,          is the only door to Kemal's phone.
  *   owner-setup-stuck
@@ -71,6 +78,7 @@ import { e164Digits } from "./phone";
 // The pure half, not club-approval.ts: slice 7 makes club-approval import
 // owner-dm, which imports this file, and a cycle there would be silent.
 import { APPROVED_CLUB_WHERE } from "./club-approval-state";
+import { POOL_OFFER_PURPOSE, admitPoolOfferJobs, onPoolOfferJobFailed, onPoolOfferJobSent } from "./pool/dispatch";
 
 // ── Vocabulary ──────────────────────────────────────────────────────────
 
@@ -114,6 +122,10 @@ export const PLATFORM_DM_PURPOSES = [
   "setup-owner-live",
   "pool-welcome",
   "pool-code-reply",
+  "pool-offer",
+  "pool-placed",
+  "pool-reply",
+  "pool-paused",
 ] as const;
 export type PlatformDmPurpose = (typeof PLATFORM_DM_PURPOSES)[number];
 
@@ -137,6 +149,9 @@ export type PlatformJobStatus = "queued" | "claimed" | "sent" | "failed" | "unco
 /** Jobs handed to the Pi per poll. It sends what its DM pacing allows and
  *  releases the rest, as it does for due-posts. */
 export const MAX_JOBS_PER_POLL = 5;
+
+/** Of those, kept for pool offers when any are due (L5a, second review). */
+export const POOL_RESERVED_PER_POLL = 1;
 
 /** A sign-up code lives 10 minutes (phone-signup.ts, claim.ts). A code DM
  *  that waited longer than that would deliver a dead code, so it is failed
@@ -290,7 +305,7 @@ export async function queuePlatformDm(args: {
 /** DM purposes `cancelQueuedPlatformDms` will touch. A sign-up code, a
  *  decision, a billing notice and anything for the owner are never
  *  cancelled from here. */
-export const CANCELLABLE_DM_PURPOSES = ["setup-ask", "setup-admin-code", "setup-reminder", "setup-removed"] as const;
+export const CANCELLABLE_DM_PURPOSES = ["setup-ask", "setup-admin-code", "setup-reminder", "setup-removed", "pool-offer"] as const;
 export type CancellableDmPurpose = (typeof CANCELLABLE_DM_PURPOSES)[number];
 
 /** How a cancelled job's `failReason` starts. On a CLAIMED job it is the
@@ -489,7 +504,7 @@ export function planPlatformDispatch(
  * 3 cannot leave a group.
  */
 export async function claimDuePlatformJobs(
-  opts: { now?: Date; limit?: number; kinds?: PlatformJobKind[] } = {},
+  opts: { now?: Date; limit?: number; kinds?: PlatformJobKind[]; env?: Record<string, string | undefined> } = {},
 ): Promise<PlatformJobInstruction[]> {
   const now = opts.now ?? new Date();
   const kinds = opts.kinds ?? ["dm", "leave-group"];
@@ -514,8 +529,24 @@ export async function claimDuePlatformJobs(
     }) as Promise<PlatformJobRow[]>;
   const [codes, others] = await Promise.all([read("otp"), read({ not: "otp" })]);
   const seen = new Set<string>();
-  const rows = [...(codes ?? []), ...(others ?? [])].filter((r) => (seen.has(r.id) ? false : (seen.add(r.id), true)));
-  if (rows.length === 0) return [];
+  const read0 = [...(codes ?? []), ...(others ?? [])].filter((r) => (seen.has(r.id) ? false : (seen.add(r.id), true)));
+  if (read0.length === 0) return [];
+  // Pool offers (local player pool L5a, `pool/dispatch.ts`) are not
+  // planned here: they take the poll's room LEFT after everything else,
+  // and are admitted AND claimed under the platform cap's lock.
+  const poolAll = read0.filter((r) => r.purpose === POOL_OFFER_PURPOSE && r.kind === "dm");
+  const rows = read0.filter((r) => !(r.purpose === POOL_OFFER_PURPOSE && r.kind === "dm"));
+  // A pool row with nothing to send is never claimed: failed, here and now
+  // (second review of #400, item 4); its offer ends cancelled.
+  const poolRows = poolAll.filter((r) => r.phone && r.text);
+  for (const r of poolAll.filter((x) => !x.phone || !x.text)) {
+    await db.platformJob.updateMany({ where: { id: r.id, status: "queued" }, data: { status: "failed", failedAt: now, failReason: "malformed: a pool offer with no phone or no text" } });
+    await onPoolOfferJobFailed(r.id, now);
+  }
+  // A small reserved share (one of the poll's places) for pool offers, so a
+  // backlog of other DMs never starves them; the poll's total, and so the
+  // Pi's pacing, is unchanged.
+  const reserved = poolRows.length > 0 ? POOL_RESERVED_PER_POLL : 0;
 
   const leaveGroups = [...new Set(rows.filter((r) => r.kind === "leave-group" && r.groupId).map((r) => r.groupId as string))];
   const approved = leaveGroups.length
@@ -542,7 +573,7 @@ export async function claimDuePlatformJobs(
     now,
     approvedGroupIds,
     adminGroupIds,
-    limit: opts.limit ?? MAX_JOBS_PER_POLL,
+    limit: Math.max(0, (opts.limit ?? MAX_JOBS_PER_POLL) - reserved),
   });
 
   for (const r of plan.refuse) {
@@ -562,6 +593,16 @@ export async function claimDuePlatformJobs(
       data: { status: "claimed", claimedAt: now },
     });
     if (count === 1) out.push(job.instruction);
+  }
+  const room = Math.max(0, (opts.limit ?? MAX_JOBS_PER_POLL) - plan.dispatch.length);
+  if (poolRows.length > 0 && room > 0) {
+    const { claimed } = await admitPoolOfferJobs(
+      poolRows.map((r) => r.id),
+      { now, limit: room, env: opts.env },
+    );
+    for (const r of poolRows) {
+      if (claimed.has(r.id) && r.phone && r.text) out.push({ id: r.id, kind: "dm", phone: r.phone, text: r.text, purpose: r.purpose });
+    }
   }
   return out;
 }
@@ -623,8 +664,12 @@ export async function recordPlatformJobOutcome(
       return { updated: true };
     }
   }
+  // A pool offer reached him only when the Pi says so (review of #400, M3).
+  if ((result.outcome === "sent" || result.outcome === "unconfirmed") && count > 0) await onPoolOfferJobSent(id, now);
   if (result.outcome === "failed" && count > 0) {
     console.error(`[platform-jobs] job ${id} FAILED on the Pi: ${result.reason}`);
+    // A pool offer that never reached him ends cancelled (L5a).
+    await onPoolOfferJobFailed(id, now);
   }
   return { updated: count > 0 };
 }

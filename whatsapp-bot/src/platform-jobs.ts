@@ -20,10 +20,12 @@
  *            The server puts it back in the queue.
  *
  * ── Pacing ───────────────────────────────────────────────────────────
- * A DM takes the SAME one-a-minute slot as a club DM (`takeDmSlot`, owned
- * by the scheduler): WhatsApp restricted the number for 21 hours after
- * about 56 DMs in quick succession. Leaving a group is not a message and is
- * not paced.
+ * A DM takes the SAME slot as a club DM (`takeDmSlot`, the scheduler's
+ * per-tick gate over `dm-pacer.ts`): WhatsApp restricted the number for 21
+ * hours after about 56 DMs in quick succession. The gap is 60 s by default
+ * and about 10 s once configured (slice L5a); the gate may wait a few
+ * seconds for the slot inside the tick before it answers, so this awaits
+ * it. Leaving a group is not a message and is not paced.
  *
  * ── Backward compatibility ───────────────────────────────────────────
  * Against a server that predates slice 3 the endpoint 404s: `fetchJobs`
@@ -40,9 +42,14 @@ export interface PlatformPollDeps {
   /** The claimed jobs, or null when the server has none to give or cannot answer. */
   fetchJobs(): Promise<PlatformJob[] | null>;
   report(r: PlatformJobReport): Promise<void>;
-  /** Take the shared DM slot if it is open. False means "held". */
-  takeDmSlot(label: string): boolean;
+  /**
+   * Take the shared DM slot, possibly after a short wait inside the tick.
+   * True: the slot is reserved for this DM, send it. False: "held".
+   */
+  takeDmSlot(label: string): boolean | Promise<boolean>;
   sendTimeoutMs: number;
+  /** Waits between report retries; a timer by default (injected in tests). */
+  sleep?(ms: number): Promise<void>;
   log?(line: string): void;
   error?(line: string, err?: unknown): void;
 }
@@ -52,6 +59,10 @@ export interface PlatformPollResult {
   failed: number;
   released: number;
 }
+
+/** Tries for one outcome report, and the waits between them. */
+export const REPORT_TRIES = 3;
+const REPORT_RETRY_MS = [1_000, 3_000] as const;
 
 function errorText(err: unknown): string {
   const text = err instanceof Error ? err.message : String(err);
@@ -66,13 +77,25 @@ export async function runPlatformJobs(deps: PlatformPollDeps): Promise<PlatformP
   const jobs = await deps.fetchJobs();
   if (!jobs || jobs.length === 0) return out;
 
+  const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  // A lost report is tried again, at most REPORT_TRIES times (second review
+  // of #400, item 2): a "sent" that never arrives leaves the server unsure
+  // the DM went (a pool offer would never start its clock). Safe to repeat:
+  // the server moves only a CLAIMED job, so a second copy changes nothing.
   const report = async (r: PlatformJobReport) => {
-    try {
-      await deps.report(r);
-    } catch (err) {
-      // The job was handled; only the bookkeeping failed. The next job
-      // must not pay for it.
-      error(`[platform] could not report ${r.outcome} for job ${r.id}:`, err);
+    for (let attempt = 1; attempt <= REPORT_TRIES; attempt++) {
+      try {
+        await deps.report(r);
+        return;
+      } catch (err) {
+        if (attempt === REPORT_TRIES) {
+          // The job was handled; only the bookkeeping failed. The next job
+          // must not pay for it.
+          error(`[platform] could not report ${r.outcome} for job ${r.id} after ${REPORT_TRIES} tries:`, err);
+          return;
+        }
+        await sleep(REPORT_RETRY_MS[attempt - 1]);
+      }
     }
   };
 
@@ -88,7 +111,7 @@ export async function runPlatformJobs(deps: PlatformPollDeps): Promise<PlatformP
         await report({ id, outcome: "failed", error: "malformed job: a DM with no phone or no text" });
         continue;
       }
-      if (!deps.takeDmSlot(`platform DM ${id}`)) {
+      if (!(await deps.takeDmSlot(`platform DM ${id}`))) {
         out.released++;
         await report({ id, outcome: "release" });
         continue;

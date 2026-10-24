@@ -162,6 +162,29 @@ describe("GET /api/players", () => {
     expect(p.seedRating).toBe(7);
   });
 
+  it("hides a POOL guest's phone and email from the club's OWNER and labels him 'MatchTime player pool'", async () => {
+    // Local player pool (L5a): no home club, so guestFromOrgId is null.
+    const pool = { ...rosterRow("u-pool", "Ali K"), guestVia: "pool", guestFromOrgId: null, guestMatchId: "m-1" };
+    membershipFindMany.mockResolvedValue([rosterRow("u-walt", "Walt"), pool]);
+    getUserOrg.mockResolvedValue({ orgId: CLUB, role: "OWNER", org: { language: "en" } });
+    const players = (await call()).body.players as Array<Record<string, unknown>>;
+    const walt = players.find((p) => p.id === "u-walt")!;
+    const ali = players.find((p) => p.id === "u-pool")!;
+    expect(walt.phoneNumber).toBe("+447700900123");
+    expect(walt.guestFrom).toBeNull();
+    expect(ali.phoneNumber).toBeNull();
+    expect(ali.email).toBeNull();
+    expect(ali.guestFrom).toBe("MatchTime player pool");
+  });
+
+  it("labels a pool guest in the club's language (Turkish)", async () => {
+    const pool = { ...rosterRow("u-pool", "Ali K"), guestVia: "pool", guestFromOrgId: null, guestMatchId: "m-1" };
+    membershipFindMany.mockResolvedValue([pool]);
+    getUserOrg.mockResolvedValue({ orgId: CLUB, role: "PLAYER", org: { language: "tr" } });
+    const [ali] = (await call()).body.players as Array<Record<string, unknown>>;
+    expect(ali.guestFrom).toBe("MatchTime oyuncu havuzu");
+  });
+
   it("only ever reads the caller's own club", async () => {
     getUserOrg.mockResolvedValue({ orgId: CLUB, role: "OWNER" });
     await call();

@@ -43,6 +43,7 @@ import {
   type OrgSnapshot,
 } from "./org-refresh.js";
 import { initScheduler, stopScheduler } from "./scheduler.js";
+import { getDmPacer, noteDmAccountWarning } from "./dm-pacer.js";
 import { setActiveClubCatchUp, wireClubCatchUp } from "./club-catch-up.js";
 import {
   getEnabledOrgs,
@@ -1032,6 +1033,12 @@ async function main() {
       console.error("Error forwarding group_leave:", err);
     }
   });
+
+  // DM pacing (slice L5a): built now so its settings are in the startup
+  // log, and told about every account warning the driver can see (it drops
+  // to one DM a minute for 24 hours, saved to disk before a fatal exit).
+  getDmPacer();
+  driver.onAccountWarning?.((w) => noteDmAccountWarning(w));
 
   driver.onClose((reason: string) => {
     console.log("Client disconnected:", reason);

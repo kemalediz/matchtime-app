@@ -42,6 +42,7 @@
  * it is called out rather than slipped in because §13's rule is that
  * moving a guard must not lose it — here it moves and gets stricter.
  */
+import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
 import { db as defaultDb } from "./db";
 import type { ScoreApplyDeps } from "./score-engine";
 import { reconcileMatchElo, setMatchScore } from "./match-elo";
@@ -346,7 +347,7 @@ export function buildTeamClearDeps(args: { orgId: string; now: Date; db?: Db }):
   return {
     async isAdmin(userId) {
       const row = await db.membership.findFirst({
-        where: { orgId, userId, role: { in: ["OWNER", "ADMIN"] }, leftAt: null },
+        where: { orgId, userId, role: { in: ["OWNER", "ADMIN"] }, ...ORDINARY_MEMBER_WHERE, leftAt: null },
         select: { id: true },
       });
       return row !== null;

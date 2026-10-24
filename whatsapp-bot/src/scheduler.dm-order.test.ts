@@ -4,10 +4,12 @@
  * Conversational replies go first only because the server puts them first
  * in the due-posts list (src/lib/dm-reply-priority.ts). That works only if
  * this side never reorders: on each tick the FIRST DM in the list takes the
- * one-a-minute slot (`DM_GAP_MS`) and every later DM is released, in list
- * order, to come back on the next poll. Group posts are not paced. Pinned
- * here so a future "smarter" Pi cannot quietly undo the server's order or
- * change the pacing.
+ * shared DM slot (`dm-pacer.ts`; 60 s by default) and every later DM is
+ * released, in list order, to come back on the next poll. With the faster
+ * ~10 s gap (slice L5a) the tick sends the first few in list order and
+ * releases the rest, still in list order: nothing after a held DM goes.
+ * Group posts are not paced. Pinned here so a future "smarter" Pi cannot
+ * quietly undo the server's order or change the pacing.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { WaDriver } from "./driver.js";
@@ -25,6 +27,13 @@ vi.mock("./api.js", () => ({
 }));
 
 const { initScheduler, stopScheduler } = await import("./scheduler.js");
+const { createDmPacer, _setDmPacerForTest } = await import("./dm-pacer.js");
+const { DEFAULT_DM_PACING } = await import("./dm-pacing.js");
+
+/** The process pacer at a given config, on the faked clock. */
+function usePacer(config = DEFAULT_DM_PACING) {
+  _setDmPacerForTest(createDmPacer({ config, now: () => Date.now(), random: () => 0.5, store: null, log: () => {} }));
+}
 
 const GID = "447525334985-1607872139@g.us";
 const ORGS = [{ groupId: GID, orgName: "FNF" }];
@@ -60,10 +69,12 @@ beforeEach(() => {
   getDuePosts.mockReset();
   ackInstruction.mockClear();
   releaseInstruction.mockClear();
+  usePacer();
 });
 
 afterEach(() => {
   stopScheduler();
+  _setDmPacerForTest(null);
   vi.useRealTimers();
 });
 
@@ -102,5 +113,30 @@ describe("DM order and pacing on the Pi", () => {
 
     await vi.advanceTimersByTimeAsync(31_000);
     expect(sent.filter(([k]) => k === "dm").map(([, p]) => p)).toEqual(["447700000001", "447700000002"]);
+  });
+
+  it("at the ~10 s gap the tick sends the first DMs in list order and releases the rest in list order", async () => {
+    usePacer({ gapMs: 10_000, jitterMs: 0, numberStartedAtMs: Date.parse("2026-04-01") });
+    const { driver, sent } = fakeDriver();
+    getDuePosts.mockResolvedValue({
+      instructions: [
+        dm("botjob-reply", "447700555555"),
+        { kind: "group-message", key: "g1", text: "Squad is up" },
+        dm("botjob-pay0", "447700900000"),
+        dm("botjob-pay1", "447700900001"),
+        dm("botjob-pay2", "447700900002"),
+        dm("botjob-pay3", "447700900003"),
+      ],
+    });
+    initScheduler(driver, ORGS);
+    await vi.advanceTimersByTimeAsync(25_000);
+
+    expect(sent).toEqual([
+      ["dm", "447700555555"],
+      ["group", "Squad is up"],
+      ["dm", "447700900000"],
+      ["dm", "447700900001"],
+    ]);
+    expect(releaseInstruction.mock.calls.map((c) => c[0])).toEqual(["botjob-pay2", "botjob-pay3"]);
   });
 });

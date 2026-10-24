@@ -22,6 +22,7 @@
  */
 
 import { db } from "./db";
+import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
 import { IN_LIVE_STAGE_CLUB_WHERE } from "./club-setup-rules";
 import { loadRecentHistory, formatRecentHistoryBlock, type RecentHistory } from "./match-history";
 import { loadPlayerSeasonStats } from "./player-stats";
@@ -130,7 +131,7 @@ export async function pickQaOrgAndQuote(
   // nothing, so a question routed to it would get no answer at all.
   const memberships = await db.membership.findMany({
     // Not a club he is only a guest of (cross-club ask, review M6).
-    where: { userId, leftAt: null, guestFromOrgId: null, ...IN_LIVE_STAGE_CLUB_WHERE },
+    where: { userId, leftAt: null, ...ORDINARY_MEMBER_WHERE, ...IN_LIVE_STAGE_CLUB_WHERE },
     select: { orgId: true },
   });
   const orgIds = memberships.map((m) => m.orgId);

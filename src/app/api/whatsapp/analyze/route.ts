@@ -90,6 +90,7 @@
  *     ]
  *   }
  */
+import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { REPLY_PRIORITY } from "@/lib/dm-reply-priority";
@@ -2312,7 +2313,7 @@ async function handleAnalyzeRequest(request: Request) {
   const engineAdminIds = new Set(
     (
       await db.membership.findMany({
-        where: { orgId: org.id, role: { in: ["OWNER", "ADMIN"] }, leftAt: null },
+        where: { orgId: org.id, role: { in: ["OWNER", "ADMIN"] }, ...ORDINARY_MEMBER_WHERE, leftAt: null },
         select: { userId: true },
       })
     ).map((m) => m.userId),

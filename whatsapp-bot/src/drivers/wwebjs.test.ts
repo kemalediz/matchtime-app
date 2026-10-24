@@ -228,6 +228,16 @@ describe("the event names the bot subscribes to", () => {
     handlers.get("disconnected")!("NAVIGATION");
     expect(seen).toEqual(["NAVIGATION"]);
   });
+
+  // Slice L5a: a ban or an unlink drops the DM pacing to one a minute.
+  it("a TOS block or logout disconnect is an account warning; an ordinary one is not", () => {
+    const { client, handlers } = recordingClient();
+    const seen: string[] = [];
+    wrap(client).onAccountWarning!((w) => void seen.push(w.detail));
+    handlers.get("disconnected")!("NAVIGATION");
+    handlers.get("disconnected")!("TOS_BLOCK");
+    expect(seen).toEqual([expect.stringContaining("TOS_BLOCK")]);
+  });
 });
 
 // ─── Lifecycle ───────────────────────────────────────────────────────

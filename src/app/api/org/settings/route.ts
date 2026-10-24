@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth";
+import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
 import { normaliseBenchPickFallback, normaliseBenchPickMode } from "@/lib/squad-capacity";
 import { db } from "@/lib/db";
 import { getUserOrg } from "@/lib/org";
@@ -45,7 +46,7 @@ export async function GET() {
   // picker in the Payments section.
   const members = !isAdmin ? [] : await db.membership.findMany({
     // Never a partner club's guest (cross-club ask, review H1).
-    where: { orgId: org.id, leftAt: null, guestFromOrgId: null, user: { phoneNumber: { not: null } } },
+    where: { orgId: org.id, leftAt: null, ...ORDINARY_MEMBER_WHERE, user: { phoneNumber: { not: null } } },
     select: { user: { select: { id: true, name: true } } },
     orderBy: { user: { name: "asc" } },
   });

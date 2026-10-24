@@ -165,9 +165,16 @@ describe("slice L2's migration (codes, the sign-up IP, attempts, the consent rec
   const both = [L2, CHECKS];
   const CODE_CHECK = `"confirmCode" ~ '^[${POOL_CONFIRM_CODE_ALPHABET}]{${POOL_CONFIRM_CODE_LENGTH}}$'`;
   const IP_CHECK = `CHECK ("signupIp" IS NULL OR "status" = 'pending-verify')`;
-  const ATTEMPT_CHECK =
+  // L2's migration carries the CHECK as L2 shipped it; the CHECK file and
+  // L5a's migration carry it with the offer page's "offer-verify" kind too.
+  const ATTEMPT_CHECK_L2 =
     `CHECK (("kind" = 'confirm' AND "result" IN (${list(V.POOL_CONFIRM_ATTEMPT_RESULTS)}))` +
     ` OR ("kind" = 'signup' AND "result" IN (${list(V.POOL_SIGNUP_ATTEMPT_RESULTS)})))`;
+  const ATTEMPT_CHECK =
+    `CHECK (("kind" = 'confirm' AND "result" IN (${list(V.POOL_CONFIRM_ATTEMPT_RESULTS)}))` +
+    ` OR ("kind" = 'signup' AND "result" IN (${list(V.POOL_SIGNUP_ATTEMPT_RESULTS)}))` +
+    ` OR ("kind" = 'offer-verify' AND "result" IN (${list(V.POOL_OFFER_VERIFY_ATTEMPT_RESULTS)})))`;
+  const L5A = "prisma/migrations/20261025140000_pool_offer_review/migration.sql";
   const ACTION_CHECK = inList("action", V.POOL_CONSENT_ACTIONS);
   const CHANNEL_CHECK = inList("channel", V.POOL_CONSENT_CHANNELS);
 
@@ -178,10 +185,12 @@ describe("slice L2's migration (codes, the sign-up IP, attempts, the consent rec
   });
   it("carries the same CHECKs as the CHECK file, from the vocab", () => {
     for (const f of both) {
-      for (const c of [IP_CHECK, ATTEMPT_CHECK, ACTION_CHECK, CHANNEL_CHECK]) expect(code(read(f)), `${f}: ${c}`).toContain(c);
+      for (const c of [IP_CHECK, ACTION_CHECK, CHANNEL_CHECK]) expect(code(read(f)), `${f}: ${c}`).toContain(c);
       expect(code(read(f)), f).toContain(`CHECK ("action" <> 'consent' OR "version" IS NOT NULL)`);
     }
-    expect(V.POOL_ATTEMPT_KINDS).toEqual(["confirm", "signup"]);
+    expect(code(read(L2))).toContain(ATTEMPT_CHECK_L2);
+    for (const f of [CHECKS, L5A]) expect(code(read(f)), `${f}: ${ATTEMPT_CHECK}`).toContain(ATTEMPT_CHECK);
+    expect(V.POOL_ATTEMPT_KINDS).toEqual(["confirm", "signup", "offer-verify"]);
   });
   it("the consent record has no foreign key: it outlives the profile and the User (policy: 6 years)", () => {
     const table = sql.slice(sql.indexOf('CREATE TABLE IF NOT EXISTS "PoolConsentRecord"'));

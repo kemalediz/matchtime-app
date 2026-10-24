@@ -11,8 +11,15 @@
  * Read only. Shared by `partner-ask.ts` (the sweep, an approval, the
  * panel) and `partner-guest.ts` (a first-come volunteer, under the match's
  * lock), so both count exactly the same way.
+ *
+ * THE POOL (local player pool L5a, 2026-10-24): a round may also carry a
+ * pool ask (same `roundId`, or the pool ask's own id for a pool-only
+ * round). Its number joins the round's and the pool guests who accepted
+ * count as placed, read through `pool/round-share.ts` (pool tables are the
+ * pool's). One definition of "filled" for partners and the pool alike.
  */
 import { db } from "./db";
+import { poolRoundShare } from "./pool/round-share";
 
 export interface RoundAskRow {
   id: string;
@@ -41,8 +48,9 @@ export async function loadRoundFill(ask: RoundAskRow): Promise<RoundFill> {
       })
     : [ask];
   const rows = asks.length > 0 ? asks : [ask];
-  const wanted = Math.max(...rows.map((a) => a.places));
-  const ids = [...new Set(rows.flatMap((a) => [...(a.volunteerUserIds ?? []), ...(a.pickedUserIds ?? [])]))];
+  const pool = await poolRoundShare(ask.matchId, ask.roundId ?? ask.id);
+  const wanted = Math.max(...rows.map((a) => a.places), pool?.places ?? 0);
+  const ids = [...new Set([...rows.flatMap((a) => [...(a.volunteerUserIds ?? []), ...(a.pickedUserIds ?? [])]), ...(pool?.userIds ?? [])])];
   const placed = ids.length === 0 ? 0 : await db.attendance.count({ where: { matchId: ask.matchId, status: "CONFIRMED", userId: { in: ids } } });
   return { wanted, placed };
 }

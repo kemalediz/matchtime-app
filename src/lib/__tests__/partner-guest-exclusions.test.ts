@@ -43,6 +43,11 @@ describe("rolling squad", () => {
   it("a past guest is out as anyone who has left", () => {
     expect(carryOverExclusion(row({ membership: { leftAt: new Date(), provisionallyAddedAt: null, guestFromOrgId: "sutton" } }))).toBe("left the group");
   });
+  it("a POOL guest (no home club) is never carried either", () => {
+    expect(
+      carryOverExclusion(row({ membership: { leftAt: null, provisionallyAddedAt: null, guestFromOrgId: null, guestMatchId: "m1" } })),
+    ).toBe("pool guest");
+  });
   it("an ordinary member is carried as before", () => {
     expect(carryOverExclusion(row({ membership: { leftAt: null, provisionallyAddedAt: null, guestFromOrgId: null } }))).toBeNull();
   });
@@ -63,7 +68,8 @@ describe("his own profile lists the club he guested for (Kemal's decision 1)", (
 
   it("reads live memberships AND guest ones, past guests included", async () => {
     await loadAllClubsOverview({ userId: "ali", viewerId: "ali" });
-    expect(dbMock.membership.findMany.mock.calls[0][0].where).toEqual({ userId: "ali", OR: [{ leftAt: null }, { guestFromOrgId: { not: null } }] });
+    // Any guest row, partner or pool (L5a): guestMatchId, not the home club.
+    expect(dbMock.membership.findMany.mock.calls[0][0].where).toEqual({ userId: "ali", OR: [{ leftAt: null }, { guestMatchId: { not: null } }] });
   });
 
   it("FNF's row carries his games there and the raw mean of FNF's ratings of him", async () => {
@@ -76,13 +82,13 @@ describe("his own profile lists the club he guested for (Kemal's decision 1)", (
 
 describe("the readers that leave a guest out", () => {
   it("badges: only members who are not partner guests", () => {
-    expect(src("badge-announcement-scheduler.ts")).toMatch(/where: \{ orgId, leftAt: null, guestFromOrgId: null \}/);
+    expect(src("badge-announcement-scheduler.ts")).toMatch(/where: \{ orgId, leftAt: null, \.\.\.ORDINARY_MEMBER_WHERE \}/);
   });
   it("seed nudge: guests are not counted", () => {
-    expect(src("seed-nudge.ts")).toMatch(/const members = all\.filter\(\(m\) => !m\.guestFromOrgId\)/);
+    expect(src("seed-nudge.ts")).toMatch(/const members = all\.filter\(\(m\) => !isGuestMembership\(m\)\)/);
   });
   it("a cold DM never lands on a club he is only a guest of", () => {
-    expect(src("dm-registration-target.ts")).toMatch(/where: \{ userId, leftAt: null, guestFromOrgId: null, \.\.\.IN_LIVE_STAGE_CLUB_WHERE \}/);
+    expect(src("dm-registration-target.ts")).toMatch(/where: \{ userId, leftAt: null, \.\.\.ORDINARY_MEMBER_WHERE, \.\.\.IN_LIVE_STAGE_CLUB_WHERE \}/);
   });
   it("the club's leaderboard skips a guest's ratings", () => {
     // One rule for every season table since review L3: the ranked roster.
@@ -90,9 +96,10 @@ describe("the readers that leave a guest out", () => {
   });
   it("the players API hides a guest's phone and email and never offers him for a merge", () => {
     const api = readFileSync(join(__dirname, "..", "..", "app", "api", "players", "route.ts"), "utf8");
-    expect(api).toMatch(/phoneNumber: m\.guestFromOrgId \? null : m\.user\.phoneNumber/);
-    expect(api).toMatch(/email: m\.guestFromOrgId \? null : m\.user\.email/);
-    expect(api).toMatch(/memberships\.filter\(\(m\) => !m\.guestFromOrgId\)/);
+    // Any guest, partner or pool (L5a); the behaviour is pinned in api-privacy.test.ts.
+    expect(api).toMatch(/phoneNumber: isGuestMembership\(m\) \? null : m\.user\.phoneNumber/);
+    expect(api).toMatch(/email: isGuestMembership\(m\) \? null : m\.user\.email/);
+    expect(api).toMatch(/memberships\.filter\(\(m\) => !isGuestMembership\(m\)\)/);
   });
 });
 

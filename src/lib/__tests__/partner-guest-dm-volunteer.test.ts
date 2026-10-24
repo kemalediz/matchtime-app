@@ -157,7 +157,7 @@ describe("askAboutOpenPartnerAsk (a private IN with no code)", () => {
 
   it("only asks about asks to clubs he is a live, ordinary member of, still open, that he has not answered", async () => {
     await askAboutOpenPartnerAsk({ userId: "ali", replyPhone: "447700900111", own: OWN, decision: "in", now: NOW });
-    expect(dbMock.membership.findMany).toHaveBeenCalledWith({ where: { userId: "ali", leftAt: null, guestFromOrgId: null }, select: { orgId: true } });
+    expect(dbMock.membership.findMany).toHaveBeenCalledWith({ where: { userId: "ali", leftAt: null, guestMatchId: null }, select: { orgId: true } });
     expect(dbMock.partnerAsk.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { partnerOrgId: { in: ["sutton"] }, status: "posted", closesAt: { gt: NOW }, NOT: { volunteerUserIds: { has: "ali" } } },

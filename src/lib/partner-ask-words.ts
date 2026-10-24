@@ -24,6 +24,7 @@
  * approval), and composes ONE reply from what each call said. It never
  * writes a `PartnerAsk` row itself.
  */
+import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
 import { randomUUID } from "node:crypto";
 import { db } from "./db";
 import { loadPartnerAskSettings } from "./club-partnership";
@@ -83,7 +84,7 @@ export async function partnerClubsForRouter(
   const partners = await activePartnerChoices(orgId);
   if (partners.length === 0) return null;
   const rows = await db.membership.findMany({
-    where: { orgId, userId: { in: ids }, leftAt: null, role: { in: ["OWNER", "ADMIN"] } },
+    where: { orgId, userId: { in: ids }, leftAt: null, role: { in: ["OWNER", "ADMIN"] }, ...ORDINARY_MEMBER_WHERE },
     select: { userId: true },
   });
   return { names: partners.map((p) => p.name), organiserIds: new Set((rows ?? []).map((r) => r.userId)) };

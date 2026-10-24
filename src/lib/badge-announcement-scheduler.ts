@@ -17,6 +17,7 @@
  * members; its ledger; its lifecycle.
  */
 import { db } from "./db";
+import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
 import { isClubOperational } from "./club-approval-state";
 import { claimTextOf, type Claimable } from "./dispatch-claim";
 import type { Lang } from "./i18n/lang";
@@ -107,7 +108,7 @@ export async function computeBadgeAnnouncements(args: {
     loadRawBadgeMatches(orgId),
     db.membership.findMany({
       // Not a partner club's guest (cross-club ask, S4).
-      where: { orgId, leftAt: null, guestFromOrgId: null },
+      where: { orgId, leftAt: null, ...ORDINARY_MEMBER_WHERE },
       select: { user: { select: { id: true, name: true } } },
     }),
     db.badgeAnnouncement.findMany({ where: { orgId }, select: { userId: true, badgeKey: true } }),

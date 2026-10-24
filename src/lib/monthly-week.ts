@@ -30,6 +30,7 @@
  * `loadMonthlyWeek` before anything is written.
  */
 import { db } from "./db";
+import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
 import { EXPLICIT_BENCH_NOTE, recordAttendanceEvent } from "./attendance-events";
 import { isClubOperational, servingClubWhere } from "./club-approval-state";
 import { LIVE_STAGE_WHERE } from "./club-setup-rules";
@@ -168,7 +169,7 @@ async function loadMonthsWhere(orgId: string, where: MonthStatusWhere): Promise<
       : (
           await db.membership.findMany({
             // Not a partner club's guest (cross-club ask, review M6).
-            where: { orgId, userId: { in: memberIds }, leftAt: null, guestFromOrgId: null, user: { isActive: true } },
+            where: { orgId, userId: { in: memberIds }, leftAt: null, ...ORDINARY_MEMBER_WHERE, user: { isActive: true } },
             select: { userId: true },
           })
         ).map((r) => r.userId),
@@ -365,7 +366,7 @@ export async function seedMonthlySquad(args: {
   // never moved to the waiting list by the seed.
   const organisers = (
     await db.membership.findMany({
-      where: { orgId: week.orgId, leftAt: null, role: { in: ["OWNER", "ADMIN"] } },
+      where: { orgId: week.orgId, leftAt: null, role: { in: ["OWNER", "ADMIN"] }, ...ORDINARY_MEMBER_WHERE },
       select: { userId: true },
     })
   ).map((m) => m.userId);

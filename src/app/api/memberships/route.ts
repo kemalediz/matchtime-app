@@ -3,6 +3,7 @@
  * as left) plus the current active orgId. Used by the sidebar OrgSwitcher.
  */
 import { NextResponse } from "next/server";
+import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getCurrentOrgId, getUserOrg, isSuperadmin } from "@/lib/org";
@@ -15,7 +16,7 @@ export async function GET() {
   const memberships = await db.membership.findMany({
     // Not a club he is only a guest of (cross-club ask, review M6): the
     // switcher never opens a partner club's squad, stats or pages to him.
-    where: { userId: session.user.id, leftAt: null, guestFromOrgId: null },
+    where: { userId: session.user.id, leftAt: null, ...ORDINARY_MEMBER_WHERE },
     include: { org: { select: { id: true, name: true, slug: true } } },
     orderBy: { createdAt: "asc" },
   });

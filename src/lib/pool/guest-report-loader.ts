@@ -16,6 +16,7 @@
  * before the pool has no `GuestPlace` row; his games are his attendance rows
  * on this club's matches (he is no member, so each one is a guest game).
  */
+import { GUEST_MEMBER_WHERE, guestSourceOf, isGuestMembership } from "../guest-membership";
 import { db } from "../db";
 import type { GuestPoolState } from "./club-invite";
 import type { Lang } from "../i18n/lang";
@@ -45,14 +46,14 @@ export interface GuestFacts {
 }
 
 const isMemberRow = (m: { leftAt: Date | null; guestMatchId: string | null; guestFromOrgId: string | null }) =>
-  m.leftAt === null && m.guestMatchId === null && m.guestFromOrgId === null;
+  m.leftAt === null && !isGuestMembership(m);
 
 export async function loadGuestFacts(orgId: string, opts: { userIds?: string[]; report?: boolean } = {}): Promise<GuestFacts> {
   const onlyUsers = opts.userIds ? { userId: { in: opts.userIds } } : {};
 
   const [guestMemberships, placesHere] = await Promise.all([
     db.membership.findMany({
-      where: { orgId, ...onlyUsers, OR: [{ guestMatchId: { not: null } }, { guestFromOrgId: { not: null } }, { guestVia: { not: null } }] },
+      where: { orgId, ...onlyUsers, ...GUEST_MEMBER_WHERE },
       select: { userId: true, guestFromOrgId: true, guestVia: true },
     }),
     db.guestPlace.findMany({
@@ -171,7 +172,7 @@ export async function loadGuestFacts(orgId: string, opts: { userIds?: string[]; 
     ...placesElsewhere.map((p) => toFact(p, result(p.result) ?? "booked", "pool", null)),
     ...legacy.map((a) => {
       const gm = membershipOf.get(a.userId);
-      return toFact(a, null, source(gm?.guestVia ?? (gm?.guestFromOrgId ? "partner" : "pool")), gm?.guestFromOrgId ?? null);
+      return toFact(a, null, source(guestSourceOf(gm) ?? "pool"), gm?.guestFromOrgId ?? null);
     }),
   ].filter((g): g is GuestGameFact => g !== null);
 
@@ -219,7 +220,7 @@ export async function loadMatchGuestIds(orgId: string, matchId: string, attendee
   const [places, memberships] = await Promise.all([
     db.guestPlace.findMany({ where: { orgId, matchId }, select: { userId: true } }),
     db.membership.findMany({
-      where: { orgId, userId: { in: attendeeIds }, OR: [{ guestMatchId: { not: null } }, { guestFromOrgId: { not: null } }, { guestVia: { not: null } }] },
+      where: { orgId, userId: { in: attendeeIds }, ...GUEST_MEMBER_WHERE },
       select: { userId: true, leftAt: true, guestMatchId: true },
     }),
   ]);
@@ -238,7 +239,7 @@ export async function guestPlayersTabShown(orgId: string): Promise<boolean> {
   if (org?.featurePlayerPool) return true;
   const [guest, place] = await Promise.all([
     db.membership.findFirst({
-      where: { orgId, OR: [{ guestMatchId: { not: null } }, { guestFromOrgId: { not: null } }, { guestVia: { not: null } }] },
+      where: { orgId, ...GUEST_MEMBER_WHERE },
       select: { id: true },
     }),
     db.guestPlace.findFirst({ where: { orgId }, select: { id: true } }),

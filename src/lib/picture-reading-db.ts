@@ -7,6 +7,7 @@
  * and today's count is the number of keys with that day's prefix. The row
  * holds no picture, no caption and no transcript.
  */
+import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
 import { db } from "./db";
 import { servingClubWhere } from "./club-approval";
 import { resolveSenderUserIds } from "./admin-group-link";
@@ -38,7 +39,7 @@ export function prismaPictureDeps(model: PipelineModel = anthropicModel()): Pict
       });
       if (ids.length === 0) return false;
       const m = await db.membership.findFirst({
-        where: { orgId, userId: { in: ids }, leftAt: null, role: { in: ["OWNER", "ADMIN"] } },
+        where: { orgId, userId: { in: ids }, leftAt: null, role: { in: ["OWNER", "ADMIN"] }, ...ORDINARY_MEMBER_WHERE },
         select: { userId: true },
       });
       return !!m;

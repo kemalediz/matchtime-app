@@ -18,6 +18,17 @@ describe("pick list guest label", () => {
   });
 });
 
+describe("pick list: a POOL guest (local player pool, L5a)", () => {
+  it("is labelled (MatchTime player pool) exactly as a partner guest gets his club", () => {
+    const block = buildPickListBlock("en", [{ name: "Ali K", position: "MID", rating: null, fromPool: true }]);
+    expect(block).toContain("1. Ali K (MatchTime player pool) (MID, new)");
+  });
+  it("in Turkish", () => {
+    const block = buildPickListBlock("tr", [{ name: "Ali K", position: "MID", rating: null, fromPool: true }]);
+    expect(block).toContain("1. Ali K (MatchTime oyuncu havuzu) (MID, yeni)");
+  });
+});
+
 describe("pick list guest standing at his own club (2026-10-22)", () => {
   it("the band beside his club, and his club's number only when it shares", () => {
     const block = buildPickListBlock("en", [
