@@ -437,10 +437,6 @@ export function buildRollingAnnouncePost(
     bench: NamedRow[];
     maxPlayers: number;
     organiserPicks?: boolean;
-    /** After a cancelled week (2026-10-24): the players left out because
-     *  they said OUT for it (`loadRollingLeftOut`). Named on one line
-     *  after the lists; absent or empty, no line. */
-    leftOut?: NamedRow[];
   } & WithLang,
 ): string {
   const s = t(args.lang);
@@ -452,9 +448,6 @@ export function buildRollingAnnouncePost(
   ];
   if (args.bench.length > 0) {
     lines.push(``, s.rolling_waiting_header({ count: args.bench.length }), ...numbered(args.bench, s.unnamed));
-  }
-  if (args.leftOut && args.leftOut.length > 0) {
-    lines.push(``, s.rolling_left_out({ names: args.leftOut.map((r) => r.name?.trim() || s.unnamed) }));
   }
   const open = Math.max(0, args.maxPlayers - args.confirmed.length);
   const tail =

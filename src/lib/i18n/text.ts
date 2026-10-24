@@ -34,3 +34,9 @@ export function oneDecimal(lang: Lang | string | null | undefined, x: number): s
   const s = x.toFixed(1);
   return normaliseLang(lang) === "tr" ? s.replace(".", ",") : s;
 }
+
+/** The first word of a name ("Bob" of "Bob Out"), for an example the
+ *  reader types back ("say *Bob IN*"). The whole name when it is one word. */
+export function firstWord(name: string): string {
+  return name.trim().split(/\s+/)[0] || name;
+}

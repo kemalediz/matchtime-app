@@ -42,12 +42,21 @@ describe("buildOrganiserListUpdate", () => {
       leftOut: [{ name: "Yaseen" }, { name: "Mo" }],
     };
     const en = buildOrganiserListUpdate({ ...args, lang: "en" });
-    expect(en).toContain("Not on this week's squad because they said *OUT* last week: Yaseen and Mo.");
-    expect(en.indexOf("Deniz")).toBeLessThan(en.indexOf("Not on this week's squad"));
-    expect(en.indexOf("Not on this week's squad")).toBeLessThan(en.indexOf(t("en").oa_footer));
+    // Kemal, 2026-10-24: the organisers are told they can put any of them back.
+    expect(en).toContain(
+      "Left off this week's squad because they said *OUT* last week:\n• Yaseen\n• Mo\n\nTo put any of them back, just say their name and *IN*, for example *Yaseen IN*.",
+    );
+    expect(en.indexOf("Deniz")).toBeLessThan(en.indexOf("Left off this week's squad"));
+    expect(en.indexOf("Left off this week's squad")).toBeLessThan(en.indexOf(t("en").oa_footer));
     const tr = buildOrganiserListUpdate({ ...args, lang: "tr" });
-    expect(tr).toContain("Geçen hafta *YOKUM* dedikleri için bu haftanın kadrosuna alınmadılar: Yaseen ve Mo.");
-    expect(buildOrganiserListUpdate({ ...args, leftOut: [], lang: "en" })).not.toContain("Not on this week");
+    expect(tr).toContain(
+      "Geçen hafta *YOKUM* dedikleri için bu haftanın kadrosuna alınmadılar:\n• Yaseen\n• Mo\n\nGeri almak istediğiniz biri varsa adını yazıp *VARIM* demeniz yeterli, örneğin *Yaseen VARIM*.",
+    );
+    const one = buildOrganiserListUpdate({ ...args, leftOut: [{ name: "Mo" }], lang: "en" });
+    expect(one).toContain("Left off this week's squad because they said *OUT* last week:\n• Mo\n\nTo put them back, just say *Mo IN*.");
+    const oneTr = buildOrganiserListUpdate({ ...args, leftOut: [{ name: "Mo" }], lang: "tr" });
+    expect(oneTr).toContain("Geçen hafta *YOKUM* dediği için bu haftanın kadrosuna alınmadı:\n• Mo\n\nGeri almak isterseniz *Mo VARIM* demeniz yeterli.");
+    expect(buildOrganiserListUpdate({ ...args, leftOut: [], lang: "en" })).not.toContain("Left off");
   });
 
   it("English: squad header with the count, the reason, the roster and the footer", () => {

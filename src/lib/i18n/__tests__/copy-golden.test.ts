@@ -379,6 +379,7 @@ import {
 } from "../../scheduler-copy";
 import { buildBenchClaimAnnouncement, buildSquadCompleteBenchInvite } from "../../bench-offer-copy";
 import { t } from "../t";
+import { buildOrganiserListUpdate, buildRollingLeftOutNotice } from "../../organisers-list-copy";
 import { dayTimeLabel, longDayTimeLabel } from "../dates";
 
 /** The organiser's three signed-in links in the "you're live" DM (2026-10-01). */
@@ -1784,14 +1785,18 @@ function cases(lang: Lang): Case[] {
     buildRollingAnnouncePost({ ...rollingBase, confirmed: nine, bench: [{ name: "Ali Demir" }, { name: null }], maxPlayers: 4 }),
   );
   // Deliberate addition (2026-10-24): after a cancelled week, the
-  // players who said OUT for it are named as left out.
+  // organisers are told who said OUT for it and was left out.
   add(
-    "RSQ1 buildRollingAnnouncePost / left out after a cancelled week",
-    buildRollingAnnouncePost({ ...rollingBase, confirmed: nine, bench: [], maxPlayers: 18, leftOut: [{ name: "Yaseen" }, { name: "Mo" }, { name: "Feroz" }] }),
+    "RSQ1c buildOrganiserListUpdate / left out after a cancelled week",
+    buildOrganiserListUpdate({ reason: "announce", activityName: "FNF", whenLabel: lang === "tr" ? "30 Eki Cum 20:30" : "Fri 30 Oct at 20:30", confirmed: nine, bench: [], maxPlayers: 18, leftOut: [{ name: "Mo" }, { name: "Feroz" }, { name: "Yaseen" }], lang }),
   );
   add(
-    "RSQ1 buildRollingAnnouncePost / one left out",
-    buildRollingAnnouncePost({ ...rollingBase, confirmed: nine, bench: [], maxPlayers: 18, leftOut: [{ name: "Yaseen" }] }),
+    "RSQ1c buildOrganiserListUpdate / one left out",
+    buildOrganiserListUpdate({ reason: "announce", activityName: "FNF", whenLabel: lang === "tr" ? "30 Eki Cum 20:30" : "Fri 30 Oct at 20:30", confirmed: nine, bench: [], maxPlayers: 18, leftOut: [{ name: "Mo" }], lang }),
+  );
+  add(
+    "RSQ1d buildRollingLeftOutNotice / MatchTime posted the squad in the group",
+    buildRollingLeftOutNotice({ activityName: "FNF", whenLabel: lang === "tr" ? "30 Eki Cum 20:30" : "Fri 30 Oct at 20:30", leftOut: [{ name: "Mo" }, { name: "Feroz" }, { name: "Yaseen" }], lang }),
   );
   add("RSQ2 buildRollingDeadlineLine", buildRollingDeadlineLine({ deadline: rollingBase.deadline, lang }));
   // Deliberate addition (2026-10-13): a game nobody was carried onto.
@@ -2514,7 +2519,7 @@ const MIGRATED_ROWS = [
   // a player DMs "Paid" (2026-09-23): the collector's notice and the player's replies
   "R157 ", "R158 ", "R159 ", "R160 ",
   // rolling squad (2026-09-30)
-  "RSQ1 ", "RSQ2 ", "RSQ3 ", "RSQ4 ", "RSQ5 ",
+  "RSQ1 ", "RSQ1c ", "RSQ1d ", "RSQ2 ", "RSQ3 ", "RSQ4 ", "RSQ5 ",
   // weekly deadlines (2026-09-30)
   "WDL1 ", "WDL2 ", "WDL3 ", "WDL4 ",
   // organiser pick (2026-10-01)

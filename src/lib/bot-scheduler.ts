@@ -155,7 +155,7 @@ import {
   provisionalReviewKey,
   splitProvisionalByCutoff,
 } from "./provisional-review-rules";
-import { buildOrganiserListUpdate, buildOrganiserRelay, type OrganiserListReason } from "./organisers-list-copy";
+import { buildOrganiserListUpdate, buildOrganiserRelay, buildRollingLeftOutNotice, type OrganiserListReason } from "./organisers-list-copy";
 import { seedNudgeInstructions } from "./seed-nudge";
 import { firstTeamsInstructions } from "./admin-onboarding";
 import { isBillingPaused } from "./club-billing-rules";
@@ -1532,8 +1532,34 @@ async function computeForMatch(
         if (carried > 0) {
           rollingAnnounceDue = true;
           // After a cancelled week, who was left out for saying OUT for
-          // it (2026-10-24, Kemal): named in the post, either channel.
+          // it (2026-10-24, Kemal): for the ORGANISERS only, never the
+          // players' group. Inside their notice when they announce;
+          // otherwise its own notice on their channel, once.
           const leftOut = await loadRollingLeftOut(matchId);
+          if (!organisers && leftOut.length > 0) {
+            const channel = await admin.getChannel();
+            if (channel) {
+              const leftOutKey = `${matchId}:rolling-announce-left-out`;
+              out.push(
+                ...(await adminNoticeInstructions({
+                  channel,
+                  piCaps: admin.piCaps,
+                  sentKeys,
+                  now,
+                  matchId,
+                  key: (who) => (who === "admin-group" ? leftOutKey : `${leftOutKey}:${who}`),
+                  notice: {
+                    text: buildRollingLeftOutNotice({
+                      activityName: activity.name,
+                      whenLabel: dayTimeLabel(lang, m.date),
+                      leftOut,
+                      lang,
+                    }),
+                  },
+                })),
+              );
+            }
+          }
           // The organisers announce: the carried squad goes to them.
           if (organisers) await toOrganisers(rollingKey, "announce", { leftOut });
           else out.push({
@@ -1551,7 +1577,6 @@ async function computeForMatch(
               // Slice 2b: an organiser-pick club says IN puts you on the
               // waiting list, and the organisers pick.
               organiserPicks: features.benchPickMode === "organiser",
-              leftOut,
               lang,
             }),
           });

@@ -73,7 +73,7 @@
  * See MDs/multi-language-design-2026-09-16.md sections 4.2 and 4.4.
  */
 import type { Strings } from "./t";
-import { joinList } from "./text";
+import { firstWord, joinList } from "./text";
 import { firstMonthsFree } from "./free-period";
 import { totalOnTenPounds } from "../payments";
 import type { StatsPeriod } from "../pipeline/types";
@@ -2169,10 +2169,13 @@ export const tr: Strings = {
   rolling_tail_open_organiser: (p) =>
     `${p.open} yer boş: *VARIM* yazın, yedek listesine ekleyeyim; kimin oynayacağını organizatörler seçer.`,
   rolling_tail_full: "Kadro dolu. Yedek listesine girmek için *VARIM* yazın.",
-  rolling_left_out: (p) =>
+  rolling_left_out_organisers: (p) =>
     p.names.length === 1
-      ? `Geçen hafta *YOKUM* dediği için bu haftanın kadrosuna alınmadı: ${p.names[0]}.`
-      : `Geçen hafta *YOKUM* dedikleri için bu haftanın kadrosuna alınmadılar: ${joinList("tr", p.names)}.`,
+      ? `Geçen hafta *YOKUM* dediği için bu haftanın kadrosuna alınmadı:\n• ${p.names[0]}\n\nGeri almak isterseniz *${firstWord(p.names[0])} VARIM* demeniz yeterli.`
+      : `Geçen hafta *YOKUM* dedikleri için bu haftanın kadrosuna alınmadılar:\n${p.names.map((n) => `• ${n}`).join("\n")}\n\n` +
+        `Geri almak istediğiniz biri varsa adını yazıp *VARIM* demeniz yeterli, örneğin *${firstWord(p.names[0])} VARIM*.`,
+  rolling_left_out_notice_lead: (p) =>
+    `📋 *${p.activityName}, ${p.whenLabel}*: geçen haftadan devam eden kadro grupta paylaşıldı.`,
   rolling_deadline_line: (p) => `Son çıkış: *${p.deadline}*. O saate kadar *YOKUM* yazmazsanız kadrodasınız.`,
   rolling_deadline_line_first: (p) =>
     `Son çıkış: *${p.deadline}*. Listedeyseniz ve oynayamayacaksanız o saatten önce *YOKUM* yazın.`,

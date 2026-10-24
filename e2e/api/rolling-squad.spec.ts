@@ -21,7 +21,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { test, expect, postAnalyze, resetDb } from "../fixtures";
-import { engineOn, selfOut } from "../helpers/stub";
+import { clearPipelineStubs, engineOn, otherFacts, selfOut } from "../helpers/stub";
 import { E2E, REPO_ROOT } from "../helpers/env";
 import { MATCH, NAME, ORG_ID, PHONE, U } from "../helpers/constants";
 import { testDb, type TestDb } from "../helpers/test-db";
@@ -356,7 +356,10 @@ test.describe("OUT before and after the drop-out deadline", () => {
  * Jan 1 played; Jan 8 cancelled on Thu 7 Jan 12:00; Jan 15 is next.
  *   - Bob said OUT for Jan 8 before it was cancelled: not carried, named;
  *   - Cy said OUT only after it was cancelled: carried as usual;
- *   - Dee was not on Jan 1 and said IN for Jan 8: carried after the rest.
+ *   - Dee was not on Jan 1 and said IN for Jan 8: carried after the rest;
+ *   - Eve, like Bob, said OUT before the cancel.
+ * Then an organiser puts them back from HQ by saying the name and IN, as
+ * the organisers' notice tells them to (Kemal, 2026-10-24).
  */
 test.describe("a cancelled week between: its OUTs are not carried and are named", () => {
   const GROUP_X = "e2e-rolling-x@g.us";
@@ -387,28 +390,31 @@ test.describe("a cancelled week between: its OUTs are not carried and are named"
     await member(db, "x", "e2e-rsx-bob", "Bob Out", "+447700920002");
     await member(db, "x", "e2e-rsx-cy", "Cy Late", "+447700920003");
     await member(db, "x", "e2e-rsx-dee", "Dee In", "+447700920004");
+    await member(db, "x", "e2e-rsx-eve", "Eve Away", "+447700920005");
     await match(db, "x", "e2e-rsx-wk1", JAN_1, "COMPLETED");
     await match(db, "x", "e2e-rsx-wk2", JAN_8, "CANCELLED");
     await match(db, "x", "e2e-rsx-wk3", JAN_15, "UPCOMING");
     await db.run(`UPDATE "Match" SET "updatedAt" = $2 WHERE id = $1`, ["e2e-rsx-wk2", CANCELLED_AT.toISOString()]);
 
-    for (const [u, p] of [["e2e-rsx-ann", 1], ["e2e-rsx-bob", 2], ["e2e-rsx-cy", 3]] as const) {
+    for (const [u, p] of [["e2e-rsx-ann", 1], ["e2e-rsx-bob", 2], ["e2e-rsx-cy", 3], ["e2e-rsx-eve", 4]] as const) {
       await row(db, "e2e-rsx-wk1", u, "CONFIRMED", p);
     }
     // Jan 8: the seed's rows, then what people said.
     await row(db, "e2e-rsx-wk2", "e2e-rsx-ann", "CONFIRMED", 1);
     await row(db, "e2e-rsx-wk2", "e2e-rsx-bob", "DROPPED", 2);
     await row(db, "e2e-rsx-wk2", "e2e-rsx-cy", "DROPPED", 3);
-    await row(db, "e2e-rsx-wk2", "e2e-rsx-dee", "CONFIRMED", 4);
-    for (const [u, p] of [["e2e-rsx-ann", 1], ["e2e-rsx-bob", 2], ["e2e-rsx-cy", 3]] as const) {
+    await row(db, "e2e-rsx-wk2", "e2e-rsx-dee", "CONFIRMED", 5);
+    await row(db, "e2e-rsx-wk2", "e2e-rsx-eve", "DROPPED", 4);
+    for (const [u, p] of [["e2e-rsx-ann", 1], ["e2e-rsx-bob", 2], ["e2e-rsx-cy", 3], ["e2e-rsx-eve", 4]] as const) {
       await event(db, "e2e-rsx-wk2", u, null, "CONFIRMED", "rolling-squad", "2027-01-02T08:00:00Z", p);
     }
     await event(db, "e2e-rsx-wk2", "e2e-rsx-bob", "CONFIRMED", "DROPPED", "self-attendance", "2027-01-05T18:00:00Z", 2);
-    await event(db, "e2e-rsx-wk2", "e2e-rsx-dee", null, "CONFIRMED", "self-attendance", "2027-01-06T09:00:00Z", 4);
+    await event(db, "e2e-rsx-wk2", "e2e-rsx-dee", null, "CONFIRMED", "self-attendance", "2027-01-06T09:00:00Z", 5);
+    await event(db, "e2e-rsx-wk2", "e2e-rsx-eve", "CONFIRMED", "DROPPED", "self-attendance", "2027-01-06T10:00:00Z", 4);
     await event(db, "e2e-rsx-wk2", "e2e-rsx-cy", "CONFIRMED", "DROPPED", "self-attendance", "2027-01-07T13:00:00Z", 3);
   });
 
-  test.afterAll(() => resetDb());
+  // No reset here: the HQ describe below runs on this world and resets.
 
   test("the seed leaves out Bob, keeps Cy, and adds Dee after last week's squad", async ({ request, db }) => {
     await completeMatchesAt(request, SAT_0805);
@@ -425,7 +431,7 @@ test.describe("a cancelled week between: its OUTs are not carried and are named"
     expect(dee?.note).toBe("carried over (IN for the cancelled week) from 2027-01-01");
   });
 
-  test("the morning announcement names Bob as left out for saying OUT", async ({ request }) => {
+  test("the players' announcement names nobody left out; with no organiser channel nothing else is sent", async ({ request }) => {
     const res = await request.get(`/api/whatsapp/due-posts?groupId=${encodeURIComponent(GROUP_X)}`, {
       headers: { "x-api-key": E2E.WHATSAPP_API_KEY, "x-test-now": SAT_1000.toISOString(), "x-no-claim": "1" },
     });
@@ -444,10 +450,77 @@ test.describe("a cancelled week between: its OUTs are not carried and are named"
         "2. Cy Late",
         "3. Dee In",
         "",
-        "Not on this week's squad because they said *OUT* last week: Bob Out.",
-        "",
         "15 places open: say *IN* to take one.",
       ].join("\n"),
     );
+    expect(instructions.some((i) => i.key.startsWith("e2e-rsx-wk3:rolling-announce-left-out"))).toBe(false);
+  });
+});
+
+test.describe("an organiser puts a left-out player back from HQ (2026-10-24)", () => {
+  // Runs on the world the describe above left: Jan 15 seeded with Ann, Cy
+  // and Dee; Bob and Eve left out. The router and the extractor are
+  // stubbed; the HQ route, the engine and the writers are the shipped code.
+  const HQ_X = "120363777000000099@g.us";
+  const GROUP_X = "e2e-rolling-x@g.us";
+  const ANN_PHONE = "447700920001";
+  async function hq(request: APIRequestContext, text: string, messageId: string) {
+    const res = await request.post("/api/whatsapp/admin-group", {
+      headers: { "x-api-key": E2E.WHATSAPP_API_KEY },
+      data: { channel: "admin-group", groupId: HQ_X, messageId, text, senderPhone: ANN_PHONE, timestamp: String(Math.floor(Date.now() / 1000)) },
+    });
+    expect(res.status(), await res.text()).toBe(200);
+    return res.json();
+  }
+  const statusOn = async (db: TestDb, userId: string) =>
+    (await db.one<{ status: string }>(`SELECT status::text AS status FROM "Attendance" WHERE "matchId" = 'e2e-rsx-wk3' AND "userId" = $1`, [userId]))?.status ?? null;
+
+  test.beforeAll(async () => {
+    const db = testDb();
+    await db.run(`UPDATE "Organisation" SET "adminGroupId" = $2, "adminChannelMode" = 'admin-group' WHERE id = $1`, ["e2e-rs-org-x", HQ_X]);
+    await db.run(`UPDATE "Membership" SET role = 'OWNER' WHERE id = 'e2e-rs-mem-e2e-rsx-ann'`);
+  });
+  test.afterAll(() => {
+    clearPipelineStubs();
+    resetDb();
+  });
+
+  test("with an admin group, the organisers get the left-out notice there, and the group post still names nobody", async ({ request }) => {
+    const res = await request.get(`/api/whatsapp/due-posts?groupId=${encodeURIComponent(GROUP_X)}`, {
+      headers: { "x-api-key": E2E.WHATSAPP_API_KEY, "x-test-now": SAT_1000.toISOString(), "x-no-claim": "1", "x-mt-pi-caps": "admin-group" },
+    });
+    expect(res.status(), await res.text()).toBe(200);
+    const { instructions } = (await res.json()) as { instructions: Array<{ key: string; kind: string; text?: string; groupId?: string }> };
+    const notice = instructions.filter((i) => i.key.startsWith("e2e-rsx-wk3:rolling-announce-left-out"));
+    expect(notice).toHaveLength(1);
+    expect(notice[0].text).toBe(
+      [
+        "📋 *Friday 9-a-side, Fri 15 Jan at 20:30*: the squad carried over from last week is posted in the group.",
+        "",
+        "Left off this week's squad because they said *OUT* last week:",
+        "• Bob Out",
+        "• Eve Away",
+        "",
+        "To put any of them back, just say their name and *IN*, for example *Bob IN*.",
+      ].join("\n"),
+    );
+    const group = instructions.find((i) => i.key === "e2e-rsx-wk3:rolling-announce");
+    expect(group?.text ?? "").not.toMatch(/Bob Out|Eve Away/);
+  });
+
+  test("'Bob IN' with places open: Bob is back in the squad", async ({ request, db }) => {
+    expect(await statusOn(db, "e2e-rsx-bob")).toBeNull();
+    engineOn({ "Bob IN": { route: "other_att", facts: otherFacts("Bob", "in") } });
+    const out = await hq(request, "Bob IN", "e2e-rsx-hq-bob");
+    expect(out).toMatchObject({ handled: true, outcome: "squad-changed" });
+    expect(await statusOn(db, "e2e-rsx-bob")).toBe("CONFIRMED");
+  });
+
+  test("'Eve IN' when the squad is full: Eve goes on the bench", async ({ request, db }) => {
+    await db.run(`UPDATE "Match" SET "maxPlayers" = 4 WHERE id = 'e2e-rsx-wk3'`);
+    engineOn({ "Eve IN": { route: "other_att", facts: otherFacts("Eve", "in") } });
+    const out = await hq(request, "Eve IN", "e2e-rsx-hq-eve");
+    expect(out).toMatchObject({ handled: true, replyText: "Done: Eve Away on the bench. 4 of 4, 1 on the bench (Eve Away)." });
+    expect(await statusOn(db, "e2e-rsx-eve")).toBe("BENCH");
   });
 });
