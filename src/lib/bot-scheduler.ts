@@ -87,6 +87,7 @@ import {
   weeklyDeadlinesFor,
 } from "./weekly-deadlines";
 import { isSubstantialSquad } from "./rolling-squad-rules";
+import { loadRollingLeftOut } from "./rolling-squad";
 import { normaliseLang, type Lang } from "./i18n/lang";
 import {
   RECRUIT_ACK_KIND,
@@ -154,7 +155,7 @@ import {
   provisionalReviewKey,
   splitProvisionalByCutoff,
 } from "./provisional-review-rules";
-import { buildOrganiserListUpdate, buildOrganiserRelay, type OrganiserListReason } from "./organisers-list-copy";
+import { buildOrganiserListUpdate, buildOrganiserRelay, buildRollingLeftOutNotice, type OrganiserListReason } from "./organisers-list-copy";
 import { seedNudgeInstructions } from "./seed-nudge";
 import { firstTeamsInstructions } from "./admin-onboarding";
 import { isBillingPaused } from "./club-billing-rules";
@@ -1373,7 +1374,12 @@ async function computeForMatch(
   async function toOrganisers(
     key: string,
     reason: OrganiserListReason,
-    extra: { dropOutTime?: string | null; unpaid?: number | null; partnerOffer?: string[] | null } = {},
+    extra: {
+      dropOutTime?: string | null;
+      unpaid?: number | null;
+      partnerOffer?: string[] | null;
+      leftOut?: Array<{ name: string | null }> | null;
+    } = {},
   ): Promise<void> {
     const channel = await admin.getChannel();
     if (!channel) return;
@@ -1525,8 +1531,37 @@ async function computeForMatch(
         });
         if (carried > 0) {
           rollingAnnounceDue = true;
+          // After a cancelled week, who was left out for saying OUT for
+          // it (2026-10-24, Kemal): for the ORGANISERS only, never the
+          // players' group. Inside their notice when they announce;
+          // otherwise its own notice on their channel, once.
+          const leftOut = await loadRollingLeftOut(matchId);
+          if (!organisers && leftOut.length > 0) {
+            const channel = await admin.getChannel();
+            if (channel) {
+              const leftOutKey = `${matchId}:rolling-announce-left-out`;
+              out.push(
+                ...(await adminNoticeInstructions({
+                  channel,
+                  piCaps: admin.piCaps,
+                  sentKeys,
+                  now,
+                  matchId,
+                  key: (who) => (who === "admin-group" ? leftOutKey : `${leftOutKey}:${who}`),
+                  notice: {
+                    text: buildRollingLeftOutNotice({
+                      activityName: activity.name,
+                      whenLabel: dayTimeLabel(lang, m.date),
+                      leftOut,
+                      lang,
+                    }),
+                  },
+                })),
+              );
+            }
+          }
           // The organisers announce: the carried squad goes to them.
-          if (organisers) await toOrganisers(rollingKey, "announce");
+          if (organisers) await toOrganisers(rollingKey, "announce", { leftOut });
           else out.push({
             kind: "group-message",
             key: rollingKey,

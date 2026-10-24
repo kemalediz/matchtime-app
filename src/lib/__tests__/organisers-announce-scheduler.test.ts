@@ -9,7 +9,7 @@
  * sheet is posted in the players' group; and a club on "MatchTime" (the
  * default, Sutton FC) gets exactly the instructions it got before.
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 type Overrides = Record<string, Record<string, (...a: unknown[]) => unknown>>;
 const overrides: Overrides = {};
@@ -75,6 +75,14 @@ const badges = vi.hoisted(() => ({ posts: [] as Array<Record<string, unknown>> }
 vi.mock("@/lib/badge-announcement-scheduler", async (orig) => ({
   ...(await orig<object>()),
   computeBadgeAnnouncements: async () => badges.posts.map((p) => ({ ...p })),
+}));
+
+// Who was left out after a cancelled week (2026-10-24): its own tests
+// are in rolling-squad.test.ts; here only that the post names them.
+const leftOutMock = vi.hoisted(() => ({ names: [] as string[] }));
+vi.mock("@/lib/rolling-squad", () => ({
+  loadRollingLeftOut: async () => leftOutMock.names.map((name, i) => ({ userId: `lo${i}`, name })),
+  rollingSeedPendingAt: async () => null,
 }));
 
 import { computeDuePosts, type DueInstruction } from "@/lib/bot-scheduler";
@@ -267,6 +275,47 @@ describe("the default (MatchTime announces) is exactly what it was", () => {
   });
 });
 
+describe("MatchTime announces, after a cancelled week: the left-out names go to the organisers only (2026-10-24)", () => {
+  beforeEach(() => {
+    features.listAnnouncer = "matchtime";
+    features.rollingSquad = true;
+  });
+  afterEach(() => {
+    leftOutMock.names = [];
+  });
+
+  it("the group post names nobody; the organisers get their own notice, once, on its own key", async () => {
+    leftOutMock.names = ["Mo", "Feroz", "Yaseen"];
+    const m = match(NO_DEADLINES, { rollingSeededAt: new Date("2026-10-03T08:00:00.000Z") });
+    setWorld([m], { carried: 4 });
+    const out = await instructions(MON_1005);
+    const group = byKey(out, `${m.id}:rolling-announce`);
+    expect(group?.kind).toBe("group-message");
+    expect(group?.text).not.toMatch(/Mo|Feroz|Yaseen/);
+    const key = `${m.id}:rolling-announce-left-out`;
+    expect(byKey(out, key)).toEqual({
+      kind: "admin-group-message",
+      key,
+      matchId: m.id,
+      groupId: ADMIN_GROUP,
+      text:
+        "📋 *FNF, Fri 9 Oct at 20:30*: the squad carried over from last week is posted in the group.\n\n" +
+        "Left off this week's squad because they said *OUT* last week:\n• Mo\n• Feroz\n• Yaseen\n\n" +
+        "To put any of them back, just say their name and *IN*, for example *Mo IN*.",
+    });
+    setWorld([m], { carried: 4, sent: [`${m.id}:rolling-announce`, key] });
+    expect((await instructions(MON_1005)).some((i) => i.key === key)).toBe(false);
+  });
+
+  it("nobody left out: no organiser notice", async () => {
+    const m = match(NO_DEADLINES, { rollingSeededAt: new Date("2026-10-03T08:00:00.000Z") });
+    setWorld([m], { carried: 4 });
+    const out = await instructions(MON_1005);
+    expect(byKey(out, `${m.id}:rolling-announce`)?.kind).toBe("group-message");
+    expect(out.some((i) => i.key.includes("rolling-announce-left-out"))).toBe(false);
+  });
+});
+
 describe('"The organisers": the squad posts go to the admin group', () => {
   beforeEach(() => {
     features.listAnnouncer = "organisers";
@@ -379,6 +428,25 @@ describe('"The organisers": the squad posts go to the admin group', () => {
     expect(byKey(out, key)?.kind).toBe("admin-group-message");
     expect(byKey(out, key)?.text).toBe(ADMIN_TEXT("announce"));
     expect(groupPosts(out)).toHaveLength(0);
+  });
+
+  it("after a cancelled week, the admins' rolling notice names who was left out for saying OUT (2026-10-24)", async () => {
+    features.rollingSquad = true;
+    leftOutMock.names = ["Yaseen", "Mo", "Feroz"];
+    try {
+      const m = match(NO_DEADLINES, { rollingSeededAt: new Date("2026-10-03T08:00:00.000Z") });
+      setWorld([m], { carried: 4 });
+      const out = await instructions(MON_1005);
+      const text = byKey(out, `${m.id}:rolling-announce`)?.text ?? "";
+      expect(text).toContain(
+        "Left off this week's squad because they said *OUT* last week:\n• Yaseen\n• Mo\n• Feroz\n\nTo put any of them back, just say their name and *IN*, for example *Yaseen IN*.",
+      );
+      expect(groupPosts(out)).toHaveLength(0);
+      // Inside the one notice: no separate left-out notice as well.
+      expect(out.some((i) => i.key.includes("rolling-announce-left-out"))).toBe(false);
+    } finally {
+      leftOutMock.names = [];
+    }
   });
 
   it("the cold announcement goes to the admins", async () => {

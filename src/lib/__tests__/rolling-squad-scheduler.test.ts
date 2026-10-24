@@ -62,6 +62,14 @@ vi.mock("@/lib/message-analyzer", () => ({
   composeChaseText: (...a: unknown[]) => composeChaseText(...(a as [])),
 }));
 
+// Who was left out after a cancelled week (2026-10-24): its own tests
+// are in rolling-squad.test.ts; here only that the post names them.
+const leftOutMock = vi.hoisted(() => ({ names: [] as string[] }));
+vi.mock("@/lib/rolling-squad", () => ({
+  loadRollingLeftOut: async () => leftOutMock.names.map((name, i) => ({ userId: `lo${i}`, name })),
+  rollingSeedPendingAt: async () => null,
+}));
+
 import { computeDuePosts } from "@/lib/bot-scheduler";
 import { buildRollingAnnouncePost, buildRollingDeadlineLine } from "@/lib/scheduler-copy";
 
@@ -144,6 +152,7 @@ async function instructions(now: Date) {
 beforeEach(() => {
   features.rollingSquad = true;
   composeChaseText.mockClear();
+  leftOutMock.names = [];
 });
 
 describe("R1: the rolling announcement", () => {
@@ -167,6 +176,30 @@ describe("R1: the rolling announcement", () => {
       }),
     );
     expect(out.some((i) => i.key === `${m.id}:announce-match`)).toBe(false);
+  });
+
+  it("after a cancelled week, the players' post never names who was left out (2026-10-24, Kemal)", async () => {
+    leftOutMock.names = ["Yaseen", "Mo"];
+    const m = match();
+    setWorld(m);
+    const out = await instructions(SAT_10AM);
+    const text = (out.find((i) => i.key === `${m.id}:rolling-announce`) as { text: string }).text;
+    expect(text).toBe(
+      buildRollingAnnouncePost({
+        activityName: "Friday 9-a-side",
+        dateLabel: "Friday 9 October at 20:30",
+        venue: "Powerleague",
+        deadline: "Friday 15:30",
+        confirmed: NAMES.map((name) => ({ name })),
+        bench: [],
+        maxPlayers: 18,
+        lang: "en",
+      }),
+    );
+    expect(text).not.toContain("Yaseen");
+    // This world has no organiser channel: no separate notice either.
+    expect(out.some((i) => i.key.includes("rolling-announce-left-out"))).toBe(false);
+    expect(out.some((i) => "text" in i && String((i as { text?: string }).text).includes("Yaseen"))).toBe(false);
   });
 
   it("not again once sent", async () => {

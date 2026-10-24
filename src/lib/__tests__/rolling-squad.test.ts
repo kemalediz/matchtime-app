@@ -23,6 +23,8 @@ interface Mt {
   activityId: string;
   rollingSeededAt: Date | null;
   rollingSeededFromMatchId: string | null;
+  /** When the match was last written: a cancelled match's cancel time. */
+  updatedAt?: Date;
   activity: { orgId: string; venue: string; dayOfWeek: number; matchDurationMins: number };
 }
 
@@ -39,10 +41,21 @@ const state = {
     toStatus: string | null;
     sourceRef?: string | null;
   }>,
+  /** AttendanceEvent rows of cancelled weeks, with their times. */
+  weekEvents: [] as Array<{
+    matchId: string;
+    userId: string;
+    fromStatus: string | null;
+    toStatus: string | null;
+    cause: string;
+    at: Date;
+    toPosition: number | null;
+  }>,
   sent: [] as string[],
   users: new Map<string, { phoneNumber: string | null; email: string; isActive: boolean }>(),
   memberships: new Map<string, { leftAt: Date | null; provisionallyAddedAt: Date | null }>(),
   orgs: [] as Array<{ id: string; rollingSquadEnabled: boolean }>,
+  userNames: new Map<string, string>(),
 };
 
 function matchById(id: string) {
@@ -62,9 +75,15 @@ const fake = {
     },
   },
   attendance: {
-    findMany: async ({ where }: { where: { matchId: string } }) =>
+    findMany: async ({
+      where,
+    }: {
+      where: { matchId: string | { in: string[] }; userId?: { in: string[] }; status?: { in: string[] } };
+    }) =>
       state.attendance
-        .filter((a) => a.matchId === where.matchId)
+        .filter((a) => (typeof where.matchId === "string" ? a.matchId === where.matchId : where.matchId.in.includes(a.matchId)))
+        .filter((a) => !where.userId || where.userId.in.includes(a.userId))
+        .filter((a) => !where.status || where.status.in.includes(a.status))
         .map((a) => {
           const u = state.users.get(a.userId)!;
           return { ...a, user: { id: a.userId, ...u } };
@@ -85,6 +104,7 @@ const fake = {
       where,
     }: {
       where: {
+        matchId?: { in: string[] };
         orgId: string;
         userId: { in: string[] };
         actorKind: string;
@@ -92,7 +112,10 @@ const fake = {
         OR: Array<{ cause: string; sourceRef: string | { startsWith: string } }>;
       };
     }) =>
-      [...state.history, ...(state.events as typeof state.history)]
+      where.matchId
+        ? // The cancelled weeks' own history (2026-10-24).
+          state.weekEvents.filter((e) => where.matchId!.in.includes(e.matchId))
+        : [...state.history, ...(state.events as typeof state.history)]
         .filter(
           (e) =>
             e.orgId === where.orgId &&
@@ -120,6 +143,10 @@ const fake = {
       return {};
     },
   },
+  user: {
+    findMany: async ({ where }: { where: { id: { in: string[] } } }) =>
+      where.id.in.map((id) => ({ id, name: state.userNames.get(id) ?? null })),
+  },
   organisation: {
     findMany: async () => state.orgs.filter((o) => o.rollingSquadEnabled).map((o) => ({ id: o.id })),
   },
@@ -132,7 +159,7 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
-import { seedDueRollingSquads, seedRollingSquad } from "../rolling-squad";
+import { loadRollingLeftOut, seedDueRollingSquads, seedRollingSquad } from "../rolling-squad";
 
 const FIX = { orgId: "org-fnf", venue: "Powerleague", dayOfWeek: 5, matchDurationMins: 60 };
 /** Fri 2 Oct 2026 20:30 BST and Fri 9 Oct 2026 20:30 BST. */
@@ -157,6 +184,7 @@ function reset(maxPlayers = 18) {
   state.attendance.push({ matchId: "last", userId: "kemal", status: "CONFIRMED", position: 5 });
   state.events = [];
   state.history = [];
+  state.weekEvents = [];
   state.sent = [];
   state.users = new Map(
     ["hamzah", "raihan", "wasim", "benchy", "kemal"].map((u) => [
@@ -350,5 +378,73 @@ describe("a phoneless player an admin added (club rehearsal, 2026-10-14)", () =>
     state.history.push({ orgId: "org-other", userId: "gary", actorKind: "admin", cause: "admin-message", sourceRef: "admin-group:x", toStatus: "CONFIRMED" });
     await seed();
     expect(carried("gary")).toBeNull();
+  });
+});
+
+describe("a cancelled week in between (FNF 23 Oct, 2026-10-24)", () => {
+  /** 2 Oct played; 9 Oct cancelled on Thu 8 Oct 15:40; 16 Oct is the target. */
+  const CANCELLED_AT = new Date("2026-10-08T14:40:00.000Z");
+  const WK3 = new Date("2026-10-16T19:30:00.000Z");
+  const ev = (userId: string, fromStatus: string | null, toStatus: string, minsBefore: number, cause = "self-attendance", toPosition = 1) =>
+    state.weekEvents.push({
+      matchId: "next",
+      userId,
+      fromStatus,
+      toStatus,
+      cause,
+      at: new Date(CANCELLED_AT.getTime() - minsBefore * 60 * 1000),
+      toPosition,
+    });
+
+  beforeEach(() => {
+    const cancelled = matchById("next")!;
+    cancelled.status = "CANCELLED";
+    cancelled.updatedAt = CANCELLED_AT;
+    // Kemal's early OUT on 9 Oct is the row reset() put there.
+    state.matches.push({ ...cancelled, id: "wk3", date: WK3, status: "UPCOMING", updatedAt: undefined });
+    // Imti said IN for the cancelled week; not on 2 Oct's squad.
+    state.users.set("imti", { phoneNumber: "+44imti", email: "imti@x.com", isActive: true });
+    state.memberships.set("imti", { leftAt: null, provisionallyAddedAt: null });
+    state.attendance.push({ matchId: "next", userId: "imti", status: "CONFIRMED", position: 2 });
+  });
+
+  const seedWk3 = () => seedRollingSquad({ targetId: "wk3", sourceId: "last", actor: { kind: "scheduler" }, now: new Date("2026-10-10T07:05:00.000Z") });
+  const onWk3 = () => state.attendance.filter((a) => a.matchId === "wk3").map((a) => [a.userId, a.status]);
+
+  it("a player who said OUT for it is not carried; a player who said IN for it is, after last week's squad", async () => {
+    ev("kemal", "CONFIRMED", "DROPPED", 600);
+    ev("raihan", "CONFIRMED", "DROPPED", 300, "admin-message");
+    ev("imti", null, "CONFIRMED", 200, "admin-message", 2);
+    await seedWk3();
+    expect(onWk3()).toEqual([
+      ["hamzah", "CONFIRMED"],
+      ["wasim", "CONFIRMED"],
+      ["imti", "CONFIRMED"],
+    ]);
+    const imti = state.events.find((e) => e.matchId === "wk3" && e.userId === "imti");
+    expect(String(imti?.note)).toBe("carried over (IN for the cancelled week) from 2026-10-02");
+  });
+
+  it("an OUT sent after the cancellation is not a statement about playing", async () => {
+    state.weekEvents.push({ matchId: "next", userId: "raihan", fromStatus: "CONFIRMED", toStatus: "DROPPED", cause: "self-attendance", at: new Date(CANCELLED_AT.getTime() + 60_000), toPosition: 2 });
+    await seedWk3();
+    expect(onWk3().map(([u]) => u)).toEqual(["hamzah", "raihan", "wasim", "kemal"]);
+  });
+
+  it("loadRollingLeftOut names who was left out, and not anyone who has since said IN", async () => {
+    ev("kemal", "CONFIRMED", "DROPPED", 600);
+    ev("raihan", "CONFIRMED", "DROPPED", 300, "admin-message");
+    await seedWk3();
+    state.userNames = new Map([["kemal", "Kemal"], ["raihan", "Raihan"]]);
+    expect(await loadRollingLeftOut("wk3")).toEqual([
+      { userId: "raihan", name: "Raihan" },
+      { userId: "kemal", name: "Kemal" },
+    ]);
+    state.attendance.push({ matchId: "wk3", userId: "kemal", status: "CONFIRMED", position: 9 });
+    expect(await loadRollingLeftOut("wk3")).toEqual([{ userId: "raihan", name: "Raihan" }]);
+  });
+
+  it("a match that was never seeded names nobody", async () => {
+    expect(await loadRollingLeftOut("wk3")).toEqual([]);
   });
 });

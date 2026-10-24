@@ -44,7 +44,7 @@
  *
  * See MDs/multi-language-design-2026-09-16.md section 4.2.
  */
-import { joinList } from "./text";
+import { firstWord, joinList } from "./text";
 import { firstMonthsFree } from "./free-period";
 import type { StatsPeriod } from "../pipeline/types";
 import type { BadgeKey, BadgeNumbers } from "../badge-rules";
@@ -2879,6 +2879,19 @@ export const en = {
   rolling_tail_open_organiser: (p: { open: number }): string =>
     `${p.open === 1 ? "1 place open" : `${p.open} places open`}: say *IN* to go on the bench, and the organisers will pick who plays.`,
   rolling_tail_full: "The squad is full. Say *IN* to go on the bench.",
+  /** RSQ1c (2026-10-24, Kemal): after a cancelled week, the carried
+   *  players who said OUT for it are not carried. The ORGANISERS are told
+   *  who, one per line, and that saying the name and IN puts a player
+   *  back (the example is the first name). Never in the players' group. */
+  rolling_left_out_organisers: (p: { names: string[] }): string =>
+    `Left off this week's squad because they said *OUT* last week:\n${p.names.map((n) => `• ${n}`).join("\n")}\n\n` +
+    (p.names.length === 1
+      ? `To put them back, just say *${firstWord(p.names[0])} IN*.`
+      : `To put any of them back, just say their name and *IN*, for example *${firstWord(p.names[0])} IN*.`),
+  /** RSQ1d: the first line of that notice when it goes to the organisers
+   *  on its own (MatchTime posted the carried squad in the group). */
+  rolling_left_out_notice_lead: (p: { activityName: string; whenLabel: string }): string =>
+    `📋 *${p.activityName}, ${p.whenLabel}*: the squad carried over from last week is posted in the group.`,
   /** RSQ2: the extra line on the 17:00 post while the deadline is ahead. */
   rolling_deadline_line: (p: { deadline: string }): string =>
     `Drop-out deadline: *${p.deadline}*. Until then, you're in unless you say *OUT*.`,
