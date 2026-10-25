@@ -346,6 +346,8 @@ const SAMPLES: SampleArgs = {
   hq_which_partner_ask: { asker: "FNFCLUB", day: "DAYLABEL" },
   hq_which_pairing: { club: "FNFCLUB", other: "SUTTONCLUB" },
   hq_which_pool_ask: { day: "Fri 16 Oct" },
+  hq_which_join_request: { name: "Sam K" },
+  hq_confirm_join_request: { name: "Sam K" },
   hq_confirm_pool_ask: { day: "Fri 16 Oct" },
   hq_nothing_waiting: null,
   hq_not_here: null,

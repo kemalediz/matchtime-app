@@ -3,6 +3,8 @@
  * player pool L10, 2026-10-24), the pool's twin of `partner-ask-words.ts`.
  * Thin I/O; the rules are the pool's own.
  *
+ * (Also the admin group's YES to L8's "wants to join" notice, at the end.)
+ *
  * Three ways an organiser asks the pool from a group, all through L5a's
  * `requestPoolAsk` (`pool/round.ts`), the match page tick's own function,
  * so every rule of a tap holds (the switch and the club's flag, an
@@ -36,7 +38,11 @@
  */
 import { db } from "./db";
 import { hqQuestionsSince } from "./admin-group-log";
-import { POOL_ASK_PREFIX, latestPoolNoticeAsks, poolAskRef } from "./admin-group-pool-refs";
+import { JOIN_REQUEST_PREFIX, POOL_ASK_PREFIX, joinRequestRef, latestPoolNoticeAsks, parseJoinRequestRef, poolAskRef } from "./admin-group-pool-refs";
+import { answerAsClub, invitationsAwaitingClub } from "./pool/club-invitation";
+import { INVITE_LINK_SETTINGS_PATH } from "./pool/invite-link";
+import { inviteCopy } from "./i18n/pool-invite";
+import { appUrl } from "./app-url";
 import type { PendingWithLabel } from "./admin-group-context";
 import { dayCommaTimeLabel } from "./i18n/dates";
 import { t } from "./i18n/t";
@@ -113,4 +119,58 @@ export async function poolNoticesAwaiting(orgId: string, now: Date, lang: string
     out.push({ ref: poolAskRef(match.id), kind: "pool-ask", day: dayCommaTimeLabel(lang, match.date), askedAt: a.askedAt });
   }
   return out;
+}
+
+// ── A guest who wants to join (L8's notice, L10) ───────────────────────
+
+/**
+ * The guests whose "wants to join" notice was posted in HQ in the last day
+ * (logged as MatchTime's question, `join-request:<invitation>`) and who
+ * still wait for the club's answer. After a day the card's button stays.
+ */
+export async function joinRequestsAwaiting(orgId: string, now: Date): Promise<PendingWithLabel[]> {
+  const asked = await hqQuestionsSince(orgId, JOIN_REQUEST_PREFIX, new Date(now.getTime() - DAY_MS));
+  const latest = new Map<string, Date>();
+  for (const q of asked) {
+    const id = parseJoinRequestRef(q.askRef);
+    if (id) latest.set(id, q.createdAt);
+  }
+  if (latest.size === 0) return [];
+  const waiting = await invitationsAwaitingClub(orgId, [...latest.keys()]);
+  return waiting.map((w) => ({ ref: joinRequestRef(w.id), kind: "join-request" as const, day: null, names: w.name, askedAt: latest.get(w.id)! }));
+}
+
+export type JoinRequestOutcome = "hq-join-link-sent" | "hq-join-approved" | "hq-join-not-done";
+
+/**
+ * An organiser's YES in HQ to a guest who wants to join: the card's own
+ * "Send the invite link" (`answerAsClub`, the organiser as the actor), so
+ * the link goes only as L8 sends it (to him, once, both yeses stored).
+ * Null when he no longer waits for the club (answered on the card).
+ */
+export async function answerJoinRequestInHq(args: {
+  orgId: string;
+  invitationId: string;
+  actorId: string;
+  lang: string | null;
+  now: Date;
+  env?: Env;
+}): Promise<{ outcome: JoinRequestOutcome; replyText: string } | null> {
+  const [inv] = await invitationsAwaitingClub(args.orgId, [args.invitationId]);
+  if (!inv) return null;
+  const c = inviteCopy(args.lang);
+  const r = await answerAsClub({ orgId: args.orgId, userId: inv.userId, actorId: args.actorId, answer: "yes", now: args.now, env: args.env });
+  console.log(`[pool-ask-words] ${args.orgId}: HQ yes to invitation ${inv.id}: ${r.ok ? r.state : r.reason}`);
+  if (r.ok) {
+    return r.state === "link-sent"
+      ? { outcome: "hq-join-link-sent", replyText: c.hq_link_sending({ name: inv.name }) }
+      : { outcome: "hq-join-approved", replyText: c.hq_link_waiting({ name: inv.name, link: appUrl(INVITE_LINK_SETTINGS_PATH) }) };
+  }
+  const replyText =
+    r.reason === "no-link"
+      ? c.notice_no_link({ link: appUrl(INVITE_LINK_SETTINGS_PATH) })
+      : r.reason === "already-invited"
+        ? c.hq_join_already({ name: inv.name })
+        : c.hq_join_closed({ name: inv.name });
+  return { outcome: "hq-join-not-done", replyText };
 }

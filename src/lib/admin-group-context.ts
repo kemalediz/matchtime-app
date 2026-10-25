@@ -18,7 +18,8 @@ export interface PendingWithLabel extends PendingItem {
   club?: string | null;
   /** A pairing: this club's own name. */
   ownClub?: string | null;
-  /** A free place question: who, joined, and whether it takes it away. */
+  /** A free place question: who, joined, and whether it takes it away. A
+   *  join request: the guest, first name and last initial. */
   names?: string | null;
   undo?: boolean;
   /** A pasted list: who pasted it (they may say YES to it). */
@@ -91,6 +92,10 @@ function waitingLine(i: PendingWithLabel): string {
     // what the notice already said in HQ: the game's day.
     case "pool-ask":
       return `WAITING: YES to ask nearby players from the MatchTime player pool for ${i.day}, asked at ${at}.`;
+    // A guest who wants to join (L8's notice): the name the notice gave,
+    // first name and last initial.
+    case "join-request":
+      return `WAITING: YES to send ${i.names}, a guest who played here and wants to join, the players' group's invite link, asked at ${at}.`;
     case "list":
       return `WAITING: YES to apply the squad list pasted at ${at}.`;
   }

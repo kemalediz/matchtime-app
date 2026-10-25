@@ -141,6 +141,8 @@ const NO_TICK: ReadonlySet<string> = new Set([
   // the club, nobody near, too late, no game.
   "hq-pool-not-asked",
   "hq-pool-no-match",
+  // A YES to a guest who wants to join that sent nothing (L10).
+  "hq-join-not-done",
 ]);
 export const HQ_TICK = "✅";
 

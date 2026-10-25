@@ -1211,6 +1211,8 @@ export const tr: Strings = {
   hq_which_partner_ask: (p) => `*${p.asker}* kulübünün ${p.day} isteğini oyuncu grubunuzda paylaşmak mı`,
   hq_which_pairing: (p) => `*${p.club}* ile *${p.other}* eşleşmesi mi`,
   hq_which_pool_ask: (p) => `${p.day} maçı için MatchTime oyuncu havuzundaki yakın oyunculara sormak mı`,
+  hq_which_join_request: (p) => `${p.name} kişisine oyuncu grubunun davet bağlantısını göndermek mi`,
+  hq_confirm_join_request: (p) => `Bu EVET, ${p.name} kişisine oyuncu grubunun davet bağlantısını göndermek için mi?`,
   hq_confirm_pool_ask: (p) => `Bu EVET, ${p.day} maçı için MatchTime oyuncu havuzundaki yakın oyunculara sormak için mi?`,
   hq_nothing_waiting: `Şu anda EVET bekleyen bir şey yok.`,
   hq_not_here: `Bunu bu gruptan yapamam.`,

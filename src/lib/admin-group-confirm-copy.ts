@@ -26,6 +26,8 @@ export function confirmQuestion(lang: string | null, items: PendingWithLabel[]):
         return s.hq_confirm_fee({ names: i.names ?? "", day: i.day ?? "" });
       case "pool-ask":
         return s.hq_confirm_pool_ask({ day: i.day ?? "" });
+      case "join-request":
+        return s.hq_confirm_join_request({ name: i.names ?? "" });
       case "list":
         return s.hq_confirm_list;
     }
@@ -46,6 +48,8 @@ function whichLabel(lang: string | null, i: PendingWithLabel): string {
       return s.hq_which_fee({ names: i.names ?? "", day: i.day ?? "" });
     case "pool-ask":
       return s.hq_which_pool_ask({ day: i.day ?? "" });
+    case "join-request":
+      return s.hq_which_join_request({ name: i.names ?? "" });
     case "list":
       return s.hq_which_list;
   }

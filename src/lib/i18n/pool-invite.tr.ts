@@ -17,8 +17,15 @@ export const poolInviteTr: PoolInviteStrings = {
   // ── To the organisers ─────────────────────────────────────────────────
   notice_wants_join: (p) =>
     `🙋 ${p.name}, ${p.day} günü sizinle misafir olarak oynadı ve grubunuza katılmak istiyor. Grubun davet bağlantısını göndermek için kartındaki Davet bağlantısını gönder düğmesine dokunun: ${p.link}`,
+  notice_wants_join_hq: (p) =>
+    `🙋 ${p.name}, ${p.day} günü sizinle misafir olarak oynadı ve grubunuza katılmak istiyor. Grubun davet bağlantısını göndermek için burada EVET yazın ya da kartındaki Davet bağlantısını gönder düğmesine dokunun: ${p.link}`,
   /** The guest when he has no name on MatchTime. */
   notice_someone: "Bir misafir",
+  hq_link_sending: (p) => `✅ ${p.name} kişisine oyuncu grubunun davet bağlantısını gönderiyorum.`,
+  hq_link_waiting: (p) =>
+    `✅ Onaylandı. MatchTime grubunuzun bağlantısını alır almaz ${p.name} davet bağlantısını alacak: MatchTime'ı WhatsApp grubunuzda yönetici yapın ya da bağlantıyı Ayarlar'a yapıştırın: ${p.link}`,
+  hq_join_already: (p) => `${p.name} kişisine davet bağlantısı zaten gönderildi.`,
+  hq_join_closed: (p) => `${p.name} kişisinin katılma isteği artık açık değil.`,
   notice_no_link: (p) =>
     `Önce MatchTime grubunuzun bağlantısını gönderebilsin: MatchTime'ı WhatsApp grubunuzda yönetici yapın ya da bağlantıyı Ayarlar'a yapıştırın: ${p.link}`,
   notice_link_failed: (p) =>

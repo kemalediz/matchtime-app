@@ -27,6 +27,8 @@ const db = vi.hoisted(() => ({
 vi.mock("../../db", () => ({ db }));
 const notice = vi.hoisted(() => ({ sendAdminNotice: vi.fn() }));
 vi.mock("../../admin-channel", () => notice);
+const hqLog = vi.hoisted(() => ({ recordMatchTimeQuestion: vi.fn() }));
+vi.mock("../../admin-group-log", () => hqLog);
 const jobs = vi.hoisted(() => ({ queuePlatformDm: vi.fn(), queuePlatformInviteCode: vi.fn(), cancelQueuedPlatformDms: vi.fn() }));
 vi.mock("../../platform-jobs", () => jobs);
 vi.mock("../../group-postability-store", () => ({ readPostState: vi.fn(async () => ({ botIsAdmin: true })) }));
@@ -115,5 +117,29 @@ describe("M3: a stopped or deleted profile gets no link and no closing line", ()
     db.guestPlace.findFirst.mockResolvedValue({ id: "gp1" });
     expect(await deliverInviteLink("inv1", NOW, ENV)).toBe("nothing");
     expect(jobs.queuePlatformDm).not.toHaveBeenCalled();
+  });
+});
+
+describe("L10: his yes, told to the organisers in HQ, is a question a YES answers", () => {
+  it("in the admin group: the notice invites a YES there, and is logged as MatchTime's question about this invitation", async () => {
+    db.clubInvitation.findUnique.mockResolvedValue(OPEN);
+    db.organisation.findUnique.mockResolvedValue({ name: "FNF", language: "en", whatsappGroupId: "g@g.us", groupInviteLink: "https://chat.whatsapp.com/AbCdEfGhIjKl", featurePlayerPool: true });
+    notice.sendAdminNotice.mockImplementation(async (req: { text: (l: string, a: string) => string }) => ({ channel: "admin-group", queued: 1, groupText: req.text("https://mt.test/admin/guests?tab=history", "group") }));
+    expect(await answerAsPlayer({ invitationId: "inv1", userId: "u1", answer: "join", now: NOW, env: ENV })).toBe("waiting-club");
+    const req = notice.sendAdminNotice.mock.calls[0][0];
+    const inHq = req.text("https://mt.test/admin/guests?tab=history", "group");
+    expect(inHq).toBe(
+      "🙋 Sam K played with you on  as a guest and wants to join your group. Reply YES here to send them the group's invite link, or tap Send the invite link on their card: https://mt.test/admin/guests?tab=history",
+    );
+    expect(hqLog.recordMatchTimeQuestion).toHaveBeenCalledWith({ orgId: "o1", askRef: "join-request:inv1", text: inHq, now: NOW });
+  });
+
+  it("by DM (no admin group): the notice is today's, and nothing is logged", async () => {
+    db.clubInvitation.findUnique.mockResolvedValue(OPEN);
+    db.organisation.findUnique.mockResolvedValue({ name: "FNF", language: "en", whatsappGroupId: "g@g.us", groupInviteLink: "https://chat.whatsapp.com/AbCdEfGhIjKl", featurePlayerPool: true });
+    notice.sendAdminNotice.mockResolvedValue({ channel: "dm", queued: 1 });
+    await answerAsPlayer({ invitationId: "inv1", userId: "u1", answer: "join", now: NOW, env: ENV });
+    expect(notice.sendAdminNotice.mock.calls[0][0].text("https://mt.test/r/x", "dm")).toMatch(/To send them the group's invite link, tap Send the invite link on their card: https:\/\/mt\.test\/r\/x$/);
+    expect(hqLog.recordMatchTimeQuestion).not.toHaveBeenCalled();
   });
 });

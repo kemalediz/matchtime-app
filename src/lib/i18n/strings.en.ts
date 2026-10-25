@@ -1424,6 +1424,9 @@ export const en = {
   hq_which_partner_ask: (p: { asker: string; day: string }): string => `posting *${p.asker}*'s ask for ${p.day} in your players' group`,
   hq_which_pairing: (p: { club: string; other: string }): string => `pairing *${p.club}* with *${p.other}*`,
   hq_which_pool_ask: (p: { day: string }): string => `asking nearby players from the MatchTime player pool for ${p.day}`,
+  hq_which_join_request: (p: { name: string }): string => `sending ${p.name} the players' group's invite link`,
+  /** A YES MatchTime cannot be sure was meant for a guest who wants to join (L8's notice). */
+  hq_confirm_join_request: (p: { name: string }): string => `Is that YES to sending ${p.name} the players' group's invite link?`,
   /** A YES MatchTime cannot be sure was meant for the short-squad notice's
    *  MatchTime player pool line (L10). */
   hq_confirm_pool_ask: (p: { day: string }): string => `Is that YES to asking nearby players from the MatchTime player pool for ${p.day}?`,

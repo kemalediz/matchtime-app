@@ -19,9 +19,11 @@ const autoAsk = vi.hoisted(() => ({ openPartnerRoundOf: vi.fn() }));
 vi.mock("../pool/auto-ask", () => autoAsk);
 const panel = vi.hoisted(() => ({ poolNoticeBand: vi.fn() }));
 vi.mock("../pool/panel", () => panel);
+const invite = vi.hoisted(() => ({ invitationsAwaitingClub: vi.fn(), answerAsClub: vi.fn() }));
+vi.mock("../pool/club-invitation", () => invite);
 
-import { askPoolFromWords, poolNoticesAwaiting } from "../pool-ask-words";
-import { latestPoolNoticeAsks, poolAskRef } from "../admin-group-pool-refs";
+import { answerJoinRequestInHq, askPoolFromWords, joinRequestsAwaiting, poolNoticesAwaiting } from "../pool-ask-words";
+import { joinRequestRef, latestPoolNoticeAsks, poolAskRef } from "../admin-group-pool-refs";
 
 const NOW = new Date("2026-10-27T12:00:00Z");
 const KICKOFF = new Date("2026-10-27T20:00:00Z");
@@ -107,5 +109,47 @@ describe("which pool notices still wait for a YES", () => {
     panel.poolNoticeBand.mockResolvedValue("5+");
     round.placesOpenOf.mockResolvedValue(0);
     expect(await poolNoticesAwaiting("o1", NOW, "en", ENV)).toEqual([]);
+  });
+});
+
+describe("a guest who wants to join, waiting for the organisers' YES (L8's notice)", () => {
+  const SAM = { id: "inv1", userId: "u-sam", name: "Sam K" };
+  beforeEach(() => {
+    invite.invitationsAwaitingClub.mockResolvedValue([SAM]);
+    invite.answerAsClub.mockResolvedValue({ ok: true, state: "link-sent" });
+  });
+
+  it("waits only while his notice was posted in HQ in the last day and he is still waiting for the club", async () => {
+    expect(await joinRequestsAwaiting("o1", NOW)).toEqual([]);
+    expect(invite.invitationsAwaitingClub).not.toHaveBeenCalled();
+    log.hqQuestionsSince.mockResolvedValue([{ askRef: joinRequestRef("inv1"), createdAt: NOW }, { askRef: joinRequestRef("gone"), createdAt: NOW }]);
+    expect(await joinRequestsAwaiting("o1", NOW)).toEqual([{ ref: joinRequestRef("inv1"), kind: "join-request", day: null, names: "Sam K", askedAt: NOW }]);
+    expect(invite.invitationsAwaitingClub).toHaveBeenCalledWith("o1", ["inv1", "gone"]);
+  });
+
+  it("a YES: the card's own Send the invite link (answerAsClub, the organiser as actor); one line back", async () => {
+    const r = await answerJoinRequestInHq({ orgId: "o1", invitationId: "inv1", actorId: "u-owner", lang: "en", now: NOW, env: ENV });
+    expect(invite.answerAsClub).toHaveBeenCalledWith({ orgId: "o1", userId: "u-sam", actorId: "u-owner", answer: "yes", now: NOW, env: ENV });
+    expect(r).toEqual({ outcome: "hq-join-link-sent", replyText: "✅ Sending Sam K the players' group's invite link." });
+  });
+
+  it("approved but the club has no link yet: said so, with where to add it", async () => {
+    invite.answerAsClub.mockResolvedValue({ ok: true, state: "approved" });
+    expect((await answerJoinRequestInHq({ orgId: "o1", invitationId: "inv1", actorId: "u-owner", lang: "en", now: NOW, env: ENV }))?.outcome).toBe("hq-join-approved");
+  });
+
+  it("refused (no link source, already sent, closed): no tick outcome and a plain line, never the link", async () => {
+    for (const reason of ["no-link", "already-invited", "not-eligible", "failed"]) {
+      invite.answerAsClub.mockResolvedValue({ ok: false, reason });
+      const r = await answerJoinRequestInHq({ orgId: "o1", invitationId: "inv1", actorId: "u-owner", lang: "tr", now: NOW, env: ENV });
+      expect(r?.outcome).toBe("hq-join-not-done");
+      expect(r?.replyText).not.toMatch(/chat\.whatsapp\.com/);
+    }
+  });
+
+  it("no longer waiting (answered on the card meanwhile): nothing waiting", async () => {
+    invite.invitationsAwaitingClub.mockResolvedValue([]);
+    expect(await answerJoinRequestInHq({ orgId: "o1", invitationId: "inv1", actorId: "u-owner", lang: "en", now: NOW, env: ENV })).toBeNull();
+    expect(invite.answerAsClub).not.toHaveBeenCalled();
   });
 });
