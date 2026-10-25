@@ -36,7 +36,7 @@ vi.mock("@/lib/venue-location", () => ({ dropOrphanPin: m.dropPin }));
 vi.mock("@/lib/venue-location-schedule", () => ({ scheduleVenueResolve: m.schedule, scheduleVenuePickResolve: m.schedulePick }));
 vi.mock("@/lib/db", () => ({
   db: {
-    sport: { findFirst: async () => ({ id: "sport-a" }) },
+    sport: { findFirst: async () => ({ id: "sport-a", preset: "football-7aside", name: "Football 7-a-side", playersPerTeam: 7 }) },
     activity: {
       findUnique: async () => m.current,
       create: async ({ data }: { data: Record<string, unknown> }) => {

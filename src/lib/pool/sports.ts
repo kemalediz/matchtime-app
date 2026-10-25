@@ -23,6 +23,7 @@
  * catalogue.
  */
 import type { Lang } from "../i18n/lang";
+import { SPORT_PRESETS, type SportPreset } from "../sport-presets";
 
 export interface PoolSportDef {
   key: string;
@@ -57,10 +58,18 @@ export const POOL_SPORT_KEYS: readonly PoolSportKey[] = POOL_SPORTS.map((s) => s
 // validation (profile-fields.ts) and the public-copy guard
 // (src/app/__tests__/public-copy.test.ts) all read it.
 //
+// Club setup reads it too (Kemal, 2026-10-25): the web onboarding wizard,
+// the admin activities picker, the in-group WhatsApp setup and self-join
+// only offer the club sport presets (src/lib/sport-presets.ts) whose pool
+// sport is live (`isLivePreset` below, through `PRESET_TO_POOL`). A preset
+// with no pool sport (netball, volleyball, cricket) is never live until a
+// mapping is added. A club that already plays a sport keeps it.
+//
 // To switch a sport on, add its key to `sports` (and `other: true` brings
 // back the typed-in "Other"). Then reword any website line that says the
 // sport in plain words (landing-content.ts `SITE_META`, `HERO`). The chips,
-// the pool card, the form and the validation follow by themselves.
+// the pool card, the form, the validation and club setup follow by
+// themselves.
 
 export interface LiveSports {
   readonly sports: readonly PoolSportKey[];
@@ -79,6 +88,45 @@ export function isLiveSport(key: string, live: LiveSports = LIVE_SPORTS): boolea
 /** The live catalogue entries, in catalogue order. */
 export function liveSports(live: LiveSports = LIVE_SPORTS): readonly PoolSportDef[] {
   return (POOL_SPORTS as readonly PoolSportDef[]).filter((s) => isLiveSport(s.key, live));
+}
+
+/** A club sport preset whose pool sport is live (futsal is football). */
+export function isLivePreset(key: string, live: LiveSports = LIVE_SPORTS): boolean {
+  const pool = PRESET_TO_POOL[key];
+  return !!pool && isLiveSport(pool.sport, live);
+}
+
+/** The club sport presets a new club may pick, in the library's order. */
+export function liveSportPresets(live: LiveSports = LIVE_SPORTS): readonly SportPreset[] {
+  return SPORT_PRESETS.filter((p) => isLivePreset(p.key, live));
+}
+
+/**
+ * The live preset for `n` players per side: football's n-a-side first,
+ * else any live preset of that size, in the library's order. None when no
+ * live preset has that size (the caller builds a plain sport instead).
+ */
+export function livePresetForSide(n: number, live: LiveSports = LIVE_SPORTS): SportPreset | undefined {
+  const presets = liveSportPresets(live);
+  return presets.find((p) => p.key === `football-${n}aside`) ?? presets.find((p) => p.playersPerTeam === n);
+}
+
+/**
+ * Whether one of a club's own Sport rows may carry a NEW weekly game: its
+ * sport is live, or the club already plays it (`inUse`: an existing club
+ * keeps its sport). A preset that is not a live pool sport is not offered;
+ * a custom sport is judged by its name, and a name that is no catalogue
+ * sport at all is the club's own and stays offered.
+ */
+export function isOfferedClubSport(
+  sport: { preset: string | null; name: string; playersPerTeam: number },
+  opts: { inUse?: boolean } = {},
+  live: LiveSports = LIVE_SPORTS,
+): boolean {
+  if (opts.inUse) return true;
+  if (sport.preset) return isLivePreset(sport.preset, live);
+  const pool = poolSportOfClubSport(sport);
+  return !pool || isLiveSport(pool.sport, live);
 }
 
 /** Words that are only ever the name of a sport the pool does not offer. */

@@ -189,6 +189,32 @@ test("bot-added → intro → EVERYTHING → admins (@mention + name+phone) → 
   expect(ownerDm?.text).toMatch(/https?:\/\//);
 });
 
+test("6 a side sets up a FOOTBALL club, never volleyball (club setup follows LIVE_SPORTS)", async ({ request, db }) => {
+  const onb = createOnboardingGroup(request);
+  const OWNER6 = "447700915100";
+  await onb.botAdded({ groupSubject: "Sim Sixes FC", addedByPhone: OWNER6, participants: [] });
+  await onb.say("EVERYTHING", { phone: OWNER6, name: "Sid Sixes" });
+  const admins = await onb.say("just me", { phone: OWNER6, name: "Sid Sixes" });
+  expect(admins.reply).toContain("when and where do you play?");
+  const done = await onb.say("we play thursdays 8pm at Hackney Marshes, 6 a side", { phone: OWNER6, name: "Sid Sixes" });
+  expect(done.reply).toContain("All set");
+
+  const org = await db.one<{ id: string }>(`SELECT id FROM "Organisation" WHERE "whatsappGroupId" = $1`, [onb.groupId]);
+  const sports = await db.all<{ name: string; preset: string | null; playersPerTeam: number; positions: string[]; mvpLabel: string }>(
+    `SELECT name, preset, "playersPerTeam", positions, "mvpLabel" FROM "Sport" WHERE "orgId" = $1`,
+    [org!.id],
+  );
+  // The same plain-football sport the self-join setup builds for 6 a side.
+  expect(sports).toEqual([
+    { name: "Football 6-a-side", preset: null, playersPerTeam: 6, positions: ["GK", "DEF", "MID", "FWD"], mvpLabel: "Man of the Match" },
+  ]);
+  const match = await db.one<{ maxPlayers: number }>(
+    `SELECT m."maxPlayers" FROM "Match" m JOIN "Activity" a ON a.id = m."activityId" WHERE a."orgId" = $1`,
+    [org!.id],
+  );
+  expect(match?.maxPlayers).toBe(12);
+});
+
 test('"@Match Time help" reprints the feature-aware usage summary', async ({ request, db }) => {
   const g = await createGroup(request, db, {}); // default features: all on except payments
   const r = await g.post("pete", "@Match Time help", { tag: true });

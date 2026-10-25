@@ -33,7 +33,7 @@
  */
 import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
 import { db } from "./db";
-import { SPORT_PRESETS } from "./sport-presets";
+import { sportForPlayersPerSide, type ClubSportSpec } from "./club-connect-rules";
 import { FEATURE_META, OFFERED_FEATURE_META, isFeatureOffered, type ToggleableKey } from "./org-features-meta";
 import { formatLondon, londonWallClockToUtc, londonDateTimeToUtc } from "./london-time";
 import { normalisePhone } from "./phone";
@@ -1259,13 +1259,14 @@ export function legacyEventQuestion(
   return null;
 }
 
-/** The sport preset the in-group setup copies for `n` players per side. */
-export function presetForSide(n: number) {
-  return (
-    SPORT_PRESETS.find((p) => p.key === `football-${n}aside`) ??
-    SPORT_PRESETS.find((p) => p.playersPerTeam === n) ??
-    SPORT_PRESETS.find((p) => p.key === "football-7aside")!
-  );
+/**
+ * The sport the in-group setup creates for `n` players per side: the same
+ * one self-join builds (`sportForPlayersPerSide`), so only a live sport
+ * (`LIVE_SPORTS`) and, for a size with no live preset, plain football.
+ * It used to take any preset of that size, so 6 a side became volleyball.
+ */
+export function presetForSide(n: number): ClubSportSpec {
+  return sportForPlayersPerSide(n);
 }
 
 function slugify(s: string): string {
@@ -1347,7 +1348,7 @@ async function provisionOrg(s: Session): Promise<string> {
       sports: {
         create: {
           name: preset.name,
-          preset: preset.key,
+          preset: preset.preset,
           playersPerTeam: preset.playersPerTeam,
           positions: [...preset.positions],
           teamLabels: [...preset.teamLabels],

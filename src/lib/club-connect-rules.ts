@@ -11,7 +11,8 @@
 import { randomInt } from "node:crypto";
 import { t } from "./i18n/t";
 import { normaliseLang, type Lang } from "./i18n/lang";
-import { findPreset, type SportPreset } from "./sport-presets";
+import type { SportPreset } from "./sport-presets";
+import { LIVE_SPORTS, livePresetForSide, type LiveSports } from "./pool/sports";
 import { londonDateTimeToUtc, formatLondon } from "./london-time";
 import { VENUE_MIN_LENGTH } from "./activity-update";
 
@@ -85,13 +86,21 @@ export function validateWeeklyGame(
   return { ok: true, game: { dayOfWeek: dayOfWeek as number, time, venue, playersPerSide: playersPerSide as number } };
 }
 
-/** The Sport row for a size: the football preset when there is one
- *  (5, 7, 8, 11), otherwise plain football balanced on rating alone. */
-export function sportForPlayersPerSide(n: number): Omit<SportPreset, "key" | "name"> & { preset: string | null } {
-  const preset = findPreset(`football-${n}aside`);
+/** The Sport row a new club gets for its players per side. */
+export type ClubSportSpec = Omit<SportPreset, "key"> & { preset: string | null };
+
+/**
+ * The Sport row for a size: the live preset for it (`livePresetForSide`,
+ * the `LIVE_SPORTS` switch; football's 5, 7, 8, 9 and 11 today), otherwise
+ * plain football balanced on rating alone. Self-join and the in-group
+ * WhatsApp setup both build their club's sport here, so they agree.
+ */
+export function sportForPlayersPerSide(n: number, live: LiveSports = LIVE_SPORTS): ClubSportSpec {
+  const preset = livePresetForSide(n, live);
   if (preset) {
     return {
       preset: preset.key,
+      name: preset.name,
       playersPerTeam: preset.playersPerTeam,
       positions: [...preset.positions],
       teamLabels: [...preset.teamLabels] as [string, string],
@@ -102,6 +111,9 @@ export function sportForPlayersPerSide(n: number): Omit<SportPreset, "key" | "na
   }
   return {
     preset: null,
+    // The presets' own naming, so the pool reads it as football
+    // (`poolSportOfClubSport` matches a custom sport by its name).
+    name: `Football ${n}-a-side`,
     playersPerTeam: n,
     positions: ["GK", "DEF", "MID", "FWD"],
     teamLabels: ["Red", "Yellow"],
