@@ -265,9 +265,9 @@ describe("landing content: the player pool (G0 part 2)", () => {
     expect(keysOf(s.points)).toEqual(["sports", "control", "age"]);
   });
 
-  it("the limits and the age come from pool/rules.ts", () => {
+  it("the quiet hours and the age come from pool/rules.ts; the weekly cap is not on the site", () => {
     const offers = s.steps!.find((x) => x.key === "offers")!.body;
-    expect(offers).toContain(`at most ${POOL_CAPS.perPlayerPerWeek} game offers a week`);
+    expect(offers).not.toMatch(/a week|at most/i);
     expect(offers).toContain(`between ${POOL_QUIET_HOURS.from} and ${POOL_QUIET_HOURS.to}`);
     expect(s.points.find((x) => x.key === "age")!.title).toBe(`${POOL_MIN_AGE} and over`);
   });
@@ -329,8 +329,8 @@ describe("landing content: the hero's invitation to players (Kemal, 2026-10-25)"
     expect(h.more).toEqual({ label: "How it works for players", href: PLAYERS_PAGE_PATH });
   });
 
-  it("the small print comes from pool/rules.ts and says it is opening town by town", () => {
-    expect(h.smallPrint).toBe(`${POOL_MIN_AGE} and over. At most ${POOL_CAPS.perPlayerPerWeek} game offers a week. Opening town by town.`);
+  it("the small print is the age from pool/rules.ts and says it is opening town by town, with no weekly cap", () => {
+    expect(h.smallPrint).toBe(`${POOL_MIN_AGE} and over. Opening town by town.`);
   });
 
   it("every site source code is one /play reads as a campaign code", () => {
@@ -357,8 +357,8 @@ describe("landing content: the players' page (/players)", () => {
     expect(PLAYERS_PAGE.closingCta).toEqual({ label: "Join the MatchTime player pool", href: `${POOL_PLAY_PATH}?src=${POOL_SITE_SOURCES.players}` });
   });
 
-  it("its small print is the pool's limits, without repeating the lead's town by town", () => {
-    expect(PLAYERS_PAGE.smallPrint).toBe(`${POOL_MIN_AGE} and over. At most ${POOL_CAPS.perPlayerPerWeek} game offers a week.`);
+  it("its small print is the pool's age limit, without repeating the lead's town by town or a weekly cap", () => {
+    expect(PLAYERS_PAGE.smallPrint).toBe(`${POOL_MIN_AGE} and over.`);
   });
 
   it("the questions players ask, each answered once", () => {

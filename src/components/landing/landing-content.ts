@@ -630,10 +630,12 @@ const PLAYER_POOL: Spotlight = {
       body: "WhatsApp opens with a short message and a code. You send it, which confirms your number. We never ask for your number on the page and never message you first.",
     },
     {
-      // pool/rules.ts POOL_CAPS.perPlayerPerWeek and POOL_QUIET_HOURS.
+      // pool/rules.ts POOL_QUIET_HOURS. The weekly cap (POOL_CAPS.perPlayerPerWeek)
+      // still applies but is not on the site (Kemal, 2026-10-25); the /play
+      // consent tickbox still states it.
       key: "offers",
       title: "Hear about games near you",
-      body: `Once the pool opens near you, a club that needs a player can be offered you: at most ${POOL_CAPS.perPlayerPerWeek} game offers a week, never between ${POOL_QUIET_HOURS.from} and ${POOL_QUIET_HOURS.to}.`,
+      body: `Once the pool opens near you, a club that needs a player can be offered you, never between ${POOL_QUIET_HOURS.from} and ${POOL_QUIET_HOURS.to}.`,
     },
   ],
   points: [
@@ -764,10 +766,11 @@ export const SPORTS: string[] = liveSports().flatMap((s) => (s.formats.length ? 
  * (pool/matching-rules.ts), on WhatsApp, his yes or no each time
  * (pool/reply.ts), no app (a web page and WhatsApp), stop any time
  * (pool/manage.ts, and the general "stop", pool/dm-optout.ts). The small
- * print is pool/rules.ts POOL_MIN_AGE and POOL_CAPS.perPlayerPerWeek.
+ * print is pool/rules.ts POOL_MIN_AGE. The weekly cap is not on the site
+ * (Kemal, 2026-10-25), though it still applies.
  */
-/** Who can join and how often he can be messaged (pool/rules.ts). */
-const POOL_LIMITS_LINE = `${POOL_MIN_AGE} and over. At most ${POOL_CAPS.perPlayerPerWeek} game offers a week.`;
+/** Who can join (pool/rules.ts). */
+const POOL_LIMITS_LINE = `${POOL_MIN_AGE} and over.`;
 
 export const HERO_POOL_INVITE = {
   eyebrow: "For players",
