@@ -61,17 +61,43 @@ function liveSportsLine(): string {
   return `${joinWords(sports, "and")}${other}. Pick the formats you play, and your level if you like.`;
 }
 
+/**
+ * "5, 7, 8, 9 and 11-a-side football": every live sport with its formats,
+ * from the catalogue, so the site never lists a subset of what the sign-up
+ * offers (Kemal, 2026-10-25: "there are venues for 8 and 9 aside too").
+ */
+export function liveFormatsPhrase(last: "and" | "or" = "and"): string {
+  return joinWords(
+    liveSports().map((s) => {
+      const name = s.label.en.toLowerCase();
+      return s.formats.length ? `${formatsWords(s.formats, last)} ${name}` : name;
+    }),
+    "and",
+  );
+}
+
+/** "5, 7, 8, 9 or 11-a-side". */
+function formatsWords(formats: readonly number[], last: "and" | "or"): string {
+  return `${joinWords(formats.map(String), last)}-a-side`;
+}
+
+/** Football's live formats, "5, 7, 8, 9 or 11-a-side" (the organiser guide). */
+export function footballFormatsWords(last: "and" | "or" = "or"): string {
+  return formatsWords(liveSports().find((s) => s.key === "football")?.formats ?? [], last);
+}
+
+/** One keyword per live format: "8-a-side football organiser". */
+const FORMAT_KEYWORDS: string[] = liveSports().flatMap((s) => s.formats.map((n) => `${n}-a-side ${s.label.en.toLowerCase()} organiser`));
+
 /** Search and link-preview text (src/app/layout.tsx). */
 export const SITE_META = {
   title: "MatchTime: run your weekly football on autopilot",
   description:
     "MatchTime lives in your WhatsApp group and runs your weekly football: it tracks who's in, runs the bench, chases when you're short, balances teams on request, and collects ratings and Man of the Match votes.",
-  ogDescription: "WhatsApp organiser for weekly 5, 7 and 11-a-side football: who's in, the bench, balanced teams, ratings and Man of the Match.",
+  ogDescription: `WhatsApp organiser for weekly ${liveFormatsPhrase()}: who's in, the bench, balanced teams, ratings and Man of the Match.`,
   keywords: [
     "football team management",
-    "5-a-side attendance",
-    "7-a-side football organiser",
-    "11-a-side team management",
+    ...FORMAT_KEYWORDS,
     "whatsapp football bot",
     "football team balancer",
     "match attendance tracker",
