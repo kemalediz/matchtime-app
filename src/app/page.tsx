@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { LandingPage } from "@/components/landing/landing-page";
 import { setupHoldEnabledForRequest } from "@/lib/setup-hold-flag";
+import { signupGoesOnEarlyListForPage } from "@/lib/pool/flags-page";
 import { getMomSummaries } from "@/lib/mom";
 import { loadClubRating } from "@/lib/player-stats";
 import { t } from "@/lib/i18n/t";
@@ -43,7 +44,9 @@ export default async function DashboardPage() {
   const session = await auth();
   // Signed-out visitors see the marketing landing page instead of being
   // bounced to /login. They can Sign in / Sign up from there.
-  if (!session?.user?.id) return <LandingPage holdOn={await setupHoldEnabledForRequest()} />;
+  if (!session?.user?.id) {
+    return <LandingPage holdOn={await setupHoldEnabledForRequest()} earlyList={await signupGoesOnEarlyListForPage()} />;
+  }
 
   const user = await db.user.findUnique({ where: { id: session.user.id } });
   // First-time sign-ins (Google / email) without a verified phone go

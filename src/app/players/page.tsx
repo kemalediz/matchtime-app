@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { PLAYERS_PAGE } from "@/components/landing/landing-content";
 import { PlayersPage } from "@/components/landing/players-page";
+import { signupGoesOnEarlyListForPage } from "@/lib/pool/flags-page";
 
 /**
  * /players: the website's page for players (2026-10-25). Public
@@ -12,6 +13,6 @@ export const metadata: Metadata = {
   description: PLAYERS_PAGE.metaDescription,
 };
 
-export default function Page() {
-  return <PlayersPage />;
+export default async function Page() {
+  return <PlayersPage earlyList={await signupGoesOnEarlyListForPage()} />;
 }

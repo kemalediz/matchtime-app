@@ -28,6 +28,8 @@ const PUBLIC_FILES = [
   "src/components/landing/landing-nav.tsx",
   "src/components/landing/players-page.tsx",
   "src/app/players/page.tsx",
+  "src/components/landing/pricing-section.tsx",
+  "src/app/pricing/page.tsx",
   "src/app/help/layout.tsx",
   "src/app/help/page.tsx",
   "src/app/help/player/page.tsx",
@@ -135,33 +137,58 @@ describe("public website copy", () => {
       expect(FIRST_FREE_BADGE).toBe("First two months free");
     });
 
-    it("the landing page has a pricing section with the price and the free first two months", () => {
-      expect(landing).toMatch(/id="pricing"/);
-      expect(landing).toMatch(/£9\.99/);
-      expect(landing).not.toMatch(/£5(?![\d.])/);
-      expect(landing).toMatch(/per group/i);
-      expect(landing).toContain(FIRST_FREE_BADGE);
-      expect(flat(landing)).toContain(`${FIRST_FREE}, so you can see how it runs your week before you pay.`);
+    const pricing = sources.find((s) => s.file.endsWith("pricing-section.tsx"))!.text;
+
+    // Kemal, 2026-10-25: the price has its own page (/pricing,
+    // pricing-section.tsx); the home page keeps only its teaser, which
+    // renders the same headline.
+    it("the pricing section has the price and the free first two months", () => {
+      expect(pricing).toMatch(/id="pricing"/);
+      expect(pricing).toMatch(/£9\.99/);
+      expect(pricing).not.toMatch(/£5(?![\d.])/);
+      expect(pricing).toMatch(/per WhatsApp group/i);
+      expect(pricing).toContain(FIRST_FREE_BADGE);
+      expect(flat(pricing)).toContain(`${FIRST_FREE}, so you can see how it runs your week before you pay.`);
+      expect(pricing).not.toMatch(/first month/i);
+      expect(pricing).toMatch(/about 50p a player/);
+      expect(pricing).not.toMatch(/25p/);
+    });
+
+    it("the home page keeps the free period in its steps and its closing line, free months before the price", () => {
+      expect(landing).toContain("<PricingTeaser />");
       expect(flat(landing)).toContain(`${FIRST_FREE}, and you can remove it from your group any time.`);
       expect(flat(landing)).toContain(`${FIRST_FREE}, then it&apos;s up to £9.99 a month`);
       expect(landing).not.toMatch(/first month/i);
-      expect(landing).toMatch(/about 50p a player/);
-      expect(landing).not.toMatch(/25p/);
+    });
+
+    // Kemal, 2026-10-25: lead with the free months, not the price. The
+    // pricing section's paragraph states the free period before any price.
+    it("the pricing paragraph puts the free months before the price", () => {
+      const f = flat(pricing);
+      expect(f.indexOf(FIRST_FREE)).toBeGreaterThan(-1);
+      const para = f.slice(f.indexOf("<p className=\"mt-5"), f.indexOf("</p>", f.indexOf("<p className=\"mt-5")));
+      expect(para.indexOf(FIRST_FREE)).toBeLessThan(para.indexOf("£9.99"));
     });
 
     // Kemal, 2026-10-02: the club fee is charged by games played, in
     // arrears, up to £9.99 a month. The site says so, and never states a
     // flat "£9.99 a month" that every month costs.
-    it("the landing page says it is up to £9.99 a month and you only pay for the weeks you play", () => {
-      expect(flat(landing)).toMatch(/up to £9\.99 a month/i);
-      expect(flat(landing)).toMatch(/you only pay for the weeks you play/i);
-      expect(flat(landing)).toMatch(/Play 3 weeks out of 4 and it&apos;s £7\.49/);
-      expect(flat(landing)).not.toMatch(/then it&apos;s £9\.99 a month/i);
-      expect(flat(landing)).not.toMatch(/(?<!up to )£9\.99 a month per WhatsApp group/i);
+    it.each([
+      ["pricing", () => pricing],
+      ["landing", () => landing],
+    ] as const)("%s says up to £9.99 a month, never a flat £9.99 a month", (_n, src) => {
+      expect(flat(src())).toMatch(/up to (<span[^>]*>)?£9\.99 a month/i);
+      expect(flat(src())).not.toMatch(/then it&apos;s £9\.99 a month/i);
+      expect(flat(src())).not.toMatch(/(?<!up to )£9\.99 a month per WhatsApp group/i);
     });
 
-    it("the hero, before the pricing section, carries no price", () => {
-      expect(landing.slice(0, landing.indexOf('id="pricing"'))).not.toMatch(/£\d/);
+    it("the pricing section says you only pay for the weeks you play", () => {
+      expect(flat(pricing)).toMatch(/you only pay for the weeks you play/i);
+      expect(flat(pricing)).toMatch(/Play 3 weeks out of 4 and it&apos;s £7\.49/);
+    });
+
+    it("the home page, before the pricing teaser, carries no price", () => {
+      expect(landing.slice(0, landing.indexOf("<PricingTeaser />"))).not.toMatch(/£\d/);
     });
 
     // Kemal, 2026-10-01: no price in Google results or link previews.

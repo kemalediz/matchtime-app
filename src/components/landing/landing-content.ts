@@ -23,9 +23,9 @@
  *
  * THE PLAYER POOL (G0 part 2, with slice L2): its section is the first
  * spotlight and carries the "Join the MatchTime player pool" invitation,
- * a button to /play. While the pool is not open anywhere, signing up puts
- * a player on the early sign-up list; the copy says so and claims nothing
- * the pool does not do yet (no offers are sent before slice L5).
+ * a button to /play. Whether a sign-up goes on the early sign-up list is
+ * the server's switch, so the line that says so is added by the page
+ * (`spotlightFor`, `poolOpeningLine`), never baked into the lead.
  *
  * THE TWO AUDIENCES (Kemal, 2026-10-25): the menu has a "For clubs" and a
  * "For players" group (`LANDING_NAV_GROUPS`); the hero carries its own
@@ -40,6 +40,7 @@ import { PARTNER_ASK_CUTOFF_DEFAULT_HOURS } from "@/lib/club-partnership-rules";
 import { MAX_RADIUS_MILES } from "@/lib/club-discovery-rules";
 import { PLAYERS_PAGE_PATH, POOL_PLAY_PATH } from "@/lib/pool/paths";
 import { POOL_CAPS, POOL_MIN_AGE, POOL_QUIET_HOURS } from "@/lib/pool/rules";
+import { poolPageCopy } from "@/lib/pool/page-copy";
 
 // ─── Types ─────────────────────────────────────────────────────────────
 
@@ -124,6 +125,9 @@ export interface Spotlight {
   chat?: { caption: string; lines: ChatLine[] };
   /** One closing line under the section, e.g. how to set it up. */
   footnote?: string;
+  /** The pool section: its lead is followed by the line that says whether
+   *  a sign-up goes on the early list (`spotlightFor`). */
+  poolOpeningLine?: boolean;
   /** A button under the heading (the player pool's invitation, G0).
    *  `pulse`: the soft pulsing ring (globals.css `.pool-invite-pulse`). */
   cta?: Cta;
@@ -145,6 +149,9 @@ export interface NavLink {
 }
 
 export type NavAudience = "clubs" | "players";
+
+/** The pricing page (2026-10-25): the price's one home (pricing-section.tsx). */
+export const PRICING_PATH = "/pricing";
 
 /** One audience's menu: its links, then its own button. */
 export interface NavGroup {
@@ -532,7 +539,9 @@ const PLAYER_POOL: Spotlight = {
   tone: "light",
   eyebrow: "For players",
   title: "Looking for a game? Join the MatchTime player pool.",
-  lead: "Tell MatchTime where and when you can play, and which sports. When a club near you is a player short at a time you can play, MatchTime can message you on WhatsApp with the game, and you decide. The pool is opening town by town: sign up now to join the early sign-up list.",
+  lead: "Tell MatchTime where and when you can play, and which sports. When a club near you is a player short at a time you can play, MatchTime can message you on WhatsApp with the game, and you decide.",
+  // Followed by /play's own early or open note (`spotlightFor`).
+  poolOpeningLine: true,
   cta: { label: "Join the MatchTime player pool", href: POOL_PLAY_PATH, pulse: true },
   stepsLabel: "How joining works",
   steps: [
@@ -552,7 +561,7 @@ const PLAYER_POOL: Spotlight = {
       // pool/rules.ts POOL_CAPS.perPlayerPerWeek and POOL_QUIET_HOURS.
       key: "offers",
       title: "Hear about games near you",
-      body: `Once the pool opens near you, a club that needs a player can be offered you: at most ${POOL_CAPS.perPlayerPerWeek} messages a week, never between ${POOL_QUIET_HOURS.from} and ${POOL_QUIET_HOURS.to}.`,
+      body: `Once the pool opens near you, a club that needs a player can be offered you: at most ${POOL_CAPS.perPlayerPerWeek} game offers a week, never between ${POOL_QUIET_HOURS.from} and ${POOL_QUIET_HOURS.to}.`,
     },
   ],
   points: [
@@ -594,6 +603,21 @@ const PLAYER_POOL: Spotlight = {
   },
   footnote: "The player pool is separate from your own club. If you already play with a club on MatchTime, nothing changes there.",
 };
+
+/**
+ * The line after the pool's lead, from /play's own copy: the early sign-up
+ * list ONLY while a sign-up goes on it (`signupGoesOnEarlyList`, read by
+ * the page that renders this), otherwise what happens once you sign up.
+ */
+export function poolOpeningLine(earlyList: boolean): string {
+  const c = poolPageCopy("en").signup;
+  return earlyList ? c.earlyNote : c.openNote;
+}
+
+/** A spotlight as a page shows it: the pool section with its opening line. */
+export function spotlightFor(s: Spotlight, earlyList: boolean): Spotlight {
+  return s.poolOpeningLine ? { ...s, lead: `${s.lead} ${poolOpeningLine(earlyList)}` } : s;
+}
 
 /**
  * The spotlight sections, in page order. One entry per section; the menu
@@ -680,7 +704,7 @@ export const SPORTS: string[] = [
  * print is pool/rules.ts POOL_MIN_AGE and POOL_CAPS.perPlayerPerWeek.
  */
 /** Who can join and how often he can be messaged (pool/rules.ts). */
-const POOL_LIMITS_LINE = `${POOL_MIN_AGE} and over. At most ${POOL_CAPS.perPlayerPerWeek} messages a week.`;
+const POOL_LIMITS_LINE = `${POOL_MIN_AGE} and over. At most ${POOL_CAPS.perPlayerPerWeek} game offers a week.`;
 
 export const HERO_POOL_INVITE = {
   eyebrow: "For players",
@@ -779,7 +803,7 @@ export const LANDING_NAV_GROUPS: NavGroup[] = [
       { label: "Features", href: "/#features" },
       ...spotlightLinks("clubs"),
       { label: "How it works", href: "/#how-it-works" },
-      { label: "Pricing", href: "/#pricing" },
+      { label: "Pricing", href: PRICING_PATH },
       { label: "Organiser guide", href: "/help/admin" },
     ],
     cta: { label: "Start your group", href: "/signup" },

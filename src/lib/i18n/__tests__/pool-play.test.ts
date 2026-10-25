@@ -30,6 +30,11 @@ describe("house rules, both languages", () => {
     expect(EN.signup.earlyNote).toContain("early sign-up list");
     expect(TR.signup.earlyNote).toContain("erken kayıt listesi");
   });
+  it("the open pool's note never mentions the early sign-up list", () => {
+    expect(EN.signup.openNote).toBe("The pool is opening town by town. Sign up now and MatchTime can message you when a club near you needs a player.");
+    expect(TR.signup.openNote).not.toMatch(/erken/i);
+    expect(EN.signup.openNote).not.toMatch(/early/i);
+  });
   it("never empty", () => expect(ALL.filter((l) => !l.text.trim())).toEqual([]));
 });
 

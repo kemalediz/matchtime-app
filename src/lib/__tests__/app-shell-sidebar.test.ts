@@ -21,6 +21,8 @@ describe("shouldShowSidebar", () => {
 
   it("shows the players' page (/players) full-bleed for visitors, like the home page", () => {
     expect(shouldShowSidebar("/players", "unauthenticated")).toBe(false);
+    expect(shouldShowSidebar("/pricing", "unauthenticated")).toBe(false);
+    expect(shouldShowSidebar("/pricing", "authenticated")).toBe(true);
     expect(shouldShowSidebar("/players/x", "unauthenticated")).toBe(true);
   });
 

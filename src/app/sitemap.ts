@@ -34,6 +34,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.7,
     },
     {
+      // The pricing page (2026-10-25).
+      url: `${BASE}/pricing`,
+      changeFrequency: "monthly",
+      priority: 0.8,
+    },
+    {
       // The website's page for players (2026-10-25).
       url: `${BASE}${PLAYERS_PAGE_PATH}`,
       changeFrequency: "monthly",

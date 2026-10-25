@@ -11,11 +11,12 @@
 import Link from "next/link";
 import { ChevronDown } from "lucide-react";
 import { PRIVACY_PATH } from "@/lib/privacy-policy";
-import { PLAYERS_FAQ, PLAYERS_PAGE } from "./landing-content";
+import { PLAYERS_FAQ, PLAYERS_PAGE, poolOpeningLine } from "./landing-content";
 import { LandingHeader } from "./landing-nav";
 import { CardGrid, DISPLAY_FONT, LandingFooter, NoteBox, PoolInviteButton, SectionIntro, StepList } from "./landing-sections";
 
-export function PlayersPage() {
+/** `earlyList`: the server's switch (`signupGoesOnEarlyListForPage`). */
+export function PlayersPage({ earlyList }: { earlyList: boolean }) {
   const p = PLAYERS_PAGE;
   return (
     <div className="bg-slate-950 text-slate-100 overflow-x-hidden font-sans">
@@ -41,7 +42,9 @@ export function PlayersPage() {
           >
             {p.title}
           </h1>
-          <p className="mt-5 text-base sm:text-lg text-slate-200 leading-relaxed">{p.lead}</p>
+          <p className="mt-5 text-base sm:text-lg text-slate-200 leading-relaxed">
+            {p.lead} {poolOpeningLine(earlyList)}
+          </p>
           <div className="mt-8">
             <PoolInviteButton cta={p.cta} testId="players-join" size="lg" />
           </div>

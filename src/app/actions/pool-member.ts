@@ -12,15 +12,14 @@
  * only to a signed-in member with no number on his account who asked to
  * confirm on WhatsApp: the same door as /play's sign-up answer, narrower.
  */
-import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { matchtimeWaNumber } from "@/lib/club-connect";
 import { waMeLink } from "@/lib/club-connect-rules";
 import { normaliseLang } from "@/lib/i18n/lang";
 import { poolConfirmPrefill } from "@/lib/pool/confirm-rules";
-import { isPoolSignupPaused, poolOpenFrom } from "@/lib/pool/flags";
-import { POOL_OPEN_TEST_COOKIE } from "@/lib/pool/flags-request";
+import { isPoolSignupPaused } from "@/lib/pool/flags";
+import { signupGoesOnEarlyListForPage } from "@/lib/pool/flags-page";
 import { answerMemberClaim } from "@/lib/pool/member-claim";
 import { joinPoolAsMember, loadPlayElsewhere, startMemberWhatsAppStep, type PlayElsewhereView } from "@/lib/pool/member-optin";
 import { validatePoolSignup, type PoolFieldErrors } from "@/lib/pool/profile-fields";
@@ -33,8 +32,7 @@ async function me(): Promise<string | null> {
 
 /** While the pool is not open, a new profile goes on the early sign-up list. */
 async function earlyList(): Promise<boolean> {
-  const override = process.env.MT_TEST_MODE === "1" ? (await cookies()).get(POOL_OPEN_TEST_COOKIE)?.value : undefined;
-  return !poolOpenFrom(override);
+  return signupGoesOnEarlyListForPage();
 }
 
 export interface WhatsAppStep {

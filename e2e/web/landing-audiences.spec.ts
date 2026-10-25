@@ -17,6 +17,8 @@
 import { test, expect } from "../fixtures";
 import type { Page } from "@playwright/test";
 import path from "node:path";
+import { E2E_BASE_URL } from "../helpers/env";
+import { poolPageCopy } from "@/lib/pool/page-copy";
 import {
   HERO_POOL_INVITE,
   LANDING_NAV_GROUPS,
@@ -194,4 +196,61 @@ test("/players explains how it works, what is shared, and answers the questions"
   expect(await closing.evaluate((el) => getComputedStyle(el).animationName)).toBe("none");
   await page.getByTestId("players-join").click();
   await page.waitForURL(/\/play\?src=/);
+});
+
+/**
+ * The early sign-up list is mentioned only while a sign-up really goes on
+ * it: the pages read the same switch as the sign-up route
+ * (signupGoesOnEarlyList, with the MT_TEST_MODE cookie seam).
+ */
+for (const open of [false, true]) {
+  test(`the early-list line follows the server's switch (pool ${open ? "open" : "not open"}): home, /players and /play`, async ({ page }) => {
+    await page.context().addCookies([{ name: "mt-test-pool-open", value: open ? "1" : "0", url: E2E_BASE_URL }]);
+    const en = poolPageCopy("en").signup;
+    const [shown, hidden] = open ? [en.openNote, en.earlyNote] : [en.earlyNote, en.openNote];
+    for (const url of ["/", "/players", "/play"]) {
+      await page.goto(url);
+      const body = page.locator("body");
+      await expect(body.getByText(shown).first(), url).toBeVisible();
+      await expect(body.getByText(hidden), url).toHaveCount(0);
+      if (open) await expect(body.getByText(/early sign-up list/i), url).toHaveCount(0);
+    }
+  });
+}
+
+/** The pricing page (Kemal, 2026-10-25): its own page, the free period first. */
+for (const [name, size, file] of [
+  ["phone", PHONE, "pricing-390.png"],
+  ["desktop", DESKTOP, "pricing-1280.png"],
+] as const) {
+  test(`/pricing on ${name} width: the free months are bigger than the price`, async ({ page }) => {
+    await page.setViewportSize(size);
+    const res = await open(page, "/pricing");
+    expect(res?.status()).toBe(200);
+    await expect(page.getByRole("heading", { level: 1, name: "Try it with your group first." })).toBeVisible();
+    const lead = page.locator("section#pricing").getByTestId("price-lead");
+    const amount = page.locator("section#pricing").getByTestId("price-amount");
+    await expect(lead).toHaveText(/^First \w+ months? free$/);
+    await expect(amount).toContainText("up to £9.99 a month");
+    const px = (l: typeof lead) => l.evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
+    expect(await px(lead)).toBeGreaterThan((await px(amount)) * 1.5);
+    await expect(page.getByText(/about 50p a player/)).toBeVisible();
+    await expect(page.getByText("No contract. Stop any time")).toBeVisible();
+    expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
+    await lead.scrollIntoViewIfNeeded();
+    await shot(page, file);
+  });
+}
+
+test("the For clubs menu's Pricing link opens /pricing, and the home teaser links there too", async ({ page }) => {
+  await page.setViewportSize(DESKTOP);
+  await open(page, "/");
+  const teaser = page.locator("section#pricing");
+  await expect(teaser.getByTestId("price-lead")).toBeVisible();
+  await expect(teaser.getByRole("link", { name: "See pricing" })).toHaveAttribute("href", "/pricing");
+  const nav = page.getByRole("navigation", { name: "Main" });
+  await nav.getByRole("button", { name: "For clubs" }).click();
+  await nav.getByRole("link", { name: "Pricing", exact: true }).click();
+  await page.waitForURL("**/pricing");
+  await expect(page.getByRole("heading", { level: 1, name: "Try it with your group first." })).toBeVisible();
 });

@@ -37,6 +37,8 @@ export function isPublicPath(pathname: string): boolean {
     pathname === PRIVACY_PATH ||
     // The website's page for players (2026-10-25), linked from the menu.
     pathname === PLAYERS_PAGE_PATH ||
+    // The pricing page (2026-10-25), linked from the menu.
+    pathname === "/pricing" ||
     // The local player pool's sign-up (slice L2): a visitor with no club
     // and no session fills it in, and the form posts to /api/play/. The
     // manage page (/play/manage) is NOT public: it needs his session.

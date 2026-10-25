@@ -32,9 +32,13 @@ export function PlaySignup({
   source,
   paused,
   invitedBy = null,
+  earlyList,
 }: {
   source: { campaignCode: string | null; referralCode: string | null };
   paused: boolean;
+  /** Will a sign-up made now go on the early sign-up list? The server's
+   *  switch (`signupGoesOnEarlyListForPage`), so the note says so only then. */
+  earlyList: boolean;
   /** Slice G1: the friend whose link this is, when his privacy switch shows his name. */
   invitedBy?: string | null;
 }) {
@@ -137,7 +141,7 @@ export function PlaySignup({
       )}
       <h1 className="text-2xl font-bold text-slate-900">{copy.signup.heading}</h1>
       <p className="mt-3 text-slate-700">{copy.signup.lead}</p>
-      <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">{copy.signup.earlyNote}</p>
+      <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">{earlyList ? copy.signup.earlyNote : copy.signup.openNote}</p>
       <ol className="mt-5 list-decimal space-y-1 pl-5 text-sm text-slate-700">
         {copy.signup.howItWorks.map((line) => (
           <li key={line}>{line}</li>

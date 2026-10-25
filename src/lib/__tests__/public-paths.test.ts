@@ -33,6 +33,11 @@ describe("retiredAuthRedirect", () => {
     expect(isPublicPath("/api/players")).toBe(false);
   });
 
+  it("lets a visitor read the pricing page", () => {
+    expect(isPublicPath("/pricing")).toBe(true);
+    expect(isPublicPath("/pricing/x")).toBe(false);
+  });
+
   it.each(["/", "/login", "/signup", "/admin", "/signup-emails", "/verify-email/x"])("leaves %s alone", (p) => {
     expect(retiredAuthRedirect(p)).toBeNull();
   });
