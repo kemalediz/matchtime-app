@@ -25,6 +25,9 @@ export function offerPageState(o: {
   guestResult: string | null;
   attendanceStatus: string | null;
   matchLive: boolean;
+  /** The pool ask's status: a round that closed FULL ended his offer
+   *  because the place went to someone else. */
+  askStatus: string;
 }): OfferPageState {
   switch (o.outcome) {
     case null:
@@ -43,6 +46,11 @@ export function offerPageState(o: {
       return "declined";
     case "filled":
       return "gone";
+    case "expired":
+      // `closePoolAsk` ends every open offer "expired" when the round fills
+      // (decision #8). A yes that lands a moment after the last place went
+      // lost the race just as surely as one inside the lock: "gone".
+      return o.askStatus === "filled" ? "gone" : "expired";
     default:
       return "expired";
   }
