@@ -10,9 +10,13 @@
  *
  * THE WINDOW. A CANCELLED match C is mentioned when all hold:
  *   1. there is a match being shown (no squad post, nothing to lead into);
- *   2. C kicked off no more than 48 hours ago (`CANCELLED_NOTICE_AFTER_MS`),
- *      or is still to come. So the day it was cancelled, the night itself
- *      and the morning after; never a cancellation from weeks ago;
+ *   2. today in London is no later than C's own London day: C is still to
+ *      come, or is today. From the next London day on it is never
+ *      mentioned (Kemal, 2026-10-25: on Sun 25 Oct the 30 Oct squad post
+ *      still led with "Fri 23 Oct is cancelled" under the old 48 hour
+ *      window; "we passed 23rd now, remove this irrelevant line"). Days are
+ *      compared as London calendar dates, so a 23 or 25 hour clock-change
+ *      day needs no special case;
  *   3. C is at least 12 hours before the shown match
  *      (`SAME_FIXTURE_MS`). A cancelled copy of the SAME night, which a
  *      format switch can leave behind, is not a cancelled week;
@@ -26,8 +30,18 @@
  * Pure: rows in, one row or null out. `load-state.ts` feeds it the rows it
  * already loads; the analyze route's squad pass feeds it its own.
  */
-export const CANCELLED_NOTICE_AFTER_MS = 48 * 60 * 60 * 1000;
+import { formatLondon } from "./london-time";
+
 export const SAME_FIXTURE_MS = 12 * 60 * 60 * 1000;
+/**
+ * How far back a caller must load rows so rule 2 can see every match on
+ * today's London date: a London day is at most 25 hours long (the autumn
+ * clock change), so nothing on today's date kicked off longer ago than
+ * this. Add `SAME_FIXTURE_MS` on top for rule 4's look behind C.
+ */
+export const CANCELLED_NOTICE_LOOKBACK_MS = 25 * 60 * 60 * 1000;
+
+const londonDate = (d: Date) => formatLondon(d, "yyyy-MM-dd");
 
 export function cancelledMatchToMention<T extends { id: string; date: Date; status: string }>(
   matches: readonly T[],
@@ -35,10 +49,10 @@ export function cancelledMatchToMention<T extends { id: string; date: Date; stat
   now: Date,
 ): T | null {
   if (!shown) return null;
-  const floor = now.getTime() - CANCELLED_NOTICE_AFTER_MS;
+  const today = londonDate(now);
   const ceiling = shown.date.getTime() - SAME_FIXTURE_MS;
   const cancelled = matches
-    .filter((m) => m.status === "CANCELLED" && m.date.getTime() >= floor && m.date.getTime() <= ceiling)
+    .filter((m) => m.status === "CANCELLED" && londonDate(m.date) >= today && m.date.getTime() <= ceiling)
     .sort((a, b) => b.date.getTime() - a.date.getTime());
   const latest = cancelled[0];
   if (!latest) return null;

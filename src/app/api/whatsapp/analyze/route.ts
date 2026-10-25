@@ -334,7 +334,7 @@ import { resolveTeamLabels } from "@/lib/team-labels";
 // not a raw `formatLondon` pattern. Its English is "EEE HH:mm", byte for
 // byte what the loader produced before the string tables existed.
 import { dayCommaTimeLabel, dayLabel, kickoffLabel } from "@/lib/i18n/dates";
-import { CANCELLED_NOTICE_AFTER_MS, SAME_FIXTURE_MS, cancelledMatchToMention } from "@/lib/cancelled-match-notice";
+import { CANCELLED_NOTICE_LOOKBACK_MS, SAME_FIXTURE_MS, cancelledMatchToMention } from "@/lib/cancelled-match-notice";
 import { selectRegistrationMatch } from "@/lib/registration-match-select";
 import { messageMentionsBotExplicitly, messageTagsBot } from "@/lib/interaction-contract";
 import { mergeRecruitReply } from "@/lib/recruit-request";
@@ -3696,7 +3696,7 @@ async function handleAnalyzeRequest(request: Request) {
           where: {
             activity: { orgId: org.id },
             date: {
-              gte: new Date(replyNow.getTime() - CANCELLED_NOTICE_AFTER_MS - SAME_FIXTURE_MS),
+              gte: new Date(replyNow.getTime() - CANCELLED_NOTICE_LOOKBACK_MS - SAME_FIXTURE_MS),
               lte: nextMatchForReply.date,
             },
           },

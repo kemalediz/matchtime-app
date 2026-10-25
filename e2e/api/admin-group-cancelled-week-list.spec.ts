@@ -58,10 +58,12 @@ async function askHq(request: APIRequestContext, text: string) {
   return res.json() as Promise<{ handled: boolean; outcome: string; replyText: string }>;
 }
 
-async function cancelTonight(db: TestDb, cancelled: boolean) {
+/** Yesterday evening in London: the cancelled game's own day is over. */
+const yesterday = () => londonAt(-1, 20, 30);
+
+async function cancelTonight(db: TestDb, cancelled: boolean, at: Date = tonight()) {
   await db.run(`DELETE FROM "Match" WHERE id = $1`, [CANCELLED_ID]);
   if (!cancelled) return;
-  const at = tonight();
   await db.run(
     `INSERT INTO "Match" (id, "activityId", date, "maxPlayers", status, "attendanceDeadline", "postMatchEndFlow", "updatedAt")
      VALUES ($1, $2, $3, 5, 'CANCELLED', $4, false, now())`,
@@ -132,4 +134,24 @@ test("the players' group, through the analyze route's squad pass: the same lines
   expect(reply.startsWith(
     `❌ The match on *${tonightDay()}* is cancelled.\n\n📋 Here's the squad and bench for *${nextLabel()}*: *4/5*`,
   ), reply).toBe(true);
+});
+
+// THE DAY AFTER (Kemal, 2026-10-25). On Sun 25 Oct FNF HQ's squad post for
+// Fri 30 Oct still led with "The match on Fri 23 Oct is cancelled". A
+// cancelled match is mentioned only until the end of its own London day.
+test("the day after, in HQ: yesterday's cancelled match is not mentioned", async ({ request, db }) => {
+  await cancelTonight(db, true, yesterday());
+  const out = await askHq(request, LIST_Q);
+  expect(out).toMatchObject({ handled: true, outcome: "hq-answered" });
+  expect(out.replyText.startsWith(`📋 Here's the squad and bench for *${nextLabel()}*: *4/5*`), out.replyText).toBe(true);
+  expect(out.replyText).not.toContain("cancelled");
+});
+
+test("the day after, in the players' group: yesterday's cancelled match is not mentioned", async ({ request, db }) => {
+  await cancelTonight(db, true, yesterday());
+  const id = `e2e-agcw-p-${++seq}`;
+  const res = await postAnalyze(request, [{ waMessageId: id, body: PLAYERS_Q, authorPhone: PLAYER, authorName: "Pat Player", botMentioned: true }]);
+  const reply = (res.results as Array<{ waMessageId: string; reply?: string | null }>).find((r) => r.waMessageId === id)?.reply ?? "";
+  expect(reply.startsWith(`📋 Here's the squad and bench for *${nextLabel()}*: *4/5*`), reply).toBe(true);
+  expect(reply).not.toContain("cancelled");
 });

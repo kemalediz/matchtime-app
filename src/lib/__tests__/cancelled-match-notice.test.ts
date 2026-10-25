@@ -11,7 +11,6 @@
 import { describe, it, expect } from "vitest";
 import { cancelledMatchToMention } from "../cancelled-match-notice";
 
-const H = 60 * 60 * 1000;
 const d = (iso: string) => new Date(iso);
 
 // The real FNF rows (UTC). 16 Oct played, 23 Oct cancelled, 30 Oct next.
@@ -30,12 +29,8 @@ describe("cancelledMatchToMention", () => {
     expect(cancelledMatchToMention(FNF, SHOWN, d("2026-10-22T12:00:00Z"))?.id).toBe("m23");
   });
 
-  it("asked the morning after, still named", () => {
-    expect(cancelledMatchToMention(FNF, SHOWN, d("2026-10-24T09:00:00Z"))?.id).toBe("m23");
-  });
-
-  it("more than 48 hours after its kickoff, it is not mentioned any more", () => {
-    expect(cancelledMatchToMention(FNF, SHOWN, d("2026-10-25T18:31:00Z"))).toBeNull();
+  it("asked the morning after, it is not mentioned any more (Kemal, 2026-10-25)", () => {
+    expect(cancelledMatchToMention(FNF, SHOWN, d("2026-10-24T09:00:00Z"))).toBeNull();
   });
 
   it("a cancelled match from weeks ago is never mentioned", () => {
@@ -70,14 +65,60 @@ describe("cancelledMatchToMention", () => {
     expect(cancelledMatchToMention(rows, SHOWN, d("2026-10-24T09:00:00Z"))).toBeNull();
   });
 
-  it("two cancelled in the window: the latest is named", () => {
-    const a = { id: "a", date: d("2026-10-22T18:30:00Z"), status: "CANCELLED" };
-    expect(cancelledMatchToMention([a, CANCELLED_23, NEXT_30], SHOWN, d("2026-10-23T09:00:00Z"))?.id).toBe("m23");
+  it("two cancelled still to come or today: the latest is named", () => {
+    const a = { id: "a", date: d("2026-10-23T08:00:00Z"), status: "CANCELLED" };
+    expect(cancelledMatchToMention([a, CANCELLED_23, NEXT_30], SHOWN, d("2026-10-23T07:00:00Z"))?.id).toBe("m23");
+  });
+});
+
+// END OF ITS OWN LONDON DAY (Kemal, 2026-10-25). On Sun 25 Oct 08:04 the
+// FNF HQ squad post for Fri 30 Oct still led with "The match on Fri 23 Oct
+// is cancelled", because the old window ran 48 hours past kickoff. Kemal:
+// "we passed 23rd now, remove this irrelevant line". A cancelled match is
+// now mentioned up to the end of its own day in London, and never after.
+describe("cancelledMatchToMention: only until the end of the cancelled match's own London day", () => {
+  // Fri 23 Oct 20:30 BST and Fri 30 Oct 20:30 GMT, as FNF's rows are.
+  const C23 = { id: "c23", date: d("2026-10-23T19:30:00Z"), status: "CANCELLED" };
+  const N30 = { id: "n30", date: d("2026-10-30T20:30:00Z"), status: "UPCOMING" };
+  const rows = [PLAYED_16, C23, N30];
+  const shown = { id: N30.id, date: N30.date };
+
+  it("on the day, at 08:00 London, it is mentioned", () => {
+    expect(cancelledMatchToMention(rows, shown, d("2026-10-23T07:00:00Z"))?.id).toBe("c23");
   });
 
-  it("the window is exactly 48 hours after kickoff", () => {
-    const at = new Date(CANCELLED_23.date.getTime() + 48 * H);
-    expect(cancelledMatchToMention(FNF, SHOWN, at)?.id).toBe("m23");
-    expect(cancelledMatchToMention(FNF, SHOWN, new Date(at.getTime() + 1))).toBeNull();
+  it("on the day, at 23:30 London (after kickoff), it is mentioned", () => {
+    expect(cancelledMatchToMention(rows, shown, d("2026-10-23T22:30:00Z"))?.id).toBe("c23");
+  });
+
+  it("the last minute of the day in London is still the day", () => {
+    expect(cancelledMatchToMention(rows, shown, d("2026-10-23T22:59:59Z"))?.id).toBe("c23");
+  });
+
+  it("at 00:05 London the next day, it is not mentioned", () => {
+    expect(cancelledMatchToMention(rows, shown, d("2026-10-23T23:05:00Z"))).toBeNull();
+  });
+
+  it("the incident: Sun 25 Oct 08:04 London, it is not mentioned", () => {
+    expect(cancelledMatchToMention(rows, shown, d("2026-10-25T08:04:00Z"))).toBeNull();
+  });
+
+  it("a cancellation for a match later this week, still to come, is mentioned", () => {
+    expect(cancelledMatchToMention(rows, shown, d("2026-10-20T12:00:00Z"))?.id).toBe("c23");
+  });
+
+  it("the clock-change night: cancelled Sat 24 Oct evening BST, checked Sun 25 Oct 00:30 GMT, not mentioned", () => {
+    const sat = { id: "sat", date: d("2026-10-24T19:00:00Z"), status: "CANCELLED" };
+    expect(cancelledMatchToMention([sat, N30], shown, d("2026-10-25T00:30:00Z"))).toBeNull();
+    // 23:30 BST on the Saturday is still the Saturday.
+    expect(cancelledMatchToMention([sat, N30], shown, d("2026-10-24T22:30:00Z"))?.id).toBe("sat");
+  });
+
+  it("the spring clock-change night: cancelled Sat 27 Mar evening GMT, 23:30 GMT is still the Saturday, 00:01 GMT on the Sunday is not", () => {
+    const sat = { id: "sat", date: d("2027-03-27T19:00:00Z"), status: "CANCELLED" };
+    const next = { id: "nx", date: d("2027-04-03T19:00:00Z"), status: "UPCOMING" };
+    const sh = { id: next.id, date: next.date };
+    expect(cancelledMatchToMention([sat, next], sh, d("2027-03-27T23:30:00Z"))?.id).toBe("sat");
+    expect(cancelledMatchToMention([sat, next], sh, d("2027-03-28T00:01:00Z"))).toBeNull();
   });
 });
