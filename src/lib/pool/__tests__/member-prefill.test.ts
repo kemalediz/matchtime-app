@@ -1,15 +1,17 @@
 /**
  * Slice L3: a club member's "Play elsewhere" form starts from what his clubs
- * already say about him (plan 3.2: "the area defaults to his clubs' venues,
- * so most members only tick consent and the days"). PURE rules.
+ * already say about him (plan 3.2). Since 2026-10-25 a pool player's place is
+ * only a postcode area and a travel distance: the area is prefilled with the
+ * postcode district of his club's pitch, read off its address. PURE rules.
  */
 import { describe, expect, it } from "vitest";
 import { fromSavedProfile, toPoolPayload } from "../form-state";
 import { memberJoinConsent, memberOptInPath, phoneTail, memberPrefill, shortDisplayName, type MemberClubFacts } from "../member-prefill";
 import { validatePoolFields } from "../profile-fields";
-import { POOL_CONSENT_VERSION, POOL_SIGNUP } from "../rules";
+import { POOL_CONSENT_VERSION } from "../rules";
 
-const venue = (id: string, lat: number | null = 51.36) => ({ id, name: `Pitch ${id}`, address: `${id} Road`, lat, lng: lat === null ? null : -0.19 });
+/** A pitch whose Google address carries the postcode `pc` (none: no postcode). */
+const venue = (pc: string | null = "SM1 2EY") => ({ address: pc ? `Gander Green Ln, Sutton ${pc}, UK` : "Gander Green Ln, Sutton, UK" });
 const five = { preset: "football-5aside", name: "Football 5-a-side", playersPerTeam: 5 };
 const seven = { preset: "football-7aside", name: "Football 7-a-side", playersPerTeam: 7 };
 
@@ -17,7 +19,7 @@ function club(over: Partial<MemberClubFacts> = {}): MemberClubFacts {
   return {
     language: "en",
     homeVenue: null,
-    activities: [{ dayOfWeek: 2, time: "20:00", matchDurationMins: 60, sport: five, venue: venue("a") }],
+    activities: [{ dayOfWeek: 2, time: "20:00", matchDurationMins: 60, sport: five, venue: venue() }],
     ...over,
   };
 }
@@ -39,12 +41,11 @@ describe("shortDisplayName: first name and last initial", () => {
 });
 
 describe("memberPrefill", () => {
-  it("one club: his venue, the game's day and hours, its sport and format", () => {
+  it("one club: his pitch's postcode area, the game's day and hours, its sport and format", () => {
     const p = memberPrefill({ name: "Pat Player", clubs: [club()] });
     expect(p).toEqual({
       name: "Pat P",
-      area: { kind: "venues", venueIds: ["a"] },
-      venues: [{ id: "a", name: "Pitch a", address: "a Road" }],
+      area: { kind: "district", district: "SM1" },
       maxMiles: 3,
       availability: [{ day: 2, from: "20:00", to: "21:00" }],
       sports: [{ sport: "football", otherName: "", formats: [5], level: null, levelText: null }],
@@ -53,38 +54,38 @@ describe("memberPrefill", () => {
   });
 
   it("an odd kickoff and length widen to the half hours around the game", () => {
-    const p = memberPrefill({ name: "A B", clubs: [club({ activities: [{ dayOfWeek: 4, time: "19:45", matchDurationMins: 70, sport: five, venue: venue("a") }] })] });
+    const p = memberPrefill({ name: "A B", clubs: [club({ activities: [{ dayOfWeek: 4, time: "19:45", matchDurationMins: 70, sport: five, venue: venue() }] })] });
     expect(p.availability).toEqual([{ day: 4, from: "19:30", to: "21:00" }]);
   });
 
   it("a game past midnight is two ranges on two days (none crosses midnight)", () => {
-    const p = memberPrefill({ name: "A B", clubs: [club({ activities: [{ dayOfWeek: 6, time: "23:30", matchDurationMins: 90, sport: five, venue: venue("a") }] })] });
+    const p = memberPrefill({ name: "A B", clubs: [club({ activities: [{ dayOfWeek: 6, time: "23:30", matchDurationMins: 90, sport: five, venue: venue() }] })] });
     expect(p.availability).toEqual([
       { day: 0, from: "00:00", to: "01:00" },
       { day: 6, from: "23:30", to: "24:00" },
     ]);
   });
 
-  it("several clubs and games: venues in order, once each; formats merged per sport; days merged", () => {
+  it("several clubs and games: the first game's pitch gives the area; formats merged per sport; days merged", () => {
     const p = memberPrefill({
       name: "Pat Player",
       clubs: [
         club({
           activities: [
-            { dayOfWeek: 2, time: "20:00", matchDurationMins: 60, sport: five, venue: venue("a") },
-            { dayOfWeek: 2, time: "20:30", matchDurationMins: 60, sport: seven, venue: venue("b") },
+            { dayOfWeek: 2, time: "20:00", matchDurationMins: 60, sport: five, venue: venue("SW19 5AE") },
+            { dayOfWeek: 2, time: "20:30", matchDurationMins: 60, sport: seven, venue: venue("CR0 4RQ") },
           ],
         }),
         club({
           language: "tr",
-          homeVenue: venue("c"),
+          homeVenue: venue("SM2 6AA"),
           activities: [
-            { dayOfWeek: 5, time: "18:00", matchDurationMins: 60, sport: { preset: "basketball-5v5", name: "Basketball", playersPerTeam: 5 }, venue: venue("a") },
+            { dayOfWeek: 5, time: "18:00", matchDurationMins: 60, sport: { preset: "basketball-5v5", name: "Basketball", playersPerTeam: 5 }, venue: venue() },
           ],
         }),
       ],
     });
-    expect(p.area).toEqual({ kind: "venues", venueIds: ["a", "b", "c"] });
+    expect(p.area).toEqual({ kind: "district", district: "SW19" });
     expect(p.availability).toEqual([
       { day: 2, from: "20:00", to: "21:30" },
       { day: 5, from: "18:00", to: "19:00" },
@@ -96,12 +97,12 @@ describe("memberPrefill", () => {
 
   it("only live sports are prefilled; switching basketball on brings it in; a basketball-only member gets football", () => {
     const b = { preset: "basketball-5v5", name: "Basketball", playersPerTeam: 5 };
-    const clubs = [club({ activities: [{ dayOfWeek: 2, time: "20:00", matchDurationMins: 60, sport: five, venue: venue("a") }, { dayOfWeek: 5, time: "18:00", matchDurationMins: 60, sport: b, venue: venue("a") }] })];
+    const clubs = [club({ activities: [{ dayOfWeek: 2, time: "20:00", matchDurationMins: 60, sport: five, venue: venue() }, { dayOfWeek: 5, time: "18:00", matchDurationMins: 60, sport: b, venue: venue() }] })];
     expect(memberPrefill({ name: "A B", clubs }, { sports: ["football", "basketball"], other: false }).sports.map((s) => [s.sport, s.formats])).toEqual([
       ["football", [5]],
       ["basketball", [5]],
     ]);
-    const onlyBasketball = [club({ activities: [{ dayOfWeek: 5, time: "18:00", matchDurationMins: 60, sport: b, venue: venue("a") }] })];
+    const onlyBasketball = [club({ activities: [{ dayOfWeek: 5, time: "18:00", matchDurationMins: 60, sport: b, venue: venue() }] })];
     expect(memberPrefill({ name: "A B", clubs: onlyBasketball }).sports).toEqual([{ sport: "football", otherName: "", formats: [], level: null, levelText: null }]);
   });
 
@@ -109,17 +110,17 @@ describe("memberPrefill", () => {
     expect(memberPrefill({ name: "A B", clubs: [club({ language: "tr" })] }).language).toBe("tr");
   });
 
-  it("venues with no point are left out; at most POOL_SIGNUP.maxVenues", () => {
-    const acts = ["v1", "v2", "v3", "v4", "v5", "v6"].map((id, i) => ({ dayOfWeek: i, time: "10:00", matchDurationMins: 60, sport: five, venue: venue(id) }));
-    const p = memberPrefill({ name: "A B", clubs: [club({ activities: [{ ...acts[0], venue: venue("nowhere", null) }, ...acts] })] });
-    expect(p.area).toEqual({ kind: "venues", venueIds: ["v1", "v2", "v3", "v4", "v5"] });
-    expect(p.venues).toHaveLength(POOL_SIGNUP.maxVenues);
+  it("a pitch whose address has no postcode is skipped; the next one, then the club's home pitch, is used", () => {
+    const g = (v: ReturnType<typeof venue> | null) => ({ dayOfWeek: 2, time: "20:00", matchDurationMins: 60, sport: five, venue: v });
+    expect(memberPrefill({ name: "A B", clubs: [club({ activities: [g(venue(null)), g(venue("KT3 4PH"))] })] }).area).toEqual({ kind: "district", district: "KT3" });
+    expect(memberPrefill({ name: "A B", clubs: [club({ homeVenue: venue("SM2 6AA"), activities: [g(null)] })] }).area).toEqual({ kind: "district", district: "SM2" });
   });
 
-  it("no geocoded venue at all: he types his postcode area", () => {
-    const p = memberPrefill({ name: "A B", clubs: [club({ activities: [{ dayOfWeek: 2, time: "20:00", matchDurationMins: 60, sport: five, venue: null }] })] });
+  it("no pitch with a UK postcode at all (none, no address, a Turkish address): he types his postcode area", () => {
+    const g = (v: { address: string | null } | null) => ({ dayOfWeek: 2, time: "20:00", matchDurationMins: 60, sport: five, venue: v });
+    const p = memberPrefill({ name: "A B", clubs: [club({ activities: [g(null), g({ address: null }), g({ address: "Barbaros, Ataşehir, 34746 İstanbul, Türkiye" })] })] });
     expect(p.area).toEqual({ kind: "district", district: "" });
-    expect(p.venues).toEqual([]);
+    expect(p).not.toHaveProperty("venues");
   });
 
   it("a club sport the pool lacks is left out; a format the catalogue lacks means any format", () => {
@@ -128,8 +129,8 @@ describe("memberPrefill", () => {
       clubs: [
         club({
           activities: [
-            { dayOfWeek: 1, time: "19:00", matchDurationMins: 60, sport: { preset: null, name: "Cricket nets", playersPerTeam: 6 }, venue: venue("a") },
-            { dayOfWeek: 3, time: "19:00", matchDurationMins: 60, sport: { preset: null, name: "Football 6-a-side", playersPerTeam: 6 }, venue: venue("a") },
+            { dayOfWeek: 1, time: "19:00", matchDurationMins: 60, sport: { preset: null, name: "Cricket nets", playersPerTeam: 6 }, venue: venue() },
+            { dayOfWeek: 3, time: "19:00", matchDurationMins: 60, sport: { preset: null, name: "Football 6-a-side", playersPerTeam: 6 }, venue: venue() },
           ],
         }),
       ],
@@ -145,7 +146,7 @@ describe("memberPrefill", () => {
   });
 
   it("a time that is not a time is skipped, never guessed", () => {
-    const p = memberPrefill({ name: "A B", clubs: [club({ activities: [{ dayOfWeek: 2, time: "evening", matchDurationMins: 60, sport: five, venue: venue("a") }] })] });
+    const p = memberPrefill({ name: "A B", clubs: [club({ activities: [{ dayOfWeek: 2, time: "evening", matchDurationMins: 60, sport: five, venue: venue() }] })] });
     expect(p.availability).toEqual([]);
   });
 
@@ -154,7 +155,7 @@ describe("memberPrefill", () => {
     const payload = toPoolPayload(fromSavedProfile(p));
     const v = validatePoolFields(payload);
     expect(v.ok).toBe(true);
-    if (v.ok) expect(v.value).toMatchObject({ displayName: "Pat P", venueIds: ["a"], availability: [{ day: 2, fromMin: 1200, toMin: 1260 }] });
+    if (v.ok) expect(v.value).toMatchObject({ displayName: "Pat P", areaDistrict: "SM1", availability: [{ day: 2, fromMin: 1200, toMin: 1260 }] });
   });
 });
 

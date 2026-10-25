@@ -78,6 +78,10 @@ for (const [name, size] of [["phone", MOBILE], ["desktop", DESKTOP]] as const) {
     await expect(page.getByText(EN.manage.earlyNote)).toBeVisible();
     await expect(page.getByLabel(EN.fields.nameLabel, { exact: true })).toHaveValue("Ali Kaya");
     await expect(page.getByLabel(EN.fields.districtLabel, { exact: true })).toHaveValue("SM1");
+    // A postcode area is the only way (2026-10-25): no choice, no pitch search.
+    await expect(page.getByRole("group", { name: EN.fields.areaLegend }).getByRole("radio")).toHaveCount(0);
+    await expect(page.getByRole("searchbox")).toHaveCount(0);
+    await expect(page.getByText(/pitches I choose/i)).toHaveCount(0);
     await expect(page.getByRole("checkbox", { name: "Tuesday", exact: true })).toBeChecked();
     await expect(page.getByRole("checkbox", { name: "7-a-side" })).toBeChecked();
     await expect(page.getByRole("switch", { name: EN.manage.showRecognitionLabel })).toBeChecked();
@@ -136,6 +140,11 @@ test("edit everything the sign-up asked: saved to the profile, wrong answers nam
   await page.getByLabel(EN.fields.districtLabel, { exact: true }).fill("12");
   await page.getByRole("button", { name: EN.manage.save }).click();
   await expect(page.getByText(EN.errors["area-district"])).toBeVisible();
+  // The postcode area cannot be left empty: there is no other way to say where.
+  await page.getByLabel(EN.fields.districtLabel, { exact: true }).fill("");
+  await page.getByRole("button", { name: EN.manage.save }).click();
+  await expect(page.getByText(EN.errors["area-district"])).toBeVisible();
+  expect(await profile(db, userId)).toMatchObject({ areaDistrict: "SM1" });
 
   await page.getByLabel(EN.fields.nameLabel, { exact: true }).fill("Ali K");
   await page.getByLabel(EN.fields.districtLabel, { exact: true }).fill("SW19");

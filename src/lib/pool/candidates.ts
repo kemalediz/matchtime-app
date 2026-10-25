@@ -82,8 +82,8 @@ export async function findPoolCandidates(matchId: string, opts: FindOptions = {}
   const gated = selectCandidates(ctx, [], now, sendAt);
   if (gated.gate || !ctx.venue || !ctx.sport) return closed(gated.gate, sendAt, ctx);
 
-  // Coarse cut in SQL; the exact distance is the rules' (an area inside the
-  // widest travel box, or any chosen pitches, which are measured after).
+  // Coarse cut in SQL: his postcode area's centre inside the widest travel
+  // box; the exact distance is the rules'.
   const box = boundingBox(ctx.venue, Math.max(...POOL_TRAVEL_MILES));
   const profiles = await db.poolProfile.findMany({
     where: {
@@ -91,10 +91,8 @@ export async function findPoolCandidates(matchId: string, opts: FindOptions = {}
       userId: { not: null },
       consentAt: { not: null },
       sports: { some: { sport: ctx.sport.sport } },
-      OR: [
-        { areaLat: { gte: box.minLat, lte: box.maxLat }, areaLng: { gte: box.minLng, lte: box.maxLng } },
-        { venueIds: { isEmpty: false } },
-      ],
+      areaLat: { gte: box.minLat, lte: box.maxLat },
+      areaLng: { gte: box.minLng, lte: box.maxLng },
     },
     select: {
       userId: true,
@@ -103,7 +101,6 @@ export async function findPoolCandidates(matchId: string, opts: FindOptions = {}
       maxMiles: true,
       areaLat: true,
       areaLng: true,
-      venueIds: true,
       user: { select: { phoneNumber: true } },
       sports: { select: { sport: true, formats: true, level: true } },
       availability: { select: { day: true, fromMin: true, toMin: true } },
@@ -112,11 +109,9 @@ export async function findPoolCandidates(matchId: string, opts: FindOptions = {}
   if (profiles.length === 0) return { ctx, sendAt, selection: selectCandidates(ctx, [], now, sendAt) };
 
   const userIds = profiles.map((p) => p.userId as string);
-  const venueIds = [...new Set(profiles.flatMap((p) => p.venueIds))];
   const kickoff = ctx.kickoff;
 
-  const [venues, members, onMatch, blocks, offers, busy, guestPlaces, ownGames] = await Promise.all([
-    venueIds.length ? db.venue.findMany({ where: { id: { in: venueIds } }, select: { id: true, lat: true, lng: true } }) : [],
+  const [members, onMatch, blocks, offers, busy, guestPlaces, ownGames] = await Promise.all([
     db.membership.findMany({ where: { orgId: ctx.orgId, userId: { in: userIds }, leftAt: null, guestMatchId: null }, select: { userId: true } }),
     db.attendance.findMany({ where: { matchId, userId: { in: userIds } }, select: { userId: true } }),
     db.poolBlock.findMany({ where: { orgId: ctx.orgId, userId: { in: userIds } }, select: { userId: true } }),
@@ -170,7 +165,6 @@ export async function findPoolCandidates(matchId: string, opts: FindOptions = {}
       clubMemberIds: new Set(members.map((m) => m.userId)),
       onMatchIds: new Set(onMatch.map((a) => a.userId)),
       blockedIds: new Set(blocks.map((b) => b.userId)),
-      venues: new Map(venues.map((v) => [v.id, { lat: v.lat, lng: v.lng }])),
       offers: rawOffers,
       busy: busy.map((b) => ({ userId: b.userId, kickoff: b.match.date, durationMins: b.match.activity.matchDurationMins })),
       guestPlaces: guestPlaces.map((g) => ({ userId: g.userId, result: g.result, matchDate: g.match.date })),

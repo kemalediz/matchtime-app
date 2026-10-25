@@ -621,7 +621,7 @@ const PLAYER_POOL: Spotlight = {
       // pool/profile-fields.ts: name, area, travel, days and hours, sports, level.
       key: "signup",
       title: "Fill in one page",
-      body: "Your first name, your postcode area or the pitches you like, how far you'll travel, the days and hours you can play, and the formats you play. Level is optional.",
+      body: "Your first name, your postcode area, how far you'll travel, the days and hours you can play, and the formats you play. Level is optional.",
     },
     {
       // pool/confirm.ts: the person's own message carrying the code.

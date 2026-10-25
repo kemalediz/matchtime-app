@@ -3171,11 +3171,15 @@ model PoolProfile {
   /// first town, as for clubs.
   town         String?
   /// A UK postcode DISTRICT ("SM1"), never a full postcode, and its
-  /// centre point; or `venueIds`, the pitches he chose. One of the two
-  /// is required (CHECK).
+  /// centre point: where he plays, with `maxMiles` (rules.ts PoolArea).
+  /// Required by the code since 2026-10-25 (the CHECK still also accepts
+  /// `venueIds` until that column is dropped).
   areaDistrict String?
   areaLat      Float?
   areaLng      Float?
+  /// UNUSED since 2026-10-25 (chosen pitches retired): never read or
+  /// written. To be dropped once Kemal approves:
+  /// prisma/migrations-draft/20261026000000_drop_pool_venue_ids.
   venueIds     String[] @default([])
   /// 1 | 3 | 5 | 10 (rules.ts POOL_TRAVEL_MILES).
   maxMiles     Int      @default(3)

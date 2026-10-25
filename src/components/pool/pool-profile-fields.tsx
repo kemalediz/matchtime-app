@@ -11,7 +11,7 @@
  * label; an error sits under its field, is announced (role="alert" on the
  * summary, aria-describedby on the field) and the field is aria-invalid.
  */
-import { useEffect, useId, useState } from "react";
+import { useId } from "react";
 import { X } from "lucide-react";
 import type { Lang } from "@/lib/i18n/lang";
 import { LANGS, LANG_LABELS } from "@/lib/i18n/lang";
@@ -21,9 +21,7 @@ import {
   TIME_OPTIONS,
   WEEK_ORDER,
   addRange,
-  addVenue,
   removeRange,
-  removeVenue,
   setRange,
   setSport,
   shownSports,
@@ -31,7 +29,6 @@ import {
   toggleFormat,
   type LevelChoice,
   type PoolFormValue,
-  type PoolVenueChoice,
   type SportState,
 } from "@/lib/pool/form-state";
 import { OTHER_SPORT, POOL_FREE_TEXT_MAX, SPORT_LEVELS, formatsOf, levelLabel, sportLabel } from "@/lib/pool/sports";
@@ -94,37 +91,23 @@ export function PoolProfileFields({
         <ErrorLine id={err("name")} text={errors.name} />
       </div>
 
-      {/* Area */}
+      {/* Area: a postcode district, the only way to say where (PoolArea, rules.ts). */}
       <fieldset {...invalid("area")}>
         <legend className={LEGEND}>{copy.areaLegend}</legend>
-        <div className="mt-3 flex flex-wrap gap-2">
-          {(["district", "venues"] as const).map((kind) => (
-            <label key={kind} className={CHIP}>
-              <input type="radio" name={`${id}-area`} checked={value.areaKind === kind} onChange={() => onChange({ ...value, areaKind: kind })} />
-              {kind === "district" ? copy.areaDistrictOption : copy.areaVenuesOption}
-            </label>
-          ))}
-        </div>
-        {value.areaKind === "district" ? (
-          <div className="mt-4">
-            <label htmlFor={`${id}-district`} className="text-sm font-medium text-slate-800">
-              {copy.districtLabel}
-            </label>
-            <p className={HINT}>{copy.districtHint}</p>
-            <input
-              id={`${id}-district`}
-              name="district"
-              autoComplete="off"
-              inputMode="text"
-              maxLength={4}
-              className={`${INPUT} mt-2 max-w-[10rem] uppercase`}
-              value={value.district}
-              onChange={(e) => onChange({ ...value, district: e.target.value.toUpperCase() })}
-            />
-          </div>
-        ) : (
-          <VenuePicker value={value} onChange={onChange} copy={copy} />
-        )}
+        <label htmlFor={`${id}-district`} className="mt-3 block text-sm font-medium text-slate-800">
+          {copy.districtLabel}
+        </label>
+        <p className={HINT}>{copy.districtHint}</p>
+        <input
+          id={`${id}-district`}
+          name="district"
+          autoComplete="off"
+          inputMode="text"
+          maxLength={4}
+          className={`${INPUT} mt-2 max-w-[10rem] uppercase`}
+          value={value.district}
+          onChange={(e) => onChange({ ...value, district: e.target.value.toUpperCase() })}
+        />
         <ErrorLine id={err("area")} text={errors.area} />
       </fieldset>
 
@@ -353,80 +336,5 @@ function SportRow({
         </div>
       )}
     </li>
-  );
-}
-
-function VenuePicker({ value, onChange, copy }: { value: PoolFormValue; onChange: (v: PoolFormValue) => void; copy: PoolFieldsCopy }) {
-  const id = useId();
-  const [q, setQ] = useState("");
-  const [results, setResults] = useState<PoolVenueChoice[] | null>(null);
-
-  useEffect(() => {
-    if (q.trim().length < 3) return;
-    const ctl = new AbortController();
-    const timer = setTimeout(() => {
-      fetch(`/api/play/venues?q=${encodeURIComponent(q.trim())}`, { signal: ctl.signal })
-        .then((r) => r.json())
-        .then((d: { venues: PoolVenueChoice[] }) => setResults(d.venues))
-        .catch(() => {});
-    }, 300);
-    return () => {
-      clearTimeout(timer);
-      ctl.abort();
-    };
-  }, [q]);
-
-  return (
-    <div className="mt-4 space-y-3">
-      {value.venues.length > 0 && (
-        <div>
-          <p className="text-sm font-medium text-slate-800">{copy.venuesChosen}</p>
-          <ul className="mt-1 flex flex-wrap gap-2">
-            {value.venues.map((v) => (
-              <li key={v.id} className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-3 py-1 text-sm text-blue-900">
-                {v.name}
-                <button type="button" aria-label={copy.venueRemove(v.name)} className="p-1" onClick={() => onChange(removeVenue(value, v.id))}>
-                  <X className="h-3.5 w-3.5" aria-hidden="true" />
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-      <div>
-        <label htmlFor={`${id}-q`} className="text-sm font-medium text-slate-800">
-          {copy.venueSearchLabel}
-        </label>
-        <p className={HINT}>{copy.venueSearchHint}</p>
-        <input
-          id={`${id}-q`}
-          type="search"
-          className={`${INPUT} mt-2`}
-          value={q}
-          onChange={(e) => {
-            setQ(e.target.value);
-            if (e.target.value.trim().length < 3) setResults(null);
-          }}
-        />
-      </div>
-      {results && results.length === 0 && <p className="text-sm text-slate-600">{copy.venueNoResults}</p>}
-      {results && results.length > 0 && (
-        <ul className="space-y-1">
-          {results.map((r) => (
-            <li key={r.id}>
-              <button
-                type="button"
-                aria-label={copy.venueAdd(r.name)}
-                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-sm hover:bg-slate-50"
-                onClick={() => onChange(addVenue(value, r))}
-              >
-                <span className="font-medium text-slate-900">{r.name}</span>
-                {r.address && <span className="block text-slate-600">{r.address}</span>}
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
   );
 }

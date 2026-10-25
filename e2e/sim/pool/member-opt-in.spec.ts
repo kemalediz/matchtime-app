@@ -28,12 +28,13 @@ import type { PoolClub, PoolWorld } from "./world";
 
 const EN = poolPageCopy("en");
 
-/** The club plays at a geocoded pitch, so the card's area comes from it. */
+/** The club plays at a pitch whose address holds a postcode, so the card's
+ *  postcode area (SM1) comes from it. */
 async function atPitch(pool: PoolWorld, club: PoolClub, name: string): Promise<string> {
   const id = `sim-pitch-${club.group.orgId}`;
   await pool.db.run(
     `INSERT INTO "Venue" (id, "placeId", name, "formattedAddress", lat, lng, source, "createdAt", "updatedAt")
-     VALUES ($1, $2, $3, 'Pitch Lane, Sutton', 51.365, -0.196, 'google', now(), now())`,
+     VALUES ($1, $2, $3, 'Pitch Lane, Sutton SM1 1AA, UK', 51.365, -0.196, 'google', now(), now())`,
     [id, `ChIJ_${id}`, name],
   );
   await pool.db.run(`UPDATE "Activity" SET "venueId" = $1 WHERE id = $2`, [id, club.group.activityId]);
@@ -55,17 +56,18 @@ async function openAndTick(page: Page, userId: string) {
 scenarios("a club member opts in from his profile", () => {
   scenario("with a number: active at once, nobody messaged; help as before; then he stops", async ({ pool, page }) => {
     const fnf = await pool.club("fnf", { name: "Friday Night Football", hq: true });
-    const pitch = await atPitch(pool, fnf, "Riverside Sports Centre");
+    await atPitch(pool, fnf, "Riverside Sports Centre");
     const pete = fnf.member("pete");
     const user = await pool.userOf(pete);
     const before = await pool.db.count(`SELECT count(*) FROM "Membership" WHERE "userId" = $1 AND "leftAt" IS NULL`, [user!.id]);
 
     const card = await openAndTick(page, user!.id);
     await expect(card.getByLabel(EN.fields.nameLabel, { exact: true })).toHaveValue("Pete P");
+    await expect(card.getByLabel(EN.fields.districtLabel, { exact: true })).toHaveValue("SM1");
     await card.getByRole("button", { name: EN.member.join }).click();
     await expect(card.getByTestId("play-elsewhere-status")).toHaveText(EN.manage.status.active);
 
-    expect(await pool.profileOf(pete)).toMatchObject({ status: "active", source: "profile", consentChannel: "web", venueIds: [pitch] });
+    expect(await pool.profileOf(pete)).toMatchObject({ status: "active", source: "profile", consentChannel: "web", areaDistrict: "SM1", venueIds: [] });
     pool.note("joining on the page sends nothing, to him or anyone");
     pool.expectSent(await pool.collect(), []);
     expect(await pool.db.count(`SELECT count(*) FROM "Membership" WHERE "userId" = $1 AND "leftAt" IS NULL`, [user!.id])).toBe(before);

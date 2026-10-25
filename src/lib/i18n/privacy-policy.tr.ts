@@ -75,7 +75,7 @@ export function buildPrivacyPolicyTr(f: PolicyFacts): PrivacyPolicyCopy {
           {
             kind: "list",
             items: [
-              "posta kodu bölgesi olarak bölgeniz (örneğin SM1) ya da seçtiğiniz sahalar ve ne kadar uzağa gidebileceğiniz;",
+              "posta kodu bölgesi olarak bölgeniz (örneğin SM1) ve ne kadar uzağa gidebileceğiniz;",
               "oynayabileceğiniz günler ve saatler, sporlarınız, sevdiğiniz formatlar ve isterseniz her spordaki seviyeniz;",
               "onay kaydınız: ne zaman onay verdiğiniz, bu politikanın hangi sürümünü kabul ettiğiniz ve bunu doğrulayan mesaj;",
               "size gönderdiğimiz maç teklifleri ve kendi sözlerinizle yazdıklarınız dahil verdiğiniz yanıtlar;",

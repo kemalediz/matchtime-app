@@ -29,9 +29,10 @@
  *   level            only when the ask names levels: his catalogue level
  *                    must be one of them; none, or only his own words, is
  *                    out (decision L4.8). Never ranks.
- *   too-far          the nearest of his area centre and his chosen pitches
- *                    is beyond his travel distance (haversine, capped at
- *                    the largest travel option, 10 miles).
+ *   too-far          the venue is beyond his travel distance from his
+ *                    postcode area's centre (haversine, capped at the
+ *                    largest travel option, 10 miles). His area is the
+ *                    only place measured from (`PoolArea`, rules.ts).
  *   not-available    his day-and-hours ranges do not cover kickoff to full
  *                    time (`availability.ts`).
  *   club-member      a live, non-guest member of the asking club.
@@ -89,9 +90,8 @@ export interface PoolCandidateRow {
   consentAt: Date | null;
   hasPhone: boolean;
   maxMiles: number;
+  /** His postcode area's centre point. */
   area: Point | null;
-  /** His chosen pitches that have a position. */
-  chosenVenues: Point[];
   sports: Array<{ sport: PoolSportChoiceKey | string; formats: number[]; level: SportLevel | string | null }>;
   availability: AvailabilityRange[];
   isClubMember: boolean;
@@ -138,10 +138,9 @@ export function matchGate(ctx: PoolMatchContext, now: Date): MatchGateRefusal | 
   return null;
 }
 
-/** Miles from the venue to the nearest of his area and chosen pitches. */
-export function distanceToVenue(venue: Point, area: Point | null, chosenVenues: readonly Point[]): number | null {
-  const origins = [...(area ? [area] : []), ...chosenVenues];
-  return nearestMiles([venue], origins)?.miles ?? null;
+/** Miles from the venue to his postcode area's centre; null with no area. */
+export function distanceToVenue(venue: Point, area: Point | null): number | null {
+  return area ? (nearestMiles([venue], [area])?.miles ?? null) : null;
 }
 
 export function withinTravel(miles: number, maxMiles: number): boolean {
@@ -165,7 +164,7 @@ export function candidateExclusion(ctx: PoolMatchContext, row: PoolCandidateRow,
   }
   if (ctx.levels && ctx.levels.length > 0 && !(plays.level && (ctx.levels as readonly string[]).includes(plays.level))) return "level";
 
-  const miles = ctx.venue ? distanceToVenue(ctx.venue, row.area, row.chosenVenues) : null;
+  const miles = ctx.venue ? distanceToVenue(ctx.venue, row.area) : null;
   if (miles === null || !withinTravel(miles, row.maxMiles)) return "too-far";
   if (!availableFor(row.availability, ctx.kickoff, ctx.durationMins)) return "not-available";
 
@@ -226,7 +225,7 @@ export function selectCandidates(ctx: PoolMatchContext, rows: readonly PoolCandi
       excluded[why] = (excluded[why] ?? 0) + 1;
       continue;
     }
-    const distanceMiles = distanceToVenue(ctx.venue as Point, row.area, row.chosenVenues) as number;
+    const distanceMiles = distanceToVenue(ctx.venue as Point, row.area) as number;
     eligible.push({ userId: row.userId, record: row.record, lastGameAt: row.lastGameAt, distanceMiles, row });
   }
   return { gate: null, eligible: rankCandidates(eligible), excluded };

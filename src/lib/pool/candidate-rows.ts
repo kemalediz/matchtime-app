@@ -52,7 +52,6 @@ export interface RawProfile {
   maxMiles: number;
   areaLat: number | null;
   areaLng: number | null;
-  venueIds: string[];
   phoneNumber: string | null;
   sports: Array<{ sport: string; formats: number[]; level: string | null }>;
   availability: Array<{ day: number; fromMin: number; toMin: number }>;
@@ -77,8 +76,6 @@ export interface RawPerUser {
   onMatchIds: ReadonlySet<string>;
   /** A PoolBlock with the club, either way. */
   blockedIds: ReadonlySet<string>;
-  /** Positions of venues by id (his chosen pitches). */
-  venues: ReadonlyMap<string, { lat: number | null; lng: number | null }>;
   offers: readonly RawOffer[];
   /** CONFIRMED or BENCH on another live game near kickoff. */
   busy: ReadonlyArray<{ userId: string; kickoff: Date; durationMins: number }>;
@@ -127,7 +124,6 @@ export function candidateRowsOf(matchId: string, profiles: readonly RawProfile[]
       hasPhone: !!p.phoneNumber,
       maxMiles: p.maxMiles,
       area: position({ lat: p.areaLat, lng: p.areaLng }),
-      chosenVenues: p.venueIds.map((id) => position(per.venues.get(id))).filter((v): v is Point => v !== null),
       sports: p.sports.map((s) => ({ sport: s.sport, formats: s.formats, level: s.level })),
       availability: p.availability.map((a) => ({ day: a.day, fromMin: a.fromMin, toMin: a.toMin })),
       isClubMember: per.clubMemberIds.has(p.userId),

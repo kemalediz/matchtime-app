@@ -46,7 +46,6 @@ const PROFILE = (userId: string, lat: number) => ({
   maxMiles: 3,
   areaLat: lat,
   areaLng: -0.1945,
-  venueIds: [],
   user: { phoneNumber: `4477009000${userId.length}` },
   sports: [{ sport: "football", formats: [7], level: null }],
   availability: [{ day: 2, fromMin: 18 * 60, toMin: 22 * 60 }],
@@ -95,6 +94,17 @@ describe("with the pool open", () => {
     expect(r.selection.eligible.map((e) => e.userId)).toEqual(["near"]);
     expect(r.selection.excluded).toEqual({ "too-far": 1 });
     expect(r.sendAt).toEqual(NOW);
+  });
+
+  it("only his postcode area is searched: the travel box on its centre, never chosen pitches (2026-10-25)", async () => {
+    dbMock.poolProfile.findMany.mockResolvedValue([PROFILE("near", 51.37)]);
+    await findPoolCandidates("m1", { now: NOW, env: ON });
+    const arg = dbMock.poolProfile.findMany.mock.calls[0][0];
+    expect(arg.where.areaLat).toMatchObject({ gte: expect.any(Number), lte: expect.any(Number) });
+    expect(arg.where.areaLng).toMatchObject({ gte: expect.any(Number), lte: expect.any(Number) });
+    expect(arg.where).not.toHaveProperty("OR");
+    expect(JSON.stringify(arg)).not.toContain("venueIds");
+    expect(dbMock.venue.findMany).not.toHaveBeenCalled();
   });
 
   it("a member of the asking club is excluded (live, non-guest membership)", async () => {

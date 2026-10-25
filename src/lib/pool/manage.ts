@@ -22,8 +22,8 @@ import { normaliseLang, type Lang } from "../i18n/lang";
 import { recordPoolConsent } from "./consent-record";
 import { canEraseUser, manageTransition, type ManageAction, type ManageRefusal } from "./manage-rules";
 import type { PoolFields } from "./profile-fields";
-import { availabilityRows, loadPoolVenues, resolveArea, sportRows, type PoolVenueOption } from "./profile-store";
-import { formatMinutes } from "./rules";
+import { availabilityRows, resolveArea, sportRows } from "./profile-store";
+import { formatMinutes, type PoolArea } from "./rules";
 import { loadOwnTurnUp, loadPlayerClubs, ownResumeFrom, stampSafetyRecordsGone } from "./safety";
 import type { TurnUpRecord } from "./turn-up";
 import { sportChoiceKey, type SportLevel, type PoolSportChoiceKey } from "./sports";
@@ -49,8 +49,7 @@ export interface PoolManageView {
   consentVersion: number | null;
   fields: {
     name: string;
-    area: { kind: "district"; district: string } | { kind: "venues"; venueIds: string[] };
-    venues: PoolVenueOption[];
+    area: PoolArea;
     maxMiles: number;
     availability: Array<{ day: number; from: string; to: string }>;
     sports: Array<{ sport: PoolSportChoiceKey; otherName: string; formats: number[]; level: SportLevel | null; levelText: string | null }>;
@@ -72,7 +71,6 @@ export async function loadPoolManageView(userId: string, now: Date = new Date())
       consentVersion: true,
       displayName: true,
       areaDistrict: true,
-      venueIds: true,
       maxMiles: true,
       language: true,
       sports: { select: { sport: true, otherName: true, formats: true, level: true, levelText: true }, orderBy: { id: "asc" } },
@@ -97,8 +95,7 @@ export async function loadPoolManageView(userId: string, now: Date = new Date())
     consentVersion: p.consentVersion,
     fields: {
       name: p.displayName,
-      area: p.areaDistrict ? { kind: "district", district: p.areaDistrict } : { kind: "venues", venueIds: p.venueIds },
-      venues: await loadPoolVenues(p.venueIds),
+      area: { kind: "district", district: p.areaDistrict ?? "" },
       maxMiles: p.maxMiles,
       availability: p.availability.map((a) => ({ day: a.day, from: formatMinutes(a.fromMin), to: formatMinutes(a.toMin) })),
       sports: p.sports.map((s) => ({
@@ -120,7 +117,7 @@ export async function savedPoolSportKeys(userId: string): Promise<string[]> {
   return rows.map(sportChoiceKey);
 }
 
-export type PoolManageResult = { ok: true } | { ok: false; reason: ManageRefusal | "no-profile" | "area-not-found" | "venues-unknown" };
+export type PoolManageResult = { ok: true } | { ok: false; reason: ManageRefusal | "no-profile" | "area-not-found" };
 
 /** Replace everything the sign-up asked with the edited fields. */
 export async function savePoolFields(userId: string, fields: PoolFields, now: Date = new Date()): Promise<PoolManageResult> {
@@ -141,7 +138,6 @@ export async function savePoolFields(userId: string, fields: PoolFields, now: Da
         areaDistrict: area.areaDistrict,
         areaLat: area.areaLat,
         areaLng: area.areaLng,
-        venueIds: area.venueIds,
         maxMiles: fields.maxMiles,
         language: fields.language,
         lastActiveAt: now,

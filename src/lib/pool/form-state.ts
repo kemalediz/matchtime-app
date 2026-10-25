@@ -9,7 +9,7 @@
  * and on the server, for truth).
  */
 import type { Lang } from "../i18n/lang";
-import { DEFAULT_POOL_TRAVEL_MILES, formatMinutes } from "./rules";
+import { DEFAULT_POOL_TRAVEL_MILES, formatMinutes, type PoolArea } from "./rules";
 import {
   DEFAULT_POOL_SPORT,
   LIVE_SPORTS,
@@ -21,12 +21,6 @@ import {
   type PoolSportKey,
   type SportLevel,
 } from "./sports";
-
-export interface PoolVenueChoice {
-  id: string;
-  name: string;
-  address: string | null;
-}
 
 /** "" not saying; a catalogue level; "own" his own words in `levelText`. */
 export type LevelChoice = SportLevel | "" | "own";
@@ -40,9 +34,8 @@ export interface SportState {
 
 export interface PoolFormValue {
   name: string;
-  areaKind: "district" | "venues";
+  /** His postcode district as typed (`PoolArea`: the only kind of area). */
   district: string;
-  venues: PoolVenueChoice[];
   maxMiles: number;
   /** By weekday (0 = Sunday); a day is ticked when it has ranges. */
   days: Partial<Record<number, Array<{ from: string; to: string }>>>;
@@ -67,9 +60,7 @@ export function defaultPoolForm(language: Lang): PoolFormValue {
   sports[DEFAULT_POOL_SPORT] = { ...sports[DEFAULT_POOL_SPORT], on: true };
   return {
     name: "",
-    areaKind: "district",
     district: "",
-    venues: [],
     maxMiles: DEFAULT_POOL_TRAVEL_MILES,
     days: {},
     sports,
@@ -115,15 +106,6 @@ export function toggleFormat(formats: readonly number[], n: number): number[] {
   return formats.includes(n) ? formats.filter((f) => f !== n) : [...formats, n].sort((a, b) => a - b);
 }
 
-export function addVenue(v: PoolFormValue, venue: PoolVenueChoice): PoolFormValue {
-  if (v.venues.some((x) => x.id === venue.id)) return v;
-  return { ...v, venues: [...v.venues, venue] };
-}
-
-export function removeVenue(v: PoolFormValue, id: string): PoolFormValue {
-  return { ...v, venues: v.venues.filter((x) => x.id !== id) };
-}
-
 /**
  * The sport rows the form shows: every live sport (`LIVE_SPORTS`), plus any
  * sport that is ticked though no longer live (a saved one, so he sees it
@@ -154,7 +136,7 @@ export function toPoolPayload(v: PoolFormValue, live: LiveSports = LIVE_SPORTS) 
   if (v.other.on) sports.push({ sport: OTHER_SPORT, otherName: v.other.name, formats: [], ...levelOf(v.other) });
   return {
     name: v.name,
-    area: v.areaKind === "district" ? { kind: "district" as const, district: v.district } : { kind: "venues" as const, venueIds: v.venues.map((x) => x.id) },
+    area: { kind: "district", district: v.district } satisfies PoolArea,
     maxMiles: v.maxMiles,
     availability: WEEK_ORDER.flatMap((day) => (v.days[day] ?? []).map((r) => ({ day, from: r.from, to: r.to }))),
     sports,
@@ -165,8 +147,7 @@ export function toPoolPayload(v: PoolFormValue, live: LiveSports = LIVE_SPORTS) 
 /** What the manage page loaded, as the form's state. */
 export function fromSavedProfile(saved: {
   name: string;
-  area: { kind: "district"; district: string } | { kind: "venues"; venueIds: string[] };
-  venues: PoolVenueChoice[];
+  area: PoolArea;
   maxMiles: number;
   availability: Array<{ day: number; from: string; to: string }>;
   sports: Array<{ sport: PoolSportChoiceKey; otherName: string; formats: number[]; level: SportLevel | null; levelText: string | null }>;
@@ -189,9 +170,7 @@ export function fromSavedProfile(saved: {
   return {
     ...v,
     name: saved.name,
-    areaKind: saved.area.kind,
-    district: saved.area.kind === "district" ? saved.area.district : "",
-    venues: saved.venues,
+    district: saved.area.district,
     maxMiles: saved.maxMiles,
     days,
   };

@@ -67,7 +67,6 @@ describe("candidateRowsOf", () => {
     maxMiles: 3,
     areaLat: 51.37,
     areaLng: -0.19,
-    venueIds: [],
     phoneNumber: "447700900001",
     sports: [{ sport: "football", formats: [7], level: "advanced" }],
     availability: [{ day: 2, fromMin: 1080, toMin: 1320 }],
@@ -77,7 +76,6 @@ describe("candidateRowsOf", () => {
     clubMemberIds: new Set(),
     onMatchIds: new Set(),
     blockedIds: new Set(),
-    venues: new Map(),
     offers: [],
     busy: [],
     guestPlaces: [],
@@ -90,7 +88,6 @@ describe("candidateRowsOf", () => {
       userId: "u1",
       hasPhone: true,
       area: { lat: 51.37, lng: -0.19 },
-      chosenVenues: [],
       isClubMember: false,
       onThisMatch: false,
       blocked: false,
@@ -102,12 +99,11 @@ describe("candidateRowsOf", () => {
     });
   });
 
-  it("no phone, no area, chosen pitches with and without a position", () => {
-    const per = { ...empty, venues: new Map([["v1", { lat: 51.3, lng: -0.2 }], ["v2", { lat: null, lng: null }]]) };
-    const [r] = candidateRowsOf("m1", [profile({ phoneNumber: null, areaLat: null, venueIds: ["v1", "v2", "v-missing"] })], per);
+  it("no phone and no area: no position at all, and no chosen pitches either (postcode area only)", () => {
+    const [r] = candidateRowsOf("m1", [profile({ phoneNumber: null, areaLat: null })], empty);
     expect(r.hasPhone).toBe(false);
     expect(r.area).toBeNull();
-    expect(r.chosenVenues).toEqual([{ lat: 51.3, lng: -0.2 }]);
+    expect(r).not.toHaveProperty("chosenVenues");
   });
 
   it("each per-person fact lands on the right person only", () => {

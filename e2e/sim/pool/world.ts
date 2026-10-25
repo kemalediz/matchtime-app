@@ -64,7 +64,7 @@ export interface Exchange {
  *  overridden; the default is a valid football sign-up near SM1. */
 export interface SignUpBody {
   name: string;
-  area: { kind: "district"; district: string } | { kind: "venues"; venueIds: string[] };
+  area: { kind: "district"; district: string };
   maxMiles: number;
   availability: Array<{ day: number; from: string; to: string }>;
   sports: Array<Record<string, unknown>>;

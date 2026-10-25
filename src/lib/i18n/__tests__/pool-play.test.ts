@@ -67,7 +67,7 @@ describe("every error the validator names has words", () => {
   it("maps each code to a message in both languages", () => {
     const codes = {
       name: ["required"],
-      area: ["required", "district", "venues"],
+      area: ["required", "district"],
       maxMiles: ["invalid"],
       availability: ["none", "bad-day", "bad-time", "bad-range", "too-many"],
       sports: ["none", "bad-sport", "other-needs-name", "bad-format", "bad-level", "duplicate", "too-many"],

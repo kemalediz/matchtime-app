@@ -7,11 +7,9 @@ import { describe, expect, it } from "vitest";
 import {
   TIME_OPTIONS,
   addRange,
-  addVenue,
   defaultPoolForm,
   fromSavedProfile,
   removeRange,
-  removeVenue,
   setRange,
   setSport,
   shownSports,
@@ -31,7 +29,9 @@ describe("defaults", () => {
     expect(v.sports.football.on).toBe(true);
     expect(Object.entries(v.sports).filter(([, s]) => s.on).map(([k]) => k)).toEqual(["football"]);
     expect(v.maxMiles).toBe(DEFAULT_POOL_TRAVEL_MILES);
-    expect(v.areaKind).toBe("district");
+    expect(v.district).toBe("");
+    expect(v).not.toHaveProperty("areaKind");
+    expect(v).not.toHaveProperty("venues");
     expect(v.language).toBe("tr");
     expect(Object.keys(v)).not.toContain("consent");
   });
@@ -63,17 +63,10 @@ describe("days and hours", () => {
   });
 });
 
-describe("sports, formats, levels and pitches", () => {
+describe("sports, formats and levels", () => {
   it("formats toggle in order", () => {
     expect(toggleFormat([7], 5)).toEqual([5, 7]);
     expect(toggleFormat([5, 7], 5)).toEqual([7]);
-  });
-
-  it("pitches are added once and removed", () => {
-    let v = addVenue(defaultPoolForm("en"), { id: "v1", name: "Pitch", address: null });
-    v = addVenue(v, { id: "v1", name: "Pitch", address: null });
-    expect(v.venues).toHaveLength(1);
-    expect(removeVenue(v, "v1").venues).toEqual([]);
   });
 });
 
@@ -106,8 +99,7 @@ describe("the payload is what the validator reads", () => {
   it("a saved profile comes back as the same form", () => {
     const saved = {
       name: "Ali K",
-      area: { kind: "venues" as const, venueIds: ["v1"] },
-      venues: [{ id: "v1", name: "Pitch", address: "Road" }],
+      area: { kind: "district" as const, district: "SW19" },
       maxMiles: 5,
       availability: [
         { day: 2, from: "19:00", to: "22:00" },
@@ -124,7 +116,7 @@ describe("the payload is what the validator reads", () => {
     expect(v.sports.basketball).toEqual({ on: true, formats: [3], level: "pro", levelText: "" });
     expect(v.other).toEqual({ on: true, name: "Kabaddi", formats: [], level: "own", levelText: "rusty" });
     const payload = toPoolPayload(v);
-    expect(payload.area).toEqual({ kind: "venues", venueIds: ["v1"] });
+    expect(payload.area).toEqual({ kind: "district", district: "SW19" });
     expect(payload.availability).toHaveLength(2);
     expect(validatePoolFields(payload, ALL).ok).toBe(true);
     // Neither is live today: the manage page keeps them because they are saved.

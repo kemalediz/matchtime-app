@@ -40,9 +40,9 @@ export interface PlayElsewhereView {
   earlyList: boolean;
 }
 
-const VENUE = { select: { id: true, name: true, formattedAddress: true, lat: true, lng: true } } as const;
-const venueFact = (v: { id: string; name: string; formattedAddress: string | null; lat: number | null; lng: number | null } | null) =>
-  v ? { id: v.id, name: v.name, address: v.formattedAddress, lat: v.lat, lng: v.lng } : null;
+/** A pitch's Google address: where the prefill reads his postcode area. */
+const VENUE = { select: { formattedAddress: true } } as const;
+const venueFact = (v: { formattedAddress: string | null } | null) => (v ? { address: v.formattedAddress } : null);
 
 async function memberClubs(userId: string): Promise<MemberClubFacts[]> {
   const rows = await db.membership.findMany({
@@ -102,7 +102,7 @@ export async function loadPlayElsewhere(userId: string, opts: { earlyList: boole
 
 export type MemberJoinResult =
   | { ok: true }
-  | { ok: false; reason: "no-user" | "needs-whatsapp" | "already-in-pool" | "busy" | "area-not-found" | "venues-unknown" };
+  | { ok: false; reason: "no-user" | "needs-whatsapp" | "already-in-pool" | "busy" | "area-not-found" };
 
 /**
  * The sign-up cap's key for a signed-in member (rules.ts POOL_SIGNUP
@@ -145,7 +145,6 @@ export async function joinPoolAsMember(userId: string, fields: PoolFields, opts:
           areaDistrict: area.areaDistrict,
           areaLat: area.areaLat,
           areaLng: area.areaLng,
-          venueIds: area.venueIds,
           maxMiles: fields.maxMiles,
           earlyList: opts.earlyList,
           source: "profile",
@@ -178,7 +177,7 @@ export async function joinPoolAsMember(userId: string, fields: PoolFields, opts:
 
 export type MemberWhatsAppResult =
   | { ok: true; code: string; earlyList: boolean }
-  | { ok: false; reason: "no-user" | "has-phone" | "already-in-pool" | "busy" | "area-not-found" | "venues-unknown" };
+  | { ok: false; reason: "no-user" | "has-phone" | "already-in-pool" | "busy" | "area-not-found" };
 
 /** A member with no number: the /play sign-up, started by him. */
 export async function startMemberWhatsAppStep(userId: string, fields: PoolFields, opts: { earlyList: boolean; now?: Date }): Promise<MemberWhatsAppResult> {

@@ -20,7 +20,6 @@ describe("retiredAuthRedirect", () => {
   it("lets a visitor sign up to the player pool, but not manage a profile signed out", () => {
     expect(isPublicPath("/play")).toBe(true);
     expect(isPublicPath("/api/play/signup")).toBe(true);
-    expect(isPublicPath("/api/play/venues")).toBe(true);
     expect(isPublicPath("/play/manage")).toBe(false);
     expect(isPublicPath("/playground")).toBe(false);
     expect(isPublicPath("/api/player")).toBe(false);
@@ -68,7 +67,6 @@ describe("isPublicPath", () => {
   it("lets a visitor sign up to the player pool, but not manage a profile signed out", () => {
     expect(isPublicPath("/play")).toBe(true);
     expect(isPublicPath("/api/play/signup")).toBe(true);
-    expect(isPublicPath("/api/play/venues")).toBe(true);
     expect(isPublicPath("/play/manage")).toBe(false);
     expect(isPublicPath("/playground")).toBe(false);
     expect(isPublicPath("/api/player")).toBe(false);

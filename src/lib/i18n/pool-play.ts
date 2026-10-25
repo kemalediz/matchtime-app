@@ -32,7 +32,6 @@ export type PoolErrorKey =
   | "name"
   | "area-required"
   | "area-district"
-  | "area-venues"
   | "maxMiles"
   | "availability-none"
   | "availability-bad-day"
@@ -50,7 +49,6 @@ export type PoolErrorKey =
   | "consent"
   | "busy"
   | "area-not-found"
-  | "venues-unknown"
   | "paused"
   | "unavailable"
   | "generic";
@@ -59,16 +57,8 @@ export interface PoolFieldsCopy {
   nameLabel: string;
   nameHint: string;
   areaLegend: string;
-  areaDistrictOption: string;
-  areaVenuesOption: string;
   districtLabel: string;
   districtHint: string;
-  venueSearchLabel: string;
-  venueSearchHint: string;
-  venueNoResults: string;
-  venueAdd: (name: string) => string;
-  venueRemove: (name: string) => string;
-  venuesChosen: string;
   travelLegend: string;
   miles: (n: number) => string;
   daysLegend: string;

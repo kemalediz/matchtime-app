@@ -18,6 +18,7 @@ import {
   normaliseAvailability,
   normaliseDistrict,
   type AvailabilityError,
+  type PoolArea,
   type AvailabilityRange,
   type PoolTravelMiles,
 } from "./rules";
@@ -26,9 +27,8 @@ import {
  *  `PoolAvailability` rows' fields). */
 export interface PoolFields {
   displayName: string;
-  /** A district ("SM1"), or null when he chose pitches instead. */
-  areaDistrict: string | null;
-  venueIds: string[];
+  /** His postcode district ("SM1"): where he plays (`PoolArea`). */
+  areaDistrict: string;
   maxMiles: PoolTravelMiles;
   availability: AvailabilityRange[];
   sports: PoolSportChoice[];
@@ -37,7 +37,7 @@ export interface PoolFields {
 
 export type PoolFieldErrors = Partial<{
   name: "required";
-  area: "required" | "district" | "venues";
+  area: "required" | "district";
   maxMiles: "invalid";
   availability: AvailabilityError | "too-many";
   sports: SportChoiceError | "none" | "duplicate" | "too-many";
@@ -73,20 +73,14 @@ export function normaliseDisplayName(v: unknown): string | null {
   return s;
 }
 
-function readArea(raw: unknown): { ok: true; district: string | null; venueIds: string[] } | { ok: false; error: "required" | "district" | "venues" } {
-  const a = raw as { kind?: unknown; district?: unknown; venueIds?: unknown } | null;
-  if (!a || typeof a !== "object") return { ok: false, error: "required" };
-  if (a.kind === "district") {
-    const district = normaliseDistrict(a.district);
-    return district ? { ok: true, district, venueIds: [] } : { ok: false, error: "district" };
-  }
-  if (a.kind === "venues") {
-    const ids = Array.isArray(a.venueIds) ? a.venueIds.filter((x): x is string => typeof x === "string" && x.length > 0 && x.length <= 40) : [];
-    const unique = [...new Set(ids)];
-    if (unique.length === 0 || unique.length > POOL_SIGNUP.maxVenues) return { ok: false, error: "venues" };
-    return { ok: true, district: null, venueIds: unique };
-  }
-  return { ok: false, error: "required" };
+/** Where he plays (`PoolArea`): a postcode district, required. Any other
+ *  kind of area, chosen pitches included (retired 2026-10-25), is refused
+ *  as no area; anything else sent with the district is ignored. */
+function readArea(raw: unknown): { ok: true; area: PoolArea } | { ok: false; error: "required" | "district" } {
+  const a = raw as { kind?: unknown; district?: unknown } | null;
+  if (!a || typeof a !== "object" || a.kind !== "district") return { ok: false, error: "required" };
+  const district = normaliseDistrict(a.district);
+  return district ? { ok: true, area: { kind: "district", district } } : { ok: false, error: "district" };
 }
 
 function readSports(raw: unknown, opts: PoolFieldsOptions): { ok: true; value: PoolSportChoice[] } | { ok: false; error: NonNullable<PoolFieldErrors["sports"]> } {
@@ -136,8 +130,7 @@ export function validatePoolFields(raw: unknown, opts: PoolFieldsOptions = {}): 
     ok: true,
     value: {
       displayName,
-      areaDistrict: area.district,
-      venueIds: area.venueIds,
+      areaDistrict: area.area.district,
       maxMiles,
       availability,
       sports: sports.value,

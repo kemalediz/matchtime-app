@@ -83,7 +83,7 @@ export function PlaySignup({
         return;
       }
       if (data.errors) setErrors(data.errors);
-      else setFormError((["busy", "area-not-found", "venues-unknown", "paused", "unavailable"] as const).find((r) => r === data.reason) ?? "generic");
+      else setFormError((["busy", "area-not-found", "paused", "unavailable"] as const).find((r) => r === data.reason) ?? "generic");
     } catch {
       setFormError("generic");
     } finally {
