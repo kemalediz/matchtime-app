@@ -5,7 +5,12 @@
  */
 import { describe, expect, it } from "vitest";
 import { POOL_SIGNUP } from "../rules";
+import { POOL_SPORT_KEYS, type LiveSports } from "../sports";
 import { normaliseDisplayName, validatePoolFields, validatePoolSignup, readSignupSource } from "../profile-fields";
+
+/** Every catalogue sport and Other switched on: the rules below, apart
+ *  from the live switch, hold for any sport. */
+const ALL: { live: LiveSports } = { live: { sports: POOL_SPORT_KEYS, other: true } };
 
 const GOOD = {
   name: "  Ali   Kaya ",
@@ -25,7 +30,7 @@ const GOOD = {
 
 describe("validatePoolFields", () => {
   it("normalises a good profile", () => {
-    const r = validatePoolFields(GOOD);
+    const r = validatePoolFields(GOOD, ALL);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.value).toEqual({
@@ -46,7 +51,7 @@ describe("validatePoolFields", () => {
   });
 
   it("chosen pitches instead of a district", () => {
-    const r = validatePoolFields({ ...GOOD, area: { kind: "venues", venueIds: ["v1", "v2", "v1"] } });
+    const r = validatePoolFields({ ...GOOD, area: { kind: "venues", venueIds: ["v1", "v2", "v1"] } }, ALL);
     expect(r.ok && r.value).toMatchObject({ areaDistrict: null, venueIds: ["v1", "v2"] });
   });
 
@@ -77,22 +82,46 @@ describe("validatePoolFields", () => {
   });
 
   it("sport errors are the catalogue's, and a sport only once", () => {
-    expect(validatePoolFields({ ...GOOD, sports: [{ sport: "curling" }] })).toMatchObject({ ok: false, errors: { sports: "bad-sport" } });
-    expect(validatePoolFields({ ...GOOD, sports: [{ sport: "tennis", formats: [2] }] })).toMatchObject({ ok: false, errors: { sports: "bad-format" } });
-    expect(validatePoolFields({ ...GOOD, sports: [{ sport: "other", otherName: "" }] })).toMatchObject({ ok: false, errors: { sports: "other-needs-name" } });
-    expect(validatePoolFields({ ...GOOD, sports: [{ sport: "football" }, { sport: "football" }] })).toMatchObject({ ok: false, errors: { sports: "duplicate" } });
-    expect(validatePoolFields({ ...GOOD, sports: [{ sport: "other", otherName: "Frisbee" }, { sport: "other", otherName: "frisbee" }] })).toMatchObject({ ok: false, errors: { sports: "duplicate" } });
+    expect(validatePoolFields({ ...GOOD, sports: [{ sport: "curling" }] }, ALL)).toMatchObject({ ok: false, errors: { sports: "bad-sport" } });
+    expect(validatePoolFields({ ...GOOD, sports: [{ sport: "tennis", formats: [2] }] }, ALL)).toMatchObject({ ok: false, errors: { sports: "bad-format" } });
+    expect(validatePoolFields({ ...GOOD, sports: [{ sport: "other", otherName: "" }] }, ALL)).toMatchObject({ ok: false, errors: { sports: "other-needs-name" } });
+    expect(validatePoolFields({ ...GOOD, sports: [{ sport: "football" }, { sport: "football" }] }, ALL)).toMatchObject({ ok: false, errors: { sports: "duplicate" } });
+    expect(validatePoolFields({ ...GOOD, sports: [{ sport: "other", otherName: "Frisbee" }, { sport: "other", otherName: "frisbee" }] }, ALL)).toMatchObject({ ok: false, errors: { sports: "duplicate" } });
+  });
+
+  it("only a live sport: football today; basketball, padel and Other are refused", () => {
+    const football = { ...GOOD, sports: [{ sport: "football", formats: [5] }] };
+    expect(validatePoolFields(football).ok).toBe(true);
+    for (const sports of [[{ sport: "basketball", formats: [5] }], [{ sport: "padel" }], [{ sport: "other", otherName: "Frisbee" }], [{ sport: "football" }, { sport: "tennis" }]]) {
+      expect(validatePoolFields({ ...GOOD, sports })).toMatchObject({ ok: false, errors: { sports: "bad-sport" } });
+      expect(validatePoolSignup({ ...GOOD, sports, adult: true, consent: true })).toMatchObject({ ok: false, errors: { sports: "bad-sport" } });
+    }
+  });
+
+  it("switching a sport on in LIVE_SPORTS is all it takes for it to be accepted", () => {
+    const live: LiveSports = { sports: ["football", "basketball"], other: false };
+    expect(validatePoolFields({ ...GOOD, sports: [{ sport: "basketball", formats: [3] }] }, { live }).ok).toBe(true);
+    expect(validatePoolFields({ ...GOOD, sports: [{ sport: "padel" }] }, { live })).toMatchObject({ ok: false, errors: { sports: "bad-sport" } });
+  });
+
+  it("a sport no longer live that is already on his profile is kept when he saves (manage page)", () => {
+    const sports = [{ sport: "football" }, { sport: "padel", level: "novice" }, { sport: "other", otherName: "Frisbee" }];
+    const r = validatePoolFields({ ...GOOD, sports }, { keep: ["padel:", "other:frisbee"] });
+    expect(r.ok && r.value.sports.map((s) => s.sport)).toEqual(["football", "padel", "other"]);
+    // Only what is already saved: another non-live sport is still refused.
+    expect(validatePoolFields({ ...GOOD, sports: [...sports, { sport: "tennis" }] }, { keep: ["padel:", "other:frisbee"] })).toMatchObject({ ok: false, errors: { sports: "bad-sport" } });
+    expect(validatePoolFields({ ...GOOD, sports: [{ sport: "other", otherName: "Kabaddi" }] }, { keep: ["other:frisbee"] })).toMatchObject({ ok: false, errors: { sports: "bad-sport" } });
   });
 
   it("unknown languages are English (normaliseLang), never an error", () => {
-    const r = validatePoolFields({ ...GOOD, language: "de" });
+    const r = validatePoolFields({ ...GOOD, language: "de" }, ALL);
     expect(r.ok && r.value.language).toBe("en");
   });
 });
 
 describe("validatePoolSignup: the fields, plus 18+ and consent, both required", () => {
   it("passes only with both ticked, as true", () => {
-    expect(validatePoolSignup({ ...GOOD, adult: true, consent: true }).ok).toBe(true);
+    expect(validatePoolSignup({ ...GOOD, adult: true, consent: true }, ALL).ok).toBe(true);
     expect(validatePoolSignup({ ...GOOD, adult: "true", consent: true })).toMatchObject({ ok: false, errors: { adult: "required" } });
     expect(validatePoolSignup({ ...GOOD, adult: true })).toMatchObject({ ok: false, errors: { consent: "required" } });
     expect(validatePoolSignup({ ...GOOD })).toMatchObject({ ok: false, errors: { adult: "required", consent: "required" } });

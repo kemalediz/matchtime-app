@@ -34,6 +34,7 @@ export function buildPoolPlayTr(f: PoolPlayFacts): PoolPlayCopy {
       removeRange: (day) => `${day} için bu saati kaldır`,
       sportsLegend: "Ne oynuyorsun?",
       sportsHint: "Maç yapmak istediğin her sporu seç. Format ve seviye isteğe bağlı.",
+      sportsHintOne: "Oynadığın formatları işaretle. Format ve seviye isteğe bağlı.",
       formatsLegend: (sport) => `${sport}: hangi formatlar?`,
       levelLabel: (sport) => `${sport}: seviyen`,
       levelNone: "Belirtmek istemiyorum",

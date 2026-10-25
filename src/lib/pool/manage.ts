@@ -26,7 +26,7 @@ import { availabilityRows, loadPoolVenues, resolveArea, sportRows, type PoolVenu
 import { formatMinutes } from "./rules";
 import { loadOwnTurnUp, loadPlayerClubs, ownResumeFrom, stampSafetyRecordsGone } from "./safety";
 import type { TurnUpRecord } from "./turn-up";
-import type { SportLevel, PoolSportChoiceKey } from "./sports";
+import { sportChoiceKey, type SportLevel, type PoolSportChoiceKey } from "./sports";
 import type { PoolPauseReason, PoolProfileStatus } from "./vocab";
 
 /** The profile as the manage page shows and edits it. */
@@ -111,6 +111,13 @@ export async function loadPoolManageView(userId: string, now: Date = new Date())
       language: normaliseLang(p.language),
     },
   };
+}
+
+/** The `sportChoiceKey`s on his profile: a sport no longer live that he
+ *  already has stays saveable (profile-fields.ts `keep`). */
+export async function savedPoolSportKeys(userId: string): Promise<string[]> {
+  const rows = await db.poolSport.findMany({ where: { profile: { userId } }, select: { sport: true, otherName: true } });
+  return rows.map(sportChoiceKey);
 }
 
 export type PoolManageResult = { ok: true } | { ok: false; reason: ManageRefusal | "no-profile" | "area-not-found" | "venues-unknown" };

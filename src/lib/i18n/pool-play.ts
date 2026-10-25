@@ -81,6 +81,8 @@ export interface PoolFieldsCopy {
   removeRange: (day: string) => string;
   sportsLegend: string;
   sportsHint: string;
+  /** The hint when only one sport is offered (`LIVE_SPORTS`): no sport to pick, only its formats. */
+  sportsHintOne: string;
   formatsLegend: (sport: string) => string;
   levelLabel: (sport: string) => string;
   levelNone: string;

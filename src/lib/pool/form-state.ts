@@ -10,7 +10,17 @@
  */
 import type { Lang } from "../i18n/lang";
 import { DEFAULT_POOL_TRAVEL_MILES, formatMinutes } from "./rules";
-import { DEFAULT_POOL_SPORT, OTHER_SPORT, POOL_SPORT_KEYS, type PoolSportChoiceKey, type PoolSportKey, type SportLevel } from "./sports";
+import {
+  DEFAULT_POOL_SPORT,
+  LIVE_SPORTS,
+  OTHER_SPORT,
+  POOL_SPORT_KEYS,
+  isLiveSport,
+  type LiveSports,
+  type PoolSportChoiceKey,
+  type PoolSportKey,
+  type SportLevel,
+} from "./sports";
 
 export interface PoolVenueChoice {
   id: string;
@@ -114,6 +124,18 @@ export function removeVenue(v: PoolFormValue, id: string): PoolFormValue {
   return { ...v, venues: v.venues.filter((x) => x.id !== id) };
 }
 
+/**
+ * The sport rows the form shows: every live sport (`LIVE_SPORTS`), plus any
+ * sport that is ticked though no longer live (a saved one, so he sees it
+ * and can untick it). One row and no "Other" is `single`: shown without a
+ * tick box, and always sent.
+ */
+export function shownSports(v: PoolFormValue, live: LiveSports = LIVE_SPORTS): { sports: PoolSportKey[]; other: boolean; single: boolean } {
+  const sports = POOL_SPORT_KEYS.filter((k) => isLiveSport(k, live) || v.sports[k]?.on);
+  const other = live.other || v.other.on;
+  return { sports, other, single: sports.length === 1 && !other };
+}
+
 // ── To and from the server ─────────────────────────────────────────────
 
 const levelOf = (s: SportState) => ({
@@ -122,11 +144,12 @@ const levelOf = (s: SportState) => ({
 });
 
 /** The fields as `validatePoolFields` reads them. */
-export function toPoolPayload(v: PoolFormValue) {
+export function toPoolPayload(v: PoolFormValue, live: LiveSports = LIVE_SPORTS) {
   const sports: Array<{ sport: PoolSportChoiceKey; otherName?: string; formats: number[]; level: SportLevel | null; levelText: string | null }> = [];
+  const shown = shownSports(v, live);
   for (const key of POOL_SPORT_KEYS) {
     const s = v.sports[key];
-    if (s.on) sports.push({ sport: key, formats: s.formats, ...levelOf(s) });
+    if (s.on || (shown.single && shown.sports[0] === key)) sports.push({ sport: key, formats: s.formats, ...levelOf(s) });
   }
   if (v.other.on) sports.push({ sport: OTHER_SPORT, otherName: v.other.name, formats: [], ...levelOf(v.other) });
   return {

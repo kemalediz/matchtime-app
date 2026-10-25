@@ -26,6 +26,7 @@ import {
   removeVenue,
   setRange,
   setSport,
+  shownSports,
   toggleDay,
   toggleFormat,
   type LevelChoice,
@@ -33,7 +34,7 @@ import {
   type PoolVenueChoice,
   type SportState,
 } from "@/lib/pool/form-state";
-import { OTHER_SPORT, POOL_FREE_TEXT_MAX, POOL_SPORTS, SPORT_LEVELS, levelLabel, sportLabel } from "@/lib/pool/sports";
+import { OTHER_SPORT, POOL_FREE_TEXT_MAX, SPORT_LEVELS, formatsOf, levelLabel, sportLabel } from "@/lib/pool/sports";
 import { POOL_SIGNUP, POOL_TRAVEL_MILES } from "@/lib/pool/rules";
 
 export type FieldErrorText = Partial<Record<"name" | "area" | "maxMiles" | "availability" | "sports", string>>;
@@ -68,6 +69,7 @@ export function PoolProfileFields({
   const id = useId();
   const err = (k: keyof FieldErrorText) => `${id}-${k}-error`;
   const invalid = (k: keyof FieldErrorText) => (errors[k] ? { "aria-invalid": true as const, "aria-describedby": err(k) } : {});
+  const shown = shownSports(value);
 
   return (
     <div className="space-y-8">
@@ -188,28 +190,32 @@ export function PoolProfileFields({
       {/* Sports */}
       <fieldset {...invalid("sports")}>
         <legend className={LEGEND}>{copy.sportsLegend}</legend>
-        <p className={HINT}>{copy.sportsHint}</p>
-        <ul className="mt-3 space-y-3">
-          {POOL_SPORTS.map((s) => (
+        <p className={HINT}>{shown.single ? copy.sportsHintOne : copy.sportsHint}</p>
+        {/* Only the live sports (LIVE_SPORTS, pool/sports.ts), plus one he already has. */}
+        <ul className="mt-3 space-y-3" data-testid="pool-sports">
+          {shown.sports.map((key) => (
             <SportRow
-              key={s.key}
-              name={sportLabel(s.key, lang)}
-              formats={s.formats}
-              state={value.sports[s.key]}
-              onChange={(patch) => onChange(setSport(value, s.key, patch))}
+              key={key}
+              name={sportLabel(key, lang)}
+              formats={formatsOf(key)}
+              state={shown.single ? { ...value.sports[key], on: true } : value.sports[key]}
+              fixed={shown.single}
+              onChange={(patch) => onChange(setSport(value, key, patch))}
               copy={copy}
               lang={lang}
             />
           ))}
-          <SportRow
-            name={sportLabel(OTHER_SPORT, lang)}
-            formats={[]}
-            state={value.other}
-            onChange={(patch) => onChange({ ...value, other: { ...value.other, ...patch } })}
-            copy={copy}
-            lang={lang}
-            otherName={{ value: value.other.name, onChange: (name) => onChange({ ...value, other: { ...value.other, name } }) }}
-          />
+          {shown.other && (
+            <SportRow
+              name={sportLabel(OTHER_SPORT, lang)}
+              formats={[]}
+              state={value.other}
+              onChange={(patch) => onChange({ ...value, other: { ...value.other, ...patch } })}
+              copy={copy}
+              lang={lang}
+              otherName={{ value: value.other.name, onChange: (name) => onChange({ ...value, other: { ...value.other, name } }) }}
+            />
+          )}
         </ul>
         <ErrorLine id={err("sports")} text={errors.sports} />
       </fieldset>
@@ -256,6 +262,7 @@ function SportRow({
   copy,
   lang,
   otherName,
+  fixed = false,
 }: {
   name: string;
   formats: readonly number[];
@@ -264,17 +271,23 @@ function SportRow({
   copy: PoolFieldsCopy;
   lang: Lang;
   otherName?: { value: string; onChange: (v: string) => void };
+  /** The only sport offered: no tick box, always on. */
+  fixed?: boolean;
 }) {
   const id = useId();
   const shown = otherName && otherName.value.trim() ? otherName.value.trim() : name;
   return (
     <li className="rounded-lg border border-slate-200 bg-white p-3">
-      <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-900">
-        <input type="checkbox" checked={state.on} onChange={(e) => onChange({ on: e.target.checked })} />
-        {name}
-      </label>
+      {fixed ? (
+        <p className="text-sm font-medium text-slate-900">{name}</p>
+      ) : (
+        <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-900">
+          <input type="checkbox" checked={state.on} onChange={(e) => onChange({ on: e.target.checked })} />
+          {name}
+        </label>
+      )}
       {state.on && (
-        <div className="mt-3 space-y-3 pl-6">
+        <div className={`mt-3 space-y-3 ${fixed ? "" : "pl-6"}`}>
           {otherName && (
             <div>
               <label htmlFor={`${id}-other`} className="text-sm text-slate-800">

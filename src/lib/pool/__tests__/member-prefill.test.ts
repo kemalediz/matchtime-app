@@ -89,11 +89,20 @@ describe("memberPrefill", () => {
       { day: 2, from: "20:00", to: "21:30" },
       { day: 5, from: "18:00", to: "19:00" },
     ]);
-    expect(p.sports.map((s) => [s.sport, s.formats])).toEqual([
-      ["football", [5, 7]],
+    // Basketball is in the catalogue but not live (LIVE_SPORTS): not offered.
+    expect(p.sports.map((s) => [s.sport, s.formats])).toEqual([["football", [5, 7]]]);
+    expect(p.language).toBe("en");
+  });
+
+  it("only live sports are prefilled; switching basketball on brings it in; a basketball-only member gets football", () => {
+    const b = { preset: "basketball-5v5", name: "Basketball", playersPerTeam: 5 };
+    const clubs = [club({ activities: [{ dayOfWeek: 2, time: "20:00", matchDurationMins: 60, sport: five, venue: venue("a") }, { dayOfWeek: 5, time: "18:00", matchDurationMins: 60, sport: b, venue: venue("a") }] })];
+    expect(memberPrefill({ name: "A B", clubs }, { sports: ["football", "basketball"], other: false }).sports.map((s) => [s.sport, s.formats])).toEqual([
+      ["football", [5]],
       ["basketball", [5]],
     ]);
-    expect(p.language).toBe("en");
+    const onlyBasketball = [club({ activities: [{ dayOfWeek: 5, time: "18:00", matchDurationMins: 60, sport: b, venue: venue("a") }] })];
+    expect(memberPrefill({ name: "A B", clubs: onlyBasketball }).sports).toEqual([{ sport: "football", otherName: "", formats: [], level: null, levelText: null }]);
   });
 
   it("the language is his clubs' when they agree on Turkish", () => {

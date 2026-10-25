@@ -141,23 +141,45 @@ test("edit everything the sign-up asked: saved to the profile, wrong answers nam
   await page.getByLabel(EN.fields.districtLabel, { exact: true }).fill("SW19");
   await page.getByRole("radio", { name: "10 miles" }).check();
   await page.getByRole("checkbox", { name: "Saturday", exact: true }).check();
-  await page.getByRole("checkbox", { name: "Padel", exact: true }).check();
-  await page.getByLabel(EN.fields.levelLabel("Padel")).selectOption("own");
-  await page.getByLabel(EN.fields.levelOwnWordsLabel("Padel")).fill("keen beginner");
+  // Football is the only sport offered (LIVE_SPORTS): no sport to tick, only its formats and level.
+  await expect(page.getByRole("checkbox", { name: "Football", exact: true })).toHaveCount(0);
+  await page.getByRole("checkbox", { name: "5-a-side" }).check();
+  await page.getByLabel(EN.fields.levelLabel("Football")).selectOption("own");
+  await page.getByLabel(EN.fields.levelOwnWordsLabel("Football")).fill("keen beginner");
   await page.getByLabel(EN.fields.languageLabel).selectOption("tr");
   await page.getByRole("button", { name: EN.manage.save }).click();
   await expect(page.locator("main").getByRole("status")).toHaveText(EN.manage.saved);
 
   expect(await profile(db, userId)).toMatchObject({ displayName: "Ali K", areaDistrict: "SW19", maxMiles: 10, language: "tr" });
   const sports = await db.all(
-    `SELECT s.sport, s."levelText" FROM "PoolSport" s JOIN "PoolProfile" p ON p.id = s."profileId" WHERE p."userId" = $1 ORDER BY s.sport`,
+    `SELECT s.sport, s."levelText", s.formats FROM "PoolSport" s JOIN "PoolProfile" p ON p.id = s."profileId" WHERE p."userId" = $1 ORDER BY s.sport`,
     [userId],
   );
-  expect(sports).toEqual([
-    { sport: "football", levelText: null },
-    { sport: "padel", levelText: "keen beginner" },
-  ]);
+  expect(sports).toEqual([{ sport: "football", levelText: "keen beginner", formats: [5, 7] }]);
   expect(await db.count(`SELECT count(*) FROM "PoolAvailability" a JOIN "PoolProfile" p ON p.id = a."profileId" WHERE p."userId" = $1`, [userId])).toBe(2);
+});
+
+test("a saved sport that is no longer offered is shown and kept when he saves; no other sport is offered", async ({ page, request, db }) => {
+  const { userId } = await poolPlayer(request, db);
+  // Prod has none today; a padel row from before football-only (LIVE_SPORTS).
+  await db.run(
+    `INSERT INTO "PoolSport" (id, "profileId", sport, "otherName", level, formats) SELECT 'e2e-manage-padel', id, 'padel', '', 'novice', '{}' FROM "PoolProfile" WHERE "userId" = $1`,
+    [userId],
+  );
+  await signInAs(page, userId, "/play/manage");
+  const sports = page.getByTestId("pool-sports");
+  await expect(sports.getByRole("checkbox", { name: "Padel", exact: true })).toBeChecked();
+  await expect(sports.getByRole("checkbox", { name: "Football", exact: true })).toBeChecked();
+  for (const other of ["Basketball", "Tennis", "Badminton", "Squash", "Table tennis", "Snooker", "Billiards", "Other"]) {
+    await expect(sports.getByText(other, { exact: true })).toHaveCount(0);
+  }
+  await page.getByRole("radio", { name: "10 miles" }).check();
+  await page.getByRole("button", { name: EN.manage.save }).click();
+  await expect(page.locator("main").getByRole("status")).toHaveText(EN.manage.saved);
+  expect(await db.all(`SELECT s.sport, s.level FROM "PoolSport" s JOIN "PoolProfile" p ON p.id = s."profileId" WHERE p."userId" = $1 ORDER BY s.sport`, [userId])).toEqual([
+    { sport: "football", level: null },
+    { sport: "padel", level: "novice" },
+  ]);
 });
 
 test("the badge privacy switch", async ({ page, request, db }) => {

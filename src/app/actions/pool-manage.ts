@@ -8,7 +8,7 @@
  */
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
-import { applyManageAction, deletePoolProfile, savePoolFields, setShowRecognition } from "@/lib/pool/manage";
+import { applyManageAction, deletePoolProfile, savePoolFields, savedPoolSportKeys, setShowRecognition } from "@/lib/pool/manage";
 import type { ManageAction } from "@/lib/pool/manage-rules";
 import { POOL_MANAGE_PATH } from "@/lib/pool/paths";
 import { validatePoolFields, type PoolFieldErrors } from "@/lib/pool/profile-fields";
@@ -22,7 +22,8 @@ async function me(): Promise<string | null> {
 export async function savePoolProfileAction(payload: unknown): Promise<Result> {
   const userId = await me();
   if (!userId) return { ok: false, reason: "signed-out" };
-  const valid = validatePoolFields(payload);
+  // Only live sports, plus any he already has (LIVE_SPORTS, pool/sports.ts).
+  const valid = validatePoolFields(payload, { keep: await savedPoolSportKeys(userId) });
   if (!valid.ok) return { ok: false, reason: "invalid", errors: valid.errors };
   const res = await savePoolFields(userId, valid.value);
   revalidatePath(POOL_MANAGE_PATH);

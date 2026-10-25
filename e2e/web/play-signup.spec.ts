@@ -2,7 +2,9 @@
  * /play, the local player pool's sign-up (slice L2), in a real browser:
  *   - reads at phone and desktop width, no sideways scroll, no app sidebar,
  *     one h1, every field labelled, in the browser's language with a switch;
- *   - consent and 18+ unticked by default, football ticked;
+ *   - consent and 18+ unticked by default; football the only sport offered
+ *     (LIVE_SPORTS), shown with its formats and no sport to pick, and a
+ *     crafted POST with any other sport refused by the route;
  *   - validation names every wrong field, accessibly, and sends nothing;
  *   - the full flow: fill in, continue, the wa.me link carries the prefilled
  *     message, the person sends it (the Pi's real route), the profile goes
@@ -20,7 +22,7 @@ import { poolPageCopy } from "@/lib/pool/page-copy";
 
 const EN = poolPageCopy("en");
 const TR = poolPageCopy("tr");
-const MOBILE = { width: 375, height: 740 };
+const MOBILE = { width: 390, height: 844 };
 const DESKTOP = { width: 1280, height: 900 };
 const UK_POINT = {
   status: "OK",
@@ -69,13 +71,18 @@ test.describe("English visitor", () => {
       await expect(page.getByLabel(EN.fields.nameLabel, { exact: true })).toBeVisible();
       await expect(page.getByRole("group", { name: EN.fields.travelLegend })).toBeVisible();
       await expect(page.getByRole("radio", { name: "3 miles" })).toBeChecked();
-      await expect(page.getByRole("checkbox", { name: "Football", exact: true })).toBeChecked();
+      // Football only (LIVE_SPORTS): no sport to tick, just its formats.
+      const sports = page.getByTestId("pool-sports");
+      await expect(sports.getByText("Football", { exact: true })).toBeVisible();
+      await expect(page.getByRole("checkbox", { name: "Football", exact: true })).toHaveCount(0);
+      await expect(page.getByText(EN.fields.sportsHintOne)).toBeVisible();
+      for (const n of [5, 7, 8, 9, 11]) await expect(sports.getByRole("checkbox", { name: `${n}-a-side`, exact: true })).toBeVisible();
+      for (const other of ["Basketball", "Tennis", "Padel", "Badminton", "Squash", "Table tennis", "Snooker", "Billiards", "Pool", "Other"]) {
+        await expect(sports.getByText(other, { exact: true })).toHaveCount(0);
+      }
       await expect(page.getByRole("checkbox", { name: EN.signup.adultLabel })).not.toBeChecked();
       await expect(page.getByRole("checkbox", { name: EN.signup.consentLabel })).not.toBeChecked();
       await expect(page.getByRole("link", { name: EN.signup.consentPolicy })).toHaveAttribute("href", "/privacy");
-      // Formats only where the sport has them: tennis has none.
-      await page.getByRole("checkbox", { name: "Tennis", exact: true }).check();
-      await expect(page.getByRole("group", { name: EN.fields.formatsLegend("Tennis") })).toHaveCount(0);
       await expect(page.getByRole("group", { name: EN.fields.formatsLegend("Football") })).toBeVisible();
       expect(await overflow(page)).toBeLessThanOrEqual(0);
       await page.waitForLoadState("networkidle");
@@ -83,6 +90,25 @@ test.describe("English visitor", () => {
       await page.screenshot({ path: `test-results/play-${name}.png`, fullPage: true });
     });
   }
+
+  test("a crafted POST with a sport that is not offered is refused and writes nothing", async ({ request, db }) => {
+    const before = await db.count(`SELECT count(*) FROM "PoolProfile"`);
+    const base = {
+      name: "Ali Kaya",
+      area: { kind: "district", district: "SM1" },
+      maxMiles: 3,
+      availability: [{ day: 2, from: "19:00", to: "22:00" }],
+      language: "en",
+      adult: true,
+      consent: true,
+    };
+    for (const sports of [[{ sport: "basketball", formats: [5] }], [{ sport: "football", formats: [7] }, { sport: "padel" }], [{ sport: "other", otherName: "Frisbee" }]]) {
+      const res = await request.post("/api/play/signup", { data: { ...base, sports } });
+      expect(res.status()).toBe(400);
+      expect(await res.json()).toMatchObject({ ok: false, reason: "invalid", errors: { sports: "bad-sport" } });
+    }
+    expect(await db.count(`SELECT count(*) FROM "PoolProfile"`)).toBe(before);
+  });
 
   test("the page never carries MatchTime's number", async ({ page, request }) => {
     const html = await (await request.get("/play")).text();

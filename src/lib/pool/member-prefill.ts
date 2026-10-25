@@ -33,7 +33,7 @@
 import { normaliseLang, type Lang } from "../i18n/lang";
 import { normaliseDisplayName } from "./profile-fields";
 import { DEFAULT_POOL_TRAVEL_MILES, POOL_CONSENT_VERSION, POOL_SIGNUP, formatMinutes, normaliseAvailability, parseMinutes } from "./rules";
-import { DEFAULT_POOL_SPORT, poolSportOfClubSport, type PoolSportChoiceKey, type PoolSportKey, type SportLevel } from "./sports";
+import { DEFAULT_POOL_SPORT, LIVE_SPORTS, isLiveSport, poolSportOfClubSport, type LiveSports, type PoolSportChoiceKey, type PoolSportKey, type SportLevel } from "./sports";
 import type { PoolProfileStatus } from "./vocab";
 
 const DAY = 24 * 60;
@@ -117,11 +117,12 @@ function prefillAvailability(clubs: readonly MemberClubFacts[]): MemberPrefill["
   return merged.value.map((r) => ({ day: r.day, from: formatMinutes(r.fromMin), to: formatMinutes(r.toMin) }));
 }
 
-function prefillSports(clubs: readonly MemberClubFacts[]): MemberPrefill["sports"] {
+/** Only sports that are live (`LIVE_SPORTS`): he is never offered one that is not. */
+function prefillSports(clubs: readonly MemberClubFacts[], live: LiveSports): MemberPrefill["sports"] {
   const bySport = new Map<PoolSportKey, Set<number>>();
   for (const a of clubs.flatMap((c) => c.activities)) {
     const s = poolSportOfClubSport(a.sport);
-    if (!s) continue;
+    if (!s || !isLiveSport(s.sport, live)) continue;
     const formats = bySport.get(s.sport) ?? new Set<number>();
     if (s.format !== null) formats.add(s.format);
     bySport.set(s.sport, formats);
@@ -141,7 +142,7 @@ function prefillLanguage(clubs: readonly MemberClubFacts[]): Lang {
   return langs.size === 1 ? [...langs][0] : "en";
 }
 
-export function memberPrefill(input: { name: string | null; clubs: readonly MemberClubFacts[] }): MemberPrefill {
+export function memberPrefill(input: { name: string | null; clubs: readonly MemberClubFacts[] }, live: LiveSports = LIVE_SPORTS): MemberPrefill {
   const venues = prefillVenues(input.clubs);
   return {
     name: shortDisplayName(input.name),
@@ -149,7 +150,7 @@ export function memberPrefill(input: { name: string | null; clubs: readonly Memb
     venues,
     maxMiles: DEFAULT_POOL_TRAVEL_MILES,
     availability: prefillAvailability(input.clubs),
-    sports: prefillSports(input.clubs),
+    sports: prefillSports(input.clubs, live),
     language: prefillLanguage(input.clubs),
   };
 }

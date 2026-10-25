@@ -3,6 +3,7 @@ import { Inter, Plus_Jakarta_Sans, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/providers";
 import { AppShell } from "@/components/layout/app-shell";
+import { SITE_META } from "@/components/landing/landing-content";
 
 // Inter for body copy — tightly hinted, great on every device at every
 // size. `--font-geist-sans` kept as the CSS variable name so we don't
@@ -32,23 +33,11 @@ const SITE_URL = process.env.NEXTAUTH_URL?.replace(/\/$/, "") ?? "https://matcht
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: "MatchTime: run your weekly match on autopilot",
+    default: SITE_META.title,
     template: "%s · MatchTime",
   },
-  description:
-    "MatchTime lives in your WhatsApp group and runs your weekly game: it tracks who's in, runs the bench, chases when you're short, balances teams on request, and collects ratings and Man of the Match votes.",
-  keywords: [
-    "sports team management",
-    "5-a-side attendance",
-    "whatsapp football bot",
-    "team balancer",
-    "match attendance tracker",
-    "pickup football",
-    "5v5 basketball manager",
-    "sports group organiser",
-    "man of the match voting",
-    "whatsapp football organiser",
-  ],
+  description: SITE_META.description,
+  keywords: SITE_META.keywords,
   authors: [{ name: "Cressoft", url: "https://cressoft.io" }],
   creator: "Cressoft",
   publisher: "Cressoft",
@@ -57,15 +46,13 @@ export const metadata: Metadata = {
     type: "website",
     url: SITE_URL,
     siteName: "MatchTime",
-    title: "MatchTime: run your weekly match on autopilot",
-    description:
-      "WhatsApp organiser for weekly football: who's in, the bench, balanced teams, ratings and Man of the Match.",
+    title: SITE_META.title,
+    description: SITE_META.ogDescription,
   },
   twitter: {
     card: "summary_large_image",
-    title: "MatchTime: run your weekly match on autopilot",
-    description:
-      "WhatsApp organiser for weekly football: who's in, the bench, balanced teams, ratings and Man of the Match.",
+    title: SITE_META.title,
+    description: SITE_META.ogDescription,
   },
   robots: {
     index: true,

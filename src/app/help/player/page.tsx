@@ -163,7 +163,7 @@ export default function PlayerGuidePage() {
           they stop.
         </li>
         <li>
-          <strong>About 2 hours before kickoff</strong> (football): a reminder
+          <strong>About 2 hours before kickoff</strong>: a reminder
           to bring goalie gloves, a ball and spare bibs.
         </li>
       </ul>
