@@ -75,6 +75,7 @@ export function buildPoolPlayEn(f: PoolPlayFacts): PoolPlayCopy {
       lead: "Tell MatchTime where and when you can play. When a club near you is a player short at a time you're free, MatchTime can message you on WhatsApp with the game, and you decide.",
       earlyNote:
         "The pool is opening town by town. Sign up now and you join the early sign-up list: you won't get any game messages until it opens near you.",
+      openNote: "The pool is opening town by town. Sign up now and MatchTime can message you when a club near you needs a player.",
       howItWorks: [
         "You fill in this page. We never ask for your phone number here.",
         "WhatsApp opens with a message and a code. You send it, and that confirms your number.",

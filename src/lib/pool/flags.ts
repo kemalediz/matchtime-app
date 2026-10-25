@@ -59,6 +59,13 @@ export function signupGoesOnEarlyList(env: Env = process.env): boolean {
   return !isPoolOffersEnabled(env);
 }
 
+/** The same switch with a page's or request's test override ("1" / "0",
+ *  honoured only under MT_TEST_MODE=1): what the sign-up route stamps on
+ *  a profile, and so what every page may tell a visitor. */
+export function signupGoesOnEarlyListFrom(override: string | undefined, env: Env = process.env): boolean {
+  return override === undefined ? signupGoesOnEarlyList(env) : !poolOpenFrom(override, env);
+}
+
 /** Is the pool open, given a test override ("1" / "0") and the environment?
  *  The override counts only under MT_TEST_MODE=1. */
 export function poolOpenFrom(override: string | undefined, env: Env = process.env): boolean {

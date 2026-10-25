@@ -1,31 +1,32 @@
 import Link from "next/link";
-import { MessageCircle, Shield, ArrowRight, Check, Sparkles, ShieldCheck } from "lucide-react";
+import { MessageCircle, Shield, ArrowRight, Check, Sparkles, ShieldCheck, Users } from "lucide-react";
 import { StatsShowcase, WrappedCard } from "./stats-showcase";
-import { firstMonthsFree, firstMonthsFreeBadge } from "@/lib/i18n/free-period";
-import { t } from "@/lib/i18n/t";
-import { PRIVACY_PATH } from "@/lib/privacy-policy";
+import { firstMonthsFree } from "@/lib/i18n/free-period";
 import { CONNECT_HOW_LONG, holdHowItWorksSentence } from "@/lib/setup-hold-public-copy";
 import {
   ASK_CHAT,
   FEATURES,
-  LANDING_NAV,
+  HERO_POOL_INVITE,
   LANDING_SPOTLIGHTS,
   PERSONAS,
   PLAYER_STAT_CARDS,
   SPORTS,
-  type Card,
+  spotlightFor,
   type Step,
 } from "./landing-content";
 import {
   CardGrid,
   ChatMock,
   DISPLAY_FONT,
-  FeatureCard,
+  LandingFooter,
   PersonaCard,
+  PoolInviteButton,
   SectionIntro,
   SpotlightSection,
   StepList,
 } from "./landing-sections";
+import { LandingHeader } from "./landing-nav";
+import { PricingTeaser } from "./pricing-section";
 
 /**
  * Public marketing landing page served at `/` for signed-out visitors.
@@ -36,8 +37,9 @@ import {
  * The feature lists and the spotlight sections (partner clubs, the admin
  * group, the settings) are data in `landing-content.ts`, laid out by the
  * shared components in `landing-sections.tsx`. A new spotlight section is
- * one entry in `LANDING_SPOTLIGHTS`. The hero, the steps, the pricing and
- * the closing call stay here because they are built from the free period
+ * one entry in `LANDING_SPOTLIGHTS`. The price lives in pricing-section.tsx
+ * (the /pricing page; a teaser here). The hero, the steps and the closing
+ * call stay here because they are built from the free period
  * and setup-hold helpers.
  *
  * Typography: body uses Inter (loaded in app/layout.tsx as
@@ -48,11 +50,14 @@ import {
  */
 
 /**
+ * `earlyList`: will a pool sign-up made now go on the early sign-up list
+ * (`signupGoesOnEarlyListForPage`)? The pool section says so only then.
+ *
  * `holdOn`: SETUP_HOLD_ENABLED as the page that renders this read it
  * (`setupHoldEnabledForRequest`). On, step 2 gains the one sentence about
  * waiting for GO; off, the page reads as it always did.
  */
-export function LandingPage({ holdOn = false }: { holdOn?: boolean } = {}) {
+export function LandingPage({ holdOn = false, earlyList = true }: { holdOn?: boolean; earlyList?: boolean } = {}) {
   const holdSentence = holdHowItWorksSentence(holdOn);
   const steps: Step[] = [
     {
@@ -74,47 +79,11 @@ export function LandingPage({ holdOn = false }: { holdOn?: boolean } = {}) {
 
   return (
     <div className="bg-slate-950 text-slate-100 overflow-x-hidden font-sans">
-      {/* ── Top nav ───────────────────────────────────────────────────── */}
-      <header className="absolute top-0 inset-x-0 z-20">
-        <div className="max-w-6xl mx-auto px-5 sm:px-8 py-5 flex items-center justify-between gap-4">
-          <Link href="/" className="flex items-center gap-2.5 group shrink-0">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src="/matchtime-icon.svg"
-              alt="MatchTime"
-              className="w-9 h-9 rounded-xl shadow-lg shadow-blue-500/30 transition-transform group-hover:scale-105"
-            />
-            <span className="font-bold tracking-tight text-lg text-white" style={DISPLAY_FONT}>
-              Match<span className="text-blue-400">Time</span>
-            </span>
-          </Link>
-          <nav aria-label="Main" className="hidden lg:flex items-center gap-6 text-sm text-slate-300">
-            {LANDING_NAV.map((n) =>
-              n.href.startsWith("#") ? (
-                <a key={n.href} href={n.href} className="hover:text-white transition-colors">
-                  {n.label}
-                </a>
-              ) : (
-                <Link key={n.href} href={n.href} className="hover:text-white transition-colors">
-                  {n.label}
-                </Link>
-              ),
-            )}
-          </nav>
-          <div className="flex items-center gap-2">
-            <Link
-              href="/login"
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-white text-slate-900 font-semibold text-sm hover:bg-slate-100 transition-colors shadow-sm"
-            >
-              Sign in
-              <ArrowRight className="w-3.5 h-3.5" />
-            </Link>
-          </div>
-        </div>
-      </header>
+      {/* ── Top bar: For clubs and For players menus (landing-nav.tsx) ── */}
+      <LandingHeader onHome />
 
       {/* ── Hero ──────────────────────────────────────────────────────── */}
-      <section className="relative pt-36 pb-24 sm:pt-44 sm:pb-32 px-5 sm:px-8">
+      <section className="relative pt-24 pb-20 sm:pt-32 sm:pb-28 px-5 sm:px-8">
         <div className="absolute inset-0 bg-gradient-to-b from-slate-950 via-blue-950 to-slate-950" />
         <div
           className="absolute inset-0 opacity-40"
@@ -134,12 +103,12 @@ export function LandingPage({ holdOn = false }: { holdOn?: boolean } = {}) {
         />
 
         <div className="relative max-w-6xl mx-auto text-center">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/15 text-xs font-medium text-blue-100 backdrop-blur mb-6">
-            <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/15 text-xs font-medium text-blue-100 backdrop-blur mb-4 sm:mb-6">
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 motion-safe:animate-pulse" />
             Lives in your WhatsApp group · No app for players
           </div>
           <h1
-            className="text-4xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight leading-[1.05] text-white"
+            className="text-4xl sm:text-6xl font-extrabold tracking-tight leading-[1.05] text-white"
             style={DISPLAY_FONT}
           >
             Run your weekly match
@@ -148,47 +117,33 @@ export function LandingPage({ holdOn = false }: { holdOn?: boolean } = {}) {
               on autopilot.
             </span>
           </h1>
-          <p className="mt-7 text-base sm:text-lg lg:text-xl text-slate-200 max-w-2xl mx-auto leading-relaxed">
+          <p className="mt-4 sm:mt-6 text-[15px] sm:text-lg lg:text-xl text-slate-200 max-w-2xl mx-auto leading-relaxed">
             MatchTime sits in your WhatsApp group and does the organiser&apos;s
             job: it tracks who&apos;s in, runs the bench, chases when you&apos;re
             short, asks partner clubs nearby when you&apos;re still a player
             down, picks balanced teams and collects ratings after the game.
           </p>
-          <div className="mt-10 flex flex-col sm:flex-row gap-3 items-center justify-center">
+          <div className="mt-6 sm:mt-8 grid grid-cols-2 sm:flex sm:flex-row gap-3 items-center justify-center">
             <Link
               href="/signup"
-              className="inline-flex items-center justify-center gap-2 px-7 py-3.5 rounded-xl bg-gradient-to-br from-blue-500 to-teal-500 hover:from-blue-400 hover:to-teal-400 text-white font-semibold text-base shadow-xl shadow-blue-500/30 transition-all hover:-translate-y-0.5"
+              className="inline-flex items-center justify-center gap-2 px-4 sm:px-7 py-3 sm:py-3.5 rounded-xl bg-gradient-to-br from-blue-500 to-teal-500 hover:from-blue-400 hover:to-teal-400 text-white font-semibold text-sm sm:text-base shadow-xl shadow-blue-500/30 transition-all hover:-translate-y-0.5"
             >
               Start your group
               <ArrowRight className="w-4 h-4" />
             </Link>
             <Link
               href="#how-it-works"
-              className="inline-flex items-center justify-center gap-2 px-7 py-3.5 rounded-xl bg-white/10 hover:bg-white/15 text-white font-medium text-base border border-white/15 backdrop-blur transition-colors"
+              className="inline-flex items-center justify-center gap-2 px-4 sm:px-7 py-3 sm:py-3.5 rounded-xl bg-white/10 hover:bg-white/15 text-white font-medium text-sm sm:text-base border border-white/15 backdrop-blur transition-colors"
             >
               See how it works
             </Link>
           </div>
 
-          {/* The player pool's invitation (G0 part 2): players with no
-              group find the pool section, whose button pulses. */}
-          <p className="mt-6 text-sm text-slate-200">
-            Looking for a game, not a group?{" "}
-            <Link href="#player-pool" className="font-semibold text-emerald-300 underline underline-offset-4 hover:text-emerald-200">
-              Join the MatchTime player pool
-            </Link>
-          </p>
-
-          <div className="mt-14 flex flex-wrap items-center justify-center gap-x-8 gap-y-3 text-xs sm:text-sm text-slate-300">
-            <span className="inline-flex items-center gap-1.5">
-              <Check className="w-4 h-4 text-emerald-400" />
-              Players just chat as normal
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <Check className="w-4 h-4 text-emerald-400" />
-              Card or bank payments, if you want them
-            </span>
-          </div>
+          {/* The players' invitation (Kemal, 2026-10-25): its own panel
+              under the organisers' buttons, on the first screen at phone
+              width, with the pulsing button. Payments are described in the
+              features and pricing further down, not here. */}
+          <PlayerPoolPanel />
         </div>
       </section>
 
@@ -213,7 +168,7 @@ export function LandingPage({ holdOn = false }: { holdOn?: boolean } = {}) {
 
       {/* ── Spotlights: the player pool, partner clubs, the admin group, the settings ── */}
       {LANDING_SPOTLIGHTS.map((s) => (
-        <SpotlightSection key={s.id} s={s} />
+        <SpotlightSection key={s.id} s={spotlightFor(s, earlyList)} />
       ))}
 
       {/* ── Player stats & rewards ────────────────────────────────────── */}
@@ -397,90 +352,8 @@ export function LandingPage({ holdOn = false }: { holdOn?: boolean } = {}) {
         </div>
       </section>
 
-      {/* ── Pricing ───────────────────────────────────────────────────── */}
-      <section
-        id="pricing"
-        aria-labelledby="pricing-heading"
-        className="relative py-24 sm:py-32 px-5 sm:px-8 bg-white text-slate-800"
-      >
-        <div className="max-w-6xl mx-auto">
-          <div className="max-w-2xl mx-auto text-center">
-            <span className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-600">
-              Pricing
-            </span>
-            <h2
-              id="pricing-heading"
-              className="mt-3 text-3xl sm:text-5xl font-extrabold tracking-tight text-slate-900"
-              style={DISPLAY_FONT}
-            >
-              One price for the whole group.
-            </h2>
-            <p className="mt-5 text-lg text-slate-600">
-              Up to £9.99 a month per WhatsApp group, not per player, and you
-              only pay for the weeks you play. {firstMonthsFree("en")}, so you
-              can see how it runs your week before you pay.
-            </p>
-            <p className="mt-3 text-base text-slate-500">
-              Play 3 weeks out of 4 and it&apos;s £7.49. Take a month off and
-              it&apos;s nothing.
-            </p>
-          </div>
-
-          <div className="mt-16 grid grid-cols-1 lg:grid-cols-[1.1fr_1fr] gap-6">
-            <div className="p-7 sm:p-10 rounded-2xl bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 border border-white/10 relative overflow-hidden">
-              <div
-                className="absolute inset-0 opacity-30"
-                style={{
-                  backgroundImage:
-                    "radial-gradient(400px circle at 80% 20%, rgba(20,184,166,0.3), transparent 50%)",
-                }}
-              />
-              <div className="relative">
-                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-400/15 text-emerald-300 text-xs font-semibold">
-                  <Sparkles className="w-3 h-3" />
-                  {firstMonthsFreeBadge()}
-                </div>
-                <div className="mt-5 flex flex-wrap items-baseline gap-2">
-                  <span className="text-lg text-slate-300">Up to</span>
-                  <span
-                    className="text-6xl sm:text-7xl font-extrabold tracking-tight text-white"
-                    style={DISPLAY_FONT}
-                  >
-                    £9.99
-                  </span>
-                  <span className="text-lg text-slate-300">a month per group</span>
-                </div>
-                <ul className="mt-7 space-y-3">
-                  {[
-                    "Everything on this page, for your whole WhatsApp group",
-                    "One price, however big your squad is",
-                    "Charged after each month, only for the weeks you play",
-                    "No contract. Stop any time",
-                  ].map((b) => (
-                    <li key={b} className="flex items-start gap-3 text-slate-200">
-                      <Check className="w-5 h-5 text-emerald-400 mt-0.5 shrink-0" />
-                      <span>{b}</span>
-                    </li>
-                  ))}
-                </ul>
-                <Link
-                  href="/signup"
-                  className="mt-9 inline-flex items-center justify-center gap-2 px-7 py-3.5 rounded-xl bg-white text-slate-900 font-semibold shadow-xl transition-all hover:-translate-y-0.5"
-                >
-                  Start your group
-                  <ArrowRight className="w-4 h-4" />
-                </Link>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 gap-6">
-              {PRICING_CARDS.map((c) => (
-                <FeatureCard key={c.key} card={c} />
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
+      {/* ── Pricing teaser: the free period first; the full page is /pricing ── */}
+      <PricingTeaser />
 
       {/* ── Final CTA ─────────────────────────────────────────────────── */}
       <section className="relative py-24 sm:py-32 px-5 sm:px-8 bg-gradient-to-br from-slate-950 via-blue-950 to-slate-950 overflow-hidden">
@@ -520,42 +393,7 @@ export function LandingPage({ holdOn = false }: { holdOn?: boolean } = {}) {
         </div>
       </section>
 
-      {/* ── Footer ────────────────────────────────────────────────────── */}
-      <footer className="bg-slate-950 text-slate-400 py-10 px-5 sm:px-8 border-t border-white/5">
-        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/matchtime-icon.svg" alt="" className="w-7 h-7 rounded-lg" />
-            <span className="font-bold text-white" style={DISPLAY_FONT}>
-              Match<span className="text-blue-400">Time</span>
-            </span>
-          </div>
-          <div className="flex flex-wrap gap-6 text-sm">
-            <Link href="/login" className="hover:text-white transition-colors">
-              Sign in
-            </Link>
-            <Link href="/signup" className="hover:text-white transition-colors">
-              Sign up
-            </Link>
-            <Link href="/help/player" className="hover:text-white transition-colors">
-              Player guide
-            </Link>
-            <Link href="/help/admin" className="hover:text-white transition-colors">
-              Organiser guide
-            </Link>
-            <Link href={PRIVACY_PATH} className="hover:text-white transition-colors">
-              {t("en").privacy_link}
-            </Link>
-            <a href="mailto:hello@matchtime.ai" className="hover:text-white transition-colors">
-              Contact
-            </a>
-            <a href="https://cressoft.io" target="_blank" rel="noreferrer" className="hover:text-white transition-colors">
-              By Cressoft
-            </a>
-          </div>
-          <p className="text-xs text-slate-500">© {new Date().getFullYear()} MatchTime. All rights reserved.</p>
-        </div>
-      </footer>
+      <LandingFooter />
 
       {/* JSON-LD for rich results */}
       <script
@@ -582,21 +420,37 @@ export function LandingPage({ holdOn = false }: { holdOn?: boolean } = {}) {
   );
 }
 
-/** The two cards beside the price. Below the page, so the source before
- *  `id="pricing"` carries no price (public-copy.test.ts). */
-const PRICING_CARDS: Card[] = [
-  {
-    key: "share",
-    color: "teal",
-    icon: "users",
-    title: "Share it out if you like",
-    body: "The organiser can share the month's fee among the players who played. Even a month charged in full at £9.99, shared by 20 players, works out at about 50p a player.",
-  },
-  {
-    key: "match-fees",
-    color: "amber",
-    icon: "card",
-    title: "Match fees are separate, and optional",
-    body: "Switch on pay links and players pay their match fee by card or bank after the game. They pay the card or bank fee on top, so you receive the full match fee. Collecting cash? Leave it off.",
-  },
-];
+/**
+ * The hero's invitation to players: a panel of its own, so a player who
+ * has no group sees what is in it for him on the first screen. The copy
+ * is `HERO_POOL_INVITE`; the button is the shared pulsing one.
+ */
+function PlayerPoolPanel() {
+  const h = HERO_POOL_INVITE;
+  return (
+    <section
+      aria-labelledby="hero-pool-heading"
+      className="mt-6 sm:mt-10 mx-auto max-w-4xl rounded-2xl border border-emerald-300/30 bg-emerald-400/10 p-4 sm:p-6 text-left shadow-xl shadow-emerald-900/30 backdrop-blur lg:grid lg:grid-cols-[1fr_auto] lg:items-center lg:gap-8"
+    >
+      <div className="flex items-start gap-4">
+        <span className="hidden sm:inline-flex shrink-0 items-center justify-center w-11 h-11 rounded-xl bg-emerald-400/20 text-emerald-300">
+          <Users className="w-6 h-6" aria-hidden="true" />
+        </span>
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300">{h.eyebrow}</p>
+          <h2 id="hero-pool-heading" className="mt-1 text-lg sm:text-2xl font-extrabold leading-snug text-white" style={DISPLAY_FONT}>
+            {h.title}
+          </h2>
+          <p className="mt-1.5 text-sm sm:text-base text-slate-200 leading-relaxed">{h.body}</p>
+        </div>
+      </div>
+      <div className="mt-3 lg:mt-0 flex flex-col items-stretch sm:items-center gap-2">
+        <PoolInviteButton cta={h.cta} testId="hero-pool-cta" />
+        <Link href={h.more.href} className="text-center text-sm font-semibold text-emerald-200 underline underline-offset-4 hover:text-white">
+          {h.more.label}
+        </Link>
+        <p className="text-center text-xs text-slate-300">{h.smallPrint}</p>
+      </div>
+    </section>
+  );
+}

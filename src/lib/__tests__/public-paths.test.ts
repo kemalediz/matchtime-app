@@ -26,6 +26,18 @@ describe("retiredAuthRedirect", () => {
     expect(isPublicPath("/api/player")).toBe(false);
   });
 
+  // The players' page (website update, 2026-10-25): read before signing up.
+  it("lets a visitor read the players' page, and nothing under it", () => {
+    expect(isPublicPath("/players")).toBe(true);
+    expect(isPublicPath("/players/x")).toBe(false);
+    expect(isPublicPath("/api/players")).toBe(false);
+  });
+
+  it("lets a visitor read the pricing page", () => {
+    expect(isPublicPath("/pricing")).toBe(true);
+    expect(isPublicPath("/pricing/x")).toBe(false);
+  });
+
   it.each(["/", "/login", "/signup", "/admin", "/signup-emails", "/verify-email/x"])("leaves %s alone", (p) => {
     expect(retiredAuthRedirect(p)).toBeNull();
   });

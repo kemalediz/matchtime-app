@@ -11,6 +11,7 @@ import {
   poolOffersOpenForClub,
   poolOpenFrom,
   signupGoesOnEarlyList,
+  signupGoesOnEarlyListFrom,
 } from "../flags";
 import { POOL_OPEN_TEST_COOKIE, POOL_OPEN_TEST_HEADER, poolOpenForApiRequest } from "../flags-request";
 
@@ -46,6 +47,14 @@ describe("sign-up (slice L2)", () => {
   it("goes on the early sign-up list while the pool is not open (the global switch off)", () => {
     expect(signupGoesOnEarlyList({})).toBe(true);
     expect(signupGoesOnEarlyList({ POOL_OFFERS_ENABLED: "1" })).toBe(false);
+  });
+
+  it("the pages ask the same switch, with the test seam only under MT_TEST_MODE=1", () => {
+    expect(signupGoesOnEarlyListFrom(undefined, {})).toBe(true);
+    expect(signupGoesOnEarlyListFrom(undefined, { POOL_OFFERS_ENABLED: "1" })).toBe(false);
+    expect(signupGoesOnEarlyListFrom("1", { MT_TEST_MODE: "1" })).toBe(false);
+    expect(signupGoesOnEarlyListFrom("0", { MT_TEST_MODE: "1", POOL_OFFERS_ENABLED: "1" })).toBe(true);
+    expect(signupGoesOnEarlyListFrom("1", {})).toBe(true);
   });
 });
 

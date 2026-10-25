@@ -75,6 +75,7 @@ export function buildPoolPlayTr(f: PoolPlayFacts): PoolPlayCopy {
       lead: "MatchTime'a nerede ve ne zaman oynayabileceğini söyle. Yakınındaki bir kulübün, boş olduğun bir saatte bir oyuncusu eksik olduğunda MatchTime maçı sana WhatsApp'tan yazabilir, karar senin.",
       earlyNote:
         "Havuz şehir şehir açılıyor. Şimdi kaydol, erken kayıt listesine gir: havuz senin bölgende açılana kadar sana maç mesajı gelmez.",
+      openNote: "Havuz şehir şehir açılıyor. Şimdi kaydol, yakınındaki bir kulübün oyuncuya ihtiyacı olduğunda MatchTime sana yazabilir.",
       howItWorks: [
         "Bu sayfayı doldurursun. Burada telefon numaranı asla sormayız.",
         "WhatsApp bir mesaj ve bir kodla açılır. Mesajı gönderirsin, bu numaranı doğrular.",

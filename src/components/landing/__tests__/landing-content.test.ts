@@ -13,17 +13,27 @@ import { describe, it, expect } from "vitest";
 import {
   ASK_CHAT,
   FEATURES,
-  LANDING_NAV,
+  HERO_POOL_INVITE,
+  LANDING_NAV_GROUPS,
   LANDING_SPOTLIGHTS,
   PERSONAS,
+  PLAYERS_FAQ,
+  PLAYERS_PAGE,
   PLAYER_STAT_CARDS,
+  POOL_SITE_SOURCES,
   SPORTS,
+  allNavLinks,
+  poolOpeningLine,
+  spotlightFor,
+  type Cta,
   type Spotlight,
 } from "../landing-content";
 import { PARTNER_ASK_CUTOFF_DEFAULT_HOURS } from "@/lib/club-partnership-rules";
 import { PARTNER_ASKS_PER_DAY } from "@/lib/partner-ask-rules";
 import { MAX_RADIUS_MILES } from "@/lib/club-discovery-rules";
-import { POOL_PLAY_PATH } from "@/lib/pool/paths";
+import { POOL_PLAY_PATH, PLAYERS_PAGE_PATH } from "@/lib/pool/paths";
+import { readSignupSource } from "@/lib/pool/profile-fields";
+import { poolPageCopy } from "@/lib/pool/page-copy";
 import { POOL_CAPS, POOL_MIN_AGE, POOL_QUIET_HOURS } from "@/lib/pool/rules";
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -40,7 +50,18 @@ function copyStrings(value: unknown, path = "content"): Array<{ path: string; te
   return [];
 }
 
-const ALL = copyStrings({ ASK_CHAT, FEATURES, LANDING_NAV, LANDING_SPOTLIGHTS, PERSONAS, PLAYER_STAT_CARDS, SPORTS });
+const ALL = copyStrings({
+  ASK_CHAT,
+  FEATURES,
+  HERO_POOL_INVITE,
+  LANDING_NAV_GROUPS,
+  LANDING_SPOTLIGHTS,
+  PERSONAS,
+  PLAYERS_FAQ,
+  PLAYERS_PAGE,
+  PLAYER_STAT_CARDS,
+  SPORTS,
+});
 
 function spotlight(id: string): Spotlight {
   const s = LANDING_SPOTLIGHTS.find((x) => x.id === id);
@@ -84,8 +105,8 @@ describe("landing content: house rules", () => {
     expect(ALL.filter((s) => /@MatchTime/.test(s.text))).toEqual([]);
   });
 
-  it("says early sign-up list, never a waiting list, for the pool", () => {
-    expect(spotlight("player-pool").lead).toContain("early sign-up list");
+  it("never says messages a week: the cap is on game offers (Kemal, 2026-10-25)", () => {
+    expect(ALL.filter((s) => /messages a week/i.test(s.text))).toEqual([]);
   });
 });
 
@@ -115,16 +136,54 @@ describe("landing content: structure", () => {
     for (const l of lists) expect(new Set(keysOf(l)).size).toBe(l.length);
   });
 
-  it("the nav links every spotlight that has a nav label, and only anchors that exist", () => {
-    const anchors = new Set(["features", "player-stats", "ask", "how-it-works", "pricing", ...LANDING_SPOTLIGHTS.map((s) => s.id)]);
-    for (const n of LANDING_NAV) {
-      if (n.href.startsWith("#")) expect(anchors.has(n.href.slice(1)), n.href).toBe(true);
-      else expect(n.href).toMatch(/^\/[a-z]/);
-    }
+});
+
+/** The home page's own anchors, and the public pages the menu may open. */
+const HOME_ANCHORS = new Set(["features", "player-stats", "ask", "how-it-works", "pricing", ...LANDING_SPOTLIGHTS.map((s) => s.id)]);
+const MENU_PAGES = new Set(["/pricing", "/signup", "/help/player", "/help/admin", PLAYERS_PAGE_PATH, POOL_PLAY_PATH]);
+
+describe("landing content: the menu, one for clubs and one for players (Kemal, 2026-10-25)", () => {
+  it("has two groups, clubs first, each with its own button", () => {
+    expect(LANDING_NAV_GROUPS.map((g) => [g.id, g.label])).toEqual([
+      ["clubs", "For clubs"],
+      ["players", "For players"],
+    ]);
+    const [clubs, players] = LANDING_NAV_GROUPS;
+    expect(clubs.cta).toEqual({ label: "Start your group", href: "/signup" });
+    expect(players.cta).toEqual({ label: "Find a game", href: `${POOL_PLAY_PATH}?src=${POOL_SITE_SOURCES.nav}` });
+  });
+
+  it("clubs get the organiser sections, players get the pool, their stats and their guide", () => {
+    const hrefs = (id: string) => LANDING_NAV_GROUPS.find((g) => g.id === id)!.links.map((l) => l.href);
+    expect(hrefs("clubs")).toEqual(["/#features", "/#partner-clubs", "/#admin-group", "/#how-it-works", "/pricing", "/help/admin"]);
+    expect(hrefs("players")).toEqual([PLAYERS_PAGE_PATH, "/#player-pool", "/#player-stats", "/help/player"]);
+  });
+
+  it("every spotlight with a nav label is in its group's menu", () => {
     for (const s of LANDING_SPOTLIGHTS.filter((x) => x.navLabel)) {
-      expect(LANDING_NAV.some((n) => n.href === `#${s.id}`), s.id).toBe(true);
+      const g = LANDING_NAV_GROUPS.find((x) => x.id === s.navGroup);
+      expect(g, s.id).toBeDefined();
+      expect(g!.links.some((l) => l.href === `/#${s.id}` && l.label === s.navLabel), s.id).toBe(true);
     }
-    expect(LANDING_NAV.map((n) => n.href)).toEqual(expect.arrayContaining(["#player-pool", "#partner-clubs", "#admin-group"]));
+  });
+
+  it("every menu link opens an anchor that exists on the home page or a public page", () => {
+    for (const n of allNavLinks()) {
+      const [pathname, hash] = n.href.split("#");
+      if (hash !== undefined) {
+        expect(pathname, n.href).toBe("/");
+        expect(HOME_ANCHORS.has(hash), n.href).toBe(true);
+      } else {
+        expect(MENU_PAGES.has(n.href.split("?")[0]), n.href).toBe(true);
+      }
+    }
+  });
+
+  it("no link sits in both groups, and labels are unique in each", () => {
+    const [clubs, players] = LANDING_NAV_GROUPS;
+    const clubHrefs = new Set(clubs.links.map((l) => l.href));
+    expect(players.links.filter((l) => clubHrefs.has(l.href))).toEqual([]);
+    for (const g of LANDING_NAV_GROUPS) expect(new Set(g.links.map((l) => l.label)).size).toBe(g.links.length);
   });
 });
 
@@ -185,9 +244,19 @@ describe("landing content: every claim is present", () => {
 describe("landing content: the player pool (G0 part 2)", () => {
   const s = spotlight("player-pool");
 
-  it("invites players to /play with the pulsing button, and only that spotlight pulses", () => {
+  it("invites players to /play with the pulsing button", () => {
     expect(s.cta).toEqual({ label: "Join the MatchTime player pool", href: POOL_PLAY_PATH, pulse: true });
-    expect(LANDING_SPOTLIGHTS.filter((x) => x.cta?.pulse).map((x) => x.id)).toEqual(["player-pool"]);
+  });
+
+  it("only the player invitations pulse: a deliberate, pinned list", () => {
+    const buttons: Record<string, Cta | undefined> = {
+      hero: HERO_POOL_INVITE.cta,
+      "players-page": PLAYERS_PAGE.cta,
+      "players-page-closing": PLAYERS_PAGE.closingCta,
+      ...Object.fromEntries(LANDING_SPOTLIGHTS.map((x) => [`spotlight:${x.id}`, x.cta])),
+    };
+    const pulsing = Object.entries(buttons).filter(([, b]) => b?.pulse).map(([k]) => k);
+    expect(pulsing).toEqual(["hero", "players-page", "spotlight:player-pool"]);
   });
 
   it("how joining works, the privacy promises, and the points", () => {
@@ -198,13 +267,33 @@ describe("landing content: the player pool (G0 part 2)", () => {
 
   it("the limits and the age come from pool/rules.ts", () => {
     const offers = s.steps!.find((x) => x.key === "offers")!.body;
-    expect(offers).toContain(`at most ${POOL_CAPS.perPlayerPerWeek} messages a week`);
+    expect(offers).toContain(`at most ${POOL_CAPS.perPlayerPerWeek} game offers a week`);
     expect(offers).toContain(`between ${POOL_QUIET_HOURS.from} and ${POOL_QUIET_HOURS.to}`);
     expect(s.points.find((x) => x.key === "age")!.title).toBe(`${POOL_MIN_AGE} and over`);
   });
 
   it("claims nothing the pool does not do yet: offers only once it opens", () => {
-    expect(`${s.lead} ${s.steps!.map((x) => x.body).join(" ")}`).toMatch(/opens/);
+    expect(s.steps!.map((x) => x.body).join(" ")).toMatch(/opens/);
+  });
+
+  it("its lead says nothing about the early list: that line follows the server's switch", () => {
+    expect(s.lead).not.toMatch(/early|opening/i);
+    expect(s.poolOpeningLine).toBe(true);
+  });
+
+  it("the opening line is /play's own note, early list only when sign-ups go on it", () => {
+    const en = poolPageCopy("en").signup;
+    expect(poolOpeningLine(true)).toBe(en.earlyNote);
+    expect(poolOpeningLine(false)).toBe(en.openNote);
+    expect(poolOpeningLine(true)).toContain("early sign-up list");
+    expect(poolOpeningLine(false)).not.toMatch(/early/i);
+  });
+
+  it("spotlightFor adds the opening line to the pool section only", () => {
+    expect(spotlightFor(s, false).lead).toBe(`${s.lead} ${poolOpeningLine(false)}`);
+    expect(spotlightFor(s, true).lead).toBe(`${s.lead} ${poolOpeningLine(true)}`);
+    const other = spotlight("partner-clubs");
+    expect(spotlightFor(other, true)).toBe(other);
   });
 
   it("the pulse flashes under 3 times a second and stops for reduced motion (globals.css)", () => {
@@ -215,6 +304,74 @@ describe("landing content: the player pool (G0 part 2)", () => {
     expect(1 / seconds).toBeLessThan(3);
     // The only animation rule for the class is the no-preference one.
     expect(css.match(/\.pool-invite-pulse\s*\{/g)).toHaveLength(1);
+  });
+});
+
+describe("landing content: the hero's invitation to players (Kemal, 2026-10-25)", () => {
+  const h = HERO_POOL_INVITE;
+
+  it("says the benefit: asked when a nearby club is a player short, you decide, no app, stop any time", () => {
+    expect(h.eyebrow).toBe("For players");
+    expect(h.title).toMatch(/near you/);
+    expect(h.title).toMatch(/player short/);
+    const body = h.body;
+    expect(body).toMatch(/WhatsApp/);
+    expect(body).toMatch(/you decide/);
+    expect(body).toMatch(/No app/);
+    expect(body).toMatch(/stop any time/);
+  });
+
+  it("the button goes to /play with the hero's source code, and pulses", () => {
+    expect(h.cta).toEqual({ label: "Join the MatchTime player pool", href: `${POOL_PLAY_PATH}?src=${POOL_SITE_SOURCES.hero}`, pulse: true });
+  });
+
+  it("a second link explains it on the players' page", () => {
+    expect(h.more).toEqual({ label: "How it works for players", href: PLAYERS_PAGE_PATH });
+  });
+
+  it("the small print comes from pool/rules.ts and says it is opening town by town", () => {
+    expect(h.smallPrint).toBe(`${POOL_MIN_AGE} and over. At most ${POOL_CAPS.perPlayerPerWeek} game offers a week. Opening town by town.`);
+  });
+
+  it("every site source code is one /play reads as a campaign code", () => {
+    const codes = Object.values(POOL_SITE_SOURCES);
+    expect(new Set(codes).size).toBe(codes.length);
+    for (const c of codes) expect(readSignupSource({ src: c }).campaignCode).toBe(c);
+  });
+});
+
+describe("landing content: the players' page (/players)", () => {
+  const pool = spotlight("player-pool");
+
+  it("reuses the pool section's steps, points, privacy note and footnote, never a copy", () => {
+    expect(PLAYERS_PAGE.steps).toBe(pool.steps);
+    expect(PLAYERS_PAGE.points).toBe(pool.points);
+    expect(PLAYERS_PAGE.note).toBe(pool.note);
+    expect(PLAYERS_PAGE.footnote).toBe(pool.footnote);
+    expect(PLAYERS_PAGE.title).toBe(HERO_POOL_INVITE.title);
+    expect(PLAYERS_PAGE.lead).toBe(pool.lead);
+  });
+
+  it("its big button pulses and goes to /play with the page's source code; the closing one does not pulse", () => {
+    expect(PLAYERS_PAGE.cta).toEqual({ label: "Join the MatchTime player pool", href: `${POOL_PLAY_PATH}?src=${POOL_SITE_SOURCES.players}`, pulse: true });
+    expect(PLAYERS_PAGE.closingCta).toEqual({ label: "Join the MatchTime player pool", href: `${POOL_PLAY_PATH}?src=${POOL_SITE_SOURCES.players}` });
+  });
+
+  it("its small print is the pool's limits, without repeating the lead's town by town", () => {
+    expect(PLAYERS_PAGE.smallPrint).toBe(`${POOL_MIN_AGE} and over. At most ${POOL_CAPS.perPlayerPerWeek} game offers a week.`);
+  });
+
+  it("the questions players ask, each answered once", () => {
+    expect(keysOf(PLAYERS_FAQ)).toEqual(["cost", "say-no", "stop", "join-club", "own-club"]);
+    expect(new Set(keysOf(PLAYERS_FAQ)).size).toBe(PLAYERS_FAQ.length);
+  });
+
+  it("the ignored-offers pause comes from pool/rules.ts", () => {
+    expect(PLAYERS_FAQ.find((q) => q.key === "say-no")!.answer).toContain(`${POOL_CAPS.ignoredInARowPause} offers in a row`);
+  });
+
+  it("the club answer is the pool section's own footnote", () => {
+    expect(PLAYERS_FAQ.find((q) => q.key === "own-club")!.answer).toBe(pool.footnote);
   });
 });
 

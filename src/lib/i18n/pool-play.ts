@@ -102,7 +102,10 @@ export interface PoolPlayCopy {
   signup: {
     heading: string;
     lead: string;
+    /** Shown while a sign-up goes on the early sign-up list
+     *  (`signupGoesOnEarlyList`); `openNote` once the pool is open. */
     earlyNote: string;
+    openNote: string;
     howItWorks: readonly string[];
     adultLabel: string;
     consentLabel: string;

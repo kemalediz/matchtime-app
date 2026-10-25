@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { isPoolSignupPaused } from "@/lib/pool/flags";
+import { signupGoesOnEarlyListForPage } from "@/lib/pool/flags-page";
 import { poolInvitedByName } from "@/lib/pool/growth";
 import { poolPageCopy } from "@/lib/pool/page-copy";
 import { readSignupSource } from "@/lib/pool/profile-fields";
@@ -22,5 +23,5 @@ export const metadata: Metadata = {
 export default async function PlayPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const source = readSignupSource(await searchParams);
   const invitedBy = await poolInvitedByName(source.referralCode).catch(() => null);
-  return <PlaySignup source={source} paused={isPoolSignupPaused()} invitedBy={invitedBy} />;
+  return <PlaySignup source={source} paused={isPoolSignupPaused()} invitedBy={invitedBy} earlyList={await signupGoesOnEarlyListForPage()} />;
 }

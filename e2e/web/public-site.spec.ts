@@ -35,25 +35,33 @@ for (const [path, heading] of GUIDES) {
   });
 }
 
-test("landing page shows the price and links the player guide", async ({ page }) => {
-  await page.goto("/");
+test("the price: free months first on the home teaser and on /pricing, then the price; the player guide link works", async ({ page }) => {
   expect(FIRST_FREE).toBe("Your first two months are free");
-  await expect(page.getByText("First two months free", { exact: true }).first()).toBeVisible();
-  // Pricing section: up to £9.99 a month per group, first two months free (Kemal, 2026-10-12).
+  // /pricing is the price's own page (Kemal, 2026-10-25).
+  await page.goto("/pricing");
   const pricing = page.locator("#pricing");
-  await pricing.scrollIntoViewIfNeeded();
-  await expect(pricing.getByRole("heading", { name: /One price for the whole group/i })).toBeVisible();
-  await expect(pricing.getByText("£9.99", { exact: true })).toBeVisible();
-  await expect(pricing.getByText(/a month per group/i)).toBeVisible();
+  await expect(pricing.getByRole("heading", { level: 1, name: "Try it with your group first." })).toBeVisible();
+  await expect(pricing.getByText("First two months free", { exact: true })).toBeVisible();
+  await expect(pricing.getByText(/then up to £9\.99 a month for the whole group/)).toBeVisible();
   await expect(pricing.getByText(/about 50p a player/i)).toBeVisible();
-  // Charged by games played, up to £9.99 a month (Kemal, 2026-10-02).
-  await expect(pricing.getByText(/Up to £9\.99 a month per WhatsApp group, not per player, and you only pay for the weeks you play/)).toBeVisible();
-  await expect(pricing.getByText(/Your first two months are free, so you can see how it runs your week before you pay\./)).toBeVisible();
+  // Charged by games played, up to £9.99 a month (Kemal, 2026-10-02); the free months first (2026-10-25).
+  await expect(
+    pricing.getByText(/Your first two months are free, so you can see how it runs your week before you pay\. After that it's up to £9\.99 a month per WhatsApp group, not per player, and you only pay for the weeks you play\./),
+  ).toBeVisible();
+  await expect(pricing.getByText(/Play 3 weeks out of 4 and it's £7\.49\. Take a month off and it's nothing\./)).toBeVisible();
+  let body = withoutFreePeriod(await page.locator("body").innerText());
+  expect(body).not.toMatch(/\bfree\b/i);
+  expect(body).not.toMatch(/first month/i);
+
+  await page.goto("/");
+  const teaser = page.locator("#pricing");
+  await teaser.scrollIntoViewIfNeeded();
+  await expect(teaser.getByText("First two months free", { exact: true })).toBeVisible();
+  await expect(teaser.getByRole("link", { name: "See pricing" })).toHaveAttribute("href", "/pricing");
   await expect(page.getByText(/Your first two months are free, and you can remove it from your group any time\./)).toBeVisible();
   await expect(page.getByText(/Your first two months are free, then it's up to £9\.99 a month for the whole group/)).toBeVisible();
-  await expect(pricing.getByText(/Play 3 weeks out of 4 and it's £7\.49\. Take a month off and it's nothing\./)).toBeVisible();
   // Nothing on the page still claims MatchTime is free.
-  const body = withoutFreePeriod(await page.locator("body").innerText());
+  body = withoutFreePeriod(await page.locator("body").innerText());
   expect(body).not.toMatch(/\bfree\b/i);
   expect(body).not.toMatch(/first month/i);
   await page.getByRole("link", { name: /read the player guide/i }).click();

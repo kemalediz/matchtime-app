@@ -1,5 +1,5 @@
 import { PRIVACY_PATH } from "./privacy-policy";
-import { POOL_API_PREFIX, POOL_PLAY_PATH } from "./pool/paths";
+import { PLAYERS_PAGE_PATH, POOL_API_PREFIX, POOL_PLAY_PATH } from "./pool/paths";
 
 /**
  * The email sign-up pages, retired 2026-10-11 when WhatsApp became the
@@ -35,6 +35,10 @@ export function isPublicPath(pathname: string): boolean {
     // The privacy policy: anyone must be able to read it before signing
     // up or sharing a detail (local player pool slice L0).
     pathname === PRIVACY_PATH ||
+    // The website's page for players (2026-10-25), linked from the menu.
+    pathname === PLAYERS_PAGE_PATH ||
+    // The pricing page (2026-10-25), linked from the menu.
+    pathname === "/pricing" ||
     // The local player pool's sign-up (slice L2): a visitor with no club
     // and no session fills it in, and the form posts to /api/play/. The
     // manage page (/play/manage) is NOT public: it needs his session.
