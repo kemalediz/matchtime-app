@@ -91,16 +91,61 @@ scenarios("saying yes to a pool offer", () => {
     const [ctxA, ctxB] = await Promise.all([browser.newContext(), browser.newContext()]);
     const [pa, pb] = await Promise.all([ctxA.newPage(), ctxB.newPage()]);
 
-    const states = await Promise.all([
-      tapOffer(pool, pa, tapLinkIn(ex.sent.find((m) => m.to === "ali")!), "yes"),
-      tapOffer(pool, pb, tapLinkIn(ex.sent.find((m) => m.to === "ben")!), "yes"),
-    ]);
+    // Both pages are open before either yes is pressed, so neither waits on
+    // a button the other's yes has already taken away. Which yes reaches the
+    // server first, and whether the other lands inside the per-match lock
+    // ("filled") or after the full round closed his offer ("expired"), is
+    // the scheduler's choice under load; the next scenario forces the
+    // second order. Either way he is told the place has gone.
+    expect(await Promise.all([proveOffer(pool, pa, tapLinkIn(ex.sent.find((m) => m.to === "ali")!)), proveOffer(pool, pb, tapLinkIn(ex.sent.find((m) => m.to === "ben")!))])).toEqual(["open", "open"]);
+    const states = await Promise.all(
+      [pa, pb].map(async (p) => {
+        const root = p.getByTestId("pool-offer-page");
+        await p.getByTestId("pool-offer-yes").click();
+        await expect(root).not.toHaveAttribute("data-state", "open", { timeout: 20_000 });
+        return (await root.getAttribute("data-state")) ?? "";
+      }),
+    );
     await Promise.all([ctxA.close(), ctxB.close()]);
 
     expect(states.sort()).toEqual(["gone", "in"]);
-    const outcomes = [(await offersOf(pool, ali))[0].outcome, (await offersOf(pool, ben))[0].outcome].sort();
-    expect(outcomes).toEqual(["accepted", "filled"]);
+    const outcomes = [(await offersOf(pool, ali))[0].outcome, (await offersOf(pool, ben))[0].outcome];
+    expect(outcomes.filter((x) => x === "accepted")).toHaveLength(1);
+    expect(["filled", "expired"]).toContain(outcomes.find((x) => x !== "accepted"));
     expect(await pool.db.count(`SELECT count(*) FROM "Attendance" WHERE "matchId" = $1 AND "userId" IN ($2, $3)`, [fnf.group.matchId, ali.userId, ben.userId])).toBe(1);
+    const sent = await pool.collect();
+    expect(sent.filter((m) => m.to === "fnf.hq")).toHaveLength(1);
+    expect(sent.filter((m) => m.purpose === "pool-placed")).toHaveLength(1);
+  });
+
+  // The interleaving a loaded run produced (24 and 25 Oct): both pages open,
+  // Ali's yes finishes (his place, the round closed, Ben's offer ended with
+  // it), and only then does Ben's yes reach the server. Forced here, in
+  // that order, so it is the same every run.
+  scenario("yes a moment after the last place was taken: he is told it has gone, not that his offer ended", async ({ pool, page, browser }) => {
+    const fnf = await openClub(pool, "fnf", { name: "FNF", hq: true });
+    const ali = await poolPlayer(pool, "ali", { at: near(fnf) });
+    const ben = await poolPlayer(pool, "ben", { at: near(fnf) });
+    const ex = await organiserAsks(pool, page, fnf, { places: 1, now: at(fnf.kickoff, -8) });
+    await pollPlatform(pool, { now: at(fnf.kickoff, -8) });
+    const ctxB = await browser.newContext();
+    const pb = await ctxB.newPage();
+    const benLink = tapLinkIn(ex.sent.find((m) => m.to === "ben")!);
+
+    expect(await proveOffer(pool, pb, benLink)).toBe("open");
+    expect(await tapOffer(pool, page, tapLinkIn(ex.sent.find((m) => m.to === "ali")!), "yes")).toBe("in");
+    expect(await askOf(pool, fnf)).toMatchObject({ status: "filled" });
+
+    await pb.getByTestId("pool-offer-yes").click();
+    const root = pb.getByTestId("pool-offer-page");
+    await expect(root).not.toHaveAttribute("data-state", "open", { timeout: 20_000 });
+    expect(await root.getAttribute("data-state")).toBe("gone");
+    await expect(pb.getByTestId("pool-offer-state")).toContainText("this place has gone");
+    await ctxB.close();
+
+    expect((await offersOf(pool, ben))[0].outcome).toBe("expired");
+    expect((await offersOf(pool, ali))[0].outcome).toBe("accepted");
+    expect(await pool.db.count(`SELECT count(*) FROM "Attendance" WHERE "matchId" = $1 AND "userId" = $2`, [fnf.group.matchId, ben.userId])).toBe(0);
     const sent = await pool.collect();
     expect(sent.filter((m) => m.to === "fnf.hq")).toHaveLength(1);
     expect(sent.filter((m) => m.purpose === "pool-placed")).toHaveLength(1);

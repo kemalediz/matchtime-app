@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { offerPageState, organiserRecordOf } from "../accept-rules";
 
-const base = { outcome: null, refusal: null, guestResult: null, attendanceStatus: null, matchLive: true };
+const base = { outcome: null, refusal: null, guestResult: null, attendanceStatus: null, matchLive: true, askStatus: "open" };
 
 describe("offerPageState", () => {
   const table: Array<[string, Partial<Parameters<typeof offerPageState>[0]>, string]> = [
@@ -20,7 +20,9 @@ describe("offerPageState", () => {
     ["accepted, then dropped by the organisers", { outcome: "accepted", attendanceStatus: "DROPPED" }, "withdrawn"],
     ["declined", { outcome: "declined" }, "declined"],
     ["lost the race", { outcome: "filled" }, "gone"],
-    ["the round closed", { outcome: "expired" }, "expired"],
+    ["the round closed (cut-off, switched off, game off)", { outcome: "expired", askStatus: "closed" }, "expired"],
+    ["the organiser called the round off", { outcome: "expired", askStatus: "cancelled" }, "expired"],
+    ["someone else took the last place and the round closed full: gone, not ended", { outcome: "expired", askStatus: "filled" }, "gone"],
     ["ignored", { outcome: "ignored" }, "expired"],
     ["cancelled", { outcome: "cancelled" }, "expired"],
   ];

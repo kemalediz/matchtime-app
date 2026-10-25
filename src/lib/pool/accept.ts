@@ -101,6 +101,7 @@ async function stateOf(o: LoadedOffer, profileActive: boolean, now: Date, env?: 
     guestResult: place?.result ?? null,
     attendanceStatus: row?.status ?? null,
     matchLive: matchLiveOf(o.ask.match),
+    askStatus: o.ask.status,
   });
   // Open, but he is this club's live guest for ANOTHER game: one guest
   // place per club at a time (review of #400, minor 6).
