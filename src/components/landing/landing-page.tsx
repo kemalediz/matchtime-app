@@ -10,6 +10,7 @@ import {
   LANDING_SPOTLIGHTS,
   PERSONAS,
   PLAYER_STAT_CARDS,
+  HERO,
   SPORTS,
   spotlightFor,
   type Step,
@@ -63,7 +64,7 @@ export function LandingPage({ holdOn = false, earlyList = true }: { holdOn?: boo
     {
       key: "sign-up",
       title: "Sign up and create your club",
-      body: "Sign up and set your weekly match: sport and format, day, kickoff time, venue and squad size.",
+      body: "Sign up and set your weekly match: the format, day, kickoff time, venue and squad size.",
     },
     {
       key: "connect",
@@ -111,10 +112,10 @@ export function LandingPage({ holdOn = false, earlyList = true }: { holdOn?: boo
             className="text-4xl sm:text-6xl font-extrabold tracking-tight leading-[1.05] text-white"
             style={DISPLAY_FONT}
           >
-            Run your weekly match
+            {HERO.titleLead}
             <br />
             <span className="bg-gradient-to-r from-blue-400 via-teal-300 to-emerald-400 bg-clip-text text-transparent">
-              on autopilot.
+              {HERO.titleTail}
             </span>
           </h1>
           <p className="mt-4 sm:mt-6 text-[15px] sm:text-lg lg:text-xl text-slate-200 max-w-2xl mx-auto leading-relaxed">
@@ -406,7 +407,7 @@ export function LandingPage({ holdOn = false, earlyList = true }: { holdOn?: boo
             applicationCategory: "SportsApplication",
             operatingSystem: "Web, WhatsApp",
             description:
-              "MatchTime lives in your WhatsApp group and runs your weekly game: attendance, the bench, chasing, partner clubs nearby to fill a missing place, an admin group for organisers, balanced teams, ratings, Man of the Match and optional card or bank payments.",
+              "MatchTime lives in your WhatsApp group and runs your weekly football: attendance, the bench, chasing, partner clubs nearby to fill a missing place, an admin group for organisers, balanced teams, ratings, Man of the Match and optional card or bank payments.",
             url: "https://matchtime.ai",
             publisher: {
               "@type": "Organization",

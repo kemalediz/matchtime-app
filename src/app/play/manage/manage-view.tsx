@@ -24,6 +24,7 @@ import type { PoolManageView } from "@/lib/pool/manage";
 import type { ManageAction } from "@/lib/pool/manage-rules";
 import { fieldErrorKeys, poolPageCopy } from "@/lib/pool/page-copy";
 import { validatePoolFields, type PoolFieldErrors } from "@/lib/pool/profile-fields";
+import { sportChoiceKey } from "@/lib/pool/sports";
 import { POOL_INVITATIONS_PATH, POOL_PLAY_PATH } from "@/lib/pool/paths";
 
 const BTN = "inline-flex items-center justify-center rounded-xl px-5 py-2.5 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-60";
@@ -81,7 +82,7 @@ export function ManageView({ view }: { view: PoolManageView | null }) {
       setNotice(null);
       setFailure(null);
       const payload = toPoolPayload(form);
-      const local = validatePoolFields(payload);
+      const local = validatePoolFields(payload, { keep: view.fields.sports.map(sportChoiceKey) });
       if (!local.ok) {
         setErrors(local.errors);
         return;

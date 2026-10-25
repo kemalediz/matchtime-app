@@ -54,7 +54,7 @@ scenarios("signing up on /play and confirming on WhatsApp", () => {
   scenario("happy path, Turkish, pool open: the welcome is in Turkish and not the early list", async ({ pool }) => {
     const mehmet = await pool.stranger("mehmet", { name: "Mehmet" });
 
-    const form = await pool.signUp({ name: "Mehmet Yılmaz", language: "tr", sports: [{ sport: "football", formats: [5, 7], level: "advanced" }, { sport: "padel" }] }, { poolOpen: true });
+    const form = await pool.signUp({ name: "Mehmet Yılmaz", language: "tr", sports: [{ sport: "football", formats: [5, 7], level: "advanced" }] }, { poolOpen: true });
     expect(form).toMatchObject({ ok: true, earlyList: false });
     expect(form.prefill).toBe(`Merhaba MatchTime, oynamak için kaydet. Kod ${form.code}`);
 
@@ -66,10 +66,18 @@ scenarios("signing up on /play and confirming on WhatsApp", () => {
       `SELECT s.sport, s.level, s.formats FROM "PoolSport" s JOIN "PoolProfile" p ON p.id = s."profileId" JOIN "User" u ON u.id = p."userId" WHERE u."phoneNumber" = $1 ORDER BY s.sport`,
       [mehmet.phone],
     );
-    expect(sports).toEqual([
-      { sport: "football", level: "advanced", formats: [5, 7] },
-      { sport: "padel", level: null, formats: [] },
-    ]);
+    expect(sports).toEqual([{ sport: "football", level: "advanced", formats: [5, 7] }]);
+  });
+
+  scenario("a sport that is not offered (football only, LIVE_SPORTS) is refused, and nothing is written or sent", async ({ pool }) => {
+    const before = (await pool.poolRowCounts()).PoolProfile;
+    for (const sports of [[{ sport: "basketball", formats: [5] }], [{ sport: "football", formats: [7] }, { sport: "padel" }], [{ sport: "other", otherName: "Frisbee" }]]) {
+      const form = await pool.signUp({ sports });
+      expect(form).toMatchObject({ status: 400, ok: false, reason: "invalid", errors: { sports: "bad-sport" } });
+      expect(form.code).toBeUndefined();
+      pool.expectSent(form.sent, []);
+    }
+    expect((await pool.poolRowCounts()).PoolProfile).toBe(before);
   });
 
   scenario("the form refuses without the 18+ and consent ticks, and writes nothing", async ({ pool }) => {

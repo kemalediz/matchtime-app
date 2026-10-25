@@ -14,12 +14,16 @@ import {
   removeVenue,
   setRange,
   setSport,
+  shownSports,
   toPoolPayload,
   toggleDay,
   toggleFormat,
 } from "../form-state";
 import { validatePoolFields } from "../profile-fields";
 import { DEFAULT_POOL_TRAVEL_MILES } from "../rules";
+import { POOL_SPORT_KEYS, type LiveSports } from "../sports";
+
+const ALL: { live: LiveSports } = { live: { sports: POOL_SPORT_KEYS, other: true } };
 
 describe("defaults", () => {
   it("football ticked, 3 miles, district, nothing else, consent never pre-ticked (it is not in the state)", () => {
@@ -83,7 +87,7 @@ describe("the payload is what the validator reads", () => {
     v = { ...v, other: { on: true, name: "Ultimate frisbee", formats: [], level: "", levelText: "" } };
     const payload = toPoolPayload(v);
     expect(payload.availability).toEqual([{ day: 2, from: "18:00", to: "22:00" }]);
-    const r = validatePoolFields(payload);
+    const r = validatePoolFields(payload, ALL);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.value.sports.map((s) => [s.sport, s.level, s.levelText])).toEqual([
@@ -122,6 +126,32 @@ describe("the payload is what the validator reads", () => {
     const payload = toPoolPayload(v);
     expect(payload.area).toEqual({ kind: "venues", venueIds: ["v1"] });
     expect(payload.availability).toHaveLength(2);
-    expect(validatePoolFields(payload).ok).toBe(true);
+    expect(validatePoolFields(payload, ALL).ok).toBe(true);
+    // Neither is live today: the manage page keeps them because they are saved.
+    expect(validatePoolFields(payload).ok).toBe(false);
+    expect(validatePoolFields(payload, { keep: ["basketball:", "other:kabaddi"] }).ok).toBe(true);
+  });
+});
+
+describe("shownSports: the rows the form shows", () => {
+  it("a new form: the live sports only, and one live sport is shown without a tick box", () => {
+    expect(shownSports(defaultPoolForm("en"))).toEqual({ sports: ["football"], other: false, single: true });
+  });
+
+  it("a live switch with more sports shows each with its tick box, and Other when it is on", () => {
+    const live: LiveSports = { sports: ["football", "basketball"], other: true };
+    expect(shownSports(defaultPoolForm("en"), live)).toEqual({ sports: ["football", "basketball"], other: true, single: false });
+  });
+
+  it("a saved sport that is no longer live is still shown, so he sees it and can untick it", () => {
+    const v = setSport(defaultPoolForm("en"), "padel", { on: true });
+    expect(shownSports(v)).toEqual({ sports: ["football", "padel"], other: false, single: false });
+    const w = { ...defaultPoolForm("en"), other: { on: true, name: "Kabaddi", formats: [], level: "" as const, levelText: "" } };
+    expect(shownSports(w)).toEqual({ sports: ["football"], other: true, single: false });
+  });
+
+  it("one live sport shown alone is always sent, even if its state was off", () => {
+    const v = setSport(defaultPoolForm("en"), "football", { on: false, formats: [7] });
+    expect(toPoolPayload(v).sports).toEqual([{ sport: "football", formats: [7], level: null, levelText: null }]);
   });
 });

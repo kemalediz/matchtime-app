@@ -60,7 +60,9 @@ for (const [name, size] of [["phone", MOBILE], ["desktop", DESKTOP]] as const) {
     await expect(c.getByRole("checkbox", { name: "Tuesday", exact: true })).toBeChecked();
     await expect(c.getByLabel(EN.fields.fromLabel("Tuesday"))).toHaveValue("20:00");
     await expect(c.getByLabel(EN.fields.toLabel("Tuesday"))).toHaveValue("21:00");
-    await expect(c.getByRole("checkbox", { name: "Football", exact: true })).toBeChecked();
+    // Football is the only sport offered (LIVE_SPORTS): shown, nothing to tick.
+    await expect(c.getByTestId("pool-sports").getByText("Football", { exact: true })).toBeVisible();
+    await expect(c.getByRole("checkbox", { name: "Football", exact: true })).toHaveCount(0);
     await expect(c.getByRole("checkbox", { name: "5-a-side" })).toBeChecked();
     await expect(c.getByRole("radio", { name: "3 miles" })).toBeChecked();
     // Consent and 18+ start unticked; the policy is one tap away.

@@ -11,7 +11,7 @@
  * say it next to the field.
  */
 import { normaliseLang, type Lang } from "../i18n/lang";
-import { normaliseSportChoice, type PoolSportChoice, type SportChoiceError } from "./sports";
+import { LIVE_SPORTS, isLiveSport, normaliseSportChoice, sportChoiceKey, type LiveSports, type PoolSportChoice, type SportChoiceError } from "./sports";
 import {
   POOL_SIGNUP,
   POOL_TRAVEL_MILES,
@@ -44,6 +44,17 @@ export type PoolFieldErrors = Partial<{
   adult: "required";
   consent: "required";
 }>;
+
+/**
+ * `live`: which sports are offered (`LIVE_SPORTS`; tests pass others).
+ * `keep`: the `sportChoiceKey`s already on his profile. A sport that is no
+ * longer live stays saveable on the manage page, so editing his hours never
+ * fails on a sport he picked when it was offered; a new one is refused.
+ */
+export interface PoolFieldsOptions {
+  live?: LiveSports;
+  keep?: readonly string[];
+}
 
 export type PoolFieldsResult = { ok: true; value: PoolFields } | { ok: false; errors: PoolFieldErrors };
 
@@ -78,7 +89,7 @@ function readArea(raw: unknown): { ok: true; district: string | null; venueIds: 
   return { ok: false, error: "required" };
 }
 
-function readSports(raw: unknown): { ok: true; value: PoolSportChoice[] } | { ok: false; error: NonNullable<PoolFieldErrors["sports"]> } {
+function readSports(raw: unknown, opts: PoolFieldsOptions): { ok: true; value: PoolSportChoice[] } | { ok: false; error: NonNullable<PoolFieldErrors["sports"]> } {
   if (!Array.isArray(raw) || raw.length === 0) return { ok: false, error: "none" };
   if (raw.length > POOL_SIGNUP.maxSports) return { ok: false, error: "too-many" };
   const out: PoolSportChoice[] = [];
@@ -86,7 +97,8 @@ function readSports(raw: unknown): { ok: true; value: PoolSportChoice[] } | { ok
   for (const item of raw) {
     const r = normaliseSportChoice((item ?? {}) as Parameters<typeof normaliseSportChoice>[0]);
     if (!r.ok) return { ok: false, error: r.error };
-    const key = `${r.value.sport}:${r.value.otherName.toLowerCase()}`;
+    const key = sportChoiceKey(r.value);
+    if (!isLiveSport(r.value.sport, opts.live ?? LIVE_SPORTS) && !(opts.keep ?? []).includes(key)) return { ok: false, error: "bad-sport" };
     if (seen.has(key)) return { ok: false, error: "duplicate" };
     seen.add(key);
     out.push(r.value);
@@ -95,7 +107,7 @@ function readSports(raw: unknown): { ok: true; value: PoolSportChoice[] } | { ok
 }
 
 /** The fields both pages edit. Every wrong field is named at once. */
-export function validatePoolFields(raw: unknown): PoolFieldsResult {
+export function validatePoolFields(raw: unknown, opts: PoolFieldsOptions = {}): PoolFieldsResult {
   const r = (raw ?? {}) as Record<string, unknown>;
   const errors: PoolFieldErrors = {};
 
@@ -116,7 +128,7 @@ export function validatePoolFields(raw: unknown): PoolFieldsResult {
     else errors.availability = a.error;
   }
 
-  const sports = readSports(r.sports);
+  const sports = readSports(r.sports, opts);
   if (!sports.ok) errors.sports = sports.error;
 
   if (Object.keys(errors).length > 0 || !displayName || !area.ok || maxMiles === null || !sports.ok) return { ok: false, errors };
@@ -136,9 +148,9 @@ export function validatePoolFields(raw: unknown): PoolFieldsResult {
 
 /** Sign-up: the fields, and "I am 18 or over" and the consent, both ticked
  *  (a real `true`; unticked by default on the form). */
-export function validatePoolSignup(raw: unknown): PoolFieldsResult {
+export function validatePoolSignup(raw: unknown, opts: PoolFieldsOptions = {}): PoolFieldsResult {
   const r = (raw ?? {}) as Record<string, unknown>;
-  const fields = validatePoolFields(raw);
+  const fields = validatePoolFields(raw, opts);
   const ticks: PoolFieldErrors = {};
   if (r.adult !== true) ticks.adult = "required";
   if (r.consent !== true) ticks.consent = "required";

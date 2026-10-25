@@ -34,6 +34,7 @@ export function buildPoolPlayEn(f: PoolPlayFacts): PoolPlayCopy {
       removeRange: (day) => `Remove this time on ${day}`,
       sportsLegend: "What do you play?",
       sportsHint: "Pick every sport you would like a game of. Formats and level are optional.",
+      sportsHintOne: "Tick the formats you play. Formats and level are optional.",
       formatsLegend: (sport) => `${sport}: which formats?`,
       levelLabel: (sport) => `${sport}: your level`,
       levelNone: "Not saying",

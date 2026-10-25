@@ -40,6 +40,52 @@ import { PARTNER_ASK_CUTOFF_DEFAULT_HOURS } from "@/lib/club-partnership-rules";
 import { MAX_RADIUS_MILES } from "@/lib/club-discovery-rules";
 import { PLAYERS_PAGE_PATH, POOL_PLAY_PATH } from "@/lib/pool/paths";
 import { POOL_CAPS, POOL_MIN_AGE, POOL_QUIET_HOURS } from "@/lib/pool/rules";
+import { LIVE_SPORTS, liveSports } from "@/lib/pool/sports";
+
+// ── The sport the site is about (Kemal, 2026-10-25: football only, for now) ──
+//
+// The chips and the pool card are derived from `LIVE_SPORTS`
+// (src/lib/pool/sports.ts). The lines below say "football" in plain words;
+// when another sport is switched on there, reword them here (and only here:
+// src/app/layout.tsx and the hero read them).
+
+/** "A, B or C". */
+function joinWords(words: readonly string[], last: "and" | "or"): string {
+  return words.length <= 1 ? (words[0] ?? "") : `${words.slice(0, -1).join(", ")} ${last} ${words[words.length - 1]}`;
+}
+
+/** "Football 5, 7, 8, 9 or 11-a-side.": each live sport with its formats. */
+function liveSportsLine(): string {
+  const sports = liveSports().map((s) => (s.formats.length ? `${s.label.en} ${joinWords(s.formats.map(String), "or")}-a-side` : s.label.en));
+  const other = LIVE_SPORTS.other ? ", and any other sport you play by booking a venue with mates" : "";
+  return `${joinWords(sports, "and")}${other}. Pick the formats you play, and your level if you like.`;
+}
+
+/** Search and link-preview text (src/app/layout.tsx). */
+export const SITE_META = {
+  title: "MatchTime: run your weekly football on autopilot",
+  description:
+    "MatchTime lives in your WhatsApp group and runs your weekly football: it tracks who's in, runs the bench, chases when you're short, balances teams on request, and collects ratings and Man of the Match votes.",
+  ogDescription: "WhatsApp organiser for weekly 5, 7 and 11-a-side football: who's in, the bench, balanced teams, ratings and Man of the Match.",
+  keywords: [
+    "football team management",
+    "5-a-side attendance",
+    "7-a-side football organiser",
+    "11-a-side team management",
+    "whatsapp football bot",
+    "football team balancer",
+    "match attendance tracker",
+    "pickup football",
+    "man of the match voting",
+    "whatsapp football organiser",
+  ],
+};
+
+/** The home page's headline. */
+export const HERO = {
+  titleLead: "Run your weekly football",
+  titleTail: "on autopilot.",
+};
 import { poolPageCopy } from "@/lib/pool/page-copy";
 
 // ─── Types ─────────────────────────────────────────────────────────────
@@ -539,7 +585,7 @@ const PLAYER_POOL: Spotlight = {
   tone: "light",
   eyebrow: "For players",
   title: "Looking for a game? Join the MatchTime player pool.",
-  lead: "Tell MatchTime where and when you can play, and which sports. When a club near you is a player short at a time you can play, MatchTime can message you on WhatsApp with the game, and you decide.",
+  lead: "Tell MatchTime where and when you can play, and the formats you like. When a club near you is a player short at a time you can play, MatchTime can message you on WhatsApp with the game, and you decide.",
   // Followed by /play's own early or open note (`spotlightFor`).
   poolOpeningLine: true,
   cta: { label: "Join the MatchTime player pool", href: POOL_PLAY_PATH, pulse: true },
@@ -549,7 +595,7 @@ const PLAYER_POOL: Spotlight = {
       // pool/profile-fields.ts: name, area, travel, days and hours, sports, level.
       key: "signup",
       title: "Fill in one page",
-      body: "Your first name, your postcode area or the pitches you like, how far you'll travel, the days and hours you can play, and your sports. Level is optional.",
+      body: "Your first name, your postcode area or the pitches you like, how far you'll travel, the days and hours you can play, and the formats you play. Level is optional.",
     },
     {
       // pool/confirm.ts: the person's own message carrying the code.
@@ -566,12 +612,12 @@ const PLAYER_POOL: Spotlight = {
   ],
   points: [
     {
-      // pool/sports.ts POOL_SPORTS.
+      // pool/sports.ts LIVE_SPORTS: the live sports and their formats.
       key: "sports",
       icon: "gamepad",
       color: "teal",
-      title: "Football and more",
-      body: "Football, basketball, tennis, padel, badminton, squash, table tennis, snooker, pool and any sport you play by booking a venue with mates.",
+      title: `${joinWords(liveSports().map((s) => s.label.en), "and")}, any format`,
+      body: liveSportsLine(),
     },
     {
       // pool/manage.ts and pool/links.ts: the signed link in the reply.
@@ -679,18 +725,9 @@ export const PERSONAS: Array<{ role: string; bullets: string[] }> = [
   },
 ];
 
-export const SPORTS: string[] = [
-  "Football 7-a-side",
-  "Football 5-a-side",
-  "Football 11-a-side",
-  "Futsal",
-  "Basketball 5v5",
-  "Basketball 3v3",
-  "Netball",
-  "Volleyball",
-  "Cricket",
-  "Custom sport",
-];
+/** The home page's sports chips: each live sport's formats, from the
+ *  catalogue (pool/sports.ts `LIVE_SPORTS`), never a typed list. */
+export const SPORTS: string[] = liveSports().flatMap((s) => (s.formats.length ? s.formats.map((n) => `${s.label.en} ${n}-a-side`) : [s.label.en]));
 
 // ─── The hero's invitation to players (Kemal, 2026-10-25) ──────────────
 

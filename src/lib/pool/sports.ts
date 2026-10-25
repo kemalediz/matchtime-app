@@ -48,6 +48,60 @@ export type PoolSportKey = (typeof POOL_SPORTS)[number]["key"];
 
 export const POOL_SPORT_KEYS: readonly PoolSportKey[] = POOL_SPORTS.map((s) => s.key);
 
+// ── WHICH SPORTS ARE LIVE: THE ONE SWITCH (Kemal, 2026-10-25) ──────────
+//
+// "Let's focus on football for now ... we can extend to other sports but
+// keep it easily extendable." The catalogue above stays whole; this says
+// which of it is offered. The website copy (landing-content.ts), the /play
+// form and the member opt-in (form-state.ts `shownSports`), the server
+// validation (profile-fields.ts) and the public-copy guard
+// (src/app/__tests__/public-copy.test.ts) all read it.
+//
+// To switch a sport on, add its key to `sports` (and `other: true` brings
+// back the typed-in "Other"). Then reword any website line that says the
+// sport in plain words (landing-content.ts `SITE_META`, `HERO`). The chips,
+// the pool card, the form and the validation follow by themselves.
+
+export interface LiveSports {
+  readonly sports: readonly PoolSportKey[];
+  /** Whether the typed-in "Other" sport is offered. */
+  readonly other: boolean;
+}
+
+export const LIVE_SPORTS: LiveSports = { sports: ["football"], other: false };
+
+/** Offered right now: a live catalogue sport, or "other" when it is on. */
+export function isLiveSport(key: string, live: LiveSports = LIVE_SPORTS): boolean {
+  if (key === OTHER_SPORT) return live.other;
+  return isPoolSportKey(key) && live.sports.includes(key);
+}
+
+/** The live catalogue entries, in catalogue order. */
+export function liveSports(live: LiveSports = LIVE_SPORTS): readonly PoolSportDef[] {
+  return (POOL_SPORTS as readonly PoolSportDef[]).filter((s) => isLiveSport(s.key, live));
+}
+
+/** Words that are only ever the name of a sport the pool does not offer. */
+const NOT_A_SPORT_NAME = new Set(["pool"]); // also the player pool itself
+
+/**
+ * Every catalogue sport that is not live, by its name in every language,
+ * lower case: what the public pages must not name. "Pool" is left out,
+ * as it is also the word for the player pool.
+ */
+export function notLiveSportNames(live: LiveSports = LIVE_SPORTS): string[] {
+  const names = (POOL_SPORTS as readonly PoolSportDef[])
+    .filter((s) => !isLiveSport(s.key, live))
+    .flatMap((s) => Object.values(s.label).map((l) => l.toLowerCase()))
+    .filter((n) => !NOT_A_SPORT_NAME.has(n));
+  return [...new Set(names)];
+}
+
+/** One key per sport on a profile ("other" by its name, case-blind). */
+export function sportChoiceKey(c: { sport: string; otherName: string }): string {
+  return `${c.sport}:${c.otherName.trim().toLowerCase()}`;
+}
+
 /** Ticked by default on the form. */
 export const DEFAULT_POOL_SPORT: PoolSportKey = "football";
 

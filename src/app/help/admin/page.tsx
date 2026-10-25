@@ -108,7 +108,7 @@ export default async function AdminGuidePage() {
         &quot;Tuesday 7-a-side&quot;. For each one you set:
       </p>
       <ul>
-        <li>The sport and format (football 5, 7 or 11-a-side, futsal, basketball and more), which sets the squad size</li>
+        <li>The format (5, 7, 8, 9 or 11-a-side, or futsal), which sets the squad size</li>
         <li>Day, kickoff time and venue</li>
         <li>How many hours before kickoff sign-ups close, and how long the match lasts</li>
       </ul>
@@ -385,7 +385,7 @@ export default async function AdminGuidePage() {
           them from the dashboard.
         </li>
         <li>
-          About 2 hours before kickoff (football), a reminder to bring goalie
+          About 2 hours before kickoff, a reminder to bring goalie
           gloves, a ball and spare bibs.
         </li>
       </ul>
