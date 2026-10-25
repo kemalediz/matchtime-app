@@ -1,3 +1,4 @@
+import { footballFormatsWords } from "@/components/landing/landing-content";
 import { firstMonthsFree } from "@/lib/i18n/free-period";
 import { setupHoldEnabledForRequest } from "@/lib/setup-hold-flag";
 import { CONNECT_HOW_LONG, holdHowItWorksSentence } from "@/lib/setup-hold-public-copy";
@@ -108,7 +109,7 @@ export default async function AdminGuidePage() {
         &quot;Tuesday 7-a-side&quot;. For each one you set:
       </p>
       <ul>
-        <li>The format (5, 7, 8, 9 or 11-a-side, or futsal), which sets the squad size</li>
+        <li>The format ({footballFormatsWords()}, or futsal), which sets the squad size</li>
         <li>Day, kickoff time and venue</li>
         <li>How many hours before kickoff sign-ups close, and how long the match lasts</li>
       </ul>
