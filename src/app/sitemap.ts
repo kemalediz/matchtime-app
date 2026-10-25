@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
 import { PRIVACY_PATH } from "@/lib/privacy-policy";
-import { POOL_PLAY_PATH } from "@/lib/pool/paths";
+import { PLAYERS_PAGE_PATH, POOL_PLAY_PATH } from "@/lib/pool/paths";
 
 const BASE =
   process.env.NEXTAUTH_URL?.replace(/\/$/, "") ?? "https://matchtime.ai";
@@ -32,6 +32,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
       url: `${BASE}/help/admin`,
       changeFrequency: "monthly",
       priority: 0.7,
+    },
+    {
+      // The website's page for players (2026-10-25).
+      url: `${BASE}${PLAYERS_PAGE_PATH}`,
+      changeFrequency: "monthly",
+      priority: 0.8,
     },
     {
       // The player pool's sign-up (slice L2), linked from the landing page.

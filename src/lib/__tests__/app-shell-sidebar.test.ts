@@ -19,6 +19,11 @@ describe("shouldShowSidebar", () => {
     expect(shouldShowSidebar("/privacy", "authenticated")).toBe(true);
   });
 
+  it("shows the players' page (/players) full-bleed for visitors, like the home page", () => {
+    expect(shouldShowSidebar("/players", "unauthenticated")).toBe(false);
+    expect(shouldShowSidebar("/players/x", "unauthenticated")).toBe(true);
+  });
+
   it("shows the player pool's pages full-bleed, signed in or not (slice L2)", () => {
     for (const status of ["authenticated", "unauthenticated", "loading"] as const) {
       expect(shouldShowSidebar("/play", status)).toBe(false);

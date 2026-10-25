@@ -7,9 +7,10 @@
  * Text is rendered as text (no `dangerouslySetInnerHTML`): the content is
  * plain words.
  */
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 import Link from "next/link";
 import {
+  ArrowRight,
   BarChart3,
   Bell,
   Building2,
@@ -48,11 +49,12 @@ import {
   Zap,
   type LucideIcon,
 } from "lucide-react";
-import type { Card, ChatLine, ColorKey, IconKey, Spotlight, Step } from "./landing-content";
+import { t } from "@/lib/i18n/t";
+import { DISPLAY_FONT } from "./display-font";
+import { PRIVACY_PATH } from "@/lib/privacy-policy";
+import type { Card, ChatLine, ColorKey, Cta, IconKey, Spotlight, Step } from "./landing-content";
 
-export const DISPLAY_FONT: CSSProperties = {
-  fontFamily: "var(--font-display), system-ui, sans-serif",
-};
+export { DISPLAY_FONT };
 
 const ICONS: Record<IconKey, LucideIcon> = {
   message: MessageCircle,
@@ -260,7 +262,7 @@ export function ChatMock({ caption, lines }: { caption: string; lines: ChatLine[
 }
 
 /** A boxed list of short promises (the partner clubs' privacy). */
-function NoteBox({ title, items, tone }: { title: string; items: Array<{ key: string; text: string }>; tone: Tone }) {
+export function NoteBox({ title, items, tone }: { title: string; items: Array<{ key: string; text: string }>; tone: Tone }) {
   const dark = tone === "dark";
   return (
     <div
@@ -353,18 +355,38 @@ export function SpotlightSection({ s }: { s: Spotlight }) {
   );
 }
 
-/** A spotlight's button. `pulse` adds the soft ring (globals.css), which
- *  stops for anyone who prefers reduced motion. */
+/**
+ * The players' invitation button: the one place the pulse class is put on
+ * a button. `pulse` adds the soft ring (globals.css `.pool-invite-pulse`),
+ * which stops for anyone who prefers reduced motion.
+ */
+export function PoolInviteButton({
+  cta,
+  testId,
+  size = "md",
+}: {
+  cta: Cta;
+  testId?: string;
+  size?: "md" | "lg";
+}) {
+  const pad = size === "lg" ? "px-6 sm:px-8 py-4 text-base sm:text-lg" : "px-4 sm:px-7 py-3 sm:py-3.5 text-[15px] sm:text-base";
+  return (
+    <Link
+      href={cta.href}
+      data-testid={testId}
+      className={`inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-500 font-bold text-slate-950 shadow-lg shadow-emerald-500/30 transition-colors hover:bg-emerald-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 ${pad} ${cta.pulse ? "pool-invite-pulse" : ""}`}
+    >
+      {cta.label}
+      <ArrowRight className="w-4 h-4" aria-hidden="true" />
+    </Link>
+  );
+}
+
+/** A spotlight's button. */
 export function SpotlightCta({ cta }: { cta: NonNullable<Spotlight["cta"]> }) {
   return (
     <div className="mt-8 text-center">
-      <Link
-        href={cta.href}
-        data-testid="spotlight-cta"
-        className={`inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-7 py-3.5 text-base font-semibold text-white shadow-lg hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 ${cta.pulse ? "pool-invite-pulse" : ""}`}
-      >
-        {cta.label}
-      </Link>
+      <PoolInviteButton cta={cta} testId="spotlight-cta" />
     </div>
   );
 }
@@ -386,5 +408,46 @@ export function PersonaCard({ role, bullets }: { role: string; bullets: string[]
         ))}
       </ul>
     </div>
+  );
+}
+
+/** The website's footer, on the home page and /players. */
+export function LandingFooter() {
+  return (
+    <footer className="bg-slate-950 text-slate-400 py-10 px-5 sm:px-8 border-t border-white/5">
+      <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-2">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/matchtime-icon.svg" alt="" className="w-7 h-7 rounded-lg" />
+          <span className="font-bold text-white" style={DISPLAY_FONT}>
+            Match<span className="text-blue-400">Time</span>
+          </span>
+        </div>
+        <div className="flex flex-wrap gap-6 text-sm">
+          <Link href="/login" className="hover:text-white transition-colors">
+            Sign in
+          </Link>
+          <Link href="/signup" className="hover:text-white transition-colors">
+            Sign up
+          </Link>
+          <Link href="/help/player" className="hover:text-white transition-colors">
+            Player guide
+          </Link>
+          <Link href="/help/admin" className="hover:text-white transition-colors">
+            Organiser guide
+          </Link>
+          <Link href={PRIVACY_PATH} className="hover:text-white transition-colors">
+            {t("en").privacy_link}
+          </Link>
+          <a href="mailto:hello@matchtime.ai" className="hover:text-white transition-colors">
+            Contact
+          </a>
+          <a href="https://cressoft.io" target="_blank" rel="noreferrer" className="hover:text-white transition-colors">
+            By Cressoft
+          </a>
+        </div>
+        <p className="text-xs text-slate-500">© {new Date().getFullYear()} MatchTime. All rights reserved.</p>
+      </div>
+    </footer>
   );
 }

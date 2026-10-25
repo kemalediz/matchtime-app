@@ -8,7 +8,7 @@
  */
 import { test, expect } from "../fixtures";
 import type { Page } from "@playwright/test";
-import { LANDING_NAV, LANDING_SPOTLIGHTS } from "@/components/landing/landing-content";
+import { LANDING_SPOTLIGHTS } from "@/components/landing/landing-content";
 
 const MOBILE = { width: 375, height: 740 };
 const DESKTOP = { width: 1280, height: 900 };
@@ -55,16 +55,15 @@ test("the partner clubs section explains an ask step by step and keeps numbers p
   await expect(section.getByText(/Your number is not shared with Riverside FC/)).toBeVisible();
 });
 
-test("desktop nav jumps to the partner clubs and admin group sections", async ({ page }) => {
+test("the desktop For clubs menu jumps to the partner clubs and admin group sections", async ({ page }) => {
   await page.setViewportSize(DESKTOP);
   await page.goto("/");
   const nav = page.getByRole("navigation", { name: "Main" });
-  for (const n of LANDING_NAV.filter((x) => x.href.startsWith("#"))) {
-    await expect(nav.getByRole("link", { name: n.label, exact: true })).toHaveAttribute("href", n.href);
-  }
+  await nav.getByRole("button", { name: "For clubs" }).click();
   await nav.getByRole("link", { name: "Partner clubs", exact: true }).click();
   await expect(page).toHaveURL(/#partner-clubs$/);
   await expect(page.locator("section#partner-clubs").getByRole("heading", { level: 2 })).toBeInViewport();
+  await nav.getByRole("button", { name: "For clubs" }).click();
   await nav.getByRole("link", { name: "Admin group", exact: true }).click();
   await expect(page).toHaveURL(/#admin-group$/);
   await expect(page.locator("section#admin-group").getByRole("heading", { level: 2 })).toBeInViewport();
@@ -93,11 +92,12 @@ test("the whole page reads as plain words: no dashes, no real club names, bench 
 });
 
 test.describe("the player pool invitation (G0 part 2)", () => {
-  test("the hero link and the pool section's pulsing button lead to /play, and the nav has the pool", async ({ page }) => {
+  test("the pool section's pulsing button leads to /play, and the For players menu has the pool", async ({ page }) => {
     await page.setViewportSize(DESKTOP);
     await page.goto("/");
-    await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Player pool", exact: true })).toHaveAttribute("href", "#player-pool");
-    await page.getByRole("link", { name: "Join the MatchTime player pool" }).first().click();
+    const nav = page.getByRole("navigation", { name: "Main" });
+    await nav.getByRole("button", { name: "For players" }).click();
+    await nav.getByRole("link", { name: "Player pool", exact: true }).click();
     await expect(page).toHaveURL(/#player-pool$/);
     const cta = page.locator("section#player-pool").getByTestId("spotlight-cta");
     await expect(cta).toHaveAttribute("href", "/play");

@@ -27,12 +27,18 @@
  * a player on the early sign-up list; the copy says so and claims nothing
  * the pool does not do yet (no offers are sent before slice L5).
  *
+ * THE TWO AUDIENCES (Kemal, 2026-10-25): the menu has a "For clubs" and a
+ * "For players" group (`LANDING_NAV_GROUPS`); the hero carries its own
+ * invitation to players (`HERO_POOL_INVITE`); and `/players` is a page for
+ * players only (`PLAYERS_PAGE`), built from the pool section's own steps,
+ * points and privacy note, so both read one source.
+ *
  * The landing page is English only today (the club's language is not
  * known to a signed-out visitor, and the page has never been translated).
  */
 import { PARTNER_ASK_CUTOFF_DEFAULT_HOURS } from "@/lib/club-partnership-rules";
 import { MAX_RADIUS_MILES } from "@/lib/club-discovery-rules";
-import { POOL_PLAY_PATH } from "@/lib/pool/paths";
+import { PLAYERS_PAGE_PATH, POOL_PLAY_PATH } from "@/lib/pool/paths";
 import { POOL_CAPS, POOL_MIN_AGE, POOL_QUIET_HOURS } from "@/lib/pool/rules";
 
 // ─── Types ─────────────────────────────────────────────────────────────
@@ -103,8 +109,9 @@ export interface ChatLine {
 export interface Spotlight {
   /** The anchor (`#id`) and the section's DOM id. */
   id: string;
-  /** Shown in the top menu when set. */
+  /** Shown in the top menu when set, in the `navGroup` audience's group. */
   navLabel?: string;
+  navGroup?: NavAudience;
   tone: "light" | "dark";
   eyebrow: string;
   title: string;
@@ -119,7 +126,15 @@ export interface Spotlight {
   footnote?: string;
   /** A button under the heading (the player pool's invitation, G0).
    *  `pulse`: the soft pulsing ring (globals.css `.pool-invite-pulse`). */
-  cta?: { label: string; href: string; pulse?: boolean };
+  cta?: Cta;
+}
+
+/** A button. `pulse`: the soft pulsing ring (globals.css `.pool-invite-pulse`),
+ *  kept for the players' invitations only (the test pins the list). */
+export interface Cta {
+  label: string;
+  href: string;
+  pulse?: boolean;
 }
 
 // ─── Top menu ──────────────────────────────────────────────────────────
@@ -128,6 +143,31 @@ export interface NavLink {
   label: string;
   href: string;
 }
+
+export type NavAudience = "clubs" | "players";
+
+/** One audience's menu: its links, then its own button. */
+export interface NavGroup {
+  id: NavAudience;
+  label: string;
+  links: NavLink[];
+  cta: NavLink;
+}
+
+/**
+ * The campaign codes the website's own buttons send to /play (`?src=`,
+ * read by `pool/profile-fields.ts` readSignupSource). A sign-up counts
+ * under the code only while an active `PoolCampaign` with that code
+ * exists (`pool/signup.ts` resolveSource; the owner makes one at
+ * /admin/pool/campaigns); until then it counts as "web", as before.
+ */
+export const POOL_SITE_SOURCES = Object.freeze({
+  hero: "site-hero",
+  nav: "site-nav",
+  players: "site-players",
+});
+
+const poolJoinHref = (code: string) => `${POOL_PLAY_PATH}?src=${code}`;
 
 // ─── The features grid ("Why MatchTime") ───────────────────────────────
 
@@ -224,6 +264,7 @@ export const FEATURES: Card[] = [
 const PARTNER_CLUBS: Spotlight = {
   id: "partner-clubs",
   navLabel: "Partner clubs",
+  navGroup: "clubs",
   tone: "dark",
   eyebrow: "Partner clubs",
   title: "A player short? Ask the club down the road.",
@@ -333,6 +374,7 @@ const PARTNER_CLUBS: Spotlight = {
 const ADMIN_GROUP: Spotlight = {
   id: "admin-group",
   navLabel: "Admin group",
+  navGroup: "clubs",
   tone: "light",
   eyebrow: "For organisers",
   title: "An admin group for running the week.",
@@ -486,6 +528,7 @@ const YOUR_WAY: Spotlight = {
 const PLAYER_POOL: Spotlight = {
   id: "player-pool",
   navLabel: "Player pool",
+  navGroup: "players",
   tone: "light",
   eyebrow: "For players",
   title: "Looking for a game? Join the MatchTime player pool.",
@@ -625,14 +668,136 @@ export const SPORTS: string[] = [
   "Custom sport",
 ];
 
+// ─── The hero's invitation to players (Kemal, 2026-10-25) ──────────────
+
+/**
+ * Its own panel in the hero, under the organisers' buttons, so a player
+ * sees the pool on the first screen. Every claim is the pool's own:
+ * offers when a club near him is short at a time he can play
+ * (pool/matching-rules.ts), on WhatsApp, his yes or no each time
+ * (pool/reply.ts), no app (a web page and WhatsApp), stop any time
+ * (pool/manage.ts, and the general "stop", pool/dm-optout.ts). The small
+ * print is pool/rules.ts POOL_MIN_AGE and POOL_CAPS.perPlayerPerWeek.
+ */
+/** Who can join and how often he can be messaged (pool/rules.ts). */
+const POOL_LIMITS_LINE = `${POOL_MIN_AGE} and over. At most ${POOL_CAPS.perPlayerPerWeek} messages a week.`;
+
+export const HERO_POOL_INVITE = {
+  eyebrow: "For players",
+  title: "Get asked to play when a club near you is a player short.",
+  body: "Tell MatchTime where and when you can play. When a game nearby needs a player, it messages you on WhatsApp and you decide. No app, and you can stop any time.",
+  cta: { label: "Join the MatchTime player pool", href: poolJoinHref(POOL_SITE_SOURCES.hero), pulse: true } satisfies Cta,
+  more: { label: "How it works for players", href: PLAYERS_PAGE_PATH } satisfies NavLink,
+  smallPrint: `${POOL_LIMITS_LINE} Opening town by town.`,
+};
+
+// ─── The players' page (/players) ──────────────────────────────────────
+
+export interface FaqItem {
+  key: string;
+  question: string;
+  answer: string;
+}
+
+/** The questions a player asks before joining. One answer each. */
+export const PLAYERS_FAQ: FaqItem[] = [
+  {
+    // privacy-policy.en.ts (what an offer shows); pool/offer-copy.ts feeLineOf.
+    key: "cost",
+    question: "What does a game cost?",
+    answer: "Each club sets its own match fee. An offer shows you the club, the venue, the day, the time, the format and the cost before you say yes.",
+  },
+  {
+    // pool/reply.ts (a no is an answer); pool/rules.ts POOL_CAPS.ignoredInARowPause.
+    key: "say-no",
+    question: "Do I have to say yes?",
+    answer: `No. You decide each time. If you leave ${POOL_CAPS.ignoredInARowPause} offers in a row unanswered, MatchTime pauses your game messages until you say you want more.`,
+  },
+  {
+    // pool/manage.ts (pause, change, stop, delete); pool/dm-optout.ts (STOP).
+    key: "stop",
+    question: "How do I stop?",
+    answer: "Your own link, sent when you confirm on WhatsApp, lets you pause, change your details, stop game messages or delete everything. You can also send STOP to MatchTime on WhatsApp.",
+  },
+  {
+    // pool/club-invitation.ts (slice L8): both sides say yes after a game.
+    key: "join-club",
+    question: "Can I join a club I played for?",
+    answer: "Yes, if you both want it. After a game, MatchTime asks you and the club, and once you both say yes it sends you the link to the club's WhatsApp group.",
+  },
+  {
+    key: "own-club",
+    question: "I already play with a club on MatchTime.",
+    answer: PLAYER_POOL.footnote!,
+  },
+];
+
+/**
+ * /players: the benefit and the big pulsing button first, then how it
+ * works, the points, what is shared and the questions. The steps, points,
+ * note, footnote and lead ARE the pool section's (same objects), and the
+ * heading is the hero's invitation, so the page cannot drift from either.
+ */
+export const PLAYERS_PAGE = {
+  metaTitle: "Find a game near you",
+  metaDescription:
+    "Join the MatchTime player pool: tell MatchTime where and when you can play, and get asked on WhatsApp when a club near you is a player short.",
+  eyebrow: "MatchTime player pool",
+  title: HERO_POOL_INVITE.title,
+  lead: PLAYER_POOL.lead,
+  cta: { label: "Join the MatchTime player pool", href: poolJoinHref(POOL_SITE_SOURCES.players), pulse: true } satisfies Cta,
+  // The lead already says it is opening town by town.
+  smallPrint: POOL_LIMITS_LINE,
+  stepsTitle: "How it works",
+  steps: PLAYER_POOL.steps!,
+  pointsTitle: "Why players join",
+  points: PLAYER_POOL.points,
+  note: PLAYER_POOL.note!,
+  privacyLink: "Read the privacy policy",
+  faqTitle: "Questions",
+  footnote: PLAYER_POOL.footnote!,
+  closingTitle: "Ready for your next game?",
+  closingCta: { label: "Join the MatchTime player pool", href: poolJoinHref(POOL_SITE_SOURCES.players) } satisfies Cta,
+};
+
 // ─── Top menu ──────────────────────────────────────────────────────────
 
-/** The top menu: the features, every spotlight with a nav label, then the rest. */
-export const LANDING_NAV: NavLink[] = [
-  { label: "Features", href: "#features" },
-  ...LANDING_SPOTLIGHTS.filter((s) => s.navLabel).map((s) => ({ label: s.navLabel!, href: `#${s.id}` })),
-  { label: "Player stats", href: "#player-stats" },
-  { label: "How it works", href: "#how-it-works" },
-  { label: "Pricing", href: "#pricing" },
-  { label: "Player guide", href: "/help/player" },
+/** A spotlight's menu link, in its audience's group. */
+const spotlightLinks = (audience: NavAudience): NavLink[] =>
+  LANDING_SPOTLIGHTS.filter((s) => s.navLabel && s.navGroup === audience).map((s) => ({ label: s.navLabel!, href: `/#${s.id}` }));
+
+/**
+ * The top menu, one group per audience (Kemal, 2026-10-25). Home-page
+ * anchors are written `/#id` so the same menu works from /players; the
+ * home page renders them as `#id`.
+ */
+export const LANDING_NAV_GROUPS: NavGroup[] = [
+  {
+    id: "clubs",
+    label: "For clubs",
+    links: [
+      { label: "Features", href: "/#features" },
+      ...spotlightLinks("clubs"),
+      { label: "How it works", href: "/#how-it-works" },
+      { label: "Pricing", href: "/#pricing" },
+      { label: "Organiser guide", href: "/help/admin" },
+    ],
+    cta: { label: "Start your group", href: "/signup" },
+  },
+  {
+    id: "players",
+    label: "For players",
+    links: [
+      { label: "Find a game near you", href: PLAYERS_PAGE_PATH },
+      ...spotlightLinks("players"),
+      { label: "Player stats", href: "/#player-stats" },
+      { label: "Player guide", href: "/help/player" },
+    ],
+    cta: { label: "Find a game", href: poolJoinHref(POOL_SITE_SOURCES.nav) },
+  },
 ];
+
+/** Every link and button in the menu. */
+export function allNavLinks(): NavLink[] {
+  return LANDING_NAV_GROUPS.flatMap((g) => [...g.links, g.cta]);
+}

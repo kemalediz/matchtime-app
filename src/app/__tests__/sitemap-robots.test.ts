@@ -14,6 +14,10 @@ describe("sitemap", () => {
     expect(paths).not.toContain("/play/manage");
   });
 
+  it("lists the players' page (/players)", () => {
+    expect(sitemap().map((e) => new URL(e.url).pathname)).toContain("/players");
+  });
+
   it("lists the privacy policy", () => {
     expect(sitemap().map((e) => new URL(e.url).pathname)).toContain("/privacy");
   });
