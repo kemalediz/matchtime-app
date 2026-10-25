@@ -12,6 +12,7 @@ const TEAMS: PendingWithLabel = { ref: "teams:m1", kind: "teams", day: "Tue 27 O
 const LIST: PendingWithLabel = { ref: "list:w1", kind: "list", day: null, askedAt: ASKED };
 const POOL: PendingWithLabel = { ref: "pool-ask:m1", kind: "pool-ask", day: "Tue 27 Oct", askedAt: ASKED };
 const POOL2: PendingWithLabel = { ref: "pool-ask:m2", kind: "pool-ask", day: "Thu 29 Oct", askedAt: ASKED };
+const JOIN: PendingWithLabel = { ref: "join-request:i1", kind: "join-request", day: null, names: "Sam K", askedAt: ASKED };
 const FEE: PendingWithLabel = { ref: "fee:f1", kind: "fee", day: "Tue 27 Oct", names: "Bilal", askedAt: ASKED };
 
 describe("one item", () => {
@@ -20,6 +21,8 @@ describe("one item", () => {
     expect(confirmQuestion("en", [LIST])).toBe("Is that YES to the squad list pasted here?");
     expect(confirmQuestion("en", [FEE])).toBe("Is that YES to the free place for Bilal on Tue 27 Oct?");
     expect(confirmQuestion("en", [POOL])).toBe("Is that YES to asking nearby players from the MatchTime player pool for Tue 27 Oct?");
+    expect(confirmQuestion("en", [JOIN])).toBe("Is that YES to sending Sam K the players' group's invite link?");
+    expect(confirmQuestion("tr", [JOIN])).toBe("Bu EVET, Sam K kişisine oyuncu grubunun davet bağlantısını göndermek için mi?");
     expect(confirmQuestion("tr", [POOL])).toBe("Bu EVET, Tue 27 Oct maçı için MatchTime oyuncu havuzundaki yakın oyunculara sormak için mi?");
   });
 });
@@ -42,6 +45,10 @@ describe("several items: which one", () => {
     expect(confirmQuestion("en", [TEAMS, FEE, POOL])).toBe(
       "Which one is that YES for: the proposed teams for Tue 27 Oct, the free place for Bilal on Tue 27 Oct, or asking nearby players from the MatchTime player pool for Tue 27 Oct? Reply YES to that message.",
     );
+    expect(confirmQuestion("en", [POOL, JOIN])).toBe(
+      "Which one is that YES for: asking nearby players from the MatchTime player pool for Tue 27 Oct, or sending Sam K the players' group's invite link? Reply YES to that message.",
+    );
+    expect(confirmQuestion("tr", [TEAMS, JOIN])).toMatch(/, Sam K kişisine oyuncu grubunun davet bağlantısını göndermek mi\? O mesaja/);
     expect(confirmQuestion("tr", [TEAMS, POOL])).toBe(
       "Bu EVET hangisi için: Tue 27 Oct için önerilen takımlar mı, Tue 27 Oct maçı için MatchTime oyuncu havuzundaki yakın oyunculara sormak mı? O mesaja EVET diye cevap verin.",
     );

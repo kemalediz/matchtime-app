@@ -35,6 +35,8 @@
 import { db } from "../db";
 import { appUrl } from "../app-url";
 import { sendAdminNotice } from "../admin-channel";
+import { recordMatchTimeQuestion } from "../admin-group-log";
+import { joinRequestRef } from "../admin-group-pool-refs";
 import { dayLabel } from "../i18n/dates";
 import { inviteCopy } from "../i18n/pool-invite";
 import { normaliseLang, type Lang } from "../i18n/lang";
@@ -261,6 +263,24 @@ export async function answerAsClub(args: { orgId: string; userId: string; actorI
   return { ok: true, state: "invited" };
 }
 
+/**
+ * The invitations among `ids` still waiting for the club's answer (his yes
+ * given, the club's not, open), each with the name the organisers' notice
+ * gave him (first name and last initial). For the admin group's YES (L10,
+ * `pool-ask-words.ts`).
+ */
+export async function invitationsAwaitingClub(orgId: string, ids: string[]): Promise<Array<{ id: string; userId: string; name: string }>> {
+  if (ids.length === 0) return [];
+  const rows = await db.clubInvitation.findMany({
+    where: { id: { in: ids }, orgId, status: "open", playerYesAt: { not: null }, clubYesAt: null },
+    select: { id: true, userId: true },
+  });
+  const lang = (await clubOf(orgId))?.language ?? "en";
+  const out: Array<{ id: string; userId: string; name: string }> = [];
+  for (const r of rows ?? []) out.push({ id: r.id, userId: r.userId, name: await guestNameFor(r.userId, lang) });
+  return out;
+}
+
 // ── The link ───────────────────────────────────────────────────────────
 
 /**
@@ -380,17 +400,26 @@ async function tellClubWantsJoin(inv: InvitationRow, now: Date, env: Env): Promi
   const name = await guestNameFor(inv.userId, club.language);
   const day = (await lastGameDay(inv, club.language)) ?? "";
   const noLink = (await loadLinkSource(inv.orgId, env)).kind === "none";
-  await sendAdminNotice({
+  const sent = await sendAdminNotice({
     orgId: inv.orgId,
     now,
     nextPath: GUEST_HISTORY_PATH,
     excludeUserId: inv.userId,
-    text: (link) => {
-      const lines = [c.notice_wants_join({ name, day, link: link || appUrl(GUEST_HISTORY_PATH) })];
+    text: (link, audience) => {
+      // In the admin group a YES there sends the link (L10); by DM the
+      // answer is the card's button, as before.
+      const args = { name, day, link: link || appUrl(GUEST_HISTORY_PATH) };
+      const lines = [audience === "group" ? c.notice_wants_join_hq(args) : c.notice_wants_join(args)];
       if (noLink) lines.push(c.notice_no_link({ link: appUrl(INVITE_LINK_SETTINGS_PATH) }));
       return lines.join("\n\n");
     },
   });
+  // In the admin group the notice is a question the safe-YES rule answers
+  // (L10): logged with its ask ref, so a YES that quotes it, or comes
+  // next, is about this invitation and nothing else.
+  if (sent?.channel === "admin-group" && sent.groupText) {
+    await recordMatchTimeQuestion({ orgId: inv.orgId, askRef: joinRequestRef(inv.id), text: sent.groupText, now });
+  }
 }
 
 async function tellClubNoLink(inv: { id: string; orgId: string; userId: string }, now: Date, why: "no-link" | "link-failed"): Promise<void> {

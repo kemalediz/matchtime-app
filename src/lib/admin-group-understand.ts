@@ -26,7 +26,8 @@
  *   approve               the safe-YES rule (`admin-group-confirm-rules.ts`),
  *                         then `answerTeamsYes` / `answerSquadPasteYes` (or
  *                         the pool, for the short-squad notice's pool line,
- *                         L10); a
+ *                         or the invite link, for a guest who wants to
+ *                         join, L10); a
  *                         member who is not an organiser says YES to the
  *                         list they pasted only (2026-10-20)
  *   poster, team_sheet    `admin-group-graphics.ts`
@@ -141,9 +142,9 @@ import { readHqNameList } from "./admin-group-name-list";
 import { answerPairingInHq, pairingsAwaitingOwner } from "./pairing-reply";
 import { parsePairingNoticeKey } from "./club-partnership-rules";
 import { activePartnerChoices, askPartnersFromWords } from "./partner-ask-words";
-import { askPoolFromWords, poolNoticesAwaiting } from "./pool-ask-words";
+import { answerJoinRequestInHq, askPoolFromWords, joinRequestsAwaiting, poolNoticesAwaiting } from "./pool-ask-words";
 import { confirmQuestion } from "./admin-group-confirm-copy";
-import { parsePoolAskRef } from "./admin-group-pool-refs";
+import { parseJoinRequestRef, parsePoolAskRef } from "./admin-group-pool-refs";
 
 /** How far back the router's "earlier here" lines reach, and how many. */
 const RECENT_MS = 30 * 60 * 1000;
@@ -239,6 +240,9 @@ export async function loadPending(
   // still askable (local player pool L10, `pool-ask-words.ts`). Never
   // fails HQ.
   out.push(...(await poolNoticesAwaiting(orgId, now, lang, poolEnv).catch(() => [])));
+  // A guest who wants to join, his notice posted here (L8's notice, L10).
+  // Never fails HQ.
+  out.push(...(await joinRequestsAwaiting(orgId, now).catch(() => [])));
   return out;
 }
 
@@ -670,6 +674,13 @@ async function understandInTrace(input: UnderstandInput): Promise<Understood | n
             // is the pool's approval, for that notice's match.
             const matchId = parsePoolAskRef(item.ref);
             const r = matchId ? await askPoolFromWords({ orgId: org.id, matchId, userId: actor, via: "notice", lang, now, env: input.poolEnv }) : null;
+            return r ? said(r.outcome, r.replyText) : said("hq-nothing-waiting", s.hq_nothing_waiting);
+          }
+          if (item.kind === "join-request" && actor) {
+            // A guest who wants to join (L8's notice): the YES is the card's
+            // "Send the invite link", by this organiser.
+            const invitationId = parseJoinRequestRef(item.ref);
+            const r = invitationId ? await answerJoinRequestInHq({ orgId: org.id, invitationId, actorId: actor, lang, now, env: input.poolEnv }) : null;
             return r ? said(r.outcome, r.replyText) : said("hq-nothing-waiting", s.hq_nothing_waiting);
           }
           if (item.kind === "partner-ask" && actor) {

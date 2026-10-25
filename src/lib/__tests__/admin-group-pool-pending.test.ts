@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 import { decideApproval, type PendingItem } from "../admin-group-confirm-rules";
 import type { HqLogRow } from "../admin-group-log";
 import { organisersContext } from "../admin-group-context";
-import { parsePoolAskRef, poolAskRef } from "../admin-group-pool-refs";
+import { joinRequestRef, parseJoinRequestRef, parsePoolAskRef, poolAskRef } from "../admin-group-pool-refs";
 
 const T0 = new Date("2026-10-27T10:00:00Z");
 const at = (min: number) => new Date(T0.getTime() + min * 60_000);
@@ -29,6 +29,10 @@ describe("the ref", () => {
   it("round-trips, and never reads another kind's ref", () => {
     expect(parsePoolAskRef(poolAskRef("m1"))).toBe("m1");
     expect(parsePoolAskRef("xask:a1")).toBeNull();
+    expect(parseJoinRequestRef(joinRequestRef("inv1"))).toBe("inv1");
+    expect(parsePoolAskRef(joinRequestRef("inv1"))).toBeNull();
+    expect(parseJoinRequestRef(poolAskRef("m1"))).toBeNull();
+    expect(parseJoinRequestRef("join-request:")).toBeNull();
     expect(parsePoolAskRef("teams:m1")).toBeNull();
     expect(parsePoolAskRef("pool:")).toBeNull();
   });
@@ -38,6 +42,11 @@ describe("what the router is told is waiting", () => {
   it("the pool notice: a YES to ask nearby players from the pool, for the game's day", () => {
     const lines = organisersContext({ pending: [{ ...POOL, day: "Tue 27 Oct", askedAt: at(0) }], recent: [] });
     expect(lines[0]).toMatch(/^WAITING: YES to ask nearby players from the MatchTime player pool for Tue 27 Oct, asked at \d\d:\d\d\.$/);
+  });
+
+  it("a guest who wants to join (L8's notice): a YES to send them the group's invite link, by first name and initial", () => {
+    const lines = organisersContext({ pending: [{ ref: joinRequestRef("inv1"), kind: "join-request", day: null, names: "Sam K", askedAt: at(0) }], recent: [] });
+    expect(lines[0]).toMatch(/^WAITING: YES to send Sam K, a guest who played here and wants to join, the players' group's invite link, asked at \d\d:\d\d\.$/);
   });
 
   it("names no number, area or player (only what the notice already said)", () => {

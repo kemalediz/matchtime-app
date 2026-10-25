@@ -60,6 +60,11 @@ const NOTICE =
 const POOL: PendingWithLabel = { ref: "pool-ask:m1", kind: "pool-ask", day: "Tue 27 Oct, 20:00", askedAt: ASKED };
 const TEAMS: PendingWithLabel = { ref: "teams:m1", kind: "teams", day: "Tue 27 Oct", askedAt: ASKED };
 const poolWaiting = { pending: [POOL], recent: [{ fromMatchTime: true, text: NOTICE }] };
+// A guest who wants to join (L8's notice in HQ, the L10 follow-up).
+const JOIN_NOTICE =
+  "🙋 Sam K played with you on Tue 27 Oct as a guest and wants to join your group. Reply YES here to send them the group's invite link, or tap Send the invite link on their card: https://matchtime.ai/admin/guests?tab=history";
+const JOIN: PendingWithLabel = { ref: "join-request:inv1", kind: "join-request", day: null, names: "Sam K", askedAt: ASKED };
+const joinWaiting = { pending: [JOIN], recent: [{ fromMatchTime: true, text: JOIN_NOTICE }] };
 const nothing = { pending: [] as PendingWithLabel[], recent: [] as Array<{ fromMatchTime: boolean; text: string }> };
 
 const CASES: Array<{ text: string; ctx?: typeof nothing; want: Got[]; why: string }> = [
@@ -98,6 +103,16 @@ const CASES: Array<{ text: string; ctx?: typeof nothing; want: Got[]; why: strin
   { text: "who is bringing the bibs?", ctx: poolWaiting, want: ["quiet"], why: "chatter while it waits" },
   { text: "Tom out", ctx: poolWaiting, want: ["other"], why: "a squad change while it waits" },
   { text: "nah let's wait till the morning", ctx: poolWaiting, want: ["quiet"], why: "a no between organisers" },
+  // A YES with a guest's "wants to join" notice waiting.
+  { text: "yes", ctx: joinWaiting, want: ["approve"], why: "join: a bare yes" },
+  { text: "send it", ctx: joinWaiting, want: ["approve"], why: "join: send it" },
+  { text: "yeah let him in", ctx: joinWaiting, want: ["approve"], why: "join: natural yes" },
+  { text: "evet, gönder", ctx: joinWaiting, want: ["approve"], why: "join: TR yes" },
+  { text: "tamam, katılsın", ctx: joinWaiting, want: ["approve"], why: "join: TR natural yes" },
+  { text: "who is bringing the bibs?", ctx: joinWaiting, want: ["quiet"], why: "join: chatter while it waits" },
+  { text: "is Sam any good though?", ctx: joinWaiting, want: ["quiet"], why: "join: the organisers discussing him" },
+  { text: "Tom out", ctx: joinWaiting, want: ["other"], why: "join: a squad change while it waits" },
+  { text: "yes", ctx: { pending: [POOL, JOIN], recent: [{ fromMatchTime: true, text: NOTICE }, { fromMatchTime: true, text: JOIN_NOTICE }] }, want: ["approve"], why: "pool and join both waiting: approve, code asks which" },
 ];
 
 // THE PLAYERS' GROUP (manager review of #410): an organiser's tagged ask
@@ -164,7 +179,9 @@ async function main() {
     const context = organisersContext({ pending: ctx.pending, recent: ctx.recent });
     const r = await routeBatch(model, [{ id, authorName: "Raihan", body: c.text, organisers: { context, senderIsOrganiser: true } }], { floor: true });
     const route = r.routes[0]?.route ?? null;
-    let got: Got = route === "approve" ? "approve" : route === "none" || route === null ? "quiet" : "other";
+    // Untagged `unsure` is silent in HQ (`admin-group-understand.ts`: not
+    // addressed, the organisers' own conversation), as `none` is.
+    let got: Got = route === "approve" ? "approve" : route === "none" || route === null || (route === "unsure" && !tagged) ? "quiet" : "other";
     let detail = "";
     if (route === "ask_group" || route === "admin_ops") {
       const ex = await extractForRoute(model, "admin_ops", { id, body: c.text, authorName: "Raihan", tagged, history: [], lastBotPost: null });
@@ -183,7 +200,7 @@ async function main() {
     }
     const ok = c.want.includes(got);
     ok ? pass++ : fail++;
-    console.log(`${ok ? "PASS" : "FAIL"}  ${JSON.stringify(c.text)}${c.ctx ? " (pool notice waiting)" : ""}  routed ${route}${detail}  => ${got}   (${c.why}; want ${c.want.join("|")})`);
+    console.log(`${ok ? "PASS" : "FAIL"}  ${JSON.stringify(c.text)}${c.ctx ? ` (waiting: ${c.ctx.pending.map((p) => p.kind).join("+")})` : ""}  routed ${route}${detail}  => ${got}   (${c.why}; want ${c.want.join("|")})`);
   }
   const pg = await playersGroup();
   pass += pg.pass;

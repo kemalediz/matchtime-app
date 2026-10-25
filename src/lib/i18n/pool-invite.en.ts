@@ -32,7 +32,16 @@ export const poolInviteEn = {
   notice_wants_join: (p: { name: string; day: string; link: string }) =>
     `🙋 ${p.name} played with you on ${p.day} as a guest and wants to join your group. To send them the group's invite link, tap Send the invite link on their card: ${p.link}`,
   /** The guest when he has no name on MatchTime. */
+  /** The same notice in the admin group, where a YES sends the link (L10). */
+  notice_wants_join_hq: (p: { name: string; day: string; link: string }) =>
+    `🙋 ${p.name} played with you on ${p.day} as a guest and wants to join your group. Reply YES here to send them the group's invite link, or tap Send the invite link on their card: ${p.link}`,
   notice_someone: "A guest",
+  /** The organisers' YES in the admin group (L10), one line back. */
+  hq_link_sending: (p: { name: string }) => `✅ Sending ${p.name} the players' group's invite link.`,
+  hq_link_waiting: (p: { name: string; link: string }) =>
+    `✅ Approved. ${p.name} gets the invite link as soon as MatchTime has your group's link: make MatchTime an admin of your WhatsApp group, or paste the link in Settings: ${p.link}`,
+  hq_join_already: (p: { name: string }) => `${p.name} has already been sent the invite link.`,
+  hq_join_closed: (p: { name: string }) => `${p.name}'s request to join is no longer open.`,
   notice_no_link: (p: { link: string }) =>
     `First let MatchTime send your group's link: make MatchTime an admin of your WhatsApp group, or paste the link in Settings: ${p.link}`,
   notice_link_failed: (p: { name: string; link: string }) =>

@@ -87,6 +87,8 @@ vi.mock("@/lib/partner-ask-words", () => partnerWords);
 const hqPool = vi.hoisted(() => ({
   askPoolFromWords: vi.fn(),
   poolNoticesAwaiting: vi.fn().mockResolvedValue([]),
+  joinRequestsAwaiting: vi.fn().mockResolvedValue([]),
+  answerJoinRequestInHq: vi.fn(),
 }));
 vi.mock("@/lib/pool-ask-words", () => hqPool);
 
@@ -165,6 +167,8 @@ beforeEach(() => {
   partnerWords.activePartnerChoices.mockResolvedValue([]);
   partnerWords.askPartnersFromWords.mockResolvedValue({ outcome: "xask-words-asked", replyText: "I've asked *Sutton FC*'s organisers.", asked: 1 });
   hqPool.poolNoticesAwaiting.mockResolvedValue([]);
+  hqPool.joinRequestsAwaiting.mockResolvedValue([]);
+  hqPool.answerJoinRequestInHq.mockResolvedValue({ outcome: "hq-join-link-sent", replyText: "✅ Sending Sam K the players' group's invite link." });
   hqPool.askPoolFromWords.mockResolvedValue({ outcome: "hq-pool-asked", replyText: "🔎 Asking nearby players from the MatchTime player pool for 1 place on Fri 16 Oct, 20:00." });
 });
 
@@ -1648,6 +1652,57 @@ describe("local player pool L10: asking the pool in HQ, in words and by YES to i
 
   it("the pool's waiting items never fail HQ: a read error is nothing waiting", async () => {
     hqPool.poolNoticesAwaiting.mockRejectedValue(new Error("down"));
+    expect((await ask("looks good, go", "approve"))?.outcome).toBe("teams-final");
+  });
+});
+
+describe("L10 follow-up: YES to a guest who wants to join (L8's notice)", () => {
+  const NOTICE = "🙋 Sam K played with you on Tue 27 Oct as a guest and wants to join your group. Reply YES here to send them the group's invite link, or tap Send the invite link on their card: https://matchtime.ai/admin/guests?tab=history";
+  const join = { ref: "join-request:inv1", kind: "join-request" as const, day: null, names: "Sam K", askedAt: ASKED };
+  beforeEach(() => {
+    dbMock.adminTeamProposal.findFirst.mockResolvedValue(null);
+    hqPool.joinRequestsAwaiting.mockResolvedValue([join]);
+    hqLog.hqLogSince.mockResolvedValue([mtRow(ASKED, "join-request:inv1", NOTICE)]);
+  });
+
+  it("the router is shown it as waiting", async () => {
+    await ask("who has the bibs?", "none");
+    expect(hqPool.joinRequestsAwaiting).toHaveBeenCalledWith("org-fnf", NOW);
+    expect(requests[0].user).toContain("WAITING: YES to send Sam K, a guest who played here and wants to join, the players' group's invite link");
+  });
+
+  it("YES right after the notice: the card's own Send the invite link, by the organiser", async () => {
+    const env = { POOL_OFFERS_ENABLED: "1" };
+    const r = await ask("yes", "approve", { poolEnv: env });
+    expect(hqPool.answerJoinRequestInHq).toHaveBeenCalledWith({ orgId: "org-fnf", invitationId: "inv1", actorId: "u-admin", lang: "en", now: NOW, env });
+    expect(r).toEqual({ route: "approve", outcome: "hq-join-link-sent", replyText: "✅ Sending Sam K the players' group's invite link." });
+  });
+
+  it("answered on the card meanwhile: nothing waiting", async () => {
+    hqPool.answerJoinRequestInHq.mockResolvedValue(null);
+    expect((await ask("yes", "approve"))?.outcome).toBe("hq-nothing-waiting");
+  });
+
+  it("a player's YES: the one line, nothing sent", async () => {
+    expect((await ask("yes", "approve", { organiser: false, member: true, senderUserId: "u-pete" }))?.outcome).toBe("hq-only-organisers");
+    expect(hqPool.answerJoinRequestInHq).not.toHaveBeenCalled();
+  });
+
+  it("with the pool notice waiting too, after talk: asks which, naming both", async () => {
+    hqPool.poolNoticesAwaiting.mockResolvedValue([{ ref: "pool-ask:m1", kind: "pool-ask", day: "Fri 16 Oct, 20:00", askedAt: ASKED }]);
+    hqLog.hqLogSince.mockResolvedValue([mtRow(ASKED, "pool-ask:m1"), mtRow(ASKED, "join-request:inv1", NOTICE), orgRow(new Date(ASKED.getTime() + 60_000))]);
+    const r = await ask("yes", "approve");
+    expect(r?.replyText).toBe(
+      "Which one is that YES for: asking nearby players from the MatchTime player pool for Fri 16 Oct, 20:00, or sending Sam K the players' group's invite link? Reply YES to that message.",
+    );
+    expect(hqPool.answerJoinRequestInHq).not.toHaveBeenCalled();
+    expect(hqPool.askPoolFromWords).not.toHaveBeenCalled();
+  });
+
+  it("never fails HQ: a read error is nothing waiting", async () => {
+    hqPool.joinRequestsAwaiting.mockRejectedValue(new Error("down"));
+    hqLog.hqLogSince.mockResolvedValue([mtRow(ASKED, "teams:m1")]);
+    dbMock.adminTeamProposal.findFirst.mockResolvedValue({ matchId: "m1", askedAt: ASKED, state: "proposed" });
     expect((await ask("looks good, go", "approve"))?.outcome).toBe("teams-final");
   });
 });
