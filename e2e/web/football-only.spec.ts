@@ -33,7 +33,7 @@ test("the forbidden names are the switch's: basketball and the rest, never footb
   expect(FORBIDDEN).not.toContain("football");
 });
 
-for (const width of [390, 1280]) {
+for (const width of [320, 390, 1280]) {
   for (const path of PAGES) {
     test(`${path} at ${width}: no sport but the live one, in the page or its metadata`, async ({ page }) => {
       await page.setViewportSize({ width, height: 900 });
@@ -48,8 +48,8 @@ for (const width of [390, 1280]) {
       expect(named(body)).toEqual([]);
       expect(named(meta)).toEqual([]);
       expect(named(jsonLd)).toEqual([]);
-      // The help guides overflow by 1px at 390 on main too (not this change); the rest must not.
-      if (!path.startsWith("/help")) expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+      // No page scrolls sideways, at phone width or desktop.
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
       if (SHOTS && width === 390 && ["/", "/play", "/players"].includes(path)) {
         const name = path === "/" ? "home" : path.slice(1);
         await page.screenshot({ path: `${SHOTS}/fb-${name}-390.png`, fullPage: true });

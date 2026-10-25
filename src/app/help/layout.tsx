@@ -9,7 +9,7 @@ import { BookOpen, UserCog, Users } from "lucide-react";
 export default function HelpLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
-      <div className="max-w-4xl mx-auto px-6 py-8 sm:py-12">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
         <div className="flex items-center gap-3 mb-6">
           <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center">
             <BookOpen className="w-5 h-5 text-white" />
@@ -25,7 +25,11 @@ export default function HelpLayout({ children }: { children: React.ReactNode }) 
           </div>
         </div>
 
-        <div className="flex gap-2 mb-8 border-b border-slate-200">
+        {/* The tabs never widen the page: at phone width (down to 320px)
+            they drop their icons and padding to fit on one line, and if
+            they still cannot fit (a large text setting) the row scrolls on
+            its own instead of the page. */}
+        <div className="flex sm:gap-2 mb-8 border-b border-slate-200 overflow-x-auto">
           <TabLink href="/help" icon={<BookOpen className="w-4 h-4" />} label="Overview" />
           <TabLink href="/help/admin" icon={<UserCog className="w-4 h-4" />} label="For organisers" />
           <TabLink href="/help/player" icon={<Users className="w-4 h-4" />} label="For players" />
@@ -43,9 +47,9 @@ function TabLink({ href, icon, label }: { href: string; icon: React.ReactNode; l
   return (
     <Link
       href={href}
-      className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-600 border-b-2 border-transparent hover:border-slate-300 hover:text-slate-900 data-[active=true]:border-blue-600 data-[active=true]:text-blue-700"
+      className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap px-2 sm:px-4 py-2.5 text-sm font-medium text-slate-600 border-b-2 border-transparent hover:border-slate-300 hover:text-slate-900 data-[active=true]:border-blue-600 data-[active=true]:text-blue-700"
     >
-      {icon}
+      <span className="hidden sm:inline-flex">{icon}</span>
       {label}
     </Link>
   );
