@@ -36,7 +36,6 @@ describe("validatePoolFields", () => {
     expect(r.value).toEqual({
       displayName: "Ali Kaya",
       areaDistrict: "SM1",
-      venueIds: [],
       maxMiles: 3,
       availability: [
         { day: 2, fromMin: 19 * 60, toMin: 23 * 60 },
@@ -50,9 +49,17 @@ describe("validatePoolFields", () => {
     });
   });
 
-  it("chosen pitches instead of a district", () => {
-    const r = validatePoolFields({ ...GOOD, area: { kind: "venues", venueIds: ["v1", "v2", "v1"] } }, ALL);
-    expect(r.ok && r.value).toMatchObject({ areaDistrict: null, venueIds: ["v1", "v2"] });
+  it("a postcode area is the only way: chosen pitches are refused (2026-10-25)", () => {
+    expect(validatePoolFields({ ...GOOD, area: { kind: "venues", venueIds: ["v1", "v2"] } }, ALL)).toMatchObject({ ok: false, errors: { area: "required" } });
+  });
+
+  it("pitch ids sent alongside a postcode area are ignored, never stored", () => {
+    const r = validatePoolFields({ ...GOOD, area: { kind: "district", district: "sm1", venueIds: ["v1"] }, venueIds: ["v1"] }, ALL);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value.areaDistrict).toBe("SM1");
+      expect(r.value).not.toHaveProperty("venueIds");
+    }
   });
 
   it("names every field that is wrong, at once", () => {
@@ -67,11 +74,10 @@ describe("validatePoolFields", () => {
     expect(!r.ok && r.errors.area).toBe("district");
   });
 
-  it("no pitches chosen, or too many", () => {
-    expect(validatePoolFields({ ...GOOD, area: { kind: "venues", venueIds: [] } })).toMatchObject({ ok: false, errors: { area: "venues" } });
-    const many = Array.from({ length: POOL_SIGNUP.maxVenues + 1 }, (_, i) => `v${i}`);
-    expect(validatePoolFields({ ...GOOD, area: { kind: "venues", venueIds: many } })).toMatchObject({ ok: false, errors: { area: "venues" } });
+  it("the postcode area is required", () => {
     expect(validatePoolFields({ ...GOOD, area: null })).toMatchObject({ ok: false, errors: { area: "required" } });
+    expect(validatePoolFields({ ...GOOD, area: undefined })).toMatchObject({ ok: false, errors: { area: "required" } });
+    expect(validatePoolFields({ ...GOOD, area: { kind: "district", district: "" } })).toMatchObject({ ok: false, errors: { area: "district" } });
   });
 
   it("availability errors are L1's (a from after its to, a bad time)", () => {

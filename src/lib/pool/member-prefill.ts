@@ -6,10 +6,12 @@
  * form starts from what his clubs already say about him, so most members
  * only tick the consent and check the days:
  *
- *   area       the geocoded venues his clubs play at (then their home
- *              venues), in that order, once each, at most
- *              POOL_SIGNUP.maxVenues; none geocoded: he types his
- *              postcode area as on /play
+ *   area       the postcode district of the pitch his clubs play at:
+ *              the first of their games' pitches, then their home
+ *              pitches, whose Google address holds a full UK postcode
+ *              (`districtOfAddress`). None: he types his postcode area as
+ *              on /play. (A pool player's place is only a postcode area
+ *              and a travel distance since 2026-10-25: no chosen pitches.)
  *   days       each of his games' weekday and hours, widened to the half
  *              hours around it (the form's time steps); a game past
  *              midnight is two ranges on two days, as the L1 rule wants
@@ -32,19 +34,16 @@
  */
 import { normaliseLang, type Lang } from "../i18n/lang";
 import { normaliseDisplayName } from "./profile-fields";
-import { DEFAULT_POOL_TRAVEL_MILES, POOL_CONSENT_VERSION, POOL_SIGNUP, formatMinutes, normaliseAvailability, parseMinutes } from "./rules";
+import { DEFAULT_POOL_TRAVEL_MILES, POOL_CONSENT_VERSION, POOL_SIGNUP, districtOfAddress, formatMinutes, normaliseAvailability, parseMinutes, type PoolArea } from "./rules";
 import { DEFAULT_POOL_SPORT, LIVE_SPORTS, isLiveSport, poolSportOfClubSport, type LiveSports, type PoolSportChoiceKey, type PoolSportKey, type SportLevel } from "./sports";
 import type { PoolProfileStatus } from "./vocab";
 
 const DAY = 24 * 60;
 const STEP = 30;
 
+/** A pitch as the prefill reads it: only its Google address. */
 export interface MemberVenueFact {
-  id: string;
-  name: string;
   address: string | null;
-  lat: number | null;
-  lng: number | null;
 }
 
 /** One live (non-guest) membership's club, as the prefill reads it. */
@@ -64,8 +63,7 @@ export interface MemberClubFacts {
 /** The saved-profile shape (`fromSavedProfile`'s input). */
 export interface MemberPrefill {
   name: string;
-  area: { kind: "district"; district: string } | { kind: "venues"; venueIds: string[] };
-  venues: Array<{ id: string; name: string; address: string | null }>;
+  area: PoolArea;
   maxMiles: number;
   availability: Array<{ day: number; from: string; to: string }>;
   sports: Array<{ sport: PoolSportChoiceKey; otherName: string; formats: number[]; level: SportLevel | null; levelText: string | null }>;
@@ -84,15 +82,14 @@ export function shortDisplayName(raw: string | null | undefined): string {
   return normaliseDisplayName(short) ?? "";
 }
 
-function prefillVenues(clubs: readonly MemberClubFacts[]): MemberPrefill["venues"] {
+/** His clubs' pitch's postcode district, or "" for him to type. */
+function prefillArea(clubs: readonly MemberClubFacts[]): PoolArea {
   const ordered = [...clubs.flatMap((c) => c.activities.map((a) => a.venue)), ...clubs.map((c) => c.homeVenue)];
-  const out: MemberPrefill["venues"] = [];
   for (const v of ordered) {
-    if (!v || v.lat === null || v.lng === null || out.some((x) => x.id === v.id)) continue;
-    out.push({ id: v.id, name: v.name, address: v.address });
-    if (out.length === POOL_SIGNUP.maxVenues) break;
+    const district = districtOfAddress(v?.address);
+    if (district) return { kind: "district", district };
   }
-  return out;
+  return { kind: "district", district: "" };
 }
 
 /** One game's weekday and hours as ranges that never cross midnight. */
@@ -143,11 +140,9 @@ function prefillLanguage(clubs: readonly MemberClubFacts[]): Lang {
 }
 
 export function memberPrefill(input: { name: string | null; clubs: readonly MemberClubFacts[] }, live: LiveSports = LIVE_SPORTS): MemberPrefill {
-  const venues = prefillVenues(input.clubs);
   return {
     name: shortDisplayName(input.name),
-    area: venues.length > 0 ? { kind: "venues", venueIds: venues.map((v) => v.id) } : { kind: "district", district: "" },
-    venues,
+    area: prefillArea(input.clubs),
     maxMiles: DEFAULT_POOL_TRAVEL_MILES,
     availability: prefillAvailability(input.clubs),
     sports: prefillSports(input.clubs, live),

@@ -52,6 +52,8 @@ export type PoolAttemptKind = (typeof POOL_ATTEMPT_KINDS)[number];
 export const POOL_CONFIRM_ATTEMPT_RESULTS = ["wrong", "expired", "has-profile"] as const;
 export type PoolConfirmAttemptResult = (typeof POOL_CONFIRM_ATTEMPT_RESULTS)[number];
 /** A sign-up attempt that got as far as placing the area. */
+/** "venues-unknown" is no longer written (chosen pitches were retired on
+ *  2026-10-25); it stays while the PoolAttempt CHECK still lists it. */
 export const POOL_SIGNUP_ATTEMPT_RESULTS = ["created", "area-not-found", "venues-unknown"] as const;
 export type PoolSignupAttemptResult = (typeof POOL_SIGNUP_ATTEMPT_RESULTS)[number];
 /** A wrong "last 4 digits" on a pool offer's page (slice L5a, review of

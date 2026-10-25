@@ -75,7 +75,7 @@ export function buildPrivacyPolicyEn(f: PolicyFacts): PrivacyPolicyCopy {
           {
             kind: "list",
             items: [
-              "your area as a postcode district (such as SM1) or the pitches you chose, and your travel distance;",
+              "your area as a postcode district (such as SM1) and your travel distance;",
               "the days and hours you can play, your sports, the formats you like and, if you give it, your level in each sport;",
               "your consent record: when you agreed, which version of this policy you agreed to, and the message that confirmed it;",
               "the game offers we send you and your answers, including replies in your own words;",

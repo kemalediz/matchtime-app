@@ -1,18 +1,20 @@
 /**
  * "Play elsewhere too" on a club member's own /profile (local player pool,
  * slice L3), in a real browser at phone and desktop width: the form starts
- * from his club's game (pitch, Tuesday 20:00 to 21:00, 5-a-side, his short
- * name), the consent and 18+ ticks start unticked and are required, he can
- * change anything before joining, joining makes him active at once (his
- * number is on his account) with a "web" consent record, and the card then
+ * from his club's game (the postcode area of its pitch's address, Tuesday
+ * 20:00 to 21:00, 5-a-side, his short name; there is no pitch choice, a
+ * postcode area is the only way since 2026-10-25), the consent and 18+
+ * ticks start unticked and are required, he can change anything before
+ * joining, joining makes him active at once (his number is on his account) with a "web" consent record, and the card then
  * links to /play/manage. A member with NO number takes the /play WhatsApp
  * step; the message attaches nothing until he answers "a number ending NNNN
  * messaged us with your code: is this your number?" on the card (Yes, No).
- * Turkish too. No model, Google not called (a geocoded pitch): $0.
+ * Turkish too. No model; Google is a stub (it places the district): $0.
  */
 import type { Page } from "@playwright/test";
 import { test, expect, resetDb, signInAs, U } from "../fixtures";
 import { E2E } from "../helpers/env";
+import { clearGeocodeStub, setGeocodeStub } from "../helpers/geocode-stub";
 import type { TestDb } from "../helpers/test-db";
 import { POOL_CONSENT_VERSION } from "@/lib/pool/rules";
 import { poolPageCopy } from "@/lib/pool/page-copy";
@@ -23,13 +25,27 @@ const MOBILE = { width: 375, height: 740 };
 const DESKTOP = { width: 1280, height: 900 };
 const ACTIVITY_ID = "e2e-activity";
 const VENUE = { id: "e2e-elsewhere-v1", name: "Riverside Sports Centre" };
+const SM1 = {
+  status: "OK",
+  results: [
+    {
+      place_id: "e2e-elsewhere-district",
+      formatted_address: "Sutton SM1, UK",
+      geometry: { location: { lat: 51.3656, lng: -0.1963 }, location_type: "APPROXIMATE" },
+      types: ["postal_code_prefix"],
+      address_components: [{ short_name: "GB", types: ["country"] }],
+    },
+  ],
+};
 
 test.describe.configure({ mode: "serial" });
+test.beforeAll(() => setGeocodeStub({ geocode: { "*": { body: SM1 } } }));
+test.afterAll(() => clearGeocodeStub());
 test.beforeEach(async ({ db }) => {
   resetDb();
   await db.run(
     `INSERT INTO "Venue" (id, "placeId", name, "formattedAddress", lat, lng, source, "createdAt", "updatedAt")
-     VALUES ($1, 'ChIJ_e2e_elsewhere_v1', $2, 'River Road, Sutton', 51.36, -0.19, 'google', now(), now()) ON CONFLICT DO NOTHING`,
+     VALUES ($1, 'ChIJ_e2e_elsewhere_v1', $2, 'River Road, Sutton SM1 2EY, UK', 51.36, -0.19, 'google', now(), now()) ON CONFLICT DO NOTHING`,
     [VENUE.id, VENUE.name],
   );
   await db.run(`UPDATE "Activity" SET "venueId" = $1 WHERE id = $2`, [VENUE.id, ACTIVITY_ID]);
@@ -52,11 +68,14 @@ for (const [name, size] of [["phone", MOBILE], ["desktop", DESKTOP]] as const) {
     await openCard(page, U.player);
     const c = card(page);
 
-    // Filled in from his club: short name, the club's pitch, Tuesday's game, 5-a-side.
+    // Filled in from his club: short name, the postcode area of the club's
+    // pitch, Tuesday's game, 5-a-side. No pitch choice: a postcode area only.
     await expect(c.getByText(EN.member.prefillNote)).toBeVisible();
     await expect(c.getByLabel(EN.fields.nameLabel, { exact: true })).toHaveValue("Pat P");
-    await expect(c.getByRole("radio", { name: EN.fields.areaVenuesOption })).toBeChecked();
-    await expect(c.getByRole("button", { name: EN.fields.venueRemove(VENUE.name) })).toBeVisible();
+    await expect(c.getByLabel(EN.fields.districtLabel, { exact: true })).toHaveValue("SM1");
+    await expect(c.getByRole("group", { name: EN.fields.areaLegend }).getByRole("radio")).toHaveCount(0);
+    await expect(c.getByRole("searchbox")).toHaveCount(0);
+    await expect(c.getByText(VENUE.name)).toHaveCount(0);
     await expect(c.getByRole("checkbox", { name: "Tuesday", exact: true })).toBeChecked();
     await expect(c.getByLabel(EN.fields.fromLabel("Tuesday"))).toHaveValue("20:00");
     await expect(c.getByLabel(EN.fields.toLabel("Tuesday"))).toHaveValue("21:00");
@@ -91,8 +110,8 @@ for (const [name, size] of [["phone", MOBILE], ["desktop", DESKTOP]] as const) {
     expect(await profileOf(db, U.player)).toMatchObject({
       status: "active",
       displayName: "Pat P",
-      venueIds: [VENUE.id],
-      areaDistrict: null,
+      venueIds: [],
+      areaDistrict: "SM1",
       maxMiles: 3,
       source: "profile",
       earlyList: true,
@@ -144,7 +163,7 @@ test("the card links to his manage page, which shows the profile he just made", 
   await expect(page.getByRole("heading", { level: 1, name: EN.manage.heading })).toBeVisible();
   await expect(page.getByTestId("pool-status")).toHaveText(EN.manage.status.active);
   await expect(page.getByLabel(EN.fields.nameLabel, { exact: true })).toHaveValue("Pat P");
-  await expect(page.getByRole("button", { name: EN.fields.venueRemove(VENUE.name) })).toBeVisible();
+  await expect(page.getByLabel(EN.fields.districtLabel, { exact: true })).toHaveValue("SM1");
 
   // Stopped on the manage page: the card says so, and still links there.
   await page.getByRole("button", { name: EN.manage.stop }).click();

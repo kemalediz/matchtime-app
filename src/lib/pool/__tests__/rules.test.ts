@@ -16,6 +16,7 @@ import {
   DEFAULT_POOL_TRAVEL_MILES,
   formatMinutes,
   normaliseAvailability,
+  districtOfAddress,
   normaliseDistrict,
   parseMinutes,
   acceptDistrictGeocode,
@@ -75,6 +76,24 @@ describe("normaliseDistrict: a UK postcode district, never a full postcode", () 
     expect(normaliseDistrict("Sutton")).toBeNull();
     expect(normaliseDistrict("")).toBeNull();
     expect(normaliseDistrict(null)).toBeNull();
+  });
+});
+
+describe("districtOfAddress: the postcode district in a pitch's Google address", () => {
+  it.each([
+    ["Gander Green Ln, Sutton SM1 2EY, UK", "SM1"],
+    ["Church Rd, London SW19 5AE, United Kingdom", "SW19"],
+    ["Purley Way, Croydon CR0 4RQ, UK", "CR0"],
+    ["1 Old St, London EC1A 1BB, UK", "EC1A"],
+    ["Hall Ln, London N1 9AA", "N1"],
+    ["sutton sm12ey", "SM1"],
+  ])("%s -> %s", (address, want) => expect(districtOfAddress(address)).toBe(want));
+  it("no full UK postcode in it: null, never a guess", () => {
+    expect(districtOfAddress("Gander Green Ln, Sutton, UK")).toBeNull();
+    expect(districtOfAddress("Sutton SM1, UK")).toBeNull();
+    expect(districtOfAddress("Barbaros, Ataşehir, 34746 İstanbul, Türkiye")).toBeNull();
+    expect(districtOfAddress("")).toBeNull();
+    expect(districtOfAddress(null)).toBeNull();
   });
 });
 

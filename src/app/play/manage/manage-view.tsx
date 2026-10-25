@@ -93,7 +93,7 @@ export function ManageView({ view }: { view: PoolManageView | null }) {
         setNotice(m.saved);
         router.refresh();
       } else if (r.errors) setErrors(r.errors);
-      else setFailure(r.reason === "area-not-found" || r.reason === "venues-unknown" ? r.reason : "generic");
+      else setFailure(r.reason === "area-not-found" ? r.reason : "generic");
     });
 
   const remove = () =>

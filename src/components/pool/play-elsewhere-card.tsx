@@ -32,7 +32,7 @@ import { validatePoolSignup, type PoolFieldErrors } from "@/lib/pool/profile-fie
 import { PRIVACY_PATH } from "@/lib/privacy-policy";
 
 const BTN = "inline-flex items-center justify-center rounded-xl px-5 py-2.5 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-60";
-const KNOWN_FAILURES: readonly PoolErrorKey[] = ["busy", "area-not-found", "venues-unknown", "paused", "unavailable"];
+const KNOWN_FAILURES: readonly PoolErrorKey[] = ["busy", "area-not-found", "paused", "unavailable"];
 
 export function PlayElsewhereCard({ lang }: { lang: Lang }) {
   const copy = poolPageCopy(lang);

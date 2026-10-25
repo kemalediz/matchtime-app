@@ -52,7 +52,6 @@ const row = (o: Partial<PoolCandidateRow> = {}): PoolCandidateRow => ({
   hasPhone: true,
   maxMiles: 3,
   area: north(1),
-  chosenVenues: [],
   sports: [{ sport: "football", formats: [5, 7], level: null }],
   availability: [{ day: 2, fromMin: 18 * 60, toMin: 22 * 60 }],
   isClubMember: false,
@@ -103,8 +102,8 @@ describe("candidateExclusion: each hard filter, one change at a time", () => {
     ["no level asked: any level, none needed", { sports: [{ sport: "football", formats: [7], level: "novice" }] }, { levels: null }, null],
     ["an empty level list counts as not asked", {}, { levels: [] }, null],
     ["too far", { area: north(3.2) }, {}, "too-far"],
-    ["no area and no chosen pitch with a position", { area: null, chosenVenues: [] }, {}, "too-far"],
-    ["a chosen pitch near the venue rescues a far area", { area: north(8), chosenVenues: [east(0.5)] }, {}, null],
+    ["no postcode area with a position", { area: null }, {}, "too-far"],
+    ["far by his postcode area: nothing else rescues him", { area: north(8) }, {}, "too-far"],
     ["wrong day", { availability: [{ day: 3, fromMin: 18 * 60, toMin: 22 * 60 }] }, {}, "not-available"],
     ["right day, ends before full time", { availability: [{ day: 2, fromMin: 18 * 60, toMin: 19 * 60 + 59 }] }, {}, "not-available"],
     ["a member of the asking club", { isClubMember: true }, {}, "club-member"],
@@ -133,20 +132,20 @@ describe("distance from the venue", () => {
     ["1.01 miles, 1 mile travel", 1.01, false],
   ];
   it.each(table)("%s", (_n, miles, want) => {
-    const d = distanceToVenue(VENUE, north(miles), []);
+    const d = distanceToVenue(VENUE, north(miles));
     expect(d).not.toBeNull();
     expect(withinTravel(d!, 1)).toBe(want);
   });
   it("exactly the travel distance is in (within float error)", () => {
     for (const m of [1, 3, 5, 10]) {
-      expect(withinTravel(distanceToVenue(VENUE, north(m), [])!, m)).toBe(true);
-      expect(withinTravel(distanceToVenue(VENUE, east(m), [])!, m)).toBe(true);
-      expect(withinTravel(distanceToVenue(VENUE, north(m + 0.01), [])!, m)).toBe(false);
+      expect(withinTravel(distanceToVenue(VENUE, north(m))!, m)).toBe(true);
+      expect(withinTravel(distanceToVenue(VENUE, east(m))!, m)).toBe(true);
+      expect(withinTravel(distanceToVenue(VENUE, north(m + 0.01))!, m)).toBe(false);
     }
   });
-  it("the nearest of his area and his chosen pitches", () => {
-    expect(distanceToVenue(VENUE, north(4), [north(2), east(1)])!).toBeCloseTo(1, 6);
-    expect(distanceToVenue(VENUE, null, [])).toBeNull();
+  it("measured from his postcode area's centre only; no area, no distance", () => {
+    expect(distanceToVenue(VENUE, north(4))!).toBeCloseTo(4, 6);
+    expect(distanceToVenue(VENUE, null)).toBeNull();
   });
   it("never more than 10 miles, whatever the row says", () => {
     expect(withinTravel(12, 50)).toBe(false);

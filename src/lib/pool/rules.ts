@@ -117,7 +117,6 @@ export const POOL_SIGNUP = Object.freeze({
   maxSports: 12,
   maxRanges: 21,
   nameMax: 40,
-  maxVenues: 5,
 });
 
 /** The WhatsApp confirm code: from an alphabet with no 0, O, 1, I or L (the
@@ -157,6 +156,32 @@ export function normaliseDistrict(v: unknown): string | null {
   if (typeof v !== "string") return null;
   const s = v.trim().toUpperCase();
   return POSTCODE_DISTRICT_RE.test(s) ? s : null;
+}
+
+/**
+ * WHERE A POOL PLAYER PLAYS (2026-10-25): a postcode district, and how far
+ * he travels from its centre (`maxMiles`, one of POOL_TRAVEL_MILES). That is
+ * the whole idea of "where": there are no chosen pitches. A district is the
+ * only kind today; another kind of area would be one more member of this
+ * union, read by `profile-fields.ts` and placed by `profile-store.ts`.
+ */
+export type PoolArea = { kind: "district"; district: string };
+
+/** A full UK postcode inside an address ("SM1 2EY", "sm12ey"). */
+const FULL_POSTCODE_IN_ADDRESS = /\b([A-Z]{1,2}[0-9][A-Z0-9]?)\s*[0-9][A-Z]{2}\b/gi;
+
+/**
+ * The postcode district of a pitch's address, as Google formats it
+ * (`Venue.formattedAddress`, "Gander Green Ln, Sutton SM1 2EY, UK"): the
+ * first half of the last full UK postcode in it. Null when there is no full
+ * postcode, never a guess. Only for addresses Google wrote, never for what
+ * people type.
+ */
+export function districtOfAddress(address: string | null | undefined): string | null {
+  if (!address) return null;
+  const all = [...address.matchAll(FULL_POSTCODE_IN_ADDRESS)];
+  const last = all[all.length - 1];
+  return last ? normaliseDistrict(last[1]) : null;
 }
 
 /** "HH:MM" to minutes after midnight; "24:00" is the end of the day. */

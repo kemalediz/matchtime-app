@@ -188,23 +188,35 @@ test.describe("English visitor", () => {
     expect(await db.count(`SELECT count(*) FROM "PlatformJob" WHERE purpose = 'pool-welcome' AND phone = $1`, [phone])).toBe(1);
   });
 
-  test("chosen pitches instead of a postcode area: search MatchTime's pitches and pick one", async ({ page, db }) => {
-    await db.run(
-      `INSERT INTO "Venue" (id, "placeId", name, "formattedAddress", lat, lng, source, "createdAt", "updatedAt") VALUES ('e2e-play-v1', 'ChIJ_e2e_play_v1', 'Riverside Sports Centre', 'River Road, Sutton', 51.36, -0.19, 'google', now(), now()) ON CONFLICT DO NOTHING`,
-    );
+  test("a postcode area is the only way: no pitch choice on the page, and a crafted POST with chosen pitches is refused", async ({ page, request, db }) => {
     await page.goto("/play");
-    await fillValid(page, "Sam S");
-    await page.getByRole("radio", { name: EN.fields.areaVenuesOption }).check();
-    await page.getByLabel(EN.fields.venueSearchLabel).fill("Riverside");
-    await page.getByRole("button", { name: EN.fields.venueAdd("Riverside Sports Centre") }).click();
-    await expect(page.getByRole("button", { name: EN.fields.venueRemove("Riverside Sports Centre") })).toBeVisible();
-    await page.getByRole("button", { name: EN.signup.submit }).click();
-    await expect(page.getByRole("heading", { level: 1, name: EN.signup.confirmHeading })).toBeVisible();
-    const code = (await page.getByTestId("pool-code").innerText()).trim();
-    expect(await db.one(`SELECT "venueIds", "areaDistrict" FROM "PoolProfile" WHERE "confirmCode" = $1`, [code])).toEqual({
-      venueIds: ["e2e-play-v1"],
-      areaDistrict: null,
-    });
+    const area = page.getByRole("group", { name: EN.fields.areaLegend });
+    await expect(area).toBeVisible();
+    await expect(area.getByLabel(EN.fields.districtLabel, { exact: true })).toBeVisible();
+    await expect(area.getByRole("radio")).toHaveCount(0);
+    await expect(page.getByRole("searchbox")).toHaveCount(0);
+    await expect(page.getByText(/pitches I choose/i)).toHaveCount(0);
+
+    const before = await db.count(`SELECT count(*) FROM "PoolProfile"`);
+    const base = {
+      name: "Sam S",
+      maxMiles: 3,
+      availability: [{ day: 2, from: "19:00", to: "22:00" }],
+      sports: [{ sport: "football", formats: [7] }],
+      language: "en",
+      adult: true,
+      consent: true,
+    };
+    const res = await request.post("/api/play/signup", { data: { ...base, area: { kind: "venues", venueIds: ["e2e-play-v1"] } } });
+    expect(res.status()).toBe(400);
+    expect(await res.json()).toMatchObject({ ok: false, reason: "invalid", errors: { area: "required" } });
+    expect(await db.count(`SELECT count(*) FROM "PoolProfile"`)).toBe(before);
+
+    // Pitch ids sent next to a postcode area are ignored: only the area is stored.
+    const ok = await request.post("/api/play/signup", { data: { ...base, area: { kind: "district", district: "SM1", venueIds: ["e2e-play-v1"] }, venueIds: ["e2e-play-v1"] } });
+    expect(ok.status()).toBe(200);
+    const { code } = (await ok.json()) as { code: string };
+    expect(await db.one(`SELECT "venueIds", "areaDistrict" FROM "PoolProfile" WHERE "confirmCode" = $1`, [code])).toEqual({ venueIds: [], areaDistrict: "SM1" });
   });
 });
 

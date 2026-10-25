@@ -30,7 +30,7 @@ import type { PoolProfileSource, PoolSignupAttemptResult } from "./vocab";
 
 export type PoolSignupResult =
   | { ok: true; code: string; earlyList: boolean }
-  | { ok: false; reason: "busy" | "area-not-found" | "venues-unknown" };
+  | { ok: false; reason: "busy" | "area-not-found" };
 
 export async function createPoolSignup(args: {
   fields: PoolFields;
@@ -80,7 +80,6 @@ export async function createPoolSignup(args: {
           areaDistrict: area.areaDistrict,
           areaLat: area.areaLat,
           areaLng: area.areaLng,
-          venueIds: area.venueIds,
           maxMiles: f.maxMiles,
           earlyList: args.earlyList,
           ...source,
