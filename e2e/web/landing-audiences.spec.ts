@@ -254,3 +254,12 @@ test("the For clubs menu's Pricing link opens /pricing, and the home teaser link
   await page.waitForURL("**/pricing");
   await expect(page.getByRole("heading", { level: 1, name: "Try it with your group first." })).toBeVisible();
 });
+
+// Kemal, 2026-10-25: the weekly cap on game offers still applies, but the
+// site no longer states it. The /play consent tickbox still does.
+test("home, /players and /pricing say nothing about how many game offers a week", async ({ page }) => {
+  for (const url of ["/", "/players", "/pricing"]) {
+    await open(page, url);
+    await expect(page.locator("body")).not.toContainText(/offers a week/i);
+  }
+});
