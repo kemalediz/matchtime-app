@@ -11,6 +11,7 @@ import { dropOrphanPin } from "@/lib/venue-location";
 import { scheduleVenuePickResolve, scheduleVenueResolve } from "@/lib/venue-location-schedule";
 import { CLEARED_VENUE_LINK } from "@/lib/venue-location-rules";
 import { parseVenuePick } from "@/lib/venue-suggest-rules";
+import { assertSportOfferedForGame } from "@/lib/club-sport-offer";
 
 /** What a form sends for a picked place. Anything else on it is dropped. */
 type VenuePickInput = { placeId: string; sessionToken?: string | null };
@@ -39,11 +40,9 @@ export async function createActivity(formData: {
   const pick = parseVenuePick(venuePick);
   const parsed = activitySchema.parse(rest);
 
-  // Verify the sport belongs to this org (stops cross-org writes).
-  const sport = await db.sport.findFirst({
-    where: { id: parsed.sportId, orgId },
-  });
-  if (!sport) throw new Error("Sport not found in this organisation");
+  // The sport is this org's (stops cross-org writes) and offered: live
+  // (`LIVE_SPORTS`), or one the club already plays.
+  await assertSportOfferedForGame(orgId, parsed.sportId);
 
   const created = await db.activity.create({ data: { ...parsed, orgId }, select: { id: true } });
   // Venue location: looked up after the response, never part of the save.
@@ -89,12 +88,7 @@ export async function updateActivity(
   if (!update.ok) throw new Error(update.error);
   const data = update.data;
 
-  if (data.sportId) {
-    const sport = await db.sport.findFirst({
-      where: { id: data.sportId, orgId: activity.orgId },
-    });
-    if (!sport) throw new Error("Sport not found in this organisation");
-  }
+  if (data.sportId) await assertSportOfferedForGame(activity.orgId, data.sportId);
 
   // New venue words: the place linked to the old words is cleared in the
   // SAME write, so a stale location never stays attached to new text, and

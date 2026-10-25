@@ -26,7 +26,8 @@ import {
   type WizardSubmission,
 } from "@/app/actions/onboarding";
 import type { OnboardingAnalysis } from "@/lib/onboarding-analyzer";
-import { SPORT_PRESETS, findPreset } from "@/lib/sport-presets";
+import { findPreset } from "@/lib/sport-presets";
+import { liveSportPresets } from "@/lib/pool/sports";
 import {
   Upload,
   Users,
@@ -782,7 +783,7 @@ function ActivityStep(props: {
             onChange={(e) => update({ sportKey: e.target.value })}
             className="w-full h-11 px-3 rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
-            {SPORT_PRESETS.map((p) => (
+            {liveSportPresets().map((p) => (
               <option key={p.key} value={p.key}>
                 {p.name} ({p.playersPerTeam * 2} players)
               </option>

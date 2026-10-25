@@ -4,7 +4,8 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { onboardingUserKey, withOrgAiBudget } from "@/lib/ai-budget";
 import { parseWhatsAppChat, type ParsedChat } from "@/lib/whatsapp-parser";
-import { SPORT_PRESETS, findPreset } from "@/lib/sport-presets";
+import { findPreset } from "@/lib/sport-presets";
+import { isLivePreset, liveSportPresets } from "@/lib/pool/sports";
 import { setCurrentOrgId } from "@/lib/org";
 import { normalisePhone } from "@/lib/phone";
 import { analyzeForOnboarding, type OnboardingAnalysis } from "@/lib/onboarding-analyzer";
@@ -186,7 +187,9 @@ export async function createOrgFromWizard(data: WizardSubmission): Promise<Wizar
   if (!data.orgName || data.orgName.trim().length < 2) {
     throw new Error("Organisation name is required");
   }
-  const preset = findPreset(data.activity.sportKey);
+  // Only a live sport (`LIVE_SPORTS`): the picker shows no other, and the
+  // server refuses one sent anyway.
+  const preset = isLivePreset(data.activity.sportKey) ? findPreset(data.activity.sportKey) : undefined;
   if (!preset) throw new Error("Pick a sport");
   if (data.players.length === 0) {
     throw new Error("Add at least one player");
@@ -398,9 +401,9 @@ function slugify(s: string): string {
     .slice(0, 48);
 }
 
-/** Presets exposed to the client for the activity-picker step. */
+/** Presets exposed to the client for the activity-picker step: live ones only. */
 export async function listSportPresets() {
-  return SPORT_PRESETS.map((p) => ({
+  return liveSportPresets().map((p) => ({
     key: p.key,
     name: p.name,
     playersPerTeam: p.playersPerTeam,
@@ -430,7 +433,7 @@ export async function analyzeOnboardingChat(
   if (fileText.length > 5 * 1024 * 1024) {
     throw new Error("Chat export too large");
   }
-  const preset = findPreset(sportKey);
+  const preset = isLivePreset(sportKey) ? findPreset(sportKey) : undefined;
   if (!preset) throw new Error("Unknown sport");
 
   const parsed = parseWhatsAppChat(fileText, { recentMessageLimit: 15_000 });

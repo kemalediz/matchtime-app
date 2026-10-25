@@ -41,7 +41,7 @@ describe("football-8aside", () => {
   });
 
   it("is what the in-group setup picks for 8 per side", () => {
-    expect(presetForSide(8).key).toBe("football-8aside");
+    expect(presetForSide(8).preset).toBe("football-8aside");
   });
 });
 
@@ -75,7 +75,7 @@ describe("football-9aside", () => {
 
   it("is what the in-group setup picks for 9 per side", () => {
     const p = presetForSide(9);
-    expect(p.key).toBe("football-9aside");
+    expect(p.preset).toBe("football-9aside");
     expect(p.playersPerTeam).toBe(9);
   });
 
@@ -125,5 +125,49 @@ describe("every preset", () => {
       expect(total, p.key).toBe(p.playersPerTeam);
       for (const pos of Object.keys(comp)) expect(p.positions, `${p.key}:${pos}`).toContain(pos);
     }
+  });
+});
+
+/**
+ * Club setup offers football only, through the same `LIVE_SPORTS` switch as
+ * the website and the pool (Kemal, 2026-10-25). The in-group setup used to
+ * fall back to "any preset with that many per side", so 6 a side silently
+ * became volleyball and 3 became basketball 3-on-3. It now only ever picks a
+ * live preset, and for a size with none it builds the same plain-football
+ * sport the self-join setup builds.
+ */
+describe("in-group setup picks only a live sport (presetForSide)", () => {
+  const FOOTBALLISH = /^(football-\d+aside|futsal)$/;
+
+  it.each([5, 7, 11])("%d per side is the football preset", (n) => {
+    const p = presetForSide(n);
+    expect(p.preset).toBe(`football-${n}aside`);
+    expect(p.name).toBe(`Football ${n}-a-side`);
+    expect(p.playersPerTeam).toBe(n);
+  });
+
+  it.each([3, 4, 6, 10])("%d per side is plain football, the same sport self-join builds", (n) => {
+    const p = presetForSide(n);
+    expect(p.preset).toBeNull();
+    expect(p.name).toBe(`Football ${n}-a-side`);
+    expect(p.playersPerTeam).toBe(n);
+    const { name: _name, ...rest } = p;
+    const { name: _sjName, ...selfJoin } = sportForPlayersPerSide(n);
+    expect(rest).toEqual(selfJoin);
+  });
+
+  it("never picks a sport that is not football, for any size", () => {
+    for (let n = 1; n <= 15; n++) {
+      const p = presetForSide(n);
+      if (p.preset !== null) expect(p.preset).toMatch(FOOTBALLISH);
+      expect(p.positions).toEqual(["GK", "DEF", "MID", "FWD"]);
+      expect(p.mvpLabel).toBe("Man of the Match");
+    }
+  });
+
+  it("self-join reads the same switch: a basketball club only once basketball is live", () => {
+    expect(sportForPlayersPerSide(3).preset).toBeNull();
+    expect(sportForPlayersPerSide(3, { sports: ["football", "basketball"], other: false }).preset).toBe("basketball-3v3");
+    expect(sportForPlayersPerSide(5, { sports: ["football", "basketball"], other: false }).preset).toBe("football-5aside");
   });
 });

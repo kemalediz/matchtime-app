@@ -16,7 +16,7 @@ const state = vi.hoisted(() => ({
   activity: null as Row | null,
   memberships: [] as Array<{ userId: string; orgId: string; role: string; leftAt: Date | null }>,
   superadmins: [] as string[],
-  sports: [] as Array<{ id: string; orgId: string }>,
+  sports: [] as Array<{ id: string; orgId: string; preset: string | null; name: string; playersPerTeam: number }>,
   updates: [] as Array<{ where: Row; data: Row }>,
 }));
 vi.mock("@/lib/db", () => ({
@@ -65,7 +65,8 @@ beforeEach(() => {
     { userId: "u-other-admin", orgId: "club-b", role: "OWNER", leftAt: null },
   ];
   state.superadmins = [];
-  state.sports = [{ id: "s-a", orgId: "club-a" }, { id: "s-b", orgId: "club-b" }];
+  const seven = { preset: "football-7aside", name: "Football 7-a-side", playersPerTeam: 7 };
+  state.sports = [{ id: "s-a", orgId: "club-a", ...seven }, { id: "s-b", orgId: "club-b", ...seven }];
   state.updates = [];
   auth.mockResolvedValue({ user: { id: "u-owner" } });
 });
