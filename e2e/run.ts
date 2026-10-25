@@ -26,8 +26,15 @@
  *   1. Starts an EMBEDDED Postgres (binaries from the `embedded-postgres`
  *      npm package) on this checkout's db port, data dir under .e2e/ —
  *      fully isolated, no Docker, no system Postgres, no prod anywhere.
- *   2. `prisma db push` against that DB (this repo uses db push, not
- *      migrations — see prisma.config.ts) + `prisma generate` if needed.
+ *   2. `prisma db push --accept-data-loss` against that DB (this repo uses
+ *      db push, not migrations — see prisma.config.ts) + `prisma generate`
+ *      if needed. The data dir persists, so a test DB built before a column
+ *      left the schema still has it, and a plain push stops at "Use the
+ *      --accept-data-loss flag" (every older checkout did after PR #411).
+ *      The fixture world is reseeded every run, so dropping it is free. The
+ *      flag comes only from helpers/schema-push.ts, which calls
+ *      assertSafeTestDbUrl first: it can never reach a non-loopback URL,
+ *      and schema-push.test.ts fails if any other harness file names it.
  *   3. Seeds the fixture world (e2e/helpers/seed.ts).
  *   4. Writes .env.e2e (gitignored) documenting the test DB URL + ports.
  *   5. Runs `playwright test` with the full test env (helpers/env.ts);
@@ -77,6 +84,7 @@ import {
   buildTestEnv,
 } from "./helpers/env";
 import { describePorts } from "./helpers/ports";
+import { schemaPushArgs } from "./helpers/schema-push";
 import {
   E2EPreflightError,
   acquireRunLock,
@@ -316,8 +324,10 @@ async function runSuite(): Promise<number> {
       if (gen !== 0) return gen;
     }
 
-    console.log("[e2e] applying schema (prisma db push)…");
-    const push = await run("npx", ["prisma", "db", "push"], dbEnv);
+    // --accept-data-loss, via schemaPushArgs, which refuses any URL that
+    // is not this checkout's loopback test DB. See the header, step 2.
+    console.log("[e2e] applying schema (prisma db push --accept-data-loss, local test DB only)…");
+    const push = await run("npx", schemaPushArgs(E2E_DB_URL), dbEnv);
     if (push !== 0) return push;
 
     // `db push` creates tables and columns; it never creates TRIGGERS.

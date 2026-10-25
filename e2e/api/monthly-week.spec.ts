@@ -1102,8 +1102,16 @@ test.describe("after a game: the collector's reply, and the hourly sweep", () =>
     // The same hour as the first poll: the played game is not swept again.
     await poll(request, NOW, GROUP4);
     expect(await credits(db, ORG4)).toEqual([]);
-    // The next hour: it is, and the miss is credited.
-    await poll(request, new Date(NOW.getTime() + 61 * 60 * 1000), GROUP4);
+    // The next hour: it is, and the miss is credited. "The next hour" is the
+    // next London WALL hour, the one the sweep's claim is keyed on
+    // (monthly-week.ts `claimHourlySweep`). On the autumn clock-change night
+    // 01:00 to 02:00 happens twice and is one key, so NOW + 61 minutes can
+    // still be "01" (it was at 01:01 BST on 25 Oct 2026): step on another
+    // hour until the London hour differs.
+    const londonHour = (d: Date) => formatInTimeZone(d, "Europe/London", "yyyy-MM-dd'T'HH");
+    let nextHour = new Date(NOW.getTime() + 61 * 60 * 1000);
+    while (londonHour(nextHour) === londonHour(NOW)) nextHour = new Date(nextHour.getTime() + 60 * 60 * 1000);
+    await poll(request, nextHour, GROUP4);
     expect(await credits(db, ORG4)).toEqual([
       { userId: S.sid.id, reason: "missed", games: 1, earnedMatchId: MATCH4, earnedMonthId: "e2e-mw4-month", voided: false },
     ]);

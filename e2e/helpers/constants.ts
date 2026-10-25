@@ -70,16 +70,20 @@ export const MATCH = {
 
 export const FEE = 8; // £ base per player on the pay match
 
-/** A wall-clock instant in Europe/London, `daysOffset` days from today. */
+/** A wall-clock instant in Europe/London, `daysOffset` CALENDAR days from
+ *  London's today. The offset is added to the London date itself, never as
+ *  `daysOffset * 24h` of milliseconds: a clock-change day is 23 or 25 hours
+ *  long, so the millisecond version landed on the wrong day near midnight
+ *  (25 Oct 2026 00:33 BST + 24h is still the 25th). See london-at.test.ts. */
 export function londonAt(daysOffset: number, hour: number, minute = 0): Date {
-  const d = new Date(Date.now() + daysOffset * 24 * 60 * 60 * 1000);
   const fmt = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Europe/London",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
   });
-  const ymd = fmt.format(d); // "YYYY-MM-DD"
+  const [y, m, d] = fmt.format(new Date()).split("-").map(Number); // London's today
+  const ymd = new Date(Date.UTC(y, m - 1, d + daysOffset)).toISOString().slice(0, 10);
   const hh = String(hour).padStart(2, "0");
   const mm = String(minute).padStart(2, "0");
   return fromZonedTime(`${ymd}T${hh}:${mm}:00`, "Europe/London");
