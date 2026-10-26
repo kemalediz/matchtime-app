@@ -17,12 +17,14 @@ import {
   HERO,
   HERO_LINKS,
   HERO_POOL_INVITE,
+  KEY_FEATURES,
   LANDING_NAV_GROUPS,
   LANDING_SPOTLIGHTS,
   PERSONAS,
   PLAYERS_FAQ,
   PLAYERS_PAGE,
   PLAYER_STAT_CARDS,
+  POOL_SECTION,
   POOL_SITE_SOURCES,
   SPORTS,
   allNavLinks,
@@ -39,12 +41,15 @@ import { readSignupSource } from "@/lib/pool/profile-fields";
 import { poolPageCopy } from "@/lib/pool/page-copy";
 import { POOL_CAPS, POOL_MIN_AGE, POOL_QUIET_HOURS } from "@/lib/pool/rules";
 import { boldSegments, dropoutBotLines, withoutEmoji } from "../dropout-bot-lines";
+import { poolOfferMock } from "../pool-offer-lines";
+import { poolOfferEn } from "@/lib/i18n/pool-offer.en";
+import { SPORT_LEVELS, levelLabel } from "@/lib/pool/sports";
 import { en } from "@/lib/i18n/strings.en";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
 /** Fields that are identifiers or styling, never shown as words. */
-const NOT_COPY = new Set(["id", "key", "href", "icon", "color", "tone", "from"]);
+const NOT_COPY = new Set(["id", "key", "href", "icon", "color", "tone", "from", "link"]);
 
 function copyStrings(value: unknown, path = "content"): Array<{ path: string; text: string }> {
   if (typeof value === "string") return [{ path, text: value }];
@@ -61,12 +66,14 @@ const ALL = copyStrings({
   FEATURES,
   HERO,
   HERO_POOL_INVITE,
+  KEY_FEATURES,
   LANDING_NAV_GROUPS,
   LANDING_SPOTLIGHTS,
   PERSONAS,
   PLAYERS_FAQ,
   PLAYERS_PAGE,
   PLAYER_STAT_CARDS,
+  POOL_SECTION,
   SPORTS,
 });
 
@@ -75,6 +82,9 @@ function spotlight(id: string): Spotlight {
   if (!s) throw new Error(`no spotlight ${id}`);
   return s;
 }
+
+/** Anything that reads as pricing (Kemal: pricing belongs on the pricing page). */
+const PRICING = /£|\bfree\b|months? free|pay only|weeks you play|per month|a month|price|pricing|\bcost/i;
 
 const keysOf = (items: ReadonlyArray<{ key: string }> | undefined) => (items ?? []).map((i) => i.key);
 
@@ -248,8 +258,14 @@ describe("landing content: every claim is present", () => {
   });
 });
 
-describe("landing content: the player pool (G0 part 2)", () => {
+describe("landing content: the player pool section (variant D round 2)", () => {
   const s = spotlight("player-pool");
+
+  it("is headed for enthusiasm: called up for local games, marked New", () => {
+    expect(s.title).toBe("Get called up for local games.");
+    expect(s.badge).toBe("New");
+    expect(POOL_SECTION.benefit).toBe("More games, new teammates, and no hunting round group chats.");
+  });
 
   it("invites players to /play with the pulsing button", () => {
     expect(s.cta).toEqual({ label: "Join the MatchTime player pool", href: POOL_PLAY_PATH, pulse: true });
@@ -266,20 +282,47 @@ describe("landing content: the player pool (G0 part 2)", () => {
     expect(pulsing).toEqual(["hero", "players-page", "spotlight:player-pool"]);
   });
 
-  it("how joining works, the privacy promises, and the points", () => {
-    expect(keysOf(s.steps)).toEqual(["signup", "confirm", "offers"]);
+  it("a call-up in four steps: your details, a club short nearby, the WhatsApp offer, yes and you're in", () => {
+    expect(keysOf(s.steps)).toEqual(["profile", "short", "offer", "yes"]);
+    const [profile, short, offer, yes] = s.steps!.map((x) => x.body);
+    expect(profile).toMatch(/level/);
+    expect(profile).toMatch(/days and times/);
+    expect(profile).toMatch(/how far you'll travel/);
+    expect(short).toMatch(/player short/);
+    expect(offer).toMatch(/the club, the day and time, how far it is and the kind of game/);
+    expect(yes).toMatch(/Reply yes/);
+    expect(yes).toMatch(/bench/);
+  });
+
+  it("the privacy promises and the points", () => {
     expect(keysOf(s.note?.items)).toEqual(["number", "name", "area"]);
-    expect(keysOf(s.points)).toEqual(["sports", "control", "age"]);
+    expect(keysOf(s.points)).toEqual(["sports", "level", "control", "age"]);
   });
 
-  it("the quiet hours and the age come from pool/rules.ts; the weekly cap is not on the site", () => {
-    const offers = s.steps!.find((x) => x.key === "offers")!.body;
-    expect(offers).not.toMatch(/a week|at most/i);
-    expect(offers).toContain(`between ${POOL_QUIET_HOURS.from} and ${POOL_QUIET_HOURS.to}`);
+  it("keeps the facts: quiet hours and age from pool/rules.ts, stop any time, number only when you join a group, postcode district only", () => {
+    const offer = s.steps!.find((x) => x.key === "offer")!.body;
+    expect(offer).toContain(`between ${POOL_QUIET_HOURS.from} and ${POOL_QUIET_HOURS.to}`);
     expect(s.points.find((x) => x.key === "age")!.title).toBe(`${POOL_MIN_AGE} and over`);
+    expect(s.points.find((x) => x.key === "control")!.title).toBe("Stop any time");
+    expect(s.note!.items.find((x) => x.key === "number")!.text).toMatch(/only .*if you join a club's WhatsApp group yourself/);
+    expect(s.note!.items.find((x) => x.key === "area")!.text).toMatch(/postcode district, never your full postcode/);
   });
 
-  it("claims nothing the pool does not do yet: offers only once it opens", () => {
+  it("the weekly cap is not on the site", () => {
+    expect(copyStrings({ s, POOL_SECTION }).filter((x) => /a week|per week|at most/i.test(x.text))).toEqual([]);
+  });
+
+  it("the level claim is the matcher's: optional, self-chosen, asked only when the club names a level; never ratings", () => {
+    const level = s.points.find((x) => x.key === "level")!;
+    for (const l of SPORT_LEVELS) expect(level.body).toContain(levelLabel(l, "en"));
+    expect(level.body).toMatch(/if you like/);
+    expect(level.body).toMatch(/A club looking for a certain level only asks players who match it/);
+    const all = copyStrings({ s, POOL_SECTION, HERO_POOL_INVITE }).map((x) => x.text).join(" ");
+    expect(all).not.toMatch(/rating/i);
+    expect(all).not.toMatch(/every game (matches|is at) your level|matched to your level|picked by/i);
+  });
+
+  it("claims nothing the pool does not do yet: offers only once it opens near you", () => {
     expect(s.steps!.map((x) => x.body).join(" ")).toMatch(/opens/);
   });
 
@@ -314,30 +357,93 @@ describe("landing content: the player pool (G0 part 2)", () => {
   });
 });
 
-describe("landing content: the hero's invitation to players (Kemal, 2026-10-25)", () => {
+describe("landing content: the drawn pool offer is the bot's real wording", () => {
+  const m = poolOfferMock();
+  const o = POOL_SECTION.offer;
+
+  it("is the offer DM's own lines with example values, without emoji", () => {
+    const game = poolOfferEn.game_with_format({ format: "7-a-side", sport: "Football" });
+    expect(m.offer).toEqual([
+      withoutEmoji(poolOfferEn.offer_head({ club: o.club, places: 1, game })),
+      withoutEmoji(poolOfferEn.offer_when({ day: o.day, mins: o.mins })),
+      withoutEmoji(`📍 *${o.venue}*. ${poolOfferEn.distance({ miles: o.miles, one: false })}`),
+      withoutEmoji(`🤝 ${poolOfferEn.style_casual}. ${poolOfferEn.club_weekly({ members: o.members })}`),
+    ]);
+    expect(m.offer[0]).toBe("*Riverside FC* needs 1 player for a 7-a-side football game");
+    expect(m.cta).toBe(withoutEmoji(poolOfferEn.offer_cta({ link: o.link })));
+    expect(m.placed).toBe(withoutEmoji(poolOfferEn.placed_in({ club: o.club, day: o.day, venue: o.venue })));
+    expect(m.placed).toMatch(/^You're in: \*Riverside FC\*/);
+  });
+
+  it("carries no emoji, no dashes and no price", () => {
+    const all = [...m.offer, m.cta, m.placed, o.reply].join("\n");
+    expect(all).not.toMatch(/\p{Extended_Pictographic}/u);
+    expect(all).not.toMatch(/[—–]/);
+    expect(all).not.toMatch(PRICING);
+  });
+});
+
+describe("landing content: the key features row (variant D round 2)", () => {
+  it("names the core value in order, one short line each", () => {
+    expect(keysOf(KEY_FEATURES.cards)).toEqual(["whatsapp", "count", "bench", "short", "teams", "ratings", "fees", "languages"]);
+    for (const c of KEY_FEATURES.cards) {
+      expect(c.title.length, c.key).toBeLessThanOrEqual(32);
+      expect(c.body.length, c.key).toBeLessThanOrEqual(90);
+    }
+  });
+
+  it("never overclaims: the bench is tagged and the first IN plays; short means bench, partner clubs, then the pool", () => {
+    const by = (k: string) => KEY_FEATURES.cards.find((c) => c.key === k)!.body;
+    expect(by("bench")).toMatch(/tagged/);
+    expect(by("bench")).toMatch(/first to reply IN/i);
+    const short = by("short");
+    expect(short.indexOf("bench")).toBeGreaterThanOrEqual(0);
+    expect(short.indexOf("bench")).toBeLessThan(short.indexOf("partner clubs"));
+    expect(short.indexOf("partner clubs")).toBeLessThan(short.indexOf("player pool"));
+  });
+
+  it("the language card says multi-lingual and names no language", () => {
+    const lang = KEY_FEATURES.cards.find((c) => c.key === "languages")!;
+    expect(lang.title).toMatch(/Multi-lingual/);
+    expect(`${lang.title} ${lang.body}`).toMatch(/your club's language/);
+    expect(`${lang.title} ${lang.body}`).not.toMatch(/English|Turkish|VARIM|YOKUM/);
+  });
+
+  it("says nothing about pricing", () => {
+    expect(copyStrings(KEY_FEATURES).filter((x) => PRICING.test(x.text))).toEqual([]);
+  });
+});
+
+describe("landing content: the language setting names no language", () => {
+  it("multi-lingual, in your club's language", () => {
+    const lang = spotlight("your-way").points.find((p) => p.key === "language")!;
+    expect(lang.title).toBe("Multi-lingual");
+    expect(`${lang.title} ${lang.body}`).not.toMatch(/English|Turkish|VARIM|YOKUM/);
+    expect(ALL.filter((x) => /VARIM|YOKUM|In Turkish/.test(x.text))).toEqual([]);
+  });
+});
+
+describe("landing content: the hero's players card (variant D round 2)", () => {
   const h = HERO_POOL_INVITE;
 
-  it("says the benefit: asked when a nearby club is a player short, you decide, no app, stop any time", () => {
-    expect(h.eyebrow).toBe("For players");
-    expect(h.title).toMatch(/near you/);
-    expect(h.title).toMatch(/player short/);
-    const body = h.body;
-    expect(body).toMatch(/WhatsApp/);
-    expect(body).toMatch(/you decide/);
-    expect(body).toMatch(/No app/);
-    expect(body).toMatch(/stop any time/);
+  it("is a New card: called up for local games, the game on WhatsApp", () => {
+    expect(h.badge).toBe("New");
+    expect(h.title).toBe("Get called up for local games");
+    expect(h.body).toBe(
+      "Join the MatchTime player pool. When a club near you is a player short at a time that suits you, you get the game on WhatsApp.",
+    );
   });
 
   it("the button goes to /play with the hero's source code, and pulses", () => {
-    expect(h.cta).toEqual({ label: "Join the MatchTime player pool", href: `${POOL_PLAY_PATH}?src=${POOL_SITE_SOURCES.hero}`, pulse: true });
-  });
-
-  it("a second link explains it on the players' page", () => {
-    expect(h.more).toEqual({ label: "How it works for players", href: PLAYERS_PAGE_PATH });
+    expect(h.cta).toEqual({ label: "Join the player pool", href: `${POOL_PLAY_PATH}?src=${POOL_SITE_SOURCES.hero}`, pulse: true });
   });
 
   it("the small print is the age from pool/rules.ts and says it is opening town by town, with no weekly cap", () => {
     expect(h.smallPrint).toBe(`${POOL_MIN_AGE} and over. Opening town by town.`);
+  });
+
+  it("says nothing about pricing", () => {
+    expect(copyStrings(h).filter((x) => PRICING.test(x.text))).toEqual([]);
   });
 
   it("every site source code is one /play reads as a campaign code", () => {
@@ -402,8 +508,6 @@ describe("landing content: numbers come from the rules that enforce them", () =>
 
 // ─── Variant D: the hero and the dropout story (2026-10-26) ───────────
 
-/** Anything that reads as pricing (Kemal: pricing belongs on the pricing page). */
-const PRICING = /£|\bfree\b|months? free|pay only|weeks you play|per month|a month|price|pricing|\bcost/i;
 
 describe("landing content: the hero (variant D)", () => {
   it("is D's words, in order", () => {
@@ -411,12 +515,10 @@ describe("landing content: the hero (variant D)", () => {
       pill: "For weekly football groups",
       titleLead: "Your players WhatsApp.",
       titleTail: "MatchTime runs the game.",
-      lead: "Who's in, the bench and fair teams, sorted right in your group chat.",
+      lead: "Who's in, the bench, fair teams and Man of the Match, sorted in your group chat.",
       primaryCta: "Start your group",
       secondaryCta: "See how it works",
       tick: "No app for players",
-      poolLead: "Want more games?",
-      poolLabel: "Join the player pool near you",
     });
   });
 
@@ -438,6 +540,10 @@ describe("landing content: what happens when a player drops out (variant D)", ()
     expect(d.title).toBe("What happens when a player drops out on match day");
     expect(d.lead).toBe("It all happens in the group chat. No phone calls, no chasing.");
     expect(keysOf(d.timeline)).toEqual(["out", "bench", "claim", "teams", "later"]);
+  });
+
+  it("ends on the short-squad ladder: bench, then partner clubs, then the player pool", () => {
+    expect(d.shortNote).toBe("Nobody on the bench? MatchTime can ask partner clubs nearby, then local players from the player pool.");
   });
 
   it("never overclaims: the bench is tagged and the first to reply IN plays; the redrawn sheet goes to the admin group", () => {

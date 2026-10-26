@@ -2,11 +2,11 @@
  * The website for its two audiences (Kemal, 2026-10-25: "where is the
  * flashy button?" and "we need separate menu for players and for clubs").
  *
- *   - The hero (variant D, 2026-10-26) invites PLAYERS to the pool with one
- *     line to /play, above the fold at phone and desktop width; the
- *     organisers' "Start your group" stays the first action; nothing about
- *     pricing is in the hero. The pulsing pool button is in the pool
- *     section further down (landing-sections.spec.ts).
+ *   - The hero (variant D, 2026-10-26; round 2) invites PLAYERS to the
+ *     pool with a "New" players card and its pulsing button to /play, on
+ *     the first screen at phone and desktop width (landing-players.spec.ts
+ *     pins it); the organisers' "Start your group" stays the first action;
+ *     nothing about pricing is in the hero.
  *   - The menu has a "For clubs" and a "For players" group, as dropdowns on
  *     desktop and two labelled sections in the phone menu; every link in it
  *     opens a page that answers 200 or an anchor that exists.
@@ -54,7 +54,7 @@ for (const [name, size, file] of [
   ["phone", PHONE, "hero-390.png"],
   ["desktop", DESKTOP, "hero-1280.png"],
 ] as const) {
-  test(`the hero (variant D) reads on ${name} width, with the players' pool line above the fold`, async ({ page }) => {
+  test(`the hero (variant D) reads on ${name} width, with the players card above the fold`, async ({ page }) => {
     await page.setViewportSize(size);
     await open(page, "/");
     const hero = page.locator("section").first();
@@ -67,8 +67,8 @@ for (const [name, size, file] of [
     await expect(hero.getByRole("link", { name: HERO.secondaryCta })).toHaveAttribute("href", HERO_LINKS.secondary);
     await expect(hero.getByRole("list", { name: "Good to know" }).getByRole("listitem")).toHaveText([HERO.tick]);
 
-    // The players' line goes to the pool invitation's own /play link, on the first screen.
-    const pool = hero.getByRole("link", { name: `${HERO.poolLead} ${HERO.poolLabel}` });
+    // The players card's button goes to the pool invitation's own /play link, on the first screen.
+    const pool = hero.getByRole("link", { name: HERO_POOL_INVITE.cta.label });
     await expect(pool).toHaveAttribute("href", HERO_POOL_INVITE.cta.href);
     await expect(pool).toBeInViewport({ ratio: 1 });
     const [startBox, poolBox] = [await start.boundingBox(), await pool.boundingBox()];
@@ -86,10 +86,10 @@ for (const [name, size, file] of [
   });
 }
 
-test("the hero's players' line takes a player to the /play sign-up", async ({ page }) => {
+test("the hero's players card takes a player to the /play sign-up", async ({ page }) => {
   await page.setViewportSize(PHONE);
   await open(page, "/");
-  await page.getByTestId("hero-pool-link").click();
+  await page.getByTestId("hero-pool-cta").click();
   await page.waitForURL(/\/play\?src=/);
   await expect(page.getByRole("heading", { level: 1, name: "Join the MatchTime player pool" })).toBeVisible();
 });

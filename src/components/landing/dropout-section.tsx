@@ -7,7 +7,7 @@
  * Presentational only.
  */
 import Link from "next/link";
-import { ArrowRight, Check } from "lucide-react";
+import { ArrowRight, Check, MapPin } from "lucide-react";
 import { DROPOUT_STORY, type DropoutMessage } from "./landing-content";
 import { boldSegments, dropoutBotLines } from "./dropout-bot-lines";
 import { DISPLAY_FONT } from "./display-font";
@@ -177,7 +177,12 @@ export function DropoutSection() {
           <Timeline />
         </div>
 
-        <div className="mt-12 flex justify-center lg:hidden">
+        <p className="mt-12 sm:mt-16 mx-auto max-w-3xl flex items-start gap-3 px-5 py-4 rounded-2xl bg-emerald-400/10 border border-emerald-300/30 text-[15px] sm:text-base leading-relaxed text-emerald-100">
+          <MapPin className="w-5 h-5 mt-0.5 shrink-0 text-emerald-300" aria-hidden="true" />
+          <span>{d.shortNote}</span>
+        </p>
+
+        <div className="mt-10 flex justify-center lg:hidden">
           <Link
             href={d.cta.href}
             className="inline-flex items-center justify-center gap-2 min-h-[48px] px-7 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-base transition-colors"

@@ -7,9 +7,11 @@ import {
   ASK_CHAT,
   FEATURES,
   HERO_LINKS,
+  HERO_POOL_INVITE,
   LANDING_SPOTLIGHTS,
   PERSONAS,
   PLAYER_STAT_CARDS,
+  poolOpeningLine,
   HERO,
   SPORTS,
   spotlightFor,
@@ -21,12 +23,16 @@ import {
   DISPLAY_FONT,
   LandingFooter,
   PersonaCard,
+  PoolInviteButton,
   SectionIntro,
+  Stopped,
   SpotlightSection,
   StepList,
 } from "./landing-sections";
 import { LandingHeader } from "./landing-nav";
 import { DropoutSection } from "./dropout-section";
+import { KeyFeatures } from "./key-features";
+import { PoolSection } from "./pool-section";
 import { PricingTeaser } from "./pricing-section";
 
 /**
@@ -75,7 +81,7 @@ export function LandingPage({ holdOn = false, earlyList = true }: { holdOn?: boo
     {
       key: "play",
       title: "Play and rate",
-      body: "Players just say In or Out as normal, with nothing to install. Ask for teams when you want them, post the score after the game, and everyone gets a rating link. Man of the Match is announced, and it all starts again next week.",
+      body: "Players say In or Out as normal. Ask for teams, post the score, and everyone gets a rating link. Man of the Match is announced, and next week starts again.",
     },
   ];
 
@@ -85,7 +91,7 @@ export function LandingPage({ holdOn = false, earlyList = true }: { holdOn?: boo
       <LandingHeader onHome />
 
       {/* ── Hero ──────────────────────────────────────────────────────── */}
-      <section className="relative pt-24 pb-20 sm:pt-32 sm:pb-28 px-5 sm:px-8">
+      <section className="relative pt-20 pb-16 sm:pt-32 sm:pb-24 px-5 sm:px-8">
         <div className="absolute inset-0 bg-gradient-to-b from-slate-950 via-blue-950 to-slate-950" />
         <div
           className="absolute inset-0 opacity-40"
@@ -104,7 +110,7 @@ export function LandingPage({ holdOn = false, earlyList = true }: { holdOn?: boo
           }}
         />
 
-        <div className="relative max-w-6xl mx-auto flex flex-col items-center text-center gap-5 sm:gap-6">
+        <div className="relative max-w-6xl mx-auto flex flex-col items-center text-center gap-4 sm:gap-6">
           <p className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-blue-400/10 border border-blue-400/35 text-sm font-semibold text-blue-200">
             <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="#93c5fd" strokeWidth="1.8" strokeLinejoin="round" aria-hidden="true">
               <circle cx="10" cy="10" r="8" />
@@ -116,23 +122,25 @@ export function LandingPage({ holdOn = false, earlyList = true }: { holdOn?: boo
             className="text-[2.5rem] sm:text-6xl lg:text-7xl font-extrabold tracking-tight leading-[1.05] text-white"
             style={DISPLAY_FONT}
           >
-            <span className="block">{HERO.titleLead}</span>{" "}
+            <span className="block">
+              <Stopped text={HERO.titleLead} />
+            </span>{" "}
             <span className="block bg-gradient-to-r from-blue-400 via-teal-300 to-emerald-400 bg-clip-text text-transparent">
-              {HERO.titleTail}
+              <Stopped text={HERO.titleTail} />
             </span>
           </h1>
-          <p className="max-w-xl text-lg sm:text-xl text-slate-300 leading-relaxed">{HERO.lead}</p>
-          <div className="mt-1 sm:mt-2 flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-center w-full sm:w-auto">
+          <p className="max-w-xl text-[17px] sm:text-xl text-slate-300 leading-relaxed">{HERO.lead}</p>
+          <div className="mt-1 sm:mt-2 grid grid-cols-2 sm:flex gap-3 items-stretch sm:items-center justify-center w-full sm:w-auto">
             <Link
               href={HERO_LINKS.primary}
-              className="inline-flex items-center justify-center gap-2 min-h-[52px] px-7 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-base shadow-xl shadow-blue-500/30 transition-all hover:-translate-y-0.5"
+              className="inline-flex items-center justify-center gap-1.5 sm:gap-2 min-h-[52px] px-3 sm:px-7 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-[15px] sm:text-base shadow-xl shadow-blue-500/30 transition-all hover:-translate-y-0.5"
             >
               {HERO.primaryCta}
-              <ArrowRight className="w-4 h-4" aria-hidden="true" />
+              <ArrowRight className="w-4 h-4 shrink-0" aria-hidden="true" />
             </Link>
             <Link
               href={HERO_LINKS.secondary}
-              className="inline-flex items-center justify-center gap-2 min-h-[52px] px-7 rounded-xl border-[1.5px] border-slate-500 hover:bg-white/10 text-white font-semibold text-base transition-colors"
+              className="inline-flex items-center justify-center gap-2 min-h-[52px] px-3 sm:px-7 rounded-xl border-[1.5px] border-slate-500 hover:bg-white/10 text-white font-semibold text-[15px] sm:text-base transition-colors"
             >
               {HERO.secondaryCta}
             </Link>
@@ -143,25 +151,45 @@ export function LandingPage({ holdOn = false, earlyList = true }: { holdOn?: boo
               {HERO.tick}
             </li>
           </ul>
-          {/* The players' invitation: one line to the pool sign-up (the
-              pool invitation's own /play link). The pool section further
-              down carries the full invitation and its pulsing button. */}
-          <Link
-            href={HERO_LINKS.pool}
-            data-testid="hero-pool-link"
-            className="mt-2 sm:mt-3 inline-flex items-center gap-1.5 min-h-[44px] text-base text-slate-200 hover:text-white"
+          {/* The players card (variant D round 2): the pool invitation,
+              marked New, with the pulsing button to /play?src=site-hero. */}
+          <aside
+            aria-labelledby="hero-players-title"
+            data-testid="hero-players-card"
+            className="mt-2 sm:mt-4 w-full max-w-2xl rounded-2xl border border-emerald-400/45 bg-emerald-950/50 backdrop-blur px-5 py-4 sm:p-6 text-left shadow-[0_0_48px_rgba(16,185,129,0.18)]"
           >
-            <span>
-              {HERO.poolLead}{" "}
-              <span className="font-semibold text-emerald-300 underline underline-offset-4">{HERO.poolLabel}</span>
-            </span>
-            <ArrowRight className="w-4 h-4 text-emerald-300 shrink-0" aria-hidden="true" />
-          </Link>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-400 text-emerald-950 text-[11px] font-extrabold uppercase tracking-wider">
+                    {HERO_POOL_INVITE.badge}
+                  </span>
+                  <span className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300">{HERO_POOL_INVITE.eyebrow}</span>
+                </div>
+                <h2 id="hero-players-title" className="mt-2 text-xl sm:text-2xl font-extrabold tracking-tight text-white" style={DISPLAY_FONT}>
+                  {HERO_POOL_INVITE.title}
+                </h2>
+                <p className="mt-1.5 text-[15px] leading-snug text-slate-200">{HERO_POOL_INVITE.body}</p>
+              </div>
+              <div className="flex flex-col items-stretch sm:items-center gap-2 shrink-0">
+                <PoolInviteButton cta={HERO_POOL_INVITE.cta} testId="hero-pool-cta" />
+                <p className="text-xs text-slate-300 text-center">{HERO_POOL_INVITE.smallPrint}</p>
+              </div>
+            </div>
+          </aside>
         </div>
       </section>
 
       {/* ── What happens when a player drops out (variant D) ──────────── */}
       <DropoutSection />
+
+      {/* ── The key features, one short line each (round 2) ──────────── */}
+      <KeyFeatures />
+
+      {/* ── The player pool, for players, straight after (round 2) ───── */}
+      {LANDING_SPOTLIGHTS.filter((s) => s.id === "player-pool").map((s) => (
+        <PoolSection key={s.id} s={s} openingLine={poolOpeningLine(earlyList)} />
+      ))}
 
       {/* ── Features grid ─────────────────────────────────────────────── */}
       <section
@@ -174,7 +202,7 @@ export function LandingPage({ holdOn = false, earlyList = true }: { holdOn?: boo
             id="features-heading"
             eyebrow="Why MatchTime"
             title="The boring admin, done for you."
-            lead="Every weekly-match organiser knows the drill: counting names, chasing late replies, sorting the bench, picking fair teams and collecting the money. MatchTime handles that whole cycle in the group you already use, and stays out of the way the rest of the time."
+            lead="Counting names, chasing replies, sorting the bench, picking teams, collecting the money. MatchTime does it in the group you already use."
           />
           <div className="mt-16">
             <CardGrid cards={FEATURES} />
@@ -182,8 +210,8 @@ export function LandingPage({ holdOn = false, earlyList = true }: { holdOn?: boo
         </div>
       </section>
 
-      {/* ── Spotlights: the player pool, partner clubs, the admin group, the settings ── */}
-      {LANDING_SPOTLIGHTS.map((s) => (
+      {/* ── Spotlights: partner clubs, the admin group, the settings (the pool is above) ── */}
+      {LANDING_SPOTLIGHTS.filter((s) => s.id !== "player-pool").map((s) => (
         <SpotlightSection key={s.id} s={spotlightFor(s, earlyList)} />
       ))}
 
@@ -219,7 +247,7 @@ export function LandingPage({ holdOn = false, earlyList = true }: { holdOn?: boo
                   </span>
                 </>
               }
-              lead="Every rating and result builds into a stats page each player owns. They tap a link (no app, no password) and see how they're really doing, week by week. Bragging rights drive turnout."
+              lead="Every rating and result builds a stats page each player owns: one tap, no app, no password. Bragging rights drive turnout."
             >
               <ul className="mt-7 space-y-3">
                 {[
@@ -322,10 +350,8 @@ export function LandingPage({ holdOn = false, earlyList = true }: { holdOn?: boo
                   Built for the organiser, invisible to the player.
                 </h3>
                 <p className="mt-3 text-slate-200 max-w-xl leading-relaxed">
-                  Players never have to download anything. Organisers get a
-                  dashboard to fix attendance, edit teams, set starting ratings,
-                  book a season and see who still has to rate. MatchTime does
-                  the tedious bit in between.
+                  Players download nothing. Organisers get a dashboard to fix
+                  attendance, edit teams, set starting ratings and book a season.
                 </p>
               </div>
               <Link

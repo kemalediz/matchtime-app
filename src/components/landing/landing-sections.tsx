@@ -109,6 +109,26 @@ const COLORS: Record<ColorKey, string> = {
 
 type Tone = "light" | "dark";
 
+/**
+ * A headline line with its closing full stop pulled in. Plus Jakarta
+ * Sans's "." carries a wide left side bearing (measured at 72px: the ink
+ * starts 9.3px, 0.13em, after the glyph's origin), and with the heading's
+ * tight tracking that reads as "WhatsApp ." on a big screen. The markup
+ * has no space; the gap is the font's, so the stop is tucked back by
+ * 0.1em. Screen readers and the text content read the line unchanged.
+ * Used by the hero, every section heading (`SectionIntro`) and the
+ * round 2 sections.
+ */
+export function Stopped({ text }: { text: string }) {
+  if (!text.endsWith(".")) return <>{text}</>;
+  return (
+    <>
+      {text.slice(0, -1)}
+      <span className="-ml-[0.1em]">.</span>
+    </>
+  );
+}
+
 /** The eyebrow, heading and lead every section opens with. */
 export function SectionIntro({
   id,
@@ -143,7 +163,7 @@ export function SectionIntro({
         className={`mt-3 text-3xl sm:text-5xl font-extrabold tracking-tight ${dark ? "text-white" : "text-slate-900"}`}
         style={DISPLAY_FONT}
       >
-        {title}
+        {typeof title === "string" ? <Stopped text={title} /> : title}
       </h2>
       {lead && (
         <p className={`mt-5 text-lg leading-relaxed ${dark ? "text-slate-300" : "text-slate-600"}`}>{lead}</p>
