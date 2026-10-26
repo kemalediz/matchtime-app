@@ -28,8 +28,8 @@
  * (`spotlightFor`, `poolOpeningLine`), never baked into the lead.
  *
  * THE TWO AUDIENCES (Kemal, 2026-10-25): the menu has a "For clubs" and a
- * "For players" group (`LANDING_NAV_GROUPS`); the hero carries its own
- * invitation to players (`HERO_POOL_INVITE`); and `/players` is a page for
+ * "For players" group (`LANDING_NAV_GROUPS`); the hero carries a one-line
+ * invitation to players (`HERO_LINKS.pool`, `HERO_POOL_INVITE`); and `/players` is a page for
  * players only (`PLAYERS_PAGE`), built from the pool section's own steps,
  * points and privacy note, so both read one source.
  *
@@ -107,10 +107,21 @@ export const SITE_META = {
   ],
 };
 
-/** The home page's headline. */
+/**
+ * The home page's hero (variant D, 2026-10-26). Words only, all plain
+ * strings; the links are `HERO_LINKS`. No pricing here: the price and
+ * the free months live on the pricing page and its teaser further down.
+ */
 export const HERO = {
-  titleLead: "Run your weekly football",
-  titleTail: "on autopilot.",
+  pill: "For weekly football groups",
+  titleLead: "Your players WhatsApp.",
+  titleTail: "MatchTime runs the game.",
+  lead: "Who's in, the bench and fair teams, sorted right in your group chat.",
+  primaryCta: "Start your group",
+  secondaryCta: "See how it works",
+  tick: "No app for players",
+  poolLead: "Want more games?",
+  poolLabel: "Join the player pool near you",
 };
 import { poolPageCopy } from "@/lib/pool/page-copy";
 
@@ -760,8 +771,9 @@ export const SPORTS: string[] = liveSports().flatMap((s) => (s.formats.length ? 
 // ─── The hero's invitation to players (Kemal, 2026-10-25) ──────────────
 
 /**
- * Its own panel in the hero, under the organisers' buttons, so a player
- * sees the pool on the first screen. Every claim is the pool's own:
+ * The players' invitation. Since variant D (2026-10-26) the home hero
+ * shows only one line linking to `cta.href` (`HERO_LINKS.pool`); these
+ * words head the /players page (`PLAYERS_PAGE`). Every claim is the pool's own:
  * offers when a club near him is short at a time he can play
  * (pool/matching-rules.ts), on WhatsApp, his yes or no each time
  * (pool/reply.ts), no app (a web page and WhatsApp), stop any time
@@ -779,6 +791,82 @@ export const HERO_POOL_INVITE = {
   cta: { label: "Join the MatchTime player pool", href: poolJoinHref(POOL_SITE_SOURCES.hero), pulse: true } satisfies Cta,
   more: { label: "How it works for players", href: PLAYERS_PAGE_PATH } satisfies NavLink,
   smallPrint: `${POOL_LIMITS_LINE} Opening town by town.`,
+};
+
+/** Where the hero's links go. The players' line reuses the pool
+ *  invitation's own link, so the "site-hero" source code still counts. */
+export const HERO_LINKS = {
+  primary: "/signup",
+  secondary: "#how-it-works",
+  pool: HERO_POOL_INVITE.cta.href,
+};
+
+// ─── What happens when a player drops out (variant D, 2026-10-26) ──────
+
+/**
+ * One drawn group chat and a timeline beside it. Every step is shipped
+ * behaviour: an OUT is read and ticked (analysis pipeline); the bench is
+ * TAGGED in the group and the first to reply IN takes the place, never
+ * automatic (bench-offer-copy.ts, bench-confirmation.ts); teams when
+ * someone tags @Match Time (team-balancer.ts, rating and position); after
+ * the teams are out, the replacement inherits the dropped slot and the
+ * redrawn sheet goes to the admin group (team-slot-inherit.ts).
+ *
+ * MatchTime's own messages are NOT typed here: they are the real strings
+ * (strings.en.ts `bench_offer_group_post`, `bench_claim_replacing`), built
+ * from `bot` params by `dropout-bot-lines.ts`, so the page shows exactly
+ * what the bot posts (without its emoji). The client menu imports this
+ * module, so the string table stays out of it.
+ */
+export type DropoutMessage =
+  | { key: string; from: "player"; name: string; text: string; time: string; ticked?: boolean }
+  | { key: string; from: "you"; text: string; time: string }
+  | { key: string; from: "bot"; bot: "bench-offer" | "bench-claim"; time: string }
+  | { key: string; from: "bot"; bot: "teams"; text: string; teams: Array<{ key: string; name: string; players: string }>; time: string };
+
+export const DROPOUT_STORY = {
+  id: "dropout",
+  eyebrow: "How a dropout is handled",
+  title: "What happens when a player drops out on match day",
+  lead: "It all happens in the group chat. No phone calls, no chasing.",
+  chat: {
+    caption: "An example group chat on match day",
+    groupName: "Thursday 7-a-side",
+    groupKind: "Group chat",
+    /** The params the bot's two real messages are built from. */
+    activityName: "Thursday 7-a-side",
+    bench: ["Kai", "Ben"],
+    dropped: "Joe",
+    claimer: "Kai",
+    squad: 14,
+    messages: [
+      { key: "out", from: "player", name: "Joe", text: "Can't make it tonight lads, I'm out", time: "09:12", ticked: true },
+      { key: "offer", from: "bot", bot: "bench-offer", time: "09:12" },
+      { key: "in", from: "player", name: "Kai", text: "IN", time: "09:20", ticked: true },
+      { key: "claim", from: "bot", bot: "bench-claim", time: "09:20" },
+      { key: "ask", from: "you", text: "@Match Time make teams", time: "17:00" },
+      {
+        key: "teams",
+        from: "bot",
+        bot: "teams",
+        text: "Balanced teams for tonight:",
+        // Ben stayed on the bench, so he is in neither team.
+        teams: [
+          { key: "blues", name: "Blues", players: "Kai, Sam, Dan +4" },
+          { key: "oranges", name: "Oranges", players: "Priya, Leo, Tom +4" },
+        ],
+        time: "17:00",
+      },
+    ] as DropoutMessage[],
+  },
+  timeline: [
+    { key: "out", time: "09:12", title: "Joe says he's out", body: "In his own words, the way he always would. MatchTime ticks it." },
+    { key: "bench", time: "09:12", title: "The bench is tagged", body: "Everyone on the bench is asked in the group. First to claim it plays." },
+    { key: "claim", time: "09:20", title: "Kai takes the place", body: "He replies IN and the squad is full again." },
+    { key: "teams", time: "17:00", title: "Teams when you ask", body: "Tag @Match Time and it splits the squad by rating and position." },
+    { key: "later", time: "Later", title: "Teams already out?", body: "The new player takes the empty spot, and your admin group gets a fresh team sheet." },
+  ] as Array<Step & { time: string }>,
+  cta: { label: "Start your group", href: "/signup" },
 };
 
 // ─── The players' page (/players) ──────────────────────────────────────

@@ -1,12 +1,12 @@
 import Link from "next/link";
-import { MessageCircle, Shield, ArrowRight, Check, Sparkles, ShieldCheck, Users } from "lucide-react";
+import { MessageCircle, Shield, ArrowRight, Check, Sparkles, ShieldCheck } from "lucide-react";
 import { StatsShowcase, WrappedCard } from "./stats-showcase";
 import { firstMonthsFree } from "@/lib/i18n/free-period";
 import { CONNECT_HOW_LONG, holdHowItWorksSentence } from "@/lib/setup-hold-public-copy";
 import {
   ASK_CHAT,
   FEATURES,
-  HERO_POOL_INVITE,
+  HERO_LINKS,
   LANDING_SPOTLIGHTS,
   PERSONAS,
   PLAYER_STAT_CARDS,
@@ -21,12 +21,12 @@ import {
   DISPLAY_FONT,
   LandingFooter,
   PersonaCard,
-  PoolInviteButton,
   SectionIntro,
   SpotlightSection,
   StepList,
 } from "./landing-sections";
 import { LandingHeader } from "./landing-nav";
+import { DropoutSection } from "./dropout-section";
 import { PricingTeaser } from "./pricing-section";
 
 /**
@@ -39,9 +39,10 @@ import { PricingTeaser } from "./pricing-section";
  * group, the settings) are data in `landing-content.ts`, laid out by the
  * shared components in `landing-sections.tsx`. A new spotlight section is
  * one entry in `LANDING_SPOTLIGHTS`. The price lives in pricing-section.tsx
- * (the /pricing page; a teaser here). The hero, the steps and the closing
- * call stay here because they are built from the free period
- * and setup-hold helpers.
+ * (the /pricing page; a teaser here). The hero's words are `HERO` and the
+ * dropout story right after it is `DROPOUT_STORY` (dropout-section.tsx);
+ * the steps and the closing call stay here because they are built from
+ * the free period and setup-hold helpers.
  *
  * Typography: body uses Inter (loaded in app/layout.tsx as
  * --font-geist-sans for back-compat); display copy uses Plus Jakarta
@@ -103,50 +104,64 @@ export function LandingPage({ holdOn = false, earlyList = true }: { holdOn?: boo
           }}
         />
 
-        <div className="relative max-w-6xl mx-auto text-center">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/15 text-xs font-medium text-blue-100 backdrop-blur mb-4 sm:mb-6">
-            <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 motion-safe:animate-pulse" />
-            Lives in your WhatsApp group · No app for players
-          </div>
+        <div className="relative max-w-6xl mx-auto flex flex-col items-center text-center gap-5 sm:gap-6">
+          <p className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-blue-400/10 border border-blue-400/35 text-sm font-semibold text-blue-200">
+            <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="#93c5fd" strokeWidth="1.8" strokeLinejoin="round" aria-hidden="true">
+              <circle cx="10" cy="10" r="8" />
+              <polygon points="10,6.5 13.3,8.9 12,12.8 8,12.8 6.7,8.9" />
+            </svg>
+            {HERO.pill}
+          </p>
           <h1
-            className="text-4xl sm:text-6xl font-extrabold tracking-tight leading-[1.05] text-white"
+            className="text-[2.5rem] sm:text-6xl lg:text-7xl font-extrabold tracking-tight leading-[1.05] text-white"
             style={DISPLAY_FONT}
           >
-            {HERO.titleLead}
-            <br />
-            <span className="bg-gradient-to-r from-blue-400 via-teal-300 to-emerald-400 bg-clip-text text-transparent">
+            <span className="block">{HERO.titleLead}</span>{" "}
+            <span className="block bg-gradient-to-r from-blue-400 via-teal-300 to-emerald-400 bg-clip-text text-transparent">
               {HERO.titleTail}
             </span>
           </h1>
-          <p className="mt-4 sm:mt-6 text-[15px] sm:text-lg lg:text-xl text-slate-200 max-w-2xl mx-auto leading-relaxed">
-            MatchTime sits in your WhatsApp group and does the organiser&apos;s
-            job: it tracks who&apos;s in, runs the bench, chases when you&apos;re
-            short, asks partner clubs nearby when you&apos;re still a player
-            down, picks balanced teams and collects ratings after the game.
-          </p>
-          <div className="mt-6 sm:mt-8 grid grid-cols-2 sm:flex sm:flex-row gap-3 items-center justify-center">
+          <p className="max-w-xl text-lg sm:text-xl text-slate-300 leading-relaxed">{HERO.lead}</p>
+          <div className="mt-1 sm:mt-2 flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-center w-full sm:w-auto">
             <Link
-              href="/signup"
-              className="inline-flex items-center justify-center gap-2 px-4 sm:px-7 py-3 sm:py-3.5 rounded-xl bg-gradient-to-br from-blue-500 to-teal-500 hover:from-blue-400 hover:to-teal-400 text-white font-semibold text-sm sm:text-base shadow-xl shadow-blue-500/30 transition-all hover:-translate-y-0.5"
+              href={HERO_LINKS.primary}
+              className="inline-flex items-center justify-center gap-2 min-h-[52px] px-7 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-base shadow-xl shadow-blue-500/30 transition-all hover:-translate-y-0.5"
             >
-              Start your group
-              <ArrowRight className="w-4 h-4" />
+              {HERO.primaryCta}
+              <ArrowRight className="w-4 h-4" aria-hidden="true" />
             </Link>
             <Link
-              href="#how-it-works"
-              className="inline-flex items-center justify-center gap-2 px-4 sm:px-7 py-3 sm:py-3.5 rounded-xl bg-white/10 hover:bg-white/15 text-white font-medium text-sm sm:text-base border border-white/15 backdrop-blur transition-colors"
+              href={HERO_LINKS.secondary}
+              className="inline-flex items-center justify-center gap-2 min-h-[52px] px-7 rounded-xl border-[1.5px] border-slate-500 hover:bg-white/10 text-white font-semibold text-base transition-colors"
             >
-              See how it works
+              {HERO.secondaryCta}
             </Link>
           </div>
-
-          {/* The players' invitation (Kemal, 2026-10-25): its own panel
-              under the organisers' buttons, on the first screen at phone
-              width, with the pulsing button. Payments are described in the
-              features and pricing further down, not here. */}
-          <PlayerPoolPanel />
+          <ul aria-label="Good to know" className="flex flex-wrap justify-center gap-x-7 gap-y-2.5">
+            <li className="inline-flex items-center gap-2 text-[15px] text-slate-200">
+              <Check className="w-4 h-4 text-emerald-400" strokeWidth={2.6} aria-hidden="true" />
+              {HERO.tick}
+            </li>
+          </ul>
+          {/* The players' invitation: one line to the pool sign-up (the
+              pool invitation's own /play link). The pool section further
+              down carries the full invitation and its pulsing button. */}
+          <Link
+            href={HERO_LINKS.pool}
+            data-testid="hero-pool-link"
+            className="mt-2 sm:mt-3 inline-flex items-center gap-1.5 min-h-[44px] text-base text-slate-200 hover:text-white"
+          >
+            <span>
+              {HERO.poolLead}{" "}
+              <span className="font-semibold text-emerald-300 underline underline-offset-4">{HERO.poolLabel}</span>
+            </span>
+            <ArrowRight className="w-4 h-4 text-emerald-300 shrink-0" aria-hidden="true" />
+          </Link>
         </div>
       </section>
+
+      {/* ── What happens when a player drops out (variant D) ──────────── */}
+      <DropoutSection />
 
       {/* ── Features grid ─────────────────────────────────────────────── */}
       <section
@@ -418,40 +433,5 @@ export function LandingPage({ holdOn = false, earlyList = true }: { holdOn?: boo
         }}
       />
     </div>
-  );
-}
-
-/**
- * The hero's invitation to players: a panel of its own, so a player who
- * has no group sees what is in it for him on the first screen. The copy
- * is `HERO_POOL_INVITE`; the button is the shared pulsing one.
- */
-function PlayerPoolPanel() {
-  const h = HERO_POOL_INVITE;
-  return (
-    <section
-      aria-labelledby="hero-pool-heading"
-      className="mt-6 sm:mt-10 mx-auto max-w-4xl rounded-2xl border border-emerald-300/30 bg-emerald-400/10 p-4 sm:p-6 text-left shadow-xl shadow-emerald-900/30 backdrop-blur lg:grid lg:grid-cols-[1fr_auto] lg:items-center lg:gap-8"
-    >
-      <div className="flex items-start gap-4">
-        <span className="hidden sm:inline-flex shrink-0 items-center justify-center w-11 h-11 rounded-xl bg-emerald-400/20 text-emerald-300">
-          <Users className="w-6 h-6" aria-hidden="true" />
-        </span>
-        <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300">{h.eyebrow}</p>
-          <h2 id="hero-pool-heading" className="mt-1 text-lg sm:text-2xl font-extrabold leading-snug text-white" style={DISPLAY_FONT}>
-            {h.title}
-          </h2>
-          <p className="mt-1.5 text-sm sm:text-base text-slate-200 leading-relaxed">{h.body}</p>
-        </div>
-      </div>
-      <div className="mt-3 lg:mt-0 flex flex-col items-stretch sm:items-center gap-2">
-        <PoolInviteButton cta={h.cta} testId="hero-pool-cta" />
-        <Link href={h.more.href} className="text-center text-sm font-semibold text-emerald-200 underline underline-offset-4 hover:text-white">
-          {h.more.label}
-        </Link>
-        <p className="text-center text-xs text-slate-300">{h.smallPrint}</p>
-      </div>
-    </section>
   );
 }

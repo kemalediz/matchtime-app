@@ -12,7 +12,10 @@
 import { describe, it, expect } from "vitest";
 import {
   ASK_CHAT,
+  DROPOUT_STORY,
   FEATURES,
+  HERO,
+  HERO_LINKS,
   HERO_POOL_INVITE,
   LANDING_NAV_GROUPS,
   LANDING_SPOTLIGHTS,
@@ -35,6 +38,8 @@ import { POOL_PLAY_PATH, PLAYERS_PAGE_PATH } from "@/lib/pool/paths";
 import { readSignupSource } from "@/lib/pool/profile-fields";
 import { poolPageCopy } from "@/lib/pool/page-copy";
 import { POOL_CAPS, POOL_MIN_AGE, POOL_QUIET_HOURS } from "@/lib/pool/rules";
+import { boldSegments, dropoutBotLines, withoutEmoji } from "../dropout-bot-lines";
+import { en } from "@/lib/i18n/strings.en";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
@@ -52,7 +57,9 @@ function copyStrings(value: unknown, path = "content"): Array<{ path: string; te
 
 const ALL = copyStrings({
   ASK_CHAT,
+  DROPOUT_STORY,
   FEATURES,
+  HERO,
   HERO_POOL_INVITE,
   LANDING_NAV_GROUPS,
   LANDING_SPOTLIGHTS,
@@ -390,5 +397,101 @@ describe("landing content: numbers come from the rules that enforce them", () =>
 
   it("the search radius", () => {
     expect(find).toContain(`${MAX_RADIUS_MILES} miles`);
+  });
+});
+
+// ─── Variant D: the hero and the dropout story (2026-10-26) ───────────
+
+/** Anything that reads as pricing (Kemal: pricing belongs on the pricing page). */
+const PRICING = /£|\bfree\b|months? free|pay only|weeks you play|per month|a month|price|pricing|\bcost/i;
+
+describe("landing content: the hero (variant D)", () => {
+  it("is D's words, in order", () => {
+    expect(HERO).toEqual({
+      pill: "For weekly football groups",
+      titleLead: "Your players WhatsApp.",
+      titleTail: "MatchTime runs the game.",
+      lead: "Who's in, the bench and fair teams, sorted right in your group chat.",
+      primaryCta: "Start your group",
+      secondaryCta: "See how it works",
+      tick: "No app for players",
+      poolLead: "Want more games?",
+      poolLabel: "Join the player pool near you",
+    });
+  });
+
+  it("says nothing about pricing", () => {
+    expect(Object.values(HERO).filter((t) => PRICING.test(t))).toEqual([]);
+  });
+
+  it("links: sign-up, the how-it-works section, and the pool invitation's own /play link", () => {
+    expect(HERO_LINKS).toEqual({ primary: "/signup", secondary: "#how-it-works", pool: HERO_POOL_INVITE.cta.href });
+    expect(HERO_LINKS.pool).toBe(`${POOL_PLAY_PATH}?src=${POOL_SITE_SOURCES.hero}`);
+  });
+});
+
+describe("landing content: what happens when a player drops out (variant D)", () => {
+  const d = DROPOUT_STORY;
+  const bot = dropoutBotLines();
+
+  it("has the heading, lead and the five timeline steps", () => {
+    expect(d.title).toBe("What happens when a player drops out on match day");
+    expect(d.lead).toBe("It all happens in the group chat. No phone calls, no chasing.");
+    expect(keysOf(d.timeline)).toEqual(["out", "bench", "claim", "teams", "later"]);
+  });
+
+  it("never overclaims: the bench is tagged and the first to reply IN plays; the redrawn sheet goes to the admin group", () => {
+    const steps = d.timeline.map((x) => `${x.title} ${x.body}`).join(" ");
+    expect(steps).toMatch(/bench is tagged/);
+    expect(steps).toMatch(/First to claim it plays/);
+    expect(steps).toMatch(/replies IN/);
+    expect(steps).toMatch(/admin group gets a fresh team sheet/);
+    expect(steps).not.toMatch(/automatic/i);
+  });
+
+  it("says nothing about pricing, and nothing about a weekly cap", () => {
+    expect(copyStrings(d).filter((x) => PRICING.test(x.text))).toEqual([]);
+    expect(copyStrings(d).filter((x) => /a week|per week|at most/i.test(x.text))).toEqual([]);
+  });
+
+  it("the bench offer is the bot's real group post, without its emoji", () => {
+    const real = en.bench_offer_group_post({
+      context: en.bench_offer_context_fixture({ activityName: "Thursday 7-a-side", day: null }),
+      tagList: "@Kai @Ben",
+      reactions: false,
+    });
+    expect(bot["bench-offer"]).toBe(withoutEmoji(real));
+    expect(bot["bench-offer"]).toBe(
+      "A slot just opened for *Thursday 7-a-side* tonight. *First to claim it plays.*\n\n@Kai @Ben\n\n" +
+        "Just reply *IN* here to take it. No rush and no timeout, whoever is free first gets it and everyone else stays on the bench.",
+    );
+  });
+
+  it("the claim is the bot's real bench_claim_replacing line, without its emoji", () => {
+    expect(bot["bench-claim"]).toBe(withoutEmoji(en.bench_claim_replacing({ claimer: "Kai", dropped: "Joe", confirmed: 14, maxPlayers: 14 })));
+    expect(bot["bench-claim"]).toBe("*Kai* is in, replacing *Joe*. Squad *14/14*");
+  });
+
+  it("the drawn bot lines carry no emoji and no dashes", () => {
+    for (const t of Object.values(bot)) {
+      expect(t).not.toMatch(/\p{Extended_Pictographic}/u);
+      expect(t).not.toMatch(/[—–]/);
+    }
+  });
+
+  it("the story is consistent: the one who claims is on the bench, the one who stayed on the bench is in no team", () => {
+    expect(d.chat.bench).toContain(d.chat.claimer);
+    const teams = d.chat.messages.flatMap((m) => ("teams" in m ? m.teams.map((t) => t.players) : [])).join(" ");
+    expect(teams).toContain(d.chat.claimer);
+    expect(teams).not.toContain(d.chat.dropped);
+    for (const b of d.chat.bench.filter((n) => n !== d.chat.claimer)) expect(teams).not.toContain(b);
+  });
+
+  it("boldSegments turns WhatsApp bold into marked parts", () => {
+    expect(boldSegments("Just reply *IN* here")).toEqual([
+      { text: "Just reply ", bold: false },
+      { text: "IN", bold: true },
+      { text: " here", bold: false },
+    ]);
   });
 });

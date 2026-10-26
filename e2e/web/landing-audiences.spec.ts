@@ -2,10 +2,11 @@
  * The website for its two audiences (Kemal, 2026-10-25: "where is the
  * flashy button?" and "we need separate menu for players and for clubs").
  *
- *   - The hero invites PLAYERS to the pool in its own panel, above the fold
- *     at phone and desktop width, with the pulsing button to /play; the
- *     organisers' "Start your group" stays the first action; the payments
- *     line is gone from the hero.
+ *   - The hero (variant D, 2026-10-26) invites PLAYERS to the pool with one
+ *     line to /play, above the fold at phone and desktop width; the
+ *     organisers' "Start your group" stays the first action; nothing about
+ *     pricing is in the hero. The pulsing pool button is in the pool
+ *     section further down (landing-sections.spec.ts).
  *   - The menu has a "For clubs" and a "For players" group, as dropdowns on
  *     desktop and two labelled sections in the phone menu; every link in it
  *     opens a page that answers 200 or an anchor that exists.
@@ -20,6 +21,8 @@ import path from "node:path";
 import { E2E_BASE_URL } from "../helpers/env";
 import { poolPageCopy } from "@/lib/pool/page-copy";
 import {
+  HERO,
+  HERO_LINKS,
   HERO_POOL_INVITE,
   LANDING_NAV_GROUPS,
   PLAYERS_FAQ,
@@ -51,49 +54,44 @@ for (const [name, size, file] of [
   ["phone", PHONE, "hero-390.png"],
   ["desktop", DESKTOP, "hero-1280.png"],
 ] as const) {
-  test(`the hero invites players to the pool above the fold on ${name} width`, async ({ page }) => {
+  test(`the hero (variant D) reads on ${name} width, with the players' pool line above the fold`, async ({ page }) => {
     await page.setViewportSize(size);
     await open(page, "/");
-    const panel = page.getByRole("region", { name: HERO_POOL_INVITE.title });
-    await expect(panel).toBeVisible();
-    await expect(panel.getByText(HERO_POOL_INVITE.body)).toBeVisible();
-    const join = panel.getByRole("link", { name: HERO_POOL_INVITE.cta.label });
-    await expect(join).toHaveAttribute("href", HERO_POOL_INVITE.cta.href);
-    // Above the fold: the whole button is on the first screen, no scrolling.
-    await expect(join).toBeInViewport({ ratio: 1 });
-    expect(await join.evaluate((el) => getComputedStyle(el).animationName)).toBe("pool-invite-pulse");
-    await expect(panel.getByRole("link", { name: HERO_POOL_INVITE.more.label })).toHaveAttribute("href", HERO_POOL_INVITE.more.href);
-    await expect(panel.getByText(HERO_POOL_INVITE.smallPrint)).toBeVisible();
-
-    // The organisers' button stays the first action, before the players' panel.
     const hero = page.locator("section").first();
-    const start = hero.getByRole("link", { name: "Start your group" });
-    await expect(start).toBeInViewport();
-    const [startBox, panelBox] = [await start.boundingBox(), await panel.boundingBox()];
-    expect(startBox!.y).toBeLessThan(panelBox!.y);
+    await expect(hero.getByText(HERO.pill)).toBeVisible();
+    await expect(hero.getByRole("heading", { level: 1 })).toHaveText(`${HERO.titleLead} ${HERO.titleTail}`);
+    await expect(hero.getByText(HERO.lead)).toBeVisible();
+    const start = hero.getByRole("link", { name: HERO.primaryCta });
+    await expect(start).toHaveAttribute("href", HERO_LINKS.primary);
+    await expect(start).toBeInViewport({ ratio: 1 });
+    await expect(hero.getByRole("link", { name: HERO.secondaryCta })).toHaveAttribute("href", HERO_LINKS.secondary);
+    await expect(hero.getByRole("list", { name: "Good to know" }).getByRole("listitem")).toHaveText([HERO.tick]);
 
-    // Payments are described further down, never in the hero.
-    await expect(hero.getByText(/card or bank/i)).toHaveCount(0);
+    // The players' line goes to the pool invitation's own /play link, on the first screen.
+    const pool = hero.getByRole("link", { name: `${HERO.poolLead} ${HERO.poolLabel}` });
+    await expect(pool).toHaveAttribute("href", HERO_POOL_INVITE.cta.href);
+    await expect(pool).toBeInViewport({ ratio: 1 });
+    const [startBox, poolBox] = [await start.boundingBox(), await pool.boundingBox()];
+    expect(startBox!.y).toBeLessThan(poolBox!.y);
+
+    // Touch targets: the hero's links are at least 44px tall.
+    for (const l of await hero.getByRole("link").all()) {
+      expect((await l.boundingBox())!.height, await l.innerText()).toBeGreaterThanOrEqual(44);
+    }
+
+    // No pricing in the hero (Kemal: pricing belongs on the pricing page).
+    await expect(hero).not.toContainText(/£|free|pay only|weeks you play|a month|card or bank/i);
     expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
     await shot(page, file);
   });
 }
 
-test("the hero's button takes a player to the /play sign-up", async ({ page }) => {
+test("the hero's players' line takes a player to the /play sign-up", async ({ page }) => {
   await page.setViewportSize(PHONE);
   await open(page, "/");
-  await page.getByRole("region", { name: HERO_POOL_INVITE.title }).getByRole("link", { name: HERO_POOL_INVITE.cta.label }).click();
+  await page.getByTestId("hero-pool-link").click();
   await page.waitForURL(/\/play\?src=/);
   await expect(page.getByRole("heading", { level: 1, name: "Join the MatchTime player pool" })).toBeVisible();
-});
-
-test.describe("for a visitor who asked for less motion", () => {
-  test("the hero's button does not pulse", async ({ page }) => {
-    await page.emulateMedia({ reducedMotion: "reduce" });
-    await open(page, "/");
-    const join = page.getByRole("region", { name: HERO_POOL_INVITE.title }).getByRole("link", { name: HERO_POOL_INVITE.cta.label });
-    expect(await join.evaluate((el) => getComputedStyle(el).animationName)).toBe("none");
-  });
 });
 
 test("desktop menu: a For clubs and a For players dropdown, each with its links and button", async ({ page }) => {
