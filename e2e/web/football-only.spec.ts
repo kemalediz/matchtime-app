@@ -7,7 +7,7 @@
  * No model anywhere: $0.
  */
 import { test, expect, resetDb } from "../fixtures";
-import { SPORTS } from "@/components/landing/landing-content";
+import { HERO, SPORTS } from "@/components/landing/landing-content";
 import { SPORT_PRESETS } from "@/lib/sport-presets";
 import { isLiveSport, notLiveSportNames, poolSportOfClubSport } from "@/lib/pool/sports";
 
@@ -61,7 +61,12 @@ for (const width of [320, 390, 1280]) {
 
 test("the home page says football, and its sports chips are football's formats", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { level: 1, name: /Run your weekly football/ })).toBeVisible();
+  // The hero says football on the first screen: its pill (the headline,
+  // "Your players WhatsApp. MatchTime runs the game.", names no sport).
+  expect(HERO.pill).toMatch(/football/i);
+  const pill = page.locator("#hero").getByText(HERO.pill, { exact: true });
+  await expect(pill).toBeVisible();
+  await expect(pill).toBeInViewport();
   await expect(page).toHaveTitle(/football/i);
   const chips = page.getByRole("list", { name: "Sports" }).getByRole("listitem");
   await expect(chips).toHaveText(SPORTS);
