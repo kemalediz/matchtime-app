@@ -40,6 +40,7 @@ import { PARTNER_ASK_CUTOFF_DEFAULT_HOURS } from "@/lib/club-partnership-rules";
 import { MAX_RADIUS_MILES } from "@/lib/club-discovery-rules";
 import { PLAYERS_PAGE_PATH, POOL_PLAY_PATH } from "@/lib/pool/paths";
 import { POOL_CAPS, POOL_MIN_AGE, POOL_QUIET_HOURS } from "@/lib/pool/rules";
+import { POOL_AFTER_PARTNERS_MINS } from "@/lib/pool/round-rules";
 import { LIVE_SPORTS, liveSports } from "@/lib/pool/sports";
 
 // ── The sport the site is about (Kemal, 2026-10-25: football only, for now) ──
@@ -107,10 +108,20 @@ export const SITE_META = {
   ],
 };
 
-/** The home page's headline. */
+/**
+ * The home page's hero (variant E, 2026-10-26): a pill, the headline, one
+ * line, the two buttons, a single tick, then the feature deck
+ * (`HERO_DECK`). No pricing here (Kemal: pricing belongs on the pricing
+ * page; the teaser further down and /pricing carry it).
+ */
 export const HERO = {
-  titleLead: "Run your weekly football",
-  titleTail: "on autopilot.",
+  pill: "For weekly football groups",
+  titleLead: "Your players WhatsApp.",
+  titleTail: "MatchTime runs the game.",
+  line: "Who's in, the bench and fair teams, sorted right in your group chat.",
+  primary: { label: "Start your group", href: "/signup" } satisfies NavLink,
+  secondary: { label: "See how it works", href: "#how-it-works" } satisfies NavLink,
+  ticks: ["No app for players"],
 };
 import { poolPageCopy } from "@/lib/pool/page-copy";
 
@@ -779,6 +790,306 @@ export const HERO_POOL_INVITE = {
   cta: { label: "Join the MatchTime player pool", href: poolJoinHref(POOL_SITE_SOURCES.hero), pulse: true } satisfies Cta,
   more: { label: "How it works for players", href: PLAYERS_PAGE_PATH } satisfies NavLink,
   smallPrint: `${POOL_LIMITS_LINE} Opening town by town.`,
+};
+
+// ─── The hero's feature deck (variant E, 2026-10-26) ───────────────────
+
+/**
+ * Eight cards in a sliding row under the hero's buttons. A card shows a
+ * small drawing (`visual`: the words drawn on it), a title and one line;
+ * opening it shows `details` and a larger drawing: a chat (`chat`), the
+ * order MatchTime asks in (`steps`) or the settings it applies to
+ * (`settings`). No pricing anywhere in the deck: the fee card is about an
+ * organiser collecting his players' match fees.
+ *
+ * In chat text `*word*` is bold (WhatsApp style) and `\n` starts a new
+ * paragraph. Quoted MatchTime messages are the real ones in
+ * `src/lib/i18n/strings.en.ts` and `pool-offer.en.ts` (key named above
+ * each), with a fictional club and the emoji left out. A `link` is drawn
+ * as a link chip, never a real address.
+ */
+export type DeckKey = "att" | "bench" | "short" | "teams" | "ratings" | "fees" | "admin" | "lang";
+
+export interface DeckLine {
+  /** player: someone in the group; bot: MatchTime; self: the reader. */
+  from: "player" | "bot" | "self";
+  name?: string;
+  text: string;
+  time: string;
+  /** MatchTime's tick under the message. */
+  tick?: boolean;
+  /** Drawn after the text as a link chip. */
+  link?: string;
+  /** Drawn inside the message as team rows. */
+  teams?: Array<{ name: string; players: string }>;
+}
+
+export interface DeckChat {
+  /** The chat's name in its header, and what kind of chat it is. */
+  title: string;
+  subtitle: string;
+  kind: "group" | "dm" | "admin";
+  lines: DeckLine[];
+}
+
+export interface DeckCard {
+  key: DeckKey;
+  title: string;
+  body: string;
+  /** The words drawn on the card's small picture. */
+  visual: string[];
+  details: string[];
+  chat?: DeckChat;
+  /** Who is asked, in order (the "Still short?" card). `highlight`: the pool. */
+  steps?: Array<{ title: string; sub: string; highlight?: boolean }>;
+  /** Where the club's language applies (the language card). */
+  settings?: { title: string; value: string; items: string[] };
+}
+
+const POOL_AFTER = POOL_AFTER_PARTNERS_MINS === 60 ? "an hour" : `${POOL_AFTER_PARTNERS_MINS} minutes`;
+const POOL_AFTER_CAP = POOL_AFTER.charAt(0).toUpperCase() + POOL_AFTER.slice(1);
+
+export const HERO_DECK = {
+  title: "What it does",
+  hintPhone: "Tap a card to see how",
+  hintDesktop: "Click a card to see how it works.",
+  seeHow: "See how",
+  prevLabel: "Previous card",
+  nextLabel: "Next card",
+  dotsLabel: "Cards",
+  dotLabel: (n: number) => `Show card ${n}`,
+  closeLabel: "Close",
+  detailsLabel: "Feature details",
+  sectionLabel: "What MatchTime does",
+  /** The players' way in: the hero's own pool button target. */
+  poolLink: { label: "Want more games? Join the player pool near you", href: HERO_POOL_INVITE.cta.href } satisfies NavLink,
+  cards: [
+    {
+      // FEATURES in-out; strings.en.ts squad_complete, squad_complete_bench_invite, bench_promotion_how.
+      key: "att",
+      title: "Who's in, counted",
+      body: "Players say IN or OUT as usual. MatchTime ticks each one and keeps the count.",
+      visual: ["IN", "count me in", "Squad 12 of 14"],
+      details: [
+        "Players say IN or OUT in their own words, right in the group chat.",
+        "MatchTime ticks each one and keeps the squad list. No app for players.",
+        "Not sure yet? Say maybe, and it checks back by DM about a day before kickoff.",
+        "Short of players? It asks the group, and stops the moment you're full.",
+      ],
+      chat: {
+        title: "Thursday 7-a-side",
+        subtitle: "Group chat",
+        kind: "group",
+        lines: [
+          { from: "player", name: "Sam", text: "count me in", time: "09:02", tick: true },
+          { from: "player", name: "Leo", text: "sorry not tonight", time: "09:05", tick: true },
+          { from: "player", name: "Kai", text: "IN", time: "11:40", tick: true },
+          {
+            from: "bot",
+            text: "*Squad complete (14/14)* for *Thursday 7-a-side* on Thu 22 Oct, 20:00\n*Bench is open.* Say *IN* and I'll put you on the bench. If someone drops out I tag the bench here and the first to reply *IN* takes the slot.",
+            time: "11:40",
+          },
+        ],
+      },
+    },
+    {
+      // strings.en.ts bench_offer_group_post, bench_claim_replacing.
+      key: "bench",
+      title: "The bench steps in",
+      body: "Someone drops out? The bench is tagged, and the first to say IN plays.",
+      visual: ["@Kai @Ben", "First to claim it plays"],
+      details: [
+        "When the squad is full, late INs go on the bench.",
+        "When someone drops out, the bench is offered the place in the group and by DM.",
+        "The first to claim it plays. No rush and no timeout.",
+        "Teams already out? The new player takes the empty spot.",
+      ],
+      chat: {
+        title: "Thursday 7-a-side",
+        subtitle: "Group chat",
+        kind: "group",
+        lines: [
+          { from: "player", name: "Joe", text: "Can't make it tonight lads, I'm out", time: "09:12", tick: true },
+          {
+            from: "bot",
+            text: "A slot just opened for *Thursday 7-a-side* tonight. *First to claim it plays.*\n@Kai @Ben\nJust reply *IN* here to take it. No rush and no timeout.",
+            time: "09:12",
+          },
+          { from: "player", name: "Kai", text: "IN", time: "09:20", tick: true },
+          { from: "bot", text: "*Kai* is in, replacing *Joe*. Squad *14/14*", time: "09:20" },
+        ],
+      },
+    },
+    {
+      // Spotlight partner-clubs (auto ask); pool/round-rules.ts POOL_AFTER_PARTNERS_MINS;
+      // PLAYER_POOL (opening town by town); pool-offer.en.ts offer_head, offer_when, distance, offer_cta, placed_in.
+      key: "short",
+      title: "Still short? It asks around",
+      body: "The bench first, then partner clubs, then nearby players from the player pool.",
+      visual: ["Bench", "Partner clubs", "Player pool"],
+      details: [
+        "Match day, a place still open and nobody on the bench? MatchTime asks for you, by itself if you switch it on.",
+        "Partner clubs first: their players answer privately and join your game as guests.",
+        `Then nearby players from the MatchTime player pool get a WhatsApp offer: ${POOL_AFTER} later, or straight away if you have no partner clubs.`,
+        "The player pool is opening town by town.",
+      ],
+      steps: [
+        { title: "1. Bench", sub: "Tagged in the group" },
+        { title: "2. Partner clubs", sub: "Asked in their group" },
+        { title: "3. Player pool", sub: `${POOL_AFTER_CAP} later, nearby players`, highlight: true },
+      ],
+      chat: {
+        title: "MatchTime",
+        subtitle: "Private message to a nearby pool player",
+        kind: "dm",
+        lines: [
+          {
+            from: "bot",
+            text: "*Riverside FC* needs 1 player for a 7-a-side football game\n*Tue 20 Oct, 20:00* (60 mins)\n*Riverside Sports Centre*. 1.2 miles from you\nWould you like the place? Reply here, or tap to answer:",
+            link: "Answer",
+            time: "17:05",
+          },
+          { from: "self", text: "yes please", time: "17:06" },
+          { from: "bot", text: "You're in: *Riverside FC*, Tue 20 Oct, 20:00, Riverside Sports Centre.", time: "17:06" },
+        ],
+      },
+    },
+    {
+      // FEATURES teams; strings.en.ts teams_post_header, teams_post_footer.
+      key: "teams",
+      title: "Balanced teams",
+      body: "Tag @Match Time and it splits the squad by rating and position.",
+      visual: [],
+      details: [
+        "Ask in your own words, for example: @Match Time generate the teams.",
+        "It balances the confirmed squad on each player's club rating and position.",
+        "Want a change? Ask to swap players, and an admin confirms.",
+        "Organisers can get the team sheet as a picture, ready to forward.",
+      ],
+      chat: {
+        title: "Thursday 7-a-side",
+        subtitle: "Group chat",
+        kind: "group",
+        lines: [
+          { from: "self", text: "@Match Time generate the teams", time: "17:00" },
+          {
+            from: "bot",
+            text: "*Teams for tonight*: 20:00 at Riverside Sports Centre",
+            teams: [
+              { name: "Blues", players: "Kai, Sam, Dan +4" },
+              { name: "Oranges", players: "Priya, Leo, Ben +4" },
+            ],
+            time: "17:00",
+          },
+          {
+            from: "bot",
+            text: "Objections? Tag me and say what to change, in your own words (for example @Match Time swap Sam with Alex), and an admin will confirm.",
+            time: "17:00",
+          },
+        ],
+      },
+    },
+    {
+      // strings.en.ts rate_promo, mom_header, mom_winner, mom_trophy_line.
+      key: "ratings",
+      title: "Ratings and Man of the Match",
+      body: "After the game, players rate each other and vote for the best player.",
+      visual: ["Man of the Match: Kai"],
+      details: [
+        "Every player gets a private link to rate the others from 1 to 10.",
+        "They pick a Man of the Match, announced in the group once everyone has voted.",
+        "Ratings help balance next week's teams, and fill each player's own stats page.",
+      ],
+      chat: {
+        title: "Thursday 7-a-side",
+        subtitle: "Group chat",
+        kind: "group",
+        lines: [
+          {
+            from: "bot",
+            text: "Just DM'd every player from the *Thursday 7-a-side* on Thu 22 Oct a personal rating link. The more ratings we get, the better-balanced the teams get next week. Check your DMs from me",
+            time: "22:10",
+          },
+          {
+            from: "bot",
+            text: "*Man of the Match: Thursday 7-a-side*\nCongrats *Kai* (6/12 votes)\nYour trophy awaits next match.",
+            time: "Fri 18:30",
+          },
+        ],
+      },
+    },
+    {
+      // FEATURES payments; strings.en.ts dm_pay_link.
+      key: "fees",
+      title: "Match fees, collected",
+      body: "Pay links after the game, and reminders for whoever hasn't paid.",
+      visual: ["£6.00", "Card", "Bank"],
+      details: [
+        "Switch on card or bank payments, if you want them.",
+        "After each game, everyone who played gets a DM with a link to pay their share.",
+        "MatchTime reminds whoever hasn't paid, so you stop doing the money chase.",
+      ],
+      chat: {
+        title: "MatchTime",
+        subtitle: "Private message",
+        kind: "dm",
+        lines: [
+          {
+            from: "bot",
+            text: "Kai, match fee for *Thursday 7-a-side* is *£6.00*.\nTap to pay (bank, card, Apple or Google Pay):",
+            link: "Pay link",
+            time: "22:05",
+          },
+          { from: "bot", text: "You can also pay for anyone you brought along.", time: "22:05" },
+        ],
+      },
+    },
+    {
+      // ADMIN_GROUP spotlight; strings.en.ts hq_help, hq_match_cancelled.
+      key: "admin",
+      title: "An admin group",
+      body: "Organisers run the week in their own words, away from the players' chat.",
+      visual: ["put Bilal in", "show me the teams", "Organisers only"],
+      details: [
+        "Link your organisers' own WhatsApp group, and MatchTime works there too.",
+        "Paste the squad list, move players, check the teams before they go out.",
+        "Tag MatchTime to cancel a match or put it back on, and it tells the players' group.",
+        "Notices only organisers should see arrive there, not in the players' chat.",
+      ],
+      chat: {
+        title: "Organisers",
+        subtitle: "Admin group",
+        kind: "admin",
+        lines: [
+          { from: "self", text: "what can you do?", time: "10:01" },
+          {
+            from: "bot",
+            text: "*MatchTime in your admin group*\nJust ask here in your own words. No need to tag me, except to cancel a match or put it back on.",
+            time: "10:01",
+          },
+          { from: "self", text: "@Match Time cancel Friday", time: "10:03" },
+          { from: "bot", text: "Done: Friday 7-a-side, Fri 23 Oct at 20:00 is cancelled. I've told the players' group.", time: "10:03" },
+        ],
+      },
+    },
+    {
+      // YOUR_WAY spotlight language point; lib/i18n/lang.ts LANGS. Multi-lingual, no language named.
+      key: "lang",
+      title: "Speaks your group's language",
+      body: "Multi-lingual: MatchTime replies in your group's language.",
+      visual: ["Aa", "Aa"],
+      details: [
+        "MatchTime is multi-lingual. Set your club's language once in your settings.",
+        "MatchTime then writes in it everywhere: in the group, in private messages and on the posters.",
+        "Players keep replying in their own words, the way they always have.",
+      ],
+      settings: {
+        title: "Club settings",
+        value: "Language: your group's",
+        items: ["Group chat", "Private messages", "Posters and team sheets"],
+      },
+    },
+  ] satisfies DeckCard[],
 };
 
 // ─── The players' page (/players) ──────────────────────────────────────

@@ -2,10 +2,9 @@
  * The website for its two audiences (Kemal, 2026-10-25: "where is the
  * flashy button?" and "we need separate menu for players and for clubs").
  *
- *   - The hero invites PLAYERS to the pool in its own panel, above the fold
- *     at phone and desktop width, with the pulsing button to /play; the
- *     organisers' "Start your group" stays the first action; the payments
- *     line is gone from the hero.
+ *   - The hero invites PLAYERS to the pool (variant E, 2026-10-26: one link
+ *     under the feature deck, to /play); the organisers' "Start your group"
+ *     stays the first action; no payments or pricing line in the hero.
  *   - The menu has a "For clubs" and a "For players" group, as dropdowns on
  *     desktop and two labelled sections in the phone menu; every link in it
  *     opens a page that answers 200 or an anchor that exists.
@@ -20,6 +19,7 @@ import path from "node:path";
 import { E2E_BASE_URL } from "../helpers/env";
 import { poolPageCopy } from "@/lib/pool/page-copy";
 import {
+  HERO_DECK,
   HERO_POOL_INVITE,
   LANDING_NAV_GROUPS,
   PLAYERS_FAQ,
@@ -51,49 +51,34 @@ for (const [name, size, file] of [
   ["phone", PHONE, "hero-390.png"],
   ["desktop", DESKTOP, "hero-1280.png"],
 ] as const) {
-  test(`the hero invites players to the pool above the fold on ${name} width`, async ({ page }) => {
+  test(`the hero invites players to the pool on ${name} width`, async ({ page }) => {
     await page.setViewportSize(size);
     await open(page, "/");
-    const panel = page.getByRole("region", { name: HERO_POOL_INVITE.title });
-    await expect(panel).toBeVisible();
-    await expect(panel.getByText(HERO_POOL_INVITE.body)).toBeVisible();
-    const join = panel.getByRole("link", { name: HERO_POOL_INVITE.cta.label });
+    // Variant E (2026-10-26): one link under the feature deck, to the same
+    // /play sign-up the hero's pool button used.
+    const hero = page.locator("#hero");
+    const join = hero.getByRole("link", { name: HERO_DECK.poolLink.label });
     await expect(join).toHaveAttribute("href", HERO_POOL_INVITE.cta.href);
-    // Above the fold: the whole button is on the first screen, no scrolling.
-    await expect(join).toBeInViewport({ ratio: 1 });
-    expect(await join.evaluate((el) => getComputedStyle(el).animationName)).toBe("pool-invite-pulse");
-    await expect(panel.getByRole("link", { name: HERO_POOL_INVITE.more.label })).toHaveAttribute("href", HERO_POOL_INVITE.more.href);
-    await expect(panel.getByText(HERO_POOL_INVITE.smallPrint)).toBeVisible();
 
-    // The organisers' button stays the first action, before the players' panel.
-    const hero = page.locator("section").first();
+    // The organisers' button stays the first action, before the players' link.
     const start = hero.getByRole("link", { name: "Start your group" });
     await expect(start).toBeInViewport();
-    const [startBox, panelBox] = [await start.boundingBox(), await panel.boundingBox()];
-    expect(startBox!.y).toBeLessThan(panelBox!.y);
+    const [startBox, joinBox] = [await start.boundingBox(), await join.boundingBox()];
+    expect(startBox!.y).toBeLessThan(joinBox!.y);
 
-    // Payments are described further down, never in the hero.
-    await expect(hero.getByText(/card or bank/i)).toHaveCount(0);
+    // Payments' pricing is on the pricing page, never in the hero.
+    await expect(hero.getByText(/card or bank|months free|weeks you play/i)).toHaveCount(0);
     expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
     await shot(page, file);
   });
 }
 
-test("the hero's button takes a player to the /play sign-up", async ({ page }) => {
+test("the hero's pool link takes a player to the /play sign-up", async ({ page }) => {
   await page.setViewportSize(PHONE);
   await open(page, "/");
-  await page.getByRole("region", { name: HERO_POOL_INVITE.title }).getByRole("link", { name: HERO_POOL_INVITE.cta.label }).click();
+  await page.locator("#hero").getByRole("link", { name: HERO_DECK.poolLink.label }).click();
   await page.waitForURL(/\/play\?src=/);
   await expect(page.getByRole("heading", { level: 1, name: "Join the MatchTime player pool" })).toBeVisible();
-});
-
-test.describe("for a visitor who asked for less motion", () => {
-  test("the hero's button does not pulse", async ({ page }) => {
-    await page.emulateMedia({ reducedMotion: "reduce" });
-    await open(page, "/");
-    const join = page.getByRole("region", { name: HERO_POOL_INVITE.title }).getByRole("link", { name: HERO_POOL_INVITE.cta.label });
-    expect(await join.evaluate((el) => getComputedStyle(el).animationName)).toBe("none");
-  });
 });
 
 test("desktop menu: a For clubs and a For players dropdown, each with its links and button", async ({ page }) => {

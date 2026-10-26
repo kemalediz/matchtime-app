@@ -212,9 +212,10 @@ test.describe("the owner's source codes", () => {
 test.describe("/play with codes", () => {
   test.use({ locale: "en-GB" });
 
-  test("the home page's pulsing button still opens /play, with the hero's code", async ({ page }) => {
+  test("the home page's hero link still opens /play, with the hero's code", async ({ page }) => {
     await page.goto("/");
-    const cta = page.locator("a.pool-invite-pulse").first();
+    // Variant E (2026-10-26): the hero's way in is the link under the feature deck.
+    const cta = page.locator("#hero").getByRole("link", { name: /Join the player pool near you/ });
     await expect(cta).toHaveAttribute("href", "/play?src=site-hero");
     await cta.click();
     await expect(page.getByRole("heading", { level: 1, name: EN.signup.heading })).toBeVisible({ timeout: 30_000 });

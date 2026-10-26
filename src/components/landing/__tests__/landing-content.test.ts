@@ -13,6 +13,8 @@ import { describe, it, expect } from "vitest";
 import {
   ASK_CHAT,
   FEATURES,
+  HERO,
+  HERO_DECK,
   HERO_POOL_INVITE,
   LANDING_NAV_GROUPS,
   LANDING_SPOTLIGHTS,
@@ -35,6 +37,7 @@ import { POOL_PLAY_PATH, PLAYERS_PAGE_PATH } from "@/lib/pool/paths";
 import { readSignupSource } from "@/lib/pool/profile-fields";
 import { poolPageCopy } from "@/lib/pool/page-copy";
 import { POOL_CAPS, POOL_MIN_AGE, POOL_QUIET_HOURS } from "@/lib/pool/rules";
+import { POOL_AFTER_PARTNERS_MINS } from "@/lib/pool/round-rules";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
@@ -390,5 +393,113 @@ describe("landing content: numbers come from the rules that enforce them", () =>
 
   it("the search radius", () => {
     expect(find).toContain(`${MAX_RADIUS_MILES} miles`);
+  });
+});
+
+describe("landing content: the hero and its feature deck (variant E, 2026-10-26)", () => {
+  const deckCopy = copyStrings({ HERO, HERO_DECK: { ...HERO_DECK, dotLabel: HERO_DECK.dotLabel(1) } });
+  const cardCopy = (k: string) => copyStrings(HERO_DECK.cards.find((c) => c.key === k));
+
+  it("has eight cards, in order, each with a title, a line and details", () => {
+    expect(HERO_DECK.cards.map((c) => c.key)).toEqual(["att", "bench", "short", "teams", "ratings", "fees", "admin", "lang"]);
+    for (const c of HERO_DECK.cards) {
+      expect(c.title.length).toBeGreaterThan(3);
+      expect(c.body.length).toBeGreaterThan(10);
+      expect(c.details.length).toBeGreaterThanOrEqual(3);
+    }
+    expect(HERO_DECK.cards.map((c) => c.title)).toEqual([
+      "Who's in, counted",
+      "The bench steps in",
+      "Still short? It asks around",
+      "Balanced teams",
+      "Ratings and Man of the Match",
+      "Match fees, collected",
+      "An admin group",
+      "Speaks your group's language",
+    ]);
+  });
+
+  it("the headline and the one line", () => {
+    expect(HERO.titleLead).toBe("Your players WhatsApp.");
+    expect(HERO.titleTail).toBe("MatchTime runs the game.");
+    expect(HERO.pill).toBe("For weekly football groups");
+    expect(HERO.ticks).toEqual(["No app for players"]);
+    expect(HERO.secondary.href).toBe("#how-it-works");
+  });
+
+  it("carries no pricing: no free period, no price, no pay-per-week line", () => {
+    const pricing = /\bfree (period|months?|trial)\b|first (two|2) months|months? free|pay only for the weeks|weeks you play|a month|per month|£\s?9|9\.99|pricing/i;
+    expect(deckCopy.filter((s) => pricing.test(s.text))).toEqual([]);
+    // The only money on the deck is the example match fee an organiser collects.
+    const withPounds = HERO_DECK.cards.filter((c) => copyStrings(c).some((s) => /£/.test(s.text))).map((c) => c.key);
+    expect(withPounds).toEqual(["fees"]);
+  });
+
+  it("has no em or en dash, says bench not waiting list, and no weekly cap wording", () => {
+    expect(deckCopy.filter((s) => /[—–]|&mdash;|&ndash;/.test(s.text))).toEqual([]);
+    expect(deckCopy.filter((s) => /waiting list/i.test(s.text))).toEqual([]);
+    expect(deckCopy.filter((s) => /\b(2|two) a week\b|a week\b/i.test(s.text))).toEqual([]);
+    expect(deckCopy.filter((s) => /@MatchTime/.test(s.text))).toEqual([]);
+  });
+
+  it("titles, lines and details use no slash as a separator", () => {
+    const prose = HERO_DECK.cards.flatMap((c) => [c.title, c.body, ...c.details, ...c.visual]);
+    expect(prose.filter((t) => /\//.test(t))).toEqual([]);
+  });
+
+  it("the language card says multi-lingual and names no language", () => {
+    const lang = cardCopy("lang").map((s) => s.text).join(" ");
+    expect(lang).toMatch(/multi-lingual/i);
+    const named = /English|Turkish|T[uü]rk|Spanish|French|German|Polish|Arabic|Urdu|Portuguese|Italian|VARIM|YOKUM/i;
+    expect(deckCopy.filter((s) => named.test(s.text))).toEqual([]);
+  });
+
+  it("never overclaims the bench: tagged, and the first to reply IN takes the place", () => {
+    const bench = cardCopy("bench").map((s) => s.text).join(" ");
+    expect(bench).toMatch(/tagged/i);
+    expect(bench).toMatch(/first to/i);
+    expect(bench).not.toMatch(/automatic/i);
+  });
+
+  it("the pool is asked after partner clubs, on the rule's delay, and is opening town by town", () => {
+    const short = HERO_DECK.cards.find((c) => c.key === "short")!;
+    expect(POOL_AFTER_PARTNERS_MINS).toBe(60);
+    expect(short.details.join(" ")).toMatch(/an hour later, or straight away if you have no partner clubs/);
+    expect(short.details.join(" ")).toMatch(/opening town by town/);
+    expect(short.steps!.map((s) => s.title)).toEqual(["1. Bench", "2. Partner clubs", "3. Player pool"]);
+    expect(short.steps!.filter((s) => s.highlight).map((s) => s.title)).toEqual(["3. Player pool"]);
+  });
+
+  it("quotes MatchTime's real wording", () => {
+    const en = readFileSync(path.join(process.cwd(), "src/lib/i18n/strings.en.ts"), "utf8");
+    const pool = readFileSync(path.join(process.cwd(), "src/lib/i18n/pool-offer.en.ts"), "utf8");
+    for (const phrase of [
+      "Bench is open.",
+      "First to claim it plays.",
+      "Just reply *IN* here to take it.",
+      "No rush and no timeout,",
+      "is in, replacing",
+      "Objections? Tag me and say what to change, in your own words (for example @Match Time swap Sam with Alex), and an admin will confirm.",
+      "a personal rating link. The more ratings we get, the better-balanced the",
+      "Your trophy awaits next match.",
+      "You can also pay for anyone you brought along.",
+      "MatchTime in your admin group",
+      "No need to tag me, except to cancel a match or put it back on.",
+      "is cancelled. I've told the players' group.",
+    ]) {
+      expect(en, phrase).toContain(phrase);
+    }
+    for (const phrase of ["Would you like the place? Reply here, or tap to answer:", "You're in: "]) {
+      expect(pool, phrase).toContain(phrase);
+    }
+    // No emoji in the deck's quotes.
+    expect(deckCopy.filter((s) => /\p{Extended_Pictographic}/u.test(s.text))).toEqual([]);
+  });
+
+  it("the players' link goes where the hero's pool button went", () => {
+    expect(HERO_DECK.poolLink).toEqual({
+      label: "Want more games? Join the player pool near you",
+      href: `${POOL_PLAY_PATH}?src=${POOL_SITE_SOURCES.hero}`,
+    });
   });
 });
