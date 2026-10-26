@@ -294,6 +294,17 @@ describe("landing content: the player pool section (variant D round 2)", () => {
     expect(yes).toMatch(/bench/);
   });
 
+  it("step 4 never promises the place: it may have gone, or he may go on the bench (pool/accept.ts)", () => {
+    const yes = s.steps!.find((x) => x.key === "yes")!.body;
+    expect(yes).toBe(
+      "Reply yes or tap the link. If the place is still open, you're in, or on the bench where the organisers pick. Not this time? Just say no.",
+    );
+    expect(yes).toMatch(/still open/);
+    expect(yes).toMatch(/on the bench where the organisers pick/);
+    const all = copyStrings({ s, POOL_SECTION, HERO_POOL_INVITE, PLAYERS_PAGE }).map((x) => x.text).join(" ");
+    expect(all).not.toMatch(/the place is yours|it's yours/i);
+  });
+
   it("the privacy promises and the points", () => {
     expect(keysOf(s.note?.items)).toEqual(["number", "name", "area"]);
     expect(keysOf(s.points)).toEqual(["sports", "level", "control", "age"]);

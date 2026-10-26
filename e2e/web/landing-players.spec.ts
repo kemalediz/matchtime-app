@@ -95,3 +95,28 @@ test("the desktop headline's full stops sit against their word", async ({ page }
   for (const g of gaps) expect(g).toBeLessThan(-0.05);
   await expect(page.locator("section").first().locator("h1")).toHaveText("Your players WhatsApp. MatchTime runs the game.");
 });
+
+/**
+ * The pool section stays compact on a phone (manager review, round 2): from
+ * the pool headline to the end of the drawn offer and the four steps is at
+ * most 1.6 phone screens, so a player reaches the whole call-up quickly.
+ */
+test("on a phone the pool's offer and its four steps end within 1.6 screens of its headline", async ({ page }) => {
+  await page.setViewportSize(PHONE);
+  await page.goto("/");
+  await page.evaluate(() => document.fonts.ready);
+  const pool = page.locator("section#player-pool");
+  const top = (await pool.getByRole("heading", { level: 2 }).boundingBox())!.y;
+  const offer = (await pool.getByRole("figure", { name: POOL_SECTION.offer.caption }).boundingBox())!;
+  const steps = (await pool.getByRole("list", { name: POOL.stepsLabel }).boundingBox())!;
+  const end = Math.max(offer.y + offer.height, steps.y + steps.height);
+  const screens = (end - top) / PHONE.height;
+  console.log(`pool headline to end of offer and steps: ${Math.round(end - top)}px, ${screens.toFixed(2)} screens`);
+  expect(screens).toBeLessThanOrEqual(1.6);
+  // Every point and privacy promise is still there.
+  for (const p of POOL.points) await expect(pool.getByRole("heading", { level: 3, name: p.title })).toBeVisible();
+  for (const i of POOL.note!.items) await expect(pool.getByText(i.text)).toBeVisible();
+  await expect(pool).toContainText("Football 5, 7, 8, 9 or 11-a-side");
+  expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
+});
+

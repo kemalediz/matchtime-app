@@ -636,7 +636,7 @@ const PLAYER_POOL: Spotlight = {
       // (optional); pool/confirm.ts: his own message confirms the number.
       key: "profile",
       title: "Tell us how you play",
-      body: "Your level if you like, the days and times you can play, how far you'll travel and the formats you play. Then one WhatsApp message confirms your number.",
+      body: "Your level if you like, the days and times you can play, how far you'll travel and your formats. One WhatsApp message confirms your number.",
     },
     {
       // pool/matching-rules.ts: sport, format, level only when asked for,
@@ -654,11 +654,11 @@ const PLAYER_POOL: Spotlight = {
       body: `It shows the club, the day and time, how far it is and the kind of game. Never between ${POOL_QUIET_HOURS.from} and ${POOL_QUIET_HOURS.to}.`,
     },
     {
-      // pool/reply.ts (a yes in words), pool/accept.ts; offer-copy.ts
-      // placed_in and placed_bench (clubs whose organisers pick).
+      // pool/reply.ts (a yes or a no in words); pool/accept.ts: "gone" when
+      // the place went first (reply_gone), placed_bench where organisers pick.
       key: "yes",
-      title: "Say yes and you're in",
-      body: "Reply yes or tap the link and the place is yours. Where a club's organisers pick, you go on their bench first.",
+      title: "Say yes",
+      body: "Reply yes or tap the link. If the place is still open, you're in, or on the bench where the organisers pick. Not this time? Just say no.",
     },
   ],
   points: [
