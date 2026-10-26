@@ -22,6 +22,7 @@ import {
   PLAYERS_FAQ,
   PLAYERS_PAGE,
   PLAYER_STAT_CARDS,
+  POOL_OFFER_CHAT,
   POOL_SITE_SOURCES,
   SPORTS,
   allNavLinks,
@@ -38,6 +39,8 @@ import { readSignupSource } from "@/lib/pool/profile-fields";
 import { poolPageCopy } from "@/lib/pool/page-copy";
 import { POOL_CAPS, POOL_MIN_AGE, POOL_QUIET_HOURS } from "@/lib/pool/rules";
 import { POOL_AFTER_PARTNERS_MINS } from "@/lib/pool/round-rules";
+import { SPORT_LEVELS, levelLabel } from "@/lib/pool/sports";
+import { poolOfferEn } from "@/lib/i18n/pool-offer.en";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
@@ -56,6 +59,10 @@ function copyStrings(value: unknown, path = "content"): Array<{ path: string; te
 const ALL = copyStrings({
   ASK_CHAT,
   FEATURES,
+  HERO,
+  // The deck's chats quote MatchTime's real messages ("Squad 14/14"); its own
+  // tests below check them. Everything else on the deck is held here.
+  HERO_DECK: { ...HERO_DECK, dotLabel: HERO_DECK.dotLabel(1), cards: HERO_DECK.cards.map((c) => ({ ...c, chat: undefined })) },
   HERO_POOL_INVITE,
   LANDING_NAV_GROUPS,
   LANDING_SPOTLIGHTS,
@@ -106,6 +113,11 @@ describe("landing content: house rules", () => {
 
   it("spells the bot tag @Match Time", () => {
     expect(ALL.filter((s) => /@MatchTime/.test(s.text))).toEqual([]);
+  });
+
+  it("names no language anywhere: MatchTime is multi-lingual (round two, 2026-10-26)", () => {
+    const named = /English|Turkish|T[uü]rk|Spanish|French|German|Polish|Arabic|Urdu|Portuguese|Italian|VARIM|YOKUM/i;
+    expect(ALL.filter((s) => named.test(s.text))).toEqual([]);
   });
 
   it("never says messages a week: the cap is on game offers (Kemal, 2026-10-25)", () => {
@@ -262,14 +274,68 @@ describe("landing content: the player pool (G0 part 2)", () => {
     expect(pulsing).toEqual(["hero", "players-page", "spotlight:player-pool"]);
   });
 
-  it("how joining works, the privacy promises, and the points", () => {
-    expect(keysOf(s.steps)).toEqual(["signup", "confirm", "offers"]);
+  it("how a call-up works, the privacy promises, and the points", () => {
+    expect(keysOf(s.steps)).toEqual(["signup", "short", "offer", "yes"]);
     expect(keysOf(s.note?.items)).toEqual(["number", "name", "area"]);
-    expect(keysOf(s.points)).toEqual(["sports", "control", "age"]);
+    expect(keysOf(s.points)).toEqual(["sports", "level", "control", "age"]);
+  });
+
+  it("the call-up headline, the benefit, and the four steps' facts (round two, 2026-10-26)", () => {
+    expect(s.title).toBe("Get called up for local games.");
+    expect(s.benefit).toBe("More games, new teammates, no hunting round group chats.");
+    const [signup, short, offer, yes] = s.steps!.map((x) => x.body);
+    expect(signup).toMatch(/level/);
+    expect(signup).toMatch(/days and times/);
+    expect(signup).toMatch(/how far you'll travel/);
+    expect(short).toMatch(/near/);
+    expect(short).toMatch(/a time that suits you/);
+    for (const fact of ["club", "day and time", "how far", "kind of game"]) expect(offer).toContain(fact);
+    expect(s.steps!.find((x) => x.key === "offer")!.title).toMatch(/WhatsApp/);
+    expect(yes).toMatch(/Reply yes or tap/);
+    // Never overclaims: a yes takes the place only while it is open.
+    expect(yes).toMatch(/If the place is still open/);
+  });
+
+  it("the facts are kept: adults only, quiet hours, stop any time, number shared only when you join a group, postcode district", () => {
+    const text = copyStrings(s).map((x) => x.text).join(" ");
+    expect(text).toContain(`${POOL_MIN_AGE} and over`);
+    expect(text).toContain(`between ${POOL_QUIET_HOURS.from} and ${POOL_QUIET_HOURS.to}`);
+    expect(text).toMatch(/Stop any time/);
+    expect(s.note!.items.find((i) => i.key === "number")!.text).toMatch(/only shared if you join a club's WhatsApp group yourself/);
+    expect(s.note!.items.find((i) => i.key === "area")!.text).toMatch(/postcode district, never your full postcode/);
+  });
+
+  it("the level claim is what matching does: optional, self-chosen, and only filters when a club's ask names levels", () => {
+    const level = s.points.find((p) => p.key === "level")!;
+    for (const l of SPORT_LEVELS) expect(level.body).toContain(levelLabel(l, "en"));
+    expect(level.body).toMatch(/or leave it blank/);
+    expect(level.body).toContain("A club looking for a certain level only asks players who match it.");
+    // Never: picked by ratings, or every game at your level.
+    const poolCopy = copyStrings({ s, HERO_POOL_INVITE, short: HERO_DECK.cards.find((c) => c.key === "short") }).map((x) => x.text);
+    expect(poolCopy.filter((t) => /rating|rated|every game|always (at|your) level|matched to your (skill|level)/i.test(t))).toEqual([]);
+  });
+
+  it("the drawn offer is the real offer copy, in poolOfferLines order, emoji stripped, with no fee line", () => {
+    const strip = (t: string) => t.replace(/\p{Extended_Pictographic}\uFE0F?\s*/gu, "").trim();
+    expect(s.offerChat).toBe(POOL_OFFER_CHAT);
+    const [offer, reply, placed] = POOL_OFFER_CHAT.lines;
+    const lines = offer.text.split("\n");
+    expect(lines).toEqual([
+      strip(poolOfferEn.offer_head({ club: "Riverside FC", places: 1, game: poolOfferEn.game_with_format({ format: "7-a-side", sport: "Football" }) })),
+      strip(poolOfferEn.offer_when({ day: "Tue 20 Oct, 20:00", mins: 60 })),
+      `*Riverside Sports Centre*. ${poolOfferEn.distance({ miles: "1.2", one: false })}`,
+      `${poolOfferEn.style_casual}. ${poolOfferEn.club_weekly({ members: 18 })}`,
+      "Would you like the place? Reply here, or tap to answer:",
+    ]);
+    expect(reply.from).toBe("self");
+    expect(placed.text).toBe(strip(poolOfferEn.placed_in({ club: "Riverside FC", day: "Tue 20 Oct, 20:00", venue: "Riverside Sports Centre" })));
+    const all = copyStrings(POOL_OFFER_CHAT).map((x) => x.text).join(" ");
+    expect(all).not.toMatch(/£|match fee|\p{Extended_Pictographic}/u);
+    expect(all).not.toMatch(/[—–]/);
   });
 
   it("the quiet hours and the age come from pool/rules.ts; the weekly cap is not on the site", () => {
-    const offers = s.steps!.find((x) => x.key === "offers")!.body;
+    const offers = s.steps!.find((x) => x.key === "offer")!.body;
     expect(offers).not.toMatch(/a week|at most/i);
     expect(offers).toContain(`between ${POOL_QUIET_HOURS.from} and ${POOL_QUIET_HOURS.to}`);
     expect(s.points.find((x) => x.key === "age")!.title).toBe(`${POOL_MIN_AGE} and over`);
@@ -310,30 +376,29 @@ describe("landing content: the player pool (G0 part 2)", () => {
   });
 });
 
-describe("landing content: the hero's invitation to players (Kemal, 2026-10-25)", () => {
+describe("landing content: the hero's players card (round two, 2026-10-26)", () => {
   const h = HERO_POOL_INVITE;
 
-  it("says the benefit: asked when a nearby club is a player short, you decide, no app, stop any time", () => {
+  it("a New badge, the call-up title and the one line", () => {
+    expect(h.badge).toBe("New");
     expect(h.eyebrow).toBe("For players");
-    expect(h.title).toMatch(/near you/);
-    expect(h.title).toMatch(/player short/);
-    const body = h.body;
-    expect(body).toMatch(/WhatsApp/);
-    expect(body).toMatch(/you decide/);
-    expect(body).toMatch(/No app/);
-    expect(body).toMatch(/stop any time/);
+    expect(h.title).toBe("Get called up for local games");
+    expect(h.body).toBe(
+      "Join the MatchTime player pool. When a club near you is a player short at a time that suits you, you get the game on WhatsApp.",
+    );
   });
 
-  it("the button goes to /play with the hero's source code, and pulses", () => {
-    expect(h.cta).toEqual({ label: "Join the MatchTime player pool", href: `${POOL_PLAY_PATH}?src=${POOL_SITE_SOURCES.hero}`, pulse: true });
-  });
-
-  it("a second link explains it on the players' page", () => {
-    expect(h.more).toEqual({ label: "How it works for players", href: PLAYERS_PAGE_PATH });
+  it("the strong button goes to /play with the hero's source code, and pulses", () => {
+    expect(h.cta).toEqual({ label: "Join the player pool", href: `${POOL_PLAY_PATH}?src=${POOL_SITE_SOURCES.hero}`, pulse: true });
   });
 
   it("the small print is the age from pool/rules.ts and says it is opening town by town, with no weekly cap", () => {
     expect(h.smallPrint).toBe(`${POOL_MIN_AGE} and over. Opening town by town.`);
+  });
+
+  it("carries no pricing and never says free", () => {
+    const text = copyStrings(h).map((x) => x.text).join(" ");
+    expect(text).not.toMatch(/£|\bfree\b|price|pricing|a month|a week/i);
   });
 
   it("every site source code is one /play reads as a campaign code", () => {
@@ -397,8 +462,16 @@ describe("landing content: numbers come from the rules that enforce them", () =>
 });
 
 describe("landing content: the hero and its feature deck (variant E, 2026-10-26)", () => {
-  const deckCopy = copyStrings({ HERO, HERO_DECK: { ...HERO_DECK, dotLabel: HERO_DECK.dotLabel(1) } });
+  const deckCopy = copyStrings({ HERO, HERO_POOL_INVITE, HERO_DECK: { ...HERO_DECK, dotLabel: HERO_DECK.dotLabel(1) } });
   const cardCopy = (k: string) => copyStrings(HERO_DECK.cards.find((c) => c.key === k));
+
+  it("cards are scannable: a short title and one short line each", () => {
+    for (const c of HERO_DECK.cards) {
+      expect(c.title.length, c.key).toBeLessThanOrEqual(28);
+      expect(c.body.length, c.key).toBeLessThanOrEqual(72);
+      expect(c.body.split(/[.?!:]\s/).length, c.key).toBeLessThanOrEqual(2);
+    }
+  });
 
   it("has eight cards, in order, each with a title, a line and details", () => {
     expect(HERO_DECK.cards.map((c) => c.key)).toEqual(["att", "bench", "short", "teams", "ratings", "fees", "admin", "lang"]);
@@ -411,10 +484,10 @@ describe("landing content: the hero and its feature deck (variant E, 2026-10-26)
       "Who's in, counted",
       "The bench steps in",
       "Still short? It asks around",
-      "Balanced teams",
+      "Fair teams, on request",
       "Ratings and Man of the Match",
       "Match fees, collected",
-      "An admin group",
+      "Your organisers' own chat",
       "Speaks your group's language",
     ]);
   });
@@ -496,10 +569,9 @@ describe("landing content: the hero and its feature deck (variant E, 2026-10-26)
     expect(deckCopy.filter((s) => /\p{Extended_Pictographic}/u.test(s.text))).toEqual([]);
   });
 
-  it("the players' link goes where the hero's pool button went", () => {
-    expect(HERO_DECK.poolLink).toEqual({
-      label: "Want more games? Join the player pool near you",
-      href: `${POOL_PLAY_PATH}?src=${POOL_SITE_SOURCES.hero}`,
-    });
+  it("the Still short card draws the chain and the pool's real offer", () => {
+    const short = HERO_DECK.cards.find((c) => c.key === "short")!;
+    expect(short.chat).toBe(POOL_OFFER_CHAT);
+    expect(short.body).toMatch(/^Bench first, then partner clubs, then local players from the pool\.$/);
   });
 });

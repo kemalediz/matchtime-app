@@ -16,7 +16,6 @@
  * lays them out. Fictional data, drawn with HTML, no images.
  */
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type Ref } from "react";
-import Link from "next/link";
 import {
   Armchair,
   ArrowRight,
@@ -27,16 +26,15 @@ import {
   Languages,
   Lock,
   MapPin,
-  MessageCircle,
   Scale,
   Shirt,
   Star,
   Trophy,
-  Users,
   X,
 } from "lucide-react";
-import { HERO_DECK, type DeckCard, type DeckChat, type DeckKey, type DeckLine } from "./landing-content";
+import { HERO_DECK, type DeckCard, type DeckKey } from "./landing-content";
 import { DISPLAY_FONT } from "./display-font";
+import { ChatDrawing, TickBadge } from "./chat-drawing";
 
 const PHONE_QUERY = "(max-width: 767px)";
 const CARDS: DeckCard[] = HERO_DECK.cards;
@@ -125,38 +123,27 @@ export function HeroDeck() {
   const card = open ? CARDS.find((c) => c.key === open)! : null;
 
   return (
-    <section aria-label={HERO_DECK.sectionLabel} className="mt-10 sm:mt-14 grid grid-cols-1 md:grid-cols-[1fr_auto] md:items-center gap-x-4 gap-y-3 md:gap-y-4 text-left">
-      <div className="min-w-0">
-        <h2 className="text-[17px] md:text-2xl font-extrabold text-white" style={DISPLAY_FONT}>
-          {HERO_DECK.title}
-        </h2>
-        <p className="text-[13px] md:text-[15px] text-slate-400">
-          <span className="md:hidden">{HERO_DECK.hintPhone}</span>
-          <span className="hidden md:inline">{HERO_DECK.hintDesktop}</span>
-        </p>
-      </div>
-
-      <div className="order-3 md:order-none flex items-center justify-center gap-2">
-        <NavButton label={HERO_DECK.prevLabel} disabled={idx <= 0} onClick={() => go(idx - 1)}>
-          <ChevronLeft className="w-5 h-5" aria-hidden="true" />
-        </NavButton>
-        <div role="group" aria-label={HERO_DECK.dotsLabel} className="flex items-center">
-          {CARDS.map((c, i) => (
-            <button
-              key={c.key}
-              type="button"
-              onClick={() => go(i)}
-              aria-label={HERO_DECK.dotLabel(i + 1)}
-              aria-current={i === idx ? "true" : undefined}
-              className="w-[26px] h-11 inline-flex items-center justify-center rounded-md focus-visible:outline-2 focus-visible:outline-blue-400"
-            >
-              <span className={`block h-2 rounded transition-all ${i === idx ? "w-5 bg-blue-400" : "w-2 bg-slate-600"}`} />
-            </button>
-          ))}
+    <section aria-label={HERO_DECK.sectionLabel} className="mt-8 sm:mt-12 flex flex-col gap-3 md:gap-4 text-left">
+      {/* The title on the left, the arrows on the right: visible on every
+          size, so it is clear the row moves. */}
+      <div className="flex items-end justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-xl md:text-2xl font-extrabold text-white" style={DISPLAY_FONT}>
+            {HERO_DECK.title}
+          </h2>
+          <p className="text-[13px] md:text-[15px] text-slate-300">
+            <span className="md:hidden">{HERO_DECK.hintPhone}</span>
+            <span className="hidden md:inline">{HERO_DECK.hintDesktop}</span>
+          </p>
         </div>
-        <NavButton label={HERO_DECK.nextLabel} disabled={idx >= CARDS.length - 1} onClick={() => go(idx + 1)}>
-          <ChevronRight className="w-5 h-5" aria-hidden="true" />
-        </NavButton>
+        <div className="shrink-0 flex items-center gap-2">
+          <NavButton label={HERO_DECK.prevLabel} disabled={idx <= 0} onClick={() => go(idx - 1)}>
+            <ChevronLeft className="w-5 h-5" aria-hidden="true" />
+          </NavButton>
+          <NavButton label={HERO_DECK.nextLabel} disabled={idx >= CARDS.length - 1} onClick={() => go(idx + 1)}>
+            <ChevronRight className="w-5 h-5" aria-hidden="true" />
+          </NavButton>
+        </div>
       </div>
 
       <div
@@ -164,7 +151,7 @@ export function HeroDeck() {
         data-testid="deck-track"
         onScroll={onScroll}
         onKeyDown={onTrackKey}
-        className="md:col-span-2 relative -mx-5 sm:-mx-8 md:mx-0 flex gap-3 md:gap-4 overflow-x-auto snap-x snap-mandatory scroll-pl-5 sm:scroll-pl-8 md:scroll-pl-0 px-5 sm:px-8 md:px-0 pt-0.5 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="relative -mx-5 sm:-mx-8 md:mx-0 flex gap-3 md:gap-4 overflow-x-auto snap-x snap-mandatory scroll-pl-5 sm:scroll-pl-8 md:scroll-pl-0 px-5 sm:px-8 md:px-0 pt-0.5 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {CARDS.map((c, i) => (
           <DeckCardButton
@@ -182,14 +169,19 @@ export function HeroDeck() {
         <span aria-hidden="true" className="shrink-0 w-[calc(100%-264px)] md:w-[calc(100%-288px)]" />
       </div>
 
-      <div className="order-5 md:col-span-2 flex justify-center md:justify-start">
-        <Link
-          href={HERO_DECK.poolLink.href}
-          className="inline-flex min-h-11 items-center gap-2 text-sm sm:text-base font-semibold text-emerald-300 underline-offset-4 hover:underline hover:text-white"
-        >
-          {HERO_DECK.poolLink.label}
-          <ArrowRight className="w-4 h-4" aria-hidden="true" />
-        </Link>
+      <div role="group" aria-label={HERO_DECK.dotsLabel} className="flex items-center justify-center">
+        {CARDS.map((c, i) => (
+          <button
+            key={c.key}
+            type="button"
+            onClick={() => go(i)}
+            aria-label={HERO_DECK.dotLabel(i + 1)}
+            aria-current={i === idx ? "true" : undefined}
+            className="w-[26px] h-11 inline-flex items-center justify-center rounded-md focus-visible:outline-2 focus-visible:outline-blue-400"
+          >
+            <span className={`block h-2 rounded transition-all ${i === idx ? "w-5 bg-blue-400" : "w-2 bg-slate-600"}`} />
+          </button>
+        ))}
       </div>
 
       {card && !isPhone && <DetailPanel card={card} id={panelId} onClose={close} />}
@@ -205,7 +197,7 @@ function NavButton({ label, disabled, onClick, children }: { label: string; disa
       aria-label={label}
       disabled={disabled}
       onClick={onClick}
-      className="w-11 h-11 inline-flex items-center justify-center rounded-xl border border-white/20 bg-white/5 text-white transition-opacity hover:bg-white/10 disabled:opacity-40 disabled:cursor-default"
+      className="w-11 h-11 inline-flex items-center justify-center rounded-full border border-blue-300/50 bg-blue-500/20 text-white shadow-md shadow-blue-500/20 transition hover:bg-blue-500/35 disabled:opacity-35 disabled:shadow-none disabled:cursor-default focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
     >
       {children}
     </button>
@@ -236,23 +228,26 @@ function DeckCardButton({
       aria-controls={controls}
       aria-labelledby={titleId}
       aria-describedby={bodyId}
-      className={`shrink-0 w-[252px] md:w-[272px] snap-start flex flex-col gap-3 p-3 pb-3.5 rounded-[20px] bg-[#0c1631] border-[1.5px] text-left text-slate-50 cursor-pointer transition-colors hover:border-blue-400/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400 ${
+      className={`group shrink-0 w-[252px] md:w-[272px] snap-start flex flex-col gap-3 p-3 pb-3.5 rounded-[20px] bg-[#0c1631] border-[1.5px] text-left text-slate-50 cursor-pointer transition-colors hover:border-blue-400/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400 ${
         selected ? "border-blue-400" : "border-slate-400/20"
       }`}
     >
       <span aria-hidden="true" className="h-[104px] md:h-[112px] p-3 rounded-[14px] bg-[#0a1633] flex items-center">
         <CardVisual card={card} />
       </span>
-      <span className="px-1 flex flex-1 flex-col gap-1">
+      <span className="px-1 flex flex-1 flex-col gap-1.5">
         <span id={titleId} className="text-lg font-extrabold leading-tight text-white" style={DISPLAY_FONT}>
           {card.title}
         </span>
         <span id={bodyId} className="text-sm leading-snug text-slate-300">
           {card.body}
         </span>
-        <span aria-hidden="true" className="mt-auto pt-1 inline-flex items-center gap-1.5 text-[13px] font-semibold text-blue-300">
+        <span
+          aria-hidden="true"
+          className="mt-auto self-start inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-blue-500/15 border border-blue-400/40 text-[13px] font-semibold text-blue-200 transition-colors group-hover:bg-blue-500/30"
+        >
           {HERO_DECK.seeHow}
-          <ArrowRight className="w-3.5 h-3.5" />
+          <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" />
         </span>
       </span>
     </button>
@@ -260,15 +255,6 @@ function DeckCardButton({
 }
 
 // ─── The small drawing on each card ────────────────────────────────────
-
-function TickBadge({ size = "sm" }: { size?: "sm" | "lg" }) {
-  const box = size === "lg" ? "w-[30px] h-[30px] -right-2.5 -top-2.5 border-[3px] border-[#0c1631]" : "w-5 h-5 -right-2 -bottom-1.5 border-2 border-[#0a1633]";
-  return (
-    <span className={`absolute ${box} rounded-full bg-emerald-500 inline-flex items-center justify-center`}>
-      <Check className={size === "lg" ? "w-4 h-4 text-white" : "w-3 h-3 text-white"} strokeWidth={3} />
-    </span>
-  );
-}
 
 function Pill({ children, tone }: { children: ReactNode; tone: "green" | "blue" | "amber" }) {
   const tones = {
@@ -451,6 +437,7 @@ function DetailPanel({ card, id, onClose }: { card: DeckCard; id: string; onClos
           </h3>
           <CloseButton onClose={onClose} />
         </div>
+        {card.steps && <Steps steps={card.steps} />}
         <Details card={card} />
       </div>
       <div className="flex-[0_1_380px] min-w-0 flex justify-center">
@@ -501,16 +488,25 @@ function DetailSheet({ card, id, onClose }: { card: DeckCard; id: string; onClos
         aria-modal="true"
         aria-labelledby={titleId}
         onKeyDown={onKeyDown}
-        className="relative max-h-[88vh] overflow-y-auto overscroll-contain rounded-t-[28px] bg-[#0b1430] border-t border-blue-400/35 px-5 pt-3 pb-8 text-left"
+        data-testid="deck-sheet"
+        className="relative max-h-[88dvh] overflow-y-auto overscroll-contain rounded-t-[28px] bg-[#0b1430] border-t border-blue-400/35 px-5 pb-8 text-left"
       >
-        <div aria-hidden="true" className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-slate-600" />
-        <div className="flex items-start justify-between gap-4">
-          <h3 id={titleId} className="pt-1.5 text-2xl font-extrabold leading-tight text-white" style={DISPLAY_FONT}>
-            {card.title}
-          </h3>
-          <CloseButton onClose={onClose} buttonRef={closeRef} />
+        {/* The title and the close button stay on screen while the sheet scrolls. */}
+        <div className="sticky top-0 z-10 -mx-5 px-5 pt-3 pb-3 bg-[#0b1430]">
+          <div aria-hidden="true" className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-slate-600" />
+          <div className="flex items-start justify-between gap-4">
+            <h3 id={titleId} className="pt-1.5 text-2xl font-extrabold leading-tight text-white" style={DISPLAY_FONT}>
+              {card.title}
+            </h3>
+            <CloseButton onClose={onClose} buttonRef={closeRef} />
+          </div>
         </div>
-        <div className="mt-4">
+        {card.steps && (
+          <div className="mt-1 mb-4">
+            <Steps steps={card.steps} />
+          </div>
+        )}
+        <div className="mt-1">
           <Details card={card} />
         </div>
         <div className="mt-6 flex justify-center">
@@ -525,125 +521,32 @@ function DetailSheet({ card, id, onClose }: { card: DeckCard; id: string; onClos
 
 function Drawing({ card }: { card: DeckCard }) {
   if (card.settings) return <SettingsDrawing s={card.settings} />;
+  if (!card.chat) return null;
   return (
-    <div className="w-full max-w-[360px] flex flex-col gap-4">
-      {card.steps && (
-        <ol aria-label="Who is asked, in order" className="grid grid-cols-3 gap-2">
-          {card.steps.map((s) => (
-            <li
-              key={s.title}
-              className={`rounded-2xl border p-2.5 flex flex-col gap-1 ${
-                s.highlight ? "bg-emerald-500/15 border-emerald-400/60" : "bg-[#0a1633] border-slate-400/20"
-              }`}
-            >
-              <span className={`text-[13px] font-bold leading-tight ${s.highlight ? "text-emerald-200" : "text-white"}`}>{s.title}</span>
-              <span className="text-[11px] leading-snug text-slate-400">{s.sub}</span>
-            </li>
-          ))}
-        </ol>
-      )}
-      {card.chat && <ChatDrawing chat={card.chat} />}
+    <div className="w-full max-w-[360px]">
+      <ChatDrawing chat={card.chat} />
     </div>
   );
 }
 
-const NAME_COLOURS = ["text-violet-300", "text-blue-300", "text-amber-300", "text-pink-300", "text-emerald-300"];
-
-function nameColour(name: string): string {
-  let h = 0;
-  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-  return NAME_COLOURS[h % NAME_COLOURS.length];
-}
-
-/** `*bold*` segments, WhatsApp style. */
-function Rich({ text }: { text: string }) {
+/** Who is asked, in order, with an arrow between; the pool is highlighted. */
+function Steps({ steps }: { steps: NonNullable<DeckCard["steps"]> }) {
   return (
-    <>
-      {text.split("*").map((part, i) => (i % 2 === 1 ? <strong key={i}>{part}</strong> : <span key={i}>{part}</span>))}
-    </>
-  );
-}
-
-function ChatDrawing({ chat }: { chat: DeckChat }) {
-  const avatar =
-    chat.kind === "group" ? (
-      <span className="w-8 h-8 rounded-full bg-green-900 inline-flex items-center justify-center">
-        <Users className="w-4 h-4 text-green-200" aria-hidden="true" />
-      </span>
-    ) : chat.kind === "admin" ? (
-      <span className="w-8 h-8 rounded-full bg-slate-700 inline-flex items-center justify-center">
-        <Lock className="w-4 h-4 text-slate-200" aria-hidden="true" />
-      </span>
-    ) : (
-      <span className="w-8 h-8 rounded-full bg-blue-600 inline-flex items-center justify-center">
-        <MessageCircle className="w-4 h-4 text-white" aria-hidden="true" />
-      </span>
-    );
-  return (
-    <figure aria-label={`${chat.title}, ${chat.subtitle}`} className="w-full rounded-[22px] bg-[#0a1633] border border-slate-400/20 overflow-hidden">
-      <figcaption className="flex items-center gap-2.5 px-3.5 pt-3 pb-2.5 border-b border-slate-400/15">
-        {avatar}
-        <span className="flex flex-col text-left">
-          <span className="text-sm font-semibold text-slate-100">{chat.title}</span>
-          <span className="text-xs text-slate-400">{chat.subtitle}</span>
-        </span>
-      </figcaption>
-      <div className="p-3 pb-4 flex flex-col gap-2.5 text-left">
-        {chat.lines.map((l, i) => (
-          <Bubble key={i} line={l} />
-        ))}
-      </div>
-    </figure>
-  );
-}
-
-function Bubble({ line }: { line: DeckLine }) {
-  const paras = line.text.split("\n");
-  if (line.from === "self") {
-    return (
-      <div className="self-end max-w-[80%] px-3 py-2 rounded-[14px_14px_4px_14px] bg-blue-900">
-        <div className="text-sm text-slate-50">{line.text}</div>
-        <div className="text-[11px] text-blue-200/70 text-right">{line.time}</div>
-      </div>
-    );
-  }
-  if (line.from === "player") {
-    return (
-      <div className="self-start relative max-w-[80%] px-3 pt-1.5 pb-2 rounded-[14px_14px_14px_4px] bg-slate-800">
-        <div className={`text-xs font-semibold ${nameColour(line.name ?? "")}`}>{line.name}</div>
-        <div className="text-sm text-slate-100">{line.text}</div>
-        <div className="text-[11px] text-slate-400 text-right">{line.time}</div>
-        {line.tick && <TickBadge />}
-      </div>
-    );
-  }
-  return (
-    <div className="self-start max-w-[88%] px-3 py-2 rounded-[14px_14px_14px_4px] bg-[#0f3d3a] border border-teal-300/30 flex flex-col gap-1.5">
-      <div className="text-xs font-bold text-teal-300">MatchTime</div>
-      {paras.map((p, i) => (
-        <div key={i} className={`text-sm leading-snug ${p.startsWith("@") ? "font-bold text-blue-300" : "text-slate-100"}`}>
-          <Rich text={p} />
-        </div>
+    <ol aria-label="Who is asked, in order" className="grid grid-cols-[1fr_auto_1fr_auto_1fr] items-stretch gap-1.5">
+      {steps.map((s, i) => (
+        <li key={s.title} className="contents">
+          {i > 0 && <ChevronRight className="self-center w-4 h-4 text-slate-500" aria-hidden="true" />}
+          <span
+            className={`relative rounded-2xl border p-2.5 flex flex-col gap-1 ${
+              s.highlight ? "bg-emerald-500/20 border-emerald-400/80 shadow-lg shadow-emerald-500/20" : "bg-[#0a1633] border-slate-400/20"
+            }`}
+          >
+            <span className={`text-[13px] font-bold leading-tight ${s.highlight ? "text-emerald-200" : "text-white"}`}>{s.title}</span>
+            <span className={`text-[11px] leading-snug ${s.highlight ? "text-emerald-100/80" : "text-slate-400"}`}>{s.sub}</span>
+          </span>
+        </li>
       ))}
-      {line.teams && (
-        <div className="flex flex-col gap-1">
-          {line.teams.map((t, i) => (
-            <div key={t.name} className="flex items-center gap-2 text-sm text-slate-100">
-              <Shirt className={`w-4 h-4 shrink-0 ${i === 0 ? "text-blue-400" : "text-orange-400"}`} aria-hidden="true" />
-              <span>
-                <strong>{t.name}</strong> {t.players}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-      {line.link && (
-        <span className="self-start inline-flex items-center px-2.5 py-1 rounded-lg bg-blue-500/20 text-[13px] font-semibold text-blue-200 underline underline-offset-2">
-          {line.link}
-        </span>
-      )}
-      <div className="text-[11px] text-slate-400 text-right">{line.time}</div>
-    </div>
+    </ol>
   );
 }
 

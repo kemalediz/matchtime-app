@@ -2,8 +2,8 @@
  * The website for its two audiences (Kemal, 2026-10-25: "where is the
  * flashy button?" and "we need separate menu for players and for clubs").
  *
- *   - The hero invites PLAYERS to the pool (variant E, 2026-10-26: one link
- *     under the feature deck, to /play); the organisers' "Start your group"
+ *   - The hero invites PLAYERS to the pool (round two, 2026-10-26: a players
+ *     card above the feature deck, to /play); the organisers' "Start your group"
  *     stays the first action; no payments or pricing line in the hero.
  *   - The menu has a "For clubs" and a "For players" group, as dropdowns on
  *     desktop and two labelled sections in the phone menu; every link in it
@@ -19,7 +19,6 @@ import path from "node:path";
 import { E2E_BASE_URL } from "../helpers/env";
 import { poolPageCopy } from "@/lib/pool/page-copy";
 import {
-  HERO_DECK,
   HERO_POOL_INVITE,
   LANDING_NAV_GROUPS,
   PLAYERS_FAQ,
@@ -54,10 +53,9 @@ for (const [name, size, file] of [
   test(`the hero invites players to the pool on ${name} width`, async ({ page }) => {
     await page.setViewportSize(size);
     await open(page, "/");
-    // Variant E (2026-10-26): one link under the feature deck, to the same
-    // /play sign-up the hero's pool button used.
+    // Round two (2026-10-26): the players' card in the hero, above the deck.
     const hero = page.locator("#hero");
-    const join = hero.getByRole("link", { name: HERO_DECK.poolLink.label });
+    const join = hero.getByTestId("hero-players-card").getByRole("link", { name: HERO_POOL_INVITE.cta.label });
     await expect(join).toHaveAttribute("href", HERO_POOL_INVITE.cta.href);
 
     // The organisers' button stays the first action, before the players' link.
@@ -76,7 +74,7 @@ for (const [name, size, file] of [
 test("the hero's pool link takes a player to the /play sign-up", async ({ page }) => {
   await page.setViewportSize(PHONE);
   await open(page, "/");
-  await page.locator("#hero").getByRole("link", { name: HERO_DECK.poolLink.label }).click();
+  await page.locator("#hero").getByTestId("hero-pool-join").click();
   await page.waitForURL(/\/play\?src=/);
   await expect(page.getByRole("heading", { level: 1, name: "Join the MatchTime player pool" })).toBeVisible();
 });

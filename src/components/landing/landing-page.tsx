@@ -6,6 +6,7 @@ import { CONNECT_HOW_LONG, holdHowItWorksSentence } from "@/lib/setup-hold-publi
 import {
   ASK_CHAT,
   FEATURES,
+  FEATURES_INTRO,
   LANDING_SPOTLIGHTS,
   PERSONAS,
   PLAYER_STAT_CARDS,
@@ -18,8 +19,10 @@ import {
   CardGrid,
   ChatMock,
   DISPLAY_FONT,
+  HeroPlayersCard,
   LandingFooter,
   PersonaCard,
+  PoolSpotlightSection,
   SectionIntro,
   SpotlightSection,
   StepList,
@@ -86,7 +89,7 @@ export function LandingPage({ holdOn = false, earlyList = true }: { holdOn?: boo
       {/* ── Hero (variant E): the headline, one line, the buttons, one tick,
           then the feature deck (hero-deck.tsx). No pricing here: the
           teaser further down and /pricing carry it. ───────────────── */}
-      <section id="hero" className="relative pt-24 pb-16 sm:pt-32 sm:pb-24 px-5 sm:px-8">
+      <section id="hero" className="relative pt-[88px] pb-14 sm:pt-28 sm:pb-20 px-5 sm:px-8">
         <div className="absolute inset-0 bg-gradient-to-b from-slate-950 via-blue-950 to-slate-950" />
         <div
           className="absolute inset-0 opacity-40"
@@ -106,7 +109,7 @@ export function LandingPage({ holdOn = false, earlyList = true }: { holdOn?: boo
         />
 
         <div className="relative max-w-6xl mx-auto">
-          <div className="flex flex-col items-start text-left md:items-center md:text-center gap-4 md:gap-5">
+          <div className="flex flex-col items-start text-left md:items-center md:text-center gap-3.5 md:gap-5">
             <p className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-400/10 border border-blue-400/35 text-[13px] font-semibold text-blue-200">
               <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" className="text-blue-300" aria-hidden="true">
                 <circle cx="10" cy="10" r="8" />
@@ -115,7 +118,7 @@ export function LandingPage({ holdOn = false, earlyList = true }: { holdOn?: boo
               {HERO.pill}
             </p>
             <h1
-              className="text-[38px] sm:text-6xl lg:text-[68px] font-extrabold tracking-tight leading-[1.08] sm:leading-[1.05] text-white"
+              className="text-[36px] sm:text-6xl lg:text-[64px] font-extrabold tracking-tight leading-[1.08] sm:leading-[1.05] text-white"
               style={DISPLAY_FONT}
             >
               <span className="block">{HERO.titleLead}</span>
@@ -149,9 +152,17 @@ export function LandingPage({ holdOn = false, earlyList = true }: { holdOn?: boo
             </ul>
           </div>
 
+          {/* Players: the pool's card, on the first screen, above the deck. */}
+          <HeroPlayersCard />
+
           <HeroDeck />
         </div>
       </section>
+
+      {/* ── The player pool: the first section after the hero (round two) ── */}
+      {LANDING_SPOTLIGHTS.filter((s) => s.id === "player-pool").map((s) => (
+        <PoolSpotlightSection key={s.id} s={spotlightFor(s, earlyList)} />
+      ))}
 
       {/* ── Features grid ─────────────────────────────────────────────── */}
       <section
@@ -160,20 +171,15 @@ export function LandingPage({ holdOn = false, earlyList = true }: { holdOn?: boo
         className="relative py-24 sm:py-32 px-5 sm:px-8 bg-slate-50 text-slate-800"
       >
         <div className="max-w-6xl mx-auto">
-          <SectionIntro
-            id="features-heading"
-            eyebrow="Why MatchTime"
-            title="The boring admin, done for you."
-            lead="Every weekly-match organiser knows the drill: counting names, chasing late replies, sorting the bench, picking fair teams and collecting the money. MatchTime handles that whole cycle in the group you already use, and stays out of the way the rest of the time."
-          />
+          <SectionIntro id="features-heading" eyebrow={FEATURES_INTRO.eyebrow} title={FEATURES_INTRO.title} lead={FEATURES_INTRO.lead} />
           <div className="mt-16">
             <CardGrid cards={FEATURES} />
           </div>
         </div>
       </section>
 
-      {/* ── Spotlights: the player pool, partner clubs, the admin group, the settings ── */}
-      {LANDING_SPOTLIGHTS.map((s) => (
+      {/* ── Spotlights: partner clubs, the admin group, the settings ── */}
+      {LANDING_SPOTLIGHTS.filter((s) => s.id !== "player-pool").map((s) => (
         <SpotlightSection key={s.id} s={spotlightFor(s, earlyList)} />
       ))}
 

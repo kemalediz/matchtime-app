@@ -9,7 +9,7 @@
 import { test, expect } from "../fixtures";
 import type { Page } from "@playwright/test";
 import path from "node:path";
-import { HERO, HERO_DECK } from "@/components/landing/landing-content";
+import { HERO, HERO_DECK, HERO_POOL_INVITE, LANDING_SPOTLIGHTS } from "@/components/landing/landing-content";
 
 const PHONE = { width: 390, height: 844 };
 const DESKTOP = { width: 1280, height: 800 };
@@ -45,7 +45,6 @@ for (const [name, size] of [["phone", PHONE], ["desktop", DESKTOP]] as const) {
     await expect(deck).toBeVisible();
     for (const c of HERO_DECK.cards) await expect(cardButton(page, c.title)).toHaveCount(1);
     await expect(deck.getByRole("button", { name: HERO_DECK.dotLabel(1) })).toHaveAttribute("aria-current", "true");
-    await expect(page.getByRole("link", { name: HERO_DECK.poolLink.label })).toHaveAttribute("href", HERO_DECK.poolLink.href);
 
     const hero = page.locator("#hero");
     await expect(hero.getByText(/months free|first two months|weeks you play|£9|a month/i)).toHaveCount(0);
@@ -101,9 +100,68 @@ test("phone: a card opens its bottom sheet; the close button and Escape close it
   const poolSheet = page.getByRole("dialog", { name: pool.title });
   await expect(poolSheet).toBeVisible();
   await expect(poolSheet.getByRole("list", { name: "Who is asked, in order" })).toBeVisible();
+  // The chain is drawn first, the pool highlighted, then the real offer.
+  await expect(poolSheet.getByRole("figure", { name: /Private message to a player in the pool/ })).toBeAttached();
+  // The sheet scrolls inside itself, and its close button stays on screen.
+  const scroller = poolSheet;
+  await scroller.evaluate((el) => el.scrollTo({ top: el.scrollHeight }));
+  await expect.poll(() => scroller.evaluate((el) => el.scrollTop)).toBeGreaterThan(50);
+  await expect(poolSheet.getByRole("button", { name: HERO_DECK.closeLabel, exact: true })).toBeInViewport({ ratio: 1 });
   await page.keyboard.press("Escape");
   await expect(poolSheet).toBeHidden();
   await expect(page.getByRole("dialog")).toHaveCount(0);
+});
+
+test("phone: the next card peeks in, and each card carries a See how cue", async ({ page }) => {
+  await page.setViewportSize(PHONE);
+  await open(page);
+  const second = cardButton(page, HERO_DECK.cards[1].title);
+  const box = (await second.boundingBox())!;
+  // Partly on screen: it starts before the right edge and runs past it.
+  expect(box.x).toBeLessThan(PHONE.width - 40);
+  expect(box.x + box.width).toBeGreaterThan(PHONE.width);
+  await expect(cardButton(page, HERO_DECK.cards[0].title).getByText(HERO_DECK.seeHow)).toBeVisible();
+  // The arrows sit by the title, visible without scrolling the deck.
+  const deck = deckOf(page);
+  await deck.scrollIntoViewIfNeeded();
+  for (const l of [HERO_DECK.prevLabel, HERO_DECK.nextLabel]) {
+    const b = (await deck.getByRole("button", { name: l }).boundingBox())!;
+    expect(b.width).toBeGreaterThanOrEqual(44);
+    expect(b.height).toBeGreaterThanOrEqual(44);
+  }
+});
+
+for (const [name, size] of [["390", { width: 390, height: 844 }], ["1440", { width: 1440, height: 900 }]] as const) {
+  test(`the players card is on the first screen at ${name} wide, and its button goes to /play?src=site-hero`, async ({ page }) => {
+    await page.setViewportSize(size);
+    await open(page);
+    const card = page.locator("#hero").getByTestId("hero-players-card");
+    await expect(card).toBeInViewport({ ratio: 1 });
+    await expect(card.getByText(HERO_POOL_INVITE.badge, { exact: true })).toBeVisible();
+    await expect(card.getByRole("heading", { name: HERO_POOL_INVITE.title })).toBeVisible();
+    await expect(card.getByText(HERO_POOL_INVITE.body)).toBeVisible();
+    await expect(card.getByText(HERO_POOL_INVITE.smallPrint)).toBeVisible();
+    const join = card.getByRole("link", { name: HERO_POOL_INVITE.cta.label });
+    await expect(join).toHaveAttribute("href", "/play?src=site-hero");
+    const b = (await join.boundingBox())!;
+    expect(b.height).toBeGreaterThanOrEqual(44);
+    // Both audiences early: the organisers' button is on the first screen too.
+    await expect(page.locator("#hero").getByRole("link", { name: HERO.primary.label })).toBeInViewport();
+    expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
+  });
+}
+
+test("the pool section is the first section after the hero", async ({ page }) => {
+  await open(page);
+  const next = await page.locator("#hero").evaluate((el) => el.nextElementSibling?.id);
+  expect(next).toBe("player-pool");
+  const pool = LANDING_SPOTLIGHTS.find((s) => s.id === "player-pool")!;
+  const section = page.locator("section#player-pool");
+  await section.scrollIntoViewIfNeeded();
+  await expect(section.getByRole("heading", { level: 2, name: pool.title })).toBeVisible();
+  await expect(section.getByText(pool.benefit!)).toBeVisible();
+  await expect(section.getByRole("figure", { name: /Private message to a player in the pool/ })).toBeVisible();
+  await expect(section.getByText("Would you like the place? Reply here, or tap to answer:")).toBeVisible();
 });
 
 test("desktop: a card opens its panel under the deck, one at a time; close and Escape close it", async ({ page }) => {

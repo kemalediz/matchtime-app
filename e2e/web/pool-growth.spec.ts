@@ -214,8 +214,8 @@ test.describe("/play with codes", () => {
 
   test("the home page's hero link still opens /play, with the hero's code", async ({ page }) => {
     await page.goto("/");
-    // Variant E (2026-10-26): the hero's way in is the link under the feature deck.
-    const cta = page.locator("#hero").getByRole("link", { name: /Join the player pool near you/ });
+    // Round two (2026-10-26): the hero's way in is the players card's button.
+    const cta = page.locator("#hero").getByTestId("hero-pool-join");
     await expect(cta).toHaveAttribute("href", "/play?src=site-hero");
     await cta.click();
     await expect(page.getByRole("heading", { level: 1, name: EN.signup.heading })).toBeVisible({ timeout: 30_000 });

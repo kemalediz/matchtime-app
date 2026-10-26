@@ -41,7 +41,8 @@ import { MAX_RADIUS_MILES } from "@/lib/club-discovery-rules";
 import { PLAYERS_PAGE_PATH, POOL_PLAY_PATH } from "@/lib/pool/paths";
 import { POOL_CAPS, POOL_MIN_AGE, POOL_QUIET_HOURS } from "@/lib/pool/rules";
 import { POOL_AFTER_PARTNERS_MINS } from "@/lib/pool/round-rules";
-import { LIVE_SPORTS, liveSports } from "@/lib/pool/sports";
+import { LIVE_SPORTS, SPORT_LEVELS, levelLabel, liveSports } from "@/lib/pool/sports";
+import { poolOfferEn } from "@/lib/i18n/pool-offer.en";
 
 // ── The sport the site is about (Kemal, 2026-10-25: football only, for now) ──
 //
@@ -208,6 +209,10 @@ export interface Spotlight {
   chat?: { caption: string; lines: ChatLine[] };
   /** One closing line under the section, e.g. how to set it up. */
   footnote?: string;
+  /** One highlighted benefit line under the lead (the pool section). */
+  benefit?: string;
+  /** A drawn WhatsApp chat beside the heading (the pool section's offer). */
+  offerChat?: DeckChat;
   /** The pool section: its lead is followed by the line that says whether
    *  a sign-up goes on the early list (`spotlightFor`). */
   poolOpeningLine?: boolean;
@@ -260,6 +265,12 @@ export const POOL_SITE_SOURCES = Object.freeze({
 const poolJoinHref = (code: string) => `${POOL_PLAY_PATH}?src=${code}`;
 
 // ─── The features grid ("Why MatchTime") ───────────────────────────────
+
+export const FEATURES_INTRO = {
+  eyebrow: "Why MatchTime",
+  title: "The boring admin, done for you.",
+  lead: "Counting names, chasing late replies, sorting the bench, picking fair teams, collecting the money. MatchTime does it in the group you already use, and stays quiet the rest of the time.",
+};
 
 export const FEATURES: Card[] = [
   {
@@ -605,48 +616,98 @@ const YOUR_WAY: Spotlight = {
       key: "language",
       icon: "languages",
       color: "teal",
-      title: "English or Turkish",
-      body: "MatchTime writes in your club's language: in the group, in private messages and on the posters. In Turkish, players say VARIM and YOKUM.",
+      title: "Speaks your group's language",
+      body: "MatchTime is multi-lingual. It writes in your club's language in the group, in private messages and on the posters, and players answer in their own words.",
     },
   ],
 };
 
+// ─── The pool's offer, drawn (round two, 2026-10-26) ───────────────────
+
+/** WhatsApp emoji off: the site draws the words, never the emoji. */
+const noEmoji = (text: string) => text.replace(/\p{Extended_Pictographic}\uFE0F?\s*/gu, "").trim();
+
+/** The example game, with the fictional club and the site's date format. */
+const OFFER_EXAMPLE = { club: "Riverside FC", day: "Tue 20 Oct, 20:00", venue: "Riverside Sports Centre", miles: "1.2", members: 18 };
+
+/**
+ * A pool offer and its yes, built from the REAL offer copy
+ * (`pool-offer.en.ts`: offer_head, game_with_format, offer_when, distance,
+ * style_casual, club_weekly, offer_cta, placed_in) in the order
+ * `pool/offer-copy.ts` poolOfferLines puts them, emoji stripped. The fee line
+ * and the footer are left out: no pricing next to the players' invitation.
+ * Shown in the pool section and in the deck's "Still short?" card.
+ */
+export const POOL_OFFER_CHAT: DeckChat = {
+  title: "MatchTime",
+  subtitle: "Private message to a player in the pool",
+  kind: "dm",
+  lines: [
+    {
+      from: "bot",
+      text: [
+        noEmoji(poolOfferEn.offer_head({ club: OFFER_EXAMPLE.club, places: 1, game: poolOfferEn.game_with_format({ format: "7-a-side", sport: "Football" }) })),
+        noEmoji(poolOfferEn.offer_when({ day: OFFER_EXAMPLE.day, mins: 60 })),
+        `*${OFFER_EXAMPLE.venue}*. ${poolOfferEn.distance({ miles: OFFER_EXAMPLE.miles, one: false })}`,
+        `${poolOfferEn.style_casual}. ${poolOfferEn.club_weekly({ members: OFFER_EXAMPLE.members })}`,
+        poolOfferEn.offer_cta({ link: "" }).trim(),
+      ].join("\n"),
+      link: "Answer",
+      time: "17:05",
+    },
+    { from: "self", text: "yes", time: "17:06" },
+    { from: "bot", text: noEmoji(poolOfferEn.placed_in({ club: OFFER_EXAMPLE.club, day: OFFER_EXAMPLE.day, venue: OFFER_EXAMPLE.venue })), time: "17:06" },
+  ],
+};
+
 // src/lib/pool/*: the /play sign-up (slice L2), its WhatsApp confirmation
-// (pool/confirm.ts), the limits (pool/rules.ts POOL_CAPS, POOL_QUIET_HOURS,
-// POOL_MIN_AGE) and the privacy rules (plan section 6). Offers themselves
-// come with slice L5: the copy says "when it opens", never "today".
+// (pool/confirm.ts), the offer (pool/offer-copy.ts, pool-offer.en.ts), the
+// matching (pool/matching-rules.ts candidateExclusion), the limits
+// (pool/rules.ts POOL_QUIET_HOURS, POOL_MIN_AGE) and the privacy rules (plan
+// section 6). The copy says "once the pool opens in your town", never "today":
+// it is opening town by town. Round two (2026-10-26) rewrote it for
+// enthusiasm, facts only, and moved it straight under the hero.
 const PLAYER_POOL: Spotlight = {
   id: "player-pool",
   navLabel: "Player pool",
   navGroup: "players",
   tone: "light",
-  eyebrow: "For players",
-  title: "Looking for a game? Join the MatchTime player pool.",
-  lead: "Tell MatchTime where and when you can play, and the formats you like. When a club near you is a player short at a time you can play, MatchTime can message you on WhatsApp with the game, and you decide.",
+  eyebrow: "New for players",
+  title: "Get called up for local games.",
+  lead: "Tell MatchTime how you play and when you can play. When a club nearby needs one more, the game comes to you on WhatsApp, and you decide.",
   // Followed by /play's own early or open note (`spotlightFor`).
   poolOpeningLine: true,
+  benefit: "More games, new teammates, no hunting round group chats.",
   cta: { label: "Join the MatchTime player pool", href: POOL_PLAY_PATH, pulse: true },
-  stepsLabel: "How joining works",
+  stepsLabel: "How a call-up works",
   steps: [
     {
-      // pool/profile-fields.ts: name, area, travel, days and hours, sports, level.
+      // pool/profile-fields.ts: name, area, travel, days and hours, sports,
+      // level (optional, pool/sports.ts); pool/confirm.ts: the code he sends.
       key: "signup",
-      title: "Fill in one page",
-      body: "Your first name, your postcode area, how far you'll travel, the days and hours you can play, and the formats you play. Level is optional.",
+      title: "Tell us how you play",
+      body: "Your level if you like, the days and times you can play, and how far you'll travel. One short page, then confirm your number on WhatsApp.",
     },
     {
-      // pool/confirm.ts: the person's own message carrying the code.
-      key: "confirm",
-      title: "Confirm on WhatsApp",
-      body: "WhatsApp opens with a short message and a code. You send it, which confirms your number. We never ask for your number on the page and never message you first.",
+      // pool/matching-rules.ts candidateExclusion: format, level (only when
+      // the ask names levels), distance, availability.
+      key: "short",
+      title: "A club near you is short",
+      body: "Once the pool opens in your town, a club nearby that's a player short at a time that suits you can call you up.",
     },
     {
-      // pool/rules.ts POOL_QUIET_HOURS. The weekly cap (POOL_CAPS.perPlayerPerWeek)
-      // still applies but is not on the site (Kemal, 2026-10-25); the /play
-      // consent tickbox still states it.
-      key: "offers",
-      title: "Hear about games near you",
-      body: `Once the pool opens near you, a club that needs a player can be offered you, never between ${POOL_QUIET_HOURS.from} and ${POOL_QUIET_HOURS.to}.`,
+      // pool/offer-copy.ts poolOfferLines; pool/rules.ts POOL_QUIET_HOURS. The
+      // weekly cap still applies but is not on the site (Kemal, 2026-10-25).
+      key: "offer",
+      title: "The offer lands on WhatsApp",
+      body: `The club, the day and time, how far it is and the kind of game. Never between ${POOL_QUIET_HOURS.from} and ${POOL_QUIET_HOURS.to}.`,
+    },
+    {
+      // pool/reply.ts and the offer page: yes takes the place while it is
+      // open (reply_gone when it has gone).
+      key: "yes",
+      title: "Say yes and you're in",
+      body: "Reply yes or tap the link. If the place is still open, it's yours. Not this time? Just say no.",
     },
   ],
   points: [
@@ -659,12 +720,21 @@ const PLAYER_POOL: Spotlight = {
       body: liveSportsLine(),
     },
     {
-      // pool/manage.ts and pool/links.ts: the signed link in the reply.
+      // pool/sports.ts SPORT_LEVELS (optional, self-chosen);
+      // pool/matching-rules.ts: matched only when the club's ask names levels.
+      key: "level",
+      icon: "trending",
+      color: "purple",
+      title: "Your level, your call",
+      body: `Pick ${joinWords(SPORT_LEVELS.map((l) => levelLabel(l, "en")), "or")}, or leave it blank. A club looking for a certain level only asks players who match it.`,
+    },
+    {
+      // pool/manage.ts and pool/links.ts: the signed link; pool/dm-optout.ts: STOP.
       key: "control",
       icon: "shield-check",
       color: "blue",
-      title: "You stay in control",
-      body: "Your own link lets you pause, change your details, stop game messages or delete everything, at any time.",
+      title: "Stop any time",
+      body: "Your own link lets you pause, change your details or stop game messages. Or just send STOP.",
     },
     {
       // pool/rules.ts POOL_MIN_AGE.
@@ -679,13 +749,15 @@ const PLAYER_POOL: Spotlight = {
     title: "Your details stay private",
     items: [
       // Plan section 6: numbers cross only when a player joins a group himself.
-      { key: "number", text: "Clubs never get your phone number from MatchTime." },
+      { key: "number", text: "Clubs never get your number from MatchTime. It's only shared if you join a club's WhatsApp group yourself." },
       // Plan section 6: first name and last initial, only after a yes.
       { key: "name", text: "A club sees your first name and the first letter of your surname, and only once you say yes to its game." },
       // pool/rules.ts POSTCODE_DISTRICT_RE: the district only.
-      { key: "area", text: "We keep your postcode area, never your full postcode." },
+      { key: "area", text: "We keep your postcode district, never your full postcode." },
     ],
   },
+  // Drawn as a WhatsApp chat beside the heading.
+  offerChat: POOL_OFFER_CHAT,
   footnote: "The player pool is separate from your own club. If you already play with a club on MatchTime, nothing changes there.",
 };
 
@@ -771,24 +843,23 @@ export const SPORTS: string[] = liveSports().flatMap((s) => (s.formats.length ? 
 // ─── The hero's invitation to players (Kemal, 2026-10-25) ──────────────
 
 /**
- * Its own panel in the hero, under the organisers' buttons, so a player
- * sees the pool on the first screen. Every claim is the pool's own:
- * offers when a club near him is short at a time he can play
- * (pool/matching-rules.ts), on WhatsApp, his yes or no each time
- * (pool/reply.ts), no app (a web page and WhatsApp), stop any time
- * (pool/manage.ts, and the general "stop", pool/dm-optout.ts). The small
- * print is pool/rules.ts POOL_MIN_AGE. The weekly cap is not on the site
- * (Kemal, 2026-10-25), though it still applies.
+ * The players' card in the hero (round two, 2026-10-26): a "New" badge,
+ * the call-up, one line and a strong button, on the first screen at phone
+ * and desktop width. Every claim is the pool's own: an offer when a club
+ * near him is short at a time he can play (pool/matching-rules.ts), on
+ * WhatsApp (pool/offer-copy.ts). The small print is pool/rules.ts
+ * POOL_MIN_AGE, and it is opening town by town. No pricing, and the weekly
+ * cap is not on the site (Kemal, 2026-10-25), though it still applies.
  */
 /** Who can join (pool/rules.ts). */
 const POOL_LIMITS_LINE = `${POOL_MIN_AGE} and over.`;
 
 export const HERO_POOL_INVITE = {
+  badge: "New",
   eyebrow: "For players",
-  title: "Get asked to play when a club near you is a player short.",
-  body: "Tell MatchTime where and when you can play. When a game nearby needs a player, it messages you on WhatsApp and you decide. No app, and you can stop any time.",
-  cta: { label: "Join the MatchTime player pool", href: poolJoinHref(POOL_SITE_SOURCES.hero), pulse: true } satisfies Cta,
-  more: { label: "How it works for players", href: PLAYERS_PAGE_PATH } satisfies NavLink,
+  title: "Get called up for local games",
+  body: "Join the MatchTime player pool. When a club near you is a player short at a time that suits you, you get the game on WhatsApp.",
+  cta: { label: "Join the player pool", href: poolJoinHref(POOL_SITE_SOURCES.hero), pulse: true } satisfies Cta,
   smallPrint: `${POOL_LIMITS_LINE} Opening town by town.`,
 };
 
@@ -850,8 +921,8 @@ const POOL_AFTER = POOL_AFTER_PARTNERS_MINS === 60 ? "an hour" : `${POOL_AFTER_P
 const POOL_AFTER_CAP = POOL_AFTER.charAt(0).toUpperCase() + POOL_AFTER.slice(1);
 
 export const HERO_DECK = {
-  title: "What it does",
-  hintPhone: "Tap a card to see how",
+  title: "What MatchTime does",
+  hintPhone: "Swipe the cards. Tap one to see how.",
   hintDesktop: "Click a card to see how it works.",
   seeHow: "See how",
   prevLabel: "Previous card",
@@ -861,20 +932,18 @@ export const HERO_DECK = {
   closeLabel: "Close",
   detailsLabel: "Feature details",
   sectionLabel: "What MatchTime does",
-  /** The players' way in: the hero's own pool button target. */
-  poolLink: { label: "Want more games? Join the player pool near you", href: HERO_POOL_INVITE.cta.href } satisfies NavLink,
   cards: [
     {
       // FEATURES in-out; strings.en.ts squad_complete, squad_complete_bench_invite, bench_promotion_how.
       key: "att",
       title: "Who's in, counted",
-      body: "Players say IN or OUT as usual. MatchTime ticks each one and keeps the count.",
+      body: "Players just say IN or OUT. MatchTime ticks each one and keeps count.",
       visual: ["IN", "count me in", "Squad 12 of 14"],
       details: [
-        "Players say IN or OUT in their own words, right in the group chat.",
-        "MatchTime ticks each one and keeps the squad list. No app for players.",
-        "Not sure yet? Say maybe, and it checks back by DM about a day before kickoff.",
-        "Short of players? It asks the group, and stops the moment you're full.",
+        "Players say IN or OUT in their own words, right in the group.",
+        "Each one gets a tick, and the squad list keeps itself.",
+        "Say maybe, and it checks back by DM about a day before kickoff.",
+        "Short? It asks the group, and stops the moment you're full.",
       ],
       chat: {
         title: "Thursday 7-a-side",
@@ -899,8 +968,8 @@ export const HERO_DECK = {
       body: "Someone drops out? The bench is tagged, and the first to say IN plays.",
       visual: ["@Kai @Ben", "First to claim it plays"],
       details: [
-        "When the squad is full, late INs go on the bench.",
-        "When someone drops out, the bench is offered the place in the group and by DM.",
+        "Squad full? Late INs go on the bench.",
+        "Someone drops out? The bench is tagged in the group and sent a DM.",
         "The first to claim it plays. No rush and no timeout.",
         "Teams already out? The new player takes the empty spot.",
       ],
@@ -922,49 +991,35 @@ export const HERO_DECK = {
     },
     {
       // Spotlight partner-clubs (auto ask); pool/round-rules.ts POOL_AFTER_PARTNERS_MINS;
-      // PLAYER_POOL (opening town by town); pool-offer.en.ts offer_head, offer_when, distance, offer_cta, placed_in.
+      // PLAYER_POOL (opening town by town); the offer is POOL_OFFER_CHAT (pool-offer.en.ts).
       key: "short",
       title: "Still short? It asks around",
-      body: "The bench first, then partner clubs, then nearby players from the player pool.",
+      body: "Bench first, then partner clubs, then local players from the pool.",
       visual: ["Bench", "Partner clubs", "Player pool"],
       details: [
-        "Match day, a place still open and nobody on the bench? MatchTime asks for you, by itself if you switch it on.",
-        "Partner clubs first: their players answer privately and join your game as guests.",
-        `Then nearby players from the MatchTime player pool get a WhatsApp offer: ${POOL_AFTER} later, or straight away if you have no partner clubs.`,
+        "Match day, a place open and nobody on the bench? MatchTime asks for you, by itself if you switch it on.",
+        "Partner clubs first: their players answer privately and join as guests.",
+        `Then local players from the MatchTime player pool get a WhatsApp offer: ${POOL_AFTER} later, or straight away if you have no partner clubs.`,
         "The player pool is opening town by town.",
       ],
       steps: [
         { title: "1. Bench", sub: "Tagged in the group" },
         { title: "2. Partner clubs", sub: "Asked in their group" },
-        { title: "3. Player pool", sub: `${POOL_AFTER_CAP} later, nearby players`, highlight: true },
+        { title: "3. Player pool", sub: `${POOL_AFTER_CAP} later, local players`, highlight: true },
       ],
-      chat: {
-        title: "MatchTime",
-        subtitle: "Private message to a nearby pool player",
-        kind: "dm",
-        lines: [
-          {
-            from: "bot",
-            text: "*Riverside FC* needs 1 player for a 7-a-side football game\n*Tue 20 Oct, 20:00* (60 mins)\n*Riverside Sports Centre*. 1.2 miles from you\nWould you like the place? Reply here, or tap to answer:",
-            link: "Answer",
-            time: "17:05",
-          },
-          { from: "self", text: "yes please", time: "17:06" },
-          { from: "bot", text: "You're in: *Riverside FC*, Tue 20 Oct, 20:00, Riverside Sports Centre.", time: "17:06" },
-        ],
-      },
+      chat: POOL_OFFER_CHAT,
     },
     {
       // FEATURES teams; strings.en.ts teams_post_header, teams_post_footer.
       key: "teams",
-      title: "Balanced teams",
+      title: "Fair teams, on request",
       body: "Tag @Match Time and it splits the squad by rating and position.",
       visual: [],
       details: [
-        "Ask in your own words, for example: @Match Time generate the teams.",
-        "It balances the confirmed squad on each player's club rating and position.",
-        "Want a change? Ask to swap players, and an admin confirms.",
-        "Organisers can get the team sheet as a picture, ready to forward.",
+        "Ask in your own words: @Match Time generate the teams.",
+        "It balances the confirmed squad on club rating and position.",
+        "Want a change? Ask for a swap, and an admin confirms.",
+        "Organisers can get the team sheet as a picture to forward.",
       ],
       chat: {
         title: "Thursday 7-a-side",
@@ -993,7 +1048,7 @@ export const HERO_DECK = {
       // strings.en.ts rate_promo, mom_header, mom_winner, mom_trophy_line.
       key: "ratings",
       title: "Ratings and Man of the Match",
-      body: "After the game, players rate each other and vote for the best player.",
+      body: "After the game, players rate each other and vote for the best.",
       visual: ["Man of the Match: Kai"],
       details: [
         "Every player gets a private link to rate the others from 1 to 10.",
@@ -1022,12 +1077,12 @@ export const HERO_DECK = {
       // FEATURES payments; strings.en.ts dm_pay_link.
       key: "fees",
       title: "Match fees, collected",
-      body: "Pay links after the game, and reminders for whoever hasn't paid.",
+      body: "Pay links after the game. Reminders for whoever hasn't paid.",
       visual: ["£6.00", "Card", "Bank"],
       details: [
         "Switch on card or bank payments, if you want them.",
-        "After each game, everyone who played gets a DM with a link to pay their share.",
-        "MatchTime reminds whoever hasn't paid, so you stop doing the money chase.",
+        "After each game, everyone who played gets a DM with a pay link.",
+        "MatchTime reminds whoever hasn't paid. No more money chase.",
       ],
       chat: {
         title: "MatchTime",
@@ -1047,14 +1102,14 @@ export const HERO_DECK = {
     {
       // ADMIN_GROUP spotlight; strings.en.ts hq_help, hq_match_cancelled.
       key: "admin",
-      title: "An admin group",
-      body: "Organisers run the week in their own words, away from the players' chat.",
+      title: "Your organisers' own chat",
+      body: "Run the week in plain words, away from the players' chat.",
       visual: ["put Bilal in", "show me the teams", "Organisers only"],
       details: [
-        "Link your organisers' own WhatsApp group, and MatchTime works there too.",
+        "Link your organisers' WhatsApp group, and MatchTime works there too.",
         "Paste the squad list, move players, check the teams before they go out.",
-        "Tag MatchTime to cancel a match or put it back on, and it tells the players' group.",
-        "Notices only organisers should see arrive there, not in the players' chat.",
+        "Tag it to cancel a match or put it back on, and it tells the players.",
+        "Notices only organisers should see land there, not in the players' chat.",
       ],
       chat: {
         title: "Organisers",
@@ -1076,12 +1131,12 @@ export const HERO_DECK = {
       // YOUR_WAY spotlight language point; lib/i18n/lang.ts LANGS. Multi-lingual, no language named.
       key: "lang",
       title: "Speaks your group's language",
-      body: "Multi-lingual: MatchTime replies in your group's language.",
+      body: "Multi-lingual: MatchTime writes in your group's language.",
       visual: ["Aa", "Aa"],
       details: [
-        "MatchTime is multi-lingual. Set your club's language once in your settings.",
-        "MatchTime then writes in it everywhere: in the group, in private messages and on the posters.",
-        "Players keep replying in their own words, the way they always have.",
+        "MatchTime is multi-lingual. Set your club's language once in settings.",
+        "It then writes in it everywhere: the group, private messages and posters.",
+        "Players keep replying in their own words, as they always have.",
       ],
       settings: {
         title: "Club settings",
