@@ -75,7 +75,7 @@ ALTER TABLE "PoolProfile" ADD CONSTRAINT "PoolProfile_areaPoint_check"
     AND ("areaLat" IS NULL OR ("areaLat" BETWEEN -90 AND 90 AND "areaLng" BETWEEN -180 AND 180)));
 ALTER TABLE "PoolProfile" DROP CONSTRAINT IF EXISTS "PoolProfile_area_check";
 ALTER TABLE "PoolProfile" ADD CONSTRAINT "PoolProfile_area_check"
-  CHECK ("areaLat" IS NOT NULL OR coalesce(cardinality("venueIds"), 0) > 0);
+  CHECK ("areaDistrict" IS NOT NULL AND "areaLat" IS NOT NULL);
 ALTER TABLE "PoolProfile" DROP CONSTRAINT IF EXISTS "PoolProfile_displayName_check";
 ALTER TABLE "PoolProfile" ADD CONSTRAINT "PoolProfile_displayName_check"
   CHECK (length(btrim("displayName")) BETWEEN 1 AND 60);

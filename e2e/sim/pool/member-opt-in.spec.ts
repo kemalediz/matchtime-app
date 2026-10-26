@@ -67,7 +67,7 @@ scenarios("a club member opts in from his profile", () => {
     await card.getByRole("button", { name: EN.member.join }).click();
     await expect(card.getByTestId("play-elsewhere-status")).toHaveText(EN.manage.status.active);
 
-    expect(await pool.profileOf(pete)).toMatchObject({ status: "active", source: "profile", consentChannel: "web", areaDistrict: "SM1", venueIds: [] });
+    expect(await pool.profileOf(pete)).toMatchObject({ status: "active", source: "profile", consentChannel: "web", areaDistrict: "SM1" });
     pool.note("joining on the page sends nothing, to him or anyone");
     pool.expectSent(await pool.collect(), []);
     expect(await pool.db.count(`SELECT count(*) FROM "Membership" WHERE "userId" = $1 AND "leftAt" IS NULL`, [user!.id])).toBe(before);

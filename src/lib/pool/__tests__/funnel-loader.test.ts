@@ -26,7 +26,7 @@ describe("the pool funnel never reads who someone is", () => {
   });
 
   it("no name, number, email, area, distance, referrer or share code anywhere in it", () => {
-    const re = /\b(name: true|displayName|phone|phoneNumber|email|areaDistrict|areaLat|areaLng|venueIds|maxMiles|distanceMiles|referrerUserId|shareCode|claimPhone|signupIp)\b/;
+    const re = /\b(name: true|displayName|phone|phoneNumber|email|areaDistrict|areaLat|areaLng|maxMiles|distanceMiles|referrerUserId|shareCode|claimPhone|signupIp)\b/;
     expect(SURFACE.filter((f) => re.test(read(f)))).toEqual([]);
   });
 

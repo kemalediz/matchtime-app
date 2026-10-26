@@ -149,8 +149,8 @@ scenarios("review of #400: the fixes", () => {
     const peteId = (await pool.userOf(pete))!.id;
     const profileId = `sim-pool-p-pete-${Date.now()}`;
     await pool.db.run(
-      `INSERT INTO "PoolProfile" (id, "userId", status, "consentAt", "consentVersion", "consentChannel", "consentEvidence", "adultConfirmedAt", language, "displayName", "areaLat", "areaLng", "maxMiles", "updatedAt")
-       VALUES ($1, $2, 'active', now(), 1, 'web', 'req', now(), 'en', 'Pete Power', $3, $4, 3, now())`,
+      `INSERT INTO "PoolProfile" (id, "userId", status, "consentAt", "consentVersion", "consentChannel", "consentEvidence", "adultConfirmedAt", language, "displayName", "areaDistrict", "areaLat", "areaLng", "maxMiles", "updatedAt")
+       VALUES ($1, $2, 'active', now(), 1, 'web', 'req', now(), 'en', 'Pete Power', 'SM1', $3, $4, 3, now())`,
       [profileId, peteId, near(fnf).lat, near(fnf).lng],
     );
     await pool.db.run(`INSERT INTO "PoolSport" (id, "profileId", sport, formats) VALUES ($1, $2, 'football', '{}')`, [`${profileId}-s`, profileId]);

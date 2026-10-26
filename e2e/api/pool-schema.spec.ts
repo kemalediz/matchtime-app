@@ -78,7 +78,7 @@ test("a well-formed record of every kind is accepted", async ({ db }) => {
   await db.run(`UPDATE "Organisation" SET "playStyle" = 'casual', town = 'sutton', "featurePlayerPool" = true WHERE id = $1`, [ORG_ID]);
 
   const pending = id("profile");
-  await insert(db, "PoolProfile", { id: pending, status: "pending-verify", confirmCode: "K7QP2", displayName: "Bo T", venueIds: ["venue-1"], updatedAt: NOW });
+  await insert(db, "PoolProfile", { id: pending, status: "pending-verify", confirmCode: "K7QP2", displayName: "Bo T", areaDistrict: "SM1", areaLat: 51.36, areaLng: -0.19, updatedAt: NOW });
   const p = await profile(db, { source: "campaign", sourceCode: "li-kemal", shareCode: "AB12cd", town: "sutton" });
   await insert(db, "PoolSport", { id: id("sport"), profileId: p, sport: "football", formats: [5, 7], level: "intermediate" });
   await insert(db, "PoolSport", { id: id("sport"), profileId: p, sport: "padel", levelText: "played at uni" });
@@ -259,8 +259,16 @@ test("the migrations re-run cleanly on a database that already has them, and the
   // over a 5-character code.
   const l1 = readFileSync(path.join(REPO_ROOT, "prisma/migrations/20261024200000_local_player_pool/migration.sql"), "utf8");
   const l2 = readFileSync(path.join(REPO_ROOT, "prisma/migrations/20261025090000_pool_signup_confirm/migration.sql"), "utf8");
-  await db.run(`${l1}\n${l2}`);
-  await db.run(`${l1}\n${l2}`);
+  // L1's area CHECK names "venueIds", which the later drop migration removes
+  // (chosen pitches retired, 2026-10-25). A re-run of L1 is a re-run on a
+  // database from before that drop, so put the column back first; the drop
+  // then takes the database back to today's shape, and re-runs as a no-op.
+  const restoreVenueIds = `ALTER TABLE "PoolProfile" ADD COLUMN IF NOT EXISTS "venueIds" TEXT[] DEFAULT ARRAY[]::TEXT[];`;
+  const dropVenueIds = readFileSync(path.join(REPO_ROOT, "prisma/migrations/20261028000000_drop_pool_venue_ids/migration.sql"), "utf8");
+  await db.run(`${restoreVenueIds}\n${l1}\n${l2}\n${dropVenueIds}`);
+  await db.run(`${restoreVenueIds}\n${l1}\n${l2}\n${dropVenueIds}`);
+  await db.run(dropVenueIds);
+  expect(await db.count(`SELECT count(*) FROM information_schema.columns WHERE table_name = 'PoolProfile' AND column_name = 'venueIds'`)).toBe(0);
   const l2Tables = await db.all(`SELECT table_name FROM information_schema.tables WHERE table_name IN ('PoolAttempt', 'PoolConsentRecord')`);
   expect(l2Tables).toHaveLength(2);
   const cols = await db.all(
@@ -278,6 +286,12 @@ test("the migrations re-run cleanly on a database that already has them, and the
   expect(checks).toBeGreaterThan(30);
 });
 
-test("a NULL venue list is not a venue (the area CHECK cannot be passed with NULL)", async ({ db }) => {
-  await expect(profile(db, { areaDistrict: null, areaLat: null, areaLng: null, venueIds: null })).rejects.toThrow(/PoolProfile_area_check/);
+test("a profile always has a postcode district and its centre point (the area CHECK)", async ({ db }) => {
+  await expect(profile(db, { areaDistrict: null, areaLat: null, areaLng: null })).rejects.toThrow(/PoolProfile_area_check/);
+  await expect(profile(db, { areaLat: null, areaLng: null })).rejects.toThrow(/PoolProfile_area_check/);
+  await expect(profile(db, { areaDistrict: null })).rejects.toThrow(/PoolProfile_area_check/);
+  // A waiting sign-up is no exception: it is placed before it is written.
+  await expect(
+    insert(db, "PoolProfile", { id: id("profile"), status: "pending-verify", confirmCode: "M3XR9", displayName: "Cy D", updatedAt: NOW }),
+  ).rejects.toThrow(/PoolProfile_area_check/);
 });
