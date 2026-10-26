@@ -151,6 +151,37 @@ for (const [name, size] of [["390", { width: 390, height: 844 }], ["1440", { wid
   });
 }
 
+test("the headline's full stops sit against their words: no space in the text, and each stop pulled back", async ({ page }) => {
+  await page.setViewportSize(PHONE);
+  await open(page);
+  const lines = page.locator("#hero h1 > span");
+  await expect(lines).toHaveCount(2);
+  for (const [i, text] of [HERO.titleLead, HERO.titleTail].entries()) {
+    const line = lines.nth(i);
+    expect(await line.evaluate((el) => el.textContent)).toBe(text);
+    expect(await line.innerText()).not.toMatch(/\s\./);
+    // Plus Jakarta Sans's "." starts its ink about 0.13em past its origin;
+    // the stop is pulled back by 0.1em (tight-stops.tsx).
+    const pull = await line.locator("[data-stop]").evaluate((el) => parseFloat(getComputedStyle(el).marginLeft));
+    expect(pull).toBeLessThan(0);
+  }
+  await expect(page.locator("#hero h1")).toHaveText("Your players WhatsApp.MatchTime runs the game.");
+});
+
+test("phone: the pool section is compact, the offer and all four steps within about 1.5 screens after its headline", async ({ page }) => {
+  await page.setViewportSize(PHONE);
+  await open(page);
+  const section = page.locator("section#player-pool");
+  const top = (await section.getByRole("heading", { level: 2 }).boundingBox())!;
+  const pool = LANDING_SPOTLIGHTS.find((s) => s.id === "player-pool")!;
+  const lastStep = (await section.getByRole("heading", { level: 3, name: pool.steps!.at(-1)!.title }).boundingBox())!;
+  const offer = (await section.getByRole("figure").boundingBox())!;
+  const end = Math.max(lastStep.y + lastStep.height + 60, offer.y + offer.height);
+  expect(end - (top.y + top.height)).toBeLessThanOrEqual(PHONE.height * 1.6);
+  const total = (await section.boundingBox())!.height;
+  expect(total).toBeLessThan(3000);
+});
+
 test("the pool section is the first section after the hero", async ({ page }) => {
   await open(page);
   const next = await page.locator("#hero").evaluate((el) => el.nextElementSibling?.id);

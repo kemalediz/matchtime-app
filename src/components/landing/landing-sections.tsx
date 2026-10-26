@@ -56,6 +56,7 @@ import { PRIVACY_PATH } from "@/lib/privacy-policy";
 import type { Card, ChatLine, ColorKey, Cta, IconKey, Spotlight, Step } from "./landing-content";
 import { HERO_POOL_INVITE } from "./landing-content";
 import { ChatDrawing } from "./chat-drawing";
+import { tightStops } from "./tight-stops";
 
 export { DISPLAY_FONT };
 
@@ -146,7 +147,7 @@ export function SectionIntro({
         className={`mt-3 text-3xl sm:text-5xl font-extrabold tracking-tight ${dark ? "text-white" : "text-slate-900"}`}
         style={DISPLAY_FONT}
       >
-        {title}
+        {tightStops(title)}
       </h2>
       {lead && (
         <p className={`mt-5 text-lg leading-relaxed ${dark ? "text-slate-300" : "text-slate-600"}`}>{lead}</p>
@@ -265,11 +266,21 @@ export function ChatMock({ caption, lines }: { caption: string; lines: ChatLine[
 }
 
 /** A boxed list of short promises (the partner clubs' privacy). */
-export function NoteBox({ title, items, tone }: { title: string; items: Array<{ key: string; text: string }>; tone: Tone }) {
+export function NoteBox({
+  title,
+  items,
+  tone,
+  compact = false,
+}: {
+  title: string;
+  items: Array<{ key: string; text: string }>;
+  tone: Tone;
+  compact?: boolean;
+}) {
   const dark = tone === "dark";
   return (
     <div
-      className={`p-6 sm:p-8 rounded-2xl border ${
+      className={`${compact ? "p-4 sm:p-6" : "p-6 sm:p-8"} rounded-2xl border ${
         dark ? "bg-emerald-400/5 border-emerald-300/20" : "bg-emerald-50 border-emerald-100"
       }`}
     >
@@ -280,7 +291,7 @@ export function NoteBox({ title, items, tone }: { title: string; items: Array<{ 
         <Lock className={`w-5 h-5 ${dark ? "text-emerald-300" : "text-emerald-600"}`} aria-hidden="true" />
         {title}
       </h3>
-      <ul className="mt-4 space-y-3">
+      <ul className={compact ? "mt-3 space-y-2" : "mt-4 space-y-3"}>
         {items.map((it) => (
           <li key={it.key} className={`flex items-start gap-3 text-sm ${dark ? "text-slate-200" : "text-slate-700"}`}>
             <Check className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" aria-hidden="true" />
@@ -409,7 +420,7 @@ export function PoolSpotlightSection({ s }: { s: Spotlight }) {
     <section
       id={s.id}
       aria-labelledby={headingId}
-      className="relative py-20 sm:py-28 px-5 sm:px-8 overflow-hidden scroll-mt-4 bg-gradient-to-b from-emerald-50 via-white to-white text-slate-800"
+      className="relative py-14 sm:py-24 px-5 sm:px-8 overflow-hidden scroll-mt-4 bg-gradient-to-b from-emerald-50 via-white to-white text-slate-800"
     >
       <div
         aria-hidden="true"
@@ -417,7 +428,7 @@ export function PoolSpotlightSection({ s }: { s: Spotlight }) {
         style={{ backgroundImage: "radial-gradient(600px circle at 85% 10%, rgba(16,185,129,0.16), transparent 50%)" }}
       />
       <div className="relative max-w-6xl mx-auto">
-        <div className="grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] gap-10 lg:gap-16 items-center">
+        <div className="grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] gap-6 lg:gap-16 items-center">
           <div>
             <SectionIntro
               id={headingId}
@@ -428,44 +439,73 @@ export function PoolSpotlightSection({ s }: { s: Spotlight }) {
                 </span>
               }
               title={s.title}
-              lead={s.lead}
             />
+            <p className="mt-4 text-base sm:text-lg leading-relaxed text-slate-600">{s.lead}</p>
             {s.benefit && (
-              <p className="mt-5 flex items-start gap-2.5 text-lg font-bold text-emerald-700" style={DISPLAY_FONT}>
+              <p className="mt-4 flex items-start gap-2.5 text-lg font-bold text-emerald-700" style={DISPLAY_FONT}>
                 <Zap className="w-5 h-5 mt-1 shrink-0 text-emerald-500" aria-hidden="true" />
                 {s.benefit}
               </p>
             )}
             {s.cta && (
-              <div className="mt-8">
+              <div className="mt-6">
                 <PoolInviteButton cta={s.cta} testId="spotlight-cta" />
               </div>
             )}
           </div>
           {s.offerChat && (
-            <div className="mx-auto w-full max-w-[380px] rounded-[34px] bg-slate-950 p-2.5 shadow-2xl shadow-emerald-900/25 ring-1 ring-slate-900/10">
+            <div className="mx-auto w-full max-w-[380px] rounded-[30px] bg-slate-950 p-1.5 sm:p-2.5 shadow-2xl shadow-emerald-900/25 ring-1 ring-slate-900/10">
               <ChatDrawing chat={s.offerChat} />
             </div>
           )}
         </div>
 
+        {/* Compact on a phone: small number circles, no card boxes. */}
         {s.steps && (
-          <div className="mt-16">
-            <StepList steps={s.steps} label={s.stepsLabel} />
-          </div>
+          <ol aria-label={s.stepsLabel} className="mt-7 sm:mt-14 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-3.5 sm:gap-y-6">
+            {s.steps.map((st, i) => (
+              <li key={st.key} className="grid grid-cols-[32px_minmax(0,1fr)] gap-x-3">
+                <span
+                  aria-hidden="true"
+                  className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-500 to-teal-500 text-white text-sm font-black inline-flex items-center justify-center shadow-md shadow-emerald-500/30"
+                >
+                  {i + 1}
+                </span>
+                <div>
+                  <h3 className="pt-1 text-base font-bold leading-tight text-slate-900" style={DISPLAY_FONT}>
+                    {st.title}
+                  </h3>
+                  <p className="mt-0.5 text-sm leading-snug text-slate-600">{st.body}</p>
+                </div>
+              </li>
+            ))}
+          </ol>
         )}
 
-        <div className="mt-12">
-          <CardGrid cards={s.points} columns={4} />
-        </div>
+        {/* The points as a short icon list (2 by 2 from tablet width). */}
+        <ul className="mt-10 sm:mt-12 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+          {s.points.map((pt) => (
+            <li key={pt.key} className="flex items-start gap-3 p-3.5 rounded-2xl bg-white border border-slate-200">
+              <span className={`w-9 h-9 shrink-0 rounded-xl border flex items-center justify-center ${COLORS[pt.color]}`}>
+                <Icon k={pt.icon} className="w-[18px] h-[18px]" />
+              </span>
+              <div className="min-w-0">
+                <h3 className="text-[15px] font-bold leading-tight text-slate-900" style={DISPLAY_FONT}>
+                  {pt.title}
+                </h3>
+                <p className="mt-0.5 text-[13px] leading-snug text-slate-600">{pt.body}</p>
+              </div>
+            </li>
+          ))}
+        </ul>
 
         {s.note && (
-          <div className="mt-12">
-            <NoteBox title={s.note.title} items={s.note.items} tone="light" />
+          <div className="mt-6">
+            <NoteBox title={s.note.title} items={s.note.items} tone="light" compact />
           </div>
         )}
 
-        {s.footnote && <p className="mt-10 text-sm text-slate-500">{s.footnote}</p>}
+        {s.footnote && <p className="mt-6 text-sm text-slate-500">{s.footnote}</p>}
       </div>
     </section>
   );

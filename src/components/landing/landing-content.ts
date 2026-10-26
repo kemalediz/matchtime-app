@@ -41,7 +41,7 @@ import { MAX_RADIUS_MILES } from "@/lib/club-discovery-rules";
 import { PLAYERS_PAGE_PATH, POOL_PLAY_PATH } from "@/lib/pool/paths";
 import { POOL_CAPS, POOL_MIN_AGE, POOL_QUIET_HOURS } from "@/lib/pool/rules";
 import { POOL_AFTER_PARTNERS_MINS } from "@/lib/pool/round-rules";
-import { LIVE_SPORTS, SPORT_LEVELS, levelLabel, liveSports } from "@/lib/pool/sports";
+import { SPORT_LEVELS, levelLabel, liveSports } from "@/lib/pool/sports";
 import { poolOfferEn } from "@/lib/i18n/pool-offer.en";
 
 // ── The sport the site is about (Kemal, 2026-10-25: football only, for now) ──
@@ -54,13 +54,6 @@ import { poolOfferEn } from "@/lib/i18n/pool-offer.en";
 /** "A, B or C". */
 function joinWords(words: readonly string[], last: "and" | "or"): string {
   return words.length <= 1 ? (words[0] ?? "") : `${words.slice(0, -1).join(", ")} ${last} ${words[words.length - 1]}`;
-}
-
-/** "Football 5, 7, 8, 9 or 11-a-side.": each live sport with its formats. */
-function liveSportsLine(): string {
-  const sports = liveSports().map((s) => (s.formats.length ? `${s.label.en} ${joinWords(s.formats.map(String), "or")}-a-side` : s.label.en));
-  const other = LIVE_SPORTS.other ? ", and any other sport you play by booking a venue with mates" : "";
-  return `${joinWords(sports, "and")}${other}. Pick the formats you play, and your level if you like.`;
 }
 
 /**
@@ -674,7 +667,7 @@ const PLAYER_POOL: Spotlight = {
   tone: "light",
   eyebrow: "New for players",
   title: "Get called up for local games.",
-  lead: "Tell MatchTime how you play and when you can play. When a club nearby needs one more, the game comes to you on WhatsApp, and you decide.",
+  lead: "Tell MatchTime your level, when you can play and how far you'll travel. When a club nearby needs one more, the game comes to you on WhatsApp.",
   // Followed by /play's own early or open note (`spotlightFor`).
   poolOpeningLine: true,
   benefit: "More games, new teammates, no hunting round group chats.",
@@ -686,28 +679,29 @@ const PLAYER_POOL: Spotlight = {
       // level (optional, pool/sports.ts); pool/confirm.ts: the code he sends.
       key: "signup",
       title: "Tell us how you play",
-      body: "Your level if you like, the days and times you can play, and how far you'll travel. One short page, then confirm your number on WhatsApp.",
+      body: "Your level if you like, when you can play, how far you'll travel. Then confirm on WhatsApp.",
     },
     {
       // pool/matching-rules.ts candidateExclusion: format, level (only when
       // the ask names levels), distance, availability.
       key: "short",
       title: "A club near you is short",
-      body: "Once the pool opens in your town, a club nearby that's a player short at a time that suits you can call you up.",
+      body: "Once the pool opens in your town, a nearby club short at a time that suits you can call you up.",
     },
     {
       // pool/offer-copy.ts poolOfferLines; pool/rules.ts POOL_QUIET_HOURS. The
       // weekly cap still applies but is not on the site (Kemal, 2026-10-25).
       key: "offer",
       title: "The offer lands on WhatsApp",
-      body: `The club, the day and time, how far it is and the kind of game. Never between ${POOL_QUIET_HOURS.from} and ${POOL_QUIET_HOURS.to}.`,
+      body: `The club, day and time, how far and the kind of game. Never between ${POOL_QUIET_HOURS.from} and ${POOL_QUIET_HOURS.to}.`,
     },
     {
-      // pool/reply.ts and the offer page: yes takes the place while it is
-      // open (reply_gone when it has gone).
+      // pool/accept.ts: a yes takes the place while it is open ("gone" when it
+      // has gone), or goes on the bench where the club's organisers pick
+      // (placed.kind "bench", pool-offer.en.ts placed_bench).
       key: "yes",
       title: "Say yes and you're in",
-      body: "Reply yes or tap the link. If the place is still open, it's yours. Not this time? Just say no.",
+      body: "Reply yes or tap the link. If the place is still open, you're in, or on the bench where the organisers pick. Not this time? Just say no.",
     },
   ],
   points: [
@@ -717,7 +711,7 @@ const PLAYER_POOL: Spotlight = {
       icon: "gamepad",
       color: "teal",
       title: `${joinWords(liveSports().map((s) => s.label.en), "and")}, any format`,
-      body: liveSportsLine(),
+      body: `${joinWords(liveSports().map((s) => (s.formats.length ? `${s.label.en} ${formatsWords(s.formats, "or")}` : s.label.en)), "and")}. Pick the ones you play.`,
     },
     {
       // pool/sports.ts SPORT_LEVELS (optional, self-chosen);
@@ -734,7 +728,7 @@ const PLAYER_POOL: Spotlight = {
       icon: "shield-check",
       color: "blue",
       title: "Stop any time",
-      body: "Your own link lets you pause, change your details or stop game messages. Or just send STOP.",
+      body: "Pause, change your details or stop from your own link, or send STOP.",
     },
     {
       // pool/rules.ts POOL_MIN_AGE.
@@ -742,7 +736,7 @@ const PLAYER_POOL: Spotlight = {
       icon: "users",
       color: "amber",
       title: `${POOL_MIN_AGE} and over`,
-      body: "You'll be playing with people you haven't met yet, so the pool is for adults only.",
+      body: "Adults only: you'll be playing with people you haven't met yet.",
     },
   ],
   note: {

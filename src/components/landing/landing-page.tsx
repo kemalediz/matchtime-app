@@ -30,6 +30,7 @@ import {
 import { LandingHeader } from "./landing-nav";
 import { PricingTeaser } from "./pricing-section";
 import { HeroDeck } from "./hero-deck";
+import { tightStops } from "./tight-stops";
 
 /**
  * Public marketing landing page served at `/` for signed-out visitors.
@@ -121,9 +122,9 @@ export function LandingPage({ holdOn = false, earlyList = true }: { holdOn?: boo
               className="text-[36px] sm:text-6xl lg:text-[64px] font-extrabold tracking-tight leading-[1.08] sm:leading-[1.05] text-white"
               style={DISPLAY_FONT}
             >
-              <span className="block">{HERO.titleLead}</span>
+              <span className="block">{tightStops(HERO.titleLead)}</span>
               <span className="block bg-gradient-to-r from-blue-400 via-teal-300 to-emerald-400 bg-clip-text text-transparent">
-                {HERO.titleTail}
+                {tightStops(HERO.titleTail)}
               </span>
             </h1>
             <p className="text-[17px] sm:text-xl text-slate-300 max-w-xl leading-relaxed">{HERO.line}</p>

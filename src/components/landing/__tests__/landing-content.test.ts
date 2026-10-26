@@ -282,18 +282,25 @@ describe("landing content: the player pool (G0 part 2)", () => {
 
   it("the call-up headline, the benefit, and the four steps' facts (round two, 2026-10-26)", () => {
     expect(s.title).toBe("Get called up for local games.");
+    expect(s.lead).toBe(
+      "Tell MatchTime your level, when you can play and how far you'll travel. When a club nearby needs one more, the game comes to you on WhatsApp.",
+    );
     expect(s.benefit).toBe("More games, new teammates, no hunting round group chats.");
     const [signup, short, offer, yes] = s.steps!.map((x) => x.body);
     expect(signup).toMatch(/level/);
-    expect(signup).toMatch(/days and times/);
+    expect(signup).toMatch(/when you can play/);
     expect(signup).toMatch(/how far you'll travel/);
+    expect(signup).toMatch(/confirm on WhatsApp/);
     expect(short).toMatch(/near/);
     expect(short).toMatch(/a time that suits you/);
     for (const fact of ["club", "day and time", "how far", "kind of game"]) expect(offer).toContain(fact);
     expect(s.steps!.find((x) => x.key === "offer")!.title).toMatch(/WhatsApp/);
     expect(yes).toMatch(/Reply yes or tap/);
-    // Never overclaims: a yes takes the place only while it is open.
+    // Never overclaims: a yes takes the place only while it is open, and
+    // where the organisers pick it goes on their bench (pool/accept.ts).
     expect(yes).toMatch(/If the place is still open/);
+    expect(yes).toMatch(/on the bench where the organisers pick/);
+    expect(yes).not.toMatch(/it's yours/);
   });
 
   it("the facts are kept: adults only, quiet hours, stop any time, number shared only when you join a group, postcode district", () => {
