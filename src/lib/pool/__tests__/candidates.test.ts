@@ -103,7 +103,6 @@ describe("with the pool open", () => {
     expect(arg.where.areaLat).toMatchObject({ gte: expect.any(Number), lte: expect.any(Number) });
     expect(arg.where.areaLng).toMatchObject({ gte: expect.any(Number), lte: expect.any(Number) });
     expect(arg.where).not.toHaveProperty("OR");
-    expect(JSON.stringify(arg)).not.toContain("venueIds");
     expect(dbMock.venue.findMany).not.toHaveBeenCalled();
   });
 

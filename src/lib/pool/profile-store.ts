@@ -9,8 +9,8 @@
  * it never throws and sends the district and the region only). A district
  * Google cannot place as a UK postcode area, matched whole
  * (`acceptDistrictGeocode`), is refused, so a profile's centre point is
- * never a guess. Chosen pitches were retired on 2026-10-25: nothing here
- * reads or writes `PoolProfile.venueIds` any more.
+ * never a guess. Chosen pitches were retired on 2026-10-25 and their
+ * column dropped (prisma/migrations/20261028000000_drop_pool_venue_ids).
  */
 import { db } from "../db";
 import { geocode } from "../geocode";

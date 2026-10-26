@@ -35,7 +35,7 @@ describe("the Guest players surface never reads what it must not show", () => {
   });
 
   it("no phone, email, area, travel distance or town anywhere in it", () => {
-    const re = /\b(phoneNumber|phone|email|areaDistrict|areaLat|areaLng|venueIds|maxMiles|town|homeOrgId)\b/;
+    const re = /\b(phoneNumber|phone|email|areaDistrict|areaLat|areaLng|maxMiles|town|homeOrgId)\b/;
     expect(SURFACE.filter((f) => re.test(read(f)))).toEqual([]);
   });
 

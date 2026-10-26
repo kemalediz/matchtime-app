@@ -30,8 +30,8 @@ async function memberInPool(pool: PoolWorld, home: PoolClub, key: string, near: 
   const userId = (await pool.userOf(m))!.id;
   const profileId = `sim-pool-p-${key}-${Date.now()}`;
   await pool.db.run(
-    `INSERT INTO "PoolProfile" (id, "userId", status, "consentAt", "consentVersion", "consentChannel", "consentEvidence", "adultConfirmedAt", language, "displayName", "areaLat", "areaLng", "maxMiles", "updatedAt")
-     VALUES ($1, $2, 'active', $3, 1, 'web', 'req', $3, 'en', $4, $5, $6, 3, $3)`,
+    `INSERT INTO "PoolProfile" (id, "userId", status, "consentAt", "consentVersion", "consentChannel", "consentEvidence", "adultConfirmedAt", language, "displayName", "areaDistrict", "areaLat", "areaLng", "maxMiles", "updatedAt")
+     VALUES ($1, $2, 'active', $3, 1, 'web', 'req', $3, 'en', $4, 'SM1', $5, $6, 3, $3)`,
     [profileId, userId, new Date(Date.now() - 20 * 24 * 3600_000), m.name ?? key, near.lat, near.lng],
   );
   await pool.db.run(`INSERT INTO "PoolSport" (id, "profileId", sport, formats) VALUES ($1, $2, 'football', '{}')`, [`${profileId}-s`, profileId]);

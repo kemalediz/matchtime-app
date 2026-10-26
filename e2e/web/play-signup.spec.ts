@@ -216,7 +216,7 @@ test.describe("English visitor", () => {
     const ok = await request.post("/api/play/signup", { data: { ...base, area: { kind: "district", district: "SM1", venueIds: ["e2e-play-v1"] }, venueIds: ["e2e-play-v1"] } });
     expect(ok.status()).toBe(200);
     const { code } = (await ok.json()) as { code: string };
-    expect(await db.one(`SELECT "venueIds", "areaDistrict" FROM "PoolProfile" WHERE "confirmCode" = $1`, [code])).toEqual({ venueIds: [], areaDistrict: "SM1" });
+    expect(await db.one(`SELECT "areaDistrict" FROM "PoolProfile" WHERE "confirmCode" = $1`, [code])).toEqual({ areaDistrict: "SM1" });
   });
 });
 

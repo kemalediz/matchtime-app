@@ -110,7 +110,6 @@ for (const [name, size] of [["phone", MOBILE], ["desktop", DESKTOP]] as const) {
     expect(await profileOf(db, U.player)).toMatchObject({
       status: "active",
       displayName: "Pat P",
-      venueIds: [],
       areaDistrict: "SM1",
       maxMiles: 3,
       source: "profile",
