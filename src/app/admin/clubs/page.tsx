@@ -27,6 +27,8 @@ import { DecideButtons, GoLiveNowButton, LeaveButton, TurnOffButton } from "./cl
 import { loadSetupStatuses, type SetupMessageState } from "@/lib/club-setup";
 import { PlanControl, StartFreeMonthButton } from "./billing-controls";
 import { TemplateSharingControl } from "./graphics-template-controls";
+import { ClubPoolSwitch } from "./pool-controls";
+import { isPoolOffersEnabled } from "@/lib/pool/flags";
 import Link from "next/link";
 import { loadClubBillingSnapshot } from "@/lib/club-billing";
 import { billingTotals, isBillingEnabled, planPricePence } from "@/lib/club-billing-rules";
@@ -45,10 +47,12 @@ import { loadCurrentMonth, loadPastMonths, loadUnpaidSummary } from "@/lib/club-
  * OWNER ONLY. 404 to anybody who is not `User.isSuperadmin`, exactly as
  * /admin/health: it names other clubs, organisers and their numbers.
  *
- * SUTTON FC IS NOT ON THIS PAGE. Only clubs that came in through self-join
- * are listed (`approvedAt` set by an approval, or not approved at all), so
- * no button here can reach a club that predates self-join; `decideClub`
- * refuses it again behind the button.
+ * SUTTON FC IS NOT IN THE SELF-JOIN SECTIONS. Only clubs that came in
+ * through self-join are listed there (`approvedAt` set by an approval, or
+ * not approved at all), so no decision button can reach a club that
+ * predates self-join; `decideClub` refuses it again behind the button.
+ * Poster designs and Player pool (2026-10-27) list every club: neither
+ * changes a club's approval, and the pool is switched on club by club.
  */
 export const dynamic = "force-dynamic";
 
@@ -409,6 +413,15 @@ export default async function ClubsPage() {
       return [];
     });
 
+  // Player pool (2026-10-27): every approved club, the ones that predate
+  // self-join included, with the owner's per-club switch.
+  const poolClubs = await db.organisation.findMany({
+    where: APPROVED_CLUB_WHERE,
+    orderBy: { name: "asc" },
+    select: { id: true, name: true, featurePlayerPool: true, poolAutoAsk: true },
+  });
+  const poolOffersOn = isPoolOffersEnabled();
+
   const leaveJobs = unsolicited.length
     ? await db.platformJob.findMany({
         where: { kind: "leave-group", groupId: { in: unsolicited.map((u) => u.groupId) } },
@@ -424,7 +437,7 @@ export default async function ClubsPage() {
         <p className="text-sm text-slate-500 mt-1">
           Clubs that joined MatchTime themselves. Approve or reject the ones waiting, turn a new club off, or leave a
           group nobody asked MatchTime into. The same as replying APPROVE or REJECT with the ref on WhatsApp. Clubs
-          that were here before self-join are not listed and cannot be changed from this page.
+          that were here before self-join appear only under Poster designs and Player pool.
         </p>
         {!selfJoinOn && (
           <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
@@ -695,6 +708,43 @@ export default async function ClubsPage() {
                   </span>
                 </span>
                 <TemplateSharingControl orgId={tpl.orgId} club={tpl.org.name} shared={tpl.shared} displayName={tpl.displayName} />
+              </li>
+            ))}
+          </ul>
+        )}
+      </Section>
+
+      <Section
+        id="player-pool"
+        title="Player pool"
+        lead="Switch the MatchTime player pool on or off for one club."
+      >
+        {!poolOffersOn && (
+          <p data-testid="pool-master-off" className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            The pool&apos;s master switch (POOL_OFFERS_ENABLED) is off, so no club&apos;s matches are offered to the pool yet. A club
+            switched on here still shows its pool settings.
+          </p>
+        )}
+        {poolClubs.length === 0 ? (
+          <Empty>No approved club yet.</Empty>
+        ) : (
+          <ul className="space-y-2">
+            {poolClubs.map((o) => (
+              <li key={o.id} data-testid="club-pool-row" className="rounded-lg border border-slate-200 bg-white p-3 text-sm">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <span className="font-medium text-slate-800">{o.name}</span>
+                  <ClubPoolSwitch orgId={o.id} club={o.name} on={o.featurePlayerPool} />
+                </div>
+                <p className="mt-1 text-xs text-slate-500">
+                  On: the club&apos;s admins see Style of play, Ask the player pool automatically and the MatchTime player pool
+                  tick on the match page, and organisers can ask the pool from HQ. Automatic asking stays off until the
+                  club&apos;s admin turns it on.
+                </p>
+                {o.featurePlayerPool && (
+                  <p data-testid="club-pool-auto" className="mt-1 text-xs text-slate-600">
+                    Automatic asking: {o.poolAutoAsk ? "on (the club's admin turned it on)" : "off"}.
+                  </p>
+                )}
               </li>
             ))}
           </ul>
