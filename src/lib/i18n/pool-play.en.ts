@@ -1,6 +1,11 @@
 /** The player pool's pages in English (slice L2). See `pool-play.ts`. */
 import type { PoolPlayCopy, PoolPlayFacts } from "./pool-play";
 
+/** The weekly limit in words: "once a week", "twice a week", "3 times a week". */
+export function perWeekEn(n: number): string {
+  return n === 1 ? "once a week" : n === 2 ? "twice a week" : `${n} times a week`;
+}
+
 export function buildPoolPlayEn(f: PoolPlayFacts): PoolPlayCopy {
   return {
     title: "Join the MatchTime player pool",
@@ -18,7 +23,7 @@ export function buildPoolPlayEn(f: PoolPlayFacts): PoolPlayCopy {
       travelLegend: "How far will you travel?",
       miles: (n) => (n === 1 ? "1 mile" : `${n} miles`),
       daysLegend: "When can you play?",
-      daysHint: "Tick the days, then the hours you are free. You can add more than one time on a day.",
+      daysHint: "Tick the days, then the hours you can play. You can add more than one time on a day.",
       dayNames: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
       fromLabel: (day) => `${day} from`,
       toLabel: (day) => `${day} until`,
@@ -62,18 +67,18 @@ export function buildPoolPlayEn(f: PoolPlayFacts): PoolPlayCopy {
     },
     errorSummary: "Please check the highlighted answers.",
     signup: {
-      heading: "Join the MatchTime player pool",
-      lead: "Tell MatchTime where and when you can play. When a club near you is a player short at a time you're free, MatchTime can message you on WhatsApp with the game, and you decide.",
+      heading: "Join the player pool",
       earlyNote:
         "The pool is opening town by town. Sign up now and you join the early sign-up list: you won't get any game messages until it opens near you.",
       openNote: "The pool is opening town by town. Sign up now and MatchTime can message you when a club near you needs a player.",
+      earlyShort: "Opening town by town. No game messages until it opens near you.",
       howItWorks: [
-        "You fill in this page. We never ask for your phone number here.",
-        "WhatsApp opens with a message and a code. You send it, and that confirms your number.",
-        `Then, when a club near you needs a player, you get the game details: at most ${f.perWeek} a week, never between ${f.quietFrom} and ${f.quietTo}.`,
+        "Tell us where and when you can play.",
+        "Send one WhatsApp message to confirm.",
+        "When a club near you needs a player, you get the game. You decide.",
       ],
       adultLabel: `I am ${f.minAge} or over`,
-      consentLabel: `MatchTime may message me on WhatsApp about games near me, at most ${f.perWeek} a week. I can stop this at any time.`,
+      consentLabel: `MatchTime may message me on WhatsApp about games near me, at most ${perWeekEn(f.perWeek)}. I can stop this at any time.`,
       consentPolicy: "Read how we use your details in our privacy policy.",
       submit: "Continue to WhatsApp",
       submitting: "Saving...",
@@ -103,7 +108,7 @@ export function buildPoolPlayEn(f: PoolPlayFacts): PoolPlayCopy {
       resume: "Resume game messages",
       stop: "Stop game messages",
       stopHint: "Stopping withdraws your agreement. You can start again here at any time.",
-      restartConsent: `MatchTime may message me on WhatsApp about games near me, at most ${f.perWeek} a week. I can stop this at any time.`,
+      restartConsent: `MatchTime may message me on WhatsApp about games near me, at most ${perWeekEn(f.perWeek)}. I can stop this at any time.`,
       restart: "Start game messages again",
       editHeading: "Your details",
       save: "Save changes",
@@ -123,7 +128,7 @@ export function buildPoolPlayEn(f: PoolPlayFacts): PoolPlayCopy {
     },
     member: {
       heading: "Play elsewhere too",
-      lead: "Short of a game? MatchTime can tell you when another club near you is a player short at a time you're free. You decide each time.",
+      lead: "Short of a game? MatchTime can tell you when another club near you is a player short at a time you can play. You decide each time.",
       ownClubNote: "Your own club's games stay in your club's group as now. This is only for other clubs.",
       open: "Set it up",
       prefillNote: "We filled this in from your club's games. Check it, especially your postcode area, and change anything you like.",

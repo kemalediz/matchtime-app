@@ -93,7 +93,8 @@ export interface PoolPlayCopy {
   errorSummary: string;
   signup: {
     heading: string;
-    lead: string;
+    /** /play's short note while a sign-up goes on the early sign-up list. */
+    earlyShort: string;
     /** Shown while a sign-up goes on the early sign-up list
      *  (`signupGoesOnEarlyList`); `openNote` once the pool is open. */
     earlyNote: string;

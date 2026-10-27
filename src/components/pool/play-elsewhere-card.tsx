@@ -29,7 +29,7 @@ import { fromSavedProfile, toPoolPayload, type PoolFormValue } from "@/lib/pool/
 import { fieldErrorKeys, poolPageCopy } from "@/lib/pool/page-copy";
 import { POOL_MANAGE_PATH } from "@/lib/pool/paths";
 import { validatePoolSignup, type PoolFieldErrors } from "@/lib/pool/profile-fields";
-import { PRIVACY_PATH } from "@/lib/privacy-policy";
+import { PolicyLink } from "@/components/policy-link";
 
 const BTN = "inline-flex items-center justify-center rounded-xl px-5 py-2.5 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-60";
 const KNOWN_FAILURES: readonly PoolErrorKey[] = ["busy", "area-not-found", "paused", "unavailable"];
@@ -164,9 +164,7 @@ export function PlayElsewhereCard({ lang }: { lang: Lang }) {
           <PoolTick checked={adult} onChange={setAdult} label={copy.signup.adultLabel} error={keys.adult ? copy.errors.adult : undefined} />
           <PoolTick checked={consent} onChange={setConsent} label={copy.signup.consentLabel} error={keys.consent ? copy.errors.consent : undefined} />
           <p className="text-sm">
-            <Link href={PRIVACY_PATH} className="text-blue-700 underline">
-              {copy.signup.consentPolicy}
-            </Link>
+            <PolicyLink className="text-blue-700 underline">{copy.signup.consentPolicy}</PolicyLink>
           </p>
         </div>
         {viaWhatsApp && <p className="text-sm text-slate-700">{m.whatsAppNote}</p>}

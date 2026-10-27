@@ -7,6 +7,8 @@ import { describe, expect, it } from "vitest";
 import { fieldErrorKeys, POOL_PAGE_FACTS, poolPageCopy } from "../../pool/page-copy";
 import { POOL_CAPS, POOL_MIN_AGE, POOL_QUIET_HOURS } from "../../pool/rules";
 import type { PoolPlayCopy } from "../pool-play";
+import { perWeekEn } from "../pool-play.en";
+import { perWeekTr } from "../pool-play.tr";
 
 /** Every rendered line, by path (functions called with sample values). */
 function leaves(v: unknown, path = ""): Array<{ path: string; text: string }> {
@@ -56,8 +58,7 @@ describe("the numbers come from rules.ts", () => {
   for (const [lang, c] of [["en", EN], ["tr", TR]] as Array<[string, PoolPlayCopy]>) {
     it(`${lang}: the age, the weekly cap and the quiet hours`, () => {
       expect(c.signup.adultLabel).toContain(String(POOL_MIN_AGE));
-      expect(c.signup.consentLabel).toContain(String(POOL_CAPS.perPlayerPerWeek));
-      expect(c.signup.howItWorks.join(" ")).toContain(POOL_QUIET_HOURS.from);
+      expect(c.signup.consentLabel).toContain(lang === "en" ? perWeekEn(POOL_CAPS.perPlayerPerWeek) : perWeekTr(POOL_CAPS.perPlayerPerWeek));
       expect(c.fields.dayNames).toHaveLength(7);
     });
   }
@@ -82,5 +83,48 @@ describe("every error the validator names has words", () => {
         expect(TR.errors[key!], `${field}:${code}`).toBeTruthy();
       }
     }
+  });
+});
+
+/**
+ * /play is short before the first field (Kemal, 2026-10-27): a headline,
+ * three very short lines, then the form. The weekly limit lives in the
+ * consent tick only, said in words ("twice a week"); the "never your number
+ * here" line and the quiet hours are not on the page.
+ */
+describe("/play gets to the first field fast", () => {
+  it("the weekly limit in words", () => {
+    expect(perWeekEn(1)).toBe("once a week");
+    expect(perWeekEn(2)).toBe("twice a week");
+    expect(perWeekEn(3)).toBe("3 times a week");
+    expect(perWeekTr(1)).toBe("haftada en fazla bir kez");
+    expect(perWeekTr(2)).toBe("haftada en fazla iki kez");
+    expect(perWeekTr(5)).toBe("haftada en fazla 5 kez");
+  });
+  it("the consent tick says it, in English as Kemal asked", () => {
+    expect(POOL_CAPS.perPlayerPerWeek).toBe(2);
+    expect(EN.signup.consentLabel).toBe("MatchTime may message me on WhatsApp about games near me, at most twice a week. I can stop this at any time.");
+    expect(TR.signup.consentLabel).toBe("MatchTime yakınımdaki maçlar hakkında bana WhatsApp'tan, haftada en fazla iki kez yazabilir. Bunu istediğim zaman durdurabilirim.");
+    expect(EN.manage.restartConsent).toBe(EN.signup.consentLabel);
+    expect(TR.manage.restartConsent).toBe(TR.signup.consentLabel);
+  });
+  for (const [lang, c] of [["en", EN], ["tr", TR]] as Array<[string, PoolPlayCopy]>) {
+    const above = [c.signup.heading, ...c.signup.howItWorks, c.signup.earlyShort].join(" ");
+    it(`${lang}: nothing above the form repeats the limit, the quiet hours or the number line`, () => {
+      expect(above).not.toContain(String(POOL_CAPS.perPlayerPerWeek));
+      expect(above).not.toMatch(/twice|a week|haftada/i);
+      expect(above).not.toContain(POOL_QUIET_HOURS.from);
+      expect(above).not.toContain(POOL_QUIET_HOURS.to);
+      expect(above).not.toMatch(/phone number|never ask|telefon numaran|asla sormay/i);
+    });
+    it(`${lang}: a short headline and at most three very short lines`, () => {
+      expect(c.signup.heading.length).toBeLessThanOrEqual(30);
+      expect(c.signup.howItWorks.length).toBeLessThanOrEqual(3);
+      for (const line of c.signup.howItWorks) expect(line.length).toBeLessThanOrEqual(90);
+      expect(c.signup.earlyShort.length).toBeLessThanOrEqual(110);
+    });
+  }
+  it("the word free is never on the page", () => {
+    expect(ALL.filter((l) => /\bfree\b|ücretsiz|bedava/i.test(l.text))).toEqual([]);
   });
 });

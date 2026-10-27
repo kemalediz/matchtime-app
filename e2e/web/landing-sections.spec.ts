@@ -9,6 +9,7 @@
 import { test, expect } from "../fixtures";
 import type { Page } from "@playwright/test";
 import { LANDING_SPOTLIGHTS } from "@/components/landing/landing-content";
+import { poolPageCopy } from "@/lib/pool/page-copy";
 
 const MOBILE = { width: 375, height: 740 };
 const DESKTOP = { width: 1280, height: 900 };
@@ -106,7 +107,7 @@ test.describe("the player pool invitation (G0 part 2)", () => {
     await expect(cta).toHaveText("Join the MatchTime player pool");
     await cta.click();
     await page.waitForURL("**/play");
-    await expect(page.getByRole("heading", { level: 1, name: "Join the MatchTime player pool" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: poolPageCopy("en").signup.heading })).toBeVisible();
   });
 
   test("the button pulses under 3 times a second", async ({ page }) => {
