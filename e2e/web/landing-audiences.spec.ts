@@ -76,7 +76,7 @@ test("the hero's pool link takes a player to the /play sign-up", async ({ page }
   await open(page, "/");
   await page.locator("#hero").getByTestId("hero-pool-join").click();
   await page.waitForURL(/\/play\?src=/);
-  await expect(page.getByRole("heading", { level: 1, name: "Join the MatchTime player pool" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: poolPageCopy("en").signup.heading })).toBeVisible();
 });
 
 test("desktop menu: a For clubs and a For players dropdown, each with its links and button", async ({ page }) => {
@@ -191,13 +191,21 @@ for (const open of [false, true]) {
     await page.context().addCookies([{ name: "mt-test-pool-open", value: open ? "1" : "0", url: E2E_BASE_URL }]);
     const en = poolPageCopy("en").signup;
     const [shown, hidden] = open ? [en.openNote, en.earlyNote] : [en.earlyNote, en.openNote];
-    for (const url of ["/", "/players", "/play"]) {
+    for (const url of ["/", "/players"]) {
       await page.goto(url);
       const body = page.locator("body");
       await expect(body.getByText(shown).first(), url).toBeVisible();
       await expect(body.getByText(hidden), url).toHaveCount(0);
       if (open) await expect(body.getByText(/early sign-up list/i), url).toHaveCount(0);
     }
+    // /play is short (Kemal, 2026-10-27): its own one-line note while the
+    // list is on, and nothing once the pool is open (its steps say the rest).
+    await page.goto("/play");
+    const play = page.locator("body");
+    await expect(play.getByText(en.earlyShort), "/play").toHaveCount(open ? 0 : 1);
+    await expect(play.getByText(en.earlyNote), "/play").toHaveCount(0);
+    await expect(play.getByText(en.openNote), "/play").toHaveCount(0);
+    if (open) await expect(play.getByText(/early sign-up list/i), "/play").toHaveCount(0);
   });
 }
 

@@ -1,6 +1,12 @@
 /** The player pool's pages in Turkish (slice L2). See `pool-play.ts`. */
 import type { PoolPlayCopy, PoolPlayFacts } from "./pool-play";
 
+/** Haftalık sınır sözle: "haftada en fazla iki kez". */
+export function perWeekTr(n: number): string {
+  const words: Record<number, string> = { 1: "bir", 2: "iki", 3: "üç", 4: "dört" };
+  return `haftada en fazla ${words[n] ?? String(n)} kez`;
+}
+
 export function buildPoolPlayTr(f: PoolPlayFacts): PoolPlayCopy {
   return {
     title: "MatchTime oyuncu havuzuna katıl",
@@ -62,18 +68,18 @@ export function buildPoolPlayTr(f: PoolPlayFacts): PoolPlayCopy {
     },
     errorSummary: "Lütfen işaretli cevapları kontrol et.",
     signup: {
-      heading: "MatchTime oyuncu havuzuna katıl",
-      lead: "MatchTime'a nerede ve ne zaman oynayabileceğini söyle. Yakınındaki bir kulübün, boş olduğun bir saatte bir oyuncusu eksik olduğunda MatchTime maçı sana WhatsApp'tan yazabilir, karar senin.",
+      heading: "Oyuncu havuzuna katıl",
       earlyNote:
         "Havuz şehir şehir açılıyor. Şimdi kaydol, erken kayıt listesine gir: havuz senin bölgende açılana kadar sana maç mesajı gelmez.",
       openNote: "Havuz şehir şehir açılıyor. Şimdi kaydol, yakınındaki bir kulübün oyuncuya ihtiyacı olduğunda MatchTime sana yazabilir.",
+      earlyShort: "Havuz şehir şehir açılıyor. Bölgende açılana kadar maç mesajı gelmez.",
       howItWorks: [
-        "Bu sayfayı doldurursun. Burada telefon numaranı asla sormayız.",
-        "WhatsApp bir mesaj ve bir kodla açılır. Mesajı gönderirsin, bu numaranı doğrular.",
-        `Sonra yakınındaki bir kulübün oyuncuya ihtiyacı olduğunda maçın bilgileri sana gelir: haftada en fazla ${f.perWeek} kez, ${f.quietFrom} ile ${f.quietTo} arasında asla.`,
+        "Nerede ve ne zaman oynayabileceğini söyle.",
+        "Onaylamak için tek bir WhatsApp mesajı gönder.",
+        "Yakınında bir kulübün oyuncuya ihtiyacı olunca maç sana gelir. Karar senin.",
       ],
       adultLabel: `${f.minAge} yaşında ya da daha büyüğüm`,
-      consentLabel: `MatchTime yakınımdaki maçlar hakkında bana WhatsApp'tan, haftada en fazla ${f.perWeek} kez yazabilir. Bunu istediğim zaman durdurabilirim.`,
+      consentLabel: `MatchTime yakınımdaki maçlar hakkında bana WhatsApp'tan, ${perWeekTr(f.perWeek)} yazabilir. Bunu istediğim zaman durdurabilirim.`,
       consentPolicy: "Bilgilerini nasıl kullandığımızı gizlilik politikamızda oku.",
       submit: "WhatsApp'a devam et",
       submitting: "Kaydediliyor...",
@@ -103,7 +109,7 @@ export function buildPoolPlayTr(f: PoolPlayFacts): PoolPlayCopy {
       resume: "Maç mesajlarına devam et",
       stop: "Maç mesajlarını durdur",
       stopHint: "Durdurmak onayını geri alır. İstediğin zaman buradan yeniden başlatabilirsin.",
-      restartConsent: `MatchTime yakınımdaki maçlar hakkında bana WhatsApp'tan, haftada en fazla ${f.perWeek} kez yazabilir. Bunu istediğim zaman durdurabilirim.`,
+      restartConsent: `MatchTime yakınımdaki maçlar hakkında bana WhatsApp'tan, ${perWeekTr(f.perWeek)} yazabilir. Bunu istediğim zaman durdurabilirim.`,
       restart: "Maç mesajlarını yeniden başlat",
       editHeading: "Bilgilerin",
       save: "Değişiklikleri kaydet",

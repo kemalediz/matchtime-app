@@ -8,7 +8,7 @@
  * styles, so the two read alike.
  */
 import { useState } from "react";
-import Link from "next/link";
+import { BackToSiteLink } from "@/components/back-to-site-link";
 import { ShieldCheck } from "lucide-react";
 import { useBrowserLang } from "@/lib/i18n/browser-lang";
 import { LANGS, LANG_LABELS, type Lang } from "@/lib/i18n/lang";
@@ -24,9 +24,7 @@ export function PrivacyPolicyView() {
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
       <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-          <Link href="/" className="text-sm font-medium text-blue-700 hover:underline">
-            {copy.backHome}
-          </Link>
+          <BackToSiteLink className="text-sm font-medium text-blue-700 hover:underline">{copy.backHome}</BackToSiteLink>
           <div role="group" aria-label={copy.languageLabel} className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5">
             {LANGS.map((l) => (
               <button
@@ -62,7 +60,7 @@ export function PrivacyPolicyView() {
             <ol className="!mb-0 sm:columns-2 gap-x-8">
               {copy.sections.map((s) => (
                 <li key={s.id} className="!text-sm !mb-1 break-inside-avoid">
-                  <a href={`#${s.id}`} className="text-blue-700 hover:underline">
+                  <a href={`#${s.id}`} onClick={(e) => jumpTo(e, s.id)} className="text-blue-700 hover:underline">
                     {s.heading}
                   </a>
                 </li>
@@ -84,6 +82,16 @@ export function PrivacyPolicyView() {
       </div>
     </div>
   );
+}
+
+/** A contents jump that replaces the address rather than adding a history
+ *  entry, so "Back to MatchTime" (history back) still lands where he came from. */
+function jumpTo(e: React.MouseEvent<HTMLAnchorElement>, id: string) {
+  const target = document.getElementById(id);
+  if (!target || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+  e.preventDefault();
+  target.scrollIntoView();
+  window.history.replaceState(window.history.state, "", `#${id}`);
 }
 
 function Block({ block }: { block: PolicyBlock }) {

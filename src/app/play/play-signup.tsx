@@ -6,10 +6,11 @@
  * link), then the last step, which opens WhatsApp with the confirm message.
  * The browser runs the same validator the server does, so errors show at
  * once; the server's answer is the truth. No wording here (page-copy.ts).
+ * What he types is kept as a draft in this tab (signup-draft.ts) until the
+ * sign-up is sent, and the policy opens in a new tab, so nothing is lost.
  */
 import { poolShareCopy } from "@/lib/i18n/pool-share";
-import { useState } from "react";
-import Link from "next/link";
+import { useEffect, useState } from "react";
 import { MessageCircle } from "lucide-react";
 import { PoolProfileFields, type FieldErrorText } from "@/components/pool/pool-profile-fields";
 import { PoolPageShell } from "@/components/pool/pool-page-shell";
@@ -19,7 +20,8 @@ import type { PoolErrorKey } from "@/lib/i18n/pool-play";
 import { defaultPoolForm, toPoolPayload, type PoolFormValue } from "@/lib/pool/form-state";
 import { fieldErrorKeys, poolPageCopy } from "@/lib/pool/page-copy";
 import { validatePoolSignup, type PoolFieldErrors } from "@/lib/pool/profile-fields";
-import { PRIVACY_PATH } from "@/lib/privacy-policy";
+import { PolicyLink } from "@/components/policy-link";
+import { clearSignupDraft, loadSignupDraft, saveSignupDraft } from "@/lib/pool/signup-draft";
 
 interface Confirm {
   code: string;
@@ -57,6 +59,18 @@ export function PlaySignup({
   const [sending, setSending] = useState(false);
   const [confirm, setConfirm] = useState<Confirm | null>(null);
 
+  // The draft: read once after mount (the server never sees it), saved on
+  // every change he makes, cleared once the sign-up is sent.
+  useEffect(() => {
+    const draft = loadSignupDraft(defaultPoolForm(browserLang));
+    if (draft) setForm((f) => f ?? draft);
+    // Once, on mount: a later language change must not reload the draft.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    if (form && !confirm) saveSignupDraft(form);
+  }, [form, confirm]);
+
   const keys = fieldErrorKeys(errors);
   const fieldText: FieldErrorText = Object.fromEntries(
     (["name", "area", "maxMiles", "availability", "sports"] as const).filter((k) => keys[k]).map((k) => [k, copy.errors[keys[k]!]]),
@@ -78,6 +92,7 @@ export function PlaySignup({
       const res = await fetch("/api/play/signup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const data = (await res.json().catch(() => ({}))) as Partial<Confirm> & { ok?: boolean; reason?: string; errors?: PoolFieldErrors };
       if (data.ok && data.code && data.waLink && data.prefill) {
+        clearSignupDraft();
         setConfirm({ code: data.code, prefill: data.prefill, waLink: data.waLink, earlyList: !!data.earlyList });
         window.scrollTo({ top: 0 });
         return;
@@ -140,20 +155,19 @@ export function PlaySignup({
         </p>
       )}
       <h1 className="text-2xl font-bold text-slate-900">{copy.signup.heading}</h1>
-      <p className="mt-3 text-slate-700">{copy.signup.lead}</p>
-      <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">{earlyList ? copy.signup.earlyNote : copy.signup.openNote}</p>
-      <ol className="mt-5 list-decimal space-y-1 pl-5 text-sm text-slate-700">
+      <ol className="mt-3 list-decimal space-y-0.5 pl-5 text-sm text-slate-700">
         {copy.signup.howItWorks.map((line) => (
           <li key={line}>{line}</li>
         ))}
       </ol>
+      {earlyList && <p className="mt-3 rounded-lg bg-amber-50 px-3 py-1.5 text-sm text-amber-900">{copy.signup.earlyShort}</p>}
 
       {paused ? (
         <p role="status" className="mt-8 rounded-lg bg-slate-100 px-4 py-3 text-slate-800">
           {copy.signup.pausedNote}
         </p>
       ) : (
-        <form onSubmit={submit} noValidate className="mt-8 space-y-8">
+        <form onSubmit={submit} noValidate className="mt-6 space-y-8">
           {hasErrors && (
             <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">
               {formError ? copy.errors[formError] : copy.errorSummary}
@@ -165,9 +179,7 @@ export function PlaySignup({
             <Tick checked={adult} onChange={setAdult} label={copy.signup.adultLabel} error={keys.adult ? copy.errors.adult : undefined} />
             <Tick checked={consent} onChange={setConsent} label={copy.signup.consentLabel} error={keys.consent ? copy.errors.consent : undefined} />
             <p className="text-sm">
-              <Link href={PRIVACY_PATH} className="text-blue-700 underline">
-                {copy.signup.consentPolicy}
-              </Link>
+              <PolicyLink className="text-blue-700 underline">{copy.signup.consentPolicy}</PolicyLink>
             </p>
           </div>
 

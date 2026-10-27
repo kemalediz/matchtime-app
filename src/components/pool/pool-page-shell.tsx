@@ -2,13 +2,13 @@
 
 /**
  * The frame of a player pool page (slice L2): back link, language switch,
- * the card, the privacy link. The privacy policy page's switch, reused in
+ * the card, the privacy link (a new tab, so a form on the page is never left). The privacy policy page's switch, reused in
  * look and behaviour.
  */
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { LANGS, LANG_LABELS, type Lang } from "@/lib/i18n/lang";
-import { PRIVACY_PATH } from "@/lib/privacy-policy";
+import { PolicyLink } from "@/components/policy-link";
 import type { PoolPlayCopy } from "@/lib/i18n/pool-play";
 
 export function PoolPageShell({ lang, onLang, copy, children }: { lang: Lang; onLang: (l: Lang) => void; copy: PoolPlayCopy; children: ReactNode }) {
@@ -36,9 +36,7 @@ export function PoolPageShell({ lang, onLang, copy, children }: { lang: Lang; on
         </div>
         <div className="rounded-2xl border border-slate-200 bg-white px-4 py-6 sm:px-8 sm:py-8">{children}</div>
         <p className="mt-6 text-center text-sm">
-          <Link href={PRIVACY_PATH} className="text-blue-700 underline">
-            {copy.privacyLink}
-          </Link>
+          <PolicyLink className="text-blue-700 underline">{copy.privacyLink}</PolicyLink>
         </p>
       </main>
     </div>
