@@ -1,7 +1,8 @@
 "use client";
 
 /**
- * The hero's feature deck (variant E, 2026-10-26): eight cards in a
+ * The hero's feature deck (variant E, 2026-10-26; nine cards since round
+ * three, 2026-10-27): cards in a
  * horizontal scroll-snap row (swipe on touch), with prev and next buttons
  * and dots on every size, and arrow keys on the row.
  *
@@ -29,12 +30,15 @@ import {
   Scale,
   Shirt,
   Star,
+  TrendingUp,
   Trophy,
+  Users,
   X,
 } from "lucide-react";
 import { HERO_DECK, type DeckCard, type DeckKey } from "./landing-content";
 import { DISPLAY_FONT } from "./display-font";
 import { ChatDrawing, TickBadge } from "./chat-drawing";
+import { RateSketch, StatsSketch } from "./hero-deck-sketches";
 
 const PHONE_QUERY = "(max-width: 767px)";
 const CARDS: DeckCard[] = HERO_DECK.cards;
@@ -298,7 +302,7 @@ function CardVisual({ card }: { card: DeckCard }) {
       );
     case "short": {
       const tiles = [
-        { Icon: Armchair, label: v[0], box: "w-10 h-10 bg-violet-400/15 border-violet-400/40", icon: "text-violet-300", text: "text-violet-300" },
+        { Icon: Users, label: v[0], box: "w-10 h-10 bg-blue-400/15 border-blue-400/40", icon: "text-blue-300", text: "text-blue-300" },
         { Icon: Handshake, label: v[1], box: "w-10 h-10 bg-amber-400/10 border-amber-400/40", icon: "text-amber-300", text: "text-amber-300" },
         { Icon: MapPin, label: v[2], box: "w-[46px] h-[46px] bg-emerald-500/20 border-emerald-400/70 shadow-lg shadow-emerald-500/20", icon: "text-emerald-300", text: "text-emerald-300" },
       ];
@@ -337,6 +341,24 @@ function CardVisual({ card }: { card: DeckCard }) {
           <Pill tone="amber">
             <Trophy className="w-3.5 h-3.5" />
             {v[0]}
+          </Pill>
+        </span>
+      );
+    case "stats":
+      return (
+        <span className="flex items-center justify-center gap-3.5 w-full">
+          <span className="flex flex-col items-start gap-1">
+            <span className="text-3xl font-extrabold text-white leading-none" style={DISPLAY_FONT}>
+              {v[0]}
+            </span>
+            <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-300">
+              <TrendingUp className="w-3.5 h-3.5" />
+              {v[1]}
+            </span>
+          </span>
+          <Pill tone="amber">
+            <Trophy className="w-3.5 h-3.5" />
+            {v[2]}
           </Pill>
         </span>
       );
@@ -521,9 +543,11 @@ function DetailSheet({ card, id, onClose }: { card: DeckCard; id: string; onClos
 
 function Drawing({ card }: { card: DeckCard }) {
   if (card.settings) return <SettingsDrawing s={card.settings} />;
-  if (!card.chat) return null;
+  const sketch = card.sketch === "rate" ? <RateSketch /> : card.sketch === "stats" ? <StatsSketch /> : null;
+  if (!card.chat) return sketch;
   return (
-    <div className="w-full max-w-[360px]">
+    <div className="w-full max-w-[360px] flex flex-col items-center gap-5">
+      {sketch}
       <ChatDrawing chat={card.chat} />
     </div>
   );

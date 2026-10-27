@@ -116,8 +116,8 @@ test("phone menu: two labelled sections, For clubs and For players", async ({ pa
   expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
   await shot(page, "menu-390.png");
   // Tapping an anchor closes the menu and lands on the section.
-  await menu.getByRole("group", { name: "For clubs" }).getByRole("link", { name: "Partner clubs", exact: true }).click();
-  await expect(page).toHaveURL(/#partner-clubs$/);
+  await menu.getByRole("group", { name: "For clubs" }).getByRole("link", { name: "Short of players", exact: true }).click();
+  await expect(page).toHaveURL(/#short-of-players$/);
   await expect(menu).toBeHidden();
 });
 

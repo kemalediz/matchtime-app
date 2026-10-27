@@ -25,6 +25,11 @@ import {
   POOL_OFFER_CHAT,
   POOL_SITE_SOURCES,
   SPORTS,
+  SITE_META,
+  ATTENDANCE_FEATURE_KEYS,
+  MORE_FEATURES_INTRO,
+  RATE_SKETCH,
+  STATS_SKETCH,
   allNavLinks,
   poolOpeningLine,
   spotlightFor,
@@ -41,6 +46,8 @@ import { POOL_CAPS, POOL_MIN_AGE, POOL_QUIET_HOURS } from "@/lib/pool/rules";
 import { POOL_AFTER_PARTNERS_MINS } from "@/lib/pool/round-rules";
 import { SPORT_LEVELS, levelLabel } from "@/lib/pool/sports";
 import { poolOfferEn } from "@/lib/i18n/pool-offer.en";
+import { BADGES } from "@/lib/badge-rules";
+import { en as stringsEn } from "@/lib/i18n/strings.en";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
@@ -71,6 +78,10 @@ const ALL = copyStrings({
   PLAYERS_PAGE,
   PLAYER_STAT_CARDS,
   SPORTS,
+  SITE_META: { title: SITE_META.title, description: SITE_META.description, ogDescription: SITE_META.ogDescription },
+  MORE_FEATURES_INTRO,
+  RATE_SKETCH,
+  STATS_SKETCH: { ...STATS_SKETCH, badges: STATS_SKETCH.badges.map((b) => ({ ...b, emoji: undefined })) },
 });
 
 function spotlight(id: string): Spotlight {
@@ -127,7 +138,7 @@ describe("landing content: house rules", () => {
 
 describe("landing content: structure", () => {
   it("has the spotlight sections in order, each with a unique anchor", () => {
-    expect(LANDING_SPOTLIGHTS.map((s) => s.id)).toEqual(["player-pool", "partner-clubs", "admin-group", "your-way"]);
+    expect(LANDING_SPOTLIGHTS.map((s) => s.id)).toEqual(["short-of-players", "player-pool", "admin-group", "your-way"]);
     const ids = LANDING_SPOTLIGHTS.map((s) => s.id);
     expect(new Set(ids).size).toBe(ids.length);
   });
@@ -154,7 +165,7 @@ describe("landing content: structure", () => {
 });
 
 /** The home page's own anchors, and the public pages the menu may open. */
-const HOME_ANCHORS = new Set(["features", "player-stats", "ask", "how-it-works", "pricing", ...LANDING_SPOTLIGHTS.map((s) => s.id)]);
+const HOME_ANCHORS = new Set(["features", "more-features", "player-stats", "ask", "how-it-works", "pricing", ...LANDING_SPOTLIGHTS.map((s) => s.id)]);
 const MENU_PAGES = new Set(["/pricing", "/signup", "/help/player", "/help/admin", PLAYERS_PAGE_PATH, POOL_PLAY_PATH]);
 
 describe("landing content: the menu, one for clubs and one for players (Kemal, 2026-10-25)", () => {
@@ -170,7 +181,7 @@ describe("landing content: the menu, one for clubs and one for players (Kemal, 2
 
   it("clubs get the organiser sections, players get the pool, their stats and their guide", () => {
     const hrefs = (id: string) => LANDING_NAV_GROUPS.find((g) => g.id === id)!.links.map((l) => l.href);
-    expect(hrefs("clubs")).toEqual(["/#features", "/#partner-clubs", "/#admin-group", "/#how-it-works", "/pricing", "/help/admin"]);
+    expect(hrefs("clubs")).toEqual(["/#features", "/#short-of-players", "/#admin-group", "/#how-it-works", "/pricing", "/help/admin"]);
     expect(hrefs("players")).toEqual([PLAYERS_PAGE_PATH, "/#player-pool", "/#player-stats", "/help/player"]);
   });
 
@@ -203,12 +214,12 @@ describe("landing content: the menu, one for clubs and one for players (Kemal, 2
 });
 
 describe("landing content: every claim is present", () => {
-  it("partner clubs: how an ask works, step by step", () => {
-    expect(keysOf(spotlight("partner-clubs").steps)).toEqual(["find", "ask", "approve", "answer"]);
+  it("short of players: who is asked, in the order the code asks (Kemal, 2026-10-27)", () => {
+    expect(keysOf(spotlight("short-of-players").steps)).toEqual(["group", "partners", "pool", "yes"]);
   });
 
-  it("partner clubs: the privacy promises", () => {
-    expect(keysOf(spotlight("partner-clubs").note?.items)).toEqual([
+  it("short of players: the privacy promises", () => {
+    expect(keysOf(spotlight("short-of-players").note?.items)).toEqual([
       "numbers",
       "discovery",
       "consent",
@@ -218,16 +229,59 @@ describe("landing content: every claim is present", () => {
     ]);
   });
 
-  it("partner clubs: the benefit, filling missing places across groups", () => {
-    const s = spotlight("partner-clubs");
-    expect(`${s.title} ${s.lead}`).toMatch(/short/i);
-    expect(s.lead).toMatch(/partner club/i);
-    expect(keysOf(s.points)).toEqual(["fill", "guest", "both-ways"]);
+  it("short of players: the pain, then the chain, own group, partner clubs, then the player pool", () => {
+    const s = spotlight("short-of-players");
+    expect(s.title).toMatch(/short/i);
+    expect(s.lead).toMatch(/dropout|cancel/i);
+    const lead = s.lead;
+    const [group, partners, pool] = [lead.search(/your own group/), lead.search(/partner clubs/), lead.search(/player pool/)];
+    expect(group).toBeGreaterThanOrEqual(0);
+    expect(partners).toBeGreaterThan(group);
+    expect(pool).toBeGreaterThan(partners);
+    expect(keysOf(s.points)).toEqual(["find", "ask", "guest", "both-ways"]);
   });
 
-  it("partner clubs: an example ask that keeps the number private", () => {
-    const chat = spotlight("partner-clubs").chat;
+  it("short of players: the pool step is true to round-rules and matching-rules", () => {
+    const pool = spotlight("short-of-players").steps!.find((x) => x.key === "pool")!.body;
+    expect(POOL_AFTER_PARTNERS_MINS).toBe(60);
+    expect(pool).toMatch(/An hour after your partner clubs, or straight away if you have none/);
+    expect(pool).toMatch(/when they can play/);
+    expect(pool).toMatch(/how far they'll travel/);
+    expect(pool).toMatch(/on level only when you ask for one/);
+    const yes = spotlight("short-of-players").steps!.find((x) => x.key === "yes")!.body;
+    expect(yes).toMatch(/If the place is still open/);
+    expect(yes).toMatch(/on the bench where your organisers pick/);
+  });
+
+  it("short of players: says the pool is opening town by town, for adults", () => {
+    expect(spotlight("short-of-players").footnote).toContain(`opening town by town, for players ${POOL_MIN_AGE} and over`);
+  });
+
+  it("short of players: an example ask that keeps the number private", () => {
+    const chat = spotlight("short-of-players").chat;
     expect(chat?.lines.some((l) => /Your number is not shared/.test(l.text))).toBe(true);
+  });
+
+  it("never overclaims filling a squad", () => {
+    expect(ALL.filter((x) => /guarantee|never short|always (find|full)/i.test(x.text))).toEqual([]);
+  });
+
+  it("wherever filling a short squad is described, partner clubs AND the player pool are named (Kemal, 2026-10-27)", () => {
+    const chase = FEATURES.find((f) => f.key === "chase")!;
+    const shortCard = HERO_DECK.cards.find((c) => c.key === "short")!;
+    const organisers = PERSONAS[0].bullets.find((b) => /partner club/i.test(b))!;
+    for (const [where, text] of [
+      ["features chase", `${chase.title} ${chase.body}`],
+      ["deck short", shortCard.body],
+      ["section lead", spotlight("short-of-players").lead],
+      ["organisers persona", organisers],
+      ["meta description", SITE_META.description],
+      ["og description", SITE_META.ogDescription],
+    ] as const) {
+      expect(text, where).toMatch(/partner club/i);
+      expect(text, where).toMatch(/player pool|the pool/i);
+      expect(text.search(/partner club/i), where).toBeLessThan(text.search(/pool/i));
+    }
   });
 
   it("admin group: what organisers can do there", () => {
@@ -247,6 +301,11 @@ describe("landing content: every claim is present", () => {
 
   it("your way: the settings that fit how a group already plays", () => {
     expect(keysOf(spotlight("your-way").points)).toEqual(["rolling", "pick", "announce", "monthly", "language"]);
+  });
+
+  it("the features start with attendance, then short of players, then the bench (Kemal, 2026-10-27)", () => {
+    expect(keysOf(FEATURES).slice(0, 3)).toEqual(["in-out", "chase", "bench"]);
+    expect([...ATTENDANCE_FEATURE_KEYS]).toEqual(["in-out", "chase", "bench"]);
   });
 
   it("the features grid still covers the weekly cycle", () => {
@@ -368,7 +427,7 @@ describe("landing content: the player pool (G0 part 2)", () => {
   it("spotlightFor adds the opening line to the pool section only", () => {
     expect(spotlightFor(s, false).lead).toBe(`${s.lead} ${poolOpeningLine(false)}`);
     expect(spotlightFor(s, true).lead).toBe(`${s.lead} ${poolOpeningLine(true)}`);
-    const other = spotlight("partner-clubs");
+    const other = spotlight("short-of-players");
     expect(spotlightFor(other, true)).toBe(other);
   });
 
@@ -451,8 +510,8 @@ describe("landing content: the players' page (/players)", () => {
 });
 
 describe("landing content: numbers come from the rules that enforce them", () => {
-  const limits = spotlight("partner-clubs").note!.items.find((i) => i.key === "limits")!.text;
-  const find = spotlight("partner-clubs").steps!.find((i) => i.key === "find")!.body;
+  const limits = spotlight("short-of-players").note!.items.find((i) => i.key === "limits")!.text;
+  const find = spotlight("short-of-players").points.find((i) => i.key === "find")!.body;
 
   it("the cut-off before kickoff", () => {
     expect(limits).toContain(`${PARTNER_ASK_CUTOFF_DEFAULT_HOURS} hours before kickoff`);
@@ -480,8 +539,8 @@ describe("landing content: the hero and its feature deck (variant E, 2026-10-26)
     }
   });
 
-  it("has eight cards, in order, each with a title, a line and details", () => {
-    expect(HERO_DECK.cards.map((c) => c.key)).toEqual(["att", "bench", "short", "teams", "ratings", "fees", "admin", "lang"]);
+  it("has nine cards, in order, the short-of-players card second, each with a title, a line and details", () => {
+    expect(HERO_DECK.cards.map((c) => c.key)).toEqual(["att", "short", "bench", "teams", "ratings", "stats", "fees", "admin", "lang"]);
     for (const c of HERO_DECK.cards) {
       expect(c.title.length).toBeGreaterThan(3);
       expect(c.body.length).toBeGreaterThan(10);
@@ -489,10 +548,11 @@ describe("landing content: the hero and its feature deck (variant E, 2026-10-26)
     }
     expect(HERO_DECK.cards.map((c) => c.title)).toEqual([
       "Who's in, counted",
+      "Dropouts? It asks around",
       "The bench steps in",
-      "Still short? It asks around",
       "Fair teams, on request",
       "Ratings and Man of the Match",
+      "Track your progress",
       "Match fees, collected",
       "Your organisers' own chat",
       "Speaks your group's language",
@@ -503,7 +563,8 @@ describe("landing content: the hero and its feature deck (variant E, 2026-10-26)
     expect(HERO.titleLead).toBe("Your players WhatsApp.");
     expect(HERO.titleTail).toBe("MatchTime runs the game.");
     expect(HERO.pill).toBe("For weekly football groups");
-    expect(HERO.ticks).toEqual(["No app for players"]);
+    expect(HERO).not.toHaveProperty("ticks");
+    expect(HERO.line).toBe("Who's in, the bench, fair teams, and nearby players when you're short. All in your group chat.");
     expect(HERO.secondary.href).toBe("#how-it-works");
   });
 
@@ -546,7 +607,7 @@ describe("landing content: the hero and its feature deck (variant E, 2026-10-26)
     expect(POOL_AFTER_PARTNERS_MINS).toBe(60);
     expect(short.details.join(" ")).toMatch(/an hour later, or straight away if you have no partner clubs/);
     expect(short.details.join(" ")).toMatch(/opening town by town/);
-    expect(short.steps!.map((s) => s.title)).toEqual(["1. Bench", "2. Partner clubs", "3. Player pool"]);
+    expect(short.steps!.map((s) => s.title)).toEqual(["1. Your group", "2. Partner clubs", "3. Player pool"]);
     expect(short.steps!.filter((s) => s.highlight).map((s) => s.title)).toEqual(["3. Player pool"]);
   });
 
@@ -579,6 +640,39 @@ describe("landing content: the hero and its feature deck (variant E, 2026-10-26)
   it("the Still short card draws the chain and the pool's real offer", () => {
     const short = HERO_DECK.cards.find((c) => c.key === "short")!;
     expect(short.chat).toBe(POOL_OFFER_CHAT);
-    expect(short.body).toMatch(/^Bench first, then partner clubs, then local players from the pool\.$/);
+    expect(short.body).toBe("Your group first, then partner clubs, then local players from the pool.");
+    expect(short.details.join(" ")).toMatch(/on level only when you ask for one/);
+    expect(short.details.join(" ")).toMatch(/if it's still open, or the bench where your organisers pick/);
+  });
+
+  it("the ratings card draws the real rating page: its title, prompt, the 1 to 10 scores, the Man of the Match box and the button", () => {
+    const src = readFileSync(path.join(process.cwd(), "src/app/matches/[matchId]/rate/page.tsx"), "utf8");
+    expect(HERO_DECK.cards.find((c) => c.key === "ratings")!.sketch).toBe("rate");
+    for (const label of [RATE_SKETCH.title, RATE_SKETCH.submit, "Tap a score for each player, then pick", "Man of the Match", "See my season stats"]) expect(src, label).toContain(label);
+    expect(RATE_SKETCH.prompt).toBe("Tap a score for each player, then pick Man of the Match.");
+    expect(RATE_SKETCH.scores).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    expect(RATE_SKETCH.players.every((p) => ["GK", "DEF", "MID", "FWD"].includes(p.position))).toBe(true);
+    expect(RATE_SKETCH.players.map((p) => p.name)).toContain(RATE_SKETCH.momPick);
+  });
+
+  it("the progress card draws the real stats page, badges included, from the badge catalogue", () => {
+    const src = readFileSync(path.join(process.cwd(), "src/app/profile/stats/page.tsx"), "utf8");
+    const statsSrc = readFileSync(path.join(process.cwd(), "src/lib/player-stats.ts"), "utf8");
+    const card = HERO_DECK.cards.find((c) => c.key === "stats")!;
+    expect(card.sketch).toBe("stats");
+    expect(copyStrings(card).map((x) => x.text).join(" ")).toMatch(/badge/i);
+    for (const label of ["since launch", "Man of the Match", "Games played", "attendance", "W-D-L", "Current form", "On fire", "last 5 games", "Ratings over time", "Chemistry", "Best partnership", "win rate together", "Badges", "vs squad"]) {
+      expect(src, label).toContain(label);
+    }
+    expect(STATS_SKETCH.clubRatingLabel).toBe(stringsEn.rating_club_label({ orgName: STATS_SKETCH.club }));
+    expect(STATS_SKETCH.clubRatingTile).toBe(stringsEn.rating_club_tile);
+    expect(STATS_SKETCH.badges.map((b) => b.key)).toEqual(BADGES.map((b) => b.key));
+    for (const b of STATS_SKETCH.badges) {
+      const meta = BADGES.find((x) => x.key === b.key)!;
+      expect(b.label).toBe(meta.label);
+      expect(b.emoji).toBe(meta.emoji);
+      expect(statsSrc, b.key).toContain(`hint: "${b.hint}"`);
+    }
+    expect(STATS_SKETCH.badges.some((b) => !b.earned)).toBe(true);
   });
 });

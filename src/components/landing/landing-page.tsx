@@ -5,8 +5,10 @@ import { firstMonthsFree } from "@/lib/i18n/free-period";
 import { CONNECT_HOW_LONG, holdHowItWorksSentence } from "@/lib/setup-hold-public-copy";
 import {
   ASK_CHAT,
+  ATTENDANCE_FEATURE_KEYS,
   FEATURES,
   FEATURES_INTRO,
+  MORE_FEATURES_INTRO,
   LANDING_SPOTLIGHTS,
   PERSONAS,
   PLAYER_STAT_CARDS,
@@ -38,8 +40,8 @@ import { tightStops } from "./tight-stops";
  * happens in app/page.tsx). Everything here is presentational: no auth
  * state, no data fetching.
  *
- * The feature lists and the spotlight sections (partner clubs, the admin
- * group, the settings) are data in `landing-content.ts`, laid out by the
+ * The feature lists and the spotlight sections (short of players, the
+ * player pool, the admin group, the settings) are data in `landing-content.ts`, laid out by the
  * shared components in `landing-sections.tsx`. A new spotlight section is
  * one entry in `LANDING_SPOTLIGHTS`. The price lives in pricing-section.tsx
  * (the /pricing page; a teaser here). The hero's words are `HERO` and its
@@ -62,6 +64,9 @@ import { tightStops } from "./tight-stops";
  * (`setupHoldEnabledForRequest`). On, step 2 gains the one sentence about
  * waiting for GO; off, the page reads as it always did.
  */
+const ATTENDANCE_FEATURES = ATTENDANCE_FEATURE_KEYS.map((k) => FEATURES.find((f) => f.key === k)!);
+const MORE_FEATURES = FEATURES.filter((f) => !(ATTENDANCE_FEATURE_KEYS as readonly string[]).includes(f.key));
+
 export function LandingPage({ holdOn = false, earlyList = true }: { holdOn?: boolean; earlyList?: boolean } = {}) {
   const holdSentence = holdHowItWorksSentence(holdOn);
   const steps: Step[] = [
@@ -87,9 +92,9 @@ export function LandingPage({ holdOn = false, earlyList = true }: { holdOn?: boo
       {/* ── Top bar: For clubs and For players menus (landing-nav.tsx) ── */}
       <LandingHeader onHome />
 
-      {/* ── Hero (variant E): the headline, one line, the buttons, one tick,
-          then the feature deck (hero-deck.tsx). No pricing here: the
-          teaser further down and /pricing carry it. ───────────────── */}
+      {/* ── Hero (variant E): the headline, one line, the buttons, the
+          players' card, then the feature deck (hero-deck.tsx). No pricing
+          here: the teaser further down and /pricing carry it. ──────── */}
       <section id="hero" className="relative pt-[88px] pb-14 sm:pt-28 sm:pb-20 px-5 sm:px-8">
         <div className="absolute inset-0 bg-gradient-to-b from-slate-950 via-blue-950 to-slate-950" />
         <div
@@ -123,7 +128,12 @@ export function LandingPage({ holdOn = false, earlyList = true }: { holdOn?: boo
               style={DISPLAY_FONT}
             >
               <span className="block">{tightStops(HERO.titleLead)}</span>
-              <span className="block bg-gradient-to-r from-blue-400 via-teal-300 to-emerald-400 bg-clip-text text-transparent">
+              {/* background-clip: text paints only inside the box, and at this
+                  tight line-height the box ends above the "g" of "game"
+                  (measured 2026-10-27: its ink ran 2px below at 36px). The
+                  padding grows the painted box over the descenders; the
+                  negative margin keeps the layout where it was. */}
+              <span className="block pb-[0.15em] -mb-[0.15em] bg-gradient-to-r from-blue-400 via-teal-300 to-emerald-400 bg-clip-text text-transparent">
                 {tightStops(HERO.titleTail)}
               </span>
             </h1>
@@ -143,14 +153,6 @@ export function LandingPage({ holdOn = false, earlyList = true }: { holdOn?: boo
                 {HERO.secondary.label}
               </Link>
             </div>
-            <ul aria-label="Good to know" className="flex flex-wrap gap-x-4 gap-y-2">
-              {HERO.ticks.map((t) => (
-                <li key={t} className="inline-flex items-center gap-1.5 text-sm text-slate-200">
-                  <Check className="w-4 h-4 text-emerald-400" aria-hidden="true" />
-                  {t}
-                </li>
-              ))}
-            </ul>
           </div>
 
           {/* Players: the pool's card, on the first screen, above the deck. */}
@@ -160,27 +162,46 @@ export function LandingPage({ holdOn = false, earlyList = true }: { holdOn?: boo
         </div>
       </section>
 
-      {/* ── The player pool: the first section after the hero (round two) ── */}
-      {LANDING_SPOTLIGHTS.filter((s) => s.id === "player-pool").map((s) => (
-        <PoolSpotlightSection key={s.id} s={spotlightFor(s, earlyList)} />
-      ))}
-
-      {/* ── Features grid ─────────────────────────────────────────────── */}
+      {/* ── Round three (Kemal, 2026-10-27): attendance first (who's in,
+          short of players, the bench), then the short-of-players story for
+          clubs, then the players' pool pitch, then the rest. ────────── */}
       <section
         id="features"
         aria-labelledby="features-heading"
-        className="relative py-24 sm:py-32 px-5 sm:px-8 bg-slate-50 text-slate-800"
+        className="relative py-16 sm:py-28 px-5 sm:px-8 bg-slate-50 text-slate-800"
       >
         <div className="max-w-6xl mx-auto">
           <SectionIntro id="features-heading" eyebrow={FEATURES_INTRO.eyebrow} title={FEATURES_INTRO.title} lead={FEATURES_INTRO.lead} />
-          <div className="mt-16">
-            <CardGrid cards={FEATURES} />
+          <div className="mt-10 sm:mt-14">
+            <CardGrid cards={ATTENDANCE_FEATURES} />
           </div>
         </div>
       </section>
 
-      {/* ── Spotlights: partner clubs, the admin group, the settings ── */}
-      {LANDING_SPOTLIGHTS.filter((s) => s.id !== "player-pool").map((s) => (
+      {/* ── Short of players (clubs), then the player pool (players) ── */}
+      {LANDING_SPOTLIGHTS.filter((s) => s.id === "short-of-players").map((s) => (
+        <SpotlightSection key={s.id} s={spotlightFor(s, earlyList)} />
+      ))}
+      {LANDING_SPOTLIGHTS.filter((s) => s.id === "player-pool").map((s) => (
+        <PoolSpotlightSection key={s.id} s={spotlightFor(s, earlyList)} />
+      ))}
+
+      {/* ── The rest of the features ─────────────────────────────────── */}
+      <section
+        id="more-features"
+        aria-labelledby="more-features-heading"
+        className="relative py-24 sm:py-32 px-5 sm:px-8 bg-slate-50 text-slate-800"
+      >
+        <div className="max-w-6xl mx-auto">
+          <SectionIntro id="more-features-heading" eyebrow={MORE_FEATURES_INTRO.eyebrow} title={MORE_FEATURES_INTRO.title} />
+          <div className="mt-16">
+            <CardGrid cards={MORE_FEATURES} />
+          </div>
+        </div>
+      </section>
+
+      {/* ── Spotlights: the admin group, the settings ── */}
+      {LANDING_SPOTLIGHTS.filter((s) => s.id === "admin-group" || s.id === "your-way").map((s) => (
         <SpotlightSection key={s.id} s={spotlightFor(s, earlyList)} />
       ))}
 
@@ -419,7 +440,7 @@ export function LandingPage({ holdOn = false, earlyList = true }: { holdOn?: boo
             applicationCategory: "SportsApplication",
             operatingSystem: "Web, WhatsApp",
             description:
-              "MatchTime lives in your WhatsApp group and runs your weekly football: attendance, the bench, chasing, partner clubs nearby to fill a missing place, an admin group for organisers, balanced teams, ratings, Man of the Match and optional card or bank payments.",
+              "MatchTime lives in your WhatsApp group and runs your weekly football: attendance, the bench, chasing, partner clubs nearby and then the MatchTime player pool to fill a missing place, an admin group for organisers, balanced teams, ratings, Man of the Match and optional card or bank payments.",
             url: "https://matchtime.ai",
             publisher: {
               "@type": "Organization",

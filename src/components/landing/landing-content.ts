@@ -21,8 +21,14 @@
  * same component as the others, and the nav picks it up. Nothing else
  * changes.
  *
- * THE PLAYER POOL (G0 part 2, with slice L2): its section is the first
- * spotlight and carries the "Join the MatchTime player pool" invitation,
+ * PAGE ORDER (round three, Kemal 2026-10-27): the hero, the attendance
+ * cards (`ATTENDANCE_FEATURE_KEYS`: who's in, short of players, the bench),
+ * the short-of-players story for clubs (`SHORT_OF_PLAYERS`: own group,
+ * partner clubs, then the player pool), the players' pool pitch, then the
+ * rest of the features and the other spotlights.
+ *
+ * THE PLAYER POOL (G0 part 2, with slice L2): its section follows the
+ * short-of-players one and carries the "Join the MatchTime player pool" invitation,
  * a button to /play. Whether a sign-up goes on the early sign-up list is
  * the server's switch, so the line that says so is added by the page
  * (`spotlightFor`, `poolOpeningLine`), never baked into the lead.
@@ -50,6 +56,10 @@ import { poolOfferEn } from "@/lib/i18n/pool-offer.en";
 // (src/lib/pool/sports.ts). The lines below say "football" in plain words;
 // when another sport is switched on there, reword them here (and only here:
 // src/app/layout.tsx and the hero read them).
+
+/** The pool is asked this long after partner clubs (pool/round-rules.ts). */
+const POOL_AFTER = POOL_AFTER_PARTNERS_MINS === 60 ? "an hour" : `${POOL_AFTER_PARTNERS_MINS} minutes`;
+const POOL_AFTER_CAP = POOL_AFTER.charAt(0).toUpperCase() + POOL_AFTER.slice(1);
 
 /** "A, B or C". */
 function joinWords(words: readonly string[], last: "and" | "or"): string {
@@ -88,8 +98,8 @@ const FORMAT_KEYWORDS: string[] = liveSports().flatMap((s) => s.formats.map((n) 
 export const SITE_META = {
   title: "MatchTime: run your weekly football on autopilot",
   description:
-    "MatchTime lives in your WhatsApp group and runs your weekly football: it tracks who's in, runs the bench, chases when you're short, balances teams on request, and collects ratings and Man of the Match votes.",
-  ogDescription: `WhatsApp organiser for weekly ${liveFormatsPhrase()}: who's in, the bench, balanced teams, ratings and Man of the Match.`,
+    "MatchTime lives in your WhatsApp group and runs your weekly football: it tracks who's in, runs the bench, asks partner clubs and then the MatchTime player pool when you're short, balances teams on request, and collects ratings and Man of the Match votes.",
+  ogDescription: `WhatsApp organiser for weekly ${liveFormatsPhrase()}: who's in, the bench, fair teams, and players from partner clubs and the pool when you're short.`,
   keywords: [
     "football team management",
     ...FORMAT_KEYWORDS,
@@ -104,18 +114,19 @@ export const SITE_META = {
 
 /**
  * The home page's hero (variant E, 2026-10-26): a pill, the headline, one
- * line, the two buttons, a single tick, then the feature deck
- * (`HERO_DECK`). No pricing here (Kemal: pricing belongs on the pricing
- * page; the teaser further down and /pricing carry it).
+ * line, the two buttons, then the players' card and the feature deck
+ * (`HERO_DECK`). The tick row ("No app for players") went in round three
+ * (Kemal, 2026-10-27); the line hints at the short-of-players story. No
+ * pricing here (Kemal: pricing belongs on the pricing page; the teaser
+ * further down and /pricing carry it).
  */
 export const HERO = {
   pill: "For weekly football groups",
   titleLead: "Your players WhatsApp.",
   titleTail: "MatchTime runs the game.",
-  line: "Who's in, the bench and fair teams, sorted right in your group chat.",
+  line: "Who's in, the bench, fair teams, and nearby players when you're short. All in your group chat.",
   primary: { label: "Start your group", href: "/signup" } satisfies NavLink,
   secondary: { label: "See how it works", href: "#how-it-works" } satisfies NavLink,
-  ticks: ["No app for players"],
 };
 import { poolPageCopy } from "@/lib/pool/page-copy";
 
@@ -259,10 +270,20 @@ const poolJoinHref = (code: string) => `${POOL_PLAY_PATH}?src=${code}`;
 
 // ─── The features grid ("Why MatchTime") ───────────────────────────────
 
+/** The first three features, shown straight after the hero as the
+ *  attendance section (round three): who's in, short of players, the
+ *  bench. The rest follow the player pool under `MORE_FEATURES_INTRO`. */
+export const ATTENDANCE_FEATURE_KEYS = ["in-out", "chase", "bench"] as const;
+
+export const MORE_FEATURES_INTRO = {
+  eyebrow: "Every week",
+  title: "Teams, ratings, payments and the rest.",
+};
+
 export const FEATURES_INTRO = {
   eyebrow: "Why MatchTime",
   title: "The boring admin, done for you.",
-  lead: "Counting names, chasing late replies, sorting the bench, picking fair teams, collecting the money. MatchTime does it in the group you already use, and stays quiet the rest of the time.",
+  lead: "Counting names, chasing late replies, filling the place when someone drops out. MatchTime does it in the group you already use, and stays quiet the rest of the time.",
 };
 
 export const FEATURES: Card[] = [
@@ -274,19 +295,22 @@ export const FEATURES: Card[] = [
     body: "Players say In or Out the way they always have. MatchTime ticks each one with ✅ and keeps the squad list. Say “maybe” and it checks back with you by DM a day before kickoff.",
   },
   {
+    // Short of players, second (Kemal, 2026-10-27): the chase (daily
+    // update, match morning, last hours), then partner-ask.ts, then the
+    // pool (pool/round-rules.ts, partners first). Told in full in the
+    // short-of-players section below.
+    key: "chase",
+    color: "rose",
+    icon: "zap",
+    title: "Short of players? It asks around",
+    body: "Someone drops out and nobody's on the bench? MatchTime asks your group in its updates and stops the moment you're full. Then it can ask your partner clubs, and after them nearby players from the MatchTime player pool.",
+  },
+  {
     key: "bench",
     color: "purple",
     icon: "users",
     title: "Runs the bench",
     body: "When the squad is full, late Ins go on the bench 🪑. When someone drops, the bench is offered the spot in the group and by DM, and the first to claim it plays.",
-  },
-  {
-    // Still short after the bench: partner-ask.ts (the automatic ask, slice S5).
-    key: "chase",
-    color: "rose",
-    icon: "zap",
-    title: "Chases when short, stops when full",
-    body: "Short of players? MatchTime asks the group in its daily update, on match morning and in the last hours before kickoff. The moment you're full, it stops. Admins can also ask it to invite recent players by DM, or ask a partner club for a player.",
   },
   {
     key: "teams",
@@ -355,56 +379,76 @@ export const FEATURES: Card[] = [
 
 // ─── Spotlight sections ────────────────────────────────────────────────
 
-const PARTNER_CLUBS: Spotlight = {
-  id: "partner-clubs",
-  navLabel: "Partner clubs",
+/**
+ * SHORT OF PLAYERS (round three, Kemal 2026-10-27: "most clubs suffer from
+ * missing players for matches and cancellations"). One story for clubs,
+ * straight after the attendance cards: the pain, then who MatchTime asks,
+ * in the order the code asks. The chase (daily update, match morning, last
+ * hours) and the bench; then partner clubs (club-partnership-rules.ts,
+ * partner-ask.ts, partner-guest.ts); then the pool (pool/round-rules.ts
+ * POOL_AFTER_PARTNERS_MINS and wave1DueAt: an hour after a partner ask of
+ * the same round, at once when none is open; pool/matching-rules.ts:
+ * availability, travel distance, level only when the ask names levels);
+ * then a yes (pool/accept.ts: the place while it is open, or the bench
+ * where the organisers pick). It replaced the partner clubs section, whose
+ * how-to became the points.
+ */
+const SHORT_OF_PLAYERS: Spotlight = {
+  id: "short-of-players",
+  navLabel: "Short of players",
   navGroup: "clubs",
   tone: "dark",
-  eyebrow: "Partner clubs",
-  title: "A player short? Ask the club down the road.",
-  // club-partnership-rules.ts (pairings), partner-ask.ts (the ask),
-  // partner-guest.ts (a partner's player joins as a guest).
-  lead: "Clubs that play near each other can become partner clubs and help fill each other's missing places. When your squad is still short, MatchTime asks a partner club's players' group for you, and one of their players comes to play your game. No ringing round other groups yourself.",
-  stepsLabel: "How an ask works",
+  eyebrow: "Dropouts and cancellations",
+  title: "Short of players? MatchTime asks around.",
+  lead: "Late dropouts are how weekly games get called off. When a place is still open, MatchTime asks your own group first, then your partner clubs, then nearby players from the MatchTime player pool. All on WhatsApp, and no ringing round other groups yourself.",
+  stepsLabel: "Who MatchTime asks, in order",
   steps: [
     {
-      // club-discovery-rules.ts RADIUS_PRESETS_MILES and MAX_RADIUS_MILES;
-      // club-partnership-rules.ts header: a request, accepted by an owner or admin.
-      key: "find",
-      title: "Find clubs near you",
-      body: `Search for clubs that play up to ${MAX_RADIUS_MILES} miles from your venue and send them a request. Once one of their owners or admins accepts, you can ask them for players.`,
+      // FEATURES chase; strings.en.ts bench_offer_group_post.
+      key: "group",
+      title: "Your own group first",
+      body: "MatchTime asks the group in its daily update, on match morning and in the last hours before kickoff, and offers a dropped place to your bench. The moment you're full, it stops.",
     },
     {
-      // settings-info.ts partnerAskWhen ("When we ask", "Automatically at a time");
-      // strings.en.ts xaskw_* (asked in an organiser's own words, slice S6);
-      // partner-ask-round.ts (the number is for the whole round).
-      key: "ask",
-      title: "Ask when you're short",
-      body: "Ask from the match page, or just tell MatchTime in your own words. You can also let it ask by itself on match day when a place is still open and nobody is on your bench. You say how many players you need, in total across the clubs you ask.",
+      // partner-ask.ts; settings-info.ts partnerApproval; strings.en.ts
+      // xask_post; partner-guest.ts (every answer is a DM).
+      key: "partners",
+      title: "Then your partner clubs",
+      body: "MatchTime posts your ask in a partner club's players' group, with the day, time, venue and format. Each club decides whether its organisers check every ask first, and their players answer privately.",
     },
     {
-      // settings-info.ts partnerApproval ("Ask our organisers each time",
-      // "Post without asking"); strings.en.ts xask_post.
-      key: "approve",
-      title: "Their organisers say yes",
-      body: "Each club decides whether its organisers check every ask first or let asks through straight away. Then MatchTime posts your ask in their players' group, with the day, time, venue and format.",
+      // pool/round-rules.ts wave1DueAt; pool/matching-rules.ts candidateExclusion.
+      key: "pool",
+      title: "Then the local player pool",
+      body: `${POOL_AFTER_CAP} after your partner clubs, or straight away if you have none, nearby players from the MatchTime player pool get the offer by private message. They're matched on when they can play and how far they'll travel, and on level only when you ask for one.`,
     },
     {
-      // partner-guest.ts header (every answer is a DM; the asking club's own
-      // rule decides who plays); strings.en.ts xask_filled_line, xask_thanks_dm.
-      key: "answer",
-      title: "A player answers privately",
-      body: "Players reply to MatchTime by private message, so the partner's group stays quiet. Whoever answers joins your game as a guest for that match. Once the place is filled, MatchTime closes the ask and thanks everyone who offered.",
+      // partner-guest.ts; pool/accept.ts placed.kind "bench"; partner-ask.ts
+      // sweepPartnerAsks (closes when filled); strings.en.ts xask_thanks_dm.
+      key: "yes",
+      title: "A yes takes the place",
+      body: "If the place is still open, the player joins your game as a guest for that match, or goes on the bench where your organisers pick. Once you're full, MatchTime closes the ask and thanks everyone who offered.",
     },
   ],
   points: [
     {
-      // partner-ask.ts sweepPartnerAsks: the ask closes when filled.
-      key: "fill",
-      icon: "users",
-      color: "teal",
-      title: "Fewer games played a player short",
-      body: "The bench and your own group come first. When they can't fill a place, a club nearby often can.",
+      // club-discovery-rules.ts RADIUS_PRESETS_MILES and MAX_RADIUS_MILES;
+      // club-partnership-rules.ts header: a request, accepted by an owner or admin.
+      key: "find",
+      icon: "map-pin",
+      color: "amber",
+      title: "Find partner clubs near you",
+      body: `Search for clubs that play up to ${MAX_RADIUS_MILES} miles from your venue and send them a request. Once one of their owners or admins accepts, you can ask them for players.`,
+    },
+    {
+      // settings-info.ts partnerAskWhen ("Automatically at a time") and
+      // poolAutoAsk; strings.en.ts xaskw_* (own words); partner-ask-round.ts
+      // (partner and pool guests count towards one number).
+      key: "ask",
+      icon: "zap",
+      color: "rose",
+      title: "Ask with a tap, or let it ask",
+      body: "Ask from the match page, or just tell MatchTime in your own words. You can also let it ask by itself on match day when a place is still open and nobody is on your bench. You say how many players you need, for the whole round.",
     },
     {
       // partner-guest.ts: a guest membership; organiser-pick.ts and
@@ -429,7 +473,11 @@ const PARTNER_CLUBS: Spotlight = {
     items: [
       // strings.en.ts xask_post ("Your number is not shared");
       // settings-info.ts partnerClubs.together.
-      { key: "numbers", text: "Phone numbers are never shared between clubs. The asking club sees a guest's name and club, never their number." },
+      // Pool: plan section 6 (first name and last initial, only after a yes).
+      {
+        key: "numbers",
+        text: "Phone numbers are never shared between clubs, and MatchTime never gives you a pool player's number. You see a partner guest's name and club, and a pool player's first name and surname initial once they say yes.",
+      },
       // strings.en.ts fc_confirm_sees.
       {
         key: "discovery",
@@ -462,7 +510,8 @@ const PARTNER_CLUBS: Spotlight = {
       { from: "bot", text: "✅ Thanks Sam, you're in for Riverside FC: Tue 20 Oct, 20:00." },
     ],
   },
-  footnote: "Partner clubs are set up from your club's settings, and nothing is asked until both clubs agree.",
+  // pool/rules.ts POOL_MIN_AGE; the pool opens town by town.
+  footnote: `Partner clubs are set up from your club's settings, and nothing is asked of a partner club until both clubs agree. The player pool is opening town by town, for players ${POOL_MIN_AGE} and over.`,
 };
 
 const ADMIN_GROUP: Spotlight = {
@@ -774,7 +823,7 @@ export function spotlightFor(s: Spotlight, earlyList: boolean): Spotlight {
  * The spotlight sections, in page order. One entry per section; the menu
  * follows.
  */
-export const LANDING_SPOTLIGHTS: Spotlight[] = [PLAYER_POOL, PARTNER_CLUBS, ADMIN_GROUP, YOUR_WAY];
+export const LANDING_SPOTLIGHTS: Spotlight[] = [SHORT_OF_PLAYERS, PLAYER_POOL, ADMIN_GROUP, YOUR_WAY];
 
 // ─── Ask MatchTime anything ────────────────────────────────────────────
 
@@ -811,7 +860,7 @@ export const PERSONAS: Array<{ role: string; bullets: string[] }> = [
     bullets: [
       "No more counting ‘IN’ messages or chasing late replies",
       "A bench that sorts itself out when someone drops",
-      "Partner clubs nearby to fill a place when you're still short",
+      "Partner clubs nearby, then the MatchTime player pool, to fill a place when you're still short",
       "An admin group where organisers run the week in their own words",
       "Balanced teams when you ask, instead of arguing over picks",
       "Attendance, ratings and payments logged for you",
@@ -825,7 +874,7 @@ export const PERSONAS: Array<{ role: string; bullets: string[] }> = [
       "Your own stats page: rating over time, MoMs, wins, chemistry and badges",
       "A live leaderboard, Team of the Season and a season card to share",
       "Ask @Match Time about your matches, right in the group",
-      "The odd extra game with a partner club nearby, if you want one",
+      "Extra games nearby, with a partner club or through the player pool, if you want them",
     ],
   },
 ];
@@ -873,7 +922,7 @@ export const HERO_POOL_INVITE = {
  * each), with a fictional club and the emoji left out. A `link` is drawn
  * as a link chip, never a real address.
  */
-export type DeckKey = "att" | "bench" | "short" | "teams" | "ratings" | "fees" | "admin" | "lang";
+export type DeckKey = "att" | "short" | "bench" | "teams" | "ratings" | "stats" | "fees" | "admin" | "lang";
 
 export interface DeckLine {
   /** player: someone in the group; bot: MatchTime; self: the reader. */
@@ -909,10 +958,75 @@ export interface DeckCard {
   steps?: Array<{ title: string; sub: string; highlight?: boolean }>;
   /** Where the club's language applies (the language card). */
   settings?: { title: string; value: string; items: string[] };
+  /** A drawing of a real page: the rating page (`RATE_SKETCH`) or the
+   *  player's stats page (`STATS_SKETCH`), in hero-deck-sketches.tsx. */
+  sketch?: "rate" | "stats";
 }
 
-const POOL_AFTER = POOL_AFTER_PARTNERS_MINS === 60 ? "an hour" : `${POOL_AFTER_PARTNERS_MINS} minutes`;
-const POOL_AFTER_CAP = POOL_AFTER.charAt(0).toUpperCase() + POOL_AFTER.slice(1);
+// ─── The two page drawings in the deck (round three, 2026-10-27) ──────
+
+/**
+ * The rating page a player opens from his private link
+ * (src/app/matches/[matchId]/rate/page.tsx): the title and prompt, one card
+ * per teammate with his first position and a 1 to 10 score row (6 is the
+ * page's starting score), the Man of the Match box (two columns of names,
+ * the pick starred), "Submit ratings" and "See my season stats". The
+ * reader is Leo rating three of the Thursday 7-a-side; his MoM pick is Kai,
+ * the deck's winner. Fictional names.
+ */
+export const RATE_SKETCH = {
+  title: "Rate players",
+  prompt: "Tap a score for each player, then pick Man of the Match.",
+  scores: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+  players: [
+    { name: "Kai", position: "FWD", score: 9 },
+    { name: "Sam", position: "MID", score: 7 },
+    { name: "Priya", position: "DEF", score: 6 },
+  ],
+  mom: "Man of the Match",
+  momPick: "Kai",
+  submit: "Submit ratings",
+  seeStats: "See my season stats",
+};
+
+/**
+ * A player's stats page (src/app/profile/stats/page.tsx, built by
+ * src/lib/player-stats.ts), top to bottom as the page shows it: the
+ * season heading, the club rating (strings.en.ts rating_club_label,
+ * rating_club_tile), the four tiles, Current form, Ratings over time (his
+ * line against the squad's), Chemistry, then Badges with the earned count.
+ * The badges are the catalogue (badge-rules.ts BADGES: key, emoji, name)
+ * with player-stats.ts's own hints; unearned ones are drawn greyed, as on
+ * the page. Kai's numbers are invented.
+ */
+export const STATS_SKETCH = {
+  heading: "Kai's season",
+  club: "Riverside FC",
+  sub: "Riverside FC · since launch",
+  clubRatingLabel: "Your rating at Riverside FC",
+  clubRatingTile: "Club rating",
+  tiles: [
+    { big: "7.6", label: "Club rating", sub: "+9% vs squad", tone: "green" },
+    { big: "3", label: "Man of the Match", sub: "", tone: "amber" },
+    { big: "24", label: "Games played", sub: "89% attendance", tone: "blue" },
+    { big: "14-3-7", label: "W-D-L", sub: "GD +21", tone: "slate" },
+  ],
+  form: { label: "Current form", value: "On fire", avg: "8.1", sub: "last 5 games" },
+  timeline: { title: "Ratings over time", you: [6.8, 7.1, 7.0, 7.5, 7.4, 8.0, 8.3], squad: [6.9, 6.8, 7.0, 6.9, 7.0, 6.9, 7.0] },
+  chemistry: { title: "Chemistry", row: "Best partnership", name: "Sam", detail: "71% win rate together · 14 games" },
+  badgesTitle: "Badges",
+  badges: [
+    { key: "first-game", emoji: "👟", label: "On the board", hint: "Played your first game", earned: true },
+    { key: "ten-games", emoji: "🔟", label: "Regular", hint: "Played 10+ games", earned: true },
+    { key: "ironman", emoji: "🦾", label: "Iron Man", hint: "Played every match since joining", earned: false },
+    { key: "first-mom", emoji: "🏆", label: "Man of the Match", hint: "Won MoM at least once", earned: true },
+    { key: "mom-machine", emoji: "👑", label: "MoM Machine", hint: "Won MoM 3+ times", earned: true },
+    { key: "masterclass", emoji: "🌟", label: "Masterclass", hint: "Averaged 9+ in a game", earned: false },
+    { key: "reliable", emoji: "🧱", label: "Mr Reliable", hint: "Consistently strong ratings", earned: true },
+    { key: "above-field", emoji: "📈", label: "Above the Curve", hint: "Season rating above the squad average", earned: true },
+  ],
+};
+
 
 export const HERO_DECK = {
   title: "What MatchTime does",
@@ -956,6 +1070,30 @@ export const HERO_DECK = {
       },
     },
     {
+      // Spotlight short-of-players; pool/round-rules.ts POOL_AFTER_PARTNERS_MINS;
+      // pool/matching-rules.ts; pool/accept.ts; settings-info.ts partnerAskWhen
+      // and poolAutoAsk; PLAYER_POOL (opening town by town); the offer is
+      // POOL_OFFER_CHAT (pool-offer.en.ts). Second in the deck (Kemal, 2026-10-27).
+      key: "short",
+      title: "Dropouts? It asks around",
+      body: "Your group first, then partner clubs, then local players from the pool.",
+      visual: ["Your group", "Partner clubs", "Player pool"],
+      details: [
+        "Someone drops out and nobody's on the bench? MatchTime asks your group first, and stops the moment you're full.",
+        "Then partner clubs: their players answer privately and join as guests.",
+        `Then nearby players from the MatchTime player pool get a WhatsApp offer: ${POOL_AFTER} later, or straight away if you have no partner clubs.`,
+        "Pool players are matched on when they can play and how far they'll travel, and on level only when you ask for one.",
+        "A yes takes the place if it's still open, or the bench where your organisers pick.",
+        "Ask with one tap, or let MatchTime ask by itself on match day. The player pool is opening town by town.",
+      ],
+      steps: [
+        { title: "1. Your group", sub: "The group and the bench" },
+        { title: "2. Partner clubs", sub: "Asked in their group" },
+        { title: "3. Player pool", sub: `${POOL_AFTER_CAP} later, nearby players`, highlight: true },
+      ],
+      chat: POOL_OFFER_CHAT,
+    },
+    {
       // strings.en.ts bench_offer_group_post, bench_claim_replacing.
       key: "bench",
       title: "The bench steps in",
@@ -982,26 +1120,6 @@ export const HERO_DECK = {
           { from: "bot", text: "*Kai* is in, replacing *Joe*. Squad *14/14*", time: "09:20" },
         ],
       },
-    },
-    {
-      // Spotlight partner-clubs (auto ask); pool/round-rules.ts POOL_AFTER_PARTNERS_MINS;
-      // PLAYER_POOL (opening town by town); the offer is POOL_OFFER_CHAT (pool-offer.en.ts).
-      key: "short",
-      title: "Still short? It asks around",
-      body: "Bench first, then partner clubs, then local players from the pool.",
-      visual: ["Bench", "Partner clubs", "Player pool"],
-      details: [
-        "Match day, a place open and nobody on the bench? MatchTime asks for you, by itself if you switch it on.",
-        "Partner clubs first: their players answer privately and join as guests.",
-        `Then local players from the MatchTime player pool get a WhatsApp offer: ${POOL_AFTER} later, or straight away if you have no partner clubs.`,
-        "The player pool is opening town by town.",
-      ],
-      steps: [
-        { title: "1. Bench", sub: "Tagged in the group" },
-        { title: "2. Partner clubs", sub: "Asked in their group" },
-        { title: "3. Player pool", sub: `${POOL_AFTER_CAP} later, local players`, highlight: true },
-      ],
-      chat: POOL_OFFER_CHAT,
     },
     {
       // FEATURES teams; strings.en.ts teams_post_header, teams_post_footer.
@@ -1049,6 +1167,7 @@ export const HERO_DECK = {
         "They pick a Man of the Match, announced in the group once everyone has voted.",
         "Ratings help balance next week's teams, and fill each player's own stats page.",
       ],
+      sketch: "rate",
       chat: {
         title: "Thursday 7-a-side",
         subtitle: "Group chat",
@@ -1066,6 +1185,22 @@ export const HERO_DECK = {
           },
         ],
       },
+    },
+    {
+      // src/app/profile/stats/page.tsx (STATS_SKETCH); badge-rules.ts BADGES;
+      // PLAYER_STAT_CARDS. Player-facing (Kemal, 2026-10-27: badges matter).
+      key: "stats",
+      title: "Track your progress",
+      body: "Every player gets a stats page: ratings over time, form and badges.",
+      visual: ["7.6", "On fire", "Badges 6 of 8"],
+      details: [
+        "Each player has their own stats page, opened from a link MatchTime sends. No app, no password.",
+        "Club rating, Man of the Match awards, games played and their win, draw and loss record.",
+        "Current form over the last 5 games, and ratings over time against the squad average.",
+        "Chemistry and rivalries, the squad leaderboard and the Team of the Season.",
+        "Badges to unlock as they play, from On the board to MoM Machine, and any badge earned can be shared as a picture.",
+      ],
+      sketch: "stats",
     },
     {
       // FEATURES payments; strings.en.ts dm_pay_link.
