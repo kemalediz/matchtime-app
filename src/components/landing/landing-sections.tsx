@@ -39,6 +39,7 @@ import {
   Scale,
   Share2,
   ShieldCheck,
+  Sparkles,
   Shuffle,
   Star,
   Swords,
@@ -53,6 +54,9 @@ import { t } from "@/lib/i18n/t";
 import { DISPLAY_FONT } from "./display-font";
 import { PRIVACY_PATH } from "@/lib/privacy-policy";
 import type { Card, ChatLine, ColorKey, Cta, IconKey, Spotlight, Step } from "./landing-content";
+import { HERO_POOL_INVITE } from "./landing-content";
+import { ChatDrawing } from "./chat-drawing";
+import { tightStops } from "./tight-stops";
 
 export { DISPLAY_FONT };
 
@@ -143,7 +147,7 @@ export function SectionIntro({
         className={`mt-3 text-3xl sm:text-5xl font-extrabold tracking-tight ${dark ? "text-white" : "text-slate-900"}`}
         style={DISPLAY_FONT}
       >
-        {title}
+        {tightStops(title)}
       </h2>
       {lead && (
         <p className={`mt-5 text-lg leading-relaxed ${dark ? "text-slate-300" : "text-slate-600"}`}>{lead}</p>
@@ -262,11 +266,21 @@ export function ChatMock({ caption, lines }: { caption: string; lines: ChatLine[
 }
 
 /** A boxed list of short promises (the partner clubs' privacy). */
-export function NoteBox({ title, items, tone }: { title: string; items: Array<{ key: string; text: string }>; tone: Tone }) {
+export function NoteBox({
+  title,
+  items,
+  tone,
+  compact = false,
+}: {
+  title: string;
+  items: Array<{ key: string; text: string }>;
+  tone: Tone;
+  compact?: boolean;
+}) {
   const dark = tone === "dark";
   return (
     <div
-      className={`p-6 sm:p-8 rounded-2xl border ${
+      className={`${compact ? "p-4 sm:p-6" : "p-6 sm:p-8"} rounded-2xl border ${
         dark ? "bg-emerald-400/5 border-emerald-300/20" : "bg-emerald-50 border-emerald-100"
       }`}
     >
@@ -277,7 +291,7 @@ export function NoteBox({ title, items, tone }: { title: string; items: Array<{ 
         <Lock className={`w-5 h-5 ${dark ? "text-emerald-300" : "text-emerald-600"}`} aria-hidden="true" />
         {title}
       </h3>
-      <ul className="mt-4 space-y-3">
+      <ul className={compact ? "mt-3 space-y-2" : "mt-4 space-y-3"}>
         {items.map((it) => (
           <li key={it.key} className={`flex items-start gap-3 text-sm ${dark ? "text-slate-200" : "text-slate-700"}`}>
             <Check className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" aria-hidden="true" />
@@ -350,6 +364,148 @@ export function SpotlightSection({ s }: { s: Spotlight }) {
         {s.footnote && (
           <p className={`mt-10 text-sm ${dark ? "text-slate-400" : "text-slate-500"}`}>{s.footnote}</p>
         )}
+      </div>
+    </section>
+  );
+}
+
+/**
+ * The players' card in the hero (round two, 2026-10-26): a "New" badge, the
+ * call-up, one line, the strong pulsing button and the small print. Stacked
+ * on a phone, one row on desktop; on the first screen at both.
+ */
+export function HeroPlayersCard() {
+  const h = HERO_POOL_INVITE;
+  return (
+    // A plain div, not <aside>: the app shell's signed-in sidebar is the
+    // page's only <aside> (the e2e session checks rely on it).
+    <div
+      data-testid="hero-players-card"
+      className="relative mt-6 md:mt-7 w-full max-w-4xl mx-auto rounded-[22px] p-[1.5px] bg-gradient-to-br from-emerald-300 via-teal-400 to-blue-500 shadow-2xl shadow-emerald-500/20 text-left"
+    >
+      <div className="rounded-[20.5px] bg-gradient-to-br from-[#06281f] via-[#0a2230] to-[#0b1736] px-4 py-4 md:px-7 md:py-4 flex flex-col md:flex-row md:items-center gap-3 md:gap-6">
+        <div className="min-w-0 flex-1">
+          <p className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-400 text-slate-950 text-[11px] font-extrabold uppercase tracking-wider">
+              <Sparkles className="w-3 h-3" aria-hidden="true" />
+              {h.badge}
+            </span>
+            <span className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-300">{h.eyebrow}</span>
+          </p>
+          <h2 id="hero-players-title" className="mt-2 text-[22px] md:text-2xl font-extrabold leading-tight text-white" style={DISPLAY_FONT}>
+            {h.title}
+          </h2>
+          <p className="mt-1 text-sm md:text-[15px] leading-snug text-slate-200">{h.body}</p>
+        </div>
+        <div className="shrink-0 flex flex-col items-stretch md:items-center gap-1.5">
+          <PoolInviteButton cta={h.cta} testId="hero-pool-join" />
+          <p className="text-xs text-center text-slate-300">{h.smallPrint}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The player pool's section, straight under the hero (round two,
+ * 2026-10-26): the call-up headline, the lead and the benefit beside a drawn
+ * WhatsApp offer, then the four steps, the points, what is shared and the
+ * closing line. Same contract as `SpotlightSection` (an h2 naming the
+ * region, h3 steps and points, the note), so the menu and tests treat it
+ * the same.
+ */
+export function PoolSpotlightSection({ s }: { s: Spotlight }) {
+  const headingId = `${s.id}-heading`;
+  return (
+    <section
+      id={s.id}
+      aria-labelledby={headingId}
+      className="relative py-14 sm:py-24 px-5 sm:px-8 overflow-hidden scroll-mt-4 bg-gradient-to-b from-emerald-50 via-white to-white text-slate-800"
+    >
+      <div
+        aria-hidden="true"
+        className="absolute inset-0 opacity-70"
+        style={{ backgroundImage: "radial-gradient(600px circle at 85% 10%, rgba(16,185,129,0.16), transparent 50%)" }}
+      />
+      <div className="relative max-w-6xl mx-auto">
+        <div className="grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] gap-6 lg:gap-16 items-center">
+          <div>
+            <SectionIntro
+              id={headingId}
+              eyebrow={
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700 tracking-[0.14em]">
+                  <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />
+                  {s.eyebrow}
+                </span>
+              }
+              title={s.title}
+            />
+            <p className="mt-4 text-base sm:text-lg leading-relaxed text-slate-600">{s.lead}</p>
+            {s.benefit && (
+              <p className="mt-4 flex items-start gap-2.5 text-lg font-bold text-emerald-700" style={DISPLAY_FONT}>
+                <Zap className="w-5 h-5 mt-1 shrink-0 text-emerald-500" aria-hidden="true" />
+                {s.benefit}
+              </p>
+            )}
+            {s.cta && (
+              <div className="mt-6">
+                <PoolInviteButton cta={s.cta} testId="spotlight-cta" />
+              </div>
+            )}
+          </div>
+          {s.offerChat && (
+            <div className="mx-auto w-full max-w-[380px] rounded-[30px] bg-slate-950 p-1.5 sm:p-2.5 shadow-2xl shadow-emerald-900/25 ring-1 ring-slate-900/10">
+              <ChatDrawing chat={s.offerChat} />
+            </div>
+          )}
+        </div>
+
+        {/* Compact on a phone: small number circles, no card boxes. */}
+        {s.steps && (
+          <ol aria-label={s.stepsLabel} className="mt-7 sm:mt-14 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-3.5 sm:gap-y-6">
+            {s.steps.map((st, i) => (
+              <li key={st.key} className="grid grid-cols-[32px_minmax(0,1fr)] gap-x-3">
+                <span
+                  aria-hidden="true"
+                  className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-500 to-teal-500 text-white text-sm font-black inline-flex items-center justify-center shadow-md shadow-emerald-500/30"
+                >
+                  {i + 1}
+                </span>
+                <div>
+                  <h3 className="pt-1 text-base font-bold leading-tight text-slate-900" style={DISPLAY_FONT}>
+                    {st.title}
+                  </h3>
+                  <p className="mt-0.5 text-sm leading-snug text-slate-600">{st.body}</p>
+                </div>
+              </li>
+            ))}
+          </ol>
+        )}
+
+        {/* The points as a short icon list (2 by 2 from tablet width). */}
+        <ul className="mt-10 sm:mt-12 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+          {s.points.map((pt) => (
+            <li key={pt.key} className="flex items-start gap-3 p-3.5 rounded-2xl bg-white border border-slate-200">
+              <span className={`w-9 h-9 shrink-0 rounded-xl border flex items-center justify-center ${COLORS[pt.color]}`}>
+                <Icon k={pt.icon} className="w-[18px] h-[18px]" />
+              </span>
+              <div className="min-w-0">
+                <h3 className="text-[15px] font-bold leading-tight text-slate-900" style={DISPLAY_FONT}>
+                  {pt.title}
+                </h3>
+                <p className="mt-0.5 text-[13px] leading-snug text-slate-600">{pt.body}</p>
+              </div>
+            </li>
+          ))}
+        </ul>
+
+        {s.note && (
+          <div className="mt-6">
+            <NoteBox title={s.note.title} items={s.note.items} tone="light" compact />
+          </div>
+        )}
+
+        {s.footnote && <p className="mt-6 text-sm text-slate-500">{s.footnote}</p>}
       </div>
     </section>
   );

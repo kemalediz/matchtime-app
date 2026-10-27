@@ -45,24 +45,26 @@ for (const [name, size] of [["phone", MOBILE], ["desktop", DESKTOP]] as const) {
   });
 }
 
-test("the partner clubs section explains an ask step by step and keeps numbers private", async ({ page }) => {
+test("the short-of-players section names who is asked, in order, and keeps numbers private", async ({ page }) => {
   await page.goto("/");
-  const section = page.locator("section#partner-clubs");
+  const section = page.locator("section#short-of-players");
   await section.scrollIntoViewIfNeeded();
-  const steps = section.getByRole("list", { name: /how an ask works/i }).getByRole("listitem");
+  const steps = section.getByRole("list", { name: /who matchtime asks, in order/i }).getByRole("listitem");
   await expect(steps).toHaveCount(4);
+  await expect(steps.nth(1)).toContainText("partner clubs");
+  await expect(steps.nth(2)).toContainText("player pool");
   await expect(section.getByText(/Phone numbers are never shared between clubs/)).toBeVisible();
   await expect(section.getByText(/Your number is not shared with Riverside FC/)).toBeVisible();
 });
 
-test("the desktop For clubs menu jumps to the partner clubs and admin group sections", async ({ page }) => {
+test("the desktop For clubs menu jumps to the short-of-players and admin group sections", async ({ page }) => {
   await page.setViewportSize(DESKTOP);
   await page.goto("/");
   const nav = page.getByRole("navigation", { name: "Main" });
   await nav.getByRole("button", { name: "For clubs" }).click();
-  await nav.getByRole("link", { name: "Partner clubs", exact: true }).click();
-  await expect(page).toHaveURL(/#partner-clubs$/);
-  await expect(page.locator("section#partner-clubs").getByRole("heading", { level: 2 })).toBeInViewport();
+  await nav.getByRole("link", { name: "Short of players", exact: true }).click();
+  await expect(page).toHaveURL(/#short-of-players$/);
+  await expect(page.locator("section#short-of-players").getByRole("heading", { level: 2 })).toBeInViewport();
   await nav.getByRole("button", { name: "For clubs" }).click();
   await nav.getByRole("link", { name: "Admin group", exact: true }).click();
   await expect(page).toHaveURL(/#admin-group$/);
