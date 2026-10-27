@@ -292,6 +292,14 @@ for (const key of ["ratings", "stats"] as const) {
       } else {
         await expect(sketch.getByText(/^Badges/)).toBeAttached();
         await expect(sketch.getByText("MoM Machine")).toBeAttached();
+        // Crowns as on the real page: 👑 under the MoM tile, one crowned
+        // point per Man of the Match on the chart, and the legend.
+        const momTile = sketch.getByTestId("sketch-tile-mom");
+        const momCount = Number(await momTile.getByTestId("sketch-tile-big").textContent());
+        expect(momCount).toBeGreaterThan(0);
+        await expect(momTile).toContainText("👑");
+        await expect(sketch.getByTestId("sketch-mom-crown")).toHaveCount(momCount);
+        await expect(sketch.getByText("👑 Man of the Match", { exact: true })).toBeAttached();
       }
       // The sketch fits the sheet: nothing runs off to the side.
       const sb = (await sketch.boundingBox())!;
@@ -303,6 +311,31 @@ for (const key of ["ratings", "stats"] as const) {
     });
   }
 }
+
+test("desktop: the stats panel draws the crowns, one per Man of the Match, inside the panel", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await open(page);
+  const card = HERO_DECK.cards.find((c) => c.key === "stats")!;
+  await cardButton(page, card.title).click();
+  const panel = page.getByRole("region", { name: HERO_DECK.detailsLabel });
+  const sketch = panel.getByRole("figure", { name: "A player's stats page" });
+  await expect(sketch).toBeVisible();
+  const momCount = Number(await sketch.getByTestId("sketch-tile-mom").getByTestId("sketch-tile-big").textContent());
+  await expect(sketch.getByTestId("sketch-tile-mom")).toContainText("👑");
+  await expect(sketch.getByTestId("sketch-mom-crown")).toHaveCount(momCount);
+  // Every crown sits inside the drawing, none cut off at the top.
+  const sb = (await sketch.boundingBox())!;
+  for (const crown of await sketch.getByTestId("sketch-mom-crown").all()) {
+    const cb = (await crown.boundingBox())!;
+    expect(cb.y).toBeGreaterThanOrEqual(sb.y);
+    expect(cb.x + cb.width).toBeLessThanOrEqual(sb.x + sb.width);
+  }
+  if (SHOTS) {
+    await page.waitForTimeout(800);
+    await sketch.evaluate((el) => el.scrollIntoView({ block: "center" }));
+    await shot(page, "sheet-stats-desktop.png");
+  }
+});
 
 test("desktop: a card opens its panel under the deck, one at a time; close and Escape close it", async ({ page }) => {
   await page.setViewportSize(DESKTOP);

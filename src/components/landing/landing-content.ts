@@ -993,9 +993,10 @@ export const RATE_SKETCH = {
  * A player's stats page (src/app/profile/stats/page.tsx, built by
  * src/lib/player-stats.ts), top to bottom as the page shows it: the
  * season heading, the club rating (strings.en.ts rating_club_label,
- * rating_club_tile), the four tiles, Current form, Ratings over time (his
- * line against the squad's), Chemistry, then Badges with the earned count.
- * The badges are the catalogue (badge-rules.ts BADGES: key, emoji, name)
+ * rating_club_tile), the four tiles (👑 under Man of the Match, as the page
+ * shows it once he has one), Current form, Ratings over time (his line
+ * against the squad's, his MoM games crowned, the chart's legend),
+ * Chemistry, then Badges with the earned count. The badges are the catalogue (badge-rules.ts BADGES: key, emoji, name)
  * with player-stats.ts's own hints; unearned ones are drawn greyed, as on
  * the page. Kai's numbers are invented.
  */
@@ -1007,12 +1008,20 @@ export const STATS_SKETCH = {
   clubRatingTile: "Club rating",
   tiles: [
     { big: "7.6", label: "Club rating", sub: "+9% vs squad", tone: "green" },
-    { big: "3", label: "Man of the Match", sub: "", tone: "amber" },
+    { big: "3", label: "Man of the Match", sub: "👑", tone: "amber" },
     { big: "24", label: "Games played", sub: "89% attendance", tone: "blue" },
     { big: "14-3-7", label: "W-D-L", sub: "GD +21", tone: "slate" },
   ],
   form: { label: "Current form", value: "On fire", avg: "8.1", sub: "last 5 games" },
-  timeline: { title: "Ratings over time", you: [6.8, 7.1, 7.0, 7.5, 7.4, 8.0, 8.3], squad: [6.9, 6.8, 7.0, 6.9, 7.0, 6.9, 7.0] },
+  timeline: {
+    title: "Ratings over time",
+    you: [6.8, 7.1, 7.0, 7.5, 7.4, 8.0, 8.3],
+    squad: [6.9, 6.8, 7.0, 6.9, 7.0, 6.9, 7.0],
+    // His three Man of the Match games (the tile's 3), crowned as
+    // RatingTimeline's MyDot crowns isMoM points.
+    mom: [false, false, false, true, false, true, true],
+    legend: { you: "You", squad: "Squad avg", mom: "👑 Man of the Match" },
+  },
   chemistry: { title: "Chemistry", row: "Best partnership", name: "Sam", detail: "71% win rate together · 14 games" },
   badgesTitle: "Badges",
   badges: [

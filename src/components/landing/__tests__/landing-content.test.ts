@@ -675,4 +675,27 @@ describe("landing content: the hero and its feature deck (variant E, 2026-10-26)
     }
     expect(STATS_SKETCH.badges.some((b) => !b.earned)).toBe(true);
   });
+
+  it("the stats drawing crowns his Man of the Match games as the real page does: 👑 under the tile, one crown per MoM on the chart, the legend", () => {
+    const page = readFileSync(path.join(process.cwd(), "src/app/profile/stats/page.tsx"), "utf8");
+    const chart = readFileSync(path.join(process.cwd(), "src/components/stats/rating-timeline.tsx"), "utf8");
+    // The page's tile: sub "👑" whenever momCount > 0.
+    expect(page).toContain('label="Man of the Match" tone="amber" sub={stats.momCount > 0 ? "👑" : undefined}');
+    const tile = STATS_SKETCH.tiles.find((t) => t.label === "Man of the Match")!;
+    const momCount = Number(tile.big);
+    expect(momCount).toBeGreaterThan(0);
+    expect(tile.sub).toBe("👑");
+    // One crowned point per Man of the Match, on his line.
+    const { you, mom } = STATS_SKETCH.timeline;
+    expect(mom).toHaveLength(you.length);
+    expect(mom.filter(Boolean)).toHaveLength(momCount);
+    // The crowns sit on his better games: every crowned rating beats every plain one.
+    const crowned = you.filter((_, i) => mom[i]);
+    const plain = you.filter((_, i) => !mom[i]);
+    expect(Math.min(...crowned)).toBeGreaterThan(Math.max(...plain));
+    // The real chart's crown ring and legend.
+    expect(chart).toContain('fill="#f59e0b" stroke="#fff"');
+    for (const label of Object.values(STATS_SKETCH.timeline.legend)) expect(chart, label).toContain(label);
+    expect(STATS_SKETCH.timeline.legend.mom).toBe("👑 Man of the Match");
+  });
 });

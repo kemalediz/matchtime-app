@@ -101,28 +101,53 @@ const TILE_TONE: Record<string, string> = {
   slate: "bg-white border-slate-200",
 };
 
-/** His line (blue) against the squad's (dashed grey), as RatingTimeline draws them. */
-function Timeline({ you, squad }: { you: number[]; squad: number[] }) {
-  const W = 300, H = 84, min = 5, max = 9;
-  const x = (i: number) => 14 + (i * (W - 20)) / (you.length - 1);
-  const y = (v: number) => H - 8 - ((v - min) / (max - min)) * (H - 16);
+/**
+ * His line (blue) against the squad's (dashed grey), as RatingTimeline draws
+ * them: his Man of the Match games get the gold crown ring (MyDot), the rest a
+ * plain blue dot, and the chart's legend sits underneath.
+ */
+function Timeline({ you, squad, mom, legend }: { you: number[]; squad: number[]; mom: boolean[]; legend: { you: string; squad: string; mom: string } }) {
+  // Headroom above the 9 line so a crown on a high game is not cut off.
+  const W = 300, H = 100, top = 22, bottom = 8, min = 5, max = 9;
+  const x = (i: number) => 14 + (i * (W - 26)) / (you.length - 1);
+  const y = (v: number) => H - bottom - ((v - min) / (max - min)) * (H - top - bottom);
   const path = (a: number[]) => a.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)} ${y(v).toFixed(1)}`).join(" ");
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" aria-hidden="true">
-      {[9, 7, 5].map((g) => (
-        <g key={g}>
-          <line x1="14" x2={W - 6} y1={y(g)} y2={y(g)} stroke="#e2e8f0" strokeDasharray="2 3" />
-          <text x="0" y={y(g) + 3} fontSize="8" fill="#94a3b8">
-            {g}
-          </text>
-        </g>
-      ))}
-      <path d={path(squad)} fill="none" stroke="#cbd5e1" strokeWidth="2" strokeDasharray="4 3" />
-      <path d={path(you)} fill="none" stroke="#2563eb" strokeWidth="2.5" strokeLinecap="round" />
-      {you.map((v, i) => (
-        <circle key={i} cx={x(i)} cy={y(v)} r="2.8" fill="#2563eb" />
-      ))}
-    </svg>
+    <>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" aria-hidden="true">
+        {[9, 7, 5].map((g) => (
+          <g key={g}>
+            <line x1="14" x2={W - 6} y1={y(g)} y2={y(g)} stroke="#e2e8f0" strokeDasharray="2 3" />
+            <text x="0" y={y(g) + 3} fontSize="8" fill="#94a3b8">
+              {g}
+            </text>
+          </g>
+        ))}
+        <path d={path(squad)} fill="none" stroke="#cbd5e1" strokeWidth="2" strokeDasharray="4 3" />
+        <path d={path(you)} fill="none" stroke="#2563eb" strokeWidth="2.5" strokeLinecap="round" />
+        {you.map((v, i) =>
+          mom[i] ? (
+            <g key={i} data-testid="sketch-mom-crown">
+              <circle cx={x(i)} cy={y(v)} r="5.5" fill="#f59e0b" stroke="#fff" strokeWidth="1.5" />
+              <text x={x(i)} y={y(v) - 9} textAnchor="middle" fontSize="11">
+                👑
+              </text>
+            </g>
+          ) : (
+            <circle key={i} cx={x(i)} cy={y(v)} r="3" fill="#2563eb" stroke="#fff" strokeWidth="1" />
+          ),
+        )}
+      </svg>
+      <div className="mt-1 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[10px] text-slate-500">
+        <span className="flex items-center gap-1">
+          <span className="inline-block h-0.5 w-4 bg-blue-600" /> {legend.you}
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block w-4" style={{ borderTop: "2px dashed #94a3b8" }} /> {legend.squad}
+        </span>
+        <span className="flex items-center gap-1">{legend.mom}</span>
+      </div>
+    </>
   );
 }
 
@@ -136,8 +161,14 @@ export function StatsSketch() {
       <p className="mt-3 text-xs font-semibold text-slate-800">{s.clubRatingLabel}</p>
       <div className="mt-2 grid grid-cols-2 gap-2">
         {s.tiles.map((t) => (
-          <div key={t.label} className={`rounded-xl border p-2.5 ${TILE_TONE[t.tone]}`}>
-            <p className="text-xl font-extrabold text-slate-900">{t.big}</p>
+          <div
+            key={t.label}
+            data-testid={t.label === "Man of the Match" ? "sketch-tile-mom" : undefined}
+            className={`rounded-xl border p-2.5 ${TILE_TONE[t.tone]}`}
+          >
+            <p data-testid="sketch-tile-big" className="text-xl font-extrabold text-slate-900">
+              {t.big}
+            </p>
             <p className="text-[10px] font-medium text-slate-600">{t.label}</p>
             {t.sub && <p className="text-[10px] text-slate-500">{t.sub}</p>}
           </div>
@@ -155,7 +186,7 @@ export function StatsSketch() {
       </div>
       <div className="mt-2 rounded-2xl border border-slate-200 bg-white p-3">
         <p className="mb-1 text-xs font-semibold text-slate-800">{s.timeline.title}</p>
-        <Timeline you={s.timeline.you} squad={s.timeline.squad} />
+        <Timeline you={s.timeline.you} squad={s.timeline.squad} mom={s.timeline.mom} legend={s.timeline.legend} />
       </div>
       <div className="mt-2 rounded-2xl border border-slate-200 bg-white p-3">
         <p className="mb-1.5 text-xs font-semibold text-slate-800">{s.chemistry.title}</p>
