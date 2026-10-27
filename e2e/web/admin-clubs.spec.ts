@@ -8,7 +8,8 @@
  *      turned-off clubs, and today's site limits;
  *   3. Approve, Reject, Turn off (with the club's name typed) and Leave
  *      work through the same writer as the WhatsApp reply;
- *   4. the seeded approved club (Sutton FC's shape) is not on the page.
+ *   4. the seeded approved club (Sutton FC's shape) is in no self-join
+ *      section (only under Player pool, the owner's per-club switch).
  */
 import { mkdirSync } from "node:fs";
 import path from "node:path";
@@ -116,7 +117,7 @@ test("a club admin cannot open /admin/clubs and is not shown a link to it", asyn
   await expect(page.getByText("Riverside FC")).toHaveCount(0);
 });
 
-test("the owner sees every section; the seeded approved club is not on the page", async ({ page, db, context }) => {
+test("the owner sees every section; the seeded approved club is in no self-join section", async ({ page, db, context }) => {
   await db.run(`UPDATE "User" SET "isSuperadmin" = true WHERE id = $1`, [U.admin]);
   await flag(context, true);
   await signInAs(page, U.admin, "/admin/clubs");
@@ -144,8 +145,12 @@ test("the owner sees every section; the seeded approved club is not on the page"
   await expect(page.getByTestId("rejected-club")).toContainText("Nope United");
   await expect(page.getByTestId("site-limits")).toContainText("Groups connected: 2 of 5");
 
-  // The seeded approved club (Sutton FC's shape) is nowhere on the page.
-  await expect(page.getByTestId("clubs-page")).not.toContainText("E2E Test FC");
+  // The seeded approved club (Sutton FC's shape) is in none of the self-join
+  // sections; it is only under Player pool, the owner's per-club switch.
+  for (const id of ["waiting", "live", "unsolicited", "rejected", "suspended", "posters"]) {
+    await expect(page.getByTestId(`section-${id}`)).not.toContainText("E2E Test FC");
+  }
+  await expect(page.getByTestId("section-player-pool")).toContainText("E2E Test FC");
   const text = await page.getByTestId("clubs-page").innerText();
   expect(text).not.toMatch(/[—–]/);
 
