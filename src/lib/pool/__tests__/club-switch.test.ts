@@ -9,7 +9,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 type Job = Record<string, unknown>;
-const state = vi.hoisted(() => ({ claims: new Set<string>(), jobs: [] as Job[], flag: false, tx: null as unknown }));
+const state = vi.hoisted(() => ({ claims: new Set<string>(), jobs: [] as Job[], flag: false, tx: null as unknown, org: {} as Record<string, unknown>, postable: true }));
 const dbMock = vi.hoisted(() => ({
   organisation: { findUnique: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
   poolAsk: { findMany: vi.fn() },
@@ -21,8 +21,9 @@ const roundMock = vi.hoisted(() => ({ closePoolAsk: vi.fn() }));
 vi.mock("../round", () => roundMock);
 const channel = vi.hoisted(() => ({ sendAdminNotice: vi.fn() }));
 vi.mock("../../admin-channel", () => channel);
+vi.mock("../../group-postability-store", () => ({ isGroupPostable: async () => state.postable }));
 
-import { setClubPlayerPool } from "../club-switch";
+import { poolOnLinks, setClubPlayerPool } from "../club-switch";
 import { poolClubSwitchCopy } from "../../i18n/pool-club-switch";
 
 const NOON = new Date("2026-10-27T12:00:00Z");
@@ -31,7 +32,10 @@ beforeEach(() => {
   state.claims = new Set();
   state.jobs = [];
   state.flag = false;
-  dbMock.organisation.findUnique.mockImplementation(async ({ select }) => (select?.language ? { name: "FNF", language: "tr" } : { id: "fnf", poolAutoAsk: false }));
+  state.postable = true;
+  // FNF: an admin group (HQ) and a players' group.
+  state.org = { name: "FNF", language: "tr", adminGroupId: "hq@g.us", whatsappGroupId: "fnf@g.us", whatsappBotEnabled: true, quietHoursEnabled: false, quietHoursFrom: null, quietHoursTo: null };
+  dbMock.organisation.findUnique.mockImplementation(async ({ select }) => (select?.language ? state.org : { id: "fnf", poolAutoAsk: false }));
   dbMock.organisation.update.mockImplementation(async ({ data }) => {
     state.flag = data.featurePlayerPool;
     return {};
@@ -110,8 +114,8 @@ describe("telling the admin team, once per club, ever, through the club's admin 
     expect(req.holdOvernight).not.toBe(false);
     expect(req.nextPath ?? null).toBeNull();
     expect(req.client).toBe(state.tx);
-    expect(req.text("", "group")).toBe(poolClubSwitchCopy("tr").notice("FNF", "group"));
-    expect(req.text("", "dm")).toBe(poolClubSwitchCopy("tr").notice("FNF", "dm"));
+    expect(req.text("", "group")).toBe(poolClubSwitchCopy("tr").notice("FNF", "group", poolOnLinks()));
+    expect(req.text("", "dm")).toBe(poolClubSwitchCopy("tr").notice("FNF", "dm", poolOnLinks()));
     expect([...state.claims]).toEqual(["org-fnf:pool-club-on"]);
   });
 
@@ -143,5 +147,72 @@ describe("telling the admin team, once per club, ever, through the club's admin 
   it("a failure queuing the message never fails the switch", async () => {
     channel.sendAdminNotice.mockRejectedValue(new Error("db down"));
     expect(await setClubPlayerPool("fnf", true, NOON)).toMatchObject({ ok: true, on: true, told: false });
+  });
+});
+
+describe("a club with only its players' group: the announcement goes in that group, for everyone", () => {
+  beforeEach(() => {
+    state.org = { ...state.org, adminGroupId: null };
+  });
+
+  it("ONE players' group post with the how-to, in the club's language, claimed with its own key; NO admin DM at all", async () => {
+    expect(await setClubPlayerPool("fnf", true, NOON)).toMatchObject({ ok: true, told: true });
+    expect(channel.sendAdminNotice).not.toHaveBeenCalled();
+    expect(state.jobs).toEqual([{ orgId: "fnf", kind: "group", text: poolClubSwitchCopy("tr").groupAnnouncement("FNF", poolOnLinks()), sendAfter: null, aboutKey: "org-fnf:pool-club-on-group" }]);
+    expect(state.jobs.filter((j) => j.kind === "dm")).toHaveLength(0);
+    expect([...state.claims]).toEqual(["org-fnf:pool-club-on-group"]);
+  });
+
+  it("inside the club's quiet hours the post is held until they end", async () => {
+    state.org = { ...state.org, quietHoursEnabled: true, quietHoursFrom: "11:00", quietHoursTo: "14:00" };
+    await setClubPlayerPool("fnf", true, NOON);
+    expect(state.jobs).toHaveLength(1);
+    expect(state.jobs[0].sendAfter).toBeInstanceOf(Date);
+    expect((state.jobs[0].sendAfter as Date).getTime()).toBeGreaterThan(NOON.getTime());
+  });
+
+  it("off and on again never repeats it", async () => {
+    await setClubPlayerPool("fnf", true, NOON);
+    await setClubPlayerPool("fnf", false, NOON);
+    expect(await setClubPlayerPool("fnf", true, NOON)).toMatchObject({ told: false });
+    expect(state.jobs).toHaveLength(1);
+  });
+
+  it("a club already told by DM before (the old key claimed) still gets the group post once", async () => {
+    state.claims.add("org-fnf:pool-club-on");
+    expect(await setClubPlayerPool("fnf", true, NOON)).toMatchObject({ told: true });
+    expect(state.jobs.map((j) => j.kind)).toEqual(["group"]);
+    expect(channel.sendAdminNotice).not.toHaveBeenCalled();
+  });
+
+  it("two switch-ons racing past the read: the claim lets only one post through", async () => {
+    dbMock.organisation.updateMany.mockResolvedValue({ count: 1 });
+    await Promise.all([setClubPlayerPool("fnf", true, NOON), setClubPlayerPool("fnf", true, NOON)]);
+    expect(state.jobs).toHaveLength(1);
+  });
+
+  it("no postable players' group either (none, bot off, or MatchTime cannot post): today's admin DMs", async () => {
+    for (const org of [{ whatsappGroupId: null }, { whatsappBotEnabled: false }, {}]) {
+      vi.clearAllMocks();
+      state.claims = new Set();
+      state.jobs = [];
+      state.flag = false;
+      state.postable = Object.keys(org).length > 0;
+      state.org = { ...state.org, adminGroupId: null, whatsappGroupId: "fnf@g.us", whatsappBotEnabled: true, ...org };
+      channel.sendAdminNotice.mockResolvedValue({ channel: "dm", queued: 2 });
+      expect(await setClubPlayerPool("fnf", true, NOON)).toMatchObject({ told: true });
+      expect(channel.sendAdminNotice).toHaveBeenCalledTimes(1);
+      expect(state.jobs).toEqual([]);
+      expect([...state.claims]).toEqual(["org-fnf:pool-club-on"]);
+    }
+  });
+});
+
+describe("a club with an admin group (HQ)", () => {
+  it("is told through its admin channel only: nothing in the players' group", async () => {
+    await setClubPlayerPool("fnf", true, NOON);
+    expect(channel.sendAdminNotice).toHaveBeenCalledTimes(1);
+    expect(state.jobs.filter((j) => j.kind === "group")).toHaveLength(0);
+    expect([...state.claims]).toEqual(["org-fnf:pool-club-on"]);
   });
 });

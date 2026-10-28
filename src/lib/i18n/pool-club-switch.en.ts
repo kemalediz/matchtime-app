@@ -2,17 +2,35 @@
 import type { PoolClubSwitchCopy } from "./pool-club-switch";
 
 export const POOL_CLUB_SWITCH_EN: PoolClubSwitchCopy = {
-  notice: (club, audience) =>
+  notice: (club, audience, links) =>
     [
       `⚽ *The MatchTime player pool is now on for ${club}*`,
-      "When you're short of players, MatchTime can ask nearby players who have joined the pool. When MatchTime asks by itself, your partner clubs are asked first.",
-      "Nothing is sent by itself. You can:",
-      "• tick *MatchTime player pool* on a match to ask for players",
-      audience === "group"
-        ? '• ask me here, for example "@Match Time ask the player pool for 2 players for Thursday"'
-        : '• ask me in your club\'s WhatsApp group, for example "@Match Time ask the player pool for 2 players for Thursday"',
-      "• turn on *Ask the player pool automatically* in Admin, then Settings",
-      "Want your players to know? Use *Tell your players about the player pool* in Settings.",
+      "Short of players? Ask MatchTime for nearby players who have joined the pool.",
+      "",
+      "*How to ask*",
+      audience === "group" ? "Tag @Match Time here, for example:" : "Tag @Match Time in your club's WhatsApp group, for example:",
+      "• @Match Time ask the player pool for 2 players for Thursday",
+      "• @Match Time find players from partner clubs and the player pool for Thursday",
+      `Only the club's organisers can ask. MatchTime then offers the place to nearby pool players by WhatsApp and tells you${audience === "group" ? " here" : ""} when one takes it.`,
+      "",
+      "Also:",
+      "• tick *MatchTime player pool* on a match",
+      `• turn on *Ask the player pool automatically*: on match day, if a place is still open and your bench is empty, MatchTime asks the pool by itself, at most once per match. ${links.autoAsk}`,
+      `Want your players to know? Use *Tell your players about the player pool*: ${links.share}`,
+    ].join("\n"),
+  groupAnnouncement: (club, links) =>
+    [
+      `⚽ *The MatchTime player pool is now on for ${club}*`,
+      "Short of players? The club's organisers can now ask MatchTime for nearby players who have joined the pool.",
+      "",
+      "*How to ask* (organisers only)",
+      "Tag @Match Time here, for example:",
+      "• @Match Time ask the player pool for 2 players for Thursday",
+      "• @Match Time find players from partner clubs and the player pool for Thursday",
+      "MatchTime then offers the place to nearby pool players by WhatsApp and tells the organisers when one takes it.",
+      "",
+      "Organisers can also tick *MatchTime player pool* on a match, or turn on *Ask the player pool automatically*: on match day, if a place is still open and the bench is empty, MatchTime asks the pool by itself, at most once per match.",
+      links.autoAsk,
     ].join("\n"),
   title: "Player pool",
   lead: "When you're short of players, MatchTime can ask nearby players who have joined the MatchTime player pool. When MatchTime asks by itself, your partner clubs are asked first. Nothing is sent until an admin asks, or until you turn on automatic asking below.",
