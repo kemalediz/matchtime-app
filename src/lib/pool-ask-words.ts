@@ -128,9 +128,13 @@ export async function askPoolFromWords(args: {
 /** What a refusal needs to say what to do next: the club's name, the
  *  cut-off, whether only the club's own switch is off, and the links. */
 async function refusalContext(orgId: string, lang: string | null, kickoff: Date, env?: Env): Promise<PoolRefusalContext> {
-  const org = await db.organisation
-    .findUnique({ where: { id: orgId }, select: { name: true, featurePlayerPool: true, partnerAskCutoffHours: true } })
-    .catch(() => null);
+  let org: { name: string; featurePlayerPool: boolean; partnerAskCutoffHours: number | null } | null = null;
+  try {
+    org = await db.organisation.findUnique({ where: { id: orgId }, select: { name: true, featurePlayerPool: true, partnerAskCutoffHours: true } });
+  } catch (err) {
+    // The reply still goes, without the club's name and with the default cut-off.
+    console.error(`[pool-ask-words] ${orgId}: reading the club for the reply failed:`, err instanceof Error ? err.message : "failed");
+  }
   return {
     club: org?.name ?? "",
     day: dayCommaTimeLabel(lang, kickoff),
