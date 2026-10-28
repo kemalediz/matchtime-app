@@ -240,7 +240,7 @@ const SAMPLES: SampleArgs = {
   teams_clear_nothing: null,
   teams_clear_admin_only: null,
   request_not_handled: null,
-  request_not_handled_admin: { url: "https://mt.example/admin" },
+  request_not_handled_admin: { url: "https://mt.example/admin/settings" },
   payment_credit_ack: { payerName: "Sait Demir", credited: [], count: 2, matchName: "Tuesday 7-a-side", unpaid: 6, confirmed: 14, unmatched: 1 },
   recruit_failed: null,
   recruit_invited: { invited: 5, matchName: "Tuesday 7-a-side", need: 2 },

@@ -838,12 +838,13 @@ export const en = {
   teams_clear_nothing: "There are no teams to clear.",
   teams_clear_admin_only: "Only an admin can clear the teams.",
   request_not_handled: "Sorry, I can't do that one yet.",
-  /** The same, for an ADMIN (2026-09-30): schedule and settings changes
-   *  live in the admin screens, so point there instead of a dead end.
-   *  Posted in the group, so `url` is the public URL, never a sign-in. */
+  /** The same, for an ADMIN (2026-09-30; 2026-10-28): any admin request
+   *  MatchTime cannot do by message points at the club's settings page and
+   *  the general help instead of a dead end. Posted in the group, so `url`
+   *  is the public URL, never a sign-in. */
   request_not_handled_admin: (p: { url: string }): string =>
-    `I can't change that by message, but you can do it on the admin page in a few taps: ${p.url}\n` +
-    `Or ask me: *@Match Time help schedule*`,
+    `I can't change that by message, but you can do it on your club's settings page in a few taps: ${p.url}\n` +
+    `Or ask me: *@Match Time help*`,
 
   // ── row 133: composePaymentAck (admin-ops-engine.ts) ───────────────
 
