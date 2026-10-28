@@ -1434,6 +1434,14 @@ export const en = {
   hq_nothing_waiting: `There's nothing waiting for a YES right now.`,
   /** An admin asked MatchTime for something the admin group cannot do. */
   hq_not_here: `I can't do that from this group.`,
+  /** An organiser asked for players in HQ and did not say from where, and
+   *  the club has more than its own players' group to look in (2026-10-28,
+   *  `ask-source-rules.ts`). Names only what the club has, in this order. */
+  hq_ask_source: (p: { options: Array<"club" | "partners" | "pool"> }): string => {
+    const name = { club: "your players' group", partners: "your partner clubs", pool: "the MatchTime player pool" };
+    const names = p.options.map((o) => name[o]);
+    return `Who shall I ask for players: ${names.slice(0, -1).join(", ")}, or ${names[names.length - 1]}?`;
+  },
   /** HQ cancel and put back on (match-cancel.ts, 2026-10-22). */
   hq_match_cancelled: (p: { activityName: string; when: string }): string =>
     `Done: ${p.activityName}, ${p.when} is cancelled. I've told the players' group.`,

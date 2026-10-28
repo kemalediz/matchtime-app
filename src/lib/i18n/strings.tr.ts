@@ -1216,6 +1216,11 @@ export const tr: Strings = {
   hq_confirm_pool_ask: (p) => `Bu EVET, ${p.day} maçı için MatchTime oyuncu havuzundaki yakın oyunculara sormak için mi?`,
   hq_nothing_waiting: `Şu anda EVET bekleyen bir şey yok.`,
   hq_not_here: `Bunu bu gruptan yapamam.`,
+  hq_ask_source: (p) => {
+    const name = { club: "oyuncu grubunuza mı", partners: "partner kulüplerinize mi", pool: "MatchTime oyuncu havuzuna mı" };
+    const names = p.options.map((o) => name[o]);
+    return `Oyuncu için kime sorayım: ${names.slice(0, -1).join(", ")}, yoksa ${names[names.length - 1]}?`;
+  },
   hq_match_cancelled: (p) => `Tamam: ${p.activityName}, ${p.when} iptal edildi. Oyuncu grubuna haber verdim.`,
   hq_match_restored: (p) => `Tamam: ${p.activityName}, ${p.when} yeniden yapılıyor. Oyuncu grubuna haber verdim.`,
   hq_cancel_no_match: `İptal edilecek yaklaşan bir maç yok.`,

@@ -555,7 +555,7 @@ describe("parseFacts (other routes)", () => {
   it("admin · the schema requires where the players come from, and the club named", () => {
     const schema = factsSchemaFor("admin_ops") as { required: string[]; properties: Record<string, unknown> };
     expect(schema.required).toEqual(expect.arrayContaining(["playersFrom", "clubRef"]));
-    expect(schema.properties.playersFrom).toEqual({ type: "string", enum: ["", "club", "partners", "pool"] });
+    expect(schema.properties.playersFrom).toEqual({ type: "string", enum: ["", "club", "partners", "pool", "unsaid"] });
     expect(schema.properties.clubRef).toEqual({ type: "string" });
     // One source, one field: S6's boolean is gone from what the model fills.
     expect(schema.properties.partnerClubs).toBeUndefined();
@@ -627,6 +627,37 @@ describe("parseFacts (other routes)", () => {
     expect(p).toMatch(/"find someone nearby for tonight" \/ "bu akşam için yakınlardan birini bul" -> recruit, playersFrom "pool"/);
     expect(p).toMatch(/"shall we try the pool\?" \/ "havuza soralım mı\?" -> other, toMatchTime false/);
     expect(p).not.toMatch(/partnerClubs/);
+  });
+
+  // ── 2026-10-28 (Kemal: "stricter"): where the players come from is read
+  // from meaning, and a request that does not say is "unsaid", never the
+  // club's own players by default. In HQ code then asks which is meant.
+
+  it("admin · recruit, nowhere said: sourceUnsaid, never the pool or the partners", () => {
+    const f = recruitFrom("unsaid");
+    expect(f).toMatchObject({ kind: "admin", action: "recruit", sourceUnsaid: true });
+    expect("pool" in f).toBe(false);
+    expect("partnerClubs" in f).toBe(false);
+  });
+
+  it("admin · unsaid is dropped with a club named (another club), on another action, and for every named source", () => {
+    expect(recruitFrom("unsaid", "Sutton")).toMatchObject({ partnerClubs: true, clubRef: "Sutton" });
+    expect("sourceUnsaid" in recruitFrom("unsaid", "Sutton")).toBe(false);
+    expect("sourceUnsaid" in recruitFrom("unsaid", "", "other")).toBe(false);
+    for (const from of ["club", "partners", "pool", ""]) expect("sourceUnsaid" in recruitFrom(from), from).toBe(false);
+  });
+
+  it("admin · the 2026-10-28 rewrite: four sources defined once, the unsaid and the answer examples EN and TR", () => {
+    const p = EXTRACTOR_PROMPTS.admin;
+    for (const source of ["club", "partners", "pool", "unsaid"]) expect(p.split(`\n    "${source}" `).length, source).toBe(2);
+    expect(p).toMatch(/"we need 2 players for Thursday" \/ "perşembeye 2 kişi lazım" -> recruit, playersFrom "unsaid"/);
+    expect(p).toMatch(/"@Match Time find us a player for Friday" \/ "@Match Time cumaya bir oyuncu bul" -> recruit, playersFrom "unsaid"/);
+    expect(p).toMatch(/"the pool" \/ "havuza" -> recruit, playersFrom "pool"/);
+    expect(p).toMatch(/"partners please" \/ "partner kulüplere" -> recruit, playersFrom "partners"/);
+    expect(p).toMatch(/"the group" \/ "gruba sor" -> recruit, playersFrom "club"/);
+    // The players' group, the regulars, past players: the club's own, as before.
+    expect(p).toMatch(/"ask the group if anyone can play" \/ "MatchTime oyuncu grubuna sor" -> recruit, playersFrom "club"/);
+    expect(p).not.toMatch(/[–—]/);
   });
 
   it("admin · an unknown action still drops the whole shape rather than guessing", () => {

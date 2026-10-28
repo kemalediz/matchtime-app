@@ -12,6 +12,8 @@
  *             tagged or spoken to MatchTime: the pool is asked
  *   group     ask_group, the club's own players: the players' group
  *   partners  recruit from a partner club
+ *   which     players asked for, no source named: MatchTime asks which
+ *             (2026-10-28, `ask-source-rules.ts`; this club has the pool)
  *   approve   the router heard a YES (the safe-YES rule then decides)
  *   quiet     nothing leaves HQ (the organisers' own conversation)
  *   other     another route (a squad change, a question...)
@@ -53,7 +55,7 @@ const model: PipelineModel = {
   },
 };
 
-type Got = "pool" | "group" | "partners" | "approve" | "quiet" | "other";
+type Got = "pool" | "group" | "partners" | "which" | "approve" | "quiet" | "other";
 const ASKED = new Date("2026-10-27T15:30:00Z");
 const NOTICE =
   "📋 *Squad for FNF, Tue 27 Oct at 20:00*: 6 of 7 in, 1 space.\nKickoff is getting close and the squad is still short.\n\n🔎 Or I can ask nearby players from the MatchTime pool (a few near you): reply YES here, or open the match page: https://matchtime.ai/matches/m1";
@@ -90,7 +92,7 @@ const CASES: Array<{ text: string; ctx?: typeof nothing; want: Got[]; why: strin
   // Other sources stay theirs.
   { text: "@Match Time ask the group if anyone can play", want: ["group"], why: "the players' group, unchanged" },
   { text: "@Match Time ask Sutton if anyone can play", want: ["partners"], why: "a partner club, unchanged" },
-  { text: "@Match Time find us a player for Friday", want: ["group"], why: "no source named: the club's own group" },
+  { text: "@Match Time find us a player for Friday", want: ["which"], why: "no source named: MatchTime asks which (2026-10-28)" },
   // A YES with the pool notice waiting (the router hears approve; code decides).
   { text: "yes", ctx: poolWaiting, want: ["approve"], why: "a bare yes" },
   { text: "go on then", ctx: poolWaiting, want: ["approve"], why: "natural yes" },
@@ -194,7 +196,9 @@ async function main() {
           ? "pool"
           : f?.action === "recruit" && f.partnerClubs
             ? "partners"
-            : route === "ask_group"
+            : f?.action === "recruit" && f.sourceUnsaid
+              ? "which"
+              : route === "ask_group"
               ? "group"
               : "other";
     }

@@ -42,7 +42,12 @@
  *                         S6), or the MatchTime player pool ("ask the pool",
  *                         "find someone nearby"), which is asked through the
  *                         match page tick's own function
- *                         (`pool-ask-words.ts`, local player pool L10)
+ *                         (`pool-ask-words.ts`, local player pool L10).
+ *                         Players asked for with no source named, from a
+ *                         club with partner clubs or the pool: ONE question,
+ *                         "who shall I ask?", and the organiser's answer is
+ *                         read by the same extractor (`ask-source-rules.ts`,
+ *                         Kemal 2026-10-28: "stricter")
  *   admin_ops             the shared admin extractor: players from a
  *                         partner club ("ask Sutton if anyone can play",
  *                         slice S6) are asked for by `partner-ask-words.ts`,
@@ -145,6 +150,8 @@ import { activePartnerChoices, askPartnersFromWords } from "./partner-ask-words"
 import { answerJoinRequestInHq, askPoolFromWords, joinRequestsAwaiting, poolNoticesAwaiting } from "./pool-ask-words";
 import { confirmQuestion } from "./admin-group-confirm-copy";
 import { parseJoinRequestRef, parsePoolAskRef } from "./admin-group-pool-refs";
+import { decideRecruitSource, sourceFromAnswer, sourceQuestionAnswered, type RecruitSource } from "./ask-source-rules";
+import { askWhichSource, sourcesAvailable } from "./ask-source";
 
 /** How far back the router's "earlier here" lines reach, and how many. */
 const RECENT_MS = 30 * 60 * 1000;
@@ -568,8 +575,12 @@ async function understandInTrace(input: UnderstandInput): Promise<Understood | n
     };
 
     // The shared admin extractor on this message, told truly whether the bot
-    // was tagged. Null when its call fails or it reads nothing.
-    const readAdminFacts = async (): Promise<AdminFacts | null> => {
+    // was tagged. Null when its call fails or it reads nothing. Read once:
+    // an answer to the source question that is not one (2026-10-28) falls
+    // through to its route, which reuses the same reading.
+    let adminFactsRead: Promise<AdminFacts | null> | null = null;
+    const readAdminFacts = (): Promise<AdminFacts | null> => (adminFactsRead ??= readAdminFactsOnce());
+    const readAdminFactsOnce = async (): Promise<AdminFacts | null> => {
       const model = input.deps?.extractorModel ?? extractorStubFromEnv() ?? anthropicModel();
       const extracted = await extractForRouteTraced("admin_ops", model, "admin_ops", {
         id: messageId,
@@ -608,10 +619,45 @@ async function understandInTrace(input: UnderstandInput): Promise<Understood | n
       return said(r.outcome, r.replyText);
     };
 
+    // WHERE THE PLAYERS COME FROM (Kemal, 2026-10-28: "stricter"; ask when
+    // in limbo). `ask-source-rules.ts`: a source the words named is that
+    // source; a request that names none, from a club with partner clubs or
+    // the pool, gets ONE question (logged as MatchTime's), and nothing is
+    // asked of anybody. An organiser's, weekly club's alone, as each ask is.
+    const askFromSource = async (source: RecruitSource, organiser: string, clubRef: string | null): Promise<Understood> => {
+      if (source === "pool") return askPoolInWords();
+      if (source === "partners") {
+        const r = await askPartnersFromWords({ orgId: org.id, requestedByUserId: organiser, via: "hq", clubRef, lang, now });
+        return said(r.outcome, r.replyText);
+      }
+      const r = await askPlayersGroup({ orgId: org.id, lang, messageId, now });
+      return said(r.outcome, r.replyText);
+    };
+    const askWhichIfUnsaid = async (facts: AdminFacts | null): Promise<Understood | null> => {
+      if (!actor || !weekly || facts?.action !== "recruit" || !facts.sourceUnsaid) return null;
+      const d = decideRecruitSource(facts, await sourcesAvailable(org.id, input.poolEnv));
+      if (d.kind !== "ask-which") return null;
+      console.log(`[admin-group] ${messageId}: players asked for, no source named: asking which (${d.options.join("+")})`);
+      return said("hq-ask-source", await askWhichSource({ orgId: org.id, lang, options: d.options, now }));
+    };
+
     // The safe-YES rule and the score keep their own rules for a quoted
     // message (a YES quoting another organiser is already silent there; a
     // scoreline answering "what was the score?" is still the score).
     const scorelineWhileWaiting = !!score.waiting && hasScorelineShape(body);
+    // AN ANSWER TO "WHO SHALL I ASK FOR PLAYERS?" (2026-10-28), in the place
+    // of one by the safe-YES rule's own tests (a reply quoting it, or the
+    // next message after it), from an organiser: the admin extractor reads
+    // the words against the question (MatchTime's last post), whatever the
+    // router called them. A source named is asked; anything else is handled
+    // as it would have been with no question asked.
+    const sourceOptions = actor && weekly ? sourceQuestionAnswered({ quoted, log, now }) : null;
+    if (sourceOptions && actor) {
+      const answer = await readAdminFacts();
+      const picked = sourceFromAnswer(answer);
+      console.log(`[admin-group] ${messageId}: in the place of an answer to the source question: ${picked ?? "not an answer"}`);
+      if (picked) return askFromSource(picked, actor, answer?.clubRef ?? null);
+    }
     if (answersMomAsk) {
       if (route !== "score") console.log(`[admin-group] ${messageId}: a reply to the Man of the Match question; ${route ?? "nowhere"} -> score`);
       return scoreHere();
@@ -802,6 +848,10 @@ async function understandInTrace(input: UnderstandInput): Promise<Understood | n
             return said(r.outcome, r.replyText);
           }
         }
+        // No source named, and the club has more than its players' group:
+        // ask which (2026-10-28). Otherwise the players' group, as before.
+        const which = await askWhichIfUnsaid(facts);
+        if (which) return which;
         const r = await askPlayersGroup({ orgId: org.id, lang, messageId, now });
         return said(r.outcome, r.replyText);
       }
@@ -836,6 +886,14 @@ async function understandInTrace(input: UnderstandInput): Promise<Understood | n
             now,
           });
           return said(r.outcome, r.replyText);
+        }
+        // Players asked for, no source named (2026-10-28): an organiser's
+        // question back when the club has partners or the pool; otherwise
+        // the one line below, as before.
+        if (facts.kind === "admin" && facts.action === "recruit" && facts.sourceUnsaid) {
+          if (!actor) return onlyOrganisers();
+          const which = await askWhichIfUnsaid(facts);
+          if (which) return which;
         }
         // Calling a match off, or putting it back on (2026-10-22): an owner's
         // or admin's alone (the collector may not), a weekly club only
