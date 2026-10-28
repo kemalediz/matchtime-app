@@ -124,10 +124,11 @@ export function requestNotHandledReply(lang?: Lang | string | null): string {
   return t(lang).request_not_handled;
 }
 
-/** The same, for an admin (2026-09-30): points at the admin page and
- *  "help schedule". Public URL: this is posted in the group. */
+/** The same, for an admin (2026-09-30; 2026-10-28): points at the club's
+ *  settings page and the general help. Public URL: this is posted in the
+ *  group, never a sign-in link. */
 export function requestNotHandledAdminReply(lang?: Lang | string | null): string {
-  return t(lang).request_not_handled_admin({ url: appUrl("/admin") });
+  return t(lang).request_not_handled_admin({ url: appUrl("/admin/settings") });
 }
 
 /** `route.ts:3690`. The balancer declined — not enough confirmed

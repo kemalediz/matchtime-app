@@ -2133,8 +2133,8 @@ Type *"@Match Time help"* any time to see this again.
 https://mt.example/r/settings
 
 ### R149 requestNotHandledAdminReply
-I can't change that by message, but you can do it on the admin page in a few taps: https://matchtime.ai/admin
-Or ask me: *@Match Time help schedule*
+I can't change that by message, but you can do it on your club's settings page in a few taps: https://matchtime.ai/admin/settings
+Or ask me: *@Match Time help*
 
 ### R150 buildAdminMagicLinkDm / seeds, blocks, matches
 👋 You're the admin of *Tuesday Ballers FC* on MatchTime.

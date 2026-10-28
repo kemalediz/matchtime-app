@@ -724,8 +724,8 @@ export const tr: Strings = {
   teams_clear_admin_only: "Takımları sadece bir admin silebilir.",
   request_not_handled: "Kusura bakmayın, bunu henüz yapamıyorum.",
   request_not_handled_admin: (p: { url: string }): string =>
-    `Bunu mesajla değiştiremiyorum, ama yönetici sayfasından birkaç dokunuşla yapabilirsiniz: ${p.url}\n` +
-    `Ya da bana sorun: *@Match Time yardım program*`,
+    `Bunu mesajla değiştiremiyorum, ama kulübünüzün ayarlar sayfasından birkaç dokunuşla yapabilirsiniz: ${p.url}\n` +
+    `Ya da bana sorun: *@Match Time yardım*`,
 
   // ── row 133: composePaymentAck ─────────────────────────────────────
 
