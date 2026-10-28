@@ -4,7 +4,9 @@
  * The manage page's view (slice L2): status and its switches, the same
  * fields as the sign-up (PoolProfileFields), the badge privacy switch, and
  * delete with a second tap to confirm. Opens in the profile's language,
- * with the switch. No wording here (page-copy.ts).
+ * with the switch. No wording here (page-copy.ts). Pause, stop, restart
+ * and delete tell the pool banner in his other tabs to read again
+ * (`announcePoolStateChanged`).
  */
 import { useState, useTransition } from "react";
 import Link from "next/link";
@@ -25,6 +27,7 @@ import type { ManageAction } from "@/lib/pool/manage-rules";
 import { fieldErrorKeys, poolPageCopy } from "@/lib/pool/page-copy";
 import { validatePoolFields, type PoolFieldErrors } from "@/lib/pool/profile-fields";
 import { sportChoiceKey } from "@/lib/pool/sports";
+import { announcePoolStateChanged } from "@/lib/pool/banner-events";
 import { POOL_INVITATIONS_PATH, POOL_PLAY_PATH } from "@/lib/pool/paths";
 
 const BTN = "inline-flex items-center justify-center rounded-xl px-5 py-2.5 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-60";
@@ -74,6 +77,7 @@ export function ManageView({ view }: { view: PoolManageView | null }) {
       setNotice(null);
       const r = await poolManageAction(action, action === "restart" ? restartConsent : undefined);
       setFailure(r.ok ? null : r.reason === "consent-required" ? "consent" : "generic");
+      if (r.ok) announcePoolStateChanged();
       router.refresh();
     });
 
@@ -104,6 +108,7 @@ export function ManageView({ view }: { view: PoolManageView | null }) {
         return;
       }
       setDeleted(true);
+      announcePoolStateChanged();
       if (r.userErased) await signOut({ redirect: false });
     });
 
