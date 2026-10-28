@@ -73,6 +73,7 @@ import {
   buildPickFallbackOffered,
   fallbackOfferCount,
 } from "./organiser-pick-rules";
+import { NOT_CANCELLED } from "@/lib/played-match";
 
 const LIVE = ["UPCOMING", "TEAMS_GENERATED", "TEAMS_PUBLISHED"] as const;
 const CLUB_RATING_WINDOW = 60;
@@ -138,7 +139,7 @@ export async function loadPickListRows(
       select: { userId: true, positions: true },
     }),
     db.rating.findMany({
-      where: { playerId: { in: ids }, match: { activity: { orgId } } },
+      where: { playerId: { in: ids }, match: { activity: { orgId }, ...NOT_CANCELLED } },
       orderBy: { createdAt: "desc" },
       select: { playerId: true, matchId: true, score: true },
     }),

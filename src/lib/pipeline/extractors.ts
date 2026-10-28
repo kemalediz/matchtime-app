@@ -538,8 +538,8 @@ THE MESSAGE is the one you report on, with its sender and whether they tagged th
 THE ACTION, exactly one: what the message asks to be done. A question, an opinion or a discussion about whether to do it ("should we cancel?", "should Bilal play free?", "shall we try the pool?") is "other".
   "bulk_payment" someone paid for several players.
   "fee_waiver" the sender gives named players a free place, so they owe nothing for a game, or takes a free place back. "Free" meaning able to play ("I'm free Tuesday") is not this.
-  "cancel_match" the sender calls off the club's game: cancel it, it is not happening, no game.
-  "restore_match" the sender puts a called-off game back on: it is back on, uncancel it, it goes ahead after all.
+  "cancel_match" the sender calls off the club's game: cancel it, it is not happening, no game. Of a game whose time has gone, it says the game never took place ("it didn't happen", "olmadı").
+  "restore_match" the sender puts a called-off game back on: it is back on, uncancel it, it goes ahead after all. Of a game whose time has gone, it says the game did take place after all.
   "reminder" the sender wants MatchTime to remind them, at a time.
   "recruit" find players who are not in the squad yet; playersFrom says where from. Asking to show, list or count the squad is "other", and so is talking or asking about another club or the player pool.
   "stats_blast" MatchTime itself is to send every player their own stats or ratings link. Telling the PLAYERS to do something (rate each other, open the link they already have) is "other".
@@ -551,7 +551,8 @@ THE FIELDS. toMatchTime is always filled; fill the others for the action, and ev
   count bulk_payment: how many players they paid for.
   coveredRefs the people the action is about, one entry each, as written: for bulk_payment the people paid for, if named; for fee_waiver the people given the free place or losing it. "he" or "him" is the person the message named, else the author of the quoted message when the THEY ARE REPLYING TO line names one.
   undo fee_waiver: true when the message takes a free place back, false when it gives one.
-  matchDay fee_waiver, cancel_match, restore_match: the day the message names for the game, as written ("tonight", "next Friday", "cuma"); "" when it names none or only "this week".
+  matchDay fee_waiver, cancel_match, restore_match: the day the message names for the game, as written ("tonight", "next Friday", "cuma", "last Tuesday"); "" when it names none or only "this week".
+  pastGame cancel_match, restore_match: true when the game the message means has already been, or should have been, played: it says the game didn't happen or did happen after all, or names a game gone by ("last Tuesday's", "the last match", "yesterday", "dün", "geçen hafta"). False for a game still to come.
   phrase reminder: the time phrase exactly as written ("on Monday", "tomorrow at 6"), never a date.
   note reminder: what to remind them about, in their own words ("bring the bibs"); "" when it names nothing.
   playersFrom recruit: where the message says the players are to come from, judged by what it means, never guessed. Each source is a different thing MatchTime does, so a message that does not say is "unsaid" and MatchTime asks the organiser.
@@ -603,10 +604,13 @@ Payments and free places:
   "put Bilal down as free on Friday" / "Bilal bu akşam ücretsiz oynasın" -> fee_waiver, coveredRefs ["Bilal"], undo false, matchDay "on Friday" / "bu akşam"
   "scrap that, Tom isn't free, he pays" / "Ali ücretsiz değil, ödesin" -> fee_waiver, coveredRefs ["Tom"] / ["Ali"], undo true
   "should Bilal play free?" -> other, toMatchTime false: a discussion
-Calling a game off, and putting it back on:
+Calling a game off, and putting it back on. pastGame is false unless shown:
   "Cancel the session" / "maçı iptal et" -> cancel_match, matchDay ""
   "storm, no game Friday" / "bu hafta maç yok" -> cancel_match, matchDay "Friday" / ""
   "it's back on, uncancel Friday" / "maç yapılıyor, iptali geri al" -> restore_match, matchDay "Friday" / ""
+  "Tuesday's game never took place" / "salı maçı yapılmadı" -> cancel_match, matchDay "Tuesday" / "salı", pastGame true
+  "cancel the last match, we didn't play" / "geçen haftaki maçı iptal et, oynamadık" -> cancel_match, matchDay "" / "geçen hafta", pastGame true
+  "Tuesday's game did go ahead after all" / "salı maçı aslında oynandı" -> restore_match, matchDay "Tuesday" / "salı", pastGame true
   "should we cancel Friday?" / "the session should be cancelled anyway" -> other, toMatchTime false: a question, an opinion
 Reminders:
   "remind me tomorrow at 6 to bring the bibs" / "yarın 6'da yelekleri getirmeyi hatırlat" -> reminder, phrase "tomorrow at 6" / "yarın 6'da", note "bring the bibs" / "yelekleri getirmeyi"
@@ -805,6 +809,8 @@ const ADMIN_SCHEMA = {
     // fee_waiver (2026-10-16): taking a free place back, and the day named.
     undo: { type: "boolean" },
     matchDay: { type: "string" },
+    // cancel_match / restore_match (2026-10-28): a game whose time has gone.
+    pastGame: { type: "boolean" },
     phrase: { type: "string" },
     note: { type: "string" },
     // 0 is the schema's stand-in for null, the same convention
@@ -821,7 +827,7 @@ const ADMIN_SCHEMA = {
     // the others. Code lets nothing leave HQ untagged unless it is MatchTime.
     toMatchTime: { type: "boolean" },
   },
-  required: ["action", "payerRef", "count", "coveredRefs", "undo", "matchDay", "phrase", "note", "lookbackMatches", "playersFrom", "clubRef", "toMatchTime"],
+  required: ["action", "payerRef", "count", "coveredRefs", "undo", "matchDay", "pastGame", "phrase", "note", "lookbackMatches", "playersFrom", "clubRef", "toMatchTime"],
   additionalProperties: false,
 } as const;
 
@@ -1145,6 +1151,7 @@ export function parseFacts(
         ...(["fee_waiver", "cancel_match", "restore_match"].includes(action) && typeof raw.matchDay === "string" && raw.matchDay.trim()
           ? { matchDay: raw.matchDay.trim() }
           : {}),
+        ...(["cancel_match", "restore_match"].includes(action) && raw.pastGame === true ? { pastGame: true } : {}),
         ...(typeof raw.phrase === "string" && raw.phrase ? { phrase: raw.phrase } : {}),
         ...(typeof raw.note === "string" && raw.note ? { note: raw.note } : {}),
         // 0 (the schema's stand-in for "not stated") and anything

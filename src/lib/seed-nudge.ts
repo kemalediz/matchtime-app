@@ -26,6 +26,7 @@ import {
 } from "./seed-nudge-rules";
 import { buildSeedNudgeNotice } from "./seed-nudge-copy";
 import type { QuietHours } from "./message-hours";
+import { NOT_CANCELLED } from "@/lib/played-match";
 
 /** The page the nudge points at (src/app/admin/players/ratings). */
 export const SEED_RATINGS_PATH = "/admin/players/ratings";
@@ -52,7 +53,7 @@ export async function loadSeedState(
   active: { total: number; seeded: number };
   manualNudge: boolean;
 }> {
-  const peer = await db.rating.findFirst({ where: { match: { activity: { orgId } } }, select: { id: true } });
+  const peer = await db.rating.findFirst({ where: { match: { activity: { orgId }, ...NOT_CANCELLED } }, select: { id: true } });
   const all = await db.membership.findMany({
     where: { orgId },
     select: { userId: true, seedRating: true, leftAt: true, guestFromOrgId: true, guestMatchId: true },

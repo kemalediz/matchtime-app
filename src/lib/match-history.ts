@@ -54,6 +54,7 @@ import {
   type RankedRoster,
 } from "./ranked-table-activity";
 import { countAppearances, countMomWins, earliestDate, type DatedMomWin } from "./club-record-tables";
+import { NOT_CANCELLED } from "@/lib/played-match";
 
 export interface RecentMatchRow {
   id: string;
@@ -265,7 +266,7 @@ export async function loadRecentHistory(orgId: string): Promise<RecentHistory | 
   //    topPlayers for any match (ties co-win).
   const allMatchIds = (
     await db.match.findMany({
-      where: { activity: { orgId } },
+      where: { activity: { orgId }, ...NOT_CANCELLED },
       select: { id: true },
     })
   ).map((m) => m.id);
@@ -474,7 +475,7 @@ export async function loadClubRecordTables(
     nameOf: (id) => nameById.get(id) ?? "(unnamed)",
   });
 
-  const allMatches = await db.match.findMany({ where: { activity: { orgId } }, select: { id: true, date: true } });
+  const allMatches = await db.match.findMany({ where: { activity: { orgId }, ...NOT_CANCELLED }, select: { id: true, date: true } });
   const momDateById = new Map(allMatches.map((m) => [m.id, m.date]));
   const summaries = await getMomSummaries(allMatches.map((m) => m.id));
   const wins: DatedMomWin[] = [];

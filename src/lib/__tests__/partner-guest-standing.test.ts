@@ -42,7 +42,8 @@ describe("loadGuestStandings", () => {
       expect.objectContaining({ where: { orgId: { in: ["fmc"] }, leftAt: null, guestMatchId: null } }),
     );
     const where = dbMock.rating.findMany.mock.calls[0][0].where;
-    expect(where.match).toEqual({ activity: { orgId: "fmc" } });
+    // A cancelled game's ratings never count (2026-10-28, played-match.ts).
+    expect(where.match).toEqual({ activity: { orgId: "fmc" }, status: { not: "CANCELLED" } });
     expect(where.playerId.in).toEqual(expect.arrayContaining(["c1", "a"]));
   });
 

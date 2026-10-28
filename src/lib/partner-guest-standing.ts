@@ -19,6 +19,7 @@ import { db } from "./db";
 import { ORDINARY_MEMBER_WHERE } from "@/lib/guest-membership";
 import { summariseClubDisplayRatings } from "./player-rating";
 import { standingBand, type GuestStanding } from "./partner-guest-standing-rules";
+import { NOT_CANCELLED } from "@/lib/played-match";
 
 /** The window players see (player-stats.ts `CLUB_RATING_WINDOW`). */
 const CLUB_RATING_WINDOW = 60;
@@ -36,7 +37,7 @@ export async function loadGuestStandings(guests: ReadonlyArray<{ userId: string;
       const mine = guests.filter((g) => g.homeOrgId === org.id);
       const poolIds = [...new Set([...members.filter((m) => m.orgId === org.id).map((m) => m.userId), ...mine.map((g) => g.userId)])];
       const rows = await db.rating.findMany({
-        where: { playerId: { in: poolIds }, match: { activity: { orgId: org.id } } },
+        where: { playerId: { in: poolIds }, match: { activity: { orgId: org.id }, ...NOT_CANCELLED } },
         orderBy: { createdAt: "desc" },
         select: { playerId: true, matchId: true, score: true },
       });

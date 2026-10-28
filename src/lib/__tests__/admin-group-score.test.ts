@@ -163,6 +163,15 @@ it("the write fails: no cheerful words, one line", async () => {
   });
 });
 
+it("review of #437, 4: the game was marked as not played meanwhile: says so, no tick", async () => {
+  const { MatchCancelledError } = await import("../match-elo");
+  const cancelled = { ...apply, recordScore: async () => Promise.reject(new MatchCancelledError("m")) };
+  expect(await hq("Yellow won 7-4", played(), { deps: { model, apply: cancelled, loadState: async () => played() } })).toEqual({
+    outcome: "hq-score-not-played",
+    replyText: "That game is marked as not played, so I haven't recorded a score for it.",
+  });
+});
+
 // ── Man of the Match picked by the organisers (2026-10-18, mom-chooser.ts) ──
 
 Object.assign(FACTS, {

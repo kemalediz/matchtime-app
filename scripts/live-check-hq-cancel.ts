@@ -48,6 +48,9 @@ interface Case {
   text: string;
   want: Want;
   day?: string;
+  /** The extractor's pastGame: true for a game whose time has gone; every
+   *  other cancel or restore must be false (never the past by mistake). */
+  past?: boolean;
   recent?: Array<{ fromMatchTime: boolean; text: string }>;
   why: string;
 }
@@ -73,6 +76,14 @@ const CASES: Case[] = [
   { text: "Please confirm if session is cancelled tomorrow", want: "not-cancel", why: "asking the other organisers" },
   { text: "@Match Time what can you do?", want: "help", why: "a real help ask" },
   { text: "neler yapabiliyorsun?", want: "help", why: "a real help ask, TR" },
+  // A game that did not happen (2026-10-28, Kemal: Sutton FC's Tuesday).
+  { text: "@Match Time cancel last Tuesday's match", want: "cancel", day: "tuesday", past: true, why: "a past game, named" },
+  { text: "@Match Time Tuesday's game didn't happen", want: "cancel", day: "tuesday", past: true, why: "a past game, it didn't happen" },
+  { text: "@Match Time salı maçı olmadı, iptal et", want: "cancel", day: "salı", past: true, why: "a past game, TR" },
+  { text: "@Match Time the last match never happened, take it off", want: "cancel", past: true, why: "the last match" },
+  { text: "@Match Time dünkü maç oynanmadı", want: "cancel", past: true, why: "yesterday's, TR" },
+  { text: "@Match Time Tuesday's game did happen after all, put it back", want: "restore", day: "tuesday", past: true, why: "put back as played" },
+  { text: "@Match Time cancel Tuesday, half the lads are away", want: "cancel", day: "tuesday", why: "the coming Tuesday: never the past" },
 ];
 
 async function main() {
@@ -88,14 +99,15 @@ async function main() {
     if (route === "admin_ops") {
       const ex = await extractForRoute(model, "admin_ops", { id, body: c.text, authorName: "Hamzah", tagged: messageMentionsBotExplicitly({ body: c.text }), history: [], lastBotPost: null });
       const f = ex.facts.kind === "admin" ? ex.facts : null;
-      detail = ` -> ${f?.action ?? ex.facts.kind}${f?.matchDay ? ` "${f.matchDay}"` : ""}`;
+      detail = ` -> ${f?.action ?? ex.facts.kind}${f?.matchDay ? ` "${f.matchDay}"` : ""}${f?.pastGame ? " past" : ""}`;
       if (f?.action === "cancel_match") got = "cancel";
       if (f?.action === "restore_match") got = "restore";
       if (c.day && got === c.want && !(f?.matchDay ?? "").toLowerCase().includes(c.day)) got = "not-cancel";
+      if ((got === "cancel" || got === "restore") && (f?.pastGame === true) !== (c.past === true)) got = "not-cancel";
     }
     const ok = got === c.want;
     ok ? pass++ : fail++;
-    console.log(`${ok ? "PASS" : "FAIL"}  ${JSON.stringify(c.text)}  routed ${route}${detail}   (${c.why}; want ${c.want}${c.day ? ` on ${c.day}` : ""})`);
+    console.log(`${ok ? "PASS" : "FAIL"}  ${JSON.stringify(c.text)}  routed ${route}${detail}   (${c.why}; want ${c.want}${c.day ? ` on ${c.day}` : ""}${c.past ? " past" : ""})`);
   }
   console.log(`\n${pass} passed, ${fail} failed. Model calls: ${calls}. Cost: $${usd.toFixed(4)} (dev key).`);
   process.exit(fail > 0 ? 1 : 0);

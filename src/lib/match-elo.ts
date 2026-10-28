@@ -232,6 +232,19 @@ const same = (a: Score | null, b: Score | null): boolean =>
  *
  * Does NOT touch any rating. Call `reconcileMatchElo` afterwards.
  */
+/**
+ * A score for a match that is CANCELLED (review of #437, 4): a game marked
+ * as not played, or called off. Refused inside the same locked transaction
+ * that writes a score, so a cancel and a score arriving together cannot
+ * both land. Every score door answers it in words (`score_not_played`).
+ */
+export class MatchCancelledError extends Error {
+  constructor(readonly matchId: string) {
+    super(`match ${matchId} is cancelled; no score recorded`);
+    this.name = "MatchCancelledError";
+  }
+}
+
 export async function setMatchScore(args: {
   db?: Db;
   matchId: string;
@@ -245,9 +258,10 @@ export async function setMatchScore(args: {
     await lockMatch(tx, matchId);
     const row = await tx.match.findUnique({
       where: { id: matchId },
-      select: { redScore: true, yellowScore: true, eloApplied: true, updatedAt: true },
+      select: { redScore: true, yellowScore: true, eloApplied: true, updatedAt: true, status: true },
     });
     if (!row) throw new Error(`match ${matchId} not found`);
+    if (row.status === "CANCELLED") throw new MatchCancelledError(matchId);
     const previous: Score | null =
       row.redScore !== null && row.yellowScore !== null
         ? { red: row.redScore as number, yellow: row.yellowScore as number }

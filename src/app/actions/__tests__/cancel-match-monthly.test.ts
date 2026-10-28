@@ -52,7 +52,8 @@ vi.mock("@/lib/db", () => ({
 import { cancelMatch } from "../matches";
 import { bulkCancelMatches, bulkRestoreMatches } from "../block-bookings";
 
-const DATE = new Date("2026-10-19T19:00:00.000Z");
+// A game still to come (2026-10-28: a past one is marked as not played instead).
+const DATE = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
 const FUTURE = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 const single = (squadMode: string, language = "en") => ({
   id: "m1",

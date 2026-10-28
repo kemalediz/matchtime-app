@@ -25,6 +25,7 @@ import { t } from "@/lib/i18n/t";
 import { ResultScore } from "@/components/match/result-score";
 import { connectFocusFor } from "@/lib/connect-focus-server";
 import { CONNECT_FOCUS_HOME } from "@/lib/connect-focus";
+import { NOT_CANCELLED } from "@/lib/played-match";
 
 function getGreeting(hour: number): string {
   if (hour < 5) return "Good night";
@@ -153,7 +154,7 @@ export default async function DashboardPage() {
   // vote shouldn't show up as a "win".
   const myVotedMatches = await db.moMVote.groupBy({
     by: ["matchId"],
-    where: { playerId: session.user.id },
+    where: { playerId: session.user.id, match: NOT_CANCELLED },
     _count: { playerId: true },
   });
   const myVotedMatchIds = myVotedMatches.map((v) => v.matchId);

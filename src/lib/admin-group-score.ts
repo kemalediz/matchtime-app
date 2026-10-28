@@ -149,6 +149,8 @@ export async function answerHqScore(input: HqScoreInput): Promise<HqScoreResult>
   // Not a score after all (the extractor found none): one line only to
   // somebody who asked MatchTime; otherwise it was their own chat.
   if (!o) return addressed ? { outcome: "hq-not-understood", replyText: s.hq_not_understood } : null;
+  // Marked as not played meanwhile (review of #437, 4): said plainly.
+  if (o.writeCancelled) return { outcome: "hq-score-not-played", replyText: s.score_not_played };
   if (o.writeFailed) return { outcome: "hq-score-failed", replyText: s.hq_score_failed };
 
   const [redLabel, yellowLabel] = played.teamLabels ?? state.teamLabels;

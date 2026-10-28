@@ -716,6 +716,10 @@ export interface AdminFacts {
   /** fee_waiver, cancel_match, restore_match: the day named for the game, verbatim ("next Friday").
    *  Resolved by code (`fee-waiver-rules.ts` `readDayHint`), never the model. */
   matchDay?: string;
+  /** cancel_match, restore_match (2026-10-28): the game meant has already
+   *  been, or should have been, played ("Tuesday's game didn't happen"). Set
+   *  only when true. Read by `match-cancel-rules.ts` `pointsAtPast`. */
+  pastGame?: boolean;
   /** reminder — the PHRASE as written ("on Monday", "tomorrow at 6").
    *  §3.2 S22: calendar arithmetic is `date-fns-tz`'s job, not the
    *  model's. The extractor hands back the words. */

@@ -7,6 +7,7 @@ import { useSession } from "next-auth/react";
 import { Send, Trophy, Star } from "lucide-react";
 import { toast } from "sonner";
 import { submitRatings, submitMoMVote } from "@/app/actions/ratings";
+import { t } from "@/lib/i18n/t";
 
 interface Player {
   id: string;
@@ -38,6 +39,9 @@ export default function RatePlayersPage() {
   // players only rate each other here.
   const [momVote, setMomVote] = useState<boolean>(true);
   const [loading, setLoading] = useState(true);
+  // A game marked as not played (2026-10-28): its rating link opens to one
+  // line, in the club's language, and nothing to rate.
+  const [cancelledLang, setCancelledLang] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -45,6 +49,11 @@ export default function RatePlayersPage() {
       const res = await fetch(`/api/matches/${matchId}`);
       if (!res.ok) return;
       const data = await res.json();
+      if (data.status === "CANCELLED") {
+        setCancelledLang(data.activity?.org?.language ?? "en");
+        setLoading(false);
+        return;
+      }
       const others = data.attendances
         .filter((a: { userId: string; status: string }) => a.status === "CONFIRMED" && a.userId !== session?.user?.id)
         .map((a: { user: Player }) => a.user);
@@ -97,6 +106,16 @@ export default function RatePlayersPage() {
   if (loading) {
     return (
       <div className="p-10 text-center text-slate-400">Loading players…</div>
+    );
+  }
+
+  if (cancelledLang !== null) {
+    return (
+      <div className="p-6 sm:p-10 max-w-2xl mx-auto space-y-4 text-center">
+        <p data-testid="rate-cancelled" className="text-base text-slate-700">
+          {t(cancelledLang).not_played_rate_closed}
+        </p>
+      </div>
     );
   }
 

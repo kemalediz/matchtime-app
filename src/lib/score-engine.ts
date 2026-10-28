@@ -132,6 +132,9 @@ export interface ScoreWriteResult {
    *  making this false — see the header. */
   ok: boolean;
   error?: string;
+  /** The match was CANCELLED (marked as not played) when the score came:
+   *  `MatchCancelledError`, review of #437, 4. */
+  cancelled?: boolean;
   /** How many player ratings moved. 0 when the match had no teams. */
   eloApplied: number;
   /** Set when the score landed and the Elo pass did not. Surfaced, never
@@ -174,6 +177,7 @@ export async function applyScoreWrites(args: {
         write,
         ok: false,
         error: err instanceof Error ? err.message : String(err),
+        ...(err instanceof Error && err.name === "MatchCancelledError" ? { cancelled: true } : {}),
         eloApplied: 0,
       });
       continue;

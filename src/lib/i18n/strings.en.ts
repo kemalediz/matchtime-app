@@ -1538,6 +1538,43 @@ export const en = {
   hq_cancel_no_match: `There's no upcoming match to cancel.`,
   hq_cancel_no_match_day: (p: { day: string }): string => `I can't find an upcoming match for "${p.day}".`,
   hq_restore_no_match: `There's no cancelled match still to come to put back on.`,
+  /**
+   * A GAME THAT DID NOT HAPPEN (match-cancel.ts, 2026-10-28). `game` is
+   * `not_played_game`'s label: the activity and the day it was on.
+   */
+  not_played_game: (p: { activityName: string; weekday: string; date: string }): string =>
+    p.activityName.toLowerCase().includes(p.weekday.toLowerCase())
+      ? `${p.activityName} on ${p.date}`
+      : `${p.weekday}'s ${p.activityName} on ${p.date}`,
+  not_played_done: (p: { game: string }): string =>
+    `Done. ${p.game} is marked as not played: no score, ratings or Man of the Match for it.`,
+  not_played_paid: (p: { count: number }): string =>
+    `${p.count} ${p.count === 1 ? "player had" : "players had"} already paid for it. MatchTime refunds nobody by itself, so please refund or credit them.`,
+  not_played_ratings_closed: (p: { weekday: string; date: string }): string =>
+    `${p.weekday}'s game on ${p.date} didn't happen, so its rating links are closed.`,
+  not_played_restored: (p: { game: string }): string => `Done. ${p.game} is back on the record as played.`,
+  not_played_scored: (p: { game: string }): string => `${p.game} has a score recorded, so I've left it as played.`,
+  not_played_none: (p: { days: number }): string => `I can't find a match from the last ${p.days} days to mark as not played.`,
+  not_played_none_day: (p: { day: string; days: number }): string => `I can't find a match in the last ${p.days} days for "${p.day}".`,
+  not_played_restore_none: (p: { days: number }): string => `There's no cancelled match from the last ${p.days} days to put back.`,
+  not_played_too_old: (p: { days: number }): string => `This match kicked off more than ${p.days} days ago, so it can't be changed now.`,
+  not_played_already: (p: { game: string }): string => `${p.game} is already marked as not played.`,
+  not_played_which: (p: { weekday: string; pastDate: string; nextDate: string }): string =>
+    `Which ${p.weekday}: last ${p.weekday}'s game on ${p.pastDate}, or next ${p.weekday}'s on ${p.nextDate}? Say "last ${p.weekday}" or "next ${p.weekday}".`,
+  not_played_which_past: (p: { weekday: string; pastDate: string }): string =>
+    `Do you mean last ${p.weekday}'s game on ${p.pastDate}? Say "last ${p.weekday}" and I'll mark it as not played.`,
+  not_played_failed: "That didn't go through. Please try again.",
+  not_played_already_completed: "This match is already completed.",
+  score_not_played: "That game is marked as not played, so I haven't recorded a score for it.",
+  not_played_rate_closed: "This game was cancelled, so there is nothing to rate.",
+  not_played_button: "This game didn't happen",
+  not_played_confirm: (p: { game: string }): string =>
+    `Mark ${p.game} as not played? It won't count anywhere: no score, ratings or Man of the Match.`,
+  not_played_yes: "Yes, it didn't happen",
+  not_played_keep: "Keep it",
+  not_played_restore_button: "It did happen",
+  not_played_restore_confirm: (p: { game: string }): string => `Put ${p.game} back on the record as played?`,
+  not_played_restore_yes: "Yes, put it back",
   hq_cancel_monthly: `Cancelling a match from here isn't available for monthly squads yet. Please use the website.`,
   /** An organiser's tagged cancel or "back on" in the PLAYERS' group of a
    *  club that has an admin group (2026-10-23): HQ is where it is done. */

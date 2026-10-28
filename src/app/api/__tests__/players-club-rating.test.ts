@@ -100,7 +100,7 @@ describe("GET /api/players: club rating", () => {
     await call();
     expect(ratingFindMany).toHaveBeenCalledTimes(1);
     const where = ratingFindMany.mock.calls[0][0].where;
-    expect(where.match).toEqual({ activity: { orgId: CLUB } });
+    expect(where.match).toEqual({ activity: { orgId: CLUB }, status: { not: "CANCELLED" } });
     expect(where.playerId).toEqual({ in: ["riley", "walt"] });
   });
 

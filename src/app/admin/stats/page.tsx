@@ -25,6 +25,7 @@ import {
   loadLastPlayedByUser,
   formatLastPlayed,
 } from "@/lib/ranked-table-activity";
+import { NOT_CANCELLED } from "@/lib/played-match";
 
 export default async function StatsPage() {
   const session = await auth();
@@ -39,11 +40,11 @@ export default async function StatsPage() {
     where: { memberships: { some: { orgId } } },
     include: {
       ratingsReceived: {
-        where: { match: { activity: { orgId } } },
+        where: { match: { activity: { orgId }, ...NOT_CANCELLED } },
         orderBy: { createdAt: "desc" },
         take: 60,
       },
-      momVotesReceived: { where: { match: { activity: { orgId } } } },
+      momVotesReceived: { where: { match: { activity: { orgId }, ...NOT_CANCELLED } } },
       attendances: {
         where: { status: "CONFIRMED", match: { status: "COMPLETED", activity: { orgId } } },
       },

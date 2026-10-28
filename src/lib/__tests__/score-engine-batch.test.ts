@@ -465,6 +465,22 @@ describe("the 2026-10-06 incident, end to end through the batch", () => {
     expect(res.degradations.join(" ")).toMatch(/reads 8-6/);
   });
 
+  it("review of #437, 4: the game was marked as not played meanwhile: no score, and the group is told why", async () => {
+    const { model } = stubModel({ [WON]: WON_FACTS });
+    const { MatchCancelledError } = await import("../match-elo");
+    const r = recorder(model, playedWorld(), {
+      recordScore: async () => {
+        throw new MatchCancelledError("done-1");
+      },
+    });
+    const res = await run({ messages: [msg({ body: WON })], model, deps: r.deps });
+    const out = [...res.outcomes.values()][0];
+    expect(out.writeFailed).toBe(true);
+    expect(out.writeCancelled).toBe(true);
+    expect(out.reply).toBe("That game is marked as not played, so I haven't recorded a score for it.");
+    expect(out.react).toBeNull();
+  });
+
   it("a bare scoreline is asked about: a reply, no score, no Elo, and the question is REMEMBERED", async () => {
     const { model } = stubModel({ "10-7": { first: 10, second: 7 } });
     const r = recorder(model, playedWorld());

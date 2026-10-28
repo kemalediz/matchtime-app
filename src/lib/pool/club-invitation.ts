@@ -51,8 +51,10 @@ import { GUEST_MEMBER_WHERE, isGuestMembership, partnerHomeClubOf } from "../gue
 import { loadGuestFacts } from "./guest-report-loader";
 import { buildGuestPlayers, guestDisplayName, settleGuestResult } from "./guest-report";
 import type { InviteToClubResult, InviteToClubState } from "./club-invite";
+import { notPlayedKey } from "../match-cancel-keys";
 import {
   afterGameAskDue,
+  blocksAfterGameAsk,
   afterGameKickoffRange,
   clubSilentBefore,
   invitationStep,
@@ -626,14 +628,19 @@ async function askAfterGames(now: Date): Promise<number> {
   if (pairs.size === 0) return 0;
 
   const matchOf = new Map(recent.map((m) => [m.id, m]));
-  const asked = new Set(
-    (
-      await db.clubInvitation.findMany({
-        where: { OR: [...pairs.values()].map((p) => ({ orgId: p.orgId, userId: p.userId })) },
-        select: { orgId: true, userId: true },
-      })
-    ).map((i) => `${i.orgId}:${i.userId}`),
+  const existing = await db.clubInvitation.findMany({
+    where: { OR: [...pairs.values()].map((p) => ({ orgId: p.orgId, userId: p.userId })) },
+    select: { orgId: true, userId: true, status: true, origin: true, matchId: true },
+  });
+  // Withdrawn because the game was marked as not played (review of #437, 6):
+  // not "asked before". Its match carries the not-played record.
+  const withdrawnFor = [...new Set(existing.filter((i) => i.status === "withdrawn" && i.matchId).map((i) => i.matchId!))];
+  const notPlayed = new Set(
+    withdrawnFor.length
+      ? (await db.sentNotification.findMany({ where: { key: { in: withdrawnFor.map(notPlayedKey) } }, select: { matchId: true } })).map((r) => r.matchId!)
+      : [],
   );
+  const asked = new Set(existing.filter((i) => blocksAfterGameAsk(i, notPlayed)).map((i) => `${i.orgId}:${i.userId}`));
 
   let n = 0;
   const byOrg = new Map<string, Array<{ userId: string; matchId: string }>>();
