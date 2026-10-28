@@ -26,7 +26,7 @@ test.afterAll(() => {
 });
 
 test("the default, the ⓘ, new times, a refused pair, Off and On again", async ({ page, db }) => {
-  await signInAs(page, U.admin, "/admin/settings");
+  await signInAs(page, U.admin, "/admin/settings#quiet-hours");
   const card = page.getByTestId("quiet-hours");
   await expect(card).toBeVisible({ timeout: 30_000 });
   await expect(card.getByRole("heading", { name: "Quiet hours" })).toBeVisible();
@@ -74,7 +74,7 @@ test("the default, the ⓘ, new times, a refused pair, Off and On again", async 
 
 test("a Turkish club reads the card in Turkish", async ({ page, db }) => {
   await db.run(`UPDATE "Organisation" SET language = 'tr' WHERE id = $1`, [ORG_ID]);
-  await signInAs(page, U.admin, "/admin/settings");
+  await signInAs(page, U.admin, "/admin/settings#quiet-hours");
   const card = page.getByTestId("quiet-hours");
   await expect(card).toBeVisible({ timeout: 30_000 });
   await expect(card.getByRole("heading", { name: "Sessiz saatler" })).toBeVisible();

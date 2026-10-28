@@ -16,7 +16,13 @@ import type { MomChooser } from "@/lib/mom-chooser";
 const control =
   "h-10 px-3 rounded-lg border border-slate-200 bg-white text-sm text-slate-700 disabled:opacity-50 max-w-full";
 
-export function MomChooserRow(props: { orgId: string; language: string | null | undefined; momChosenBy: MomChooser }) {
+export function MomChooserRow(props: {
+  orgId: string;
+  language: string | null | undefined;
+  momChosenBy: MomChooser;
+  /** After a save (the page reads its settings again for the card's summary). */
+  onSaved?: () => void;
+}) {
   const s = t(props.language);
   const [value, setValue] = useState<MomChooser>(props.momChosenBy);
   const [saving, setSaving] = useState(false);
@@ -30,6 +36,7 @@ export function MomChooserRow(props: { orgId: string; language: string | null | 
       if (!res.ok) throw new Error("refused");
       setValue(res.momChosenBy);
       toast.success(s.wr_pick_saved);
+      props.onSaved?.();
     } catch {
       setValue(before);
       toast.error(s.wr_save_failed);

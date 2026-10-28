@@ -2,6 +2,8 @@ import Link from "next/link";
 import { CreditCard } from "lucide-react";
 import { WaText } from "@/components/billing/wa-text";
 import { SectionInfo } from "@/components/info/section-info";
+import { billingSummary } from "@/lib/settings-summaries";
+import { SettingsCard } from "./settings-nav";
 
 /** The card's data, as /api/org/settings returns it (`billing`). */
 export interface BillingCardData {
@@ -35,13 +37,15 @@ export function BillingSettingsCard({
   lang?: string | null;
 }) {
   return (
-    <section id="billing" data-testid="settings-billing-card" className="bg-white rounded-xl border border-slate-200 shadow-sm scroll-mt-6">
-      <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
-        <CreditCard className="w-4 h-4 text-slate-500" />
-        <h2 className="font-semibold text-slate-800">{data.title}</h2>
-        <SectionInfo k="st_billing" lang={lang} />
-      </div>
-      <div className="p-6 space-y-3 text-sm text-slate-700">
+    <SettingsCard
+      id="billing"
+      title={data.title}
+      icon={CreditCard}
+      info={<SectionInfo k="st_billing" lang={lang} />}
+      summary={billingSummary(data)}
+      testId="settings-billing-card"
+    >
+      <div className="p-4 sm:p-6 space-y-3 text-sm text-slate-700">
         {data.lines.map((l) => (
           <p key={l}>{l}</p>
         ))}
@@ -72,6 +76,6 @@ export function BillingSettingsCard({
           )}
         </div>
       </div>
-    </section>
+    </SettingsCard>
   );
 }

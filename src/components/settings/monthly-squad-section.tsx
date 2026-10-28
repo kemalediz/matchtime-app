@@ -32,6 +32,8 @@ import {
   type MonthlySquadPatch,
   type SquadMode,
 } from "@/lib/squad-month-rules";
+import { monthlySquadSummary } from "@/lib/settings-summaries";
+import { SettingsCard } from "./settings-nav";
 
 export type MonthlySquadData = Omit<MonthlySquadSettings, "rollingSquad">;
 
@@ -93,13 +95,15 @@ export function MonthlySquadSection(props: {
   const label = "flex items-center gap-1 text-sm font-medium text-slate-800";
 
   return (
-    <section id="monthly-squad" className="bg-white rounded-xl border border-slate-200 shadow-sm scroll-mt-6" data-testid="monthly-squad">
-      <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
-        <CalendarDays className="w-4 h-4 text-slate-500" />
-        <h2 className="font-semibold text-slate-800">{s.msq_section_title}</h2>
-        <SectionInfo k="st_monthly" lang={lang} />
-      </div>
-      <div className="p-6">
+    <SettingsCard
+      id="monthly-squad"
+      title={s.msq_section_title}
+      icon={CalendarDays}
+      info={<SectionInfo k="st_monthly" lang={lang} />}
+      summary={monthlySquadSummary(lang, saved.squadMode)}
+      testId="monthly-squad"
+    >
+      <div className="p-4 sm:p-6">
         <p className="text-sm text-slate-500 mb-4">{s.msq_section_lead}</p>
         <div className="divide-y divide-slate-100">
           <div className="py-3" data-setting="squadMode">
@@ -234,6 +238,6 @@ export function MonthlySquadSection(props: {
           )}
         </div>
       </div>
-    </section>
+    </SettingsCard>
   );
 }

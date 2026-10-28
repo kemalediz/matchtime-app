@@ -93,12 +93,19 @@ describe("settings explanations: coverage", () => {
     for (const file of SOURCES) {
       const src = read(file);
       for (const m of src.matchAll(/<SettingInfo k="(\w+)"/g)) used.add(m[1]);
-      for (const m of src.matchAll(/data-setting="(\w+)"/g)) rows.add(m[1]);
+      // A card's own row is marked on the card (`rootProps={{ "data-setting": "…" }}`, 2026-10-28).
+      for (const m of src.matchAll(/data-setting"?[=:] ?"(\w+)"/g)) rows.add(m[1]);
+      // A feature switch row (feature-switch-row.tsx) gets its ⓘ and its row
+      // mark from `settingKey`.
+      for (const m of src.matchAll(/settingKey="(\w+)"/g)) used.add(m[1]), rows.add(m[1]);
     }
-    // The three rows whose key is a variable: the OFFERED_FEATURE_META loop on the
-    // page (`k={key}`) and the two weekly-deadline rows (`k={props.rowKey}`).
-    expect(read(PAGE)).toMatch(/<SettingInfo k=\{key\}/);
-    expect(read(PAGE)).toMatch(/data-setting=\{key\}/);
+    // The rows whose key is a variable: the feature switch row (its key from
+    // `settingKey`, the page's offered switches through `featureRow(key)`) and
+    // the two weekly-deadline rows (`k={props.rowKey}`).
+    const row = read(`${SETTINGS_DIR}/feature-switch-row.tsx`);
+    expect(row).toMatch(/<SettingInfo k=\{props\.settingKey\}/);
+    expect(row).toMatch(/data-setting=\{props\.settingKey\}/);
+    expect(read(PAGE)).toMatch(/settingKey=\{m\.key\}/);
     for (const m of FEATURE_META) used.add(m.key), rows.add(m.key);
     const deadlines = read(`${SETTINGS_DIR}/weekly-deadline-rows.tsx`);
     expect(deadlines).toMatch(/<SettingInfo k=\{props\.rowKey\}/);
@@ -113,9 +120,12 @@ describe("settings explanations: coverage", () => {
   it("a settings component that renders a form control marks its rows and gives them an ⓘ", () => {
     const CONTROL = /role="switch"|<select|<textarea|<input/;
     for (const file of SOURCES) {
+      // The layout's only control is the "Find a setting" box: it searches
+      // the page and is not a setting.
+      if (file.endsWith("/settings-nav.tsx")) continue;
       const src = read(file);
       if (!CONTROL.test(src)) continue;
-      expect(src, `${file}: a control without data-setting`).toMatch(/data-setting=/);
+      expect(src, `${file}: a control without data-setting`).toMatch(/data-setting"?[=:]/);
       expect(src, `${file}: a control without <SettingInfo>`).toMatch(/<SettingInfo /);
     }
   });

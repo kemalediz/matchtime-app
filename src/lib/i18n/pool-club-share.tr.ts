@@ -1,5 +1,6 @@
 /** A club's share post in Turkish (growth slice G3). See `pool-club-share.ts`. */
 import type { PoolClubShareCopy } from "./pool-club-share";
+import { trLocative } from "./tr-locative";
 
 export const POOL_CLUB_SHARE_TR: PoolClubShareCopy = {
   post: (url) =>
@@ -18,7 +19,10 @@ export const POOL_CLUB_SHARE_TR: PoolClubShareCopy = {
   sending: "Gönderiliyor...",
   queued: "Gönderildi. Bir iki dakika içinde oyuncu grubunuzda olacak.",
   held: (when) => `Gönderildi. Sessiz saatleriniz bitince, ${when} saatinde paylaşılacak.`,
-  sentOn: (date) => `Bunu ${date} tarihinde oyuncu grubunuza gönderdiniz.`,
+  queuedSoon: "Sırada: bir iki dakika içinde gönderilecek.",
+  queuedToday: (time) => `Sırada: ${trLocative(time)} gönderilecek.`,
+  queuedOn: (date, time) => `Sırada: ${date}, ${trLocative(time)} gönderilecek.`,
+  sentOn: (date) => `Oyuncu grubunuza ${trLocative(date)} gönderildi.`,
   noGroup: "Önce oyuncularınızın WhatsApp grubunu MatchTime'a bağlayın, sonra bunu gönderebilirsiniz.",
   failed: "Gönderilemedi. Lütfen tekrar deneyin.",
 };

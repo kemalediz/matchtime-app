@@ -29,7 +29,13 @@ export interface PoolClubShareCopy {
   queued: string;
   /** After the tap, inside the club's quiet hours. `when` is a London date and time. */
   held: (when: string) => string;
-  /** Afterwards, for good. `date` is the day it was sent. */
+  /** Tapped, the post not out yet: it goes out in a minute or two. */
+  queuedSoon: string;
+  /** Tapped, held until later today. `time` is London HH:mm. */
+  queuedToday: (time: string) => string;
+  /** Tapped, held until another day. `date` is "29 Oct 2026", `time` HH:mm. */
+  queuedOn: (date: string, time: string) => string;
+  /** Afterwards, for good. `date` is the day it went out ("28 Oct 2026"). */
   sentOn: (date: string) => string;
   /** No players' group connected yet (or the bot is off for it). */
   noGroup: string;

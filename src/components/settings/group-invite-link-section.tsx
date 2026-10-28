@@ -15,6 +15,8 @@ import { SettingInfo } from "@/components/info/setting-info";
 import { inviteCopy } from "@/lib/i18n/pool-invite";
 import { getInviteLinkSettings, setInviteLink } from "@/app/actions/club-invite";
 import type { InviteLinkSettings } from "@/lib/pool/invite-link-settings";
+import { groupInviteLinkSummary } from "@/lib/settings-summaries";
+import { SettingsCard } from "./settings-nav";
 
 export function GroupInviteLinkSection(props: { orgId: string; language: string | null | undefined }) {
   const c = inviteCopy(props.language);
@@ -62,12 +64,15 @@ export function GroupInviteLinkSection(props: { orgId: string; language: string 
 
   const status = data.mode === "bot" ? c.set_status_bot : data.mode === "pasted" ? c.set_status_pasted : c.set_status_none;
   return (
-    <section id="group-invite-link" className="bg-white rounded-xl border border-slate-200 shadow-sm scroll-mt-20" data-testid="group-invite-link" data-setting="groupInviteLink" data-mode={data.mode}>
-      <div className="px-4 sm:px-6 py-4 border-b border-slate-100 flex items-center gap-2">
-        <Link2 className="w-4 h-4 text-slate-500" aria-hidden />
-        <h2 className="font-semibold text-slate-800">{c.set_title}</h2>
-        <SettingInfo k="groupInviteLink" lang={props.language} />
-      </div>
+    <SettingsCard
+      id="group-invite-link"
+      title={c.set_title}
+      icon={Link2}
+      info={<SettingInfo k="groupInviteLink" lang={props.language} />}
+      summary={groupInviteLinkSummary(props.language, data.mode)}
+      testId="group-invite-link"
+      rootProps={{ "data-setting": "groupInviteLink", "data-mode": data.mode }}
+    >
       <div className="p-4 sm:p-6 space-y-4">
         <p className="text-sm text-slate-600">{c.set_blurb}</p>
         <p data-testid="group-invite-link-status" className={`text-sm font-medium ${data.mode === "none" ? "text-amber-800" : "text-green-800"}`}>
@@ -137,6 +142,6 @@ export function GroupInviteLinkSection(props: { orgId: string; language: string 
           )}
         </form>
       </div>
-    </section>
+    </SettingsCard>
   );
 }

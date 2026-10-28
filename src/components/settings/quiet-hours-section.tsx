@@ -14,6 +14,8 @@ import { SettingInfo } from "@/components/info/setting-info";
 import { t } from "@/lib/i18n/t";
 import { getQuietHours, setQuietHours } from "@/app/actions/quiet-hours";
 import type { QuietHours } from "@/lib/message-hours";
+import { quietHoursSummary } from "@/lib/settings-summaries";
+import { SettingsCard } from "./settings-nav";
 
 export function QuietHoursSection(props: { orgId: string; language: string | null | undefined }) {
   const s = t(props.language);
@@ -68,13 +70,16 @@ export function QuietHoursSection(props: { orgId: string; language: string | nul
     "h-10 px-3 rounded-lg border border-slate-200 bg-white text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50";
 
   return (
-    <section className="bg-white rounded-xl border border-slate-200 shadow-sm" data-testid="quiet-hours" data-setting="quietHours">
-      <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
-        <Moon className="w-4 h-4 text-slate-500" />
-        <h2 className="font-semibold text-slate-800">{s.qh_settings_label}</h2>
-        <SettingInfo k="quietHours" lang={props.language} />
-      </div>
-      <div className="p-6 space-y-3">
+    <SettingsCard
+      id="quiet-hours"
+      title={s.qh_settings_label}
+      icon={Moon}
+      info={<SettingInfo k="quietHours" lang={props.language} />}
+      summary={quietHoursSummary(props.language, saved)}
+      testId="quiet-hours"
+      rootProps={{ "data-setting": "quietHours" }}
+    >
+      <div className="p-4 sm:p-6 space-y-3">
         <div className="flex items-center justify-between gap-4">
           <p className="text-sm text-slate-500">{s.qh_settings_blurb}</p>
           <button
@@ -130,6 +135,6 @@ export function QuietHoursSection(props: { orgId: string; language: string | nul
           </p>
         )}
       </div>
-    </section>
+    </SettingsCard>
   );
 }

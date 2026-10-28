@@ -12,7 +12,7 @@ test.beforeAll(() => resetDb());
 test.afterAll(() => resetDb());
 
 test("settings: who announces the list and teams persists", async ({ page, db }) => {
-  await signInAs(page, U.admin, "/admin/settings");
+  await signInAs(page, U.admin, "/admin/settings#wr-announce");
   const row = page.getByTestId("wr-announce");
   const mode = page.getByTestId("wr-announce-mode");
   await expect(mode).toHaveValue("matchtime", { timeout: 30_000 });

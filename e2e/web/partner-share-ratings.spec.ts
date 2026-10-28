@@ -27,7 +27,7 @@ test.afterAll(async ({ db }) => {
 
 test("off by default; an owner switches it on and off; the ⓘ says what partner clubs see", async ({ page, db }) => {
   expect(await shared(db)).toBe(false);
-  await signInAs(page, U.admin, "/admin/settings");
+  await signInAs(page, U.admin, "/admin/settings#partner-clubs");
   const section = page.getByTestId("partner-clubs");
   await expect(section).toBeVisible({ timeout: 30_000 });
   const sw = section.getByRole("switch", { name: "Share our players' ratings with partner clubs" });
@@ -53,7 +53,7 @@ test("off by default; an owner switches it on and off; the ⓘ says what partner
 
 test("in Turkish: the switch and its ⓘ", async ({ page, db }) => {
   await db.run(`UPDATE "Organisation" SET language = 'tr' WHERE id = $1`, [ORG_ID]);
-  await signInAs(page, U.admin, "/admin/settings");
+  await signInAs(page, U.admin, "/admin/settings#partner-clubs");
   const section = page.getByTestId("partner-clubs");
   await expect(section).toBeVisible({ timeout: 30_000 });
   const sw = section.getByRole("switch", { name: "Oyuncularımızın puanlarını partner kulüplerle paylaş" });

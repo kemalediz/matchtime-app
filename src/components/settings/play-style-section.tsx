@@ -14,6 +14,8 @@ import { SettingInfo } from "@/components/info/setting-info";
 import { t } from "@/lib/i18n/t";
 import { getPlayStyle, setPlayStyle } from "@/app/actions/play-style";
 import { PLAY_STYLES, type PlayStyle } from "@/lib/pool/vocab";
+import { playStyleSummary } from "@/lib/settings-summaries";
+import { SettingsCard } from "./settings-nav";
 
 export function PlayStyleSection(props: { orgId: string; language: string | null | undefined }) {
   const s = t(props.language);
@@ -46,13 +48,16 @@ export function PlayStyleSection(props: { orgId: string; language: string | null
   }
 
   return (
-    <section className="bg-white rounded-xl border border-slate-200 shadow-sm" data-testid="play-style" data-setting="playStyle">
-      <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
-        <Gauge className="w-4 h-4 text-slate-500" aria-hidden />
-        <h2 className="font-semibold text-slate-800">{s.ps_title}</h2>
-        <SettingInfo k="playStyle" lang={props.language} />
-      </div>
-      <div className="p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+    <SettingsCard
+      id="play-style"
+      title={s.ps_title}
+      icon={Gauge}
+      info={<SettingInfo k="playStyle" lang={props.language} />}
+      summary={playStyleSummary(props.language, value ? s.ps_style({ kind: value }) : null)}
+      testId="play-style"
+      rootProps={{ "data-setting": "playStyle" }}
+    >
+      <div className="p-4 sm:p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <p className="text-sm text-slate-500" id="play-style-blurb">
           {s.ps_blurb}
         </p>
@@ -73,6 +78,6 @@ export function PlayStyleSection(props: { orgId: string; language: string | null
           ))}
         </select>
       </div>
-    </section>
+    </SettingsCard>
   );
 }

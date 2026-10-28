@@ -16,6 +16,7 @@ import type { Page } from "@playwright/test";
 import { test, expect, signInAs, resetDb, U } from "../fixtures";
 import { MATCH, ORG_ID } from "../helpers/constants";
 import { testDb } from "../helpers/test-db";
+import { openSettingsCard } from "../helpers/settings-nav";
 
 test.describe.configure({ mode: "serial" });
 
@@ -31,11 +32,12 @@ async function setOrg(sql: string, params: unknown[] = []) {
 async function openSettings(page: Page) {
   await signInAs(page, U.admin, "/admin/settings");
   await page.waitForURL("**/admin/settings");
-  await expect(page.getByTestId("monthly-squad")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("settings-tabs")).toBeVisible({ timeout: 30_000 });
 }
 
 test("weekly club collecting match fees: the field is in Payments, with its info, and saves", async ({ page, db }) => {
   await openSettings(page);
+  await openSettingsCard(page, "payments");
   const payments = page.locator("#payments");
   const row = payments.getByTestId("pay-instructions-row");
   await expect(row).toBeVisible();
@@ -58,6 +60,7 @@ test("weekly club collecting match fees: the field is in Payments, with its info
     .toBe("Sort code 12-34-56, account 12345678");
 
   await page.reload();
+  await openSettingsCard(page, "payments");
   await expect(page.getByTestId("pay-instructions-input")).toHaveValue("Sort code 12-34-56, account 12345678", { timeout: 30_000 });
 
   // Cleared: saved as nothing.
@@ -71,12 +74,16 @@ test("weekly club collecting match fees: the field is in Payments, with its info
 test("monthly club: the field stays in Monthly squad only; fees off: no Payments field", async ({ page }) => {
   await setOrg(`"squadMode" = 'monthly'`);
   await openSettings(page);
+  await openSettingsCard(page, "monthly-squad");
   await expect(page.getByTestId("msq-instructions")).toBeVisible();
   await expect(page.getByTestId("pay-instructions-row")).toHaveCount(0);
 
   await setOrg(`"squadMode" = 'weekly', "paymentCollectionEnabled" = false`);
   await openSettings(page);
-  await expect(page.locator("#payments")).toHaveCount(0);
+  // The Payments card keeps its switches (2026-10-28); the collector and
+  // bank part, where the field lives, is not there.
+  await openSettingsCard(page, "payments");
+  await expect(page.getByTestId("collector-bank")).toHaveCount(0);
   await expect(page.getByTestId("pay-instructions-row")).toHaveCount(0);
   await setOrg(`"paymentCollectionEnabled" = true`);
 });

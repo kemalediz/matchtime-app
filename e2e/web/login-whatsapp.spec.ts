@@ -313,7 +313,7 @@ test("an expired signed link lands on sign-in with a notice, and signing in carr
   await signInOnPage(page, ORGANISER_PHONE);
   // Straight to the page the link was for, not the home page.
   await page.waitForURL("**/admin/settings", { timeout: 30_000 });
-  await expect(page.getByTestId("weekly-routine")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("settings-tabs")).toBeVisible({ timeout: 30_000 });
   expect(await sessionUserId(page)).toBe(userId);
 });
 

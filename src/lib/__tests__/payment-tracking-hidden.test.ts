@@ -52,7 +52,8 @@ describe("the setting is hidden", () => {
 
   it("the settings page lists the offered switches only", () => {
     const page = read("src/app/admin/settings/page.tsx");
-    expect(page).toMatch(/OFFERED_FEATURE_META\.map\(/);
+    // Each switch is placed in its card through the offered list (2026-10-28).
+    expect(page).toMatch(/OFFERED_FEATURE_META\.find\(/);
     expect(page).not.toMatch(/\bFEATURE_META\.map\(/);
     expect(page).not.toMatch(/paymentTracking/);
   });

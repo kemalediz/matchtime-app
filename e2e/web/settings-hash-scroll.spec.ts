@@ -1,5 +1,6 @@
 /**
- * Links into /admin/settings land on their section (2026-10-21).
+ * Links into /admin/settings land on their section (2026-10-21); since the
+ * tabs (2026-10-28) they also open the section's tab and expand its card.
  *
  * The partner-club notice DMs link to /admin/settings#partner-clubs, and the
  * payment DMs to #payments. Both sections are drawn only after the page's
@@ -44,10 +45,14 @@ test("the payments link lands on the Payments section", async ({ page, db }) => 
   await signInAs(page, U.admin, "/admin/settings#payments");
   await expect(page.locator("#payments")).toBeVisible({ timeout: 30_000 });
   await expect(page.locator("#payments")).toBeInViewport();
+  // Its tab is open, and the card is expanded at the collector.
+  await expect(page.getByTestId("settings-tab-payments")).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("collector-bank")).toBeVisible();
 });
 
-test("with no #section the page still opens at the top", async ({ page }) => {
+test("with no #section the page still opens at the top, on the Club tab", async ({ page }) => {
   await signInAs(page, U.admin, "/admin/settings");
-  await expect(page.getByTestId("partner-clubs")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("settings-card-toggle-club-details")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("settings-tab-club")).toHaveAttribute("aria-selected", "true");
   expect(await page.evaluate(() => window.scrollY)).toBe(0);
 });

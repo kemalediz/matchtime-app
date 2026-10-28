@@ -27,14 +27,15 @@
  * players too" on a pairing that lets another club ask this one (D-1); and
  * the block list with unblock.
  */
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import Link from "next/link";
 import { Handshake, MapPin, Search } from "lucide-react";
 import { SettingInfo } from "@/components/info/setting-info";
 import { VenueSuggestInput } from "@/components/venue/venue-suggest-input";
 import { t } from "@/lib/i18n/t";
-import { scrollToHashTarget } from "@/lib/scroll-to-hash";
+import { partnerClubsSummary } from "@/lib/settings-summaries";
+import { SettingsCard } from "./settings-nav";
 import { venueSuggestLabels } from "@/lib/venue-suggest-labels";
 import { pickForSubmit, type VenuePickState } from "@/lib/venue-suggest-rules";
 import {
@@ -65,6 +66,14 @@ const CUTOFF_CHOICES = Array.from(
   (_, i) => PARTNER_ASK_CUTOFF_MIN_HOURS + i,
 );
 
+/** The summary's counts: clubs partnered with now, and proposals waiting for this club's answer. */
+function partnerCounts(d: PartnerClubsData): { partners: number; requestsWaiting: number } {
+  return {
+    partners: d.partnerships.filter((p) => p.status === "active" || p.status === "paused").length,
+    requestsWaiting: d.partnerships.filter((p) => p.status === "proposed" && !p.weAccepted).length,
+  };
+}
+
 export function PartnerClubsSection(props: { orgId: string; language: string | null | undefined }) {
   const s = t(props.language);
   const [data, setData] = useState<PartnerClubsData | null>(null);
@@ -83,7 +92,6 @@ export function PartnerClubsSection(props: { orgId: string; language: string | n
   // The "ask them too" link opens this page with `?askToo=<pairing>` (D-1):
   // that pairing's button is highlighted; the tap on it is the request.
   const [askTooId, setAskTooId] = useState<string | null>(null);
-  const scrolled = useRef(false);
 
   useEffect(() => {
     try {
@@ -108,15 +116,9 @@ export function PartnerClubsSection(props: { orgId: string; language: string | n
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.orgId]);
 
-  // The notice DMs link to #partner-clubs, and the section is not in the
-  // page when the browser looks for it. Once: the reload after an action
-  // must not pull the page back up here.
-  useEffect(() => {
-    if (!data || scrolled.current) return;
-    scrolled.current = true;
-    // The weekly venue reminder links to #club-venue (partner discovery, P1).
-    if (!scrollToHashTarget("club-venue")) scrollToHashTarget("partner-clubs");
-  }, [data]);
+  // The notice DMs link to #partner-clubs and the weekly venue reminder to
+  // #club-venue: the settings layout (settings-nav.tsx) opens this card and
+  // scrolls there once it is drawn.
 
   if (!data) return null;
   // Partner requests (P3): a request to us waiting for our answer, and
@@ -324,12 +326,14 @@ export function PartnerClubsSection(props: { orgId: string; language: string | n
   );
 
   return (
-    <section id="partner-clubs" className="bg-white rounded-xl border border-slate-200 shadow-sm scroll-mt-6" data-testid="partner-clubs">
-      <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
-        <Handshake className="w-4 h-4 text-slate-500" />
-        <h2 className="font-semibold text-slate-800">{s.pc_section_title}</h2>
-      </div>
-      <div className="p-6">
+    <SettingsCard
+      id="partner-clubs"
+      title={s.pc_section_title}
+      icon={Handshake}
+      summary={partnerClubsSummary(props.language, partnerCounts(data))}
+      testId="partner-clubs"
+    >
+      <div className="p-4 sm:p-6">
         <p className="text-sm text-slate-500 mb-4">{s.pc_section_lead}</p>
         <div className="divide-y divide-slate-100">
           {/* Partner discovery (P1): the two switches, owners and admins. */}
@@ -713,6 +717,6 @@ export function PartnerClubsSection(props: { orgId: string; language: string | n
           )}
         </div>
       </div>
-    </section>
+    </SettingsCard>
   );
 }

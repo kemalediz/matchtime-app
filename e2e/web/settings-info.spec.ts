@@ -18,6 +18,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { test, expect, signInAs, resetDb, U } from "../fixtures";
 import { ORG_ID } from "../helpers/constants";
+import { SETTINGS_TABS, expandSettingsTab, openSettingsCard } from "../helpers/settings-nav";
 
 test.describe.configure({ mode: "serial" });
 
@@ -34,17 +35,34 @@ test.afterAll(() => {
 async function openSettings(page: Page) {
   await signInAs(page, U.admin, "/admin/settings");
   await page.waitForURL("**/admin/settings");
-  await expect(page.getByTestId("weekly-routine")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("settings-tabs")).toBeVisible({ timeout: 30_000 });
 }
 
-/** Every visible, editable control is inside a `data-setting` row with its own ⓘ. */
+/**
+ * Every visible, editable control is inside a `data-setting` row with its
+ * own ⓘ. The page is tabs of collapsed cards (2026-10-28): every tab is
+ * shown in turn with every card on it expanded, so every control is
+ * visible once and checked.
+ */
 async function expectEveryControlExplained(page: Page): Promise<string[]> {
   // Let the rows that load their own state (admin messages, teams ready, posters) arrive.
   await page.waitForLoadState("networkidle");
+  const keys = new Set<string>();
+  for (const tab of SETTINGS_TABS) {
+    await expandSettingsTab(page, tab);
+    await page.waitForLoadState("networkidle");
+    for (const k of await controlsExplainedOnScreen(page)) keys.add(k);
+  }
+  return [...keys];
+}
+
+async function controlsExplainedOnScreen(page: Page): Promise<string[]> {
   const result = await page.evaluate(() => {
     const controls = Array.from(
       document.querySelectorAll<HTMLElement>('[role="switch"], select, textarea, input:not([type="hidden"])'),
     ).filter((el) => {
+      // "Find a setting" searches the page; it is not a setting.
+      if (el.dataset.testid === "find-setting-input") return false;
       const input = el as HTMLInputElement;
       if (input.disabled && el.tagName !== "SELECT" && el.getAttribute("role") !== "switch") return false;
       if (input.readOnly) return false;
@@ -55,7 +73,8 @@ async function expectEveryControlExplained(page: Page): Promise<string[]> {
       return visible;
     });
     const orphans = controls.filter((el) => !el.closest("[data-setting]")).map((el) => el.outerHTML.slice(0, 120));
-    const rows = Array.from(document.querySelectorAll<HTMLElement>("[data-setting]"));
+    // The rows on screen: the open tab, every card expanded (the other tabs are checked when shown).
+    const rows = Array.from(document.querySelectorAll<HTMLElement>("[data-setting]")).filter((r) => r.getClientRects().length > 0);
     const missing = rows
       .filter((r) => !r.querySelector(`[data-testid="info-setting-${r.dataset.setting}"]`))
       .map((r) => r.dataset.setting ?? "");
@@ -73,7 +92,9 @@ test("weekly club, every optional row showing: every control has its ⓘ", async
     [ORG_ID, HQ],
   );
   await openSettings(page);
+  await openSettingsCard(page, "teams");
   await expect(page.getByTestId("teams-ready")).toBeVisible({ timeout: 30_000 });
+  await openSettingsCard(page, "posters");
   await expect(page.getByTestId("posters-card")).toBeVisible({ timeout: 30_000 });
   const keys = await expectEveryControlExplained(page);
   for (const k of [
@@ -106,6 +127,7 @@ test("weekly club, every optional row showing: every control has its ⓘ", async
 test("monthly club: the monthly rows have their ⓘ too", async ({ page, db }) => {
   await db.run(`UPDATE "Organisation" SET "squadMode" = 'monthly' WHERE id = $1`, [ORG_ID]);
   await openSettings(page);
+  await openSettingsCard(page, "monthly-squad");
   await expect(page.getByTestId("msq-credit")).toBeVisible({ timeout: 30_000 });
   const keys = await expectEveryControlExplained(page);
   for (const k of ["squadMode", "monthCreditRule", "paygPrice", "monthListOpens", "paymentInstructions"]) expect(keys, k).toContain(k);
@@ -115,6 +137,7 @@ test("monthly club: the monthly rows have their ⓘ too", async ({ page, db }) =
 
 test("the popup: keyboard, Escape, a tap outside, and what it says", async ({ page }) => {
   await openSettings(page);
+  await openSettingsCard(page, "weekly-routine");
   const trigger = page.getByTestId("info-setting-rollingSquad");
   await trigger.focus();
   await page.keyboard.press("Enter");
@@ -152,6 +175,7 @@ test("the popup: keyboard, Escape, a tap outside, and what it says", async ({ pa
 test("phone width: a 16px gutter, scrolls inside, and dark mode is dark", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 640 });
   await openSettings(page);
+  await openSettingsCard(page, "payments");
   await page.getByTestId("info-setting-paymentCollection").click();
   const dialog = page.getByRole("dialog", { name: "Collect match fees" });
   await expect(dialog).toBeVisible();
@@ -179,11 +203,21 @@ test("phone width: a 16px gutter, scrolls inside, and dark mode is dark", async 
 test("a Turkish club reads every popup in Turkish", async ({ page, db }) => {
   await db.run(`UPDATE "Organisation" SET language = 'tr' WHERE id = $1`, [ORG_ID]);
   await openSettings(page);
-  // The page's own headings are Turkish too.
-  for (const heading of ["Genel", "Takım adları", "Bot dili", "Davet bağlantısı", "Bot özellikleri", "WhatsApp botu"]) {
-    await expect(page.getByRole("heading", { name: heading, exact: true })).toBeVisible();
+  // The page's own headings are Turkish too, tab by tab (the tabs and the
+  // card titles the layout made are checked in settings-tabs.spec.ts).
+  const headings: Array<[import("@/lib/settings-anchors").SettingsTab, string[]]> = [
+    ["club", ["Genel", "Bot dili", "WhatsApp botu"]],
+    ["matches", ["Haftalık düzen", "Hatırlatmalar", "Takımlar", "Takım adları", "Aylık kadro"]],
+    ["players", ["Yoklama", "Yedekler", "Puanlar ve istatistikler", "Maçın adamı", "Davet bağlantısı"]],
+    ["payments", ["Ödemeler"]],
+    ["messages", ["Sessiz saatler", "Yönetici mesajları", "Afişler"]],
+  ];
+  for (const [tab, names] of headings) {
+    await expandSettingsTab(page, tab);
+    for (const heading of names) await expect(page.getByRole("heading", { name: heading, exact: true })).toBeVisible();
   }
   await expect(page.getByText("added in stages")).toHaveCount(0);
+  await openSettingsCard(page, "weekly-routine");
   await page.getByRole("button", { name: "Listeyi ve takımları kim duyurur nedir?" }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByRole("heading", { name: "Listeyi ve takımları kim duyurur" })).toBeVisible();
@@ -209,6 +243,7 @@ test("screenshots for the PR (only with SETTINGS_INFO_SHOTS)", async ({ page, db
       await openSettings(page);
       await page.waitForLoadState("networkidle");
       for (const k of ["listAnnouncer", "attendance"]) {
+        await openSettingsCard(page, k === "listAnnouncer" ? "weekly-routine" : "attendance");
         const trigger = page.getByTestId(`info-setting-${k}`);
         await trigger.scrollIntoViewIfNeeded();
         await trigger.click();
@@ -229,6 +264,7 @@ test("screenshots for the PR (only with SETTINGS_INFO_SHOTS)", async ({ page, db
 // for it; Collect match fees is still there.
 test("payment tracking is hidden: no row, no switch, no explanation", async ({ page }) => {
   await openSettings(page);
+  await openSettingsCard(page, "payments");
   await expect(page.locator('[data-setting="paymentCollection"]')).toBeVisible();
   await expect(page.locator('[data-setting="paymentTracking"]')).toHaveCount(0);
   await expect(page.getByTestId("info-setting-paymentTracking")).toHaveCount(0);

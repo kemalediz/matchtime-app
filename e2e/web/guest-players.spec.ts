@@ -336,8 +336,8 @@ test("a Turkish club reads the page in Turkish", async ({ page, db }) => {
 });
 
 test("Style of play: shown only while the club may ask the pool, and saved", async ({ page, db }) => {
-  await signInAs(page, U.admin, "/admin/settings");
-  await expect(page.getByTestId("weekly-routine")).toBeVisible({ timeout: 30_000 });
+  await signInAs(page, U.admin, "/admin/settings#play-style");
+  await expect(page.getByTestId("settings-tabs")).toBeVisible({ timeout: 30_000 });
   await page.waitForLoadState("networkidle");
   await expect(page.getByTestId("play-style")).toHaveCount(0);
 

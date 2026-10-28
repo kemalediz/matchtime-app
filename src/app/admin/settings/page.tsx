@@ -1,14 +1,61 @@
 "use client";
 
+/**
+ * /admin/settings (2026-10-28 layout): six tabs of collapsible cards with a
+ * "Find a setting" box, and `#<card id>` deep links (ids in
+ * src/lib/settings-anchors.ts, layout in components/settings/settings-nav.tsx).
+ * Every card keeps the behaviour and permissions it had on the long page;
+ * this file only places them.
+ *
+ *   Club              General, Bot language, WhatsApp bot
+ *   Matches           Weekly routine, Reminders, Teams, Monthly squad
+ *   Players           Attendance, Bench, Ratings and stats, Man of the Match, Invite link
+ *   Payments          Payments (fees, methods, collector, bank), MatchTime club fee
+ *   Finding players   Partner clubs, Player pool, Style of play, automatic asking,
+ *                     Tell your players, Group invite link
+ *   Messages          Quiet hours, Admin messages, Posters
+ */
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Copy, Link as LinkIcon, Users, Settings, MessageCircle, SlidersHorizontal, Landmark, CheckCircle2, Shirt, Languages, Repeat } from "lucide-react";
+import {
+  Armchair,
+  BellRing,
+  CheckCircle2,
+  ClipboardCheck,
+  Copy,
+  Landmark,
+  Languages,
+  Link as LinkIcon,
+  MessageCircle,
+  Repeat,
+  Settings,
+  Shirt,
+  Star,
+  Trophy,
+  Users,
+  Wallet,
+} from "lucide-react";
 import { renameDraftClub, setOrgFeature, setOrgLanguage, setOrgTeamLabels, setWeeklyRoutine } from "@/app/actions/org";
 import { WeeklyDeadlineRows, type DayTimeValue } from "@/components/settings/weekly-deadline-rows";
 import { t } from "@/lib/i18n/t";
 import { startCollectorOnboarding, refreshCollectorStatus, resetCollectorConnect, openCollectorDashboard, setPaymentHolder } from "@/app/actions/payments";
 import { FEATURE_META, OFFERED_FEATURE_META, type ToggleableKey } from "@/lib/org-features-meta";
 import { LANGS, LANG_LABELS, normaliseLang, type Lang } from "@/lib/i18n/lang";
+import { settingsNavCopy } from "@/lib/i18n/settings-nav";
+import {
+  benchSummary,
+  clubDetailsSummary,
+  inviteLinkSummary,
+  languageSummary,
+  momSummary,
+  onOffSummary,
+  paymentsSummary,
+  ratingsSummary,
+  remindersSummary,
+  teamsSummary,
+  weeklyRoutineSummary,
+  whatsappSummary,
+} from "@/lib/settings-summaries";
 import { AdminChannelSettings } from "@/components/settings/admin-channel-section";
 import { PickModeRows } from "@/components/settings/pick-mode-rows";
 import { TeamsReadyRow } from "@/components/settings/teams-ready-row";
@@ -24,13 +71,14 @@ import { PaymentInstructionsRow } from "@/components/settings/payment-instructio
 import { GoLiveBanner, type GoLiveSetup } from "@/components/settings/go-live-banner";
 import { PostersCard } from "@/components/settings/posters-card";
 import { PartnerClubsSection } from "@/components/settings/partner-clubs-section";
-import { scrollToHashTarget } from "@/lib/scroll-to-hash";
 import { QuietHoursSection } from "@/components/settings/quiet-hours-section";
 import { PlayStyleSection } from "@/components/settings/play-style-section";
 import { PoolAutoAskSection } from "@/components/settings/pool-auto-ask-section";
 import { PoolClubShareSection } from "@/components/settings/pool-club-share-section";
 import { GroupInviteLinkSection } from "@/components/settings/group-invite-link-section";
 import { PlayerPoolSection } from "@/components/settings/player-pool-section";
+import { FeatureSwitchRow } from "@/components/settings/feature-switch-row";
+import { FindSetting, SettingsCard, SettingsNavProvider, SettingsTabPanel, SettingsTabs } from "@/components/settings/settings-nav";
 
 type FeatureKey = ToggleableKey;
 
@@ -161,13 +209,9 @@ export default function SettingsPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  // The billing DMs and banner link to #billing and #payments, which are
-  // drawn only once the settings have loaded: the browser looked for them
-  // too early. Once, as the page first shows.
-  useEffect(() => {
-    if (loading) return;
-    if (!scrollToHashTarget("billing")) scrollToHashTarget("payments");
-  }, [loading]);
+  // Links to #billing, #payments, #partner-clubs and every other card are
+  // followed by the layout (SettingsNavProvider): it opens the card's tab,
+  // expands it and scrolls to it once it is drawn.
 
   async function copyInviteLink() {
     if (!org) return;
@@ -372,381 +416,297 @@ export default function SettingsPage() {
     }
   }
 
+
+  // "Ask the player pool automatically", for the Player pool card's summary
+  // (its own card loads it).
+  const [poolAutoAsk, setPoolAutoAsk] = useState<boolean | null>(null);
+  // A row that saves through its own action: the page reads the settings
+  // again, so the collapsed card's summary says what is set now.
+  const rowSaved = () => {
+    settingSaved();
+    reloadSettings().catch(() => {});
+  };
+
   if (loading) return <div className="p-10 text-center text-slate-400">{t(layoutLang).st_loading}</div>;
   if (!org) return <div className="p-10 text-center text-slate-400">{t(layoutLang).st_not_found}</div>;
 
   /** The page's own words, in the club's language. */
   const w = t(pageLang ?? org.language);
+  /** The club's language table (the rows that always used it). */
+  const s = t(org.language);
+  const navLang = pageLang ?? org.language;
+  const monthly = org.monthlySquad?.squadMode === "monthly";
+  const rollingOn = org.weeklyRoutine?.rollingSquad ?? false;
+  const feature = (key: FeatureKey, fallback = false) => org.features?.[key] ?? fallback;
 
   const inviteLink = `${typeof window !== "undefined" ? window.location.origin : ""}/join/${org.inviteCode}`;
 
+  /** One of the offered feature switches (hidden ones render nothing). */
+  const featureRow = (key: FeatureKey) => {
+    const m = OFFERED_FEATURE_META.find((x) => x.key === key);
+    if (!m) return null;
+    const on = feature(key);
+    return (
+      <FeatureSwitchRow
+        key={key}
+        settingKey={m.key}
+        label={
+          // English keeps the menu's own label (the ↳ marks a payment
+          // method); other languages read the same words as the in-group menu.
+          normaliseLang(org.language) === "en"
+            ? m.label
+            : `${/^\s*↳/.test(m.label) ? "  ↳ " : ""}${w.onbFeatureLabel({ key: m.key, englishLabel: m.label })}`
+        }
+        blurb={w.onb_legacy_feature_blurb({ key: m.key, englishBlurb: m.blurb })}
+        on={on}
+        disabled={savingFeature === key}
+        onToggle={() => toggleFeature(key, !on)}
+        lang={org.language}
+        title={on ? w.st_switch_disable : w.st_switch_enable}
+      />
+    );
+  };
+  const rows = "px-4 sm:px-6 divide-y divide-slate-100";
+  const bankConnected = !!org.stripeChargesEnabled;
+
   return (
-    <div className="space-y-6">
-      {/* Go live (slice S5): only for a club that is approved and still
-          setting up, and only to its owner and admins (the API sends
-          `setup` to nobody else). Above everything else on the page. */}
-      {goLiveSetup && (
-        <GoLiveBanner
-          orgId={org.id}
-          club={org.name}
-          language={org.language}
-          setup={org.setup ?? goLiveSetup}
-          refreshKey={previewKey}
-          onChanged={reloadSettings}
-          onLive={markLive}
-        />
-      )}
+    <SettingsNavProvider lang={navLang}>
+      <div className="space-y-4 min-w-0">
+        {/* Go live (slice S5): only for a club that is approved and still
+            setting up, and only to its owner and admins (the API sends
+            `setup` to nobody else). Above everything else on the page. */}
+        {goLiveSetup && (
+          <GoLiveBanner
+            orgId={org.id}
+            club={org.name}
+            language={org.language}
+            setup={org.setup ?? goLiveSetup}
+            refreshKey={previewKey}
+            onChanged={reloadSettings}
+            onLive={markLive}
+          />
+        )}
 
-      {/* Posters (2026-10-14): right under the Go live banner while the
-          club is setting up, so the owner sees the poster before GO; for
-          a live club, after the weekly routine. Owner and admin only: the
-          card renders nothing for anyone else. */}
-      {goLiveSetup && <PostersCard club={org.name} language={org.language} />}
+        {/* Posters (2026-10-14): right under the Go live banner, open, while
+            the club is setting up, so the owner sees the poster before GO;
+            for a live club, on the Messages tab. Owner and admin only: the
+            card renders nothing for anyone else. */}
+        {goLiveSetup && <PostersCard club={org.name} language={org.language} defaultOpen />}
 
-      {/* F3: what MatchTime set up from the group chat (nothing for a club never read). */}
-      {org.inviteCode && <LearnedSetupPanel orgId={org.id} language={org.language} />}
+        {/* F3: what MatchTime set up from the group chat (nothing for a club never read). */}
+        {org.inviteCode && <LearnedSetupPanel orgId={org.id} language={org.language} />}
 
-      {/* General */}
-      <section className="bg-white rounded-xl border border-slate-200 shadow-sm">
-        <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
-          <Settings className="w-4 h-4 text-slate-500" />
-          <h2 className="font-semibold text-slate-800">{w.st_general_title}</h2>
-          <SectionInfo k="st_general" lang={org.language} />
-        </div>
-        <div className="p-6 space-y-4">
-          {org.nameEditable ? (
-            <form onSubmit={saveClubName} className="space-y-2" data-setting="clubName">
-              <div className="flex items-center gap-1">
-                <label htmlFor="org-name" className="block text-sm font-medium text-slate-700">
-                  {w.st_org_name}
-                </label>
-                <SettingInfo k="clubName" lang={org.language} />
-              </div>
-              <div className="flex flex-col sm:flex-row gap-2">
+        <FindSetting />
+        <SettingsTabs />
+
+        {/* ════ Club ════ */}
+        <SettingsTabPanel tab="club">
+          <SettingsCard
+            id="club-details"
+            title={w.st_general_title}
+            icon={Settings}
+            info={<SectionInfo k="st_general" lang={org.language} />}
+            summary={clubDetailsSummary(navLang, { name: org.name, memberCount: org.memberCount })}
+            // A draft club comes here to fix its name ("Edit club details"
+            // in Finish connecting): the name is open, not one tap away.
+            defaultOpen={!!org.nameEditable}
+          >
+            <div className="p-4 sm:p-6 space-y-4">
+              {org.nameEditable ? (
+                <form onSubmit={saveClubName} className="space-y-2" data-setting="clubName">
+                  <div className="flex items-center gap-1">
+                    <label htmlFor="org-name" className="block text-sm font-medium text-slate-700">
+                      {w.st_org_name}
+                    </label>
+                    <SettingInfo k="clubName" lang={org.language} />
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <input
+                      id="org-name"
+                      value={clubName}
+                      onChange={(e) => {
+                        setClubName(e.target.value);
+                        setClubNameState(null);
+                      }}
+                      required
+                      minLength={2}
+                      maxLength={60}
+                      className="w-full h-11 px-3 rounded-lg border border-slate-200 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <button
+                      type="submit"
+                      disabled={savingClubName || clubName.trim().length < 2 || clubName.trim() === org.name}
+                      className="shrink-0 inline-flex items-center justify-center px-4 h-11 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {savingClubName ? w.st_saving_name : w.st_save_name}
+                    </button>
+                  </div>
+                  {clubNameState?.kind === "saved" && (
+                    <p role="status" data-testid="club-name-saved" className="text-sm text-green-700">
+                      {w.st_name_saved}
+                    </p>
+                  )}
+                  {clubNameState?.kind === "error" && (
+                    <p role="alert" data-testid="club-name-error" className="text-sm text-red-700">
+                      {clubNameState.message}
+                    </p>
+                  )}
+                  <p className="text-sm text-slate-500">{w.st_name_editable_note}</p>
+                </form>
+              ) : (
+                <div data-setting="clubName">
+                  <div className="flex items-center gap-1 mb-1.5">
+                    <label htmlFor="org-name" className="block text-sm font-medium text-slate-700">
+                      {w.st_org_name}
+                    </label>
+                    <SettingInfo k="clubName" lang={org.language} />
+                  </div>
+                  <input
+                    id="org-name"
+                    value={org.name}
+                    disabled
+                    className="w-full h-11 px-3 rounded-lg border border-slate-200 bg-slate-50 text-slate-700"
+                  />
+                  {org.nameEditable === false && (
+                    <p data-testid="club-name-locked" className="mt-1.5 text-sm text-slate-500">
+                      {w.st_name_locked}
+                    </p>
+                  )}
+                </div>
+              )}
+              <div>
+                <label htmlFor="org-slug" className="block text-sm font-medium text-slate-700 mb-1.5">{w.st_url_slug}</label>
                 <input
-                  id="org-name"
-                  value={clubName}
-                  onChange={(e) => {
-                    setClubName(e.target.value);
-                    setClubNameState(null);
-                  }}
-                  required
-                  minLength={2}
-                  maxLength={60}
-                  className="w-full h-11 px-3 rounded-lg border border-slate-200 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  id="org-slug"
+                  value={org.slug}
+                  disabled
+                  className="w-full h-11 px-3 rounded-lg border border-slate-200 bg-slate-50 text-slate-700"
                 />
-                <button
-                  type="submit"
-                  disabled={savingClubName || clubName.trim().length < 2 || clubName.trim() === org.name}
-                  className="shrink-0 inline-flex items-center justify-center px-4 h-11 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {savingClubName ? w.st_saving_name : w.st_save_name}
-                </button>
               </div>
-              {clubNameState?.kind === "saved" && (
-                <p role="status" data-testid="club-name-saved" className="text-sm text-green-700">
-                  {w.st_name_saved}
-                </p>
-              )}
-              {clubNameState?.kind === "error" && (
-                <p role="alert" data-testid="club-name-error" className="text-sm text-red-700">
-                  {clubNameState.message}
-                </p>
-              )}
-              <p className="text-sm text-slate-500">{w.st_name_editable_note}</p>
-            </form>
-          ) : (
-            <div data-setting="clubName">
-              <div className="flex items-center gap-1 mb-1.5">
-                <label htmlFor="org-name" className="block text-sm font-medium text-slate-700">
-                  {w.st_org_name}
-                </label>
-                <SettingInfo k="clubName" lang={org.language} />
+              <div className="flex items-center gap-1.5 text-sm text-slate-500">
+                <Users className="w-4 h-4" />
+                {w.st_members({ count: org.memberCount })}
               </div>
-              <input
-                id="org-name"
-                value={org.name}
-                disabled
-                className="w-full h-11 px-3 rounded-lg border border-slate-200 bg-slate-50 text-slate-700"
-              />
-              {org.nameEditable === false && (
-                <p data-testid="club-name-locked" className="mt-1.5 text-sm text-slate-500">
-                  {w.st_name_locked}
-                </p>
-              )}
             </div>
-          )}
-          <div>
-            <label htmlFor="org-slug" className="block text-sm font-medium text-slate-700 mb-1.5">{w.st_url_slug}</label>
-            <input
-              id="org-slug"
-              value={org.slug}
-              disabled
-              className="w-full h-11 px-3 rounded-lg border border-slate-200 bg-slate-50 text-slate-700"
-            />
-          </div>
-          <div className="flex items-center gap-1.5 text-sm text-slate-500">
-            <Users className="w-4 h-4" />
-            {w.st_members({ count: org.memberCount })}
-          </div>
-        </div>
-      </section>
+          </SettingsCard>
 
-      {/* Team names */}
-      <section className="bg-white rounded-xl border border-slate-200 shadow-sm" data-setting="teamNames">
-        <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
-          <Shirt className="w-4 h-4 text-slate-500" />
-          <h2 className="font-semibold text-slate-800">{w.st_team_names_title}</h2>
-          <SettingInfo k="teamNames" lang={org.language} />
-        </div>
-        <div className="p-6 space-y-4">
-          <p className="text-sm text-slate-500">
-            {w.st_team_names_lead({ first: org.defaultTeamLabels?.[0] ?? "Red", second: org.defaultTeamLabels?.[1] ?? "Yellow" })}
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="flex items-center gap-1.5 text-sm font-medium text-slate-700 mb-1.5">
-                <span className="h-2.5 w-2.5 rounded-full bg-red-500" />
-                {w.st_first_team}
-              </label>
-              <input
-                value={teamRed}
-                onChange={(e) => setTeamRed(e.target.value)}
-                placeholder={org.defaultTeamLabels?.[0] ?? "Red"}
-                maxLength={24}
-                className="w-full h-11 px-3 rounded-lg border border-slate-200 bg-white text-slate-700 placeholder:text-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            <div>
-              <label className="flex items-center gap-1.5 text-sm font-medium text-slate-700 mb-1.5">
-                <span className="h-2.5 w-2.5 rounded-full bg-amber-400" />
-                {w.st_second_team}
-              </label>
-              <input
-                value={teamYellow}
-                onChange={(e) => setTeamYellow(e.target.value)}
-                placeholder={org.defaultTeamLabels?.[1] ?? "Yellow"}
-                maxLength={24}
-                className="w-full h-11 px-3 rounded-lg border border-slate-200 bg-white text-slate-700 placeholder:text-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-          </div>
-          <button
-            onClick={saveTeamLabels}
-            disabled={savingTeamLabels}
-            className="inline-flex items-center gap-2 px-4 h-11 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium disabled:opacity-50"
+          {/* Bot language. The id is where the learned-setup panel's
+              "Change the language" button lands (setup-learning/suggestion-action.ts). */}
+          <SettingsCard
+            id="bot-language"
+            title={w.st_language_title}
+            icon={Languages}
+            info={<SettingInfo k="language" lang={org.language} />}
+            summary={languageSummary(org.language)}
+            rootProps={{ "data-setting": "language" }}
           >
-            {savingTeamLabels ? w.st_saving : w.st_save_team_names}
-          </button>
-        </div>
-      </section>
+            <div className="p-4 sm:p-6 space-y-4">
+              <p className="text-sm text-slate-500">{w.st_language_lead}</p>
+              <select
+                value={normaliseLang(org.language)}
+                onChange={(e) => saveLanguage(e.target.value as Lang)}
+                disabled={savingLanguage}
+                className="h-11 px-3 rounded-lg border border-slate-200 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+              >
+                {LANGS.map((code) => (
+                  <option key={code} value={code}>
+                    {LANG_LABELS[code]}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </SettingsCard>
 
-      {/* Bot language. The id is where the learned-setup panel's
-          "Change the language" button lands (setup-learning/suggestion-action.ts). */}
-      <section id="bot-language" className="bg-white rounded-xl border border-slate-200 shadow-sm scroll-mt-6" data-setting="language">
-        <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
-          <Languages className="w-4 h-4 text-slate-500" />
-          <h2 className="font-semibold text-slate-800">{w.st_language_title}</h2>
-          <SettingInfo k="language" lang={org.language} />
-        </div>
-        <div className="p-6 space-y-4">
-          <p className="text-sm text-slate-500">{w.st_language_lead}</p>
-          <select
-            value={normaliseLang(org.language)}
-            onChange={(e) => saveLanguage(e.target.value as Lang)}
-            disabled={savingLanguage}
-            className="h-11 px-3 rounded-lg border border-slate-200 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-          >
-            {LANGS.map((code) => (
-              <option key={code} value={code}>
-                {LANG_LABELS[code]}
-              </option>
-            ))}
-          </select>
-        </div>
-      </section>
-
-      {/* Quiet hours (2026-10-16): its own card, owner and admin only. */}
-      <QuietHoursSection orgId={org.id} language={org.language} />
-
-      {/* Invite */}
-      <section className="bg-white rounded-xl border border-slate-200 shadow-sm">
-        <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
-          <LinkIcon className="w-4 h-4 text-slate-500" />
-          <h2 className="font-semibold text-slate-800">{w.st_invite_title}</h2>
-          <SectionInfo k="st_invite" lang={org.language} />
-        </div>
-        <div className="p-6 space-y-4">
-          <p className="text-sm text-slate-500">{w.st_invite_lead}</p>
-          <div className="flex items-center gap-2">
-            <input
-              value={inviteLink}
-              readOnly
-              className="flex-1 h-11 px-3 rounded-lg border border-slate-200 bg-slate-50 font-mono text-xs text-slate-700"
-            />
-            <button
-              onClick={copyInviteLink}
-              className="inline-flex items-center gap-2 px-4 h-11 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-medium"
-            >
-              <Copy className="w-4 h-4" />
-              {w.st_copy}
-            </button>
-          </div>
-        </div>
-      </section>
-
-      {/* Features */}
-      <section className="bg-white rounded-xl border border-slate-200 shadow-sm">
-        <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
-          <SlidersHorizontal className="w-4 h-4 text-slate-500" />
-          <h2 className="font-semibold text-slate-800">{w.st_features_title}</h2>
-          <SectionInfo k="st_features" lang={org.language} />
-        </div>
-        <div className="p-6">
-          <p className="text-sm text-slate-500 mb-4">{w.st_features_lead}</p>
-          <div className="divide-y divide-slate-100">
-            {/* Hidden switches (payment tracking, 2026-10-16) are left out. */}
-            {OFFERED_FEATURE_META.map((m) => {
-              const key = m.key;
-              const on = org.features?.[key] ?? false;
-              return (
-                <div
-                  key={key}
-                  className="flex items-center justify-between gap-4 py-3"
-                  data-setting={key}
-                >
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1 text-sm font-medium text-slate-800">
-                      <span>
-                        {/* English keeps the menu's own label (the ↳ marks a
-                            payment method); other languages read the same
-                            words as the in-group menu. */}
-                        {normaliseLang(org.language) === "en"
-                          ? m.label
-                          : `${/^\s*↳/.test(m.label) ? "  ↳ " : ""}${w.onbFeatureLabel({ key: m.key, englishLabel: m.label })}`}
-                      </span>
-                      <SettingInfo k={key} lang={org.language} />
-                    </div>
-                    <p className="text-xs text-slate-500">{w.onb_legacy_feature_blurb({ key: m.key, englishBlurb: m.blurb })}</p>
-                  </div>
-                  <button
-                    role="switch"
-                    aria-checked={on}
-                    disabled={savingFeature === key}
-                    onClick={() => toggleFeature(key, !on)}
-                    className={`relative shrink-0 w-11 h-6 rounded-full transition-colors disabled:opacity-50 ${
-                      on ? "bg-green-500" : "bg-slate-300"
-                    }`}
-                    title={on ? w.st_switch_disable : w.st_switch_enable}
-                  >
-                    <span
-                      className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
-                        on ? "translate-x-5" : "translate-x-0"
-                      }`}
-                    />
-                  </button>
-                </div>
-              );
+          {/* WhatsApp */}
+          <SettingsCard
+            id="whatsapp"
+            title={w.st_wa_title}
+            icon={MessageCircle}
+            info={
+              <SectionInfo
+                k={org.setup?.settingUp ? (org.setup.removedFromGroup ? "st_whatsapp_removed" : "st_whatsapp_setup") : "st_whatsapp"}
+                lang={org.language}
+              />
+            }
+            summary={whatsappSummary(navLang, {
+              enabled: org.whatsappBotEnabled,
+              settingUp: !!org.setup?.settingUp,
+              removed: !!org.setup?.removedFromGroup,
             })}
-            {/* Badge announcements (2026-10-01). Its own row, not in
-                FEATURE_META (that list is also the numbered in-group
-                setup menu). Words from the club's language table. */}
-            {(() => {
-              const s = t(org.language);
-              const key: FeatureKey = "badgeAnnouncements";
-              const on = org.features?.[key] ?? true;
-              return (
-                <div className="flex items-center justify-between gap-4 py-3" data-testid="feature-badge-announcements" data-setting="badgeAnnouncements">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1 text-sm font-medium text-slate-800">
-                      {s.badges_feature_label}
-                      <SettingInfo k="badgeAnnouncements" lang={org.language} />
-                    </div>
-                    <p className="text-xs text-slate-500">{s.badges_feature_blurb}</p>
-                  </div>
-                  <button
-                    role="switch"
-                    aria-checked={on}
-                    aria-label={s.badges_feature_label}
-                    disabled={savingFeature === key}
-                    onClick={() => toggleFeature(key, !on)}
-                    className={`relative shrink-0 w-11 h-6 rounded-full transition-colors disabled:opacity-50 ${
-                      on ? "bg-green-500" : "bg-slate-300"
-                    }`}
-                    title={on ? w.st_switch_disable : w.st_switch_enable}
-                  >
-                    <span
-                      className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
-                        on ? "translate-x-5" : "translate-x-0"
-                      }`}
-                    />
-                  </button>
+            // While a club sets up, this card says why MatchTime is quiet
+            // and points at Go live: open, as the banner above it is.
+            defaultOpen={!!org.setup?.settingUp}
+          >
+            <div className="p-4 sm:p-6 space-y-4">
+              {/* A club that is setting up is not "Disabled": it is approved
+                  and waiting for its organiser to go live (slice S5). */}
+              {org.setup?.settingUp ? (
+                <span
+                  data-testid="wa-setting-up"
+                  data-removed={org.setup.removedFromGroup ? "true" : undefined}
+                  className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
+                    org.setup.removedFromGroup ? "bg-amber-100 text-amber-900" : "bg-emerald-100 text-emerald-800"
+                  }`}
+                >
+                  {/* Removed from the group while setting up: it is not "in
+                      your group, waiting", and the page must not say so. */}
+                  {org.setup.removedFromGroup ? s.sj_live_wa_badge_removed : s.sj_live_wa_badge}
+                </span>
+              ) : (
+                <span
+                  data-testid="wa-bot-state"
+                  className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
+                    org.whatsappBotEnabled ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-600"
+                  }`}
+                >
+                  {org.whatsappBotEnabled ? w.st_wa_enabled : w.st_wa_disabled}
+                </span>
+              )}
+              {org.whatsappGroupId && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">{w.st_wa_group_id}</label>
+                  <input
+                    value={org.whatsappGroupId}
+                    disabled
+                    className="w-full h-11 px-3 rounded-lg border border-slate-200 bg-slate-50 font-mono text-xs text-slate-700"
+                  />
                 </div>
-              );
-            })()}
-            {/* The match-day kit reminder (2026-10-15). Its own row like
-                the badges. Off for a new club, on for clubs from before. */}
-            {(() => {
-              const s = t(org.language);
-              const key: FeatureKey = "gearReminder";
-              const on = org.features?.[key] ?? false;
-              return (
-                <div className="flex items-center justify-between gap-4 py-3" data-testid="feature-gear-reminder" data-setting="gearReminder">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1 text-sm font-medium text-slate-800">
-                      {s.gear_feature_label}
-                      <SettingInfo k="gearReminder" lang={org.language} />
-                    </div>
-                    <p className="text-xs text-slate-500">{s.gear_feature_blurb}</p>
-                  </div>
-                  <button
-                    role="switch"
-                    aria-checked={on}
-                    aria-label={s.gear_feature_label}
-                    disabled={savingFeature === key}
-                    onClick={() => toggleFeature(key, !on)}
-                    className={`relative shrink-0 w-11 h-6 rounded-full transition-colors disabled:opacity-50 ${
-                      on ? "bg-green-500" : "bg-slate-300"
-                    }`}
-                    title={on ? w.st_switch_disable : w.st_switch_enable}
-                  >
-                    <span
-                      className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
-                        on ? "translate-x-5" : "translate-x-0"
-                      }`}
-                    />
-                  </button>
-                </div>
-              );
-            })()}
-            {/* Who chooses Man of the Match (2026-10-18, mom-chooser.ts).
-                Admins only: it comes with the weekly routine settings. */}
-            {org.weeklyRoutine && (
-              <MomChooserRow orgId={org.id} language={org.language} momChosenBy={org.weeklyRoutine.momChosenBy ?? "players"} />
-            )}
-          </div>
-        </div>
-      </section>
-
-      {/* Weekly routine (2026-09-30). Words from the club's language
-          table. Slices 2 and 3 add their rows to this section. */}
-      {(() => {
-        const s = t(org.language);
-        const on = org.weeklyRoutine?.rollingSquad ?? false;
-        const monthly = org.monthlySquad?.squadMode === "monthly";
-        return (
-          <section className="bg-white rounded-xl border border-slate-200 shadow-sm" data-testid="weekly-routine">
-            <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
-              <Repeat className="w-4 h-4 text-slate-500" />
-              <h2 className="font-semibold text-slate-800">{s.wr_section_title}</h2>
-              <SectionInfo k="st_weekly" lang={org.language} />
+              )}
+              {org.setup?.settingUp ? (
+                <p data-testid="wa-setting-up-body" className="text-sm text-slate-600">
+                  {org.setup.removedFromGroup ? s.sj_live_wa_body_removed : s.sj_live_wa_body}{" "}
+                  <a href="#go-live" className="font-medium text-emerald-800 underline">
+                    {s.sj_live_wa_link}
+                  </a>
+                </p>
+              ) : (
+                <p className="text-xs text-slate-500">{w.st_wa_managed}</p>
+              )}
             </div>
-            <div className="p-6">
-              <p className="text-sm text-slate-500 mb-4">{s.wr_section_lead}</p>
-              <div className="divide-y divide-slate-100">
-                {/* A monthly club has no rolling squad: the month's regulars
-                    take its place (monthly squad, slice 2). */}
-                {!monthly && (
+          </SettingsCard>
+        </SettingsTabPanel>
+
+        {/* ════ Matches ════ */}
+        <SettingsTabPanel tab="matches">
+          {/* Weekly routine (2026-09-30). Words from the club's language table. */}
+          <SettingsCard
+            id="weekly-routine"
+            title={s.wr_section_title}
+            icon={Repeat}
+            info={<SectionInfo k="st_weekly" lang={org.language} />}
+            summary={weeklyRoutineSummary(org.language, {
+              rollingSquad: monthly ? null : rollingOn,
+              deadlines: [org.weeklyRoutine?.dropOutDeadline, org.weeklyRoutine?.listPublish].filter(Boolean).length,
+            })}
+            testId="weekly-routine"
+          >
+            <div className="px-4 sm:px-6 pt-4">
+              <p className="text-sm text-slate-500">{s.wr_section_lead}</p>
+            </div>
+            <div className={`${rows} pb-2`}>
+              {/* A monthly club has no rolling squad: the month's regulars
+                  take its place (monthly squad, slice 2). */}
+              {!monthly && (
                 <div className="flex items-center justify-between gap-4 py-3" data-testid="wr-rolling" data-setting="rollingSquad">
                   <div className="min-w-0">
                     <div className="flex items-center gap-1 text-sm font-medium text-slate-800">
@@ -757,268 +717,420 @@ export default function SettingsPage() {
                   </div>
                   <button
                     role="switch"
-                    aria-checked={on}
+                    aria-checked={rollingOn}
                     aria-label={s.wr_rolling_label}
                     disabled={savingRoutine === "rollingSquad"}
-                    onClick={() => toggleRollingSquad(!on)}
+                    onClick={() => toggleRollingSquad(!rollingOn)}
                     className={`relative shrink-0 w-11 h-6 rounded-full transition-colors disabled:opacity-50 ${
-                      on ? "bg-green-500" : "bg-slate-300"
+                      rollingOn ? "bg-green-500" : "bg-slate-300"
                     }`}
                   >
                     <span
                       className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
-                        on ? "translate-x-5" : "translate-x-0"
+                        rollingOn ? "translate-x-5" : "translate-x-0"
                       }`}
                     />
                   </button>
                 </div>
-                )}
-                {/* Organiser pick (slice 2b): who fills an open place. */}
-                <PickModeRows
-                  orgId={org.id}
-                  language={org.language}
-                  benchPickMode={org.weeklyRoutine?.benchPickMode ?? "first-come"}
-                  benchPickFallback={org.weeklyRoutine?.benchPickFallback ?? "bench-offer"}
-                  onSaved={settingSaved}
-                />
-                {/* 2026-10-14: who announces the list and teams. */}
-                <ListAnnouncerRow
-                  orgId={org.id}
-                  language={org.language}
-                  listAnnouncer={org.weeklyRoutine?.listAnnouncer ?? "matchtime"}
-                  onSaved={settingSaved}
-                />
-                {/* Weekly deadlines (slice 3): its own component. */}
-                <WeeklyDeadlineRows
-                  orgId={org.id}
-                  language={org.language}
-                  dropOutDeadline={org.weeklyRoutine?.dropOutDeadline ?? null}
-                  listPublish={org.weeklyRoutine?.listPublish ?? null}
-                  onSaved={settingSaved}
-                />
-                {/* Slice 2a: where admin messages go. */}
-                <AdminChannelSettings orgId={org.id} lang={normaliseLang(org.language)} />
-                {/* Teams ready (2026-10-14): shown with an admin group linked. */}
-                <TeamsReadyRow orgId={org.id} language={org.language} />
-              </div>
+              )}
+              {/* 2026-10-14: who announces the list and teams. */}
+              <ListAnnouncerRow
+                orgId={org.id}
+                language={org.language}
+                listAnnouncer={org.weeklyRoutine?.listAnnouncer ?? "matchtime"}
+                onSaved={rowSaved}
+              />
+              {/* Weekly deadlines (slice 3): its own component. */}
+              <WeeklyDeadlineRows
+                orgId={org.id}
+                language={org.language}
+                dropOutDeadline={org.weeklyRoutine?.dropOutDeadline ?? null}
+                listPublish={org.weeklyRoutine?.listPublish ?? null}
+                onSaved={rowSaved}
+              />
             </div>
-          </section>
-        );
-      })()}
+          </SettingsCard>
 
-      {/* Partner clubs (cross-club ask, 2026-10-16). Shown to every club
-          since partner discovery (P1, 2026-10-22): the discovery switches
-          and the club venue are every club's. */}
-      <PartnerClubsSection orgId={org.id} language={org.language} />
-      {/* The club's own player pool switch (2026-10-28): only while the
-          platform owner has the pool on. The cards below it show only while
-          it is on too (`poolOffersOpenForClub`), and load again on a flip. */}
-      <PlayerPoolSection orgId={org.id} language={org.language} onChange={() => setPoolKey((k) => k + 1)} />
-      {/* Style of play (pool L5b): only while the club may ask the player pool. */}
-      <PlayStyleSection key={`ps-${poolKey}`} orgId={org.id} language={org.language} />
-      <PoolAutoAskSection key={`pa-${poolKey}`} orgId={org.id} language={org.language} />
-      {/* The club's one share post (pool G3): only while the club has the player pool. */}
-      <PoolClubShareSection key={`pcs-${poolKey}`} orgId={org.id} language={org.language} />
-      {/* Group invite link (pool L8): only while the club has the player pool. */}
-      <GroupInviteLinkSection key={`gil-${poolKey}`} orgId={org.id} language={org.language} />
-
-      {!goLiveSetup && <PostersCard club={org.name} language={org.language} />}
-
-      {/* Monthly squad (2026-10-05, slice 2). Admins only (the API sends
-          `monthlySquad` to nobody else). Off by default: a weekly club
-          sees the one switch. */}
-      {org.monthlySquad && (
-        <MonthlySquadSection
-          orgId={org.id}
-          language={org.language}
-          initial={org.monthlySquad}
-          onSaved={({ rollingSquad, ...monthlySquad }) => {
-            setOrg((prev) =>
-              prev ? { ...prev, monthlySquad, weeklyRoutine: { ...prev.weeklyRoutine, rollingSquad } } : prev,
-            );
-            settingSaved();
-          }}
-        />
-      )}
-
-      {/* Club fee billing (slice B2). "Choose a money collector" points at
-          the collector picker below, which only exists while payment
-          collection is on. */}
-      {org.billing && (
-        <BillingSettingsCard data={org.billing} lang={org.language} collectorAnchor={org.features?.paymentCollection ? "#payments" : null} />
-      )}
-
-      {/* Payments — Connect bank */}
-      {org.features?.paymentCollection && (
-        <section id="payments" className="bg-white rounded-xl border border-slate-200 shadow-sm scroll-mt-6" data-setting="collectorBank">
-          <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
-            <Landmark className="w-4 h-4 text-slate-500" />
-            <h2 className="font-semibold text-slate-800">{w.st_bank_title}</h2>
-          <SettingInfo k="collectorBank" lang={org.language} />
-          </div>
-          <div className="p-6 space-y-4">
-            {/* Who collects the money */}
-            <div data-setting="moneyCollector">
-              <div className="flex items-center gap-1 mb-1.5">
-                <label className="block text-sm font-medium text-slate-700">{w.st_collector}</label>
-                <SettingInfo k="moneyCollector" lang={org.language} />
-              </div>
-              <select
-                value={org.paymentHolderId ?? ""}
-                onChange={(e) => changeHolder(e.target.value)}
-                disabled={savingHolder}
-                className="w-full h-11 px-3 rounded-lg border border-slate-200 bg-white text-slate-700 disabled:opacity-50"
-              >
-                <option value="" disabled>
-                  {w.st_choose_member}
-                </option>
-                {(org.members ?? []).map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name ?? w.st_unnamed}
-                  </option>
-                ))}
-              </select>
-              <p className="text-xs text-slate-400 mt-1.5">{w.st_collector_help}</p>
+          {/* Personal reminders and the match-day kit reminder (2026-10-15). */}
+          <SettingsCard
+            id="reminders"
+            title={settingsNavCopy(navLang).titles.reminders}
+            icon={BellRing}
+            summary={remindersSummary(org.language, { personal: feature("reminders"), gear: feature("gearReminder") })}
+          >
+            <div className={rows}>
+              {featureRow("reminders")}
+              {/* The match-day kit reminder. Off for a new club, on for clubs from before. */}
+              <FeatureSwitchRow
+                settingKey="gearReminder"
+                label={s.gear_feature_label}
+                blurb={s.gear_feature_blurb}
+                on={feature("gearReminder")}
+                disabled={savingFeature === "gearReminder"}
+                onToggle={() => toggleFeature("gearReminder", !feature("gearReminder"))}
+                lang={org.language}
+                title={feature("gearReminder") ? w.st_switch_disable : w.st_switch_enable}
+                ariaLabel={s.gear_feature_label}
+                testId="feature-gear-reminder"
+              />
             </div>
+          </SettingsCard>
 
-            {/* Payment instructions for weekly match fees (2026-10-16). A
-                monthly club edits the same field in its Monthly squad
-                section, so it is not shown twice. */}
-            {org.monthlySquad && org.monthlySquad.squadMode !== "monthly" && (
-              <>
-                <hr className="border-slate-100" />
-                <PaymentInstructionsRow
-                  orgId={org.id}
-                  language={org.language}
-                  initial={org.monthlySquad.paymentInstructions}
-                  onSaved={({ rollingSquad: _rolling, ...monthlySquad }) => {
-                    void _rolling;
-                    setOrg((prev) => (prev ? { ...prev, monthlySquad } : prev));
-                    settingSaved();
-                  }}
-                />
-              </>
-            )}
-
-            <hr className="border-slate-100" />
-
-            <p className="text-sm text-slate-500">{w.st_bank_lead}</p>
-            {!org.stripeChargesEnabled && (
-              <p className="text-xs text-slate-400">{w.st_bank_stripe_help}</p>
-            )}
-            {org.stripeChargesEnabled ? (
-              <div className="flex flex-wrap items-center gap-3">
-                <div className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-50 text-emerald-700 text-sm font-medium">
-                  <CheckCircle2 className="w-4 h-4" /> {w.st_bank_connected}
+          {/* Teams: team generation, the team names, and when the teams are ready. */}
+          <SettingsCard
+            id="teams"
+            title={settingsNavCopy(navLang).titles.teams}
+            icon={Shirt}
+            summary={teamsSummary(org.language, {
+              balancing: feature("teamBalancing"),
+              first: org.teamLabels?.[0] || org.defaultTeamLabels?.[0] || "Red",
+              second: org.teamLabels?.[1] || org.defaultTeamLabels?.[1] || "Yellow",
+            })}
+          >
+            <div className={rows}>
+              {featureRow("teamBalancing")}
+              <div className="py-4 space-y-4" data-setting="teamNames">
+                <div className="flex items-center gap-1">
+                  <h3 className="text-sm font-semibold text-slate-800">{w.st_team_names_title}</h3>
+                  <SettingInfo k="teamNames" lang={org.language} />
+                </div>
+                <p className="text-sm text-slate-500">
+                  {w.st_team_names_lead({ first: org.defaultTeamLabels?.[0] ?? "Red", second: org.defaultTeamLabels?.[1] ?? "Yellow" })}
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="flex items-center gap-1.5 text-sm font-medium text-slate-700 mb-1.5">
+                      <span className="h-2.5 w-2.5 rounded-full bg-red-500" />
+                      {w.st_first_team}
+                    </label>
+                    <input
+                      value={teamRed}
+                      onChange={(e) => setTeamRed(e.target.value)}
+                      placeholder={org.defaultTeamLabels?.[0] ?? "Red"}
+                      maxLength={24}
+                      className="w-full h-11 px-3 rounded-lg border border-slate-200 bg-white text-slate-700 placeholder:text-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="flex items-center gap-1.5 text-sm font-medium text-slate-700 mb-1.5">
+                      <span className="h-2.5 w-2.5 rounded-full bg-amber-400" />
+                      {w.st_second_team}
+                    </label>
+                    <input
+                      value={teamYellow}
+                      onChange={(e) => setTeamYellow(e.target.value)}
+                      placeholder={org.defaultTeamLabels?.[1] ?? "Yellow"}
+                      maxLength={24}
+                      className="w-full h-11 px-3 rounded-lg border border-slate-200 bg-white text-slate-700 placeholder:text-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
                 </div>
                 <button
-                  onClick={manageBank}
-                  className="inline-flex items-center gap-2 px-4 h-11 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-medium"
-                >
-                  <Landmark className="w-4 h-4" /> {w.st_manage_bank}
-                </button>
-                <button
-                  onClick={resetBank}
-                  disabled={resetting}
-                  className="inline-flex items-center gap-2 px-4 h-11 rounded-lg border border-slate-200 bg-white hover:bg-red-50 hover:border-red-200 text-slate-600 hover:text-red-600 font-medium disabled:opacity-50"
-                >
-                  {resetting ? w.st_disconnecting : w.st_disconnect}
-                </button>
-              </div>
-            ) : (
-              <div className="flex flex-wrap items-center gap-3">
-                <button
-                  onClick={connectBank}
-                  disabled={connecting}
+                  onClick={saveTeamLabels}
+                  disabled={savingTeamLabels}
                   className="inline-flex items-center gap-2 px-4 h-11 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium disabled:opacity-50"
                 >
-                  <Landmark className="w-4 h-4" />
-                  {connecting ? w.st_opening_stripe : org.stripeConnected ? w.st_finish_bank : w.st_connect_bank}
+                  {savingTeamLabels ? w.st_saving : w.st_save_team_names}
                 </button>
-                {org.stripeConnected && (
+              </div>
+              {/* Teams ready (2026-10-14): shown with an admin group linked. */}
+              <TeamsReadyRow orgId={org.id} language={org.language} />
+            </div>
+          </SettingsCard>
+
+          {/* Monthly squad (2026-10-05, slice 2). Admins only (the API sends
+              `monthlySquad` to nobody else). Off by default: a weekly club
+              sees the one switch. */}
+          {org.monthlySquad && (
+            <MonthlySquadSection
+              orgId={org.id}
+              language={org.language}
+              initial={org.monthlySquad}
+              onSaved={({ rollingSquad, ...monthlySquad }) => {
+                setOrg((prev) =>
+                  prev ? { ...prev, monthlySquad, weeklyRoutine: { ...prev.weeklyRoutine, rollingSquad } } : prev,
+                );
+                settingSaved();
+              }}
+            />
+          )}
+        </SettingsTabPanel>
+
+        {/* ════ Players ════ */}
+        <SettingsTabPanel tab="players">
+          <SettingsCard
+            id="attendance"
+            title={settingsNavCopy(navLang).titles.attendance}
+            icon={ClipboardCheck}
+            summary={onOffSummary(org.language, feature("attendance"))}
+          >
+            <div className={rows}>{featureRow("attendance")}</div>
+          </SettingsCard>
+
+          <SettingsCard
+            id="bench"
+            title={settingsNavCopy(navLang).titles.bench}
+            icon={Armchair}
+            summary={benchSummary(org.language, {
+              on: feature("bench"),
+              pickMode: org.weeklyRoutine?.benchPickMode ?? "first-come",
+            })}
+          >
+            <div className={rows}>
+              {featureRow("bench")}
+              {/* Organiser pick (slice 2b): who fills an open place. */}
+              <PickModeRows
+                orgId={org.id}
+                language={org.language}
+                benchPickMode={org.weeklyRoutine?.benchPickMode ?? "first-come"}
+                benchPickFallback={org.weeklyRoutine?.benchPickFallback ?? "bench-offer"}
+                onSaved={rowSaved}
+              />
+            </div>
+          </SettingsCard>
+
+          <SettingsCard
+            id="ratings"
+            title={settingsNavCopy(navLang).titles.ratings}
+            icon={Star}
+            summary={ratingsSummary(org.language, {
+              ratings: feature("playerRating"),
+              badges: feature("badgeAnnouncements", true),
+              stats: feature("statsQa"),
+            })}
+          >
+            <div className={rows}>
+              {featureRow("playerRating")}
+              {/* Badge announcements (2026-10-01). Its own row, not in
+                  FEATURE_META (that list is also the numbered in-group
+                  setup menu). Words from the club's language table. */}
+              <FeatureSwitchRow
+                settingKey="badgeAnnouncements"
+                label={s.badges_feature_label}
+                blurb={s.badges_feature_blurb}
+                on={feature("badgeAnnouncements", true)}
+                disabled={savingFeature === "badgeAnnouncements"}
+                onToggle={() => toggleFeature("badgeAnnouncements", !feature("badgeAnnouncements", true))}
+                lang={org.language}
+                title={feature("badgeAnnouncements", true) ? w.st_switch_disable : w.st_switch_enable}
+                ariaLabel={s.badges_feature_label}
+                testId="feature-badge-announcements"
+              />
+              {featureRow("statsQa")}
+            </div>
+          </SettingsCard>
+
+          <SettingsCard
+            id="mom"
+            title={settingsNavCopy(navLang).titles.mom}
+            icon={Trophy}
+            summary={momSummary(org.language, { on: feature("momVoting"), chosenBy: org.weeklyRoutine?.momChosenBy ?? "players" })}
+          >
+            <div className={rows}>
+              {featureRow("momVoting")}
+              {/* Who chooses Man of the Match (2026-10-18, mom-chooser.ts).
+                  Admins only: it comes with the weekly routine settings. */}
+              {org.weeklyRoutine && (
+                <MomChooserRow
+                  orgId={org.id}
+                  language={org.language}
+                  momChosenBy={org.weeklyRoutine.momChosenBy ?? "players"}
+                  onSaved={rowSaved}
+                />
+              )}
+            </div>
+          </SettingsCard>
+
+          {/* Invite */}
+          <SettingsCard
+            id="invite-link"
+            title={w.st_invite_title}
+            icon={LinkIcon}
+            info={<SectionInfo k="st_invite" lang={org.language} />}
+            summary={inviteLinkSummary(navLang)}
+          >
+            <div className="p-4 sm:p-6 space-y-4">
+              <p className="text-sm text-slate-500">{w.st_invite_lead}</p>
+              <div className="flex items-center gap-2 min-w-0">
+                <input
+                  value={inviteLink}
+                  readOnly
+                  className="flex-1 min-w-0 h-11 px-3 rounded-lg border border-slate-200 bg-slate-50 font-mono text-xs text-slate-700"
+                />
+                <button
+                  onClick={copyInviteLink}
+                  className="shrink-0 inline-flex items-center gap-2 px-4 h-11 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-medium"
+                >
+                  <Copy className="w-4 h-4" />
+                  {w.st_copy}
+                </button>
+              </div>
+            </div>
+          </SettingsCard>
+        </SettingsTabPanel>
+
+        {/* ════ Payments ════ */}
+        <SettingsTabPanel tab="payments">
+          <SettingsCard
+            id="payments"
+            title={settingsNavCopy(navLang).titles.payments}
+            icon={Wallet}
+            summary={paymentsSummary(org.language, { collecting: feature("paymentCollection"), bankConnected })}
+          >
+            <div className={rows}>
+              {featureRow("paymentCollection")}
+              {featureRow("payByBank")}
+              {featureRow("payCard")}
+              {featureRow("payDirect")}
+            </div>
+            {/* The money collector and the bank, while match fees are collected. */}
+            {org.features?.paymentCollection && (
+              <div className="border-t border-slate-100 p-4 sm:p-6 space-y-4" data-setting="collectorBank" data-testid="collector-bank">
+                <div className="flex items-center gap-1">
+                  <Landmark className="w-4 h-4 text-slate-500" aria-hidden />
+                  <h3 className="text-sm font-semibold text-slate-800">{w.st_bank_title}</h3>
+                  <SettingInfo k="collectorBank" lang={org.language} />
+                </div>
+                {/* Who collects the money */}
+                <div data-setting="moneyCollector">
+                  <div className="flex items-center gap-1 mb-1.5">
+                    <label className="block text-sm font-medium text-slate-700">{w.st_collector}</label>
+                    <SettingInfo k="moneyCollector" lang={org.language} />
+                  </div>
+                  <select
+                    value={org.paymentHolderId ?? ""}
+                    onChange={(e) => changeHolder(e.target.value)}
+                    disabled={savingHolder}
+                    className="w-full h-11 px-3 rounded-lg border border-slate-200 bg-white text-slate-700 disabled:opacity-50"
+                  >
+                    <option value="" disabled>
+                      {w.st_choose_member}
+                    </option>
+                    {(org.members ?? []).map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name ?? w.st_unnamed}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-slate-400 mt-1.5">{w.st_collector_help}</p>
+                </div>
+
+                {/* Payment instructions for weekly match fees (2026-10-16). A
+                    monthly club edits the same field in its Monthly squad
+                    section, so it is not shown twice. */}
+                {org.monthlySquad && org.monthlySquad.squadMode !== "monthly" && (
                   <>
+                    <hr className="border-slate-100" />
+                    <PaymentInstructionsRow
+                      orgId={org.id}
+                      language={org.language}
+                      initial={org.monthlySquad.paymentInstructions}
+                      onSaved={({ rollingSquad: _rolling, ...monthlySquad }) => {
+                        void _rolling;
+                        setOrg((prev) => (prev ? { ...prev, monthlySquad } : prev));
+                        settingSaved();
+                      }}
+                    />
+                  </>
+                )}
+
+                <hr className="border-slate-100" />
+
+                <p className="text-sm text-slate-500">{w.st_bank_lead}</p>
+                {!org.stripeChargesEnabled && <p className="text-xs text-slate-400">{w.st_bank_stripe_help}</p>}
+                {org.stripeChargesEnabled ? (
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-50 text-emerald-700 text-sm font-medium">
+                      <CheckCircle2 className="w-4 h-4" /> {w.st_bank_connected}
+                    </div>
                     <button
-                      onClick={refreshBank}
+                      onClick={manageBank}
                       className="inline-flex items-center gap-2 px-4 h-11 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-medium"
                     >
-                      {w.st_refresh_status}
+                      <Landmark className="w-4 h-4" /> {w.st_manage_bank}
                     </button>
                     <button
                       onClick={resetBank}
                       disabled={resetting}
                       className="inline-flex items-center gap-2 px-4 h-11 rounded-lg border border-slate-200 bg-white hover:bg-red-50 hover:border-red-200 text-slate-600 hover:text-red-600 font-medium disabled:opacity-50"
                     >
-                      {resetting ? w.st_resetting : w.st_start_over}
+                      {resetting ? w.st_disconnecting : w.st_disconnect}
                     </button>
-                  </>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-3">
+                    <button
+                      onClick={connectBank}
+                      disabled={connecting}
+                      className="inline-flex items-center gap-2 px-4 h-11 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium disabled:opacity-50"
+                    >
+                      <Landmark className="w-4 h-4" />
+                      {connecting ? w.st_opening_stripe : org.stripeConnected ? w.st_finish_bank : w.st_connect_bank}
+                    </button>
+                    {org.stripeConnected && (
+                      <>
+                        <button
+                          onClick={refreshBank}
+                          className="inline-flex items-center gap-2 px-4 h-11 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-medium"
+                        >
+                          {w.st_refresh_status}
+                        </button>
+                        <button
+                          onClick={resetBank}
+                          disabled={resetting}
+                          className="inline-flex items-center gap-2 px-4 h-11 rounded-lg border border-slate-200 bg-white hover:bg-red-50 hover:border-red-200 text-slate-600 hover:text-red-600 font-medium disabled:opacity-50"
+                        >
+                          {resetting ? w.st_resetting : w.st_start_over}
+                        </button>
+                      </>
+                    )}
+                  </div>
                 )}
               </div>
             )}
-          </div>
-        </section>
-      )}
+          </SettingsCard>
 
-      {/* WhatsApp */}
-      <section className="bg-white rounded-xl border border-slate-200 shadow-sm">
-        <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
-          <MessageCircle className="w-4 h-4 text-slate-500" />
-          <h2 className="font-semibold text-slate-800">{w.st_wa_title}</h2>
-          <SectionInfo
-            k={org.setup?.settingUp ? (org.setup.removedFromGroup ? "st_whatsapp_removed" : "st_whatsapp_setup") : "st_whatsapp"}
-            lang={org.language}
+          {/* Club fee billing (slice B2). On the Payments tab: it is money
+              too, and its "Choose a money collector" link points at the
+              collector picker in the Payments card above, which only exists
+              while payment collection is on. */}
+          {org.billing && (
+            <BillingSettingsCard data={org.billing} lang={org.language} collectorAnchor={org.features?.paymentCollection ? "#payments" : null} />
+          )}
+        </SettingsTabPanel>
+
+        {/* ════ Finding players ════ */}
+        <SettingsTabPanel tab="finding">
+          {/* Partner clubs (cross-club ask, 2026-10-16). Shown to every club
+              since partner discovery (P1, 2026-10-22). */}
+          <PartnerClubsSection orgId={org.id} language={org.language} />
+          {/* The club's own player pool switch (2026-10-28): only while the
+              platform owner has the pool on. The cards below it show only while
+              it is on too (`poolOffersOpenForClub`), and load again on a flip. */}
+          <PlayerPoolSection
+            orgId={org.id}
+            language={org.language}
+            autoAsk={poolAutoAsk}
+            onChange={() => setPoolKey((k) => k + 1)}
           />
-        </div>
-        <div className="p-6 space-y-4">
-          {/* A club that is setting up is not "Disabled": it is approved
-              and waiting for its organiser to go live (slice S5). */}
-          {org.setup?.settingUp ? (
-            <span
-              data-testid="wa-setting-up"
-              data-removed={org.setup.removedFromGroup ? "true" : undefined}
-              className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
-                org.setup.removedFromGroup ? "bg-amber-100 text-amber-900" : "bg-emerald-100 text-emerald-800"
-              }`}
-            >
-              {/* Removed from the group while setting up: it is not "in
-                  your group, waiting", and the page must not say so. */}
-              {org.setup.removedFromGroup ? t(org.language).sj_live_wa_badge_removed : t(org.language).sj_live_wa_badge}
-            </span>
-          ) : (
-          <span
-            data-testid="wa-bot-state"
-            className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
-              org.whatsappBotEnabled
-                ? "bg-green-100 text-green-700"
-                : "bg-slate-100 text-slate-600"
-            }`}
-          >
-            {org.whatsappBotEnabled ? w.st_wa_enabled : w.st_wa_disabled}
-          </span>
-          )}
-          {org.whatsappGroupId && (
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                {w.st_wa_group_id}
-              </label>
-              <input
-                value={org.whatsappGroupId}
-                disabled
-                className="w-full h-11 px-3 rounded-lg border border-slate-200 bg-slate-50 font-mono text-xs text-slate-700"
-              />
-            </div>
-          )}
-          {org.setup?.settingUp ? (
-            <p data-testid="wa-setting-up-body" className="text-sm text-slate-600">
-              {org.setup.removedFromGroup ? t(org.language).sj_live_wa_body_removed : t(org.language).sj_live_wa_body}{" "}
-              <a href="#go-live" className="font-medium text-emerald-800 underline">
-                {t(org.language).sj_live_wa_link}
-              </a>
-            </p>
-          ) : (
-          <p className="text-xs text-slate-500">{w.st_wa_managed}</p>
-          )}
-        </div>
-      </section>
-    </div>
+          {/* Style of play (pool L5b): only while the club may ask the player pool. */}
+          <PlayStyleSection key={`ps-${poolKey}`} orgId={org.id} language={org.language} />
+          <PoolAutoAskSection key={`pa-${poolKey}`} orgId={org.id} language={org.language} onState={setPoolAutoAsk} />
+          {/* The club's one share post (pool G3): only while the club has the player pool. */}
+          <PoolClubShareSection key={`pcs-${poolKey}`} orgId={org.id} language={org.language} />
+          {/* Group invite link (pool L8): only while the club has the player pool. */}
+          <GroupInviteLinkSection key={`gil-${poolKey}`} orgId={org.id} language={org.language} />
+        </SettingsTabPanel>
+
+        {/* ════ Messages ════ */}
+        <SettingsTabPanel tab="messages">
+          {/* Quiet hours (2026-10-16): owner and admin only. */}
+          <QuietHoursSection orgId={org.id} language={org.language} />
+          {/* Slice 2a: where admin messages go. */}
+          <AdminChannelSettings orgId={org.id} lang={normaliseLang(org.language)} />
+          {!goLiveSetup && <PostersCard club={org.name} language={org.language} />}
+        </SettingsTabPanel>
+      </div>
+    </SettingsNavProvider>
   );
 }

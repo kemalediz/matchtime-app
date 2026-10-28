@@ -1,5 +1,6 @@
 /**
- * /admin/settings, "Weekly routine" → "Admin messages go to" (slice 2a).
+ * /admin/settings, Messages tab, "Admin messages" → "Admin messages go to"
+ * (slice 2a; its own card since 2026-10-28, opened here by its link).
  * Plan: MDs/friday-group-features-plan-2026-09-30.md, sections 2.3 and 5.
  *
  *   - the ⓘ explains it, in the club's language;
@@ -33,7 +34,7 @@ const mode = async (db: import("../helpers/test-db").TestDb) =>
   );
 
 test("the section and its ⓘ, and One person persists", async ({ page, db }) => {
-  await signInAs(page, U.admin, "/admin/settings");
+  await signInAs(page, U.admin, "/admin/settings#admin-group");
   const section = page.getByTestId("admin-channel-section");
   await expect(section).toBeVisible({ timeout: 30_000 });
   await expect(section.getByText("Admin messages go to", { exact: true })).toBeVisible();
@@ -50,7 +51,7 @@ test("the section and its ⓘ, and One person persists", async ({ page, db }) =>
 });
 
 test("Admin WhatsApp group: code and steps, linked by the command, then Unlink", async ({ page, db, request }) => {
-  await signInAs(page, U.admin, "/admin/settings");
+  await signInAs(page, U.admin, "/admin/settings#admin-group");
   const section = page.getByTestId("admin-channel-section");
   await expect(section).toBeVisible({ timeout: 30_000 });
 
@@ -107,7 +108,7 @@ test("a code MatchTime already sent by DM is SHOWN with its real expiry, not rep
       [ORG_ID],
     );
   try {
-    await signInAs(page, U.admin, "/admin/settings");
+    await signInAs(page, U.admin, "/admin/settings#admin-group");
     const section = page.getByTestId("admin-channel-section");
     await expect(section).toBeVisible({ timeout: 30_000 });
     await section.getByLabel("Admin WhatsApp group").check();
@@ -141,7 +142,7 @@ test("a code MatchTime already sent by DM is SHOWN with its real expiry, not rep
 test("in Turkish for a Turkish club", async ({ page, db }) => {
   await db.run(`UPDATE "Organisation" SET language = 'tr' WHERE id = $1`, [ORG_ID]);
   try {
-    await signInAs(page, U.admin, "/admin/settings");
+    await signInAs(page, U.admin, "/admin/settings#admin-group");
     const section = page.getByTestId("admin-channel-section");
     await expect(section).toBeVisible({ timeout: 30_000 });
     await expect(section.getByText("Yönetici mesajları", { exact: true })).toBeVisible();

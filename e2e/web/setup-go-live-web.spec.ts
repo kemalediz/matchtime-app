@@ -23,6 +23,7 @@ import { test, expect, resetDb, signInAs, U } from "../fixtures";
 import { countRequestsOf } from "../helpers/action-requests";
 import { E2E, E2E_BASE_URL } from "../helpers/env";
 import { testDb, type TestDb } from "../helpers/test-db";
+import { openSettingsCard } from "../helpers/settings-nav";
 
 test.describe.configure({ mode: "serial" });
 
@@ -204,8 +205,11 @@ test.afterAll(() => resetDb());
 test.describe("a club that is not setting up", () => {
   test("a live club's settings page is exactly as it was: no banner, the WhatsApp bot section unchanged", async ({ page }) => {
     await signInAs(page, U.admin, "/admin/settings");
-    await expect(page.getByTestId("weekly-routine")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId("settings-tabs")).toBeVisible({ timeout: 30_000 });
     await expect(page.getByTestId("go-live-banner")).toHaveCount(0);
+    // A live club's WhatsApp bot card starts collapsed: open it to read it.
+    await expect(page.getByTestId("settings-card-toggle-whatsapp")).toHaveAttribute("aria-expanded", "false");
+    await openSettingsCard(page, "whatsapp");
     await expect(page.getByTestId("go-live-done")).toHaveCount(0);
     await expect(page.getByText(TITLE)).toHaveCount(0);
     await expect(page.getByTestId("wa-setting-up")).toHaveCount(0);
@@ -295,6 +299,7 @@ test.describe("the organiser of a club that is setting up", () => {
     await shot(page, "settings-page-desktop-full", true);
 
     // Change a setting on the page: the preview follows it.
+    await openSettingsCard(page, "weekly-routine");
     await page.getByTestId("wr-rolling").getByRole("switch").click();
     // This club has no game played with MatchTime yet, so the preview is
     // the FIRST-GAME form (2026-10-13): it asks for an In, and never says
@@ -408,7 +413,7 @@ test.describe("the organiser of a club that is setting up", () => {
 
     // After a reload the club is simply live: the page is as any live club's.
     await page.reload();
-    await expect(page.getByTestId("weekly-routine")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId("settings-tabs")).toBeVisible({ timeout: 30_000 });
     await expect(page.getByTestId("go-live-banner")).toHaveCount(0);
     await expect(page.getByTestId("go-live-done")).toHaveCount(0);
     await expect(page.getByTestId("wa-bot-state")).toHaveText("Enabled");
@@ -646,7 +651,7 @@ test.describe("review of PR #236: the banner's other outcomes and rules", () => 
     // The offered reload brings the whole page up to date.
     await page.unroute("**/api/org/settings");
     await stale.getByRole("button", { name: "Reload the page" }).click();
-    await expect(page.getByTestId("weekly-routine")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId("settings-tabs")).toBeVisible({ timeout: 30_000 });
     await expect(page.getByTestId("go-live-done")).toHaveCount(0);
     await expect(page.getByTestId("wa-bot-state")).toHaveText("Enabled");
   });

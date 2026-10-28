@@ -4,7 +4,9 @@
  * "Tell your players about the player pool" (growth slice G3, 2026-10-24),
  * its own card on /admin/settings beside the other pool cards: the exact
  * post MatchTime would put in the players' group, with the club's link, and
- * one Send button. Sent once per club, ever; afterwards the card says when.
+ * one Send button. Sent once per club, ever; afterwards the card says
+ * where the post is: "Queued: goes out at 09:00." while quiet hours hold
+ * it, then "Sent to your players' group on 28 Oct 2026." once it is out.
  * Renders nothing unless the club has the player pool. Loads and sends
  * through its own server actions (`app/actions/pool-club-share.ts`), so the
  * page only renders it.
@@ -15,6 +17,8 @@ import { Megaphone } from "lucide-react";
 import { poolClubShareCopy } from "@/lib/i18n/pool-club-share";
 import { getClubShare, sendClubSharePost } from "@/app/actions/pool-club-share";
 import type { ClubShareCard } from "@/lib/pool/club-share";
+import { clubShareSummary } from "@/lib/settings-summaries";
+import { SettingsCard } from "./settings-nav";
 
 export function PoolClubShareSection(props: { orgId: string; language: string | null | undefined }) {
   const [card, setCard] = useState<ClubShareCard | null | undefined>(undefined);
@@ -51,12 +55,15 @@ export function PoolClubShareSection(props: { orgId: string; language: string | 
   }
 
   return (
-    <section className="bg-white rounded-xl border border-slate-200 shadow-sm" data-testid="pool-club-share" lang={card.language}>
-      <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
-        <Megaphone className="w-4 h-4 text-slate-500" aria-hidden />
-        <h2 className="font-semibold text-slate-800">{s.title}</h2>
-      </div>
-      <div className="p-6 space-y-4">
+    <SettingsCard
+      id="pool-club-share"
+      title={s.title}
+      icon={Megaphone}
+      summary={clubShareSummary(card.language, card)}
+      testId="pool-club-share"
+      rootProps={{ lang: card.language, "data-state": card.kind }}
+    >
+      <div className="p-4 sm:p-6 space-y-4">
         <p className="text-sm text-slate-500">{s.lead}</p>
         <div>
           <p className="text-xs font-medium text-slate-500 mb-1">{s.previewLabel}</p>
@@ -67,9 +74,13 @@ export function PoolClubShareSection(props: { orgId: string; language: string | 
             {card.text}
           </p>
         </div>
-        {card.kind === "sent" && card.sentOn ? (
+        {card.kind === "queued" && card.statusLine ? (
+          <p className="text-sm text-amber-800" data-testid="pool-club-share-queued">
+            {card.statusLine}
+          </p>
+        ) : card.kind === "sent" && card.statusLine ? (
           <p className="text-sm text-green-700" data-testid="pool-club-share-sent">
-            {s.sentOn(card.sentOn)}
+            {card.statusLine}
           </p>
         ) : card.kind === "no-group" ? (
           <p className="text-sm text-amber-700" data-testid="pool-club-share-no-group">
@@ -87,6 +98,6 @@ export function PoolClubShareSection(props: { orgId: string; language: string | 
           </button>
         )}
       </div>
-    </section>
+    </SettingsCard>
   );
 }

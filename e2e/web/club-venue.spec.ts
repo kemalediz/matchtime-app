@@ -114,7 +114,7 @@ test("no venue: the prompt; typing alone saves nothing; a picked place becomes t
 
 test("a club venue already set shows as the current venue on load, with Change and no open input", async ({ page }) => {
   // The previous test saved Powerleague Croydon as the home venue.
-  await signInAs(page, U.admin, "/admin/settings");
+  await signInAs(page, U.admin, "/admin/settings#club-venue");
   const row = venueRow(page);
   await expect(row).toBeVisible({ timeout: 30_000 });
   await expect(row.getByTestId("club-venue-home").getByTestId("club-venue-current-name")).toHaveText("Powerleague Croydon");
@@ -133,7 +133,7 @@ test("a club whose active game has a geocoded venue sees no prompt, and is told 
     `INSERT INTO "Venue" (id, "placeId", name, lat, lng, source, "createdAt", "updatedAt") VALUES ('e2e-cv-game', 'ChIJ_e2e_cv_game01', 'E2E Arena Pitches', 51.36, -0.17, 'google', now(), now())`,
   );
   await db.run(`UPDATE "Activity" SET "venueId" = 'e2e-cv-game' WHERE id = $1`, [ACTIVITY_ID]);
-  await signInAs(page, U.admin, "/admin/settings");
+  await signInAs(page, U.admin, "/admin/settings#club-venue");
   const row = venueRow(page);
   await expect(row).toBeVisible({ timeout: 30_000 });
   const card = row.getByTestId("club-venue-game");
@@ -177,7 +177,7 @@ test("a club whose active game has a geocoded venue sees no prompt, and is told 
 
 test("in Turkish", async ({ page, db }) => {
   await db.run(`UPDATE "Organisation" SET language = 'tr', "homeVenueId" = NULL WHERE id = $1`, [ORG_ID]);
-  await signInAs(page, U.admin, "/admin/settings");
+  await signInAs(page, U.admin, "/admin/settings#club-venue");
   const row = venueRow(page);
   await expect(row).toBeVisible({ timeout: 30_000 });
   await expect(row).toContainText("Kulüp sahası");

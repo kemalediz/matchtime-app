@@ -22,8 +22,8 @@ async function stored(db: import("../helpers/test-db").TestDb): Promise<boolean 
 }
 
 async function openSettings(page: import("@playwright/test").Page) {
-  await signInAs(page, U.admin, "/admin/settings");
-  await expect(page.getByTestId("weekly-routine")).toBeVisible({ timeout: 30_000 });
+  await signInAs(page, U.admin, "/admin/settings#pool-auto-ask");
+  await expect(page.getByTestId("settings-tabs")).toBeVisible({ timeout: 30_000 });
   await page.waitForLoadState("networkidle");
 }
 
@@ -76,7 +76,7 @@ for (const [label, viewport] of [
 
 test("a Turkish club reads the card in Turkish", async ({ page, db }) => {
   await db.run(`UPDATE "Organisation" SET "featurePlayerPool" = true, language = 'tr' WHERE id = $1`, [ORG_ID]);
-  await signInAs(page, U.admin, "/admin/settings");
+  await signInAs(page, U.admin, "/admin/settings#pool-auto-ask");
   const card = page.getByTestId("pool-auto-ask");
   await expect(card).toBeVisible({ timeout: 30_000 });
   await expect(card.getByRole("heading", { name: "Oyuncu havuzuna kendiliğinden sor" })).toBeVisible();

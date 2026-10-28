@@ -12,6 +12,7 @@ import {
   clubShareKey,
   clubSharePostText,
   clubShareShown,
+  clubShareStatusLine,
   clubShareView,
 } from "../club-share-rules";
 import { POOL_CAMPAIGN_CODE_MAX } from "../growth-rules";
@@ -102,11 +103,67 @@ describe("the card's state", () => {
     expect(clubShareView({ ...base, hasGroup: false, sentAt: at })).toEqual({ kind: "sent", sentAt: at });
   });
 
+  it("claimed but its post not out yet (held by quiet hours, or waiting for the Pi): queued, with when", () => {
+    const claimed = new Date("2026-10-27T23:10:00Z");
+    const held = new Date("2026-10-28T09:00:00Z");
+    expect(clubShareView({ ...base, sentAt: claimed, job: { sendAfter: held, sentAt: null } })).toEqual({ kind: "queued", sendAfter: held });
+    expect(clubShareView({ ...base, sentAt: claimed, job: { sendAfter: null, sentAt: null } })).toEqual({ kind: "queued", sendAfter: null });
+  });
+
+  it("once the post is out: sent, on the day it went out", () => {
+    const claimed = new Date("2026-10-27T23:10:00Z");
+    const out = new Date("2026-10-28T09:00:30Z");
+    expect(clubShareView({ ...base, sentAt: claimed, job: { sendAfter: new Date("2026-10-28T09:00:00Z"), sentAt: out } })).toEqual({
+      kind: "sent",
+      sentAt: out,
+    });
+  });
+
+  it("a claim from before the post was linked to it (no job found): sent on the claim's day, as before", () => {
+    const at = new Date("2026-10-24T10:00:00Z");
+    expect(clubShareView({ ...base, sentAt: at, job: null })).toEqual({ kind: "sent", sentAt: at });
+  });
+
   it("no players' group: shown, but Send is not offered", () => {
     expect(clubShareView({ ...base, hasGroup: false })).toEqual({ kind: "no-group" });
   });
 
   it("otherwise ready to send", () => {
     expect(clubShareView(base)).toEqual({ kind: "ready" });
+  });
+});
+
+describe("the card's state line, London time, in the club's language", () => {
+  const NOW = new Date("2026-10-28T00:30:00Z"); // 00:30 London, Wednesday 28 October (GMT)
+
+  it("queued for later today: the time", () => {
+    const at = { kind: "queued" as const, sendAfter: new Date("2026-10-28T09:00:00Z") };
+    expect(clubShareStatusLine("en", at, NOW)).toBe("Queued: goes out at 09:00.");
+    expect(clubShareStatusLine("tr", at, NOW)).toBe("Sırada: 09:00'da gönderilecek.");
+  });
+
+  it("queued for another day: the date as well", () => {
+    const at = { kind: "queued" as const, sendAfter: new Date("2026-10-29T09:00:00Z") };
+    expect(clubShareStatusLine("en", at, NOW)).toBe("Queued: goes out on 29 Oct 2026 at 09:00.");
+    expect(clubShareStatusLine("tr", at, NOW)).toBe("Sırada: 29 Eki 2026, 09:00'da gönderilecek.");
+  });
+
+  it("queued with no hold, or a hold already past: in a minute or two", () => {
+    for (const sendAfter of [null, new Date("2026-10-27T09:00:00Z")]) {
+      expect(clubShareStatusLine("en", { kind: "queued", sendAfter }, NOW)).toBe("Queued: goes out in a minute or two.");
+      expect(clubShareStatusLine("tr", { kind: "queued", sendAfter }, NOW)).toBe("Sırada: bir iki dakika içinde gönderilecek.");
+    }
+  });
+
+  it("sent: the day, London time", () => {
+    const at = { kind: "sent" as const, sentAt: new Date("2026-10-28T09:00:30Z") };
+    expect(clubShareStatusLine("en", at, NOW)).toBe("Sent to your players' group on 28 Oct 2026.");
+    expect(clubShareStatusLine("tr", at, NOW)).toBe("Oyuncu grubunuza 28 Eki 2026'da gönderildi.");
+  });
+
+  it("ready, no group or hidden: no line", () => {
+    expect(clubShareStatusLine("en", { kind: "ready" }, NOW)).toBeNull();
+    expect(clubShareStatusLine("en", { kind: "no-group" }, NOW)).toBeNull();
+    expect(clubShareStatusLine("en", { kind: "hidden" }, NOW)).toBeNull();
   });
 });

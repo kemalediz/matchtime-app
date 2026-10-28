@@ -17,6 +17,7 @@ import type { Page } from "@playwright/test";
 import { test, expect, signInAs, resetDb, U } from "../fixtures";
 import { countRequestsOf } from "../helpers/action-requests";
 import { ORG_ID } from "../helpers/constants";
+import { openSettingsCard } from "../helpers/settings-nav";
 
 /** Not committed (/test-results/ is gitignored): the finished panel, for review. */
 const SHOTS = path.join(process.cwd(), "test-results", "learned-setup");
@@ -108,7 +109,7 @@ test.afterAll(() => resetDb());
 
 test("a club never read: no panel", async ({ page }) => {
   await signInAs(page, U.admin, "/admin/settings");
-  await expect(page.getByTestId("weekly-routine")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("settings-tabs")).toBeVisible({ timeout: 30_000 });
   await expect(page.getByTestId("learned-setup")).toHaveCount(0);
 });
 
@@ -591,7 +592,9 @@ for (const anchoring of [true, false]) {
     expect(await page.evaluate(() => getComputedStyle(document.body).overflowAnchor)).toBe(anchoring ? "auto" : "none");
     loads.reset();
 
-    // A weekly deadline, saved where it is.
+    // A weekly deadline, saved where it is (its card opened first: the
+    // settings are tabs of collapsed cards since 2026-10-28).
+    await openSettingsCard(page, "weekly-routine");
     await goTo(tid("wd-dropout"));
     let was = await where(tid("wd-dropout"));
     await page.getByTestId("wd-dropout-day").selectOption("1");
@@ -605,6 +608,7 @@ for (const anchoring of [true, false]) {
 
     // Who fills an open place, saved where it is. The panel loads, and its
     // card would go: but the panel is off the top of the screen, so it waits.
+    await openSettingsCard(page, "bench");
     await goTo(tid("wr-pick"));
     was = await where(tid("wr-pick"));
     await page.getByTestId("wr-pick-mode").selectOption("organiser");
@@ -615,7 +619,15 @@ for (const anchoring of [true, false]) {
     // The language, saved where it is. The panel is 20px taller in
     // Turkish, so it stays in English, off the top of the screen, until
     // the organiser is back at it; the select stays under the finger.
+    // On the Club tab the select sits close under the panel: with the
+    // cards around it open (as an organiser reading the tab has them),
+    // the select is far enough down that the panel is off the top of the
+    // screen, which is what this step is about.
+    await openSettingsCard(page, "club-details");
+    await openSettingsCard(page, "whatsapp");
+    await openSettingsCard(page, "bot-language");
     await goTo("#bot-language select");
+    expect(await page.getByTestId("learned-setup").evaluate((el) => el.getBoundingClientRect().bottom)).toBeLessThanOrEqual(0);
     was = await where("#bot-language select");
     await page.locator("#bot-language select").selectOption("tr");
     // The page now speaks the language just chosen, its toast included.
@@ -664,8 +676,11 @@ for (const anchoring of [true, false]) {
     await scrolledDown();
     await loaded(1);
     const rested = await where(tid("wr-pick"));
-    // Where the link leaves it: the row at the top, under its 24px margin.
-    expect(rested.top).toBe(24);
+    // Where the link leaves it: the row at the top under its 24px margin,
+    // or (since 2026-10-28) as far up as the short Players tab lets the
+    // page scroll; never under the top edge, and the whole row on screen.
+    expect(rested.top).toBeGreaterThanOrEqual(24);
+    await expect(page.getByTestId("wr-pick")).toBeInViewport({ ratio: 1 });
     await page.clock.runFor(5_000);
     expect(await where(tid("wr-pick"))).toEqual(rested);
     // One scroll again on this visit (the `#learned-setup` arrival), none for the reload.

@@ -15,8 +15,10 @@
  * The link is the club's own G1 campaign code, `/play?src=club-<slug>`, so
  * the owner's campaign page counts what the post brought.
  */
+import { tr as trLocale } from "date-fns/locale";
 import { poolClubShareCopy } from "../i18n/pool-club-share";
-import type { Lang } from "../i18n/lang";
+import { normaliseLang, type Lang } from "../i18n/lang";
+import { formatLondon } from "../london-time";
 import { POOL_CAMPAIGN_CODE_MAX, POOL_CAMPAIGN_LABEL_MAX } from "./growth-rules";
 import { playStyleShown } from "./play-style";
 
@@ -67,16 +69,58 @@ export function clubSharePostText(lang: Lang | string | null | undefined, url: s
 
 /**
  *   hidden    the club has no player pool: no card.
- *   sent      sent once already: the date, never Send again.
+ *   queued    claimed, but its players' group post has not gone out yet:
+ *             held by the club's quiet hours until `sendAfter`, or waiting
+ *             for the next send (`sendAfter` null). Never Send again.
+ *   sent      the post went out (`sentAt`: when). A claim written before
+ *             the post carried the claim's key has no post to find, and
+ *             reads as sent on the claim's day, as it always did.
  *   no-group  no players' group (or the bot is off for it): the post is
  *             shown, Send is not.
  *   ready     Send is offered.
  */
-export type ClubShareState = { kind: "hidden" } | { kind: "sent"; sentAt: Date } | { kind: "no-group" } | { kind: "ready" };
+export type ClubShareState =
+  | { kind: "hidden" }
+  | { kind: "queued"; sendAfter: Date | null }
+  | { kind: "sent"; sentAt: Date }
+  | { kind: "no-group" }
+  | { kind: "ready" };
 
-export function clubShareView(a: { shown: boolean; hasGroup: boolean; sentAt: Date | null }): ClubShareState {
+/** `sentAt`: the claim's time. `job`: the post written with the claim
+ *  (found by the claim's key), null when none is. */
+export function clubShareView(a: {
+  shown: boolean;
+  hasGroup: boolean;
+  sentAt: Date | null;
+  job?: { sendAfter: Date | null; sentAt: Date | null } | null;
+}): ClubShareState {
   if (!a.shown) return { kind: "hidden" };
-  if (a.sentAt) return { kind: "sent", sentAt: a.sentAt };
+  if (a.sentAt) {
+    if (a.job && !a.job.sentAt) return { kind: "queued", sendAfter: a.job.sendAfter };
+    return { kind: "sent", sentAt: a.job?.sentAt ?? a.sentAt };
+  }
   if (!a.hasGroup) return { kind: "no-group" };
   return { kind: "ready" };
+}
+
+/** "28 Oct 2026" / "28 Eki 2026", London. */
+function shortDate(lang: Lang, d: Date): string {
+  return formatLondon(d, "d MMM yyyy", lang === "tr" ? trLocale : undefined);
+}
+
+/**
+ * The card's line about the post, London time, in the club's language:
+ * "Queued: goes out at 09:00." (the date too when it is not today) or
+ * "Sent to your players' group on 28 Oct 2026."; null for the other states.
+ */
+export function clubShareStatusLine(lang: Lang | string | null | undefined, state: ClubShareState, now: Date): string | null {
+  const l = normaliseLang(lang);
+  const c = poolClubShareCopy(l);
+  if (state.kind === "sent") return c.sentOn(shortDate(l, state.sentAt));
+  if (state.kind !== "queued") return null;
+  const at = state.sendAfter;
+  if (!at || at.getTime() <= now.getTime()) return c.queuedSoon;
+  const time = formatLondon(at, "HH:mm");
+  if (formatLondon(at, "yyyy-MM-dd") === formatLondon(now, "yyyy-MM-dd")) return c.queuedToday(time);
+  return c.queuedOn(shortDate(l, at), time);
 }
