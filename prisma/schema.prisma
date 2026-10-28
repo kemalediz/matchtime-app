@@ -646,6 +646,7 @@ model Organisation {
   clubBlocksMade     ClubBlock[]       @relation("ClubBlocker")
   clubBlocksAgainst  ClubBlock[]       @relation("ClubBlocked")
   poolAsks           PoolAsk[]
+  poolAskRetries     PoolAskRetry[]
   poolBlocks         PoolBlock[]
   poolReports        PoolReport[]
   guestPlaces        GuestPlace[]
@@ -1202,6 +1203,7 @@ model Match {
   sentNotifications       SentNotification[]
   partnerAsks             PartnerAsk[]
   poolAsks                PoolAsk[]
+  poolAskRetries          PoolAskRetry[]
   guestPlaces             GuestPlace[]
   benchConfirmations      PendingBenchConfirmation[]
   benchSlotOffers         BenchSlotOffer[]
@@ -3309,6 +3311,40 @@ model PoolAsk {
   @@index([roundId])
   @@index([orgId, createdAt])
   @@index([matchId, status])
+}
+
+/// A pool ask an organiser made in words that was REFUSED for something the
+/// club can fix (2026-10-28; `src/lib/pool/ask-retry-rules.ts`): today only
+/// "no-venue". When the fix lands (a place linked to the game's venue)
+/// MatchTime asks again, once, and posts the result in the group it was
+/// asked in. One row per match and refusal: a newer refused ask replaces
+/// the older one. `claimedAt` is the once-ever claim (compare-and-set);
+/// `outcome` says what the retry, or the drop, came to.
+model PoolAskRetry {
+  id              String       @id @default(cuid())
+  orgId           String
+  org             Organisation @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  matchId         String
+  match           Match        @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  /// The organiser who asked (the retry asks as him: the role is re-checked).
+  askedByUserId   String
+  /// Where it was asked, and where the result is posted: "hq" | "group".
+  askedIn         String
+  /// The WhatsApp id of the ask, for the logs and a later quoted reply.
+  askMessageId    String?
+  /// Players asked for (the open places then).
+  places          Int
+  /// The refusal (`ASK_RETRY_REFUSALS`).
+  refusal         String
+  claimedAt       DateTime?
+  /// What the retry came to ("hq-pool-asked", "hq-pool-not-asked", ...) or
+  /// why it was dropped ("drop:expired", "drop:asked-since", ...).
+  outcome         String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@unique([matchId, refusal])
+  @@index([orgId, claimedAt])
 }
 
 /// One offer to one person: the cap ledger and the audit trail. One per

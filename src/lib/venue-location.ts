@@ -193,6 +193,23 @@ async function lookupText(a: LoadedActivity, text: string, now: Date, fetchImpl:
   return { status: "found", ...stored };
 }
 
+// ── A refused pool ask waiting for this venue (2026-10-28) ──────────────
+
+/**
+ * Every write below that LINKS a place (a game's venue, or the club's
+ * venue) ends here: a pool ask refused for having no venue is asked again
+ * now (`pool-ask-retry.ts`, after the response, once ever). Never fails
+ * the write.
+ */
+async function venueSet(orgId: string): Promise<void> {
+  try {
+    const { afterVenueSet } = await import("./pool-ask-retry");
+    await afterVenueSet(orgId);
+  } catch (err) {
+    console.error(`[geocode] org=${orgId} venue-set follow-up failed (${(err as Error)?.name ?? "error"})`);
+  }
+}
+
 // ── A scheduled lookup ──────────────────────────────────────────────────
 
 /**
@@ -266,6 +283,7 @@ export async function resolveActivityVenue(activityId: string, opts: VenueLookup
       console.debug(`[geocode] activity=${a.id} outcome=stale`);
       return { status: "stale" };
     }
+    await venueSet(a.orgId);
     console.debug(`[geocode] activity=${a.id} outcome=found confidence=${got.confidence}`);
     return { status: "found", confidence: got.confidence };
   }
@@ -343,6 +361,7 @@ async function link(
   // The place this one replaced, if it was this club's private pin.
   if (a.venueId && a.venueId !== data.venueId) await dropOrphanPin(a.venueId);
   await sweepOrphanPins(now);
+  await venueSet(a.orgId);
 }
 
 /**
@@ -545,6 +564,7 @@ export async function resolveActivityVenuePick(
     venueConfirmedById: userId,
   });
   console.debug(`[geocode] activity=${a.id} outcome=${written ? "found" : "stale"} source=pick confidence=high`);
+  if (written) await venueSet(a.orgId);
   return written ? { status: "found", confidence: "high" } : { status: "stale" };
 }
 
@@ -639,5 +659,6 @@ export async function setClubHomeVenueToPick(
   const { count } = await db.organisation.updateMany({ where: { id: orgId }, data: { homeVenueId: got.venueId } });
   if (count === 0) return { status: "unresolved" };
   console.log(`[geocode] org=${orgId} home venue set from a pick by ${userId}`);
+  await venueSet(orgId);
   return { status: "found", venueId: got.venueId };
 }

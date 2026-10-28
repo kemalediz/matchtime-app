@@ -1548,7 +1548,8 @@ describe("local player pool L10: asking the pool in HQ, in words and by YES to i
   it("ask_group, tagged, the extractor reads the pool: the pool is asked in words for the next match, nothing posted", async () => {
     const deps = { routerModel: routeTo("ask_group"), extractorModel: fromPool() };
     const r = await ask("@Match Time ask the pool for a player", "ask_group", { deps, poolEnv: ENV });
-    expect(hqPool.askPoolFromWords).toHaveBeenCalledWith({ orgId: "org-fnf", userId: "u-admin", via: "words", lang: "en", now: NOW, env: ENV });
+    // The ask's own message id: a refusal the club can fix is remembered against it (2026-10-28).
+    expect(hqPool.askPoolFromWords).toHaveBeenCalledWith({ orgId: "org-fnf", userId: "u-admin", via: "words", lang: "en", now: NOW, env: ENV, remember: { askMessageId: "wa-9" } });
     expect(r).toEqual({ route: "ask_group", outcome: "hq-pool-asked", replyText: expect.stringMatching(/^🔎 Asking nearby players/) });
     expect(groupAsk.askPlayersGroup).not.toHaveBeenCalled();
     expect(partnerWords.askPartnersFromWords).not.toHaveBeenCalled();

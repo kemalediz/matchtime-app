@@ -4092,6 +4092,7 @@ async function handleAnalyzeRequest(request: Request) {
         lang: org.language,
         now: new Date(),
         env: await poolEnvForApiRequest(request),
+        remember: { askMessageId: ask.msg.waMessageId },
       });
       const react = r.outcome === "hq-pool-asked" ? "✅" : null;
       const idx = results.findIndex((x) => x.waMessageId === ask.msg.waMessageId);
