@@ -12,6 +12,6 @@ export const POOL_SHARE_TR: PoolShareCopy = {
   shareWhatsApp: "WhatsApp'ta paylaş",
   recognitionOn: (name) => `Bağlantını açanlar onları ${name} adlı kişinin davet ettiğini görür. Havuz sayfandaki gizlilik düğmesiyle bunu kapatabilirsin. Numaran bağlantıda da mesajda da hiç yer almaz.`,
   recognitionOff: "Bağlantını açanlar adını görmez. Numaran bağlantıda da mesajda da hiç yer almaz.",
-  message: (url) => `Yakındaki maçlar için MatchTime kullanıyorum. Sen de kaydol, yakınında bir takıma oyuncu lazım olunca sana WhatsApp'tan yazsınlar: ${url}`,
+  message: (url) => `Yakındaki maçlar için MatchTime kullanıyorum; oyuncu puanları ve maçın adamı seçimi de var. Sen de kaydol, yakınında bir takıma oyuncu lazım olunca sana WhatsApp'tan yazsınlar: ${url}`,
   invitedBy: (name) => `${name} seni davet etti.`,
 };
