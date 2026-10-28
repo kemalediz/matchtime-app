@@ -13,11 +13,23 @@ import { Sparkles } from "lucide-react";
 import { SettingInfo } from "@/components/info/setting-info";
 import { t } from "@/lib/i18n/t";
 import { getPoolAutoAsk, setPoolAutoAsk } from "@/app/actions/pool-auto-ask";
+import { onOffSummary } from "@/lib/settings-summaries";
+import { SettingsCard } from "./settings-nav";
 
-export function PoolAutoAskSection(props: { orgId: string; language: string | null | undefined }) {
+export function PoolAutoAskSection(props: {
+  orgId: string;
+  language: string | null | undefined;
+  /** Told the switch's state as it loads and on every save (the Player pool card's summary). */
+  onState?: (on: boolean | null) => void;
+}) {
   const s = t(props.language);
   const [on, setOn] = useState<boolean | undefined>(undefined);
   const [saving, setSaving] = useState(false);
+
+  const { onState } = props;
+  useEffect(() => {
+    onState?.(on === undefined ? null : on);
+  }, [on, onState]);
 
   useEffect(() => {
     getPoolAutoAsk(props.orgId)
@@ -45,13 +57,16 @@ export function PoolAutoAskSection(props: { orgId: string; language: string | nu
   }
 
   return (
-    <section className="bg-white rounded-xl border border-slate-200 shadow-sm" data-testid="pool-auto-ask" data-setting="poolAutoAsk">
-      <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
-        <Sparkles className="w-4 h-4 text-slate-500" aria-hidden />
-        <h2 className="font-semibold text-slate-800">{s.pauto_title}</h2>
-        <SettingInfo k="poolAutoAsk" lang={props.language} />
-      </div>
-      <div className="p-6 flex items-start justify-between gap-4">
+    <SettingsCard
+      id="pool-auto-ask"
+      title={s.pauto_title}
+      icon={Sparkles}
+      info={<SettingInfo k="poolAutoAsk" lang={props.language} />}
+      summary={onOffSummary(props.language, on)}
+      testId="pool-auto-ask"
+      rootProps={{ "data-setting": "poolAutoAsk" }}
+    >
+      <div className="p-4 sm:p-6 flex items-start justify-between gap-4">
         <p className="text-sm text-slate-500" id="pool-auto-ask-blurb">
           {s.pauto_blurb}
         </p>
@@ -69,6 +84,6 @@ export function PoolAutoAskSection(props: { orgId: string; language: string | nu
           <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${on ? "translate-x-5" : "translate-x-0"}`} />
         </button>
       </div>
-    </section>
+    </SettingsCard>
   );
 }

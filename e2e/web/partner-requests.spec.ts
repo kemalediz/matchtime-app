@@ -29,7 +29,7 @@ const OWNER_B1 = U.rater;
 const OWNER_B2 = U.third;
 
 /** Sign in AS a user, pinned to one club (a user in two clubs). */
-async function signInFor(page: Page, userId: string, orgId: string, nextPath = "/admin/settings") {
+async function signInFor(page: Page, userId: string, orgId: string, nextPath = "/admin/settings#partner-clubs") {
   await page.goto(`/r/${mintToken(userId, { nextPath, orgId })}`);
   await page.waitForURL((url) => !url.pathname.startsWith("/r/"), { timeout: 30_000 });
 }

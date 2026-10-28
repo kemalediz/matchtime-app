@@ -16,6 +16,7 @@ import type { Request } from "@playwright/test";
 import { test, expect, resetDb, signInAs, U } from "../fixtures";
 import { ORG_ID } from "../helpers/constants";
 import { testDb } from "../helpers/test-db";
+import { openSettingsCard } from "../helpers/settings-nav";
 
 test.describe.configure({ mode: "serial" });
 
@@ -105,6 +106,8 @@ test("an approved club: the name is read-only, with a line saying why", async ({
   await setStatus("approved");
   await signInAs(page, U.admin, "/admin/settings");
   await page.waitForURL("**/admin/settings");
+  // A live club's General card starts collapsed (a draft club's starts open).
+  await openSettingsCard(page, "club-details");
 
   const name = page.getByLabel("Organisation name", { exact: true });
   await expect(name).toHaveValue("Friday Football", { timeout: 30_000 });

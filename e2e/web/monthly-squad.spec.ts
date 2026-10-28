@@ -21,6 +21,7 @@ import { ACTIVITY_ID, ORG_ID } from "../helpers/constants";
 import { testDb } from "../helpers/test-db";
 import { monthKickoffs } from "@/lib/month-signup-rules";
 import { londonMonthStart } from "@/lib/squad-month-rules";
+import { openSettingsCard } from "../helpers/settings-nav";
 
 test.describe.configure({ mode: "serial" });
 
@@ -44,6 +45,9 @@ async function outbound(): Promise<number> {
 async function openSettings(page: Page, userId: string = U.admin) {
   await signInAs(page, userId, "/admin/settings");
   await page.waitForURL("**/admin/settings");
+  // Both on the Matches tab: the monthly squad, and the weekly routine it changes.
+  await openSettingsCard(page, "monthly-squad");
+  await openSettingsCard(page, "weekly-routine");
   await expect(page.getByTestId("monthly-squad")).toBeVisible({ timeout: 30_000 });
 }
 
@@ -107,7 +111,7 @@ test("an owner switches it on: rolling squad goes off, the settings save and sur
     .toEqual({ squadMode: "monthly", rollingSquadEnabled: false });
   // The rolling squad row is gone from the weekly routine; the rest of it stays.
   await expect(page.getByTestId("wr-rolling")).toHaveCount(0);
-  await expect(page.getByTestId("wr-pick")).toBeVisible();
+  await expect(page.getByTestId("weekly-routine").getByTestId("wr-announce")).toBeVisible();
 
   await page.getByTestId("msq-payg").fill("8");
   await page.getByTestId("msq-opens").fill("10");
@@ -128,6 +132,7 @@ test("an owner switches it on: rolling squad goes off, the settings save and sur
     .toBe("filled-only");
 
   await page.reload();
+  await openSettingsCard(page, "monthly-squad");
   await expect(page.getByTestId("msq-mode")).toHaveValue("monthly", { timeout: 30_000 });
   await expect(page.getByTestId("msq-payg")).toHaveValue("8.00");
   await expect(page.getByTestId("msq-opens")).toHaveValue("10");

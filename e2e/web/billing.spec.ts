@@ -240,10 +240,12 @@ test.describe("/billing/[orgId] per role", () => {
 
 test.describe("/admin/settings billing card and the banner", () => {
   test("OWNER and ADMIN see the card: state, who pays, card on file, the tip, Open billing", async ({ page }) => {
-    await signInAs(page, USER.admin, "/admin/settings");
-    await page.waitForURL("**/admin/settings");
+    // The card's own link (the banner's "See billing") opens it on the Payments tab.
+    await signInAs(page, USER.admin, "/admin/settings#billing");
+    await page.waitForURL("**/admin/settings#billing");
     const card = page.getByTestId("settings-billing-card");
     await expect(card).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId("settings-card-toggle-billing")).toHaveAttribute("aria-expanded", "true");
     await expect(card).toContainText("Free until Thu 31 Jan. After that you only pay for the games you play, up to £9.99 a month for the whole group.");
     // No month has opened yet (the free month runs): no month box.
     await expect(card.getByTestId("settings-billing-month")).toHaveCount(0);
@@ -258,8 +260,8 @@ test.describe("/admin/settings billing card and the banner", () => {
   });
 
   test("F1: the settings billing card has its ⓘ", async ({ page }) => {
-    await signInAs(page, USER.admin, "/admin/settings");
-    await page.waitForURL("**/admin/settings");
+    await signInAs(page, USER.admin, "/admin/settings#billing");
+    await page.waitForURL("**/admin/settings#billing");
     const card = page.getByTestId("settings-billing-card");
     await card.getByTestId("info-st_billing").click({ timeout: 30_000 });
     await expect(page.getByRole("dialog")).toContainText("only the games played are charged");
@@ -268,7 +270,7 @@ test.describe("/admin/settings billing card and the banner", () => {
 
   test("no collector: the owner fallback line", async ({ page }) => {
     await setState(`UPDATE "Organisation" SET "paymentHolderId"=NULL WHERE id=$1`, [ORG]);
-    await signInAs(page, USER.owner, "/admin/settings");
+    await signInAs(page, USER.owner, "/admin/settings#billing");
     const card = page.getByTestId("settings-billing-card");
     await expect(card).toContainText("No money collector set: the owner is asked for the card.", { timeout: 30_000 });
   });

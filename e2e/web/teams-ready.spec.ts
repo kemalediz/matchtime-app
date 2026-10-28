@@ -1,5 +1,6 @@
 /**
- * /admin/settings, "Weekly routine" → "Teams ready" (2026-10-14).
+ * /admin/settings, Matches tab, "Teams" → "Teams ready" (2026-10-14; in
+ * "Weekly routine" until the settings tabs of 2026-10-28).
  *
  *   - hidden while the club has no admin group linked;
  *   - with one linked: the row, its ⓘ, the default 10:00;
@@ -23,15 +24,16 @@ test.afterAll(() => {
 });
 
 test("no admin group linked: no Teams ready row", async ({ page }) => {
-  await signInAs(page, U.admin, "/admin/settings");
-  await expect(page.getByTestId("weekly-routine")).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByTestId("admin-channel-section")).toBeVisible();
+  await signInAs(page, U.admin, "/admin/settings#teams");
+  await expect(page.getByTestId("settings-card-toggle-teams")).toHaveAttribute("aria-expanded", "true", { timeout: 30_000 });
+  // The admin messages setting has loaded (its own card on the Messages tab).
+  await expect(page.getByTestId("admin-channel-section")).toHaveCount(1, { timeout: 30_000 });
   await expect(page.getByTestId("teams-ready")).toHaveCount(0);
 });
 
 test("with an admin group: the row and its ⓘ, then a time and Off persist", async ({ page, db }) => {
   await db.run(`UPDATE "Organisation" SET "adminGroupId" = $2 WHERE id = $1`, [ORG_ID, HQ]);
-  await signInAs(page, U.admin, "/admin/settings");
+  await signInAs(page, U.admin, "/admin/settings#teams");
   const row = page.getByTestId("teams-ready");
   await expect(row).toBeVisible({ timeout: 30_000 });
   await expect(row.getByText("Teams ready", { exact: true })).toBeVisible();
@@ -60,7 +62,7 @@ test("with an admin group: the row and its ⓘ, then a time and Off persist", as
 
 test("not set and the organisers announce: the default shown is 10:00", async ({ page, db }) => {
   await db.run(`UPDATE "Organisation" SET "teamsReadyTime" = NULL, "listAnnouncer" = 'organisers' WHERE id = $1`, [ORG_ID]);
-  await signInAs(page, U.admin, "/admin/settings");
+  await signInAs(page, U.admin, "/admin/settings#teams");
   const row = page.getByTestId("teams-ready");
   await expect(row).toBeVisible({ timeout: 30_000 });
   await expect(row.getByTestId("teams-ready-off")).not.toBeChecked();

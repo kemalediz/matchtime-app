@@ -18,7 +18,7 @@ test.beforeAll(() => resetDb());
 test.afterAll(() => resetDb());
 
 test("settings: who fills an open place persists; the fallback row follows it", async ({ page, db }) => {
-  await signInAs(page, U.admin, "/admin/settings");
+  await signInAs(page, U.admin, "/admin/settings#wr-pick");
   const mode = page.getByTestId("wr-pick-mode");
   await expect(mode).toHaveValue("first-come", { timeout: 30_000 });
   await expect(page.getByTestId("wr-fallback")).toHaveCount(0);

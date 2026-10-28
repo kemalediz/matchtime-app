@@ -18,7 +18,10 @@ export const POOL_CLUB_SHARE_EN: PoolClubShareCopy = {
   sending: "Sending...",
   queued: "Sent. It will be in your players' group in a minute or two.",
   held: (when) => `Sent. It goes out on ${when}, when your quiet hours end.`,
-  sentOn: (date) => `You sent this to your players' group on ${date}.`,
+  queuedSoon: "Queued: goes out in a minute or two.",
+  queuedToday: (time) => `Queued: goes out at ${time}.`,
+  queuedOn: (date, time) => `Queued: goes out on ${date} at ${time}.`,
+  sentOn: (date) => `Sent to your players' group on ${date}.`,
   noGroup: "Connect your players' WhatsApp group to MatchTime first, then you can send this.",
   failed: "Could not send it. Please try again.",
 };

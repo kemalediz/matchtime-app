@@ -14,6 +14,7 @@ import type { Page } from "@playwright/test";
 import { test, expect, signInAs, resetDb, U } from "../fixtures";
 import { ORG_ID, MATCH } from "../helpers/constants";
 import { testDb } from "../helpers/test-db";
+import { expandSettingsTab, openSettingsCard } from "../helpers/settings-nav";
 
 test.describe.configure({ mode: "serial" });
 
@@ -107,45 +108,41 @@ test("/admin/players: list, add, columns, aliases, merge, new players", async ({
 test("/admin/settings: every section and every feature switch (EN and TR)", async ({ page, db }) => {
   await signInAs(page, U.admin, "/admin/settings");
   await page.waitForURL("**/admin/settings");
-  await expectInfos(
-    page,
+  // Tabs of collapsed cards (2026-10-28): each tab in turn, every card on it
+  // expanded. The "Bot features" section and its ⓘ (st_features) are gone:
+  // its switches now sit in the card each belongs to, each with its own ⓘ.
+  const byTab: Array<[import("@/lib/settings-anchors").SettingsTab, string[]]> = [
+    ["club", ["st_general", "setting-language", "st_whatsapp"]],
+    ["matches", ["st_weekly", "setting-teamNames", "setting-teamBalancing", "setting-reminders", "setting-gearReminder"]],
     [
-      "st_general",
-      "setting-teamNames",
-      "setting-language",
-      "setting-quietHours",
-      "st_invite",
-      "st_features",
-      "setting-attendance",
-      "setting-bench",
-      "setting-teamBalancing",
-      "setting-momVoting",
-      "setting-playerRating",
-      "setting-reminders",
-      "setting-statsQa",
-      "setting-paymentCollection",
-      "setting-payByBank",
-      "setting-payCard",
-      "setting-payDirect",
-      "setting-badgeAnnouncements",
-      "setting-gearReminder",
-      "st_weekly",
-      "setting-moneyCollector",
-      "setting-collectorBank",
-      "st_whatsapp",
+      "players",
+      ["st_invite", "setting-attendance", "setting-bench", "setting-momVoting", "setting-playerRating", "setting-statsQa", "setting-badgeAnnouncements"],
     ],
-    "setting-attendance",
-    "Attendance tracking",
-  );
+    [
+      "payments",
+      ["setting-paymentCollection", "setting-payByBank", "setting-payCard", "setting-payDirect", "setting-moneyCollector", "setting-collectorBank"],
+    ],
+    ["messages", ["setting-quietHours"]],
+  ];
+  for (const [tab, keys] of byTab) {
+    await expandSettingsTab(page, tab);
+    for (const k of keys) await expect(page.getByTestId(`info-${k}`).first(), k).toBeVisible({ timeout: 30_000 });
+  }
+  await openSettingsCard(page, "attendance");
+  await expectInfos(page, [], "setting-attendance", "Attendance tracking");
   // The Friday features keep their own ⓘ.
+  await openSettingsCard(page, "weekly-routine");
   const weekly = page.getByTestId("weekly-routine");
-  for (const name of ["What is Rolling squad?", "What is Drop-out deadline?", "What is List published?", "What is Admin messages go to?"]) {
+  for (const name of ["What is Rolling squad?", "What is Drop-out deadline?", "What is List published?"]) {
     await expect(weekly.getByRole("button", { name })).toBeVisible();
   }
+  await openSettingsCard(page, "admin-group");
+  await expect(page.getByTestId("admin-group").getByRole("button", { name: "What is Admin messages go to?" })).toBeVisible();
 
   // A Turkish club reads the popups in Turkish.
   await db.run(`UPDATE "Organisation" SET language = 'tr' WHERE id = $1`, [ORG_ID]);
   await page.reload();
+  await openSettingsCard(page, "attendance");
   await page.getByRole("button", { name: "Yoklama nedir?" }).click({ timeout: 30_000 });
   await expect(page.getByRole("dialog")).toContainText("VARIM ve YOKUM");
   await page.getByRole("button", { name: "Kapat" }).click();

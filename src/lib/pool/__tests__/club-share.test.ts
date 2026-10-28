@@ -26,7 +26,11 @@ vi.mock("../../db", () => {
       return row;
     },
   };
-  const botJob = { create: async ({ data }: { data: Row }) => (state.jobs.push(data), { id: `job${state.jobs.length}` }) };
+  const botJob = {
+    create: async ({ data }: { data: Row }) => (state.jobs.push(data), { id: `job${state.jobs.length}` }),
+    findFirst: async ({ where }: { where: Row }) =>
+      state.jobs.find((j) => j.orgId === where.orgId && j.aboutKey === where.aboutKey) ?? null,
+  };
   const poolCampaign = {
     findFirst: async ({ where }: { where: Row }) => state.campaigns.find((c) => c.source === where.source && c.orgId === where.orgId) ?? null,
     findUnique: async ({ where }: { where: { code: string } }) => state.campaigns.find((c) => c.code === where.code) ?? null,
@@ -112,6 +116,8 @@ describe("sendClubShare", () => {
     expect(state.claims.map((c) => [c.key, c.kind])).toEqual([["org-org1:pool-club-share", "pool-club-share"]]);
     expect(state.jobs).toHaveLength(1);
     expect(state.jobs[0]).toMatchObject({ orgId: "org1", kind: "group", sendAfter: null });
+    // The post carries the claim's key, so the card can find it again.
+    expect(state.jobs[0].aboutKey).toBe("org-org1:pool-club-share");
     expect(state.jobs[0].text).toContain("https://matchtime.test/play?src=club-fnf");
     expect(state.jobs[0].text).toContain("Play elsewhere too");
   });
@@ -183,7 +189,7 @@ describe("loadClubShare", () => {
     const card = await loadClubShare("org1", OPEN);
     expect(card).toMatchObject({ kind: "ready", url: "https://matchtime.test/play?src=club-fnf", language: "tr" });
     expect(card!.text).toContain("Başka yerlerde de oyna");
-    expect(card!.sentOn).toBeNull();
+    expect(card!.statusLine).toBeNull();
   });
 
   it("no group: the post, and why it cannot be sent", async () => {
@@ -191,10 +197,29 @@ describe("loadClubShare", () => {
     expect(await loadClubShare("org1", OPEN)).toMatchObject({ kind: "no-group" });
   });
 
-  it("sent: the date, the same post", async () => {
+  it("tapped, the post not out yet: queued, and when it goes out", async () => {
     await sendClubShare("org1", NOON, OPEN);
-    const card = await loadClubShare("org1", OPEN);
-    expect(card).toMatchObject({ kind: "sent", sentOn: "24 Oct 2026" });
+    expect(await loadClubShare("org1", OPEN, NOON)).toMatchObject({ kind: "queued", statusLine: "Queued: goes out in a minute or two." });
+  });
+
+  it("tapped in quiet hours: queued until they end, with the date when that is another day", async () => {
+    await sendClubShare("org1", NIGHT, OPEN);
+    const card = await loadClubShare("org1", OPEN, NIGHT);
+    expect(card).toMatchObject({ kind: "queued", statusLine: "Queued: goes out on 25 Oct 2026 at 09:00." });
+    state.org = { ...ORG, language: "tr" };
+    expect((await loadClubShare("org1", OPEN, new Date("2026-10-25T01:00:00Z")))!.statusLine).toBe("Sırada: 09:00'da gönderilecek.");
+  });
+
+  it("sent: the day the post went out, the same post", async () => {
+    await sendClubShare("org1", NOON, OPEN);
+    state.jobs[0].sentAt = new Date("2026-10-24T11:01:00Z");
+    const card = await loadClubShare("org1", OPEN, NOON);
+    expect(card).toMatchObject({ kind: "sent", statusLine: "Sent to your players' group on 24 Oct 2026." });
     expect(card!.text).toBe(state.jobs[0].text);
+  });
+
+  it("a claim from before the post carried its key: sent, on the claim's day", async () => {
+    state.claims.push({ key: "org-org1:pool-club-share", kind: "pool-club-share", createdAt: new Date("2026-10-24T11:00:00Z") });
+    expect(await loadClubShare("org1", OPEN, NOON)).toMatchObject({ kind: "sent", statusLine: "Sent to your players' group on 24 Oct 2026." });
   });
 });

@@ -8,6 +8,7 @@
  */
 import { test, expect, signInAs, resetDb, U } from "../fixtures";
 import { ORG_ID, MATCH } from "../helpers/constants";
+import { openSettingsCard } from "../helpers/settings-nav";
 
 test.describe.configure({ mode: "serial" });
 
@@ -18,6 +19,7 @@ test.beforeAll(async () => {
 test("money-collector picker has the seeded collector selected", async ({ page }) => {
   await signInAs(page, U.admin, "/admin/settings");
   await page.waitForURL("**/admin/settings");
+  await openSettingsCard(page, "payments");
   const select = page.locator("select").filter({ hasText: "Colin Collector" }).first();
   await expect(select).toBeVisible({ timeout: 30_000 });
   await expect(select).toHaveValue(U.collector);
@@ -26,6 +28,7 @@ test("money-collector picker has the seeded collector selected", async ({ page }
 test("payment-method toggle persists and gates the pay page", async ({ page, db }) => {
   await signInAs(page, U.admin, "/admin/settings");
   await page.waitForURL("**/admin/settings");
+  await openSettingsCard(page, "payments");
 
   // The "↳ Pay by Bank" feature row's switch.
   const bankRow = page
@@ -50,6 +53,7 @@ test("payment-method toggle persists and gates the pay page", async ({ page, db 
 
   // …survives a reload…
   await page.reload();
+  await openSettingsCard(page, "payments");
   await expect(
     page
       .locator("div")
@@ -72,6 +76,7 @@ test("Weekly routine: the rolling squad switch persists, and its info opens (EN 
   await signInAs(page, U.admin, "/admin/settings");
   await page.waitForURL("**/admin/settings");
   const section = page.getByTestId("weekly-routine");
+  await openSettingsCard(page, "weekly-routine");
   await expect(section.getByRole("heading", { name: "Weekly routine" })).toBeVisible({ timeout: 30_000 });
   const toggle = section.getByRole("switch", { name: "Rolling squad" });
   await expect(toggle).toHaveAttribute("aria-checked", "false");
@@ -89,6 +94,7 @@ test("Weekly routine: the rolling squad switch persists, and its info opens (EN 
     )
     .toBe(true);
   await page.reload();
+  await openSettingsCard(page, "weekly-routine");
   await expect(page.getByTestId("weekly-routine").getByRole("switch", { name: "Rolling squad" })).toHaveAttribute(
     "aria-checked",
     "true",
@@ -98,6 +104,7 @@ test("Weekly routine: the rolling squad switch persists, and its info opens (EN 
   // A Turkish club reads it in Turkish.
   await db.run(`UPDATE "Organisation" SET language = 'tr' WHERE id = $1`, [ORG_ID]);
   await page.reload();
+  await openSettingsCard(page, "weekly-routine");
   const tr = page.getByTestId("weekly-routine");
   await expect(tr.getByRole("heading", { name: "Haftalık düzen" })).toBeVisible({ timeout: 30_000 });
   await tr.getByRole("button", { name: "Kadro devam eder nedir?" }).click();
@@ -110,6 +117,7 @@ test("Weekly routine: the rolling squad switch persists, and its info opens (EN 
 test("Badge announcements: ON by default, the switch persists, and it reads in Turkish", async ({ page, db }) => {
   await signInAs(page, U.admin, "/admin/settings");
   await page.waitForURL("**/admin/settings");
+  await openSettingsCard(page, "ratings");
   const row = page.getByTestId("feature-badge-announcements");
   const toggle = row.getByRole("switch", { name: "Badge announcements" });
   await expect(toggle).toHaveAttribute("aria-checked", "true", { timeout: 30_000 });
@@ -123,6 +131,7 @@ test("Badge announcements: ON by default, the switch persists, and it reads in T
     )
     .toBe(false);
   await page.reload();
+  await openSettingsCard(page, "ratings");
   await expect(
     page.getByTestId("feature-badge-announcements").getByRole("switch", { name: "Badge announcements" }),
   ).toHaveAttribute("aria-checked", "false", { timeout: 30_000 });
@@ -130,6 +139,7 @@ test("Badge announcements: ON by default, the switch persists, and it reads in T
   // A Turkish club reads it in Turkish.
   await db.run(`UPDATE "Organisation" SET language = 'tr' WHERE id = $1`, [ORG_ID]);
   await page.reload();
+  await openSettingsCard(page, "ratings");
   await expect(
     page.getByTestId("feature-badge-announcements").getByRole("switch", { name: "Rozet duyuruları" }),
   ).toBeVisible({ timeout: 30_000 });
@@ -146,6 +156,7 @@ test("Match-day kit reminder: follows the club's setting, the switch persists, a
   expect(await read()).toBe(false);
   await signInAs(page, U.admin, "/admin/settings");
   await page.waitForURL("**/admin/settings");
+  await openSettingsCard(page, "reminders");
   const row = page.getByTestId("feature-gear-reminder");
   const toggle = row.getByRole("switch", { name: "Match-day kit reminder" });
   await expect(toggle).toHaveAttribute("aria-checked", "false", { timeout: 30_000 });
@@ -155,6 +166,7 @@ test("Match-day kit reminder: follows the club's setting, the switch persists, a
   await toggle.click();
   await expect.poll(read).toBe(true);
   await page.reload();
+  await openSettingsCard(page, "reminders");
   await expect(
     page.getByTestId("feature-gear-reminder").getByRole("switch", { name: "Match-day kit reminder" }),
   ).toHaveAttribute("aria-checked", "true", { timeout: 30_000 });
@@ -162,6 +174,7 @@ test("Match-day kit reminder: follows the club's setting, the switch persists, a
   // A Turkish club reads it in Turkish.
   await db.run(`UPDATE "Organisation" SET language = 'tr' WHERE id = $1`, [ORG_ID]);
   await page.reload();
+  await openSettingsCard(page, "reminders");
   await expect(
     page.getByTestId("feature-gear-reminder").getByRole("switch", { name: "Maç günü malzeme hatırlatması" }),
   ).toBeVisible({ timeout: 30_000 });
@@ -184,6 +197,7 @@ test("Weekly routine: the drop-out deadline and list time persist, refuse bad in
   await signInAs(page, U.admin, "/admin/settings");
   await page.waitForURL("**/admin/settings");
   const section = page.getByTestId("weekly-routine");
+  await openSettingsCard(page, "weekly-routine");
   await expect(section.getByRole("heading", { name: "Weekly routine" })).toBeVisible({ timeout: 30_000 });
 
   // The ⓘ for each.
@@ -217,6 +231,7 @@ test("Weekly routine: the drop-out deadline and list time persist, refuse bad in
 
   // After a reload the saved values are shown.
   await page.reload();
+  await openSettingsCard(page, "weekly-routine");
   const again = page.getByTestId("weekly-routine");
   await expect(again.getByTestId("wd-dropout-day")).toHaveValue("1", { timeout: 30_000 });
   await expect(again.getByTestId("wd-dropout-time")).toHaveValue("21:00");
@@ -225,6 +240,7 @@ test("Weekly routine: the drop-out deadline and list time persist, refuse bad in
   // A Turkish club reads it in Turkish, errors included.
   await db.run(`UPDATE "Organisation" SET language = 'tr' WHERE id = $1`, [ORG_ID]);
   await page.reload();
+  await openSettingsCard(page, "weekly-routine");
   const tr = page.getByTestId("weekly-routine");
   await expect(tr.getByRole("heading", { name: "Haftalık düzen" })).toBeVisible({ timeout: 30_000 });
   await tr.getByRole("button", { name: "Son çıkış saati nedir?" }).click();
@@ -249,6 +265,7 @@ test("settings + activities render with no horizontal overflow at mobile width",
   await page.setViewportSize({ width: 390, height: 844 });
   await signInAs(page, U.admin, "/admin/settings");
   await page.waitForURL("**/admin/settings");
+  await openSettingsCard(page, "payments");
   await expect(page.getByText(/Money collector/i).first()).toBeVisible({ timeout: 30_000 });
   let overflow = await page.evaluate(
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,

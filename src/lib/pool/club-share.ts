@@ -22,11 +22,11 @@
  * (`app/actions/pool-club-share.ts`).
  */
 import { db } from "../db";
-import { historyDateLabel, longDayTimeLabel } from "../i18n/dates";
+import { longDayTimeLabel } from "../i18n/dates";
 import { normaliseLang, type Lang } from "../i18n/lang";
 import { QUIET_HOURS_SELECT, messageHoursSendAfter, quietHoursOf } from "../message-hours";
 import { ensureClubPoolCampaign } from "./campaigns";
-import { CLUB_SHARE_KIND, clubShareKey, clubSharePostText, clubShareShown, clubShareView } from "./club-share-rules";
+import { CLUB_SHARE_KIND, clubShareKey, clubSharePostText, clubShareShown, clubShareStatusLine, clubShareView } from "./club-share-rules";
 
 const ORG_SELECT = {
   id: true,
@@ -43,21 +43,27 @@ const isUniqueViolation = (err: unknown) => (err as { code?: string } | null)?.c
 const hasGroup = (org: { whatsappGroupId: string | null; whatsappBotEnabled: boolean }) => !!org.whatsappGroupId && org.whatsappBotEnabled;
 
 export interface ClubShareCard {
-  kind: "ready" | "no-group" | "sent";
+  /** queued: tapped, its post not out yet (held by quiet hours, or about
+   *  to go); sent: the post went out. */
+  kind: "ready" | "no-group" | "queued" | "sent";
   /** The exact post, in the club's language. */
   text: string;
   url: string;
   language: Lang;
-  /** The day it was sent, in the club's language; null until then. */
-  sentOn: string | null;
+  /** "Queued: goes out at 09:00." or "Sent to your players' group on
+   *  28 Oct 2026.", in the club's language; null before the tap. */
+  statusLine: string | null;
 }
 
 /** Null: no card for this club (the pool is off for it). */
-export async function loadClubShare(orgId: string, env: Record<string, string | undefined>): Promise<ClubShareCard | null> {
+export async function loadClubShare(orgId: string, env: Record<string, string | undefined>, now: Date = new Date()): Promise<ClubShareCard | null> {
   const org = await db.organisation.findUnique({ where: { id: orgId }, select: ORG_SELECT });
   if (!org || !clubShareShown(org, env)) return null;
-  const claim = await db.sentNotification.findUnique({ where: { key: clubShareKey(orgId) }, select: { createdAt: true } });
-  const view = clubShareView({ shown: true, hasGroup: hasGroup(org), sentAt: claim?.createdAt ?? null });
+  const key = clubShareKey(orgId);
+  const claim = await db.sentNotification.findUnique({ where: { key }, select: { createdAt: true } });
+  // The post written with the claim carries the claim's key.
+  const job = claim ? await db.botJob.findFirst({ where: { orgId, aboutKey: key }, select: { sendAfter: true, sentAt: true } }) : null;
+  const view = clubShareView({ shown: true, hasGroup: hasGroup(org), sentAt: claim?.createdAt ?? null, job });
   if (view.kind === "hidden") return null;
   const url = await ensureClubPoolCampaign(org);
   if (!url) return null;
@@ -67,7 +73,7 @@ export async function loadClubShare(orgId: string, env: Record<string, string | 
     text: clubSharePostText(language, url),
     url,
     language,
-    sentOn: view.kind === "sent" ? historyDateLabel(language, view.sentAt) : null,
+    statusLine: clubShareStatusLine(language, view, now),
   };
 }
 
@@ -89,7 +95,9 @@ export async function sendClubShare(orgId: string, now: Date, env: Record<string
   try {
     await db.$transaction(async (tx) => {
       await tx.sentNotification.create({ data: { key, kind: CLUB_SHARE_KIND } });
-      await tx.botJob.create({ data: { orgId, kind: "group", text, sendAfter } });
+      // `aboutKey`: the claim's key, so the card can find this post and
+      // say whether it is still queued or has gone out.
+      await tx.botJob.create({ data: { orgId, kind: "group", text, sendAfter, aboutKey: key } });
     });
   } catch (err) {
     if (isUniqueViolation(err)) return { ok: false, reason: "already-sent" };

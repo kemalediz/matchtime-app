@@ -51,7 +51,7 @@ test.afterAll(async ({ db }) => {
 });
 
 test("no partner clubs: the section still shows, with both switches, their ⓘ and the venue prompt", async ({ page, db }) => {
-  await signInAs(page, U.admin, "/admin/settings");
+  await signInAs(page, U.admin, "/admin/settings#partner-clubs");
   const section = page.getByTestId("partner-clubs");
   await expect(section).toBeVisible({ timeout: 30_000 });
   await expect(section.getByTestId("partner-clubs-none")).toHaveText("No partner clubs yet.");
@@ -90,7 +90,7 @@ test("no partner clubs: the section still shows, with both switches, their ⓘ a
 
 test("an ADMIN (not the owner) switches them too", async ({ page, db }) => {
   await db.run(`UPDATE "Membership" SET role = 'ADMIN' WHERE "userId" = $1 AND "orgId" = $2`, [U.collector, ORG_ID]);
-  await signInAs(page, U.collector, "/admin/settings");
+  await signInAs(page, U.collector, "/admin/settings#partner-clubs");
   const section = page.getByTestId("partner-clubs");
   await expect(section).toBeVisible({ timeout: 30_000 });
   await section.getByRole("switch", { name: "Let nearby clubs find us and send requests" }).click();
@@ -135,7 +135,7 @@ test("the platform owner's page: pairings with pause and end, and no create form
 });
 
 test("the owner accepts; once the partner accepts too the asking settings save, each with its ⓘ", async ({ page, db }) => {
-  await signInAs(page, U.admin, "/admin/settings");
+  await signInAs(page, U.admin, "/admin/settings#partner-clubs");
   const section = page.getByTestId("partner-clubs");
   await expect(section).toBeVisible({ timeout: 30_000 });
   const item = section.getByTestId("partner-club");
@@ -189,7 +189,7 @@ test("the platform owner pauses a pairing: the club sees it and cannot resume it
   await expect(item).toContainText("paused by MatchTime");
 
   // On the club's own page: "Paused by MatchTime", and no Resume.
-  await page.goto("/admin/settings");
+  await page.goto("/admin/settings#partner-clubs");
   const clubItem = page.getByTestId("partner-clubs").getByTestId("partner-club");
   await expect(clubItem.getByTestId("partner-club-status")).toHaveText("Paused by MatchTime", { timeout: 30_000 });
   await expect(clubItem.getByTestId("partner-resume")).toHaveCount(0);
@@ -209,7 +209,7 @@ test("the platform owner pauses a pairing: the club sees it and cannot resume it
 
 test("in Turkish: the section, both switches, the venue prompt and their ⓘ", async ({ page, db }) => {
   await db.run(`UPDATE "Organisation" SET language = 'tr' WHERE id = $1`, [ORG_ID]);
-  await signInAs(page, U.admin, "/admin/settings");
+  await signInAs(page, U.admin, "/admin/settings#partner-clubs");
   const section = page.getByTestId("partner-clubs");
   await expect(section).toBeVisible({ timeout: 30_000 });
   await expect(section.getByText("Partner kulüpler", { exact: true })).toBeVisible();

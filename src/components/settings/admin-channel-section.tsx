@@ -1,8 +1,9 @@
 "use client";
 
 /**
- * "Admin messages go to" (slice 2a, 2026-09-30), a block inside the
- * "Weekly routine" section of /admin/settings.
+ * "Admin messages go to" (slice 2a, 2026-09-30), its own card ("Admin
+ * messages", id `admin-group`) on the Messages tab of /admin/settings
+ * since 2026-10-28; it was a block of "Weekly routine" before.
  * Plan: MDs/friday-group-features-plan-2026-09-30.md, sections 2.3 and 5.
  *
  * Three choices: one person by DM (a picker of the owner and admins with a
@@ -30,6 +31,10 @@ import {
   unlinkAdminGroupAction,
 } from "@/app/actions/admin-channel";
 import { setWeeklyRoutine } from "@/app/actions/org";
+import { settingsNavCopy } from "@/lib/i18n/settings-nav";
+import { adminGroupSummary } from "@/lib/settings-summaries";
+import { MessagesSquare } from "lucide-react";
+import { SettingsCard } from "./settings-nav";
 
 type Mode = AdminChannelStatus["mode"];
 const POLL_MS = 4000;
@@ -137,7 +142,14 @@ export function AdminChannelSettings({ orgId, lang }: { orgId: string; lang: Lan
   );
 
   return (
-    <div className="py-3 space-y-3" data-testid="admin-channel-section" data-setting="adminChannel">
+    <SettingsCard
+      id="admin-group"
+      title={settingsNavCopy(lang).titles.adminGroup}
+      icon={MessagesSquare}
+      summary={adminGroupSummary(lang, { mode: status.mode, group: status.adminGroup ? (status.adminGroup.subject ?? "WhatsApp") : null })}
+      testId="admin-group"
+    >
+    <div className="px-4 sm:px-6 py-4 space-y-3" data-testid="admin-channel-section" data-setting="adminChannel">
       <div className="flex items-center gap-1 text-sm font-medium text-slate-800">
         {s.settings_admin_channel_heading}
         <SettingInfo k="adminChannel" lang={lang} />
@@ -226,5 +238,6 @@ export function AdminChannelSettings({ orgId, lang }: { orgId: string; lang: Lan
         )}
       </div>
     </div>
+    </SettingsCard>
   );
 }

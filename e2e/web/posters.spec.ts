@@ -43,7 +43,7 @@ test.afterAll(() => {
 
 test("an owner: the card, its ⓘ, sample previews, the gallery; upload then remove", async ({ page, db }) => {
   await page.setViewportSize({ width: 1100, height: 1400 });
-  await signInAs(page, U.admin, "/admin/settings");
+  await signInAs(page, U.admin, "/admin/settings#posters");
   const card = page.getByTestId("posters-card");
   await expect(card).toBeVisible({ timeout: 30_000 });
   await expect(card.getByRole("heading", { name: "Posters" })).toBeVisible();
@@ -106,7 +106,7 @@ test("an owner: the card, its ⓘ, sample previews, the gallery; upload then rem
 
 test("a Turkish club: the card in Turkish", async ({ page, db }) => {
   await db.run(`UPDATE "Organisation" SET language = 'tr' WHERE id = $1`, [ORG_ID]);
-  await signInAs(page, U.admin, "/admin/settings");
+  await signInAs(page, U.admin, "/admin/settings#posters");
   const card = page.getByTestId("posters-card");
   await expect(card.getByRole("heading", { name: "Afişler" })).toBeVisible({ timeout: 30_000 });
   await expect(card.getByTestId("poster-design-matchtime")).toContainText("MatchTime tasarımı");

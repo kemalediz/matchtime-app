@@ -16,8 +16,16 @@ import { SettingInfo } from "@/components/info/setting-info";
 import { t } from "@/lib/i18n/t";
 import { poolClubSwitchCopy } from "@/lib/i18n/pool-club-switch";
 import { getClubPlayerPool, setClubPlayerPoolAction } from "@/app/actions/pool-club-switch";
+import { playerPoolSummary } from "@/lib/settings-summaries";
+import { SettingsCard } from "./settings-nav";
 
-export function PlayerPoolSection(props: { orgId: string; language: string | null | undefined; onChange?: (on: boolean) => void }) {
+export function PlayerPoolSection(props: {
+  orgId: string;
+  language: string | null | undefined;
+  onChange?: (on: boolean) => void;
+  /** "Ask the player pool automatically", for the summary; null until known. */
+  autoAsk?: boolean | null;
+}) {
   const s = t(props.language);
   const c = poolClubSwitchCopy(props.language);
   const [on, setOn] = useState<boolean | undefined>(undefined);
@@ -52,13 +60,16 @@ export function PlayerPoolSection(props: { orgId: string; language: string | nul
   }
 
   return (
-    <section className="bg-white rounded-xl border border-slate-200 shadow-sm" data-testid="player-pool" data-setting="playerPool">
-      <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
-        <Users className="w-4 h-4 text-slate-500" aria-hidden />
-        <h2 className="font-semibold text-slate-800">{c.title}</h2>
-        <SettingInfo k="playerPool" lang={props.language} />
-      </div>
-      <div className="p-6 flex items-start justify-between gap-4">
+    <SettingsCard
+      id="player-pool"
+      title={c.title}
+      icon={Users}
+      info={<SettingInfo k="playerPool" lang={props.language} />}
+      summary={playerPoolSummary(props.language, { on, autoAsk: props.autoAsk ?? null })}
+      testId="player-pool"
+      rootProps={{ "data-setting": "playerPool" }}
+    >
+      <div className="p-4 sm:p-6 flex items-start justify-between gap-4">
         <p className="text-sm text-slate-500" id="player-pool-blurb">
           {c.lead}
         </p>
@@ -76,6 +87,6 @@ export function PlayerPoolSection(props: { orgId: string; language: string | nul
           <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${on ? "translate-x-5" : "translate-x-0"}`} />
         </button>
       </div>
-    </section>
+    </SettingsCard>
   );
 }

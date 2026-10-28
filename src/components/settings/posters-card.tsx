@@ -25,6 +25,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ImageIcon, Loader2, Trash2, Upload } from "lucide-react";
 import { SettingInfo } from "@/components/info/setting-info";
 import { t, type Strings } from "@/lib/i18n/t";
+import { postersSummary } from "@/lib/settings-summaries";
+import { SettingsCard } from "./settings-nav";
 
 interface DesignOption {
   id: string;
@@ -102,7 +104,12 @@ function Preview({ src, alt, caption, testId, s }: { src: string; alt: string; c
   );
 }
 
-export function PostersCard(props: { club: string; language: string | null | undefined }) {
+export function PostersCard(props: {
+  club: string;
+  language: string | null | undefined;
+  /** Open as it first shows: above the tabs while a club sets up. */
+  defaultOpen?: boolean;
+}) {
   const s = t(props.language);
   const [state, setState] = useState<PostersState | null>(null);
   const [v, setV] = useState(() => Date.now());
@@ -177,21 +184,16 @@ export function PostersCard(props: { club: string; language: string | null | und
   const ownIsMeasured = state.own?.kind === "measured";
 
   return (
-    <section
+    <SettingsCard
       id="posters"
-      aria-labelledby="posters-heading"
-      data-testid="posters-card"
-      data-setting="posters"
-      lang={props.language ?? undefined}
-      className="scroll-mt-6 bg-white rounded-xl border border-slate-200 shadow-sm"
+      title={<span id="posters-heading">{s.gp_title}</span>}
+      icon={ImageIcon}
+      info={<SettingInfo k="posters" lang={props.language} />}
+      summary={postersSummary(named.map(({ o, name }) => ({ id: o.id, name })), state.current)}
+      testId="posters-card"
+      defaultOpen={props.defaultOpen}
+      rootProps={{ "data-setting": "posters", lang: props.language ?? undefined, "aria-labelledby": "posters-heading" }}
     >
-      <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
-        <ImageIcon aria-hidden="true" className="w-4 h-4 text-slate-500" />
-        <h2 id="posters-heading" className="font-semibold text-slate-800">
-          {s.gp_title}
-        </h2>
-        <SettingInfo k="posters" lang={props.language} />
-      </div>
 
       <div className="p-4 sm:p-6 space-y-5 min-w-0">
         <p className="text-sm text-slate-500">{s.gp_lead}</p>
@@ -306,6 +308,6 @@ export function PostersCard(props: { club: string; language: string | null | und
           )}
         </div>
       </div>
-    </section>
+    </SettingsCard>
   );
 }

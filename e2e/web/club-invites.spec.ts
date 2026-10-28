@@ -54,7 +54,7 @@ test.afterAll(() => resetDb());
 test("the settings card and Invite to club are not shown to a club with the pool off (live clubs unchanged)", async ({ page, db }) => {
   await seed(db);
   await signInAs(page, U.admin, "/admin/settings");
-  await expect(page.getByTestId("weekly-routine")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("settings-tabs")).toBeVisible({ timeout: 30_000 });
   await page.waitForLoadState("networkidle");
   await expect(page.getByTestId("group-invite-link")).toHaveCount(0);
   await signInAs(page, U.admin, "/admin/guests?tab=history");
@@ -68,7 +68,7 @@ for (const [label, size] of SIZES) {
   test(`settings card (${label}): A and B explained, a bad link refused, a good one saved and removed`, async ({ page, db }) => {
     await setLink(db, null);
     await page.setViewportSize(size);
-    await signInAs(page, U.admin, "/admin/settings");
+    await signInAs(page, U.admin, "/admin/settings#group-invite-link");
     const card = page.getByTestId("group-invite-link");
     await expect(card).toBeVisible({ timeout: 30_000 });
     await expect(card).toHaveAttribute("data-mode", "none");
@@ -101,7 +101,7 @@ test("settings card: with MatchTime a group admin, option A is in use", async ({
     [g!.gid],
   );
   try {
-    await signInAs(page, U.admin, "/admin/settings");
+    await signInAs(page, U.admin, "/admin/settings#group-invite-link");
     const card = page.getByTestId("group-invite-link");
     await expect(card).toHaveAttribute("data-mode", "bot", { timeout: 30_000 });
     await expect(card.getByTestId("group-invite-link-status")).toHaveText("MatchTime is an admin of your group, so it gets the link itself.");

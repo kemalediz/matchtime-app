@@ -31,8 +31,8 @@ async function flags(db: TestDb) {
 }
 
 async function openSettings(page: import("@playwright/test").Page, userId: string) {
-  await signInAs(page, userId, "/admin/settings");
-  await expect(page.getByTestId("weekly-routine")).toBeVisible({ timeout: 30_000 });
+  await signInAs(page, userId, "/admin/settings#player-pool");
+  await expect(page.getByTestId("settings-tabs")).toBeVisible({ timeout: 30_000 });
   await page.waitForLoadState("networkidle");
 }
 
