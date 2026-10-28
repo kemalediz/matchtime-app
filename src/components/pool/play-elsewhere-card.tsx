@@ -19,6 +19,8 @@
  * `/profile#play-elsewhere` (or, already on /profile, fires
  * `PLAY_ELSEWHERE_FOCUS_EVENT`): once loaded, the card scrolls itself into
  * view, lights up for a few seconds and puts the focus on its first step.
+ * Joining, or answering the number claim, tells the banner to read again
+ * (`announcePoolStateChanged`), so join turns into share with no reload.
  */
 import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
@@ -32,6 +34,7 @@ import type { Lang } from "@/lib/i18n/lang";
 import type { PoolErrorKey } from "@/lib/i18n/pool-play";
 import { fromSavedProfile, toPoolPayload, type PoolFormValue } from "@/lib/pool/form-state";
 import { fieldErrorKeys, poolPageCopy } from "@/lib/pool/page-copy";
+import { announcePoolStateChanged } from "@/lib/pool/banner-events";
 import { PLAY_ELSEWHERE_ANCHOR, PLAY_ELSEWHERE_FOCUS_EVENT, POOL_MANAGE_PATH } from "@/lib/pool/paths";
 import { validatePoolSignup, type PoolFieldErrors } from "@/lib/pool/profile-fields";
 import { PolicyLink } from "@/components/policy-link";
@@ -116,6 +119,7 @@ export function PlayElsewhereCard({ lang }: { lang: Lang }) {
       if (r.ok) {
         setOpen(false);
         await reload();
+        announcePoolStateChanged();
         return;
       }
       if (r.errors) setErrors(r.errors);
@@ -131,6 +135,7 @@ export function PlayElsewhereCard({ lang }: { lang: Lang }) {
       if (r.ok) setNotice(r.answer === "no" ? m.claimNoDone : null);
       else setNotice(r.reason === "no-claim" ? m.claimExpired : m.claimTaken);
       await reload();
+      announcePoolStateChanged();
     });
 
   let body: React.ReactNode;

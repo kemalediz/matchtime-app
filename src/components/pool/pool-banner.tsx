@@ -13,7 +13,12 @@
  *   share  "Share" opens WhatsApp's chat picker with his own link
  *
  * "Not interested" hides it at once and stores it on his user row, for
- * good, on every device. A phone gets the text on one line and the
+ * good, on every device.
+ *
+ * Read again on every new page, and whenever his pool state changes
+ * without one (`banner-events.ts`): joining on the "Play elsewhere too"
+ * card, pause, stop or delete on /play/manage, "Not interested" in his
+ * other tab, or coming back to the tab. Only the newest answer is drawn. A phone gets the text on one line and the
  * buttons under it.
  *
  * Solid brand blue with white text (2026-10-28, Kemal: the pale strip was
@@ -25,7 +30,7 @@
  * the top. z-20: above the page, below the phone menu (z-30), the top bar
  * (z-40) and every dialog, the ⓘ sheet included (z-50).
  */
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { MessageCircle } from "lucide-react";
@@ -33,6 +38,7 @@ import { InfoButton } from "@/components/stats/info-button";
 import { poolBannerCopy } from "@/lib/i18n/pool-banner";
 import { t } from "@/lib/i18n/t";
 import type { PoolBannerView } from "@/lib/pool/banner";
+import { announcePoolStateChanged, subscribePoolStateChanged } from "@/lib/pool/banner-events";
 import { PLAY_ELSEWHERE_FOCUS_EVENT, PLAY_ELSEWHERE_PATH, POOL_CLUB_SHARE_SETTINGS_PATH } from "@/lib/pool/paths";
 
 const POOL_BANNER_API = "/api/pool-banner";
@@ -40,19 +46,22 @@ const POOL_BANNER_API = "/api/pool-banner";
 export function PoolBanner() {
   const pathname = usePathname();
   const [view, setView] = useState<PoolBannerView | null>(null);
+  // Each read gets a number; an older answer that lands late is dropped.
+  const latest = useRef(0);
 
-  // Read again on every page: joining on /profile turns join into share,
-  // and the switches are never cached.
-  useEffect(() => {
-    let alive = true;
+  const load = useCallback(() => {
+    const n = ++latest.current;
     void fetch(POOL_BANNER_API, { cache: "no-store" })
       .then((r) => (r.ok ? (r.json() as Promise<PoolBannerView | null>) : null))
-      .then((v) => alive && setView(v))
-      .catch(() => alive && setView(null));
-    return () => {
-      alive = false;
-    };
-  }, [pathname]);
+      .then((v) => n === latest.current && setView(v))
+      .catch(() => n === latest.current && setView(null));
+  }, []);
+
+  // Every page, and every change to his pool state that keeps the page.
+  useEffect(() => {
+    load();
+  }, [pathname, load]);
+  useEffect(() => subscribePoolStateChanged(load), [load]);
 
   if (!view) return null;
   const c = poolBannerCopy(view.language);
@@ -61,8 +70,13 @@ export function PoolBanner() {
 
   const dismiss = () => {
     const kind = view.kind;
+    ++latest.current;
     setView(null);
-    void fetch(POOL_BANNER_API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind }) }).catch(() => {});
+    // Stored first, then his other tabs read again (a read before the
+    // store would bring it back).
+    void fetch(POOL_BANNER_API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind }) })
+      .then((r) => r.ok && announcePoolStateChanged())
+      .catch(() => {});
   };
 
   const action =

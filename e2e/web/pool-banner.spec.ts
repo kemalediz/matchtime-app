@@ -8,7 +8,9 @@
  * pool or the platform is off and on public pages, the admin line, Turkish,
  * and phone width. Solid blue and sticky under the top bar (2026-10-28):
  * it stays in view while a long page scrolls, at phone width and desktop.
- * No model, no messages: $0.
+ * Without a reload (2026-10-28): joining on the "Play elsewhere too" card
+ * turns join into share at once, and a dismiss in one tab hides it in
+ * another. No model, no messages, Google is a stub: $0.
  */
 import type { Page } from "@playwright/test";
 import { test, expect, signInAs, U } from "../fixtures";
@@ -17,6 +19,8 @@ import { ORG_ID } from "../helpers/constants";
 import type { TestDb } from "../helpers/test-db";
 import { poolBannerCopy } from "@/lib/i18n/pool-banner";
 import { poolShareCopy } from "@/lib/i18n/pool-share";
+import { poolPageCopy } from "@/lib/pool/page-copy";
+import { clearGeocodeStub, setGeocodeStub } from "../helpers/geocode-stub";
 
 const EN = poolBannerCopy("en");
 const TR = poolBannerCopy("tr");
@@ -339,4 +343,67 @@ test("Turkish club: the Turkish banner", async ({ page, db }) => {
   await expect(b.getByTestId("pool-banner-text")).toContainText(TR.share.text);
   await expect(b.getByTestId("pool-banner-share")).toHaveText(TR.share.button);
   await page.screenshot({ path: `${SHOTS}/phone-turkish-share.png` });
+});
+
+/** Google's answer for his club's postcode area, which the card's join places. */
+const SM1 = {
+  status: "OK",
+  results: [
+    {
+      place_id: "e2e-banner-district",
+      formatted_address: "Sutton SM1, UK",
+      geometry: { location: { lat: 51.3656, lng: -0.1963 }, location_type: "APPROXIMATE" },
+      types: ["postal_code_prefix"],
+      address_components: [{ short_name: "GB", types: ["country"] }],
+    },
+  ],
+};
+
+test("he joins on the Play elsewhere too card: the banner turns to share at once, no reload", async ({ page, db }) => {
+  // His club's pitch, whose postcode area the card fills in (as play-elsewhere.spec does).
+  setGeocodeStub({ geocode: { "*": { body: SM1 } } });
+  const before = await db.one<{ venueId: string | null }>(`SELECT "venueId" FROM "Activity" WHERE id = 'e2e-activity'`);
+  await db.run(
+    `INSERT INTO "Venue" (id, "placeId", name, "formattedAddress", lat, lng, source, "createdAt", "updatedAt")
+     VALUES ('e2e-banner-v1', 'ChIJ_e2e_banner_v1', 'Riverside Sports Centre', 'River Road, Sutton SM1 2EY, UK', 51.36, -0.19, 'google', now(), now()) ON CONFLICT DO NOTHING`,
+  );
+  await db.run(`UPDATE "Activity" SET "venueId" = 'e2e-banner-v1' WHERE id = 'e2e-activity'`);
+  try {
+    const P = poolPageCopy("en");
+    await signInAs(page, U.player, "/profile");
+    const b = banner(page);
+    await expect(b).toHaveAttribute("data-kind", "join", { timeout: 30_000 });
+    // Any reload would wipe this marker, so the test proves there was none.
+    await page.evaluate(() => ((window as unknown as { __noReload: boolean }).__noReload = true));
+
+    const c = page.getByTestId("play-elsewhere");
+    await c.getByRole("button", { name: P.member.open }).click();
+    await c.getByRole("checkbox", { name: P.signup.adultLabel }).check();
+    await c.getByRole("checkbox", { name: P.signup.consentLabel }).check();
+    await c.getByRole("button", { name: P.member.join }).click();
+    await expect(c.getByText(P.member.inPool)).toBeVisible({ timeout: 30_000 });
+    expect((await db.one<{ status: string }>(`SELECT status FROM "PoolProfile" WHERE "userId" = $1`, [U.player]))?.status).toBe("active");
+
+    await expect(b).toHaveAttribute("data-kind", "share", { timeout: 10_000 });
+    await expect(b.getByTestId("pool-banner-text")).toContainText(EN.share.text);
+    await expect(b.getByTestId("pool-banner-share")).toHaveText(EN.share.button);
+    expect(await page.evaluate(() => (window as unknown as { __noReload?: boolean }).__noReload)).toBe(true);
+    await expect(page).toHaveURL(/\/profile$/);
+  } finally {
+    clearGeocodeStub();
+    await db.run(`UPDATE "Activity" SET "venueId" = $1 WHERE id = 'e2e-activity'`, [before?.venueId ?? null]);
+  }
+});
+
+test("Not interested in one tab hides the banner in his other tab, no reload", async ({ page, context }) => {
+  await signInAs(page, U.player, "/");
+  await expect(banner(page)).toHaveAttribute("data-kind", "join", { timeout: 30_000 });
+  const other = await context.newPage();
+  await other.goto("/profile");
+  await expect(banner(other)).toHaveAttribute("data-kind", "join", { timeout: 30_000 });
+
+  await banner(page).getByTestId("pool-banner-dismiss").click();
+  await expect(banner(page)).toHaveCount(0);
+  await expect(banner(other)).toHaveCount(0, { timeout: 10_000 });
+  await other.close();
 });
