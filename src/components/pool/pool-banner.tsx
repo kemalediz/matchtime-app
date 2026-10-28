@@ -13,8 +13,17 @@
  *   share  "Share" opens WhatsApp's chat picker with his own link
  *
  * "Not interested" hides it at once and stores it on his user row, for
- * good, on every device. In the page's flow, never over the content: a
- * phone gets the text on one line and the buttons under it.
+ * good, on every device. A phone gets the text on one line and the
+ * buttons under it.
+ *
+ * Solid brand blue with white text (2026-10-28, Kemal: the pale strip was
+ * too easy to miss) and sticky: it stays pinned under the top bar while
+ * the page scrolls. On a phone the dark top bar is itself sticky at top 0
+ * and 3.5rem tall, so the banner sticks at top 3.5rem; on desktop there is
+ * no top bar (the sidebar is fixed on the left), so it sticks at top 0.
+ * Sticky keeps its height in the flow, so it never covers the content at
+ * the top. z-20: above the page, below the phone menu (z-30), the top bar
+ * (z-40) and every dialog, the ⓘ sheet included (z-50).
  */
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -64,7 +73,7 @@ export function PoolBanner() {
         // hashchange, so tell the card to light up.
         onClick={() => pathname === "/profile" && window.dispatchEvent(new Event(PLAY_ELSEWHERE_FOCUS_EVENT))}
         data-testid="pool-banner-join"
-        className="inline-flex items-center rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-bold text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+        className="inline-flex items-center rounded-lg bg-white px-3 py-1.5 text-sm font-bold text-blue-700 shadow-sm hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-blue-700"
       >
         {banner.button}
       </Link>
@@ -74,7 +83,7 @@ export function PoolBanner() {
         target="_blank"
         rel="noopener noreferrer"
         data-testid="pool-banner-share"
-        className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-bold text-white hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-1"
+        className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-sm font-bold text-blue-700 shadow-sm hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-blue-700"
       >
         <MessageCircle className="h-4 w-4" aria-hidden />
         {banner.button}
@@ -87,12 +96,12 @@ export function PoolBanner() {
       lang={view.language}
       data-testid="pool-banner"
       data-kind={view.kind}
-      className="border-b border-blue-100 bg-blue-50 px-4 py-2 text-sm text-slate-800"
+      className="sticky top-14 z-20 border-b border-blue-800 bg-blue-700 px-4 py-2 text-sm text-white shadow-md lg:top-0"
     >
       <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-3 gap-y-1.5">
-        <p className="min-w-0 flex-1 basis-full sm:basis-auto" data-testid="pool-banner-text">
+        <p className="min-w-0 flex-1 basis-full font-medium sm:basis-auto" data-testid="pool-banner-text">
           {banner.text}{" "}
-          <InfoButton title={banner.info.title} label={s.info_open({ title: banner.info.title })} closeLabel={s.info_close} testId="pool-banner">
+          <InfoButton title={banner.info.title} label={s.info_open({ title: banner.info.title })} closeLabel={s.info_close} testId="pool-banner" tone="onDark">
             {banner.info.lines.map((l, i) => (
               <p key={i}>{l}</p>
             ))}
@@ -101,11 +110,11 @@ export function PoolBanner() {
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
           {action}
           {view.adminLine && (
-            <Link href={POOL_CLUB_SHARE_SETTINGS_PATH} data-testid="pool-banner-admin" className="font-semibold text-blue-800 underline">
+            <Link href={POOL_CLUB_SHARE_SETTINGS_PATH} data-testid="pool-banner-admin" className="font-semibold text-white underline">
               {c.adminLine}
             </Link>
           )}
-          <button type="button" onClick={dismiss} data-testid="pool-banner-dismiss" className="text-slate-500 underline hover:text-slate-700">
+          <button type="button" onClick={dismiss} data-testid="pool-banner-dismiss" className="text-xs text-blue-100 underline hover:text-white">
             {c.notInterested}
           </button>
         </div>

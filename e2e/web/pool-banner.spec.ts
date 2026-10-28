@@ -6,7 +6,9 @@
  * holding across a reload and on other pages (stored on his user row),
  * join dismissed then joining still shows share, hidden while the club's
  * pool or the platform is off and on public pages, the admin line, Turkish,
- * and phone width. No model, no messages: $0.
+ * and phone width. Solid blue and sticky under the top bar (2026-10-28):
+ * it stays in view while a long page scrolls, at phone width and desktop.
+ * No model, no messages: $0.
  */
 import type { Page } from "@playwright/test";
 import { test, expect, signInAs, U } from "../fixtures";
@@ -20,7 +22,7 @@ const EN = poolBannerCopy("en");
 const TR = poolBannerCopy("tr");
 const PHONE = { width: 375, height: 740 };
 const DESKTOP = { width: 1280, height: 900 };
-const SHOTS = "/private/tmp/claude-501/-Users-kemal-Projects-Cressoft-Sports-matchtime/53efc5e1-1f7c-48ce-a74b-cc3c6361bf47/scratchpad/pool-banner";
+const SHOTS = "/private/tmp/claude-501/-Users-kemal-Projects-Cressoft-Sports-matchtime/53efc5e1-1f7c-48ce-a74b-cc3c6361bf47/scratchpad/pool-banner-v2";
 const SHARE_KEY = `org-${ORG_ID}:pool-club-share`;
 
 test.describe.configure({ mode: "serial" });
@@ -90,20 +92,104 @@ test("phone: join, its ⓘ, and Join the pool lands on the highlighted Play else
     .poll(() => page.evaluate(async () => { const a = window.scrollY; await new Promise((r) => setTimeout(r, 250)); return window.scrollY - a; }))
     .toBe(0);
   expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+  // The sticky banner never hides the top of the card it scrolled to.
+  expect((await card.boundingBox())!.y).toBeGreaterThanOrEqual((await edges(page)).bottom);
   await page.screenshot({ path: `${SHOTS}/phone-join-lands-on-card.png` });
 });
 
-test("the banner is on the other signed-in pages too, under the nav, never over the content", async ({ page }) => {
+/**
+ * The banner's computed background and text colour as sRGB, and the WCAG
+ * contrast between them. Tailwind 4 computes to oklch(), so each colour is
+ * painted on a 1px canvas and read back as RGB.
+ */
+async function colours(page: Page) {
+  return banner(page).evaluate((el) => {
+    const ctx = document.createElement("canvas").getContext("2d", { willReadFrequently: true })!;
+    const rgb = (css: string) => {
+      ctx.clearRect(0, 0, 1, 1);
+      ctx.fillStyle = css;
+      ctx.fillRect(0, 0, 1, 1);
+      const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+      return [r, g, b];
+    };
+    const lum = ([r, g, b]: number[]) => {
+      const f = (c: number) => ((c /= 255) <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+      return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+    };
+    const bg = rgb(getComputedStyle(el).backgroundColor);
+    const fg = rgb(getComputedStyle(el).color);
+    const [hi, lo] = [lum(bg), lum(fg)].sort((a, b) => b - a);
+    return { bg, fg, bgLum: lum(bg), contrast: (hi + 0.05) / (lo + 0.05) };
+  });
+}
+
+/** Its top edge, and the bottom edge of the nav above it (the phone's top bar; desktop has none, so 0). */
+async function edges(page: Page) {
+  return page.evaluate(() => {
+    const b = document.querySelector('[data-testid="pool-banner"]')!.getBoundingClientRect();
+    const bar = document.querySelector('[data-testid="mobile-topbar"]');
+    const r = bar?.getBoundingClientRect();
+    const navBottom = r && r.height > 0 ? r.bottom : 0;
+    return { top: b.top, bottom: b.bottom, navBottom, scrollY: window.scrollY };
+  });
+}
+
+test("the banner is on the other signed-in pages too, under the nav, solid blue, never over the content", async ({ page }) => {
   await page.setViewportSize(PHONE);
   for (const path of ["/profile", "/matches", "/profile/stats"]) {
     await signInAs(page, U.player, path);
-    await expect(banner(page)).toBeVisible({ timeout: 30_000 });
-    // In the flow: it scrolls away with the page rather than sitting over it.
-    const position = await banner(page).evaluate((el) => getComputedStyle(el).position);
-    expect(["static", "relative"]).toContain(position);
+    const b = banner(page);
+    await expect(b).toBeVisible({ timeout: 30_000 });
+    expect(await b.evaluate((el) => getComputedStyle(el).position)).toBe("sticky");
+    // Clearly visible: a dark saturated blue with white text (the pale
+    // strip it used to be, bg-blue-50, has a luminance above 0.9), AA contrast.
+    const c = await colours(page);
+    expect(c.bgLum).toBeLessThan(0.2);
+    expect(c.bg[2]).toBeGreaterThan(c.bg[0] + 100); // blue, not grey
+    expect(c.fg).toEqual([255, 255, 255]);
+    expect(c.contrast).toBeGreaterThanOrEqual(4.5);
+    // At the top of the page it sits right under the top bar, and the
+    // content starts below it (it holds its own height in the flow).
+    const e = await edges(page);
+    expect(Math.abs(e.top - e.navBottom)).toBeLessThanOrEqual(1);
+    const next = await b.evaluate((el) => el.nextElementSibling?.getBoundingClientRect().top ?? Infinity);
+    expect(next).toBeGreaterThanOrEqual(e.bottom - 1);
     expect(await overflow(page)).toBeLessThanOrEqual(0);
   }
 });
+
+for (const [name, size] of [["phone", PHONE], ["desktop", DESKTOP]] as const) {
+  test(`${name}: sticky, it stays pinned under the nav while a long page scrolls`, async ({ page }) => {
+    await page.setViewportSize(size);
+    await signInAs(page, U.player, "/profile");
+    const b = banner(page);
+    await expect(b).toBeVisible({ timeout: 30_000 });
+    // Make sure the page is long enough to scroll, whatever the fixture data.
+    await page.evaluate(() => {
+      const pad = document.createElement("div");
+      pad.style.height = "3000px";
+      pad.setAttribute("data-testid", "e2e-scroll-pad");
+      document.querySelector("main")!.appendChild(pad);
+    });
+    // Far enough that the banner's own place in the flow is long gone, near
+    // enough that the picture still shows the page's content under it.
+    await page.evaluate(() => window.scrollTo(0, 500));
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThanOrEqual(400);
+    expect((await edges(page)).top).toBeGreaterThanOrEqual(0);
+    await expect(b).toBeInViewport();
+    const e = await edges(page);
+    expect(Math.abs(e.top - e.navBottom)).toBeLessThanOrEqual(1);
+    if (name === "phone") {
+      expect(e.navBottom).toBeGreaterThan(0);
+      await expect(page.getByTestId("mobile-topbar")).toBeInViewport();
+    } else {
+      expect(e.top).toBeLessThanOrEqual(1);
+    }
+    // Its buttons still work while pinned.
+    await expect(b.getByTestId("pool-banner-join")).toBeInViewport();
+    await page.screenshot({ path: `${SHOTS}/${name}-scrolled-sticky.png` });
+  });
+}
 
 test("never on public pages", async ({ page }) => {
   await signInAs(page, U.player, "/privacy");

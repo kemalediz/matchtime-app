@@ -214,7 +214,7 @@ export function PlayElsewhereCard({ lang }: { lang: Lang }) {
       ref={sectionRef}
       aria-labelledby={PLAY_ELSEWHERE_ANCHOR}
       data-highlight={highlight ? "on" : undefined}
-      className={`scroll-mt-20 bg-white rounded-xl border shadow-sm p-6 transition-shadow duration-500 ${highlight ? "border-blue-400 ring-4 ring-blue-200" : "border-slate-200"}`}
+      className={`scroll-mt-44 lg:scroll-mt-24 bg-white rounded-xl border shadow-sm p-6 transition-shadow duration-500 ${highlight ? "border-blue-400 ring-4 ring-blue-200" : "border-slate-200"}`}
       data-testid="play-elsewhere"
     >
       <h2 id={PLAY_ELSEWHERE_ANCHOR} className="flex items-center gap-2 text-lg font-semibold text-slate-800">
