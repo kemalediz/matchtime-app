@@ -47,8 +47,8 @@ scenarios("switching the player pool on tells the club once", () => {
     const sent = await pool.collect();
     const text = poolClubSwitchCopy("en").groupAnnouncement("FNF");
     pool.expectSent(sent, [{ to: "fnf.group", channel: "group", text, sendAfter: null }]);
-    expect(text).toContain('"@Match Time ask the player pool for 2 players for Thursday"');
-    expect(text).toContain("Only the club's organisers can ask the pool");
+    expect(text).toContain("*How to ask* (organisers only)");
+    expect(text).toContain("• @Match Time ask the player pool for 2 players for Thursday");
     expect(text).not.toContain("Tell your players about the player pool");
     pool.expectNoLeaks(fnf.secrets(), { in: sent });
     expect(await pool.db.one(`SELECT count(*)::int AS n FROM "SentNotification" WHERE key = $1`, [`org-${fnf.group.orgId}:pool-club-on-group`])).toEqual({ n: 1 });
